@@ -18,6 +18,7 @@ grep -qF '"//factory:__subpackages__"' lib/BUILD.bazel
 grep -qF '"//lib:__subpackages__"' lib/BUILD.bazel
 grep -qF '"//products:__subpackages__"' lib/BUILD.bazel
 
+shopt -s nullglob
 for bf in factory/BUILD.bazel factory/*/BUILD.bazel; do
   grep -qF 'package(default_visibility = ["//factory:__subpackages__"])' "$bf"
   if grep -F "//products" "$bf" >/dev/null; then exit 1; fi
@@ -26,5 +27,5 @@ done
 grep -qF "stdlib-only-front" .golangci.yml
 grep -qF "stdlib-only-front" .go-arch-lint.yml
 grep -qF -- "--test_timeout=" .bazelrc
-grep -qF 'timeout = "short"' factory/build/go.bzl
+grep -qF 'timeout = "short"' factory/go.bzl
 if find factory lib products docs third_party -type d \( -name core -o -name shell \) | grep -q .; then exit 1; fi

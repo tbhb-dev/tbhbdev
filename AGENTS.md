@@ -5,7 +5,7 @@ Shared Bazel lint, formatting, and language gates come from [`tbhb-dev/rules`](h
 
 ## Layout and dependency rule
 
-- `factory/{agents,build,services,work,evals,infra}/` holds internal factory automation, build plumbing, services, work routing, evaluations, and infrastructure.
+- `factory/` holds internal factory projects, one folder directly under `factory/` per project (`factory/<project>/`, such as `factory/tbhbdev/`), with each project's role recorded in its `README.md` and `OWNERS` rather than in the path.
 - `products/` holds user-facing products.
 - `lib/` holds shared libraries.
 - `docs/` holds repository documentation and `third_party/` holds vendored or external inputs.
