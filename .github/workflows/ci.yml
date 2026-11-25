@@ -38,7 +38,7 @@ jobs:
           bazelisk-version: 1.30.0
           bazelisk-cache: true
 
-      # Remote cache and affected-targets selection (rules#422) land in PR 2.
+      # Remote cache and affected-targets selection arrive with the rules import.
       - name: Build
         run: bazel build //...
 

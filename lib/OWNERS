@@ -1,1 +1,3 @@
-lib
+# Shared libraries reusable across factory/ and products/.
+# Depends on lib/ and third_party/ only; never depends on factory/ or products/.
+@tbhb

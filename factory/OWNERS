@@ -1,1 +1,3 @@
-factory
+# Internal factory projects (one folder directly under factory/ per project, no grouping folders).
+# Depends on factory/ internals, lib/, and third_party/; never depends on products/.
+@tbhb

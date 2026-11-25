@@ -1,1 +1,3 @@
-third-party
+# Vendored third-party code, schemas, and external inputs.
+# External inputs only; does not depend on factory/, lib/, or products/.
+@tbhb

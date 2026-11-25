@@ -4,16 +4,6 @@
 load("@buildifier_prebuilt//:rules.bzl", "buildifier", "buildifier_test")
 load("@gazelle//:def.bzl", "gazelle", "gazelle_test")
 load("@rules_go//go:def.bzl", "nogo")
-load(
-    "@tbhb_rules//lint:defs.bzl",
-    "editorconfig_checker_test",
-    "gitleaks_history",
-    "gitleaks_test",
-    "reuse_test",
-    "shellcheck_test",
-    "shfmt_test",
-)
-load("@tbhb_rules//repo:defs.bzl", "repo_files", "repo_layout_test")
 
 exports_files([
     ".go-arch-lint.yml",
@@ -21,8 +11,7 @@ exports_files([
     "go.mod",
 ])
 
-# Minimal Gazelle setup until the shared setup in tbhb-dev/rules lands; reads go.mod.
-# gazelle:map_kind py_library python_library @tbhb_rules_python//:defs.bzl
+# Minimal Gazelle setup until the rules import lands; reads go.mod.
 gazelle(name = "gazelle")
 
 gazelle(
@@ -70,68 +59,39 @@ buildifier_test(
     workspace = "//:MODULE.bazel",
 )
 
-repo_files(
-    exclude = [
-        "**/.DS_Store",
-        ".bazelrc.user",
-        ".coverage*",
-        ".env*",
-        ".mutation/**",
-        ".claude/settings.local.json",
-        ".github/PULL_REQUEST_DRAFT.md",
-        "coverage.*",
-        "mise.local.toml",
+# Repository filegroup consumed by //factory:visibility_test.
+# Additional repository-wide lint targets (repo_layout_test, gitleaks_test,
+# gitleaks_history, reuse_test, editorconfig_checker_test, shellcheck_test,
+# and shfmt_test) arrive with the rules import.
+filegroup(
+    name = "repo_files",
+    srcs = glob(
+        [
+            "**",
+            "**/.*",
+        ],
+        allow_empty = True,
+        exclude = [
+            "**/.DS_Store",
+            ".bazel-*",
+            ".bazelrc.user",
+            ".claude/settings.local.json",
+            ".coverage*",
+            ".env*",
+            ".git/**",
+            ".github/PULL_REQUEST_DRAFT.md",
+            ".mise/**",
+            ".mutation/**",
+            ".venv/**",
+            ".worktrees/**",
+            "bazel-*",
+            "coverage.*",
+            "mise.local.toml",
+            "tmp/**",
+        ],
+    ) + [
+        "//factory:repo_files",
+        "//lib:repo_files",
     ],
-)
-
-repo_layout_test(
-    name = "repo_layout_test",
-    size = "small",
-    srcs = [":repo_files"],
-    top_level_dirs = [
-        ".github",
-        "LICENSES",
-        "docs",
-        "factory",
-        "lib",
-        "products",
-        "third_party",
-    ],
-)
-
-gitleaks_test(
-    name = "gitleaks_test",
-    size = "small",
-    srcs = [":repo_files"],
-    config = ".gitleaks.toml",
-)
-
-gitleaks_history(
-    name = "gitleaks_history",
-    config = ".gitleaks.toml",
-)
-
-reuse_test(
-    name = "reuse_test",
-    size = "small",
-    srcs = [":repo_files"],
-)
-
-editorconfig_checker_test(
-    name = "editorconfig_checker_test",
-    size = "small",
-    srcs = [":repo_files"],
-    config = ".editorconfig-checker.json",
-)
-
-shellcheck_test(
-    name = "shellcheck_test",
-    size = "small",
-    srcs = [":repo_files"],
-)
-
-shfmt_test(
-    name = "shfmt_test",
-    size = "small",
-    srcs = [":repo_files"],
+    visibility = ["//factory:__subpackages__"],
 )

@@ -1,8 +1,6 @@
 # SPDX-License-Identifier: Apache-2.0
 # Copyright Tony Burns
 
-load("@tbhb_rules//repo:defs.bzl", "repo_files")
-
 package(default_visibility = [
     "//factory:__subpackages__",
     "//lib:__subpackages__",
@@ -18,7 +16,11 @@ package_group(
     ],
 )
 
-repo_files()
+filegroup(
+    name = "repo_files",
+    srcs = glob(["**"]),
+    visibility = ["//:__pkg__"],
+)
 
 filegroup(
     name = "boundary",
