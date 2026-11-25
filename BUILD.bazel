@@ -1,0 +1,110 @@
+# SPDX-License-Identifier: Apache-2.0
+# Copyright Tony Burns
+
+load("@buildifier_prebuilt//:rules.bzl", "buildifier", "buildifier_test")
+load("@gazelle//:def.bzl", "gazelle", "gazelle_test")
+load("@rules_go//go:def.bzl", "nogo")
+load("@rules_shell//shell:sh_binary.bzl", "sh_binary")
+
+exports_files([
+    ".go-arch-lint.yml",
+    ".golangci.yml",
+    "go.mod",
+])
+
+# Minimal Gazelle setup until the rules import lands; reads go.mod.
+gazelle(name = "gazelle")
+
+gazelle(
+    name = "gazelle.check",
+    mode = "diff",
+)
+
+gazelle_test(
+    name = "gazelle_test",
+    size = "small",
+    workspace = "//:MODULE.bazel",
+)
+
+nogo(
+    name = "nogo",
+    vet = True,
+    visibility = ["//visibility:public"],
+)
+
+# Installs the Vale packages pinned in .vale.ini; uses `vale` from PATH.
+sh_binary(
+    name = "vale_sync",
+    srcs = ["vale_sync.sh"],
+)
+
+BUILDIFIER_EXCLUDES = [
+    "./.git/*",
+    "./.venv/*",
+    "./.mise/*",
+    "./bazel-*",
+    "./.bazel-*",
+    "./.worktrees/*",
+    "./tmp/*",
+]
+
+buildifier(
+    name = "buildifier",
+    exclude_patterns = BUILDIFIER_EXCLUDES,
+    lint_mode = "fix",
+    lint_warnings = ["all"],
+    mode = "fix",
+)
+
+buildifier_test(
+    name = "buildifier_test",
+    size = "small",
+    exclude_patterns = BUILDIFIER_EXCLUDES,
+    lint_mode = "warn",
+    lint_warnings = ["all"],
+    no_sandbox = True,
+    workspace = "//:MODULE.bazel",
+)
+
+# Repository filegroup consumed by //factory:visibility_test.
+# Additional repository-wide lint targets (repo_layout_test, gitleaks_test,
+# gitleaks_history, reuse_test, editorconfig_checker_test, shellcheck_test,
+# and shfmt_test) arrive with the rules import.
+filegroup(
+    name = "repo_files",
+    srcs = glob(
+        [
+            "**",
+            "**/.*",
+        ],
+        allow_empty = True,
+        exclude = [
+            "**/.DS_Store",
+            # Gitignored packages downloaded by vale_sync.
+            ".vale/Google/**",
+            ".vale/ai-tells/**",
+            ".vale/ai-tells-experimental/**",
+            ".vale/proselint/**",
+            ".vale/write-good/**",
+            ".bazel-*",
+            ".bazelrc.user",
+            ".claude/settings.local.json",
+            ".coverage*",
+            ".env*",
+            ".git/**",
+            ".github/PULL_REQUEST_DRAFT.md",
+            ".mise/**",
+            ".mutation/**",
+            ".venv/**",
+            ".worktrees/**",
+            "bazel-*",
+            "coverage.*",
+            "mise.local.toml",
+            "tmp/**",
+        ],
+    ) + [
+        "//factory:repo_files",
+        "//lib:repo_files",
+    ],
+    visibility = ["//factory:__subpackages__"],
+)

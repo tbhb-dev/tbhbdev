@@ -1,0 +1,42 @@
+---
+# SPDX-License-Identifier: Apache-2.0
+# Copyright Tony Burns
+
+version: "2"
+
+formatters:
+  enable:
+    - gci
+    - gofumpt
+    - goimports
+    - golines
+
+linters:
+  default: all
+  disable:
+    - exhaustruct
+    - gomodguard
+    - wsl
+  settings:
+    depguard:
+      rules:
+        "non-test files":
+          files:
+            - "!$test"
+          deny:
+            - pkg: math/rand$
+              desc: "Use math/rand/v2 instead"
+        "non-main files":
+          files:
+            - "!**/cmd/*/main.go"
+          deny:
+            - pkg: log$
+              desc: "Use log/slog instead"
+        # Stub for the Go CLI port (stdlib-only-front): once factory/tbhbdev
+        # lands, match its front-end package files here so they may import only
+        # $gostd and internal packages, never third-party vendors.
+        "stdlib-only-front":
+          files:
+            - "**/front/**/*.go"
+          allow:
+            - $gostd

@@ -1,0 +1,15 @@
+# SPDX-License-Identifier: Apache-2.0
+# Copyright Tony Burns
+
+[project]
+name = "tbhbdev-workspace"
+version = "0"
+requires-python = ">=3.15"
+dependencies = []
+
+[tool.uv]
+exclude-newer = "5 days"
+package = false
+
+[tool.uv.workspace]
+members = []

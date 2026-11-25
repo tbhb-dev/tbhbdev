@@ -1,0 +1,28 @@
+# SPDX-License-Identifier: Apache-2.0
+# Copyright Tony Burns
+
+package(default_visibility = [
+    "//factory:__subpackages__",
+    "//lib:__subpackages__",
+    "//products:__subpackages__",
+])
+
+package_group(
+    name = "consumers",
+    packages = [
+        "//factory/...",
+        "//lib/...",
+        "//products/...",
+    ],
+)
+
+filegroup(
+    name = "repo_files",
+    srcs = glob(["**"]),
+    visibility = ["//:__pkg__"],
+)
+
+filegroup(
+    name = "boundary",
+    srcs = ["README.md"],
+)

@@ -1,0 +1,18 @@
+# SPDX-License-Identifier: Apache-2.0
+# Copyright Tony Burns
+
+common --repo_env=DO_NOT_TRACK=1
+common --symlink_prefix=.bazel-
+common --lockfile_mode=error
+common --check_direct_dependencies=error
+common --enable_platform_specific_config
+
+# Per-package test time caps (short=60s, moderate=180s, long=300s, eternal=900s).
+test --test_timeout=60,180,300,900
+test --test_output=errors
+build:ci --color=yes
+
+startup --windows_enable_symlinks
+common:windows --enable_runfiles
+
+try-import %workspace%/.bazelrc.user

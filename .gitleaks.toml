@@ -1,0 +1,19 @@
+# SPDX-License-Identifier: Apache-2.0
+# Copyright Tony Burns
+
+[extend]
+useDefault = true
+
+[[allowlists]]
+description = "Untracked build output, tool caches, and scratch space"
+paths = [
+  '''^\.venv/''',
+  '''^bazel-[^/]+/''',
+  '''^\.bazel-[^/]+/''',
+  '''^\.mise/''',
+  '''^\.vale/(Google|write-good|proselint|ai-tells[^/]*)/''',
+  '''^tmp/''',
+  '''^\.worktrees/''',
+  '''(^|/)__pycache__/''',
+  '''^\.(ruff|pytest|hypothesis|rumdl)_cache/''',
+]
