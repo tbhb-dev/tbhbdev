@@ -1,6 +1,3 @@
-afakt
-ascm
-awrel
 Bazel
 bazel_env
 bazelisk

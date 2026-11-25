@@ -1,4 +1,4 @@
 # `docs/`
 
-Repository-wide documentation, architecture notes, and decision records live here.
-Contributors and automation read `docs/`; products depend on `lib/` only, never on factory internals, and the factory never depends on a product.
+Repository-wide documentation, architecture notes, and decision records belong here.
+Contributors and automation read `docs/`. Products depend on `lib/` only and must not use `factory/` internals. The factory must not depend on a product.

@@ -80,6 +80,12 @@ filegroup(
         allow_empty = True,
         exclude = [
             "**/.DS_Store",
+            # Gitignored packages downloaded by vale_sync.
+            ".vale/Google/**",
+            ".vale/ai-tells/**",
+            ".vale/ai-tells-experimental/**",
+            ".vale/proselint/**",
+            ".vale/write-good/**",
             ".bazel-*",
             ".bazelrc.user",
             ".claude/settings.local.json",

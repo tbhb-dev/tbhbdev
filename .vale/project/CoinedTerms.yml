@@ -13,6 +13,7 @@ action:
 swap:
   green heads?: head whose checks passed
   green lines?: CI passed
+  # This entry enforces the ban on the word "role".
   keeper (session|role)s?: scheduler
   go-lines?: merge message
   floor rules: org-wide rules

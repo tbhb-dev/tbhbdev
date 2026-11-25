@@ -10,7 +10,6 @@ scope: heading
 match: $sentence
 style: AP
 exceptions:
-  - ascm
   - API
   - CISA
   - CII
