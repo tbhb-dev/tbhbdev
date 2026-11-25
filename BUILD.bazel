@@ -89,6 +89,7 @@ repo_layout_test(
     size = "small",
     srcs = [":repo_files"],
     top_level_dirs = [
+        ".github",
         "LICENSES",
         "docs",
         "factory",
