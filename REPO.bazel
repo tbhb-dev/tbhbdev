@@ -1,0 +1,20 @@
+# SPDX-License-Identifier: Apache-2.0
+# Copyright Tony Burns
+
+ignore_directories([
+    ".git",
+    ".obsidian",
+    "bazel-*",
+    ".bazel-*",
+    ".bazel_env",
+    ".mise",
+    ".venv",
+    "tmp",
+    ".worktrees",
+    ".claude/worktrees",
+    "**/__pycache__",
+    "**/.*_cache",
+    ".hypothesis",
+    ".mypy_cache",
+    "node_modules",
+])

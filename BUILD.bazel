@@ -1,0 +1,136 @@
+# SPDX-License-Identifier: Apache-2.0
+# Copyright Tony Burns
+
+load("@buildifier_prebuilt//:rules.bzl", "buildifier", "buildifier_test")
+load("@gazelle//:def.bzl", "gazelle", "gazelle_test")
+load("@rules_go//go:def.bzl", "nogo")
+load(
+    "@tbhb_rules//lint:defs.bzl",
+    "editorconfig_checker_test",
+    "gitleaks_history",
+    "gitleaks_test",
+    "reuse_test",
+    "shellcheck_test",
+    "shfmt_test",
+)
+load("@tbhb_rules//repo:defs.bzl", "repo_files", "repo_layout_test")
+
+exports_files([
+    ".go-arch-lint.yml",
+    ".golangci.yml",
+    "go.mod",
+])
+
+# Minimal Gazelle setup until the shared setup in tbhb-dev/rules lands; reads go.mod.
+# gazelle:map_kind py_library python_library @tbhb_rules_python//:defs.bzl
+gazelle(name = "gazelle")
+
+gazelle(
+    name = "gazelle.check",
+    mode = "diff",
+)
+
+gazelle_test(
+    name = "gazelle_test",
+    size = "small",
+    workspace = "//:MODULE.bazel",
+)
+
+nogo(
+    name = "nogo",
+    vet = True,
+    visibility = ["//visibility:public"],
+)
+
+BUILDIFIER_EXCLUDES = [
+    "./.git/*",
+    "./.venv/*",
+    "./.mise/*",
+    "./bazel-*",
+    "./.bazel-*",
+    "./.worktrees/*",
+    "./tmp/*",
+]
+
+buildifier(
+    name = "buildifier",
+    exclude_patterns = BUILDIFIER_EXCLUDES,
+    lint_mode = "fix",
+    lint_warnings = ["all"],
+    mode = "fix",
+)
+
+buildifier_test(
+    name = "buildifier_test",
+    size = "small",
+    exclude_patterns = BUILDIFIER_EXCLUDES,
+    lint_mode = "warn",
+    lint_warnings = ["all"],
+    no_sandbox = True,
+    workspace = "//:MODULE.bazel",
+)
+
+repo_files(
+    exclude = [
+        "**/.DS_Store",
+        ".bazelrc.user",
+        ".coverage*",
+        ".env*",
+        ".mutation/**",
+        ".claude/settings.local.json",
+        ".github/PULL_REQUEST_DRAFT.md",
+        "coverage.*",
+        "mise.local.toml",
+    ],
+)
+
+repo_layout_test(
+    name = "repo_layout_test",
+    size = "small",
+    srcs = [":repo_files"],
+    top_level_dirs = [
+        "LICENSES",
+        "docs",
+        "factory",
+        "lib",
+        "products",
+        "third_party",
+    ],
+)
+
+gitleaks_test(
+    name = "gitleaks_test",
+    size = "small",
+    srcs = [":repo_files"],
+    config = ".gitleaks.toml",
+)
+
+gitleaks_history(
+    name = "gitleaks_history",
+    config = ".gitleaks.toml",
+)
+
+reuse_test(
+    name = "reuse_test",
+    size = "small",
+    srcs = [":repo_files"],
+)
+
+editorconfig_checker_test(
+    name = "editorconfig_checker_test",
+    size = "small",
+    srcs = [":repo_files"],
+    config = ".editorconfig-checker.json",
+)
+
+shellcheck_test(
+    name = "shellcheck_test",
+    size = "small",
+    srcs = [":repo_files"],
+)
+
+shfmt_test(
+    name = "shfmt_test",
+    size = "small",
+    srcs = [":repo_files"],
+)

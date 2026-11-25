@@ -1,0 +1,23 @@
+# SPDX-License-Identifier: Apache-2.0
+# Copyright Tony Burns
+
+---
+# Import contracts for Go packages in this repository.
+# Stub for the Go CLI port (stdlib-only-front): when the Go CLI lands under
+# factory/, attach its front-end packages to `front` below with no `canUse`
+# vendor entries so `depOnAnyVendor: false` keeps the front layer stdlib-only.
+version: 3
+
+allow:
+  depOnAnyVendor: false
+  deepScan: false
+
+components:
+  front: {in: "**/front/**"}
+  lib: {in: lib/**}
+
+deps:
+  front:
+    mayDependOn: [lib]
+  lib:
+    mayDependOn: [lib]

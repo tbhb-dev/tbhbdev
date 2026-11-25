@@ -1,0 +1,51 @@
+# SPDX-License-Identifier: Apache-2.0
+# Copyright Tony Burns
+
+load("@bazel_skylib//:bzl_library.bzl", "bzl_library")
+load("@rules_shell//shell:sh_test.bzl", "sh_test")
+load("@tbhb_rules//repo:defs.bzl", "repo_files")
+
+package(default_visibility = ["//factory:__subpackages__"])
+
+repo_files()
+
+bzl_library(
+    name = "go_bzl",
+    srcs = ["go.bzl"],
+)
+
+genquery(
+    name = "lib_visibility_query",
+    expression = "//lib:boundary + //lib:consumers",
+    opts = ["--output=xml"],
+    scope = [
+        "//lib:boundary",
+        "//lib:consumers",
+    ],
+)
+
+genquery(
+    name = "factory_visibility_query",
+    expression = "//factory:boundary + //factory:internal",
+    opts = ["--output=xml"],
+    scope = [
+        "//factory:boundary",
+        "//factory:internal",
+    ],
+)
+
+sh_test(
+    name = "visibility_test",
+    size = "small",
+    timeout = "short",
+    srcs = ["visibility_test.sh"],
+    args = [
+        "$(rootpath :lib_visibility_query)",
+        "$(rootpath :factory_visibility_query)",
+    ],
+    data = [
+        ":factory_visibility_query",
+        ":lib_visibility_query",
+        "//:repo_files",
+    ],
+)

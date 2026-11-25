@@ -1,0 +1,18 @@
+# SPDX-License-Identifier: Apache-2.0
+# Copyright Tony Burns
+
+load("@tbhb_rules//repo:defs.bzl", "repo_files")
+
+package(default_visibility = ["//factory:__subpackages__"])
+
+package_group(
+    name = "internal",
+    packages = ["//factory/..."],
+)
+
+repo_files()
+
+filegroup(
+    name = "boundary",
+    srcs = ["README.md"],
+)
