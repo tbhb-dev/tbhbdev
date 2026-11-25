@@ -21,6 +21,9 @@ path = [
   ".gitattributes",
   ".gitignore",
   ".editorconfig",
+  ".cspell-words.txt",
+  ".cspell.jsonc",
+  ".vale/config/vocabularies/project/*.txt",
 ]
 SPDX-FileCopyrightText = "Tony Burns"
 SPDX-License-Identifier = "Apache-2.0"

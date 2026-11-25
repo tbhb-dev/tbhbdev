@@ -1,0 +1,18 @@
+# SPDX-License-Identifier: Apache-2.0
+# Copyright Tony Burns
+
+# Add a term as a swap line here.
+# Match only the coined sense. Ordinary English such as a room's floor must not match.
+---
+extends: substitution
+message: "Use '%s' instead of the coined term '%s'."
+level: error
+ignorecase: true
+action:
+  name: replace
+swap:
+  green heads?: head whose checks passed
+  green lines?: CI passed
+  keeper (session|role)s?: scheduler
+  go-lines?: merge message
+  floor rules: org-wide rules

@@ -4,6 +4,7 @@
 load("@buildifier_prebuilt//:rules.bzl", "buildifier", "buildifier_test")
 load("@gazelle//:def.bzl", "gazelle", "gazelle_test")
 load("@rules_go//go:def.bzl", "nogo")
+load("@rules_shell//shell:sh_binary.bzl", "sh_binary")
 
 exports_files([
     ".go-arch-lint.yml",
@@ -29,6 +30,12 @@ nogo(
     name = "nogo",
     vet = True,
     visibility = ["//visibility:public"],
+)
+
+# Installs the Vale packages pinned in .vale.ini; uses `vale` from PATH.
+sh_binary(
+    name = "vale_sync",
+    srcs = ["vale_sync.sh"],
 )
 
 BUILDIFIER_EXCLUDES = [
