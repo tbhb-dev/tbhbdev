@@ -285,7 +285,9 @@ def test_lint_post_reports_vale_execution_failure(
 ) -> None:
     (tmp_path / review.pr.VALE_INI).touch()
     monkeypatch.setattr(review.pr, "root", lambda: tmp_path)
-    monkeypatch.setattr(review.pr, "lint", Mock(side_effect=SystemExit("vale not found")))
+    monkeypatch.setattr(
+        review.pr, "lint", Mock(side_effect=SystemExit("vale not found"))
+    )
 
     assert review.lint_post(BODY) == ["Vale could not run: vale not found"]
 
