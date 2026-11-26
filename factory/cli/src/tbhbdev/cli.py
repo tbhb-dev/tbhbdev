@@ -16,7 +16,6 @@ from tbhbdev import (
     alpha,
     analytics,
     cue_runtime,
-    host,
     issue,
     plugins,
     secret,
@@ -33,7 +32,6 @@ TOOLS: dict[str, Tool] = {
     "alpha": alpha.main,
     "analytics": analytics.main,
     "cue": cue_runtime.main,
-    "host": host.main,
     "issue": issue.main,
     "secret": secret.main,
 }

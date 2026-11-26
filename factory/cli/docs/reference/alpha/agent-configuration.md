@@ -2,12 +2,9 @@
 description: Agent settings, run requests, and host preparation.
 generated:
   - role: generated
-    harness: codex:0.171.0
-    model: openai:gpt-6.1-sol
-    effort: high
-    surface: exec
-    session: sha-256-64:991d7464a94ac2e1
-    at: "2026-11-26T06:45:17Z"
+    harness: codex
+    model: openai:gpt-6.2-sol
+    at: "2026-11-26T23:33:03Z"
 status: stable
 tags: [alpha]
 title: Agent configuration
@@ -16,7 +13,7 @@ type: Reference
 
 # Agent configuration
 
-`tbhbdev alpha agent` reads the optional `[agent]` table from the user config. Calling this command requires the table and every key shown below except `public_repos`, `[agent.otel]`, `max_run_minutes`, `docker`, `expires`, `pull_requests_app_client_id`, `pull_requests_app_pem`, the host’s `unsandboxed` flag and `tbhbdev` path, the `[agent.codex]` table and the `[agent.worker]` table. Unreadable config fails with its path. Missing or invalid settings fail with the path, the full table name and the key, as `[agent.sandbox] audit_dir is required`. Unknown keys fail the same way at any level. `exec` validates a headless run before it contacts the host. It checks the remote version, then claims the name before it streams the inputs. A tmux session runs the host supervisor. Install that supervisor separately. `wait`, `status`, `kill`, `clean`, `keep`, `log` and `diff` use the recorded target. The parser allows and ignores `host_tag` in `[agent]` because another command reads it.
+`tbhbdev alpha agent` reads the optional `[agent]` table from the user config. Calling this command requires the table and every key shown below except `public_repos`, `[agent.otel]`, `max_run_minutes`, `docker`, `expires`, `pull_requests_app_client_id`, `pull_requests_app_pem`, the host’s `unsandboxed` flag and `tbhbdev` path, the `[agent.codex]` table and the `[agent.worker]` table. Unreadable config fails with its path. Missing or invalid settings fail with the path, the full table name and the key, as `[agent.sandbox] audit_dir is required`. Unknown keys fail the same way at any level. `exec` validates a headless run before it contacts the host. It checks the remote version, then claims the name before it streams the inputs. A tmux session runs the host supervisor. Install that supervisor separately. `wait`, `status`, `kill`, `clean`, `keep`, `log` and `diff` use the recorded target. The parser accepts and ignores `host_tag` in existing `[agent]` configs.
 
 When the host reports a failed launch before the harness starts, `agent exec` prints the failure and cleans the run. It moves the host files, worktree and controller metadata to trash, so the same run name can be used again. Runs that started the harness and launches with an unknown outcome keep their records for inspection.
 

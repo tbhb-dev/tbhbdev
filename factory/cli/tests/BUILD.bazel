@@ -1391,8 +1391,6 @@ cli_py_test(
     deps = [
         ":conftest",
         ":repo_settings_example",
-        "//factory/cli/src/tbhbdev:gh_agent",
-        "//factory/cli/src/tbhbdev:host",
         "//factory/cli/src/tbhbdev/alpha:__init__",
         "//factory/cli/src/tbhbdev/alpha:repo_bootstrap",
         "//factory/cli/src/tbhbdev/alpha:repo_settings",
@@ -1900,27 +1898,6 @@ cli_py_test(
 )
 
 cli_py_test(
-    name = "test_host",
-    timeout = "long",
-    srcs = ["test_host.py"],
-    data = ["//:cli_check_inputs"],
-    path_tools = ["@tbhb_rules_gitleaks//:gitleaks"],
-    shard_count = 8,
-    deps = [
-        ":conftest",
-        ":stub_fixtures",
-        ":stubtool",
-        "//factory/cli/src/tbhbdev:cli",
-        "//factory/cli/src/tbhbdev:host",
-        "//factory/cli/src/tbhbdev:secrets",
-        "//factory/cli/src/tbhbdev:userconfig",
-        "@cli_pip//httpx",
-        "@cli_pip//onepasswordconnectsdk",
-        "@cli_pip//pytest",
-    ],
-)
-
-cli_py_test(
     name = "test_issue",
     srcs = ["test_issue.py"],
     deps = [
@@ -2069,7 +2046,6 @@ cli_py_library(
     extra_deps = [":stubtool"],
     visibility = ["//factory/cli/tests:__subpackages__"],
     deps = [
-        "//factory/cli/src/tbhbdev:host",
         "//factory/cli/src/tbhbdev:secrets",
         "//factory/cli/src/tbhbdev/alpha/agent:host_tools",
         "@cli_pip//pytest",

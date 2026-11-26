@@ -17,7 +17,7 @@ from typing import TYPE_CHECKING
 import pytest
 from repo_settings_example import DEFAULTS, EXAMPLE
 
-from tbhbdev import alpha, gh_agent, host
+from tbhbdev import alpha
 from tbhbdev.alpha import repo_bootstrap as rb
 from tbhbdev.alpha import repo_settings as rs
 
@@ -882,11 +882,6 @@ def test_gh_env_overrides_only_the_config_dir_otherwise() -> None:
         "GH_CONFIG_DIR": "/example/home/.config/gh-agent",  # gitleaks:allow
     }
     assert env["GH_CONFIG_DIR"] == "/example/x"
-
-
-def test_the_gh_agent_dir_is_the_one_host_uses() -> None:
-    assert gh_agent.CONFIG_DIR == ".config/gh-agent"
-    assert host.GH_AGENT == 'GH_CONFIG_DIR="$HOME/.config/gh-agent"'  # gitleaks:allow
 
 
 # --------------------------------------------------------------------- log
