@@ -302,10 +302,15 @@ def test_review_token_request_is_read_only_for_only_run_repository(
     )
     assert [(request.method, request.url.path) for request in requests] == list(replies)
     assert json.loads(requests[1].content) == {
-        "permissions": credentials.REVIEW_PERMISSIONS,
+        "permissions": {
+            "contents": "read",
+            "pull_requests": "read",
+            "checks": "read",
+            "statuses": "read",
+            "actions": "read",
+        },
         "repositories": ["example-repo"],
     }
-    assert "write" not in credentials.REVIEW_PERMISSIONS.values()
 
 
 @pytest.mark.parametrize("source", ["file", "reference"])
@@ -1306,6 +1311,7 @@ def test_harness_and_driver_mint_permissions_for_the_profile(
                 "pull_requests": "read",
                 "checks": "read",
                 "statuses": "read",
+                "actions": "read",
             }
         ]
         assert credentials.push_token(request, settings) is None
