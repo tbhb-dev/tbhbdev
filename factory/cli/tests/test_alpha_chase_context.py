@@ -72,6 +72,7 @@ def test_refresh_filters_rows_and_uses_the_shim(
 ) -> None:
     helper = str(tmp_path / "scanner")
     monkeypatch.setenv("TBHB_STALE_PRS", helper)
+    monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path))
     rows = [
         "unrelated line",
         "CHASE ops#1 abc 1440m title",
@@ -84,8 +85,7 @@ def test_refresh_filters_rows_and_uses_the_shim(
         argv: list[str], *, env: dict[str, str], **_: object
     ) -> subprocess.CompletedProcess[str]:
         assert argv == ["timeout", "40", helper, "20"]
-        shim_dir = tmp_path / ".local/share/tbhbdev/agent-bin"
-        assert env["PATH"].split(":")[0] == str(shim_dir)
+        assert env["PATH"].startswith(f"{tmp_path / 'tbhbdev' / 'agent-bin'}:")
         return subprocess.CompletedProcess(argv, 0, "\n".join(rows))
 
     monkeypatch.setattr(chase_context.subprocess, "run", scanner)
@@ -135,10 +135,8 @@ def test_empty_refresh_stays_silent(
     assert (tmp_path / ".local/state/tbhb/chase-context.cache").read_text() == ""
 
 
-def test_unconfigured_refresh_skips_scan(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_unconfigured_refresh_skips_scan(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.delenv("TBHB_STALE_PRS", raising=False)
-    assert chase_context.refresh(tmp_path) == ""
+    assert chase_context.refresh() == ""
     monkeypatch.setenv("TBHB_STALE_PRS", "")
-    assert chase_context.refresh(tmp_path) == ""
+    assert chase_context.refresh() == ""

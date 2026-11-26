@@ -10,6 +10,7 @@ from time import time
 from typing import cast
 
 from tbhbdev.alpha.agent.runfiles import atomic
+from tbhbdev.alpha.gh_shim import bin_dir
 from tbhbdev.alpha.repo import read_hook_stdin
 
 WATCHDOG = (
@@ -56,12 +57,12 @@ def recent_row(line: str) -> bool:
     return age is None or float(age[0]) < MINUTES_PER_DAY
 
 
-def refresh(home: Path) -> str:
+def refresh() -> str:
     helper = os.environ.get("TBHB_STALE_PRS")
     if not helper:
         return ""
     env = os.environ | {
-        "PATH": f"{home}/.local/share/tbhbdev/agent-bin:{os.environ.get('PATH', '')}"
+        "PATH": ":".join((str(bin_dir()), os.environ.get("PATH", ""))),
     }
     with suppress(OSError):
         result = subprocess.run(  # nosec B603 B607
@@ -106,7 +107,7 @@ def main(_argv: list[str], _prog: str) -> int:
     if message is None:
         if budget_empty(home):
             return 0
-        message = refresh(home)
+        message = refresh()
         remember(cache, message)
     sid = re.sub(r"[^A-Za-z0-9_-]", "", str(event.get("session_id", ""))) or "none"
     directory = Path(
