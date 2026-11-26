@@ -340,7 +340,12 @@ def checked_prompt(args: argparse.Namespace) -> str:
     problems = brief.check_hooks(prompt)
     problems.extend(
         rules.prompt_launch_problems(
-            prompt, Profile(args.profile), args.fetch_ref, args.start_ref, run=args.name
+            prompt,
+            Profile(args.profile),
+            args.fetch_ref,
+            args.start_ref,
+            run=args.name,
+            is_file=lambda target: Path(target).is_file(),
         )
     )
     if problems:

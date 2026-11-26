@@ -1289,6 +1289,7 @@ def test_prompt_with_foreign_branch_warns_and_launches(
         "Run `git checkout -b feat/4-exporter`.",
         "Run `git switch feat/4-exporter`.",
         "Push to `feat/4-exporter`.",
+        "Push feat/4-exporter.",
         "Run `git push --set-upstream origin HEAD:feat/4-exporter`.",
     ],
 )
@@ -1318,6 +1319,32 @@ def test_build_prompt_without_foreign_branch_instructions_launches(
     remote: Remote, capsys: pytest.CaptureFixture[str], prompt: str
 ) -> None:
     remote.prompt.write_text(prompt)
+    assert launch(remote) == 0
+    assert capsys.readouterr().err == ""
+
+
+def test_build_prompt_that_quotes_a_forbidden_push_launches(
+    remote: Remote, capsys: pytest.CaptureFixture[str]
+) -> None:
+    command = " ".join(("git", "push", "origin", "feat/other"))
+    remote.prompt.write_text(f"`{command}` is forbidden.")
+    assert launch(remote) == 0
+    assert capsys.readouterr().err == ""
+
+
+@pytest.mark.parametrize("path", ["README.md", "docs/README.md"])
+def test_build_prompt_that_restores_a_file_launches(
+    remote: Remote,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    path: str,
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    file = tmp_path / path
+    file.parent.mkdir(exist_ok=True)
+    file.write_text("Example\n")
+    remote.prompt.write_text(f"Run `git checkout {path}`.")
     assert launch(remote) == 0
     assert capsys.readouterr().err == ""
 
@@ -1419,7 +1446,14 @@ def test_build_prompt_that_updates_a_pr_branch_needs_start_ref(
     assert not driver.metadata_path("sample").exists()
 
 
-@pytest.mark.parametrize("prompt", ["Update `agent/topic`.", "Push to `agent/topic`."])
+@pytest.mark.parametrize(
+    "prompt",
+    [
+        "Update `agent/topic`.",
+        "Push to `agent/topic`.",
+        "Work on the branch given by `--start-ref`.",
+    ],
+)
 def test_build_prompt_that_updates_a_pr_branch_with_start_ref_launches(
     remote: Remote, capsys: pytest.CaptureFixture[str], prompt: str
 ) -> None:

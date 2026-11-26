@@ -12,6 +12,8 @@ from tbhbdev.alpha.agent.decisions import config, request
 from tbhbdev.alpha.agent.model import NAME, Harness, Invalid, Profile, RunKind
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
+
     from tbhbdev.alpha.agent.model import Host, RunRequest, Settings
 
 COMMIT = re.compile(r"[0-9a-f]{40}|[0-9a-f]{64}")
@@ -37,8 +39,8 @@ _PUSH_COMMAND = re.compile(
     rf"[\"']?\+?(?:[^\s:`\"']+:)?({brief.BRANCH_REF}){brief.REF_END}"
 )
 _PUSH_PROSE = re.compile(
-    r"\bpush (?:\w+ )?to (?:(?:a|the|this|its|current|existing) )*"
-    rf"(?:branch (?:named )?|(?=[`\"']|[^\s`\"']+/))[`\"']?"
+    r"(?<!git )\bpush (?:(?:\w+ )?to )?(?:(?:a|the|this|its|current|existing) )*"
+    r"(?:branch (?:named )?)?[`\"']?"
     rf"({brief.BRANCH_REF}){brief.REF_END}",
     re.IGNORECASE,
 )
@@ -57,7 +59,7 @@ def _instructions(pattern: re.Pattern[str], prose: str) -> list[str | None]:
     return [
         match[1]
         for match in pattern.finditer(prose)
-        if not brief.prohibiting(prose, match.start())
+        if not brief.prohibiting(prose, *match.span())
     ]
 
 
@@ -75,17 +77,19 @@ def _unfetched_explicit_refs(
     return [ref for ref in dict.fromkeys(explicit) if ref not in fetch_refs]
 
 
-def _wrong_build_branches(
+def _wrong_build_branches(  # noqa: PLR0913 -- Keep the file lookup explicit.
     prompt: str,
     prose: str,
     branch: str,
     start_ref: str | None,
     updates: list[str | None],
+    *,
+    is_file: Callable[[str], bool],
 ) -> list[str]:
     selected = [
         target
         for target in brief.branch_instructions(prompt)
-        if target and target.removeprefix("refs/heads/") != branch
+        if target.removeprefix("refs/heads/") != branch
     ]
     push_targets = _instructions(_PUSH_COMMAND, prompt) + _instructions(
         _PUSH_PROSE, prose
@@ -99,21 +103,25 @@ def _wrong_build_branches(
     selected.extend(
         target
         for target in push_targets
-        if target and target.removeprefix("refs/heads/") not in allowed_pushes
+        if target
+        and brief.looks_like_branch(target)
+        and target.removeprefix("refs/heads/") not in allowed_pushes
     )
     return [
         f"the brief directs work to {target}. Use the launcher branch {branch}."
         for target in dict.fromkeys(selected)
+        if not is_file(target)
     ]
 
 
-def prompt_launch_problems(
+def prompt_launch_problems(  # noqa: PLR0913 -- Keep the file lookup explicit.
     prompt: str,
     profile: Profile,
     fetch_refs: list[str],
     start_ref: str | None,
     *,
     run: str,
+    is_file: Callable[[str], bool],
 ) -> list[str]:
     """Check explicit ref uses and branch update instructions in a launch brief."""
     # Fold line wraps within a paragraph without changing ref case.
@@ -133,7 +141,9 @@ def prompt_launch_problems(
     ]
     if profile is not Profile.BUILD:
         return problems
-    problems.extend(_wrong_build_branches(prompt, prose, branch, start_ref, updates))
+    problems.extend(
+        _wrong_build_branches(prompt, prose, branch, start_ref, updates, is_file=is_file)
+    )
     if start_ref is None and updates:
         target = updates[0] or "<branch>"
         ref = f"refs/heads/{target.removeprefix('refs/heads/')}"

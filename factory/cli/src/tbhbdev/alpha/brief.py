@@ -89,6 +89,11 @@ TRAILER = r"(?:generated-by|assisted-by)"
 NEGATION = re.compile(
     r"(?<![\w-])(?:never|no|not|don['\u2019]t|without|avoid|forbidden)\b"
 )
+TRAILING_PROHIBITION = re.compile(
+    r"[\s`\"')]*(?:(?:is|are) (?:forbidden|prohibited|not allowed)"
+    r"|(?:must|should) (?:not|never))\b",
+    re.IGNORECASE,
+)
 CLAUSE_END = re.compile(r"[.;:\n]")
 PROSE_BREAK = re.compile(r"\n(?=\n|[#>]|```|~~~|[-*+] |\d+[.)] )")
 OTHER_TRAILER_OMISSION = re.compile(
@@ -148,6 +153,7 @@ BRANCH_INSTRUCTION = re.compile(
 REF_START = r"(?<![\w./@+-])"
 REF_END = r"(?=\.*(?:$|[\s`\"'(),;:<>\]]))"
 BRANCH_REF = r"[A-Za-z0-9._/-]*[A-Za-z0-9_/-]"
+BRANCH_PREFIXES = ("agent-", "feat-", "feature-", "fix-", "hotfix-", "release-")
 SHORT_AGENT_REF = rf"agent/{BRANCH_REF}{REF_END}"
 AGENT_BRANCH_MENTION = re.compile(rf"{REF_START}{SHORT_AGENT_REF}")
 FIXED_BY_SECTION = {
@@ -163,11 +169,13 @@ def normalize(text: str) -> str:
     return " ".join(unicodedata.normalize("NFKC", text).split()).casefold()
 
 
-def prohibiting(text: str, start: int) -> bool:
-    """Look for a prohibition before the instruction in the same clause."""
+def prohibiting(text: str, start: int, end: int | None = None) -> bool:
+    """Look for a prohibition before the instruction or immediately after it."""
     clause = CLAUSE_END.split(text[:start])[-1]
     clause = OTHER_TRAILER_OMISSION.sub("", normalize(clause))
-    return NEGATION.search(clause) is not None
+    return NEGATION.search(clause) is not None or (
+        end is not None and TRAILING_PROHIBITION.match(text, end) is not None
+    )
 
 
 def check_hooks(text: str) -> list[str]:
@@ -184,6 +192,13 @@ def check_hooks(text: str) -> list[str]:
     ]
 
 
+def looks_like_branch(target: str) -> bool:
+    """Recognize qualified refs and conventional unqualified branch names."""
+    return not target.startswith("-") and (
+        "/" in target or target in {"main", "master"} or target.startswith(BRANCH_PREFIXES)
+    )
+
+
 def branch_instructions(text: str) -> list[str]:
     """Return branch names from affirmative branch selection instructions."""
     text = "\n".join(
@@ -193,7 +208,7 @@ def branch_instructions(text: str) -> list[str]:
     branches = []
     for match in BRANCH_INSTRUCTION.finditer(text):
         branch = match[1].rstrip(".,")
-        if branch.startswith("-") or prohibiting(text, match.start()):
+        if not looks_like_branch(branch) or prohibiting(text, *match.span()):
             continue
         branches.append(branch)
     return branches
@@ -204,7 +219,9 @@ def branch_warnings(
 ) -> list[str]:
     """Warn about foreign branch instructions and unfetched agent branch mentions."""
     allowed = "agent/" if run is None else f"agent/{run}"
-    branches = branch_instructions(text)
+    branches = [
+        branch for branch in branch_instructions(text) if not Path(branch).is_file()
+    ]
     if run is not None:
         branches.extend(
             branch
