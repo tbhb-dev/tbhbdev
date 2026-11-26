@@ -39,6 +39,9 @@ BUILD_PERMISSIONS = {
     "workflows": "write",
 }
 REVIEW_TOKEN = "example-review-token"  # noqa: S105  # Stub credential.
+REVIEW_PERMISSIONS = dict.fromkeys(
+    ("contents", "pull_requests", "checks", "statuses", "actions"), "read"
+)
 VALUES = {
     "example/gh/value": "example-gh-credential",
     "example/docker/value": (
@@ -302,13 +305,7 @@ def test_review_token_request_is_read_only_for_only_run_repository(
     )
     assert [(request.method, request.url.path) for request in requests] == list(replies)
     assert json.loads(requests[1].content) == {
-        "permissions": {
-            "contents": "read",
-            "pull_requests": "read",
-            "checks": "read",
-            "statuses": "read",
-            "actions": "read",
-        },
+        "permissions": REVIEW_PERMISSIONS,
         "repositories": ["example-repo"],
     }
 
@@ -1305,15 +1302,7 @@ def test_harness_and_driver_mint_permissions_for_the_profile(
         assert credentials.push_token(request, settings) == REVIEW_TOKEN
         assert seen[-1]["permissions"] == BUILD_PERMISSIONS
     else:
-        assert scopes == [
-            {
-                "contents": "read",
-                "pull_requests": "read",
-                "checks": "read",
-                "statuses": "read",
-                "actions": "read",
-            }
-        ]
+        assert scopes == [REVIEW_PERMISSIONS]
         assert credentials.push_token(request, settings) is None
         assert len(seen) == 1
     assert all(keywords["repository"] == request.repo for keywords in seen)
