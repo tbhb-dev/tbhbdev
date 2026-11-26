@@ -5,9 +5,16 @@
 name: ci
 
 on:
+  # The merge queue run gates main, so there is no push run by design.
+  # A future push run must use `github.event.before` as its base.
   pull_request:
   merge_group:
   workflow_dispatch:
+    inputs:
+      base:
+        description: Base commit to compare against. Defaults to the dispatched commit's first parent.
+        required: false
+        type: string
 
 permissions:
   contents: read
@@ -50,6 +57,8 @@ jobs:
       - name: Select affected targets
         id: affected
         uses: ./.github/actions/affected-targets
+        with:
+          base: ${{ inputs.base }}
 
       - name: Configure the remote cache
         env:
