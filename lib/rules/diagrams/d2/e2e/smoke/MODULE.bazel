@@ -16,6 +16,13 @@ local_path_override(
     path = "../../../..",
 )
 
+# The shared module uses Python for its own checks. Resolve that dependency
+# from the import when this smoke workspace is Bazel's root.
+local_path_override(
+    module_name = "tbhb_rules_python",
+    path = "../../../../python",
+)
+
 bazel_dep(name = "tbhb_rules_d2")
 local_path_override(
     module_name = "tbhb_rules_d2",

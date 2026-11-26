@@ -111,7 +111,6 @@ dest = "lib/rules"
 "astro/e2e/smoke/.bazelversion" = "lib/rules/astro/e2e/smoke/.bazelversion"
 "astro/e2e/smoke/.gitignore" = "lib/rules/astro/e2e/smoke/.gitignore"
 "astro/e2e/smoke/BUILD.bazel" = "lib/rules/astro/e2e/smoke/BUILD.bazel"
-"astro/e2e/smoke/MODULE.bazel" = "lib/rules/astro/e2e/smoke/MODULE.bazel"
 "astro/e2e/smoke/REPO.bazel" = "lib/rules/astro/e2e/smoke/REPO.bazel"
 "astro/e2e/smoke/package.json" = "lib/rules/astro/e2e/smoke/package.json"
 "astro/e2e/smoke/pnpm-lock.yaml" = "lib/rules/astro/e2e/smoke/pnpm-lock.yaml"
@@ -160,7 +159,6 @@ dest = "lib/rules"
 "cloudflare/e2e/smoke/.bazelversion" = "lib/rules/cloudflare/e2e/smoke/.bazelversion"
 "cloudflare/e2e/smoke/.gitignore" = "lib/rules/cloudflare/e2e/smoke/.gitignore"
 "cloudflare/e2e/smoke/BUILD.bazel" = "lib/rules/cloudflare/e2e/smoke/BUILD.bazel"
-"cloudflare/e2e/smoke/MODULE.bazel" = "lib/rules/cloudflare/e2e/smoke/MODULE.bazel"
 "cloudflare/e2e/smoke/REPO.bazel" = "lib/rules/cloudflare/e2e/smoke/REPO.bazel"
 "cloudflare/e2e/smoke/biome.json" = "lib/rules/cloudflare/e2e/smoke/biome.json"
 "cloudflare/e2e/smoke/deploy/BUILD.bazel" = "lib/rules/cloudflare/e2e/smoke/deploy/BUILD.bazel"
@@ -227,7 +225,6 @@ dest = "lib/rules"
 "diagrams/d2/e2e/smoke/.bazelrc" = "lib/rules/diagrams/d2/e2e/smoke/.bazelrc"
 "diagrams/d2/e2e/smoke/.bazelversion" = "lib/rules/diagrams/d2/e2e/smoke/.bazelversion"
 "diagrams/d2/e2e/smoke/BUILD.bazel" = "lib/rules/diagrams/d2/e2e/smoke/BUILD.bazel"
-"diagrams/d2/e2e/smoke/MODULE.bazel" = "lib/rules/diagrams/d2/e2e/smoke/MODULE.bazel"
 "diagrams/d2/e2e/smoke/REPO.bazel" = "lib/rules/diagrams/d2/e2e/smoke/REPO.bazel"
 "diagrams/d2/e2e/smoke/docs/BUILD.bazel" = "lib/rules/diagrams/d2/e2e/smoke/docs/BUILD.bazel"
 "diagrams/d2/e2e/smoke/docs/architecture.d2" = "lib/rules/diagrams/d2/e2e/smoke/docs/architecture.d2"
@@ -474,7 +471,6 @@ dest = "lib/rules"
 "e2e/smoke/.bazelversion" = "lib/rules/e2e/smoke/.bazelversion"
 "e2e/smoke/.gitleaks.toml" = "lib/rules/e2e/smoke/.gitleaks.toml"
 "e2e/smoke/BUILD.bazel" = "lib/rules/e2e/smoke/BUILD.bazel"
-"e2e/smoke/MODULE.bazel" = "lib/rules/e2e/smoke/MODULE.bazel"
 "e2e/smoke/REPO.bazel" = "lib/rules/e2e/smoke/REPO.bazel"
 "e2e/smoke/testdata/clean/.editorconfig" = "lib/rules/e2e/smoke/testdata/clean/.editorconfig"
 "e2e/smoke/testdata/clean/.github/workflows/ok.yml" = "lib/rules/e2e/smoke/testdata/clean/.github/workflows/ok.yml"
@@ -1057,7 +1053,6 @@ dest = "lib/rules"
 "playwright/e2e/smoke/.bazelversion" = "lib/rules/playwright/e2e/smoke/.bazelversion"
 "playwright/e2e/smoke/.gitignore" = "lib/rules/playwright/e2e/smoke/.gitignore"
 "playwright/e2e/smoke/BUILD.bazel" = "lib/rules/playwright/e2e/smoke/BUILD.bazel"
-"playwright/e2e/smoke/MODULE.bazel" = "lib/rules/playwright/e2e/smoke/MODULE.bazel"
 "playwright/e2e/smoke/REPO.bazel" = "lib/rules/playwright/e2e/smoke/REPO.bazel"
 "playwright/e2e/smoke/browsers_path_test.mjs" = "lib/rules/playwright/e2e/smoke/browsers_path_test.mjs"
 "playwright/e2e/smoke/launch_test.mjs" = "lib/rules/playwright/e2e/smoke/launch_test.mjs"
@@ -1475,7 +1470,6 @@ dest = "lib/rules"
 "storybook/e2e/smoke/.bazelversion" = "lib/rules/storybook/e2e/smoke/.bazelversion"
 "storybook/e2e/smoke/.gitignore" = "lib/rules/storybook/e2e/smoke/.gitignore"
 "storybook/e2e/smoke/BUILD.bazel" = "lib/rules/storybook/e2e/smoke/BUILD.bazel"
-"storybook/e2e/smoke/MODULE.bazel" = "lib/rules/storybook/e2e/smoke/MODULE.bazel"
 "storybook/e2e/smoke/REPO.bazel" = "lib/rules/storybook/e2e/smoke/REPO.bazel"
 "storybook/e2e/smoke/astro/.storybook/main.ts" = "lib/rules/storybook/e2e/smoke/astro/.storybook/main.ts"
 "storybook/e2e/smoke/astro/BUILD.bazel" = "lib/rules/storybook/e2e/smoke/astro/BUILD.bazel"
@@ -1579,7 +1573,6 @@ dest = "lib/rules"
 "swift/e2e/smoke/.swift-format" = "lib/rules/swift/e2e/smoke/.swift-format"
 "swift/e2e/smoke/.swiftlint.yml" = "lib/rules/swift/e2e/smoke/.swiftlint.yml"
 "swift/e2e/smoke/BUILD.bazel" = "lib/rules/swift/e2e/smoke/BUILD.bazel"
-"swift/e2e/smoke/MODULE.bazel" = "lib/rules/swift/e2e/smoke/MODULE.bazel"
 "swift/e2e/smoke/README.md" = "lib/rules/swift/e2e/smoke/README.md"
 "swift/e2e/smoke/REPO.bazel" = "lib/rules/swift/e2e/smoke/REPO.bazel"
 "swift/e2e/smoke/Sources/Greeting/Greeting.swift" = "lib/rules/swift/e2e/smoke/Sources/Greeting/Greeting.swift"
@@ -1634,7 +1627,6 @@ dest = "lib/rules"
 "tokens/e2e/smoke/.bazelversion" = "lib/rules/tokens/e2e/smoke/.bazelversion"
 "tokens/e2e/smoke/.gitignore" = "lib/rules/tokens/e2e/smoke/.gitignore"
 "tokens/e2e/smoke/BUILD.bazel" = "lib/rules/tokens/e2e/smoke/BUILD.bazel"
-"tokens/e2e/smoke/MODULE.bazel" = "lib/rules/tokens/e2e/smoke/MODULE.bazel"
 "tokens/e2e/smoke/REPO.bazel" = "lib/rules/tokens/e2e/smoke/REPO.bazel"
 "tokens/e2e/smoke/package.json" = "lib/rules/tokens/e2e/smoke/package.json"
 "tokens/e2e/smoke/palette/BUILD.bazel" = "lib/rules/tokens/e2e/smoke/palette/BUILD.bazel"
@@ -1728,7 +1720,6 @@ dest = "lib/rules"
 "typescript/e2e/bare/.bazelversion" = "lib/rules/typescript/e2e/bare/.bazelversion"
 "typescript/e2e/bare/.gitignore" = "lib/rules/typescript/e2e/bare/.gitignore"
 "typescript/e2e/bare/BUILD.bazel" = "lib/rules/typescript/e2e/bare/BUILD.bazel"
-"typescript/e2e/bare/MODULE.bazel" = "lib/rules/typescript/e2e/bare/MODULE.bazel"
 "typescript/e2e/bare/REPO.bazel" = "lib/rules/typescript/e2e/bare/REPO.bazel"
 "typescript/e2e/bare/biome.json" = "lib/rules/typescript/e2e/bare/biome.json"
 "typescript/e2e/bare/package.json" = "lib/rules/typescript/e2e/bare/package.json"
@@ -1741,7 +1732,6 @@ dest = "lib/rules"
 "typescript/e2e/smoke/.dependency-cruiser.cjs" = "lib/rules/typescript/e2e/smoke/.dependency-cruiser.cjs"
 "typescript/e2e/smoke/.gitignore" = "lib/rules/typescript/e2e/smoke/.gitignore"
 "typescript/e2e/smoke/BUILD.bazel" = "lib/rules/typescript/e2e/smoke/BUILD.bazel"
-"typescript/e2e/smoke/MODULE.bazel" = "lib/rules/typescript/e2e/smoke/MODULE.bazel"
 "typescript/e2e/smoke/REPO.bazel" = "lib/rules/typescript/e2e/smoke/REPO.bazel"
 "typescript/e2e/smoke/biome.json" = "lib/rules/typescript/e2e/smoke/biome.json"
 "typescript/e2e/smoke/eslint.config.mjs" = "lib/rules/typescript/e2e/smoke/eslint.config.mjs"
@@ -1917,6 +1907,24 @@ replace = [
     ["# Dev dependencies: this module's own tests.\nbazel_dep(name = \"buildifier_prebuilt\", version = \"10.1.0\", dev_dependency = True)\nbazel_dep(name = \"rules_testing\", version = \"0.9.0\", dev_dependency = True)\n\n# The pnpm 12 pinned here, for maintainers regenerating the lock:\n", "# Dev dependencies: this module's own tests.\nbazel_dep(name = \"buildifier_prebuilt\", version = \"10.1.0\", dev_dependency = True)\n\nbazel_dep(name = \"rules_testing\", version = \"0.9.0\")\n\n# The pnpm 12 pinned here, for maintainers regenerating the lock:\n"],
 ]
 
+[rewrite."astro/e2e/smoke/MODULE.bazel"]
+dest = "lib/rules/astro/e2e/smoke/MODULE.bazel"
+replace = [
+    ["    module_name = \"tbhb_rules\",\n    path = \"../../..\",\n)\n\n", "    module_name = \"tbhb_rules\",\n    path = \"../../..\",\n)\n\n# The shared module uses Python for its own checks. Resolve that dependency\n# from the import when this smoke workspace is Bazel's root.\nlocal_path_override(\n    module_name = \"tbhb_rules_python\",\n    path = \"../../../python\",\n)\n\n"],
+]
+
+[rewrite."cloudflare/e2e/smoke/MODULE.bazel"]
+dest = "lib/rules/cloudflare/e2e/smoke/MODULE.bazel"
+replace = [
+    ["    module_name = \"tbhb_rules\",\n    path = \"../../..\",\n)\n\n", "    module_name = \"tbhb_rules\",\n    path = \"../../..\",\n)\n\n# The shared module uses Python for its own checks. Resolve that dependency\n# from the import when this smoke workspace is Bazel's root.\nlocal_path_override(\n    module_name = \"tbhb_rules_python\",\n    path = \"../../../python\",\n)\n\n"],
+]
+
+[rewrite."diagrams/d2/e2e/smoke/MODULE.bazel"]
+dest = "lib/rules/diagrams/d2/e2e/smoke/MODULE.bazel"
+replace = [
+    ["    module_name = \"tbhb_rules\",\n    path = \"../../../..\",\n)\n\n", "    module_name = \"tbhb_rules\",\n    path = \"../../../..\",\n)\n\n# The shared module uses Python for its own checks. Resolve that dependency\n# from the import when this smoke workspace is Bazel's root.\nlocal_path_override(\n    module_name = \"tbhb_rules_python\",\n    path = \"../../../../python\",\n)\n\n"],
+]
+
 [rewrite."diagrams/d2/tests/BUILD.bazel"]
 dest = "lib/rules/diagrams/d2/tests/BUILD.bazel"
 replace = [
@@ -1936,6 +1944,12 @@ replace = [
 dest = "lib/rules/docs/schemas/index-frontmatter.schema.json"
 replace = [
     ["https://raw.githubusercontent.com/tbhb-dev/rules/main/", "https://raw.githubusercontent.com/tbhb-dev/tbhbdev/main/lib/rules/"],
+]
+
+[rewrite."e2e/smoke/MODULE.bazel"]
+dest = "lib/rules/e2e/smoke/MODULE.bazel"
+replace = [
+    ["    module_name = \"tbhb_rules\",\n    path = \"../..\",\n)\n\n", "    module_name = \"tbhb_rules\",\n    path = \"../..\",\n)\n\n# The shared module uses Python for its own checks. Resolve that dependency\n# from the import when this smoke workspace is Bazel's root.\nlocal_path_override(\n    module_name = \"tbhb_rules_python\",\n    path = \"../../python\",\n)\n\n"],
 ]
 
 [rewrite."format/private/format.bzl"]
@@ -2138,6 +2152,12 @@ replace = [
     ["https://github.com/tbhb-dev/rules.git", "https://github.com/tbhb-dev/tbhbdev.git"],
 ]
 
+[rewrite."playwright/e2e/smoke/MODULE.bazel"]
+dest = "lib/rules/playwright/e2e/smoke/MODULE.bazel"
+replace = [
+    ["    module_name = \"tbhb_rules\",\n    path = \"../../..\",\n)\n\n", "    module_name = \"tbhb_rules\",\n    path = \"../../..\",\n)\n\n# The shared module uses Python for its own checks. Resolve that dependency\n# from the import when this smoke workspace is Bazel's root.\nlocal_path_override(\n    module_name = \"tbhb_rules_python\",\n    path = \"../../../python\",\n)\n\n"],
+]
+
 [rewrite."pyproject.toml"]
 dest = "lib/rules/pyproject.toml"
 replace = [
@@ -2327,6 +2347,18 @@ replace = [
     ["# Dev dependencies: this module's own tests.\nbazel_dep(name = \"buildifier_prebuilt\", version = \"10.1.0\", dev_dependency = True)\nbazel_dep(name = \"rules_testing\", version = \"0.9.0\", dev_dependency = True)\n\n# The pnpm 12 pinned here, for maintainers regenerating the lock:\n", "# Dev dependencies: this module's own tests.\nbazel_dep(name = \"buildifier_prebuilt\", version = \"10.1.0\", dev_dependency = True)\n\nbazel_dep(name = \"rules_testing\", version = \"0.9.0\")\n\n# The pnpm 12 pinned here, for maintainers regenerating the lock:\n"],
 ]
 
+[rewrite."storybook/e2e/smoke/MODULE.bazel"]
+dest = "lib/rules/storybook/e2e/smoke/MODULE.bazel"
+replace = [
+    ["    module_name = \"tbhb_rules\",\n    path = \"../../..\",\n)\n\n", "    module_name = \"tbhb_rules\",\n    path = \"../../..\",\n)\n\n# The shared module uses Python for its own checks. Resolve that dependency\n# from the import when this smoke workspace is Bazel's root.\nlocal_path_override(\n    module_name = \"tbhb_rules_python\",\n    path = \"../../../python\",\n)\n\n"],
+]
+
+[rewrite."swift/e2e/smoke/MODULE.bazel"]
+dest = "lib/rules/swift/e2e/smoke/MODULE.bazel"
+replace = [
+    ["    module_name = \"tbhb_rules\",\n    path = \"../../..\",\n)\n\n", "    module_name = \"tbhb_rules\",\n    path = \"../../..\",\n)\n\n# The shared module uses Python for its own checks. Resolve that dependency\n# from the import when this smoke workspace is Bazel's root.\nlocal_path_override(\n    module_name = \"tbhb_rules_python\",\n    path = \"../../../python\",\n)\n\n"],
+]
+
 [rewrite."testing/tests/expect_failure_tests.bzl"]
 dest = "lib/rules/testing/tests/expect_failure_tests.bzl"
 replace = [
@@ -2338,10 +2370,28 @@ dest = "lib/rules/tokens/MODULE.bazel"
 replace = [
     ["# Dev dependencies: this module's own tests.\nbazel_dep(name = \"buildifier_prebuilt\", version = \"10.1.0\", dev_dependency = True)\nbazel_dep(name = \"rules_testing\", version = \"0.9.0\", dev_dependency = True)\n\n# The pnpm 12 pinned here, for maintainers regenerating the lock:\n", "# Dev dependencies: this module's own tests.\nbazel_dep(name = \"buildifier_prebuilt\", version = \"10.1.0\", dev_dependency = True)\n\nbazel_dep(name = \"rules_testing\", version = \"0.9.0\")\n\n# The pnpm 12 pinned here, for maintainers regenerating the lock:\n"],
 ]
+[rewrite."tokens/e2e/smoke/MODULE.bazel"]
+dest = "lib/rules/tokens/e2e/smoke/MODULE.bazel"
+replace = [
+    ["    module_name = \"tbhb_rules\",\n    path = \"../../..\",\n)\n\n", "    module_name = \"tbhb_rules\",\n    path = \"../../..\",\n)\n\n# The shared module uses Python for its own checks. Resolve that dependency\n# from the import when this smoke workspace is Bazel's root.\nlocal_path_override(\n    module_name = \"tbhb_rules_python\",\n    path = \"../../../python\",\n)\n\n"],
+]
+
 [rewrite."tools/BUILD.bazel"]
 dest = "lib/rules/tools/BUILD.bazel"
 replace = [
     ["    srcs = [\"//:repo_files\"],\n    config = \"//:.vale.ini\",\n    packages = VALE_PACKAGES,\n)\n", "    srcs = [\"//:repo_files\"],\n    config = \"//:.vale.ini\",\n    data = [\"//:vale_styles\"],\n    packages = VALE_PACKAGES,\n)\n"],
     ["vale_sync(\n    name = \"vale_sync\",\n    config = \"//:.vale.ini\",\n    packages = VALE_PACKAGES,\n)\n", "vale_sync(\n    name = \"vale_sync\",\n    config = \"@@//:.vale.ini\",\n    packages = VALE_PACKAGES,\n)\n"],
     ["# Each runs over a copy of the tree with pyproject.toml as its\n# configuration, from the environment the root uv.lock pins.\nPYTHON_SRCS = [\"//:repo_files\"]\n\n# Fixtures are content under test, not this repository's Python.\n", "# Each runs over a copy of the tree with pyproject.toml as its\n# configuration, from the environment the root uv.lock pins.\nPYTHON_SRCS = [\n    \"//:.github/schemas/pull-request-draft.schema.json\",\n    \"//:repo_files\",\n]\n\n# Fixtures are content under test, not this repository's Python.\n"],
+]
+
+[rewrite."typescript/e2e/bare/MODULE.bazel"]
+dest = "lib/rules/typescript/e2e/bare/MODULE.bazel"
+replace = [
+    ["    module_name = \"tbhb_rules\",\n    path = \"../../..\",\n)\n\n", "    module_name = \"tbhb_rules\",\n    path = \"../../..\",\n)\n\n# The shared module uses Python for its own checks. Resolve that dependency\n# from the import when this smoke workspace is Bazel's root.\nlocal_path_override(\n    module_name = \"tbhb_rules_python\",\n    path = \"../../../python\",\n)\n\n"],
+]
+
+[rewrite."typescript/e2e/smoke/MODULE.bazel"]
+dest = "lib/rules/typescript/e2e/smoke/MODULE.bazel"
+replace = [
+    ["    module_name = \"tbhb_rules\",\n    path = \"../../..\",\n)\n\n", "    module_name = \"tbhb_rules\",\n    path = \"../../..\",\n)\n\n# The shared module uses Python for its own checks. Resolve that dependency\n# from the import when this smoke workspace is Bazel's root.\nlocal_path_override(\n    module_name = \"tbhb_rules_python\",\n    path = \"../../../python\",\n)\n\n"],
 ]
