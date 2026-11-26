@@ -212,6 +212,8 @@ def run_gitleaks(
             env=os.environ | {"NO_COLOR": "1"},
         )
     except OSError:
+        if not commits:
+            raise
         message = f"cannot scan {what} for secrets: cannot run gitleaks"
         raise ScanBlocked(message, "exit") from None
     found = findings(done.stdout, commits=commits)
@@ -245,6 +247,7 @@ def scan(text: str, what: str, *, root: Path, gitleaks: str, visibility: str) ->
         SystemExit: (a ScanBlocked or FindingRefusal) The private config or
             .gitleaks.toml is wrong,
             or gitleaks reports a finding or fails.
+        OSError: The scanner could not be started.
     """
     _scan([gitleaks, "stdin"], what, root=root, visibility=visibility, text=text)
 

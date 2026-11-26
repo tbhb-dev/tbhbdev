@@ -69,7 +69,7 @@ def test_findings_keep_only_the_rule_and_line(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     def scan(_text: str, what: str, **_options: object) -> None:
-        raise secret_scan.FindingRefusal(what, [(2, "fixture-rule")])
+        raise secret_scan.FindingRefusal(what, [(2, "fixture-rule", "")])
 
     monkeypatch.setattr(secret_scan, "scan", scan)
     with pytest.raises(gitleaks_check.ScanRefused) as caught:
