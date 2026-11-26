@@ -700,12 +700,9 @@ def archive_metadata(name: str, stamp: str) -> None:
     metadata_path(name).rename(trash / f"{name}.json")
 
 
-def clean(settings: Settings, run: Run, *, force: bool) -> int:
-    reading = transport.read(
-        settings,
-        run.host,
-        (run.name, run.owner),
-    )
+def check_clean(
+    settings: Settings, run: Run, reading: transport.Reading, *, force: bool
+) -> None:
     rules.clean(reading.rc, session=reading.session, force=force or run.cleaning)
     if not force and run.request.unsandboxed:
         message = (
@@ -730,6 +727,17 @@ def clean(settings: Settings, run: Run, *, force: bool) -> int:
             )
             raise Invalid(message)
         print("branch exists on origin")
+
+
+def clean(settings: Settings, run: Run, *, force: bool) -> int:
+    try:
+        reading = transport.read(settings, run.host, (run.name, run.owner))
+    except transport.CollisionError:
+        # Clean may recover a missing claim. The host must still refuse a
+        # different owner or a live run.
+        reading = None
+    if reading is not None:
+        check_clean(settings, run, reading, force=force)
     stamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%S%fZ")
     record = json.loads(metadata_path(run.name).read_text())
     record["cleaning"] = True
@@ -743,6 +751,7 @@ def clean(settings: Settings, run: Run, *, force: bool) -> int:
             stamp,
             settings.sockets_dir,
             force=force,
+            ownerless_only=reading is None,
         ),
         transport.Stdin(run.owner),
     )
@@ -789,7 +798,12 @@ def dispatch(settings: Settings, args: argparse.Namespace) -> int:
             **{"tbhb.agent.outcome": "ok" if result == 0 else "failed"}
         )
         return result
-    run = load(settings, args.name)
+    try:
+        run = load(settings, args.name)
+    except FileNotFoundError:
+        if args.verb == "clean":
+            return 0
+        raise
     verbs = {"wait": wait, "status": status, "kill": kill, "keep": keep}
     try:
         if args.verb in {"log", "diff"}:

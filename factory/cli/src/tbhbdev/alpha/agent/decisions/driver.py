@@ -7,7 +7,7 @@ import re
 from dataclasses import replace
 from typing import TYPE_CHECKING
 
-from tbhbdev.alpha import brief
+from tbhbdev.alpha import brief, identity
 from tbhbdev.alpha.agent.decisions import config, request
 from tbhbdev.alpha.agent.model import NAME, Harness, Invalid, Profile, RunKind
 
@@ -232,7 +232,11 @@ def check_model(harness: Harness, model: str, *, allow_non_gemini: bool) -> None
         and not model.startswith("gemini-")
         and not allow_non_gemini
     ):
-        message = "agy requires a gemini-* model or --allow-non-gemini"
+        available = "\n  ".join(identity.AGY_MODELS)
+        message = (
+            "agy requires a gemini-* model or --allow-non-gemini\n"
+            f"Models reported by agy\n  {available}"
+        )
         raise Invalid(message)
 
 

@@ -1845,9 +1845,7 @@ def test_successful_wait_resets_failure_for_a_short_window(
     assert command("wait") == 0
 
 
-@pytest.mark.parametrize(
-    "verb", ["status", "wait", "clean", "keep", "kill", "log", "diff"]
-)
+@pytest.mark.parametrize("verb", ["status", "wait", "keep", "kill", "log", "diff"])
 def test_verbs_without_remote_run_directory(
     remote: Remote,
     capsys: pytest.CaptureFixture[str],
@@ -1977,16 +1975,32 @@ def test_metadata_directory_is_private_before_chmod(
         os.umask(previous)
 
 
-def test_clean_allows_name_reuse(remote: Remote) -> None:
+@pytest.mark.parametrize("ownerless", [False, True])
+def test_clean_allows_name_reuse(remote: Remote, *, ownerless: bool) -> None:
     assert launch(remote) == 0
     remote.file(".run.lock", "")
-    remote.file(".rc", "0\n")
     remote.configure(session=False)
+    if ownerless:
+        (remote.state / "sample.owner").unlink()
+        remote.configure(branch=False)
+    else:
+        remote.file(".rc", "0\n")
     for suffix in (".branch", ".pr", ".head"):
         remote.file(suffix, "previous run\n")
     assert command("clean") == 0
     assert not list(remote.state.glob("sample.*"))
+    assert not driver.metadata_path("sample").exists()
+    assert command("clean") == 0
     assert launch(remote) == 0
+
+
+def test_clean_ownerless_run_with_a_live_session(remote: Remote) -> None:
+    assert launch(remote) == 0
+    (remote.state / "sample.owner").unlink()
+    remote.file(".branch", "agent/sample\n")
+    assert command("clean", "--force") == 1
+    assert (remote.state / "sample.branch").exists()
+    assert driver.metadata_path("sample").exists()
 
 
 def test_keep_twice(remote: Remote) -> None:
