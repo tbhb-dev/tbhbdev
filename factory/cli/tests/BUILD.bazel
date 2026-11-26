@@ -2118,6 +2118,7 @@ cli_py_test(
         ":conftest",
         "//factory/cli/src/tbhbdev/alpha/agent:__init__",
         "//factory/cli/src/tbhbdev/alpha/agent:app_server",
+        "//factory/cli/src/tbhbdev/alpha/agent:host_tools",
         "@cli_pip//pytest",
     ],
 )

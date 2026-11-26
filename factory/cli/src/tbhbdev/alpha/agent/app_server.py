@@ -14,7 +14,7 @@ from itertools import batched
 from pathlib import Path
 from typing import TYPE_CHECKING, cast
 
-from tbhbdev.alpha.agent import runfiles
+from tbhbdev.alpha.agent import host_tools, runfiles
 from tbhbdev.alpha.agent.decisions import runfiles_names
 from tbhbdev.alpha.agent.model import Invalid
 
@@ -81,8 +81,14 @@ async def steer(rpc: Rpc, thread: str, message: str) -> None:
 async def proxy(command: tuple[str, ...], thread: str, message: str) -> None:
     env = None
     if sys.platform == "linux":
-        path = os.environ.get("PATH", os.defpath)
-        env = {**os.environ, "PATH": f"{path}:/usr/local/bin"}
+        inherited_path = os.environ.get("PATH", os.defpath)
+        path = ":".join((inherited_path, *host_tools.account_path(str(Path.home()))))
+        try:
+            executable = host_tools.resolve(command[0], path, follow_symlinks=False)
+        except Invalid as exc:
+            raise Invalid(UNLOADED) from exc
+        command = (executable, *command[1:])
+        env = {**os.environ, "PATH": path}
     process = await asyncio.create_subprocess_exec(
         *command,
         stdin=asyncio.subprocess.PIPE,

@@ -5,7 +5,6 @@ from __future__ import annotations
 import asyncio
 import io
 import json
-import shutil
 import sys
 from types import SimpleNamespace
 from typing import TYPE_CHECKING
@@ -14,7 +13,7 @@ from unittest.mock import AsyncMock, Mock
 import pytest
 
 from tbhbdev.alpha import agent
-from tbhbdev.alpha.agent import app_server
+from tbhbdev.alpha.agent import app_server, host_tools
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -65,11 +64,12 @@ def test_send_host_proxy(
     tmp_path: Path,
 ) -> None:
     payload, error = response
-    local_bin = tmp_path / "local" / "bin"
+    local_bin = tmp_path / ".npm-global" / "bin"
     local_bin.mkdir(parents=True)
     codex = local_bin / "codex"
     codex.touch(mode=0o700)
     path = f"{tmp_path}/first:{tmp_path}/second"
+    monkeypatch.setenv("HOME", str(tmp_path))
     monkeypatch.setenv("PATH", path)
     monkeypatch.setattr(sys, "platform", platform)
     writer = SimpleNamespace(write=Mock(), drain=AsyncMock())
@@ -79,13 +79,14 @@ def test_send_host_proxy(
     async def connect(
         *command: str, env: dict[str, str] | None = None, **_options: int
     ) -> SimpleNamespace:
-        assert command[:4] == ("codex", "app-server", "proxy", "--sock")
+        assert command[1:4] == ("app-server", "proxy", "--sock")
         if platform == "linux":
+            assert command[0] == str(codex)
             assert env is not None
-            assert env["PATH"] == f"{path}:/usr/local/bin"
-            search = env["PATH"].replace("/usr/local/bin", str(local_bin))
-            assert shutil.which(command[0], path=search) == str(codex)
+            assert env["PATH"].startswith(f"{path}:")
+            assert {str(local_bin), "/usr/local/bin"} <= set(env["PATH"].split(":"))
         else:
+            assert command[0] == "codex"
             assert env is None
         if payload is True:
             raise TimeoutError
@@ -119,6 +120,19 @@ def test_send_host_proxy(
                 "input": [{"type": "text", "text": MESSAGE, "text_elements": []}],
             },
         }
+
+
+@pytest.mark.usefixtures("live_log")
+def test_send_host_requires_codex(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    tmp_path: Path,
+) -> None:
+    monkeypatch.setattr(sys, "platform", "linux")
+    monkeypatch.setenv("PATH", str(tmp_path))
+    monkeypatch.setattr(host_tools, "account_path", Mock(return_value=(str(tmp_path),)))
+    assert app_server.main(["sample"], "send-host") == 0
+    assert capsys.readouterr().out.strip() == app_server.UNLOADED
 
 
 @pytest.mark.parametrize("contents", [None, "", '{"type":"other"}\n'])
