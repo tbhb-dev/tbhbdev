@@ -168,6 +168,8 @@ seconds=${TIMEOUT_SECONDS:-$((minutes * 60))}
 # target-determinator would analyze a change on top of the head as the head.
 clean || finish all "the checkout of $head has changes or flagged index entries, or git failed"
 
+# The nightly workflow runs the CLI mutation test explicitly.
+QUERY="($QUERY) except filter('^//factory/cli:mutmut_test$', ($QUERY))"
 args=(-bazel bazelisk -nocache_results -delete-cached-worktree
   -before-query-error-behavior=fatal -targets "$QUERY")
 read -ra opts <<<"${BAZEL_OPTS:-}"

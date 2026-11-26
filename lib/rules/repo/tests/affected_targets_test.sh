@@ -32,6 +32,9 @@ if [[ ${0##*/} == bazelisk ]]; then
   printf '%s\n' "$@" >"$CQUERY_LOG"
   [[ $FAKE_CQUERY != fail ]] || { echo 'ERROR: analysis failed' >&2 && exit 7; }
   printf '{"results":[{"target":{"rule":{"name":"//go:%s"}}}]}\n' idle_test manual_test
+  if [[ $FAKE == cli_leaf && ${!#} != *"except filter('^//factory/cli:mutmut_test$'"* ]]; then
+    printf '{"results":[{"target":{"rule":{"name":"//factory/cli:mutmut_test"}}}]}\n'
+  fi
   exit
 fi
 printf '%s\n' "$@" >"$ARGS_LOG"
@@ -39,6 +42,14 @@ straggle() { (sleep 2 && git checkout -q "$1" && : >"$CHILD_MARK") </dev/null >/
 case $FAKE in
   two) printf '//go:lib_test\n//go:cmd_test\n' ;;
   tagged) printf '//go:lib_test\n//go:manual_test\n//go:cmd_test\n' ;;
+  cli_leaf)
+    [[ $(git diff --name-only "${!#}" HEAD) == factory/cli/src/tbhbdev/alpha/repo_token.py ]] || exit 8
+    printf '//factory/cli:%s_test\n' bandit complexipy deptry pip_audit pylint pyrefly ruff vulture
+    printf '//factory/cli/tests:test_alpha_%s\n' agent_invariants repo_token
+    if [[ " $* " != *"except filter('^//factory/cli:mutmut_test$'"* ]]; then
+      printf '//factory/cli:mutmut_test\n'
+    fi
+    ;;
   space) printf '//a:with space\n//b:t\n' ;;
   none) ;;
   fail) git checkout -q "${!#}" && straggle "${!#}" && echo 'ERROR: cquery failed' >&2 && exit 3 ;;
@@ -172,12 +183,13 @@ done
 run 'pull request' pull_request "$docs_head" false 2
 [[ $targets == $'//go:lib_test\n//go:cmd_test' ]] || fail 'targets output'
 grep -qF 'Selected 2 test targets' "$GITHUB_STEP_SUMMARY" || fail 'summary count'
-for arg in -bazel bazelisk "-targets" "tests(//...)" -bazel-opts=--config=ci -bazel-opts=--keep_going "$base"; do
+query="(tests(//...)) except filter('^//factory/cli:mutmut_test$', (tests(//...)))"
+for arg in -bazel bazelisk "-targets" "$query" -bazel-opts=--config=ci -bazel-opts=--keep_going "$base"; do
   grep -qxF -- "$arg" "$ARGS_LOG" || fail "target-determinator missed argument $arg"
 done
 last=$(tail -n 1 "$ARGS_LOG")
 [[ $last == "$base" ]] || fail 'the base commit is not the last argument'
-for arg in cquery --output=jsonproto --config=ci --keep_going 'attr(tags, manual, (tests(//...)))'; do
+for arg in cquery --output=jsonproto --config=ci --keep_going "attr(tags, manual, ($query))"; do
   grep -qxF -- "$arg" "$CQUERY_LOG" || fail "cquery missed argument $arg"
 done
 
@@ -186,6 +198,13 @@ FAKE=tagged run 'manual tag' pull_request "$docs_head"
 [[ $reason == *'tagged manual'* ]] || fail 'manual tag: wrong reason'
 FAKE_CQUERY=fail run 'tag cquery failure' pull_request "$docs_head"
 [[ $reason == *'exit status 7' ]] || fail 'tag cquery failure: status missing'
+
+cli_head=$(commit factory/cli/src/tbhbdev/alpha/repo_token.py)
+BASE_SHA=$docs_head FAKE=cli_leaf run 'CLI leaf edit' pull_request "$cli_head" false 10
+[[ $(printf '%s\n' "$targets" | grep '^//factory/cli/tests:') == $'//factory/cli/tests:test_alpha_agent_invariants\n//factory/cli/tests:test_alpha_repo_token' ]] ||
+  fail 'CLI leaf edit: wrong per-file tests'
+[[ $targets != *mutmut_test* ]] || fail 'CLI leaf edit: selected nightly mutation test'
+grep -qF 'Selected 10 test targets' "$GITHUB_STEP_SUMMARY" || fail 'CLI leaf edit: summary count'
 
 FAKE=space run 'label with a space' pull_request "$docs_head" false 2
 [[ $targets == $'//a:with space\n//b:t' ]] || fail 'space: targets output'
