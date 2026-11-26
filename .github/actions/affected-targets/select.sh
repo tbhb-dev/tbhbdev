@@ -214,9 +214,11 @@ query_candidates() {
     "$out/manual.json" 2>>"$log") || return
   # Non-manual suites can still include manual tests. Strict expansion makes
   # invalid suite members fail the query instead of silently dropping them.
+  # The nightly workflow runs the CLI mutation test explicitly.
   candidates="let suites = kind('test_suite rule', $scope) in
     ((kind('.*_test rule', $scope) except $excluded_manual)
-    + tests(\$suites except $excluded_manual)) except set(${excluded[*]})"
+    + tests(\$suites except $excluded_manual)) except set(${excluded[*]})
+    except set(//factory/cli:mutmut_test)"
   [[ -z ${QUERY:-} ]] || candidates="($candidates) intersect ($QUERY)"
   run_step "$step" "${query[@]}" --strict_test_suite --output=label "$candidates"
 }
