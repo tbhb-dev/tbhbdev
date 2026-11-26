@@ -1,0 +1,50 @@
+* text=auto eol=lf
+# cmd.exe can misread labels in a batch file with LF line endings, so
+# batch files check out with CRLF everywhere.
+*.bat text eol=crlf
+*.cmd text eol=crlf
+MODULE.bazel.lock -diff linguist-generated
+uv.lock -diff linguist-generated
+mise.lock -diff linguist-generated
+# D2 renders (tbhb_rules_d2), written by `bazel run` beside their sources.
+# The check compares them byte for byte, so the PNG is never converted.
+*.d2.svg linguist-generated
+*.d2.png binary linguist-generated
+*.d2.sha256 linguist-generated
+# wrangler types output, which a Worker commits and worker_types_test checks
+# byte for byte, trailing whitespace included.
+worker-configuration.d.ts linguist-generated
+
+# Release archives carry the module only: the rule families, the root build
+# files and the tool pins. This repository's own tooling, tests and CI stay
+# out of what consumers download. e2e/smoke stays: the BCR presubmit runs it
+# from the archive as the test module.
+#
+# The composite actions under .github/actions/ stay: GitHub's runner fetches
+# a remote action as this repository's archive at the pinned commit, which
+# honors export-ignore, so excluding them breaks every consumer's `uses:`.
+# A negation can't re-include files under an ignored directory, so the rule
+# names .github/'s contents rather than the directory itself, and git
+# archive skips a directory marked export-ignore without looking inside, so
+# .github/actions itself is unmarked too.
+.agents/ export-ignore
+.claude/ export-ignore
+.codex/ export-ignore
+.github/** export-ignore
+.github/actions -export-ignore
+.github/actions/** -export-ignore
+.pre-commit-config.yaml export-ignore
+docs/ export-ignore
+tools/ export-ignore
+pyproject.toml export-ignore
+uv.lock export-ignore
+mise.toml export-ignore
+mise.lock export-ignore
+
+lint/gitleaks/base.toml linguist-generated whitespace=-blank-at-eof
+lint/gitleaks/upstream.toml linguist-vendored whitespace=-blank-at-eof
+
+# Structurizr exports are compared byte for byte.
+structurizr-*.svg -text linguist-generated
+structurizr-*.png binary linguist-generated
+workspace.json -text linguist-generated

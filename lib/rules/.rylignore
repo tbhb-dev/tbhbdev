@@ -1,0 +1,21 @@
+tmp/
+.venv/
+.mise/
+lint/private/cspell/pnpm-lock.yaml
+astro/pnpm-lock.yaml
+astro/e2e/*/pnpm-lock.yaml
+cloudflare/pnpm-lock.yaml
+cloudflare/e2e/*/pnpm-lock.yaml
+playwright/e2e/*/pnpm-lock.yaml
+storybook/pnpm-lock.yaml
+storybook/e2e/*/pnpm-lock.yaml
+tokens/pnpm-lock.yaml
+tokens/e2e/*/pnpm-lock.yaml
+typescript/pnpm-lock.yaml
+typescript/e2e/*/pnpm-lock.yaml
+
+# Baseline YAML retains source formatting and contains writer placeholders.
+repo/baseline/files/
+repo/baseline/kinds/
+repo/baseline/visibility/
+repo/baseline/seed/

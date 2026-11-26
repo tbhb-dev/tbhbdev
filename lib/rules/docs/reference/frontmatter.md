@@ -1,0 +1,131 @@
+---
+description: The frontmatter fields of a Markdown file, their values, and how they map to commit trailers.
+generated:
+  - role: generated
+    harness: codex:0.171.0
+    model: openai:gpt-6.2-sol
+    effort: high
+    surface: exec
+    session: sha-256-64:c081808e8ec1014b
+    at: "2026-11-23T03:02:00Z"
+status: stable
+tags: [docs, frontmatter, schema]
+title: Frontmatter reference
+type: Reference
+---
+
+# Frontmatter reference
+
+Each Markdown file in the repository starts with a YAML frontmatter block, except a reserved `index.md`, the files at the repository root, and agent instruction files (`AGENTS.md`, `CLAUDE.md`) anywhere, which have none. [frontmatter.schema.json](../schemas/frontmatter.schema.json) is the JSON Schema (draft 2020-12) that defines it, and it rejects any field not listed below. `mise run check-docs` validates the files against it.
+
+## Document fields
+
+| Field | Required | Value |
+| --- | --- | --- |
+| `type` | yes | One of the types below. |
+| `title` | yes | A non-empty string. |
+| `description` | yes | A non-empty string, reused as the index entry description. |
+| `tags` | yes | A non-empty list of unique lowercase kebab-case strings. |
+| `status` | yes | A lifecycle state from the type's allowed set below. |
+| `owner` | for Design Draft | The responsible role as a non-empty string. Optional on other types. |
+| `updated` | for Design Draft | The latest update date as `YYYY-MM-DD`. Quote it. Optional on other types. |
+| `decisions_open` | no | An integer of zero or more, allowed only on Design Draft. |
+| `parent` | for Design Appendix | A path to a `.md` file relative to the appendix's directory. Exclusive to this type. |
+| `id` | no | A string matching `^[a-z0-9-]+/[SR]-[0-9]{6}$`, such as `docs/S-000001` or `docs/R-000001`. Allowed only on Spike and Research Report. |
+| `platform` | no | A non-empty string, allowed only on Spike. |
+| `decided` | for Decision Records | The decision date as `YYYY-MM-DD`. Quote it. Other types reject this field. |
+| `superseded_by` | no | An integer replacement record number, allowed only on a `Decision Record` with `status: deprecated`. |
+| `generated` | no | A non-empty list of contributor entries. |
+| `verified` | no | A human sign-off. Only a human adds it. |
+
+The allowed `type` values are `API Reference`, `Agent Instructions`, `Analysis`, `Architecture`, `Architecture Overview`, `Backlog`, `Brief`, `Build Reference`, `CLI Reference`, `Changelog`, `Checklist`, `Component Design`, `Component Reference`, `Content Template`, `Data Model`, `Decision Record`, `Design Appendix`, `Design Brainstorm`, `Design Draft`, `Design Inventory`, `Design Note`, `Design Review Template`, `Domain Model`, `Evidence`, `Glossary`, `Host Notes`, `How-to`, `Incident Report`, `Index`, `Note`, `Overview`, `Plan`, `Policy`, `Readme`, `Reference`, `Report`, `Research Report`, `Review Checklist`, `Review Packet`, `Runbook`, `Security Design`, `Specification`, `Spike`, `Spike Candidates`, `Threat Model`, `Validation Report`, and `Writing Checklist`.
+
+A design's main document uses `Design Draft`. Supporting documents use `Design Appendix` and reference the main document in `parent`.
+
+Choose a value for the required `status` field from the document's type:
+
+| Type | Allowed `status` values |
+| --- | --- |
+| Design Draft, Design Appendix | `draft`, `decided`, `superseded` |
+| Incident Report | `open`, `mitigated`, `resolved` |
+| Spike | `not-started`, `started`, `blocked`, `partial`, `complete`, `invalid` |
+| Every other type | `draft`, `stable`, `deprecated` |
+
+## Contributor entries
+
+The `generated` list names the agents behind the latest change to the file. Each commit an agent contributes to replaces the list with the contributors to that commit, so it may name more than one agent but doesn't grow from one commit to the next. The fields mirror the attributes of the `Generated-by` and `Assisted-by` commit trailers (`<Key>: LLM attr=value;...`), so a commit and a doc name an agent the same way. As in a trailer, you omit a field you can't determine and never guess it.
+
+Only the list form is valid. Mappings such as `{by: ...}` and `{by: ..., at: ...}` are invalid.
+
+| Field | Required | Value |
+| --- | --- | --- |
+| `role` | yes | `generated` for `Generated-by`, or `assisted` for `Assisted-by`. |
+| `harness` | yes | `claude-code`, `codex`, or `antigravity`, with an optional `:<version>`, such as `claude-code:2.1.316`. |
+| `model` | yes | `<provider>:<model-id>`, such as `anthropic:claude-sonnet-5-5`. The providers are `anthropic`, `openai`, and `gcp.gemini`. |
+| `at` | yes | A date-time in Coordinated Universal Time with whole seconds and a `Z` suffix, such as `2026-11-02T09:30:00Z`. Quote it. |
+| `effort` | no | The harness's reasoning effort in lowercase, such as `high`. |
+| `surface` | no | Where the harness ran, as it reported it, such as `cli`. No whitespace, semicolons, or commas. |
+| `session` | no | `sha-256-64:` and 16 lowercase hex digits, the hash of the root session ID. |
+| `subagent` | no | The same hashed form, for the subagent that did the work. Omitted for the root agent. |
+
+A hashed ID is the leftmost 64 bits of the Secure Hash Algorithm 256 hash of the raw ID, with no secret key. Never write a raw session or subagent ID.
+
+## Verification
+
+`verified` is a mapping with `by` and `at`. The `by` value reads `human:<name>` with a lowercase name, and `at` has the same format as a contributor's. Agents never write it.
+
+## Examples
+
+### How-to
+
+```yaml
+---
+description: How to run the checks.
+generated:
+  - role: generated
+    harness: claude-code:2.1.316
+    model: anthropic:claude-opus-5-5
+    effort: high
+    session: sha-256-64:3f9a2c8e1b7d4f06
+    at: "2026-11-02T09:30:00Z"
+status: stable
+tags: [checks]
+title: Running the checks
+type: How-to
+verified:
+  by: human:tony
+  at: "2026-11-02T10:15:00Z"
+---
+```
+
+### Design draft
+
+```yaml
+---
+description: Define the frontmatter used by documents.
+owner: Documentation maintainer
+updated: "2026-11-11"
+decisions_open: 0
+status: decided
+tags: [docs, schema]
+title: Document frontmatter design
+type: Design Draft
+---
+```
+
+### Design appendix
+
+```yaml
+---
+description: List the validation cases for the frontmatter design.
+parent: ../frontmatter-design.md
+status: draft
+tags: [docs, schema]
+title: Frontmatter validation cases
+type: Design Appendix
+---
+```
+
+## Root index
+
+Among the indexes, only `docs/index.md` has frontmatter. [index-frontmatter.schema.json](../schemas/index-frontmatter.schema.json) allows `okf_version` and nothing else, and its value is the string `"0.2"`.

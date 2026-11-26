@@ -1,0 +1,76 @@
+# SPDX-License-Identifier: Apache-2.0
+# Copyright Tony Burns
+
+"""`gitleaks_history`: scans the workspace's git history for secrets."""
+
+load("@bazel_skylib//lib:shell.bzl", "shell")
+load("//shell:defs.bzl", "SHELL_ATTRS", "SHELL_TOOLCHAINS", "path_dir", "shell_executable")
+
+# Internal: consumers load //lint:defs.bzl.
+visibility("//lint/...")
+
+def _gitleaks_history_impl(ctx):
+    git = ctx.executable.git
+    script = ctx.actions.declare_file(ctx.label.name + ".sh")
+    ctx.actions.expand_template(
+        template = ctx.file._runner,
+        output = script,
+        substitutions = {
+            "@@CONFIG@@": shell.quote(ctx.file.config.short_path if ctx.file.config else ""),
+            "@@GIT_DIR@@": path_dir(ctx.attr.git),
+            "@@TOOL@@": ctx.executable.tool.short_path,
+        },
+        is_executable = True,
+    )
+    runfiles = ctx.runfiles(files = [ctx.executable.tool, git])
+    runfiles = runfiles.merge(ctx.attr.tool[DefaultInfo].default_runfiles)
+    runfiles = runfiles.merge(ctx.attr.git[DefaultInfo].default_runfiles)
+    executable, runfiles = shell_executable(ctx, script, runfiles)
+    return [DefaultInfo(executable = executable, runfiles = runfiles)]
+
+gitleaks_history = rule(
+    implementation = _gitleaks_history_impl,
+    executable = True,
+    toolchains = SHELL_TOOLCHAINS,
+    doc = """Scans the workspace's git history with gitleaks; run it with `bazel run`.
+
+Fails on any finding, when the repository has no commits, and when gitleaks
+scans no commits although the history holds added content (gitleaks exits 0 when
+its own git invocation fails), and, under
+`--//lint:gitleaks_private_config`, without the private config in
+`GITLEAKS_CONFIG_TOML`. A shallow clone scans only the commits it
+has, so CI should fetch the full history. It scans every ref unless given
+`--log-opts`: `bazel run <target> -- --log-opts=HEAD` scans only the
+checked-out branch. A leading `--merge-range` scans `HEAD^1..HEAD` when
+HEAD matches the full commit SHA in `EXPECTED_HEAD` and has exactly two
+readable parents, unless the merge changes `.gitleaks.toml`, `lint/gitleaks/base.toml`, a legacy `.gitleaks-rules.toml`, or `.gitleaksignore`.
+Unset or different `EXPECTED_HEAD`, config or ignore changes, and unexpected
+Git state fall back to `--log-opts=HEAD`. The private config
+(`GITLEAKS_CONFIG_TOML`) changes out of band; its changes surface on the next
+full scan (push to main), the same accepted limit as a rules version bump.
+The working tree is `gitleaks_test`'s job.""",
+    attrs = SHELL_ATTRS | {
+        "config": attr.label(
+            allow_single_file = True,
+            doc = "gitleaks config, a file of the main repository.",
+        ),
+        "git": attr.label(
+            default = "@tbhb_rules_git//:git",
+            executable = True,
+            cfg = "target",
+            allow_files = True,
+            doc = "The git put first on PATH for gitleaks.",
+        ),
+        "tool": attr.label(
+            default = Label("//lint/private:gitleaks"),
+            executable = True,
+            cfg = "target",
+            allow_files = True,
+            doc = "The gitleaks executable. The default requires the private config under `--//lint:gitleaks_private_config`; see `gitleaks_tool`.",
+        ),
+        "_runner": attr.label(
+            default = ":gitleaks_history.sh.tpl",
+            allow_single_file = True,
+        ),
+    },
+)

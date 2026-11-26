@@ -1,0 +1,303 @@
+# SPDX-License-Identifier: Apache-2.0
+# Copyright Tony Burns
+
+"""Analysis tests: which targets the golangci-lint aspect lints, and the
+rules' validation."""
+
+load("@rules_go//go:def.bzl", "go_binary")
+load("@rules_testing//lib:analysis_test.bzl", "analysis_test", "test_suite")
+load("@rules_testing//lib:truth.bzl", "matching")
+load("@rules_testing//lib:unit_test.bzl", "unit_test")
+load("@rules_testing//lib:util.bzl", "util")
+load("@tbhb_rules//quality:defs.bzl", "mutation_os_constraints")
+load("//:defs.bzl", "GolangciLintInfo", "go_arch_lint_test", "go_deadcode_test", "go_mod_tidy_test", "golangci_lint_aspect_factory", "gomutants_test")
+load("//private:golangci_lint.bzl", "main_repo_label")
+load("//private:gomutants.bzl", "default_flags")
+load("//tests/golangci:linters.bzl", "fixture_lint", "fixture_lint_test")
+
+FIXTURE = "//tests/golangci/fixture"
+
+tests_only_lint = golangci_lint_aspect_factory(
+    config = Label("//tests/golangci/fixture:.golangci.yml"),
+    rule_kinds = ["go_test"],
+)
+
+def _reports_impl(ctx):
+    return [DefaultInfo(files = depset(transitive = [t[GolangciLintInfo].reports for t in ctx.attr.deps]))]
+
+def _reports_rule(aspect):
+    return rule(
+        implementation = _reports_impl,
+        attrs = {"deps": attr.label_list(aspects = [aspect])},
+    )
+
+# The reports an aspect makes for `deps`, as default outputs.
+fixture_reports = _reports_rule(fixture_lint)
+tests_only_reports = _reports_rule(tests_only_lint)
+
+def _report_files(*names):
+    predicates = []
+    for name in names:
+        predicates.append(matching.str_matches("*/{}.golangci-lint-*.txt".format(name)))
+        predicates.append(matching.str_matches("*/{}.golangci-lint-*.covers".format(name)))
+    return predicates
+
+def _expect_reports(*names):
+    def impl(env, target):
+        paths = [f.short_path for f in target[DefaultInfo].files.to_list()]
+        env.expect.that_collection(paths).contains_exactly_predicates(_report_files(*names))
+
+    return impl
+
+def _test_library(name):
+    util.helper_target(fixture_reports, name = name + "_subject", deps = [FIXTURE + "/clean"])
+    analysis_test(name = name, impl = _expect_reports("clean"), target = name + "_subject")
+
+def _test_follows_deps_and_embed(name):
+    util.helper_target(fixture_reports, name = name + "_subject", deps = [FIXTURE + "/b:b_test"], testonly = True)
+    analysis_test(name = name, impl = _expect_reports("a", "b", "b_test"), target = name + "_subject")
+
+def _test_binary_without_sources(name):
+    # A binary that only embeds a library has nothing of its own to lint.
+    util.helper_target(
+        go_binary,
+        name = name + "_binary",
+        embed = [FIXTURE + "/clean"],
+        tags = ["manual"],
+    )
+    util.helper_target(fixture_reports, name = name + "_subject", deps = [":" + name + "_binary"])
+    analysis_test(name = name, impl = _expect_reports("clean"), target = name + "_subject")
+
+def _test_rule_kinds(name):
+    util.helper_target(tests_only_reports, name = name + "_subject", deps = [FIXTURE + "/b:b_test"], testonly = True)
+    analysis_test(name = name, impl = _expect_reports("b_test"), target = name + "_subject")
+
+def _expect_failure(text):
+    def impl(env, target):
+        env.expect.that_target(target).failures().contains_predicate(matching.str_matches("*{}*".format(text)))
+
+    return impl
+
+def _test_deadcode_without_go_targets(name):
+    util.helper_target(
+        go_deadcode_test,
+        name = name + "_subject",
+        srcs = [FIXTURE + ":repo_files"],
+        tags = ["manual"],
+    )
+    analysis_test(
+        name = name,
+        impl = _expect_failure("srcs reach no Go package of the main repository"),
+        target = name + "_subject",
+        expect_failure = True,
+    )
+
+def _test_lint_src_reaching_nothing(name):
+    util.helper_target(
+        fixture_lint_test,
+        name = name + "_subject",
+        srcs = [FIXTURE + "/clean", FIXTURE + ":repo_files"],
+        tags = ["manual"],
+    )
+    analysis_test(
+        name = name,
+        impl = _expect_failure("//tests/golangci/fixture:repo_files reaches no Go target of the main repository to lint"),
+        target = name + "_subject",
+        expect_failure = True,
+    )
+
+def _test_arch_lint_without_go_sources(name):
+    util.helper_target(
+        go_arch_lint_test,
+        name = name + "_subject",
+        srcs = [FIXTURE + ":repo_files"],
+        config = FIXTURE + ":.golangci.yml",
+        go_mod = FIXTURE + ":go.mod",
+        tags = ["manual"],
+    )
+    analysis_test(
+        name = name,
+        impl = _expect_failure("srcs reach no Go source of the main repository"),
+        target = name + "_subject",
+        expect_failure = True,
+    )
+
+def _test_tidy_source_outside_module(name):
+    util.helper_target(
+        go_mod_tidy_test,
+        name = name + "_subject",
+        srcs = ["//tests/gomod/untidy:main.go"],
+        go_mod = "//tests/gomod/tidy:go.mod",
+        go_sum = "//tests/gomod/tidy:go.sum",
+        proxy = "@gomod_fixture_proxy//:proxy",
+        tags = ["manual"],
+    )
+    analysis_test(
+        name = name,
+        impl = _expect_failure("tests/gomod/untidy/main.go is not in the module directory tests/gomod/tidy/"),
+        target = name + "_subject",
+        expect_failure = True,
+    )
+
+def _test_tidy_proxy_not_a_proxy(name):
+    util.helper_target(
+        go_mod_tidy_test,
+        name = name + "_subject",
+        srcs = ["//tests/gomod/tidy:main.go"],
+        go_mod = "//tests/gomod/tidy:go.mod",
+        go_sum = "//tests/gomod/tidy:go.sum",
+        proxy = "//tests/gomod/tidy:go.sum",
+        tags = ["manual"],
+    )
+    analysis_test(
+        name = name,
+        impl = _expect_failure("proxy must be a go_mod_proxy repository's :proxy target"),
+        target = name + "_subject",
+        expect_failure = True,
+    )
+
+def _test_main_repo_label(name):
+    unit_test(name = name, impl = _test_main_repo_label_impl)
+
+def _test_main_repo_label_impl(env):
+    # A //-string is the main repository's, whichever .bzl resolves it.
+    env.expect.that_str(str(main_repo_label("//:.golangci.yml"))).equals("@@//:.golangci.yml")
+    env.expect.that_str(str(main_repo_label("//pkg:go.mod"))).equals("@@//pkg:go.mod")
+    label = Label("//tests/golangci/fixture:go.mod")
+    env.expect.that_bool(main_repo_label(label) == label).equals(True)
+
+def _test_gomutants_flags_by_exec_os(name):
+    unit_test(name = name, impl = _test_gomutants_flags_by_exec_os_impl)
+
+def _test_gomutants_flags_by_exec_os_impl(env):
+    # The flags follow the execution platform's OS, which the Go SDK reports.
+    env.expect.that_collection(default_flags("windows")).contains("--timeout-coefficient=40")
+    env.expect.that_collection(default_flags("windows")).contains("--timeout-min=60s")
+    for goos in ["linux", "darwin", ""]:
+        env.expect.that_collection(default_flags(goos)).contains_exactly(["--timeout-min=20s", "--test-flags=-failfast"]).in_order()
+
+def _test_gomutants_target_compatible_with(name):
+    cases = []
+    for suffix, kwargs in [
+        ("unspecified", {}),
+        ("empty", {"target_compatible_with": []}),
+        ("incompatible", {"target_compatible_with": [Label("@platforms//:incompatible")]}),
+    ]:
+        subject = name + "_" + suffix
+        util.helper_target(
+            gomutants_test,
+            name = subject,
+            tests = [FIXTURE + "/a:a_test", FIXTURE + "/b:b_test"],
+            go_mod = FIXTURE + ":go.mod",
+            **kwargs
+        )
+        for target in [subject, subject + ".tests_golangci_fixture_a", subject + ".tests_golangci_fixture_b"]:
+            constraints = native.existing_rule(target).get("target_compatible_with", [])
+            cases.append((
+                [native.package_relative_label(constraint) for constraint in constraints],
+                kwargs.get("target_compatible_with", []),
+            ))
+
+    def impl(env):
+        for actual, expected in cases:
+            env.expect.that_collection(actual).contains_exactly(expected)
+
+    unit_test(name = name, impl = impl)
+
+def _test_gomutants_forwards_gate_attrs(name):
+    cases = []
+    for suffix, kwargs in [
+        ("default", {}),
+        ("advisory", {"advisory": True}),
+        ("full_scope", {"require_scope": "full"}),
+        ("both", {"advisory": True, "require_scope": "full"}),
+    ]:
+        subject = name + "_" + suffix
+        util.helper_target(
+            gomutants_test,
+            name = subject,
+            tests = [FIXTURE + "/a:a_test", FIXTURE + "/b:b_test"],
+            go_mod = FIXTURE + ":go.mod",
+            **kwargs
+        )
+        gate = native.existing_rule(subject)
+        cases.append((gate["advisory"], gate["require_scope"], kwargs.get("advisory", False), kwargs.get("require_scope", "any")))
+
+    def impl(env):
+        for advisory, require_scope, expected_advisory, expected_scope in cases:
+            env.expect.that_bool(advisory).equals(expected_advisory)
+            env.expect.that_str(require_scope).equals(expected_scope)
+
+    unit_test(name = name, impl = impl)
+
+def _test_gomutants_mutation_oses(name):
+    cases = []
+    for suffix, oses, caller in [
+        ("linux", ["linux"], []),
+        ("macos", ["macos"], []),
+        ("windows", ["windows"], []),
+        ("multiple", ["linux", "windows"], []),
+        ("empty", [], []),
+        ("combined", ["linux"], [Label("@platforms//cpu:arm64")]),
+        ("caller_select", ["macos"], select({"@platforms//cpu:arm64": [], "//conditions:default": [Label("@platforms//:incompatible")]})),
+    ]:
+        subject = name + "_" + suffix
+        util.helper_target(
+            gomutants_test,
+            name = subject,
+            tests = [FIXTURE + "/a:a_test", FIXTURE + "/b:b_test"],
+            go_mod = FIXTURE + ":go.mod",
+            mutation_oses = oses,
+            target_compatible_with = caller,
+        )
+        expected = caller + select(dict(
+            [(Label("@platforms//os:" + os), []) for os in oses] +
+            [("//conditions:default", [Label("@platforms//:incompatible")])],
+        ))
+        native.filegroup(name = subject + "_expected", target_compatible_with = expected)
+        expected_value = str(native.existing_rule(subject + "_expected")["target_compatible_with"])
+        for target in [subject, subject + ".tests_golangci_fixture_a", subject + ".tests_golangci_fixture_b"]:
+            cases.append((str(native.existing_rule(target)["target_compatible_with"]), expected_value))
+
+    def impl(env):
+        for actual, expected in cases:
+            env.expect.that_str(actual).equals(expected)
+
+    unit_test(name = name, impl = impl)
+
+def _invalid_oses_impl(_ctx):
+    mutation_os_constraints(["darwin"])
+    return []
+
+_invalid_oses = rule(implementation = _invalid_oses_impl)
+
+def _test_mutation_oses_bad_name(name):
+    util.helper_target(_invalid_oses, name = name + "_subject")
+    analysis_test(
+        name = name,
+        impl = _expect_failure("mutation_oses: unknown OS 'darwin'; expected linux, macos, windows"),
+        target = name + "_subject",
+        expect_failure = True,
+    )
+
+def analysis_test_suite(name):
+    test_suite(
+        name = name,
+        tests = [
+            _test_arch_lint_without_go_sources,
+            _test_binary_without_sources,
+            _test_deadcode_without_go_targets,
+            _test_follows_deps_and_embed,
+            _test_gomutants_flags_by_exec_os,
+            _test_gomutants_forwards_gate_attrs,
+            _test_gomutants_target_compatible_with,
+            _test_gomutants_mutation_oses,
+            _test_mutation_oses_bad_name,
+            _test_library,
+            _test_lint_src_reaching_nothing,
+            _test_main_repo_label,
+            _test_rule_kinds,
+            _test_tidy_proxy_not_a_proxy,
+            _test_tidy_source_outside_module,
+        ],
+    )

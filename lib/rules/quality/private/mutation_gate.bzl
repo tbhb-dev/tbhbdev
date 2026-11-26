@@ -1,0 +1,122 @@
+# SPDX-License-Identifier: Apache-2.0
+# Copyright Tony Burns
+
+"""`mutation_gate_test` and the provider mutation runners return."""
+
+load("@bazel_skylib//lib:shell.bzl", "shell")
+load("//shell:defs.bzl", "SHELL_ATTRS", "SHELL_TOOLCHAINS", "shell_executable")
+
+# Internal: consumers load //quality:defs.bzl.
+visibility("//quality/...")
+
+# Most timed-out mutants, in percent of total, that still count as killed. A
+# starved CPU makes tests time out, so past this share timeouts say the run
+# was starved, not that the tests caught the mutants. The gate and both
+# runners read this one value: the gate through its template, the runners
+# through the environment variable below, which each requires.
+MUTATION_MAX_TIMEOUT_PERCENT = 10
+MUTATION_RUNNER_ENV = {"MUTATION_MAX_TIMEOUT_PERCENT": str(MUTATION_MAX_TIMEOUT_PERCENT)}
+
+MutationReportInfo = provider(
+    doc = """Mutation reports from a runner, in the format mutation_gate_test reads:
+one `key=value` per line with the required integer keys total, killed,
+lived, not_covered, timeout, errored, skipped and interrupted, plus
+optional `mutant.<status>=<name>` lines for mutants not killed (in the
+tool's own status names). A diff-scoped report adds `scope=diff`,
+`selected` (equal to total), `changed_units` and `mutant.unmapped=<name>`
+lines; mutation_gate.sh.tpl has the details.""",
+    fields = {"reports": "depset of report Files"},
+)
+
+def _mutation_gate_impl(ctx):
+    reports = []
+    for target in ctx.attr.reports:
+        if MutationReportInfo in target:
+            reports.extend(target[MutationReportInfo].reports.to_list())
+        else:
+            reports.extend(target.files.to_list())
+    if not reports:
+        fail("reports gives no report files")
+
+    script = ctx.actions.declare_file(ctx.label.name + ".sh")
+    ctx.actions.expand_template(
+        template = ctx.file._runner,
+        output = script,
+        substitutions = {
+            "@@ADVISORY@@": "true" if ctx.attr.advisory else "false",
+            "@@MAX_TIMEOUT_PERCENT@@": str(MUTATION_MAX_TIMEOUT_PERCENT),
+            "@@REPORTS@@": " ".join([shell.quote(r.short_path) for r in reports]),
+            "@@REQUIRE_SCOPE@@": shell.quote(ctx.attr.require_scope),
+        },
+        is_executable = True,
+    )
+    executable, runfiles = shell_executable(ctx, script, ctx.runfiles(files = reports))
+    return [
+        DefaultInfo(executable = executable, runfiles = runfiles),
+        # Bazel's test sandbox passes only listed variables; the gate appends
+        # its timeout line to the job summary.
+        RunEnvironmentInfo(inherited_environment = ["GITHUB_STEP_SUMMARY"]),
+    ]
+
+mutation_gate_test = rule(
+    implementation = _mutation_gate_impl,
+    test = True,
+    toolchains = SHELL_TOOLCHAINS,
+    doc = """Checks mutation reports for survivors, failed runs and unchecked mutants.
+
+With at least one kill, a timed-out mutant counts as killed and stays listed;
+the gate prints how many timed out, and appends that line to
+`$GITHUB_STEP_SUMMARY` when set. Timeouts without any kills fail the gate.
+It fails when timeouts exceed MUTATION_MAX_TIMEOUT_PERCENT of the mutants,
+in the sum and in any one report, because a starved CPU makes tests time
+out and that must not pass as kills.
+
+Fails when any mutant lived, was not covered or errored, when a
+run was interrupted, when the full-scope reports mutated nothing, and when
+a report's counts don't add up exactly to its total (mutants a failed run
+never checked, or mutants counted twice). A count above 1000000000, or a
+listed mutant its verdict count denies, makes a report malformed, as does a
+`mutant.not_checked` line (no run checked that mutant) or a `mutant.<status>`
+line with a status no verdict names. The counts are summed over all reports.
+
+The gate also fails when the summed total is above zero and equals the
+summed skipped count. All mutants were skipped, so nothing was checked.
+This applies in full scope, diff scope and advisory mode. An all-skipped
+report beside a report with a killed mutant passes if no other failure applies.
+
+A diff-scoped report (`scope=diff`) counts only the mutants of changed
+code, and passes with no selected mutants. On its own, it fails when its
+selected mutants are all skipped. Any `mutant.unmapped` line (the runner's
+selection and the tool disagree) fails, and a diff report never satisfies
+`require_scope = "full"`.
+
+With `advisory = True`, survivors (mutants that lived or were not covered)
+are listed without failing the gate. The gate prints
+`mutation_gate: advisory, N survivors (not failing)` and appends it to
+`$GITHUB_STEP_SUMMARY` when set. Every other failure still fails: errored
+mutants, interrupted runs, incomplete or inconsistent accounting, malformed
+reports, timeouts above the cap or without any kills, `mutant.unmapped`, an
+empty full-scope run, an all-skipped run, and a diff report under
+`require_scope = "full"`.
+Blocking nightly runs must leave it False.""",
+    attrs = SHELL_ATTRS | {
+        "advisory": attr.bool(
+            default = False,
+            doc = "Report survivors without failing on them; every other failure still fails.",
+        ),
+        "reports": attr.label_list(
+            allow_files = True,
+            mandatory = True,
+            doc = "Targets giving MutationReportInfo, or report files.",
+        ),
+        "require_scope": attr.string(
+            default = "any",
+            values = ["any", "full"],
+            doc = "`full` fails on diff-scoped reports: for gates on main and nightly runs.",
+        ),
+        "_runner": attr.label(
+            default = ":mutation_gate.sh.tpl",
+            allow_single_file = True,
+        ),
+    },
+)

@@ -1,0 +1,126 @@
+# SPDX-License-Identifier: Apache-2.0
+# Copyright Tony Burns
+
+"""Go rules for tbhb-dev repositories: golangci-lint, deadcode, go mod tidy
+and a golangci-lint formatter.
+
+Consumers load only `@tbhb_rules_go//:defs.bzl`.
+"""
+
+module(
+    name = "tbhb_rules_go",
+    version = "0.0.0",
+    bazel_compatibility = [">=9.0.0"],
+)
+
+bazel_dep(name = "tbhb_rules")
+local_path_override(
+    module_name = "tbhb_rules",
+    path = "..",
+)
+
+bazel_dep(name = "bazel_skylib", version = "1.9.2")
+bazel_dep(name = "platforms", version = "1.1.0")
+bazel_dep(name = "rules_go", version = "0.65.0")
+bazel_dep(name = "rules_shell", version = "0.6.1")
+
+# private/golangci_lint.bzl and private/deadcode.bzl load GoStdLib from
+# rules_go's private providers.bzl (go:def.bzl does not export it), and the
+# driver reads rules_go's pkg.json format, so this module is tested against
+# exactly this rules_go. The override binds only when this module is the
+# root; consumers should stay on the same version.
+single_version_override(
+    module_name = "rules_go",
+    version = "0.65.0",
+)
+
+bazel_dep(name = "gazelle", version = "0.54.0")
+
+# rules_go's binaries resolve a C/C++ toolchain, and Bazel's autodetected one
+# fails on a Linux host with no compiler. zig's toolchain downloads one that
+# carries its own glibc headers and startup files, so a minimal Linux image
+# needs nothing installed. Only Linux targets are registered: macOS and
+# Windows keep their local toolchain. hermetic_cc_toolchain's extension makes
+# its repositories only for the root module, so this is a dev dependency: it
+# covers this module's own builds, and a consumer registers it in its own
+# MODULE.bazel, as e2e/smoke does.
+bazel_dep(name = "hermetic_cc_toolchain", version = "4.3.0", dev_dependency = True)
+
+zig = use_extension(
+    "@hermetic_cc_toolchain//toolchain:ext.bzl",
+    "toolchains",
+    dev_dependency = True,
+)
+use_repo(zig, "zig_sdk")
+
+register_toolchains(
+    "@zig_sdk//toolchain:linux_amd64_gnu.2.28",
+    "@zig_sdk//toolchain:linux_arm64_gnu.2.28",
+    dev_dependency = True,
+)
+
+# Prebuilt tools (golangci-lint, go-arch-lint): literal per-platform
+# http_archive pins in private/tools.bzl that Renovate bumps, each behind a
+# tbhb_rules_<tool> hub, the same shape as tbhb_rules' own pins. gomutants'
+# gobco's and govulncheck's hubs serve their builds from go.mod below.
+tools = use_extension("//private:tools.bzl", "tools")
+use_repo(tools, "tbhb_rules_go_arch_lint", "tbhb_rules_gobco", "tbhb_rules_golangci_lint", "tbhb_rules_gomutants", "tbhb_rules_govulncheck")
+
+# Go tools without a prebuilt release for every platform (deadcode, and
+# gomutants, gobco and govulncheck behind their tbhb_rules_<tool> hubs) are
+# built by rules_go from the `tool` directives in go.mod. A consumer that
+# also uses go_deps shares the module graph, and its versions win by minimal
+# version selection.
+go_deps = use_extension("@gazelle//:extensions.bzl", "go_deps")
+go_deps.from_file(go_mod = "//:go.mod")
+use_repo(go_deps, "com_github_bazelbuild_buildtools", "com_github_gomutants_gomutants", "com_github_rillig_gobco", "org_golang_x_tools", "org_golang_x_vuln")
+
+# Dev dependencies: this module's own tests.
+bazel_dep(name = "rules_testing", version = "0.9.0", dev_dependency = True)
+
+# Module proxies for go_mod_tidy_test: the fixtures' (the tampered go.sum
+# lists the same modules) and this module's own.
+go_mod_proxy = use_extension("//:extensions.bzl", "go_mod_proxy", dev_dependency = True)
+go_mod_proxy.from_file(
+    name = "gomod_fixture_proxy",
+    go_sum = "//tests/gomod/tidy:go.sum",
+)
+go_mod_proxy.from_file(
+    name = "self_go_mod_proxy",
+    go_sum = "//:go.sum",
+)
+use_repo(go_mod_proxy, "gomod_fixture_proxy", "self_go_mod_proxy")
+
+# The Go SDK the tests build with, from go.mod's toolchain line; consumers
+# bring their own. Keep the archive pins aligned with go.mod's toolchain.
+# //tools:go_sdk_checksums verifies them against Go's published release list.
+go_sdk = use_extension("@rules_go//go:extensions.bzl", "go_sdk", dev_dependency = True)
+go_sdk.from_file(
+    go_mod = "//:go.mod",
+    sdks = {
+        "darwin_amd64": [
+            "go1.27.4.darwin-amd64.tar.gz",
+            "2b799377704ef12db39bd254995d5c348c9cc8d86562ca817724390e56c38f43",
+        ],
+        "darwin_arm64": [
+            "go1.27.4.darwin-arm64.tar.gz",
+            "91a44a2b8a716600ad94a4f143e156116620db8828086a6e3602291be9bd0bb4",
+        ],
+        "linux_amd64": [
+            "go1.27.4.linux-amd64.tar.gz",
+            "7226736c2339719cda28fbf3a54d71aa63bcefe376e98cef00034268dab24840",
+        ],
+        "linux_arm64": [
+            "go1.27.4.linux-arm64.tar.gz",
+            "3392582988a273a87ab5043ee1b2c9c17a2c3c00580bf9326c47a2e0aaaeac92",
+        ],
+        "windows_amd64": [
+            "go1.27.4.windows-amd64.zip",
+            "178ab98950ac69ab25069307dc6ade79f3816e414cce95b4da166a115cde1e7e",
+        ],
+        "windows_arm64": [
+            "go1.27.4.windows-arm64.zip",
+            "9e7a72565792b8ab370b37ac9ac109799237abacb39ff2f541c438b963c0cc64",
+        ],
+    },
+)

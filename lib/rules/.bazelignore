@@ -1,0 +1,15 @@
+.worktrees/
+ansible/
+apple/
+astro/
+cloudflare/
+diagrams/d2/
+diagrams/structurizr/
+e2e/
+go/
+playwright/
+python/
+storybook/
+swift/
+tokens/
+typescript/

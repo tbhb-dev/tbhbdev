@@ -1,0 +1,181 @@
+# SPDX-License-Identifier: Apache-2.0
+# Copyright Tony Burns
+
+---
+# Scans a pull request's title and body for secrets after an edit. The
+# `repo` job of repo-checks.yml scans them on every push, under the required
+# `conclusion` check; an edit alone starts no CI run, so this workflow scans
+# the edited text. Its check isn't required. A repository calls it from its
+# own workflow on `pull_request` with `types: [edited]`, and this repository
+# runs it on its own pull requests through the `pull_request` trigger.
+#
+# It sets up Bazel itself, for the reason repo-checks.yml gives.
+name: pr-text
+
+on:
+  pull_request:
+    types: [edited]
+  workflow_call:
+    inputs:
+      runs-on:
+        description: >-
+          The runner label. Unset, a private caller uses the org's private
+          runner label and a public caller uses the hosted one.
+        type: string
+    secrets:
+      GITLEAKS_CONFIG_TOML:
+        description: >-
+          The private gitleaks config, for a repository that sets
+          `@tbhb_rules//lint:gitleaks_private_config`.
+        required: false
+
+permissions: {}
+
+# A later edit makes an earlier scan moot.
+concurrency:
+  group: pr-text-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  pr-text:
+    name: pr-text
+    if: github.event_name == 'pull_request'
+    runs-on: ${{ inputs.runs-on || (github.event.repository.private && vars.PRIVATE_RUNNER_LABEL || 'ubuntu-26.04') }}
+    timeout-minutes: 10
+    permissions:
+      contents: read  # checkout
+    steps:
+      - name: Harden the runner
+        uses: step-security/harden-runner@aebdcf6156ab6691adf63218240e476564a1ed4c  # v2.23.0
+        with:
+          egress-policy: audit
+
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          persist-credentials: false
+
+      # GitHub release downloads return 504 for minutes at times, and
+      # setup-bazel has no retry of its own, so a failed attempt is retried
+      # after a pause. Attempts that follow a success are skipped.
+      - name: Set up Bazel
+        id: setup_bazel_1
+        uses: bazel-contrib/setup-bazel@f34d6a05eae3c24acab7fa54587492daeaeffdab  # 0.19.2
+        continue-on-error: true
+        with:
+          # Self-hosted runners have no bazelisk; with a version set, the
+          # action downloads it when it's missing, as `bazel`.
+          bazelisk-version: 1.30.0
+          bazelisk-cache: true
+          # cache_contract_test checks every copy of this hash list.
+          repository-cache: |
+            - MODULE.bazel
+            - MODULE.bazel.lock
+            - pins/*.bzl
+          cache-save: false
+
+      - name: Wait before retrying the Bazel setup
+        if: steps.setup_bazel_1.outcome == 'failure'
+        run: sleep 60
+
+      - name: Set up Bazel (attempt 2)
+        id: setup_bazel_2
+        if: steps.setup_bazel_1.outcome == 'failure'
+        uses: bazel-contrib/setup-bazel@f34d6a05eae3c24acab7fa54587492daeaeffdab  # 0.19.2
+        continue-on-error: true
+        with:
+          # Self-hosted runners have no bazelisk; with a version set, the
+          # action downloads it when it's missing, as `bazel`.
+          bazelisk-version: 1.30.0
+          bazelisk-cache: true
+          # cache_contract_test checks every copy of this hash list.
+          repository-cache: |
+            - MODULE.bazel
+            - MODULE.bazel.lock
+            - pins/*.bzl
+          cache-save: false
+
+      - name: Wait before the last Bazel setup attempt
+        if: steps.setup_bazel_2.outcome == 'failure'
+        run: sleep 120
+
+      - name: Set up Bazel (attempt 3)
+        if: steps.setup_bazel_2.outcome == 'failure'
+        uses: bazel-contrib/setup-bazel@f34d6a05eae3c24acab7fa54587492daeaeffdab  # 0.19.2
+        with:
+          # Self-hosted runners have no bazelisk; with a version set, the
+          # action downloads it when it's missing, as `bazel`.
+          bazelisk-version: 1.30.0
+          bazelisk-cache: true
+          # cache_contract_test checks every copy of this hash list.
+          repository-cache: |
+            - MODULE.bazel
+            - MODULE.bazel.lock
+            - pins/*.bzl
+          cache-save: false
+
+      # As in repo-checks.yml: setup-bazel installs bazelisk as `bazel`.
+      - name: Make bazelisk callable by name
+        run: |
+          if ! command -v bazelisk >/dev/null 2>&1; then
+            bazel="$(command -v bazel)"
+            dir="$(dirname "${bazel}")"
+            # Git Bash prints the Windows path without .exe.
+            if [ -f "${dir}/bazel.exe" ]; then
+              cp "${dir}/bazel.exe" "${dir}/bazelisk.exe"
+            else
+              ln -s "${bazel}" "${dir}/bazelisk"
+            fi
+          fi
+
+      # The caller's checkout lacks this action. Locate the list and script
+      # in its Bazel-pinned rules module; Renovate updates that module pin.
+      # Only cache-warm saves, so these fetches never publish partial caches.
+      - name: Fetch the shared CI tools
+        env:
+          BUDGET: 5
+          TARGETS: "@default"
+          FETCH_ALL: "false"
+          WORKSPACES: .
+        run: |
+          location=$(bazelisk query --output=location @tbhb_rules//:.github/actions/setup-bazel-ci/fetch-targets.txt)
+          manifest=${location%%:[0-9]*}
+          bash "$(dirname "$manifest")/fetch.sh"
+
+      # The scan downloads the gitleaks binary from GitHub releases, which
+      # can fail for minutes. Build the target first, retrying for at most
+      # BUDGET minutes, so a long outage fails the step instead of the job's
+      # timeout cancelling it. The scan below runs once: a finding is real.
+      - name: Fetch gitleaks, retrying transient failures
+        env:
+          BUDGET: 5
+        run: |
+          now=$(date +%s)
+          deadline=$((now + BUDGET * 60))
+          out="$(mktemp "${RUNNER_TEMP:-${TMPDIR:-/tmp}}/pr-text.XXXXXX")"
+          delay=30
+          set -o pipefail
+          until bazelisk build @tbhb_rules//lint:gitleaks_text 2>&1 | tee "${out}"; do
+            now=$(date +%s)
+            if ((now + delay > deadline)); then
+              url="$(grep -oE 'https?://[^][:space:]"]+' "${out}" | tail -1 || true)"
+              echo "::error::gave up after ${BUDGET} min: ${url:-no URL in the output} kept failing"
+              exit 1
+            fi
+            sleep "${delay}"
+            delay=$((delay * 2))
+          done
+
+      - name: Scan the pull request's title and body for secrets
+        env:
+          GITLEAKS_CONFIG_TOML: ${{ secrets.GITLEAKS_CONFIG_TOML }}
+          PR_BODY: ${{ github.event.pull_request.body }}
+          PR_TITLE: ${{ github.event.pull_request.title }}
+        run: |
+          if [[ -z ${PR_TITLE} ]]; then
+            echo "The pull request event carries no title to scan." >&2
+            exit 1
+          fi
+          text="${RUNNER_TEMP}/pr-text.txt"
+          printf '%s\n\n%s\n' "${PR_TITLE}" "${PR_BODY}" >"${text}"
+          bazelisk run @tbhb_rules//lint:gitleaks_text <"${text}"
