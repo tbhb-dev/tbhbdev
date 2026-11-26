@@ -7,7 +7,7 @@ generated:
     effort: high
     surface: exec
     session: sha-256-64:44010e012e0f21f3
-    at: "2026-11-26T22:56:51Z"
+    at: "2026-11-26T23:08:56Z"
 status: stable
 tags: [alpha]
 title: Agent
@@ -28,7 +28,7 @@ The Python API `precheck(clone_data, reference)` returns the result for callers.
 It runs the hidden host command `signing-fingerprint ACCOUNT` over the ordinary ssh shell. The command prints the SHA256 fingerprint of the key a run would sign with.
 It then reads tbhb-agent's public signing key list from GitHub and exits 1 when any host's fingerprint is missing or the host is unreachable.
 A host without the command counts as unreachable until `tbhbdev` syncs there.
-The package also includes the run request's schema and the repo argument rules.
+The package also defines the schema for run requests and the rules for repository arguments.
 
 Launch a Codex build with `agent exec --steer` to accept messages while its turn is active.
 Run `agent send RUN "MESSAGE"` to steer that turn. You can also pass `--steer` to `send`.
