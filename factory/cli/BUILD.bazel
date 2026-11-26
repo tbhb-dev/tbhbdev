@@ -23,7 +23,6 @@ exports_files(["src/tbhbdev/cue-pin.json"])
 filegroup(
     name = "cli_files",
     srcs = glob([
-        ".github/**",
         "docs/**",
         "schemas/**",
         "src/**",
@@ -96,8 +95,8 @@ deptry_test(
 
 pytest_test(
     name = "pytest_test",
-    # The suite runs near the 300 s limit on CI runners.
-    timeout = "long",
+    # The full suite exceeded the 300 s limit on CI runners.
+    timeout = "eternal",
     srcs = CLI_CHECK_INPUTS,
     args = [
         "-n",

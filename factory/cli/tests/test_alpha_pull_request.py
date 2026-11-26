@@ -37,15 +37,17 @@ from tbhbdev.alpha import opened, size_gate
 from tbhbdev.alpha import pull_request as pr
 from tbhbdev.alpha.secret_scan import REPO_RULES, without_name_rules
 
-# mutmut runs the tests from a copy of the source tree, so everything resolves
-# against this file: the real repository root, or the mutants/ copy of it.
-REAL = Path(__file__).resolve().parents[1]
-WORKSPACE = next(parent.parent for parent in REAL.parents if parent.name == "factory")
+# Resolve the shared files from the workspace even when mutmut copies the tests.
+WORKSPACE = next(
+    parent.parent
+    for parent in Path(__file__).resolve().parents
+    if parent.name == "factory"
+)
 SRC = Path(pr.__file__).parents[2]
 DATA = Path(__file__).parent / "testdata" / "alpha" / "pull_request"
 FIXTURE = DATA / "passing-draft.md"
-TEMPLATE = REAL / ".github" / "PULL_REQUEST_TEMPLATE.md"
-with chdir(REAL):
+TEMPLATE = WORKSPACE / ".github" / "PULL_REQUEST_TEMPLATE.md"
+with chdir(WORKSPACE):
     SECTIONS = pr.load_sections()
 
 H = "sha-256-64:"
@@ -180,6 +182,12 @@ def host_names(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("GIT_CONFIG_GLOBAL", str(config))
 
 
+def copy_pr_baseline(root: Path) -> None:
+    (root / pr.SCHEMA).parent.mkdir(parents=True)
+    shutil.copy(WORKSPACE / pr.SCHEMA, root / pr.SCHEMA)
+    shutil.copy(WORKSPACE / pr.SECTIONS, root / pr.SECTIONS)
+
+
 def world_files(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> World:
     """Give each test its own draft files, fake tools, logs, and home."""
     monkeypatch.setattr(
@@ -201,9 +209,7 @@ def world_files(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> World:
     for who in ("AUTHOR", "COMMITTER"):
         monkeypatch.setenv(f"GIT_{who}_NAME", "T")
         monkeypatch.setenv(f"GIT_{who}_EMAIL", "t@example.com")
-    (root / ".github").mkdir(parents=True)
-    shutil.copytree(REAL / ".github" / "schemas", root / ".github" / "schemas")
-    shutil.copy(REAL / pr.SECTIONS, root / pr.SECTIONS)
+    copy_pr_baseline(root)
     for name in pr.CONFIGS:
         (root / name).write_text("")
     (root / ".gitleaks.toml").write_text("")
@@ -1254,7 +1260,7 @@ class TestRealLinters:
                 shutil.copytree(source, target)
             else:
                 shutil.copy(source, target)
-        shutil.copytree(REAL / ".github", root / ".github")
+        copy_pr_baseline(root)
         monkeypatch.chdir(root)
 
     def test_fixture_passes(self) -> None:
