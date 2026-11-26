@@ -10,6 +10,8 @@ change sets that differ only outside the unit give byte-identical slices:
 the report action's inputs are unchanged and it stays a cache hit.
 """
 
+load("//shell/private:launcher.bzl", "tree_path")
+
 # Internal: consumers load //quality:defs.bzl.
 visibility("//quality/...")
 
@@ -33,7 +35,7 @@ def mutation_changes_slice(ctx, files):
 
     Args:
         ctx: The rule context; the rule has MUTATION_CHANGES_ATTRS.
-        files: The Files the unit's report action copies, from the main
+        files: The Files the unit's report action copies, from the rule's
             repository.
 
     Returns:
@@ -47,7 +49,7 @@ def mutation_changes_slice(ctx, files):
     paths = ctx.actions.declare_file(ctx.label.name + ".unit_paths")
     ctx.actions.write(
         output = paths,
-        content = "".join(["{}\n".format(_json_string(f.short_path)) for f in files]),
+        content = "".join(["{}\n".format(_json_string(tree_path(f, ctx.label.repo_name, ""))) for f in files]),
     )
     out = ctx.actions.declare_file(ctx.label.name + ".changes")
     ctx.actions.run_shell(

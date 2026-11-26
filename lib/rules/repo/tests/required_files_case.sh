@@ -7,6 +7,7 @@
 # Usage: required_files_case.sh MANIFEST SCHEMA FIXTURE
 set -euo pipefail
 
+cd "$(dirname "$0")/../.."
 work=$(mktemp -d "${TEST_TMPDIR:?}/fixture.XXXXXX")
 cp -RL "$3" "$work/repo"
 exec repo/tests/check_required_files "$1" "$2" "$work/repo"

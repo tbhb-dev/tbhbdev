@@ -11,12 +11,14 @@ visibility("//lint/...")
 
 def _cspell_tool_impl(ctx):
     script = ctx.actions.declare_file(ctx.label.name + ".sh")
+    depth = len(ctx.label.package.split("/")) if ctx.label.package else 0
+    root = "../" * depth + ("../_main/" if ctx.label.repo_name else "")
     ctx.actions.expand_template(
         template = ctx.file._runner,
         output = script,
         substitutions = {
             "@@CONFIG@@": ctx.file._config.short_path,
-            "@@ROOT@@": "../" * (len(script.short_path.split("/")) - 1),
+            "@@ROOT@@": root,
             "@@TOOL@@": ctx.executable.tool.short_path,
         },
         is_executable = True,

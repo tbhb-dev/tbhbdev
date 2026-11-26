@@ -10,6 +10,12 @@ load("//lint:defs.bzl", "bats_test", "gitleaks_test", "rumdl_test", "tombi_test"
 
 _ROOT = "lint/tests/testdata/root"
 
+def _runfiles_prefix(target):
+    return "../{}/".format(target.label.repo_name) if target.label.repo_name else ""
+
+def _output_path(target, suffix):
+    return _runfiles_prefix(target) + "{}/{}.{}".format(target.label.package, target.label.name, suffix)
+
 def _subject(name, **kwargs):
     attrs = dict(
         srcs = ["testdata/root/a.txt"],
@@ -30,14 +36,14 @@ def _test_layout(name):
 
 def _test_layout_impl(env, target):
     manifest = env.expect.that_target(target).action_generating(
-        "{}/{}.manifest".format(target.label.package, target.label.name),
+        _output_path(target, "manifest"),
     )
     manifest.content().equals("a.txt\ncfg.toml\n")
     env.expect.that_target(target).action_named("TemplateExpand").substitutions().contains_at_least({
         "@@GIT_ROOT@@": "",
         "@@MIN_FILES@@": "1",
         "@@OUTPUT_GUARD@@": "''",
-        "@@STRIP_PREFIX@@": "'{}{}'".format("../{}/".format(target.label.repo_name) if target.label.repo_name else "", _ROOT),
+        "@@STRIP_PREFIX@@": "'{}{}'".format(_runfiles_prefix(target), _ROOT),
         "@@TOOL_ARGS@@": "'--config' 'cfg.toml' '.'",
     })
 
@@ -47,7 +53,7 @@ def _test_unstripped_paths_are_repository_relative(name):
 
 def _test_unstripped_paths_impl(env, target):
     manifest = env.expect.that_target(target).action_generating(
-        "{}/{}.manifest".format(target.label.package, target.label.name),
+        _output_path(target, "manifest"),
     )
     manifest.content().equals(_ROOT + "/a.txt\n")
     env.expect.that_target(target).action_named("TemplateExpand").substitutions().contains_at_least({
@@ -98,10 +104,10 @@ def _test_cache_files_and_env(name):
 
 def _test_cache_files_and_env_impl(env, target):
     cache = env.expect.that_target(target).action_generating(
-        "{}/{}.cache_manifest".format(target.label.package, target.label.name),
+        _output_path(target, "cache_manifest"),
     )
-    cache.content().equals(("../{}/".format(target.label.repo_name) if target.label.repo_name else "") + _ROOT + "/cfg.toml\ttool/schema.json\n")
-    env.expect.that_target(target).runfiles().contains("_main/{}{}/cfg.toml".format("../{}/".format(target.label.repo_name) if target.label.repo_name else "", _ROOT))
+    cache.content().equals((_runfiles_prefix(target)) + _ROOT + "/cfg.toml\ttool/schema.json\n")
+    env.expect.that_target(target).runfiles().contains("_main/{}{}/cfg.toml".format(_runfiles_prefix(target), _ROOT))
     env.expect.that_target(target).provider(RunEnvironmentInfo).environment().contains_exactly({"A": "b"})
 
 def _test_gitleaks_guard(name):
@@ -133,9 +139,9 @@ def _test_tombi_schemas(name):
 
 def _test_tombi_schemas_impl(env, target):
     cache = env.expect.that_target(target).action_generating(
-        "{}/{}.cache_manifest".format(target.label.package, target.label.name),
+        _output_path(target, "cache_manifest"),
     )
-    cache.content().equals(_ROOT + "/cfg.toml\ttombi/https/example.com/s/a.json\n")
+    cache.content().equals(_runfiles_prefix(target) + _ROOT + "/cfg.toml\ttombi/https/example.com/s/a.json\n")
 
 def _test_bats_uses_pinned_git(name):
     util.helper_target(

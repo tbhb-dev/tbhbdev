@@ -70,8 +70,8 @@ def _module_files(ctx, prefix, entries, verb):
     if ctx.file.go_sum:
         entries.append(("mod", ctx.file.go_sum))
     for _, f in entries:
-        if f.owner.repo_name != "":
-            fail("{} is from repository @{}; only files of the main repository can be {}".format(f.short_path, f.owner.repo_name, verb))
+        if f.owner.repo_name != ctx.label.repo_name:
+            fail("{} is from repository @{}; only files of the test's repository can be {}".format(f.short_path, f.owner.repo_name, verb))
         if not f.short_path.startswith(prefix):
             fail("{} is not in the module directory {}".format(f.short_path, prefix or "."))
     return entries
@@ -105,7 +105,9 @@ def go_unit(ctx, verb):
     directories = {t.label.package: True for t in ctx.attr.tests}
     if len(directories) != 1:
         fail("tests must all be in one package; they are in {}".format(sorted(directories)))
-    directory = list(directories)[0]
+    package = list(directories)[0]
+    repo = "../" + ctx.label.repo_name if ctx.label.repo_name else ""
+    directory = "/".join([part for part in (repo, package) if part])
     if prefix and not (directory + "/").startswith(prefix):
         fail("{} is not in the module directory {}".format(directory, prefix))
     pkg = directory[len(prefix):] or "."

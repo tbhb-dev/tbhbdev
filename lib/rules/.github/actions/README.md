@@ -141,7 +141,7 @@ jobs:
   pr-text:
     permissions:
       contents: read
-    uses: tbhb-dev/rules/.github/workflows/pr-text.yml@<sha>  # main
+    uses: tbhb-dev/tbhbdev/.github/workflows/pr-text.yml@<sha>  # main
     secrets:
       GITLEAKS_CONFIG_TOML: ${{ secrets.GITLEAKS_CONFIG_TOML }}
 ```
@@ -162,7 +162,7 @@ jobs:
   approve:
     permissions:
       actions: read
-    uses: tbhb-dev/rules/.github/workflows/tier0-approval.yml@bf77356b02e39e2e55d44848ebf5f51dd99a1b9a  # main
+    uses: tbhb-dev/tbhbdev/.github/workflows/tier0-approval.yml@<sha>  # main
     with:
       mode: enforce
       check_workflows: |
@@ -203,13 +203,13 @@ In `mode: enforce`, the App token alone needs `pull-requests: write` to approve 
 
 Adopt the rules pin update from Renovate, then edit the consumer's `ci.yml`: set `cache-save: false` on every test job and add one `cache-warm` job for pushes to `main`. Copy the `cache-warm` job from [this repository's `ci.yml`](../workflows/ci.yml), replace its local action reference with the same pinned remote reference as the test job, and set `fetch-workspaces` to the consumer's other workspace directories. Keep the four OS entries from the test matrix. The warm job hashes the root workspace files even when it fetches tools from another workspace. Keep `cache-warm` outside the required `conclusion` dependencies, because pull requests skip it.
 
-Pin `tbhb-dev/rules` by commit and put the branch in a trailing comment. Renovate updates those action and workflow references along with the Bazel module pin. A rules pin update alone leaves an existing consumer's test jobs as cache writers until the `ci.yml` edit merges. The consumer changes the copied warm job's setup step to:
+Pin `tbhb-dev/tbhbdev` by commit and put the branch in a trailing comment. Renovate updates those action and workflow references along with the Bazel module pin. A rules pin update alone leaves an existing consumer's test jobs as cache writers until the `ci.yml` edit merges. The consumer changes the copied warm job's setup step to:
 
 ```yaml
 - name: Warm the complete repository cache
   id: warm
   if: steps.cache.outputs.cache-hit != 'true'
-  uses: tbhb-dev/rules/.github/actions/setup-bazel-ci@<sha>  # main
+  uses: tbhb-dev/tbhbdev/lib/rules/.github/actions/setup-bazel-ci@<sha>  # main
   with:
     cache-save: true
     # Omit this input for a single workspace.
@@ -238,7 +238,7 @@ jobs:
           persist-credentials: false
 
       - name: Set up Bazel for CI
-        uses: tbhb-dev/rules/.github/actions/setup-bazel-ci@<sha>  # main
+        uses: tbhb-dev/tbhbdev/lib/rules/.github/actions/setup-bazel-ci@<sha>  # main
         with:
           disk-cache: ${{ github.workflow }}-${{ matrix.os }}
           cache-save: false
@@ -254,7 +254,7 @@ jobs:
     name: repo
     permissions:
       contents: read
-    uses: tbhb-dev/rules/.github/workflows/repo-checks.yml@<sha>  # main
+    uses: tbhb-dev/tbhbdev/.github/workflows/repo-checks.yml@<sha>  # main
     with:
       gazelle-dirs: .
       module-dirs: .
@@ -269,7 +269,7 @@ jobs:
     timeout-minutes: 5
     steps:
       - name: Fail if any needed job did not succeed
-        uses: tbhb-dev/rules/.github/actions/ci-conclusion@<sha>  # main
+        uses: tbhb-dev/tbhbdev/lib/rules/.github/actions/ci-conclusion@<sha>  # main
         with:
           needs: ${{ toJSON(needs) }}
 ```

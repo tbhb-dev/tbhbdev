@@ -13,18 +13,11 @@ load(
     "mutation_gate_test",
     "mutation_os_constraints",
 )
+load("@tbhb_rules//shell/private:launcher.bzl", "tree_path")
 load(":tool.bzl", "DEFAULT_ENV", "python_tool")
 
 # Internal: consumers load //:defs.bzl.
 visibility("//...")
-
-def _tree_path(file):
-    if file.owner.repo_name != "":
-        fail("{} is from repository @{}; only files of the main repository can be mutated".format(
-            file.short_path,
-            file.owner.repo_name,
-        ))
-    return file.short_path
 
 def _mutmut_report_impl(ctx):
     files = depset(ctx.files.srcs).to_list()
@@ -33,7 +26,7 @@ def _mutmut_report_impl(ctx):
     manifest = ctx.actions.declare_file(ctx.label.name + ".manifest")
     ctx.actions.write(
         output = manifest,
-        content = "".join(["{}\t{}\n".format(f.path, _tree_path(f)) for f in files]),
+        content = "".join(["{}\t{}\n".format(f.path, tree_path(f, ctx.label.repo_name, "")) for f in files]),
     )
     report = ctx.actions.declare_file(ctx.label.name + ".report")
     log = ctx.actions.declare_file(ctx.label.name + ".log")

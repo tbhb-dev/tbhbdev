@@ -16,7 +16,7 @@ def _gitleaks_history_impl(ctx):
         template = ctx.file._runner,
         output = script,
         substitutions = {
-            "@@CONFIG@@": shell.quote(ctx.file.config.short_path if ctx.file.config else ""),
+            "@@CONFIG@@": shell.quote(ctx.file.config.short_path.removeprefix("../" + ctx.label.repo_name + "/") if ctx.file.config else ""),
             "@@GIT_DIR@@": path_dir(ctx.attr.git),
             "@@TOOL@@": ctx.executable.tool.short_path,
         },

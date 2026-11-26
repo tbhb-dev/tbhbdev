@@ -16,7 +16,6 @@ dest = "lib/rules"
 ".gitattributes" = "lib/rules/.gitattributes"
 ".github/PULL_REQUEST_TEMPLATE.md" = "lib/rules/.github/PULL_REQUEST_TEMPLATE.md"
 ".github/actionlint.yaml" = "lib/rules/.github/actionlint.yaml"
-".github/actions/README.md" = "lib/rules/.github/actions/README.md"
 ".github/actions/affected-targets/action.yml" = "lib/rules/.github/actions/affected-targets/action.yml"
 ".github/actions/affected-targets/select.sh" = "lib/rules/.github/actions/affected-targets/select.sh"
 ".github/actions/ci-conclusion/action.yml" = "lib/rules/.github/actions/ci-conclusion/action.yml"
@@ -39,6 +38,7 @@ dest = "lib/rules"
 ".gitleaks.toml" = "lib/rules/.gitleaks.toml"
 ".markdown-links.toml" = "lib/rules/.markdown-links.toml"
 ".mcp.json" = "lib/rules/.mcp.json"
+".pre-commit-config.yaml" = "lib/rules/.pre-commit-config.yaml"
 ".python-version" = "lib/rules/.python-version"
 ".rumdl.toml" = "lib/rules/.rumdl.toml"
 ".ryl.toml" = "lib/rules/.ryl.toml"
@@ -331,7 +331,6 @@ dest = "lib/rules"
 "diagrams/d2/private/render.sh" = "lib/rules/diagrams/d2/private/render.sh"
 "diagrams/d2/private/tools.bzl" = "lib/rules/diagrams/d2/private/tools.bzl"
 "diagrams/d2/private/write.sh.tpl" = "lib/rules/diagrams/d2/private/write.sh.tpl"
-"diagrams/d2/tests/BUILD.bazel" = "lib/rules/diagrams/d2/tests/BUILD.bazel"
 "diagrams/d2/tests/testdata/remote.d2" = "lib/rules/diagrams/d2/tests/testdata/remote.d2"
 "diagrams/d2/tests/testdata/unknown_font.svg" = "lib/rules/diagrams/d2/tests/testdata/unknown_font.svg"
 "diagrams/d2/tombi.toml" = "lib/rules/diagrams/d2/tombi.toml"
@@ -664,7 +663,6 @@ dest = "lib/rules"
 "go/go.mod" = "lib/rules/go/go.mod"
 "go/go.sum" = "lib/rules/go/go.sum"
 "go/private/BUILD.bazel" = "lib/rules/go/private/BUILD.bazel"
-"go/private/deadcode.bzl" = "lib/rules/go/private/deadcode.bzl"
 "go/private/deadcode.sh" = "lib/rules/go/private/deadcode.sh"
 "go/private/driver/BUILD.bazel" = "lib/rules/go/private/driver/BUILD.bazel"
 "go/private/driver/main.go" = "lib/rules/go/private/driver/main.go"
@@ -675,8 +673,6 @@ dest = "lib/rules"
 "go/private/go_mod_proxy.bzl" = "lib/rules/go/private/go_mod_proxy.bzl"
 "go/private/go_mod_tidy.bzl" = "lib/rules/go/private/go_mod_tidy.bzl"
 "go/private/go_mod_tidy.sh.tpl" = "lib/rules/go/private/go_mod_tidy.sh.tpl"
-"go/private/go_srcs.bzl" = "lib/rules/go/private/go_srcs.bzl"
-"go/private/go_unit.bzl" = "lib/rules/go/private/go_unit.bzl"
 "go/private/gobco.bzl" = "lib/rules/go/private/gobco.bzl"
 "go/private/gobco/BUILD.bazel" = "lib/rules/go/private/gobco/BUILD.bazel"
 "go/private/gobco/main.go" = "lib/rules/go/private/gobco/main.go"
@@ -684,7 +680,6 @@ dest = "lib/rules"
 "go/private/gobco_test.sh.tpl" = "lib/rules/go/private/gobco_test.sh.tpl"
 "go/private/golangci_fmt.bzl" = "lib/rules/go/private/golangci_fmt.bzl"
 "go/private/golangci_fmt.sh.tpl" = "lib/rules/go/private/golangci_fmt.sh.tpl"
-"go/private/golangci_lint.bzl" = "lib/rules/go/private/golangci_lint.bzl"
 "go/private/golangci_lint.sh" = "lib/rules/go/private/golangci_lint.sh"
 "go/private/golangci_lint_merge.sh" = "lib/rules/go/private/golangci_lint_merge.sh"
 "go/private/golangci_lint_test.sh.tpl" = "lib/rules/go/private/golangci_lint_test.sh.tpl"
@@ -707,7 +702,6 @@ dest = "lib/rules"
 "go/private/tools.bzl" = "lib/rules/go/private/tools.bzl"
 "go/tests/BUILD.bazel" = "lib/rules/go/tests/BUILD.bazel"
 "go/tests/analysis/BUILD.bazel" = "lib/rules/go/tests/analysis/BUILD.bazel"
-"go/tests/analysis/analysis_tests.bzl" = "lib/rules/go/tests/analysis/analysis_tests.bzl"
 "go/tests/deadcode/BUILD.bazel" = "lib/rules/go/tests/deadcode/BUILD.bazel"
 "go/tests/deadcode/fixture/BUILD.bazel" = "lib/rules/go/tests/deadcode/fixture/BUILD.bazel"
 "go/tests/deadcode/fixture/app/BUILD.bazel" = "lib/rules/go/tests/deadcode/fixture/app/BUILD.bazel"
@@ -807,7 +801,6 @@ dest = "lib/rules"
 "lint/private/content/check_design.py" = "lib/rules/lint/private/content/check_design.py"
 "lint/private/content/index.sh.tpl" = "lib/rules/lint/private/content/index.sh.tpl"
 "lint/private/content/test_check_design.py" = "lib/rules/lint/private/content/test_check_design.py"
-"lint/private/cspell.bzl" = "lib/rules/lint/private/cspell.bzl"
 "lint/private/cspell.sh.tpl" = "lib/rules/lint/private/cspell.sh.tpl"
 "lint/private/cspell/BUILD.bazel" = "lib/rules/lint/private/cspell/BUILD.bazel"
 "lint/private/cspell/package.json" = "lib/rules/lint/private/cspell/package.json"
@@ -818,7 +811,6 @@ dest = "lib/rules"
 "lint/private/decision_records/test_check_decisions.py" = "lib/rules/lint/private/decision_records/test_check_decisions.py"
 "lint/private/gitleaks_config.py" = "lib/rules/lint/private/gitleaks_config.py"
 "lint/private/gitleaks_guard.py" = "lib/rules/lint/private/gitleaks_guard.py"
-"lint/private/gitleaks_history.bzl" = "lib/rules/lint/private/gitleaks_history.bzl"
 "lint/private/gitleaks_history.sh.tpl" = "lib/rules/lint/private/gitleaks_history.sh.tpl"
 "lint/private/gitleaks_text.bzl" = "lib/rules/lint/private/gitleaks_text.bzl"
 "lint/private/gitleaks_text.sh.tpl" = "lib/rules/lint/private/gitleaks_text.sh.tpl"
@@ -996,7 +988,6 @@ dest = "lib/rules"
 "lint/tests/content/testdata/wrong_type/designs/small-design/A-evidence.md" = "lib/rules/lint/tests/content/testdata/wrong_type/designs/small-design/A-evidence.md"
 "lint/tests/content/testdata/wrong_type/designs/small-design/B-alternatives.md" = "lib/rules/lint/tests/content/testdata/wrong_type/designs/small-design/B-alternatives.md"
 "lint/tests/content/testdata/wrong_type/designs/small-design/README.md" = "lib/rules/lint/tests/content/testdata/wrong_type/designs/small-design/README.md"
-"lint/tests/cspell_tests.bzl" = "lib/rules/lint/tests/cspell_tests.bzl"
 "lint/tests/decision_records/BUILD.bazel" = "lib/rules/lint/tests/decision_records/BUILD.bazel"
 "lint/tests/decision_records/testdata/tree/README.md" = "lib/rules/lint/tests/decision_records/testdata/tree/README.md"
 "lint/tests/decision_records/testdata/tree/docs/decisions/0000-first.md" = "lib/rules/lint/tests/decision_records/testdata/tree/docs/decisions/0000-first.md"
@@ -1226,7 +1217,6 @@ dest = "lib/rules"
 "python/private/extension.bzl" = "lib/rules/python/private/extension.bzl"
 "python/private/import_linter.py" = "lib/rules/python/private/import_linter.py"
 "python/private/library.bzl" = "lib/rules/python/private/library.bzl"
-"python/private/mutmut.bzl" = "lib/rules/python/private/mutmut.bzl"
 "python/private/mutmut.sh.tpl" = "lib/rules/python/private/mutmut.sh.tpl"
 "python/private/mutmut_report.py" = "lib/rules/python/private/mutmut_report.py"
 "python/private/pip_audit.py" = "lib/rules/python/private/pip_audit.py"
@@ -1254,7 +1244,6 @@ dest = "lib/rules"
 "quality/private/mutation_gate.sh.tpl" = "lib/rules/quality/private/mutation_gate.sh.tpl"
 "quality/private/mutation_oses.bzl" = "lib/rules/quality/private/mutation_oses.bzl"
 "quality/private/slice.awk" = "lib/rules/quality/private/slice.awk"
-"quality/private/slice.bzl" = "lib/rules/quality/private/slice.bzl"
 "quality/tests/BUILD.bazel" = "lib/rules/quality/tests/BUILD.bazel"
 "quality/tests/gate_output_test.bzl" = "lib/rules/quality/tests/gate_output_test.bzl"
 "quality/tests/mutation_changes_test.bzl" = "lib/rules/quality/tests/mutation_changes_test.bzl"
@@ -1411,10 +1400,7 @@ dest = "lib/rules"
 "repo/tests/archive_actions_test.sh" = "lib/rules/repo/tests/archive_actions_test.sh"
 "repo/tests/cache_contract_test.sh" = "lib/rules/repo/tests/cache_contract_test.sh"
 "repo/tests/cache_fetch_test.sh" = "lib/rules/repo/tests/cache_fetch_test.sh"
-"repo/tests/check_markdown_links.py" = "lib/rules/repo/tests/check_markdown_links.py"
-"repo/tests/check_mise_keys.py" = "lib/rules/repo/tests/check_mise_keys.py"
 "repo/tests/check_required_files.py" = "lib/rules/repo/tests/check_required_files.py"
-"repo/tests/check_tool_pins.py" = "lib/rules/repo/tests/check_tool_pins.py"
 "repo/tests/ci_plan_test.sh" = "lib/rules/repo/tests/ci_plan_test.sh"
 "repo/tests/codeowners_errors_test.sh" = "lib/rules/repo/tests/codeowners_errors_test.sh"
 "repo/tests/cpu_quota_test.sh" = "lib/rules/repo/tests/cpu_quota_test.sh"
@@ -1423,7 +1409,6 @@ dest = "lib/rules"
 "repo/tests/mutation_nightly_test.sh" = "lib/rules/repo/tests/mutation_nightly_test.sh"
 "repo/tests/pip_audit_test.sh" = "lib/rules/repo/tests/pip_audit_test.sh"
 "repo/tests/repo_layout_tests.bzl" = "lib/rules/repo/tests/repo_layout_tests.bzl"
-"repo/tests/required_files_case.sh" = "lib/rules/repo/tests/required_files_case.sh"
 "repo/tests/retry_budget_test.sh" = "lib/rules/repo/tests/retry_budget_test.sh"
 "repo/tests/test_check_markdown_links.py" = "lib/rules/repo/tests/test_check_markdown_links.py"
 "repo/tests/test_check_mise_keys.py" = "lib/rules/repo/tests/test_check_mise_keys.py"
@@ -1885,13 +1870,24 @@ dest = "lib/rules"
 ".github/rulesets/branch-prefixes.json" = "Root branch rules apply."
 ".github/workflows/renovate-config-validator.yaml" = "root configuration (.github/workflows/*)"
 ".github/workflows/renovate.yaml" = "root configuration (.github/workflows/*)"
-".pre-commit-config.yaml" = "root configuration (.pre-commit-config.yaml)"
 "mise.lock" = "root configuration (mise.*)"
 
 [rewrite.".github/CODEOWNERS"]
 dest = "lib/rules/OWNERS"
 replace = [
     ["# No default owners, so GitHub requests no reviewer automatically.\n*\n", "# SPDX-License-Identifier: Apache-2.0\n# Copyright Tony Burns\n\n# Shared Bazel build, test, and repository checks.\n# Depends on sibling rules modules and third-party Bazel modules.\n@tbhb\n"],
+]
+
+[rewrite.".github/actions/README.md"]
+dest = "lib/rules/.github/actions/README.md"
+replace = [
+    ["    permissions:\n      contents: read\n    uses: tbhb-dev/rules/.github/workflows/pr-text.yml@<sha>  # main\n    secrets:\n      GITLEAKS_CONFIG_TOML: ${{ secrets.GITLEAKS_CONFIG_TOML }}\n", "    permissions:\n      contents: read\n    uses: tbhb-dev/tbhbdev/.github/workflows/pr-text.yml@<sha>  # main\n    secrets:\n      GITLEAKS_CONFIG_TOML: ${{ secrets.GITLEAKS_CONFIG_TOML }}\n"],
+    ["    permissions:\n      actions: read\n    uses: tbhb-dev/rules/.github/workflows/tier0-approval.yml@bf77356b02e39e2e55d44848ebf5f51dd99a1b9a  # main\n    with:\n      mode: enforce\n", "    permissions:\n      actions: read\n    uses: tbhb-dev/tbhbdev/.github/workflows/tier0-approval.yml@<sha>  # main\n    with:\n      mode: enforce\n"],
+    ["Adopt the rules pin update from Renovate, then edit the consumer's `ci.yml`: set `cache-save: false` on every test job and add one `cache-warm` job for pushes to `main`. Copy the `cache-warm` job from [this repository's `ci.yml`](../workflows/ci.yml), replace its local action reference with the same pinned remote reference as the test job, and set `fetch-workspaces` to the consumer's other workspace directories. Keep the four OS entries from the test matrix. The warm job hashes the root workspace files even when it fetches tools from another workspace. Keep `cache-warm` outside the required `conclusion` dependencies, because pull requests skip it.\n\nPin `tbhb-dev/rules` by commit and put the branch in a trailing comment. Renovate updates those action and workflow references along with the Bazel module pin. A rules pin update alone leaves an existing consumer's test jobs as cache writers until the `ci.yml` edit merges. The consumer changes the copied warm job's setup step to:\n\n```yaml\n", "Adopt the rules pin update from Renovate, then edit the consumer's `ci.yml`: set `cache-save: false` on every test job and add one `cache-warm` job for pushes to `main`. Copy the `cache-warm` job from [this repository's `ci.yml`](../workflows/ci.yml), replace its local action reference with the same pinned remote reference as the test job, and set `fetch-workspaces` to the consumer's other workspace directories. Keep the four OS entries from the test matrix. The warm job hashes the root workspace files even when it fetches tools from another workspace. Keep `cache-warm` outside the required `conclusion` dependencies, because pull requests skip it.\n\nPin `tbhb-dev/tbhbdev` by commit and put the branch in a trailing comment. Renovate updates those action and workflow references along with the Bazel module pin. A rules pin update alone leaves an existing consumer's test jobs as cache writers until the `ci.yml` edit merges. The consumer changes the copied warm job's setup step to:\n\n```yaml\n"],
+    ["  id: warm\n  if: steps.cache.outputs.cache-hit != 'true'\n  uses: tbhb-dev/rules/.github/actions/setup-bazel-ci@<sha>  # main\n  with:\n    cache-save: true\n", "  id: warm\n  if: steps.cache.outputs.cache-hit != 'true'\n  uses: tbhb-dev/tbhbdev/lib/rules/.github/actions/setup-bazel-ci@<sha>  # main\n  with:\n    cache-save: true\n"],
+    ["\n      - name: Set up Bazel for CI\n        uses: tbhb-dev/rules/.github/actions/setup-bazel-ci@<sha>  # main\n        with:\n          disk-cache: ${{ github.workflow }}-${{ matrix.os }}\n", "\n      - name: Set up Bazel for CI\n        uses: tbhb-dev/tbhbdev/lib/rules/.github/actions/setup-bazel-ci@<sha>  # main\n        with:\n          disk-cache: ${{ github.workflow }}-${{ matrix.os }}\n"],
+    ["    permissions:\n      contents: read\n    uses: tbhb-dev/rules/.github/workflows/repo-checks.yml@<sha>  # main\n    with:\n      gazelle-dirs: .\n", "    permissions:\n      contents: read\n    uses: tbhb-dev/tbhbdev/.github/workflows/repo-checks.yml@<sha>  # main\n    with:\n      gazelle-dirs: .\n"],
+    ["    steps:\n      - name: Fail if any needed job did not succeed\n        uses: tbhb-dev/rules/.github/actions/ci-conclusion@<sha>  # main\n        with:\n          needs: ${{ toJSON(needs) }}\n", "    steps:\n      - name: Fail if any needed job did not succeed\n        uses: tbhb-dev/tbhbdev/lib/rules/.github/actions/ci-conclusion@<sha>  # main\n        with:\n          needs: ${{ toJSON(needs) }}\n"],
 ]
 
 [rewrite.".github/schemas/pull-request-draft.schema.json"]
@@ -1917,7 +1913,7 @@ dest = "lib/rules/BUILD.bazel"
 replace = [
     ["# Copyright Tony Burns\n\nload(\"@bazelrc-preset.bzl\", \"bazelrc_preset\")\nload(\"@buildifier_prebuilt//:rules.bzl\", \"buildifier\", \"buildifier_test\")\nload(\"//format:defs.bzl\", \"format\", \"format_test\", \"formatter\")\n", "# Copyright Tony Burns\n\nload(\"@bazel_skylib//rules:diff_test.bzl\", \"diff_test\")\nload(\"@bazelrc-preset.bzl\", \"generate_preset\")\nload(\"@buildifier_prebuilt//:rules.bzl\", \"buildifier\", \"buildifier_test\")\nload(\"//format:defs.bzl\", \"format\", \"format_test\", \"formatter\")\n"],
     ["        # The gitignored PR draft, which the PR script lints itself.\n        \".github/PULL_REQUEST_DRAFT.md\",\n        \".bazelrc.user\",\n        \".coverage*\",\n", "        # The gitignored PR draft, which the PR script lints itself.\n        \".github/PULL_REQUEST_DRAFT.md\",\n        \"IMPORT-MAP.toml\",\n        \".bazelrc.user\",\n        \".coverage*\",\n"],
-    [")\n\n# Generates preset.bazelrc, which .bazelrc imports. The content depends on the\n# Bazel version that runs the generator; the committed copy matches\n# .bazelversion, and `preset.update_test` fails when it is stale.\nbazelrc_preset(\n    name = \"preset\",\n)\n\n", ")\n\n# Compare this module's standalone preset to the current generator.\ngenerate_preset(\n    name = \"preset\",\n    out = \"_preset.bazelrc\",\n)\n\ndiff_test(\n    name = \"preset.update_test\",\n    file1 = \":preset\",\n    file2 = \":preset.bazelrc\",\n)\n\n"],
+    [")\n\n# Generates preset.bazelrc, which .bazelrc imports. The content depends on the\n# Bazel version that runs the generator; the committed copy matches\n# .bazelversion, and `preset.update_test` fails when it is stale.\nbazelrc_preset(\n    name = \"preset\",\n)\n\n", ")\n\n# Compare this module's standalone preset to the current generator.\ngenerate_preset(\n    name = \"preset\",\n    out = \"_preset.bazelrc\",\n    extra_presets = \"{}\",\n)\n\ndiff_test(\n    name = \"preset.update_test\",\n    file1 = \":preset\",\n    file2 = \":preset.bazelrc\",\n)\n\n"],
     ["\n# The review policy files a repository has; //lint:review_policy_test checks\n# them. None exists yet, so CODEOWNERS (which the check ignores) keeps the\n# copy non-empty, as tree_check requires, and the glob matches no more until\n# the first one lands.\nfilegroup(\n    name = \"review_policy_files\",\n    srcs = [\".github/CODEOWNERS\"] + glob(\n        [\n            \".github/PULL_REQUEST_REVIEW_*.md\",\n", "\n# The review policy files a repository has; //lint:review_policy_test checks\n# them. None exists yet, so OWNERS (which the check ignores) keeps the\n# copy non-empty, as tree_check requires, and the glob matches no more until\n# the first one lands.\nfilegroup(\n    name = \"review_policy_files\",\n    srcs = [\"OWNERS\"] + glob(\n        [\n            \".github/PULL_REQUEST_REVIEW_*.md\",\n"],
 ]
 
@@ -1943,6 +1939,15 @@ replace = [
     ["# Dev dependencies: this module's own tests.\nbazel_dep(name = \"buildifier_prebuilt\", version = \"10.1.0\", dev_dependency = True)\nbazel_dep(name = \"rules_testing\", version = \"0.9.0\", dev_dependency = True)\n\n# The pnpm 12 pinned here, for maintainers regenerating the lock:\n", "# Dev dependencies: this module's own tests.\nbazel_dep(name = \"buildifier_prebuilt\", version = \"10.1.0\", dev_dependency = True)\n\nbazel_dep(name = \"rules_testing\", version = \"0.9.0\")\n\n# The pnpm 12 pinned here, for maintainers regenerating the lock:\n"],
 ]
 
+[rewrite."diagrams/d2/tests/BUILD.bazel"]
+dest = "lib/rules/diagrams/d2/tests/BUILD.bazel"
+replace = [
+    ["# render.sh with an SVG of a font family its PNG step doesn't know. d2\n# 0.9.0 emits none, so the SVG is made by hand, in d2's shape.\nsh_binary(\n    name = \"render_runner\",\n    srcs = [\"//private:render.sh\"],\n    data = [\"testdata/unknown_font.svg\"],\n)\n\n", "# render.sh with an SVG of a font family its PNG step doesn't know. d2\n# 0.9.0 emits none, so the SVG is made by hand, in d2's shape.\ngenrule(\n    name = \"render_png_sh\",\n    srcs = [\n        \"testdata/unknown_font.svg\",\n        \"//private:render.sh\",\n    ],\n    outs = [\"render_png.sh\"],\n    cmd = \"\"\"cat >$@ <<'EOF'\n#!/usr/bin/env bash\nexec bash $(rootpath //private:render.sh) png no-resvg no-oxipng no-sans no-mono \\\n    docs/fancy.d2 $(rootpath testdata/unknown_font.svg) unused.png\nEOF\"\"\",\n)\n\nsh_binary(\n    name = \"render_runner\",\n    srcs = [\":render_png_sh\"],\n    data = [\n        \"testdata/unknown_font.svg\",\n        \"//private:render.sh\",\n    ],\n)\n\n"],
+    ["expect_failure_test(\n    name = \"png_unknown_font_fails\",\n    args = [\n        \"png\",\n        \"no-resvg\",\n        \"no-oxipng\",\n        \"no-sans\",\n        \"no-mono\",\n        \"docs/fancy.d2\",\n        \"tests/testdata/unknown_font.svg\",\n        \"unused.png\",\n    ],\n    pattern = \"^render\\\\.sh: error: cannot draw docs/fancy\\\\.d2 as PNG: no installed font for these font families in its SVG: d2-1-font-fancy$\",\n    test = \":render_runner\",\n", "expect_failure_test(\n    name = \"png_unknown_font_fails\",\n    pattern = \"^render\\\\.sh: error: cannot draw docs/fancy\\\\.d2 as PNG: no installed font for these font families in its SVG: d2-1-font-fancy$\",\n    test = \":render_runner\",\n"],
+    ["genrule(\n    name = \"render_remote_sh\",\n    srcs = [\"@tbhb_rules_d2_cli//:d2\"],\n    outs = [\"render_remote.sh\"],\n    cmd = \"\"\"cat >$@ <<'EOF'\n#!/usr/bin/env bash\nexec bash private/render.sh svg $(rootpath @tbhb_rules_d2_cli//:d2) tests/testdata/remote.d2 \"$$TEST_TMPDIR/remote.svg\"\nEOF\"\"\",\n)\n", "genrule(\n    name = \"render_remote_sh\",\n    srcs = [\n        \"testdata/remote.d2\",\n        \"//private:render.sh\",\n        \"@tbhb_rules_d2_cli//:d2\",\n    ],\n    outs = [\"render_remote.sh\"],\n    cmd = \"\"\"cat >$@ <<'EOF'\n#!/usr/bin/env bash\nexec bash $(rootpath //private:render.sh) svg $(rootpath @tbhb_rules_d2_cli//:d2) $(rootpath testdata/remote.d2) \"$$TEST_TMPDIR/remote.svg\"\nEOF\"\"\",\n)\n"],
+    ["expect_failure_test(\n    name = \"svg_remote_image_fails\",\n    pattern = \"^render\\\\.sh: error: tests/testdata/remote\\\\.d2 uses a remote image, which d2 would fetch at build time\\\\.\",\n    test = \":render_remote\",\n)\n", "expect_failure_test(\n    name = \"svg_remote_image_fails\",\n    pattern = \"^render\\\\.sh: error: (\\\\.\\\\./[^/]+/)?tests/testdata/remote\\\\.d2 uses a remote image, which d2 would fetch at build time\\\\.\",\n    test = \":render_remote\",\n)\n"],
+]
+
 [rewrite."docs/schemas/frontmatter.schema.json"]
 dest = "lib/rules/docs/schemas/frontmatter.schema.json"
 replace = [
@@ -1959,6 +1964,8 @@ replace = [
 dest = "lib/rules/format/private/format.bzl"
 replace = [
     ["load(\"@bazel_skylib//lib:shell.bzl\", \"shell\")\nload(\"//shell:defs.bzl\", \"SHELL_ATTRS\", \"SHELL_TOOLCHAINS\", \"path_dir\", \"shell_executable\")\n\n# Internal: consumers load //format:defs.bzl.\n", "load(\"@bazel_skylib//lib:shell.bzl\", \"shell\")\nload(\"//shell:defs.bzl\", \"SHELL_ATTRS\", \"SHELL_TOOLCHAINS\", \"path_dir\", \"shell_executable\")\nload(\"//shell/private:launcher.bzl\", \"tree_path\", \"tree_root\")\n\n# Internal: consumers load //format:defs.bzl.\n"],
+    [")\n\ndef _display(label):\n    prefix = \"@{}\".format(label.repo_name) if label.repo_name else \"\"\n    return \"{}//{}:{}\".format(prefix, label.package, label.name)\n\ndef _calls(formatters, mode):\n    lines = []\n    for target in formatters:\n        info = target[FormatterInfo]\n        args = info.check_args if mode == \"check\" else info.fix_args\n        words = [_display(target.label), info.tool.short_path, str(len(info.include))] + info.include + [str(len(args))] + args\n        lines.append(\"run_formatter \" + \" \".join([shell.quote(w) for w in words]))\n    return \"\\n\".join(lines)\n", ")\n\ndef _display(label, repo_name):\n    prefix = \"@{}\".format(label.repo_name) if label.repo_name and label.repo_name != repo_name else \"\"\n    return \"{}//{}:{}\".format(prefix, label.package, label.name)\n\ndef _calls(formatters, mode, repo_name):\n    lines = []\n    for target in formatters:\n        info = target[FormatterInfo]\n        args = info.check_args if mode == \"check\" else info.fix_args\n        words = [_display(target.label, repo_name), info.tool.short_path, str(len(info.include))] + info.include + [str(len(args))] + args\n        lines.append(\"run_formatter \" + \" \".join([shell.quote(w) for w in words]))\n    return \"\\n\".join(lines)\n"],
+    ["        output = script,\n        substitutions = {\n            \"@@CALLS@@\": _calls(ctx.attr.formatters, mode),\n            \"@@EXCLUDES@@\": \" \".join([shell.quote(p) for p in ctx.attr.exclude]),\n            \"@@GIT_DIR@@\": git_dir,\n", "        output = script,\n        substitutions = {\n            \"@@CALLS@@\": _calls(ctx.attr.formatters, mode, ctx.label.repo_name),\n            \"@@EXCLUDES@@\": \" \".join([shell.quote(p) for p in ctx.attr.exclude]),\n            \"@@GIT_DIR@@\": git_dir,\n"],
     ["            \"@@MODE@@\": mode,\n            \"@@SOURCE@@\": source,\n            \"@@STRIP_PREFIX@@\": shell.quote(strip_prefix),\n        },\n        is_executable = True,\n", "            \"@@MODE@@\": mode,\n            \"@@SOURCE@@\": source,\n            \"@@STRIP_PREFIX@@\": shell.quote(tree_root(ctx.label.repo_name, strip_prefix)),\n        },\n        is_executable = True,\n"],
     [")\n\ndef _tree_path(file, strip_prefix):\n    if file.owner.repo_name != \"\":\n        fail(\"{} is from repository @{}; only files of the main repository can be checked\".format(\n            file.short_path,\n            file.owner.repo_name,\n        ))\n    if not strip_prefix:\n        return file.short_path\n    if not file.short_path.startswith(strip_prefix + \"/\"):\n        fail(\"{} is not under strip_prefix {}\".format(file.short_path, strip_prefix))\n    return file.short_path[len(strip_prefix) + 1:]\n\ndef _format_test_impl(ctx):\n    strip_prefix = ctx.attr.strip_prefix.strip(\"/\")\n", ")\n\ndef _format_test_impl(ctx):\n    strip_prefix = ctx.attr.strip_prefix.strip(\"/\")\n"],
     ["    ctx.actions.write(\n        output = manifest,\n        content = \"\".join([_tree_path(f, strip_prefix) + \"\\n\" for f in files.to_list()]),\n    )\n    script = _script(ctx, \"check\", \"copy\", manifest, strip_prefix)\n", "    ctx.actions.write(\n        output = manifest,\n        content = \"\".join([tree_path(f, ctx.label.repo_name, strip_prefix) + \"\\n\" for f in files.to_list()]),\n    )\n    script = _script(ctx, \"check\", \"copy\", manifest, strip_prefix)\n"],
@@ -1970,10 +1977,55 @@ replace = [
     ["\n# Dev dependencies: this module's own tests.\nbazel_dep(name = \"rules_testing\", version = \"0.9.0\", dev_dependency = True)\n\n# Module proxies for go_mod_tidy_test: the fixtures' (the tampered go.sum\n# lists the same modules) and this module's own.\ngo_mod_proxy = use_extension(\"//:extensions.bzl\", \"go_mod_proxy\", dev_dependency = True)\ngo_mod_proxy.from_file(\n    name = \"gomod_fixture_proxy\",\n", "\n# Dev dependencies: this module's own tests.\nbazel_dep(name = \"rules_testing\", version = \"0.9.0\")\n\n# Module proxies for go_mod_tidy_test: the fixtures' (the tampered go.sum\n# lists the same modules) and this module's own.\ngo_mod_proxy = use_extension(\"//:extensions.bzl\", \"go_mod_proxy\")\ngo_mod_proxy.from_file(\n    name = \"gomod_fixture_proxy\",\n"],
 ]
 
+[rewrite."go/private/deadcode.bzl"]
+dest = "lib/rules/go/private/deadcode.bzl"
+replace = [
+    ["    roots = []\n    importpaths = []\n    if target.label.repo_name == \"\" and GoArchive in target:\n        data = target[GoArchive].data\n        roots.append(str(data.label))\n", "    roots = []\n    importpaths = []\n    if target.label.repo_name in (\"\", Label(\"//:defs.bzl\").repo_name) and GoArchive in target:\n        data = target[GoArchive].data\n        roots.append(str(data.label))\n"],
+]
+
+[rewrite."go/private/go_srcs.bzl"]
+dest = "lib/rules/go/private/go_srcs.bzl"
+replace = [
+    ["def _go_srcs_aspect_impl(target, ctx):\n    srcs = []\n    if target.label.repo_name == \"\" and GoArchive in target:\n        srcs = [f for f in getattr(ctx.rule.files, \"srcs\", []) if f.is_source]\n    transitive = [\n", "def _go_srcs_aspect_impl(target, ctx):\n    srcs = []\n    if target.label.repo_name in (\"\", Label(\"//:defs.bzl\").repo_name) and GoArchive in target:\n        srcs = [f for f in getattr(ctx.rule.files, \"srcs\", []) if f.is_source]\n    transitive = [\n"],
+]
+
+[rewrite."go/private/go_unit.bzl"]
+dest = "lib/rules/go/private/go_unit.bzl"
+replace = [
+    ["        entries.append((\"mod\", ctx.file.go_sum))\n    for _, f in entries:\n        if f.owner.repo_name != \"\":\n            fail(\"{} is from repository @{}; only files of the main repository can be {}\".format(f.short_path, f.owner.repo_name, verb))\n        if not f.short_path.startswith(prefix):\n            fail(\"{} is not in the module directory {}\".format(f.short_path, prefix or \".\"))\n", "        entries.append((\"mod\", ctx.file.go_sum))\n    for _, f in entries:\n        if f.owner.repo_name != ctx.label.repo_name:\n            fail(\"{} is from repository @{}; only files of the test's repository can be {}\".format(f.short_path, f.owner.repo_name, verb))\n        if not f.short_path.startswith(prefix):\n            fail(\"{} is not in the module directory {}\".format(f.short_path, prefix or \".\"))\n"],
+    ["    if len(directories) != 1:\n        fail(\"tests must all be in one package; they are in {}\".format(sorted(directories)))\n    directory = list(directories)[0]\n    if prefix and not (directory + \"/\").startswith(prefix):\n        fail(\"{} is not in the module directory {}\".format(directory, prefix))\n", "    if len(directories) != 1:\n        fail(\"tests must all be in one package; they are in {}\".format(sorted(directories)))\n    package = list(directories)[0]\n    repo = \"../\" + ctx.label.repo_name if ctx.label.repo_name else \"\"\n    directory = \"/\".join([part for part in (repo, package) if part])\n    if prefix and not (directory + \"/\").startswith(prefix):\n        fail(\"{} is not in the module directory {}\".format(directory, prefix))\n"],
+]
+
+[rewrite."go/private/golangci_lint.bzl"]
+dest = "lib/rules/go/private/golangci_lint.bzl"
+replace = [
+    ["    direct = []\n    if (ctx.rule.kind in ctx.attr._rule_kinds and\n        target.label.repo_name == \"\" and\n        GoPkgInfo in target and\n        GoArchive in target and\n", "    direct = []\n    if (ctx.rule.kind in ctx.attr._rule_kinds and\n        target.label.repo_name == ctx.attr._config.label.repo_name and\n        GoPkgInfo in target and\n        GoArchive in target and\n"],
+    ["        f.short_path + \"\\n\"\n        for f in ctx.files.expect_linted\n        if f.extension == \"go\" and f.owner.repo_name == \"\"\n    ]))\n\n", "        f.short_path + \"\\n\"\n        for f in ctx.files.expect_linted\n        if f.extension == \"go\" and f.owner.repo_name == ctx.label.repo_name\n    ]))\n\n"],
+]
+
+[rewrite."go/tests/analysis/analysis_tests.bzl"]
+dest = "lib/rules/go/tests/analysis/analysis_tests.bzl"
+replace = [
+    ["    analysis_test(\n        name = name,\n        impl = _expect_failure(\"tests/gomod/untidy/main.go is not in the module directory tests/gomod/tidy/\"),\n        target = name + \"_subject\",\n        expect_failure = True,\n", "    analysis_test(\n        name = name,\n        impl = _expect_failure(\"tests/gomod/untidy/main.go is not in the module directory *tests/gomod/tidy/\"),\n        target = name + \"_subject\",\n        expect_failure = True,\n"],
+]
+
 [rewrite."lint/BUILD.bazel"]
 dest = "lib/rules/lint/BUILD.bazel"
 replace = [
     [")\n\n# The org floor for the review policy files, checked by the tbhbdev commit\n# archive that MODULE.bazel pins. See //lint/private:review_policy.bzl.\nreview_policy_test(\n    name = \"review_policy_test\",\n    srcs = [\"//:review_policy_files\"],\n    # Tech debt: not run on windows-2025 yet (AGENTS.md exclusion); make the test run on Windows and remove this.\n    target_compatible_with = select({\n        \"@platforms//os:windows\": [\"@platforms//:incompatible\"],\n        \"//conditions:default\": [],\n    }),\n)\n\n", ")\n\n# The org floor for the review policy files. See //lint/private:review_policy.bzl.\nreview_policy_test(\n    name = \"review_policy_test\",\n    srcs = [\"//:review_policy_files\"],\n    # Requires the tbhbdev review-policy source from the tools import.\n    target_compatible_with = [\"@platforms//:incompatible\"],\n)\n\n"],
+]
+
+[rewrite."lint/private/cspell.bzl"]
+dest = "lib/rules/lint/private/cspell.bzl"
+replace = [
+    ["def _cspell_tool_impl(ctx):\n    script = ctx.actions.declare_file(ctx.label.name + \".sh\")\n    ctx.actions.expand_template(\n        template = ctx.file._runner,\n", "def _cspell_tool_impl(ctx):\n    script = ctx.actions.declare_file(ctx.label.name + \".sh\")\n    depth = len(ctx.label.package.split(\"/\")) if ctx.label.package else 0\n    root = \"../\" * depth + (\"../_main/\" if ctx.label.repo_name else \"\")\n    ctx.actions.expand_template(\n        template = ctx.file._runner,\n"],
+    ["        substitutions = {\n            \"@@CONFIG@@\": ctx.file._config.short_path,\n            \"@@ROOT@@\": \"../\" * (len(script.short_path.split(\"/\")) - 1),\n            \"@@TOOL@@\": ctx.executable.tool.short_path,\n        },\n", "        substitutions = {\n            \"@@CONFIG@@\": ctx.file._config.short_path,\n            \"@@ROOT@@\": root,\n            \"@@TOOL@@\": ctx.executable.tool.short_path,\n        },\n"],
+]
+
+[rewrite."lint/private/gitleaks_history.bzl"]
+dest = "lib/rules/lint/private/gitleaks_history.bzl"
+replace = [
+    ["        output = script,\n        substitutions = {\n            \"@@CONFIG@@\": shell.quote(ctx.file.config.short_path if ctx.file.config else \"\"),\n            \"@@GIT_DIR@@\": path_dir(ctx.attr.git),\n            \"@@TOOL@@\": ctx.executable.tool.short_path,\n", "        output = script,\n        substitutions = {\n            \"@@CONFIG@@\": shell.quote(ctx.file.config.short_path.removeprefix(\"../\" + ctx.label.repo_name + \"/\") if ctx.file.config else \"\"),\n            \"@@GIT_DIR@@\": path_dir(ctx.attr.git),\n            \"@@TOOL@@\": ctx.executable.tool.short_path,\n"],
 ]
 
 [rewrite."lint/private/okf_docs/test_check_docs.py"]
@@ -2004,6 +2056,14 @@ replace = [
     ["        name = \"review_policy_{}_fails_test\".format(case),\n        pattern = pattern,\n        # Tech debt: not run on windows-2025 yet (AGENTS.md exclusion); make the test run on Windows and remove this.\n        target_compatible_with = select({\n            \"@platforms//os:windows\": [\"@platforms//:incompatible\"],\n            \"//conditions:default\": [],\n        }),\n        test = \":proof_review_policy_\" + case,\n    )\n", "        name = \"review_policy_{}_fails_test\".format(case),\n        pattern = pattern,\n        # Requires the tbhbdev review-policy source from the tools import.\n        target_compatible_with = [\"@platforms//:incompatible\"],\n        test = \":proof_review_policy_\" + case,\n    )\n"],
 ]
 
+[rewrite."lint/tests/cspell_tests.bzl"]
+dest = "lib/rules/lint/tests/cspell_tests.bzl"
+replace = [
+    ["        for f in target[DefaultInfo].default_runfiles.files.to_list()\n    ]\n    env.expect.that_bool(\"lint/private/cspell/cspell_/cspell\" in launchers).equals(True)\n\ndef cspell_test_suite(name):\n", "        for f in target[DefaultInfo].default_runfiles.files.to_list()\n    ]\n    prefix = \"../{}/\".format(target.label.repo_name) if target.label.repo_name else \"\"\n    env.expect.that_bool(prefix + \"lint/private/cspell/cspell_/cspell\" in launchers).equals(True)\n\ndef cspell_test_suite(name):\n"],
+    ["set -euo pipefail\nsubject=\"$PWD/{subject}\"\nfixtures=\"$PWD/lint/tests/testdata/vocabulary\"\nwork=\"$TEST_TMPDIR/parent with spaces\"\nmkdir -p \"$work/tree/lint/tests/testdata/vocabulary\"\n", "set -euo pipefail\nsubject=\"$PWD/{subject}\"\nfixtures=\"$PWD/{fixture}\"\nwork=\"$TEST_TMPDIR/parent with spaces\"\nmkdir -p \"$work/tree/lint/tests/testdata/vocabulary\"\n"],
+    ["            bad_pattern = \"bad\\\\.md:3:[0-9]+ - Unknown word \\\\(Renovatte\\\\)\",\n            subject = ctx.executable.subject.short_path,\n        ),\n        is_executable = True,\n", "            bad_pattern = \"bad\\\\.md:3:[0-9]+ - Unknown word \\\\(Renovatte\\\\)\",\n            subject = ctx.executable.subject.short_path,\n            fixture = ctx.files.fixtures[0].short_path.split(\"/testdata/vocabulary/\", 1)[0] + \"/testdata/vocabulary\",\n        ),\n        is_executable = True,\n"],
+]
+
 [rewrite."lint/tests/okf_docs/testdata/tree/docs/schemas/frontmatter.schema.json"]
 dest = "lib/rules/lint/tests/okf_docs/testdata/tree/docs/schemas/frontmatter.schema.json"
 replace = [
@@ -2019,9 +2079,13 @@ replace = [
 [rewrite."lint/tests/tree_check_tests.bzl"]
 dest = "lib/rules/lint/tests/tree_check_tests.bzl"
 replace = [
-    ["        \"@@MIN_FILES@@\": \"1\",\n        \"@@OUTPUT_GUARD@@\": \"''\",\n        \"@@STRIP_PREFIX@@\": \"'{}'\".format(_ROOT),\n        \"@@TOOL_ARGS@@\": \"'--config' 'cfg.toml' '.'\",\n    })\n", "        \"@@MIN_FILES@@\": \"1\",\n        \"@@OUTPUT_GUARD@@\": \"''\",\n        \"@@STRIP_PREFIX@@\": \"'{}{}'\".format(\"../{}/\".format(target.label.repo_name) if target.label.repo_name else \"\", _ROOT),\n        \"@@TOOL_ARGS@@\": \"'--config' 'cfg.toml' '.'\",\n    })\n"],
+    ["\n_ROOT = \"lint/tests/testdata/root\"\n\ndef _subject(name, **kwargs):\n", "\n_ROOT = \"lint/tests/testdata/root\"\n\ndef _runfiles_prefix(target):\n    return \"../{}/\".format(target.label.repo_name) if target.label.repo_name else \"\"\n\ndef _output_path(target, suffix):\n    return _runfiles_prefix(target) + \"{}/{}.{}\".format(target.label.package, target.label.name, suffix)\n\ndef _subject(name, **kwargs):\n"],
+    ["def _test_layout_impl(env, target):\n    manifest = env.expect.that_target(target).action_generating(\n        \"{}/{}.manifest\".format(target.label.package, target.label.name),\n    )\n    manifest.content().equals(\"a.txt\\ncfg.toml\\n\")\n", "def _test_layout_impl(env, target):\n    manifest = env.expect.that_target(target).action_generating(\n        _output_path(target, \"manifest\"),\n    )\n    manifest.content().equals(\"a.txt\\ncfg.toml\\n\")\n"],
+    ["        \"@@MIN_FILES@@\": \"1\",\n        \"@@OUTPUT_GUARD@@\": \"''\",\n        \"@@STRIP_PREFIX@@\": \"'{}'\".format(_ROOT),\n        \"@@TOOL_ARGS@@\": \"'--config' 'cfg.toml' '.'\",\n    })\n", "        \"@@MIN_FILES@@\": \"1\",\n        \"@@OUTPUT_GUARD@@\": \"''\",\n        \"@@STRIP_PREFIX@@\": \"'{}{}'\".format(_runfiles_prefix(target), _ROOT),\n        \"@@TOOL_ARGS@@\": \"'--config' 'cfg.toml' '.'\",\n    })\n"],
+    ["def _test_unstripped_paths_impl(env, target):\n    manifest = env.expect.that_target(target).action_generating(\n        \"{}/{}.manifest\".format(target.label.package, target.label.name),\n    )\n    manifest.content().equals(_ROOT + \"/a.txt\\n\")\n", "def _test_unstripped_paths_impl(env, target):\n    manifest = env.expect.that_target(target).action_generating(\n        _output_path(target, \"manifest\"),\n    )\n    manifest.content().equals(_ROOT + \"/a.txt\\n\")\n"],
     ["        \"@@GIT_ROOT@@\": \"1\",\n        \"@@MIN_FILES@@\": \"3\",\n        \"@@STRIP_PREFIX@@\": \"''\",\n    })\n\n", "        \"@@GIT_ROOT@@\": \"1\",\n        \"@@MIN_FILES@@\": \"3\",\n        \"@@STRIP_PREFIX@@\": \"'../{}/'\".format(target.label.repo_name) if target.label.repo_name else \"''\",\n    })\n\n"],
-    ["        \"{}/{}.cache_manifest\".format(target.label.package, target.label.name),\n    )\n    cache.content().equals(_ROOT + \"/cfg.toml\\ttool/schema.json\\n\")\n    env.expect.that_target(target).runfiles().contains(\"_main/{}/cfg.toml\".format(_ROOT))\n    env.expect.that_target(target).provider(RunEnvironmentInfo).environment().contains_exactly({\"A\": \"b\"})\n\n", "        \"{}/{}.cache_manifest\".format(target.label.package, target.label.name),\n    )\n    cache.content().equals((\"../{}/\".format(target.label.repo_name) if target.label.repo_name else \"\") + _ROOT + \"/cfg.toml\\ttool/schema.json\\n\")\n    env.expect.that_target(target).runfiles().contains(\"_main/{}{}/cfg.toml\".format(\"../{}/\".format(target.label.repo_name) if target.label.repo_name else \"\", _ROOT))\n    env.expect.that_target(target).provider(RunEnvironmentInfo).environment().contains_exactly({\"A\": \"b\"})\n\n"],
+    ["def _test_cache_files_and_env_impl(env, target):\n    cache = env.expect.that_target(target).action_generating(\n        \"{}/{}.cache_manifest\".format(target.label.package, target.label.name),\n    )\n    cache.content().equals(_ROOT + \"/cfg.toml\\ttool/schema.json\\n\")\n    env.expect.that_target(target).runfiles().contains(\"_main/{}/cfg.toml\".format(_ROOT))\n    env.expect.that_target(target).provider(RunEnvironmentInfo).environment().contains_exactly({\"A\": \"b\"})\n\n", "def _test_cache_files_and_env_impl(env, target):\n    cache = env.expect.that_target(target).action_generating(\n        _output_path(target, \"cache_manifest\"),\n    )\n    cache.content().equals((_runfiles_prefix(target)) + _ROOT + \"/cfg.toml\\ttool/schema.json\\n\")\n    env.expect.that_target(target).runfiles().contains(\"_main/{}{}/cfg.toml\".format(_runfiles_prefix(target), _ROOT))\n    env.expect.that_target(target).provider(RunEnvironmentInfo).environment().contains_exactly({\"A\": \"b\"})\n\n"],
+    ["def _test_tombi_schemas_impl(env, target):\n    cache = env.expect.that_target(target).action_generating(\n        \"{}/{}.cache_manifest\".format(target.label.package, target.label.name),\n    )\n    cache.content().equals(_ROOT + \"/cfg.toml\\ttombi/https/example.com/s/a.json\\n\")\n\ndef _test_bats_uses_pinned_git(name):\n", "def _test_tombi_schemas_impl(env, target):\n    cache = env.expect.that_target(target).action_generating(\n        _output_path(target, \"cache_manifest\"),\n    )\n    cache.content().equals(_runfiles_prefix(target) + _ROOT + \"/cfg.toml\\ttombi/https/example.com/s/a.json\\n\")\n\ndef _test_bats_uses_pinned_git(name):\n"],
 ]
 
 [rewrite."pins/tests/git_network_test.sh"]
@@ -2034,6 +2098,21 @@ replace = [
 dest = "lib/rules/python/MODULE.bazel"
 replace = [
     ["\nbazel_dep(name = \"buildifier_prebuilt\", version = \"10.1.0\", dev_dependency = True)\nbazel_dep(name = \"rules_testing\", version = \"0.9.0\", dev_dependency = True)\n\n# This module's own Python (private/*.py) is checked from its own project:\n", "\nbazel_dep(name = \"buildifier_prebuilt\", version = \"10.1.0\", dev_dependency = True)\n\nbazel_dep(name = \"rules_testing\", version = \"0.9.0\")\n\n# This module's own Python (private/*.py) is checked from its own project:\n"],
+]
+
+[rewrite."python/private/mutmut.bzl"]
+dest = "lib/rules/python/private/mutmut.bzl"
+replace = [
+    ["    \"mutation_os_constraints\",\n)\nload(\":tool.bzl\", \"DEFAULT_ENV\", \"python_tool\")\n\n# Internal: consumers load //:defs.bzl.\nvisibility(\"//...\")\n\ndef _tree_path(file):\n    if file.owner.repo_name != \"\":\n        fail(\"{} is from repository @{}; only files of the main repository can be mutated\".format(\n            file.short_path,\n            file.owner.repo_name,\n        ))\n    return file.short_path\n\ndef _mutmut_report_impl(ctx):\n", "    \"mutation_os_constraints\",\n)\nload(\"@tbhb_rules//shell/private:launcher.bzl\", \"tree_path\")\nload(\":tool.bzl\", \"DEFAULT_ENV\", \"python_tool\")\n\n# Internal: consumers load //:defs.bzl.\nvisibility(\"//...\")\n\ndef _mutmut_report_impl(ctx):\n"],
+    ["    ctx.actions.write(\n        output = manifest,\n        content = \"\".join([\"{}\\t{}\\n\".format(f.path, _tree_path(f)) for f in files]),\n    )\n    report = ctx.actions.declare_file(ctx.label.name + \".report\")\n", "    ctx.actions.write(\n        output = manifest,\n        content = \"\".join([\"{}\\t{}\\n\".format(f.path, tree_path(f, ctx.label.repo_name, \"\")) for f in files]),\n    )\n    report = ctx.actions.declare_file(ctx.label.name + \".report\")\n"],
+]
+
+[rewrite."quality/private/slice.bzl"]
+dest = "lib/rules/quality/private/slice.bzl"
+replace = [
+    ["the report action's inputs are unchanged and it stays a cache hit.\n\"\"\"\n\n# Internal: consumers load //quality:defs.bzl.\n", "the report action's inputs are unchanged and it stays a cache hit.\n\"\"\"\n\nload(\"//shell/private:launcher.bzl\", \"tree_path\")\n\n# Internal: consumers load //quality:defs.bzl.\n"],
+    ["    Args:\n        ctx: The rule context; the rule has MUTATION_CHANGES_ATTRS.\n        files: The Files the unit's report action copies, from the main\n            repository.\n\n", "    Args:\n        ctx: The rule context; the rule has MUTATION_CHANGES_ATTRS.\n        files: The Files the unit's report action copies, from the rule's\n            repository.\n\n"],
+    ["    ctx.actions.write(\n        output = paths,\n        content = \"\".join([\"{}\\n\".format(_json_string(f.short_path)) for f in files]),\n    )\n    out = ctx.actions.declare_file(ctx.label.name + \".changes\")\n", "    ctx.actions.write(\n        output = paths,\n        content = \"\".join([\"{}\\n\".format(_json_string(tree_path(f, ctx.label.repo_name, \"\"))) for f in files]),\n    )\n    out = ctx.actions.declare_file(ctx.label.name + \".changes\")\n"],
 ]
 
 [rewrite."repo/baseline/files/.github/workflows/renovate-config-validator.yaml"]
@@ -2138,6 +2217,32 @@ replace = [
     ["load(\"@bazel_skylib//lib:shell.bzl\", \"shell\")\nload(\"//shell:defs.bzl\", \"SHELL_ATTRS\", \"SHELL_TOOLCHAINS\", \"shell_executable\")\n\n# Internal: consumers load //repo:defs.bzl.\n", "load(\"@bazel_skylib//lib:shell.bzl\", \"shell\")\nload(\"//shell:defs.bzl\", \"SHELL_ATTRS\", \"SHELL_TOOLCHAINS\", \"shell_executable\")\nload(\"//shell/private:launcher.bzl\", \"tree_path\")\n\n# Internal: consumers load //repo:defs.bzl.\n"],
     ["        fail(\"{} must be a single directory name, not {}\".format(what, repr(value)))\n    return value\n\ndef _relative(file, strip_prefix):\n    if file.owner.repo_name != \"\":\n        fail(\"{} is from repository @{}; only files of the main repository can be checked\".format(\n            file.short_path,\n            file.owner.repo_name,\n        ))\n    if not strip_prefix:\n        return file.short_path\n    if not file.short_path.startswith(strip_prefix + \"/\"):\n        fail(\"{} is not under strip_prefix {}\".format(file.short_path, strip_prefix))\n    return file.short_path[len(strip_prefix) + 1:]\n\ndef _repo_layout_test_impl(ctx):\n", "        fail(\"{} must be a single directory name, not {}\".format(what, repr(value)))\n    return value\n\ndef _repo_layout_test_impl(ctx):\n"],
     ["    ctx.actions.write(\n        output = manifest,\n        content = \"\".join([\"{}\\t{}\\n\".format(_relative(f, strip_prefix), f.short_path) for f in files]),\n    )\n    rules_file = ctx.actions.declare_file(ctx.label.name + \".rules\")\n", "    ctx.actions.write(\n        output = manifest,\n        content = \"\".join([\"{}\\t{}\\n\".format(tree_path(f, ctx.label.repo_name, strip_prefix), f.short_path) for f in files]),\n    )\n    rules_file = ctx.actions.declare_file(ctx.label.name + \".rules\")\n"],
+]
+
+[rewrite."repo/tests/check_markdown_links.py"]
+dest = "lib/rules/repo/tests/check_markdown_links.py"
+replace = [
+    ["\nif __name__ == \"__main__\":\n    sys.exit(main())\n", "\nif __name__ == \"__main__\":\n    if os.environ.get(\"TEST_SRCDIR\"):\n        os.chdir(Path(__file__).absolute().parents[2])\n    sys.exit(main())\n"],
+]
+
+[rewrite."repo/tests/check_mise_keys.py"]
+dest = "lib/rules/repo/tests/check_mise_keys.py"
+replace = [
+    ["\nimport argparse\nimport sys\nimport tomllib\n", "\nimport argparse\nimport os\nimport sys\nimport tomllib\n"],
+    ["\nif __name__ == \"__main__\":\n    sys.exit(main())\n", "\nif __name__ == \"__main__\":\n    if os.environ.get(\"TEST_SRCDIR\"):\n        os.chdir(Path(__file__).absolute().parents[2])\n    sys.exit(main())\n"],
+]
+
+[rewrite."repo/tests/check_tool_pins.py"]
+dest = "lib/rules/repo/tests/check_tool_pins.py"
+replace = [
+    ["\nimport argparse\nimport json\nimport re\n", "\nimport argparse\nimport os\nimport json\nimport re\n"],
+    ["\nif __name__ == \"__main__\":\n    sys.exit(main())\n", "\nif __name__ == \"__main__\":\n    if os.environ.get(\"TEST_SRCDIR\"):\n        os.chdir(Path(__file__).absolute().parents[2])\n    sys.exit(main())\n"],
+]
+
+[rewrite."repo/tests/required_files_case.sh"]
+dest = "lib/rules/repo/tests/required_files_case.sh"
+replace = [
+    ["set -euo pipefail\n\nwork=$(mktemp -d \"${TEST_TMPDIR:?}/fixture.XXXXXX\")\ncp -RL \"$3\" \"$work/repo\"\n", "set -euo pipefail\n\ncd \"$(dirname \"$0\")/../..\"\nwork=$(mktemp -d \"${TEST_TMPDIR:?}/fixture.XXXXXX\")\ncp -RL \"$3\" \"$work/repo\"\n"],
 ]
 
 [rewrite."shell/private/launcher.bzl"]

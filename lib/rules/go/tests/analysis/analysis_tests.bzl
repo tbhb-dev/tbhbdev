@@ -134,7 +134,7 @@ def _test_tidy_source_outside_module(name):
     )
     analysis_test(
         name = name,
-        impl = _expect_failure("tests/gomod/untidy/main.go is not in the module directory tests/gomod/tidy/"),
+        impl = _expect_failure("tests/gomod/untidy/main.go is not in the module directory *tests/gomod/tidy/"),
         target = name + "_subject",
         expect_failure = True,
     )

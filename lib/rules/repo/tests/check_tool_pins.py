@@ -11,6 +11,7 @@ moves one side without the other fails here. Failures are one line each.
 """
 
 import argparse
+import os
 import json
 import re
 import sys
@@ -75,4 +76,6 @@ def main(argv: list[str] | None = None) -> int:
 
 
 if __name__ == "__main__":
+    if os.environ.get("TEST_SRCDIR"):
+        os.chdir(Path(__file__).absolute().parents[2])
     sys.exit(main())

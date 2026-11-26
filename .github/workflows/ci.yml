@@ -42,7 +42,8 @@ jobs:
       - name: Make Bazelisk available to the target selector
         run: |
           if ! command -v bazelisk >/dev/null; then
-            ln -s "$(command -v bazel)" "${RUNNER_TEMP}/bazelisk"
+            bazel_path=$(command -v bazel)
+            ln -s "$bazel_path" "${RUNNER_TEMP}/bazelisk"
             echo "$RUNNER_TEMP" >> "$GITHUB_PATH"
           fi
 

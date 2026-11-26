@@ -214,7 +214,7 @@ def _golangci_lint_aspect_impl(target, ctx):
 
     direct = []
     if (ctx.rule.kind in ctx.attr._rule_kinds and
-        target.label.repo_name == "" and
+        target.label.repo_name == ctx.attr._config.label.repo_name and
         GoPkgInfo in target and
         GoArchive in target and
         _own_go_files(ctx)):
@@ -363,7 +363,7 @@ def _golangci_lint_test_impl(ctx):
     ctx.actions.write(expected, "".join([
         f.short_path + "\n"
         for f in ctx.files.expect_linted
-        if f.extension == "go" and f.owner.repo_name == ""
+        if f.extension == "go" and f.owner.repo_name == ctx.label.repo_name
     ]))
 
     script = ctx.actions.declare_file(ctx.label.name + ".sh")

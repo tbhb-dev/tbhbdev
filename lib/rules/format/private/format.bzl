@@ -54,16 +54,16 @@ runs at the root of the workspace (or of the test's copy).""",
     },
 )
 
-def _display(label):
-    prefix = "@{}".format(label.repo_name) if label.repo_name else ""
+def _display(label, repo_name):
+    prefix = "@{}".format(label.repo_name) if label.repo_name and label.repo_name != repo_name else ""
     return "{}//{}:{}".format(prefix, label.package, label.name)
 
-def _calls(formatters, mode):
+def _calls(formatters, mode, repo_name):
     lines = []
     for target in formatters:
         info = target[FormatterInfo]
         args = info.check_args if mode == "check" else info.fix_args
-        words = [_display(target.label), info.tool.short_path, str(len(info.include))] + info.include + [str(len(args))] + args
+        words = [_display(target.label, repo_name), info.tool.short_path, str(len(info.include))] + info.include + [str(len(args))] + args
         lines.append("run_formatter " + " ".join([shell.quote(w) for w in words]))
     return "\n".join(lines)
 
@@ -79,7 +79,7 @@ def _script(ctx, mode, source, manifest = None, strip_prefix = "", git_dir = "")
         template = ctx.file._runner,
         output = script,
         substitutions = {
-            "@@CALLS@@": _calls(ctx.attr.formatters, mode),
+            "@@CALLS@@": _calls(ctx.attr.formatters, mode, ctx.label.repo_name),
             "@@EXCLUDES@@": " ".join([shell.quote(p) for p in ctx.attr.exclude]),
             "@@GIT_DIR@@": git_dir,
             "@@MANIFEST@@": manifest.short_path if manifest else "",

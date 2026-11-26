@@ -61,7 +61,8 @@ def _test_default_tool_impl(env, target):
         f.short_path.removesuffix(".bat")
         for f in target[DefaultInfo].default_runfiles.files.to_list()
     ]
-    env.expect.that_bool("lint/private/cspell/cspell_/cspell" in launchers).equals(True)
+    prefix = "../{}/".format(target.label.repo_name) if target.label.repo_name else ""
+    env.expect.that_bool(prefix + "lint/private/cspell/cspell_/cspell" in launchers).equals(True)
 
 def cspell_test_suite(name):
     test_suite(
@@ -76,7 +77,7 @@ def cspell_test_suite(name):
 _PARENT_CONFIG_DRIVER = """#!/usr/bin/env bash
 set -euo pipefail
 subject="$PWD/{subject}"
-fixtures="$PWD/lint/tests/testdata/vocabulary"
+fixtures="$PWD/{fixture}"
 work="$TEST_TMPDIR/parent with spaces"
 mkdir -p "$work/tree/lint/tests/testdata/vocabulary"
 # Model a Windows test directory beneath a checkout with fixture exclusions.
@@ -117,6 +118,7 @@ def _cspell_parent_config_test_impl(ctx):
             # cspell:disable-next-line
             bad_pattern = "bad\\.md:3:[0-9]+ - Unknown word \\(Renovatte\\)",
             subject = ctx.executable.subject.short_path,
+            fixture = ctx.files.fixtures[0].short_path.split("/testdata/vocabulary/", 1)[0] + "/testdata/vocabulary",
         ),
         is_executable = True,
     )

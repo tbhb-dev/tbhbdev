@@ -125,6 +125,7 @@ repo_files(
 generate_preset(
     name = "preset",
     out = "_preset.bazelrc",
+    extra_presets = "{}",
 )
 
 diff_test(

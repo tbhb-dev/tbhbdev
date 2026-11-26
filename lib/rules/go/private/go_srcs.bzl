@@ -15,7 +15,7 @@ GoSrcsInfo = provider(
 
 def _go_srcs_aspect_impl(target, ctx):
     srcs = []
-    if target.label.repo_name == "" and GoArchive in target:
+    if target.label.repo_name in ("", Label("//:defs.bzl").repo_name) and GoArchive in target:
         srcs = [f for f in getattr(ctx.rule.files, "srcs", []) if f.is_source]
     transitive = [
         dep[GoSrcsInfo].srcs

@@ -33,7 +33,7 @@ _DeadcodeRootsInfo = provider(
 def _roots_aspect_impl(target, ctx):
     roots = []
     importpaths = []
-    if target.label.repo_name == "" and GoArchive in target:
+    if target.label.repo_name in ("", Label("//:defs.bzl").repo_name) and GoArchive in target:
         data = target[GoArchive].data
         roots.append(str(data.label))
         importpaths.append(data.importpath)

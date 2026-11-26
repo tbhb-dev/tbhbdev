@@ -9,26 +9,33 @@ repo_files()
 
 # render.sh with an SVG of a font family its PNG step doesn't know. d2
 # 0.9.0 emits none, so the SVG is made by hand, in d2's shape.
+genrule(
+    name = "render_png_sh",
+    srcs = [
+        "testdata/unknown_font.svg",
+        "//private:render.sh",
+    ],
+    outs = ["render_png.sh"],
+    cmd = """cat >$@ <<'EOF'
+#!/usr/bin/env bash
+exec bash $(rootpath //private:render.sh) png no-resvg no-oxipng no-sans no-mono \
+    docs/fancy.d2 $(rootpath testdata/unknown_font.svg) unused.png
+EOF""",
+)
+
 sh_binary(
     name = "render_runner",
-    srcs = ["//private:render.sh"],
-    data = ["testdata/unknown_font.svg"],
+    srcs = [":render_png_sh"],
+    data = [
+        "testdata/unknown_font.svg",
+        "//private:render.sh",
+    ],
 )
 
 # The PNG step refuses the SVG before it runs resvg, whose path here names
 # nothing: a step that went on would fail on that instead.
 expect_failure_test(
     name = "png_unknown_font_fails",
-    args = [
-        "png",
-        "no-resvg",
-        "no-oxipng",
-        "no-sans",
-        "no-mono",
-        "docs/fancy.d2",
-        "tests/testdata/unknown_font.svg",
-        "unused.png",
-    ],
     pattern = "^render\\.sh: error: cannot draw docs/fancy\\.d2 as PNG: no installed font for these font families in its SVG: d2-1-font-fancy$",
     test = ":render_runner",
 )
@@ -37,11 +44,15 @@ expect_failure_test(
 # filled in at analysis time.
 genrule(
     name = "render_remote_sh",
-    srcs = ["@tbhb_rules_d2_cli//:d2"],
+    srcs = [
+        "testdata/remote.d2",
+        "//private:render.sh",
+        "@tbhb_rules_d2_cli//:d2",
+    ],
     outs = ["render_remote.sh"],
     cmd = """cat >$@ <<'EOF'
 #!/usr/bin/env bash
-exec bash private/render.sh svg $(rootpath @tbhb_rules_d2_cli//:d2) tests/testdata/remote.d2 "$$TEST_TMPDIR/remote.svg"
+exec bash $(rootpath //private:render.sh) svg $(rootpath @tbhb_rules_d2_cli//:d2) $(rootpath testdata/remote.d2) "$$TEST_TMPDIR/remote.svg"
 EOF""",
 )
 
@@ -58,7 +69,7 @@ sh_binary(
 # The render names the remote image as the reason it failed.
 expect_failure_test(
     name = "svg_remote_image_fails",
-    pattern = "^render\\.sh: error: tests/testdata/remote\\.d2 uses a remote image, which d2 would fetch at build time\\.",
+    pattern = "^render\\.sh: error: (\\.\\./[^/]+/)?tests/testdata/remote\\.d2 uses a remote image, which d2 would fetch at build time\\.",
     test = ":render_remote",
 )
 
