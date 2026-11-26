@@ -280,6 +280,16 @@ def test_cli_posts_a_checked_document_without_vale_config(
     assert api.calls[-1][:2] == ("POST", REVIEWS)
 
 
+def test_lint_post_reports_vale_execution_failure(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    (tmp_path / review.pr.VALE_INI).touch()
+    monkeypatch.setattr(review.pr, "root", lambda: tmp_path)
+    monkeypatch.setattr(review.pr, "lint", Mock(side_effect=SystemExit("vale not found")))
+
+    assert review.lint_post(BODY) == ["Vale could not run: vale not found"]
+
+
 @pytest.mark.usefixtures("review_cue")
 def test_cli_refuses_an_invalid_rendered_review(
     draft: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
