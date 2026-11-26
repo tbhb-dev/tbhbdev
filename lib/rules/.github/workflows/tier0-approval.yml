@@ -86,7 +86,7 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         with:
           # The pinned actionlint predates these job properties.
-          repository: tbhb-dev/rules
+          repository: tbhb-dev/tbhbdev
           ref: ${{ fromJSON(toJSON(job)).workflow_sha }}
           path: rules
           persist-credentials: false

@@ -5,6 +5,7 @@
 
 load("@bazel_skylib//lib:shell.bzl", "shell")
 load("//shell:defs.bzl", "SHELL_ATTRS", "SHELL_TOOLCHAINS", "shell_executable")
+load("//shell/private:launcher.bzl", "tree_path")
 
 # Internal: consumers load //repo:defs.bzl.
 visibility("//repo/...")
@@ -15,18 +16,6 @@ def _name(value, what):
     if not value or "/" in value or value in (".", ".."):
         fail("{} must be a single directory name, not {}".format(what, repr(value)))
     return value
-
-def _relative(file, strip_prefix):
-    if file.owner.repo_name != "":
-        fail("{} is from repository @{}; only files of the main repository can be checked".format(
-            file.short_path,
-            file.owner.repo_name,
-        ))
-    if not strip_prefix:
-        return file.short_path
-    if not file.short_path.startswith(strip_prefix + "/"):
-        fail("{} is not under strip_prefix {}".format(file.short_path, strip_prefix))
-    return file.short_path[len(strip_prefix) + 1:]
 
 def _repo_layout_test_impl(ctx):
     top = [_name(d, "a top_level_dirs entry") for d in ctx.attr.top_level_dirs]
@@ -50,7 +39,7 @@ def _repo_layout_test_impl(ctx):
     manifest = ctx.actions.declare_file(ctx.label.name + ".manifest")
     ctx.actions.write(
         output = manifest,
-        content = "".join(["{}\t{}\n".format(_relative(f, strip_prefix), f.short_path) for f in files]),
+        content = "".join(["{}\t{}\n".format(tree_path(f, ctx.label.repo_name, strip_prefix), f.short_path) for f in files]),
     )
     rules_file = ctx.actions.declare_file(ctx.label.name + ".rules")
     ctx.actions.write(output = rules_file, content = "\n".join(rules) + "\n")

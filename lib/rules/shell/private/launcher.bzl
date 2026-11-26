@@ -72,3 +72,21 @@ def shell_executable(ctx, script, runfiles):
         is_executable = True,
     )
     return launcher, runfiles
+
+def tree_path(file, repo_name, strip_prefix):
+    """Returns a path relative to the selected directory in the test's repo."""
+    if file.owner.repo_name != repo_name:
+        fail("{} is from repository @{}; only files of the test's repository can be checked".format(
+            file.short_path,
+            file.owner.repo_name,
+        ))
+    path = file.short_path.removeprefix("../" + repo_name + "/") if repo_name else file.short_path
+    if not strip_prefix:
+        return path
+    if not path.startswith(strip_prefix + "/"):
+        fail("{} is not under strip_prefix {}".format(path, strip_prefix))
+    return path[len(strip_prefix) + 1:]
+
+def tree_root(repo_name, strip_prefix):
+    """Returns the input directory relative to the main runfiles directory."""
+    return "../{}/{}".format(repo_name, strip_prefix) if repo_name else strip_prefix

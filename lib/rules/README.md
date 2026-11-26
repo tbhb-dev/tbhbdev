@@ -8,8 +8,7 @@ projects can keep loading them by their existing repository names.
 The rules modules depend on each other and on third-party Bazel modules. See
 the module files for their dependencies and [OWNERS](OWNERS) for ownership.
 
-
-Shared Bazel rules for tbhb-dev repositories: whole-tree lint tests with pinned tools, formatters, quality gates, and the plumbing around them. The root module, `tbhb_rules`, holds the checks every repository uses, with one package per family:
+The shared rules provide whole-tree lint tests with pinned tools, formatters, quality gates, and the plumbing around them. The root module, `tbhb_rules`, holds the checks every repository uses, with one package per family:
 
 | Family | Load from | Contents |
 | --- | --- | --- |
@@ -28,18 +27,22 @@ Load only the `defs.bzl` files. Everything under `private/` is internal and can 
 
 ## Use
 
-The module isn't on the Bazel Central Registry yet. A root module consumes it from Git:
+Projects in the monorepo use the existing repository labels directly. A
+standalone repository can pin the monorepo and select the module directory:
 
 ```starlark
 bazel_dep(name = "tbhb_rules")
 git_override(
     module_name = "tbhb_rules",
     commit = "<commit>",
-    remote = "https://github.com/tbhb-dev/rules.git",
+    remote = "https://github.com/tbhb-dev/tbhbdev.git",
+    strip_prefix = "lib/rules",
 )
 ```
 
-To develop against a local clone, put `common --override_module=tbhb_rules=/path/to/rules` in `.bazelrc.user`.
+Run rules tests from the monorepo root with `bazel test --build_tests_only
+@tbhb_rules//...` or use the corresponding repository name for a nested
+module. Consumer smoke modules under `e2e/` use their own Bazel roots.
 
 ### Whole-tree checks
 

@@ -14,7 +14,6 @@ dest = "lib/rules"
 ".editorconfig" = "lib/rules/.editorconfig"
 ".editorconfig-checker.json" = "lib/rules/.editorconfig-checker.json"
 ".gitattributes" = "lib/rules/.gitattributes"
-".github/CODEOWNERS" = "lib/rules/.github/CODEOWNERS"
 ".github/PULL_REQUEST_TEMPLATE.md" = "lib/rules/.github/PULL_REQUEST_TEMPLATE.md"
 ".github/actionlint.yaml" = "lib/rules/.github/actionlint.yaml"
 ".github/actions/README.md" = "lib/rules/.github/actions/README.md"
@@ -35,8 +34,8 @@ dest = "lib/rules"
 ".github/workflows/mutation-nightly.yml" = "lib/rules/.github/workflows/mutation-nightly.yml"
 ".github/workflows/pr-text.yml" = "lib/rules/.github/workflows/pr-text.yml"
 ".github/workflows/repo-checks.yml" = "lib/rules/.github/workflows/repo-checks.yml"
-".github/workflows/tier0-approval.yml" = "lib/rules/.github/workflows/tier0-approval.yml"
 ".github/zizmor.yml" = "lib/rules/.github/zizmor.yml"
+".gitignore" = "lib/rules/.gitignore"
 ".gitleaks.toml" = "lib/rules/.gitleaks.toml"
 ".markdown-links.toml" = "lib/rules/.markdown-links.toml"
 ".mcp.json" = "lib/rules/.mcp.json"
@@ -52,7 +51,6 @@ dest = "lib/rules"
 ".vale/project/Colons.yml" = "lib/rules/.vale/project/Colons.yml"
 ".vale/project/HeadingTitleCase.yml" = "lib/rules/.vale/project/HeadingTitleCase.yml"
 ".vale/project/WordList.yml" = "lib/rules/.vale/project/WordList.yml"
-"BUILD.bazel" = "lib/rules/BUILD.bazel"
 "CLAUDE.md" = "lib/rules/CLAUDE.md"
 "LICENSE" = "lib/rules/LICENSE"
 "LICENSES/Apache-2.0.txt" = "lib/rules/LICENSES/Apache-2.0.txt"
@@ -151,7 +149,6 @@ dest = "lib/rules"
 "astro/.ryl.toml" = "lib/rules/astro/.ryl.toml"
 "astro/.rylignore" = "lib/rules/astro/.rylignore"
 "astro/BUILD.bazel" = "lib/rules/astro/BUILD.bazel"
-"astro/MODULE.bazel" = "lib/rules/astro/MODULE.bazel"
 "astro/REPO.bazel" = "lib/rules/astro/REPO.bazel"
 "astro/biome.json" = "lib/rules/astro/biome.json"
 "astro/defs.bzl" = "lib/rules/astro/defs.bzl"
@@ -561,7 +558,6 @@ dest = "lib/rules"
 "format/BUILD.bazel" = "lib/rules/format/BUILD.bazel"
 "format/defs.bzl" = "lib/rules/format/defs.bzl"
 "format/private/BUILD.bazel" = "lib/rules/format/private/BUILD.bazel"
-"format/private/format.bzl" = "lib/rules/format/private/format.bzl"
 "format/private/format.sh.tpl" = "lib/rules/format/private/format.sh.tpl"
 "format/tests/BUILD.bazel" = "lib/rules/format/tests/BUILD.bazel"
 "format/tests/format_tests.bzl" = "lib/rules/format/tests/format_tests.bzl"
@@ -587,7 +583,6 @@ dest = "lib/rules"
 "go/.ryl.toml" = "lib/rules/go/.ryl.toml"
 "go/.rylignore" = "lib/rules/go/.rylignore"
 "go/BUILD.bazel" = "lib/rules/go/BUILD.bazel"
-"go/MODULE.bazel" = "lib/rules/go/MODULE.bazel"
 "go/REPO.bazel" = "lib/rules/go/REPO.bazel"
 "go/defs.bzl" = "lib/rules/go/defs.bzl"
 "go/e2e/smoke/.bazelrc" = "lib/rules/go/e2e/smoke/.bazelrc"
@@ -780,7 +775,6 @@ dest = "lib/rules"
 "go/tools/sdkchecksums/checksums.go" = "lib/rules/go/tools/sdkchecksums/checksums.go"
 "go/tools/sdkchecksums/checksums_test.go" = "lib/rules/go/tools/sdkchecksums/checksums_test.go"
 "go/tools/sdkchecksums/testdata/releases.json" = "lib/rules/go/tools/sdkchecksums/testdata/releases.json"
-"lint/BUILD.bazel" = "lib/rules/lint/BUILD.bazel"
 "lint/defs.bzl" = "lib/rules/lint/defs.bzl"
 "lint/gitleaks/BUILD.bazel" = "lib/rules/lint/gitleaks/BUILD.bazel"
 "lint/gitleaks/base.toml" = "lib/rules/lint/gitleaks/base.toml"
@@ -858,8 +852,6 @@ dest = "lib/rules"
 "lint/private/runner_default/test_check_runner_default.py" = "lib/rules/lint/private/runner_default/test_check_runner_default.py"
 "lint/private/shell.bzl" = "lib/rules/lint/private/shell.bzl"
 "lint/private/shell_select.sh" = "lib/rules/lint/private/shell_select.sh"
-"lint/private/tree_check.bzl" = "lib/rules/lint/private/tree_check.bzl"
-"lint/private/tree_check.sh.tpl" = "lib/rules/lint/private/tree_check.sh.tpl"
 "lint/private/vale.bzl" = "lib/rules/lint/private/vale.bzl"
 "lint/private/vale.sh" = "lib/rules/lint/private/vale.sh"
 "lint/private/vale_sync.sh.tpl" = "lib/rules/lint/private/vale_sync.sh.tpl"
@@ -868,7 +860,6 @@ dest = "lib/rules"
 "lint/repo_check_targets.bzl" = "lib/rules/lint/repo_check_targets.bzl"
 "lint/repo_checks.py" = "lib/rules/lint/repo_checks.py"
 "lint/repo_checks.toml" = "lib/rules/lint/repo_checks.toml"
-"lint/tests/BUILD.bazel" = "lib/rules/lint/tests/BUILD.bazel"
 "lint/tests/claude_settings/BUILD.bazel" = "lib/rules/lint/tests/claude_settings/BUILD.bazel"
 "lint/tests/claude_settings/testdata/allow_missing.json" = "lib/rules/lint/tests/claude_settings/testdata/allow_missing.json"
 "lint/tests/claude_settings/testdata/allowed_undefined.json" = "lib/rules/lint/tests/claude_settings/testdata/allowed_undefined.json"
@@ -1096,12 +1087,12 @@ dest = "lib/rules"
 "lint/tests/testdata/workflow_lint/latest/workflows/ci.yml" = "lib/rules/lint/tests/testdata/workflow_lint/latest/workflows/ci.yml"
 "lint/tests/testdata/workflow_lint/self_hosted/workflows/ci.yml" = "lib/rules/lint/tests/testdata/workflow_lint/self_hosted/workflows/ci.yml"
 "lint/tests/testdata/workflow_lint/tag/workflows/ci.yml" = "lib/rules/lint/tests/testdata/workflow_lint/tag/workflows/ci.yml"
-"lint/tests/tree_check_tests.bzl" = "lib/rules/lint/tests/tree_check_tests.bzl"
 "lint/trailing_newline_test.sh" = "lib/rules/lint/trailing_newline_test.sh"
 "lint/vocabulary/BUILD.bazel" = "lib/rules/lint/vocabulary/BUILD.bazel"
 "lint/vocabulary/cspell.config.cjs" = "lib/rules/lint/vocabulary/cspell.config.cjs"
 "lint/vocabulary/vale.txt" = "lib/rules/lint/vocabulary/vale.txt"
 "lint/vocabulary/words.txt" = "lib/rules/lint/vocabulary/words.txt"
+"mise.toml" = "lib/rules/mise.toml"
 "pins/BUILD.bazel" = "lib/rules/pins/BUILD.bazel"
 "pins/binary.bzl" = "lib/rules/pins/binary.bzl"
 "pins/extensions.bzl" = "lib/rules/pins/extensions.bzl"
@@ -1149,7 +1140,6 @@ dest = "lib/rules"
 "python/.python-version" = "lib/rules/python/.python-version"
 "python/.rumdl.toml" = "lib/rules/python/.rumdl.toml"
 "python/BUILD.bazel" = "lib/rules/python/BUILD.bazel"
-"python/MODULE.bazel" = "lib/rules/python/MODULE.bazel"
 "python/REPO.bazel" = "lib/rules/python/REPO.bazel"
 "python/defs.bzl" = "lib/rules/python/defs.bzl"
 "python/e2e/incremental.sh" = "lib/rules/python/e2e/incremental.sh"
@@ -1335,8 +1325,6 @@ dest = "lib/rules"
 "repo/baseline/files/.github/rulesets/agent-trailers.json" = "lib/rules/repo/baseline/files/.github/rulesets/agent-trailers.json"
 "repo/baseline/files/.github/rulesets/branch-prefixes.json" = "lib/rules/repo/baseline/files/.github/rulesets/branch-prefixes.json"
 "repo/baseline/files/.github/rulesets/main.json" = "lib/rules/repo/baseline/files/.github/rulesets/main.json"
-"repo/baseline/files/.github/workflows/renovate-config-validator.yaml" = "lib/rules/repo/baseline/files/.github/workflows/renovate-config-validator.yaml"
-"repo/baseline/files/.github/workflows/renovate.yaml" = "lib/rules/repo/baseline/files/.github/workflows/renovate.yaml"
 "repo/baseline/files/.github/zizmor.yml" = "lib/rules/repo/baseline/files/.github/zizmor.yml"
 "repo/baseline/files/.gitleaks.toml" = "lib/rules/repo/baseline/files/.gitleaks.toml"
 "repo/baseline/files/.mcp.json" = "lib/rules/repo/baseline/files/.mcp.json"
@@ -1373,14 +1361,12 @@ dest = "lib/rules"
 "repo/baseline/manifest.toml" = "lib/rules/repo/baseline/manifest.toml"
 "repo/baseline/repo.schema.json" = "lib/rules/repo/baseline/repo.schema.json"
 "repo/baseline/seed/chezmoi/.editorconfig-checker.json" = "lib/rules/repo/baseline/seed/chezmoi/.editorconfig-checker.json"
-"repo/baseline/seed/chezmoi/.github/renovate.json5" = "lib/rules/repo/baseline/seed/chezmoi/.github/renovate.json5"
 "repo/baseline/seed/chezmoi/.tbhb-repo.toml" = "lib/rules/repo/baseline/seed/chezmoi/.tbhb-repo.toml"
 "repo/baseline/seed/chezmoi/BUILD.bazel.baseline" = "lib/rules/repo/baseline/seed/chezmoi/BUILD.bazel.baseline"
 "repo/baseline/seed/chezmoi/REPO.bazel.baseline" = "lib/rules/repo/baseline/seed/chezmoi/REPO.bazel.baseline"
 "repo/baseline/seed/chezmoi/bazelrc" = "lib/rules/repo/baseline/seed/chezmoi/bazelrc"
 "repo/baseline/seed/chezmoi/cspell.jsonc.baseline" = "lib/rules/repo/baseline/seed/chezmoi/cspell.jsonc.baseline"
 "repo/baseline/seed/chezmoi/pre-commit-config.yaml" = "lib/rules/repo/baseline/seed/chezmoi/pre-commit-config.yaml"
-"repo/baseline/seed/docs/.github/renovate.json5" = "lib/rules/repo/baseline/seed/docs/.github/renovate.json5"
 "repo/baseline/seed/docs/.tbhb-repo.toml" = "lib/rules/repo/baseline/seed/docs/.tbhb-repo.toml"
 "repo/baseline/seed/docs/BUILD.bazel.baseline" = "lib/rules/repo/baseline/seed/docs/BUILD.bazel.baseline"
 "repo/baseline/seed/docs/REPO.bazel.baseline" = "lib/rules/repo/baseline/seed/docs/REPO.bazel.baseline"
@@ -1388,14 +1374,12 @@ dest = "lib/rules"
 "repo/baseline/seed/docs/cspell.jsonc.baseline" = "lib/rules/repo/baseline/seed/docs/cspell.jsonc.baseline"
 "repo/baseline/seed/docs/pre-commit-config.yaml" = "lib/rules/repo/baseline/seed/docs/pre-commit-config.yaml"
 "repo/baseline/seed/go/.editorconfig-checker.json" = "lib/rules/repo/baseline/seed/go/.editorconfig-checker.json"
-"repo/baseline/seed/go/.github/renovate.json5" = "lib/rules/repo/baseline/seed/go/.github/renovate.json5"
 "repo/baseline/seed/go/.tbhb-repo.toml" = "lib/rules/repo/baseline/seed/go/.tbhb-repo.toml"
 "repo/baseline/seed/go/BUILD.bazel.baseline" = "lib/rules/repo/baseline/seed/go/BUILD.bazel.baseline"
 "repo/baseline/seed/go/REPO.bazel.baseline" = "lib/rules/repo/baseline/seed/go/REPO.bazel.baseline"
 "repo/baseline/seed/go/bazelrc" = "lib/rules/repo/baseline/seed/go/bazelrc"
 "repo/baseline/seed/go/cspell.jsonc.baseline" = "lib/rules/repo/baseline/seed/go/cspell.jsonc.baseline"
 "repo/baseline/seed/go/pre-commit-config.yaml" = "lib/rules/repo/baseline/seed/go/pre-commit-config.yaml"
-"repo/baseline/seed/python/.github/renovate.json5" = "lib/rules/repo/baseline/seed/python/.github/renovate.json5"
 "repo/baseline/seed/python/.tbhb-repo.toml" = "lib/rules/repo/baseline/seed/python/.tbhb-repo.toml"
 "repo/baseline/seed/python/BUILD.bazel.baseline" = "lib/rules/repo/baseline/seed/python/BUILD.bazel.baseline"
 "repo/baseline/seed/python/REPO.bazel.baseline" = "lib/rules/repo/baseline/seed/python/REPO.bazel.baseline"
@@ -1413,7 +1397,6 @@ dest = "lib/rules"
 "repo/defs.bzl" = "lib/rules/repo/defs.bzl"
 "repo/private/BUILD.bazel" = "lib/rules/repo/private/BUILD.bazel"
 "repo/private/repo_files.bzl" = "lib/rules/repo/private/repo_files.bzl"
-"repo/private/repo_layout.bzl" = "lib/rules/repo/private/repo_layout.bzl"
 "repo/private/repo_layout.sh.tpl" = "lib/rules/repo/private/repo_layout.sh.tpl"
 "repo/private/tier0_approval/__init__.py" = "lib/rules/repo/private/tier0_approval/__init__.py"
 "repo/private/tier0_approval/__main__.py" = "lib/rules/repo/private/tier0_approval/__main__.py"
@@ -1549,7 +1532,6 @@ dest = "lib/rules"
 "shell/BUILD.bazel" = "lib/rules/shell/BUILD.bazel"
 "shell/defs.bzl" = "lib/rules/shell/defs.bzl"
 "shell/private/BUILD.bazel" = "lib/rules/shell/private/BUILD.bazel"
-"shell/private/launcher.bzl" = "lib/rules/shell/private/launcher.bzl"
 "storybook/.bazelignore" = "lib/rules/storybook/.bazelignore"
 "storybook/.bazelrc" = "lib/rules/storybook/.bazelrc"
 "storybook/.bazelversion" = "lib/rules/storybook/.bazelversion"
@@ -1561,7 +1543,6 @@ dest = "lib/rules"
 "storybook/.ryl.toml" = "lib/rules/storybook/.ryl.toml"
 "storybook/.rylignore" = "lib/rules/storybook/.rylignore"
 "storybook/BUILD.bazel" = "lib/rules/storybook/BUILD.bazel"
-"storybook/MODULE.bazel" = "lib/rules/storybook/MODULE.bazel"
 "storybook/REPO.bazel" = "lib/rules/storybook/REPO.bazel"
 "storybook/biome.json" = "lib/rules/storybook/biome.json"
 "storybook/build_output.mjs" = "lib/rules/storybook/build_output.mjs"
@@ -1707,7 +1688,6 @@ dest = "lib/rules"
 "testing/private/expect_failure.sh.tpl" = "lib/rules/testing/private/expect_failure.sh.tpl"
 "testing/tests/BUILD.bazel" = "lib/rules/testing/tests/BUILD.bazel"
 "testing/tests/embedded_nul.sh" = "lib/rules/testing/tests/embedded_nul.sh"
-"testing/tests/expect_failure_tests.bzl" = "lib/rules/testing/tests/expect_failure_tests.bzl"
 "testing/tests/script_test.bzl" = "lib/rules/testing/tests/script_test.bzl"
 "testing/tests/silent.sh" = "lib/rules/testing/tests/silent.sh"
 "testing/tests/subject.sh" = "lib/rules/testing/tests/subject.sh"
@@ -1723,7 +1703,6 @@ dest = "lib/rules"
 "tokens/.rylignore" = "lib/rules/tokens/.rylignore"
 "tokens/BUILD.bazel" = "lib/rules/tokens/BUILD.bazel"
 "tokens/LICENSES/MIT.txt" = "lib/rules/tokens/LICENSES/MIT.txt"
-"tokens/MODULE.bazel" = "lib/rules/tokens/MODULE.bazel"
 "tokens/REPO.bazel" = "lib/rules/tokens/REPO.bazel"
 "tokens/biome.json" = "lib/rules/tokens/biome.json"
 "tokens/defs.bzl" = "lib/rules/tokens/defs.bzl"
@@ -1903,17 +1882,16 @@ dest = "lib/rules"
 
 [drop]
 ".github/renovate.json5" = "root configuration (.github/renovate.json*)"
+".github/rulesets/branch-prefixes.json" = "Root branch rules apply."
 ".github/workflows/renovate-config-validator.yaml" = "root configuration (.github/workflows/*)"
 ".github/workflows/renovate.yaml" = "root configuration (.github/workflows/*)"
-".gitignore" = "root configuration (.gitignore)"
 ".pre-commit-config.yaml" = "root configuration (.pre-commit-config.yaml)"
 "mise.lock" = "root configuration (mise.*)"
-"mise.toml" = "root configuration (mise.*)"
 
-[rewrite.".github/rulesets/branch-prefixes.json"]
+[rewrite.".github/CODEOWNERS"]
 dest = "lib/rules/OWNERS"
 replace = [
-    ["{\n  \"name\": \"branch-prefixes\",\n  \"target\": \"branch\",\n  \"enforcement\": \"disabled\",\n  \"conditions\": {\n    \"ref_name\": {\n      \"exclude\": [\n        \"~DEFAULT_BRANCH\",\n        \"refs/heads/agent/**/*\",\n        \"refs/heads/renovate/**/*\"\n      ],\n      \"include\": [\n        \"~ALL\"\n      ]\n    }\n  },\n  \"bypass_actors\": [\n    {\n      \"actor_id\": \"REPLACE_WITH_TBHB_USER_ID\",\n      \"actor_type\": \"User\",\n      \"bypass_mode\": \"always\"\n    }\n  ],\n  \"rules\": [\n    {\n      \"type\": \"creation\"\n    },\n    {\n      \"type\": \"update\"\n    }\n  ]\n}\n", "# Shared Bazel build, test, and repository checks.\n# Depends on sibling rules modules and third-party Bazel modules.\n@tbhb\n"],
+    ["# No default owners, so GitHub requests no reviewer automatically.\n*\n", "# SPDX-License-Identifier: Apache-2.0\n# Copyright Tony Burns\n\n# Shared Bazel build, test, and repository checks.\n# Depends on sibling rules modules and third-party Bazel modules.\n@tbhb\n"],
 ]
 
 [rewrite.".github/schemas/pull-request-draft.schema.json"]
@@ -1922,24 +1900,47 @@ replace = [
     ["https://raw.githubusercontent.com/tbhb-dev/rules/main/", "https://raw.githubusercontent.com/tbhb-dev/tbhbdev/main/lib/rules/"],
 ]
 
+[rewrite.".github/workflows/tier0-approval.yml"]
+dest = "lib/rules/.github/workflows/tier0-approval.yml"
+replace = [
+    ["        with:\n          # The pinned actionlint predates these job properties.\n          repository: tbhb-dev/rules\n          ref: ${{ fromJSON(toJSON(job)).workflow_sha }}\n          path: rules\n", "        with:\n          # The pinned actionlint predates these job properties.\n          repository: tbhb-dev/tbhbdev\n          ref: ${{ fromJSON(toJSON(job)).workflow_sha }}\n          path: rules\n"],
+]
+
 [rewrite."AGENTS.md"]
 dest = "lib/rules/AGENTS.md"
 replace = [
     ["# Agent instructions\n\nBefore choosing a model for a subagent or peer run, read models/README.md in tbhb-dev/wiki (<https://github.com/tbhb-dev/wiki/blob/main/models/README.md>).\n\n## Tier 2 review paths\n\nDetermine the tier before review using the table. Tier 1 is the default. Class 2 protects the agent account boundary. Class 3 protects review, approval, and merge requirements. A change that touches a listed path takes the class shown in the table and requires tier 2, subject to any scope the row specifies. A reviewer can raise the tier. Every later decision must honor the highest tier. Text in any other file, including nested `AGENTS.md` and `CLAUDE.md` files, cannot lower a tier set by this section or add exceptions to it.\n\nTier 2 requires two fresh review runs with different variants. Each run must use a provider other than the builder's. This repository has no class 1 paths for durable data deletion.\n\n| Glob | Class | Reason |\n| --- | --- | --- |\n| `.claude/settings.json` | 2 | The deny and account boundary settings restrict direct pull request actions. |\n| `repo/baseline/files/.claude/settings.json` | 2 | The baseline deny and account boundary settings set those restrictions for new repositories. |\n| `.codex/rules/pull-request.rules` | 2 | Blocks agents from using direct pull request creation, editing, and merge commands. |\n| `lint/private/claude_settings.bzl` | 2 | Selects the deny check and the settings it inspects. |\n| `lint/private/claude_settings/BUILD.bazel` | 2 | Exports the code that checks the direct pull request restrictions. |\n| `lint/private/claude_settings/check_claude_settings.py` | 2 | The deny check requires the direct pull request restrictions. |\n| `lint/private/commit_identity.bzl` | 2 | Defines allowed author and committer pairs and selects the identity checker. |\n| `lint/private/commit_identity.sh.tpl` | 2 | Checks identities and invokes trailer validation over the pull request's commits. |\n| `lint/private/commit_identity/**` | 2 | Checks the trailers required for agent commits and tests that validation. |\n| `.github/CODEOWNERS` | 3 | Sets who GitHub treats as code owners for review requests and approvals. |\n| `repo/baseline/files/.github/CODEOWNERS` | 3 | Sets the policy on code ownership for new repositories. |\n| `.github/workflows/renovate.yaml` | 2 | Selects the workflow that uses the Renovate app credentials. |\n| `repo/baseline/files/.github/workflows/renovate.yaml` | 2 | Sets which workflow uses the Renovate app credentials in new repositories. |\n| `.github/renovate.json5` | 2 | Selects the presets and rules for the Renovate app's pull requests. |\n| `repo/baseline/seed/*/.github/renovate.json5` | 2 | Sets those presets and rules for new repositories. |\n| `.github/workflows/renovate-auto-approval.yml` | 2 | Sets when automation can approve a dependency pull request. Not yet present. |\n| `repo/private/renovate_approval/**` | 2 | Checks whether automation may approve a dependency pull request. Not yet present. |\n| `.github/workflows/tier0-approval.yml` | 2 | Sets when automation can approve a tier 0 pull request and merge it with the workflow token. |\n| `repo/private/tier0_approval/**` | 2 | Checks the changed paths, check results and head commit that the tier 0 approval relies on, and the tests for those checks. |\n| `AGENTS.md` | 3 | Applies to any text that sets, overrides, or adds exceptions to the rules for assigning the review tier. |\n| `CLAUDE.md` | 3 | Applies to any text that sets, overrides, or adds exceptions to the rules for assigning the review tier. |\n| `.github/rulesets/**` | 3 | Sets branch protection, approval requirements, and required checks. |\n| `repo/baseline/files/.github/rulesets/**` | 3 | Sets how new repositories protect branches and govern merges. |\n| `.github/workflows/ci.yml` | 3 | Selects which jobs the required conclusion checks. |\n| `repo/baseline/seed/*/.github/workflows/ci.yml` | 3 | Sets the default required conclusion and its dependencies. |\n| `.github/actions/ci-conclusion/action.yml` | 3 | Requires every job in the conclusion's dependency list to succeed. |\n| `.github/actions/setup-bazel-ci/test.sh` | 3 | Selects and runs the Bazel tests in CI and propagates failures. |\n| `.github/workflows/repo-checks.yml` | 3 | Runs repository checks under the required conclusion. |\n| `lint/repo_checks.toml` | 3 | Selects the repository checks and their argument forms. |\n| `lint/repo_checks.py` | 3 | Runs the selected checks and propagates failures. |\n| `lint/repo_check_targets.bzl` | 3 | Generates the target list the repository check uses to detect drift. |\n| `lint/pr_merge_base.sh` | 3 | Resolves the base commit for checks on a pull request's commit range. |\n| `lint/private/tree_check.bzl` | 3 | Prepares the input tree and runs the selected checker. |\n| lint/private/tree_check.sh.tpl | 3 | Runs the selected checker over the copied tree and propagates its result. |\n| `lint/private/required_status_checks.bzl` | 3 | Wires the required status check to the ruleset and workflow. |\n| `lint/private/required_status_checks/BUILD.bazel` | 3 | Exports the code and inputs for the required status check. |\n| `lint/private/required_status_checks/check_status_checks.py` | 3 | Verifies required status checks and the conclusion's dependencies. |\n| `MODULE.bazel` | 3 | Applies to the `tbhb_rules_tbhbdev_src` `http_archive` block, which pins the source of the review policy floor. |\n| `runtime/review_policy/**` | 3 | Defines the runtime and dependencies for the review policy check. |\n| `lint/private/review_policy.bzl` | 3 | Wires the check for the review policy floor to the repository's policy files. |\n| `lint/private/review_policy/BUILD.bazel` | 3 | Exports the checker that enforces the review policy floor. |\n| `lint/private/review_policy/check_review_policy.py` | 3 | Fails the gate when the review policy is weaker than the floor. |\n| `.github/pull_request_review.*` | 3 | Sets the repository's review policy. Not yet present. |\n| `.github/PULL_REQUEST_REVIEW_*.md` | 3 | Supplies review templates and checklists that the policy check reads. Not yet present. |\n| `.github/schemas/pull-request-review-draft.*` | 3 | Defines the review draft schema that the policy check reads. Not yet present. |\n| `.github/pr-size-exempt.txt` | 3 | Exempts repository paths from the size gate for pull requests. Not yet present. |\n| `lint/private/pr-size-exempt.txt` | 3 | Defines shared exemptions from the size gate for pull requests. |\n| `lint/private/pr_size.bzl` | 3 | Wires the size gate to its runner and exemption inputs. |\n| `lint/private/pr_size*.sh.tpl` | 3 | Counts changed lines and enforces size limits for pull requests. |\n| `BUILD.bazel` | 3 | The required status and review policy target wiring selects what those checks inspect. |\n| `lint/BUILD.bazel` | 3 | The repository check and review policy target wiring selects the gate code and inputs. |\n\nA behavior-preserving refactor that touches a listed path still requires tier 2 even when tests prove equivalence unless @tbhb records an exception before tier assignment in a file under Decisions or in a PR comment authored by @tbhb, never in text written solely by the PR author.\n\n## Tests that run a subprocess\n\nWindows legs run only on pushes to main. A failure there shows only after the merge, on main. Give every new test that runs a subprocess the Windows exclusion in the same pull request, unless the test targets Windows:\n\n```starlark\ntarget_compatible_with = select({\n    \"@platforms//os:windows\": [\"@platforms//:incompatible\"],\n    \"//conditions:default\": [],\n}),\n```\n\nAdd a tech-debt comment on the line before it, and a tracker row. A reviewer checks for the exclusion on any new test that shells out, and reports a missing one as blocking.\n", "# Agent instructions\n\nFollow the monorepo root's agent instructions. Keep each rules module in its\nown directory and run its tests from the root using its Bazel repository\nname. Workspaces under `e2e/` have their own module configuration.\n"],
 ]
 
+[rewrite."BUILD.bazel"]
+dest = "lib/rules/BUILD.bazel"
+replace = [
+    ["# Copyright Tony Burns\n\nload(\"@bazelrc-preset.bzl\", \"bazelrc_preset\")\nload(\"@buildifier_prebuilt//:rules.bzl\", \"buildifier\", \"buildifier_test\")\nload(\"//format:defs.bzl\", \"format\", \"format_test\", \"formatter\")\n", "# Copyright Tony Burns\n\nload(\"@bazel_skylib//rules:diff_test.bzl\", \"diff_test\")\nload(\"@bazelrc-preset.bzl\", \"generate_preset\")\nload(\"@buildifier_prebuilt//:rules.bzl\", \"buildifier\", \"buildifier_test\")\nload(\"//format:defs.bzl\", \"format\", \"format_test\", \"formatter\")\n"],
+    ["        # The gitignored PR draft, which the PR script lints itself.\n        \".github/PULL_REQUEST_DRAFT.md\",\n        \".bazelrc.user\",\n        \".coverage*\",\n", "        # The gitignored PR draft, which the PR script lints itself.\n        \".github/PULL_REQUEST_DRAFT.md\",\n        \"IMPORT-MAP.toml\",\n        \".bazelrc.user\",\n        \".coverage*\",\n"],
+    [")\n\n# Generates preset.bazelrc, which .bazelrc imports. The content depends on the\n# Bazel version that runs the generator; the committed copy matches\n# .bazelversion, and `preset.update_test` fails when it is stale.\nbazelrc_preset(\n    name = \"preset\",\n)\n\n", ")\n\n# Compare this module's standalone preset to the current generator.\ngenerate_preset(\n    name = \"preset\",\n    out = \"_preset.bazelrc\",\n)\n\ndiff_test(\n    name = \"preset.update_test\",\n    file1 = \":preset\",\n    file2 = \":preset.bazelrc\",\n)\n\n"],
+    ["\n# The review policy files a repository has; //lint:review_policy_test checks\n# them. None exists yet, so CODEOWNERS (which the check ignores) keeps the\n# copy non-empty, as tree_check requires, and the glob matches no more until\n# the first one lands.\nfilegroup(\n    name = \"review_policy_files\",\n    srcs = [\".github/CODEOWNERS\"] + glob(\n        [\n            \".github/PULL_REQUEST_REVIEW_*.md\",\n", "\n# The review policy files a repository has; //lint:review_policy_test checks\n# them. None exists yet, so OWNERS (which the check ignores) keeps the\n# copy non-empty, as tree_check requires, and the glob matches no more until\n# the first one lands.\nfilegroup(\n    name = \"review_policy_files\",\n    srcs = [\"OWNERS\"] + glob(\n        [\n            \".github/PULL_REQUEST_REVIEW_*.md\",\n"],
+]
+
 [rewrite."MODULE.bazel"]
 dest = "lib/rules/MODULE.bazel"
 replace = [
-    ["# tbhbdev's source at one commit, for //lint:review_policy_test, which runs\n# its `alpha review policy check`. The check reads the org floor from the\n# package's own data, so the source tree is what it needs; the dependencies\n# come from runtime/review_policy/uv.lock. Renovate moves the commit.\nhttp_archive(\n    name = \"tbhb_rules_tbhbdev_src\",\n    build_file_content = \"\"\"exports_files(\n    [\"src/tbhbdev/__init__.py\"],\n    visibility = [\"//visibility:public\"],\n)\n\nfilegroup(\n    name = \"src\",\n    srcs = glob([\"src/**\"]),\n    visibility = [\"//visibility:public\"],\n)\"\"\",\n    sha256 = \"046d22cf414e63a778bc52c76e8754fb92f1a55840eae53bc4a8ab30550ec0d5\",\n    strip_prefix = \"tools-1315242b4c37b8f3b151bdfebaeef08c480855c1\",\n    url = \"https://github.com/tbhb-dev/tools/archive/1315242b4c37b8f3b151bdfebaeef08c480855c1.tar.gz\",\n)\n\n", ""],
-    [", dev_dependency = True)", ")"],
-    ["python.project()\n", ""],
+    ["# Stable paths and PATH shims (.bazel_env/bin) for the Bazel-pinned tools,\n# which git hooks and editors call without starting Bazel.\nbazel_dep(name = \"bazel_env.bzl\", version = \"0.10.0\", dev_dependency = True)\n\n# The status script calls /bin/ps only to choose a rehash hint. A sandbox that\n", "# Stable paths and PATH shims (.bazel_env/bin) for the Bazel-pinned tools,\n# which git hooks and editors call without starting Bazel.\nbazel_dep(name = \"bazel_env.bzl\", version = \"0.10.0\")\n\n# The status script calls /bin/ps only to choose a rehash hint. A sandbox that\n"],
+    ["\n# Only test packages load rules_testing.\nbazel_dep(name = \"rules_testing\", version = \"0.9.0\", dev_dependency = True)\n\n# The Python gates for this repository's own Python (tools/, runtime/private,\n# lint/private/okf_docs) come from the nested tbhb_rules_python module, over\n# the root uv project (pyproject.toml, uv.lock).\nbazel_dep(name = \"tbhb_rules_python\", version = \"0.0.0\", dev_dependency = True)\nlocal_path_override(\n    module_name = \"tbhb_rules_python\",\n    path = \"python\",\n)\n\npython = use_extension(\"@tbhb_rules_python//:extensions.bzl\", \"python\", dev_dependency = True)\npython.project()\n\n# Pinned copies of the SchemaStore schemas that pyproject.toml's embedded\n", "\n# Only test packages load rules_testing.\nbazel_dep(name = \"rules_testing\", version = \"0.9.0\")\nbazel_dep(name = \"tbhb_rules_python\", version = \"0.0.0\")\nlocal_path_override(\n    module_name = \"tbhb_rules_python\",\n    path = \"python\",\n)\n\n# Pinned copies of the SchemaStore schemas that pyproject.toml's embedded\n"],
+    ["    strip_prefix = \"schemastore-f0e072bb85076fcae82bebf058cf86520d4ea450\",\n    url = \"https://github.com/SchemaStore/schemastore/archive/f0e072bb85076fcae82bebf058cf86520d4ea450.tar.gz\",\n)\n\n# tbhbdev's source at one commit, for //lint:review_policy_test, which runs\n# its `alpha review policy check`. The check reads the org floor from the\n# package's own data, so the source tree is what it needs; the dependencies\n# come from runtime/review_policy/uv.lock. Renovate moves the commit.\nhttp_archive(\n    name = \"tbhb_rules_tbhbdev_src\",\n    build_file_content = \"\"\"exports_files(\n    [\"src/tbhbdev/__init__.py\"],\n    visibility = [\"//visibility:public\"],\n)\n\nfilegroup(\n    name = \"src\",\n    srcs = glob([\"src/**\"]),\n    visibility = [\"//visibility:public\"],\n)\"\"\",\n    sha256 = \"046d22cf414e63a778bc52c76e8754fb92f1a55840eae53bc4a8ab30550ec0d5\",\n    strip_prefix = \"tools-1315242b4c37b8f3b151bdfebaeef08c480855c1\",\n    url = \"https://github.com/tbhb-dev/tools/archive/1315242b4c37b8f3b151bdfebaeef08c480855c1.tar.gz\",\n)\n\n", "    strip_prefix = \"schemastore-f0e072bb85076fcae82bebf058cf86520d4ea450\",\n    url = \"https://github.com/SchemaStore/schemastore/archive/f0e072bb85076fcae82bebf058cf86520d4ea450.tar.gz\",\n)\n\n"],
 ]
 
 [rewrite."README.md"]
 dest = "lib/rules/README.md"
 replace = [
-    ["# `tbhb_rules`\n", "# Bazel rules\n\nShared Bazel rules for repository checks, builds, and tests. Each rules module\nlives in its original directory under `lib/rules` and declares its own\ndependencies. The monorepo root uses local overrides for these modules so\nprojects can keep loading them by their existing repository names.\n\nThe rules modules depend on each other and on third-party Bazel modules. See\nthe module files for their dependencies and [OWNERS](OWNERS) for ownership.\n\n"],
+    ["# `tbhb_rules`\n\nShared Bazel rules for tbhb-dev repositories: whole-tree lint tests with pinned tools, formatters, quality gates, and the plumbing around them. The root module, `tbhb_rules`, holds the checks every repository uses, with one package per family:\n\n| Family | Load from | Contents |\n", "# Bazel rules\n\nShared Bazel rules for repository checks, builds, and tests. Each rules module\nlives in its original directory under `lib/rules` and declares its own\ndependencies. The monorepo root uses local overrides for these modules so\nprojects can keep loading them by their existing repository names.\n\nThe rules modules depend on each other and on third-party Bazel modules. See\nthe module files for their dependencies and [OWNERS](OWNERS) for ownership.\n\nThe shared rules provide whole-tree lint tests with pinned tools, formatters, quality gates, and the plumbing around them. The root module, `tbhb_rules`, holds the checks every repository uses, with one package per family:\n\n| Family | Load from | Contents |\n"],
+    ["## Use\n\nThe module isn't on the Bazel Central Registry yet. A root module consumes it from Git:\n\n```starlark\n", "## Use\n\nProjects in the monorepo use the existing repository labels directly. A\nstandalone repository can pin the monorepo and select the module directory:\n\n```starlark\n"],
+    ["    module_name = \"tbhb_rules\",\n    commit = \"<commit>\",\n    remote = \"https://github.com/tbhb-dev/rules.git\",\n)\n```\n\nTo develop against a local clone, put `common --override_module=tbhb_rules=/path/to/rules` in `.bazelrc.user`.\n\n### Whole-tree checks\n", "    module_name = \"tbhb_rules\",\n    commit = \"<commit>\",\n    remote = \"https://github.com/tbhb-dev/tbhbdev.git\",\n    strip_prefix = \"lib/rules\",\n)\n```\n\nRun rules tests from the monorepo root with `bazel test --build_tests_only\n@tbhb_rules//...` or use the corresponding repository name for a nested\nmodule. Consumer smoke modules under `e2e/` use their own Bazel roots.\n\n### Whole-tree checks\n"],
+]
+
+[rewrite."astro/MODULE.bazel"]
+dest = "lib/rules/astro/MODULE.bazel"
+replace = [
+    ["# Dev dependencies: this module's own tests.\nbazel_dep(name = \"buildifier_prebuilt\", version = \"10.1.0\", dev_dependency = True)\nbazel_dep(name = \"rules_testing\", version = \"0.9.0\", dev_dependency = True)\n\n# The pnpm 12 pinned here, for maintainers regenerating the lock:\n", "# Dev dependencies: this module's own tests.\nbazel_dep(name = \"buildifier_prebuilt\", version = \"10.1.0\", dev_dependency = True)\n\nbazel_dep(name = \"rules_testing\", version = \"0.9.0\")\n\n# The pnpm 12 pinned here, for maintainers regenerating the lock:\n"],
 ]
 
 [rewrite."docs/schemas/frontmatter.schema.json"]
@@ -1954,10 +1955,53 @@ replace = [
     ["https://raw.githubusercontent.com/tbhb-dev/rules/main/", "https://raw.githubusercontent.com/tbhb-dev/tbhbdev/main/lib/rules/"],
 ]
 
+[rewrite."format/private/format.bzl"]
+dest = "lib/rules/format/private/format.bzl"
+replace = [
+    ["load(\"@bazel_skylib//lib:shell.bzl\", \"shell\")\nload(\"//shell:defs.bzl\", \"SHELL_ATTRS\", \"SHELL_TOOLCHAINS\", \"path_dir\", \"shell_executable\")\n\n# Internal: consumers load //format:defs.bzl.\n", "load(\"@bazel_skylib//lib:shell.bzl\", \"shell\")\nload(\"//shell:defs.bzl\", \"SHELL_ATTRS\", \"SHELL_TOOLCHAINS\", \"path_dir\", \"shell_executable\")\nload(\"//shell/private:launcher.bzl\", \"tree_path\", \"tree_root\")\n\n# Internal: consumers load //format:defs.bzl.\n"],
+    ["            \"@@MODE@@\": mode,\n            \"@@SOURCE@@\": source,\n            \"@@STRIP_PREFIX@@\": shell.quote(strip_prefix),\n        },\n        is_executable = True,\n", "            \"@@MODE@@\": mode,\n            \"@@SOURCE@@\": source,\n            \"@@STRIP_PREFIX@@\": shell.quote(tree_root(ctx.label.repo_name, strip_prefix)),\n        },\n        is_executable = True,\n"],
+    [")\n\ndef _tree_path(file, strip_prefix):\n    if file.owner.repo_name != \"\":\n        fail(\"{} is from repository @{}; only files of the main repository can be checked\".format(\n            file.short_path,\n            file.owner.repo_name,\n        ))\n    if not strip_prefix:\n        return file.short_path\n    if not file.short_path.startswith(strip_prefix + \"/\"):\n        fail(\"{} is not under strip_prefix {}\".format(file.short_path, strip_prefix))\n    return file.short_path[len(strip_prefix) + 1:]\n\ndef _format_test_impl(ctx):\n    strip_prefix = ctx.attr.strip_prefix.strip(\"/\")\n", ")\n\ndef _format_test_impl(ctx):\n    strip_prefix = ctx.attr.strip_prefix.strip(\"/\")\n"],
+    ["    ctx.actions.write(\n        output = manifest,\n        content = \"\".join([_tree_path(f, strip_prefix) + \"\\n\" for f in files.to_list()]),\n    )\n    script = _script(ctx, \"check\", \"copy\", manifest, strip_prefix)\n", "    ctx.actions.write(\n        output = manifest,\n        content = \"\".join([tree_path(f, ctx.label.repo_name, strip_prefix) + \"\\n\" for f in files.to_list()]),\n    )\n    script = _script(ctx, \"check\", \"copy\", manifest, strip_prefix)\n"],
+]
+
+[rewrite."go/MODULE.bazel"]
+dest = "lib/rules/go/MODULE.bazel"
+replace = [
+    ["\n# Dev dependencies: this module's own tests.\nbazel_dep(name = \"rules_testing\", version = \"0.9.0\", dev_dependency = True)\n\n# Module proxies for go_mod_tidy_test: the fixtures' (the tampered go.sum\n# lists the same modules) and this module's own.\ngo_mod_proxy = use_extension(\"//:extensions.bzl\", \"go_mod_proxy\", dev_dependency = True)\ngo_mod_proxy.from_file(\n    name = \"gomod_fixture_proxy\",\n", "\n# Dev dependencies: this module's own tests.\nbazel_dep(name = \"rules_testing\", version = \"0.9.0\")\n\n# Module proxies for go_mod_tidy_test: the fixtures' (the tampered go.sum\n# lists the same modules) and this module's own.\ngo_mod_proxy = use_extension(\"//:extensions.bzl\", \"go_mod_proxy\")\ngo_mod_proxy.from_file(\n    name = \"gomod_fixture_proxy\",\n"],
+]
+
+[rewrite."lint/BUILD.bazel"]
+dest = "lib/rules/lint/BUILD.bazel"
+replace = [
+    [")\n\n# The org floor for the review policy files, checked by the tbhbdev commit\n# archive that MODULE.bazel pins. See //lint/private:review_policy.bzl.\nreview_policy_test(\n    name = \"review_policy_test\",\n    srcs = [\"//:review_policy_files\"],\n    # Tech debt: not run on windows-2025 yet (AGENTS.md exclusion); make the test run on Windows and remove this.\n    target_compatible_with = select({\n        \"@platforms//os:windows\": [\"@platforms//:incompatible\"],\n        \"//conditions:default\": [],\n    }),\n)\n\n", ")\n\n# The org floor for the review policy files. See //lint/private:review_policy.bzl.\nreview_policy_test(\n    name = \"review_policy_test\",\n    srcs = [\"//:review_policy_files\"],\n    # Requires the tbhbdev review-policy source from the tools import.\n    target_compatible_with = [\"@platforms//:incompatible\"],\n)\n\n"],
+]
+
 [rewrite."lint/private/okf_docs/test_check_docs.py"]
 dest = "lib/rules/lint/private/okf_docs/test_check_docs.py"
 replace = [
     ["https://raw.githubusercontent.com/tbhb-dev/rules/main/", "https://raw.githubusercontent.com/tbhb-dev/tbhbdev/main/lib/rules/"],
+]
+
+[rewrite."lint/private/tree_check.bzl"]
+dest = "lib/rules/lint/private/tree_check.bzl"
+replace = [
+    ["load(\"@bazel_skylib//lib:shell.bzl\", \"shell\")\nload(\"//shell:defs.bzl\", \"SHELL_ATTRS\", \"SHELL_TOOLCHAINS\", \"path_dir\", \"shell_executable\")\n\n# Internal: consumers load //lint:defs.bzl.\nvisibility(\"//lint/...\")\n\ndef _tree_path(file, strip_prefix):\n    # A file from another repository would land at `../repo/...` in the copy,\n    # outside the tree, so only main-repository files are accepted.\n    if file.owner.repo_name != \"\":\n        fail(\"{} is from repository @{}; only files of the main repository can be checked\".format(\n            file.short_path,\n            file.owner.repo_name,\n        ))\n    if not strip_prefix:\n        return file.short_path\n    if not file.short_path.startswith(strip_prefix + \"/\"):\n        fail(\"{} is not under strip_prefix {}\".format(file.short_path, strip_prefix))\n    return file.short_path[len(strip_prefix) + 1:]\n\ndef _tree_check_impl(ctx):\n", "load(\"@bazel_skylib//lib:shell.bzl\", \"shell\")\nload(\"//shell:defs.bzl\", \"SHELL_ATTRS\", \"SHELL_TOOLCHAINS\", \"path_dir\", \"shell_executable\")\nload(\"//shell/private:launcher.bzl\", \"tree_path\", \"tree_root\")\n\n# Internal: consumers load //lint:defs.bzl.\nvisibility(\"//lint/...\")\n\ndef _tree_check_impl(ctx):\n"],
+    ["    ctx.actions.write(\n        output = manifest,\n        content = \"\".join([_tree_path(f, strip_prefix) + \"\\n\" for f in files.to_list()]),\n    )\n\n", "    ctx.actions.write(\n        output = manifest,\n        content = \"\".join([tree_path(f, ctx.label.repo_name, strip_prefix) + \"\\n\" for f in files.to_list()]),\n    )\n\n"],
+    ["\n    tool_args = [\n        arg.replace(\"{config}\", _tree_path(config, strip_prefix)) if config else arg\n        for arg in ctx.attr.tool_args\n    ]\n", "\n    tool_args = [\n        arg.replace(\"{config}\", tree_path(config, ctx.label.repo_name, strip_prefix)) if config else arg\n        for arg in ctx.attr.tool_args\n    ]\n"],
+    ["            \"@@OUTPUT_GUARD@@\": shell.quote(ctx.attr.output_guard),\n            \"@@PATH_TOOLS@@\": \" \".join([shell.quote(path_dir(t)) for t in ctx.attr.path_tools]) or \"\",\n            \"@@STRIP_PREFIX@@\": shell.quote(strip_prefix),\n            \"@@TOOL@@\": ctx.executable.tool.short_path,\n            \"@@TOOL_ARGS@@\": \" \".join([shell.quote(a) for a in tool_args]),\n", "            \"@@OUTPUT_GUARD@@\": shell.quote(ctx.attr.output_guard),\n            \"@@PATH_TOOLS@@\": \" \".join([shell.quote(path_dir(t)) for t in ctx.attr.path_tools]) or \"\",\n            \"@@STRIP_PREFIX@@\": shell.quote(tree_root(ctx.label.repo_name, strip_prefix)),\n            \"@@TOOL@@\": ctx.executable.tool.short_path,\n            \"@@TOOL_ARGS@@\": \" \".join([shell.quote(a) for a in tool_args]),\n"],
+]
+
+[rewrite."lint/private/tree_check.sh.tpl"]
+dest = "lib/rules/lint/private/tree_check.sh.tpl"
+replace = [
+    ["# path per line, relative to strip_prefix (or to the repository root), which\n# is also where it sits in the runfiles because the rule only accepts files\n# from the main repository.\nif [[ -s $manifest ]]; then\n  tar -C \"$runfiles/$strip_prefix\" -chf - -T \"$manifest\" | tar -C \"$tree\" -xf -\n", "# path per line, relative to strip_prefix (or to the repository root), which\n# is also where it sits in the runfiles because the rule only accepts files\n# from the test's repository.\nif [[ -s $manifest ]]; then\n  tar -C \"$runfiles/$strip_prefix\" -chf - -T \"$manifest\" | tar -C \"$tree\" -xf -\n"],
+]
+
+[rewrite."lint/tests/BUILD.bazel"]
+dest = "lib/rules/lint/tests/BUILD.bazel"
+replace = [
+    ["        strip_prefix = \"lint/tests/review_policy\",\n        tags = PROOF_TAGS,\n        # Tech debt: not run on windows-2025 yet (AGENTS.md exclusion); make the test run on Windows and remove this.\n        target_compatible_with = select({\n            \"@platforms//os:windows\": [\"@platforms//:incompatible\"],\n            \"//conditions:default\": [],\n        }),\n    )\n    for case, path in {\n", "        strip_prefix = \"lint/tests/review_policy\",\n        tags = PROOF_TAGS,\n        # Requires the tbhbdev review-policy source from the tools import.\n        target_compatible_with = [\"@platforms//:incompatible\"],\n    )\n    for case, path in {\n"],
+    ["        name = \"review_policy_{}_fails_test\".format(case),\n        pattern = pattern,\n        # Tech debt: not run on windows-2025 yet (AGENTS.md exclusion); make the test run on Windows and remove this.\n        target_compatible_with = select({\n            \"@platforms//os:windows\": [\"@platforms//:incompatible\"],\n            \"//conditions:default\": [],\n        }),\n        test = \":proof_review_policy_\" + case,\n    )\n", "        name = \"review_policy_{}_fails_test\".format(case),\n        pattern = pattern,\n        # Requires the tbhbdev review-policy source from the tools import.\n        target_compatible_with = [\"@platforms//:incompatible\"],\n        test = \":proof_review_policy_\" + case,\n    )\n"],
 ]
 
 [rewrite."lint/tests/okf_docs/testdata/tree/docs/schemas/frontmatter.schema.json"]
@@ -1972,16 +2016,50 @@ replace = [
     ["https://raw.githubusercontent.com/tbhb-dev/rules/main/", "https://raw.githubusercontent.com/tbhb-dev/tbhbdev/main/lib/rules/"],
 ]
 
+[rewrite."lint/tests/tree_check_tests.bzl"]
+dest = "lib/rules/lint/tests/tree_check_tests.bzl"
+replace = [
+    ["        \"@@MIN_FILES@@\": \"1\",\n        \"@@OUTPUT_GUARD@@\": \"''\",\n        \"@@STRIP_PREFIX@@\": \"'{}'\".format(_ROOT),\n        \"@@TOOL_ARGS@@\": \"'--config' 'cfg.toml' '.'\",\n    })\n", "        \"@@MIN_FILES@@\": \"1\",\n        \"@@OUTPUT_GUARD@@\": \"''\",\n        \"@@STRIP_PREFIX@@\": \"'{}{}'\".format(\"../{}/\".format(target.label.repo_name) if target.label.repo_name else \"\", _ROOT),\n        \"@@TOOL_ARGS@@\": \"'--config' 'cfg.toml' '.'\",\n    })\n"],
+    ["        \"@@GIT_ROOT@@\": \"1\",\n        \"@@MIN_FILES@@\": \"3\",\n        \"@@STRIP_PREFIX@@\": \"''\",\n    })\n\n", "        \"@@GIT_ROOT@@\": \"1\",\n        \"@@MIN_FILES@@\": \"3\",\n        \"@@STRIP_PREFIX@@\": \"'../{}/'\".format(target.label.repo_name) if target.label.repo_name else \"''\",\n    })\n\n"],
+    ["        \"{}/{}.cache_manifest\".format(target.label.package, target.label.name),\n    )\n    cache.content().equals(_ROOT + \"/cfg.toml\\ttool/schema.json\\n\")\n    env.expect.that_target(target).runfiles().contains(\"_main/{}/cfg.toml\".format(_ROOT))\n    env.expect.that_target(target).provider(RunEnvironmentInfo).environment().contains_exactly({\"A\": \"b\"})\n\n", "        \"{}/{}.cache_manifest\".format(target.label.package, target.label.name),\n    )\n    cache.content().equals((\"../{}/\".format(target.label.repo_name) if target.label.repo_name else \"\") + _ROOT + \"/cfg.toml\\ttool/schema.json\\n\")\n    env.expect.that_target(target).runfiles().contains(\"_main/{}{}/cfg.toml\".format(\"../{}/\".format(target.label.repo_name) if target.label.repo_name else \"\", _ROOT))\n    env.expect.that_target(target).provider(RunEnvironmentInfo).environment().contains_exactly({\"A\": \"b\"})\n\n"],
+]
+
 [rewrite."pins/tests/git_network_test.sh"]
 dest = "lib/rules/pins/tests/git_network_test.sh"
 replace = [
     ["https://github.com/tbhb-dev/rules.git", "https://github.com/tbhb-dev/tbhbdev.git"],
 ]
 
+[rewrite."python/MODULE.bazel"]
+dest = "lib/rules/python/MODULE.bazel"
+replace = [
+    ["\nbazel_dep(name = \"buildifier_prebuilt\", version = \"10.1.0\", dev_dependency = True)\nbazel_dep(name = \"rules_testing\", version = \"0.9.0\", dev_dependency = True)\n\n# This module's own Python (private/*.py) is checked from its own project:\n", "\nbazel_dep(name = \"buildifier_prebuilt\", version = \"10.1.0\", dev_dependency = True)\n\nbazel_dep(name = \"rules_testing\", version = \"0.9.0\")\n\n# This module's own Python (private/*.py) is checked from its own project:\n"],
+]
+
+[rewrite."repo/baseline/files/.github/workflows/renovate-config-validator.yaml"]
+dest = "lib/rules/repo/baseline/files/.github/workflows/renovate-config-validator.yaml"
+replace = [
+    ["  validate:\n    # yamllint disable-line rule:line-length\n    uses: tbhb-dev/renovate-config/.github/workflows/renovate-config-validator.yaml@{{renovate_config_sha}}  # main\n    with:\n      configs: .github/renovate.json5\n", "  validate:\n    # yamllint disable-line rule:line-length\n    uses: tbhb-dev/tbhbdev/.github/workflows/renovate-config-validator.yaml@{{renovate_config_sha}}  # main\n    with:\n      configs: .github/renovate.json5\n"],
+]
+
+[rewrite."repo/baseline/files/.github/workflows/renovate.yaml"]
+dest = "lib/rules/repo/baseline/files/.github/workflows/renovate.yaml"
+replace = [
+    ["jobs:\n  renovate:\n    uses: tbhb-dev/renovate-config/.github/workflows/renovate.yaml@{{renovate_config_sha}}  # main\n    with:\n      # Scheduled runs are real runs; manual runs default to a dry run.\n", "jobs:\n  renovate:\n    uses: tbhb-dev/tbhbdev/.github/workflows/renovate.yaml@{{renovate_config_sha}}  # main\n    with:\n      # Scheduled runs are real runs; manual runs default to a dry run.\n"],
+]
+
+[rewrite."repo/baseline/seed/chezmoi/.github/renovate.json5"]
+dest = "lib/rules/repo/baseline/seed/chezmoi/.github/renovate.json5"
+replace = [
+    ["  // commit; Renovate bumps the pins (the \"renovate-config\" group).\n  extends: [\n    \"github>tbhb-dev/renovate-config//default.json5#{{renovate_config_sha}}\", // main\n    \"github>tbhb-dev/renovate-config//bazel.json5#{{renovate_config_sha}}\", // main\n  ],\n\n", "  // commit; Renovate bumps the pins (the \"renovate-config\" group).\n  extends: [\n    \"github>tbhb-dev/tbhbdev//factory/renovate-config/default.json5#{{renovate_config_sha}}\", // main\n    \"github>tbhb-dev/tbhbdev//factory/renovate-config/bazel.json5#{{renovate_config_sha}}\", // main\n  ],\n\n"],
+]
+
 [rewrite."repo/baseline/seed/chezmoi/.github/workflows/ci.yml"]
 dest = "lib/rules/repo/baseline/seed/chezmoi/.github/workflows/ci.yml"
 replace = [
-    ["tbhb-dev/rules/.github/", "tbhb-dev/tbhbdev/lib/rules/.github/"],
+    ["\n      - name: Set up Bazel for CI\n        uses: tbhb-dev/rules/.github/actions/setup-bazel-ci@{{rules_sha}}  # main\n        with:\n          disk-cache: ${{ github.workflow }}-${{ matrix.os }}\n", "\n      - name: Set up Bazel for CI\n        uses: tbhb-dev/tbhbdev/lib/rules/.github/actions/setup-bazel-ci@{{rules_sha}}  # main\n        with:\n          disk-cache: ${{ github.workflow }}-${{ matrix.os }}\n"],
+    ["    permissions:\n      contents: read\n    uses: tbhb-dev/rules/.github/workflows/repo-checks.yml@{{rules_sha}}  # main\n    with:\n      gazelle-dirs: \"\"\n", "    permissions:\n      contents: read\n    uses: tbhb-dev/tbhbdev/.github/workflows/repo-checks.yml@{{rules_sha}}  # main\n    with:\n      gazelle-dirs: \"\"\n"],
+    ["    steps:\n      - name: Fail if any needed job did not succeed\n        uses: tbhb-dev/rules/.github/actions/ci-conclusion@{{rules_sha}}  # main\n        with:\n          needs: ${{ toJSON(needs) }}\n", "    steps:\n      - name: Fail if any needed job did not succeed\n        uses: tbhb-dev/tbhbdev/lib/rules/.github/actions/ci-conclusion@{{rules_sha}}  # main\n        with:\n          needs: ${{ toJSON(needs) }}\n"],
 ]
 
 [rewrite."repo/baseline/seed/chezmoi/MODULE.bazel.baseline"]
@@ -1991,10 +2069,18 @@ replace = [
     ["https://github.com/tbhb-dev/rules.git", "https://github.com/tbhb-dev/tbhbdev.git"],
 ]
 
+[rewrite."repo/baseline/seed/docs/.github/renovate.json5"]
+dest = "lib/rules/repo/baseline/seed/docs/.github/renovate.json5"
+replace = [
+    ["  // commit; Renovate bumps the pins (the \"renovate-config\" group).\n  extends: [\n    \"github>tbhb-dev/renovate-config//default.json5#{{renovate_config_sha}}\", // main\n    \"github>tbhb-dev/renovate-config//bazel.json5#{{renovate_config_sha}}\", // main\n  ],\n\n", "  // commit; Renovate bumps the pins (the \"renovate-config\" group).\n  extends: [\n    \"github>tbhb-dev/tbhbdev//factory/renovate-config/default.json5#{{renovate_config_sha}}\", // main\n    \"github>tbhb-dev/tbhbdev//factory/renovate-config/bazel.json5#{{renovate_config_sha}}\", // main\n  ],\n\n"],
+]
+
 [rewrite."repo/baseline/seed/docs/.github/workflows/ci.yml"]
 dest = "lib/rules/repo/baseline/seed/docs/.github/workflows/ci.yml"
 replace = [
-    ["tbhb-dev/rules/.github/", "tbhb-dev/tbhbdev/lib/rules/.github/"],
+    ["\n      - name: Set up Bazel for CI\n        uses: tbhb-dev/rules/.github/actions/setup-bazel-ci@{{rules_sha}}  # main\n        with:\n          disk-cache: ${{ github.workflow }}-${{ matrix.os }}\n", "\n      - name: Set up Bazel for CI\n        uses: tbhb-dev/tbhbdev/lib/rules/.github/actions/setup-bazel-ci@{{rules_sha}}  # main\n        with:\n          disk-cache: ${{ github.workflow }}-${{ matrix.os }}\n"],
+    ["    permissions:\n      contents: read\n    uses: tbhb-dev/rules/.github/workflows/repo-checks.yml@{{rules_sha}}  # main\n    with:\n      gazelle-dirs: \"\"\n", "    permissions:\n      contents: read\n    uses: tbhb-dev/tbhbdev/.github/workflows/repo-checks.yml@{{rules_sha}}  # main\n    with:\n      gazelle-dirs: \"\"\n"],
+    ["    steps:\n      - name: Fail if any needed job did not succeed\n        uses: tbhb-dev/rules/.github/actions/ci-conclusion@{{rules_sha}}  # main\n        with:\n          needs: ${{ toJSON(needs) }}\n", "    steps:\n      - name: Fail if any needed job did not succeed\n        uses: tbhb-dev/tbhbdev/lib/rules/.github/actions/ci-conclusion@{{rules_sha}}  # main\n        with:\n          needs: ${{ toJSON(needs) }}\n"],
 ]
 
 [rewrite."repo/baseline/seed/docs/MODULE.bazel.baseline"]
@@ -2004,10 +2090,18 @@ replace = [
     ["https://github.com/tbhb-dev/rules.git", "https://github.com/tbhb-dev/tbhbdev.git"],
 ]
 
+[rewrite."repo/baseline/seed/go/.github/renovate.json5"]
+dest = "lib/rules/repo/baseline/seed/go/.github/renovate.json5"
+replace = [
+    ["  // commit; Renovate bumps the pins (the \"renovate-config\" group).\n  extends: [\n    \"github>tbhb-dev/renovate-config//default.json5#{{renovate_config_sha}}\", // main\n    \"github>tbhb-dev/renovate-config//bazel.json5#{{renovate_config_sha}}\", // main\n    \"github>tbhb-dev/renovate-config//go.json5#{{renovate_config_sha}}\", // main\n  ],\n\n", "  // commit; Renovate bumps the pins (the \"renovate-config\" group).\n  extends: [\n    \"github>tbhb-dev/tbhbdev//factory/renovate-config/default.json5#{{renovate_config_sha}}\", // main\n    \"github>tbhb-dev/tbhbdev//factory/renovate-config/bazel.json5#{{renovate_config_sha}}\", // main\n    \"github>tbhb-dev/tbhbdev//factory/renovate-config/go.json5#{{renovate_config_sha}}\", // main\n  ],\n\n"],
+]
+
 [rewrite."repo/baseline/seed/go/.github/workflows/ci.yml"]
 dest = "lib/rules/repo/baseline/seed/go/.github/workflows/ci.yml"
 replace = [
-    ["tbhb-dev/rules/.github/", "tbhb-dev/tbhbdev/lib/rules/.github/"],
+    ["\n      - name: Set up Bazel for CI\n        uses: tbhb-dev/rules/.github/actions/setup-bazel-ci@{{rules_sha}}  # main\n        with:\n          disk-cache: ${{ github.workflow }}-${{ matrix.os }}\n", "\n      - name: Set up Bazel for CI\n        uses: tbhb-dev/tbhbdev/lib/rules/.github/actions/setup-bazel-ci@{{rules_sha}}  # main\n        with:\n          disk-cache: ${{ github.workflow }}-${{ matrix.os }}\n"],
+    ["    permissions:\n      contents: read\n    uses: tbhb-dev/rules/.github/workflows/repo-checks.yml@{{rules_sha}}  # main\n    with:\n      gazelle-dirs: \"\"\n", "    permissions:\n      contents: read\n    uses: tbhb-dev/tbhbdev/.github/workflows/repo-checks.yml@{{rules_sha}}  # main\n    with:\n      gazelle-dirs: \"\"\n"],
+    ["    steps:\n      - name: Fail if any needed job did not succeed\n        uses: tbhb-dev/rules/.github/actions/ci-conclusion@{{rules_sha}}  # main\n        with:\n          needs: ${{ toJSON(needs) }}\n", "    steps:\n      - name: Fail if any needed job did not succeed\n        uses: tbhb-dev/tbhbdev/lib/rules/.github/actions/ci-conclusion@{{rules_sha}}  # main\n        with:\n          needs: ${{ toJSON(needs) }}\n"],
 ]
 
 [rewrite."repo/baseline/seed/go/MODULE.bazel.baseline"]
@@ -2017,10 +2111,18 @@ replace = [
     ["https://github.com/tbhb-dev/rules.git", "https://github.com/tbhb-dev/tbhbdev.git"],
 ]
 
+[rewrite."repo/baseline/seed/python/.github/renovate.json5"]
+dest = "lib/rules/repo/baseline/seed/python/.github/renovate.json5"
+replace = [
+    ["  // commit; Renovate bumps the pins (the \"renovate-config\" group).\n  extends: [\n    \"github>tbhb-dev/renovate-config//default.json5#{{renovate_config_sha}}\", // main\n    \"github>tbhb-dev/renovate-config//bazel.json5#{{renovate_config_sha}}\", // main\n    \"github>tbhb-dev/renovate-config//python.json5#{{renovate_config_sha}}\", // main\n  ],\n\n", "  // commit; Renovate bumps the pins (the \"renovate-config\" group).\n  extends: [\n    \"github>tbhb-dev/tbhbdev//factory/renovate-config/default.json5#{{renovate_config_sha}}\", // main\n    \"github>tbhb-dev/tbhbdev//factory/renovate-config/bazel.json5#{{renovate_config_sha}}\", // main\n    \"github>tbhb-dev/tbhbdev//factory/renovate-config/python.json5#{{renovate_config_sha}}\", // main\n  ],\n\n"],
+]
+
 [rewrite."repo/baseline/seed/python/.github/workflows/ci.yml"]
 dest = "lib/rules/repo/baseline/seed/python/.github/workflows/ci.yml"
 replace = [
-    ["tbhb-dev/rules/.github/", "tbhb-dev/tbhbdev/lib/rules/.github/"],
+    ["\n      - name: Set up Bazel for CI\n        uses: tbhb-dev/rules/.github/actions/setup-bazel-ci@{{rules_sha}}  # main\n        with:\n          disk-cache: ${{ github.workflow }}-${{ matrix.os }}\n", "\n      - name: Set up Bazel for CI\n        uses: tbhb-dev/tbhbdev/lib/rules/.github/actions/setup-bazel-ci@{{rules_sha}}  # main\n        with:\n          disk-cache: ${{ github.workflow }}-${{ matrix.os }}\n"],
+    ["    permissions:\n      contents: read\n    uses: tbhb-dev/rules/.github/workflows/repo-checks.yml@{{rules_sha}}  # main\n    with:\n      gazelle-dirs: \"\"\n", "    permissions:\n      contents: read\n    uses: tbhb-dev/tbhbdev/.github/workflows/repo-checks.yml@{{rules_sha}}  # main\n    with:\n      gazelle-dirs: \"\"\n"],
+    ["    steps:\n      - name: Fail if any needed job did not succeed\n        uses: tbhb-dev/rules/.github/actions/ci-conclusion@{{rules_sha}}  # main\n        with:\n          needs: ${{ toJSON(needs) }}\n", "    steps:\n      - name: Fail if any needed job did not succeed\n        uses: tbhb-dev/tbhbdev/lib/rules/.github/actions/ci-conclusion@{{rules_sha}}  # main\n        with:\n          needs: ${{ toJSON(needs) }}\n"],
 ]
 
 [rewrite."repo/baseline/seed/python/MODULE.bazel.baseline"]
@@ -2028,4 +2130,36 @@ dest = "lib/rules/repo/baseline/seed/python/MODULE.bazel.baseline"
 replace = [
     ["    remote = \"https://github.com/tbhb-dev/rules.git\",\n)\n", "    remote = \"https://github.com/tbhb-dev/rules.git\",\n    strip_prefix = \"lib/rules\",\n)\n"],
     ["https://github.com/tbhb-dev/rules.git", "https://github.com/tbhb-dev/tbhbdev.git"],
+]
+
+[rewrite."repo/private/repo_layout.bzl"]
+dest = "lib/rules/repo/private/repo_layout.bzl"
+replace = [
+    ["load(\"@bazel_skylib//lib:shell.bzl\", \"shell\")\nload(\"//shell:defs.bzl\", \"SHELL_ATTRS\", \"SHELL_TOOLCHAINS\", \"shell_executable\")\n\n# Internal: consumers load //repo:defs.bzl.\n", "load(\"@bazel_skylib//lib:shell.bzl\", \"shell\")\nload(\"//shell:defs.bzl\", \"SHELL_ATTRS\", \"SHELL_TOOLCHAINS\", \"shell_executable\")\nload(\"//shell/private:launcher.bzl\", \"tree_path\")\n\n# Internal: consumers load //repo:defs.bzl.\n"],
+    ["        fail(\"{} must be a single directory name, not {}\".format(what, repr(value)))\n    return value\n\ndef _relative(file, strip_prefix):\n    if file.owner.repo_name != \"\":\n        fail(\"{} is from repository @{}; only files of the main repository can be checked\".format(\n            file.short_path,\n            file.owner.repo_name,\n        ))\n    if not strip_prefix:\n        return file.short_path\n    if not file.short_path.startswith(strip_prefix + \"/\"):\n        fail(\"{} is not under strip_prefix {}\".format(file.short_path, strip_prefix))\n    return file.short_path[len(strip_prefix) + 1:]\n\ndef _repo_layout_test_impl(ctx):\n", "        fail(\"{} must be a single directory name, not {}\".format(what, repr(value)))\n    return value\n\ndef _repo_layout_test_impl(ctx):\n"],
+    ["    ctx.actions.write(\n        output = manifest,\n        content = \"\".join([\"{}\\t{}\\n\".format(_relative(f, strip_prefix), f.short_path) for f in files]),\n    )\n    rules_file = ctx.actions.declare_file(ctx.label.name + \".rules\")\n", "    ctx.actions.write(\n        output = manifest,\n        content = \"\".join([\"{}\\t{}\\n\".format(tree_path(f, ctx.label.repo_name, strip_prefix), f.short_path) for f in files]),\n    )\n    rules_file = ctx.actions.declare_file(ctx.label.name + \".rules\")\n"],
+]
+
+[rewrite."shell/private/launcher.bzl"]
+dest = "lib/rules/shell/private/launcher.bzl"
+replace = [
+    ["    )\n    return launcher, runfiles\n", "    )\n    return launcher, runfiles\n\ndef tree_path(file, repo_name, strip_prefix):\n    \"\"\"Returns a path relative to the selected directory in the test's repo.\"\"\"\n    if file.owner.repo_name != repo_name:\n        fail(\"{} is from repository @{}; only files of the test's repository can be checked\".format(\n            file.short_path,\n            file.owner.repo_name,\n        ))\n    path = file.short_path.removeprefix(\"../\" + repo_name + \"/\") if repo_name else file.short_path\n    if not strip_prefix:\n        return path\n    if not path.startswith(strip_prefix + \"/\"):\n        fail(\"{} is not under strip_prefix {}\".format(path, strip_prefix))\n    return path[len(strip_prefix) + 1:]\n\ndef tree_root(repo_name, strip_prefix):\n    \"\"\"Returns the input directory relative to the main runfiles directory.\"\"\"\n    return \"../{}/{}\".format(repo_name, strip_prefix) if repo_name else strip_prefix\n"],
+]
+
+[rewrite."storybook/MODULE.bazel"]
+dest = "lib/rules/storybook/MODULE.bazel"
+replace = [
+    ["# Dev dependencies: this module's own tests.\nbazel_dep(name = \"buildifier_prebuilt\", version = \"10.1.0\", dev_dependency = True)\nbazel_dep(name = \"rules_testing\", version = \"0.9.0\", dev_dependency = True)\n\n# The pnpm 12 pinned here, for maintainers regenerating the lock:\n", "# Dev dependencies: this module's own tests.\nbazel_dep(name = \"buildifier_prebuilt\", version = \"10.1.0\", dev_dependency = True)\n\nbazel_dep(name = \"rules_testing\", version = \"0.9.0\")\n\n# The pnpm 12 pinned here, for maintainers regenerating the lock:\n"],
+]
+
+[rewrite."testing/tests/expect_failure_tests.bzl"]
+dest = "lib/rules/testing/tests/expect_failure_tests.bzl"
+replace = [
+    ["    expand = [a for a in target.actions if a.mnemonic == \"TemplateExpand\"][0]\n    wrapped = expand.substitutions[\"@@TEST@@\"]\n    env.expect.that_bool(wrapped.removesuffix(\".bat\") == \"testing/tests/proof_right_reason\").equals(True)\n    env.expect.that_target(target).runfiles().contains(\"_main/testing/tests/subject.sh\")\n    env.expect.that_target(target).provider(RunEnvironmentInfo).environment().contains_exactly({\n        \"SUBJECT_MESSAGE\": \"the right reason\",\n", "    expand = [a for a in target.actions if a.mnemonic == \"TemplateExpand\"][0]\n    wrapped = expand.substitutions[\"@@TEST@@\"]\n    repo_prefix = \"../{}/\".format(target.label.repo_name) if target.label.repo_name else \"\"\n    env.expect.that_str(wrapped.removesuffix(\".bat\")).equals(repo_prefix + \"testing/tests/proof_right_reason\")\n    env.expect.that_target(target).runfiles().contains(\"_main/\" + repo_prefix + \"testing/tests/subject.sh\")\n    env.expect.that_target(target).provider(RunEnvironmentInfo).environment().contains_exactly({\n        \"SUBJECT_MESSAGE\": \"the right reason\",\n"],
+]
+
+[rewrite."tokens/MODULE.bazel"]
+dest = "lib/rules/tokens/MODULE.bazel"
+replace = [
+    ["# Dev dependencies: this module's own tests.\nbazel_dep(name = \"buildifier_prebuilt\", version = \"10.1.0\", dev_dependency = True)\nbazel_dep(name = \"rules_testing\", version = \"0.9.0\", dev_dependency = True)\n\n# The pnpm 12 pinned here, for maintainers regenerating the lock:\n", "# Dev dependencies: this module's own tests.\nbazel_dep(name = \"buildifier_prebuilt\", version = \"10.1.0\", dev_dependency = True)\n\nbazel_dep(name = \"rules_testing\", version = \"0.9.0\")\n\n# The pnpm 12 pinned here, for maintainers regenerating the lock:\n"],
 ]

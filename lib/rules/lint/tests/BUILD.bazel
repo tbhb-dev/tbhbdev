@@ -829,11 +829,8 @@ genrule(
         path = path,
         strip_prefix = "lint/tests/review_policy",
         tags = PROOF_TAGS,
-        # Tech debt: not run on windows-2025 yet (AGENTS.md exclusion); make the test run on Windows and remove this.
-        target_compatible_with = select({
-            "@platforms//os:windows": ["@platforms//:incompatible"],
-            "//conditions:default": [],
-        }),
+        # Requires the tbhbdev review-policy source from the tools import.
+        target_compatible_with = ["@platforms//:incompatible"],
     )
     for case, path in {
         "finding": ".",
@@ -845,11 +842,8 @@ genrule(
     expect_failure_test(
         name = "review_policy_{}_fails_test".format(case),
         pattern = pattern,
-        # Tech debt: not run on windows-2025 yet (AGENTS.md exclusion); make the test run on Windows and remove this.
-        target_compatible_with = select({
-            "@platforms//os:windows": ["@platforms//:incompatible"],
-            "//conditions:default": [],
-        }),
+        # Requires the tbhbdev review-policy source from the tools import.
+        target_compatible_with = ["@platforms//:incompatible"],
         test = ":proof_review_policy_" + case,
     )
     for case, pattern in {

@@ -37,7 +37,7 @@ def _test_layout_impl(env, target):
         "@@GIT_ROOT@@": "",
         "@@MIN_FILES@@": "1",
         "@@OUTPUT_GUARD@@": "''",
-        "@@STRIP_PREFIX@@": "'{}'".format(_ROOT),
+        "@@STRIP_PREFIX@@": "'{}{}'".format("../{}/".format(target.label.repo_name) if target.label.repo_name else "", _ROOT),
         "@@TOOL_ARGS@@": "'--config' 'cfg.toml' '.'",
     })
 
@@ -53,7 +53,7 @@ def _test_unstripped_paths_impl(env, target):
     env.expect.that_target(target).action_named("TemplateExpand").substitutions().contains_at_least({
         "@@GIT_ROOT@@": "1",
         "@@MIN_FILES@@": "3",
-        "@@STRIP_PREFIX@@": "''",
+        "@@STRIP_PREFIX@@": "'../{}/'".format(target.label.repo_name) if target.label.repo_name else "''",
     })
 
 def _test_file_outside_prefix_fails(name):
@@ -100,8 +100,8 @@ def _test_cache_files_and_env_impl(env, target):
     cache = env.expect.that_target(target).action_generating(
         "{}/{}.cache_manifest".format(target.label.package, target.label.name),
     )
-    cache.content().equals(_ROOT + "/cfg.toml\ttool/schema.json\n")
-    env.expect.that_target(target).runfiles().contains("_main/{}/cfg.toml".format(_ROOT))
+    cache.content().equals(("../{}/".format(target.label.repo_name) if target.label.repo_name else "") + _ROOT + "/cfg.toml\ttool/schema.json\n")
+    env.expect.that_target(target).runfiles().contains("_main/{}{}/cfg.toml".format("../{}/".format(target.label.repo_name) if target.label.repo_name else "", _ROOT))
     env.expect.that_target(target).provider(RunEnvironmentInfo).environment().contains_exactly({"A": "b"})
 
 def _test_gitleaks_guard(name):

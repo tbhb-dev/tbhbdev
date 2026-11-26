@@ -76,11 +76,11 @@ go_deps.from_file(go_mod = "//:go.mod")
 use_repo(go_deps, "com_github_bazelbuild_buildtools", "com_github_gomutants_gomutants", "com_github_rillig_gobco", "org_golang_x_tools", "org_golang_x_vuln")
 
 # Dev dependencies: this module's own tests.
-bazel_dep(name = "rules_testing", version = "0.9.0", dev_dependency = True)
+bazel_dep(name = "rules_testing", version = "0.9.0")
 
 # Module proxies for go_mod_tidy_test: the fixtures' (the tampered go.sum
 # lists the same modules) and this module's own.
-go_mod_proxy = use_extension("//:extensions.bzl", "go_mod_proxy", dev_dependency = True)
+go_mod_proxy = use_extension("//:extensions.bzl", "go_mod_proxy")
 go_mod_proxy.from_file(
     name = "gomod_fixture_proxy",
     go_sum = "//tests/gomod/tidy:go.sum",

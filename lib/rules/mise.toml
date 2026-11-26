@@ -1,0 +1,84 @@
+#:schema https://mise.jdx.dev/schema/mise.json
+# SPDX-License-Identifier: Apache-2.0
+# Copyright Tony Burns
+
+# mise pins the two launchers. Bazel pins every other tool: lint tool
+# binaries come from //pins (literal http_archive pins) and run as
+# Bazel targets, and uv owns Python and the Python tooling (uv.lock).
+
+[settings]
+# Record resolved versions, URLs, and digests in mise.lock (committed), for
+# exactly the platforms mise runs on: linux-x64, linux-arm64, macos-arm64.
+# CI never runs mise; Bazel provides every gate's tools. Refresh with:
+#   mise lock --platform linux-x64,linux-arm64,macos-arm64
+# `mise lock --platform` only adds platforms. To drop one, delete mise.lock
+# first.
+lockfile = true
+# Never write mise.lock as a side effect. `mise install` and `mise upgrade`
+# read the lock and fail on a pin, or a platform, it doesn't cover.
+# `mise lock` (above, or Renovate's `mise lock <tool>` after a pin bump) is
+# the only writer.
+locked = true
+
+# uv owns the Python interpreters. Without this, mise reads .python-version
+# too and installs its own python, which uv then finds on PATH: the same
+# interpreter with two owners.
+idiomatic_version_file_enable_tools = []
+
+[env]
+# uv provisions the interpreter rather than settling for a system build it
+# happened to find, which would differ by machine unnoticed.
+UV_PYTHON_PREFERENCE = "only-managed"
+# The Bazel-pinned tools (`bazel run //tools:bazel_env` builds the shims), so
+# a shell or task under mise runs the same versions the gates do.
+_.path = ["tools/.bazel_env/bin"]
+
+[tools]
+bazelisk = "1.30.0"
+uv = "0.13.9"
+
+[tasks.env]
+description = "Build the bazel_env shims for the Bazel-pinned tools"
+run = "bazelisk run //tools:bazel_env"
+
+# Check a PR draft and open or update the PR from it (tbhbdev alpha):
+#   mise run pr -- check | create [--dry-run] | edit --pr N
+[tasks.pr]
+description = "Check a PR draft and open or update the PR from it (tbhbdev alpha)"
+run = "tbhbdev alpha pr"
+
+# Usage: mise run merge -- PR [--dry-run].
+[tasks.merge]
+description = "Merge an approved PR with a merge commit titled from the PR (tbhbdev alpha)"
+run = "tbhbdev alpha merge"
+
+# The Bazel suites CI runs, in the same order, for one local or peer run
+# (runbook's peer-test.sh runs this task by default).
+[tasks.test]
+run = [
+  "bazelisk test //...",
+  "cd e2e/smoke && bazelisk test //...",
+  "cd diagrams/d2 && bazelisk test //...",
+  "cd diagrams/structurizr && bazelisk test //...",
+  "cd diagrams/d2/e2e/smoke && bazelisk test //...",
+  "cd go && bazelisk test //...",
+  "cd go/e2e/smoke && bazelisk test //...",
+  "cd python && bazelisk test //...",
+  "cd python/e2e/single && bazelisk test //...",
+  "cd python/e2e/workspace && bazelisk test //...",
+  "cd ansible && bazelisk test //...",
+  "cd ansible/e2e && bazelisk test //...",
+  "cd typescript && bazelisk test //...",
+  "cd typescript/e2e/smoke && bazelisk test //...",
+  "cd typescript/e2e/bare && bazelisk test //...",
+  "cd cloudflare && bazelisk test //...",
+  "cd cloudflare/e2e/smoke && bazelisk test //...",
+  "cd playwright && bazelisk test //...",
+  "cd playwright/e2e/smoke && bazelisk test //...",
+  "cd astro && bazelisk test //...",
+  "cd astro/e2e/smoke && bazelisk test //...",
+  "cd storybook && bazelisk test //...",
+  "cd storybook/e2e/smoke && bazelisk test //...",
+  "cd tokens && bazelisk test //...",
+  "cd tokens/e2e/smoke && bazelisk test //...",
+]

@@ -1,3 +1,6 @@
+# SPDX-License-Identifier: Apache-2.0
+# Copyright Tony Burns
+
 # Shared Bazel build, test, and repository checks.
 # Depends on sibling rules modules and third-party Bazel modules.
 @tbhb

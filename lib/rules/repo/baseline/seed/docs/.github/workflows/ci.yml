@@ -74,7 +74,7 @@ jobs:
     name: repo
     permissions:
       contents: read
-    uses: tbhb-dev/tbhbdev/lib/rules/.github/workflows/repo-checks.yml@{{rules_sha}}  # main
+    uses: tbhb-dev/tbhbdev/.github/workflows/repo-checks.yml@{{rules_sha}}  # main
     with:
       gazelle-dirs: ""
       pip-audit-target: ""

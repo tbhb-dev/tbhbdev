@@ -88,6 +88,23 @@ jobs:
           TARGETS: ${{ steps.affected.outputs.file }}
         run: bazel test --config=ci --target_pattern_file="$TARGETS"
 
+      - name: Test shared rules
+        run: >-
+          bazel test --config=ci --build_tests_only
+          @tbhb_rules//...
+          @tbhb_rules_ansible//...
+          @tbhb_rules_astro//...
+          @tbhb_rules_cloudflare//...
+          @tbhb_rules_d2//...
+          @tbhb_rules_go//...
+          @tbhb_rules_playwright//...
+          @tbhb_rules_python//...
+          @tbhb_rules_storybook//...
+          @tbhb_rules_structurizr//...
+          @tbhb_rules_swift//...
+          @tbhb_rules_tokens//...
+          @tbhb_rules_typescript//...
+
   gazelle-current:
     name: gazelle-current
     runs-on: ubuntu-24.04
@@ -118,12 +135,7 @@ jobs:
           git diff --exit-code -- MODULE.bazel MODULE.bazel.lock
 
       - name: Lint GitHub Actions workflows
-        run: |
-          archive="$RUNNER_TEMP/actionlint.tar.gz"
-          curl -fsSL --retry 3 -o "$archive" https://github.com/rhysd/actionlint/releases/download/v1.7.12/actionlint_1.7.12_linux_amd64.tar.gz
-          echo "8aca8db96f1b94770f1b0d72b6dddcb1ebb8123cb3712530b08cc387b349a3d8  $archive" | sha256sum -c -
-          tar -xzf "$archive" -C "$RUNNER_TEMP" actionlint
-          "$RUNNER_TEMP/actionlint"
+        run: bazel test --config=ci //:actionlint_test
 
   gitleaks:
     name: gitleaks
@@ -141,19 +153,21 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
 
+      - name: Set up Bazel
+        uses: bazel-contrib/setup-bazel@104e3eea9447cdaa4b00d0fb46191a3985d26ab3  # 0.19.1
+        with:
+          bazelisk-version: 1.30.0
+          bazelisk-cache: true
+
       - name: Scan Git history and pull request text
         env:
           EVENT: ${{ github.event_name }}
           PR_TITLE: ${{ github.event.pull_request.title }}
           PR_BODY: ${{ github.event.pull_request.body }}
         run: |
-          archive="$RUNNER_TEMP/gitleaks.tar.gz"
-          curl -fsSL --retry 3 -o "$archive" https://github.com/gitleaks/gitleaks/releases/download/v8.30.1/gitleaks_8.30.1_linux_x64.tar.gz
-          echo "551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb  $archive" | sha256sum -c -
-          tar -xzf "$archive" -C "$RUNNER_TEMP" gitleaks
-          "$RUNNER_TEMP/gitleaks" git --config=.gitleaks.toml --redact --log-opts='--diff-merges=first-parent HEAD'
+          bazel run --config=ci //:gitleaks_history -- --log-opts='--diff-merges=first-parent HEAD'
           if [[ $EVENT == pull_request ]]; then
-            printf '%s\n\n%s\n' "$PR_TITLE" "$PR_BODY" | "$RUNNER_TEMP/gitleaks" stdin --config=.gitleaks.toml --redact
+            printf '%s\n\n%s\n' "$PR_TITLE" "$PR_BODY" | bazel run --config=ci @tbhb_rules//lint:gitleaks_text
           fi
 
   conclusion:

@@ -5,6 +5,7 @@ load("@buildifier_prebuilt//:rules.bzl", "buildifier", "buildifier_test")
 load("@gazelle//:def.bzl", "gazelle", "gazelle_test")
 load("@rules_go//go:def.bzl", "nogo")
 load("@rules_shell//shell:sh_binary.bzl", "sh_binary")
+load("@tbhb_rules//lint:defs.bzl", "actionlint_test", "gitleaks_history")
 
 exports_files([
     ".go-arch-lint.yml",
@@ -12,7 +13,7 @@ exports_files([
     "go.mod",
 ])
 
-# Minimal Gazelle setup until the rules import lands; reads go.mod.
+# Gazelle reads the monorepo go.mod.
 gazelle(name = "gazelle")
 
 gazelle(
@@ -45,6 +46,7 @@ BUILDIFIER_EXCLUDES = [
     "./bazel-*",
     "./.bazel-*",
     "./.worktrees/*",
+    "./lib/rules/*",
     "./tmp/*",
 ]
 
@@ -66,10 +68,20 @@ buildifier_test(
     workspace = "//:MODULE.bazel",
 )
 
+actionlint_test(
+    name = "actionlint_test",
+    srcs = glob([
+        ".github/actions/**",
+        ".github/workflows/**",
+    ]),
+)
+
+gitleaks_history(
+    name = "gitleaks_history",
+    config = ".gitleaks.toml",
+)
+
 # Repository filegroup consumed by //factory:visibility_test.
-# Additional repository-wide lint targets (repo_layout_test, gitleaks_test,
-# gitleaks_history, reuse_test, editorconfig_checker_test, shellcheck_test,
-# and shfmt_test) arrive with the rules import.
 filegroup(
     name = "repo_files",
     srcs = glob(

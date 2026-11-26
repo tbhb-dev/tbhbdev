@@ -84,8 +84,9 @@ def _test_wraps_executable_and_env_impl(env, target):
     # The wrapped test's executable, or its .bat launcher on Windows.
     expand = [a for a in target.actions if a.mnemonic == "TemplateExpand"][0]
     wrapped = expand.substitutions["@@TEST@@"]
-    env.expect.that_bool(wrapped.removesuffix(".bat") == "testing/tests/proof_right_reason").equals(True)
-    env.expect.that_target(target).runfiles().contains("_main/testing/tests/subject.sh")
+    repo_prefix = "../{}/".format(target.label.repo_name) if target.label.repo_name else ""
+    env.expect.that_str(wrapped.removesuffix(".bat")).equals(repo_prefix + "testing/tests/proof_right_reason")
+    env.expect.that_target(target).runfiles().contains("_main/" + repo_prefix + "testing/tests/subject.sh")
     env.expect.that_target(target).provider(RunEnvironmentInfo).environment().contains_exactly({
         "SUBJECT_MESSAGE": "the right reason",
         "SUBJECT_STATUS": "3",

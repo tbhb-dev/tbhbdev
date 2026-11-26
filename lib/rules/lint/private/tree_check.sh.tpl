@@ -39,7 +39,7 @@ export PATH
 # -h dereferences symlinks in both GNU and BSD tar. The manifest lists one
 # path per line, relative to strip_prefix (or to the repository root), which
 # is also where it sits in the runfiles because the rule only accepts files
-# from the main repository.
+# from the test's repository.
 if [[ -s $manifest ]]; then
   tar -C "$runfiles/$strip_prefix" -chf - -T "$manifest" | tar -C "$tree" -xf -
   chmod -R u+w "$tree"

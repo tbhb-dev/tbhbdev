@@ -1,7 +1,8 @@
 # SPDX-License-Identifier: Apache-2.0
 # Copyright Tony Burns
 
-load("@bazelrc-preset.bzl", "bazelrc_preset")
+load("@bazel_skylib//rules:diff_test.bzl", "diff_test")
+load("@bazelrc-preset.bzl", "generate_preset")
 load("@buildifier_prebuilt//:rules.bzl", "buildifier", "buildifier_test")
 load("//format:defs.bzl", "format", "format_test", "formatter")
 load(
@@ -96,6 +97,7 @@ repo_files(
         "**/.DS_Store",
         # The gitignored PR draft, which the PR script lints itself.
         ".github/PULL_REQUEST_DRAFT.md",
+        "IMPORT-MAP.toml",
         ".bazelrc.user",
         ".coverage*",
         ".env*",
@@ -119,11 +121,16 @@ repo_files(
     ],
 )
 
-# Generates preset.bazelrc, which .bazelrc imports. The content depends on the
-# Bazel version that runs the generator; the committed copy matches
-# .bazelversion, and `preset.update_test` fails when it is stale.
-bazelrc_preset(
+# Compare this module's standalone preset to the current generator.
+generate_preset(
     name = "preset",
+    out = "_preset.bazelrc",
+)
+
+diff_test(
+    name = "preset.update_test",
+    file1 = ":preset",
+    file2 = ":preset.bazelrc",
 )
 
 # buildifier: `//:buildifier` formats and applies lint fixes in place,
@@ -236,12 +243,12 @@ workflow_lint_test(
 )
 
 # The review policy files a repository has; //lint:review_policy_test checks
-# them. None exists yet, so CODEOWNERS (which the check ignores) keeps the
+# them. None exists yet, so OWNERS (which the check ignores) keeps the
 # copy non-empty, as tree_check requires, and the glob matches no more until
 # the first one lands.
 filegroup(
     name = "review_policy_files",
-    srcs = [".github/CODEOWNERS"] + glob(
+    srcs = ["OWNERS"] + glob(
         [
             ".github/PULL_REQUEST_REVIEW_*.md",
             ".github/pull_request_review.*",

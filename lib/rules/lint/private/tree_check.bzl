@@ -5,23 +5,10 @@
 
 load("@bazel_skylib//lib:shell.bzl", "shell")
 load("//shell:defs.bzl", "SHELL_ATTRS", "SHELL_TOOLCHAINS", "path_dir", "shell_executable")
+load("//shell/private:launcher.bzl", "tree_path", "tree_root")
 
 # Internal: consumers load //lint:defs.bzl.
 visibility("//lint/...")
-
-def _tree_path(file, strip_prefix):
-    # A file from another repository would land at `../repo/...` in the copy,
-    # outside the tree, so only main-repository files are accepted.
-    if file.owner.repo_name != "":
-        fail("{} is from repository @{}; only files of the main repository can be checked".format(
-            file.short_path,
-            file.owner.repo_name,
-        ))
-    if not strip_prefix:
-        return file.short_path
-    if not file.short_path.startswith(strip_prefix + "/"):
-        fail("{} is not under strip_prefix {}".format(file.short_path, strip_prefix))
-    return file.short_path[len(strip_prefix) + 1:]
 
 def _tree_check_impl(ctx):
     config = ctx.file.config
@@ -34,7 +21,7 @@ def _tree_check_impl(ctx):
     manifest = ctx.actions.declare_file(ctx.label.name + ".manifest")
     ctx.actions.write(
         output = manifest,
-        content = "".join([_tree_path(f, strip_prefix) + "\n" for f in files.to_list()]),
+        content = "".join([tree_path(f, ctx.label.repo_name, strip_prefix) + "\n" for f in files.to_list()]),
     )
 
     # Files a tool reads from its cache instead of the network, such as
@@ -51,7 +38,7 @@ def _tree_check_impl(ctx):
     ctx.actions.write(output = cache_manifest, content = "".join(cache_lines))
 
     tool_args = [
-        arg.replace("{config}", _tree_path(config, strip_prefix)) if config else arg
+        arg.replace("{config}", tree_path(config, ctx.label.repo_name, strip_prefix)) if config else arg
         for arg in ctx.attr.tool_args
     ]
     for arg in tool_args:
@@ -69,7 +56,7 @@ def _tree_check_impl(ctx):
             "@@MIN_FILES@@": str(ctx.attr.min_files),
             "@@OUTPUT_GUARD@@": shell.quote(ctx.attr.output_guard),
             "@@PATH_TOOLS@@": " ".join([shell.quote(path_dir(t)) for t in ctx.attr.path_tools]) or "",
-            "@@STRIP_PREFIX@@": shell.quote(strip_prefix),
+            "@@STRIP_PREFIX@@": shell.quote(tree_root(ctx.label.repo_name, strip_prefix)),
             "@@TOOL@@": ctx.executable.tool.short_path,
             "@@TOOL_ARGS@@": " ".join([shell.quote(a) for a in tool_args]),
         },
