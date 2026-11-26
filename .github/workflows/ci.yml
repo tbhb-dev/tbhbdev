@@ -30,6 +30,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         with:
+          fetch-depth: 0
           persist-credentials: false
 
       - name: Set up Bazel
@@ -38,12 +39,54 @@ jobs:
           bazelisk-version: 1.30.0
           bazelisk-cache: true
 
-      # Remote cache and affected-targets selection arrive with the rules import.
-      - name: Build
-        run: bazel build //...
+      - name: Make Bazelisk available to the target selector
+        run: |
+          if ! command -v bazelisk >/dev/null; then
+            ln -s "$(command -v bazel)" "${RUNNER_TEMP}/bazelisk"
+            echo "$RUNNER_TEMP" >> "$GITHUB_PATH"
+          fi
+
+      - name: Select affected targets
+        id: affected
+        uses: ./.github/actions/affected-targets
+
+      - name: Configure the remote cache
+        env:
+          CACHE_URL: ${{ vars.BAZEL_CACHE_URL }}
+          TOKEN: ${{ github.event_name == 'merge_group' && secrets.BAZEL_CACHE_TOKEN || github.event_name == 'pull_request' && secrets.BAZEL_CACHE_PR_TOKEN || '' }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          if [[ -z $TOKEN || -z $CACHE_URL ]]; then
+            echo "::notice::Remote cache URL or token unavailable"
+            exit 0
+          fi
+          if [[ ! $CACHE_URL =~ ^https://([a-zA-Z0-9.-]+)/?$ ]]; then
+            echo "::error::BAZEL_CACHE_URL must be an HTTPS origin"
+            exit 1
+          fi
+          host=${BASH_REMATCH[1]}
+          dir=$(mktemp -d "${RUNNER_TEMP}/bazel-cache.XXXXXXXX")
+          (umask 077 && printf '%s' "$TOKEN" > "$dir/token")
+          cat > "$dir/credential-helper" <<'HELPER'
+          #!/bin/sh
+          cat >/dev/null
+          jq -nc --rawfile token "$(dirname "$0")/token" '{headers: {Authorization: ["Bearer " + $token]}}'
+          HELPER
+          chmod 700 "$dir/credential-helper"
+          {
+            printf '\ncommon --remote_cache=https://%s\n' "$host"
+            printf 'common --credential_helper=%s=%s/credential-helper\n' "$host" "$dir"
+            printf 'common --remote_timeout=120\n'
+            if [[ -n $PR_NUMBER ]]; then
+              printf 'common --remote_header=Bazel-Cache-Pull-Request=%s/%s\n' "$GITHUB_REPOSITORY" "$PR_NUMBER"
+            fi
+          } >> "$HOME/.bazelrc"
 
       - name: Test
-        run: bazel test //...
+        if: steps.affected.outputs.count != '0'
+        env:
+          TARGETS: ${{ steps.affected.outputs.file }}
+        run: bazel test --config=ci --target_pattern_file="$TARGETS"
 
   gazelle-current:
     name: gazelle-current
@@ -69,10 +112,54 @@ jobs:
       - name: Check that BUILD files are current
         run: bazel run //:gazelle -- -mode=diff
 
+      - name: Check that the Bazel module is tidy
+        run: |
+          bazel mod tidy
+          git diff --exit-code -- MODULE.bazel MODULE.bazel.lock
+
+      - name: Lint GitHub Actions workflows
+        run: |
+          archive="$RUNNER_TEMP/actionlint.tar.gz"
+          curl -fsSL --retry 3 -o "$archive" https://github.com/rhysd/actionlint/releases/download/v1.7.12/actionlint_1.7.12_linux_amd64.tar.gz
+          echo "8aca8db96f1b94770f1b0d72b6dddcb1ebb8123cb3712530b08cc387b349a3d8  $archive" | sha256sum -c -
+          tar -xzf "$archive" -C "$RUNNER_TEMP" actionlint
+          "$RUNNER_TEMP/actionlint"
+
+  gitleaks:
+    name: gitleaks
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Harden the runner
+        uses: step-security/harden-runner@1d88384fd173af6ecb012dfd0264a306b711241a  # v2.22.4
+        with:
+          egress-policy: audit
+
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Scan Git history and pull request text
+        env:
+          EVENT: ${{ github.event_name }}
+          PR_TITLE: ${{ github.event.pull_request.title }}
+          PR_BODY: ${{ github.event.pull_request.body }}
+        run: |
+          archive="$RUNNER_TEMP/gitleaks.tar.gz"
+          curl -fsSL --retry 3 -o "$archive" https://github.com/gitleaks/gitleaks/releases/download/v8.30.1/gitleaks_8.30.1_linux_x64.tar.gz
+          echo "551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb  $archive" | sha256sum -c -
+          tar -xzf "$archive" -C "$RUNNER_TEMP" gitleaks
+          "$RUNNER_TEMP/gitleaks" git --config=.gitleaks.toml --redact --log-opts='--diff-merges=first-parent HEAD'
+          if [[ $EVENT == pull_request ]]; then
+            printf '%s\n\n%s\n' "$PR_TITLE" "$PR_BODY" | "$RUNNER_TEMP/gitleaks" stdin --config=.gitleaks.toml --redact
+          fi
+
   conclusion:
     name: conclusion
     if: always()
-    needs: [bazel, gazelle-current]
+    needs: [bazel, gazelle-current, gitleaks]
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     steps:
