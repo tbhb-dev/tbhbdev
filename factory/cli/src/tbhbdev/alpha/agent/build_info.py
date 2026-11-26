@@ -23,17 +23,17 @@ def wheel_commit() -> str:
 
 def tools_commit() -> str:
     try:
-        checkout = Path(__file__).resolve().parents[4]
-        if not (checkout / ".git").exists():
-            return version.UNKNOWN
-        return subprocess.check_output(  # nosec B603 B607
-            ["git", "-C", str(checkout), "rev-parse", "HEAD"],
-            text=True,
-            stderr=subprocess.DEVNULL,
-            timeout=5,
-        ).strip()
+        for checkout in Path(__file__).resolve().parents:
+            if (checkout / ".git").exists():
+                return subprocess.check_output(  # nosec B603 B607
+                    ["git", "-C", str(checkout), "rev-parse", "HEAD"],
+                    text=True,
+                    stderr=subprocess.DEVNULL,
+                    timeout=5,
+                ).strip()
     except OSError, subprocess.SubprocessError:
         return version.UNKNOWN
+    return version.UNKNOWN
 
 
 def identities() -> dict[str, str]:
