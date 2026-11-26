@@ -1,6 +1,7 @@
 # SPDX-License-Identifier: Apache-2.0
 # Copyright Tony Burns
 
+load("@bazel_env.bzl", "bazel_env")
 load("@buildifier_prebuilt//:rules.bzl", "buildifier", "buildifier_test")
 load("@gazelle//:def.bzl", "gazelle", "gazelle_test")
 load("@rules_go//go:def.bzl", "nogo")
@@ -29,6 +30,7 @@ exports_files([
     ".vale/project/HeadingTitleCase.yml",
     ".vale/project/WordList.yml",
     "go.mod",
+    "tombi.toml",
 ])
 
 # Gazelle reads the monorepo go.mod.
@@ -138,4 +140,43 @@ filegroup(
         "//lib:repo_files",
     ],
     visibility = ["//factory:__subpackages__"],
+)
+
+# Shared inputs for the CLI's hermetic Python checks.
+filegroup(
+    name = "cli_check_inputs",
+    srcs = glob([
+        ".vale/config/**",
+        ".vale/project/**",
+    ]) + [
+        ".cspell-words.txt",
+        ".cspell.jsonc",
+        ".gitattributes",
+        ".github/workflows/ci.yml",
+        ".gitleaks.toml",
+        ".rumdl.toml",
+        ".vale.ini",
+        "pyproject.toml",
+        "uv.lock",
+    ],
+    visibility = ["//factory/cli:__pkg__"],
+)
+
+bazel_env(
+    name = "bazel_env",
+    tools = {
+        "actionlint": "@tbhb_rules_actionlint//:actionlint",
+        "buildifier": "@buildifier_prebuilt//:buildifier",
+        "cog": "@tbhb_rules_cog//:cog",
+        "editorconfig-checker": "@tbhb_rules_editorconfig_checker//:editorconfig-checker",
+        "gitleaks": "@tbhb_rules//lint:gitleaks",
+        "rumdl": "@tbhb_rules_rumdl//:rumdl",
+        "ryl": "@tbhb_rules_ryl//:ryl",
+        "scc": "@tbhb_rules_scc//:scc",
+        "shellcheck": "@tbhb_rules_shellcheck//:shellcheck",
+        "shfmt": "@tbhb_rules_shfmt//:shfmt",
+        "tombi": "@tbhb_rules_tombi//:tombi",
+        "vale": "@tbhb_rules_vale//:vale",
+        "zizmor": "@tbhb_rules_zizmor//:zizmor",
+    },
 )

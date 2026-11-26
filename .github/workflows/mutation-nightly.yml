@@ -59,6 +59,7 @@ jobs:
       - name: Run mutation gates
         env:
           SCOPE: ${{ matrix.scope }}
+          WORKSPACE: ${{ matrix.workspace }}
         run: |
           query='
             kind("mutation_gate_test rule",
@@ -67,6 +68,9 @@ jobs:
           '
           bazelisk query "$query" >"$RUNNER_TEMP/mutation-targets"
           test -s "$RUNNER_TEMP/mutation-targets"
+          if [[ "$WORKSPACE" == . ]]; then
+            printf '%s\n' '//factory/cli:mutmut_test' >>"$RUNNER_TEMP/mutation-targets"
+          fi
           bazelisk test --config=ci --target_pattern_file="$RUNNER_TEMP/mutation-targets"
 
       - name: Prove incremental mutation

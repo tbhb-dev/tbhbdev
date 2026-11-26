@@ -21,5 +21,5 @@ Another installed package can add commands and config through an entry point in 
 Plugins load on first use. When one fails to import, `tbhbdev` names it and the error on stderr, and the built-in commands keep working. To run `tbhbdev` with a plugin, install both in one environment:
 
 ```sh
-uvx --from git+https://github.com/tbhb-dev/tools --with <plugin package> tbhbdev <tool> [args...]
+uvx --from "git+https://github.com/tbhb-dev/tbhbdev#subdirectory=factory/cli" --with <plugin package> tbhbdev <tool> [args...]
 ```

@@ -40,6 +40,7 @@ from tbhbdev.alpha.secret_scan import REPO_RULES, without_name_rules
 # mutmut runs the tests from a copy of the source tree, so everything resolves
 # against this file: the real repository root, or the mutants/ copy of it.
 REAL = Path(__file__).resolve().parents[1]
+WORKSPACE = next(parent.parent for parent in REAL.parents if parent.name == "factory")
 SRC = Path(pr.__file__).parents[2]
 DATA = Path(__file__).parent / "testdata" / "alpha" / "pull_request"
 FIXTURE = DATA / "passing-draft.md"
@@ -1216,8 +1217,8 @@ def test_lint_skipped_without_a_title(draft_world: World) -> None:
 
 def real_lint_ready() -> bool:
     names = ("vale", "cspell", "rumdl", "cog")
-    configs = all((REAL / name).exists() for name in pr.CONFIGS)
-    styles = (REAL / ".vale" / "Google").is_dir()
+    configs = all((WORKSPACE / name).exists() for name in pr.CONFIGS)
+    styles = (WORKSPACE / ".vale" / "Google").is_dir()
     return configs and styles and all(shutil.which(name) for name in names)
 
 
@@ -1247,7 +1248,7 @@ class TestRealLinters:
             check=True,
         )
         for name in pr.CONFIGS:
-            source = REAL / name
+            source = WORKSPACE / name
             target = root / name
             if source.is_dir():
                 shutil.copytree(source, target)
@@ -3133,7 +3134,8 @@ def test_the_passing_draft_has_no_wrapped_paragraphs() -> None:
 
 def test_rumdl_line_length_is_off_for_drafts() -> None:
     assert (
-        "MD013" in (REAL / ".rumdl.toml").read_text().split("disable")[1].split("]")[0]
+        "MD013"
+        in (WORKSPACE / ".rumdl.toml").read_text().split("disable")[1].split("]")[0]
     )
 
 

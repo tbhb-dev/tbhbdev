@@ -40,8 +40,9 @@ dev = [
 ]
 
 [tool.uv]
+required-version = ">=0.13.0,<0.14"
 exclude-newer = "5 days"
 package = false
 
 [tool.uv.workspace]
-members = []
+members = ["factory/cli"]

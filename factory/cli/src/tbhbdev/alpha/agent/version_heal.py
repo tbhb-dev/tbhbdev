@@ -89,7 +89,8 @@ def check(settings: Settings, host: Host, local: str, installed: str) -> str | N
         driver_commit = version_check.parse_stamp(local) or version.UNKNOWN
         if host_commit == driver_commit == head:
             raise
-        install = (*_INSTALL, f"git+{version_check.REPO_URL}@{head}")
+        source = f"git+{version_check.REPO_URL}@{head}#subdirectory=factory/cli"
+        install = (*_INSTALL, source)
         try:
             if host_commit != head:
                 transport.shell(

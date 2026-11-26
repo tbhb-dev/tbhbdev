@@ -1,7 +1,7 @@
 {
   "language": "en",
   "ignorePaths": [
-    "IMPORT-MAP.toml",
+    "**/IMPORT-MAP.toml",
     "**/repo/baseline/{files,kinds,visibility,seed}/**/*",
     "**/lint/gitleaks/{base,upstream}.toml",
     "**/preset.bazelrc",

@@ -30,7 +30,7 @@ It then reads tbhb-agent's public signing key list from GitHub and exits 1 when 
 A host without the command counts as unreachable until `tbhbdev` syncs there.
 The package also includes the run request's schema and the repo argument rules.
 
-When `tbhbdev alpha agent exec` finds a version mismatch, it looks up the head of `tbhb-dev/tools` on `main` and installs that commit on each side that differs.
+When `tbhbdev alpha agent exec` finds a version mismatch, it looks up the head of `tbhb-dev/tbhbdev` on `main` and installs that commit on each side that differs.
 It logs each successful install to standard error.
 If it updates the driver, it re-executes the command with the original arguments.
 The retry reads the host version again.

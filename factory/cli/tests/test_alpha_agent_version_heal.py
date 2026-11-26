@@ -33,7 +33,14 @@ URL = "https://github.com/tbhb-dev/tbhbdev"
 REF = "refs/heads/main"
 GIT_OVERRIDES = ("-c", "credential.helper=", "-c", "http.extraHeader=")
 GIT = ["git", *GIT_OVERRIDES, "ls-remote", URL, REF]
-INSTALL = ("uv", "tool", "install", "--no-config", "--force", f"git+{URL}@{HEAD}")
+INSTALL = (
+    "uv",
+    "tool",
+    "install",
+    "--no-config",
+    "--force",
+    f"git+{URL}@{HEAD}#subdirectory=factory/cli",
+)
 RETRY = "_TBHB_AGENT_VERSION_HEAL"
 ORIGIN = subprocess.CompletedProcess(GIT, 0, f"{HEAD}\t{REF}\n")
 

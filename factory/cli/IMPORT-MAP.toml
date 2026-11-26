@@ -9,10 +9,7 @@ dest = "factory/cli"
 ".github/PULL_REQUEST_TEMPLATE.md" = "factory/cli/.github/PULL_REQUEST_TEMPLATE.md"
 ".github/pull-request-sections.toml" = "factory/cli/.github/pull-request-sections.toml"
 ".mcp.json" = "factory/cli/.mcp.json"
-"AGENTS.md" = "factory/cli/AGENTS.md"
-"BUILD.bazel" = "factory/cli/BUILD.bazel"
 "CLAUDE.md" = "factory/cli/CLAUDE.md"
-"README.md" = "factory/cli/README.md"
 "docs/AGENTS.md" = "factory/cli/docs/AGENTS.md"
 "docs/CLAUDE.md" = "factory/cli/docs/CLAUDE.md"
 "docs/index.md" = "factory/cli/docs/index.md"
@@ -23,7 +20,6 @@ dest = "factory/cli"
 "docs/reference/alpha/agent-isolation-limits.md" = "factory/cli/docs/reference/alpha/agent-isolation-limits.md"
 "docs/reference/alpha/commands.md" = "factory/cli/docs/reference/alpha/commands.md"
 "docs/reference/alpha/commands/agent-env.md" = "factory/cli/docs/reference/alpha/commands/agent-env.md"
-"docs/reference/alpha/commands/agent.md" = "factory/cli/docs/reference/alpha/commands/agent.md"
 "docs/reference/alpha/commands/brief.md" = "factory/cli/docs/reference/alpha/commands/brief.md"
 "docs/reference/alpha/commands/gh-app.md" = "factory/cli/docs/reference/alpha/commands/gh-app.md"
 "docs/reference/alpha/commands/gh-shim.md" = "factory/cli/docs/reference/alpha/commands/gh-shim.md"
@@ -64,10 +60,8 @@ dest = "factory/cli"
 "docs/reference/content.md" = "factory/cli/docs/reference/content.md"
 "docs/reference/frontmatter.md" = "factory/cli/docs/reference/frontmatter.md"
 "docs/reference/gitleaks-check.md" = "factory/cli/docs/reference/gitleaks-check.md"
-"docs/reference/plugins.md" = "factory/cli/docs/reference/plugins.md"
 "docs/reference/prose-check.md" = "factory/cli/docs/reference/prose-check.md"
 "docs/reference/secrets.md" = "factory/cli/docs/reference/secrets.md"
-"pyproject.toml" = "factory/cli/pyproject.toml"
 "schemas/core.cue" = "factory/cli/schemas/core.cue"
 "schemas/issue.cue" = "factory/cli/schemas/issue.cue"
 "schemas/review.cue" = "factory/cli/schemas/review.cue"
@@ -119,7 +113,6 @@ dest = "factory/cli"
 "src/tbhbdev/alpha/agent/signing_parity.py" = "factory/cli/src/tbhbdev/alpha/agent/signing_parity.py"
 "src/tbhbdev/alpha/agent/ssh_serve.py" = "factory/cli/src/tbhbdev/alpha/agent/ssh_serve.py"
 "src/tbhbdev/alpha/agent/transport.py" = "factory/cli/src/tbhbdev/alpha/agent/transport.py"
-"src/tbhbdev/alpha/agent/version_heal.py" = "factory/cli/src/tbhbdev/alpha/agent/version_heal.py"
 "src/tbhbdev/alpha/agent/worktree.py" = "factory/cli/src/tbhbdev/alpha/agent/worktree.py"
 "src/tbhbdev/alpha/brief.py" = "factory/cli/src/tbhbdev/alpha/brief.py"
 "src/tbhbdev/alpha/close.py" = "factory/cli/src/tbhbdev/alpha/close.py"
@@ -235,7 +228,6 @@ dest = "factory/cli"
 "tests/analytics_fakes.py" = "factory/cli/tests/analytics_fakes.py"
 "tests/analytics_server.py" = "factory/cli/tests/analytics_server.py"
 "tests/conftest.py" = "factory/cli/tests/conftest.py"
-"tests/cue_test_tool.bzl" = "factory/cli/tests/cue_test_tool.bzl"
 "tests/data/agy/file.jsonl" = "factory/cli/tests/data/agy/file.jsonl"
 "tests/data/agy/plain.jsonl" = "factory/cli/tests/data/agy/plain.jsonl"
 "tests/data/agy/resource.json" = "factory/cli/tests/data/agy/resource.json"
@@ -248,7 +240,6 @@ dest = "factory/cli"
 "tests/test_admin_request.py" = "factory/cli/tests/test_admin_request.py"
 "tests/test_adr.py" = "factory/cli/tests/test_adr.py"
 "tests/test_agy_otel.py" = "factory/cli/tests/test_agy_otel.py"
-"tests/test_alpha.py" = "factory/cli/tests/test_alpha.py"
 "tests/test_alpha_agent_account_paths.py" = "factory/cli/tests/test_alpha_agent_account_paths.py"
 "tests/test_alpha_agent_admission.py" = "factory/cli/tests/test_alpha_agent_admission.py"
 "tests/test_alpha_agent_argv.py" = "factory/cli/tests/test_alpha_agent_argv.py"
@@ -343,7 +334,6 @@ dest = "factory/cli"
 "tests/test_analytics_roles.py" = "factory/cli/tests/test_analytics_roles.py"
 "tests/test_analytics_scram.py" = "factory/cli/tests/test_analytics_scram.py"
 "tests/test_analytics_settings.py" = "factory/cli/tests/test_analytics_settings.py"
-"tests/test_ci_workflow.py" = "factory/cli/tests/test_ci_workflow.py"
 "tests/test_cli.py" = "factory/cli/tests/test_cli.py"
 "tests/test_conftest.py" = "factory/cli/tests/test_conftest.py"
 "tests/test_content.py" = "factory/cli/tests/test_content.py"
@@ -394,6 +384,51 @@ replace = [
     ["tbhb-dev/tools", "tbhb-dev/tbhbdev"],
 ]
 
+[rewrite."AGENTS.md"]
+dest = "factory/cli/AGENTS.md"
+replace = [
+    ["## Checks\n\nRun `mise install`, `uv sync` and `bazelisk run //:bazel_env`, which builds the `.bazel_env/bin` shims the git hooks call, then `tbhbdev alpha install`, which runs `prek install` and adds the identity hooks. Every gate is a Bazel test from tbhb-dev/rules, which `bazelisk test //...` runs, and `bazelisk run //:format` rewrites files into their canonical format. The pre-commit hooks run the same gates. To build against a local rules clone, put `common --override_module=tbhb_rules=<path to a rules clone>` and `common --override_module=tbhb_rules_python=<path to a rules clone>/python` in `.bazelrc.user`.\n", "## Checks\n\nFrom the monorepo root, run `uv sync --all-packages` to set up the workspace and `bazelisk test //factory/cli:pytest_test` to check the whole CLI suite. The other Python gates are in this project's `BUILD.bazel`.\n"],
+    ["1. Write the tool as `src/tbhbdev/<tool>.py`, or as a package directory under `src/tbhbdev/` for a larger one, with a `main(argv, prog)` that returns the exit status.\n2. Register it in `TOOLS` in `src/tbhbdev/cli.py` under its command name.\n3. Add `tests/test_<tool>.py`. The tests keep the package at 100% branch coverage, and mutation testing doesn't find a surviving mutant in the functions the pull request changes. It doesn't need to cover the whole package.\n4. List it in the README.\n\n## Alpha commands\n\n`tbhbdev alpha` holds the interim agent tools, such as the agent identity hooks and the pull request commands `tbhbdev alpha pr` and `tbhbdev alpha merge`. Mark a pull request ready with `tbhbdev alpha pr ready N`, because the hooks refuse raw `gh pr ready`. They may change without notice. The harness hooks are user level, not in this repository: install `tbhbdev` with `uv tool install git+https://github.com/tbhb-dev/tools`, then run `tbhbdev alpha install` in a clone. See [Install](docs/reference/alpha/commands/install.md) for what it writes.\n\nAsk Renovate to rebase an open pull request with `tbhbdev alpha pr rebase N`.\n", "1. Write the tool as `src/tbhbdev/<tool>.py`, or as a package directory under `src/tbhbdev/` for a larger one, with a `main(argv, prog)` that returns the exit status.\n2. Register it in `TOOLS` in `src/tbhbdev/cli.py` under its command name.\n3. Add `tests/test_<tool>.py`. The tests keep the package at 100% branch coverage. The nightly mutation job reports surviving mutants for follow-up.\n4. List it in the README.\n\n## Alpha commands\n\n`tbhbdev alpha` holds the interim agent tools, such as the agent identity hooks and the pull request commands `tbhbdev alpha pr` and `tbhbdev alpha merge`. Mark a pull request ready with `tbhbdev alpha pr ready N`, because the hooks refuse raw `gh pr ready`. They may change without notice. The harness hooks are user level, not in this repository: install `tbhbdev` with `uv tool install \"git+https://github.com/tbhb-dev/tbhbdev#subdirectory=factory/cli\"`, then run `tbhbdev alpha install` in a clone. See [Install](docs/reference/alpha/commands/install.md) for what it writes.\n\nAsk Renovate to rebase an open pull request with `tbhbdev alpha pr rebase N`.\n"],
+    ["- Never write a public IP address in a commit, a pull request, or a report. Refer to the host by its name instead. The `public-ipv4` gitleaks rule enforces this.\n- Secrets live in 1Password only. Never paste one into chat or commit one to git.\n- A tool that one repository needs for its own checks or releases belongs in that repository or in tbhb-dev/rules, not here.\n\n## Models\n", "- Never write a public IP address in a commit, a pull request, or a report. Refer to the host by its name instead. The `public-ipv4` gitleaks rule enforces this.\n- Secrets live in 1Password only. Never paste one into chat or commit one to git.\n- A tool that one repository needs for its own checks or releases belongs with that project or in the shared rules at `lib/rules`.\n\n## Models\n"],
+    ["# Agent instructions\n\nThis is tbhb-dev/tools, the public repository of shared tools for tbhb-dev work. Every tool is a subcommand of the `tbhbdev` Python package.\n\n## Standing rules\n", "# Agent instructions\n\nThis project holds shared tools for tbhb-dev work. Every tool is a subcommand of the `tbhbdev` Python package.\n\n## Standing rules\n"],
+]
+
+[rewrite."BUILD.bazel"]
+dest = "factory/cli/BUILD.bazel"
+replace = [
+    ["    },\n)\n\nrumdl_test(\n    name = \"rumdl_test\",\n    srcs = [\":repo_files\"],\n    config = \".rumdl.toml\",\n)\n\neditorconfig_checker_test(\n    name = \"editorconfig_checker_test\",\n    srcs = [\":repo_files\"],\n    config = \".editorconfig-checker.json\",\n)\n\nactionlint_test(\n    name = \"actionlint_test\",\n    srcs = [\":repo_files\"],\n)\n\nzizmor_test(\n    name = \"zizmor_test\",\n    srcs = [\":repo_files\"],\n    config = \".github/zizmor.yml\",\n)\n\n# Shell scripts are selected by extension and by shebang. shfmt reads its\n# style from .editorconfig.\nshellcheck_test(\n    name = \"shellcheck_test\",\n    srcs = [\":repo_files\"],\n)\n\nshfmt_test(\n    name = \"shfmt_test\",\n    srcs = [\":repo_files\"],\n)\n\ncodeowners_test(\n    name = \"codeowners_test\",\n    srcs = [\":repo_files\"],\n)\n\ncspell_test(\n    name = \"cspell_test\",\n    srcs = [\":repo_files\"],\n    config = \".cspell.jsonc\",\n    data = [\".cspell-words.txt\"],\n)\n\n# The packages .vale.ini lists, pinned in MODULE.bazel, in the config's\n# order. `bazel run //:vale_sync` writes them into .vale/ for editors.\nVALE_PACKAGES = {\n    \"Google\": \"@vale_google//file\",\n    \"ai-tells\": \"@vale_ai_tells//file\",\n    \"ai-tells-experimental\": \"@vale_ai_tells_experimental//file\",\n    \"proselint\": \"@vale_proselint//file\",\n    \"write-good\": \"@vale_write_good//file\",\n}\n\nvale_test(\n    name = \"vale_test\",\n    srcs = [\":repo_files\"],\n    config = \".vale.ini\",\n    packages = VALE_PACKAGES,\n)\n\nvale_sync(\n    name = \"vale_sync\",\n    config = \".vale.ini\",\n    packages = VALE_PACKAGES,\n)\n\n# Formatting: `bazel run //:format` rewrites, `bazel run //:format.check`\n# checks the working tree, and format_test is the cached check in `bazel\n# test //...`.\nFORMATTERS = [\n    \"@tbhb_rules//format:buildifier\",\n    \"@tbhb_rules//format:rumdl\",\n    \"@tbhb_rules//format:ryl\",\n    \"@tbhb_rules//format:shfmt\",\n    \"@tbhb_rules//format:tombi\",\n    \"@tbhb_rules_python//:ruff\",\n]\n\n# Test fixtures hold deliberately malformed files, which no formatter may\n# fix.\nFORMAT_EXCLUDE = [\"*/testdata/*\"]\n\nformat(\n    name = \"format\",\n    exclude = FORMAT_EXCLUDE,\n    formatters = FORMATTERS,\n)\n\nformat_test(\n    name = \"format_test\",\n    srcs = [\":repo_files\"],\n    exclude = FORMAT_EXCLUDE,\n    formatters = FORMATTERS,\n)\n\n# Proof that the public-ipv4 rule in .gitleaks.toml fires, and that it leaves\n# non-public ranges alone. The addresses are assembled at build time, so no\n# public literal sits in a tracked file.\ngenrule(\n    name = \"planted_public_ipv4\",\n    outs = [\"proofs/public_ipv4/hosts.txt\"],\n    cmd = \"printf 'resolver %s.%s.%s.%s\\\\n' 8 8 4 4 > $@\",\n)\n\ngitleaks_test(\n    name = \"proof_public_ipv4\",\n    srcs = [\n        \".gitleaks.toml\",\n        \":planted_public_ipv4\",\n    ],\n    config = \".gitleaks.toml\",\n    tags = [\"manual\"],\n)\n\nexpect_failure_test(\n    name = \"public_ipv4_is_found\",\n    pattern = \"public-ipv4\",\n    test = \":proof_public_ipv4\",\n)\n\ngenrule(\n    name = \"planted_private_ipv4\",\n    outs = [\"proofs/private_ipv4/hosts.txt\"],\n    cmd = \"printf '%s\\\\n' 10.0.0.1 100.64.0.1 127.0.0.1 169.254.0.1 172.16.0.1 192.168.1.1 192.0.2.1 198.51.100.1 203.0.113.1 255.255.255.255 v1.2.3.4 > $@\",\n)\n\ngitleaks_test(\n    name = \"private_ipv4_is_allowed\",\n    srcs = [\n        \".gitleaks.toml\",\n        \":planted_private_ipv4\",\n    ],\n    config = \".gitleaks.toml\",\n)\n\n# `bazel run //:bazel_env` puts shims for the Bazel-pinned tools in\n# .bazel_env/bin, which mise adds to PATH. Git hooks call them directly, so\n# a commit never waits on the Bazel server.\nbazel_env(\n    name = \"bazel_env\",\n    tools = {\n        \"actionlint\": \"@tbhb_rules_actionlint//:actionlint\",\n        \"buildifier\": \"@buildifier_prebuilt//:buildifier\",\n        \"cog\": \"@tbhb_rules_cog//:cog\",\n        \"editorconfig-checker\": \"@tbhb_rules_editorconfig_checker//:editorconfig-checker\",\n        \"gitleaks\": \"@tbhb_rules//lint:gitleaks\",\n        \"ruff\": \":ruff\",\n        \"rumdl\": \"@tbhb_rules_rumdl//:rumdl\",\n        \"ryl\": \"@tbhb_rules_ryl//:ryl\",\n        \"scc\": \"@tbhb_rules_scc//:scc\",\n        \"shellcheck\": \"@tbhb_rules_shellcheck//:shellcheck\",\n        \"shfmt\": \"@tbhb_rules_shfmt//:shfmt\",\n        \"tombi\": \"@tbhb_rules_tombi//:tombi\",\n        \"vale\": \"@tbhb_rules_vale//:vale\",\n        \"zizmor\": \"@tbhb_rules_zizmor//:zizmor\",\n    },\n)\n", "    },\n)\n"],
+    [")\n\n# Mutation testing for the package. Every mutant must be killed; an\n# equivalent one takes `# pragma: no mutate` with a reason.\n# Manual for now: a full run reports mutants in secret, secrets and runner\n# as segfaults, and 6 in the Linux keyring paths survive. It\n# becomes part of `bazel test //...` once both are fixed.\nmutmut_test(\n    name = \"mutmut_test\",\n    srcs = [\":repo_files\"],\n    cpus = 4,\n    tags = [\"manual\"],\n)\n\n# Validate the docs bundle and Markdown frontmatter against its schemas.\nokf_docs_test(\n    name = \"okf_docs_test\",\n    srcs = [\":okf_repo_files\"],\n)\n\n# Copyright and licensing information on every file (REUSE.toml, LICENSES/).\nreuse_test(\n    name = \"reuse_test\",\n    srcs = [\":repo_files\"],\n)\n\nryl_test(\n    name = \"ryl_test\",\n    srcs = [\":repo_files\"],\n    config = \".ryl.toml\",\n)\n\ntombi_test(\n    name = \"tombi_test\",\n    srcs = [\":repo_files\"],\n    config = \"tombi.toml\",\n    schemas = {\n        \"https://www.schemastore.org/partial-pytest.json\": \"@schemastore_partial_pytest//file\",\n", ")\n\n# The nightly workflow selects this target explicitly.\nmutmut_test(\n    name = \"mutmut_test\",\n    srcs = CLI_CHECK_INPUTS,\n    advisory = True,\n    chdir = \"factory/cli\",\n    cpus = 4,\n    tags = [\"manual\"],\n)\n\ntombi_test(\n    name = \"tombi_test\",\n    srcs = [\n        \":pyproject.toml\",\n        \"//:tombi.toml\",\n    ],\n    config = \"//:tombi.toml\",\n    schemas = {\n        \"https://www.schemastore.org/partial-pytest.json\": \"@schemastore_partial_pytest//file\",\n"],
+    ["pip_audit_test(\n    name = \"pip_audit_test\",\n    srcs = [\":repo_files\"],\n)\n\n# ruff from the locked environment, for the bazel_env shim the git hooks\n# call.\npython_tool(\n    name = \"ruff\",\n", "pip_audit_test(\n    name = \"pip_audit_test\",\n    srcs = CLI_CHECK_INPUTS,\n)\n\n# Ruff from the locked workspace environment.\npython_tool(\n    name = \"ruff\",\n"],
+    ["\n# The advisory database changes without any input changing: pip_audit_test\n# is the cached check, and CI runs //:pip_audit for a fresh answer.\npip_audit(\n    name = \"pip_audit\",\n", "\n# The advisory database changes without any input changing: pip_audit_test\n# audits the shared workspace lock when requested.\npip_audit(\n    name = \"pip_audit\",\n"],
+    ["pytest_test(\n    name = \"pytest_test\",\n    # The suite runs near the medium test's 300 s limit on CI runners.\n    timeout = \"long\",\n    srcs = [\":repo_files\"],\n    args = [\n        \"-n\",\n        \"auto\",\n    ],\n    coverage = [\"src/tbhbdev\"],\n    # Review and draft validation use CUE. The alpha pr and merge tests run cog,\n", "pytest_test(\n    name = \"pytest_test\",\n    # The suite runs near the 300 s limit on CI runners.\n    timeout = \"long\",\n    srcs = CLI_CHECK_INPUTS,\n    args = [\n        \"-n\",\n        \"auto\",\n    ],\n    chdir = \"factory/cli\",\n    coverage = [\"src/tbhbdev\"],\n    # Review and draft validation use CUE. The alpha pr and merge tests run cog,\n"],
+    ["deptry_test(\n    name = \"deptry_test\",\n    srcs = [\":repo_files\"],\n    roots = [\"src\"],\n)\n", "deptry_test(\n    name = \"deptry_test\",\n    srcs = CLI_CHECK_INPUTS,\n    chdir = \"factory/cli\",\n    roots = [\"src\"],\n)\n"],
+    ["bandit_test(\n    name = \"bandit_test\",\n    srcs = [\":repo_files\"],\n    exclude = [\"tests/*\"],\n)\n\n", "bandit_test(\n    name = \"bandit_test\",\n    srcs = CLI_CHECK_INPUTS,\n    exclude = [\"factory/cli/tests/*\"],\n)\n\n"],
+    ["pylint_test(\n    name = \"pylint_test\",\n    srcs = [\":repo_files\"],\n)\n\nvulture_test(\n    name = \"vulture_test\",\n    srcs = [\":repo_files\"],\n)\n\ncomplexipy_test(\n    name = \"complexipy_test\",\n    srcs = [\":repo_files\"],\n)\n\n", "pylint_test(\n    name = \"pylint_test\",\n    srcs = CLI_CHECK_INPUTS,\n    args = [\"--rcfile=factory/cli/pyproject.toml\"],\n)\n\nvulture_test(\n    name = \"vulture_test\",\n    srcs = CLI_CHECK_INPUTS,\n    args = [\"--config\", \"factory/cli/pyproject.toml\"],\n)\n\ncomplexipy_test(\n    name = \"complexipy_test\",\n    srcs = CLI_CHECK_INPUTS,\n    args = [\"--config\", \"factory/cli/pyproject.toml\"],\n)\n\n"],
+    ["pyrefly_test(\n    name = \"pyrefly_test\",\n    srcs = [\":repo_files\"],\n    args = [\n        \"--python-platform\",\n        \"linux\",\n", "pyrefly_test(\n    name = \"pyrefly_test\",\n    srcs = CLI_CHECK_INPUTS,\n    args = [\n        \"--config\",\n        \"factory/cli/pyproject.toml\",\n        \"--python-platform\",\n        \"linux\",\n"],
+    [")\n\n# Every file of the repository, for the whole-tree checks below. Ignored\n# directories are listed in REPO.bazel; these are the gitignored files that\n# can sit at the root of a working checkout.\nrepo_files(\n    exclude = [\n        \".DS_Store\",\n        \"**/.DS_Store\",\n        \".bazelrc.user\",\n        \".coverage*\",\n        \".env*\",\n        \".github/PULL_REQUEST_DRAFT.md\",\n        \"coverage.*\",\n        \"mise.local.toml\",\n    ],\n)\n\n# The review template and checklist are package data, not OKF documents.\nrepo_files(\n    name = \"okf_repo_files\",\n    exclude = [\n        \"src/tbhbdev/alpha/review_data/PULL_REQUEST_REVIEW_CHECKLIST.md\",\n        \"src/tbhbdev/alpha/review_data/PULL_REQUEST_REVIEW_TEMPLATE.md\",\n        \".DS_Store\",\n        \"**/.DS_Store\",\n        \".bazelrc.user\",\n        \".coverage*\",\n        \".env*\",\n        \".github/PULL_REQUEST_DRAFT.md\",\n        \"coverage.*\",\n        \"mise.local.toml\",\n    ],\n)\n\n# Generates preset.bazelrc, which .bazelrc imports. The content depends on the\n# Bazel version that runs the generator; the committed copy matches\n# .bazelversion, and `preset.update_test` fails when it is stale.\nbazelrc_preset(\n    name = \"preset\",\n)\n\n# buildifier: `//:buildifier` formats and applies lint fixes in place,\n# `//:buildifier.check` fails on any formatting or lint difference, and the\n# test below makes `bazel test //...` fail on the same findings. Every\n# available warning is on. `bazel-*` convenience symlinks, agent worktrees,\n# and the Python and tool caches hold no Starlark that this repository owns.\nBUILDIFIER_EXCLUDES = [\n    \"./.git/*\",\n    \"./.venv/*\",\n    \"./.mise/*\",\n    \"./bazel-*\",\n    \"./.bazel-*\",\n    \"./.worktrees/*\",\n    \"./tmp/*\",\n]\n\nbuildifier(\n    name = \"buildifier\",\n    exclude_patterns = BUILDIFIER_EXCLUDES,\n    lint_mode = \"fix\",\n    lint_warnings = [\"all\"],\n    mode = \"fix\",\n)\n\nbuildifier(\n    name = \"buildifier.check\",\n    exclude_patterns = BUILDIFIER_EXCLUDES,\n    lint_mode = \"warn\",\n    lint_warnings = [\"all\"],\n    mode = \"diff\",\n)\n\nbuildifier_test(\n    name = \"buildifier_test\",\n    exclude_patterns = BUILDIFIER_EXCLUDES,\n    lint_mode = \"warn\",\n    lint_warnings = [\"all\"],\n    no_sandbox = True,\n    workspace = \"//:MODULE.bazel\",\n)\n\n# The repository's shape. Only these top-level directories may exist; add a\n# new one here in the change that first uses it.\nrepo_layout_test(\n    name = \"repo_layout_test\",\n    srcs = [\":repo_files\"],\n    top_level_dirs = [\n        \".claude\",\n        \".codex\",\n        \".github\",\n        \".vale\",\n        \"LICENSES\",\n        \"docs\",\n        \"schemas\",\n        \"src\",\n        \"tests\",\n    ],\n)\n\n# Scans the git history: `bazel run //:gitleaks_history`, which CI runs.\n# The working tree is //:gitleaks_test's job.\ngitleaks_history(\n    name = \"gitleaks_history\",\n    config = \".gitleaks.toml\",\n)\n\n# This repository's gates, from @tbhb_rules. Each one checks the whole tree.\ngitleaks_test(\n    name = \"gitleaks_test\",\n    srcs = [\":repo_files\"],\n    config = \".gitleaks.toml\",\n)\n\n# Python gates over the tbhbdev package and its tests.\nruff_test(\n    name = \"ruff_test\",\n    srcs = [\":repo_files\"],\n)\n\n", ")\n\nexports_files([\"src/tbhbdev/cue-pin.json\"])\n\nfilegroup(\n    name = \"cli_files\",\n    srcs = glob([\n        \".github/**\",\n        \"docs/**\",\n        \"schemas/**\",\n        \"src/**\",\n        \"tests/**\",\n    ]) + [\"pyproject.toml\"],\n)\n\nCLI_CHECK_INPUTS = [\n    \":cli_files\",\n    \"//:cli_check_inputs\",\n]\n\n# Python gates over the tbhbdev package and its tests.\nruff_test(\n    name = \"ruff_test\",\n    srcs = CLI_CHECK_INPUTS,\n)\n\n"],
+    ["load(\"@bazel_env.bzl\", \"bazel_env\")\nload(\"@bazelrc-preset.bzl\", \"bazelrc_preset\")\nload(\"@buildifier_prebuilt//:rules.bzl\", \"buildifier\", \"buildifier_test\")\nload(\"@tbhb_rules//format:defs.bzl\", \"format\", \"format_test\")\nload(\n    \"@tbhb_rules//lint:defs.bzl\",\n    \"actionlint_test\",\n    \"codeowners_test\",\n    \"cspell_test\",\n    \"editorconfig_checker_test\",\n    \"gitleaks_history\",\n    \"gitleaks_test\",\n    \"okf_docs_test\",\n    \"reuse_test\",\n    \"rumdl_test\",\n    \"ryl_test\",\n    \"shellcheck_test\",\n    \"shfmt_test\",\n    \"tombi_test\",\n    \"vale_sync\",\n    \"vale_test\",\n    \"zizmor_test\",\n)\nload(\"@tbhb_rules//repo:defs.bzl\", \"repo_files\", \"repo_layout_test\")\nload(\"@tbhb_rules//testing:defs.bzl\", \"expect_failure_test\")\nload(\n    \"@tbhb_rules_python//:defs.bzl\",\n", "# SPDX-License-Identifier: Apache-2.0\n# Copyright Tony Burns\n\nload(\"@tbhb_rules//lint:defs.bzl\", \"tombi_test\")\nload(\n    \"@tbhb_rules_python//:defs.bzl\",\n"],
+]
+
+[rewrite."README.md"]
+dest = "factory/cli/README.md"
+replace = [
+    ["## Checks\n\nBazel runs every gate from tbhb-dev/rules: `bazelisk test //...`. See [AGENTS.md](AGENTS.md) for the setup and the workflow.\n", "## Checks\n\nFrom the repository root, run `bazelisk test //factory/cli:pytest_test` for the full CLI suite. See [AGENTS.md](AGENTS.md) for the other project checks.\n"],
+    ["\n```sh\nuv tool install git+https://github.com/tbhb-dev/tools\n```\n\n", "\n```sh\nuv tool install \"git+https://github.com/tbhb-dev/tbhbdev#subdirectory=factory/cli\"\n```\n\n"],
+    ["# Shared tbhb-dev tools\n\nThis repository holds shared tools for tbhb-dev work: commands that more than one repository or session uses and that no one repository owns. Every tool is a subcommand of one Python package, `tbhbdev`.\n\n## Running a tool\n\n```sh\nuv run tbhbdev <tool> [args...]\n```\n\n", "# Shared tbhb-dev tools\n\nThis project provides commands that several tbhb-dev repositories and sessions use. It depends on the shared Bazel rules in `lib/rules` and the Python packages pinned in the workspace lock. Every tool is a subcommand of one Python package, `tbhbdev`.\n\n## Running a tool\n\n```sh\nuv run --package tbhbdev tbhbdev <tool> [args...]\n```\n\n"],
+]
+
+[rewrite."docs/reference/alpha/commands/agent.md"]
+dest = "factory/cli/docs/reference/alpha/commands/agent.md"
+replace = [
+    ["The package also includes the run request's schema and the repo argument rules.\n\nWhen `tbhbdev alpha agent exec` finds a version mismatch, it looks up the head of `tbhb-dev/tools` on `main` and installs that commit on each side that differs.\nIt logs each successful install to standard error.\nIf it updates the driver, it re-executes the command with the original arguments.\n", "The package also includes the run request's schema and the repo argument rules.\n\nWhen `tbhbdev alpha agent exec` finds a version mismatch, it looks up the head of `tbhb-dev/tbhbdev` on `main` and installs that commit on each side that differs.\nIt logs each successful install to standard error.\nIf it updates the driver, it re-executes the command with the original arguments.\n"],
+]
+
+[rewrite."docs/reference/plugins.md"]
+dest = "factory/cli/docs/reference/plugins.md"
+replace = [
+    ["\n```sh\nuvx --from git+https://github.com/tbhb-dev/tools --with <plugin package> tbhbdev <tool> [args...]\n```\n", "\n```sh\nuvx --from \"git+https://github.com/tbhb-dev/tbhbdev#subdirectory=factory/cli\" --with <plugin package> tbhbdev <tool> [args...]\n```\n"],
+]
+
 [rewrite."docs/schemas/frontmatter.schema.json"]
 dest = "factory/cli/docs/schemas/frontmatter.schema.json"
 replace = [
@@ -404,6 +439,19 @@ replace = [
 dest = "factory/cli/docs/schemas/index-frontmatter.schema.json"
 replace = [
     ["tbhb-dev/tools/main/docs/", "tbhb-dev/tbhbdev/main/factory/cli/docs/"],
+]
+
+[rewrite."pyproject.toml"]
+dest = "factory/cli/pyproject.toml"
+replace = [
+    ["source_paths = [\"src\"]\ndo_not_mutate = [\"tests/*\"]\n# Tests read the repository's own PR template, schemas, lint configs, hook\n# config and docs pages, which mutmut doesn't copy into mutants/ by itself.\nalso_copy = [\n  \".codex\",\n  \".cspell-words.txt\",\n  \".cspell.jsonc\",\n  \".gitattributes\",\n  \".github\",\n  \".gitleaks.toml\",\n  \".pre-commit-config.yaml\",\n  \".rumdl.toml\",\n  \".vale\",\n  \".vale.ini\",\n  \"AGENTS.md\",\n  \"CLAUDE.md\",\n  \"README.md\",\n  \"docs\",\n  \"mise.toml\",\n]\n\n[tool.ruff]\n", "source_paths = [\"src\"]\ndo_not_mutate = [\"tests/*\"]\n# Tests read project fixtures and docs as well as Python sources.\nalso_copy = [\".github\", \"docs\", \"schemas\"]\n\n[tool.ruff]\n"],
+    ["  \"vulture>=2.16\",\n]\n\n[tool.uv]\n# mise pins uv in [tools], but that pin binds only where mise resolves\n# PATH. This range is uv refusing to run rather than another minor line\n# rewriting uv.lock. Move it with the mise pin.\nrequired-version = \">=0.13.0,<0.14\"\n# Lock refreshes skip releases younger than 5 days, the same cooldown\n# Renovate applies to version bumps.\nexclude-newer = \"5 days\"\n\n[tool.complexipy]\n", "  \"vulture>=2.16\",\n]\n\n[tool.complexipy]\n"],
+]
+
+[rewrite."src/tbhbdev/alpha/agent/version_heal.py"]
+dest = "factory/cli/src/tbhbdev/alpha/agent/version_heal.py"
+replace = [
+    ["        if host_commit == driver_commit == head:\n            raise\n        install = (*_INSTALL, f\"git+{version_check.REPO_URL}@{head}\")\n        try:\n            if host_commit != head:\n", "        if host_commit == driver_commit == head:\n            raise\n        source = f\"git+{version_check.REPO_URL}@{head}#subdirectory=factory/cli\"\n        install = (*_INSTALL, source)\n        try:\n            if host_commit != head:\n"],
 ]
 
 [rewrite."src/tbhbdev/alpha/monorepo/pathmap.py"]
@@ -418,6 +466,12 @@ replace = [
     ["tbhb-dev/tools", "tbhb-dev/tbhbdev"],
 ]
 
+[rewrite."tests/cue_test_tool.bzl"]
+dest = "factory/cli/tests/cue_test_tool.bzl"
+replace = [
+    ["cue_test_tool = repository_rule(\n    implementation = _cue_test_tool_impl,\n    attrs = {\"_pin\": attr.label(default = Label(\"//:src/tbhbdev/cue-pin.json\"))},\n)\n", "cue_test_tool = repository_rule(\n    implementation = _cue_test_tool_impl,\n    attrs = {\"_pin\": attr.label(default = Label(\"//factory/cli:src/tbhbdev/cue-pin.json\"))},\n)\n"],
+]
+
 [rewrite."tests/origin_urls.py"]
 dest = "factory/cli/tests/origin_urls.py"
 replace = [
@@ -428,6 +482,13 @@ replace = [
 dest = "factory/cli/tests/test_admin_policy.py"
 replace = [
     ["tbhb-dev/tools", "tbhb-dev/tbhbdev"],
+]
+
+[rewrite."tests/test_alpha.py"]
+dest = "factory/cli/tests/test_alpha.py"
+replace = [
+    ["    assert cli.main([\"alpha\", command]) == 0\n    assert capsys.readouterr() == (\"\", \"\")\n\n\ndef test_pre_push_checks_spelling_and_prose() -> None:\n    root = Path(__file__).resolve().parents[1]\n    hooks = yaml.safe_load((root / \".pre-commit-config.yaml\").read_text())\n    assert \"pre-push\" in hooks[\"default_install_hook_types\"]\n    prose = next(\n        hook\n        for repo in hooks[\"repos\"]\n        for hook in repo[\"hooks\"]\n        if hook[\"id\"] == \"spelling-and-prose\"\n    )\n    assert prose == {\n        \"id\": \"spelling-and-prose\",\n        \"name\": \"cspell and vale\",\n        \"language\": \"system\",\n        \"entry\": \"bazelisk test //:cspell_test //:vale_test\",\n        \"stages\": [\"pre-push\"],\n        \"always_run\": True,\n        \"pass_filenames\": False,\n    }\n", "    assert cli.main([\"alpha\", command]) == 0\n    assert capsys.readouterr() == (\"\", \"\")\n"],
+    ["import os\nimport sys\nfrom pathlib import Path\n\nimport pytest\nimport yaml\n\nfrom tbhbdev import alpha, cli\n", "import os\nimport sys\n\nimport pytest\n\nfrom tbhbdev import alpha, cli\n"],
 ]
 
 [rewrite."tests/test_alpha_agent_config.py"]
@@ -452,6 +513,7 @@ replace = [
 dest = "factory/cli/tests/test_alpha_agent_version_heal.py"
 replace = [
     ["tbhb-dev/tools", "tbhb-dev/tbhbdev"],
+    ["GIT_OVERRIDES = (\"-c\", \"credential.helper=\", \"-c\", \"http.extraHeader=\")\nGIT = [\"git\", *GIT_OVERRIDES, \"ls-remote\", URL, REF]\nINSTALL = (\"uv\", \"tool\", \"install\", \"--no-config\", \"--force\", f\"git+{URL}@{HEAD}\")\nRETRY = \"_TBHB_AGENT_VERSION_HEAL\"\nORIGIN = subprocess.CompletedProcess(GIT, 0, f\"{HEAD}\\t{REF}\\n\")\n", "GIT_OVERRIDES = (\"-c\", \"credential.helper=\", \"-c\", \"http.extraHeader=\")\nGIT = [\"git\", *GIT_OVERRIDES, \"ls-remote\", URL, REF]\nINSTALL = (\n    \"uv\",\n    \"tool\",\n    \"install\",\n    \"--no-config\",\n    \"--force\",\n    f\"git+{URL}@{HEAD}#subdirectory=factory/cli\",\n)\nRETRY = \"_TBHB_AGENT_VERSION_HEAL\"\nORIGIN = subprocess.CompletedProcess(GIT, 0, f\"{HEAD}\\t{REF}\\n\")\n"],
 ]
 
 [rewrite."tests/test_alpha_brief.py"]
@@ -482,6 +544,10 @@ replace = [
 dest = "factory/cli/tests/test_alpha_pull_request.py"
 replace = [
     ["tbhb-dev/tools", "tbhb-dev/tbhbdev"],
+    ["def test_rumdl_line_length_is_off_for_drafts() -> None:\n    assert (\n        \"MD013\" in (REAL / \".rumdl.toml\").read_text().split(\"disable\")[1].split(\"]\")[0]\n    )\n\n", "def test_rumdl_line_length_is_off_for_drafts() -> None:\n    assert (\n        \"MD013\"\n        in (WORKSPACE / \".rumdl.toml\").read_text().split(\"disable\")[1].split(\"]\")[0]\n    )\n\n"],
+    ["        )\n        for name in pr.CONFIGS:\n            source = REAL / name\n            target = root / name\n            if source.is_dir():\n", "        )\n        for name in pr.CONFIGS:\n            source = WORKSPACE / name\n            target = root / name\n            if source.is_dir():\n"],
+    ["def real_lint_ready() -> bool:\n    names = (\"vale\", \"cspell\", \"rumdl\", \"cog\")\n    configs = all((REAL / name).exists() for name in pr.CONFIGS)\n    styles = (REAL / \".vale\" / \"Google\").is_dir()\n    return configs and styles and all(shutil.which(name) for name in names)\n\n", "def real_lint_ready() -> bool:\n    names = (\"vale\", \"cspell\", \"rumdl\", \"cog\")\n    configs = all((WORKSPACE / name).exists() for name in pr.CONFIGS)\n    styles = (WORKSPACE / \".vale\" / \"Google\").is_dir()\n    return configs and styles and all(shutil.which(name) for name in names)\n\n"],
+    ["# against this file: the real repository root, or the mutants/ copy of it.\nREAL = Path(__file__).resolve().parents[1]\nSRC = Path(pr.__file__).parents[2]\nDATA = Path(__file__).parent / \"testdata\" / \"alpha\" / \"pull_request\"\n", "# against this file: the real repository root, or the mutants/ copy of it.\nREAL = Path(__file__).resolve().parents[1]\nWORKSPACE = next(parent.parent for parent in REAL.parents if parent.name == \"factory\")\nSRC = Path(pr.__file__).parents[2]\nDATA = Path(__file__).parent / \"testdata\" / \"alpha\" / \"pull_request\"\n"],
 ]
 
 [rewrite."tests/test_alpha_review_doc.py"]
@@ -512,6 +578,12 @@ replace = [
 dest = "factory/cli/tests/test_alpha_version_check.py"
 replace = [
     ["tbhb-dev/tools", "tbhb-dev/tbhbdev"],
+]
+
+[rewrite."tests/test_ci_workflow.py"]
+dest = "factory/cli/tests/test_ci_workflow.py"
+replace = [
+    ["\"\"\"Exercise the repository's inline PR draft gate with real Git diffs.\"\"\"\n\nimport subprocess\nfrom pathlib import Path\n\nimport pytest\nimport yaml\n\nfrom tbhbdev.alpha.pull_request import DRAFT\n\nWORKFLOW = Path(__file__).resolve().parents[1] / \".github/workflows/ci.yml\"\n\n\n@pytest.mark.parametrize(\n    \"change\", [\"add\", \"modify\", \"delete\", \"rename\", \"other\", \"bad-base\"]\n)\ndef test_pr_draft_gate(tmp_path: Path, change: str) -> None:\n    workflow = yaml.safe_load(WORKFLOW.read_text())\n    job = workflow[\"jobs\"][\"pr-draft\"]\n    assert \"pr-draft\" in workflow[\"jobs\"][\"conclusion\"][\"needs\"]\n    assert job[\"permissions\"] == {\"contents\": \"read\"}\n    checkout, gate = job[\"steps\"]\n    assert checkout[\"if\"] == gate[\"if\"] == \"github.event_name == 'pull_request'\"\n    assert checkout[\"with\"] == {\"fetch-depth\": 0, \"persist-credentials\": False}\n\n    def git(*args: str) -> None:\n        subprocess.run([\"git\", *args], cwd=tmp_path, check=True, capture_output=True)\n\n    git(\"init\", \"--initial-branch=main\")\n    git(\"config\", \"user.name\", \"Example\")\n    git(\"config\", \"user.email\", \"example@example.com\")\n    git(\"config\", \"commit.gpgsign\", \"false\")\n    draft = tmp_path / DRAFT\n    draft.parent.mkdir()\n    if change in (\"modify\", \"delete\"):\n        draft.write_text(\"before\\n\")\n    other = tmp_path / \"other.md\"\n    other.write_text(\"other\\n\")\n    git(\"add\", \".\")\n    git(\"commit\", \"-qm\", \"initial\")\n    if change != \"bad-base\":\n        git(\"update-ref\", \"refs/remotes/origin/main\", \"HEAD\")\n    if change == \"delete\":\n        draft.rename(tmp_path.parent / f\"{tmp_path.name}-removed.md\")\n    elif change == \"rename\":\n        other.rename(draft)\n    elif change in (\"add\", \"modify\"):\n        draft.write_text(\"after\\n\")\n    else:\n        other.write_text(\"changed\\n\")\n    git(\"add\", \"-A\")\n    git(\"commit\", \"-qm\", \"change\")\n    done = subprocess.run(\n        [\"bash\", \"-e\", \"-c\", gate[\"run\"]],\n        cwd=tmp_path,\n        text=True,\n        capture_output=True,\n        check=False,\n    )\n    if change == \"other\":\n        assert done.returncode == 0\n        assert done.stdout == \"\"\n    elif change == \"bad-base\":\n        assert done.returncode != 0\n    else:\n        assert done.returncode == 1\n        assert done.stdout == (\n            f\"PR diff contains {DRAFT}; remove it from the commits\\n\"\n        )\n", "\"\"\"Check that root CI tests the targets selected for the pull request.\"\"\"\n\nfrom pathlib import Path\n\nimport yaml\n\n\ndef test_ci_runs_affected_targets() -> None:\n    parents = Path(__file__).resolve().parents\n    workspace = next(parent.parent for parent in parents if parent.name == \"factory\")\n    workflow = workspace / \".github/workflows/ci.yml\"\n    steps = yaml.safe_load(workflow.read_text())[\"jobs\"][\"bazel\"][\"steps\"]\n    selector = next(step for step in steps if step.get(\"id\") == \"affected\")\n    assert selector[\"uses\"] == \"./.github/actions/affected-targets\"\n    test = next(step for step in steps if step[\"name\"] == \"Test\")\n    assert test[\"env\"][\"TARGETS\"] == \"${{ steps.affected.outputs.file }}\"\n    assert '--target_pattern_file=\"$TARGETS\"' in test[\"run\"]\n"],
 ]
 
 [rewrite."tests/test_version.py"]

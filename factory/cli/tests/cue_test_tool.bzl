@@ -18,5 +18,5 @@ def _cue_test_tool_impl(repository_ctx):
 
 cue_test_tool = repository_rule(
     implementation = _cue_test_tool_impl,
-    attrs = {"_pin": attr.label(default = Label("//:src/tbhbdev/cue-pin.json"))},
+    attrs = {"_pin": attr.label(default = Label("//factory/cli:src/tbhbdev/cue-pin.json"))},
 )

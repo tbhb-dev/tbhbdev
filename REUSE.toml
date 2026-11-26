@@ -62,3 +62,8 @@ path = "lib/rules/repo/baseline/**"
 precedence = "override"
 SPDX-FileCopyrightText = "Tony Burns"
 SPDX-License-Identifier = "Apache-2.0"
+
+[[annotations]]
+path = "factory/cli/**"
+SPDX-FileCopyrightText = "Tony Burns"
+SPDX-License-Identifier = "Apache-2.0"

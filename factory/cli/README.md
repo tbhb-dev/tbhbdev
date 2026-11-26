@@ -1,11 +1,11 @@
 # Shared tbhb-dev tools
 
-This repository holds shared tools for tbhb-dev work: commands that more than one repository or session uses and that no one repository owns. Every tool is a subcommand of one Python package, `tbhbdev`.
+This project provides commands that several tbhb-dev repositories and sessions use. It depends on the shared Bazel rules in `lib/rules` and the Python packages pinned in the workspace lock. Every tool is a subcommand of one Python package, `tbhbdev`.
 
 ## Running a tool
 
 ```sh
-uv run tbhbdev <tool> [args...]
+uv run --package tbhbdev tbhbdev <tool> [args...]
 ```
 
 `tbhbdev` with no arguments lists the tools. After the tool's name come that tool's own arguments, and it exits with its own codes.
@@ -13,7 +13,7 @@ uv run tbhbdev <tool> [args...]
 To put `tbhbdev` on PATH, which the `alpha` harness and git hooks need, install it as a uv tool:
 
 ```sh
-uv tool install git+https://github.com/tbhb-dev/tools
+uv tool install "git+https://github.com/tbhb-dev/tbhbdev#subdirectory=factory/cli"
 ```
 
 `uv tool upgrade tbhbdev` updates it. `tbhbdev --version` (or `-V`) prints `tbhbdev <version> (<identity>)`: the commit the install came from, `editable <path>` or `local <path>` for a directory install, or `unknown`.
@@ -96,4 +96,4 @@ The GitHub credential (`gh`) is optional. Without it, a build run requests its G
 
 ## Checks
 
-Bazel runs every gate from tbhb-dev/rules: `bazelisk test //...`. See [AGENTS.md](AGENTS.md) for the setup and the workflow.
+From the repository root, run `bazelisk test //factory/cli:pytest_test` for the full CLI suite. See [AGENTS.md](AGENTS.md) for the other project checks.
