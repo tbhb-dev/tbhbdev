@@ -46,7 +46,7 @@ jobs:
           fetch-depth: 0
 
       - name: Set up Bazel for CI
-        uses: tbhb-dev/tbhbdev/lib/rules/.github/actions/setup-bazel-ci@{{rules_sha}}  # main
+        uses: tbhb-dev/tbhbdev/.github/actions/setup-bazel-ci@{{rules_sha}}  # main
         with:
           disk-cache: ${{ github.workflow }}-${{ matrix.os }}
           cache-save: ${{ github.event_name != 'pull_request' }}

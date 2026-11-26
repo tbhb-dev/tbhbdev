@@ -12,3 +12,9 @@ git_override(
     remote = "https://github.com/tbhb-dev/tbhbdev.git",
     strip_prefix = "lib/rules",
 )
+
+# Check out tbhbdev beside this repository at the commit pinned above.
+local_path_override(
+    module_name = "tbhb_rules_python",
+    path = "../tbhbdev/lib/rules/python",
+)
