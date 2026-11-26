@@ -1,6 +1,10 @@
 # SPDX-License-Identifier: Apache-2.0
 # Copyright Tony Burns
 
+load("@rules_python//python:defs.bzl", "py_binary")
+load("@rules_python_gazelle_plugin//manifest:defs.bzl", "gazelle_python_manifest")
+load("@rules_python_gazelle_plugin//modules_mapping:def.bzl", "modules_mapping")
+load("@rules_shell//shell:sh_binary.bzl", "sh_binary")
 load("@tbhb_rules//lint:defs.bzl", "tombi_test")
 load(
     "@tbhb_rules_python//:defs.bzl",
@@ -12,22 +16,95 @@ load(
     "pip_audit_test",
     "pylint_test",
     "pyrefly_test",
-    "pytest_test",
     "python_tool",
     "ruff_test",
     "vulture_test",
 )
 
-exports_files(["src/tbhbdev/cue-pin.json"])
+# gazelle:python_extension enabled
+# gazelle:python_generation_mode file
+# gazelle:map_kind py_library cli_py_library //factory/cli:python.bzl
+
+exports_files(["pyproject.toml"])
+
+py_binary(
+    name = "coverage_py",
+    legacy_create_init = False,
+    main_module = "coverage",
+    deps = ["@cli_pip//coverage"],
+)
+
+sh_binary(
+    name = "coverage",
+    srcs = ["combine_coverage.sh"],
+    args = ["$(rootpath :coverage_py)"],
+    data = [":coverage_py"],
+)
+
+modules_mapping(
+    name = "modules_map",
+    wheels = [
+        "@cli_pip//cryptography:whl",
+        "@cli_pip//httpx:whl",
+        "@cli_pip//hypothesis:whl",
+        "@cli_pip//jsonschema:whl",
+        "@cli_pip//markdown_it_py:whl",
+        "@cli_pip//mdit_py_plugins:whl",
+        "@cli_pip//onepasswordconnectsdk:whl",
+        "@cli_pip//opentelemetry_sdk:whl",
+        "@cli_pip//psycopg:whl",
+        "@cli_pip//pytest:whl",
+        "@cli_pip//pyyaml:whl",
+        "@cli_pip//tbhb_telemetry:whl",
+        "@cli_pip//tomlkit:whl",
+    ],
+)
+
+gazelle_python_manifest(
+    name = "gazelle_python_manifest",
+    lockfiles = "//:uv.lock",
+    modules_mapping = ":modules_map",
+    pip_repository_name = "cli_pip",
+)
 
 filegroup(
     name = "cli_files",
     srcs = glob([
         "docs/**",
         "schemas/**",
-        "src/**",
-        "tests/**",
-    ]) + ["pyproject.toml"],
+    ]) + [
+        "pyproject.toml",
+        ":source_files",
+        "//factory/cli/tests:package_files",
+    ],
+)
+
+filegroup(
+    name = "source_files",
+    srcs = [
+        "//factory/cli/src/tbhbdev:package_files",
+        "//factory/cli/src/tbhbdev/admin:package_files",
+        "//factory/cli/src/tbhbdev/alpha:package_files",
+        "//factory/cli/src/tbhbdev/alpha/agent:package_files",
+        "//factory/cli/src/tbhbdev/alpha/agent/decisions:package_files",
+        "//factory/cli/src/tbhbdev/alpha/loop:package_files",
+        "//factory/cli/src/tbhbdev/alpha/monorepo:package_files",
+        "//factory/cli/src/tbhbdev/analytics:package_files",
+        "//factory/cli/src/tbhbdev/analytics/decisions:package_files",
+    ],
+    visibility = ["//factory/cli/tests:__pkg__"],
+)
+
+filegroup(
+    name = "schemas",
+    srcs = glob(["schemas/**"]),
+    visibility = ["//factory/cli:__subpackages__"],
+)
+
+filegroup(
+    name = "agent_docs",
+    srcs = glob(["docs/reference/alpha/**"]),
+    visibility = ["//factory/cli/tests:__pkg__"],
 )
 
 CLI_CHECK_INPUTS = [
@@ -91,27 +168,6 @@ deptry_test(
     srcs = CLI_CHECK_INPUTS,
     chdir = "factory/cli",
     roots = ["src"],
-)
-
-pytest_test(
-    name = "pytest_test",
-    # The full suite exceeded the 300 s limit on CI runners.
-    timeout = "eternal",
-    srcs = CLI_CHECK_INPUTS,
-    args = [
-        "-n",
-        "auto",
-    ],
-    chdir = "factory/cli",
-    coverage = ["src/tbhbdev"],
-    # Review and draft validation use CUE. The alpha pr and merge tests run cog,
-    # and the private gitleaks config's tests run the pinned gitleaks.
-    path_tools = [
-        "@cue_test_tool//:cue",
-        "@tbhb_rules_cog//:cog",
-        "@tbhb_rules_gitleaks//:gitleaks",
-        "@tbhb_rules_scc//:scc",
-    ],
 )
 
 # The advisory database changes without any input changing: pip_audit_test

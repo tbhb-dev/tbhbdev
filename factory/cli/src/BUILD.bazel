@@ -1,0 +1,6 @@
+# SPDX-License-Identifier: Apache-2.0
+# Copyright Tony Burns
+
+# gazelle:python_root
+# gazelle:python_default_visibility //factory/cli:__subpackages__
+# gazelle:python_experimental_allow_relative_imports true
