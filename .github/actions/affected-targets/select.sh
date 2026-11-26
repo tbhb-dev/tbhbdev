@@ -200,6 +200,28 @@ label_set() {
   jq -Rrs 'split("\n") | map(select(length > 0) | @json) | "set(" + join(" ") + ")"' "$1"
 }
 
+check_base_candidates() {
+  local query=$1 prefix status=0
+  step='locating the Bazel workspace'
+  prefix=$(git rev-parse --show-prefix 2>>"$log") || return
+  run_step 'creating the base worktree' git worktree add --quiet --detach "$out/base" "$BASE_SHA" >/dev/null || return
+  run_step 'the query of base candidate tests' bash -c 'cd -- "$1" && shift && exec "$@"' _ \
+    "$out/base/$prefix" bazelisk --batch query --output=label "$query" >"$out/base-candidates" || status=$?
+  git worktree remove --force "$out/base" >>"$log" 2>&1 || {
+    step='removing the base worktree'
+    return 1
+  }
+  ((status == 0)) || return "$status"
+
+  # An unchanged test may be newly runnable through a suite. Hashing its
+  # rule and dependencies at both revisions would miss that change.
+  step='comparing candidate tests'
+  LC_ALL=C sort -u -o "$out/base-candidates" "$out/base-candidates" || return
+  LC_ALL=C sort -u -o "$out/candidates" "$out/candidates" || return
+  LC_ALL=C comm -13 "$out/base-candidates" "$out/candidates" >"$out/new-candidates" || return
+  [[ ! -s $out/new-candidates ]] || finish all 'the candidate query found tests newly runnable at the head'
+}
+
 select_targets() {
   local scope candidates targets manual='[\[ ,]manual[,\]]'
   scope=$(IFS=+; printf '(%s)' "${patterns[*]}")
@@ -212,6 +234,7 @@ select_targets() {
   [[ -z ${QUERY:-} ]] || candidates="($candidates) intersect ($QUERY)"
   run_step 'the query of candidate tests' bazelisk query --output=label "$candidates" >"$out/candidates" || return
   [[ -s $out/candidates ]] || return 0
+  check_base_candidates "$candidates" || return
   targets=$(label_set "$out/candidates") || return
 
   # The determinator hashes configured dependencies in local overrides too.

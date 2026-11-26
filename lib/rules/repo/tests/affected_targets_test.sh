@@ -30,9 +30,16 @@ for name in GITHUB_OUTPUT GITHUB_STEP_SUMMARY GITHUB_ENV GITHUB_PATH GITHUB_STAT
   [[ -z ${!name+set} ]] || echo "$name" >>"$ENV_LOG"
 done
 if [[ ${0##*/} == bazelisk ]]; then
+  [[ $1 != --batch ]] || shift
   if [[ $1 == query ]]; then
     printf '%s\n' "$@" >"$QUERY_LOG"
     [[ $FAKE_QUERY != fail ]] || { echo 'ERROR: loading failed' >&2 && exit 6; }
+    if [[ $FAKE_QUERY == suite ]]; then
+      if git show HEAD:lib/rules/diagrams/d2/BUILD.bazel | grep -qF ':manual_test'; then
+        echo @tbhb_rules_d2//private:manual_test
+      fi
+      exit 0
+    fi
     printf '%s\n' //go:{cmd,lib,manual}_test @tbhb_rules_d2//private:inputs_test \
       @tbhb_rules_structurizr//private:{d2,manual}_test //diagrams:integration_test
     exit
@@ -144,7 +151,7 @@ commit() {
     -c commit.gpgsign=false commit -q -m change
   git rev-parse HEAD
 }
-base=$(commit README.md)
+base=$(commit README.md sub/keep.txt)
 docs_head=$(commit docs/guide.md)
 
 # [HEAD_SHA=SHA] [STATUS=LINES] run CASE EVENT HEAD [EXPECTED_ALL]
@@ -293,6 +300,20 @@ done
 FAKE=rules_tagged run 'manual rules test' merge_group "$rules_head"
 [[ $reason == *'tagged manual'* ]] || fail 'manual rules test: wrong reason'
 TD='' run 'no tool for a rules change' merge_group "$rules_head"
+
+# The test's own rule stays unchanged when a suite in another package enables it.
+git checkout -q "$base"
+mkdir -p lib/rules/diagrams/d2/private
+cat >lib/rules/diagrams/d2/private/BUILD.bazel <<'BUILD'
+sh_test(name = "manual_test", srcs = ["manual.sh"], tags = ["manual"])
+BUILD
+echo 'test_suite(name = "suite", tests = [])' >lib/rules/diagrams/d2/BUILD.bazel
+suite_base=$(commit lib/rules/diagrams/d2/private/manual.sh)
+echo 'test_suite(name = "suite", tests = ["//private:manual_test"])' >lib/rules/diagrams/d2/BUILD.bazel
+suite_head=$(commit)
+BASE_SHA=$suite_base FAKE_QUERY=suite FAKE=none run 'suite enables an unchanged manual test' pull_request "$suite_head"
+[[ $reason == 'the candidate query found tests newly runnable at the head' ]] || fail 'suite membership: wrong reason'
+
 git checkout -q "$rules_head"
 rules_config=$(commit lib/rules/diagrams/d2/preset.bazelrc)
 BASE_SHA=$rules_head run 'rules preset change' pull_request "$rules_config"
@@ -355,7 +376,7 @@ lib_head=$(commit lib.txt)
 cd "$scratch/mixed"
 git init -q -b main .
 git submodule add -q "$scratch/lib" lib
-mixed_base=$(commit README.md)
+mixed_base=$(commit README.md sub/keep.txt)
 mixed_head=$(commit README.md)
 BASE_SHA=$mixed_base FAKE=mixed run 'mixed tree' pull_request "$mixed_head"
 now=$(git -C lib rev-parse HEAD)
