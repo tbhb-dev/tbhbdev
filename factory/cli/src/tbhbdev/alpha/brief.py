@@ -184,25 +184,33 @@ def check_hooks(text: str) -> list[str]:
     ]
 
 
-def branch_warnings(
-    text: str, run: str | None = None, *, fetch_refs: tuple[str, ...] = ()
-) -> list[str]:
-    """Warn about foreign branch instructions and unfetched agent branch mentions."""
+def branch_instructions(text: str) -> list[str]:
+    """Return branch names from affirmative branch selection instructions."""
     text = "\n".join(
         " ".join(line.split())
         for line in unicodedata.normalize("NFKC", text).splitlines()
     )
-    allowed = "agent/" if run is None else f"agent/{run}"
     branches = []
     for match in BRANCH_INSTRUCTION.finditer(text):
         branch = match[1].rstrip(".,")
         if branch.startswith("-") or prohibiting(text, match.start()):
             continue
         branches.append(branch)
+    return branches
+
+
+def branch_warnings(
+    text: str, run: str | None = None, *, fetch_refs: tuple[str, ...] = ()
+) -> list[str]:
+    """Warn about foreign branch instructions and unfetched agent branch mentions."""
+    allowed = "agent/" if run is None else f"agent/{run}"
+    branches = branch_instructions(text)
     if run is not None:
         branches.extend(
             branch
-            for branch in AGENT_BRANCH_MENTION.findall(text)
+            for branch in AGENT_BRANCH_MENTION.findall(
+                unicodedata.normalize("NFKC", text)
+            )
             if f"refs/heads/{branch}" not in fetch_refs
         )
     warnings = []

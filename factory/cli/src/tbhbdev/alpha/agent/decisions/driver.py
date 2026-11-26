@@ -31,6 +31,17 @@ _UPDATE = re.compile(
     rf"(?:[`\"']?(refs/heads/{brief.BRANCH_REF}{brief.REF_END}|{brief.SHORT_AGENT_REF})"
     r"|(?i:(?:PR|pull request)(?: #\d+)? (?:head|branch))\b)"
 )
+_PUSH_COMMAND = re.compile(
+    r"\bgit(?: -c (?:'[^'\n]+'|\"[^\"\n]+\"|[^\s`]+))* push "
+    r"(?:-[^\s`;&|]+ )*[^-\s`;&|]+ (?:-[^\s`;&|]+ )*"
+    rf"[\"']?\+?(?:[^\s:`\"']+:)?({brief.BRANCH_REF}){brief.REF_END}"
+)
+_PUSH_PROSE = re.compile(
+    r"\bpush (?:\w+ )?to (?:(?:a|the|this|its|current|existing) )*"
+    rf"(?:branch (?:named )?|(?=[`\"']|[^\s`\"']+/))[`\"']?"
+    rf"({brief.BRANCH_REF}){brief.REF_END}",
+    re.IGNORECASE,
+)
 
 
 def unfetched_prompt_refs(prompt: str, fetch_refs: list[str]) -> list[str]:
@@ -64,8 +75,45 @@ def _unfetched_explicit_refs(
     return [ref for ref in dict.fromkeys(explicit) if ref not in fetch_refs]
 
 
+def _wrong_build_branches(
+    prompt: str,
+    prose: str,
+    branch: str,
+    start_ref: str | None,
+    updates: list[str | None],
+) -> list[str]:
+    selected = [
+        target
+        for target in brief.branch_instructions(prompt)
+        if target and target.removeprefix("refs/heads/") != branch
+    ]
+    push_targets = _instructions(_PUSH_COMMAND, prompt) + _instructions(
+        _PUSH_PROSE, prose
+    )
+    allowed_pushes = {branch, "HEAD"}
+    if start_ref is not None:
+        allowed_pushes.add(start_ref.removeprefix("refs/heads/"))
+    else:
+        # Keep the existing --start-ref guidance for recognized PR updates.
+        allowed_pushes.update(ref.removeprefix("refs/heads/") for ref in updates if ref)
+    selected.extend(
+        target
+        for target in push_targets
+        if target and target.removeprefix("refs/heads/") not in allowed_pushes
+    )
+    return [
+        f"the brief directs work to {target}. Use the launcher branch {branch}."
+        for target in dict.fromkeys(selected)
+    ]
+
+
 def prompt_launch_problems(
-    prompt: str, profile: Profile, fetch_refs: list[str], start_ref: str | None
+    prompt: str,
+    profile: Profile,
+    fetch_refs: list[str],
+    start_ref: str | None,
+    *,
+    run: str,
 ) -> list[str]:
     """Check explicit ref uses and branch update instructions in a launch brief."""
     # Fold line wraps within a paragraph without changing ref case.
@@ -74,11 +122,19 @@ def prompt_launch_problems(
     )
     updates = _instructions(_UPDATE, prose)
     named_refs = _instructions(_REF_USE, prose) + updates
+    branch = f"agent/{run}"
+    if profile is Profile.BUILD:
+        own_refs = (branch, f"refs/heads/{branch}")
+        updates = [ref for ref in updates if ref not in own_refs]
+        fetch_refs = [*fetch_refs, own_refs[1]]
     problems = [
         f"the brief names {ref}. Add `--fetch-ref {ref}`"
         for ref in _unfetched_explicit_refs(prompt, named_refs, fetch_refs)
     ]
-    if profile is Profile.BUILD and start_ref is None and updates:
+    if profile is not Profile.BUILD:
+        return problems
+    problems.extend(_wrong_build_branches(prompt, prose, branch, start_ref, updates))
+    if start_ref is None and updates:
         target = updates[0] or "<branch>"
         ref = f"refs/heads/{target.removeprefix('refs/heads/')}"
         problems.append(
