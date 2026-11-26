@@ -427,20 +427,30 @@ def test_exec_without_host_uses_the_idle_linux_host(
     assert_pool_probes(host_pool)
 
 
+@pytest.mark.parametrize("probe_rc", [1, 2, 73])
+def test_exec_without_host_keeps_the_idle_host_when_its_slot_probe_fails(
+    host_pool: Remote, probe_rc: int
+) -> None:
+    host_pool.configure(slot_rc_by_host={"example-idle": probe_rc})
+    assert launch(host_pool, target=None) == 0
+    metadata = json.loads(driver.metadata_path("sample").read_text())
+    assert metadata["host"] == "example-idle"
+    assert_pool_probes(host_pool)
+
+
 @pytest.mark.parametrize("active_full", [False, True])
 def test_exec_without_host_skips_hosts_without_a_slot(
     host_pool: Remote, capsys: pytest.CaptureFixture[str], active_full: bool
 ) -> None:
+    full = ["example-linux", "example-idle"]
+    if active_full:
+        full.append("example-active")
     host_pool.configure(
         limits_by_host={
             "example-linux": "22 32 33554432 16777216 100 0 -",
             "example-active": "4 32 33554432 16777216 100 0 -",
         },
-        slot_rc_by_host={
-            "example-linux": 1,
-            "example-idle": 1,
-            "example-active": int(active_full),
-        },
+        full_slot_hosts=full,
     )
     if active_full:
         assert launch(host_pool, target=None) == 1

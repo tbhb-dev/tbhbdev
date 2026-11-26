@@ -140,17 +140,29 @@ def test_check_slot_respects_the_review_reservation(
     build = ["check-slot", LINUX.name, "build", "2"]
     review = ["check-slot", LINUX.name, "review", "2"]
     assert agent.main(build, "example agent") == 0
+    assert capsys.readouterr().out == ""
     assert not (root / "build-0").exists()
     with admission.reserve(root, LINUX, Profile.BUILD, 2):
-        assert agent.main(build, "example agent") == 1
-        assert "reserved for reviews" in capsys.readouterr().err
+        assert agent.main(build, "example agent") == 0
+        assert capsys.readouterr().out == "full\n"
         assert agent.main(review, "example agent") == 0
+        assert capsys.readouterr().out == ""
         assert not (root / "review-0").exists()
         with admission.reserve(root, LINUX, Profile.REVIEW, 2):
-            assert agent.main(review, "example agent") == 1
-            assert "no agent slot available (max_concurrent_runs=2)" in (
-                capsys.readouterr().err
-            )
+            assert agent.main(review, "example agent") == 0
+            assert capsys.readouterr().out == "full\n"
+
+
+def test_check_slot_reports_a_probe_error(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    root = tmp_path / "admission"
+    root.touch()
+    monkeypatch.setattr(admission, "ROOT", root)
+    assert agent.main(["check-slot", LINUX.name, "build", "2"], "example agent") == 1
+    output = capsys.readouterr()
+    assert output.out == ""
+    assert "example agent check-slot:" in output.err
 
 
 @pytest.mark.parametrize(("args", "rc"), [(["--help"], 0), ([], 2)])

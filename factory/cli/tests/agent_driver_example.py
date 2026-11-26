@@ -72,6 +72,8 @@ if name == "tbhbdev":
         assert host == os.environ["EXAMPLE_SSH_HOST"]
         assert profile in ("build", "review")
         assert int(limit) > 0
+        if host in control.get("full_slot_hosts", []):
+            print("full")
         sys.exit(control.get("slot_rc_by_host", {}).get(host, 0))
     assert args == ["--version"]
     print(control["version"])

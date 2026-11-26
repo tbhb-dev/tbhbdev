@@ -19,7 +19,12 @@ if TYPE_CHECKING:
     from tbhbdev.alpha.agent.model import Host
 
 ROOT = Path("/var/tmp/tbhbdev-agent-admission")  # noqa: S108  # nosec B108 -- shared host-wide directory by design; an owner check is a follow-up
+SLOT_FULL = "full"
 _DIRECTORY_MODE = 0o1777
+
+
+class SlotFullError(Invalid):
+    """No slot is available to the requested profile."""
 
 
 @contextmanager
@@ -94,10 +99,10 @@ def _available(
             message = (
                 f"{host_name}: no agent slot available (max_concurrent_runs={limit})"
             )
-            raise Invalid(message)
+            raise SlotFullError(message)
         if profile is Profile.BUILD and len(builds) >= max(limit - 1, 1):
             message = f"{host_name}: remaining agent capacity is reserved for reviews"
-            raise Invalid(message)
+            raise SlotFullError(message)
         yield directory, builds if profile is Profile.BUILD else reviews
 
 
@@ -135,6 +140,9 @@ def main(argv: list[str], prog: str) -> int:
             return 0
     except SystemExit as exc:
         return int(exc.code or 0)
+    except SlotFullError:
+        print(SLOT_FULL)
+        return 0
     except (Invalid, OSError) as exc:
         print(f"{prog}: {exc}", file=sys.stderr)
         return 1

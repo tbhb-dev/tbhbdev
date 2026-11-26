@@ -8,7 +8,7 @@ import os
 import secrets
 import sys
 import time
-from contextlib import contextmanager
+from contextlib import contextmanager, suppress
 from dataclasses import replace
 from datetime import UTC, datetime
 from pathlib import Path, PurePosixPath
@@ -17,6 +17,7 @@ from typing import TYPE_CHECKING, NoReturn
 from tbhbdev import telemetry, version
 from tbhbdev.alpha import brief
 from tbhbdev.alpha.agent import (
+    admission,
     launcher,
     render,
     runfiles,
@@ -350,7 +351,7 @@ def usable_hosts(
     *,
     exclude: str | None = None,
 ) -> list[tuple[float, Host, str]]:
-    """Return hosts within resource limits and with a slot by 1-minute load."""
+    """Return eligible hosts in increasing order of 1-minute load."""
     usable: list[tuple[float, Host, str]] = []
     profile = Profile(args.profile)
     account = args.account
@@ -373,15 +374,17 @@ def usable_hosts(
         )
         if refuse or not isinstance(found, limits.Reading):
             continue
-        try:
-            transport.shell(
+        # An older host may lack the probe until version synchronization.
+        # The launch still checks capacity when it claims a slot.
+        with suppress(transport.TransportError, transport.CollisionError):
+            slot = transport.shell(
                 settings,
                 host,
                 remote.check_slot(host, profile),
                 timeout=min(30, deadline - time.monotonic()),
             )
-        except transport.TransportError:
-            continue
+            if slot.strip() == admission.SLOT_FULL:
+                continue
         usable.append((found.load, host, message))
     return sorted(usable, key=lambda entry: entry[0])
 
