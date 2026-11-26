@@ -46,7 +46,7 @@ def test_preflight_envelope(
     def main(arguments: list[str], prog: str, **kwargs: object) -> int:
         calls.append(arguments)
         assert prog == "ssh-serve preflight"
-        assert kwargs == {"push_token": None, "claimed": True}
+        assert kwargs == {"claimed": True}
         return 0
 
     monkeypatch.setattr(run_host, "main", main)
@@ -137,25 +137,27 @@ def test_bad_envelope(
     assert capsys.readouterr().err.startswith("ssh-serve: refused: ")
 
 
+@pytest.mark.parametrize("legacy", [False, True])
 def test_run_dispatch(
-    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], *, legacy: bool
 ) -> None:
     monkeypatch.setenv("SSH_ORIGINAL_COMMAND", "run-host Example_1")
-    document = {"v": 1, "request": {"v": 2}, "push_token": "synthetic-push-secret"}
+    document: dict[str, object] = {"v": 1, "request": {"v": 2}}
+    supplied = "synthetic-push-secret"
+    if legacy:
+        document["push_token"] = supplied
     incoming(monkeypatch, json.dumps(document).encode())
 
     def run(
         arguments: list[str],
         prog: str,
         *,
-        push_token: str | None = None,
         claimed: bool = False,
     ) -> int:
         assert claimed is True
         assert files_for("Example_1").path("owner").read_text() == "host\n"
         assert arguments == ["Example_1"]
         assert prog == "ssh-serve run-host"
-        assert push_token == document["push_token"]
         files = files_for("Example_1")
         assert (
             files.path("request.json").read_text()
@@ -170,7 +172,7 @@ def test_run_dispatch(
     assert capsys.readouterr().out == "normal run output\n"
     for path in Path.cwd().rglob("*"):
         if path.is_file():
-            assert "synthetic-push-secret" not in path.read_text()
+            assert supplied not in path.read_text()
 
 
 @pytest.mark.parametrize("command", ["result", "kill"])
@@ -301,16 +303,16 @@ def test_token_values(token: str | None, monkeypatch: pytest.MonkeyPatch) -> Non
         monkeypatch, json.dumps({"v": 1, "request": {}, "push_token": token}).encode()
     )
     if token is None:
-        assert ssh_serve.envelope() == ({}, None)
+        assert ssh_serve.envelope(preflight_only=False) == {}
     else:
         with pytest.raises(ValueError, match="single line"):
-            ssh_serve.envelope()
+            ssh_serve.envelope(preflight_only=False)
 
 
 def test_input_boundary(monkeypatch: pytest.MonkeyPatch) -> None:
     body = b'{"v":1,"request":{},"push_token":null}'
     incoming(monkeypatch, body + b" " * (1024 * 1024 - len(body)))
-    assert ssh_serve.envelope() == ({}, None)
+    assert ssh_serve.envelope(preflight_only=False) == {}
 
 
 def test_os_error_is_generic(
@@ -388,7 +390,7 @@ def test_command_refusal_reason(
 @pytest.mark.parametrize(
     ("data", "reason"),
     [
-        ({}, "expected v, request and push_token"),
+        ({}, "expected v and request"),
         ({"v": 2, "request": {}, "push_token": None}, "unsupported envelope version"),
         ({"v": 1, "request": [], "push_token": None}, "request must be an object"),
         (
@@ -487,7 +489,7 @@ def test_oversized_input_reads_only_one_lookahead_byte(
     source = io.BytesIO(b" " * (2 * ssh_serve.INPUT_LIMIT))
     monkeypatch.setattr(sys, "stdin", io.TextIOWrapper(source))
     with pytest.raises(ValueError, match=r"^stdin exceeds 1 MiB$"):
-        ssh_serve.envelope()
+        ssh_serve.envelope(preflight_only=False)
     assert source.tell() == ssh_serve.INPUT_LIMIT + 1
 
 
@@ -496,7 +498,7 @@ def test_token_with_uppercase_character(monkeypatch: pytest.MonkeyPatch) -> None
     incoming(
         monkeypatch, json.dumps({"v": 1, "request": {}, "push_token": value}).encode()
     )
-    assert ssh_serve.envelope() == ({}, value)
+    assert ssh_serve.envelope(preflight_only=False) == {}
 
 
 def test_private_run_files_ignore_permissive_umask(

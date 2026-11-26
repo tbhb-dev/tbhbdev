@@ -40,6 +40,7 @@ SAFE = (
 )
 HOOK_ARGUMENTS = 2
 RUN_NAME_ENV = "TBHBDEV_RUN_NAME"
+RUN_START_REF_ENV = "TBHBDEV_RUN_START_REF"
 PROTECTED = frozenset({"refs/heads/main", "refs/heads/master"})
 AGENT_BRANCH_PREFIX = "refs/heads/agent/"
 AGENT_BRANCH_PREFIXES = (AGENT_BRANCH_PREFIX, "refs/heads/renovate/")
@@ -220,8 +221,10 @@ def fetched_tip(remote: str, ref: str) -> str:
 
 def destination_problem(ref: str, *, deleting: bool, agent_push: bool) -> str:
     """The refusal for a disallowed push destination, or empty when allowed."""
+    start_ref = None
     if (name := os.environ.get(RUN_NAME_ENV)) and ref.startswith("refs/heads/"):
-        branch = f"refs/heads/agent/{name}"
+        start_ref = os.environ.get(RUN_START_REF_ENV)
+        branch = start_ref or f"refs/heads/agent/{name}"
         if ref != branch:
             return f"{ref}: this run may only push {branch}"
     if ref in PROTECTED:
@@ -230,7 +233,9 @@ def destination_problem(ref: str, *, deleting: bool, agent_push: bool) -> str:
             "push a new branch and open a pull request"
         )
         return f"{ref}: {message}"
-    if agent_push and ref.startswith("refs/heads/"):
+    if ref == start_ref and deleting:
+        return f"{ref}: deletion refused; this run may only update its start ref"
+    if agent_push and ref.startswith("refs/heads/") and ref != start_ref:
         if deleting and not ref.startswith(AGENT_BRANCH_PREFIX):
             return f"{ref}: deletion refused; agents may delete only agent/ branches"
         if not ref.startswith(AGENT_BRANCH_PREFIXES):

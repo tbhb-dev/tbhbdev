@@ -67,7 +67,7 @@ def command(arguments: list[str]) -> tuple[str, str]:
     return words[0], words[1]
 
 
-def envelope() -> tuple[dict[str, object], str | None]:
+def envelope(*, preflight_only: bool) -> dict[str, object]:
     raw = sys.stdin.buffer.read(INPUT_LIMIT + 1)
     if len(raw) > INPUT_LIMIT:
         message = "stdin exceeds 1 MiB"
@@ -82,15 +82,16 @@ def envelope() -> tuple[dict[str, object], str | None]:
         data: object = json.loads(text)
     except UnicodeDecodeError, RecursionError:
         raise Invalid(message) from None
-    if not isinstance(data, dict) or data.keys() != {"v", "request", "push_token"}:
-        message = "expected v, request and push_token"
+    if not isinstance(data, dict) or data.keys() - {"push_token"} != {"v", "request"}:
+        message = "expected v and request"
         raise Invalid(message)
     if type(data["v"]) is not int or data["v"] != 1:
         message = "unsupported envelope version"
         raise Invalid(message)
     fields: dict[str, object] = data
     request = fields["request"]
-    token = fields["push_token"]
+    # Accept envelopes from controllers that still send the legacy field.
+    token = fields.get("push_token")
     if not isinstance(request, dict):
         message = "request must be an object"
         raise Invalid(message)
@@ -99,15 +100,15 @@ def envelope() -> tuple[dict[str, object], str | None]:
     ):
         message = "push_token must be a nonempty single line or null"
         raise Invalid(message)
-    request_fields: dict[str, object] = request
-    return request_fields, token
-
-
-def start(files: runfiles.RunFiles, prog: str, *, preflight_only: bool) -> int:
-    request, token = envelope()
     if preflight_only and token is not None:
         message = "preflight requires a null push_token"
         raise Invalid(message)
+    request_fields: dict[str, object] = request
+    return request_fields
+
+
+def start(files: runfiles.RunFiles, prog: str, *, preflight_only: bool) -> int:
+    request = envelope(preflight_only=preflight_only)
     body = json.dumps(request) + "\n"
     run_host.refuse_started(files)
     ownership.claim(files)
@@ -121,7 +122,7 @@ def start(files: runfiles.RunFiles, prog: str, *, preflight_only: bool) -> int:
         os.fsync(stream.fileno())
     arguments = [files.name, "--preflight"] if preflight_only else [files.name]
     verb = "preflight" if preflight_only else "run-host"
-    return run_host.main(arguments, f"{prog} {verb}", push_token=token, claimed=True)
+    return run_host.main(arguments, f"{prog} {verb}", claimed=True)
 
 
 def optional(path: Path) -> str | None:

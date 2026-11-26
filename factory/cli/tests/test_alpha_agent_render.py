@@ -22,6 +22,10 @@ def test_brief_and_launch() -> None:
     assert ".github/PULL_REQUEST_DRAFT.md" not in build
     assert "driver" not in build
     assert build.endswith("\nexample\n")
+    fix = render.brief(
+        RunKind.EXEC, "example", profile=Profile.BUILD, start_ref="refs/heads/fix/topic"
+    )
+    assert "push origin HEAD:refs/heads/fix/topic" in fix
     review = render.brief(RunKind.START, "example", profile=Profile.REVIEW)
     assert "`tbhbdev alpha review draft N`" in review
     assert "set `commit_id` to the run's pinned checkout commit" in review

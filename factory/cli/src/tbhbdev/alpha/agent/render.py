@@ -55,12 +55,19 @@ def brief(
     *,
     profile: Profile | None = None,
     harness: Harness | None = None,
+    start_ref: str | None = None,
 ) -> str:
     if harness is Harness.AGY:
         text = f"{AGY_SUBAGENTS}\n{text}"
     elif harness is Harness.CODEX:
         text = f"{CODEX_SUBAGENTS}\n{text}"
     if profile is Profile.BUILD:
+        if start_ref is not None:
+            text = (
+                f"For this `--start-ref` run, push with "
+                "`git -c credential.helper= -c 'credential.helper=!gh auth "
+                f"git-credential' push origin HEAD:{start_ref}`.\n{text}"
+            )
         text = f"{BUILD_PUBLICATION}\n{text}"
     elif profile is Profile.REVIEW:
         text = f"{REVIEW_PUBLICATION}\n{text}"

@@ -804,15 +804,14 @@ def prepare_brief(
             text,
             profile=run.request.profile,
             harness=run.request.harness,
+            start_ref=run.request.start_ref,
         ),
     )
     if not needs_shims:
         run.files.write("phase", "brief")
 
 
-def execute(
-    run: Run, text: str, push_token: str | None = None, *, preflight_only: bool = False
-) -> int:
+def execute(run: Run, text: str, *, preflight_only: bool = False) -> int:
     """Keep cleanup protected until the completion record is durable."""
     if not run.request.unsandboxed:
         os.environ["PATH"] = host_tools.search()
@@ -826,14 +825,13 @@ def execute(
                     run.request.max_concurrent_runs,
                 )
             )
-        return _execute(run, text, stack, push_token, preflight_only=preflight_only)
+        return _execute(run, text, stack, preflight_only=preflight_only)
 
 
 def _execute(
     run: Run,
     text: str,
     stack: ExitStack,
-    push_token: str | credentials.PushTokenFailure | None = None,
     *,
     preflight_only: bool,
 ) -> int:
@@ -864,7 +862,7 @@ def _execute(
         if preflight_only:
             rc = run_harness(run, prepared, stack, preflight_only=True)
         else:
-            rc = run_and_publish(run, prepared, stack, push_token)
+            rc = run_and_check(run, prepared, stack)
     except TimeoutError, subprocess.TimeoutExpired:
         rc = 124
     except RunInterruptedError, EOFError:
@@ -881,19 +879,9 @@ def _execute(
     return rc
 
 
-def run_and_publish(
-    run: Run,
-    prepared: Prepared,
-    stack: ExitStack,
-    token: str | credentials.PushTokenFailure | None,
-) -> int:
-    start_ref = run.request.start_ref
-    if token is None and start_ref is not None:
-        token = credentials.push_token(run.request, run.settings)
-    before = (
-        origin_tip(run) if run.request.expect_commit and start_ref is None else None
-    )
-    rc = push.run(run, prepared, stack, run_harness, token)
+def run_and_check(run: Run, prepared: Prepared, stack: ExitStack) -> int:
+    before = origin_tip(run) if run.request.expect_commit else None
+    rc = push.run(run, prepared, stack, run_harness)
     if rc == 0 and run.request.profile is Profile.REVIEW:
         return post_review(run, prepared)
     return require_commit(run, rc, before)
@@ -913,10 +901,16 @@ def post_review(run: Run, prepared: Prepared) -> int:
         return NO_REVIEW
 
 
+def publication_branch(run: Run) -> str:
+    if run.request.start_ref is not None:
+        return run.request.start_ref.removeprefix("refs/heads/")
+    return f"agent/{run.files.name}"
+
+
 def origin_tip(run: Run) -> str | None:
     """Read the exact branch from origin. Empty means absent, None unreadable."""
     _, owner, repository = repo.parts(run.request.repo)
-    branch = f"heads/agent/{run.files.name}"
+    branch = f"heads/{publication_branch(run)}"
     url = f"https://api.github.com/repos/{owner}/{repository}/git/ref/{branch}"
     headers = {"Accept": "application/vnd.github+json"}
     try:
@@ -945,15 +939,14 @@ def require_commit(run: Run, rc: int, before: str | None) -> int:
             "log", "no new commit: the build required one (--expect-commit)\n"
         )
         return NO_COMMIT
-    if run.request.start_ref is not None:
-        return 0
     after = origin_tip(run) if before is not None else None
-    branch = f"agent/{run.files.name}"
+    branch = publication_branch(run)
     if after is None:
         run.files.write("log", f"push failed: cannot verify {branch} on origin\n")
     elif not after or before == after:
         run.files.write("log", f"push failed: no new tip for {branch} on origin\n")
     else:
+        run.files.write("branch", branch)
         return 0
     return NO_PUSH
 
@@ -1427,7 +1420,6 @@ def main(
     arguments: list[str],
     prog: str,
     *,
-    push_token: str | None = None,
     claimed: bool = False,
 ) -> int:
     parser = argparse.ArgumentParser(prog=prog)
@@ -1463,9 +1455,7 @@ def main(
                 try:
                     run, text = _load(args, Path(temporary.name).resolve())
                     run.files.write("log", build_info.line() + "\n")
-                    completed = execute(
-                        run, text, push_token, preflight_only=args.preflight
-                    )
+                    completed = execute(run, text, preflight_only=args.preflight)
                 finally:
                     # The run's result takes precedence over temporary cleanup.
                     with suppress(Exception):

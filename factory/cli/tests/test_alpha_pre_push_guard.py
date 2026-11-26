@@ -636,6 +636,22 @@ def test_an_agent_cannot_rewind_a_fetched_feature_branch(
     )
 
 
+def test_start_ref_run_can_update_its_pr_branch(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    ref = "refs/heads/fix/topic"
+    monkeypatch.setenv(pg.RUN_NAME_ENV, "example")
+    monkeypatch.setenv(pg.RUN_START_REF_ENV, ref)
+    assert pg.destination_problem(ref, deleting=False, agent_push=True) == ""
+    branch = "refs/heads/agent/example"
+    assert pg.destination_problem(branch, deleting=False, agent_push=True) == (
+        f"{branch}: this run may only push {ref}"
+    )
+    assert pg.destination_problem(ref, deleting=True, agent_push=True) == (
+        f"{ref}: deletion refused; this run may only update its start ref"
+    )
+
+
 @pytest.mark.usefixtures("agent_session")
 def test_an_agent_push_checks_every_destination_branch(
     repo: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]

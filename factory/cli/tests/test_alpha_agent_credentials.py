@@ -1278,7 +1278,7 @@ def test_build_fetch_fallback_requests_read_only_pull_requests_token(
 
 
 @pytest.mark.parametrize("profile", Profile)
-def test_harness_and_driver_mint_permissions_for_the_profile(
+def test_harness_mints_permissions_for_the_profile(
     monkeypatch: pytest.MonkeyPatch, profile: Profile
 ) -> None:
     monkeypatch.setitem(VALUES, "example/app/pem", "example-pem")
@@ -1297,8 +1297,6 @@ def test_harness_and_driver_mint_permissions_for_the_profile(
     scopes = [keywords["permissions"] for keywords in seen]
     if profile is Profile.BUILD:
         assert scopes == [BUILD_PERMISSIONS]
-        assert credentials.push_token(request, settings) == REVIEW_TOKEN
-        assert seen[-1]["permissions"] == BUILD_PERMISSIONS
     else:
         assert scopes == [
             {
@@ -1308,32 +1306,4 @@ def test_harness_and_driver_mint_permissions_for_the_profile(
                 "statuses": "read",
             }
         ]
-        assert credentials.push_token(request, settings) is None
-        assert len(seen) == 1
     assert all(keywords["repository"] == request.repo for keywords in seen)
-
-
-def test_push_token_is_none_for_a_review_without_minting(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    def refuse(_env: gh_app.Env, **_keywords: object) -> gh_app.Minted:
-        raise AssertionError
-
-    monkeypatch.setattr(gh_app, "mint_token", refuse)
-    request = run_request(profile="review", commit="0" * 40)
-    assert credentials.push_token(request, pull_requests_settings()) is None
-
-
-def test_push_token_reports_when_the_app_refuses_the_permissions(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    monkeypatch.setitem(VALUES, "example/app/pem", "example-pem")
-
-    def refuse(_env: gh_app.Env, **_keywords: object) -> gh_app.Minted:
-        message = "permissions refused"
-        raise gh_app.GhAppError(message)
-
-    monkeypatch.setattr(gh_app, "mint_token", refuse)
-    assert credentials.push_token(
-        run_request(), pull_requests_settings()
-    ) == credentials.PushTokenFailure("GhAppError")

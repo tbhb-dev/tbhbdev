@@ -640,8 +640,6 @@ cli_py_test(
         ":conftest",
         ":runfile_fixtures",
         "//factory/cli/src/tbhbdev/alpha/agent:credentials",
-        "//factory/cli/src/tbhbdev/alpha/agent:host_tools",
-        "//factory/cli/src/tbhbdev/alpha/agent:model",
         "//factory/cli/src/tbhbdev/alpha/agent:push",
         "//factory/cli/src/tbhbdev/alpha/agent:run_host",
         "//factory/cli/src/tbhbdev/alpha/agent:runfiles",

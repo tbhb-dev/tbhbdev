@@ -830,7 +830,7 @@ def test_hook_installation_is_repeatable_private_and_read_only(
         python=Path(sys.base_prefix, "bin", "python3"),
         mark=worktree.install.SHIM_MARK,
         pattern=worktree.TBHB_DEV_ORIGIN.pattern,
-        run_env={"TBHBDEV_RUN_NAME": "example"},
+        run_env={"TBHBDEV_RUN_NAME": "example", "TBHBDEV_RUN_START_REF": ""},
     )
 
 
@@ -1201,11 +1201,11 @@ def test_hook_installation_precedes_checkout(
     _, clone = repository(tmp_path)
     install = worktree.install_hooks
 
-    def checked(path: Path, name: str, start: str) -> None:
+    def checked(path: Path, name: str, start: str, *, start_ref: str | None) -> None:
         assert not (path / "tracked").exists()
         assert name == "ordered"
         assert start == git(clone, "rev-parse", "HEAD")
-        install(path, name, start)
+        install(path, name, start, start_ref=start_ref)
 
     monkeypatch.setattr(worktree, "install_hooks", checked)
     worktree.create(clone, "ordered", run_request())

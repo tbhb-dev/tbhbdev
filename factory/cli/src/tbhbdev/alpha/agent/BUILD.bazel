@@ -165,16 +165,11 @@ cli_py_library(
     name = "push",
     srcs = ["push.py"],
     imports = ["../../.."],
-    pyi_deps = [
-        ":credentials",
-        ":run_host",
-    ],
+    pyi_deps = [":run_host"],
     visibility = ["//factory/cli:__subpackages__"],
     deps = [
-        ":host_tools",
         ":model",
         ":runfiles",
-        "//factory/cli/src/tbhbdev/alpha/agent/decisions:repo",
     ],
 )
 

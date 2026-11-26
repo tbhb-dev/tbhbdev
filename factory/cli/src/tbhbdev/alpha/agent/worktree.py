@@ -280,7 +280,9 @@ def fetch_commit(mirror: Path, request: RunRequest, token: str | None = None) ->
     return commit
 
 
-def install_hooks(workspace: Path, run_name: str, start: str) -> None:
+def install_hooks(
+    workspace: Path, run_name: str, start: str, *, start_ref: str | None = None
+) -> None:
     hooks = workspace / ".git" / "hooks"
     hooks.mkdir(mode=0o700, exist_ok=True)
     hooks.chmod(hooks.stat().st_mode | stat.S_IWUSR)
@@ -297,7 +299,10 @@ def install_hooks(workspace: Path, run_name: str, start: str) -> None:
         python=Path(sys.base_prefix, "bin", "python3"),
         mark=install.SHIM_MARK,
         pattern=TBHB_DEV_ORIGIN.pattern,
-        run_env={pre_push_guard.RUN_NAME_ENV: run_name},
+        run_env={
+            pre_push_guard.RUN_NAME_ENV: run_name,
+            pre_push_guard.RUN_START_REF_ENV: start_ref or "",
+        },
     )
     scripts[hooks / "reference-transaction"] = RUN_REFERENCE_TRANSACTION.format(
         branch=shlex.quote(f"refs/heads/agent/{run_name}"), start=shlex.quote(start)
@@ -354,10 +359,15 @@ def discard_unlaunched(workspace: Path) -> None:
 
 
 def prepare_hooks(
-    workspace: Path, name: str, start: str, env: Mapping[str, str] | None
+    workspace: Path,
+    name: str,
+    start: str,
+    env: Mapping[str, str] | None,
+    *,
+    start_ref: str | None,
 ) -> None:
     with preparation_step("hook install"):
-        install_hooks(workspace, name, start)
+        install_hooks(workspace, name, start, start_ref=start_ref)
     if env is not None:
         with preparation_step("hook verification"):
             verify_hook_files(workspace)
@@ -664,7 +674,7 @@ def create(
                 if token is None:
                     raise
                 commit = fetch_commit(mirror, request, token)
-        prepare_hooks(worktree, name, commit, hook_env)
+        prepare_hooks(worktree, name, commit, hook_env, start_ref=request.start_ref)
         with preparation_step("checkout"):
             git(
                 worktree, "fetch", "--no-tags", "--no-write-fetch-head",
