@@ -139,6 +139,72 @@ def test_default_launch_sends_unsandboxed_request(
     assert wire["authorized_by"] is None
 
 
+@pytest.mark.parametrize(
+    "options",
+    [("--harness", "claude"), ("--profile", "review"), ("--schema", "schema.json")],
+)
+def test_exec_steer_refuses_unsupported_launch(
+    remote: Remote, capsys: pytest.CaptureFixture[str], options: tuple[str, ...]
+) -> None:
+    assert launch(remote, "--steer", *options) == 1
+    assert (
+        "exec --steer requires a Codex build without --schema"
+        in capsys.readouterr().err
+    )
+
+
+@pytest.mark.parametrize(
+    ("reply", "error"),
+    [
+        ({}, ""),
+        ({"out": "Codex thread is unknown or unloaded\n"}, "unknown or unloaded"),
+        ({"rc": 73}, "not owner"),
+    ],
+)
+def test_send_routes_message_over_owned_ssh(
+    remote: Remote,
+    capsys: pytest.CaptureFixture[str],
+    reply: dict[str, object],
+    error: str,
+) -> None:
+    remote.configure(steer=True)
+    assert launch(remote, "--steer") == 0
+    owner = driver.load(CONFIG, "sample").owner
+    remote.configure(ssh=[reply])
+    assert command("send", "--steer", "one\ntwo") == int(bool(error))
+    assert error in capsys.readouterr().err
+    call = remote.records("ssh")[-1]
+    assert "send-host sample" in str(call["args"])
+    assert "one\ntwo" not in str(call["args"])
+    assert base64.b64decode(str(call["stdin"])) == f"{owner}\none\ntwo".encode()
+
+
+def test_send_refuses_unknown_run(
+    remote: Remote, capsys: pytest.CaptureFixture[str]
+) -> None:
+    assert command("send", "hello") == 1
+    assert "sample: unknown run" in capsys.readouterr().err
+    assert remote.records("ssh") == []
+
+
+def test_send_refuses_recorded_claude(
+    remote: Remote, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    assert launch(remote) == 0
+    run = driver.load(CONFIG, "sample")
+    run.request = dataclasses.replace(run.request, harness=model.Harness.CLAUDE)
+    monkeypatch.setattr(driver, "load", Mock(return_value=run))
+    assert command("send", "hello") == 1
+    assert "Claude delivery is not built" in capsys.readouterr().err
+
+
+def test_send_explicit_claude_needs_no_config(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    assert command("send", "--harness", "claude", "hello") == 1
+    assert capsys.readouterr().err == "Claude delivery is not built\n"
+
+
 def test_unsandboxed_clean_refuses_a_run_without_a_result(
     remote: Remote, capsys: pytest.CaptureFixture[str]
 ) -> None:

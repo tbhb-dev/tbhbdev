@@ -2,12 +2,12 @@
 description: Run coordination, host checks, signing parity, fetch refs, and build run expectations.
 generated:
   - role: generated
-    harness: claude-code:2.1.319
-    model: anthropic:claude-sonnet-5-5
+    harness: codex:0.171.0
+    model: openai:gpt-6.2-sol
     effort: high
-    surface: sdk-cli
-    session: sha-256-64:e23dce32b8825437
-    at: "2026-11-26T03:16:54Z"
+    surface: exec
+    session: sha-256-64:44010e012e0f21f3
+    at: "2026-11-26T22:56:51Z"
 status: stable
 tags: [alpha]
 title: Agent
@@ -23,12 +23,17 @@ It never runs Git.
 Exit codes are 0 for a match, 1 for mismatches, and 2 for usage or collection errors.
 The Python API `precheck(clone_data, reference)` returns the result for callers.
 
-`agent` coordinates runs with `exec`, `wait`, `status`, `log`, `diff`, `kill`, `clean` and `keep`.
+`agent` coordinates runs with `exec`, `send`, `wait`, `status`, `log`, `diff`, `kill`, `clean` and `keep`.
 `signing-parity` checks that each configured host's signing key is a signing key of tbhb-agent.
-It runs the hidden host command `signing-fingerprint ACCOUNT`, which prints only the SHA256 fingerprint of the key a run would sign with, over the ordinary ssh shell.
+It runs the hidden host command `signing-fingerprint ACCOUNT` over the ordinary ssh shell. The command prints the SHA256 fingerprint of the key a run would sign with.
 It then reads tbhb-agent's public signing key list from GitHub and exits 1 when any host's fingerprint is missing or the host is unreachable.
 A host without the command counts as unreachable until `tbhbdev` syncs there.
 The package also includes the run request's schema and the repo argument rules.
+
+Launch a Codex build with `agent exec --steer` to accept messages while its turn is active.
+Run `agent send RUN "MESSAGE"` to steer that turn. You can also pass `--steer` to `send`.
+Steering requires a build without `--schema`. If the run is unknown or its thread has no active turn, `send` returns an error.
+`agent send --harness claude RUN "MESSAGE"` prints `Claude delivery is not built` and exits with status 1.
 
 When `tbhbdev alpha agent exec` finds a version mismatch, it looks up the head of `tbhb-dev/tbhbdev` on `main` and installs that commit on each side that differs.
 It logs each successful install to standard error.
@@ -39,12 +44,12 @@ If the versions still differ, it reports the original mismatch with `after one s
 `tbhbdev alpha agent exec --fetch-ref REF` makes `refs/heads/<branch>` available as `origin/fetched/heads/<branch>` and `refs/pull/N/head` as `origin/fetched/pull/N/head`.
 Repeat `--fetch-ref` up to eight times with either profile.
 
-`tbhbdev alpha agent exec --worker-workflow ID` launches a review as the registered worker `worker/ID` when no tmux pane names the caller.
+`tbhbdev alpha agent exec --worker-workflow ID` launches a review as the registered worker `worker/ID` when the caller has no tmux pane to supply its identity.
 See [Agent configuration](../agent-configuration.md) for the `[agent.worker]` table that registers it.
 
 Build runs expect a new commit and an updated origin branch by default.
 Pass `--no-expect-commit` for a research run that can finish without committing or pushing.
-After a successful harness exit, `agent wait` returns 6 for a missing commit, 9 for an unchanged or unverifiable run branch on origin, and 10 for a review that the host did not post.
+After a successful harness exit, `agent wait` returns 6 for a missing commit, 9 for an unchanged or unverifiable run branch on origin, and 10 for a review that the host didn't post.
 Use `agent status NAME` to see the reason.
 
 For a build that updates an existing pull request, pass both `--fetch-ref refs/heads/<branch>` and `--start-ref refs/heads/<branch>`.
@@ -55,5 +60,5 @@ If the remote tip changes before the push check, the run fails and keeps its wor
 A build run that opens a pull request writes `.github/PULL_REQUEST_DRAFT.md` in its worktree and keeps it out of commits.
 Set `base` in the draft's frontmatter to identify the target branch.
 The run pushes its `agent/` branch to origin and runs `tbhbdev alpha pr create` from the worktree.
-The command checks the draft, adds the commit trailers and the opener's identity to the body, and records the pull request in the opened ledger.
+The command checks the draft and adds the commit trailers and the opener's identity to the body. It records the pull request in the opened ledger.
 CI fails a pull request whose diff contains the draft.

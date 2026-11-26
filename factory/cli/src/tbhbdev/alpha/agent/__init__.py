@@ -7,13 +7,13 @@ import sys
 
 from tbhbdev import telemetry, userconfig
 from tbhbdev.alpha import worker_identity
-from tbhbdev.alpha.agent import driver, precheck, settings
+from tbhbdev.alpha.agent import app_server, driver, precheck, settings
 from tbhbdev.alpha.agent import run_host as run_host
 from tbhbdev.alpha.agent import signing_parity as signing_parity
 from tbhbdev.alpha.agent import ssh_serve as ssh_serve
 from tbhbdev.alpha.agent.decisions import config
 
-__all__ = ["driver", "main", "precheck", "settings"]
+__all__ = ["app_server", "driver", "main", "precheck", "settings"]
 
 
 def duration(text: str) -> int:
@@ -91,6 +91,9 @@ def parser(prog: str) -> argparse.ArgumentParser:
     )
     execute.add_argument("--timeout", type=duration)
     execute.add_argument("--schema")
+    execute.add_argument(
+        "--steer", action="store_true", help="enable steering for a Codex build"
+    )
     execute.add_argument("--class", dest="class_")
     execute.add_argument("--variant")
     execute.add_argument("--role")
@@ -110,6 +113,13 @@ def parser(prog: str) -> argparse.ArgumentParser:
             sub.add_argument("-n", type=int, default=10)
         if verb == "clean":
             sub.add_argument("--force", action="store_true")
+    send = verbs.add_parser("send", help="steer an active Codex run")
+    send.add_argument("--harness", choices=("codex", "claude"))
+    send.add_argument(
+        "--steer", action="store_true", help="steer the active turn (default)"
+    )
+    send.add_argument("name", metavar="RUN")
+    send.add_argument("message", metavar="MESSAGE")
     verbs.add_parser(
         "signing-parity", help="check each host's signing key is registered"
     )
@@ -119,6 +129,7 @@ def parser(prog: str) -> argparse.ArgumentParser:
 def main(argv: list[str], prog: str) -> int:
     host_commands = {
         "run-host": run_host.main,
+        "send-host": app_server.main,
         "ssh-serve": ssh_serve.main,
         "precheck": precheck.main,
         "signing-fingerprint": signing_parity.host_main,
@@ -135,6 +146,9 @@ def main(argv: list[str], prog: str) -> int:
 
 
 def dispatch(args: argparse.Namespace | None, prog: str) -> int:
+    if args is not None and args.verb == "send" and args.harness == "claude":
+        print(app_server.CLAUDE_UNAVAILABLE, file=sys.stderr)
+        return 1
     try:
         loaded = settings.load()
         if args is None:

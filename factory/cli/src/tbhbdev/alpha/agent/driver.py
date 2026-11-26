@@ -17,6 +17,7 @@ from typing import TYPE_CHECKING, NoReturn
 from tbhbdev import telemetry, version
 from tbhbdev.alpha import brief
 from tbhbdev.alpha.agent import (
+    app_server,
     launcher,
     render,
     runfiles,
@@ -361,6 +362,13 @@ def checked_prompt(args: argparse.Namespace) -> str:
 
 
 def execute(settings: Settings, args: argparse.Namespace) -> int:
+    if args.steer and (
+        args.harness != Harness.CODEX
+        or args.profile != Profile.BUILD
+        or args.schema is not None
+    ):
+        message = "exec --steer requires a Codex build without --schema"
+        raise Invalid(message)
     run = prepare(settings, args)
     telemetry.attributes(
         **{
@@ -428,7 +436,7 @@ def execute(settings: Settings, args: argparse.Namespace) -> int:
         transport.call(
             settings,
             run.host,
-            remote.start(run.name, settings.sockets_dir, run.host),
+            remote.start(run.name, settings.sockets_dir, run.host, steer=args.steer),
             transport.Stdin(run.owner),
             timeout=deadline - time.monotonic(),
         )
@@ -780,6 +788,33 @@ def keep(settings: Settings, run: Run) -> int:
     return 0
 
 
+def send(settings: Settings, name: str, text: str) -> int:
+    try:
+        run = load(settings, name)
+    except FileNotFoundError:
+        message = f"{name}: unknown run"
+        raise Invalid(message) from None
+    if run.request.harness is not Harness.CODEX:
+        errors = {
+            Harness.CLAUDE: app_server.CLAUDE_UNAVAILABLE,
+            Harness.AGY: f"{name}: send requires a Codex run",
+        }
+        raise Invalid(errors[run.request.harness])
+    script = remote.owned(name) + (
+        f"exec {remote.program(run.host)} alpha agent send-host {name}\n"
+    )
+    try:
+        error = transport.shell(
+            settings, run.host, script, transport.Stdin(run.owner, text.encode())
+        ).strip()
+    except transport.CollisionError:
+        not_owner(run)
+    if error:
+        message = f"{name}: {transport.terminal_text(error)}"
+        raise Invalid(message)
+    return 0
+
+
 def dispatch(settings: Settings, args: argparse.Namespace) -> int:
     if args.verb == "signing-parity":
         return signing_parity.main(settings)
@@ -789,6 +824,8 @@ def dispatch(settings: Settings, args: argparse.Namespace) -> int:
             **{"tbhb.agent.outcome": "ok" if result == 0 else "failed"}
         )
         return result
+    if args.verb == "send":
+        return send(settings, args.name, args.message)
     run = load(settings, args.name)
     verbs = {"wait": wait, "status": status, "kill": kill, "keep": keep}
     try:

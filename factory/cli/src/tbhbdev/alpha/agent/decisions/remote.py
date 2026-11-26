@@ -207,10 +207,14 @@ tar -xf - -C "$d"
     )
 
 
-def start(name: str, sockets_dir: str, host: Host) -> tuple[str, ...]:
+def start(
+    name: str, sockets_dir: str, host: Host, *, steer: bool = False
+) -> tuple[str, ...]:
     command = shlex.join(
         ("alpha", "agent", "run-host", name, "--host", host.name, "--owned")
     )
+    if steer:
+        command += " --steer"
     return (
         "/bin/sh",
         "-c",

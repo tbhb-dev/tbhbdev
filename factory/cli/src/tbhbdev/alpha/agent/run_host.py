@@ -29,6 +29,7 @@ from tbhbdev import userconfig
 from tbhbdev.alpha import codex_trust, install, run_stop_hook
 from tbhbdev.alpha.agent import (
     admission,
+    app_server,
     bazel_servers,
     build_info,
     codex_install,
@@ -77,6 +78,7 @@ class Run:
     started: float
     deadline: float
     bazel_shutdown: BazelShutdown | None = None
+    steer: bool = False
 
 
 @dataclass(frozen=True)
@@ -735,7 +737,15 @@ def run_harness(
     try:
         with process_group.defer_signals():
             child = process_group.launch_owned(
-                process_group.Launch(command, env, paths.worktree, streams, terminal),
+                process_group.Launch(
+                    app_server.launch_command(command, Path(paths.codex_home))
+                    if run.steer
+                    else command,
+                    env,
+                    paths.worktree,
+                    streams,
+                    terminal,
+                ),
                 started=started,
             )
         if run.files.path("request.json").exists():
@@ -1429,6 +1439,7 @@ def main(
     parser.add_argument("--prompt")
     parser.add_argument("--preflight", action="store_true")
     parser.add_argument("--owned", action="store_true")
+    parser.add_argument("--steer", action="store_true")
     args = parser.parse_args(arguments)
     if args.name is None:
         print(f"{prog}: run name is required", file=sys.stderr)
@@ -1572,5 +1583,6 @@ def _load(args: argparse.Namespace, tmpdir: Path) -> tuple[Run, str]:
         tmpdir,
         started,
         clock + parsed.startup_deadline_seconds,
+        steer=args.steer,
     )
     return run, text
