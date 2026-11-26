@@ -1,0 +1,372 @@
+# SPDX-License-Identifier: Apache-2.0
+# Copyright Tony Burns
+
+load("//factory/cli:python.bzl", "cli_py_library")
+
+cli_py_library(
+    name = "__init__",
+    srcs = ["__init__.py"],
+    imports = ["../../.."],
+    visibility = ["//factory/cli:__subpackages__"],
+    deps = [
+        ":driver",
+        ":precheck",
+        ":run_host",
+        ":settings",
+        ":signing_parity",
+        ":ssh_serve",
+        "//factory/cli/src/tbhbdev:telemetry",
+        "//factory/cli/src/tbhbdev:userconfig",
+        "//factory/cli/src/tbhbdev/alpha:worker_identity",
+        "//factory/cli/src/tbhbdev/alpha/agent/decisions:config",
+    ],
+)
+
+cli_py_library(
+    name = "admission",
+    srcs = ["admission.py"],
+    imports = ["../../.."],
+    visibility = ["//factory/cli:__subpackages__"],
+    deps = [":model"],
+)
+
+cli_py_library(
+    name = "bazel_servers",
+    srcs = ["bazel_servers.py"],
+    imports = ["../../.."],
+    visibility = ["//factory/cli:__subpackages__"],
+    deps = [
+        ":host_tools",
+        ":model",
+    ],
+)
+
+cli_py_library(
+    name = "build_info",
+    srcs = ["build_info.py"],
+    imports = ["../../.."],
+    visibility = ["//factory/cli:__subpackages__"],
+    deps = ["//factory/cli/src/tbhbdev:version"],
+)
+
+cli_py_library(
+    name = "codex_install",
+    srcs = ["codex_install.py"],
+    imports = ["../../.."],
+    visibility = ["//factory/cli:__subpackages__"],
+    deps = [":model"],
+)
+
+cli_py_library(
+    name = "credentials",
+    srcs = ["credentials.py"],
+    imports = ["../../.."],
+    visibility = ["//factory/cli:__subpackages__"],
+    deps = [
+        ":host_tools",
+        ":model",
+        ":process_group",
+        ":runfiles",
+        "//factory/cli/src/tbhbdev:secrets",
+        "//factory/cli/src/tbhbdev/alpha:gh_app",
+        "//factory/cli/src/tbhbdev/alpha/agent/decisions:auth",
+        "//factory/cli/src/tbhbdev/alpha/agent/decisions:config",
+        "//factory/cli/src/tbhbdev/alpha/agent/decisions:repo",
+        "//factory/cli/src/tbhbdev/alpha/agent/decisions:run_state",
+        "@cli_pip//httpx",
+        "@cli_pip//pyyaml",
+    ],
+)
+
+cli_py_library(
+    name = "driver",
+    srcs = ["driver.py"],
+    imports = ["../../.."],
+    visibility = ["//factory/cli:__subpackages__"],
+    deps = [
+        ":launcher",
+        ":model",
+        ":render",
+        ":runfiles",
+        ":shims",
+        ":signing_parity",
+        ":transport",
+        ":version_heal",
+        "//factory/cli/src/tbhbdev:telemetry",
+        "//factory/cli/src/tbhbdev:version",
+        "//factory/cli/src/tbhbdev/alpha:brief",
+        "//factory/cli/src/tbhbdev/alpha/agent/decisions:driver",
+        "//factory/cli/src/tbhbdev/alpha/agent/decisions:launcher",
+        "//factory/cli/src/tbhbdev/alpha/agent/decisions:limits",
+        "//factory/cli/src/tbhbdev/alpha/agent/decisions:remote",
+        "//factory/cli/src/tbhbdev/alpha/agent/decisions:repo",
+        "//factory/cli/src/tbhbdev/alpha/agent/decisions:request",
+        "//factory/cli/src/tbhbdev/alpha/agent/decisions:runfiles_names",
+    ],
+)
+
+cli_py_library(
+    name = "host_tools",
+    srcs = ["host_tools.py"],
+    imports = ["../../.."],
+    visibility = ["//factory/cli:__subpackages__"],
+    deps = [":model"],
+)
+
+cli_py_library(
+    name = "launcher",
+    srcs = ["launcher.py"],
+    imports = ["../../.."],
+    visibility = ["//factory/cli:__subpackages__"],
+    deps = [
+        ":model",
+        "//factory/cli/src/tbhbdev/alpha:worker_identity",
+        "//factory/cli/src/tbhbdev/alpha/agent/decisions:launcher",
+    ],
+)
+
+cli_py_library(
+    name = "model",
+    srcs = ["model.py"],
+    imports = ["../../.."],
+    visibility = ["//factory/cli:__subpackages__"],
+)
+
+cli_py_library(
+    name = "ownership",
+    srcs = ["ownership.py"],
+    imports = ["../../.."],
+    pyi_deps = [":runfiles"],
+    visibility = ["//factory/cli:__subpackages__"],
+    deps = [":model"],
+)
+
+cli_py_library(
+    name = "precheck",
+    srcs = ["precheck.py"],
+    imports = ["../../.."],
+    visibility = ["//factory/cli:__subpackages__"],
+)
+
+cli_py_library(
+    name = "process_group",
+    srcs = ["process_group.py"],
+    imports = ["../../.."],
+    pyi_deps = [":runfiles"],
+    visibility = ["//factory/cli:__subpackages__"],
+    deps = [
+        ":host_tools",
+        ":model",
+        "//factory/cli/src/tbhbdev/alpha/agent/decisions:run_state",
+    ],
+)
+
+cli_py_library(
+    name = "push",
+    srcs = ["push.py"],
+    imports = ["../../.."],
+    pyi_deps = [
+        ":credentials",
+        ":run_host",
+    ],
+    visibility = ["//factory/cli:__subpackages__"],
+    deps = [
+        ":host_tools",
+        ":model",
+        ":runfiles",
+        "//factory/cli/src/tbhbdev/alpha/agent/decisions:repo",
+    ],
+)
+
+cli_py_library(
+    name = "render",
+    srcs = ["render.py"],
+    imports = ["../../.."],
+    visibility = ["//factory/cli:__subpackages__"],
+    deps = [
+        ":model",
+        ":transport",
+    ],
+)
+
+cli_py_library(
+    name = "review_post",
+    srcs = ["review_post.py"],
+    imports = ["../../.."],
+    pyi_deps = [":run_host"],
+    visibility = ["//factory/cli:__subpackages__"],
+    deps = [
+        ":credentials",
+        ":model",
+        ":runfiles",
+        "//factory/cli/src/tbhbdev:content",
+        "//factory/cli/src/tbhbdev/alpha:identity",
+        "//factory/cli/src/tbhbdev/alpha:pull_request",
+        "//factory/cli/src/tbhbdev/alpha:review",
+        "//factory/cli/src/tbhbdev/alpha:review_doc",
+        "//factory/cli/src/tbhbdev/alpha/agent/decisions:repo",
+        "//factory/cli/src/tbhbdev/alpha/agent/decisions:request",
+        "@cli_pip//httpx",
+    ],
+)
+
+cli_py_library(
+    name = "run_host",
+    srcs = ["run_host.py"],
+    imports = ["../../.."],
+    visibility = ["//factory/cli:__subpackages__"],
+    deps = [
+        ":admission",
+        ":bazel_servers",
+        ":build_info",
+        ":codex_install",
+        ":credentials",
+        ":host_tools",
+        ":model",
+        ":ownership",
+        ":process_group",
+        ":push",
+        ":render",
+        ":review_post",
+        ":runfiles",
+        ":settings",
+        ":shims",
+        ":worktree",
+        "//factory/cli/src/tbhbdev:userconfig",
+        "//factory/cli/src/tbhbdev/alpha:codex_trust",
+        "//factory/cli/src/tbhbdev/alpha:identity",
+        "//factory/cli/src/tbhbdev/alpha:install",
+        "//factory/cli/src/tbhbdev/alpha:run_stop_hook",
+        "//factory/cli/src/tbhbdev/alpha/agent/decisions:argv",
+        "//factory/cli/src/tbhbdev/alpha/agent/decisions:config",
+        "//factory/cli/src/tbhbdev/alpha/agent/decisions:policy",
+        "//factory/cli/src/tbhbdev/alpha/agent/decisions:repo",
+        "//factory/cli/src/tbhbdev/alpha/agent/decisions:request",
+        "//factory/cli/src/tbhbdev/alpha/agent/decisions:run_state",
+        "@cli_pip//httpx",
+    ],
+)
+
+cli_py_library(
+    name = "runfiles",
+    srcs = ["runfiles.py"],
+    imports = ["../../.."],
+    visibility = ["//factory/cli:__subpackages__"],
+    deps = [
+        ":model",
+        "//factory/cli/src/tbhbdev/alpha/agent/decisions:request",
+    ],
+)
+
+cli_py_library(
+    name = "settings",
+    srcs = ["settings.py"],
+    imports = ["../../.."],
+    visibility = ["//factory/cli:__subpackages__"],
+    deps = [
+        ":model",
+        "//factory/cli/src/tbhbdev:userconfig",
+        "//factory/cli/src/tbhbdev/alpha/agent/decisions:config",
+    ],
+)
+
+cli_py_library(
+    name = "shims",
+    srcs = ["shims.py"],
+    imports = ["../../.."],
+    visibility = ["//factory/cli:__subpackages__"],
+    deps = [
+        ":model",
+        ":worktree",
+    ],
+)
+
+cli_py_library(
+    name = "signing_parity",
+    srcs = ["signing_parity.py"],
+    imports = ["../../.."],
+    visibility = ["//factory/cli:__subpackages__"],
+    deps = [
+        ":credentials",
+        ":host_tools",
+        ":model",
+        ":settings",
+        ":transport",
+        "//factory/cli/src/tbhbdev/alpha/agent/decisions:remote",
+        "@cli_pip//httpx",
+    ],
+)
+
+cli_py_library(
+    name = "ssh_serve",
+    srcs = ["ssh_serve.py"],
+    imports = ["../../.."],
+    visibility = ["//factory/cli:__subpackages__"],
+    deps = [
+        ":build_info",
+        ":model",
+        ":ownership",
+        ":process_group",
+        ":run_host",
+        ":runfiles",
+        "//factory/cli/src/tbhbdev/alpha/agent/decisions:run_state",
+    ],
+)
+
+cli_py_library(
+    name = "transport",
+    srcs = ["transport.py"],
+    imports = ["../../.."],
+    visibility = ["//factory/cli:__subpackages__"],
+    deps = [
+        ":model",
+        "//factory/cli/src/tbhbdev/alpha/agent/decisions:argv",
+        "//factory/cli/src/tbhbdev/alpha/agent/decisions:remote",
+        "//factory/cli/src/tbhbdev/alpha/agent/decisions:runfiles_names",
+    ],
+)
+
+cli_py_library(
+    name = "version_heal",
+    srcs = ["version_heal.py"],
+    imports = ["../../.."],
+    visibility = ["//factory/cli:__subpackages__"],
+    deps = [
+        ":model",
+        ":transport",
+        "//factory/cli/src/tbhbdev:version",
+        "//factory/cli/src/tbhbdev/alpha:version_check",
+        "//factory/cli/src/tbhbdev/alpha/agent/decisions:driver",
+        "//factory/cli/src/tbhbdev/alpha/agent/decisions:remote",
+    ],
+)
+
+cli_py_library(
+    name = "worktree",
+    srcs = ["worktree.py"],
+    imports = ["../../.."],
+    visibility = ["//factory/cli:__subpackages__"],
+    deps = [
+        ":host_tools",
+        ":model",
+        ":runfiles",
+        "//factory/cli/src/tbhbdev/alpha:identity",
+        "//factory/cli/src/tbhbdev/alpha:install",
+        "//factory/cli/src/tbhbdev/alpha:pre_push_guard",
+        "//factory/cli/src/tbhbdev/alpha:repo",
+        "//factory/cli/src/tbhbdev/alpha/agent/decisions:repo",
+        "//factory/cli/src/tbhbdev/alpha/agent/decisions:request",
+    ],
+)
+
+filegroup(
+    name = "package_files",
+    srcs = glob(
+        ["**"],
+        exclude = ["BUILD.bazel"],
+    ),
+    visibility = [
+        "//factory/cli:__pkg__",
+        "//factory/cli/tests:__pkg__",
+    ],
+)

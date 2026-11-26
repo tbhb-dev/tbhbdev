@@ -42,6 +42,7 @@ from agent_host_example import (
     trusted_host_stat,
     unusual_git_metadata,
 )
+from runfile_fixtures import agent_suffix_case as agent_suffix_case  # noqa: PLC0414
 from test_alpha_agent_codex_install import release
 from test_alpha_agent_credentials import VALUES
 from test_alpha_agent_settings import EXAMPLE
