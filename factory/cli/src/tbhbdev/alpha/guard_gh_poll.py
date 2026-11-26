@@ -166,7 +166,6 @@ REPEATER_VALUE_FLAGS = {
 }  # fmt: skip
 GH_RUN = re.compile(r"\bgh\b.*\brun\b", re.DOTALL)
 REDIRECT = re.compile(r"\d*(?:>>?|<|>&|&>)")
-GROUP_PIPE = re.compile(r"[ \t]*\|(?!\|)")
 REPEAT_REASON = (
     "Don't run a CI listing through xargs or parallel; each repeat is a separate "
     "call. Ask the coordinator."
@@ -224,6 +223,7 @@ class BodyScanner(Scanner):
     pending: list[int] = field(default_factory=list)
     piped: dict[int, int] = field(default_factory=dict)
     group_starts: dict[int, int] = field(default_factory=dict)
+    closed_group: int | None = None
 
     @override
     def plain(self, char: str) -> None:
@@ -231,25 +231,32 @@ class BodyScanner(Scanner):
         if char == "|":
             if self.text.startswith("||", self.pos):
                 self.pos += 1
+            elif self.closed_group is not None:
+                index = len(self.commands)
+                if not (self.words or self.in_word):
+                    index -= 1
+                self.piped[index] = self.closed_group
             elif self.words or self.in_word:
                 index = len(self.commands)
                 self.piped[index] = index
+        if char in ";&|\n":
+            self.closed_group = None
         super().plain(char)
 
     @override
     def open_nesting(self, kind: str, width: int) -> None:
         """Record the first command of a subshell group."""
         super().open_nesting(kind, width)
+        self.closed_group = None
         if kind == "(":
             self.group_starts[len(self.nesting)] = len(self.commands)
 
     @override
     def close_nesting(self) -> None:
-        """Keep every command in a group that supplies a pipe."""
+        """Keep a group's start through redirects until its pipe or separator."""
         start = self.group_starts.pop(len(self.nesting), None)
         super().close_nesting()
-        if start is not None and GROUP_PIPE.match(self.text, self.pos):
-            self.piped[len(self.commands) - 1] = start
+        self.closed_group = start
 
     @override
     def heredoc(self) -> None:

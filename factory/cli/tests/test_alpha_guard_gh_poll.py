@@ -1315,6 +1315,7 @@ def test_protected_names_are_read_after_unquoting_and_the_state_directory_is_kep
         "rm *",
         f"echo {HOME}/.local/state/other/* | xargs rm",
         "echo /tmp/scratch/* | xargs sh /tmp/script",
+        "echo $(printf /tmp/scratch) | xargs rm -rf",
         "ls ~/.local/state/tbhb | xargs echo",
         f"rm {HOME}/.local/state/tbhb/../other/*",
         f"rm -rf {ROOT}/*/Library",
@@ -1359,6 +1360,27 @@ def test_xargs_rm_on_a_state_directory_glob_is_denied(wrapper: str) -> None:
 )
 def test_compound_state_directory_movers_are_denied(command: str) -> None:
     assert guard.inspect(command)[0] == guard.PROTECT_REASON
+
+
+@pytest.mark.parametrize(
+    "producer",
+    ["echo ~/.local/state/tbhb/*", "echo ~/.local/state/tbhb/*; echo /tmp/scratch"],
+)
+@pytest.mark.parametrize("redirect", ["2>/dev/null", "2> /dev/null"])
+def test_redirected_group_keeps_state_directory_in_pipeline(
+    producer: str, redirect: str
+) -> None:
+    command = f"({producer}) {redirect} | xargs rm -rf"
+    assert guard.inspect(command)[0] == guard.PROTECT_REASON
+
+
+@pytest.mark.parametrize("separator", [";", "&&", "||", "\n"])
+def test_redirected_group_does_not_supply_a_later_pipeline(separator: str) -> None:
+    command = (
+        f"(echo ~/.local/state/tbhb/*) 2>/dev/null {separator} "
+        "echo /tmp/scratch/* | xargs rm -rf"
+    )
+    assert guard.inspect(command)[0] is None
 
 
 @pytest.mark.parametrize(
