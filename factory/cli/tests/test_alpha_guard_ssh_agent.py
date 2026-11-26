@@ -2,6 +2,7 @@
 # Copyright Tony Burns
 """Tests for the SSH agent guard."""
 
+import codecs
 import io
 import json
 import socket
@@ -140,6 +141,10 @@ def test_ansi_c_quote_keeps_the_read_only_command_in_the_parse() -> None:
     assert guard.verdict(command) is None
 
 
+def test_single_brackets_are_preserved_as_shell_words() -> None:
+    assert guard.segments("[ -n a[b] ]") == [["[", "-n", "a[b]", "]"]]
+
+
 @pytest.mark.parametrize("command", ["echo 'unbalanced", 'echo "Build (debug)'])
 def test_an_unterminated_quote_is_reported(command: str) -> None:
     assert guard.verdict(command) == guard.REASON_QUOTE
@@ -197,6 +202,17 @@ def test_non_utf8_input_is_reported(
         assert decision["hookSpecificOutput"]["permissionDecision"] == "deny"
 
 
+def test_non_utf8_text_stream_is_reported(monkeypatch: pytest.MonkeyPatch) -> None:
+    stdin = codecs.getreader("utf-8")(io.BytesIO(b"\xff"))
+    monkeypatch.setattr(sys, "stdin", stdin)
+    assert guard.read_payload() == ({}, guard.REASON_ENCODING)
+
+
+def test_invalid_json_is_allowed(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(sys, "stdin", io.StringIO("{"))
+    assert guard.denial() is None
+
+
 def test_the_payload_cwd_resolves_relative_paths(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
@@ -252,6 +268,7 @@ def test_hook_contract(
         ({"file_path": f"{Path.home()}/{S}/sessions/k"}, False),
         ({"file_path": "/etc/hosts"}, False),
         ({"file_path": 3}, False),
+        ({"file_path": ""}, False),
     ],
 )
 def test_a_tool_path_is_checked(

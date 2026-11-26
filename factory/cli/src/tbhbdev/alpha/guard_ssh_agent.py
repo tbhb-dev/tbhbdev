@@ -70,6 +70,17 @@ class UnsupportedSyntaxError(Exception):
     """An expansion the lexer cannot read inside double quotes."""
 
 
+def _quoted_escape(following: str, mark: str, *, ansi: bool) -> tuple[str, int]:
+    """The replacement text and width of a backslash inside a quote."""
+    if mark == '"' and following == "\n":
+        return "", 2
+    if (mark == '"' and following in {'"', "\\", "$", "`"}) or (
+        ansi and following in {"'", "\\"}
+    ):
+        return following, 2
+    return "\\", 1
+
+
 def quoted(text: str, index: int, mark: str, *, ansi: bool = False) -> tuple[str, int]:
     """The text up to the MARK closing the quote at INDEX and the index after it.
 
@@ -80,19 +91,15 @@ def quoted(text: str, index: int, mark: str, *, ansi: bool = False) -> tuple[str
     out: list[str] = []
     index += 1
     while index < len(text) and text[index] != mark:
-        if text[index] == "\\":
+        char = text[index]
+        width = 1
+        if char == "\\":
             following = text[index + 1 : index + 2]
-            if mark == '"' and following == "\n":
-                index += 2
-                continue
-            if (mark == '"' and following in {'"', "\\", "$", "`"}) or (
-                ansi and following in {"'", "\\"}
-            ):
-                index += 1
+            char, width = _quoted_escape(following, mark, ansi=ansi)
         elif mark == '"' and text.startswith(("$(", "${", "`"), index):
             raise UnsupportedSyntaxError
-        out.append(text[index])
-        index += 1
+        out.append(char)
+        index += width
     if index >= len(text):
         raise ValueError(mark)
     return "".join(out), index + 1
