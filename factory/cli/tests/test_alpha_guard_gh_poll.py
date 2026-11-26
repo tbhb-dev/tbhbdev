@@ -1314,6 +1314,7 @@ def test_protected_names_are_read_after_unquoting_and_the_state_directory_is_kep
         "rm -rf ~/.local/state/other/*",
         "rm *",
         f"echo {HOME}/.local/state/other/* | xargs rm",
+        "echo /tmp/scratch/* | xargs sh /tmp/script",
         "ls ~/.local/state/tbhb | xargs echo",
         f"rm {HOME}/.local/state/tbhb/../other/*",
         f"rm -rf {ROOT}/*/Library",
@@ -1344,6 +1345,19 @@ def test_pgrep_pattern_is_data_for_the_state_directory_check(command: str) -> No
 @pytest.mark.parametrize("wrapper", ["{}", "ssh host '{}'"])
 def test_xargs_rm_on_a_state_directory_glob_is_denied(wrapper: str) -> None:
     command = wrapper.format("echo ~/.local/state/tbhb/* | xargs -n 1 rm -rf")
+    assert guard.inspect(command)[0] == guard.PROTECT_REASON
+
+
+@pytest.mark.parametrize(
+    "command",
+    [
+        "(echo ~/.local/state/tbhb/*) | xargs rm -rf",
+        "(echo ~/.local/state/tbhb/*; echo /tmp/scratch) | xargs rm -rf",
+        """echo ~/.local/state/tbhb/* | xargs sh -c 'rm -rf "$@"' sh""",
+        "find ~/.local/state/tbhb/* -exec rm -rf {} +",
+    ],
+)
+def test_compound_state_directory_movers_are_denied(command: str) -> None:
     assert guard.inspect(command)[0] == guard.PROTECT_REASON
 
 

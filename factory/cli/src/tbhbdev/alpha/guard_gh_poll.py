@@ -166,6 +166,7 @@ REPEATER_VALUE_FLAGS = {
 }  # fmt: skip
 GH_RUN = re.compile(r"\bgh\b.*\brun\b", re.DOTALL)
 REDIRECT = re.compile(r"\d*(?:>>?|<|>&|&>)")
+GROUP_PIPE = re.compile(r"[ \t]*\|(?!\|)")
 REPEAT_REASON = (
     "Don't run a CI listing through xargs or parallel; each repeat is a separate "
     "call. Ask the coordinator."
@@ -216,11 +217,13 @@ class BodyScanner(Scanner):
 
     ``bodies`` maps a command's index in the scan to the heredoc text skipped
     at the end of its line, delimiter lines included.
+    ``piped`` maps the last command index of a pipeline stage to its first.
     """
 
     bodies: dict[int, str] = field(default_factory=dict)
     pending: list[int] = field(default_factory=list)
-    piped: set[int] = field(default_factory=set)
+    piped: dict[int, int] = field(default_factory=dict)
+    group_starts: dict[int, int] = field(default_factory=dict)
 
     @override
     def plain(self, char: str) -> None:
@@ -228,9 +231,25 @@ class BodyScanner(Scanner):
         if char == "|":
             if self.text.startswith("||", self.pos):
                 self.pos += 1
-            else:
-                self.piped.add(len(self.commands))
+            elif self.words or self.in_word:
+                index = len(self.commands)
+                self.piped[index] = index
         super().plain(char)
+
+    @override
+    def open_nesting(self, kind: str, width: int) -> None:
+        """Record the first command of a subshell group."""
+        super().open_nesting(kind, width)
+        if kind == "(":
+            self.group_starts[len(self.nesting)] = len(self.commands)
+
+    @override
+    def close_nesting(self) -> None:
+        """Keep every command in a group that supplies a pipe."""
+        start = self.group_starts.pop(len(self.nesting), None)
+        super().close_nesting()
+        if start is not None and GROUP_PIPE.match(self.text, self.pos):
+            self.piped[len(self.commands) - 1] = start
 
     @override
     def heredoc(self) -> None:
@@ -656,14 +675,39 @@ def repeater_command(args: Iterator[str]) -> list[str]:
     return []
 
 
+def is_state_mover(words: list[str]) -> bool:
+    """Whether these words run a mover directly or in a find action."""
+    program = program_of(words).lower()
+    return program in STATE_MOVERS or (
+        program == "find"
+        and any(
+            flag in {"-exec", "-execdir"}
+            and target.rpartition("/")[2].lower() in STATE_MOVERS
+            for flag, target in itertools.pairwise(words[1:])
+        )
+    )
+
+
+def shell_mover(words: list[str]) -> list[str]:
+    """The first mover run by a shell's inline script."""
+    script = shell_script(words[1:])
+    if script is not None:
+        for command in BodyScanner(script).run():
+            if mover := state_mover(command):
+                return mover
+    return []
+
+
 def state_mover(command: list[str], *, repeater_only: bool = False) -> list[str]:
     """The mover's words if it runs directly or through xargs or parallel."""
     words, _ = unwrap(command, wrappers=NON_REPEATING_WRAPPERS)
     if words and program_of(words).lower() in REPEATERS:
         words = unwrapped(repeater_command(iter(words[1:])))
+        if repeater_only and words and program_of(words) in SHELLS:
+            return shell_mover(words)
     elif repeater_only:
         return []
-    return words if words and program_of(words).lower() in STATE_MOVERS else []
+    return words if words and is_state_mover(words) else []
 
 
 def pipes_state_dir(scanner: BodyScanner) -> bool:
@@ -676,8 +720,9 @@ def pipes_state_dir(scanner: BodyScanner) -> bool:
             for word in itertools.chain(sources, mover[1:])
         ):
             return True
-        if index in scanner.piped:
-            sources.extend(command)
+        if (start := scanner.piped.get(index)) is not None:
+            stage = scanner.commands[start : index + 1]
+            sources.extend(itertools.chain.from_iterable(stage))
         else:
             sources.clear()
     return False
