@@ -9,6 +9,7 @@ cli_py_library(
     imports = ["../../.."],
     visibility = ["//factory/cli:__subpackages__"],
     deps = [
+        ":app_server",
         ":driver",
         ":precheck",
         ":run_host",
@@ -84,6 +85,7 @@ cli_py_library(
     imports = ["../../.."],
     visibility = ["//factory/cli:__subpackages__"],
     deps = [
+        ":app_server",
         ":launcher",
         ":model",
         ":render",
@@ -217,6 +219,7 @@ cli_py_library(
     visibility = ["//factory/cli:__subpackages__"],
     deps = [
         ":admission",
+        ":app_server",
         ":bazel_servers",
         ":build_info",
         ":codex_install",
@@ -368,5 +371,17 @@ filegroup(
     visibility = [
         "//factory/cli:__pkg__",
         "//factory/cli/tests:__pkg__",
+    ],
+)
+
+cli_py_library(
+    name = "app_server",
+    srcs = ["app_server.py"],
+    imports = ["../../.."],
+    visibility = ["//factory/cli:__subpackages__"],
+    deps = [
+        ":model",
+        ":runfiles",
+        "//factory/cli/src/tbhbdev/alpha/agent/decisions:runfiles_names",
     ],
 )

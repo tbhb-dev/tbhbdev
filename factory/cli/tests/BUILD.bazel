@@ -2110,3 +2110,14 @@ cli_py_library(
         "@cli_pip//pytest",
     ],
 )
+
+cli_py_test(
+    name = "test_alpha_agent_send",
+    srcs = ["test_alpha_agent_send.py"],
+    deps = [
+        ":conftest",
+        "//factory/cli/src/tbhbdev/alpha/agent:__init__",
+        "//factory/cli/src/tbhbdev/alpha/agent:app_server",
+        "@cli_pip//pytest",
+    ],
+)

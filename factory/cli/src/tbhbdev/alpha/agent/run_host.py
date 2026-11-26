@@ -689,6 +689,14 @@ def resource_attributes(run: Run) -> dict[str, str]:
     }
 
 
+def launch_command(
+    run: Run, paths: RunPaths, command: tuple[str, ...]
+) -> tuple[str, ...]:
+    if run.steer:
+        return app_server.launch_command(command, Path(paths.codex_home))
+    return command
+
+
 def run_harness(
     run: Run, prepared: Prepared, stack: ExitStack, *, preflight_only: bool = False
 ) -> int:
@@ -738,9 +746,7 @@ def run_harness(
         with process_group.defer_signals():
             child = process_group.launch_owned(
                 process_group.Launch(
-                    app_server.launch_command(command, Path(paths.codex_home))
-                    if run.steer
-                    else command,
+                    launch_command(run, paths, command),
                     env,
                     paths.worktree,
                     streams,

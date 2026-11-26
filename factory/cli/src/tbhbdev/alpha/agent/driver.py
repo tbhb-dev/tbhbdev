@@ -361,7 +361,7 @@ def checked_prompt(args: argparse.Namespace) -> str:
     return prompt
 
 
-def execute(settings: Settings, args: argparse.Namespace) -> int:
+def check_steer(args: argparse.Namespace) -> None:
     if args.steer and (
         args.harness != Harness.CODEX
         or args.profile != Profile.BUILD
@@ -369,6 +369,10 @@ def execute(settings: Settings, args: argparse.Namespace) -> int:
     ):
         message = "exec --steer requires a Codex build without --schema"
         raise Invalid(message)
+
+
+def execute(settings: Settings, args: argparse.Namespace) -> int:
+    check_steer(args)
     run = prepare(settings, args)
     telemetry.attributes(
         **{
