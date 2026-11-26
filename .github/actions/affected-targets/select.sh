@@ -144,11 +144,16 @@ head=$(git rev-parse HEAD 2>/dev/null) || die "no Git checkout, so the event's h
 want=${HEAD_SHA:-$head}
 [[ -n ${HEAD_SHA:-} ]] || finish all "no event head to check the checkout $head against"
 
-# Any other event, such as push or schedule, tests everything. An empty
-# BASE_SHA fails the check of the base below.
-[[ ${EVENT:-} == pull_request || ${EVENT:-} == merge_group ]] || finish all "a '${EVENT:-}' event tests everything"
+# Any other event, such as push or schedule, tests everything.
+[[ ${EVENT:-} == pull_request || ${EVENT:-} == merge_group || ${EVENT:-} == workflow_dispatch ]] ||
+  finish all "a '${EVENT:-}' event tests everything"
 [[ $head == "$want" ]] || finish all "the checkout $head is not the event's head $want"
 [[ ${QUERY:-} != *$'\n'* ]] || finish all 'the query is not one line'
+if [[ ${EVENT:-} == workflow_dispatch ]]; then
+  dispatch_base=${BASE_SHA:-HEAD^}
+  BASE_SHA=$(git rev-parse --verify --end-of-options "${dispatch_base}^{commit}" 2>/dev/null) ||
+    finish all "the dispatch base '$dispatch_base' is missing from the checkout (check out with fetch-depth: 0)"
+fi
 git cat-file -e "${BASE_SHA:-}^{commit}" 2>/dev/null ||
   finish all "the base '${BASE_SHA:-}' is missing from the checkout (check out with fetch-depth: 0)"
 git -c core.quotePath=false diff -z --raw --no-renames --ignore-submodules=none --output="$changed" "$BASE_SHA" "$head" 2>&1 | show >&2 ||
