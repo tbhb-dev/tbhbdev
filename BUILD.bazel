@@ -5,14 +5,33 @@ load("@buildifier_prebuilt//:rules.bzl", "buildifier", "buildifier_test")
 load("@gazelle//:def.bzl", "gazelle", "gazelle_test")
 load("@rules_go//go:def.bzl", "nogo")
 load("@rules_shell//shell:sh_binary.bzl", "sh_binary")
+load("@tbhb_rules//lint:defs.bzl", "actionlint_test", "gitleaks_history")
 
 exports_files([
+    ".gitignore",
     ".go-arch-lint.yml",
     ".golangci.yml",
+    ".cspell-words.txt",
+    ".cspell.jsonc",
+    ".github/actions/affected-targets/action.yml",
+    ".github/actions/affected-targets/select.sh",
+    ".github/actions/setup-bazel-ci/cpu_quota.sh",
+    ".github/actions/setup-bazel-ci/fetch-targets.txt",
+    ".github/actions/setup-bazel-ci/fetch.sh",
+    ".github/schemas/pull-request-draft.schema.json",
+    ".github/workflows/mutation-nightly.yml",
+    ".vale.ini",
+    ".vale/config/vocabularies/project/accept.txt",
+    ".vale/config/vocabularies/project/reject.txt",
+    ".vale/project/Acronyms.yml",
+    ".vale/project/CoinedTerms.yml",
+    ".vale/project/Colons.yml",
+    ".vale/project/HeadingTitleCase.yml",
+    ".vale/project/WordList.yml",
     "go.mod",
 ])
 
-# Minimal Gazelle setup until the rules import lands; reads go.mod.
+# Gazelle reads the monorepo go.mod.
 gazelle(name = "gazelle")
 
 gazelle(
@@ -45,6 +64,7 @@ BUILDIFIER_EXCLUDES = [
     "./bazel-*",
     "./.bazel-*",
     "./.worktrees/*",
+    "./lib/rules/*",
     "./tmp/*",
 ]
 
@@ -66,10 +86,21 @@ buildifier_test(
     workspace = "//:MODULE.bazel",
 )
 
+actionlint_test(
+    name = "actionlint_test",
+    srcs = glob([
+        ".github/actions/**",
+        ".github/workflows/**",
+    ]),
+    config = ".github/actionlint.yaml",
+)
+
+gitleaks_history(
+    name = "gitleaks_history",
+    config = ".gitleaks.toml",
+)
+
 # Repository filegroup consumed by //factory:visibility_test.
-# Additional repository-wide lint targets (repo_layout_test, gitleaks_test,
-# gitleaks_history, reuse_test, editorconfig_checker_test, shellcheck_test,
-# and shfmt_test) arrive with the rules import.
 filegroup(
     name = "repo_files",
     srcs = glob(

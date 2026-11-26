@@ -1,0 +1,921 @@
+# SPDX-License-Identifier: Apache-2.0
+# Copyright Tony Burns
+
+load("@rules_shell//shell:sh_test.bzl", "sh_test")
+load("@tbhb_rules_python//:defs.bzl", "pytest_test")
+load("//lint:defs.bzl", "cspell_test", "gitleaks_history", "gitleaks_test", "rumdl_test", "shellcheck_test", "shfmt_test", "vale_test", "workflow_lint_test")
+load("//lint/private:gitleaks_tool.bzl", "gitleaks_tool")
+load("//lint/private:review_policy.bzl", "review_policy_test")
+load("//repo:defs.bzl", "repo_files")
+load("//testing:defs.bzl", "expect_failure_test")
+load(":commit_identity_crlf.bzl", "commit_identity_crlf_test")
+load(":commit_identity_scenario.bzl", "commit_identity_scenario_test")
+load(":commit_messages_scenario.bzl", "commit_messages_scenario_test")
+load(":cspell_tests.bzl", "cspell_parent_config_test", "cspell_test_suite")
+load(":gitleaks_allowlist_scenario.bzl", "GITLEAKS_ALLOWLIST_FIXTURE", "GITLEAKS_PATH_FIXTURE", "gitleaks_allowlist_scenario_test", "gitleaks_configs_test")
+load(":gitleaks_history_scenario.bzl", "gitleaks_history_scenario_test")
+load(":gitleaks_private_scenario.bzl", "gitleaks_private_scenario_test")
+load(":gitleaks_redact_scenario.bzl", "GITLEAKS_REDACT_FIXTURE", "gitleaks_redact_scenario_test")
+load(":gitleaks_text_scenario.bzl", "gitleaks_text_scenario_test")
+load(":tree_check_tests.bzl", "tree_check_test_suite")
+
+repo_files()
+
+tree_check_test_suite(name = "tree_check_tests")
+
+cspell_test_suite(name = "cspell_tests")
+
+# gitleaks_tool against throwaway trees, with and without the private
+# config it requires.
+
+gitleaks_tool(
+    name = "gitleaks_required",
+    required = True,
+)
+
+gitleaks_tool(name = "gitleaks_optional")
+
+[
+    gitleaks_private_scenario_test(
+        name = "gitleaks_private_{}_test".format(scenario),
+        patterns = patterns,
+        scenario = scenario,
+        status = status,
+        subject = ":gitleaks_optional" if scenario == "optional" else ":gitleaks_required",
+    )
+    for scenario, status, patterns in [
+        (
+            "unset",
+            1,
+            ["gitleaks_tool: FAIL: GITLEAKS_CONFIG_TOML is unset or empty"],
+        ),
+        (
+            "empty",
+            1,
+            ["gitleaks_tool: FAIL: GITLEAKS_CONFIG_TOML is unset or empty"],
+        ),
+        (
+            "no_canary",
+            1,
+            ["has no rule with the id tbhb-private-canary"],
+        ),
+        (
+            "other_config",
+            1,
+            ["the committed config is 'other.toml'"],
+        ),
+        (
+            "no_committed",
+            1,
+            ["/.gitleaks.toml does not exist"],
+        ),
+        (
+            "clean",
+            0,
+            ["no leaks found"],
+        ),
+        (
+            "findings",
+            1,
+            [
+                "RuleID: +aws-access-token",
+                "RuleID: +tbhb-private-word",
+                "RuleID: +tbhb-private-canary",
+            ],
+        ),
+        (
+            "local_rule",
+            1,
+            ["RuleID: +local-word"],
+        ),
+        (
+            "local_allowlist",
+            0,
+            ["no leaks found"],
+        ),
+        (
+            "old_extend",
+            1,
+            ["remove \\[extend\\] from the committed config"],
+        ),
+        (
+            "private_extend",
+            1,
+            ["the private config must extend only"],
+        ),
+        (
+            "config_equals",
+            0,
+            ["no leaks found"],
+        ),
+        (
+            "config_short",
+            0,
+            ["no leaks found"],
+        ),
+        (
+            "optional",
+            0,
+            ["no leaks found"],
+        ),
+    ]
+]
+
+PROOF_TAGS = ["manual"]
+
+pytest_test(
+    name = "actionlint_labels_test",
+    srcs = ["//:repo_files"],
+    args = ["lint/tests/test_actionlint_labels.py"],
+    coverage = ["lint.private.check_actionlint_labels"],
+)
+
+pytest_test(
+    name = "gitleaks_hook_pin_test",
+    srcs = ["//:repo_files"],
+    args = ["lint/tests/test_gitleaks_hook.py::test_hook_pin"],
+    coverage = None,
+)
+
+pytest_test(
+    name = "gitleaks_hook_test",
+    srcs = ["//:repo_files"],
+    args = ["lint/tests/test_gitleaks_hook.py::test_hook"],
+    coverage = None,
+    # Tech debt (AGENTS.md): validate the Bash hook fixture on Windows.
+    target_compatible_with = select({
+        "@platforms//os:windows": ["@platforms//:incompatible"],
+        "//conditions:default": [],
+    }),
+)
+
+pytest_test(
+    name = "repo_checks_drift_test",
+    srcs = ["//:repo_files"],
+    args = ["lint/tests/test_repo_checks.py::test_configured_targets_exist"],
+    coverage = None,
+    data = [
+        "//:repo_check_targets",
+        "//lint:repo_check_targets",
+    ],
+)
+
+pytest_test(
+    name = "repo_checks_test",
+    srcs = ["//:repo_files"],
+    args = ["lint/tests/test_repo_checks.py::test_runner"],
+    coverage = None,
+    # Tech debt (AGENTS.md): port the runner's subprocess fixture to Windows.
+    target_compatible_with = select({
+        "@platforms//os:windows": ["@platforms//:incompatible"],
+        "//conditions:default": [],
+    }),
+)
+
+sh_test(
+    name = "pr_merge_base_test",
+    srcs = ["pr_merge_base_test.sh"],
+    data = [
+        "//lint:commit_identity",
+        "//lint:commit_messages",
+        "//lint:pr_merge_base",
+        "@tbhb_rules_git//:git",
+    ],
+    env = {
+        "GIT_RLOCATIONPATH": "$(rlocationpath @tbhb_rules_git//:git)",
+        "IDENTITY_RLOCATIONPATH": "$(rlocationpath //lint:commit_identity)",
+        "MERGE_BASE_RLOCATIONPATH": "$(rlocationpath //lint:pr_merge_base)",
+        "MESSAGES_RLOCATIONPATH": "$(rlocationpath //lint:commit_messages)",
+    },
+    # Tech debt (AGENTS.md): run this Git fixture on windows-2025 and remove the exclusion.
+    target_compatible_with = select({
+        "@platforms//os:windows": ["@platforms//:incompatible"],
+        "//conditions:default": [],
+    }),
+)
+
+# commit_identity against throwaway repositories.
+
+commit_identity_crlf_test(name = "commit_identity_crlf_test")
+
+# commit_messages against throwaway repositories.
+[
+    commit_messages_scenario_test(
+        name = "commit_messages_" + scenario + "_test",
+        scenario = scenario,
+        subject = "//lint:commit_messages",
+        # Tech debt: not yet run on windows-2025; run it there and remove this.
+        target_compatible_with = select({
+            "@platforms//os:windows": ["@platforms//:incompatible"],
+            "//conditions:default": [],
+        }),
+    )
+    for scenario in [
+        "good",
+        "bad",
+        "revert_chain",
+        "merge_skipped",
+    ]
+]
+
+[
+    commit_identity_scenario_test(
+        name = "commit_identity_" + scenario + "_test",
+        scenario = scenario,
+        subject = "//lint:commit_identity",
+    )
+    for scenario in [
+        "allowed",
+        "empty",
+    ]
+]
+
+# A merge commit GitHub writes under its own identity is skipped.
+commit_identity_scenario_test(
+    name = "commit_identity_merge_commit_test",
+    scenario = "merge_commit",
+    subject = "//lint:commit_identity",
+    # Tech debt: not yet run on windows-2025; run it there and remove this.
+    target_compatible_with = select({
+        "@platforms//os:windows": ["@platforms//:incompatible"],
+        "//conditions:default": [],
+    }),
+)
+
+commit_identity_scenario_test(
+    name = "commit_identity_trailers_test",
+    scenario = "trailers",
+    subject = "//lint:commit_identity",
+    # Tech debt: the test fails on windows-2025; find the assertion and remove this.
+    target_compatible_with = select({
+        "@platforms//os:windows": ["@platforms//:incompatible"],
+        "//conditions:default": [],
+    }),
+)
+
+commit_identity_scenario_test(
+    name = "commit_identity_head_branch_test",
+    scenario = "head_branch",
+    subject = "//lint:commit_identity",
+    # Tech debt: validate the Git subprocesses on windows-2025 and remove this.
+    target_compatible_with = select({
+        "@platforms//os:windows": ["@platforms//:incompatible"],
+        "//conditions:default": [],
+    }),
+)
+
+commit_identity_scenario_test(
+    name = "commit_identity_renovate_branch_test",
+    scenario = "renovate_branch",
+    subject = "//lint:commit_identity",
+    # Tech debt: validate the Git subprocesses on windows-2025 and remove this.
+    target_compatible_with = select({
+        "@platforms//os:windows": ["@platforms//:incompatible"],
+        "//conditions:default": [],
+    }),
+)
+
+[
+    commit_identity_scenario_test(
+        name = "proof_commit_identity_" + scenario,
+        scenario = scenario,
+        subject = "//lint:commit_identity",
+        tags = PROOF_TAGS,
+    )
+    for scenario in [
+        "noreply_author",
+        "wrong_committer",
+    ]
+]
+
+# gitleaks_history against throwaway repositories.
+
+gitleaks_history(
+    name = "history_subject",
+    tags = ["manual"],
+)
+
+gitleaks_history_scenario_test(
+    name = "history_clean_test",
+    scenario = "clean",
+    subject = ":history_subject",
+)
+
+gitleaks_history_scenario_test(
+    name = "history_no_content_test",
+    scenario = "no_content",
+    subject = ":history_subject",
+)
+
+[
+    gitleaks_history_scenario_test(
+        name = "history_" + scenario + "_test",
+        expected_head = "head",
+        expected_scan = "gitleaks_history: scanning HEAD^1..HEAD (2 commits): the pull request's commits",
+        scenario = scenario,
+        subject = ":history_subject",
+        subject_args = ["--merge-range"],
+    )
+    for scenario in [
+        "deletion_only",
+        "rename_only",
+    ]
+]
+
+# A key on another branch fails the default scan of every ref, and passes a
+# scan limited to the checked-out branch.
+gitleaks_history_scenario_test(
+    name = "history_head_only_test",
+    scenario = "other_branch",
+    subject = ":history_subject",
+    subject_args = ["--log-opts=HEAD"],
+)
+
+[
+    gitleaks_history_scenario_test(
+        name = "proof_history_" + scenario,
+        scenario = scenario,
+        subject = ":history_subject",
+        tags = PROOF_TAGS,
+    )
+    for scenario in [
+        "corrupt",
+        "no_commits",
+        "other_branch",
+        "secret",
+    ]
+]
+
+# A successful tool that scans nothing must still fail on added text or
+# binary content, and when Git cannot read the selected range.
+gitleaks_history(
+    name = "history_zero_subject",
+    tags = ["manual"],
+    tool = ":fake_tool.sh",
+)
+
+[
+    gitleaks_history_scenario_test(
+        name = "proof_history_zero_" + scenario,
+        expected_head = "head",
+        expected_scan = "gitleaks_history: scanning HEAD^1..HEAD (2 commits): the pull request's commits",
+        scenario = scenario,
+        subject = ":history_zero_subject",
+        subject_args = ["--merge-range"],
+        tags = PROOF_TAGS,
+    )
+    for scenario in [
+        "range_added",
+        "range_binary",
+        "range_corrupt",
+        "range_rename_added",
+    ]
+]
+
+# The merge range excludes the base history but still catches keys removed
+# before the merge. Full scans of the same base-secret fixture still fail.
+gitleaks_history_scenario_test(
+    name = "history_range_base_secret_test",
+    expected_head = "head",
+    expected_scan = "gitleaks_history: scanning HEAD^1..HEAD (2 commits): the pull request's commits",
+    scenario = "range_base_secret",
+    subject = ":history_subject",
+    subject_args = ["--merge-range"],
+)
+
+gitleaks_history_scenario_test(
+    name = "history_range_empty_test",
+    expected_head = "head",
+    expected_scan = "gitleaks_history: scanning HEAD^1..HEAD (2 commits): the pull request's commits",
+    scenario = "range_empty",
+    subject = ":history_subject",
+    subject_args = ["--merge-range"],
+)
+
+[
+    gitleaks_history_scenario_test(
+        name = "proof_history_" + scenario,
+        expected_head = "head",
+        expected_scan = announcement,
+        scenario = scenario,
+        subject = ":history_subject",
+        subject_args = ["--merge-range"],
+        tags = PROOF_TAGS,
+    )
+    for scenario, announcement in [
+        ("range_secret", "gitleaks_history: scanning HEAD^1..HEAD (3 commits): the pull request's commits"),
+        ("range_linear", "gitleaks_history: scanning full history HEAD (2 commits): HEAD does not have exactly two readable parents"),
+        ("range_config", "gitleaks_history: scanning full history HEAD (5 commits): the pull request changes .gitleaks.toml"),
+        ("range_rules", "gitleaks_history: scanning full history HEAD (5 commits): the pull request changes .gitleaks-rules.toml"),
+        ("range_module_base", "gitleaks_history: scanning full history HEAD (5 commits): the pull request changes lint/gitleaks/base.toml"),
+        ("range_ignore", "gitleaks_history: scanning full history HEAD (5 commits): the pull request changes .gitleaksignore"),
+    ]
+]
+
+# A branch tip that merges the base into the PR has the author's commits on
+# the first-parent line. Missing or mismatched event commits must scan them.
+[
+    gitleaks_history_scenario_test(
+        name = "proof_history_range_branch_merge_" + expected_head,
+        expected_head = expected_head,
+        expected_scan = "gitleaks_history: scanning full history HEAD (5 commits): " + reason,
+        scenario = "range_branch_merge",
+        subject = ":history_subject",
+        subject_args = ["--merge-range"],
+        tags = PROOF_TAGS,
+    )
+    for expected_head, reason in [
+        ("unset", "EXPECTED_HEAD is unset"),
+        ("other", "HEAD is not the commit the event names"),
+    ]
+]
+
+gitleaks_history_scenario_test(
+    name = "proof_history_range_base_secret_full",
+    scenario = "range_base_secret",
+    subject = ":history_subject",
+    subject_args = ["--log-opts=HEAD"],
+    tags = PROOF_TAGS,
+)
+
+# gitleaks_text on piped text, with and without a committed config.
+
+[
+    gitleaks_text_scenario_test(
+        name = "text_{}_test".format(scenario),
+        scenario = scenario,
+        subject = "//lint:gitleaks_text",
+    )
+    for scenario in [
+        "clean",
+        "clean_no_config",
+    ]
+]
+
+gitleaks_text_scenario_test(
+    name = "proof_text_secret",
+    scenario = "secret",
+    subject = "//lint:gitleaks_text",
+    tags = PROOF_TAGS,
+)
+
+gitleaks_text_scenario_test(
+    name = "text_secret_ids_test",
+    scenario = "secret_ids",
+    subject = "//lint:gitleaks_text",
+)
+
+gitleaks_text_scenario_test(
+    name = "text_awk_fails_test",
+    scenario = "secret_awk_fails",
+    subject = "//lint:gitleaks_text",
+    # On Windows the real awk ran, not the extensionless stub, so the test
+    # can't plant its failure there.
+    target_compatible_with = select({
+        "@platforms//os:windows": ["@platforms//:incompatible"],
+        "//conditions:default": [],
+    }),
+)
+
+# Exercise the real tree macro and the history/text executables. The tree
+# fixture is assembled by an action so no complete token is checked in.
+genrule(
+    name = "redact_fixture",
+    testonly = True,
+    outs = ["redact_creds.txt"],
+    cmd = "(\n" + GITLEAKS_REDACT_FIXTURE + ") >$@",
+    tags = ["manual"],
+)
+
+gitleaks_test(
+    name = "redact_tree_subject",
+    srcs = [":redact_fixture"],
+    tags = ["manual"],
+)
+
+[
+    gitleaks_redact_scenario_test(
+        name = "{}_redact_test".format(scenario),
+        scenario = scenario,
+        subject = subject,
+    )
+    for scenario, subject in [
+        ("history", ":history_subject"),
+        ("text", "//lint:gitleaks_text"),
+        ("tree", ":redact_tree_subject"),
+    ]
+]
+
+# shellcheck_test and shfmt_test on a tree with no shell scripts: they pass
+# with allow_empty and fail without it.
+
+NO_SCRIPTS = ["testdata/root/a.txt"]
+
+[
+    rule(
+        name = name + "_allow_empty_test",
+        srcs = NO_SCRIPTS,
+        allow_empty = True,
+    )
+    for name, rule in [
+        ("shellcheck", shellcheck_test),
+        ("shfmt", shfmt_test),
+    ]
+]
+
+[
+    rule(
+        name = "proof_{}_empty".format(name),
+        srcs = NO_SCRIPTS,
+        tags = PROOF_TAGS,
+    )
+    for name, rule in [
+        ("shellcheck", shellcheck_test),
+        ("shfmt", shfmt_test),
+    ]
+]
+
+PROOF_REASONS = {
+    "proof_commit_identity_noreply_author": "commit_identity: FAIL: [0-9a-f]{40} author and committer are not an allowed pair: tbhb-agent <334376894\\+tbhb-agent@users.noreply.github.com> \\(author\\) -> tbhb.dev Agent <agent@tonyburns.net> \\(committer\\)",
+    "proof_commit_identity_wrong_committer": "commit_identity: FAIL: [0-9a-f]{40} author and committer are not an allowed pair: tbhb.dev Agent <agent@tonyburns.net> \\(author\\) -> GitHub <noreply@github.com> \\(committer\\)",
+    "proof_history_corrupt": "gitleaks_history: FAIL: git cannot read the history",
+    "proof_history_no_commits": "gitleaks_history: FAIL: the repository has no commits",
+    "proof_history_other_branch": "leaks found: [1-9]",
+    "proof_history_range_base_secret_full": "leaks found: [1-9]",
+    "proof_history_range_branch_merge_other": "leaks found: [1-9]",
+    "proof_history_range_branch_merge_unset": "leaks found: [1-9]",
+    "proof_history_range_config": "leaks found: [1-9]",
+    "proof_history_range_ignore": "leaks found: [1-9]",
+    "proof_history_range_linear": "leaks found: [1-9]",
+    "proof_history_range_module_base": "leaks found: [1-9]",
+    "proof_history_range_rules": "leaks found: [1-9]",
+    "proof_history_range_secret": "leaks found: [1-9]",
+    "proof_history_secret": "leaks found: [1-9]",
+    "proof_history_zero_range_added": "gitleaks_history: FAIL: gitleaks scanned 0 commits of a history with .*content, which proves nothing",
+    "proof_history_zero_range_binary": "gitleaks_history: FAIL: gitleaks scanned 0 commits of a history with .*content, which proves nothing",
+    "proof_history_zero_range_corrupt": "gitleaks_history: FAIL: git cannot read the history",
+    "proof_history_zero_range_rename_added": "gitleaks_history: FAIL: gitleaks scanned 0 commits of a history with .*content, which proves nothing",
+    "proof_shellcheck_empty": "shell_select: no shell scripts found, so nothing was checked",
+    "proof_shfmt_empty": "shell_select: no shell scripts found, so nothing was checked",
+    "proof_text_secret": "leaks found: [1-9]",
+}
+
+[
+    expect_failure_test(
+        name = proof + "_fails",
+        pattern = pattern,
+        test = ":" + proof,
+    )
+    for proof, pattern in PROOF_REASONS.items()
+]
+
+# Vocabulary inherited by both macros without project word lists.
+[
+    rule(
+        name = tool + "_vocabulary_test",
+        srcs = ["testdata/vocabulary/clean.md"] + (glob(["testdata/vocabulary/styles/**"]) + [
+            "testdata/vocabulary/local.md",
+            "testdata/vocabulary/commits.md",
+        ] if tool == "vale" else []),
+        config = "testdata/vocabulary/vale.ini" if tool == "vale" else None,
+    )
+    for tool, rule in [
+        ("cspell", cspell_test),
+        ("vale", vale_test),
+    ]
+]
+
+cspell_test(
+    name = "proof_cspell_possessive",
+    srcs = ["testdata/vocabulary/bad.md"],
+    tags = PROOF_TAGS,
+)
+
+expect_failure_test(
+    name = "cspell_possessive_fails_test",
+    # cspell:disable-next-line
+    pattern = "bad\\.md:3:[0-9]+ - Unknown word \\(Renovatte\\)",
+    test = ":proof_cspell_possessive",
+)
+
+# Vale must report the misspelled base while allowing the check to pass.
+vale_test(
+    name = "vale_possessive_advisory_test",
+    srcs = ["testdata/vocabulary/bad.md"] + glob(["testdata/vocabulary/styles/**"]),
+    config = "testdata/vocabulary/vale.ini",
+    # cspell:disable-next-line
+    output_guard = "Renovatte.s.*Vale\\.Spelling",
+)
+
+# The shared coined-terms rule flags the coined sense and leaves ordinary
+# English alone. The fixture runs only that rule from the real rule file.
+vale_test(
+    name = "vale_coined_terms_ordinary_test",
+    srcs = [
+        "testdata/coined_terms/ok.md",
+        "//:.vale/project/CoinedTerms.yml",
+    ],
+    config = "testdata/coined_terms/vale.ini",
+)
+
+vale_test(
+    name = "vale_coined_terms_flagged_test",
+    srcs = [
+        "testdata/coined_terms/bad.md",
+        "//:.vale/project/CoinedTerms.yml",
+    ],
+    config = "testdata/coined_terms/vale.ini",
+    output_guard = "project\\.CoinedTerms",
+)
+
+# Ordinary uses of surviving terms that the rule still flags. The test passes
+# while Vale flags every line, so a narrowing that clears one fails it and
+# says to move that line to ok.md.
+vale_test(
+    name = "vale_coined_terms_known_hits_test",
+    srcs = [
+        "testdata/coined_terms/known_hits.md",
+        "//:.vale/project/CoinedTerms.yml",
+    ],
+    config = "testdata/coined_terms/vale.ini",
+    output_guard = "5 errors",
+)
+
+cspell_test(
+    name = "cspell_local_vocabulary_test",
+    srcs = [
+        "testdata/vocabulary/clean.md",
+        "testdata/vocabulary/local.md",
+    ],
+    config = "testdata/vocabulary/cspell.json",
+    data = ["testdata/vocabulary/words.txt"],
+)
+
+vale_test(
+    name = "vale_package_vocabulary_test",
+    srcs = [
+        "testdata/vocabulary/clean.md",
+        "testdata/vocabulary/local.md",
+    ] + glob(["testdata/vocabulary/styles/**"]),
+    config = "testdata/vocabulary/vale-google.ini",
+    packages = {"Google": "@vale_google//file"},
+)
+
+# Keep cspell's config discovery working when no config attribute is set.
+cspell_test(
+    name = "cspell_discovered_vocabulary_test",
+    srcs = [
+        "testdata/vocabulary/clean.md",
+        "testdata/vocabulary/local.md",
+    ],
+    data = [
+        "testdata/vocabulary/cspell.json",
+        "testdata/vocabulary/words.txt",
+    ],
+)
+
+cspell_parent_config_test(
+    name = "cspell_parent_config_test",
+    fixtures = glob(["testdata/vocabulary/*.md"]) + [
+        "testdata/vocabulary/cspell.json",
+        "testdata/vocabulary/words.txt",
+    ],
+    subject = ":cspell_vocabulary_test_tool",
+)
+
+# workflow_lint_test against fixture trees. Each proof plants one violation.
+WORKFLOW_LINT_ROOT = "lint/tests/testdata/workflow_lint/"
+
+[
+    workflow_lint_test(
+        name = "workflow_lint_{}_test".format(case),
+        srcs = glob(["testdata/workflow_lint/{}/**".format(case)]),
+        paths = ["workflows"],
+        private = private,
+        strip_prefix = WORKFLOW_LINT_ROOT + case,
+    )
+    for case, private in [
+        ("clean", False),
+        ("self_hosted", True),
+    ]
+]
+
+[
+    workflow_lint_test(
+        name = "proof_workflow_lint_" + case,
+        srcs = glob(["testdata/workflow_lint/{}/**".format(case)]),
+        paths = ["workflows"],
+        strip_prefix = WORKFLOW_LINT_ROOT + case,
+        tags = ["manual"],
+    )
+    for case in [
+        "tag",
+        "latest",
+        "self_hosted",
+    ]
+]
+
+[
+    expect_failure_test(
+        name = "workflow_lint_{}_fails_test".format(case),
+        pattern = pattern,
+        test = ":proof_workflow_lint_" + case,
+    )
+    for case, pattern in {
+        "latest": "workflows/ci.yml:5: runner label 'ubuntu-latest' floats",
+        "self_hosted": "workflows/ci.yml:5: the self-hosted label is allowed only in a private repository",
+        "tag": "workflows/ci.yml:7: uses 'actions/checkout@v4' is not pinned to a full commit SHA",
+    }.items()
+]
+
+# rumdl_test with two exclude entries. Two files break a rule (MD018) and a
+# third is clean. The pinned rumdl accepts one `--exclude` with the entries
+# comma-separated, so both entries must skip their file; with only one
+# entry the other file's failure shows. The broken files are generated, so
+# this repository's own Markdown lint doesn't see them.
+genrule(
+    name = "rumdl_exclude_tree",
+    outs = [
+        "rumdl_exclude/a/bad.md",
+        "rumdl_exclude/b/bad.md",
+        "rumdl_exclude/ok.md",
+    ],
+    cmd = "printf '#bad\\n' > $(execpath rumdl_exclude/a/bad.md) && " +
+          "printf '#bad\\n' > $(execpath rumdl_exclude/b/bad.md) && " +
+          "printf '# Fine\\n' > $(execpath rumdl_exclude/ok.md)",
+)
+
+rumdl_test(
+    name = "rumdl_exclude_two_test",
+    srcs = [":rumdl_exclude_tree"],
+    exclude = [
+        "a",
+        "b",
+    ],
+    strip_prefix = "lint/tests/rumdl_exclude",
+)
+
+rumdl_test(
+    name = "proof_rumdl_exclude_one",
+    srcs = [":rumdl_exclude_tree"],
+    exclude = ["a"],
+    strip_prefix = "lint/tests/rumdl_exclude",
+    tags = PROOF_TAGS,
+)
+
+expect_failure_test(
+    name = "proof_rumdl_exclude_one_fails",
+    pattern = "b/bad\\.md:1:2: \\[MD018\\]",
+    test = ":proof_rumdl_exclude_one",
+)
+
+# A macro `exclude` replaces the config's `exclude` list: the pinned rumdl
+# treats `--exclude` as an override, not an addition. The config skips a, b
+# and c; the macro names a and b, so c/bad.md is linted and must fail.
+# Without the macro's `exclude`, the config alone skips all three.
+genrule(
+    name = "rumdl_replace_tree",
+    outs = [
+        "rumdl_replace/a/bad.md",
+        "rumdl_replace/b/bad.md",
+        "rumdl_replace/c/bad.md",
+        "rumdl_replace/ok.md",
+        "rumdl_replace/rumdl.toml",
+    ],
+    cmd = "for f in $(OUTS); do case $$f in *bad.md) printf '#bad\\n' > $$f;; esac; done && " +
+          "printf '# Fine\\n' > $(execpath rumdl_replace/ok.md) && " +
+          "printf '[global]\\nexclude = [\"a\", \"b\", \"c\"]\\n' > $(execpath rumdl_replace/rumdl.toml)",
+)
+
+rumdl_test(
+    name = "rumdl_config_exclude_test",
+    srcs = [":rumdl_replace_tree"],
+    config = "rumdl_replace/rumdl.toml",
+    strip_prefix = "lint/tests/rumdl_replace",
+)
+
+rumdl_test(
+    name = "proof_rumdl_exclude_replaces_config",
+    srcs = [":rumdl_replace_tree"],
+    config = "rumdl_replace/rumdl.toml",
+    exclude = [
+        "a",
+        "b",
+    ],
+    strip_prefix = "lint/tests/rumdl_replace",
+    tags = PROOF_TAGS,
+)
+
+expect_failure_test(
+    name = "proof_rumdl_exclude_replaces_config_fails",
+    pattern = "c/bad\\.md:1:2: \\[MD018\\]",
+    test = ":proof_rumdl_exclude_replaces_config",
+)
+
+# review_policy_test on a review config the floor's schema rejects (schema must
+# be 1), which is a finding, and with the path set to that file, which the
+# check cannot load as a directory. The config is generated, so this
+# repository's own TOML lint doesn't see it.
+genrule(
+    name = "review_policy_invalid_tree",
+    outs = ["review_policy/.github/pull_request_review.toml"],
+    cmd = "printf 'schema = 2\\n' > $@",
+)
+
+[
+    review_policy_test(
+        name = "proof_review_policy_" + case,
+        srcs = [":review_policy_invalid_tree"],
+        path = path,
+        strip_prefix = "lint/tests/review_policy",
+        tags = PROOF_TAGS,
+        # Requires the tbhbdev review-policy source from the tools import.
+        target_compatible_with = ["@platforms//:incompatible"],
+    )
+    for case, path in {
+        "finding": ".",
+        "not_a_directory": ".github/pull_request_review.toml",
+    }.items()
+]
+
+[
+    expect_failure_test(
+        name = "review_policy_{}_fails_test".format(case),
+        pattern = pattern,
+        # Requires the tbhbdev review-policy source from the tools import.
+        target_compatible_with = ["@platforms//:incompatible"],
+        test = ":proof_review_policy_" + case,
+    )
+    for case, pattern in {
+        "finding": "\\.github[/\\\\]pull_request_review\\.toml: config-schema: schema: 1 was expected",
+        "not_a_directory": "\\.github[/\\\\]pull_request_review\\.toml is not a directory",
+    }.items()
+]
+
+# This policy check reads all tracked configs, including ignored Bazel modules.
+# It runs locally without a sandbox so Git sees the checkout and new modules.
+gitleaks_configs_test(
+    name = "gitleaks_configs_test",
+    tags = [
+        "local",
+        "no-cache",
+        "no-sandbox",
+    ],
+)
+
+genrule(
+    name = "allowlist_fixture",
+    testonly = True,
+    outs = [
+        "allowlist_creds.txt",
+        "nuget.config",
+    ],
+    cmd = "(\n" + GITLEAKS_ALLOWLIST_FIXTURE + ") >$(execpath allowlist_creds.txt)\n(\n" + GITLEAKS_PATH_FIXTURE + ") >$(execpath nuget.config)",
+    tags = ["manual"],
+)
+
+gitleaks_test(
+    name = "allowlist_tree_subject",
+    srcs = [":allowlist_fixture"],
+    config = "//:.gitleaks.toml",
+    tags = ["manual"],
+)
+
+gitleaks_history(
+    name = "allowlist_history_subject",
+    config = "//:.gitleaks.toml",
+    tags = ["manual"],
+)
+
+[
+    gitleaks_allowlist_scenario_test(
+        name = "{}_default_allowlist_test".format(scenario),
+        scenario = scenario,
+        subject = subject,
+    )
+    for scenario, subject in [
+        ("defaults", "@tbhb_rules_gitleaks//:gitleaks"),
+        ("tree", ":allowlist_tree_subject"),
+        ("text", "//lint:gitleaks_text"),
+        ("history", ":allowlist_history_subject"),
+        ("private", ":gitleaks_required"),
+    ]
+]
+
+[
+    gitleaks_allowlist_scenario_test(
+        name = "{}_test".format(scenario),
+        scenario = scenario,
+        subject = subject,
+        # Tech debt: the test fails on windows-2025; find the assertion and remove this.
+        target_compatible_with = select({
+            "@platforms//os:windows": ["@platforms//:incompatible"],
+            "//conditions:default": [],
+        }),
+    )
+    for scenario, subject in [
+        ("own_config_tree", "//lint:gitleaks"),
+        ("own_config_history", ":allowlist_history_subject"),
+        ("singular_allowlist", "//lint:gitleaks"),
+    ]
+]

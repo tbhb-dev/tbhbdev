@@ -1,0 +1,76 @@
+#!/usr/bin/env bash
+# SPDX-License-Identifier: Apache-2.0
+# Copyright Tony Burns
+
+# Checks the author and committer of each commit in BASE..HEAD against the
+# allowed pairs. Merge commits are skipped: GitHub writes them (a PR merge, a
+# main-into-branch update, a merge queue) under its own identity, and the
+# commits they bring in are checked on their own. Generated from commit_identity.sh.tpl; the @@NAME@@ markers
+# are filled in at analysis time. Run with `bazel run <target> -- BASE HEAD [HEAD_BRANCH]`.
+
+set -euo pipefail
+
+runfiles=$PWD
+allowed="$runfiles/@@ALLOWED@@"
+git_dir="$runfiles/@@GIT_DIR@@"
+trailers="$runfiles/@@TRAILERS@@"
+
+export PATH="$git_dir:$PATH"
+export GIT_CONFIG_NOSYSTEM=1
+export GIT_CONFIG_GLOBAL=/dev/null
+
+if (($# < 2 || $# > 3)); then
+  echo "usage: commit_identity BASE HEAD [HEAD_BRANCH]" >&2
+  exit 2
+fi
+base=$1
+head=$2
+
+cd "${BUILD_WORKSPACE_DIRECTORY:?run this target with bazel run}"
+
+for rev in "$base" "$head"; do
+  if ! git rev-parse --verify --quiet "$rev^{commit}" >/dev/null; then
+    echo "commit_identity: FAIL: $rev is not a commit in this clone" >&2
+    exit 1
+  fi
+done
+
+log=$(mktemp "${TMPDIR:-/tmp}/commit-identity.XXXXXX")
+trap 'rm -f "$log"' EXIT
+git log --no-merges --format='%H%x09%an <%ae> -> %cn <%ce>' "$base..$head" >"$log"
+
+checked=0
+failed=0
+while IFS=$'\t' read -r sha pair; do
+  pair=${pair%$'\r'}
+  checked=$((checked + 1))
+  commit_failed=0
+  if ! grep -Fxq -- "$pair" "$allowed"; then
+    commit_failed=1
+    echo "commit_identity: FAIL: $sha author and committer are not an allowed pair: ${pair/ -> / (author) -> } (committer)" >&2
+  fi
+  emails=$(git log -1 --format='%ae%n%ce' "$sha")
+  emails=${emails//$'\r'/}
+  if grep -Fxq -- agent@tonyburns.net <<<"$emails"; then
+    if (($# == 3)) && [[ $3 != agent/* && $3 != renovate/* ]]; then
+      commit_failed=1
+      echo "commit_identity: FAIL: $sha agent commits require a pull request head branch starting with agent/ or renovate/" >&2
+    fi
+    message=$(git log -1 --format=%B "$sha")
+    committer_time=$(git log -1 --format=%ct "$sha")
+    if ! problems=$(printf '%s' "$message" | "$trailers" "$committer_time"); then
+      commit_failed=1
+      while IFS= read -r problem; do
+        problem=${problem%$'\r'}
+        echo "commit_identity: FAIL: $sha $problem" >&2
+      done <<<"$problems"
+    fi
+  fi
+  failed=$((failed + commit_failed))
+done <"$log"
+
+if ((failed != 0)); then
+  echo "commit_identity: $failed of $checked commits failed. The allowed pairs are ALLOWED_PAIRS in @tbhb_rules//lint/private:commit_identity.bzl; use an allowed identity pair and valid agent identity trailers." >&2
+  exit 1
+fi
+echo "commit_identity: $checked commits checked"

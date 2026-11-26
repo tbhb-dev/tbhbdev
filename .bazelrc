@@ -13,6 +13,7 @@ test --test_output=errors
 build:ci --color=yes
 
 startup --windows_enable_symlinks
+startup --max_idle_secs=900
 common:windows --enable_runfiles
 
 try-import %workspace%/.bazelrc.user

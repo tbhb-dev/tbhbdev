@@ -17,3 +17,4 @@ swap:
   keeper (session|role)s?: scheduler
   go-lines?: merge message
   floor rules: org-wide rules
+  baseline floor: org-wide rules

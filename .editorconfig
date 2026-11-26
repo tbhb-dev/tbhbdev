@@ -30,10 +30,25 @@ indent_size = 2
 indent_style = space
 indent_size = 2
 
-[*.sh]
+[*.{sh,sh.tpl}]
 indent_style = space
 indent_size = 2
+shell_variant = bash
 
 [*.md]
 trim_trailing_whitespace = false
 max_line_length = off
+
+[*.d2.{svg,png,sha256}]
+trim_trailing_whitespace = false
+
+[worker-configuration.d.ts]
+trim_trailing_whitespace = false
+indent_style = unset
+
+[{structurizr-*.svg,structurizr-*.png,workspace.json}]
+trim_trailing_whitespace = false
+indent_style = unset
+
+[workspace.json]
+insert_final_newline = unset

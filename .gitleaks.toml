@@ -1,9 +1,6 @@
 # SPDX-License-Identifier: Apache-2.0
 # Copyright Tony Burns
 
-[extend]
-useDefault = true
-
 [[allowlists]]
 description = "Untracked build output, tool caches, and scratch space"
 paths = [
@@ -13,7 +10,21 @@ paths = [
   '''^\.mise/''',
   '''^\.vale/(Google|write-good|proselint|ai-tells[^/]*)/''',
   '''^tmp/''',
+  '''^(?:lib/rules/)?mutants/''',
   '''^\.worktrees/''',
   '''(^|/)__pycache__/''',
   '''^\.(ruff|pytest|hypothesis|rumdl)_cache/''',
 ]
+
+# The Bedrock rule contains its own public detection prefix. Allow only that
+# exact regex declaration in generated policy files (including old copies
+# in history), for that rule alone.
+# Tokens on any other line, and credential paths, still reach every rule.
+[[allowlists]]
+description = "Public Bedrock detection prefix in vendored rules"
+targetRules = ["aws-amazon-bedrock-api-key-short-lived"]
+condition = "AND"
+paths = ['''^lib/rules/lint/gitleaks/base\.toml$''', '''^lib/rules/lint/gitleaks/upstream\.toml$''']
+regexTarget = "line"
+# cspell:ignore Vkcm
+regexes = ["(?m)^regex = '''bedrock-api-key-(?:YmVkcm9jay5hbWF6b25hd3MuY29t)'''$"]

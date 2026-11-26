@@ -1,12 +1,16 @@
 # Project vocabulary for cspell: tool, command and package names that
 # the bundled dictionaries lack. Add only real terms; fix typos instead.
 addopts
+afakt
 AKIA
+ascm
 astrojs
 autouse
+awrel
 bazelignore
 bazelignored
 bazelisk
+bazeliskrc
 bazelrc
 bazelversion
 BINDIR
@@ -15,6 +19,7 @@ buildifier
 buildmeta
 buildozer
 buildtag
+bzlmod
 cacheinfo
 cainfo
 cand
@@ -27,6 +32,7 @@ compgen
 complexipy
 conftest
 cpus
+cquery
 cuda
 cyclop
 deadcode
@@ -34,6 +40,7 @@ delenv
 depguard
 depset
 deptry
+determinator
 direnv
 docstrings
 DTCG
@@ -79,6 +86,7 @@ hprof
 importlinter
 importpath
 inconshreveable
+jsonproto
 junitxml
 keepends
 ldconfig
@@ -123,6 +131,7 @@ nosystem
 NTFS
 numstat
 oklch
+onepasswordconnectsdk
 owenlamont
 oxipng
 perfsprint
@@ -195,6 +204,7 @@ unkeyed
 unmutated
 unstampable
 unvalidated
+urandom
 usefixtures
 usetesting
 vitest

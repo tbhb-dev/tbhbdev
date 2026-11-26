@@ -1,0 +1,484 @@
+# SPDX-License-Identifier: Apache-2.0
+# Copyright Tony Burns
+
+load("@bazel_skylib//rules:copy_file.bzl", "copy_file")
+load("@bazel_skylib//rules:diff_test.bzl", "diff_test")
+load("@bazelrc-preset.bzl", "generate_preset")
+load("@buildifier_prebuilt//:rules.bzl", "buildifier", "buildifier_test")
+load("//format:defs.bzl", "format", "format_test", "formatter")
+load(
+    "//lint:defs.bzl",
+    "cspell_test",
+    "decision_records_test",
+    "editorconfig_checker_test",
+    "gitleaks_history",
+    "gitleaks_test",
+    "mutation_oses_test",
+    "okf_docs_test",
+    "rumdl_test",
+    "ryl_test",
+    "tombi_test",
+    "tree_check_test",
+)
+load("//lint:repo_check_targets.bzl", "repo_check_targets")
+load("//repo:defs.bzl", "repo_files", "repo_layout_test")
+
+# The lint configs, so the nested modules can prove their own copies match
+# (a diff_test against @tbhb_rules//:<config>).
+exports_files([
+    ".editorconfig",
+    ".editorconfig-checker.json",
+    ".gitleaks.toml",
+    ".rumdl.toml",
+    ".ryl.toml",
+    "tombi.toml",
+])
+
+# Stage monorepo lint configuration in the module-relative tree assembled by
+# the lint tests. The source of each file lives at the monorepo root.
+_VALE_STYLES = [
+    ".vale/config/vocabularies/project/accept.txt",
+    ".vale/config/vocabularies/project/reject.txt",
+    ".vale/project/Acronyms.yml",
+    ".vale/project/CoinedTerms.yml",
+    ".vale/project/Colons.yml",
+    ".vale/project/HeadingTitleCase.yml",
+    ".vale/project/WordList.yml",
+]
+
+[
+    copy_file(
+        name = "stage_" + path.replace("/", "_"),
+        src = "@@//:" + path,
+        out = path,
+        visibility = [
+            "//lint/tests:__pkg__",
+            "//tools:__pkg__",
+        ],
+    )
+    for path in _VALE_STYLES + [
+        ".cspell-words.txt",
+        ".cspell.jsonc",
+        ".github/schemas/pull-request-draft.schema.json",
+        ".gitignore",
+        ".vale.ini",
+    ]
+]
+
+filegroup(
+    name = "vale_styles",
+    srcs = _VALE_STYLES,
+    visibility = ["//tools:__pkg__"],
+)
+
+# For //repo/tests:markdown_links_test, which locates the source checkout.
+exports_files(
+    ["BUILD.bazel"],
+    visibility = ["//repo/tests:__pkg__"],
+)
+
+exports_files(
+    ["pyproject.toml"],
+    visibility = [
+        "//lint/private/claude_settings:__pkg__",
+        "//repo/tests:__pkg__",
+        "//tools:__pkg__",
+    ],
+)
+
+# Every file of the repository, for the whole-tree checks below. Ignored
+# directories are listed in REPO.bazel; these are the gitignored files that
+# can sit at the root of a working checkout.
+# The nested modules (ansible/, astro/, cloudflare/, diagrams/d2/,
+# diagrams/structurizr/, go/, playwright/, python/, storybook/, swift/,
+# tokens/, typescript/) and the e2e consumers are .bazelignored workspaces of their own, with their own checks.
+repo_files(
+    exclude = [
+        ".DS_Store",
+        "**/.DS_Store",
+        "IMPORT-MAP.toml",
+        ".bazelrc.user",
+        ".coverage*",
+        ".env*",
+        "coverage.*",
+        "mise.local.toml",
+    ],
+    exclude_subpackages = [
+        "ansible/**",
+        "astro/**",
+        "cloudflare/**",
+        "diagrams/d2/**",
+        "diagrams/structurizr/**",
+        "e2e/**",
+        "go/**",
+        "playwright/**",
+        "python/**",
+        "storybook/**",
+        "swift/**",
+        "tokens/**",
+        "typescript/**",
+    ],
+)
+
+# Compare this module's standalone preset to the current generator.
+generate_preset(
+    name = "preset",
+    out = "_preset.bazelrc",
+    extra_presets = "{}",
+)
+
+# The generator includes the caller's canonical label and Bazel version in
+# its comments. Compare the flags so the containing workspace can test the
+# preset even when it runs a different Bazel patch release.
+genrule(
+    name = "preset_flags",
+    srcs = [
+        ":preset",
+        ":preset.bazelrc",
+    ],
+    outs = [
+        "_generated_preset_flags.txt",
+        "_source_preset_flags.txt",
+    ],
+    cmd = """
+        grep -v '^#' $(location :preset) > $(location _generated_preset_flags.txt)
+        grep -v '^#' $(location :preset.bazelrc) > $(location _source_preset_flags.txt)
+    """,
+)
+
+diff_test(
+    name = "preset.update_test",
+    file1 = ":_generated_preset_flags.txt",
+    file2 = ":_source_preset_flags.txt",
+)
+
+# buildifier: `//:buildifier` formats and applies lint fixes in place,
+# `//:buildifier.check` fails on any formatting or lint difference, and the
+# test below makes `bazel test //...` fail on the same findings. Every
+# available warning is on.
+BUILDIFIER_EXCLUDES = [
+    "./.git/*",
+    "./.venv/*",
+    "./.mise/*",
+    "./.bazel-*",
+    "./bazel-*",
+]
+
+buildifier(
+    name = "buildifier",
+    exclude_patterns = BUILDIFIER_EXCLUDES,
+    lint_mode = "fix",
+    lint_warnings = ["all"],
+    mode = "fix",
+)
+
+buildifier(
+    name = "buildifier.check",
+    exclude_patterns = BUILDIFIER_EXCLUDES,
+    lint_mode = "warn",
+    lint_warnings = ["all"],
+    mode = "diff",
+)
+
+buildifier_test(
+    name = "buildifier_test",
+    exclude_patterns = BUILDIFIER_EXCLUDES,
+    lint_mode = "warn",
+    lint_warnings = ["all"],
+    no_sandbox = True,
+    workspace = "//:MODULE.bazel",
+)
+
+# This module's own gates, built on its own rules.
+gitleaks_history(
+    name = "gitleaks_history",
+    config = ".gitleaks.toml",
+)
+
+gitleaks_test(
+    name = "gitleaks_test",
+    srcs = [":repo_files"],
+    config = ".gitleaks.toml",
+)
+
+ryl_test(
+    name = "ryl_test",
+    srcs = [":repo_files"],
+    config = ".ryl.toml",
+    data = [".gitignore"],
+)
+
+tombi_test(
+    name = "tombi_test",
+    srcs = [":repo_files"],
+    config = "tombi.toml",
+    schemas = {
+        "https://www.schemastore.org/partial-pytest.json": "@schemastore//:src/schemas/json/partial-pytest.json",
+        "https://www.schemastore.org/ruff.json": "@schemastore//:src/schemas/json/ruff.json",
+        "https://www.schemastore.org/uv.json": "@schemastore//:src/schemas/json/uv.json",
+    },
+)
+
+rumdl_test(
+    name = "rumdl_test",
+    srcs = [":repo_files"],
+    config = ".rumdl.toml",
+    # The link check's fixtures plant broken links and unused references
+    # on purpose, so rumdl's own link rules would fail them. The config
+    # stays equal to the parent copy that nested modules carry.
+    exclude = [
+        ".git",
+        "tmp",
+        "LICENSE",
+        "lint/tests/content/testdata",
+        "repo/tests/testdata/markdown_links",
+    ],
+)
+
+editorconfig_checker_test(
+    name = "editorconfig_checker_test",
+    srcs = [":repo_files"],
+    config = ".editorconfig-checker.json",
+)
+
+# The review policy files a repository has; //lint:review_policy_test checks
+# them. None exists yet, so OWNERS (which the check ignores) keeps the
+# copy non-empty, as tree_check requires, and the glob matches no more until
+# the first one lands.
+filegroup(
+    name = "review_policy_files",
+    srcs = ["OWNERS"] + glob(
+        [
+            ".github/PULL_REQUEST_REVIEW_*.md",
+            ".github/pull_request_review.*",
+            ".github/schemas/pull-request-review-draft.*",
+        ],
+        allow_empty = True,
+    ),
+    visibility = ["//lint:__pkg__"],
+)
+
+tree_check_test(
+    name = "gitleaks_guard_test",
+    srcs = [":repo_files"],
+    tool = "//lint:gitleaks_guard",
+    tool_args = ["--tree"],
+)
+
+# Shell scripts. A shebang-based selection rule is planned for lint/; until
+# it lands, the scripts are listed here.
+SHELL_SCRIPTS = [
+    "format/private/format.sh.tpl",
+    "lint/private/codeowners.sh",
+    "lint/private/codeowners_errors.sh",
+    "lint/private/cspell.sh.tpl",
+    "lint/private/content/index.sh.tpl",
+    "lint/private/commit_identity.sh.tpl",
+    "lint/private/commit_messages.sh.tpl",
+    "lint/private/gitleaks_history.sh.tpl",
+    "lint/private/gitleaks_text.sh.tpl",
+    "lint/private/shell_select.sh",
+    "lint/private/tree_check.sh.tpl",
+    "lint/private/vale.sh",
+    "lint/private/vale_sync.sh.tpl",
+    "lint/private/workflow_lint.sh",
+    "lint/tests/fake_tool.sh",
+    "pins/git_wrapper.sh",
+    "pins/tests/git_exec_path_test.sh",
+    "pins/tests/git_network_test.sh",
+    "quality/private/mutation_gate.sh.tpl",
+    "repo/tests/affected_targets_test.sh",
+    "repo/tests/cache_fetch_test.sh",
+    "repo/tests/codeowners_errors_test.sh",
+    "repo/tests/mktemp_test.sh",
+    "repo/tests/cpu_quota_test.sh",
+    "repo/tests/fetch_workspace_test.sh",
+    "repo/tests/mutation_nightly_test.sh",
+    "testing/private/expect_failure.sh.tpl",
+    "testing/tests/subject.sh",
+    "tools/lock_cooldown_test.sh",
+]
+
+tree_check_test(
+    name = "shellcheck_test",
+    srcs = [":repo_files"],
+    tool = "@tbhb_rules_shellcheck//:shellcheck",
+    tool_args = [
+        "-o",
+        "check-extra-masked-returns",
+    ] + SHELL_SCRIPTS,
+)
+
+# shfmt reads its style from .editorconfig.
+tree_check_test(
+    name = "shfmt_test",
+    srcs = [":repo_files"],
+    tool = "@tbhb_rules_shfmt//:shfmt",
+    tool_args = ["-d"] + SHELL_SCRIPTS,
+)
+
+# Formatting: `bazel run //:format` rewrites, `bazel run //:format.check`
+# checks the working tree, and format_test is the cached check in `bazel
+# test //...`. The runner templates are bash with a .tpl suffix; shfmt
+# takes their dialect from .editorconfig (shell_variant), because any
+# parser flag would make it ignore .editorconfig altogether.
+formatter(
+    name = "shfmt_templates",
+    include = ["*.sh.tpl"],
+    check_args = ["-d"],
+    fix_args = ["-w"],
+    tool = "@tbhb_rules_shfmt//:shfmt",
+)
+
+FORMATTERS = [
+    ":shfmt_templates",
+    "//format:buildifier",
+    "//format:rumdl",
+    "//format:ryl",
+    "//format:shfmt",
+    "//format:tombi",
+]
+
+# Test fixtures hold deliberately malformed files, which no formatter may
+# fix, and pnpm writes its own lockfiles. The nested modules are workspaces
+# of their own, which format themselves with these same formatters.
+FORMAT_EXCLUDE = [
+    # Preserve source snapshots and writer templates byte for byte.
+    "repo/baseline/files/*",
+    "repo/baseline/kinds/*",
+    "repo/baseline/visibility/*",
+    "repo/baseline/seed/*",
+    "*/testdata/*",
+    "ansible/*",
+    "astro/*",
+    "cloudflare/*",
+    "diagrams/d2/*",
+    "diagrams/structurizr/*",
+    "go/*",
+    "playwright/*",
+    "pnpm-lock.yaml",
+    "python/*",
+    "storybook/*",
+    "tokens/*",
+    "typescript/*",
+]
+
+format(
+    name = "format",
+    exclude = FORMAT_EXCLUDE,
+    formatters = FORMATTERS,
+)
+
+format_test(
+    name = "format_test",
+    srcs = [
+        ":.gitignore",
+        ":repo_files",
+    ],
+    exclude = FORMAT_EXCLUDE,
+    formatters = FORMATTERS,
+)
+
+# A new top-level directory is a deliberate change. ansible/, astro/,
+# cloudflare/, diagrams/ (diagrams/d2/ and diagrams/structurizr/), e2e/, go/,
+# playwright/, python/, storybook/, swift/, tokens/ and typescript/ hold .bazelignored workspaces
+# outside :repo_files, so they are listed but not seen here.
+repo_layout_test(
+    name = "repo_layout_test",
+    srcs = [":repo_files"],
+    top_level_dirs = [
+        "ansible",
+        "astro",
+        "cloudflare",
+        "content",
+        "diagrams",
+        "docs",
+        "e2e",
+        "format",
+        "go",
+        "lint",
+        "pins",
+        "playwright",
+        "python",
+        "quality",
+        "repo",
+        "runtime",
+        "shell",
+        "storybook",
+        "swift",
+        "testing",
+        "tokens",
+        "tools",
+        "typescript",
+    ],
+)
+
+cspell_test(
+    name = "cspell_test",
+    srcs = [":repo_files"],
+    config = ".cspell.jsonc",
+    data = [".cspell-words.txt"],
+)
+
+okf_docs_test(
+    name = "okf_docs_test",
+    srcs = [":repo_files"],
+)
+
+decision_records_test(
+    name = "decision_records_test",
+    srcs = [":repo_files"],
+)
+
+test_suite(
+    name = "required_status_checks_tests",
+    tests = [
+        "//lint/private/required_status_checks:pytest_test",
+        "//lint/tests/required_status_checks:all_tests",
+    ],
+)
+
+mutation_oses_test(
+    name = "mutation_oses_test",
+    srcs = [":repo_files"],
+)
+
+# The root wildcard //:all also runs the repository consistency suite.
+test_suite(
+    name = "baseline_tests",
+    tests = [
+        "//repo/tests:manifest_test",
+        "//repo/tests:markdown_links_clean_test",
+        "//repo/tests:markdown_links_test",
+        "//repo/tests:mise_keys_clean_test",
+        "//repo/tests:proof_markdown_links_bad_anchor_fails",
+        "//repo/tests:proof_markdown_links_fragment_fails",
+        "//repo/tests:proof_markdown_links_missing_dir_fails",
+        "//repo/tests:proof_markdown_links_missing_file_fails",
+        "//repo/tests:proof_markdown_links_scheme_like_fails",
+        "//repo/tests:proof_markdown_links_stale_fails",
+        "//repo/tests:proof_mise_keys_absent_fails",
+        "//repo/tests:proof_mise_keys_extra_fails",
+        "//repo/tests:pytest_test",
+        "//repo/tests:required_files_docs_test",
+        "//repo/tests:required_files_go_test",
+        "//repo/tests:temporal_dev_server_test",
+        "//tools:pytest_test",
+    ] + ["//repo/tests:proof_required_files_{}_fails".format(case) for case in [
+        "bad_exception",
+        "missing_dir",
+        "missing_file",
+        "private_license",
+        "unknown_kind",
+    ]],
+)
+
+test_suite(
+    name = "mktemp_tests",
+    tests = [
+        "//repo/tests:mktemp_clean_test",
+        "//repo/tests:mktemp_test",
+    ] + ["//repo/tests:mktemp_line_{}_fails_test".format(line) for line in range(4, 8)],
+)
+
+repo_check_targets(visibility = ["//lint/tests:__pkg__"])

@@ -1,0 +1,36 @@
+# SPDX-License-Identifier: Apache-2.0
+# Copyright Tony Burns
+
+# Directories that hold no source of this repository: VCS metadata, Python
+# environments, tool caches and mutation output. Ignoring them keeps them out
+# of every package and every glob, so whole-tree checks (//:repo_files)
+# never scan them.
+ignore_directories([
+    ".git",
+    # Bazel convenience symlinks (--symlink_prefix=.bazel-). The old bazel-*
+    # links stay listed for one transition: clones that have not run Bazel
+    # since the prefix change still have them.
+    ".bazel-*",
+    "bazel-*",
+    "**/.bazel_env",
+    ".claude/worktrees",
+    # Nested git worktrees; .bazelignore alone does not stop subpackages() from listing their BUILD files.
+    ".worktrees",
+    ".mise",
+    # Obsidian vault settings, from opening the repository as a vault.
+    ".obsidian",
+    "**/.venv",
+    "mutants",
+    "tmp",
+    "**/__pycache__",
+    "**/.*_cache",
+    ".hypothesis",
+    # Style packages and helpers that `bazel run //tools:vale_sync` writes for
+    # editors; //tools:vale_test syncs its own copies from the pinned zips.
+    ".vale/Google",
+    ".vale/ai-tells*",
+    ".vale/config/scripts",
+    ".vale/config/templates",
+    ".vale/proselint",
+    ".vale/write-good",
+])

@@ -10,6 +10,7 @@ This repository contains its Bazel rules and checks. Only the checks present her
 - `lib/` holds shared libraries.
 - `docs/` holds repository documentation and `third_party/` holds vendored or external inputs.
 - Dependency rule: products depend on `lib/` only and must not use `factory/` internals. The factory must not depend on a product. `lib/` must not depend on `factory/`.
+- Run shared rules tests from the monorepo root using their Bazel repository names. Workspaces under `lib/rules/**/e2e/` have their own module configuration.
 - Don't create packages named `core` or `shell`. Keep Go and Python targets in separate Bazel packages with no catch-all test targets so Go-only changes don't trigger Python tests.
 
 ## Commands

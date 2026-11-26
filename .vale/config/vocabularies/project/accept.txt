@@ -1,3 +1,6 @@
+afakt
+ascm
+awrel
 Bazel
 bazel_env
 bazelisk
@@ -33,6 +36,8 @@ repo
 resvg
 rumdl
 (?i)revert
+rules_js
+rules_multitool
 shellcheck
 (?i)style
 Structurizr
@@ -41,6 +46,7 @@ subpackages?
 subtree
 tbhb
 tbhbdev
+tbhb_rules
 (?i)test
 Temurin
 tombi
