@@ -2,40 +2,37 @@
 # Copyright Tony Burns
 """`tbhbdev alpha guard-ssh-agent`: keep agent commands off the SSH agent.
 
-This PreToolUse hook shares guard-gh-pr's payload contracts but reads the
-command with its own small shell lexer. It denies only two shapes:
+This PreToolUse hook shares guard-gh-pr's payload contracts and uses a small
+shell lexer. It checks simple commands and brace groups for `ssh-add`, with
+an exception for the read-only `ssh-add -l`. It skips plain assignments and
+option-less wrappers. It also denies tool `file_path` and `path` values that
+resolve into the operator's ssh directory outside `sessions`, or to a Unix
+socket outside the ssh directory. Paths resolve against the payload's cwd.
 
-- `ssh-add` as the first word of a simple command, after plain `NAME=value`
-  assignments and the wrappers `command`, `exec`, `nohup`, `time` and `env`
-  used without options;
-- the `file_path` or `path` of another tool such as Read that resolves, with
-  symlinks and `..` resolved against the payload's working directory, into the
-  operator's ssh directory except its `sessions` subdirectory.
+The hook denies invalid UTF-8 and unterminated quotes in commands it reads.
+An allow prints nothing. Invalid JSON and crashes, including a closed output
+pipe, fail open.
 
-Every other shape is allowed, including a command with a redirection, heredoc,
-`case`, group, parenthesis, `[[`, a `${` expansion, command substitution or
-backtick, a wrapper with an option, a function and anything else the lexer
-does not read. Like the
-other guards, allowing prints nothing and unreadable input or a crash,
-including a closed output pipe, fails open.
-
-Known gaps, all false allows: every wrapped or unparsed form above, `sudo` or
-`doas`, a program name held in a variable, runners such as `timeout`, `xargs`
-and `bash -c`, a keyword such as `then` before `ssh-add`, any shell word that
-names the ssh directory, a path that differs from the ssh directory only in
-case on a case-insensitive volume, and the Antigravity file tools and
-`workspacePaths`.
+Known gaps include redirections, heredocs, `case`, parentheses, `${` expansions,
+command substitutions, backticks, functions, wrappers with options, `sudo`,
+`doas`, variable command names, runners such as `timeout`, `xargs` and `bash -c`,
+and keywords such as `then` before `ssh-add`. Shell arguments naming the ssh
+directory, case variants of that directory on case-insensitive volumes, and
+Antigravity file tools and `workspacePaths` are also outside the check.
+Comparisons and regexes in `[[` tests that use unsupported syntax stay outside
+the check to keep the lexer small.
+ANSI-C quoting keeps text together, with full escape decoding left as debt.
 """
 
 import json
 import os
+import posixpath
 import re
 import sys
 from pathlib import Path
 from typing import TYPE_CHECKING
 
 from tbhbdev.alpha.guard_gh_pr import command_of, decision
-from tbhbdev.alpha.repo import read_hook_stdin
 
 if TYPE_CHECKING:
     from tbhbdev.alpha.guard_gh_pr import Json
@@ -45,12 +42,19 @@ REASON_DIR = (
     "The call is blocked: it names a path in the operator's ssh directory "
     "outside its sessions subdirectory."
 )
+REASON_SOCKET = "The call is blocked: it names a Unix socket."
+REASON_QUOTE = "The call is blocked: the command has an unterminated quote."
+REASON_ENCODING = "The call is blocked: the hook payload must be UTF-8."
 SSH_DIR = ".ssh"
 OPERATORS = ";&|"
 # Constructs the lexer does not handle: the whole command is allowed.
-UNPARSED = re.compile(r"[()`<>]|\$\{|\$'|\[\[|\bcase\b")
+UNPARSED = re.compile(r"[()`<>]|\$\{|\bcase\b")
+GROUP_OPEN = re.compile(r"\{(?=[ \t\r\n]|$)")
+TEST_OPEN = re.compile(r"\[\[(?=[ \t\r\n]|$)")
+TEST_CLOSE = re.compile(r"\]\](?=[ \t\r\n;&|]|$)")
 ASSIGNMENT = re.compile(r"[A-Za-z_][A-Za-z0-9_]*=")
-WRAPPERS = {"command", "exec", "nohup", "time", "env"}
+WRAPPERS = {"command", "time", "env"}
+SYSTEM_WRAPPERS = {"exec", "nohup"}
 SYSTEM_DIRS = {
     "/bin",
     "/sbin",
@@ -62,7 +66,7 @@ SYSTEM_DIRS = {
 PATH_FIELDS = ("file_path", "path")
 
 
-def quoted(text: str, index: int, mark: str) -> tuple[str, int]:
+def quoted(text: str, index: int, mark: str, *, ansi: bool = False) -> tuple[str, int]:
     """The text up to the MARK closing the quote at INDEX and the index after it.
 
     Raises:
@@ -71,12 +75,15 @@ def quoted(text: str, index: int, mark: str) -> tuple[str, int]:
     out: list[str] = []
     index += 1
     while index < len(text) and text[index] != mark:
-        if (
-            mark == '"'
-            and text[index] == "\\"
-            and text[index + 1 : index + 2] in {*'"\\$`'}
-        ):
-            index += 1
+        if text[index] == "\\":
+            following = text[index + 1 : index + 2]
+            if mark == '"' and following == "\n":
+                index += 2
+                continue
+            if (mark == '"' and following in {'"', "\\", "$", "`"}) or (
+                ansi and following in {"'", "\\"}
+            ):
+                index += 1
         out.append(text[index])
         index += 1
     if index >= len(text):
@@ -93,6 +100,7 @@ class Lexer:
         self.found: list[list[str]] = [[]]
         self.buf: list[str] = []
         self.started = False
+        self.in_test = False
 
     def flush(self) -> None:
         """End the word being built."""
@@ -101,9 +109,9 @@ class Lexer:
         self.buf.clear()
         self.started = False
 
-    def quote(self, mark: str) -> None:
+    def quote(self, mark: str, *, ansi: bool = False) -> None:
         """Read the quoted part at the index."""
-        part, self.index = quoted(self.text, self.index, mark)
+        part, self.index = quoted(self.text, self.index, mark, ansi=ansi)
         self.buf.append(part)
         self.started = True
 
@@ -121,16 +129,40 @@ class Lexer:
         self.index += 1
         self.found.append([])
 
+    def compound(self) -> bool:
+        """Consume the opening of a brace group or either delimiter of a test."""
+        if self.started:
+            return False
+        if self.in_test and TEST_CLOSE.match(self.text, self.index):
+            self.in_test = False
+            self.index += 2
+        elif self.found[-1]:
+            return False
+        elif GROUP_OPEN.match(self.text, self.index):
+            self.index += 1
+        elif TEST_OPEN.match(self.text, self.index):
+            self.found[-1].append("[[")
+            self.in_test = True
+            self.index += 2
+        else:
+            return False
+        return True
+
     def step(self) -> None:
         """Read one character or construct at the index."""
         char = self.text[self.index]
-        if char in "'\"":
+        if self.text.startswith("$'", self.index):
+            self.index += 1
+            self.quote("'", ansi=True)
+        elif char in "'\"":
             self.quote(char)
         elif char == "\\":
             self.escape()
         elif char == "#" and not self.started:
             self.index = self.text.find("\n", self.index) % (len(self.text) + 1)
-        elif char in " \t\r":
+        elif char in "{[]" and self.compound():
+            return
+        elif char in " \t\r" or (self.in_test and char in "\n" + OPERATORS):
             self.flush()
             self.index += 1
         elif char == "\n" or char in OPERATORS:
@@ -156,28 +188,28 @@ def segments(text: str) -> list[list[str]]:
     return [words for words in lexer.found if words]
 
 
-def command_word(words: list[str]) -> str:
-    """The first word after leading assignments and option-less wrappers.
+def blocks_ssh_add(words: list[str]) -> bool:
+    """Whether the command after assignments and option-less wrappers is blocked.
 
-    A wrapper is a bare name or a path in a system directory, never a relative
-    path such as `./time` or a project script such as `/home/u/tools/env`. Any
-    option after a wrapper means the command is not read.
+    `command`, `time` and `env` match by basename. `exec` and `nohup` match
+    as bare names or paths in a system directory.
     """
     wrapper = ""
-    for word in words:
+    for index, word in enumerate(words):
         if wrapper and word.startswith("-"):
-            return ""  # a wrapper with an option is not one we read
-        name = Path(word).name
+            return False
+        directory, name = posixpath.split(word)
         if not (
             ASSIGNMENT.match(word)
+            or name in WRAPPERS
             or (
-                name in WRAPPERS
-                and ("/" not in word or str(Path(word).parent) in SYSTEM_DIRS)
+                name in SYSTEM_WRAPPERS
+                and (not directory or posixpath.normpath(directory) in SYSTEM_DIRS)
             )
         ):
-            return name
+            return name == "ssh-add" and words[index + 1 :] != ["-l"]
         wrapper = name
-    return ""
+    return False
 
 
 def expand(text: str, home: str) -> str:
@@ -203,19 +235,11 @@ def in_sessions(path: str, ssh: str, sessions: str) -> bool:
         return False
 
 
-def under_ssh(path: str, home: str) -> bool:
-    """Whether PATH is the ssh directory or below it, outside sessions."""
-    ssh = os.path.realpath(f"{home}/{SSH_DIR}")
-    if path != ssh and not path.startswith(ssh + "/"):
-        return False
-    return not in_sessions(path, ssh, os.path.realpath(f"{ssh}/sessions"))
-
-
-def names_ssh_dir(text: str, cwd: str) -> bool:
-    """Whether a path names the ssh directory or a path below it."""
+def file_reason(text: str, cwd: str) -> str | None:
+    """The deny reason for a file named by a tool, or None."""
+    if not text:
+        return None
     home = str(Path.home())
-    if not text or text.startswith("-"):
-        return False
     text = expand(text, home)
     if not Path(text).is_absolute():
         full = str(Path(cwd) / text)
@@ -226,21 +250,23 @@ def names_ssh_dir(text: str, cwd: str) -> bool:
             and not Path(full).is_symlink()
             and not Path(full).exists()
         ):
-            return False
+            return None
         text = full
-    return under_ssh(os.path.realpath(text), home)
+    path = os.path.realpath(text)
+    ssh = os.path.realpath(f"{home}/{SSH_DIR}")
+    if path == ssh or path.startswith(ssh + "/"):
+        sessions = os.path.realpath(f"{ssh}/sessions")
+        return None if in_sessions(path, ssh, sessions) else REASON_DIR
+    return REASON_SOCKET if Path(path).is_socket() else None
 
 
 def verdict(text: str) -> str | None:
-    """The deny reason for a shell command, or None to allow it.
-
-    An unbalanced quote makes the text unreadable, which allows it.
-    """
+    """The deny reason for a shell command, or None to allow it."""
     try:
         parsed = segments(text)
     except ValueError:
-        return None
-    return REASON_ADD if any(command_word(w) == "ssh-add" for w in parsed) else None
+        return REASON_QUOTE
+    return REASON_ADD if any(blocks_ssh_add(words) for words in parsed) else None
 
 
 def path_reason(data: Json, cwd: str | None = None) -> str | None:
@@ -248,20 +274,45 @@ def path_reason(data: Json, cwd: str | None = None) -> str | None:
     inputs = data.get("tool_input")
     if not isinstance(inputs, dict):
         return None
+    cwd = cwd or str(Path.cwd())
     for field in PATH_FIELDS:
         value = inputs.get(field)
-        if isinstance(value, str) and names_ssh_dir(value, cwd or str(Path.cwd())):
-            return REASON_DIR
+        if isinstance(value, str) and (reason := file_reason(value, cwd)):
+            return reason
     return None
+
+
+def read_payload() -> tuple[Json, str | None]:
+    """Read hook JSON with a distinct reason for invalid UTF-8."""
+    buffer = getattr(sys.stdin, "buffer", None)
+    # Preserve the JSON envelope so a bad byte can still get a harness-specific denial.
+    try:
+        text = (
+            sys.stdin.read()
+            if buffer is None
+            else buffer.read().decode("utf-8", errors="surrogateescape")
+        )
+    except UnicodeError:
+        return {}, REASON_ENCODING
+    reason = None
+    try:
+        text.encode("utf-8")
+    except UnicodeError:
+        reason = REASON_ENCODING
+    try:
+        data = json.loads(text)
+    except ValueError:
+        return {}, reason
+    return (data if isinstance(data, dict) else {}), reason
 
 
 def denial() -> str | None:
     """The deny decision as JSON for the payload on stdin, or None to allow."""
-    data = read_hook_stdin()
+    data, encoding_reason = read_payload()
     text, antigravity = command_of(data)
     cwd = data.get("cwd")
     cwd = cwd if isinstance(cwd, str) else None
-    reason = verdict(text) or path_reason(data, cwd)
+    reason = encoding_reason or verdict(text) or path_reason(data, cwd)
     return json.dumps(decision(reason, antigravity=antigravity)) if reason else None
 
 
