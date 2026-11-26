@@ -149,6 +149,10 @@ def action_binary(ctx):
             return f
     return ctx.executable._golangci_lint
 
+def _repo_relative(file):
+    repo = file.owner.repo_name
+    return file.short_path.removeprefix("../" + repo + "/") if repo else file.short_path
+
 def _lint(target, ctx):
     pkg_info = target[GoPkgInfo]
     stdlib = ctx.attr._go_stdlib[GoStdLib]
@@ -165,7 +169,7 @@ def _lint(target, ctx):
     covers = ctx.actions.declare_file(name + ".covers")
     ctx.actions.write(covers, "".join(
         ["variant={}\n".format("test" if ctx.rule.kind == "go_test" else "lib")] +
-        [f.short_path + "\n" for f in covered],
+        [_repo_relative(f) + "\n" for f in covered],
     ))
 
     go_mod = ctx.file._go_mod if hasattr(ctx.attr, "_go_mod") else None
@@ -188,6 +192,7 @@ def _lint(target, ctx):
     args.add(go_mod.path if go_mod else "")
     args.add(mirror)
     args.add(report)
+    args.add(target.label.workspace_root)
     args.add_all(ctx.attr._args)
 
     ctx.actions.run(
@@ -214,7 +219,7 @@ def _golangci_lint_aspect_impl(target, ctx):
 
     direct = []
     if (ctx.rule.kind in ctx.attr._rule_kinds and
-        target.label.repo_name == ctx.attr._config.label.repo_name and
+        target.label.repo_name in ("", ctx.attr._config.label.repo_name) and
         GoPkgInfo in target and
         GoArchive in target and
         _own_go_files(ctx)):
@@ -361,7 +366,7 @@ def _golangci_lint_test_impl(ctx):
 
     expected = ctx.actions.declare_file(ctx.label.name + ".expected")
     ctx.actions.write(expected, "".join([
-        f.short_path + "\n"
+        _repo_relative(f) + "\n"
         for f in ctx.files.expect_linted
         if f.extension == "go" and f.owner.repo_name == ctx.label.repo_name
     ]))

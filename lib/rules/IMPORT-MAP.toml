@@ -665,7 +665,6 @@ dest = "lib/rules"
 "go/private/BUILD.bazel" = "lib/rules/go/private/BUILD.bazel"
 "go/private/deadcode.sh" = "lib/rules/go/private/deadcode.sh"
 "go/private/driver/BUILD.bazel" = "lib/rules/go/private/driver/BUILD.bazel"
-"go/private/driver/main.go" = "lib/rules/go/private/driver/main.go"
 "go/private/driver/main_test.go" = "lib/rules/go/private/driver/main_test.go"
 "go/private/formatter_include.bzl" = "lib/rules/go/private/formatter_include.bzl"
 "go/private/go_arch_lint.bzl" = "lib/rules/go/private/go_arch_lint.bzl"
@@ -680,7 +679,6 @@ dest = "lib/rules"
 "go/private/gobco_test.sh.tpl" = "lib/rules/go/private/gobco_test.sh.tpl"
 "go/private/golangci_fmt.bzl" = "lib/rules/go/private/golangci_fmt.bzl"
 "go/private/golangci_fmt.sh.tpl" = "lib/rules/go/private/golangci_fmt.sh.tpl"
-"go/private/golangci_lint.sh" = "lib/rules/go/private/golangci_lint.sh"
 "go/private/golangci_lint_merge.sh" = "lib/rules/go/private/golangci_lint_merge.sh"
 "go/private/golangci_lint_test.sh.tpl" = "lib/rules/go/private/golangci_lint_test.sh.tpl"
 "go/private/gomutants.bzl" = "lib/rules/go/private/gomutants.bzl"
@@ -1984,6 +1982,12 @@ replace = [
     ["    roots = []\n    importpaths = []\n    if target.label.repo_name == \"\" and GoArchive in target:\n        data = target[GoArchive].data\n        roots.append(str(data.label))\n", "    roots = []\n    importpaths = []\n    if target.label.repo_name in (\"\", Label(\"//:defs.bzl\").repo_name) and GoArchive in target:\n        data = target[GoArchive].data\n        roots.append(str(data.label))\n"],
 ]
 
+[rewrite."go/private/driver/main.go"]
+dest = "lib/rules/go/private/driver/main.go"
+replace = [
+    ["// the execution root holds the workspace's sources, external repositories\n// (external/...) and outputs (bazel-out/...), so all three placeholders\n// are the working directory. Workspace sources copied to the mirror resolve\n// to the copy.\nfunc resolvePaths(p *flatPackage, root, mirror string) {\n\tresolve := func(path string) string {\n\t\tif rel, ok := strings.CutPrefix(path, workspacePlaceholder); ok && mirror != \"\" {\n\t\t\tif _, err := os.Stat(mirror + filepath.FromSlash(rel)); err == nil {\n\t\t\t\treturn mirror + filepath.FromSlash(rel)\n\t\t\t}\n\t\t}\n\t\tfor _, ph := range placeholders {\n\t\t\tif rel, ok := strings.CutPrefix(path, ph); ok {\n\t\t\t\treturn root + filepath.FromSlash(rel)\n\t\t\t}\n\t\t}\n", "// the execution root holds the workspace's sources, external repositories\n// (external/...) and outputs (bazel-out/...), so all three placeholders\n// are the working directory. Sources copied to the mirror resolve\n// to the copy.\nfunc resolvePaths(p *flatPackage, root, mirror string) {\n\tresolve := func(path string) string {\n\t\tfor _, ph := range placeholders {\n\t\t\tif rel, ok := strings.CutPrefix(path, ph); ok {\n\t\t\t\trel = filepath.FromSlash(rel)\n\t\t\t\tif mirror != \"\" {\n\t\t\t\t\tif _, err := os.Stat(mirror + rel); err == nil {\n\t\t\t\t\t\treturn mirror + rel\n\t\t\t\t\t}\n\t\t\t\t}\n\t\t\t\treturn root + rel\n\t\t\t}\n\t\t}\n"],
+]
+
 [rewrite."go/private/go_srcs.bzl"]
 dest = "lib/rules/go/private/go_srcs.bzl"
 replace = [
@@ -2000,8 +2004,20 @@ replace = [
 [rewrite."go/private/golangci_lint.bzl"]
 dest = "lib/rules/go/private/golangci_lint.bzl"
 replace = [
-    ["    direct = []\n    if (ctx.rule.kind in ctx.attr._rule_kinds and\n        target.label.repo_name == \"\" and\n        GoPkgInfo in target and\n        GoArchive in target and\n", "    direct = []\n    if (ctx.rule.kind in ctx.attr._rule_kinds and\n        target.label.repo_name == ctx.attr._config.label.repo_name and\n        GoPkgInfo in target and\n        GoArchive in target and\n"],
-    ["        f.short_path + \"\\n\"\n        for f in ctx.files.expect_linted\n        if f.extension == \"go\" and f.owner.repo_name == \"\"\n    ]))\n\n", "        f.short_path + \"\\n\"\n        for f in ctx.files.expect_linted\n        if f.extension == \"go\" and f.owner.repo_name == ctx.label.repo_name\n    ]))\n\n"],
+    ["    return ctx.executable._golangci_lint\n\ndef _lint(target, ctx):\n    pkg_info = target[GoPkgInfo]\n", "    return ctx.executable._golangci_lint\n\ndef _repo_relative(file):\n    repo = file.owner.repo_name\n    return file.short_path.removeprefix(\"../\" + repo + \"/\") if repo else file.short_path\n\ndef _lint(target, ctx):\n    pkg_info = target[GoPkgInfo]\n"],
+    ["    ctx.actions.write(covers, \"\".join(\n        [\"variant={}\\n\".format(\"test\" if ctx.rule.kind == \"go_test\" else \"lib\")] +\n        [f.short_path + \"\\n\" for f in covered],\n    ))\n\n", "    ctx.actions.write(covers, \"\".join(\n        [\"variant={}\\n\".format(\"test\" if ctx.rule.kind == \"go_test\" else \"lib\")] +\n        [_repo_relative(f) + \"\\n\" for f in covered],\n    ))\n\n"],
+    ["    args.add(mirror)\n    args.add(report)\n    args.add_all(ctx.attr._args)\n\n", "    args.add(mirror)\n    args.add(report)\n    args.add(target.label.workspace_root)\n    args.add_all(ctx.attr._args)\n\n"],
+    ["    direct = []\n    if (ctx.rule.kind in ctx.attr._rule_kinds and\n        target.label.repo_name == \"\" and\n        GoPkgInfo in target and\n        GoArchive in target and\n", "    direct = []\n    if (ctx.rule.kind in ctx.attr._rule_kinds and\n        target.label.repo_name in (\"\", ctx.attr._config.label.repo_name) and\n        GoPkgInfo in target and\n        GoArchive in target and\n"],
+    ["    expected = ctx.actions.declare_file(ctx.label.name + \".expected\")\n    ctx.actions.write(expected, \"\".join([\n        f.short_path + \"\\n\"\n        for f in ctx.files.expect_linted\n        if f.extension == \"go\" and f.owner.repo_name == \"\"\n    ]))\n\n", "    expected = ctx.actions.declare_file(ctx.label.name + \".expected\")\n    ctx.actions.write(expected, \"\".join([\n        _repo_relative(f) + \"\\n\"\n        for f in ctx.files.expect_linted\n        if f.extension == \"go\" and f.owner.repo_name == ctx.label.repo_name\n    ]))\n\n"],
+]
+
+[rewrite."go/private/golangci_lint.sh"]
+dest = "lib/rules/go/private/golangci_lint.sh"
+replace = [
+    ["#\n# Usage: golangci_lint.sh GOLANGCI_LINT REPORT DRIVER DRIVER_CONFIG GO CONFIG\n#        GO_MOD MIRROR_FILES REPORT_OUT [golangci-lint run flags...]\n#\n# GO_MOD is empty when there is none. MIRROR_FILES lists the files to copy\n", "#\n# Usage: golangci_lint.sh GOLANGCI_LINT REPORT DRIVER DRIVER_CONFIG GO CONFIG\n#        GO_MOD MIRROR_FILES REPORT_OUT REPO_ROOT [golangci-lint run flags...]\n#\n# GO_MOD is empty when there is none. MIRROR_FILES lists the files to copy\n"],
+    ["mirror_files=$8\nreport_out=$9\nshift 9\n\nroot=$(pwd -P)\n", "mirror_files=$8\nreport_out=$9\nrepo_root=${10}\nshift 10\n\nroot=$(pwd -P)\n"],
+    ["# Run from the module root, as `golangci-lint run` would be, so the Go\n# version and `relative-path-mode: gomod` come from go.mod.\nmoddir=$ws\nif [[ -n $go_mod ]]; then\n  moddir=\"$ws/$(dirname \"$go_mod\")\"\n", "# Run from the module root, as `golangci-lint run` would be, so the Go\n# version and `relative-path-mode: gomod` come from go.mod.\nbase=\"$ws/$repo_root\"\nmoddir=$base\nif [[ -n $go_mod ]]; then\n  moddir=\"$ws/$(dirname \"$go_mod\")\"\n"],
+    ["  -exit \"$status\" \\\n  -log \"$tmp/log\" \\\n  -base \"$ws\" \\\n  -out \"$root/$report_out\"\n", "  -exit \"$status\" \\\n  -log \"$tmp/log\" \\\n  -base \"$base\" \\\n  -out \"$root/$report_out\"\n"],
 ]
 
 [rewrite."go/tests/analysis/analysis_tests.bzl"]

@@ -7,7 +7,7 @@
 # the golangci-lint aspect in golangci_lint.bzl from the execution root.
 #
 # Usage: golangci_lint.sh GOLANGCI_LINT REPORT DRIVER DRIVER_CONFIG GO CONFIG
-#        GO_MOD MIRROR_FILES REPORT_OUT [golangci-lint run flags...]
+#        GO_MOD MIRROR_FILES REPORT_OUT REPO_ROOT [golangci-lint run flags...]
 #
 # GO_MOD is empty when there is none. MIRROR_FILES lists the files to copy
 # into the mirror: the package's sources, the config, go.mod and the
@@ -24,7 +24,8 @@ config=$6
 go_mod=$7
 mirror_files=$8
 report_out=$9
-shift 9
+repo_root=${10}
+shift 10
 
 root=$(pwd -P)
 tmp=$(mktemp -d "${TMPDIR:-/tmp}/golangci-lint.XXXXXX")
@@ -90,7 +91,8 @@ export GOMAXPROCS=1
 
 # Run from the module root, as `golangci-lint run` would be, so the Go
 # version and `relative-path-mode: gomod` come from go.mod.
-moddir=$ws
+base="$ws/$repo_root"
+moddir=$base
 if [[ -n $go_mod ]]; then
   moddir="$ws/$(dirname "$go_mod")"
 fi
@@ -111,5 +113,5 @@ status=0
   -in "$tmp/issues.json" \
   -exit "$status" \
   -log "$tmp/log" \
-  -base "$ws" \
+  -base "$base" \
   -out "$root/$report_out"

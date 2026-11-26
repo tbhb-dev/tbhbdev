@@ -341,18 +341,19 @@ var placeholders = []string{"__BAZEL_EXECROOT__", workspacePlaceholder, "__BAZEL
 // resolvePaths makes rules_go's placeholder paths absolute. Inside an action
 // the execution root holds the workspace's sources, external repositories
 // (external/...) and outputs (bazel-out/...), so all three placeholders
-// are the working directory. Workspace sources copied to the mirror resolve
+// are the working directory. Sources copied to the mirror resolve
 // to the copy.
 func resolvePaths(p *flatPackage, root, mirror string) {
 	resolve := func(path string) string {
-		if rel, ok := strings.CutPrefix(path, workspacePlaceholder); ok && mirror != "" {
-			if _, err := os.Stat(mirror + filepath.FromSlash(rel)); err == nil {
-				return mirror + filepath.FromSlash(rel)
-			}
-		}
 		for _, ph := range placeholders {
 			if rel, ok := strings.CutPrefix(path, ph); ok {
-				return root + filepath.FromSlash(rel)
+				rel = filepath.FromSlash(rel)
+				if mirror != "" {
+					if _, err := os.Stat(mirror + rel); err == nil {
+						return mirror + rel
+					}
+				}
+				return root + rel
 			}
 		}
 		return path
