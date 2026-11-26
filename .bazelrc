@@ -6,6 +6,7 @@ common --symlink_prefix=.bazel-
 common --lockfile_mode=error
 common --check_direct_dependencies=error
 common --enable_platform_specific_config
+common --downloader_config=third_party/zig-downloader.cfg
 
 # Per-package test time caps (short=60s, moderate=180s, long=300s, eternal=900s).
 test --test_timeout=60,180,300,900
