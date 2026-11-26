@@ -2122,6 +2122,9 @@ def start_size_review(
     env: Mapping[str, str],
 ) -> None:
     """Start the standard review launcher on the oversized commit."""
+    host = env.get("TBHBDEV_SIZE_REVIEW_HOST")
+    if not host:
+        raise SystemExit("set TBHBDEV_SIZE_REVIEW_HOST to a configured review host")
     detected = agent_identity.detect(env)
     harness, model = (
         ("codex", "gpt-6.1-sol")
@@ -2129,7 +2132,7 @@ def start_size_review(
         else ("agy", "gemini-4-argon-high")
     )
     options = {
-        "--host": "usdhosv06",
+        "--host": host,
         "--repo": repo,
         "--ref": head,
         "--harness": harness,
