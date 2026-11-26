@@ -185,7 +185,11 @@ def check_hooks(text: str) -> list[str]:
 
 
 def branch_warnings(
-    text: str, run: str | None = None, *, fetch_refs: tuple[str, ...] = ()
+    text: str,
+    run: str | None = None,
+    *,
+    fetch_refs: tuple[str, ...] = (),
+    ignored_refs: tuple[str, ...] = (),
 ) -> list[str]:
     """Warn about foreign branch instructions and unfetched agent branch mentions."""
     text = "\n".join(
@@ -210,7 +214,11 @@ def branch_warnings(
         allowed_branch = (
             branch.startswith(allowed) if run is None else branch == allowed
         )
-        if allowed_branch:
+        if (
+            allowed_branch
+            or branch in ignored_refs
+            or f"refs/heads/{branch}" in ignored_refs
+        ):
             continue
         warnings.append(f"use the launcher branch {allowed} instead of {branch}")
     return warnings

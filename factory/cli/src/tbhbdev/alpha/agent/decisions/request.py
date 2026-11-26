@@ -141,17 +141,22 @@ def _check_commit(request: RunRequest) -> None:
         _fail("commit", "applies only to a review run")
 
 
+def valid_fetch_ref(ref: str) -> bool:
+    """Return whether --fetch-ref accepts this ref name."""
+    return (
+        _FETCH_REF.fullmatch(ref) is not None
+        and ".." not in ref
+        and "//" not in ref
+        and not ref.endswith(("/", ".lock"))
+        and not ref.startswith("refs/heads/-")
+    )
+
+
 def check_fetch_refs(refs: tuple[str, ...]) -> None:
     if len(refs) > _FETCH_REF_LIMIT:
         _fail("fetch_refs", f"allows at most {_FETCH_REF_LIMIT} refs")
     for ref in refs:
-        if (
-            _FETCH_REF.fullmatch(ref) is None
-            or ".." in ref
-            or "//" in ref
-            or ref.endswith(("/", ".lock"))
-            or ref.startswith("refs/heads/-")
-        ):
+        if not valid_fetch_ref(ref):
             _fail("fetch_refs", f"contains invalid ref {ref!r}")
 
 
