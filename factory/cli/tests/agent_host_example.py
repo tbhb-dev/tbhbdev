@@ -212,11 +212,20 @@ def build_provenance(
 ) -> dict[str, str]:
     checkout = tmp_path / "tools"
     checkout.mkdir()
-    monkeypatch.setattr(
-        build_info, "__file__", str(checkout / "src/tbhbdev/alpha/agent/build_info.py")
-    )
+    source = checkout / "factory/cli/src/tbhbdev/alpha/agent/build_info.py"
+    monkeypatch.setattr(build_info, "__file__", str(source))
     if present:
         (checkout / ".git").write_text("gitdir: metadata\n")
+        (tmp_path / ".git").mkdir()
+    else:
+        exists = build_info.Path.exists
+
+        def without_git(path: Path, *, follow_symlinks: bool = True) -> bool:
+            if path.name == ".git" and path.parent in source.parents:
+                return False
+            return exists(path, follow_symlinks=follow_symlinks)
+
+        monkeypatch.setattr(build_info.Path, "exists", without_git)
 
     def distribution(name: str) -> SimpleNamespace:
         assert name == "tbhbdev"
