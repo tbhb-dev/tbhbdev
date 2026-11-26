@@ -39,6 +39,9 @@ if TYPE_CHECKING:
     from tbhbdev.alpha.agent.model import Host, Settings
 
 
+MAX_LIVE_REVIEWS = 4
+
+
 class Run:
     """The recorded target and request, with no settings or credential references."""
 
@@ -242,11 +245,11 @@ def launch_lock() -> Generator[None]:
 
 
 def refuse_live_duplicate(settings: Settings, run: Run) -> None:
-    """Refuse a review of a commit that another run of the profile is reviewing.
+    """Refuse a duplicate review or a fifth live review of the same commit.
 
     Two runs on one repository, commit and profile coexist only when both
-    declare a variant and the variants differ (a planned pair of reviewers of
-    one head). A run with no variant conflicts with every live run on that key.
+    declare distinct variants. A run with no variant conflicts with every
+    live run on that key. The cap applies across variants.
 
     A recorded run counts as live until the host reports its exit status, so
     an unreachable host or a run with no status also refuses. A run older than
@@ -255,26 +258,21 @@ def refuse_live_duplicate(settings: Settings, run: Run) -> None:
     ``launch_lock`` so two launches cannot both pass this check.
 
     Raises:
-        Invalid: A recorded run has the same repo, commit and profile, no exit
-            status yet, and either run declares no variant or both declare the
-            same one.
+        Invalid: A live review conflicts on variant or the cap is reached.
     """
+    key = (canonical_repo(run.request.repo), run.request.commit, run.request.profile)
+    live = 0
     for path in sorted(directory().glob("*.json")):
         try:
             other = load(settings, path.stem)
         except Invalid, ValueError, FileNotFoundError:
             continue
-        same = (
-            canonical_repo(other.request.repo) == canonical_repo(run.request.repo)
-            and other.request.commit == run.request.commit
-            and other.request.profile is run.request.profile
-            and (
-                other.request.variant is None
-                or run.request.variant is None
-                or other.request.variant == run.request.variant
-            )
+        other_key = (
+            canonical_repo(other.request.repo),
+            other.request.commit,
+            other.request.profile,
         )
-        if not same or past_time_limit(settings, other):
+        if other_key != key or past_time_limit(settings, other):
             continue
         try:
             ended = (
@@ -283,16 +281,27 @@ def refuse_live_duplicate(settings: Settings, run: Run) -> None:
             )
         except transport.TransportError:
             ended = False
-        if not ended:
+        if ended:
+            continue
+        live += 1
+        if live >= MAX_LIVE_REVIEWS:
             message = (
-                f"{run.name}: run {other.name} already reviews "
-                f"{run.request.repo}@{run.request.commit} with the "
-                f"{run.request.profile.value} profile and hasn't ended. "
-                f"Check `tbhbdev alpha agent status {other.name}` and use "
-                f"`tbhbdev alpha agent clean {other.name}` once it ends. "
-                "For concurrent reviewers, launch both with distinct --variant values"
+                f"{run.name}: {run.request.repo}@{run.request.commit} already has "
+                f"{MAX_LIVE_REVIEWS} live reviews"
             )
             raise Invalid(message)
+        variant, other_variant = run.request.variant, other.request.variant
+        if None not in (variant, other_variant) and variant != other_variant:
+            continue
+        message = (
+            f"{run.name}: run {other.name} already reviews "
+            f"{run.request.repo}@{run.request.commit} with the "
+            f"{run.request.profile.value} profile and hasn't ended. "
+            f"Check `tbhbdev alpha agent status {other.name}` and use "
+            f"`tbhbdev alpha agent clean {other.name}` once it ends. "
+            "For concurrent reviewers, launch both with distinct --variant values"
+        )
+        raise Invalid(message)
 
 
 def check_limits(
