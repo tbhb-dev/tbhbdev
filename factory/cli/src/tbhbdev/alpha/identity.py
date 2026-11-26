@@ -2125,7 +2125,33 @@ def trailer_start(value: str) -> str:
     return (found and start_ok(found[1])) or ""
 
 
-def with_record(value: str) -> str:
+def branch_created_at(top: Path) -> str | None:
+    """Return the first branch creation time in the current branch's reflog."""
+    code, branch = git("symbolic-ref", "--quiet", "HEAD", cwd=top)
+    if code != 0:
+        return None
+    _, log = git(
+        "reflog",
+        "show",
+        "--grep-reflog=^branch: Created from ",
+        "--date=raw",
+        "--format=%gd",
+        branch,
+        cwd=top,
+    )
+    matches = re.findall(r"@\{(\d+) [+-]\d{4}\}", log)
+    return utc(int(matches[-1])) if matches else None
+
+
+def replace_trailer_fields(value: str, fields: Mapping[str, str | None]) -> str:
+    """Update only the specified attributes in the trailer's attribute blob."""
+    blob = next(token for token in value.split() if "=" in token)
+    pairs = [pair for pair in blob.split(";") if pair.partition("=")[0] not in fields]
+    pairs.extend(f"{key}={field}" for key, field in fields.items() if field)
+    return value.replace(blob, ";".join(sorted(pairs)))
+
+
+def with_record(value: str, *, branch_start: str | None = None) -> str:
     """A trailer value with the ``launch`` and ``started_at`` of its session record.
 
     The record is the machine's word, so its fields replace whatever the line
@@ -2140,21 +2166,13 @@ def with_record(value: str) -> str:
         return value
     root_rec = load_record(root)
     rec = load_record(sub, root=root) if sub else root_rec
-    if not (rec or root_rec):
+    if not (rec or root_rec or branch_start):
         return value
     fields = {
         "launch": hash_ok(rec.get("launch")) or hash_ok(root_rec.get("launch")),
-        "started_at": start_ok(rec.get("started_at")),
+        "started_at": branch_start or start_ok(rec.get("started_at")),
     }
-    # Replace only these two attributes; absent record fields remove forged ones.
-    blob = next(token for token in value.split() if "=" in token)
-    pairs = [
-        pair
-        for pair in blob.split(";")
-        if not pair.startswith(("launch=", "started_at="))
-    ]
-    pairs.extend(f"{key}={field}" for key, field in fields.items() if field)
-    return value.replace(blob, ";".join(sorted(pairs)))
+    return replace_trailer_fields(value, fields)
 
 
 def earliest_starts(found: list[Trailer]) -> list[Trailer]:
@@ -2211,6 +2229,8 @@ def add_trailers(
     gen: list[Ident],
     assisted: list[Ident],
     kept: list[Trailer] | None = None,
+    *,
+    branch_start: str | None = None,
 ) -> None:
     """Rewrite the message's ``LLM`` trailers as one merged, ordered set.
 
@@ -2230,7 +2250,13 @@ def add_trailers(
         for k, v in [*llm_trailers(text), *(kept or [])]
         if (k, trailer_agent(v)) not in made
     ]
-    merged = merge_trailers([(k, with_record(v)) for k, v in [*older, *new]])
+
+    def stamp_old(value: str) -> str:
+        recorded = branch_start if trailer_start(value) == branch_start else None
+        return with_record(value, branch_start=recorded)
+
+    stamped = [(k, with_record(v, branch_start=branch_start)) for k, v in new]
+    merged = merge_trailers([(k, stamp_old(v)) for k, v in older] + stamped)
     args = [f"--trailer={key}: {value}" for key, value in merged]
     bare = msgfile.with_name(msgfile.name + ".ascm")
     bare.write_text(LLM_LINES.sub("", text))
@@ -2485,7 +2511,13 @@ def cmd_trailer(msgfile: str, source: str | None, env: Mapping[str, str]) -> int
         gen, assisted = list[Ident](), list[Ident]()
     # Enriching can make two identities of one agent equal, so deduplicate again.
     gen = list(dict.fromkeys(with_start(enrich(i, committer)) for i in gen))
-    add_trailers(path, gen, [with_start(i) for i in assisted], kept)
+    add_trailers(
+        path,
+        gen,
+        [with_start(i) for i in assisted],
+        kept,
+        branch_start=branch_created_at(repo.top),
+    )
     write_claim(repo, committer.ident.root, [p for p, _ in edits])
     return 0
 

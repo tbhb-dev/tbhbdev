@@ -71,7 +71,8 @@ The ``op-*`` rules, the address, MAC, endpoint and keychain rules, the canary
 and .gitleaks.toml still apply. Any visibility but ``PRIVATE`` or a failed
 read scans under the full private config, so the read alone never refuses a
 command.
-``check`` makes no gh calls and doesn't scan.
+``check`` doesn't scan the draft. For an oversized head, both commands
+check GitHub for a sizing verdict and launch a review when none exists.
 
 ``create`` also writes ``Opened-by: LLM ...`` as the first line of that
 paragraph: the posting agent's root identity, with no ``subagent=``. Once gh
@@ -146,6 +147,7 @@ from tbhbdev.alpha import identity as agent_identity
 from tbhbdev.alpha import opened, secret_scan, size_gate
 from tbhbdev.alpha.repo import git as repo_git
 from tbhbdev.alpha.repo import hook_cwd, in_tbhb_dev, read_hook_stdin
+from tbhbdev.alpha.repo_bootstrap import GhError, NotFoundError
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Collection, Mapping, Sequence
@@ -939,16 +941,25 @@ def merge_trailers(
 
     The posting agent's value is added as Assisted-by when its identity is
     absent. Generated-by lines come first, as the commit-msg check requires.
+    Each identity keeps its oldest commit trailer timestamp.
     """
     roles: dict[tuple[str, ...], tuple[str, str]] = {}
+    starts: dict[tuple[str, ...], str] = {}
     for key, value in found:
         ident = identity_key(value)
+        if start := agent_identity.trailer_start(value):
+            starts[ident] = min(start, starts.get(ident, start))
         if ident not in roles or (
             key == agent_identity.KEY_GEN and roles[ident][0] != key
         ):
             roles[ident] = (key, value)
     if posting is not None and identity_key(posting) not in roles:
         roles[identity_key(posting)] = (agent_identity.KEY_ASSIST, posting)
+    for ident, start in starts.items():
+        key, value = roles[ident]
+        if agent_identity.trailer_start(value) != start:
+            value = agent_identity.replace_trailer_fields(value, {"started_at": start})
+            roles[ident] = key, value
     return sorted(roles.values(), key=lambda pair: pair[0] != agent_identity.KEY_GEN)
 
 
@@ -2103,7 +2114,71 @@ def opened_by(env: Mapping[str, str]) -> tuple[str | None, str | None]:
     return ident.root, f"{OPENED_KEY}: {value}"
 
 
-def check_size(args: argparse.Namespace, checked: Checked) -> None:
+def start_size_review(
+    repo: str,
+    base: str,
+    head: str,
+    counts: size_gate.SizeCounts,
+    env: Mapping[str, str],
+) -> None:
+    """Start the standard review launcher on the oversized commit."""
+    detected = agent_identity.detect(env)
+    harness, model = (
+        ("codex", "gpt-6.1-sol")
+        if detected and detected[0] == agent_identity.ANTIGRAVITY
+        else ("agy", "gemini-4-argon-high")
+    )
+    options = {
+        "--host": "usdhosv06",
+        "--repo": repo,
+        "--ref": head,
+        "--harness": harness,
+        "--model": model,
+        "--effort": "high",
+        "--profile": "review",
+        "--class": "review",
+        "--role": "reviewer",
+        "--variant": size_gate.SIZE_REVIEW,
+    }
+    argv = [find_tool("tbhbdev"), "alpha", "agent", "exec"]
+    argv.extend(word for option in options.items() for word in option)
+    template = (size_gate.DATA / "review.md").read_text()
+    with tempfile.TemporaryDirectory() as directory:
+        prompt = Path(directory) / "sizing.md"
+        prompt.write_text(
+            template.format(
+                base=base, head=head, code=counts.code_lines, raw=counts.raw_lines
+            )
+        )
+        done = run([*argv, f"{size_gate.SIZE_REVIEW}-{head[:12]}", str(prompt)])
+    print(done.stdout, end="")
+    print(done.stderr, end="", file=sys.stderr)
+
+
+def size_review_allows(
+    base: str, head: str, counts: size_gate.SizeCounts, env: Mapping[str, str]
+) -> bool:
+    """Read the verdict for this head or start the review that supplies it."""
+    try:
+        repo = origin_repository()
+        state = size_gate.size_review_state(repo, head)
+        if state == "success":
+            return True
+        if state not in {"pending", "failure"}:
+            start_size_review(repo, base, head, counts, env)
+    except NotFoundError:
+        print(
+            "push this head to origin before starting its sizing review",
+            file=sys.stderr,
+        )
+    except (GhError, OSError, SystemExit) as exc:
+        print(f"cannot start sizing review: {exc}", file=sys.stderr)
+    return False
+
+
+def check_size(
+    args: argparse.Namespace, checked: Checked, env: Mapping[str, str]
+) -> None:
     """Count the branch's added lines against the draft's base and flag an excess.
 
     The base tracking ref is refreshed once, without tags, except in a dry run,
@@ -2138,13 +2213,16 @@ def check_size(args: argparse.Namespace, checked: Checked) -> None:
             # A stale tracking ref would count the wrong range, so stop here.
             print(f"size count unavailable: cannot fetch {branch}", file=sys.stderr)
             return
-    if git(*verify)[0] != 0:
-        print(f"size count unavailable: base branch {base} not found", file=sys.stderr)
+    base_code, base_commit = git(*verify)
+    head_code, head = git("rev-parse", "--verify", "HEAD")
+    if base_code or head_code:
+        missing = f"base branch {base}" if base_code else "HEAD"
+        print(f"size count unavailable: {missing} not found", file=sys.stderr)
         return
     try:
         counts = size_gate.size_counts(
-            base,
-            "HEAD",
+            base_commit,
+            head,
             scc=_TOOL_PATHS.get().get((SCC, False), SCC),
             git=_TOOL_PATHS.get().get((GIT, False), GIT),
         )
@@ -2163,6 +2241,8 @@ def check_size(args: argparse.Namespace, checked: Checked) -> None:
         why = f"{count} lines, limit {limit}: split into stacked PRs"
         if dry_run:
             print(f"warning: {args.draft}:1: {why}", file=sys.stderr)
+            return
+        if size_review_allows(base_commit, head, counts, env):
             return
         checked.problems.append((1, why))
         print(f"{args.draft}:1: {why}")
@@ -2194,7 +2274,7 @@ def _run_command(args: argparse.Namespace, env: Mapping[str, str]) -> int:
         # One read of the default branch feeds the size count, the trailers, and
         # `gh --base`, so a remote change mid-run can't split them.
         checked.meta.setdefault("base", base_of(checked.meta))
-        check_size(args, checked)
+        check_size(args, checked, env)
     if checked.problems:
         return 1
     if args.command == "check":

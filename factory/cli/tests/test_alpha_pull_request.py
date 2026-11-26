@@ -273,6 +273,7 @@ def draft_world(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> World:
         ("symbolic-ref", "--quiet", "refs/remotes/origin/HEAD"): (0, base),
         ("fetch", *fetch_options, "origin", f"+refs/heads/main:{base}"): (0, ""),
         ("rev-parse", "--verify", "--quiet", f"{base}^{{commit}}"): (0, ""),
+        ("rev-parse", "--verify", "HEAD"): (0, ""),
     }
 
     def answer_git(*argv: str, **_kwargs: Path | None) -> tuple[int, str]:
@@ -1684,9 +1685,14 @@ def test_create_runs_gh_with_the_frontmatter(
 
 
 def test_create_defaults(world: World) -> None:
+    early = value(harness="codex", model="openai:m", started_at="2026-11-14T00:02:41Z")
+    late = early.replace("00:02:41", "00:09:00")
+    world.commit(f"one\n\nGenerated-by: {late}")
+    world.commit(f"two\n\nAssisted-by: {early}")
     write_draft(world)
     assert run_main("create") == 0
     _, call = world.calls("gh")
+    assert str(call["stdin"]).endswith(f"Generated-by: {early}\n")
     assert call["argv"] == [
         "pr",
         "create",
@@ -1733,8 +1739,8 @@ def test_a_draft_without_a_base_takes_the_default_branch(
     write_draft(world, BASE)
     run_main("check")
     counted.assert_called_once_with(
-        "refs/remotes/origin/trunk",
-        "HEAD",
+        world.git("rev-parse", "refs/remotes/origin/trunk"),
+        world.git("rev-parse", "HEAD"),
         scc=str(world.bin / "scc"),
         git=str(world.root.parent / "git_dir" / "git"),
     )
@@ -1813,7 +1819,9 @@ def test_create_reads_the_default_branch_once(
     write_draft(world)
     assert run_main("create") == 0
     assert read.call_count == 1
-    assert counted.call_args.args[0] == "refs/remotes/origin/trunk"
+    assert counted.call_args.args[0] == world.git(
+        "rev-parse", "refs/remotes/origin/trunk"
+    )
     trailers.assert_called_once_with("trunk")
     _, call = world.calls("gh")
     argv = call["argv"]
@@ -1975,12 +1983,14 @@ def test_edit_pr_40_uses_github_commit_trailers(
         "session=sha-256-64:7ff1a5b545107a55;surface=cli"
     )
     merged = attrs.replace("7ff1a5b545107a55", "1234567890abcdef")
+    early = attrs.replace(";surface=", ";started_at=2026-11-14T00:02:41Z;surface=")
+    late = attrs.replace(";surface=", ";started_at=2026-11-14T00:09:00Z;surface=")
     world.git("switch", "-q", "-c", "other-branch")
     world.commit(f"other PR\n\nGenerated-by: {local}")
     pages = [
-        [{"commit": {"message": f"one\n\nGenerated-by: LLM {attrs}"}}],
+        [{"commit": {"message": f"one\n\nGenerated-by: LLM {late}"}}],
         [
-            {"commit": {"message": f"two\n\nGenerated-by: LLM {attrs}"}},
+            {"commit": {"message": f"two\n\nAssisted-by: LLM {early}"}},
             {
                 "parents": [{"sha": "a" * 40}, {"sha": "b" * 40}],
                 "commit": {"message": f"merge\n\n---\n\nGenerated-by: LLM\n {merged}"},
@@ -1994,7 +2004,7 @@ def test_edit_pr_40_uses_github_commit_trailers(
     _, commits, edit = world.calls("gh")
     assert commits["argv"] == argv
     assert str(edit["stdin"]).split("\n\n")[-1] == (
-        f"Generated-by: LLM {attrs}\nGenerated-by: LLM {merged}\n"
+        f"Generated-by: LLM {early}\nGenerated-by: LLM {merged}\n"
         f"Assisted-by: {POSTING}\n"
     )
     (scan,) = world.calls("gitleaks")
