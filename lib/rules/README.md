@@ -28,7 +28,9 @@ Load only the `defs.bzl` files. Everything under `private/` is internal and can 
 ## Use
 
 Projects in the monorepo use the existing repository labels directly. A
-standalone repository can pin the monorepo and select the module directory:
+standalone repository can pin the monorepo with the following module file.
+Check out the same commit in a sibling directory named `tbhbdev` to supply
+the shared rules' Python dependency.
 
 ```starlark
 bazel_dep(name = "tbhb_rules")
@@ -37,6 +39,11 @@ git_override(
     commit = "<commit>",
     remote = "https://github.com/tbhb-dev/tbhbdev.git",
     strip_prefix = "lib/rules",
+)
+
+local_path_override(
+    module_name = "tbhb_rules_python",
+    path = "../tbhbdev/lib/rules/python",
 )
 ```
 
