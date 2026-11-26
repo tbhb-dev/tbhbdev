@@ -5,6 +5,7 @@ from __future__ import annotations
 import fcntl
 import json
 import os
+import re
 import secrets
 import sys
 import time
@@ -331,9 +332,28 @@ def check_limits(
         print(message, file=sys.stderr)
 
 
+_SECRET_PATTERNS = (
+    ("1Password reference", re.compile(r"op://")),
+    ("private key header", re.compile(r"-----BEGIN (?:[A-Z0-9 ]+ )?PRIVATE KEY-----")),
+    ("token prefix", re.compile(r"ghp_|github_pat_|sk-ant-|AKIA|xoxb-")),
+)
+
+
+def secret_kind(text: str) -> str | None:
+    """Return the kind of the first matching pattern."""
+    for kind, pattern in _SECRET_PATTERNS:
+        if pattern.search(text):
+            return kind
+    return None
+
+
 def checked_prompt(args: argparse.Namespace) -> str:
-    """Read the brief, refuse hook conflicts and report warnings locally."""
+    """Read the brief, refuse secrets and conflicts, and report warnings locally."""
     prompt = Path(args.prompt_file).read_text()
+    if kind := secret_kind(prompt):
+        telemetry.attributes(**{"tbhb.agent.outcome": "refused"})
+        message = f"brief refused: {kind}"
+        raise Invalid(message)
     if not prompt and version_heal.retrying():
         message = f"{args.prompt_file}: brief is empty after the driver restarted"
         raise Invalid(message)
@@ -374,6 +394,10 @@ def execute(settings: Settings, args: argparse.Namespace) -> int:
     prompt = checked_prompt(args)
     schema = None if args.schema is None else Path(args.schema).read_text()
     if schema is not None:
+        if kind := secret_kind(schema):
+            telemetry.attributes(**{"tbhb.agent.outcome": "refused"})
+            message = f"schema refused: {kind}"
+            raise Invalid(message)
         json.loads(schema)
     deadline = time.monotonic() + settings.launch_wait_seconds
     try:
