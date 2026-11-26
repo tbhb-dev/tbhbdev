@@ -13,9 +13,11 @@ _PACKAGE_INITIALIZERS = [
     _SOURCE_ROOT + "/admin",
     _SOURCE_ROOT + "/alpha",
     _SOURCE_ROOT + "/alpha/agent",
+    _SOURCE_ROOT + "/alpha/agent/decisions",
     _SOURCE_ROOT + "/alpha/loop",
     _SOURCE_ROOT + "/alpha/monorepo",
     _SOURCE_ROOT + "/analytics",
+    _SOURCE_ROOT + "/analytics/decisions",
 ]
 
 def _initializer_import(dep, package):
