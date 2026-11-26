@@ -9,6 +9,7 @@ from unittest.mock import Mock
 
 import httpx
 import pytest
+from cue_fixtures import review_cue as review_cue  # noqa: PLC0414
 
 from tbhbdev import content
 from tbhbdev.alpha import identity, review, review_doc

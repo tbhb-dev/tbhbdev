@@ -2124,7 +2124,8 @@ def start_size_review(
     """Start the standard review launcher on the oversized commit."""
     host = env.get("TBHBDEV_SIZE_REVIEW_HOST")
     if not host:
-        raise SystemExit("set TBHBDEV_SIZE_REVIEW_HOST to a configured review host")
+        message = "set TBHBDEV_SIZE_REVIEW_HOST to a configured review host"
+        raise SystemExit(message)
     detected = agent_identity.detect(env)
     harness, model = (
         ("codex", "gpt-6.1-sol")
@@ -2179,6 +2180,33 @@ def size_review_allows(
     return False
 
 
+def size_commits(branch: str, *, dry_run: bool) -> tuple[str, str] | None:
+    """Resolve the base and head, refreshing the tracking ref outside dry runs."""
+    base = f"refs/remotes/origin/{branch}"
+    if not dry_run:
+        fetch = (
+            "fetch",
+            "--quiet",
+            "--no-tags",
+            "--no-write-fetch-head",
+            "--refmap=",
+            "origin",
+            f"+refs/heads/{branch}:{base}",
+        )
+        if git(*fetch)[0] != 0:
+            # A stale tracking ref would count the wrong range, so stop here.
+            print(f"size count unavailable: cannot fetch {branch}", file=sys.stderr)
+            return None
+    verify = ("rev-parse", "--verify", "--quiet", f"{base}^{{commit}}")
+    base_code, base_commit = git(*verify)
+    head_code, head = git("rev-parse", "--verify", "HEAD")
+    if base_code or head_code:
+        missing = f"base branch {base}" if base_code else "HEAD"
+        print(f"size count unavailable: {missing} not found", file=sys.stderr)
+        return None
+    return base_commit, head
+
+
 def check_size(
     args: argparse.Namespace, checked: Checked, env: Mapping[str, str]
 ) -> None:
@@ -2195,33 +2223,15 @@ def check_size(
         "dry_run",
         False,  # pragma: no mutate -- None is also false.
     )
-    base = f"refs/remotes/origin/{branch}"
-    verify = ("rev-parse", "--verify", "--quiet", f"{base}^{{commit}}")
     if args.command == "create" and not target_is_origin():
         # gh may open the PR against a repository whose base origin doesn't track.
         message = "size count unavailable: gh may target a repository other than origin"
         print(message, file=sys.stderr)
         return
-    if not dry_run:
-        fetch = (
-            "fetch",
-            "--quiet",
-            "--no-tags",
-            "--no-write-fetch-head",
-            "--refmap=",
-            "origin",
-            f"+refs/heads/{branch}:{base}",
-        )
-        if git(*fetch)[0] != 0:
-            # A stale tracking ref would count the wrong range, so stop here.
-            print(f"size count unavailable: cannot fetch {branch}", file=sys.stderr)
-            return
-    base_code, base_commit = git(*verify)
-    head_code, head = git("rev-parse", "--verify", "HEAD")
-    if base_code or head_code:
-        missing = f"base branch {base}" if base_code else "HEAD"
-        print(f"size count unavailable: {missing} not found", file=sys.stderr)
+    commits = size_commits(branch, dry_run=dry_run)
+    if commits is None:
         return
+    base_commit, head = commits
     try:
         counts = size_gate.size_counts(
             base_commit,

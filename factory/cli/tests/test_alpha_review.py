@@ -8,6 +8,7 @@ from typing import cast
 from unittest.mock import patch
 
 import pytest
+from cue_fixtures import review_cue as review_cue  # noqa: PLC0414
 from jsonschema import Draft202012Validator
 from test_alpha_pull_request import REAL, World
 from test_alpha_pull_request import world as world  # noqa: PLC0414
