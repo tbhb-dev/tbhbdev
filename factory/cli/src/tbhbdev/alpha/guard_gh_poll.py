@@ -116,6 +116,7 @@ from tbhbdev.alpha.guard_gh_pr import (
     program_of,
     shell_script,
     split_args,
+    takes_value,
 )
 from tbhbdev.alpha.repo import read_hook_stdin
 
@@ -157,6 +158,12 @@ PROTECT_REASON = (
 REPO = re.compile(r"[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+")
 DOTS = {".", ".."}
 REPEATERS = {"xargs", "parallel"}
+NON_REPEATING_WRAPPERS = WRAPPERS - REPEATERS
+REPEATER_VALUE_FLAGS = {
+    "-a", "-d", "-E", "-I", "-j", "-L", "-n", "-P", "-s",
+    "--arg-file", "--delimiter", "--eof", "--jobs", "--max-args", "--max-chars",
+    "--max-lines", "--max-procs", "--replace",
+}  # fmt: skip
 GH_RUN = re.compile(r"\bgh\b.*\brun\b", re.DOTALL)
 REDIRECT = re.compile(r"\d*(?:>>?|<|>&|&>)")
 REPEAT_REASON = (
@@ -205,7 +212,7 @@ SSH_VALUE_FLAGS = {
 
 @dataclass
 class BodyScanner(Scanner):
-    """guard_gh_pr's scanner, keeping the heredoc text read after each command.
+    """guard_gh_pr's scanner with heredoc bodies and pipeline boundaries.
 
     ``bodies`` maps a command's index in the scan to the heredoc text skipped
     at the end of its line, delimiter lines included.
@@ -213,6 +220,17 @@ class BodyScanner(Scanner):
 
     bodies: dict[int, str] = field(default_factory=dict)
     pending: list[int] = field(default_factory=list)
+    piped: set[int] = field(default_factory=set)
+
+    @override
+    def plain(self, char: str) -> None:
+        """Keep the command indices followed by a pipe."""
+        if char == "|":
+            if self.text.startswith("||", self.pos):
+                self.pos += 1
+            else:
+                self.piped.add(len(self.commands))
+        super().plain(char)
 
     @override
     def heredoc(self) -> None:
@@ -457,7 +475,9 @@ def unwrapped(words: list[str]) -> list[str] | None:
     return unwrap(words)[0]
 
 
-def unwrap(words: list[str]) -> tuple[list[str] | None, bool]:
+def unwrap(
+    words: list[str], *, wrappers: set[str] = WRAPPERS
+) -> tuple[list[str] | None, bool]:
     """The program's words after prefixes, and whether a repeater was passed.
 
     The words are None when the prefixes unset the token. A repeater is
@@ -481,7 +501,7 @@ def unwrap(words: list[str]) -> tuple[list[str] | None, bool]:
             rest = rest[1:]
         elif wrapper == "env":
             rest = env_rest(rest[1:])
-        elif wrapper in WRAPPERS:
+        elif wrapper in wrappers:
             rest = rest[1:]
             while rest and rest[0].startswith("-"):
                 rest = rest[1:]
@@ -612,8 +632,8 @@ def names_state_dir(word: str) -> bool:
 def plain_home_or_above(word: str) -> bool:
     """Whether a word with no glob is the home directory or a directory above it.
 
-    ``cd ~`` or ``$HOME`` beside ``xargs rm`` in one command text is not a path
-    fed to the mover, so ``pipes_state_dir`` skips these. ``~/.local`` and
+    A plain home path in a pipeline may be incidental, so
+    ``pipes_state_dir`` skips it. ``~/.local`` and
     ``~/.local/state`` still count, and so does any glob.
     """
     home = word.replace("${HOME}", "~").replace("$HOME", "~")
@@ -624,23 +644,43 @@ def plain_home_or_above(word: str) -> bool:
     return path in STATE_DIRS[3:]
 
 
-def pipes_state_dir(text: str) -> bool:
-    """Whether xargs or parallel could feed a mover a path in the state directory.
+def repeater_command(args: Iterator[str]) -> list[str]:
+    """The command following xargs or parallel's options."""
+    for word in args:
+        if word == "--":
+            return list(args)
+        if not word.startswith("-"):
+            return [word, *args]
+        if takes_value(word, REPEATER_VALUE_FLAGS):
+            next(args, None)
+    return []
 
-    The shell expands a glob before ``xargs`` sees it, as in
-    ``echo ~/.local/state/tbhb/* | xargs rm``, so the words are read across the
-    whole command text, not one simple command.
-    """
-    tokens = [token for token in re.split(r"[\s|;&()<>'\"]+", text) if token]
-    names = {token.rpartition("/")[2].lower() for token in tokens}
-    return (
-        bool(REPEATERS & names)
-        and bool(STATE_MOVERS & names)
-        and any(
-            names_state_dir(token) and not plain_home_or_above(token)
-            for token in tokens
-        )
-    )
+
+def state_mover(command: list[str], *, repeater_only: bool = False) -> list[str]:
+    """The mover's words if it runs directly or through xargs or parallel."""
+    words, _ = unwrap(command, wrappers=NON_REPEATING_WRAPPERS)
+    if words and program_of(words).lower() in REPEATERS:
+        words = unwrapped(repeater_command(iter(words[1:])))
+    elif repeater_only:
+        return []
+    return words if words and program_of(words).lower() in STATE_MOVERS else []
+
+
+def pipes_state_dir(scanner: BodyScanner) -> bool:
+    """Whether xargs or parallel runs a mover on a state path in its pipeline."""
+    sources: list[str] = []
+    for index, command in enumerate(scanner.commands):
+        mover = state_mover(command, repeater_only=True)
+        if mover and any(
+            names_state_dir(word) and not plain_home_or_above(word)
+            for word in itertools.chain(sources, mover[1:])
+        ):
+            return True
+        if index in scanner.piped:
+            sources.extend(command)
+        else:
+            sources.clear()
+    return False
 
 
 def attached(word: str) -> str:
@@ -661,10 +701,8 @@ def protected_words(command: list[str]) -> bool:
     words = flattened(command)
     if any(name in word.lower() for word in words for name in PROTECTED):
         return True
-    moves = any(word.rpartition("/")[2].lower() in STATE_MOVERS for word in words)
-    return moves and any(
-        word != "/" and names_state_dir(attached(word)) for word in words
-    )
+    mover = state_mover(command)
+    return any(word != "/" and names_state_dir(attached(word)) for word in mover[1:])
 
 
 def repeated_scan(args: list[str]) -> tuple[str | None, set[str]]:
@@ -731,7 +769,7 @@ def self_matching(program: str, words: list[str]) -> bool:
 
 def inspect(text: str, *, repeated: bool = False) -> tuple[str | None, set[str]]:
     """The deny reason for a shell command, or None, and the programs it runs."""
-    if any(name in text.lower() for name in PROTECTED) or pipes_state_dir(text):
+    if any(name in text.lower() for name in PROTECTED):
         return PROTECT_REASON, set()
     return scan_commands(text, repeated=repeated)
 
@@ -757,7 +795,10 @@ def scan_commands(text: str, *, repeated: bool = False) -> tuple[str | None, set
     loops: list[set[str]] = []
     programs: set[str] = set()
     scanner = BodyScanner(text)
-    for index, command in enumerate(scanner.run()):
+    commands = scanner.run()
+    if pipes_state_dir(scanner):
+        return PROTECT_REASON, set()
+    for index, command in enumerate(commands):
         if opens_loop(command):
             loops.append(set())
         message, seen = checked(command, scanner.bodies.get(index), repeated=repeated)

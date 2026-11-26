@@ -1324,6 +1324,29 @@ def test_other_paths_and_programs_pass_the_state_directory_check(command: str) -
     assert guard.inspect(command)[0] is None
 
 
+def test_ssh_remote_xargs_rm_with_state_path_text_passes() -> None:
+    command = "ssh host 'ls ~/.local/state/tbhb && ls /tmp/scratch/* | xargs rm -rf'"
+    assert guard.inspect(command)[0] is None
+
+
+@pytest.mark.parametrize(
+    "command",
+    [
+        'pgrep -af "rm -rf|xargs ~/.local/state/tbhb"',
+        'pgrep -af "rm" | xargs echo ~/.local/state/tbhb',
+        'pgrep -af "xargs" && ls ~/.local/state/tbhb && rm -rf /tmp/scratch',
+    ],
+)
+def test_pgrep_pattern_is_data_for_the_state_directory_check(command: str) -> None:
+    assert guard.inspect(command)[0] is None
+
+
+@pytest.mark.parametrize("wrapper", ["{}", "ssh host '{}'"])
+def test_xargs_rm_on_a_state_directory_glob_is_denied(wrapper: str) -> None:
+    command = wrapper.format("echo ~/.local/state/tbhb/* | xargs -n 1 rm -rf")
+    assert guard.inspect(command)[0] == guard.PROTECT_REASON
+
+
 @pytest.mark.parametrize(
     ("word", "expected"),
     [
@@ -1441,9 +1464,12 @@ def test_protected_words_reads_a_protected_name_in_any_case(name: str) -> None:
     ("text", "expected"),
     [
         ("xargs rm ~/.local/state/tbhb", True),
+        ("xargs -- rm ~/.local/state/tbhb", True),
         ("rm ~/.local/state/tbhb", False),
         ("xargs echo ~/.local/state/tbhb", False),
+        ("echo ~/.local/state/tbhb | xargs -r", False),
         ("xargs rm /tmp/x", False),
+        ("ls ~/.local/state/tbhb || xargs rm /tmp/x", False),
         ("cd ~ && cat list | xargs rm -rf", False),
         ("cd $HOME && cat list | xargs rm -rf", False),
         ("cd ${HOME} && cat list | xargs rm -rf", False),
@@ -1456,7 +1482,9 @@ def test_protected_words_reads_a_protected_name_in_any_case(name: str) -> None:
 def test_pipes_state_dir_needs_a_repeater_a_mover_and_a_state_path(
     text: str, *, expected: bool
 ) -> None:
-    assert guard.pipes_state_dir(text) is expected
+    scanner = guard.BodyScanner(text)
+    scanner.run()
+    assert guard.pipes_state_dir(scanner) is expected
 
 
 @pytest.mark.parametrize(
