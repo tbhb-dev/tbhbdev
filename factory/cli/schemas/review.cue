@@ -17,12 +17,14 @@ import (
 #VerdictWord:   #"(?:GO|NO-GO|APPROVE|BLOCK|HOLD|REQUEST_CHANGES)"#
 #VerdictPrefix: #"(?i:(?:Decision|Verdict)[\t\p{Z}]*:[\t\p{Z}]*)?"#
 
-// With prose following, require verdict capitalization or punctuation.
-#LeadingVerdict:   #"^[\t\p{Z}]*\#(#VerdictPrefix)(?:\#(#VerdictWord)\b|(?i:\#(#VerdictWord))[.!?:,])"#
-#SummaryVerdict:   #"(?im:^[\t\p{Z}]*\#(#VerdictPrefix)\#(#VerdictWord)[.!?]*[\t\p{Z}]*\r?$)|\#(#LeadingVerdict)"#
-#Abbreviation:     #"(?i:\b(?:mr|mrs|ms|dr|prof|vs)\.)|\b(?:\p{L}\.){2,}"#
-#SentenceBoundary: #"[.!?]["'”’)\]]*[\s\p{Z}]+"#
-#ThreeSentences:   #"(?s)\#(#SentenceBoundary).*\#(#SentenceBoundary)[^\s\p{Z}]"#
+#LeadingVerdict: #"(?i)^[\t\p{Z}]*\#(#VerdictPrefix)\#(#VerdictWord)[.!?:;-]"#
+#SummaryVerdict: #"(?im:^[\t\p{Z}]*\#(#VerdictPrefix)\#(#VerdictWord)[.!?:;-]*[\t\p{Z}]*\r?$)|\#(#LeadingVerdict)"#
+
+#Abbreviation: #"(?i:\b(?:mr|mrs|ms|dr|prof|vs)\.)|\b(?:\p{L}\.){2,}"#
+
+// After a closing quote or bracket, lowercase prose continues the sentence.
+#SentenceBoundary: #"[.!?][\s\p{Z}]+[\p{L}\p{N}"'“‘`(\[{]|[.!?]["'”’`)\]}]+[\s\p{Z}]+[\p{Lu}\p{Lt}\p{N}"'“‘`(\[{]"#
+#ThreeSentences:   #"(?s)(?:\#(#SentenceBoundary)).*(?:\#(#SentenceBoundary))"#
 #ReviewStamp:      #"(?i)(\bjudged head\b|\b(commit|head)[ :=]+[0-9a-f]{7,40}\b|\b\#(#ReviewSHA)\b|(?m:^(Run|Provider|Model|Variant|Host|Head|Tier):))"#
 
 #ReviewProse: {
@@ -35,10 +37,11 @@ import (
 	source:  !~#ReviewStamp
 	visible: !~#SummaryVerdict
 	metrics: visible: characters: <=4096
-	_text:  visible & !~#ReviewStamp
-	_words: <=40
+	_text:        visible & !~#ReviewStamp
+	_words:       <=40
+	sentenceText: *visible | string
 	// Count clear sentence boundaries after stripping abbreviation punctuation.
-	_sentences: regexp.ReplaceAll(#Abbreviation, visible, "") & !~#ThreeSentences
+	_sentences: regexp.ReplaceAll(#Abbreviation, sentenceText, "") & !~#ThreeSentences
 }
 
 #ReviewItem: #ListItem & {

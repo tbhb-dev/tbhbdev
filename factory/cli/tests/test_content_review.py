@@ -73,6 +73,11 @@ def test_summary_refuses_excess_words_sentences_or_size(summary: str) -> None:
 @pytest.mark.parametrize(
     "summary",
     [
+        "Go, Python, and Rust use the same fixture.",
+        "Block the build when the request is invalid.",
+        "NO-GO because the cache returns a stale value.",
+        'The parser accepts "Retry?" as a label. Tests cover it.',
+        "The parser accepts `Retry?` as a label. Tests cover it.",
         "The handler returns the `APPROVE` enum.",
         "The handler checks each result, e.g. a stale value. Retries preserve it.",
         "The handler checks labels, e.g. Ready or Saved. Retries preserve them.",
@@ -119,7 +124,7 @@ def test_summary_rejects_bare_and_prefixed_verdicts(
     "summary",
     [
         "GO. The driver validates the request.",
-        "NO-GO because the cache returns a stale value.",
+        "NO-GO: The cache returns a stale value.",
         "Decision: APPROVE. The driver validates the request.",
         "Verdict: Hold. The driver skips validation.",
     ],
