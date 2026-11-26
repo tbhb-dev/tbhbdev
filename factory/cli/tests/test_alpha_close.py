@@ -467,8 +467,8 @@ def test_issue_blocks_using_local_references(
     expected = ("{}\n" if result is not None else "", error.stderr if code else "")
     assert capsys.readouterr() == expected
     write.assert_called_once_with(
-        close.content.IssueRef("tbhb-dev", "tools", 9),
-        close.content.IssueRef("tbhb-dev", "tools", 7),
+        close.content.IssueRef("tbhb-dev", "tbhbdev", 9),
+        close.content.IssueRef("tbhb-dev", "tbhbdev", 7),
         caller="tbhbdev alpha issue",
         dry_run=dry_run,
     )
@@ -832,7 +832,8 @@ def test_dry_run_says_it_would_delete_the_branch(
     assert close.main([*PR_ARGS, "--dry-run"], env=ENV) == 0
     assert [call[1] for call in gh.calls] == ["view", "list"]
     out = capsys.readouterr().out
-    assert "would delete branch feat/x y: gh api -X DELETE repos/tbhb-dev/tbhbdev" in out
+    expected = "would delete branch feat/x y: gh api -X DELETE repos/tbhb-dev/tbhbdev"
+    assert expected in out
 
 
 def test_dry_run_says_it_would_skip_a_fork(

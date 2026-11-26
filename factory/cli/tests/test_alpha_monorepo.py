@@ -201,7 +201,7 @@ def test_import_copies_byte_for_byte_in_one_commit(
     assert git(mono, "rev-parse", "HEAD~").strip() == before
     assert git(mono, "status", "--porcelain") == ""
     message = git(mono, "log", "-1", "--format=%B")
-    assert message.startswith(f"feat({DEST}): import tools at {commit[:7]}\n")
+    assert message.startswith(f"feat({DEST}): import tbhbdev at {commit[:7]}\n")
     assert f"Source repository: tbhb-dev/tbhbdev\nSource commit: {commit}\n" in message
     assert "Copied 5 files, rewrote 0 and dropped 3." in message
     assert verify_exit(src, made, mono) == 0

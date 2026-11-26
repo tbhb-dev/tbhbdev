@@ -149,8 +149,8 @@ filegroup(
         ".vale/config/**",
         ".vale/project/**",
     ]) + [
-        ".cspell-words.txt",
         ".cspell.jsonc",
+        ".cspell-words.txt",
         ".gitattributes",
         ".github/workflows/ci.yml",
         ".gitleaks.toml",

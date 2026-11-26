@@ -856,7 +856,10 @@ AN_API = "a `gh api` APPROVE review"
             (AN_API, TARGET),
         ),
         (
-            "gh api repos/tbhb-dev/tbhbdev/pulls/7/reviews --raw-field 'event = APPROVE'",
+            (
+                "gh api repos/tbhb-dev/tbhbdev/pulls/7/reviews"
+                " --raw-field 'event = APPROVE'"
+            ),
             (AN_API, TARGET),
         ),
         (
@@ -903,7 +906,7 @@ def test_the_repository_comes_from_the_hook_cwd_origin(tmp_path: Path) -> None:
     ]
     text = "gh api repos/{owner}/{repo}/pulls/7/reviews -f event=APPROVE"
     assert guard.approvals(text, repo) == [guard.Approval(AN_API, TARGET)]
-    text = "gh api repos/{owner}/tools/pulls/7/reviews -f event=APPROVE"
+    text = "gh api repos/{owner}/tbhbdev/pulls/7/reviews -f event=APPROVE"
     assert guard.approvals(text, repo) == [guard.Approval(AN_API, TARGET)]
     text = "gh api repos/tbhb-dev/{repo}/pulls/7/reviews -f event=APPROVE"
     assert guard.approvals(text, repo) == [guard.Approval(AN_API, TARGET)]
@@ -1080,7 +1083,7 @@ def test_gh_approval_skips_global_flags(
 def test_one_placeholder_takes_only_its_own_part_from_origin(tmp_path: Path) -> None:
     repo = origin_repo(tmp_path / "repo", "git@github.com:tbhb-dev/tbhbdev.git")
     text = "gh api repos/other/{repo}/pulls/7/reviews -f event=APPROVE"
-    assert guard.approvals(text, repo) == [guard.Approval(AN_API, "other/tools#7")]
+    assert guard.approvals(text, repo) == [guard.Approval(AN_API, "other/tbhbdev#7")]
     text = "gh api repos/{owner}/x/pulls/7/reviews -f event=APPROVE"
     assert guard.approvals(text, repo) == [guard.Approval(AN_API, "tbhb-dev/x#7")]
 

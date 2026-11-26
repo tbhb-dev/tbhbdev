@@ -64,13 +64,19 @@ pylint_test(
 vulture_test(
     name = "vulture_test",
     srcs = CLI_CHECK_INPUTS,
-    args = ["--config", "factory/cli/pyproject.toml"],
+    args = [
+        "--config",
+        "factory/cli/pyproject.toml",
+    ],
 )
 
 complexipy_test(
     name = "complexipy_test",
     srcs = CLI_CHECK_INPUTS,
-    args = ["--config", "factory/cli/pyproject.toml"],
+    args = [
+        "--config",
+        "factory/cli/pyproject.toml",
+    ],
 )
 
 # B101 flags every assert, and asserts are pytest's API.

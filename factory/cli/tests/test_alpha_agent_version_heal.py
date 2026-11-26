@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import os
+import shlex
 import subprocess
 import sys
 from typing import TYPE_CHECKING
@@ -134,7 +135,10 @@ def test_host_sync_retries_review_preflight(
     assert run.call_args.kwargs["env"]["GIT_TERMINAL_PROMPT"] == "0"
     _, preflight, install, reread = [call.args for call in shell.call_args_list]
     assert preflight == reread
-    assert install == (CONFIG, HOST, remote.PREFIX + "exec " + " ".join(INSTALL))
+    assert install[:2] == (CONFIG, HOST)
+    command = install[2]
+    assert command.startswith(remote.PREFIX)
+    assert shlex.split(command.removeprefix(remote.PREFIX)) == ["exec", *INSTALL]
     err = capsys.readouterr().err
     assert err.splitlines()[0] == f"version heal: host {HOST.name} {OLD}->{HEAD}"
     if host_after == NEW_LINE:

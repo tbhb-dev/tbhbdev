@@ -9,7 +9,7 @@ TBHB_DEV_URLS = [
     "git@github.com:tbhb-dev/tbhbdev.git",
     "git@github.com:tbhb-dev/tbhbdev",
     "git@github.com:tbhb-dev/tbhbdev/",
-    "git@github.com:TBHB-DEV/Tools.git",
+    "git@github.com:TBHB-DEV/Tbhbdev.git",
     "org-1@github.com:tbhb-dev/tbhbdev.git",
     "ssh://git@github.com/tbhb-dev/tbhbdev.git",
     "ssh://git@github.com:22/tbhb-dev/tbhbdev.git",
@@ -22,7 +22,7 @@ TBHB_DEV_URLS = [
     "HTTPS://GitHub.com/tbhb-dev/tbhbdev",
     "  https://github.com/tbhb-dev/tbhbdev\n",
     "\nhttps://github.com/tbhb-dev/tbhbdev\t",
-    "https://github.com/tbhb-dev/t\u00f6ols",
+    "https://github.com/tbhb-dev/tbhbd\u00e9v",
 ]
 OTHER_URLS = [
     "",

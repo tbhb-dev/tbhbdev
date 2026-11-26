@@ -66,7 +66,7 @@ def graphql_call(query: str, **variables: object) -> tuple[str, str, dict[str, o
 
 def read_page(after: str | None = None) -> tuple[str, str, dict[str, object]]:
     return graphql_call(
-        review_threads.THREADS, owner="tbhb-dev", repo="tools", pr=NUMBER, after=after
+        review_threads.THREADS, owner="tbhb-dev", repo="tbhbdev", pr=NUMBER, after=after
     )
 
 
