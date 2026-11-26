@@ -22,7 +22,9 @@ from tbhbdev.alpha import (
     guard_gh_poll,
     guard_gh_pr,
     guard_op,
+    guard_ops_no_lazy_stop,
     guard_scripts,
+    guard_sendmessage_clock,
     guard_ssh_agent,
     identity,
     install,
@@ -47,7 +49,9 @@ __all__ = [
     "guard_gh_poll",
     "guard_gh_pr",
     "guard_op",
+    "guard_ops_no_lazy_stop",
     "guard_scripts",
+    "guard_sendmessage_clock",
     "guard_ssh_agent",
     "identity",
     "install",
@@ -73,6 +77,8 @@ commands:
                pull request approvals through gh
   guard-op     PreToolUse hook: require the configured 1Password account
   guard-ssh-agent PreToolUse hook: block ssh-add and paths in the ssh dir (not sessions)
+  guard-sendmessage-clock PreToolUse hook: block stale or future SendMessage stamps
+  guard-ops-no-lazy-stop Stop hook: ask the assistant to verify marked claims
   state-guard  Claude Code hook: block sign-off commits and unchecked open items
   session-context
                SessionStart hook: name the host, the other hosts and the time
@@ -148,6 +154,14 @@ def poll_command(_argv: list[str], _prog: str) -> int:
 
 def ssh_agent_command(_argv: list[str], _prog: str) -> int:
     return guard_ssh_agent.main()
+
+
+def sendmessage_clock_command(_argv: list[str], _prog: str) -> int:
+    return guard_sendmessage_clock.main()
+
+
+def ops_no_lazy_stop_command(_argv: list[str], _prog: str) -> int:
+    return guard_ops_no_lazy_stop.main()
 
 
 def gh_config_dir_command(_argv: list[str], _prog: str) -> int:
@@ -228,6 +242,8 @@ COMMANDS: dict[str, Callable[[list[str], str], int]] = {
     "guard-gh-poll": poll_command,
     "guard-gh-config-dir": gh_config_dir_command,
     "guard-ssh-agent": ssh_agent_command,
+    "guard-sendmessage-clock": sendmessage_clock_command,
+    "guard-ops-no-lazy-stop": ops_no_lazy_stop_command,
     "guard-scripts": scripts_command,
     "guard-agent-model": agent_model_command,
     "gh-shim": gh_shim.main,
