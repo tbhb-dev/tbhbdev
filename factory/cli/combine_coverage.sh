@@ -32,16 +32,22 @@ jq -rs '[.[] | select(.testSummary.firstStartTimeMillis) |
 ((test_status == 0)) || exit "$test_status"
 
 logs=$(bazelisk info --config=ci bazel-testlogs)
-while IFS= read -r label; do
-  target=${label##*:}
-  log_dir="$logs/factory/cli/tests/$target"
-  # Each test has an independent data file, including each configured shard.
-  mapfile -t reports < <(find "$log_dir" -path '*/test.outputs/.coverage')
-  ((${#reports[@]} > 0))
-  for i in "${!reports[@]}"; do
-    cp "${reports[i]}" "$temp/.coverage.$target.$i"
-  done
-done <"$temp/targets"
+# Read the artifacts from this invocation. Old shard directories can still
+# exist in bazel-testlogs after a shard count changes.
+jq -r '
+  select(.testResult) |
+  [.testResult.testActionOutput[] |
+    select(.name == "test.outputs/.coverage" and (.uri | startswith("file://")))] |
+  if length == 1 then .[0].uri | ltrimstr("file://")
+  else error("Expected one local branch coverage file per test action")
+  end
+' "$temp/events.json" >"$temp/reports"
+test -s "$temp/reports"
+i=0
+while IFS= read -r report; do
+  ((i += 1))
+  cp "$report" "$temp/.coverage.$i"
+done <"$temp/reports"
 
 cd factory/cli
 export COVERAGE_FILE="$temp/.coverage"
