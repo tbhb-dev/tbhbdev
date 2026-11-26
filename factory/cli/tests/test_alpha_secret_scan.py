@@ -6,6 +6,7 @@
 import ast
 import os
 import shutil
+import subprocess
 import tomllib
 from pathlib import Path
 
@@ -66,6 +67,78 @@ def refusal(
 
 def test_clean_text_passes(root: Path) -> None:
     scan("fix: nothing secret here\n\nJust prose.\n", root)
+
+
+@pytest.fixture
+def commit_range(root: Path) -> str:
+    """A clean base and two commits that add then remove a canary."""
+
+    def git(*args: str) -> None:
+        subprocess.run(
+            [
+                "git",
+                "-c",
+                "user.name=Example",
+                "-c",
+                "user.email=example@example.test",
+                "-c",
+                "commit.gpgsign=false",
+                *args,
+            ],
+            cwd=root,
+            check=True,
+        )
+
+    git("init", "-q")
+    git("add", ".gitleaks.toml")
+    git("commit", "-qm", "base")
+    target = root / "sample.txt"
+    target.write_text(f"example\n{CANARY_HIT}\n")
+    git("add", "sample.txt")
+    git("commit", "-qm", "add sample")
+    git("rm", "-q", "sample.txt")
+    git("commit", "-qm", "remove sample")
+    return "HEAD~2..HEAD"
+
+
+def test_a_commit_finding_has_only_rule_and_file_line(
+    root: Path, commit_range: str
+) -> None:
+    with pytest.raises(secret_scan.FindingRefusal) as info:
+        secret_scan.scan_commits(
+            commit_range, root=root, gitleaks=gitleaks(), visibility="PUBLIC"
+        )
+    assert str(info.value) == (
+        "refusing the commits: gitleaks finds a secret: "
+        "rule tbhb-private-canary at sample.txt:2"
+    )
+
+
+@pytest.mark.usefixtures("commit_range")
+def test_clean_commits_pass(root: Path) -> None:
+    secret_scan.scan_commits(
+        "HEAD~1..HEAD", root=root, gitleaks=gitleaks(), visibility="PUBLIC"
+    )
+
+
+def test_commits_are_refused_without_the_private_config(
+    root: Path, commit_range: str
+) -> None:
+    secret_scan.private_config().unlink()
+    with pytest.raises(
+        secret_scan.ScanBlocked, match=r"private gitleaks config.*cannot be read"
+    ):
+        secret_scan.scan_commits(
+            commit_range, root=root, gitleaks=gitleaks(), visibility="PUBLIC"
+        )
+
+
+@pytest.mark.usefixtures("commit_range")
+def test_commits_are_refused_when_git_cannot_list_the_range(root: Path) -> None:
+    with pytest.raises(secret_scan.ScanBlocked, match="gitleaks failed"):
+        secret_scan.scan_commits(
+            "unknown..HEAD", root=root, gitleaks=gitleaks(), visibility="PUBLIC"
+        )
 
 
 @pytest.mark.parametrize(
@@ -237,7 +310,7 @@ def test_with_base_adds_the_defaults_once() -> None:
 
 def test_findings_reads_rule_and_line() -> None:
     report = '[{"RuleID": "r", "StartLine": 4, "Secret": "REDACTED"}]'
-    assert secret_scan.findings(report) == [(4, "r")]
+    assert secret_scan.findings(report) == [(4, "r", "")]
     assert secret_scan.findings("[]") == []
     assert secret_scan.findings("{}") is None
     assert secret_scan.findings("") is None

@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: Apache-2.0
 # Copyright Tony Burns
-"""Secret scan of agent-written text, ported from an earlier interim toolset.
+"""Secret scans of agent-written text and commit content.
 
 ``tbhbdev alpha pr`` scans a pull request's final title and body, and
 ``tbhbdev alpha merge`` its commit message, before gh posts them. The scan
@@ -12,9 +12,10 @@ begins with ``[extend] path = ".gitleaks.toml"``, gitleaks runs from the
 repository root so the path resolves, and the private file must define the
 ``tbhb-private-canary`` rule. The host's provisioning tooling installs that file.
 
-Text posted to a private repository skips the private config's name rules, the
-rule families in ``NAME_RULES``. The visibility is that of the repository the
-text is posted to, not the working directory's; the caller reads it. The rules'
+Commit scans use ``gitleaks git`` with the same config as the text scans.
+Text and commits posted to a private repository skip the private config's name
+rules, the rule families in ``NAME_RULES``. The caller reads the visibility of
+the destination repository. The rules'
 gates apply the private config only to a repository that sets
 ``--@tbhb_rules//lint:gitleaks_private_config``, so text that names a private
 repository's own subject, such as a host it documents, passes there. The scan
@@ -33,7 +34,7 @@ There is no public-only fallback. A missing or unreadable private config or one
 without the canary rule stops the command, and so does any finding or gitleaks
 error. A repository without a .gitleaks.toml is scanned with the private config
 and gitleaks' default rules, and the scan says so on stderr. A finding is
-reported by its rule ID and line only: gitleaks redacts its JSON report, and
+reported by its rule ID and location only: gitleaks redacts its JSON report, and
 nothing else it prints about a finding is passed on.
 """
 
@@ -109,14 +110,15 @@ class ScanBlocked(SystemExit):
 
 
 class FindingRefusal(SystemExit):
-    """A scan refusal with only the rule IDs and line numbers."""
+    """A scan refusal with only the rule IDs and locations."""
 
     kind = "finding"
 
-    def __init__(self, what: str, found: list[tuple[int, str]]) -> None:
-        self.lines = tuple(line for line, _ in found)
+    def __init__(self, what: str, found: list[tuple[int, str, str]]) -> None:
+        self.lines = tuple(line for line, _, _ in found)
         self.locations = "; ".join(
-            f"rule {rule} on line {line}" for line, rule in found
+            f"rule {rule} at {file}:{line}" if file else f"rule {rule} on line {line}"
+            for line, rule, file in found
         )
         super().__init__(f"refusing {what}: gitleaks finds a secret: {self.locations}")
 
@@ -139,8 +141,10 @@ def private_config() -> Path:
     return Path.home() / GITLEAKS_FILE
 
 
-def findings(report: str) -> list[tuple[int, str]] | None:
-    """Each finding's line and rule ID from gitleaks' JSON report, or None.
+def findings(
+    report: str, *, commits: bool = False
+) -> list[tuple[int, str, str]] | None:
+    """Each finding's line, rule ID and commit file from the JSON report, or None.
 
     They are sorted, since gitleaks reports them in no fixed order.
 
@@ -148,12 +152,19 @@ def findings(report: str) -> list[tuple[int, str]] | None:
     """
     try:
         data = json.loads(report)
-    except ValueError:
+        if not isinstance(data, list):
+            return None
+        entries = cast("list[dict[str, int | str]]", data)  # pragma: no mutate
+        return sorted(
+            (
+                int(entry["StartLine"]),
+                str(entry["RuleID"]),
+                str(entry["File"]) if commits else "",
+            )
+            for entry in entries
+        )
+    except KeyError, TypeError, ValueError:
         return None
-    if not isinstance(data, list):
-        return None
-    entries = cast("list[dict[str, int | str]]", data)  # pragma: no mutate
-    return sorted((int(entry["StartLine"]), str(entry["RuleID"])) for entry in entries)
 
 
 def is_name_rule(rule: dict[str, object], families: tuple[str, ...]) -> bool:
@@ -177,32 +188,41 @@ def without_name_rules(private: str, families: tuple[str, ...]) -> str | None:
 
 
 def run_gitleaks(
-    text: str, what: str, config: Path, *, root: Path, gitleaks: str
+    command: list[str],
+    what: str,
+    config: Path,
+    *,
+    root: Path,
+    text: str | None,
 ) -> None:
-    """Refuse text that gitleaks flags under a config, or when it fails."""
+    """Refuse content that gitleaks flags under a config, or when it fails."""
+    commits = command[1] == "git"
     argv = [
-        gitleaks, "stdin", "--redact", "--no-banner", "--config", str(config),
+        *command, "--redact", "--no-banner", "--config", str(config),
         "--report-format", "json", "--report-path", "-",
     ]  # fmt: skip
-    # Argv is the found gitleaks and fixed flags; text goes on stdin. NO_COLOR
-    # keeps escape codes out of the log lines a failure passes on.
-    done = subprocess.run(  # nosec B603
-        argv,
-        capture_output=True,
-        text=True,
-        check=False,  # pragma: no mutate -- the default, spelled for the linter
-        cwd=root,
-        input=text,
-        env=os.environ | {"NO_COLOR": "1"},
-    )
-    found = findings(done.stdout)
+    try:
+        done = subprocess.run(  # nosec B603
+            argv,
+            capture_output=True,
+            text=True,
+            check=False,  # pragma: no mutate -- the default, spelled for the linter
+            cwd=root,
+            input=text,
+            env=os.environ | {"NO_COLOR": "1"},
+        )
+    except OSError:
+        message = f"cannot scan {what} for secrets: cannot run gitleaks"
+        raise ScanBlocked(message, "exit") from None
+    found = findings(done.stdout, commits=commits)
     if found:
         raise FindingRefusal(what, found)
-    if done.returncode != 0 or found is None:
-        output = " ".join(done.stderr.split())
+    # Git scan errors can be logged even when gitleaks exits successfully.
+    if done.returncode != 0 or found is None or (commits and done.stderr):
+        output = "" if commits else ": " + " ".join(done.stderr.split())
         message = (
             f"cannot scan {what} for secrets: gitleaks failed "
-            f"(exit {done.returncode}): {output}"
+            f"(exit {done.returncode}){output}"
         )
         kind = "signal" if done.returncode < 0 else "exit"
         raise ScanBlocked(message, kind, done.returncode)
@@ -226,6 +246,29 @@ def scan(text: str, what: str, *, root: Path, gitleaks: str, visibility: str) ->
             .gitleaks.toml is wrong,
             or gitleaks reports a finding or fails.
     """
+    _scan([gitleaks, "stdin"], what, root=root, visibility=visibility, text=text)
+
+
+def scan_commits(span: str, *, root: Path, gitleaks: str, visibility: str) -> None:
+    """Scan the commits selected by git log options in ``span``."""
+    options = f"--no-ext-diff --no-textconv --diff-merges=first-parent {span} --"
+    _scan(
+        [gitleaks, "git", "--log-level", "error", "--log-opts", options],
+        "the commits",
+        root=root,
+        visibility=visibility,
+        text=None,
+    )
+
+
+def _scan(
+    command: list[str],
+    what: str,
+    *,
+    root: Path,
+    visibility: str,
+    text: str | None,
+) -> None:
     config = private_config()
     try:
         private = config.read_text()
@@ -264,4 +307,4 @@ def scan(text: str, what: str, *, root: Path, gitleaks: str, visibility: str) ->
         copy.write_text(
             EXTENDS_PATH.sub(lambda m: f"{m.group(1)}'{base}'", reduced or private)
         )
-        run_gitleaks(text, what, copy, root=root, gitleaks=gitleaks)
+        run_gitleaks(command, what, copy, root=root, text=text)

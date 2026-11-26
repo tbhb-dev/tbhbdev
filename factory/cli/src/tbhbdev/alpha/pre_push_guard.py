@@ -1,4 +1,4 @@
-"""Refuse protected-branch pushes, unfetched rewrites, and invalid agent branches.
+"""Refuse unsafe pushes and scan new commits in run worktrees.
 
 A non-fast-forward update to an unprotected branch is allowed only when the
 remote tip git reports is the tip this clone fetched into
@@ -15,11 +15,13 @@ import re
 import subprocess  # nosec B404
 import sys
 import tempfile
+from contextlib import suppress
 from functools import cached_property
 from http.client import HTTPException
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from tbhbdev.alpha import pull_request, secret_scan
 from tbhbdev.alpha.agent.signing_parity import public_keys
 from tbhbdev.alpha.gh_shim import session_root
 from tbhbdev.alpha.identity import AGENT_EMAIL
@@ -266,7 +268,43 @@ def ref_problems(
     return problems
 
 
-def push_problems(remote: str, lines: Sequence[str]) -> list[str]:
+def scan_pushed_commits(
+    remote: str, url: str, rows: Sequence[tuple[str, str, str]]
+) -> list[str]:
+    """Scan commits a run introduces to the destination remote."""
+    # A local tag or a ref from a different remote cannot prove a commit is
+    # already on the destination.
+    code, out = git(
+        *SAFE, "for-each-ref", "--format=%(objectname)", f"refs/remotes/{remote}/"
+    )
+    if code:
+        return ["cannot list fetched tips; push refused"]
+    tips = out.split()
+    commits: set[str] = set()
+    for local, ref, old in rows:
+        if not local.strip("0"):
+            continue
+        exclude = known_objects([*tips, old] if old.strip("0") else tips)
+        code, shas = pushed_commits(local, exclude)
+        if code:
+            return [f"{ref}: cannot list the commits to scan; push refused"]
+        if len(shas) > RANGE_LIMIT:
+            return [f"{ref}: the push adds over {RANGE_LIMIT} commits; push refused"]
+        commits.update(shas)
+    if commits:
+        visibility = ""
+        with suppress(SystemExit, OSError):
+            visibility = pull_request.read_visibility(url)
+        secret_scan.scan_commits(
+            "--no-walk " + " ".join(sorted(commits)),
+            root=Path.cwd(),
+            gitleaks=pull_request.find_tool(pull_request.GITLEAKS, unwrapped=True),
+            visibility=visibility,
+        )
+    return []
+
+
+def push_problems(remote: str, lines: Sequence[str], *, url: str) -> list[str]:
     rows: list[tuple[str, str, str]] = []
     for line in lines:
         _, local, ref, old = line.split()  # ValueError: main() refuses the push
@@ -274,11 +312,17 @@ def push_problems(remote: str, lines: Sequence[str]) -> list[str]:
     tips = remote_tips()
     keys = SigningKeys()
     agent_push = session_root(os.environ) is not None
-    return [
+    problems = [
         problem
         for row in rows
         for problem in ref_problems(remote, row, tips, keys, agent_push=agent_push)
     ]
+    if not problems and os.environ.get(RUN_NAME_ENV):
+        try:
+            return scan_pushed_commits(remote, url, rows)
+        except SystemExit as exc:
+            return [str(exc)]
+    return problems
 
 
 def main(argv: list[str], prog: str) -> int:
@@ -289,9 +333,9 @@ def main(argv: list[str], prog: str) -> int:
         if os.environ.get(variable):
             print(f"pre-push-guard: {variable} is set; push refused", file=sys.stderr)
             return 1
-    remote = argv[0]
+    remote, url = argv
     try:
-        problems = push_problems(remote, sys.stdin.read().splitlines())
+        problems = push_problems(remote, sys.stdin.read().splitlines(), url=url)
     except ValueError:
         problems = ["pre-push-guard: cannot inspect push; push refused"]
     for problem in problems:

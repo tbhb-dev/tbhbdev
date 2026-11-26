@@ -54,7 +54,8 @@ stripped line would hide what the author thought they had written. Before gh
 posts, and in a dry run too, the final title and body, trailers included, go
 through gitleaks under the host's private config (see
 ``tbhbdev.alpha.secret_scan``), and a finding, a missing config or a missing
-gitleaks stops the command. Nothing is pushed: when the branch is not on the
+gitleaks stops the command. ``create`` also scans the commits in ``BASE..HEAD``
+under that config. Nothing is pushed: when the branch is not on the
 remote, gh's own error is passed through.
 
 In a private repository, read live with ``gh repo view`` once per command, that
@@ -952,18 +953,16 @@ def merge_trailers(
     return sorted(roles.values(), key=lambda pair: pair[0] != agent_identity.KEY_GEN)
 
 
-def branch_trailers(base: str) -> list[tuple[str, str]]:
-    """The LLM trailers of the commits on this branch, oldest first.
-
-    The range is BASE..HEAD, which starts at the merge base. The PR targets the
-    remote branch, so refs/remotes/origin/BASE is the base when it exists, else
-    refs/heads/BASE. Full ref names keep a tag named origin/BASE out. Git runs in
-    the current directory, because the branch belongs to the repository the
-    script is run from.
-    """
+def branch_range(base: str) -> str:
+    """The PR commit range, using the remote base when available."""
     remote = f"refs/remotes/origin/{base}"
     code, _ = git("rev-parse", "--verify", "--quiet", f"{remote}^{{commit}}")
-    span = f"{remote if code == 0 else f'refs/heads/{base}'}..HEAD"
+    return f"{remote if code == 0 else f'refs/heads/{base}'}..HEAD"
+
+
+def branch_trailers(base: str, *, span: str | None = None) -> list[tuple[str, str]]:
+    """The LLM trailers of the commits on this branch, oldest first."""
+    span = span if span is not None else branch_range(base)
     code, out = git("log", "--reverse", "--format=%x1e%(trailers:only,unfold)", span)
     if code != 0:
         message = f"cannot list the commits in {base}..HEAD; is {base} fetched?"
@@ -1164,6 +1163,11 @@ def repo_visibility(target: str) -> str:
     """
     if not NAME_WITH_OWNER.fullmatch(target):
         return ""
+    return read_visibility(target)
+
+
+def read_visibility(target: str) -> str:
+    """Read the visibility of a GitHub repository name or remote URL."""
     argv = [
         find_tool(GH),
         "repo",
@@ -2201,12 +2205,21 @@ def _run_command(args: argparse.Namespace, env: Mapping[str, str]) -> int:
         print("OK: the draft conforms")
         return 0
     if args.command == "create":
-        root, line = opened_by(env)
-        body = description(checked, env, branch_trailers(base_of(checked.meta)), line)
-        post_text(checked.title, body, base_visibility())
+        opener, line = opened_by(env)
+        base = base_of(checked.meta)
+        span = branch_range(base)
+        body = description(checked, env, branch_trailers(base, span=span), line)
+        visibility = base_visibility()
+        post_text(checked.title, body, visibility)
+        secret_scan.scan_commits(
+            span,
+            root=root(),
+            gitleaks=find_tool(GITLEAKS, unwrapped=True),
+            visibility=visibility,
+        )
         argv = [GH, "pr", "create", "--title", checked.title, "--body-file", "-"]
         argv += gh_args(checked.meta)
-        return create_pr(argv, body, root, dry_run=args.dry_run)
+        return create_pr(argv, body, opener, dry_run=args.dry_run)
     line, url = live_pr(args.pr)
     target = target_of_pr(url)
     body = description(checked, env, pr_trailers(args.pr, target), line)

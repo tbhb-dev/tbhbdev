@@ -12,7 +12,7 @@ from unittest.mock import Mock
 
 import httpx
 import pytest
-from fake_tool import pythonpath, write_fake
+from fake_tool import pythonpath, write_fake, write_private_config
 
 from tbhbdev import alpha
 from tbhbdev.alpha import gh_shim, install
@@ -214,6 +214,23 @@ def test_run_hook_confines_pushed_branches(
                 f"{destination}: this run may only push refs/heads/agent/example"
                 in result.stderr
             )
+
+
+def test_run_push_scans_new_commits_even_under_a_local_tag(
+    repo: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    monkeypatch.setenv(pg.RUN_NAME_ENV, "example")
+    write_private_config(Path.home())
+    secret = commit(repo, **{"sample.txt": "test-canary-0123456789abcdef\n"})
+    git(repo, "tag", "example", secret)
+    git(repo, "rm", "sample.txt")
+    head = commit(repo, "remove sample")
+
+    assert guard(monkeypatch, head, ref="refs/heads/agent/example") == 1
+    assert capsys.readouterr().err.splitlines()[-1] == (
+        "refusing the commits: gitleaks finds a secret: "
+        "rule tbhb-private-canary at sample.txt:1"
+    )
 
 
 def test_real_pushes_through_the_installed_hook(

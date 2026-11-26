@@ -1814,7 +1814,7 @@ def test_create_reads_the_default_branch_once(
     assert run_main("create") == 0
     assert read.call_count == 1
     assert counted.call_args.args[0] == "refs/remotes/origin/trunk"
-    trailers.assert_called_once_with("trunk")
+    trailers.assert_called_once_with("trunk", span="refs/remotes/origin/trunk..HEAD")
     _, call = world.calls("gh")
     argv = call["argv"]
     assert isinstance(argv, list)
@@ -2041,7 +2041,7 @@ def test_create_scans_the_final_title_and_body(
 ) -> None:
     write_draft(world)
     assert run_main("create", env=agent) == 0
-    (call,) = world.calls("gitleaks")
+    call, _ = world.calls("gitleaks")
     assert cast("list[str]", call["argv"])[:3] == ["stdin", "--redact", "--no-banner"]
     assert call["cwd"] == str(world.root)
     _, gh = world.calls("gh")
@@ -2058,6 +2058,33 @@ def test_edit_scans_the_final_title_and_body(world: World) -> None:
 
 
 FINDING = '[{"RuleID": "some-rule", "StartLine": 9}]'
+
+
+def test_create_refuses_a_finding_in_the_selected_commit_range(world: World) -> None:
+    world.git("update-ref", "refs/remotes/origin/topic-base", "HEAD")
+    world.commit("a commit")
+    write_draft(world, "---\nbase: topic-base\n---\n" + BASE)
+    world.fake(
+        "gitleaks",
+        stdout="[]",
+        cases={
+            "git": {
+                "rc": 1,
+                "stdout": '[{"RuleID":"some-rule","File":"sample.txt","StartLine":2}]',
+                "stderr": "",
+            },
+        },
+    )
+
+    with pytest.raises(SystemExit, match=r"rule some-rule at sample\.txt:2$"):
+        run_main("create")
+    _, scan = world.calls("gitleaks")
+    argv = cast("list[str]", scan["argv"])
+    assert (
+        "refs/remotes/origin/topic-base..HEAD"
+        in argv[argv.index("--log-opts") + 1].split()
+    )
+    assert world.calls("gh") == []
 
 
 @pytest.mark.parametrize(
@@ -2282,9 +2309,10 @@ def without_path(config: str) -> str:
 
 
 def scan_config(world: World) -> str:
-    """The text of the config the one gitleaks call ran under, minus its paths."""
-    (call,) = world.calls("gitleaks")
-    return without_path(str(call["config"]))
+    """The shared config used by the gitleaks calls, minus its paths."""
+    configs = {without_path(str(call["config"])) for call in world.calls("gitleaks")}
+    (config,) = configs
+    return config
 
 
 def full_config() -> str:
