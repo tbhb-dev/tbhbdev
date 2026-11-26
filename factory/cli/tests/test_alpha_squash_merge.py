@@ -530,6 +530,9 @@ def test_the_passing_draft_becomes_a_clean_message(tools: Tools) -> None:
 # ------------------------------------------------------------------- the CLI
 
 
+APPROVED_HEAD = "a" * 40
+
+
 def run_main(*argv: str) -> tuple[int | str | None, str]:
     try:
         return sm.main(list(argv)), ""
@@ -537,33 +540,68 @@ def run_main(*argv: str) -> tuple[int | str | None, str]:
         return exc.code, ""
 
 
+@pytest.mark.parametrize(
+    ("flags", "head"),
+    [((), "abc123"), (("--expect-head", APPROVED_HEAD.upper()), APPROVED_HEAD)],
+)
 def test_dry_run_prints_the_command_and_message_and_merges_nothing(
-    tools: Tools, capsys: pytest.CaptureFixture[str]
+    tools: Tools, capsys: pytest.CaptureFixture[str], flags: tuple[str, ...], head: str
 ) -> None:
-    code, _ = run_main("12", "--dry-run")
+    tools.view(headRefOid=head)
+    code, _ = run_main("12", "--dry-run", *flags)
     out = capsys.readouterr().out
     assert code == 0
     assert out.startswith(
         "gh pr merge 12 --merge --subject 'feat(cli): add the stamp subcommand (#12)' "
-        "--body-file - --match-head-commit abc123\n\n"
+        f"--body-file - --match-head-commit {head}\n\n"
         "feat(cli): add the stamp subcommand (#12)\n\nWhy\n"
     )
     assert [call["argv"][1] for call in tools.calls()] == ["view"]  # type: ignore[index]
 
 
-def test_merge_passes_subject_body_and_head(tools: Tools) -> None:
-    assert run_main("12")[0] == 0
+@pytest.mark.parametrize(
+    ("flags", "head"),
+    [((), "abc123"), (("--expect-head", APPROVED_HEAD), APPROVED_HEAD)],
+)
+def test_merge_passes_subject_body_and_head(
+    tools: Tools, flags: tuple[str, ...], head: str
+) -> None:
+    tools.view(headRefOid=head)
+    assert run_main("12", *flags)[0] == 0
     view, merge = tools.calls()
     assert view["argv"] == ["pr", "view", "12", "--json", sm.VIEW_FIELDS]
     assert merge["argv"] == [
         "pr", "merge", "12", "--merge",
         "--subject", "feat(cli): add the stamp subcommand (#12)",
-        "--body-file", "-", "--match-head-commit", "abc123",
+        "--body-file", "-", "--match-head-commit", head,
     ]  # fmt: skip
     assert str(merge["stdin"]).startswith("Why\nRunning `tool stamp`")
     assert str(merge["stdin"]).endswith(
         "[1]: https://github.com/tbhb-dev/tbhbdev/issues/12\n"
     )
+
+
+def test_merge_refuses_a_head_that_moved_since_approval(tools: Tools) -> None:
+    current = "b" * 40
+    tools.view(headRefOid=current)
+    code, _ = run_main("12", "--expect-head", APPROVED_HEAD)
+    assert code == (
+        f"not merging PR #12: expected head {APPROVED_HEAD}, "
+        f"but the current head is {current}"
+    )
+    assert [call["argv"] for call in tools.calls()] == [
+        ["pr", "view", "12", "--json", sm.VIEW_FIELDS]
+    ]
+
+
+@pytest.mark.parametrize("head", ["", "abc123", "g" * 40])
+def test_merge_rejects_an_invalid_expected_head(
+    tools: Tools, capsys: pytest.CaptureFixture[str], head: str
+) -> None:
+    assert run_main("12", "--expect-head", head)[0] == 2
+    error = capsys.readouterr().err
+    assert "--expect-head: expected a full 40-character hexadecimal SHA" in error
+    assert not (tools.bin / "gh.log").exists()
 
 
 def test_merge_scans_the_final_message(tools: Tools, tmp_path: Path) -> None:
