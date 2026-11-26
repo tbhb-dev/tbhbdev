@@ -334,7 +334,12 @@ def check_limits(
 
 _SECRET_PATTERNS = (
     ("1Password reference", re.compile(r"op://")),
-    ("private key header", re.compile(r"-----BEGIN (?:[A-Z0-9 ]+ )?PRIVATE KEY-----")),
+    (
+        "private key header",
+        re.compile(
+            r"-----BEGIN (?:(?:[A-Z0-9 ]+ )?PRIVATE KEY|PGP PRIVATE KEY BLOCK)-----"
+        ),
+    ),
     ("token prefix", re.compile(r"ghp_|github_pat_|sk-ant-|AKIA|xoxb-")),
 )
 

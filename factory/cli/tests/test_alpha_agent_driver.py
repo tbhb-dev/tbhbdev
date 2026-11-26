@@ -1220,6 +1220,7 @@ def test_schema_and_prompt_refused_locally(remote: Remote) -> None:
         ("op://example/item/field", "1Password reference"),
         ("-----BEGIN " + "PRIVATE KEY-----", "private key header"),
         ("-----BEGIN OPENSSH " + "PRIVATE KEY-----", "private key header"),
+        ("-----BEGIN PGP " + "PRIVATE KEY BLOCK-----", "private key header"),
         ("ghp_" + "sample", "token prefix"),
         ("github_pat_" + "sample", "token prefix"),
         ("sk-ant-" + "sample", "token prefix"),
