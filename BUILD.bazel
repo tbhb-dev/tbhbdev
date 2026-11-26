@@ -3,7 +3,7 @@
 
 load("@bazel_env.bzl", "bazel_env")
 load("@buildifier_prebuilt//:rules.bzl", "buildifier", "buildifier_test")
-load("@gazelle//:def.bzl", "gazelle", "gazelle_test")
+load("@gazelle//:def.bzl", "gazelle", "gazelle_binary", "gazelle_test")
 load("@rules_go//go:def.bzl", "nogo")
 load("@rules_shell//shell:sh_binary.bzl", "sh_binary")
 load("@tbhb_rules//lint:defs.bzl", "actionlint_test", "gitleaks_history")
@@ -20,6 +20,7 @@ exports_files([
     ".github/actions/setup-bazel-ci/fetch-targets.txt",
     ".github/actions/setup-bazel-ci/fetch.sh",
     ".github/schemas/pull-request-draft.schema.json",
+    ".github/workflows/ci.yml",
     ".github/workflows/mutation-nightly.yml",
     ".vale.ini",
     ".vale/config/vocabularies/project/accept.txt",
@@ -33,17 +34,37 @@ exports_files([
     "tombi.toml",
 ])
 
-# Gazelle reads the monorepo go.mod.
-gazelle(name = "gazelle")
+exports_files(
+    ["uv.lock"],
+    visibility = ["//factory/cli:__pkg__"],
+)
+
+# gazelle:python_extension disabled
+
+gazelle_binary(
+    name = "gazelle_bin",
+    languages = [
+        "@gazelle//language/proto",
+        "@gazelle//language/go",
+        "@rules_python_gazelle_plugin//python",
+    ],
+)
+
+gazelle(
+    name = "gazelle",
+    gazelle = ":gazelle_bin",
+)
 
 gazelle(
     name = "gazelle.check",
+    gazelle = ":gazelle_bin",
     mode = "diff",
 )
 
 gazelle_test(
     name = "gazelle_test",
     size = "small",
+    gazelle = ":gazelle_bin",
     workspace = "//:MODULE.bazel",
 )
 
@@ -162,7 +183,7 @@ filegroup(
         "pyproject.toml",
         "uv.lock",
     ],
-    visibility = ["//factory/cli:__pkg__"],
+    visibility = ["//factory/cli:__subpackages__"],
 )
 
 bazel_env(

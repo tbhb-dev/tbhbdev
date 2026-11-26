@@ -11,6 +11,8 @@ import pytest
 from tbhbdev import cli
 
 if TYPE_CHECKING:
+    from pathlib import Path
+
     from conftest import Installed
 
 USAGE = cli.usage(cli.TOOLS)
@@ -66,9 +68,10 @@ def test_main_reads_sys_argv_by_default(monkeypatch: pytest.MonkeyPatch) -> None
     assert cli.main() == 0
 
 
-def test_module_entry_point_runs_the_command() -> None:
+def test_module_entry_point_runs_the_command(tmp_path: Path) -> None:
     result = subprocess.run(
         [sys.executable, "-m", "tbhbdev", "--help"],
+        cwd=tmp_path,
         capture_output=True,
         text=True,
         check=False,

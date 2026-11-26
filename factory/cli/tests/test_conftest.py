@@ -9,9 +9,11 @@ import sys
 from pathlib import Path
 from typing import TYPE_CHECKING, cast
 
+from stub_fixtures import stubs as stubs  # noqa: PLC0414
+
 if TYPE_CHECKING:
     import pytest
-    from conftest import Stubs
+    from stub_fixtures import Stubs
 
 
 def test_stub_runs_under_long_interpreter_path(
