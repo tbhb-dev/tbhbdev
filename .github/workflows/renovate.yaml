@@ -5,7 +5,7 @@
 # Self-hosted Renovate for this repository, written inline. It runs Renovate
 # once for the whole repository, and it calls no workflow of another
 # repository. The root renovate.json5 loads the presets from
-# factory/renovate-config in this repository.
+# lib/renovate-config in this repository.
 #
 # Credentials: RENOVATE_CLIENT_ID and RENOVATE_PRIVATE_KEY are org secrets of
 # tbhb-dev, the same ones the old per-repository runs used. They reach this

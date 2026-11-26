@@ -2,12 +2,12 @@
 # Copyright Tony Burns
 
 # The original import also added or edited these monorepo files:
-# factory/renovate-config/OWNERS: Required for every project folder (appendix
+# lib/renovate-config/OWNERS: Required for every project folder (appendix
 # C).
-# factory/renovate-config/IMPORT-MAP.toml: This file.
+# lib/renovate-config/IMPORT-MAP.toml: This file.
 # BUILD.bazel: Edit to the shared root: exports the root Renovate workflow to
-# //factory/renovate-config, whose tests read it.
-# factory/BUILD.bazel: Edit to the shared root: //factory:repo_files takes the
+# //lib/renovate-config, whose tests read it.
+# lib/BUILD.bazel: Edit to the shared root: //lib:repo_files takes the
 # project's own repo_files, because a glob can't enter the project's package.
 # .editorconfig-checker.json: Edit to the shared root: excludes the root
 # Renovate workflow, whose inline Python keeps the bracket-aligned continuation
@@ -22,30 +22,30 @@
 
 repo = "tbhb-dev/renovate-config"
 commit = "6fc408cfec75871cd01b04bf1396e4f82c7fc792"
-dest = "factory/renovate-config"
+dest = "lib/renovate-config"
 
 [copy]
-"ansible.json5" = "factory/renovate-config/ansible.json5"
-"bazel.json5" = "factory/renovate-config/bazel.json5"
-"cloudflare-worker.json5" = "factory/renovate-config/cloudflare-worker.json5"
-"default.json5" = "factory/renovate-config/default.json5"
-"go.json5" = "factory/renovate-config/go.json5"
-"python.json5" = "factory/renovate-config/python.json5"
-"renovate_allowlist_test.sh" = "factory/renovate-config/renovate_allowlist_test.sh"
-"renovate_awrel_pin_test.py" = "factory/renovate-config/renovate_awrel_pin_test.py"
-"renovate_awrel_pin_test.sh" = "factory/renovate-config/renovate_awrel_pin_test.sh"
-"renovate_grouping_test.py" = "factory/renovate-config/renovate_grouping_test.py"
-"renovate_grouping_test.sh" = "factory/renovate-config/renovate_grouping_test.sh"
-"renovate_log_check_test.sh" = "factory/renovate-config/renovate_log_check_test.sh"
-"renovate_ruleset_audit_test.sh" = "factory/renovate-config/renovate_ruleset_audit_test.sh"
-"rules-cloudflare.json5" = "factory/renovate-config/rules-cloudflare.json5"
+"ansible.json5" = "lib/renovate-config/ansible.json5"
+"bazel.json5" = "lib/renovate-config/bazel.json5"
+"cloudflare-worker.json5" = "lib/renovate-config/cloudflare-worker.json5"
+"default.json5" = "lib/renovate-config/default.json5"
+"go.json5" = "lib/renovate-config/go.json5"
+"python.json5" = "lib/renovate-config/python.json5"
+"renovate_allowlist_test.sh" = "lib/renovate-config/renovate_allowlist_test.sh"
+"renovate_awrel_pin_test.py" = "lib/renovate-config/renovate_awrel_pin_test.py"
+"renovate_awrel_pin_test.sh" = "lib/renovate-config/renovate_awrel_pin_test.sh"
+"renovate_grouping_test.py" = "lib/renovate-config/renovate_grouping_test.py"
+"renovate_grouping_test.sh" = "lib/renovate-config/renovate_grouping_test.sh"
+"renovate_log_check_test.sh" = "lib/renovate-config/renovate_log_check_test.sh"
+"renovate_ruleset_audit_test.sh" = "lib/renovate-config/renovate_ruleset_audit_test.sh"
+"rules-cloudflare.json5" = "lib/renovate-config/rules-cloudflare.json5"
 
 # The root build file of the old repository held the test targets with its lint
 # gates. Only the sh_test targets for the kept tests move here. The test targets
 # read the root workflow through //:.github/workflows/renovate.yaml, exported
 # from the root BUILD.bazel.
 [rewrite."BUILD.bazel"]
-dest = "factory/renovate-config/BUILD.bazel"
+dest = "lib/renovate-config/BUILD.bazel"
 replace = [
   [
     '''
@@ -314,14 +314,18 @@ bazel_env(
 
 load("@rules_shell//shell:sh_test.bzl", "sh_test")
 
-package(default_visibility = ["//factory:__subpackages__"])
+package(default_visibility = [
+    "//factory:__subpackages__",
+    "//lib:__subpackages__",
+    "//products:__subpackages__",
+])
 
 # Globs stop at a package boundary, so this project hands its files to
-# //factory:repo_files, which feeds the whole-tree checks in //:repo_files.
+# //lib:repo_files, which feeds the whole-tree checks in //:repo_files.
 filegroup(
     name = "repo_files",
     srcs = glob(["**"]),
-    visibility = ["//factory:__pkg__"],
+    visibility = ["//lib:__pkg__"],
 )
 ''',
   ],
@@ -416,7 +420,7 @@ sh_test(
 # repository. Rewritten for the monorepo: contents, rules for the presets, the
 # root workflow.
 [rewrite."README.md"]
-dest = "factory/renovate-config/README.md"
+dest = "lib/renovate-config/README.md"
 replace = [
   [
     '''
@@ -667,7 +671,7 @@ The old repository's reusable workflows and the tools around consumer pins (the 
 # because the workflow is no longer reusable and no longer sits beside the
 # tests. The only change besides the docstring is the path.
 [rewrite."renovate_allowlist_test.py"]
-dest = "factory/renovate-config/renovate_allowlist_test.py"
+dest = "lib/renovate-config/renovate_allowlist_test.py"
 replace = [
   [
     '''
@@ -700,7 +704,7 @@ replace = [
 # because the workflow is no longer reusable and no longer sits beside the
 # tests. The only change besides the docstring is the path.
 [rewrite."renovate_log_check_test.py"]
-dest = "factory/renovate-config/renovate_log_check_test.py"
+dest = "lib/renovate-config/renovate_log_check_test.py"
 replace = [
   [
     '''
@@ -733,7 +737,7 @@ FINISHED = '{"level":30,"msg":"Repository finished"}\n'
 # because the workflow is no longer reusable and no longer sits beside the
 # tests. The only change besides the docstring is the path.
 [rewrite."renovate_ruleset_audit_test.py"]
-dest = "factory/renovate-config/renovate_ruleset_audit_test.py"
+dest = "lib/renovate-config/renovate_ruleset_audit_test.py"
 replace = [
   [
     '''

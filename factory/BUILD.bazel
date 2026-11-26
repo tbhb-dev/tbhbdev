@@ -11,13 +11,9 @@ package_group(
     packages = ["//factory/..."],
 )
 
-# A project with its own BUILD.bazel is a package, which a glob here can't
-# enter, so each project hands over its own files.
 filegroup(
     name = "repo_files",
-    srcs = glob(["**"]) + [
-        "//factory/renovate-config:repo_files",
-    ],
+    srcs = glob(["**"]),
     visibility = ["//:__pkg__"],
 )
 

@@ -3,14 +3,18 @@
 
 load("@rules_shell//shell:sh_test.bzl", "sh_test")
 
-package(default_visibility = ["//factory:__subpackages__"])
+package(default_visibility = [
+    "//factory:__subpackages__",
+    "//lib:__subpackages__",
+    "//products:__subpackages__",
+])
 
 # Globs stop at a package boundary, so this project hands its files to
-# //factory:repo_files, which feeds the whole-tree checks in //:repo_files.
+# //lib:repo_files, which feeds the whole-tree checks in //:repo_files.
 filegroup(
     name = "repo_files",
     srcs = glob(["**"]),
-    visibility = ["//factory:__pkg__"],
+    visibility = ["//lib:__pkg__"],
 )
 
 # Exercise the inline workflow script with local logs, without Renovate.

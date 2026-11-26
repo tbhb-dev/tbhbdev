@@ -4,7 +4,7 @@
 {
   $schema: "https://docs.renovatebot.com/renovate-schema.json",
 
-  // Renovate for this repository. The presets sit in factory/renovate-config
+  // Renovate for this repository. The presets sit in lib/renovate-config
   // in this same repository. They are referenced unpinned, and Renovate
   // resolves `extends` over the platform API, not off the checkout, so a
   // preset change takes effect once it is on the default branch. Renovate
@@ -17,10 +17,10 @@
   // rules-cloudflare.json5 join this list in the change that brings the
   // manifest each one acts on.
   extends: [
-    "github>tbhb-dev/tbhbdev//factory/renovate-config/default.json5",
-    "github>tbhb-dev/tbhbdev//factory/renovate-config/bazel.json5",
-    "github>tbhb-dev/tbhbdev//factory/renovate-config/go.json5",
-    "github>tbhb-dev/tbhbdev//factory/renovate-config/python.json5",
+    "github>tbhb-dev/tbhbdev//lib/renovate-config/default.json5",
+    "github>tbhb-dev/tbhbdev//lib/renovate-config/bazel.json5",
+    "github>tbhb-dev/tbhbdev//lib/renovate-config/go.json5",
+    "github>tbhb-dev/tbhbdev//lib/renovate-config/python.json5",
   ],
 
   // Image and tool pins that only a repo hosting the Renovate workflow has.

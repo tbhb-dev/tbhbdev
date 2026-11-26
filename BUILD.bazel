@@ -12,10 +12,10 @@ exports_files([
     "go.mod",
 ])
 
-# The root Renovate workflow, which factory/renovate-config's tests read.
+# The root Renovate workflow, which lib/renovate-config's tests read.
 exports_files(
     [".github/workflows/renovate.yaml"],
-    visibility = ["//factory/renovate-config:__pkg__"],
+    visibility = ["//lib/renovate-config:__pkg__"],
 )
 
 # Minimal Gazelle setup until the rules import lands; reads go.mod.
