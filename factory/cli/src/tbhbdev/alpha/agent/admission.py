@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import fcntl
 import os
+import pwd
 import stat
 from contextlib import ExitStack, contextmanager, suppress
 from pathlib import Path
@@ -16,8 +17,16 @@ if TYPE_CHECKING:
 
     from tbhbdev.alpha.agent.model import Host
 
-ROOT = Path("/var/tmp/tbhbdev-agent-admission")  # noqa: S108  # nosec B108 -- shared host-wide directory by design; an owner check is a follow-up
+ROOT = Path("/var/tmp/tbhbdev-agent-admission")  # noqa: S108  # nosec B108  # Sticky directory with no-follow opens and slot owner and mode checks.
 _DIRECTORY_MODE = 0o1777
+
+
+def _owner_uids(accounts: tuple[str, ...]) -> set[int]:
+    uids = {0, os.getuid()}
+    for account in accounts:
+        with suppress(KeyError):
+            uids.add(pwd.getpwnam(account).pw_uid)
+    return uids
 
 
 @contextmanager
@@ -41,10 +50,12 @@ def _directory(root: Path) -> Generator[int]:
 
 
 @contextmanager
-def _slot(directory: int, name: str, *, create: bool = False) -> Generator[int]:
+def _slot(
+    directory: int, name: str, owner_uids: set[int], *, create: bool = False
+) -> Generator[int]:
     flags = os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK
     # Open existing files without O_CREAT so Linux's sticky-directory
-    # protection permits opening a slot created by another account.
+    # protection lets us inspect their ownership.
     if create:
         with suppress(FileExistsError):
             fd = os.open(name, flags | os.O_CREAT | os.O_EXCL, 0o644, dir_fd=directory)
@@ -54,19 +65,29 @@ def _slot(directory: int, name: str, *, create: bool = False) -> Generator[int]:
                 os.close(fd)
     fd = os.open(name, flags, dir_fd=directory)
     try:
-        if not stat.S_ISREG(os.fstat(fd).st_mode):
+        info = os.fstat(fd)
+        if not stat.S_ISREG(info.st_mode):
             message = "agent admission slot must be a regular file"
+            raise Invalid(message)
+        if info.st_uid not in owner_uids:
+            message = (
+                "agent admission slot must be owned by the current uid, root, "
+                "or a configured agent account"
+            )
+            raise Invalid(message)
+        if info.st_mode & (stat.S_IWGRP | stat.S_IWOTH):
+            message = "agent admission slot must not be group- or other-writable"
             raise Invalid(message)
         yield fd
     finally:
         os.close(fd)
 
 
-def _active(directory: int, profile: Profile) -> set[str]:
+def _active(directory: int, profile: Profile, owner_uids: set[int]) -> set[str]:
     active: set[str] = set()
     for name in os.listdir(directory):
         if name.startswith(f"{profile}-"):
-            with _slot(directory, name) as fd:
+            with _slot(directory, name, owner_uids) as fd:
                 try:
                     fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
                 except BlockingIOError:
@@ -90,11 +111,12 @@ def reserve(
     if limit is None:
         message = f"{host.name}: the request carries no max_concurrent_runs"
         raise Invalid(message)
+    owner_uids = _owner_uids(host.accounts)
     with ExitStack() as slot, _directory(root) as directory:
-        with _slot(directory, "admission.lock", create=True) as guard:
+        with _slot(directory, "admission.lock", owner_uids, create=True) as guard:
             fcntl.flock(guard, fcntl.LOCK_EX)
-            builds = _active(directory, Profile.BUILD)
-            reviews = _active(directory, Profile.REVIEW)
+            builds = _active(directory, Profile.BUILD, owner_uids)
+            reviews = _active(directory, Profile.REVIEW, owner_uids)
             if len(builds) + len(reviews) >= limit:
                 message = (
                     f"{host.name}: no agent slot available "
@@ -109,6 +131,6 @@ def reserve(
             active = builds if profile is Profile.BUILD else reviews
             names = (f"{profile}-{i}" for i in range(len(active) + 1))
             name = next(candidate for candidate in names if candidate not in active)
-            fd = slot.enter_context(_slot(directory, name, create=True))
+            fd = slot.enter_context(_slot(directory, name, owner_uids, create=True))
             fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
         yield
