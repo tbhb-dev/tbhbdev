@@ -12,7 +12,6 @@ from pathlib import Path
 from unittest.mock import Mock, call, patch
 
 import pytest
-import yaml
 
 from repo.private.tier0_approval import __main__ as gate
 
@@ -57,11 +56,16 @@ CHECK = SUCCESS | {"name": "CI", "check_suite": {"id": 3}}
 ARTIFACT = Path("tier0-decision.json")
 
 
-def test_default_paths() -> None:
-    workflow = Path(".github/workflows/tier0-approval.yml").read_text(encoding="utf-8")
-    # PyYAML's safe loader uses the YAML 1.1 boolean key for "on".
-    inputs = yaml.safe_load(workflow)[True]["workflow_call"]["inputs"]
-    env = {key.upper(): inputs[key]["default"] for key in ("tier0_paths", "deny_paths")}
+def test_path_globs() -> None:
+    env = {
+        "TIER0_PATHS": (
+            "**/*.md\ndocs/**/*.md\ndocs/**/*.txt\nLICENSE\nLICENSE.md\nLICENSE.txt"
+        ),
+        "DENY_PATHS": (
+            ".github/**\n**/CODEOWNERS\n**/AGENTS*.md\n**/CLAUDE*.md\n**/GEMINI.md\n"
+            "**/.claude/**\n**/.agents/**\n**/.codex/**\n**/.cursor/**"
+        ),
+    }
     for path in ("README.md", "README.MD", "docs/guide/intro.md", "LICENSE"):
         assert gate.tier0_path(path, env), path
     for path in (

@@ -1,6 +1,7 @@
 # SPDX-License-Identifier: Apache-2.0
 # Copyright Tony Burns
 
+load("@bazel_skylib//rules:write_file.bzl", "write_file")
 load("//lint:defs.bzl", "required_status_checks_test")
 load("//repo:defs.bzl", "repo_files")
 load("//testing:defs.bzl", "expect_failure_test")
@@ -11,37 +12,62 @@ PROOF_TAGS = ["manual"]
 
 PREFIX = "lint/tests/required_status_checks/testdata/"
 
-# Each fixture is a copy of a real input with one problem planted in it.
-# The other argument always names the unchanged real input.
+FIXTURE_WORKFLOW = "lint/tests/required_status_checks/fixture_ci.yml"
+
+FIXTURE_RULESET = "lint/tests/required_status_checks/fixture_ruleset.json"
+
+write_file(
+    name = "fixture_ci",
+    out = "fixture_ci.yml",
+    content = [
+        "jobs:",
+        "  apple:",
+        "    name: apple (apple-smoke)",
+        "  cache-warm: {}",
+        "  conclusion:",
+        "    needs: [apple]",
+    ],
+)
+
+write_file(
+    name = "fixture_ruleset",
+    out = "fixture_ruleset.json",
+    content = [json.encode({"rules": [{
+        "type": "required_status_checks",
+        "parameters": {"required_status_checks": [{"context": "conclusion"}]},
+    }]})],
+)
+
+# Each proof pairs a planted failure with an input that satisfies the check.
 PROOFS = {
     "empty_contexts": (
         PREFIX + "empty_contexts.json",
-        ".github/workflows/ci.yml",
+        FIXTURE_WORKFLOW,
         "^" + PREFIX + "empty_contexts\\.json: required_status_checks is empty$",
     ),
     "missing_exempt_job": (
-        ".github/rulesets/main.json",
+        FIXTURE_RULESET,
         PREFIX + "missing_exempt_job.yml",
         "^" + PREFIX + "missing_exempt_job\\.yml: exempt job 'cache-warm' does not exist$",
     ),
     "missing_need": (
-        ".github/rulesets/main.json",
+        FIXTURE_RULESET,
         PREFIX + "missing_need.yml",
         "^" + PREFIX + "missing_need\\.yml: conclusion needs is missing job 'apple'$",
     ),
     "no_rule": (
         PREFIX + "no_rule.json",
-        ".github/workflows/ci.yml",
+        FIXTURE_WORKFLOW,
         "^" + PREFIX + "no_rule\\.json: no required_status_checks rule$",
     ),
     "unknown_context": (
         PREFIX + "unknown_context.json",
-        ".github/workflows/ci.yml",
+        FIXTURE_WORKFLOW,
         "^" + PREFIX + "unknown_context\\.json: required context 'missing-job' has no matching CI job$",
     ),
     "wrong_job": (
         PREFIX + "wrong_job.json",
-        ".github/workflows/ci.yml",
+        FIXTURE_WORKFLOW,
         "^" + PREFIX + "wrong_job\\.json: required context 'apple \\(apple-smoke\\)' matches job 'apple', expected 'conclusion'$",
     ),
 }
@@ -49,7 +75,11 @@ PROOFS = {
 [
     required_status_checks_test(
         name = "proof_" + proof,
-        srcs = ["//:repo_files"],
+        srcs = [
+            ":fixture_ci",
+            ":fixture_ruleset",
+            ":repo_files",
+        ],
         ruleset = ruleset,
         tags = PROOF_TAGS,
         workflow = workflow,

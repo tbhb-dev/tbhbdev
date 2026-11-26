@@ -112,8 +112,15 @@ def main() -> None:
         fail("Gitleaks pin changed; run python3 lint/gitleaks/update.py")
     if hashlib.sha256(source_path.read_bytes()).hexdigest() != metadata["sha256"]:
         fail("vendored upstream config checksum differs")
+    checkout = Path(
+        subprocess.check_output(  # nosec B603, B607
+            ["git", "rev-parse", "--show-toplevel"],
+            cwd=root,
+            text=True,
+        ).strip()
+    )
     expected = generate(
-        source_path.read_text(), version, (root / "LICENSES/MIT.txt").read_text()
+        source_path.read_text(), version, (checkout / "LICENSES/MIT.txt").read_text()
     )
     configs = tracked_configs(root)
     if not configs:

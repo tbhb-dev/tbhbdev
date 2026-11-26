@@ -152,7 +152,7 @@ pytest_test(
 pytest_test(
     name = "repo_checks_drift_test",
     srcs = ["//:repo_files"],
-    args = ["lint/tests/test_repo_checks.py::test_workflow_drift"],
+    args = ["lint/tests/test_repo_checks.py::test_configured_targets_exist"],
     coverage = None,
     data = [
         "//:repo_check_targets",

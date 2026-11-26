@@ -2,66 +2,22 @@
 # Copyright Tony Burns
 
 import os
-import re
 import shutil
 import subprocess
 import sys
 from pathlib import Path
 
 import pytest
-import yaml
 
-from lint.repo_checks import TARGET, read_checks
+from lint.repo_checks import read_checks
 
 ROOT = Path(__file__).absolute().parents[2]
-RUN = re.compile(rf"\bbazelisk\s+run\s+['\"]?({TARGET.pattern})")
 
 
-def _workflow_runs(runner: str) -> tuple[list[tuple[str | None, str]], list[str]]:
-    workflow = yaml.safe_load((ROOT / ".github/workflows/repo-checks.yml").read_text())
-    runner_steps = []
-    workflow_targets = []
-    for job in workflow["jobs"].values():
-        for step in job.get("steps", []):
-            run = step.get("run", "").replace("\\\n", " ")
-            for line in run.splitlines():
-                if not line.lstrip().startswith("#"):
-                    targets = RUN.findall(line)
-                    workflow_targets.extend(targets)
-                    if runner in targets:
-                        assert not step.get("continue-on-error", False)
-                        runner_steps.append((step.get("if"), line.strip()))
-    return runner_steps, workflow_targets
-
-
-def test_workflow_drift() -> None:
+def test_configured_targets_exist() -> None:
     known = set((ROOT / "repo_check_targets.txt").read_text().splitlines())
     known.update((ROOT / "lint/repo_check_targets.txt").read_text().splitlines())
-    checks = read_checks(ROOT / "lint/repo_checks.toml")
-    configured = {check.target for check in checks}
-    runner = "@tbhb_rules//lint:repo_checks"
-    runner_steps, workflow_targets = _workflow_runs(runner)
-    assert runner_steps == [
-        ("github.event_name != 'pull_request'", f"bazelisk run {runner} -- --no-range"),
-        (
-            "github.event_name == 'pull_request'",
-            (
-                f"bazelisk run {runner} -- --base-branch "
-                '"${BASE_REF}" "${HEAD_SHA}" "${HEAD_BRANCH}"'
-            ),
-        ),
-    ]
-    direct_targets = set(workflow_targets) - {runner}
-    local_targets = {check.target for check in checks if check.runs_locally}
-    fetch_manifest = ROOT / ".github/actions/setup-bazel-ci/fetch-targets.txt"
-    missing_prefetch = local_targets - set(fetch_manifest.read_text().splitlines())
-    assert not missing_prefetch, sorted(missing_prefetch)
-    duplicated = direct_targets & local_targets
-    assert not duplicated, sorted(duplicated)
-
-    # The workflow also calls root targets that each consumer defines.
-    missing = {t for t in direct_targets if t.startswith("@") or t in known}
-    assert not (missing - configured), sorted(missing - configured)
+    configured = {check.target for check in read_checks(ROOT / "lint/repo_checks.toml")}
     unknown = {target.removeprefix("@tbhb_rules") for target in configured} - known
     assert not unknown, sorted(unknown)
 

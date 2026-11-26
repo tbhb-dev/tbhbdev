@@ -65,6 +65,7 @@ vale_test(
     name = "vale_test",
     srcs = ["//:repo_files"],
     config = "//:.vale.ini",
+    data = ["//:vale_styles"],
     packages = VALE_PACKAGES,
 )
 
@@ -72,7 +73,7 @@ vale_test(
 # and for running vale by hand.
 vale_sync(
     name = "vale_sync",
-    config = "//:.vale.ini",
+    config = "@@//:.vale.ini",
     packages = VALE_PACKAGES,
 )
 
@@ -80,7 +81,10 @@ vale_sync(
 # runtime (runtime/private) and the docs checkers under lint/private/.
 # Each runs over a copy of the tree with pyproject.toml as its
 # configuration, from the environment the root uv.lock pins.
-PYTHON_SRCS = ["//:repo_files"]
+PYTHON_SRCS = [
+    "//:.github/schemas/pull-request-draft.schema.json",
+    "//:repo_files",
+]
 
 # Fixtures are content under test, not this repository's Python.
 PYTHON_EXCLUDE = [

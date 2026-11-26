@@ -14,8 +14,7 @@ import yaml
 ROOT = Path(__file__).absolute().parents[2]
 BASELINE = ROOT / "repo/baseline"
 SOURCE = "files/.github/gitleaks-hook.sh"
-ROOT_CONFIG = ROOT / ".pre-commit-config.yaml"
-CONFIGS = [ROOT_CONFIG, *sorted((BASELINE / "seed").glob("*/pre-commit-config.yaml"))]
+CONFIGS = sorted((BASELINE / "seed").glob("*/pre-commit-config.yaml"))
 STUB = r"""#!/bin/sh
 if [ "$1" = version ]; then
   printf '%s' "$VERSION_OUTPUT"
@@ -49,21 +48,16 @@ def test_hook_pin(pinned_version: str) -> None:
     ]
 
 
-def _prepare_checkout(tmp_path: Path, config: Path) -> Path:
+def _prepare_checkout(tmp_path: Path) -> Path:
     source = BASELINE / SOURCE
-    if config == ROOT_CONFIG:
-        script = source.relative_to(ROOT)
-        shim = Path("tools/.bazel_env/bin/gitleaks")
-        policy = ROOT / ".gitleaks.toml"
-    else:
-        manifest = tomllib.loads((BASELINE / "manifest.toml").read_text())
-        (entry,) = (entry for entry in manifest["file"] if entry["source"] == SOURCE)
-        assert entry["mode"] == "bytes"
-        assert entry["visibility"] == "all"
-        assert "kinds" not in entry
-        script = Path(entry["path"])
-        shim = Path(".bazel_env/bin/gitleaks")
-        policy = BASELINE / "files/.gitleaks.toml"
+    manifest = tomllib.loads((BASELINE / "manifest.toml").read_text())
+    (entry,) = (entry for entry in manifest["file"] if entry["source"] == SOURCE)
+    assert entry["mode"] == "bytes"
+    assert entry["visibility"] == "all"
+    assert "kinds" not in entry
+    script = Path(entry["path"])
+    shim = Path(".bazel_env/bin/gitleaks")
+    policy = BASELINE / "files/.gitleaks.toml"
     (tmp_path / script).parent.mkdir(parents=True)
     shutil.copyfile(source, tmp_path / script)
     shutil.copyfile(policy, tmp_path / policy.name)
@@ -77,9 +71,7 @@ def _prepare_checkout(tmp_path: Path, config: Path) -> Path:
     return shim
 
 
-@pytest.mark.parametrize(
-    "config", CONFIGS, ids=["root", *(p.parent.name for p in CONFIGS[1:])]
-)
+@pytest.mark.parametrize("config", CONFIGS, ids=[p.parent.name for p in CONFIGS])
 @pytest.mark.parametrize(
     "case",
     [
@@ -99,7 +91,7 @@ def test_hook(
     pinned_version: str,
 ) -> None:
     shim_mode, version_output, version_status, failure = case
-    shim = _prepare_checkout(tmp_path, config)
+    shim = _prepare_checkout(tmp_path)
     path = tmp_path / "bin"
     path_binary = path / "gitleaks"
     if version_output is not None:
@@ -161,10 +153,5 @@ def test_hook(
         config_arg = output[len(scan_args)]
         assert output == [*scan_args, config_arg, *scanned_input]
         expected_config = tomllib.loads((tmp_path / ".gitleaks.toml").read_text())
-        if config == ROOT_CONFIG and binary == path_binary:
-            assert Path(config_arg).parent == tmp_path
-            assert not Path(config_arg).exists()
-            expected_config["extend"] = {"path": "lint/gitleaks/base.toml"}
-        else:
-            assert config_arg == ".gitleaks.toml"
+        assert config_arg == ".gitleaks.toml"
         assert tomllib.loads(captured_config.read_text()) == expected_config

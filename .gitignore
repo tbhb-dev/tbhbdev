@@ -23,6 +23,12 @@ __pycache__/
 coverage.xml
 .hypothesis/
 
+# Mutation output and linter caches
+/lib/rules/**/mutants/
+/lib/rules/**/*.sqlite
+.ryl_cache/
+.complexipy_cache/
+
 # vale sync packages
 .vale/*
 !.vale/project/

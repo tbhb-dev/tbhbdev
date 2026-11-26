@@ -1,29 +1,23 @@
 # SPDX-License-Identifier: Apache-2.0
 # Copyright Tony Burns
 
+load("@bazel_skylib//rules:copy_file.bzl", "copy_file")
 load("@bazel_skylib//rules:diff_test.bzl", "diff_test")
 load("@bazelrc-preset.bzl", "generate_preset")
 load("@buildifier_prebuilt//:rules.bzl", "buildifier", "buildifier_test")
 load("//format:defs.bzl", "format", "format_test", "formatter")
 load(
     "//lint:defs.bzl",
-    "actionlint_test",
-    "claude_settings_test",
     "cspell_test",
     "decision_records_test",
     "editorconfig_checker_test",
-    "gitleaks_history",
     "gitleaks_test",
     "mutation_oses_test",
     "okf_docs_test",
-    "required_status_checks_test",
-    "reuse_test",
     "rumdl_test",
     "ryl_test",
     "tombi_test",
     "tree_check_test",
-    "workflow_lint_test",
-    "zizmor_test",
 )
 load("//lint:repo_check_targets.bzl", "repo_check_targets")
 load("//repo:defs.bzl", "repo_files", "repo_layout_test")
@@ -39,45 +33,51 @@ exports_files([
     "tombi.toml",
 ])
 
-# For //repo/tests:archive_actions_test.
-exports_files(
-    [".gitattributes"],
-    visibility = ["//repo/tests:__pkg__"],
-)
+# Stage monorepo lint configuration in the module-relative tree assembled by
+# the lint tests. The source of each file lives at the monorepo root.
+_VALE_STYLES = [
+    ".vale/config/vocabularies/project/accept.txt",
+    ".vale/config/vocabularies/project/reject.txt",
+    ".vale/project/Acronyms.yml",
+    ".vale/project/CoinedTerms.yml",
+    ".vale/project/Colons.yml",
+    ".vale/project/HeadingTitleCase.yml",
+    ".vale/project/WordList.yml",
+]
 
-# For //repo/tests:retry_budget_test.
-exports_files(
-    [".github/workflows/repo-checks.yml"],
-    visibility = ["//repo/tests:__pkg__"],
-)
-
-# For //repo/tests:cpu_quota_test.
-exports_files(
-    [".github/actions/setup-bazel-ci/cpu_quota.sh"],
-    visibility = ["//repo/tests:__pkg__"],
-)
-
-# For //repo/tests:affected_targets_test.
-exports_files(
-    [
-        ".github/actions/affected-targets/action.yml",
-        ".github/actions/affected-targets/select.sh",
-    ],
-    visibility = ["//repo/tests:__pkg__"],
-)
-
-# For //lint/tests's coined-terms fixture.
-exports_files(
-    [".vale/project/CoinedTerms.yml"],
-    visibility = ["//lint/tests:__pkg__"],
-)
-
-# For the Vale tools and the settings and baseline manifest tests.
-exports_files(
-    [
+[
+    copy_file(
+        name = "stage_" + path.replace("/", "_"),
+        src = "@@//:" + path,
+        out = path,
+        visibility = [
+            "//lint/tests:__pkg__",
+            "//tools:__pkg__",
+        ],
+    )
+    for path in _VALE_STYLES + [
+        ".cspell-words.txt",
+        ".cspell.jsonc",
+        ".github/schemas/pull-request-draft.schema.json",
+        ".gitignore",
         ".vale.ini",
-        "pyproject.toml",
-    ],
+    ]
+]
+
+filegroup(
+    name = "vale_styles",
+    srcs = _VALE_STYLES,
+    visibility = ["//tools:__pkg__"],
+)
+
+# For //repo/tests:markdown_links_test, which locates the source checkout.
+exports_files(
+    ["BUILD.bazel"],
+    visibility = ["//repo/tests:__pkg__"],
+)
+
+exports_files(
+    ["pyproject.toml"],
     visibility = [
         "//lint/private/claude_settings:__pkg__",
         "//repo/tests:__pkg__",
@@ -95,8 +95,6 @@ repo_files(
     exclude = [
         ".DS_Store",
         "**/.DS_Store",
-        # The gitignored PR draft, which the PR script lints itself.
-        ".github/PULL_REQUEST_DRAFT.md",
         "IMPORT-MAP.toml",
         ".bazelrc.user",
         ".coverage*",
@@ -190,13 +188,13 @@ buildifier_test(
     workspace = "//:MODULE.bazel",
 )
 
-# This repository's own gates, built on its own rules.
-# Scans the git history: `bazel run //:gitleaks_history`, in CI.
-gitleaks_history(
+# Repository history is checked at the monorepo root.
+alias(
     name = "gitleaks_history",
-    config = ".gitleaks.toml",
+    actual = "@@//:gitleaks_history",
 )
 
+# This module's own gates, built on its own rules.
 gitleaks_test(
     name = "gitleaks_test",
     srcs = [":repo_files"],
@@ -207,6 +205,7 @@ ryl_test(
     name = "ryl_test",
     srcs = [":repo_files"],
     config = ".ryl.toml",
+    data = [".gitignore"],
 )
 
 tombi_test(
@@ -229,7 +228,6 @@ rumdl_test(
     # stays equal to the parent copy that nested modules carry.
     exclude = [
         ".git",
-        ".vale",
         "tmp",
         "LICENSE",
         "lint/tests/content/testdata",
@@ -241,25 +239,6 @@ editorconfig_checker_test(
     name = "editorconfig_checker_test",
     srcs = [":repo_files"],
     config = ".editorconfig-checker.json",
-)
-
-actionlint_test(
-    name = "actionlint_test",
-    srcs = [":repo_files"],
-    config = ".github/actionlint.yaml",
-)
-
-zizmor_test(
-    name = "zizmor_test",
-    srcs = [":repo_files"],
-    config = ".github/zizmor.yml",
-)
-
-# Pinned `uses:` refs, fixed runner labels, and no self-hosted label in this
-# public repository.
-workflow_lint_test(
-    name = "workflow_lint_test",
-    srcs = [":repo_files"],
 )
 
 # The review policy files a repository has; //lint:review_policy_test checks
@@ -280,23 +259,6 @@ filegroup(
 )
 
 tree_check_test(
-    name = "job_timeouts_test",
-    srcs = [":repo_files"],
-    tool = "//lint:job_timeouts",
-)
-
-tree_check_test(
-    name = "runner_default_test",
-    srcs = [":repo_files"],
-    # tech-debt: Windows leg excluded under AGENTS.md until tree_check runs there (tbhb-dev/rules#344)
-    target_compatible_with = select({
-        "@platforms//os:windows": ["@platforms//:incompatible"],
-        "//conditions:default": [],
-    }),
-    tool = "//lint:runner_default",
-)
-
-tree_check_test(
     name = "gitleaks_guard_test",
     srcs = [":repo_files"],
     tool = "//lint:gitleaks_guard",
@@ -306,9 +268,6 @@ tree_check_test(
 # Shell scripts. A shebang-based selection rule is planned for lint/; until
 # it lands, the scripts are listed here.
 SHELL_SCRIPTS = [
-    ".github/actions/affected-targets/select.sh",
-    ".github/actions/setup-bazel-ci/cpu_quota.sh",
-    ".github/actions/setup-bazel-ci/fetch.sh",
     "format/private/format.sh.tpl",
     "lint/private/codeowners.sh",
     "lint/private/codeowners_errors.sh",
@@ -330,13 +289,11 @@ SHELL_SCRIPTS = [
     "quality/private/mutation_gate.sh.tpl",
     "repo/tests/affected_targets_test.sh",
     "repo/tests/cache_fetch_test.sh",
-    "repo/tests/ci_plan_test.sh",
     "repo/tests/codeowners_errors_test.sh",
     "repo/tests/mktemp_test.sh",
     "repo/tests/cpu_quota_test.sh",
     "repo/tests/fetch_workspace_test.sh",
     "repo/tests/mutation_nightly_test.sh",
-    "repo/tests/retry_budget_test.sh",
     "testing/private/expect_failure.sh.tpl",
     "testing/tests/subject.sh",
     "tools/lock_cooldown_test.sh",
@@ -414,7 +371,10 @@ format(
 
 format_test(
     name = "format_test",
-    srcs = [":repo_files"],
+    srcs = [
+        ":.gitignore",
+        ":repo_files",
+    ],
     exclude = FORMAT_EXCLUDE,
     formatters = FORMATTERS,
 )
@@ -427,12 +387,6 @@ repo_layout_test(
     name = "repo_layout_test",
     srcs = [":repo_files"],
     top_level_dirs = [
-        ".agents",
-        ".claude",
-        ".codex",
-        ".github",
-        ".vale",
-        "LICENSES",
         "ansible",
         "astro",
         "cloudflare",
@@ -476,11 +430,6 @@ decision_records_test(
     srcs = [":repo_files"],
 )
 
-required_status_checks_test(
-    name = "required_status_checks_test",
-    srcs = [":repo_files"],
-)
-
 test_suite(
     name = "required_status_checks_tests",
     tests = [
@@ -489,47 +438,19 @@ test_suite(
     ],
 )
 
-claude_settings_test(
-    name = "claude_settings",
-    srcs = [":repo_files"],
-)
-
-reuse_test(
-    name = "reuse_test",
-    srcs = [":repo_files"],
-)
-
 mutation_oses_test(
     name = "mutation_oses_test",
     srcs = [":repo_files"],
-)
-
-# Reusable workflows locate their shared fetch script in the pinned module.
-exports_files([".github/actions/setup-bazel-ci/fetch-targets.txt"])
-
-exports_files(
-    [
-        ".github/actions/setup-bazel-ci/action.yml",
-        ".github/actions/setup-bazel-ci/fetch.sh",
-        ".github/workflows/ci.yml",
-        ".github/workflows/mutation-nightly.yml",
-        ".github/workflows/pr-text.yml",
-        "BUILD.bazel",
-        "mise.toml",
-    ],
-    visibility = ["//repo/tests:__pkg__"],
 )
 
 # The root wildcard //:all also runs the repository consistency suite.
 test_suite(
     name = "baseline_tests",
     tests = [
-        ":claude_settings",
         "//repo/tests:manifest_test",
         "//repo/tests:markdown_links_clean_test",
         "//repo/tests:markdown_links_test",
         "//repo/tests:mise_keys_clean_test",
-        "//repo/tests:mise_keys_test",
         "//repo/tests:proof_markdown_links_bad_anchor_fails",
         "//repo/tests:proof_markdown_links_fragment_fails",
         "//repo/tests:proof_markdown_links_missing_dir_fails",

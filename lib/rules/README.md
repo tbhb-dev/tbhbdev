@@ -196,19 +196,17 @@ The rules' executables are Bash scripts. On Windows each runs through a `.bat` l
 
 ## Develop
 
-mise provides bazelisk and uv (`mise install`). Bazel pins everything else. `mise run env` (`bazel run //tools:bazel_env`) puts shims for those pins in `tools/.bazel_env/bin`, which the git hooks call and mise adds to PATH.
+Run the shared rules tests from the monorepo root with Bazelisk. Bazel pins the tools used by those tests. Install uv to refresh Python locks.
 
 | Command | Checks |
 | --- | --- |
-| `bazelisk test //...` | buildifier, this repository's lint, shell and Python gates (in `tools/`), run on its own rules |
+| `bazelisk test @tbhb_rules//...` | Buildifier, lint, shell and Python gates for the shared rules module |
 | `(cd e2e/smoke && bazelisk test //...)` | the rules as a consumer sees them, including the failure proofs |
-| `bazelisk run //:format` | rewrites files with the formatters, and `//:format.check` only checks |
 | `(cd go && bazelisk test //...)`, `(cd python && bazelisk test //...)`, `(cd ansible && bazelisk test //...)`, `(cd diagrams/d2 && bazelisk test //...)`, `(cd diagrams/structurizr && bazelisk test //...)` | the nested modules, each with its own consumers under `e2e/` |
 | `(cd apple/e2e/smoke && bazelisk test //...)` | Swift and Apple builds under `rules_swift` and `rules_apple`. It needs macOS and Xcode, so CI runs it on a GitHub-hosted macOS runner. Its README has the findings |
 | `(cd swift/e2e/smoke && bazelisk test //...)` | Tests `tbhb_rules_swift` libraries and apps, with lint, flag, sanitizer and failure-proof gates. Requires macOS with Xcode. See `swift/README.md` for the module and its gates |
-| `mise run test` | every command in this table except the format runs and the Apple and Swift smokes |
 
-`.github/workflows/ci.yml` lists the complete gate set.
+Run the commands with `cd` from `lib/rules`. The root CI workflow lists the shared module test command and the mutation exclusions. The root nightly workflow runs the mutation gates.
 
 ### Lock cooldown
 
@@ -216,7 +214,7 @@ Maintained pnpm and uv projects, including the E2E consumers, apply the same
 five-day cooldown as Renovate version bumps: `minimumReleaseAge: 7200` in
 `pnpm-workspace.yaml` and `exclude-newer = "5 days"` in `[tool.uv]`.
 Refresh locks with the pinned pnpm (`bazelisk run @pnpm//:pnpm -- --dir "$PWD" install --lockfile-only`)
-or uv (`uv lock`). Their pins live in `MODULE.bazel` and `mise.toml`.
+or uv (`uv lock`). Bazel pins pnpm in `MODULE.bazel`. The Python environment rules pin uv.
 The Ansible consumer keeps its older exact `ansible-core` pin to test a
 different toolchain, while the cooldown still covers its maintained lock.
 Python workspace members inherit the root lock's cooldown. Planted projects

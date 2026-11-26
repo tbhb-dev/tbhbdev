@@ -23,9 +23,17 @@ jobs:
     timeout-minutes: 60
     strategy:
       fail-fast: false
-      # Each nested module is outside the root's //... scope.
+      # Shared rules run from the monorepo. Each consumer has its own module.
       matrix:
-        workspace: [., go, go/e2e/smoke, python, python/e2e/single, python/e2e/workspace]
+        include:
+          - workspace: .
+            scope: set(@tbhb_rules//... @tbhb_rules_go//... @tbhb_rules_python//...)
+          - workspace: lib/rules/go/e2e/smoke
+            scope: //...
+          - workspace: lib/rules/python/e2e/single
+            scope: //...
+          - workspace: lib/rules/python/e2e/workspace
+            scope: //...
     defaults:
       run:
         shell: bash
@@ -41,6 +49,7 @@ jobs:
         with:
           disk-cache: ${{ github.workflow }}-${{ matrix.workspace }}
           cache-save: false
+          targets: ""
           working-directory: ${{ matrix.workspace }}
 
       # The macros do not add a mutation tag. Select their gate rules,
@@ -48,16 +57,19 @@ jobs:
       # No change set is supplied: regular gates run over their full inputs.
       # Fixture targets with explicit change sets retain their proof scope.
       - name: Run mutation gates
+        env:
+          SCOPE: ${{ matrix.scope }}
         run: |
-          bazelisk query '
+          query='
             kind("mutation_gate_test rule",
-              attr("generator_function", "mutmut_test|gomutants_test", //...))
-            except attr("tags", "manual", //...)
-          ' >"$RUNNER_TEMP/mutation-targets"
+              attr("generator_function", "mutmut_test|gomutants_test", '"${SCOPE:-//...}"'))
+            except attr("tags", "manual", '"${SCOPE:-//...}"')
+          '
+          bazelisk query "$query" >"$RUNNER_TEMP/mutation-targets"
           test -s "$RUNNER_TEMP/mutation-targets"
           bazelisk test --config=ci --target_pattern_file="$RUNNER_TEMP/mutation-targets"
 
       - name: Prove incremental mutation
-        if: matrix.workspace == 'python/e2e/workspace'
+        if: matrix.workspace == 'lib/rules/python/e2e/workspace'
         working-directory: .
-        run: python/e2e/incremental.sh
+        run: lib/rules/python/e2e/incremental.sh

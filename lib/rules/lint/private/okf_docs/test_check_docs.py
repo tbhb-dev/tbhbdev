@@ -179,7 +179,7 @@ def test_pull_request_draft_schema_id() -> None:
     path = SCHEMAS.parent.parent / ".github/schemas/pull-request-draft.schema.json"
     schema = json.loads(path.read_text(encoding="utf-8"))
     assert schema["$id"] == (
-        "https://raw.githubusercontent.com/tbhb-dev/tbhbdev/main/lib/rules/"
+        "https://raw.githubusercontent.com/tbhb-dev/tbhbdev/main/"
         ".github/schemas/pull-request-draft.schema.json"
     )
 

@@ -10,6 +10,7 @@ paths = [
   '''^\.mise/''',
   '''^\.vale/(Google|write-good|proselint|ai-tells[^/]*)/''',
   '''^tmp/''',
+  '''^(?:lib/rules/)?mutants/''',
   '''^\.worktrees/''',
   '''(^|/)__pycache__/''',
   '''^\.(ruff|pytest|hypothesis|rumdl)_cache/''',

@@ -5,13 +5,14 @@
 
 import json
 import sys
-from pathlib import Path
+from typing import TYPE_CHECKING
 
 import pytest
 
 from lint.private.required_status_checks import check_status_checks as checker
 
-ROOT = Path(__file__).resolve().parents[3]
+if TYPE_CHECKING:
+    from pathlib import Path
 
 
 @pytest.fixture
@@ -65,16 +66,10 @@ def contexts(path: Path, names: list[str]) -> None:
     )
 
 
-def test_real_files_pass(capsys: pytest.CaptureFixture[str]) -> None:
-    assert (
-        checker.main(
-            [
-                str(ROOT / ".github/rulesets/main.json"),
-                str(ROOT / ".github/workflows/ci.yml"),
-            ]
-        )
-        == 0
-    )
+def test_valid_files_pass(
+    files: tuple[Path, Path], capsys: pytest.CaptureFixture[str]
+) -> None:
+    assert checker.main([str(path) for path in files]) == 0
     assert capsys.readouterr().out == (
         "OK: required statuses and CI conclusion dependencies agree\n"
     )
