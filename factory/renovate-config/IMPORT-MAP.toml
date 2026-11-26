@@ -1,429 +1,1583 @@
 # SPDX-License-Identifier: Apache-2.0
 # Copyright Tony Burns
 
-# The path map of the import of tbhb-dev/renovate-config into factory/renovate-config,
-# written by hand the way `tbhbdev alpha monorepo import` will write it. Every file of
-# the source commit appears once in [[file]] as copy, drop, or rewrite. A copy is
-# byte-identical to its source, and `blob` is the source file's Git blob id.
-# [[added]] lists what the source never had.
+# The original import also added or edited these monorepo files:
+# factory/renovate-config/OWNERS: Required for every project folder (appendix
+# C).
+# factory/renovate-config/IMPORT-MAP.toml: This file.
+# BUILD.bazel: Edit to the shared root: exports the root Renovate workflow to
+# //factory/renovate-config, whose tests read it.
+# factory/BUILD.bazel: Edit to the shared root: //factory:repo_files takes the
+# project's own repo_files, because a glob can't enter the project's package.
+# .editorconfig-checker.json: Edit to the shared root: excludes the root
+# Renovate workflow, whose inline Python keeps the bracket-aligned continuation
+# lines of the source. The old repository excluded the same file.
+# .cspell-words.txt: Edit to the shared root: the words the copied files use
+# that the shared list lacked.
+#
+# The verifier requires each destination to be unique and under dest.
+# The root config and both workflow inputs below record the actual root
+# rewrites. The verifier also has no entry type for the two project
+# additions (OWNERS and this map).
 
-version = 1
-
-[source]
-repository = "tbhb-dev/renovate-config"
+repo = "tbhb-dev/renovate-config"
 commit = "6fc408cfec75871cd01b04bf1396e4f82c7fc792"
-files = 73
-
-[project]
-path = "factory/renovate-config"
-
-[[file]]
-path = ".bazelignore"
-action = "drop"
-reason = "Root Bazel configuration. The shared root replaces it."
-
-[[file]]
-path = ".bazelrc"
-action = "drop"
-reason = "Root Bazel configuration. The shared root replaces it."
-
-[[file]]
-path = ".bazelversion"
-action = "drop"
-reason = "Root Bazel configuration. The shared root replaces it."
-
-[[file]]
-path = ".claude/settings.json"
-action = "drop"
-reason = "Root agent harness configuration. It arrives at the monorepo root with the rules import (wave 2), where appendix C lists it as a class 2 path."
-
-[[file]]
-path = ".codex/rules/pull-request.rules"
-action = "drop"
-reason = "Root agent harness configuration. It arrives at the monorepo root with the rules import (wave 2), where appendix C lists it as a class 2 path."
-
-[[file]]
-path = ".cspell-words.txt"
-action = "drop"
-reason = "Root lint, format, or editor configuration. The shared root replaces it, or it arrives with the rules import (wave 2)."
-
-[[file]]
-path = ".cspell.jsonc"
-action = "drop"
-reason = "Root lint, format, or editor configuration. The shared root replaces it, or it arrives with the rules import (wave 2)."
-
-[[file]]
-path = ".editorconfig"
-action = "drop"
-reason = "Root lint, format, or editor configuration. The shared root replaces it, or it arrives with the rules import (wave 2)."
-
-[[file]]
-path = ".editorconfig-checker.json"
-action = "drop"
-reason = "Root lint, format, or editor configuration. The shared root replaces it, or it arrives with the rules import (wave 2)."
-
-[[file]]
-path = ".gitattributes"
-action = "drop"
-reason = "Root lint, format, or editor configuration. The shared root replaces it, or it arrives with the rules import (wave 2)."
-
-[[file]]
-path = ".github/CODEOWNERS"
-action = "drop"
-reason = "The monorepo has no CODEOWNERS file, because GitHub turns its entries into required reviewers. The project's OWNERS file replaces it (appendix C)."
-
-[[file]]
-path = ".github/PULL_REQUEST_TEMPLATE.md"
-action = "drop"
-reason = "Root repository files. The monorepo's own copy replaces it."
-
-[[file]]
-path = ".github/actionlint.yaml"
-action = "drop"
-reason = "Root lint, format, or editor configuration. The shared root replaces it, or it arrives with the rules import (wave 2)."
-
-[[file]]
-path = ".github/pull-request-sections.toml"
-action = "drop"
-reason = "Root repository files. The monorepo's own copy replaces it."
-
-[[file]]
-path = ".github/renovate.json5"
-action = "rewrite"
-to = "renovate.json5"
-reason = "Extended the presets with github>tbhb-dev/renovate-config. Now extends the presets in this repository, adds go.json5 for go.mod, and keeps the two workflow custom managers."
-
-[[file]]
-path = ".github/rulesets/main.json"
-action = "drop"
-reason = "Root repository files. The monorepo's own copy replaces it."
-
-[[file]]
-path = ".github/schemas/pull-request-draft.schema.json"
-action = "drop"
-reason = "Root repository files. The monorepo's own copy replaces it."
-
-[[file]]
-path = ".github/workflows/ci.yml"
-action = "drop"
-reason = "The repository's own gate. It pins workflows and actions of the old rules repository, and the monorepo's inline ci.yml replaces it (D27)."
-
-[[file]]
-path = ".github/workflows/renovate-config-validator.yaml"
-action = "drop"
-reason = "Consumer-pin tooling: it checks, summarizes, or moves pins of the old repository's presets and workflows in other repositories. Nothing in this repository pins them, so it has nothing to check."
-
-[[file]]
-path = ".github/workflows/renovate-self.yaml"
-action = "rewrite"
-to = ".github/workflows/renovate.yaml"
-reason = "Was the caller of the reusable workflow. Its triggers (push to main, two schedules, workflow_dispatch with dry_run and log_level) are now the triggers of the inline workflow."
-
-[[file]]
-path = ".github/workflows/renovate.yaml"
-action = "rewrite"
-to = ".github/workflows/renovate.yaml"
-reason = "Was a reusable workflow (workflow_call) that also ran Renovate for other repositories. Now one inline workflow for this repository: the target-validation job, the repository and runner inputs, and the require_approval input are gone. The audit, cache, Renovate, and log-check steps keep their text, and the secret names RENOVATE_CLIENT_ID and RENOVATE_PRIVATE_KEY are unchanged."
-
-[[file]]
-path = ".github/zizmor.yml"
-action = "drop"
-reason = "Root lint, format, or editor configuration. The shared root replaces it, or it arrives with the rules import (wave 2)."
-
-[[file]]
-path = ".gitignore"
-action = "drop"
-reason = "Root lint, format, or editor configuration. The shared root replaces it, or it arrives with the rules import (wave 2)."
-
-[[file]]
-path = ".gitleaks.toml"
-action = "drop"
-reason = "Root lint, format, or editor configuration. The shared root replaces it, or it arrives with the rules import (wave 2)."
-
-[[file]]
-path = ".mcp.json"
-action = "drop"
-reason = "Root agent harness configuration. It arrives at the monorepo root with the rules import (wave 2), where appendix C lists it as a class 2 path."
-
-[[file]]
-path = ".pre-commit-config.yaml"
-action = "drop"
-reason = "Root lint, format, or editor configuration. The shared root replaces it, or it arrives with the rules import (wave 2)."
-
-[[file]]
-path = ".rumdl.toml"
-action = "drop"
-reason = "Root lint, format, or editor configuration. The shared root replaces it, or it arrives with the rules import (wave 2)."
-
-[[file]]
-path = ".ryl.toml"
-action = "drop"
-reason = "Root lint, format, or editor configuration. The shared root replaces it, or it arrives with the rules import (wave 2)."
-
-[[file]]
-path = ".rylignore"
-action = "drop"
-reason = "Root lint, format, or editor configuration. The shared root replaces it, or it arrives with the rules import (wave 2)."
-
-[[file]]
-path = ".vale.ini"
-action = "drop"
-reason = "Root lint, format, or editor configuration. The shared root replaces it, or it arrives with the rules import (wave 2)."
-
-[[file]]
-path = ".vale/config/vocabularies/project/accept.txt"
-action = "drop"
-reason = "Root lint, format, or editor configuration. The shared root replaces it, or it arrives with the rules import (wave 2)."
-
-[[file]]
-path = ".vale/config/vocabularies/project/reject.txt"
-action = "drop"
-reason = "Root lint, format, or editor configuration. The shared root replaces it, or it arrives with the rules import (wave 2)."
-
-[[file]]
-path = ".vale/project/Acronyms.yml"
-action = "drop"
-reason = "Root lint, format, or editor configuration. The shared root replaces it, or it arrives with the rules import (wave 2)."
-
-[[file]]
-path = ".vale/project/Colons.yml"
-action = "drop"
-reason = "Root lint, format, or editor configuration. The shared root replaces it, or it arrives with the rules import (wave 2)."
-
-[[file]]
-path = ".vale/project/HeadingTitleCase.yml"
-action = "drop"
-reason = "Root lint, format, or editor configuration. The shared root replaces it, or it arrives with the rules import (wave 2)."
-
-[[file]]
-path = ".vale/project/WordList.yml"
-action = "drop"
-reason = "Root lint, format, or editor configuration. The shared root replaces it, or it arrives with the rules import (wave 2)."
-
-[[file]]
-path = "AGENTS.md"
-action = "drop"
-reason = "Root agent instructions. The shared root AGENTS.md replaces them. The one line they held, which points to the wiki's models page, returns with the wiki import (wave 4)."
-
-[[file]]
-path = "BUILD.bazel"
-action = "rewrite"
-to = "factory/renovate-config/BUILD.bazel"
-reason = "The root build file of the old repository held the test targets with its lint gates. Only the sh_test targets for the kept tests move here. The test targets read the root workflow through //:.github/workflows/renovate.yaml, exported from the root BUILD.bazel."
-
-[[file]]
-path = "LICENSE"
-action = "drop"
-reason = "Root repository files. The monorepo's own copy replaces it."
-
-[[file]]
-path = "LICENSES/Apache-2.0.txt"
-action = "drop"
-reason = "Root repository files. The monorepo's own copy replaces it."
-
-[[file]]
-path = "MODULE.bazel"
-action = "drop"
-reason = "Root Bazel configuration. The shared root replaces it."
-
-[[file]]
-path = "MODULE.bazel.lock"
-action = "drop"
-reason = "Root Bazel configuration. The shared root replaces it."
-
-[[file]]
-path = "README.md"
-action = "rewrite"
-to = "factory/renovate-config/README.md"
-reason = "Described consumers pinning the reusable workflows and presets of the old repository. Rewritten for the monorepo: contents, rules for the presets, the root workflow."
-
-[[file]]
-path = "REPO.bazel"
-action = "drop"
-reason = "Root Bazel configuration. The shared root replaces it."
-
-[[file]]
-path = "REUSE.toml"
-action = "drop"
-reason = "Root repository files. The monorepo's own copy replaces it."
-
-[[file]]
-path = "ansible.json5"
-action = "copy"
-to = "factory/renovate-config/ansible.json5"
-blob = "68053ad00ac80e057556261610780a58acbb72c8"
-
-[[file]]
-path = "bazel.json5"
-action = "copy"
-to = "factory/renovate-config/bazel.json5"
-blob = "55f98931f6d53de548850309e06c25baf4c6c90b"
-
-[[file]]
-path = "cloudflare-worker.json5"
-action = "copy"
-to = "factory/renovate-config/cloudflare-worker.json5"
-blob = "3375ebcb62561eaffe5f2e9d40b0c3d5ae650fd8"
-
-[[file]]
-path = "default.json5"
-action = "copy"
-to = "factory/renovate-config/default.json5"
-blob = "5ec1d5dfa05ed5e4ae3edb277f705f7bcfe61d04"
-
-[[file]]
-path = "go.json5"
-action = "copy"
-to = "factory/renovate-config/go.json5"
-blob = "df7459013aa0b0562eb0004f77d07b21c17afca3"
-
-[[file]]
-path = "mise.lock"
-action = "drop"
-reason = "Tool pins for the old repository's root. The shared root replaces them, or they arrive with the rules import (wave 2)."
-
-[[file]]
-path = "mise.toml"
-action = "drop"
-reason = "Tool pins for the old repository's root. The shared root replaces them, or they arrive with the rules import (wave 2)."
-
-[[file]]
-path = "preset.bazelrc"
-action = "drop"
-reason = "Generated by //:preset.update from the root .bazelrc preset. The monorepo root has no such target, so the preset.update post-upgrade command in bazel.json5 has nothing to run yet."
-
-[[file]]
-path = "python.json5"
-action = "copy"
-to = "factory/renovate-config/python.json5"
-blob = "17ed7c92598db6c799768f10ac5a043b9439d665"
-
-[[file]]
-path = "renovate_allowlist_test.py"
-action = "rewrite"
-to = "factory/renovate-config/renovate_allowlist_test.py"
-reason = "Reads the workflow from the monorepo root, two levels above the project, because the workflow is no longer reusable and no longer sits beside the tests. The only change besides the docstring is the path."
-
-[[file]]
-path = "renovate_allowlist_test.sh"
-action = "copy"
-to = "factory/renovate-config/renovate_allowlist_test.sh"
-blob = "f211188828805c80b23a2df266846eca46db98f8"
-
-[[file]]
-path = "renovate_awrel_pin_test.py"
-action = "copy"
-to = "factory/renovate-config/renovate_awrel_pin_test.py"
-blob = "483a23d2422b5d8cdf10f028266b2aa66dc10476"
-
-[[file]]
-path = "renovate_awrel_pin_test.sh"
-action = "copy"
-to = "factory/renovate-config/renovate_awrel_pin_test.sh"
-blob = "6808807e6eb7b48da11eedb4b607b0aacc04e2cf"
-
-[[file]]
-path = "renovate_bump_pins.py"
-action = "drop"
-reason = "Consumer-pin tooling: it checks, summarizes, or moves pins of the old repository's presets and workflows in other repositories. Nothing in this repository pins them, so it has nothing to check."
-
-[[file]]
-path = "renovate_bump_pins_test.py"
-action = "drop"
-reason = "Consumer-pin tooling: it checks, summarizes, or moves pins of the old repository's presets and workflows in other repositories. Nothing in this repository pins them, so it has nothing to check."
-
-[[file]]
-path = "renovate_bump_pins_test.sh"
-action = "drop"
-reason = "Consumer-pin tooling: it checks, summarizes, or moves pins of the old repository's presets and workflows in other repositories. Nothing in this repository pins them, so it has nothing to check."
-
-[[file]]
-path = "renovate_grouping_test.py"
-action = "copy"
-to = "factory/renovate-config/renovate_grouping_test.py"
-blob = "1823b3211684334233ad79599f5990a7e91eea78"
-
-[[file]]
-path = "renovate_grouping_test.sh"
-action = "copy"
-to = "factory/renovate-config/renovate_grouping_test.sh"
-blob = "0c541b9242a4421b71c223dd49c73306de533c98"
-
-[[file]]
-path = "renovate_log_check_test.py"
-action = "rewrite"
-to = "factory/renovate-config/renovate_log_check_test.py"
-reason = "Reads the workflow from the monorepo root, two levels above the project, because the workflow is no longer reusable and no longer sits beside the tests. The only change besides the docstring is the path."
-
-[[file]]
-path = "renovate_log_check_test.sh"
-action = "copy"
-to = "factory/renovate-config/renovate_log_check_test.sh"
-blob = "a035172bbffa5c1ffddd15b1c25bb9588d02f002"
-
-[[file]]
-path = "renovate_pin_consistency_test.py"
-action = "drop"
-reason = "Consumer-pin tooling: it checks, summarizes, or moves pins of the old repository's presets and workflows in other repositories. Nothing in this repository pins them, so it has nothing to check."
-
-[[file]]
-path = "renovate_pin_consistency_test.sh"
-action = "drop"
-reason = "Consumer-pin tooling: it checks, summarizes, or moves pins of the old repository's presets and workflows in other repositories. Nothing in this repository pins them, so it has nothing to check."
-
-[[file]]
-path = "renovate_pin_range_test.py"
-action = "drop"
-reason = "Consumer-pin tooling: it checks, summarizes, or moves pins of the old repository's presets and workflows in other repositories. Nothing in this repository pins them, so it has nothing to check."
-
-[[file]]
-path = "renovate_pin_range_test.sh"
-action = "drop"
-reason = "Consumer-pin tooling: it checks, summarizes, or moves pins of the old repository's presets and workflows in other repositories. Nothing in this repository pins them, so it has nothing to check."
-
-[[file]]
-path = "renovate_ruleset_audit_test.py"
-action = "rewrite"
-to = "factory/renovate-config/renovate_ruleset_audit_test.py"
-reason = "Reads the workflow from the monorepo root, two levels above the project, because the workflow is no longer reusable and no longer sits beside the tests. The only change besides the docstring is the path."
-
-[[file]]
-path = "renovate_ruleset_audit_test.sh"
-action = "copy"
-to = "factory/renovate-config/renovate_ruleset_audit_test.sh"
-blob = "cc9a6ebe511f30def90d01ea8bfd0da08de9cc67"
-
-[[file]]
-path = "rules-cloudflare.json5"
-action = "copy"
-to = "factory/renovate-config/rules-cloudflare.json5"
-blob = "33f15fb19af17bbe821b6c1f4c6673a69e8f2699"
-
-[[file]]
-path = "tombi.toml"
-action = "drop"
-reason = "Root lint, format, or editor configuration. The shared root replaces it, or it arrives with the rules import (wave 2)."
-
-[[added]]
-path = "factory/renovate-config/OWNERS"
-reason = "Required for every project folder (appendix C)."
-
-[[added]]
-path = "factory/renovate-config/IMPORT-MAP.toml"
-reason = "This file."
-
-[[added]]
-path = "BUILD.bazel"
-reason = "Edit to the shared root: exports the root Renovate workflow to //factory/renovate-config, whose tests read it."
-
-[[added]]
-path = "factory/BUILD.bazel"
-reason = "Edit to the shared root: //factory:repo_files takes the project's own repo_files, because a glob can't enter the project's package."
-
-[[added]]
-path = ".editorconfig-checker.json"
-reason = "Edit to the shared root: excludes the root Renovate workflow, whose inline Python keeps the bracket-aligned continuation lines of the source. The old repository excluded the same file."
-
-[[added]]
-path = ".cspell-words.txt"
-reason = "Edit to the shared root: the words the copied files use that the shared list lacked."
+dest = "factory/renovate-config"
+
+[copy]
+"ansible.json5" = "factory/renovate-config/ansible.json5"
+"bazel.json5" = "factory/renovate-config/bazel.json5"
+"cloudflare-worker.json5" = "factory/renovate-config/cloudflare-worker.json5"
+"default.json5" = "factory/renovate-config/default.json5"
+"go.json5" = "factory/renovate-config/go.json5"
+"python.json5" = "factory/renovate-config/python.json5"
+"renovate_allowlist_test.sh" = "factory/renovate-config/renovate_allowlist_test.sh"
+"renovate_awrel_pin_test.py" = "factory/renovate-config/renovate_awrel_pin_test.py"
+"renovate_awrel_pin_test.sh" = "factory/renovate-config/renovate_awrel_pin_test.sh"
+"renovate_grouping_test.py" = "factory/renovate-config/renovate_grouping_test.py"
+"renovate_grouping_test.sh" = "factory/renovate-config/renovate_grouping_test.sh"
+"renovate_log_check_test.sh" = "factory/renovate-config/renovate_log_check_test.sh"
+"renovate_ruleset_audit_test.sh" = "factory/renovate-config/renovate_ruleset_audit_test.sh"
+"rules-cloudflare.json5" = "factory/renovate-config/rules-cloudflare.json5"
+
+# Extended the presets with github>tbhb-dev/renovate-config. Now extends the
+# presets in this repository, adds go.json5 for go.mod, and keeps the two
+# workflow custom managers.
+[rewrite.".github/renovate.json5"]
+dest = "renovate.json5"
+replace = [
+  [
+    '''
+{
+  $schema: "https://docs.renovatebot.com/renovate-schema.json",
+
+  // Renovate for this repo itself. The presets are referenced unpinned: they
+  // sit beside this file and Renovate resolves `extends` over the platform
+  // API, not off the checkout. The validator checks the unpinned self
+  // references against the PR tree.
+  extends: [
+    "github>tbhb-dev/renovate-config//default.json5",
+    "github>tbhb-dev/renovate-config//bazel.json5",
+    "github>tbhb-dev/renovate-config//python.json5",
+  ],
+
+  // Image and tool pins that only a repo hosting the shared workflows has.
+  customManagers: [
+''',
+    '''
+// SPDX-License-Identifier: Apache-2.0
+// Copyright Tony Burns
+
+{
+  $schema: "https://docs.renovatebot.com/renovate-schema.json",
+
+  // Renovate for this repository. The presets sit in factory/renovate-config
+  // in this same repository. They are referenced unpinned, and Renovate
+  // resolves `extends` over the platform API, not off the checkout, so a
+  // preset change takes effect once it is on the default branch. Renovate
+  // refuses a relative reference (`./...`) in a repository config, so each
+  // entry names the repository.
+  //
+  // One entry for each root language: default.json5 for every repository,
+  // bazel.json5 for MODULE.bazel, go.json5 for go.mod, python.json5 for
+  // pyproject.toml and uv.lock. ansible.json5, cloudflare-worker.json5, and
+  // rules-cloudflare.json5 join this list in the change that brings the
+  // manifest each one acts on.
+  extends: [
+    "github>tbhb-dev/tbhbdev//factory/renovate-config/default.json5",
+    "github>tbhb-dev/tbhbdev//factory/renovate-config/bazel.json5",
+    "github>tbhb-dev/tbhbdev//factory/renovate-config/go.json5",
+    "github>tbhb-dev/tbhbdev//factory/renovate-config/python.json5",
+  ],
+
+  // Image and tool pins that only a repo hosting the Renovate workflow has.
+  customManagers: [
+''',
+  ],
+]
+
+# Was the caller of the reusable workflow. Its triggers (push to main, two
+# schedules, workflow_dispatch with dry_run and log_level) are now the triggers
+# of the inline workflow.
+[rewrite.".github/workflows/renovate-self.yaml"]
+dest = ".github/workflows/renovate.yaml"
+replace = [
+  [
+    '''
+---
+# Renovate for this repo itself, through its own reusable workflow. Uses the
+# same org secrets and App installation as every consumer.
+name: Renovate (self)
+
+''',
+    '''
+---
+# Self-hosted Renovate for this repository, written inline. It runs Renovate
+# once for the whole repository, and it calls no workflow of another
+# repository. The root renovate.json5 loads the presets from
+# factory/renovate-config in this repository.
+#
+# Credentials: RENOVATE_CLIENT_ID and RENOVATE_PRIVATE_KEY are org secrets of
+# tbhb-dev, the same ones the old per-repository runs used. They reach this
+# job directly, because no reusable workflow sits between them and it.
+#
+# Global-only settings sit in `env:` below. Renovate ignores global-only
+# options in a repository config, so a pull request cannot widen the
+# execution allowlists from the repository's own renovate.json5.
+name: Renovate
+
+''',
+  ],
+  [
+    '''
+  # GitHub drops scheduled runs for hours, and this trigger doesn't depend on
+  # the schedule. The reusable run's concurrency group queues one pending run.
+  push:
+''',
+    '''
+  # GitHub drops scheduled runs for hours, and this trigger doesn't depend on
+  # the schedule. The concurrency group below queues one pending run.
+  push:
+''',
+  ],
+  [
+    '''
+        default: DEBUG
+
+''',
+    '''
+        default: DEBUG
+      repo_cache:
+        type: choice
+        description: "Repository cache: enabled, disabled or reset (ignore the stored cache, then save a fresh one)"
+        options: [enabled, disabled, reset]
+        default: enabled
+
+''',
+  ],
+  [
+    '''
+  renovate:
+    uses: ./.github/workflows/renovate.yaml
+    with:
+      # Push and schedule runs are real runs at DEBUG; manual runs follow the inputs.
+      dry_run: ${{ github.event_name == 'workflow_dispatch' && inputs.dry_run }}
+      log_level: ${{ github.event_name == 'workflow_dispatch' && inputs.log_level || 'DEBUG' }}
+    secrets:
+      RENOVATE_CLIENT_ID: ${{ secrets.RENOVATE_CLIENT_ID }}
+      RENOVATE_PRIVATE_KEY: ${{ secrets.RENOVATE_PRIVATE_KEY }}
+''',
+    '''
+  renovate:
+    name: Run self-hosted Renovate
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    # One run at a time. Never cancel: killing Renovate mid-run can leave a
+    # half-pushed branch.
+    concurrency:
+      group: renovate-${{ github.repository }}
+      cancel-in-progress: false
+    permissions:
+      contents: read
+    env:
+      # Renovate's base directory, named for the repository.
+      base_dir: /tmp/renovate/${{ github.event.repository.name }}
+      cache_dir: /tmp/renovate/${{ github.event.repository.name }}/cache/renovate/repository
+      cache_key: renovate-cache
+      # Outside the cached subtree, inside the base directory, which the cache
+      # step opens to the container uid; unique for every run and retry.
+      LOG_FILE: /tmp/renovate/${{ github.event.repository.name }}/renovate-${{ github.run_id }}-${{ github.run_attempt }}.ndjson
+    steps:
+      - name: Harden the runner
+        uses: step-security/harden-runner@1d88384fd173af6ecb012dfd0264a306b711241a  # v2.22.4
+        with:
+          egress-policy: audit
+
+      # GITHUB_TOKEN cannot satisfy Renovate's scope and cannot push workflow
+      # files, so mint a short-lived installation token from the
+      # tbhb-dev-renovate App. The token is scoped to this repository (the
+      # default) and downscoped to the permissions Renovate needs: no
+      # administration, no secrets, no environments.
+      - name: Get token
+        id: token
+        uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
+        with:
+          client-id: ${{ secrets.RENOVATE_CLIENT_ID }}
+          private-key: ${{ secrets.RENOVATE_PRIVATE_KEY }}
+          repositories: ${{ github.event.repository.name }}
+          permission-contents: write
+          permission-pull-requests: write
+          permission-issues: write
+          permission-workflows: write
+          permission-statuses: write
+          permission-checks: write
+          permission-vulnerability-alerts: read
+
+      # Shared presets enable automerge. GitHub must merge only behind an
+      # approval and status-check ruleset, so a repo without one must not run.
+      - name: Audit automerge rulesets
+        env:
+          GH_TOKEN: ${{ steps.token.outputs.token }}
+          REPO: ${{ github.repository }}
+          REQUIRE_APPROVAL: "true"
+        run: |
+          python3 - <<'PYCODE'
+          import json
+          import os
+          from pathlib import Path
+          import re
+          import subprocess
+          import sys
+          import tempfile
+          from urllib.parse import urlparse
+
+          def fail(message):
+              print(f"::error::{message}")
+              sys.exit(1)
+
+          def api(endpoint):
+              # curl takes the token on stdin, accepts only https, and follows no redirects.
+              root = os.environ.get("GITHUB_API_URL", "https://api.github.com")
+              parts = urlparse(root)
+              # The allowlist keeps quotes, whitespace, control characters, and "@" out of the curl config line.
+              if (not re.fullmatch(r"[A-Za-z0-9:/._~-]+", root) or parts.scheme != "https" or not parts.hostname
+                      or parts.username is not None or parts.password is not None):
+                  fail("Automerge audit refuses a GitHub API URL that is not plain https")
+              token = os.environ["GH_TOKEN"]
+              if not re.fullmatch(r"[A-Za-z0-9_.-]+", token):
+                  fail("Automerge audit: the job token has unexpected characters")
+              limit = 8 * 1024 * 1024
+              config = "\n".join([
+                  f'url = "{root}/{endpoint}"',
+                  f'header = "Authorization: Bearer {token}"',
+                  'header = "Accept: application/vnd.github+json"',
+                  'header = "X-GitHub-Api-Version: 2022-11-28"',
+              ]) + "\n"
+              with tempfile.TemporaryDirectory() as directory:
+                  output = Path(directory) / "reply"
+                  try:
+                      run = subprocess.run(
+                          ["curl", "--proto", "=https", "--max-time", "60", "--max-filesize", str(limit),
+                           "--fail", "--silent", "--show-error", "--config", "-", "--output", str(output),
+                           "--write-out", "%{http_code}"],
+                          input=config, capture_output=True, text=True, timeout=70, check=False,
+                      )
+                  except subprocess.TimeoutExpired:
+                      fail("Could not verify automerge ruleset protection (the GitHub API answered too slowly)")
+                  except OSError:
+                      fail("Automerge audit could not run curl")
+                  # Only the status or exit code: remote text must not reach workflow commands.
+                  code = run.stdout.strip()
+                  if run.returncode != 0 or code != "200" or (output.exists() and output.stat().st_size > limit):
+                      if run.returncode in (0, 22) and re.fullmatch(r"[0-9]{3}", code) and code != "000":
+                          detail = f"HTTP {code}"
+                      else:
+                          detail = f"curl exit {run.returncode}" if run.returncode != 0 else "unexpected status"
+                      fail(f"Could not verify automerge ruleset protection ({detail})")
+                  try:
+                      return json.loads(output.read_bytes())
+                  except (ValueError, RecursionError):
+                      fail("Could not verify automerge ruleset protection (unreadable data)")
+
+          try:
+              repo = os.environ["REPO"]
+              # Only active rules are returned, including inherited rulesets.
+              pages = []
+              for number in range(1, 11):
+                  page = api(f"repos/{repo}/rules/branches/main?per_page=100&page={number}")
+                  if not isinstance(page, list):
+                      fail("Could not verify default branch rules")
+                  pages.append(page)
+                  if len(page) < 100:
+                      break
+              else:
+                  fail("Could not verify default branch rules")
+              rules = [rule for page in pages for rule in page]
+              approvals = [
+                  (rule.get("parameters") or {}).get("required_approving_review_count", 0)
+                  for rule in rules if rule.get("type") == "pull_request"
+              ]
+              # Only "false" turns the approval check off. Anything else keeps it.
+              require_approval = os.environ.get("REQUIRE_APPROVAL") != "false"
+              if require_approval and not any(type(count) is int and count >= 1 for count in approvals):
+                  fail("Default branch has no approval rule requiring at least one review")
+              if not any(rule.get("type") == "required_status_checks" for rule in rules):
+                  fail("Default branch has no status-check rule")
+              ids = set()
+              for rule in rules:
+                  ruleset_id = rule.get("ruleset_id")
+                  if type(ruleset_id) is not int or ruleset_id < 1:
+                      fail("Could not verify ruleset bypass protection")
+                  ids.add(ruleset_id)
+              for ruleset_id in sorted(ids):
+                  ruleset = api(f"repos/{repo}/rulesets/{ruleset_id}")
+                  if ruleset.get("current_user_can_bypass") != "never":
+                      fail(f"the Renovate App can bypass ruleset {ruleset_id}")
+              required = "approval and status checks required" if require_approval else "status checks required, approval check off"
+              print(f"Automerge ruleset audit: {required}, {len(ids)} rulesets cannot be bypassed")
+          except (ValueError, KeyError, TypeError, AttributeError, RecursionError):
+              fail("Could not verify automerge ruleset protection")
+          PYCODE
+
+      - name: Restore repository cache
+        if: inputs.repo_cache != 'disabled' && inputs.repo_cache != 'reset'
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ env.cache_dir }}
+          key: ${{ env.cache_key }}-${{ github.event.repository.name }}+${{ github.run_id }}-${{ github.run_attempt }}
+          restore-keys: ${{ env.cache_key }}-${{ github.event.repository.name }}+
+
+      # The Renovate container runs as uid 12021 and writes the cache. The
+      # runner user owns the directory and any restored cache, so it opens
+      # them to every uid instead of a chown: the tbhb-dev private runners
+      # block sudo. A pool runner's /tmp can also hold files left by an earlier
+      # run under uid 12021. The runner user can't chmod those, and that uid
+      # can already write them, so only the runner's own files are opened.
+      - name: Prepare cache directory
+        run: |
+          mkdir -p "${cache_dir}"
+          rm -f "${LOG_FILE}"
+          runner_uid=$(id -u)
+          find "${base_dir}" -user "${runner_uid}" -exec chmod a+rwX {} +
+
+      # GITHUB_COM_TOKEN is deliberately not set. The platform token already
+      # authenticates github.com reads (presets, changelogs) and the presets
+      # are public. Add it only if a run reports github.com rate limiting.
+      - name: Self-hosted Renovate
+        id: renovate
+        uses: renovatebot/github-action@acdd6bda8b035c99ce59d5675816af2aa65a1774 # v46.3.14
+        env:
+          LOG_LEVEL: ${{ inputs.log_level || 'DEBUG' }}
+          # Info includes the completion marker even on a clean run.
+          LOG_FILE_LEVEL: info
+          RENOVATE_REPOSITORIES: ${{ github.repository }}
+          RENOVATE_BASE_DIR: ${{ env.base_dir }}
+          RENOVATE_DRY_RUN: ${{ inputs.dry_run && 'full' || '' }}
+          RENOVATE_ONBOARDING: "false"
+          RENOVATE_REQUIRE_CONFIG: required
+          RENOVATE_USERNAME: tbhb-dev-renovate[bot]
+          RENOVATE_GIT_AUTHOR: "tbhb-dev-renovate[bot] <289255489+tbhb-dev-renovate[bot]@users.noreply.github.com>"
+          RENOVATE_PR_CONCURRENT_LIMIT: "0"
+          RENOVATE_PR_HOURLY_LIMIT: "0"
+          RENOVATE_REPOSITORY_CACHE: ${{ inputs.repo_cache == 'disabled' && 'disabled' || 'enabled' }}
+          # The only unsafe execution: `bazel mod deps` refreshes
+          # MODULE.bazel.lock after a bazel_dep, git_override or
+          # .bazelversion bump. `mise` is NOT listed: allowlisting it turns
+          # mise's safe mode off.
+          RENOVATE_ALLOWED_UNSAFE_EXECUTIONS: '["bazelModDeps"]'
+          # The only post-upgrade commands, anchored so nothing else matches.
+          # bazel.json5 attaches preset.update to the Bazel version group
+          # alone; ansible.json5 attaches the collection lock to
+          # ansible-galaxy bumps alone. cloudflare-worker.json5 attaches
+          # worker_types_test.update to tbhb_rules bumps in Worker repos.
+          # rules-cloudflare.json5 attaches that command and its nested twin
+          # to bumps of wrangler and its group in the rules project. That scope
+          # is a convention: the allowlist is global, so any repo that runs
+          # this workflow can use these commands from its own config.
+          RENOVATE_ALLOWED_COMMANDS: '["^bazelisk run //:preset\\.update$",
+            "^bazelisk run @tbhb_rules_ansible//:lock$",
+            "^bazelisk run //:worker_types_test\\.update$",
+            "^bazelisk run //nested:worker_types_test\\.update$"]'
+          # The custom.dugite datasource calls api.github.com with hostType
+          # "custom", which the platform token does not cover. Registered
+          # host-rule tokens are sanitized from Renovate's logs. Keep this
+          # value out of `run:` scripts.
+          RENOVATE_HOST_RULES: '[{"matchHost":"api.github.com","hostType":"custom","token":"${{ steps.token.outputs.token }}"}]'
+        with:
+          # Tag plus digest: the action takes a value containing `:` as the
+          # whole image reference, so the container is pinned by content.
+          # The shared "renovate" group moves this pin and any other
+          # Renovate image reference.
+          # renovate: datasource=docker depName=ghcr.io/renovatebot/renovate
+          renovate-image: ghcr.io/renovatebot/renovate:44.206.2@sha256:d515a99f5d14d1c62b792ee61339d165dd9d20ee82ca9d5379daf639050bab51
+          token: ${{ steps.token.outputs.token }}
+          additional-env-list: |
+            LOG_FILE
+            LOG_FILE_LEVEL
+
+      - name: Check Renovate log
+        id: check-renovate-log
+        if: always() && steps.renovate.outcome != 'skipped'
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ ! -f "${LOG_FILE}" ]]; then
+            echo '::error::Renovate log file is missing'
+            exit 1
+          fi
+          if [[ ! -s "${LOG_FILE}" ]]; then
+            echo '::error::Renovate log file is empty'
+            exit 1
+          fi
+
+          # Suppress parser diagnostics: they can quote private log contents.
+          if ! report=$(jq -s '
+            [
+              # Branch updates failed when the runner ran out of disk.
+              "Error updating branch",
+              # Lockfile updates failed in bazel mod deps or install-tool bazelisk.
+              "artifactErrors",
+              # The same failed Bazel lockfile updates.
+              "Failed to update MODULE.bazel.lock"
+            ] as $failures
+            | if length == 0 or any(.[];
+                type != "object" or
+                (.level | type) != "number" or (.msg | type) != "string")
+              then error("Invalid log records") else . end
+            | {
+                entries: length,
+                completed: any(.[]; .msg == "Repository finished"),
+                failures: [
+                  .[] | . as $entry
+                  | ($failures | map(select(. == $entry.msg)) | .[0]) as $failure
+                  | select($failure != null or .level >= 50)
+                  | {
+                      label: (if .level >= 50 then "error-level entry" else $failure end),
+                      branch: (if (.branch | type) == "string" then
+                        if (.branch | test("^[A-Za-z0-9._/-]{1,200}$"))
+                          and (.branch | contains("\n") | not)
+                        then .branch else "(no branch)" end
+                        else "(no branch)" end)
+                    }
+                ]
+              }
+          ' "${LOG_FILE}" 2>/dev/null); then
+            echo '::error::Renovate log file is unparseable'
+            exit 1
+          fi
+
+          # Only fixed labels and validated branches can reach annotations.
+          jq -r '.failures[] | "::error::\(.label) (branch: \(.branch))"' <<< "${report}"
+          completed=$(jq -r '.completed' <<< "${report}")
+          failure_count=$(jq '.failures | length' <<< "${report}")
+          if [[ ${completed} != true ]]; then
+            echo '::error::Renovate log is missing the end-of-run marker'
+            exit 1
+          fi
+          if [[ ${failure_count} -gt 0 ]]; then
+            exit 1
+          fi
+          jq -r '"Renovate log check: \(.entries) entries, \(.failures | length) failures"' <<< "${report}"
+
+      - name: Save repository cache
+        if: always() && inputs.repo_cache != 'disabled'
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ env.cache_dir }}
+          key: ${{ env.cache_key }}-${{ github.event.repository.name }}+${{ github.run_id }}-${{ github.run_attempt }}
+
+      # The runners are shared self-hosted pools, so the log must not outlive
+      # the job.
+      - name: Remove Renovate log
+        if: always()
+        run: rm -f "${LOG_FILE}"
+''',
+  ],
+]
+
+# Was a reusable workflow (workflow_call) that also ran Renovate for other
+# repositories. Now one inline workflow for this repository: the target-
+# validation job, the repository and runner inputs, and the require_approval
+# input are gone. The audit, cache, Renovate, and log-check steps keep their
+# text, and the secret names RENOVATE_CLIENT_ID and RENOVATE_PRIVATE_KEY are
+# unchanged.
+[rewrite.".github/workflows/renovate.yaml"]
+dest = ".github/workflows/renovate.yaml"
+replace = [
+  [
+    '''
+---
+# Reusable self-hosted Renovate run for the tbhb-dev repositories.
+#
+# A caller repo runs this workflow with `uses:` and gets a Renovate run that
+# targets only that repo (RENOVATE_REPOSITORIES is the caller's
+# `github.repository`, or the `repository` input when the central run in
+# renovate-config names one). Renovate reads the target's
+# `.github/renovate.json5` from the repo as its repository config, so the
+# repo's own rules come after the presets it extends. A repo without that file
+# is skipped.
+#
+# Credentials: RENOVATE_CLIENT_ID and RENOVATE_PRIVATE_KEY are org secrets of
+# tbhb-dev, visible to all repos. A reusable workflow does not see the caller's
+# secrets implicitly, so each caller passes both explicitly under `secrets:`.
+#
+# Global-only settings sit in `env:` below. Renovate ignores global-only
+# options in a repository config, so a consuming repo cannot widen the
+# execution allowlists from its own PRs.
+name: Renovate
+''',
+    '''
+---
+# Self-hosted Renovate for this repository, written inline. It runs Renovate
+# once for the whole repository, and it calls no workflow of another
+# repository. The root renovate.json5 loads the presets from
+# factory/renovate-config in this repository.
+#
+# Credentials: RENOVATE_CLIENT_ID and RENOVATE_PRIVATE_KEY are org secrets of
+# tbhb-dev, the same ones the old per-repository runs used. They reach this
+# job directly, because no reusable workflow sits between them and it.
+#
+# Global-only settings sit in `env:` below. Renovate ignores global-only
+# options in a repository config, so a pull request cannot widen the
+# execution allowlists from the repository's own renovate.json5.
+name: Renovate
+''',
+  ],
+  [
+    '''
+on:
+  workflow_call:
+    inputs:
+      log_level:
+        type: string
+        description: "Renovate LOG_LEVEL (DEBUG, INFO, WARN)"
+        default: DEBUG
+      repo_cache:
+        type: string
+        description: "Repository cache: enabled, disabled or reset (ignore the stored cache, then save a fresh one)"
+        default: enabled
+      dry_run:
+        type: boolean
+        description: "Run with dryRun=full: log the PRs Renovate would open, change nothing"
+        default: false
+      require_approval:
+        type: boolean
+        description: "Require an approving-review rule on main before Renovate runs. Only the drafts repositories pass false"
+        default: true
+      runs_on:
+        type: string
+        description: "Runner label. Private callers pass their tbhb-dev-* label; public callers keep the default"
+        default: ubuntu-24.04
+      repository:
+        type: string
+        description: "owner/name of the repository to run for. Empty means the caller's own repository. Only the central run in renovate-config sets it"
+        default: ""
+    secrets:
+      RENOVATE_CLIENT_ID:
+        required: true
+      RENOVATE_PRIVATE_KEY:
+        required: true
+
+''',
+    '''
+on:
+  # A merge to main is when open PRs fall behind, so it runs Renovate at once.
+  # GitHub drops scheduled runs for hours, and this trigger doesn't depend on
+  # the schedule. The concurrency group below queues one pending run.
+  push:
+    branches: [main]
+  schedule:
+    - cron: "7 * * * 1-5"
+    - cron: "7 */2 * * 6,0"
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        type: boolean
+        description: "Log what Renovate would do, change nothing"
+        default: true
+      log_level:
+        type: choice
+        description: "Renovate log level"
+        options: [DEBUG, INFO]
+        default: DEBUG
+      repo_cache:
+        type: choice
+        description: "Repository cache: enabled, disabled or reset (ignore the stored cache, then save a fresh one)"
+        options: [enabled, disabled, reset]
+        default: enabled
+
+''',
+  ],
+  [
+    '''
+jobs:
+  # The target is the caller's own repository unless the central run names
+  # one. The name reaches the concurrency group, the token scope, the API paths
+  # and Renovate's repository list, so it is validated here, before any of
+  # them uses it.
+  target:
+    name: Validate target repository
+    runs-on: ${{ inputs.runs_on }}
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    outputs:
+      repository: ${{ steps.target.outputs.repository }}
+      name: ${{ steps.target.outputs.name }}
+    steps:
+      - name: Resolve target repository
+        id: target
+        env:
+          INPUT_REPOSITORY: ${{ inputs.repository }}
+          CALLER_REPOSITORY: ${{ github.repository }}
+          OWNER: ${{ github.repository_owner }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          repository="${INPUT_REPOSITORY:-${CALLER_REPOSITORY}}"
+          # GitHub resolves repository names without regard to case, so a
+          # value that names the caller in another case is the caller.
+          if [[ "${repository,,}" == "${CALLER_REPOSITORY,,}" ]]; then
+            repository="${CALLER_REPOSITORY}"
+          fi
+          name="${repository#*/}"
+          if [[ ! "${repository}" =~ ^${OWNER}/[A-Za-z0-9_.-]+$ || "${name}" == "." || "${name}" == ".." ]]; then
+            echo "::error::Repository must be ${OWNER}/<name>"
+            exit 1
+          fi
+          # A run for another repository has two limits, both read with the
+          # caller's own token, which can read public repositories only.
+          if [[ "${repository}" != "${CALLER_REPOSITORY}" ]]; then
+            caller_private=$(gh api "repos/${CALLER_REPOSITORY}" --jq .private)
+            # A public caller's logs and caches are public, so it must not
+            # process a private repository. A 404 here means private. Any
+            # other failure stops the job, because it says nothing about
+            # visibility.
+            if target_private=$(gh api "repos/${repository}" --jq .private 2>&1); then
+              :
+            elif [[ "${target_private}" == *"(HTTP 404)" ]]; then
+              target_private=true
+            else
+              echo "::error::Could not read ${repository}: ${target_private}"
+              exit 1
+            fi
+            if [[ "${caller_private}" == "false" && "${target_private}" != "false" ]]; then
+              echo "::error::A public caller can only target a public repository"
+              exit 1
+            fi
+            # A target with its own caller already has a lock, and a run from
+            # here would not share it. Readable only for a public target.
+            if [[ "${target_private}" == "false" ]]; then
+              if err=$(gh api "repos/${repository}/contents/.github/workflows/renovate.yaml" --silent 2>&1); then
+                echo "::error::${repository} has its own Renovate caller"
+                exit 1
+              elif [[ "${err}" != *"(HTTP 404)" ]]; then
+                echo "::error::Could not read ${repository}: ${err}"
+                exit 1
+              fi
+            fi
+          fi
+          {
+            echo "repository=${repository}"
+            echo "name=${name}"
+          } >> "${GITHUB_OUTPUT}"
+
+  renovate:
+    name: Run self-hosted Renovate
+    needs: target
+    runs-on: ${{ inputs.runs_on }}
+    timeout-minutes: 60
+    # One run per target at a time. Never cancel: killing Renovate mid-run can
+    # leave a half-pushed branch. GitHub scopes a group to the repository
+    # that runs the workflow, so a caller run and a central run for one target
+    # don't share a lock. The target job refuses a public target that has its
+    # own caller, which narrows the overlap to a caller added mid-run.
+    concurrency:
+      group: renovate-${{ needs.target.outputs.repository }}
+      cancel-in-progress: false
+''',
+    '''
+jobs:
+  renovate:
+    name: Run self-hosted Renovate
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    # One run at a time. Never cancel: killing Renovate mid-run can leave a
+    # half-pushed branch.
+    concurrency:
+      group: renovate-${{ github.repository }}
+      cancel-in-progress: false
+''',
+  ],
+  [
+    '''
+    env:
+      # Each target gets its own Renovate base directory, so matrix jobs on a
+      # shared runner filesystem never scan or clean each other's files.
+      base_dir: /tmp/renovate/${{ needs.target.outputs.name }}
+      cache_dir: /tmp/renovate/${{ needs.target.outputs.name }}/cache/renovate/repository
+      cache_key: renovate-cache
+      # Outside the cached subtree, inside the target's base directory, which
+      # the cache step opens to the container uid; unique for every target,
+      # run, and retry.
+      LOG_FILE: /tmp/renovate/${{ needs.target.outputs.name }}/renovate-${{ github.run_id }}-${{ github.run_attempt }}.ndjson
+    steps:
+      # GITHUB_TOKEN cannot satisfy Renovate's scope and cannot push workflow
+''',
+    '''
+    env:
+      # Renovate's base directory, named for the repository.
+      base_dir: /tmp/renovate/${{ github.event.repository.name }}
+      cache_dir: /tmp/renovate/${{ github.event.repository.name }}/cache/renovate/repository
+      cache_key: renovate-cache
+      # Outside the cached subtree, inside the base directory, which the cache
+      # step opens to the container uid; unique for every run and retry.
+      LOG_FILE: /tmp/renovate/${{ github.event.repository.name }}/renovate-${{ github.run_id }}-${{ github.run_attempt }}.ndjson
+    steps:
+      - name: Harden the runner
+        uses: step-security/harden-runner@1d88384fd173af6ecb012dfd0264a306b711241a  # v2.22.4
+        with:
+          egress-policy: audit
+
+      # GITHUB_TOKEN cannot satisfy Renovate's scope and cannot push workflow
+''',
+  ],
+  [
+    '''
+          private-key: ${{ secrets.RENOVATE_PRIVATE_KEY }}
+          repositories: ${{ needs.target.outputs.name }}
+          permission-contents: write
+''',
+    '''
+          private-key: ${{ secrets.RENOVATE_PRIVATE_KEY }}
+          repositories: ${{ github.event.repository.name }}
+          permission-contents: write
+''',
+  ],
+  [
+    '''
+          GH_TOKEN: ${{ steps.token.outputs.token }}
+          REPO: ${{ needs.target.outputs.repository }}
+          REQUIRE_APPROVAL: ${{ inputs.require_approval }}
+        run: |
+''',
+    '''
+          GH_TOKEN: ${{ steps.token.outputs.token }}
+          REPO: ${{ github.repository }}
+          REQUIRE_APPROVAL: "true"
+        run: |
+''',
+  ],
+  [
+    '''
+          path: ${{ env.cache_dir }}
+          key: ${{ env.cache_key }}-${{ needs.target.outputs.name }}+${{ github.run_id }}-${{ github.run_attempt }}
+          restore-keys: ${{ env.cache_key }}-${{ needs.target.outputs.name }}+
+
+''',
+    '''
+          path: ${{ env.cache_dir }}
+          key: ${{ env.cache_key }}-${{ github.event.repository.name }}+${{ github.run_id }}-${{ github.run_attempt }}
+          restore-keys: ${{ env.cache_key }}-${{ github.event.repository.name }}+
+
+''',
+  ],
+  [
+    '''
+        env:
+          LOG_LEVEL: ${{ inputs.log_level }}
+          # Info includes the completion marker even on a clean run.
+          LOG_FILE_LEVEL: info
+          RENOVATE_REPOSITORIES: ${{ needs.target.outputs.repository }}
+          RENOVATE_BASE_DIR: ${{ env.base_dir }}
+''',
+    '''
+        env:
+          LOG_LEVEL: ${{ inputs.log_level || 'DEBUG' }}
+          # Info includes the completion marker even on a clean run.
+          LOG_FILE_LEVEL: info
+          RENOVATE_REPOSITORIES: ${{ github.repository }}
+          RENOVATE_BASE_DIR: ${{ env.base_dir }}
+''',
+  ],
+  [
+    '''
+          # rules-cloudflare.json5 attaches that command and its nested twin
+          # to bumps of wrangler and its group in tbhb-dev/rules. That scope
+          # is a convention: the allowlist is global, so any repo that runs
+''',
+    '''
+          # rules-cloudflare.json5 attaches that command and its nested twin
+          # to bumps of wrangler and its group in the rules project. That scope
+          # is a convention: the allowlist is global, so any repo that runs
+''',
+  ],
+  [
+    '''
+          # whole image reference, so the container is pinned by content.
+          # The same reference sits in renovate-config-validator.yaml; the
+          # shared "renovate" group moves both in one PR.
+          # renovate: datasource=docker depName=ghcr.io/renovatebot/renovate
+''',
+    '''
+          # whole image reference, so the container is pinned by content.
+          # The shared "renovate" group moves this pin and any other
+          # Renovate image reference.
+          # renovate: datasource=docker depName=ghcr.io/renovatebot/renovate
+''',
+  ],
+  [
+    '''
+          path: ${{ env.cache_dir }}
+          key: ${{ env.cache_key }}-${{ needs.target.outputs.name }}+${{ github.run_id }}-${{ github.run_attempt }}
+
+''',
+    '''
+          path: ${{ env.cache_dir }}
+          key: ${{ env.cache_key }}-${{ github.event.repository.name }}+${{ github.run_id }}-${{ github.run_attempt }}
+
+''',
+  ],
+]
+
+# The root build file of the old repository held the test targets with its lint
+# gates. Only the sh_test targets for the kept tests move here. The test targets
+# read the root workflow through //:.github/workflows/renovate.yaml, exported
+# from the root BUILD.bazel.
+[rewrite."BUILD.bazel"]
+dest = "factory/renovate-config/BUILD.bazel"
+replace = [
+  [
+    '''
+
+load("@bazel_env.bzl", "bazel_env")
+load("@bazelrc-preset.bzl", "bazelrc_preset")
+load("@buildifier_prebuilt//:rules.bzl", "buildifier", "buildifier_test")
+load("@rules_shell//shell:sh_test.bzl", "sh_test")
+load("@tbhb_rules//format:defs.bzl", "format", "format_test")
+load(
+    "@tbhb_rules//lint:defs.bzl",
+    "actionlint_test",
+    "codeowners_test",
+    "cspell_test",
+    "editorconfig_checker_test",
+    "gitleaks_history",
+    "gitleaks_test",
+    "reuse_test",
+    "rumdl_test",
+    "ryl_test",
+    "shellcheck_test",
+    "shfmt_test",
+    "tombi_test",
+    "vale_sync",
+    "vale_test",
+    "zizmor_test",
+)
+load("@tbhb_rules//repo:defs.bzl", "repo_files", "repo_layout_test")
+
+# Every file of the repository, for the whole-tree checks below. Ignored
+# directories are listed in REPO.bazel; these are the gitignored files that
+# can sit at the root of a working checkout.
+repo_files(
+    exclude = [
+        ".DS_Store",
+        "**/.DS_Store",
+        ".bazelrc.user",
+        ".env*",
+        ".github/PULL_REQUEST_DRAFT.md",
+        "mise.local.toml",
+    ],
+)
+
+# Generates preset.bazelrc, which .bazelrc imports. The content depends on the
+# Bazel version that runs the generator; the committed copy matches
+# .bazelversion, and `preset.update_test` fails when it is stale.
+bazelrc_preset(
+    name = "preset",
+)
+
+# buildifier: `//:buildifier` formats and applies lint fixes in place,
+# `//:buildifier.check` fails on any formatting or lint difference, and the
+# test below makes `bazel test //...` fail on the same findings. Every
+# available warning is on. Bazel's convenience symlinks, agent worktrees,
+# and the Python and tool caches hold no Starlark that this repository owns.
+BUILDIFIER_EXCLUDES = [
+    "./.git/*",
+    "./.venv/*",
+    "./.mise/*",
+    "./.bazel-*",
+    "./bazel-*",
+    "./.worktrees/*",
+    "./tmp/*",
+]
+
+buildifier(
+    name = "buildifier",
+    exclude_patterns = BUILDIFIER_EXCLUDES,
+    lint_mode = "fix",
+    lint_warnings = ["all"],
+    mode = "fix",
+)
+
+buildifier(
+    name = "buildifier.check",
+    exclude_patterns = BUILDIFIER_EXCLUDES,
+    lint_mode = "warn",
+    lint_warnings = ["all"],
+    mode = "diff",
+)
+
+buildifier_test(
+    name = "buildifier_test",
+    exclude_patterns = BUILDIFIER_EXCLUDES,
+    lint_mode = "warn",
+    lint_warnings = ["all"],
+    no_sandbox = True,
+    workspace = "//:MODULE.bazel",
+)
+
+# The repository's shape. Only these top-level directories may exist; add a
+# new one here in the change that first uses it.
+repo_layout_test(
+    name = "repo_layout_test",
+    srcs = [":repo_files"],
+    top_level_dirs = [
+        ".agents",
+        ".claude",
+        ".codex",
+        ".github",
+        ".vale",
+        "LICENSES",
+    ],
+)
+
+# Scans the git history: `bazel run //:gitleaks_history`, which CI runs.
+# The working tree is //:gitleaks_test's job.
+gitleaks_history(
+    name = "gitleaks_history",
+    config = ".gitleaks.toml",
+)
+
+# This repository's gates, from @tbhb_rules. Each one checks the whole tree.
+gitleaks_test(
+    name = "gitleaks_test",
+    srcs = [":repo_files"],
+    config = ".gitleaks.toml",
+)
+
+# Copyright and licensing information on every file (REUSE.toml, LICENSES/).
+reuse_test(
+    name = "reuse_test",
+    srcs = [":repo_files"],
+)
+
+ryl_test(
+    name = "ryl_test",
+    srcs = [":repo_files"],
+    config = ".ryl.toml",
+)
+
+tombi_test(
+    name = "tombi_test",
+    srcs = [":repo_files"],
+    config = "tombi.toml",
+)
+
+rumdl_test(
+    name = "rumdl_test",
+    srcs = [":repo_files"],
+    config = ".rumdl.toml",
+)
+
+editorconfig_checker_test(
+    name = "editorconfig_checker_test",
+    srcs = [":repo_files"],
+    config = ".editorconfig-checker.json",
+)
+
+actionlint_test(
+    name = "actionlint_test",
+    srcs = [":repo_files"],
+)
+
+zizmor_test(
+    name = "zizmor_test",
+    srcs = [":repo_files"],
+    config = ".github/zizmor.yml",
+)
+
+# Shell scripts are selected by extension and by shebang. shfmt reads its
+# style from .editorconfig. The repository has no shell scripts today, so
+# allow_empty keeps both checks wired for a script added later.
+shellcheck_test(
+    name = "shellcheck_test",
+    srcs = [":repo_files"],
+    allow_empty = True,
+)
+
+shfmt_test(
+    name = "shfmt_test",
+    srcs = [":repo_files"],
+    allow_empty = True,
+)
+
+codeowners_test(
+    name = "codeowners_test",
+    srcs = [":repo_files"],
+)
+
+cspell_test(
+    name = "cspell_test",
+    srcs = [":repo_files"],
+    config = ".cspell.jsonc",
+    data = [".cspell-words.txt"],
+)
+
+# The packages .vale.ini lists, pinned in MODULE.bazel, in the config's
+# order. `bazel run //:vale_sync` writes them into .vale/ for editors.
+VALE_PACKAGES = {
+    "Google": "@vale_google//file",
+    "ai-tells": "@vale_ai_tells//file",
+    "ai-tells-experimental": "@vale_ai_tells_experimental//file",
+    "proselint": "@vale_proselint//file",
+    "write-good": "@vale_write_good//file",
+}
+
+vale_test(
+    name = "vale_test",
+    srcs = [":repo_files"],
+    config = ".vale.ini",
+    packages = VALE_PACKAGES,
+)
+
+vale_sync(
+    name = "vale_sync",
+    config = ".vale.ini",
+    packages = VALE_PACKAGES,
+)
+
+# Formatting: `bazel run //:format` rewrites, `bazel run //:format.check`
+# checks the working tree, and format_test is the cached check in `bazel
+# test //...`.
+FORMATTERS = [
+    "@tbhb_rules//format:buildifier",
+    "@tbhb_rules//format:rumdl",
+    "@tbhb_rules//format:ryl",
+    "@tbhb_rules//format:shfmt",
+    "@tbhb_rules//format:tombi",
+]
+
+# Consumers pin the two reusable workflows by commit, and any change to them
+# at main bumps every consumer's pin, so no formatter rewrites them; they
+# change only in a deliberate PR.
+FORMAT_EXCLUDE = [
+    ".github/workflows/renovate.yaml",
+    ".github/workflows/renovate-config-validator.yaml",
+]
+
+format(
+    name = "format",
+    exclude = FORMAT_EXCLUDE,
+    formatters = FORMATTERS,
+)
+
+format_test(
+    name = "format_test",
+    srcs = [":repo_files"],
+    exclude = FORMAT_EXCLUDE,
+    formatters = FORMATTERS,
+)
+
+# `bazel run //:bazel_env` puts shims for the Bazel-pinned tools in
+# .bazel_env/bin, which mise adds to PATH. Git hooks call them directly, so
+# a commit never waits on the Bazel server.
+bazel_env(
+    name = "bazel_env",
+    tools = {
+        "actionlint": "@tbhb_rules_actionlint//:actionlint",
+        "buildifier": "@buildifier_prebuilt//:buildifier",
+        "cog": "@tbhb_rules_cog//:cog",
+        "editorconfig-checker": "@tbhb_rules_editorconfig_checker//:editorconfig-checker",
+        "git": "@tbhb_rules_git//:git",
+        "gitleaks": "@tbhb_rules//lint:gitleaks",
+        "rumdl": "@tbhb_rules_rumdl//:rumdl",
+        "ryl": "@tbhb_rules_ryl//:ryl",
+        "shellcheck": "@tbhb_rules_shellcheck//:shellcheck",
+        "shfmt": "@tbhb_rules_shfmt//:shfmt",
+        "tombi": "@tbhb_rules_tombi//:tombi",
+        "vale": "@tbhb_rules_vale//:vale",
+        "zizmor": "@tbhb_rules_zizmor//:zizmor",
+    },
+)
+''',
+    '''
+
+load("@rules_shell//shell:sh_test.bzl", "sh_test")
+
+package(default_visibility = ["//factory:__subpackages__"])
+
+# Globs stop at a package boundary, so this project hands its files to
+# //factory:repo_files, which feeds the whole-tree checks in //:repo_files.
+filegroup(
+    name = "repo_files",
+    srcs = glob(["**"]),
+    visibility = ["//factory:__pkg__"],
+)
+''',
+  ],
+  [
+    '''
+    data = [
+        ".github/workflows/renovate.yaml",
+        "renovate_log_check_test.py",
+    ],
+''',
+    '''
+    data = [
+        "renovate_log_check_test.py",
+        "//:.github/workflows/renovate.yaml",
+    ],
+''',
+  ],
+  [
+    '''
+    data = glob(["*.json5"]) + [
+        ".github/workflows/renovate.yaml",
+        "renovate_allowlist_test.py",
+    ],
+''',
+    '''
+    data = glob(["*.json5"]) + [
+        "renovate_allowlist_test.py",
+        "//:.github/workflows/renovate.yaml",
+    ],
+''',
+  ],
+  [
+    '''
+
+# Exercise the inline range check against Git history and a fake GitHub API.
+sh_test(
+    name = "renovate_pin_range_test",
+    size = "small",
+    srcs = ["renovate_pin_range_test.sh"],
+    data = [
+        ".github/workflows/renovate-config-validator.yaml",
+        "renovate_pin_range_test.py",
+    ],
+)
+
+# Exercise the inline consumer pin check in caller checkout fixtures.
+sh_test(
+    name = "renovate_pin_consistency_test",
+    size = "small",
+    srcs = ["renovate_pin_consistency_test.sh"],
+    data = [
+        ".github/workflows/renovate-config-validator.yaml",
+        "renovate_pin_consistency_test.py",
+    ],
+)
+
+# Check that the caller pin bump moves every reference or fails.
+sh_test(
+    name = "renovate_bump_pins_test",
+    size = "small",
+    srcs = ["renovate_bump_pins_test.sh"],
+    data = [
+        "renovate_bump_pins.py",
+        "renovate_bump_pins_test.py",
+    ],
+)
+
+# Exercise the App-token ruleset audit with local GitHub API fixtures.
+''',
+    '''
+
+# Exercise the App-token ruleset audit with local GitHub API fixtures.
+''',
+  ],
+  [
+    '''
+    data = [
+        ".github/workflows/renovate.yaml",
+        "renovate_ruleset_audit_test.py",
+    ],
+''',
+    '''
+    data = [
+        "renovate_ruleset_audit_test.py",
+        "//:.github/workflows/renovate.yaml",
+    ],
+''',
+  ],
+]
+
+# Described consumers pinning the reusable workflows and presets of the old
+# repository. Rewritten for the monorepo: contents, rules for the presets, the
+# root workflow.
+[rewrite."README.md"]
+dest = "factory/renovate-config/README.md"
+replace = [
+  [
+    '''
+
+Shared self-hosted Renovate setup for the tbhb-dev repositories. It holds
+seven presets and two reusable workflows: one runs Renovate for the calling
+repo, and the other validates that repo's Renovate configuration.
+
+The Renovate workflow checks its JSON file log after each run, failing on
+missing, empty, invalid, or incomplete logs. Error or fatal entries and the
+known failures `Error updating branch`, `artifactErrors`, and
+`Failed to update MODULE.bazel.lock` also fail the job. The workflow defines
+this allowlist. Annotations show only a fixed label and a validated branch.
+
+''',
+    '''
+
+The shared Renovate presets for this repository, and the tests that check them against the Renovate workflow. The root `renovate.json5` extends the presets from this folder, and the root workflow `.github/workflows/renovate.yaml` runs a self-hosted Renovate on a GitHub App token.
+
+This project came from the `tbhb-dev/renovate-config` repository at commit `6fc408cfec75871cd01b04bf1396e4f82c7fc792`. `IMPORT-MAP.toml` lists every file of that commit as copied, dropped, or rewritten. The earlier history stays in that repository's archive.
+
+''',
+  ],
+  [
+    '''
+| Path | Purpose |
+|---|---|
+| `.github/workflows/renovate.yaml` | Reusable (`workflow_call`) Renovate run for the caller's repo. Global settings live in its `env`. |
+| `.github/workflows/renovate-config-validator.yaml` | Reusable strict validation, preset-reference resolution, consistent consumer pins, and PR pin-range summaries. |
+| `.github/workflows/ci.yml` | This repo's gate: `bazel test //...` over the tree, rules' shared repository checks, preset validation, and the `conclusion` job. |
+| `.github/workflows/renovate-self.yaml` | Renovate for this repo, through its own reusable workflow. |
+| `default.json5` | Every repo: best-practices, 5-day cooldown, ignore paths, grouping, Vale and preset-pin managers, `platformCommit`, and PR titles that fit the 72-character squash subject. |
+| `bazel.json5` | Bazel repos: `bazel` manager on `MODULE.bazel` and `*.bzl`, dugite datasource, Bazel version group with its one post-upgrade task. |
+| `cloudflare-worker.json5` | Worker repos: a `tbhb_rules` bump regenerates `worker-configuration.d.ts` in the same branch. |
+| `rules-cloudflare.json5` | `tbhb-dev/rules` only: a bump of wrangler or its group (vitest, playwright) regenerates both smoke Workers' `worker-configuration.d.ts` in the same branch. |
+| `go.json5` | Go repos: `gomodTidy` plus module and toolchain groups. |
+| `python.json5` | uv projects: `pyproject.toml`, `uv.lock`, the uv version pin. |
+| `ansible.json5` | Repos that pin Galaxy collections with `tbhb_rules_ansible`. A collection bump rewrites `requirements.lock.json` in the same branch. |
+
+## Using it from a repo
+
+Add `.github/renovate.json5`, a caller `.github/workflows/renovate.yaml` and a
+validator caller. Pin the presets and workflows to a full commit hash, with a
+trailing comment that states the ref it tracks: `main`, which Renovate bumps
+to the branch's latest commit, or a release tag such as `v1.0.0`:
+
+```json5
+{
+  extends: [
+    "github>tbhb-dev/renovate-config//default.json5#<sha>", // main
+    "github>tbhb-dev/renovate-config//bazel.json5#<sha>", // main
+  ],
+}
+```
+
+```yaml
+on:
+  push:
+    branches: [main]
+  schedule:
+    - cron: "<minute> * * * 1-5"
+    - cron: "<minute> */2 * * 6,0"
+  workflow_dispatch:
+
+jobs:
+  renovate:
+    uses: tbhb-dev/renovate-config/.github/workflows/renovate.yaml@<sha> # main
+    secrets:
+      RENOVATE_CLIENT_ID: ${{ secrets.RENOVATE_CLIENT_ID }}
+      RENOVATE_PRIVATE_KEY: ${{ secrets.RENOVATE_PRIVATE_KEY }}
+```
+
+The push trigger runs Renovate on each push to the caller repository's `main`,
+when open PRs can fall behind. Merges in `tbhb-dev/renovate-config` or any other
+repository don't trigger the caller. GitHub drops scheduled runs for hours at a
+time, and the push trigger doesn't depend on the schedule. Pick a different
+`<minute>` per repository to stagger only the scheduled starts.
+
+The reusable workflow defaults `dry_run` to `false`, so the bare
+`workflow_dispatch:` runs Renovate for real at `DEBUG`, as do pushes and
+scheduled runs. To default manual runs to a dry run, copy the
+`workflow_dispatch` inputs and `with:` expressions from
+`.github/workflows/renovate-self.yaml`.
+
+The validator caller runs on PRs that change the Renovate config, the
+workflows, or a `tbhb_rules` pin. The pin checks then see every bump:
+
+```yaml
+on:
+  pull_request:
+    paths:
+      - ".github/renovate.json5"
+      - ".github/workflows/*.yaml"
+      - ".github/workflows/*.yml"
+      - "MODULE.bazel"
+      - "**/*.bzl"
+
+jobs:
+  validate:
+    uses: tbhb-dev/renovate-config/.github/workflows/renovate-config-validator.yaml@<sha> # main
+    with:
+      configs: .github/renovate.json5
+```
+
+A preset reference must include the `.json5` suffix.
+
+The validator requires
+all `tbhb-dev/renovate-config` preset and reusable workflow pins in a consumer
+to use the same full 40-character commit hash. Repositories without these
+references pass the check. Renovate keeps them in step: every
+`tbhb-dev/renovate-config` reference, preset or workflow, joins the
+`pins` group in `default.json5`, so one PR moves them all.
+
+The `pins` group opens one PR per repository a day, between 05:00 and 08:00
+Coordinated Universal Time. It takes the `renovate-config` and `tbhb_rules`
+pins, plus minor, patch, and digest updates to GitHub Actions and mise tools.
+Renovate opens a separate PR for each major version and each security fix.
+The Bazel version group uses the same window but stays a separate PR, and so
+do `tbhb_rules` bumps in Worker repos, because each runs its own post-upgrade
+task. Renovate rebases a pins PR whenever its base branch moves. The presets set
+every other group to rebase only on a conflict, but Renovate's built-in
+"Pin Dependencies" default (`pin.rebaseWhen`) still rebases npm pin PRs
+whenever their base moves. A rule that sets another `groupName` must set
+`rebaseWhen: "conflicted"` too, because matching rules merge field by field.
+One failing pin blocks the rest of the group. To exclude one, add a rule to the
+repository's `.github/renovate.json5`:
+
+```json5
+{
+  packageRules: [
+    { matchPackageNames: ["<package>"], groupName: "<package>", rebaseWhen: "conflicted" },
+  ],
+}
+```
+
+Worker repos add `github>tbhb-dev/renovate-config//cloudflare-worker.json5#<sha>`
+after `bazel.json5` in their `extends` list.
+
+Renovate PRs auto-merge after the main ruleset's required approval and CI
+checks pass. Before Renovate starts, the workflow checks active rules on
+`main` using the Renovate App token. It requires at least one approving
+review and a status-check rule. Every applied ruleset must report that the
+App can never bypass it. Only the drafts repositories pass
+`require_approval: false`, because their PRs merge on green CI alone. Their
+check keeps the status-check and bypass parts. Missing protection or a failed API check stops
+the run. Consumer repos must enable "Allow auto-merge" in GitHub
+settings for native auto-merge.
+
+Extend `ansible.json5` only from a repository whose root `MODULE.bazel`
+declares `ansible.collections`. The lock task runs at the repository root,
+so it rewrites the `requirements.lock.json` that tag names. A repository
+with an Ansible module root nested below its own root shouldn't extend the
+preset, because the task fails there.
+
+Both reusable workflows take a `runs_on` input, the runner label, which
+defaults to `ubuntu-24.04`. Public repositories leave it out. A private
+repository must pass its `tbhb-dev-*` runner label, because private jobs
+never run on GitHub-hosted runners:
+
+```yaml
+    with:
+      runs_on: tbhb-dev-ubuntu-24-amd64
+```
+
+## Pin-bump validation
+
+On pull requests, the validator checks changed `tbhb-dev/renovate-config` and
+`tbhb-dev/rules` pins against their upstream `main` branch. Each new pin must
+use a full commit hash on that branch. The job summary lists up to 50 commit
+subjects per range and the changed upstream files. New pins have no previous
+range to list. Other workflow events skip this check.
+
+## Security model
+
+- `allowedUnsafeExecutions` allows only `bazelModDeps`. It leaves out `mise`,
+  so mise stays in safe mode.
+- Four post-upgrade commands, each matched by an anchored regular expression
+  in the workflow `env`. `bazel.json5` attaches `bazelisk run //:preset.update`
+  to the Bazel version group alone. `ansible.json5` attaches
+  `bazelisk run @tbhb_rules_ansible//:lock` to `ansible-galaxy` bumps alone.
+  The lock target reads Galaxy version metadata and writes
+  `requirements.lock.json`, without downloading any collection.
+  `cloudflare-worker.json5` attaches `bazelisk run //:worker_types_test.update`
+  to `tbhb_rules` bumps in Worker repos and commits only
+  `worker-configuration.d.ts` through `fileFilters`.
+  `rules-cloudflare.json5` attaches `bazelisk run //:worker_types_test.update`
+  and `bazelisk run //nested:worker_types_test.update` to bumps of wrangler
+  and its group in `tbhb-dev/rules`, run from
+  `cloudflare/e2e/smoke`, and commits only the smoke Workers'
+  `worker-configuration.d.ts` files.
+- The allowlist applies to each repo that runs the workflow. Scoping a preset
+  to one repo is a convention, and no check enforces it. A repo's PR can't add
+  a command, but it can use any listed one.
+- Both allowlists live in the workflow `env`. They're global-only options,
+  which Renovate ignores in a repo's config, so a repo PR can't widen them.
+- Each run creates its own App token, limited to the target repo (the caller,
+  or the repo the `repository` input names), and downscoped to the
+  permissions Renovate needs. A first job rejects any `repository` value that
+  isn't `<organization>/<name>` in the caller's organization before the token,
+  audit or cache steps run. An empty value means the caller's own repo. A
+  public caller can't target a private repo, because its logs and caches are
+  public, and a public target with a `.github/workflows/renovate.yaml` is refused.
+- The reviews App approves updates that ran commands only when the diff
+  touches manifests and lock files, plus the generated file named in
+  `fileFilters` for post-upgrade tasks. This covers post-upgrade tasks,
+  `bazel mod deps`, and lock maintenance. These PRs auto-merge after the
+  required review and CI pass. Lock maintenance also needs a human to tick
+  its Dependency Dashboard box before it runs.
+- Commits go through the GitHub API (`platformCommit`), so GitHub signs them.
+''',
+    '''
+| Path | Purpose |
+| --- | --- |
+| `default.json5` | Every repository: best-practices, a 5-day cooldown, ignore paths, grouping, Vale and preset-pin managers, `platformCommit`, and PR titles that fit the 72-character squash subject. |
+| `bazel.json5` | Bazel roots: the `bazel` manager for `MODULE.bazel` and `*.bzl` files, and the Bazel version group with its one post-upgrade task. A `customDatasources` entry covers dugite. |
+| `go.json5` | Go roots: `gomodTidy` plus module and toolchain groups. |
+| `python.json5` | uv projects: `pyproject.toml`, `uv.lock`, and the uv version pin. |
+| `ansible.json5` | Roots that pin Galaxy collections with `tbhb_rules_ansible`. A collection bump rewrites `requirements.lock.json` in the same branch. |
+| `cloudflare-worker.json5` | Worker projects: a `tbhb_rules` bump regenerates `worker-configuration.d.ts` in the same branch. |
+| `rules-cloudflare.json5` | Used by the rules project alone. A bump of wrangler or its group regenerates both smoke Workers' `worker-configuration.d.ts` in the same branch. |
+| `renovate_*_test.py` | Tests for the presets and for the inline scripts of the root workflow. Each has a `renovate_*_test.sh` wrapper and a Bazel target in `BUILD.bazel`. |
+
+The root `renovate.json5` extends `default.json5`, `bazel.json5`, `go.json5`, and `python.json5`. The other three presets wait for the manifest each one acts on.
+
+## Rules for the presets
+
+- Only repository-level options belong in a preset. Global-only settings (identity, limits, allowed commands, host rules with tokens) live in the root workflow's `env`, where a pull request can't widen them.
+- A preset reference must end in `.json5`. The presets in this folder extend only the built-in presets of Renovate, so resolution stays one hop deep.
+- A rule that sets another `groupName` must set `rebaseWhen: "conflicted"` too, because matching rules merge field by field. `renovate_grouping_test.py` checks it.
+- Every post-upgrade command in a preset must match exactly one anchored regular expression in the workflow's `RENOVATE_ALLOWED_COMMANDS`, and every regular expression must match a command. `renovate_allowlist_test.py` checks both directions.
+
+## The root workflow
+
+The workflow runs on each push to `main`, on the schedule, and on demand. It checks the log of each run, and it fails on a missing, empty, invalid, or incomplete log, on an error or fatal entry, and on the known failures `Error updating branch`, `artifactErrors`, and `Failed to update MODULE.bazel.lock`.
+
+Before Renovate starts, the workflow audits the active rules on `main` with the Renovate App token. It requires at least one approving review and a status-check rule, and every applied ruleset must report that the App can never bypass it. Missing protection or a failed API check stops the run.
+
+Each run creates its own App token, scoped to this repository, with only the permissions Renovate needs. Commits go through the GitHub API, so GitHub signs them. `allowedUnsafeExecutions` allows only `bazelModDeps`, which leaves `mise` in safe mode. The reviews App approves updates that ran commands only when the diff touches manifests, lock files, and the generated file a task names in `fileFilters`.
+
+## What isn't here
+
+The old repository's reusable workflows and the tools around consumer pins (the validator workflow, its pin-range and pin-consistency tests, and the pin-bump script) don't come along. This repository pins no commit of the old repository, so there are no pins for them to check. A CI gate that runs `renovate-config-validator` over the presets and the root `renovate.json5` is a separate change.
+''',
+  ],
+]
+
+# Reads the workflow from the monorepo root, two levels above the project,
+# because the workflow is no longer reusable and no longer sits beside the
+# tests. The only change besides the docstring is the path.
+[rewrite."renovate_allowlist_test.py"]
+dest = "factory/renovate-config/renovate_allowlist_test.py"
+replace = [
+  [
+    '''
+
+"""Check every preset command against the reusable workflow's allowlist."""
+
+''',
+    '''
+
+"""Check every preset command against the root Renovate workflow's allowlist."""
+
+''',
+  ],
+  [
+    '''
+                commands.extend(rule.get("postUpgradeTasks", {}).get("commands", []))
+        patterns = allowed_patterns((ROOT / ".github/workflows/renovate.yaml").read_text())
+        self.assertTrue(commands, "No post-upgrade commands found")
+''',
+    '''
+                commands.extend(rule.get("postUpgradeTasks", {}).get("commands", []))
+        # The workflow sits at the monorepo root, two levels above this project.
+        patterns = allowed_patterns((ROOT.parents[1] / ".github/workflows/renovate.yaml").read_text())
+        self.assertTrue(commands, "No post-upgrade commands found")
+''',
+  ],
+]
+
+# Reads the workflow from the monorepo root, two levels above the project,
+# because the workflow is no longer reusable and no longer sits beside the
+# tests. The only change besides the docstring is the path.
+[rewrite."renovate_log_check_test.py"]
+dest = "factory/renovate-config/renovate_log_check_test.py"
+replace = [
+  [
+    '''
+
+"""Run the reusable workflow's actual log check against local NDJSON fixtures."""
+
+''',
+    '''
+
+"""Run the root Renovate workflow's actual log check against local NDJSON fixtures."""
+
+''',
+  ],
+  [
+    '''
+
+WORKFLOW = Path(__file__).parent / ".github/workflows/renovate.yaml"
+FINISHED = '{"level":30,"msg":"Repository finished"}\n'
+''',
+    '''
+
+# The workflow sits at the monorepo root, two levels above this project.
+WORKFLOW = Path(__file__).parents[2] / ".github/workflows/renovate.yaml"
+FINISHED = '{"level":30,"msg":"Repository finished"}\n'
+''',
+  ],
+]
+
+# Reads the workflow from the monorepo root, two levels above the project,
+# because the workflow is no longer reusable and no longer sits beside the
+# tests. The only change besides the docstring is the path.
+[rewrite."renovate_ruleset_audit_test.py"]
+dest = "factory/renovate-config/renovate_ruleset_audit_test.py"
+replace = [
+  [
+    '''
+
+WORKFLOW = Path(__file__).parent / ".github/workflows/renovate.yaml"
+APPROVAL = {"type": "pull_request", "ruleset_id": 42,
+''',
+    '''
+
+# The workflow sits at the monorepo root, two levels above this project.
+WORKFLOW = Path(__file__).parents[2] / ".github/workflows/renovate.yaml"
+APPROVAL = {"type": "pull_request", "ruleset_id": 42,
+''',
+  ],
+]
+
+[drop]
+".bazelignore" = "Root Bazel configuration. The shared root replaces it."
+".bazelrc" = "Root Bazel configuration. The shared root replaces it."
+".bazelversion" = "Root Bazel configuration. The shared root replaces it."
+".claude/settings.json" = "Root agent harness configuration. It arrives at the monorepo root with the rules import (wave 2), where appendix C lists it as a class 2 path."
+".codex/rules/pull-request.rules" = "Root agent harness configuration. It arrives at the monorepo root with the rules import (wave 2), where appendix C lists it as a class 2 path."
+".cspell-words.txt" = "Root lint, format, or editor configuration. The shared root replaces it, or it arrives with the rules import (wave 2)."
+".cspell.jsonc" = "Root lint, format, or editor configuration. The shared root replaces it, or it arrives with the rules import (wave 2)."
+".editorconfig" = "Root lint, format, or editor configuration. The shared root replaces it, or it arrives with the rules import (wave 2)."
+".editorconfig-checker.json" = "Root lint, format, or editor configuration. The shared root replaces it, or it arrives with the rules import (wave 2)."
+".gitattributes" = "Root lint, format, or editor configuration. The shared root replaces it, or it arrives with the rules import (wave 2)."
+".github/CODEOWNERS" = "The monorepo has no CODEOWNERS file, because GitHub turns its entries into required reviewers. The project's OWNERS file replaces it (appendix C)."
+".github/PULL_REQUEST_TEMPLATE.md" = "Root repository files. The monorepo's own copy replaces it."
+".github/actionlint.yaml" = "Root lint, format, or editor configuration. The shared root replaces it, or it arrives with the rules import (wave 2)."
+".github/pull-request-sections.toml" = "Root repository files. The monorepo's own copy replaces it."
+".github/rulesets/main.json" = "Root repository files. The monorepo's own copy replaces it."
+".github/schemas/pull-request-draft.schema.json" = "Root repository files. The monorepo's own copy replaces it."
+".github/workflows/ci.yml" = "The repository's own gate. It pins workflows and actions of the old rules repository, and the monorepo's inline ci.yml replaces it (D27)."
+".github/workflows/renovate-config-validator.yaml" = "Consumer-pin tooling: it checks, summarizes, or moves pins of the old repository's presets and workflows in other repositories. Nothing in this repository pins them, so it has nothing to check."
+".github/zizmor.yml" = "Root lint, format, or editor configuration. The shared root replaces it, or it arrives with the rules import (wave 2)."
+".gitignore" = "Root lint, format, or editor configuration. The shared root replaces it, or it arrives with the rules import (wave 2)."
+".gitleaks.toml" = "Root lint, format, or editor configuration. The shared root replaces it, or it arrives with the rules import (wave 2)."
+".mcp.json" = "Root agent harness configuration. It arrives at the monorepo root with the rules import (wave 2), where appendix C lists it as a class 2 path."
+".pre-commit-config.yaml" = "Root lint, format, or editor configuration. The shared root replaces it, or it arrives with the rules import (wave 2)."
+".rumdl.toml" = "Root lint, format, or editor configuration. The shared root replaces it, or it arrives with the rules import (wave 2)."
+".ryl.toml" = "Root lint, format, or editor configuration. The shared root replaces it, or it arrives with the rules import (wave 2)."
+".rylignore" = "Root lint, format, or editor configuration. The shared root replaces it, or it arrives with the rules import (wave 2)."
+".vale.ini" = "Root lint, format, or editor configuration. The shared root replaces it, or it arrives with the rules import (wave 2)."
+".vale/config/vocabularies/project/accept.txt" = "Root lint, format, or editor configuration. The shared root replaces it, or it arrives with the rules import (wave 2)."
+".vale/config/vocabularies/project/reject.txt" = "Root lint, format, or editor configuration. The shared root replaces it, or it arrives with the rules import (wave 2)."
+".vale/project/Acronyms.yml" = "Root lint, format, or editor configuration. The shared root replaces it, or it arrives with the rules import (wave 2)."
+".vale/project/Colons.yml" = "Root lint, format, or editor configuration. The shared root replaces it, or it arrives with the rules import (wave 2)."
+".vale/project/HeadingTitleCase.yml" = "Root lint, format, or editor configuration. The shared root replaces it, or it arrives with the rules import (wave 2)."
+".vale/project/WordList.yml" = "Root lint, format, or editor configuration. The shared root replaces it, or it arrives with the rules import (wave 2)."
+"AGENTS.md" = "Root agent instructions. The shared root AGENTS.md replaces them. The one line they held, which points to the wiki's models page, returns with the wiki import (wave 4)."
+"LICENSE" = "Root repository files. The monorepo's own copy replaces it."
+"LICENSES/Apache-2.0.txt" = "Root repository files. The monorepo's own copy replaces it."
+"MODULE.bazel" = "Root Bazel configuration. The shared root replaces it."
+"MODULE.bazel.lock" = "Root Bazel configuration. The shared root replaces it."
+"REPO.bazel" = "Root Bazel configuration. The shared root replaces it."
+"REUSE.toml" = "Root repository files. The monorepo's own copy replaces it."
+"mise.lock" = "Tool pins for the old repository's root. The shared root replaces them, or they arrive with the rules import (wave 2)."
+"mise.toml" = "Tool pins for the old repository's root. The shared root replaces them, or they arrive with the rules import (wave 2)."
+"preset.bazelrc" = "Generated by //:preset.update from the root .bazelrc preset. The monorepo root has no such target, so the preset.update post-upgrade command in bazel.json5 has nothing to run yet."
+"renovate_bump_pins.py" = "Consumer-pin tooling: it checks, summarizes, or moves pins of the old repository's presets and workflows in other repositories. Nothing in this repository pins them, so it has nothing to check."
+"renovate_bump_pins_test.py" = "Consumer-pin tooling: it checks, summarizes, or moves pins of the old repository's presets and workflows in other repositories. Nothing in this repository pins them, so it has nothing to check."
+"renovate_bump_pins_test.sh" = "Consumer-pin tooling: it checks, summarizes, or moves pins of the old repository's presets and workflows in other repositories. Nothing in this repository pins them, so it has nothing to check."
+"renovate_pin_consistency_test.py" = "Consumer-pin tooling: it checks, summarizes, or moves pins of the old repository's presets and workflows in other repositories. Nothing in this repository pins them, so it has nothing to check."
+"renovate_pin_consistency_test.sh" = "Consumer-pin tooling: it checks, summarizes, or moves pins of the old repository's presets and workflows in other repositories. Nothing in this repository pins them, so it has nothing to check."
+"renovate_pin_range_test.py" = "Consumer-pin tooling: it checks, summarizes, or moves pins of the old repository's presets and workflows in other repositories. Nothing in this repository pins them, so it has nothing to check."
+"renovate_pin_range_test.sh" = "Consumer-pin tooling: it checks, summarizes, or moves pins of the old repository's presets and workflows in other repositories. Nothing in this repository pins them, so it has nothing to check."
+"tombi.toml" = "Root lint, format, or editor configuration. The shared root replaces it, or it arrives with the rules import (wave 2)."
