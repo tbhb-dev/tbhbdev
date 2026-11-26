@@ -1,0 +1,352 @@
+"""Agent settings load from a config file under a temporary home."""
+
+from __future__ import annotations
+
+import argparse
+from typing import TYPE_CHECKING
+
+import pytest
+
+from tbhbdev import alpha, cli, userconfig
+from tbhbdev.alpha import agent
+from tbhbdev.alpha.agent import model, settings
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
+    from pathlib import Path
+
+EXAMPLE = """\
+[agent]
+launch_wait_seconds = 120
+agy_timeout = "900s"
+kill_grace_seconds = 10
+max_run_minutes = 120
+sockets_dir = "/example/sockets"
+
+[agent.sandbox]
+write_roots = [".cache", ".local/share/mise", ".local/state"]
+audit_dir = ".local/state/example-audit"
+denied_home_paths = [".claude"]
+
+[agent.sandbox.path]
+linux = [".local/bin", "/usr/local/bin", "/usr/bin", "/bin"]
+macos = [".local/bin", "/opt/homebrew/bin", "/usr/bin", "/bin"]
+
+[agent.sandbox.agy]
+review_read = [".config/example-gh", ".config/mise"]
+build_read = [".config/example-tools", ".local/share/mise/installs"]
+build_write = [".local/state/mise", ".local/share/mise"]
+
+[agent.codex]
+web_search = { build = "live", review = "cached" }
+
+[agent.credentials.agent]
+gh = "example-vault/example-gh/token"
+docker = "example-vault/example-docker/config"
+reviews_app_id = "example-vault/example-app/app_id"
+reviews_app_client_id = "example-vault/example-app/client_id"
+reviews_app_pem = "example-vault/example-app/private_key"
+signing = "example-vault/example-signing/private_key"
+
+[agent.claude]
+default_profile = "primary"
+
+[agent.claude.profiles.primary]
+token = "example/primary/token"
+
+[agent.claude.profiles.secondary]
+token = "example/secondary/token"
+expires = "example/secondary/expires"
+
+[[agent.host]]
+name = "example-linux"
+os = "linux"
+shell = "bash"
+account = "agent"
+unsandboxed = false
+accounts = ["agent"]
+proven_harnesses = ["codex"]
+
+[[agent.host]]
+name = "example-macos"
+os = "macos"
+shell = "zsh"
+account = "agent"
+unsandboxed = false
+accounts = ["agent"]
+proven_harnesses = ["codex"]
+"""
+
+
+def test_loads_the_example_from_the_home_config(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    home = tmp_path / "example-home"
+    (home / ".config" / "tbhbdev").mkdir(parents=True)
+    (home / ".config" / "tbhbdev" / "config.toml").write_text(EXAMPLE)
+    monkeypatch.delenv("XDG_CONFIG_HOME")
+    monkeypatch.setenv("HOME", str(home))
+    loaded = settings.load()
+    assert loaded.launch_wait_seconds == 120
+    assert loaded.agy_timeout_seconds == 900
+    assert loaded.codex == model.Codex(model.WebSearch.LIVE, model.WebSearch.CACHED)
+    assert [h.name for h in loaded.hosts] == ["example-linux", "example-macos"]
+    assert loaded.hosts[1].unsandboxed is False
+    assert loaded.claude.default_profile == "primary"
+    assert (
+        loaded.credentials[0].reviews_app_pem == "example-vault/example-app/private_key"
+    )
+    assert loaded.sandbox.agy.build_read == (
+        ".config/example-tools",
+        ".local/share/mise/installs",
+    )
+
+
+def test_missing_file_names_the_config(config_file: Path) -> None:
+    with pytest.raises(userconfig.ConfigError) as caught:
+        settings.load()
+    assert str(caught.value) == (
+        f"{config_file}: config cannot be read: "
+        f"{config_file} doesn't exist; create it and set [agent]"
+    )
+
+
+def test_bad_table_names_the_config(config_file: Path) -> None:
+    config_file.write_text('agent = "invalid"\n')
+    with pytest.raises(userconfig.ConfigError) as caught:
+        settings.load()
+    assert str(caught.value) == (
+        f"{config_file}: config cannot be read: {config_file}: agent must be a table"
+    )
+
+
+@pytest.mark.parametrize("text", [b"[agent", b"\xff"])
+def test_invalid_file_is_a_configuration_error(config_file: Path, text: bytes) -> None:
+    config_file.write_bytes(text)
+    with pytest.raises(userconfig.ConfigError) as caught:
+        settings.load()
+    assert str(caught.value).startswith(f"{config_file}: config cannot be read: ")
+
+
+def test_unreadable_file_is_a_configuration_error(config_file: Path) -> None:
+    config_file.mkdir()
+    with pytest.raises(userconfig.ConfigError) as caught:
+        settings.load()
+    assert str(caught.value).startswith(f"{config_file}: config cannot be read: ")
+
+
+def test_absent_table_is_an_error(config_file: Path) -> None:
+    config_file.write_text('[loop]\nhosts = ["x"]\n')
+    with pytest.raises(userconfig.ConfigError) as caught:
+        settings.load()
+    assert str(caught.value) == f"{config_file}: [agent] table is required"
+
+
+def test_invalid_setting_names_the_file_table_and_key(config_file: Path) -> None:
+    config_file.write_text(
+        EXAMPLE.replace('audit_dir = ".local/state/example-audit"\n', "")
+    )
+    with pytest.raises(userconfig.ConfigError) as caught:
+        settings.load()
+    assert str(caught.value) == f"{config_file}: [agent.sandbox] audit_dir is required"
+
+
+def test_unknown_key_names_the_full_table_path(config_file: Path) -> None:
+    config_file.write_text(
+        EXAMPLE.replace('shell = "bash"\n', 'shell = "bash"\ncredentials = "connect"\n')
+    )
+    with pytest.raises(userconfig.ConfigError) as caught:
+        settings.load()
+    assert (
+        str(caught.value) == f"{config_file}: [[agent.host]] credentials not recognized"
+    )
+
+
+def test_loading_reads_only_the_config(config_file: Path, tmp_path: Path) -> None:
+    config_file.write_text(EXAMPLE)
+    before = sorted(p.name for p in tmp_path.iterdir())
+    settings.load()
+    assert sorted(p.name for p in tmp_path.iterdir()) == before
+
+
+def test_agent_is_registered_in_usage_and_dispatch() -> None:
+    assert alpha.COMMANDS["agent"] is agent.main
+    assert (
+        "\n  agent        exec | wait | status | kill | clean | keep: headless runs\n"
+        in alpha.USAGE
+    )
+
+
+@pytest.mark.parametrize(
+    "run",
+    [
+        lambda: agent.main([], "example agent"),
+        lambda: agent.main(["status", "sample"], "example agent"),
+        lambda: cli.main(["alpha", "agent", "status", "sample"]),
+    ],
+)
+def test_command_refuses_missing_configuration(
+    config_file: Path, capsys: pytest.CaptureFixture[str], run: Callable[[], int]
+) -> None:
+    assert run() == 1
+    out = capsys.readouterr()
+    assert out.out == ""
+    assert str(config_file) in out.err
+    assert "config cannot be read" in out.err
+
+
+def test_command_reports_a_config_error(
+    config_file: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    config_file.write_text('[agent]\nsockets_dir = "/x"\nzeta = 1\n')
+    assert agent.main(["status", "sample"], "example agent") == 1
+    assert capsys.readouterr() == (
+        "",
+        f"example agent: {config_file}: [agent] zeta not recognized\n",
+    )
+
+
+@pytest.mark.parametrize("field", ["audit_dir", "write_roots", "build_write"])
+@pytest.mark.parametrize("absolute", [False, True])
+def test_config_check_refuses_write_paths_under_socket_parents(
+    config_file: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    field: str,
+    absolute: bool,
+) -> None:
+    home = config_file.parent.parent / "agent"
+    monkeypatch.setenv("HOME", str(home))
+    write = ".local/state/tbhbdev/agent-audit"
+    configured = str(home / write) if absolute else write
+    text = (
+        EXAMPLE.replace(
+            'sockets_dir = "/example/sockets"',
+            'sockets_dir = ".local/state/tbhbdev/sockets"',
+        )
+        .replace(
+            'write_roots = [".cache", ".local/share/mise", ".local/state"]',
+            f'write_roots = ["{configured if field == "write_roots" else ".cache"}"]',
+        )
+        .replace(
+            'audit_dir = ".local/state/example-audit"',
+            f'audit_dir = "{configured if field == "audit_dir" else "audit"}"',
+        )
+        .replace(
+            'build_write = [".local/state/mise", ".local/share/mise"]',
+            f'build_write = ["{configured if field == "build_write" else ".cache"}"]',
+        )
+    )
+    config_file.write_text(text)
+
+    assert agent.main([], "example agent") == 1
+    assert capsys.readouterr() == (
+        "",
+        (
+            f"example agent: protected host path {home}/.local/state/tbhbdev "
+            f"overlaps write root {home / write}; narrow that write root\n"
+        ),
+    )
+
+
+@pytest.mark.parametrize("sockets", [".control/sockets", "/example/sockets"])
+def test_config_check_accepts_unrelated_write_paths(
+    config_file: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    sockets: str,
+) -> None:
+    monkeypatch.setenv("HOME", str(config_file.parent.parent / "agent"))
+    config_file.write_text(EXAMPLE.replace("/example/sockets", sockets))
+    assert agent.main([], "example agent") == 0
+    assert capsys.readouterr() == ("example agent: configuration valid\n", "")
+
+
+def test_config_check_refuses_write_paths_under_the_shell_config_directory(
+    config_file: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    home = config_file.parent.parent / "agent"
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.setenv("ZDOTDIR", ".shell-config")
+    config_file.write_text(
+        EXAMPLE.replace(
+            'audit_dir = ".local/state/example-audit"',
+            'audit_dir = ".shell-config/audit"',
+        )
+    )
+
+    assert agent.main([], "example agent") == 1
+    assert capsys.readouterr() == (
+        "",
+        (
+            f"example agent: protected host path {home}/.shell-config "
+            f"overlaps write root {home}/.shell-config/audit; narrow that write root\n"
+        ),
+    )
+
+
+@pytest.mark.parametrize(
+    ("argv", "rc"), [(["--help"], 0), (["exec", "x"], 2), (["-x"], 2)]
+)
+def test_command_options(
+    argv: list[str], capsys: pytest.CaptureFixture[str], rc: int
+) -> None:
+    assert agent.main(argv, "example agent") == rc
+    out = capsys.readouterr()
+    assert "usage: example agent" in out.out + out.err
+    assert "run-host" not in out.out
+
+
+def test_duration() -> None:
+    assert agent.duration("1h") == 3600
+
+    with pytest.raises(argparse.ArgumentTypeError) as caught:
+        agent.duration("bad")
+    assert (
+        str(caught.value)
+        == "must be bare seconds or a number ending in s, m or h, up to 7 days"
+    )
+
+
+def test_command_help_contract() -> None:
+    assert agent.parser("example agent").format_help() == (
+        "usage: example agent [-h]\n"
+        "                     "
+        "{exec,wait,status,kill,clean,keep,log,diff,signing-parity} ...\n\n"
+        "positional arguments:\n"
+        "  {exec,wait,status,kill,clean,keep,log,diff,signing-parity}\n"
+        "    exec                launch a headless run\n"
+        "    signing-parity      check each host's signing key is registered\n\n"
+        "options:\n"
+        "  -h, --help            show this help message and exit\n"
+    )
+
+
+def test_command_dispatches_the_host_runner(monkeypatch: pytest.MonkeyPatch) -> None:
+    calls: list[tuple[list[str], str]] = []
+
+    def run_host(arguments: list[str], prog: str) -> int:
+        calls.append((arguments, prog))
+        return 37
+
+    monkeypatch.setattr(agent.run_host, "main", run_host)
+    assert agent.main(["run-host", "example", "--host", "example-linux"], "agent") == 37
+    assert calls == [(["example", "--host", "example-linux"], "agent run-host")]
+
+
+def test_a_relative_worker_path_names_the_config(config_file: Path) -> None:
+    config_file.write_text(EXAMPLE + '\n[agent.worker]\npath = "bin/worker"\n')
+    with pytest.raises(userconfig.ConfigError) as caught:
+        settings.load()
+    assert str(caught.value) == (
+        f"{config_file}: [agent.worker] path must be an absolute path"
+    )
+
+
+def test_the_worker_path_loads_from_the_config(config_file: Path) -> None:
+    config_file.write_text(EXAMPLE + '\n[agent.worker]\npath = "/opt/worker"\n')
+    assert settings.load().worker_path == "/opt/worker"
+    config_file.write_text(EXAMPLE)
+    assert settings.load().worker_path is None
