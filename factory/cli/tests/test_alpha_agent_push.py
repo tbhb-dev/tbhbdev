@@ -157,10 +157,11 @@ def fix_run(
 
 
 @pytest.mark.parametrize("pushed_in_run", [False, True])
-def test_build_records_commit_without_publishing(
-    local_run: LocalRun, *, pushed_in_run: bool
+def test_build_recovers_a_commit_if_the_harness_does_not_push(
+    local_run: LocalRun, monkeypatch: pytest.MonkeyPatch, *, pushed_in_run: bool
 ) -> None:
     run, prepared, target = local_run
+    run.request = replace(run.request, expect_commit=True)
     workspace = Path(prepared.paths.worktree)
     branch = "refs/heads/agent/example"
 
@@ -170,14 +171,28 @@ def test_build_records_commit_without_publishing(
             git(workspace, "push", target.as_uri(), f"HEAD:{branch}")
         return rc
 
+    def origin_tip(_run: run_host.Run) -> str:
+        return git(target, "for-each-ref", "--format=%(objectname)", branch)
+
+    monkeypatch.setattr(run_host, "run_harness", work)
+    monkeypatch.setattr(run_host, "origin_tip", origin_tip)
+    mint = Mock(return_value=SYNTHETIC)
+    monkeypatch.setattr(credentials, "push_token", mint)
     with ExitStack() as stack:
-        assert push.run(run, prepared, stack, work, SYNTHETIC) == 0
+        assert run_host.run_and_publish(run, prepared, stack, None) == (
+            0 if pushed_in_run else run_host.NO_PUSH
+        )
     sha = git(workspace, "rev-parse", "HEAD")
-    assert run.files.path("head").read_text() == sha
+    expected = branch if pushed_in_run else "refs/heads/wip/example"
     assert git(target, "for-each-ref", "--format=%(objectname) %(refname)") == (
-        f"{sha} {branch}" if pushed_in_run else ""
+        f"{sha} {expected}"
     )
-    assert not run.files.path("branch").exists()
+    assert_run_file(run, "head", sha)
+    assert_run_file(run, "branch", None if pushed_in_run else "wip/example")
+    if pushed_in_run:
+        mint.assert_not_called()
+    else:
+        mint.assert_called_once_with(run.request, run.settings)
     assert not run.files.path("pr").exists()
 
 
@@ -1171,6 +1186,8 @@ def test_timed_out_build_publishes_wip(
     base = git(workspace, "rev-parse", "HEAD")
     mint = Mock(return_value=SYNTHETIC)
     monkeypatch.setattr(credentials, "push_token", mint)
+    remote_git = Mock(wraps=push.git_with_token)
+    monkeypatch.setattr(push, "git_with_token", remote_git)
 
     def failed_harness(
         actual: run_host.Run, paths: run_host.Prepared, stack: ExitStack
@@ -1181,8 +1198,10 @@ def test_timed_out_build_publishes_wip(
         return 124
 
     with ExitStack() as stack:
-        assert push.run(run, prepared, stack, failed_harness, None) == 124
+        supplied = "expired-installation-token" if start_ref else None
+        assert push.run(run, prepared, stack, failed_harness, supplied) == 124
     mint.assert_called_once_with(run.request, run.settings)
+    assert [call.args[1] for call in remote_git.call_args_list] == [SYNTHETIC] * 2
     tip = git(workspace, "rev-parse", "HEAD")
     assert (
         git(target, "for-each-ref", "--format=%(refname)") == "refs/heads/wip/example"
@@ -1195,6 +1214,50 @@ def test_timed_out_build_publishes_wip(
     assert_run_file(
         run, "log", expected + f"harness exited 124\npushed wip/example at {tip}\n"
     )
+
+
+@pytest.mark.parametrize("remote_change", ["none", "race", "start", "default"])
+def test_reused_run_name_replaces_only_the_observed_wip_tip(
+    fix_run: LocalRun, monkeypatch: pytest.MonkeyPatch, remote_change: str
+) -> None:
+    run, prepared, target = fix_run
+    workspace = Path(prepared.paths.worktree)
+    base = git(target, "rev-parse", START_REF)
+    default = git(target, "rev-parse", DEFAULT_REF)
+    wip = "refs/heads/wip/example"
+    commit(workspace, "previous run")
+    git(workspace, "push", target.as_uri(), f"HEAD:{wip}")
+    previous = git(target, "rev-parse", wip)
+    git(workspace, "reset", "--hard", base)
+    if remote_change == "start":
+        run.request = replace(run.request, start_ref=wip, fetch_refs=(wip,))
+    if remote_change == "default":
+        git(target, "symbolic-ref", "HEAD", wip)
+    monkeypatch.setattr(credentials, "push_token", constant(SYNTHETIC))
+    original = push.send
+
+    def send(
+        directory: Path, url: str, branch: str, token: str, *, lease: str
+    ) -> tuple[int, str]:
+        if remote_change == "race":
+            git(target, "update-ref", wip, default)
+        return original(directory, url, branch, token, lease=lease)
+
+    def timeout(
+        actual: run_host.Run, paths: run_host.Prepared, stack: ExitStack
+    ) -> int:
+        harness(actual, paths, stack)
+        return 124
+
+    monkeypatch.setattr(push, "send", send)
+    with ExitStack() as stack:
+        assert push.run(run, prepared, stack, timeout, None) == 124
+    tip = git(workspace, "rev-parse", "HEAD")
+    expected = {"none": tip, "race": default, "start": previous, "default": previous}
+    assert git(target, "rev-parse", wip) == expected[remote_change]
+    assert git(target, "rev-parse", START_REF) == base
+    assert git(target, "rev-parse", DEFAULT_REF) == default
+    assert_run_file(run, "branch", "wip/example" if remote_change == "none" else None)
 
 
 @pytest.mark.parametrize("missing", [False, True])
@@ -1222,6 +1285,8 @@ def test_push_preserves_harness_failure_when_git_metadata_is_unusable(
     [
         (None, None, "no push token"),
         (credentials.PushTokenFailure("Invalid"), None, "no push token"),
+        (SYNTHETIC, (1, "", SYNTHETIC), "cannot read remote tip"),
+        (SYNTHETIC, (0, "bad\trefs/heads/wip/example\n", ""), "cannot read remote tip"),
         (SYNTHETIC, (1, SYNTHETIC), "[redacted]"),
         (SYNTHETIC, (1, ""), "git push failed"),
         (SYNTHETIC, OSError(), "git push unavailable"),
@@ -1231,12 +1296,15 @@ def test_wip_push_failure_keeps_the_commit(
     local_run: LocalRun,
     monkeypatch: pytest.MonkeyPatch,
     token: str | credentials.PushTokenFailure | None,
-    failure: tuple[int, str] | OSError | None,
+    failure: tuple[int, str] | tuple[int, str, str] | OSError | None,
     expected: str,
 ) -> None:
     run, prepared, target = local_run
     workspace = Path(prepared.paths.worktree)
-    monkeypatch.setattr(credentials, "push_token", constant(None))
+    monkeypatch.setattr(credentials, "push_token", constant(token))
+    failed_lookup = isinstance(failure, tuple) and len(failure) == 3
+    if failed_lookup:
+        monkeypatch.setattr(push, "git_with_token", constant(failure))
     send = (
         Mock(side_effect=failure)
         if isinstance(failure, OSError)
@@ -1249,13 +1317,15 @@ def test_wip_push_failure_keeps_the_commit(
         return 124
 
     with ExitStack() as stack:
-        assert push.run(run, prepared, stack, fail, token) == 124
+        assert push.run(run, prepared, stack, fail, None) == 124
     assert git(target, "for-each-ref") == ""
     assert_run_file(run, "head", git(workspace, "rev-parse", "HEAD"))
     assert not run.files.path("branch").exists()
     log = run.files.path("log").read_text()
     assert expected in log
     assert SYNTHETIC not in log
+    if failed_lookup:
+        send.assert_not_called()
 
 
 def test_feed_sends_one_line_and_closes() -> None:

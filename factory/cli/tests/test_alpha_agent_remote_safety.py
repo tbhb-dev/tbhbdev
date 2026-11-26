@@ -1127,11 +1127,13 @@ def test_unpublished_diff_bounds_output_and_preserves_failure(
     unpublished_run(host)
     write_standalone_fake(
         host / "bin/git",
-        "import sys\n"
+        "import sys\nfrom pathlib import Path\n"
         "if '--symref' in sys.argv:\n"
         "    print('ref: refs/heads/main\\tHEAD'); sys.exit(0)\n"
         "if 'ls-remote' in sys.argv: sys.exit(0)\n"
-        "if 'init' in sys.argv: sys.exit(0)\n"
+        "if 'init' in sys.argv:\n"
+        "    (Path(sys.argv[-1]) / 'objects/info').mkdir(parents=True); sys.exit(0)\n"
+        "if 'rev-list' in sys.argv: sys.exit(0)\n"
         "assert 'format-patch' in sys.argv\n"
         "assert 'diff.external=' in sys.argv\n"
         "assert '--no-ext-diff' in sys.argv and '--no-textconv' in sys.argv\n"
@@ -1295,18 +1297,47 @@ def test_diff_falls_back_when_origin_is_unavailable(host: Path, rc: int) -> None
     assert bool(result.stderr) is (rc == 0)
 
 
+def merge_run_changes(tree: Path, resolution: bytes) -> None:
+    example = tree / "example"
+    git_in(tree, "switch", "-c", "topic")
+    example.write_text("side change\n")
+    git_in(tree, "add", "example")
+    commit_in(tree, "side change")
+    git_in(tree, "switch", "agent/sample")
+    example.write_text("run change\n")
+    git_in(tree, "add", "example")
+    commit_in(tree, "unpublished change")
+    with pytest.raises(subprocess.CalledProcessError):
+        git_in(tree, "merge", "--no-edit", "topic")
+    assert git_in(tree, "status", "--porcelain") == "UU example"
+    example.write_bytes(resolution)
+    git_in(tree, "add", "example")
+    commit_in(tree, "resolve merge")
+
+
+@pytest.mark.parametrize("history", ["linear", "merge", "empty merge"])
 def test_finished_build_exports_complete_patch_offline(
     host: Path,
     monkeypatch: pytest.MonkeyPatch,
     capsysbinary: pytest.CaptureFixture[bytes],
+    history: str,
 ) -> None:
     tree = unpublished_run(host)
     base = git_in(tree, "rev-parse", "HEAD")
+    git_in(tree, "config", "user.name", "Example")
+    git_in(tree, "config", "user.email", "example@example.com")
+    example = tree / "example"
     content = b"unpublished \x80\x1b\n" * 5000
-    (tree / "example").write_bytes(content)
-    git_in(tree, "add", "example")
-    commit_in(tree, "unpublished change")
+    if history == "linear":
+        example.write_bytes(content)
+        git_in(tree, "add", "example")
+        commit_in(tree, "unpublished change")
+    else:
+        merge_run_changes(
+            tree, example.read_bytes() if history == "empty merge" else content
+        )
     tip = git_in(tree, "rev-parse", "HEAD")
+    tip_tree = git_in(tree, "rev-parse", "HEAD^{tree}")
     git_in(tree, "checkout", "--detach", base)
     state = host / "state/tbhbdev/agent-runs"
     (state / "sample.base").write_text(base)
@@ -1337,14 +1368,16 @@ def test_finished_build_exports_complete_patch_offline(
     (state / "sample.rc").write_text("0\n")
     assert agent.main(args, "example") == 0
     output = capsysbinary.readouterr().out
-    assert output.startswith(f"From {tip} ".encode())
-    assert len(output) > 65536
-    patch = host / "run.patch"
-    patch.write_bytes(output)
-    git_in(tree, "config", "user.name", "Example")
-    git_in(tree, "config", "user.email", "example@example.com")
-    git_in(tree, "am", str(patch))
-    assert (tree / "example").read_bytes() == content
+    if history == "empty merge":
+        assert output == b""
+    else:
+        if history == "linear":
+            assert output.startswith(f"From {tip} ".encode())
+        assert len(output) > 65536
+        patch = host / "run.patch"
+        patch.write_bytes(output)
+        git_in(tree, "am", str(patch))
+    assert git_in(tree, "rev-parse", "HEAD^{tree}") == tip_tree
 
 
 @pytest.mark.parametrize("limit", [None, 10])

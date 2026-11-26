@@ -888,7 +888,7 @@ def run_and_publish(
     rc = push.run(run, prepared, stack, run_harness, token)
     if rc == 0 and run.request.profile is Profile.REVIEW:
         return post_review(run, prepared)
-    return require_commit(run, rc, before)
+    return require_commit(run, prepared, rc, before)
 
 
 def post_review(run: Run, prepared: Prepared) -> int:
@@ -929,10 +929,11 @@ def origin_tip(run: Run) -> str | None:
     return tip if isinstance(tip, str) and re.fullmatch(r"[0-9a-f]{40}", tip) else None
 
 
-def require_commit(run: Run, rc: int, before: str | None) -> int:
+def require_commit(run: Run, prepared: Prepared, rc: int, before: str | None) -> int:
     if rc or not run.request.expect_commit:
         return rc
-    if not run.files.path("head").exists():
+    head = run.files.path("head")
+    if not head.exists():
         run.files.write(
             "log", "no new commit: the build required one (--expect-commit)\n"
         )
@@ -947,6 +948,7 @@ def require_commit(run: Run, rc: int, before: str | None) -> int:
         run.files.write("log", f"push failed: no new tip for {branch} on origin\n")
     else:
         return 0
+    push.publish_wip(run, Path(prepared.paths.worktree), head.read_text())
     return NO_PUSH
 
 

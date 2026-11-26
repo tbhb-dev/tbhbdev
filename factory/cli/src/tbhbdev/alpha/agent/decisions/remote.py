@@ -475,10 +475,24 @@ scratch=$(mktemp -d) || exit 65
 trap 'rm -rf "$scratch"' EXIT
 {GIT} GIT_CONFIG_GLOBAL=/dev/null {GIT_FLAGS} \
     init -q --bare --template= "$scratch" || exit 65
-{GIT} GIT_CONFIG_GLOBAL=/dev/null GIT_DIR="$scratch" \
-    GIT_OBJECT_DIRECTORY="$run/objects" {GIT_FLAGS} \
-    -c protocol.allow=never -c diff.external= -c core.multiPackIndex=false \
-    --no-optional-locks format-patch --stdout --no-ext-diff --no-textconv --no-color \
+ln -s "$run/objects" "$scratch/source" || exit 65
+printf '%s\\n' ../source > "$scratch/objects/info/alternates" || exit 65
+patch_git() {{
+    {GIT} GIT_CONFIG_GLOBAL=/dev/null GIT_DIR="$scratch" {GIT_FLAGS} \
+        -c protocol.allow=never -c diff.external= -c core.multiPackIndex=false \
+        --no-optional-locks "$@"
+}}
+# A merge's conflict resolutions have no standalone patch. Export the final
+# tree as a single commit atop the recorded base whenever the range has merges.
+merges=$(patch_git rev-list --max-count=1 --merges "$base..$tip" --) || exit 65
+if test -n "$merges"; then
+    tree=$(patch_git rev-parse "$tip^{{tree}}") || exit 65
+    base_tree=$(patch_git rev-parse "$base^{{tree}}") || exit 65
+    test "$tree" != "$base_tree" || exit 0
+    tip=$(patch_git -c user.name=tbhbdev -c user.email=tbhbdev@localhost \
+        commit-tree "$tree" -p "$base" -m "Run {name} ($tip)") || exit 65
+fi
+patch_git format-patch --stdout --no-ext-diff --no-textconv --no-color \
     --no-signature --no-attach --no-add-header --no-notes "$base..$tip" --
 """
     if export:
