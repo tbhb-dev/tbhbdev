@@ -1,0 +1,49 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright Tony Burns
+
+{
+  $schema: "https://docs.renovatebot.com/renovate-schema.json",
+
+  // Renovate for this repository. The presets sit in factory/renovate-config
+  // in this same repository. They are referenced unpinned, and Renovate
+  // resolves `extends` over the platform API, not off the checkout, so a
+  // preset change takes effect once it is on the default branch. Renovate
+  // refuses a relative reference (`./...`) in a repository config, so each
+  // entry names the repository.
+  //
+  // One entry for each root language: default.json5 for every repository,
+  // bazel.json5 for MODULE.bazel, go.json5 for go.mod, python.json5 for
+  // pyproject.toml and uv.lock. ansible.json5, cloudflare-worker.json5, and
+  // rules-cloudflare.json5 join this list in the change that brings the
+  // manifest each one acts on.
+  extends: [
+    "github>tbhb-dev/tbhbdev//factory/renovate-config/default.json5",
+    "github>tbhb-dev/tbhbdev//factory/renovate-config/bazel.json5",
+    "github>tbhb-dev/tbhbdev//factory/renovate-config/go.json5",
+    "github>tbhb-dev/tbhbdev//factory/renovate-config/python.json5",
+  ],
+
+  // Image and tool pins that only a repo hosting the Renovate workflow has.
+  customManagers: [
+    // `renovate-image: <ref>` action inputs and `<NAME>_IMAGE: "<ref>"` /
+    // `<NAME>_IMAGE="<ref>"` assignments, marker on the line above:
+    //
+    //   # renovate: datasource=docker depName=ghcr.io/renovatebot/renovate
+    //   RENOVATE_IMAGE: "ghcr.io/renovatebot/renovate:44.206.2@sha256:..."
+    {
+      customType: "regex",
+      managerFilePatterns: ["/^\\.github/workflows/[^/]+\\.ya?ml$/"],
+      matchStrings: [
+        "# renovate: datasource=(?<datasource>.*?) depName=(?<depName>.*?)\\s+(?:\\S+_IMAGE(?::\\s+|=)\"?|renovate-image:\\s+)[^:\\s\"]+:(?<currentValue>[^@\\s\"]+)@(?<currentDigest>sha256:[a-f0-9]+)\"?",
+      ],
+    },
+    // `<NAME>_VERSION: "1.2.3"` pins for pipx-run tools, marker above.
+    {
+      customType: "regex",
+      managerFilePatterns: ["/^\\.github/workflows/[^/]+\\.ya?ml$/"],
+      matchStrings: [
+        "# renovate: datasource=(?<datasource>.*?) depName=(?<depName>.*?)\\s+\\S+_VERSION:\\s+\"?(?<currentValue>[^\"\\s]+)\"?",
+      ],
+    },
+  ],
+}

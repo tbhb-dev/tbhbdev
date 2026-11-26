@@ -1,0 +1,429 @@
+# SPDX-License-Identifier: Apache-2.0
+# Copyright Tony Burns
+
+# The path map of the import of tbhb-dev/renovate-config into factory/renovate-config,
+# written by hand the way `tbhbdev alpha monorepo import` will write it. Every file of
+# the source commit appears once in [[file]] as copy, drop, or rewrite. A copy is
+# byte-identical to its source, and `blob` is the source file's Git blob id.
+# [[added]] lists what the source never had.
+
+version = 1
+
+[source]
+repository = "tbhb-dev/renovate-config"
+commit = "6fc408cfec75871cd01b04bf1396e4f82c7fc792"
+files = 73
+
+[project]
+path = "factory/renovate-config"
+
+[[file]]
+path = ".bazelignore"
+action = "drop"
+reason = "Root Bazel configuration. The shared root replaces it."
+
+[[file]]
+path = ".bazelrc"
+action = "drop"
+reason = "Root Bazel configuration. The shared root replaces it."
+
+[[file]]
+path = ".bazelversion"
+action = "drop"
+reason = "Root Bazel configuration. The shared root replaces it."
+
+[[file]]
+path = ".claude/settings.json"
+action = "drop"
+reason = "Root agent harness configuration. It arrives at the monorepo root with the rules import (wave 2), where appendix C lists it as a class 2 path."
+
+[[file]]
+path = ".codex/rules/pull-request.rules"
+action = "drop"
+reason = "Root agent harness configuration. It arrives at the monorepo root with the rules import (wave 2), where appendix C lists it as a class 2 path."
+
+[[file]]
+path = ".cspell-words.txt"
+action = "drop"
+reason = "Root lint, format, or editor configuration. The shared root replaces it, or it arrives with the rules import (wave 2)."
+
+[[file]]
+path = ".cspell.jsonc"
+action = "drop"
+reason = "Root lint, format, or editor configuration. The shared root replaces it, or it arrives with the rules import (wave 2)."
+
+[[file]]
+path = ".editorconfig"
+action = "drop"
+reason = "Root lint, format, or editor configuration. The shared root replaces it, or it arrives with the rules import (wave 2)."
+
+[[file]]
+path = ".editorconfig-checker.json"
+action = "drop"
+reason = "Root lint, format, or editor configuration. The shared root replaces it, or it arrives with the rules import (wave 2)."
+
+[[file]]
+path = ".gitattributes"
+action = "drop"
+reason = "Root lint, format, or editor configuration. The shared root replaces it, or it arrives with the rules import (wave 2)."
+
+[[file]]
+path = ".github/CODEOWNERS"
+action = "drop"
+reason = "The monorepo has no CODEOWNERS file, because GitHub turns its entries into required reviewers. The project's OWNERS file replaces it (appendix C)."
+
+[[file]]
+path = ".github/PULL_REQUEST_TEMPLATE.md"
+action = "drop"
+reason = "Root repository files. The monorepo's own copy replaces it."
+
+[[file]]
+path = ".github/actionlint.yaml"
+action = "drop"
+reason = "Root lint, format, or editor configuration. The shared root replaces it, or it arrives with the rules import (wave 2)."
+
+[[file]]
+path = ".github/pull-request-sections.toml"
+action = "drop"
+reason = "Root repository files. The monorepo's own copy replaces it."
+
+[[file]]
+path = ".github/renovate.json5"
+action = "rewrite"
+to = "renovate.json5"
+reason = "Extended the presets with github>tbhb-dev/renovate-config. Now extends the presets in this repository, adds go.json5 for go.mod, and keeps the two workflow custom managers."
+
+[[file]]
+path = ".github/rulesets/main.json"
+action = "drop"
+reason = "Root repository files. The monorepo's own copy replaces it."
+
+[[file]]
+path = ".github/schemas/pull-request-draft.schema.json"
+action = "drop"
+reason = "Root repository files. The monorepo's own copy replaces it."
+
+[[file]]
+path = ".github/workflows/ci.yml"
+action = "drop"
+reason = "The repository's own gate. It pins workflows and actions of the old rules repository, and the monorepo's inline ci.yml replaces it (D27)."
+
+[[file]]
+path = ".github/workflows/renovate-config-validator.yaml"
+action = "drop"
+reason = "Consumer-pin tooling: it checks, summarizes, or moves pins of the old repository's presets and workflows in other repositories. Nothing in this repository pins them, so it has nothing to check."
+
+[[file]]
+path = ".github/workflows/renovate-self.yaml"
+action = "rewrite"
+to = ".github/workflows/renovate.yaml"
+reason = "Was the caller of the reusable workflow. Its triggers (push to main, two schedules, workflow_dispatch with dry_run and log_level) are now the triggers of the inline workflow."
+
+[[file]]
+path = ".github/workflows/renovate.yaml"
+action = "rewrite"
+to = ".github/workflows/renovate.yaml"
+reason = "Was a reusable workflow (workflow_call) that also ran Renovate for other repositories. Now one inline workflow for this repository: the target-validation job, the repository and runner inputs, and the require_approval input are gone. The audit, cache, Renovate, and log-check steps keep their text, and the secret names RENOVATE_CLIENT_ID and RENOVATE_PRIVATE_KEY are unchanged."
+
+[[file]]
+path = ".github/zizmor.yml"
+action = "drop"
+reason = "Root lint, format, or editor configuration. The shared root replaces it, or it arrives with the rules import (wave 2)."
+
+[[file]]
+path = ".gitignore"
+action = "drop"
+reason = "Root lint, format, or editor configuration. The shared root replaces it, or it arrives with the rules import (wave 2)."
+
+[[file]]
+path = ".gitleaks.toml"
+action = "drop"
+reason = "Root lint, format, or editor configuration. The shared root replaces it, or it arrives with the rules import (wave 2)."
+
+[[file]]
+path = ".mcp.json"
+action = "drop"
+reason = "Root agent harness configuration. It arrives at the monorepo root with the rules import (wave 2), where appendix C lists it as a class 2 path."
+
+[[file]]
+path = ".pre-commit-config.yaml"
+action = "drop"
+reason = "Root lint, format, or editor configuration. The shared root replaces it, or it arrives with the rules import (wave 2)."
+
+[[file]]
+path = ".rumdl.toml"
+action = "drop"
+reason = "Root lint, format, or editor configuration. The shared root replaces it, or it arrives with the rules import (wave 2)."
+
+[[file]]
+path = ".ryl.toml"
+action = "drop"
+reason = "Root lint, format, or editor configuration. The shared root replaces it, or it arrives with the rules import (wave 2)."
+
+[[file]]
+path = ".rylignore"
+action = "drop"
+reason = "Root lint, format, or editor configuration. The shared root replaces it, or it arrives with the rules import (wave 2)."
+
+[[file]]
+path = ".vale.ini"
+action = "drop"
+reason = "Root lint, format, or editor configuration. The shared root replaces it, or it arrives with the rules import (wave 2)."
+
+[[file]]
+path = ".vale/config/vocabularies/project/accept.txt"
+action = "drop"
+reason = "Root lint, format, or editor configuration. The shared root replaces it, or it arrives with the rules import (wave 2)."
+
+[[file]]
+path = ".vale/config/vocabularies/project/reject.txt"
+action = "drop"
+reason = "Root lint, format, or editor configuration. The shared root replaces it, or it arrives with the rules import (wave 2)."
+
+[[file]]
+path = ".vale/project/Acronyms.yml"
+action = "drop"
+reason = "Root lint, format, or editor configuration. The shared root replaces it, or it arrives with the rules import (wave 2)."
+
+[[file]]
+path = ".vale/project/Colons.yml"
+action = "drop"
+reason = "Root lint, format, or editor configuration. The shared root replaces it, or it arrives with the rules import (wave 2)."
+
+[[file]]
+path = ".vale/project/HeadingTitleCase.yml"
+action = "drop"
+reason = "Root lint, format, or editor configuration. The shared root replaces it, or it arrives with the rules import (wave 2)."
+
+[[file]]
+path = ".vale/project/WordList.yml"
+action = "drop"
+reason = "Root lint, format, or editor configuration. The shared root replaces it, or it arrives with the rules import (wave 2)."
+
+[[file]]
+path = "AGENTS.md"
+action = "drop"
+reason = "Root agent instructions. The shared root AGENTS.md replaces them. The one line they held, which points to the wiki's models page, returns with the wiki import (wave 4)."
+
+[[file]]
+path = "BUILD.bazel"
+action = "rewrite"
+to = "factory/renovate-config/BUILD.bazel"
+reason = "The root build file of the old repository held the test targets with its lint gates. Only the sh_test targets for the kept tests move here. The test targets read the root workflow through //:.github/workflows/renovate.yaml, exported from the root BUILD.bazel."
+
+[[file]]
+path = "LICENSE"
+action = "drop"
+reason = "Root repository files. The monorepo's own copy replaces it."
+
+[[file]]
+path = "LICENSES/Apache-2.0.txt"
+action = "drop"
+reason = "Root repository files. The monorepo's own copy replaces it."
+
+[[file]]
+path = "MODULE.bazel"
+action = "drop"
+reason = "Root Bazel configuration. The shared root replaces it."
+
+[[file]]
+path = "MODULE.bazel.lock"
+action = "drop"
+reason = "Root Bazel configuration. The shared root replaces it."
+
+[[file]]
+path = "README.md"
+action = "rewrite"
+to = "factory/renovate-config/README.md"
+reason = "Described consumers pinning the reusable workflows and presets of the old repository. Rewritten for the monorepo: contents, rules for the presets, the root workflow."
+
+[[file]]
+path = "REPO.bazel"
+action = "drop"
+reason = "Root Bazel configuration. The shared root replaces it."
+
+[[file]]
+path = "REUSE.toml"
+action = "drop"
+reason = "Root repository files. The monorepo's own copy replaces it."
+
+[[file]]
+path = "ansible.json5"
+action = "copy"
+to = "factory/renovate-config/ansible.json5"
+blob = "68053ad00ac80e057556261610780a58acbb72c8"
+
+[[file]]
+path = "bazel.json5"
+action = "copy"
+to = "factory/renovate-config/bazel.json5"
+blob = "55f98931f6d53de548850309e06c25baf4c6c90b"
+
+[[file]]
+path = "cloudflare-worker.json5"
+action = "copy"
+to = "factory/renovate-config/cloudflare-worker.json5"
+blob = "3375ebcb62561eaffe5f2e9d40b0c3d5ae650fd8"
+
+[[file]]
+path = "default.json5"
+action = "copy"
+to = "factory/renovate-config/default.json5"
+blob = "5ec1d5dfa05ed5e4ae3edb277f705f7bcfe61d04"
+
+[[file]]
+path = "go.json5"
+action = "copy"
+to = "factory/renovate-config/go.json5"
+blob = "df7459013aa0b0562eb0004f77d07b21c17afca3"
+
+[[file]]
+path = "mise.lock"
+action = "drop"
+reason = "Tool pins for the old repository's root. The shared root replaces them, or they arrive with the rules import (wave 2)."
+
+[[file]]
+path = "mise.toml"
+action = "drop"
+reason = "Tool pins for the old repository's root. The shared root replaces them, or they arrive with the rules import (wave 2)."
+
+[[file]]
+path = "preset.bazelrc"
+action = "drop"
+reason = "Generated by //:preset.update from the root .bazelrc preset. The monorepo root has no such target, so the preset.update post-upgrade command in bazel.json5 has nothing to run yet."
+
+[[file]]
+path = "python.json5"
+action = "copy"
+to = "factory/renovate-config/python.json5"
+blob = "17ed7c92598db6c799768f10ac5a043b9439d665"
+
+[[file]]
+path = "renovate_allowlist_test.py"
+action = "rewrite"
+to = "factory/renovate-config/renovate_allowlist_test.py"
+reason = "Reads the workflow from the monorepo root, two levels above the project, because the workflow is no longer reusable and no longer sits beside the tests. The only change besides the docstring is the path."
+
+[[file]]
+path = "renovate_allowlist_test.sh"
+action = "copy"
+to = "factory/renovate-config/renovate_allowlist_test.sh"
+blob = "f211188828805c80b23a2df266846eca46db98f8"
+
+[[file]]
+path = "renovate_awrel_pin_test.py"
+action = "copy"
+to = "factory/renovate-config/renovate_awrel_pin_test.py"
+blob = "483a23d2422b5d8cdf10f028266b2aa66dc10476"
+
+[[file]]
+path = "renovate_awrel_pin_test.sh"
+action = "copy"
+to = "factory/renovate-config/renovate_awrel_pin_test.sh"
+blob = "6808807e6eb7b48da11eedb4b607b0aacc04e2cf"
+
+[[file]]
+path = "renovate_bump_pins.py"
+action = "drop"
+reason = "Consumer-pin tooling: it checks, summarizes, or moves pins of the old repository's presets and workflows in other repositories. Nothing in this repository pins them, so it has nothing to check."
+
+[[file]]
+path = "renovate_bump_pins_test.py"
+action = "drop"
+reason = "Consumer-pin tooling: it checks, summarizes, or moves pins of the old repository's presets and workflows in other repositories. Nothing in this repository pins them, so it has nothing to check."
+
+[[file]]
+path = "renovate_bump_pins_test.sh"
+action = "drop"
+reason = "Consumer-pin tooling: it checks, summarizes, or moves pins of the old repository's presets and workflows in other repositories. Nothing in this repository pins them, so it has nothing to check."
+
+[[file]]
+path = "renovate_grouping_test.py"
+action = "copy"
+to = "factory/renovate-config/renovate_grouping_test.py"
+blob = "1823b3211684334233ad79599f5990a7e91eea78"
+
+[[file]]
+path = "renovate_grouping_test.sh"
+action = "copy"
+to = "factory/renovate-config/renovate_grouping_test.sh"
+blob = "0c541b9242a4421b71c223dd49c73306de533c98"
+
+[[file]]
+path = "renovate_log_check_test.py"
+action = "rewrite"
+to = "factory/renovate-config/renovate_log_check_test.py"
+reason = "Reads the workflow from the monorepo root, two levels above the project, because the workflow is no longer reusable and no longer sits beside the tests. The only change besides the docstring is the path."
+
+[[file]]
+path = "renovate_log_check_test.sh"
+action = "copy"
+to = "factory/renovate-config/renovate_log_check_test.sh"
+blob = "a035172bbffa5c1ffddd15b1c25bb9588d02f002"
+
+[[file]]
+path = "renovate_pin_consistency_test.py"
+action = "drop"
+reason = "Consumer-pin tooling: it checks, summarizes, or moves pins of the old repository's presets and workflows in other repositories. Nothing in this repository pins them, so it has nothing to check."
+
+[[file]]
+path = "renovate_pin_consistency_test.sh"
+action = "drop"
+reason = "Consumer-pin tooling: it checks, summarizes, or moves pins of the old repository's presets and workflows in other repositories. Nothing in this repository pins them, so it has nothing to check."
+
+[[file]]
+path = "renovate_pin_range_test.py"
+action = "drop"
+reason = "Consumer-pin tooling: it checks, summarizes, or moves pins of the old repository's presets and workflows in other repositories. Nothing in this repository pins them, so it has nothing to check."
+
+[[file]]
+path = "renovate_pin_range_test.sh"
+action = "drop"
+reason = "Consumer-pin tooling: it checks, summarizes, or moves pins of the old repository's presets and workflows in other repositories. Nothing in this repository pins them, so it has nothing to check."
+
+[[file]]
+path = "renovate_ruleset_audit_test.py"
+action = "rewrite"
+to = "factory/renovate-config/renovate_ruleset_audit_test.py"
+reason = "Reads the workflow from the monorepo root, two levels above the project, because the workflow is no longer reusable and no longer sits beside the tests. The only change besides the docstring is the path."
+
+[[file]]
+path = "renovate_ruleset_audit_test.sh"
+action = "copy"
+to = "factory/renovate-config/renovate_ruleset_audit_test.sh"
+blob = "cc9a6ebe511f30def90d01ea8bfd0da08de9cc67"
+
+[[file]]
+path = "rules-cloudflare.json5"
+action = "copy"
+to = "factory/renovate-config/rules-cloudflare.json5"
+blob = "33f15fb19af17bbe821b6c1f4c6673a69e8f2699"
+
+[[file]]
+path = "tombi.toml"
+action = "drop"
+reason = "Root lint, format, or editor configuration. The shared root replaces it, or it arrives with the rules import (wave 2)."
+
+[[added]]
+path = "factory/renovate-config/OWNERS"
+reason = "Required for every project folder (appendix C)."
+
+[[added]]
+path = "factory/renovate-config/IMPORT-MAP.toml"
+reason = "This file."
+
+[[added]]
+path = "BUILD.bazel"
+reason = "Edit to the shared root: exports the root Renovate workflow to //factory/renovate-config, whose tests read it."
+
+[[added]]
+path = "factory/BUILD.bazel"
+reason = "Edit to the shared root: //factory:repo_files takes the project's own repo_files, because a glob can't enter the project's package."
+
+[[added]]
+path = ".editorconfig-checker.json"
+reason = "Edit to the shared root: excludes the root Renovate workflow, whose inline Python keeps the bracket-aligned continuation lines of the source. The old repository excluded the same file."
+
+[[added]]
+path = ".cspell-words.txt"
+reason = "Edit to the shared root: the words the copied files use that the shared list lacked."
