@@ -396,6 +396,28 @@ def test_new_refuses_invalid_field_values(
     assert "expected a non-empty single-line value" in capsys.readouterr().err
 
 
+@pytest.mark.parametrize(
+    ("options", "error"),
+    [
+        (
+            ["--kind", "fix", "--expected-size", "140"],
+            "--expected-size is only for build briefs",
+        ),
+        (
+            ["--failing-line", "src/file.py:42"],
+            "--failing-line and --proven-fix are only for fix briefs",
+        ),
+    ],
+)
+def test_new_refuses_fields_for_the_other_template(
+    options: list[str], error: str, capsys: pytest.CaptureFixture[str]
+) -> None:
+    with pytest.raises(SystemExit) as caught:
+        brief.main(["new", "demo", "--repo", "owner/repo", *options], PROG)
+    assert caught.value.code == 2
+    assert error in capsys.readouterr().err
+
+
 def test_output_file_and_options(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
