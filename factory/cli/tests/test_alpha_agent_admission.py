@@ -4,8 +4,9 @@ from __future__ import annotations
 
 import errno
 import os
+import pwd
 import stat
-from contextlib import ExitStack
+from contextlib import ExitStack, nullcontext
 from dataclasses import replace
 from types import SimpleNamespace
 from typing import TYPE_CHECKING
@@ -125,26 +126,42 @@ def test_refuses_a_symlink_slot(tmp_path: Path) -> None:
         pytest.fail("admitted a run with a symlink slot")
 
 
-def test_refuses_a_foreign_owned_slot(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+@pytest.mark.parametrize("name", ["admission.lock", "review-0"])
+@pytest.mark.parametrize("owner", ["root", "configured", "unrelated"])
+def test_admission_file_ownership(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, name: str, owner: str
 ) -> None:
-    slot = tmp_path / "review-0"
+    slot = tmp_path / name
     slot.touch()
     inode = slot.stat().st_ino
+    uid = os.getuid()
+    owner_uid = {"root": 0, "configured": uid + 1, "unrelated": uid + 2}[owner]
+
+    def getpwnam(account: str) -> SimpleNamespace:
+        if account == LINUX.accounts[-1]:
+            return SimpleNamespace(pw_uid=uid + 1)
+        raise KeyError(account)
+
     real_fstat = os.fstat
 
     def fstat(fd: int) -> os.stat_result | SimpleNamespace:
         info = real_fstat(fd)
         if info.st_ino == inode:
-            return SimpleNamespace(st_mode=info.st_mode, st_uid=os.getuid() + 1)
+            return SimpleNamespace(st_mode=info.st_mode, st_uid=owner_uid)
         return info
 
+    monkeypatch.setattr(pwd, "getpwnam", getpwnam)
     monkeypatch.setattr(admission.os, "fstat", fstat)
+    expectation = (
+        pytest.raises(Invalid, match="slot must be owned by")
+        if owner == "unrelated"
+        else nullcontext()
+    )
     with (
-        pytest.raises(Invalid, match="slot must be owned by the current uid"),
+        expectation,
         admission.reserve(tmp_path, LINUX, Profile.REVIEW, LINUX.max_concurrent_runs),
     ):
-        pytest.fail("admitted a run with a foreign-owned slot")
+        assert (tmp_path / "review-0").is_file()
 
 
 @pytest.mark.parametrize("mode", [0o664, 0o646])
