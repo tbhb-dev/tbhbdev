@@ -10,6 +10,7 @@ from dataclasses import replace
 from pathlib import Path
 from shutil import which
 from tempfile import mkdtemp
+from typing import TYPE_CHECKING
 
 import pytest
 from agent_driver_example import (
@@ -24,6 +25,9 @@ from agent_example import LINUX, settings, trusted_executables
 from tbhbdev.alpha import agent
 from tbhbdev.alpha.agent import driver, transport
 from tbhbdev.alpha.agent.decisions import policy, remote
+
+if TYPE_CHECKING:
+    from tbhbdev.alpha.agent.model import Settings
 
 
 @pytest.fixture(autouse=True)
@@ -1254,15 +1258,14 @@ def test_unpublished_diff_refuses_symlinked_git_internals(
 
 def test_unpublished_diff_refuses_missing_base(host: Path) -> None:
     tree = unpublished_run(host)
-    git_in(tree, "update-ref", "-d", "refs/remotes/origin/main")
+    (tree / ".git/logs/refs/heads/agent/sample").unlink()
     result = fallback_diff()
     assert result.returncode != 0
     assert result.stdout == b""
 
 
-def test_unpublished_diff_uses_named_default_branch(host: Path) -> None:
+def test_unpublished_diff_ignores_default_branch_rename(host: Path) -> None:
     tree = unpublished_run(host)
-    git_in(tree, "update-ref", "refs/remotes/origin/trunk", "origin/main")
     git_in(tree, "update-ref", "-d", "refs/remotes/origin/main")
     origin = host / "origin.git"
     git_in(origin, "update-ref", "refs/heads/trunk", "main")
@@ -1275,31 +1278,73 @@ def test_unpublished_diff_uses_named_default_branch(host: Path) -> None:
     assert b"+local trunk change" in result.stdout
 
 
-@pytest.mark.parametrize("listing", [None, "", "abc\\tHEAD"])
-def test_unpublished_diff_requires_default_branch(
-    host: Path, listing: str | None
+@pytest.mark.parametrize("rc", [0, 124])
+def test_diff_falls_back_when_origin_is_unavailable(host: Path, rc: int) -> None:
+    tree = unpublished_run(host)
+    (tree / "example").write_text("offline change\n")
+    git_in(tree, "add", "example")
+    commit_in(tree, "offline change")
+    mirror = (
+        host / "state/tbhbdev/agent-mirrors/github.com/example-org/example-repo.git"
+    )
+    git_in(mirror, "config", "remote.origin.url", str(host / "missing.git"))
+    (host / "state/tbhbdev/agent-runs/sample.rc").write_text(f"{rc}\n")
+    result = fallback_diff()
+    assert result.returncode == 0, result.stderr
+    assert b"+offline change\n" in result.stdout
+    assert bool(result.stderr) is (rc == 0)
+
+
+def test_finished_build_exports_complete_patch_offline(
+    host: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsysbinary: pytest.CaptureFixture[bytes],
 ) -> None:
-    unpublished_run(host)
-    write_standalone_fake(
-        host / "bin/git",
-        "import sys\nassert 'ls-remote' in sys.argv\n"
-        "if '--symref' in sys.argv:\n"
-        f"    print({listing!r}); sys.exit({74 if listing is None else 0})\n",
-    )
-    result = fallback_diff()
-    assert result.returncode == (74 if listing is None else 65)
-    assert result.stdout == b""
+    tree = unpublished_run(host)
+    base = git_in(tree, "rev-parse", "HEAD")
+    content = b"unpublished \x80\x1b\n" * 5000
+    (tree / "example").write_bytes(content)
+    git_in(tree, "add", "example")
+    commit_in(tree, "unpublished change")
+    tip = git_in(tree, "rev-parse", "HEAD")
+    git_in(tree, "checkout", "--detach", base)
+    state = host / "state/tbhbdev/agent-runs"
+    (state / "sample.base").write_text(base)
+    (state / "sample.head").write_text(tip)
+    (state.parent / "agent-mirrors").rename(host / "offline")
 
+    async def run_ssh(args: tuple[str, ...], _data: bytes) -> tuple[int, bytes]:
+        command = shlex.split(shlex.split(args[-1])[2])
+        result = execute(command[2])
+        return result.returncode, result.stdout
 
-def test_diff_refuses_failed_branch_query(host: Path) -> None:
-    unpublished_run(host)
-    write_standalone_fake(
-        host / "bin/git",
-        "import sys\nassert 'ls-remote' in sys.argv\nsys.exit(74)\n",
+    monkeypatch.setattr(transport, "execute", run_ssh)
+    config = settings()
+    run = driver.prepare(
+        config, agent.parser("example").parse_args(execution_arguments("example.md"))
     )
-    result = fallback_diff()
-    assert result.returncode == 74
-    assert result.stdout == b""
+    run.owner = "example-owner"
+
+    def load(_settings: Settings, _name: str) -> driver.Run:
+        return run
+
+    monkeypatch.setattr(agent.settings, "load", lambda: config)
+    monkeypatch.setattr(driver, "load", load)
+    args = ["diff", "sample", "--patch"]
+    assert agent.main(args, "example") == 1
+    assert not capsysbinary.readouterr().out
+
+    (state / "sample.rc").write_text("0\n")
+    assert agent.main(args, "example") == 0
+    output = capsysbinary.readouterr().out
+    assert output.startswith(f"From {tip} ".encode())
+    assert len(output) > 65536
+    patch = host / "run.patch"
+    patch.write_bytes(output)
+    git_in(tree, "config", "user.name", "Example")
+    git_in(tree, "config", "user.email", "example@example.com")
+    git_in(tree, "am", str(patch))
+    assert (tree / "example").read_bytes() == content
 
 
 @pytest.mark.parametrize("limit", [None, 10])

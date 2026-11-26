@@ -750,21 +750,40 @@ def clean(settings: Settings, run: Run, *, force: bool) -> int:
     return 0
 
 
+def export_patch(settings: Settings, run: Run) -> int:
+    if run.request.profile is not Profile.BUILD:
+        message = "diff --patch requires a finished build run"
+        raise Invalid(message)
+    script = remote.export_patch(run.request.repo, run.name)
+    output = transport.call_bytes(
+        settings, run.host, ("/bin/sh", "-c", script), transport.Stdin(run.owner)
+    )
+    sys.stdout.buffer.write(output)
+    return 0
+
+
 def inspect(settings: Settings, run: Run, *, limit: int | None) -> int:
-    if run.request.unsandboxed and (
-        limit is not None or run.request.profile is Profile.REVIEW
+    if (
+        run.request.unsandboxed
+        and limit is None
+        and run.request.profile is Profile.REVIEW
     ):
         reading = transport.read(
             settings, run.host, (run.name, run.owner), answer=True, timeout=30
         )
         print(transport.terminal_text(reading.text), end="")
         return 0
+    script = (
+        remote.run_log(run.name)
+        if run.request.unsandboxed and limit is not None
+        else remote.inspect(run.request.repo, run.name, limit=limit)
+    )
     print(
         transport.terminal_text(
             transport.shell(
                 settings,
                 run.host,
-                remote.inspect(run.request.repo, run.name, limit=limit),
+                script,
                 transport.Stdin(run.owner),
             )
         ),
@@ -792,6 +811,8 @@ def dispatch(settings: Settings, args: argparse.Namespace) -> int:
     run = load(settings, args.name)
     verbs = {"wait": wait, "status": status, "kill": kill, "keep": keep}
     try:
+        if args.verb == "diff" and args.patch:
+            return export_patch(settings, run)
         if args.verb in {"log", "diff"}:
             return inspect(settings, run, limit=args.n if args.verb == "log" else None)
         if args.verb == "clean":

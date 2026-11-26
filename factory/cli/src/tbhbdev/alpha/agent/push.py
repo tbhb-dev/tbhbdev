@@ -11,7 +11,7 @@ from contextlib import ExitStack, contextmanager, suppress
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from tbhbdev.alpha.agent import host_tools, runfiles
+from tbhbdev.alpha.agent import credentials, host_tools, runfiles
 from tbhbdev.alpha.agent.decisions import repo
 from tbhbdev.alpha.agent.model import Invalid, Profile
 
@@ -139,20 +139,16 @@ def run(
     reference = f"refs/heads/{branch}"
     before, _ = local_refs(workspace)
     base = before.get(reference)
+    if base is not None:
+        run.files.write("base", base)
     start = start_ref_target(run, base)
     rc = harness(run, prepared, stack)
     if run.files.uncertain:
         return rc
     if rc:
-        with suppress(OSError, ValueError):
-            commit = head(workspace, branch)
-            if commit is not None and commit != base:
-                run.files.write("head", commit)
-                if start is not None:
-                    run.files.write("log", f"push skipped: harness exited {rc}\n")
-        return rc
+        run.files.write("log", f"harness exited {rc}\n")
     try:
-        if start is not None:
+        if start is not None and not rc:
             return publish_start_ref(run, workspace, before, token, start)
         after, checkout = local_refs(workspace)
         found = new_commits(run, workspace, before, after, checkout)
@@ -165,9 +161,37 @@ def run(
         )
     else:
         if found:
-            run.files.write("head", found[0][1])
-        return 0
-    return 4
+            commit = found[0][1]
+            run.files.write("head", commit)
+            if rc:
+                publish_wip(run, workspace, commit, token)
+        return rc
+    return rc or 4
+
+
+def publish_wip(
+    run: Run, workspace: Path, commit: str, token: str | PushTokenFailure | None
+) -> None:
+    branch = f"wip/{run.files.name}"
+    if token is None:
+        token = credentials.push_token(run.request, run.settings)
+    if not isinstance(token, str):
+        reason = token.reason if token is not None else "unavailable"
+        run.files.write("log", f"push failed: no push token ({reason}) for {branch}\n")
+        return
+    try:
+        with publication(run.files.root, workspace, commit) as directory:
+            status, error = send(directory, url(run.request.repo), branch, token)
+        if not status:
+            run.files.write("branch", branch)
+            run.files.write("log", f"pushed {branch} at {commit}\n")
+            return
+        error = (
+            " ".join(error.replace(token, "[redacted]").split()) or "git push failed"
+        )
+    except OSError, ValueError, subprocess.SubprocessError:
+        error = "git push unavailable"
+    run.files.write("log", f"push failed: {branch}: {error[:PUSH_ERROR_LIMIT]}\n")
 
 
 def start_ref_target(run: Run, base: str | None) -> tuple[str, str] | None:

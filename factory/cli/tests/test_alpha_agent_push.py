@@ -402,7 +402,7 @@ def test_no_commit(
         assert push.run(run, prepared, stack, constant(rc), token) == rc
     assert git(target, "for-each-ref") == ""
     assert not run.files.path("head").exists()
-    assert not run.files.path("log").exists()
+    assert_run_file(run, "log", f"harness exited {rc}\n" if rc else None)
 
 
 @pytest.mark.parametrize("token", [SYNTHETIC, None])
@@ -1159,14 +1159,18 @@ def test_send_limits_child_capabilities(
 
 @pytest.mark.parametrize("start_ref", [START_REF, None])
 @pytest.mark.parametrize("on_run_branch", [True, False])
-def test_push_preserves_harness_failure(
-    local_run: tuple[run_host.Run, run_host.Prepared, Path],
+def test_timed_out_build_publishes_wip(
+    local_run: LocalRun,
+    monkeypatch: pytest.MonkeyPatch,
     start_ref: str | None,
     on_run_branch: bool,
 ) -> None:
     run, prepared, target = local_run
     run.request = replace(run.request, start_ref=start_ref)
-    base = git(Path(prepared.paths.worktree), "rev-parse", "HEAD")
+    workspace = Path(prepared.paths.worktree)
+    base = git(workspace, "rev-parse", "HEAD")
+    mint = Mock(return_value=SYNTHETIC)
+    monkeypatch.setattr(credentials, "push_token", mint)
 
     def failed_harness(
         actual: run_host.Run, paths: run_host.Prepared, stack: ExitStack
@@ -1174,19 +1178,23 @@ def test_push_preserves_harness_failure(
         if not on_run_branch:
             git(Path(paths.paths.worktree), "switch", "-c", "topic/work")
         harness(actual, paths, stack)
-        return 7
+        return 124
 
     with ExitStack() as stack:
-        assert push.run(run, prepared, stack, failed_harness, SYNTHETIC) == 7
-    assert git(target, "for-each-ref") == ""
-    assert run.files.path("head").exists() is on_run_branch
-    assert not run.files.path("branch").exists()
-    expected = None
-    if start_ref:
-        expected = f"start ref: {start_ref} at {base}\n"
-        if on_run_branch:
-            expected += "push skipped: harness exited 7\n"
-    assert_run_file(run, "log", expected)
+        assert push.run(run, prepared, stack, failed_harness, None) == 124
+    mint.assert_called_once_with(run.request, run.settings)
+    tip = git(workspace, "rev-parse", "HEAD")
+    assert (
+        git(target, "for-each-ref", "--format=%(refname)") == "refs/heads/wip/example"
+    )
+    assert git(target, "rev-parse", "wip/example") == tip
+    assert_run_file(run, "base", base)
+    assert_run_file(run, "head", tip)
+    assert_run_file(run, "branch", "wip/example")
+    expected = f"start ref: {start_ref} at {base}\n" if start_ref else ""
+    assert_run_file(
+        run, "log", expected + f"harness exited 124\npushed wip/example at {tip}\n"
+    )
 
 
 @pytest.mark.parametrize("missing", [False, True])
@@ -1206,7 +1214,48 @@ def test_push_preserves_harness_failure_when_git_metadata_is_unusable(
     with ExitStack() as stack:
         assert push.run(run, prepared, stack, failed, SYNTHETIC) == 7
     assert git(target, "for-each-ref") == ""
-    assert not run.files.path("log").exists()
+    assert run.files.path("log").read_text().startswith("harness exited 7\n")
+
+
+@pytest.mark.parametrize(
+    ("token", "failure", "expected"),
+    [
+        (None, None, "no push token"),
+        (credentials.PushTokenFailure("Invalid"), None, "no push token"),
+        (SYNTHETIC, (1, SYNTHETIC), "[redacted]"),
+        (SYNTHETIC, (1, ""), "git push failed"),
+        (SYNTHETIC, OSError(), "git push unavailable"),
+    ],
+)
+def test_wip_push_failure_keeps_the_commit(
+    local_run: LocalRun,
+    monkeypatch: pytest.MonkeyPatch,
+    token: str | credentials.PushTokenFailure | None,
+    failure: tuple[int, str] | OSError | None,
+    expected: str,
+) -> None:
+    run, prepared, target = local_run
+    workspace = Path(prepared.paths.worktree)
+    monkeypatch.setattr(credentials, "push_token", constant(None))
+    send = (
+        Mock(side_effect=failure)
+        if isinstance(failure, OSError)
+        else Mock(return_value=failure)
+    )
+    monkeypatch.setattr(push, "send", send)
+
+    def fail(run: run_host.Run, prepared: run_host.Prepared, stack: ExitStack) -> int:
+        harness(run, prepared, stack)
+        return 124
+
+    with ExitStack() as stack:
+        assert push.run(run, prepared, stack, fail, token) == 124
+    assert git(target, "for-each-ref") == ""
+    assert_run_file(run, "head", git(workspace, "rev-parse", "HEAD"))
+    assert not run.files.path("branch").exists()
+    log = run.files.path("log").read_text()
+    assert expected in log
+    assert SYNTHETIC not in log
 
 
 def test_feed_sends_one_line_and_closes() -> None:

@@ -235,18 +235,9 @@ if test -f "$d/{name}{files.LAUNCHED}"; then printf '1\\n'; else printf '0\\n'; 
 printf '%s\\n' "$present"
 """
     )
-    final, output, log = (
-        f'"$d/{name}{suffix}"' for suffix in (files.FINAL, files.OUT, files.LOG)
-    )
+    log = f'"$d/{name}{files.LOG}"'
     if answer:
-        return (
-            header
-            + f"""safe_file {final}
-safe_file {output}
-if test -f {final}; then tail -c 65536 {final}
-elif test -f {output}; then tail -c 65536 {output}; fi
-"""
-        )
+        return header + answer_text(name)
     if reason:
         return (
             header
@@ -261,6 +252,41 @@ fi
 """
         )
     return header + f"safe_file {log}\nif test -f {log}; then head -c 65536 {log}; fi\n"
+
+
+def answer_text(name: str) -> str:
+    final, output = (f'"$d/{name}{suffix}"' for suffix in (files.FINAL, files.OUT))
+    return f"""safe_file {final}
+safe_file {output}
+if test -f {final}; then tail -c 65536 {final}
+elif test -f {output}; then tail -c 65536 {output}; fi
+"""
+
+
+def run_rc(name: str) -> str:
+    path = f'"$d/{name}{files.RC}"'
+    return f"""safe_file {path}
+rc=
+if test -f {path}; then rc=$(head -c 5 {path}) || exit "$?"; fi
+case "$rc" in ''|[0-9]|[0-9][0-9]|[0-9][0-9][0-9]) ;; *) exit 65 ;; esac
+"""
+
+
+def failed_log(name: str) -> str:
+    log = f'"$d/{name}{files.LOG}"'
+    return (
+        run_rc(name)
+        + f"""case "$rc" in ''|0|00|000) ;; *)
+    safe_file {log}
+    if test -f {log}; then tail -c 65536 {log}; fi
+    exit "$?"
+esac
+"""
+    )
+
+
+def run_log(name: str) -> str:
+    return owned(name) + FILE_HELPERS + failed_log(name) + answer_text(name)
 
 
 def fallback(name: str, sockets_dir: str) -> str:
@@ -316,6 +342,10 @@ GIT_INTERNALS = (
     "info",
     "shallow",
     "commondir",
+    "logs",
+    "logs/refs",
+    "logs/refs/heads",
+    "logs/refs/heads/agent",
 )
 
 MIRROR_LOCK = (
@@ -346,12 +376,15 @@ INSPECTION_OUTPUT = (
 )
 
 
-def mirror_command(repository: str, name: str, command: str) -> str:
+def mirror_command(
+    repository: str, name: str, command: str, *, before: str = ""
+) -> str:
     git_host, organization, project = repo.parts(repository)
     git_host = git_host.lower()
     return (
         owned(name)
         + HELPERS
+        + before
         + f'mirror="$state/tbhbdev/agent-mirrors/{git_host}/{organization}/'
         f"""{project}.git"
 for p in "$state/tbhbdev/agent-mirrors" \
@@ -379,6 +412,93 @@ def origin_branch(repository: str, name: str) -> str:
     )
 
 
+def worktree_patch(repository: str, name: str, *, export: bool) -> str:
+    tree = (
+        repo.clone_path(PurePosixPath("."), repository) / ".worktrees" / f"agent-{name}"
+    )
+    paths = " ".join(
+        '"$HOME"/' + shlex.quote(str(path))
+        for path in (*reversed(tree.parents[:-1]), tree, tree / ".git")
+    )
+    run = '"$HOME"/' + shlex.quote(str(tree / ".git"))
+    internals = " ".join(f'"$run/{entry}"' for entry in GIT_INTERNALS)
+    base, tip = (f'"$d/{name}{suffix}"' for suffix in (files.BASE, files.HEAD))
+    reflog = f'"$run/logs/refs/heads/agent/{name}"'
+    # Read refs as data and give Git only the object directory, never the
+    # run's Git configuration. Older runs get their base from branch creation.
+    script = f"""run={run}
+for p in {paths}; do
+    test ! -L "$p" && test -d "$p" || exit 65
+done
+for p in {internals}; do
+    test ! -L "$p" || exit 65
+done
+resolve() {{
+    case "$1" in *[!A-Za-z0-9._/-]*|*..*|*//*) return 65 ;; esac
+    if test -f "$run/$1" && test ! -L "$run/$1"; then
+        head -c 41 "$run/$1"
+    else
+        safe_file "$run/packed-refs"
+        awk -v r="$1" '$2 == r {{print $1; exit}}' "$run/packed-refs" 2>/dev/null
+    fi
+}}
+valid_sha() {{
+    case "$1" in ""|*[!0-9a-f]*) return 65 ;; esac
+    test "${{#1}}" -eq 40
+}}
+links=$(find "$run/objects" "$run/refs" -type l -print -quit) || exit 65
+test -z "$links" || exit 65
+pack_index=$(find "$run/objects/pack" -name "multi-pack-index*" -print -quit) || exit 65
+test -z "$pack_index" || exit 65
+test ! -e "$run/objects/info/alternates" || exit 65
+safe_file {tip}
+if test -f {tip}; then
+    tip=$(head -c 41 {tip}) || exit 65
+else
+    safe_file "$run/HEAD"
+    tip=$(head -c 4096 "$run/HEAD") || exit 65
+    case "$tip" in
+        "ref: refs/heads/"*) tip=$(resolve "${{tip#ref: }}") || exit 65 ;;
+    esac
+fi
+valid_sha "$tip" || exit 65
+safe_file {base}
+if test -f {base}; then
+    base=$(head -c 41 {base}) || exit 65
+else
+    safe_file {reflog}
+    base=$(head -c 256 {reflog} |
+        awk 'NR == 1 && $1 ~ /^0+$/ && length($1) == 40 {{print $2}}')
+fi
+valid_sha "$base" || exit 65
+scratch=$(mktemp -d) || exit 65
+trap 'rm -rf "$scratch"' EXIT
+{GIT} GIT_CONFIG_GLOBAL=/dev/null {GIT_FLAGS} \
+    init -q --bare --template= "$scratch" || exit 65
+{GIT} GIT_CONFIG_GLOBAL=/dev/null GIT_DIR="$scratch" \
+    GIT_OBJECT_DIRECTORY="$run/objects" {GIT_FLAGS} \
+    -c protocol.allow=never -c diff.external= -c core.multiPackIndex=false \
+    --no-optional-locks format-patch --stdout --no-ext-diff --no-textconv --no-color \
+    --no-signature --no-attach --no-add-header --no-notes "$base..$tip" --
+"""
+    if export:
+        return script
+    return (
+        f"perl -e {shlex.quote(INSPECTION_OUTPUT)} "
+        f"/bin/sh -c {shlex.quote(FILE_HELPERS + script)}\n"
+    )
+
+
+def export_patch(repository: str, name: str) -> str:
+    return (
+        owned(name)
+        + FILE_HELPERS
+        + run_rc(name)
+        + 'test -n "$rc" || exit 65\n'
+        + worktree_patch(repository, name, export=True)
+    )
+
+
 def inspect(repository: str, name: str, *, limit: int | None) -> str:
     branch = f"refs/heads/agent/{name}"
     base = "refs/tbhbdev/default"
@@ -388,86 +508,16 @@ def inspect(repository: str, name: str, *, limit: int | None) -> str:
         f"{MIRROR_GIT} -c diff.external= --no-optional-locks {command} "
         f"--no-ext-diff --no-textconv --no-color {comparison} --"
     )
+    before = failed_log(name) if limit is not None else ""
     fallback = ""
     if limit is None:
-        tree = (
-            repo.clone_path(PurePosixPath("."), repository)
-            / ".worktrees"
-            / f"agent-{name}"
-        )
-        paths = " ".join(
-            '"$HOME"/' + shlex.quote(str(path))
-            for path in (*reversed(tree.parents[:-1]), tree, tree / ".git")
-        )
-        internals = " ".join(
-            '"$HOME"/' + shlex.quote(str(tree / ".git" / entry))
-            for entry in GIT_INTERNALS
-        )
-        run = '"$HOME"/' + shlex.quote(str(tree / ".git"))
-        # Git never reads the run's own config: format-patch runs in a fresh
-        # bare repository and borrows only the run's object store, and the
-        # two commits come from reading HEAD and the ref files as plain text.
-        patch = (
-            f"run={run}\n"
-            "resolve() {\n"
-            '    case "$1" in *[!A-Za-z0-9._/-]*|*..*|*//*) return 65 ;; esac\n'
-            '    if test -f "$run/$1" && test ! -L "$run/$1"; then\n'
-            '        sha=$(sed -n 1p "$run/$1")\n'
-            "    else\n"
-            "        sha=$(awk -v r=\"$1\" '$2 == r {print $1; exit}' "
-            '"$run/packed-refs" 2>/dev/null)\n'
-            "    fi\n"
-            '    case "$sha" in ""|*[!0-9a-f]*) return 65 ;; esac\n'
-            '    test "${#sha}" -eq 40 || return 65\n'
-            "    printf '%s\\n' \"$sha\"\n"
-            "}\n"
-            'links=$(find "$run/objects" "$run/refs" -type l -print -quit) '
-            "|| exit 65\n"
-            'test -z "$links" || exit 65\n'
-            'pack_index=$(find "$run/objects/pack" -name "multi-pack-index*" '
-            "-print -quit) || exit 65\n"
-            'test -z "$pack_index" || exit 65\n'
-            'test ! -e "$run/objects/info/alternates" || exit 65\n'
-            'head=$(sed -n 1p "$run/HEAD")\n'
-            'case "$head" in\n'
-            '    "ref: refs/heads/"*) tip=$(resolve "${head#ref: }") || exit 65 ;;\n'
-            "    *) tip=$head ;;\n"
-            "esac\n"
-            'case "$tip" in ""|*[!0-9a-f]*) exit 65 ;; esac\n'
-            'test "${#tip}" -eq 40 || exit 65\n'
-            'case "$1" in refs/remotes/origin/*) ;; *) exit 65 ;; esac\n'
-            'base=$(resolve "$1") || exit 65\n'
-            "scratch=$(mktemp -d) || exit 65\n"
-            "trap 'rm -rf \"$scratch\"' EXIT\n"
-            f"{GIT} GIT_CONFIG_GLOBAL=/dev/null {GIT_FLAGS} "
-            'init -q --bare --template= "$scratch" || exit 65\n'
-            f'{GIT} GIT_CONFIG_GLOBAL=/dev/null GIT_DIR="$scratch" '
-            f'GIT_OBJECT_DIRECTORY="$run/objects" {GIT_FLAGS} '
-            "-c protocol.allow=never -c diff.external= -c core.multiPackIndex=false "
-            "--no-optional-locks "
-            "format-patch --stdout --no-ext-diff --no-textconv --no-color "
-            "--no-signature --no-attach --no-add-header --no-notes "
-            '"$base..$tip" --\n'
-        )
+        patch = worktree_patch(repository, name, export=False)
+        before = run_rc(name) + "export rc d\n"
         fallback = (
-            f"pushed=$({MIRROR_GIT} ls-remote --end-of-options origin {branch}) "
-            '|| exit "$?"\n'
-            'if test -z "$pushed"; then\n'
-            f"    default=$({MIRROR_GIT} ls-remote --symref "
-            '--end-of-options origin HEAD) || exit "$?"\n'
-            "    base=$(printf '%s\\n' \"$default\" | "
-            'awk \'$1 == "ref:" && $2 ~ /^refs\\/heads\\// && $3 == "HEAD" '
-            '{sub(/^refs\\/heads\\//, "refs/remotes/origin/", $2); print $2}\')\n'
-            '    test -n "$base" || exit 65\n'
-            f"    for p in {paths}; do\n"
-            '        test ! -L "$p" && test -d "$p" || exit 65\n'
-            "    done\n"
-            f"    for p in {internals}; do\n"
-            '        test ! -L "$p" || exit 65\n'
-            "    done\n"
-            f"    perl -e {shlex.quote(INSPECTION_OUTPUT)} "
-            f'/bin/sh -c {shlex.quote(patch)} -- "$base"\n'
-            '    exit "$?"\n'
+            'if test "${rc:-0}" -ne 0 || '
+            f"! pushed=$({MIRROR_GIT} ls-remote --end-of-options origin {branch}) "
+            '|| test -z "$pushed"; then\n'
+            f'{patch}    exit "$?"\n'
             "fi\n"
         )
     return mirror_command(
@@ -479,6 +529,7 @@ def inspect(repository: str, name: str, *, limit: int | None) -> str:
         f"--end-of-options origin +HEAD:{base} +{branch}:{branch} "
         '|| exit "$?"\n'
         f"perl -e {shlex.quote(INSPECTION_OUTPUT)} /bin/sh -c {shlex.quote(read)}",
+        before=before,
     )
 
 
