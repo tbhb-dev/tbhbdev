@@ -37,12 +37,9 @@ from tbhbdev.alpha import opened, size_gate
 from tbhbdev.alpha import pull_request as pr
 from tbhbdev.alpha.secret_scan import REPO_RULES, without_name_rules
 
-# Resolve the shared files from the workspace even when mutmut copies the tests.
-WORKSPACE = next(
-    parent.parent
-    for parent in Path(__file__).resolve().parents
-    if parent.name == "factory"
-)
+# Tests can run from the project or a copy made by mutmut.
+REAL = Path(__file__).resolve().parents[1]
+WORKSPACE = next(parent.parent for parent in REAL.parents if parent.name == "factory")
 SRC = Path(pr.__file__).parents[2]
 DATA = Path(__file__).parent / "testdata" / "alpha" / "pull_request"
 FIXTURE = DATA / "passing-draft.md"
@@ -175,7 +172,8 @@ REAL_SIZE_COUNTS = size_gate.size_counts
 
 @pytest.fixture(autouse=True)
 def host_names(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    """Keep the home directory and git identity synthetic for every draft check."""
+    """Use the workspace baseline with a synthetic home and Git identity."""
+    monkeypatch.chdir(WORKSPACE)
     monkeypatch.setenv("HOME", str(tmp_path))
     config = tmp_path / "gitconfig"
     config.write_text("[user]\nname = Example\nemail = example@example.test\n")
