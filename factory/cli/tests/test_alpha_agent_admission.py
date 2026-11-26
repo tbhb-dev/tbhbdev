@@ -2,10 +2,12 @@
 
 from __future__ import annotations
 
+import errno
 import os
 import stat
 from contextlib import ExitStack
 from dataclasses import replace
+from types import SimpleNamespace
 from typing import TYPE_CHECKING
 
 import pytest
@@ -110,6 +112,51 @@ def test_refuses_a_slot_that_is_not_regular(tmp_path: Path) -> None:
             admission.reserve(root, LINUX, Profile.REVIEW, LINUX.max_concurrent_runs),
         ):
             pytest.fail("admitted a run with an invalid slot")
+
+
+def test_refuses_a_symlink_slot(tmp_path: Path) -> None:
+    target = tmp_path / "elsewhere"
+    target.touch()
+    (tmp_path / "review-0").symlink_to(target)
+    with (
+        pytest.raises(OSError, check=lambda error: error.errno == errno.ELOOP),
+        admission.reserve(tmp_path, LINUX, Profile.REVIEW, LINUX.max_concurrent_runs),
+    ):
+        pytest.fail("admitted a run with a symlink slot")
+
+
+def test_refuses_a_foreign_owned_slot(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    slot = tmp_path / "review-0"
+    slot.touch()
+    inode = slot.stat().st_ino
+    real_fstat = os.fstat
+
+    def fstat(fd: int) -> os.stat_result | SimpleNamespace:
+        info = real_fstat(fd)
+        if info.st_ino == inode:
+            return SimpleNamespace(st_mode=info.st_mode, st_uid=os.getuid() + 1)
+        return info
+
+    monkeypatch.setattr(admission.os, "fstat", fstat)
+    with (
+        pytest.raises(Invalid, match="slot must be owned by the current uid"),
+        admission.reserve(tmp_path, LINUX, Profile.REVIEW, LINUX.max_concurrent_runs),
+    ):
+        pytest.fail("admitted a run with a foreign-owned slot")
+
+
+@pytest.mark.parametrize("mode", [0o664, 0o646])
+def test_refuses_a_group_or_other_writable_slot(tmp_path: Path, mode: int) -> None:
+    slot = tmp_path / "review-0"
+    slot.touch()
+    slot.chmod(mode)
+    with (
+        pytest.raises(Invalid, match="slot must not be group- or other-writable"),
+        admission.reserve(tmp_path, LINUX, Profile.REVIEW, LINUX.max_concurrent_runs),
+    ):
+        pytest.fail("admitted a run with a group- or other-writable slot")
 
 
 def test_a_request_without_a_cap_is_refused(tmp_path: Path) -> None:

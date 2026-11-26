@@ -16,7 +16,7 @@ if TYPE_CHECKING:
 
     from tbhbdev.alpha.agent.model import Host
 
-ROOT = Path("/var/tmp/tbhbdev-agent-admission")  # noqa: S108  # nosec B108 -- shared host-wide directory by design; an owner check is a follow-up
+ROOT = Path("/var/tmp/tbhbdev-agent-admission")  # noqa: S108  # nosec B108  # Sticky directory with no-follow opens and slot owner and mode checks.
 _DIRECTORY_MODE = 0o1777
 
 
@@ -44,7 +44,7 @@ def _directory(root: Path) -> Generator[int]:
 def _slot(directory: int, name: str, *, create: bool = False) -> Generator[int]:
     flags = os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK
     # Open existing files without O_CREAT so Linux's sticky-directory
-    # protection permits opening a slot created by another account.
+    # protection lets us inspect their ownership.
     if create:
         with suppress(FileExistsError):
             fd = os.open(name, flags | os.O_CREAT | os.O_EXCL, 0o644, dir_fd=directory)
@@ -54,8 +54,15 @@ def _slot(directory: int, name: str, *, create: bool = False) -> Generator[int]:
                 os.close(fd)
     fd = os.open(name, flags, dir_fd=directory)
     try:
-        if not stat.S_ISREG(os.fstat(fd).st_mode):
+        info = os.fstat(fd)
+        if not stat.S_ISREG(info.st_mode):
             message = "agent admission slot must be a regular file"
+            raise Invalid(message)
+        if info.st_uid != os.getuid():
+            message = "agent admission slot must be owned by the current uid"
+            raise Invalid(message)
+        if info.st_mode & (stat.S_IWGRP | stat.S_IWOTH):
+            message = "agent admission slot must not be group- or other-writable"
             raise Invalid(message)
         yield fd
     finally:
