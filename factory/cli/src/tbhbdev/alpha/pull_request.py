@@ -222,6 +222,11 @@ PR_URL = re.compile(r"https://[^/\s]+/([^/\s]+/[^/\s]+)/pull/(\d+)")
 # as a flag.
 REPO = r"[A-Za-z0-9][A-Za-z0-9-]*/(?!\.+(?:/|\Z))[A-Za-z0-9_.-]+"
 NAME_WITH_OWNER = re.compile(REPO)
+GITHUB_REMOTE = re.compile(
+    r"(?:[a-z][a-z0-9+.-]*://(?:[^/@\s]+@)?(?:ssh\.)?github\.com(?::\d+)?/"
+    r"|(?:[^@/:\s]+@)?github\.com:)",
+    re.IGNORECASE,
+)
 PR_PAGE = re.compile(rf"https://github\.com/({REPO})/pull/[0-9]+")
 REPO_LIMIT = 1000
 PR_LIMIT = 10000
@@ -1272,13 +1277,18 @@ def invoke_gh(
     return done.returncode, done.stdout
 
 
-def origin_repository() -> str:
+def origin_repository(*, allow_push_fallback: bool = False) -> str:
     """Resolve origin's fetch URL, independent of gh's default repository.
+
+    For the size check, a mirror fetch URL can use origin's push URL for
+    repository identity. Git still fetches the base through origin.
 
     Raises:
         SystemExit: origin or its GitHub repository can't be read.
     """
     code, url = git("remote", "get-url", "origin")
+    if allow_push_fallback and code == 0 and url and not GITHUB_REMOTE.match(url):
+        code, url = git("remote", "get-url", "--push", "origin")
     if code or not url:
         message = "cannot read origin"
         raise SystemExit(message)
@@ -1310,7 +1320,7 @@ def target_is_origin() -> bool:
     data = gh_data(run([find_tool(GH), "repo", "view", "--json", "nameWithOwner"]))
     target = data.get("nameWithOwner") if isinstance(data, dict) else None
     try:
-        origin = origin_repository()
+        origin = origin_repository(allow_push_fallback=True)
     except SystemExit:
         return False
     return isinstance(target, str) and target.casefold() == origin.casefold()

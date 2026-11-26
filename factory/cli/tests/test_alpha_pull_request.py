@@ -5292,10 +5292,15 @@ def test_create_normalizes_empty_error_streams(
     assert capsys.readouterr() == ("", expected)
 
 
+@pytest.mark.parametrize("local_mirror", [False, True], ids=["github", "local-mirror"])
 def test_create_counts_against_origin_fetch_repository(
-    world: World, monkeypatch: pytest.MonkeyPatch
+    world: World, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, local_mirror: bool
 ) -> None:
-    push_url = "https://github.com/example-org/fork.git"
+    push_repo = "example-org/fork"
+    if local_mirror:
+        remote_default(world, tmp_path, "main")
+        push_repo = "tbhb-dev/example"
+    push_url = f"https://github.com/{push_repo}.git"
     world.git("config", "remote.origin.pushurl", push_url)
     monkeypatch.delenv("GH_REPO", raising=False)
     monkeypatch.setattr(pr, "target_is_origin", REAL_TARGET_IS_ORIGIN)
@@ -5305,13 +5310,16 @@ def test_create_counts_against_origin_fetch_repository(
         "gh",
         cases={
             f"repo view {push_url}": {
+                "rc": 0,
                 "stdout": json.dumps(
                     {
-                        "nameWithOwner": "example-org/fork",
-                        "url": "https://github.com/example-org/fork",
+                        "nameWithOwner": push_repo,
+                        "url": f"https://github.com/{push_repo}",
                     }
                 ),
+                "stderr": "",
             },
+            "repo view /": {"rc": 1, "stdout": "", "stderr": "invalid repository"},
             **branch_cases(),
         },
     )
@@ -5320,7 +5328,10 @@ def test_create_counts_against_origin_fetch_repository(
     assert run_main("create", "--dry-run") == 0
     counter.assert_called_once()
     assert counter.call_args.args == ("refs/remotes/origin/main", "HEAD")
-    assert ["repo", "view", ORIGIN, "--json", "nameWithOwner,url"] in gh_argvs(world)
+    lookup_url = push_url if local_mirror else ORIGIN
+    assert [argv for argv in gh_argvs(world) if "nameWithOwner,url" in argv] == [
+        ["repo", "view", lookup_url, "--json", "nameWithOwner,url"],
+    ]
 
 
 def test_origin_repository_without_a_push_url_reads_origin(world: World) -> None:
