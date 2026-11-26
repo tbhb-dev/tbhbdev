@@ -12,7 +12,7 @@ genrule(
     srcs = ["//factory/cli:pyproject.toml"],
     outs = ["tbhbdev-0.dist-info/METADATA"],
     cmd = r"""
-        version=$$(awk -F '"' '/^version = / {print $$2}' $(location //factory/cli:pyproject.toml))
+        version=$$(awk -F '"' '/^version = / {print $$2}' $(execpath //factory/cli:pyproject.toml))
         test -n "$$version" || exit 1
         printf '%s\n' 'Metadata-Version: 2.1' 'Name: tbhbdev' "Version: $$version" '' > "$@"
     """,

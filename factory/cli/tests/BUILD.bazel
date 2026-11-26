@@ -8,6 +8,7 @@ load(":pytest.bzl", "cli_py_test")
 # gazelle:python_root
 # gazelle:python_resolve_sibling_imports true
 # gazelle:map_kind py_test cli_py_test //factory/cli/tests:pytest.bzl
+# gazelle:resolve py coverage @cli_pip//coverage
 # gazelle:resolve py test_admin_request :test_admin_request_support
 # gazelle:resolve py test_alpha_agent_codex_install :test_alpha_agent_codex_install_support
 # gazelle:resolve py test_alpha_agent_credentials //factory/cli/tests:test_alpha_agent_credentials_support
@@ -86,6 +87,7 @@ cli_py_library(
 py_binary(
     name = "agent_live_git_commit",
     srcs = ["agent_live_git_commit.py"],
+    legacy_create_init = False,
     visibility = ["//factory/cli/tests:__subpackages__"],
     deps = ["//factory/cli/src/tbhbdev/alpha/agent/decisions:policy"],
 )
@@ -93,6 +95,7 @@ py_binary(
 py_binary(
     name = "agent_live_host_probe",
     srcs = ["agent_live_host_probe.py"],
+    legacy_create_init = False,
     pyi_deps = ["@cli_pip//pytest"],
     visibility = ["//factory/cli/tests:__subpackages__"],
     deps = [
@@ -159,23 +162,12 @@ cli_py_library(
     name = "conftest",
     testonly = True,
     srcs = ["conftest.py"],
-    extra_deps = [
-        ":stubtool",
-        "//factory/cli/src/tbhbdev:__init__",
-        "//factory/cli/src/tbhbdev/alpha:__init__",
-    ],
+    extra_deps = ["//factory/cli/src/tbhbdev:__init__"],
     pyi_deps = ["//factory/cli/src/tbhbdev:cli"],
     visibility = ["//factory/cli/tests:__subpackages__"],
     deps = [
         ":fake_tool",
-        "//factory/cli/src/tbhbdev:cue_runtime",
-        "//factory/cli/src/tbhbdev:host",
         "//factory/cli/src/tbhbdev:plugins",
-        "//factory/cli/src/tbhbdev:secrets",
-        "//factory/cli/src/tbhbdev/alpha/agent:credentials",
-        "//factory/cli/src/tbhbdev/alpha/agent:host_tools",
-        "//factory/cli/src/tbhbdev/alpha/agent:launcher",
-        "//factory/cli/src/tbhbdev/alpha/agent:runfiles",
         "@cli_pip//pytest",
     ],
 )
@@ -646,6 +638,7 @@ cli_py_test(
     deps = [
         ":agent_host_example",
         ":conftest",
+        ":runfile_fixtures",
         "//factory/cli/src/tbhbdev/alpha/agent:credentials",
         "//factory/cli/src/tbhbdev/alpha/agent:host_tools",
         "//factory/cli/src/tbhbdev/alpha/agent:model",
@@ -725,6 +718,7 @@ cli_py_test(
     pyi_deps = ["//factory/cli/src/tbhbdev/alpha/agent:run_host"],
     deps = [
         ":conftest",
+        ":cue_fixtures",
         "//factory/cli/src/tbhbdev:content",
         "//factory/cli/src/tbhbdev/alpha:identity",
         "//factory/cli/src/tbhbdev/alpha:review",
@@ -748,6 +742,7 @@ cli_py_test(
     deps = [
         ":agent_host_example",
         ":conftest",
+        ":runfile_fixtures",
         "//factory/cli/src/tbhbdev:secrets",
         "//factory/cli/src/tbhbdev/alpha:install",
         "//factory/cli/src/tbhbdev/alpha:run_stop_hook",
@@ -885,6 +880,7 @@ cli_py_test(
     deps = [
         ":agent_host_example",
         ":conftest",
+        ":runfile_fixtures",
         "//factory/cli/src/tbhbdev/alpha/agent:__init__",
         "//factory/cli/src/tbhbdev/alpha/agent:build_info",
         "//factory/cli/src/tbhbdev/alpha/agent:process_group",
@@ -1049,6 +1045,7 @@ cli_py_test(
     srcs = ["test_alpha_guard_gh_config_dir.py"],
     deps = [
         ":conftest",
+        ":stub_fixtures",
         "//factory/cli/src/tbhbdev/alpha:__init__",
         "//factory/cli/src/tbhbdev/alpha:guard_gh_config_dir",
         "@cli_pip//pytest",
@@ -1434,6 +1431,7 @@ cli_py_test(
     data = ["//:cli_check_inputs"],
     deps = [
         ":conftest",
+        ":cue_fixtures",
         "//factory/cli/src/tbhbdev/alpha:__init__",
         "//factory/cli/src/tbhbdev/alpha:pull_request",
         "//factory/cli/src/tbhbdev/alpha:review",
@@ -1449,6 +1447,7 @@ cli_py_test(
     srcs = ["test_alpha_review_doc.py"],
     deps = [
         ":conftest",
+        ":cue_fixtures",
         "//factory/cli/src/tbhbdev/alpha:review",
         "//factory/cli/src/tbhbdev/alpha:review_doc",
         "@cli_pip//pytest",
@@ -1481,6 +1480,7 @@ cli_py_test(
     srcs = ["test_alpha_review_prompt.py"],
     deps = [
         ":conftest",
+        ":cue_fixtures",
         "//factory/cli/src/tbhbdev:content",
         "//factory/cli/src/tbhbdev/alpha:review_doc",
         "//factory/cli/src/tbhbdev/alpha:review_prompt",
@@ -1787,7 +1787,7 @@ cli_py_test(
 cli_py_test(
     name = "test_ci_workflow",
     srcs = ["test_ci_workflow.py"],
-    data = ["//:cli_check_inputs"],
+    data = ["//:.github/workflows/ci.yml"],
     deps = [
         ":conftest",
         "@cli_pip//pyyaml",
@@ -1809,7 +1809,10 @@ cli_py_test(
     name = "test_conftest",
     srcs = ["test_conftest.py"],
     pyi_deps = ["@cli_pip//pytest"],
-    deps = [":conftest"],
+    deps = [
+        ":conftest",
+        ":stub_fixtures",
+    ],
 )
 
 cli_py_test(
@@ -1842,6 +1845,7 @@ cli_py_test(
     srcs = ["test_content_review.py"],
     deps = [
         ":conftest",
+        ":cue_fixtures",
         "//factory/cli/src/tbhbdev:content",
         "//factory/cli/src/tbhbdev:cue_runtime",
         "@cli_pip//pytest",
@@ -1904,6 +1908,7 @@ cli_py_test(
     shard_count = 8,
     deps = [
         ":conftest",
+        ":stub_fixtures",
         ":stubtool",
         "//factory/cli/src/tbhbdev:cli",
         "//factory/cli/src/tbhbdev:host",
@@ -1986,6 +1991,7 @@ cli_py_test(
     deps = [
         ":agent_host_example",
         ":conftest",
+        ":stub_fixtures",
         "//factory/cli/src/tbhbdev:secrets",
         "//factory/cli/src/tbhbdev/alpha/agent:credentials",
         "@cli_pip//cryptography",
@@ -2050,6 +2056,26 @@ cli_py_library(
     deps = ["@cli_pip//pytest"],
 )
 
+cli_py_library(
+    name = "sitecustomize",
+    srcs = ["sitecustomize.py"],
+    visibility = ["//factory/cli/tests:__subpackages__"],
+    deps = ["@cli_pip//coverage"],
+)
+
+cli_py_library(
+    name = "stub_fixtures",
+    srcs = ["stub_fixtures.py"],
+    extra_deps = [":stubtool"],
+    visibility = ["//factory/cli/tests:__subpackages__"],
+    deps = [
+        "//factory/cli/src/tbhbdev:host",
+        "//factory/cli/src/tbhbdev:secrets",
+        "//factory/cli/src/tbhbdev/alpha/agent:host_tools",
+        "@cli_pip//pytest",
+    ],
+)
+
 filegroup(
     name = "alpha_testdata",
     srcs = glob(["testdata/alpha/**"]),
@@ -2063,4 +2089,24 @@ filegroup(
 filegroup(
     name = "agy_testdata",
     srcs = glob(["data/agy/**"]),
+)
+
+cli_py_library(
+    name = "cue_fixtures",
+    srcs = ["cue_fixtures.py"],
+    visibility = ["//factory/cli/tests:__subpackages__"],
+    deps = [
+        "//factory/cli/src/tbhbdev:cue_runtime",
+        "@cli_pip//pytest",
+    ],
+)
+
+cli_py_library(
+    name = "runfile_fixtures",
+    srcs = ["runfile_fixtures.py"],
+    visibility = ["//factory/cli/tests:__subpackages__"],
+    deps = [
+        "//factory/cli/src/tbhbdev/alpha/agent:runfiles",
+        "@cli_pip//pytest",
+    ],
 )

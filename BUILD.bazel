@@ -20,6 +20,7 @@ exports_files([
     ".github/actions/setup-bazel-ci/fetch-targets.txt",
     ".github/actions/setup-bazel-ci/fetch.sh",
     ".github/schemas/pull-request-draft.schema.json",
+    ".github/workflows/ci.yml",
     ".github/workflows/mutation-nightly.yml",
     ".vale.ini",
     ".vale/config/vocabularies/project/accept.txt",

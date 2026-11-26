@@ -57,7 +57,7 @@ def cli_py_test(name, srcs, deps = [], data = [], extra_deps = [], pyi_deps = []
             "factory/cli/tests/" + srcs[0],
         ],
         data = data + tools + ["//factory/cli:pyproject.toml"],
-        deps = deps + [":bazel_test_setup", "@cli_pip//pytest_cov"],
+        deps = deps + [":bazel_test_setup", ":sitecustomize", "@cli_pip//pytest_cov"],
         env = {
             "CLI_TEST_TOOLS": " ".join(["$(rootpath %s)" % tool for tool in tools]),
         },

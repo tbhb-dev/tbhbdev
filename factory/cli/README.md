@@ -96,4 +96,4 @@ The GitHub credential (`gh`) is optional. Without it, a build run requests its G
 
 ## Checks
 
-From the repository root, run `bazelisk test //factory/cli:pytest_test` for the full CLI suite. See [AGENTS.md](AGENTS.md) for the other project checks.
+From the repository root, run `bazelisk test //factory/cli/tests:all` for the per-file CLI tests or `bazelisk run //factory/cli:coverage` for the combined branch coverage report.
