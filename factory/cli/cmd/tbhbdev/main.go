@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright Tony Burns
 
-// Command tbhbdev dispatches to sibling Go commands and the Python CLI.
+// Command tbhbdev runs built-in commands and delegates to the Python CLI.
 package main
 
 import (
@@ -18,10 +18,14 @@ import (
 const (
 	cannotExec  = 126
 	missingExec = 127
+	python      = "tbhbdev-py"
 )
 
 //nolint:gochecknoglobals // The linker can set the bundle version at build time.
 var bundleVersion = "dev"
+
+//nolint:gochecknoglobals // The front registers its command handlers here.
+var commands = map[string]func([]string) int{}
 
 func main() {
 	executable, _ := os.Executable()
@@ -29,27 +33,21 @@ func main() {
 }
 
 func run(args []string, executable string) int {
-	dir := bundleDir(executable)
-	name := dispatch.PluginName(args)
-
-	path := launchPath(dir, name)
-	if path == "" {
-		name = ""
-	}
-
-	decision := dispatch.Decide(args, name, bundleVersion)
-	switch decision.Action {
-	case dispatch.Print:
-		_, _ = fmt.Fprint(os.Stdout, decision.Text)
+	if output := dispatch.BuiltinText(args, bundleVersion); output != "" {
+		_, _ = fmt.Fprint(os.Stdout, output)
 
 		return 0
-	case dispatch.Fallback:
-		path = launchPath(dir, decision.Name)
-	case dispatch.Plugin:
 	}
 
+	if len(args) > 0 {
+		if command := commands[args[0]]; command != nil {
+			return command(args[1:])
+		}
+	}
+
+	path := pythonPath(bundleDir(executable))
 	if path == "" {
-		fmt.Fprintf(os.Stderr, "tbhbdev: %s: executable not found\n", decision.Name)
+		fmt.Fprintf(os.Stderr, "tbhbdev: %s: executable not found\n", python)
 
 		return missingExec
 	}
@@ -59,11 +57,11 @@ func run(args []string, executable string) int {
 
 		return key == "TBHBDEV_PROG" || key == "TBHBDEV_BUNDLE_VERSION"
 	})
-	env = append(env, "TBHBDEV_PROG="+decision.Prog, "TBHBDEV_BUNDLE_VERSION="+bundleVersion)
+	env = append(env, "TBHBDEV_PROG=tbhbdev", "TBHBDEV_BUNDLE_VERSION="+bundleVersion)
 
 	//nolint:gosec // The path is resolved in the bundle, and exec passes args without a shell.
-	err := syscall.Exec(path, append([]string{path}, decision.Args...), env)
-	fmt.Fprintf(os.Stderr, "%s: %v\n", decision.Prog, err)
+	err := syscall.Exec(path, append([]string{path}, args...), env)
+	fmt.Fprintf(os.Stderr, "tbhbdev: %v\n", err)
 
 	return cannotExec
 }
@@ -81,13 +79,13 @@ func bundleDir(executable string) string {
 	return filepath.Dir(resolved)
 }
 
-func launchPath(dir, name string) string {
-	if dir == "" || name == "" {
+func pythonPath(dir string) string {
+	if dir == "" {
 		return ""
 	}
 
-	path := filepath.Join(dir, name)
-	//nolint:gosec // Dispatch only supplies a single filename or the fixed fallback name.
+	path := filepath.Join(dir, python)
+
 	info, err := os.Stat(path)
 	if err != nil || !info.Mode().IsRegular() || info.Mode().Perm()&0o111 == 0 {
 		return ""

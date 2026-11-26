@@ -13,12 +13,12 @@ import (
 	"testing"
 )
 
-func writeFile(t *testing.T, dir, name string, body []byte, mode os.FileMode) string {
+func writeExecutable(t *testing.T, dir, name string, body []byte) string {
 	t.Helper()
 
 	path := filepath.Join(dir, name)
 	//nolint:gosec // The test creates the directory and supplies fixture names.
-	err := os.WriteFile(path, body, mode)
+	err := os.WriteFile(path, body, 0o700)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -41,7 +41,7 @@ func linkFront(t *testing.T, bundle, search string) string {
 		t.Fatal(err)
 	}
 
-	front := writeFile(t, bundle, "tbhbdev", binary, 0o700)
+	front := writeExecutable(t, bundle, "tbhbdev", binary)
 
 	link := filepath.Join(search, "tbhbdev")
 
@@ -95,10 +95,20 @@ func TestFront(t *testing.T) {
 	bundle, search := t.TempDir(), t.TempDir()
 	link := linkFront(t, bundle, search)
 
-	writeFile(t, search, "tbhbdev-other", nil, 0o700)
-	writeFile(t, search, "tbhbdev-py", nil, 0o700)
+	const (
+		command  = "other"
+		help     = "Usage: tbhbdev <command> [args...]\n       tbhbdev --version\n"
+		stubName = "tbhbdev-py"
+	)
+
+	writeExecutable(t, search, stubName, nil)
+	checkFront(t, link, nil, 0, help, "")
+	checkFront(t, link, []string{"--help"}, 0, help, "")
 	checkFront(t, link, []string{"--version"}, 0, "tbhbdev dev\n", "")
-	checkFront(t, link, []string{"other"}, 127, "", "tbhbdev: tbhbdev-py: executable not found\n")
+	checkFront(t, link, []string{command}, 127, "", "tbhbdev: tbhbdev-py: executable not found\n")
+
+	writeExecutable(t, bundle, stubName, nil)
+	checkFront(t, link, []string{command}, 126, "", "tbhbdev: exec format error\n")
 
 	script := []byte(`#!/bin/sh
 read -r input
@@ -106,19 +116,10 @@ printf '<%s>\n' "$TBHBDEV_PROG" "$TBHBDEV_BUNDLE_VERSION" "$FRONT_TEST_VALUE" "$
 printf 'stderr\n' >&2
 exit 23
 `)
-	writeFile(t, bundle, "tbhbdev-py", script, 0o700)
-	writeFile(t, bundle, "tbhbdev-a-b", script, 0o700)
-	writeFile(t, bundle, "tbhbdev-a", nil, 0o700)
-	writeFile(t, bundle, "tbhbdev-other", nil, 0o600)
+	writeExecutable(t, bundle, stubName, script)
+	writeExecutable(t, bundle, "tbhbdev-"+command, nil)
 
-	const (
-		inherited = "\n<dev>\n<kept>\n<stdin>\n"
-		stderr    = "stderr\n"
-		pluginOut = "<tbhbdev a-b>" + inherited + "<two words>\n<>\n"
-	)
+	const output = "<tbhbdev>\n<dev>\n<kept>\n<stdin>\n<other>\n<two words>\n<>\n"
 
-	checkFront(t, link, []string{"a", "b"}, 126, "", "tbhbdev a: exec format error\n")
-	checkFront(t, link, []string{"a-b", "two words", ""}, 23, pluginOut, stderr)
-	checkFront(t, link, []string{"other", ""}, 23, "<tbhbdev>"+inherited+"<other>\n<>\n", stderr)
-	checkFront(t, link, []string{"py", ""}, 23, "<tbhbdev>"+inherited+"<py>\n<>\n", stderr)
+	checkFront(t, link, []string{command, "two words", ""}, 23, output, "stderr\n")
 }
