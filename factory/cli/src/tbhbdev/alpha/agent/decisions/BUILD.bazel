@@ -1,0 +1,141 @@
+# SPDX-License-Identifier: Apache-2.0
+# Copyright Tony Burns
+
+load("//factory/cli:python.bzl", "cli_py_library")
+
+cli_py_library(
+    name = "__init__",
+    srcs = ["__init__.py"],
+    imports = ["../../../.."],
+    visibility = ["//factory/cli:__subpackages__"],
+)
+
+cli_py_library(
+    name = "argv",
+    srcs = ["argv.py"],
+    imports = ["../../../.."],
+    visibility = ["//factory/cli:__subpackages__"],
+    deps = [
+        ":policy",
+        "//factory/cli/src/tbhbdev/alpha:install",
+        "//factory/cli/src/tbhbdev/alpha/agent:model",
+    ],
+)
+
+cli_py_library(
+    name = "auth",
+    srcs = ["auth.py"],
+    imports = ["../../../.."],
+    visibility = ["//factory/cli:__subpackages__"],
+)
+
+cli_py_library(
+    name = "config",
+    srcs = ["config.py"],
+    imports = ["../../../.."],
+    visibility = ["//factory/cli:__subpackages__"],
+    deps = [
+        ":repo",
+        "//factory/cli/src/tbhbdev/alpha/agent:model",
+    ],
+)
+
+cli_py_library(
+    name = "driver",
+    srcs = ["driver.py"],
+    imports = ["../../../.."],
+    visibility = ["//factory/cli:__subpackages__"],
+    deps = [
+        ":config",
+        ":request",
+        "//factory/cli/src/tbhbdev/alpha:brief",
+        "//factory/cli/src/tbhbdev/alpha/agent:model",
+    ],
+)
+
+cli_py_library(
+    name = "launcher",
+    srcs = ["launcher.py"],
+    imports = ["../../../.."],
+    visibility = ["//factory/cli:__subpackages__"],
+    deps = ["//factory/cli/src/tbhbdev/alpha/agent:model"],
+)
+
+cli_py_library(
+    name = "limits",
+    srcs = ["limits.py"],
+    imports = ["../../../.."],
+    visibility = ["//factory/cli:__subpackages__"],
+    deps = ["//factory/cli/src/tbhbdev/alpha/agent:model"],
+)
+
+cli_py_library(
+    name = "policy",
+    srcs = ["policy.py"],
+    imports = ["../../../.."],
+    visibility = ["//factory/cli:__subpackages__"],
+    deps = [
+        "//factory/cli/src/tbhbdev:secrets",
+        "//factory/cli/src/tbhbdev/alpha/agent:host_tools",
+        "//factory/cli/src/tbhbdev/alpha/agent:model",
+    ],
+)
+
+cli_py_library(
+    name = "remote",
+    srcs = ["remote.py"],
+    imports = ["../../../.."],
+    pyi_deps = ["//factory/cli/src/tbhbdev/alpha/agent:model"],
+    visibility = ["//factory/cli:__subpackages__"],
+    deps = [
+        ":repo",
+        ":runfiles_names",
+    ],
+)
+
+cli_py_library(
+    name = "repo",
+    srcs = ["repo.py"],
+    imports = ["../../../.."],
+    visibility = ["//factory/cli:__subpackages__"],
+    deps = ["//factory/cli/src/tbhbdev/alpha/agent:model"],
+)
+
+cli_py_library(
+    name = "request",
+    srcs = ["request.py"],
+    imports = ["../../../.."],
+    visibility = ["//factory/cli:__subpackages__"],
+    deps = [
+        ":repo",
+        "//factory/cli/src/tbhbdev/alpha:identity",
+        "//factory/cli/src/tbhbdev/alpha/agent:model",
+    ],
+)
+
+cli_py_library(
+    name = "run_state",
+    srcs = ["run_state.py"],
+    imports = ["../../../.."],
+    visibility = ["//factory/cli:__subpackages__"],
+    deps = ["//factory/cli/src/tbhbdev/alpha/agent:model"],
+)
+
+cli_py_library(
+    name = "runfiles_names",
+    srcs = ["runfiles_names.py"],
+    imports = ["../../../.."],
+    visibility = ["//factory/cli:__subpackages__"],
+)
+
+filegroup(
+    name = "package_files",
+    srcs = glob(
+        ["**"],
+        exclude = ["BUILD.bazel"],
+    ),
+    visibility = [
+        "//factory/cli:__pkg__",
+        "//factory/cli/tests:__pkg__",
+    ],
+)

@@ -14,6 +14,7 @@ from unittest.mock import Mock
 
 import pytest
 from agent_host_example import constant, host_settings, run_request
+from runfile_fixtures import agent_suffix_case as agent_suffix_case  # noqa: PLC0414
 
 from tbhbdev.alpha.agent import (
     credentials,
