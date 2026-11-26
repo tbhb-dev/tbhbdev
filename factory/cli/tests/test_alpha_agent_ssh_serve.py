@@ -12,6 +12,7 @@ from types import SimpleNamespace
 
 import pytest
 from agent_host_example import build_provenance
+from runfile_fixtures import agent_suffix_case as agent_suffix_case  # noqa: PLC0414
 
 from tbhbdev.alpha import agent
 from tbhbdev.alpha.agent import build_info, process_group, run_host, runfiles, ssh_serve

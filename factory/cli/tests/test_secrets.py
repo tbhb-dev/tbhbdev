@@ -27,6 +27,7 @@ from cryptography.exceptions import UnsupportedAlgorithm
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric import ed25519, rsa, x25519
 from onepasswordconnectsdk.client import Client
+from stub_fixtures import stubs as stubs  # noqa: PLC0414
 
 from tbhbdev import secrets
 from tbhbdev.alpha.agent import credentials
@@ -34,8 +35,9 @@ from tbhbdev.alpha.agent import credentials
 if TYPE_CHECKING:
     from collections.abc import Callable
 
-    from conftest import FakeConnect, Installed, Json, Stubs
+    from conftest import FakeConnect, Installed, Json
     from onepasswordconnectsdk.config import ClientConfig
+    from stub_fixtures import Stubs
 
 VALUE = "plain-value-never-shown"
 # A tailnet suffix, which no URL may carry into a message.

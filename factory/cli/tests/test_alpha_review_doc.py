@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING
 from unittest.mock import Mock
 
 import pytest
+from cue_fixtures import review_cue as review_cue  # noqa: PLC0414
 
 from tbhbdev.alpha import review as cli
 from tbhbdev.alpha import review_doc as review
