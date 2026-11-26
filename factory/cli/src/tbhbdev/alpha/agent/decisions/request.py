@@ -119,14 +119,12 @@ def _check_harness(request: RunRequest) -> None:
 def review_effort(request: RunRequest) -> str | None:
     """Check the review effort and return the value for identity normalization.
 
-    Antigravity encodes effort in its model. Accept auto and the existing
-    named levels on the request, then let identity read effort from the model.
+    Antigravity encodes effort in its model, which identity reads separately.
     """
-    agy = request.harness is Harness.AGY
     effort = request.effort
-    if effort not in identity.EFFORTS and not (agy and effort == "auto"):
+    if effort not in identity.EFFORTS:
         _fail("effort", f"{effort!r} is unsupported for {request.harness.value}")
-    return None if agy else effort
+    return None if request.harness is Harness.AGY else effort
 
 
 def _check_commit(request: RunRequest) -> None:

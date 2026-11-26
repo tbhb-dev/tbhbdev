@@ -591,6 +591,6 @@ def test_review_post_vale_ignores_only_vocabulary(world: World, check: str) -> N
     assert "--minAlertLevel=error" in cast("list[str]", world.calls("vale")[0]["argv"])
 
 
-def test_review_post_vale_refuses_missing_local_config(world: World) -> None:
+def test_review_post_vale_skips_missing_local_config(world: World) -> None:
     (world.root / ".vale.ini").unlink()
-    assert ".vale.ini" in review_doc.lint_post(BODY)[0]
+    assert review_doc.lint_post(BODY) == []
