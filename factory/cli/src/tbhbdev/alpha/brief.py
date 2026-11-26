@@ -184,6 +184,17 @@ def check_hooks(text: str) -> list[str]:
     ]
 
 
+def _instructed_branches(text: str) -> list[str]:
+    """Collect branches from affirmative instructions."""
+    branches = []
+    for match in BRANCH_INSTRUCTION.finditer(text):
+        branch = match[1].rstrip(".,")
+        if branch.startswith("-") or prohibiting(text, match.start()):
+            continue
+        branches.append(branch)
+    return branches
+
+
 def branch_warnings(
     text: str,
     run: str | None = None,
@@ -197,12 +208,7 @@ def branch_warnings(
         for line in unicodedata.normalize("NFKC", text).splitlines()
     )
     allowed = "agent/" if run is None else f"agent/{run}"
-    branches = []
-    for match in BRANCH_INSTRUCTION.finditer(text):
-        branch = match[1].rstrip(".,")
-        if branch.startswith("-") or prohibiting(text, match.start()):
-            continue
-        branches.append(branch)
+    branches = _instructed_branches(text)
     if run is not None:
         branches.extend(
             branch
