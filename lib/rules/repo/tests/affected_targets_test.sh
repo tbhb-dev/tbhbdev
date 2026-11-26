@@ -61,6 +61,9 @@ if [[ ${0##*/} == bazelisk ]]; then
     fi
     printf '%s\n' //go:{cmd,lib,manual}_test @tbhb_rules_d2//private:inputs_test \
       @tbhb_rules_structurizr//private:{d2,manual}_test //diagrams:integration_test
+    if [[ $FAKE == cli_leaf && ${!#} != *'except set(//factory/cli:mutmut_test)'* ]]; then
+      echo //factory/cli:mutmut_test
+    fi
     exit
   fi
   printf '%s\n' "$@" >"$CQUERY_LOG"
@@ -80,6 +83,14 @@ straggle() { (sleep 2 && git checkout -q "$1" && : >"$CHILD_MARK") </dev/null >/
 case $FAKE in
   two) printf '//go:lib_test\n//go:cmd_test\n' ;;
   tagged) printf '//go:lib_test\n//go:manual_test\n//go:cmd_test\n' ;;
+  cli_leaf)
+    [[ $(git diff --name-only "${!#}" HEAD) == factory/cli/src/tbhbdev/alpha/repo_token.py ]] || exit 8
+    printf '//factory/cli:%s_test\n' bandit complexipy deptry pip_audit pylint pyrefly ruff vulture
+    printf '//factory/cli/tests:test_alpha_%s\n' agent_invariants repo_token
+    if [[ $* == *'"//factory/cli:mutmut_test"'* ]]; then
+      printf '//factory/cli:mutmut_test\n'
+    fi
+    ;;
   near_manual) [[ $* != *//go:near_manual_test* ]] || echo //go:near_manual_test ;;
   rules)
     printf '%s\n' '@@tbhb_rules_d2+//private:inputs_test' \
@@ -267,6 +278,14 @@ for tag in 'review manual' 'review, manual'; do
 done
 FAKE_CQUERY=fail run 'tag cquery failure' pull_request "$docs_head"
 [[ $reason == *'exit status 7' ]] || fail 'tag cquery failure: status missing'
+
+cli_head=$(commit factory/cli/src/tbhbdev/alpha/repo_token.py)
+BASE_SHA=$docs_head FAKE=cli_leaf run 'CLI leaf edit' pull_request "$cli_head" false 10
+cli_tests=$(printf '%s\n' "$targets" | grep '^//factory/cli/tests:')
+[[ $cli_tests == $'//factory/cli/tests:test_alpha_agent_invariants\n//factory/cli/tests:test_alpha_repo_token' ]] ||
+  fail 'CLI leaf edit: wrong per-file tests'
+[[ $targets != *mutmut_test* ]] || fail 'CLI leaf edit: selected nightly mutation test'
+grep -qF 'Selected 10 test targets' "$GITHUB_STEP_SUMMARY" || fail 'CLI leaf edit: summary count'
 
 FAKE=space run 'label with a space' pull_request "$docs_head" false 2
 [[ $targets == $'//a:with space\n//b:t' ]] || fail 'space: targets output'
