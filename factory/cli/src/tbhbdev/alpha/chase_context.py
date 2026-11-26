@@ -25,7 +25,7 @@ MINUTES_PER_DAY = 24 * 60
 
 def fresh_text(path: Path, minutes: int) -> str | None:
     with suppress(OSError, UnicodeError):
-        # macOS find -mmin rounds up from whole seconds.
+        # macOS find rounds whole seconds up to the next minute.
         if path.is_file() and int(time()) - int(path.stat().st_mtime) <= minutes * 60:
             return path.read_text().rstrip("\n")
     return None
