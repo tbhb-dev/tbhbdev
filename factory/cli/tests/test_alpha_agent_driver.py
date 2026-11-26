@@ -1238,6 +1238,43 @@ def test_schema_and_prompt_refused_locally(remote: Remote) -> None:
     assert remote.records("ssh") == []
 
 
+@pytest.mark.parametrize(
+    ("secret", "kind"),
+    [
+        ("op://example/item/field", "1Password reference"),
+        ("-----BEGIN " + "PRIVATE KEY-----", "private key header"),
+        ("-----BEGIN OPENSSH " + "PRIVATE KEY-----", "private key header"),
+        ("-----BEGIN PGP " + "PRIVATE KEY BLOCK-----", "private key header"),
+        ("ghp_" + "sample", "token prefix"),
+        ("github_pat_" + "sample", "token prefix"),
+        ("sk-ant-" + "sample", "token prefix"),
+        ("AKIA" + "SAMPLE", "token prefix"),
+        ("xoxb-" + "sample", "token prefix"),
+    ],
+)
+def test_prompt_with_secret_is_refused_before_ssh(
+    remote: Remote, capsys: pytest.CaptureFixture[str], secret: str, kind: str
+) -> None:
+    remote.prompt.write_text(f"Use this value: {secret}\n")
+    assert launch(remote) == 1
+    assert capsys.readouterr() == ("", f"example agent: brief refused: {kind}\n")
+    assert remote.records("ssh", limits=True) == []
+    assert not driver.metadata_path("sample").exists()
+
+
+def test_schema_with_secret_is_refused_before_ssh(
+    remote: Remote, capsys: pytest.CaptureFixture[str]
+) -> None:
+    schema = remote.root / "schema.json"
+    schema.write_text('{"description":"op://example/item/field"}')
+    assert launch(remote, "--schema", str(schema)) == 1
+    assert capsys.readouterr() == (
+        "",
+        "example agent: schema refused: 1Password reference\n",
+    )
+    assert remote.records("ssh", limits=True) == []
+
+
 def test_prompt_hook_conflicts_refuse_launch_before_ssh(
     remote: Remote,
     capsys: pytest.CaptureFixture[str],
