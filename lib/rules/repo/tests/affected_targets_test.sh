@@ -26,6 +26,11 @@ ln -s "$scratch/fake-td" "$scratch/bin/bazelisk"
 # when their labels appear in the query of selected targets.
 cat >"$scratch/fake-td" <<'MOCK'
 #!/usr/bin/env bash
+matches_tag() {
+  local regex=${2#*attr(tags, \'}
+  regex=${regex%%\'*}
+  [[ "[$1]" =~ $regex ]]
+}
 for name in GITHUB_OUTPUT GITHUB_STEP_SUMMARY GITHUB_ENV GITHUB_PATH GITHUB_STATE; do
   [[ -z ${!name+set} ]] || echo "$name" >>"$ENV_LOG"
 done
@@ -34,8 +39,22 @@ if [[ ${0##*/} == bazelisk ]]; then
   if [[ $1 == query ]]; then
     printf '%s\n' "$@" >"$QUERY_LOG"
     [[ $FAKE_QUERY != fail ]] || { echo 'ERROR: loading failed' >&2 && exit 6; }
+    if [[ $2 == --output=streamed_jsonproto ]]; then
+      if [[ $FAKE_QUERY == near_manual ]] && matches_tag "$FAKE_TAG" "${!#}"; then
+        printf '{"rule":{"name":"//go:near_manual_test","attribute":[{"name":"tags","stringListValue":["%s"]}]}}\n' "$FAKE_TAG"
+      fi
+      exit 0
+    fi
+    if [[ $FAKE_QUERY == near_manual && ${!#} != *'attr(tags,'* && ${!#} != *//go:near_manual_test* ]]; then
+      echo //go:near_manual_test
+    fi
     if [[ $FAKE_QUERY == suite ]]; then
-      if git show HEAD:lib/rules/diagrams/d2/BUILD.bazel | grep -qF ':manual_test'; then
+      suite=$(git show HEAD:lib/rules/diagrams/d2/BUILD.bazel)
+      if [[ $suite == *':not_test'* && $2 == --strict_test_suite ]]; then
+        echo 'ERROR: suite member does not refer to a test or test_suite rule' >&2
+        exit 6
+      fi
+      if [[ $suite == *':manual_test'* ]]; then
         echo @tbhb_rules_d2//private:manual_test
       fi
       exit 0
@@ -47,9 +66,13 @@ if [[ ${0##*/} == bazelisk ]]; then
   printf '%s\n' "$@" >"$CQUERY_LOG"
   [[ $FAKE_CQUERY != fail ]] || { echo 'ERROR: analysis failed' >&2 && exit 7; }
   case ${!#} in
-    *:manual_test*) echo '{"results":[{"target":{"rule":{"name":"//pkg:manual_test"}}}]}' ;;
+    *:manual_test*) tag=manual ;;
+    *:near_manual_test*) if matches_tag "$FAKE_TAG" "${!#}"; then tag=$FAKE_TAG; else echo '{}'; fi ;;
     *) echo '{}' ;;
   esac
+  if [[ -n ${tag:-} ]]; then
+    printf '{"results":[{"target":{"rule":{"attribute":[{"name":"tags","stringListValue":["%s"]}]}}}]}\n' "$tag"
+  fi
   exit
 fi
 printf '%s\n' "$@" >"$ARGS_LOG"
@@ -57,6 +80,7 @@ straggle() { (sleep 2 && git checkout -q "$1" && : >"$CHILD_MARK") </dev/null >/
 case $FAKE in
   two) printf '//go:lib_test\n//go:cmd_test\n' ;;
   tagged) printf '//go:lib_test\n//go:manual_test\n//go:cmd_test\n' ;;
+  near_manual) [[ $* != *//go:near_manual_test* ]] || echo //go:near_manual_test ;;
   rules)
     printf '%s\n' '@@tbhb_rules_d2+//private:inputs_test' \
       '@@tbhb_rules_structurizr+//private:d2_test' //diagrams:integration_test ;;
@@ -237,6 +261,10 @@ FAKE_QUERY=fail run 'candidate query failure' pull_request "$docs_head"
 # `bazel test //...` can still run a manual test through a test_suite.
 FAKE=tagged run 'manual tag' pull_request "$docs_head"
 [[ $reason == *'tagged manual'* ]] || fail 'manual tag: wrong reason'
+for tag in 'review manual' 'review, manual'; do
+  FAKE_TAG=$tag FAKE_QUERY=near_manual FAKE=near_manual run "near-match manual tag '$tag'" pull_request "$docs_head" false 1
+  [[ $targets == '//go:near_manual_test' ]] || fail 'near-match manual tag: missing test'
+done
 FAKE_CQUERY=fail run 'tag cquery failure' pull_request "$docs_head"
 [[ $reason == *'exit status 7' ]] || fail 'tag cquery failure: status missing'
 
@@ -313,6 +341,13 @@ echo 'test_suite(name = "suite", tests = ["//private:manual_test"])' >lib/rules/
 suite_head=$(commit)
 BASE_SHA=$suite_base FAKE_QUERY=suite FAKE=none run 'suite enables an unchanged manual test' pull_request "$suite_head"
 [[ $reason == 'the candidate query found tests newly runnable at the head' ]] || fail 'suite membership: wrong reason'
+cat >lib/rules/diagrams/d2/BUILD.bazel <<'BUILD'
+filegroup(name = "not_test")
+test_suite(name = "suite", tests = ["//private:manual_test", ":not_test"])
+BUILD
+bad_suite_head=$(commit)
+BASE_SHA=$suite_head FAKE_QUERY=suite FAKE=none run 'suite includes a filegroup' pull_request "$bad_suite_head"
+[[ $reason == *'candidate tests failed with exit status 6' ]] || fail 'invalid suite member: wrong reason'
 
 git checkout -q "$rules_head"
 rules_config=$(commit lib/rules/diagrams/d2/preset.bazelrc)

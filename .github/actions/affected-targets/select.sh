@@ -200,13 +200,34 @@ label_set() {
   jq -Rrs 'split("\n") | map(select(length > 0) | @json) | "set(" + join(" ") + ")"' "$1"
 }
 
+# Bazel renders list attributes with brackets and a comma-space separator.
+# Confirm matches against the actual list, since tags can contain that separator.
+manual='(^\[|, )manual(, |\]$)'
+manual_tags='any(.attribute[]; .name == "tags" and (.stringListValue | index("manual") != null))'
+query_candidates() {
+  local dir=$1 scope=$2 excluded_manual candidates
+  shift 2
+  local -a query=(bash -c 'cd -- "$1" && shift && exec "$@"' _ "$dir" bazelisk "$@" query)
+  run_step "$step" "${query[@]}" --output=streamed_jsonproto \
+    "attr(tags, '$manual', kind('.*_test rule|test_suite rule', $scope))" >"$out/manual.json" || return
+  excluded_manual=$(jq -rs "map(.rule | select($manual_tags) | .name | @json) | \"set(\" + join(\" \") + \")\"" \
+    "$out/manual.json" 2>>"$log") || return
+  # Non-manual suites can still include manual tests. Strict expansion makes
+  # invalid suite members fail the query instead of silently dropping them.
+  candidates="let suites = kind('test_suite rule', $scope) in
+    ((kind('.*_test rule', $scope) except $excluded_manual)
+    + tests(\$suites except $excluded_manual)) except set(${excluded[*]})"
+  [[ -z ${QUERY:-} ]] || candidates="($candidates) intersect ($QUERY)"
+  run_step "$step" "${query[@]}" --strict_test_suite --output=label "$candidates"
+}
+
 check_base_candidates() {
-  local query=$1 prefix status=0
+  local scope=$1 prefix status=0
   step='locating the Bazel workspace'
   prefix=$(git rev-parse --show-prefix 2>>"$log") || return
   run_step 'creating the base worktree' git worktree add --quiet --detach "$out/base" "$BASE_SHA" >/dev/null || return
-  run_step 'the query of base candidate tests' bash -c 'cd -- "$1" && shift && exec "$@"' _ \
-    "$out/base/$prefix" bazelisk --batch query --output=label "$query" >"$out/base-candidates" || status=$?
+  step='the query of base candidate tests'
+  query_candidates "$out/base/$prefix" "$scope" --batch >"$out/base-candidates" || status=$?
   git worktree remove --force "$out/base" >>"$log" 2>&1 || {
     step='removing the base worktree'
     return 1
@@ -223,18 +244,14 @@ check_base_candidates() {
 }
 
 select_targets() {
-  local scope candidates targets manual='[\[ ,]manual[,\]]'
+  local scope targets
   scope=$(IFS=+; printf '(%s)' "${patterns[*]}")
   # Resolve the wildcard expansion before cquery, which would analyze every
   # matched rule, including intentionally failing manual proof targets.
-  # Non-manual suites can still include manual tests.
-  candidates="let suites = kind('test_suite rule', $scope) in
-    ((kind('.*_test rule', $scope) except attr(tags, '$manual', $scope))
-    + tests(\$suites except attr(tags, '$manual', \$suites))) except set(${excluded[*]})"
-  [[ -z ${QUERY:-} ]] || candidates="($candidates) intersect ($QUERY)"
-  run_step 'the query of candidate tests' bazelisk query --output=label "$candidates" >"$out/candidates" || return
+  step='the query of candidate tests'
+  query_candidates . "$scope" >"$out/candidates" || return
   [[ -s $out/candidates ]] || return 0
-  check_base_candidates "$candidates" || return
+  check_base_candidates "$scope" || return
   targets=$(label_set "$out/candidates") || return
 
   # The determinator hashes configured dependencies in local overrides too.
@@ -244,7 +261,8 @@ select_targets() {
   targets=$(label_set "$file") || return
   run_step 'the cquery of manual tags' bazelisk cquery --output=jsonproto "${opts[@]}" \
     "attr(tags, '$manual', $targets)" >"$out/tags.json" || return
-  jq -es 'length == 1 and (.[0] | type == "object" and ((.results // []) == []))' "$out/tags.json" >/dev/null 2>>"$log" ||
+  jq -es "length == 1 and (.[0] | type == \"object\" and ((.results // []) |
+    type == \"array\" and all(.[]; .target.rule | ($manual_tags | not))))" "$out/tags.json" >/dev/null 2>>"$log" ||
     finish all 'an affected test is tagged manual, or its tags are unreadable'
 }
 
