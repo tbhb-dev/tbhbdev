@@ -6,8 +6,8 @@ generated:
     model: openai:gpt-6.2-sol
     effort: high
     surface: exec
-    session: sha-256-64:e5775cd64bb8e323
-    at: "2026-11-26T22:48:45Z"
+    session: sha-256-64:538313a7c1a2beca
+    at: "2026-11-26T23:39:03Z"
 status: stable
 tags: [alpha]
 title: Agent isolation limits
@@ -67,7 +67,7 @@ For a build using its own branch, run-host checks for new commits after the harn
 
 The commit check refuses new tips outside the starting commit's ancestry and lists their count and short commit IDs in the log. It also refuses a checked-out run branch when new commits exist only on other branches.
 
-If a build harness fails, run-host keeps its exit status. Once the harness stops, run-host uses the host's push credential to publish the recorded new tip to `wip/NAME` and logs the result. If publication fails, the saved tip is still available for patch export. `tbhbdev alpha agent status NAME` shows the last publication reason next to a nonzero return code when the log contains a reason.
+If the harness fails, run-host keeps its exit status. `tbhbdev alpha agent status NAME` shows the last publication reason next to the return code when the run ends with a nonzero status and the log contains a reason.
 
 Each claim writes a random run ID to the local metadata and the remote `<name>.owner` file before extracting inputs. Every remote command reads the ID from the first line of its stdin and compares it with `<name>.owner`, so the ID never appears in an ssh argument list or a host audit log. The tmux start passes run-host `--owned`, and run-host checks `<name>.owner` first. The file must be a regular file, never a symlink. Its mode must be 0600 and its owner the running user. Its content must be the ID followed by a newline. An empty ID, a missing file, a directory, a named pipe or any other content refuses the start with exit status 1 and leaves the earlier run's files untouched. Run-host writes its log and return code for a failed start only while it holds `<name>.run.lock`. A refusal before that point leaves every record unchanged. Later commands check that ID before they act. A mismatch or missing owner archives local metadata and reports `not owner`. After a transfer error, the driver retains metadata only when a remote owner check succeeds. The driver sends the raw brief and starts run-host with the configured `--host`. Every tmux call uses `-f /dev/null`, and session creation passes an absolute executable with separate arguments.
 

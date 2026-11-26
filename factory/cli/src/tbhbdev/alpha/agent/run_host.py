@@ -687,6 +687,20 @@ def resource_attributes(run: Run) -> dict[str, str]:
     }
 
 
+def wait_harness(run: Run, child: subprocess.Popen[str]) -> int:
+    limit = run_state.time_limit(
+        run.request.kind, run.request.timeout, run.settings.max_run_minutes
+    )
+    try:
+        rc = run_state.exit_status(child.wait(timeout=limit))
+    except subprocess.TimeoutExpired:
+        rc = 124
+    if rc:
+        with suppress(OSError):
+            run.files.write("log", f"harness exited {rc}\n")
+    return rc
+
+
 def run_harness(
     run: Run, prepared: Prepared, stack: ExitStack, *, preflight_only: bool = False
 ) -> int:
@@ -741,13 +755,7 @@ def run_harness(
         if run.files.path("request.json").exists():
             run.files.path("request.json").read_text()
         run.files.write("phase", "running")
-        limit = run_state.time_limit(
-            run.request.kind, run.request.timeout, run.settings.max_run_minutes
-        )
-        try:
-            return run_state.exit_status(child.wait(timeout=limit))
-        except subprocess.TimeoutExpired:
-            return 124
+        return wait_harness(run, child)
     finally:
         stack.enter_context(process_group.ignore_signals())
         if child is not None:
@@ -888,7 +896,7 @@ def run_and_publish(
     rc = push.run(run, prepared, stack, run_harness, token)
     if rc == 0 and run.request.profile is Profile.REVIEW:
         return post_review(run, prepared)
-    return require_commit(run, prepared, rc, before)
+    return require_commit(run, rc, before)
 
 
 def post_review(run: Run, prepared: Prepared) -> int:
@@ -929,11 +937,10 @@ def origin_tip(run: Run) -> str | None:
     return tip if isinstance(tip, str) and re.fullmatch(r"[0-9a-f]{40}", tip) else None
 
 
-def require_commit(run: Run, prepared: Prepared, rc: int, before: str | None) -> int:
+def require_commit(run: Run, rc: int, before: str | None) -> int:
     if rc or not run.request.expect_commit:
         return rc
-    head = run.files.path("head")
-    if not head.exists():
+    if not run.files.path("head").exists():
         run.files.write(
             "log", "no new commit: the build required one (--expect-commit)\n"
         )
@@ -948,7 +955,6 @@ def require_commit(run: Run, prepared: Prepared, rc: int, before: str | None) ->
         run.files.write("log", f"push failed: no new tip for {branch} on origin\n")
     else:
         return 0
-    push.publish_wip(run, Path(prepared.paths.worktree), head.read_text())
     return NO_PUSH
 
 

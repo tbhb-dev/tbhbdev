@@ -11,7 +11,7 @@ from contextlib import ExitStack, contextmanager, suppress
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from tbhbdev.alpha.agent import credentials, host_tools, runfiles
+from tbhbdev.alpha.agent import host_tools, runfiles
 from tbhbdev.alpha.agent.decisions import repo
 from tbhbdev.alpha.agent.model import Invalid, Profile
 
@@ -57,13 +57,9 @@ def feed(fd: int, token: str) -> None:
         pass
 
 
-def send(
-    workspace: Path, target: str, branch: str, token: str, *, lease: str | None = None
-) -> tuple[int, str]:
-    ref = f"refs/heads/{branch}"
-    options = (f"--force-with-lease={ref}:{lease}",) if lease is not None else ()
+def send(workspace: Path, target: str, branch: str, token: str) -> tuple[int, str]:
     status, _, error = git_with_token(
-        workspace, token, "push", *options, "--", target, f"HEAD:{ref}"
+        workspace, token, "push", "--", target, f"HEAD:refs/heads/{branch}"
     )
     return status, error
 
@@ -150,9 +146,15 @@ def run(
     if run.files.uncertain:
         return rc
     if rc:
-        run.files.write("log", f"harness exited {rc}\n")
+        with suppress(OSError, ValueError):
+            commit = head(workspace, branch)
+            if commit is not None and commit != base:
+                run.files.write("head", commit)
+                if start is not None:
+                    run.files.write("log", f"push skipped: harness exited {rc}\n")
+        return rc
     try:
-        if start is not None and not rc:
+        if start is not None:
             return publish_start_ref(run, workspace, before, token, start)
         after, checkout = local_refs(workspace)
         found = new_commits(run, workspace, before, after, checkout)
@@ -165,63 +167,9 @@ def run(
         )
     else:
         if found:
-            commit = found[0][1]
-            run.files.write("head", commit)
-            if rc:
-                publish_wip(run, workspace, commit)
-        return rc
-    return rc or 4
-
-
-def publish_wip(run: Run, workspace: Path, commit: str) -> None:
-    branch = f"wip/{run.files.name}"
-    ref = f"refs/heads/{branch}"
-    if ref == run.request.start_ref:
-        run.files.write("log", f"push failed: {branch} is the start branch\n")
-        return
-    # An installation token supplied before the harness may have expired.
-    token = credentials.push_token(run.request, run.settings)
-    if not isinstance(token, str):
-        reason = token.reason if token is not None else "unavailable"
-        run.files.write("log", f"push failed: no push token ({reason}) for {branch}\n")
-        return
-    try:
-        target = url(run.request.repo)
-        with publication(run.files.root, workspace, commit) as directory:
-            lease = wip_tip(directory, target, ref, token)
-            status, error = send(directory, target, branch, token, lease=lease)
-        if not status:
-            run.files.write("branch", branch)
-            run.files.write("log", f"pushed {branch} at {commit}\n")
-            return
-        error = (
-            " ".join(error.replace(token, "[redacted]").split()) or "git push failed"
-        )
-    except Invalid as exc:
-        error = str(exc)
-    except OSError, ValueError, subprocess.SubprocessError:
-        error = "git push unavailable"
-    run.files.write("log", f"push failed: {branch}: {error[:PUSH_ERROR_LIMIT]}\n")
-
-
-def wip_tip(directory: Path, target: str, ref: str, token: str) -> str:
-    status, listing, _ = git_with_token(
-        directory, token, "-c", "http.followRedirects=false",
-        "ls-remote", "--symref", "--", target, "HEAD", ref, capture_output=True,
-    )  # fmt: skip
-    if not status:
-        lines = listing.splitlines()
-        if f"ref: {ref}\tHEAD" in lines:
-            message = f"{ref} is the default branch"
-            raise Invalid(message)
-        records = {
-            name: value for value, _, name in (line.partition("\t") for line in lines)
-        }
-        tip = records.get(ref, "")
-        if not tip or re.fullmatch(r"[0-9a-f]{40}", tip):
-            return tip
-    message = f"cannot read remote tip of {ref}"
-    raise Invalid(message)
+            run.files.write("head", found[0][1])
+        return 0
+    return 4
 
 
 def start_ref_target(run: Run, base: str | None) -> tuple[str, str] | None:
