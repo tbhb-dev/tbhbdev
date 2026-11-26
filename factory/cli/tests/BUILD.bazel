@@ -1448,6 +1448,7 @@ cli_py_test(
     deps = [
         ":conftest",
         ":cue_fixtures",
+        "//factory/cli/src/tbhbdev/alpha:pull_request",
         "//factory/cli/src/tbhbdev/alpha:review",
         "//factory/cli/src/tbhbdev/alpha:review_doc",
         "@cli_pip//pytest",
