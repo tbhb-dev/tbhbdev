@@ -106,7 +106,7 @@ def test_expect_latest_reads_main_once(capsys: pytest.CaptureFixture[str]) -> No
     assert fake.calls[0] == [
         "git",
         "ls-remote",
-        "https://github.com/tbhb-dev/tools",
+        "https://github.com/tbhb-dev/tbhbdev",
         "refs/heads/main",
     ]
     assert len(fake.calls) == 2
@@ -121,7 +121,7 @@ def test_expect_latest_unreadable_exits_three(
     fake = Fake({"git": answer})
     status, out, err = run_main(["--host", "h1", "--expect", "latest"], fake, capsys)
     assert (status, out) == (3, "")
-    assert err == (f"{PROG}: cannot read main of https://github.com/tbhb-dev/tools\n")
+    assert err == (f"{PROG}: cannot read main of https://github.com/tbhb-dev/tbhbdev\n")
     assert len(fake.calls) == 1
 
 

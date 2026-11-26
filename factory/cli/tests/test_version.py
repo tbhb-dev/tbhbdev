@@ -26,7 +26,7 @@ COMMIT = "135933fb00d166e18826bd61de5d4a5a8626b22d"
         (
             json.dumps(
                 {
-                    "url": "https://github.com/tbhb-dev/tools",
+                    "url": "https://github.com/tbhb-dev/tbhbdev",
                     "vcs_info": {"vcs": "git", "commit_id": COMMIT},
                 }
             ),

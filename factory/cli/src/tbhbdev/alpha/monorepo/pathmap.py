@@ -24,7 +24,7 @@ if TYPE_CHECKING:
     from tbhbdev.alpha.monorepo.source import Blob
 
 # Root configuration that the shared roots of the monorepo replace, from the
-# root of tbhb-dev/tools. A pattern matches the whole path, and `*` stays
+# root of tbhb-dev/tbhbdev. A pattern matches the whole path, and `*` stays
 # within one folder.
 ROOT_CONFIG = (
     ".bazel*",

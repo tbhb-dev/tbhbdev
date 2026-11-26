@@ -16,7 +16,7 @@ if TYPE_CHECKING:
     from pathlib import Path
 
 HEAD = "0123456789abcdef0123456789abcdef01234567"
-REPO = "tbhb-dev/tools"
+REPO = "tbhb-dev/tbhbdev"
 BODY = """## Summary
 
 A warm cache can return a stale value.

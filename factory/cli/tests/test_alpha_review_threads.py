@@ -5,7 +5,7 @@ from test_alpha_review_doc import FakeApi
 
 from tbhbdev.alpha import review, review_threads
 
-REPO = "tbhb-dev/tools"
+REPO = "tbhb-dev/tbhbdev"
 NUMBER = 7
 THREAD = "PRRT_ab-c"
 ROOT = 4632604042

@@ -849,7 +849,7 @@ RULESET_PATH = "/repos/tbhb-dev/widget/rulesets"
 
 
 def live_ruleset() -> dict[str, object]:
-    """The shape of the live `main` ruleset on tbhb-dev/tools."""
+    """The shape of the live `main` ruleset on tbhb-dev/tbhbdev."""
     return {
         "name": "main",
         "target": "branch",

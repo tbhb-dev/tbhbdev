@@ -187,7 +187,7 @@ def test_live_codex_commit_and_git_children(
         ("user.name", name),
         ("user.email", email.removesuffix(">")),
         ("commit.gpgsign", "false"),
-        ("remote.origin.url", "https://github.com/tbhb-dev/tools"),
+        ("remote.origin.url", "https://github.com/tbhb-dev/tbhbdev"),
     ):
         git(workspace, "config", key, value)
     before_head = git(workspace, "rev-parse", "HEAD")

@@ -12,7 +12,7 @@ if TYPE_CHECKING:
     from pathlib import Path
 
 EXPECTED = (
-    """# {TASK} (tbhb-dev/tools, demo)
+    """# {TASK} (tbhb-dev/tbhbdev, demo)
 
 {step}
 
@@ -40,7 +40,7 @@ EXPECTED = (
 """.replace(
         "{step}",
         brief.STEP_BLOCK.format(
-            repo="tbhb-dev/tools",
+            repo="tbhb-dev/tbhbdev",
             path=".worktrees/demo",
             branch="agent/demo",
             base="origin/main",
@@ -245,7 +245,7 @@ def test_registered() -> None:
 
 
 def test_render_defaults() -> None:
-    assert brief.render("demo", "tbhb-dev/tools") == EXPECTED
+    assert brief.render("demo", "tbhb-dev/tbhbdev") == EXPECTED
     assert brief.check(FILLED) == []
     assert brief.check(EXPECTED) == [
         "unfilled placeholder: {TASK}",
@@ -263,7 +263,7 @@ def test_render_overrides_and_quotes_arguments() -> None:
         "base ref",
         scan_command=SCAN_COMMAND,
     )
-    assert rendered == EXPECTED.replace("tbhb-dev/tools", "other/project").replace(
+    assert rendered == EXPECTED.replace("tbhb-dev/tbhbdev", "other/project").replace(
         ", demo)", ", a b)"
     ).replace(
         "git worktree add .worktrees/demo -b agent/demo origin/main",
@@ -286,7 +286,7 @@ def test_new_from_top_level(
                 "new",
                 "demo",
                 "--repo",
-                "tbhb-dev/tools",
+                "tbhb-dev/tbhbdev",
                 *(["--push", "--scan-command", SCAN_COMMAND] if push else []),
             ]
         )
@@ -295,7 +295,7 @@ def test_new_from_top_level(
     output = capsys.readouterr()
     assert output == (
         brief.render(
-            "demo", "tbhb-dev/tools", scan_command=SCAN_COMMAND if push else None
+            "demo", "tbhb-dev/tbhbdev", scan_command=SCAN_COMMAND if push else None
         ),
         "",
     )

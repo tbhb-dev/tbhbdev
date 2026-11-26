@@ -26,7 +26,7 @@ FIELDS: dict[str, str | int] = {
     "model": "gpt-6",
     "host": "reviewer.example.org",
     "head": HEAD,
-    "repo": "tbhb-dev/tools",
+    "repo": "tbhb-dev/tbhbdev",
     "pr": 385,
 }
 LENSES = {

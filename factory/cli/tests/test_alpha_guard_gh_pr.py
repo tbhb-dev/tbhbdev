@@ -661,12 +661,12 @@ def test_every_harness_config_runs_the_guard(
 # --- approval routes -------------------------------------------------------
 
 ROOT = ai.sha256_64("session-raw")
-TARGET = "tbhb-dev/tools#7"
+TARGET = "tbhb-dev/tbhbdev#7"
 APPROVE = "tbhb-approve tools 7 abc123"
 GH_ROUTES = [
-    ("gh pr review 7 --approve -R tbhb-dev/tools", "`gh pr review --approve`"),
+    ("gh pr review 7 --approve -R tbhb-dev/tbhbdev", "`gh pr review --approve`"),
     (
-        "gh api -X POST repos/tbhb-dev/tools/pulls/7/reviews -f event=APPROVE",
+        "gh api -X POST repos/tbhb-dev/tbhbdev/pulls/7/reviews -f event=APPROVE",
         "a `gh api` APPROVE review",
     ),
 ]
@@ -785,25 +785,25 @@ def test_gh_approval_is_denied_alongside_tbhb_approve(
 @pytest.mark.parametrize(
     "text",
     [
-        "gh pr review 7 -R tbhb-dev/tools",
-        "gh pr review 7 -R tbhb-dev/tools --comment -b ok",
-        "gh pr review 7 -R tbhb-dev/tools -b -a",
-        "gh pr review 7 -R tbhb-dev/tools -ba",
-        "gh pr review 7 -R tbhb-dev/tools --request-changes -b no",
-        "gh pr view 7 -R tbhb-dev/tools",
-        "gh api repos/tbhb-dev/tools/pulls/7/reviews",
-        "gh api -X GET repos/tbhb-dev/tools/pulls/7/reviews -f event=APPROVE",
-        "gh api --method=GET repos/tbhb-dev/tools/pulls/7/reviews -F event=APPROVE",
-        "gh api -X POST repos/tbhb-dev/tools/pulls/7/reviews -f event=COMMENT",
-        "gh api repos/tbhb-dev/tools/pulls/7/reviews -f body=APPROVE",
-        "gh api repos/tbhb-dev/tools/pulls/7/reviews -f event",
-        "gh api -X POST repos/tbhb-dev/tools/pulls/7/reviews --input f.json",
-        "gh api repos/tbhb-dev/tools/pulls/7/comments -f event=APPROVE",
-        "gh api repos/tbhb-dev/tools/pulls/7/merge -X PUT -f event=APPROVE",
-        "gh api repos/tbhb-dev/tools/issues/7/reviews -f event=APPROVE",
+        "gh pr review 7 -R tbhb-dev/tbhbdev",
+        "gh pr review 7 -R tbhb-dev/tbhbdev --comment -b ok",
+        "gh pr review 7 -R tbhb-dev/tbhbdev -b -a",
+        "gh pr review 7 -R tbhb-dev/tbhbdev -ba",
+        "gh pr review 7 -R tbhb-dev/tbhbdev --request-changes -b no",
+        "gh pr view 7 -R tbhb-dev/tbhbdev",
+        "gh api repos/tbhb-dev/tbhbdev/pulls/7/reviews",
+        "gh api -X GET repos/tbhb-dev/tbhbdev/pulls/7/reviews -f event=APPROVE",
+        "gh api --method=GET repos/tbhb-dev/tbhbdev/pulls/7/reviews -F event=APPROVE",
+        "gh api -X POST repos/tbhb-dev/tbhbdev/pulls/7/reviews -f event=COMMENT",
+        "gh api repos/tbhb-dev/tbhbdev/pulls/7/reviews -f body=APPROVE",
+        "gh api repos/tbhb-dev/tbhbdev/pulls/7/reviews -f event",
+        "gh api -X POST repos/tbhb-dev/tbhbdev/pulls/7/reviews --input f.json",
+        "gh api repos/tbhb-dev/tbhbdev/pulls/7/comments -f event=APPROVE",
+        "gh api repos/tbhb-dev/tbhbdev/pulls/7/merge -X PUT -f event=APPROVE",
+        "gh api repos/tbhb-dev/tbhbdev/issues/7/reviews -f event=APPROVE",
         "gh api graphql -f query=addPullRequestReview",
-        "gh -R tbhb-dev/tools api -f event=APPROVE",
-        "git commit -m 'gh pr review 7 --approve -R tbhb-dev/tools'",
+        "gh -R tbhb-dev/tbhbdev api -f event=APPROVE",
+        "git commit -m 'gh pr review 7 --approve -R tbhb-dev/tbhbdev'",
         "gh issue view 7",
         "gh pr",
     ],
@@ -822,72 +822,72 @@ AN_API = "a `gh api` APPROVE review"
 @pytest.mark.parametrize(
     ("text", "expected"),
     [
-        ("gh pr review 7 --approve -R tbhb-dev/tools", (A_REVIEW, TARGET)),
-        ("gh pr review 7 -a --repo tbhb-dev/tools", (A_REVIEW, TARGET)),
-        ("gh pr review 7 -a --repo=tbhb-dev/tools", (A_REVIEW, TARGET)),
-        ("gh -R tbhb-dev/tools pr review '#7' --approve", (A_REVIEW, TARGET)),
-        ("gh --repo github.com/tbhb-dev/tools pr review 7 -a", (A_REVIEW, TARGET)),
-        ("gh -R x/y pr review -R tbhb-dev/tools 7 -a", (A_REVIEW, TARGET)),
-        ("gh pr review -b ok -a 7 -R tbhb-dev/tools", (A_REVIEW, TARGET)),
-        ("gh pr review --body-file f -a 7 -R tbhb-dev/tools", (A_REVIEW, TARGET)),
-        ("gh pr review -F f --approve=true 7 -R tbhb-dev/tools", (A_REVIEW, TARGET)),
-        ("gh pr review -ab ok 7 -R tbhb-dev/tools", (A_REVIEW, TARGET)),
+        ("gh pr review 7 --approve -R tbhb-dev/tbhbdev", (A_REVIEW, TARGET)),
+        ("gh pr review 7 -a --repo tbhb-dev/tbhbdev", (A_REVIEW, TARGET)),
+        ("gh pr review 7 -a --repo=tbhb-dev/tbhbdev", (A_REVIEW, TARGET)),
+        ("gh -R tbhb-dev/tbhbdev pr review '#7' --approve", (A_REVIEW, TARGET)),
+        ("gh --repo github.com/tbhb-dev/tbhbdev pr review 7 -a", (A_REVIEW, TARGET)),
+        ("gh -R x/y pr review -R tbhb-dev/tbhbdev 7 -a", (A_REVIEW, TARGET)),
+        ("gh pr review -b ok -a 7 -R tbhb-dev/tbhbdev", (A_REVIEW, TARGET)),
+        ("gh pr review --body-file f -a 7 -R tbhb-dev/tbhbdev", (A_REVIEW, TARGET)),
+        ("gh pr review -F f --approve=true 7 -R tbhb-dev/tbhbdev", (A_REVIEW, TARGET)),
+        ("gh pr review -ab ok 7 -R tbhb-dev/tbhbdev", (A_REVIEW, TARGET)),
         (
-            "gh pr review https://github.com/tbhb-dev/tools/pull/7 --approve",
+            "gh pr review https://github.com/tbhb-dev/tbhbdev/pull/7 --approve",
             (A_REVIEW, TARGET),
         ),
         (
-            "gh pr review -R x/y https://github.com/tbhb-dev/tools/pull/7/files -a",
+            "gh pr review -R x/y https://github.com/tbhb-dev/tbhbdev/pull/7/files -a",
             (A_REVIEW, TARGET),
         ),
-        ("gh pr review --approve -R tbhb-dev/tools", (A_REVIEW, None)),
-        ("gh pr review my-branch --approve -R tbhb-dev/tools", (A_REVIEW, None)),
+        ("gh pr review --approve -R tbhb-dev/tbhbdev", (A_REVIEW, None)),
+        ("gh pr review my-branch --approve -R tbhb-dev/tbhbdev", (A_REVIEW, None)),
         ("gh pr review 7 --approve -R tools", (A_REVIEW, None)),
         (
-            "gh api -X POST repos/tbhb-dev/tools/pulls/7/reviews -f event=APPROVE",
+            "gh api -X POST repos/tbhb-dev/tbhbdev/pulls/7/reviews -f event=APPROVE",
             (AN_API, TARGET),
         ),
         (
-            "gh api /repos/tbhb-dev/tools/pulls/7/reviews -F event=APPROVE",
+            "gh api /repos/tbhb-dev/tbhbdev/pulls/7/reviews -F event=APPROVE",
             (AN_API, TARGET),
         ),
         (
-            "gh api repos/tbhb-dev/tools/pulls/7/reviews --field=event=approve",
+            "gh api repos/tbhb-dev/tbhbdev/pulls/7/reviews --field=event=approve",
             (AN_API, TARGET),
         ),
         (
-            "gh api repos/tbhb-dev/tools/pulls/7/reviews --raw-field 'event = APPROVE'",
+            "gh api repos/tbhb-dev/tbhbdev/pulls/7/reviews --raw-field 'event = APPROVE'",
             (AN_API, TARGET),
         ),
         (
-            'gh api repos/tbhb-dev/tools/pulls/7/reviews -f"event=APPROVE" -XPOST',
+            'gh api repos/tbhb-dev/tbhbdev/pulls/7/reviews -f"event=APPROVE" -XPOST',
             (AN_API, TARGET),
         ),
         (
             (
                 "gh api --method post -H x "
-                "repos/tbhb-dev/tools/pulls/7/reviews/9/events"
+                "repos/tbhb-dev/tbhbdev/pulls/7/reviews/9/events"
                 " -f event=APPROVE"
             ),
             (AN_API, TARGET),
         ),
         (
             (
-                "gh api https://api.github.com/repos/tbhb-dev/tools/pulls/7/reviews/"
+                "gh api https://api.github.com/repos/tbhb-dev/tbhbdev/pulls/7/reviews/"
                 " -f body=x -f event=APPROVE"
             ),
             (AN_API, TARGET),
         ),
         (
-            "gh api 'repos/tbhb-dev/tools/pulls/7/reviews?x=1' -f event=APPROVE",
+            "gh api 'repos/tbhb-dev/tbhbdev/pulls/7/reviews?x=1' -f event=APPROVE",
             (AN_API, TARGET),
         ),
         (
-            "gh api -X POST repos/tbhb-dev/tools/pulls/$N/reviews -f event=APPROVE",
+            "gh api -X POST repos/tbhb-dev/tbhbdev/pulls/$N/reviews -f event=APPROVE",
             (AN_API, None),
         ),
-        ("env A=b sudo gh pr review 7 -a -R tbhb-dev/tools", (A_REVIEW, TARGET)),
-        ('echo "$(gh pr review 7 -a -R tbhb-dev/tools)"', (A_REVIEW, TARGET)),
+        ("env A=b sudo gh pr review 7 -a -R tbhb-dev/tbhbdev", (A_REVIEW, TARGET)),
+        ('echo "$(gh pr review 7 -a -R tbhb-dev/tbhbdev)"', (A_REVIEW, TARGET)),
     ],
 )
 def test_approval_routes_and_targets(
@@ -897,7 +897,7 @@ def test_approval_routes_and_targets(
 
 
 def test_the_repository_comes_from_the_hook_cwd_origin(tmp_path: Path) -> None:
-    repo = origin_repo(tmp_path / "repo", "git@github.com:tbhb-dev/tools.git")
+    repo = origin_repo(tmp_path / "repo", "git@github.com:tbhb-dev/tbhbdev.git")
     assert guard.approvals("gh pr review 7 -a", repo) == [
         guard.Approval(A_REVIEW, TARGET)
     ]
@@ -910,8 +910,8 @@ def test_the_repository_comes_from_the_hook_cwd_origin(tmp_path: Path) -> None:
     assert guard.approvals("gh pr review 7 -a -R o/r", repo) == [
         guard.Approval(A_REVIEW, "o/r#7")
     ]
-    https = origin_repo(tmp_path / "https", "https://github.com/tbhb-dev/tools/\n")
-    assert guard.origin_repo(https) == "tbhb-dev/tools"
+    https = origin_repo(tmp_path / "https", "https://github.com/tbhb-dev/tbhbdev/\n")
+    assert guard.origin_repo(https) == "tbhb-dev/tbhbdev"
 
 
 def test_the_repository_comes_from_the_push_url_of_a_mirror_clone(
@@ -925,11 +925,11 @@ def test_the_repository_comes_from_the_push_url_of_a_mirror_clone(
             str(repo),
             "config",
             "remote.origin.pushurl",
-            "https://github.com/tbhb-dev/tools.git",
+            "https://github.com/tbhb-dev/tbhbdev.git",
         ],
         check=True,
     )
-    assert guard.origin_repo(repo) == "tbhb-dev/tools"
+    assert guard.origin_repo(repo) == "tbhb-dev/tbhbdev"
 
 
 def test_without_an_origin_the_target_is_unknown(tmp_path: Path) -> None:
@@ -1078,7 +1078,7 @@ def test_gh_approval_skips_global_flags(
 
 
 def test_one_placeholder_takes_only_its_own_part_from_origin(tmp_path: Path) -> None:
-    repo = origin_repo(tmp_path / "repo", "git@github.com:tbhb-dev/tools.git")
+    repo = origin_repo(tmp_path / "repo", "git@github.com:tbhb-dev/tbhbdev.git")
     text = "gh api repos/other/{repo}/pulls/7/reviews -f event=APPROVE"
     assert guard.approvals(text, repo) == [guard.Approval(AN_API, "other/tools#7")]
     text = "gh api repos/{owner}/x/pulls/7/reviews -f event=APPROVE"
@@ -1101,12 +1101,12 @@ def test_the_guard_checks_gh_approval_from_the_payloads_cwd(
 @pytest.mark.parametrize(
     ("text", "expected"),
     [
-        ("gh pr review 7 -a -b -Rx/y -R tbhb-dev/tools", (A_REVIEW, TARGET)),
-        ("gh pr review 7 -a --body --repo=o/r -R tbhb-dev/tools", (A_REVIEW, TARGET)),
-        ("gh pr review 7 -a -R tbhb-dev/tools -b -Ro/r", (A_REVIEW, TARGET)),
-        ("gh pr review 7 -aR tbhb-dev/tools", (A_REVIEW, TARGET)),
+        ("gh pr review 7 -a -b -Rx/y -R tbhb-dev/tbhbdev", (A_REVIEW, TARGET)),
+        ("gh pr review 7 -a --body --repo=o/r -R tbhb-dev/tbhbdev", (A_REVIEW, TARGET)),
+        ("gh pr review 7 -a -R tbhb-dev/tbhbdev -b -Ro/r", (A_REVIEW, TARGET)),
+        ("gh pr review 7 -aR tbhb-dev/tbhbdev", (A_REVIEW, TARGET)),
         (
-            "gh api repos/tbhb-dev/tools/pulls/7/reviews -f event=APPROVE -q -X GET",
+            "gh api repos/tbhb-dev/tbhbdev/pulls/7/reviews -f event=APPROVE -q -X GET",
             (AN_API, TARGET),
         ),
         (
@@ -1114,7 +1114,7 @@ def test_the_guard_checks_gh_approval_from_the_payloads_cwd(
             (AN_API, "o/r#7"),
         ),
         (
-            "gh api repos/tbhb-dev/tools/pulls/7/reviews -f body -f event=APPROVE",
+            "gh api repos/tbhb-dev/tbhbdev/pulls/7/reviews -f body -f event=APPROVE",
             (AN_API, TARGET),
         ),
     ],
@@ -1126,12 +1126,12 @@ def test_a_flags_value_is_never_read_as_a_flag(
 
 
 def test_a_value_word_that_looks_like_a_field_is_not_one() -> None:
-    text = "gh api repos/tbhb-dev/tools/pulls/7/reviews -H -f event=APPROVE -X POST"
+    text = "gh api repos/tbhb-dev/tbhbdev/pulls/7/reviews -H -f event=APPROVE -X POST"
     assert guard.approvals(text, None) == []
 
 
 def test_a_value_word_hides_the_repo_flag(tmp_path: Path) -> None:
-    repo = origin_repo(tmp_path / "repo", "git@github.com:tbhb-dev/tools.git")
+    repo = origin_repo(tmp_path / "repo", "git@github.com:tbhb-dev/tbhbdev.git")
     text = "gh pr review 7 -a -b -Rx/y"
     assert guard.approvals(text, repo) == [guard.Approval(A_REVIEW, TARGET)]
 
@@ -1180,19 +1180,19 @@ def test_flag_word(word: str, found: tuple[str, str | None] | None) -> None:
 
 def test_gh_repo_names_the_repository(tmp_path: Path) -> None:
     repo = origin_repo(tmp_path / "repo", "git@github.com:o/r.git")
-    assert guard.approvals("GH_REPO=tbhb-dev/tools gh pr review 7 -a", repo) == [
+    assert guard.approvals("GH_REPO=tbhb-dev/tbhbdev gh pr review 7 -a", repo) == [
         guard.Approval(A_REVIEW, TARGET)
     ]
-    text = "GH_REPO=x/y env GH_REPO=tbhb-dev/tools gh pr review 7 -a"
+    text = "GH_REPO=x/y env GH_REPO=tbhb-dev/tbhbdev gh pr review 7 -a"
     assert guard.approvals(text, repo) == [guard.Approval(A_REVIEW, TARGET)]
-    text = "GH_REPO=tbhb-dev/tools bash -c 'gh pr review 7 -a'"
+    text = "GH_REPO=tbhb-dev/tbhbdev bash -c 'gh pr review 7 -a'"
     assert guard.approvals(text, repo) == [guard.Approval(A_REVIEW, TARGET)]
-    text = "GH_REPO=x/y gh pr review 7 -a -R tbhb-dev/tools"
+    text = "GH_REPO=x/y gh pr review 7 -a -R tbhb-dev/tbhbdev"
     assert guard.approvals(text, repo) == [guard.Approval(A_REVIEW, TARGET)]
     text = "GH_REPO=tools gh pr review 7 -a"
     assert guard.approvals(text, repo) == [guard.Approval(A_REVIEW, None)]
     text = (
-        "GH_REPO=tbhb-dev/tools "
+        "GH_REPO=tbhb-dev/tbhbdev "
         "gh api repos/{owner}/{repo}/pulls/7/reviews -f event=APPROVE"
     )
     assert guard.approvals(text, repo) == [guard.Approval(AN_API, TARGET)]
@@ -1216,7 +1216,7 @@ def test_gh_repo_names_the_repository(tmp_path: Path) -> None:
     ],
 )
 def test_a_directory_change_makes_the_origin_unknown(tmp_path: Path, text: str) -> None:
-    repo = origin_repo(tmp_path / "repo", "git@github.com:tbhb-dev/tools.git")
+    repo = origin_repo(tmp_path / "repo", "git@github.com:tbhb-dev/tbhbdev.git")
     (found,) = guard.approvals(text, repo)
     assert found.target is None
 
@@ -1227,15 +1227,15 @@ def test_a_directory_change_makes_the_origin_unknown(tmp_path: Path, text: str) 
         "gh pr review 7 -a; cd x",
         "git status; gh pr review 7 -a",
         "git commit -m x; gh pr review 7 -a",
-        "cd x; gh pr review 7 -a -R tbhb-dev/tools",
-        "cd x; GH_REPO=tbhb-dev/tools gh pr review 7 -a",
-        "cd x; gh pr review https://github.com/tbhb-dev/tools/pull/7 -a",
+        "cd x; gh pr review 7 -a -R tbhb-dev/tbhbdev",
+        "cd x; GH_REPO=tbhb-dev/tbhbdev gh pr review 7 -a",
+        "cd x; gh pr review https://github.com/tbhb-dev/tbhbdev/pull/7 -a",
     ],
 )
 def test_the_target_stays_known_without_a_move_or_with_a_named_repo(
     tmp_path: Path, text: str
 ) -> None:
-    repo = origin_repo(tmp_path / "repo", "git@github.com:tbhb-dev/tools.git")
+    repo = origin_repo(tmp_path / "repo", "git@github.com:tbhb-dev/tbhbdev.git")
     (found,) = guard.approvals(text, repo)
     assert found.target == TARGET
 

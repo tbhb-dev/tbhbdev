@@ -24,7 +24,7 @@ if TYPE_CHECKING:
     from tbhbdev.alpha.agent import model
 
 ENV = {"CLAUDE_CODE_SESSION_ID": "raw-session"}
-URL = "https://github.com/tbhb-dev/tools/pull/7"
+URL = "https://github.com/tbhb-dev/tbhbdev/pull/7"
 OPENED_LINE = "Opened-by: LLM harness=claude-code;model=anthropic:m1"
 POSTING = (
     "LLM harness=claude-code:2.1.0;model=anthropic:m1;"
@@ -81,7 +81,7 @@ class Gh:
 def gh(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> Gh:
     stub = Gh()
     monkeypatch.setattr(close, "gh", stub)
-    monkeypatch.setattr(pr, "origin_repository", lambda: "tbhb-dev/tools")
+    monkeypatch.setattr(pr, "origin_repository", lambda: "tbhb-dev/tbhbdev")
 
     def posting_value(env: Mapping[str, str]) -> str | None:
         return POSTING if env else None
@@ -107,7 +107,7 @@ def trailer_line() -> str:
 def test_close_pr_it_opened_comments_the_reason_and_the_trailer(
     gh: Gh, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    opened.record_opened(root(), ["tbhb-dev/tools#7"])
+    opened.record_opened(root(), ["tbhb-dev/tbhbdev#7"])
     assert close.main(["pr", "close", "7", "--reason", "superseded"], env=ENV) == 0
     assert gh.calls[0][3:5] == gh.calls[-1][3:5]
     assert gh.calls[-1] == [
@@ -115,7 +115,7 @@ def test_close_pr_it_opened_comments_the_reason_and_the_trailer(
         "close",
         "7",
         "--repo",
-        "github.com/tbhb-dev/tools",
+        "github.com/tbhb-dev/tbhbdev",
         "--comment",
         f"superseded\n\n{trailer_line()}\n",
     ]
@@ -239,7 +239,7 @@ def test_a_corrupt_ledger_is_reported() -> None:
 
 
 def test_a_pr_url_that_is_not_a_pr_is_refused(gh: Gh) -> None:
-    gh.view["url"] = "https://github.com/tbhb-dev/tools/issues/7"
+    gh.view["url"] = "https://github.com/tbhb-dev/tbhbdev/issues/7"
     with pytest.raises(SystemExit, match="cannot read a pull request from"):
         close.main(["pr", "close", "7", "--reason", "x"], env=ENV)
 
@@ -247,22 +247,22 @@ def test_a_pr_url_that_is_not_a_pr_is_refused(gh: Gh) -> None:
 def test_dry_run_prints_the_command_and_closes_nothing(
     gh: Gh, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    opened.record_opened(root(), ["tbhb-dev/tools#7"])
+    opened.record_opened(root(), ["tbhb-dev/tbhbdev#7"])
     assert close.main(["pr", "close", "7", "--reason", "r", "--dry-run"], env=ENV) == 0
     assert [call[1] for call in gh.calls] == ["view"]
     assert capsys.readouterr().out.startswith(
-        "gh pr close 7 --repo github.com/tbhb-dev/tools --comment "
+        "gh pr close 7 --repo github.com/tbhb-dev/tbhbdev --comment "
     )
 
 
 def test_a_failing_close_returns_gh_exit_code(gh: Gh) -> None:
-    opened.record_opened(root(), ["tbhb-dev/tools#7"])
+    opened.record_opened(root(), ["tbhb-dev/tbhbdev#7"])
     gh.close_rc = 4
     assert close.main(["pr", "close", "7", "--reason", "r"], env=ENV) == 4
 
 
 def test_close_issue_with_a_reason_and_a_comment(gh: Gh) -> None:
-    gh.view = {"state": "OPEN", "url": "https://github.com/tbhb-dev/tools/issues/3"}
+    gh.view = {"state": "OPEN", "url": "https://github.com/tbhb-dev/tbhbdev/issues/3"}
     args = [
         "issue",
         "close",
@@ -278,7 +278,7 @@ def test_close_issue_with_a_reason_and_a_comment(gh: Gh) -> None:
         "close",
         "3",
         "--repo",
-        "github.com/tbhb-dev/tools",
+        "github.com/tbhb-dev/tbhbdev",
         "--reason",
         "not planned",
         "--comment",
@@ -287,14 +287,14 @@ def test_close_issue_with_a_reason_and_a_comment(gh: Gh) -> None:
 
 
 def test_close_issue_pins_the_view_to_origin(gh: Gh) -> None:
-    gh.view = {"state": "OPEN", "url": "https://github.com/tbhb-dev/tools/issues/3"}
+    gh.view = {"state": "OPEN", "url": "https://github.com/tbhb-dev/tbhbdev/issues/3"}
     assert close.main(["issue", "close", "3", "--reason", "completed"], env=ENV) == 0
     assert gh.calls[0][:5] == [
         "issue",
         "view",
         "3",
         "--repo",
-        "github.com/tbhb-dev/tools",
+        "github.com/tbhb-dev/tbhbdev",
     ]
 
 
@@ -501,10 +501,10 @@ def issue_args(tmp_path: Path) -> list[str]:
 @pytest.fixture
 def issue_client(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> Mock:
     repo = f"/repos/{ISSUE_REPO}"
-    other = "/repos/tbhb-dev/tools"
+    other = "/repos/tbhb-dev/tbhbdev"
     responses: dict[tuple[str, str], close.content.Json] = {
         ("GET", repo): {"full_name": ISSUE_REPO, "visibility": "private"},
-        ("GET", other): {"full_name": "tbhb-dev/tools", "visibility": "public"},
+        ("GET", other): {"full_name": "tbhb-dev/tbhbdev", "visibility": "public"},
         ("POST", f"{repo}/issues"): {"number": 9},
         ("POST", f"{other}/issues"): {"number": 9},
         ("GET", f"{repo}/issues/9"): {"id": 123, "type": {"name": "Task"}},
@@ -582,7 +582,7 @@ def test_issue_create_dry_run(
     assert not (tmp_path / "audit.jsonl").exists()
 
 
-@pytest.mark.parametrize("parent", [None, "8", "tbhb-dev/tools#8"])
+@pytest.mark.parametrize("parent", [None, "8", "tbhb-dev/tbhbdev#8"])
 @pytest.mark.usefixtures("gh")
 def test_issue_create_writes_and_audits(
     issue_args: list[str],
@@ -613,7 +613,7 @@ def test_issue_create_writes_and_audits(
     if parent is None:
         assert writes[1:] == []
     else:
-        parent_repo = "tbhb-dev/tools" if "#" in parent else ISSUE_REPO
+        parent_repo = "tbhb-dev/tbhbdev" if "#" in parent else ISSUE_REPO
         assert writes[1:] == [
             call(
                 "POST",
@@ -641,22 +641,22 @@ def test_issue_create_reports_issue_before_link_refusal(
 ) -> None:
     assert (
         close.main(
-            [*issue_args, "--repo", "tbhb-dev/tools", "--parent", f"{ISSUE_REPO}#8"],
+            [*issue_args, "--repo", "tbhb-dev/tbhbdev", "--parent", f"{ISSUE_REPO}#8"],
             env=ENV,
         )
         == 1
     )
     refusal = (
-        f"Cannot link tbhb-dev/tools#9 under {ISSUE_REPO}#8: "
+        f"Cannot link tbhb-dev/tbhbdev#9 under {ISSUE_REPO}#8: "
         "only a private Feature can have a public leaf child\n"
     )
-    output = "https://github.com/tbhb-dev/tools/issues/9\n9\n"
+    output = "https://github.com/tbhb-dev/tbhbdev/issues/9\n9\n"
     assert capsys.readouterr() == (output, refusal)
     rest: Mock = issue_client.rest
     assert [args for args in rest.call_args_list if args.args[0] != "GET"] == [
         call(
             "POST",
-            "/repos/tbhb-dev/tools/issues",
+            "/repos/tbhb-dev/tbhbdev/issues",
             {
                 "title": ISSUE_TITLE,
                 "body": ISSUE_BODY,
@@ -794,23 +794,23 @@ def test_view_of_a_pr_also_asks_for_the_head_branch(gh: Gh) -> None:
 
 
 def test_view_pins_the_repo_when_given(gh: Gh) -> None:
-    close.view("pr", 7, "tbhb-dev/tools")
+    close.view("pr", 7, "tbhb-dev/tbhbdev")
     (call,) = gh.calls
-    assert call[3:5] == ["--repo", "github.com/tbhb-dev/tools"]
+    assert call[3:5] == ["--repo", "github.com/tbhb-dev/tbhbdev"]
 
 
 def test_comment_is_an_alias_for_reason(gh: Gh) -> None:
-    opened.record_opened(root(), ["tbhb-dev/tools#7"])
+    opened.record_opened(root(), ["tbhb-dev/tbhbdev#7"])
     assert close.main(["pr", "close", "7", "--comment", "Done."], env=ENV) == 0
     assert gh.calls[-1][-1] == f"Done.\n\n{trailer_line()}\n"
 
 
-DELETE = ["api", "-X", "DELETE", "repos/tbhb-dev/tools/git/refs/heads/feat/x%20y"]
+DELETE = ["api", "-X", "DELETE", "repos/tbhb-dev/tbhbdev/git/refs/heads/feat/x%20y"]
 PR_ARGS = ["pr", "close", "7", "--reason", "r", "--delete-branch"]
 
 
 def test_delete_branch_deletes_the_same_repo_head_after_closing(gh: Gh) -> None:
-    opened.record_opened(root(), ["tbhb-dev/tools#7"])
+    opened.record_opened(root(), ["tbhb-dev/tbhbdev#7"])
     assert close.main(PR_ARGS, env=ENV) == 0
     assert [call[0] for call in gh.calls] == ["pr", "pr", "pr", "api"]
     assert gh.calls[-2][:2] == ["pr", "close"]
@@ -832,7 +832,7 @@ def test_dry_run_says_it_would_delete_the_branch(
     assert close.main([*PR_ARGS, "--dry-run"], env=ENV) == 0
     assert [call[1] for call in gh.calls] == ["view", "list"]
     out = capsys.readouterr().out
-    assert "would delete branch feat/x y: gh api -X DELETE repos/tbhb-dev/tools" in out
+    assert "would delete branch feat/x y: gh api -X DELETE repos/tbhb-dev/tbhbdev" in out
 
 
 def test_dry_run_says_it_would_skip_a_fork(
@@ -882,7 +882,7 @@ def test_issue_close_has_no_delete_branch_flag(gh: Gh) -> None:
 
 
 LIST = [
-    "pr", "list", "--repo", "tbhb-dev/tools", "--base", "feat/x y",
+    "pr", "list", "--repo", "tbhb-dev/tbhbdev", "--base", "feat/x y",
     "--state", "open", "--json", "number",
 ]  # fmt: skip
 
@@ -974,7 +974,7 @@ class Worker:
 @pytest.fixture
 def worker(monkeypatch: pytest.MonkeyPatch, gh: Gh) -> Worker:
     stub = Worker()
-    gh.view = {"state": "OPEN", "url": "https://github.com/tbhb-dev/tools/issues/3"}
+    gh.view = {"state": "OPEN", "url": "https://github.com/tbhb-dev/tbhbdev/issues/3"}
 
     def refusal(registered: str | None) -> str | None:
         stub.asked.append(registered)
@@ -998,7 +998,7 @@ def test_a_matched_worker_closes_an_issue_with_a_closed_by_trailer(
         "close",
         "3",
         "--repo",
-        "github.com/tbhb-dev/tools",
+        "github.com/tbhb-dev/tbhbdev",
         "--reason",
         "completed",
         "--comment",

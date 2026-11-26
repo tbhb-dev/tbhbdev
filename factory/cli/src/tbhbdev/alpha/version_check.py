@@ -25,7 +25,7 @@ from pathlib import Path
 from tbhbdev import userconfig, version
 from tbhbdev.alpha import session_context
 
-REPO_URL = "https://github.com/tbhb-dev/tools"
+REPO_URL = "https://github.com/tbhb-dev/tbhbdev"
 # -n keeps ssh off this process's stdin, which a pipeline may feed.
 SSH = ("ssh", "-n", "-o", "BatchMode=yes", "-o", "ConnectTimeout=5")
 # Plain ssh has no ~/.local/bin on PATH, and the remote shell expands $HOME.

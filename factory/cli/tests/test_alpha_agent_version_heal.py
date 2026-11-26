@@ -29,7 +29,7 @@ HEAD = "a" * 40
 OLD = "b" * 40
 NEW_LINE = f"tbhbdev 0 ({HEAD})"
 OLD_LINE = f"tbhbdev 0 ({OLD})"
-URL = "https://github.com/tbhb-dev/tools"
+URL = "https://github.com/tbhb-dev/tbhbdev"
 REF = "refs/heads/main"
 GIT_OVERRIDES = ("-c", "credential.helper=", "-c", "http.extraHeader=")
 GIT = ["git", *GIT_OVERRIDES, "ls-remote", URL, REF]

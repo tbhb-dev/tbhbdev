@@ -519,11 +519,11 @@ def test_the_passing_draft_becomes_a_clean_message(tools: Tools) -> None:
         "Verification\n"
         "Ran the new unit tests, then stamped a tree with one read-only file:\n\n"
         "    $ go test ./internal/stamp/...\n"
-        "    ok  \tgithub.com/tbhb-dev/tools/internal/stamp\t0.412s\n"
+        "    ok  \tgithub.com/tbhb-dev/tbhbdev/internal/stamp\t0.412s\n"
         "    $ tool stamp ./fixture\n"
         "    error: 1 file is read-only: fixture/a.txt\n\n"
         "No file in the tree changed after the failure.\n\n"
-        "[1]: https://github.com/tbhb-dev/tools/issues/12\n"
+        "[1]: https://github.com/tbhb-dev/tbhbdev/issues/12\n"
     )
 
 
@@ -562,7 +562,7 @@ def test_merge_passes_subject_body_and_head(tools: Tools) -> None:
     ]  # fmt: skip
     assert str(merge["stdin"]).startswith("Why\nRunning `tool stamp`")
     assert str(merge["stdin"]).endswith(
-        "[1]: https://github.com/tbhb-dev/tools/issues/12\n"
+        "[1]: https://github.com/tbhb-dev/tbhbdev/issues/12\n"
     )
 
 
@@ -697,7 +697,7 @@ def test_null_body_is_empty(tools: Tools) -> None:
 
 # ------------------------------------------------------------------ Renovate
 
-# The shape of a real Renovate body (tbhb-dev/tools#6), trimmed, with its CRLF
+# The shape of a real Renovate body (tbhb-dev/tbhbdev#6), trimmed, with its CRLF
 # line endings.
 RENOVATE_BODY = """\
 This PR contains the following updates:

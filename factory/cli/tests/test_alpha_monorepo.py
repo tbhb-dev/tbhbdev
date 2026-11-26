@@ -19,12 +19,12 @@ if TYPE_CHECKING:
     from collections.abc import Callable
 
 PROG = "tbhbdev alpha monorepo"
-ORIGIN = "https://github.com/tbhb-dev/tools.git"
+ORIGIN = "https://github.com/tbhb-dev/tbhbdev.git"
 DEST = "factory/tbhbdev"
 APP = b"print('hello')\n"
-AGENTS = b"Read tbhb-dev/tools for the rules.\n"
+AGENTS = b"Read tbhb-dev/tbhbdev for the rules.\n"
 SOURCE_FILES: dict[str, bytes] = {
-    "README.md": b"Clone https://github.com/tbhb-dev/tools as a record.\n",
+    "README.md": b"Clone https://github.com/tbhb-dev/tbhbdev as a record.\n",
     "src/app.py": APP,
     "bin/run.sh": b"#!/bin/sh\necho run\n",
     "AGENTS.md": AGENTS,
@@ -120,7 +120,7 @@ def test_map_copies_and_drops(src: Src, capsys: Capsys) -> None:
     assert run("map", str(path), "HEAD", "--dest", f"{DEST}/") == 0
     out = capsys.readouterr().out
     data = table(out)
-    assert data["repo"] == "tbhb-dev/tools"
+    assert data["repo"] == "tbhb-dev/tbhbdev"
     assert data["commit"] == commit
     assert data["dest"] == DEST
     assert data["rewrite"] == {}
@@ -191,7 +191,7 @@ def test_import_copies_byte_for_byte_in_one_commit(
     before = git(mono, "rev-parse", "HEAD").strip()
     monkeypatch.setattr(source, "BATCH", 2)
     assert run_import(f"{path}@{commit}", made, mono) == 0
-    assert "imported 5 files from tbhb-dev/tools at" in capsys.readouterr().out
+    assert "imported 5 files from tbhb-dev/tbhbdev at" in capsys.readouterr().out
     assert (mono / DEST / "src/app.py").read_bytes() == APP
     assert os.access(mono / DEST / "bin/run.sh", os.X_OK)
     assert not os.access(mono / DEST / "src/app.py", os.X_OK)
@@ -202,7 +202,7 @@ def test_import_copies_byte_for_byte_in_one_commit(
     assert git(mono, "status", "--porcelain") == ""
     message = git(mono, "log", "-1", "--format=%B")
     assert message.startswith(f"feat({DEST}): import tools at {commit[:7]}\n")
-    assert f"Source repository: tbhb-dev/tools\nSource commit: {commit}\n" in message
+    assert f"Source repository: tbhb-dev/tbhbdev\nSource commit: {commit}\n" in message
     assert "Copied 5 files, rewrote 0 and dropped 3." in message
     assert verify_exit(src, made, mono) == 0
     assert "verify: 0 problems" in capsys.readouterr().out
@@ -227,7 +227,7 @@ def test_rewrite_applies_replacements_and_verify_recomputes_them(
     src: Src, mono: Path, tmp_path: Path, capsys: Capsys
 ) -> None:
     path, commit = src
-    made = rewritten(src, tmp_path, "tbhb-dev/tools", "AGENTS.md")
+    made = rewritten(src, tmp_path, "tbhb-dev/tbhbdev", "AGENTS.md")
     assert run_import(f"{path}@{commit}", made, mono) == 0
     assert (mono / DEST / "AGENTS.md").read_bytes() == (b"Read x for the rules.\n")
     assert "rewrote 1" in git(mono, "log", "-1", "--format=%B")

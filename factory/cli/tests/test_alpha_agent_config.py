@@ -35,7 +35,7 @@ OTEL_HOST = "otlp.example.net"
 DURATION = "must be bare seconds or a number ending in s, m or h, up to 7 days"
 
 
-@pytest.mark.parametrize("entries", [[], ["tbhb-dev/tools", "github.com/TBHB-Dev/b"]])
+@pytest.mark.parametrize("entries", [[], ["tbhb-dev/tbhbdev", "github.com/TBHB-Dev/b"]])
 def test_public_repositories(entries: list[str]) -> None:
     assert config.parse(GOOD | {"public_repos": entries}).public_repos == tuple(entries)
     assert config.parse(GOOD).public_repos == ()
