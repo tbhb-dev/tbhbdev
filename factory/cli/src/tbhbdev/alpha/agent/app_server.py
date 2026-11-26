@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import base64
 import json
+import os
 import secrets
 import shlex
 import sys
@@ -78,11 +79,16 @@ async def steer(rpc: Rpc, thread: str, message: str) -> None:
 
 
 async def proxy(command: tuple[str, ...], thread: str, message: str) -> None:
+    env = None
+    if sys.platform == "linux":
+        path = os.environ.get("PATH", os.defpath)
+        env = {**os.environ, "PATH": f"{path}:/usr/local/bin"}
     process = await asyncio.create_subprocess_exec(
         *command,
         stdin=asyncio.subprocess.PIPE,
         stdout=asyncio.subprocess.PIPE,
         stderr=asyncio.subprocess.DEVNULL,
+        env=env,
     )
     writer = cast("asyncio.StreamWriter", process.stdin)
     reader = cast("asyncio.StreamReader", process.stdout)

@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import io
 import json
+import shutil
 import sys
 from types import SimpleNamespace
 from typing import TYPE_CHECKING
@@ -43,8 +44,9 @@ def reply(payload: dict[str, object], size: int = 0) -> bytes:
 
 
 @pytest.mark.usefixtures("live_log")
+@pytest.mark.parametrize("platform", ["linux", "darwin"])
 @pytest.mark.parametrize(
-    ("payload", "error"),
+    "response",
     [
         ({"data": [{"status": "inProgress", "id": "active"}]}, ""),
         ({"data": [{"status": "completed"}]}, INACTIVE),
@@ -58,15 +60,33 @@ def reply(payload: dict[str, object], size: int = 0) -> bytes:
 def test_send_host_proxy(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
-    payload: dict[str, object] | bool | None,
-    error: str,
+    response: tuple[dict[str, object] | bool | None, str],
+    platform: str,
+    tmp_path: Path,
 ) -> None:
+    payload, error = response
+    local_bin = tmp_path / "local" / "bin"
+    local_bin.mkdir(parents=True)
+    codex = local_bin / "codex"
+    codex.touch(mode=0o700)
+    path = f"{tmp_path}/first:{tmp_path}/second"
+    monkeypatch.setenv("PATH", path)
+    monkeypatch.setattr(sys, "platform", platform)
     writer = SimpleNamespace(write=Mock(), drain=AsyncMock())
     frame = Mock(wraps=app_server.frame)
     monkeypatch.setattr(app_server, "frame", frame)
 
-    async def connect(*command: str, **_options: int) -> SimpleNamespace:
+    async def connect(
+        *command: str, env: dict[str, str] | None = None, **_options: int
+    ) -> SimpleNamespace:
         assert command[:4] == ("codex", "app-server", "proxy", "--sock")
+        if platform == "linux":
+            assert env is not None
+            assert env["PATH"] == f"{path}:/usr/local/bin"
+            search = env["PATH"].replace("/usr/local/bin", str(local_bin))
+            assert shutil.which(command[0], path=search) == str(codex)
+        else:
+            assert env is None
         if payload is True:
             raise TimeoutError
         reader = asyncio.StreamReader()
