@@ -350,7 +350,7 @@ def usable_hosts(
     *,
     exclude: str | None = None,
 ) -> list[tuple[float, Host, str]]:
-    """Read each eligible host once and return the usable ones by 1-minute load."""
+    """Return hosts within resource limits and with a slot by 1-minute load."""
     usable: list[tuple[float, Host, str]] = []
     profile = Profile(args.profile)
     account = args.account
@@ -371,8 +371,18 @@ def usable_hosts(
             ignore=False,
             timeout=min(30, deadline - time.monotonic()),
         )
-        if not refuse and isinstance(found, limits.Reading):
-            usable.append((found.load, host, message))
+        if refuse or not isinstance(found, limits.Reading):
+            continue
+        try:
+            transport.shell(
+                settings,
+                host,
+                remote.check_slot(host, profile),
+                timeout=min(30, deadline - time.monotonic()),
+            )
+        except transport.TransportError:
+            continue
+        usable.append((found.load, host, message))
     return sorted(usable, key=lambda entry: entry[0])
 
 

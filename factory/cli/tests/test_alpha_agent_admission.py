@@ -11,6 +11,7 @@ from typing import TYPE_CHECKING
 import pytest
 from agent_example import LINUX
 
+from tbhbdev.alpha import agent
 from tbhbdev.alpha.agent import admission
 from tbhbdev.alpha.agent.model import Invalid, Profile
 
@@ -129,3 +130,29 @@ def test_the_request_cap_overrides_the_host_default(tmp_path: Path) -> None:
         admission.reserve(root, host, Profile.REVIEW, 1),
     ):
         pytest.fail("the second slot must be refused")
+
+
+def test_check_slot_respects_the_review_reservation(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    root = tmp_path / "admission"
+    monkeypatch.setattr(admission, "ROOT", root)
+    build = ["check-slot", LINUX.name, "build", "2"]
+    review = ["check-slot", LINUX.name, "review", "2"]
+    assert agent.main(build, "example agent") == 0
+    assert not (root / "build-0").exists()
+    with admission.reserve(root, LINUX, Profile.BUILD, 2):
+        assert agent.main(build, "example agent") == 1
+        assert "reserved for reviews" in capsys.readouterr().err
+        assert agent.main(review, "example agent") == 0
+        assert not (root / "review-0").exists()
+        with admission.reserve(root, LINUX, Profile.REVIEW, 2):
+            assert agent.main(review, "example agent") == 1
+            assert "no agent slot available (max_concurrent_runs=2)" in (
+                capsys.readouterr().err
+            )
+
+
+@pytest.mark.parametrize(("args", "rc"), [(["--help"], 0), ([], 2)])
+def test_check_slot_validates_arguments(args: list[str], rc: int) -> None:
+    assert agent.main(["check-slot", *args], "example agent") == rc

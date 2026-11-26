@@ -7,6 +7,7 @@ import sys
 
 from tbhbdev import telemetry, userconfig
 from tbhbdev.alpha import worker_identity
+from tbhbdev.alpha.agent import admission as admission
 from tbhbdev.alpha.agent import driver, precheck, settings
 from tbhbdev.alpha.agent import run_host as run_host
 from tbhbdev.alpha.agent import signing_parity as signing_parity
@@ -130,6 +131,7 @@ def main(argv: list[str], prog: str) -> int:
         "run-host": run_host.main,
         "ssh-serve": ssh_serve.main,
         "precheck": precheck.main,
+        "check-slot": admission.main,
         "signing-fingerprint": signing_parity.host_main,
     }
     if argv and argv[0] in host_commands:

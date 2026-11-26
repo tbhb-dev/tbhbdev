@@ -67,6 +67,12 @@ if name == "ssh":
     result = subprocess.run(["/bin/sh", "-c", script], input=data, env=env)
     sys.exit(result.returncode)
 if name == "tbhbdev":
+    if args[:3] == ["alpha", "agent", "check-slot"]:
+        host, profile, limit = args[3:]
+        assert host == os.environ["EXAMPLE_SSH_HOST"]
+        assert profile in ("build", "review")
+        assert int(limit) > 0
+        sys.exit(control.get("slot_rc_by_host", {}).get(host, 0))
     assert args == ["--version"]
     print(control["version"])
 elif name == "tmux":
@@ -156,14 +162,22 @@ class Remote:
         path.write_text(json.dumps(values))
 
     def records(self, tool: str, *, limits: bool = False) -> list[dict[str, object]]:
-        """The calls to TOOL, without the limits reads unless LIMITS is true."""
+        """The calls to TOOL, without host probes unless LIMITS is true."""
         path = self.root / f"{tool}.jsonl"
         found = (
             [json.loads(line) for line in path.read_text().splitlines()]
             if path.exists()
             else []
         )
-        return [r for r in found if limits or "# tbhbdev-limits" not in str(r["args"])]
+        return [
+            r
+            for r in found
+            if limits
+            or all(
+                marker not in str(r["args"])
+                for marker in ("# tbhbdev-limits", "# tbhbdev-check-slot")
+            )
+        ]
 
     def file(self, suffix: str, text: str) -> None:
         (self.state / ("sample" + suffix)).write_text(text)

@@ -427,6 +427,34 @@ def test_exec_without_host_uses_the_idle_linux_host(
     assert_pool_probes(host_pool)
 
 
+@pytest.mark.parametrize("active_full", [False, True])
+def test_exec_without_host_skips_hosts_without_a_slot(
+    host_pool: Remote, capsys: pytest.CaptureFixture[str], active_full: bool
+) -> None:
+    host_pool.configure(
+        limits_by_host={
+            "example-linux": "22 32 33554432 16777216 100 0 -",
+            "example-active": "4 32 33554432 16777216 100 0 -",
+        },
+        slot_rc_by_host={
+            "example-linux": 1,
+            "example-idle": 1,
+            "example-active": int(active_full),
+        },
+    )
+    if active_full:
+        assert launch(host_pool, target=None) == 1
+        error = capsys.readouterr().err
+        assert "no usable linux hosts for automatic selection" in error
+        assert host_pool.records("ssh") == []
+        assert not driver.metadata_path("sample").exists()
+    else:
+        assert launch(host_pool, target=None) == 0
+        metadata = json.loads(driver.metadata_path("sample").read_text())
+        assert metadata["host"] == "example-active"
+    assert_pool_probes(host_pool)
+
+
 def test_exec_refuses_a_busy_named_host_and_lists_alternatives(
     host_pool: Remote, capsys: pytest.CaptureFixture[str]
 ) -> None:

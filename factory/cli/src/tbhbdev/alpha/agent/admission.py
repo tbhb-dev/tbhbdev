@@ -1,10 +1,12 @@
-"""Reserve a host-wide launch slot for the supervisor's lifetime."""
+"""Check and reserve host-wide launch slots."""
 
 from __future__ import annotations
 
+import argparse
 import fcntl
 import os
 import stat
+import sys
 from contextlib import ExitStack, contextmanager, suppress
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -75,6 +77,31 @@ def _active(directory: int, profile: Profile) -> set[str]:
 
 
 @contextmanager
+def _available(
+    root: Path, host_name: str, profile: Profile, limit: int | None
+) -> Generator[tuple[int, set[str]]]:
+    if limit is None:
+        message = f"{host_name}: the request carries no max_concurrent_runs"
+        raise Invalid(message)
+    with (
+        _directory(root) as directory,
+        _slot(directory, "admission.lock", create=True) as guard,
+    ):
+        fcntl.flock(guard, fcntl.LOCK_EX)
+        builds = _active(directory, Profile.BUILD)
+        reviews = _active(directory, Profile.REVIEW)
+        if len(builds) + len(reviews) >= limit:
+            message = (
+                f"{host_name}: no agent slot available (max_concurrent_runs={limit})"
+            )
+            raise Invalid(message)
+        if profile is Profile.BUILD and len(builds) >= max(limit - 1, 1):
+            message = f"{host_name}: remaining agent capacity is reserved for reviews"
+            raise Invalid(message)
+        yield directory, builds if profile is Profile.BUILD else reviews
+
+
+@contextmanager
 def reserve(
     root: Path, host: Host, profile: Profile, limit: int | None
 ) -> Generator[None]:
@@ -87,28 +114,27 @@ def reserve(
     Raises:
         Invalid: LIMIT is None, or no slot is free.
     """
-    if limit is None:
-        message = f"{host.name}: the request carries no max_concurrent_runs"
-        raise Invalid(message)
-    with ExitStack() as slot, _directory(root) as directory:
-        with _slot(directory, "admission.lock", create=True) as guard:
-            fcntl.flock(guard, fcntl.LOCK_EX)
-            builds = _active(directory, Profile.BUILD)
-            reviews = _active(directory, Profile.REVIEW)
-            if len(builds) + len(reviews) >= limit:
-                message = (
-                    f"{host.name}: no agent slot available "
-                    f"(max_concurrent_runs={limit})"
-                )
-                raise Invalid(message)
-            if profile is Profile.BUILD and len(builds) >= max(limit - 1, 1):
-                message = (
-                    f"{host.name}: remaining agent capacity is reserved for reviews"
-                )
-                raise Invalid(message)
-            active = builds if profile is Profile.BUILD else reviews
+    with ExitStack() as slot:
+        with _available(root, host.name, profile, limit) as (directory, active):
             names = (f"{profile}-{i}" for i in range(len(active) + 1))
             name = next(candidate for candidate in names if candidate not in active)
             fd = slot.enter_context(_slot(directory, name, create=True))
             fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
         yield
+
+
+def main(argv: list[str], prog: str) -> int:
+    """Report whether the launching profile can claim a slot on this host."""
+    parser = argparse.ArgumentParser(prog=prog)
+    parser.add_argument("host")
+    parser.add_argument("profile", type=Profile, choices=list(Profile))
+    parser.add_argument("limit", type=int)
+    try:
+        args = parser.parse_args(argv)
+        with _available(ROOT, args.host, args.profile, args.limit):
+            return 0
+    except SystemExit as exc:
+        return int(exc.code or 0)
+    except (Invalid, OSError) as exc:
+        print(f"{prog}: {exc}", file=sys.stderr)
+        return 1
