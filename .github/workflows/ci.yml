@@ -26,71 +26,40 @@ concurrency:
 jobs:
   bazel:
     name: bazel
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     timeout-minutes: 30
+    # A push to main or a merge_group run uses the main token, a secret
+    # of the main-only `cache` environment that no pull request can read.
+    # Pull requests use the org's PR token, which writes only their own
+    # namespace. This job stays in this file because a job in a reusable
+    # workflow doesn't get its environment's secrets.
+    environment: ${{ (github.event_name == 'push' || github.event_name == 'merge_group') && 'cache' || '' }}
     steps:
-      - name: Harden the runner
-        uses: step-security/harden-runner@1d88384fd173af6ecb012dfd0264a306b711241a  # v2.22.4
-        with:
-          egress-policy: audit
-
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         with:
           fetch-depth: 0
           persist-credentials: false
 
-      - name: Set up Bazel
-        uses: bazel-contrib/setup-bazel@104e3eea9447cdaa4b00d0fb46191a3985d26ab3  # 0.19.1
+      - name: Set up Bazel for CI
+        uses: ./.github/actions/setup-bazel-ci
         with:
-          bazelisk-version: 1.30.0
-          bazelisk-cache: true
+          disk-cache: ${{ github.workflow }}-${{ github.job }}-ubuntu-26.04
+          cache-save: ${{ github.event_name == 'merge_group' }}
 
-      - name: Make Bazelisk available to the target selector
-        run: |
-          if ! command -v bazelisk >/dev/null; then
-            bazel_path=$(command -v bazel)
-            ln -s "$bazel_path" "${RUNNER_TEMP}/bazelisk"
-            echo "$RUNNER_TEMP" >> "$GITHUB_PATH"
-          fi
+      # The bazel-r2-cache remote cache, through its shared action. A fork's
+      # pull request gets no secrets and builds without the cache.
+      - name: Use the remote cache
+        uses: tbhb-dev/bazel-r2-cache/.github/actions/remote-cache@bdd7e71f0281998f10a52f253bcf4b9ec81396e8  # main
+        with:
+          main-token: ${{ secrets.BAZEL_CACHE_TOKEN }}
+          pr-token: ${{ secrets.BAZEL_CACHE_PR_TOKEN }}
 
       - name: Select affected targets
         id: affected
         uses: ./.github/actions/affected-targets
         with:
           base: ${{ inputs.base }}
-
-      - name: Configure the remote cache
-        env:
-          CACHE_URL: ${{ vars.BAZEL_CACHE_URL }}
-          TOKEN: ${{ github.event_name == 'merge_group' && secrets.BAZEL_CACHE_TOKEN || github.event_name == 'pull_request' && secrets.BAZEL_CACHE_PR_TOKEN || '' }}
-          PR_NUMBER: ${{ github.event.pull_request.number }}
-        run: |
-          if [[ -z $TOKEN || -z $CACHE_URL ]]; then
-            echo "::notice::Remote cache URL or token unavailable"
-            exit 0
-          fi
-          if [[ ! $CACHE_URL =~ ^https://([a-zA-Z0-9.-]+)/?$ ]]; then
-            echo "::error::BAZEL_CACHE_URL must be an HTTPS origin"
-            exit 1
-          fi
-          host=${BASH_REMATCH[1]}
-          dir=$(mktemp -d "${RUNNER_TEMP}/bazel-cache.XXXXXXXX")
-          (umask 077 && printf '%s' "$TOKEN" > "$dir/token")
-          cat > "$dir/credential-helper" <<'HELPER'
-          #!/bin/sh
-          cat >/dev/null
-          jq -nc --rawfile token "$(dirname "$0")/token" '{headers: {Authorization: ["Bearer " + $token]}}'
-          HELPER
-          chmod 700 "$dir/credential-helper"
-          {
-            printf '\ncommon --remote_cache=https://%s\n' "$host"
-            printf 'common --credential_helper=%s=%s/credential-helper\n' "$host" "$dir"
-            printf 'common --remote_timeout=120\n'
-            if [[ -n $PR_NUMBER ]]; then
-              printf 'common --remote_header=Bazel-Cache-Pull-Request=%s/%s\n' "$GITHUB_REPOSITORY" "$PR_NUMBER"
-            fi
-          } >> "$HOME/.bazelrc"
 
       - name: Test
         if: steps.affected.outputs.count != '0'
@@ -100,24 +69,29 @@ jobs:
 
   gazelle-current:
     name: gazelle-current
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     timeout-minutes: 15
+    # Use the same cache environment as bazel so merge queue checks can use the main token.
+    environment: ${{ (github.event_name == 'push' || github.event_name == 'merge_group') && 'cache' || '' }}
     steps:
-      - name: Harden the runner
-        uses: step-security/harden-runner@1d88384fd173af6ecb012dfd0264a306b711241a  # v2.22.4
-        with:
-          egress-policy: audit
-
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         with:
           persist-credentials: false
 
-      - name: Set up Bazel
-        uses: bazel-contrib/setup-bazel@104e3eea9447cdaa4b00d0fb46191a3985d26ab3  # 0.19.1
+      - name: Set up Bazel for CI
+        uses: ./.github/actions/setup-bazel-ci
         with:
-          bazelisk-version: 1.30.0
-          bazelisk-cache: true
+          disk-cache: ${{ github.workflow }}-${{ github.job }}-ubuntu-26.04
+          cache-save: ${{ github.event_name == 'merge_group' }}
+          # Fetch only the targets this job builds.
+          targets: //:gazelle //:actionlint_test
+
+      - name: Use the remote cache
+        uses: tbhb-dev/bazel-r2-cache/.github/actions/remote-cache@bdd7e71f0281998f10a52f253bcf4b9ec81396e8  # main
+        with:
+          main-token: ${{ secrets.BAZEL_CACHE_TOKEN }}
+          pr-token: ${{ secrets.BAZEL_CACHE_PR_TOKEN }}
 
       - name: Check that BUILD files are current
         run: bazel run //:gazelle -- -mode=diff
@@ -132,7 +106,7 @@ jobs:
 
   gitleaks:
     name: gitleaks
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     timeout-minutes: 10
     steps:
       - name: Harden the runner
@@ -167,7 +141,7 @@ jobs:
     name: conclusion
     if: always()
     needs: [bazel, gazelle-current, gitleaks]
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     timeout-minutes: 5
     steps:
       - name: Harden the runner
