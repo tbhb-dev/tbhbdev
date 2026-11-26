@@ -1371,7 +1371,8 @@ def test_main_reads_process_arguments_and_keeps_the_program_name(
         sm.main(prog="custom-merge")
     assert info.value.code == 0
     out = capsys.readouterr().out
-    assert out.startswith("usage: custom-merge [-h] [--dry-run] PR\n")
+    assert out.startswith("usage: custom-merge ")
+    assert "[--expect-head SHA]" in out
     assert "Merge a PR (merge commit, else squash) with a clean message." in out
 
 
