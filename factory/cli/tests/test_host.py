@@ -32,6 +32,7 @@ import httpx
 import pytest
 import stubtool
 from onepasswordconnectsdk.client import Client
+from stub_fixtures import stubs as stubs  # noqa: PLC0414
 
 from tbhbdev import cli, secrets, userconfig
 from tbhbdev import host as host_tool
@@ -39,7 +40,8 @@ from tbhbdev import host as host_tool
 if TYPE_CHECKING:
     from collections.abc import Callable, Sequence
 
-    from conftest import FakeConnect, Stubs
+    from conftest import FakeConnect
+    from stub_fixtures import Stubs
 
 type Json = dict[str, object]
 
