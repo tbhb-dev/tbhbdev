@@ -66,11 +66,16 @@ SYSTEM_DIRS = {
 PATH_FIELDS = ("file_path", "path")
 
 
+class UnsupportedSyntaxError(Exception):
+    """An expansion the lexer cannot read inside double quotes."""
+
+
 def quoted(text: str, index: int, mark: str, *, ansi: bool = False) -> tuple[str, int]:
     """The text up to the MARK closing the quote at INDEX and the index after it.
 
     Raises:
         ValueError: the quote is not closed.
+        UnsupportedSyntaxError: the quote contains an unsupported expansion.
     """
     out: list[str] = []
     index += 1
@@ -84,6 +89,8 @@ def quoted(text: str, index: int, mark: str, *, ansi: bool = False) -> tuple[str
                 ansi and following in {"'", "\\"}
             ):
                 index += 1
+        elif mark == '"' and text.startswith(("$(", "${", "`"), index):
+            raise UnsupportedSyntaxError
         out.append(text[index])
         index += 1
     if index >= len(text):
@@ -179,11 +186,18 @@ def segments(text: str) -> list[list[str]]:
     Raises:
         ValueError: TEXT has an unbalanced quote.
     """
-    if UNPARSED.search(text):
-        return []
+    unparsed = UNPARSED.search(text) is not None
     lexer = Lexer(text)
-    while lexer.index < len(text):
-        lexer.step()
+    try:
+        while lexer.index < len(text):
+            if unparsed and UNPARSED.match(text, lexer.index):
+                return []
+            lexer.step()
+    except UnsupportedSyntaxError:
+        return []
+    # Preserve the existing fallback after checking quotes in literal text.
+    if unparsed:
+        return []
     lexer.flush()
     return [words for words in lexer.found if words]
 

@@ -54,6 +54,7 @@ def test_denied(command: str, reason: str) -> None:
     "command",
     [
         "ssh-add -l",
+        'echo "Build (debug)"',
         "/usr/bin/env ssh-add -l",
         f"ls ~/{S}/sessions",
         f"ls ~/{S}x",
@@ -139,8 +140,9 @@ def test_ansi_c_quote_keeps_the_read_only_command_in_the_parse() -> None:
     assert guard.verdict(command) is None
 
 
-def test_an_unterminated_quote_is_reported() -> None:
-    assert guard.verdict("echo 'unbalanced")
+@pytest.mark.parametrize("command", ["echo 'unbalanced", 'echo "Build (debug)'])
+def test_an_unterminated_quote_is_reported(command: str) -> None:
+    assert guard.verdict(command) == guard.REASON_QUOTE
 
 
 def test_a_bare_name_counts_when_the_file_is_in_the_ssh_directory(
