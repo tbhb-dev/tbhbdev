@@ -4,3 +4,17 @@
 # gazelle:python_root
 # gazelle:python_default_visibility //factory/cli:__subpackages__
 # gazelle:python_experimental_allow_relative_imports true
+
+# Keep installed distribution metadata in the Python import root without
+# depending on a wheel containing all of the CLI sources.
+genrule(
+    name = "distribution_metadata",
+    srcs = ["//factory/cli:pyproject.toml"],
+    outs = ["tbhbdev-0.dist-info/METADATA"],
+    cmd = r"""
+        version=$$(awk -F '"' '/^version = / {print $$2}' $(location //factory/cli:pyproject.toml))
+        test -n "$$version" || exit 1
+        printf '%s\n' 'Metadata-Version: 2.1' 'Name: tbhbdev' "Version: $$version" '' > "$@"
+    """,
+    visibility = ["//factory/cli/src/tbhbdev:__pkg__"],
+)

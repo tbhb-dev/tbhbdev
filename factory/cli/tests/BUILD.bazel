@@ -1897,9 +1897,11 @@ cli_py_test(
 
 cli_py_test(
     name = "test_host",
+    timeout = "long",
     srcs = ["test_host.py"],
     data = ["//:cli_check_inputs"],
     path_tools = ["@tbhb_rules_gitleaks//:gitleaks"],
+    shard_count = 8,
     deps = [
         ":conftest",
         ":stubtool",
@@ -1996,6 +1998,7 @@ cli_py_test(
 cli_py_test(
     name = "test_telemetry",
     srcs = ["test_telemetry.py"],
+    extra_deps = ["//factory/cli/src/tbhbdev:cli"],
     pyi_deps = ["@cli_pip//opentelemetry_sdk"],
     deps = [
         ":agent_driver_example",

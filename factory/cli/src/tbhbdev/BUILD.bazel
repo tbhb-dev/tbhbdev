@@ -217,6 +217,7 @@ cli_py_library(
 cli_py_library(
     name = "telemetry",
     srcs = ["telemetry.py"],
+    data = ["//factory/cli/src:distribution_metadata"],
     imports = [".."],
     visibility = ["//factory/cli:__subpackages__"],
     deps = ["@cli_pip//tbhb_telemetry"],
@@ -232,6 +233,7 @@ cli_py_library(
 cli_py_library(
     name = "version",
     srcs = ["version.py"],
+    data = ["//factory/cli/src:distribution_metadata"],
     imports = [".."],
     visibility = ["//factory/cli:__subpackages__"],
 )
