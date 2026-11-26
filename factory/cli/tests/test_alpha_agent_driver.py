@@ -1861,6 +1861,14 @@ def test_verbs_without_remote_run_directory(
     assert not remote.state.exists()
 
 
+@pytest.mark.usefixtures("remote")
+def test_status_without_local_run_metadata(capsys: pytest.CaptureFixture[str]) -> None:
+    metadata = driver.metadata_path("sample")
+    metadata.parent.mkdir(parents=True)
+    assert command("status") == 1
+    assert str(metadata) in capsys.readouterr().err
+
+
 @pytest.mark.parametrize("finished", [False, True])
 def test_clean_without_remote_clone(remote: Remote, finished: bool) -> None:
     assert launch(remote) == 0
