@@ -166,8 +166,9 @@ class World:
         self.git("commit", "--allow-empty", "-q", "-m", message)
 
 
-# The world fixture replaces the counter; a test can put this one back.
+# The world fixture replaces these checks; tests can put them back.
 REAL_SIZE_COUNTS = size_gate.size_counts
+REAL_TARGET_IS_ORIGIN = pr.target_is_origin
 
 
 @pytest.fixture(autouse=True)
@@ -5291,12 +5292,35 @@ def test_create_normalizes_empty_error_streams(
     assert capsys.readouterr() == ("", expected)
 
 
-def test_origin_repository_reads_the_push_url(world: World) -> None:
-    world.git("remote", "set-url", "origin", str(world.root))
-    world.git("config", "remote.origin.pushurl", ORIGIN)
-    world.fake("gh", cases=branch_cases())
-    assert pr.origin_repository() == "tbhb-dev/example"
-    assert gh_argvs(world) == [["repo", "view", ORIGIN, "--json", "nameWithOwner,url"]]
+def test_create_counts_against_origin_fetch_repository(
+    world: World, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    push_url = "https://github.com/example-org/fork.git"
+    world.git("config", "remote.origin.pushurl", push_url)
+    monkeypatch.delenv("GH_REPO", raising=False)
+    monkeypatch.setattr(pr, "target_is_origin", REAL_TARGET_IS_ORIGIN)
+    counter = Mock(return_value=size_gate.SizeCounts(0, 400, 0, 1500, None))
+    monkeypatch.setattr(size_gate, "size_counts", counter)
+    world.fake(
+        "gh",
+        cases={
+            f"repo view {push_url}": {
+                "stdout": json.dumps(
+                    {
+                        "nameWithOwner": "example-org/fork",
+                        "url": "https://github.com/example-org/fork",
+                    }
+                ),
+            },
+            **branch_cases(),
+        },
+    )
+    write_draft(world)
+
+    assert run_main("create", "--dry-run") == 0
+    counter.assert_called_once()
+    assert counter.call_args.args == ("refs/remotes/origin/main", "HEAD")
+    assert ["repo", "view", ORIGIN, "--json", "nameWithOwner,url"] in gh_argvs(world)
 
 
 def test_origin_repository_without_a_push_url_reads_origin(world: World) -> None:

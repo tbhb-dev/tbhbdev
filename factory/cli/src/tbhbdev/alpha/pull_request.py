@@ -1273,12 +1273,12 @@ def invoke_gh(
 
 
 def origin_repository() -> str:
-    """Resolve origin explicitly, independent of gh's default repository.
+    """Resolve origin's fetch URL, independent of gh's default repository.
 
     Raises:
         SystemExit: origin or its GitHub repository can't be read.
     """
-    code, url = git("remote", "get-url", "--push", "origin")
+    code, url = git("remote", "get-url", "origin")
     if code or not url:
         message = "cannot read origin"
         raise SystemExit(message)
