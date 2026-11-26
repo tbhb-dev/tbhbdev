@@ -371,9 +371,10 @@ def host(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Remote:
     return result
 
 
-def launch(host: Remote, *options: str) -> int:
+def launch(host: Remote, *options: str, target: str | None = "example-linux") -> int:
+    named = [] if target is None else ["--host", target]
     args = [
-        "exec", "--host", "example-linux", "--repo", "example-org/example-repo",
+        "exec", *named, "--repo", "example-org/example-repo",
         "--model", "m", "--effort", "high", "--profile", "build", *options,
         "sample", str(host.prompt),
     ]  # fmt: skip
@@ -389,6 +390,86 @@ def test_a_busy_host_refuses_before_any_transfer(
     assert len(host.records("ssh", limits=True)) == 1
     assert host.records("ssh") == []
     assert not driver.metadata_path("sample").exists()
+
+
+@pytest.fixture
+def host_pool(host: Remote, monkeypatch: pytest.MonkeyPatch) -> Remote:
+    busy = dataclasses.replace(LINUX, auto_select=True, load_limit=24)
+    active = dataclasses.replace(busy, name="example-active")
+    idle = dataclasses.replace(busy, name="example-idle")
+    laptop = dataclasses.replace(LINUX, name="example-laptop")
+    mac = dataclasses.replace(CONFIG.hosts[1], auto_select=True)
+    config = dataclasses.replace(CONFIG, hosts=(busy, active, idle, laptop, mac))
+    monkeypatch.setattr(agent.settings, "load", lambda: config)
+    host.configure(
+        limits="1.5 32 33554432 16777216 100 0 -",
+        limits_by_host={
+            busy.name: "24 32 33554432 16777216 100 0 -",
+            active.name: "4 32 33554432 16777216 100 0 -",
+            laptop.name: "0.1 8 33554432 16777216 100 0 -",
+            mac.name: "0.2 8 33554432 16777216 100 0 -",
+        },
+    )
+    return host
+
+
+@pytest.mark.parametrize("swap_warning", [False, True])
+def test_exec_without_host_uses_the_idle_linux_host(
+    host_pool: Remote, capsys: pytest.CaptureFixture[str], swap_warning: bool
+) -> None:
+    if swap_warning:
+        host_pool.configure(limits="1.5 32 33554432 16777216 100 90 0.4")
+    assert launch(host_pool, target=None) == 0
+    metadata = json.loads(driver.metadata_path("sample").read_text())
+    assert metadata["host"] == "example-idle"
+    error = capsys.readouterr().err
+    assert ("warning: example-idle: swap used 90% > 80%" in error) is swap_warning
+    assert_pool_probes(host_pool)
+
+
+def test_exec_refuses_a_busy_named_host_and_lists_alternatives(
+    host_pool: Remote, capsys: pytest.CaptureFixture[str]
+) -> None:
+    assert launch(host_pool) == 1
+    error = capsys.readouterr().err
+    assert "example-linux: load 24 >= limit 24" in error
+    assert "available alternatives: example-idle, example-active\n" in error
+    assert_pool_probes(host_pool)
+    assert host_pool.records("ssh") == []
+    assert not driver.metadata_path("sample").exists()
+
+
+def assert_pool_probes(host: Remote) -> None:
+    probes: list[str] = []
+    for record in host.records("ssh", limits=True):
+        args = record["args"]
+        assert isinstance(args, list)
+        command: list[object] = args
+        script = command[-1]
+        assert isinstance(script, str)
+        if "# tbhbdev-limits" in script:
+            name = command[-2]
+            assert isinstance(name, str)
+            probes.append(name)
+    assert probes == ["example-linux", "example-active", "example-idle"]
+
+
+@pytest.mark.parametrize(
+    ("options", "error"),
+    [
+        ((), "no usable linux hosts for automatic selection"),
+        (("--ignore-limits",), "--ignore-limits requires --host"),
+    ],
+)
+def test_exec_without_host_refuses_before_ssh(
+    host: Remote,
+    capsys: pytest.CaptureFixture[str],
+    options: tuple[str, ...],
+    error: str,
+) -> None:
+    assert launch(host, *options, target=None) == 1
+    assert error in capsys.readouterr().err
+    assert host.records("ssh", limits=True) == []
 
 
 def test_full_swap_with_low_pressure_launches_with_a_warning_end_to_end(

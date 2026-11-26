@@ -40,7 +40,8 @@ if name == "ssh":
     if len((root / "ssh.jsonl").read_text().splitlines()) > 20:
         raise AssertionError("ssh call budget exceeded")
     if "# tbhbdev-limits" in args[-1]:
-        print(control.get("limits", "0.5 4 12582912 6291456 100 0 -"))
+        reading = control.get("limits", "0.5 4 12582912 6291456 100 0 -")
+        print(control.get("limits_by_host", {}).get(args[-2], reading))
         sys.exit(control.get("limits_rc", 0))
     plan = control.get("ssh", [])
     if plan:
@@ -58,7 +59,8 @@ if name == "ssh":
     command = shlex.split(args[-1])
     assert command[:2] in (["/bin/bash", "-c"], ["/bin/zsh", "-c"])
     env = {"PATH": os.environ["PATH"], "EXAMPLE_REMOTE": str(root),
-           "HOME": str(root / "home"), "XDG_STATE_HOME": str(root / "state")}
+           "HOME": str(root / "home"), "XDG_STATE_HOME": str(root / "state"),
+           "EXAMPLE_SSH_HOST": args[-2]}
     script = command[2].replace(
         "PATH=/usr/bin:/bin:/usr/sbin:/sbin", "PATH=" + os.environ["PATH"])
     script = script.replace("/tmp/example-sockets", str(root / "sockets"))
@@ -85,7 +87,7 @@ elif name == "tmux":
     if verb == "new-session":
         assert args[8:] == [str(root / "home/.local/bin/tbhbdev"),
                             "alpha", "agent", "run-host", "sample",
-                            "--host", "example-linux", "--owned"]
+                            "--host", os.environ["EXAMPLE_SSH_HOST"], "--owned"]
         (run / "sample.run.lock").write_text("")
         control["session"] = True
         launch = control.get("launch", {"launched": ""})

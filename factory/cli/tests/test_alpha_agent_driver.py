@@ -1193,9 +1193,7 @@ def test_kill_waits_for_host_rc(
     )
 
 
-@pytest.mark.parametrize(
-    "flag", ["--host", "--repo", "--model", "--effort", "--profile"]
-)
+@pytest.mark.parametrize("flag", ["--repo", "--model", "--effort", "--profile"])
 def test_required_flags(remote: Remote, flag: str) -> None:
     args = arguments(remote)
     index = args.index(flag)
