@@ -1,0 +1,798 @@
+# SPDX-License-Identifier: Apache-2.0
+# Copyright Tony Burns
+"""`tbhbdev alpha merge`: merge a PR, ported from an earlier interim toolset.
+
+GitHub's default message pastes the pull request body in as written, Markdown
+included, and a default merge commit is titled "Merge pull request #N from
+branch". This script builds a plain-text commit message from the PR and passes
+it explicitly on the merge call, as the commit title and the commit message.
+
+The method comes from the repository's own settings, read live with ``gh repo
+view --json mergeCommitAllowed,squashMergeAllowed``: a merge commit when the
+repository allows it, else a squash merge, else the command stops. A failed or
+malformed read stops it too. The merge path also refuses a body that cleans to
+nothing or a subject in GitHub's default form. The file keeps its old name.
+
+A branch that requires a merge queue uses the queue's configured method. For
+a squash queue, the command compares GitHub's default squash message with the
+cleaned message before it enqueues. A MERGE-method queue keeps the subject and
+body passed to ``gh pr merge``, as tools#370 showed in merge commit 5800789a.
+That queue needs no default-message preview, and the merge guard still refuses
+a default-looking message. The command reads the queue status once after a
+successful gh call.
+
+Usage, from anywhere in a worktree:
+
+    tbhbdev alpha merge PR [--dry-run]
+
+The subject is the PR title plus ` (#N)`. It must still pass ``cog verify`` and
+fit 72 characters, or the script stops. The body comes from the PR body:
+
+- HTML comments and empty sections are dropped.
+- Each ``## Heading`` becomes a plain line with its text directly beneath, and
+  a blank line separates every block (paragraph, list, code, section).
+- Prose wraps at 72 columns. A list item keeps its marker and gets a hanging
+  indent. A fenced code block loses its fences, is indented by four spaces, and
+  is never wrapped. A table keeps each row on its own line, as written and
+  never wrapped. Nothing breaks inside a word, an inline code span, or a URL.
+- Emphasis markers go. Link text stays and its URL moves to a numbered
+  reference list after the last section, because the URL usually is the issue or
+  the spec the sentence points at, and a commit message cannot hold a link.
+- The PR body's final Generated-by and Assisted-by paragraph becomes the
+  commit's trailer block, as written and never wrapped. The merge refuses an
+  agent-authored PR without a valid final block. The script checks that
+  ``git interpret-trailers --parse`` reads it back unchanged. Its
+  ``Opened-by`` line, which ``tbhbdev alpha pr create`` writes for the guard,
+  is dropped first: the commit-msg check doesn't accept that key.
+
+The script never adds Signed-off-by or Co-authored-by, and it refuses a PR body
+that already holds one, whoever runs it.
+
+Agents run this script to merge once the PR is approved. Branch rulesets keep
+GitHub enforcing the human review. The script refuses a draft PR, one that is
+not open or not mergeable, and one whose merge state gh reports as blocked,
+behind, dirty or unknown (which includes failing required checks), and it names
+any failing checks. It leaves the rules themselves to GitHub. The merge passes
+``--match-head-commit`` so that a push after the preview cannot slip in.
+``--dry-run`` previews the message and the command and merges nothing.
+
+Before the preview or the merge, the final commit message goes through gitleaks
+under the host's private config (see ``tbhbdev.alpha.secret_scan``), and a
+finding, a missing config or a missing gitleaks stops the command. The message
+is built from the PR's current body, so this catches a body edited after
+``tbhbdev alpha pr`` last scanned it.
+
+As in ``tbhbdev alpha pr``, a private repository's message skips the private
+config's name rules, read live with ``gh repo view`` once per run. The
+visibility is that of the pull request's own repository, taken from its ``url``,
+not the working directory's. This matches the rules' gates, which apply the
+private config only to a repository that sets the flag. The ``op-*`` rules, the
+address, MAC, endpoint and keychain rules, the canary and .gitleaks.toml still
+apply. A URL that isn't a github.com pull request page, any other visibility, an
+empty value or a failed read scans under the full private config.
+
+A pull request from the Renovate app is the exception to the body rule: its
+release notes and configuration notes are dropped, and the body is one line
+per update from Renovate's update table.
+"""
+
+import argparse
+import json
+import re
+import shlex
+import sys
+from dataclasses import dataclass
+from email.utils import parseaddr
+from itertools import takewhile
+from typing import TYPE_CHECKING, NoReturn, cast
+from urllib.parse import quote
+
+from tbhbdev.alpha import identity as agent_identity
+from tbhbdev.alpha import pull_request as pr
+
+if TYPE_CHECKING:
+    from collections.abc import Sequence
+
+WIDTH = 72
+CODE_INDENT = "    "
+GH = "gh"
+METHOD_FIELDS = "mergeCommitAllowed,squashMergeAllowed"
+DEFAULT_MERGE_TITLES = ("Merge pull request", "Merge branch")
+GIT = "git"
+VIEW_FIELDS = (
+    "title,body,headRefOid,baseRefName,state,isDraft,mergeable,"
+    "mergeStateStatus,statusCheckRollup,author,url,commits"
+)
+QUEUE_QUERY = """\
+query($owner: String!, $repo: String!, $number: Int!, $preview: Boolean!) {
+  repository(owner: $owner, name: $repo) {
+    pullRequest(number: $number) {
+      headline: viewerMergeHeadlineText(mergeType: SQUASH) @include(if: $preview)
+      body: viewerMergeBodyText(mergeType: SQUASH) @include(if: $preview)
+      state
+      isInMergeQueue
+      mergeCommit { oid }
+      timelineItems(last: 1, itemTypes: [REMOVED_FROM_MERGE_QUEUE_EVENT]) {
+        nodes { ... on RemovedFromMergeQueueEvent { id reason } }
+      }
+    }
+  }
+}
+"""
+# gh's merge states that mean "not now", with the reason GitHub already computed.
+REFUSED_STATES = frozenset({"BLOCKED", "BEHIND", "DIRTY", "DRAFT", "UNKNOWN"})
+FAILED_CONCLUSIONS = frozenset(
+    {"FAILURE", "CANCELLED", "TIMED_OUT", "ACTION_REQUIRED", "STARTUP_FAILURE"}
+)
+FAILED_STATES = frozenset({"FAILURE", "ERROR"})
+TOKEN = re.compile(r"(?:(`+).+?\1|\S)+")
+ITEM = re.compile(r"( *)([-*+]|\d+[.)]) +(\S.*)")
+# A table's delimiter row, such as ``|---|:--:|`` or ``--- | ---``.
+DELIMITER = re.compile(r"\|?(?: *:?-+:? *\|)* *:?-+:? *\|?")
+MD_LINK = re.compile(r"(!?)\[([^\]]*)\]\(([^)\s]+)(?: +\"[^\"]*\")?\)")
+AUTOLINK = re.compile(r"<(https?://[^>\s]+)>")
+STRONG = re.compile(r"(\*\*|__)(?=\S)(.+?)(?<=\S)\1")
+EMPHASIS = re.compile(r"(?<![\w*])\*(?=[^\s*])(.+?)(?<=[^\s*])\*(?![\w*])")
+PLACEHOLDER = re.compile("\x00(\\d+)\x00")
+# Renovate's pull requests come from its GitHub App, whose gh login is
+# ``app/<name>``; the name is the tbhb-dev-renovate app's.
+RENOVATE = "renovate"
+
+
+@dataclass(frozen=True)
+class PullRequest:
+    """What gh reports about the pull request."""
+
+    title: str
+    body: str
+    head: str
+    state: str
+    draft: bool
+    mergeable: str
+    merge_state: str
+    failing: list[str]
+    renovate: bool = False
+    url: object = None
+    agent: bool = False
+    base: str = ""
+
+
+@dataclass(frozen=True)
+class Message:
+    """A commit message: the subject and the body that follows it."""
+
+    subject: str
+    body: str
+
+    def text(self) -> str:
+        """The whole message as git stores it."""
+        return f"{self.subject}\n\n{self.body}" if self.body else f"{self.subject}\n"
+
+
+def stop(message: str) -> NoReturn:
+    """Exit with a one-line reason on stderr and status 1."""
+    raise SystemExit(message)
+
+
+def wrap(text: str, first: str, rest: str, width: int = WIDTH) -> list[str]:
+    """Wrap ``text`` greedily; ``first`` and ``rest`` start the first and later lines.
+
+    A token (a word, a URL, or a code span with its neighbors) is never split,
+    so a token wider than the line gets a line of its own.
+    """
+    lines: list[str] = []
+    current = first
+    empty = True
+    for match in TOKEN.finditer(text):
+        token = match[0]
+        if empty:
+            current += token
+        elif len(current) + 1 + len(token) <= width:
+            current += " " + token
+        else:
+            lines.append(current)
+            current = rest + token
+        empty = False
+    return [*lines, current]
+
+
+def reference(url: str, refs: dict[str, int]) -> str:
+    """The marker for a URL, numbering it on first use."""
+    return f"[{refs.setdefault(url, len(refs) + 1)}]"
+
+
+def prose(text: str, refs: dict[str, int]) -> str:
+    """Plain text for Markdown prose: links to references, emphasis dropped."""
+
+    def link(match: re.Match[str]) -> str:
+        label, url = match[2], match[3]
+        return url if label == url else f"{label} {reference(url, refs)}".strip()
+
+    text = MD_LINK.sub(link, text)
+    text = AUTOLINK.sub(r"\1", text)
+    text = STRONG.sub(r"\2", text)
+    return EMPHASIS.sub(r"\1", text)
+
+
+def inline(text: str, refs: dict[str, int]) -> str:
+    """Plain text for a Markdown line, with inline code left exactly as written."""
+    spans: list[str] = []
+
+    def hold(match: re.Match[str]) -> str:
+        spans.append(match[0])
+        return f"\x00{len(spans) - 1}\x00"
+
+    held = pr.INLINE_CODE.sub(hold, text)
+    return PLACEHOLDER.sub(lambda m: spans[int(m[1])], prose(held, refs))
+
+
+@dataclass
+class Pending:
+    """Text lines collected for one paragraph or list item."""
+
+    first: str
+    rest: str
+    parts: list[str]
+
+
+def close_fence(raw: str, marker: str) -> bool:
+    """True when ``raw`` closes a fence opened with ``marker``."""
+    match = pr.FENCE.match(raw)
+    return bool(
+        match
+        and raw.strip() == match[1]
+        and match[1][0] == marker[0]
+        and len(match[1]) >= len(marker)
+    )
+
+
+@dataclass
+class Renderer:
+    """Turns section lines into blocks of plain text, one string per block."""
+
+    refs: dict[str, int]
+    blocks: list[str]
+    pending: Pending | None = None
+    code: list[str] | None = None
+    marker: str = ""
+    # The last block is a list item with no blank line after it, so the next
+    # item joins that block instead of starting one.
+    in_list: bool = False
+    # The last line taken was a table row, so the next row joins its block.
+    in_table: bool = False
+
+    def flush(self) -> None:
+        """End the paragraph or list item being collected."""
+        if self.pending is not None:
+            text = inline(" ".join(self.pending.parts), self.refs)
+            lines = "\n".join(wrap(text, self.pending.first, self.pending.rest))
+            item = bool(self.pending.first)
+            if item and self.in_list:
+                self.blocks[-1] += "\n" + lines
+            else:
+                self.blocks.append(lines)
+            self.in_list = item
+        self.pending = None
+
+    def feed_code(self, line: pr.Line, code: list[str]) -> None:
+        """Take a line inside a fence: indent it, or close the block."""
+        if close_fence(line.raw, self.marker):
+            self.blocks.append("\n".join(code))
+            self.code = None
+        else:
+            code.append(CODE_INDENT + line.raw if line.raw.strip() else "")
+
+    def feed_row(self, row: str) -> None:
+        """Take a table row: add it to the table's block, as written."""
+        self.flush()
+        self.in_list = False  # pragma: no mutate -- None is as falsy
+        if self.in_table:
+            self.blocks[-1] += "\n" + row
+        else:
+            self.blocks.append(row)
+
+    def feed(self, line: pr.Line, row: bool) -> None:  # noqa: FBT001
+        """Take the next line of the section; ``row`` marks a table row."""
+        if row:
+            self.feed_row(line.text.strip())
+        else:
+            self.feed_other(line)
+        self.in_table = row
+
+    def feed_other(self, line: pr.Line) -> None:
+        """Take a line that is not a table row."""
+        if self.code is not None:
+            self.feed_code(line, self.code)
+        elif line.code:
+            self.flush()
+            self.in_list = False  # pragma: no mutate -- None is as falsy
+            self.marker = pr.FENCE.findall(line.raw)[0]  # line.code opens a fence
+            self.code = []
+        elif pr.is_blank(line):
+            self.flush()
+            self.in_list = False  # pragma: no mutate -- None is as falsy
+        elif item := ITEM.fullmatch(line.text):
+            self.flush()
+            prefix = f"{item[1]}{item[2]} "
+            self.pending = Pending(prefix, " " * len(prefix), [item[3]])
+        elif self.pending is None:
+            heading = pr.heading_of(line)
+            text = heading[1] if heading else line.text.strip()
+            self.pending = Pending("", "", [text])
+        else:
+            self.pending.parts.append(line.text.strip())
+
+
+def table_rows(lines: Sequence[pr.Line]) -> list[bool]:
+    """Flag each line that is a row of a Markdown table.
+
+    A table is a ``|`` header row, then a delimiter row such as ``|---|``,
+    then the ``|`` body rows up to the first other line. Any other line that
+    starts with ``|`` is prose. Lines inside a fence have no text, so they are
+    never rows.
+    """
+    texts = [line.text.strip() for line in lines]
+    rows = [False] * len(texts)
+    for index, text in enumerate(texts):
+        if not text.startswith("|"):
+            continue
+        # At index 0, rows[-1] is still False: no later line is flagged yet.
+        if rows[index - 1]:
+            rows[index] = True
+        elif index + 1 < len(texts) and DELIMITER.fullmatch(texts[index + 1]):
+            rows[index] = rows[index + 1] = True
+    return rows
+
+
+def render(lines: Sequence[pr.Line], refs: dict[str, int]) -> list[str]:
+    """Render section lines as blocks of plain text, one string per block."""
+    renderer = Renderer(refs, [])
+    rows = table_rows(lines)
+    for index, line in enumerate(lines):
+        renderer.feed(line, rows[index])
+    renderer.flush()
+    return renderer.blocks
+
+
+def drop_opened(lines: Sequence[pr.Line]) -> list[pr.Line]:
+    """The lines without the ``Opened-by`` line of the final trailer paragraph.
+
+    The paragraph is the trailing run of LLM trailer and ``Opened-by`` lines
+    after a blank line. Anywhere else, ``Opened-by`` stays for
+    ``check_trailers`` to refuse.
+    """
+    end = len(lines)
+    while end and pr.is_blank(lines[end - 1]):
+        end -= 1
+    run = takewhile(
+        lambda line: (
+            agent_identity.LINE.match(line.text) or pr.OPENED_LINE.match(line.text)
+        ),
+        reversed(lines[:end]),
+    )
+    start = end - len(list(run))
+    if start and not pr.is_blank(lines[start - 1]):
+        return list(lines)
+    return [
+        line
+        for index, line in enumerate(lines)
+        if not (start <= index and pr.OPENED_LINE.match(line.text))
+    ]
+
+
+def split_trailers(lines: Sequence[pr.Line]) -> tuple[list[pr.Line], list[str]]:
+    """Split off the body's final paragraph when it is all LLM trailers."""
+    end = len(lines)
+    while end and pr.is_blank(lines[end - 1]):
+        end -= 1
+    start = end
+    while (
+        start
+        and not lines[start - 1].code
+        and agent_identity.LINE.match(lines[start - 1].text)
+    ):
+        start -= 1
+    if start == end or (start and not pr.is_blank(lines[start - 1])):
+        return list(lines), []
+    return list(lines[:start]), [line.raw.rstrip() for line in lines[start:end]]
+
+
+def body_blocks(lines: Sequence[pr.Line], refs: dict[str, int]) -> list[str]:
+    """The sections of a PR body as plain-text parts, empty sections dropped.
+
+    A section is its heading line, then its blocks with a blank line between.
+    """
+    preamble, sections, _ = pr.split_blocks(lines)
+    parts = ["\n\n".join(render(preamble, refs))]
+    for section in sections:
+        content = render(section.lines, refs)
+        if content:
+            parts.append(section.heading + "\n" + "\n\n".join(content))
+    return [part for part in parts if part]
+
+
+def check_trailers(
+    trailers: Sequence[str], text_lines: Sequence[pr.Line], *, agent: bool = False
+) -> None:
+    """Refuse stray or invalid trailers and an agent PR's missing final block."""
+    problems = [why for _, why in pr.trailer_problems(text_lines)]
+    problems.extend(
+        f"invalid trailer block: {why}"
+        for why in agent_identity.check_message("\n".join(trailers))
+    )
+    if agent and not trailers:
+        problems.append("agent PR is missing final trailer paragraph")
+    if problems:
+        message = "the PR body cannot be merged as is: " + "; ".join(problems)
+        stop(message + "; add a valid trailer paragraph with tbhbdev alpha pr edit")
+
+
+def check_round_trip(message: str, trailers: Sequence[str]) -> None:
+    """Fail unless git reads back exactly the trailer block that was written."""
+    done = pr.run([pr.find_tool(GIT), "interpret-trailers", "--parse"], stdin=message)
+    if done.stdout != "\n".join(trailers) + "\n":
+        reason = f"git interpret-trailers --parse read back: {done.stdout!r}"
+        stop(f"the trailer block did not survive the message: {reason}")
+
+
+def table_cells(row: str) -> list[str]:
+    """The cells of one Markdown table row, stripped."""
+    return [cell.strip() for cell in row.strip().strip("|").split("|")]
+
+
+def plain_cell(cell: str) -> str:
+    """A table cell as plain text: link labels kept, code backticks dropped."""
+    return MD_LINK.sub(r"\2", cell).replace("`", "")
+
+
+def renovate_body(body: str) -> str:
+    """One list item per update from a Renovate PR body's update table.
+
+    Renovate's body opens with a ``| Package | ... | Change |`` table, then
+    release notes and its own configuration notes, which don't belong in a
+    commit message. Only the table survives, as ``- name change (update)``.
+    A body without that table gives none.
+    """
+    lines = body.splitlines()
+    start = next(
+        (
+            index
+            for index, line in enumerate(lines)
+            if line.strip().startswith("|")
+            and table_cells(line)[0].lower() == "package"
+        ),
+        None,
+    )
+    if start is None:
+        return ""
+    header = [cell.lower() for cell in table_cells(lines[start])]
+    items: list[str] = []
+    for line in lines[start + 2 :]:
+        if not line.strip().startswith("|"):
+            break
+        row = dict(zip(header, map(plain_cell, table_cells(line)), strict=False))
+        update = f" ({row['update']})" if row.get("update") else ""
+        items.append(f"- {row['package']} {row.get('change', '')}".rstrip() + update)
+    # Renovate lists one dependency once per manager that found it.
+    unique = list(dict.fromkeys(items))
+    return "\n".join(unique) + "\n" if unique else ""
+
+
+def build_message(
+    title: str, number: int, body: str, *, agent: bool = False
+) -> Message:
+    """The commit message for a PR, for either merge method.
+
+    Raises:
+        SystemExit: The subject is not a Conventional Commit header within 72
+            characters, the body has an unclosed fence or a reserved trailer,
+            or the trailer block does not survive git.
+    """
+    subject = f"{title} (#{number})"
+    if problems := pr.title_problems(subject, WIDTH):
+        stop(f"the commit subject {subject!r} fails: {'; '.join(problems)}")
+    lines, _ = pr.scan(body.splitlines(), 1)  # pragma: no mutate -- numbers unused
+    _, unclosed = pr.fence_flags(body.splitlines())
+    if unclosed is not None:
+        stop(
+            f"the PR body is malformed: line {unclosed + 1}: code fence is never closed"
+        )
+    rest, trailers = split_trailers(drop_opened(lines))
+    check_trailers(trailers, rest, agent=agent)
+    refs: dict[str, int] = {}
+    parts = body_blocks(rest, refs)
+    if refs:
+        parts.append("\n".join(f"[{number}]: {url}" for url, number in refs.items()))
+    if trailers:
+        parts.append("\n".join(trailers))
+    message = Message(subject, "\n\n".join(parts) + "\n" if parts else "")
+    if trailers:
+        check_round_trip(message.text(), trailers)
+    return message
+
+
+def refusals(request: PullRequest) -> list[str]:
+    """Why this PR may not merge now, in gh's own words."""
+    reasons: list[str] = []
+    if request.state != "OPEN":
+        reasons.append(f"the PR is {request.state.lower()}")
+    if request.draft:
+        reasons.append("the PR is a draft")
+    if request.mergeable != "MERGEABLE":
+        reasons.append(f"gh reports mergeable={request.mergeable}")
+    if request.merge_state in REFUSED_STATES:
+        reasons.append(f"gh reports mergeStateStatus={request.merge_state}")
+    if reasons and request.failing:
+        reasons.append("failing checks: " + ", ".join(request.failing))
+    return reasons
+
+
+def failed_name(entry: object) -> str | None:
+    """The name of a failed statusCheckRollup entry, or None."""
+    fields = cast("dict[str, object]", entry) if isinstance(entry, dict) else {}
+    if (
+        fields.get("conclusion") in FAILED_CONCLUSIONS
+        or fields.get("state") in FAILED_STATES
+    ):
+        return str(fields.get("name") or fields.get("context"))
+    return None
+
+
+def failing_checks(rollup: object) -> list[str]:
+    """Names of the failed entries in gh's statusCheckRollup."""
+    entries = cast("list[object]", rollup) if isinstance(rollup, list) else []
+    return [name for entry in entries if (name := failed_name(entry))]
+
+
+def fetch(number: int) -> PullRequest:
+    """Read the PR through gh.
+
+    Raises:
+        SystemExit: gh fails or does not return JSON.
+    """
+    argv = [pr.find_tool(GH), "pr", "view", str(number), "--json", VIEW_FIELDS]
+    done = pr.run(argv)
+    if done.returncode != 0:
+        stop(f"gh pr view failed: {' '.join(done.stderr.split())}")
+    try:
+        data = json.loads(done.stdout)
+    except ValueError as exc:
+        stop(f"gh pr view returned something that is not JSON: {exc}")
+    who = agent_identity.as_dict(data.get("author")) or {}
+    commits = data.get("commits", [])
+    base = data.get("baseRefName")
+    _, email = parseaddr(agent_identity.AGENT_IDENT)
+    return PullRequest(
+        agent=any(
+            author["email"] == email
+            for commit in commits
+            for author in commit["authors"]
+        ),
+        renovate=who.get("is_bot") is True and RENOVATE in str(who.get("login")),
+        title=str(data.get("title", "")),
+        body=str(data.get("body") or ""),
+        head=str(data.get("headRefOid", "")),
+        base=base if isinstance(base, str) else "",
+        state=str(data.get("state", "")),
+        draft=data.get("isDraft") is True,
+        mergeable=str(data.get("mergeable", "")),
+        merge_state=str(data.get("mergeStateStatus", "")),
+        failing=failing_checks(data.get("statusCheckRollup")),
+        url=data.get("url"),
+    )
+
+
+def merge_methods(target: str) -> list[str]:
+    """The merge flags to try, in order, by what the repository ``target`` allows.
+
+    Merge commits come first. Squash follows when it is allowed too, because a
+    ruleset can still refuse a merge commit that the repository setting allows.
+
+    Raises:
+        SystemExit: The read fails or is malformed, or neither is allowed.
+    """
+    if not pr.NAME_WITH_OWNER.fullmatch(target):
+        stop("not merging: can't tell which repository the PR is in")
+    done = pr.run([pr.find_tool(GH), "repo", "view", target, "--json", METHOD_FIELDS])
+    if done.returncode != 0:
+        stop(f"gh repo view failed: {' '.join(done.stderr.split())}")
+    try:
+        data = json.loads(done.stdout)
+        allowed = {name: data[name] for name in METHOD_FIELDS.split(",")}
+    except ValueError, KeyError, TypeError:
+        stop("gh repo view returned no usable merge settings")
+    if not all(isinstance(value, bool) for value in allowed.values()):
+        stop("gh repo view returned no usable merge settings")
+    methods = [
+        flag
+        for flag, name in (
+            ("--merge", "mergeCommitAllowed"),
+            ("--squash", "squashMergeAllowed"),
+        )
+        if allowed[name]
+    ]
+    if methods:
+        return methods
+    stop(f"not merging: {target} allows neither merge commits nor squash merges")
+
+
+def branch_rules(target: str, base: str) -> list[object]:
+    """Read every page of active rules for the base branch."""
+    if not base:
+        stop("not merging: gh pr view returned no base branch")
+    endpoint = f"repos/{target}/rules/branches/{quote(base, safe='')}"
+    done = pr.run([pr.find_tool(GH), "api", "--paginate", "--slurp", endpoint])
+    if done.returncode != 0:
+        stop(f"gh branch rules lookup failed: {' '.join(done.stderr.split())}")
+    try:
+        pages: object = json.loads(done.stdout)
+    except ValueError:
+        stop("gh returned no usable branch rules")
+    if not isinstance(pages, list) or not pages:
+        stop("gh returned no usable branch rules")
+    rules: list[object] = []
+    for page in cast("list[object]", pages):
+        if not isinstance(page, list):
+            stop("gh returned no usable branch rules")
+        rules.extend(cast("list[object]", page))
+    return rules
+
+
+def requires_queue(target: str, base: str) -> str | None:
+    """Return the active branch merge queue's method, if it has a queue."""
+    method = None
+    for entry in branch_rules(target, base):
+        rule = agent_identity.as_dict(entry)
+        if rule is None or not isinstance(rule.get("type"), str):
+            stop("gh returned no usable branch rules")
+        if rule["type"] == "merge_queue":
+            parameters = agent_identity.as_dict(rule.get("parameters")) or {}
+            method = str(parameters.get("merge_method", "(missing)")).upper()
+            if method not in ("SQUASH", "MERGE"):
+                stop(f"not merging: unsupported branch merge queue method {method}")
+    return method
+
+
+def queue_flag(method: str, allowed: Sequence[str], number: int) -> str:
+    """Return the queue's merge flag or refuse a disabled method."""
+    flag = f"--{method.lower()}"
+    if flag not in allowed:
+        required = "squash merges" if method == "SQUASH" else "merge commits"
+        stop(f"not merging PR #{number}: the merge queue requires {required}")
+    return flag
+
+
+def queue_state(target: str, number: int, *, preview: bool) -> dict[str, object]:
+    """Read the PR's queue status and optionally its default squash message."""
+    owner, repo = target.split("/", 1)
+    done = pr.run([
+        pr.find_tool(GH), "api", "graphql", "-f", f"query={QUEUE_QUERY}",
+        "-f", f"owner={owner}", "-f", f"repo={repo}", "-F", f"number={number}",
+        "-F", f"preview={str(preview).lower()}",
+    ])  # fmt: skip
+    if done.returncode != 0:
+        stop(f"gh merge queue lookup failed: {' '.join(done.stderr.split())}")
+    try:
+        data = json.loads(done.stdout)["data"]["repository"]["pullRequest"]
+    except ValueError, KeyError, TypeError:
+        stop("gh returned no usable merge queue state")
+    state = agent_identity.as_dict(data)
+    if state is None:
+        stop("gh returned no usable merge queue state")
+    return state
+
+
+def queue_removal(state: dict[str, object]) -> tuple[str, str | None]:
+    """Return the latest removal event's ID and reason."""
+    timeline = agent_identity.as_dict(state.get("timelineItems")) or {}
+    match cast("list[dict[str, object]]", timeline.get("nodes")):
+        case [{"id": str() as event, "reason": (str() | None) as reason}]:
+            return event, reason
+        case []:
+            return "", None
+        case _:
+            stop("gh returned no usable merge queue timeline")
+
+
+def queue_preview(target: str, number: int, message: Message) -> str:
+    """Refuse a default squash message that differs and record the last removal."""
+    state = queue_state(target, number, preview=True)
+    body = state.get("body")
+    if (
+        isinstance(body, str)
+        and state.get("headline") == message.subject
+        and body.replace("\r\n", "\n").rstrip("\n") == message.body.rstrip("\n")
+    ):
+        return queue_removal(state)[0]
+    stop(
+        f"not merging PR #{number}: GitHub's default squash message differs "
+        "from the cleaned message"
+    )
+
+
+def report_queue(target: str, number: int, previous_removal: str) -> int:
+    """Report the result of one post-merge state read."""
+    state = queue_state(target, number, preview=False)
+    if state.get("state") == "MERGED":
+        commit = agent_identity.as_dict(state.get("mergeCommit")) or {}
+        sha = commit.get("oid")
+        if isinstance(sha, str) and sha:
+            print(f"PR #{number} merged as {sha}")
+            return 0
+    if state.get("state") == "OPEN" and state.get("isInMergeQueue") is True:
+        print(f"PR #{number} queued")
+        return 0
+    event, reason = queue_removal(state)
+    if event and event != previous_removal:
+        stop(f"PR #{number} dequeued: {reason or 'GitHub supplied no reason'}")
+    stop(f"PR #{number}: GitHub reports no merge commit, queue entry, or new removal")
+
+
+def build_parser(prog: str | None = None) -> argparse.ArgumentParser:
+    """The command line."""
+    parser = argparse.ArgumentParser(
+        prog=prog,
+        description="Merge a PR (merge commit, else squash) with a clean message.",
+    )
+    parser.add_argument("number", type=int, metavar="PR")
+    parser.add_argument("--dry-run", action="store_true", help="show it, merge nothing")
+    return parser
+
+
+def main(argv: Sequence[str] | None = None, prog: str | None = None) -> int:
+    """Preview or perform the merge."""
+    args = build_parser(prog).parse_args(argv)
+    request = fetch(args.number)
+    if reasons := refusals(request):
+        stop(f"not merging PR #{args.number}: " + "; ".join(reasons))
+    target = pr.target_of_pr(request.url)
+    methods = merge_methods(target)
+    queue_method = requires_queue(target, request.base)
+    if queue_method is not None:
+        methods = [queue_flag(queue_method, methods, args.number)]
+    body = renovate_body(request.body) if request.renovate else request.body
+    message = build_message(
+        request.title, args.number, body, agent=request.agent and not request.renovate
+    )
+    if methods[0] == "--merge" and (
+        not message.body or message.subject.startswith(DEFAULT_MERGE_TITLES)
+    ):
+        stop(
+            f"not merging PR #{args.number}: the merge commit would get "
+            "GitHub's default message, not the cleaned PR body"
+        )
+    previous_removal = None
+    if queue_method == "SQUASH":
+        previous_removal = queue_preview(target, args.number, message)
+    elif queue_method == "MERGE":
+        # The queue keeps the passed subject and body (tools#370, 5800789a).
+        previous_removal = queue_removal(
+            queue_state(target, args.number, preview=False)
+        )[0]
+    pr.scan_secrets(
+        message.text(),
+        f"the commit message for PR #{args.number}",
+        pr.repo_visibility(target),
+    )
+    argv_gh = [
+        GH, "pr", "merge", str(args.number), methods[0], "--subject", message.subject,
+        "--body-file", "-", "--match-head-commit", request.head,
+    ]  # fmt: skip
+    if args.dry_run:
+        print(shlex.join(argv_gh))
+        print()
+        print(message.text(), end="")
+        return 0
+    argv_gh[0] = pr.find_tool(GH)
+    done = pr.run(argv_gh, stdin=message.body)
+    if done.returncode != 0 and len(methods) > 1:
+        print(done.stderr, end="", file=sys.stderr)
+        print(f"{methods[0]} failed; retrying with {methods[1]}", file=sys.stderr)
+        argv_gh[argv_gh.index(methods[0])] = methods[1]
+        done = pr.run(argv_gh, stdin=message.body)
+    if previous_removal is not None and done.returncode == 0:
+        print(done.stderr, end="", file=sys.stderr)
+        return report_queue(target, args.number, previous_removal)
+    print(done.stdout, end="")
+    print(done.stderr, end="", file=sys.stderr)
+    return done.returncode

@@ -1,0 +1,156 @@
+# SPDX-License-Identifier: Apache-2.0
+# Copyright Tony Burns
+
+load("@tbhb_rules//lint:defs.bzl", "tombi_test")
+load(
+    "@tbhb_rules_python//:defs.bzl",
+    "bandit_test",
+    "complexipy_test",
+    "deptry_test",
+    "mutmut_test",
+    "pip_audit",
+    "pip_audit_test",
+    "pylint_test",
+    "pyrefly_test",
+    "pytest_test",
+    "python_tool",
+    "ruff_test",
+    "vulture_test",
+)
+
+exports_files(["src/tbhbdev/cue-pin.json"])
+
+filegroup(
+    name = "cli_files",
+    srcs = glob([
+        "docs/**",
+        "schemas/**",
+        "src/**",
+        "tests/**",
+    ]) + ["pyproject.toml"],
+)
+
+CLI_CHECK_INPUTS = [
+    ":cli_files",
+    "//:cli_check_inputs",
+]
+
+# Python gates over the tbhbdev package and its tests.
+ruff_test(
+    name = "ruff_test",
+    srcs = CLI_CHECK_INPUTS,
+)
+
+# pyrefly's verdict depends on --python-platform, not the host. The tools
+# drive ssh and run on macOS and Linux only, so there is no win32 check.
+pyrefly_test(
+    name = "pyrefly_test",
+    srcs = CLI_CHECK_INPUTS,
+    args = [
+        "--config",
+        "factory/cli/pyproject.toml",
+        "--python-platform",
+        "linux",
+    ],
+)
+
+pylint_test(
+    name = "pylint_test",
+    srcs = CLI_CHECK_INPUTS,
+    args = ["--rcfile=factory/cli/pyproject.toml"],
+)
+
+vulture_test(
+    name = "vulture_test",
+    srcs = CLI_CHECK_INPUTS,
+    args = [
+        "--config",
+        "factory/cli/pyproject.toml",
+    ],
+)
+
+complexipy_test(
+    name = "complexipy_test",
+    srcs = CLI_CHECK_INPUTS,
+    args = [
+        "--config",
+        "factory/cli/pyproject.toml",
+    ],
+)
+
+# B101 flags every assert, and asserts are pytest's API.
+bandit_test(
+    name = "bandit_test",
+    srcs = CLI_CHECK_INPUTS,
+    exclude = ["factory/cli/tests/*"],
+)
+
+# deptry checks pyproject.toml's dependencies against the Python under src.
+deptry_test(
+    name = "deptry_test",
+    srcs = CLI_CHECK_INPUTS,
+    chdir = "factory/cli",
+    roots = ["src"],
+)
+
+pytest_test(
+    name = "pytest_test",
+    # The full suite exceeded the 300 s limit on CI runners.
+    timeout = "eternal",
+    srcs = CLI_CHECK_INPUTS,
+    args = [
+        "-n",
+        "auto",
+    ],
+    chdir = "factory/cli",
+    coverage = ["src/tbhbdev"],
+    # Review and draft validation use CUE. The alpha pr and merge tests run cog,
+    # and the private gitleaks config's tests run the pinned gitleaks.
+    path_tools = [
+        "@cue_test_tool//:cue",
+        "@tbhb_rules_cog//:cog",
+        "@tbhb_rules_gitleaks//:gitleaks",
+        "@tbhb_rules_scc//:scc",
+    ],
+)
+
+# The advisory database changes without any input changing: pip_audit_test
+# audits the shared workspace lock when requested.
+pip_audit(
+    name = "pip_audit",
+)
+
+pip_audit_test(
+    name = "pip_audit_test",
+    srcs = CLI_CHECK_INPUTS,
+)
+
+# Ruff from the locked workspace environment.
+python_tool(
+    name = "ruff",
+    tool = "ruff",
+)
+
+# The nightly workflow selects this target explicitly.
+mutmut_test(
+    name = "mutmut_test",
+    srcs = CLI_CHECK_INPUTS,
+    advisory = True,
+    chdir = "factory/cli",
+    cpus = 4,
+    tags = ["manual"],
+)
+
+tombi_test(
+    name = "tombi_test",
+    srcs = [
+        ":pyproject.toml",
+        "//:tombi.toml",
+    ],
+    config = "//:tombi.toml",
+    schemas = {
+        "https://www.schemastore.org/partial-pytest.json": "@schemastore_partial_pytest//file",
+        "https://www.schemastore.org/ruff.json": "@schemastore_ruff//file",
+        "https://www.schemastore.org/uv.json": "@schemastore_uv//file",
+    },
+)

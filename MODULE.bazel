@@ -121,3 +121,58 @@ local_path_override(
     module_name = "tbhb_rules_typescript",
     path = "lib/rules/typescript",
 )
+
+# The tool binaries @tbhb_rules pins, so the bazel_env shims and CI name
+# the same repositories and each tool keeps one pin.
+tools = use_extension("@tbhb_rules//pins:extensions.bzl", "tools")
+use_repo(
+    tools,
+    "tbhb_rules_actionlint",
+    "tbhb_rules_cog",
+    "tbhb_rules_editorconfig_checker",
+    "tbhb_rules_gitleaks",
+    "tbhb_rules_rumdl",
+    "tbhb_rules_ryl",
+    "tbhb_rules_scc",
+    "tbhb_rules_shellcheck",
+    "tbhb_rules_shfmt",
+    "tbhb_rules_tombi",
+    "tbhb_rules_vale",
+    "tbhb_rules_zizmor",
+)
+
+# Pinned copies of the SchemaStore schemas that pyproject.toml's embedded
+# tombi schema refers to by URL, so //factory/cli:tombi_test validates offline. Pinned
+# to a SchemaStore commit, because www.schemastore.org serves whatever is
+# current and its digests drift.
+http_file = use_repo_rule("@bazel_tools//tools/build_defs/repo:http.bzl", "http_file")
+
+cue_test_tool = use_repo_rule("//factory/cli:tests/cue_test_tool.bzl", "cue_test_tool")
+
+cue_test_tool(
+    name = "cue_test_tool",
+    dev_dependency = True,
+)
+
+_SCHEMASTORE = "https://raw.githubusercontent.com/SchemaStore/schemastore/f0e072bb85076fcae82bebf058cf86520d4ea450/src/schemas/json/"
+
+http_file(
+    name = "schemastore_uv",
+    dev_dependency = True,
+    sha256 = "accd72042015703861297d12c682e0d9c35f435506acf942874927bb367ccdf7",
+    url = _SCHEMASTORE + "uv.json",
+)
+
+http_file(
+    name = "schemastore_partial_pytest",
+    dev_dependency = True,
+    sha256 = "15894b3b37e0ae60b79869da43b9e26790bc1198d645586ca8447246c23f9ac4",
+    url = _SCHEMASTORE + "partial-pytest.json",
+)
+
+http_file(
+    name = "schemastore_ruff",
+    dev_dependency = True,
+    sha256 = "d543216c52a7bd33325de767ebba8b410162302bce2cdc8980662e0bc06984be",
+    url = _SCHEMASTORE + "ruff.json",
+)
