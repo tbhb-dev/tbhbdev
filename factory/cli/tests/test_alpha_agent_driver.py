@@ -1994,6 +1994,26 @@ def test_clean_allows_name_reuse(remote: Remote, *, ownerless: bool) -> None:
     assert launch(remote) == 0
 
 
+def test_clean_releases_name_after_wait_archives_run(remote: Remote) -> None:
+    assert launch(remote) == 0
+    remote.configure(session=False)
+    (remote.state / "sample.owner").unlink()
+    for suffix in (".branch", ".pr", ".head"):
+        remote.file(suffix, "previous run\n")
+
+    assert command("wait") == 1
+    assert not driver.metadata_path("sample").exists()
+    assert list((driver.directory() / "trash").glob("*/sample.json"))
+    for suffix in (".branch", ".pr", ".head", ".request.json"):
+        assert (remote.state / f"sample{suffix}").exists()
+
+    assert command("clean") == 0
+    assert not list(remote.state.glob("sample.*"))
+    assert not driver.metadata_path("sample").exists()
+    assert command("clean") == 0
+    assert launch(remote) == 0
+
+
 def test_clean_ownerless_run_with_a_live_session(remote: Remote) -> None:
     assert launch(remote) == 0
     (remote.state / "sample.owner").unlink()
@@ -2092,6 +2112,7 @@ def test_lost_clean_reply_cannot_clean_new_owner(
     assert command("clean") == 1
     assert "not owner" in capsys.readouterr().err
     assert not driver.metadata_path("sample").exists()
+    assert command("clean") == 1
     assert {
         p.name: p.read_bytes() for p in remote.state.iterdir() if p.is_file()
     } == before
