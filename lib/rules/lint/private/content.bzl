@@ -63,11 +63,13 @@ def designs_index_test(name, srcs, out = "designs/README.md", forbidden_terms = 
     )
 
 def _index_impl(ctx):
+    repo_name = ctx.label.repo_name
+    prefix = "../" + repo_name + "/" if repo_name else ""
     paths = []
     for file in ctx.files.srcs:
-        if file.owner.repo_name != "":
-            fail("designs_index srcs must belong to the main repository")
-        paths.append(file.short_path)
+        if file.owner.repo_name != repo_name:
+            fail("designs_index srcs must belong to the target's repository: {}".format(file.owner))
+        paths.append(file.short_path.removeprefix(prefix))
     manifest = ctx.actions.declare_file(ctx.label.name + ".manifest")
     ctx.actions.write(manifest, "".join([path + "\n" for path in sorted(paths)]))
     script = ctx.actions.declare_file(ctx.label.name + ".sh")
@@ -77,6 +79,7 @@ def _index_impl(ctx):
         substitutions = {
             "@@ARGS@@": " ".join([shell.quote(arg) for arg in ["--index", ctx.attr.out] + _args(ctx.attr.forbidden_terms, ctx.attr.max_lines)]),
             "@@MANIFEST@@": manifest.short_path,
+            "@@REPO_ROOT@@": shell.quote(ctx.label.workspace_root),
             "@@SELF@@": script.short_path,
             "@@TOOL@@": ctx.executable.tool.short_path,
         },
@@ -110,7 +113,7 @@ def designs_index(name, srcs, out = "designs/README.md", forbidden_terms = [], m
     Args:
         name: Runnable target name.
         srcs: All files under the designs directory (index optional).
-        out: Workspace-relative output path, independent of the BUILD package.
+        out: Output path relative to the target's repository, independent of the BUILD package.
         forbidden_terms: Words passed through to the design checker.
         max_lines: Maximum README lines; 0 disables the limit.
         **kwargs: Passed to the executable rule.
