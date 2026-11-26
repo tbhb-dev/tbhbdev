@@ -142,7 +142,9 @@ def prompt_launch_problems(  # noqa: PLR0913 -- Keep the file lookup explicit.
     if profile is not Profile.BUILD:
         return problems
     problems.extend(
-        _wrong_build_branches(prompt, prose, branch, start_ref, updates, is_file=is_file)
+        _wrong_build_branches(
+            prompt, prose, branch, start_ref, updates, is_file=is_file
+        )
     )
     if start_ref is None and updates:
         target = updates[0] or "<branch>"

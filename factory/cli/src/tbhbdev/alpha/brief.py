@@ -195,7 +195,9 @@ def check_hooks(text: str) -> list[str]:
 def looks_like_branch(target: str) -> bool:
     """Recognize qualified refs and conventional unqualified branch names."""
     return not target.startswith("-") and (
-        "/" in target or target in {"main", "master"} or target.startswith(BRANCH_PREFIXES)
+        "/" in target
+        or target in {"main", "master"}
+        or target.startswith(BRANCH_PREFIXES)
     )
 
 

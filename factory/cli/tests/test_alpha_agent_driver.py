@@ -1326,7 +1326,8 @@ def test_build_prompt_without_foreign_branch_instructions_launches(
 def test_build_prompt_that_quotes_a_forbidden_push_launches(
     remote: Remote, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    command = " ".join(("git", "push", "origin", "feat/other"))
+    # Assemble the command to avoid triggering the brief check on a literal.
+    command = " ".join(("git", "push", "origin", "feat/other"))  # noqa: FLY002
     remote.prompt.write_text(f"`{command}` is forbidden.")
     assert launch(remote) == 0
     assert capsys.readouterr().err == ""
