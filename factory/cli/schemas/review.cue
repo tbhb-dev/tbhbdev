@@ -7,18 +7,23 @@ import (
 	"strings"
 )
 
-#ReviewSHA:      #"[0-9a-f]{40}"#
-#ReviewHost:     #"[a-z0-9](?:[a-z0-9-]*[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]*[a-z0-9])?)+"#
-#ReviewVerdict:  "GO" | "NO-GO"
-#ReviewEvent:    "APPROVE" | "REQUEST_CHANGES" | "COMMENT"
-#FindingPrefix:  #"^F([1-8]): P([0-3]) (correctness|security|design|test|docs)\s+([\s\S]+)$"#
-#Word:           #"[\p{L}\p{N}_]+"#
-#VerdictLine:    #"(?m)^[\t\p{Z}]*VERDICT:[\t ]+(?:GO|BLOCK|NO-GO)(?:[\t ]+\#(#ReviewSHA))?[\t\p{Z}]*\r?$"#
-#SummaryVerdict: #"(?im)^[\t\p{Z}]*(?:(?:Decision|Verdict)[\t\p{Z}]*:[\t\p{Z}]*)?(?:GO|NO-GO|APPROVE|BLOCK|HOLD|REQUEST_CHANGES)[.!?]*[\t\p{Z}]*\r?$"#
-#Abbreviation:   #"(?i:\b(?:mr|mrs|ms|dr|prof|vs)\.)|\b(?:\p{L}\.){2,}"#
-#SentenceStart:  #"[.!?]["'”’)\]]*[\s\p{Z}]+["'“‘(\[]*\p{Lu}"#
-#ThreeSentences: #"(?s)\#(#SentenceStart).*\#(#SentenceStart)"#
-#ReviewStamp:    #"(?i)(\bjudged head\b|\b(commit|head)[ :=]+[0-9a-f]{7,40}\b|\b\#(#ReviewSHA)\b|(?m:^(Run|Provider|Model|Variant|Host|Head|Tier):))"#
+#ReviewSHA:     #"[0-9a-f]{40}"#
+#ReviewHost:    #"[a-z0-9](?:[a-z0-9-]*[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]*[a-z0-9])?)+"#
+#ReviewVerdict: "GO" | "NO-GO"
+#ReviewEvent:   "APPROVE" | "REQUEST_CHANGES" | "COMMENT"
+#FindingPrefix: #"^F([1-8]): P([0-3]) (correctness|security|design|test|docs)\s+([\s\S]+)$"#
+#Word:          #"[\p{L}\p{N}_]+"#
+#VerdictLine:   #"(?m)^[\t\p{Z}]*VERDICT:[\t ]+(?:GO|BLOCK|NO-GO)(?:[\t ]+\#(#ReviewSHA))?[\t\p{Z}]*\r?$"#
+#VerdictWord:   #"(?:GO|NO-GO|APPROVE|BLOCK|HOLD|REQUEST_CHANGES)"#
+#VerdictPrefix: #"(?i:(?:Decision|Verdict)[\t\p{Z}]*:[\t\p{Z}]*)?"#
+
+// With prose following, require verdict capitalization or punctuation.
+#LeadingVerdict:   #"^[\t\p{Z}]*\#(#VerdictPrefix)(?:\#(#VerdictWord)\b|(?i:\#(#VerdictWord))[.!?:,])"#
+#SummaryVerdict:   #"(?im:^[\t\p{Z}]*\#(#VerdictPrefix)\#(#VerdictWord)[.!?]*[\t\p{Z}]*\r?$)|\#(#LeadingVerdict)"#
+#Abbreviation:     #"(?i:\b(?:mr|mrs|ms|dr|prof|vs)\.)|\b(?:\p{L}\.){2,}"#
+#SentenceBoundary: #"[.!?]["'”’)\]]*[\s\p{Z}]+"#
+#ThreeSentences:   #"(?s)\#(#SentenceBoundary).*\#(#SentenceBoundary)[^\s\p{Z}]"#
+#ReviewStamp:      #"(?i)(\bjudged head\b|\b(commit|head)[ :=]+[0-9a-f]{7,40}\b|\b\#(#ReviewSHA)\b|(?m:^(Run|Provider|Model|Variant|Host|Head|Tier):))"#
 
 #ReviewProse: {
 	_text:  string
@@ -27,9 +32,10 @@ import (
 }
 
 #ReviewSummary: #Paragraph & #ReviewProse & {
+	source:  !~#ReviewStamp
 	visible: !~#SummaryVerdict
 	metrics: visible: characters: <=4096
-	_text:  visible
+	_text:  visible & !~#ReviewStamp
 	_words: <=40
 	// Count clear sentence boundaries after stripping abbreviation punctuation.
 	_sentences: regexp.ReplaceAll(#Abbreviation, visible, "") & !~#ThreeSentences

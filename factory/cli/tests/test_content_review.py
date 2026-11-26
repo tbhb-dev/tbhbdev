@@ -57,6 +57,9 @@ def test_summary_counts_words_instead_of_characters() -> None:
     [
         "A " + "a " * 39 + "day.",
         "The tests passed. The cache stays warm. Retries are safe.",
+        "The driver validates the request. `pytest` passed. The host posts the review.",
+        "The driver validates the request. retries passed. The host posts the review.",
+        "The driver validates the request. 3 tests passed. The host posts the review.",
         'Retries are safe. The handler reports "Saved." The cache keeps the result.',
         "é" * 4097,
     ],
@@ -75,9 +78,11 @@ def test_summary_refuses_excess_words_sentences_or_size(summary: str) -> None:
         "The handler checks labels, e.g. Ready or Saved. Retries preserve them.",
         'The handler reports "Saved." The cache keeps the result.',
         "Dr. Lee inspected the cache. It keeps the result.",
+        "Dr. Lee tested warm vs. cold caches. `pytest` passed.",
         "The handler recognizes `VERDICT: GO`.",
         "Decision: approve the change after the cache check.",
         "The handler returns HOLD while the cache warms.",
+        "The cache is warm. HOLD applies to stale requests.",
     ],
 )
 def test_summary_accepts_prose_without_interpreting_it(summary: str) -> None:
@@ -108,6 +113,35 @@ def test_summary_rejects_bare_and_prefixed_verdicts(
     assert content.check_review(body_with("Summary", surrounding.format(verdict))) == [
         "Remove the standalone verdict line from Summary"
     ]
+
+
+@pytest.mark.parametrize(
+    "summary",
+    [
+        "GO. The driver validates the request.",
+        "NO-GO because the cache returns a stale value.",
+        "Decision: APPROVE. The driver validates the request.",
+        "Verdict: Hold. The driver skips validation.",
+    ],
+)
+def test_summary_rejects_leading_verdict_with_reasons(summary: str) -> None:
+    assert content.check_review(body_with("Summary", summary)) == [
+        "Remove the standalone verdict line from Summary"
+    ]
+
+
+@pytest.mark.parametrize(
+    "summary",
+    [
+        "The driver validates the request.\nRun: review-build",
+        "**Provider:** codex",
+        "The driver checked the judged head.",
+        "The driver checked commit a123456.",
+        f"The driver checked `{'a' * 40}`.",
+    ],
+)
+def test_summary_rejects_review_stamps(summary: str) -> None:
+    assert content.check_review(body_with("Summary", summary))
 
 
 @pytest.mark.parametrize("verdict", ["GO", "BLOCK"])
