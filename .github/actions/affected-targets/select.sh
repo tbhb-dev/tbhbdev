@@ -4,11 +4,10 @@
 
 # Chooses the Bazel test targets that the change from BASE_SHA to HEAD_SHA can
 # affect, with target-determinator (TD). When the script can't decide, it
-# selects `//...`, since only a selection too small to cover the change is
-# wrong. Every path ends in finish, which returns the checkout to HEAD_SHA,
-# clean once a tool has run, and writes the outputs and a line to the job
-# summary, so no fallback is silent and none tests another commit. Without a
-# checkout to verify, the script fails.
+# selects the root and all shared rules modules. Every path ends in finish,
+# which restores HEAD_SHA, verifies a clean checkout after running tools,
+# and writes the outputs and a job summary. Without a checkout to verify,
+# the script fails.
 set -euo pipefail
 
 # A directory of its own for each run, so a second run in the job leaves the
@@ -18,6 +17,16 @@ file=$out/targets.txt
 log=$out/target-determinator.log
 changed=$out/changed
 want='' ran=''
+
+# Match the local rules modules in MODULE.bazel. Use the same scope and
+# exclusions for discovery and the fallback pattern file.
+patterns=(//... @tbhb_rules//... @tbhb_rules_ansible//... @tbhb_rules_astro//...
+  @tbhb_rules_cloudflare//... @tbhb_rules_d2//... @tbhb_rules_go//...
+  @tbhb_rules_playwright//... @tbhb_rules_python//... @tbhb_rules_storybook//...
+  @tbhb_rules_structurizr//... @tbhb_rules_swift//... @tbhb_rules_tokens//...
+  @tbhb_rules_typescript//...)
+excluded=(@tbhb_rules//tools:mutmut_test @tbhb_rules_go//tests/self:gomutants_test
+  @tbhb_rules_python//private:mutmut_test)
 
 # die MESSAGE: fail the step, for a checkout the script can't verify or
 # restore, or bazel-opts it can't split.
@@ -81,8 +90,8 @@ finish() {
   local all=false count line reason=${2//[[:cntrl:]]/?} delim
   ensure_head || die "can't restore a clean checkout of the event's head $want"
   if [[ $1 == all ]]; then
-    all=true count=all line="Running every target (\`//...\`): "
-    echo '//...' >"$file"
+    all=true count=all line="Running every target in the root and shared rules modules: "
+    printf '%s\n' "${patterns[@]}" "${excluded[@]/#/-}" >"$file"
   else
     count=$(grep -c . "$file" || true) line="Selected $count test targets: "
   fi
@@ -121,6 +130,7 @@ deadline() {
   set +m
   { wait "$pid"; } 2>/dev/null || status=$?
   kill -KILL -- "-$dog" "-$pid" 2>/dev/null || true
+  wait "$dog" 2>/dev/null || true
   for _ in {1..50}; do
     kill -0 -- "-$pid" 2>/dev/null || break
     sleep 0.1
@@ -138,7 +148,7 @@ want=${HEAD_SHA:-$head}
 # BASE_SHA fails the check of the base below.
 [[ ${EVENT:-} == pull_request || ${EVENT:-} == merge_group ]] || finish all "a '${EVENT:-}' event tests everything"
 [[ $head == "$want" ]] || finish all "the checkout $head is not the event's head $want"
-[[ -n ${QUERY:-} && $QUERY != *$'\n'* ]] || finish all 'the query is not one line'
+[[ ${QUERY:-} != *$'\n'* ]] || finish all 'the query is not one line'
 git cat-file -e "${BASE_SHA:-}^{commit}" 2>/dev/null ||
   finish all "the base '${BASE_SHA:-}' is missing from the checkout (check out with fetch-depth: 0)"
 git -c core.quotePath=false diff -z --raw --no-renames --ignore-submodules=none --output="$changed" "$BASE_SHA" "$head" 2>&1 | show >&2 ||
@@ -147,14 +157,17 @@ git -c core.quotePath=false diff -z --raw --no-renames --ignore-submodules=none 
 # A submodule's commit (mode 160000) is no file target-determinator can
 # trace. The other files change the module graph, the flags, the Bazel
 # version, the package set or the rules for the whole workspace. Match the
-# base name, in any directory, since a module can override a nested one by
-# path.
+# base name since a module can override a nested one by path. Let TD compare
+# rules-module BUILD and .bzl changes through the configured dependency graph.
 while IFS= read -r -d '' meta && IFS= read -r -d '' path; do
   [[ ${meta:0:15} != *160000* ]] || finish all "the submodule $path changed"
   case ${path##*/} in
-  MODULE.bazel* | *.MODULE.bazel | WORKSPACE* | REPO.bazel | BUILD | BUILD.* | *.bzl | \
+  MODULE.bazel* | *.MODULE.bazel | WORKSPACE* | REPO.bazel | \
     .bazelrc* | *bazelrc | .bazelversion | .bazeliskrc | .bazelignore)
     finish all "$path changed"
+    ;;
+  BUILD | BUILD.* | *.bzl)
+    [[ $path == lib/rules/* ]] || finish all "$path changed"
     ;;
   esac
 done <"$changed"
@@ -168,26 +181,54 @@ seconds=${TIMEOUT_SECONDS:-$((minutes * 60))}
 # target-determinator would analyze a change on top of the head as the head.
 clean || finish all "the checkout of $head has changes or flagged index entries, or git failed"
 
-args=(-bazel bazelisk -nocache_results -delete-cached-worktree
-  -before-query-error-behavior=fatal -targets "$QUERY")
 read -ra opts <<<"${BAZEL_OPTS:-}"
-args+=(${opts[@]+"${opts[@]/#/-bazel-opts=}"})
+opts+=(--skip_incompatible_explicit_targets)
 # Repository rules run code from the change, so Bazel gets no runner
 # command files to write outputs, the summary or the environment through.
 isolate=(env -u GITHUB_OUTPUT -u GITHUB_STEP_SUMMARY -u GITHUB_ENV -u GITHUB_PATH -u GITHUB_STATE)
-start=$SECONDS status=0 step=target-determinator ran=1
-deadline "$seconds" "${isolate[@]}" "$TD" "${args[@]}" "$BASE_SHA" >"$file" 2>"$log" || status=$?
-# target-determinator reports tests tagged manual too. `bazel test //...`
-# can still run one through a test_suite, so any affected test whose tags
-# match `manual` falls back; jq fails then.
-if [[ $status == 0 && -s $file ]]; then
-  step='the cquery of manual tags' left=$((seconds + start - SECONDS))
-  deadline "$((left > 0 ? left : 1))" "${isolate[@]}" bazelisk cquery --output=jsonproto \
-    ${opts[@]+"${opts[@]}"} "attr(tags, manual, ($QUERY))" >"$out/tags.json" 2>>"$log" || status=$?
-  [[ $status != 0 ]] || jq -en --rawfile s "$file" '($s | split("\n")) as $s
-    | all(inputs | .results[]?.target.rule.name; IN($s[]) | not)' "$out/tags.json" >/dev/null 2>>"$log" ||
+start=$SECONDS ran=1
+
+run_step() {
+  step=$1
+  shift
+  local left=$((seconds + start - SECONDS))
+  ((left > 0)) || return 124
+  deadline "$left" "${isolate[@]}" "$@" 2>>"$log"
+}
+
+label_set() {
+  jq -Rrs 'split("\n") | map(select(length > 0) | @json) | "set(" + join(" ") + ")"' "$1"
+}
+
+select_targets() {
+  local scope candidates targets manual='[\[ ,]manual[,\]]'
+  scope=$(IFS=+; printf '(%s)' "${patterns[*]}")
+  # Resolve the wildcard expansion before cquery, which would analyze every
+  # matched rule, including intentionally failing manual proof targets.
+  # Non-manual suites can still include manual tests.
+  candidates="let suites = kind('test_suite rule', $scope) in
+    ((kind('.*_test rule', $scope) except attr(tags, '$manual', $scope))
+    + tests(\$suites except attr(tags, '$manual', \$suites))) except set(${excluded[*]})"
+  [[ -z ${QUERY:-} ]] || candidates="($candidates) intersect ($QUERY)"
+  run_step 'the query of candidate tests' bazelisk query --output=label "$candidates" >"$out/candidates" || return
+  [[ -s $out/candidates ]] || return 0
+  targets=$(label_set "$out/candidates") || return
+
+  # The determinator hashes configured dependencies in local overrides too.
+  run_step target-determinator "$TD" -bazel bazelisk -nocache_results -delete-cached-worktree \
+    -before-query-error-behavior=fatal -targets "$targets" "${opts[@]/#/-bazel-opts=}" "$BASE_SHA" >"$file" || return
+  [[ -s $file ]] || return 0
+  targets=$(label_set "$file") || return
+  run_step 'the cquery of manual tags' bazelisk cquery --output=jsonproto "${opts[@]}" \
+    "attr(tags, '$manual', $targets)" >"$out/tags.json" || return
+  jq -es 'length == 1 and (.[0] | type == "object" and ((.results // []) == []))' "$out/tags.json" >/dev/null 2>>"$log" ||
     finish all 'an affected test is tagged manual, or its tags are unreadable'
-fi
+}
+
+: >"$file"
+: >"$log"
+status=0
+select_targets || status=$?
 [[ $status != 0 ]] || finish selected "target-determinator compared $BASE_SHA with $head"
 # The log comes from the change too.
 tail -n 40 "$log" | show >&2
