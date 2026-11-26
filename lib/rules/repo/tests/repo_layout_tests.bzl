@@ -8,6 +8,10 @@ load("@rules_testing//lib:truth.bzl", "matching")
 load("@rules_testing//lib:util.bzl", "util")
 load("//repo:defs.bzl", "repo_layout_test")
 
+# Tests start in the main repository's runfiles directory.
+_REPO_NAME = Label("//:BUILD.bazel").repo_name
+REPO_RUNFILES_PREFIX = "../{}/".format(_REPO_NAME) if _REPO_NAME else ""
+
 def scripts_layout_test(name, fixture, **kwargs):
     """A layout whose tools/ holds uv scripts, plus tools/interim/, over a fixture tree."""
     repo_layout_test(

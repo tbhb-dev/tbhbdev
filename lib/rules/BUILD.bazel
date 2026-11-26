@@ -128,10 +128,29 @@ generate_preset(
     extra_presets = "{}",
 )
 
+# The generator includes the caller's canonical label and Bazel version in
+# its comments. Compare the flags so the containing workspace can test the
+# preset even when it runs a different Bazel patch release.
+genrule(
+    name = "preset_flags",
+    srcs = [
+        ":preset",
+        ":preset.bazelrc",
+    ],
+    outs = [
+        "_generated_preset_flags.txt",
+        "_source_preset_flags.txt",
+    ],
+    cmd = """
+        grep -v '^#' $(location :preset) > $(location _generated_preset_flags.txt)
+        grep -v '^#' $(location :preset.bazelrc) > $(location _source_preset_flags.txt)
+    """,
+)
+
 diff_test(
     name = "preset.update_test",
-    file1 = ":preset",
-    file2 = ":preset.bazelrc",
+    file1 = ":_generated_preset_flags.txt",
+    file2 = ":_source_preset_flags.txt",
 )
 
 # buildifier: `//:buildifier` formats and applies lint fixes in place,

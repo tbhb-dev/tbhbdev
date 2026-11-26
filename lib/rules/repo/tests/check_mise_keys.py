@@ -11,7 +11,6 @@ differences, each by key path or table prefix.
 """
 
 import argparse
-import os
 import sys
 import tomllib
 from pathlib import Path
@@ -68,6 +67,4 @@ def main(argv: list[str] | None = None) -> int:
 
 
 if __name__ == "__main__":
-    if os.environ.get("TEST_SRCDIR"):
-        os.chdir(Path(__file__).absolute().parents[2])
     sys.exit(main())

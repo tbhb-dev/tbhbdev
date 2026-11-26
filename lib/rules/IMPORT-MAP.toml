@@ -1395,12 +1395,14 @@ dest = "lib/rules"
 "repo/temporal/dev_server.py" = "lib/rules/repo/temporal/dev_server.py"
 "repo/temporal/test_dev_server.py" = "lib/rules/repo/temporal/test_dev_server.py"
 "repo/temporal/testdata/fake_server.py" = "lib/rules/repo/temporal/testdata/fake_server.py"
-"repo/tests/BUILD.bazel" = "lib/rules/repo/tests/BUILD.bazel"
 "repo/tests/affected_targets_test.sh" = "lib/rules/repo/tests/affected_targets_test.sh"
 "repo/tests/archive_actions_test.sh" = "lib/rules/repo/tests/archive_actions_test.sh"
 "repo/tests/cache_contract_test.sh" = "lib/rules/repo/tests/cache_contract_test.sh"
 "repo/tests/cache_fetch_test.sh" = "lib/rules/repo/tests/cache_fetch_test.sh"
+"repo/tests/check_markdown_links.py" = "lib/rules/repo/tests/check_markdown_links.py"
+"repo/tests/check_mise_keys.py" = "lib/rules/repo/tests/check_mise_keys.py"
 "repo/tests/check_required_files.py" = "lib/rules/repo/tests/check_required_files.py"
+"repo/tests/check_tool_pins.py" = "lib/rules/repo/tests/check_tool_pins.py"
 "repo/tests/ci_plan_test.sh" = "lib/rules/repo/tests/ci_plan_test.sh"
 "repo/tests/codeowners_errors_test.sh" = "lib/rules/repo/tests/codeowners_errors_test.sh"
 "repo/tests/cpu_quota_test.sh" = "lib/rules/repo/tests/cpu_quota_test.sh"
@@ -1408,7 +1410,6 @@ dest = "lib/rules"
 "repo/tests/mktemp_test.sh" = "lib/rules/repo/tests/mktemp_test.sh"
 "repo/tests/mutation_nightly_test.sh" = "lib/rules/repo/tests/mutation_nightly_test.sh"
 "repo/tests/pip_audit_test.sh" = "lib/rules/repo/tests/pip_audit_test.sh"
-"repo/tests/repo_layout_tests.bzl" = "lib/rules/repo/tests/repo_layout_tests.bzl"
 "repo/tests/retry_budget_test.sh" = "lib/rules/repo/tests/retry_budget_test.sh"
 "repo/tests/test_check_markdown_links.py" = "lib/rules/repo/tests/test_check_markdown_links.py"
 "repo/tests/test_check_mise_keys.py" = "lib/rules/repo/tests/test_check_mise_keys.py"
@@ -1913,7 +1914,7 @@ dest = "lib/rules/BUILD.bazel"
 replace = [
     ["# Copyright Tony Burns\n\nload(\"@bazelrc-preset.bzl\", \"bazelrc_preset\")\nload(\"@buildifier_prebuilt//:rules.bzl\", \"buildifier\", \"buildifier_test\")\nload(\"//format:defs.bzl\", \"format\", \"format_test\", \"formatter\")\n", "# Copyright Tony Burns\n\nload(\"@bazel_skylib//rules:diff_test.bzl\", \"diff_test\")\nload(\"@bazelrc-preset.bzl\", \"generate_preset\")\nload(\"@buildifier_prebuilt//:rules.bzl\", \"buildifier\", \"buildifier_test\")\nload(\"//format:defs.bzl\", \"format\", \"format_test\", \"formatter\")\n"],
     ["        # The gitignored PR draft, which the PR script lints itself.\n        \".github/PULL_REQUEST_DRAFT.md\",\n        \".bazelrc.user\",\n        \".coverage*\",\n", "        # The gitignored PR draft, which the PR script lints itself.\n        \".github/PULL_REQUEST_DRAFT.md\",\n        \"IMPORT-MAP.toml\",\n        \".bazelrc.user\",\n        \".coverage*\",\n"],
-    [")\n\n# Generates preset.bazelrc, which .bazelrc imports. The content depends on the\n# Bazel version that runs the generator; the committed copy matches\n# .bazelversion, and `preset.update_test` fails when it is stale.\nbazelrc_preset(\n    name = \"preset\",\n)\n\n", ")\n\n# Compare this module's standalone preset to the current generator.\ngenerate_preset(\n    name = \"preset\",\n    out = \"_preset.bazelrc\",\n    extra_presets = \"{}\",\n)\n\ndiff_test(\n    name = \"preset.update_test\",\n    file1 = \":preset\",\n    file2 = \":preset.bazelrc\",\n)\n\n"],
+    [")\n\n# Generates preset.bazelrc, which .bazelrc imports. The content depends on the\n# Bazel version that runs the generator; the committed copy matches\n# .bazelversion, and `preset.update_test` fails when it is stale.\nbazelrc_preset(\n    name = \"preset\",\n)\n\n", ")\n\n# Compare this module's standalone preset to the current generator.\ngenerate_preset(\n    name = \"preset\",\n    out = \"_preset.bazelrc\",\n    extra_presets = \"{}\",\n)\n\n# The generator includes the caller's canonical label and Bazel version in\n# its comments. Compare the flags so the containing workspace can test the\n# preset even when it runs a different Bazel patch release.\ngenrule(\n    name = \"preset_flags\",\n    srcs = [\n        \":preset\",\n        \":preset.bazelrc\",\n    ],\n    outs = [\n        \"_generated_preset_flags.txt\",\n        \"_source_preset_flags.txt\",\n    ],\n    cmd = \"\"\"\n        grep -v '^#' $(location :preset) > $(location _generated_preset_flags.txt)\n        grep -v '^#' $(location :preset.bazelrc) > $(location _source_preset_flags.txt)\n    \"\"\",\n)\n\ndiff_test(\n    name = \"preset.update_test\",\n    file1 = \":_generated_preset_flags.txt\",\n    file2 = \":_source_preset_flags.txt\",\n)\n\n"],
     ["\n# The review policy files a repository has; //lint:review_policy_test checks\n# them. None exists yet, so CODEOWNERS (which the check ignores) keeps the\n# copy non-empty, as tree_check requires, and the glob matches no more until\n# the first one lands.\nfilegroup(\n    name = \"review_policy_files\",\n    srcs = [\".github/CODEOWNERS\"] + glob(\n        [\n            \".github/PULL_REQUEST_REVIEW_*.md\",\n", "\n# The review policy files a repository has; //lint:review_policy_test checks\n# them. None exists yet, so OWNERS (which the check ignores) keeps the\n# copy non-empty, as tree_check requires, and the glob matches no more until\n# the first one lands.\nfilegroup(\n    name = \"review_policy_files\",\n    srcs = [\"OWNERS\"] + glob(\n        [\n            \".github/PULL_REQUEST_REVIEW_*.md\",\n"],
 ]
 
@@ -2219,24 +2220,23 @@ replace = [
     ["    ctx.actions.write(\n        output = manifest,\n        content = \"\".join([\"{}\\t{}\\n\".format(_relative(f, strip_prefix), f.short_path) for f in files]),\n    )\n    rules_file = ctx.actions.declare_file(ctx.label.name + \".rules\")\n", "    ctx.actions.write(\n        output = manifest,\n        content = \"\".join([\"{}\\t{}\\n\".format(tree_path(f, ctx.label.repo_name, strip_prefix), f.short_path) for f in files]),\n    )\n    rules_file = ctx.actions.declare_file(ctx.label.name + \".rules\")\n"],
 ]
 
-[rewrite."repo/tests/check_markdown_links.py"]
-dest = "lib/rules/repo/tests/check_markdown_links.py"
+[rewrite."repo/tests/BUILD.bazel"]
+dest = "lib/rules/repo/tests/BUILD.bazel"
 replace = [
-    ["\nif __name__ == \"__main__\":\n    sys.exit(main())\n", "\nif __name__ == \"__main__\":\n    if os.environ.get(\"TEST_SRCDIR\"):\n        os.chdir(Path(__file__).absolute().parents[2])\n    sys.exit(main())\n"],
+    ["load(\"//runtime:defs.bzl\", \"python_tool\")\nload(\"//testing:defs.bzl\", \"expect_failure_test\")\nload(\":repo_layout_tests.bzl\", \"repo_layout_test_suite\", \"scripts_layout_test\")\n\nrepo_files()\n", "load(\"//runtime:defs.bzl\", \"python_tool\")\nload(\"//testing:defs.bzl\", \"expect_failure_test\")\nload(\":repo_layout_tests.bzl\", \"REPO_RUNFILES_PREFIX\", \"repo_layout_test_suite\", \"scripts_layout_test\")\n\nrepo_files()\n"],
+    ["    srcs = [\":check_tool_pins\"],\n    args = [\n        \"pins/tools.json\",\n        \"pins/extensions.bzl\",\n    ],\n    data = [\"//pins:repo_files\"],\n", "    srcs = [\":check_tool_pins\"],\n    args = [\n        REPO_RUNFILES_PREFIX + \"pins/tools.json\",\n        REPO_RUNFILES_PREFIX + \"pins/extensions.bzl\",\n    ],\n    data = [\"//pins:repo_files\"],\n"],
+    ["\nMISE_KEYS_CLEAN = [\n    \"repo/tests/testdata/mise_keys/clean/baseline.toml\",\n    \"repo/tests/testdata/mise_keys/clean/mise.toml\",\n]\n\nMISE_KEYS_BAD = [\n    \"repo/tests/testdata/mise_keys/bad/baseline.toml\",\n    \"repo/tests/testdata/mise_keys/bad/mise.toml\",\n]\n\n", "\nMISE_KEYS_CLEAN = [\n    REPO_RUNFILES_PREFIX + \"repo/tests/testdata/mise_keys/clean/baseline.toml\",\n    REPO_RUNFILES_PREFIX + \"repo/tests/testdata/mise_keys/clean/mise.toml\",\n]\n\nMISE_KEYS_BAD = [\n    REPO_RUNFILES_PREFIX + \"repo/tests/testdata/mise_keys/bad/baseline.toml\",\n    REPO_RUNFILES_PREFIX + \"repo/tests/testdata/mise_keys/bad/mise.toml\",\n]\n\n"],
+    ["    srcs = [\":check_mise_keys\"],\n    args = [\n        \"repo/baseline/files/mise.toml.baseline\",\n        \"mise.toml\",\n    ],\n    data = [\n", "    srcs = [\":check_mise_keys\"],\n    args = [\n        REPO_RUNFILES_PREFIX + \"repo/baseline/files/mise.toml.baseline\",\n        REPO_RUNFILES_PREFIX + \"mise.toml\",\n    ],\n    data = [\n"],
+    ["    srcs = [\":check_markdown_links\"],\n    args = [\n        \"mise.toml\",\n        \"--git=$(rlocationpath @tbhb_rules_git//:git)\",\n    ],\n", "    srcs = [\":check_markdown_links\"],\n    args = [\n        REPO_RUNFILES_PREFIX + \"mise.toml\",\n        \"--git=$(rlocationpath @tbhb_rules_git//:git)\",\n    ],\n"],
+    ["    name = \"markdown_links_clean_test\",\n    srcs = [\":check_markdown_links\"],\n    args = [\"repo/tests/testdata/markdown_links/clean\"],\n    data = glob([\"testdata/markdown_links/clean/**\"]),\n    target_compatible_with = MISE_KEYS_NOT_WINDOWS,\n", "    name = \"markdown_links_clean_test\",\n    srcs = [\":check_markdown_links\"],\n    args = [REPO_RUNFILES_PREFIX + \"repo/tests/testdata/markdown_links/clean\"],\n    data = glob([\"testdata/markdown_links/clean/**\"]),\n    target_compatible_with = MISE_KEYS_NOT_WINDOWS,\n"],
+    ["        name = \"proof_markdown_links_\" + case,\n        srcs = [\":check_markdown_links\"],\n        args = [\"repo/tests/testdata/markdown_links/bad/\" + case],\n        data = glob([\"testdata/markdown_links/bad/%s/**\" % case]),\n        tags = [\"manual\"],\n", "        name = \"proof_markdown_links_\" + case,\n        srcs = [\":check_markdown_links\"],\n        args = [REPO_RUNFILES_PREFIX + \"repo/tests/testdata/markdown_links/bad/\" + case],\n        data = glob([\"testdata/markdown_links/bad/%s/**\" % case]),\n        tags = [\"manual\"],\n"],
+    ["    expect_failure_test(\n        name = \"proof_markdown_links_\" + case + \"_fails\",\n        args = [\"repo/tests/testdata/markdown_links/bad/\" + case],\n        pattern = pattern,\n        test = \":proof_markdown_links_\" + case,\n", "    expect_failure_test(\n        name = \"proof_markdown_links_\" + case + \"_fails\",\n        args = [REPO_RUNFILES_PREFIX + \"repo/tests/testdata/markdown_links/bad/\" + case],\n        pattern = pattern,\n        test = \":proof_markdown_links_\" + case,\n"],
 ]
 
-[rewrite."repo/tests/check_mise_keys.py"]
-dest = "lib/rules/repo/tests/check_mise_keys.py"
+[rewrite."repo/tests/repo_layout_tests.bzl"]
+dest = "lib/rules/repo/tests/repo_layout_tests.bzl"
 replace = [
-    ["\nimport argparse\nimport sys\nimport tomllib\n", "\nimport argparse\nimport os\nimport sys\nimport tomllib\n"],
-    ["\nif __name__ == \"__main__\":\n    sys.exit(main())\n", "\nif __name__ == \"__main__\":\n    if os.environ.get(\"TEST_SRCDIR\"):\n        os.chdir(Path(__file__).absolute().parents[2])\n    sys.exit(main())\n"],
-]
-
-[rewrite."repo/tests/check_tool_pins.py"]
-dest = "lib/rules/repo/tests/check_tool_pins.py"
-replace = [
-    ["\nimport argparse\nimport json\nimport re\n", "\nimport argparse\nimport os\nimport json\nimport re\n"],
-    ["\nif __name__ == \"__main__\":\n    sys.exit(main())\n", "\nif __name__ == \"__main__\":\n    if os.environ.get(\"TEST_SRCDIR\"):\n        os.chdir(Path(__file__).absolute().parents[2])\n    sys.exit(main())\n"],
+    ["load(\"@rules_testing//lib:util.bzl\", \"util\")\nload(\"//repo:defs.bzl\", \"repo_layout_test\")\n\ndef scripts_layout_test(name, fixture, **kwargs):\n", "load(\"@rules_testing//lib:util.bzl\", \"util\")\nload(\"//repo:defs.bzl\", \"repo_layout_test\")\n\n# Tests start in the main repository's runfiles directory.\n_REPO_NAME = Label(\"//:BUILD.bazel\").repo_name\nREPO_RUNFILES_PREFIX = \"../{}/\".format(_REPO_NAME) if _REPO_NAME else \"\"\n\ndef scripts_layout_test(name, fixture, **kwargs):\n"],
 ]
 
 [rewrite."repo/tests/required_files_case.sh"]
