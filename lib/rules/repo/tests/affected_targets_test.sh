@@ -201,7 +201,8 @@ FAKE_CQUERY=fail run 'tag cquery failure' pull_request "$docs_head"
 
 cli_head=$(commit factory/cli/src/tbhbdev/alpha/repo_token.py)
 BASE_SHA=$docs_head FAKE=cli_leaf run 'CLI leaf edit' pull_request "$cli_head" false 10
-[[ $(printf '%s\n' "$targets" | grep '^//factory/cli/tests:') == $'//factory/cli/tests:test_alpha_agent_invariants\n//factory/cli/tests:test_alpha_repo_token' ]] ||
+cli_tests=$(printf '%s\n' "$targets" | grep '^//factory/cli/tests:')
+[[ $cli_tests == $'//factory/cli/tests:test_alpha_agent_invariants\n//factory/cli/tests:test_alpha_repo_token' ]] ||
   fail 'CLI leaf edit: wrong per-file tests'
 [[ $targets != *mutmut_test* ]] || fail 'CLI leaf edit: selected nightly mutation test'
 grep -qF 'Selected 10 test targets' "$GITHUB_STEP_SUMMARY" || fail 'CLI leaf edit: summary count'
