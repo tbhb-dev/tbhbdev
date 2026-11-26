@@ -14,13 +14,13 @@ import (
 #FindingPrefix: #"^F([1-8]): P([0-3]) (correctness|security|design|test|docs)\s+([\s\S]+)$"#
 #Word:          #"[\p{L}\p{N}_]+"#
 #VerdictLine:   #"(?m)^[\t\p{Z}]*VERDICT:[\t ]+(?:GO|BLOCK|NO-GO)(?:[\t ]+\#(#ReviewSHA))?[\t\p{Z}]*\r?$"#
-#VerdictWord:   #"(?:GO|NO-GO|APPROVE|BLOCK|HOLD|REQUEST_CHANGES)"#
-#VerdictPrefix: #"(?i:(?:Decision|Verdict)[\t\p{Z}]*:[\t\p{Z}]*)?"#
 
-#LeadingVerdict: #"(?i)^[\t\p{Z}]*\#(#VerdictPrefix)\#(#VerdictWord)[.!?:;-]"#
-#SummaryVerdict: #"(?im:^[\t\p{Z}]*\#(#VerdictPrefix)\#(#VerdictWord)[.!?:;-]*[\t\p{Z}]*\r?$)|\#(#LeadingVerdict)"#
+// Match a punctuated opener or a line containing only a verdict.
+#VerdictStart:   #"^[\t\p{Z}]*(?:(?:Decision|Verdict)[\t\p{Z}]*:[\t\p{Z}]*)?(?:GO|NO-GO|APPROVE|BLOCK|HOLD|REQUEST_CHANGES)"#
+#SummaryVerdict: #"(?i)(?:\#(#VerdictStart)[.!?:;][\s\p{Z}]|(?m:\#(#VerdictStart)[.!?:;]?[\t\p{Z}]*\r?$))"#
 
 #Abbreviation: #"(?i:\b(?:mr|mrs|ms|dr|prof|vs)\.)|\b(?:\p{L}\.){2,}"#
+#QuotedString: #""[^"]*""#
 
 // After a closing quote or bracket, lowercase prose continues the sentence.
 #SentenceBoundary: #"[.!?][\s\p{Z}]+[\p{L}\p{N}"'“‘`(\[{]|[.!?]["'”’`)\]}]+[\s\p{Z}]+[\p{Lu}\p{Lt}\p{N}"'“‘`(\[{]"#
@@ -40,8 +40,9 @@ import (
 	_text:        visible & !~#ReviewStamp
 	_words:       <=40
 	sentenceText: *visible | string
-	// Count clear sentence boundaries after stripping abbreviation punctuation.
-	_sentences: regexp.ReplaceAll(#Abbreviation, sentenceText, "") & !~#ThreeSentences
+	// Mask quoted text and strip abbreviations before counting sentence boundaries.
+	_withoutQuotes: regexp.ReplaceAll(#QuotedString, sentenceText, "Quote")
+	_sentences:     regexp.ReplaceAll(#Abbreviation, _withoutQuotes, "") & !~#ThreeSentences
 }
 
 #ReviewItem: #ListItem & {

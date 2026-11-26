@@ -20,9 +20,9 @@ def _text_metrics(text: str) -> dict[str, int]:
     }
 
 
-def _visible(node: SyntaxTreeNode, *, keep_code_delimiters: bool = False) -> str:
-    if node.type == "code_inline" and keep_code_delimiters:
-        return f"{node.markup}{node.content}{node.markup}"
+def _visible(node: SyntaxTreeNode, *, replace_code: bool = False) -> str:
+    if node.type == "code_inline" and replace_code:
+        return "Code"
     if node.type in {"text", "code_inline"}:
         return node.content
     if node.type in {"softbreak", "hardbreak"}:
@@ -38,7 +38,7 @@ def _visible(node: SyntaxTreeNode, *, keep_code_delimiters: bool = False) -> str
         "tbody": "\n",
         "tr": "\t",
     }
-    parts = [_visible(c, keep_code_delimiters=keep_code_delimiters) for c in node.children]
+    parts = [_visible(c, replace_code=replace_code) for c in node.children]
     if node.type in separators:
         return separators[node.type].join(
             part.strip() for part in parts if part.strip()
@@ -310,7 +310,7 @@ def _group_block(
         message = "Section headings must have visible text"
         raise ValueError(message)
     if review and heading == "Summary" and len(content) == 1:
-        content[0]["sentenceText"] = _visible(group[1], keep_code_delimiters=True)
+        content[0]["sentenceText"] = _visible(group[1], replace_code=True)
     block.update(heading=heading, level=2)
     heading_end = cast("tuple[int, int]", first.map)[1]
     _without_heading(block, doc.source[start : doc.offsets[heading_end]], group[1:])

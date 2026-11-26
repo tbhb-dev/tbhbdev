@@ -60,7 +60,6 @@ def test_summary_counts_words_instead_of_characters() -> None:
         "The driver validates the request. `pytest` passed. The host posts the review.",
         "The driver validates the request. retries passed. The host posts the review.",
         "The driver validates the request. 3 tests passed. The host posts the review.",
-        'Retries are safe. The handler reports "Saved." The cache keeps the result.',
         "é" * 4097,
     ],
 )
@@ -73,15 +72,18 @@ def test_summary_refuses_excess_words_sentences_or_size(summary: str) -> None:
 @pytest.mark.parametrize(
     "summary",
     [
+        "Go-based fixtures cover the parser",
         "Go, Python, and Rust use the same fixture.",
         "Block the build when the request is invalid.",
         "NO-GO because the cache returns a stale value.",
         'The parser accepts "Retry?" as a label. Tests cover it.',
         "The parser accepts `Retry?` as a label. Tests cover it.",
+        "The parser preserves `Retry? yes` as a single string. Tests cover it.",
         "The handler returns the `APPROVE` enum.",
         "The handler checks each result, e.g. a stale value. Retries preserve it.",
         "The handler checks labels, e.g. Ready or Saved. Retries preserve them.",
         'The handler reports "Saved." The cache keeps the result.',
+        'Retries are safe. The handler reports "Saved." The cache keeps the result.',
         "Dr. Lee inspected the cache. It keeps the result.",
         "Dr. Lee tested warm vs. cold caches. `pytest` passed.",
         "The handler recognizes `VERDICT: GO`.",
