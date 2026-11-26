@@ -257,7 +257,8 @@ BASE_SHA=$base FAKE=dispatch run 'dispatch with explicit base' workflow_dispatch
 [[ $targets == $'//go:lib_test\n//go:cmd_test' ]] || fail 'dispatch explicit base: wrong targets'
 BASE_SHA='' FAKE=dispatch run 'dispatch with default base' workflow_dispatch "$dispatch_head" false 1
 [[ $targets == '//go:cmd_test' ]] || fail 'dispatch default base: wrong targets'
-[[ $(tail -n 1 "$ARGS_LOG") == "$dispatch_parent" ]] || fail 'dispatch default base: expected the first parent SHA'
+last=$(tail -n 1 "$ARGS_LOG")
+[[ $last == "$dispatch_parent" ]] || fail 'dispatch default base: expected the first parent SHA'
 BASE_SHA=0123456789abcdef0123456789abcdef01234567 run 'dispatch with missing base' workflow_dispatch "$dispatch_head"
 [[ $reason == *'missing from the checkout'* ]] || fail 'dispatch missing base: wrong reason'
 BASE_SHA='' run 'dispatch of root commit' workflow_dispatch "$base"
