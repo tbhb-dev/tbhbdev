@@ -23,6 +23,10 @@ def run(log: Path, env: Mapping[str, str], *argv: Path) -> None:
 
 
 def main(_argv: list[str], _prog: str) -> int:
+    classify = os.environ.get("TBHB_WORKTREE_CLASSIFY", "")
+    apply = os.environ.get("TBHB_WORKTREE_APPLY", "")
+    if "" in (classify, apply):
+        return 0
     home = Path.home()
     env = os.environ | {
         "PATH": f"/opt/homebrew/bin:/usr/local/bin:{home}/.local/bin:/usr/bin:/bin"
@@ -31,18 +35,17 @@ def main(_argv: list[str], _prog: str) -> int:
     stamp = datetime.fromtimestamp(time(), UTC).strftime("%Y%m%dT%H%M%SZ")
     directory = state / "tbhb/2026-11-13-tools-worktree-sweep" / stamp
     directory.mkdir(parents=True, exist_ok=True)
-    libexec = home / ".local/libexec/tbhb"
     run(
         directory / "classify.log",
         env,
-        libexec / "2026-11-13-tools-worktree-classify-all.sh",
+        Path(classify),
         directory,
     )
     apply_output = directory / "apply.out"
     run(
         apply_output,
         env,
-        libexec / "2026-11-13-tools-worktree-apply.sh",
+        Path(apply),
         directory / "plan.tsv",
         directory / "apply.log",
     )

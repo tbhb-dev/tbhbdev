@@ -24,12 +24,14 @@ def test_sweep(
     monkeypatch.setattr(worktree_sweep, "time", lambda: 0)
     root = tmp_path / ("state" if removed else ".local/state")
     directory = root / "tbhb/2026-11-13-tools-worktree-sweep/19700101T000000Z"
-    libexec = tmp_path / ".local/libexec/tbhb"
+    classify, apply = tmp_path / "classify", tmp_path / "apply"
+    monkeypatch.setenv("TBHB_WORKTREE_CLASSIFY", str(classify))
+    monkeypatch.setenv("TBHB_WORKTREE_APPLY", str(apply))
     helpers = iter(
         [
-            (libexec / "2026-11-13-tools-worktree-classify-all.sh", directory),
+            (classify, directory),
             (
-                libexec / "2026-11-13-tools-worktree-apply.sh",
+                apply,
                 directory / "plan.tsv",
                 directory / "apply.log",
             ),
@@ -65,6 +67,8 @@ def test_missing_classifier_still_runs_apply(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
+    monkeypatch.setenv("TBHB_WORKTREE_CLASSIFY", str(isolated_home / "classify"))
+    monkeypatch.setenv("TBHB_WORKTREE_APPLY", str(isolated_home / "apply"))
     calls: list[tuple[Path, ...]] = []
 
     def run(argv: tuple[Path, ...], **_: object) -> None:
@@ -81,3 +85,9 @@ def test_missing_classifier_still_runs_apply(
     log = classifier[1] / "classify.log"
     assert log.read_text() == f"{classifier[0]}: No such file or directory\n"
     assert capsys.readouterr() == ("", "")
+
+
+def test_unconfigured_sweep_skips_work(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("TBHB_WORKTREE_CLASSIFY", raising=False)
+    monkeypatch.delenv("TBHB_WORKTREE_APPLY", raising=False)
+    assert alpha.main(["worktree-sweep"], "tbhbdev alpha") == 0

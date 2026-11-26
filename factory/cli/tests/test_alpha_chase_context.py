@@ -70,6 +70,8 @@ def test_cached_message_is_injected_per_session(
 def test_refresh_filters_rows_and_uses_the_shim(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
+    helper = str(tmp_path / "scanner")
+    monkeypatch.setenv("TBHB_STALE_PRS", helper)
     rows = [
         "unrelated line",
         "CHASE ops#1 abc 1440m title",
@@ -81,7 +83,7 @@ def test_refresh_filters_rows_and_uses_the_shim(
     def scanner(
         argv: list[str], *, env: dict[str, str], **_: object
     ) -> subprocess.CompletedProcess[str]:
-        assert argv == ["timeout", "40", chase_context.STALE_PRS, "20"]
+        assert argv == ["timeout", "40", helper, "20"]
         shim_dir = tmp_path / ".local/share/tbhbdev/agent-bin"
         assert env["PATH"].split(":")[0] == str(shim_dir)
         return subprocess.CompletedProcess(argv, 0, "\n".join(rows))
@@ -125,8 +127,18 @@ def test_empty_refresh_stays_silent(
     budget = tmp_path / ".local/state/tbhbdev/gh-budget/core.json"
     budget.parent.mkdir(parents=True)
     budget.write_text('{"remaining": 1}')
+    monkeypatch.setenv("TBHB_STALE_PRS", str(tmp_path / "scanner"))
     monkeypatch.setattr(chase_context.subprocess, "run", scanner)
     prompt(tmp_path, "s1", monkeypatch)
     assert alpha.main(["chase-context"], "tbhbdev alpha") == 0
     assert capsys.readouterr() == ("", "")
     assert (tmp_path / ".local/state/tbhb/chase-context.cache").read_text() == ""
+
+
+def test_unconfigured_refresh_skips_scan(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.delenv("TBHB_STALE_PRS", raising=False)
+    assert chase_context.refresh(tmp_path) == ""
+    monkeypatch.setenv("TBHB_STALE_PRS", "")
+    assert chase_context.refresh(tmp_path) == ""

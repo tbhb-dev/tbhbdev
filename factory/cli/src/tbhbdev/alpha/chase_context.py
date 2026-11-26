@@ -16,7 +16,6 @@ WATCHDOG = (
     "WATCHDOG: these PRs have had no update for 20+ minutes. "
     "Chase each owner now, before other work:"
 )
-STALE_PRS = "/Users/tony/.local/libexec/tbhb/2026-11-14-coord-stale-prs.v1.sh"
 ROW = re.compile(r"^CHASE +[a-z-]+#[0-9]+ ")
 NUMBER = re.compile(r"^[+-]?(?:[0-9]+\.?[0-9]*|\.[0-9]+)(?:[eE][+-]?[0-9]+)?")
 AGE_FIELD = 3
@@ -58,12 +57,15 @@ def recent_row(line: str) -> bool:
 
 
 def refresh(home: Path) -> str:
+    helper = os.environ.get("TBHB_STALE_PRS")
+    if not helper:
+        return ""
     env = os.environ | {
         "PATH": f"{home}/.local/share/tbhbdev/agent-bin:{os.environ.get('PATH', '')}"
     }
     with suppress(OSError):
         result = subprocess.run(  # nosec B603 B607
-            ["timeout", "40", STALE_PRS, "20"],
+            ["timeout", "40", helper, "20"],
             env=env,
             stdout=subprocess.PIPE,
             stderr=subprocess.DEVNULL,
