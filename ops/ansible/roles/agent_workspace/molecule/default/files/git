@@ -1,0 +1,11 @@
+#!/usr/bin/env bash
+set -euo pipefail
+case " $* " in
+*' clone '* | *' fetch '*)
+	[[ $GIT_TERMINAL_PROMPT == 0 ]]
+	[[ " $* " == *' -c credential.helper= '* ]]
+	[[ " $* " != *'gh auth git-credential'* ]]
+	[[ " $* " == *' https://github.com/fixture/'* ]]
+	;;
+esac
+exec /usr/bin/git "$@"

@@ -7,18 +7,26 @@ import (
 	"strings"
 )
 
-#ReviewSHA:      #"[0-9a-f]{40}"#
-#ReviewHost:     #"[a-z0-9](?:[a-z0-9-]*[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]*[a-z0-9])?)+"#
-#ReviewVerdict:  "GO" | "NO-GO"
-#ReviewEvent:    "APPROVE" | "REQUEST_CHANGES" | "COMMENT"
-#FindingPrefix:  #"^F([1-8]): P([0-3]) (correctness|security|design|test|docs)\s+([\s\S]+)$"#
-#Word:           #"[\p{L}\p{N}_]+"#
-#VerdictLine:    #"(?m)^[\t\p{Z}]*VERDICT:[\t ]+(?:GO|BLOCK|NO-GO)(?:[\t ]+\#(#ReviewSHA))?[\t\p{Z}]*\r?$"#
-#SummaryVerdict: #"(?im)^[\t\p{Z}]*(?:(?:Decision|Verdict)[\t\p{Z}]*:[\t\p{Z}]*)?(?:GO|NO-GO|APPROVE|BLOCK|HOLD|REQUEST_CHANGES)[.!?]*[\t\p{Z}]*\r?$"#
-#Abbreviation:   #"(?i:\b(?:mr|mrs|ms|dr|prof|vs)\.)|\b(?:\p{L}\.){2,}"#
-#SentenceStart:  #"[.!?]["'”’)\]]*[\s\p{Z}]+["'“‘(\[]*\p{Lu}"#
-#ThreeSentences: #"(?s)\#(#SentenceStart).*\#(#SentenceStart)"#
-#ReviewStamp:    #"(?i)(\bjudged head\b|\b(commit|head)[ :=]+[0-9a-f]{7,40}\b|\b\#(#ReviewSHA)\b|(?m:^(Run|Provider|Model|Variant|Host|Head|Tier):))"#
+#ReviewSHA:     #"[0-9a-f]{40}"#
+#ReviewHost:    #"[a-z0-9](?:[a-z0-9-]*[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]*[a-z0-9])?)+"#
+#ReviewVerdict: "GO" | "NO-GO"
+#ReviewEvent:   "APPROVE" | "REQUEST_CHANGES" | "COMMENT"
+#FindingPrefix: #"^F([1-8]): P([0-3]) (correctness|security|design|test|docs)\s+([\s\S]+)$"#
+#Word:          #"[\p{L}\p{N}_]+"#
+#VerdictLine:   #"(?m)^[\t\p{Z}]*VERDICT:[\t ]+(?:GO|BLOCK|NO-GO)(?:[\t ]+\#(#ReviewSHA))?[\t\p{Z}]*\r?$"#
+
+// Match an uppercase verdict at the start or a verdict alone on any line.
+#VerdictStart:   #"^[\t\p{Z}]*(?:(?i:Decision|Verdict)[\t\p{Z}]*:[\t\p{Z}]*)?(?:GO|NO-GO|APPROVE|BLOCK|HOLD|REQUEST_CHANGES)"#
+#SummaryVerdict: #"\#(#VerdictStart)(?:$|[.!?:;\s\p{Z}])|(?im:\#(#VerdictStart)[.!?:;]?[\t\p{Z}]*\r?$)"#
+
+#Abbreviation:    #"(?i:\b(?:mr|mrs|ms|dr|prof|vs)\.)|\b(?:\p{L}\.){2,}"#
+#CurlyApostrophe: #"(\p{L})’(\p{L})"#
+#QuotedString:    #""[^"]*"|“[^”]*”|‘[^’]*’"#
+
+// After a closing quote or bracket, lowercase prose continues the sentence.
+#SentenceBoundary: #"[.!?][\s\p{Z}]+[\p{L}\p{N}"'“‘`(\[{]|[.!?]["'”’`)\]}]+[\s\p{Z}]+[\p{Lu}\p{Lt}\p{N}"'“‘`(\[{]"#
+#ThreeSentences:   #"(?s)(?:\#(#SentenceBoundary)).*(?:\#(#SentenceBoundary))"#
+#ReviewStamp:      #"(?i)(\bjudged head\b|\b(commit|head)[ :=]+[0-9a-f]{7,40}\b|\b\#(#ReviewSHA)\b|(?m:^(Run|Provider|Model|Variant|Host|Head|Tier):))"#
 
 #ReviewProse: {
 	_text:  string
@@ -27,12 +35,19 @@ import (
 }
 
 #ReviewSummary: #Paragraph & #ReviewProse & {
+	source:  !~#ReviewStamp
 	visible: !~#SummaryVerdict
 	metrics: visible: characters: <=4096
-	_text:  visible
-	_words: <=40
-	// Count clear sentence boundaries after stripping abbreviation punctuation.
-	_sentences: regexp.ReplaceAll(#Abbreviation, visible, "") & !~#ThreeSentences
+	_text:        visible & !~#ReviewStamp
+	_words:       <=40
+	sentenceText: *visible | string
+	// Normalize apostrophes between letters. A second pass catches matches that share a letter.
+	let firstPass = regexp.ReplaceAll(#CurlyApostrophe, sentenceText, "$1'$2")
+	let normalized = regexp.ReplaceAll(#CurlyApostrophe, firstPass, "$1'$2")
+
+	// Mask quoted text and strip abbreviations before counting sentence boundaries.
+	_withoutQuotes: regexp.ReplaceAll(#QuotedString, normalized, "Quote")
+	_sentences:     regexp.ReplaceAll(#Abbreviation, _withoutQuotes, "") & !~#ThreeSentences
 }
 
 #ReviewItem: #ListItem & {
@@ -46,6 +61,9 @@ import (
 	_parts:  regexp.FindSubmatch(#FindingPrefix, visible)
 	_text:   strings.TrimRight(strings.Join(strings.Fields(_parts[4]), " "), ".!?") & !~#CIRestatement
 	_words:  <=30
+	if _parts[2] == "1" {
+		_text: =~#"(?:^| )Occurs when: [\p{L}\p{N}]"#
+	}
 }
 
 #ReviewSuggestion: #ReviewItem & #ReviewProse & {

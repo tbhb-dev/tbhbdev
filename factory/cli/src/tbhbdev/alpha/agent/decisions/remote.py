@@ -10,7 +10,7 @@ from tbhbdev.alpha.agent.decisions import repo
 from tbhbdev.alpha.agent.decisions import runfiles_names as files
 
 if TYPE_CHECKING:
-    from tbhbdev.alpha.agent.model import Host
+    from tbhbdev.alpha.agent.model import Host, Profile
 
 PREFIX = """PATH=/usr/bin:/bin:/usr/sbin:/sbin
 export PATH
@@ -90,20 +90,28 @@ test "$(find "$s" -prune -type d -user "$(id -un)" -perm 0700)" = "$s" || exit 6
     )
 
 
+OWNER_MATCH = (
+    'test ! -L "$owner" && test -f "$owner" && '
+    'test "$(cat "$owner")" = "$given" || exit 73\n'
+)
+
+
+def owner_input(name: str) -> str:
+    return (
+        PREFIX
+        + ROOT
+        + f'owner="$d/{name}{files.OWNER}"\n'
+        + 'IFS= read -r given || exit 73\ntest -n "$given" || exit 73\n'
+    )
+
+
 def owned(name: str) -> str:
     """Check the owner on stdin's first line against the run's owner file.
 
     The owner never appears in the script, because ssh arguments reach audit
     logs. ``transport`` writes the owner as the first line of stdin.
     """
-    path = f'"$d/{name}{files.OWNER}"'
-    return (
-        PREFIX
-        + ROOT
-        + 'IFS= read -r given || exit 73\ntest -n "$given" || exit 73\n'
-        + f"test ! -L {path} && test -f {path} && "
-        + f'test "$(cat {path})" = "$given" || exit 73\n'
-    )
+    return owner_input(name) + OWNER_MATCH
 
 
 def session(name: str, command: str, sockets_dir: str) -> str:
@@ -120,6 +128,22 @@ def program(host: Host) -> str:
 
 def installed(host: Host) -> str:
     return PREFIX + f"{program(host)} --version"
+
+
+def check_slot(host: Host, profile: Profile) -> str:
+    command = shlex.join(
+        (
+            "alpha",
+            "agent",
+            "check-slot",
+            host.name,
+            profile,
+            str(host.max_concurrent_runs),
+            "--",
+            *host.accounts,
+        )
+    )
+    return "# tbhbdev-check-slot\n" + PREFIX + f"exec {program(host)} {command}\n"
 
 
 PRESSURE_CHECK = "case \"$q\" in ''|*[!0-9.]*) q=-;; esac\n"
@@ -207,10 +231,14 @@ tar -xf - -C "$d"
     )
 
 
-def start(name: str, sockets_dir: str, host: Host) -> tuple[str, ...]:
+def start(
+    name: str, sockets_dir: str, host: Host, *, steer: bool = False
+) -> tuple[str, ...]:
     command = shlex.join(
         ("alpha", "agent", "run-host", name, "--host", host.name, "--owned")
     )
+    if steer:
+        command += " --steer"
     return (
         "/bin/sh",
         "-c",
@@ -276,7 +304,7 @@ def failed_log(name: str) -> str:
     log = f'"$d/{name}{files.LOG}"'
     return (
         run_rc(name)
-        + f"""case "$rc" in ''|0|00|000) ;; *)
+        + f"""case "$rc" in ''|0) ;; *)
     safe_file {log}
     if test -f {log}; then tail -c 65536 {log}; fi
     exit "$?"
@@ -376,16 +404,11 @@ INSPECTION_OUTPUT = (
 )
 
 
-def mirror_command(
-    repository: str, name: str, command: str, *, before: str = ""
-) -> str:
+def mirror_command(repository: str, command: str) -> str:
     git_host, organization, project = repo.parts(repository)
     git_host = git_host.lower()
     return (
-        owned(name)
-        + HELPERS
-        + before
-        + f'mirror="$state/tbhbdev/agent-mirrors/{git_host}/{organization}/'
+        f'mirror="$state/tbhbdev/agent-mirrors/{git_host}/{organization}/'
         f"""{project}.git"
 for p in "$state/tbhbdev/agent-mirrors" \
     "$state/tbhbdev/agent-mirrors/{git_host}" \
@@ -405,10 +428,13 @@ perl -MFcntl=:flock -e {shlex.quote(MIRROR_LOCK)} \
 
 
 def origin_branch(repository: str, name: str) -> str:
-    return mirror_command(
-        repository,
-        name,
-        f"{MIRROR_GIT} ls-remote --end-of-options origin refs/heads/agent/{name}",
+    return (
+        owned(name)
+        + FILE_HELPERS
+        + mirror_command(
+            repository,
+            f"{MIRROR_GIT} ls-remote --end-of-options origin refs/heads/agent/{name}",
+        )
     )
 
 
@@ -424,15 +450,31 @@ def worktree_patch(repository: str, name: str, *, export: bool) -> str:
     internals = " ".join(f'"$run/{entry}"' for entry in GIT_INTERNALS)
     base, tip = (f'"$d/{name}{suffix}"' for suffix in (files.BASE, files.HEAD))
     reflog = f'"$run/logs/refs/heads/agent/{name}"'
+    git = (
+        f'{GIT} GIT_CONFIG_GLOBAL=/dev/null GIT_DIR="$scratch" {GIT_FLAGS} '
+        "-c protocol.allow=never -c diff.external= -c core.multiPackIndex=false "
+        "--no-optional-locks"
+    )
     # Read refs as data and give Git only the object directory, never the
     # run's Git configuration. Older runs get their base from branch creation.
-    script = f"""run={run}
-for p in {paths}; do
-    test ! -L "$p" && test -d "$p" || exit 65
-done
-for p in {internals}; do
-    test ! -L "$p" || exit 65
-done
+    script = (
+        f"""run={run}
+check_paths() {{
+    for p in {paths}; do
+        test ! -L "$p" && test -d "$p" || exit 65
+    done
+    for p in {internals}; do
+        test ! -L "$p" || exit 65
+    done
+    links=$(find "$run/objects" "$run/refs" -type l -print -quit) || exit 65
+    test -z "$links" || exit 65
+"""
+        '    pack_index=$(find "$run/objects/pack" -name "multi-pack-index*" '
+        "-print -quit) || exit 65\n"
+        f"""    test -z "$pack_index" || exit 65
+    test ! -e "$run/objects/info/alternates" || exit 65
+}}
+check_paths
 resolve() {{
     case "$1" in *[!A-Za-z0-9._/-]*|*..*|*//*) return 65 ;; esac
     if test -f "$run/$1" && test ! -L "$run/$1"; then
@@ -446,11 +488,6 @@ valid_sha() {{
     case "$1" in ""|*[!0-9a-f]*) return 65 ;; esac
     test "${{#1}}" -eq 40
 }}
-links=$(find "$run/objects" "$run/refs" -type l -print -quit) || exit 65
-test -z "$links" || exit 65
-pack_index=$(find "$run/objects/pack" -name "multi-pack-index*" -print -quit) || exit 65
-test -z "$pack_index" || exit 65
-test ! -e "$run/objects/info/alternates" || exit 65
 safe_file {tip}
 if test -f {tip}; then
     tip=$(head -c 41 {tip}) || exit 65
@@ -478,37 +515,46 @@ trap 'rm -rf "$scratch"' EXIT
 ln -s "$run/objects" "$scratch/source" || exit 65
 printf '%s\\n' ../source > "$scratch/objects/info/alternates" || exit 65
 patch_git() {{
-    {GIT} GIT_CONFIG_GLOBAL=/dev/null GIT_DIR="$scratch" {GIT_FLAGS} \
-        -c protocol.allow=never -c diff.external= -c core.multiPackIndex=false \
-        --no-optional-locks "$@"
+    {git} "$@"
 }}
-# A merge's conflict resolutions have no standalone patch. Export the final
-# tree as a single commit atop the recorded base whenever the range has merges.
+# Export the final tree as one commit atop the recorded base when the range
+# contains merges or the tip no longer descends from the base.
 merges=$(patch_git rev-list --max-count=1 --merges "$base..$tip" --) || exit 65
-if test -n "$merges"; then
+if test -n "$merges" || ! patch_git merge-base --is-ancestor "$base" "$tip"; then
     tree=$(patch_git rev-parse "$tip^{{tree}}") || exit 65
     base_tree=$(patch_git rev-parse "$base^{{tree}}") || exit 65
     test "$tree" != "$base_tree" || exit 0
     tip=$(patch_git -c user.name=tbhbdev -c user.email=tbhbdev@localhost \
         commit-tree "$tree" -p "$base" -m "Run {name} ($tip)") || exit 65
 fi
-patch_git format-patch --stdout --no-ext-diff --no-textconv --no-color \
-    --no-signature --no-attach --no-add-header --no-notes "$base..$tip" --
 """
-    if export:
-        return script
-    return (
-        f"perl -e {shlex.quote(INSPECTION_OUTPUT)} "
-        f"/bin/sh -c {shlex.quote(FILE_HELPERS + script)}\n"
     )
+    format_patch = (
+        "format-patch --stdout --no-ext-diff --no-textconv --no-color "
+        '--no-signature --no-attach --no-add-header --no-notes "$base..$tip" --'
+    )
+    if export:
+        return script + f"patch_git {format_patch}\n"
+    # Hold the capped output until the same path checks pass again.
+    script += (
+        f"perl -e {shlex.quote(INSPECTION_OUTPUT)} {git} {format_patch} "
+        '> "$scratch/patch"\n'
+        "status=$?\n"
+        "check_paths\n"
+        'cat "$scratch/patch" || exit "$?"\n'
+        'exit "$status"\n'
+    )
+    return f"/bin/sh -c {shlex.quote(FILE_HELPERS + script)}\n"
 
 
 def export_patch(repository: str, name: str) -> str:
+    phase = f'"$d/{name}{files.PHASE}"'
     return (
         owned(name)
         + FILE_HELPERS
         + run_rc(name)
         + 'test -n "$rc" || exit 65\n'
+        + f'safe_file {phase}\ntest "$(head -c 7 {phase})" = ended || exit 65\n'
         + worktree_patch(repository, name, export=True)
     )
 
@@ -534,26 +580,44 @@ def inspect(repository: str, name: str, *, limit: int | None) -> str:
             f'{patch}    exit "$?"\n'
             "fi\n"
         )
-    return mirror_command(
-        repository,
-        name,
+    script = (
         fallback
         + f"{MIRROR_GIT} -c transfer.fsckObjects=true -c core.logAllRefUpdates=false "
         "fetch --no-write-fetch-head --no-tags --no-prune --no-prune-tags "
         f"--end-of-options origin +HEAD:{base} +{branch}:{branch} "
         '|| exit "$?"\n'
-        f"perl -e {shlex.quote(INSPECTION_OUTPUT)} /bin/sh -c {shlex.quote(read)}",
-        before=before,
+        f"perl -e {shlex.quote(INSPECTION_OUTPUT)} /bin/sh -c {shlex.quote(read)}"
     )
+    return owned(name) + FILE_HELPERS + before + mirror_command(repository, script)
 
 
-def clean(
+# A supervisor may hold the lock outside tmux, or leave a detached group.
+OWNERLESS_LIVENESS = r"""
+my ($lock, $group) = @ARGV;
+if (-f $lock) {
+    open(my $fh, "<", $lock) or exit 65;
+    flock($fh, LOCK_EX | LOCK_NB) or exit 1;
+}
+if (-f $group) {
+    open(my $fh, "<", $group) or exit 65;
+    defined(read($fh, my $data, 4097)) && length($data) <= 4096 or exit 65;
+    my $record = eval { decode_json($data) };
+    ref($record) eq "HASH" or exit 65;
+    my $pgid = $record->{pgid} // "";
+    $pgid =~ /\A[0-9]{1,10}\z/ && $pgid > 1 && $pgid <= 2147483647 or exit 65;
+    exit 1 if kill(0, -$pgid) || $! != ESRCH;
+}
+"""
+
+
+def clean(  # noqa: PLR0913 -- separate the target from the two cleanup guards
     repository: str,
     name: str,
     stamp: str,
     sockets_dir: str,
     *,
     force: bool,
+    ownerless_only: bool = False,
 ) -> str:
     clone = repo.clone_path(PurePosixPath("."), repository)
     tree = f".worktrees/agent-{name}"
@@ -575,16 +639,34 @@ if test -d "$path"; then
 fi
 """
     command = (
-        owned(name)
-        + FILE_HELPERS
+        owner_input(name)
+        + 'orphan=0\nif test ! -e "$owner" && test ! -L "$owner"; then\n'
+        + "    orphan=1\nelse\n"
+        + ("    exit 73\n" if ownerless_only else f"    {OWNER_MATCH}")
+        + "fi\n"
         + socket_root(sockets_dir)
         + f"""tmux_state has-session ag-{name}
 test "$present" -eq 0 || exit 1
+if test "$orphan" -eq 1; then
+    lock="$d/{name}{files.RUN_LOCK}"
+    group="$d/{name}{files.PGID}"
+    safe_file "$lock"
+    safe_file "$group"
+    if test -f "$lock" || test -f "$group"; then
+        perl -MFcntl=:flock -MJSON::PP -MErrno=ESRCH \\
+            -e {shlex.quote(OWNERLESS_LIVENESS)} "$lock" "$group" || exit "$?"
+    fi
+    # Claim the name just as transfer does, and keep it until all moves finish.
+    mkdir -p -m 700 "$d" || exit "$?"
+    (set -C; printf '%s\\n' "$given" > "$owner") || exit 73
+    trap 'rm -f "$owner" || exit "$?"' EXIT
+    trap 'exit 1' HUP INT TERM
+fi
 """
     )
     if not force:
         command += f"""fallback="$d/{name}{files.FALLBACK}"
-if test -e "$fallback" || test -L "$fallback"; then
+if test "$orphan" -eq 0 && {{ test -e "$fallback" || test -L "$fallback"; }}; then
     printf '%s\\n' 'clean refused: fallback rc requires --force' >&2
     exit 65
 fi
@@ -597,6 +679,8 @@ mkdir -p "$trash" || exit "$?"
         + move
     )
     for suffix in files.SUFFIXES:
+        if suffix == files.OWNER:
+            command += 'test "$orphan" -eq 0 || exit 0\n'
         path = f'"$d/{name}{suffix}"'
         command += (
             f"safe_file {path}\n"

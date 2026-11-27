@@ -1,0 +1,87 @@
+---
+- name: Verify
+  hosts: all
+  become: true
+  tasks:
+    - name: Read the installed packages
+      ansible.builtin.package_facts:
+        manager: apt
+
+    - name: Require the sandbox packages
+      ansible.builtin.assert:
+        that:
+          - "'bubblewrap' in ansible_facts.packages"
+          - "'apparmor' in ansible_facts.packages"
+        quiet: true
+
+    - name: List the AppArmor package's files
+      ansible.builtin.command:
+        argv: [dpkg-query, --listfiles, apparmor]
+      register: agent_host_verified_files
+      changed_when: false
+
+    - name: Select the expected profiles
+      ansible.builtin.set_fact:
+        agent_host_verified_profiles: >-
+          {{ agent_host_verified_files.stdout_lines
+              | select('match', '^/etc/apparmor[.]d/(bwrap([-.][^/]*)?|usr[.]bin[.]bwrap|bubblewrap)$') | sort | list }}
+
+    - name: Select the fallback when no package profile exists
+      ansible.builtin.set_fact:
+        agent_host_verified_profiles: [/etc/apparmor.d/agent-host-bwrap]
+      when: agent_host_verified_profiles | length == 0
+
+    - name: Read the installed profile permissions
+      ansible.builtin.stat:
+        path: "{{ item }}"
+      loop: "{{ agent_host_verified_profiles }}"
+      register: agent_host_verified_stats
+
+    - name: Require root-owned profiles that only root can write
+      ansible.builtin.assert:
+        that:
+          - item.stat.isreg
+          - item.stat.uid == 0
+          - item.stat.gid == 0
+          - item.stat.mode == '0644'
+        quiet: true
+      loop: "{{ agent_host_verified_stats.results }}"
+      loop_control:
+        label: "{{ item.item }}"
+
+    # -Q parses without loading into the container host's kernel.
+    - name: Parse the installed AppArmor profiles without loading them
+      ansible.builtin.command:
+        argv: [apparmor_parser, -Q, -T, "{{ item }}"]
+      loop: "{{ agent_host_verified_profiles }}"
+      changed_when: false
+
+    - name: Render the fallback profile for a parser check
+      ansible.builtin.template:
+        src: "{{ lookup('env', 'MOLECULE_PROJECT_DIRECTORY') }}/templates/bwrap.j2"
+        dest: /var/tmp/agent-host-bwrap-profile
+        owner: root
+        group: root
+        mode: "0644"
+
+    - name: Parse the fallback AppArmor profile without loading it
+      ansible.builtin.command:
+        argv: [apparmor_parser, -Q, -T, /var/tmp/agent-host-bwrap-profile]
+      changed_when: false
+
+    - name: Read the namespace restriction after convergence
+      ansible.builtin.slurp:
+        src: /proc/sys/kernel/apparmor_restrict_unprivileged_userns
+      register: agent_host_verified_restriction
+      failed_when: false
+
+    - name: Read the original namespace restriction
+      ansible.builtin.slurp:
+        src: /var/tmp/agent-host-userns-before
+      register: agent_host_saved_restriction
+
+    - name: Require the host-wide restriction to stay unchanged
+      ansible.builtin.assert:
+        that: >-
+          agent_host_verified_restriction.content | default('') == agent_host_saved_restriction.content
+        quiet: true

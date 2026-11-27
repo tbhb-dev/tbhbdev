@@ -18,8 +18,9 @@ import urllib.error
 from pathlib import Path
 from typing import cast
 
-import httpx
+import httpx2
 
+from tbhbdev import github_tls
 from tbhbdev.alpha.agent import credentials, host_tools, transport
 from tbhbdev.alpha.agent import settings as agent_settings
 from tbhbdev.alpha.agent.decisions import remote
@@ -84,7 +85,7 @@ def host_main(argv: list[str], prog: str) -> int:
 
 
 def public_keys(
-    *, timeout: int, transport: httpx.BaseTransport | None = None
+    *, timeout: int, transport: httpx2.BaseTransport | None = None
 ) -> list[str]:
     """Read tbhb-agent's public signing keys in one GitHub request.
 
@@ -94,16 +95,17 @@ def public_keys(
     body = bytearray()
     try:
         with (
-            httpx.Client(
+            httpx2.Client(
                 timeout=timeout,
                 transport=transport,
                 follow_redirects=False,
                 trust_env=False,
+                verify=github_tls.public_roots(),
                 headers={"Accept": "application/vnd.github+json"},
             ) as client,
             client.stream("GET", KEYS_URL) as response,
         ):
-            if response.status_code != httpx.codes.OK:
+            if response.status_code != httpx2.codes.OK:
                 message = f"GitHub answered {response.status_code}"
                 raise OSError(message)
             for chunk in response.iter_bytes():
@@ -111,7 +113,7 @@ def public_keys(
                 if len(body) > MAX_KEYS_BYTES:
                     message = "the GitHub signing key list is too large"
                     raise OSError(message)
-    except httpx.HTTPError as exc:
+    except httpx2.HTTPError as exc:
         message = f"the GitHub request failed: {type(exc).__name__}"
         raise OSError(message) from None
     entries: object = json.loads(body)

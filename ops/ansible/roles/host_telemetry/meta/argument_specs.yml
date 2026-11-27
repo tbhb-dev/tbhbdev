@@ -1,0 +1,33 @@
+---
+argument_specs:
+  main:
+    short_description: Ship the journal and the audit log to the tailnet's OTLP service with Grafana Alloy
+    description:
+      - >-
+          Installs Grafana Alloy from Grafana's apt repository at a pinned version and runs it as
+          its packaged alloy user. Alloy reads the journal entries of sshd, sudo, the kernel,
+          Docker, libvirtd, tailscaled, bazel-reaper, tbhb-dotfiles-drift, event-gateway-gateway,
+          and event-gateway-tunnel. It sends these entries and /var/log/audit/audit.log over OTLP
+          HTTP. Records carry the labels host and service_name, and audit records also stream=audit.
+          Alloy keeps its file positions and a queue on disk, and retries a failed send with
+          backoff. A journald drop-in keeps the journal on disk, up to 4G. The host_audit role
+          sets auditd's log_group to adm, which lets Alloy read audit.log, so it runs first.
+    options:
+      host_telemetry_alloy_version:
+        type: str
+        default: 1.21.3-1
+        description: The alloy package version to install, as Grafana's apt repository names it.
+      host_telemetry_otlp_endpoint:
+        type: str
+        default: ""
+        description: >-
+          The OTLP HTTP endpoint, without a path. Empty builds http://service.suffix:4318 from
+          host_telemetry_otlp_service and the MagicDNS suffix in tailscale status --json.
+      host_telemetry_otlp_service:
+        type: str
+        default: otlp
+        description: The tailnet service's short name, used when the endpoint is empty.
+      host_telemetry_run:
+        type: bool
+        default: true
+        description: Start Alloy and restart journald. False only where systemd isn't running.

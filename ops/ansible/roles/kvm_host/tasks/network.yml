@@ -1,0 +1,207 @@
+---
+# The bridge goes in its own netplan file. The installer's file loses the
+# lab and management ports' stanzas and nothing else. Both new files are validated in a scratch
+# root before they touch /etc/netplan, because a bad file there breaks the
+# next boot.
+
+- name: network | Create the netplan directory
+  ansible.builtin.file:
+    path: /etc/netplan
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+# The role edits only the installer's file, so another file that also
+# configures a port would keep its DHCP on the port.
+# netplan merges the files, and that's still valid, so the scratch-root
+# check can't catch it.
+- name: network | Find the other netplan files
+  ansible.builtin.find:
+    paths: /etc/netplan
+    patterns: "*.yaml"
+    excludes:
+      - "{{ kvm_host_installer_path | basename }}"
+      - "{{ kvm_host_netplan_path | basename }}"
+  register: kvm_host_other_files
+
+- name: network | Read the other netplan files
+  ansible.builtin.slurp:
+    src: "{{ item.path }}"
+  loop: "{{ kvm_host_other_files.files }}"
+  loop_control:
+    label: "{{ item.path }}"
+  register: kvm_host_other
+
+- name: network | Refuse another file that configures a port
+  vars:
+    kvm_host_other_config: "{{ ((item.content | b64decode | from_yaml) or {}).network | default({}) }}"
+    kvm_host_other_ports: >-
+      {{ kvm_host_ports | intersect((kvm_host_other_config.ethernets | default({})).keys() | list) }}
+  ansible.builtin.assert:
+    that:
+      - kvm_host_other_ports | length == 0
+    fail_msg: >-
+      {{ item.source }} configures {{ kvm_host_other_ports | join(', ') }}. Fold it into
+      {{ kvm_host_installer_path }} or remove it, so the installer's file is the only one that does
+    quiet: true
+  loop: "{{ kvm_host_other.results }}"
+  loop_control:
+    label: "{{ item.source }}"
+
+- name: network | Look for the installer's netplan file
+  ansible.builtin.stat:
+    path: "{{ kvm_host_installer_path }}"
+    get_checksum: false
+  register: kvm_host_installer_stat
+
+- name: network | Read the installer's netplan file
+  ansible.builtin.slurp:
+    src: "{{ kvm_host_installer_path }}"
+  register: kvm_host_installer
+  when: kvm_host_installer_stat.stat.exists
+
+# The installer's file may be YAML with no network key, or empty.
+- name: network | Take the ports' stanzas out of the installer's file
+  vars:
+    kvm_host_installer_config: "{{ (kvm_host_installer.content | b64decode | from_yaml) or {} }}"
+    kvm_host_installer_ethernets: "{{ kvm_host_installer_config.network.ethernets | default({}) }}"
+  ansible.builtin.set_fact:
+    kvm_host_installer_has_port: >-
+      {{ kvm_host_ports | intersect(kvm_host_installer_ethernets.keys() | list) | length > 0 }}
+    kvm_host_installer_new: >-
+      {{ kvm_host_installer_config
+          | combine({'network': kvm_host_installer_config.network | default({})
+              | combine({'ethernets': kvm_host_installer_ethernets
+                  | dict2items | rejectattr('key', 'in', kvm_host_ports) | items2dict})}) }}
+  when: kvm_host_installer_stat.stat.exists
+
+- name: network | Note whether the installer's file needs a change
+  ansible.builtin.set_fact:
+    kvm_host_installer_edit: "{{ kvm_host_installer_has_port | default(false) }}"
+
+# The scratch root is gone by the end of the block, so its tasks change
+# nothing on the host.
+- name: network | Validate the new files in a scratch root
+  when: kvm_host_hardware
+  block:
+    - name: network | Make a scratch root
+      ansible.builtin.tempfile:
+        state: directory
+        prefix: kvm-host-netplan-
+      register: kvm_host_scratch
+      changed_when: false
+      check_mode: false
+
+    - name: network | Copy the current netplan files to it
+      ansible.builtin.shell:
+        cmd: |
+          set -euo pipefail
+          mkdir -p -- {{ (kvm_host_scratch.path ~ '/etc/netplan') | quote }}
+          cp -a -- /etc/netplan/. {{ (kvm_host_scratch.path ~ '/etc/netplan/') | quote }}
+        executable: /bin/bash
+      changed_when: false
+      check_mode: false
+
+    - name: network | Write the new installer file to it
+      ansible.builtin.copy:
+        dest: "{{ kvm_host_scratch.path }}{{ kvm_host_installer_path }}"
+        content: "{{ kvm_host_installer_new | to_nice_yaml(indent=2) }}"
+        mode: "0600"
+      changed_when: false
+      check_mode: false
+      when: kvm_host_installer_edit
+
+    - name: network | Write the bridge file to it
+      ansible.builtin.template:
+        src: netplan.yaml.j2
+        dest: "{{ kvm_host_scratch.path }}{{ kvm_host_netplan_path }}"
+        mode: "0600"
+      changed_when: false
+      check_mode: false
+
+    - name: network | Generate the configuration in the scratch root
+      ansible.builtin.command:
+        argv: [netplan, generate, --root-dir, "{{ kvm_host_scratch.path }}"]
+      changed_when: false
+      check_mode: false
+  always:
+    - name: network | Remove the scratch root
+      ansible.builtin.file:
+        path: "{{ kvm_host_scratch.path }}"
+        state: absent
+      changed_when: false
+      check_mode: false
+      when: kvm_host_scratch.path is defined
+
+# The files below change the network at the next boot even without an
+# apply, so they are written only when the apply is wanted too.
+
+# Once, from the file as the installer left it.
+- name: network | Back up the installer's file
+  ansible.builtin.copy:
+    src: "{{ kvm_host_installer_path }}"
+    dest: "{{ kvm_host_installer_path }}.orig"
+    remote_src: true
+    force: false
+    owner: root
+    group: root
+    mode: "0600"
+  when:
+    - kvm_host_apply_network
+    - kvm_host_installer_edit
+
+- name: network | Write the installer's file without the ports
+  ansible.builtin.copy:
+    dest: "{{ kvm_host_installer_path }}"
+    content: "{{ kvm_host_installer_new | to_nice_yaml(indent=2) }}"
+    owner: root
+    group: root
+    mode: "0600"
+  register: kvm_host_installer_written
+  when:
+    - kvm_host_apply_network
+    - kvm_host_installer_edit
+
+- name: network | Write the bridge file
+  ansible.builtin.template:
+    src: netplan.yaml.j2
+    dest: "{{ kvm_host_netplan_path }}"
+    owner: root
+    group: root
+    mode: "0600"
+  register: kvm_host_bridge_written
+  when: kvm_host_apply_network
+
+- name: network | Look for the bridge
+  ansible.builtin.stat:
+    path: /sys/class/net/{{ kvm_host_bridge }}
+    get_checksum: false
+  register: kvm_host_bridge_stat
+
+- name: network | Decide whether the network needs an apply
+  ansible.builtin.set_fact:
+    kvm_host_network_pending: >-
+      {{ kvm_host_hardware and (kvm_host_bridge_written is changed
+          or kvm_host_installer_written is changed or not kvm_host_bridge_stat.stat.exists) }}
+
+# The apply moves the lab port's DHCP lease to the bridge and drops the
+# management port's addresses. The lab link drops briefly, and the bridge
+# takes the default route.
+- name: network | Apply the network
+  ansible.builtin.command:
+    argv: [netplan, apply]
+  changed_when: true
+  when:
+    - kvm_host_network_pending
+    - kvm_host_apply_network
+
+- name: network | Say that the network change is left out
+  ansible.builtin.debug:
+    msg: >-
+      The {{ kvm_host_bridge }} netplan change passed validation but isn't written,
+      because kvm_host_apply_network is false. Apply the role with
+      kvm_host_apply_network true to write and apply it.
+  when:
+    - kvm_host_network_pending
+    - not kvm_host_apply_network

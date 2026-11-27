@@ -1,0 +1,11 @@
+---
+galaxy_info:
+  author: tbhb
+  description: Install a uv-managed CPython in the connecting user's home on a Synology NAS
+  license: Apache-2.0
+  min_ansible_version: "2.21"
+  platforms:
+    - name: GenericLinux
+      versions:
+        - all
+dependencies: []

@@ -1,0 +1,14 @@
+---
+galaxy_info:
+  author: tbhb
+  description: Install a hash-pinned Claude Code release beside the others for the agent account
+  license: Apache-2.0
+  min_ansible_version: "2.21"
+  platforms:
+    - name: Ubuntu
+      versions:
+        - resolute
+    - name: MacOSX
+      versions:
+        - all
+dependencies: []

@@ -10,14 +10,13 @@ import sys
 from pathlib import Path
 from unittest.mock import Mock
 
-import httpx
+import httpx2
 import pytest
 from agent_host_example import isolate_host_git, local_mirror_fetches, run_request
 from fake_tool import pythonpath, write_fake
 
-from tbhbdev import alpha
+import tbhbdev.alpha.pre_push_guard as pg
 from tbhbdev.alpha import gh_shim, install
-from tbhbdev.alpha import pre_push_guard as pg
 from tbhbdev.alpha.agent import worktree
 
 ZERO = "0" * 40
@@ -92,7 +91,7 @@ def guard(
         "stdin",
         io.StringIO(f"refs/heads/topic {local} {ref} {remote}\n"),
     )
-    return alpha.main(["pre-push-guard", "origin", origin_url()], "tbhbdev alpha")
+    return pg.main(["origin", origin_url()], "tbhbdev alpha pre-push-guard")
 
 
 @pytest.mark.parametrize("kind", ["diverged", "forward", "new", "delete", "missing"])
@@ -141,6 +140,22 @@ def test_rewrite_of_the_fetched_tip_is_logged_not_refused(
     assert new != old
 
 
+def test_a_failed_ancestry_check_refuses_even_with_a_matching_tip(
+    repo: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    old = git(repo, "rev-parse", "HEAD")
+    git(repo, "update-ref", "refs/remotes/origin/topic", old)
+    head = commit(repo)
+    run_git = pg.git
+
+    def fail_merge_base(*args: str) -> tuple[int, str]:
+        return (128, "") if "merge-base" in args else run_git(*args)
+
+    monkeypatch.setattr(pg, "git", fail_merge_base)
+    assert guard(monkeypatch, head, old) == 1
+    assert "git merge-base" in capsys.readouterr().err
+
+
 @pytest.mark.parametrize("ref", ["refs/tags/topic", "refs/notes/topic"])
 def test_rewrite_outside_branches_is_refused(
     repo: Path,
@@ -152,7 +167,7 @@ def test_rewrite_outside_branches_is_refused(
     head = commit(repo)
     git(repo, "update-ref", "refs/remotes/origin/topic", head)
     monkeypatch.setattr(sys, "stdin", io.StringIO(f"HEAD {base} {ref} {head}\n"))
-    assert alpha.main(["pre-push-guard", "origin", origin_url()], "tbhbdev alpha") == 1
+    assert pg.main(["origin", origin_url()], "tbhbdev alpha pre-push-guard") == 1
     assert "non-fast-forward push refused" in capsys.readouterr().err
 
 
@@ -168,13 +183,18 @@ def install_hook(repo: Path, monkeypatch: pytest.MonkeyPatch) -> dict[str, str]:
     install.install_pre_push_hook(hooks)
     binary = repo.parent / "bin"
     binary.mkdir()
-    tool = binary / "tbhbdev"
-    # The hook tests use the real push guard and have no agent identity session.
+    tool = binary / "guard-cli"
     write_fake(
         tool,
-        "import sys\nfrom tbhbdev.cli import main\n"
-        "sys.exit(0 if sys.argv[1:3] == ['alpha', 'identity'] else main())\n",
+        "import sys\n"
+        "from tbhbdev.alpha.pre_push_guard import main\n"
+        "if sys.argv[1:3] == ['alpha', 'identity']:\n"
+        "    sys.exit(0)\n"
+        "if sys.argv[1:3] != ['alpha', 'pre-push-guard']:\n"
+        "    sys.exit(f'unexpected command: {sys.argv[1:]}')\n"
+        "sys.exit(main(sys.argv[3:], 'tbhbdev alpha pre-push-guard'))\n",
     )
+    (binary / "tbhbdev").symlink_to(tool)
     monkeypatch.setenv("PATH", f"{binary}:{os.environ['PATH']}")
     monkeypatch.setenv("PYTHONPATH", pythonpath(Path(pg.__file__).parents[2]))
     env = dict(os.environ)
@@ -293,10 +313,9 @@ def test_start_ref_push_refusals(
     deleting: bool,
     reason: str,
 ) -> None:
-    monkeypatch.setenv(pg.RUN_NAME_ENV, "example")
     monkeypatch.setenv(pg.RUN_START_REF_ENV, f"refs/heads/{start_ref}")
     assert reason in pg.destination_problem(
-        f"refs/heads/{ref}", deleting=deleting, agent_push=True
+        f"refs/heads/{ref}", deleting=deleting, agent_push=True, run_name="example"
     )
 
 
@@ -308,7 +327,8 @@ def test_real_pushes_through_the_installed_hook(
     base = git(repo, "rev-parse", "HEAD")
     git(repo, "switch", "-qc", "topic")
     first = commit(repo, "first")
-    assert push(repo, env, "origin", "topic").returncode == 0
+    done = push(repo, env, "origin", "topic")
+    assert done.returncode == 0, done.stderr
     git(repo, "reset", "-q", "--hard", base)
     second = commit(repo, "second")
     # A plain push is still a rewrite: git itself refuses it before the hook.
@@ -402,7 +422,7 @@ def test_protected_branch_refused(
         "delete": (ZERO, base),
     }[kind]
     monkeypatch.setattr(sys, "stdin", io.StringIO(f"HEAD {local} {ref} {remote}\n"))
-    assert alpha.main(["pre-push-guard", "origin", origin_url()], "tbhbdev alpha") == 1
+    assert pg.main(["origin", origin_url()], "tbhbdev alpha pre-push-guard") == 1
     out, err = capsys.readouterr()
     assert out == ""
     assert err == (
@@ -426,7 +446,7 @@ def test_protected_branch_refused_beside_other_refs(
             f"refs/heads/topic {head} refs/heads/main {base}\n"
         ),
     )
-    assert alpha.main(["pre-push-guard", "origin", origin_url()], "tbhbdev alpha") == 1
+    assert pg.main(["origin", origin_url()], "tbhbdev alpha pre-push-guard") == 1
     assert capsys.readouterr().err.startswith("refs/heads/main: push to a protected")
 
 
@@ -445,7 +465,7 @@ def test_protected_branch_does_not_hide_later_refs(
             f"refs/heads/topic {base} refs/heads/topic {head}\n"
         ),
     )
-    assert alpha.main(["pre-push-guard", "origin", origin_url()], "tbhbdev alpha") == 1
+    assert pg.main(["origin", origin_url()], "tbhbdev alpha pre-push-guard") == 1
     err = capsys.readouterr().err
     assert "refs/heads/main: push to a protected" in err
     assert "refs/heads/topic: non-fast-forward push refused" in err
@@ -465,7 +485,7 @@ def test_similar_names_are_not_protected(
 ) -> None:
     head = commit(repo)
     monkeypatch.setattr(sys, "stdin", io.StringIO(f"HEAD {head} {ref} {ZERO}\n"))
-    assert alpha.main(["pre-push-guard", "origin", origin_url()], "tbhbdev alpha") == 0
+    assert pg.main(["origin", origin_url()], "tbhbdev alpha pre-push-guard") == 0
 
 
 @pytest.mark.parametrize("default", ["upstream", "simple", "current"])
@@ -485,7 +505,7 @@ def test_tracking_main_is_refused_for_any_push_default(
         "stdin",
         io.StringIO(f"refs/heads/topic {head} refs/heads/main {base}\n"),
     )
-    assert alpha.main(["pre-push-guard", "origin", origin_url()], "tbhbdev alpha") == 1
+    assert pg.main(["origin", origin_url()], "tbhbdev alpha pre-push-guard") == 1
     assert "refs/heads/main: push to a protected" in capsys.readouterr().err
 
 
@@ -503,7 +523,7 @@ def test_bad_input_is_refused(
     monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
     monkeypatch.setattr(sys, "stdin", io.StringIO("broken\n"))
-    assert alpha.main(["pre-push-guard", "origin", origin_url()], "p") == 1
+    assert pg.main(["origin", origin_url()], "p pre-push-guard") == 1
     assert capsys.readouterr() == (
         "",
         "pre-push-guard: cannot inspect push; push refused\n",
@@ -516,9 +536,9 @@ def test_duplicate_and_empty_input(
     head = commit(repo)
     row = f"refs/heads/topic {head} refs/heads/topic {ZERO}\n"
     monkeypatch.setattr(sys, "stdin", io.StringIO(row + row))
-    assert alpha.main(["pre-push-guard", "origin", origin_url()], "p") == 0
+    assert pg.main(["origin", origin_url()], "p pre-push-guard") == 0
     monkeypatch.setattr(sys, "stdin", io.StringIO(""))
-    assert alpha.main(["pre-push-guard", "origin", origin_url()], "p") == 0
+    assert pg.main(["origin", origin_url()], "p pre-push-guard") == 0
     assert capsys.readouterr() == ("", "")
 
 
@@ -538,6 +558,8 @@ def isolated_agent_environment(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.delenv("SSH_AUTH_SOCK", raising=False)
     for name in (*gh_shim.ROOT_IDS, *gh_shim.MARKERS):
         monkeypatch.delenv(name, raising=False)
+    for name in (pg.RUN_NAME_ENV, pg.RUN_START_REF_ENV, "TBHBDEV_AGENT_RUN"):
+        monkeypatch.delenv(name, raising=False)
 
 
 @pytest.fixture(autouse=True)
@@ -547,8 +569,8 @@ def signing_key_request(monkeypatch: pytest.MonkeyPatch) -> Mock:
     real = pg.public_keys
 
     def public_keys(*, timeout: int) -> list[str]:
-        transport = httpx.MockTransport(
-            lambda sent: httpx.Response(200, content=request(sent))
+        transport = httpx2.MockTransport(
+            lambda sent: httpx2.Response(200, content=request(sent))
         )
         return real(timeout=timeout, transport=transport)
 
@@ -620,6 +642,66 @@ def push_agent(monkeypatch: pytest.MonkeyPatch, local: str) -> int:
 @pytest.fixture
 def agent_session(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("CODEX_SESSION_ID", "test-session")
+
+
+@pytest.mark.parametrize("context", ["session", "account", "launcher", "human", "run"])
+def test_run_name_is_required_for_agent_pushes_to_the_org(
+    repo: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    context: str,
+) -> None:
+    git(repo, "remote", "add", "publish", "https://github.com/tbhb-dev/example.git")
+    if context in {"session", "run"}:
+        monkeypatch.setenv("CODEX_SESSION_ID", "test-session")
+    if context == "account":
+        git(repo, "config", "user.email", AGENT_MAIL)
+    if context == "launcher":
+        monkeypatch.setenv("TBHBDEV_AGENT_RUN", "1")
+    if context == "run":
+        monkeypatch.setenv(pg.RUN_NAME_ENV, "topic")
+    head = commit(repo)
+    row = f"HEAD {head} refs/heads/agent/topic {ZERO}\n"
+    monkeypatch.setattr(sys, "stdin", io.StringIO(row))
+    denied = context not in {"human", "run"}
+    url = git(repo, "remote", "get-url", "--push", "publish")
+    assert pg.main(["publish", url], "p") == int(denied)
+    assert (pg.RUN_NAME_ENV in capsys.readouterr().err) == denied
+
+
+@pytest.mark.usefixtures("repo", "agent_session")
+def test_an_org_agent_can_retry_a_push_with_no_ref_updates(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    monkeypatch.setenv(pg.RUN_NAME_ENV, "topic")
+    monkeypatch.setattr(sys, "stdin", io.StringIO(""))
+    assert pg.main(["origin", "https://github.com/tbhb-dev/example.git"], "p") == 0
+    assert capsys.readouterr().err == ""
+
+
+@pytest.mark.parametrize("query", ["for-each-ref", "batch", "commit"])
+def test_an_unreadable_object_query_refuses_the_push(
+    repo: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    query: str,
+) -> None:
+    head = commit(repo)
+    run = Mock(wraps=subprocess.run)
+
+    def fail_object_query(argv: list[str], **kwargs: object) -> object:
+        if query == "for-each-ref" and query in argv:
+            return subprocess.CompletedProcess(argv, 1, "")
+        if query == "batch" and argv[-1].startswith("--batch-check"):
+            return subprocess.CompletedProcess(argv, 1, "")
+        if query == "commit" and "cat-file" in argv and "commit" in argv:
+            return subprocess.CompletedProcess(argv, 1, b"")
+        return run(argv, **kwargs)
+
+    monkeypatch.setattr(pg.subprocess, "run", fail_object_query)
+    assert push_agent(monkeypatch, head) == 1
+    tool = query if query == "for-each-ref" else "cat-file"
+    assert f"git {tool}" in capsys.readouterr().err
 
 
 @pytest.mark.usefixtures("agent_session")
@@ -724,16 +806,19 @@ def test_start_ref_run_can_update_its_pr_branch(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     ref = "refs/heads/fix/topic"
-    monkeypatch.setenv(pg.RUN_NAME_ENV, "example")
     monkeypatch.setenv(pg.RUN_START_REF_ENV, ref)
-    assert pg.destination_problem(ref, deleting=False, agent_push=True) == ""
+    run_name = "example"
+    assert (
+        pg.destination_problem(ref, deleting=False, agent_push=True, run_name=run_name)
+        == ""
+    )
     branch = "refs/heads/agent/example"
-    assert pg.destination_problem(branch, deleting=False, agent_push=True) == (
-        f"{branch}: this run may only push {ref}"
-    )
-    assert pg.destination_problem(ref, deleting=True, agent_push=True) == (
-        f"{ref}: deletion refused; this run may only update its start ref"
-    )
+    assert pg.destination_problem(
+        branch, deleting=False, agent_push=True, run_name=run_name
+    ) == (f"{branch}: this run may only push {ref}")
+    assert pg.destination_problem(
+        ref, deleting=True, agent_push=True, run_name=run_name
+    ) == (f"{ref}: deletion refused; this run may only update its start ref")
 
 
 @pytest.mark.usefixtures("agent_session")
@@ -745,7 +830,7 @@ def test_an_agent_push_checks_every_destination_branch(
         f"HEAD {head} refs/heads/agent/x {ZERO}\nHEAD {head} refs/heads/feat/x {ZERO}\n"
     )
     monkeypatch.setattr(sys, "stdin", io.StringIO(rows))
-    assert alpha.main(["pre-push-guard", "origin", origin_url()], "p") == 1
+    assert pg.main(["origin", origin_url()], "p pre-push-guard") == 1
     assert capsys.readouterr().err == (
         "refs/heads/feat/x: push refused; push to an agent/<name> branch instead\n"
     )
@@ -797,7 +882,7 @@ def test_registered_signers_are_accepted_across_refs(
     body.insert(0, {"key": "invalid public key"})
     signing_key_request.configure_mock(return_value=json.dumps(body).encode())
 
-    assert alpha.main(["pre-push-guard", "origin", origin_url()], "p") == 0
+    assert pg.main(["origin", origin_url()], "p pre-push-guard") == 0
     signing_key_request.assert_called_once()
     request = signing_key_request.call_args.args[0]
     assert str(request.url) == (
@@ -846,7 +931,7 @@ def test_failed_key_lookup_falls_back_to_local_key(
     )
     monkeypatch.setattr(sys, "stdin", io.StringIO(rows))
 
-    assert alpha.main(["pre-push-guard", "origin", origin_url()], "p") == 1
+    assert pg.main(["origin", origin_url()], "p pre-push-guard") == 1
     signing_key_request.assert_called_once()
     err = capsys.readouterr().err
     for ref in ("one", "two"):

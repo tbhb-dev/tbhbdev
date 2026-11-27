@@ -1,0 +1,10 @@
+---
+- name: Converge
+  hosts: all
+  vars:
+    agent_signing_devtools_src: "{{ lookup('ansible.builtin.env', 'MOLECULE_EPHEMERAL_DIRECTORY') }}/devtools"
+    agent_signing_accounts:
+      - name: agent
+      - name: external
+  roles:
+    - agent_signing

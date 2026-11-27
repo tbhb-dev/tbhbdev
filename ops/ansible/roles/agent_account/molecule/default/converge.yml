@@ -1,0 +1,25 @@
+---
+# Throwaway public key from the existing account tests; no private half exists.
+- name: Converge
+  hosts: all
+  become: true
+  vars_files:
+    - ../../../../inventory/group_vars/unix_agent_hosts.yml
+    - ../../../../inventory/host_vars/host-a.yml
+  vars:
+    agent_account_launch_controller: true
+    agent_account_operator: root
+    agent_account_keys:
+      - "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIMBxMcLBO2dNsuwi0clAzEHghsyOUtwtQU2PXYShQKQa molecule-test"
+  pre_tasks:
+    - name: Use fixture endpoints and workspace with the inventory agent tree
+      ansible.builtin.set_fact:
+        agent_account_tbhbdev_config:
+          connect:
+            endpoints: [https://op-connect, https://connect.other.example.invalid]
+          workspace:
+            root: Code/ws
+            repos: [fixture/repo]
+          agent: "{{ agent_account_agent_config }}"
+  roles:
+    - agent_account

@@ -1,0 +1,5 @@
+# {{ ansible_managed }}
+# A fixed instance ID, so an edit to the seed never makes cloud-init run the
+# first-boot modules again, which would regenerate the VM's SSH host keys.
+instance-id: {{ ci_vm_name }}
+local-hostname: {{ ci_vm_name }}

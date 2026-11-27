@@ -1,0 +1,7 @@
+{% for item in windows_accounts_keys %}
+{% if item.from | default([]) | length > 0 %}
+from="{{ item.from | tailnet_addresses | join(',') }}" {{ item.key }}
+{% else %}
+{{ item.key }}
+{% endif %}
+{% endfor %}

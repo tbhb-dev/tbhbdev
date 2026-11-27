@@ -5,8 +5,8 @@ from typing import TYPE_CHECKING
 
 import pytest
 
-from tbhbdev import alpha, cli
 from tbhbdev.alpha import brief
+from tbhbdev.alpha.brief import main
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -19,6 +19,12 @@ EXPECTED = (
 ## Task
 
 {TASK_DETAILS}
+
+## Build
+
+Expected size (code lines):
+
+Above 400 code lines, split the work into stacked PRs.
 
 ## Gates
 
@@ -51,7 +57,9 @@ EXPECTED = (
     .replace("{push}", brief.NO_PUSH_BLOCK)
     .replace("{rules}", brief.HARD_RULES_BLOCK)
 )
-FILLED = re.sub(r"\{[^{}]+\}", "Completed", EXPECTED)
+FILLED = re.sub(r"\{[^{}]+\}", "Completed", EXPECTED).replace(
+    "Expected size (code lines):", "Expected size (code lines): 280"
+)
 PROG = "example brief"
 SCAN_COMMAND = "scan-outgoing origin/main"
 SCAN_LINE = f"Outgoing scan command: `{SCAN_COMMAND}`"
@@ -236,18 +244,11 @@ def test_check_warns_about_foreign_branch_without_failing(
     )
 
 
-def test_registered() -> None:
-    assert alpha.COMMANDS["brief"] is brief.main
-    assert (
-        "\n  brief        new | check: peer-run briefs with required safeguards\n"
-        in (alpha.USAGE)
-    )
-
-
 def test_render_defaults() -> None:
     assert brief.render("demo", "tbhb-dev/tbhbdev") == EXPECTED
     assert brief.check(FILLED) == []
     assert brief.check(EXPECTED) == [
+        "missing value for Expected size (code lines)",
         "unfilled placeholder: {TASK}",
         "unfilled placeholder: {TASK_DETAILS}",
         "unfilled placeholder: {GATES}",
@@ -275,27 +276,31 @@ def test_render_overrides_and_quotes_arguments() -> None:
 
 
 @pytest.mark.parametrize("push", [False, True])
-def test_new_from_top_level(
+def test_new_command(
     capsys: pytest.CaptureFixture[str], tmp_path: Path, push: bool
 ) -> None:
     assert (
-        cli.main(
+        main(
             [
-                "alpha",
-                "brief",
                 "new",
                 "demo",
                 "--repo",
                 "tbhb-dev/tbhbdev",
+                "--expected-size",
+                "280",
                 *(["--push", "--scan-command", SCAN_COMMAND] if push else []),
-            ]
+            ],
+            PROG,
         )
         == 0
     )
     output = capsys.readouterr()
     assert output == (
         brief.render(
-            "demo", "tbhb-dev/tbhbdev", scan_command=SCAN_COMMAND if push else None
+            "demo",
+            "tbhb-dev/tbhbdev",
+            scan_command=SCAN_COMMAND if push else None,
+            expected_size="280",
         ),
         "",
     )
@@ -303,6 +308,105 @@ def test_new_from_top_level(
     file.write_text(re.sub(r"\{[^{}]+\}", "Completed", output.out), encoding="utf-8")
     assert brief.main(["check", str(file)], PROG) == 0
     assert capsys.readouterr() == (f"OK: {file}\n", "")
+
+
+@pytest.mark.parametrize(
+    ("options", "section"),
+    [
+        (
+            ["--kind", "build", "--expected-size", "401"],
+            (
+                "## Build\n\nExpected size (code lines): 401\n\n"
+                "Above 400 code lines, split the work into stacked PRs."
+            ),
+        ),
+        (
+            [
+                "--kind",
+                "fix",
+                "--failing-line",
+                "src/file.py:42",
+                "--proven-fix",
+                "Read the call and verified the corrected result.",
+            ],
+            (
+                "## Fix\n\nFailing file and line: src/file.py:42\n\n"
+                "Proven fix: Read the call and verified the corrected result."
+            ),
+        ),
+    ],
+)
+def test_new_renders_template_fields(
+    options: list[str], section: str, capsys: pytest.CaptureFixture[str]
+) -> None:
+    assert brief.main(["new", "demo", "--repo", "owner/repo", *options], PROG) == 0
+    rendered = capsys.readouterr().out
+    assert f"\n{section}\n" in rendered
+    assert brief.check(re.sub(r"\{[^{}]+\}", "Completed", rendered)) == []
+
+
+@pytest.mark.parametrize(
+    ("kind", "field"),
+    [("build", "Expected size (code lines)"), ("fix", "Failing file and line")],
+)
+def test_check_requires_template_fields(
+    kind: str,
+    field: str,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    argv = ["new", "demo", "--repo", "owner/repo", "--kind", kind]
+    file = tmp_path / "brief.md"
+    assert brief.main(argv, PROG) == 0
+    skeleton = capsys.readouterr().out
+    assert f"\n{field}:\n" in skeleton
+    if kind == "fix":
+        assert "\nProven fix:\n" in skeleton
+        assert "Expected size (code lines)" not in skeleton
+    text = re.sub(r"\{[^{}]+\}", "Completed", skeleton)
+    file.write_text(text.replace(f"{field}:", f"{field}:  \t"), encoding="utf-8")
+    assert brief.main(["check", str(file)], PROG) == 1
+    assert capsys.readouterr().out == f"{file}: missing value for {field}\n"
+    assert brief.check(text.replace(f"{field}:\n", "")) == [
+        f"missing value for {field}"
+    ]
+
+
+@pytest.mark.parametrize(
+    ("kind", "option"),
+    [("build", "--expected-size"), ("fix", "--failing-line"), ("fix", "--proven-fix")],
+)
+@pytest.mark.parametrize("value", ["", " \t", "one\ntwo"])
+def test_new_refuses_invalid_field_values(
+    kind: str, option: str, value: str, capsys: pytest.CaptureFixture[str]
+) -> None:
+    argv = ["new", "demo", "--repo", "owner/repo", "--kind", kind, option, value]
+    with pytest.raises(SystemExit) as caught:
+        brief.main(argv, PROG)
+    assert caught.value.code == 2
+    assert "expected a non-empty single-line value" in capsys.readouterr().err
+
+
+@pytest.mark.parametrize(
+    ("options", "error"),
+    [
+        (
+            ["--kind", "fix", "--expected-size", "140"],
+            "--expected-size is only for build briefs",
+        ),
+        (
+            ["--failing-line", "src/file.py:42"],
+            "--failing-line and --proven-fix are only for fix briefs",
+        ),
+    ],
+)
+def test_new_refuses_fields_for_the_other_template(
+    options: list[str], error: str, capsys: pytest.CaptureFixture[str]
+) -> None:
+    with pytest.raises(SystemExit) as caught:
+        brief.main(["new", "demo", "--repo", "owner/repo", *options], PROG)
+    assert caught.value.code == 2
+    assert error in capsys.readouterr().err
 
 
 def test_output_file_and_options(
@@ -534,17 +638,28 @@ def test_sections_preserve_preamble_empty_and_repeated_headings() -> None:
             (
                 "usage: example brief new [-h] --repo OWNER/REPO "
                 "[--branch BRANCH] [--base REF]\n"
-                "                         [--push] [--scan-command CMD] [-o FILE]\n"
+                "                         [--push] [--scan-command CMD] "
+                "[--kind {build,fix}]\n"
+                "                         [--expected-size LINES] "
+                "[--failing-line FILE:LINE]\n"
+                "                         [--proven-fix PROVEN_FIX] [-o FILE]\n"
                 "                         RUN\n\n"
                 "positional arguments:\n"
                 "  RUN\n\n"
                 "options:\n"
-                "  -h, --help          show this help message and exit\n"
+                "  -h, --help            show this help message and exit\n"
                 "  --repo OWNER/REPO\n"
                 "  --branch BRANCH\n"
                 "  --base REF\n"
                 "  --push\n"
                 "  --scan-command CMD\n"
+                "  --kind {build,fix}\n"
+                "  --expected-size LINES\n"
+                "                        build code estimate\n"
+                "  --failing-line FILE:LINE\n"
+                "                        fix failure location\n"
+                "  --proven-fix PROVEN_FIX\n"
+                "                        fix evidence\n"
                 "  -o FILE\n"
             ),
         ),
@@ -754,6 +869,8 @@ def test_scan_command_preserved(capsys: pytest.CaptureFixture[str]) -> None:
                 "demo",
                 "--repo",
                 "owner/repo",
+                "--expected-size",
+                "280",
                 "--push",
                 "--scan-command",
                 command,

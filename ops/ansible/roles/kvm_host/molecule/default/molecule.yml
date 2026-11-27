@@ -1,0 +1,53 @@
+---
+# The container has no KVM and no lab NIC. The scenario sets kvm_host_hardware
+# false, which skips the libvirt services, netplan validation and apply, and the
+# libvirt network. The bridge's port is the container's eth0, which has a MAC
+# address, and the management port is lan0. prepare.yml gives the installer's
+# netplan file a stanza for each.
+dependency:
+  name: galaxy
+  enabled: false
+driver:
+  name: docker
+platforms:
+  # test-ansible sets MOLECULE_RUN_ID, so concurrent runs get distinct containers.
+  - name: kvm-1-${MOLECULE_RUN_ID:-local}
+    # The runner builds this content-addressed image when its cache is missing.
+    image: ${MOLECULE_IMAGE}
+    pre_build_image: true
+    privileged: true
+    command: /sbin/init
+    cgroupns_mode: private
+    tmpfs:
+      - /run
+      - /tmp
+prerun: false
+provisioner:
+  name: ansible
+  # The driver sets community.docker.docker on each host, which inventory
+  # group_vars can't override. docker_api talks to the daemon's API
+  # instead of piping modules through docker exec stdin.
+  connection_options:
+    ansible_connection: community.docker.docker_api
+  inventory:
+    group_vars:
+      all:
+        ansible_user: ops
+        kvm_host_hardware: false
+        # Writes the netplan files; kvm_host_hardware false still skips the apply.
+        kvm_host_apply_network: true
+        kvm_host_bridge_port: eth0
+        kvm_host_management_port: lan0
+verifier:
+  name: ansible
+scenario:
+  test_sequence:
+    - destroy
+    - syntax
+    - create
+    - prepare
+    - check
+    - converge
+    - idempotence
+    - verify
+    - destroy

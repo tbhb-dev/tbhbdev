@@ -1,0 +1,137 @@
+---
+- name: Prepare isolated account fixtures
+  hosts: all
+  become: true
+  vars:
+    agent_harness_test_accounts: [agent]
+    # Every directory is listed, parents first, so none is left root-owned.
+    agent_harness_test_directories:
+      - .local
+      - .local/bin
+      - .config
+      - .config/devtools
+      - .claude
+      - .codex
+      - Code
+      - Code/github.com
+      - Code/github.com/tbhb-dev
+      - Code/github.com/tbhb-dev/tools
+      - Code/github.com/tbhb-dev/tools/.git
+  tasks:
+    - name: Create the fixture accounts
+      ansible.builtin.user:
+        name: "{{ item }}"
+        create_home: true
+      loop: "{{ agent_harness_test_accounts }}"
+
+    - name: Create fixture directories
+      ansible.builtin.file:
+        path: /home/{{ item.0 }}/{{ item.1 }}
+        state: directory
+        owner: "{{ item.0 }}"
+        group: "{{ item.0 }}"
+        mode: '0700'
+      loop: "{{ agent_harness_test_accounts | product(agent_harness_test_directories) | list }}"
+      loop_control:
+        label: "{{ item.0 }}: {{ item.1 }}"
+
+    - name: Install fixture files
+      ansible.builtin.copy:
+        dest: /home/{{ item.0 }}/{{ item.1.path }}
+        content: "{{ item.1.content }}"
+        owner: "{{ item.0 }}"
+        group: "{{ item.0 }}"
+        mode: "{{ item.1.mode | default('0600') }}"
+      loop: "{{ agent_harness_test_accounts | product(agent_harness_test_files) | list }}"
+      loop_control:
+        label: "{{ item.0 }}: {{ item.1.path }}"
+      vars:
+        agent_harness_test_files:
+          # The real lab accounts have no mise and no prek; the role reads the pin from here.
+          - path: Code/github.com/tbhb-dev/tools/mise.lock
+            content: |
+              lockfile_version = 3
+
+              [[tools.bazelisk]]
+              version = "1.30.0"
+
+              [[tools.prek]]
+              version = "0.5.10"
+              backend = "aqua:j178/prek"
+          - path: .config/devtools/agent-signing-key.pub
+            content: "fixture public key; no signing is performed\n"
+          - path: .claude/settings.json
+            content: >-
+              {"model":"fixture", "env":{"KEEP":"claude", "SSH_AUTH_SOCK":"fixture-socket", "DISABLE_AUTOUPDATER":"0"},
+              "hooks":{"SessionStart":[]}}
+          - path: .codex/config.toml
+            mode: '0644'
+            content: |
+              model = 'fixture'
+              [shell_environment_policy]
+              inherit = 'core'
+              set = { KEEP = 'codex', SSH_AUTH_SOCK = 'fixture-socket' }
+              [projects.'/fixture']
+              trust_level = 'trusted'
+
+    - name: Install harmless fixture executables
+      ansible.builtin.copy:
+        dest: /home/{{ item.0 }}/.local/bin/{{ item.1.path }}
+        content: "{{ item.1.content }}"
+        owner: "{{ item.0 }}"
+        group: "{{ item.0 }}"
+        mode: '0700'
+      loop: "{{ agent_harness_test_accounts | product(agent_harness_test_executables) | list }}"
+      loop_control:
+        label: "{{ item.0 }}: {{ item.1.path }}"
+      vars:
+        agent_harness_test_executables:
+          - path: ssh-sign
+            content: "#!/usr/bin/python3\nraise SystemExit(1)\n"
+          # Stands in for uv: installing prek==X writes a prek that reports X.
+          - path: uv
+            content: |
+              #!/usr/bin/python3
+              import os
+              import pathlib
+              import sys
+
+              assert sys.argv[1:3] == ['tool', 'install']
+              assert sys.argv[3].startswith('prek==')
+              bin_dir = pathlib.Path(os.environ['UV_TOOL_BIN_DIR'])
+              prek = bin_dir / 'prek'
+              prek.write_text(
+                  '#!/usr/bin/python3\nprint("prek ' + sys.argv[3].removeprefix('prek==') + '")\n'
+              )
+              prek.chmod(0o700)
+              with (bin_dir.parent / '.fixture-uv-calls').open('a') as calls:
+                  calls.write(sys.argv[3] + '\n')
+          - path: tbhbdev
+            content: |
+              #!/usr/bin/python3
+              import os
+              import shutil
+              import subprocess
+              import pathlib
+              import pwd
+              import sys
+
+              assert sys.argv[1:] in [['alpha', 'install'], ['alpha', 'install', '--dry-run']]
+              assert os.environ['SSH_AUTH_SOCK'] == ''
+              # Mirrors the real installer's find_prek(): prek, else mise exec, else this error.
+              if shutil.which('prek') is not None:
+                  prek_command = ['prek', '--version']
+              elif shutil.which('mise') is not None:
+                  prek_command = ['mise', 'exec', '--', 'prek', '--version']
+              else:
+                  sys.exit('tbhbdev alpha install: error: prek not found; install it, or install mise')
+              subprocess.run(prek_command, check=True, capture_output=True)
+              home = pathlib.Path.home()
+              assert str(home) == '/home/' + pwd.getpwuid(os.getuid()).pw_name
+              repository = home / 'Code/github.com/tbhb-dev/tools'
+              assert pathlib.Path.cwd() == repository
+              assert (repository / '.git').is_dir()
+              marker = home / '.fixture-installed'
+              if sys.argv[1:] == ['alpha', 'install'] and not marker.exists():
+                  marker.write_text(str(repository))
+                  print('wrote fixture harness hooks')

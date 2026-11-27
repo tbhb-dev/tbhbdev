@@ -2,12 +2,9 @@
 description: Agent settings, run requests, and host preparation.
 generated:
   - role: generated
-    harness: codex:0.171.0
-    model: openai:gpt-6.2-sol
-    effort: high
-    surface: exec
-    session: sha-256-64:83bf345983e66ec4
-    at: "2026-11-26T23:47:32Z"
+    harness: codex
+    model: openai:gpt-6
+    at: "2026-11-27T04:19:40Z"
 status: stable
 tags: [alpha]
 title: Agent configuration
@@ -16,7 +13,7 @@ type: Reference
 
 # Agent configuration
 
-`tbhbdev alpha agent` reads the optional `[agent]` table from the user config. Calling this command requires the table and every key shown below except `public_repos`, `[agent.otel]`, `max_run_minutes`, `docker`, `expires`, `pull_requests_app_client_id`, `pull_requests_app_pem`, the host’s `unsandboxed` flag and `tbhbdev` path, the `[agent.codex]` table and the `[agent.worker]` table. Unreadable config fails with its path. Missing or invalid settings fail with the path, the full table name and the key, as `[agent.sandbox] audit_dir is required`. Unknown keys fail the same way at any level. `exec` validates a headless run before it contacts the host. It checks the remote version, then claims the name before it streams the inputs. A tmux session runs the host supervisor. Install that supervisor separately. `wait`, `status`, `kill`, `clean`, `keep`, `log` and `diff` use the recorded target. The parser allows and ignores `host_tag` in `[agent]` because another command reads it.
+`tbhbdev alpha agent` reads the optional `[agent]` table from the user config. Calling this command requires the table and every key shown below except `public_repos`, `[agent.otel]`, `max_run_minutes`, `docker`, `expires`, `pull_requests_app_client_id`, `pull_requests_app_pem`, the host’s `unsandboxed` flag and `tbhbdev` path, the `[agent.codex]` table and the `[agent.worker]` table. Unreadable config fails with its path. Missing or invalid settings fail with the path, the full table name and the key, as `[agent.sandbox] audit_dir is required`. Unknown keys fail the same way at any level. `exec` validates the run, checks the remote version and claims the name before it streams the inputs. A tmux session runs the host supervisor. Install that supervisor separately. `wait`, `status`, `kill`, `clean`, `keep`, `log` and `diff` use the recorded target. The parser accepts and ignores `host_tag` in existing `[agent]` configs.
 
 When the host reports a failed launch before the harness starts, `agent exec` prints the failure and cleans the run. It moves the host files, worktree and controller metadata to trash, so the same run name can be used again. Runs that started the harness and launches with an unknown outcome keep their records for inspection.
 
@@ -35,6 +32,8 @@ After workspace preparation, a build run reads the repository’s hook configs f
 `agent exec` records the launching session's name and `CLAUDE_CODE_SESSION_ID` in the run record, and `agent status` prints `launcher=NAME`. The name is the tmux pane title of the launching process's pane, without its leading status glyph. Any named session may launch a reviewer-role run, meaning `--role reviewer` or `--profile review`, including for its own repository. A missing `TMUX_PANE` or pane title refuses the launch; set the launching session's tmux pane title to its name. Review tier rules are enforced by briefs.
 
 A caller with no tmux pane, such as the build-loop worker, can launch a review as a registered worker. Register the worker's executable in the optional `[agent.worker]` table with `path`, an absolute path that has no default; a relative path fails with the config path, and with no table no worker is registered. Then pass `--worker-workflow ID`, where `ID` is 1 to 128 of `A-Za-z0-9._:-`. The launch counts as the worker only when an ancestor process of `agent exec`, found by walking parent pids up to pid 1, runs an executable whose real path equals the real path of `path`. The walk reads `/proc/PID/stat` and `/proc/PID/exe` on Linux, and `ps` on macOS. A failed lookup or a loop in the parents means no match. The run record then names the launcher `worker/ID`, and `agent status` prints `launcher=worker/ID`. The flag applies to reviewer-role runs only, and a tmux pane keeps priority over it. Without a match, the flag fails with the reason. Any other caller with no pane fails as before. The match checks the executable path alone, so any process of the same user that runs that executable passes.
+
+Set `auto_select = true` in each `[[agent.host]]` table for hosts that can take automatic launches. The setting defaults to `false`, so leave it unset on the lab laptop. With no `--host`, `agent exec` reads each candidate's resources once and picks the usable host with the lowest 1-minute load. The default OS is Linux. Use `--os macos` to select a Mac. When a named host exceeds its limits, the refusal lists usable alternatives from the same OS. To override resource limits, pass `--host` with `--ignore-limits`.
 
 `agent exec` reads the run host once before it transfers anything. It refuses the launch and prints the numbers when the 1-minute load reaches the host's load limit, when available memory falls under a share of total memory, when available memory is under the run's memory reservation, or when memory pressure reaches the host's pressure limit. The same read takes the pressure from `/proc/pressure/memory` (`some avg10`) on Linux, and from `sysctl -n kern.memorystatus_vm_pressure_level` on macOS (1 normal, 2 warn, 4 critical). A Linux kernel without `/proc/pressure/memory` leaves the pressure unknown. Each `[[agent.host]]` table sets its own values. `load_limit` defaults to the host's logical CPU count, `min_memory_available_percent` defaults to 20, `max_memory_pressure_avg10` defaults to 10 (a Linux host refuses at or above it), and `max_memory_pressure_level` defaults to 4 (a macOS host refuses at or above it; it accepts 1, 2 or 4). Swap fill no longer refuses a launch by itself, because Linux leaves cold pages in swap long after pressure ends. `max_swap_used_percent` defaults to 80 and is the warning threshold: used swap above it prints a warning while the pressure is known and below its limit. When the pressure is unknown, used swap above `max_swap_used_percent` still refuses. Set a lower `load_limit` on a host that also runs services. `limits_warn_only = true` prints the same numbers as a warning and lets the launch continue. A failed or unreadable read refuses with `cannot read host limits`. The caller must pass `--ignore-limits` to launch anyway, or the host sets `limits_warn_only = true`, which turns the refusal into a warning. The run record keeps an `--ignore-limits` choice. Older run records without the field load as `false`.
 
@@ -169,7 +168,7 @@ Host tools use a fixed search path with optional absolute directories from `host
 
 Codex uses the account’s existing executable. Runs skip standalone release validation and copying. A missing executable still fails with `host executable codex was not found on PATH <directories>`. Codex uses full access with its network proxy off. An agy review omits `--sandbox`.
 
-Run-host announces full access before preparation. Reviews still require reviews App references and refuse token request failures. A review token holds read permissions only (contents, pull requests, checks and statuses). Reviews App credentials can remain configured on any run host.
+Run-host announces full access before preparation. Reviews still require reviews App references and refuse token request failures. A review token holds read permissions only (contents, pull requests, checks, statuses and Actions). Actions read lets reviews read workflow runs in a pull request's status rollup. Reviews App credentials can remain configured on any run host.
 
 Run-host builds the harness command and adds the brief header. The driver sends the raw brief, an optional `<name>.schema.json`, and `--host` with a configured host name. Codex receives the schema path. Claude receives its contents. An unset, empty or relative `XDG_STATE_HOME` uses the home directory default. Finished runs keep their completion and log files when a rerun fails.
 

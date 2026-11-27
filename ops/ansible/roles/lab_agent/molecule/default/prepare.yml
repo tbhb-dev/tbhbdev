@@ -1,0 +1,75 @@
+---
+# What agent_account leaves: the devel group and the agent user
+# with its fixed ids and a locked password. A sudo grant added by hand
+# stands in for drift the role must undo.
+- name: Prepare
+  hosts: all
+  gather_facts: false
+  become: true
+  tasks:
+    - name: Create the devel group
+      ansible.builtin.group:
+        name: devel
+        gid: 33835
+
+    - name: Create the agent user
+      ansible.builtin.user:
+        name: agent
+        uid: 24368
+        groups: [docker, libvirt, kvm, adm]
+        group: devel
+        home: /home/example-user
+        shell: /bin/bash
+        password_lock: true
+
+    - name: Seed the hand-made shell files
+      ansible.builtin.copy:
+        dest: /home/example-user/{{ item }}
+        content: |
+          # Hand-made local bin PATH
+          case ":$PATH:" in
+            *":$HOME/.local/bin:"*) ;;
+            *) export PATH="$HOME/.local/bin:$PATH" ;;
+          esac
+          # An interactive-only file may return early in a noninteractive shell.
+          case $- in *i*) ;; *) return ;; esac
+        owner: agent
+        group: devel
+        mode: "0644"
+      loop: [.profile, .bashrc]
+
+    - name: Grant the agent sudo by hand
+      ansible.builtin.copy:
+        dest: /etc/sudoers.d/agent
+        content: "agent ALL=(ALL:ALL) NOPASSWD: ALL\n"
+        mode: "0440"
+
+    # The production play runs docker_engine first. This scenario needs
+    # only its package repository, without a system Docker service.
+    - name: Create the apt keyring directory
+      ansible.builtin.file:
+        path: /etc/apt/keyrings
+        state: directory
+        mode: "0755"
+
+    - name: Install Docker's apt signing key
+      ansible.builtin.get_url:
+        url: https://download.docker.com/linux/ubuntu/gpg
+        dest: /etc/apt/keyrings/docker.asc
+        checksum: sha256:1500c1f56fa9e26b9b8f42452a553675796ade0807cdce11975eb98170b3a570
+        mode: "0644"
+
+    - name: Add Docker's apt repository
+      ansible.builtin.copy:
+        dest: /etc/apt/sources.list.d/docker.sources
+        content: |
+          Types: deb
+          URIs: https://download.docker.com/linux/ubuntu
+          Suites: resolute
+          Components: stable
+          Signed-By: /etc/apt/keyrings/docker.asc
+        mode: "0644"
+
+    - name: Refresh the package index
+      ansible.builtin.apt:
+        update_cache: true

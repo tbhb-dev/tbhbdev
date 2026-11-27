@@ -21,9 +21,9 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from tbhbdev.alpha.agent.signing_parity import public_keys
-from tbhbdev.alpha.gh_shim import session_root
+from tbhbdev.alpha.gh_shim import RUN_NAME_ENV, agent_operation, session_root
 from tbhbdev.alpha.identity import AGENT_EMAIL
-from tbhbdev.alpha.repo import git
+from tbhbdev.alpha.repo import git, is_tbhb_dev_url
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
@@ -39,7 +39,6 @@ SAFE = (
     "core.pager=cat",
 )
 HOOK_ARGUMENTS = 2
-RUN_NAME_ENV = "TBHBDEV_RUN_NAME"
 RUN_START_REF_ENV = "TBHBDEV_RUN_START_REF"
 PROTECTED = frozenset({"refs/heads/main", "refs/heads/master"})
 AGENT_BRANCH_PREFIX = "refs/heads/agent/"
@@ -49,6 +48,10 @@ FINGERPRINT = re.compile(r"SHA256:\S+")
 RANGE_LIMIT = 1000
 # SHA-1 repositories write `gpgsig`, SHA-256 repositories `gpgsig-sha256`.
 SIGNATURE_HEADER = re.compile(rb"gpgsig(-sha256)? ")
+
+
+class InspectionError(ValueError):
+    """Git could not supply data needed to check the push."""
 
 
 def key_fingerprint(path: str, public_key: str | None = None) -> str:
@@ -136,23 +139,28 @@ def signature_fingerprint(raw: bytes) -> str:
 
 def remote_tips() -> list[str]:
     """The tips of every remote-tracking ref and tag a pushed branch builds on."""
-    return git(
+    code, out = git(
         *SAFE, "for-each-ref", "--format=%(objectname)", "refs/remotes", "refs/tags"
-    )[1].split()
+    )
+    if code:
+        message = "git for-each-ref could not list remote-tracking refs and tags"
+        raise InspectionError(message)
+    return out.split()
 
 
 def known_objects(shas: list[str]) -> list[str]:
     """The shas this clone holds, from one ``cat-file --batch-check`` call."""
     done = subprocess.run(  # nosec B603 B607
-        ["git", *SAFE, "cat-file", "--batch-check"],
+        ["git", *SAFE, "cat-file", "--batch-check=%(objectname)"],
         input="".join(f"{sha}\n" for sha in shas),
         capture_output=True,
         text=True,
         check=False,
     )
-    return [
-        line.split()[0] for line in done.stdout.splitlines() if " missing" not in line
-    ]
+    if done.returncode:
+        message = "git cat-file --batch-check could not inspect the push's objects"
+        raise InspectionError(message)
+    return [row for row in done.stdout.splitlines() if not row.endswith(" missing")]
 
 
 def pushed_commits(local: str, exclude: list[str]) -> tuple[int, list[str]]:
@@ -174,6 +182,9 @@ def commit_bytes(sha: str) -> bytes:
         capture_output=True,
         check=False,
     )
+    if done.returncode or not done.stdout:
+        message = f"git cat-file could not read commit {sha}"
+        raise InspectionError(message)
     return done.stdout
 
 
@@ -193,12 +204,12 @@ def agent_commit_problems(
     problems: list[str] = []
     for sha in shas:
         raw = commit_bytes(sha)
+        headers = raw.partition(b"\n\n")[0].split(b"\n")
         idents = [
-            x
-            for x in raw.partition(b"\n\n")[0].split(b"\n")
-            if x.startswith((b"author ", b"committer "))
+            next((line for line in headers if line.startswith(role)), b"")
+            for role in (b"author ", b"committer ")
         ]
-        if not any(f"<{AGENT_EMAIL}>".encode() in x for x in idents):
+        if not any(f"<{AGENT_EMAIL}>".encode() in ident for ident in idents):
             continue
         if problem := keys.refusal(signature_fingerprint(raw), ref, sha):
             problems.append(problem)
@@ -219,12 +230,14 @@ def fetched_tip(remote: str, ref: str) -> str:
     return "" if code else out
 
 
-def destination_problem(ref: str, *, deleting: bool, agent_push: bool) -> str:
+def destination_problem(
+    ref: str, *, deleting: bool, agent_push: bool, run_name: str
+) -> str:
     """The refusal for a disallowed push destination, or empty when allowed."""
     start_ref = None
-    if (name := os.environ.get(RUN_NAME_ENV)) and ref.startswith("refs/heads/"):
+    if run_name and ref.startswith("refs/heads/"):
         start_ref = os.environ.get(RUN_START_REF_ENV)
-        branch = start_ref or f"refs/heads/agent/{name}"
+        branch = start_ref or f"refs/heads/agent/{run_name}"
         if ref != branch:
             return f"{ref}: this run may only push {branch}"
     if ref in PROTECTED:
@@ -248,42 +261,72 @@ def ref_problems(
     row: tuple[str, str, str],
     tips: Sequence[str],
     keys: SigningKeys,
-    *,
-    agent_push: bool,
 ) -> list[str]:
     """The refusals for one pushed ref: LOCAL, REF, and the remote's OLD value."""
     local, ref, old = row
     deleting = not local.strip("0")
-    if problem := destination_problem(ref, deleting=deleting, agent_push=agent_push):
-        return [problem]
     if deleting:
         return []
     exclude = known_objects([*tips, old] if old.strip("0") else list(tips))
     problems = agent_commit_problems(ref, local, exclude, keys)
-    if old.strip("0") and git(*SAFE, "merge-base", "--is-ancestor", old, local)[0]:
-        if fetched_tip(remote, ref) == old:
-            print(f"pre-push-guard: {ref} rewritten {old} -> {local}", file=sys.stderr)
-        else:
+    ancestry = (
+        git(*SAFE, "merge-base", "--is-ancestor", old, local)[0]
+        if old.strip("0")
+        else 0
+    )
+    if ancestry:
+        if fetched_tip(remote, ref) != old:
             problems.append(
                 f"{ref}: non-fast-forward push refused; the remote tip is not "
                 "the fetched one, so fetch and push with --force-with-lease"
             )
+        elif ancestry == 1:
+            print(f"pre-push-guard: {ref} rewritten {old} -> {local}", file=sys.stderr)
+        else:
+            problems.append(
+                f"{ref}: git merge-base could not check ancestry; push refused"
+            )
     return problems
 
 
-def push_problems(remote: str, lines: Sequence[str]) -> list[str]:
+def push_problems(
+    remote: str, lines: Sequence[str], *, agent_push: bool, run_name: str
+) -> list[str]:
     rows: list[tuple[str, str, str]] = []
     for line in lines:
         _, local, ref, old = line.split()  # ValueError: main() refuses the push
         rows.append((local, ref, old))
     tips = remote_tips()
     keys = SigningKeys()
-    agent_push = session_root(os.environ) is not None
-    return [
-        problem
-        for row in rows
-        for problem in ref_problems(remote, row, tips, keys, agent_push=agent_push)
-    ]
+    problems = []
+    for row in rows:
+        local, ref, _ = row
+        problem = destination_problem(
+            ref, deleting=not local.strip("0"), agent_push=agent_push, run_name=run_name
+        )
+        if problem:
+            problems.append(problem)
+        else:
+            problems.extend(ref_problems(remote, row, tips, keys))
+    return problems
+
+
+def inspect_push(remote: str, target: str, lines: Sequence[str]) -> list[str]:
+    """Require managed identity for agent pushes to the org."""
+    if not target.strip():
+        message = "cannot determine the push destination"
+        raise InspectionError(message)
+    run_name = os.environ.get(RUN_NAME_ENV, "")
+    agent_org_push = is_tbhb_dev_url(target) and agent_operation(os.environ)
+    if agent_org_push and not run_name.strip():
+        message = (
+            f"{RUN_NAME_ENV} is missing; push from a managed agent run "
+            "with its hooks installed (install clone hooks with "
+            "`tbhbdev alpha install --hooks-only`)"
+        )
+        raise InspectionError(message)
+    agent_push = agent_org_push or session_root(os.environ) is not None
+    return push_problems(remote, lines, agent_push=agent_push, run_name=run_name)
 
 
 def main(argv: list[str], prog: str) -> int:
@@ -294,9 +337,10 @@ def main(argv: list[str], prog: str) -> int:
         if os.environ.get(variable):
             print(f"pre-push-guard: {variable} is set; push refused", file=sys.stderr)
             return 1
-    remote = argv[0]
     try:
-        problems = push_problems(remote, sys.stdin.read().splitlines())
+        problems = inspect_push(argv[0], argv[1], sys.stdin.read().splitlines())
+    except (InspectionError, OSError) as exc:
+        problems = [f"pre-push-guard: {exc}; push refused"]
     except ValueError:
         problems = ["pre-push-guard: cannot inspect push; push refused"]
     for problem in problems:

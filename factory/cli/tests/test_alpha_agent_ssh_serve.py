@@ -14,7 +14,6 @@ import pytest
 from agent_host_example import build_provenance
 from runfile_fixtures import agent_suffix_case as agent_suffix_case  # noqa: PLC0414
 
-from tbhbdev.alpha import agent
 from tbhbdev.alpha.agent import build_info, process_group, run_host, runfiles, ssh_serve
 from tbhbdev.alpha.agent.decisions.run_state import Group
 
@@ -109,7 +108,7 @@ def test_wrong_account(
 ) -> None:
     monkeypatch.setenv("SSH_ORIGINAL_COMMAND", command)
     monkeypatch.setattr(pwd, "getpwuid", other_account)
-    assert agent.main(["ssh-serve"], "agent") == 2
+    assert ssh_serve.main([], "agent ssh-serve") == 2
     assert capsys.readouterr().err == "ssh-serve: refused: requires agent account\n"
 
 
@@ -418,16 +417,6 @@ def test_oversized_refusal_reason(
     incoming(monkeypatch, b" " * (1024 * 1024 + 1))
     assert ssh_serve.main([], "ssh-serve") == 2
     assert capsys.readouterr().err == "ssh-serve: refused: stdin exceeds 1 MiB\n"
-
-
-def test_agent_dispatch_forwards_arguments(monkeypatch: pytest.MonkeyPatch) -> None:
-    def serve(arguments: list[str], prog: str) -> int:
-        assert arguments == ["extra"]
-        assert prog == "alpha agent ssh-serve"
-        return 9
-
-    monkeypatch.setattr(ssh_serve, "main", serve)
-    assert agent.main(["ssh-serve", "extra"], "alpha agent") == 9
 
 
 def test_missing_account_is_refused(

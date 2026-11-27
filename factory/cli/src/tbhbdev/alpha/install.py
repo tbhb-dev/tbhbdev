@@ -127,8 +127,9 @@ from pathlib import Path
 from typing import TYPE_CHECKING, cast
 
 from tbhbdev import plugins
-from tbhbdev.alpha.gh_shim import bin_dir, wrapper_text
-from tbhbdev.alpha.identity import codex_home
+from tbhbdev.alpha import install_statusline_decisions as statusline
+from tbhbdev.alpha.gh_shim import AGENT_MARKERS, agent_operation, bin_dir, wrapper_text
+from tbhbdev.alpha.identity import AGENT_EMAIL, codex_home
 from tbhbdev.alpha.repo import (
     TBHB_DEV_ORIGIN,
     TBHB_DEV_ORIGIN_ERE,
@@ -148,6 +149,7 @@ type Json = dict[str, object]
 # could tell a mutated type string from the original.
 
 PROG = "tbhbdev alpha install"
+INSTALL_HOOKS = f"{PROG} --hooks-only"
 MARK = "# tbhbdev alpha install"
 SHIM_MARK = "# tbhbdev alpha agent identity hook (tbhbdev alpha install)"
 # The identity shims this command and the old install script write.
@@ -213,10 +215,14 @@ if [ -z "$real" ]; then
   echo "ssh: no ssh on PATH besides the tbhbdev shim" >&2
   exit 127
 fi
-sock=none
-case ${{SSH_AUTH_SOCK:-}} in
-  ''|*[Pp][Aa][Ss][Ss][Ww][Oo][Rr][Dd]*) ;;
-  *) sock=$SSH_AUTH_SOCK ;;
+sock=${{SSH_AUTH_SOCK:-}}
+canonical_sock=
+if [ -n "$sock" ]; then
+  canonical_sock=$(realpath -- "$sock" 2>/dev/null ||
+    readlink -f -- "$sock" 2>/dev/null)
+fi
+case $sock:$canonical_sock in
+  :|*[Pp][Aa][Ss][Ss][Ww][Oo][Rr][Dd]*) sock=none ;;
 esac
 set -- -o "IdentityAgent=\\"$sock\\"" "$@"
 exec "$real" "$@"
@@ -227,23 +233,31 @@ HARNESS_TIMEOUT = 10
 # exactly what is on disk.
 CODEX_TIMEOUT = 600
 
-# Without tbhbdev on PATH, a shim blocks the commit only when origin is a
-# tbhb-dev repository, by the same pattern as repo.is_tbhb_dev_url. A newline
-# in the origin becomes a space, so grep sees the whole origin as one line.
+# Match known origins as repo.is_tbhb_dev_url does, treating newlines as spaces.
 ORIGIN_GREP = f"^{TBHB_DEV_ORIGIN_ERE}$"
+SHELL_AGENT_MARKERS = "".join("${" + name + ":-}" for name in AGENT_MARKERS)
 SHIM = """#!/bin/sh
 {mark}
+status=0
 if command -v tbhbdev >/dev/null 2>&1; then
   tbhbdev alpha identity {verb} "$@"
   status=$?
-elif origin=$(git remote get-url --push origin 2>/dev/null) &&
-  printf '%s' "$origin" | LC_ALL=C tr '\\n' ' ' |
-  LC_ALL=C grep -Eqi '{origin}'; then
-  echo "{hook}: tbhbdev is not on PATH, so the identity hooks can't run" >&2
-  echo "{hook}: install it with uv tool install, and put ~/.local/bin on PATH" >&2
-  status=1
 else
-  status=0
+  origin=$(git remote get-url --push origin 2>/dev/null) || origin=
+  if [ -z "$origin" ]; then
+    if [ -n "{agent_markers}" ] || [ "${{GIT_COMMITTER_EMAIL:-}}" = '{agent_email}' ] ||
+      [ "$(git config --get user.email 2>/dev/null)" = '{agent_email}' ]; then
+      echo "{hook}: cannot determine the origin push URL" >&2
+      status=1
+    fi
+  elif printf '%s' "$origin" | LC_ALL=C tr '\\n' ' ' |
+    LC_ALL=C grep -Eqi '{origin}'; then
+    status=1
+  fi
+  if [ "$status" -ne 0 ]; then
+    echo "{hook}: tbhbdev is not on PATH, so the identity hooks can't run" >&2
+    echo "{hook}: install tbhbdev on PATH and run {install_hooks}" >&2
+  fi
 fi
 next="$(dirname "$0")/{hook}.prek"
 if [ -x "$next" ]; then
@@ -271,17 +285,17 @@ if shutil.which("tbhbdev"):
         input=payload, env=os.environ | run_env, check=False,
     ).returncode
 else:
-    target = sys.argv[2]
+    target = sys.argv[2].strip() if len(sys.argv) > 2 else ""
     if not target:
-        remote = subprocess.run(
-            ["git", "-c", "core.fsmonitor=false", "-c", "core.hooksPath=/dev/null",
-             "-c", "diff.external=", "-c", "core.pager=cat",
-             "remote", "get-url", "--push", sys.argv[1]],
-            capture_output=True, text=True, check=False,
-        )
-        target = remote.stdout if remote.returncode == 0 else ""
-    if run_env or re.fullmatch({pattern!r}, target, re.IGNORECASE | re.ASCII):
+        print("pre-push: cannot determine the push destination", file=sys.stderr)
+    org_target = re.fullmatch({pattern!r}, target, re.IGNORECASE | re.ASCII)
+    if not target or run_env or org_target:
         print("pre-push: tbhbdev is not on PATH; push refused", file=sys.stderr)
+        print(
+            "pre-push: install tbhbdev on PATH and run "
+            "tbhbdev alpha install --hooks-only",
+            file=sys.stderr,
+        )
         status = 1
 next_hook = pathlib.Path(__file__).with_name("pre-push.prek")
 if next_hook.is_file():
@@ -730,21 +744,10 @@ def apply_config(
 # --------------------------------------------------------------- statusline
 
 STATUSLINE_VERSION = "2.2.33"
-COLUMNS_PREFIX = (
-    "COLUMNS=${COLUMNS:-$(tmux display-message -p '#{pane_width}' 2>/dev/null"
-    " || echo 80)}"
-)
-BUNX_COMMAND = "bunx -y ccstatusline@latest"
-# The two forms of the registry-resolving command this installer replaces.
-OLD_STATUSLINES = (
-    f"PATH=/opt/homebrew/bin:$PATH {COLUMNS_PREFIX} {BUNX_COMMAND}",
-    BUNX_COMMAND,
-)
 STATUSLINE_TIMEOUT = 300
 # The pinned package is about 3 MiB, so a package far past this isn't it.
 STATUSLINE_MAX_BYTES = 32 * 1024 * 1024
 STATUSLINE_CHUNK = 1024 * 1024
-STATUSLINE_TOKENS = 2  # the node path and the script
 # Written into a staged install once bun exited cleanly and the package checked out.
 STATUSLINE_MARKER = ".complete"
 # SHA-256 of ccstatusline 2.2.33's files as package_digest reads them. A version
@@ -756,20 +759,6 @@ def statusline_root() -> Path:
     """The directory the pinned ccstatusline is installed in."""
     base = os.environ.get("XDG_DATA_HOME") or Path.home() / ".local" / "share"
     return Path(base) / "tbhbdev" / "ccstatusline" / STATUSLINE_VERSION
-
-
-def statusline_script(root: Path) -> Path:
-    """The package's bin, `dist/ccstatusline.js` in its package.json."""
-    return root / "node_modules" / "ccstatusline" / "dist" / "ccstatusline.js"
-
-
-def statusline_command(node: str, script: Path) -> str:
-    return f"{COLUMNS_PREFIX} {shlex.quote(node)} {shlex.quote(str(script))}"
-
-
-def statusline_package(root: Path) -> Path:
-    """The installed package's directory."""
-    return root / "node_modules" / "ccstatusline"
 
 
 def package_digest(package: Path) -> str | None:
@@ -813,7 +802,7 @@ def statusline_installed(root: Path) -> bool:
     symlink, and the package's files hash to the pinned digest, so a truncated,
     replaced or relinked file fails.
     """
-    package = statusline_package(root)
+    package = statusline.statusline_package(root)
     path = (root, root / STATUSLINE_MARKER, root / "node_modules", package)
     marker = root / STATUSLINE_MARKER
     try:
@@ -821,7 +810,7 @@ def statusline_installed(root: Path) -> bool:
             not any(entry.is_symlink() for entry in path)
             and marker.is_file()
             and marker_text(marker) == STATUSLINE_VERSION.encode()
-            and statusline_script(root).is_file()
+            and statusline.statusline_script(root).is_file()
             and package_digest(package) == STATUSLINE_DIGEST
         )
     except OSError:
@@ -867,55 +856,6 @@ def add_statusline(root: Path, bun: str | None, run: Callable[..., object]) -> N
         shutil.rmtree(staging, ignore_errors=True)
 
 
-def missing_tool(node: str | None, bun: str | None, *, installed: bool) -> str | None:
-    """Name the tool the pin can't run without, or None when it has both."""
-    if not node:
-        return "node"
-    return "bun" if not installed and not bun else None
-
-
-def is_ours(command: str) -> bool:
-    """Whether COMMAND is exactly what this installer writes, for any node and version.
-
-    The node slot must be an absolute path named `node`, the script the pinned
-    package's bin under a version directory beside the current one, and the
-    quoting the installer's own. So `$MY_STATUS_NODE` and `evil-binary` don't match,
-    and a command written for an older version does.
-    """
-    head = f"{COLUMNS_PREFIX} "
-    if not command.startswith(head):
-        return False
-    try:
-        tokens = shlex.split(command[len(head) :])
-    except ValueError:
-        return False
-    if len(tokens) != STATUSLINE_TOKENS:
-        return False
-    node, script = Path(tokens[0]), Path(tokens[1])
-    return (
-        node.is_absolute()
-        and node.name == "node"
-        and script.is_absolute()
-        # Any root gives the same last four parts, so mutating "/" changes nothing.
-        and script.parts[-4:]
-        == statusline_script(Path("/")).parts[-4:]  # pragma: no mutate
-        and script.parents[3].parent == statusline_root().parent
-        and command == statusline_command(tokens[0], script)
-    )
-
-
-def replaceable_line(config: Json) -> Json | None:
-    """The `statusLine` object when its command is a known or our own one."""
-    line = config.get("statusLine")
-    if not isinstance(line, dict):
-        return None
-    command = line.get("command")
-    if not isinstance(command, str):
-        return None
-    known = command in OLD_STATUSLINES or is_ours(command)
-    return line if known else None
-
-
 def pin_statusline(path: Path, wanted: str | None) -> Path | None:
     """Write WANTED into the config as it is now; None when it's no longer ours.
 
@@ -923,7 +863,7 @@ def pin_statusline(path: Path, wanted: str | None) -> Path | None:
     ran is kept. Raises InstallError when the write can't be read back.
     """
     old, config = read_config(path)
-    line = replaceable_line(config)
+    line = statusline.replaceable_line(config, statusline_root().parent)
     if line is None:
         return None
     merged = {**config, "statusLine": {**line, "command": wanted}}
@@ -957,19 +897,25 @@ def install_statusline(  # noqa: PLR0911 -- one early return per outcome
         print(f"{PROG}: claude: cannot read {path}: {exc}", file=sys.stderr)
         return 1
     root = statusline_root()
-    script = statusline_script(root)
-    line = replaceable_line(config)
+    script = statusline.statusline_script(root)
+    line = statusline.replaceable_line(config, root.parent)
     if line is None:
         return 0
     bun, node = which("bun"), which("node")
     # With no node, shlex.quote turns None into '', which no replaceable line
     # equals, so dropping the guard changes nothing.
-    wanted = statusline_command(node, script) if node else None  # pragma: no mutate
+    wanted = (  # pragma: no mutate
+        statusline.statusline_command(node, script) if node else None
+    )
     installed = statusline_installed(root)
     if line["command"] == wanted and installed:
         print(f"claude: statusLine in {path} is up to date")
         return 0
-    missing = missing_tool(node, bun, installed=installed)
+    missing = None
+    if not node:
+        missing = "node"
+    elif not installed and not bun:
+        missing = "bun"
     if missing:
         print(
             f"claude: {missing} not found; left the statusLine command in {path}",
@@ -1375,7 +1321,15 @@ def install_identity_hook(
             message = f"prek install -f --hook-type {name} wrote no {hook}"
             raise InstallError(message) from exc
     hook.write_text(
-        SHIM.format(mark=SHIM_MARK, verb=verb, hook=name, origin=ORIGIN_GREP)
+        SHIM.format(
+            mark=SHIM_MARK,
+            verb=verb,
+            hook=name,
+            origin=ORIGIN_GREP,
+            agent_markers=SHELL_AGENT_MARKERS,
+            agent_email=AGENT_EMAIL,
+            install_hooks=INSTALL_HOOKS,
+        )
     )
     hook.chmod(0o755)
 
@@ -1459,6 +1413,37 @@ def install_git_hooks(
         return 1
     print(f"{PROG}: installed git hooks in {hooks}")
     return 0
+
+
+def git_hooks_problem() -> str:
+    """Find a missing or ineffective hook in the directory Git actually uses."""
+    code, directory = git("rev-parse", "--path-format=absolute", "--git-path", "hooks")
+    if code or not directory:
+        return "cannot locate Git's hooks directory"
+    shims = ("pre-push", *(name for name, _ in IDENTITY_HOOKS))
+    for name in (*shims, "pre-commit", "pre-push.prek"):
+        hook = Path(directory) / name
+        try:
+            if not hook.is_file() or not os.access(hook, os.X_OK):
+                return f"{hook} is missing or not executable"
+            if name in shims and SHIM_MARK not in hook.read_text(errors="replace"):
+                return f"{hook} is missing the tbhbdev hook"
+        except OSError as exc:
+            return f"cannot read {hook}: {exc.strerror}"
+    return ""
+
+
+def require_git_hooks(env: Mapping[str, str]) -> bool:
+    """Refuse agent PR operations when the checkout's hooks cannot run."""
+    if agent_operation(env) and (problem := git_hooks_problem()):
+        print(
+            f"{problem}. In a tbhb-dev clone run `{INSTALL_HOOKS}`. "
+            "If core.hooksPath redirects Git, use the managed agent worktree "
+            "or restore the clone's hooks directory.",
+            file=sys.stderr,
+        )
+        return False
+    return True
 
 
 # ---------------------------------------------------------------- command line
