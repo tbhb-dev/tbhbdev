@@ -2112,8 +2112,6 @@ cli_py_library(
     ],
 )
 
-# The shared conftest creates files for host integration tests.
-# keep
 cli_py_test(
     name = "test_alpha_agent_run_host_launch",
     srcs = ["test_alpha_agent_run_host_launch.py"],

@@ -1,5 +1,8 @@
 """Pure harness launch formatting and environment decisions."""
 
+# The shared conftest creates files for host integration tests.
+# gazelle:include_pytest_conftest false
+
 from __future__ import annotations
 
 import tomllib
