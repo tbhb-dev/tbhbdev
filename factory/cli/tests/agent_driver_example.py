@@ -10,8 +10,6 @@ import sys
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
-from fake_tool import write_fake
-
 from tbhbdev import version
 from tbhbdev.alpha.agent.decisions import argv
 
@@ -40,7 +38,8 @@ if name == "ssh":
     if len((root / "ssh.jsonl").read_text().splitlines()) > 20:
         raise AssertionError("ssh call budget exceeded")
     if "# tbhbdev-limits" in args[-1]:
-        print(control.get("limits", "0.5 4 12582912 6291456 100 0 -"))
+        reading = control.get("limits", "0.5 4 12582912 6291456 100 0 -")
+        print(control.get("limits_by_host", {}).get(args[-2], reading))
         sys.exit(control.get("limits_rc", 0))
     plan = control.get("ssh", [])
     if plan:
@@ -58,13 +57,23 @@ if name == "ssh":
     command = shlex.split(args[-1])
     assert command[:2] in (["/bin/bash", "-c"], ["/bin/zsh", "-c"])
     env = {"PATH": os.environ["PATH"], "EXAMPLE_REMOTE": str(root),
-           "HOME": str(root / "home"), "XDG_STATE_HOME": str(root / "state")}
+           "HOME": str(root / "home"), "XDG_STATE_HOME": str(root / "state"),
+           "EXAMPLE_SSH_HOST": args[-2]}
     script = command[2].replace(
         "PATH=/usr/bin:/bin:/usr/sbin:/sbin", "PATH=" + os.environ["PATH"])
     script = script.replace("/tmp/example-sockets", str(root / "sockets"))
     result = subprocess.run(["/bin/sh", "-c", script], input=data, env=env)
     sys.exit(result.returncode)
 if name == "tbhbdev":
+    if args[:3] == ["alpha", "agent", "check-slot"]:
+        host, profile, limit, separator, *accounts = args[3:]
+        assert host == os.environ["EXAMPLE_SSH_HOST"]
+        assert profile in ("build", "review")
+        assert int(limit) > 0
+        assert separator == "--" and accounts
+        if host in control.get("full_slot_hosts", []):
+            print("full")
+        sys.exit(control.get("slot_rc_by_host", {}).get(host, 0))
     assert args == ["--version"]
     print(control["version"])
 elif name == "tmux":
@@ -85,7 +94,9 @@ elif name == "tmux":
     if verb == "new-session":
         assert args[8:] == [str(root / "home/.local/bin/tbhbdev"),
                             "alpha", "agent", "run-host", "sample",
-                            "--host", "example-linux", "--owned"]
+                            "--host", os.environ["EXAMPLE_SSH_HOST"], "--owned"] + (
+                                ["--steer"] if control.get("steer") else []
+                            )
         (run / "sample.run.lock").write_text("")
         control["session"] = True
         launch = control.get("launch", {"launched": ""})
@@ -154,14 +165,22 @@ class Remote:
         path.write_text(json.dumps(values))
 
     def records(self, tool: str, *, limits: bool = False) -> list[dict[str, object]]:
-        """The calls to TOOL, without the limits reads unless LIMITS is true."""
+        """The calls to TOOL, without host probes unless LIMITS is true."""
         path = self.root / f"{tool}.jsonl"
         found = (
             [json.loads(line) for line in path.read_text().splitlines()]
             if path.exists()
             else []
         )
-        return [r for r in found if limits or "# tbhbdev-limits" not in str(r["args"])]
+        return [
+            r
+            for r in found
+            if limits
+            or all(
+                marker not in str(r["args"])
+                for marker in ("# tbhbdev-limits", "# tbhbdev-check-slot")
+            )
+        ]
 
     def file(self, suffix: str, text: str) -> None:
         (self.state / ("sample" + suffix)).write_text(text)
@@ -215,9 +234,11 @@ def setup(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Remote:
 
 def write_standalone_fake(script: Path, body: str) -> None:
     """A standard-library-only fake, without site hooks that replay side effects."""
-    write_fake(script, body)
-    interpreter = shlex.quote(sys.executable)
-    script.write_text(script.read_text().replace(interpreter, interpreter + " -S"))
+    source = script.with_name(script.name + ".py")
+    source.write_text(body)
+    command = shlex.join((sys.executable, "-S", str(source)))
+    script.write_text(f'#!/bin/sh\nexec {command} "$@"\n')
+    script.chmod(0o755)
 
 
 def git_in(clone: Path, *args: str) -> str:

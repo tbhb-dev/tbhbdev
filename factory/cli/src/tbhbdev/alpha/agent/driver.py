@@ -5,10 +5,11 @@ from __future__ import annotations
 import fcntl
 import json
 import os
+import re
 import secrets
 import sys
 import time
-from contextlib import contextmanager
+from contextlib import contextmanager, suppress
 from dataclasses import replace
 from datetime import UTC, datetime
 from pathlib import Path, PurePosixPath
@@ -17,6 +18,7 @@ from typing import TYPE_CHECKING, NoReturn
 from tbhbdev import telemetry, version
 from tbhbdev.alpha import brief
 from tbhbdev.alpha.agent import (
+    admission,
     launcher,
     render,
     runfiles,
@@ -35,7 +37,11 @@ if TYPE_CHECKING:
     import argparse
     from collections.abc import Generator
 
-    from tbhbdev.alpha.agent.model import Host, Settings
+    from tbhbdev.alpha.agent.model import Host, Os, Settings
+
+
+MAX_LIVE_REVIEWS = 4
+CLAUDE_UNAVAILABLE = "Claude delivery is not built"
 
 
 class Run:
@@ -92,9 +98,10 @@ def _maybe_text(value: object) -> str | None:
     return value if isinstance(value, str) else None
 
 
-def load(settings: Settings, name: str) -> Run:
-    path = metadata_path(name)
-    path.parent.chmod(0o700)
+def load(settings: Settings, name: str, *, archived: Path | None = None) -> Run:
+    path = metadata_path(name) if archived is None else archived
+    if archived is None:
+        path.parent.chmod(0o700)
     try:
         record: dict[str, object] = json.loads(path.read_text())
         host = rules.select_host(
@@ -129,9 +136,12 @@ def agy_timeout(settings: Settings, harness: Harness, profile: Profile) -> int |
     return settings.agy_timeout_seconds
 
 
-def prepare(settings: Settings, args: argparse.Namespace) -> Run:
+def prepare(
+    settings: Settings, args: argparse.Namespace, *, host: Host | None = None
+) -> Run:
     rules.check_name(args.name)
-    host = rules.select_host(settings, args.host, args.account)
+    if host is None:
+        host = rules.select_host(settings, args.host, args.account)
     harness = Harness(args.harness)
     profile = Profile(args.profile)
     expect_commit = args.expect_commit
@@ -241,11 +251,11 @@ def launch_lock() -> Generator[None]:
 
 
 def refuse_live_duplicate(settings: Settings, run: Run) -> None:
-    """Refuse a review of a commit that another run of the profile is reviewing.
+    """Refuse a duplicate review or a fifth live review of the same commit.
 
     Two runs on one repository, commit and profile coexist only when both
-    declare a variant and the variants differ (a planned pair of reviewers of
-    one head). A run with no variant conflicts with every live run on that key.
+    declare distinct variants. A run with no variant conflicts with every
+    live run on that key. The cap applies across variants.
 
     A recorded run counts as live until the host reports its exit status, so
     an unreachable host or a run with no status also refuses. A run older than
@@ -254,26 +264,21 @@ def refuse_live_duplicate(settings: Settings, run: Run) -> None:
     ``launch_lock`` so two launches cannot both pass this check.
 
     Raises:
-        Invalid: A recorded run has the same repo, commit and profile, no exit
-            status yet, and either run declares no variant or both declare the
-            same one.
+        Invalid: A live review conflicts on variant or the cap is reached.
     """
+    key = (canonical_repo(run.request.repo), run.request.commit, run.request.profile)
+    live = 0
     for path in sorted(directory().glob("*.json")):
         try:
             other = load(settings, path.stem)
         except Invalid, ValueError, FileNotFoundError:
             continue
-        same = (
-            canonical_repo(other.request.repo) == canonical_repo(run.request.repo)
-            and other.request.commit == run.request.commit
-            and other.request.profile is run.request.profile
-            and (
-                other.request.variant is None
-                or run.request.variant is None
-                or other.request.variant == run.request.variant
-            )
+        other_key = (
+            canonical_repo(other.request.repo),
+            other.request.commit,
+            other.request.profile,
         )
-        if not same or past_time_limit(settings, other):
+        if other_key != key or past_time_limit(settings, other):
             continue
         try:
             ended = (
@@ -282,34 +287,38 @@ def refuse_live_duplicate(settings: Settings, run: Run) -> None:
             )
         except transport.TransportError:
             ended = False
-        if not ended:
+        if ended:
+            continue
+        live += 1
+        if live >= MAX_LIVE_REVIEWS:
             message = (
-                f"{run.name}: run {other.name} already reviews "
-                f"{run.request.repo}@{run.request.commit} with the "
-                f"{run.request.profile.value} profile and hasn't ended. "
-                f"Check `tbhbdev alpha agent status {other.name}` and use "
-                f"`tbhbdev alpha agent clean {other.name}` once it ends. "
-                "For concurrent reviewers, launch both with distinct --variant values"
+                f"{run.name}: {run.request.repo}@{run.request.commit} already has "
+                f"{MAX_LIVE_REVIEWS} live reviews"
             )
             raise Invalid(message)
+        variant, other_variant = run.request.variant, other.request.variant
+        if None not in (variant, other_variant) and variant != other_variant:
+            continue
+        message = (
+            f"{run.name}: run {other.name} already reviews "
+            f"{run.request.repo}@{run.request.commit} with the "
+            f"{run.request.profile.value} profile and hasn't ended. "
+            f"Check `tbhbdev alpha agent status {other.name}` and use "
+            f"`tbhbdev alpha agent clean {other.name}` once it ends. "
+            "For concurrent reviewers, launch both with distinct --variant values"
+        )
+        raise Invalid(message)
 
 
-def check_limits(
+def read_limits(
     settings: Settings,
     host: Host,
     profile: Profile,
     *,
     ignore: bool,
-    timeout: float = 30,
-) -> None:
-    """Read HOST's load, memory, pressure and swap in one ssh call, then refuse or warn.
-
-    Launch calls this first. A later step may call it again.
-
-    Raises:
-        Invalid: A limit is exceeded or the read failed, and neither the host
-            nor IGNORE allows the launch to continue.
-    """
+    timeout: float,
+) -> tuple[limits.Reading | str, bool, str]:
+    """Read and judge the host's load, memory, pressure and swap in one SSH call."""
     if host.max_concurrent_runs == 0:
         message = f"{host.name}: max_concurrent_runs is 0"
         raise Invalid(message)
@@ -325,43 +334,214 @@ def check_limits(
         else settings.run_memory_mib
     )
     refuse, message = limits.decide(host, found, memory_mib, ignore=ignore)
+    return found, refuse, message
+
+
+def check_limits(
+    settings: Settings,
+    host: Host,
+    profile: Profile,
+    *,
+    ignore: bool,
+    timeout: float = 30,
+) -> None:
+    """Refuse or warn based on one host reading."""
+    _, refuse, message = read_limits(
+        settings, host, profile, ignore=ignore, timeout=timeout
+    )
     if refuse:
         raise Invalid(message)
     if message:
         print(message, file=sys.stderr)
 
 
+def usable_hosts(
+    settings: Settings,
+    system: Os,
+    args: argparse.Namespace,
+    deadline: float,
+    *,
+    exclude: str | None = None,
+) -> list[tuple[float, Host, str]]:
+    """Return eligible hosts in increasing order of 1-minute load."""
+    usable: list[tuple[float, Host, str]] = []
+    profile = Profile(args.profile)
+    account = args.account
+    candidates = [
+        candidate
+        for candidate in settings.hosts
+        if candidate.auto_select
+        and candidate.os is system
+        and candidate.name != exclude
+        and candidate.max_concurrent_runs != 0
+        and (account is None or account in candidate.accounts)
+    ]
+    for index, candidate in enumerate(candidates):
+        host = rules.select_host(settings, candidate.name, account)
+        now = time.monotonic()
+        remaining = deadline - now
+        if remaining <= 0:
+            break
+        probe_deadline = now + min(30, remaining / (len(candidates) - index))
+        found, refuse, message = read_limits(
+            settings,
+            host,
+            profile,
+            ignore=False,
+            timeout=probe_deadline - now,
+        )
+        if refuse or not isinstance(found, limits.Reading):
+            continue
+        # An older host may lack the probe until version synchronization.
+        # The launch still checks capacity when it claims a slot.
+        slot_timeout = probe_deadline - time.monotonic()
+        if slot_timeout > 0:
+            with suppress(transport.TransportError, transport.CollisionError):
+                slot = transport.shell(
+                    settings,
+                    host,
+                    remote.check_slot(host, profile),
+                    timeout=slot_timeout,
+                )
+                if slot.strip() == admission.SLOT_FULL:
+                    continue
+        usable.append((found.load, host, message))
+    return sorted(usable, key=lambda entry: entry[0])
+
+
+def select_exec_host(
+    settings: Settings, args: argparse.Namespace, deadline: float
+) -> Host:
+    if args.ignore_limits:
+        message = "--ignore-limits requires --host"
+        raise Invalid(message)
+    # Reserve half the launch wait for preflight and startup on the selected host.
+    usable = usable_hosts(
+        settings, args.os, args, deadline - settings.launch_wait_seconds / 2
+    )
+    if not usable:
+        message = (
+            f"no usable {args.os} hosts for automatic selection; "
+            "check auto_select and host limits"
+        )
+        raise Invalid(message)
+    _, host, message = usable[0]
+    if message:
+        print(message, file=sys.stderr)
+    return host
+
+
+def check_named_host(
+    settings: Settings, args: argparse.Namespace, run: Run, deadline: float
+) -> None:
+    try:
+        check_limits(
+            settings,
+            run.host,
+            run.request.profile,
+            ignore=run.ignore_limits,
+            timeout=deadline - time.monotonic(),
+        )
+    except Invalid as exc:
+        usable = usable_hosts(
+            settings, run.host.os, args, deadline, exclude=run.host.name
+        )
+        names = ", ".join(host.name for _, host, _ in usable)
+        message = f"{exc}; available alternatives: {names or 'none'}"
+        raise Invalid(message) from exc
+
+
+def launch_host(
+    settings: Settings, args: argparse.Namespace, run: Run | None, deadline: float
+) -> Host:
+    try:
+        if run is None:
+            return select_exec_host(settings, args, deadline)
+        check_named_host(settings, args, run, deadline)
+    except Invalid:
+        telemetry.attributes(**{"tbhb.agent.outcome": "refused"})
+        raise
+    return run.host
+
+
+_SECRET_PATTERNS = (
+    ("1Password reference", re.compile(r"op://")),
+    (
+        "private key header",
+        re.compile(
+            r"-----BEGIN (?:(?:[A-Z0-9 ]+ )?PRIVATE KEY|PGP PRIVATE KEY BLOCK)-----"
+        ),
+    ),
+    ("token prefix", re.compile(r"ghp_|github_pat_|sk-ant-|AKIA|xoxb-")),
+)
+
+
+def secret_kind(text: str) -> str | None:
+    """Return the kind of the first matching pattern."""
+    for kind, pattern in _SECRET_PATTERNS:
+        if pattern.search(text):
+            return kind
+    return None
+
+
 def checked_prompt(args: argparse.Namespace) -> str:
-    """Read the brief, refuse hook conflicts and report warnings locally."""
+    """Read the brief, refuse secrets and conflicts, and report warnings locally."""
     prompt = Path(args.prompt_file).read_text()
+    if kind := secret_kind(prompt):
+        telemetry.attributes(**{"tbhb.agent.outcome": "refused"})
+        message = f"brief refused: {kind}"
+        raise Invalid(message)
     if not prompt and version_heal.retrying():
         message = f"{args.prompt_file}: brief is empty after the driver restarted"
         raise Invalid(message)
+    pinned_refs = (args.ref,) if args.ref and args.ref.startswith("refs/") else ()
+    available_refs = [*args.fetch_ref, *pinned_refs]
     problems = brief.check_hooks(prompt)
     problems.extend(
         rules.prompt_launch_problems(
-            prompt, Profile(args.profile), args.fetch_ref, args.start_ref
+            prompt, Profile(args.profile), available_refs, args.start_ref
         )
     )
     if problems:
         telemetry.attributes(**{"tbhb.agent.outcome": "refused"})
         message = "\n".join(f"{args.prompt_file}: {problem}" for problem in problems)
         raise Invalid(message)
+    malformed_refs = rules.malformed_prompt_refs(prompt)
     for warning in brief.branch_warnings(
-        prompt, run=args.name, fetch_refs=tuple(args.fetch_ref)
+        prompt,
+        run=args.name,
+        fetch_refs=tuple(args.fetch_ref),
+        ignored_refs=(*pinned_refs, *malformed_refs),
     ):
         print(f"warning: {args.prompt_file}: {warning}", file=sys.stderr)
-    for ref in rules.unfetched_prompt_refs(prompt, args.fetch_ref):
+    for ref in malformed_refs:
         print(
-            f"warning: the prompt names {ref} but this launch has no "
-            f"--fetch-ref {ref}; a run whose mirror lacks it may end with no work",
+            f"warning: {args.prompt_file}: malformed ref {ref!r} in the prompt",
+            file=sys.stderr,
+        )
+    for ref in rules.unfetched_prompt_refs(prompt, available_refs):
+        print(
+            f"warning: {args.prompt_file}: the prompt names {ref} but this launch "
+            f"has no --fetch-ref {ref}; "
+            "a run whose mirror lacks it may end with no work",
             file=sys.stderr,
         )
     return prompt
 
 
-def execute(settings: Settings, args: argparse.Namespace) -> int:
-    run = prepare(settings, args)
+def checked_schema(args: argparse.Namespace) -> str | None:
+    if args.schema is None:
+        return None
+    schema = Path(args.schema).read_text()
+    if kind := secret_kind(schema):
+        telemetry.attributes(**{"tbhb.agent.outcome": "refused"})
+        message = f"schema refused: {kind}"
+        raise Invalid(message)
+    json.loads(schema)
+    return schema
+
+
+def launch_attributes(run: Run) -> None:
     telemetry.attributes(
         **{
             "tbhb.agent.host": run.host.name,
@@ -371,22 +551,26 @@ def execute(settings: Settings, args: argparse.Namespace) -> int:
             "tbhb.run.id": run.name,
         }
     )
+
+
+def execute(settings: Settings, args: argparse.Namespace) -> int:
+    if args.steer and (args.harness, args.profile, args.schema) != (
+        Harness.CODEX,
+        Profile.BUILD,
+        None,
+    ):
+        message = "exec --steer requires a Codex build without --schema"
+        raise Invalid(message)
+    run = prepare(settings, args) if args.host is not None else None
+    if run is not None:
+        launch_attributes(run)
     prompt = checked_prompt(args)
-    schema = None if args.schema is None else Path(args.schema).read_text()
-    if schema is not None:
-        json.loads(schema)
+    schema = checked_schema(args)
     deadline = time.monotonic() + settings.launch_wait_seconds
-    try:
-        check_limits(
-            settings,
-            run.host,
-            run.request.profile,
-            ignore=run.ignore_limits,
-            timeout=deadline - time.monotonic(),
-        )
-    except Invalid:
-        telemetry.attributes(**{"tbhb.agent.outcome": "refused"})
-        raise
+    host = launch_host(settings, args, run, deadline)
+    if run is None:
+        run = prepare(settings, args, host=host)
+        launch_attributes(run)
     ref = args.ref or "HEAD"
     resolve = (
         run.request.profile is Profile.REVIEW and rules.COMMIT.fullmatch(ref) is None
@@ -428,12 +612,12 @@ def execute(settings: Settings, args: argparse.Namespace) -> int:
         transport.call(
             settings,
             run.host,
-            remote.start(run.name, settings.sockets_dir, run.host),
+            remote.start(run.name, settings.sockets_dir, run.host, steer=args.steer),
             transport.Stdin(run.owner),
             timeout=deadline - time.monotonic(),
         )
     except transport.CollisionError:
-        archive_metadata(run.name, run.started)
+        archive_metadata(metadata_path(run.name), run.started)
         raise
     except transport.TransportError:
         recover_transfer(settings, run)
@@ -451,7 +635,7 @@ def execute(settings: Settings, args: argparse.Namespace) -> int:
 
 
 def not_owner(run: Run) -> NoReturn:
-    archive_metadata(run.name, datetime.now(UTC).isoformat())
+    archive_metadata(metadata_path(run.name), datetime.now(UTC).isoformat())
     message = f"{run.name}: not owner"
     raise Invalid(message)
 
@@ -694,18 +878,15 @@ def kill(settings: Settings, run: Run) -> int:
         time.sleep(0.5)
 
 
-def archive_metadata(name: str, stamp: str) -> None:
+def archive_metadata(path: Path, stamp: str) -> None:
     trash = directory() / "trash" / stamp
     trash.mkdir(mode=0o700, parents=True)
-    metadata_path(name).rename(trash / f"{name}.json")
+    path.rename(trash / path.name)
 
 
-def clean(settings: Settings, run: Run, *, force: bool) -> int:
-    reading = transport.read(
-        settings,
-        run.host,
-        (run.name, run.owner),
-    )
+def check_clean(
+    settings: Settings, run: Run, reading: transport.Reading, *, force: bool
+) -> None:
     rules.clean(reading.rc, session=reading.session, force=force or run.cleaning)
     if not force and run.request.unsandboxed:
         message = (
@@ -730,10 +911,27 @@ def clean(settings: Settings, run: Run, *, force: bool) -> int:
             )
             raise Invalid(message)
         print("branch exists on origin")
+
+
+def clean(
+    settings: Settings, run: Run, *, force: bool, archived: Path | None = None
+) -> int:
+    path = metadata_path(run.name) if archived is None else archived
+    # An archived record may only recover a missing claim. The host still
+    # refuses an existing owner or a live run.
+    ownerless_only = True
+    if archived is None:
+        try:
+            reading = transport.read(settings, run.host, (run.name, run.owner))
+        except transport.CollisionError:
+            pass
+        else:
+            check_clean(settings, run, reading, force=force)
+            ownerless_only = False
+        record = json.loads(path.read_text())
+        record["cleaning"] = True
+        path.write_text(json.dumps(record) + "\n")
     stamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%S%fZ")
-    record = json.loads(metadata_path(run.name).read_text())
-    record["cleaning"] = True
-    metadata_path(run.name).write_text(json.dumps(record) + "\n")
     transport.shell(
         settings,
         run.host,
@@ -743,28 +941,62 @@ def clean(settings: Settings, run: Run, *, force: bool) -> int:
             stamp,
             settings.sockets_dir,
             force=force,
+            ownerless_only=ownerless_only,
         ),
         transport.Stdin(run.owner),
     )
-    archive_metadata(run.name, stamp)
+    archive_metadata(path, stamp)
+    return 0
+
+
+def clean_archived(settings: Settings, name: str, *, force: bool) -> int:
+    archived = max(
+        (directory() / "trash").glob(f"*/{name}.json"),
+        key=lambda path: path.parent.stat().st_mtime_ns,
+        default=None,
+    )
+    # Completed cleanups use a compact UTC stamp ending in Z. Ownership
+    # failures use an ISO stamp ending in +00:00 and may leave host files.
+    if archived is None or archived.parent.name.endswith("Z"):
+        return 0
+    run = load(settings, name, archived=archived)
+    return clean(settings, run, force=force, archived=archived)
+
+
+def export_patch(settings: Settings, run: Run) -> int:
+    if run.request.profile is not Profile.BUILD:
+        message = "diff --patch requires a finished build run"
+        raise Invalid(message)
+    script = remote.export_patch(run.request.repo, run.name)
+    output = transport.call_bytes(
+        settings, run.host, ("/bin/sh", "-c", script), transport.Stdin(run.owner)
+    )
+    sys.stdout.buffer.write(output)
     return 0
 
 
 def inspect(settings: Settings, run: Run, *, limit: int | None) -> int:
-    if run.request.unsandboxed and (
-        limit is not None or run.request.profile is Profile.REVIEW
+    if (
+        run.request.unsandboxed
+        and limit is None
+        and run.request.profile is Profile.REVIEW
     ):
         reading = transport.read(
             settings, run.host, (run.name, run.owner), answer=True, timeout=30
         )
         print(transport.terminal_text(reading.text), end="")
         return 0
+    script = (
+        remote.run_log(run.name)
+        if run.request.unsandboxed and limit is not None
+        else remote.inspect(run.request.repo, run.name, limit=limit)
+    )
     print(
         transport.terminal_text(
             transport.shell(
                 settings,
                 run.host,
-                remote.inspect(run.request.repo, run.name, limit=limit),
+                script,
                 transport.Stdin(run.owner),
             )
         ),
@@ -780,6 +1012,28 @@ def keep(settings: Settings, run: Run) -> int:
     return 0
 
 
+def send(settings: Settings, run: Run, text: str) -> int:
+    name = run.name
+    if run.request.harness is Harness.CLAUDE:
+        raise Invalid(CLAUDE_UNAVAILABLE)
+    if run.request.harness is not Harness.CODEX:
+        message = f"{name}: send requires a Codex run"
+        raise Invalid(message)
+    if kind := secret_kind(text):
+        message = f"steering message refused: {kind}"
+        raise Invalid(message)
+    script = remote.owned(name) + (
+        f"exec {remote.program(run.host)} alpha agent send-host {name}\n"
+    )
+    error = transport.shell(
+        settings, run.host, script, transport.Stdin(run.owner, text.encode())
+    ).strip()
+    if error:
+        message = f"{name}: {transport.terminal_text(error)}"
+        raise Invalid(message)
+    return 0
+
+
 def dispatch(settings: Settings, args: argparse.Namespace) -> int:
     if args.verb == "signing-parity":
         return signing_parity.main(settings)
@@ -789,13 +1043,30 @@ def dispatch(settings: Settings, args: argparse.Namespace) -> int:
             **{"tbhb.agent.outcome": "ok" if result == 0 else "failed"}
         )
         return result
-    run = load(settings, args.name)
+    try:
+        run = load(settings, args.name)
+    except FileNotFoundError:
+        match args.verb:
+            case "clean":
+                return clean_archived(settings, args.name, force=args.force)
+            case "send":
+                message = f"{args.name}: unknown run"
+                raise Invalid(message) from None
+        raise
     verbs = {"wait": wait, "status": status, "kill": kill, "keep": keep}
     try:
-        if args.verb in {"log", "diff"}:
-            return inspect(settings, run, limit=args.n if args.verb == "log" else None)
-        if args.verb == "clean":
-            return clean(settings, run, force=args.force)
-        return verbs[args.verb](settings, run)
+        if args.verb == "diff" and args.patch:
+            result = export_patch(settings, run)
+        elif args.verb in {"log", "diff"}:
+            limit = args.n if args.verb == "log" else None
+            result = inspect(settings, run, limit=limit)
+        elif args.verb == "clean":
+            result = clean(settings, run, force=args.force)
+        elif args.verb == "send":
+            result = send(settings, run, args.message)
+        else:
+            result = verbs[args.verb](settings, run)
     except transport.CollisionError:
         not_owner(run)
+    else:
+        return result

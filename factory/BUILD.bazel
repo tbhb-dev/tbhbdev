@@ -13,7 +13,7 @@ package_group(
 
 filegroup(
     name = "repo_files",
-    srcs = glob(["**"]),
+    srcs = glob(["**"]) + ["//factory/agent-capacity:repo_files"],
     visibility = ["//:__pkg__"],
 )
 

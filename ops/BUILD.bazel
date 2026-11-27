@@ -1,0 +1,40 @@
+# SPDX-License-Identifier: Apache-2.0
+# Copyright Tony Burns
+
+load("@rules_python//python:defs.bzl", "py_test")
+
+package(default_visibility = ["//ops/packages:__subpackages__"])
+
+filegroup(
+    name = "deployment_fixtures",
+    srcs = glob([
+        "apps/**",
+        "tools/*",
+    ]) + ["//ops/ansible:deployment_fixtures"],
+)
+
+filegroup(
+    name = "o11y_fixtures",
+    srcs = glob(["o11y/**"]),
+)
+
+py_test(
+    name = "ca_tests",
+    srcs = glob(["apps/ca/tests/test_*.py"]),
+    args = [
+        "-p",
+        "no:cacheprovider",
+        "ops/apps/ca/tests",
+    ],
+    data = [
+        ":deployment_fixtures",
+        ":o11y_fixtures",
+    ],
+    legacy_create_init = False,
+    main_module = "pytest",
+    deps = [
+        "@cli_pip//ansible_core",
+        "@cli_pip//pytest",
+        "@cli_pip//pyyaml",
+    ],
+)

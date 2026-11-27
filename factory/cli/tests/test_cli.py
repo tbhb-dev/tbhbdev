@@ -11,6 +11,8 @@ import pytest
 from tbhbdev import cli
 
 if TYPE_CHECKING:
+    from pathlib import Path
+
     from conftest import Installed
 
 USAGE = cli.usage(cli.TOOLS)
@@ -40,11 +42,14 @@ def test_usage_lists_every_tool() -> None:
         assert f"  {name}\n" in USAGE
 
 
-def test_unknown_tool_fails_with_usage(capsys: pytest.CaptureFixture[str]) -> None:
-    assert cli.main(["nope", "x"]) == 2
+@pytest.mark.parametrize("name", ["nope", "host"])
+def test_unknown_tool_fails_with_usage(
+    name: str, capsys: pytest.CaptureFixture[str]
+) -> None:
+    assert cli.main([name, "x"]) == 2
     captured = capsys.readouterr()
     assert captured.out == ""
-    assert captured.err == f"tbhbdev: unknown tool 'nope'\n{USAGE}"
+    assert captured.err == f"tbhbdev: unknown tool {name!r}\n{USAGE}"
 
 
 def test_tool_gets_the_rest_of_argv_and_its_program_name(
@@ -66,9 +71,10 @@ def test_main_reads_sys_argv_by_default(monkeypatch: pytest.MonkeyPatch) -> None
     assert cli.main() == 0
 
 
-def test_module_entry_point_runs_the_command() -> None:
+def test_module_entry_point_runs_the_command(tmp_path: Path) -> None:
     result = subprocess.run(
         [sys.executable, "-m", "tbhbdev", "--help"],
+        cwd=tmp_path,
         capture_output=True,
         text=True,
         check=False,

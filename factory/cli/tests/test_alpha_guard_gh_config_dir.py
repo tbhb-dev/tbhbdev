@@ -8,12 +8,12 @@ import sys
 from typing import TYPE_CHECKING
 
 import pytest
+from stub_fixtures import stubs as stubs  # noqa: PLC0414
 
-from tbhbdev import alpha
-from tbhbdev.alpha import guard_gh_config_dir as guard
+import tbhbdev.alpha.guard_gh_config_dir as guard
 
 if TYPE_CHECKING:
-    from conftest import Stubs
+    from stub_fixtures import Stubs
 
 
 @pytest.mark.parametrize("value", [None, "", "/nonexistent/gh-config", " "])
@@ -50,7 +50,7 @@ def test_hook_contract(
     else:
         stdin = json.dumps({"tool_input": {"command": command}})
     monkeypatch.setattr(sys, "stdin", io.StringIO(stdin))
-    assert alpha.main(["guard-gh-config-dir"], "tbhbdev alpha") == 0
+    assert guard.main() == 0
     captured = capsys.readouterr()
     assert captured.err == ""
     if value:

@@ -12,6 +12,9 @@ common --downloader_config=third_party/zig-downloader.cfg
 test --test_timeout=60,180,300,900
 test --test_output=errors
 build:ci --color=yes
+# CI reads only test results.
+# Downloading other outputs wastes time on a warm remote cache.
+common:ci --remote_download_outputs=minimal
 
 startup --windows_enable_symlinks
 startup --max_idle_secs=900

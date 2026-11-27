@@ -26,15 +26,12 @@ CODEX_SUBAGENTS = (
     'that omits `fork_turns` or sets it to `"all"`.'
 )
 BUILD_PUBLICATION = (
-    "Commit your changes locally. "
+    "Push your `agent/` branch with `git push --set-upstream origin HEAD`. "
     "If this run should open a pull request, write a draft at the repository's "
     "default draft path and set its `base` frontmatter field. To find the "
     "repository's default branch, run "
     "`gh repo view --json defaultBranchRef --jq .defaultBranchRef.name`. "
-    "Push your `agent/` branch with "
-    "`git -c credential.helper= -c 'credential.helper=!gh auth git-credential' "
-    "push --set-upstream origin HEAD`. Then run `tbhbdev alpha pr create` "
-    "with your draft."
+    "Then run `tbhbdev alpha pr create` with your draft."
 )
 REVIEW_PUBLICATION = (
     "Use the pull request number for N. Run `tbhbdev alpha review draft N`, "
@@ -55,13 +52,19 @@ def brief(
     *,
     profile: Profile | None = None,
     harness: Harness | None = None,
+    start_ref: str | None = None,
 ) -> str:
     if harness is Harness.AGY:
         text = f"{AGY_SUBAGENTS}\n{text}"
     elif harness is Harness.CODEX:
         text = f"{CODEX_SUBAGENTS}\n{text}"
     if profile is Profile.BUILD:
-        text = f"{BUILD_PUBLICATION}\n{text}"
+        publication = (
+            f"For this `--start-ref` run, push with `git push origin HEAD:{start_ref}`."
+            if start_ref is not None
+            else BUILD_PUBLICATION
+        )
+        text = f"Commit your changes locally. {publication}\n{text}"
     elif profile is Profile.REVIEW:
         text = f"{REVIEW_PUBLICATION}\n{text}"
     return f"{FINAL_ONLY}\n{text}" if kind is RunKind.EXEC else text

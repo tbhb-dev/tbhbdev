@@ -1,0 +1,216 @@
+{
+  "commands": [
+    [
+      [
+        "docker",
+        "compose",
+        "-p",
+        "o11y-smoke-fixture",
+        "--env-file",
+        "/output/release/.env",
+        "-f",
+        "/output/release/compose.yaml",
+        "ps",
+        "-q",
+        "alloy"
+      ],
+      120
+    ],
+    [
+      [
+        "docker",
+        "inspect",
+        "-f",
+        "{{json .Args}}",
+        "alloy"
+      ],
+      120
+    ],
+    [
+      [
+        "docker",
+        "compose",
+        "-p",
+        "o11y-smoke-fixture",
+        "--env-file",
+        "/output/release/.env",
+        "-f",
+        "/output/release/compose.yaml",
+        "exec",
+        "-T",
+        "rustfs",
+        "curl",
+        "-s",
+        "-w",
+        "\n%{http_code}",
+        "-m",
+        "10",
+        "http://mimir:8080/metrics"
+      ],
+      15
+    ],
+    [
+      [
+        "docker",
+        "compose",
+        "-p",
+        "o11y-smoke-fixture",
+        "--env-file",
+        "/output/release/.env",
+        "-f",
+        "/output/release/compose.yaml",
+        "exec",
+        "-T",
+        "rustfs",
+        "curl",
+        "-s",
+        "-w",
+        "\n%{http_code}",
+        "-m",
+        "10",
+        "http://mimir:8080/metrics"
+      ],
+      15
+    ],
+    [
+      [
+        "docker",
+        "compose",
+        "-p",
+        "o11y-smoke-fixture",
+        "--env-file",
+        "/output/release/.env",
+        "-f",
+        "/output/release/compose.yaml",
+        "restart",
+        "alloy"
+      ],
+      120
+    ],
+    [
+      [
+        "docker",
+        "compose",
+        "-p",
+        "o11y-smoke-fixture",
+        "--env-file",
+        "/output/release/.env",
+        "-f",
+        "/output/release/compose.yaml",
+        "exec",
+        "-T",
+        "rustfs",
+        "curl",
+        "-s",
+        "-o",
+        "/dev/null",
+        "-w",
+        "%{http_code}",
+        "-m",
+        "10",
+        "http://alloy:12345/-/ready"
+      ],
+      15
+    ],
+    [
+      [
+        "docker",
+        "compose",
+        "-p",
+        "o11y-smoke-fixture",
+        "--env-file",
+        "/output/release/.env",
+        "-f",
+        "/output/release/compose.yaml",
+        "exec",
+        "-T",
+        "rustfs",
+        "curl",
+        "-s",
+        "-w",
+        "\n%{http_code}",
+        "-m",
+        "10",
+        "http://mimir:8080/metrics"
+      ],
+      15
+    ]
+  ],
+  "http": [
+    [
+      "POST",
+      "http://127.0.0.1:14318/v1/metrics",
+      "{\"resourceMetrics\": [{\"resource\": {\"attributes\": [{\"key\": \"service.name\", \"value\": {\"stringValue\": \"o11y-smoke-delta\"}}]}, \"scopeMetrics\": [{\"scope\": {\"name\": \"o11y-smoke\"}, \"metrics\": [{\"name\": \"o11y_smoke_delta\", \"sum\": {\"aggregationTemporality\": 1, \"isMonotonic\": true, \"dataPoints\": [{\"asInt\": \"3\", \"startTimeUnixNano\": \"980000000000\", \"timeUnixNano\": \"990000000000\", \"attributes\": [{\"key\": \"run_id\", \"value\": {\"stringValue\": \"0101010101010101\"}}]}]}}]}]}]}",
+      {
+        "Content-Type": "application/json"
+      },
+      15
+    ],
+    [
+      "POST",
+      "http://127.0.0.1:14318/v1/metrics",
+      "{\"resourceMetrics\": [{\"resource\": {\"attributes\": [{\"key\": \"service.name\", \"value\": {\"stringValue\": \"o11y-smoke-delta\"}}]}, \"scopeMetrics\": [{\"scope\": {\"name\": \"o11y-smoke\"}, \"metrics\": [{\"name\": \"o11y_smoke_delta\", \"sum\": {\"aggregationTemporality\": 1, \"isMonotonic\": true, \"dataPoints\": [{\"asInt\": \"4\", \"startTimeUnixNano\": \"990000000000\", \"timeUnixNano\": \"1000000000000\", \"attributes\": [{\"key\": \"run_id\", \"value\": {\"stringValue\": \"0101010101010101\"}}]}]}}]}]}]}",
+      {
+        "Content-Type": "application/json"
+      },
+      15
+    ],
+    [
+      "POST",
+      "http://127.0.0.1:14318/v1/metrics",
+      "{\"resourceMetrics\": [{\"resource\": {\"attributes\": [{\"key\": \"service.name\", \"value\": {\"stringValue\": \"o11y-smoke-delta\"}}]}, \"scopeMetrics\": [{\"scope\": {\"name\": \"o11y-smoke\"}, \"metrics\": [{\"name\": \"o11y_smoke_cumulative\", \"sum\": {\"aggregationTemporality\": 2, \"isMonotonic\": true, \"dataPoints\": [{\"asInt\": \"5\", \"startTimeUnixNano\": \"980000000000\", \"timeUnixNano\": \"1000000000000\", \"attributes\": [{\"key\": \"run_id\", \"value\": {\"stringValue\": \"0101010101010101\"}}]}]}}]}]}]}",
+      {
+        "Content-Type": "application/json"
+      },
+      15
+    ],
+    [
+      "GET",
+      "http://127.0.0.1:13000/api/datasources/proxy/uid/mimir/api/v1/query?query=o11y_smoke_delta_total%7Brun_id%3D%220101010101010101%22%7D",
+      null,
+      {},
+      15
+    ],
+    [
+      "GET",
+      "http://127.0.0.1:13000/api/datasources/proxy/uid/mimir/api/v1/query?query=o11y_smoke_cumulative_total%7Brun_id%3D%220101010101010101%22%7D",
+      null,
+      {},
+      15
+    ],
+    [
+      "POST",
+      "http://127.0.0.1:14318/v1/metrics",
+      "{}",
+      {
+        "Content-Type": "application/json"
+      },
+      15
+    ],
+    [
+      "POST",
+      "http://127.0.0.1:14318/v1/metrics",
+      "{\"resourceMetrics\": [{\"resource\": {\"attributes\": [{\"key\": \"service.name\", \"value\": {\"stringValue\": \"o11y-smoke-delta\"}}]}, \"scopeMetrics\": [{\"scope\": {\"name\": \"o11y-smoke\"}, \"metrics\": [{\"name\": \"o11y_smoke_delta\", \"sum\": {\"aggregationTemporality\": 1, \"isMonotonic\": true, \"dataPoints\": [{\"asInt\": \"2\", \"startTimeUnixNano\": \"995000000000\", \"timeUnixNano\": \"1000000000000\", \"attributes\": [{\"key\": \"run_id\", \"value\": {\"stringValue\": \"0101010101010101\"}}]}]}}]}]}]}",
+      {
+        "Content-Type": "application/json"
+      },
+      15
+    ],
+    [
+      "GET",
+      "http://127.0.0.1:13000/api/datasources/proxy/uid/mimir/api/v1/query?query=o11y_smoke_delta_total%7Brun_id%3D%220101010101010101%22%7D",
+      null,
+      {},
+      15
+    ]
+  ],
+  "uploads": [],
+  "transcript": [
+    "ok 11: delta sums accumulate, cumulative sums pass through, restart resets conversion and Mimir discards none\n"
+  ],
+  "admin": [],
+  "writes": {},
+  "files": {
+    "config/grafana-192117e1275f/rules.yaml": "999999 1073740750258176\n"
+  }
+}

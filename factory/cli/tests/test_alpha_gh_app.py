@@ -9,6 +9,7 @@ import errno
 import json
 import os
 import re
+import ssl
 import stat
 import subprocess
 import time
@@ -16,14 +17,16 @@ from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import NoReturn
+from unittest.mock import Mock
 
-import httpx
+import certifi
+import httpx2
 import pytest
 from cryptography.hazmat.primitives import hashes, serialization
 from cryptography.hazmat.primitives.asymmetric import padding
 from cryptography.hazmat.primitives.asymmetric import rsa as rsa_keys
 
-from tbhbdev import alpha, secrets
+from tbhbdev import secrets
 from tbhbdev.alpha import gh_app
 
 NOW = 1_800_000_000
@@ -35,6 +38,7 @@ TOKEN = "ghs" + "_FakeInstallationToken0123456789"
 BEGIN = "-----BEGIN " + "RSA PRIVATE KEY-----"
 END = "-----END " + "RSA PRIVATE KEY-----"
 APP_ID = "424242"
+APP_VAULT = "vault-app"
 REPO = "acme/widget"
 SOURCE = Path(gh_app.__file__)
 # The names of the 1Password service account's variable, command and token
@@ -85,14 +89,14 @@ def no_network(monkeypatch: pytest.MonkeyPatch) -> None:
     """Fail at once on any request that no MockTransport answers."""
     monkeypatch.delenv(gh_app.RUN_ENV, raising=False)
 
-    def refuse(*_args: object, **_kwargs: object) -> httpx.Response:
+    def refuse(*_args: object, **_kwargs: object) -> httpx2.Response:
         message = "a test reached the real network"
         raise AssertionError(message)
 
-    monkeypatch.setattr(httpx.HTTPTransport, "handle_request", refuse)
+    monkeypatch.setattr(httpx2.HTTPTransport, "handle_request", refuse)
     # A client with no transport of its own looks up the host's proxies first,
     # which crashes a forked mutmut worker on macOS before it can send anything.
-    monkeypatch.setattr("httpx._utils.getproxies", refuse)
+    monkeypatch.setattr("httpx2._utils.getproxies", refuse)
 
 
 @dataclass
@@ -118,12 +122,12 @@ def app_store(key: str, *, app: str = "bot", vault: str = "tbhb-dev") -> Store:
     return Store({f"{base}/app_id": APP_ID, f"{base}/private_key": key})
 
 
-def ok_routes(installation: int = 7) -> dict[tuple[str, str], httpx.Response]:
+def ok_routes(installation: int = 7) -> dict[tuple[str, str], httpx2.Response]:
     return {
-        ("GET", f"/repos/{REPO}/installation"): httpx.Response(
+        ("GET", f"/repos/{REPO}/installation"): httpx2.Response(
             200, json={"id": installation}
         ),
-        ("POST", f"/app/installations/{installation}/access_tokens"): httpx.Response(
+        ("POST", f"/app/installations/{installation}/access_tokens"): httpx2.Response(
             201, json={"token": TOKEN, "expires_at": EXPIRES}
         ),
     }
@@ -133,19 +137,19 @@ class Github:
     """The GitHub API: answers each route and 404s the rest."""
 
     def __init__(
-        self, routes: dict[tuple[str, str], httpx.Response] | None = None
+        self, routes: dict[tuple[str, str], httpx2.Response] | None = None
     ) -> None:
         self.routes = ok_routes() if routes is None else routes
-        self.requests: list[httpx.Request] = []
+        self.requests: list[httpx2.Request] = []
 
-    def __call__(self, request: httpx.Request) -> httpx.Response:
+    def __call__(self, request: httpx2.Request) -> httpx2.Response:
         self.requests.append(request)
         key = (request.method, request.url.path)
-        return self.routes.get(key, httpx.Response(404, json={"message": "Not Found"}))
+        return self.routes.get(key, httpx2.Response(404, json={"message": "Not Found"}))
 
     @property
-    def transport(self) -> httpx.MockTransport:
-        return httpx.MockTransport(self)
+    def transport(self) -> httpx2.MockTransport:
+        return httpx2.MockTransport(self)
 
     @property
     def jwt(self) -> str:
@@ -511,16 +515,16 @@ def test_request_paths_and_bodies() -> None:
 @pytest.mark.parametrize(
     ("response", "ident"),
     [
-        (httpx.Response(200, json={"id": 7}), 7),
-        (httpx.Response(200, json={"id": "7"}), None),
-        (httpx.Response(200, json={}), None),
-        (httpx.Response(200, json=[7]), None),
-        (httpx.Response(200, content=b"not json"), None),
-        (httpx.Response(404, json={"id": 7}), None),
-        (httpx.Response(201, json={"id": 7}), None),
+        (httpx2.Response(200, json={"id": 7}), 7),
+        (httpx2.Response(200, json={"id": "7"}), None),
+        (httpx2.Response(200, json={}), None),
+        (httpx2.Response(200, json=[7]), None),
+        (httpx2.Response(200, content=b"not json"), None),
+        (httpx2.Response(404, json={"id": 7}), None),
+        (httpx2.Response(201, json={"id": 7}), None),
     ],
 )
-def test_installation_id(response: httpx.Response, ident: int | None) -> None:
+def test_installation_id(response: httpx2.Response, ident: int | None) -> None:
     assert gh_app.installation_id(response) == ident
 
 
@@ -675,13 +679,6 @@ def test_run_openssl_runs_openssl_with_its_input_and_captures_its_output(
     ]
 
 
-def test_alpha_lists_and_runs_gh_app(capsys: pytest.CaptureFixture[str]) -> None:
-    assert "\n  gh-app " in alpha.USAGE
-    assert alpha.COMMANDS["gh-app"] is alpha.gh_app_command
-    assert alpha.main(["gh-app", "--help"], "tbhbdev alpha") == 0
-    assert capsys.readouterr() == (gh_app.USAGE.format(prog="tbhbdev alpha gh-app"), "")
-
-
 def test_the_parser_raises_where_argparse_would_print_help() -> None:
     with pytest.raises(gh_app.HelpRequestedError):
         gh_app.Parser().print_help()
@@ -722,9 +719,11 @@ def test_default_main_builds_its_own_env(
 def test_a_mint_writes_hosts_yml_and_prints_only_the_dir(
     capsys: pytest.CaptureFixture[str], tmp_path: Path, rsa: Key
 ) -> None:
-    store, github = app_store(rsa.pem), Github()
-    code, out, err = run(capsys, env_for(tmp_path, store, github), "bot", REPO)
-    out_dir = out_path(tmp_path, "widget")
+    store, github = app_store(rsa.pem, vault=APP_VAULT), Github()
+    code, out, err = run(
+        capsys, env_for(tmp_path, store, github), "bot", REPO, "--vault", APP_VAULT
+    )
+    out_dir = out_path(tmp_path, "widget", vault=APP_VAULT)
     assert (code, out, err) == (0, f"{out_dir}\n", "")
     assert (out_dir / "hosts.yml").read_text() == gh_app.render_hosts("bot", TOKEN)
     assert (out_dir / "app-slug").read_text() == "bot\n"
@@ -738,8 +737,8 @@ def test_a_mint_writes_hosts_yml_and_prints_only_the_dir(
         "hosts.yml",
     ]
     assert store.reads == [
-        "op://tbhb-dev/github-app-bot/app_id",
-        "op://tbhb-dev/github-app-bot/private_key",
+        f"op://{APP_VAULT}/github-app-bot/app_id",
+        f"op://{APP_VAULT}/github-app-bot/private_key",
     ]
 
 
@@ -800,11 +799,11 @@ def test_the_jwt_is_a_real_rs256_signature(
     github = Github()
     store = Store(
         {
-            "op://tbhb-dev/github-app-bot/app_id": f" {APP_ID}\n",
-            "op://tbhb-dev/github-app-bot/private_key": rsa.pem,
+            f"op://{APP_VAULT}/github-app-bot/app_id": f" {APP_ID}\n",
+            f"op://{APP_VAULT}/github-app-bot/private_key": rsa.pem,
         }
     )
-    run(capsys, env_for(tmp_path, store, github), "bot", REPO)
+    run(capsys, env_for(tmp_path, store, github), "bot", REPO, "--vault", APP_VAULT)
     head, payload, _ = github.jwt.split(".")
     assert decode(head) == {"alg": "RS256", "typ": "JWT"}
     assert decode(payload) == {"iat": NOW - 60, "exp": NOW + 540, "iss": APP_ID}
@@ -958,18 +957,20 @@ def test_an_unreadable_field_is_an_error_that_names_no_value(
     missing: str,
     how: str,
 ) -> None:
-    store = app_store(rsa.pem)
-    ref = f"op://tbhb-dev/github-app-bot/{missing}"
+    store = app_store(rsa.pem, vault=APP_VAULT)
+    ref = f"op://{APP_VAULT}/github-app-bot/{missing}"
     if how == "absent":
         del store.values[ref]
     else:
         store.values[ref] = "" if how == "empty" else " \n"
     github = Github()
-    code, out, err = run(capsys, env_for(tmp_path, store, github), "bot", REPO)
+    code, out, err = run(
+        capsys, env_for(tmp_path, store, github), "bot", REPO, "--vault", APP_VAULT
+    )
     assert (code, out) == (1, "")
-    assert err == f"cannot read {missing} from tbhb-dev/github-app-bot\n"
+    assert err == f"cannot read {missing} from {APP_VAULT}/github-app-bot\n"
     assert github.requests == []
-    assert not out_path(tmp_path).exists()
+    assert not out_path(tmp_path, vault=APP_VAULT).exists()
 
 
 def test_the_vault_can_be_overridden(
@@ -1007,7 +1008,7 @@ def test_the_installation_falls_back_from_the_repo_to_the_org(
 ) -> None:
     github = Github(
         {
-            ("GET", "/orgs/acme/installation"): httpx.Response(200, json={"id": 9}),
+            ("GET", "/orgs/acme/installation"): httpx2.Response(200, json={"id": 9}),
             **{k: v for k, v in ok_routes(9).items() if k[0] == "POST"},
         }
     )
@@ -1021,8 +1022,8 @@ def test_the_installation_falls_back_from_the_repo_to_the_org(
 
 
 def lookup_routes(
-    repo: httpx.Response, org: httpx.Response | None = None
-) -> dict[tuple[str, str], httpx.Response]:
+    repo: httpx2.Response, org: httpx2.Response | None = None
+) -> dict[tuple[str, str], httpx2.Response]:
     routes = {("GET", f"/repos/{REPO}/installation"): repo}
     if org is not None:
         routes[("GET", "/orgs/acme/installation")] = org
@@ -1033,18 +1034,18 @@ def lookup_routes(
     "case",
     [
         (
-            httpx.Response(401, json={"message": "Bad credentials", "x": TOKEN}),
+            httpx2.Response(401, json={"message": "Bad credentials", "x": TOKEN}),
             "401: Bad credentials",
         ),
-        (httpx.Response(403, json={"message": "Rate limited"}), "403: Rate limited"),
+        (httpx2.Response(403, json={"message": "Rate limited"}), "403: Rate limited"),
         (
-            httpx.Response(301, json={"message": "Moved Permanently"}),
+            httpx2.Response(301, json={"message": "Moved Permanently"}),
             "301: Moved Permanently",
         ),
-        (httpx.Response(500, content=b"<html>oops"), "500: no message"),
-        (httpx.Response(429, json={"message": ""}), "429: no message"),
-        (httpx.Response(200, json={"id": "7"}), "200: no message"),
-        (httpx.Response(200, content=b"junk"), "200: no message"),
+        (httpx2.Response(500, content=b"<html>oops"), "500: no message"),
+        (httpx2.Response(429, json={"message": ""}), "429: no message"),
+        (httpx2.Response(200, json={"id": "7"}), "200: no message"),
+        (httpx2.Response(200, content=b"junk"), "200: no message"),
     ],
 )
 @pytest.mark.parametrize("where", ["repo", "org"])
@@ -1052,14 +1053,14 @@ def test_any_lookup_failure_but_a_404_is_an_error(
     capsys: pytest.CaptureFixture[str],
     tmp_path: Path,
     rsa: Key,
-    case: tuple[httpx.Response, str],
+    case: tuple[httpx2.Response, str],
     where: str,
 ) -> None:
     reply, expected = case
     routes = (
         lookup_routes(reply)
         if where == "repo"
-        else lookup_routes(httpx.Response(404, json={"message": "Not Found"}), reply)
+        else lookup_routes(httpx2.Response(404, json={"message": "Not Found"}), reply)
     )
     github = Github(routes)
     code, out, err = run(
@@ -1078,8 +1079,8 @@ def test_a_404_on_the_repo_falls_through_to_the_org(
     capsys: pytest.CaptureFixture[str], tmp_path: Path, rsa: Key
 ) -> None:
     routes = lookup_routes(
-        httpx.Response(404, json={"message": "Not Found"}),
-        httpx.Response(200, json={"id": 9}),
+        httpx2.Response(404, json={"message": "Not Found"}),
+        httpx2.Response(200, json={"id": 9}),
     )
     routes.update({k: v for k, v in ok_routes(9).items() if k[0] == "POST"})
     code, _, _ = run(
@@ -1144,18 +1145,18 @@ def test_permissions_narrow_the_token_request_and_use_their_own_dir(
     ("reply", "detail"),
     [
         (
-            httpx.Response(401, json={"message": "Bad credentials", "token": "no"}),
+            httpx2.Response(401, json={"message": "Bad credentials", "token": "no"}),
             "Bad credentials",
         ),
-        (httpx.Response(201, json={"token": TOKEN}), "no message"),
-        (httpx.Response(500, content=b"<html>oops"), "no message"),
+        (httpx2.Response(201, json={"token": TOKEN}), "no message"),
+        (httpx2.Response(500, content=b"<html>oops"), "no message"),
     ],
 )
 def test_a_bad_token_reply_quotes_only_the_message(
     capsys: pytest.CaptureFixture[str],
     tmp_path: Path,
     rsa: Key,
-    reply: httpx.Response,
+    reply: httpx2.Response,
     detail: str,
 ) -> None:
     github = Github(
@@ -1172,16 +1173,16 @@ def test_a_bad_token_reply_quotes_only_the_message(
 def test_a_network_failure_names_only_its_type(
     capsys: pytest.CaptureFixture[str], tmp_path: Path, rsa: Key
 ) -> None:
-    def boom(request: httpx.Request) -> httpx.Response:
+    def boom(request: httpx2.Request) -> httpx2.Response:
         message = f"refused {request.headers['Authorization']}"
-        raise httpx.ConnectError(message)
+        raise httpx2.ConnectError(message)
 
     env = gh_app.Env(
         tmp_path / "state",
         lambda: NOW,
         app_store(rsa.pem).factory,
         gh_app.run_openssl,
-        httpx.MockTransport(boom),
+        httpx2.MockTransport(boom),
     )
     code, out, err = run(capsys, env, "bot", REPO)
     assert (code, out) == (1, "")
@@ -1204,7 +1205,7 @@ def test_nothing_secret_reaches_the_output(
     failing = Github(
         {
             **ok_routes(),
-            ("POST", "/app/installations/7/access_tokens"): httpx.Response(
+            ("POST", "/app/installations/7/access_tokens"): httpx2.Response(
                 401, json={"message": "no"}
             ),
         }
@@ -1562,16 +1563,11 @@ def test_the_module_names_no_service_account() -> None:
 MINT_PERMISSIONS = {"contents": "write", "pull_requests": "write"}
 
 
-def test_mint_token_disables_client_environment(
+def test_mint_token_client_uses_only_public_roots(
     tmp_path: Path, rsa: Key, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    enter = httpx.Client.__enter__
-
-    def check_client(client: httpx.Client) -> httpx.Client:
-        assert client.trust_env is False
-        return enter(client)
-
-    monkeypatch.setattr(httpx.Client, "__enter__", check_client)
+    client = Mock(wraps=httpx2.Client)
+    monkeypatch.setattr(httpx2, "Client", client)
     github = Github()
     assert gh_app.mint_token(
         env_for(tmp_path, Store({}), github),
@@ -1581,6 +1577,16 @@ def test_mint_token_disables_client_environment(
         permissions=MINT_PERMISSIONS,
     ) == gh_app.Minted(TOKEN, EXPIRES_EPOCH)
     assert len(github.requests) == 2
+    client.assert_called_once()
+    assert client.call_args.kwargs["trust_env"] is False
+    context: object = client.call_args.kwargs["verify"]
+    assert isinstance(context, ssl.SSLContext)
+    assert context.check_hostname
+    assert context.verify_mode == ssl.CERT_REQUIRED
+    expected = ssl.create_default_context(cafile=certifi.where())
+    assert set(context.get_ca_certs(binary_form=True)) == set(
+        expected.get_ca_certs(binary_form=True)
+    )
 
 
 def test_mint_token_ignores_proxy_environment(
@@ -1588,16 +1594,16 @@ def test_mint_token_ignores_proxy_environment(
 ) -> None:
     monkeypatch.setenv("HTTPS_PROXY", "http://proxy.example:bad")
     monkeypatch.setattr(
-        "httpx._utils.getproxies", lambda: {"https": os.environ["HTTPS_PROXY"]}
+        "httpx2._utils.getproxies", lambda: {"https": os.environ["HTTPS_PROXY"]}
     )
     github = Github()
 
     def handle_request(
-        _self: httpx.HTTPTransport, request: httpx.Request
-    ) -> httpx.Response:
+        _self: httpx2.HTTPTransport, request: httpx2.Request
+    ) -> httpx2.Response:
         return github(request)
 
-    monkeypatch.setattr(httpx.HTTPTransport, "handle_request", handle_request)
+    monkeypatch.setattr(httpx2.HTTPTransport, "handle_request", handle_request)
     assert gh_app.mint_token(
         replace(env_for(tmp_path, Store({}), github), transport=None),
         app_id=APP_ID,
@@ -1675,11 +1681,11 @@ def test_mint_token_lookup_falls_back_only_on_404(
     status: int,
 ) -> None:
     routes = ok_routes()
-    routes[("GET", f"/repos/{REPO}/installation")] = httpx.Response(
+    routes[("GET", f"/repos/{REPO}/installation")] = httpx2.Response(
         status,
         json={"message": TOKEN},
     )
-    routes[("GET", "/orgs/acme/installation")] = httpx.Response(200, json={"id": 7})
+    routes[("GET", "/orgs/acme/installation")] = httpx2.Response(200, json={"id": 7})
     github = Github(routes)
     env = env_for(tmp_path, Store({}), github)
     if status == 404:
@@ -1762,20 +1768,20 @@ def test_mint_token_errors_never_disclose_tokens(
 ) -> None:
     before = list(tmp_path.rglob("*"))
     routes = {} if failure == "missing" else ok_routes()
-    routes[("POST", "/app/installations/7/access_tokens")] = httpx.Response(
+    routes[("POST", "/app/installations/7/access_tokens")] = httpx2.Response(
         403,
         json={"token": TOKEN, "message": TOKEN},
     )
     github = Github(routes)
 
-    def transport(request: httpx.Request) -> httpx.Response:
+    def transport(request: httpx2.Request) -> httpx2.Response:
         if failure == "transport":
-            raise httpx.ReadError(TOKEN)
+            raise httpx2.ReadError(TOKEN)
         return github(request)
 
     env = replace(
         env_for(tmp_path, Store({}), github),
-        transport=httpx.MockTransport(transport),
+        transport=httpx2.MockTransport(transport),
     )
     with pytest.raises(gh_app.GhAppError) as caught:
         gh_app.mint_token(

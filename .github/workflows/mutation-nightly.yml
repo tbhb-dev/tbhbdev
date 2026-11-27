@@ -5,6 +5,8 @@
 name: mutation-nightly
 
 on:
+  push:
+    branches: [main]
   schedule:
     - cron: "23 3 * * *"
   workflow_dispatch:
@@ -17,7 +19,26 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  cli-coverage:
+    name: factory/cli branch coverage
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up Bazel for CI
+        uses: ./.github/actions/setup-bazel-ci
+        with:
+          targets: ""
+
+      - name: Combine coverage from the CLI tests
+        run: bazelisk run --config=ci //factory/cli:coverage
+
   mutation:
+    if: github.event_name != 'push'
     name: "mutation (${{ matrix.workspace }})"
     runs-on: ubuntu-26.04
     timeout-minutes: 60
@@ -73,7 +94,30 @@ jobs:
         if: matrix.workspace == '.'
         run: bazelisk test --config=ci //factory/cli:mutmut_test
 
+      - name: Run factory/github-metrics mutation report
+        if: matrix.workspace == '.'
+        run: bazelisk test --config=ci //factory/github-metrics:store_mutation_nightly_test
+
       - name: Prove incremental mutation
         if: matrix.workspace == 'lib/rules/python/e2e/workspace'
         working-directory: .
         run: lib/rules/python/e2e/incremental.sh
+
+  agent-capacity-mutation:
+    name: factory/agent-capacity mutation gate
+    runs-on: ubuntu-26.04
+    timeout-minutes: 90
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up Bazel for CI
+        uses: ./.github/actions/setup-bazel-ci
+        with:
+          disk-cache: ${{ github.workflow }}-${{ github.job }}
+          targets: //factory/agent-capacity:gomutants_test
+
+      - name: Run the full mutation gate
+        run: bazelisk test --config=ci //factory/agent-capacity:gomutants_test

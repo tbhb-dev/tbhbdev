@@ -161,7 +161,8 @@ _REVIEW_SECTION_FIXES = {
     "summary": "Write one Summary paragraph of one or two sentences "
     "and at most 40 words",
     "findings": "Use up to eight Findings bullets numbered F1 onward, with a "
-    "severity, kind, and up to 30 words of evidence",
+    "severity, kind, and up to 30 words of evidence. "
+    "Include an Occurs when: clause in each P1 finding",
     "suggestions": "Use up to five Suggestions bullets numbered S1 onward, "
     "with up to 25 words each",
     "verification": "Write Verification as one to six unnumbered bullets "

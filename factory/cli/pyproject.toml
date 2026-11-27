@@ -6,9 +6,12 @@ version = "0"
 description = "Shared tools for tbhb-dev work"
 requires-python = ">=3.15"
 dependencies = [
+  "certifi>=2026.10.23",
   # Convert Connect's signing keys from PKCS#8 to OpenSSH in memory.
   "cryptography>=50.0.2",
+  # The Connect SDK uses httpx for sessions and exceptions.
   "httpx>=0.28.1",
+  "httpx2>=2.16.2",
   # tbhbdev alpha pr validates the pull request draft's YAML frontmatter
   # against a JSON schema.
   "jsonschema[format]>=4.26.0",
@@ -59,14 +62,84 @@ paths = ["src"]
 # Sonar's default cognitive complexity ceiling.
 max-complexity-allowed = 15
 
+[tool.importlinter]
+root_packages = ["tbhbdev"]
+include_external_packages = true
+exclude_type_checking_imports = true
+unmatched_ignore_imports_alerting = "error"
+
+[[tool.importlinter.contracts]]
+id = "cli-layers"
+name = "CLI import layers"
+type = "layers"
+unmatched_ignore_imports_alerting = "error"
+layers = [
+  "tbhbdev.cli",
+  "tbhbdev.admin | tbhbdev.analytics | tbhbdev.adr | tbhbdev.agy | tbhbdev.issue | tbhbdev.secret | tbhbdev.content | tbhbdev.prose_check | tbhbdev.gitleaks_check",
+  "tbhbdev.alpha",
+  "tbhbdev.runner : tbhbdev.userconfig : tbhbdev.secrets : tbhbdev.telemetry : tbhbdev.gh_agent : tbhbdev.plugins : tbhbdev.content_vet : tbhbdev.cue_runtime",
+  "tbhbdev.version | tbhbdev.content_model | tbhbdev.adr_decision | tbhbdev.issue_import",
+]
+ignore_imports = [
+  "tbhbdev.adr -> tbhbdev.content",
+  "tbhbdev.adr_decision -> tbhbdev.content",
+  "tbhbdev.alpha.agent.review_post -> tbhbdev.content",
+  "tbhbdev.alpha.close -> tbhbdev.content",
+  "tbhbdev.alpha.review -> tbhbdev.content",
+  "tbhbdev.alpha.review_doc -> tbhbdev.content",
+  "tbhbdev.secrets -> tbhbdev.alpha.agent.host_tools",
+  "tbhbdev.secrets -> tbhbdev.alpha.agent.model",
+]
+
+[[tool.importlinter.contracts]]
+id = "cli-decisions"
+name = "Decision and model imports"
+type = "forbidden"
+unmatched_ignore_imports_alerting = "error"
+source_modules = [
+  "tbhbdev.**.decisions",
+  "tbhbdev.**.model",
+  "tbhbdev.alpha.identity.commands",
+  "tbhbdev.alpha.identity.models",
+  "tbhbdev.alpha.identity.trailers",
+  "tbhbdev.content_model",
+]
+forbidden_modules = [
+  "subprocess",
+  "socket",
+  "shutil",
+  "urllib",
+  "httpx",
+  "psycopg",
+  "onepasswordconnectsdk",
+  "tbhbdev.runner",
+  "tbhbdev.userconfig",
+  "tbhbdev.secrets",
+  "tbhbdev.alpha.install",
+  "tbhbdev.alpha.identity.dispatcher",
+  "tbhbdev.alpha.brief",
+  "tbhbdev.alpha.agent.host_tools",
+]
+ignore_imports = [
+  "tbhbdev.alpha.agent.decisions.argv -> shutil",
+  "tbhbdev.alpha.agent.decisions.argv -> socket",
+  "tbhbdev.alpha.agent.decisions.argv -> tbhbdev.alpha.install",
+  "tbhbdev.alpha.agent.decisions.driver -> tbhbdev.alpha.brief",
+  "tbhbdev.alpha.agent.decisions.policy -> tbhbdev.alpha.agent.host_tools",
+  "tbhbdev.alpha.agent.decisions.policy -> tbhbdev.secrets",
+]
+
 [tool.pylint.main]
 recursive = true
 
 [tool.pylint."messages control"]
-# pylint serves one purpose here: its similarities checker, the cross-file
-# copy-paste detector nothing else in the toolchain provides.
 disable = ["all"]
 enable = ["duplicate-code"]
+
+[tool.lint-baselines]
+# The Git range check applies these code-line limits with merge-base allowances.
+max-module-lines = 400
+max-test-lines = 800
 
 [tool.pylint.similarities]
 min-similarity-lines = 4
@@ -236,6 +309,10 @@ relative_files = true
 # coverage follows Python subprocesses too.
 patch = ["subprocess"]
 
+[tool.coverage.paths]
+# A subprocess can start outside the CLI directory and record absolute paths.
+source = ["src/tbhbdev", "**/factory/cli/src/tbhbdev"]
+
 [tool.coverage.report]
 # Anything genuinely unreachable belongs in exclude_also with a reason, not
 # behind a lowered threshold.
@@ -299,10 +376,11 @@ max-complexity = 15
 
 [tool.ruff.lint.per-file-ignores]
 # S101: asserts are pytest's API. PLR2004: literal expected values read
-# better in tests. INP001: tests/ has no __init__.py under importlib mode.
+# better in tests. INP001: pytest collects tests without __init__.py.
 # FBT001: a parametrized expected value is data. S603 and S607: the tests
 # drive the tools as processes, since their contract is the command line.
 "tests/*.py" = ["S101", "PLR2004", "INP001", "FBT001", "S603", "S607"]
+"checks/test_lint_guards.py" = ["S101", "INP001", "S603"]
 # The tools are command-line programs: they print, and they run ssh, git and
 # the other tools by bare name from PATH.
 "src/tbhbdev/**/*.py" = ["T201", "S603", "S607"]

@@ -8,11 +8,15 @@ import os
 import re
 import sys
 from pathlib import Path
-from typing import TypedDict, cast
+from typing import TYPE_CHECKING, NotRequired, TypedDict, cast
 
 from tbhbdev.alpha.agent import runfiles
-from tbhbdev.alpha.identity import as_str, parse_line, read_tail
+from tbhbdev.alpha.identity.dispatcher import as_str, parse_line, read_tail
 from tbhbdev.alpha.repo import git, read_hook_stdin
+from tbhbdev.alpha.size_gate import SIZE_REVIEW, size_verdict
+
+if TYPE_CHECKING:
+    from tbhbdev.alpha.agent.model import RunRequest
 
 ENV = "TBHBDEV_RUN_STOP"
 MAX_BLOCKS = 3
@@ -28,6 +32,28 @@ class StopRun(TypedDict):
     start: str | None
     counter: str
     log: str
+    size_head: NotRequired[str]
+
+
+def run_context(
+    request: RunRequest,
+    workspace: str,
+    files: runfiles.RunFiles,
+    tmpdir: Path,
+    start: str | None,
+) -> StopRun:
+    """Pass the run's completion conditions to its Stop hook."""
+    context = StopRun(
+        profile=request.profile.value,
+        workspace=workspace,
+        reference=f"refs/heads/agent/{files.name}",
+        start=start,
+        counter=str(tmpdir / "stop-count"),
+        log=str(files.path("log")),
+    )
+    if request.variant == SIZE_REVIEW:
+        context["size_head"] = request.commit or ""
+    return context
 
 
 def final_output(harness: str, data: dict[str, object]) -> str:
@@ -81,6 +107,25 @@ def build_reason(run: StopRun) -> str | None:
     return None
 
 
+def review_reason(run: StopRun, answer: str) -> str | None:
+    """Check the verdict format for this review."""
+    if "size_head" in run:
+        size_head = run["size_head"]
+        final_line = answer.rstrip().rpartition("\n")[2]
+        if size_verdict(final_line, size_head):
+            return None
+        return (
+            f"Finish the sizing review with VERDICT: SPLIT {size_head} "
+            f"or VERDICT: OVERRIDE {size_head} as the final line."
+        )
+    if any(VERDICT.fullmatch(line) for line in answer.splitlines()):
+        return None
+    return (
+        "Finish the review and include a VERDICT: GO, VERDICT: BLOCK or "
+        "VERDICT: NO-GO line."
+    )
+
+
 def retry(run: StopRun, reason: str) -> bool:
     """Record at most three blocks, even with concurrent Stop callbacks."""
     count = Path(run["counter"])
@@ -116,15 +161,8 @@ def main(argv: list[str], prog: str) -> int:
     run = cast("StopRun", json.loads(context))
     if run["profile"] == "build":
         reason = build_reason(run)
-    elif any(
-        VERDICT.fullmatch(line) for line in final_output(harness, data).splitlines()
-    ):
-        reason = None
     else:
-        reason = (
-            "Finish the review and include a VERDICT: GO, VERDICT: BLOCK or "
-            "VERDICT: NO-GO line."
-        )
+        reason = review_reason(run, final_output(harness, data))
     try:
         if reason and retry(run, reason):
             decision = "continue" if harness == "antigravity" else "block"

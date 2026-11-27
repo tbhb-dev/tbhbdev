@@ -1,0 +1,36 @@
+# SPDX-License-Identifier: Apache-2.0
+# Copyright Tony Burns
+
+load("//factory/cli/tests:pytest.bzl", "cli_py_test")
+
+filegroup(
+    name = "package_files",
+    srcs = glob(["*.py"]),
+    visibility = ["//factory/cli/tests:__pkg__"],
+)
+
+cli_py_test(
+    name = "test_command_host_names",
+    srcs = ["test_command_host_names.py"],
+    imports = ["../../.."],
+    deps = [
+        "//factory/cli/src/tbhbdev/alpha/agent:settings",
+        "//factory/cli/tests:agent_cli_example",
+        "//factory/cli/tests:agent_driver_example",
+        "//factory/cli/tests:agent_example",
+        "//factory/cli/tests:conftest",
+        "@cli_pip//pytest",
+    ],
+)
+
+cli_py_test(
+    name = "test_worktree_credentials_io",
+    srcs = ["test_worktree_credentials_io.py"],
+    imports = ["../../.."],
+    deps = [
+        "//factory/cli/src/tbhbdev/alpha/agent:model",
+        "//factory/cli/src/tbhbdev/alpha/agent:worktree",
+        "//factory/cli/tests:conftest",
+        "@cli_pip//pytest",
+    ],
+)

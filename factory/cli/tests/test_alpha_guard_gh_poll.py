@@ -13,8 +13,7 @@ from typing import TYPE_CHECKING
 
 import pytest
 
-from tbhbdev import alpha
-from tbhbdev.alpha import guard_gh_poll as guard
+import tbhbdev.alpha.guard_gh_poll as guard
 
 # The guard builds its paths from Path.home(), so the tests do too.
 HOME = str(guard.STATE_DIR.parents[2])
@@ -723,7 +722,7 @@ def test_hook_contract(
         else {"tool_input": {"command": command}}
     )
     monkeypatch.setattr(sys, "stdin", io.StringIO(json.dumps(payload)))
-    assert alpha.main(["guard-gh-poll"], "tbhbdev alpha") == 0
+    assert guard.main() == 0
     output = json.loads(capsys.readouterr().out)
     if agy:
         assert output == {"decision": "deny", "reason": reason}

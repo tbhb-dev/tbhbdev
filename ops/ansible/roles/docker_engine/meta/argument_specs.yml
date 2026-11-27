@@ -1,0 +1,35 @@
+---
+argument_specs:
+  main:
+    short_description: Run a system Docker Engine whose default runtime is gVisor
+    description:
+      - >-
+          Installs Docker CE from Docker's apt repository and gVisor's runsc from gVisor's, and
+          registers runsc as the daemon's default runtime. The runc runtime stays available to a
+          container that asks for it with runtime runc.
+      - >-
+          By default the data root is its own logical volume. The role creates and mounts it
+          before it installs or starts Docker. It refuses a mount point that already holds data
+          and isn't yet that volume, and deletes nothing. It refuses a volume of another size
+          and never resizes one.
+    options:
+      docker_engine_data_vg:
+        type: str
+        default: ubuntu-vg
+        description: Volume group that holds the data root's logical volume.
+      docker_engine_data_lv:
+        type: str
+        default: docker
+        description: Name of the data root's logical volume.
+      docker_engine_data_size:
+        type: str
+        default: 500G
+        description: >-
+          Size of the logical volume, a multiple of the volume group's extent size, 4M by default.
+          The role creates the volume only when it doesn't exist and fails when an existing one has
+          another size. Empty means no logical volume, so the data root stays on the root file
+          system and the LVM tasks are skipped.
+      docker_engine_data_root:
+        type: path
+        default: /var/lib/docker
+        description: Mount point of the logical volume, and the daemon's data root.

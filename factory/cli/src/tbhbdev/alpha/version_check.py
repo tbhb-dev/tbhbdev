@@ -15,6 +15,7 @@ for a usage error, 3 when a host is unreachable and none is stale.
 import argparse
 import json
 import re
+import shutil
 import socket
 import subprocess  # nosec B404
 import sys
@@ -26,6 +27,7 @@ from tbhbdev import userconfig, version
 from tbhbdev.alpha import session_context
 
 REPO_URL = "https://github.com/tbhb-dev/tbhbdev"
+TOOL_PATH = "/usr/bin:/bin:/usr/local/bin:/opt/homebrew/bin"
 # -n keeps ssh off this process's stdin, which a pipeline may feed.
 SSH = ("ssh", "-n", "-o", "BatchMode=yes", "-o", "ConnectTimeout=5")
 # Plain ssh has no ~/.local/bin on PATH, and the remote shell expands $HOME.
@@ -87,7 +89,10 @@ def probe(host: str, runner: Runner, here: str) -> tuple[str | None, bool]:
 
 def latest(runner: Runner) -> str | None:
     """The commit at the head of origin's main, or None when it can't be read."""
-    status, output = runner(["git", "ls-remote", REPO_URL, "refs/heads/main"])
+    git = shutil.which("git", path=TOOL_PATH)
+    if git is None:
+        return None
+    status, output = runner([git, "ls-remote", REPO_URL, "refs/heads/main"])
     found = LS_REMOTE.match(output) if status == 0 else None
     return found.group(1) if found else None
 

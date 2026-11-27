@@ -1,0 +1,32 @@
+---
+- name: Verify
+  hosts: all
+  become: true
+  tasks:
+    - name: Read the drop-in
+      ansible.builtin.slurp:
+        src: /etc/default/grub.d/90-lab-menu.cfg
+      register: lab_grub_drop_in
+
+    - name: Look up the drop-in's mode
+      ansible.builtin.stat:
+        path: /etc/default/grub.d/90-lab-menu.cfg
+      register: lab_grub_drop_in_stat
+
+    # The image's update-grub stub counts its runs here.
+    - name: Read how often update-grub ran
+      ansible.builtin.slurp:
+        src: /var/lib/lab-grub-update-count
+      register: lab_grub_updates
+
+    - name: Check the drop-in and the regeneration
+      vars:
+        lab_grub_lines: "{{ lab_grub_drop_in.content | b64decode | split('\n') }}"
+      ansible.builtin.assert:
+        that:
+          - "'GRUB_TIMEOUT_STYLE=menu' in lab_grub_lines"
+          - "'GRUB_TIMEOUT=5' in lab_grub_lines"
+          - lab_grub_drop_in_stat.stat.mode == '0644'
+          - lab_grub_drop_in_stat.stat.pw_name == 'root'
+          # Once for converge; idempotence must not run it again.
+          - (lab_grub_updates.content | b64decode | trim) == '1'

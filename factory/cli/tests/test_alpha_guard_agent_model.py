@@ -9,15 +9,14 @@ from pathlib import Path
 
 import pytest
 
-from tbhbdev import alpha
-from tbhbdev.alpha import guard_agent_model as guard
+import tbhbdev.alpha.guard_agent_model as guard
 
 
 def run(
     stdin: str, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> tuple[int, str, str]:
     monkeypatch.setattr(sys, "stdin", io.StringIO(stdin))
-    code = alpha.main(["guard-agent-model"], "tbhbdev alpha")
+    code = guard.main()
     captured = capsys.readouterr()
     return code, captured.out, captured.err
 

@@ -100,7 +100,6 @@ import hashlib
 import json
 import os
 import re
-import shlex
 import subprocess  # nosec B404
 import sys
 import time
@@ -108,13 +107,36 @@ import traceback
 import uuid
 from contextlib import contextmanager
 from dataclasses import dataclass, replace
-from datetime import UTC, datetime
-from itertools import dropwhile, islice, takewhile
+from datetime import datetime
+from itertools import islice, takewhile
 from pathlib import Path, PurePosixPath
 from typing import TYPE_CHECKING, cast
 
+from tbhbdev.alpha.identity import commands as identity_commands
+from tbhbdev.alpha.identity import trailers
+from tbhbdev.alpha.identity.models import (
+    BAD_VALUE,
+    EFFORTS,
+    agy_model,
+    provider_model,
+    surface,
+    surface_ok,
+    version,
+)
+from tbhbdev.alpha.identity.trailers import (
+    replace_trailer_fields,
+    start_ok,
+    trailer_start,
+    utc,
+)
 from tbhbdev.alpha.process import process_row
-from tbhbdev.alpha.repo import git, hook_cwd, in_tbhb_dev, read_hook_stdin
+from tbhbdev.alpha.repo import (
+    branch_created_at,
+    git,
+    hook_cwd,
+    in_tbhb_dev,
+    read_hook_stdin,
+)
 
 if TYPE_CHECKING:
     from collections.abc import Generator, Iterable, Iterator, Mapping
@@ -123,8 +145,8 @@ if TYPE_CHECKING:
 # common dir. The earlier tools used another name; a new name keeps the two apart.
 STORE = "tbhb-alpha"
 PROG = "tbhbdev alpha identity"
-KEY_GEN = "Generated-by"
-KEY_ASSIST = "Assisted-by"
+KEY_GEN = trailers.KEY_GEN
+KEY_ASSIST = trailers.KEY_ASSIST
 RUN_HOOK_ENV = "TBHBDEV_REQUIRE_IDENTITY"
 RUN_MODEL_ENV = "TBHBDEV_IDENTITY_MODEL"
 
@@ -132,10 +154,8 @@ CLAUDE = "claude"
 CODEX = "codex"
 ANTIGRAVITY = "antigravity"
 
-# Internal harness key -> trailer slug, and -> OpenTelemetry gen_ai.provider.name.
+# Internal harness key -> trailer slug.
 SLUGS = {CLAUDE: "claude-code", CODEX: "codex", ANTIGRAVITY: "antigravity"}
-PROVIDERS = {CLAUDE: "anthropic", CODEX: "openai", ANTIGRAVITY: "gcp.gemini"}
-EFFORTS = {"none", "minimal", "low", "medium", "high", "xhigh", "max"}
 EDITS = "edits"
 CLAIMS = "claims"
 ATTR_ORDER = [
@@ -151,16 +171,9 @@ ATTR_ORDER = [
 ]
 # Attributes every trailer value needs, in the order a missing one is reported.
 REQUIRED = ("harness", "model")
-BAD_VALUE = re.compile(r"[\s;,]")
-SURFACE_VALUE = re.compile(r"[^\s;,=]+")
 HASH_RE = re.compile(r"sha-256-64:[0-9a-f]{16}")
-START_FORMAT = "%Y-%m-%dT%H:%M:%SZ"
-START_RE = re.compile(r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z", re.ASCII)
 LAUNCH_FILE = "launch.json"
-CODEX_MODEL = re.compile(r"(gpt-|o\d|codex-)")
 THREAD_ID = re.compile(r"[0-9a-fA-F-]{8,64}")
-# A control character, or the octal escape macOS ps writes for one.
-CONTROL = re.compile(r"\\(?:0[0-3][0-7]|177)|[\x00-\x1f\x7f]")
 
 # Only used by the optional rewrite path, which stays off unless
 # ASCM_AGENT_REWRITE=1 is set at hook time (it costs a permission prompt).
@@ -200,34 +213,6 @@ CLAUDE_TAIL = 256 * 1024
 CODEX_TAIL = 1024 * 1024
 CODEX_HEAD = 1024 * 1024
 CODEX_MAX_AGE = 3 * 86400
-
-# Antigravity model keys -> (provider, canonical model id, effort or None).
-# Source of every entry: `agy models` on 1.5.7 (key plus display name, such as
-# "Gemini 3.8 Flash (Medium)"). Effort is the key suffix, confirmed by the
-# display-name parenthetical in each case. Each base has its own effort set:
-# gemini-4-hydrogen has xhigh, and the other bases stop at high. The two
-# orchestrator keys carry no effort suffix, so their entries have no effort, and
-# their model id is the key itself: the display name ("Orchestrator (Carbon)")
-# names an underlying model, but nothing observed says which model answers. The
-# gemini-* canonical IDs are inferred from display names and the old design,
-# NOT verified against Google's API. Never regex-strip: unknown keys
-# (gemini-3.8-flash-tiered, ...) pass through whole.
-AGY_EFFORTS = ("low", "medium", "high")
-AGY_MODELS: dict[str, tuple[str, str, str | None]] = {
-    f"{base}-{effort}": (provider, base, effort)
-    for base, provider, efforts in (
-        ("gemini-4-argon", "gcp.gemini", AGY_EFFORTS),
-        ("gemini-4-carbon", "gcp.gemini", AGY_EFFORTS),
-        ("gemini-4-hydrogen", "gcp.gemini", (*AGY_EFFORTS, "xhigh")),
-        ("gemini-3.8-flash", "gcp.gemini", AGY_EFFORTS),
-        ("claude-opus-5-5", "anthropic", AGY_EFFORTS),
-        ("claude-sonnet-5-5", "anthropic", AGY_EFFORTS),
-    )
-    for effort in efforts
-}
-AGY_MODELS["gpt-oss-120b-medium"] = ("openai", "gpt-oss-120b", "medium")
-for _orchestrator in ("gemini-pro-orchestrator", "gemini-pro-orchestrator-argon"):
-    AGY_MODELS[_orchestrator] = ("gcp.gemini", _orchestrator, None)
 
 type Json = dict[str, object]
 
@@ -432,19 +417,6 @@ def detect(env: Mapping[str, str]) -> tuple[str, str] | None:
     return None
 
 
-def version(key: str, env: Mapping[str, str]) -> str | None:
-    """The harness version from its environment, or None."""
-    if key == CLAUDE:
-        path = env.get("CLAUDE_CODE_EXECPATH")
-        return Path(path).name if path else None
-    if key == CODEX:
-        return env.get("CODEX_VERSION") or None
-    if key == ANTIGRAVITY:
-        ls_version = env.get("ANTIGRAVITY_LS_VERSION")
-        return ls_version.removeprefix("cli-") if ls_version else None
-    return None
-
-
 def clean_value(value: object) -> str | None:
     """Lowercase a trailer value; None when empty or not grammar-safe."""
     text = str(value).strip().lower() if value is not None else ""
@@ -453,64 +425,9 @@ def clean_value(value: object) -> str | None:
     return text
 
 
-def start_ok(value: object) -> str | None:
-    """A ``started_at`` value (case preserved) if it is a real UTC time."""
-    if not isinstance(value, str) or not START_RE.fullmatch(value):
-        return None
-    try:
-        datetime.strptime(value, START_FORMAT).replace(tzinfo=UTC)  # DTZ007
-    except ValueError:
-        return None
-    return value
-
-
 def hash_ok(value: object) -> str | None:
     """A ``sha-256-64:`` hash, or None for anything else."""
     return value if isinstance(value, str) and HASH_RE.fullmatch(value) else None
-
-
-def surface_ok(value: object) -> str | None:
-    """A raw vendor surface value (case preserved) if the grammar allows it."""
-    if isinstance(value, str) and SURFACE_VALUE.fullmatch(value):
-        return value
-    return None
-
-
-def surface(key: str, env: Mapping[str, str]) -> str | None:
-    """The surface a harness runs on (IDE, CLI, SDK and so on), from its env.
-
-    Codex has none in its env; its surface is the rollout's ``source``.
-    """
-    if key == CLAUDE:
-        return surface_ok(env.get("CLAUDE_CODE_ENTRYPOINT"))
-    if key == ANTIGRAVITY:
-        ls_version = env.get("ANTIGRAVITY_LS_VERSION")
-        return "cli" if ls_version and ls_version.startswith("cli-") else None
-    return None
-
-
-def agy_model(raw: str) -> tuple[str, str | None]:
-    """Explicit table lookup only: (model value, effort or None).
-
-    Unknown keys pass through whole.
-    """
-    entry = AGY_MODELS.get(raw)
-    if entry:
-        return f"{entry[0]}:{entry[1]}", entry[2]
-    return raw, None
-
-
-def provider_model(key: str, model: str | None) -> str | None:
-    """``provider:model`` for a raw model name, or None if unusable."""
-    if not model or model.startswith("<") or BAD_VALUE.search(model):
-        return None
-    if key == CLAUDE:
-        return f"{PROVIDERS[CLAUDE]}:{model}"
-    if key == CODEX and CODEX_MODEL.match(model):
-        return f"{PROVIDERS[CODEX]}:{model}"
-    if key == ANTIGRAVITY:
-        return agy_model(model)[0]
-    return model
 
 
 def format_value(attrs: Mapping[str, str]) -> str:
@@ -846,21 +763,6 @@ def record_child(data: Json, effort: str | None) -> str:
     return agent
 
 
-def flat(cmd: str) -> str:
-    r"""A command with each control character, or ps's octal escape of one, as a space.
-
-    ps shows a multi-line command differently by platform: macOS writes a
-    newline as ``\012`` and Linux writes it as a space. Both reduce to this.
-    """
-    return CONTROL.sub(" ", cmd)
-
-
-def cmd_hashes(cmd: str) -> list[str]:
-    """SHA-256 of a command as given, stripped (the harness may trim it) and flat."""
-    forms = (cmd, cmd.strip(), flat(cmd), flat(cmd).strip())
-    return sorted({hashlib.sha256(c.encode()).hexdigest() for c in forms})
-
-
 def rec_ts(rec: Json) -> float:
     """A stored record's timestamp (our own store: trusted to be a number)."""
     ts = rec.get("ts", 0)
@@ -891,7 +793,7 @@ def record_command(
     name = f"{uuid.uuid4().hex}.json"
     rec: Json = {
         "agent": agent,
-        "cmd": cmd_hashes(cmd),
+        "cmd": identity_commands.cmd_hashes(cmd),
         "ts": time.time(),
         "done": None,
     }
@@ -934,7 +836,7 @@ def finish_command(
     if user_only and not user_store().exists():
         return
     state = None if user_only else state_dir(cwd)
-    hashes, done = set(cmd_hashes(cmd)), time.time()
+    hashes, done = set(identity_commands.cmd_hashes(cmd)), time.time()
     stores = [(user_store(), write_private_json)]
     if state:
         stores.insert(0, (state, write_json))
@@ -1001,22 +903,6 @@ def ancestry(pid: int | None = None, limit: int = ANCESTRY_LIMIT) -> list[str]:
     return out
 
 
-def command_candidates(cmdline: str) -> list[str]:
-    """Strings that could equal ``tool_input.command`` in one ancestor's command line.
-
-    Claude Code (2.1.316) runs ``<shell> -c 'source <snapshot> ... &&
-    eval '<command>' < /dev/null && pwd -P >| <file>'``.
-    ps flattens argv, but the ``-c`` argument is itself shell text, so shlex
-    recovers the eval operand exactly (embedded single quotes survive the
-    ``'"'"'`` escape).
-    """
-    try:
-        tokens = shlex.split(cmdline)
-    except ValueError:
-        return []
-    return [tokens[i + 1] for i, tok in enumerate(tokens[:-1]) if tok == "eval"]
-
-
 class AttributionError(Exception):
     """A plausible child committer could not be identified safely."""
 
@@ -1053,8 +939,8 @@ def match_command_agent(  # noqa: PLR0913 -- lookup inputs and commit policy
     hashes = {
         h
         for line in command_lines
-        for cand in command_candidates(line)
-        for h in cmd_hashes(cand)
+        for cand in identity_commands.command_candidates(line)
+        for h in identity_commands.cmd_hashes(cand)
     }
     agents = {as_str(rec.get("agent")) for rec in records if hashes & rec_hashes(rec)}
     if len(agents) == 1:
@@ -1170,82 +1056,6 @@ def edit_paths_from_bash(resp: object) -> list[str]:
     return [p for p in dict.fromkeys(walk_paths(diff)) if p != "/dev/null"]
 
 
-# Git commands that rewrite work-tree files from a commit or the stash.
-MOVING_GIT = frozenset(
-    {
-        "am",
-        "checkout",
-        "cherry-pick",
-        "merge",
-        "pull",
-        "rebase",
-        "reset",
-        "restore",
-        "revert",
-        "stash",
-        "switch",
-    }
-)
-# Commands that write no work-tree content, so they cannot hide an edit.
-QUIET_GIT = frozenset({"branch", "diff", "fetch", "log", "rev-parse", "show", "status"})
-QUIET_TOOLS = frozenset(
-    {"cat", "cd", "echo", "grep", "head", "ls", "pwd", "rg", "tail", "true", "wc"}
-)
-SEGMENT_BREAKS = re.compile(r"&&|\|\||[;|&\n]")
-# A command or process substitution can run any command.
-SUBSTITUTION = re.compile(r"\$\(|`|[<>]\(")
-# Leading ``VAR=value`` words only set the environment.
-ASSIGNMENT = re.compile(r"[A-Za-z_]\w*=")
-# ``git rebase --exec`` runs arbitrary commands between the replayed commits.
-EXEC_FLAGS = frozenset({"-x", "--exec"})
-# Redirects that write nothing: ``2>&1`` and ``>/dev/null``.
-HARMLESS_REDIRECT = re.compile(r"\d*>&\d+|\d*>>?\s*/dev/null")
-
-
-def git_verb(words: list[str]) -> str:
-    """The subcommand of ``git``, skipping its global options."""
-    i = 1
-    while i < len(words) and words[i].startswith("-"):
-        i += 2 if words[i] in {"-C", "-c"} else 1
-    return words[i] if i < len(words) else ""
-
-
-def segment_kind(segment: str) -> str:
-    """``move``, ``quiet`` or ``other`` for one simple command."""
-    # The replacement text never holds ">", so mutating it cannot change the result.
-    if ">" in HARMLESS_REDIRECT.sub("", segment):  # pragma: no mutate
-        return "other"
-    try:
-        words = shlex.split(segment)
-    except ValueError:
-        return "other"
-    words = list(dropwhile(ASSIGNMENT.match, words))
-    if not words:
-        return "quiet"
-    if words[0] != "git":
-        return "quiet" if words[0] in QUIET_TOOLS else "other"
-    verb = git_verb(words)
-    if verb == "rebase" and EXEC_FLAGS.intersection(words):
-        return "other"
-    return "move" if verb in MOVING_GIT else "quiet" if verb in QUIET_GIT else "other"
-
-
-def moves_work_tree(cmd: object) -> bool:
-    """Whether a command only moves the work tree with git.
-
-    True when it runs a work-tree-moving git command and every other part is
-    read-only. Any other command could have written content, so a line that
-    mixes the two keeps its receipts.
-    """
-    if not isinstance(cmd, str):
-        return False
-    if SUBSTITUTION.search(cmd):
-        return False
-    plain = HARMLESS_REDIRECT.sub("", cmd)
-    kinds = {segment_kind(s) for s in SEGMENT_BREAKS.split(plain)}
-    return "move" in kinds and "other" not in kinds
-
-
 def load_edits(repo: Repo, root: str) -> list[tuple[Path, Json]]:
     """Unconsumed edit receipts for a root session."""
     out = []
@@ -1286,7 +1096,7 @@ def write_bash_edits(
 ) -> None:
     """Edit receipts for the paths in a Bash result, unless git only moved them."""
     paths = edit_paths_from_bash(data.get("tool_response"))
-    if paths and not moves_work_tree(cmd):
+    if paths and not identity_commands.moves_work_tree(cmd):
         ident = claude_ident(data, env)
         for path in paths:
             write_edit(ident, path, cwd)
@@ -2090,12 +1900,10 @@ def enrich(ident: Ident, committer: Committer) -> Ident:
 LLM_LINE = re.compile(r"^(Generated-by|Assisted-by):[ \t]*(LLM\b.*)$", re.MULTILINE)
 LLM_LINES = re.compile(r"^(?:Generated-by|Assisted-by):[ \t]*LLM\b.*\n?", re.MULTILINE)
 AGENT_ATTR = re.compile(r"(?<![^\s;])(session|subagent)=([^\s;]+)")
-AMEND_FLAGS = {"--am", "--ame", "--amen", "--amend"}  # git takes unique prefixes
 PICKED_FROM = re.compile(
     r"^\(cherry picked from commit ([0-9a-f]{40})\)$", re.MULTILINE
 )
 MODEL_ATTR = re.compile(r"(?<![^\s;])model=[^\s;]")
-START_ATTR = re.compile(r"(?<![^\s;])started_at=([^\s;]+)")
 ATTR_PAIR = re.compile(r"(?<![^\s;])([a-z_]+)=([^\s;]+)")
 IDENT_EMAIL = re.compile(r"<([^>]*)>")
 
@@ -2119,13 +1927,7 @@ def without_start(value: str) -> str:
     return ";".join(p for p in parts if not p.startswith("started_at="))
 
 
-def trailer_start(value: str) -> str:
-    """A trailer value's valid ``started_at``, or an empty string without one."""
-    found = START_ATTR.search(value)
-    return (found and start_ok(found[1])) or ""
-
-
-def with_record(value: str) -> str:
+def with_record(value: str, *, branch_start: str | None = None) -> str:
     """A trailer value with the ``launch`` and ``started_at`` of its session record.
 
     The record is the machine's word, so its fields replace whatever the line
@@ -2140,21 +1942,13 @@ def with_record(value: str) -> str:
         return value
     root_rec = load_record(root)
     rec = load_record(sub, root=root) if sub else root_rec
-    if not (rec or root_rec):
+    if not (rec or root_rec or branch_start):
         return value
     fields = {
         "launch": hash_ok(rec.get("launch")) or hash_ok(root_rec.get("launch")),
-        "started_at": start_ok(rec.get("started_at")),
+        "started_at": branch_start or start_ok(rec.get("started_at")),
     }
-    # Replace only these two attributes; absent record fields remove forged ones.
-    blob = next(token for token in value.split() if "=" in token)
-    pairs = [
-        pair
-        for pair in blob.split(";")
-        if not pair.startswith(("launch=", "started_at="))
-    ]
-    pairs.extend(f"{key}={field}" for key, field in fields.items() if field)
-    return value.replace(blob, ";".join(sorted(pairs)))
+    return replace_trailer_fields(value, fields)
 
 
 def earliest_starts(found: list[Trailer]) -> list[Trailer]:
@@ -2211,6 +2005,8 @@ def add_trailers(
     gen: list[Ident],
     assisted: list[Ident],
     kept: list[Trailer] | None = None,
+    *,
+    branch_start: str | None = None,
 ) -> None:
     """Rewrite the message's ``LLM`` trailers as one merged, ordered set.
 
@@ -2230,7 +2026,13 @@ def add_trailers(
         for k, v in [*llm_trailers(text), *(kept or [])]
         if (k, trailer_agent(v)) not in made
     ]
-    merged = merge_trailers([(k, with_record(v)) for k, v in [*older, *new]])
+
+    def stamp_old(value: str) -> str:
+        recorded = branch_start if trailer_start(value) == branch_start else None
+        return with_record(value, branch_start=recorded)
+
+    stamped = [(k, with_record(v, branch_start=branch_start)) for k, v in new]
+    merged = merge_trailers([(k, stamp_old(v)) for k, v in older] + stamped)
     args = [f"--trailer={key}: {value}" for key, value in merged]
     bare = msgfile.with_name(msgfile.name + ".ascm")
     bare.write_text(LLM_LINES.sub("", text))
@@ -2242,23 +2044,9 @@ def add_trailers(
         msgfile.write_text(out + "\n")
 
 
-def amending(command_lines: list[str]) -> bool:
-    """Whether the nearest ``git ... commit`` in the ancestry has ``--amend``.
-
-    ps flattens argv, so a message word ``--amend`` (``-m "fix --amend"``)
-    reads as the flag too; the cost is only keeping the parent's trailers.
-    """
-    for line in command_lines:
-        tokens = line.split()
-        if tokens and Path(tokens[0]).name == "git" and "commit" in tokens:
-            args = tokens[tokens.index("commit") + 1 :]
-            return bool(AMEND_FLAGS & set(takewhile(lambda t: t != "--", args)))
-    return False
-
-
 def amended_trailers(top: Path) -> list[Trailer]:
     """HEAD's ``LLM`` trailers when this commit replaces HEAD (``--amend``)."""
-    if not amending(ancestry()):
+    if not identity_commands.amending(ancestry()):
         return []
     _, msg = git("log", "-1", "--format=%B", "HEAD", cwd=top)
     return llm_trailers(msg)
@@ -2485,7 +2273,8 @@ def cmd_trailer(msgfile: str, source: str | None, env: Mapping[str, str]) -> int
         gen, assisted = list[Ident](), list[Ident]()
     # Enriching can make two identities of one agent equal, so deduplicate again.
     gen = list(dict.fromkeys(with_start(enrich(i, committer)) for i in gen))
-    add_trailers(path, gen, [with_start(i) for i in assisted], kept)
+    assisted = [with_start(i) for i in assisted]
+    add_trailers(path, gen, assisted, kept, branch_start=branch_created_at(repo.top))
     write_claim(repo, committer.ident.root, [p for p, _ in edits])
     return 0
 
@@ -2571,11 +2360,6 @@ class DocEntry:
     last: int
     indent: int
     fields: Entry
-
-
-def utc(timestamp: float) -> str:
-    """A UTC ISO 8601 time with whole seconds and a Z suffix."""
-    return datetime.fromtimestamp(timestamp, UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
 def valid_entry(entry: Mapping[str, str]) -> bool:

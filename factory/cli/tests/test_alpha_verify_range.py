@@ -5,8 +5,9 @@ from typing import TYPE_CHECKING, Literal, TypedDict
 
 import pytest
 
-from tbhbdev import alpha
-from tbhbdev.alpha import identity, verify_range
+from tbhbdev.alpha import verify_range
+from tbhbdev.alpha.identity import dispatcher as identity
+from tbhbdev.alpha.verify_range import main as verify_main
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -76,24 +77,17 @@ def repo(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Repository:
     return Repository(tmp_path)
 
 
-def test_valid_range_and_dispatch(
-    repo: Repository, capsys: pytest.CaptureFixture[str]
-) -> None:
+def test_valid_range(repo: Repository, capsys: pytest.CaptureFixture[str]) -> None:
     first = repo.commit()
     second = repo.commit(parents=[first], message=f"fix: second\n\n{TRAILER}\n")
     repo.git("update-ref", "refs/heads/test", second)
-    assert alpha.main(["verify-range", repo.base, "test"], "tbhbdev alpha") == 0
+    assert verify_main([repo.base, "test"], "tbhbdev alpha verify-range") == 0
     assert capsys.readouterr() == (
         (
             f"{first[:7]} ok feat: example\n{second[:7]} ok fix: second\n"
             "verify-range: 2 commits, 0 failed\n"
         ),
         "",
-    )
-    assert alpha.COMMANDS["verify-range"] is verify_range.main
-    assert (
-        "  verify-range BASE TIP [-C PATH]: check every agent commit in a range\n"
-        in alpha.USAGE
     )
 
 
@@ -218,6 +212,107 @@ def merge(repo: Repository, ours: str, theirs: str, *, signed: bool = True) -> s
     )
 
 
+def test_identity_only_reports_all_missing_trailers(
+    repo: Repository, capsys: pytest.CaptureFixture[str]
+) -> None:
+    first = repo.commit(message="fix: missing trailer\n")
+    tip = repo.commit(
+        author="human@example.com",
+        committer="human@example.com",
+        parents=[first],
+        message="fix: assistance only\n\nAssisted-by: LLM harness=codex;model=test\n",
+    )
+    assert verify_range.main(["--identity-only", repo.base, tip], PROG) == 1
+    assert capsys.readouterr() == (
+        (
+            f"{first} FAIL missing Generated-by trailer for agent commit"
+            " | fix: missing trailer\n"
+            f"{tip} FAIL missing Generated-by or Committed-by trailer"
+            " | fix: assistance only\n"
+            "verify-range: 2 commits, 2 failed\n"
+        ),
+        "",
+    )
+
+
+@pytest.mark.parametrize(
+    ("author", "committer"),
+    [(EMAIL, "human@example.com"), ("human@example.com", EMAIL)],
+)
+def test_identity_only_requires_generated_by_for_agent(
+    repo: Repository, capsys: pytest.CaptureFixture[str], author: str, committer: str
+) -> None:
+    tip = repo.commit(
+        author=author,
+        committer=committer,
+        message=f"fix: agent change\n\nCommitted-by: Example <{committer}>\n",
+    )
+    assert verify_range.main(["--identity-only", repo.base, tip], PROG) == 1
+    assert f"{tip} FAIL missing Generated-by trailer for agent commit" in (
+        capsys.readouterr().out
+    )
+
+
+@pytest.mark.parametrize(
+    ("trailer", "reason"),
+    [
+        ("Generated-by: LLM harness=codex", "model required"),
+        (
+            "Committed-by: Other <human@example.com>",
+            "must match the Git committer's name and email",
+        ),
+    ],
+)
+def test_identity_only_reuses_message_validation(
+    repo: Repository, capsys: pytest.CaptureFixture[str], trailer: str, reason: str
+) -> None:
+    tip = repo.commit(
+        author="human@example.com",
+        committer="human@example.com",
+        message=f"fix: bad\n\n{trailer}\n",
+    )
+    assert verify_range.main(["--identity-only", repo.base, tip], PROG) == 1
+    out, err = capsys.readouterr()
+    assert out.startswith(f"{tip} FAIL ")
+    assert f"{reason} | fix: bad\n" in out
+    assert not err
+
+
+def test_identity_only_accepts_agent_and_human_trailers(
+    repo: Repository, capsys: pytest.CaptureFixture[str]
+) -> None:
+    first = repo.commit(signed=False)
+    tip = repo.commit(
+        author="human@example.com",
+        committer="human@example.com",
+        signed=False,
+        parents=[first],
+        message="fix: human change\n\nCommitted-by: Example <human@example.com>\n",
+    )
+    assert verify_range.main(["--identity-only", repo.base, tip], PROG) == 0
+    assert capsys.readouterr() == (
+        (
+            f"{first} ok feat: example\n"
+            f"{tip} ok fix: human change\n"
+            "verify-range: 2 commits, 0 failed\n"
+        ),
+        "",
+    )
+
+
+def test_identity_only_skips_merges_and_base_history(
+    repo: Repository, capsys: pytest.CaptureFixture[str]
+) -> None:
+    base = repo.commit(message="chore: already on main\n")
+    queued = repo.commit()
+    tip = merge(repo, base, queued, signed=False)
+    assert verify_range.main(["--identity-only", base, tip], PROG) == 0
+    assert capsys.readouterr() == (
+        f"{queued} ok feat: example\nverify-range: 1 commits, 0 failed\n",
+        "",
+    )
+
+
 def test_branch_updated_with_main_passes(
     repo: Repository, capsys: pytest.CaptureFixture[str]
 ) -> None:
@@ -310,7 +405,7 @@ def test_usage(argv: list[str], capsys: pytest.CaptureFixture[str]) -> None:
     assert verify_range.main(argv, "custom") == 2
     out, err = capsys.readouterr()
     assert out == ""
-    assert err.startswith("usage: custom [-h] [-C PATH] BASE TIP\n")
+    assert err.startswith("usage: custom [-h] [-C PATH] [--identity-only] BASE TIP\n")
 
 
 @pytest.mark.parametrize("flag", ["-h", "--help"])
@@ -318,7 +413,7 @@ def test_help(flag: str, capsys: pytest.CaptureFixture[str]) -> None:
     assert verify_range.main([flag], "custom") == 0
     out, err = capsys.readouterr()
     assert err == ""
-    assert out.startswith("usage: custom [-h] [-C PATH] BASE TIP\n")
+    assert out.startswith("usage: custom [-h] [-C PATH] [--identity-only] BASE TIP\n")
     assert verify_range.__doc__ in out
 
 

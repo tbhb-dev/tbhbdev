@@ -1,0 +1,112 @@
+---
+- name: Verify signing setup
+  hosts: all
+  become: true
+  tasks:
+    - name: Stat the agent files
+      ansible.builtin.stat:
+        path: "/home/agent/{{ item }}"
+      loop:
+        - .config/devtools/agent-signing-key
+        - .config/devtools/agent-signing-key.pub
+        - .config/devtools/signing.env
+        - .config/devtools
+        - .local/bin/ssh-sign
+      register: agent_signing_test_stats
+
+    - name: Check the agent's files, owners and modes
+      ansible.builtin.assert:
+        that:
+          - agent_signing_test_stats.results | map(attribute='stat.exists') | min
+          - agent_signing_test_stats.results[0].stat.mode == '0600'
+          - agent_signing_test_stats.results[0].stat.pw_name == 'agent'
+          - agent_signing_test_stats.results[1].stat.mode == '0644'
+          - agent_signing_test_stats.results[2].stat.mode == '0600'
+          - agent_signing_test_stats.results[3].stat.mode == '0700'
+          - agent_signing_test_stats.results[4].stat.mode == '0755'
+          - agent_signing_test_stats.results[4].stat.pw_name == 'agent'
+
+    # The tagged program exits 0 and the later commit's exits 1, so this proves the build used the tag.
+    - name: Run the installed program
+      become: true
+      become_user: agent
+      ansible.builtin.command:
+        argv: [/home/agent/.local/bin/ssh-sign]
+      changed_when: false
+
+    - name: Read the agent's signing settings
+      ansible.builtin.slurp:
+        src: /home/agent/.config/devtools/signing.env
+      register: agent_signing_test_env
+
+    - name: Check the settings
+      ansible.builtin.assert:
+        that:
+          - >-
+              agent_signing_test_env.content | b64decode ==
+              'DEVTOOLS_SIGNING_PROVIDER=file\nDEVTOOLS_SIGNING_KEY_FILE=/home/agent/.config/devtools/agent-signing-key\nDEVTOOLS_SIGNING_PUBLIC_KEY=/home/agent/.config/devtools/agent-signing-key.pub\n'
+
+    - name: Check the public key matches the private key without printing either
+      become: true
+      become_user: agent
+      ansible.builtin.shell: |
+        set -euo pipefail
+        cd /home/agent/.config/devtools
+        test "$(ssh-keygen -y -f agent-signing-key | cut -d' ' -f1,2)" = "$(cut -d' ' -f1,2 agent-signing-key.pub)"
+      args:
+        executable: /bin/bash
+      changed_when: false
+
+    - name: Read the agent's git identity and signing setting
+      become: true
+      become_user: agent
+      ansible.builtin.shell: |
+        set -euo pipefail
+        git var GIT_AUTHOR_IDENT | cut -d' ' -f1-3
+        git config --global commit.gpgsign
+        git config --global gpg.ssh.program
+      args:
+        executable: /bin/bash
+      environment:
+        HOME: /home/agent
+      register: agent_signing_test_git
+      changed_when: false
+
+    - name: Check the identity and signing settings
+      ansible.builtin.assert:
+        that:
+          - >-
+              agent_signing_test_git.stdout_lines ==
+              ['tbhb.dev Agent <agent@example.invalid>', 'true', '/home/agent/.local/bin/ssh-sign']
+    # A program that differs from the build is replaced, as a tag bump would do.
+    - name: Record the installed program's checksum
+      ansible.builtin.stat:
+        path: /home/agent/.local/bin/ssh-sign
+        checksum_algorithm: sha256
+      register: agent_signing_test_built
+
+    - name: Replace the program with something else
+      ansible.builtin.copy:
+        dest: /home/agent/.local/bin/ssh-sign
+        content: "old\n"
+        owner: agent
+        mode: "0755"
+
+    - name: Run the role again
+      ansible.builtin.include_role:
+        name: agent_signing
+      vars:
+        agent_signing_devtools_src: "{{ lookup('ansible.builtin.env', 'MOLECULE_EPHEMERAL_DIRECTORY') }}/devtools"
+
+    - name: Stat the program again
+      ansible.builtin.stat:
+        path: /home/agent/.local/bin/ssh-sign
+        checksum_algorithm: sha256
+      register: agent_signing_test_rebuilt
+
+    - name: Check the build replaced it
+      ansible.builtin.assert:
+        that:
+          - agent_signing_test_rebuilt.stat.checksum == agent_signing_test_built.stat.checksum
+          - agent_signing_test_rebuilt.stat.pw_name == 'agent'
+          - agent_signing_test_rebuilt.stat.mode == '0755'

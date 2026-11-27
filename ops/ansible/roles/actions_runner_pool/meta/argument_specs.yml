@@ -1,0 +1,195 @@
+---
+argument_specs:
+  main:
+    short_description: Run a pool of ephemeral GitHub Actions runners on rootless Docker
+    description:
+      - Needs the service user and its rootless daemon from the docker_rootless role.
+      - Each slot runs one job per start of its systemd user unit, in a fresh container.
+      - >-
+          Nothing of the runner is root-owned. The one root-side exception, the file system that
+          holds the service user's Docker data root, belongs to docker_rootless, which sizes it
+          with docker_rootless_data_size.
+    options:
+      actions_runner_pool_user:
+        type: str
+        default: ghrunner
+        description: Service user that runs the slots, the same as docker_rootless_user.
+      actions_runner_pool_org:
+        type: str
+        required: true
+        description: Organization the runners register with.
+      actions_runner_pool_slots:
+        type: int
+        default: 1
+        description: Number of slots, each running one job at a time.
+      actions_runner_pool_cpus:
+        type: str
+        required: true
+        description: CPU limit of each job container, as docker run --cpus takes it.
+      actions_runner_pool_memory:
+        type: str
+        required: true
+        description: Memory limit of each job container, as docker run --memory takes it.
+      actions_runner_pool_pids_limit:
+        type: int
+        required: true
+        description: Process limit of each job container.
+      actions_runner_pool_work_size:
+        type: str
+        description: >-
+          Tmpfs size for work and shared /tmp, used unless actions_runner_pool_work_on_disk
+          is true. Required in tmpfs mode. tmpfs pages count against the memory limit.
+      actions_runner_pool_work_on_disk:
+        type: bool
+        default: false
+        description:
+          - Store work and shared /tmp in plain local volumes. Requires actions_runner_pool_dind_image.
+          - >-
+              A job's work and /tmp files stay on the runner VM's disk for the job's duration,
+              including actions/checkout's git-credentials config under _work/_temp, which holds
+              the job's token. The slot's stop phase removes them when the job ends, and the next
+              start removes any that a killed stop phase left behind. Removal doesn't overwrite the freed
+              blocks, and the CI VMs' disks are unencrypted, in the VM and on its host. A
+              runaway job can fill its slot's Docker storage, though not the VM's root, since no
+              per-job disk cap applies. Use it only on hosts whose disk serves nothing else.
+      actions_runner_pool_min_free:
+        type: str
+        default: 20G
+        description: >-
+          Free space the Docker data root must have before a slot registers a runner, as a
+          size Ansible's human_to_bytes reads. Below it the start phase exits 75 without
+          registering, and the slot retries after its restart delay.
+      actions_runner_pool_labels:
+        type: list
+        elements: str
+        default: [self-hosted, tbhb-dev-private]
+        description: Labels the runners register with.
+      actions_runner_pool_dns:
+        type: list
+        elements: str
+        description: >-
+          Resolvers each job container gets, one docker run --dns per entry. They must be
+          public, because the egress table blocks the private and tailnet resolvers a host
+          may use.
+      actions_runner_pool_runner_group_id:
+        type: int
+        required: true
+        description: Runner group the runners join.
+      actions_runner_pool_app_id:
+        type: int
+        required: true
+        description: ID of the GitHub App that registers the runners.
+      actions_runner_pool_installation_id:
+        type: int
+        required: true
+        description: ID of the App's installation on the organization.
+      actions_runner_pool_image:
+        type: str
+        default: ghcr.io/actions/actions-runner@sha256:4ffadc0002b2581327e06101fc8c06cd189232baf79fe561fac9caeb76f5e807
+        description: Runner image, pinned by digest.
+      actions_runner_pool_dind_image:
+        type: str
+        default: ""
+        description: >-
+          docker:dind image, pinned by digest, for each slot's own Docker daemon. The daemon runs
+          as a privileged sidecar under the rootless daemon, on the slot's network, and the job
+          reaches it through a socket on a per-slot volume. Empty runs no slot daemon.
+      actions_runner_pool_dind_cpus:
+        type: str
+        default: "2"
+        description: CPU limit of each slot's Docker daemon, as docker run --cpus takes it.
+      actions_runner_pool_dind_memory:
+        type: str
+        default: 3g
+        description: Memory limit of each slot's Docker daemon, as docker run --memory takes it.
+      actions_runner_pool_op_token_file:
+        type: str
+        default: .config/actions-runner/op-connect-token
+        description: >-
+          Path to the 1Password Connect token, relative to the service user's home.
+          The file is owned by the service user with mode 0600. The role fails when it is missing.
+      actions_runner_pool_op_token_ref:
+        type: str
+        default: ""
+        description: >-
+          The 1Password reference for the Connect token. When set, the role reads it on the
+          controller with actions_runner_pool_op_token_lookup_command and writes it to
+          actions_runner_pool_op_token_file, owned by the service user with mode 0600, changing
+          the file only when the token differs. It does nothing in check mode and never logs the
+          token. Empty leaves the file to the operator.
+      actions_runner_pool_op_token_lookup_command:
+        type: str
+        default: env -u SSH_AUTH_SOCK tbhbdev secret read
+        description: >-
+          The controller command that prints the token for actions_runner_pool_op_token_ref,
+          which the role appends to it as the one argument.
+      actions_runner_pool_op_connect_host:
+        type: str
+        default: ""
+        description: >-
+          Connect server's base URL, HTTPS and without a path. Empty derives
+          https://op-connect.<MagicDNS suffix>, which the role reads from tailscale status on
+          the host, so a tailnet rename needs no change in git. The egress table accepts TCP port 443 to the
+          resolved addresses.
+      actions_runner_pool_op_key_vault:
+        type: str
+        required: true
+        description: 1Password vault that holds the App's private key.
+      actions_runner_pool_op_key_item:
+        type: str
+        required: true
+        description: 1Password item that holds the App's private key.
+      actions_runner_pool_op_key_field:
+        type: str
+        required: true
+        description: Field of that item with the PEM private key.
+      actions_runner_pool_api_url:
+        type: str
+        default: https://api.github.com
+        description: GitHub REST API base URL, without a trailing slash.
+      actions_runner_pool_name_prefix:
+        type: str
+        default: pool
+        description: >-
+          First part of each runner's name, <prefix>-<host alias>-<slot>-<random>, letters and
+          digits only. With no hyphen in it, a name yields exactly one prefix, host alias and
+          slot, so a slot's cleanup of its own stale runners can't match another's.
+      actions_runner_pool_job_dir:
+        type: str
+        default: ""
+        description: >-
+          Path, relative to the service user's home, of a directory that something other than this
+          role fills. Each job container gets it read-only at /etc/actions-runner/job. Empty mounts
+          nothing. Set together with actions_runner_pool_job_started_hook.
+      actions_runner_pool_job_started_hook:
+        type: str
+        default: ""
+        description: >-
+          Name of a file in the job directory that the runner runs before every job as its
+          job-started hook, through ACTIONS_RUNNER_HOOK_JOB_STARTED. The runner accepts only a name
+          that ends in .sh, .ps1 or .js. A nonzero exit fails the job before any step runs. A slot
+          exits 78 and starts no job while the file is missing.
+      actions_runner_pool_job_secrets_dir:
+        type: str
+        default: ""
+        description: >-
+          Path, relative to the service user's home, of a directory of secret files that no job
+          container mounts. Each start of a slot sends the files, as a tar stream, into a FIFO that
+          the job container mounts at /etc/actions-runner/job-secrets, and gives the container an
+          empty tmpfs at /run/job-secrets, owned by the runner user with mode 0700, which goes with
+          the container. The stream is base64 of the tar, under 64 KiB. The job-started hook reads the
+          FIFO to its end before any step runs, and writes the files into the tmpfs or discards them.
+          Needs the job directory and the hook, must not overlap the job directory, and holds at most
+          16 KiB of files, or the slot exits 78. Empty sends nothing.
+      actions_runner_pool_start:
+        type: bool
+        default: true
+        description: >-
+          Start the slots as well as enabling them. The Molecule scenario turns this off so
+          no slot reaches 1Password or GitHub.
+      actions_runner_pool_enabled:
+        type: bool
+        default: true
+        description: >-
+          Enable the slots, so a reboot starts them. Off disables and stops every slot, for a
+          host whose runners must stay down even across a reboot.

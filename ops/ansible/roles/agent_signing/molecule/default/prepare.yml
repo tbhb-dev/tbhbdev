@@ -1,0 +1,68 @@
+---
+# A stand-in for the operator's devtools clone: a real git repository with the pinned tag
+# and a later commit that must not be built. The role itself runs for real, with the
+# controller's go, so Molecule needs go and git on the controller.
+- name: Prepare a devtools clone on the controller
+  hosts: localhost
+  gather_facts: false
+  vars:
+    clone: "{{ lookup('ansible.builtin.env', 'MOLECULE_EPHEMERAL_DIRECTORY') }}/devtools"
+  environment:
+    # Ignore the operator's git configuration, including commit signing.
+    GIT_CONFIG_GLOBAL: /dev/null
+    GIT_CONFIG_SYSTEM: /dev/null
+    GIT_AUTHOR_NAME: fixture
+    GIT_AUTHOR_EMAIL: fixture@example.test
+    GIT_COMMITTER_NAME: fixture
+    GIT_COMMITTER_EMAIL: fixture@example.test
+  tasks:
+    - name: Create the clone
+      ansible.builtin.command:
+        argv: [git, init, --quiet, "{{ clone }}"]
+        creates: "{{ clone }}/.git"
+
+    - name: Create the program's directory
+      ansible.builtin.file:
+        path: "{{ clone }}/cmd/ssh-sign"
+        state: directory
+        mode: "0755"
+
+    - name: Write the tagged program, which exits 0
+      ansible.builtin.copy:
+        dest: "{{ clone }}/{{ item.path }}"
+        content: "{{ item.content }}"
+        mode: "0644"
+      loop:
+        - path: go.mod
+          content: "module example.test/devtools\n\ngo 1.21\n"
+        - path: cmd/ssh-sign/main.go
+          content: "package main\n\nfunc main() {}\n"
+      loop_control:
+        label: "{{ item.path }}"
+      changed_when: false
+
+    - name: Commit and tag it
+      ansible.builtin.shell: |
+        set -eu
+        git -C "{{ clone }}" add .
+        git -C "{{ clone }}" commit --quiet --message tagged
+        git -C "{{ clone }}" tag v0.23.0
+        printf 'package main\n\nimport "os"\n\nfunc main() { os.Exit(1) }\n' > "{{ clone }}/cmd/ssh-sign/main.go"
+        git -C "{{ clone }}" commit --quiet --all --message later
+        printf 'dirty\n' > "{{ clone }}/untracked"
+      args:
+        creates: "{{ clone }}/untracked"
+
+- name: Prepare accounts
+  hosts: all
+  become: true
+  tasks:
+    - name: Install git for the verify step
+      ansible.builtin.apt:
+        name: git
+        update_cache: true
+
+    - name: Create the agent account
+      ansible.builtin.user:
+        name: agent
+        create_home: true

@@ -12,7 +12,7 @@ from typing import TYPE_CHECKING, NamedTuple, cast
 from jsonschema import Draft202012Validator
 from jsonschema.exceptions import SchemaError
 
-from tbhbdev.alpha import pull_request as pr
+from tbhbdev.alpha import pull_request_frontmatter as frontmatter
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -142,8 +142,8 @@ def check_checklist(text: str) -> list[Finding]:
     """Item and escalation ids must be unique, and the floor's ranges stay reserved."""
     path = str(CHECKLIST)
     try:
-        meta, body = pr.parse_frontmatter(text)
-    except pr.FrontmatterError as exc:
+        meta, body = frontmatter.parse_frontmatter(text)
+    except frontmatter.FrontmatterError as exc:
         return [Finding(path, "checklist-frontmatter", str(exc))]
     findings = []
     seen = set()

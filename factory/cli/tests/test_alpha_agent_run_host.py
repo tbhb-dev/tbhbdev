@@ -25,9 +25,9 @@ from functools import partial
 from pathlib import Path
 from types import SimpleNamespace
 from typing import TYPE_CHECKING, cast
-from unittest.mock import Mock
+from unittest.mock import ANY, Mock
 
-import httpx
+import httpx2
 import pytest
 from agent_host_example import (
     build_provenance,
@@ -42,12 +42,13 @@ from agent_host_example import (
     trusted_host_stat,
     unusual_git_metadata,
 )
+from runfile_fixtures import agent_suffix_case as agent_suffix_case  # noqa: PLC0414
 from test_alpha_agent_codex_install import release
 from test_alpha_agent_credentials import VALUES
 from test_alpha_agent_settings import EXAMPLE
 
 from tbhbdev import secrets
-from tbhbdev.alpha import agent, install, run_stop_hook
+from tbhbdev.alpha import install, run_stop_hook
 from tbhbdev.alpha.agent import (
     admission,
     bazel_servers,
@@ -218,7 +219,6 @@ def harness_without_push(
     prepared: run_host.Prepared,
     stack: ExitStack,
     harness: Callable[[run_host.Run, run_host.Prepared, ExitStack], int],
-    _token: str | credentials.PushTokenFailure | None,
 ) -> int:
     return harness(run, prepared, stack)
 
@@ -546,17 +546,6 @@ def test_codex_run_config_holds_the_otel_table(
     assert config_path.stat().st_mode & 0o777 == 0o600
 
 
-@pytest.mark.parametrize("scheme", ["http", "https"])
-@pytest.mark.parametrize("suffix", ["", "/"])
-def test_otel_config_derives_signal_paths_from_the_base(
-    scheme: str, suffix: str
-) -> None:
-    base = f"{scheme}://otlp.example.net"
-    table = tomllib.loads(run_host.otel_config(base + suffix))["otel"]
-    assert table["trace_exporter"]["otlp-http"]["endpoint"] == (f"{base}/v1/traces")
-    assert table["metrics_exporter"]["otlp-http"]["endpoint"] == (f"{base}/v1/metrics")
-
-
 def test_codex_run_without_an_endpoint_writes_no_config(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -591,9 +580,7 @@ def test_codex_config_failure_names_its_step(
     assert str(caught.value) == f"run preparation failed at codex config: {cause}"
 
 
-@pytest.mark.parametrize(
-    ("no_commit", "start"), [(False, "a" * 40), (True, None), (False, None)]
-)
+@pytest.mark.parametrize(("no_commit", "start"), [(False, "a" * 40), (True, None)])
 def test_build_preparation_has_the_run_socket(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, no_commit: bool, start: str | None
 ) -> None:
@@ -633,10 +620,6 @@ def test_build_preparation_has_the_run_socket(
     monkeypatch.setattr(run_host, "hook_environment", hook_environment)
     monkeypatch.setattr(run_host, "bazel_bases", bazel_bases)
     monkeypatch.setattr(credentials, "fetch_token", fetch_token)
-    if not no_commit and start is None:
-        with pytest.raises(Invalid, match="run branch must be checked out"):
-            run_host.prepare_workspace(run)
-        return
     result = run_host.prepare_workspace(run)
     assert result.paths.signing_socket == str(run.tmpdir / "ssh.sock")
     assert result.delivery.signing == "example-signing"
@@ -756,6 +739,7 @@ def test_launch_uses_the_policy_and_marks_only_after_spawn(
     assert [entry for entry in metadata if not entry[1].startswith("argv: ")] == [
         ("launched", "\n"),
         ("phase", "running"),
+        ("log", "harness exited 7\n"),
         ("phase", "exited"),
         ("phase", "stopped"),
     ]
@@ -798,6 +782,7 @@ def test_harness_deadlines(
         else:
             assert run_host.run_harness(run, prepared, stack) == 124
             assert stopped == [23]
+            assert "harness exited 124\n" in run.files.path("log").read_text()
 
 
 @pytest.mark.parametrize(
@@ -995,12 +980,10 @@ def test_hidden_dispatch_reads_request_and_restores_handlers(
     def execute(
         run: run_host.Run,
         text: str,
-        push_token: str | None = None,
         *,
         preflight_only: bool = False,
     ) -> int:
         assert preflight_only is False
-        assert push_token is None
         assert run.settings == expected_settings
         assert run.request.claude_profile == "primary"
         assert run.files.root == files.root
@@ -1016,7 +999,7 @@ def test_hidden_dispatch_reads_request_and_restores_handlers(
         return 9
 
     monkeypatch.setattr(run_host, "execute", execute)
-    assert agent.main(arguments, "example agent") == 9
+    assert run_host.main(arguments[1:], "example agent run-host") == 9
     assert {s: signal.getsignal(s) for s in before} == before
     assert files.path("json").read_text() == "driver metadata"
 
@@ -1507,12 +1490,10 @@ def test_host_defaults_use_fake_home_and_configured_machine(
     def execute(
         run: run_host.Run,
         text: str,
-        push_token: str | None = None,
         *,
         preflight_only: bool = False,
     ) -> int:
         assert preflight_only is False
-        assert push_token is None
         assert run.files.root == root
         assert run.host.name == "example-linux"
         assert text == "example task"
@@ -1555,12 +1536,10 @@ def test_host_passes_configured_full_access_authorization(
     def execute(
         run: run_host.Run,
         _text: str,
-        push_token: str | None = None,
         *,
         preflight_only: bool = False,
     ) -> int:
         assert preflight_only is False
-        assert push_token is None
         assert os.environ["PATH"] == account_path
         assert run.request.unsandboxed is True
         assert run.request.authorized_by == "operator-chat-2026-11-09"
@@ -2276,10 +2255,12 @@ def test_host_paths_refuse_before_any_host_execution(
         run_host.checked_policy(run, paths)
 
 
+@pytest.mark.parametrize("steer", [False, True])
 def test_final_answer_is_copied_only_after_child_stops(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, steer: bool
 ) -> None:
     run = make_run(tmp_path)
+    run.steer = steer
     run.files.write("prompt", "task")
     run.files.receive(run.request)
     prepared = preparation(run)
@@ -2303,7 +2284,12 @@ def test_final_answer_is_copied_only_after_child_stops(
     def launch(
         spec: process_group.Launch, *, started: Callable[[Child], None]
     ) -> Child:
-        assert spec.command[-2] == str(run.tmpdir / "out.final")
+        if steer:
+            assert "app-server --listen unix://" in spec.command[-1]
+            assert "--remote unix://" in spec.command[-1]
+            assert "model=" in spec.command[-1]
+        else:
+            assert spec.command[-2] == str(run.tmpdir / "out.final")
         assert not run.files.path("out.final").exists()
         (run.tmpdir / "out.final").write_text("answer")
         run.files.path("request.json").write_text(
@@ -2377,11 +2363,9 @@ def test_execute_scopes_the_mac_host_path(
         actual: run_host.Run,
         text: str,
         stack: ExitStack,
-        push_token: str | None = None,
         *,
         preflight_only: bool = False,
     ) -> int:
-        assert push_token is None
         assert preflight_only is False
         assert actual is run
         assert text == "task"
@@ -2816,53 +2800,6 @@ def test_log_argv_writes_one_complete_line_only_for_codex(
     )
 
 
-@pytest.mark.parametrize(
-    ("command", "expected"),
-    [
-        ((), "argv: "),
-        (
-            ("shell_environment_policy.set.EXAMPLE=one",),
-            "argv: shell_environment_policy.set.EXAMPLE=one",
-        ),
-        (("-c", "shell_environment_policy.set.EXAMPLE=one"), "argv: "),
-        (
-            ("codex", "shell_environment_policy.set.EXAMPLE=one"),
-            "argv: codex shell_environment_policy.set.EXAMPLE=one",
-        ),
-        (
-            (
-                "-c",
-                "-c",
-                "shell_environment_policy.set.EXAMPLE=one",
-                "shell_environment_policy.set.EXAMPLE=two",
-            ),
-            "argv: -c shell_environment_policy.set.EXAMPLE=two",
-        ),
-    ],
-)
-def test_argv_log_line_drops_only_environment_override_pairs(
-    command: tuple[str, ...], expected: str
-) -> None:
-    assert run_host.argv_log_line(command) == expected
-
-
-def test_argv_log_line_keeps_other_overrides() -> None:
-    command = (
-        "codex",
-        "-c",
-        "shell_environment_policy.set.HOME='x y'",
-        "-c",
-        "model_reasoning_effort='high'",
-        "-c",
-        "shell_environment_policy.set.PATH='p'",
-        "-m",
-        "-c",
-    )
-    assert run_host.argv_log_line(command) == (
-        "argv: codex -c 'model_reasoning_effort='\"'\"'high'\"'\"'' -m -c"
-    )
-
-
 @pytest.mark.parametrize("harness", [Harness.CODEX, Harness.CLAUDE])
 def test_driver_schema_file_reaches_harness(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, harness: Harness
@@ -3062,7 +2999,7 @@ def test_unproven_harness_stop_keeps_rc_and_withholds_auth(
     assert run.files.path("rc").read_text() == "7\n"
     log = run.files.path("log").read_text().splitlines()
     assert log[0].startswith("argv: ")
-    assert log[1:] == ["run group stop unproven; phase unknown"]
+    assert log[1:] == ["harness exited 7", "run group stop unproven; phase unknown"]
     assert not (run.home / ".codex" / "auth.json").exists()
 
 
@@ -3231,12 +3168,10 @@ def test_late_temporary_cleanup_keeps_finished_records(
     def execute(
         _run: run_host.Run,
         _text: str,
-        push_token: str | None = None,
         *,
         preflight_only: bool = False,
     ) -> int:
         assert preflight_only is False
-        assert push_token is None
         run.files.write("log", "harness log\n")
         run.files.write("phase", "ended")
         run.files.write("rc", "7\n")
@@ -3320,7 +3255,6 @@ def test_exec_removes_its_pytest_tree_after_each_outcome(
     monkeypatch.setattr(run_host, "_files", constant(run.files))
     monkeypatch.setattr(run_host, "_load", load)
     monkeypatch.setattr(run_host, "preflight", constant(None))
-    monkeypatch.setattr(credentials, "push_token", constant(None))
     monkeypatch.setattr(process_group, "prepare", prepare)
     monkeypatch.setattr(process_group, "launch_owned", launch)
     monkeypatch.setattr(process_group, "record", constant(None))
@@ -4181,60 +4115,6 @@ def test_checked_policy_still_refuses_executable_link_and_parent_overlap(
     )
 
 
-def test_main_passes_in_memory_push_token(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    run = make_run(tmp_path)
-    synthetic = "synthetic-push-value"
-    monkeypatch.setattr(run_host, "_load", constant((run, "task")))
-
-    def execute(
-        actual: run_host.Run,
-        text: str,
-        push_token: str | None = None,
-        *,
-        preflight_only: bool = False,
-    ) -> int:
-        assert preflight_only is False
-        assert actual is run
-        assert text == "task"
-        assert push_token == synthetic
-        return 4
-
-    monkeypatch.setattr(run_host, "execute", execute)
-    assert run_host.main(["example"], "run-host", push_token=synthetic) == 4
-
-
-def test_push_failure_reaches_durable_completion(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    run = make_run(tmp_path)
-    prepared = dataclasses.replace(preparation(run), auth_before="example-before")
-    runtime = HostRuntime(run, prepared, None)
-    runtime.patch(monkeypatch)
-    synthetic = "synthetic-push-value"
-
-    def publish(
-        actual: run_host.Run,
-        ready: run_host.Prepared,
-        stack: ExitStack,
-        harness: object,
-        token: str | None,
-    ) -> int:
-        assert actual is run
-        assert ready == prepared
-        assert isinstance(stack, ExitStack)
-        assert harness == run_host.run_harness
-        assert token == synthetic
-        return 4
-
-    monkeypatch.setattr(run_host.push, "run", publish)
-    assert run_host.execute(run, "example", synthetic) == 4
-    assert run.files.path("rc").read_text() == "4\n"
-    assert run.files.path("phase").read_text() == "ended"
-    assert runfiles.latest(run.files.root)["example"]["rc"] == 4
-
-
 @pytest.mark.parametrize(
     ("profile", "rc", "preflight_only", "uncertain", "posted", "should_post"),
     [
@@ -4281,10 +4161,7 @@ def test_execute_posts_only_after_a_successful_review(  # noqa: PLR0913
     post = Mock(side_effect=record_review)
     monkeypatch.setattr(run_host.review_post, "posted", post)
     expected = 10 if uncertain or (should_post and not posted) else rc
-    assert (
-        run_host.execute(run, "example", "unused", preflight_only=preflight_only)
-        == expected
-    )
+    assert run_host.execute(run, "example", preflight_only=preflight_only) == expected
     assert post.call_count == int(should_post)
     assert run.files.path("rc").read_text() == f"{expected}\n"
     if uncertain:
@@ -4391,7 +4268,7 @@ def test_run_builds_required_shims_before_harness(
 
     call = Mock(side_effect=build)
     monkeypatch.setattr(shims.subprocess, "run", call)
-    assert run_host.execute(run, "example", "unused") == expected
+    assert run_host.execute(run, "example") == expected
     assert run.files.path("rc").read_text() == f"{expected}\n"
     if enabled:
         assert runtime.events == ["group-stopped", "auth"]
@@ -4418,27 +4295,24 @@ def test_run_builds_required_shims_before_harness(
 
 
 @pytest.mark.parametrize(
-    ("expect_commit", "push_result", "tips", "start_ref", "expected"),
+    ("expect_commit", "harness_result", "published", "start_ref", "expected"),
     [
-        (True, (0, None), ("",), None, 6),
-        (True, (0, "a" * 40), ("", "a" * 40), None, 0),
-        (True, (0, "a" * 40), ("b" * 40, "a" * 40), None, 0),
-        (True, (0, "a" * 40), ("a" * 40, "a" * 40), None, 9),
-        (True, (0, "a" * 40), ("", ""), None, 9),
-        (True, (0, "a" * 40), ("b" * 40, ""), None, 9),
-        (True, (0, "a" * 40), (None,), None, 9),
-        (True, (0, "a" * 40), ("", None), None, 9),
-        (True, (0, "a" * 40), (), "refs/heads/topic", 0),
-        (True, (4, None), ("",), None, 4),
-        (False, (0, None), (), None, 0),
+        (True, (0, None), None, None, 6),
+        (True, (0, "a" * 40), True, None, 0),
+        (True, (0, "a" * 40), False, None, 9),
+        (True, (0, "a" * 40), None, None, 9),
+        (True, (0, "a" * 40), True, "refs/heads/topic", 0),
+        (True, (0, "a" * 40), False, "refs/heads/topic", 9),
+        (True, (4, None), None, None, 4),
+        (False, (0, None), None, None, 0),
     ],
 )
 def test_execute_checks_required_build_results(  # noqa: PLR0913, PLR0917
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     expect_commit: bool,
-    push_result: tuple[int, str | None],
-    tips: tuple[str | None, ...],
+    harness_result: tuple[int, str | None],
+    published: bool | None,
     start_ref: str | None,
     expected: int,
 ) -> None:
@@ -4446,29 +4320,30 @@ def test_execute_checks_required_build_results(  # noqa: PLR0913, PLR0917
     run.request = dataclasses.replace(run.request, start_ref=start_ref)
     prepared = dataclasses.replace(preparation(run), auth_before="example-before")
     HostRuntime(run, prepared, None).patch(monkeypatch)
-    origin_tip = Mock(side_effect=tips)
-    monkeypatch.setattr(run_host, "origin_tip", origin_tip)
+    origin_contains = Mock(return_value=published)
+    monkeypatch.setattr(run_host, "origin_contains", origin_contains)
 
     def publish(*_args: object) -> int:
-        assert origin_tip.call_count == int(expect_commit and start_ref is None)
-        push_status, recorded_head = push_result
+        origin_contains.assert_not_called()
+        status, recorded_head = harness_result
         if recorded_head is not None:
             run.files.write("head", recorded_head)
-        return push_status
+        return status
 
     monkeypatch.setattr(run_host.push, "run", publish)
-    assert run_host.execute(run, "example", "unused") == expected
+    assert run_host.execute(run, "example") == expected
     assert run.files.path("rc").read_text() == f"{expected}\n"
     assert runfiles.latest(run.files.root)["example"]["rc"] == expected
-    assert origin_tip.call_count == len(tips)
     log = run.files.path("log")
     message = "no new commit: the build required one (--expect-commit)\n"
     assert (log.exists() and message in log.read_text().splitlines(keepends=True)) is (
         expected == 6
     )
+    branch = start_ref.removeprefix("refs/heads/") if start_ref else "agent/example"
     if expected == 9:
-        reason = "cannot verify" if None in tips else "no new tip for"
-        assert f"push failed: {reason} agent/example on origin" in log.read_text()
+        reason = "cannot verify" if published is None else "build commit missing from"
+        assert f"push failed: {reason} {branch} on origin" in log.read_text()
+    assert run.files.path("branch").exists() is bool(published)
 
 
 BRANCH_REF = "refs/heads/agent/example"
@@ -4484,7 +4359,7 @@ BRANCH_REF = "refs/heads/agent/example"
         ((200, []), None, None),
         ((404, {}), None, ""),
         ((403, {}), None, None),
-        (httpx.ConnectError("offline"), None, None),
+        (httpx2.ConnectError("offline"), None, None),
     ],
 )
 def test_origin_tip_reads_the_run_branch_over_https(
@@ -4501,15 +4376,17 @@ def test_origin_tip_reads_the_run_branch_over_https(
         lookup = Mock(side_effect=result)
     else:
         status, body = result
-        response = httpx.Response(status, json=body, request=httpx.Request("GET", url))
+        response = httpx2.Response(
+            status, json=body, request=httpx2.Request("GET", url)
+        )
         lookup = Mock(return_value=response)
-    monkeypatch.setattr(httpx, "get", lookup)
+    monkeypatch.setattr(httpx2, "get", lookup)
     monkeypatch.setattr(credentials, "fetch_token", Mock(return_value=token))
     assert run_host.origin_tip(run) == tip
     headers = {"Accept": "application/vnd.github+json"}
     if token is not None:
         headers["Authorization"] = f"Bearer {token}"
-    lookup.assert_called_once_with(url, headers=headers, timeout=20)
+    lookup.assert_called_once_with(url, headers=headers, timeout=20, verify=ANY)
 
 
 def test_execute_rejects_a_stale_head_when_requiring_a_commit(
@@ -4527,10 +4404,9 @@ def test_execute_rejects_a_stale_head_when_requiring_a_commit(
     HostRuntime(run, prepared, None).patch(monkeypatch)
     monkeypatch.setattr(run_host, "run_harness", constant(0))
     monkeypatch.setattr(run_host.push, "run", PUSH_RUN)
-    monkeypatch.setattr(run_host, "origin_tip", constant(""))
     run.files.write("head", "a" * 40)
 
-    assert run_host.execute(run, "example", "unused") == 6
+    assert run_host.execute(run, "example") == 6
     assert run.files.path("rc").read_text() == "6\n"
     assert "no new commit: the build required one (--expect-commit)" in (
         run.files.path("log").read_text().splitlines()
@@ -4538,55 +4414,7 @@ def test_execute_rejects_a_stale_head_when_requiring_a_commit(
     assert not run.files.path("head").exists()
 
 
-@pytest.mark.parametrize(
-    ("given", "start_ref", "result"),
-    [
-        (None, None, None),
-        (None, "refs/heads/fix/topic", "minted-value"),
-        ("given-value", "refs/heads/fix/topic", None),
-        (None, "refs/heads/fix/topic", credentials.PushTokenFailure("GhAppError")),
-    ],
-)
-def test_execute_mints_a_push_token_only_for_a_start_ref_without_one(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-    given: str | None,
-    start_ref: str | None,
-    result: str | credentials.PushTokenFailure | None,
-) -> None:
-    run = make_run(tmp_path)
-    run.request = dataclasses.replace(run.request, start_ref=start_ref)
-    prepared = dataclasses.replace(preparation(run), auth_before="example-before")
-    runtime = HostRuntime(run, prepared, None)
-    runtime.patch(monkeypatch)
-    minted: list[object] = []
-
-    def mint(
-        request: object, _settings: object
-    ) -> str | credentials.PushTokenFailure | None:
-        minted.append(request)
-        return result
-
-    tokens: list[str | credentials.PushTokenFailure | None] = []
-
-    def publish(
-        _run: run_host.Run,
-        _ready: run_host.Prepared,
-        _stack: ExitStack,
-        _harness: object,
-        token: str | credentials.PushTokenFailure | None,
-    ) -> int:
-        tokens.append(token)
-        return 0
-
-    monkeypatch.setattr(run_host.credentials, "push_token", mint)
-    monkeypatch.setattr(run_host.push, "run", publish)
-    assert run_host.execute(run, "example", given) == 0
-    assert tokens == [given or result]
-    assert minted == ([run.request] if given is None and start_ref else [])
-
-
-def test_preflight_mints_no_push_token(
+def test_preflight_skips_build_shims(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     run = make_run(tmp_path, expect_commit=True)
@@ -4594,9 +4422,6 @@ def test_preflight_mints_no_push_token(
     runtime = HostRuntime(run, prepared, None)
     runtime.patch(monkeypatch)
     (Path(prepared.paths.worktree) / "prek.toml").write_text(".bazel_env/bin/cog")
-
-    def refuse(_request: object, _settings: object) -> str:
-        raise AssertionError
 
     def probe(
         actual: run_host.Run,
@@ -4613,7 +4438,6 @@ def test_preflight_mints_no_push_token(
 
     build = Mock()
     monkeypatch.setattr(run_host, "build_shims", build)
-    monkeypatch.setattr(run_host.credentials, "push_token", refuse)
     monkeypatch.setattr(run_host, "run_harness", probe)
     assert run_host.execute(run, "example", preflight_only=True) == 0
     build.assert_not_called()
@@ -5049,13 +4873,11 @@ def test_preflight_flag_reaches_execute(
     def execute(
         run: run_host.Run,
         text: str,
-        push_token: str | None = None,
         *,
         preflight_only: bool = False,
     ) -> int:
         assert run.files.name == "example"
         assert text == "example"
-        assert push_token is None
         assert preflight_only is True
         return 0
 
@@ -5156,31 +4978,6 @@ def test_config_check_protects_the_configured_startup_directory(
             run_host.check_config(configured)
 
 
-@pytest.mark.parametrize("scheme", ["http", "https"])
-def test_resource_attributes_name_host_account_and_run(
-    tmp_path: Path, scheme: str
-) -> None:
-    run = make_run(tmp_path)
-    run = dataclasses.replace(
-        run,
-        settings=dataclasses.replace(
-            run.settings, otel_endpoint=f"{scheme}://otlp.example.net"
-        ),
-    )
-    assert run_host.resource_attributes(run) == {
-        "OTEL_RESOURCE_ATTRIBUTES": (
-            f"host.name={run.host.name},tbhb.account={run.request.account}"
-            ",tbhb.run.id=example"
-        )
-    }
-
-
-def test_resource_attributes_need_an_endpoint(tmp_path: Path) -> None:
-    run = make_run(tmp_path)
-    assert run.settings.otel_endpoint is None
-    assert run_host.resource_attributes(run) == {}
-
-
 @pytest.mark.parametrize("harness", Harness)
 @pytest.mark.parametrize("profile", ["build", "review"])
 def test_unsandboxed_preflight_launches_every_harness(
@@ -5210,6 +5007,12 @@ def test_unsandboxed_codex_uses_account_path(
 ) -> None:
     monkeypatch.setattr(host_tools, "resolve", RESOLVE)
     run = make_run(tmp_path, unsandboxed=True, authorized_by="operator-chat-2026-11-15")
+    account_dirs = tuple(
+        path
+        for path in host_tools.account_path(str(run.home))
+        if Path(path).is_relative_to(run.home)
+    )
+    monkeypatch.setattr(host_tools, "account_path", constant(account_dirs))
     directory = run.home / ".local/bin"
     directory.mkdir(parents=True)
     binary = directory / "codex"

@@ -1,15 +1,13 @@
 """The user's tbhbdev config: the values of one deployment, from one file.
 
 The file is `tbhbdev/config.toml` in `$XDG_CONFIG_HOME`, which defaults to
-`.config` in the home directory. It names the 1Password account, the Connect
-server and endpoints, the agent hosts' tag, the vaults and the owners whose
-private repositories the gitleaks config covers. The code has no
-defaults for any of them: a missing file, key or value fails with a message
-that names the file and the `[table] key`.
+`.config` in the home directory. It holds the 1Password account, Connect
+endpoints, and settings for individual commands. A required file, key or
+value that is missing causes an error that names the file and the `[table] key`.
 
 The file is read when a value is first needed, so a command that needs none,
 such as `--help`, works without it. `render` writes the file back out with one
-value set, for the copy `tbhbdev host bootstrap` installs on each agent host.
+value set. The operator's host tooling installs the config on each agent host.
 
 The optional `[harness]` table configures the user-level Claude Code hooks that
 `tbhbdev alpha install` writes. Every key is a string or a list of strings,

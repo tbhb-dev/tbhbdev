@@ -8,6 +8,7 @@ from importlib.resources import files
 from typing import TYPE_CHECKING, cast
 
 import pytest
+from cue_fixtures import review_cue as review_cue  # noqa: PLC0414
 
 from tbhbdev import content
 from tbhbdev.alpha import review_doc, review_prompt
@@ -88,7 +89,10 @@ def test_render_and_validate(
     header = skeleton.split("---\n", 2)[1].replace(
         "verdict:\n", f"verdict: {verdict}\n"
     )
-    findings = "## Findings\n\n- F1: P1 correctness Preserve the last saved record.\n\n"
+    findings = (
+        "## Findings\n\n- F1: P1 correctness The last saved record disappears. "
+        "Occurs when: a caller retries a write.\n\n"
+    )
     draft = (
         f"---\n{header}---\n## Summary\n\nThe migration can lose records.\n\n"
         + (findings if blocked else "")

@@ -1,0 +1,22 @@
+---
+- name: Prepare
+  hosts: all
+  gather_facts: false
+  become: true
+  tasks:
+    - name: Prepare the isolated Connect endpoint lookup
+      ansible.builtin.include_tasks: "{{ playbook_dir }}/../../../../molecule/tasks/prepare-connect.yml"
+
+    # Mirror agent_host's mounted home before the account exists.
+    - name: Create the future agent home
+      ansible.builtin.file:
+        path: /home/example-user
+        state: directory
+        owner: '24368'
+        group: '24368'
+        mode: '0700'
+    - name: Leave a marker in the mounted home
+      ansible.builtin.copy:
+        dest: /home/example-user/mount-marker
+        content: "mounted home\n"
+        mode: '0600'

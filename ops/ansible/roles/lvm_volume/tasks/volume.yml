@@ -1,0 +1,170 @@
+---
+# main.yml runs this once the volume's tools are on the host.
+
+- name: volume | Read what is mounted at the path
+  ansible.builtin.command:
+    argv: [findmnt, --noheadings, --output=SOURCE, --mountpoint, "{{ lvm_volume_path }}"]
+  register: lvm_volume_any
+  changed_when: false
+  failed_when: false
+  check_mode: false
+
+- name: volume | Read whether the volume is what is mounted there
+  ansible.builtin.command:
+    argv: [findmnt, --noheadings, --source, "{{ lvm_volume_device }}", --mountpoint, "{{ lvm_volume_path }}"]
+  register: lvm_volume_ours
+  changed_when: false
+  failed_when: false
+  check_mode: false
+
+# A path left for the next boot has something else mounted on it until then.
+- name: volume | Refuse a path that another device holds
+  ansible.builtin.assert:
+    that: lvm_volume_any.rc != 0 or lvm_volume_ours.rc == 0
+    fail_msg: >-
+      {{ lvm_volume_path }} is a mount point for {{ lvm_volume_any.stdout | trim }},
+      not {{ lvm_volume_device }}, and the role changes no other mount
+    quiet: true
+  when: lvm_volume_mount_now | bool
+
+# The mount module rewrites a path's fstab entry in place, so the role
+# reads it first and leaves another device's entry alone.
+- name: volume | Read the path's fstab entry
+  ansible.builtin.command:
+    argv: [findmnt, --fstab, --noheadings, --output=SOURCE, --mountpoint, "{{ lvm_volume_path }}"]
+  register: lvm_volume_fstab
+  changed_when: false
+  failed_when: false
+  check_mode: false
+  when: not lvm_volume_mount_now | bool
+
+- name: volume | Refuse a path whose fstab entry names another device
+  ansible.builtin.assert:
+    that: >-
+      lvm_volume_fstab.rc != 0 or lvm_volume_fstab.stdout | trim in [lvm_volume_device,
+      '/dev/mapper/' ~ lvm_volume_vg | replace('-', '--') ~ '-' ~ lvm_volume_lv | replace('-', '--')]
+    fail_msg: >-
+      /etc/fstab mounts {{ lvm_volume_fstab.stdout | trim }} at {{ lvm_volume_path }}, not
+      {{ lvm_volume_device }}, and the role changes no other mount
+    quiet: true
+  when: lvm_volume_fstab is not skipped
+
+- name: volume | Look at the path before its first mount
+  ansible.builtin.stat:
+    path: "{{ lvm_volume_path }}"
+    follow: false
+    get_checksum: false
+  register: lvm_volume_stat
+  when:
+    - lvm_volume_mount_now | bool
+    - lvm_volume_any.rc != 0
+
+# A link or a file there is for mount to refuse.
+- name: volume | List what the path holds
+  ansible.builtin.find:
+    paths: "{{ lvm_volume_path }}"
+    file_type: any
+    hidden: true
+    recurse: false
+  register: lvm_volume_entries
+  when:
+    - lvm_volume_stat is not skipped
+    - lvm_volume_stat.stat.isdir | default(false)
+    - not lvm_volume_stat.stat.islnk
+
+# Mounting over data hides it, so before the first mount the role refuses
+# a path that holds anything. A rerun after a failed apply finds the
+# volume mounted and skips this.
+- name: volume | Refuse to mount the volume over old data
+  ansible.builtin.assert:
+    that: lvm_volume_entries.matched == 0
+    fail_msg: >-
+      {{ lvm_volume_path }} already holds {{ lvm_volume_entries.matched }} entries, such as
+      {{ lvm_volume_entries.files | map(attribute='path') | map('basename') | sort | first }}, and
+      mounting the volume there would hide them. The role deletes nothing. Stop what writes there,
+      move or remove the old data by hand, and apply the role again.
+    quiet: true
+  when: lvm_volume_entries is not skipped
+
+- name: volume | Read the volume's size
+  ansible.builtin.command:
+    argv:
+      - lvs
+      - --noheadings
+      - --nosuffix
+      - --units=b
+      - --options=lv_size
+      - "{{ lvm_volume_vg }}/{{ lvm_volume_lv }}"
+  register: lvm_volume_lv_size
+  changed_when: false
+  failed_when: false
+  check_mode: false
+
+# lvs fails for a missing volume, and a missing volume group too. lvol then
+# reports the group.
+- name: volume | Refuse a volume of another size
+  ansible.builtin.assert:
+    that: lvm_volume_lv_size.stdout | trim | int == lvm_volume_bytes | int
+    fail_msg: >-
+      {{ lvm_volume_device }} is {{ lvm_volume_lv_size.stdout | trim }} bytes, not the
+      {{ lvm_volume_bytes }} of its configured size {{ lvm_volume_size }}, and the role never resizes
+      a volume. Resize it by hand with lvextend --resizefs, or configure its size. Shrinking needs the
+      file system shrunk first, with nothing using it.
+    quiet: true
+  when: lvm_volume_lv_size.rc == 0
+
+- name: volume | Create the volume
+  community.general.lvol:
+    vg: "{{ lvm_volume_vg }}"
+    lv: "{{ lvm_volume_lv }}"
+    size: "{{ lvm_volume_size }}"
+    state: present
+  register: lvm_volume_created
+  when: lvm_volume_lv_size.rc != 0
+
+# The module formats an empty device only. It fails on a device that holds
+# another file system, and without force it never reformats.
+- name: volume | Make the file system
+  community.general.filesystem:
+    dev: "{{ lvm_volume_device }}"
+    fstype: ext4
+  when: not (ansible_check_mode and lvm_volume_created is changed)
+
+# The volume's root takes its owner and mode once mounted, but the mount
+# point underneath stays root's. A volume that misses a boot, with nofail,
+# leaves a path nobody else can write, rather than one that fills the root
+# file system. The refusal above makes sure the directory is empty.
+- name: volume | Give the mount point to root before the first mount
+  ansible.builtin.file:
+    path: "{{ lvm_volume_path }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+  when:
+    - lvm_volume_mount_now | bool
+    - lvm_volume_any.rc != 0
+    - not (lvm_volume_stat.stat.islnk | default(false))
+
+- name: volume | Mount the volume
+  ansible.posix.mount:
+    path: "{{ lvm_volume_path }}"
+    src: "{{ lvm_volume_device }}"
+    fstype: ext4
+    opts: "{{ lvm_volume_opts }}"
+    passno: "{{ lvm_volume_passno | string }}"
+    state: "{{ 'mounted' if lvm_volume_mount_now | bool else 'present' }}"
+  notify: Reload systemd's units from /etc/fstab
+  when: not (ansible_check_mode and lvm_volume_created is changed)
+
+- name: volume | Set the volume root's owner, group and mode
+  ansible.builtin.file:
+    path: "{{ lvm_volume_path }}"
+    state: directory
+    owner: "{{ lvm_volume_owner or omit }}"
+    group: "{{ lvm_volume_group or omit }}"
+    mode: "{{ lvm_volume_mode or omit }}"
+  when:
+    - lvm_volume_mount_now | bool
+    - (lvm_volume_owner ~ lvm_volume_group ~ lvm_volume_mode) | length > 0
+    - not (ansible_check_mode and lvm_volume_created is changed)
