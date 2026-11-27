@@ -28,6 +28,7 @@ from tbhbdev import github_tls, userconfig
 from tbhbdev.alpha import codex_trust, install, run_stop_hook
 from tbhbdev.alpha.agent import (
     admission,
+    app_server,
     bazel_servers,
     build_info,
     codex_install,
@@ -77,6 +78,7 @@ class Run:
     started: float
     deadline: float
     bazel_shutdown: BazelShutdown | None = None
+    steer: bool = False
 
 
 @dataclass(frozen=True)
@@ -664,6 +666,9 @@ def run_harness(
         run.files.write("log", f"preflight ok: {executable}\n")
         return 0
     log_argv(run, command)
+    if run.steer:
+        socket = app_server.socket_path(run.files.root, run.files.name)
+        command = app_server.launch_command(command, socket)
     headless = run.request.kind is RunKind.EXEC
     terminal = None if headless else sys.stdin.fileno()
     streams = (None, None, None)
@@ -1385,6 +1390,7 @@ def main(
     parser.add_argument("--prompt")
     parser.add_argument("--preflight", action="store_true")
     parser.add_argument("--owned", action="store_true")
+    parser.add_argument("--steer", action="store_true")
     args = parser.parse_args(arguments)
     if args.name is None:
         print(f"{prog}: run name is required", file=sys.stderr)
@@ -1528,5 +1534,6 @@ def _load(args: argparse.Namespace, tmpdir: Path) -> tuple[Run, str]:
         tmpdir,
         started,
         clock + parsed.startup_deadline_seconds,
+        steer=args.steer,
     )
     return run, text

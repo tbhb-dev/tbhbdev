@@ -2268,10 +2268,12 @@ def test_host_paths_refuse_before_any_host_execution(
         run_host.checked_policy(run, paths)
 
 
+@pytest.mark.parametrize("steer", [False, True])
 def test_final_answer_is_copied_only_after_child_stops(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, steer: bool
 ) -> None:
     run = make_run(tmp_path)
+    run.steer = steer
     run.files.write("prompt", "task")
     run.files.receive(run.request)
     prepared = preparation(run)
@@ -2295,7 +2297,12 @@ def test_final_answer_is_copied_only_after_child_stops(
     def launch(
         spec: process_group.Launch, *, started: Callable[[Child], None]
     ) -> Child:
-        assert spec.command[-2] == str(run.tmpdir / "out.final")
+        if steer:
+            assert "app-server --listen unix://" in spec.command[-1]
+            assert "--remote unix://" in spec.command[-1]
+            assert "model=" in spec.command[-1]
+        else:
+            assert spec.command[-2] == str(run.tmpdir / "out.final")
         assert not run.files.path("out.final").exists()
         (run.tmpdir / "out.final").write_text("answer")
         run.files.path("request.json").write_text(

@@ -206,6 +206,7 @@ cli_py_library(
     visibility = ["//factory/cli:__subpackages__"],
     deps = [
         ":admission",
+        ":app_server",
         ":bazel_servers",
         ":build_info",
         ":codex_install",
@@ -365,12 +366,26 @@ filegroup(
 )
 
 cli_py_library(
+    name = "app_server",
+    srcs = ["app_server.py"],
+    imports = ["../../.."],
+    visibility = ["//factory/cli:__subpackages__"],
+    deps = [
+        ":host_tools",
+        ":model",
+        ":runfiles",
+        "//factory/cli/src/tbhbdev/alpha/agent/decisions:runfiles_names",
+    ],
+)
+
+cli_py_library(
     name = "command",
     srcs = ["command.py"],
     imports = ["../../.."],
     visibility = ["//factory/cli:__subpackages__"],
     deps = [
         ":admission",
+        ":app_server",
         ":arguments",
         ":driver",
         ":precheck",

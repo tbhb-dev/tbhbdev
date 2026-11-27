@@ -416,6 +416,7 @@ cli_py_test(
         ":agent_example",
         ":conftest",
         "//factory/cli/src/tbhbdev:version",
+        "//factory/cli/src/tbhbdev/alpha/agent:app_server",
         "//factory/cli/src/tbhbdev/alpha/agent:arguments",
         "//factory/cli/src/tbhbdev/alpha/agent:driver",
         "//factory/cli/src/tbhbdev/alpha/agent:model",

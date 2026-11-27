@@ -4,10 +4,8 @@ generated:
   - role: generated
     harness: codex:0.171.0
     model: openai:gpt-6.2-sol
-    effort: high
-    surface: exec
-    session: sha-256-64:b82c59b7667a6e5e
-    at: "2026-11-26T22:45:36Z"
+    session: sha-256-64:3ad87b5659ac3b9c
+    at: "2026-11-27T05:23:18Z"
 status: stable
 tags: [alpha]
 title: Agent
@@ -23,7 +21,7 @@ It never runs Git.
 Exit codes are 0 for a match, 1 for mismatches, and 2 for usage or collection errors.
 The Python API `precheck(clone_data, reference)` returns the result for callers.
 
-`agent` coordinates runs with `exec`, `wait`, `status`, `log`, `diff`, `kill`, `clean` and `keep`.
+`agent` coordinates runs with `exec`, `send`, `wait`, `status`, `log`, `diff`, `kill`, `clean` and `keep`.
 `signing-parity` checks that each configured host's signing key is a signing key of tbhb-agent.
 It runs the hidden host command `signing-fingerprint ACCOUNT` over SSH to get the SHA256 fingerprint of the run's signing key.
 It then reads tbhb-agent's public signing key list from GitHub and exits 1 when any host's fingerprint is missing or the host is unreachable.
@@ -33,6 +31,11 @@ The package also defines the schema for run requests and the rules for the repo 
 `tbhbdev alpha agent exec` checks the brief and any `--schema` file before contacting the run host.
 It refuses either input with a 1Password reference (`op://`), a private key header, or any of the token prefixes `ghp_`, `github_pat_`, `sk-ant-`, `AKIA` or `xoxb-`.
 It exits nonzero and reports the input and the refusal kind without including the matched text.
+
+Launch a Codex build with `agent exec --steer` to accept messages while its turn is active.
+Run `agent send RUN "MESSAGE"` to steer that turn. `send` applies the same credential check as `exec` before contacting the run host.
+Steering requires a build without `--schema`. If the run is unknown or its thread has no active turn, `send` returns an error.
+`agent send --harness claude RUN "MESSAGE"` prints `Claude delivery is not built` and exits with status 1.
 
 When `tbhbdev alpha agent exec` finds a version mismatch, it looks up the head of `tbhb-dev/tbhbdev` on `main` and installs that commit on each side that differs.
 It logs each successful install to standard error.
