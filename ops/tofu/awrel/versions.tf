@@ -1,7 +1,7 @@
 terraform {
   backend "s3" {}
 
-  required_version = "~> 1.13.0"
+  required_version = "~> 1.17.0"
 
   required_providers {
     cloudflare = {
