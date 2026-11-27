@@ -38,20 +38,17 @@ table inet actions_runner_egress {
         # upstream queries belong to systemd-resolved's user, not this one,
         # and are outside this table.
         ip daddr 127.0.0.53 meta l4proto { tcp, udp } th dport 53 accept
-{% if actions_runner_pool_op_auth == 'connect' %}
-        # With connect, the supervisor's op reads the GitHub App key from the
+        # The supervisor's op reads the GitHub App key from the
         # Connect host, a tailnet service whose addresses fall in the carrier-grade
         # NAT and ULA ranges blocked below. The role resolves the host at apply
         # time, and these rules open port 443 to those addresses only. They
         # come before the drops. A job can reach Connect on 443 too, but it
-        # needs a Connect token to read anything. With service_account, op
-        # reaches 1Password's public API and the table has no exception.
+        # needs a Connect token to read anything.
 {% if actions_runner_pool_connect_v4 | length > 0 %}
         ip daddr { {{ actions_runner_pool_connect_v4 | join(', ') }} } tcp dport 443 accept
 {% endif %}
 {% if actions_runner_pool_connect_v6 | length > 0 %}
         ip6 daddr { {{ actions_runner_pool_connect_v6 | join(', ') }} } tcp dport 443 accept
-{% endif %}
 {% endif %}
         fib daddr type local counter drop
         ip daddr @blocked_v4 counter drop

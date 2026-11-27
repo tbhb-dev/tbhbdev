@@ -79,30 +79,19 @@ load_env() {
   fi
 }
 
-# check_op_auth: dies unless the auth is a known one and, for connect, the
-# env file names an https Connect host. An env file from before the
-# setting has no auth, so it stays on the service account.
-check_op_auth() {
-  case ${ACTIONS_RUNNER_POOL_OP_AUTH:-service_account} in
-  service_account) ;;
-  connect)
-    [[ ${ACTIONS_RUNNER_POOL_OP_CONNECT_HOST:-} =~ ^https://[^/[:space:]]+$ ]] ||
-      die "$EX_CONFIG" "ACTIONS_RUNNER_POOL_OP_CONNECT_HOST must be an https URL without a path"
-    ;;
-  *) die "$EX_CONFIG" "ACTIONS_RUNNER_POOL_OP_AUTH must be service_account or connect" ;;
-  esac
+# The Connect URL must use HTTPS and contain no path.
+check_connect_host() {
+  [[ ${ACTIONS_RUNNER_POOL_OP_CONNECT_HOST:-} =~ ^https://[^/[:space:]]+$ ]] ||
+    die "$EX_CONFIG" "ACTIONS_RUNNER_POOL_OP_CONNECT_HOST must be an https URL without a path"
 }
 
-# check_token_file: fails unless the 1Password token file is a plain file
-# owned by the service user, mode 0400 for a service-account token and
-# 0600 for a Connect token.
+# The Connect token must be a plain file owned by the service user with mode 0600.
 check_token_file() {
-  local token_file=$ACTIONS_RUNNER_POOL_OP_TOKEN_FILE state uid mode=400
-  [[ ${ACTIONS_RUNNER_POOL_OP_AUTH:-service_account} != connect ]] || mode=600
+  local token_file=$ACTIONS_RUNNER_POOL_OP_TOKEN_FILE state uid
   [[ -f $token_file && ! -L $token_file ]] || return 1
   state=$(stat -c %u:%a -- "$token_file") || return 1
   uid=$(id -u)
-  [[ $state == "$uid:$mode" ]]
+  [[ $state == "$uid:600" ]]
 }
 
 # api METHOD PATH CREDENTIAL [curl args...]: sets api_status, api_body and
@@ -138,29 +127,23 @@ api() {
 }
 
 # mint_token: reads the App's key with op, signs an App JWT with openssl
-# and exchanges it for an installation token, which it sets. op reads with
-# the service-account token, or with the Connect token at the Connect host.
+# and exchanges it for an installation token, which it sets. op reads the key through Connect.
 # It fails with api_status set: op when the token file or op read failed
 # or timed out, bad for a response without a token, or the HTTP status.
 mint_token() {
   local op_token app_key now header claims signature jwt scheme=op
+  if [[ -z ${ACTIONS_RUNNER_POOL_OP_CONNECT_HOST:-} ]]; then
+    api_status=op
+    return 1
+  fi
   op_token=$(<"$ACTIONS_RUNNER_POOL_OP_TOKEN_FILE") || {
     api_status=op
     return 1
   }
   # The reference is built here from its parts.
   local ref=$scheme://$ACTIONS_RUNNER_POOL_OP_KEY_VAULT/$ACTIONS_RUNNER_POOL_OP_KEY_ITEM/$ACTIONS_RUNNER_POOL_OP_KEY_FIELD
-  case ${ACTIONS_RUNNER_POOL_OP_AUTH:-service_account} in
-  service_account)
-    app_key=$(OP_SERVICE_ACCOUNT_TOKEN=$op_token timeout --kill-after="$KILL_AFTER" "$OP_SECONDS" op read \
-      --no-newline "$ref")
-    ;;
-  connect)
-    app_key=$(OP_CONNECT_HOST=${ACTIONS_RUNNER_POOL_OP_CONNECT_HOST:-} OP_CONNECT_TOKEN=$op_token \
-      timeout --kill-after="$KILL_AFTER" "$OP_SECONDS" op read --no-newline "$ref")
-    ;;
-  *) false ;;
-  esac || {
+  app_key=$(OP_CONNECT_HOST=$ACTIONS_RUNNER_POOL_OP_CONNECT_HOST OP_CONNECT_TOKEN=$op_token \
+    env -u OP_SERVICE_ACCOUNT_TOKEN timeout --kill-after="$KILL_AFTER" "$OP_SECONDS" op read --no-newline "$ref") || {
     api_status=op
     return 1
   }

@@ -1,9 +1,6 @@
 ---
-# These derive from the account being handled, so the argument specs can't validate them.
 # The key and program paths are the ones agent_harness requires.
-agent_signing_home: >-
-  {{ agent_signing_account.home | default(('/Users' if ansible_facts.system == 'Darwin' else '/home')
-  + '/' + agent_signing_account.name, true) }}
+agent_signing_home: "{{ '/Users/agent' if ansible_facts.system == 'Darwin' else '/home/agent' }}"
 agent_signing_directory: "{{ agent_signing_home }}/.config/devtools"
 agent_signing_private_key: "{{ agent_signing_directory }}/agent-signing-key"
 agent_signing_public_key: "{{ agent_signing_private_key }}.pub"

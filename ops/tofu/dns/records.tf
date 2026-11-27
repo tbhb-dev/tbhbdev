@@ -1,5 +1,5 @@
 resource "cloudflare_dns_record" "main" {
-  for_each = local.dns_record
+  for_each = local.zone.records
 
   zone_id = cloudflare_zone.main.id
   name    = each.value.name

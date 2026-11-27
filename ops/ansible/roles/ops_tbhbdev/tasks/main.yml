@@ -13,29 +13,14 @@
     fail_msg: tbhbdev needs a pinned release and commit, and HTTPS tailnet hostnames without ports or addresses
     quiet: true
 
-- name: Look for mise
-  ansible.builtin.stat:
-    path: "{{ ops_tbhbdev_mise }}"
-    get_checksum: false
-    get_mime: false
-    get_attributes: false
-  register: ops_tbhbdev_mise_stat
-
-- name: Require mise before installing uv
-  ansible.builtin.assert:
-    that: ops_tbhbdev_mise_stat.stat.exists
-    fail_msg: "{{ ops_tbhbdev_mise }} is missing; install mise on {{ inventory_hostname }} first"
-    quiet: true
-
-# These reads run in check mode too. mise where exits non-zero for a version
-# that isn't installed.
+# mise where exits 1 when the version is missing. Other failures stop the play.
 - name: Look for the pinned uv
   ansible.builtin.command:
     argv: ["{{ ops_tbhbdev_mise }}", where, "uv@{{ ops_tbhbdev_uv_version }}"]
     chdir: "{{ ops_tbhbdev_home }}"
   register: ops_tbhbdev_uv
   changed_when: false
-  failed_when: false
+  failed_when: ops_tbhbdev_uv.rc not in [0, 1]
   check_mode: false
 
 - name: Install the pinned uv through mise

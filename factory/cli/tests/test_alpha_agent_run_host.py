@@ -5018,6 +5018,8 @@ def test_unsandboxed_codex_uses_account_path(
 ) -> None:
     monkeypatch.setattr(host_tools, "resolve", RESOLVE)
     run = make_run(tmp_path, unsandboxed=True, authorized_by="operator-chat-2026-11-15")
+    account_path = host_tools.account_path(str(run.home))[:4]
+    monkeypatch.setattr(host_tools, "account_path", constant(account_path))
     directory = run.home / ".local/bin"
     directory.mkdir(parents=True)
     binary = directory / "codex"

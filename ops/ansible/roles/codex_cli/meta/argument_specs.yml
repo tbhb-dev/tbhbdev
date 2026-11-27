@@ -11,10 +11,6 @@ argument_specs:
           The active version is the link <home>/.local/bin/codex. The role changes it only when
           codex_cli_activate is true. A host without the account skips the install until the next run.
     options:
-      codex_cli_install:
-        type: bool
-        default: true
-        description: Whether to install the pinned Codex for the account.
       codex_cli_account:
         type: str
         default: agent

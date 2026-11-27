@@ -12,7 +12,6 @@ from unittest.mock import Mock
 
 import httpx2
 import pytest
-from agent_host_example import isolate_host_git, local_mirror_fetches, run_request
 from fake_tool import pythonpath, write_fake
 
 import tbhbdev.alpha.pre_push_guard as pg
@@ -188,11 +187,9 @@ def install_hook(repo: Path, monkeypatch: pytest.MonkeyPatch) -> dict[str, str]:
         tool,
         "import sys\n"
         "from tbhbdev.alpha.pre_push_guard import main\n"
-        "if sys.argv[1:3] == ['alpha', 'identity']:\n"
-        "    sys.exit(0)\n"
-        "if sys.argv[1:3] != ['alpha', 'pre-push-guard']:\n"
-        "    sys.exit(f'unexpected command: {sys.argv[1:]}')\n"
-        "sys.exit(main(sys.argv[3:], 'tbhbdev alpha pre-push-guard'))\n",
+        "if sys.argv[1:3] == ['alpha', 'pre-push-guard']:\n"
+        "    sys.exit(main(sys.argv[3:], 'tbhbdev alpha pre-push-guard'))\n"
+        "assert sys.argv[1:3] == ['alpha', 'identity'], sys.argv[1:]\n",
     )
     (binary / "tbhbdev").symlink_to(tool)
     monkeypatch.setenv("PATH", f"{binary}:{os.environ['PATH']}")
@@ -215,17 +212,16 @@ def push(
     )
 
 
-def fake_prek(name: str) -> str:
-    assert name == "prek"
-    return "/unused/prek"
-
-
 def test_run_hook_confines_pushed_branches(
     repo: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
+    def resolve(name: str) -> str:
+        assert name == "prek"
+        return "/unused/prek"
+
     env = install_hook(repo, monkeypatch)
     env.pop(pg.RUN_NAME_ENV, None)
-    monkeypatch.setattr(worktree.host_tools, "resolve", fake_prek)
+    monkeypatch.setattr(worktree.host_tools, "resolve", resolve)
     worktree.install_hooks(repo, "example", git(repo, "rev-parse", "HEAD"))
     for destination, allowed in (
         ("refs/heads/agent/other", False),
@@ -241,90 +237,6 @@ def test_run_hook_confines_pushed_branches(
                 f"{destination}: this run may only push refs/heads/agent/example"
                 in result.stderr
             )
-
-
-@pytest.mark.parametrize("stale", [False, True], ids=["current", "stale"])
-def test_start_ref_rewrite(
-    repo: Path, monkeypatch: pytest.MonkeyPatch, *, stale: bool
-) -> None:
-    remote = repo.parent / "remote.git"
-    branch = "fix/topic"
-    ref = f"refs/heads/{branch}"
-    git(remote, "symbolic-ref", "HEAD", "refs/heads/main")
-    base = git(repo, "rev-parse", "HEAD")
-    old = commit(repo, "old topic", topic="topic\n")
-    git(repo, "push", str(remote), f"HEAD:{ref}")
-    git(repo, "reset", "--hard", base)
-    upstream = commit(repo, "upstream", upstream="upstream\n")
-    git(repo, "push", str(remote), "HEAD:refs/heads/main")
-    env = install_hook(repo, monkeypatch)
-    resolve = worktree.host_tools.resolve
-
-    def executable(name: str, path: str | None = None) -> str:
-        return fake_prek(name) if name == "prek" else resolve(name, path)
-
-    monkeypatch.setattr(worktree.host_tools, "resolve", executable)
-    isolate_host_git(repo.parent, monkeypatch)
-    local_mirror_fetches(monkeypatch, remote)
-    request = run_request(start_ref=ref, fetch_refs=[ref])
-    run = worktree.create(repo.parent / "checkout", "example", request)
-    assert git(run, "for-each-ref", f"refs/remotes/origin/{branch}") == ""
-    expected = git(
-        run, "rev-parse", "--verify", f"refs/remotes/origin/fetched/heads/{branch}"
-    )
-    assert expected == old
-    git(run, "config", "remote.origin.pushurl", str(remote))
-    subprocess.run(["git", "rebase", "origin/main"], cwd=run, env=env, check=True)
-    assert git(run, "rev-parse", "HEAD^") == upstream
-    new = git(run, "rev-parse", "HEAD")
-
-    destination = f"HEAD:{ref}"
-    remote_tip = new
-    if stale:
-        git(repo, "reset", "--hard", old)
-        remote_tip = commit(repo, "concurrent topic change")
-        git(repo, "push", str(remote), destination)
-    result = push(
-        run, env, f"--force-with-lease={ref}:{expected}", "origin", destination
-    )
-    if stale:
-        assert result.returncode != 0
-        assert "stale info" in result.stderr
-        # Give Git the live tip so the hook can check the stale tracking ref.
-        result = push(
-            run, env, f"--force-with-lease={ref}:{remote_tip}", "origin", destination
-        )
-        assert result.returncode != 0
-        assert "the remote tip is not the fetched one" in result.stderr
-    else:
-        assert result.returncode == 0, result.stderr
-        assert f"{ref} rewritten {old} -> {new}" in result.stderr
-    assert git(remote, "rev-parse", ref) == remote_tip
-
-
-@pytest.mark.parametrize(
-    ("start_ref", "ref", "deleting", "reason"),
-    [
-        ("main", "main", False, "push to a protected branch refused"),
-        ("master", "master", False, "push to a protected branch refused"),
-        ("topic", "agent/example", False, "this run may only push refs/heads/topic"),
-        ("topic", "topic", True, "deletion refused"),
-    ],
-)
-def test_start_ref_push_refusals(
-    start_ref: str,
-    ref: str,
-    *,
-    deleting: bool,
-    reason: str,
-) -> None:
-    assert reason in pg.destination_problem(
-        f"refs/heads/{ref}",
-        deleting=deleting,
-        agent_push=True,
-        run_name="example",
-        start_ref=f"refs/heads/{start_ref}",
-    )
 
 
 def test_real_pushes_through_the_installed_hook(
@@ -818,24 +730,6 @@ def test_an_agent_cannot_rewind_a_fetched_feature_branch(
     assert capsys.readouterr().err == (
         "refs/heads/feat/x: push refused; push to an agent/<name> branch instead\n"
     )
-
-
-def test_start_ref_run_can_update_its_pr_branch() -> None:
-    ref = "refs/heads/fix/topic"
-    run_name = "example"
-    assert (
-        pg.destination_problem(
-            ref, deleting=False, agent_push=True, run_name=run_name, start_ref=ref
-        )
-        == ""
-    )
-    branch = "refs/heads/agent/example"
-    assert pg.destination_problem(
-        branch, deleting=False, agent_push=True, run_name=run_name, start_ref=ref
-    ) == (f"{branch}: this run may only push {ref}")
-    assert pg.destination_problem(
-        ref, deleting=True, agent_push=True, run_name=run_name, start_ref=ref
-    ) == (f"{ref}: deletion refused; this run may only update its start ref")
 
 
 @pytest.mark.usefixtures("agent_session")

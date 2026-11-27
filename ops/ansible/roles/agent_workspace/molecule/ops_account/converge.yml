@@ -10,8 +10,6 @@
     agent_workspace_user: ops
     agent_workspace_repos:
       - name: fixture/repo
-      - name: fixture/other
-        host: git.example.invalid
     agent_workspace_tools: /home/ops/Code/github.com/fixture/repo
     agent_workspace_connect_vaults: [host-0-shared, host-fixture]
     agent_workspace_lookup_command: "bash {{ playbook_dir }}/../default/files/read.sh"

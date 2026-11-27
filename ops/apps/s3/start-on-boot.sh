@@ -2,10 +2,20 @@
 set -eu
 
 PATH=$PATH:/usr/local/bin:/usr/sbin:/sbin
+
+if docker compose version >/dev/null 2>&1; then
+  set -- docker compose
+elif command -v docker-compose >/dev/null 2>&1; then
+  set -- docker-compose
+else
+  echo 'RustFS boot failed: install the Docker Compose plugin or put docker-compose on PATH.' >&2
+  exit 1
+fi
+
 cd "$(dirname "$0")"
 
 # Read the resolved address of the single RustFS port from Compose.
-config=$(docker compose --env-file compose.env config rustfs)
+config=$("$@" --env-file compose.env config rustfs)
 bind_addr=$(printf '%s\n' "$config" | sed -n 's/^[[:space:]]*host_ip: //p')
 case "$bind_addr" in
 '' | 0.0.0.0 | :: | '*')
@@ -25,10 +35,10 @@ while [ "$attempt" -lt 60 ]; do
     }
     END { exit !found }
   '; then
-    if docker compose --env-file compose.env up -d rustfs; then
+    if "$@" --env-file compose.env up -d rustfs; then
       exit 0
     fi
-    failure='docker compose up failed after S3_BIND_ADDR appeared.'
+    failure='Compose up failed after S3_BIND_ADDR appeared.'
   fi
   if [ "$attempt" -lt 60 ]; then
     sleep 5

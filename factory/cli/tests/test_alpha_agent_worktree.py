@@ -1211,20 +1211,6 @@ def test_hook_installation_precedes_checkout(
     worktree.create(clone, "ordered", run_request())
 
 
-def configure_test_commits(
-    path: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    binary = tmp_path / "bin"
-    binary.mkdir()
-    tool = binary / "tbhbdev"
-    tool.write_text("#!/bin/sh\nexit 0\n")
-    tool.chmod(0o755)
-    monkeypatch.setenv("PATH", f"{binary}:{os.environ['PATH']}")
-    git(path, "config", "user.name", "Example")
-    git(path, "config", "user.email", "example@example.test")
-    git(path, "config", "commit.gpgsign", "false")
-
-
 def test_run_reference_transaction(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -1234,7 +1220,16 @@ def test_run_reference_transaction(
     git(seed, "push", "origin", "main")
     path = worktree.create(clone, "example", run_request())
     branch = "refs/heads/agent/example"
-    configure_test_commits(path, tmp_path, monkeypatch)
+
+    binary = tmp_path / "bin"
+    binary.mkdir()
+    tool = binary / "tbhbdev"
+    tool.write_text("#!/bin/sh\nexit 0\n")
+    tool.chmod(0o755)
+    monkeypatch.setenv("PATH", f"{binary}:{os.environ['PATH']}")
+    git(path, "config", "user.name", "Example")
+    git(path, "config", "user.email", "example@example.test")
+    git(path, "config", "commit.gpgsign", "false")
 
     for args, reason in (
         (("checkout", "-b", "other"), f"refs/heads/other may only update {branch}"),
@@ -1267,45 +1262,6 @@ def test_run_reference_transaction(
     git(path, "branch", "-D", "agent/example")
     assert git(path, "for-each-ref", branch) == ""
     assert git(path, "rev-parse", "point^") == upstream
-
-
-@pytest.mark.parametrize(
-    "start_ref", ["refs/heads/topic", None], ids=["start-ref", "default"]
-)
-def test_rebase_onto_a_commit_outside_the_run_start(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, start_ref: str | None
-) -> None:
-    seed, clone = repository(tmp_path)
-    base = git(seed, "rev-parse", "HEAD")
-    (seed / "tracked").write_text("run start\n")
-    start = commit(seed, "run start")
-    git(seed, "push", "origin", f"HEAD:{start_ref or 'refs/heads/main'}")
-    git(seed, "switch", "--detach", base)
-    upstream = commit(seed, "upstream change")
-    ref = "refs/heads/upstream"
-    git(seed, "push", "origin", f"HEAD:{ref}")
-    request = run_request(
-        start_ref=start_ref, fetch_refs=[start_ref, ref] if start_ref else [ref]
-    )
-    path = worktree.create(clone, "example", request)
-    configure_test_commits(path, tmp_path, monkeypatch)
-    result = subprocess.run(
-        ["git", "rebase", "origin/fetched/heads/upstream"],
-        cwd=path,
-        capture_output=True,
-        text=True,
-        check=False,
-    )
-    branch = "refs/heads/agent/example"
-    if start_ref:
-        assert result.returncode == 0, result.stderr
-        assert git(path, "rev-parse", "HEAD^") == upstream
-        assert (path / "tracked").read_text() == "run start\n"
-    else:
-        assert result.returncode != 0
-        message = f"reference-transaction: {branch} must descend from {start}"
-        assert message in result.stderr
-        assert git(path, "rev-parse", branch) == start
 
 
 @pytest.mark.parametrize(

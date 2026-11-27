@@ -22,10 +22,6 @@ argument_specs:
             type: str
             required: true
             description: Repository as org/repo.
-          host:
-            type: str
-            default: github.com
-            description: Git host serving the repository, and the directory under Code.
           workspace:
             type: bool
             default: true

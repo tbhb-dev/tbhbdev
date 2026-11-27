@@ -264,7 +264,7 @@ cli_py_library(
     visibility = ["//factory/cli:__subpackages__"],
     deps = [
         ":model",
-        ":worktree",
+        ":preparation_detail",
     ],
 )
 
@@ -338,7 +338,9 @@ cli_py_library(
     deps = [
         ":host_tools",
         ":model",
+        ":preparation_detail",
         ":runfiles",
+        "//factory/cli/src/tbhbdev/alpha:gh_shim",
         "//factory/cli/src/tbhbdev/alpha:install",
         "//factory/cli/src/tbhbdev/alpha:pre_push_guard",
         "//factory/cli/src/tbhbdev/alpha:repo",
@@ -390,6 +392,7 @@ cli_py_library(
         ":ssh_serve",
         "//factory/cli/src/tbhbdev:telemetry",
         "//factory/cli/src/tbhbdev:userconfig",
+        "//factory/cli/src/tbhbdev/alpha/agent/decisions:host_names",
     ],
 )
 
@@ -408,6 +411,13 @@ cli_py_library(
 cli_py_library(
     name = "run_host_telemetry",
     srcs = ["run_host_telemetry.py"],
+    imports = ["../../.."],
+    visibility = ["//factory/cli:__subpackages__"],
+)
+
+cli_py_library(
+    name = "preparation_detail",
+    srcs = ["preparation_detail.py"],
     imports = ["../../.."],
     visibility = ["//factory/cli:__subpackages__"],
 )

@@ -4,17 +4,15 @@
 #
 # Usage: gh-reviews-config <dir> <owner/repo>
 #
-# Reads the app's id and private key first from the host's credentials cache
-# (~/.local/state/gh-reviews/credentials.json, mode 600, written by op-seed-cache;
-# GH_REVIEWS_CACHE overrides the path), and only if that is absent or its mint
-# fails from the 1Password item github-app-tbhb-dev-reviews (vault tbhb-dev)
-# through the tbhb-agent service account. Then it signs a JWT, finds the app's installation for <owner/repo>, mints an
-# installation token (valid about an hour) and writes <dir>/hosts.yml for
+# Reads the app ID and private key from the managed credentials cache
+# (~/.local/state/gh-reviews/credentials.json, mode 600). Set GH_REVIEWS_CACHE
+# to override the path. Signs a JWT, finds the app's installation for <owner/repo>,
+# and writes the installation token (valid about an hour) to <dir>/hosts.yml for
 # github.com. Use it with GH_CONFIG_DIR=<dir>. Never prints the token, key or
 # JWT. Exits nonzero with a short message on failure.
 # shellcheck disable=SC2312
 set -euo pipefail
-vault=host-0-shared item=review-app user='tbhb-dev-agent-reviews[bot]'
+user='tbhb-dev-agent-reviews[bot]'
 cache=${GH_REVIEWS_CACHE:-$HOME/.local/state/gh-reviews/credentials.json}
 api=https://api.github.com
 die() {
@@ -50,67 +48,28 @@ call() {
 	[[ $status -lt 400 ]]
 }
 
-# mint APP_ID PEM: write $out/hosts.yml. Exits (die) on failure, so callers
-# that want to fall back run it in a subshell.
-mint() {
-	local app_id=$1 pem=$2 now claims unsigned signature inst
-	printf '%s\n' "$pem" | openssl pkey -noout 2>/dev/null || die "private_key does not parse"
-	now=$(date +%s)
-	claims=$(jq -nc --argjson iat $((now - 60)) --argjson exp $((now + 540)) --arg iss "$app_id" '{iat:$iat, exp:$exp, iss:$iss}')
-	unsigned="$(printf '%s' '{"alg":"RS256","typ":"JWT"}' | b64url).$(printf '%s' "$claims" | b64url)"
-	signature=$(printf '%s' "$unsigned" | openssl dgst -sha256 -sign <(printf '%s\n' "$pem") | b64url) || die "could not sign the app JWT"
-	printf '%s.%s' "$unsigned" "$signature" >"$work/jwt"
-	if call GET "/repos/$repo/installation" || call GET "/orgs/$owner/installation"; then
-		inst=$(jq -r '.id // empty' "$body")
-	else
-		die "app $app_id has no installation for $repo or $owner"
-	fi
-	[[ -n $inst ]] || die "no installation id for $repo"
-	call POST "/app/installations/$inst/access_tokens" || die "minting an installation token failed: $(jq -r '.message // "no message"' "$body" 2>/dev/null)"
-	jq -e '.token | strings' "$body" >/dev/null || die "no token in the access_tokens response"
+[[ -s $cache ]] || die "credentials cache is missing or empty: $cache"
+app_id=$(jq -er '.app_id | tostring' "$cache" 2>/dev/null) || die "cache has no app_id"
+pem=$(jq -er '.private_key' "$cache" 2>/dev/null) || die "cache has no private_key"
 
-	mkdir -p "$out"
-	chmod 700 "$out"
-	# gh's hosts.yml layout; the token goes from the response file straight into it.
-	jq -r --arg u "$user" '"github.com:\n    users:\n        \"\($u)\":\n            oauth_token: \(.token)\n    git_protocol: https\n    oauth_token: \(.token)\n    user: \"\($u)\"\n"' "$body" >"$out/.hosts.yml.$$"
-	chmod 600 "$out/.hosts.yml.$$"
-	mv -f "$out/.hosts.yml.$$" "$out/hosts.yml"
-}
-
-# From the cache: no 1Password read. Any failure here falls through to op.
-from_cache() {
-	local id pem
-	id=$(jq -er '.app_id | tostring' "$cache" 2>/dev/null) || die "cache has no app_id"
-	pem=$(jq -er '.private_key' "$cache" 2>/dev/null) || die "cache has no private_key"
-	mint "$id" "$pem"
-}
-if [[ -s $cache ]]; then
-	if (from_cache); then exit 0; fi
-	echo "gh-reviews-config: credentials cache failed; falling back to 1Password" >&2
+printf '%s\n' "$pem" | openssl pkey -noout 2>/dev/null || die "private_key does not parse"
+now=$(date +%s)
+claims=$(jq -nc --argjson iat $((now - 60)) --argjson exp $((now + 540)) --arg iss "$app_id" '{iat:$iat, exp:$exp, iss:$iss}')
+unsigned="$(printf '%s' '{"alg":"RS256","typ":"JWT"}' | b64url).$(printf '%s' "$claims" | b64url)"
+signature=$(printf '%s' "$unsigned" | openssl dgst -sha256 -sign <(printf '%s\n' "$pem") | b64url) || die "could not sign the app JWT"
+printf '%s.%s' "$unsigned" "$signature" >"$work/jwt"
+if call GET "/repos/$repo/installation" || call GET "/orgs/$owner/installation"; then
+	inst=$(jq -r '.id // empty' "$body")
+else
+	die "app $app_id has no installation for $repo or $owner"
 fi
+[[ -n $inst ]] || die "no installation id for $repo"
+call POST "/app/installations/$inst/access_tokens" || die "minting an installation token failed: $(jq -r '.message // "no message"' "$body" 2>/dev/null)"
+jq -e '.token | strings' "$body" >/dev/null || die "no token in the access_tokens response"
 
-command -v op >/dev/null 2>&1 || die "op not found on PATH"
-if [[ -z ${OP_SERVICE_ACCOUNT_TOKEN:-} ]]; then
-	f=$HOME/.config/op-agent/service-account-token
-	[[ -s $f ]] || die "OP_SERVICE_ACCOUNT_TOKEN is unset and $f is missing"
-	t=$(<"$f")
-	OP_SERVICE_ACCOUNT_TOKEN=${t%"${t##*[![:space:]]}"}
-	export OP_SERVICE_ACCOUNT_TOKEN
-	unset t
-fi
-
-op_scheme=op://
-app_id=$(op read "$op_scheme$vault/$item/app_id" 2>/dev/null) && [[ -n $app_id ]] || die "cannot read app_id from $vault/$item"
-k=$(op read "$op_scheme$vault/$item/private_key" 2>/dev/null) && [[ -n $k ]] || die "cannot read private_key from $vault/$item"
-# The field flattens the PEM's newlines to spaces; rebuild it.
-if [[ $k != *$'\n'* ]]; then
-	label=$(printf '%s' "$k" | sed -nE 's/^[[:space:]]*-----BEGIN ([^-]+)-----.*/\1/p')
-	[[ -n $label ]] || die "private_key is not a PEM private key"
-	k=$(
-		printf '%s\n' "-----BEGIN $label-----"
-		printf '%s' "$k" | sed -E 's/^[[:space:]]*-----BEGIN [^-]+-----//; s/-----END [^-]+-----[[:space:]]*$//' |
-			tr -d '[:space:]' | fold -w 64
-		printf '\n%s\n' "-----END $label-----"
-	)
-fi
-mint "$app_id" "$k"
+mkdir -p "$out"
+chmod 700 "$out"
+# gh's hosts.yml layout; the token goes from the response file straight into it.
+jq -r --arg u "$user" '"github.com:\n    users:\n        \"\($u)\":\n            oauth_token: \(.token)\n    git_protocol: https\n    oauth_token: \(.token)\n    user: \"\($u)\"\n"' "$body" >"$out/.hosts.yml.$$"
+chmod 600 "$out/.hosts.yml.$$"
+mv -f "$out/.hosts.yml.$$" "$out/hosts.yml"

@@ -10,20 +10,32 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 import pytest
-from agent_host_example import host_settings, run_request
+import test_alpha_pre_push_guard as guard_tests
+from agent_host_example import (
+    host_settings,
+    isolate_host_git,
+    local_mirror_fetches,
+    run_request,
+)
 from runfile_fixtures import agent_suffix_case as agent_suffix_case  # noqa: PLC0414
 
+import tbhbdev.alpha.pre_push_guard as pg
 from tbhbdev.alpha.agent import (
     credentials,
     push,
     run_host,
     runfiles,
+    worktree,
 )
+from tbhbdev.alpha.agent.model import Invalid
 
 if TYPE_CHECKING:
     from collections.abc import Generator
 
 type LocalRun = tuple[run_host.Run, run_host.Prepared, Path]
+
+repo = guard_tests.repo
+isolated_agent_environment = guard_tests.isolated_agent_environment
 
 
 @pytest.fixture(autouse=True)
@@ -147,6 +159,7 @@ def test_build_records_its_commit_and_verifies_the_harness_push(
     if start_ref is not None:
         git(workspace, "push", target.as_uri(), f"HEAD:{branch}")
     base = git(workspace, "rev-parse", "HEAD")
+    git(workspace, "pack-refs", "--all")
 
     def work(actual: run_host.Run, paths: run_host.Prepared, stack: ExitStack) -> int:
         rc = harness(actual, paths, stack)
@@ -175,15 +188,19 @@ def test_build_records_its_commit_and_verifies_the_harness_push(
     assert not run.files.path("pr").exists()
 
 
-def test_do_not_record_uncertain_run(
-    local_run: tuple[run_host.Run, run_host.Prepared, Path],
+@pytest.mark.parametrize("uncertain", [False, True])
+def test_does_not_record_uncertain_or_review_run(
+    local_run: LocalRun, uncertain: bool
 ) -> None:
     run, prepared, target = local_run
-    run.files.uncertain = True
+    if not uncertain:
+        run.request = run_request(profile="review", commit="a" * 40)
+    run.files.uncertain = uncertain
     with ExitStack() as stack:
         assert push.run(run, prepared, stack, harness) == 0
     assert git(target, "for-each-ref") == ""
     assert not run.files.path("log").exists()
+    assert_run_file(run, "head", None)
 
 
 def assert_run_file(run: run_host.Run, name: str, expected: str | None) -> None:
@@ -231,11 +248,19 @@ def test_packed_ref_rejects_leading_whitespace(
 
 
 @pytest.mark.parametrize("start_ref", [START_REF, None])
-@pytest.mark.parametrize("on_run_branch", [True, False])
+@pytest.mark.parametrize(
+    ("switch", "branch"),
+    [
+        ((), "agent/example"),
+        (("-c", "topic/work"), "topic/work"),
+        (("--detach",), "HEAD"),
+    ],
+)
 def test_timed_out_build_keeps_local_branch(
     local_run: LocalRun,
     start_ref: str | None,
-    on_run_branch: bool,
+    switch: tuple[str, ...],
+    branch: str,
 ) -> None:
     run, prepared, target = local_run
     run.request = replace(run.request, start_ref=start_ref)
@@ -245,15 +270,15 @@ def test_timed_out_build_keeps_local_branch(
     def failed_harness(
         actual: run_host.Run, paths: run_host.Prepared, stack: ExitStack
     ) -> int:
-        if not on_run_branch:
-            git(Path(paths.paths.worktree), "switch", "-c", "topic/work")
+        if switch:
+            git(workspace, "switch", *switch)
+            assert push.head(workspace, "agent/example") is None
         harness(actual, paths, stack)
         return 124
 
     with ExitStack() as stack:
         assert push.run(run, prepared, stack, failed_harness) == 124
     tip = git(workspace, "rev-parse", "HEAD")
-    branch = "agent/example" if on_run_branch else "topic/work"
     assert git(workspace, "rev-parse", branch) == tip
     assert git(target, "for-each-ref") == ""
     assert_run_file(run, "base", base)
@@ -262,9 +287,9 @@ def test_timed_out_build_keeps_local_branch(
     assert_run_file(run, "log", expected)
 
 
-@pytest.mark.parametrize("missing", [False, True])
-def test_preserves_harness_failure_when_git_metadata_is_unusable(
-    local_run: tuple[run_host.Run, run_host.Prepared, Path], missing: bool
+@pytest.mark.parametrize(("missing", "rc"), [(False, 7), (True, 7), (True, 0)])
+def test_reports_unusable_git_metadata_when_the_harness_succeeds(
+    local_run: LocalRun, rc: int, *, missing: bool
 ) -> None:
     run, prepared, target = local_run
 
@@ -274,9 +299,117 @@ def test_preserves_harness_failure_when_git_metadata_is_unusable(
             (directory / "HEAD").unlink()
         else:
             (directory / "refs" / "heads" / "agent" / "example").write_text("invalid\n")
-        return 7
+        return rc
 
     with ExitStack() as stack:
-        assert push.run(run, prepared, stack, failed) == 7
+        assert push.run(run, prepared, stack, failed) == (rc or 4)
     assert git(target, "for-each-ref") == ""
-    assert not run.files.path("log").exists()
+    failure = "commit check failed: cannot read run refs (FileNotFoundError)\n"
+    assert_run_file(run, "log", None if rc else failure)
+
+
+def test_start_ref_requires_local_branch(local_run: LocalRun) -> None:
+    run, prepared, _target = local_run
+    run.request = replace(run.request, start_ref=START_REF)
+    git(Path(prepared.paths.worktree), "update-ref", "-d", "refs/heads/agent/example")
+    with (
+        ExitStack() as stack,
+        pytest.raises(Invalid, match="missing fetched starting commit"),
+    ):
+        push.run(run, prepared, stack, harness)
+    assert not run.files.path("out.final").exists()
+
+
+@pytest.mark.parametrize("scenario", ["current", "stale", "default"])
+def test_rebase_and_push(
+    repo: Path, monkeypatch: pytest.MonkeyPatch, scenario: str
+) -> None:
+    remote = repo.parent / "remote.git"
+    ref = "refs/heads/fix/topic"
+    start_ref = None if scenario == "default" else ref
+    upstream_ref = "refs/heads/main" if start_ref else "refs/heads/upstream"
+    guard_tests.git(remote, "symbolic-ref", "HEAD", "refs/heads/main")
+    base = guard_tests.git(repo, "rev-parse", "HEAD")
+    old = guard_tests.commit(repo, "old topic", topic="topic\n")
+    guard_tests.git(repo, "push", str(remote), f"HEAD:{start_ref or 'refs/heads/main'}")
+    guard_tests.git(repo, "reset", "--hard", base)
+    upstream = guard_tests.commit(repo, "upstream", upstream="upstream\n")
+    guard_tests.git(repo, "push", str(remote), f"HEAD:{upstream_ref}")
+    env = guard_tests.install_hook(repo, monkeypatch)
+    resolve = worktree.host_tools.resolve
+
+    def executable(name: str, path: str | None = None) -> str:
+        return "/unused/prek" if name == "prek" else resolve(name, path)
+
+    monkeypatch.setattr(worktree.host_tools, "resolve", executable)
+    isolate_host_git(repo.parent, monkeypatch)
+    local_mirror_fetches(monkeypatch, remote)
+    request = run_request(start_ref=start_ref, fetch_refs=[start_ref or upstream_ref])
+    run = worktree.create(repo.parent / "checkout", "example", request)
+    target = "origin/main" if start_ref else "origin/fetched/heads/upstream"
+    rebase = subprocess.run(
+        ["git", "rebase", target],
+        cwd=run,
+        env=env,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    if start_ref is None:
+        assert rebase.returncode != 0
+        assert f"refs/heads/agent/example must descend from {old}" in rebase.stderr
+        assert guard_tests.git(run, "rev-parse", "refs/heads/agent/example") == old
+        return
+    assert rebase.returncode == 0, rebase.stderr
+    assert guard_tests.git(run, "rev-parse", "HEAD^") == upstream
+    assert (run / "topic").read_text() == "topic\n"
+    assert guard_tests.git(run, "for-each-ref", "refs/remotes/origin/fix/topic") == ""
+    tracking = "refs/remotes/origin/fetched/heads/fix/topic"
+    assert guard_tests.git(run, "rev-parse", "--verify", tracking) == old
+    guard_tests.git(run, "config", "remote.origin.pushurl", str(remote))
+    new = guard_tests.git(run, "rev-parse", "HEAD")
+
+    destination = f"HEAD:{ref}"
+    remote_tip = new
+    if scenario == "stale":
+        guard_tests.git(repo, "reset", "--hard", old)
+        remote_tip = guard_tests.commit(repo, "concurrent topic change")
+        guard_tests.git(repo, "push", str(remote), destination)
+    result = guard_tests.push(
+        run, env, f"--force-with-lease={ref}:{old}", "origin", destination
+    )
+    if scenario == "stale":
+        assert result.returncode != 0
+        assert "stale info" in result.stderr
+        # Give Git the live tip so the hook can check the stale tracking ref.
+        result = guard_tests.push(
+            run, env, f"--force-with-lease={ref}:{remote_tip}", "origin", destination
+        )
+        assert result.returncode != 0
+        assert "the remote tip is not the fetched one" in result.stderr
+    else:
+        assert result.returncode == 0, result.stderr
+        assert f"{ref} rewritten {old} -> {new}" in result.stderr
+    assert guard_tests.git(remote, "rev-parse", ref) == remote_tip
+
+
+@pytest.mark.parametrize(
+    ("start_ref", "ref", "reason"),
+    [
+        ("main", "main", "push to a protected branch refused"),
+        ("master", "master", "push to a protected branch refused"),
+        ("topic", "agent/example", "this run may only push refs/heads/topic"),
+        ("topic", None, "deletion refused; this run may only update its start ref"),
+        ("topic", "topic", ""),
+    ],
+)
+def test_start_ref_destinations(start_ref: str, ref: str | None, reason: str) -> None:
+    branch = f"refs/heads/{ref or start_ref}"
+    problem = pg.destination_problem(
+        branch,
+        deleting=ref is None,
+        agent_push=True,
+        run_name="example",
+        start_ref=f"refs/heads/{start_ref}",
+    )
+    assert problem.startswith(f"{branch}: {reason}") if reason else not problem

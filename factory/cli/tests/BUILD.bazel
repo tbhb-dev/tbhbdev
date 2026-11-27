@@ -17,6 +17,7 @@ load(":pytest.bzl", "cli_py_test")
 # gazelle:resolve py test_alpha_agent_run_host :test_alpha_agent_run_host_support
 # gazelle:resolve py test_alpha_agent_sandbox_live :test_alpha_agent_sandbox_live_support
 # gazelle:resolve py test_alpha_agent_settings :test_alpha_agent_settings_support
+# gazelle:resolve py test_alpha_pre_push_guard //factory/cli/tests:test_alpha_pre_push_guard_support
 # gazelle:resolve py test_alpha_pull_request :test_alpha_pull_request_support
 # gazelle:resolve py test_alpha_review_doc :test_alpha_review_doc_support
 
@@ -28,7 +29,6 @@ cli_py_library(
     pyi_deps = ["@cli_pip//pytest"],
     visibility = ["//factory/cli/tests:__subpackages__"],
     deps = [
-        ":fake_tool",
         "//factory/cli/src/tbhbdev:version",
         "//factory/cli/src/tbhbdev/alpha/agent/decisions:argv",
     ],
@@ -147,6 +147,12 @@ cli_py_library(
 cli_py_library(
     name = "repo_settings_example",
     srcs = ["repo_settings_example.py"],
+    visibility = ["//factory/cli/tests:__subpackages__"],
+)
+
+cli_py_library(
+    name = "squash_merge_fixtures",
+    srcs = ["squash_merge_fixtures.py"],
     visibility = ["//factory/cli/tests:__subpackages__"],
 )
 
@@ -409,6 +415,7 @@ cli_py_test(
 cli_py_test(
     name = "test_alpha_agent_driver",
     srcs = ["test_alpha_agent_driver.py"],
+    shard_count = 4,
     deps = [
         ":agent_cli_example",
         ":agent_driver_example",
@@ -669,10 +676,14 @@ cli_py_test(
         ":agent_host_example",
         ":conftest",
         ":runfile_fixtures",
+        "//factory/cli/src/tbhbdev/alpha:pre_push_guard",
         "//factory/cli/src/tbhbdev/alpha/agent:credentials",
+        "//factory/cli/src/tbhbdev/alpha/agent:model",
         "//factory/cli/src/tbhbdev/alpha/agent:push",
         "//factory/cli/src/tbhbdev/alpha/agent:run_host",
         "//factory/cli/src/tbhbdev/alpha/agent:runfiles",
+        "//factory/cli/src/tbhbdev/alpha/agent:worktree",
+        "//factory/cli/tests:test_alpha_pre_push_guard_support",
         "@cli_pip//pytest",
     ],
 )
@@ -1257,7 +1268,6 @@ cli_py_test(
     name = "test_alpha_pre_push_guard",
     srcs = ["test_alpha_pre_push_guard.py"],
     deps = [
-        ":agent_host_example",
         ":conftest",
         ":fake_tool",
         "//factory/cli/src/tbhbdev/alpha:gh_shim",
@@ -1525,6 +1535,7 @@ cli_py_test(
     deps = [
         ":conftest",
         ":fake_tool",
+        ":squash_merge_fixtures",
         "//factory/cli/src/tbhbdev/alpha:pull_request",
         "//factory/cli/src/tbhbdev/alpha:secret_scan",
         "//factory/cli/src/tbhbdev/alpha:squash_merge",
@@ -2022,7 +2033,11 @@ filegroup(
     srcs = glob(
         ["**"],
         exclude = ["BUILD.bazel"],
-    ),
+    ) + [
+        "//factory/cli/tests/integration/alpha/agent:package_files",
+        "//factory/cli/tests/unit/alpha:package_files",
+        "//factory/cli/tests/unit/alpha/agent/decisions:package_files",
+    ],
     visibility = ["//factory/cli:__pkg__"],
 )
 

@@ -10,19 +10,3 @@
     daemon_reload: true
     state: restarted
   when: not ansible_check_mode
-
-- name: Unload the changed agent reconverge daemon
-  ansible.builtin.command:
-    argv: [launchctl, bootout, system/dev.tbhb.reconverge.agent]
-  changed_when: true
-  when:
-    - not ansible_check_mode
-    - agent_reconverge_launchd.rc == 0
-  listen: Reload the agent reconverge daemon
-
-- name: Bootstrap the changed agent reconverge daemon
-  ansible.builtin.command:
-    argv: [launchctl, bootstrap, system, /Library/LaunchDaemons/dev.tbhb.reconverge.agent.plist]
-  changed_when: true
-  when: not ansible_check_mode
-  listen: Reload the agent reconverge daemon

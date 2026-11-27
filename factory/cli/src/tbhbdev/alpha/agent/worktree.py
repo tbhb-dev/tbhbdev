@@ -12,18 +12,19 @@ import shutil
 import stat
 import subprocess  # nosec B404
 import sys
-import unicodedata
 from contextlib import ExitStack, contextmanager
 from functools import partial
 from pathlib import Path
 lazy from collections.abc import Callable, Generator, Mapping
 
-from tbhbdev.alpha import install, pre_push_guard
-from tbhbdev.alpha.agent import host_tools, runfiles
+from tbhbdev.alpha import install
+from tbhbdev.alpha.agent import host_tools, preparation_detail, runfiles
 from tbhbdev.alpha.agent.decisions import repo
 from tbhbdev.alpha.agent.decisions.request import check_fetch_refs, check_start_ref
 from tbhbdev.alpha.agent.model import Invalid, Profile, RunRequest
+from tbhbdev.alpha.gh_shim import RUN_NAME_ENV
 from tbhbdev.alpha.identity.dispatcher import RUN_HOOK_ENV
+from tbhbdev.alpha.pre_push_guard import RUN_START_REF_ENV
 from tbhbdev.alpha.repo import TBHB_DEV_ORIGIN
 
 GIT_OVERRIDES = (
@@ -61,14 +62,6 @@ url = {url}
 """
 CHECKOUT_SCAN_DEPTH = 3
 COMMON_DIRECTORY_LIMIT = 4096
-PREPARATION_CAUSE_LIMIT = 200
-URL_CREDENTIALS = re.compile(r"([A-Za-z][A-Za-z0-9+.-]*://)[^/\s]*@")
-SECRET_DETAIL = re.compile(
-    r"(?i)\b(?:gh[pousr]_[\w]+|github_pat_[\w]+)"
-    r"|\b(?:authorization[=:]\s*(?:basic|bearer)\s+"
-    r"|(?:token|password|secret)[=:]\s*)[^\s,'\"]+"
-)
-ABSOLUTE_PATH = re.compile(r"(?<![\w:/])/(?:[^\s/'\"]+/)*([^\s/'\"]+)")
 RUN_IDENTITY_SHIM = """#!/bin/sh
 {mark}
 export {run_env}=1
@@ -315,10 +308,7 @@ def install_hooks(
         python=Path(sys.base_prefix, "bin", "python3"),
         mark=install.SHIM_MARK,
         pattern=TBHB_DEV_ORIGIN.pattern,
-        run_env={
-            pre_push_guard.RUN_NAME_ENV: run_name,
-            pre_push_guard.RUN_START_REF_ENV: start_ref or "",
-        },
+        run_env={RUN_NAME_ENV: run_name, RUN_START_REF_ENV: start_ref or ""},
     )
     scripts[hooks / "reference-transaction"] = RUN_REFERENCE_TRANSACTION.format(
         branch=shlex.quote(f"refs/heads/agent/{run_name}"),
@@ -615,18 +605,7 @@ def preparation_cause(exc: OSError | ValueError | subprocess.SubprocessError) ->
     else:
         # Other ValueErrors can contain third-party inputs or credential values.
         detail = "invalid value"
-    return safe_preparation_detail(detail)
-
-
-def safe_preparation_detail(detail: str) -> str:
-    detail = next(iter(detail.splitlines()), "")
-    detail = "".join(c for c in detail if not unicodedata.category(c).startswith("C"))
-    detail = URL_CREDENTIALS.sub(r"\1[redacted]@", detail)
-    detail = SECRET_DETAIL.sub("[redacted]", detail)
-    for value in sorted(set(os.environ.values()) - {""}, key=len, reverse=True):
-        detail = detail.replace(value, "[redacted]")
-    detail = ABSOLUTE_PATH.sub(r"\1", detail)
-    return detail[:PREPARATION_CAUSE_LIMIT] or "cause unavailable"
+    return preparation_detail.safe_preparation_detail(detail)
 
 
 def ensure_clone_directory(clone: Path) -> None:
