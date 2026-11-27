@@ -35,7 +35,7 @@ DRAFT_LIMIT = 64 * 1024
 TIMEOUT = httpx2.Timeout(20.0, connect=5.0)
 
 
-class PostRefusedError(ValueError):
+class PostRefusedError(review_doc.ReviewError):
     """The draft or the API refused; the message is safe to log."""
 
 
@@ -121,7 +121,7 @@ def validate(sub: Submission) -> tuple[dict[str, object], str]:
 
 
 def api(
-    method: str, url: str, token: str, payload: dict[str, str] | None = None
+    method: str, url: str, token: str, payload: dict[str, object] | None = None
 ) -> object:
     """One GitHub API call; any 2xx is success.
 
@@ -159,7 +159,19 @@ def pull_head(data: object) -> str | None:
     return sha if isinstance(sha, str) else None
 
 
-def create(sub: Submission, token: str) -> int | None:
+def compare(run: Run, path: str) -> object:
+    """Read the diff with the review run's read-only App permissions."""
+    try:
+        token = credentials.fetch_token(run.request, run.settings)
+    except Invalid:
+        token = None
+    if token is None:
+        message = "read-only reviews App token unavailable"
+        raise PostRefusedError(message)
+    return api("GET", path, token)
+
+
+def create(sub: Submission, token: str, run: Run) -> int | None:
     """Validate, then post once; return the review id, or None if GitHub sent none.
 
     Raises:
@@ -172,14 +184,12 @@ def create(sub: Submission, token: str) -> int | None:
     if event == "APPROVE" and pull_head(api("GET", base, token)) != sub.commit:
         message = "the pull request head moved since the run judged it"
         raise PostRefusedError(message)
-    payload = {
-        "commit_id": sub.commit,
-        "body": body,
-        "event": event,
-    }
-    data = api("POST", f"{base}/reviews", token, payload)
-    created = data.get("id") if isinstance(data, dict) else None
-    return created if isinstance(created, int) else None
+    return review_doc.submit_review(
+        lambda method, path, payload: api(method, path, token, payload),
+        review_doc.ReviewSubmission(base, sub.commit, body, event),
+        compare=lambda path: compare(run, path),
+        warn=lambda message: run.files.write("log", f"{message}\n"),
+    )
 
 
 def stamp(run: Run) -> str:
@@ -293,7 +303,7 @@ def posted(run: Run, prepared: Prepared) -> bool:
             stamp(run),
             document,
         )
-        identifier = create(sub, token)
+        identifier = create(sub, token, run)
     except PostRefusedError as refusal:
         run.files.write("log", f"review not posted: {refusal}\n")
         return False
