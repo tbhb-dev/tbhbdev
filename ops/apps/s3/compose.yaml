@@ -110,7 +110,6 @@ services:
     # Off unless S3_TLS=1: the weekly DSM task runs it with `--profile cert`,
     # and `up` never starts it.
     profiles: [cert]
-    # Release 5.6.0 from https://hub.docker.com/r/goacme/lego/tags?name=v5.6.0
     image: goacme/lego:v5.7.0@sha256:9fe6151508c0e1ddc51a6d3e474353520f4b008782bf0c6d31676da72e6d4766
     user: "10001:10001"
     restart: "no"
