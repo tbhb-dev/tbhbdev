@@ -1375,6 +1375,7 @@ runfiles.RunFiles.write = recorded
 run_host.admission.ROOT = run.files.root / "admission"
 sys.exit(run_host.main(["example", "--host", "example-linux"], "example run-host"))
 '''
+    # Let pytest capture stderr while the parent waits for stdout markers.
     supervisor = subprocess.Popen(
         [
             sys.executable,
@@ -1386,7 +1387,6 @@ sys.exit(run_host.main(["example", "--host", "example-linux"], "example run-host
         ],
         stdin=subprocess.PIPE,
         stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
         text=True,
     )
     try:
@@ -1399,8 +1399,8 @@ sys.exit(run_host.main(["example", "--host", "example-linux"], "example run-host
             assert supervisor.stdin is not None
             supervisor.stdin.write("continue\n")
             supervisor.stdin.flush()
-        output, error = supervisor.communicate(timeout=10)
-        assert supervisor.returncode == 143, output + error
+        output, _ = supervisor.communicate(timeout=10)
+        assert supervisor.returncode == 143, output
         files = runfiles.RunFiles(tmp_path / "runs", "example")
         assert files.path("rc").read_text() == "143\n"
         assert files.path("phase").read_text() == "ended"
