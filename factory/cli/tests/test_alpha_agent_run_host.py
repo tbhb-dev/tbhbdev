@@ -4238,17 +4238,18 @@ def test_run_builds_required_shims_before_harness(
     enabled: bool,
     expected: int,
 ) -> None:
-    run = make_run(tmp_path)
+    run, prepared = bazel_run(tmp_path)
     run.host = dataclasses.replace(run.host, build_shims=enabled)
-    prepared = dataclasses.replace(preparation(run), auth_before="example-before")
+    prepared = dataclasses.replace(prepared, auth_before="example-before")
+    base = make_base(prepared)
     workspace = Path(prepared.paths.worktree)
     if hook_reference:
         (workspace / "prek.toml").write_text(".bazel_env/bin/cog")
     runtime = HostRuntime(run, prepared, None)
     runtime.patch(monkeypatch)
     monkeypatch.setattr(run_host, "preflight", Mock())
-    tool = Mock(return_value="/tools/bazelisk")
-    monkeypatch.setattr(run_host, "_bazel_tool", tool)
+    which = Mock(return_value="/tools/bazelisk")
+    monkeypatch.setattr(shutil, "which", which)
     deadline = run.deadline
     ticks = iter([100, 130])
     monkeypatch.setattr(
@@ -4267,16 +4268,22 @@ def test_run_builds_required_shims_before_harness(
     monkeypatch.setattr(shims.subprocess, "run", call)
     assert run_host.execute(run, "example") == expected
     assert run.files.path("rc").read_text() == f"{expected}\n"
+    assert not base.exists()
     if enabled:
         assert runtime.events == ["group-stopped", "auth"]
         assert runtime.phases == ["check", "workspace", "shims", "ended"]
         assert run.deadline == deadline + 30
-        assert tool.call_count == 2  # Shim build and Bazel shutdown.
-        assert tool.call_args_list[0].args == (run,)
-        call.assert_called_once()
+        which.assert_called_once()
+        call.assert_called_once_with(
+            ["/tools/bazelisk", "run", "//:bazel_env"],
+            cwd=workspace,
+            capture_output=True,
+            timeout=shims.SHIM_SECONDS,
+            check=False,
+        )
     else:
         assert run.deadline == deadline
-        tool.assert_called_once_with(run)  # Cleanup still looks for Bazel.
+        which.assert_not_called()
         call.assert_not_called()
         if hook_reference:
             assert runtime.events == ["auth"]
@@ -5144,23 +5151,6 @@ def bazel_run(tmp_path: Path) -> tuple[run_host.Run, run_host.Prepared]:
     return run, dataclasses.replace(prepared, bases=bases)
 
 
-def fake_bazel(
-    monkeypatch: pytest.MonkeyPatch, code: int = 0, calls: list[list[str]] | None = None
-) -> None:
-    def run(
-        command: list[str], **_options: object
-    ) -> subprocess.CompletedProcess[bytes]:
-        if calls is not None:
-            calls.append(command)
-        return subprocess.CompletedProcess(command, code)
-
-    def found(name: str, path: str | None = None) -> str:  # noqa: ARG001
-        return f"/bin/{name}"
-
-    monkeypatch.setattr(shutil, "which", found)
-    monkeypatch.setattr(subprocess, "run", run)
-
-
 def make_base(prepared: run_host.Prepared) -> Path:
     base = prepared.bases[0]
     base.mkdir(parents=True)
@@ -5169,19 +5159,6 @@ def make_base(prepared: run_host.Prepared) -> Path:
 
 def stop_and_clean(run: run_host.Run, prepared: run_host.Prepared) -> dict[str, int]:
     return run_host.cleanup_bazel(run, prepared, run_host.shutdown_bazel(run, prepared))
-
-
-def test_shutdown_bazel_pins_the_recorded_output_base(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    run, prepared = bazel_run(tmp_path)
-    base = make_base(prepared)
-    calls: list[list[str]] = []
-    fake_bazel(monkeypatch, calls=calls)
-    stopped = run_host.shutdown_bazel(run, prepared)
-    assert calls == [["/bin/bazelisk", f"--output_base={base}", "shutdown"]]
-    status = base.lstat()
-    assert stopped == {base: ("rc=0", (status.st_dev, status.st_ino))}
 
 
 def server_row(base: Path, workspace: Path, pid: int, parent: int, group: int) -> str:
@@ -5210,9 +5187,10 @@ def test_shutdown_bazel_discovers_and_stops_only_the_runs_servers(
     other = bazel_base(run, sibling)
     prepared = dataclasses.replace(prepared, bases=(*prepared.bases, other))
     base = bazel_base(run, nested)
-    descendant, grouped, foreign = (
-        tmp_path / name for name in ("custom base", "grouped", "foreign")
-    )
+    memory = tmp_path / "memory"
+    monkeypatch.setattr(bazel_servers, "MEMORY_DISK", memory)
+    descendant = memory / "nested" / "custom base"
+    grouped, foreign = tmp_path / "grouped", tmp_path / "foreign"
     uid, supervisor = os.getuid(), os.getpid()
     group = supervisor + 100
     rows = [
@@ -5229,37 +5207,28 @@ def test_shutdown_bazel_discovers_and_stops_only_the_runs_servers(
         ),
     ]
     monkeypatch.setattr(bazel_servers, "listing", constant("\n".join(rows)))
-    fake_bazel(monkeypatch)
-    calls: list[tuple[str, str]] = []
+    monkeypatch.setattr(bazel_servers, "sys", SimpleNamespace(platform="darwin"))
+    killed: list[int] = []
 
-    def shutdown(
-        command: list[str], *, cwd: str, **_options: object
-    ) -> subprocess.CompletedProcess[bytes]:
-        executable, output_base, verb = command
-        assert (executable, verb) == ("/bin/bazelisk", "shutdown")
-        path = output_base.removeprefix("--output_base=")
-        calls.append((path, cwd))
-        if Path(path) == base:
-            raise subprocess.TimeoutExpired(command, 60)
-        (Path(path) / "server/server.pid.txt").unlink()
-        return subprocess.CompletedProcess(command, 0)
+    def leader_start(pid: int) -> str | None:
+        return None if pid in killed else "start"
 
-    monkeypatch.setattr(subprocess, "run", shutdown)
-    run.bazel_shutdown = run_host.shutdown_bazel(run, prepared, group=group)
+    monkeypatch.setattr(process_group, "leader_start", leader_start)
+
+    def kill(pid: int, number: int) -> None:
+        if number == signal.SIGKILL:
+            killed.append(pid)
+        else:
+            raise ProcessLookupError
+
+    monkeypatch.setattr(os, "kill", kill)
+    snapshot = bazel_servers.find(worktree, group)
+    snapshot.pop(base)
+    run.bazel_shutdown = run_host.shutdown_bazel(run, prepared, servers=snapshot)
     assert run_host.finish(run, prepared, None, 7) == 7
-    assert calls == [
-        (str(recorded), str(worktree)),
-        (str(base), str(nested)),
-        (str(descendant.resolve()), str(worktree)),
-        (str(grouped.resolve()), str(sibling)),
-    ]
-    log = run.files.path("log").read_text().splitlines()
-    assert [line for line in log if line.startswith("bazel shutdown:")] == [
-        f"bazel shutdown: {path!r} ({'timed out' if Path(path) == base else 'rc=0'})"
-        for path, _ in calls
-    ]
-    assert not recorded.exists()
-    assert all(path.is_dir() for path in (base, descendant, grouped, other, foreign))
+    assert sorted(killed) == list(range(group + 2, group + 6))
+    assert all(not path.exists() for path in (recorded, base, descendant))
+    assert all(path.is_dir() for path in (grouped, other, foreign))
 
 
 @pytest.mark.parametrize("available", [False, True])
@@ -5271,8 +5240,6 @@ def test_shutdown_bazel_uses_recorded_bases_without_listed_servers(
 ) -> None:
     run, prepared = bazel_run(tmp_path)
     base = make_base(prepared)
-    calls: list[list[str]] = []
-    fake_bazel(monkeypatch, calls=calls)
 
     def listing(command: list[str], **options: object) -> str:
         assert Path(command[0]).name == "ps"
@@ -5290,35 +5257,93 @@ def test_shutdown_bazel_uses_recorded_bases_without_listed_servers(
 
     monkeypatch.setattr(bazel_servers, "listing", empty_bazel_listing)
     monkeypatch.setattr(subprocess, "check_output", listing)
-    assert list(run_host.shutdown_bazel(run, prepared, group=7)) == [base]
-    assert calls == [["/bin/bazelisk", f"--output_base={base}", "shutdown"]]
+    assert list(run_host.shutdown_bazel(run, prepared)) == [base]
 
 
-@pytest.mark.parametrize("problem", ["tool missing", "pid changed"])
-def test_shutdown_bazel_logs_unavailable_discovered_servers(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, problem: str
+def test_timed_out_run_kills_bazel_and_removes_its_output_base(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     run, prepared = bazel_run(tmp_path)
-    workspace = Path(prepared.paths.worktree).resolve()
-    base = tmp_path.resolve() / "custom"
-    row = server_row(base, workspace, 17, 1, 1)
-    monkeypatch.setattr(bazel_servers, "listing", constant(row))
-    if problem == "tool missing":
-        monkeypatch.setattr(run_host, "_bazel_tool", constant(None))
-        status = "tool unavailable"
-    else:
-        original = bazel_servers.matches_pid
-        matches = iter([True, False])
+    base = prepared.bases[0]
+    workspace = Path(prepared.paths.worktree)
+    client = Mock(side_effect=subprocess.TimeoutExpired("bazel", 60))
+    monkeypatch.setattr(subprocess, "run", client)
+    with subprocess.Popen(
+        [sys.executable, "-c", "import time; time.sleep(300)"]
+    ) as process:
+        try:
+            row = server_row(base, workspace, process.pid, os.getpid(), os.getpgrp())
+            monkeypatch.setattr(bazel_servers, "listing", constant(row))
+            assert run_host.finish(run, prepared, None, 124) == 124
+            assert process.wait(timeout=1) == -signal.SIGKILL
+            assert not base.exists()
+            client.assert_not_called()
+        finally:
+            if process.poll() is None:
+                process.kill()
 
-        def changed(path: Path, pid: int) -> bool:
-            return original(path, pid) and next(matches)
 
-        monkeypatch.setattr(bazel_servers, "matches_pid", changed)
-        monkeypatch.setattr(run_host, "_bazel_tool", constant("/bin/bazelisk"))
-        status = "server changed"
-    assert run_host.shutdown_bazel(run, prepared, group=7) == {base: (status, None)}
-    expected = f"bazel shutdown: {str(base)!r} ({status})\n"
-    assert run.files.path("log").read_text() == expected
+@pytest.mark.parametrize(
+    ("state", "result"),
+    [
+        ("pidfile changed", "server changed"),
+        ("pid reused", "server changed"),
+        ("exited", "rc=0"),
+        ("disappeared", "rc=0"),
+        ("denied", "permission denied"),
+        ("running", "server alive"),
+        ("reused while opening", "rc=0"),
+    ],
+)
+def test_stop_bazel_validates_the_process_and_bounds_the_wait(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, state: str, result: str
+) -> None:
+    base = tmp_path / "base"
+    server = bazel_servers.Server(17, belongs=True, started="start")
+    server_row(base, tmp_path, 18 if state == "pidfile changed" else 17, 1, 1)
+    starts = {
+        "pid reused": ["new"],
+        "exited": [None],
+        "reused while opening": ["start", "new", "new"],
+    }
+    start = Mock(return_value="start", side_effect=starts.get(state))
+    monkeypatch.setattr(process_group, "leader_start", start)
+    monkeypatch.setattr(bazel_servers, "sys", SimpleNamespace(platform="linux"))
+    errors = {"disappeared": ProcessLookupError, "denied": PermissionError}
+    opened = Mock(return_value=42, side_effect=errors.get(state))
+    sent = Mock()
+    closed = Mock()
+    pauses = Mock()
+    monkeypatch.setattr(signal, "pidfd_send_signal", sent, raising=False)
+    monkeypatch.setattr(
+        bazel_servers,
+        "os",
+        SimpleNamespace(
+            getuid=os.getuid,
+            pidfd_open=opened,
+            close=closed,
+        ),
+    )
+    monkeypatch.setattr(time, "sleep", pauses)
+    assert bazel_servers.stop(base, server) == result
+    assert sent.call_count == int(state == "running")
+    assert closed.call_count == int(state in {"running", "reused while opening"})
+    assert pauses.call_count == (10 if state == "running" else 0)
+
+
+def test_bazel_shims_use_the_configured_tool_path(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    run, prepared = bazel_run(tmp_path)
+    which = Mock(side_effect=[None, "/bin/bazel"])
+    build = Mock()
+    monkeypatch.setattr(shutil, "which", which)
+    monkeypatch.setattr(shims, "build", build)
+    run_host.build_shims(run, Path(prepared.paths.worktree))
+    build.assert_called_once_with(Path(prepared.paths.worktree), "/bin/bazel")
+    assert which.call_args.kwargs["path"].endswith(
+        ":" + policy.tool_path(run.settings, run.host, str(run.home))
+    )
 
 
 def test_discovery_refuses_unconfirmed_server_metadata(
@@ -5339,10 +5364,22 @@ def test_discovery_refuses_unconfirmed_server_metadata(
     ]
     cmdline.unlink()
     monkeypatch.setattr(bazel_servers, "listing", constant("\n".join([*rows, row])))
-    assert bazel_servers.find(workspace, 17) == {}
-    for args in ("bazel(workspace)", "--workspace_directory=/workspace/../other"):
+    monkeypatch.setattr(process_group, "leader_start", constant("start"))
+    assert bazel_servers.find(workspace) == {}
+    for args in ("bazel(workspace)", f"--workspace_directory={workspace}/../other"):
         cmdline.write_text(args)
-        assert bazel_servers.find(workspace, 17) == {}
+        assert bazel_servers.find(workspace) == {}
+
+    cmdline.write_text(f"--workspace_directory={tmp_path / 'other'}")
+    assert bazel_servers.find(workspace) == {
+        base.resolve(): bazel_servers.Server(17, belongs=False, started="start")
+    }
+    cmdline.write_text(f"--workspace_directory={workspace}")
+    assert bazel_servers.find(workspace) == {
+        base.resolve(): bazel_servers.Server(17, belongs=True, started="start")
+    }
+    monkeypatch.setattr(process_group, "leader_start", constant(None))
+    assert bazel_servers.find(workspace) == {}
 
     link = tmp_path / "link"
     link.symlink_to(base)
@@ -5356,7 +5393,7 @@ def test_stop_harness_shuts_servers_down_after_stopping_the_group(
 ) -> None:
     run, prepared = bazel_run(tmp_path)
     worktree = Path(prepared.paths.worktree)
-    server = bazel_servers.Server(41, worktree, belongs=True)
+    server = bazel_servers.Server(41, belongs=True, started="start")
     base = tmp_path / "base"
     events: list[str] = []
 
@@ -5388,63 +5425,8 @@ def test_stop_harness_shuts_servers_down_after_stopping_the_group(
     assert run.bazel_shutdown == {}
 
 
-@pytest.mark.parametrize(
-    ("available", "prepared"),
-    [(False, True), (True, False)],
-)
-def test_shutdown_bazel_skips_without_a_tool_or_workspace(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, available: bool, prepared: bool
-) -> None:
-    run, value = bazel_run(tmp_path)
-    make_base(value)
-    fake_bazel(monkeypatch)
-    if not available:
-
-        def missing(name: str, path: str | None = None) -> None:  # noqa: ARG001
-            return None
-
-        monkeypatch.setattr(shutil, "which", missing)
-    assert run_host.shutdown_bazel(run, value if prepared else None) == {}
-
-
-@pytest.mark.parametrize(
-    ("error", "expected"),
-    [
-        (subprocess.TimeoutExpired("bazelisk", 60), "timed out"),
-        (OSError(), "failed to run"),
-    ],
-)
-def test_shutdown_bazel_reports_a_failed_shutdown(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, error: Exception, expected: str
-) -> None:
-    run, prepared = bazel_run(tmp_path)
-    make_base(prepared)
-    fake_bazel(monkeypatch)
-
-    def fail(*_args: object, **_options: object) -> None:
-        raise error
-
-    monkeypatch.setattr(subprocess, "run", fail)
-    stopped = run_host.shutdown_bazel(run, prepared)
-    assert [status for status, _ in stopped.values()] == [expected]
-
-
-def test_shutdown_bazel_searches_the_configured_tool_path(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    run, prepared = bazel_run(tmp_path)
-    searched: list[str | None] = []
-    fake_bazel(monkeypatch)
-
-    def which(name: str, path: str | None = None) -> str:
-        searched.append(path)
-        return f"/bin/{name}"
-
-    monkeypatch.setattr(shutil, "which", which)
-    run_host.shutdown_bazel(run, prepared)
-    tools = policy.tool_path(run.settings, run.host, str(run.home))
-    assert searched[0] is not None
-    assert searched[0].endswith(":" + tools)
+def test_shutdown_bazel_skips_without_a_workspace(tmp_path: Path) -> None:
+    assert run_host.shutdown_bazel(make_run(tmp_path), None) == {}
 
 
 def test_cleanup_deletes_only_the_recorded_base_and_its_links(
@@ -5465,7 +5447,6 @@ def test_cleanup_deletes_only_the_recorded_base_and_its_links(
     (worktree / ".bazel-ws").symlink_to(base)
     (worktree / "bazel-other").symlink_to(other)
     (worktree / "bazel-file").write_text("keep")
-    fake_bazel(monkeypatch)
     spaces = iter([(100, 10), (4100, 14)])
 
     def space(_fd: int) -> tuple[int, int]:
@@ -5493,9 +5474,7 @@ def test_space_reads_statvfs(tmp_path: Path) -> None:
     assert free_inodes >= 0
 
 
-def test_cleanup_ignores_a_swapped_worktree(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_cleanup_ignores_a_swapped_worktree(tmp_path: Path) -> None:
     run, prepared = bazel_run(tmp_path)
     worktree = Path(prepared.paths.worktree)
     base = make_base(prepared)
@@ -5506,16 +5485,13 @@ def test_cleanup_ignores_a_swapped_worktree(
     (victim / "bazel-out").symlink_to(victim_base)
     shutil.rmtree(worktree)
     worktree.symlink_to(victim)
-    fake_bazel(monkeypatch)
     assert stop_and_clean(run, prepared)["bases"] == 1
     assert not base.exists()
     assert victim_base.is_dir()
     assert (victim / "bazel-out").is_symlink()
 
 
-def test_cleanup_refuses_a_symlinked_ancestor(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_cleanup_refuses_a_symlinked_ancestor(tmp_path: Path) -> None:
     run, prepared = bazel_run(tmp_path)
     base = prepared.bases[0]
     victim = tmp_path / "victim"
@@ -5525,24 +5501,18 @@ def test_cleanup_refuses_a_symlinked_ancestor(
     (run.home / ".cache").symlink_to(victim)
     (victim / "bazel").mkdir()
     (victim / "bazel" / base.parent.name).symlink_to(victim / base.parent.name)
-    calls: list[list[str]] = []
-    fake_bazel(monkeypatch, calls=calls)
     assert stop_and_clean(run, prepared)["bases"] == 0
     assert victim_base.is_dir()
-    assert calls == []
     assert "refused" in run.files.path("log").read_text()
 
 
-def test_cleanup_refuses_a_symlinked_base(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_cleanup_refuses_a_symlinked_base(tmp_path: Path) -> None:
     run, prepared = bazel_run(tmp_path)
     victim = tmp_path / "victim"
     victim.mkdir()
     (victim / "file").write_text("keep")
     prepared.bases[0].parent.mkdir(parents=True)
     prepared.bases[0].symlink_to(victim)
-    fake_bazel(monkeypatch)
     assert stop_and_clean(run, prepared)["bases"] == 0
     assert (victim / "file").read_text() == "keep"
     assert run_host.cleanup_bazel(run, None, {})["bases"] == 0
@@ -5553,21 +5523,17 @@ def test_cleanup_refuses_a_foreign_uid(
 ) -> None:
     run, prepared = bazel_run(tmp_path)
     base = make_base(prepared)
-    fake_bazel(monkeypatch)
     monkeypatch.setattr(os, "getuid", lambda: tmp_path.stat().st_uid + 1)
     assert stop_and_clean(run, prepared)["bases"] == 0
     assert base.is_dir()
 
 
-def test_cleanup_refuses_paths_outside_the_cache_roots(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_cleanup_refuses_paths_outside_the_cache_roots(tmp_path: Path) -> None:
     run, prepared = bazel_run(tmp_path)
     outside = tmp_path / "elsewhere"
     outside.mkdir()
     (outside / "file").write_text("keep")
     prepared = dataclasses.replace(prepared, bases=(outside,))
-    fake_bazel(monkeypatch)
     assert stop_and_clean(run, prepared)["bases"] == 0
     assert (outside / "file").read_text() == "keep"
     assert run_host._owned_base(run.home, outside) is None  # noqa: SLF001
@@ -5579,20 +5545,12 @@ def test_cleanup_refuses_paths_outside_the_cache_roots(
     assert file_base.exists()
 
 
-def test_cleanup_keeps_a_base_whose_server_is_alive(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_cleanup_keeps_a_base_whose_server_is_alive(tmp_path: Path) -> None:
     run, prepared = bazel_run(tmp_path)
     base = make_base(prepared)
     (base / "server").mkdir()
     (base / "server/server.pid.txt").write_text(str(os.getpid()))
-    calls: list[list[str]] = []
-    pauses: list[float] = []
-    fake_bazel(monkeypatch, calls=calls)
-    monkeypatch.setattr(time, "sleep", pauses.append)
     stopped = run_host.shutdown_bazel(run, prepared)
-    assert stopped[base][0] == "server alive"
-    assert (len(calls), pauses) == (4, [2, 2, 2])
     assert run_host.cleanup_bazel(run, prepared, stopped)["bases"] == 0
     assert base.is_dir()
     assert "kept" in run.files.path("log").read_text()
@@ -5607,22 +5565,9 @@ def test_a_dead_or_unreadable_server_pid_is_not_alive(
     assert not run_host._server_alive(tmp_path)  # noqa: SLF001
 
 
-def test_cleanup_keeps_a_base_when_shutdown_fails(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_cleanup_refuses_a_base_swapped_after_shutdown(tmp_path: Path) -> None:
     run, prepared = bazel_run(tmp_path)
     base = make_base(prepared)
-    fake_bazel(monkeypatch, code=1)
-    assert stop_and_clean(run, prepared)["bases"] == 0
-    assert base.is_dir()
-
-
-def test_cleanup_refuses_a_base_swapped_after_shutdown(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    run, prepared = bazel_run(tmp_path)
-    base = make_base(prepared)
-    fake_bazel(monkeypatch)
     stopped = run_host.shutdown_bazel(run, prepared)
     base.rename(base.with_name("moved"))
     base.mkdir()
@@ -5645,11 +5590,10 @@ def test_server_alive_keeps_a_base_on_permission_error(
 
 
 def test_cleanup_keeps_a_base_whose_server_restarted_after_shutdown(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    tmp_path: Path,
 ) -> None:
     run, prepared = bazel_run(tmp_path)
     base = make_base(prepared)
-    fake_bazel(monkeypatch)
     stopped = run_host.shutdown_bazel(run, prepared)
     assert stopped[base][0] == "rc=0"
     (base / "server").mkdir()
@@ -5667,7 +5611,6 @@ def test_cleanup_refuses_a_base_swapped_for_a_symlink_before_removal(
     victim = tmp_path / "victim"
     victim.mkdir()
     (victim / "file").write_text("keep")
-    fake_bazel(monkeypatch)
     stopped = run_host.shutdown_bazel(run, prepared)
     original = run_host._server_alive  # noqa: SLF001
 
@@ -5692,7 +5635,6 @@ def test_cleanup_deletes_through_the_validated_ancestors_after_a_swap(
     victim = tmp_path / "victim"
     (victim / base.name).mkdir(parents=True)
     (victim / base.name / "file").write_text("keep")
-    fake_bazel(monkeypatch)
     stopped = run_host.shutdown_bazel(run, prepared)
     original = run_host._server_alive  # noqa: SLF001
 
@@ -5712,7 +5654,6 @@ def test_cleanup_refuses_a_base_replaced_by_another_directory_before_removal(
 ) -> None:
     run, prepared = bazel_run(tmp_path)
     base = make_base(prepared)
-    fake_bazel(monkeypatch)
     stopped = run_host.shutdown_bazel(run, prepared)
     original = run_host._server_alive  # noqa: SLF001
 
@@ -5727,27 +5668,21 @@ def test_cleanup_refuses_a_base_replaced_by_another_directory_before_removal(
     assert (base / "file").is_file()
 
 
-def test_cleanup_unlinks_relative_links_into_a_deleted_base(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_cleanup_unlinks_relative_links_into_a_deleted_base(tmp_path: Path) -> None:
     run, prepared = bazel_run(tmp_path)
     worktree = Path(prepared.paths.worktree)
     base = make_base(prepared)
     (base / "execroot").mkdir()
     (worktree / "bazel-rel").symlink_to(os.path.relpath(base / "execroot", worktree))
     (worktree / "bazel-keep").symlink_to("../nowhere")
-    fake_bazel(monkeypatch)
     assert stop_and_clean(run, prepared)["bases"] == 1
     assert not (worktree / "bazel-rel").is_symlink()
     assert (worktree / "bazel-keep").is_symlink()
 
 
-def test_cleanup_keeps_a_base_that_vanished_after_shutdown(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_cleanup_keeps_a_base_that_vanished_after_shutdown(tmp_path: Path) -> None:
     run, prepared = bazel_run(tmp_path)
     base = make_base(prepared)
-    fake_bazel(monkeypatch)
     stopped = run_host.shutdown_bazel(run, prepared)
     base.rmdir()
     assert run_host.cleanup_bazel(run, prepared, stopped)["bases"] == 0
@@ -5775,7 +5710,6 @@ def test_failed_deletion_reports_no_counts(
 ) -> None:
     run, prepared = bazel_run(tmp_path)
     make_base(prepared)
-    fake_bazel(monkeypatch)
 
     def rmtree(*_args: object, **_options: object) -> None:
         if mode == "error":
@@ -5793,7 +5727,6 @@ def test_finish_survives_a_locked_base_and_a_failing_cleanup(
     base = make_base(prepared)
     (base / "dead").mkdir()
     (base / "dead").chmod(0)
-    fake_bazel(monkeypatch)
     entries: list[dict[str, object]] = []
 
     def record(_root: Path, entry: dict[str, object]) -> None:
