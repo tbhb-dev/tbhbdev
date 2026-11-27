@@ -19,9 +19,10 @@ from fake_tool import pythonpath
 from hypothesis import given
 from hypothesis import strategies as st
 
-from tbhbdev.alpha import close, install, opened, pull_request, squash_merge
+from tbhbdev.alpha import close, install, opened, pull_request
 from tbhbdev.alpha import guard_gh_pr as guard
 from tbhbdev.alpha.identity import dispatcher as ai
+from tbhbdev.alpha.merge import options as squash_merge
 
 DATA = Path(__file__).parent / "testdata" / "alpha"
 SRC = Path(guard.__file__).parents[2]

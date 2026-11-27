@@ -195,7 +195,7 @@ def repo_command(argv: list[str], prog: str) -> int:
 
 
 def merge(argv: list[str], prog: str) -> int:
-    from tbhbdev.alpha.squash_merge import main as merge_main  # noqa: PLC0415 -- see the docstring
+    from tbhbdev.alpha.merge.command import main as merge_main  # noqa: PLC0415 -- see the docstring
 
     return merge_main(argv, prog=prog)
 
