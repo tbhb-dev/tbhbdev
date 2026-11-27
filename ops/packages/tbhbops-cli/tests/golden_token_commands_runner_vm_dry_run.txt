@@ -13,11 +13,11 @@ set -eu
 echo 'op vault list --account acct.example.com --format json'
 # Live, it creates each of these vaults that the list lacks, and prints
 # created vault <name> for each one:
-echo 'op vault create --account acct.example.com runner-fixture'
 echo 'op vault create --account acct.example.com host-ex-lab1'
+echo 'op vault create --account acct.example.com runner-fixture'
 
-echo 'op connect vault grant --account acct.example.com --server srv --vault runner-fixture'
 echo 'op connect vault grant --account acct.example.com --server srv --vault host-ex-lab1'
+echo 'op connect vault grant --account acct.example.com --server srv --vault runner-fixture'
 
 # runner-vm ex-lab1-ci
 # Live, it skips this host if this succeeds:

@@ -64,7 +64,7 @@ go_arch_lint_test(
 
 go_mod_tidy_test(
     name = "go_mod_tidy_test",
-    srcs = [":repo_files"],
+    srcs = ["//:repo_files"],
     go_mod = "//:go.mod",
     go_sum = "//:go.sum",
     proxy = "@go_mod_proxy//:proxy",

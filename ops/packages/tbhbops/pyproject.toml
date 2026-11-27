@@ -12,7 +12,7 @@ dependencies = []
 yaml = ["pyyaml>=6.0.3"]
 
 [dependency-groups]
-test = ["ansible-core==2.22.0", "pyyaml>=6.0.3"]
+test = ["ansible-core==2.22.0", "jinja2>=3.1.6", "pyyaml>=6.0.3", "uv>=0.13.0,<0.14"]
 
 [tool.pytest]
 addopts = ["-ra", "--strict-markers", "--strict-config", "--import-mode=importlib"]

@@ -100,6 +100,12 @@ local_path_override(
     path = "lib/rules/ansible",
 )
 
+ansible = use_extension("@tbhb_rules_ansible//:extensions.bzl", "ansible")
+ansible.collections(
+    lock = "//ops/ansible:requirements.lock.json",
+    requirements = "//ops/ansible:requirements.yml",
+)
+
 bazel_dep(name = "tbhb_rules_python", version = "0.0.0")
 local_path_override(
     module_name = "tbhb_rules_python",

@@ -3,9 +3,9 @@
 
 ---
 # Import contracts for Go packages in this repository.
-# Add the front and lib components when they contain Go packages.
-# For stdlib-only-front, keep vendor access disabled and allow imports
-# from lib only. The lib component may depend on lib.
+# Stub for the Go CLI port (stdlib-only-front): enable `front` and `lib`
+# when their directories exist. Keep `front` free of `canUse` vendor
+# entries so `depOnAnyVendor: false` keeps the front layer stdlib-only.
 version: 3
 
 allow:
@@ -13,7 +13,9 @@ allow:
   deepScan: false
 
 components:
-  agent-capacity-cmd: {in: factory/agent-capacity/cmd/*}
+  # front: {in: "**/front/**"}
+  # lib: {in: lib/**}
+  agent-capacity-cmd: {in: factory/agent-capacity/cmd/agent-capacity}
   agent-capacity-capacity: {in: factory/agent-capacity/internal/capacity}
   agent-capacity-keepalive: {in: factory/agent-capacity/internal/keepalive}
   agent-capacity-spool: {in: factory/agent-capacity/internal/spool}
@@ -24,15 +26,28 @@ components:
   agent-capacity-codex: {in: factory/agent-capacity/internal/source/codex}
 
 vendors:
-  otel: {in: [go.opentelemetry.io/otel, go.opentelemetry.io/otel/**]}
+  otel: {in: go.opentelemetry.io/otel/**}
+  otel-root: {in: go.opentelemetry.io/otel}
   testify: {in: github.com/stretchr/testify/**}
   pty: {in: github.com/creack/pty}
   sys: {in: golang.org/x/sys/**}
 
 deps:
+  # front:
+  #   mayDependOn: [lib]
+  # lib:
+  #   mayDependOn: [lib]
   agent-capacity-cmd:
-    mayDependOn: [agent-capacity-cmd, agent-capacity-capacity, agent-capacity-export, agent-capacity-codex, agent-capacity-spool, agent-capacity-claude, agent-capacity-agy, agent-capacity-session]
-    canUse: [otel, testify]
+    mayDependOn:
+      - agent-capacity-agy
+      - agent-capacity-capacity
+      - agent-capacity-claude
+      - agent-capacity-cmd
+      - agent-capacity-codex
+      - agent-capacity-export
+      - agent-capacity-session
+      - agent-capacity-spool
+    canUse: [otel, otel-root, testify]
   agent-capacity-capacity:
     mayDependOn: [agent-capacity-capacity]
     canUse: [testify]

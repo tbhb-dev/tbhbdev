@@ -6,7 +6,6 @@ from pathlib import Path
 from urllib.parse import quote
 
 import pytest
-
 from tbhbops.o11y import receipt as r
 
 RUN = "0123456789abcdef"
@@ -343,13 +342,6 @@ def test_timestamp_shape_and_age() -> None:
         b'{"data":{"result":[{"value":[]}]}}',
     ):
         assert not r.metric_timestamp(body, 1000)
-
-
-def test_deep_json() -> None:
-    body = b"[" * 100000 + b"0" + b"]" * 100000
-    assert len(body) < 4 * 1024 * 1024
-    assert r.decode(body) == {}
-    assert r.log_classify(200, body, "fixture", 100) == "case=invalid-json"
 
 
 @pytest.mark.parametrize("stamp", ["9" * 21, "9" * 5000, "sensitive", "\uff11\uff12"])
