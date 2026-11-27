@@ -1,0 +1,17 @@
+---
+argument_specs:
+  main:
+    short_description: Retire orphaned agent Bazel servers on Linux lab hosts
+    options:
+      bazel_server_reaper_enabled:
+        type: bool
+        default: true
+        description: Enable the per-minute timer. False disables and stops an existing timer.
+      bazel_server_reaper_dry_run:
+        type: bool
+        default: true
+        description: Log eligible servers without sending signals. Set false to send SIGTERM.
+      bazel_server_reaper_user:
+        type: str
+        default: agent
+        description: Only consider servers and launchers owned by this user.

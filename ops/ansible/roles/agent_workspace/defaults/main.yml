@@ -1,0 +1,15 @@
+---
+# The account the role runs as, and whose home holds the clones.
+agent_workspace_user: agent
+agent_workspace_home: "{{ ('/Users/' if ansible_facts.system == 'Darwin' else '/home/') + agent_workspace_user }}"
+agent_workspace_repos: []
+agent_workspace_private_clones: true
+agent_workspace_uv_version: "0.13.8"
+agent_workspace_tools: "{{ agent_workspace_root }}/github.com/tbhb-dev/tools"
+agent_workspace_path: "{{ agent_workspace_home }}/.local/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin"
+agent_workspace_lookup_command: env -u SSH_AUTH_SOCK tbhbdev secret read
+agent_workspace_connect_storage: "{{ 'native' if ansible_facts.system == 'Darwin' else 'file' }}"
+agent_workspace_connect_file: >-
+  {{ [agent_workspace_home, '.config', 'tbhbdev'] | join('/') }}/{{
+  'connect-token' if ansible_facts.system == 'Darwin' else 'secrets/connect-token' }}
+agent_workspace_gh_config_dir: "{{ [agent_workspace_home, '.config', 'gh-agent'] | join('/') }}"

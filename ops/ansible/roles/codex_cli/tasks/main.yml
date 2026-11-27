@@ -1,0 +1,123 @@
+---
+# Runs as the agent account, so nothing under its home ends up root-owned.
+# The role never acts on any other account, and never touches ~/.codex.
+- name: Check the account name
+  ansible.builtin.assert:
+    that:
+      - codex_cli_account not in ['root', 'tony']
+      - codex_cli_version is match('^[0-9]+[.][0-9]+[.][0-9]+$')
+      - codex_cli_platform in codex_cli_sha256
+    fail_msg: >-
+      codex_cli_account must be the agent account, never root or tony, and the version a plain x.y.z;
+      the host must be Apple silicon macOS or Linux on x86_64 or aarch64
+    quiet: true
+
+# getent is missing on macOS, and Python 3 is on every agent host.
+- name: Find the account's home
+  ansible.builtin.command:
+    argv:
+      - python3
+      - -c
+      - import pwd,sys; print(pwd.getpwnam(sys.argv[1]).pw_dir)
+      - "{{ codex_cli_account }}"
+  register: codex_cli_passwd
+  changed_when: false
+  check_mode: false
+  failed_when: false
+
+# agent_account creates the account earlier in the same play on a first run,
+# so a missing account here means a host that skipped it.
+- name: Note a missing account
+  ansible.builtin.debug:
+    msg: "{{ codex_cli_account }} doesn't exist yet, so Codex waits for the next run"
+  when: codex_cli_passwd.rc != 0
+
+- name: Install beside the other versions
+  when: codex_cli_install | bool and codex_cli_passwd.rc == 0
+  become: true
+  become_user: "{{ codex_cli_account }}"
+  block:
+    - name: Check the home
+      ansible.builtin.assert:
+        that: codex_cli_home is match('^/[^ ]+$') and codex_cli_home is not match('.*/(root|tony)$')
+        fail_msg: "{{ codex_cli_home }} is not a home this role installs into"
+        quiet: true
+
+    - name: Create the version directory
+      ansible.builtin.file:
+        path: "{{ item }}"
+        state: directory
+        mode: "0755"
+      loop:
+        - "{{ codex_cli_home }}/.local"
+        - "{{ codex_cli_home }}/.local/share"
+        - "{{ codex_cli_home }}/.local/share/codex"
+        - "{{ codex_cli_dir }}"
+      register: codex_cli_version_dir
+
+    # The checksum pins the archive, so a changed asset fails the download.
+    - name: Download the release archive
+      ansible.builtin.get_url:
+        url: >-
+          https://github.com/openai/codex/releases/download/rust-v{{ codex_cli_version }}/codex-{{
+          codex_cli_platform }}.tar.gz
+        dest: "{{ codex_cli_dir }}/codex-{{ codex_cli_platform }}.tar.gz"
+        checksum: sha256:{{ codex_cli_sha256[codex_cli_platform] }}
+        mode: "0644"
+      register: codex_cli_archive
+      when: not (ansible_check_mode and codex_cli_version_dir is changed)
+
+    # A check run can't unpack an archive it would only download.
+    - name: Unpack the binary
+      ansible.builtin.command:
+        argv:
+          - tar
+          - -xzf
+          - "{{ codex_cli_dir }}/codex-{{ codex_cli_platform }}.tar.gz"
+          - -C
+          - "{{ codex_cli_dir }}"
+        creates: "{{ codex_cli_binary }}"
+      register: codex_cli_unpacked
+      when: not (ansible_check_mode and (codex_cli_version_dir is changed or codex_cli_archive is changed))
+
+    - name: Make the binary executable
+      ansible.builtin.file:
+        path: "{{ codex_cli_binary }}"
+        mode: "0755"
+      when: >-
+        not (ansible_check_mode and (codex_cli_version_dir is changed or
+        codex_cli_archive is changed or codex_cli_unpacked is changed))
+
+    - name: Check the version
+      ansible.builtin.command:
+        argv: ["{{ codex_cli_binary }}", "--version"]
+      register: codex_cli_reported
+      changed_when: false
+      when: not ansible_check_mode
+
+    - name: Require the pinned version
+      ansible.builtin.assert:
+        that: codex_cli_reported.stdout is search(codex_cli_version | regex_escape ~ '$')
+        fail_msg: >-
+          {{ codex_cli_binary }} reports {{ codex_cli_reported.stdout }},
+          not {{ codex_cli_version }}
+        quiet: true
+      when: not ansible_check_mode
+
+    # The switch is its own step. Pointing the link back at an older version
+    # rolls it back.
+    - name: Create the link directory
+      ansible.builtin.file:
+        path: "{{ codex_cli_home }}/.local/bin"
+        state: directory
+        mode: "0755"
+      when: codex_cli_activate | bool
+
+    - name: Point the active link at this version
+      ansible.builtin.file:
+        src: "{{ codex_cli_binary }}"
+        dest: "{{ codex_cli_home }}/.local/bin/codex"
+        state: link
+        # In check mode the predicted binary has not been unpacked yet.
+        force: "{{ ansible_check_mode }}"
+      when: codex_cli_activate | bool

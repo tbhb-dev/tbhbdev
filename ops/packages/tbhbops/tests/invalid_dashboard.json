@@ -1,0 +1,14 @@
+{
+  "uid": "o11y-invalid",
+  "title": "Invalid",
+  "description": "Deliberately invalid: the panel names a datasource uid that no provisioned datasource has. tools/validate.sh requires its dashboard check to reject this file.",
+  "panels": [
+    {
+      "id": 1,
+      "title": "Missing datasource",
+      "type": "timeseries",
+      "targets": [{ "refId": "A", "expr": "up" }],
+      "datasource": { "type": "prometheus", "uid": "not-a-datasource" }
+    }
+  ]
+}

@@ -1,0 +1,47 @@
+#cloud-config
+# {{ ansible_managed }}
+# Applied at the VM's first boot only. An edit reaches no existing VM.
+hostname: {{ ci_vm_name }}
+manage_etc_hosts: true
+# No default user: ops is the only account.
+users:
+  - name: ops
+    shell: /bin/bash
+    lock_passwd: true
+    sudo: ALL=(ALL) NOPASSWD:ALL
+    ssh_authorized_keys:
+{% for key in ci_vm_admin_keys %}
+      - {{ key | to_json }}
+{% endfor %}
+disable_root: true
+ssh_pwauth: false
+write_files:
+  - path: /etc/apt/keyrings/tailscale.asc
+    permissions: "0644"
+    content: |
+{{ lookup('ansible.builtin.file', 'tailscale.asc') | indent(6, true) }}
+  - path: /etc/apt/sources.list.d/tailscale.sources
+    permissions: "0644"
+    content: |
+      Types: deb
+      URIs: {{ ci_vm_tailscale_repo }}
+      Suites: resolute
+      Components: main
+      Signed-By: /etc/apt/keyrings/tailscale.asc
+{% if ci_vm_key_minted | default(false) %}
+  # A single-use key, minted for this VM and deleted once tailscale up has run.
+  - path: /etc/tailscale/authkey
+    permissions: "0600"
+    content: {{ ci_vm_tailscale_key_result.json.key | to_json }}
+{% endif %}
+package_update: true
+packages:
+  - tailscale
+{% if ci_vm_key_minted | default(false) %}
+# runcmd follows the package install. The file goes whether or not the join worked.
+runcmd:
+  - >-
+    tailscale up --auth-key=file:/etc/tailscale/authkey
+    --advertise-tags={{ ci_vm_tailscale_tag }} --hostname={{ ci_vm_name }};
+    status=$?; rm -f /etc/tailscale/authkey; exit $status
+{% endif %}

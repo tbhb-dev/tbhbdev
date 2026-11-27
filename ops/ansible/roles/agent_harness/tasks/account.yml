@@ -1,0 +1,149 @@
+---
+- name: account | Require absolute paths for the account
+  ansible.builtin.assert:
+    that:
+      - agent_harness_home is match('^/')
+      - agent_harness_repository is match('^/')
+      - agent_harness_account.workspace | default(agent_harness_home) is match('^/')
+      - agent_harness_signing_key is match('^/')
+      - agent_harness_signing_program is match('^/')
+
+- name: account | Configure the account's harness without interactive authentication
+  become: true
+  become_user: "{{ agent_harness_account.name }}"
+  environment: "{{ agent_harness_process_environment }}"
+  block:
+    - name: account | Inspect prerequisites without reading their contents
+      ansible.builtin.stat:
+        path: "{{ item }}"
+        follow: true
+      loop: "{{ agent_harness_prerequisite_paths }}"
+      register: agent_harness_prerequisites
+
+    - name: account | Require existing workspace, and signing files
+      ansible.builtin.assert:
+        that: item.stat.exists
+        fail_msg: >-
+          Cannot apply {{ item.item }} for {{ agent_harness_account.name }}:
+          prerequisite is missing; no interactive bootstrap is attempted.
+      loop: "{{ agent_harness_prerequisites.results }}"
+      loop_control:
+        label: "{{ item.item }}"
+
+    - name: account | Require an executable agent signing wrapper
+      ansible.builtin.assert:
+        that: >-
+          (agent_harness_prerequisites.results | selectattr('item', 'equalto', agent_harness_signing_program)
+          | first).stat.executable
+        fail_msg: "Cannot apply {{ agent_harness_signing_program }}: the agent signing wrapper is not executable."
+
+    # The installer needs prek for the clone's git hooks, or mise to supply it.
+    # Accounts with either keep working as they are. Only an account with
+    # neither gets the version pinned in the clone's mise.lock; the ops root
+    # lock pins none. Both lookups use the installer's PATH, and run in check
+    # mode too, so a check sees what an apply would do.
+    - name: account | Look for prek and mise
+      ansible.builtin.command:
+        argv: ["{{ agent_harness_tool }}", --version]
+        chdir: "{{ agent_harness_home }}"
+      loop: [prek, mise]
+      loop_control:
+        loop_var: agent_harness_tool
+      register: agent_harness_tools
+      changed_when: false
+      failed_when: false
+      check_mode: false
+
+    - name: account | Note whether prek must be installed
+      ansible.builtin.set_fact:
+        agent_harness_prek_pending: >-
+          {{ agent_harness_tools.results | map(attribute='rc') | select('ne', 0) | list | length == 2 }}
+
+    - name: account | Inspect the clone's mise.lock
+      ansible.builtin.stat:
+        path: "{{ agent_harness_repository }}/mise.lock"
+        follow: true
+      register: agent_harness_mise_lock
+      when: agent_harness_prek_pending
+
+    - name: account | Read the clone's mise.lock
+      ansible.builtin.slurp:
+        src: "{{ agent_harness_repository }}/mise.lock"
+      register: agent_harness_mise_lock_content
+      when: agent_harness_prek_pending and agent_harness_mise_lock.stat.exists
+
+    - name: account | Take the prek version from the clone's mise.lock
+      ansible.builtin.set_fact:
+        agent_harness_prek_version: >-
+          {{ (agent_harness_mise_lock_content.content | b64decode)
+          | regex_search('(?m)^\[\[tools\.prek\]\]\nversion = "([0-9]+\.[0-9]+\.[0-9]+)"', '\1')
+          | default([], true) | first | default('', true) if agent_harness_mise_lock.stat.exists else '' }}
+      when: agent_harness_prek_pending
+
+    - name: account | Require a pinned prek version when prek and mise are missing
+      ansible.builtin.assert:
+        that: agent_harness_prek_version | length > 0
+        fail_msg: >-
+          Cannot install prek for {{ agent_harness_account.name }}: prek and mise are missing, and
+          {{ agent_harness_repository }}/mise.lock is missing or has no [[tools.prek]] version pin.
+          Install prek, or set repository on the account to a clone that pins it.
+        quiet: true
+      when: agent_harness_prek_pending
+
+    - name: account | Install the pinned prek with uv
+      ansible.builtin.command:
+        argv: [uv, tool, install, "prek=={{ agent_harness_prek_version }}"]
+        chdir: "{{ agent_harness_home }}"
+      environment:
+        UV_TOOL_BIN_DIR: "{{ agent_harness_home }}/.local/bin"
+      when: agent_harness_prek_pending and not ansible_check_mode
+      changed_when: true
+
+    - name: account | Report the prek install in check mode
+      ansible.builtin.debug:
+        msg: >-
+          Would install prek {{ agent_harness_prek_version }} for {{ agent_harness_account.name }};
+          the installer's dry run needs it, so check mode skips that dry run.
+      changed_when: true
+      when: agent_harness_prek_pending and ansible_check_mode
+
+    - name: account | Install or preview the user harness hooks
+      block:
+        - name: account | Run the harness installer with stdin closed
+          ansible.builtin.command:
+            argv: "{{ ['tbhbdev', 'alpha', 'install'] + (['--dry-run'] if ansible_check_mode else []) }}"
+            chdir: "{{ agent_harness_repository }}"
+            stdin: ""
+          register: agent_harness_install
+          changed_when: >-
+            'wrote ' in agent_harness_install.stdout or
+            'installed git hooks' in agent_harness_install.stdout or
+            (ansible_check_mode and ('--- ' in agent_harness_install.stdout or
+            'would install' in agent_harness_install.stdout))
+          check_mode: false
+          when: not (ansible_check_mode and agent_harness_prek_pending)
+          no_log: true
+      rescue:
+        - name: account | Name the harness files when installation fails
+          ansible.builtin.fail:
+            msg: >-
+              Cannot install harness files: {{ agent_harness_repository }}/.git/hooks,
+              {{ agent_harness_home }}/.claude/settings.json, {{ agent_harness_home }}/.codex/hooks.json,
+              {{ agent_harness_home }}/.gemini/config/hooks.json. No prompting fallback is allowed.
+
+    - name: account | Merge only the agent environment keys
+      ansible.builtin.include_tasks: settings.yml
+      loop:
+        - path: "{{ agent_harness_home }}/.claude/settings.json"
+          format: json
+          overlay:
+            env: "{{ agent_harness_environment | combine(agent_harness_claude_environment) }}"
+        - path: "{{ agent_harness_home }}/.codex/config.toml"
+          format: toml
+          mode: '0600'
+          overlay:
+            shell_environment_policy:
+              set: "{{ agent_harness_environment }}"
+      loop_control:
+        loop_var: agent_harness_settings
+        label: "{{ agent_harness_settings.path }}"

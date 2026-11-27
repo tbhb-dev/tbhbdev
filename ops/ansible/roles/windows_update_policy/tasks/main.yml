@@ -1,0 +1,67 @@
+---
+- name: Require a Windows host and valid update timing
+  ansible.builtin.assert:
+    that:
+      - ansible_facts.os_family == 'Windows'
+      - windows_update_policy_updates.DeferQualityUpdatesPeriodInDays >= 0
+      - windows_update_policy_updates.DeferQualityUpdatesPeriodInDays <= 30
+      - windows_update_policy_updates.DeferFeatureUpdatesPeriodInDays >= 0
+      - windows_update_policy_updates.DeferFeatureUpdatesPeriodInDays <= 365
+      - windows_update_policy_automatic_updates.ScheduledInstallTime >= 0
+      - windows_update_policy_automatic_updates.ScheduledInstallTime <= 23
+    quiet: true
+
+- name: Keep the Ubuntu WSL guest running
+  ansible.windows.win_powershell:
+    script: "{{ lookup('ansible.builtin.file', 'set-wsl-triggers.ps1') }}"
+    parameters:
+      Subscription: "{{ windows_update_policy_wsl_subscription }}"
+      Interval: "{{ windows_update_policy_wsl_interval }}"
+      BootDelay: "{{ windows_update_policy_wsl_boot_delay }}"
+      EventDelay: "{{ windows_update_policy_wsl_event_delay }}"
+      StartBoundary: "{{ windows_update_policy_wsl_start_boundary }}"
+
+- name: Configure update deferrals
+  ansible.windows.win_regedit:
+    path: HKLM:\SOFTWARE\Policies\Microsoft\Windows\WindowsUpdate
+    name: "{{ item.key }}"
+    data: "{{ item.value }}"
+    type: dword
+    state: present
+  loop: "{{ windows_update_policy_updates | dict2items }}"
+  loop_control:
+    label: "{{ item.key }}={{ item.value }}"
+
+- name: Configure automatic update installation
+  ansible.windows.win_regedit:
+    path: HKLM:\SOFTWARE\Policies\Microsoft\Windows\WindowsUpdate\AU
+    name: "{{ item.key }}"
+    data: "{{ item.value }}"
+    type: dword
+    state: present
+  loop: "{{ windows_update_policy_automatic_updates | dict2items }}"
+  loop_control:
+    label: "{{ item.key }}={{ item.value }}"
+
+# Read the real host even in check mode; do not mistake predicted writes
+# for applied state. A check before the first apply reports the drift.
+- name: Read back the WSL task and update policy
+  ansible.windows.win_powershell:
+    depth: 5
+    script: "{{ lookup('ansible.builtin.file', 'read-back.ps1') }}"
+    parameters:
+      Updates: "{{ windows_update_policy_updates | to_json }}"
+      AutomaticUpdates: "{{ windows_update_policy_automatic_updates | to_json }}"
+  register: windows_update_policy_read_back
+  check_mode: false
+  changed_when: false
+
+- name: Show the WSL task and update policy read-back
+  ansible.builtin.debug:
+    var: windows_update_policy_read_back.result
+
+- name: Require the WSL task and update policy to match
+  ansible.builtin.assert:
+    that: windows_update_policy_read_back.result.mismatches | length == 0
+    fail_msg: "{{ windows_update_policy_read_back.result.mismatches }}"
+    quiet: true

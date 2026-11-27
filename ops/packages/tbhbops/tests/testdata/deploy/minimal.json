@@ -1,0 +1,19 @@
+{
+  "name": "o11y",
+  "networks": {
+    "default": {
+      "ipam": {},
+      "name": "o11y_default"
+    }
+  },
+  "services": {
+    "web": {
+      "command": null,
+      "entrypoint": null,
+      "image": "registry.example/web@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "networks": {
+        "default": null
+      }
+    }
+  }
+}

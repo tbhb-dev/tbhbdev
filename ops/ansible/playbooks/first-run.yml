@@ -1,0 +1,16 @@
+---
+# The files for a host's first run, before ops exists on it. Nothing here
+# connects to a host: each one is rendered on this machine from its inventory
+# vars, which ops_accounts also reads. A lab node gets <host>/user-data for
+# its Ubuntu autoinstall, and a Mac gets <host>/ops-authorized-keys for
+# ansible/scripts/first-run-macos.sh. See docs/lab/first-run.md.
+#   mise run playbook -- playbooks/first-run.yml -e first_run_dir=DIR --limit HOST
+# A host with no ops key fails before it writes anything.
+- name: Render the first-run files
+  hosts: lab:lab_macos:operator_macs
+  gather_facts: false
+  tasks:
+    - name: Render the files for this host
+      ansible.builtin.include_role:
+        name: ops_accounts
+        tasks_from: first-run.yml

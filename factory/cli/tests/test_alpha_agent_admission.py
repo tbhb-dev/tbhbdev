@@ -14,8 +14,8 @@ from typing import TYPE_CHECKING
 import pytest
 from agent_example import LINUX
 
-from tbhbdev.alpha import agent
 from tbhbdev.alpha.agent import admission
+from tbhbdev.alpha.agent import command as agent
 from tbhbdev.alpha.agent.model import Invalid, Profile
 
 if TYPE_CHECKING:

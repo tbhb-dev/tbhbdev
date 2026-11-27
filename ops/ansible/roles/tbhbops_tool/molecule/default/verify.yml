@@ -1,0 +1,162 @@
+---
+- name: Verify
+  hosts: all
+  become: true
+  become_user: ops
+  environment:
+    HOME: /home/ops
+    UV_PYTHON_INSTALL_DIR: /home/ops/.local/share/tbhbops-tool/python
+  vars:
+    tbhbops_tool_commit: 86922cc7b48e2adf9e89ebac6d30014d38cf04d0
+    tbhbops_tool_cache: "/home/ops/.cache/tbhbops-tool/{{ tbhbops_tool_commit }}"
+  tasks:
+    - name: Read the tool account home
+      ansible.builtin.getent:
+        database: passwd
+        key: ops
+
+    - name: Resolve the venv interpreter
+      ansible.builtin.command:
+        argv: [realpath, /home/ops/.local/share/tbhbops-tool/venv/bin/python]
+      register: tbhbops_tool_verified_interpreter
+      changed_when: false
+
+    - name: Require the interpreter under the tool account home
+      ansible.builtin.assert:
+        that:
+          - tbhbops_tool_verified_interpreter.stdout.startswith(ansible_facts.getent_passwd['ops'][4] + '/')
+        quiet: true
+
+    - name: Run tbhbops as its user
+      ansible.builtin.command:
+        argv: [/home/ops/.local/bin/tbhbops, --help]
+      register: tbhbops_tool_verified_help
+      changed_when: false
+
+    - name: Check the o11y commands
+      ansible.builtin.command:
+        argv: [/home/ops/.local/bin/tbhbops, o11y, --help]
+      register: tbhbops_tool_verified_o11y
+      changed_when: false
+
+    - name: Read the copied requirements
+      ansible.builtin.slurp:
+        src: "{{ tbhbops_tool_cache }}/requirements.txt"
+      register: tbhbops_tool_verified_requirements
+
+    - name: Hash the copied requirements
+      ansible.builtin.stat:
+        path: "{{ tbhbops_tool_cache }}/requirements.txt"
+        checksum_algorithm: sha256
+      register: tbhbops_tool_verified_digest
+
+    - name: Read the installed commit record
+      ansible.builtin.slurp:
+        src: /home/ops/.local/share/tbhbops-tool/marker
+      register: tbhbops_tool_verified_marker
+
+    - name: Read the installed third-party version
+      ansible.builtin.command:
+        argv:
+          - /home/ops/.local/share/tbhbops-tool/venv/bin/python
+          - -c
+          - "from importlib.metadata import version; print(version('pyyaml'))"
+      register: tbhbops_tool_verified_dependency
+      changed_when: false
+
+    - name: Assemble the expected installed marker
+      ansible.builtin.set_fact:
+        tbhbops_tool_verified_expected_marker: |
+          commit={{ tbhbops_tool_commit }}
+          requirements_sha256={{ tbhbops_tool_verified_digest.stat.checksum }}
+
+    - name: Check the pinned dependency and marker
+      ansible.builtin.assert:
+        that:
+          - >-
+              ('pyyaml==' ~ tbhbops_tool_verified_dependency.stdout ~ ' ') in
+              (tbhbops_tool_verified_requirements.content | b64decode)
+          - >-
+              (tbhbops_tool_verified_marker.content | b64decode) ==
+              tbhbops_tool_verified_expected_marker
+          - "'init' in tbhbops_tool_verified_o11y.stdout"
+          - "'render' in tbhbops_tool_verified_o11y.stdout"
+        quiet: true
+
+    - name: Show the verified commands and dependency pin
+      ansible.builtin.debug:
+        msg:
+          - "{{ tbhbops_tool_verified_help.stdout }}"
+          - "{{ tbhbops_tool_verified_o11y.stdout }}"
+          - "pyyaml=={{ tbhbops_tool_verified_dependency.stdout }} matches requirements.txt"
+          - "requirements_sha256={{ tbhbops_tool_verified_digest.stat.checksum }}"
+
+    - name: Prove hash enforcement in an isolated venv
+      block:
+        - name: Create the negative test scratch directory
+          ansible.builtin.tempfile:
+            state: directory
+            prefix: tbhbops-hash-test-
+          register: tbhbops_tool_negative
+
+        - name: Copy the requirements for the negative check
+          ansible.builtin.copy:
+            src: "{{ tbhbops_tool_cache }}/requirements.txt"
+            dest: "{{ tbhbops_tool_negative.path }}/requirements.txt"
+            remote_src: true
+            mode: '0600'
+
+        - name: Corrupt only the CLI wheel hash in the copied requirements
+          ansible.builtin.replace:
+            path: "{{ tbhbops_tool_negative.path }}/requirements.txt"
+            regexp: '^(tbhbops-cli @ .+ --hash=sha256:)[0-9a-f]{64}$'
+            replace: '\g<1>0000000000000000000000000000000000000000000000000000000000000000'
+          register: tbhbops_tool_corrupted
+
+        - name: Create the isolated negative test venv
+          ansible.builtin.command:
+            argv:
+              - /home/ops/.local/bin/uv
+              - venv
+              - --python
+              - /home/ops/.local/share/tbhbops-tool/venv/bin/python
+              - "{{ tbhbops_tool_negative.path }}/venv"
+          changed_when: true
+
+        - name: Attempt installation with the corrupted hash and no cache
+          ansible.builtin.command:
+            argv:
+              - /home/ops/.local/bin/uv
+              - pip
+              - install
+              - --python
+              - "{{ tbhbops_tool_negative.path }}/venv/bin/python"
+              - --require-hashes
+              - --no-deps
+              - --no-cache
+              - -r
+              - "{{ tbhbops_tool_negative.path }}/requirements.txt"
+          register: tbhbops_tool_negative_result
+          changed_when: false
+          failed_when: false
+
+        - name: Require rejection specifically for the corrupted CLI wheel hash
+          ansible.builtin.assert:
+            that:
+              - tbhbops_tool_corrupted.changed
+              - tbhbops_tool_negative_result.rc != 0
+              - "'Hash mismatch' in tbhbops_tool_negative_result.stderr"
+              - "'tbhbops-cli' in tbhbops_tool_negative_result.stderr"
+            quiet: true
+
+        - name: Show the negative hash check
+          ansible.builtin.debug:
+            msg:
+              - "Corrupted CLI wheel hash rejected: rc={{ tbhbops_tool_negative_result.rc }}"
+              - "{{ tbhbops_tool_negative_result.stderr }}"
+      always:
+        - name: Remove the negative test scratch directory
+          ansible.builtin.file:
+            path: "{{ tbhbops_tool_negative.path }}"
+            state: absent
+          when: tbhbops_tool_negative.path is defined

@@ -1,0 +1,29 @@
+---
+- name: Converge
+  hosts: all
+  vars:
+    tbhbops_tool_user: ops
+    tbhbops_tool_repo: "{{ playbook_dir }}/../../../../.."
+  roles:
+    - tbhbops_tool
+  post_tasks:
+    - name: Require both hosts to share one controller build in the same batch
+      ansible.builtin.assert:
+        that:
+          - ansible_play_batch | length == 2
+          - tbhbops_tool_source.path == hostvars[ansible_play_batch[0]].tbhbops_tool_source.path
+        quiet: true
+
+    - name: Look for the controller scratch directory after the role
+      ansible.builtin.stat:
+        path: "{{ tbhbops_tool_source.path }}"
+      delegate_to: localhost
+      become: false
+      check_mode: false
+      register: tbhbops_tool_scratch_after
+
+    - name: Require controller scratch cleanup
+      ansible.builtin.assert:
+        that:
+          - not tbhbops_tool_scratch_after.stat.exists
+        quiet: true

@@ -1,0 +1,93 @@
+---
+argument_specs:
+  main:
+    short_description: Deploy the observability stack with rollback
+    options:
+      <<: &rollback_options
+        o11y_root:
+          type: path
+          required: true
+          description: Absolute deployment root.
+        o11y_min_free_gib:
+          type: int
+          default: 50
+          description: Minimum free space in GiB on the deployment filesystem.
+        o11y_health_retries:
+          type: int
+          default: 30
+          description: Container health and exec probe retry count.
+        o11y_health_delay:
+          type: int
+          default: 5
+          description: Seconds between container health or exec probe retries.
+        o11y_ts_hostname:
+          type: str
+          default: ""
+          description: Tailscale hostname; empty disables the userspace sidecar.
+        o11y_fixed_addresses:
+          type: str
+          default: "false"
+          description: Use the live fixed container addresses when true.
+        o11y_grafana_tls_cert_dir:
+          type: str
+          default: ""
+          description: Absolute host certificate directory; empty disables the TLS proxy.
+      o11y_data_dir:
+        type: path
+        required: true
+        description: Absolute persistent data directory outside releases.
+      o11y_host_name:
+        type: str
+        required: true
+        description: Private telemetry host name.
+      o11y_grafana_root_url:
+        type: str
+        required: true
+        description: Eventual tailnet Grafana URL.
+      o11y_grafana_owner_login:
+        type: str
+        required: true
+        description: Grafana owner email login.
+      o11y_alert_email_to:
+        type: str
+        required: true
+        description: Alert recipient email.
+      o11y_alert_smtp_from:
+        type: str
+        required: true
+        description: Alert sender email.
+      o11y_alert_smtp_host:
+        type: str
+        required: true
+        description: SMTP host name.
+      o11y_alert_smtp_port:
+        type: int
+        required: true
+        description: SMTP port.
+      o11y_alert_smtp_user:
+        type: str
+        required: true
+        description: SMTP login.
+      o11y_alert_discord_webhook_ref:
+        type: str
+        required: true
+        description: Controller op:// reference for the Discord webhook.
+      o11y_alert_smtp_password_ref:
+        type: str
+        required: true
+        description: Controller op:// reference for the SMTP password.
+      o11y_secrets_vault:
+        type: str
+        required: true
+        description: Vault shared by both references.
+      o11y_lookup_command:
+        type: str
+        required: true
+        description: Controller lookup command invoked with a quoted reference.
+      o11y_release_id:
+        type: str
+        required: true
+        description: Full ops commit available on the controller.
+  rollback:
+    short_description: Return to the previous healthy release
+    options: *rollback_options

@@ -1,0 +1,10 @@
+---
+# The container runs no systemd, so Alloy and journald are left alone.
+- name: Converge
+  hosts: all
+  become: true
+  roles:
+    - role: host_telemetry
+      vars:
+        host_telemetry_run: false
+        host_telemetry_otlp_endpoint: http://otlp.example.example.invalid:4318

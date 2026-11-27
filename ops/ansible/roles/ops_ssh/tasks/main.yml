@@ -1,0 +1,25 @@
+---
+# The playbook runs prepare.yml first and arms the revert timer, so a
+# drop-in that locks the connection account out is gone within minutes.
+
+- name: Validate the candidate in check mode
+  ansible.builtin.include_tasks: check.yml
+  when: ansible_check_mode
+
+# The validator creates /run/sshd even before socket activation starts it.
+- name: Install the SSH drop-in
+  ansible.builtin.template:
+    src: sshd.conf.j2
+    dest: /etc/ssh/sshd_config.d/00-ops-ssh.conf
+    owner: root
+    group: root
+    mode: "0644"
+    validate: /usr/local/sbin/ops-sshd-validate %s
+  notify: Reload SSH
+
+# A later drop-in can shadow the installed one without changing it.
+- name: Validate the live SSH drop-in
+  ansible.builtin.command:
+    cmd: /usr/local/sbin/ops-sshd-validate /etc/ssh/sshd_config.d/00-ops-ssh.conf
+  changed_when: false
+  when: not ansible_check_mode

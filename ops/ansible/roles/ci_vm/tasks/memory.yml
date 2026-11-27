@@ -1,0 +1,62 @@
+---
+# Separate tasks let Molecule exercise the real reconciliation with a virsh stub.
+- name: memory | Reconcile an existing domain
+  when:
+    - ci_vm_hardware
+    - not (ansible_check_mode and ci_vm_dom.rc != 0)
+  block:
+    - name: memory | Read the persistent domain XML
+      ansible.builtin.command:
+        argv: [virsh, --connect=qemu:///system, dumpxml, --inactive, "{{ ci_vm_name }}"]
+      register: ci_vm_memory_xml
+      check_mode: false
+      changed_when: false
+
+    - name: memory | Parse configured memory in KiB
+      vars:
+        memory_re: '<memory\s+unit=[\x27"]KiB[\x27"]\s*>\s*([0-9]+)\s*</memory>'
+        current_re: '<currentMemory\s+unit=[\x27"]KiB[\x27"]\s*>\s*([0-9]+)\s*</currentMemory>'
+      ansible.builtin.set_fact:
+        ci_vm_memory_max_kib: "{{ ci_vm_memory_xml.stdout | regex_findall(memory_re) | first | int }}"
+        ci_vm_memory_current_kib: "{{ ci_vm_memory_xml.stdout | regex_findall(current_re) | first | int }}"
+        ci_vm_memory_target_kib: "{{ ci_vm_memory_mib | int * 1024 }}"
+
+    # Growing raises the maximum first; shrinking lowers currentMemory first,
+    # so currentMemory never exceeds memory. The stub rejects the reverse order.
+    - name: memory | Update persistent maximum and current memory
+      ansible.builtin.command:
+        argv:
+          - virsh
+          - --connect=qemu:///system
+          - "{{ item }}"
+          - "{{ ci_vm_name }}"
+          - "{{ ci_vm_memory_target_kib }}KiB"
+          - --config
+      loop: >-
+        {{ ['setmaxmem', 'setmem'] if ci_vm_memory_target_kib >= ci_vm_memory_max_kib
+        else ['setmem', 'setmaxmem'] }}
+      when: >-
+        ci_vm_memory_max_kib != ci_vm_memory_target_kib or
+        ci_vm_memory_current_kib != ci_vm_memory_target_kib
+      changed_when: true
+      register: ci_vm_memory_update
+
+    - name: memory | Read the domain state after a config change
+      # Read here so the operator sees the notice during this reconciliation.
+      ansible.builtin.command:  # noqa: no-handler
+        argv: [virsh, --connect=qemu:///system, domstate, "{{ ci_vm_name }}"]
+      check_mode: false
+      changed_when: false
+      register: ci_vm_memory_state
+      when: ci_vm_memory_update is changed
+
+    - name: memory | Explain how to apply the configured memory
+      ansible.builtin.debug:
+        msg: >-
+          {{ ci_vm_name }} has new configured memory. It takes effect at the VM's next shutdown
+          and start: the operator runs virsh shutdown {{ ci_vm_name }} then, once stopped,
+          virsh start {{ ci_vm_name }}. Never recreate the VM: Tailnet Lock requires @tbhb
+          to sign a new node key.
+      when:
+        - ci_vm_memory_update is changed
+        - ci_vm_memory_state.stdout | trim == 'running'

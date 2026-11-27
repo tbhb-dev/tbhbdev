@@ -11,11 +11,12 @@ from types import SimpleNamespace
 from typing import TYPE_CHECKING
 
 import pytest
+from agent_cli_example import run_agent
 from agent_driver_example import Remote, setup
 from agent_example import LINUX, MARKER, settings
 
-from tbhbdev.alpha import agent
 from tbhbdev.alpha.agent import driver
+from tbhbdev.alpha.agent import settings as agent_settings
 from tbhbdev.alpha.agent.decisions import limits, remote
 from tbhbdev.alpha.agent.model import Host, Invalid, Os, Profile, Settings
 
@@ -368,7 +369,7 @@ def host(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Remote:
     def load() -> Settings:
         return CONFIG
 
-    monkeypatch.setattr(agent.settings, "load", load)
+    monkeypatch.setattr(agent_settings, "load", load)
     return result
 
 
@@ -379,7 +380,7 @@ def launch(host: Remote, *options: str, target: str | None = "example-linux") ->
         "--model", "m", "--effort", "high", "--profile", "build", *options,
         "sample", str(host.prompt),
     ]  # fmt: skip
-    return agent.main(args, "example agent")
+    return run_agent(args)
 
 
 def test_a_busy_host_refuses_before_any_transfer(
@@ -401,7 +402,7 @@ def host_pool(host: Remote, monkeypatch: pytest.MonkeyPatch) -> Remote:
     laptop = dataclasses.replace(LINUX, name="example-laptop")
     mac = dataclasses.replace(CONFIG.hosts[1], auto_select=True)
     config = dataclasses.replace(CONFIG, hosts=(busy, active, idle, laptop, mac))
-    monkeypatch.setattr(agent.settings, "load", lambda: config)
+    monkeypatch.setattr(agent_settings, "load", lambda: config)
     host.configure(
         limits="1.5 32 33554432 16777216 100 0 -",
         limits_by_host={
@@ -452,7 +453,7 @@ def test_exec_preserves_preflight_time_after_a_slow_probe(
     config = dataclasses.replace(
         CONFIG, hosts=candidates, launch_wait_seconds=launch_wait
     )
-    monkeypatch.setattr(agent.settings, "load", lambda: config)
+    monkeypatch.setattr(agent_settings, "load", lambda: config)
     host.configure(
         limits="1 4 12582912 6291456 100 0 -",
         limits_by_host={preferred.name: "0.5 4 12582912 6291456 100 0 -"},
@@ -626,7 +627,7 @@ def test_a_disabled_host_refuses_even_with_limit_overrides(
     def load() -> Settings:
         return dataclasses.replace(CONFIG, hosts=(disabled, *CONFIG.hosts[1:]))
 
-    monkeypatch.setattr(agent.settings, "load", load)
+    monkeypatch.setattr(agent_settings, "load", load)
     assert launch(host, "--ignore-limits") == 1
     assert "max_concurrent_runs is 0" in capsys.readouterr().err
     assert host.records("ssh", limits=True) == []
@@ -655,7 +656,7 @@ def test_review_uses_its_own_reservation_at_the_boundary(
     def session(*_: object) -> tuple[str, None]:
         return "tools", None
 
-    monkeypatch.setattr(agent.settings, "load", load)
+    monkeypatch.setattr(agent_settings, "load", load)
     monkeypatch.setattr(driver.launcher, "session", session)
     host.configure(limits="0.5 4 4194304 1048575 0 0 -")
     with pytest.raises(Invalid, match="reservation 1024 MiB"):

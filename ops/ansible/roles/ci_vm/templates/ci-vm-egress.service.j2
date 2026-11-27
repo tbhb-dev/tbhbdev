@@ -1,0 +1,17 @@
+# {{ ansible_managed }}
+# Ubuntu's nftables.service starts from /etc/nftables.conf, which begins
+# with "flush ruleset", so this unit loads only its own table, after that
+# service and before libvirt starts the VM. A stop leaves the table in place.
+[Unit]
+Description=Load the CI VM egress table (table inet ci_vm_egress)
+After=nftables.service
+Before=libvirtd.service virtqemud.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/sbin/nft -f /etc/nftables.d/ci-vm-egress.nft
+ExecReload=/usr/sbin/nft -f /etc/nftables.d/ci-vm-egress.nft
+
+[Install]
+WantedBy=multi-user.target

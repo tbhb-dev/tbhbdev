@@ -1,0 +1,14 @@
+---
+galaxy_info:
+  author: tbhb
+  description: Build and install ssh-sign and create a signing key for each agent account
+  license: Apache-2.0
+  min_ansible_version: "2.21"
+  platforms:
+    - name: Ubuntu
+      versions:
+        - resolute
+    - name: MacOSX
+      versions:
+        - all
+dependencies: []
