@@ -10,22 +10,12 @@ import sys
 import tomllib
 from collections import Counter
 from pathlib import Path
-from typing import NotRequired, TypedDict, cast
+from typing import cast
 
 from lint.private.check_trailing_newline import GitError, git_output
 
 type Ceilings = dict[tuple[str, str], int]
 type TomlDocument = dict[str, object]
-
-
-class ImportContract(TypedDict):
-    id: str
-    ignore_imports: NotRequired[list[str]]
-
-
-class ProjectTools(TypedDict):
-    importlinter: NotRequired[dict[str, list[ImportContract]]]
-    pylint: dict[str, dict[str, int]]
 
 
 def count_ceilings(doc: TomlDocument) -> Ceilings:
@@ -37,18 +27,18 @@ def count_ceilings(doc: TomlDocument) -> Ceilings:
 
 
 def project_ceilings(doc: TomlDocument) -> Ceilings | None:
-    tool = cast("ProjectTools", doc.get("tool", {}))
+    tool = cast("TomlDocument", doc.get("tool", {}))
     imports = tool.get("importlinter")
     if imports is None:
         return None
+    contracts = cast("dict[str, list[TomlDocument]]", imports)["contracts"]
     ceilings = Counter(
-        (contract["id"], edge)
-        for contract in imports["contracts"]
-        for edge in contract.get("ignore_imports", [])
+        (cast("str", contract["id"]), edge)
+        for contract in contracts
+        for edge in cast("list[str]", contract.get("ignore_imports", []))
     )
-    ceilings["pylint", "max-module-lines"] = tool["pylint"]["format"][
-        "max-module-lines"
-    ]
+    pylint = cast("dict[str, dict[str, int]]", tool["pylint"])
+    ceilings["pylint", "max-module-lines"] = pylint["format"]["max-module-lines"]
     return dict(ceilings)
 
 

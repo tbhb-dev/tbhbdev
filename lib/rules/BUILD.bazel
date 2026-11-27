@@ -34,7 +34,10 @@ exports_files([
     "tombi.toml",
 ])
 
-exports_files(["check_lint_baselines.py"], visibility = ["//lint:__pkg__"])
+exports_files(
+    ["check_lint_baselines.py"],
+    visibility = ["//lint:__pkg__"],
+)
 
 # Stage monorepo lint configuration in the module-relative tree assembled by
 # the lint tests. The source of each file lives at the monorepo root.
