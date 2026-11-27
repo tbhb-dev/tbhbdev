@@ -10,7 +10,7 @@ import sys
 from pathlib import Path
 from typing import TYPE_CHECKING, NotRequired, TypedDict, cast
 
-from tbhbdev.alpha.agent import runfiles
+from tbhbdev.alpha.agent import push, runfiles
 from tbhbdev.alpha.identity.dispatcher import as_str, parse_line, read_tail
 from tbhbdev.alpha.repo import git, read_hook_stdin
 from tbhbdev.alpha.size_gate import SIZE_REVIEW, size_verdict
@@ -33,6 +33,7 @@ class StopRun(TypedDict):
     counter: str
     log: str
     size_head: NotRequired[str]
+    rewrite_bases: NotRequired[list[str]]
 
 
 def run_context(
@@ -53,6 +54,9 @@ def run_context(
     )
     if request.variant == SIZE_REVIEW:
         context["size_head"] = request.commit or ""
+    if start is not None and request.start_ref is not None:
+        refs, _ = push.local_refs(Path(workspace))
+        context["rewrite_bases"] = list(dict.fromkeys(refs.values()))
     return context
 
 
@@ -93,11 +97,17 @@ def build_reason(run: StopRun) -> str | None:
         return "Check git status and commit the intended tracked changes."
     start = run["start"]
     if start is not None:
+        bases = run.get("rewrite_bases")
+        history = (
+            (f"--ancestry-path={start}",)
+            if bases is None
+            else tuple(f"^{base}" for base in bases)
+        )
         _, commit = git(
             "--no-replace-objects",
             "rev-list",
             "-1",
-            f"--ancestry-path={start}",
+            *history,
             f"{start}..{run['reference']}",
             "--",
             cwd=workspace,

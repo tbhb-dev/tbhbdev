@@ -89,12 +89,13 @@ RUN_REFERENCE_TRANSACTION = r"""#!/bin/sh
 [ "$1" = prepared ] || exit 0
 branch={branch}
 start={start}
+start_ref={start_ref}
 while read -r _old new ref; do
   case "$ref" in
     "$branch")
       case "$new" in
         *[!0]*)
-          if ! git merge-base --is-ancestor "$start" "$new"; then
+          if [ -z "$start_ref" ] && ! git merge-base --is-ancestor "$start" "$new"; then
             printf 'reference-transaction: %s must descend from %s\n' \
               "$branch" "$start" >&2
             exit 1
@@ -292,7 +293,9 @@ def install_hooks(
         },
     )
     scripts[hooks / "reference-transaction"] = RUN_REFERENCE_TRANSACTION.format(
-        branch=shlex.quote(f"refs/heads/agent/{run_name}"), start=shlex.quote(start)
+        branch=shlex.quote(f"refs/heads/agent/{run_name}"),
+        start=shlex.quote(start),
+        start_ref=shlex.quote(start_ref or ""),
     )
     for hook, content in scripts.items():
         if hook.exists():

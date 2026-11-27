@@ -391,6 +391,7 @@ cli_py_library(
     deps = [
         ":repo",
         ":size_gate",
+        "//factory/cli/src/tbhbdev/alpha/agent:push",
         "//factory/cli/src/tbhbdev/alpha/agent:runfiles",
         "//factory/cli/src/tbhbdev/alpha/identity:dispatcher",
     ],
