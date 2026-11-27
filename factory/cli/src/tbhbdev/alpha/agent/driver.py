@@ -528,6 +528,18 @@ def checked_prompt(args: argparse.Namespace) -> str:
     return prompt
 
 
+def checked_schema(args: argparse.Namespace) -> str | None:
+    if args.schema is None:
+        return None
+    schema = Path(args.schema).read_text()
+    if kind := secret_kind(schema):
+        telemetry.attributes(**{"tbhb.agent.outcome": "refused"})
+        message = f"schema refused: {kind}"
+        raise Invalid(message)
+    json.loads(schema)
+    return schema
+
+
 def launch_attributes(run: Run) -> None:
     telemetry.attributes(
         **{
@@ -545,13 +557,7 @@ def execute(settings: Settings, args: argparse.Namespace) -> int:
     if run is not None:
         launch_attributes(run)
     prompt = checked_prompt(args)
-    schema = None if args.schema is None else Path(args.schema).read_text()
-    if schema is not None:
-        if kind := secret_kind(schema):
-            telemetry.attributes(**{"tbhb.agent.outcome": "refused"})
-            message = f"schema refused: {kind}"
-            raise Invalid(message)
-        json.loads(schema)
+    schema = checked_schema(args)
     deadline = time.monotonic() + settings.launch_wait_seconds
     host = launch_host(settings, args, run, deadline)
     if run is None:
