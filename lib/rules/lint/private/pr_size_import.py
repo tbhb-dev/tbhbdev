@@ -68,10 +68,11 @@ def read_map(data: bytes) -> tuple[str, str, dict[str, tuple[str, Replacements]]
     for src, entry in cast("dict[object, object]", rewrites).items():
         if not clean_path(src) or src in copies or not isinstance(entry, dict):
             return "", "", {}
-        path = entry.get("dest")
+        body = cast("dict[str, object]", entry)
+        path = body.get("dest")
         if not clean_path(path) or not path.startswith(f"{dest}/") or path in writes:
             return "", "", {}
-        writes[path] = src, replacement_pairs(entry.get("replace", []))
+        writes[path] = src, replacement_pairs(body.get("replace", []))
     return repo, commit, writes
 
 
