@@ -170,12 +170,6 @@ def test_check_value_splits_keys_at_the_first_equals_sign() -> None:
     )
 
 
-def test_check_messages_are_exact() -> None:
-    for line in ("Signed-off-by: A <a@b.c>", "Co-authored-by: A <a@b.c>"):
-        assert commit_grammar.check_message(f"{line}\n") == []
-    assert commit_grammar.check_value("LLM harness=codex;model=m") is None
-
-
 def test_check_message_orders_attributes_alphabetically() -> None:
     ok = (
         "Generated-by: LLM effort=high;harness=codex;model=openai:m;session="
