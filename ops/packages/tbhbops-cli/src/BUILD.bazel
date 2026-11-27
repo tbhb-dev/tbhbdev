@@ -49,7 +49,11 @@ py_library(
         "tbhbops_cli/o11y/validate.py",
         "tbhbops_cli/s3.py",
         "tbhbops_cli/sources.py",
-        "tbhbops_cli/tokens.py",
+        "tbhbops_cli/token_keychain.py",
+        "tbhbops_cli/token_policy.py",
+        "tbhbops_cli/token_script.py",
+        "tbhbops_cli/token_shell.py",
+        "tbhbops_cli/token_vaults.py",
     ],
     data = glob(
         ["tbhbops_cli/o11y/invalid/*"],

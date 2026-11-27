@@ -14,7 +14,7 @@ def ops_py_test(name, data = [], **kwargs):
         **kwargs: Additional py_test attributes.
     """
     package = native.package_name()
-    project = package.removesuffix("/tests")
+    project = package.split("/tests")[0]
     py_test(
         name = name,
         args = ["-c", project + "/pyproject.toml", "-p", "no:cacheprovider", package],

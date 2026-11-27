@@ -34,3 +34,9 @@ ops_py_test(
         "@cli_pip//pyyaml",
     ],
 )
+
+filegroup(
+    name = "token_golden",
+    srcs = glob(["golden_token_commands*.txt"]),
+    visibility = ["//ops/packages/tbhbops-cli/tests/unit:__pkg__"],
+)

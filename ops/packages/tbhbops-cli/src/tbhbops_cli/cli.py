@@ -33,7 +33,8 @@ from tbhbops_cli import (
     inventory,
     s3,
     sources,
-    tokens,
+    token_policy,
+    token_script,
 )
 from tbhbops_cli.common import CliError, Http, Run, https_request
 from tbhbops_cli.o11y import command as o11y_command
@@ -132,7 +133,7 @@ def parser() -> argparse.ArgumentParser:
             "Print, and never run, a POSIX shell script that grants the Connect"
             " server its vaults and creates one token with no expiry for each agent"
             f" host. The server comes from [connect] server in the tbhbdev config,"
-            f" and the hosts from the {tokens.AGENTS} group of the inventory."
+            f" and the hosts from the {token_policy.AGENTS} group of the inventory."
         ),
     )
     make.add_argument(
@@ -156,9 +157,9 @@ def parser() -> argparse.ArgumentParser:
         default=[],
         metavar="HOST",
         help=(
-            f"make a {tokens.RUNNER_PREFIX} token for this CI runner VM, which"
-            f" reads only the vault {tokens.VAULT_RUNNERS}, and store it in its lab"
-            f" node's vault as {tokens.RUNNER_ITEM}; repeat it for more. Without"
+            f"make a {token_policy.RUNNER_PREFIX} token for this CI runner VM, which"
+            f" reads only the vault {token_policy.VAULT_RUNNERS}, and store it in its lab"
+            f" node's vault as {token_policy.RUNNER_ITEM}; repeat it for more. Without"
             f" --host and --ops-session, the script makes only these tokens; with"
             " either, it makes theirs too"
         ),
@@ -322,24 +323,26 @@ def token_commands(  # the command's options, each one a fact
     server = config.connect_server(system.env)
     account = config.op_account(system.env)
     directory = inventory.find(system.cwd, system.env)
-    agents = inventory.group(directory, tokens.AGENTS)
-    controllers = inventory.group(directory, tokens.CONTROLLERS)
+    agents = inventory.group(directory, token_policy.AGENTS)
+    controllers = inventory.group(directory, token_policy.CONTROLLERS)
     runners = (
-        tokens.select_runners(inventory.group(directory, tokens.CI), agents, runner_vms)
+        token_policy.select_runners(
+            inventory.group(directory, token_policy.CI), agents, runner_vms
+        )
         if runner_vms
         else ()
     )
     # Runner VMs alone make a script of only their tokens.
     alone = bool(runners) and not hosts and ops_session is None
-    chosen = () if alone else tokens.select(agents, hosts)
-    script = tokens.commands(
+    chosen = () if alone else token_policy.select(agents, hosts)
+    script = token_script.commands(
         server,
         chosen,
         agents,
         controllers,
-        tokens.stamp(system.now),
+        token_policy.stamp(system.now),
         account=account,
-        ops_hosts=tokens.select_ops(controllers, chosen),
+        ops_hosts=token_policy.select_ops(controllers, chosen),
         session_host=ops_session,
         runner_vms=runners,
         dry_run=dry_run,
@@ -373,23 +376,23 @@ def check(
         if inventory_dir is None
         else inventory.at(inventory_dir)
     )
-    agents = inventory.group(directory, tokens.AGENTS)
-    controllers = inventory.group(directory, tokens.CONTROLLERS)
+    agents = inventory.group(directory, token_policy.AGENTS)
+    controllers = inventory.group(directory, token_policy.CONTROLLERS)
     if ops_controller:
-        plan = tokens.ops_controller(name, controllers)
+        plan = token_policy.ops_controller(name, controllers)
     else:
-        tokens.select(agents, [name])
-        plan = tokens.grants(name, agents, controllers)
+        token_policy.select(agents, [name])
+        plan = token_policy.grants(name, agents, controllers)
     server = connect.Connect(system.http, url, token)
     found = connect.listed_vaults(server)
-    rows = tokens.reach(found, {g.vault for g in plan})
+    rows = token_policy.reach(found, {g.vault for g in plan})
     out.write(f"{name}\n")
     out.writelines(f"  {status:<7} {vault}\n" for status, vault in rows)
     passed = all(status == "ok" for status, _ in rows)
-    stamp = tokens.stamp(system.now)
+    stamp = token_policy.stamp(system.now)
     for grant in plan:
         # A vault the token doesn't reach has no id, and is already missing.
-        if grant.permission == tokens.READ_WRITE and grant.vault in found:
+        if grant.permission == token_policy.READ_WRITE and grant.vault in found:
             worked, line = connect.probe_write(server, found[grant.vault], stamp)
             out.write(f"{grant.vault} {line}\n")
             passed = passed and worked
