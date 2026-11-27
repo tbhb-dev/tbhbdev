@@ -354,10 +354,82 @@ jobs:
           xargs -0 -r cspell --no-progress <"$files"
           xargs -0 -r rumdl check <"$files"
 
+  agent-capacity:
+    name: agent-capacity image and vulnerability scans
+    runs-on: ubuntu-26.04
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      security-events: write  # Upload the dependency scan to Code Scanning.
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up Bazel for CI
+        uses: ./.github/actions/setup-bazel-ci
+        with:
+          disk-cache: ${{ github.workflow }}-${{ github.job }}-ubuntu-26.04
+          cache-save: ${{ github.event_name == 'merge_group' }}
+          targets: >-
+            //factory/agent-capacity/container:image_multiarch
+            //factory/agent-capacity/container:image_config_test
+            //factory/agent-capacity:govulncheck
+            @rules_go//go
+
+      - name: Build and test the Linux images
+        run: >-
+          bazel test --config=ci -c opt
+          //factory/agent-capacity/container:image_multiarch
+          //factory/agent-capacity/container:image_config_test
+
+      - name: Scan for reachable Go vulnerabilities
+        run: bazel run --config=ci //factory/agent-capacity:govulncheck -- --sarif="$RUNNER_TEMP/agent-capacity.sarif"
+
+      - name: Retain the Go vulnerability scan
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9  # v7.0.2
+        with:
+          name: agent-capacity-govulncheck
+          path: ${{ runner.temp }}/agent-capacity.sarif
+          if-no-files-found: ignore
+
+      - name: Checkout the dependency scanner
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          repository: tbhb-dev/gomodscan
+          ref: 1d7083e6ee351b0b4d7705c9c2346ad45d43127c
+          path: tmp/gomodscan
+          persist-credentials: false
+
+      - name: Vendor dependencies for the module scan
+        run: |
+          scratch="$RUNNER_TEMP/vendored"
+          mkdir "$scratch"
+          cp factory/agent-capacity/go.{mod,sum} "$scratch/"
+          GOWORK=off bazel run --config=ci @rules_go//go -- \
+            -C "$GITHUB_WORKSPACE/factory/agent-capacity" mod vendor -o "$scratch/vendor"
+
+      - name: Scan Go module dependencies
+        working-directory: tmp/gomodscan
+        run: |
+          status=0
+          bazel run --config=ci //cmd/gomodscan -- \
+            -modroot "$RUNNER_TEMP/vendored" \
+            -format sarif -o "$RUNNER_TEMP/gomodscan.sarif" || status=$?
+          if ((status > 1)); then exit "$status"; fi
+
+      - name: Upload the Go module scan
+        uses: github/codeql-action/upload-sarif@33d7b85da1a04171e211befe2c739303b9a4c066  # v4.39.3
+        with:
+          sarif_file: ${{ runner.temp }}/gomodscan.sarif
+          category: agent-capacity-dependencies
+
   conclusion:
     name: conclusion
     if: always()
-    needs: [bazel, cli-coverage, gazelle-current, gitleaks, prose, pr-size]
+    needs: [bazel, cli-coverage, gazelle-current, gitleaks, prose, pr-size, agent-capacity]
     runs-on: ubuntu-26.04
     timeout-minutes: 5
     steps:

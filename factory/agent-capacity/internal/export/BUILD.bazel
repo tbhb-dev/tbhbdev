@@ -1,0 +1,49 @@
+# SPDX-License-Identifier: Apache-2.0
+# Copyright Tony Burns
+
+load("@rules_go//go:def.bzl", "go_library")
+load("@tbhb_rules//repo:defs.bzl", "repo_files")
+load("//factory:go.bzl", "go_test")
+
+repo_files(visibility = ["//factory/agent-capacity:__pkg__"])
+
+go_library(
+    name = "export",
+    srcs = [
+        "collector.go",
+        "provider.go",
+    ],
+    importpath = "github.com/tbhb-dev/tbhbdev/factory/agent-capacity/internal/export",
+    visibility = ["//factory/agent-capacity:__subpackages__"],
+    deps = [
+        "//factory/agent-capacity/internal/capacity",
+        "@io_opentelemetry_go_otel//attribute",
+        "@io_opentelemetry_go_otel_exporters_otlp_otlpmetric_otlpmetricgrpc//:otlpmetricgrpc",
+        "@io_opentelemetry_go_otel_exporters_otlp_otlpmetric_otlpmetrichttp//:otlpmetrichttp",
+        "@io_opentelemetry_go_otel_metric//:metric",
+        "@io_opentelemetry_go_otel_sdk//resource",
+        "@io_opentelemetry_go_otel_sdk_metric//:metric",
+        "@io_opentelemetry_go_otel_sdk_metric//metricdata",
+    ],
+)
+
+go_test(
+    name = "export_test",
+    srcs = [
+        "collector_test.go",
+        "provider_test.go",
+    ],
+    visibility = ["//factory/agent-capacity:__pkg__"],
+    deps = [
+        ":export",
+        "//factory/agent-capacity/internal/capacity",
+        "@com_github_stretchr_testify//assert",
+        "@com_github_stretchr_testify//require",
+        "@io_opentelemetry_go_otel//attribute",
+        "@io_opentelemetry_go_otel_metric//:metric",
+        "@io_opentelemetry_go_otel_sdk//instrumentation",
+        "@io_opentelemetry_go_otel_sdk//resource",
+        "@io_opentelemetry_go_otel_sdk_metric//:metric",
+        "@io_opentelemetry_go_otel_sdk_metric//metricdata",
+    ],
+)

@@ -87,6 +87,7 @@ dequeued
 determinator
 dgst
 direnv
+distroless
 doas
 docstrings
 dotrepo
@@ -233,6 +234,7 @@ mktree
 msgfile
 msvc
 MSYS
+multiarch
 mutmut
 nakedret
 nbbbb
@@ -411,6 +413,7 @@ tcgetpgrp
 tcsetpgrp
 temproot
 Temurin
+Tera
 testdata
 testifylint
 testonly
