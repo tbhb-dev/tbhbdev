@@ -8,14 +8,14 @@ Agents write and review every change here. Today a one-off script computes revie
 
 The questions:
 
-- How many reviews does a pull request (PR) get, and how many does a merged PR get at the median and at the top?
-- How many reviews approve or request changes, and how many does GitHub dismiss?
-- How many findings does each review list for each priority and for each kind?
-- What share of first reviews approve?
-- How many approvals still list findings?
-- How many approvals does a later push dismiss?
-- How long does a PR wait between a changes-requested review and the next review?
-- How many findings does a merged PR collect across all rounds?
+- Reviews per pull request (PR), and the median and top count of reviews per merged PR.
+- Reviews that approve or request changes, and reviews that GitHub dismisses.
+- Findings per review for each priority and for each kind.
+- The share of first reviews that approve.
+- Approvals that still list findings.
+- Approvals that a later push dismisses.
+- The wait between a changes-requested review and the next review on the same PR.
+- Findings per merged PR across all rounds.
 
 Section 4 adds two timings. It also explains each metric left out.
 
@@ -25,9 +25,9 @@ Out of scope are spans for reviews, which appendix A plans alongside the other t
 
 | Piece | Where | Use in this design |
 | --- | --- | --- |
-| Webhook path | `internal/worker/worker.go:91-98`, `internal/recorder/recorder.go:180-240` | The worker hands each queued body to `Record`. A `pull_request_review` delivery today only adds 1 to `github.events` (`recorder.go:336-344`), because `tracksPullRequest` matches only `pull_request` `closed` and `reopened` (`recorder.go:243-245`) |
+| Webhook path | `internal/worker/worker.go:91-98`, `internal/recorder/recorder.go:180-240` | The worker hands each queued body to `Record`. Today a `pull_request_review` delivery adds 1 to `github.events` and records nothing else (`recorder.go:336-344`). `tracksPullRequest` matches two actions of `pull_request`: `closed` and `reopened` (`recorder.go:243-245`) |
 | Milestone claims | `internal/store/store.go:246-264` | `ClaimMilestone` writes a key once in a synced transaction. The CI job path already claims by a key that isn't a PR (`recorder.go:424`) |
-| Eligibility gates | `recorder.go:586-612` | A milestone counts only when under 24 hours old and later than the store's creation time. Repairs also respect the repair floor |
+| Eligibility gates | `recorder.go:586-612` | A milestone counts when under 24 hours old and later than the store's creation time. The recorder skips it otherwise. Repairs also respect the repair floor |
 | Body reading | `recorder.go:639-660` | `cycleStart` reads a PR body for trailer fields and keeps nothing else, a precedent for parsing a review body in memory |
 | Reconciliation walk | `internal/reconcile/list.go:251-326`, `run.go:238-296` | A walk in order of update time per repository. `absorb` drops items without a close time (`list.go:318`), and `FirstEnd` reads issue events per PR (`events.go:45-80`) |
 | Review template | `factory/cli/src/tbhbdev/alpha/review_data/PULL_REQUEST_REVIEW_TEMPLATE.md` | Guidance for reviewers |
@@ -47,7 +47,7 @@ The schema allows four sections in a fixed order: `## Summary`, an optional `## 
 ^F([1-8]): P([0-3]) (correctness|security|design|test|docs)\s+([\s\S]+)$
 ```
 
-That differs from the task brief in three ways. Priorities run from P0 to P3, not P1 to P3. A finding cites a `path:line` or a check and its result, and the grammar doesn't require a `path:line` at all. Posted bodies end with the `Generated-by: LLM key=value;…` trailer or with an HTML marker, `<!-- tbhb-review v2 <hash> -->`, in either order (`review.cue:135-137`). Among the trailer's attributes are `harness`, `model`, and `effort`. Priority also depends on the review event: P0 and P1 require `REQUEST_CHANGES`, and `REQUEST_CHANGES` requires one of them (`review.cue:142-147`). An approval can list only P2 and P3 findings.
+That differs from the task brief in three ways. Priorities run from P0 to P3, not P1 to P3. A finding cites a `path:line` or a check and its result, and the grammar doesn't require a `path:line` at all. Posted bodies end with the `Generated-by: LLM key=value;…` trailer or with an HTML marker, `<!-- tbhb-review v2 <hash> -->`, in either order (`review.cue:135-137`). Among the trailer's attributes are `harness`, `model`, and `effort`. Priority also depends on the review event: P0 and P1 require `REQUEST_CHANGES`, and `REQUEST_CHANGES` requires one of them (`review.cue:142-147`). An approval can list P2 and P3 findings and nothing higher.
 
 ### Parser package
 
@@ -60,13 +60,13 @@ Steps:
 3. Strip the leading dash and space from each bullet in `Findings`, then match it against the same expression as `#FindingPrefix`. Numbers must run from F1 without gaps.
 4. Read the last line that starts with `Generated-by: LLM` and split its attribute list on semicolons and equals signs.
 
-Strict parsing beats lenient parsing here. One bad bullet in `Findings`, a gap in numbering, or a missing required section sets `Parsed` to false, and the review then counts zero findings. A partial count would hide template drift behind plausible numbers. The fixed reasons are `no_sections`, `bad_finding`, and `no_trailer`. A missing trailer only blanks the trailer fields, and its findings still count. A human review in free text fails as `no_sections`.
+Strict parsing beats lenient parsing here. One bad bullet in `Findings`, a gap in numbering, or a missing required section sets `Parsed` to false, and the review then counts zero findings. A partial count would hide template drift behind plausible numbers. The fixed reasons are `no_sections`, `bad_finding`, and `no_trailer`. A missing trailer blanks the trailer fields and leaves the findings counted. A human review in free text fails as `no_sections`.
 
 ### Matching the template
 
 The schema in `review.cue` defines the grammar. The parser and the schema share one set of example bodies, and tests on both sides read the same files. Neither side can change alone.
 
-- A new folder of review bodies under `factory/cli/src/tbhbdev/schemas/testdata/review-bodies/` keeps valid and invalid examples, each with a small expected-result file beside it. The existing `schemas` file group is visible only inside `factory/cli` (`factory/cli/BUILD.bazel:101-105`). A new file group for the folder opens it to `//factory/github-metrics/internal/review`.
+- A new folder of review bodies under `factory/cli/src/tbhbdev/schemas/testdata/review-bodies/` keeps valid and invalid examples, each with a small expected-result file beside it. The existing `schemas` file group has visibility limited to `factory/cli` (`factory/cli/BUILD.bazel:101-105`). A new file group for the folder opens it to `//factory/github-metrics/internal/review`.
 - A Python test in `factory/cli` runs `content.check_review` on each body and checks that valid examples pass and invalid ones fail.
 - A Go test parses each body and compares the result with the expected file.
 
@@ -74,7 +74,7 @@ Changing `#FindingPrefix` or the section list breaks the Python test until someo
 
 ### Telemetry content
 
-D12 forbids titles, bodies, comment text, and diffs in telemetry. Metrics contain only the parsed enums and counts. Section 6 adds one log line per review with those enums, the numeric review ID, the repository, and the trailer's `harness`, `model`, and `effort`. Those trailer values identify a tool and contain nobody's words. Webhook bodies with review text already sit in the queue under appendix E's retention. The service discards REST bodies after parsing and doesn't store a body anywhere.
+D12 forbids titles, bodies, comment text, and diffs in telemetry. Metrics contain the parsed enums and counts and nothing from the text. Section 6 adds one log line per review with those enums, the numeric review ID, the repository, and the trailer's `harness`, `model`, and `effort`. Those trailer values identify a tool and contain nobody's words. Webhook bodies with review text already sit in the queue under appendix E's retention. The service discards REST bodies after parsing and doesn't store a body anywhere.
 
 ## 4. Metrics
 
@@ -94,7 +94,7 @@ D12 forbids titles, bodies, comment text, and diffs in telemetry. Metrics contai
 
 Attribute values:
 
-- `state`: `approved`, `changes_requested`, `commented`, or `dismissed`. Following appendix A, a review counts under its state at the moment the service first sees it. A repair that finds a review already dismissed is the only source of `dismissed`.
+- `state`: `approved`, `changes_requested`, `commented`, or `dismissed`. Following appendix A, a review counts under its state at the moment the service first sees it. The value `dismissed` comes from a repair that finds a review already dismissed, and from nowhere else.
 - `findings`: `none` when the body parses without a Findings section, `some` when it parses with at least one finding, and `unparsed` otherwise.
 - `priority`: `p0`, `p1`, `p2`, or `p3`. `kind`: `correctness`, `security`, `design`, `test`, or `docs`.
 - `cause`: `stale_head` when the commit of the dismissed review differs from the PR head at dismissal, `current_head` for any other GitHub dismissal, and `superseded` for an edit that adds `SUPERSEDED:`.
@@ -108,11 +108,11 @@ A review counts once GitHub reports it submitted, provided someone other than th
 - **Reviews by state, and dismissals by cause.** These give the base rates. After a model or prompt change, an operator checks the approval rate first.
 - **Findings by priority and kind.** A rise in `p1` `correctness` findings points at the writing agents. A rise in `p3` `docs` findings may point at a noisy reviewer instead.
 - **First reviews by state.** If most first reviews approve, the review round adds little. If almost none do, the writing agents miss what reviewers catch.
-- **Approvals with findings** (`state="approved", findings="some"`). The schema lets an approval list P2 and P3 findings. Agents rarely fix those after merge, so this count measures debt that agents merge knowingly.
-- **Dismissals with `cause="stale_head"`.** Under the main branch rules a push dismisses stale approvals, and each dismissal costs another full review. This count prices pushes after approval.
+- **Approvals with findings** (`state="approved", findings="some"`). The schema lets an approval list P2 and P3 findings. Agents seldom return to them after merge, so this count measures debt that agents merge knowingly.
+- **Dismissals with `cause="stale_head"`.** Under the main branch rules a push dismisses stale approvals, and each dismissal costs another full review. GitHub's push dismissal applies to approvals, which makes this count the number of approvals lost to a later push. It prices pushes after approval.
 - **Wait after changes requested.** Here the PR waits first for a fix and then for a reviewer. When long, this wait dominates turnaround, and the existing timing histograms can't isolate it.
 - **Wait for the first review.** Appendix A sets a turnaround goal of a median of 10 minutes from open to merge. Reviewers control the stretch from ready for review to the first review. Measuring from `created_at` would count draft time that nobody waits on.
-- **Reviews and findings per merged PR.** Together these measure how many review rounds and how many issues a merged change cost.
+- **Reviews and findings per merged PR.** Together these measure the review rounds and the issues raised for each merged change.
 - **Inline comments.** A change in progress posts each finding that cites a diff line as an inline comment too. Comparing inline comments with findings checks that change. Before it merges the count means nothing, so it comes last.
 
 ### Excluded metrics
@@ -127,12 +127,12 @@ A review counts once GitHub reports it submitted, provided someone other than th
 | Source | Actions or call | Fields read | Feeds |
 | --- | --- | --- | --- |
 | `pull_request_review` webhook | `submitted` | `review.node_id`, `review.id`, `review.state`, `review.body`, `review.submitted_at`, `review.commit_id`, `review.user.login`, `pull_request.node_id`, `pull_request.user.login`, `repository.full_name` | Reviews, findings, first reviews, both waits |
-| `pull_request_review` webhook | `dismissed` | `review.node_id`, `review.commit_id`, `pull_request.head.sha`, `pull_request.node_id` | Dismissals with `stale_head` or `current_head` |
-| `pull_request_review` webhook | `edited` | `review.node_id`, `review.body`, `changes.body.from` | Dismissals with `superseded`, when the new body starts with `SUPERSEDED:` and the old one didn't |
+| `pull_request_review` webhook | `dismissed` | `review.node_id`, `review.commit_id`, `pull_request.head.sha`, `pull_request.node_id`, `pull_request.updated_at` | Dismissals with `stale_head` or `current_head` |
+| `pull_request_review` webhook | `edited` | `review.node_id`, `review.body`, `changes.body.from`, `pull_request.updated_at` | Dismissals with `superseded`, when the new body starts with `SUPERSEDED:` and the old one didn't |
 | `pull_request` webhook | `opened`, `ready_for_review`, `converted_to_draft`, `reopened` | `pull_request.node_id`, `pull_request.draft`, `pull_request.created_at`, `pull_request.updated_at` | The ready time in section 7 |
 | `GET /repos/{o}/{r}/pulls/{n}/reviews` | Repair walk | `node_id`, `id`, `state`, `body`, `submitted_at`, `commit_id`, `user.login` | Repairs of everything listed in this table, and both per-merge histograms |
 | `GET /repos/{o}/{r}/issues/{n}/events` | Repair walk | `event` of `ready_for_review`, `convert_to_draft`, and `review_dismissed`, with `created_at` | The ready time and dismissal times on repair |
-| `GET /repos/{o}/{r}/pulls/{n}/comments` | Repair walk only | `node_id`, `pull_request_review_id`, `in_reply_to_id`, `created_at` | Inline comments |
+| `GET /repos/{o}/{r}/pulls/{n}/comments` | Repair walk, without a webhook | `node_id`, `pull_request_review_id`, `in_reply_to_id`, `created_at` | Inline comments |
 
 GitHub's documented schemas list these payload fields. Nobody here has captured a live delivery. Until a test runs against a recorded body, treat each field as unverified. On a `ready_for_review` delivery, `pull_request.updated_at` approximates the event time and may differ from the timeline's `created_at` by seconds (unverified). The repair path reads the timeline instead.
 
@@ -166,7 +166,7 @@ As D10 requires, each fact gets its own claim key, written before the observatio
 | PR node ID, zero byte, `review_totals` | Both per-merge histograms |
 | comment node ID, zero byte, `inline` | `github.pr.review.inline_comments` |
 
-Each gate tests the fact's own time: `submitted_at` for a review, the dismissal or edit time for a dismissal, and `merged_at` for totals. As in `RecordClosed`, when a fact fails a gate, the recorder still writes its claim and skips the observation.
+Each gate tests the fact's own time: `submitted_at` for a review and `merged_at` for totals. Neither the `dismissed` nor the `edited` payload has a time for the action itself. For those, the webhook path uses `pull_request.updated_at` from the same payload (unverified as a close match). On repair, a GitHub dismissal takes the `created_at` of its `review_dismissed` event. The reviews list lacks an edit time. A repair claims `superseded` without an observation, leaving supersessions to webhooks. As in `RecordClosed`, when a fact fails a gate, the recorder still writes its claim and skips the observation.
 
 ### Webhook path without context
 
@@ -174,7 +174,7 @@ A webhook may arrive for a PR missing from the cache. Then the webhook path lack
 
 ### Per-merge totals
 
-Counting reviews and findings at merge needs every review of the PR. A cache built from webhooks can miss one, and a recorded histogram observation can't change afterward. For that reason only the repair walk records the two per-merge histograms. For each newly merged PR in its walk, it reads the full reviews list, at one request per merged PR inside the per-PR read the walk already makes. A deployment without reconciliation configured doesn't record per-merge totals and logs that fact once at startup.
+Counting reviews and findings at merge needs every review of the PR. A cache built from webhooks can miss one, and a recorded histogram observation can't change afterward. For that reason the repair walk alone records the two per-merge histograms. For each newly merged PR in its walk, it reads the full reviews list, at one request per merged PR inside the per-PR read the walk already makes. A deployment without reconciliation configured doesn't record per-merge totals and logs that fact once at startup.
 
 ### Log line per review
 
@@ -188,10 +188,10 @@ A new bucket, `review_prs`, caches facts per PR that the webhook path needs and 
 | --- | --- |
 | `ready_at` | An `opened` delivery with `draft=false` sets it to `created_at`, `ready_for_review` sets it to `updated_at`, and `converted_to_draft` clears it. The repair walk sets it from the latest `ready_for_review` event before the first review, or from `created_at` without one |
 | `first_review_at` | The first counted review |
-| `last_changes_requested_at` | Each `changes_requested` review, moving forward only |
+| `last_changes_requested_at` | Each `changes_requested` review, never moving backward |
 | `updated_at` | Every write, for retention |
 
-A write keeps the later of the stored and new times, which stops out-of-order deliveries from moving a field backward.
+Apart from that clear, a write keeps the later of the stored and new times, which stops out-of-order deliveries from moving a field backward.
 
 Size: a node ID takes about 20 bytes, and four Unix times in seconds take 32. Including the database's own overhead, a record takes under 100 bytes. A few hundred open PRs across the installation put the bucket at a few tens of kilobytes.
 
@@ -205,7 +205,7 @@ Each new claim adds about 40 bytes to the `milestones` bucket. At a few hundred 
 
 The walk already lists each repository's PRs by update time (`list.go:251-306`). This design changes it in two places:
 
-1. `absorb` returns open items too, alongside items with a close time (`list.go:318`). The closed-PR path keeps its filter.
+1. `absorb` returns open items too, alongside items with a close time (`list.go:318`). The list request already asks for `state=all` (`list.go:186`) and doesn't change. The closed-PR path keeps its filter.
 2. For each item, the walk reads the reviews list and calls `RecordReview` with `Repair` set for each review. For a newly merged item it also records the per-merge totals. When a PR's first review lacks a ready time, it reads issue events, which `FirstEnd` already fetches for closed items.
 
 Later, the inline-comments slice adds one read of the review comments list for each item with a review in the window.
@@ -223,11 +223,11 @@ Cost per walk, for about 30 PRs changed an hour:
 
 Appendix E budgets 120 requests an hour for per-PR reads on changed PRs. This fits within that line, at a steady state of about 9% of the 5,000-request floor. A PR with more than 100 reviews needs a second page.
 
-The walk finds a PR only when its `updated_at` moves. Nobody has checked whether a submitted review or a dismissal moves `updated_at`, and the reconciler design flags the same assumption for closes (`reconciler-backfill.md:79`). If a review leaves it unchanged, a missed review webhook on an idle PR goes without repair until the PR changes again. A merge always changes it, so per-merge totals remain exact either way. Before the repair slice merges, someone checks this against a live PR.
+The walk finds a PR when its `updated_at` moves, and misses it otherwise. Nobody has checked whether a submitted review or a dismissal moves `updated_at`, and the reconciler design flags the same assumption for closes (`reconciler-backfill.md:79`). If a review leaves it unchanged, a missed review webhook on an idle PR goes without repair until the PR changes again. A merge always changes it, so per-merge totals remain exact either way. Before the repair slice merges, someone checks this against a live PR.
 
 ### Backfill
 
-As with every other metric, history gets claims without observations. The gates reject anything older than 24 hours or earlier than the store's creation time (appendix A, step 5), and a cumulative counter can't take a backdated point. After deploy, the first incremental run covers PRs updated in the last 24 hours. Since the repair path rebuilds context from the full reviews list, the cache doesn't need seeding.
+Backfill costs zero requests, because no historical walk runs for reviews. When a repair meets a review older than the gates, it writes the claim without an observation, as for every other metric. The gates reject anything older than 24 hours or earlier than the store's creation time (appendix A, step 5), and a cumulative counter can't take a backdated point. After deploy, the first incremental run covers PRs updated in the last 24 hours. Since the repair path rebuilds context from the full reviews list, the cache doesn't need seeding.
 
 The script's numbers for past weeks don't reappear as series. Open question 2 covers that loss.
 
@@ -241,7 +241,7 @@ The script's numbers for past weeks don't reappear as series. Open question 2 co
 | A review dismissed by GitHub | One dismissal with `stale_head` or `current_head`. Its entry in `github.pr.reviews` keeps its original state |
 | A review dismissed before the service saw it | The repair walk counts it under `state="dismissed"` with `findings` from its body. It counts the dismissal at the time of the `review_dismissed` event. If that event lacks a usable time, the dismissal gets a claim and the walk moves on |
 | A manual dismissal with the head unchanged | `review.commit_id` equals the head, so it counts as `current_head`. Dismissals from a push count as `stale_head`. A manual dismissal after an unrelated push also counts as `stale_head`, and the design accepts that error |
-| A review on a head that's no longer current | It counts normally. `tbhbdev` refuses to post against a stale head (`review_doc.py:208`), so this happens only in a race. The review still happened and still used a run |
+| A review on a head that's no longer current | It counts like any other review. `tbhbdev` refuses to post against a stale head (`review_doc.py:208`), so this happens in a race and nowhere else. The review still happened and still used a run |
 | A reply to an inline comment | An empty `commented` review, which the empty-body rule drops |
 | A reopened PR | Its reviews keep counting. `first_review` keeps its claim, so a reopen can't create a second first review. A second merge doesn't record totals again |
 | A review by the PR author | Not counted, matching `time_to_first_review` in appendix A |
@@ -260,11 +260,11 @@ Appendix A assumes about 50 repositories. Against the SDK cap of 2,000, these ar
 | Each of the four histograms | 50 | 50 |
 | `github.pr.review.inline_comments` | 50 | 50 |
 
-Like the code today, the histograms use explicit buckets. For the waits, the edges are 30, 60, 120, 300, 600, 900, 1200, 1800, 3600, 7200, 14400, 28800, 86400, 172800, and 604800 seconds, with 600 and 900 on edges as in D15. The per-merge counts use every integer from 0 to 10, then 12, 15, 20, 30, and 50, so values up to 10 read exactly. At about 17 series per histogram attribute set, the four histograms add about 3,400 series in the worst case, and the counters add about 2,000. Real use stays sparse, since no repository sees every combination.
+Like the code today, the histograms use explicit buckets. For the waits, the edges are 30, 60, 120, 300, 600, 900, 1200, 1800, 3600, 7200, 14400, 28800, 86400, 172800, and 604800 seconds, with 600 and 900 on edges as in D15. The per-merge counts use every integer from 0 to 10, then 12, 15, 20, 30, and 50, so values up to 10 read without rounding. At about 17 series per histogram attribute set, the four histograms add about 3,400 series in the worst case, and the counters add about 2,000. Real use stays sparse, since no repository sees every combination.
 
 Attributes never include a PR number, login, path, or review ID. Today the service labels nothing with those values, and D10 forbids the PR number and the login.
 
-An operator would most want a reviewer model label, and that label breaks D10. On `github.pr.reviews`, a model label multiplies 600 by the number of models in use, and a third model would hit the cap. This design puts harness, model, and effort on the log line per review, where LogQL can count them without adding series. Open question 1 covers whether to change that.
+An operator would most want a reviewer model label, and that label breaks D10. On `github.pr.reviews`, a model label multiplies 600 by the number of models in use, and a fourth model would pass the cap. This design puts harness, model, and effort on the log line per review, where LogQL can count them without adding series. Open question 1 covers whether to change that.
 
 ## 11. Queries
 
@@ -277,8 +277,8 @@ These names assume the collector's translation from OpenTelemetry to Prometheus 
 | Reviews per merged PR, top | `histogram_quantile(1, sum by (le) (increase(github_pr_review_reviews_per_merge_bucket[7d])))` |
 | Reviews posted, by state | `sum by (state) (increase(github_pr_reviews_total[7d]))` |
 | Reviews dismissed | `sum by (cause) (increase(github_pr_review_dismissals_total[7d]))` |
-| Findings per review, by priority | `sum by (priority) (increase(github_pr_review_findings_total[7d])) / scalar(sum(increase(github_pr_reviews_total{findings!="unparsed"}[7d])))` |
-| Findings per review, by kind | `sum by (kind) (increase(github_pr_review_findings_total[7d])) / scalar(sum(increase(github_pr_reviews_total{findings!="unparsed"}[7d])))` |
+| Findings per review, by priority | `sum by (priority) (increase(github_pr_review_findings_total[7d])) / scalar(sum(increase(github_pr_reviews_total[7d])) - sum(increase(github_pr_reviews_total{findings="unparsed"}[7d])))` |
+| Findings per review, by kind | `sum by (kind) (increase(github_pr_review_findings_total[7d])) / scalar(sum(increase(github_pr_reviews_total[7d])) - sum(increase(github_pr_reviews_total{findings="unparsed"}[7d])))` |
 | Share of first reviews that approve | `sum(increase(github_pr_review_first_reviews_total{state="approved"}[7d])) / sum(increase(github_pr_review_first_reviews_total[7d]))` |
 | Approvals with findings | `sum(increase(github_pr_reviews_total{state="approved",findings="some"}[7d]))`. For the share, divide by `sum(increase(github_pr_reviews_total{state="approved"}[7d]))` |
 | Approvals dismissed by a later push | `sum(increase(github_pr_review_dismissals_total{cause="stale_head"}[7d]))`. For the share, divide by approvals |
@@ -294,7 +294,7 @@ Reviews per PR divides reviews in the window by PRs first reviewed in the window
 
 - **Parser.** The shared examples cover each section order the schema allows and from zero to eight findings. They also cover every priority and kind. Failure examples include a gap in numbering and a malformed bullet, along with a missing section. Further examples cover a `SUPERSEDED:` first line, the marker before and after the trailer, a missing trailer, CRLF endings, and a human review in free text. A fuzz test checks that `Parse` never panics and returns no body text apart from the trailer fields.
 - **Example check in `factory/cli`.** `check_review` accepts every valid example and refuses every invalid one, so the examples can't drift from the schema.
-- **Store.** Get, put, and delete on `review_prs`, a put that never moves a time backward, and retention that deletes only records older than 30 days.
+- **Store.** Get, put, and delete on `review_prs`, a put that never moves a time backward, and retention that deletes records older than 30 days and keeps the rest.
 - **Recorder.** For each instrument, a fake ledger and a manual reader check the gates and claim-before-record. The same tests cover `already_counted` on a second call, the absence of any observation after a claim error, the empty-body and PR-author rules, and each dismissal cause. Another test confirms that without a cached record the webhook path leaves `first_review` and `wait_after_changes` unclaimed. A final test asserts that no recorded attribute value comes from body text.
 - **Webhook bodies.** Recorded `submitted`, `dismissed`, and `edited` deliveries, with titles and text replaced, serve as golden inputs to `Record`. The first live capture replaces the hand-built ones.
 - **Repair walk with a fake client.** A fake `Getter` serves pages of reviews, events, and comments. Tests check that the walk records totals once per merged PR and fills context from the list. Others check that it clears per-PR tags, counts a dismissed review under `state="dismissed"`, and that a webhook after a repair leaves every series unchanged.
@@ -311,7 +311,7 @@ Each estimate counts added Go and Bazel lines including tests. All stay under 40
 | D | Webhook wiring in `Record` for the `pull_request_review` actions and the `pull_request` ready-time updates, with cache writes and the record deletion at `ended`. Also appendix B's `edited` change | 280 | C, with B merged |
 | E | Open items from the walk, repair from the reviews list, ready time from events, and new counters for reconciliation | 360 | C |
 | F | Per-merge totals in the walk and their two histograms | 220 | E |
-| G | Architecture pages: the appendix A catalog and cardinality table and the telemetry content on page 8. Also the Grafana dashboard request for the platform repository | docs only | F |
+| G | Architecture pages: the appendix A catalog and cardinality table and the telemetry content on page 8. Also the Grafana dashboard request for the platform repository | docs, no code | F |
 | H | The review comments read and the inline counter, after inline posting merges | 200 | E, and the inline-posting change merged |
 
 A and B can proceed in parallel. Work on C can start against fakes, and C merges after both. D and E both change the recorder's wiring, so E rebases after D. Deploying D before E turns on review repair lets live reviews claim first, and repairs then return `already_counted` in most cases. H waits for the review change that posts inline comments.
@@ -321,4 +321,4 @@ A and B can proceed in parallel. Work on C can start against fakes, and C merges
 1. **Reviewer model as a metric label.** This design puts harness, model, and effort on the log line per review and leaves them off metrics, which keeps D10 intact. A `model` label on `github.pr.reviews` alone fits about three models before the cap. Recommendation: keep it in logs for now. If dashboards need it, add one counter, `github.pr.review.by_model`, with `model`, `state`, and `findings` and without `repository`. That fits about 160 models, under a D10 amendment.
 2. **History from before deploy.** The service can't export past weeks. The script's numbers for that period won't reappear. Suggested course: at deploy, run the script once and save its output as a dated report. Retire the script after the service has a week of data.
 3. **Inline comments.** Slice H depends on a change still in progress. Proposed order: build A to G now and H after the inline change merges, so H targets the real comment shape.
-4. **Per-merge totals without reconciliation.** Only the repair walk records the per-merge histograms, so a deployment without App credentials lacks them. Recommended: accept that, since reconciliation is the intended configuration. Whether production runs it today is unverified.
+4. **Per-merge totals without reconciliation.** The repair walk alone records the per-merge histograms, so a deployment without App credentials lacks them. Recommended: accept that, since reconciliation is the intended configuration. Whether production runs it today is unverified.
