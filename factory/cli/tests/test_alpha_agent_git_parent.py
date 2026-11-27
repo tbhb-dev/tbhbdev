@@ -26,9 +26,10 @@ from agent_live_host_probe import checked_live_policy, codex_sandbox_command
 from test_alpha_agent_run_host import make_run
 from test_alpha_agent_sandbox_live import report
 
-from tbhbdev.alpha.agent import credentials, host_tools, run_host, worktree
+from tbhbdev.alpha.agent import credentials, host_tools, worktree
 from tbhbdev.alpha.agent.decisions import argv, policy
 from tbhbdev.alpha.agent.model import Harness, Os, Policy
+from tbhbdev.alpha.agent.run_host import dispatcher as run_host
 
 
 def real_clone(

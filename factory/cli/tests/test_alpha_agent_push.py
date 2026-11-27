@@ -20,10 +20,10 @@ from tbhbdev.alpha.agent import (
     credentials,
     host_tools,
     push,
-    run_host,
     runfiles,
 )
 from tbhbdev.alpha.agent.model import Invalid
+from tbhbdev.alpha.agent.run_host import dispatcher as run_host
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Generator

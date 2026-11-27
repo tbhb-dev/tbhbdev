@@ -57,7 +57,6 @@ from tbhbdev.alpha.agent import (
     host_tools,
     process_group,
     render,
-    run_host,
     runfiles,
     shims,
 )
@@ -71,6 +70,7 @@ from tbhbdev.alpha.agent.model import (
     Profile,
     RunKind,
 )
+from tbhbdev.alpha.agent.run_host import dispatcher as run_host
 
 RESOLVE = host_tools.resolve
 PUSH_RUN = run_host.push.run
@@ -435,11 +435,6 @@ def test_prepare_uses_one_worktree_and_private_destinations(
         run, request=dataclasses.replace(run.request, commit=commit)
     )
     run = with_identity_cli(run, ready=True)
-    value, _ = run_host.checked_policy(run, run_host.planned_paths(run))
-    expected_path = value.env["PATH"] if harness is Harness.AGY else value.tool_path
-    assert run_host.hook_environment(value, unsandboxed=False)["PATH"] == expected_path
-    if harness is Harness.CLAUDE:
-        assert run_host.hook_environment(value, unsandboxed=True) == value.env
     source = runfiles.private_dir(run.home / ".codex") / "auth.json"
     source.write_text("example-auth")
     (source.parent / "hooks.json").write_text('{"hooks":{"SessionStart":[]}}')
@@ -588,11 +583,6 @@ def test_build_preparation_has_the_run_socket(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, no_commit: bool, start: str | None
 ) -> None:
     run = make_run(tmp_path, no_commit=no_commit)
-    probe = run_host.hook_environment
-
-    def hook_environment(value: Policy, *, unsandboxed: bool) -> dict[str, str]:
-        assert unsandboxed is run.request.unsandboxed
-        return probe(value, unsandboxed=unsandboxed)
 
     def fetch_token(request: RunRequest, settings: Settings) -> str:
         assert (request, settings) == (run.request, run.settings)
@@ -620,7 +610,6 @@ def test_build_preparation_has_the_run_socket(
     monkeypatch.setattr(run_host.worktree, "create", create)
     baseline = Mock(return_value=start)
     monkeypatch.setattr(run_host.push, "head", baseline)
-    monkeypatch.setattr(run_host, "hook_environment", hook_environment)
     monkeypatch.setattr(run_host, "bazel_bases", bazel_bases)
     monkeypatch.setattr(credentials, "fetch_token", fetch_token)
     if not no_commit and start is None:
@@ -1026,9 +1015,7 @@ def test_run_host_refuses_when_host_has_zero_slots(config_file: Path) -> None:
     assert "max_concurrent_runs=0" in files.path("log").read_text()
 
 
-@pytest.mark.parametrize(
-    "case", ["host", "list", "duplicate", "rc", "pgid", "account", "profile", "missing"]
-)
+@pytest.mark.parametrize("case", ["duplicate", "rc", "pgid", "missing"])
 def test_command_refuses_invalid_input(
     tmp_path: Path,
     config_file: Path,
@@ -1041,12 +1028,8 @@ def test_command_refuses_invalid_input(
     )
     files.write("prompt", "example")
     data = request.to_dict(run_request())
-    if case == "account":
-        data["account"] = "other"
-    if case == "profile":
-        data.update(harness="claude", claude_profile="unknown", reason="example")
     path = tmp_path / "received.json"
-    path.write_text("[]" if case == "list" else json.dumps(data))
+    path.write_text(json.dumps(data))
     if case == "duplicate":
         files.write("request.json", json.dumps(data))
     if case in ("rc", "pgid"):
@@ -1055,20 +1038,16 @@ def test_command_refuses_invalid_input(
         "example",
         str(path),
         "--host",
-        "unknown" if case == "host" else "example-linux",
+        "example-linux",
     ]
     if case == "missing":
         arguments = ["example", "--host", "example-linux"]
     assert run_host.main(arguments, "example run-host") == 1
     missing_path = files.path("request.json")
     details = {
-        "host": "host 'unknown' is not configured",
-        "list": "request must be a JSON object",
         "duplicate": "run 'example' already exists",
         "rc": "run 'example' has already started",
         "pgid": "run 'example' has already started",
-        "account": "account 'other' is not enabled on example-linux",
-        "profile": "claude profile 'unknown' is not configured",
         "missing": f"[Errno 2] No such file or directory: '{missing_path}'",
     }
     assert capsys.readouterr().err == f"example run-host: {details[case]}\n"
@@ -1311,7 +1290,8 @@ def test_hangup_stops_harness_group_writes_auth_and_rc(
     script = r'''
 import dataclasses, os, runpy, signal, subprocess, sys
 from pathlib import Path
-from tbhbdev.alpha.agent import host_tools, process_group, run_host, runfiles
+from tbhbdev.alpha.agent import host_tools, process_group, runfiles
+from tbhbdev.alpha.agent.run_host import dispatcher as run_host
 binary = str(Path(sys.argv[2]) / "host-bin" / "true")
 host_tools.resolve = lambda *args, **kwargs: binary
 host_tools.executable_paths = lambda executable, *args, **kwargs: (executable,)
@@ -2910,50 +2890,6 @@ def test_startup_symlink_target_is_protected(tmp_path: Path) -> None:
     )
     with pytest.raises(Invalid, match="protected host path"):
         run_host.checked_policy(run, preparation(run).paths)
-
-
-def test_protected_home_lists_startup_files_and_socket_ancestors(
-    tmp_path: Path,
-) -> None:
-    run = make_run(tmp_path)
-    run = dataclasses.replace(
-        run,
-        settings=dataclasses.replace(
-            run.settings, sockets_dir=".control/sockets/private"
-        ),
-    )
-    expected = (
-        ".zshenv",
-        ".zshrc",
-        ".zprofile",
-        ".zlogin",
-        ".bashrc",
-        ".bash_profile",
-        ".profile",
-        ".tmux.conf",
-        ".config/tmux",
-        ".gitconfig",
-        ".config/git",
-        ".config/mise",
-        ".ssh",
-        ".claude",
-        ".claude.json",
-        ".codex",
-        ".codex-recovery",
-        ".control/sockets",
-        ".control",
-    )
-    clone = Path(run_host.repo.clone_path(run.home, run.request.repo))
-    mirror = run_host.worktree.mirror_path(run.home, run.request.repo)
-    assert run_host.protected_home(run) == (
-        *(str(run.home / p) for p in expected),
-        str(clone / ".git"),
-        str(mirror),
-        str(mirror.parent),
-        str(mirror.parent.parent),
-        str(mirror.parent.parent.parent),
-        str(run_host.userconfig.path()),
-    )
 
 
 def test_resolved_denies_receive_host_facts(
@@ -5046,28 +4982,6 @@ def test_codex_preflight_without_github_reference(
     assert len(commands) == 1
     assert f"preflight ok: {commands[0][0]}\n" in run.files.path("log").read_text()
     assert run.files.path("rc").read_text() == "0\n"
-    assert not run.files.path("launched").exists()
-
-
-@pytest.mark.parametrize("error", [KeyError, TypeError])
-@pytest.mark.parametrize("preflight_only", [False, True])
-def test_harness_command_failure_names_only_its_step(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-    error: type[Exception],
-    preflight_only: bool,
-) -> None:
-    run = make_run(tmp_path)
-    monkeypatch.setattr(process_group, "prepare", constant(preparation(run)))
-    monkeypatch.setattr(
-        run_host, "harness_command", partial(preparation_failure, error)
-    )
-    assert run_host.execute(run, "example", preflight_only=preflight_only) == 1
-    assert run.files.path("log").read_text() == (
-        "run failed while building the harness command\n"
-    )
-    assert run.files.path("rc").read_text() == "1\n"
-    assert run.files.path("phase").read_text() == "ended"
     assert not run.files.path("launched").exists()
 
 

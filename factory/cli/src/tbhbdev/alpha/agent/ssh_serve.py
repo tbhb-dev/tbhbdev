@@ -9,9 +9,10 @@ import shlex
 import sys
 from pathlib import Path
 
-from tbhbdev.alpha.agent import build_info, ownership, process_group, run_host, runfiles
+from tbhbdev.alpha.agent import build_info, ownership, process_group, runfiles
 from tbhbdev.alpha.agent.decisions.run_state import Group, owns
 from tbhbdev.alpha.agent.model import NAME, Invalid
+from tbhbdev.alpha.agent.run_host import dispatcher as run_host
 
 MACOS_LAUNCH_KEY = Path("/Library/Application Support/tbhbdev/agent-launch/id_ed25519")
 LINUX_LAUNCH_KEY = Path("/etc/tbhbdev/agent-launch/id_ed25519")

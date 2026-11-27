@@ -11,11 +11,11 @@ from tbhbdev.alpha.agent import (
     arguments,
     driver,
     precheck,
-    run_host,
     settings,
     signing_parity,
     ssh_serve,
 )
+from tbhbdev.alpha.agent.run_host import dispatcher as run_host
 
 if TYPE_CHECKING:
     import argparse

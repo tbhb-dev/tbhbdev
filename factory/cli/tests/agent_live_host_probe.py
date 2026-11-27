@@ -24,8 +24,9 @@ from typing import TYPE_CHECKING
 lazy from test_alpha_agent_sandbox_live import probe_run, sandbox_command
 
 lazy from tbhbdev import userconfig
-lazy from tbhbdev.alpha.agent import credentials, host_tools, run_host, worktree
+lazy from tbhbdev.alpha.agent import credentials, host_tools, worktree
 lazy from tbhbdev.alpha.agent.model import Harness
+lazy from tbhbdev.alpha.agent.run_host import dispatcher as run_host
 
 if TYPE_CHECKING:
     import pytest

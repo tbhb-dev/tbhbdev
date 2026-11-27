@@ -19,7 +19,7 @@ if TYPE_CHECKING:
     from collections.abc import Callable, Generator
 
     from tbhbdev.alpha.agent.credentials import PushTokenFailure
-    from tbhbdev.alpha.agent.run_host import Prepared, Run
+    from tbhbdev.alpha.agent.run_host.dispatcher import Prepared, Run
 
 # A remote rejection is on a later stderr line than the URL, so keep all of it.
 PUSH_ERROR_LIMIT = 4000

@@ -22,7 +22,7 @@ from tbhbdev.alpha.agent.model import Harness, Invalid, RunKind
 from tbhbdev.alpha.pull_request_frontmatter import parse_frontmatter
 
 if TYPE_CHECKING:
-    from tbhbdev.alpha.agent.run_host import Prepared, Run
+    from tbhbdev.alpha.agent.run_host.dispatcher import Prepared, Run
 
 VERDICTS = frozenset({"GO", "BLOCK", "NO-GO"})
 DRAFT_NAME = re.compile(r"review-([1-9][0-9]*)(?:\.doc)?\.md")

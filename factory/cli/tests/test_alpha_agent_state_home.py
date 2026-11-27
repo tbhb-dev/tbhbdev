@@ -6,7 +6,8 @@ import pytest
 from agent_host_example import constant
 from test_alpha_agent_run_host import make_run
 
-from tbhbdev.alpha.agent import run_host, worktree
+from tbhbdev.alpha.agent import worktree
+from tbhbdev.alpha.agent.run_host import dispatcher as run_host
 
 
 @pytest.mark.parametrize("value", [None, "", "relative/state", "absolute"])

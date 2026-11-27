@@ -12,8 +12,8 @@ import pytest
 import test_alpha_agent_git_parent as parent
 from test_alpha_agent_run_host import make_run
 
-from tbhbdev.alpha.agent import run_host
 from tbhbdev.alpha.agent.model import Harness
+from tbhbdev.alpha.agent.run_host import dispatcher as run_host
 
 
 @pytest.mark.parametrize("failure", [False, True])

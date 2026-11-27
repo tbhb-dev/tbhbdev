@@ -38,13 +38,12 @@ from tbhbdev.alpha.agent import (
     push,
     render,
     review_post,
-    run_host_telemetry,
     runfiles,
     settings,
     shims,
     worktree,
 )
-from tbhbdev.alpha.agent.decisions import argv, config, policy, repo, request, run_state
+from tbhbdev.alpha.agent.decisions import argv, policy, repo, request, run_state
 from tbhbdev.alpha.agent.model import (
     AgyPolicy,
     CodexMode,
@@ -61,6 +60,7 @@ from tbhbdev.alpha.agent.model import (
     Settings,
 )
 from tbhbdev.alpha.agent.ownership import RunExistsError
+from tbhbdev.alpha.agent.run_host import plan, telemetry
 from tbhbdev.alpha.identity import RUN_MODEL_ENV
 
 type BazelShutdown = dict[Path, tuple[str, tuple[int, int] | None]]
@@ -102,41 +102,12 @@ def planned_paths(run: Run) -> RunPaths:
     )
 
 
-# These files can alter the next trusted shell or tool invocation.
 _BAZEL_SHUTDOWN_SECONDS = 60
 _BAZEL_SHUTDOWN_RETRIES = 3
 _BAZEL_RETRY_SECONDS = 2
 NO_COMMIT = 6
 NO_PUSH = 9
 NO_REVIEW = 10
-_STARTUP_FILES = (
-    ".zshenv",
-    ".zshrc",
-    ".zprofile",
-    ".zlogin",
-    ".bashrc",
-    ".bash_profile",
-    ".profile",
-    ".tmux.conf",
-    ".config/tmux",
-    ".gitconfig",
-    ".config/git",
-    ".config/mise",
-    ".ssh",
-    ".claude",
-    ".claude.json",
-    ".codex",
-    ".codex-recovery",
-)
-
-
-def protected_home_paths(home: Path, sockets_dir: str) -> tuple[Path, ...]:
-    sockets = home / sockets_dir
-    # HOME itself is the boundary: protecting it would refuse every workspace.
-    return (
-        *(home / p for p in _STARTUP_FILES),
-        *(p for p in sockets.parents if p.is_relative_to(home) and p != home),
-    )
 
 
 def check_config(configured: Settings) -> None:
@@ -145,7 +116,7 @@ def check_config(configured: Settings) -> None:
     sandbox = configured.sandbox
     writes = (sandbox.audit_dir, *sandbox.write_roots, *sandbox.agy.build_write)
     protected = (
-        *protected_home_paths(home, configured.sockets_dir),
+        *plan.protected_home_paths(home, configured.sockets_dir),
         userconfig.path(),
     )
     if os.environ.get("ZDOTDIR"):
@@ -166,7 +137,7 @@ def protected_home(run: Run) -> tuple[str, ...]:
         raise Invalid(message)
     mirror = worktree.mirror_path(run.home, run.request.repo)
     paths = (
-        *protected_home_paths(run.home, run.settings.sockets_dir),
+        *plan.protected_home_paths(run.home, run.settings.sockets_dir),
         account_git,
         mirror,
         mirror.parent,
@@ -440,20 +411,8 @@ def preflight(run: Run) -> None:
         raise Invalid(message)
 
 
-def hook_environment(value: Policy, *, unsandboxed: bool) -> dict[str, str]:
-    """Reflect the shell overrides each harness applies to its launch environment."""
-    if value.harness is Harness.CODEX:
-        shell = {
-            key: val for key, val in value.env.items() if not key.startswith("GIT_")
-        }
-        return shell | {"PATH": value.tool_path, "GIT_CONFIG_COUNT": "0"}
-    if value.harness is Harness.CLAUDE and not unsandboxed:
-        return value.env | {"PATH": value.tool_path}
-    return value.env
-
-
 def prepare_codex_config(home: Path, endpoint: str | None, *, headless: bool) -> None:
-    text = run_host_telemetry.otel_config(endpoint) if endpoint is not None else ""
+    text = telemetry.otel_config(endpoint) if endpoint is not None else ""
     if headless:
         path = home / "hooks.json"
         config = {"hooks": install.stop_hooks("codex")}
@@ -473,7 +432,7 @@ def prepare_workspace(run: Run) -> Prepared:
         run.files.name,
         run.request,
         lambda: credentials.fetch_token(run.request, run.settings),
-        hook_env=hook_environment(value, unsandboxed=run.request.unsandboxed),
+        hook_env=plan.hook_environment(value, unsandboxed=run.request.unsandboxed),
     )
     with worktree.preparation_step("credential delivery"):
         delivery = credentials.deliver(run.request, run.settings, run.tmpdir)
@@ -557,13 +516,11 @@ def _agy_project(run: Run, prepared: Prepared, grants: AgyPolicy) -> str:
     path = run.tmpdir / "agy-project.json"
     runfiles.atomic(
         path,
-        json.dumps(
-            {
-                "name": f"agent-{run.files.name}",
-                "path": prepared.paths.worktree,
-                "permissions": list(grants.grants),
-                "timeout": run.settings.agy_timeout_seconds,
-            }
+        plan.agy_project(
+            run.files.name,
+            prepared.paths.worktree,
+            grants.grants,
+            run.settings.agy_timeout_seconds,
         ),
     )
     return str(path)
@@ -591,25 +548,13 @@ def harness_command(
         schema_file=str(schema) if schema_text is not None else None,
         schema_text=schema_text,
     )
-    command = (executable, *command[1:])
-    if run.request.kind is RunKind.EXEC and run.request.harness is Harness.CODEX:
-        command = (
-            *command[:-1],
-            "--output-last-message",
-            str(run.tmpdir / "out.final"),
-            command[-1],
-        )
-    return command
-
-
-def checked_harness_command(
-    run: Run, prepared: Prepared, value: Policy, executable: str
-) -> tuple[str, ...]:
-    try:
-        return harness_command(run, prepared, value, executable)
-    except KeyError, TypeError:
-        message = "run failed while building the harness command"
-        raise Invalid(message) from None
+    return plan.finalize_command(
+        command,
+        executable,
+        run.request.kind,
+        run.request.harness,
+        str(run.tmpdir / "out.final"),
+    )
 
 
 def log_hook_tools(run: Run, paths: RunPaths) -> None:
@@ -625,7 +570,7 @@ def log_argv(run: Run, command: tuple[str, ...]) -> None:
     if run.request.harness is Harness.CODEX:
         # A failed log write must not stop the run, as with the cleanup notices.
         with suppress(OSError):
-            run.files.write("log", run_host_telemetry.argv_log_line(command) + "\n")
+            run.files.write("log", telemetry.argv_log_line(command) + "\n")
 
 
 def run_harness(
@@ -636,7 +581,7 @@ def run_harness(
     env = (
         value.env
         | prepared.delivery.env
-        | run_host_telemetry.resource_attributes(
+        | telemetry.resource_attributes(
             run.settings.otel_endpoint,
             host=run.host.name,
             account=run.request.account,
@@ -644,7 +589,7 @@ def run_harness(
         )
         | {RUN_MODEL_ENV: run.request.model}
     )
-    command = checked_harness_command(run, prepared, value, executable)
+    command = harness_command(run, prepared, value, executable)
     if preflight_only:
         log_hook_tools(run, paths)
         run.files.write("log", f"preflight ok: {executable}\n")
@@ -1476,10 +1421,7 @@ def _load(args: argparse.Namespace, tmpdir: Path) -> tuple[Run, str]:
     started = time.time()
     clock = time.monotonic()
     loaded = settings.load()
-    host = next((h for h in loaded.hosts if h.name == args.host), None)
-    if host is None:
-        message = f"host {args.host!r} is not configured"
-        raise Invalid(message)
+    host = plan.select_host(loaded.hosts, args.host)
     home = Path.home()
     files = _files(args.name)
     if files.path("request.json").exists() and args.request is not None:
@@ -1490,22 +1432,7 @@ def _load(args: argparse.Namespace, tmpdir: Path) -> tuple[Run, str]:
         if args.request == "-"
         else Path(args.request or files.path("request.json")).read_text()
     )
-    data = json.loads(raw)
-    if not isinstance(data, dict):
-        message = "request must be a JSON object"
-        raise Invalid(message)
-    parsed = request.parse(data, host_allows_unsandboxed=host.unsandboxed)
-    if parsed.account not in host.accounts:
-        message = f"account {parsed.account!r} is not enabled on {host.name}"
-        raise Invalid(message)
-    if parsed.harness is Harness.CLAUDE:
-        profile = config.find_profile(
-            loaded.claude.profiles, str(parsed.claude_profile)
-        )
-        if profile is None:
-            message = f"claude profile {parsed.claude_profile!r} is not configured"
-            raise Invalid(message)
-        parsed = dataclasses.replace(parsed, claude_profile=profile.name)
+    parsed = plan.parse_request(raw, host, loaded.claude)
     text = Path(args.prompt or files.path("prompt")).read_text()
     if args.request is not None:
         files.receive(parsed)

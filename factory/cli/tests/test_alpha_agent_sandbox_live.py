@@ -34,9 +34,10 @@ from agent_live_probe import (
     server_connections,
 )
 
-from tbhbdev.alpha.agent import credentials, run_host, runfiles
+from tbhbdev.alpha.agent import credentials, runfiles
 from tbhbdev.alpha.agent.decisions import policy
 from tbhbdev.alpha.agent.model import ClaudePolicy, Harness, Invalid, Profile, RunPaths
+from tbhbdev.alpha.agent.run_host import dispatcher as run_host
 
 if TYPE_CHECKING:
     from collections.abc import Generator

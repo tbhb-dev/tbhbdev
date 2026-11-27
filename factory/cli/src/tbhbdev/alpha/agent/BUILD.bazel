@@ -156,7 +156,7 @@ cli_py_library(
     imports = ["../../.."],
     pyi_deps = [
         ":credentials",
-        ":run_host",
+        "//factory/cli/src/tbhbdev/alpha/agent/run_host:dispatcher",
     ],
     visibility = ["//factory/cli:__subpackages__"],
     deps = [
@@ -182,7 +182,7 @@ cli_py_library(
     name = "review_post",
     srcs = ["review_post.py"],
     imports = ["../../.."],
-    pyi_deps = [":run_host"],
+    pyi_deps = ["//factory/cli/src/tbhbdev/alpha/agent/run_host:dispatcher"],
     visibility = ["//factory/cli:__subpackages__"],
     deps = [
         ":credentials",
@@ -217,7 +217,6 @@ cli_py_library(
         ":push",
         ":render",
         ":review_post",
-        ":run_host_telemetry",
         ":runfiles",
         ":settings",
         ":shims",
@@ -228,11 +227,12 @@ cli_py_library(
         "//factory/cli/src/tbhbdev/alpha:install",
         "//factory/cli/src/tbhbdev/alpha:run_stop_hook",
         "//factory/cli/src/tbhbdev/alpha/agent/decisions:argv",
-        "//factory/cli/src/tbhbdev/alpha/agent/decisions:config",
         "//factory/cli/src/tbhbdev/alpha/agent/decisions:policy",
         "//factory/cli/src/tbhbdev/alpha/agent/decisions:repo",
         "//factory/cli/src/tbhbdev/alpha/agent/decisions:request",
         "//factory/cli/src/tbhbdev/alpha/agent/decisions:run_state",
+        "//factory/cli/src/tbhbdev/alpha/agent/run_host:plan",
+        "//factory/cli/src/tbhbdev/alpha/agent/run_host:telemetry",
         "@cli_pip//httpx",
     ],
 )
@@ -297,9 +297,9 @@ cli_py_library(
         ":model",
         ":ownership",
         ":process_group",
-        ":run_host",
         ":runfiles",
         "//factory/cli/src/tbhbdev/alpha/agent/decisions:run_state",
+        "//factory/cli/src/tbhbdev/alpha/agent/run_host:dispatcher",
     ],
 )
 
@@ -354,8 +354,12 @@ filegroup(
     name = "package_files",
     srcs = glob(
         ["**"],
-        exclude = ["BUILD.bazel"],
-    ),
+        # The dispatcher link gives these same source bytes their Python import name.
+        exclude = [
+            "BUILD.bazel",
+            "run_host.py",
+        ],
+    ) + ["//factory/cli/src/tbhbdev/alpha/agent/run_host:package_files"],
     visibility = [
         "//factory/cli:__pkg__",
         "//factory/cli/tests:__pkg__",
@@ -372,12 +376,12 @@ cli_py_library(
         ":arguments",
         ":driver",
         ":precheck",
-        ":run_host",
         ":settings",
         ":signing_parity",
         ":ssh_serve",
         "//factory/cli/src/tbhbdev:telemetry",
         "//factory/cli/src/tbhbdev:userconfig",
+        "//factory/cli/src/tbhbdev/alpha/agent/run_host:dispatcher",
     ],
 )
 
@@ -391,11 +395,4 @@ cli_py_library(
         "//factory/cli/src/tbhbdev/alpha:worker_identity",
         "//factory/cli/src/tbhbdev/alpha/agent/decisions:config",
     ],
-)
-
-cli_py_library(
-    name = "run_host_telemetry",
-    srcs = ["run_host_telemetry.py"],
-    imports = ["../../.."],
-    visibility = ["//factory/cli:__subpackages__"],
 )

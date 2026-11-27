@@ -23,9 +23,10 @@ from agent_live_evidence import (
 )
 from agent_live_probe import Proxy
 
-from tbhbdev.alpha.agent import credentials, run_host
+from tbhbdev.alpha.agent import credentials
 from tbhbdev.alpha.agent.decisions import policy
 from tbhbdev.alpha.agent.model import Harness, Invalid
+from tbhbdev.alpha.agent.run_host import dispatcher as run_host
 
 MIRRORS = MIRROR_LABELS
 EXTRA = (*MIRRORS, "file-control", "local-binding", "host-loopback", "hooks-write")

@@ -39,8 +39,9 @@ from agent_live_host_probe import (
 from test_alpha_agent_codex_install import release
 from test_alpha_agent_sandbox_live import live_only, probe_run, report
 
-from tbhbdev.alpha.agent import credentials, host_tools, run_host
+from tbhbdev.alpha.agent import credentials, host_tools
 from tbhbdev.alpha.agent.model import Harness, Invalid, Os, Profile
+from tbhbdev.alpha.agent.run_host import dispatcher as run_host
 
 
 def test_host_live_probes_skip_without_opt_in(tmp_path: Path) -> None:

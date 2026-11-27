@@ -19,8 +19,8 @@ from tbhbdev.alpha.agent.model import Harness, Invalid, Profile, RunKind, RunReq
 if TYPE_CHECKING:
     from pathlib import Path
 
-    from tbhbdev.alpha.agent import run_host
     from tbhbdev.alpha.agent.model import Settings
+    from tbhbdev.alpha.agent.run_host import dispatcher as run_host
 
 pytestmark = pytest.mark.usefixtures("review_cue")  # noqa: V107
 

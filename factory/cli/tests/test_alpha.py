@@ -37,7 +37,8 @@ from tbhbdev.alpha import (
 )
 from tbhbdev.alpha import command as alpha
 from tbhbdev.alpha.agent import command as agent
-from tbhbdev.alpha.agent import precheck, run_host, settings, signing_parity, ssh_serve
+from tbhbdev.alpha.agent import precheck, settings, signing_parity, ssh_serve
+from tbhbdev.alpha.agent.run_host import dispatcher as run_host
 from tbhbdev.alpha.loop import command as loop
 
 if TYPE_CHECKING:

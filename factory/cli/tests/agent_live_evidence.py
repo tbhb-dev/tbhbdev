@@ -14,8 +14,9 @@ from typing import TYPE_CHECKING
 
 from agent_live_probe import mirror_object, mirror_probes
 
-from tbhbdev.alpha.agent import credentials, run_host, runfiles
+from tbhbdev.alpha.agent import credentials, runfiles
 from tbhbdev.alpha.agent.model import Harness
+from tbhbdev.alpha.agent.run_host import dispatcher as run_host
 
 if TYPE_CHECKING:
     from collections.abc import Generator
