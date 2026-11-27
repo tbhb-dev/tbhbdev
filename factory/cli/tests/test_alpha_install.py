@@ -133,7 +133,7 @@ def private_files_fail(**_kw: object) -> int:
 
 @pytest.fixture
 def world(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> World:
-    prefixes = ("CLAUDE", "CODEX", "ANTIGRAVITY", "GIT_", "PREK", "TBHB_")
+    prefixes = ("CLAUDE", "CODEX", "ANTIGRAVITY", "GIT_", "PREK", "TBHB_", "TBHBDEV_")
     list(map(monkeypatch.delenv, [n for n in os.environ if n.startswith(prefixes)]))
     for who in ("AUTHOR", "COMMITTER"):
         monkeypatch.setenv(f"GIT_{who}_NAME", "T")
@@ -155,6 +155,10 @@ def world(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> World:
     for name in ("tr", "grep"):
         (tmp_path / "shim_bin" / name).symlink_to(shutil.which(name) or name)
     monkeypatch.setenv("PATH", f"{bin_dir}{os.pathsep}{tmp_path / 'git_dir'}")
+    # Keep the generated hook shebang short under Bazel's runfiles tree.
+    python = tmp_path / "python"
+    python.symlink_to(sys.base_prefix, target_is_directory=True)
+    monkeypatch.setattr(sys, "base_prefix", str(python))
     repo = make_repo(tmp_path / "repo")
     monkeypatch.chdir(repo)
     # No plugin supplies private files unless a test says so.
@@ -1665,6 +1669,9 @@ def test_identity_hook_without_prek_hooks_for_its_stage(world: World) -> None:
         verb="check",
         hook="commit-msg",
         origin=install.ORIGIN_GREP,
+        agent_markers=install.SHELL_AGENT_MARKERS,
+        agent_email="agent@tonyburns.net",
+        install_hooks="tbhbdev alpha install --hooks-only",
     )
     assert hook.stat().st_mode & 0o777 == 0o755
     assert not (world.hooks / "commit-msg.prek").exists()
@@ -1811,16 +1818,16 @@ def test_the_shim_fails_without_tbhbdev_on_path(world: World) -> None:
         "",
         (
             "post-commit: tbhbdev is not on PATH, so the identity hooks can't run\n"
-            "post-commit: install it with uv tool install, and put ~/.local/bin "
-            "on PATH\n"
+            "post-commit: install tbhbdev on PATH and run "
+            "tbhbdev alpha install --hooks-only\n"
         ),
     )
 
 
 NOT_ON_PATH = (
     "prepare-commit-msg: tbhbdev is not on PATH, so the identity hooks can't run\n"
-    "prepare-commit-msg: install it with uv tool install, and put ~/.local/bin "
-    "on PATH\n"
+    "prepare-commit-msg: install tbhbdev on PATH and run "
+    "tbhbdev alpha install --hooks-only\n"
 )
 
 
@@ -1899,6 +1906,19 @@ def test_without_tbhbdev_the_shim_passes_where_git_fails(world: World) -> None:
     identity_hook(world)
     done = run_shim(world, "commit-msg", None, cwd=world.home)
     assert (done.returncode, done.stdout, done.stderr) == (0, "", "")
+
+
+@pytest.mark.parametrize("marker", ["CODEX_SESSION_ID", "GIT_COMMITTER_EMAIL"])
+def test_identity_shim_refuses_unknown_origin_for_agents(
+    world: World, monkeypatch: pytest.MonkeyPatch, marker: str
+) -> None:
+    identity_hook(world)
+    git(world.repo, "remote", "remove", "origin")
+    monkeypatch.setenv(marker, "agent@tonyburns.net")
+    done = run_shim(world, "commit-msg", None)
+    assert done.returncode == 1
+    assert "origin" in done.stderr
+    assert "tbhbdev alpha install --hooks-only" in done.stderr
 
 
 def test_the_shim_reads_the_push_url(world: World) -> None:
@@ -3467,6 +3487,12 @@ def test_direct_foreign_push_hook_refused(world: World) -> None:
     assert hook.read_text() == "foreign\n"
 
 
+PUSH_TOOL_MISSING = (
+    b"pre-push: tbhbdev is not on PATH; push refused\n"
+    b"pre-push: install tbhbdev on PATH and run tbhbdev alpha install --hooks-only\n"
+)
+
+
 @pytest.mark.parametrize("url_argument", [ORIGIN, ""])
 def test_missing_tool_checks_named_push_target(world: World, url_argument: str) -> None:
     assert install.install_git_hooks(None, {}, dry_run=False) == 0
@@ -3481,7 +3507,23 @@ def test_missing_tool_checks_named_push_target(world: World, url_argument: str) 
         check=False,
     )
     assert done.returncode == 1
-    assert done.stderr == b"pre-push: tbhbdev is not on PATH; push refused\n"
+    assert done.stderr == PUSH_TOOL_MISSING
+
+
+def test_push_shim_refuses_when_tool_and_destination_are_unknown(world: World) -> None:
+    assert install.install_git_hooks(None, {}, dry_run=False) == 0
+    done = subprocess.run(
+        [str(world.hooks / "pre-push"), "missing", ""],
+        input=b"",
+        cwd=world.repo,
+        env=shim_env(world, None),
+        capture_output=True,
+        check=False,
+    )
+    assert done.returncode == 1
+    assert b"tbhbdev is not on PATH" in done.stderr
+    assert b"push destination" in done.stderr
+    assert b"tbhbdev alpha install --hooks-only" in done.stderr
 
 
 def test_push_hook_rerun_drops_previous_shim_without_backup(world: World) -> None:
@@ -3537,4 +3579,4 @@ def test_missing_tool_uses_named_remote_push_url(world: World) -> None:
         check=False,
     )
     assert done.returncode == 1
-    assert done.stderr == b"pre-push: tbhbdev is not on PATH; push refused\n"
+    assert done.stderr == PUSH_TOOL_MISSING

@@ -140,6 +140,22 @@ def test_rewrite_of_the_fetched_tip_is_logged_not_refused(
     assert new != old
 
 
+def test_a_failed_ancestry_check_refuses_even_with_a_matching_tip(
+    repo: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    old = git(repo, "rev-parse", "HEAD")
+    git(repo, "update-ref", "refs/remotes/origin/topic", old)
+    head = commit(repo)
+    run_git = pg.git
+
+    def fail_merge_base(*args: str) -> tuple[int, str]:
+        return (128, "") if "merge-base" in args else run_git(*args)
+
+    monkeypatch.setattr(pg, "git", fail_merge_base)
+    assert guard(monkeypatch, head, old) == 1
+    assert "git merge-base" in capsys.readouterr().err
+
+
 @pytest.mark.parametrize("ref", ["refs/tags/topic", "refs/notes/topic"])
 def test_rewrite_outside_branches_is_refused(
     repo: Path,
@@ -167,8 +183,9 @@ def install_hook(repo: Path, monkeypatch: pytest.MonkeyPatch) -> dict[str, str]:
     install.install_pre_push_hook(hooks)
     binary = repo.parent / "bin"
     binary.mkdir()
-    tool = binary / "tbhbdev"
+    tool = binary / "guard-cli"
     write_fake(tool, "import sys\nfrom tbhbdev.cli import main\nsys.exit(main())\n")
+    (binary / "tbhbdev").symlink_to(tool)
     monkeypatch.setenv("PATH", f"{binary}:{os.environ['PATH']}")
     monkeypatch.setenv("PYTHONPATH", pythonpath(Path(pg.__file__).parents[2]))
     env = dict(os.environ)
@@ -224,7 +241,8 @@ def test_real_pushes_through_the_installed_hook(
     base = git(repo, "rev-parse", "HEAD")
     git(repo, "switch", "-qc", "topic")
     first = commit(repo, "first")
-    assert push(repo, env, "origin", "topic").returncode == 0
+    done = push(repo, env, "origin", "topic")
+    assert done.returncode == 0, done.stderr
     git(repo, "reset", "-q", "--hard", base)
     second = commit(repo, "second")
     # A plain push is still a rewrite: git itself refuses it before the hook.
@@ -454,6 +472,8 @@ def isolated_agent_environment(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.delenv("SSH_AUTH_SOCK", raising=False)
     for name in (*gh_shim.ROOT_IDS, *gh_shim.MARKERS):
         monkeypatch.delenv(name, raising=False)
+    for name in (pg.RUN_NAME_ENV, "TBHBDEV_AGENT_RUN"):
+        monkeypatch.delenv(name, raising=False)
 
 
 @pytest.fixture(autouse=True)
@@ -536,6 +556,69 @@ def push_agent(monkeypatch: pytest.MonkeyPatch, local: str) -> int:
 @pytest.fixture
 def agent_session(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("CODEX_SESSION_ID", "test-session")
+
+
+@pytest.mark.parametrize("context", ["session", "account", "launcher", "human", "run"])
+def test_run_name_is_required_for_agent_pushes_to_the_org(
+    repo: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    context: str,
+) -> None:
+    git(repo, "remote", "add", "publish", "https://github.com/tbhb-dev/example.git")
+    if context in {"session", "run"}:
+        monkeypatch.setenv("CODEX_SESSION_ID", "test-session")
+    if context == "account":
+        git(repo, "config", "user.email", AGENT_MAIL)
+    if context == "launcher":
+        monkeypatch.setenv("TBHBDEV_AGENT_RUN", "1")
+    if context == "run":
+        monkeypatch.setenv(pg.RUN_NAME_ENV, "topic")
+    head = commit(repo)
+    row = f"HEAD {head} refs/heads/agent/topic {ZERO}\n"
+    monkeypatch.setattr(sys, "stdin", io.StringIO(row))
+    denied = context not in {"human", "run"}
+    url = git(repo, "remote", "get-url", "--push", "publish")
+    assert pg.main(["publish", url], "p") == int(denied)
+    assert (pg.RUN_NAME_ENV in capsys.readouterr().err) == denied
+
+
+@pytest.mark.usefixtures("repo", "agent_session")
+def test_an_org_agent_push_requires_ref_input(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    monkeypatch.setenv(pg.RUN_NAME_ENV, "topic")
+    monkeypatch.setattr(sys, "stdin", io.StringIO(""))
+    assert pg.main(["origin", "https://github.com/tbhb-dev/example.git"], "p") == 1
+    assert "no refs to check" in capsys.readouterr().err
+
+
+@pytest.mark.parametrize(
+    ("query", "code"), [("for-each-ref", 1), ("batch", 1), ("batch", 0), ("commit", 1)]
+)
+def test_an_unreadable_object_query_refuses_the_push(
+    repo: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    query: str,
+    code: int,
+) -> None:
+    head = commit(repo)
+    run = Mock(wraps=subprocess.run)
+
+    def fail_object_query(argv: list[str], **kwargs: object) -> object:
+        if query == "for-each-ref" and query in argv:
+            return subprocess.CompletedProcess(argv, code, "")
+        if query == "batch" and argv[-1].startswith("--batch-check"):
+            return subprocess.CompletedProcess(argv, code, "")
+        if query == "commit" and "cat-file" in argv and "commit" in argv:
+            return subprocess.CompletedProcess(argv, code, b"")
+        return run(argv, **kwargs)
+
+    monkeypatch.setattr(pg.subprocess, "run", fail_object_query)
+    assert push_agent(monkeypatch, head) == 1
+    tool = query if query == "for-each-ref" else "cat-file"
+    assert f"git {tool}" in capsys.readouterr().err
 
 
 @pytest.mark.usefixtures("agent_session")

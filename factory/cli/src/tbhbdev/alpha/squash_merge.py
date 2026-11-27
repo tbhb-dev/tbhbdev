@@ -80,6 +80,7 @@ per update from Renovate's update table.
 
 import argparse
 import json
+import os
 import re
 import shlex
 import sys
@@ -91,6 +92,7 @@ from urllib.parse import quote
 
 from tbhbdev.alpha import identity as agent_identity
 from tbhbdev.alpha import pull_request as pr
+from tbhbdev.alpha.install import require_git_hooks
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
@@ -775,6 +777,8 @@ def build_parser(prog: str | None = None) -> argparse.ArgumentParser:
 def main(argv: Sequence[str] | None = None, prog: str | None = None) -> int:
     """Preview or perform the merge."""
     args = build_parser(prog).parse_args(argv)
+    if not require_git_hooks(os.environ):
+        return 1
     request = fetch(args.number)
     head = merge_head(request.head, args.expect_head, args.number)
     if reasons := refusals(request):
