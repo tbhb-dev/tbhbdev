@@ -7,7 +7,7 @@ lazy from pathlib import Path
 
 import pytest
 
-from tbhbdev import content as cw
+from tbhbdev.alpha import content_issues as cw
 from tbhbdev.alpha.close import main as close_main
 from tbhbdev.alpha.pull_request import repository as pr_repository
 
@@ -85,17 +85,6 @@ def audit(tmp_path: Path) -> list[cw.Json]:
         assert entry["repo"] == "example/demo"
         assert entry["number"] == 7
     return entries
-
-
-def test_render(tmp_path: Path) -> None:
-    template = tmp_path / "template.txt"
-    template.write_text("{{name}}: {{name}}\n{{body}}")
-    assert (
-        cw.render(template, {"name": "Hello", "body": "{{literal}}"})
-        == "Hello: Hello\n{{literal}}"
-    )
-    with pytest.raises(KeyError, match="body"):
-        cw.render(template, {"name": "Hello"})
 
 
 def test_create_issue(scans: list[tuple[str, str]], tmp_path: Path) -> None:
@@ -513,33 +502,6 @@ def test_alpha_issue_relationship_requires_one_direction(
     assert "--blocking" in capsys.readouterr().err
 
 
-WRITES: list[Callable[[cw.Client], object]] = [
-    lambda c: cw.create_issue(
-        "example/demo", "refuse", "body", issue_type="Task", client=c
-    ),
-    lambda c: cw.create_issue(
-        "example/demo", "title", "refuse", issue_type="Task", client=c
-    ),
-    lambda c: cw.add_comment(REF, "refuse", client=c),
-]
-
-
-@pytest.mark.parametrize("write", WRITES)
-def test_refused_sends_nothing(
-    write: Callable[[cw.Client], object], tmp_path: Path
-) -> None:
-    client = RecordingClient()
-    with pytest.raises(cw.Refused, match=r"^rule test-rule on line 1$"):
-        write(client)
-    assert client.calls == []
-    assert not (tmp_path / "audit.jsonl").exists()
-
-
-def test_scan_refused() -> None:
-    with pytest.raises(cw.Refused, match=r"^rule test-rule on line 1$"):
-        cw.scan_text("refuse", "test")
-
-
 def test_default_client(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     calls: list[tuple[list[str], cw.Json | None]] = []
 
@@ -605,12 +567,6 @@ def test_failed_writes(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     monkeypatch.setattr(cw.subprocess, "run", graph_error)
     with pytest.raises(RuntimeError, match="GitHub GraphQL write failed"):
         cw.add_to_project(REF, "PROJECT")
-    assert not (tmp_path / "audit.jsonl").exists()
-
-
-def test_scan_text(scans: list[tuple[str, str]], tmp_path: Path) -> None:
-    cw.scan_text("record", "plugin record")
-    assert scans == [("record", "plugin record")]
     assert not (tmp_path / "audit.jsonl").exists()
 
 
@@ -718,7 +674,10 @@ def test_dry_run_ids(fields: dict[str, cw.Json] | None, tmp_path: Path) -> None:
     assert not (tmp_path / "audit.jsonl").exists()
 
 
-DRY_WRITES: list[Callable[[cw.Client, bool], object]] = [
+TEXT_WRITES: list[Callable[[cw.Client, bool], object]] = [
+    lambda c, dry: cw.create_issue(
+        "example/demo", "refuse", "body", issue_type="Task", client=c, dry_run=dry
+    ),
     lambda c, dry: cw.create_issue(
         "example/demo", "Title", "refuse", issue_type="Task", client=c, dry_run=dry
     ),
@@ -727,14 +686,14 @@ DRY_WRITES: list[Callable[[cw.Client, bool], object]] = [
 
 
 @pytest.mark.parametrize("dry_run", [False, True])
-@pytest.mark.parametrize("write", DRY_WRITES)
-def test_dry_run_refused(
+@pytest.mark.parametrize("write", TEXT_WRITES)
+def test_refused_sends_nothing(
     write: Callable[[cw.Client, bool], object],
     dry_run: bool,
     tmp_path: Path,
 ) -> None:
     client = RecordingClient()
-    with pytest.raises(cw.Refused):
+    with pytest.raises(cw.Refused, match=r"^rule test-rule on line 1$"):
         write(client, dry_run)
     assert client.calls == []
     assert not (tmp_path / "audit.jsonl").exists()

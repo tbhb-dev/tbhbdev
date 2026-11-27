@@ -1,256 +1,23 @@
-"""Shared GitHub content validation and writes for plugins."""
+"""Scan and audit GitHub issue and project writes."""
 
 import json
 import os
-import re
 import subprocess  # nosec B404
 from dataclasses import dataclass
 from datetime import UTC, datetime
-from importlib.resources import as_file, files
 from pathlib import Path
 from typing import TYPE_CHECKING, Protocol, cast
 
-from tbhbdev import content_vet, cue_runtime
 from tbhbdev.alpha import secret_scan
 from tbhbdev.alpha.pull_request.tools import find_tool, root
-from tbhbdev.content_model import normalize
+from tbhbdev.content_model import Json, Refused, normalize
+from tbhbdev.content_vet import check_close, format_refusal
 
 if TYPE_CHECKING:
     from collections.abc import Mapping, Sequence
 
-type Json = dict[str, object]
-
-CheckResult = content_vet.CheckResult
-Finding = content_vet.Finding
-check = content_vet.check
-check_close = content_vet.check_close
-format_refusal = content_vet.format_refusal
-guide = content_vet.guide
-
 _PLANNING_ISSUE_TYPES = frozenset({"Initiative", "Epic", "Feature"})
 _LEAF_ISSUE_TYPES = frozenset({"Task", "Defect", "Chore", "Spike", "Research"})
-
-_RECORD_SECTIONS = ("Context", "Decision", "Consequences")
-_RECORD_OPTIONS = "Options considered"
-_RECORD_SECTION_ORDERS = {
-    _RECORD_SECTIONS,
-    ("Context", "Decision", _RECORD_OPTIONS, "Consequences"),
-}
-_RECORD_WORD_LIMITS = {"Context": 150, "Decision": 120, "Consequences": 150}
-_RECORD_TOTAL_LIMIT = 450
-_RECORD_OPTION_LIMIT = 5
-_RECORD_OPTION_WORD_LIMIT = 25
-_RECORD_TITLE_MINIMUM = 4
-# A closing quote must end a sentence, end the line, or precede attribution.
-_RECORD_QUOTE = re.compile(
-    r"""^[^\S\n]*(?:"[^"\n]*"|'[^\n]*?'|“[^”\n]*”|‘[^\n]*?’)"""  # noqa: RUF001
-    r"""(?:(?<=[.!?,]["'”’])|(?=[^\S\n]*(?:$|[,.;!?—–-])))""",  # noqa: RUF001
-    re.MULTILINE,
-)
-
-
-# Casts narrow the normalizer's JSON model for the type checker and do not
-# change runtime values. Mutations to those casts can be equivalent.
-def _record_words(value: Json) -> int:
-    metrics = cast("Json", value["metrics"])  # pragma: no mutate
-    visible = cast("dict[str, int]", metrics["visible"])  # pragma: no mutate
-    return visible["words"]
-
-
-def _record_paragraphs(blocks: list[Json], refusals: list[str]) -> None:
-    for block in blocks:
-        if block["kind"] != "paragraph":
-            children = block.get("items", block.get("blocks", []))
-            _record_paragraphs(
-                cast("list[Json]", children),  # pragma: no mutate
-                refusals,
-            )
-            continue
-        span = cast("dict[str, dict[str, int]]", block["span"])  # pragma: no mutate
-        line = span["start"]["line"]
-        source = cast("str", block["source"])  # pragma: no mutate
-        paragraph = source.rstrip("\r\n")
-        if "\r" in paragraph or "\n" in paragraph:
-            refusals.append(f"Line {line}: write each paragraph on one source line")
-        visible = cast("str", block["visible"])  # pragma: no mutate
-        if _RECORD_QUOTE.search(visible):
-            refusals.append(f"Line {line}: start the line without a quoted sentence")
-
-
-def _record_options(block: Json, content: list[Json], refusals: list[str]) -> None:
-    metrics = cast("dict[str, int]", block["metrics"])  # pragma: no mutate
-    if metrics["listItems"] > _RECORD_OPTION_LIMIT:
-        refusals.append(f"{_RECORD_OPTIONS} exceeds {_RECORD_OPTION_LIMIT} bullets")
-    if metrics["maxListDepth"] > 1 or any(
-        group["kind"] != "list" or group["style"] != "unordered" for group in content
-    ):
-        refusals.append(f"{_RECORD_OPTIONS} must use flat bullet lists")
-        return
-    items = (
-        item
-        for group in content
-        for item in cast("list[Json]", group["items"])  # pragma: no mutate
-    )
-    for index, item in enumerate(items, 1):
-        if _record_words(item) > _RECORD_OPTION_WORD_LIMIT:
-            refusals.append(f"Option {index} exceeds {_RECORD_OPTION_WORD_LIMIT} words")
-
-
-def _record_structure(draft: Json, headings: tuple[object, ...]) -> list[str]:
-    refusals: list[str] = []
-    if headings not in _RECORD_SECTION_ORDERS:
-        refusals.append(
-            "Use these H2 sections in order: Context, Decision, "
-            "optional Options considered, Consequences"
-        )
-    metrics = cast("dict[str, int]", draft["metrics"])  # pragma: no mutate
-    if metrics["atxHeadings"] + metrics["setextHeadings"] != 1 + sum(
-        heading is not None for heading in headings
-    ):
-        refusals.append("Use headings only for the H1 title and H2 sections")
-    if metrics["tables"]:
-        refusals.append("Remove tables")
-    if metrics["fencedCodeBlocks"] or metrics["indentedCodeBlocks"]:
-        refusals.append("Remove code blocks")
-    if metrics["blockQuotes"]:
-        refusals.append("Remove block quotes")
-    if _record_words(draft) > _RECORD_TOTAL_LIMIT:
-        refusals.append(f"Record body exceeds {_RECORD_TOTAL_LIMIT} words")
-    return refusals
-
-
-def check_decision_record(markdown: str) -> list[str]:
-    """Return body refusals, or an empty list when the record passes."""
-    try:
-        # These fields describe the normalized draft. The check reads its body.
-        draft = normalize(
-            markdown,
-            object="record",  # pragma: no mutate
-            variant="decision-record",  # pragma: no mutate
-            metadata={},  # pragma: no mutate
-        )
-    except ValueError as exc:
-        return [str(exc)]
-    blocks = cast("dict[str, Json]", draft["blocks"])  # pragma: no mutate
-    order = cast("list[str]", draft["blockOrder"])  # pragma: no mutate
-    sections = [blocks[key] for key in order[1:]]
-    refusals = _record_structure(
-        draft, tuple(block.get("heading") for block in sections)
-    )
-    title = blocks["title"]
-    visible = cast("str", title["visible"])  # pragma: no mutate
-    if _record_words(title) < _RECORD_TITLE_MINIMUM:
-        refusals.append(f"Title needs at least {_RECORD_TITLE_MINIMUM} words")
-    if visible.endswith((":", "?")):
-        refusals.append("End the title without a colon or question mark")
-    if _RECORD_QUOTE.search(visible):
-        refusals.append("Start the title without a quoted sentence")
-    for block in sections:
-        heading = cast("str", block.get("heading", ""))  # pragma: no mutate
-        limit = _RECORD_WORD_LIMITS.get(heading)
-        if limit is not None and _record_words(block) > limit:
-            refusals.append(f"{heading} exceeds {limit} words")
-        content = cast("list[Json]", block["content"])  # pragma: no mutate
-        if heading == _RECORD_OPTIONS:
-            _record_options(block, content, refusals)
-        _record_paragraphs(content, refusals)
-    return refusals
-
-
-_REVIEW_SECTION_FIXES = {
-    "summary": "Write one Summary paragraph of one or two sentences "
-    "and at most 40 words",
-    "findings": "Use up to eight Findings bullets numbered F1 onward, with a "
-    "severity, kind, and up to 30 words of evidence. "
-    "Include an Occurs when: clause in each P1 finding",
-    "suggestions": "Use up to five Suggestions bullets numbered S1 onward, "
-    "with up to 25 words each",
-    "verification": "Write Verification as one to six unnumbered bullets "
-    "of at most 20 words each",
-}
-
-
-def _review_section_order_refusal(order: list[str]) -> str:
-    if "summary" not in order:
-        if "verdict" in order:
-            return "Rename Verdict to Summary and give the reasons for the review"
-        return "Add a Summary section"
-    if "verification" not in order:
-        return "Add a Verification section"
-    return "Use Summary, optional Findings and Suggestions, then Verification"
-
-
-def _review_refusal(stderr: str, draft: Json) -> str:
-    first = stderr.strip().partition("\n")[0]
-    path, _, detail = first.partition(":")
-    field, _, rest = path.partition(".")
-    if field == "blocks":
-        section, _, constraint = rest.partition(".")
-        if constraint == "source" or (
-            section == "summary" and constraint == "content.0.visible"
-        ):
-            return f"Remove the standalone verdict line from {section.title()}"
-        return _REVIEW_SECTION_FIXES.get(section, "Review validation failed")
-    if field == "_err":
-        return f"Findings: {detail.strip().removesuffix(':')}"
-    if field == "blockOrder":
-        return _review_section_order_refusal(cast("list[str]", draft["blockOrder"]))
-    if field == "metadata" or first.startswith("unresolved disjunction "):
-        return "Correct the schema 2 review frontmatter"
-    return "Review validation failed"
-
-
-def check_review(
-    markdown: str,
-    *,
-    metadata: Json | None = None,
-    event: str = "",
-    posted: bool = False,
-) -> list[str]:
-    """Return review validation refusals, or an empty list on success."""
-    definition = "#Review"
-    if metadata is None:
-        definition = "#ReviewBody"
-        metadata = {"event": event} if event else {}
-    try:
-        draft = normalize(
-            markdown,
-            object="pr-review",
-            variant="review",
-            metadata={**metadata, "posted": posted},
-        )
-        payload = json.dumps(draft)
-    except (TypeError, ValueError) as exc:
-        return [str(exc)]
-    try:
-        cue = cue_runtime.resolve()
-        with as_file(files().joinpath("schemas")) as schemas:
-            # Fixed schema names and pinned executable. Draft JSON goes on stdin.
-            done = subprocess.run(  # nosec B603
-                [
-                    str(cue),
-                    "vet",
-                    "-c",
-                    "-d",
-                    definition,
-                    "core.cue",
-                    "issue.cue",
-                    "review.cue",
-                    "json:",
-                    "-",
-                ],
-                cwd=schemas,
-                input=payload,
-                capture_output=True,
-                encoding="utf-8",
-                check=False,
-                timeout=10,
-            )
-    except (cue_runtime.CueError, OSError, subprocess.TimeoutExpired) as exc:
-        return [f"Review validation could not run: {exc}"]
-    if done.returncode:
-        return [_review_refusal(done.stderr, draft)]
-    return []
 
 
 @dataclass(frozen=True)
@@ -262,10 +29,6 @@ class IssueRef:
     @property
     def path(self) -> str:
         return f"/repos/{self.owner}/{self.repo}/issues/{self.number}"
-
-
-class Refused(RuntimeError):  # noqa: N818 -- Required public name.
-    """A content refusal with a diagnostic."""
 
 
 class Client(Protocol):
@@ -342,15 +105,6 @@ def _audit(
     }
     with path.open("a") as stream:
         stream.write(json.dumps(entry) + "\n")
-
-
-def scan_text(text: str, what: str, visibility: str = "") -> None:
-    """Scan a record before the caller commits it."""
-    _scan(text, what, visibility)
-
-
-def render(template_path: Path, data: Mapping[str, str]) -> str:
-    return re.sub(r"\{\{([^{}]+)\}\}", lambda m: data[m[1]], template_path.read_text())
 
 
 def create_issue(  # noqa: PLR0913 -- Public plugin interface.

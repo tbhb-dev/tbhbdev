@@ -142,7 +142,7 @@ cli_py_library(
         ":credentials",
         ":model",
         ":runfiles",
-        "//factory/cli/src/tbhbdev:content",
+        "//factory/cli/src/tbhbdev:content_review",
         "//factory/cli/src/tbhbdev:github_tls",
         "//factory/cli/src/tbhbdev/alpha:gh_app",
         "//factory/cli/src/tbhbdev/alpha:review",
