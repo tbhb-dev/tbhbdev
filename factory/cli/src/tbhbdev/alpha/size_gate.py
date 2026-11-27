@@ -2,6 +2,7 @@
 
 import json
 import subprocess  # nosec B404
+import sys
 from dataclasses import dataclass
 from pathlib import Path
 from typing import cast
@@ -19,6 +20,7 @@ class SizeCounts:
     raw_lines: int
     raw_limit: int
     failed: str | None
+    imported_lines: int | None = None
 
 
 class SizeCountError(Exception):
@@ -43,6 +45,7 @@ def size_counts(
                 scc,
                 git,
                 str(DATA / "pr-size-exempt.txt"),
+                sys.executable,
             ],
             capture_output=True,
             text=True,
@@ -61,6 +64,11 @@ def size_counts(
     if (
         not isinstance(data, dict)
         or any(type(data.get(key)) is not int for key in COUNT_KEYS)
+        or "imported_lines" not in data
+        or (
+            data["imported_lines"] is not None
+            and type(data["imported_lines"]) is not int
+        )
         or "failed" not in data
         or cast(
             "object",  # pragma: no mutate -- Type-only argument.
@@ -82,6 +90,7 @@ def size_counts(
             "str | None",  # pragma: no mutate -- Type-only argument.
             data["failed"],
         ),
+        imported_lines=data["imported_lines"],
     )
 
 

@@ -1313,7 +1313,7 @@ def target_is_origin() -> bool:
 
     gh's default repository (``gh repo set-default``, or a parent fork) may
     differ from origin, and ``GH_REPO`` overrides both. Any failed read counts
-    as "no", so the size count is skipped instead of run against the wrong base.
+    as "no", so the size check refuses to count against the wrong base.
     """
     if os.environ.get("GH_REPO"):
         return False  # gh pr create posts to GH_REPO, not to its default repository
@@ -2113,13 +2113,18 @@ def opened_by(env: Mapping[str, str]) -> tuple[str | None, str | None]:
     return ident.root, f"{OPENED_KEY}: {value}"
 
 
+def size_unavailable(checked: Checked, reason: str) -> None:
+    message = f"size count unavailable: {reason}"
+    checked.problems.append((1, message))
+    print(message, file=sys.stderr)
+
+
 def check_size(args: argparse.Namespace, checked: Checked) -> None:
     """Count the branch's added lines against the draft's base and flag an excess.
 
     The base tracking ref is refreshed once, without tags, except in a dry run,
-    which writes no refs. A failed refresh or a count that stays unavailable
-    only warns, for ``pr create`` too, so a broken counter never blocks a valid
-    PR. A dry run reports an excess as a warning and still previews.
+    which writes no refs. An unavailable count blocks both commands.
+    A dry run reports an excess as a warning and still previews.
     """
     branch = base_of(checked.meta)
     dry_run = getattr(
@@ -2131,8 +2136,7 @@ def check_size(args: argparse.Namespace, checked: Checked) -> None:
     verify = ("rev-parse", "--verify", "--quiet", f"{base}^{{commit}}")
     if args.command == "create" and not target_is_origin():
         # gh may open the PR against a repository whose base origin doesn't track.
-        message = "size count unavailable: gh may target a repository other than origin"
-        print(message, file=sys.stderr)
+        size_unavailable(checked, "gh may target a repository other than origin")
         return
     if not dry_run:
         fetch = (
@@ -2146,10 +2150,10 @@ def check_size(args: argparse.Namespace, checked: Checked) -> None:
         )
         if git(*fetch)[0] != 0:
             # A stale tracking ref would count the wrong range, so stop here.
-            print(f"size count unavailable: cannot fetch {branch}", file=sys.stderr)
+            size_unavailable(checked, f"cannot fetch {branch}")
             return
     if git(*verify)[0] != 0:
-        print(f"size count unavailable: base branch {base} not found", file=sys.stderr)
+        size_unavailable(checked, f"base branch {base} not found")
         return
     try:
         counts = size_gate.size_counts(
@@ -2159,11 +2163,16 @@ def check_size(args: argparse.Namespace, checked: Checked) -> None:
             git=_TOOL_PATHS.get().get((GIT, False), GIT),
         )
     except size_gate.SizeCountError as exc:
-        print(f"size count unavailable: {exc}", file=sys.stderr)
+        size_unavailable(checked, str(exc))
         return
-    if args.command == "check":
-        print(f"{counts.code_lines} code lines, limit {counts.code_limit}")
-        print(f"{counts.raw_lines} raw lines, limit {counts.raw_limit}")
+    output = sys.stdout if args.command == "check" else sys.stderr
+    if counts.imported_lines is not None:
+        print(
+            f"{counts.imported_lines} added lines verified by import maps", file=output
+        )
+    if args.command == "check" or counts.imported_lines is not None:
+        print(f"{counts.code_lines} code lines, limit {counts.code_limit}", file=output)
+        print(f"{counts.raw_lines} raw lines, limit {counts.raw_limit}", file=output)
     if counts.failed is not None:
         count, limit = (
             (counts.code_lines, counts.code_limit)
@@ -2187,7 +2196,7 @@ def command(args: argparse.Namespace, env: Mapping[str, str]) -> int:
     if args.command == "create":
         names += (GITLEAKS, GH)
     paths = find_tools(names, unwrapped=unwrapped)
-    # Not required: without scc the size count only warns.
+    # The counter diagnoses a missing scc alongside other size check failures.
     with contextlib.suppress(SystemExit):
         paths.update(find_tools((SCC,)))
     token = _TOOL_PATHS.set({(name, name in unwrapped): p for name, p in paths.items()})

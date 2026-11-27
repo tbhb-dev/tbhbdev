@@ -1876,7 +1876,7 @@ def test_pr_reports_all_missing_tools_before_reading_the_draft(
 
 
 @pytest.mark.parametrize("verb", ["check", "create"])
-def test_pr_runs_without_scc_and_warns_about_the_size_count(
+def test_pr_refuses_when_scc_is_missing(
     world: World,
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
@@ -1885,12 +1885,13 @@ def test_pr_runs_without_scc_and_warns_about_the_size_count(
     # The world fixture stubs the counter; this test needs the real one.
     monkeypatch.setattr(size_gate, "size_counts", REAL_SIZE_COUNTS)
     (world.bin / "scc").unlink()
+    (world.bin / "bash").symlink_to("/bin/bash")
     write_draft(world)
     args = ("create", "--dry-run") if verb == "create" else ("check",)
-    assert run_main(*args) == 0
+    assert run_main(*args) == 1
     captured = capsys.readouterr()
     assert "missing tools" not in captured.err
-    assert "size count unavailable: " in captured.err
+    assert "size count unavailable: pr_size_count: scc missing" in captured.err
 
 
 def test_create_reuses_the_tools_resolved_at_startup(world: World) -> None:
@@ -2486,7 +2487,7 @@ def test_runs_as_tbhbdev_alpha_pr(world: World) -> None:
         env=env,
     )
     assert (done.returncode, done.stderr) == (
-        0,
+        1,
         "size count unavailable: missing counter\n",
     )
 

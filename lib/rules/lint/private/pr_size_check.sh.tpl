@@ -4,10 +4,11 @@
 
 set -euo pipefail
 output=$("$PWD/@@COUNTER@@" "$@")
-pattern='^\{"code_lines": ([0-9]+), "code_limit": 400, "raw_lines": ([0-9]+), "raw_limit": 1500, "failed": ("code"|"raw"|null)\}$'
+pattern='^\{"code_lines": ([0-9]+), "code_limit": 400, "raw_lines": ([0-9]+), "raw_limit": 1500, "imported_lines": ([0-9]+|null), "failed": ("code"|"raw"|null)\}$'
 [[ $output =~ $pattern ]]
-code=${BASH_REMATCH[1]} raw=${BASH_REMATCH[2]} failed=${BASH_REMATCH[3]}
-echo "pr_size: code=$code/400 raw=$raw/1500"
+code=${BASH_REMATCH[1]} raw=${BASH_REMATCH[2]} imported=${BASH_REMATCH[3]} failed=${BASH_REMATCH[4]}
+[[ $imported != null ]] || imported=0
+echo "pr_size: code=$code/400 raw=$raw/1500 imported=$imported"
 case $failed in
 null) exit 0 ;;
 '"code"') limit='400 added Code lines' ;;

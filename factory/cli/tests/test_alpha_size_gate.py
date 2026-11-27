@@ -3,6 +3,7 @@
 import argparse
 import json
 import subprocess
+import sys
 from unittest.mock import Mock, call
 lazy from pathlib import Path
 
@@ -16,6 +17,7 @@ GOOD = {
     "code_limit": 400,
     "raw_lines": 1500,
     "raw_limit": 1500,
+    "imported_lines": None,
     "failed": None,
 }
 
@@ -97,6 +99,72 @@ def test_size_count_matches_rules_counting(
     assert sg.size_counts(base, "HEAD") == expected
 
 
+@pytest.mark.parametrize(
+    ("change", "imported", "counted"),
+    [
+        ("clean", 600, 0),
+        ("handwritten", 600, 500),
+        ("mismatch", 0, 600),
+        ("missing", 0, 600),
+    ],
+)
+def test_only_verified_imports_are_exempt(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    change: str,
+    imported: int,
+    counted: int,
+) -> None:
+    def commit(repo: Path, *, base: bool = False) -> str:
+        def git(*args: str) -> str:
+            return subprocess.check_output(
+                [
+                    "git",
+                    "-C",
+                    str(repo),
+                    "-c",
+                    "user.name=test",
+                    "-c",
+                    "user.email=test@example.invalid",
+                    *args,
+                ],
+                text=True,
+            ).strip()
+
+        if base:
+            repo.mkdir()
+            git("init", "-q")
+        git("add", ".")
+        git("commit", "-qm", "test", "--allow-empty")
+        return git("rev-parse", "HEAD")
+
+    source = tmp_path / "source"
+    commit(source, base=True)
+    (source / "module.py").write_text("copied = 1\n" * 600)
+    frozen = commit(source)
+    repo = tmp_path / "monorepo"
+    base = commit(repo, base=True)
+    (repo / "project").mkdir()
+    (repo / "project/module.py").write_text(
+        ("different = 1\n" if change == "mismatch" else "copied = 1\n") * 600
+    )
+    if change == "handwritten":
+        (repo / "project/extra.py").write_text("handwritten = 1\n" * 500)
+    (repo / "project/IMPORT-MAP.toml").write_text(
+        f'repo = "example/source"\ncommit = "{frozen}"\ndest = "project"\n'
+        '[copy]\n"module.py" = "project/module.py"\n'
+    )
+    head = commit(repo)
+    clone = source if change != "missing" else tmp_path / "absent"
+    monkeypatch.setenv("GIT_CONFIG_COUNT", "1")
+    monkeypatch.setenv("GIT_CONFIG_KEY_0", f"url.{clone.as_uri()}.insteadOf")
+    monkeypatch.setenv("GIT_CONFIG_VALUE_0", "https://github.com/example/source.git")
+    monkeypatch.chdir(repo)
+    counts = sg.size_counts(base, head)
+    assert (counts.imported_lines, counts.code_lines) == (imported, counted)
+    assert counts.failed == ("code" if counted > 400 else None)
+
+
 @pytest.mark.parametrize("failed", [None, "code", "raw"])
 @pytest.mark.parametrize("tools", [{}, {"scc": "/tools/scc", "git": "/tools/git"}])
 def test_counts(
@@ -121,6 +189,7 @@ def test_counts(
             tools.get("scc", "scc"),
             tools.get("git", "git"),
             str(sg.DATA / "pr-size-exempt.txt"),
+            sys.executable,
         ],
     )
     assert runner.call_args.kwargs == {
@@ -270,7 +339,7 @@ def test_pr_check(
 
 
 @pytest.mark.usefixtures("pr_tools")
-def test_pr_check_unavailable(
+def test_pr_check_refuses_unavailable_count(
     monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
     monkeypatch.setattr(pr, "git", Mock(return_value=(0, "")))
@@ -279,10 +348,10 @@ def test_pr_check_unavailable(
     monkeypatch.setattr(
         sg, "size_counts", Mock(side_effect=sg.SizeCountError("missing target"))
     )
-    assert pr.command(argparse.Namespace(command="check", draft="draft.md"), {}) == 0
+    assert pr.command(argparse.Namespace(command="check", draft="draft.md"), {}) == 1
     captured = capsys.readouterr()
     assert captured.err == "size count unavailable: missing target\n"
-    assert captured.out == "OK: the draft conforms\n"
+    assert captured.out == ""
 
 
 REAL_TARGET_IS_ORIGIN = pr.target_is_origin
@@ -330,11 +399,14 @@ def test_pr_create_size(
     monkeypatch.setattr(pr, "base_visibility", Mock(return_value="public"))
     post = Mock(return_value=0)
     monkeypatch.setattr(pr, "create_pr", post)
-    assert pr.command(
-        argparse.Namespace(command="create", draft="d.md", dry_run=False), {}
-    ) == (failure == "over")
+    assert (
+        pr.command(
+            argparse.Namespace(command="create", draft="d.md", dry_run=False), {}
+        )
+        == 1
+    )
     captured = capsys.readouterr()
-    assert post.called is (failure != "over")
+    post.assert_not_called()
     if failure == "over":
         assert captured.out == "d.md:1: 401 lines, limit 400: split into stacked PRs\n"
     else:
@@ -366,7 +438,7 @@ def test_the_base_is_refreshed_without_tags_then_counted(
     )
 
 
-def test_a_failed_fetch_warns_and_never_counts_a_stale_ref(
+def test_a_failed_fetch_refuses_and_never_counts_a_stale_ref(
     monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
     counter = Mock(return_value=sg.SizeCounts(411, 400, 500, 1500, "code"))
@@ -377,14 +449,14 @@ def test_a_failed_fetch_warns_and_never_counts_a_stale_ref(
     monkeypatch.setattr(pr, "base_of", Mock(return_value="main"))
     checked = pr.Checked([])
     pr.check_size(argparse.Namespace(command="create", draft="d.md"), checked)
-    assert checked.problems == []
+    assert checked.problems == [(1, "size count unavailable: cannot fetch main")]
     assert capsys.readouterr().err == "size count unavailable: cannot fetch main\n"
     counter.assert_not_called()
     assert [c.args[0] for c in git.call_args_list] == ["fetch"]
     assert "--refmap=" in git.call_args_list[0].args
 
 
-def test_create_warns_and_never_counts_when_gh_targets_another_repository(
+def test_create_refuses_when_gh_targets_another_repository(
     monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
     counter = Mock(return_value=sg.SizeCounts(411, 400, 500, 1500, "code"))
@@ -395,7 +467,7 @@ def test_create_warns_and_never_counts_when_gh_targets_another_repository(
     monkeypatch.setattr(pr, "base_of", Mock(return_value="main"))
     checked = pr.Checked([])
     pr.check_size(argparse.Namespace(command="create", draft="d.md"), checked)
-    assert checked.problems == []
+    assert len(checked.problems) == 1
     assert capsys.readouterr().err == (
         "size count unavailable: gh may target a repository other than origin\n"
     )
