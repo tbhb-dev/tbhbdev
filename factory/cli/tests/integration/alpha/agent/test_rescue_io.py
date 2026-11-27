@@ -50,6 +50,12 @@ def checkout(
     monkeypatch.setattr(rescue.push, "remote_git", remote)
     monkeypatch.setattr(rescue.credentials, "github_token", Mock(return_value=None))
     monkeypatch.setattr(rescue.host_tools, "search", lambda: os.environ["PATH"])
+    monkeypatch.setattr(pre_push_guard, "agent_fingerprint", Mock(return_value=""))
+    monkeypatch.setattr(pre_push_guard, "public_keys", Mock(side_effect=OSError))
+    errors = {"silent error": "0 commits scanned", "scan error": "ERR scan failed"}
+    if stderr := errors.get(change):
+        scan = Mock(return_value=Mock(returncode=0, stderr=stderr))
+        monkeypatch.setattr(rescue, "subprocess", Mock(run=scan))
     return workspace, base, remote
 
 
@@ -79,10 +85,7 @@ def checkout(
     ],
 )
 def test_fault_publication(
-    checkout: tuple[Path, str, Mock],
-    monkeypatch: pytest.MonkeyPatch,
-    change: str,
-    result: str,
+    checkout: tuple[Path, str, Mock], change: str, result: str
 ) -> None:
     workspace, base, remote = checkout
     start_ref = START_REF if change.startswith("start ref") else None
@@ -96,7 +99,6 @@ def test_fault_publication(
     run = Mock(run_host.Run, files=files, request=request, settings=host_settings())
     ready = Mock(spec=run_host.Prepared, paths=Mock(worktree=str(workspace)))
     change_checkout(workspace, change)
-    scan_fault(monkeypatch, change)
     rescue.on_fault(run, ready, 0 if change == "clean exit" else 7)
     log = files.path("log")
     assert log.exists() == bool(result)
@@ -143,12 +145,3 @@ def change_checkout(workspace: Path, change: str) -> None:
     if change == "symlink index":
         index = workspace / ".git/index"
         index.symlink_to(index.rename(index.with_name("original-index")))
-
-
-def scan_fault(monkeypatch: pytest.MonkeyPatch, change: str) -> None:
-    monkeypatch.setattr(pre_push_guard, "agent_fingerprint", Mock(return_value=""))
-    monkeypatch.setattr(pre_push_guard, "public_keys", Mock(side_effect=OSError))
-    errors = {"silent error": "0 commits scanned", "scan error": "ERR scan failed"}
-    if stderr := errors.get(change):
-        scan = Mock(return_value=Mock(returncode=0, stderr=stderr))
-        monkeypatch.setattr(rescue, "subprocess", Mock(run=scan))

@@ -36,7 +36,7 @@ def on_fault(run: Run, prepared: Prepared | None, rc: int) -> None:
 
 
 def publish(run: Run, workspace: Path) -> str:
-    """Pin the exact commit to scan and publish on the run's own branch."""
+    """Pin the exact commit to scan and publish to the run's destination."""
     ref = f"refs/heads/agent/{run.files.name}"
     failure = "could not save the run checkout"
     try:

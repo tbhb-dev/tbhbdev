@@ -927,11 +927,7 @@ def test_audit_summary_error_preserves_the_runs_exit_code(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     run = make_run(tmp_path)
-
-    def fail(*_args: object) -> None:
-        raise OSError
-
-    monkeypatch.setattr(run_host, "audit_summary", fail)
+    monkeypatch.setattr(run_host, "audit_summary", Mock(side_effect=OSError))
     assert run_host.finish(run, None, None, 7) == 7
     assert run.files.path("rc").read_text() == "7\n"
     assert run.files.path("log").read_text() == "audit summary write failed\n"
