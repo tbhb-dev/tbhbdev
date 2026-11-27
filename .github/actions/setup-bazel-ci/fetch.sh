@@ -27,6 +27,9 @@ download_pattern+='|connect timed out'     # Connection could not be established
 download_pattern+='|Read timed out'        # Transfer stalled while reading.
 download_pattern+='|Unknown host'          # DNS lookup failed.
 
+# Gazelle delegates Go module downloads to fetch_repo.
+download_pattern+='|fetch_repo: .*: net/http: TLS handshake timeout'
+
 download_pattern+='|could not download Bazel' # Bazelisk could not download Bazel.
 download_pattern+='|could not copy from'      # Bazelisk transfer failed.
 
