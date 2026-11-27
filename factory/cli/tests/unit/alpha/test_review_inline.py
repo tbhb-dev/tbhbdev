@@ -40,8 +40,13 @@ DIFF = {
 
 class ReviewApi:
     def __init__(
-        self, diff: object, poster: Callable[[dict[str, object]], object]
+        self,
+        diff: object,
+        poster: Callable[[dict[str, object]], object],
+        *,
+        base: str = BASE,
     ) -> None:
+        self.base = base
         self.diff = diff
         self.poster = poster
         self.calls: list[tuple[str, str]] = []
@@ -51,7 +56,7 @@ class ReviewApi:
     ) -> object:
         self.calls.append((method, path))
         if (method, path) == ("GET", PULL):
-            return {"base": {"sha": BASE}, "head": {"sha": "c" * 40}}
+            return {"base": {"sha": self.base}, "head": {"sha": "c" * 40}}
         if (method, path) == ("GET", COMPARE):
             return self.diff
         assert (method, path) == ("POST", f"{PULL}/reviews")
@@ -93,6 +98,34 @@ def test_submit_review(
     assert review_doc.send_review(api, PULL, JUDGED, body, "APPROVE") == 17
     assert api.calls == [*lookups, ("POST", f"{PULL}/reviews")]
     assert posted == [{"commit_id": JUDGED, "body": body, "event": "APPROVE", **extra}]
+
+
+@pytest.mark.parametrize(
+    ("base", "diff", "lookups"),
+    [
+        pytest.param("invalid", DIFF, [("GET", PULL)], id="invalid-base"),
+        pytest.param(BASE, {}, [("GET", PULL), ("GET", COMPARE)], id="missing-files"),
+    ],
+)
+def test_submit_review_when_inline_comments_cannot_be_built(
+    base: str, diff: object, lookups: list[tuple[str, str]]
+) -> None:
+    body = BODY.format(findings=f"- {IN_DIFF}")
+
+    def poster(payload: dict[str, object]) -> object:
+        assert payload == {"commit_id": JUDGED, "body": body, "event": "COMMENT"}
+        return {"id": 17}
+
+    api = ReviewApi(diff, poster, base=base)
+    assert review_doc.send_review(api, PULL, JUDGED, body, "COMMENT") == 17
+    assert api.calls == [*lookups, ("POST", f"{PULL}/reviews")]
+
+
+def test_findings_at_end_of_draft() -> None:
+    body = f"## Findings\n\n- {IN_DIFF}\n"
+    assert review_inline.findings(body) == [
+        review_inline.Finding("cache.py", 11, IN_DIFF)
+    ]
 
 
 def test_anchors_use_the_judged_side_and_current_filename() -> None:
