@@ -2,9 +2,12 @@
 description: Agent settings, run requests, and host preparation.
 generated:
   - role: generated
-    harness: codex
-    model: openai:gpt-6
-    at: "2026-11-27T04:19:40Z"
+    harness: codex:0.171.0
+    model: openai:gpt-6.2-sol
+    effort: high
+    surface: exec
+    session: sha-256-64:fc673283f6abca40
+    at: "2026-11-27T06:25:28Z"
 status: stable
 tags: [alpha]
 title: Agent configuration
@@ -21,7 +24,7 @@ When the host reports a failed launch before the harness starts, `agent exec` pr
 
 The launcher warns when the prompt mentions a ref that no `--fetch-ref` option covers.
 
-The build profile enables `--expect-commit` by default. If the harness succeeds and the host records no new commit, the run exits 6 and logs `no new commit:`. For a build using its own branch, the host compares the live tip of `refs/heads/agent/<name>` on origin before and after the harness. An absent branch after the run, an unchanged tip, or a failed lookup exits 9 and logs `push failed:`. Builds using `--start-ref` use the selected branch's fast-forward check. Pass `--no-expect-commit` to waive the commit and run branch requirements for research builds. Both flags apply only to the build profile.
+The build profile enables `--expect-commit` by default. If the harness succeeds and the host records no new commit, the run exits 6 and logs `no new commit:`. The host compares the live tip of the destination branch on origin before and after the harness. That branch is `refs/heads/agent/<name>` by default or the selected branch for a build using `--start-ref`. An absent branch after the run, an unchanged tip, or a failed lookup exits 9 and logs `push failed:`. Pass `--no-expect-commit` to waive the commit and run branch requirements for research builds. Both flags apply only to the build profile.
 
 The Stop hook checks the run worktree for uncommitted tracked changes and the run branch for a commit past its starting point. Use `agent exec --no-expect-commit` for a build that can finish without a new commit; the worktree still has to be clean of tracked changes. For reviews, the hook requires a standalone `VERDICT: GO`, `VERDICT: BLOCK` or `VERDICT: NO-GO` line in the final reply, with an optional full commit SHA. The hook asks the model to continue up to three times per run, then allows the stop and logs the reason.
 

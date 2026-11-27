@@ -26,6 +26,9 @@ def test_brief_and_launch() -> None:
         RunKind.EXEC, "example", profile=Profile.BUILD, start_ref="refs/heads/fix/topic"
     )
     assert "push origin HEAD:refs/heads/fix/topic" in fix
+    assert "git rev-parse --verify refs/remotes/origin/fetched/heads/fix/topic" in fix
+    assert '"--force-with-lease=refs/heads/fix/topic:$expected"' in fix
+    assert "tbhbdev alpha pr create" not in fix
     review = render.brief(RunKind.START, "example", profile=Profile.REVIEW)
     assert "`tbhbdev alpha review draft N`" in review
     assert "set `commit_id` to the run's pinned checkout commit" in review

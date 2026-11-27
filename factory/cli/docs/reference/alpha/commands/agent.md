@@ -4,8 +4,10 @@ generated:
   - role: generated
     harness: codex:0.171.0
     model: openai:gpt-6.2-sol
-    session: sha-256-64:3ad87b5659ac3b9c
-    at: "2026-11-27T05:23:18Z"
+    effort: high
+    surface: exec
+    session: sha-256-64:fc673283f6abca40
+    at: "2026-11-27T06:25:28Z"
 status: stable
 tags: [alpha]
 title: Agent
@@ -55,9 +57,10 @@ After a successful harness exit, `agent wait` returns 6 for a missing commit, 9 
 Use `agent status NAME` to see the reason.
 
 For a build that updates an existing pull request, pass both `--fetch-ref refs/heads/<branch>` and `--start-ref refs/heads/<branch>`.
-The run starts at the fetched commit and pushes a fast-forward to that branch without opening a pull request.
-The command refuses the repository's default branch.
-A non-fast-forward push fails and the worktree remains available for inspection.
+The run starts at the fetched commit. The command refuses the repository's default branch.
+
+To push rewritten history, use `--force-with-lease=refs/heads/<branch>:<sha>` with the commit ID from `origin/fetched/heads/<branch>`.
+Git refuses the push if the remote branch has moved since that fetch.
 
 A build run that opens a pull request writes `.github/PULL_REQUEST_DRAFT.md` in its worktree and keeps it out of commits.
 Set `base` in the draft's frontmatter to identify the target branch.

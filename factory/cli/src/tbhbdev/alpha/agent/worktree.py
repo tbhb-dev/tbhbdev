@@ -690,10 +690,6 @@ def create(
                 "--no-recurse-submodules", str(mirror),
                 "+refs/heads/*:refs/remotes/origin/*",
             )  # fmt: skip
-            if (start_ref := request.start_ref) is not None:
-                # Git's implicit push lease uses the branch's tracking ref.
-                branch = start_ref.removeprefix("refs/heads/")
-                git(worktree, "update-ref", f"refs/remotes/origin/{branch}", commit)
             if request.profile is Profile.BUILD:
                 git(worktree, "checkout", "-b", f"agent/{name}", commit, "--")
             else:

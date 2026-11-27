@@ -268,7 +268,11 @@ def test_start_ref_rewrite(
     local_mirror_fetches(monkeypatch, remote)
     request = run_request(start_ref=ref, fetch_refs=[ref])
     run = worktree.create(repo.parent / "checkout", "example", request)
-    assert git(run, "rev-parse", f"origin/fetched/heads/{branch}") == old
+    assert git(run, "for-each-ref", f"refs/remotes/origin/{branch}") == ""
+    expected = git(
+        run, "rev-parse", "--verify", f"refs/remotes/origin/fetched/heads/{branch}"
+    )
+    assert expected == old
     git(run, "config", "remote.origin.pushurl", str(remote))
     subprocess.run(["git", "rebase", "origin/main"], cwd=run, env=env, check=True)
     assert git(run, "rev-parse", "HEAD^") == upstream
@@ -280,7 +284,9 @@ def test_start_ref_rewrite(
         git(repo, "reset", "--hard", old)
         remote_tip = commit(repo, "concurrent topic change")
         git(repo, "push", str(remote), destination)
-    result = push(run, env, "--force-with-lease", "origin", destination)
+    result = push(
+        run, env, f"--force-with-lease={ref}:{expected}", "origin", destination
+    )
     if stale:
         assert result.returncode != 0
         assert "stale info" in result.stderr
@@ -306,16 +312,18 @@ def test_start_ref_rewrite(
     ],
 )
 def test_start_ref_push_refusals(
-    monkeypatch: pytest.MonkeyPatch,
     start_ref: str,
     ref: str,
     *,
     deleting: bool,
     reason: str,
 ) -> None:
-    monkeypatch.setenv(pg.RUN_START_REF_ENV, f"refs/heads/{start_ref}")
     assert reason in pg.destination_problem(
-        f"refs/heads/{ref}", deleting=deleting, agent_push=True, run_name="example"
+        f"refs/heads/{ref}",
+        deleting=deleting,
+        agent_push=True,
+        run_name="example",
+        start_ref=f"refs/heads/{start_ref}",
     )
 
 
@@ -802,22 +810,21 @@ def test_an_agent_cannot_rewind_a_fetched_feature_branch(
     )
 
 
-def test_start_ref_run_can_update_its_pr_branch(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
+def test_start_ref_run_can_update_its_pr_branch() -> None:
     ref = "refs/heads/fix/topic"
-    monkeypatch.setenv(pg.RUN_START_REF_ENV, ref)
     run_name = "example"
     assert (
-        pg.destination_problem(ref, deleting=False, agent_push=True, run_name=run_name)
+        pg.destination_problem(
+            ref, deleting=False, agent_push=True, run_name=run_name, start_ref=ref
+        )
         == ""
     )
     branch = "refs/heads/agent/example"
     assert pg.destination_problem(
-        branch, deleting=False, agent_push=True, run_name=run_name
+        branch, deleting=False, agent_push=True, run_name=run_name, start_ref=ref
     ) == (f"{branch}: this run may only push {ref}")
     assert pg.destination_problem(
-        ref, deleting=True, agent_push=True, run_name=run_name
+        ref, deleting=True, agent_push=True, run_name=run_name, start_ref=ref
     ) == (f"{ref}: deletion refused; this run may only update its start ref")
 
 

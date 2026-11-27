@@ -1,8 +1,9 @@
 """Refuse protected-branch pushes, unfetched rewrites, and invalid agent branches.
 
 A non-fast-forward update to an unprotected branch is allowed only when the
-remote tip git reports is the tip this clone fetched into
-``refs/remotes/<remote>/<branch>``, the value ``--force-with-lease`` checks.
+remote tip git reports is the tip this clone fetched. Start-ref runs check
+``refs/remotes/<remote>/fetched/heads/<branch>``. Other pushes check
+``refs/remotes/<remote>/<branch>``.
 The hook cannot see the flag, so a plain force reports the same tip. The
 command-line guard (``guard_git_hooks``) refuses plain force, and this hook
 logs ``old -> new`` on stderr for every rewrite it allows.
@@ -216,27 +217,27 @@ def agent_commit_problems(
     return problems
 
 
-def fetched_tip(remote: str, ref: str) -> str:
-    """The tip of the remote-tracking branch for a pushed ref, or empty."""
+def fetched_tip(remote: str, ref: str, start_ref: str) -> str:
+    """The fetched tip for a pushed branch, or empty."""
     if not ref.startswith("refs/heads/"):
         return ""
+    branch = ref.removeprefix("refs/heads/")
+    tracking = f"fetched/heads/{branch}" if ref == start_ref else branch
     code, out = git(
         *SAFE,
         "rev-parse",
         "--verify",
         "--quiet",
-        f"refs/remotes/{remote}/{ref.removeprefix('refs/heads/')}^{{commit}}",
+        f"refs/remotes/{remote}/{tracking}^{{commit}}",
     )
     return "" if code else out
 
 
 def destination_problem(
-    ref: str, *, deleting: bool, agent_push: bool, run_name: str
+    ref: str, *, deleting: bool, agent_push: bool, run_name: str, start_ref: str
 ) -> str:
     """The refusal for a disallowed push destination, or empty when allowed."""
-    start_ref = None
     if run_name and ref.startswith("refs/heads/"):
-        start_ref = os.environ.get(RUN_START_REF_ENV)
         branch = start_ref or f"refs/heads/agent/{run_name}"
         if ref != branch:
             return f"{ref}: this run may only push {branch}"
@@ -261,6 +262,7 @@ def ref_problems(
     row: tuple[str, str, str],
     tips: Sequence[str],
     keys: SigningKeys,
+    start_ref: str,
 ) -> list[str]:
     """The refusals for one pushed ref: LOCAL, REF, and the remote's OLD value."""
     local, ref, old = row
@@ -275,7 +277,7 @@ def ref_problems(
         else 0
     )
     if ancestry:
-        if fetched_tip(remote, ref) != old:
+        if fetched_tip(remote, ref, start_ref) != old:
             problems.append(
                 f"{ref}: non-fast-forward push refused; the remote tip is not "
                 "the fetched one, so fetch and push with --force-with-lease"
@@ -290,7 +292,12 @@ def ref_problems(
 
 
 def push_problems(
-    remote: str, lines: Sequence[str], *, agent_push: bool, run_name: str
+    remote: str,
+    lines: Sequence[str],
+    *,
+    agent_push: bool,
+    run_name: str,
+    start_ref: str,
 ) -> list[str]:
     rows: list[tuple[str, str, str]] = []
     for line in lines:
@@ -302,12 +309,16 @@ def push_problems(
     for row in rows:
         local, ref, _ = row
         problem = destination_problem(
-            ref, deleting=not local.strip("0"), agent_push=agent_push, run_name=run_name
+            ref,
+            deleting=not local.strip("0"),
+            agent_push=agent_push,
+            run_name=run_name,
+            start_ref=start_ref,
         )
         if problem:
             problems.append(problem)
         else:
-            problems.extend(ref_problems(remote, row, tips, keys))
+            problems.extend(ref_problems(remote, row, tips, keys, start_ref))
     return problems
 
 
@@ -326,7 +337,10 @@ def inspect_push(remote: str, target: str, lines: Sequence[str]) -> list[str]:
         )
         raise InspectionError(message)
     agent_push = agent_org_push or session_root(os.environ) is not None
-    return push_problems(remote, lines, agent_push=agent_push, run_name=run_name)
+    start_ref = os.environ.get(RUN_START_REF_ENV, "") if run_name else ""
+    return push_problems(
+        remote, lines, agent_push=agent_push, run_name=run_name, start_ref=start_ref
+    )
 
 
 def main(argv: list[str], prog: str) -> int:
