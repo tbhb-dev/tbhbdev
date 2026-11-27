@@ -33,14 +33,10 @@ GO_TARGETS = [
     "//factory/event-gateway/cmd/event-gateway",
     "//factory/event-gateway/cmd/event-gateway:event-gateway_test",
     "//factory/event-gateway/deploy:deploy_test",
-    "//factory/event-gateway/internal/buildloop",
-    "//factory/event-gateway/internal/buildloop:buildloop_test",
     "//factory/event-gateway/internal/eventfields",
     "//factory/event-gateway/internal/eventfields:eventfields_test",
     "//factory/event-gateway/internal/filter",
     "//factory/event-gateway/internal/filter:filter_test",
-    "//factory/event-gateway/internal/redelivery",
-    "//factory/event-gateway/internal/redelivery:redelivery_test",
     "//factory/event-gateway/internal/routing",
     "//factory/event-gateway/internal/routing:routing_test",
     "//factory/event-gateway/internal/temporaltarget",
@@ -96,14 +92,6 @@ gobco_test(
 )
 
 gobco_test(
-    name = "buildloop_gobco_test",
-    go_mod = ":go.mod",
-    go_sum = ":go.sum",
-    proxy = "@event_gateway_go_mod_proxy//:proxy",
-    tests = ["//factory/event-gateway/internal/buildloop:buildloop_test"],
-)
-
-gobco_test(
     name = "eventfields_gobco_test",
     go_mod = ":go.mod",
     go_sum = ":go.sum",
@@ -117,14 +105,6 @@ gobco_test(
     go_sum = ":go.sum",
     proxy = "@event_gateway_go_mod_proxy//:proxy",
     tests = ["//factory/event-gateway/internal/filter:filter_test"],
-)
-
-gobco_test(
-    name = "redelivery_gobco_test",
-    go_mod = ":go.mod",
-    go_sum = ":go.sum",
-    proxy = "@event_gateway_go_mod_proxy//:proxy",
-    tests = ["//factory/event-gateway/internal/redelivery:redelivery_test"],
 )
 
 gobco_test(

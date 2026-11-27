@@ -32,8 +32,9 @@ const (
 )
 
 var (
-	errGatewayToken = errors.New("gateway token rejected")
-	errGatewayHello = errors.New("invalid gateway hello subscription")
+	errGatewayToken         = errors.New("gateway token rejected")
+	errGatewayHello         = errors.New("invalid gateway hello subscription")
+	errGatewaySubscriptions = errors.New("gateway subscriptions changed")
 )
 
 func startMCPGateway(
@@ -101,6 +102,8 @@ func runMCPGateway(
 		}
 
 		switch {
+		case errors.Is(err, errGatewaySubscriptions):
+			continue
 		case errors.Is(err, errGatewayToken):
 			return rejectGatewayToken(notify)
 		case err != nil:
@@ -185,7 +188,8 @@ func waitGatewayRetry(ctx context.Context, delay time.Duration) bool {
 	}
 }
 
-// runGatewayConnection returns an error only when retrying cannot help.
+// runGatewayConnection returns errGatewaySubscriptions for an immediate redial,
+// nil for a retry with backoff, or a fatal error.
 func runGatewayConnection(
 	ctx context.Context,
 	logger *slog.Logger,
@@ -215,7 +219,10 @@ func runGatewayConnection(
 	// The server may expand each payload byte to a JSON escape.
 	conn.SetReadLimit(int64(len(`\u003c`)*maxPayload + sessionFrameLimit))
 
-	subs, cursor := subscriptions.snapshot()
+	socketCtx, cancel := context.WithCancelCause(ctx)
+	defer cancel(nil)
+
+	subs, cursor := subscriptions.snapshotForConnection(func() { cancel(errGatewaySubscriptions) })
 
 	frames, err := gatewayHelloFrames(subs, cursor, subscriptions.imported)
 	if err != nil {
@@ -224,13 +231,13 @@ func runGatewayConnection(
 
 	for err == nil {
 		if len(frames) > 0 {
-			err = conn.Write(ctx, websocket.MessageText, frames[0])
+			err = conn.Write(socketCtx, websocket.MessageText, frames[0])
 			frames = frames[1:]
 
 			continue
 		}
 
-		kind, data, readErr := conn.Read(ctx)
+		kind, data, readErr := conn.Read(socketCtx)
 		if readErr == nil {
 			receive(kind, data)
 		}
@@ -242,7 +249,7 @@ func runGatewayConnection(
 		return errGatewayToken
 	}
 
-	return nil
+	return context.Cause(socketCtx)
 }
 
 func rejectGatewayToken(notify func(channelEvent) bool) error {

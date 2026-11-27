@@ -298,6 +298,60 @@ func reconnectTestGateway(
 	return server, requests
 }
 
+func TestMCPGatewaySubscriptionChanges(t *testing.T) {
+	t.Parallel()
+
+	var subs mcpSubscriptions
+
+	sub, err := filter.Parse([]byte(mcpStateTestSubscription))
+	checkError(t, err)
+	ctx, cancel := context.WithCancel(t.Context())
+	hellos := make(chan sessionObject, 3)
+	delivered := make(chan channelEvent, 4)
+	server, requests := fakeMCPGateway(t, []int{http.StatusSwitchingProtocols}, func(conn *websocket.Conn) {
+		_, data, readErr := conn.Read(ctx)
+		checkError(t, readErr)
+		checkError(t, conn.Write(ctx, websocket.MessageText, []byte(gatewayTestEvent(4, "github", "id"))))
+		hellos <- *sessionJSON[sessionObject](data)
+		<-conn.CloseRead(ctx).Done()
+	})
+	done := make(chan error, 1)
+
+	go func() {
+		done <- runMCPGateway(ctx, slog.New(slog.DiscardHandler), server.URL+sessionPath, mcpFixture, &subs,
+			func(event channelEvent) bool {
+				delivered <- event
+
+				return true
+			}, func(context.Context, time.Duration) bool {
+				t.Error("subscription change scheduled a retry delay")
+
+				return false
+			})
+	}()
+	defer func() {
+		cancel()
+		checkError(t, *receiveRunner(t, done))
+		checkEqual(t, len(delivered), 0)
+	}()
+
+	checkEqual(t, string((*receiveRunner(t, hellos))[subsKey]), "[]")
+	checkEqual(t, receiveRunner(t, delivered).delivery, "id")
+	checkEqual(t, subs.set(sub, true), true)
+	second := *receiveRunner(t, hellos)
+	checkEqual(t, string(second[subsKey]), "["+mcpStateTestSubscription+"]")
+	checkEqual(t, string(second[resumeKey]), "4")
+	checkEqual(t, subs.set(sub, false), true)
+	checkEqual(t, string((*receiveRunner(t, hellos))[subsKey]), "[]")
+	checkEqual(t, subs.set(sub, false), false)
+	select {
+	case <-hellos:
+		t.Fatal("unchanged subscriptions caused a redial")
+	case <-time.After(100 * time.Millisecond):
+		checkEqual(t, requests.Load(), 3)
+	}
+}
+
 func checkGatewayReconnectSchedule(t *testing.T, seconds []time.Duration, noticeCounts []int, notices []channelNotice) {
 	t.Helper()
 

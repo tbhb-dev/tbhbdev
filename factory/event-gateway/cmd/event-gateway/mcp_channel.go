@@ -180,10 +180,11 @@ func subscriptionSchema(required string) json.RawMessage {
 }
 
 type mcpSubscriptions struct {
-	cursor *uint64
-	state  mcpState
-	subs   []filter.Subscription
-	mu     sync.Mutex
+	cursor     *uint64
+	disconnect func()
+	state      mcpState
+	subs       []filter.Subscription
+	mu         sync.Mutex
 	// Set during startup and immutable once callers can access the subscriptions.
 	imported bool
 }
@@ -196,8 +197,18 @@ func (s *mcpSubscriptions) list() []filter.Subscription {
 
 // snapshot returns the subscriptions and cursor together. Their values are immutable.
 func (s *mcpSubscriptions) snapshot() ([]filter.Subscription, *uint64) {
+	return s.snapshotForConnection(nil)
+}
+
+// Register the sole gateway connection's cancel function with its snapshot so
+// an update cannot slip between taking the snapshot and watching for changes.
+func (s *mcpSubscriptions) snapshotForConnection(disconnect func()) ([]filter.Subscription, *uint64) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+
+	if disconnect != nil {
+		s.disconnect = disconnect
+	}
 
 	return append([]filter.Subscription{}, s.subs...), s.cursor
 }
@@ -233,6 +244,11 @@ func (s *mcpSubscriptions) set(sub filter.Subscription, add bool) bool {
 	}
 
 	s.saveLocked()
+
+	if s.disconnect != nil {
+		s.disconnect()
+		s.disconnect = nil
+	}
 
 	return true
 }
