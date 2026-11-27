@@ -1,0 +1,43 @@
+---
+argument_specs:
+  main:
+    short_description: Install uv through mise, tbhbdev through uv, and the tbhbdev Connect config
+    options:
+      ops_tbhbdev_connect_endpoints:
+        type: list
+        elements: str
+        required: true
+        description: >-
+          HTTPS tailnet hostnames in failover order, written to [connect] endpoints in the tbhbdev
+          config, which is the only key `tbhbdev secret read` needs from it. Inventory supplies them.
+      ops_tbhbdev_uv_version:
+        type: str
+        default: "0.13.6"
+        description: The uv release mise installs.
+      ops_tbhbdev_commit:
+        type: str
+        default: 3bf88eef651da2b8a56b3c7fd82ffc9032828c84
+        description: Full 40 character commit of tbhb-dev/tools. A different value reinstalls tbhbdev.
+      ops_tbhbdev_source:
+        type: str
+        default: https://github.com/tbhb-dev/tools
+        description: Repository `uv tool install` clones.
+      ops_tbhbdev_mise:
+        type: path
+        default: /opt/homebrew/bin/mise
+        description: The mise program that installs uv.
+      ops_tbhbdev_home:
+        type: path
+        description: Home of the connection user. Defaults to the user_dir fact.
+      ops_tbhbdev_bin_dir:
+        type: path
+        description: Directory for the tbhbdev executable. Defaults to .local/bin below the home.
+      ops_tbhbdev_tool_dir:
+        type: path
+        description: >-
+          The uv tool environment of tbhbdev, whose dist-info records the installed commit.
+          Defaults to .local/share/uv/tools/tbhbdev below the home.
+      ops_tbhbdev_path:
+        type: str
+        default: /usr/bin:/bin:/usr/sbin:/sbin
+        description: PATH for the install. uv needs git on it.

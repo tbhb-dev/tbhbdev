@@ -17,8 +17,8 @@ from typing import TYPE_CHECKING
 import pytest
 from repo_settings_example import DEFAULTS, EXAMPLE
 
-from tbhbdev import alpha, gh_agent, host
-from tbhbdev.alpha import repo_bootstrap as rb
+import tbhbdev.alpha.repo_bootstrap as rb
+from tbhbdev import gh_agent, host
 from tbhbdev.alpha import repo_settings as rs
 
 if TYPE_CHECKING:
@@ -1109,22 +1109,15 @@ def test_the_visibility_rules_are_messages(capsys: pytest.CaptureFixture[str]) -
     )
 
 
-def test_alpha_dispatches_repo_to_bootstrap(
+def test_bootstrap_requires_plugin_settings(
     monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    assert alpha.COMMANDS["repo"] is alpha.repo_command
     fake = gh_for(monkeypatch)
-    assert alpha.main(["repo", "bootstrap", REPO], "tbhbdev alpha") == 1
+    assert rb.main(["bootstrap", REPO], prog=PROG) == 1
     assert "no installed plugin supplies the config file repo-settings.toml" in (
         capsys.readouterr().err
     )
     assert fake.calls == []
-
-
-def test_alpha_usage_lists_repo() -> None:
-    usage = alpha.USAGE.format(prog="tbhbdev alpha")
-    head = "\n  repo         bootstrap [--dry-run] [--create --private|--public]"
-    assert f"{head} ORG/REPO:\n               apply the standard" in usage
 
 
 @pytest.mark.parametrize(

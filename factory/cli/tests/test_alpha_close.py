@@ -12,7 +12,7 @@ from unittest.mock import Mock, call
 import pytest
 from agent_example import settings
 
-from tbhbdev import alpha, userconfig
+from tbhbdev import userconfig
 from tbhbdev.alpha import close, opened
 from tbhbdev.alpha import identity as agent_identity
 from tbhbdev.alpha import pull_request as pr
@@ -737,7 +737,7 @@ def test_issue_create_requires_arguments(
 
 def test_issue_create_help(capsys: pytest.CaptureFixture[str]) -> None:
     with pytest.raises(SystemExit) as exc:
-        alpha.main(["issue", "create", "--help"], "prog")
+        close.main(["issue", "create", "--help"], prog="prog issue")
     assert exc.value.code == 0
     output = capsys.readouterr().out
     assert "--repo OWNER/REPO" in output

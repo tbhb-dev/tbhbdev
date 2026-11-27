@@ -11,7 +11,8 @@ import pytest
 from test_admin_request import fake as admin_fake
 lazy from test_admin_request import Fake
 
-from tbhbdev import admin
+from tbhbdev.admin import command as admin
+from tbhbdev.admin.audit import RefusedError
 lazy from tbhbdev.admin import request
 
 fake = admin_fake
@@ -137,7 +138,7 @@ def test_body_input(
     else:
         if source == "invalid":
             path.write_text("invalid")
-        with pytest.raises(admin.RefusedError, match=r"^invalid_body$"):
+        with pytest.raises(RefusedError, match=r"^invalid_body$"):
             admin.body_from(str(path))
 
 

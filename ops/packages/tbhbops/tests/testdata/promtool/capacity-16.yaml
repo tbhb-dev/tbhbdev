@@ -1,0 +1,55 @@
+---
+evaluation_interval: 1m
+rule_files:
+  - rules.yaml
+tests:
+  - alert_rule_test:
+      - alertname: o11y-capacity-stale
+        eval_time: 29m
+        exp_alerts: []
+      - alertname: o11y-capacity-stale
+        eval_time: 30m
+        exp_alerts: []
+      - alertname: o11y-capacity-stale
+        eval_time: 34m
+        exp_alerts: []
+      - alertname: o11y-capacity-stale
+        eval_time: 35m
+        exp_alerts:
+          - exp_annotations: {}
+            exp_labels:
+              agent_account: primary
+              agent_plan_vendor: anthropic
+              agent_plan_window: other
+              env: prd
+              service: agent-capacity
+              severity: warning
+      - alertname: o11y-capacity-stale
+        eval_time: 36m
+        exp_alerts:
+          - exp_annotations: {}
+            exp_labels:
+              agent_account: primary
+              agent_plan_vendor: anthropic
+              agent_plan_window: other
+              env: prd
+              service: agent-capacity
+              severity: warning
+    input_series:
+      - series: "agent_capacity_window_utilization_ratio{agent_plan_vendor=\"\
+          anthropic\",agent_plan_window=\"\
+          7d\",agent_account=\"primary\",host_name=\"\
+          fixture-a\",agent_capacity_source=\"\
+          claude_statusline\",agent_capacity_freshness=\"\
+          fresh\"}"
+        values: 0 stale
+      - series: "agent_capacity_window_utilization_ratio{agent_plan_vendor=\"\
+          anthropic\",agent_plan_window=\"\
+          7d\",agent_account=\"primary\",host_name=\"\
+          fixture-a\",agent_capacity_source=\"\
+          claude_statusline\",agent_capacity_freshness=\"\
+          carried\"}"
+        values: '0x45'
+    interval: 1m
+    name: last fresh zero becomes stale while
+      carried samples continue

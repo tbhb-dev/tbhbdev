@@ -1,0 +1,6 @@
+<!-- Managed by Ansible. -->
+<network>
+  <name>{{ kvm_host_libvirt_network }}</name>
+  <forward mode='bridge'/>
+  <bridge name='{{ kvm_host_bridge }}'/>
+</network>

@@ -1,0 +1,3 @@
+---
+# Molecule leaves services alone because its container has no systemd running.
+chrony_nts_run: true

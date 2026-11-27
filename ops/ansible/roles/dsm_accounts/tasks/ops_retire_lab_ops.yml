@@ -1,0 +1,104 @@
+---
+# cspell:ignore publickey parsekeys
+- name: ops_retire_lab_ops | Require the controller session key connection
+  ansible.builtin.assert:
+    that:
+      - "'lab-ops' not in (ansible_ssh_extra_args | default('') | lower)"
+      - "(ssh_controller_key_path | expanduser) in ansible_ssh_extra_args"
+      - ansible_user == 'ops'
+    fail_msg: Use the default NAS controller session key connection, without a lab-ops override.
+    quiet: true
+  become: false
+
+- name: ops_retire_lab_ops | Close any existing connection before the proof
+  ansible.builtin.meta: reset_connection
+  become: false
+
+- name: ops_retire_lab_ops | Prove the session key logs in as ops
+  ansible.builtin.command:
+    argv: [id, -un]
+  register: dsm_accounts_ops_session_before
+  changed_when: false
+  failed_when: dsm_accounts_ops_session_before.rc != 0 or dsm_accounts_ops_session_before.stdout != 'ops'
+  check_mode: false
+  become: false
+
+- name: ops_retire_lab_ops | Check the controller shared key file
+  ansible.builtin.stat:
+    path: "{{ '~/.ssh/lab-ops' | expanduser }}"
+    get_checksum: false
+    get_mime: false
+  register: dsm_accounts_ops_lab_ops_key
+  delegate_to: localhost
+  become: false
+  check_mode: false
+
+- name: ops_retire_lab_ops | Require the controller shared key file
+  ansible.builtin.assert:
+    that:
+      - dsm_accounts_ops_lab_ops_key.stat.exists
+      - dsm_accounts_ops_lab_ops_key.stat.isreg | default(false)
+    fail_msg: The controller lab-ops key must exist as a regular file before the refusal proof.
+    quiet: true
+  delegate_to: localhost
+  become: false
+  check_mode: false
+
+# ansible.posix 2.2.2 parsekeys indexes by key body; enforce_state removes
+# that entry for state absent regardless of its options or comment.
+# Thus this also removes the installed line whose comment is ops@mac-a.
+- name: ops_retire_lab_ops | Remove only the retired shared lab-ops key
+  ansible.posix.authorized_key:
+    user: ops
+    key: "{{ lookup('ansible.builtin.file', dsm_accounts_retired_key_src) }}"
+    state: absent
+    manage_dir: false
+  become: false
+
+- name: ops_retire_lab_ops | Require publickey refusal of the shared key
+  ansible.builtin.command:
+    argv:
+      - ssh
+      - -F
+      - /dev/null
+      - -o
+      - BatchMode=yes
+      - -o
+      - IdentitiesOnly=yes
+      - -o
+      - IdentityAgent=none
+      - -o
+      - ConnectTimeout=10
+      - -i
+      - "{{ '~/.ssh/lab-ops' | expanduser }}"
+      - -o
+      - "HostKeyAlias={{ inventory_hostname }}"
+      - -o
+      - "UserKnownHostsFile={{ playbook_dir }}/../known_hosts"
+      - -o
+      - StrictHostKeyChecking=yes
+      - -l
+      - ops
+      - "{{ hostvars[inventory_hostname].ansible_host | default(inventory_hostname) }}"
+      - "true"
+  delegate_to: localhost
+  become: false
+  register: dsm_accounts_ops_lab_ops_refusal
+  changed_when: false
+  failed_when: >-
+    dsm_accounts_ops_lab_ops_refusal.rc == 0 or
+    'Permission denied (publickey' not in dsm_accounts_ops_lab_ops_refusal.stderr
+  when: not ansible_check_mode
+
+- name: ops_retire_lab_ops | Close the connection after removing the shared key
+  ansible.builtin.meta: reset_connection
+  become: false
+
+- name: ops_retire_lab_ops | Prove a fresh session key login still works
+  ansible.builtin.command:
+    argv: [id, -un]
+  register: dsm_accounts_ops_session_after
+  changed_when: false
+  failed_when: dsm_accounts_ops_session_after.rc != 0 or dsm_accounts_ops_session_after.stdout != 'ops'
+  check_mode: false
+  become: false

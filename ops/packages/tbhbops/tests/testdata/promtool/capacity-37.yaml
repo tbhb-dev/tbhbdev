@@ -1,0 +1,992 @@
+---
+evaluation_interval: 1m
+rule_files:
+  - rules.yaml
+tests:
+  - alert_rule_test:
+      - alertname: o11y-capacity-stale
+        eval_time: 0m
+        exp_alerts: []
+      - alertname: o11y-capacity-stale
+        eval_time: 29m
+        exp_alerts: []
+      - alertname: o11y-capacity-stale
+        eval_time: 30m
+        exp_alerts: []
+      - alertname: o11y-capacity-stale
+        eval_time: 34m
+        exp_alerts: []
+      - alertname: o11y-capacity-stale
+        eval_time: 35m
+        exp_alerts:
+          - exp_annotations: {}
+            exp_labels:
+              agent_account: primary
+              agent_plan_vendor: anthropic
+              agent_plan_window: other
+              env: prd
+              service: agent-capacity
+              severity: warning
+      - alertname: o11y-capacity-stale
+        eval_time: 36m
+        exp_alerts:
+          - exp_annotations: {}
+            exp_labels:
+              agent_account: primary
+              agent_plan_vendor: anthropic
+              agent_plan_window: other
+              env: prd
+              service: agent-capacity
+              severity: warning
+      - alertname: o11y-capacity-stale
+        eval_time: 37m
+        exp_alerts:
+          - exp_annotations: {}
+            exp_labels:
+              agent_account: primary
+              agent_plan_vendor: anthropic
+              agent_plan_window: other
+              env: prd
+              service: agent-capacity
+              severity: warning
+      - alertname: o11y-capacity-stale
+        eval_time: 38m
+        exp_alerts:
+          - exp_annotations: {}
+            exp_labels:
+              agent_account: primary
+              agent_plan_vendor: anthropic
+              agent_plan_window: other
+              env: prd
+              service: agent-capacity
+              severity: warning
+      - alertname: o11y-capacity-stale
+        eval_time: 39m
+        exp_alerts:
+          - exp_annotations: {}
+            exp_labels:
+              agent_account: primary
+              agent_plan_vendor: anthropic
+              agent_plan_window: other
+              env: prd
+              service: agent-capacity
+              severity: warning
+      - alertname: o11y-capacity-stale
+        eval_time: 40m
+        exp_alerts:
+          - exp_annotations: {}
+            exp_labels:
+              agent_account: primary
+              agent_plan_vendor: anthropic
+              agent_plan_window: other
+              env: prd
+              service: agent-capacity
+              severity: warning
+      - alertname: o11y-capacity-stale
+        eval_time: 41m
+        exp_alerts:
+          - exp_annotations: {}
+            exp_labels:
+              agent_account: primary
+              agent_plan_vendor: anthropic
+              agent_plan_window: other
+              env: prd
+              service: agent-capacity
+              severity: warning
+      - alertname: o11y-capacity-stale
+        eval_time: 42m
+        exp_alerts:
+          - exp_annotations: {}
+            exp_labels:
+              agent_account: primary
+              agent_plan_vendor: anthropic
+              agent_plan_window: other
+              env: prd
+              service: agent-capacity
+              severity: warning
+      - alertname: o11y-capacity-stale
+        eval_time: 43m
+        exp_alerts:
+          - exp_annotations: {}
+            exp_labels:
+              agent_account: primary
+              agent_plan_vendor: anthropic
+              agent_plan_window: other
+              env: prd
+              service: agent-capacity
+              severity: warning
+      - alertname: o11y-capacity-stale
+        eval_time: 44m
+        exp_alerts:
+          - exp_annotations: {}
+            exp_labels:
+              agent_account: primary
+              agent_plan_vendor: anthropic
+              agent_plan_window: other
+              env: prd
+              service: agent-capacity
+              severity: warning
+      - alertname: o11y-capacity-stale
+        eval_time: 45m
+        exp_alerts:
+          - exp_annotations: {}
+            exp_labels:
+              agent_account: primary
+              agent_plan_vendor: anthropic
+              agent_plan_window: other
+              env: prd
+              service: agent-capacity
+              severity: warning
+      - alertname: o11y-capacity-stale
+        eval_time: 46m
+        exp_alerts:
+          - exp_annotations: {}
+            exp_labels:
+              agent_account: primary
+              agent_plan_vendor: anthropic
+              agent_plan_window: other
+              env: prd
+              service: agent-capacity
+              severity: warning
+      - alertname: o11y-capacity-stale
+        eval_time: 47m
+        exp_alerts:
+          - exp_annotations: {}
+            exp_labels:
+              agent_account: primary
+              agent_plan_vendor: anthropic
+              agent_plan_window: other
+              env: prd
+              service: agent-capacity
+              severity: warning
+      - alertname: o11y-capacity-stale
+        eval_time: 48m
+        exp_alerts:
+          - exp_annotations: {}
+            exp_labels:
+              agent_account: primary
+              agent_plan_vendor: anthropic
+              agent_plan_window: other
+              env: prd
+              service: agent-capacity
+              severity: warning
+      - alertname: o11y-capacity-stale
+        eval_time: 49m
+        exp_alerts:
+          - exp_annotations: {}
+            exp_labels:
+              agent_account: primary
+              agent_plan_vendor: anthropic
+              agent_plan_window: other
+              env: prd
+              service: agent-capacity
+              severity: warning
+      - alertname: o11y-capacity-stale
+        eval_time: 50m
+        exp_alerts:
+          - exp_annotations: {}
+            exp_labels:
+              agent_account: primary
+              agent_plan_vendor: anthropic
+              agent_plan_window: other
+              env: prd
+              service: agent-capacity
+              severity: warning
+      - alertname: o11y-capacity-stale
+        eval_time: 51m
+        exp_alerts:
+          - exp_annotations: {}
+            exp_labels:
+              agent_account: primary
+              agent_plan_vendor: anthropic
+              agent_plan_window: other
+              env: prd
+              service: agent-capacity
+              severity: warning
+      - alertname: o11y-capacity-stale
+        eval_time: 52m
+        exp_alerts:
+          - exp_annotations: {}
+            exp_labels:
+              agent_account: primary
+              agent_plan_vendor: anthropic
+              agent_plan_window: other
+              env: prd
+              service: agent-capacity
+              severity: warning
+      - alertname: o11y-capacity-stale
+        eval_time: 53m
+        exp_alerts:
+          - exp_annotations: {}
+            exp_labels:
+              agent_account: primary
+              agent_plan_vendor: anthropic
+              agent_plan_window: other
+              env: prd
+              service: agent-capacity
+              severity: warning
+      - alertname: o11y-capacity-stale
+        eval_time: 54m
+        exp_alerts:
+          - exp_annotations: {}
+            exp_labels:
+              agent_account: primary
+              agent_plan_vendor: anthropic
+              agent_plan_window: other
+              env: prd
+              service: agent-capacity
+              severity: warning
+      - alertname: o11y-capacity-stale
+        eval_time: 55m
+        exp_alerts:
+          - exp_annotations: {}
+            exp_labels:
+              agent_account: primary
+              agent_plan_vendor: anthropic
+              agent_plan_window: other
+              env: prd
+              service: agent-capacity
+              severity: warning
+      - alertname: o11y-capacity-stale
+        eval_time: 56m
+        exp_alerts:
+          - exp_annotations: {}
+            exp_labels:
+              agent_account: primary
+              agent_plan_vendor: anthropic
+              agent_plan_window: other
+              env: prd
+              service: agent-capacity
+              severity: warning
+      - alertname: o11y-capacity-stale
+        eval_time: 57m
+        exp_alerts:
+          - exp_annotations: {}
+            exp_labels:
+              agent_account: primary
+              agent_plan_vendor: anthropic
+              agent_plan_window: other
+              env: prd
+              service: agent-capacity
+              severity: warning
+      - alertname: o11y-capacity-stale
+        eval_time: 58m
+        exp_alerts:
+          - exp_annotations: {}
+            exp_labels:
+              agent_account: primary
+              agent_plan_vendor: anthropic
+              agent_plan_window: other
+              env: prd
+              service: agent-capacity
+              severity: warning
+      - alertname: o11y-capacity-stale
+        eval_time: 59m
+        exp_alerts:
+          - exp_annotations: {}
+            exp_labels:
+              agent_account: primary
+              agent_plan_vendor: anthropic
+              agent_plan_window: other
+              env: prd
+              service: agent-capacity
+              severity: warning
+      - alertname: o11y-capacity-stale
+        eval_time: 60m
+        exp_alerts:
+          - exp_annotations: {}
+            exp_labels:
+              agent_account: primary
+              agent_plan_vendor: anthropic
+              agent_plan_window: other
+              env: prd
+              service: agent-capacity
+              severity: warning
+      - alertname: o11y-capacity-stale
+        eval_time: 61m
+        exp_alerts:
+          - exp_annotations: {}
+            exp_labels:
+              agent_account: primary
+              agent_plan_vendor: anthropic
+              agent_plan_window: other
+              env: prd
+              service: agent-capacity
+              severity: warning
+      - alertname: o11y-capacity-stale
+        eval_time: 62m
+        exp_alerts:
+          - exp_annotations: {}
+            exp_labels:
+              agent_account: primary
+              agent_plan_vendor: anthropic
+              agent_plan_window: other
+              env: prd
+              service: agent-capacity
+              severity: warning
+      - alertname: o11y-capacity-stale
+        eval_time: 63m
+        exp_alerts:
+          - exp_annotations: {}
+            exp_labels:
+              agent_account: primary
+              agent_plan_vendor: anthropic
+              agent_plan_window: other
+              env: prd
+              service: agent-capacity
+              severity: warning
+      - alertname: o11y-capacity-stale
+        eval_time: 64m
+        exp_alerts:
+          - exp_annotations: {}
+            exp_labels:
+              agent_account: primary
+              agent_plan_vendor: anthropic
+              agent_plan_window: other
+              env: prd
+              service: agent-capacity
+              severity: warning
+      - alertname: o11y-capacity-stale
+        eval_time: 65m
+        exp_alerts:
+          - exp_annotations: {}
+            exp_labels:
+              agent_account: primary
+              agent_plan_vendor: anthropic
+              agent_plan_window: other
+              env: prd
+              service: agent-capacity
+              severity: warning
+      - alertname: o11y-capacity-stale
+        eval_time: 66m
+        exp_alerts:
+          - exp_annotations: {}
+            exp_labels:
+              agent_account: primary
+              agent_plan_vendor: anthropic
+              agent_plan_window: other
+              env: prd
+              service: agent-capacity
+              severity: warning
+      - alertname: o11y-capacity-stale
+        eval_time: 67m
+        exp_alerts:
+          - exp_annotations: {}
+            exp_labels:
+              agent_account: primary
+              agent_plan_vendor: anthropic
+              agent_plan_window: other
+              env: prd
+              service: agent-capacity
+              severity: warning
+      - alertname: o11y-capacity-stale
+        eval_time: 68m
+        exp_alerts:
+          - exp_annotations: {}
+            exp_labels:
+              agent_account: primary
+              agent_plan_vendor: anthropic
+              agent_plan_window: other
+              env: prd
+              service: agent-capacity
+              severity: warning
+      - alertname: o11y-capacity-stale
+        eval_time: 69m
+        exp_alerts:
+          - exp_annotations: {}
+            exp_labels:
+              agent_account: primary
+              agent_plan_vendor: anthropic
+              agent_plan_window: other
+              env: prd
+              service: agent-capacity
+              severity: warning
+      - alertname: o11y-capacity-stale
+        eval_time: 70m
+        exp_alerts:
+          - exp_annotations: {}
+            exp_labels:
+              agent_account: primary
+              agent_plan_vendor: anthropic
+              agent_plan_window: other
+              env: prd
+              service: agent-capacity
+              severity: warning
+      - alertname: o11y-capacity-stale
+        eval_time: 71m
+        exp_alerts:
+          - exp_annotations: {}
+            exp_labels:
+              agent_account: primary
+              agent_plan_vendor: anthropic
+              agent_plan_window: other
+              env: prd
+              service: agent-capacity
+              severity: warning
+      - alertname: o11y-capacity-stale
+        eval_time: 72m
+        exp_alerts:
+          - exp_annotations: {}
+            exp_labels:
+              agent_account: primary
+              agent_plan_vendor: anthropic
+              agent_plan_window: other
+              env: prd
+              service: agent-capacity
+              severity: warning
+      - alertname: o11y-capacity-stale
+        eval_time: 73m
+        exp_alerts:
+          - exp_annotations: {}
+            exp_labels:
+              agent_account: primary
+              agent_plan_vendor: anthropic
+              agent_plan_window: other
+              env: prd
+              service: agent-capacity
+              severity: warning
+      - alertname: o11y-capacity-stale
+        eval_time: 74m
+        exp_alerts:
+          - exp_annotations: {}
+            exp_labels:
+              agent_account: primary
+              agent_plan_vendor: anthropic
+              agent_plan_window: other
+              env: prd
+              service: agent-capacity
+              severity: warning
+      - alertname: o11y-capacity-stale
+        eval_time: 75m
+        exp_alerts:
+          - exp_annotations: {}
+            exp_labels:
+              agent_account: primary
+              agent_plan_vendor: anthropic
+              agent_plan_window: other
+              env: prd
+              service: agent-capacity
+              severity: warning
+      - alertname: o11y-capacity-stale
+        eval_time: 76m
+        exp_alerts:
+          - exp_annotations: {}
+            exp_labels:
+              agent_account: primary
+              agent_plan_vendor: anthropic
+              agent_plan_window: other
+              env: prd
+              service: agent-capacity
+              severity: warning
+      - alertname: o11y-capacity-stale
+        eval_time: 77m
+        exp_alerts:
+          - exp_annotations: {}
+            exp_labels:
+              agent_account: primary
+              agent_plan_vendor: anthropic
+              agent_plan_window: other
+              env: prd
+              service: agent-capacity
+              severity: warning
+      - alertname: o11y-capacity-stale
+        eval_time: 78m
+        exp_alerts:
+          - exp_annotations: {}
+            exp_labels:
+              agent_account: primary
+              agent_plan_vendor: anthropic
+              agent_plan_window: other
+              env: prd
+              service: agent-capacity
+              severity: warning
+      - alertname: o11y-capacity-stale
+        eval_time: 79m
+        exp_alerts:
+          - exp_annotations: {}
+            exp_labels:
+              agent_account: primary
+              agent_plan_vendor: anthropic
+              agent_plan_window: other
+              env: prd
+              service: agent-capacity
+              severity: warning
+      - alertname: o11y-capacity-stale
+        eval_time: 80m
+        exp_alerts:
+          - exp_annotations: {}
+            exp_labels:
+              agent_account: primary
+              agent_plan_vendor: anthropic
+              agent_plan_window: other
+              env: prd
+              service: agent-capacity
+              severity: warning
+      - alertname: o11y-capacity-stale
+        eval_time: 81m
+        exp_alerts:
+          - exp_annotations: {}
+            exp_labels:
+              agent_account: primary
+              agent_plan_vendor: anthropic
+              agent_plan_window: other
+              env: prd
+              service: agent-capacity
+              severity: warning
+      - alertname: o11y-capacity-stale
+        eval_time: 82m
+        exp_alerts:
+          - exp_annotations: {}
+            exp_labels:
+              agent_account: primary
+              agent_plan_vendor: anthropic
+              agent_plan_window: other
+              env: prd
+              service: agent-capacity
+              severity: warning
+      - alertname: o11y-capacity-stale
+        eval_time: 83m
+        exp_alerts:
+          - exp_annotations: {}
+            exp_labels:
+              agent_account: primary
+              agent_plan_vendor: anthropic
+              agent_plan_window: other
+              env: prd
+              service: agent-capacity
+              severity: warning
+      - alertname: o11y-capacity-stale
+        eval_time: 84m
+        exp_alerts:
+          - exp_annotations: {}
+            exp_labels:
+              agent_account: primary
+              agent_plan_vendor: anthropic
+              agent_plan_window: other
+              env: prd
+              service: agent-capacity
+              severity: warning
+      - alertname: o11y-capacity-stale
+        eval_time: 85m
+        exp_alerts:
+          - exp_annotations: {}
+            exp_labels:
+              agent_account: primary
+              agent_plan_vendor: anthropic
+              agent_plan_window: other
+              env: prd
+              service: agent-capacity
+              severity: warning
+      - alertname: o11y-capacity-stale
+        eval_time: 86m
+        exp_alerts:
+          - exp_annotations: {}
+            exp_labels:
+              agent_account: primary
+              agent_plan_vendor: anthropic
+              agent_plan_window: other
+              env: prd
+              service: agent-capacity
+              severity: warning
+      - alertname: o11y-capacity-stale
+        eval_time: 87m
+        exp_alerts:
+          - exp_annotations: {}
+            exp_labels:
+              agent_account: primary
+              agent_plan_vendor: anthropic
+              agent_plan_window: other
+              env: prd
+              service: agent-capacity
+              severity: warning
+      - alertname: o11y-capacity-stale
+        eval_time: 88m
+        exp_alerts:
+          - exp_annotations: {}
+            exp_labels:
+              agent_account: primary
+              agent_plan_vendor: anthropic
+              agent_plan_window: other
+              env: prd
+              service: agent-capacity
+              severity: warning
+      - alertname: o11y-capacity-stale
+        eval_time: 89m
+        exp_alerts:
+          - exp_annotations: {}
+            exp_labels:
+              agent_account: primary
+              agent_plan_vendor: anthropic
+              agent_plan_window: other
+              env: prd
+              service: agent-capacity
+              severity: warning
+      - alertname: o11y-capacity-stale
+        eval_time: 90m
+        exp_alerts:
+          - exp_annotations: {}
+            exp_labels:
+              agent_account: primary
+              agent_plan_vendor: anthropic
+              agent_plan_window: other
+              env: prd
+              service: agent-capacity
+              severity: warning
+      - alertname: o11y-capacity-stale
+        eval_time: 91m
+        exp_alerts:
+          - exp_annotations: {}
+            exp_labels:
+              agent_account: primary
+              agent_plan_vendor: anthropic
+              agent_plan_window: other
+              env: prd
+              service: agent-capacity
+              severity: warning
+      - alertname: o11y-capacity-stale
+        eval_time: 92m
+        exp_alerts:
+          - exp_annotations: {}
+            exp_labels:
+              agent_account: primary
+              agent_plan_vendor: anthropic
+              agent_plan_window: other
+              env: prd
+              service: agent-capacity
+              severity: warning
+      - alertname: o11y-capacity-stale
+        eval_time: 93m
+        exp_alerts:
+          - exp_annotations: {}
+            exp_labels:
+              agent_account: primary
+              agent_plan_vendor: anthropic
+              agent_plan_window: other
+              env: prd
+              service: agent-capacity
+              severity: warning
+      - alertname: o11y-capacity-stale
+        eval_time: 94m
+        exp_alerts:
+          - exp_annotations: {}
+            exp_labels:
+              agent_account: primary
+              agent_plan_vendor: anthropic
+              agent_plan_window: other
+              env: prd
+              service: agent-capacity
+              severity: warning
+      - alertname: o11y-capacity-stale
+        eval_time: 95m
+        exp_alerts:
+          - exp_annotations: {}
+            exp_labels:
+              agent_account: primary
+              agent_plan_vendor: anthropic
+              agent_plan_window: other
+              env: prd
+              service: agent-capacity
+              severity: warning
+      - alertname: o11y-capacity-stale
+        eval_time: 96m
+        exp_alerts:
+          - exp_annotations: {}
+            exp_labels:
+              agent_account: primary
+              agent_plan_vendor: anthropic
+              agent_plan_window: other
+              env: prd
+              service: agent-capacity
+              severity: warning
+      - alertname: o11y-capacity-stale
+        eval_time: 97m
+        exp_alerts:
+          - exp_annotations: {}
+            exp_labels:
+              agent_account: primary
+              agent_plan_vendor: anthropic
+              agent_plan_window: other
+              env: prd
+              service: agent-capacity
+              severity: warning
+      - alertname: o11y-capacity-stale
+        eval_time: 98m
+        exp_alerts:
+          - exp_annotations: {}
+            exp_labels:
+              agent_account: primary
+              agent_plan_vendor: anthropic
+              agent_plan_window: other
+              env: prd
+              service: agent-capacity
+              severity: warning
+      - alertname: o11y-capacity-stale
+        eval_time: 99m
+        exp_alerts:
+          - exp_annotations: {}
+            exp_labels:
+              agent_account: primary
+              agent_plan_vendor: anthropic
+              agent_plan_window: other
+              env: prd
+              service: agent-capacity
+              severity: warning
+      - alertname: o11y-capacity-stale
+        eval_time: 100m
+        exp_alerts:
+          - exp_annotations: {}
+            exp_labels:
+              agent_account: primary
+              agent_plan_vendor: anthropic
+              agent_plan_window: other
+              env: prd
+              service: agent-capacity
+              severity: warning
+      - alertname: o11y-capacity-stale
+        eval_time: 101m
+        exp_alerts:
+          - exp_annotations: {}
+            exp_labels:
+              agent_account: primary
+              agent_plan_vendor: anthropic
+              agent_plan_window: other
+              env: prd
+              service: agent-capacity
+              severity: warning
+      - alertname: o11y-capacity-stale
+        eval_time: 102m
+        exp_alerts:
+          - exp_annotations: {}
+            exp_labels:
+              agent_account: primary
+              agent_plan_vendor: anthropic
+              agent_plan_window: other
+              env: prd
+              service: agent-capacity
+              severity: warning
+      - alertname: o11y-capacity-stale
+        eval_time: 103m
+        exp_alerts:
+          - exp_annotations: {}
+            exp_labels:
+              agent_account: primary
+              agent_plan_vendor: anthropic
+              agent_plan_window: other
+              env: prd
+              service: agent-capacity
+              severity: warning
+      - alertname: o11y-capacity-stale
+        eval_time: 104m
+        exp_alerts:
+          - exp_annotations: {}
+            exp_labels:
+              agent_account: primary
+              agent_plan_vendor: anthropic
+              agent_plan_window: other
+              env: prd
+              service: agent-capacity
+              severity: warning
+      - alertname: o11y-capacity-stale
+        eval_time: 105m
+        exp_alerts:
+          - exp_annotations: {}
+            exp_labels:
+              agent_account: primary
+              agent_plan_vendor: anthropic
+              agent_plan_window: other
+              env: prd
+              service: agent-capacity
+              severity: warning
+      - alertname: o11y-capacity-stale
+        eval_time: 106m
+        exp_alerts:
+          - exp_annotations: {}
+            exp_labels:
+              agent_account: primary
+              agent_plan_vendor: anthropic
+              agent_plan_window: other
+              env: prd
+              service: agent-capacity
+              severity: warning
+      - alertname: o11y-capacity-stale
+        eval_time: 107m
+        exp_alerts:
+          - exp_annotations: {}
+            exp_labels:
+              agent_account: primary
+              agent_plan_vendor: anthropic
+              agent_plan_window: other
+              env: prd
+              service: agent-capacity
+              severity: warning
+      - alertname: o11y-capacity-stale
+        eval_time: 108m
+        exp_alerts:
+          - exp_annotations: {}
+            exp_labels:
+              agent_account: primary
+              agent_plan_vendor: anthropic
+              agent_plan_window: other
+              env: prd
+              service: agent-capacity
+              severity: warning
+      - alertname: o11y-capacity-stale
+        eval_time: 109m
+        exp_alerts:
+          - exp_annotations: {}
+            exp_labels:
+              agent_account: primary
+              agent_plan_vendor: anthropic
+              agent_plan_window: other
+              env: prd
+              service: agent-capacity
+              severity: warning
+      - alertname: o11y-capacity-stale
+        eval_time: 110m
+        exp_alerts:
+          - exp_annotations: {}
+            exp_labels:
+              agent_account: primary
+              agent_plan_vendor: anthropic
+              agent_plan_window: other
+              env: prd
+              service: agent-capacity
+              severity: warning
+      - alertname: o11y-capacity-stale
+        eval_time: 111m
+        exp_alerts:
+          - exp_annotations: {}
+            exp_labels:
+              agent_account: primary
+              agent_plan_vendor: anthropic
+              agent_plan_window: other
+              env: prd
+              service: agent-capacity
+              severity: warning
+      - alertname: o11y-capacity-stale
+        eval_time: 112m
+        exp_alerts:
+          - exp_annotations: {}
+            exp_labels:
+              agent_account: primary
+              agent_plan_vendor: anthropic
+              agent_plan_window: other
+              env: prd
+              service: agent-capacity
+              severity: warning
+      - alertname: o11y-capacity-stale
+        eval_time: 113m
+        exp_alerts:
+          - exp_annotations: {}
+            exp_labels:
+              agent_account: primary
+              agent_plan_vendor: anthropic
+              agent_plan_window: other
+              env: prd
+              service: agent-capacity
+              severity: warning
+      - alertname: o11y-capacity-stale
+        eval_time: 114m
+        exp_alerts:
+          - exp_annotations: {}
+            exp_labels:
+              agent_account: primary
+              agent_plan_vendor: anthropic
+              agent_plan_window: other
+              env: prd
+              service: agent-capacity
+              severity: warning
+      - alertname: o11y-capacity-stale
+        eval_time: 115m
+        exp_alerts:
+          - exp_annotations: {}
+            exp_labels:
+              agent_account: primary
+              agent_plan_vendor: anthropic
+              agent_plan_window: other
+              env: prd
+              service: agent-capacity
+              severity: warning
+      - alertname: o11y-capacity-stale
+        eval_time: 116m
+        exp_alerts:
+          - exp_annotations: {}
+            exp_labels:
+              agent_account: primary
+              agent_plan_vendor: anthropic
+              agent_plan_window: other
+              env: prd
+              service: agent-capacity
+              severity: warning
+      - alertname: o11y-capacity-stale
+        eval_time: 117m
+        exp_alerts:
+          - exp_annotations: {}
+            exp_labels:
+              agent_account: primary
+              agent_plan_vendor: anthropic
+              agent_plan_window: other
+              env: prd
+              service: agent-capacity
+              severity: warning
+      - alertname: o11y-capacity-stale
+        eval_time: 118m
+        exp_alerts:
+          - exp_annotations: {}
+            exp_labels:
+              agent_account: primary
+              agent_plan_vendor: anthropic
+              agent_plan_window: other
+              env: prd
+              service: agent-capacity
+              severity: warning
+      - alertname: o11y-capacity-stale
+        eval_time: 119m
+        exp_alerts:
+          - exp_annotations: {}
+            exp_labels:
+              agent_account: primary
+              agent_plan_vendor: anthropic
+              agent_plan_window: other
+              env: prd
+              service: agent-capacity
+              severity: warning
+      - alertname: o11y-capacity-stale
+        eval_time: 120m
+        exp_alerts:
+          - exp_annotations: {}
+            exp_labels:
+              agent_account: primary
+              agent_plan_vendor: anthropic
+              agent_plan_window: other
+              env: prd
+              service: agent-capacity
+              severity: warning
+      - alertname: o11y-capacity-stale
+        eval_time: 5h59m
+        exp_alerts:
+          - exp_annotations: {}
+            exp_labels:
+              agent_account: primary
+              agent_plan_vendor: anthropic
+              agent_plan_window: other
+              env: prd
+              service: agent-capacity
+              severity: warning
+      - alertname: o11y-capacity-stale
+        eval_time: 6h
+        exp_alerts: []
+      - alertname: o11y-capacity-stale
+        eval_time: 6h1m
+        exp_alerts: []
+    input_series:
+      - series: "agent_capacity_window_utilization_ratio{agent_plan_vendor=\"\
+          anthropic\",agent_plan_window=\"\
+          7d\",agent_account=\"primary\",host_name=\"\
+          fixture-a\",agent_capacity_source=\"\
+          claude_statusline\",agent_capacity_freshness=\"\
+          fresh\"}"
+        values: 0.42 stale
+    interval: 1m
+    name: stopped collector keeps alerting
+      until six-hour history expires

@@ -1,0 +1,36 @@
+---
+- name: Verify
+  hosts: all
+  become: true
+  vars:
+    ca_client_trust_installed_root: /usr/local/share/ca-certificates/tbhb-dev-step-ca-root.crt
+    ca_client_trust_source_root: "{{ playbook_dir }}/../../../../../apps/ca/roots/root_ca.crt"
+  tasks:
+    - name: Read the installed root metadata
+      ansible.builtin.stat:
+        path: "{{ ca_client_trust_installed_root }}"
+        checksum_algorithm: sha256
+      register: ca_client_trust_installed
+
+    - name: Confirm the root matches the repository file and metadata
+      ansible.builtin.assert:
+        that:
+          - ca_client_trust_installed.stat.pw_name == 'root'
+          - ca_client_trust_installed.stat.gr_name == 'root'
+          - ca_client_trust_installed.stat.mode == '0644'
+          - >-
+              ca_client_trust_installed.stat.checksum ==
+              lookup('ansible.builtin.file', ca_client_trust_source_root, rstrip=false) | hash('sha256')
+        quiet: true
+
+    - name: Verify trust through the Debian CA bundle
+      ansible.builtin.command:
+        argv:
+          - openssl
+          - verify
+          - -CAfile
+          - /etc/ssl/certs/ca-certificates.crt
+          - -no-CApath
+          - -no-CAstore
+          - "{{ ca_client_trust_installed_root }}"
+      changed_when: false

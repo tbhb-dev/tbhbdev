@@ -30,6 +30,7 @@ from hypothesis import strategies as st
 
 from tbhbdev.alpha import identity as ai
 from tbhbdev.alpha import install
+from tbhbdev.alpha.identity_commands import cmd_hashes
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -673,45 +674,6 @@ def test_format_order_and_omission() -> None:
     assert len(ai.ATTR_ORDER) == 9
 
 
-@given(
-    st.lists(st.from_regex(r"[a-z0-9.]{1,6}", fullmatch=True), min_size=1, max_size=6)
-)
-def test_command_candidates_recover_eval_operand(parts: list[str]) -> None:
-    cmd = " && ".join(f"echo 'it'\"'\"'s {p}'" for p in parts)
-    line = f"/bin/zsh -c source s && eval {shlex.quote(cmd)} < /dev/null && pwd"
-    assert ai.command_candidates(line) == [cmd]
-
-
-@given(st.text(max_size=40))
-def test_cmd_hashes_cover_trimmed_and_flat_forms(cmd: str) -> None:
-    got = ai.cmd_hashes(cmd)
-    forms = {cmd, cmd.strip(), ai.flat(cmd), ai.flat(cmd).strip()}
-    assert got == sorted(hashlib.sha256(f.encode()).hexdigest() for f in forms)
-
-
-def test_flat_turns_control_characters_and_their_escapes_into_spaces() -> None:
-    assert ai.flat("a\nb\tc\x00d\x1fe\x7ff") == "a b c d e f"
-    assert ai.flat(r"a\012b\011c\000d\037e\177f") == "a b c d e f"
-    assert ai.flat(r"a\040b\08c\400d\12e") == r"a\040b\08c\400d\12e"
-    assert ai.flat("a b~") == "a b~"
-
-
-def test_command_candidates_from_real_shape() -> None:
-    cmd = "cd x && echo 'it'\"'\"'s' && git commit -m \"a b\""
-    quoted = cmd.replace("'", "'\"'\"'")
-    line = (
-        "/bin/zsh -c source /u/shell-snapshots/s.sh 2>/dev/null || true && "
-        "setopt NO_EXTENDED_GLOB 2>/dev/null || true && "
-        "{ \\builtin unalias -- 'which'; } >/dev/null 2>&1 || true && "
-        f"eval '{quoted}' < /dev/null && pwd -P >| /tmp/claude-1a2b-cwd"
-    )
-    assert ai.command_candidates(line) == [cmd]
-    assert ai.command_candidates("python3 x.py trailer m") == []
-    assert ai.command_candidates("zsh -c 'unterminated") == []
-    assert ai.command_candidates("eval") == []
-    assert ai.command_candidates("a eval b eval c") == ["b", "c"]
-
-
 # --------------------------------------------------------- git and the store
 
 
@@ -1157,7 +1119,7 @@ def test_record_command_stores_hashes_not_text(repo: Path) -> None:
     ai.record_command(ROOT, CHILD, "secret --token abc", repo)
     (rec,) = pending(repo)
     assert rec["agent"] == CHILD
-    assert rec["cmd"] == ai.cmd_hashes("secret --token abc")
+    assert rec["cmd"] == cmd_hashes("secret --token abc")
     assert rec["done"] is None
     assert isinstance(rec["ts"], float)
     assert "secret" not in json.dumps(rec)
@@ -1213,7 +1175,7 @@ def test_command_records_skip_done_and_unreadable(repo: Path) -> None:
     (folder / "empty.json").write_text("{}", encoding="utf-8")
     store = repo / ".git" / "tbhb-alpha"
     got = [rec for _, rec in ai.command_records(store, ROOT)]
-    assert [rec["cmd"] for rec in got] == [ai.cmd_hashes("ls")]
+    assert [rec["cmd"] for rec in got] == [cmd_hashes("ls")]
     assert list(ai.command_records(store, OTHER)) == []
 
 
@@ -1595,7 +1557,7 @@ def test_main_agent_events_record_the_session_and_commands(
     }
     (rec,) = pending(repo)
     assert (rec["agent"], rec["done"]) == (None, None)
-    assert rec["cmd"] == ai.cmd_hashes("cd x && git commit -m m")
+    assert rec["cmd"] == cmd_hashes("cd x && git commit -m m")
     ai.handle_claude(claude_data(repo, hook_event_name=EVENT_FAIL), CLAUDE_HOOK_ENV)
     assert pending(repo) == [{**rec, "done": pending(repo)[0]["done"]}]
     assert isinstance(pending(repo)[0]["done"], float)
@@ -1735,61 +1697,6 @@ def test_other_bash_writes_still_get_a_receipt(repo: Path, command: str) -> None
     }
     ai.handle_claude(post, CLAUDE_HOOK_ENV)
     assert [r["path"] for r in receipts_of(repo, SESSION_HASH)] == ["x.txt"]
-
-
-def test_moves_work_tree_ignores_a_command_that_is_not_text() -> None:
-    assert not ai.moves_work_tree(None)
-    assert not ai.moves_work_tree(["git", "checkout"])
-    assert ai.moves_work_tree("git checkout a")
-
-
-def test_moves_work_tree_strips_harmless_redirects_before_splitting() -> None:
-    # Without the strip, the ``&`` of ``2>&1`` splits the line mid-redirect.
-    assert ai.moves_work_tree("git checkout a 2>&1")
-    assert ai.moves_work_tree("git checkout a >/dev/null 2>&1")
-    # The strip leaves nothing behind, so it cannot glue onto the verb.
-    assert ai.moves_work_tree("git checkout>/dev/null")
-    assert not ai.moves_work_tree("git checkout a > out.txt")
-
-
-@pytest.mark.parametrize(
-    ("segment", "kind"),
-    [
-        ("echo hi > out.txt", "other"),
-        ("echo 'unbalanced", "other"),
-        ("", "quiet"),
-        ("FOO=1 BAR=2", "quiet"),
-        ("ls -l", "quiet"),
-        ("FOO=1 cat x", "quiet"),
-        ("rm x", "other"),
-        ("git checkout a", "move"),
-        ("git rebase main", "move"),
-        ("git rebase --exec make main", "other"),
-        ("git rebase -x make main", "other"),
-        ("git status", "quiet"),
-        ("git -C . log", "quiet"),
-        ("git commit -m x", "other"),
-        ("git", "other"),
-    ],
-)
-def test_segment_kind_names_each_kind(segment: str, kind: str) -> None:
-    assert ai.segment_kind(segment) == kind
-
-
-@pytest.mark.parametrize(
-    ("words", "verb"),
-    [
-        (["git", "--no-pager", "log"], "log"),
-        (["git", "-c", "a=b", "status"], "status"),
-        (["git", "-C", ".", "--no-pager", "diff"], "diff"),
-        (["git", "-C", "."], ""),
-        (["git", "-C"], ""),
-        (["git", "--no-pager"], ""),
-        (["git"], ""),
-    ],
-)
-def test_git_verb_skips_global_options(words: list[str], verb: str) -> None:
-    assert ai.git_verb(words) == verb
 
 
 def test_edit_tools_become_receipts(repo: Path) -> None:
@@ -3294,31 +3201,6 @@ def test_add_trailers_rewrites_existing_ones_in_order(tmp_path: Path) -> None:
         "s\n\nbody\n\nGenerated-by: robot\n"
         f"{GEN_SUB[0]}: {GEN_SUB[1]}\n{GEN_ROOT[0]}: {GEN_ROOT[1]}\n"
     )
-
-
-@pytest.mark.parametrize(
-    ("line", "expected"),
-    [
-        ("git commit --amend -m x", True),
-        ("/opt/bin/git -C d commit -q --am", True),
-        ("git commit --ame --no-edit", True),
-        ("git commit --amen", True),
-        ("git commit -m x -- --amend", False),
-        ("git commit -m x", False),
-        ("git commit --a", False),
-        ("zsh -c git commit --amend", False),
-        ("git log --amend", False),
-        ("", False),
-    ],
-)
-def test_amending(line: str, expected: bool) -> None:
-    assert ai.amending([line]) is expected
-
-
-def test_amending_takes_the_nearest_git_commit() -> None:
-    assert ai.amending(["python x", "git commit -m x", "git commit --amend"]) is False
-    assert ai.amending(["python x", "git commit --amend", "git commit"]) is True
-    assert ai.amending([]) is False
 
 
 def test_amended_trailers_reads_head_only_when_amending(
@@ -4893,7 +4775,7 @@ def test_cmd_record_writes_the_sessions_directory(
 
 def test_finish_command_prefers_the_newest_not_the_last_path(repo: Path) -> None:
     cmds = repo / ".git" / "tbhb-alpha" / "cmds" / ai.hx(ROOT)
-    hashes = ai.cmd_hashes("ls")
+    hashes = cmd_hashes("ls")
     for name, ts in (("a.json", 20), ("z.json", 10)):
         ai.write_json(
             cmds / name, {"agent": None, "cmd": hashes, "ts": ts, "done": None}
@@ -4909,7 +4791,7 @@ def test_finish_command_ties_go_to_the_first_record(repo: Path) -> None:
     for name in ("one.json", "two.json"):
         ai.write_json(
             cmds / name,
-            {"agent": None, "cmd": ai.cmd_hashes("ls"), "ts": 5, "done": None},
+            {"agent": None, "cmd": cmd_hashes("ls"), "ts": 5, "done": None},
         )
     first = next(path for path, _ in ai.command_records(store, ROOT))
     ai.finish_command(ROOT, "ls", None)
@@ -7821,7 +7703,7 @@ def test_matched_child_requires_a_session_record_for_its_root(
 
 
 def test_command_window_includes_its_start_and_an_explicit_zero(repo: Path) -> None:
-    record: Json = {"agent": CHILD, "cmd": ai.cmd_hashes("ls"), "ts": 0.0}
+    record: Json = {"agent": CHILD, "cmd": cmd_hashes("ls"), "ts": 0.0}
     ai.write_json(repo / ".git" / ai.STORE / "cmds" / ai.hx(ROOT) / "x.json", record)
     assert ai.recent_commands(ROOT, repo, 0.0) == [record]
     assert ai.match_command_agent(ROOT, ["sh -c eval 'ls'"], repo, now=0.0) == (

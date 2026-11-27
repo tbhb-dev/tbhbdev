@@ -1,0 +1,29 @@
+---
+# The agent uses rootless Docker under gVisor and /dev/kvm directly.
+# Root work goes through the ops accounts instead.
+# Install the tools and check the profile first, so a failure leaves the agent's
+# groups and sudo grant as they were.
+- name: Prepare the agent's rootless Docker prerequisites
+  ansible.builtin.include_tasks: prerequisites.yml
+
+# A login that began before this apply keeps its old groups, docker included,
+# until it ends. End the agent's sessions and restart its user manager after an
+# apply, and only with no lab run live.
+- name: Set the agent's supplementary groups
+  ansible.builtin.user:
+    name: agent
+    groups: "{{ lab_agent_groups }}"
+    append: false
+  register: lab_agent_account
+
+# A rerun removes a sudo grant that someone added by hand.
+- name: Keep sudo away from the agent
+  ansible.builtin.file:
+    path: /etc/sudoers.d/agent
+    state: absent
+
+- name: Configure the agent's rootless Docker daemon
+  ansible.builtin.include_tasks: rootless.yml
+
+- name: Configure the agent's shell environment
+  ansible.builtin.include_tasks: profile.yml

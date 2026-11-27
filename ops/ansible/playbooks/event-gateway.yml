@@ -1,0 +1,6 @@
+---
+- name: Deploy the event gateway
+  hosts: event_gateway
+  gather_facts: false
+  roles:
+    - event_gateway_deploy

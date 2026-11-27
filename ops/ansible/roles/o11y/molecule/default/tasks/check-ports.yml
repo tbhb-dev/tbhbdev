@@ -1,0 +1,24 @@
+---
+- name: check-ports | Read the published ports without container environments
+  ansible.builtin.command:
+    argv: [docker, compose, ps, --format, json]
+    chdir: "{{ o11y_test_release }}"
+  register: o11y_test_ports
+  changed_when: false
+
+- name: check-ports | Require only the original loopback publications
+  vars:
+    o11y_test_containers: >-
+      {{ o11y_test_ports.stdout | from_json
+        if o11y_test_ports.stdout.strip().startswith('[')
+        else o11y_test_ports.stdout_lines | map('from_json') | list }}
+    o11y_test_publishers: >-
+      {{ o11y_test_containers | map(attribute='Publishers') | flatten |
+        selectattr('PublishedPort', 'gt', 0) | list }}
+  ansible.builtin.assert:
+    that:
+      - o11y_test_publishers | map(attribute='PublishedPort') | sort == [3000, 4317, 4318]
+      - o11y_test_publishers | map(attribute='TargetPort') | sort == [3000, 4317, 4318]
+      - o11y_test_publishers | map(attribute='URL') | unique | list == ['127.0.0.1']
+      - o11y_test_publishers | map(attribute='Protocol') | unique | list == ['tcp']
+    quiet: true

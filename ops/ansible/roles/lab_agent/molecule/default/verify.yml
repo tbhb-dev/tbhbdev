@@ -1,0 +1,111 @@
+---
+- name: Verify
+  hosts: all
+  become: true
+  tasks:
+    - name: Read the agent's groups
+      ansible.builtin.command:
+        cmd: id -nG agent
+      register: lab_agent_groups_out
+      changed_when: false
+
+    - name: Read the agent's sudo rights
+      ansible.builtin.command:
+        cmd: sudo -l -U agent
+      register: lab_agent_sudo
+      changed_when: false
+
+    - name: Look for the sudoers drop-in
+      ansible.builtin.stat:
+        path: /etc/sudoers.d/agent
+      register: lab_agent_sudoers
+
+    - name: Check the agent
+      ansible.builtin.assert:
+        that:
+          - lab_agent_groups_out.stdout.split() | sort == ['adm', 'devel', 'kvm']
+          - "'docker' not in lab_agent_groups_out.stdout.split()"
+          - "'libvirt' not in lab_agent_groups_out.stdout.split()"
+          - "'is not allowed to run sudo' in lab_agent_sudo.stdout"
+          - not lab_agent_sudoers.stat.exists
+
+    - name: Read the agent's Docker settings
+      ansible.builtin.slurp:
+        src: /home/example-user/.config/docker/daemon.json
+      register: lab_agent_daemon_json
+
+    - name: Read the agent's Docker unit metadata
+      ansible.builtin.stat:
+        path: /home/example-user/.config/systemd/user/docker.service
+      register: lab_agent_docker_unit
+
+    - name: Check the rootless Docker files
+      vars:
+        lab_agent_daemon: "{{ lab_agent_daemon_json.content | b64decode | from_json }}"
+      ansible.builtin.assert:
+        that:
+          - lab_agent_daemon['default-runtime'] == 'runsc'
+          - lab_agent_daemon.runtimes.runsc.path == '/usr/bin/runsc'
+          - lab_agent_daemon.runtimes.runsc.runtimeArgs == ['--ignore-cgroups']
+          - lab_agent_docker_unit.stat.pw_name == 'agent'
+
+    - name: Read the agy profile metadata
+      ansible.builtin.stat:
+        path: /home/example-user/.agy-profile
+      register: lab_agent_agy_profile
+
+    - name: Read the agy profile
+      ansible.builtin.slurp:
+        src: /home/example-user/.agy-profile
+      register: lab_agent_agy_content
+
+    - name: Check the agy profile
+      ansible.builtin.assert:
+        that:
+          - lab_agent_agy_profile.stat.exists
+          - lab_agent_agy_profile.stat.isreg
+          - lab_agent_agy_profile.stat.mode == '0644'
+          - lab_agent_agy_profile.stat.pw_name == 'agent'
+          - lab_agent_agy_profile.stat.gr_name == 'devel'
+          - lab_agent_agy_content.content | b64decode == 'export AGY_CLI_DISABLE_AUTO_UPDATE=true' ~ '\n'
+
+    - name: Read the agent's shell files
+      ansible.builtin.slurp:
+        src: /home/example-user/{{ item }}
+      loop: [.profile, .bashrc]
+      register: lab_agent_shell_files
+
+    - name: Check preservation of the hand-made shell content
+      ansible.builtin.assert:
+        that:
+          - "'# Hand-made local bin PATH' in (item.content | b64decode)"
+          - "'*) export PATH=\"$HOME/.local/bin:$PATH\" ;;' in (item.content | b64decode)"
+          - (item.content | b64decode).count('# BEGIN ANSIBLE MANAGED lab_agent agy environment') == 1
+      loop: "{{ lab_agent_shell_files.results }}"
+      loop_control:
+        label: "{{ item.item }}"
+
+    - name: Read agy's opt-out in a clean agent shell
+      ansible.builtin.command:
+        argv:
+          - runuser
+          - -u
+          - agent
+          - --
+          - env
+          - -u
+          - AGY_CLI_DISABLE_AUTO_UPDATE
+          - /bin/bash
+          - "{{ item }}"
+          - 'printf "%s\n" "$AGY_CLI_DISABLE_AUTO_UPDATE"'
+      loop: [-lc, -ic]
+      register: lab_agent_agy_shell
+      changed_when: false
+
+    - name: Check login and interactive agent shells
+      ansible.builtin.assert:
+        that:
+          - item.stdout == 'true'
+      loop: "{{ lab_agent_agy_shell.results }}"
+      loop_control:
+        label: "{{ item.item }}"

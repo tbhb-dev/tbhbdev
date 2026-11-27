@@ -1,0 +1,128 @@
+---
+- name: preflight-linux | Look up agent group by name
+  ansible.builtin.getent:
+    database: group
+    key: "agent"
+    fail_key: false
+  register: agent_account_group_name
+
+- name: preflight-linux | Look up the fixed gid
+  ansible.builtin.getent:
+    database: group
+    key: "24368"
+    fail_key: false
+  register: agent_account_group_id
+
+- name: preflight-linux | Look up agent by name
+  ansible.builtin.getent:
+    database: passwd
+    key: "agent"
+    fail_key: false
+  register: agent_account_user_name
+
+- name: preflight-linux | Look up the fixed uid
+  ansible.builtin.getent:
+    database: passwd
+    key: "24368"
+    fail_key: false
+  register: agent_account_user_id
+
+- name: preflight-linux | Check agent's gid
+  ansible.builtin.assert:
+    that:
+      - >-
+          agent_account_group_name.ansible_facts.getent_group.agent is none or
+          agent_account_group_name.ansible_facts.getent_group.agent[1] == '24368'
+    fail_msg: >-
+      the group agent has gid {{ (agent_account_group_name.ansible_facts.getent_group.agent or ['', 'missing'])[1]
+      }}; it should have gid 24368
+    quiet: true
+
+- name: preflight-linux | Check ownership of the fixed gid
+  ansible.builtin.assert:
+    that:
+      - agent_account_group_id.ansible_facts.getent_group.keys() | list | difference(['24368', 'agent']) | length == 0
+    fail_msg: >-
+      gid 24368 belongs to {{ agent_account_group_id.ansible_facts.getent_group.keys() | first }}, not agent
+    quiet: true
+
+- name: preflight-linux | Check agent's ids
+  ansible.builtin.assert:
+    that:
+      - >-
+          agent_account_user_name.ansible_facts.getent_passwd.agent is none or
+          (agent_account_user_name.ansible_facts.getent_passwd.agent[1] == '24368' and
+          agent_account_user_name.ansible_facts.getent_passwd.agent[2] in ['24368', '33835'])
+    fail_msg: >-
+      the user agent has uid {{ (agent_account_user_name.ansible_facts.getent_passwd.agent or ['', 'missing',
+      'missing'])[1] }} and gid {{ (agent_account_user_name.ansible_facts.getent_passwd.agent or ['', 'missing',
+      'missing'])[2] }}; it should have uid 24368 and gid 24368 or legacy gid 33835
+    quiet: true
+
+- name: preflight-linux | Check ownership of the fixed uid
+  ansible.builtin.assert:
+    that:
+      - agent_account_user_id.ansible_facts.getent_passwd.keys() | list | difference(['24368', 'agent']) | length == 0
+    fail_msg: >-
+      uid 24368 belongs to {{ agent_account_user_id.ansible_facts.getent_passwd.keys() | first }}, not agent
+    quiet: true
+
+- name: preflight-linux | Remember the Linux account home
+  ansible.builtin.set_fact:
+    agent_account_home: >-
+      {{ (agent_account_user_name.ansible_facts.getent_passwd.agent or ['', '', '', '', '/home/example-user'])[4] }}
+    agent_account_new_user: "{{ agent_account_user_name.ansible_facts.getent_passwd.agent is none }}"
+
+# Snapshot before usermod, which can also change groups inside the home.
+- name: preflight-linux | Discover the legacy group and paths without following symlinks
+  ansible.builtin.command:
+    argv:
+      - python3
+      - -c
+      - |
+          import grp, json, os, pwd, subprocess, sys
+          try:
+              legacy = grp.getgrnam('devel')
+          except KeyError:
+              print(json.dumps({'group': None, 'paths': [], 'members': []}))
+              sys.exit(0)
+          home, workspace = sys.argv[1:]
+          workspace = os.path.normpath(os.path.join(home, workspace))
+          roots = [home]
+          if os.path.commonpath([home, workspace]) != home:
+              roots.append(workspace)
+          roots = [path for path in roots if os.path.lexists(path)]
+          paths = []
+          if roots:
+              found = subprocess.run(
+                  ['find', '-P', *roots, '-gid', str(legacy.gr_gid), '-print0'],
+                  check=True, stdout=subprocess.PIPE)
+              paths = sorted(os.fsdecode(path) for path in found.stdout.split(b'\0') if path)
+          members = set(legacy.gr_mem)
+          members.update(user.pw_name for user in pwd.getpwall()
+                        if user.pw_gid == legacy.gr_gid and user.pw_name != 'agent')
+          print(json.dumps({'group': legacy.gr_name, 'gid': legacy.gr_gid,
+                            'members': sorted(members), 'paths': paths}))
+      - "{{ agent_account_home }}"
+      - "{{ agent_workspace_root | default(agent_account_tbhbdev_config.get('workspace', {}).get('root', 'Code')) }}"
+  register: agent_account_legacy_scan
+  check_mode: false
+  changed_when: false
+
+- name: preflight-linux | Remember the legacy state for migration and undo
+  ansible.builtin.set_fact:
+    agent_account_legacy: "{{ agent_account_legacy_scan.stdout | from_json }}"
+
+- name: preflight-linux | Log the account and group state before migration
+  ansible.builtin.debug:
+    msg:
+      old_primary_gid: "{{ (agent_account_user_name.ansible_facts.getent_passwd.agent or ['', '', 'absent'])[2] }}"
+      old_primary_group: "{{ 'absent' if agent_account_new_user else ('devel' if
+        agent_account_user_name.ansible_facts.getent_passwd.agent[2] == '33835' else 'agent') }}"
+      old_agent_group: "{{ agent_account_group_name.ansible_facts.getent_group.agent }}"
+      legacy_group: "{{ agent_account_legacy }}"
+      new_primary_group: agent
+      new_primary_gid: 24368
+  when: >-
+    agent_account_legacy.group is not none or
+    agent_account_group_name.ansible_facts.getent_group.agent is none

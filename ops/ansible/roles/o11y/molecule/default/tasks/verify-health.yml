@@ -1,0 +1,55 @@
+---
+- name: verify-health | Stage the second release under the deployment lock
+  ansible.builtin.include_role:
+    name: o11y
+    tasks_from: locked
+  vars:
+    o11y_action: release.yml
+    o11y_release_id: 84485435b4670f1771d535c943d5f87c74af93a8
+    o11y_grafana_root_url: https://grafana.example.invalid/health-failure/
+
+- name: verify-health | Start the second release while it is healthy
+  ansible.builtin.command:
+    argv: [docker, compose, up, -d, --wait, --remove-orphans]
+    chdir: "{{ o11y_root }}/releases/84485435b4670f1771d535c943d5f87c74af93a8"
+  changed_when: true
+
+- name: verify-health | Make Grafana readiness fail inside the second release
+  ansible.builtin.command:
+    argv: [docker, compose, exec, -T, grafana, touch, /tmp/unhealthy]
+    chdir: "{{ o11y_root }}/releases/84485435b4670f1771d535c943d5f87c74af93a8"
+  changed_when: true
+
+- name: verify-health | Wait for the real container healthcheck to mark Grafana unhealthy
+  vars:
+    o11y_test_containers: >-
+      {{ o11y_test_unhealthy.stdout | from_json
+        if o11y_test_unhealthy.stdout.strip().startswith('[')
+        else o11y_test_unhealthy.stdout_lines | map('from_json') | list }}
+  ansible.builtin.command:
+    argv: [docker, compose, ps, --all, --format, json]
+    chdir: "{{ o11y_root }}/releases/84485435b4670f1771d535c943d5f87c74af93a8"
+  register: o11y_test_unhealthy
+  changed_when: false
+  until: >-
+    (o11y_test_containers | selectattr('Service', 'equalto', 'grafana') | first).Health == 'unhealthy'
+  retries: 15
+  delay: 1
+
+- name: verify-health | Require the new container health gate to reject the second release
+  block:
+    - name: verify-health | Check the unhealthy release with the production gate
+      ansible.builtin.include_role:
+        name: o11y
+        tasks_from: health
+      vars:
+        o11y_target: "{{ o11y_root }}/releases/84485435b4670f1771d535c943d5f87c74af93a8"
+
+    - name: verify-health | Fail when the unhealthy container passes the gate
+      ansible.builtin.fail:
+        msg: The unhealthy container unexpectedly passed the gate.
+  rescue:
+    - name: verify-health | Require rejection by the container status gate
+      ansible.builtin.assert:
+        that: "'Wait for every expected container' in ansible_failed_task.name"
+        quiet: true

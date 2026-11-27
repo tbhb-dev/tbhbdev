@@ -1,0 +1,35 @@
+---
+# Collections come from ansible/collections through
+# ANSIBLE_COLLECTIONS_PATH, which molecule/run.sh sets after it fills it,
+# so the galaxy dependency step and the prerun stay off.
+dependency:
+  name: galaxy
+  enabled: false
+driver:
+  name: docker
+platforms:
+  # test-ansible sets MOLECULE_RUN_ID, so concurrent runs get distinct containers.
+  - name: lab-grub-ubuntu-2604-${MOLECULE_RUN_ID:-local}
+    # The runner builds this content-addressed image when its cache is missing.
+    image: ${MOLECULE_IMAGE}
+    pre_build_image: true
+prerun: false
+provisioner:
+  name: ansible
+  # The driver sets community.docker.docker on each host, which inventory
+  # group_vars can't override. docker_api talks to the daemon's API
+  # instead of piping modules through docker exec stdin.
+  connection_options:
+    ansible_connection: community.docker.docker_api
+verifier:
+  name: ansible
+scenario:
+  test_sequence:
+    - destroy
+    - syntax
+    - create
+    - check
+    - converge
+    - idempotence
+    - verify
+    - destroy

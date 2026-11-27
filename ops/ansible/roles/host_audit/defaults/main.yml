@@ -1,0 +1,12 @@
+---
+# Accounts whose every command auditd records. The agent isn't one: a
+# single Bazel build runs millions of commands.
+host_audit_command_users: [ops, tony]
+
+# Accounts whose ~/.ssh auditd watches for new authorized keys. A
+# directory that doesn't exist yet is skipped until a rerun finds it.
+host_audit_ssh_users: [root, ops, ops-ro, tony, agent]
+
+# Load the rules into the kernel and run auditd. Molecule turns this off,
+# because a container shares its host's kernel and audit rules.
+host_audit_load: true

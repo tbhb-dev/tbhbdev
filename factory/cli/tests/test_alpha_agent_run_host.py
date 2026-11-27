@@ -48,7 +48,7 @@ from test_alpha_agent_credentials import VALUES
 from test_alpha_agent_settings import EXAMPLE
 
 from tbhbdev import secrets
-from tbhbdev.alpha import agent, install, run_stop_hook
+from tbhbdev.alpha import install, run_stop_hook
 from tbhbdev.alpha.agent import (
     admission,
     bazel_servers,
@@ -61,6 +61,7 @@ from tbhbdev.alpha.agent import (
     runfiles,
     shims,
 )
+from tbhbdev.alpha.agent import command as agent
 from tbhbdev.alpha.agent.decisions import policy, request
 from tbhbdev.alpha.agent.decisions.run_state import Group
 from tbhbdev.alpha.agent.model import (
