@@ -46,10 +46,7 @@ def run(
     try:
         after, checkout = local_refs(workspace)
         if rc:
-            tip = after.get(reference)
-            if tip is None or tip in before.values():
-                tip = after.get("HEAD") or after.get("detached HEAD")
-            tip = None if tip in before.values() else tip
+            tip = recovery_tip(reference, before, after)
         else:
             found = new_commits(run, workspace, before, after, checkout)
             tip = found[0][1] if found else None
@@ -67,6 +64,12 @@ def run(
         )
         return 4
     return rc
+
+
+def recovery_tip(ref: str, before: dict[str, str], after: dict[str, str]) -> str | None:
+    if (tip := after.get(ref)) is None or tip in before.values():
+        tip = after.get("HEAD") or after.get("detached HEAD")
+    return None if tip in before.values() else tip
 
 
 def local_refs(workspace: Path) -> tuple[dict[str, str], str]:
