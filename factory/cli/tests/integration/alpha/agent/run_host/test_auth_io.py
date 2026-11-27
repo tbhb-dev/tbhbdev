@@ -26,7 +26,7 @@ from tbhbdev.alpha.agent import (
     process_group,
     push,
     runfiles,
-    worktree,
+    worktree_checkout,
 )
 from tbhbdev.alpha.agent.run_host import auth as host_auth
 from tbhbdev.alpha.agent.run_host import completion as host_completion
@@ -183,7 +183,7 @@ def test_finish_removes_private_state_codex_home(
 ) -> None:
     run = make_run(tmp_path)
     workspace = runfiles.private_dir(run.home / "worktree")
-    monkeypatch.setattr(worktree, "create", constant(workspace))
+    monkeypatch.setattr(worktree_checkout, "create", constant(workspace))
     monkeypatch.setattr(push, "head", constant("a" * 40))
     prepared = host_workspace.prepare_workspace(run)
     directory = Path(prepared.paths.codex_home)
