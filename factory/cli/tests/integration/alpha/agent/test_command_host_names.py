@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import socket
 from typing import TYPE_CHECKING
 
 import pytest
@@ -16,16 +17,21 @@ if TYPE_CHECKING:
 
 
 @pytest.mark.usefixtures("isolated_home")
-def test_exec_refuses_a_name_that_contains_a_configured_host(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+@pytest.mark.parametrize("name", ["prepare-EXAMPLE-MACOS", "prepare-EXAMPLEHOST01"])
+def test_exec_refuses_a_name_that_contains_a_host_name(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    name: str,
 ) -> None:
     remote = setup(tmp_path, monkeypatch)
+    monkeypatch.setattr(socket, "gethostname", lambda: "examplehost01.example.test")
     monkeypatch.setattr(agent_settings, "load", settings)
     args = execution_arguments(remote.prompt)
-    args[-2] = "prepare-EXAMPLE-MACOS"
+    args[-2] = name
 
     assert run_agent(args) == 1
-    assert remote.records("ssh") == []
+    assert remote.records("ssh", limits=True) == []
     assert (
         capsys.readouterr().err
         == "tbhbdev alpha agent: run name contains a host name\n"

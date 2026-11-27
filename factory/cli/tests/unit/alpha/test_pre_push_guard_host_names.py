@@ -23,22 +23,25 @@ BRANCH = "refs/heads/agent/prepare-EXAMPLEHOST01"
 
 
 @pytest.mark.parametrize(
-    ("row", "message"),
+    ("rows", "message"),
     [
         (
-            f"HEAD {HEAD} {BRANCH} {ZERO}",
+            [
+                f"HEAD {HEAD} refs/heads/agent/topic {ZERO}",
+                f"HEAD {HEAD} {BRANCH} {ZERO}",
+            ],
             "push refused because the branch name contains a host name",
         ),
-        (f"HEAD {HEAD} {BRANCH} {BASE}", ""),
-        (f"HEAD {ZERO} {BRANCH} {BASE}", ""),
-        (f"HEAD {HEAD} refs/tags/prepare-examplehost01 {ZERO}", ""),
+        ([f"HEAD {HEAD} {BRANCH} {BASE}"], ""),
+        ([f"HEAD {ZERO} {BRANCH} {BASE}"], ""),
+        ([f"HEAD {HEAD} refs/tags/prepare-examplehost01 {ZERO}"], ""),
     ],
 )
 def test_push_checks_host_names_when_creating_a_branch(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
-    row: str,
+    rows: list[str],
     message: str,
 ) -> None:
     monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))
@@ -48,11 +51,11 @@ def test_push_checks_host_names_when_creating_a_branch(
         '[[agent.host]]\nname = "examplehost01"\nos = "linux"\nshell = "bash"\n'
         'account = "agent"\naccounts = ["agent"]\nproven_harnesses = ["codex"]\n'
     )
-    monkeypatch.setattr(sys, "stdin", io.StringIO(row + "\n"))
+    monkeypatch.setattr(sys, "stdin", io.StringIO("\n".join(rows) + "\n"))
     monkeypatch.setattr(pg, "remote_tips", Mock(return_value=[]))
     verify_ref = Mock(return_value=[])
     monkeypatch.setattr(pg, "ref_problems", verify_ref)
 
     assert pg.main(["origin", "../remote.git"], "pre-push-guard") == bool(message)
     assert capsys.readouterr().err == (f"{message}\n" if message else "")
-    assert verify_ref.call_count == int(not message)
+    assert verify_ref.call_count == (0 if message else len(rows))

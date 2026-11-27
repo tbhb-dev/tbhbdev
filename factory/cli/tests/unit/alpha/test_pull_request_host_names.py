@@ -18,28 +18,29 @@ if TYPE_CHECKING:
 @pytest.mark.parametrize(
     "case",
     [
-        ((0, "agent/prepare-EXAMPLEHOST01"), "", "branch name contains a host name"),
-        ((0, ""), "", "cannot read the current branch"),
-        ((128, ""), "", "cannot read the current branch"),
+        ((0, "agent/prepare-EXAMPLEHOST01"), b"", "branch name contains a host name"),
+        ((0, ""), b"", "cannot read the current branch"),
+        ((128, ""), b"", "cannot read the current branch"),
         (
             (0, "agent/topic"),
-            '[agent]\nhost = "invalid"\n',
+            b'[agent]\nhost = "invalid"\n',
             "cannot read known host names",
         ),
+        ((0, "agent/topic"), b"\xff", "cannot read known host names"),
     ],
 )
 def test_create_checks_the_branch_for_host_names(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
-    case: tuple[tuple[int, str], str, str],
+    case: tuple[tuple[int, str], bytes, str],
 ) -> None:
-    git_result, config_text, message = case
+    git_result, config_bytes, message = case
     monkeypatch.setattr(socket, "gethostname", lambda: "examplehost01.example.test")
     monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))
     config = userconfig.path()
     config.parent.mkdir()
-    config.write_text(config_text)
+    config.write_bytes(config_bytes)
     monkeypatch.setattr(pr, "require_git_hooks", Mock(return_value=True))
     monkeypatch.setattr(pr, "find_tools", Mock(return_value={}))
     git = Mock(return_value=git_result)
