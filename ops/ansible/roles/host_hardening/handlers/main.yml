@@ -1,0 +1,14 @@
+---
+# The table's own file starts with a delete, so loading it again replaces
+# the table in one transaction.
+- name: Load the host table
+  ansible.builtin.command:
+    cmd: /usr/sbin/nft -f /etc/nftables.d/host.nft
+  changed_when: true
+  when: host_hardening_load and not ansible_check_mode
+
+- name: Apply sysctl settings
+  ansible.builtin.command:
+    cmd: /usr/sbin/sysctl -p /etc/sysctl.d/60-host-hardening.conf
+  changed_when: true
+  when: host_hardening_load and not ansible_check_mode

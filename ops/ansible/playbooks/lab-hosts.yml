@@ -1,0 +1,27 @@
+---
+# Schedule agent account settings reconverge every 15 minutes.
+# The lab nodes. Root, through sudo, gives the agent's home and /tmp their
+# own volumes, installs a system Docker Engine whose default runtime is
+# gVisor, and turns each node into a KVM host whose lab bridge is its only
+# uplink. Once agent_account creates the account, it gets only the kvm and
+# adm supplementary groups, rootless Docker under gVisor, and never sudo.
+# The GRUB menu shows for five seconds at boot, so the KVM console can reach
+# it. The bridge is
+# validated on every run, but written to netplan and applied only with
+# kvm_host_apply_network true:
+#   mise run playbook -- playbooks/lab-hosts.yml --limit NODE --check --diff
+- name: Apply the lab hosts
+  hosts: lab
+  gather_facts: true
+  become: true
+  roles:
+    # Mount the home before creating the user, so no files land beneath the volume.
+    - agent_host
+    - agent_account
+    - agent_reconverge
+    - codex_cli
+    - claude_code
+    - docker_engine
+    - kvm_host
+    - lab_agent
+    - lab_grub

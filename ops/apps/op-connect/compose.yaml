@@ -1,0 +1,45 @@
+---
+# 1Password Connect, served on the tailnet as the Tailscale Service
+# svc:op-connect. tools/op-connect stages this file next to its data, secrets
+# and ts-state directories on the host and runs it as the `op-connect`
+# Compose project.
+#
+# Nothing publishes a port. The host's own tailscaled runs in userspace mode,
+# so a published port would be reachable from every tag the policy lets reach
+# the host. The ts sidecar is the only way in: `tailscale serve` terminates
+# HTTPS for svc:op-connect and proxies to the api container over the Compose
+# network. api and sync stay out of the sidecar's network namespace, so
+# nothing listens on the sidecar's loopback but serve itself.
+#
+# api and sync talk to each other through the shared data directory and must
+# run the same Connect release, so their image bumps merge together.
+name: op-connect
+
+services:
+  api:
+    image: 1password/connect-api:1.8.4@sha256:0f74924c55c9156b8116f59f485223b2c2d30a5148d362562aa27838159bdffa
+    restart: unless-stopped
+    volumes:
+      - ${CONNECT_CREDENTIALS_FILE:?Set the Connect credentials file}:/home/opuser/.op/1password-credentials.json:ro
+      - ${CONNECT_DATA_DIR:-./data}:/home/opuser/.op/data
+
+  sync:
+    image: 1password/connect-sync:1.8.4@sha256:ca34850f2a20ca302e688a9347cdb696f29ce3bfc011d2554eff338e315c9089
+    restart: unless-stopped
+    volumes:
+      - ${CONNECT_CREDENTIALS_FILE:?Set the Connect credentials file}:/home/opuser/.op/1password-credentials.json:ro
+      - ${CONNECT_DATA_DIR:-./data}:/home/opuser/.op/data
+
+  ts:
+    image: tailscale/tailscale:v1.104.7@sha256:72c1e19e0aedca96b8533bbb0b4368564410ff20b17e53b804eb6c1f04a31be4
+    restart: unless-stopped
+    environment:
+      # No auth key: the first start prints a login URL, and an admin
+      # signs the node in. The state directory keeps the identity after that.
+      TS_AUTH_ONCE: "true"
+      TS_EXTRA_ARGS: --advertise-tags=tag:op-connect
+      TS_HOSTNAME: ${CONNECT_OVERLAY_HOST:?Set the Connect overlay host}
+      TS_STATE_DIR: /var/lib/tailscale
+      TS_USERSPACE: "true"
+    volumes:
+      - ${CONNECT_OVERLAY_STATE_DIR:-./ts-state}:/var/lib/tailscale

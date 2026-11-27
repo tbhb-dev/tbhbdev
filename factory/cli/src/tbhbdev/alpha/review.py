@@ -14,6 +14,7 @@ from jsonschema import Draft202012Validator
 
 from tbhbdev import content
 from tbhbdev.alpha import pull_request as pr
+from tbhbdev.alpha import pull_request_frontmatter as frontmatter
 from tbhbdev.alpha import review_doc, review_policy, review_threads
 
 SCHEMA = {
@@ -91,15 +92,15 @@ def refresh(text: str, head: str) -> str:
     """
     normalized = text.replace("\r\n", "\n")
     try:
-        data, _ = pr.parse_frontmatter(normalized)
-    except pr.FrontmatterError as exc:
+        data, _ = frontmatter.parse_frontmatter(normalized)
+    except frontmatter.FrontmatterError as exc:
         message = f"frontmatter: {exc}"
         raise SystemExit(message) from exc
     if not isinstance(data, dict) or "commit_id" not in data:
         message = "frontmatter needs a commit_id field to refresh"
         raise SystemExit(message)
     # A mapping from parse_frontmatter has a matching block and mapping node.
-    matched = pr.FRONTMATTER.match(normalized)
+    matched = frontmatter.FRONTMATTER.match(normalized)
     match = cast("re.Match[str]", matched)  # pragma: no mutate -- runtime no-op
     # Values already passed the safe parser; compose only reads source positions.
     composed: object = yaml.compose(match["yaml"])
@@ -137,14 +138,16 @@ def draft(number: int, *, force: bool) -> Path:
 def check_text(text: str, number: int, *, lint: bool = True) -> list[pr.Problem]:
     """Validate review metadata and its title-free body without reading GitHub."""
     try:
-        data, body = pr.parse_frontmatter(text)
-    except pr.FrontmatterError as exc:
+        data, body = frontmatter.parse_frontmatter(text)
+    except frontmatter.FrontmatterError as exc:
         return [(1, f"frontmatter: {exc}")]
     if data is None or data == {}:
         return [(1, "review frontmatter is required and must not be empty")]
     offset = text.count("\n") - body.count("\n")
     schema = {**SCHEMA, "allOf": [{"properties": {"pr": {"const": number}}}]}
-    problems = pr.meta_problems(data, offset, text, Draft202012Validator(schema))
+    problems = frontmatter.meta_problems(
+        data, offset, text, Draft202012Validator(schema)
+    )
     if problems:
         return problems
     fields = cast("dict[str, object]", data)
@@ -205,7 +208,7 @@ def post_event_draft(text: str, number: int) -> int | None:
         raise review_doc.ReviewError(
             "\n".join(f"line {n}: {why}" for n, why in problems)
         )
-    meta, body = pr.parse_frontmatter(text)
+    meta, body = frontmatter.parse_frontmatter(text)
     fields = cast("dict[str, object]", meta)
     event = str(fields["event"])
     if event not in {"APPROVE", "REQUEST_CHANGES"}:

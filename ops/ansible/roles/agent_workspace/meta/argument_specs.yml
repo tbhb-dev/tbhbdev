@@ -1,0 +1,58 @@
+---
+argument_specs:
+  main:
+    short_description: Maintain workspace state as the run account
+    options:
+      agent_workspace_user:
+        type: str
+        default: agent
+        description: Account the role runs as. Its home holds the clones, at Code/<git host>/<org>/<repo>.
+      agent_workspace_home:
+        type: path
+        description: Home of that account; defaults to /Users/<user> on macOS and /home/<user> elsewhere.
+      agent_workspace_repos:
+        type: list
+        elements: dict
+        default: []
+        description: >-
+          Clones below Code in the account's home, each at Code/<host>/<name>. The role creates
+          Code at 0700, owned by the account and its primary group.
+        options:
+          name:
+            type: str
+            required: true
+            description: Repository as org/repo.
+          workspace:
+            type: bool
+            default: true
+            description: Maintain a workspace clone; false keeps the entry out of clones and workspace.repos.
+          public:
+            type: bool
+            default: false
+            description: Clone and fetch anonymously over HTTPS without a credential helper or terminal prompt.
+      agent_workspace_private_clones:
+        type: bool
+        default: true
+        description: Maintain repos without public true; disable until the account has GitHub credentials.
+      agent_workspace_uv_version:
+        type: str
+        default: "0.13.8"
+        description: Pinned uv version to install through mise when the account has no working uv on PATH.
+      agent_workspace_tools:
+        type: path
+        description: >-
+          Tools checkout providing the tbhbdev tool and validation project. Installation fetches origin/main
+          anonymously over HTTPS and requires a clean main branch at that commit. Defaults to
+          Code/github.com/tbhb-dev/tools in the account's home.
+      agent_workspace_connect_storage:
+        type: str
+        choices: [native, file]
+        description: Must match connect_token_storage on this host; defaults to native on macOS and file on Linux.
+      agent_workspace_connect_vaults:
+        type: list
+        elements: str
+        description: Exact allowed vault names, checked with the host token.
+      agent_workspace_connect_endpoints:
+        type: list
+        elements: str
+        description: HTTPS tailnet hostnames in failover order.

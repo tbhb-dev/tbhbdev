@@ -1,0 +1,26 @@
+---
+- name: Converge
+  hosts: all
+  vars:
+    agent_workspace_reviews_ref: "{{ 'op://' ~ 'test-vault/review-app' }}"
+    agent_workspace_gitleaks_ref: "{{ 'op://' ~ 'test-vault/scanner/config' }}"
+    agent_workspace_connect_endpoints: [https://op-connect, https://connect.other.example.invalid]
+    agent_workspace_repos:
+      - name: fixture/repo
+        public: true
+      - name: fixture/fresh
+        public: true
+      - name: fixture/other
+      - name: fixture/skipped
+        public: true
+        workspace: false
+      - name: fixture/kept
+        public: false
+    agent_workspace_private_clones: false
+    agent_workspace_tools: /home/example-user/Code/github.com/fixture/fresh
+    agent_workspace_connect_vaults: [host-0-shared, host-fixture]
+    agent_workspace_lookup_command: "bash {{ playbook_dir }}/files/read.sh"
+  tasks:
+    - name: Maintain the workspace using the Linux default, a file token
+      ansible.builtin.include_role:
+        name: agent_workspace

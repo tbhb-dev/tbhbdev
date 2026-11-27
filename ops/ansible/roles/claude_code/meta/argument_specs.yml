@@ -1,0 +1,27 @@
+---
+argument_specs:
+  main:
+    short_description: Install a hash-pinned Claude Code release for the agent account
+    description:
+      - >-
+          Downloads the native binary for the host's platform and verifies its sha256 before installation
+          into <home>/.local/share/claude/<version>/. All home files belong to the named account.
+      - >-
+          The active command <home>/.local/bin/claude links to the pinned native binary.
+          A host without the account skips the install until the next run. Old versions stay in place.
+    options:
+      claude_code_account:
+        type: str
+        default: agent
+        description: The account that gets Claude Code. The role refuses root and tony.
+      claude_code_version:
+        type: str
+        default: 2.1.330
+        description: The native release version. Update all platform hashes with it.
+      claude_code_activate:
+        type: bool
+        default: true
+        description: Points <home>/.local/bin/claude at this version's native binary.
+      claude_code_sha256:
+        type: dict
+        description: The binary sha256 for darwin-arm64, linux-x64, and linux-arm64 from manifest.json.

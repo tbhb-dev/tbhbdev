@@ -1,0 +1,29 @@
+---
+- name: Verify the installed snapshot daemon
+  hosts: all
+  become: true
+  tasks:
+    - name: Read the daemon state
+      ansible.builtin.command:
+        argv: [/bin/launchctl, print, system/dev.tbhb.mac-snapshot-thin]
+      changed_when: false
+
+    - name: Verify the daemon settings and installed script
+      ansible.builtin.command:
+        argv:
+          - /usr/bin/python3
+          - -c
+          - |
+              import plistlib
+              from pathlib import Path
+
+              path = Path("/Library/LaunchDaemons/dev.tbhb.mac-snapshot-thin.plist")
+              plist = plistlib.loads(path.read_bytes())
+              script = Path("/Library/tbhb-snapshot-thin/run.py")
+              assert plist["UserName"] == "root"
+              assert plist["StartInterval"] == 3600
+              assert plist["StandardOutPath"] == "/var/log/mac-snapshot-thin.log"
+              assert plist["ProgramArguments"] == ["/usr/bin/python3", str(script)]
+              assert path.stat().st_uid == script.stat().st_uid == 0
+              compile(script.read_bytes(), str(script), "exec")
+      changed_when: false

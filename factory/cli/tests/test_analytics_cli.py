@@ -3,8 +3,8 @@
 import pytest
 from analytics_fakes import FakeConnection, answer
 
-from tbhbdev import analytics
 from tbhbdev.analytics import catalog, database, settings
+from tbhbdev.analytics import command as analytics
 from tbhbdev.analytics.model import Catalog, ConfigError, Migration, Settings
 
 

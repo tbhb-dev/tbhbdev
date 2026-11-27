@@ -1,0 +1,44 @@
+---
+# Root installs the packages and the KVM setting, stages the bridge in
+# netplan, and defines the libvirt network on it. The network is applied
+# only when kvm_host_apply_network says so.
+
+- name: Check the port's MAC address
+  ansible.builtin.assert:
+    that:
+      - ansible_facts[kvm_host_bridge_port] is defined
+      - ansible_facts[kvm_host_bridge_port].macaddress is defined
+    fail_msg: >-
+      {{ kvm_host_bridge_port }} is missing from the host's facts or has no MAC address, and the bridge
+      must take over the port's MAC so its DHCP reservation still matches
+    quiet: true
+
+- name: Install the KVM and libvirt packages
+  ansible.builtin.apt:
+    name:
+      - cpu-checker
+      - libvirt-clients
+      - libvirt-daemon-system
+      - ovmf
+      - qemu-system-x86
+      - qemu-utils
+      - virtinst
+    state: present
+    install_recommends: false
+
+# Takes effect when the module loads next, on the next boot or reload.
+- name: Turn on nested virtualization for AMD
+  ansible.builtin.copy:
+    dest: /etc/modprobe.d/kvm-amd.conf
+    content: |
+      options kvm_amd nested=1
+    owner: root
+    group: root
+    mode: "0644"
+
+- name: Stage the lab bridge
+  ansible.builtin.include_tasks: network.yml
+
+- name: Start libvirt and define its lab network
+  ansible.builtin.include_tasks: libvirt.yml
+  when: kvm_host_hardware

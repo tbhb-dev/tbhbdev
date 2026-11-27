@@ -1,4 +1,4 @@
-"""Post a review run's verdict as a GitHub review, host-side, with the run's token.
+"""Post a review run's verdict host-side with the run's token.
 
 The sandbox writes the draft file. Run-host validates it, adds the run's
 identity to the body and posts it against the pinned commit after the run ends.
@@ -11,14 +11,17 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, cast
 
-import httpx
+import httpx2
 
-from tbhbdev import content
-from tbhbdev.alpha import identity, pull_request, review, review_doc
+from tbhbdev import content, github_tls
+from tbhbdev.alpha import gh_app, review, review_doc
 from tbhbdev.alpha.agent import credentials, runfiles
 from tbhbdev.alpha.agent.decisions import repo
 from tbhbdev.alpha.agent.decisions import request as requests
 from tbhbdev.alpha.agent.model import Harness, Invalid, RunKind
+from tbhbdev.alpha.identity import dispatcher as identity
+from tbhbdev.alpha.pull_request_frontmatter import parse_frontmatter
+from tbhbdev.alpha.size_gate import SIZE_REVIEW, size_verdict
 
 if TYPE_CHECKING:
     from tbhbdev.alpha.agent.run_host import Prepared, Run
@@ -26,7 +29,7 @@ if TYPE_CHECKING:
 VERDICTS = frozenset({"GO", "BLOCK", "NO-GO"})
 DRAFT_NAME = re.compile(r"review-([1-9][0-9]*)(?:\.doc)?\.md")
 DRAFT_LIMIT = 64 * 1024
-TIMEOUT = httpx.Timeout(20.0, connect=5.0)
+TIMEOUT = httpx2.Timeout(20.0, connect=5.0)
 
 
 class PostRefusedError(ValueError):
@@ -105,7 +108,7 @@ def validate(sub: Submission) -> tuple[dict[str, object], str]:
         line, why = problems[0]
         message = f"the draft fails its checks: line {line}: {why}"
         raise PostRefusedError(message)
-    meta, body = pull_request.parse_frontmatter(sub.text)
+    meta, body = parse_frontmatter(sub.text)
     fields = cast("dict[str, object]", meta)
     if str(fields["commit_id"]).lower() != sub.commit.lower():
         message = "the draft's commit_id isn't the commit the run reviewed"
@@ -123,7 +126,7 @@ def api(
         PostRefusedError: GitHub refuses or can't be reached.
     """
     try:
-        response = httpx.request(
+        response = httpx2.request(
             method,
             url,
             headers={
@@ -132,8 +135,9 @@ def api(
             },
             json=payload,
             timeout=TIMEOUT,
+            verify=github_tls.public_roots(),
         )
-    except httpx.HTTPError as exc:
+    except httpx2.HTTPError as exc:
         message = f"the {method} request failed: {type(exc).__name__}"
         raise PostRefusedError(message) from exc
     if not response.is_success:
@@ -204,8 +208,8 @@ def stamp(run: Run) -> str:
     return f"{identity.KEY_GEN}: {value}"
 
 
-def check_verdict(run: Run) -> None:
-    """Require a final `VERDICT: GO|BLOCK|NO-GO` line, with the run's sha if any."""
+def final_verdict_line(run: Run) -> str:
+    """Read the last line of the run's final output."""
     for suffix in ("out.final", "out"):
         try:
             answer = runfiles.read_owned(
@@ -213,17 +217,49 @@ def check_verdict(run: Run) -> None:
             )
         except FileNotFoundError:
             continue
-        label, _, rest = answer.rstrip().rpartition("\n")[2].partition(" ")
-        verdict, _, sha = rest.partition(" ")
-        if (
-            label == "VERDICT:"
-            and verdict in VERDICTS
-            and (not sha or sha == run.request.commit)
-        ):
-            return
-        break
+        return answer.rstrip().rpartition("\n")[2]
+    return ""
+
+
+def check_verdict(run: Run) -> None:
+    """Require a final `VERDICT: GO|BLOCK|NO-GO` line, with the run's sha if any."""
+    label, _, rest = final_verdict_line(run).partition(" ")
+    verdict, _, sha = rest.partition(" ")
+    if (
+        label == "VERDICT:"
+        and verdict in VERDICTS
+        and (not sha or sha == run.request.commit)
+    ):
+        return
     message = "no verdict line at the end of the final answer, or it names another head"
     raise PostRefusedError(message)
+
+
+def post_size_review(run: Run) -> None:
+    """Post a sizing decision as a status on the commit the run reviewed."""
+    head = run.request.commit or ""
+    verdict = size_verdict(final_verdict_line(run), head)
+    if verdict is None:
+        message = "no sizing verdict at the end of the final answer for the pinned head"
+        raise PostRefusedError(message)
+    token = credentials.review_post_token(
+        run.request, run.settings, permissions={"statuses": "write"}
+    )
+    if token is None:
+        message = "reviews App token with commit-status write access unavailable"
+        raise PostRefusedError(message)
+    _, owner, name = repo.parts(run.request.repo)
+    api(
+        "POST",
+        f"{gh_app.API}/repos/{owner}/{name}/statuses/{head}",
+        token,
+        {
+            "context": SIZE_REVIEW,
+            "state": "success" if verdict == "OVERRIDE" else "failure",
+            "description": f"Sizing review verdict: {verdict}",
+        },
+    )
+    run.files.write("review", f"{owner}/{name}@{head} {verdict}")
 
 
 def posted(run: Run, prepared: Prepared) -> bool:
@@ -232,6 +268,9 @@ def posted(run: Run, prepared: Prepared) -> bool:
         return True
     workspace = Path(prepared.paths.worktree)
     try:
+        if run.request.variant == SIZE_REVIEW:
+            post_size_review(run)
+            return True
         # A supplied output schema defines the final answer's format.
         if (
             run.request.kind is RunKind.EXEC

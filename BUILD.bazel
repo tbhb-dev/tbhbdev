@@ -40,7 +40,6 @@ exports_files(
     visibility = ["//factory/cli:__pkg__"],
 )
 
-# gazelle:prefix github.com/tbhb-dev/tbhbdev
 # gazelle:python_extension disabled
 
 gazelle_binary(
@@ -76,21 +75,12 @@ nogo(
     visibility = ["//visibility:public"],
 )
 
-# Keep the tidy gate's inputs aligned with the packages in the root Go module.
-filegroup(
-    name = "go_module_sources",
-    srcs = [
-        "//factory/cli/cmd/tbhbdev:go_sources",
-        "//factory/cli/internal/dispatch:go_sources",
-        "//factory/event-gateway:repo_files",
-    ],
-    visibility = ["//factory/event-gateway:__pkg__"],
-)
-
-# Installs the Vale packages pinned in .vale.ini; uses `vale` from PATH.
+# Installs the Vale packages pinned in .vale.ini.
 sh_binary(
     name = "vale_sync",
     srcs = ["vale_sync.sh"],
+    args = ["$(rootpath @tbhb_rules_vale//:vale)"],
+    data = ["@tbhb_rules_vale//:vale"],
 )
 
 BUILDIFIER_EXCLUDES = [
@@ -207,6 +197,7 @@ bazel_env(
         "cog": "@tbhb_rules_cog//:cog",
         "editorconfig-checker": "@tbhb_rules_editorconfig_checker//:editorconfig-checker",
         "gitleaks": "@tbhb_rules//lint:gitleaks",
+        "gitleaks-raw": "@tbhb_rules_gitleaks//:gitleaks",
         "rumdl": "@tbhb_rules_rumdl//:rumdl",
         "ryl": "@tbhb_rules_ryl//:ryl",
         "scc": "@tbhb_rules_scc//:scc",

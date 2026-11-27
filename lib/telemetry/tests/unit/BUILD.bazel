@@ -1,0 +1,47 @@
+# SPDX-License-Identifier: Apache-2.0
+# Copyright Tony Burns
+
+load("@rules_python//python:defs.bzl", "py_library", "py_test")
+load("@tbhb_rules//repo:defs.bzl", "repo_files")
+
+# gazelle:python_root
+# gazelle:python_generation_mode file
+# gazelle:python_resolve_sibling_imports true
+
+package(default_testonly = True)
+
+repo_files(testonly = False)
+
+py_test(
+    name = "test_dashboard",
+    srcs = ["test_dashboard.py"],
+    data = ["//lib/telemetry:agents_live_dashboard"],
+    legacy_create_init = False,
+)
+
+py_library(
+    name = "receiver",
+    srcs = ["receiver.py"],
+    imports = ["."],
+    visibility = ["//lib/telemetry/tests/unit:__subpackages__"],
+    deps = ["@cli_pip//opentelemetry_proto"],
+)
+
+py_test(
+    name = "test_exporter",
+    srcs = ["test_exporter.py"],
+    legacy_create_init = False,
+    deps = ["//lib/telemetry/src/tbhb_telemetry"],
+)
+
+py_test(
+    name = "test_instrumentation",
+    srcs = ["test_instrumentation.py"],
+    legacy_create_init = False,
+    deps = [
+        ":receiver",
+        "//lib/telemetry/src/tbhb_telemetry",
+        "@cli_pip//opentelemetry_api",
+        "@cli_pip//opentelemetry_sdk",
+    ],
+)

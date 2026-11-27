@@ -9,7 +9,6 @@ from typing import TYPE_CHECKING
 
 import pytest
 
-from tbhbdev.alpha import agent
 lazy from tbhbdev.alpha.agent import precheck
 
 if TYPE_CHECKING:
@@ -65,10 +64,10 @@ def test_command_collects_at_home(
 ) -> None:
     reference = clone("reference", {"pre-commit": b"hook\xff\n"})
     target = clone("clone", {"pre-commit": b"hook\xff\n", "unused.sample": b"other"})
-    args = ["precheck", f"{prefix}clone", "--reference", f"{prefix}reference"]
+    args = [f"{prefix}clone", "--reference", f"{prefix}reference"]
     if remote:
         args += ["--host", "example-host"]
-    assert agent.main(args, "example agent") == 0
+    assert precheck.main(args, "example agent precheck") == 0
     assert capsys.readouterr() == (f"checked: {target}/.git/config \nPRECHECK OK\n", "")
     assert reference.exists()
     if remote:
@@ -386,20 +385,6 @@ def test_collection_errors_precede_truncation() -> None:
 )
 def test_only_a_complete_single_line_stub_is_normalized(content: bytes) -> None:
     assert precheck.normalize(content) == content
-
-
-def test_dispatch_preserves_arguments_and_program(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    calls: list[tuple[list[str], str]] = []
-
-    def check(argv: list[str], prog: str) -> int:
-        calls.append((argv, prog))
-        return 37
-
-    monkeypatch.setattr(precheck, "main", check)
-    assert agent.main(["precheck", "a", "--reference", "b"], "example agent") == 37
-    assert calls == [(["a", "--reference", "b"], "example agent precheck")]
 
 
 @pytest.mark.skipif(

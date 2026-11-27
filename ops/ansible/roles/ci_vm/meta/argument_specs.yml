@@ -1,0 +1,124 @@
+---
+argument_specs:
+  main:
+    short_description: Run a CI runner VM on a lab node, behind a forward rule that keeps it off private addresses
+    description:
+      - >-
+          Creates the libvirt domain <node>-ci on libvirt's default NAT network, with a raw logical volume
+          as its disk, written once from the Ubuntu 26.04 cloud image, and a cloud-init seed. The seed names
+          the host, creates the ops account with key login and passwordless sudo, turns off password login,
+          and installs tailscale. For a domain that doesn't exist yet, the controller mints a single-use
+          tailnet auth key from a Tailscale OAuth client, read through 1Password Connect, and the seed
+          joins the VM at its first boot with the runner tag. The domain starts at boot.
+      - >-
+          An nftables table drops the VM's forwarded traffic to private, shared, link-local and unique local
+          destinations, and a systemd unit loads it before libvirt starts. The role creates the volume and
+          the domain once, reconciles configured memory, and needs kvm_host applied first. The seed
+          applies at the VM's first boot only, so a later change to it reaches no existing VM.
+      - >-
+          The role also gives the VM a fixed address with a DHCP host entry on the libvirt network, keyed on
+          the domain's MAC, and leaves the other entries alone. The guest keeps its current lease until its
+          next renewal or reboot, so the operator reboots it once after the first apply.
+    options:
+      ci_vm_name:
+        type: str
+        default: "{{ inventory_hostname }}-ci"
+        description: Name of the libvirt domain, the logical volume, and the VM's host name.
+      ci_vm_vcpus:
+        type: int
+        default: 8
+        description: Number of virtual CPUs.
+      ci_vm_memory_mib:
+        type: int
+        default: 18432
+        description: Configured memory in MiB, reconciled without restarting the VM.
+      ci_vm_vg:
+        type: str
+        default: ubuntu-vg
+        description: Volume group that holds the VM's logical volume.
+      ci_vm_disk_size:
+        type: str
+        default: 200G
+        description: >-
+          Size of the logical volume. The role creates it only when it doesn't exist and never resizes it.
+      ci_vm_image_url:
+        type: str
+        default: >-
+          https://cloud-images.ubuntu.com/releases/resolute/release-20261016/ubuntu-26.04-server-cloudimg-amd64.img
+        description: Ubuntu 26.04 LTS cloud image for amd64, a dated release.
+      ci_vm_image_sha256:
+        type: str
+        default: 5645d0318ad21f643ebb1ac4567514620e9893380b07b0201fda163baa5b7eb5
+        description: The image's sha256.
+      ci_vm_image_dir:
+        type: path
+        default: /var/lib/libvirt/images
+        description: Directory that holds the downloaded image and the seed.
+      ci_vm_network:
+        type: str
+        default: default
+        description: Libvirt NAT network the VM attaches to.
+      ci_vm_network_bridge:
+        type: str
+        default: virbr0
+        description: >-
+          Bridge of that network, which the forward rule matches the VM's traffic on. The role fails when
+          libvirt reports another bridge.
+      ci_vm_address:
+        type: str
+        description: >-
+          The VM's fixed IPv4 address on the libvirt network, which the network's DHCP hands to the VM's MAC
+          from a host entry. It must lie inside the network's subnet. A running VM takes it at its next DHCP
+          renewal or reboot.
+      ci_vm_network_gateway:
+        type: str
+        description: >-
+          The lab node's libvirt gateway, used as the source restriction on VM-side controller keys.
+          Must be an IPv4 address in the same /24 as ci_vm_address, different from the VM address,
+          and equal to the VM inventory's ci_vm_network_gateway when that host is present.
+      ci_vm_admin_keys:
+        type: list
+        elements: str
+        description: >-
+          Authorized_keys lines for the VM's ops account, including options such as from=.
+          Defaults to ops_accounts_admin_keys when ci_vm_admin_keys is not supplied.
+      ci_vm_tailscale_repo:
+        type: str
+        default: https://pkgs.tailscale.com/stable/ubuntu
+        description: Tailscale's apt repository, to which the seed adds the resolute suite.
+      ci_vm_tailscale_oauth_ref_id:
+        type: str
+        description: 1Password reference for the OAuth client's ID, read on the controller.
+      ci_vm_tailscale_oauth_ref_secret:
+        type: str
+        description: 1Password reference for the OAuth client's secret, read on the controller.
+      ci_vm_tailscale_lookup_command:
+        type: str
+        default: env -u SSH_AUTH_SOCK tbhbdev secret read
+        description: Command the controller runs with a reference as its argument, as connect_token does.
+      ci_vm_tailscale_api:
+        type: str
+        default: https://api.tailscale.com/api/v2
+        description: Base URL of the Tailscale API.
+      ci_vm_tailscale_tag:
+        type: str
+        default: tag:gh-runner
+        description: Tag on the minted key and on the VM's join.
+      ci_vm_tailscale_key_seconds:
+        type: int
+        default: 600
+        description: Seconds the minted key stays valid. The key is single-use.
+      ci_vm_hardware:
+        type: bool
+        default: true
+        description: >-
+          Whether the host has KVM, libvirt and LVM. False skips the volume, the image, the domain and
+          the table's load.
+      ci_vm_egress_blocked_v4:
+        type: list
+        elements: str
+        description: IPv4 ranges the VM may not reach. The default is the runner pool's egress list.
+      ci_vm_egress_blocked_v6:
+        type: list
+        elements: str
+        description: IPv6 ranges the VM may not reach. The default is the runner pool's egress list.

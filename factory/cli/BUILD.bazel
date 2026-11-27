@@ -5,12 +5,13 @@ load("@rules_python//python:defs.bzl", "py_binary")
 load("@rules_python_gazelle_plugin//manifest:defs.bzl", "gazelle_python_manifest")
 load("@rules_python_gazelle_plugin//modules_mapping:def.bzl", "modules_mapping")
 load("@rules_shell//shell:sh_binary.bzl", "sh_binary")
-load("@tbhb_rules//lint:defs.bzl", "tombi_test")
+load("@tbhb_rules//lint:defs.bzl", "tombi_test", "tree_check_test")
 load(
     "@tbhb_rules_python//:defs.bzl",
     "bandit_test",
     "complexipy_test",
     "deptry_test",
+    "import_linter_test",
     "mutmut_test",
     "pip_audit",
     "pip_audit_test",
@@ -24,6 +25,7 @@ load(
 # gazelle:python_extension enabled
 # gazelle:python_generation_mode file
 # gazelle:map_kind py_library cli_py_library //factory/cli:python.bzl
+# gazelle:exclude checks
 
 exports_files(["pyproject.toml"])
 
@@ -44,8 +46,10 @@ sh_binary(
 modules_mapping(
     name = "modules_map",
     wheels = [
+        "@cli_pip//certifi:whl",
         "@cli_pip//cryptography:whl",
         "@cli_pip//httpx:whl",
+        "@cli_pip//httpx2:whl",
         "@cli_pip//hypothesis:whl",
         "@cli_pip//jsonschema:whl",
         "@cli_pip//markdown_it_py:whl",
@@ -87,7 +91,6 @@ filegroup(
         "//factory/cli/src/tbhbdev/alpha:package_files",
         "//factory/cli/src/tbhbdev/alpha/agent:package_files",
         "//factory/cli/src/tbhbdev/alpha/agent/decisions:package_files",
-        "//factory/cli/src/tbhbdev/alpha/loop:package_files",
         "//factory/cli/src/tbhbdev/alpha/monorepo:package_files",
         "//factory/cli/src/tbhbdev/analytics:package_files",
         "//factory/cli/src/tbhbdev/analytics/decisions:package_files",
@@ -131,10 +134,33 @@ pyrefly_test(
     ],
 )
 
+import_linter_test(
+    name = "import_linter_test",
+    srcs = CLI_CHECK_INPUTS,
+    chdir = "factory/cli",
+)
+
 pylint_test(
     name = "pylint_test",
     srcs = CLI_CHECK_INPUTS,
     args = ["--rcfile=factory/cli/pyproject.toml"],
+)
+
+python_tool(
+    name = "lint_guards_test_tool",
+    testonly = True,
+    main = "checks/test_lint_guards.py",
+    tags = ["manual"],
+)
+
+tree_check_test(
+    name = "lint_guards_test",
+    srcs = [
+        ":pyproject.toml",
+        ":source_files",
+    ],
+    path_tools = [":import_linter_test.tool"],
+    tool = ":lint_guards_test_tool",
 )
 
 vulture_test(

@@ -1,0 +1,107 @@
+---
+# The playbook runs prepare.yml and arms the revert timer first, so a table
+# that cuts the node off is gone within minutes.
+
+- name: Check libvirt bridges before writing the firewall
+  ansible.builtin.import_tasks: libvirt.yml
+
+- name: Install nftables
+  ansible.builtin.apt:
+    name: nftables
+    state: present
+
+- name: Create the nftables.d directory
+  ansible.builtin.file:
+    path: /etc/nftables.d
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+# nft -c checks the whole file without loading it. A container needs
+# CAP_NET_ADMIN for that.
+- name: Write the host table
+  ansible.builtin.template:
+    src: host.nft.j2
+    dest: /etc/nftables.d/host.nft
+    owner: root
+    group: root
+    mode: "0644"
+    validate: /usr/sbin/nft -c -f %s
+  notify: Load the host table
+
+# Ubuntu's nftables.service begins with "flush ruleset", so the table is
+# loaded by this unit instead, which touches table inet host only.
+- name: Install the unit that loads the host table at boot
+  ansible.builtin.template:
+    src: host-hardening-nft.service.j2
+    dest: /etc/systemd/system/host-hardening-nft.service
+    owner: root
+    group: root
+    mode: "0644"
+  register: host_hardening_unit
+
+- name: Enable the host table unit
+  ansible.builtin.systemd_service:
+    name: host-hardening-nft.service
+    enabled: true
+    daemon_reload: "{{ host_hardening_unit is changed }}"
+  when: host_hardening_load
+
+- name: Write the sysctl drop-in
+  ansible.builtin.template:
+    src: 60-host-hardening.conf.j2
+    dest: /etc/sysctl.d/60-host-hardening.conf
+    owner: root
+    group: root
+    mode: "0644"
+  notify: Apply sysctl settings
+
+- name: Read the mounts
+  ansible.builtin.setup:
+    gather_subset: [mounts, "!all", "!min"]
+  when: host_hardening_load
+
+# state mounted remounts a mounted file system whose options changed.
+- name: Mount /dev/shm without suid, devices and exec
+  ansible.posix.mount:
+    path: /dev/shm
+    src: tmpfs
+    fstype: tmpfs
+    opts: nosuid,nodev,noexec
+    state: mounted
+  when: host_hardening_load
+
+# The mount module compares the opts string, and the fstab line and the live
+# mount can list the same options in a different order. The task skips when
+# both option sets already hold nodev and nosuid, so order never reports a
+# change.
+- name: Read the /boot fstab options
+  ansible.builtin.command:
+    cmd: /usr/bin/findmnt --fstab --noheadings --output OPTIONS /boot
+  register: host_hardening_boot_fstab
+  changed_when: false
+  failed_when: false
+  check_mode: false
+  when: host_hardening_load
+
+# Only where /boot is its own file system. The fstab line keeps the UUID
+# and the options the mount already has.
+- name: Mount /boot without suid and devices
+  vars:
+    host_hardening_boot: "{{ ansible_facts.mounts | selectattr('mount', 'equalto', '/boot') | first }}"
+  ansible.posix.mount:
+    path: /boot
+    src: "UUID={{ host_hardening_boot.uuid }}"
+    fstype: "{{ host_hardening_boot.fstype }}"
+    opts: "{{ (host_hardening_boot.options.split(',') + ['nodev', 'nosuid']) | unique | join(',') }}"
+    state: mounted
+  when:
+    - host_hardening_load
+    - ansible_facts.mounts | selectattr('mount', 'equalto', '/boot') | list | length > 0
+    - (ansible_facts.mounts | selectattr('mount', 'equalto', '/boot') | first).uuid | default('N/A') != 'N/A'
+    - >-
+        not (
+          ['nodev', 'nosuid'] is subset(host_hardening_boot.options.split(','))
+          and ['nodev', 'nosuid'] is subset(host_hardening_boot_fstab.stdout.split(','))
+        )

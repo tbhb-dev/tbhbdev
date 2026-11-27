@@ -3,8 +3,9 @@
 
 ---
 # Import contracts for Go packages in this repository.
-# The stdlib-only-front contract allows the front to import pure dispatch.
-# The dispatch standard library allowlist lives in .golangci.yml.
+# Stub for the Go CLI port (stdlib-only-front): enable `front` and `lib`
+# when their directories exist. Keep `front` free of `canUse` vendor
+# entries so `depOnAnyVendor: false` keeps the front layer stdlib-only.
 version: 3
 
 allow:
@@ -12,54 +13,67 @@ allow:
   deepScan: false
 
 components:
-  front: {in: factory/cli/cmd/tbhbdev}
-  dispatch: {in: factory/cli/internal/dispatch}
-
-  buildloop: {in: factory/event-gateway/internal/buildloop}
-  gateway: {in: factory/event-gateway/cmd/*}
-  eventfields: {in: factory/event-gateway/internal/eventfields}
-  filter: {in: factory/event-gateway/internal/filter}
-  redelivery: {in: factory/event-gateway/internal/redelivery}
-  routing: {in: factory/event-gateway/internal/routing}
-  temporaltarget: {in: factory/event-gateway/internal/temporaltarget}
+  # front: {in: "**/front/**"}
+  # lib: {in: lib/**}
+  metrics-cmd: {in: factory/github-metrics/cmd/github-metrics}
+  metrics-appauth: {in: factory/github-metrics/internal/appauth}
+  metrics-backfill: {in: factory/github-metrics/internal/backfill}
+  metrics-budget: {in: factory/github-metrics/internal/budget}
+  metrics-ghclient: {in: factory/github-metrics/internal/ghclient}
+  metrics-receiver: {in: factory/github-metrics/internal/receiver}
+  metrics-reconcile: {in: factory/github-metrics/internal/reconcile}
+  metrics-recorder: {in: factory/github-metrics/internal/recorder}
+  metrics-store: {in: factory/github-metrics/internal/store}
+  metrics-telemetry: {in: factory/github-metrics/internal/telemetry}
+  metrics-version: {in: factory/github-metrics/internal/version}
+  metrics-worker: {in: factory/github-metrics/internal/worker}
 
 vendors:
-  mcp:
-    in: [github.com/modelcontextprotocol/go-sdk/jsonrpc, github.com/modelcontextprotocol/go-sdk/mcp]
-  temporal:
-    in: [go.temporal.io/api/**, go.temporal.io/sdk/**]
-  websocket:
-    in: [github.com/coder/websocket, github.com/coder/websocket/**]
-  nats:
-    in: [github.com/nats-io/nats-server/v2/**, github.com/nats-io/nats.go, github.com/nats-io/nats.go/**]
-  telemetry:
-    in:
-      - github.com/go-logr/logr
-      - github.com/go-logr/logr/funcr
-      - go.opentelemetry.io/contrib/bridges/otelslog
-      - go.opentelemetry.io/otel
-      - go.opentelemetry.io/otel/**
-      - go.opentelemetry.io/proto/otlp/**
-      - google.golang.org/protobuf/proto
+  bbolt: {in: [go.etcd.io/bbolt, go.etcd.io/bbolt/errors]}
+  otel: {in: go.opentelemetry.io/otel/**}
+  otlp: {in: go.opentelemetry.io/proto/otlp/**}
+  protobuf: {in: google.golang.org/protobuf/proto}
 
 deps:
-  front:
-    mayDependOn: [dispatch]
-  dispatch:
-    mayDependOn: [dispatch]
-  buildloop:
-    mayDependOn: [buildloop]
-  gateway:
-    mayDependOn: [gateway, eventfields, filter, routing, temporaltarget]
-    canUse: [mcp, nats, telemetry, websocket]
-  eventfields:
-    mayDependOn: [eventfields, filter]
-  filter:
-    mayDependOn: [filter]
-  redelivery:
-    mayDependOn: [redelivery]
-  routing:
-    mayDependOn: [routing, filter]
-  temporaltarget:
-    mayDependOn: [temporaltarget, eventfields, routing]
-    canUse: [temporal]
+  # front:
+  #   mayDependOn: [lib]
+  # lib:
+  #   mayDependOn: [lib]
+  metrics-cmd:
+    mayDependOn:
+      - metrics-appauth
+      - metrics-budget
+      - metrics-ghclient
+      - metrics-receiver
+      - metrics-reconcile
+      - metrics-recorder
+      - metrics-store
+      - metrics-telemetry
+      - metrics-worker
+    canUse: [otel]
+  metrics-appauth:
+    mayDependOn: [metrics-appauth, metrics-ghclient]
+  metrics-backfill:
+    mayDependOn: [metrics-backfill, metrics-budget, metrics-ghclient]
+  metrics-budget:
+    mayDependOn: [metrics-budget]
+  metrics-ghclient:
+    mayDependOn: [metrics-budget, metrics-ghclient]
+  metrics-receiver:
+    mayDependOn: [metrics-receiver, metrics-store]
+  metrics-reconcile:
+    mayDependOn: [metrics-budget, metrics-ghclient, metrics-reconcile, metrics-recorder]
+    canUse: [otel]
+  metrics-recorder:
+    mayDependOn: [metrics-recorder]
+    canUse: [otel]
+  metrics-store:
+    mayDependOn: [metrics-store]
+    canUse: [bbolt]
+  metrics-telemetry:
+    mayDependOn: [metrics-telemetry]
+    canUse: [otel, otlp, protobuf]
+  metrics-version:
+    mayDependOn: [metrics-version]
+  metrics-worker:
+    mayDependOn: [metrics-store, metrics-worker]

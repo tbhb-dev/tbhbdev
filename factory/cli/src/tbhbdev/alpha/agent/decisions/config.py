@@ -13,7 +13,7 @@ import re
 from dataclasses import dataclass
 from enum import StrEnum
 from pathlib import PurePosixPath
-from typing import NoReturn
+from typing import NoReturn, cast
 
 from tbhbdev.alpha.agent.decisions import repo
 from tbhbdev.alpha.agent.model import (
@@ -438,22 +438,23 @@ def _claude(table: _Table) -> Claude:
     return Claude(default_profile=selected.name, profiles=tuple(found))
 
 
-def _hosts(root: _Table) -> tuple[Host, ...]:
+def hosts(agent: dict[str, object]) -> tuple[Host, ...]:
+    """Validate the host entries in the agent configuration."""
+    root = _Table("[agent]", agent)
     value = root.value("host")
-    entries: list[object] = value if isinstance(value, list) else []
-    if not entries:
+    if not isinstance(value, list) or not value:
         root.fail("host", "must be a non-empty array of tables")
-    hosts: list[Host] = []
-    for entry in entries:
+    found: list[Host] = []
+    for entry in cast("list[object]", value):
         if not isinstance(entry, dict):
             root.fail("host", "must be a non-empty array of tables")
         values: dict[str, object] = entry
         table = _Table("[[agent.host]]", values)
         host = _host(table)
-        if any(h.name == host.name for h in hosts):
+        if any(h.name == host.name for h in found):
             table.fail("name", f"{host.name!r} is defined twice")
-        hosts.append(host)
-    return tuple(hosts)
+        found.append(host)
+    return tuple(found)
 
 
 def _proven_harnesses(table: _Table) -> tuple[Harness, ...]:
@@ -508,6 +509,7 @@ def _host(table: _Table) -> Host:
         "limits_warn_only",
         "build_shims",
         "max_concurrent_runs",
+        "auto_select",
     )
     name = _check_name(table, "name", table.text("name"), HOST_NAME)
     os = table.choice("os", Os)
@@ -553,6 +555,9 @@ def _host(table: _Table) -> Host:
         max_concurrent_runs=table.nonnegative(
             "max_concurrent_runs", DEFAULT_MAX_CONCURRENT_RUNS
         ),
+        auto_select=table.flag("auto_select")
+        if "auto_select" in table.values
+        else False,
     )
 
 
@@ -595,7 +600,7 @@ def parse(agent: dict[str, object]) -> Settings:
         "ssh_connect_timeout",
         "ssh_keepalive_seconds",
         "ssh_keepalive_count_max",
-        "host_tag",  # Another command reads this key.
+        "host_tag",  # Accepted for compatibility with existing configs.
         "worker",
     )
     sandbox = _sandbox(root.table("sandbox"))
@@ -616,7 +621,7 @@ def parse(agent: dict[str, object]) -> Settings:
         codex=_codex(root.table("codex") if "codex" in agent else None),
         credentials=_credentials(root.table("credentials")),
         claude=_claude(root.table("claude")),
-        hosts=_hosts(root),
+        hosts=hosts(agent),
         agy_build_timeout_seconds=root.duration("agy_build_timeout")
         if "agy_build_timeout" in agent
         else 3600,

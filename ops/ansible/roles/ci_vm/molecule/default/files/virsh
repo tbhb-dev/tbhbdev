@@ -1,0 +1,65 @@
+#!/usr/bin/env python3
+"""A stateful persistent-config model: reject currentMemory above memory."""
+
+import sys
+from pathlib import Path
+
+MEMORY_ARGUMENT_COUNT = 3
+
+
+def require(*, condition: bool) -> None:
+    if not condition:
+        sys.exit(1)
+
+
+def set_memory(
+    state_dir: Path, operation: str, arguments: list[str], maximum: str, current: str
+) -> None:
+    require(condition=arguments[0] == "memory-test")
+    require(condition=arguments[2] == "--config")
+    require(condition=len(arguments) == MEMORY_ARGUMENT_COUNT)
+    require(condition=arguments[1].endswith("KiB"))
+    target = arguments[1][:-3]
+    if operation == "setmaxmem":
+        require(condition=int(target) >= int(current))
+        destination = "maximum"
+    else:
+        require(condition=int(target) <= int(maximum))
+        destination = "current"
+    (state_dir / destination).write_text(target + "\n")
+
+
+def main() -> None:
+    state_dir = Path(sys.argv[0]).parent
+    arguments = sys.argv[1:]
+    with (state_dir / "calls").open("a") as calls:
+        calls.write(" ".join(arguments) + "\n")
+    require(condition=arguments[0] == "--connect=qemu:///system")
+    operation = arguments[1]
+    arguments = arguments[2:]
+    maximum = (state_dir / "maximum").read_text().rstrip("\n")
+    current = (state_dir / "current").read_text().rstrip("\n")
+    if operation == "dumpxml":
+        require(condition=" ".join(arguments) == "--inactive memory-test")
+        sys.stdout.write(
+            f'<domain><memory unit="KiB">{maximum}</memory>'
+            f'<currentMemory unit="KiB">{current}</currentMemory></domain>\n'
+        )
+    elif operation == "domstate":
+        require(condition=" ".join(arguments) == "memory-test")
+        sys.stdout.write((state_dir / "status").read_text())
+    elif operation in ("setmaxmem", "setmem"):
+        set_memory(state_dir, operation, arguments, maximum, current)
+    else:
+        sys.exit(1)
+
+
+if __name__ == "__main__":
+    try:
+        main()
+    except IndexError:
+        sys.exit(2)
+    except ValueError:
+        sys.exit(2)
+    except OSError:
+        sys.exit(1)

@@ -1,0 +1,106 @@
+---
+# cspell:words synogroup memberadd
+- name: agent_log_group | Require an agent login identity for the read proof
+  ansible.builtin.assert:
+    that:
+      - dsm_accounts_agent_log_private_key_file | default('') | length > 0
+    fail_msg: >-
+      Set dsm_accounts_agent_log_private_key_file to an existing key authorized for agent
+      on this NAS before changing log membership.
+    quiet: true
+
+- name: agent_log_group | Read membership and file permissions before any change
+  ansible.builtin.import_tasks: agent_log_group_read.yml
+
+- name: agent_log_group | Save the original membership
+  ansible.builtin.set_fact:
+    dsm_accounts_agent_log_members_before: "{{ dsm_accounts_agent_log_members }}"
+    dsm_accounts_agent_log_needed: "{{ 'agent' not in dsm_accounts_agent_log_members }}"
+
+- name: agent_log_group | Check the separate agent login before changing membership
+  ansible.builtin.raw: |
+    if [ "$(whoami)" = agent ]; then exit 0; else exit 2; fi
+  delegate_to: "{{ inventory_hostname }}"
+  become: false
+  vars: &agent_log_connection
+    ansible_user: agent
+    ansible_become_password: ""
+    ansible_ssh_args: -C -o ControlMaster=no -o ControlPath=none
+    ansible_ssh_extra_args: >-
+      -o IdentitiesOnly=yes -o IdentityAgent=none -o BatchMode=yes
+      -i {{ dsm_accounts_agent_log_private_key_file | expanduser | quote }}
+  register: dsm_accounts_agent_log_login
+  changed_when: false
+  failed_when: false
+  check_mode: false
+  no_log: true
+
+- name: agent_log_group | Require the agent login before changing membership
+  ansible.builtin.assert:
+    that: dsm_accounts_agent_log_login.rc == 0
+    fail_msg: >-
+      Cannot confirm a separate agent login without become; refusing to change membership.
+      Exit status {{ dsm_accounts_agent_log_login.rc }}.
+    quiet: true
+
+- name: agent_log_group | Predict the membership addition in check mode
+  ansible.builtin.debug:
+    msg: Would add agent to the existing DSM log group.
+  when: ansible_check_mode
+  changed_when: dsm_accounts_agent_log_needed
+
+- name: agent_log_group | Add only agent to the existing DSM log group
+  ansible.builtin.command:
+    argv: [synogroup, --memberadd, log, agent]
+  become: true
+  register: dsm_accounts_agent_log_add
+  when:
+    - dsm_accounts_agent_log_needed
+    - not ansible_check_mode
+  changed_when: dsm_accounts_agent_log_add.rc == 0
+  failed_when: false
+
+- name: agent_log_group | Read back membership and file permissions in every mode
+  ansible.builtin.import_tasks: agent_log_group_read.yml
+
+- name: agent_log_group | Assert membership and preservation of every existing member
+  ansible.builtin.assert:
+    that:
+      - ansible_check_mode or not dsm_accounts_agent_log_needed or dsm_accounts_agent_log_add.rc == 0
+      - "'agent' in dsm_accounts_agent_log_members or (ansible_check_mode and dsm_accounts_agent_log_needed)"
+      - dsm_accounts_agent_log_members_before | difference(dsm_accounts_agent_log_members) | length == 0
+    fail_msg: >-
+      DSM log membership read-back failed; agent must be present after apply
+      and every original member must remain.
+    quiet: true
+
+# A fresh agent connection gets the new supplementary groups. raw avoids
+# needing access to the managed Python in ops' home. Shell redirection opens
+# the file read-only; no bytes are printed or returned to the controller.
+- name: agent_log_group | Prove agent can open the auth log without become
+  ansible.builtin.raw: |
+    if [ "$(whoami)" != agent ]; then exit 2; fi
+    if ( : < /var/log/auth.log ) 2>/dev/null; then exit 0; else exit 1; fi
+  delegate_to: "{{ inventory_hostname }}"
+  become: false
+  vars: *agent_log_connection
+  register: dsm_accounts_agent_log_proof
+  changed_when: false
+  failed_when: false
+  check_mode: false
+  no_log: true
+
+- name: agent_log_group | Report only the unprivileged read exit status
+  ansible.builtin.debug:
+    msg: "{{ dsm_accounts_agent_log_proof.rc }}"
+
+- name: agent_log_group | Require the unprivileged read proof
+  ansible.builtin.assert:
+    that:
+      - >-
+          dsm_accounts_agent_log_proof.rc == 0 or
+          (ansible_check_mode and dsm_accounts_agent_log_needed and dsm_accounts_agent_log_proof.rc == 1)
+    fail_msg: >-
+      Agent could not open /var/log/auth.log without become; exit 1 is expected only
+      in check mode while membership still needs adding.
+    quiet: true

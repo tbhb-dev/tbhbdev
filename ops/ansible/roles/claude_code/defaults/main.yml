@@ -1,0 +1,21 @@
+---
+# Versions stay beside each other; activating one switches only the link.
+claude_code_account: agent
+claude_code_version: 2.1.330
+claude_code_activate: true
+# Published manifest.json checksums, verified against each downloaded binary
+# on 2026-11-23. See README.md for the signed manifest and release provenance.
+claude_code_sha256:
+  darwin-arm64: f7c5093b9dd6560d08af28bc27b123fb55091deae3180ac39df199522da86815
+  linux-x64: f390eaa0814e6a1bff74cbb47acb74cb9c89d30ced809fe0af5af00c7bfe8ebb
+  linux-arm64: 6016f90cac783e367fb1aa97c768a2efb94a0128a5b46b70fb3d8fcbbd9dd444
+claude_code_platform: >-
+  {{ 'darwin-arm64'
+  if ansible_facts['system'] == 'Darwin' and ansible_facts['architecture'] in ['arm64', 'aarch64']
+  else 'linux-x64' if ansible_facts['system'] == 'Linux' and ansible_facts['architecture'] == 'x86_64'
+  else 'linux-arm64' if ansible_facts['system'] == 'Linux' and ansible_facts['architecture'] == 'aarch64'
+  else 'unsupported' }}
+# Read from the host's account database, never from the controller environment.
+claude_code_home: "{{ claude_code_passwd.stdout | trim }}"
+claude_code_dir: "{{ claude_code_home }}/.local/share/claude/{{ claude_code_version }}"
+claude_code_binary: "{{ claude_code_dir }}/claude"

@@ -1,0 +1,115 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright Tony Burns
+
+package main
+
+import (
+	"context"
+	"log/slog"
+	"testing"
+	"time"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/sdk/metric/metricdata"
+
+	sdkmetric "go.opentelemetry.io/otel/sdk/metric"
+
+	"github.com/tbhb-dev/tbhbdev/factory/agent-capacity/internal/capacity"
+	"github.com/tbhb-dev/tbhbdev/factory/agent-capacity/internal/export"
+)
+
+func TestAGYMetrics(t *testing.T) {
+	t.Setenv("CODEX_HOME", "")
+
+	previous := otel.GetErrorHandler()
+
+	t.Cleanup(func() { otel.SetErrorHandler(previous) })
+
+	dir := t.TempDir()
+	observed := time.Unix(100000, 0).UTC()
+	payload := `{"status":"SUCCESS","command":{"name":"usage","data":{"groups":[{"buckets":[
+{"id":"gemini-5h","window":"5h","remaining_fraction":0.75,"reset_time":"1970-01-03T07:33:20Z"}]}]}}}`
+
+	logger := slog.New(slog.DiscardHandler)
+	runtime := newRuntime(t.Context(), logger)
+	runtime.Usage = func(context.Context) ([]byte, error) { return []byte(payload), nil }
+	require.NoError(t, runtime.probeUsage(t.Context(), []string{"--spool-dir=" + dir, "--account=work"}, observed, nil))
+
+	registry := runtime.Registry(dir)
+	require.Len(t, registry, 3)
+	assert.Equal(t, capacity.ClaudeStatusline, registry[0].Name)
+	assert.Equal(t, capacity.AGYStatusline, registry[1].Name)
+	readings, failures := registry.Read(t.Context(), observed)
+	assert.Empty(t, failures)
+
+	require.Len(t, readings, 1)
+
+	reader := sdkmetric.NewManualReader()
+	provider := sdkmetric.NewMeterProvider(sdkmetric.WithReader(reader))
+
+	t.Cleanup(func() { require.NoError(t, provider.Shutdown(context.Background())) })
+
+	for _, testCase := range []struct {
+		freshness string
+		age       time.Duration
+	}{
+		{freshLabel, 0},
+		{freshLabel, 30 * time.Minute},
+		{carriedLabel, 30*time.Minute + time.Nanosecond},
+		{carriedLabel, 6 * time.Hour},
+		{carriedLabel, 6*time.Hour + time.Nanosecond},
+		{carriedLabel, 100000*time.Second - time.Nanosecond},
+		{droppedLabel, 100000 * time.Second},
+	} {
+		collector, err := export.New(provider.Meter(testCase.age.String()), func() time.Time {
+			return observed.Add(testCase.age)
+		})
+		require.NoError(t, err)
+		require.NoError(t, collector.Replace(readings))
+
+		var data metricdata.ResourceMetrics
+		require.NoError(t, reader.Collect(t.Context(), &data))
+		assertAGYGauges(t, data, testCase.freshness, testCase.age)
+		require.NoError(t, collector.Replace(nil))
+	}
+}
+
+func assertAGYGauges(t *testing.T, data metricdata.ResourceMetrics, freshness string, age time.Duration) {
+	t.Helper()
+
+	values := map[string]float64{
+		utilizationGauge:                   0.25,
+		"agent.capacity.window.reset_time": 200000,
+		"agent.capacity.snapshot.age":      age.Seconds(),
+	}
+	count := 0
+
+	for _, scope := range data.ScopeMetrics {
+		for _, measurement := range scope.Metrics {
+			count++
+
+			require.Contains(t, values, measurement.Name)
+			gauge, ok := measurement.Data.(metricdata.Gauge[float64])
+			require.True(t, ok)
+			require.Len(t, gauge.DataPoints, 1)
+			assert.InDelta(t, values[measurement.Name], gauge.DataPoints[0].Value, 0)
+			assert.Equal(t, attribute.NewSet(
+				attribute.String("agent.plan.vendor", "google"),
+				attribute.String("agent.plan.window", "5h"),
+				attribute.String("agent.capacity.source", "agy_statusline"),
+				attribute.String("agent.capacity.freshness", freshness),
+				attribute.String("agent.account", "work"),
+				attribute.String("agent.plan.bucket", "gemini"),
+			), gauge.DataPoints[0].Attributes)
+		}
+	}
+
+	if freshness == droppedLabel {
+		assert.Equal(t, 0, count)
+	} else {
+		assert.Equal(t, 3, count)
+	}
+}

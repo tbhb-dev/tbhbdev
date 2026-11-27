@@ -1,0 +1,32 @@
+---
+argument_specs:
+  main:
+    short_description: Install a hash-pinned Codex release beside the others for the agent account
+    description:
+      - >-
+          Downloads a Codex release archive for the host's platform, checks its sha256, and unpacks it
+          into <home>/.local/share/codex/<version>/ for the agent account. It leaves other versions
+          alone and never deletes one.
+      - >-
+          The active version is the link <home>/.local/bin/codex. The role changes it only when
+          codex_cli_activate is true. A host without the account skips the install until the next run.
+    options:
+      codex_cli_account:
+        type: str
+        default: agent
+        description: The account that gets Codex. The role refuses root and tony.
+      codex_cli_version:
+        type: str
+        default: 0.166.0
+        description: The release, openai/codex rust-v<version>.
+      codex_cli_activate:
+        type: bool
+        default: false
+        description: >-
+          Points <home>/.local/bin/codex at codex_cli_version. The default installs the version and
+          leaves the link as it is.
+      codex_cli_sha256:
+        type: dict
+        description: >-
+          The sha256 of each release archive, keyed by platform: aarch64-apple-darwin,
+          x86_64-unknown-linux-musl and aarch64-unknown-linux-musl. Change it with the version.

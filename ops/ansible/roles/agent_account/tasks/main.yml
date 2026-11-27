@@ -1,0 +1,135 @@
+---
+# Every assertion precedes mutations, so an id clash leaves the host alone.
+- name: Require Linux or macOS
+  ansible.builtin.assert:
+    that:
+      - ansible_facts.system in ['Linux', 'Darwin']
+    fail_msg: agent_account requires Linux or macOS
+    quiet: true
+
+- name: Check Linux account ids
+  ansible.builtin.include_tasks: preflight-linux.yml
+  when: ansible_facts.system == 'Linux'
+
+- name: Check macOS account ids
+  ansible.builtin.include_tasks: preflight-macos.yml
+  when: ansible_facts.system == 'Darwin'
+
+- name: Check the inventory config home against preflight
+  ansible.builtin.assert:
+    that:
+      - agent_account_config_home == agent_account_home
+    fail_msg: The inventory config home must match the account home from preflight
+    quiet: true
+  when: agent_account_tbhbdev_config | length > 0
+
+# The agent_harness role parses TOML with chezmoi and leaves the binary to
+# the host. Ubuntu has no package for it.
+- name: Install chezmoi
+  ansible.builtin.include_tasks: chezmoi.yml
+  when: ansible_facts.system == 'Linux'
+
+- name: Create the agent primary group
+  ansible.builtin.group:
+    name: "{{ agent_account_primary_group }}"
+    gid: "{{ 24368 if ansible_facts.system == 'Linux' else 33835 }}"
+
+# agent_host can mount the home before the user exists. Do not copy skel
+# into it or move an existing account's home. lab_agent owns supplementary
+# groups, so never pass groups here.
+- name: Create agent
+  ansible.builtin.user:
+    name: agent
+    uid: 24368
+    # A group planned in check mode does not yet exist for usermod's lookup.
+    group: >-
+      {{ omit if ansible_facts.system == 'Linux' and ansible_check_mode and
+      agent_account_group_name.ansible_facts.getent_group.agent is none else agent_account_primary_group }}
+    home: "{{ agent_account_home if agent_account_new_user or ansible_facts.system == 'Darwin' else omit }}"
+    create_home: false
+    shell: "{{ '/bin/zsh' if ansible_facts.system == 'Darwin' else '/bin/bash' }}"
+    password_lock: "{{ true if ansible_facts.system == 'Linux' else omit }}"
+  register: agent_account_user
+
+- name: Report the planned Linux primary group change when the group does not yet exist
+  ansible.builtin.debug:
+    msg: "Would set agent primary group to agent (gid 24368); prior state is logged above."
+  changed_when: true
+  when:
+    - ansible_facts.system == 'Linux'
+    - ansible_check_mode
+    - not agent_account_new_user
+    - agent_account_group_name.ansible_facts.getent_group.agent is none
+
+- name: Migrate Linux files and retire the unused legacy group
+  ansible.builtin.include_tasks: migrate-linux.yml
+  when:
+    - ansible_facts.system == 'Linux'
+    - agent_account_legacy.group is not none
+
+# DarwinUser creates new users with Password '*'. Read existing records too:
+# password_lock is unsupported on macOS, and a supplied password always changes.
+- name: Lock the macOS agent password
+  ansible.builtin.include_tasks: password-macos.yml
+  when:
+    - ansible_facts.system == 'Darwin'
+    - not (ansible_check_mode and agent_account_new_user)
+
+# Remote Login on macOS admits only com.apple.access_ssh when that group
+# exists, as on the operator's Macs, where agent is already a member.
+- name: Look up the macOS ssh access group
+  ansible.builtin.command:
+    argv: [dscl, '.', -read, /Groups/com.apple.access_ssh, RecordName]
+  register: agent_account_macos_ssh_group
+  failed_when: false
+  check_mode: false
+  changed_when: false
+  when: ansible_facts.system == 'Darwin'
+
+- name: Let agent log in over ssh on macOS
+  ansible.builtin.user:
+    name: agent
+    groups: [com.apple.access_ssh]
+    append: true
+  when:
+    - ansible_facts.system == 'Darwin'
+    - agent_account_macos_ssh_group.rc == 0
+    - not (ansible_check_mode and agent_account_new_user)
+
+# Ubuntu HOME_MODE would otherwise give a new home 0750.
+- name: Set the agent home's ownership and mode
+  ansible.builtin.file:
+    path: "{{ agent_account_home }}"
+    state: directory
+    owner: '24368'
+    group: "{{ '24368' if ansible_facts.system == 'Linux' else '33835' }}"
+    mode: '0700'
+
+- name: Require single-line agent exec launch public keys
+  ansible.builtin.assert:
+    that:
+      - item is string
+      - "'\n' not in item and '\r' not in item"
+      - item is match('^ssh-ed25519 [A-Za-z0-9+/=]+( [A-Za-z0-9._@-]+)?$')
+    fail_msg: agent_exec_launch_keys values must be single-line ssh-ed25519 public keys.
+    quiet: true
+  loop: "{{ (agent_exec_launch_keys | default({})).values() | list }}"
+
+# Empty exclusive lists wipe access. A check run cannot resolve the home
+# of a user that it would only create, as in ops_accounts.
+- name: Authorize the agent keys
+  ansible.posix.authorized_key:
+    user: agent
+    key: "{{ agent_account_keys | join('\n') }}"
+    exclusive: true
+  when:
+    - agent_account_keys | length > 0
+    - not (ansible_check_mode and agent_account_user is changed)
+
+- name: Create the controller launch key
+  ansible.builtin.include_tasks: launch-key.yml
+  when: agent_account_launch_controller
+
+- name: Install the agent's tbhbdev configuration
+  ansible.builtin.include_tasks: config.yml
+  when: agent_account_tbhbdev_config | length > 0

@@ -1,0 +1,196 @@
+{
+  "commands": [
+    [
+      [
+        "docker",
+        "run",
+        "--rm",
+        "--log-driver",
+        "none",
+        "--user",
+        "0:0",
+        "--network",
+        "none",
+        "-v",
+        "/temporary:/d",
+        "--entrypoint",
+        "stat",
+        "rustfs:pinned",
+        "-f",
+        "-c",
+        "%b %f",
+        "/d/loki"
+      ],
+      120
+    ],
+    [
+      [
+        "docker",
+        "compose",
+        "-p",
+        "o11y-smoke-fixture",
+        "--env-file",
+        "/output/release/.env",
+        "-f",
+        "/output/release/compose.yaml",
+        "exec",
+        "-T",
+        "rustfs",
+        "curl",
+        "-s",
+        "-w",
+        "\n%{http_code}",
+        "-m",
+        "10",
+        "-X",
+        "POST",
+        "-H",
+        "Content-Type: application/json",
+        "-d",
+        "{\"streams\": [{\"stream\": {\"service_name\": \"o11y-smoke-probe\"}, \"values\": [[\"1000000000000\", \"o11y-smoke-probe\"]]}]}",
+        "http://loki:3100/loki/api/v1/push"
+      ],
+      15
+    ],
+    [
+      [
+        "docker",
+        "run",
+        "--rm",
+        "--network",
+        "host",
+        "telemetrygen:pinned",
+        "traces",
+        "--otlp-endpoint",
+        "127.0.0.1:14317",
+        "--otlp-insecure",
+        "--traces",
+        "1",
+        "--service",
+        "o11y-check-grpc-0101010101010101"
+      ],
+      120
+    ]
+  ],
+  "http": [
+    [
+      "POST",
+      "http://127.0.0.1:14318/v1/traces",
+      "{\"resourceSpans\": [{\"resource\": {\"attributes\": [{\"key\": \"service.name\", \"value\": {\"stringValue\": \"o11y-check-0101010101010101\"}}]}, \"scopeSpans\": [{\"scope\": {\"name\": \"o11y-check\"}, \"spans\": [{\"traceId\": \"01010101010101010101010101010101\", \"spanId\": \"0101010101010101\", \"name\": \"o11y-check\", \"kind\": 1, \"startTimeUnixNano\": \"1000000000000\", \"endTimeUnixNano\": \"1000500000000\"}]}]}]}",
+      {
+        "Content-Type": "application/json"
+      },
+      15
+    ],
+    [
+      "POST",
+      "http://127.0.0.1:14318/v1/logs",
+      "{\"resourceLogs\": [{\"resource\": {\"attributes\": [{\"key\": \"service.name\", \"value\": {\"stringValue\": \"o11y-check-0101010101010101\"}}]}, \"scopeLogs\": [{\"scope\": {\"name\": \"o11y-check\"}, \"logRecords\": [{\"timeUnixNano\": \"1000000000000\", \"severityText\": \"INFO\", \"body\": {\"stringValue\": \"o11y-check 0101010101010101\"}}]}]}]}",
+      {
+        "Content-Type": "application/json"
+      },
+      15
+    ],
+    [
+      "POST",
+      "http://127.0.0.1:14318/v1/metrics",
+      "{\"resourceMetrics\": [{\"resource\": {\"attributes\": [{\"key\": \"service.name\", \"value\": {\"stringValue\": \"o11y-check-0101010101010101\"}}]}, \"scopeMetrics\": [{\"scope\": {\"name\": \"o11y-check\"}, \"metrics\": [{\"name\": \"o11y_check_value\", \"gauge\": {\"dataPoints\": [{\"asInt\": \"16843009\", \"timeUnixNano\": \"1000000000000\", \"attributes\": [{\"key\": \"run_id\", \"value\": {\"stringValue\": \"0101010101010101\"}}]}]}}]}]}]}",
+      {
+        "Content-Type": "application/json"
+      },
+      15
+    ],
+    [
+      "GET",
+      "http://127.0.0.1:13000/api/datasources/proxy/uid/tempo/api/traces/01010101010101010101010101010101",
+      null,
+      {},
+      15
+    ],
+    [
+      "GET",
+      "http://127.0.0.1:13000/api/datasources/proxy/uid/loki/loki/api/v1/query_range?query=%7Bservice_name%3D%22o11y-check-0101010101010101%22%7D&start=940000000000&end=1060000000000&limit=10",
+      null,
+      {},
+      15
+    ],
+    [
+      "GET",
+      "http://127.0.0.1:13000/api/datasources/proxy/uid/mimir/api/v1/query?query=o11y_check_value%7Brun_id%3D%220101010101010101%22%7D",
+      null,
+      {},
+      15
+    ],
+    [
+      "GET",
+      "http://127.0.0.1:13000/api/datasources/proxy/uid/mimir/api/v1/query?query=timestamp(o11y_check_value%7Brun_id%3D%220101010101010101%22%7D)",
+      null,
+      {},
+      15
+    ],
+    [
+      "GET",
+      "http://127.0.0.1:13000/api/datasources/proxy/uid/tempo/api/search?q=%7Bresource.service.name%3D%22o11y-check-grpc-0101010101010101%22%7D&limit=5",
+      null,
+      {},
+      15
+    ],
+    [
+      "POST",
+      "http://127.0.0.1:14318/v1/traces",
+      "{\"resourceSpans\": [{\"resource\": {\"attributes\": [{\"key\": \"service.name\", \"value\": {\"stringValue\": \"codex_exec\"}}]}, \"scopeSpans\": [{\"scope\": {\"name\": \"o11y-filter-check\"}, \"spans\": [{\"traceId\": \"0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c\", \"spanId\": \"0000000000000001\", \"name\": \"turn/start\", \"kind\": 1, \"startTimeUnixNano\": \"1000000000000\", \"endTimeUnixNano\": \"1000500000000\", \"attributes\": [{\"key\": \"fixture.name\", \"value\": {\"stringValue\": \"turn/start\"}}, {\"key\": \"fixture.index\", \"value\": {\"intValue\": \"0\"}}, {\"key\": \"fixture.kept\", \"value\": {\"boolValue\": true}}]}, {\"traceId\": \"0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c\", \"spanId\": \"0000000000000002\", \"name\": \"receiving\", \"kind\": 1, \"startTimeUnixNano\": \"1000000000000\", \"endTimeUnixNano\": \"1000500000000\", \"attributes\": [{\"key\": \"fixture.name\", \"value\": {\"stringValue\": \"receiving\"}}, {\"key\": \"fixture.index\", \"value\": {\"intValue\": \"1\"}}, {\"key\": \"fixture.kept\", \"value\": {\"boolValue\": true}}], \"parentSpanId\": \"0000000000000001\"}, {\"traceId\": \"0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c\", \"spanId\": \"0000000000000003\", \"name\": \"handle_responses\", \"kind\": 1, \"startTimeUnixNano\": \"1000000000000\", \"endTimeUnixNano\": \"1000500000000\", \"attributes\": [{\"key\": \"fixture.name\", \"value\": {\"stringValue\": \"handle_responses\"}}, {\"key\": \"fixture.index\", \"value\": {\"intValue\": \"2\"}}, {\"key\": \"fixture.kept\", \"value\": {\"boolValue\": true}}], \"parentSpanId\": \"0000000000000001\"}, {\"traceId\": \"0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c\", \"spanId\": \"0000000000000004\", \"name\": \"persist_rollout_items\", \"kind\": 1, \"startTimeUnixNano\": \"1000000000000\", \"endTimeUnixNano\": \"1000500000000\", \"attributes\": [{\"key\": \"fixture.name\", \"value\": {\"stringValue\": \"persist_rollout_items\"}}, {\"key\": \"fixture.index\", \"value\": {\"intValue\": \"3\"}}, {\"key\": \"fixture.kept\", \"value\": {\"boolValue\": true}}], \"parentSpanId\": \"0000000000000001\"}, {\"traceId\": \"0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c\", \"spanId\": \"0000000000000005\", \"name\": \"realtime_conversation.running_state\", \"kind\": 1, \"startTimeUnixNano\": \"1000000000000\", \"endTimeUnixNano\": \"1000500000000\", \"attributes\": [{\"key\": \"fixture.name\", \"value\": {\"stringValue\": \"realtime_conversation.running_state\"}}, {\"key\": \"fixture.index\", \"value\": {\"intValue\": \"4\"}}, {\"key\": \"fixture.kept\", \"value\": {\"boolValue\": true}}], \"parentSpanId\": \"0000000000000001\"}, {\"traceId\": \"0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c\", \"spanId\": \"0000000000000006\", \"name\": \"fs.get_metadata\", \"kind\": 1, \"startTimeUnixNano\": \"1000000000000\", \"endTimeUnixNano\": \"1000500000000\", \"attributes\": [{\"key\": \"fixture.name\", \"value\": {\"stringValue\": \"fs.get_metadata\"}}, {\"key\": \"fixture.index\", \"value\": {\"intValue\": \"5\"}}, {\"key\": \"fixture.kept\", \"value\": {\"boolValue\": true}}], \"parentSpanId\": \"0000000000000001\"}, {\"traceId\": \"0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c\", \"spanId\": \"0000000000000007\", \"name\": \"fs.read_file\", \"kind\": 1, \"startTimeUnixNano\": \"1000000000000\", \"endTimeUnixNano\": \"1000500000000\", \"attributes\": [{\"key\": \"fixture.name\", \"value\": {\"stringValue\": \"fs.read_file\"}}, {\"key\": \"fixture.index\", \"value\": {\"intValue\": \"6\"}}, {\"key\": \"fixture.kept\", \"value\": {\"boolValue\": true}}], \"parentSpanId\": \"0000000000000001\"}, {\"traceId\": \"0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c\", \"spanId\": \"0000000000000008\", \"name\": \"tool/exec\", \"kind\": 1, \"startTimeUnixNano\": \"1000000000000\", \"endTimeUnixNano\": \"1000500000000\", \"attributes\": [{\"key\": \"fixture.name\", \"value\": {\"stringValue\": \"tool/exec\"}}, {\"key\": \"fixture.index\", \"value\": {\"intValue\": \"7\"}}, {\"key\": \"fixture.kept\", \"value\": {\"boolValue\": true}}], \"parentSpanId\": \"0000000000000001\"}, {\"traceId\": \"0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c\", \"spanId\": \"0000000000000009\", \"name\": \"request/send\", \"kind\": 1, \"startTimeUnixNano\": \"1000000000000\", \"endTimeUnixNano\": \"1000500000000\", \"attributes\": [{\"key\": \"fixture.name\", \"value\": {\"stringValue\": \"request/send\"}}, {\"key\": \"fixture.index\", \"value\": {\"intValue\": \"8\"}}, {\"key\": \"fixture.kept\", \"value\": {\"boolValue\": true}}], \"parentSpanId\": \"0000000000000001\"}, {\"traceId\": \"0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c\", \"spanId\": \"000000000000000a\", \"name\": \"child/retained\", \"kind\": 1, \"startTimeUnixNano\": \"1000000000000\", \"endTimeUnixNano\": \"1000500000000\", \"attributes\": [{\"key\": \"fixture.name\", \"value\": {\"stringValue\": \"child/retained\"}}, {\"key\": \"fixture.index\", \"value\": {\"intValue\": \"9\"}}, {\"key\": \"fixture.kept\", \"value\": {\"boolValue\": true}}], \"parentSpanId\": \"0000000000000003\"}]}]}]}",
+      {
+        "Content-Type": "application/json"
+      },
+      15
+    ],
+    [
+      "GET",
+      "http://127.0.0.1:13000/api/datasources/proxy/uid/tempo/api/traces/0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c",
+      null,
+      {},
+      15
+    ],
+    [
+      "POST",
+      "http://127.0.0.1:14318/v1/traces",
+      "{\"resourceSpans\": [{\"resource\": {\"attributes\": [{\"key\": \"service.name\", \"value\": {\"stringValue\": \"codex_tui\"}}]}, \"scopeSpans\": [{\"scope\": {\"name\": \"o11y-filter-check\"}, \"spans\": [{\"traceId\": \"0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d\", \"spanId\": \"0000000000000001\", \"name\": \"turn/start\", \"kind\": 1, \"startTimeUnixNano\": \"1000000000000\", \"endTimeUnixNano\": \"1000500000000\", \"attributes\": [{\"key\": \"fixture.name\", \"value\": {\"stringValue\": \"turn/start\"}}, {\"key\": \"fixture.index\", \"value\": {\"intValue\": \"0\"}}, {\"key\": \"fixture.kept\", \"value\": {\"boolValue\": true}}]}, {\"traceId\": \"0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d\", \"spanId\": \"0000000000000002\", \"name\": \"receiving\", \"kind\": 1, \"startTimeUnixNano\": \"1000000000000\", \"endTimeUnixNano\": \"1000500000000\", \"attributes\": [{\"key\": \"fixture.name\", \"value\": {\"stringValue\": \"receiving\"}}, {\"key\": \"fixture.index\", \"value\": {\"intValue\": \"1\"}}, {\"key\": \"fixture.kept\", \"value\": {\"boolValue\": true}}], \"parentSpanId\": \"0000000000000001\"}, {\"traceId\": \"0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d\", \"spanId\": \"0000000000000003\", \"name\": \"handle_responses\", \"kind\": 1, \"startTimeUnixNano\": \"1000000000000\", \"endTimeUnixNano\": \"1000500000000\", \"attributes\": [{\"key\": \"fixture.name\", \"value\": {\"stringValue\": \"handle_responses\"}}, {\"key\": \"fixture.index\", \"value\": {\"intValue\": \"2\"}}, {\"key\": \"fixture.kept\", \"value\": {\"boolValue\": true}}], \"parentSpanId\": \"0000000000000001\"}, {\"traceId\": \"0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d\", \"spanId\": \"0000000000000004\", \"name\": \"persist_rollout_items\", \"kind\": 1, \"startTimeUnixNano\": \"1000000000000\", \"endTimeUnixNano\": \"1000500000000\", \"attributes\": [{\"key\": \"fixture.name\", \"value\": {\"stringValue\": \"persist_rollout_items\"}}, {\"key\": \"fixture.index\", \"value\": {\"intValue\": \"3\"}}, {\"key\": \"fixture.kept\", \"value\": {\"boolValue\": true}}], \"parentSpanId\": \"0000000000000001\"}, {\"traceId\": \"0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d\", \"spanId\": \"0000000000000005\", \"name\": \"realtime_conversation.running_state\", \"kind\": 1, \"startTimeUnixNano\": \"1000000000000\", \"endTimeUnixNano\": \"1000500000000\", \"attributes\": [{\"key\": \"fixture.name\", \"value\": {\"stringValue\": \"realtime_conversation.running_state\"}}, {\"key\": \"fixture.index\", \"value\": {\"intValue\": \"4\"}}, {\"key\": \"fixture.kept\", \"value\": {\"boolValue\": true}}], \"parentSpanId\": \"0000000000000001\"}, {\"traceId\": \"0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d\", \"spanId\": \"0000000000000006\", \"name\": \"fs.get_metadata\", \"kind\": 1, \"startTimeUnixNano\": \"1000000000000\", \"endTimeUnixNano\": \"1000500000000\", \"attributes\": [{\"key\": \"fixture.name\", \"value\": {\"stringValue\": \"fs.get_metadata\"}}, {\"key\": \"fixture.index\", \"value\": {\"intValue\": \"5\"}}, {\"key\": \"fixture.kept\", \"value\": {\"boolValue\": true}}], \"parentSpanId\": \"0000000000000001\"}, {\"traceId\": \"0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d\", \"spanId\": \"0000000000000007\", \"name\": \"fs.read_file\", \"kind\": 1, \"startTimeUnixNano\": \"1000000000000\", \"endTimeUnixNano\": \"1000500000000\", \"attributes\": [{\"key\": \"fixture.name\", \"value\": {\"stringValue\": \"fs.read_file\"}}, {\"key\": \"fixture.index\", \"value\": {\"intValue\": \"6\"}}, {\"key\": \"fixture.kept\", \"value\": {\"boolValue\": true}}], \"parentSpanId\": \"0000000000000001\"}]}]}]}",
+      {
+        "Content-Type": "application/json"
+      },
+      15
+    ],
+    [
+      "GET",
+      "http://127.0.0.1:13000/api/datasources/proxy/uid/tempo/api/traces/0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d",
+      null,
+      {},
+      15
+    ],
+    [
+      "POST",
+      "http://127.0.0.1:14318/v1/traces",
+      "{\"resourceSpans\": [{\"resource\": {\"attributes\": [{\"key\": \"service.name\", \"value\": {\"stringValue\": \"o11y-check-0b0b0b0b0b0b0b0b\"}}]}, \"scopeSpans\": [{\"scope\": {\"name\": \"o11y-filter-check\"}, \"spans\": [{\"traceId\": \"0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e\", \"spanId\": \"0000000000000001\", \"name\": \"turn/start\", \"kind\": 1, \"startTimeUnixNano\": \"1000000000000\", \"endTimeUnixNano\": \"1000500000000\", \"attributes\": [{\"key\": \"fixture.name\", \"value\": {\"stringValue\": \"turn/start\"}}, {\"key\": \"fixture.index\", \"value\": {\"intValue\": \"0\"}}, {\"key\": \"fixture.kept\", \"value\": {\"boolValue\": true}}]}, {\"traceId\": \"0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e\", \"spanId\": \"0000000000000002\", \"name\": \"receiving\", \"kind\": 1, \"startTimeUnixNano\": \"1000000000000\", \"endTimeUnixNano\": \"1000500000000\", \"attributes\": [{\"key\": \"fixture.name\", \"value\": {\"stringValue\": \"receiving\"}}, {\"key\": \"fixture.index\", \"value\": {\"intValue\": \"1\"}}, {\"key\": \"fixture.kept\", \"value\": {\"boolValue\": true}}], \"parentSpanId\": \"0000000000000001\"}, {\"traceId\": \"0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e\", \"spanId\": \"0000000000000003\", \"name\": \"handle_responses\", \"kind\": 1, \"startTimeUnixNano\": \"1000000000000\", \"endTimeUnixNano\": \"1000500000000\", \"attributes\": [{\"key\": \"fixture.name\", \"value\": {\"stringValue\": \"handle_responses\"}}, {\"key\": \"fixture.index\", \"value\": {\"intValue\": \"2\"}}, {\"key\": \"fixture.kept\", \"value\": {\"boolValue\": true}}], \"parentSpanId\": \"0000000000000001\"}, {\"traceId\": \"0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e\", \"spanId\": \"0000000000000004\", \"name\": \"persist_rollout_items\", \"kind\": 1, \"startTimeUnixNano\": \"1000000000000\", \"endTimeUnixNano\": \"1000500000000\", \"attributes\": [{\"key\": \"fixture.name\", \"value\": {\"stringValue\": \"persist_rollout_items\"}}, {\"key\": \"fixture.index\", \"value\": {\"intValue\": \"3\"}}, {\"key\": \"fixture.kept\", \"value\": {\"boolValue\": true}}], \"parentSpanId\": \"0000000000000001\"}, {\"traceId\": \"0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e\", \"spanId\": \"0000000000000005\", \"name\": \"realtime_conversation.running_state\", \"kind\": 1, \"startTimeUnixNano\": \"1000000000000\", \"endTimeUnixNano\": \"1000500000000\", \"attributes\": [{\"key\": \"fixture.name\", \"value\": {\"stringValue\": \"realtime_conversation.running_state\"}}, {\"key\": \"fixture.index\", \"value\": {\"intValue\": \"4\"}}, {\"key\": \"fixture.kept\", \"value\": {\"boolValue\": true}}], \"parentSpanId\": \"0000000000000001\"}, {\"traceId\": \"0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e\", \"spanId\": \"0000000000000006\", \"name\": \"fs.get_metadata\", \"kind\": 1, \"startTimeUnixNano\": \"1000000000000\", \"endTimeUnixNano\": \"1000500000000\", \"attributes\": [{\"key\": \"fixture.name\", \"value\": {\"stringValue\": \"fs.get_metadata\"}}, {\"key\": \"fixture.index\", \"value\": {\"intValue\": \"5\"}}, {\"key\": \"fixture.kept\", \"value\": {\"boolValue\": true}}], \"parentSpanId\": \"0000000000000001\"}, {\"traceId\": \"0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e\", \"spanId\": \"0000000000000007\", \"name\": \"fs.read_file\", \"kind\": 1, \"startTimeUnixNano\": \"1000000000000\", \"endTimeUnixNano\": \"1000500000000\", \"attributes\": [{\"key\": \"fixture.name\", \"value\": {\"stringValue\": \"fs.read_file\"}}, {\"key\": \"fixture.index\", \"value\": {\"intValue\": \"6\"}}, {\"key\": \"fixture.kept\", \"value\": {\"boolValue\": true}}], \"parentSpanId\": \"0000000000000001\"}]}]}]}",
+      {
+        "Content-Type": "application/json"
+      },
+      15
+    ],
+    [
+      "GET",
+      "http://127.0.0.1:13000/api/datasources/proxy/uid/tempo/api/traces/0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e",
+      null,
+      {},
+      15
+    ]
+  ],
+  "transcript": [
+    "smoke Loki disk usage (before-group-5): 0.800000\n",
+    "ok receipt: trace 01010101010101010101010101010101 found in Tempo with service o11y-check-0101010101010101\n",
+    "ok receipt: exactly one log line with the run's body found in Loki\n",
+    "ok receipt: one fresh sample equal to 16843009 found in Mimir\n",
+    "ok receipt: gRPC trace found in Tempo by service o11y-check-grpc-0101010101010101\n",
+    "ok 5: receipt over OTLP/HTTP and gRPC through the published ports\n",
+    "ok Codex filter: exact span names, IDs, parents and attributes\n"
+  ]
+}

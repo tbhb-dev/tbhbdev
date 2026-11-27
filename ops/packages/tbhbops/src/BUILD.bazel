@@ -1,0 +1,60 @@
+# SPDX-License-Identifier: Apache-2.0
+# Copyright Tony Burns
+
+load("@rules_python//python:defs.bzl", "py_binary", "py_library")
+
+# gazelle:python_root
+# gazelle:python_generation_mode project
+# gazelle:python_default_visibility //ops/packages:__subpackages__
+
+py_binary(
+    name = "bazel_server_reaper",
+    srcs = ["tbhbops/bazel_server_reaper.py"],
+    visibility = ["//ops/packages:__subpackages__"],
+)
+
+py_binary(
+    name = "mac_snapshot_thin",
+    srcs = ["tbhbops/mac_snapshot_thin.py"],
+    visibility = ["//ops/packages:__subpackages__"],
+)
+
+py_library(
+    name = "src",
+    srcs = [
+        "tbhbops/__init__.py",
+        "tbhbops/authorized_lines.py",
+        "tbhbops/bazel_server_reaper.py",
+        "tbhbops/deploy/__init__.py",
+        "tbhbops/deploy/config.py",
+        "tbhbops/deploy/engine.py",
+        "tbhbops/deploy/filesystem.py",
+        "tbhbops/deploy/policy.py",
+        "tbhbops/deploy/protocol.py",
+        "tbhbops/deploy/receive.py",
+        "tbhbops/deploy/transaction.py",
+        "tbhbops/dns.py",
+        "tbhbops/dns_smoke.py",
+        "tbhbops/dsm_accounts.py",
+        "tbhbops/mac_snapshot_thin.py",
+        "tbhbops/o11y/__init__.py",
+        "tbhbops/o11y/init.py",
+        "tbhbops/o11y/receipt.py",
+        "tbhbops/o11y/render.py",
+        "tbhbops/o11y/rustfs_probe.py",
+        "tbhbops/o11y/smoke.py",
+        "tbhbops/o11y/smoke_access.py",
+        "tbhbops/o11y/smoke_capacity.py",
+        "tbhbops/o11y/smoke_export.py",
+        "tbhbops/o11y/smoke_filter.py",
+        "tbhbops/o11y/smoke_query.py",
+        "tbhbops/o11y/validate.py",
+        "tbhbops/op_connect.py",
+        "tbhbops/s3_store.py",
+        "tbhbops/tailnet_addresses.py",
+        "tbhbops/tailnet_policy.py",
+    ],
+    imports = ["."],  # keep
+    visibility = ["//ops/packages:__subpackages__"],
+    deps = ["@cli_pip//pyyaml"],
+)

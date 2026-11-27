@@ -136,21 +136,24 @@ from contextvars import ContextVar
 from dataclasses import dataclass, field
 from pathlib import Path
 from types import MappingProxyType
-from typing import TYPE_CHECKING, cast, override
+from typing import TYPE_CHECKING, cast
 from urllib.parse import quote
 
-import yaml
 from jsonschema import Draft202012Validator
 
-from tbhbdev.alpha import identity as agent_identity
-from tbhbdev.alpha import opened, secret_scan, size_gate
+from tbhbdev import userconfig
+from tbhbdev.alpha import opened, secret_scan, size_gate, tool_pins
+from tbhbdev.alpha import pull_request_frontmatter as frontmatter
+from tbhbdev.alpha.agent import settings
+from tbhbdev.alpha.agent.decisions import host_names
+from tbhbdev.alpha.identity import dispatcher as agent_identity
+from tbhbdev.alpha.identity.trailers import merge_pr_trailers
+from tbhbdev.alpha.install import require_git_hooks
 from tbhbdev.alpha.repo import git as repo_git
 from tbhbdev.alpha.repo import hook_cwd, in_tbhb_dev, read_hook_stdin
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Collection, Mapping, Sequence
-
-    from jsonschema.exceptions import ValidationError
 
 # Each `cast` below carries `pragma: no mutate`: it is a runtime no-op, so no test
 # could tell a mutated type string from the original.
@@ -200,7 +203,6 @@ _TOOL_PATHS: ContextVar[Mapping[tuple[str, bool], str]] = ContextVar(
 # to line 1: a finding on it reads (1, "vale project.HeadingTitleCase: ...").
 TITLE_ALERT = (1, "vale project.HeadingTitleCase")
 HEADING = re.compile(r" {0,3}(#{1,6}) +(\S.*?) *")
-FRONTMATTER = re.compile(r"---\n(?P<yaml>.*?)^---[ \t]*$\n?", re.DOTALL | re.MULTILINE)
 FENCE = re.compile(r" {0,3}(`{3,}|~{3,})")
 COMMENT = re.compile(r"<!--.*?(?:-->|\Z)", re.DOTALL)
 INLINE_CODE = re.compile(r"(`+).+?\1")
@@ -283,59 +285,6 @@ class Block:
     lines: list[Line]
 
 
-class FrontmatterError(ValueError):
-    """The frontmatter block cannot be read."""
-
-
-def keep_text(loader: yaml.SafeLoader, node: yaml.Node) -> str:
-    """Construct a timestamp as the text the author wrote."""
-    return loader.construct_scalar(node)  # pyrefly: ignore[bad-argument-type]
-
-
-class Loader(yaml.SafeLoader):
-    """SafeLoader that keeps timestamps as text and refuses duplicate keys."""
-
-    @override
-    def construct_mapping(
-        self,
-        node: yaml.MappingNode,
-        deep: bool = False,
-    ) -> dict[object, object]:
-        """Refuse a key that appears twice, which plain YAML resolves silently."""
-        keys = [self.construct_object(key, deep=True) for key, _ in node.value]
-        for key in keys:
-            if keys.count(key) > 1:
-                message = f"duplicate key {key!r}"
-                raise yaml.constructor.ConstructorError(
-                    None, None, message, node.start_mark
-                )
-        return super().construct_mapping(node, deep)
-
-
-Loader.add_constructor("tag:yaml.org,2002:timestamp", keep_text)
-
-
-def parse_frontmatter(text: str) -> tuple[object, str]:
-    """Split a draft into its parsed frontmatter (None when absent) and body.
-
-    Raises:
-        FrontmatterError: The block is unterminated or is not valid YAML.
-    """
-    match = FRONTMATTER.match(text)
-    if match is None:
-        if text.startswith("---\n"):
-            message = "unterminated frontmatter"
-            raise FrontmatterError(message)
-        return None, text
-    try:
-        # Loader is a SafeLoader.
-        data: object = yaml.load(match["yaml"], Loader=Loader)  # noqa: S506  # nosec B506
-    except yaml.YAMLError as exc:
-        message = f"invalid YAML: {' '.join(str(exc).split())}"
-        raise FrontmatterError(message) from exc
-    return data, text[match.end() :]
-
-
 @dataclass(frozen=True)
 class Checked:
     """Everything ``check`` learned. ``rendered`` runs from the title line on."""
@@ -394,14 +343,6 @@ def load_schema() -> dict[str, object]:
     """Read the frontmatter schema."""
     text = read_baseline(SCHEMA)
     return cast("dict[str, object]", json.loads(text))  # pragma: no mutate
-
-
-def schema_default(schema: Mapping[str, object], name: str) -> object:
-    """The default the schema declares for a property."""
-    props = cast(
-        "dict[str, dict[str, object]]", schema["properties"]
-    )  # pragma: no mutate
-    return props[name]["default"]
 
 
 def count_words(text: str) -> int:
@@ -610,66 +551,41 @@ def ref_problems(lines: Sequence[Line]) -> list[Problem]:
     return problems
 
 
-def meta_problems(
-    data: object, offset: int, text: str, validator: Draft202012Validator
-) -> list[Problem]:
-    """Validate the frontmatter, pointing each error at its key's line."""
-    if data is None:
-        return []
-    frontmatter = text.splitlines()[:offset]
-    return [
-        (
-            key_line(error, frontmatter),
-            f"frontmatter {error.json_path}: {error.message}",
-        )
-        for error in sorted(
-            validator.iter_errors(data), key=lambda found: found.json_path
-        )
-    ]
-
-
-def key_line(error: ValidationError, frontmatter: Sequence[str]) -> int:
-    """The line of the top-level key an error is about; 1 when it has none."""
-    if not error.absolute_path:
-        return 1
-    key = f"{error.absolute_path[0]}:"
-    return next(
-        (index for index, line in enumerate(frontmatter, 1) if line.startswith(key)), 1
-    )
-
-
 def find_tool(name: str, *, unwrapped: bool = False) -> str:
-    """Find a tool on PATH, in the worktree's Bazel shims, or through mise.
+    """Find a tool in the worktree's Bazel shims, on PATH, or through mise.
 
-    ``unwrapped`` skips the Bazel shims in ``.bazel_env``. For gitleaks the shim
-    is the rules wrapper, which refuses a config with ``[extend]``, and the text
-    scan writes one that has it, so the scan needs the real binary.
+    ``unwrapped`` selects the raw shim. The gitleaks text scan writes its own
+    config with ``[extend]``, which the rules wrapper refuses.
     """
     found = _TOOL_PATHS.get().get((name, unwrapped)) or _locate_tool(
         name, unwrapped=unwrapped
     )
     if found:
         return found
-    message = f"{name} not found on PATH or through `mise which`; run `mise install`"
+    message = (
+        f"{name} not found in .bazel_env, on PATH or through `mise which`; "
+        "run `bazelisk run //:bazel_env` or `mise install`"
+    )
     raise SystemExit(message)
 
 
 def _locate_tool(name: str, *, unwrapped: bool) -> str | None:
-    """Return the executable path, or None when all lookups fail."""
+    """Return the selected executable after checking its pin, if any."""
+    shim_name = f"{name}-raw" if unwrapped else name
+    if shim := shutil.which(str(root() / BAZEL_ENV / "bin" / shim_name)):
+        return tool_pins.require_version(name, shim)
     path = None
     if unwrapped:
         entries = os.environ.get("PATH", "").split(os.pathsep)
         path = os.pathsep.join(e for e in entries if BAZEL_ENV not in e)
     found = shutil.which(name, path=path)
     if found:
-        return found
-    if not unwrapped and (shim := shutil.which(str(root() / BAZEL_ENV / "bin" / name))):
-        return shim
+        return tool_pins.require_version(name, found)
     mise = shutil.which(MISE, path=path)
     if mise:
         done = run([mise, "which", name])
         if done.returncode == 0 and done.stdout.strip():
-            return done.stdout.strip()
+            return tool_pins.require_version(name, done.stdout.strip())
     return None
 
 
@@ -728,17 +644,22 @@ def title_problems(title: str, limit: int = MAX_TITLE) -> list[str]:
 
 def parse_vale(output: str) -> list[Problem]:
     """Vale's JSON alerts."""
+    data = cast(
+        "dict[str, list[dict[str, object]]]", json.loads(output)
+    )  # pragma: no mutate
+    invalid = "expected Vale alerts grouped by file"
+    if not isinstance(data, dict) or any(
+        not isinstance(alerts, list) for alerts in data.values()
+    ):
+        raise ValueError(invalid)
     try:
-        data = cast(
-            "dict[str, list[dict[str, object]]]", json.loads(output)
-        )  # pragma: no mutate
-    except ValueError:
-        return []
-    return [
-        (int(str(alert["Line"])), f"vale {alert['Check']}: {alert['Message']}")
-        for alerts in data.values()
-        for alert in alerts
-    ]
+        return [
+            (int(str(alert["Line"])), f"vale {alert['Check']}: {alert['Message']}")
+            for alerts in data.values()
+            for alert in alerts
+        ]
+    except (KeyError, TypeError) as exc:
+        raise ValueError(invalid) from exc
 
 
 def parse_lines(pattern: re.Pattern[str], tool: str) -> Callable[[str], list[Problem]]:
@@ -856,13 +777,16 @@ def run_linter(
 ) -> list[Problem]:
     """Run one linter on ``path`` in ``work``; its findings, or why it failed."""
     done = run([*argv, str(path)], cwd=work)
-    found = parse(done.stdout)
-    # Exit 1 means findings in all three tools; anything else, or
-    # exit 1 with nothing parsed, is the tool failing.
-    if done.returncode not in {0, 1} or (done.returncode == 1 and not found):
-        why = " ".join((done.stderr or done.stdout).split())
-        found = [(1, f"{name} failed (exit {done.returncode}): {why}")]
-    return found
+    if done.returncode in {0, 1}:
+        try:
+            found = parse(done.stdout)
+        except ValueError:
+            return [(1, f"{name} failed (exit {done.returncode}): invalid JSON")]
+        # Exit 1 requires findings. Exit 0 can report a clean result.
+        if done.returncode == 0 or found:
+            return found
+    why = " ".join((done.stderr or done.stdout).split())
+    return [(1, f"{name} failed (exit {done.returncode}): {why}")]
 
 
 def body_problems(
@@ -891,11 +815,13 @@ def body_problems(
 def check_text(text: str) -> Checked:
     """Validate and lint a draft. The linters run only once there is a title."""
     try:
-        data, body = parse_frontmatter(text)
-    except FrontmatterError as exc:
+        data, body = frontmatter.parse_frontmatter(text)
+    except frontmatter.FrontmatterError as exc:
         return Checked([(1, f"frontmatter: {exc}")])
     offset = text.count("\n") - body.count("\n")
-    problems = meta_problems(data, offset, text, Draft202012Validator(load_schema()))
+    problems = frontmatter.meta_problems(
+        data, offset, text, Draft202012Validator(load_schema())
+    )
     meta = data if isinstance(data, dict) and not problems else {}
     lines, scanned = scan(body.splitlines(), offset + 1)
     problems += scanned
@@ -921,40 +847,6 @@ def check_text(text: str) -> Checked:
 def body_of(rendered: Sequence[str]) -> str:
     """The description: everything after the title, trimmed."""
     return "\n".join(rendered[1:]).strip("\n") + "\n"
-
-
-def identity_key(value: str) -> tuple[str, ...]:
-    """Who an LLM trailer value names: harness slug, model, session, subagent."""
-    blob = value.split()[1]
-    attrs = {
-        key: val for key, _, val in (pair.partition("=") for pair in blob.split(";"))
-    }
-    return (
-        attrs["harness"].partition(":")[0],
-        attrs.get("model", ""),
-        attrs.get("session", ""),
-        attrs.get("subagent", ""),
-    )
-
-
-def merge_trailers(
-    found: Sequence[tuple[str, str]], posting: str | None
-) -> list[tuple[str, str]]:
-    """Deduplicate (key, value) trailers by identity; Generated-by wins.
-
-    The posting agent's value is added as Assisted-by when its identity is
-    absent. Generated-by lines come first, as the commit-msg check requires.
-    """
-    roles: dict[tuple[str, ...], tuple[str, str]] = {}
-    for key, value in found:
-        ident = identity_key(value)
-        if ident not in roles or (
-            key == agent_identity.KEY_GEN and roles[ident][0] != key
-        ):
-            roles[ident] = (key, value)
-    if posting is not None and identity_key(posting) not in roles:
-        roles[identity_key(posting)] = (agent_identity.KEY_ASSIST, posting)
-    return sorted(roles.values(), key=lambda pair: pair[0] != agent_identity.KEY_GEN)
 
 
 def branch_trailers(base: str) -> list[tuple[str, str]]:
@@ -1037,19 +929,18 @@ def posting_value(env: Mapping[str, str]) -> str | None:
     return agent_identity.format_value(committer.ident.attrs())
 
 
-def default_base() -> str:
+def default_base(*, origin_only: bool = False) -> str:
     """The repository's default branch: the remote's own HEAD, else origin/HEAD.
 
     The remote answers first because origin/HEAD goes stale when the default
     branch moves and a plain fetch leaves it, and a fresh mirror may have none.
 
     Raises:
-        SystemExit: ``GH_REPO`` names a repository that origin does not describe,
-            or neither read answers. No guess stands in, so a draft never
-            targets a wrong base.
+        SystemExit: ``GH_REPO`` overrides origin and ``origin_only`` is false,
+            or neither read answers.
     """
     hint = "; name the base in the draft's frontmatter"
-    if os.environ.get("GH_REPO"):
+    if not origin_only and os.environ.get("GH_REPO"):
         message = f"cannot find the default branch of GH_REPO{hint}"
         raise SystemExit(message)
     code, out = git("ls-remote", "--symref", "origin", "HEAD")
@@ -1140,7 +1031,7 @@ def description(
     ]
     if errors:
         raise SystemExit("invalid LLM trailer: " + "; ".join(errors))
-    merged = [f"{key}: {value}" for key, value in merge_trailers(found, posting)]
+    merged = [f"{key}: {value}" for key, value in merge_pr_trailers(found, posting)]
     trailers = ([opened_by] if opened_by else []) + merged
     body = body_of(checked.rendered)
     if not trailers:
@@ -1313,7 +1204,7 @@ def target_is_origin() -> bool:
 
     gh's default repository (``gh repo set-default``, or a parent fork) may
     differ from origin, and ``GH_REPO`` overrides both. Any failed read counts
-    as "no", so the size count is skipped instead of run against the wrong base.
+    as "no", so the size check refuses to count against the wrong base.
     """
     if os.environ.get("GH_REPO"):
         return False  # gh pr create posts to GH_REPO, not to its default repository
@@ -1398,10 +1289,10 @@ DRIVER_APP_AUTHOR = "app/tbhb-dev-agent-pull-requests"
 
 
 def require_own_author(number: int, repo: str) -> None:
-    """Refuse unless PR N's author is this ``gh`` account or the driver's App.
+    """Refuse unless PR N's author is this ``gh`` account or the pull-requests App.
 
-    The driver opens a run's pull request as the pull-requests App, so no agent
-    account authors it. Any other author, a human's included, is refused.
+    A build run opens its own pull request using its GitHub credential, which
+    can belong to the pull-requests App.
 
     Both reads name github.com and ``repo``, the repository ``gh pr ready``
     acts on, so no ``GH_HOST`` or ``GH_REPO`` setting can split them. The two
@@ -2113,28 +2004,38 @@ def opened_by(env: Mapping[str, str]) -> tuple[str | None, str | None]:
     return ident.root, f"{OPENED_KEY}: {value}"
 
 
-def check_size(args: argparse.Namespace, checked: Checked) -> None:
-    """Count the branch's added lines against the draft's base and flag an excess.
+def size_unavailable(checked: Checked, reason: str) -> None:
+    message = f"size count unavailable: {reason}"
+    checked.problems.append((1, message))
+    print(message, file=sys.stderr)
 
-    The base tracking ref is refreshed once, without tags, except in a dry run,
-    which writes no refs. A failed refresh or a count that stays unavailable
-    only warns, for ``pr create`` too, so a broken counter never blocks a valid
-    PR. A dry run reports an excess as a warning and still previews.
-    """
-    branch = base_of(checked.meta)
-    dry_run = getattr(
-        args,
-        "dry_run",
-        False,  # pragma: no mutate -- None is also false.
-    )
+
+def _stacked_base_source(branch: str) -> str:
+    """Use the build mirror's fetched ref when it has no ordinary branch ref."""
+    source = f"refs/heads/{branch}"
+    code, origin = git("remote", "get-url", "origin")
+    if code != 0 or not Path(origin).is_absolute():
+        return source
+    mirror_source = f"refs/heads/fetched/heads/{branch}"
+    code, advertised = git("ls-remote", "origin", source, mirror_source)
+    refs = {line.partition("\t")[2] for line in advertised.splitlines()}
+    if code == 0 and source not in refs and mirror_source in refs:
+        return mirror_source
+    return source
+
+
+def _size_base(
+    branch: str, *, explicit_base: bool, dry_run: bool
+) -> tuple[str, str | None]:
+    """Refresh the base and any stacked default ref together, except in a dry run."""
     base = f"refs/remotes/origin/{branch}"
-    verify = ("rev-parse", "--verify", "--quiet", f"{base}^{{commit}}")
-    if args.command == "create" and not target_is_origin():
-        # gh may open the PR against a repository whose base origin doesn't track.
-        message = "size count unavailable: gh may target a repository other than origin"
-        print(message, file=sys.stderr)
-        return
+    default = branch
+    if explicit_base:
+        with contextlib.suppress(SystemExit):
+            default = default_base(origin_only=True)
+    default_ref = f"refs/remotes/origin/{default}" if default != branch else None
     if not dry_run:
+        source = _stacked_base_source(branch) if default_ref else f"refs/heads/{branch}"
         fetch = (
             "fetch",
             "--quiet",
@@ -2142,54 +2043,83 @@ def check_size(args: argparse.Namespace, checked: Checked) -> None:
             "--no-write-fetch-head",
             "--refmap=",
             "origin",
-            f"+refs/heads/{branch}:{base}",
+            f"+{source}:{base}",
         )
+        if default_ref is not None:
+            fetch += (f"+refs/heads/{default}:{default_ref}",)
         if git(*fetch)[0] != 0:
-            # A stale tracking ref would count the wrong range, so stop here.
-            print(f"size count unavailable: cannot fetch {branch}", file=sys.stderr)
-            return
-    if git(*verify)[0] != 0:
-        print(f"size count unavailable: base branch {base} not found", file=sys.stderr)
+            message = f"cannot fetch {branch}"
+            raise size_gate.SizeCountError(message)
+    if git("rev-parse", "--verify", "--quiet", f"{base}^{{commit}}")[0] != 0:
+        message = f"base branch {base} not found"
+        raise size_gate.SizeCountError(message)
+    return base, default_ref
+
+
+def _report_size_excess(
+    draft: str, checked: Checked, counts: size_gate.SizeCounts, *, dry_run: bool
+) -> None:
+    """Report a size excess as a draft problem or a dry-run warning."""
+    count, limit = (
+        (counts.code_lines, counts.code_limit)
+        if counts.failed == "code"
+        else (counts.raw_lines, counts.raw_limit)
+    )
+    why = f"{count} lines, limit {limit}: split into stacked PRs"
+    if dry_run:
+        print(f"warning: {draft}:1: {why}", file=sys.stderr)
+        return
+    checked.problems.append((1, why))
+    print(f"{draft}:1: {why}")
+
+
+def check_size(args: argparse.Namespace, checked: Checked) -> None:
+    """Count added lines and refuse an unavailable count, including in a dry run."""
+    explicit_base = "base" in checked.meta
+    branch = base_of(checked.meta)
+    checked.meta.setdefault("base", branch)
+    dry_run = getattr(
+        args,
+        "dry_run",
+        False,  # pragma: no mutate -- None is also false.
+    )
+    if args.command == "create" and not target_is_origin():
+        # gh may open the PR against a repository whose base origin doesn't track.
+        size_unavailable(checked, "gh may target a repository other than origin")
         return
     try:
+        base, default_ref = _size_base(
+            branch, explicit_base=explicit_base, dry_run=dry_run
+        )
+        _, head_branch = git("branch", "--show-current")
+        tools = _TOOL_PATHS.get()
         counts = size_gate.size_counts(
             base,
             "HEAD",
-            scc=_TOOL_PATHS.get().get((SCC, False), SCC),
-            git=_TOOL_PATHS.get().get((GIT, False), GIT),
+            default_ref=default_ref,
+            head_branch=head_branch,
+            scc=find_tool(SCC),
+            git=tools.get((GIT, False), GIT),
         )
     except size_gate.SizeCountError as exc:
-        print(f"size count unavailable: {exc}", file=sys.stderr)
+        size_unavailable(checked, str(exc))
         return
-    if args.command == "check":
-        print(f"{counts.code_lines} code lines, limit {counts.code_limit}")
-        print(f"{counts.raw_lines} raw lines, limit {counts.raw_limit}")
+    size_gate.print_counts(args.command, counts, head_branch)
     if counts.failed is not None:
-        count, limit = (
-            (counts.code_lines, counts.code_limit)
-            if counts.failed == "code"
-            else (counts.raw_lines, counts.raw_limit)
-        )
-        why = f"{count} lines, limit {limit}: split into stacked PRs"
-        if dry_run:
-            print(f"warning: {args.draft}:1: {why}", file=sys.stderr)
-            return
-        checked.problems.append((1, why))
-        print(f"{args.draft}:1: {why}")
+        _report_size_excess(args.draft, checked, counts, dry_run=dry_run)
 
 
 def command(args: argparse.Namespace, env: Mapping[str, str]) -> int:
     """Resolve the tools for check and create before running the subcommand."""
+    if args.command == "create" and not require_git_hooks(env):
+        return 1
     if args.command not in ("check", "create"):
         return _run_command(args, env)
-    names = (COG, *(name for name, _, _ in LINTERS), GIT)
+    names = (COG, *(name for name, _, _ in LINTERS), GIT, SCC)
     unwrapped = (GITLEAKS,)
     if args.command == "create":
         names += (GITLEAKS, GH)
     paths = find_tools(names, unwrapped=unwrapped)
-    # Not required: without scc the size count only warns.
-    with contextlib.suppress(SystemExit):
-        paths.update(find_tools((SCC,)))
     token = _TOOL_PATHS.set({(name, name in unwrapped): p for name, p in paths.items()})
     try:
         return _run_command(args, env)
@@ -2199,11 +2129,16 @@ def command(args: argparse.Namespace, env: Mapping[str, str]) -> int:
 
 def _run_command(args: argparse.Namespace, env: Mapping[str, str]) -> int:
     """Check the draft and carry out the requested action."""
+    if args.command == "create":
+        code, branch = git("branch", "--show-current")
+        if code or not branch:
+            print("tbhbdev alpha pr: cannot read the current branch", file=sys.stderr)
+            return 1
+        if host_names.contains_host_name(branch, settings.known_host_names()):
+            print("tbhbdev alpha pr: branch name contains a host name", file=sys.stderr)
+            return 1
     checked = read_checked(args.draft)
     if args.command in ("check", "create"):
-        # One read of the default branch feeds the size count, the trailers, and
-        # `gh --base`, so a remote change mid-run can't split them.
-        checked.meta.setdefault("base", base_of(checked.meta))
         check_size(args, checked)
     if checked.problems:
         return 1
@@ -2336,6 +2271,8 @@ def main(
         return by_pr[args.command](args.pr)
     try:
         return command(args, env)
+    except userconfig.ConfigError as exc:
+        print(f"tbhbdev alpha pr: {exc}", file=sys.stderr)
     except agent_identity.AttributionError:
         print(
             "tbhbdev alpha pr: Attribution couldn't be resolved. Retry the pull "
@@ -2343,4 +2280,4 @@ def main(
             "finishes and its session record is available.",
             file=sys.stderr,
         )
-        return 1
+    return 1

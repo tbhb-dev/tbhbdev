@@ -1,0 +1,13 @@
+---
+# macOS keeps the token in its keychain, which tbhbdev.secrets.token() reads.
+# Linux keeps it in an agent-owned 0600 file, because a headless keyring has
+# no useful protection beyond that.
+connect_token_storage: "{{ 'native' if ansible_facts.system == 'Darwin' else 'file' }}"
+connect_token_home: "{{ ('/Users/' if ansible_facts.system == 'Darwin' else '/home/') + 'agent' }}"
+# tools reads the Linux file at this fixed path, whatever XDG_CONFIG_HOME says.
+connect_token_file: >-
+  {{ [connect_token_home, '.config', 'tbhbdev'] | join('/') }}/{{
+  'connect-token' if ansible_facts.system == 'Darwin' else 'secrets/connect-token' }}
+# The pipe lookup always runs on the controller, as its current account.
+# tbhbdev secret reads Connect using that account's keychain, without op.
+connect_token_lookup_command: env -u SSH_AUTH_SOCK tbhbdev secret read

@@ -1,0 +1,11 @@
+---
+- name: Prepare
+  hosts: all
+  gather_facts: false
+  become: true
+  tasks:
+    - name: Occupy the fixed uid
+      ansible.builtin.user:
+        name: clash
+        uid: 24368
+        group: root
