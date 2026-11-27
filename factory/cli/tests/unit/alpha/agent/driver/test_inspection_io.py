@@ -28,7 +28,14 @@ def test_unsandboxed_inspection_reads_the_host_output(
     options = ["--ref", COMMIT] if profile == "review" else []
     assert (
         launch(
-            remote, "--ops", "--unsandboxed", "o/r#1", "--profile", profile, *options
+            remote,
+            "--account",
+            "ops",
+            "--unsandboxed",
+            "o/r#1",
+            "--profile",
+            profile,
+            *options,
         )
         == 0
     )
@@ -60,7 +67,7 @@ def test_timed_out_log_reads_the_run_log_without_git(
 def test_unsandboxed_build_diff_inspects_commits(
     remote: Remote, capsys: pytest.CaptureFixture[str], ops: bool
 ) -> None:
-    options = ["--ops"] if ops else []
+    options = ["--account", "ops"] if ops else []
     assert launch(remote, "--unsandboxed", "o/r#1", *options) == 0
     remote.file(".out.final", "report without patches\n")
     capsys.readouterr()

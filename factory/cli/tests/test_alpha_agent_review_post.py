@@ -24,8 +24,8 @@ from tbhbdev.alpha.identity.commit import grammar as identity_commit_grammar
 if TYPE_CHECKING:
     from pathlib import Path
 
-    from tbhbdev.alpha.agent import run_host
     from tbhbdev.alpha.agent.model import Settings
+    from tbhbdev.alpha.agent.run_host import state
 
 pytestmark = pytest.mark.usefixtures("review_cue")  # noqa: V107
 
@@ -49,7 +49,7 @@ def draft(event: str = "COMMENT", head: str = HEAD, *, findings: bool = False) -
 
 def make(
     tmp_path: Path, text: str | None, name: str = "review-7.md"
-) -> tuple[run_host.Run, run_host.Prepared]:
+) -> tuple[state.Run, state.Prepared]:
     workspace = tmp_path / "ws"
     directory = workspace / ".git" / "tbhb-alpha"
     directory.mkdir(parents=True)
@@ -83,8 +83,8 @@ def make(
         paths=SimpleNamespace(worktree=str(workspace)), start=None
     )
     return (
-        cast("run_host.Run", run),
-        cast("run_host.Prepared", prepared),
+        cast("state.Run", run),
+        cast("state.Prepared", prepared),
     )
 
 
@@ -335,7 +335,7 @@ def test_a_review_accepts_each_verdict_line_form(
 
 @pytest.mark.parametrize(
     ("kind", "schema"),
-    [(RunKind.EXEC, False), (RunKind.EXEC, True), (RunKind.START, False)],
+    [(RunKind.EXEC, False), (RunKind.EXEC, True)],
 )
 def test_review_post_without_a_codex_final_file(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, kind: RunKind, *, schema: bool
@@ -763,12 +763,12 @@ def test_review_launch_and_post_share_the_effort_rule(  # noqa: PLR0913, PLR0917
     if expected is None:
         message = f"request effort {effort!r} is unsupported for {harness.value}"
         with pytest.raises(Invalid, match=message):
-            requests.validate(run.request, host_allows_unsandboxed=False)
+            requests.validate(run.request)
         monkeypatch.setattr(credentials, "review_post_token", mint_token)
         api = Api(monkeypatch)
         assert not review_post.posted(run, prepared)
         assert run.files.path("log").read_text() == f"review not posted: {message}\n"
         assert api.calls == []
     else:
-        requests.validate(run.request, host_allows_unsandboxed=False)
+        requests.validate(run.request)
         assert expected in review_post.stamp(run)

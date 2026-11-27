@@ -628,7 +628,7 @@ def run_tools(
     binary = tmp_path / "bin"
     binary.mkdir()
     write_fake(
-        binary / "tbhbdev",
+        binary / "fake-agent-cli",
         "import sys\n"
         "from tbhbdev.alpha.pre_push_guard import main\n"
         "if sys.argv[1:3] == ['alpha', 'identity']:\n"
@@ -636,12 +636,11 @@ def run_tools(
         "assert sys.argv[1:3] == ['alpha', 'pre-push-guard']\n"
         "sys.exit(main(sys.argv[3:], 'pre-push-guard'))\n",
     )
+    (binary / "tbhbdev").symlink_to("fake-agent-cli")
     monkeypatch.setenv("PATH", f"{binary}{os.pathsep}{os.environ['PATH']}")
     monkeypatch.setenv(
         "PYTHONPATH", pythonpath(Path(pre_push_guard.__file__).parents[2])
     )
-    # The fake tool's script must not shadow the package it imports.
-    monkeypatch.setenv("PYTHONSAFEPATH", "1")
     # Keep the installed hook's interpreter path within the shebang limit.
     prefix = tmp_path / "python"
     prefix.symlink_to(Path(sys.base_prefix), target_is_directory=True)

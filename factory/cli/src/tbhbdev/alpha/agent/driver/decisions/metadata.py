@@ -68,7 +68,7 @@ def parse_record(settings: Settings, name: str, text: str) -> Run:
     )
     # Records from before the limits check have no such field.
     ignore_limits = record.pop("ignore_limits", False)
-    run = request.parse(record, host_allows_unsandboxed=True)
+    run = request.parse(record)
     result = Run(name, host, run, started, owner)
     result.launched_by = launched_by
     result.ignore_limits = bool(ignore_limits)

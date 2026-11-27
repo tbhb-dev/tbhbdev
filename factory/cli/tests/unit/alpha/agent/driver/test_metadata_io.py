@@ -40,7 +40,7 @@ def test_the_launch_lock_excludes_a_second_holder() -> None:
 
 
 def test_metadata_round_trip_and_exclusive_create(remote: Remote) -> None:
-    options = ("--ops", "--unsandboxed", "o/r#1")
+    options = ("--account", "ops", "--unsandboxed", "o/r#1")
     assert launch(remote, *options) == 0
     run = metadata.load(CONFIG, "sample")
     assert run.host.account == "ops"

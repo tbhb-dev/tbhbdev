@@ -91,7 +91,7 @@ commands:
   verify-range BASE TIP [-C PATH]: check every agent commit in a range
   version-check [--host NAME ...] [--expect SHA|latest] [--json]: compare the
                installed build on each host
-  agent        exec | wait | status | kill | clean | keep: headless runs
+  agent        exec | wait | status | kill | clean: headless runs
   run-stop-hook <claude|codex|antigravity>: check whether an exec run can stop
   pre-push-guard REMOTE URL: refuse protected-branch and unfetched-rewrite pushes
   brief        new | check: peer-run briefs with required safeguards

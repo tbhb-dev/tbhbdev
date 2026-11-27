@@ -118,13 +118,6 @@ class RunFiles:
             out.flush()
             os.fsync(out.fileno())
 
-    def snapshot(self) -> dict[str, str]:
-        return {
-            suffix: self.path(suffix).read_text()
-            for suffix in ("phase", "launched", "rc")
-            if self.path(suffix).exists()
-        }
-
 
 def append(root: Path, line: dict[str, object]) -> None:
     """Open the index only after acquiring its stable lock."""

@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import asyncio
-import dataclasses
 import io
 import os
 import shlex
@@ -222,19 +221,14 @@ def test_read_budget(
     ) == transport.Reading("finished", 0, launched=True, session=False, text="answer\n")
 
 
-def test_call_defaults_and_connection_settings(monkeypatch: pytest.MonkeyPatch) -> None:
-    config = dataclasses.replace(
-        settings(),
-        ssh_connect_timeout=5,
-        ssh_keepalive_seconds=7,
-        ssh_keepalive_count_max=9,
-    )
+def test_call_uses_fixed_connection_settings(monkeypatch: pytest.MonkeyPatch) -> None:
+    config = settings()
 
     async def run(args: tuple[str, ...], data: bytes) -> tuple[int, bytes]:
         expected = shlex.split(
-            "/usr/bin/ssh -o BatchMode=yes -o ConnectTimeout=5 "
-            "-o ServerAliveInterval=7 "
-            "-o ServerAliveCountMax=9 -l agent example-linux"
+            "/usr/bin/ssh -o BatchMode=yes -o ConnectTimeout=15 "
+            "-o ServerAliveInterval=30 "
+            "-o ServerAliveCountMax=3 -l agent example-linux"
         )
         assert args == (*expected, "/bin/bash -c true")
         assert data == b""
@@ -285,7 +279,7 @@ def test_timeout_reaps_only_its_ssh_child(
     def executable(_name: str) -> str:
         return str(program)
 
-    monkeypatch.setattr(transport.argv, "executable", executable)
+    monkeypatch.setattr(transport, "executable", executable)
     with pytest.raises(transport.TransportError, match="transport failed"):
         transport.call(settings(), LINUX, ("true",), timeout=0.5)
     pid = int(pid_file.read_text())
