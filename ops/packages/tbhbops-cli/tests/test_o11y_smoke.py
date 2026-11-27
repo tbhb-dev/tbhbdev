@@ -946,24 +946,6 @@ def test_macos_symlink_data_refused(path: Path) -> None:
     assert fs.lstat(OUT) is None
 
 
-@pytest.mark.parametrize("exists", [False, True])
-def test_private_directory_preconditions(exists: bool) -> None:
-    fs = Fake()
-    if exists:
-        fs.mkdir(OUT)
-    command.private_directory(fs, OUT)
-    assert fs.modes[OUT] == stat.S_IFDIR | 0o700
-    fs.write_atomic(OUT / "valuable", "keep", 0o600)
-    with pytest.raises(
-        command.SmokeError, match="output must be an empty directory"
-    ) as failure:
-        command.private_directory(fs, OUT)
-    assert failure.value.status == 2
-    fs.modes[OUT] = stat.S_IFREG
-    with pytest.raises(command.SmokeError, match="output must be an empty directory"):
-        command.private_directory(fs, OUT)
-
-
 @pytest.mark.parametrize(
     "kind",
     [

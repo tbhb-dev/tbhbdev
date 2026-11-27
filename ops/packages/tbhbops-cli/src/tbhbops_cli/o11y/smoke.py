@@ -1237,10 +1237,8 @@ def _finish(
             out.write(smoke.MESSAGES["smoke_diagnostics_cleanup_failed"] + "\n")
 
 
-def _failure(
-    run: Smoke | None, out: TextIO, message: str, *, suffix: str = "\n"
-) -> None:
+def _failure(run: Smoke | None, out: TextIO, message: str) -> None:
     if run is not None:
         run.emit(message)
     else:
-        out.write(message + suffix)
+        out.write(message + "\n")
