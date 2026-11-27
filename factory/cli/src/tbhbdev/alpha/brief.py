@@ -11,6 +11,7 @@ import unicodedata
 from collections import defaultdict
 from pathlib import Path
 
+from tbhbdev.alpha import brief_text
 from tbhbdev.alpha.brief_text import PROSE_BREAK, normalize, prohibiting
 
 HOOK_RULE = (
@@ -130,12 +131,12 @@ PROSE_CONFLICTS = (
     (r"(?<![\w-])(?:prek|pre-commit) install(?![-\w])", "hook install is forbidden"),
 )
 BRANCH_INSTRUCTION = re.compile(
-    rf"(?:\bgit (?:checkout(?: -[bB]|(?!{COMMAND_ARGS} --(?: |$)))"
-    r"|switch(?: -[cC])?|branch) "
+    rf"(?:\b(?P<checkout>git checkout)(?! -[bB]\b|{COMMAND_ARGS} --(?: |$)) "
+    r"|\bgit (?:checkout -[bB]|switch(?: -[cC])?|branch) "
     rf"|\bgit worktree add{COMMAND_ARGS}? -[bB] "
     r"|\b(?:create|switch to|check out|commit on|work on) "
     r"(?:a |the )?branch (?:named )?)"
-    r"[`\"']?([^\s`\"';&|<>()]+)",
+    r"[`\"']?(?P<target>[^\s`\"';&|<>()]+)",
     re.IGNORECASE,
 )
 # A period can be part of a branch name or punctuation after a ref.
@@ -161,7 +162,7 @@ def check_hooks(text: str) -> list[str]:
     """Return hook conflicts in a free-form brief."""
     lines = "\n".join(normalize(line) for line in text.splitlines())
     # Prose can wrap within a prohibition. Shell commands end at a newline.
-    prose = "\n".join(normalize(block) for block in PROSE_BREAK.split(lines))
+    prose = "\n\n".join(normalize(block) for block in PROSE_BREAK.split(lines))
     return [
         f"hook conflict: {reason}"
         for content, rules in ((lines, COMMAND_CONFLICTS), (prose, PROSE_CONFLICTS))
@@ -188,8 +189,10 @@ def branch_instructions(text: str) -> list[str]:
     )
     branches = []
     for match in BRANCH_INSTRUCTION.finditer(text):
-        branch = match[1].rstrip(".,")
+        branch = match["target"].rstrip(".,")
         if not looks_like_branch(branch) or prohibiting(text, *match.span()):
+            continue
+        if match["checkout"] and brief_text.looks_like_checkout_path(branch):
             continue
         branches.append(branch)
     return branches
@@ -204,9 +207,7 @@ def branch_warnings(
 ) -> list[str]:
     """Warn about foreign branch instructions and unfetched agent branch mentions."""
     allowed = "agent/" if run is None else f"agent/{run}"
-    branches = [
-        branch for branch in branch_instructions(text) if not Path(branch).is_file()
-    ]
+    branches = branch_instructions(text)
     if run is not None:
         branches.extend(
             branch

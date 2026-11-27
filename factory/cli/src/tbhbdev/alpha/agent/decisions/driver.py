@@ -5,6 +5,7 @@ from __future__ import annotations
 import math
 import re
 from dataclasses import replace
+from itertools import pairwise
 from typing import TYPE_CHECKING
 
 from tbhbdev.alpha import brief
@@ -14,8 +15,6 @@ from tbhbdev.alpha.brief_text import PROSE_BREAK, prohibiting
 from tbhbdev.alpha.identity import models as identity
 
 if TYPE_CHECKING:
-    from collections.abc import Callable
-
     from tbhbdev.alpha.agent.model import Host, RunRequest, Settings
 
 COMMIT = re.compile(r"[0-9a-f]{40}|[0-9a-f]{64}")
@@ -80,11 +79,16 @@ def _instructions(pattern: re.Pattern[str], prose: str) -> list[str | None]:
 
 
 def _prose_push_targets(prompt: str) -> list[str]:
+    boundaries = [
+        0,
+        *(match.end() for match in PROSE_BREAK.finditer(prompt)),
+        len(prompt),
+    ]
     return [
-        target
-        for block in PROSE_BREAK.split(prompt)
-        for target in _instructions(_PUSH_PROSE, block)
-        if target and brief.looks_like_branch(target)
+        match[1]
+        for start, end in pairwise(boundaries)
+        for match in _PUSH_PROSE.finditer(prompt, start, end)
+        if brief.looks_like_branch(match[1]) and not prohibiting(prompt, *match.span())
     ]
 
 
@@ -111,8 +115,6 @@ def _wrong_build_branches(
     branch: str,
     start_ref: str | None,
     updates: list[str | None],
-    *,
-    is_file: Callable[[str], bool],
 ) -> list[str]:
     selected = [
         target
@@ -135,7 +137,6 @@ def _wrong_build_branches(
         f"the brief directs work to {target}. Use the launcher branch {branch}."
         for target in dict.fromkeys(selected)
         if not target.startswith("refs/heads/") or request.valid_fetch_ref(target)
-        if not is_file(target)
     ]
 
 
@@ -145,11 +146,10 @@ def prompt_launch_problems(
     start_ref: str | None,
     *,
     build_branch: str | None,
-    is_file: Callable[[str], bool],
 ) -> list[str]:
     """Check explicit ref uses and branch update instructions in a launch brief."""
     # Fold line wraps within a paragraph without changing ref case.
-    prose = "\n".join(" ".join(block.split()) for block in PROSE_BREAK.split(prompt))
+    prose = "\n\n".join(" ".join(block.split()) for block in PROSE_BREAK.split(prompt))
     updates = [
         target
         for target in _instructions(_UPDATE, prose)
@@ -167,9 +167,7 @@ def prompt_launch_problems(
     ]
     if build_branch is None:
         return problems
-    problems.extend(
-        _wrong_build_branches(prompt, build_branch, start_ref, updates, is_file=is_file)
-    )
+    problems.extend(_wrong_build_branches(prompt, build_branch, start_ref, updates))
     if start_ref is None and updates:
         target = updates[0] or "<branch>"
         ref = f"refs/heads/{target.removeprefix('refs/heads/')}"

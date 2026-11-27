@@ -44,7 +44,6 @@ def test_prompt_without_a_build_update_or_explicit_ref_problem(
         [],
         None,
         build_branch="agent/sample" if profile is Profile.BUILD else None,
-        is_file=lambda _target: False,
     )
 
 

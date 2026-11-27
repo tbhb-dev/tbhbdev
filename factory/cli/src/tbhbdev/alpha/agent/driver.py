@@ -503,7 +503,6 @@ def checked_prompt(args: argparse.Namespace) -> str:
         available_refs,
         args.start_ref,
         build_branch=build_branch,
-        is_file=lambda target: Path(target).is_file(),
     )
     if problems:
         telemetry.attributes(**{"tbhb.agent.outcome": "refused"})
