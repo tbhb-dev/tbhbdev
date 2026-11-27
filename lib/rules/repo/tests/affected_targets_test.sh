@@ -98,6 +98,13 @@ case $FAKE in
   rules_tagged) echo '@@tbhb_rules_structurizr+//private:manual_test' ;;
   space) printf '//a:with space\n//b:t\n' ;;
   none) ;;
+  dispatch)
+    for source in lib cmd; do
+      if ! git diff --quiet "${!#}" HEAD -- ":/src/$source.go"; then
+        echo "//go:${source}_test"
+      fi
+    done
+    ;;
   fail) git checkout -q "${!#}" && straggle "${!#}" && echo 'ERROR: cquery failed' >&2 && exit 3 ;;
   hang) git checkout -q "${!#}" && straggle "${!#}" && exec sleep 30 ;;
   mixed) git -C ../lib checkout -q HEAD~ && git checkout -q "${!#}" -- :/ && exit 3 ;;
@@ -244,9 +251,29 @@ refuse() {
 
 unset HEAD_SHA
 export BASE_SHA=$base FAKE=two TIMEOUT_SECONDS=''
-for event in push schedule workflow_dispatch ''; do
+for event in push schedule ''; do
   run "event '$event'" "$event" "$docs_head"
+  [[ $reason == "a '$event' event tests everything" ]] || fail 'unsupported event: wrong reason'
 done
+
+# A merge head distinguishes an explicit older base from either parent.
+git checkout -q "$base"
+dispatch_side=$(commit src/cmd.go)
+git checkout -q "$docs_head"
+dispatch_parent=$(commit src/lib.go)
+git -c user.name=test -c user.email=test@example.invalid -c commit.gpgsign=false \
+  merge -q --no-ff --no-edit "$dispatch_side"
+dispatch_head=$(git rev-parse HEAD)
+BASE_SHA=$base FAKE=dispatch run 'dispatch with explicit base' workflow_dispatch "$dispatch_head" false 2
+[[ $targets == $'//go:lib_test\n//go:cmd_test' ]] || fail 'dispatch explicit base: wrong targets'
+BASE_SHA='' FAKE=dispatch run 'dispatch with default base' workflow_dispatch "$dispatch_head" false 1
+[[ $targets == '//go:cmd_test' ]] || fail 'dispatch default base: wrong targets'
+last=$(tail -n 1 "$ARGS_LOG")
+[[ $last == "$dispatch_parent" ]] || fail 'dispatch default base: expected the first parent SHA'
+BASE_SHA=0123456789abcdef0123456789abcdef01234567 run 'dispatch with missing base' workflow_dispatch "$dispatch_head"
+[[ $reason == *'missing from the checkout'* ]] || fail 'dispatch missing base: wrong reason'
+BASE_SHA='' run 'dispatch of root commit' workflow_dispatch "$base"
+[[ $reason == *"'HEAD^' is missing from the checkout"* ]] || fail 'dispatch of root commit: wrong reason'
 
 run 'pull request' pull_request "$docs_head" false 2
 [[ $targets == $'//go:lib_test\n//go:cmd_test' ]] || fail 'targets output'
