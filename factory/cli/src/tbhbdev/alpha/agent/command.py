@@ -44,7 +44,7 @@ def main(argv: list[str], prog: str) -> int:
 
 def dispatch(args: argparse.Namespace | None, prog: str) -> int:
     if args is not None and args.verb == "send" and args.harness == "claude":
-        print(app_server.CLAUDE_UNAVAILABLE, file=sys.stderr)
+        print(driver.CLAUDE_UNAVAILABLE, file=sys.stderr)
         return 1
     try:
         loaded = settings.load()

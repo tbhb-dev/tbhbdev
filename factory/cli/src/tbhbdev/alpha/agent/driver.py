@@ -19,7 +19,6 @@ from tbhbdev import telemetry, version
 from tbhbdev.alpha import brief
 from tbhbdev.alpha.agent import (
     admission,
-    app_server,
     launcher,
     render,
     runfiles,
@@ -42,6 +41,7 @@ if TYPE_CHECKING:
 
 
 MAX_LIVE_REVIEWS = 4
+CLAUDE_UNAVAILABLE = "Claude delivery is not built"
 
 
 class Run:
@@ -1005,10 +1005,13 @@ def send(settings: Settings, name: str, text: str) -> int:
         raise Invalid(message) from None
     if run.request.harness is not Harness.CODEX:
         errors = {
-            Harness.CLAUDE: app_server.CLAUDE_UNAVAILABLE,
+            Harness.CLAUDE: CLAUDE_UNAVAILABLE,
             Harness.AGY: f"{name}: send requires a Codex run",
         }
         raise Invalid(errors[run.request.harness])
+    if kind := secret_kind(text):
+        message = f"steering message refused: {kind}"
+        raise Invalid(message)
     script = remote.owned(name) + (
         f"exec {remote.program(run.host)} alpha agent send-host {name}\n"
     )

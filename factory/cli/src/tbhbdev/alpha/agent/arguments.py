@@ -114,9 +114,6 @@ def parser(prog: str) -> argparse.ArgumentParser:
             sub.add_argument("--force", action="store_true")
     send = verbs.add_parser("send", help="steer an active Codex run")
     send.add_argument("--harness", choices=("codex", "claude"))
-    send.add_argument(
-        "--steer", action="store_true", help="steer the active turn (default)"
-    )
     send.add_argument("name", metavar="RUN")
     send.add_argument("message", metavar="MESSAGE")
     verbs.add_parser(

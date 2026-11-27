@@ -172,12 +172,27 @@ def test_send_routes_message_over_owned_ssh(
     assert launch(remote, "--steer") == 0
     owner = driver.load(CONFIG, "sample").owner
     remote.configure(ssh=[reply])
-    assert command("send", "--steer", "one\ntwo") == int(bool(error))
+    assert command("send", "one\ntwo") == int(bool(error))
     assert error in capsys.readouterr().err
     call = remote.records("ssh")[-1]
     assert "send-host sample" in str(call["args"])
     assert "one\ntwo" not in str(call["args"])
     assert base64.b64decode(str(call["stdin"])) == f"{owner}\none\ntwo".encode()
+
+
+def test_send_with_secret_is_refused_before_ssh(
+    remote: Remote, capsys: pytest.CaptureFixture[str]
+) -> None:
+    remote.configure(steer=True)
+    assert launch(remote, "--steer") == 0
+    calls = remote.records("ssh", limits=True)
+    capsys.readouterr()
+    assert command("send", "Use op://example/item/field") == 1
+    assert capsys.readouterr() == (
+        "",
+        "tbhbdev alpha agent: steering message refused: 1Password reference\n",
+    )
+    assert remote.records("ssh", limits=True) == calls
 
 
 def test_send_refuses_unknown_run(

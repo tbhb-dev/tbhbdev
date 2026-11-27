@@ -4,8 +4,8 @@ generated:
   - role: generated
     harness: codex:0.171.0
     model: openai:gpt-6.2-sol
-    session: sha-256-64:e447a452eb048f52
-    at: "2026-11-27T01:38:46Z"
+    session: sha-256-64:3ad87b5659ac3b9c
+    at: "2026-11-27T05:23:18Z"
 status: stable
 tags: [alpha]
 title: Agent
@@ -33,7 +33,7 @@ It refuses either input with a 1Password reference (`op://`), a private key head
 It exits nonzero and reports the input and the refusal kind without including the matched text.
 
 Launch a Codex build with `agent exec --steer` to accept messages while its turn is active.
-Run `agent send RUN "MESSAGE"` to steer that turn. You can also pass `--steer` to `send`.
+Run `agent send RUN "MESSAGE"` to steer that turn. `send` applies the same credential check as `exec` before contacting the run host.
 Steering requires a build without `--schema`. If the run is unknown or its thread has no active turn, `send` returns an error.
 `agent send --harness claude RUN "MESSAGE"` prints `Claude delivery is not built` and exits with status 1.
 
