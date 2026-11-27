@@ -1,13 +1,14 @@
 # SPDX-License-Identifier: Apache-2.0
 # Copyright Tony Burns
 
-load("@rules_python//python:defs.bzl", "py_binary")
+load("@rules_python//python:defs.bzl", "py_binary", py_test_without_conftest = "py_test")
 load("//factory/cli:python.bzl", "cli_py_library")
 load(":pytest.bzl", "cli_py_test")
 
 # gazelle:python_root
 # gazelle:python_resolve_sibling_imports true
 # gazelle:map_kind py_test cli_py_test //factory/cli/tests:pytest.bzl
+# gazelle:exclude test_alpha_install_statusline_decisions.py
 # gazelle:resolve py coverage @cli_pip//coverage
 # gazelle:resolve py test_admin_request :test_admin_request_support
 # gazelle:resolve py test_alpha_agent_codex_install :test_alpha_agent_codex_install_support
@@ -1175,6 +1176,28 @@ cli_py_test(
     deps = [
         ":conftest",
         "//factory/cli/src/tbhbdev/alpha:install",
+        "//factory/cli/src/tbhbdev/alpha:install_statusline_decisions",
+        "@cli_pip//pytest",
+    ],
+)
+
+# The shared conftest writes temporary files and patches CLI modules.
+py_test_without_conftest(
+    name = "test_alpha_install_statusline_decisions",
+    srcs = ["test_alpha_install_statusline_decisions.py"],
+    args = [
+        "-c",
+        "factory/cli/pyproject.toml",
+        "--noconftest",
+        "-p",
+        "no:cacheprovider",
+        "factory/cli/tests/test_alpha_install_statusline_decisions.py",
+    ],
+    data = ["//factory/cli:pyproject.toml"],
+    legacy_create_init = False,
+    main_module = "pytest",
+    deps = [
+        "//factory/cli/src/tbhbdev/alpha:install_statusline_decisions",
         "@cli_pip//pytest",
     ],
 )
