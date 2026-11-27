@@ -11,8 +11,8 @@ import pytest
 
 from tbhbdev import adr, cli
 from tbhbdev.adr_decision import DECIDER_FIELD, REVERSIBILITY_FIELD, Decision
-from tbhbdev.alpha.pull_request_frontmatter import parse_frontmatter
 from tbhbdev.content import Json, Refused
+from tbhbdev.pull_request.frontmatter import parse_frontmatter
 
 PROG = "tbhbdev adr"
 NEW = ["new", "--from-decision", "1"]

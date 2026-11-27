@@ -19,9 +19,9 @@ from typing import TYPE_CHECKING
 from tbhbdev import runner
 from tbhbdev.adr_decision import Decision
 from tbhbdev.alpha.pull_request import origin_repository
-from tbhbdev.alpha.pull_request_frontmatter import parse_frontmatter
 from tbhbdev.alpha.repo_bootstrap import repo_name
 from tbhbdev.content import Client, GhClient, Refused, check_decision_record
+from tbhbdev.pull_request.frontmatter import parse_frontmatter
 
 if TYPE_CHECKING:
     from collections.abc import Callable

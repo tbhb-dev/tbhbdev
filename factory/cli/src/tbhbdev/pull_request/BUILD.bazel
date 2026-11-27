@@ -1,0 +1,36 @@
+load("//factory/cli:python.bzl", "cli_py_library")
+
+# SPDX-License-Identifier: Apache-2.0
+# Copyright Tony Burns
+
+filegroup(
+    name = "package_files",
+    srcs = glob(
+        ["**"],
+        exclude = ["BUILD.bazel"],
+    ),
+    visibility = ["//factory/cli:__pkg__"],
+)
+
+cli_py_library(
+    name = "__init__",
+    srcs = ["__init__.py"],
+    imports = ["../.."],
+    visibility = ["//factory/cli:__subpackages__"],
+)
+
+cli_py_library(
+    name = "frontmatter",
+    srcs = ["frontmatter.py"],
+    imports = ["../.."],
+    pyi_deps = ["@cli_pip//jsonschema"],
+    visibility = ["//factory/cli:__subpackages__"],
+    deps = ["@cli_pip//pyyaml"],
+)
+
+cli_py_library(
+    name = "markdown",
+    srcs = ["markdown.py"],
+    imports = ["../.."],
+    visibility = ["//factory/cli:__subpackages__"],
+)

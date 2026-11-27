@@ -31,8 +31,8 @@ cli_py_library(
         ":content",
         ":runner",
         "//factory/cli/src/tbhbdev/alpha:pull_request",
-        "//factory/cli/src/tbhbdev/alpha:pull_request_frontmatter",
         "//factory/cli/src/tbhbdev/alpha:repo_bootstrap",
+        "//factory/cli/src/tbhbdev/pull_request:frontmatter",
     ],
 )
 

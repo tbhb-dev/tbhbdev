@@ -248,7 +248,7 @@ cli_py_test(
         "//factory/cli/src/tbhbdev:adr_decision",
         "//factory/cli/src/tbhbdev:cli",
         "//factory/cli/src/tbhbdev:content",
-        "//factory/cli/src/tbhbdev/alpha:pull_request_frontmatter",
+        "//factory/cli/src/tbhbdev/pull_request:frontmatter",
         "@cli_pip//pytest",
     ],
 )
@@ -1366,9 +1366,10 @@ cli_py_test(
         "//factory/cli/src/tbhbdev/alpha:identity",
         "//factory/cli/src/tbhbdev/alpha:opened",
         "//factory/cli/src/tbhbdev/alpha:pull_request",
-        "//factory/cli/src/tbhbdev/alpha:pull_request_frontmatter",
         "//factory/cli/src/tbhbdev/alpha:secret_scan",
         "//factory/cli/src/tbhbdev/alpha:size_gate",
+        "//factory/cli/src/tbhbdev/pull_request:frontmatter",
+        "//factory/cli/src/tbhbdev/pull_request:markdown",
         "@cli_pip//hypothesis",
         "@cli_pip//jsonschema",
         "@cli_pip//pytest",
@@ -1380,8 +1381,19 @@ cli_py_test(
     srcs = ["test_alpha_pull_request_frontmatter.py"],
     # keep: The shared conftest writes files for its autouse fixtures.
     deps = [
-        "//factory/cli/src/tbhbdev/alpha:pull_request_frontmatter",
+        "//factory/cli/src/tbhbdev/pull_request:frontmatter",
         "@cli_pip//jsonschema",
+        "@cli_pip//pytest",
+    ],
+)
+
+cli_py_test(
+    name = "test_alpha_pull_request_markdown",
+    srcs = ["test_alpha_pull_request_markdown.py"],
+    # keep: The shared conftest writes files for its autouse fixtures.
+    deps = [
+        "//factory/cli/src/tbhbdev/pull_request:markdown",
+        "@cli_pip//hypothesis",
         "@cli_pip//pytest",
     ],
 )
@@ -1446,9 +1458,10 @@ cli_py_test(
         ":cue_fixtures",
         "//factory/cli/src/tbhbdev/alpha:__init__",
         "//factory/cli/src/tbhbdev/alpha:pull_request",
-        "//factory/cli/src/tbhbdev/alpha:pull_request_frontmatter",
         "//factory/cli/src/tbhbdev/alpha:review",
         "//factory/cli/src/tbhbdev/alpha:review_doc",
+        "//factory/cli/src/tbhbdev/pull_request:frontmatter",
+        "//factory/cli/src/tbhbdev/pull_request:markdown",
         "//factory/cli/tests:test_alpha_pull_request_support",
         "@cli_pip//jsonschema",
         "@cli_pip//pytest",
@@ -1586,6 +1599,7 @@ cli_py_test(
         "//factory/cli/src/tbhbdev/alpha:pull_request",
         "//factory/cli/src/tbhbdev/alpha:secret_scan",
         "//factory/cli/src/tbhbdev/alpha:squash_merge",
+        "//factory/cli/src/tbhbdev/pull_request:markdown",
         "@cli_pip//hypothesis",
         "@cli_pip//pytest",
     ],

@@ -91,9 +91,20 @@ from urllib.parse import quote
 
 from tbhbdev.alpha import identity as agent_identity
 from tbhbdev.alpha import pull_request as pr
+from tbhbdev.pull_request.markdown import (
+    FENCE,
+    INLINE_CODE,
+    fence_flags,
+    heading_of,
+    is_blank,
+    scan,
+    split_blocks,
+)
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
+
+    from tbhbdev.pull_request.markdown import Line
 
 WIDTH = 72
 CODE_INDENT = "    "
@@ -224,7 +235,7 @@ def inline(text: str, refs: dict[str, int]) -> str:
         spans.append(match[0])
         return f"\x00{len(spans) - 1}\x00"
 
-    held = pr.INLINE_CODE.sub(hold, text)
+    held = INLINE_CODE.sub(hold, text)
     return PLACEHOLDER.sub(lambda m: spans[int(m[1])], prose(held, refs))
 
 
@@ -239,7 +250,7 @@ class Pending:
 
 def close_fence(raw: str, marker: str) -> bool:
     """True when ``raw`` closes a fence opened with ``marker``."""
-    match = pr.FENCE.match(raw)
+    match = FENCE.match(raw)
     return bool(
         match
         and raw.strip() == match[1]
@@ -276,7 +287,7 @@ class Renderer:
             self.in_list = item
         self.pending = None
 
-    def feed_code(self, line: pr.Line, code: list[str]) -> None:
+    def feed_code(self, line: Line, code: list[str]) -> None:
         """Take a line inside a fence: indent it, or close the block."""
         if close_fence(line.raw, self.marker):
             self.blocks.append("\n".join(code))
@@ -293,7 +304,7 @@ class Renderer:
         else:
             self.blocks.append(row)
 
-    def feed(self, line: pr.Line, row: bool) -> None:  # noqa: FBT001
+    def feed(self, line: Line, row: bool) -> None:  # noqa: FBT001
         """Take the next line of the section; ``row`` marks a table row."""
         if row:
             self.feed_row(line.text.strip())
@@ -301,16 +312,16 @@ class Renderer:
             self.feed_other(line)
         self.in_table = row
 
-    def feed_other(self, line: pr.Line) -> None:
+    def feed_other(self, line: Line) -> None:
         """Take a line that is not a table row."""
         if self.code is not None:
             self.feed_code(line, self.code)
         elif line.code:
             self.flush()
             self.in_list = False  # pragma: no mutate -- None is as falsy
-            self.marker = pr.FENCE.findall(line.raw)[0]  # line.code opens a fence
+            self.marker = FENCE.findall(line.raw)[0]  # line.code opens a fence
             self.code = []
-        elif pr.is_blank(line):
+        elif is_blank(line):
             self.flush()
             self.in_list = False  # pragma: no mutate -- None is as falsy
         elif item := ITEM.fullmatch(line.text):
@@ -318,14 +329,14 @@ class Renderer:
             prefix = f"{item[1]}{item[2]} "
             self.pending = Pending(prefix, " " * len(prefix), [item[3]])
         elif self.pending is None:
-            heading = pr.heading_of(line)
+            heading = heading_of(line)
             text = heading[1] if heading else line.text.strip()
             self.pending = Pending("", "", [text])
         else:
             self.pending.parts.append(line.text.strip())
 
 
-def table_rows(lines: Sequence[pr.Line]) -> list[bool]:
+def table_rows(lines: Sequence[Line]) -> list[bool]:
     """Flag each line that is a row of a Markdown table.
 
     A table is a ``|`` header row, then a delimiter row such as ``|---|``,
@@ -346,7 +357,7 @@ def table_rows(lines: Sequence[pr.Line]) -> list[bool]:
     return rows
 
 
-def render(lines: Sequence[pr.Line], refs: dict[str, int]) -> list[str]:
+def render(lines: Sequence[Line], refs: dict[str, int]) -> list[str]:
     """Render section lines as blocks of plain text, one string per block."""
     renderer = Renderer(refs, [])
     rows = table_rows(lines)
@@ -356,7 +367,7 @@ def render(lines: Sequence[pr.Line], refs: dict[str, int]) -> list[str]:
     return renderer.blocks
 
 
-def drop_opened(lines: Sequence[pr.Line]) -> list[pr.Line]:
+def drop_opened(lines: Sequence[Line]) -> list[Line]:
     """The lines without the ``Opened-by`` line of the final trailer paragraph.
 
     The paragraph is the trailing run of LLM trailer and ``Opened-by`` lines
@@ -364,7 +375,7 @@ def drop_opened(lines: Sequence[pr.Line]) -> list[pr.Line]:
     ``check_trailers`` to refuse.
     """
     end = len(lines)
-    while end and pr.is_blank(lines[end - 1]):
+    while end and is_blank(lines[end - 1]):
         end -= 1
     run = takewhile(
         lambda line: (
@@ -373,7 +384,7 @@ def drop_opened(lines: Sequence[pr.Line]) -> list[pr.Line]:
         reversed(lines[:end]),
     )
     start = end - len(list(run))
-    if start and not pr.is_blank(lines[start - 1]):
+    if start and not is_blank(lines[start - 1]):
         return list(lines)
     return [
         line
@@ -382,10 +393,10 @@ def drop_opened(lines: Sequence[pr.Line]) -> list[pr.Line]:
     ]
 
 
-def split_trailers(lines: Sequence[pr.Line]) -> tuple[list[pr.Line], list[str]]:
+def split_trailers(lines: Sequence[Line]) -> tuple[list[Line], list[str]]:
     """Split off the body's final paragraph when it is all LLM trailers."""
     end = len(lines)
-    while end and pr.is_blank(lines[end - 1]):
+    while end and is_blank(lines[end - 1]):
         end -= 1
     start = end
     while (
@@ -394,17 +405,17 @@ def split_trailers(lines: Sequence[pr.Line]) -> tuple[list[pr.Line], list[str]]:
         and agent_identity.LINE.match(lines[start - 1].text)
     ):
         start -= 1
-    if start == end or (start and not pr.is_blank(lines[start - 1])):
+    if start == end or (start and not is_blank(lines[start - 1])):
         return list(lines), []
     return list(lines[:start]), [line.raw.rstrip() for line in lines[start:end]]
 
 
-def body_blocks(lines: Sequence[pr.Line], refs: dict[str, int]) -> list[str]:
+def body_blocks(lines: Sequence[Line], refs: dict[str, int]) -> list[str]:
     """The sections of a PR body as plain-text parts, empty sections dropped.
 
     A section is its heading line, then its blocks with a blank line between.
     """
-    preamble, sections, _ = pr.split_blocks(lines)
+    preamble, sections, _ = split_blocks(lines)
     parts = ["\n\n".join(render(preamble, refs))]
     for section in sections:
         content = render(section.lines, refs)
@@ -414,7 +425,7 @@ def body_blocks(lines: Sequence[pr.Line], refs: dict[str, int]) -> list[str]:
 
 
 def check_trailers(
-    trailers: Sequence[str], text_lines: Sequence[pr.Line], *, agent: bool = False
+    trailers: Sequence[str], text_lines: Sequence[Line], *, agent: bool = False
 ) -> None:
     """Refuse stray or invalid trailers and an agent PR's missing final block."""
     problems = [why for _, why in pr.trailer_problems(text_lines)]
@@ -493,8 +504,8 @@ def build_message(
     subject = f"{title} (#{number})"
     if problems := pr.title_problems(subject, WIDTH):
         stop(f"the commit subject {subject!r} fails: {'; '.join(problems)}")
-    lines, _ = pr.scan(body.splitlines(), 1)  # pragma: no mutate -- numbers unused
-    _, unclosed = pr.fence_flags(body.splitlines())
+    lines, _ = scan(body.splitlines(), 1)  # pragma: no mutate -- numbers unused
+    _, unclosed = fence_flags(body.splitlines())
     if unclosed is not None:
         stop(
             f"the PR body is malformed: line {unclosed + 1}: code fence is never closed"

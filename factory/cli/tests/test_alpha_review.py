@@ -16,7 +16,8 @@ from test_alpha_pull_request import world as world  # noqa: PLC0414
 from tbhbdev import alpha
 from tbhbdev.alpha import pull_request as pr
 from tbhbdev.alpha import review, review_doc
-from tbhbdev.alpha.pull_request_frontmatter import parse_frontmatter
+from tbhbdev.pull_request import markdown
+from tbhbdev.pull_request.frontmatter import parse_frontmatter
 
 pytestmark = pytest.mark.usefixtures("review_cue")  # noqa: V107
 
@@ -494,7 +495,7 @@ def test_dispatch_forwards_arguments_program_and_status() -> None:
 
 
 def test_explicit_empty_sections_do_not_load_the_repository_scheme() -> None:
-    anchor = pr.Line(9, "", "", code=False)
+    anchor = markdown.Line(9, "", "", code=False)
     with patch.object(pr, "load_sections") as load:
         assert pr.body_problems([], anchor, []) == []
         load.assert_not_called()

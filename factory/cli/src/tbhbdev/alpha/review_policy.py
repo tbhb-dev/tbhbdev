@@ -12,7 +12,7 @@ from typing import TYPE_CHECKING, NamedTuple, cast
 from jsonschema import Draft202012Validator
 from jsonschema.exceptions import SchemaError
 
-from tbhbdev.alpha import pull_request_frontmatter as frontmatter
+from tbhbdev.pull_request import frontmatter
 
 if TYPE_CHECKING:
     from collections.abc import Callable

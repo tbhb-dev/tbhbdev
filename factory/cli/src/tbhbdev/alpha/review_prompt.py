@@ -8,9 +8,9 @@ from string import Template
 from typing import TYPE_CHECKING, cast
 
 from tbhbdev.alpha import review
-from tbhbdev.alpha.pull_request_frontmatter import parse_frontmatter
 from tbhbdev.alpha.review_doc import ReviewError
 from tbhbdev.alpha.review_policy import CHECKLIST
+from tbhbdev.pull_request.frontmatter import parse_frontmatter
 
 if TYPE_CHECKING:
     from collections.abc import Mapping

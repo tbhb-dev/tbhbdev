@@ -28,6 +28,7 @@ from tbhbdev.alpha import identity as agent_identity
 from tbhbdev.alpha import pull_request as pr
 from tbhbdev.alpha import squash_merge as sm
 from tbhbdev.alpha.secret_scan import REPO_RULES, without_name_rules
+from tbhbdev.pull_request import markdown
 
 SRC = Path(sm.__file__).parents[2]
 
@@ -350,8 +351,8 @@ def test_a_delimiter_row_needs_no_outer_bars() -> None:
 
 def test_a_table_may_end_on_its_delimiter_row() -> None:
     lines = [
-        pr.Line(1, "| a |", "| a |", code=False),
-        pr.Line(2, "|-|", "|-|", code=False),
+        markdown.Line(1, "| a |", "| a |", code=False),
+        markdown.Line(2, "|-|", "|-|", code=False),
     ]
     assert sm.render(lines, {}) == ["| a |\n|-|"]
 
@@ -402,7 +403,7 @@ def test_an_empty_body_is_a_subject_only() -> None:
 )
 def test_rendered_prose_is_within_the_limit(text: str) -> None:
     text = text.replace("\\", "").replace("*", "").replace("_", "").replace("[", "")
-    out = sm.render([pr.Line(1, text, text, code=False)], {})
+    out = sm.render([markdown.Line(1, text, text, code=False)], {})
     for line in "\n".join(out).splitlines():
         assert len(line) <= sm.WIDTH or len(sm.TOKEN.findall(line)) == 1
 
@@ -1228,7 +1229,7 @@ def test_an_agent_pr_requires_a_final_trailer_paragraph() -> None:
 
 @pytest.mark.parametrize("agent", [False, True])
 def test_valid_final_trailers_do_not_excuse_a_stray_trailer(agent: bool) -> None:
-    lines = [pr.Line(1, GEN, GEN, code=False)]
+    lines = [markdown.Line(1, GEN, GEN, code=False)]
     with pytest.raises(SystemExit) as info:
         sm.check_trailers([GEN], lines, agent=agent)
     assert str(info.value) == (

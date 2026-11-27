@@ -19,7 +19,7 @@ from tbhbdev.alpha.agent import credentials, runfiles
 from tbhbdev.alpha.agent.decisions import repo
 from tbhbdev.alpha.agent.decisions import request as requests
 from tbhbdev.alpha.agent.model import Harness, Invalid, RunKind
-from tbhbdev.alpha.pull_request_frontmatter import parse_frontmatter
+from tbhbdev.pull_request.frontmatter import parse_frontmatter
 
 if TYPE_CHECKING:
     from tbhbdev.alpha.agent.run_host import Prepared, Run

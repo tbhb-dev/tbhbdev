@@ -14,8 +14,8 @@ from jsonschema import Draft202012Validator
 
 from tbhbdev import content
 from tbhbdev.alpha import pull_request as pr
-from tbhbdev.alpha import pull_request_frontmatter as frontmatter
 from tbhbdev.alpha import review_doc, review_policy, review_threads
+from tbhbdev.pull_request import frontmatter
 
 SCHEMA = {
     "$schema": "https://json-schema.org/draft/2020-12/schema",
