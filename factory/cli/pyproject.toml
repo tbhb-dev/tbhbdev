@@ -169,12 +169,7 @@ forbidden_modules = [
   "tbhbdev.alpha.brief",
   "tbhbdev.alpha.agent.host_tools",
 ]
-ignore_imports = [
-  "tbhbdev.alpha.agent.decisions.argv -> shutil",
-  "tbhbdev.alpha.agent.decisions.argv -> socket",
-  "tbhbdev.alpha.agent.decisions.policy -> tbhbdev.alpha.agent.host_tools",
-  "tbhbdev.alpha.agent.decisions.policy -> tbhbdev.secrets",
-]
+ignore_imports = []
 
 [tool.pylint.main]
 recursive = true

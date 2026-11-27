@@ -16,7 +16,7 @@ if TYPE_CHECKING:
     from collections.abc import Callable, Generator
     from contextlib import ExitStack
 
-    from tbhbdev.alpha.agent.run_host import Prepared, Run
+    from tbhbdev.alpha.agent.run_host.state import Prepared, Run
 
 HISTORY_TIMEOUT = 30
 

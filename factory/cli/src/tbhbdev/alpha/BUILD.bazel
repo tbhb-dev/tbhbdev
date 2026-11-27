@@ -96,7 +96,7 @@ cli_py_library(
         ":repo",
         "//factory/cli/src/tbhbdev:userconfig",
         "//factory/cli/src/tbhbdev/alpha/agent:settings",
-        "//factory/cli/src/tbhbdev/alpha/agent:signing_parity",
+        "//factory/cli/src/tbhbdev/alpha/agent:signing_keys",
         "//factory/cli/src/tbhbdev/alpha/agent/decisions:host_names",
         "//factory/cli/src/tbhbdev/alpha/identity/commit:policy",
     ],

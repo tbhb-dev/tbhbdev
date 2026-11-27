@@ -1,5 +1,5 @@
 ---
-# cspell:ignore endmacro unsandboxed
+# cspell:ignore endmacro
 - name: config-values | Require typed TOML values recursively
   vars:
     agent_account_config_invalid: >-
@@ -9,54 +9,14 @@
       {%- else -%}
       {%- for row in value -%}
       {%- if row is not mapping or row | list | sort !=
-          ['account', 'accounts', 'name', 'os', 'proven_harnesses', 'shell', 'unsandboxed'] -%}invalid
+          ['account', 'accounts', 'name', 'os', 'shell'] -%}invalid
       {%- elif row.name is not string or row.os is not string or row.shell is not string or
-          row.account is not string or row.unsandboxed is not boolean or
-          row.accounts is not sequence or row.accounts is string or row.accounts is mapping or
-          row.proven_harnesses is not sequence or row.proven_harnesses is string or
-          row.proven_harnesses is mapping -%}invalid
-      {%- elif row.accounts | select('string') | list != row.accounts or
-          row.proven_harnesses | select('string') | list != row.proven_harnesses -%}invalid
+          row.account is not string or row.accounts is not sequence or
+          row.accounts is string or row.accounts is mapping -%}invalid
+      {%- elif row.accounts | select('string') | list != row.accounts -%}invalid
       {%- endif -%}
       {%- endfor -%}
       {%- endif -%}
-      {%- endif -%}
-      {%- if agent_account_config_table.key == 'agent' and path == '.sandbox' and value is mapping -%}
-      {%- set baseline = ['.claude', '.config/tbhbdev', '.config/gh', '.config/devtools/agent-signing-key',
-          '.ssh', '.git-credentials', '.netrc', '.gemini'] -%}
-      {%- if value.denied_home_paths is not defined or value.denied_home_paths is not sequence or
-          value.denied_home_paths is string or value.denied_home_paths is mapping or
-          value.denied_home_paths | select('string') | list != value.denied_home_paths or
-          baseline | difference(value.denied_home_paths) | length > 0 -%}invalid
-      {%- endif -%}
-      {%- if value.agy is defined and value.agy is not mapping -%}invalid{%- endif -%}
-      {%- set agy = value.agy if value.agy is defined and value.agy is mapping else {} -%}
-      {%- for roots in [value.write_roots | default(none), agy.review_read | default([]),
-          agy.build_read | default([]), agy.build_write | default([])] -%}
-      {%- if roots is not sequence or roots is string or roots is mapping -%}invalid
-      {%- else -%}
-      {%- for root in roots -%}
-      {%- if root is not string or root == '' or root is search('(^|/)[.]{1,2}(/|$)|//|^~') -%}invalid
-      {%- else -%}
-      {%- set home = agent_account_config_home | default('/home/example-user') -%}
-      {%- set absolute = (root if root.startswith('/') else home ~ '/' ~ root).rstrip('/') -%}
-      {%- for denied in (value.denied_home_paths if value.denied_home_paths is defined and
-          value.denied_home_paths is sequence and value.denied_home_paths is not string and
-          value.denied_home_paths is not mapping else baseline) -%}
-      {%- if denied is string -%}
-      {%- set blocked = home ~ '/' ~ denied -%}
-      {%- if (ansible_facts | default({})).get('system') == 'Darwin' -%}
-      {%- set absolute = absolute | lower -%}
-      {%- set blocked = blocked | lower -%}
-      {%- endif -%}
-      {%- if absolute == blocked or blocked.startswith(absolute ~ '/') or absolute.startswith(blocked ~ '/') -%}invalid
-      {%- endif -%}
-      {%- endif -%}
-      {%- endfor -%}
-      {%- endif -%}
-      {%- endfor -%}
-      {%- endif -%}
-      {%- endfor -%}
       {%- endif -%}
       {%- if agent_account_config_table.key == 'agent' and path == '.claude' and
           value is mapping and 'profiles' in value -%}invalid{%- endif -%}
@@ -86,6 +46,5 @@
       - agent_account_config_table.value is mapping
       - agent_account_config_invalid == 'valid'
     fail_msg: >-
-      Agent TOML requires typed values, exact host row keys, baseline denials,
-      and access roots checked against denied_home_paths only
+      Agent TOML requires typed values and exact host row keys
     quiet: true

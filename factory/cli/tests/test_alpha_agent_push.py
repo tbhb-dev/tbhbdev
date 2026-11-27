@@ -17,14 +17,15 @@ from runfile_fixtures import agent_suffix_case as agent_suffix_case  # noqa: PLC
 from tbhbdev.alpha.agent import (
     credentials,
     push,
-    run_host,
     runfiles,
 )
+from tbhbdev.alpha.agent.model import RunPaths
+from tbhbdev.alpha.agent.run_host import state
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Generator
 
-type LocalRun = tuple[run_host.Run, run_host.Prepared, Path]
+type LocalRun = tuple[state.Run, state.Prepared, Path]
 
 
 @pytest.fixture(autouse=True)
@@ -69,7 +70,7 @@ def local_run(tmp_path: Path) -> LocalRun:
     git(workspace, "config", "user.email", "example@example.com")
     git(workspace, "config", "commit.gpgsign", "false")
     commit(workspace, "initial")
-    paths = run_host.RunPaths(
+    paths = RunPaths(
         str(tmp_path),
         str(workspace),
         str(tmp_path / "tmp"),
@@ -77,7 +78,7 @@ def local_run(tmp_path: Path) -> LocalRun:
         str(tmp_path / "audit"),
     )
     settings = host_settings()
-    run = run_host.Run(
+    run = state.Run(
         runfiles.RunFiles(tmp_path / "state", "example"),
         run_request(),
         settings,
@@ -87,9 +88,9 @@ def local_run(tmp_path: Path) -> LocalRun:
         0,
         100,
     )
-    prepared = run_host.Prepared(
+    prepared = state.Prepared(
         paths,
-        credentials.Delivery({}, None, gh_fallback=False, claude_profile=None),
+        credentials.Delivery({}, None, claude_profile=None),
         None,
     )
 
@@ -122,7 +123,7 @@ def commit(directory: Path, text: str) -> None:
     git(directory, "commit", "--allow-empty", "-qm", text)
 
 
-def harness(run: run_host.Run, prepared: run_host.Prepared, stack: ExitStack) -> int:
+def harness(run: state.Run, prepared: state.Prepared, stack: ExitStack) -> int:
     assert isinstance(stack, ExitStack)
     commit(Path(prepared.paths.worktree), "agent change")
     run.files.write("out.final", "report")
@@ -140,7 +141,7 @@ def test_build_records_commit_without_publishing(
     workspace = Path(prepared.paths.worktree)
     branch = "refs/heads/agent/example"
 
-    def work(actual: run_host.Run, paths: run_host.Prepared, stack: ExitStack) -> int:
+    def work(actual: state.Run, paths: state.Prepared, stack: ExitStack) -> int:
         rc = harness(actual, paths, stack)
         if pushed_in_run:
             git(workspace, "push", target.as_uri(), f"HEAD:{branch}")
@@ -158,9 +159,7 @@ def test_build_records_commit_without_publishing(
 
 
 @pytest.mark.parametrize("rc", [0, 9])
-def test_no_commit(
-    local_run: tuple[run_host.Run, run_host.Prepared, Path], rc: int
-) -> None:
+def test_no_commit(local_run: tuple[state.Run, state.Prepared, Path], rc: int) -> None:
     run, prepared, target = local_run
     with ExitStack() as stack:
         assert push.run(run, prepared, stack, constant(rc)) == rc
@@ -170,7 +169,7 @@ def test_no_commit(
 
 
 def test_review_bypasses_publication(
-    local_run: tuple[run_host.Run, run_host.Prepared, Path],
+    local_run: tuple[state.Run, state.Prepared, Path],
 ) -> None:
     run, prepared, target = local_run
     review = replace(run, request=run_request(profile="review", commit="0" * 40))
@@ -182,7 +181,7 @@ def test_review_bypasses_publication(
 
 
 def test_do_not_record_uncertain_run(
-    local_run: tuple[run_host.Run, run_host.Prepared, Path],
+    local_run: tuple[state.Run, state.Prepared, Path],
 ) -> None:
     run, prepared, target = local_run
     run.files.uncertain = True
@@ -203,7 +202,7 @@ def run_with_work(local_run: LocalRun, work: Callable[[], None]) -> int:
         return push.run(run, prepared, stack, finish)
 
 
-def assert_run_file(run: run_host.Run, name: str, expected: str | None) -> None:
+def assert_run_file(run: state.Run, name: str, expected: str | None) -> None:
     path = run.files.path(name)
     assert (path.read_text() if path.exists() else None) == expected
 
@@ -390,7 +389,7 @@ def test_eligible_tips_orders_refs_and_ignores_existing_history(
 
 
 def test_existing_history_does_not_count_as_new_commits(
-    local_run: tuple[run_host.Run, run_host.Prepared, Path],
+    local_run: tuple[state.Run, state.Prepared, Path],
 ) -> None:
     run, prepared, target = local_run
     workspace = Path(prepared.paths.worktree)
@@ -504,9 +503,7 @@ def test_history_lookup_has_a_deadline(
         assert options["timeout"] == 30
         raise subprocess.TimeoutExpired(command, 30)
 
-    def expires(
-        actual: run_host.Run, paths: run_host.Prepared, stack: ExitStack
-    ) -> int:
+    def expires(actual: state.Run, paths: state.Prepared, stack: ExitStack) -> int:
         rc = harness(actual, paths, stack)
         monkeypatch.setattr(subprocess, "run", exceeded)
         return rc
@@ -585,7 +582,7 @@ def test_prefer_checked_out_run_branch_over_leftover_branch(
 @pytest.mark.parametrize("packed", [False, True])
 @pytest.mark.parametrize("valid", [False, True])
 def test_head_reads_only_owned_ref_data(
-    packed: bool, valid: bool, local_run: tuple[run_host.Run, run_host.Prepared, Path]
+    packed: bool, valid: bool, local_run: tuple[state.Run, state.Prepared, Path]
 ) -> None:
     _run, prepared, _target = local_run
     workspace = Path(prepared.paths.worktree)
@@ -608,7 +605,7 @@ def test_head_reads_only_owned_ref_data(
 
 @pytest.mark.parametrize("padding", [" ", "\t"])
 def test_packed_ref_rejects_leading_whitespace(
-    local_run: tuple[run_host.Run, run_host.Prepared, Path], padding: str
+    local_run: tuple[state.Run, state.Prepared, Path], padding: str
 ) -> None:
     _run, prepared, _target = local_run
     workspace = Path(prepared.paths.worktree)
@@ -624,7 +621,7 @@ def test_packed_ref_rejects_leading_whitespace(
 @pytest.mark.parametrize("start_ref", [START_REF, None])
 @pytest.mark.parametrize("on_run_branch", [True, False])
 def test_push_preserves_harness_failure(
-    local_run: tuple[run_host.Run, run_host.Prepared, Path],
+    local_run: tuple[state.Run, state.Prepared, Path],
     start_ref: str | None,
     on_run_branch: bool,
 ) -> None:
@@ -633,7 +630,7 @@ def test_push_preserves_harness_failure(
     base = git(Path(prepared.paths.worktree), "rev-parse", "HEAD")
 
     def failed_harness(
-        actual: run_host.Run, paths: run_host.Prepared, stack: ExitStack
+        actual: state.Run, paths: state.Prepared, stack: ExitStack
     ) -> int:
         if not on_run_branch:
             git(Path(paths.paths.worktree), "switch", "-c", "topic/work")
@@ -655,11 +652,11 @@ def test_push_preserves_harness_failure(
 
 @pytest.mark.parametrize("missing", [False, True])
 def test_push_preserves_harness_failure_when_git_metadata_is_unusable(
-    local_run: tuple[run_host.Run, run_host.Prepared, Path], missing: bool
+    local_run: tuple[state.Run, state.Prepared, Path], missing: bool
 ) -> None:
     run, prepared, target = local_run
 
-    def failed(_run: run_host.Run, paths: run_host.Prepared, _stack: ExitStack) -> int:
+    def failed(_run: state.Run, paths: state.Prepared, _stack: ExitStack) -> int:
         directory = Path(paths.paths.worktree) / ".git"
         if missing:
             (directory / "HEAD").unlink()

@@ -243,7 +243,7 @@ def test_unsandboxed_unconfirmed_reports_sandbox(
         ticks = iter([0, 0, 0, 0, 0, 0, 120, 120, 120, 134, 134, 134])
         set_clock(monkeypatch, lambda: next(ticks))
         remote.configure(launch={"phase": "preparing"}, kill_rc="124\n")
-    assert launch(remote, "--ops", "--unsandboxed", "o/r#1") == (
+    assert launch(remote, "--account", "ops", "--unsandboxed", "o/r#1") == (
         75 if failure == "transfer" else 1
     )
     phase = "unreachable" if failure == "transfer" else "preparing"
