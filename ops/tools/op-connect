@@ -1,0 +1,29 @@
+#!/usr/bin/env -S uv run --script
+# /// script
+# requires-python = ">=3.15"
+# dependencies = ["tbhbops"]
+#
+# [tool.uv.sources]
+# tbhbops = { path = "../packages/tbhbops", editable = true }
+# ///
+"""Deploy 1Password Connect to its host: see tbhbops.op_connect."""
+
+import os
+import sys
+from pathlib import Path
+
+from tbhbops.op_connect import main, run_subprocess
+
+COMPOSE = (
+    Path(__file__).resolve().parent.parent / "apps" / "op-connect" / "compose.yaml"
+)
+
+sys.exit(
+    main(
+        sys.argv[1:],
+        os.environ,
+        COMPOSE.read_text(encoding="utf-8"),
+        run_subprocess,
+        sys.stdout,
+    )
+)

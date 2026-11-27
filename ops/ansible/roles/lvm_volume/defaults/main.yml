@@ -1,0 +1,18 @@
+---
+# One ext4 file system on a logical volume of lvm_volume_size in
+# lvm_volume_vg, mounted at lvm_volume_path. The role creates the volume
+# once and never resizes, shrinks or reformats it, and deletes nothing.
+# The caller sets lvm_volume_lv, lvm_volume_size and lvm_volume_path.
+lvm_volume_vg: ubuntu-vg
+lvm_volume_opts: defaults
+# fsck checks the volume at boot after root, which has pass 1.
+lvm_volume_passno: 2
+# False writes the fstab entry and leaves the mount for the next boot, for
+# a path something else is mounted on now, such as the stock tmpfs /tmp.
+lvm_volume_mount_now: true
+# The root directory's owner, group and mode once it's mounted. Empty
+# leaves each as the file system or its user sets it. Numeric ids work
+# before the account exists. lvm_volume_mount_now false sets none of them.
+lvm_volume_owner: ""
+lvm_volume_group: ""
+lvm_volume_mode: ""

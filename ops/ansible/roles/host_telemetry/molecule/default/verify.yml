@@ -1,0 +1,55 @@
+---
+- name: Verify
+  hosts: all
+  become: true
+  tasks:
+    - name: Read Alloy's configuration
+      ansible.builtin.slurp:
+        src: /etc/alloy/config.alloy
+      register: host_telemetry_config_raw
+
+    - name: Read the journald drop-in
+      ansible.builtin.slurp:
+        src: /etc/systemd/journald.conf.d/50-host-telemetry.conf
+      register: host_telemetry_journald_raw
+
+    - name: Stat the configuration file
+      ansible.builtin.stat:
+        path: /etc/alloy/config.alloy
+      register: host_telemetry_config_stat
+
+    - name: Read the alloy user's groups
+      ansible.builtin.command: id -nG alloy
+      register: host_telemetry_alloy_groups
+      changed_when: false
+
+    - name: Read the default arguments
+      ansible.builtin.slurp:
+        src: /etc/default/alloy
+      register: host_telemetry_default_raw
+
+    - name: Check Alloy and journald
+      vars:
+        config: "{{ host_telemetry_config_raw.content | b64decode }}"
+        journald: "{{ host_telemetry_journald_raw.content | b64decode }}"
+      ansible.builtin.assert:
+        that:
+          - "'endpoint = \"http://otlp.example.example.invalid:4318\"' in config"
+          - "'/var/log/audit/audit.log' in config"
+          - config is search('stream\s+= "audit"')
+          - "'max_elapsed_time = \"0s\"' in config"
+          - "'otelcol.storage.file.queue.handler' in config"
+          - "'regex         = \"(sudo|bazel-reaper|tbhb-dotfiles-drift)\"' in config"
+          - >-
+              config is search('source_labels\s+= \["__journal_syslog_identifier"\]\s+'
+              ~ 'regex\s+= "\(event-gateway-gateway\|event-gateway-tunnel\)"\s+'
+              ~ 'target_label\s+= "service_name"\s+replacement\s+= "\$1"')
+          - config | regex_findall('[0-9]+\\.[0-9]+\\.[0-9]+\\.[0-9]+') | length == 0
+          - "'Storage=persistent' in journald"
+          - "'SystemMaxUse=4G' in journald"
+          - host_telemetry_alloy_groups.stdout.split() | intersect(['systemd-journal', 'adm']) | length == 2
+          - host_telemetry_config_stat.stat.pw_name == 'root'
+          - host_telemetry_config_stat.stat.gr_name == 'alloy'
+          - host_telemetry_config_stat.stat.mode == '0640'
+          - "'--disable-reporting' in (host_telemetry_default_raw.content | b64decode)"
+          - "'--stability.level=public-preview' in (host_telemetry_default_raw.content | b64decode)"

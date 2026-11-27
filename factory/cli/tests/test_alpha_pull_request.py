@@ -170,6 +170,8 @@ class World:
 # The world fixture replaces these checks; tests can put them back.
 REAL_SIZE_COUNTS = size_gate.size_counts
 REAL_TARGET_IS_ORIGIN = pr.target_is_origin
+REAL_GIT = pr.git
+REAL_SCC = shutil.which("scc")
 
 
 @pytest.fixture(autouse=True)
@@ -247,13 +249,16 @@ def world(
     monkeypatch.setenv("PATH", f"{made.bin}{os.pathsep}{git_dir}")
     shutil.copytree(pr_git_baseline, made.root / ".git")
     monkeypatch.chdir(made.root)
-    real_git = pr.git
 
     def offline_git(*argv: str, cwd: Path | None = None) -> tuple[int, str]:
         # Preserve the seeded tracking refs without contacting the fake origin.
         if argv[:1] == ("fetch",):
             return 0, ""
-        return real_git(*argv, cwd=cwd)
+        if argv[:1] == ("ls-remote",) and REAL_GIT(
+            "remote", "get-url", "origin", cwd=cwd
+        ) == (0, ORIGIN):
+            return 1, ""
+        return REAL_GIT(*argv, cwd=cwd)
 
     monkeypatch.setattr(pr, "git", offline_git)
     return made
@@ -1558,6 +1563,49 @@ def remote_default(world: World, tmp_path: Path, branch: str) -> None:
     world.git("remote", "set-url", "origin", str(remote))
 
 
+@pytest.mark.parametrize(
+    ("base", "merge_parent"), [("parent", False), ("parent", True), ("main", False)]
+)
+def test_size_counts_only_the_drafts_own_lines(
+    world: World,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    base: str,
+    merge_parent: bool,
+) -> None:
+    assert REAL_SCC is not None
+    (world.bin / "scc").unlink()
+    path = (os.environ["PATH"], str(Path(REAL_SCC).absolute().parent), os.defpath)
+    monkeypatch.setenv("PATH", os.pathsep.join(path))
+    monkeypatch.setattr(pr, "git", REAL_GIT)
+    monkeypatch.setattr(size_gate, "size_counts", REAL_SIZE_COUNTS)
+
+    world.git("switch", "-qc", "parent")
+    (world.root / "parent.py").write_text("parent = 1\n")
+    world.git("add", "parent.py")
+    world.commit("parent work")
+    world.git("switch", "-q", "main")
+    for name in ("first", "second"):
+        (world.root / f"{name}.py").write_text(f"{name} = 1\n")
+        world.git("add", f"{name}.py")
+        world.commit(f"{name} main change")
+    remote_default(world, world.root.parent, "main")
+    world.git("push", "-q", world.git("remote", "get-url", "origin"), "parent")
+
+    world.git("switch", "-qc", "child")
+    if merge_parent:
+        world.git("merge", "-q", "--no-edit", "parent")
+    (world.root / "child.py").write_text("child = 1\n")
+    world.git("add", "child.py")
+    world.commit("child work")
+    write_draft(world, f"---\nbase: {base}\n---\n" + BASE)
+    assert run_main("check") == 0
+    assert capsys.readouterr() == (
+        "1 code lines, limit 400\n1 raw lines, limit 1500\nOK: the draft conforms\n",
+        "",
+    )
+
+
 def test_a_draft_without_a_base_takes_the_default_branch(
     world: World, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -1572,6 +1620,7 @@ def test_a_draft_without_a_base_takes_the_default_branch(
     counted.assert_called_once_with(
         "refs/remotes/origin/trunk",
         "HEAD",
+        default_ref=None,
         scc=str(world.bin / "scc"),
         git=str(world.root.parent / "git_dir" / "git"),
     )
@@ -1619,6 +1668,26 @@ def test_gh_repo_refuses_a_guessed_default_branch(
     monkeypatch.setenv("GH_REPO", "other/repo")
     with pytest.raises(SystemExit, match="default branch of GH_REPO"):
         pr.default_base()
+
+
+def test_check_counts_an_explicit_base_with_gh_repo(
+    world: World, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    remote_default(world, tmp_path, "trunk")
+    monkeypatch.setenv("GH_REPO", "tbhb-dev/example")
+    monkeypatch.setattr(pr, "git", REAL_GIT)
+    counter = Mock(return_value=size_gate.SizeCounts(401, 400, 401, 1500, "code"))
+    monkeypatch.setattr(size_gate, "size_counts", counter)
+    write_draft(world, "---\nbase: trunk\n---\n" + BASE)
+
+    assert run_main("check") == 1
+    counter.assert_called_once_with(
+        "refs/remotes/origin/trunk",
+        "HEAD",
+        default_ref=None,
+        scc=str(world.bin / "scc"),
+        git=str(world.root.parent / "git_dir" / "git"),
+    )
 
 
 def unset_origin_head(world: World, url: str) -> None:
@@ -1734,7 +1803,8 @@ def test_create_reuses_the_tools_resolved_at_startup(world: World) -> None:
     installed_gh = gh.with_name("installed-gh")
     gh.rename(installed_gh)
     git = world.root.parent / "git_dir" / "git"
-    installed_git = git.with_name("installed-git")
+    installed_git = world.root.parent / "installed" / git.name
+    installed_git.parent.mkdir()
     git.rename(installed_git)
     world.fake(
         "mise",

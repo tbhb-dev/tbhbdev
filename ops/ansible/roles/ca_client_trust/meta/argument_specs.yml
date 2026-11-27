@@ -1,0 +1,21 @@
+---
+argument_specs:
+  main:
+    short_description: Install the public step-ca root certificate
+    options:
+      ca_client_trust_root_sha256:
+        type: str
+        description: Expected SHA-256 fingerprint of the repository root certificate in OpenSSL format.
+      ca_client_trust_macos_accounts:
+        type: list
+        elements: str
+        default: [agent, ops]
+        description: Service accounts whose client configuration the role manages on macOS.
+      ca_client_trust_macos_homes:
+        type: dict
+        default: {}
+        description: Inventory mapping from each managed macOS account to its home directory.
+      ca_client_trust_system_keychain:
+        type: bool
+        default: false
+        description: Install admin trust for the root on hosts in the operator_macs group.

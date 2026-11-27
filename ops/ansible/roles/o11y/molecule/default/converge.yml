@@ -1,0 +1,12 @@
+---
+- name: Converge
+  hosts: all
+  become: true
+  pre_tasks:
+    - name: Gather the overlay root space for preflight
+      ansible.builtin.include_tasks: tasks/mounts.yml
+  roles:
+    - o11y
+  post_tasks:
+    - name: Check secret suppression after deployment
+      ansible.builtin.include_tasks: tasks/check-secrets.yml

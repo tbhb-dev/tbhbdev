@@ -1,0 +1,15 @@
+---
+argument_specs:
+  main:
+    short_description: Show the lab nodes' GRUB menu at boot
+    description:
+      - >-
+          Ubuntu hides the GRUB menu and boots at once, so the KVM console never gets a chance to
+          pick an entry or edit the kernel command line. This role writes a drop-in under
+          /etc/default/grub.d that shows the menu for lab_grub_timeout seconds, and runs
+          update-grub when the drop-in changes.
+    options:
+      lab_grub_timeout:
+        type: int
+        default: 5
+        description: Seconds the menu waits before it boots the default entry.

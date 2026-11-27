@@ -1,0 +1,50 @@
+---
+# cspell:ignore noout
+- name: Require Debian-family Linux or macOS
+  ansible.builtin.assert:
+    that: ansible_facts.os_family in ['Debian', 'Darwin']
+    quiet: true
+
+- name: Read the public repository root
+  ansible.builtin.set_fact:
+    ca_client_trust_root_pem: >-
+      {{ lookup('ansible.builtin.file', role_path ~ '/../../../apps/ca/roots/root_ca.crt', rstrip=false) }}
+
+- name: Require exactly one PEM certificate
+  vars:
+    ca_client_trust_pem_pattern: '^-----BEGIN CERTIFICATE-----\r?\n[A-Za-z0-9+/=\r\n]+-----END CERTIFICATE-----\r?\n?\Z'
+  ansible.builtin.assert:
+    that: ca_client_trust_root_pem is match(ca_client_trust_pem_pattern)
+    quiet: true
+
+- name: Read the SHA-256 fingerprint on the controller
+  ansible.builtin.command:
+    argv: [openssl, x509, -noout, -fingerprint, -sha256]
+    stdin: "{{ ca_client_trust_root_pem }}"
+    stdin_add_newline: false
+  delegate_to: localhost
+  become: false
+  check_mode: false
+  changed_when: false
+  register: ca_client_trust_fingerprint
+
+- name: Verify the fingerprint before installing trust
+  ansible.builtin.assert:
+    that: ca_client_trust_fingerprint.stdout.split('=') | last == ca_client_trust_root_sha256
+    fail_msg: The repository step-ca root certificate does not match the pinned SHA-256 fingerprint.
+    quiet: true
+
+- name: Install the root on Debian-family hosts
+  ansible.builtin.include_tasks: linux.yml
+  when: ansible_facts.os_family == 'Debian'
+
+- name: Configure account trust on macOS
+  ansible.builtin.include_tasks: macos.yml
+  when: ansible_facts.os_family == 'Darwin'
+
+- name: Configure System keychain trust on operator Macs
+  ansible.builtin.include_tasks: macos-system-keychain.yml
+  when:
+    - ansible_facts.os_family == 'Darwin'
+    - ca_client_trust_system_keychain
+    - "'operator_macs' in group_names"

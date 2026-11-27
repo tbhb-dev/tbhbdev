@@ -1,0 +1,14 @@
+---
+# Where the pool's slot script mounts the job directory in each job container.
+# A test keeps this equal to the path in actions-runner-slot.
+deploy_runner_job_mount: /etc/actions-runner/job
+# Name of the guard file this role writes into the job directory.
+deploy_runner_guard_file: job-guard
+# Names of the key files this role writes into the secrets directory, which the
+# guard reads from the slot's tar stream by these names. A test keeps them equal
+# to the guard's.
+deploy_runner_ssh_key_file: deploy-key
+deploy_runner_repo_key_file: repo-key
+# In the container the guard writes its cache under /tmp, which is gone with the
+# job's container.
+deploy_runner_guard_cache: /tmp/deploy-runner-guard/repo.git

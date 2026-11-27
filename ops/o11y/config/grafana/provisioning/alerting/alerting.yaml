@@ -1,0 +1,38 @@
+---
+# Alerts route to one contact point, grouped by rule. Grafana reads the
+# Discord webhook URL and SMTP password from mounted secret files.
+# Email provisioning requires a recipient and SMTP settings. The markers
+# delimit the email receiver and its deletion entry for configuration
+# preparation, which arrives as a tbhbops subcommand.
+apiVersion: 1
+
+# @O11Y_ALERT_EMAIL@ off begin
+deleteContactPoints:
+  - orgId: 1
+    uid: o11y-email
+# @O11Y_ALERT_EMAIL@ off end
+
+contactPoints:
+  - orgId: 1
+    name: o11y
+    receivers:
+      # @O11Y_ALERT_EMAIL@ begin
+      - uid: o11y-email
+        type: email
+        settings:
+          addresses: $__env{O11Y_ALERT_EMAIL_TO}
+          singleEmail: true
+      # @O11Y_ALERT_EMAIL@ end
+      - uid: o11y-discord
+        type: discord
+        settings:
+          url: $__file{/run/o11y/alert_discord_webhook_url}
+          use_discord_username: false
+
+policies:
+  - orgId: 1
+    receiver: o11y
+    group_by: [grafana_folder, alertname]
+    group_wait: 1m
+    group_interval: 10m
+    repeat_interval: 12h

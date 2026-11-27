@@ -1,0 +1,94 @@
+---
+- name: macos-account | Require a service account with an inventory home
+  ansible.builtin.assert:
+    that:
+      - ca_client_trust_account not in ['root', 'tony']
+      - ca_client_trust_account in ca_client_trust_macos_homes
+    quiet: true
+
+- name: macos-account | Read the account home from Directory Services
+  ansible.builtin.command:
+    argv:
+      - "{{ ansible_facts.python.executable }}"
+      - -c
+      - import pwd, sys; print(pwd.getpwnam(sys.argv[1]).pw_dir)
+      - "{{ ca_client_trust_account }}"
+  register: ca_client_trust_account_record
+  check_mode: false
+  changed_when: false
+
+- name: macos-account | Verify the inventory home
+  ansible.builtin.assert:
+    that: ca_client_trust_account_record.stdout == ca_client_trust_account_home
+    fail_msg: The home in Directory Services differs from inventory for {{ ca_client_trust_account }}.
+    quiet: true
+
+- name: macos-account | Install trust as the service account
+  become: true
+  become_user: "{{ ca_client_trust_account }}"
+  # Start in the service account's home, which it can read even when ops' home is private.
+  become_flags: -H -S -n -i
+  environment:
+    HOME: "{{ ca_client_trust_account_home }}"
+  block:
+    - name: macos-account | Read startup file permissions
+      ansible.builtin.stat:
+        path: "{{ ca_client_trust_account_home }}/{{ item }}"
+        get_checksum: false
+      loop: [.zshenv, .profile]
+      register: ca_client_trust_profiles
+
+    - name: macos-account | Require startup files to be regular files
+      ansible.builtin.assert:
+        that: not item.stat.exists or item.stat.isreg
+        quiet: true
+      loop: "{{ ca_client_trust_profiles.results }}"
+      loop_control:
+        label: "{{ item.item }}"
+
+    - name: macos-account | Check for the trust directory before previewing its files
+      ansible.builtin.stat:
+        path: "{{ ca_client_trust_account_dir }}"
+      register: ca_client_trust_account_dir_stat
+      when: ansible_check_mode
+
+    - name: macos-account | Create the trust directory
+      ansible.builtin.file:
+        path: "{{ ca_client_trust_account_dir }}"
+        state: directory
+        mode: "0755"
+
+    - name: macos-account | Write the CA bundle and separate step-ca root
+      ansible.builtin.copy:
+        dest: "{{ item.path }}"
+        content: "{{ item.pem }}"
+        owner: "{{ ca_client_trust_account }}"
+        mode: "0644"
+      loop:
+        - path: "{{ ca_client_trust_account_bundle }}"
+          pem: "{{ ca_client_trust_apple_roots.stdout ~ '\n' ~ ca_client_trust_root_pem }}"
+        - path: "{{ ca_client_trust_account_root }}"
+          pem: "{{ ca_client_trust_root_pem }}"
+      loop_control:
+        label: "{{ item.path }}"
+      when: not ansible_check_mode or ca_client_trust_account_dir_stat.stat.isdir | default(false)
+
+    - name: macos-account | Export the client certificate paths
+      ansible.builtin.blockinfile:  # cspell:disable-line
+        path: "{{ ca_client_trust_account_home }}/{{ item.item }}"
+        marker: "# {mark} ANSIBLE MANAGED ca_client_trust"
+        block: |
+          export SSL_CERT_FILE={{ ca_client_trust_account_bundle | quote }}
+          export REQUESTS_CA_BUNDLE={{ ca_client_trust_account_bundle | quote }}
+          export NODE_EXTRA_CA_CERTS={{ ca_client_trust_account_root | quote }}
+        create: true
+        mode: "{{ item.stat.mode | default('0600') }}"
+      loop: "{{ ca_client_trust_profiles.results }}"
+      loop_control:
+        label: "{{ item.item }}"
+
+    - name: macos-account | Point the account's global Git config at the bundle
+      community.general.git_config:
+        name: http.sslCAInfo
+        scope: global
+        value: "{{ ca_client_trust_account_bundle }}"

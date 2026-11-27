@@ -69,9 +69,9 @@ cli_py_library(
         ":plugins",
         ":secret",
         ":version",
-        "//factory/cli/src/tbhbdev/admin:__init__",
-        "//factory/cli/src/tbhbdev/alpha:__init__",
-        "//factory/cli/src/tbhbdev/analytics:__init__",
+        "//factory/cli/src/tbhbdev/admin:command",
+        "//factory/cli/src/tbhbdev/alpha:command",
+        "//factory/cli/src/tbhbdev/analytics:command",
     ],
 )
 
