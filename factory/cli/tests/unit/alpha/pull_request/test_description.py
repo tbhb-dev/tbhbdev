@@ -15,14 +15,18 @@ from unit.alpha.pull_request.pr_draft_samples import (
     structure,
 )
 
-from tbhbdev.alpha.identity import dispatcher as agent_identity
-from tbhbdev.alpha.identity.trailers import identity_key, merge_pr_trailers
+from tbhbdev.alpha.identity.commit.grammar import check_message
+from tbhbdev.alpha.identity.trailers import (
+    format_value,
+    identity_key,
+    merge_pr_trailers,
+)
 from tbhbdev.alpha.pull_request import body as pr_body
 from tbhbdev.alpha.pull_request import description as pr_description
 
 
 def value(**attrs: str) -> str:
-    return agent_identity.format_value(attrs)
+    return format_value(attrs)
 
 
 def test_merge_dedupes_and_orders() -> None:
@@ -94,7 +98,7 @@ def test_merge_properties(found: list[tuple[str, str]], posting: str | None) -> 
     generated = {identity_key(v) for k, v in found if k == "Generated-by"}
     for (role, _), key in zip(merged, keys, strict=True):
         assert (role == "Generated-by") == (key in generated)
-    assert not agent_identity.check_message("\n".join(f"{k}: {v}" for k, v in merged))
+    assert not check_message("\n".join(f"{k}: {v}" for k, v in merged))
 
 
 def test_body_of_keeps_spaces_and_edge_letters() -> None:

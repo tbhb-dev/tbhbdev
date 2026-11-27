@@ -11,7 +11,7 @@ from unit.alpha.pull_request.pr_draft_samples import (
     structure,
 )
 
-from tbhbdev.alpha.identity import dispatcher as agent_identity
+from tbhbdev.alpha.identity.trailers import format_value
 from tbhbdev.alpha.pull_request import body as pr_body
 
 
@@ -173,7 +173,7 @@ def test_line_numbers_follow_the_frontmatter() -> None:
 
 
 def value(**attrs: str) -> str:
-    return agent_identity.format_value(attrs)
+    return format_value(attrs)
 
 
 def test_unknown_section_does_not_hide_later_problems() -> None:

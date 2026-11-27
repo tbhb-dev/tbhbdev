@@ -27,7 +27,10 @@ cli_py_library(
         ":github",
         ":tools",
         "//factory/cli/src/tbhbdev/alpha:opened",
-        "//factory/cli/src/tbhbdev/alpha/identity:dispatcher",
+        "//factory/cli/src/tbhbdev/alpha/identity:attribution",
+        "//factory/cli/src/tbhbdev/alpha/identity:models",
+        "//factory/cli/src/tbhbdev/alpha/identity:trailers",
+        "//factory/cli/src/tbhbdev/alpha/identity/commit:grammar",
     ],
 )
 
@@ -99,7 +102,7 @@ cli_py_library(
         "//factory/cli/src/tbhbdev:userconfig",
         "//factory/cli/src/tbhbdev/alpha/agent:settings",
         "//factory/cli/src/tbhbdev/alpha/agent/decisions:host_names",
-        "//factory/cli/src/tbhbdev/alpha/identity:dispatcher",
+        "//factory/cli/src/tbhbdev/alpha/identity:records",
         "//factory/cli/src/tbhbdev/alpha/install/git:hooks",
     ],
 )
@@ -124,7 +127,10 @@ cli_py_library(
     imports = ["../../.."],
     pyi_deps = [":draft"],
     visibility = ["//factory/cli:__subpackages__"],
-    deps = ["//factory/cli/src/tbhbdev/alpha/identity:trailers"],
+    deps = [
+        "//factory/cli/src/tbhbdev/alpha/identity:records",
+        "//factory/cli/src/tbhbdev/alpha/identity:trailers",
+    ],
 )
 
 cli_py_library(
@@ -149,7 +155,7 @@ cli_py_library(
         ":draft",
         ":frontmatter",
         ":prose",
-        "//factory/cli/src/tbhbdev/alpha/identity:dispatcher",
+        "//factory/cli/src/tbhbdev/alpha/identity/commit:grammar",
     ],
 )
 
@@ -181,7 +187,10 @@ cli_py_library(
         ":draft_io",
         ":tools",
         "//factory/cli/src/tbhbdev/alpha:repo",
-        "//factory/cli/src/tbhbdev/alpha/identity:dispatcher",
+        "//factory/cli/src/tbhbdev/alpha/identity:payload",
+        "//factory/cli/src/tbhbdev/alpha/identity:records",
+        "//factory/cli/src/tbhbdev/alpha/identity/antigravity:payload",
+        "//factory/cli/src/tbhbdev/alpha/identity/codex:payload",
     ],
 )
 

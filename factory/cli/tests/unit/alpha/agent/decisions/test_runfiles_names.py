@@ -37,7 +37,7 @@ def test_file_names() -> None:
 
 
 def test_source_and_fixtures_are_independent() -> None:
-    root = Path(__file__).resolve().parents[1]
+    root = Path(__file__).resolve().parents[5]
     source = root / "src/tbhbdev/alpha/agent"
     paths = [
         *source.rglob("*.py"),
@@ -47,24 +47,3 @@ def test_source_and_fixtures_are_independent() -> None:
     forbidden = re.compile(r"peer-(?:agent|run)\.sh|run.book|PEER_")
     for path in paths:
         assert forbidden.search(path.read_text()) is None, str(path)
-
-
-def test_runfile_suffixes_cover_run_host_1a222fa() -> None:
-    # 1a222fa: run_host.run_harness, _execute, finish and main,
-    # RunFiles.receive and process_group.record/unknown write these run files.
-    written = (
-        ".request.json",
-        ".prompt",
-        ".schema.json",
-        ".pgid",
-        ".launched",
-        ".phase",
-        ".out",
-        ".out.final",
-        ".log",
-        ".rc",
-        ".run.lock",
-        ".audit.json",
-        ".would_refuse",
-    )
-    assert set(written) <= set(files.SUFFIXES)

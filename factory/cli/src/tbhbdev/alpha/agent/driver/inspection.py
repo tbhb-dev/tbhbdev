@@ -6,7 +6,7 @@ import sys
 from typing import TYPE_CHECKING
 
 from tbhbdev.alpha.agent import transport
-from tbhbdev.alpha.agent.decisions import remote
+from tbhbdev.alpha.agent.decisions import remote_inspection, remote_run
 from tbhbdev.alpha.agent.model import Invalid, Profile
 from tbhbdev.alpha.terminal import terminal_text
 
@@ -19,7 +19,7 @@ def export_patch(settings: Settings, run: Run) -> int:
     if run.request.profile is not Profile.BUILD:
         message = "diff --patch requires a finished build run"
         raise Invalid(message)
-    script = remote.export_patch(run.request.repo, run.name)
+    script = remote_inspection.export_patch(run.request.repo, run.name)
     output = transport.call_bytes(
         settings, run.host, ("/bin/sh", "-c", script), transport.Stdin(run.owner)
     )
@@ -39,9 +39,9 @@ def inspect(settings: Settings, run: Run, *, limit: int | None) -> int:
         print(terminal_text(reading.text), end="")
         return 0
     script = (
-        remote.run_log(run.name)
+        remote_run.run_log(run.name)
         if run.request.unsandboxed and limit is not None
-        else remote.inspect(run.request.repo, run.name, limit=limit)
+        else remote_inspection.inspect(run.request.repo, run.name, limit=limit)
     )
     print(
         terminal_text(

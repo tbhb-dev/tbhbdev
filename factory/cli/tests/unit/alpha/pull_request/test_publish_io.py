@@ -30,7 +30,9 @@ from unit.alpha.pull_request.pr_test_support import (
 )
 
 from tbhbdev.alpha import opened
-from tbhbdev.alpha.identity import dispatcher as agent_identity
+from tbhbdev.alpha.identity import records, sessions
+from tbhbdev.alpha.identity.claude import commands
+from tbhbdev.alpha.identity.trailers import format_value
 from tbhbdev.alpha.pull_request import attribution as pr_attribution
 from tbhbdev.alpha.pull_request.draft import DRAFT
 from tbhbdev.alpha.secret_scan import REPO_RULES, without_name_rules
@@ -42,7 +44,7 @@ world = pr_test_support.world
 
 
 def value(**attrs: str) -> str:
-    return agent_identity.format_value(attrs)
+    return format_value(attrs)
 
 
 def test_create_scans_the_final_title_and_body(
@@ -261,7 +263,7 @@ def test_create_writes_opened_by_first_and_the_ledger(
         f"\nv\n\n{OPENER}\nGenerated-by: {GEN}\nAssisted-by: {POSTING}\n"
     )
     assert "subagent=" not in OPENER
-    path = ledgers(world) / f"{agent_identity.hx(ROOT)}.json"
+    path = ledgers(world) / f"{records.hx(ROOT)}.json"
     assert json.loads(path.read_text()) == {"prs": ["tbhb-dev/tbhbdev#1"]}
     assert capsys.readouterr() == ("https://github.com/tbhb-dev/tbhbdev/pull/1\n", "")
     world.fake("gh", stdout="Created\nhttps://github.com/tbhb-dev/tbhbdev/pull/12\n")
@@ -280,7 +282,7 @@ def test_pr_commands_report_unresolved_attribution(
     site: str,
 ) -> None:
     write_draft(world)
-    agent_identity.record_command(ROOT, SUBAGENT, "background command", world.root)
+    commands.record_command(ROOT, SUBAGENT, "background command", world.root)
     if site == "create-description":
         monkeypatch.setattr(
             pr_attribution, "opened_by", Mock(return_value=(None, None))
@@ -307,17 +309,33 @@ def test_pr_commands_report_unresolved_attribution(
         assert reads == []
 
 
-def test_a_subagent_opens_under_its_root(world: World, agent: dict[str, str]) -> None:
+@pytest.mark.parametrize("root_model", ["claude-opus-5-5", None])
+def test_a_subagent_opens_under_its_root(
+    world: World,
+    agent: dict[str, str],
+    root_model: str | None,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    seed_session(world, root_model)
     write_draft(world)
-    child = agent_identity.sha256_64("agent-raw")
-    agent_identity.write_user_record(child, {"root": ROOT, "model": "claude-x"})
-    assert run_main("create", env={**agent, "ASCM_AGENT_ID": child}) == 0
+    child = records.sha256_64("agent-raw")
+    sessions.write_user_record(child, {"root": ROOT, "model": "claude-x"})
+    commands.record_command(ROOT, child, "open")
+    assert run_main("create", env=agent) == 0
     _, call = world.calls("gh")
-    assert str(call["stdin"]).endswith(
-        f"\n\n{OPENER}\nAssisted-by: LLM harness=claude-code:2.1.0;"
-        f"model=anthropic:claude-x;session={ROOT};subagent={child};surface=cli\n"
-    )
-    assert opened.read_ledger(ROOT) == {"tbhb-dev/tbhbdev#1"}
+    if root_model:
+        assert str(call["stdin"]).endswith(
+            f"\n\n{OPENER}\nAssisted-by: LLM harness=claude-code:2.1.0;"
+            f"model=anthropic:claude-x;session={ROOT};subagent={child};surface=cli\n"
+        )
+        assert opened.read_ledger(ROOT) == {"tbhb-dev/tbhbdev#1"}
+    else:
+        assert "Opened-by" not in str(call["stdin"])
+        assert not ledgers(world).exists()
+        assert capsys.readouterr().err == (
+            "warning: no Opened-by line or ledger entry: LLM harness=claude-code:2.1.0;"
+            f"session={ROOT};surface=cli: model required\n"
+        )
 
 
 @pytest.mark.parametrize(
@@ -327,8 +345,8 @@ def test_no_root_means_no_line_and_no_ledger(
     world: World, env: dict[str, str], capsys: pytest.CaptureFixture[str]
 ) -> None:
     write_draft(world)
-    conv = agent_identity.sha256_64("conv-raw")
-    agent_identity.write_user_record(conv, {"model": "gemini-x"})
+    conv = records.sha256_64("conv-raw")
+    sessions.write_user_record(conv, {"model": "gemini-x"})
     assert run_main("create", env=env) == 0
     _, call = world.calls("gh")
     assert "Opened-by" not in str(call["stdin"])
@@ -366,7 +384,7 @@ def test_create_without_a_url_records_nothing(
 def test_create_with_a_corrupt_ledger_reports_it(
     world: World, agent: dict[str, str], capsys: pytest.CaptureFixture[str]
 ) -> None:
-    path = ledgers(world) / f"{agent_identity.hx(ROOT)}.json"
+    path = ledgers(world) / f"{records.hx(ROOT)}.json"
     path.parent.mkdir(parents=True)
     path.write_text("[]")
     write_draft(world)
@@ -387,7 +405,7 @@ def test_create_warns_when_the_ledger_cant_be_written(
 ) -> None:
     store = ledgers(world)
     store.mkdir(parents=True)
-    path = store / f"{agent_identity.hx(ROOT)}.json"
+    path = store / f"{records.hx(ROOT)}.json"
     if make == "file":
         # A directory where the ledger file goes: the write fails with OSError.
         path.mkdir()
@@ -417,21 +435,4 @@ def test_create_warns_when_the_write_fails(
     assert capsys.readouterr().err == (
         "warning: the PR is open, but the ledger was not updated: "
         "[Errno 28] No space left on device\n"
-    )
-
-
-def test_an_opener_without_a_model_gets_no_line_and_no_ledger(
-    world: World, agent: dict[str, str], capsys: pytest.CaptureFixture[str]
-) -> None:
-    child = agent_identity.sha256_64("agent-raw")
-    agent_identity.write_user_record(child, {"root": ROOT, "model": "claude-x"})
-    seed_session(world, None)
-    write_draft(world)
-    assert run_main("create", env={**agent, "ASCM_AGENT_ID": child}) == 0
-    _, call = world.calls("gh")
-    assert "Opened-by" not in str(call["stdin"])
-    assert not ledgers(world).exists()
-    value = f"LLM harness=claude-code:2.1.0;session={ROOT};surface=cli"
-    assert capsys.readouterr().err == (
-        f"warning: no Opened-by line or ledger entry: {value}: model required\n"
     )

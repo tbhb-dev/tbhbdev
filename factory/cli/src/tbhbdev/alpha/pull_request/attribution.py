@@ -6,7 +6,9 @@ import sys
 from typing import TYPE_CHECKING, cast
 
 from tbhbdev.alpha import opened
-from tbhbdev.alpha.identity import dispatcher as agent_identity
+from tbhbdev.alpha.identity import attribution, models
+from tbhbdev.alpha.identity.commit import grammar
+from tbhbdev.alpha.identity.trailers import format_value
 
 if TYPE_CHECKING:
     from collections.abc import Mapping, Sequence
@@ -44,7 +46,7 @@ def branch_trailers(base: str) -> list[tuple[str, str]]:
     if code != 0:
         message = f"cannot list the commits in {base}..HEAD; is {base} fetched?"
         raise SystemExit(message)
-    return trailer_lines(out, agent_identity.LINE)
+    return trailer_lines(out, grammar.LINE)
 
 
 def pr_trailers(number: int, target: str) -> list[tuple[str, str]]:
@@ -81,16 +83,16 @@ def pr_trailers(number: int, target: str) -> list[tuple[str, str]]:
         if parsed.returncode != 0:
             error = f"cannot parse the commit trailers of PR {number}"
             raise SystemExit(error)
-        found.extend(trailer_lines(parsed.stdout, agent_identity.LINE))
+        found.extend(trailer_lines(parsed.stdout, grammar.LINE))
     return found
 
 
 def posting_value(env: Mapping[str, str]) -> str | None:
     """The trailer value for the agent running this script, or None for a human."""
-    committer = agent_identity.committer_identity(env)
+    committer = attribution.committer_identity(env)
     if committer is None:
         return None
-    return agent_identity.format_value(committer.ident.attrs())
+    return format_value(committer.ident.attrs())
 
 
 def live_pr(number: int) -> tuple[str | None, object]:
@@ -121,15 +123,15 @@ def opened_by(env: Mapping[str, str]) -> tuple[str | None, str | None]:
     """
     ident = opened.opener(env)
     if ident is None:
-        if agent_identity.detect(env) is not None:
+        if models.detect(env) is not None:
             message = (
                 f"warning: no {OPENED_KEY} line or ledger entry: "
                 "cannot resolve the root session"
             )
             print(message, file=sys.stderr)
         return None, None
-    value = agent_identity.format_value(ident.attrs())
-    if why := agent_identity.check_value(value):
+    value = format_value(ident.attrs())
+    if why := grammar.check_value(value):
         message = f"warning: no {OPENED_KEY} line or ledger entry: {value}: {why}"
         print(message, file=sys.stderr)
         return None, None
@@ -148,5 +150,5 @@ def description(
         posting_value(env),
         found,
         opened_by,
-        check_value=agent_identity.check_value,
+        check_value=grammar.check_value,
     )

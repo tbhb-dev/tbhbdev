@@ -35,7 +35,8 @@ from typing import TYPE_CHECKING
 from tbhbdev import content, issue_import, userconfig
 from tbhbdev.alpha import opened, worker_identity
 from tbhbdev.alpha.agent import settings as agent_settings
-from tbhbdev.alpha.identity import dispatcher as agent_identity
+from tbhbdev.alpha.identity import trailers as identity_trailers
+from tbhbdev.alpha.identity.commit import grammar as identity_commit_grammar
 from tbhbdev.alpha.pull_request import attribution as pr_attribution
 from tbhbdev.alpha.pull_request import description as pr_description
 from tbhbdev.alpha.pull_request import github as pr_github
@@ -96,10 +97,10 @@ def trailer(env: Mapping[str, str]) -> str:
     if value is None:
         message = "not closing: the caller isn't a recognized agent session"
         raise SystemExit(message)
-    if why := agent_identity.check_value(value):
+    if why := identity_commit_grammar.check_value(value):
         message = f"invalid LLM trailer: {value}: {why}"
         raise SystemExit(message)
-    return f"{agent_identity.KEY_GEN}: {value}"
+    return f"{identity_trailers.KEY_GEN}: {value}"
 
 
 def closer(env: Mapping[str, str], workflow: str | None) -> str:

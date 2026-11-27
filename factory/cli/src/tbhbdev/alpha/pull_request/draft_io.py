@@ -8,7 +8,7 @@ if TYPE_CHECKING:
     from pathlib import Path
 
 
-from tbhbdev.alpha.identity.dispatcher import LINE
+from tbhbdev.alpha.identity.commit.grammar import LINE
 from tbhbdev.alpha.pull_request import baseline, frontmatter, prose
 from tbhbdev.alpha.pull_request.draft import (
     Checked,

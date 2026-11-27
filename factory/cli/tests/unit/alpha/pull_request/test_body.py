@@ -8,7 +8,7 @@ from hypothesis import given
 from hypothesis import strategies as st
 from unit.alpha.pull_request.pr_draft_samples import GEN_LINE, SECTIONS
 
-from tbhbdev.alpha.identity import dispatcher as agent_identity
+from tbhbdev.alpha.identity.commit.grammar import LINE
 from tbhbdev.alpha.pull_request import body as pr_body
 
 
@@ -188,7 +188,7 @@ def test_block_problems_flag_any_other_order(order: list[int]) -> None:
 )
 def test_wrap_problems(body: str, lines: list[int]) -> None:
     scanned, _ = pr_body.scan(body.splitlines(), 1)
-    assert pr_body.wrap_problems(scanned, agent_identity.LINE) == [
+    assert pr_body.wrap_problems(scanned, LINE) == [
         (no, pr_body.WRAPPED) for no in lines
     ]
 

@@ -5,6 +5,7 @@
 import re
 from typing import TYPE_CHECKING, cast
 
+from tbhbdev.alpha.identity.records import as_dict
 from tbhbdev.alpha.identity.trailers import merge_pr_trailers
 
 if TYPE_CHECKING:
@@ -38,8 +39,9 @@ def commit_messages(pages: Sequence[object], invalid: str) -> list[str]:
         if not isinstance(page, list):
             raise SystemExit(invalid)
         for entry in cast("list[object]", page):  # pragma: no mutate
-            commit = entry.get("commit") if isinstance(entry, dict) else None
-            message = commit.get("message") if isinstance(commit, dict) else None
+            item = as_dict(entry) or {}
+            commit = as_dict(item.get("commit")) or {}
+            message = commit.get("message")
             if not isinstance(message, str):
                 raise SystemExit(invalid)
             messages.append(message)

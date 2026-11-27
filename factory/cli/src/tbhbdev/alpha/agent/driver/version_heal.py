@@ -14,7 +14,7 @@ from typing import TYPE_CHECKING
 from tbhbdev import version
 from tbhbdev.alpha import version_check
 from tbhbdev.alpha.agent import transport
-from tbhbdev.alpha.agent.decisions import remote
+from tbhbdev.alpha.agent.decisions import remote_shell
 from tbhbdev.alpha.agent.driver.decisions.launch import check_retry, same_version
 from tbhbdev.alpha.agent.model import Invalid
 
@@ -103,7 +103,7 @@ def check(settings: Settings, host: Host, local: str, installed: str) -> str | N
                 transport.shell(
                     settings,
                     host,
-                    remote.PREFIX + "exec " + shlex.join(install),
+                    remote_shell.PREFIX + "exec " + shlex.join(install),
                     timeout=_INSTALL_TIMEOUT,
                 )
                 print(

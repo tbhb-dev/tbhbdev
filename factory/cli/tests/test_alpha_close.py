@@ -14,7 +14,7 @@ from agent_example import settings
 
 from tbhbdev import userconfig
 from tbhbdev.alpha import close, opened
-from tbhbdev.alpha.identity import dispatcher as agent_identity
+from tbhbdev.alpha.identity import trailers as identity_trailers
 from tbhbdev.alpha.pull_request import attribution, repository, tools
 
 if TYPE_CHECKING:
@@ -101,7 +101,7 @@ def root() -> str:
 def trailer_line() -> str:
     value = attribution.posting_value(ENV)
     assert value is not None
-    return f"{agent_identity.KEY_GEN}: {value}"
+    return f"{identity_trailers.KEY_GEN}: {value}"
 
 
 def test_close_pr_it_opened_comments_the_reason_and_the_trailer(

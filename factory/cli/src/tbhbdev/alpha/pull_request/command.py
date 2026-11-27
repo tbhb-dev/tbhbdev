@@ -9,7 +9,7 @@ from typing import TYPE_CHECKING, cast
 from tbhbdev import userconfig
 from tbhbdev.alpha.agent import settings
 from tbhbdev.alpha.agent.decisions import host_names
-from tbhbdev.alpha.identity import dispatcher as agent_identity
+from tbhbdev.alpha.identity.records import AttributionError
 from tbhbdev.alpha.install.git.hooks import require_git_hooks
 
 if TYPE_CHECKING:
@@ -130,7 +130,7 @@ def main(
         return command(args, env)
     except userconfig.ConfigError as exc:
         print(f"tbhbdev alpha pr: {exc}", file=sys.stderr)
-    except agent_identity.AttributionError:
+    except AttributionError:
         print(
             "tbhbdev alpha pr: Attribution couldn't be resolved. Retry the pull "
             "request command from the main session after the subagent's command "

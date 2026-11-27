@@ -6,29 +6,31 @@ import os
 import sys
 from pathlib import Path
 
-from tbhbdev.alpha.identity import dispatcher as agent_identity
+from tbhbdev.alpha.identity import payload, records
+from tbhbdev.alpha.identity.antigravity import payload as agy_payload
+from tbhbdev.alpha.identity.codex import payload as codex_payload
 from tbhbdev.alpha.pull_request import draft_io as pr_draft_io
 from tbhbdev.alpha.pull_request import tools as pr_tools
 from tbhbdev.alpha.pull_request.arguments import ANTIGRAVITY, CODEX
 from tbhbdev.alpha.pull_request.draft import DRAFT
 from tbhbdev.alpha.repo import hook_cwd, in_tbhb_dev, read_hook_stdin
 
-AGY_EDITS = agent_identity.AGY_EDIT_TOOLS
+AGY_EDITS = agy_payload.AGY_EDIT_TOOLS
 
 
 # The exit code that makes a harness feed a PostToolUse hook's stderr to the agent.
 HOOK_FEEDBACK = 2
 
 
-def touched_paths(harness: str, data: agent_identity.Json) -> list[str]:
+def touched_paths(harness: str, data: records.Json) -> list[str]:
     """Files a harness's PostToolUse payload says the tool call wrote."""
-    inputs = agent_identity.tool_input_of(data)
+    inputs = payload.tool_input_of(data)
     path: object
     if harness == CODEX:
-        return agent_identity.patch_paths(inputs.get("command"))
+        return codex_payload.patch_paths(inputs.get("command"))
     if harness == ANTIGRAVITY:
-        tool, args = agent_identity.agy_tool(data)
-        path = agent_identity.agy_edit_path(args) if tool in AGY_EDITS else None
+        tool, args = agy_payload.agy_tool(data)
+        path = agy_payload.agy_edit_path(args) if tool in AGY_EDITS else None
     else:
         path = inputs.get("file_path")
     return [path] if isinstance(path, str) and path else []

@@ -3,7 +3,7 @@
 
 """In-memory draft examples and section policy for pull request tests."""
 
-from tbhbdev.alpha.identity import dispatcher as agent_identity
+from tbhbdev.alpha.identity.commit.grammar import LINE
 from tbhbdev.alpha.pull_request import body as pr_body
 from tbhbdev.alpha.pull_request import draft as pr_draft
 from tbhbdev.alpha.pull_request import frontmatter
@@ -50,7 +50,7 @@ def structure(text: str) -> list[pr_body.Problem]:
     head = check_head(text, data, body, SCHEMA)
     if isinstance(head, pr_draft.Checked):
         return head.problems
-    return checked_draft(head, check_body(head, SECTIONS, agent_identity.LINE)).problems
+    return checked_draft(head, check_body(head, SECTIONS, LINE)).problems
 
 
 REBASE_LINE = (

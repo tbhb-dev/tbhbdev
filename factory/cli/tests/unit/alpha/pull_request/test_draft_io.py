@@ -8,7 +8,7 @@ from typing import TYPE_CHECKING
 from unit.alpha.pull_request.pr_draft_samples import structure
 from unit.alpha.pull_request.pr_test_support import FIXTURE, World, run_main
 
-from tbhbdev.alpha.identity import dispatcher as agent_identity
+from tbhbdev.alpha.identity.commit.grammar import LINE
 from tbhbdev.alpha.pull_request import body as pr_body
 from tbhbdev.alpha.pull_request import draft_io as pr_draft_io
 from tbhbdev.alpha.pull_request import frontmatter
@@ -60,4 +60,4 @@ def test_the_passing_draft_has_no_bare_references() -> None:
 def test_the_passing_draft_has_no_wrapped_paragraphs() -> None:
     _, body = frontmatter.parse_frontmatter(FIXTURE.read_text())
     scanned, _ = pr_body.scan(body.splitlines(), 1)
-    assert pr_body.wrap_problems(scanned, agent_identity.LINE) == []
+    assert pr_body.wrap_problems(scanned, LINE) == []

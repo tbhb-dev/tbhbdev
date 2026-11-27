@@ -32,8 +32,9 @@ from unit.alpha.pull_request.pr_test_support import (
     write_draft,
 )
 
-from tbhbdev.alpha.identity import dispatcher as agent_identity
-from tbhbdev.alpha.identity.trailers import merge_pr_trailers
+from tbhbdev.alpha.identity import attribution as identity_attribution
+from tbhbdev.alpha.identity.records import sha256_64
+from tbhbdev.alpha.identity.trailers import format_value, merge_pr_trailers
 from tbhbdev.alpha.pull_request import attribution as pr_attribution
 from tbhbdev.alpha.pull_request import draft as pr_draft
 from tbhbdev.alpha.pull_request import draft_io as pr_draft_io
@@ -173,7 +174,7 @@ def test_a_resolved_posting_value_is_one_line_with_its_commit_trailer(
     got = pr_attribution.description(
         checked_for(), agent, pr_attribution.branch_trailers("main")
     )
-    session = f"session={agent_identity.sha256_64('raw-session')}"
+    session = f"session={sha256_64('raw-session')}"
     lines = [line for line in got.splitlines() if session in line]
     assert lines == [f"Generated-by: {POSTING}"]
     assert "Assisted-by" not in got
@@ -187,9 +188,9 @@ def test_the_posting_session_dedupes_against_its_commit_trailer(
     write_draft(world)
     world.git("switch", "-q", "-c", "topic")
     # The trailer the session's commit got, from the same commit-time source.
-    committed = agent_identity.committer_identity(agent, [])
+    committed = identity_attribution.committer_identity(agent, [])
     assert committed is not None
-    trailer = agent_identity.format_value(committed.ident.attrs())
+    trailer = format_value(committed.ident.attrs())
     assert "model=anthropic:claude-opus-5-5" in trailer
     world.commit(f"one\n\nGenerated-by: {trailer}")
     assert pr_attribution.posting_value(agent) == trailer
@@ -199,7 +200,7 @@ def test_the_posting_session_dedupes_against_its_commit_trailer(
     assert merged == [("Generated-by", trailer)]
     assert run_main("create", env=agent) == 0
     _, call = world.calls("gh")
-    session = f"session={agent_identity.sha256_64('raw-session')}"
+    session = f"session={sha256_64('raw-session')}"
     lines = [line for line in str(call["stdin"]).splitlines() if session in line]
     assert lines == [OPENER, f"Generated-by: {trailer}"]
 

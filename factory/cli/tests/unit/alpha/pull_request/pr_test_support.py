@@ -26,7 +26,8 @@ from fake_tool import (
 from unit.alpha.pull_request.pr_draft_samples import BASE
 
 from tbhbdev.alpha import size_gate, tool_pins
-from tbhbdev.alpha.identity import dispatcher as agent_identity
+from tbhbdev.alpha.identity import records, sessions
+from tbhbdev.alpha.identity.claude import ancestry
 from tbhbdev.alpha.pull_request import baseline as pr_baseline
 from tbhbdev.alpha.pull_request import command as pr_command
 from tbhbdev.alpha.pull_request import prose as pr_prose
@@ -286,11 +287,11 @@ AGENT = {
 
 POSTING = (
     "LLM effort=high;harness=claude-code:2.1.0;model=anthropic:claude-opus-5-5;"
-    f"session={agent_identity.sha256_64('raw-session')};surface=cli"
+    f"session={records.sha256_64('raw-session')};surface=cli"
 )
 
 
-ROOT = agent_identity.sha256_64("raw-session")
+ROOT = records.sha256_64("raw-session")
 OPENER = (
     "Opened-by: LLM harness=claude-code:2.1.0;model=anthropic:claude-opus-5-5;"
     f"session={ROOT};surface=cli"
@@ -302,25 +303,17 @@ def ledgers(world: World) -> Path:
     return world.root.parent / "state" / "tbhbdev" / "tbhb-alpha" / "opened"
 
 
-def no_ancestry(*_args: object, **_kwargs: object) -> list[str]:
-    return []
-
-
 def seed_session(world: World, model: str | None = "claude-opus-5-5") -> None:
     """The posting session's record, with a transcript that has one reply."""
     transcript = world.root.parent / "session.jsonl"
     message = {"model": model} if model else {"content": "x"}
     transcript.write_text(json.dumps({"message": message}) + "\n")
-    agent_identity.write_record(
-        agent_identity.sha256_64("raw-session"),
-        {"transcript": str(transcript)},
-        world.root,
-    )
+    sessions.write_record(ROOT, {"transcript": str(transcript)}, world.root)
 
 
 @pytest.fixture
 def agent(world: World, monkeypatch: pytest.MonkeyPatch) -> dict[str, str]:
-    monkeypatch.setattr(agent_identity, "ancestry", no_ancestry)
+    monkeypatch.setattr(ancestry, "ancestry", lambda: ["sh -c eval 'open'"])
     seed_session(world)
     return AGENT
 

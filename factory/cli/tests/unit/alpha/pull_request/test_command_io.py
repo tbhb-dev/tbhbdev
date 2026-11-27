@@ -53,7 +53,7 @@ from unit.alpha.pull_request.pr_test_support import (
     write_draft,
 )
 
-from tbhbdev.alpha.identity import dispatcher as agent_identity
+from tbhbdev.alpha.identity.commit.policy import AGENT_EMAIL
 
 agent = pr_test_support.agent
 draft_world = pr_test_support.draft_world
@@ -148,7 +148,7 @@ def test_agent_create_refuses_when_hooks_are_disabled(
     world.git("config", "core.hooksPath", "/dev/null")
     env = agent if context == "session" else {}
     if context == "account":
-        world.git("config", "user.email", agent_identity.AGENT_EMAIL)
+        world.git("config", "user.email", AGENT_EMAIL)
     assert run_main("create", env=env) == 1
     assert world.calls("gh") == []
     assert "/dev/null/" in capsys.readouterr().err

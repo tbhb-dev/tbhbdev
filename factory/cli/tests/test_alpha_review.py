@@ -14,7 +14,7 @@ from unit.alpha.pull_request.pr_test_support import REAL, World
 from unit.alpha.pull_request.pr_test_support import world as world  # noqa: PLC0414
 
 from tbhbdev.alpha import review, review_doc
-from tbhbdev.alpha.identity import dispatcher as agent_identity
+from tbhbdev.alpha.identity.commit.grammar import LINE
 from tbhbdev.alpha.pull_request import baseline as pr_baseline
 from tbhbdev.alpha.pull_request import body as pr_body
 from tbhbdev.alpha.pull_request import prose as pr_prose
@@ -497,7 +497,7 @@ def test_policy_dispatch_forwards_arguments_program_and_status() -> None:
 def test_explicit_empty_sections_do_not_load_the_repository_scheme() -> None:
     anchor = pr_body.Line(9, "", "", code=False)
     with patch.object(pr_baseline, "load_sections") as load:
-        assert pr_body.body_problems([], anchor, [], agent_identity.LINE) == []
+        assert pr_body.body_problems([], anchor, [], LINE) == []
         load.assert_not_called()
 
 
