@@ -1,0 +1,29 @@
+# SPDX-License-Identifier: Apache-2.0
+# Copyright Tony Burns
+
+load("@rules_go//go:def.bzl", "go_library")
+load("@tbhb_rules//repo:defs.bzl", "repo_files")
+load("//factory:go.bzl", "go_test")
+
+repo_files(visibility = ["//factory/github-metrics:__subpackages__"])
+
+go_library(
+    name = "appauth",
+    srcs = ["appauth.go"],
+    importpath = "github.com/tbhb-dev/tbhbdev/factory/github-metrics/internal/appauth",
+    visibility = ["//factory/github-metrics:__subpackages__"],
+)
+
+go_test(
+    name = "appauth_test",
+    srcs = [
+        "appauth_test.go",
+        "concurrent_test.go",
+        "export_test.go",
+        "failure_test.go",
+        "transport_test.go",
+    ],
+    embed = [":appauth"],
+    visibility = ["//factory/github-metrics:__pkg__"],
+    deps = ["//factory/github-metrics/internal/ghclient"],
+)

@@ -10,6 +10,26 @@ formatters:
     - gofumpt
     - goimports
     - golines
+  settings:
+    gci:
+      sections:
+        - standard
+        - default
+        - prefix(github.com/tbhb-dev/tbhbdev)
+        - blank
+        - dot
+        - alias
+        - localmodule
+      custom-order: true
+    gofumpt:
+      module-path: github.com/tbhb-dev/tbhbdev
+      extra:
+        group-params: true
+        clothe-returns: true
+        balance-calls: true
+    goimports:
+      local-prefixes:
+        - github.com/tbhb-dev/tbhbdev
 
 linters:
   default: all
@@ -18,6 +38,19 @@ linters:
     - gomodguard
     - wsl
   settings:
+    cyclop:
+      package-average: 10.0
+    errcheck:
+      check-type-assertions: true
+    exhaustive:
+      check:
+        - switch
+        - mapliteral
+    gocognit:
+      min-complexity: 15
+    nolintlint:
+      require-explanation: true
+      require-specific: true
     depguard:
       rules:
         "non-test files":
