@@ -20,6 +20,9 @@ from http.client import HTTPException
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from tbhbdev import userconfig
+from tbhbdev.alpha.agent import settings
+from tbhbdev.alpha.agent.decisions import host_names
 from tbhbdev.alpha.agent.signing_parity import public_keys
 from tbhbdev.alpha.gh_shim import RUN_NAME_ENV, agent_operation, session_root
 from tbhbdev.alpha.identity.dispatcher import AGENT_EMAIL
@@ -300,8 +303,16 @@ def push_problems(
     remote: str, lines: Sequence[str], *, agent_push: bool, run_name: str
 ) -> list[str]:
     rows: list[tuple[str, str, str]] = []
+    known_hosts: set[str] | None = None
     for line in lines:
         _, local, ref, old = line.split()  # ValueError: main() refuses the push
+        if ref.startswith("refs/heads/") and local.strip("0") and not old.strip("0"):
+            if known_hosts is None:
+                known_hosts = settings.known_host_names()
+            if host_names.contains_host_name(
+                ref.removeprefix("refs/heads/"), known_hosts
+            ):
+                return ["push refused because the branch name contains a host name"]
         rows.append((local, ref, old))
     tips = remote_tips()
     keys = SigningKeys()
@@ -351,7 +362,7 @@ def main(argv: list[str], prog: str) -> int:
             return 1
     try:
         problems = inspect_push(argv[0], argv[1], sys.stdin.read().splitlines())
-    except (InspectionError, OSError) as exc:
+    except (InspectionError, OSError, userconfig.ConfigError) as exc:
         problems = [f"pre-push-guard: {exc}; push refused"]
     except ValueError:
         problems = ["pre-push-guard: cannot inspect push; push refused"]

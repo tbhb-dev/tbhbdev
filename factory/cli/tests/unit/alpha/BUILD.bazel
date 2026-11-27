@@ -3,11 +3,34 @@
 
 load("//factory/cli/tests:pytest.bzl", "cli_py_test")
 
-package(default_testonly = True)
-
-exports_files(
-    ["test_pre_push_guard.py"],
+filegroup(
+    name = "package_files",
+    srcs = glob(["*.py"]),
     visibility = ["//factory/cli/tests:__pkg__"],
+)
+
+cli_py_test(
+    name = "test_pre_push_guard_host_names",
+    srcs = ["test_pre_push_guard_host_names.py"],
+    imports = ["../.."],
+    deps = [
+        "//factory/cli/src/tbhbdev:userconfig",
+        "//factory/cli/src/tbhbdev/alpha:pre_push_guard",
+        "//factory/cli/tests:conftest",
+        "@cli_pip//pytest",
+    ],
+)
+
+cli_py_test(
+    name = "test_pull_request_host_names",
+    srcs = ["test_pull_request_host_names.py"],
+    imports = ["../.."],
+    deps = [
+        "//factory/cli/src/tbhbdev:userconfig",
+        "//factory/cli/src/tbhbdev/alpha:pull_request",
+        "//factory/cli/tests:conftest",
+        "@cli_pip//pytest",
+    ],
 )
 
 cli_py_test(

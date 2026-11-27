@@ -3,11 +3,24 @@
 
 load("//factory/cli/tests:pytest.bzl", "cli_py_test")
 
-package(default_testonly = True)
-
-exports_files(
-    ["test_worktree_credentials_io.py"],
+filegroup(
+    name = "package_files",
+    srcs = glob(["*.py"]),
     visibility = ["//factory/cli/tests:__pkg__"],
+)
+
+cli_py_test(
+    name = "test_command_host_names",
+    srcs = ["test_command_host_names.py"],
+    imports = ["../../.."],
+    deps = [
+        "//factory/cli/src/tbhbdev/alpha/agent:settings",
+        "//factory/cli/tests:agent_cli_example",
+        "//factory/cli/tests:agent_driver_example",
+        "//factory/cli/tests:agent_example",
+        "//factory/cli/tests:conftest",
+        "@cli_pip//pytest",
+    ],
 )
 
 cli_py_test(
