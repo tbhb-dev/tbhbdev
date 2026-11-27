@@ -14,8 +14,8 @@ from agent_example import settings
 
 from tbhbdev import userconfig
 from tbhbdev.alpha import close, opened
-from tbhbdev.alpha import identity as agent_identity
 from tbhbdev.alpha import pull_request as pr
+from tbhbdev.alpha.identity import dispatcher as agent_identity
 
 if TYPE_CHECKING:
     from collections.abc import Mapping

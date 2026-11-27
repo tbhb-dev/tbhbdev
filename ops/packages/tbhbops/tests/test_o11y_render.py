@@ -4,7 +4,6 @@ import hashlib
 from dataclasses import FrozenInstanceError, replace
 
 import pytest
-
 from tbhbops.o11y import render
 
 ENV = {
@@ -479,15 +478,3 @@ def test_raw_filename_byte_order_and_hash() -> None:
     assert render.env_lines(settings(), {"é": "second", "\udc80": "first"}, "/config")[
         -2:
     ] == ("O11Y_CONFIG_\udc80=/config/first", "O11Y_CONFIG_É=/config/second")
-
-
-@pytest.mark.parametrize("value", ["", "sensitive-value"])
-def test_postgres_refused(value: str) -> None:
-    assert render.check(ENV | {"O11Y_POSTGRES_PORT": value}) == render.Errors(
-        (
-            (
-                "O11Y_POSTGRES_PORT is no longer supported; "
-                "PostgreSQL moved out of the stack"
-            ),
-        )
-    )

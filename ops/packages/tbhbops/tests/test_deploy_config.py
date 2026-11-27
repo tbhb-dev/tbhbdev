@@ -382,7 +382,17 @@ def test_service_requires_every_mandatory_key(key: str) -> None:
 
 
 @pytest.mark.parametrize(
-    "reference", ["op:\x2f/vault/item", "OP://vault/item/field", "op:/vault/item/field"]
+    "reference",
+    [
+        "op:\x2f/vault/item",
+        "OP://vault/item/field",
+        "op:/vault/item/field",
+        "op:\x2f/vault/item/field/extra",
+        "op:\x2f/vault/item/section/field/extra",
+        "op:\x2f/vault//field",
+        "op:\x2f//item/field",
+        "op:\x2f/vault/item/",
+    ],
 )
 def test_secret_reference_prefix_and_components(reference: str) -> None:
     row = config.rows(document()["secrets"])[0]
@@ -636,20 +646,3 @@ def test_sender_reads_user_owned_configuration(tmp_path: Path) -> None:
     path = tmp_path / "service.toml"
     path.write_text('format = 1\nservice = "metrics"\n')
     assert config.load_sender(path) == {"format": 1, "service": "metrics"}
-
-
-@pytest.mark.parametrize(
-    "reference",
-    [
-        "op:\x2f/vault/item/field/extra",
-        "op:\x2f/vault/item/section/field/extra",
-        "op:\x2f/vault//field",
-        "op:\x2f//item/field",
-        "op:\x2f/vault/item/",
-    ],
-)
-def test_secret_reference_matches_sender_components(reference: str) -> None:
-    row = config.rows(document()["secrets"])[0]
-    row["op"] = reference
-    with pytest.raises(RefusalError, match=r"^secret reference$"):
-        config.secret(row, Path("/srv/o11y"))

@@ -13,14 +13,13 @@ lazy from collections.abc import Mapping
 lazy from typing import TextIO
 
 import pytest
+from tbhbops import dns_smoke
 from tbhbops_cli import cli, config, gitleaks, sources
 from tbhbops_cli.common import CliError, https_request
 
-from tbhbops import dns_smoke
-
 OP_URL = "https://op-fake.test"
-OP_TOKEN = "op-token-value"  # noqa: S105
-GH_TOKEN = "gh-token-value"  # noqa: S105
+OP_TOKEN = "op-token-value"
+GH_TOKEN = "gh-token-value"
 ENV = {
     config.OP_TOKEN: OP_TOKEN,
     config.GITHUB_TOKEN: GH_TOKEN,
@@ -46,7 +45,6 @@ def test_dns_smoke_dispatch(
         assert args.artifacts == Path(
             "/custom/artifacts" if custom else "dns-smoke-artifacts"
         )
-        assert args.dedicated_engine == ("unix:///dedicated" if custom else None)
         out.write("smoke dispatched\n")
         return 7
 
@@ -58,8 +56,6 @@ def test_dns_smoke_dispatch(
             "/custom/source",
             "--artifacts",
             "/custom/artifacts",
-            "--dedicated-engine",
-            "unix:///dedicated",
         ]
     out, err = io.StringIO(), io.StringIO()
     assert cli.run(argv, world.system, out, err) == 7
@@ -173,7 +169,11 @@ def world(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> World:
             {"MagicDNSSuffix": SUFFIX, "CurrentTailnet": {"Name": TAILNET_NAME}}
         )
 
-    env = {**ENV, "XDG_CONFIG_HOME": str(tmp_path / "xdg"), "TBHB_PRIVATE_ROOT": str(checkout)}
+    env = {
+        **ENV,
+        "XDG_CONFIG_HOME": str(tmp_path / "xdg"),
+        "TBHB_PRIVATE_ROOT": str(checkout),
+    }
     built.system = cli.System(
         env, http, run, checkout, tmp_path / "words", NOW, "ex-lab1"
     )
@@ -213,7 +213,9 @@ def test_a_run_creates_the_item_with_the_config_in_a_concealed_field(
 ) -> None:
     code, out, err = world.run()
     assert (code, err) == (0, "")
-    assert out.splitlines()[-1] == "created: op:\x2f/host-0-shared/scanner-policy/config"
+    assert (
+        out.splitlines()[-1] == "created: op:\x2f/host-0-shared/scanner-policy/config"
+    )
     ((method, path),) = [c for c in world.connect.calls if c[0] == "POST"]
     assert (method, path) == ("POST", "/v1/vaults/v-all/items")
     (item,) = world.connect.bodies
@@ -235,7 +237,9 @@ def test_a_run_updates_an_item_whose_config_differs(world: World) -> None:
     }
     code, out, err = world.run()
     assert (code, err) == (0, "")
-    assert out.splitlines()[-1] == "updated: op:\x2f/host-0-shared/scanner-policy/config"
+    assert (
+        out.splitlines()[-1] == "updated: op:\x2f/host-0-shared/scanner-policy/config"
+    )
     assert ("PUT", f"/v1/vaults/v-all/items/{ITEM_ID}") in world.connect.calls
     secrets_absent(out, err)
 
@@ -259,7 +263,9 @@ def test_a_run_whose_item_is_current_changes_nothing(world: World) -> None:
     world.connect.calls.clear()
     code, out, _ = world.run()
     assert code == 0
-    assert out.splitlines()[-1] == "current: op:\x2f/host-0-shared/scanner-policy/config"
+    assert (
+        out.splitlines()[-1] == "current: op:\x2f/host-0-shared/scanner-policy/config"
+    )
     assert {method for method, _ in world.connect.calls} == {"GET"}
     code, out, _ = world.run("--dry-run")
     assert out.splitlines()[-1] == (
@@ -314,7 +320,7 @@ def test_the_hosts_come_from_the_inventory_and_not_from_tailscale(
 def test_the_facts_come_from_each_source(world: World) -> None:
     creds = config.credentials(world.system.env)
     settings = config.settings(world.system.env)
-    facts = cli._facts(world.system, creds, settings, {"b": "1", "a": "2", "": "3"})  # noqa: SLF001
+    facts = cli._facts(world.system, creds, settings, {"b": "1", "a": "2", "": "3"})
     assert facts.repos == (
         ("ex-org", "secret-thing"),
         ("ex-org", "config"),
@@ -332,7 +338,7 @@ def test_the_facts_come_from_each_source(world: World) -> None:
     assert facts.endpoints == (f"op-connect.{SUFFIX}",)
     assert facts.names == ("ops-connect", "ops-connect.keychain", "srv")
     assert facts.account == "acct.example.com"
-    assert facts.session_sockets == ("/tmp/sock/a.sock",)  # noqa: S108  # never opened
+    assert facts.session_sockets == ("/tmp/sock/a.sock",)  # never opened
 
 
 def test_a_retired_host_joins_the_hosts_the_rules_and_the_stems_are_made_from(
@@ -342,7 +348,7 @@ def test_a_retired_host_joins_the_hosts_the_rules_and_the_stems_are_made_from(
     write(retired, "retired_hosts: [Ex-Lab9, ex-gone]\n")
     creds = config.credentials(world.system.env)
     settings = config.settings(world.system.env)
-    facts = cli._facts(world.system, creds, settings, {})  # noqa: SLF001
+    facts = cli._facts(world.system, creds, settings, {})
     assert facts.tailnet.hosts == (
         "ex-edge",
         "ex-gone",
@@ -364,14 +370,14 @@ def test_a_server_host_is_lowercased_under_the_suffix_and_listed_once(
     settings = replace(
         config.settings(world.system.env), server_hosts=("Op-A", "op-a", "op-b")
     )
-    facts = cli._facts(world.system, creds, settings, {})  # noqa: SLF001
+    facts = cli._facts(world.system, creds, settings, {})
     assert facts.endpoints == (f"op-a.{SUFFIX}", f"op-b.{SUFFIX}")
 
 
 def test_the_summary_says_when_the_canary_is_missing(world: World) -> None:
     creds = config.credentials(world.system.env)
     settings = config.settings(world.system.env)
-    facts = cli._facts(world.system, creds, settings, {"host-0-shared": "x"})  # noqa: SLF001
+    facts = cli._facts(world.system, creds, settings, {"host-0-shared": "x"})
     made, omitted = gitleaks.rules(facts)
     lines = cli.summary("[extend]", made, omitted, facts)
     assert (
@@ -604,8 +610,7 @@ def test_dns_help(
         "options:\n  -h, --help  show this help message and exit\n"
     )
     assert help_of(monkeypatch, capsys, "dns", "smoke") == (
-        "usage: tbhbops dns smoke [-h] [--source SOURCE] [--artifacts ARTIFACTS] "
-        "[--dedicated-engine DOCKER_HOST]\n\n"
+        "usage: tbhbops dns smoke [-h] [--source SOURCE] [--artifacts ARTIFACTS]\n\n"
         "Start the pinned CoreDNS image with the project's Corefile, zones and "
         "hardening flags inside Docker, and check the LAN view, tailnet view, "
         "refused view and forwarder block.\n\n"
@@ -614,9 +619,6 @@ def test_dns_help(
         "  --artifacts ARTIFACTS\n"
         "                        the directory for failure logs; default "
         "dns-smoke-artifacts\n"
-        "  --dedicated-engine DOCKER_HOST\n"
-        "                        the dedicated Docker engine URI, such as "
-        "unix:///run/dind/docker.sock\n"
     )
     with pytest.raises(SystemExit) as missing_command:
         cli.parser().parse_args(["dns"])

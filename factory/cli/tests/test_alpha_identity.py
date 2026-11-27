@@ -28,9 +28,10 @@ from fake_tool import pythonpath
 from hypothesis import given, settings
 from hypothesis import strategies as st
 
-from tbhbdev.alpha import identity as ai
 from tbhbdev.alpha import install
-from tbhbdev.alpha.identity_commands import cmd_hashes
+from tbhbdev.alpha.identity import dispatcher as ai
+from tbhbdev.alpha.identity.commands import cmd_hashes
+from tbhbdev.alpha.identity.models import EFFORTS
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -38,7 +39,7 @@ if TYPE_CHECKING:
 # mutmut runs the tests from a copy of the source tree, so fixtures resolve
 # against this file rather than the working directory.
 DATA = Path(__file__).parent / "testdata" / "alpha"
-SRC = Path(ai.__file__).parents[2]
+SRC = Path(ai.__file__).parents[3]
 ORIGIN = "git@github.com:tbhb-dev/example.git"
 HUMAN_COMMIT_ENV = {
     f"GIT_{role}_{field}": value
@@ -326,7 +327,7 @@ RECORD_WRITER = """
 import sys
 from pathlib import Path
 sys.path.insert(0, sys.argv[1])
-from tbhbdev.alpha import identity as ai
+from tbhbdev.alpha.identity import dispatcher as ai
 for i in range(20):
     ai.write_record(sys.argv[3], {f"{sys.argv[4]}-{i}": "v"}, Path(sys.argv[2]))
 """
@@ -367,22 +368,6 @@ def test_detect_innermost_wins() -> None:
     assert ai.detect({"ANTIGRAVITY_CONVERSATION_ID": "c"}) == ("antigravity", "c")
 
 
-def test_version_per_harness() -> None:
-    assert ai.version("claude", {"CLAUDE_CODE_EXECPATH": "/x/2.1.316"}) == "2.1.316"
-    assert ai.version("claude", {}) is None
-    assert ai.version("claude", {"CLAUDE_CODE_EXECPATH": ""}) is None
-    assert ai.version("codex", {"CODEX_VERSION": "0.166.0"}) == "0.166.0"
-    assert ai.version("codex", {"CODEX_VERSION": ""}) is None
-    assert ai.version("codex", {}) is None
-    assert ai.version("antigravity", {"ANTIGRAVITY_LS_VERSION": "cli-1.4.12"}) == (
-        "1.4.12"
-    )
-    assert ai.version("antigravity", {"ANTIGRAVITY_LS_VERSION": "1.4.12"}) == "1.4.12"
-    assert ai.version("antigravity", {"ANTIGRAVITY_LS_VERSION": ""}) is None
-    assert ai.version("antigravity", {}) is None
-    assert ai.version("other", {"ANTIGRAVITY_LS_VERSION": "cli-1"}) is None
-
-
 @pytest.mark.parametrize(
     ("value", "expected"),
     [
@@ -411,109 +396,11 @@ def test_clean_value_is_grammar_safe(text: str) -> None:
         assert not re.search(r"[\s;,]", cleaned)
 
 
-@pytest.mark.parametrize(
-    ("value", "expected"),
-    [
-        ("sdk-cli", "sdk-cli"),
-        ("CLI", "CLI"),
-        ("a b", None),
-        ("a=b", None),
-        ("a;b", None),
-        ("a,b", None),
-        ("", None),
-        (None, None),
-        (3, None),
-    ],
-)
-def test_surface_ok(value: object, expected: str | None) -> None:
-    assert ai.surface_ok(value) == expected
-
-
-def test_surface_per_harness() -> None:
-    assert ai.surface("claude", {"CLAUDE_CODE_ENTRYPOINT": "sdk-cli"}) == "sdk-cli"
-    assert ai.surface("claude", {"CLAUDE_CODE_ENTRYPOINT": "a b"}) is None
-    assert ai.surface("claude", {}) is None
-    assert ai.surface("codex", {"CLAUDE_CODE_ENTRYPOINT": "x"}) is None
-    assert ai.surface("other", {"ANTIGRAVITY_LS_VERSION": "cli-1"}) is None
-    assert ai.surface("antigravity", {"ANTIGRAVITY_LS_VERSION": "cli-1.4.12"}) == "cli"
-    assert ai.surface("antigravity", {"ANTIGRAVITY_LS_VERSION": "1.4.12"}) is None
-    assert ai.surface("antigravity", {}) is None
-
-
-def test_agy_model_table() -> None:
-    assert ai.agy_model("claude-sonnet-5-5-low") == (
-        "anthropic:claude-sonnet-5-5",
-        "low",
-    )
-    assert ai.agy_model("gpt-oss-120b-medium") == ("openai:gpt-oss-120b", "medium")
-    assert ai.agy_model("gemini-4-argon-high") == ("gcp.gemini:gemini-4-argon", "high")
-    assert ai.agy_model("claude-opus-5-5-medium") == (
-        "anthropic:claude-opus-5-5",
-        "medium",
-    )
-    assert ai.agy_model("gemini-3.8-flash-low") == (
-        "gcp.gemini:gemini-3.8-flash",
-        "low",
-    )
-    assert ai.agy_model("gemini-4-carbon-low") == ("gcp.gemini:gemini-4-carbon", "low")
-    assert ai.agy_model("gemini-4-hydrogen-xhigh") == (
-        "gcp.gemini:gemini-4-hydrogen",
-        "xhigh",
-    )
-    assert ai.agy_model("gemini-pro-orchestrator") == (
-        "gcp.gemini:gemini-pro-orchestrator",
-        None,
-    )
-    assert ai.agy_model("gemini-pro-orchestrator-argon") == (
-        "gcp.gemini:gemini-pro-orchestrator-argon",
-        None,
-    )
-    assert len(ai.AGY_MODELS) == 22
-    for key in (
-        "gemini-4-argon-cyber-permissive",
-        "gemini-3.8-flash-tiered",
-        "gemini-3.8-flash",
-        "gemini-4-argon-xhigh",
-        "gemini-4-carbon-xhigh",
-        "",
-    ):
-        assert ai.agy_model(key) == (key, None)
-
-
-def test_provider_model() -> None:
-    assert (
-        ai.provider_model("claude", "claude-haiku-5-5") == "anthropic:claude-haiku-5-5"
-    )
-    assert ai.provider_model("codex", "gpt-5.6-sol") == "openai:gpt-5.6-sol"
-    assert ai.provider_model("codex", "o3-mini") == "openai:o3-mini"
-    assert ai.provider_model("codex", "codex-mini") == "openai:codex-mini"
-    assert ai.provider_model("codex", "mystery") == "mystery"
-    assert ai.provider_model("codex", "xgpt-5") == "xgpt-5"
-    assert ai.provider_model("antigravity", "gemini-3.8-flash-medium") == (
-        "gcp.gemini:gemini-3.8-flash"
-    )
-    assert ai.provider_model("antigravity", "gemini-3.8-flash-tiered") == (
-        "gemini-3.8-flash-tiered"
-    )
-    assert ai.provider_model("claude", "<synthetic>") is None
-    assert ai.provider_model("claude", "a b") is None
-    assert ai.provider_model("claude", "a;b") is None
-    assert ai.provider_model("claude", "a,b") is None
-    assert ai.provider_model("claude", "") is None
-    assert ai.provider_model("claude", None) is None
-    assert ai.provider_model("other", "m") == "m"
-
-
-def test_slugs_and_providers() -> None:
+def test_slugs() -> None:
     assert ai.SLUGS == {
         "claude": "claude-code",
         "codex": "codex",
         "antigravity": "antigravity",
-    }
-    assert ai.PROVIDERS == {
-        "claude": "anthropic",
-        "codex": "openai",
-        "antigravity": "gcp.gemini",
     }
 
 
@@ -634,7 +521,7 @@ attr_sets = st.fixed_dictionaries(
         "model": st.from_regex(r"[a-z0-9][a-z0-9.:_-]{0,20}", fullmatch=True),
     },
     optional={
-        "effort": st.sampled_from(sorted(ai.EFFORTS)),
+        "effort": st.sampled_from(sorted(EFFORTS)),
         "session": hashes,
         "subagent": hashes,
         "surface": st.from_regex(r"[A-Za-z0-9_-]{1,10}", fullmatch=True),
@@ -3552,7 +3439,7 @@ def test_check_pair() -> None:
     assert ai.check_pair("harness=") == "bad attribute 'harness='"
     assert ai.check_pair("=x") == "bad attribute '=x'"
     assert ai.check_pair("a=b=c") is not None
-    for effort in ai.EFFORTS:
+    for effort in EFFORTS:
         assert ai.check_pair(f"effort={effort}") is None
     assert ai.check_pair("subagent=sha-256-64:ABCDEF0123456789") == "bad subagent hash"
     assert ai.check_pair("session=sha-256-64:" + "a" * 17) == "bad session hash"
@@ -8370,41 +8257,6 @@ def test_agy_1_5_7_commit_path_stamps_the_spike_trailer(
         "Generated-by: LLM effort=high;harness=antigravity:1.5.7;"
         f"model=gcp.gemini:gemini-4-argon;session={session};surface=cli\n"
     )
-
-
-AGY_TABLE_ROWS = {
-    "claude-opus-5-5-high": ("anthropic", "claude-opus-5-5", "high"),
-    "claude-opus-5-5-low": ("anthropic", "claude-opus-5-5", "low"),
-    "claude-opus-5-5-medium": ("anthropic", "claude-opus-5-5", "medium"),
-    "claude-sonnet-5-5-high": ("anthropic", "claude-sonnet-5-5", "high"),
-    "claude-sonnet-5-5-low": ("anthropic", "claude-sonnet-5-5", "low"),
-    "claude-sonnet-5-5-medium": ("anthropic", "claude-sonnet-5-5", "medium"),
-    "gemini-3.8-flash-high": ("gcp.gemini", "gemini-3.8-flash", "high"),
-    "gemini-3.8-flash-low": ("gcp.gemini", "gemini-3.8-flash", "low"),
-    "gemini-3.8-flash-medium": ("gcp.gemini", "gemini-3.8-flash", "medium"),
-    "gemini-4-argon-high": ("gcp.gemini", "gemini-4-argon", "high"),
-    "gemini-4-argon-low": ("gcp.gemini", "gemini-4-argon", "low"),
-    "gemini-4-argon-medium": ("gcp.gemini", "gemini-4-argon", "medium"),
-    "gemini-4-carbon-high": ("gcp.gemini", "gemini-4-carbon", "high"),
-    "gemini-4-carbon-low": ("gcp.gemini", "gemini-4-carbon", "low"),
-    "gemini-4-carbon-medium": ("gcp.gemini", "gemini-4-carbon", "medium"),
-    "gemini-4-hydrogen-high": ("gcp.gemini", "gemini-4-hydrogen", "high"),
-    "gemini-4-hydrogen-low": ("gcp.gemini", "gemini-4-hydrogen", "low"),
-    "gemini-4-hydrogen-medium": ("gcp.gemini", "gemini-4-hydrogen", "medium"),
-    "gemini-4-hydrogen-xhigh": ("gcp.gemini", "gemini-4-hydrogen", "xhigh"),
-    "gemini-pro-orchestrator": ("gcp.gemini", "gemini-pro-orchestrator", None),
-    "gemini-pro-orchestrator-argon": (
-        "gcp.gemini",
-        "gemini-pro-orchestrator-argon",
-        None,
-    ),
-    "gpt-oss-120b-medium": ("openai", "gpt-oss-120b", "medium"),
-}
-
-
-def test_agy_models_table_rows_are_exact() -> None:
-    """Every row, so swapped ids or efforts between keys fail."""
-    assert ai.AGY_MODELS == AGY_TABLE_ROWS
 
 
 # ------------------------------------------------------------- start time

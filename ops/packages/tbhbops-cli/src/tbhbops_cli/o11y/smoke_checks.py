@@ -7,18 +7,20 @@ from urllib.parse import urlencode
 lazy from collections.abc import Sequence
 
 import yaml
-
 from tbhbops.o11y import rustfs_probe, smoke
 from tbhbops.o11y import smoke_query as query
 from tbhbops.o11y.receipt import decode
+
 from tbhbops_cli.o11y import receipt, smoke_stages
 from tbhbops_cli.o11y.http import BodyTooLargeError, TransportError
-from tbhbops_cli.o11y.smoke import SmokeError, poll, present, require, scan_path
+from tbhbops_cli.o11y.polling import poll
+from tbhbops_cli.o11y.smoke import SmokeError, present, require, scan_path
 
 if TYPE_CHECKING:
     from pathlib import Path
 
     from tbhbops.o11y.validate import Document
+
     from tbhbops_cli.o11y.smoke import Smoke
 
 HTTP_OK = 200

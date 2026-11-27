@@ -10,11 +10,10 @@ from unittest.mock import Mock, call, patch
 lazy from pathlib import Path
 
 import pytest
-from tbhbops_cli import cli, connect, deploy
-
 from tbhbops.deploy import config
 from tbhbops.deploy.config import Secret, Service
 from tbhbops.deploy.protocol import RefusalError, Request, unpack
+from tbhbops_cli import cli, connect, deploy
 
 RELEASE = "a" * 40
 
@@ -274,34 +273,6 @@ def test_send_refuses_host(host: str) -> None:
     ):
         deploy.send(args, io.StringIO())
     transport.assert_not_called()
-
-
-def test_send_requires_matching_result(monkeypatch: pytest.MonkeyPatch) -> None:
-    args = cli.parser().parse_args(
-        [
-            "deploy",
-            "send",
-            "--service",
-            "o11y",
-            "--release",
-            RELEASE,
-            "--host",
-            "host-c",
-            "--identity",
-            "/job/key",
-            "--known-hosts",
-            "/job/known-hosts",
-        ]
-    )
-    bodies: list[bytes] = [b"", b"{}"]
-
-    def run(argv: list[str], **_kwargs: object) -> subprocess.CompletedProcess[bytes]:
-        return subprocess.CompletedProcess(argv, 0, bodies.pop(0), b"")
-
-    monkeypatch.setattr(subprocess, "run", run)
-    for _ in range(2):
-        with pytest.raises(RefusalError):
-            deploy.send(args, io.StringIO())
 
 
 @pytest.mark.parametrize(

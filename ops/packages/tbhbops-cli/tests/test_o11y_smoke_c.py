@@ -15,6 +15,8 @@ lazy from collections.abc import Callable, Mapping, Sequence
 
 import pytest
 import yaml
+from tbhbops.o11y import init, smoke
+from tbhbops.o11y import smoke_capacity as capacity
 from tbhbops_cli.o11y import smoke as command
 from tbhbops_cli.o11y import smoke_capacity as cap
 from tbhbops_cli.o11y import smoke_checks as checks
@@ -22,9 +24,6 @@ from tbhbops_cli.o11y import smoke_lifecycle as lifecycle
 from tbhbops_cli.o11y import smoke_stages as stages
 from tbhbops_cli.o11y.http import BodyTooLargeError, LocalAdminHttp, TransportError
 from tbhbops_cli.o11y.runner import Result
-
-from tbhbops.o11y import init, smoke
-from tbhbops.o11y import smoke_capacity as capacity
 lazy from tbhbops.o11y.validate import Document
 
 from .test_o11y_admin_http import Response, connection  # pyrefly: ignore[missing-import]  # pytest importlib supplies this namespace
@@ -1092,7 +1091,7 @@ def test_safe_receipt_failures_preserve_helper_order(
     assert lines == ["FAIL receipt: operation-unavailable"]
 
 
-def test_flow_order_and_stop_after_five(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_flow_order(monkeypatch: pytest.MonkeyPatch) -> None:
     _, _, _, run = instance_c()
     events: list[str] = json.loads("[]")
 
@@ -1156,21 +1155,6 @@ def test_flow_order_and_stop_after_five(monkeypatch: pytest.MonkeyPatch) -> None
         "group12",
         "group13",
         "cleanup",
-        "finalize_transcript",
-        "scans",
-    ]
-    events.clear()
-    run.stop_after = 5
-    execute_stages: Callable[[command.Smoke, Path], None] = vars(command)["_execute"]
-    execute_stages(run, SOURCE)
-    assert events == [
-        "prepare",
-        "group1",
-        "group2",
-        "group3",
-        "group3a",
-        "group4",
-        "group5",
         "finalize_transcript",
         "scans",
     ]

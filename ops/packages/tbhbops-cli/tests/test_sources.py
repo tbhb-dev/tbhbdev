@@ -95,22 +95,11 @@ def pages_of(count: int) -> list[list[str]]:
     return [names[at : at + 100] for at in range(0, count, 100)]
 
 
-def test_a_list_that_reaches_the_limit_may_be_cut_short() -> None:
-    with pytest.raises(CliError) as raised:
-        sources.private_repos(GitHub({"o1": pages_of(1000)}), "t", ("o1",))
-    assert str(raised.value) == (
-        "the GitHub repository list for o1 reached its limit of 1000 and may miss some"
-    )
-
-
-def test_a_list_just_under_the_limit_is_fine() -> None:
-    found = sources.private_repos(GitHub({"o1": pages_of(999)}), "t", ("o1",))
-    assert len(found) == 999
-
-
-def test_the_limit_counts_one_owners_repositories_alone() -> None:
-    github = GitHub({"o1": pages_of(600), "o2": pages_of(600)})
-    assert len(sources.private_repos(github, "t", ("o1", "o2"))) == 1200
+def test_cursor_paging_continues_past_a_thousand_repositories() -> None:
+    github = GitHub({"o1": pages_of(1001), "o2": pages_of(600)})
+    found = sources.private_repos(github, "t", ("o1", "o2"))
+    assert len(found) == 1601
+    assert found[1000] == ("o1", "r1000")
 
 
 def test_a_failing_request_is_reported_by_status_alone() -> None:

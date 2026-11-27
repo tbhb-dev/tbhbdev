@@ -9,6 +9,7 @@ scc="$PWD/@@SCC@@"
 git="$PWD/@@GIT@@"
 policy="$PWD/@@POLICY@@"
 helper="$PWD/@@IMPORT@@"
+python="$PWD/@@PYTHON@@"
 if (($# != 2)); then
   echo 'usage: pr_size_count BASE HEAD' >&2
   exit 2
@@ -90,7 +91,7 @@ code=0 raw=0 imported_lines=null
   -- ':(glob)**/IMPORT-MAP.toml' >"$work/maps"
 if [[ -s $work/maps ]]; then
   imported_lines=0
-  python3 -I "$helper" "$git" "$head" "$work/files" <"$work/maps" >"$work/imports"
+  "$python" -I "$helper" "$git" "$head" "$work/files" <"$work/maps" >"$work/imports"
   while IFS= read -r -d '' path; do
     stat=$("$git" --literal-pathspecs diff --no-ext-diff --no-textconv --numstat "$base...$head" -- "$path")
     IFS=$'\t' read -r additions _ <<<"$stat"
