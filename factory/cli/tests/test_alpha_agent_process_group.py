@@ -555,10 +555,19 @@ def test_failed_spawn_has_no_group_to_stop(monkeypatch: pytest.MonkeyPatch) -> N
 def test_interrupted_spawn_cleans_up_before_returning_the_child(
     monkeypatch: pytest.MonkeyPatch, *, stopped: bool
 ) -> None:
-    child = Mock(pid=23)
+    class Child:
+        pid = 23
+
+        def __init__(self) -> None:
+            self.wait = Mock()
+
+        def poll(self) -> int | None:
+            return None
+
+    child = Child()
     stop = Mock(return_value=stopped)
 
-    def spawn(*_args: object, **_kwargs: object) -> Mock:
+    def spawn(*_args: object, **_kwargs: object) -> Child:
         os.kill(os.getpid(), signal.SIGTERM)
         return child
 
