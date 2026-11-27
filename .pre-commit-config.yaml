@@ -1,0 +1,210 @@
+---
+# SPDX-License-Identifier: Apache-2.0
+# Copyright Tony Burns
+
+# Run `mise install` before installing hooks with `mise exec -- prek install`.
+# The hooks use the root tool pins from mise.toml.
+default_stages: [pre-commit]
+default_install_hook_types: [pre-commit, commit-msg, pre-push]
+
+# Never touch Vale's synced style packages, build output, or test fixtures,
+# which are deliberately malformed and must stay that way.
+exclude: |
+  (?x)^(
+    \.vale/(Google|write-good|proselint|ai-tells.*)/|
+    \.bazel-.*/|
+    bazel-.*/|
+    tmp/|
+    \.mise/|
+    lib/rules/repo/baseline/(files|kinds|visibility|seed)/|
+    \.worktrees/|
+    (.*/)?(mutants|testdata)/
+  )
+
+repos:
+  - repo: builtin
+    hooks:
+      - id: check-added-large-files
+        args: [--maxkb=19531, --enforce-all]
+      - id: check-case-conflict
+      - id: check-executables-have-shebangs
+      - id: check-merge-conflict
+      - id: check-symlinks
+      - id: end-of-file-fixer
+        exclude: >-
+          ^(\.vale/config/vocabularies/project/reject\.txt|lib/rules/lint/gitleaks/(base|upstream)\.toml)$
+      - id: fix-byte-order-marker
+      - id: mixed-line-ending
+      - id: trailing-whitespace
+        exclude: ^lib/rules/cloudflare/e2e/smoke/(nested/)?worker-configuration\.d\.ts$
+
+  - repo: local
+    hooks:
+      # Check the staged files with the same pins and configs as
+      # the Bazel gates.
+      - id: gitleaks
+        name: gitleaks (staged changes)
+        language: system
+        entry: mise run scan-secrets -- git --pre-commit --staged --redact --no-banner
+        pass_filenames: false
+      # The commit message: secrets, then the Conventional Commits header.
+      - id: gitleaks-commit-msg
+        name: gitleaks (commit message)
+        language: system
+        entry: bash -c 'mise run scan-secrets -- stdin --redact --no-banner < "$1"' --
+        stages: [commit-msg]
+        always_run: true
+      - id: conventional-commits
+        name: Conventional Commits
+        language: system
+        entry: mise exec -- cog verify --file
+        stages: [commit-msg]
+        always_run: true
+      - id: ruff-format
+        name: ruff format
+        language: system
+        entry: mise exec -- ruff format --check --force-exclude
+        exclude: ^factory/cli/tests/conftest\.py$
+        types_or: [python]
+      - id: ruff-check
+        name: ruff check
+        language: system
+        entry: mise exec -- ruff check --force-exclude
+        types_or: [python]
+      - id: shfmt
+        name: shfmt
+        language: system
+        entry: mise exec -- shfmt -d
+        exclude: ^(\.github/actions/affected-targets/select|factory/cli/combine_coverage)\.sh$
+        types_or: [shell, bats]
+      - id: shellcheck
+        name: shellcheck
+        language: system
+        entry: mise exec -- shellcheck -o check-extra-masked-returns
+        exclude: ^\.github/actions/affected-targets/select\.sh$
+        types_or: [shell, bats]
+      - id: buildifier
+        name: buildifier
+        language: system
+        entry: mise exec -- buildifier -mode=check -lint=warn -warnings=all
+        exclude: |
+          (?x)^lib/rules/(
+            BUILD\.bazel|
+            format/private/format\.bzl|
+            lint/private/tree_check\.bzl|
+            lint/tests/required_status_checks/BUILD\.bazel|
+            python/private/mutmut\.bzl|
+            quality/private/slice\.bzl|
+            repo/private/repo_layout\.bzl|
+            shell/private/launcher\.bzl
+          )$
+        types: [bazel]
+      - id: tombi-format
+        name: tombi format
+        language: system
+        entry: mise exec -- tombi format --check --offline
+        exclude: ^((factory/cli|lib/rules)/IMPORT-MAP|lib/rules/lint/gitleaks/(base|upstream))\.toml$
+        types: [toml]
+      - id: ryl
+        name: ryl
+        language: system
+        entry: mise exec -- ryl check --strict -c .ryl.toml
+        exclude: ^lib/rules/(.*/)?pnpm-workspace\.yaml$
+        types: [yaml]
+      - id: rumdl
+        name: rumdl
+        language: system
+        entry: mise exec -- rumdl check
+        types: [markdown]
+      - id: actionlint
+        name: actionlint
+        language: system
+        # Its run: block checks need shellcheck, so it gets the pinned one.
+        entry: mise exec -- env "SHELLCHECK_OPTS=-o check-extra-masked-returns" actionlint
+        args: [-shellcheck, shellcheck]
+        files: ^\.github/workflows/
+      - id: editorconfig-checker
+        name: editorconfig-checker
+        language: system
+        entry: mise exec -- editorconfig-checker -config .editorconfig-checker.json
+        exclude: ^factory/cli/python\.bzl$
+
+      - id: spelling-and-prose
+        name: cspell and vale
+        language: system
+        entry: >-
+          mise exec -- bash -c 'cspell --no-progress "$@" && vale sync && vale "$@"' --
+        types: [markdown]
+        stages: [pre-push]
+        require_serial: true
+        # Existing Vale findings are tracked in the pull request.
+        exclude: |
+          (?x)^(
+            AGENTS\.md|
+            CLAUDE\.md|
+            README\.md|
+            docs/README\.md|
+            factory/README\.md|
+            factory/cli/README\.md|
+            factory/cli/docs/AGENTS\.md|
+            factory/cli/docs/index\.md|
+            factory/cli/docs/reference/admin\.md|
+            factory/cli/docs/reference/adr\.md|
+            factory/cli/docs/reference/agent-hosts\.md|
+            factory/cli/docs/reference/alpha/agent-configuration\.md|
+            factory/cli/docs/reference/alpha/agent-isolation-limits\.md|
+            factory/cli/docs/reference/alpha/commands/gh-app\.md|
+            factory/cli/docs/reference/alpha/commands/guard-agent-model\.md|
+            factory/cli/docs/reference/alpha/commands/guard-gh-pr\.md|
+            factory/cli/docs/reference/alpha/commands/guard-scripts\.md|
+            factory/cli/docs/reference/alpha/commands/identity\.md|
+            factory/cli/docs/reference/alpha/commands/install\.md|
+            factory/cli/docs/reference/alpha/commands/issue\.md|
+            factory/cli/docs/reference/alpha/commands/loop\.md|
+            factory/cli/docs/reference/alpha/commands/pr\.md|
+            factory/cli/docs/reference/alpha/commands/pre-push-guard\.md|
+            factory/cli/docs/reference/alpha/commands/review\.md|
+            factory/cli/docs/reference/alpha/commands/run-stop-hook\.md|
+            factory/cli/docs/reference/alpha/commands/verify-range\.md|
+            factory/cli/docs/reference/alpha/commands/version-check\.md|
+            factory/cli/docs/reference/alpha/github-polling\.md|
+            factory/cli/docs/reference/alpha/loop-configuration\.md|
+            factory/cli/docs/reference/alpha/monorepo\.md|
+            factory/cli/docs/reference/alpha/no-self-approval\.md|
+            factory/cli/docs/reference/alpha/repository-settings\.md|
+            factory/cli/docs/reference/alpha/review-drafts\.md|
+            factory/cli/docs/reference/alpha/secret-scan\.md|
+            factory/cli/docs/reference/analytics\.md|
+            factory/cli/docs/reference/config\.md|
+            factory/cli/docs/reference/content-model\.md|
+            factory/cli/docs/reference/content\.md|
+            factory/cli/docs/reference/frontmatter\.md|
+            factory/cli/docs/reference/gitleaks-check\.md|
+            factory/cli/docs/reference/prose-check\.md|
+            factory/cli/docs/reference/secrets\.md|
+            factory/cli/src/tbhbdev/alpha/review_data/PULL_REQUEST_REVIEW_CHECKLIST\.md|
+            lib/README\.md|
+            lib/rules/README\.md|
+            lib/rules/apple/e2e/smoke/README\.md|
+            lib/rules/content/design/REVIEW\.md|
+            lib/rules/content/design/TEMPLATE\.md|
+            lib/rules/content/design/WRITING\.md|
+            lib/rules/diagrams/structurizr/README\.md|
+            lib/rules/docs/AGENTS\.md|
+            lib/rules/docs/reference/commit-identity\.md|
+            lib/rules/docs/reference/content-types\.md|
+            lib/rules/docs/reference/decision-records\.md|
+            lib/rules/docs/reference/frontmatter\.md|
+            lib/rules/docs/reference/gitleaks\.md|
+            lib/rules/docs/reference/markdown-links\.md|
+            lib/rules/docs/reference/mise-keys\.md|
+            lib/rules/docs/reference/mutation-oses\.md|
+            lib/rules/docs/reference/pnpm-workspaces\.md|
+            lib/rules/docs/reference/required-files\.md|
+            lib/rules/docs/reference/review-severity\.md|
+            lib/rules/docs/reference/structurizr\.md|
+            lib/rules/docs/reference/swift\.md|
+            lib/rules/repo/baseline/README\.md|
+            products/README\.md|
+            third_party/README\.md
+          )$
