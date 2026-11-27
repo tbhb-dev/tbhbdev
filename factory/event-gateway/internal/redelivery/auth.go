@@ -75,8 +75,13 @@ func decodeToken(data []byte, token *installationToken) bool {
 		return false
 	}
 
-	return json.Unmarshal(object["token"], &token.Token) == nil &&
-		json.Unmarshal(object["expires_at"], &token.ExpiresAt) == nil
+	for name, field := range map[string]any{"token": &token.Token, "expires_at": &token.ExpiresAt} {
+		if raw := object[name]; raw != nil && json.Unmarshal(raw, field) != nil {
+			return false
+		}
+	}
+
+	return true
 }
 
 func (installationToken) String() string       { return redacted }
@@ -217,10 +222,7 @@ func (c Client) Token(ctx context.Context) (string, error) {
 func (c Client) sign(now time.Time) (string, bool) {
 	const header = `{"alg":"RS256","typ":"JWT"}`
 
-	issuer, err := json.Marshal(c.options.AppID)
-	if err != nil {
-		return "", false
-	}
+	issuer, encodeErr := json.Marshal(c.options.AppID)
 
 	claims := fmt.Sprintf(
 		`{"iss":%s,"iat":%d,"exp":%d}`, issuer, now.Add(-time.Minute).Unix(), now.Add(jwtLifetime).Unix(),
@@ -230,5 +232,5 @@ func (c Client) sign(now time.Time) (string, bool) {
 	digest := sha256.Sum256([]byte(unsigned))
 	sig, err := rsa.SignPKCS1v15(nil, c.key, crypto.SHA256, digest[:])
 
-	return unsigned + "." + encoding.EncodeToString(sig), err == nil
+	return unsigned + "." + encoding.EncodeToString(sig), errors.Join(encodeErr, err) == nil
 }

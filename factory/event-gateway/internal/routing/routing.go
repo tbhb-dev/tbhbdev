@@ -222,12 +222,7 @@ func compileMatch(rule *Rule, raw json.RawMessage) error {
 	for _, event := range events {
 		object["event"] = json.RawMessage(`"` + event + `"`)
 
-		data, encodeErr := json.Marshal(object)
-		if encodeErr != nil {
-			return fmt.Errorf("encode event %q filter: %w", event, encodeErr)
-		}
-
-		subscription, parseErr := filter.Parse(data)
+		subscription, parseErr := filter.ParseObject(object)
 		if parseErr != nil {
 			return fmt.Errorf("event %q: %w", event, parseErr)
 		}

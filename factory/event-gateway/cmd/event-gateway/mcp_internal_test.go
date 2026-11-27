@@ -349,7 +349,7 @@ func TestMCPTools(t *testing.T) {
 		case subscribeTool:
 			checkEqual(
 				t,
-				slices.Equal(schema.Required, []string{channelProviderKey, channelEventKey, channelRepositoryKey}),
+				slices.Equal(schema.Required, []string{channelProviderKey, eventKey, channelRepositoryKey}),
 				true,
 			)
 		case unsubscribeTool:
@@ -362,7 +362,7 @@ func TestMCPTools(t *testing.T) {
 		}
 
 		keys := []string{
-			channelProviderKey, channelEventKey, channelRepositoryKey, "action", "conclusion", "name", "workflow_path",
+			channelProviderKey, eventKey, channelRepositoryKey, "action", "conclusion", "name", "workflow_path",
 			"number", "label",
 		}
 		checkEqual(t, len(schema.Properties), len(keys))
@@ -414,7 +414,7 @@ func TestMCPCheckDelivery(t *testing.T) {
 
 				for _, event := range []string{"self_test", "echo"} {
 					params := readChannelNotification(t, <-notifications)
-					checkEqual(t, params.Meta[channelEventKey], event)
+					checkEqual(t, params.Meta[eventKey], event)
 					checkEqual(t, params.Content, `{"message":"Local stdio delivery test"}`)
 				}
 			}
@@ -478,7 +478,7 @@ func TestMCPChannelParams(t *testing.T) {
 	})
 	clipped := strings.Repeat("x", 252) + `\u003c\u003e\u0026`
 	checkEqual(t, maps.Equal(got.Meta, map[string]string{
-		channelProviderKey: clipped, channelEventKey: clipped, channelRepositoryKey: clipped,
+		channelProviderKey: clipped, eventKey: clipped, channelRepositoryKey: clipped,
 		"delivery": clipped, "action": clipped,
 	}), true)
 	checkEqual(t, got.Content, `{"action":"`+clipped+`é","body":"\u003c\u003e\u0026"}`)
@@ -491,7 +491,7 @@ func TestMCPChannelParams(t *testing.T) {
 			t,
 			maps.Equal(
 				plain.Meta,
-				map[string]string{channelProviderKey: "example", channelEventKey: pushEvent, "delivery": "id"},
+				map[string]string{channelProviderKey: "example", eventKey: pushEvent, "delivery": "id"},
 			),
 			true,
 		)
@@ -544,7 +544,7 @@ func TestMCPChannelNotice(t *testing.T) {
 		select {
 		case req := <-notifications:
 			params := readChannelNotification(t, req)
-			checkEqual(t, params.Meta[channelEventKey], "notice")
+			checkEqual(t, params.Meta[eventKey], "notice")
 			checkEqual(t, params.Content, test.content)
 		case <-ctx.Done():
 			t.Fatal(ctx.Err())

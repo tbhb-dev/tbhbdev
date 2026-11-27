@@ -45,14 +45,7 @@ func newOTLPMeter(
 
 	exporter := otlpMetrics{otlpWriter: writer, start: time.Now()}
 	collect := func(ctx context.Context) error {
-		var metrics metricdata.ResourceMetrics
-
-		err := reader.Collect(ctx, &metrics)
-		if err != nil {
-			return fmt.Errorf("collect OTLP metrics: %w", err)
-		}
-
-		return exporter.Export(ctx, &metrics)
+		return exporter.collect(ctx, reader)
 	}
 
 	ctx, cancel := context.WithCancel(context.WithoutCancel(ctx))
@@ -61,7 +54,10 @@ func newOTLPMeter(
 	go func() {
 		defer close(stopped)
 
-		periodicMetrics(ctx, collect)
+		tick := time.NewTicker(time.Minute)
+		defer tick.Stop()
+
+		periodicMetrics(ctx, tick.C, collect)
 	}()
 
 	return meter, func(ctx context.Context) error {
@@ -76,15 +72,12 @@ func newOTLPMeter(
 	}
 }
 
-func periodicMetrics(ctx context.Context, collect func(context.Context) error) {
-	tick := time.NewTicker(time.Minute)
-	defer tick.Stop()
-
+func periodicMetrics(ctx context.Context, ticks <-chan time.Time, collect func(context.Context) error) {
 	for {
 		select {
 		case <-ctx.Done():
 			return
-		case <-tick.C:
+		case <-ticks:
 			export, cancel := context.WithTimeout(ctx, exportTimeout)
 
 			err := collect(export)
@@ -151,6 +144,17 @@ func (w otlpMetrics) Export(ctx context.Context, data *metricdata.ResourceMetric
 	return w.send(ctx, "metrics", message)
 }
 
+func (w otlpMetrics) collect(ctx context.Context, reader *sdkmetric.ManualReader) error {
+	var metrics metricdata.ResourceMetrics
+
+	err := reader.Collect(ctx, &metrics)
+	if err != nil {
+		return fmt.Errorf("collect OTLP metrics: %w", err)
+	}
+
+	return w.Export(ctx, &metrics)
+}
+
 type otlpLogs struct{ *otlpWriter }
 
 func (w otlpLogs) Export(ctx context.Context, records []sdklog.Record) error {
@@ -167,7 +171,7 @@ func (w otlpLogs) Export(ctx context.Context, records []sdklog.Record) error {
 			EventName:              "",
 
 			TimeUnixNano:   uint64(record.Timestamp().UnixNano()),
-			SeverityNumber: otlpSeverity(int(record.Severity())),
+			SeverityNumber: otlpSeverity(int64(record.Severity())),
 			SeverityText:   record.SeverityText(),
 			Body:           otlpString(record.Body().AsString()),
 			TraceId:        traceID[:],
@@ -184,7 +188,7 @@ func otlpScope(name string) *commonpb.InstrumentationScope {
 	return &commonpb.InstrumentationScope{Name: name, Version: "", Attributes: nil, DroppedAttributesCount: 0}
 }
 
-func otlpSeverity(severity int) logpb.SeverityNumber {
+func otlpSeverity(severity int64) logpb.SeverityNumber {
 	if severity < math.MinInt32 || severity > math.MaxInt32 {
 		return logpb.SeverityNumber_SEVERITY_NUMBER_UNSPECIFIED
 	}

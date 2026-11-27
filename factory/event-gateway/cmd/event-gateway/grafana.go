@@ -203,14 +203,11 @@ func normalizeGrafana(raw json.RawMessage, delivery string, receivedAt time.Time
 	}
 
 	data, err := grafanaPayload(entry, labels, status, kind, scopeID)
-	if err != nil {
-		return envelope{}, errSkipped
-	}
 
 	repository := kind + "/" + scopeID
 
 	return envelope{
-		Type:       "event",
+		Type:       eventType,
 		Provider:   grafanaProvider,
 		Event:      "alert." + status,
 		Delivery:   delivery,
@@ -218,7 +215,7 @@ func normalizeGrafana(raw json.RawMessage, delivery string, receivedAt time.Time
 		ReceivedAt: receivedAt.Format(time.RFC3339Nano),
 		Payload:    data,
 		projected:  nil,
-	}, nil
+	}, err
 }
 
 func grafanaPayload(entry, labels map[string]any, status, kind, scopeID string) ([]byte, error) {
@@ -240,11 +237,8 @@ func grafanaPayload(entry, labels map[string]any, status, kind, scopeID string) 
 	}
 
 	data, err := json.Marshal(payload)
-	if err != nil {
-		return nil, errSkipped
-	}
 
-	return data, nil
+	return data, errors.Join(err)
 }
 
 func isWebLink(link string) bool {

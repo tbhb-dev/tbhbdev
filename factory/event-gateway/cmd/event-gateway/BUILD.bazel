@@ -85,6 +85,7 @@ go_binary(
 go_test(
     name = "event-gateway_test",
     srcs = [
+        "failures_internal_test.go",
         "github_internal_test.go",
         "grafana_internal_test.go",
         "healthcheck_internal_test.go",
@@ -117,8 +118,11 @@ go_test(
         "@com_github_nats_io_nats_go//jetstream",
         "@com_github_nats_io_nats_server_v2//server",
         "@io_opentelemetry_go_otel//:otel",
+        "@io_opentelemetry_go_otel_exporters_otlp_otlptrace//:otlptrace",
+        "@io_opentelemetry_go_otel_metric//:metric",
         "@io_opentelemetry_go_otel_metric//noop",
         "@io_opentelemetry_go_otel_sdk//instrumentation",
+        "@io_opentelemetry_go_otel_sdk//resource",
         "@io_opentelemetry_go_otel_sdk//trace",
         "@io_opentelemetry_go_otel_sdk//trace/tracetest",
         "@io_opentelemetry_go_otel_sdk_metric//:metric",

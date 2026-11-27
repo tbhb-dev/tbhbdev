@@ -10,6 +10,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"encoding/json/jsontext"
 	"errors"
 	"fmt"
 	"io"
@@ -19,7 +20,11 @@ import (
 	"time"
 
 	"github.com/nats-io/nats.go"
+
+	jsonv2 "encoding/json/v2"
 )
+
+const eventType = "event"
 
 const defaultBodyCap = 5 << 20
 
@@ -46,16 +51,9 @@ type envelope struct {
 	projected  []byte
 }
 
-func (event envelope) encode() []byte {
-	data, err := json.Marshal(event)
-	if err != nil {
-		return nil
-	}
-
-	received, err := json.Marshal(event.ReceivedAt)
-	if err != nil {
-		return nil
-	}
+func (event envelope) encode() ([]byte, error) {
+	data, headerErr := jsonv2.Marshal(event, jsontext.EscapeForHTML(true), jsontext.EscapeForJS(true))
+	received, timeErr := json.Marshal(event.ReceivedAt)
 
 	payload := event.Payload
 	if event.projected != nil {
@@ -63,12 +61,12 @@ func (event envelope) encode() []byte {
 	}
 
 	// Append the retained JSON directly so full payloads keep their signed bytes.
-	data = append(data[:len(data)-1], `,"received_at":`...)
+	data = append(bytes.TrimSuffix(data, []byte("}")), `,"received_at":`...)
 	data = append(data, received...)
 	data = append(data, `,"payload":`...)
 	data = append(data, payload...)
 
-	return append(data, '}')
+	return append(data, '}'), errors.Join(headerErr, timeErr)
 }
 
 type githubPayload struct {
@@ -265,7 +263,7 @@ func normalizeGitHub(event, delivery string, receivedAt time.Time, body []byte, 
 	}
 
 	message := envelope{
-		Type:       "event",
+		Type:       eventType,
 		Provider:   "github",
 		Event:      event,
 		Delivery:   delivery,
@@ -311,9 +309,6 @@ func truncateGitHub(body []byte) ([]byte, error) {
 	}
 
 	data, err := json.Marshal(payload)
-	if err != nil {
-		return nil, fmt.Errorf("encode GitHub filter fields: %w", err)
-	}
 
-	return data, nil
+	return data, errors.Join(err)
 }

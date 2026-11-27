@@ -28,7 +28,7 @@ const (
 	noArgumentsSchema     = `{"type":"object","additionalProperties":false}`
 	channelCapability     = "claude/channel"
 	channelMethod         = "notifications/claude/channel"
-	channelEventKey       = "event"
+	eventKey              = "event"
 	channelProviderKey    = "provider"
 	channelRepositoryKey  = "repository"
 	channelTruncated      = "true"
@@ -160,12 +160,8 @@ func newMCPServer(
 	notifier *mcpNotifier,
 	initialized func(context.Context, *mcp.InitializedRequest),
 ) *mcp.Server {
-	var capabilities mcp.ServerCapabilities
 	// The supported protocol versions still advertise the legacy logging capability.
-	err := json.Unmarshal([]byte(`{"logging":{}}`), &capabilities)
-	if err != nil {
-		panic(err)
-	}
+	capabilities := mcpCapabilities([]byte(`{"logging":{}}`))
 
 	capabilities.Experimental = map[string]any{channelCapability: map[string]any{}}
 	capabilities.Tools = &mcp.ToolCapabilities{ListChanged: false}
@@ -176,7 +172,7 @@ func newMCPServer(
 	options.InitializedHandler = initialized
 	options.Instructions = "After a restart or reconnect, call check_delivery and confirm both events arrive: " +
 		"self_test and echo."
-	options.Capabilities = &capabilities
+	options.Capabilities = capabilities
 	// These versions use initialize, which supplies the client's name.
 	options.SupportedProtocolVersions = []string{"2025-11-25", "2025-06-18", "2025-03-26"}
 
@@ -184,6 +180,17 @@ func newMCPServer(
 	addMCPTools(server, subs, notifier)
 
 	return server
+}
+
+func mcpCapabilities(legacy []byte) *mcp.ServerCapabilities {
+	var capabilities mcp.ServerCapabilities
+
+	err := json.Unmarshal(legacy, &capabilities)
+	if err != nil {
+		panic(err)
+	}
+
+	return &capabilities
 }
 
 func mcpImplementation(name string) *mcp.Implementation {

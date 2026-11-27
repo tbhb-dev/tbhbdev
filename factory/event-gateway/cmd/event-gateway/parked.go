@@ -200,12 +200,7 @@ func fetchParked(fetch func(int) (jetstream.MessageBatch, error), limit int) ([]
 		records = append(records, record)
 	}
 
-	err = batch.Error()
-	if err != nil {
-		return records, fmt.Errorf("read parked records: %w", err)
-	}
-
-	return records, nil
+	return records, errors.Join(batch.Error())
 }
 
 func retryParked(ctx context.Context, store eventStore, target Target, seq uint64) error {

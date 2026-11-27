@@ -10,6 +10,7 @@ import (
 	"cmp"
 	"context"
 	"encoding/json"
+	"encoding/json/jsontext"
 	"errors"
 	"flag"
 	"fmt"
@@ -21,6 +22,8 @@ import (
 	"path/filepath"
 	"strconv"
 	"syscall"
+
+	jsonv2 "encoding/json/v2"
 )
 
 const (
@@ -84,7 +87,11 @@ func runParked(ctx context.Context, out io.Writer, args []string, send parkedSen
 			return errParkedUsage
 		}
 
-		body, err := json.Marshal(parkedRetry{Target: flags.Arg(0), Seq: seq})
+		body, err := jsonv2.Marshal(
+			parkedRetry{Target: flags.Arg(0), Seq: seq},
+			jsontext.EscapeForHTML(true),
+			jsontext.EscapeForJS(true),
+		)
 		if err != nil {
 			return errParkedRequest
 		}
@@ -97,6 +104,10 @@ func runParked(ctx context.Context, out io.Writer, args []string, send parkedSen
 
 	socket := parkedSocketPath(defaultStoreDir, *path)
 
+	return sendParked(ctx, out, socket, &request, send)
+}
+
+func sendParked(ctx context.Context, out io.Writer, socket string, request *http.Request, send parkedSend) error {
 	ctx, cancel := context.WithTimeout(ctx, writeTimeout)
 	defer cancel()
 
@@ -165,39 +176,29 @@ func printParked(out io.Writer, body io.Reader) error {
 func (record parkedRecord) MarshalJSON() ([]byte, error) {
 	type fields parkedRecord
 
-	data, err := json.Marshal(fields(record))
-	if err != nil {
-		return nil, fmt.Errorf("encode parked record: %w", err)
-	}
+	data, recordErr := jsonv2.Marshal(fields(record), jsontext.EscapeForHTML(true), jsontext.EscapeForJS(true))
+	parkedAt, timeErr := json.Marshal(record.ParkedAt)
 
-	parkedAt, err := json.Marshal(record.ParkedAt)
-	if err != nil {
-		return nil, fmt.Errorf("encode parked timestamp: %w", err)
-	}
-
-	data = append(data[:len(data)-1], `,"parked_at":`...)
+	data = append(bytes.TrimSuffix(data, []byte("}")), `,"parked_at":`...)
 	data = append(data, parkedAt...)
 	data = strconv.AppendUint(append(data, `,"seq":`...), record.Seq, decimal)
 
-	return append(data, '}'), nil
+	return append(data, '}'), errors.Join(recordErr, timeErr)
 }
 
 func (record *parkedRecord) UnmarshalJSON(data []byte) error {
-	type fields parkedRecord
-
-	err := json.Unmarshal(data, (*fields)(record))
-	if err != nil {
-		return fmt.Errorf("decode parked record: %w", err)
-	}
-
 	var object map[string]json.RawMessage
 
-	err = json.Unmarshal(data, &object)
+	err := json.Unmarshal(data, &object)
 	if err != nil {
 		return fmt.Errorf("decode parked record fields: %w", err)
 	}
 
-	for name, value := range map[string]any{"seq": &record.Seq, "parked_at": &record.ParkedAt} {
+	for name, value := range map[string]any{
+		"target": &record.Target, "rule": &record.Rule, "provider": &record.Provider,
+		eventKey: &record.Event, "delivery": &record.Delivery, "error": &record.Error,
+		"seq": &record.Seq, "parked_at": &record.ParkedAt,
+	} {
 		if raw := object[name]; raw != nil {
 			err = json.Unmarshal(raw, value)
 			if err != nil {

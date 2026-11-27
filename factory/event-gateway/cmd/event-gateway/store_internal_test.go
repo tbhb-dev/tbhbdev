@@ -40,7 +40,7 @@ func TestStoreDeliveryDuplicates(t *testing.T) {
 	repository := "example/repository"
 	received := time.Now().UTC()
 	message := envelope{
-		Type:       "event",
+		Type:       eventType,
 		Provider:   "github",
 		Event:      event,
 		Delivery:   delivery,
@@ -120,7 +120,7 @@ func TestEventExpiry(t *testing.T) {
 	ctx := t.Context()
 	store := testStore(t, maxAge)
 	message := envelope{
-		Type:       "event",
+		Type:       eventType,
 		Provider:   "github",
 		Event:      issuesEvent,
 		Delivery:   delivery,
@@ -218,7 +218,7 @@ func TestStoreStopsOnStreamError(t *testing.T) {
 	checkError(t, err)
 	t.Cleanup(conn.Close)
 
-	_, stop, err := openStream(t.Context(), embedded, conn, time.Nanosecond)
+	_, stop, err := openStream(t.Context(), embedded.Shutdown, conn, time.Nanosecond)
 	if err == nil || !strings.Contains(err.Error(), "configure EVENTS stream") {
 		t.Fatalf("expected a stream configuration error, got %v", err)
 	}
