@@ -11,7 +11,9 @@ import (
 	"io"
 	"log/slog"
 	"net"
+	"net/http"
 	"os"
+	"path/filepath"
 	"strings"
 	"syscall"
 	"testing"
@@ -34,8 +36,13 @@ func TestParkedSocket(t *testing.T) {
 	checkError(t, stale.Close())
 	checkEqual(t, run(ctx, io.Discard, slog.DiscardHandler, args).Error(), notRunning)
 
-	targets := []runnerTarget{{Start: startPosition{}, Subjects: nil, Target: fakeTarget{name: "replay"}}}
-	cfg := serveConfig{storeDir: dir, parkedPath: path}
+	targets := []runnerTarget{
+		{Start: startPosition{at: nil, all: false}, Subjects: nil, Target: fakeTarget{name: "replay"}},
+	}
+
+	var cfg serveConfig
+
+	cfg.storeDir, cfg.parkedPath = dir, path
 	checkError(t, cfg.withParked(ctx, targets, func(parkedService) error {
 		info, statErr := os.Stat(path)
 		checkError(t, statErr)
@@ -66,11 +73,36 @@ func TestParkedSocket(t *testing.T) {
 func TestParkedSocketPathLimit(t *testing.T) {
 	t.Parallel()
 
-	const limit = len(syscall.RawSockaddrUnix{Family: 0, Path: [108]int8{}}.Path) - 1
+	var addr syscall.RawSockaddrUnix
+
+	const limit = len(addr.Path) - 1
 	// The listener adds "./" to the relative name before checking its length.
 	_, err := listenParked(t.Context(), strings.Repeat("s", limit-1))
 	checkEqual(t, errors.Is(err, syscall.ENAMETOOLONG), true)
 
 	want := fmt.Sprintf("parked socket path is %d bytes (limit %d):", limit+1, limit)
 	checkEqual(t, strings.HasPrefix(err.Error(), want), true)
+}
+
+func TestParkedSocketRequest(t *testing.T) {
+	t.Parallel()
+
+	path := filepath.Join(shortSocketDir(t), "parked.sock")
+	listener, err := listenParked(t.Context(), path)
+	checkError(t, err)
+
+	service := gatewayHTTP("", http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	stopped := make(chan error, 1)
+
+	go func() { stopped <- service.Serve(listener) }()
+
+	t.Cleanup(func() {
+		checkError(t, service.Close())
+		checkEqual(t, errors.Is(<-stopped, http.ErrServerClosed), true)
+	})
+
+	args := []string{parkedCommand, parkedListCommand, "-socket=" + path}
+	checkError(t, run(t.Context(), io.Discard, slog.DiscardHandler, args))
 }
