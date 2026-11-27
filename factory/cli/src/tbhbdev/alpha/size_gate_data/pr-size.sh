@@ -34,8 +34,11 @@ if [[ -n $default_ref ]]; then
   # Use only changes from the base and default branch that HEAD already has.
   shared_base=$("$git" merge-base "$base" "$head")
   shared_default=$("$git" merge-base "$default_ref" "$head")
-  shared_tree=$("$git" merge-tree --write-tree "$shared_base" "$shared_default")
-  range="$shared_tree..$head"
+  # A conflicted merge still writes a tree with both sides of text conflicts.
+  # Diffing that tree against HEAD counts new lines in the resolved files too.
+  shared_merge=$("$git" -c merge.conflictStyle=merge merge-tree --write-tree \
+    "$shared_base" "$shared_default") || [[ $? == 1 ]]
+  range="${shared_merge%%$'\n'*}..$head"
 fi
 work=$(mktemp -d "${TMPDIR:-/tmp}/pr-size.XXXXXX")
 trap 'rm -rf "$work"' EXIT

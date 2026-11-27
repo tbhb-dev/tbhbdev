@@ -97,6 +97,44 @@ def test_size_count_matches_rules_counting(
     assert sg.size_counts(base, "HEAD") == expected
 
 
+def test_stacked_count_includes_child_lines_in_a_resolved_conflict(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.chdir(tmp_path)
+
+    def git(*args: str) -> None:
+        subprocess.run(["git", *args], capture_output=True, check=True)
+
+    git("init", "-q", "-b", "main")
+    git("config", "user.name", "test")
+    git("config", "user.email", "test@example.invalid")
+    git("commit", "-qm", "root", "--allow-empty")
+    source = tmp_path / "source.py"
+    git("switch", "-qc", "parent")
+    source.write_text("parent = 1\n")
+    git("add", "source.py")
+    git("commit", "-qm", "parent work")
+    git("switch", "-q", "main")
+    source.write_text("main = 1\n")
+    git("add", "source.py")
+    git("commit", "-qm", "main work")
+
+    git("switch", "-qc", "child", "parent")
+    with pytest.raises(subprocess.CalledProcessError) as conflict:
+        git("merge", "--no-edit", "main")
+    assert conflict.value.returncode == 1
+    source.write_text("parent = 1\nmain = 1\nresolution = 1\n")
+    git("add", "source.py")
+    git("commit", "-qm", "merge main")
+    with source.open("a") as out:
+        out.write("child = 1\n" * 400)
+    git("commit", "-qam", "child work")
+
+    assert sg.size_counts("parent", "HEAD", default_ref="main") == sg.SizeCounts(
+        401, 400, 401, 1500, "code"
+    )
+
+
 @pytest.mark.parametrize("failed", [None, "code", "raw"])
 @pytest.mark.parametrize("tools", [{}, {"scc": "/tools/scc", "git": "/tools/git"}])
 @pytest.mark.parametrize("default_ref", [None, "origin/trunk"])

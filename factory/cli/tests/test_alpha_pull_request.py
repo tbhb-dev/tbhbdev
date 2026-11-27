@@ -1833,6 +1833,26 @@ def test_gh_repo_refuses_a_guessed_default_branch(
         pr.default_base()
 
 
+def test_check_counts_an_explicit_base_with_gh_repo(
+    world: World, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    remote_default(world, tmp_path, "trunk")
+    monkeypatch.setenv("GH_REPO", "tbhb-dev/example")
+    monkeypatch.setattr(pr, "git", REAL_GIT)
+    counter = Mock(return_value=size_gate.SizeCounts(401, 400, 401, 1500, "code"))
+    monkeypatch.setattr(size_gate, "size_counts", counter)
+    write_draft(world, "---\nbase: trunk\n---\n" + BASE)
+
+    assert run_main("check") == 1
+    counter.assert_called_once_with(
+        "refs/remotes/origin/trunk",
+        "HEAD",
+        default_ref=None,
+        scc=str(world.bin / "scc"),
+        git=str(world.root.parent / "git_dir" / "git"),
+    )
+
+
 def unset_origin_head(world: World, url: str) -> None:
     world.git("symbolic-ref", "--delete", "refs/remotes/origin/HEAD")
     world.git("remote", "set-url", "origin", url)
