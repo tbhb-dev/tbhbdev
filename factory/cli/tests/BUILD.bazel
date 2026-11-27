@@ -1658,6 +1658,16 @@ cli_py_test(
 )
 
 cli_py_test(
+    name = "test_alpha_worker_identity_io",
+    srcs = ["test_alpha_worker_identity_io.py"],
+    deps = [
+        ":conftest",
+        "//factory/cli/src/tbhbdev/alpha:worker_identity",
+        "@cli_pip//pytest",
+    ],
+)
+
+cli_py_test(
     name = "test_analytics_catalog",
     srcs = ["test_analytics_catalog.py"],
     extra_deps = ["//factory/cli/src/tbhbdev/analytics:__init__"],
@@ -1822,8 +1832,28 @@ cli_py_test(
 )
 
 cli_py_test(
-    name = "test_ci_workflow",
-    srcs = ["test_ci_workflow.py"],
+    name = "test_bazel_test_setup",
+    srcs = ["test_bazel_test_setup.py"],
+    data = [
+        "io_test_baseline.txt",
+        "pytest.bzl",
+    ],
+    deps = ["@cli_pip//pytest"],
+)
+
+cli_py_test(
+    name = "test_bazel_test_setup_io",
+    srcs = ["test_bazel_test_setup_io.py"],
+    deps = [
+        ":bazel_test_io",
+        ":conftest",
+        "@cli_pip//pytest",
+    ],
+)
+
+cli_py_test(
+    name = "test_ci_workflow_io",
+    srcs = ["test_ci_workflow_io.py"],
     data = ["//:.github/workflows/ci.yml"],
     deps = [
         ":conftest",
@@ -2065,6 +2095,13 @@ filegroup(
         exclude = ["BUILD.bazel"],
     ),
     visibility = ["//factory/cli:__pkg__"],
+)
+
+cli_py_library(
+    name = "bazel_test_io",
+    srcs = ["bazel_test_io.py"],
+    visibility = ["//factory/cli/tests:__subpackages__"],
+    deps = ["@cli_pip//pytest"],
 )
 
 cli_py_library(
