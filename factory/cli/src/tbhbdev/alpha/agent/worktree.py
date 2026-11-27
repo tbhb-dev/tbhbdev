@@ -540,28 +540,25 @@ def clone_run(mirror: Path, workspace: Path, url: str, profile: Profile) -> None
 
 
 def prepare_git(workspace: Path) -> None:
-    directory = workspace / ".git"
     for name, content in (
         ("config.worktree", ""),
         ("info", None),
         ("modules", None),
         ("commondir", ".\n"),
     ):
-        entry = directory / name
+        entry = workspace / ".git" / name
+        message = f"unexpected git metadata: {name}"
         if entry.is_symlink():
-            message = f"unexpected git metadata: {name}"
             raise Invalid(message)
-        match content:
-            case None:
-                if not entry.exists():
-                    entry.mkdir()
-                valid = entry.is_dir() and next(entry.iterdir(), None) is None
-            case _:
-                if not entry.exists():
-                    entry.write_text(content)
-                valid = entry.is_file() and entry.read_text() == content
+        if content is None:
+            if not entry.exists():
+                entry.mkdir()
+            valid = entry.is_dir() and next(entry.iterdir(), None) is None
+        else:
+            if not entry.exists():
+                entry.write_text(content)
+            valid = entry.is_file() and entry.read_text() == content
         if not valid:
-            message = f"unexpected git metadata: {name}"
             raise Invalid(message)
 
 
@@ -672,11 +669,14 @@ def create(
                 "--no-recurse-submodules", str(mirror),
                 "+refs/heads/*:refs/remotes/origin/*",
             )  # fmt: skip
-            if request.profile is Profile.BUILD:
-                git(worktree, "checkout", "-b", f"agent/{name}", commit, "--")
-            else:
-                git(worktree, "checkout", "--detach", commit, "--")
+            target = (
+                ("-b", f"agent/{name}")
+                if request.profile is Profile.BUILD
+                else ("--detach",)
+            )
+            git(worktree, "checkout", *target, commit, "--")
         with preparation_step("git metadata"):
             prepare_git(worktree)
+        host_tools.require_check_tools(worktree, hook_env)
         discard.pop_all()
     return worktree

@@ -48,6 +48,7 @@ cli_py_library(
     visibility = ["//factory/cli:__subpackages__"],
     deps = [
         ":arguments",
+        ":check_tools",
         ":config",
         ":model",
         ":session",
@@ -160,5 +161,18 @@ cli_py_library(
     deps = [
         ":hooks",
         "@cli_pip//tomlkit",
+    ],
+)
+
+cli_py_library(
+    name = "check_tools",
+    srcs = ["check_tools.py"],
+    imports = ["../../.."],
+    visibility = ["//factory/cli:__subpackages__"],
+    deps = [
+        ":model",
+        "//factory/cli/src/tbhbdev/alpha:repo",
+        "//factory/cli/src/tbhbdev/alpha:tool_pins",
+        "//factory/cli/src/tbhbdev/alpha/agent:host_tools",
     ],
 )
