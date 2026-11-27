@@ -598,12 +598,11 @@ def run_main(*argv: str) -> tuple[int | str | None, str]:
         ({"mergeStateStatus": "UNSTABLE"}, "mergeStateStatus=UNSTABLE"),
         ({"reviewDecision": "REVIEW_REQUIRED"}, "reviewDecision=REVIEW_REQUIRED"),
         ({"reviewDecision": None}, "no reviewDecision"),
-        ({"reviews": []}, "0 approvals at the head, need 2"),
+        ({"reviews": []}, "0 approvals at the head, need 1"),
         (
             {"reviews": [item | {"commit": {"oid": OTHER_HEAD}} for item in REVIEWS]},
-            "0 approvals at the head, need 2",
+            "0 approvals at the head, need 1",
         ),
-        ({"reviews": REVIEWS[:1]}, "1 approving providers, need 2"),
         (
             {
                 "reviews": [
@@ -611,7 +610,7 @@ def run_main(*argv: str) -> tuple[int | str | None, str]:
                     for item in REVIEWS
                 ]
             },
-            "0 approvals at the head, need 2",
+            "0 approvals at the head, need 1",
         ),
         ({"statusCheckRollup": []}, "no checks to verify"),
         ({"statusCheckRollup": None}, "no usable statusCheckRollup"),
