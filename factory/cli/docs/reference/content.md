@@ -93,7 +93,9 @@ The result has `refusals` and `warnings` tuples.
 
 Each finding has a `code`, `path`, and `message`. Use `format_refusal(finding)` for the diagnostic with revision guidance or `guide(finding)` for the guidance alone. A criterion or verification item that repeats a CI gate receives a hint to describe its observable outcome.
 
-Once `CUE` accepts an issue draft, pass the actual parent issue type. A Feature requires an Epic, and an Epic requires an Initiative. Title shape and criteria that appear to join two checks with “and” produce warnings.
+Once `CUE` accepts an issue draft, pass the actual parent issue type. A Feature requires an Epic, and an Epic requires an Initiative.
+
+Title shape and criteria that appear to join two checks with “and” produce warnings.
 
 `check_close(draft)` returns a refusal per acceptance section with any unchecked task box. It recognizes the normalized headings “Acceptance” and “Acceptance criteria”, including repeats. The close check can run without `CUE`.
 
