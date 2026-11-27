@@ -360,7 +360,6 @@ func parkedResponse(out io.Writer, socket string, response *http.Response, err e
 		return errParkedRequest
 	}
 
-	//nolint:errcheck // Closing the body is cleanup after receiving the response.
 	defer func() { _ = response.Body.Close() }()
 
 	switch response.StatusCode {

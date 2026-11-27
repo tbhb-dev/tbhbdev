@@ -68,7 +68,6 @@ func healthcheck(ctx context.Context, args []string) error {
 		return errHealthcheck
 	}
 
-	//nolint:errcheck // The health check uses only the HTTP status.
 	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {

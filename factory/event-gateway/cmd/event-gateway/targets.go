@@ -171,7 +171,6 @@ func readTargetsConfig(path string) (routing.Config, error) {
 		return routing.Config{Targets: nil}, nil
 	}
 
-	//nolint:gosec // The operator supplies the targets configuration path at startup.
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return routing.Config{}, fmt.Errorf("read targets file: %w", err)

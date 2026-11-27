@@ -180,7 +180,6 @@ func runGatewayConnection(
 	if err != nil {
 		// The dial error may contain the URL, headers or an untrusted reply.
 		if response != nil {
-			//nolint:errcheck // Only the upgrade status is used for the failed connection.
 			defer response.Body.Close()
 
 			if response.StatusCode == http.StatusUnauthorized {

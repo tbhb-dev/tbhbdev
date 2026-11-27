@@ -87,7 +87,6 @@ func (api *sessionAPI) connect(writer http.ResponseWriter, req *http.Request) {
 
 		state := session{conn: conn, stream: api.store.stream, events: nil, subscriptions: nil, replay: nil}
 		code, reason := api.run(req.Context(), &state, sha256.Sum256([]byte(strings.Fields(header)[1])))
-		//nolint:errcheck // The connection is already shutting down.
 		_ = conn.Close(code, reason)
 	}
 }

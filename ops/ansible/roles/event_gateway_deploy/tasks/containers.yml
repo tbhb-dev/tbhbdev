@@ -17,14 +17,38 @@
 
 - name: containers | Build the missing local gateway image
   become: true
+  become_user: ops
+  ansible.builtin.shell:
+    cmd: |
+      set -eu
+      bazelisk build -c opt --remote_download_outputs=toplevel --output_groups=tarball \
+        //factory/event-gateway/container:image_load
+      bazelisk info -c opt bazel-bin
+    chdir: "{{ event_gateway_deploy_checkout }}"
+  when: event_gateway_deploy_tag.rc != 0
+  changed_when: true
+  register: event_gateway_deploy_build
+
+- name: containers | Load the gateway image into Docker
+  become: true
   ansible.builtin.command:
     argv:
       - docker
-      - build
-      - --tag
+      - load
+      - --input
+      - "{{ event_gateway_deploy_build.stdout_lines[-1] }}/factory/event-gateway/container/image_load/tarball.tar"
+  when: event_gateway_deploy_tag.rc != 0
+  changed_when: true
+
+- name: containers | Tag the loaded gateway image with its commit
+  become: true
+  ansible.builtin.command:
+    argv:
+      - docker
+      - image
+      - tag
+      - event-gateway:local
       - "{{ event_gateway_deploy_image_tag }}"
-      - .
-    chdir: "{{ event_gateway_deploy_checkout }}"
   when: event_gateway_deploy_tag.rc != 0
   changed_when: true
 
@@ -49,13 +73,14 @@
       - --env-file
       - /dev/null
       - -f
-      - deploy/compose.yaml
+      - compose.yaml
       - config
       - --no-env-resolution
       - --format
       - json
-    chdir: "{{ event_gateway_deploy_checkout }}"
+    chdir: "{{ event_gateway_deploy_dir }}"
   environment:
+    EVENT_GATEWAY_SESSION_BIND: "{{ event_gateway_deploy_session_bind }}"
     EVENT_GATEWAY_IMAGE: "{{ event_gateway_deploy_gateway_image.stdout }}"
   changed_when: false
   no_log: true
@@ -98,12 +123,13 @@
   become_user: ops
   ansible.builtin.command:
     argv:
-      - deploy/up.sh
+      - ./up.sh
       - "{{ event_gateway_deploy_gateway_image.stdout }}"
       - --pull
       - never
-    chdir: "{{ event_gateway_deploy_checkout }}"
+    chdir: "{{ event_gateway_deploy_dir }}"
   environment:
+    EVENT_GATEWAY_SESSION_BIND: "{{ event_gateway_deploy_session_bind }}"
     DEPLOY_DOCKER_SUDO: "1"
   no_log: true
   vars:

@@ -7,6 +7,8 @@ version = 1
 path = [
   "go.mod",
   "go.sum",
+  "factory/event-gateway/go.mod",
+  "factory/event-gateway/go.sum",
   "uv.lock",
   "MODULE.bazel.lock",
   ".bazelversion",

@@ -97,7 +97,6 @@ func (state mcpState) load(subs *mcpSubscriptions) (bool, bool) {
 	if err != nil {
 		return false, false
 	}
-	//nolint:errcheck // Closing the directory handle cannot change the completed file operation.
 	defer root.Close()
 
 	data, err := root.ReadFile(state.file)
@@ -156,7 +155,6 @@ func readAwrelState(dir, path string) ([]byte, bool) {
 	if err != nil {
 		return nil, !errors.Is(err, fs.ErrNotExist)
 	}
-	//nolint:errcheck // Closing the directory handle cannot change the completed file operation.
 	defer root.Close()
 
 	file, err := root.Open(path)
@@ -165,7 +163,6 @@ func readAwrelState(dir, path string) ([]byte, bool) {
 
 		return nil, !errors.Is(statErr, fs.ErrNotExist)
 	}
-	//nolint:errcheck // The file is open for reading only.
 	defer file.Close()
 
 	data, err := io.ReadAll(io.LimitReader(file, awrelStateLimit+1))
@@ -234,7 +231,6 @@ func (state mcpState) write(subs []filter.Subscription, cursor *uint64) bool {
 	if err != nil {
 		return false
 	}
-	//nolint:errcheck // Closing the directory handle cannot change the completed file operation.
 	defer root.Close()
 
 	dir := filepath.Dir(state.file)

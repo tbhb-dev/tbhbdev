@@ -74,6 +74,7 @@ go_library(
 go_binary(
     name = "event-gateway",
     embed = [":event-gateway_lib"],
+    pure = "on",
     visibility = ["//factory/event-gateway:__subpackages__"],
 )
 

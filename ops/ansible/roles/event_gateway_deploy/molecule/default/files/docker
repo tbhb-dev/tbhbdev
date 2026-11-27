@@ -19,14 +19,19 @@ case "$1 ${2:-}" in
 	*) exit 2 ;;
 	esac
 	;;
-'build --tag')
-	short_commit=$(git -c safe.directory="$PWD" rev-parse --short=8 HEAD)
-	[ "$3" = "event-gateway:$short_commit" ]
+'load --input')
+	[ -f "$3" ]
 	mkdir -p "$state"
-	echo built >>"$state/builds"
+	echo loaded >>"$state/builds"
+	;;
+'image tag')
+	[ "$3" = event-gateway:local ]
+	[ -f "$state/builds" ]
+	[ "${4%:*}" = event-gateway ]
 	;;
 'compose --env-file')
 	[ "$EVENT_GATEWAY_IMAGE" = "$gateway_id" ]
+	[ "$EVENT_GATEWAY_SESSION_BIND" = 192.0.2.1 ]
 	printf '%s\n' '{"services":{"tunnel":{"image":"fixture-tunnel"}}}'
 	;;
 'container inspect')

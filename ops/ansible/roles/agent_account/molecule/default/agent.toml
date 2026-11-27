@@ -5,7 +5,7 @@ launch_wait_seconds = 120
 kill_grace_seconds = 10
 agy_timeout = "900s"
 max_run_minutes = 45
-public_repos = ["tbhb-dev/tools", "tbhb-dev/rules", "tbhb-dev/tbhbdev", "example-org/wiki-companion", "tbhb-dev/awrel", "tbhb-dev/github-metrics", "tbhb-dev/agent-capacity", "tbhb-dev/afakt", "tbhb-dev/afenc", "example-org/account-config", "example-org/example-memories-example", "tbhb-dev/ansible", "tbhb-dev/ascm", "tbhb-dev/avirt", "tbhb-dev/bazel-r2-cache", "tbhb-dev/dashboard", "tbhb-dev/design", "tbhb-dev/dotfiles", "tbhb-dev/evals", "example-org/evals-example", "tbhb-dev/event-gateway", "example-org/go-imports", "tbhb-dev/gomodscan", "tbhb-dev/renovate-config", "tbhb-dev/research", "example-org/research-example", "tbhb-dev/spikes", "example-org/spikes-example", "example-org/tools-example", "tbhb-dev/wiki"]
+public_repos = ["tbhb-dev/tools", "tbhb-dev/rules", "tbhb-dev/tbhbdev", "example-org/wiki-companion", "tbhb-dev/awrel", "tbhb-dev/github-metrics", "tbhb-dev/agent-capacity", "tbhb-dev/afakt", "tbhb-dev/afenc", "example-org/account-config", "example-org/example-memories-example", "tbhb-dev/ansible", "tbhb-dev/ascm", "tbhb-dev/avirt", "tbhb-dev/bazel-r2-cache", "tbhb-dev/dashboard", "tbhb-dev/design", "tbhb-dev/dotfiles", "tbhb-dev/evals", "example-org/evals-example", "example-org/go-imports", "tbhb-dev/gomodscan", "tbhb-dev/renovate-config", "tbhb-dev/research", "example-org/research-example", "tbhb-dev/spikes", "example-org/spikes-example", "example-org/tools-example", "tbhb-dev/wiki"]
 sockets_dir = ".local/state/tbhbdev/sockets"
 
 [agent.sandbox]

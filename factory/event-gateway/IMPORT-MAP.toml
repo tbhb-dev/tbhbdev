@@ -10,12 +10,16 @@ dest = "factory/event-gateway"
 "cmd/event-gateway/github_internal_test.go" = "factory/event-gateway/cmd/event-gateway/github_internal_test.go"
 "cmd/event-gateway/grafana.go" = "factory/event-gateway/cmd/event-gateway/grafana.go"
 "cmd/event-gateway/grafana_internal_test.go" = "factory/event-gateway/cmd/event-gateway/grafana_internal_test.go"
+"cmd/event-gateway/healthcheck.go" = "factory/event-gateway/cmd/event-gateway/healthcheck.go"
 "cmd/event-gateway/healthcheck_internal_test.go" = "factory/event-gateway/cmd/event-gateway/healthcheck_internal_test.go"
 "cmd/event-gateway/main.go" = "factory/event-gateway/cmd/event-gateway/main.go"
 "cmd/event-gateway/main_internal_test.go" = "factory/event-gateway/cmd/event-gateway/main_internal_test.go"
 "cmd/event-gateway/mcp_internal_test.go" = "factory/event-gateway/cmd/event-gateway/mcp_internal_test.go"
+"cmd/event-gateway/otlp.go" = "factory/event-gateway/cmd/event-gateway/otlp.go"
 "cmd/event-gateway/otlp_internal_test.go" = "factory/event-gateway/cmd/event-gateway/otlp_internal_test.go"
+"cmd/event-gateway/parked.go" = "factory/event-gateway/cmd/event-gateway/parked.go"
 "cmd/event-gateway/parked_internal_test.go" = "factory/event-gateway/cmd/event-gateway/parked_internal_test.go"
+"cmd/event-gateway/parked_socket.go" = "factory/event-gateway/cmd/event-gateway/parked_socket.go"
 "cmd/event-gateway/parked_socket_internal_test.go" = "factory/event-gateway/cmd/event-gateway/parked_socket_internal_test.go"
 "cmd/event-gateway/parked_socket_other.go" = "factory/event-gateway/cmd/event-gateway/parked_socket_other.go"
 "cmd/event-gateway/read.go" = "factory/event-gateway/cmd/event-gateway/read.go"
@@ -27,205 +31,83 @@ dest = "factory/event-gateway"
 "cmd/event-gateway/store.go" = "factory/event-gateway/cmd/event-gateway/store.go"
 "cmd/event-gateway/store_internal_test.go" = "factory/event-gateway/cmd/event-gateway/store_internal_test.go"
 "cmd/event-gateway/telemetry.go" = "factory/event-gateway/cmd/event-gateway/telemetry.go"
+"deploy/up.sh" = "factory/event-gateway/deploy/up.sh"
+"go.sum" = "factory/event-gateway/go.sum"
 "internal/buildloop/buildloop.go" = "factory/event-gateway/internal/buildloop/buildloop.go"
 "internal/eventfields/template.go" = "factory/event-gateway/internal/eventfields/template.go"
 "internal/filter/filter.go" = "factory/event-gateway/internal/filter/filter.go"
+"internal/redelivery/auth.go" = "factory/event-gateway/internal/redelivery/auth.go"
 "internal/redelivery/auth_test.go" = "factory/event-gateway/internal/redelivery/auth_test.go"
 "internal/temporaltarget/connection.go" = "factory/event-gateway/internal/temporaltarget/connection.go"
 "internal/temporaltarget/connection_internal_test.go" = "factory/event-gateway/internal/temporaltarget/connection_internal_test.go"
 "internal/temporaltarget/sdk.go" = "factory/event-gateway/internal/temporaltarget/sdk.go"
 "internal/temporaltarget/sdk_internal_test.go" = "factory/event-gateway/internal/temporaltarget/sdk_internal_test.go"
 
+[rewrite.".go-arch-lint.yml"]
+dest = "factory/event-gateway/.go-arch-lint.yml"
+replace = [
+  [
+    '''
+
+---
+# Import contracts. Every package must belong to a component.
+version: 3
+
+''',
+    '''
+
+---
+# Import contracts for the event-gateway Go module.
+version: 3
+
+'''
+  ],
+]
+
+[rewrite.".golangci.yml"]
+dest = "factory/event-gateway/.golangci.yml"
+replace = [
+  ["go.tbhb.dev/event-gateway", "github.com/tbhb-dev/tbhbdev/factory/event-gateway"],
+  [
+    '''
+        - mapliteral
+
+    # Strict threshold: 30the default of 150 tokens only catches blatant copies.
+    dupl:
+      threshold: 30
+''',
+    '''
+        - mapliteral
+
+    # Match duplicate blocks of 30 tokens.
+    dupl:
+      threshold: 30
+'''
+  ],
+  [
+    '''
+
+# golangci-lint configuration: every linter on, with a reason beside each one
+# switched off. Adapted from another tbhb-dev repository's configuration, which is adapted from
+# https://github.com/maratori/golangci-lint-config.
+
+''',
+    '''
+
+# golangci-lint configuration: every linter on, with a reason beside each one
+# switched off. Adapted from
+# https://github.com/maratori/golangci-lint-config.
+
+'''
+  ],
+]
+
 [rewrite."BUILD.bazel"]
 dest = "factory/event-gateway/BUILD.bazel"
 replace = [
   ["go.tbhb.dev/event-gateway", "github.com/tbhb-dev/tbhbdev/factory/event-gateway"],
-  ['''
-# SPDX-License-Identifier: Apache-2.0
-# Copyright Tony Burns
-# cspell:words devserver eventfields temporaltarget
-
-load("@bazel_env.bzl", "bazel_env")
-load("@bazelrc-preset.bzl", "bazelrc_preset")
-load("@buildifier_prebuilt//:rules.bzl", "buildifier_test")
-load("@gazelle//:def.bzl", "gazelle")
-load("@rules_go//go:def.bzl", "nogo")
-load("@tbhb_rules//format:defs.bzl", "format", "format_test")
-load(
-    "@tbhb_rules//lint:defs.bzl",
-    "actionlint_test",
-    "codeowners_test",
-    "cspell_test",
-    "editorconfig_checker_test",
-    "gitleaks_history",
-    "gitleaks_test",
-    "reuse_test",
-    "rumdl_test",
-    "ryl_test",
-    "tombi_test",
-    "tree_check_test",
-    "vale_sync",
-    "vale_test",
-    "zizmor_test",
-)
-load("@tbhb_rules//repo:defs.bzl", "repo_files")
-load("@tbhb_rules_go//:defs.bzl", "go_arch_lint_test", "go_deadcode_test", "gobco_test", "govulncheck")
-load("//:vale_packages.bzl", "VALE_PACKAGES")
-load("//tools/lint:linters.bzl", "golangci_lint_test")
-
-# gazelle:prefix github.com/tbhb-dev/tbhbdev/factory/event-gateway
-
-exports_files([
-    ".golangci.yml",
-    "go.mod",
-    "go.sum",
-])
-
-gazelle(name = "gazelle")
-
-# Generates preset.bazelrc, which .bazelrc imports. The content depends on the
-# Bazel version that runs the generator; the committed copy matches
-# .bazelversion, and `preset.update_test` fails when it is stale.
-bazelrc_preset(
-    name = "preset",
-)
-
-# buildifier: the test below makes `bazel test //...` fail on any formatting
-# or lint finding, with every available warning on. `.bazel-*` and `bazel-*`
-# convenience symlinks, tool caches and scratch space hold no Starlark that
-# this repository owns.
-BUILDIFIER_EXCLUDES = [
-    "./.git/*",
-    "./.venv/*",
-    "./.mise/*",
-    "./.bazel-*",
-    "./bazel-*",
-    "./tmp/*",
-]
-
-buildifier_test(
-    name = "buildifier_test",
-    exclude_patterns = BUILDIFIER_EXCLUDES,
-    lint_mode = "warn",
-    lint_warnings = ["all"],
-    no_sandbox = True,
-    workspace = "//:MODULE.bazel",
-)
-
-# The vet subset that is accurate enough to fail a build: atomic, bools,
-# buildtag, nilfunc, and printf.
-nogo(
-    name = "nogo",
-    vet = True,
-    visibility = ["//visibility:public"],
-)
-
-# The Go checks, over every binary and test of the module. golangci-lint runs
-# per package as an aspect, over export data, and fails if any Go file of the
-# tree is never linted. deadcode takes every binary at once, so a function only
-# one binary calls is live. go-arch-lint holds the import contracts in
-# .go-arch-lint.yml.
-GO_TARGETS = [
-    "//cmd/event-gateway",
-    "//cmd/event-gateway:event-gateway_test",
-    "//deploy:deploy_test",
-    "//internal/buildloop:buildloop_test",
-    "//internal/eventfields:eventfields_test",
-    "//internal/filter:filter_test",
-    "//internal/redelivery:redelivery_test",
-    "//internal/routing:routing_test",
-    "//internal/temporaltarget:temporaltarget_devserver_test",
-    "//internal/temporaltarget:temporaltarget_test",
-]
-
-''', '''
-# SPDX-License-Identifier: Apache-2.0
-# Copyright Tony Burns
-# cspell:words eventfields temporaltarget
-
-load("@tbhb_rules//repo:defs.bzl", "repo_files")
-load(
-    "@tbhb_rules_go//:defs.bzl",
-    "go_arch_lint_test",
-    "go_deadcode_test",
-    "go_mod_tidy_test",
-    "gobco_test",
-    "govulncheck",
-)
-load("//factory:go.bzl", "golangci_lint_test")
-
-# gazelle:go_visibility //factory/event-gateway:__subpackages__
-# gazelle:map_kind go_test go_test //factory:go.bzl
-
-package(default_visibility = ["//factory:__subpackages__"])
-
-repo_files(visibility = [
-    "//:__pkg__",
-    "//factory:__pkg__",
-])
-
-GO_TARGETS = [
-    "//factory/event-gateway/cmd/event-gateway",
-    "//factory/event-gateway/cmd/event-gateway:event-gateway_test",
-    "//factory/event-gateway/internal/buildloop:buildloop_test",
-    "//factory/event-gateway/internal/eventfields:eventfields_test",
-    "//factory/event-gateway/internal/filter:filter_test",
-    "//factory/event-gateway/internal/redelivery:redelivery_test",
-    "//factory/event-gateway/internal/routing:routing_test",
-    "//factory/event-gateway/internal/temporaltarget:temporaltarget_devserver_test",
-    "//factory/event-gateway/internal/temporaltarget:temporaltarget_test",
-]
-
-'''],
-  ['''
-go_arch_lint_test(
-    name = "go_arch_lint_test",
-    srcs = GO_TARGETS,
-    config = ".go-arch-lint.yml",
-    go_mod = "go.mod",
-)
-
-# Reachable vulnerabilities in the module's dependencies and the standard
-# library, against the Go vulnerability database. The database comes over the
-# network, so this is a `bazel run` target, which CI runs, keeping its report
-# as an artifact.
-govulncheck(
-    name = "govulncheck",
-    srcs = GO_TARGETS,
-    go_mod = "go.mod",
-    go_sum = "go.sum",
-    proxy = "@go_mod_proxy//:proxy",
-)
-''', '''
-go_arch_lint_test(
-    name = "go_arch_lint_test",
-    size = "small",
-    srcs = GO_TARGETS + [
-        "//factory/cli/cmd/tbhbdev:tbhbdev_test",
-        "//factory/cli/internal/dispatch:dispatch_test",
-    ],
-    config = "//:.go-arch-lint.yml",
-    go_mod = "//:go.mod",
-)
-
-go_mod_tidy_test(
-    name = "go_mod_tidy_test",
-    srcs = ["//:go_module_sources"],
-    go_mod = "//:go.mod",
-    go_sum = "//:go.sum",
-    proxy = "@go_mod_proxy//:proxy",
-)
-
-# CI runs this separately because it reads the online vulnerability database.
-govulncheck(
-    name = "govulncheck",
-    srcs = GO_TARGETS,
-    go_mod = "//:go.mod",
-    go_sum = "//:go.sum",
-    proxy = "@go_mod_proxy//:proxy",
-)
-'''],
-  ['''
+  [
+    '''
 gobco_test(
     name = "event-gateway_gobco_test",
     go_mod = "go.mod",
@@ -459,155 +341,511 @@ bazel_env(
         "zizmor": "@tbhb_rules_zizmor//:zizmor",
     },
 )
-''', '''
+''',
+    '''
 gobco_test(
     name = "event-gateway_gobco_test",
-    go_mod = "//:go.mod",
-    go_sum = "//:go.sum",
-    proxy = "@go_mod_proxy//:proxy",
+    go_mod = ":go.mod",
+    go_sum = ":go.sum",
+    proxy = "@event_gateway_go_mod_proxy//:proxy",
     tests = ["//factory/event-gateway/cmd/event-gateway:event-gateway_test"],
 )
 
 gobco_test(
     name = "buildloop_gobco_test",
-    go_mod = "//:go.mod",
-    go_sum = "//:go.sum",
-    proxy = "@go_mod_proxy//:proxy",
+    go_mod = ":go.mod",
+    go_sum = ":go.sum",
+    proxy = "@event_gateway_go_mod_proxy//:proxy",
     tests = ["//factory/event-gateway/internal/buildloop:buildloop_test"],
 )
 
 gobco_test(
     name = "eventfields_gobco_test",
-    go_mod = "//:go.mod",
-    go_sum = "//:go.sum",
-    proxy = "@go_mod_proxy//:proxy",
+    go_mod = ":go.mod",
+    go_sum = ":go.sum",
+    proxy = "@event_gateway_go_mod_proxy//:proxy",
     tests = ["//factory/event-gateway/internal/eventfields:eventfields_test"],
 )
 
 gobco_test(
     name = "filter_gobco_test",
-    go_mod = "//:go.mod",
-    go_sum = "//:go.sum",
-    proxy = "@go_mod_proxy//:proxy",
+    go_mod = ":go.mod",
+    go_sum = ":go.sum",
+    proxy = "@event_gateway_go_mod_proxy//:proxy",
     tests = ["//factory/event-gateway/internal/filter:filter_test"],
 )
 
 gobco_test(
     name = "redelivery_gobco_test",
-    go_mod = "//:go.mod",
-    go_sum = "//:go.sum",
-    proxy = "@go_mod_proxy//:proxy",
+    go_mod = ":go.mod",
+    go_sum = ":go.sum",
+    proxy = "@event_gateway_go_mod_proxy//:proxy",
     tests = ["//factory/event-gateway/internal/redelivery:redelivery_test"],
 )
 
 gobco_test(
     name = "routing_gobco_test",
-    go_mod = "//:go.mod",
-    go_sum = "//:go.sum",
-    proxy = "@go_mod_proxy//:proxy",
+    go_mod = ":go.mod",
+    go_sum = ":go.sum",
+    proxy = "@event_gateway_go_mod_proxy//:proxy",
     tests = ["//factory/event-gateway/internal/routing:routing_test"],
 )
-'''],
+
+format_test(
+    name = "go_format_test",
+    srcs = [
+        ":.golangci.yml",
+        ":go.mod",
+        ":repo_files",
+    ],
+    formatters = ["@tbhb_rules_go//:golangci_fmt"],
+    strip_prefix = "factory/event-gateway",
+)
+'''
+  ],
+  [
+    '''
+go_arch_lint_test(
+    name = "go_arch_lint_test",
+    srcs = GO_TARGETS,
+    config = ".go-arch-lint.yml",
+    go_mod = "go.mod",
+)
+
+# Reachable vulnerabilities in the module's dependencies and the standard
+# library, against the Go vulnerability database. The database comes over the
+# network, so this is a `bazel run` target, which CI runs, keeping its report
+# as an artifact.
+govulncheck(
+    name = "govulncheck",
+    srcs = GO_TARGETS,
+    go_mod = "go.mod",
+    go_sum = "go.sum",
+    proxy = "@go_mod_proxy//:proxy",
+)
+
+''',
+    '''
+go_arch_lint_test(
+    name = "go_arch_lint_test",
+    size = "small",
+    srcs = GO_TARGETS,
+    config = ":.go-arch-lint.yml",
+    go_mod = ":go.mod",
+)
+
+go_mod_tidy_test(
+    name = "go_mod_tidy_test",
+    srcs = [":repo_files"],
+    go_mod = ":go.mod",
+    go_sum = ":go.sum",
+    proxy = "@event_gateway_go_mod_proxy//:proxy",
+)
+
+# CI runs this separately because it reads the online vulnerability database.
+govulncheck(
+    name = "govulncheck",
+    srcs = GO_TARGETS,
+    go_mod = ":go.mod",
+    go_sum = ":go.sum",
+    proxy = "@event_gateway_go_mod_proxy//:proxy",
+)
+
+'''
+  ],
+  [
+    '''
+# SPDX-License-Identifier: Apache-2.0
+# Copyright Tony Burns
+# cspell:words devserver eventfields temporaltarget
+
+load("@bazel_env.bzl", "bazel_env")
+load("@bazelrc-preset.bzl", "bazelrc_preset")
+load("@buildifier_prebuilt//:rules.bzl", "buildifier_test")
+load("@gazelle//:def.bzl", "gazelle")
+load("@rules_go//go:def.bzl", "nogo")
+load("@tbhb_rules//format:defs.bzl", "format", "format_test")
+load(
+    "@tbhb_rules//lint:defs.bzl",
+    "actionlint_test",
+    "codeowners_test",
+    "cspell_test",
+    "editorconfig_checker_test",
+    "gitleaks_history",
+    "gitleaks_test",
+    "reuse_test",
+    "rumdl_test",
+    "ryl_test",
+    "tombi_test",
+    "tree_check_test",
+    "vale_sync",
+    "vale_test",
+    "zizmor_test",
+)
+load("@tbhb_rules//repo:defs.bzl", "repo_files")
+load("@tbhb_rules_go//:defs.bzl", "go_arch_lint_test", "go_deadcode_test", "gobco_test", "govulncheck")
+load("//:vale_packages.bzl", "VALE_PACKAGES")
+load("//tools/lint:linters.bzl", "golangci_lint_test")
+
+# gazelle:prefix github.com/tbhb-dev/tbhbdev/factory/event-gateway
+
+exports_files([
+    ".golangci.yml",
+    "go.mod",
+    "go.sum",
+])
+
+gazelle(name = "gazelle")
+
+# Generates preset.bazelrc, which .bazelrc imports. The content depends on the
+# Bazel version that runs the generator; the committed copy matches
+# .bazelversion, and `preset.update_test` fails when it is stale.
+bazelrc_preset(
+    name = "preset",
+)
+
+# buildifier: the test below makes `bazel test //...` fail on any formatting
+# or lint finding, with every available warning on. `.bazel-*` and `bazel-*`
+# convenience symlinks, tool caches and scratch space hold no Starlark that
+# this repository owns.
+BUILDIFIER_EXCLUDES = [
+    "./.git/*",
+    "./.venv/*",
+    "./.mise/*",
+    "./.bazel-*",
+    "./bazel-*",
+    "./tmp/*",
+]
+
+buildifier_test(
+    name = "buildifier_test",
+    exclude_patterns = BUILDIFIER_EXCLUDES,
+    lint_mode = "warn",
+    lint_warnings = ["all"],
+    no_sandbox = True,
+    workspace = "//:MODULE.bazel",
+)
+
+# The vet subset that is accurate enough to fail a build: atomic, bools,
+# buildtag, nilfunc, and printf.
+nogo(
+    name = "nogo",
+    vet = True,
+    visibility = ["//visibility:public"],
+)
+
+# The Go checks, over every binary and test of the module. golangci-lint runs
+# per package as an aspect, over export data, and fails if any Go file of the
+# tree is never linted. deadcode takes every binary at once, so a function only
+# one binary calls is live. go-arch-lint holds the import contracts in
+# .go-arch-lint.yml.
+GO_TARGETS = [
+    "//cmd/event-gateway",
+    "//cmd/event-gateway:event-gateway_test",
+    "//deploy:deploy_test",
+    "//internal/buildloop:buildloop_test",
+    "//internal/eventfields:eventfields_test",
+    "//internal/filter:filter_test",
+    "//internal/redelivery:redelivery_test",
+    "//internal/routing:routing_test",
+    "//internal/temporaltarget:temporaltarget_devserver_test",
+    "//internal/temporaltarget:temporaltarget_test",
+]
+
+''',
+    '''
+# SPDX-License-Identifier: Apache-2.0
+# Copyright Tony Burns
+# cspell:words eventfields temporaltarget
+
+load("@tbhb_rules//format:defs.bzl", "format_test")
+load("@tbhb_rules//repo:defs.bzl", "repo_files")
+load(
+    "@tbhb_rules_go//:defs.bzl",
+    "go_arch_lint_test",
+    "go_deadcode_test",
+    "go_mod_tidy_test",
+    "gobco_test",
+    "govulncheck",
+)
+load(":go_lint.bzl", "golangci_lint_test")
+
+# gazelle:go_visibility //factory/event-gateway:__subpackages__
+# gazelle:map_kind go_test go_test //factory:go.bzl
+
+package(default_visibility = ["//factory:__subpackages__"])
+
+repo_files(visibility = ["//factory:__pkg__"])
+
+exports_files(
+    [
+        "go.mod",
+        "go.sum",
+    ],
+    visibility = ["//factory/event-gateway:__subpackages__"],
+)
+
+GO_TARGETS = [
+    "//factory/event-gateway/cmd/event-gateway",
+    "//factory/event-gateway/cmd/event-gateway:event-gateway_test",
+    "//factory/event-gateway/deploy:deploy_test",
+    "//factory/event-gateway/internal/buildloop",
+    "//factory/event-gateway/internal/buildloop:buildloop_test",
+    "//factory/event-gateway/internal/eventfields",
+    "//factory/event-gateway/internal/eventfields:eventfields_test",
+    "//factory/event-gateway/internal/filter",
+    "//factory/event-gateway/internal/filter:filter_test",
+    "//factory/event-gateway/internal/redelivery",
+    "//factory/event-gateway/internal/redelivery:redelivery_test",
+    "//factory/event-gateway/internal/routing",
+    "//factory/event-gateway/internal/routing:routing_test",
+    "//factory/event-gateway/internal/temporaltarget",
+    "//factory/event-gateway/internal/temporaltarget:temporaltarget_devserver_test",
+    "//factory/event-gateway/internal/temporaltarget:temporaltarget_test",
+]
+
+'''
+  ],
+]
+
+[rewrite."Dockerfile"]
+dest = "factory/event-gateway/container/BUILD.bazel"
+replace = [
+  [
+    '''
+# Copyright Tony Burns
+
+FROM golang:1.27.4-bookworm@sha256:ce59b41415e2524ae99926fe1f37ce48ba8c194dcbd2a56a65436cdcefa2bd34 AS build
+WORKDIR /src
+COPY go.mod go.sum ./
+COPY cmd ./cmd
+COPY internal ./internal
+RUN CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /out/event-gateway ./cmd/event-gateway && \
+    install -d -m 0700 /out/data
+
+FROM gcr.io/distroless/static-debian12:nonroot@sha256:afa5c872c891853ca7fcf1f12c3edb23f7eeef36189728842dd51042ff57f7ab
+COPY --from=build /out/event-gateway /event-gateway
+# A named volume mounted at /data inherits this ownership, so the server can
+# write its JetStream store while the root filesystem stays read-only.
+COPY --from=build --chown=65532:65532 /out/data /data
+USER 65532:65532
+EXPOSE 8080
+HEALTHCHECK --interval=30s --timeout=5s --start-period=5s --retries=3 CMD ["/event-gateway", "healthcheck"]
+ENTRYPOINT ["/event-gateway"]
+''',
+    '''
+# Copyright Tony Burns
+
+load("@bazel_skylib//rules:native_binary.bzl", "native_test")
+load("@bazel_skylib//rules:write_file.bzl", "write_file")
+load("@rules_oci//oci:defs.bzl", "oci_image", "oci_image_index", "oci_load")
+load("@rules_pkg//pkg:tar.bzl", "pkg_tar")
+load("@tbhb_rules//repo:defs.bzl", "repo_files")
+load("@tbhb_rules_python//:defs.bzl", "python_tool")
+
+repo_files(visibility = ["//factory/event-gateway:__pkg__"])
+
+# Explicit CI targets keep Linux images out of wildcard checks on macOS.
+pkg_tar(
+    name = "binary",
+    srcs = ["//factory/event-gateway/cmd/event-gateway"],
+    mode = "0555",
+    package_dir = "/",
+    tags = ["manual"],
+)
+
+# Docker initializes a new named volume with this directory's ownership.
+pkg_tar(
+    name = "data",
+    empty_dirs = ["data"],
+    mode = "0700",
+    owner = "65532.65532",
+    tags = ["manual"],
+)
+
+oci_image(
+    name = "image",
+    base = "@distroless_static",
+    entrypoint = ["/event-gateway"],
+    exposed_ports = ["8080/tcp"],
+    tags = ["manual"],
+    tars = [
+        ":binary",
+        ":data",
+    ],
+    user = "65532:65532",
+)
+
+oci_image_index(
+    name = "image_multiarch",
+    images = [":image"],
+    platforms = [
+        "@rules_go//go/toolchain:linux_amd64",
+        "@rules_go//go/toolchain:linux_arm64",
+    ],
+    tags = ["manual"],
+)
+
+oci_load(
+    name = "image_load",
+    image = ":image",
+    repo_tags = ["event-gateway:local"],
+    tags = ["manual"],
+)
+
+write_file(
+    name = "image_config_source",
+    out = "image_config_test.py",
+    content = [
+        "# SPDX-License-Identifier: Apache-2.0",
+        "# Copyright Tony Burns",
+        "",
+        "\"\"\"Check the event gateway OCI entrypoint and data volume permissions.\"\"\"",
+        "",
+        "import json",
+        "from pathlib import Path",
+        "import sys",
+        "import tarfile",
+        "import unittest",
+        "",
+        "",
+        "layout = Path(sys.argv[1])",
+        "",
+        "",
+        "def blob(digest):",
+        "    \"\"\"Find a blob in the OCI layout by its digest.\"\"\"",
+        "    algorithm, value = digest.split(\":\", 1)",
+        "    return layout / \"blobs\" / algorithm / value",
+        "",
+        "",
+        "index = json.loads((layout / \"index.json\").read_text())",
+        "manifest = json.loads(blob(index[\"manifests\"][0][\"digest\"]).read_text())",
+        "config = json.loads(blob(manifest[\"config\"][\"digest\"]).read_text())[\"config\"]",
+        "check = unittest.TestCase()",
+        "check.assertEqual(config[\"Entrypoint\"], [\"/event-gateway\"])",
+        "check.assertEqual(config[\"User\"], \"65532:65532\")",
+        "check.assertEqual(config[\"ExposedPorts\"], {\"8080/tcp\": {}})",
+        "",
+        "with tarfile.open(blob(manifest[\"layers\"][-1][\"digest\"])) as layer:",
+        "    data = next(member for member in layer if member.name.removeprefix(\"./\") == \"data\")",
+        "    check.assertTrue(data.isdir())",
+        "    check.assertEqual((data.uid, data.gid, data.mode), (65532, 65532, 0o700))",
+    ],
+    tags = ["manual"],
+)
+
+python_tool(
+    name = "image_config_check",
+    main = "image_config_test.py",
+    tags = ["manual"],
+)
+
+native_test(
+    name = "image_config_test",
+    src = ":image_config_check",
+    args = ["$(rootpath :image)"],
+    data = [":image"],
+    tags = ["manual"],
+)
+'''
+  ],
 ]
 
 [rewrite."README.md"]
 dest = "factory/event-gateway/README.md"
 replace = [
-  ['''
+  [
+    '''
+  The response contains an `events` array and, when retention removed older events, a `gap` object with inclusive `from` and `to` sequences.
+  For an empty page, `last_seq` is the gap's end or the supplied cursor if there's no gap.
+  Optional `provider` and `event` query parameters match those fields exactly.
+- `GET /v1/events/{seq}` returns the stored envelope with its sequence and payload.
+  It returns 410 for an expired sequence, 404 for a missing sequence, and 400 for an invalid sequence.
+
+Licensed under the [Apache License 2.0](LICENSE).
+''',
+    '''
+  The response contains an `events` array and, when retention removed older events, a `gap` object with inclusive `from` and `to` sequences.
+  For an empty page, `last_seq` is the gap's end or the supplied cursor if there's no gap.
+  Optional `provider` and `event` query parameters match exact field values.
+- `GET /v1/events/{seq}` returns the stored envelope with its sequence and payload.
+  It returns 410 for an expired sequence, 404 for a missing sequence, and 400 for an invalid sequence.
+
+Licensed under the [Apache License 2.0](../../LICENSE).
+'''
+  ],
+  [
+    '''
+Bind this separate listener to a private address and keep it off public ingress.
+The file contains one `name:sha256hex(token)` entry per line.
+The gateway skips blank lines and lines beginning with `#`, checks the file every second, and keeps the previous set if a reload fails.
+Send `Authorization: Bearer <token>` with each request.
+
+''',
+    '''
+Bind this separate listener to a private address and keep it off public ingress.
+The file contains one `name:sha256hex(token)` entry per line.
+When reading the file, the gateway skips blank lines and comments that begin with `#`. It checks for changes every second and keeps the previous token set if a reload fails.
+Send `Authorization: Bearer <token>` with each request.
+
+'''
+  ],
+  [
+    '''
+# event-gateway
 
 The event gateway receives webhook events from sources such as GitHub and Grafana, keeps a durable log of them, and delivers them to workflows and agent sessions.
 
 Status: pre-alpha.
-''', '''
 
-The event gateway receives webhook events from sources such as GitHub and Grafana, keeps a durable log of them, and delivers them to workflows and agent sessions.
+The design is in tbhb-dev/wiki under [designs/event-gateway](https://github.com/tbhb-dev/wiki/tree/main/designs/event-gateway).
 
-The gateway uses NATS JetStream to store events and can deliver to Temporal workflows.
-Build it with `bazel build //factory/event-gateway/cmd/event-gateway`.
-Run its tests with `bazel test --config=ci //factory/event-gateway/...`.
+## Healthcheck
 
-Status: pre-alpha.
-'''],
-  ['''
 `event-gateway healthcheck [-addr HOST:PORT]` requests `GET /healthz` (default `127.0.0.1:8080`, 4 second timeout) and exits 0 only on HTTP 200.
 It prints nothing on success and exits 1 otherwise.
 The distroless image uses it for the container healthcheck.
 
 ## Read API
-''', '''
-`event-gateway healthcheck [-addr HOST:PORT]` requests `GET /healthz` (default `127.0.0.1:8080`, 4 second timeout) and exits 0 only on HTTP 200.
-It prints nothing on success and exits 1 otherwise.
+''',
+    '''
+# Event gateway
+
+<!-- cspell:words healthz -->
+
+Webhooks from services such as GitHub and Grafana go into a durable JetStream log.
+Temporal workflows and agent sessions receive events from this log.
+Build the gateway with `bazelisk build //factory/event-gateway/cmd/event-gateway`.
+Run its tests with `bazelisk test --config=ci //factory/event-gateway/...`.
+
+See the [Go module](go.mod) for dependencies and the [gateway design](https://github.com/tbhb-dev/wiki/tree/main/designs/event-gateway) for architecture.
+The service is pre-alpha.
+
+## Container and deployment
+
+CI builds the image for Linux amd64 and arm64 and checks the image's entrypoint and data directory permissions.
+Build the image index with `bazelisk build -c opt //factory/event-gateway/container:image_multiarch`.
+Load the local image into Docker with `bazelisk run -c opt //factory/event-gateway/container:image_load`.
+
+The image runs as user and group 65532. Compose keeps the webhook listener on the internal network and publishes the session listener on the configured private IPv4 address.
+See the [Ansible role](../../ops/ansible/roles/event_gateway_deploy/README.md) for deployment steps.
+
+## Health check
+
+`event-gateway healthcheck [-addr HOST:PORT]` requests `GET /healthz` (default `127.0.0.1:8080`, 4 second timeout) and exits 0 for HTTP 200.
+It prints nothing on success. Other responses and request failures exit 1.
 
 ## Read API
-'''],
-  ['''
-  It returns 410 for an expired sequence, 404 for a missing sequence, and 400 for an invalid sequence.
-
-Licensed under the [Apache License 2.0](LICENSE).
-''', '''
-  It returns 410 for an expired sequence, 404 for a missing sequence, and 400 for an invalid sequence.
-
-Licensed under the [Apache License 2.0](../../LICENSE).
-'''],
+'''
+  ],
 ]
 
 [rewrite."cmd/event-gateway/BUILD.bazel"]
 dest = "factory/event-gateway/cmd/event-gateway/BUILD.bazel"
 replace = [
   ["go.tbhb.dev/event-gateway", "github.com/tbhb-dev/tbhbdev/factory/event-gateway"],
-  ['''
-# cspell:words eventfields temporaltarget
-
-load("@rules_go//go:def.bzl", "go_binary", "go_library", "go_test")
-load("@tbhb_rules//repo:defs.bzl", "repo_files")
-
-repo_files()
-
-go_library(
-''', '''
-# cspell:words eventfields temporaltarget
-
-load("@rules_go//go:def.bzl", "go_binary", "go_library")
-load("@tbhb_rules//repo:defs.bzl", "repo_files")
-load("//factory:go.bzl", "go_test")
-
-repo_files(visibility = ["//factory/event-gateway:__subpackages__"])
-
-go_library(
-'''],
-  ['''
-    visibility = ["//visibility:private"],
-    deps = [
-        "//internal/eventfields",
-        "//internal/filter",
-        "//internal/routing",
-        "//internal/temporaltarget",
-        "@com_github_coder_websocket//:websocket",
-        "@com_github_go_logr_logr//:logr",
-''', '''
-    visibility = ["//visibility:private"],
-    deps = [
-        "//factory/event-gateway/internal/eventfields",
-        "//factory/event-gateway/internal/filter",
-        "//factory/event-gateway/internal/routing",
-        "//factory/event-gateway/internal/temporaltarget",
-        "@com_github_coder_websocket//:websocket",
-        "@com_github_go_logr_logr//:logr",
-'''],
-  ['''
-    name = "event-gateway",
-    embed = [":event-gateway_lib"],
-    visibility = ["//visibility:public"],
-)
-
-''', '''
-    name = "event-gateway",
-    embed = [":event-gateway_lib"],
-    visibility = ["//factory/event-gateway:__subpackages__"],
-)
-
-'''],
-  ['''
+  [
+    '''
     ],
     embed = [":event-gateway_lib"],
     # The whole-module Go checks in the root package take the tests too.
@@ -619,7 +857,8 @@ go_library(
         "//internal/temporaltarget",
         "@com_github_coder_websocket//:websocket",
         "@com_github_go_logr_logr//funcr",
-''', '''
+''',
+    '''
     ],
     embed = [":event-gateway_lib"],
     # The whole-module Go checks in the project package take the tests too.
@@ -631,60 +870,82 @@ go_library(
         "//factory/event-gateway/internal/temporaltarget",
         "@com_github_coder_websocket//:websocket",
         "@com_github_go_logr_logr//funcr",
-'''],
-]
+'''
+  ],
+  [
+    '''
+    name = "event-gateway",
+    embed = [":event-gateway_lib"],
+    visibility = ["//visibility:public"],
+)
 
-[rewrite."cmd/event-gateway/healthcheck.go"]
-dest = "factory/event-gateway/cmd/event-gateway/healthcheck.go"
-replace = [
-  ['''
-	}
+''',
+    '''
+    name = "event-gateway",
+    embed = [":event-gateway_lib"],
+    pure = "on",
+    visibility = ["//factory/event-gateway:__subpackages__"],
+)
 
-	defer func() { _ = resp.Body.Close() }()
+'''
+  ],
+  [
+    '''
+    visibility = ["//visibility:private"],
+    deps = [
+        "//internal/eventfields",
+        "//internal/filter",
+        "//internal/routing",
+        "//internal/temporaltarget",
+        "@com_github_coder_websocket//:websocket",
+        "@com_github_go_logr_logr//:logr",
+''',
+    '''
+    visibility = ["//visibility:private"],
+    deps = [
+        "//factory/event-gateway/internal/eventfields",
+        "//factory/event-gateway/internal/filter",
+        "//factory/event-gateway/internal/routing",
+        "//factory/event-gateway/internal/temporaltarget",
+        "@com_github_coder_websocket//:websocket",
+        "@com_github_go_logr_logr//:logr",
+'''
+  ],
+  [
+    '''
+# cspell:words eventfields temporaltarget
 
-''', '''
-	}
+load("@rules_go//go:def.bzl", "go_binary", "go_library", "go_test")
+load("@tbhb_rules//repo:defs.bzl", "repo_files")
 
-	//nolint:errcheck // The health check uses only the HTTP status.
-	defer func() { _ = resp.Body.Close() }()
+repo_files()
 
-'''],
+go_library(
+''',
+    '''
+# cspell:words eventfields temporaltarget
+
+load("@rules_go//go:def.bzl", "go_binary", "go_library")
+load("@tbhb_rules//repo:defs.bzl", "repo_files")
+load("//factory:go.bzl", "go_test")
+
+repo_files(visibility = ["//factory/event-gateway:__subpackages__"])
+
+go_library(
+'''
+  ],
 ]
 
 [rewrite."cmd/event-gateway/mcp.go"]
 dest = "factory/event-gateway/cmd/event-gateway/mcp.go"
 replace = [
   ["go.tbhb.dev/event-gateway", "github.com/tbhb-dev/tbhbdev/factory/event-gateway"],
-  ['''
-
-func serveMCP(ctx context.Context, logHandler slog.Handler, stdin io.ReadCloser, stdout io.Writer) error {
-	defer stdin.Close()
-
-''', '''
-
-func serveMCP(ctx context.Context, logHandler slog.Handler, stdin io.ReadCloser, stdout io.Writer) error {
-	//nolint:errcheck // Closing the input is cleanup after the MCP session exits.
-	defer stdin.Close()
-
-'''],
 ]
 
 [rewrite."cmd/event-gateway/mcp_gateway.go"]
 dest = "factory/event-gateway/cmd/event-gateway/mcp_gateway.go"
 replace = [
   ["go.tbhb.dev/event-gateway", "github.com/tbhb-dev/tbhbdev/factory/event-gateway"],
-  ['''
-		// The dial error may contain the URL, headers or an untrusted reply.
-		if response != nil {
-			defer response.Body.Close()
-
-''', '''
-		// The dial error may contain the URL, headers or an untrusted reply.
-		if response != nil {
-			//nolint:errcheck // Only the upgrade status is used for the failed connection.
-			defer response.Body.Close()
-
-'''],
 ]
 
 [rewrite."cmd/event-gateway/mcp_gateway_internal_test.go"]
@@ -697,217 +958,18 @@ replace = [
 dest = "factory/event-gateway/cmd/event-gateway/mcp_state.go"
 replace = [
   ["go.tbhb.dev/event-gateway", "github.com/tbhb-dev/tbhbdev/factory/event-gateway"],
-  ['''
-		return false, false
-	}
-	defer root.Close()
-
-''', '''
-		return false, false
-	}
-	//nolint:errcheck // Closing the directory handle cannot change the completed file operation.
-	defer root.Close()
-
-'''],
-  ['''
-		return nil, !errors.Is(err, fs.ErrNotExist)
-	}
-	defer root.Close()
-
-''', '''
-		return nil, !errors.Is(err, fs.ErrNotExist)
-	}
-	//nolint:errcheck // Closing the directory handle cannot change the completed file operation.
-	defer root.Close()
-
-'''],
-  ['''
-		return nil, !errors.Is(statErr, fs.ErrNotExist)
-	}
-	defer file.Close()
-
-''', '''
-		return nil, !errors.Is(statErr, fs.ErrNotExist)
-	}
-	//nolint:errcheck // The file is open for reading only.
-	defer file.Close()
-
-'''],
-  ['''
-		return false
-	}
-	defer root.Close()
-
-''', '''
-		return false
-	}
-	//nolint:errcheck // Closing the directory handle cannot change the completed file operation.
-	defer root.Close()
-
-'''],
 ]
 
 [rewrite."cmd/event-gateway/mcp_state_internal_test.go"]
 dest = "factory/event-gateway/cmd/event-gateway/mcp_state_internal_test.go"
 replace = [
   ["go.tbhb.dev/event-gateway", "github.com/tbhb-dev/tbhbdev/factory/event-gateway"],
-  ['''
-	checkMCPStateLog(t, &logs, "")
-
-	data, err := os.ReadFile(own)
-	checkError(t, err)
-	checkEqual(t, string(data), mcpStateDocument(mcpStateTestSubscription))
-	data, err = os.ReadFile(legacy)
-	checkError(t, err)
-''', '''
-	checkMCPStateLog(t, &logs, "")
-
-	//nolint:gosec // The test reads its own temporary file.
-	data, err := os.ReadFile(own)
-	checkError(t, err)
-	checkEqual(t, string(data), mcpStateDocument(mcpStateTestSubscription))
-	//nolint:gosec // The test reads its own temporary file.
-	data, err = os.ReadFile(legacy)
-	checkError(t, err)
-'''],
-  ['''
-		checkMCPStateLog(t, &logs, test[1])
-
-		data, readErr := os.ReadFile(own)
-		checkError(t, readErr)
-''', '''
-		checkMCPStateLog(t, &logs, test[1])
-
-		//nolint:gosec // The test reads its own temporary file.
-		data, readErr := os.ReadFile(own)
-		checkError(t, readErr)
-'''],
-  ['''
-			checkMCPStateLog(t, &logs, awrelStateWarning)
-
-			data, err := os.ReadFile(own)
-
-''', '''
-			checkMCPStateLog(t, &logs, awrelStateWarning)
-
-			//nolint:gosec // The test reads its own temporary file.
-			data, err := os.ReadFile(own)
-
-'''],
-  ['''
-		checkEqual(t, callMCPTool(t, session, test[0], mcpStateTestSubscription).IsError, false)
-
-		data, err := os.ReadFile(path)
-		checkError(t, err)
-''', '''
-		checkEqual(t, callMCPTool(t, session, test[0], mcpStateTestSubscription).IsError, false)
-
-		//nolint:gosec // The test reads its own temporary file.
-		data, err := os.ReadFile(path)
-		checkError(t, err)
-'''],
-]
-
-[rewrite."cmd/event-gateway/otlp.go"]
-dest = "factory/event-gateway/cmd/event-gateway/otlp.go"
-replace = [
-  ['''
-		return errOTLPExport
-	}
-	defer response.Body.Close()
-
-''', '''
-		return errOTLPExport
-	}
-	//nolint:errcheck // Closing the body is cleanup after receiving the response.
-	defer response.Body.Close()
-
-'''],
-]
-
-[rewrite."cmd/event-gateway/parked.go"]
-dest = "factory/event-gateway/cmd/event-gateway/parked.go"
-replace = [
-  ['''
-	}
-
-	defer func() { _ = response.Body.Close() }()
-
-''', '''
-	}
-
-	//nolint:errcheck // Closing the body is cleanup after receiving the response.
-	defer func() { _ = response.Body.Close() }()
-
-'''],
-]
-
-[rewrite."cmd/event-gateway/parked_socket.go"]
-dest = "factory/event-gateway/cmd/event-gateway/parked_socket.go"
-replace = [
-  ['''
-
-	// Serve closes and unlinks the listener. This also covers startup failures.
-	defer func() { _ = listener.Close() }()
-
-''', '''
-
-	// Serve closes and unlinks the listener. This also covers startup failures.
-	//nolint:errcheck // The listener is closing during server shutdown.
-	defer func() { _ = listener.Close() }()
-
-'''],
-  ['''
-	}
-
-	defer func() { _ = dir.Close() }()
-
-''', '''
-	}
-
-	//nolint:errcheck // The directory handle only holds the lock for stale socket cleanup.
-	defer func() { _ = dir.Close() }()
-
-'''],
-  ['''
-	conn, err := new(net.Dialer).DialContext(ctx, "unix", path)
-	if err == nil {
-		_ = conn.Close()
-	}
-
-	if errors.Is(err, syscall.ECONNREFUSED) {
-		_ = os.Remove(path)
-	}
-''', '''
-	conn, err := new(net.Dialer).DialContext(ctx, "unix", path)
-	if err == nil {
-		//nolint:errcheck // The successful dial already proved that the socket is active.
-		_ = conn.Close()
-	}
-
-	if errors.Is(err, syscall.ECONNREFUSED) {
-		//nolint:errcheck // The subsequent listen reports a stale socket that could not be removed.
-		_ = os.Remove(path)
-	}
-'''],
 ]
 
 [rewrite."cmd/event-gateway/session.go"]
 dest = "factory/event-gateway/cmd/event-gateway/session.go"
 replace = [
   ["go.tbhb.dev/event-gateway", "github.com/tbhb-dev/tbhbdev/factory/event-gateway"],
-  ['''
-		state := session{conn: conn, stream: api.store.stream, events: nil, subscriptions: nil, replay: nil}
-		code, reason := api.run(req.Context(), &state, sha256.Sum256([]byte(strings.Fields(header)[1])))
-		_ = conn.Close(code, reason)
-	}
-''', '''
-		state := session{conn: conn, stream: api.store.stream, events: nil, subscriptions: nil, replay: nil}
-		code, reason := api.run(req.Context(), &state, sha256.Sum256([]byte(strings.Fields(header)[1])))
-		//nolint:errcheck // The connection is already shutting down.
-		_ = conn.Close(code, reason)
-	}
-'''],
 ]
 
 [rewrite."cmd/event-gateway/session_internal_test.go"]
@@ -920,18 +982,6 @@ replace = [
 dest = "factory/event-gateway/cmd/event-gateway/targets.go"
 replace = [
   ["go.tbhb.dev/event-gateway", "github.com/tbhb-dev/tbhbdev/factory/event-gateway"],
-  ['''
-	}
-
-	data, err := os.ReadFile(path)
-	if err != nil {
-''', '''
-	}
-
-	//nolint:gosec // The operator supplies the targets configuration path at startup.
-	data, err := os.ReadFile(path)
-	if err != nil {
-'''],
 ]
 
 [rewrite."cmd/event-gateway/targets_internal_test.go"]
@@ -940,11 +990,161 @@ replace = [
   ["go.tbhb.dev/event-gateway", "github.com/tbhb-dev/tbhbdev/factory/event-gateway"],
 ]
 
+[rewrite."deploy/BUILD.bazel"]
+dest = "factory/event-gateway/deploy/BUILD.bazel"
+replace = [
+  [
+    '''
+        "up.sh",
+    ],
+    visibility = ["//:__pkg__"],
+)
+''',
+    '''
+        "up.sh",
+    ],
+    visibility = ["//factory/event-gateway:__pkg__"],
+)
+'''
+  ],
+  [
+    '''
+# Copyright Tony Burns
+
+load("@rules_go//go:def.bzl", "go_test")
+load("@tbhb_rules//repo:defs.bzl", "repo_files")
+
+repo_files()
+
+go_test(
+''',
+    '''
+# Copyright Tony Burns
+
+load("@tbhb_rules//repo:defs.bzl", "repo_files")
+load("//factory:go.bzl", "go_test")
+
+repo_files(
+    exclude = ["secrets/**"],
+    visibility = ["//factory/event-gateway:__pkg__"],
+)
+
+go_test(
+'''
+  ],
+]
+
+[rewrite."deploy/compose.yaml"]
+dest = "factory/event-gateway/deploy/compose.yaml"
+replace = [
+  ["events.", "PUBLIC."],
+  ["PUBLIC.tbhb.dev.", "PUBLIC."],
+  [
+    '''
+# route is a deployment prerequisite for ops to verify: it must send only
+# `POST /webhooks/github` to `http://gateway:8080`, because the gateway also
+# serves `GET /healthz` without authentication. The proposed public host is
+# PUBLIC.
+#
+# `restart: unless-stopped` restarts a container that exits, and does not
+''',
+    '''
+# route is a deployment prerequisite for ops to verify: it must send only
+# `POST /webhooks/github` to `http://gateway:8080`, because the gateway also
+# serves `GET /healthz` without authentication.
+#
+# `restart: unless-stopped` restarts a container that exits, and does not
+'''
+  ],
+  [
+    '''
+
+---
+# The gateway, as a Compose project. Start it with deploy/up.sh, which takes
+# the published image with its digest (`ghcr.io/<owner>/event-gateway@sha256:...`,
+# from the publish workflow's job summary) or the id of a loaded image
+# (`sha256:...`) and refuses any other reference, a tag included. Compose alone
+# only refuses an unset or empty EVENT_GATEWAY_IMAGE.
+#
+# The service publishes one port, the session port 8081, bound to the host
+''',
+    '''
+
+---
+# Start this Compose project with deploy/up.sh. The script accepts an
+# image digest or the ID of a loaded image (sha256:...), and rejects tags.
+# Compose checks that EVENT_GATEWAY_IMAGE is set and nonempty.
+#
+# The service publishes one port, the session port 8081, bound to the host
+'''
+  ],
+]
+
+[rewrite."deploy/deploy_test.go"]
+dest = "factory/event-gateway/deploy/deploy_test.go"
+replace = [
+  [
+    """
+const (
+\tdigest        = \"sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\"
+\trepo          = \"ghcr.io/tbhb-dev/event-gateway\"
+\tpull          = \"--pull\"
+\tnever         = \"never\"
+""",
+    """
+const (
+\tdigest        = \"sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\"
+\trepo          = \"registry.example/event-gateway\"
+\tpull          = \"--pull\"
+\tnever         = \"never\"
+"""
+  ],
+]
+
+[rewrite."go.mod"]
+dest = "factory/event-gateway/go.mod"
+replace = [
+  ["go.tbhb.dev/event-gateway", "github.com/tbhb-dev/tbhbdev/factory/event-gateway"],
+]
+
 [rewrite."internal/buildloop/BUILD.bazel"]
 dest = "factory/event-gateway/internal/buildloop/BUILD.bazel"
 replace = [
   ["go.tbhb.dev/event-gateway", "github.com/tbhb-dev/tbhbdev/factory/event-gateway"],
-  ['''
+  [
+    '''
+    name = "buildloop_test",
+    srcs = ["buildloop_test.go"],
+    visibility = ["//:__pkg__"],
+    deps = [":buildloop"],
+)
+''',
+    '''
+    name = "buildloop_test",
+    srcs = ["buildloop_test.go"],
+    visibility = ["//factory/event-gateway:__pkg__"],
+    deps = [":buildloop"],
+)
+'''
+  ],
+  [
+    '''
+    srcs = ["buildloop.go"],
+    importpath = "github.com/tbhb-dev/tbhbdev/factory/event-gateway/internal/buildloop",
+    visibility = ["//:__subpackages__"],
+)
+
+''',
+    '''
+    srcs = ["buildloop.go"],
+    importpath = "github.com/tbhb-dev/tbhbdev/factory/event-gateway/internal/buildloop",
+    visibility = ["//factory/event-gateway:__subpackages__"],
+)
+
+'''
+  ],
+  [
+    '''
 # Copyright Tony Burns
 
 load("@rules_go//go:def.bzl", "go_library", "go_test")
@@ -953,7 +1153,8 @@ load("@tbhb_rules//repo:defs.bzl", "repo_files")
 repo_files()
 
 go_library(
-''', '''
+''',
+    '''
 # Copyright Tony Burns
 
 load("@rules_go//go:def.bzl", "go_library")
@@ -963,73 +1164,56 @@ load("//factory:go.bzl", "go_test")
 repo_files(visibility = ["//factory/event-gateway:__subpackages__"])
 
 go_library(
-'''],
-  ['''
-    srcs = ["buildloop.go"],
-    importpath = "github.com/tbhb-dev/tbhbdev/factory/event-gateway/internal/buildloop",
-    visibility = ["//:__subpackages__"],
-)
-
-''', '''
-    srcs = ["buildloop.go"],
-    importpath = "github.com/tbhb-dev/tbhbdev/factory/event-gateway/internal/buildloop",
-    visibility = ["//factory/event-gateway:__subpackages__"],
-)
-
-'''],
-  ['''
-    name = "buildloop_test",
-    srcs = ["buildloop_test.go"],
-    visibility = ["//:__pkg__"],
-    deps = [":buildloop"],
-)
-''', '''
-    name = "buildloop_test",
-    srcs = ["buildloop_test.go"],
-    visibility = ["//factory/event-gateway:__pkg__"],
-    deps = [":buildloop"],
-)
-'''],
+'''
+  ],
 ]
 
 [rewrite."internal/buildloop/buildloop_test.go"]
 dest = "factory/event-gateway/internal/buildloop/buildloop_test.go"
 replace = [
   ["go.tbhb.dev/event-gateway", "github.com/tbhb-dev/tbhbdev/factory/event-gateway"],
-  ['''
-	switch mode {
-	case modeExit:
-		_, _ = os.Stdout.WriteString("to stdout\n")
-		_, _ = os.Stderr.WriteString("to stderr\n")
-
-''', '''
-	switch mode {
-	case modeExit:
-		//nolint:errcheck // The parent test checks the output from the helper process.
-		_, _ = os.Stdout.WriteString("to stdout\n")
-		//nolint:errcheck // The parent test checks the output from the helper process.
-		_, _ = os.Stderr.WriteString("to stderr\n")
-
-'''],
-  ['''
-		}
-
-		_, _ = os.Stdout.WriteString(dir)
-	}
-''', '''
-		}
-
-		//nolint:errcheck // The parent test checks the output from the helper process.
-		_, _ = os.Stdout.WriteString(dir)
-	}
-'''],
 ]
 
 [rewrite."internal/eventfields/BUILD.bazel"]
 dest = "factory/event-gateway/internal/eventfields/BUILD.bazel"
 replace = [
   ["go.tbhb.dev/event-gateway", "github.com/tbhb-dev/tbhbdev/factory/event-gateway"],
-  ['''
+  [
+    '''
+    name = "eventfields_test",
+    srcs = ["eventfields_test.go"],
+    visibility = ["//:__pkg__"],
+    deps = [":eventfields"],
+)
+''',
+    '''
+    name = "eventfields_test",
+    srcs = ["eventfields_test.go"],
+    visibility = ["//factory/event-gateway:__pkg__"],
+    deps = [":eventfields"],
+)
+'''
+  ],
+  [
+    '''
+    ],
+    importpath = "github.com/tbhb-dev/tbhbdev/factory/event-gateway/internal/eventfields",
+    visibility = ["//:__subpackages__"],
+    deps = ["//internal/filter"],
+)
+
+''',
+    '''
+    ],
+    importpath = "github.com/tbhb-dev/tbhbdev/factory/event-gateway/internal/eventfields",
+    visibility = ["//factory/event-gateway:__subpackages__"],
+    deps = ["//factory/event-gateway/internal/filter"],
+)
+
+'''
+  ],
+  [
+    '''
 # cspell:words eventfields
 
 load("@rules_go//go:def.bzl", "go_library", "go_test")
@@ -1038,7 +1222,8 @@ load("@tbhb_rules//repo:defs.bzl", "repo_files")
 repo_files()
 
 go_library(
-''', '''
+''',
+    '''
 # cspell:words eventfields
 
 load("@rules_go//go:def.bzl", "go_library")
@@ -1048,35 +1233,8 @@ load("//factory:go.bzl", "go_test")
 repo_files(visibility = ["//factory/event-gateway:__subpackages__"])
 
 go_library(
-'''],
-  ['''
-    ],
-    importpath = "github.com/tbhb-dev/tbhbdev/factory/event-gateway/internal/eventfields",
-    visibility = ["//:__subpackages__"],
-    deps = ["//internal/filter"],
-)
-
-''', '''
-    ],
-    importpath = "github.com/tbhb-dev/tbhbdev/factory/event-gateway/internal/eventfields",
-    visibility = ["//factory/event-gateway:__subpackages__"],
-    deps = ["//factory/event-gateway/internal/filter"],
-)
-
-'''],
-  ['''
-    name = "eventfields_test",
-    srcs = ["eventfields_test.go"],
-    visibility = ["//:__pkg__"],
-    deps = [":eventfields"],
-)
-''', '''
-    name = "eventfields_test",
-    srcs = ["eventfields_test.go"],
-    visibility = ["//factory/event-gateway:__pkg__"],
-    deps = [":eventfields"],
-)
-'''],
+'''
+  ],
 ]
 
 [rewrite."internal/eventfields/eventfields_test.go"]
@@ -1095,7 +1253,40 @@ replace = [
 dest = "factory/event-gateway/internal/filter/BUILD.bazel"
 replace = [
   ["go.tbhb.dev/event-gateway", "github.com/tbhb-dev/tbhbdev/factory/event-gateway"],
-  ['''
+  [
+    '''
+    name = "filter_test",
+    srcs = ["filter_test.go"],
+    visibility = ["//:__pkg__"],
+    deps = [":filter"],
+)
+''',
+    '''
+    name = "filter_test",
+    srcs = ["filter_test.go"],
+    visibility = ["//factory/event-gateway:__pkg__"],
+    deps = [":filter"],
+)
+'''
+  ],
+  [
+    '''
+    srcs = ["filter.go"],
+    importpath = "github.com/tbhb-dev/tbhbdev/factory/event-gateway/internal/filter",
+    visibility = ["//:__subpackages__"],
+)
+
+''',
+    '''
+    srcs = ["filter.go"],
+    importpath = "github.com/tbhb-dev/tbhbdev/factory/event-gateway/internal/filter",
+    visibility = ["//factory/event-gateway:__subpackages__"],
+)
+
+'''
+  ],
+  [
+    '''
 # Copyright Tony Burns
 
 load("@rules_go//go:def.bzl", "go_library", "go_test")
@@ -1104,7 +1295,8 @@ load("@tbhb_rules//repo:defs.bzl", "repo_files")
 repo_files()
 
 go_library(
-''', '''
+''',
+    '''
 # Copyright Tony Burns
 
 load("@rules_go//go:def.bzl", "go_library")
@@ -1114,33 +1306,8 @@ load("//factory:go.bzl", "go_test")
 repo_files(visibility = ["//factory/event-gateway:__subpackages__"])
 
 go_library(
-'''],
-  ['''
-    srcs = ["filter.go"],
-    importpath = "github.com/tbhb-dev/tbhbdev/factory/event-gateway/internal/filter",
-    visibility = ["//:__subpackages__"],
-)
-
-''', '''
-    srcs = ["filter.go"],
-    importpath = "github.com/tbhb-dev/tbhbdev/factory/event-gateway/internal/filter",
-    visibility = ["//factory/event-gateway:__subpackages__"],
-)
-
-'''],
-  ['''
-    name = "filter_test",
-    srcs = ["filter_test.go"],
-    visibility = ["//:__pkg__"],
-    deps = [":filter"],
-)
-''', '''
-    name = "filter_test",
-    srcs = ["filter_test.go"],
-    visibility = ["//factory/event-gateway:__pkg__"],
-    deps = [":filter"],
-)
-'''],
+'''
+  ],
 ]
 
 [rewrite."internal/filter/filter_test.go"]
@@ -1153,7 +1320,38 @@ replace = [
 dest = "factory/event-gateway/internal/redelivery/BUILD.bazel"
 replace = [
   ["go.tbhb.dev/event-gateway", "github.com/tbhb-dev/tbhbdev/factory/event-gateway"],
-  ['''
+  [
+    '''
+    srcs = ["auth_test.go"],
+    embed = [":redelivery"],
+    visibility = ["//:__pkg__"],
+)
+''',
+    '''
+    srcs = ["auth_test.go"],
+    embed = [":redelivery"],
+    visibility = ["//factory/event-gateway:__pkg__"],
+)
+'''
+  ],
+  [
+    '''
+    srcs = ["auth.go"],
+    importpath = "github.com/tbhb-dev/tbhbdev/factory/event-gateway/internal/redelivery",
+    visibility = ["//:__subpackages__"],
+)
+
+''',
+    '''
+    srcs = ["auth.go"],
+    importpath = "github.com/tbhb-dev/tbhbdev/factory/event-gateway/internal/redelivery",
+    visibility = ["//factory/event-gateway:__subpackages__"],
+)
+
+'''
+  ],
+  [
+    '''
 # Copyright Tony Burns
 
 load("@rules_go//go:def.bzl", "go_library", "go_test")
@@ -1162,7 +1360,8 @@ load("@tbhb_rules//repo:defs.bzl", "repo_files")
 repo_files()
 
 go_library(
-''', '''
+''',
+    '''
 # Copyright Tony Burns
 
 load("@rules_go//go:def.bzl", "go_library")
@@ -1172,90 +1371,16 @@ load("//factory:go.bzl", "go_test")
 repo_files(visibility = ["//factory/event-gateway:__subpackages__"])
 
 go_library(
-'''],
-  ['''
-    srcs = ["auth.go"],
-    importpath = "github.com/tbhb-dev/tbhbdev/factory/event-gateway/internal/redelivery",
-    visibility = ["//:__subpackages__"],
-)
-
-''', '''
-    srcs = ["auth.go"],
-    importpath = "github.com/tbhb-dev/tbhbdev/factory/event-gateway/internal/redelivery",
-    visibility = ["//factory/event-gateway:__subpackages__"],
-)
-
-'''],
-  ['''
-    srcs = ["auth_test.go"],
-    embed = [":redelivery"],
-    visibility = ["//:__pkg__"],
-)
-''', '''
-    srcs = ["auth_test.go"],
-    embed = [":redelivery"],
-    visibility = ["//factory/event-gateway:__pkg__"],
-)
-'''],
-]
-
-[rewrite."internal/redelivery/auth.go"]
-dest = "factory/event-gateway/internal/redelivery/auth.go"
-replace = [
-  ['''
-	}
-
-	defer res.Body.Close()
-
-''', '''
-	}
-
-	//nolint:errcheck // Closing the body is cleanup after receiving the response.
-	defer res.Body.Close()
-
-'''],
+'''
+  ],
 ]
 
 [rewrite."internal/routing/BUILD.bazel"]
 dest = "factory/event-gateway/internal/routing/BUILD.bazel"
 replace = [
   ["go.tbhb.dev/event-gateway", "github.com/tbhb-dev/tbhbdev/factory/event-gateway"],
-  ['''
-# Copyright Tony Burns
-
-load("@rules_go//go:def.bzl", "go_library", "go_test")
-load("@tbhb_rules//repo:defs.bzl", "repo_files")
-
-repo_files()
-
-go_library(
-''', '''
-# Copyright Tony Burns
-
-load("@rules_go//go:def.bzl", "go_library")
-load("@tbhb_rules//repo:defs.bzl", "repo_files")
-load("//factory:go.bzl", "go_test")
-
-repo_files(visibility = ["//factory/event-gateway:__subpackages__"])
-
-go_library(
-'''],
-  ['''
-    srcs = ["routing.go"],
-    importpath = "github.com/tbhb-dev/tbhbdev/factory/event-gateway/internal/routing",
-    visibility = ["//:__subpackages__"],
-    deps = ["//internal/filter"],
-)
-
-''', '''
-    srcs = ["routing.go"],
-    importpath = "github.com/tbhb-dev/tbhbdev/factory/event-gateway/internal/routing",
-    visibility = ["//factory/event-gateway:__subpackages__"],
-    deps = ["//factory/event-gateway/internal/filter"],
-)
-
-'''],
-  ['''
+  [
+    '''
     name = "routing_test",
     srcs = ["routing_test.go"],
     visibility = ["//:__pkg__"],
@@ -1264,7 +1389,8 @@ go_library(
         "//internal/filter",
     ],
 )
-''', '''
+''',
+    '''
     name = "routing_test",
     srcs = ["routing_test.go"],
     visibility = ["//factory/event-gateway:__pkg__"],
@@ -1273,7 +1399,49 @@ go_library(
         "//factory/event-gateway/internal/filter",
     ],
 )
-'''],
+'''
+  ],
+  [
+    '''
+    srcs = ["routing.go"],
+    importpath = "github.com/tbhb-dev/tbhbdev/factory/event-gateway/internal/routing",
+    visibility = ["//:__subpackages__"],
+    deps = ["//internal/filter"],
+)
+
+''',
+    '''
+    srcs = ["routing.go"],
+    importpath = "github.com/tbhb-dev/tbhbdev/factory/event-gateway/internal/routing",
+    visibility = ["//factory/event-gateway:__subpackages__"],
+    deps = ["//factory/event-gateway/internal/filter"],
+)
+
+'''
+  ],
+  [
+    '''
+# Copyright Tony Burns
+
+load("@rules_go//go:def.bzl", "go_library", "go_test")
+load("@tbhb_rules//repo:defs.bzl", "repo_files")
+
+repo_files()
+
+go_library(
+''',
+    '''
+# Copyright Tony Burns
+
+load("@rules_go//go:def.bzl", "go_library")
+load("@tbhb_rules//repo:defs.bzl", "repo_files")
+load("//factory:go.bzl", "go_test")
+
+repo_files(visibility = ["//factory/event-gateway:__subpackages__"])
+
+go_library(
+'''
+  ],
 ]
 
 [rewrite."internal/routing/routing.go"]
@@ -1292,71 +1460,8 @@ replace = [
 dest = "factory/event-gateway/internal/temporaltarget/BUILD.bazel"
 replace = [
   ["go.tbhb.dev/event-gateway", "github.com/tbhb-dev/tbhbdev/factory/event-gateway"],
-  ['''
-# cspell:words devserver eventfields rlocationpath temporaltarget
-
-load("@rules_go//go:def.bzl", "go_library", "go_test")
-load("@tbhb_rules//repo:defs.bzl", "repo_files")
-load("@tbhb_rules_go//:defs.bzl", "gobco_test")
-
-# gazelle:exclude devserver_internal_test.go
-
-repo_files()
-
-gobco_test(
-''', '''
-# cspell:words devserver eventfields rlocationpath temporaltarget
-
-load("@rules_go//go:def.bzl", "go_library")
-load("@tbhb_rules//repo:defs.bzl", "repo_files")
-load("@tbhb_rules_go//:defs.bzl", "gobco_test")
-load("//factory:go.bzl", "go_test")
-
-# gazelle:exclude devserver_internal_test.go
-
-repo_files(visibility = ["//factory/event-gateway:__subpackages__"])
-
-gobco_test(
-'''],
-  ['''
-    ],
-    importpath = "github.com/tbhb-dev/tbhbdev/factory/event-gateway/internal/temporaltarget",
-    visibility = ["//:__subpackages__"],
-    deps = [
-        "//internal/eventfields",
-        "//internal/routing",
-        "@io_temporal_go_api//common/v1:common",
-        "@io_temporal_go_api//enums/v1:enums",
-''', '''
-    ],
-    importpath = "github.com/tbhb-dev/tbhbdev/factory/event-gateway/internal/temporaltarget",
-    visibility = ["//factory/event-gateway:__subpackages__"],
-    deps = [
-        "//factory/event-gateway/internal/eventfields",
-        "//factory/event-gateway/internal/routing",
-        "@io_temporal_go_api//common/v1:common",
-        "@io_temporal_go_api//enums/v1:enums",
-'''],
-  ['''
-    ],
-    embed = [":temporaltarget"],
-    visibility = ["//:__pkg__"],
-    deps = [
-        "//internal/eventfields",
-        "//internal/routing",
-        "@io_temporal_go_api//common/v1:common",
-        "@io_temporal_go_api//enums/v1:enums",
-''', '''
-    ],
-    embed = [":temporaltarget"],
-    visibility = ["//factory/event-gateway:__pkg__"],
-    deps = [
-        "//factory/event-gateway/internal/eventfields",
-        "//factory/event-gateway/internal/routing",
-        "@io_temporal_go_api//common/v1:common",
-        "@io_temporal_go_api//enums/v1:enums",
-'''],
-  ['''
+  [
+    '''
     name = "temporaltarget_devserver_test",
     size = "large",
     srcs = ["devserver_internal_test.go"],
@@ -1369,7 +1474,8 @@ gobco_test(
         "//internal/routing",
         "@io_temporal_go_api//serviceerror",
         "@io_temporal_go_sdk//client",
-''', '''
+''',
+    '''
     name = "temporaltarget_devserver_test",
     size = "large",
     timeout = "long",
@@ -1383,26 +1489,115 @@ gobco_test(
         "//factory/event-gateway/internal/routing",
         "@io_temporal_go_api//serviceerror",
         "@io_temporal_go_sdk//client",
-'''],
+'''
+  ],
+  [
+    '''
+    ],
+    embed = [":temporaltarget"],
+    visibility = ["//:__pkg__"],
+    deps = [
+        "//internal/eventfields",
+        "//internal/routing",
+        "@io_temporal_go_api//common/v1:common",
+        "@io_temporal_go_api//enums/v1:enums",
+''',
+    '''
+    ],
+    embed = [":temporaltarget"],
+    visibility = ["//factory/event-gateway:__pkg__"],
+    deps = [
+        "//factory/event-gateway/internal/eventfields",
+        "//factory/event-gateway/internal/routing",
+        "@io_temporal_go_api//common/v1:common",
+        "@io_temporal_go_api//enums/v1:enums",
+'''
+  ],
+  [
+    '''
+    ],
+    importpath = "github.com/tbhb-dev/tbhbdev/factory/event-gateway/internal/temporaltarget",
+    visibility = ["//:__subpackages__"],
+    deps = [
+        "//internal/eventfields",
+        "//internal/routing",
+        "@io_temporal_go_api//common/v1:common",
+        "@io_temporal_go_api//enums/v1:enums",
+''',
+    '''
+    ],
+    importpath = "github.com/tbhb-dev/tbhbdev/factory/event-gateway/internal/temporaltarget",
+    visibility = ["//factory/event-gateway:__subpackages__"],
+    deps = [
+        "//factory/event-gateway/internal/eventfields",
+        "//factory/event-gateway/internal/routing",
+        "@io_temporal_go_api//common/v1:common",
+        "@io_temporal_go_api//enums/v1:enums",
+'''
+  ],
+  [
+    '''
+# cspell:words devserver eventfields rlocationpath temporaltarget
+
+load("@rules_go//go:def.bzl", "go_library", "go_test")
+load("@tbhb_rules//repo:defs.bzl", "repo_files")
+load("@tbhb_rules_go//:defs.bzl", "gobco_test")
+
+# gazelle:exclude devserver_internal_test.go
+
+repo_files()
+
+gobco_test(
+    name = "temporaltarget_gobco_test",
+    go_mod = "//:go.mod",
+    go_sum = "//:go.sum",
+    proxy = "@go_mod_proxy//:proxy",
+    tests = [":temporaltarget_test"],
+)
+''',
+    '''
+# cspell:words devserver eventfields rlocationpath temporaltarget
+
+load("@rules_go//go:def.bzl", "go_library")
+load("@tbhb_rules//repo:defs.bzl", "repo_files")
+load("@tbhb_rules_go//:defs.bzl", "gobco_test")
+load("//factory:go.bzl", "go_test")
+
+# gazelle:exclude devserver_internal_test.go
+
+repo_files(visibility = ["//factory/event-gateway:__subpackages__"])
+
+gobco_test(
+    name = "temporaltarget_gobco_test",
+    go_mod = "//factory/event-gateway:go.mod",
+    go_sum = "//factory/event-gateway:go.sum",
+    proxy = "@event_gateway_go_mod_proxy//:proxy",
+    tests = [":temporaltarget_test"],
+)
+'''
+  ],
 ]
 
 [rewrite."internal/temporaltarget/devserver_internal_test.go"]
 dest = "factory/event-gateway/internal/temporaltarget/devserver_internal_test.go"
 replace = [
   ["go.tbhb.dev/event-gateway", "github.com/tbhb-dev/tbhbdev/factory/event-gateway"],
-  ['''
+  [
+    """
 
-	if err != nil {
-		t.Fatal(err)
-	}
+\tif err != nil {
+\t\tt.Fatal(err)
+\t}
 }
-''', '''
+""",
+    """
 
-	if err != nil {
-		t.Fatalf("Temporal dev server: %v", err)
-	}
+\tif err != nil {
+\t\tt.Fatalf(\"Temporal dev server: %v\", err)
+\t}
 }
-'''],
+"""
+  ],
 ]
 
 [rewrite."internal/temporaltarget/target.go"]
@@ -1417,6 +1612,39 @@ replace = [
   ["go.tbhb.dev/event-gateway", "github.com/tbhb-dev/tbhbdev/factory/event-gateway"],
 ]
 
+[rewrite."tools/lint/linters.bzl"]
+dest = "factory/event-gateway/go_lint.bzl"
+replace = [
+  [
+    '''
+# Copyright Tony Burns
+
+"""golangci-lint over this repository's .golangci.yml."""
+
+load("@tbhb_rules_go//:defs.bzl", "golangci_lint_aspect_factory", "golangci_lint_test_factory")
+
+golangci_lint = golangci_lint_aspect_factory(
+    config = "//:.golangci.yml",
+    go_mod = Label("//:go.mod"),
+)
+
+''',
+    '''
+# Copyright Tony Burns
+
+"""Go lint tests using the event-gateway configuration."""
+
+load("@tbhb_rules_go//:defs.bzl", "golangci_lint_aspect_factory", "golangci_lint_test_factory")
+
+golangci_lint = golangci_lint_aspect_factory(
+    config = Label("//factory/event-gateway:.golangci.yml"),
+    go_mod = Label("//factory/event-gateway:go.mod"),
+)
+
+'''
+  ],
+]
+
 [drop]
 ".bazelignore" = "root configuration (.bazel*)"
 ".bazelrc" = "root configuration (.bazel*)"
@@ -1425,7 +1653,7 @@ replace = [
 ".codex/rules/pull-request.rules" = "root configuration"
 ".cspell-words.txt" = "root configuration (.cspell*)"
 ".cspell.jsonc" = "root configuration (.cspell*)"
-".dockerignore" = "no container image target"
+".dockerignore" = "Bazel specifies the files in the image layers."
 ".editorconfig" = "root configuration (.editorconfig*)"
 ".editorconfig-checker.json" = "root configuration (.editorconfig*)"
 ".gitattributes" = "root configuration (.gitattributes)"
@@ -1443,8 +1671,6 @@ replace = [
 ".github/zizmor.yml" = "root configuration (.github/zizmor.yml)"
 ".gitignore" = "root configuration (.gitignore)"
 ".gitleaks.toml" = "root configuration (.gitleaks.toml)"
-".go-arch-lint.yml" = "import contracts are in the root configuration"
-".golangci.yml" = "lint settings are in the root configuration"
 ".pre-commit-config.yaml" = "root configuration (.pre-commit-config.yaml)"
 ".rumdl.toml" = "root configuration (.rumdl.toml)"
 ".ryl.toml" = "root configuration (.ryl*)"
@@ -1459,24 +1685,16 @@ replace = [
 "AGENTS.md" = "root configuration"
 "CLAUDE.md" = "root configuration"
 "CONTRIBUTING.md" = "standalone repository contributor setup"
-"Dockerfile" = "no container image target"
 "LICENSE" = "root configuration (LICENSE)"
 "LICENSES/Apache-2.0.txt" = "root configuration (LICENSES/**)"
 "MODULE.bazel" = "root configuration (MODULE.bazel*)"
 "MODULE.bazel.lock" = "root configuration (MODULE.bazel*)"
 "REPO.bazel" = "root configuration (REPO.bazel)"
 "REUSE.toml" = "root configuration (REUSE.toml)"
-"deploy/BUILD.bazel" = "no deployment target"
-"deploy/compose.yaml" = "no deployment target"
-"deploy/deploy_test.go" = "no deployment target"
-"deploy/up.sh" = "no deployment target"
-"go.mod" = "dependencies are in the root go.mod"
-"go.sum" = "checksums are in the root go.sum"
 "mise.lock" = "root configuration (mise.*)"
 "mise.toml" = "root configuration (mise.*)"
 "preset.bazelrc" = "root configuration (preset.bazelrc)"
 "tombi.toml" = "root configuration (tombi.toml)"
 "tools/lint/BUILD.bazel" = "standalone repository tooling"
 "tools/lint/check_merge_group.py" = "standalone repository tooling"
-"tools/lint/linters.bzl" = "standalone repository tooling"
 "vale_packages.bzl" = "root configuration"

@@ -10,6 +10,12 @@
         dest: /usr/local/bin/docker
         mode: "0755"
 
+    - name: Install the Bazelisk fixture
+      ansible.builtin.copy:
+        src: bazelisk
+        dest: /usr/local/bin/bazelisk
+        mode: "0755"
+
     - name: Prepare an ops-owned checkout with provisioned file fixtures
       become: true
       become_user: ops
@@ -18,8 +24,8 @@
           set -eu
           git init --quiet /home/ops/source
           cd /home/ops/source
-          mkdir deploy
-          cat > deploy/up.sh <<'SCRIPT'
+          mkdir -p factory/event-gateway/deploy
+          cat > factory/event-gateway/deploy/up.sh <<'SCRIPT'
           #!/bin/sh
           set -eu
           [ "$(id -un)" = ops ]
@@ -27,11 +33,12 @@
           [ "$#" = 3 ] && [ "$2 $3" = '--pull never' ]
           sudo docker start-fixture "$1"
           SCRIPT
-          chmod +x deploy/up.sh
-          git add deploy/up.sh
+          chmod +x factory/event-gateway/deploy/up.sh
+          git add factory/event-gateway/deploy/up.sh
           git -c user.name=Fixture -c user.email=fixture@example.invalid commit --quiet -m fixture
           git clone --quiet /home/ops/source /home/ops/event-gateway-deploy/repo
-          cd /home/ops/event-gateway-deploy/repo
+          cd /home/ops/event-gateway-deploy/repo/factory/event-gateway
           mkdir deploy/secrets
-          touch deploy/secrets/github_webhook_secret deploy/secrets/tunnel_token
-        creates: /home/ops/event-gateway-deploy/repo/deploy/secrets
+          touch deploy/secrets/github_webhook_secret deploy/secrets/event_gateway_session_tokens \
+            deploy/secrets/tunnel_token
+        creates: /home/ops/event-gateway-deploy/repo/factory/event-gateway/deploy/secrets
