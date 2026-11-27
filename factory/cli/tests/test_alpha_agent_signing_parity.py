@@ -13,9 +13,8 @@ import httpx
 import pytest
 from agent_example import LINUX, MACOS, settings
 
-from tbhbdev.alpha.agent import command as agent
-from tbhbdev.alpha.agent import driver, signing_parity, transport
 from tbhbdev.alpha.agent import settings as agent_settings
+from tbhbdev.alpha.agent import signing_parity, transport
 from tbhbdev.alpha.agent.model import Invalid
 
 if TYPE_CHECKING:
@@ -210,13 +209,3 @@ def test_main_exit_status_follows_coverage(
     monkeypatch.setattr(signing_parity, "check", Mock(return_value=(["y"], ["host-y"])))
     assert signing_parity.main(settings()) == 1
     assert "not covered: host-y" in capsys.readouterr().err
-
-
-def test_the_verb_and_the_host_command_are_wired(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    monkeypatch.setattr(agent_settings, "load", settings)
-    monkeypatch.setattr(driver.signing_parity, "main", Mock(return_value=7))
-    assert agent.main(["signing-parity"], "p") == 7
-    monkeypatch.setattr(signing_parity, "host_main", Mock(return_value=9))
-    assert agent.main(["signing-fingerprint", "agent"], "p") == 9
