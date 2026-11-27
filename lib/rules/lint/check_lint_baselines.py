@@ -97,11 +97,10 @@ def source_metrics(content: bytes) -> tuple[int, Counter[str]]:
     return sum(1 for line in lines if line.strip()), counts
 
 
-def go_source_metrics(content: bytes) -> tuple[int, Counter[str]] | None:
+def classify_go_source(text: str) -> tuple[str, list[str]] | None:
     # Match literals with comments so comment markers inside literals stay code.
-    text = content.decode("utf-8-sig").replace("\r\n", "\n")
     code: list[str] = []
-    counts: Counter[str] = Counter()
+    line_comments: list[str] = []
     end = 0
     for token in GO_TOKEN.finditer(text):
         start = token.start()
@@ -115,17 +114,27 @@ def go_source_metrics(content: bytes) -> tuple[int, Counter[str]] | None:
                 and not any(part.strip() for part in code)
             ):
                 return None
-            if directive := NOLINT.match(value):
-                names = {
-                    name.strip().lower() for name in (directive[1] or "").split(",")
-                }
-                counts.update(names - {""} or {"(bare)"})
+            line_comments.append(value)
         elif value.startswith("/*"):
             code.append("\n" * value.count("\n"))
         else:
             code.append(value)
     code.append(text[end:])
-    return sum(1 for line in "".join(code).split("\n") if line.strip()), counts
+    return "".join(code), line_comments
+
+
+def go_source_metrics(content: bytes) -> tuple[int, Counter[str]] | None:
+    text = content.decode("utf-8-sig").replace("\r\n", "\n")
+    classified = classify_go_source(text)
+    if classified is None:
+        return None
+    code, line_comments = classified
+    counts: Counter[str] = Counter()
+    for comment in line_comments:
+        if directive := NOLINT.match(comment):
+            names = {name.strip().lower() for name in (directive[1] or "").split(",")}
+            counts.update(names - {""} or {"(bare)"})
+    return sum(1 for line in code.split("\n") if line.strip()), counts
 
 
 def project_metrics(
@@ -185,6 +194,17 @@ def growth(before: Ceilings, after: Ceilings) -> list[str]:
     ]
 
 
+def go_ceilings(doc: TomlDocument, path: str) -> Ceilings:
+    limits = {}
+    for key in (MODULE_LIMIT, TEST_LIMIT):
+        limit = doc.get(key)
+        if type(limit) is not int or limit <= 0:
+            msg = f"{path}: {key} must be a positive integer"
+            raise ValueError(msg)
+        limits["lint-baselines", key] = limit
+    return limits
+
+
 def read_configs(root: Path, revision: str) -> dict[str, Ceilings]:
     tree = git_output(
         root, "ls-tree", "-rz", "--full-tree", "--name-only", revision, "--", "factory"
@@ -194,18 +214,13 @@ def read_configs(root: Path, revision: str) -> dict[str, Ceilings]:
         if not CONFIG_PATH.fullmatch(path):
             continue
         doc = tomllib.loads(git_output(root, "show", f"{revision}:{path}").decode())
-        if path.endswith("/pyproject.toml"):
-            if (ceilings := project_ceilings(doc)) is not None:
-                configs[path] = ceilings
-        else:
-            limits = {}
-            for key in (MODULE_LIMIT, TEST_LIMIT):
-                limit = doc.get(key)
-                if type(limit) is not int or limit <= 0:
-                    msg = f"{path}: {key} must be a positive integer"
-                    raise ValueError(msg)
-                limits["lint-baselines", key] = limit
-            configs[path] = limits
+        ceilings = (
+            project_ceilings(doc)
+            if path.endswith("/pyproject.toml")
+            else go_ceilings(doc, path)
+        )
+        if ceilings is not None:
+            configs[path] = ceilings
     return configs
 
 
