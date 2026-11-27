@@ -1,12 +1,12 @@
 ---
-description: Per-commit identity trailer and signature checks over a range.
+description: Per-commit attribution and signature checks over a range.
 generated:
   - role: generated
-    harness: codex:0.166.0
+    harness: codex:0.171.0
     model: openai:gpt-6.2-sol
     surface: exec
-    session: sha-256-64:5b60eb8c0a5ee790
-    at: "2026-11-27T03:00:36Z"
+    session: sha-256-64:fd9f4c52025e5038
+    at: "2026-11-27T03:27:16Z"
 status: stable
 tags: [alpha]
 title: Verify range
@@ -32,4 +32,4 @@ With `--identity-only`, the command checks the identity trailers of every non-me
 - A commit with the agent email as author or committer requires a valid `Generated-by` trailer.
 - Other commits require a valid `Generated-by` or `Committed-by` trailer.
 - Every `Committed-by` trailer must match the name and email Git records for the committer.
-- Follow the [grammar for identity trailers](identity.md) when writing `Generated-by` and `Assisted-by`. Put `Generated-by` before `Assisted-by`. An `Assisted-by` trailer alone fails.
+- Follow the [grammar for trailer values](../../../../../../lib/rules/docs/reference/commit-identity.md#value-grammar) when writing `Generated-by` and `Assisted-by`. For `started_at`, the checks here cover format and whether the timestamp represents a real time. Put `Generated-by` before `Assisted-by`. An `Assisted-by` trailer alone fails.

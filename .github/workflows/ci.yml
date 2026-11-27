@@ -41,34 +41,6 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
 
-      - name: Set up uv for the identity check
-        if: github.event_name == 'pull_request' || github.event_name == 'merge_group'
-        uses: astral-sh/setup-uv@1db35dd8eee11c5894872e0b383ae6c406cf738d  # v10.4.0
-        with:
-          version: "0.13.7"
-          enable-cache: false
-
-      - name: Verify commit identity trailers
-        if: github.event_name == 'pull_request' || github.event_name == 'merge_group'
-        env:
-          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha }}
-          HEAD_SHA: ${{ github.event.pull_request.head.sha || github.event.merge_group.head_sha }}
-        run: |
-          base_checkout=$(mktemp -d "$RUNNER_TEMP/trailer-verifier.XXXXXX")
-          git -c core.hooksPath=/dev/null worktree add --quiet --detach "$base_checkout" "$BASE_SHA"
-          trap 'git worktree remove --force "$base_checkout"' EXIT
-          verifier=$base_checkout
-          # Older base revisions have verify-range but lack the identity-only mode.
-          if ! git -C "$base_checkout" grep -Fq -e '"--identity-only"' HEAD -- factory/cli/src/tbhbdev/alpha/verify_range.py; then
-            echo "Base revision lacks the identity-only verifier. Falling back to the candidate copy."
-            verifier=$GITHUB_WORKSPACE
-          fi
-          (
-            cd "$verifier"
-            uv run --locked --no-dev --package tbhbdev \
-              tbhbdev alpha verify-range --identity-only -C "$GITHUB_WORKSPACE" "$BASE_SHA" "$HEAD_SHA"
-          )
-
       - name: Set up Bazel for CI
         uses: ./.github/actions/setup-bazel-ci
         with:

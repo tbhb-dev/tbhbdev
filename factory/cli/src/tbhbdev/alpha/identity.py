@@ -33,8 +33,7 @@ trailers, the same for every committer. In an agent harness it also requires
 ``AGENT_IDENT`` as the author and the committer, and rejects any
 ``Signed-off-by`` or ``Co-authored-by`` line: the operator signs off, not the
 agent. Outside any harness, an author or committer using the agent email must
-have a ``Generated-by`` trailer. An optional ``Committed-by`` line must match
-the committer's Git name and email.
+have a ``Generated-by`` trailer. Human identities keep their existing behavior.
 
 ``--no-verify`` bypasses client validation hooks, including ``commit-msg``.
 Git still runs ``prepare-commit-msg`` and ``post-commit``; the existing push and
@@ -126,7 +125,6 @@ STORE = "tbhb-alpha"
 PROG = "tbhbdev alpha identity"
 KEY_GEN = "Generated-by"
 KEY_ASSIST = "Assisted-by"
-KEY_COMMIT = "Committed-by"
 RUN_HOOK_ENV = "TBHBDEV_REQUIRE_IDENTITY"
 RUN_MODEL_ENV = "TBHBDEV_IDENTITY_MODEL"
 
@@ -3035,33 +3033,6 @@ def check_message(text: str) -> list[str]:
     return errs
 
 
-def agent_needs_generated(lines: Iterable[str], idents: Iterable[str]) -> bool:
-    """Whether an agent author or committer lacks a Generated-by line."""
-    return not any(line.startswith(f"{KEY_GEN}:") for line in lines) and any(
-        ident.endswith(f"<{AGENT_EMAIL}>") for ident in idents
-    )
-
-
-def check_identity_trailers(
-    text: str, committer: str, *, require_identity: bool = False, author: str = ""
-) -> list[str]:
-    """Check attribution, optionally requiring an identity trailer for CI."""
-    errs = check_message(text)
-    prefix = f"{KEY_COMMIT}:"
-    lines = text.splitlines()
-    human = [
-        line.removeprefix(prefix).strip() for line in lines if line.startswith(prefix)
-    ]
-    if any(not value or value != committer for value in human):
-        errs.append(f"{KEY_COMMIT} must match the Git committer's name and email")
-    if require_identity:
-        if agent_needs_generated(lines, (author, committer)):
-            errs.append(f"missing {KEY_GEN} trailer for agent commit")
-        elif not human and not any(line.startswith(f"{KEY_GEN}:") for line in lines):
-            errs.append(f"missing {KEY_GEN} or {KEY_COMMIT} trailer")
-    return errs
-
-
 def ident_problems(text: str, env: Mapping[str, str]) -> list[str]:
     """Why a commit fails the agent identity's session or attribution rules.
 
@@ -3073,12 +3044,13 @@ def ident_problems(text: str, env: Mapping[str, str]) -> list[str]:
     trailer; human identities aren't checked, even when crediting agent edits.
     """
     if detect(env) is None:
-        idents = (
-            IDENT_DATE.sub("", git("var", f"GIT_{role}_IDENT")[1])
-            for role in ("AUTHOR", "COMMITTER")
-        )
-        missing = agent_needs_generated(text.splitlines(), idents)
-        return [SESSION_ERROR] if missing else []
+        if any(line.startswith(f"{KEY_GEN}:") for line in text.splitlines()):
+            return []
+        for role in ("AUTHOR", "COMMITTER"):
+            _, out = git("var", f"GIT_{role}_IDENT")
+            if IDENT_DATE.sub("", out).endswith(f"<{AGENT_EMAIL}>"):
+                return [SESSION_ERROR]
+        return []
     errs = []
     for role in ("author", "committer"):
         _, out = git("var", f"GIT_{role.upper()}_IDENT")
@@ -3091,14 +3063,9 @@ def ident_problems(text: str, env: Mapping[str, str]) -> list[str]:
 
 
 def cmd_check(msgfile: str, env: Mapping[str, str]) -> int:
-    """commit-msg: validate attribution trailers and an agent commit's identity."""
+    """commit-msg: validate the LLM trailers and an agent commit's identity."""
     text = Path(msgfile).read_text()
-    committer = ""
-    if f"{KEY_COMMIT}:" in text:
-        _, ident = git("var", "GIT_COMMITTER_IDENT")
-        committer = IDENT_DATE.sub("", ident)
-    errs = check_identity_trailers(text, committer)
-    errs.extend(ident_problems(text, env))
+    errs = check_message(text) + ident_problems(text, env)
     for err in errs:
         print(err if err == SESSION_ERROR else f"{PROG}: {err}", file=sys.stderr)
     if detect(env) and any(

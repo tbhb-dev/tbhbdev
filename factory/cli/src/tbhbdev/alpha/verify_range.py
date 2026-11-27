@@ -40,6 +40,25 @@ def problems(
     return reasons
 
 
+def identity_problems(author: str, committer: str, message: str) -> list[str]:
+    """Require attribution trailers and match any Committed-by to the committer."""
+    reasons = identity.check_message(message)
+    lines = message.splitlines()
+    prefix = "Committed-by:"
+    claimed_committers = [
+        line.removeprefix(prefix).strip() for line in lines if line.startswith(prefix)
+    ]
+    recorded_committer = identity.IDENT_DATE.sub("", committer)
+    if any(not value or value != recorded_committer for value in claimed_committers):
+        reasons.append("Committed-by must match the Git committer's name and email")
+    if not any(line.startswith(f"{identity.KEY_GEN}:") for line in lines):
+        if identity.AGENT_EMAIL in map(identity.ident_email, (author, committer)):
+            reasons.append(f"missing {identity.KEY_GEN} trailer for agent commit")
+        elif not claimed_committers:
+            reasons.append(f"missing {identity.KEY_GEN} or Committed-by trailer")
+    return reasons
+
+
 def inspect_commit(text: str, *, identity_only: bool = False) -> tuple[list[str], str]:
     """Parse a commit object, keeping continuation lines out of its headers."""
     headers, _, message = text.partition("\n\n")
@@ -49,17 +68,13 @@ def inspect_commit(text: str, *, identity_only: bool = False) -> tuple[list[str]
     values = {}
     for key, _, value in fields:
         values.setdefault(key, value)
+    author = values.get("author", "")
     committer = values.get("committer", "")
     if identity_only:
-        reasons = identity.check_identity_trailers(
-            message,
-            identity.IDENT_DATE.sub("", committer),
-            require_identity=True,
-            author=identity.IDENT_DATE.sub("", values.get("author", "")),
-        )
+        reasons = identity_problems(author, committer, message)
     else:
         reasons = problems(
-            identity.ident_email(values.get("author", "")),
+            identity.ident_email(author),
             identity.ident_email(committer),
             sum(key == "parent" for key, _, _ in fields),
             signed="gpgsig" in values or "gpgsig-sha256" in values,
