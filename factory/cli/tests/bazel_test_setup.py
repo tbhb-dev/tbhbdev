@@ -4,14 +4,61 @@
 """Set up pytest's working directory and pinned tools in Bazel runfiles."""
 
 import os
+import socket
+import subprocess
 import sys
+import time
 from pathlib import Path
 from typing import TYPE_CHECKING
 
 import pytest
 
 if TYPE_CHECKING:
-    from collections.abc import Iterator
+    from collections.abc import Callable, Iterator
+    from typing import Never
+
+
+def _blocked_call(name: str) -> Callable[..., Never]:
+    def blocked(*_args: object, **_kwargs: object) -> Never:
+        msg = f"CLI unit tests must not perform I/O: {name} is blocked"
+        raise RuntimeError(msg)
+
+    return blocked
+
+
+@pytest.fixture(autouse=True)
+def guard_unit_test_io(
+    monkeypatch: pytest.MonkeyPatch, request: pytest.FixtureRequest
+) -> None:
+    """Block I/O calls and give each CLI unit test a temporary home."""
+    if os.environ.get("CLI_TEST_KIND") == "io":
+        # Keep this runner setting out of the environment the CLI sees.
+        monkeypatch.delenv("CLI_TEST_KIND")
+        return
+
+    tmp_path: Path = request.getfixturevalue("tmp_path")
+    monkeypatch.setenv("HOME", str(tmp_path))
+    for variable in (
+        "XDG_CACHE_HOME",
+        "XDG_CONFIG_DIRS",
+        "XDG_CONFIG_HOME",
+        "XDG_DATA_DIRS",
+        "XDG_DATA_HOME",
+        "XDG_RUNTIME_DIR",
+        "XDG_STATE_HOME",
+    ):
+        monkeypatch.setenv(variable, str(tmp_path / variable.lower()))
+
+    monkeypatch.setattr(
+        socket.socket, "connect", _blocked_call("socket.socket.connect")
+    )
+    monkeypatch.setattr(
+        subprocess.Popen, "__init__", _blocked_call("subprocess.Popen.__init__")
+    )
+    monkeypatch.setattr(time, "sleep", _blocked_call("time.sleep"))
+    for name in ("fork", "system", *(n for n in dir(os) if n.startswith("exec"))):
+        if hasattr(os, name):
+            monkeypatch.setattr(os, name, _blocked_call(f"os.{name}"))
 
 
 @pytest.hookimpl(wrapper=True, tryfirst=True)  # noqa: V103

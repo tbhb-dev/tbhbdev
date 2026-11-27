@@ -1786,6 +1786,25 @@ cli_py_test(
 )
 
 cli_py_test(
+    name = "test_bazel_test_setup",
+    srcs = ["test_bazel_test_setup.py"],
+    data = ["pytest.bzl"],
+    deps = [
+        ":conftest",
+        "@cli_pip//pytest",
+    ],
+)
+
+cli_py_test(
+    name = "test_bazel_test_setup_io",
+    srcs = ["test_bazel_test_setup_io.py"],
+    deps = [
+        ":conftest",
+        "@cli_pip//pytest",
+    ],
+)
+
+cli_py_test(
     name = "test_ci_workflow",
     srcs = ["test_ci_workflow.py"],
     data = ["//:.github/workflows/ci.yml"],
