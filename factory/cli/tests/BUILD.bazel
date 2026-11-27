@@ -2030,7 +2030,11 @@ filegroup(
     srcs = glob(
         ["**"],
         exclude = ["BUILD.bazel"],
-    ),
+    ) + [
+        "//factory/cli/tests/integration/alpha/agent:package_files",
+        "//factory/cli/tests/unit/alpha:package_files",
+        "//factory/cli/tests/unit/alpha/agent/decisions:package_files",
+    ],
     visibility = ["//factory/cli:__pkg__"],
 )
 
