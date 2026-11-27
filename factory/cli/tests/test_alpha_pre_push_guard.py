@@ -16,7 +16,7 @@ from fake_tool import pythonpath, write_fake, write_test_hooks
 
 import tbhbdev.alpha.pre_push_guard as pg
 from tbhbdev.alpha import gh_shim
-from tbhbdev.alpha.agent import worktree
+from tbhbdev.alpha.agent import host_tools, worktree_hooks
 from tbhbdev.alpha.install.git import shims as install
 
 ZERO = "0" * 40
@@ -221,8 +221,8 @@ def test_run_hook_confines_pushed_branches(
 
     env = install_hook(repo, monkeypatch)
     env.pop(pg.RUN_NAME_ENV, None)
-    monkeypatch.setattr(worktree.host_tools, "resolve", resolve)
-    worktree.install_hooks(repo, "example", git(repo, "rev-parse", "HEAD"))
+    monkeypatch.setattr(host_tools, "resolve", resolve)
+    worktree_hooks.install_hooks(repo, "example", git(repo, "rev-parse", "HEAD"))
     for destination, allowed in (
         ("refs/heads/agent/other", False),
         ("refs/heads/agent/example", True),

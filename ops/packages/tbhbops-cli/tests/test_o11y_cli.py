@@ -22,7 +22,7 @@ import yaml
 from tbhbops.o11y import init
 from tbhbops.o11y import render as model
 from tbhbops.o11y import validate as model_validate
-from tbhbops_cli import cli, o11y
+from tbhbops_cli import cli
 from tbhbops_cli.common import CliError
 from tbhbops_cli.o11y import filesystem
 from tbhbops_cli.o11y import render as command
@@ -179,7 +179,7 @@ def test_fresh_and_rerun() -> None:
     before = fs.files.copy()
     assert run(fs) == (0, "init: ok\n", "")
     assert fs.files == before
-    facts = o11y.gather(fs, DATA, 1)
+    facts = init_command.gather(fs, DATA, 1)
     for s in init.SECRETS:
         assert fs.files[DATA / "secrets" / s.name].strip() not in repr(facts)
 
@@ -190,7 +190,7 @@ def test_root_and_dry_run() -> None:
     assert fs.calls == []
     code, out, err = run(fs, "--dry-run", uid=1)
     assert (code, err) == (0, "")
-    expected = init.plan(o11y.gather(fs, DATA, 1), (0, 0))
+    expected = init.plan(init_command.gather(fs, DATA, 1), (0, 0))
     assert isinstance(expected, init.Plan)
     assert out == "".join(f"{s}\n" for s in expected.steps)
     assert fs.calls == []
@@ -229,7 +229,7 @@ def test_upgrade_from_grafana_owner_release(status: str) -> None:
         fs.files[password] = "broken"
     fs.modes[DATA / "grafana/grafana.db"] = stat.S_IFREG
     before = fs.files.copy()
-    facts = o11y.gather(fs, DATA, 0)
+    facts = init_command.gather(fs, DATA, 0)
     assert facts.statuses == ("ok", "ok", "ok", status)
     assert facts.guards == (False, False, True, False)
     code, out, err = run(fs)
@@ -319,7 +319,7 @@ def test_generated_values_are_revalidated_and_bounded() -> None:
     out = io.StringIO()
     step = init.GenerateSecret(init.Secret("test", "rustfsadminX", 11, "guard", 0, 0))
     values = iter("rustfsadmin" + "X" * 11)
-    o11y.generate(step, fs, DATA, lambda _: next(values), out)
+    init_command.generate(step, fs, DATA, lambda _: next(values), out)
     assert fs.files[DATA / "secrets/test"] == "X" * 11 + "\n"
     assert fs.calls == [("write", DATA / "secrets/test", 0o600)]
     fs.calls.clear()
@@ -330,7 +330,7 @@ def test_generated_values_are_revalidated_and_bounded() -> None:
         return "!"
 
     with pytest.raises(CliError, match=r"^could not generate a valid secret$"):
-        o11y.generate(step, fs, DATA, invalid_choice, out)
+        init_command.generate(step, fs, DATA, invalid_choice, out)
     assert draws == [step.secret.charset] * (10 * step.secret.length)
     assert fs.calls == []
 
@@ -387,7 +387,7 @@ def test_gather_statuses(value: str | None, status: init.Status) -> None:
     fs = Fake()
     if value is not None:
         fs.write_atomic(DATA / "secrets/rustfs.access_key", value, 0o400)
-    facts = o11y.gather(fs, DATA, 1)
+    facts = init_command.gather(fs, DATA, 1)
     assert facts.statuses == (status, "missing", "missing", "missing")
     assert facts.guards == (False, False, False, False)
 
@@ -396,7 +396,7 @@ def test_unreadable_status_and_plan_incomplete() -> None:
     fs = Fake()
     run(fs)
     fs.denied.add(DATA / "secrets/rustfs.secret_key")
-    assert o11y.gather(fs, DATA, 1).statuses == ("ok", "unreadable", "ok", "ok")
+    assert init_command.gather(fs, DATA, 1).statuses == ("ok", "unreadable", "ok", "ok")
     assert run(fs, "--dry-run", uid=1) == (
         3,
         ("can't read rustfs.secret_key without root; plan incomplete\n"),
@@ -407,7 +407,7 @@ def test_unreadable_status_and_plan_incomplete() -> None:
 def test_placeholder_writes_are_private() -> None:
     fs = Fake()
     for name in (init.WEBHOOK, init.SMTP):
-        o11y.execute(
+        init_command.execute(
             init.WritePlaceholder(name), fs, DATA, lambda _: "!", io.StringIO()
         )
         assert fs.calls[-1] == ("write", DATA / "secrets" / name, 0o600)
@@ -417,7 +417,7 @@ def test_s3_env_preserves_keys_ending_in_x() -> None:
     fs = Fake()
     for s in init.SECRETS:
         fs.write_atomic(DATA / "secrets" / s.name, "X" * s.length + "\n", 0o400)
-    o11y.execute(init.WriteS3Env(0, 0), fs, DATA, lambda _: "!", io.StringIO())
+    init_command.execute(init.WriteS3Env(0, 0), fs, DATA, lambda _: "!", io.StringIO())
     assert (
         fs.files[DATA / "secrets/s3.env"]
         == "AWS_ACCESS_KEY_ID="
@@ -430,7 +430,7 @@ def test_s3_env_preserves_keys_ending_in_x() -> None:
 
 def test_symlink_facts_have_only_the_unsafe_path() -> None:
     fs = Fake(modes={DATA: stat.S_IFLNK})
-    assert o11y.gather(fs, DATA, 1) == init.Facts(
+    assert init_command.gather(fs, DATA, 1) == init.Facts(
         (),
         (),
         webhook_empty=False,
@@ -441,7 +441,7 @@ def test_symlink_facts_have_only_the_unsafe_path() -> None:
 
 
 def test_real_filesystem(tmp_path: Path) -> None:
-    fs = o11y.LocalFilesystem()
+    fs = filesystem.LocalFilesystem()
     assert fs.root is None
     data = tmp_path.resolve() / "data"
     mask = os.umask(0)
@@ -503,7 +503,7 @@ def test_parent_open_flags(
     (root / "nested").mkdir()
     child = root / "nested/child"
     child.touch()
-    fs = o11y.LocalFilesystem()
+    fs = filesystem.LocalFilesystem()
     fs.root = root
     monkeypatch.setattr(os, "open", directory_open)
     if read_directory:
@@ -514,7 +514,7 @@ def test_parent_open_flags(
 
 
 @pytest.mark.skipif(
-    sys.platform != "linux" or o11y.effective_uid() == 0,
+    sys.platform != "linux" or filesystem.effective_uid() == 0,
     reason="Linux O_PATH permission checks require a non-root test user",
 )
 @pytest.mark.parametrize("mode", [0o311, 0o111])
@@ -522,7 +522,7 @@ def test_parent_open_flags(
 def test_lstat_through_search_only_directory(
     tmp_path: Path, mode: int, trusted_root: bool
 ) -> None:
-    fs = o11y.LocalFilesystem()
+    fs = filesystem.LocalFilesystem()
     parent = tmp_path.resolve() / "grafana"
     parent.mkdir()
     child = parent / "grafana.db"
@@ -549,7 +549,7 @@ def test_lstat_refuses_symlinked_ancestor(
 ) -> None:
     if not use_path_flag:
         monkeypatch.delattr(os, "O_PATH", raising=False)
-    fs = o11y.LocalFilesystem()
+    fs = filesystem.LocalFilesystem()
     root = tmp_path.resolve()
     target = root / "target"
     target.mkdir()
@@ -563,7 +563,7 @@ def test_lstat_refuses_symlinked_ancestor(
 def test_real_filesystem_refuses_symlinks_and_files_in_place_of_directories(
     tmp_path: Path,
 ) -> None:
-    fs = o11y.LocalFilesystem()
+    fs = filesystem.LocalFilesystem()
     data = tmp_path.resolve() / "links"
     fs.mkdir(data)
     path = data / "secret"
@@ -594,7 +594,7 @@ def test_real_filesystem_refuses_symlinks_and_files_in_place_of_directories(
 
 
 def test_effective_uid() -> None:
-    assert o11y.effective_uid() == os.geteuid()
+    assert filesystem.effective_uid() == os.geteuid()
 
 
 @pytest.mark.parametrize("value", ["broken", "X" * 20 + " \n"])
@@ -604,7 +604,9 @@ def test_keys_that_change_after_gathering_cannot_enter_s3_env(value: str) -> Non
     fs.files[DATA / "secrets/rustfs.access_key"] = value
     fs.calls.clear()
     with pytest.raises(CliError, match=r"^canonical key changed during init$"):
-        o11y.execute(init.WriteS3Env(0, 0), fs, DATA, lambda _: "!", io.StringIO())
+        init_command.execute(
+            init.WriteS3Env(0, 0), fs, DATA, lambda _: "!", io.StringIO()
+        )
     assert fs.calls == []
 
 
@@ -653,7 +655,9 @@ def test_inaccessible_facts(operation: str, relative: str, uid: int) -> None:
     assert fs.calls == before
 
 
-@pytest.mark.skipif(o11y.effective_uid() == 0, reason="requires a non-root process")
+@pytest.mark.skipif(
+    filesystem.effective_uid() == 0, reason="requires a non-root process"
+)
 def test_non_root_inaccessible_directory(tmp_path: Path) -> None:
     data = tmp_path.resolve()
     private = data / "grafana"
@@ -714,7 +718,7 @@ def test_generation_notice(invalid: bool) -> None:
 def test_atomic_failure_removes_temporary(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, operation: str
 ) -> None:
-    fs = o11y.LocalFilesystem()
+    fs = filesystem.LocalFilesystem()
     path = tmp_path.resolve() / "secret"
 
     def fail(*_args: object, **_kwargs: object) -> None:
@@ -739,7 +743,7 @@ def test_atomic_failure_removes_temporary(
 
 def test_mkdir_does_not_create_ancestors(tmp_path: Path) -> None:
     with pytest.raises(FileNotFoundError):
-        o11y.LocalFilesystem().mkdir(tmp_path.resolve() / "missing/child")
+        filesystem.LocalFilesystem().mkdir(tmp_path.resolve() / "missing/child")
     assert list(tmp_path.iterdir()) == []
 
 
@@ -762,7 +766,7 @@ def test_ancestor_must_be_directory(
 
     monkeypatch.setattr(os, "open", directory_open)
     with pytest.raises(NotADirectoryError):
-        o11y.LocalFilesystem().lstat(ancestor / "child")
+        filesystem.LocalFilesystem().lstat(ancestor / "child")
 
 
 def test_error_names_execution_step() -> None:
@@ -909,7 +913,7 @@ def test_atomic_cleanup_failure_preserves_write_error(
     monkeypatch.setattr(os, "fdopen", broken_stream)
     monkeypatch.setattr(os, "unlink", fail_unlink)
     with pytest.raises(ValueError, match="original write failure") as exc:
-        o11y.LocalFilesystem().write_atomic(
+        filesystem.LocalFilesystem().write_atomic(
             tmp_path.resolve() / "secret", "test-value", 0o600
         )
     assert exc.value is failure
@@ -945,7 +949,7 @@ ALERTING = (
 )
 
 
-def render_fixture(fs: o11y.Filesystem, source: Path = SOURCE) -> None:
+def render_fixture(fs: filesystem.Filesystem, source: Path = SOURCE) -> None:
     fs.mkdir(source)
     fs.mkdir(source / "config")
     fs.mkdir(source / "config/grafana")
@@ -967,7 +971,7 @@ def render_fixture(fs: o11y.Filesystem, source: Path = SOURCE) -> None:
 
 
 def render_run(
-    fs: o11y.Filesystem,
+    fs: filesystem.Filesystem,
     env: dict[str, str] | None = None,
     *args: str,
     source: Path = SOURCE,
@@ -1029,7 +1033,7 @@ def o11y_source(tmp_path: Path) -> Path:
 def test_render_grafana_resolver_and_exclusive_mount(tmp_path: Path) -> None:
     source = o11y_source(tmp_path)
     output = tmp_path / "rendered"
-    assert render_run(o11y.LocalFilesystem(), source=source, output=output) == (
+    assert render_run(filesystem.LocalFilesystem(), source=source, output=output) == (
         0,
         "",
         "",
@@ -1287,7 +1291,7 @@ def test_render_unhashable_file_reports_no_value() -> None:
 
 
 def test_render_real_filesystem_and_new_seam_methods(tmp_path: Path) -> None:
-    fs = o11y.LocalFilesystem()
+    fs = filesystem.LocalFilesystem()
     root = tmp_path.resolve()
     source, output = root / "source", root / "nested/output"
     render_fixture(fs, source)
@@ -1555,7 +1559,7 @@ def test_render_symlinked_parent_and_inner_symlink(tmp_path: Path) -> None:
     real.mkdir()
     link = root / "link"
     link.symlink_to(real, target_is_directory=True)
-    fs = o11y.LocalFilesystem()
+    fs = filesystem.LocalFilesystem()
     source = root / "source"
     render_fixture(fs, source)
     output = link / "nested/output"
@@ -1655,7 +1659,7 @@ def test_render_output_creation_failure_is_private() -> None:
 
 
 def test_render_failure_after_atomic_write_cleans_incoming(tmp_path: Path) -> None:
-    class Failing(o11y.LocalFilesystem):
+    class Failing(filesystem.LocalFilesystem):
         @override
         def write_atomic(self, path: Path, text: str | bytes, mode: int) -> None:
             super().write_atomic(path, text, mode)
@@ -1677,7 +1681,7 @@ def test_render_failure_after_atomic_write_cleans_incoming(tmp_path: Path) -> No
 
 
 def test_render_opens_only_from_resolved_root_downward(tmp_path: Path) -> None:
-    fs = o11y.LocalFilesystem()
+    fs = filesystem.LocalFilesystem()
     base = tmp_path.resolve()
     ancestor = base / "ancestor"
     root = ancestor / "out"
@@ -1710,7 +1714,7 @@ def test_render_opens_only_from_resolved_root_downward(tmp_path: Path) -> None:
     assert fs.root == root
     # Init's filesystem still refuses a symlinked ancestor.
     with pytest.raises(OSError, match=r"Not a directory|Too many levels"):
-        o11y.LocalFilesystem().list_dir(root)
+        filesystem.LocalFilesystem().list_dir(root)
 
 
 @pytest.mark.parametrize(
@@ -2228,7 +2232,7 @@ def test_temporary_directory_seam(monkeypatch: pytest.MonkeyPatch) -> None:
         return "/temporary"
 
     monkeypatch.setattr(tempfile, "mkdtemp", make)
-    assert o11y.LocalFilesystem().temporary_directory() == Path("/temporary")
+    assert filesystem.LocalFilesystem().temporary_directory() == Path("/temporary")
     assert calls == [{"prefix": "o11y-validate-"}]
 
 
@@ -2565,7 +2569,7 @@ def test_temporary_directory_resolves_ancestors(
     link = root / "link"
     link.symlink_to(target, target_is_directory=True)
     monkeypatch.setattr(tempfile, "tempdir", str(link))
-    fs = o11y.LocalFilesystem()
+    fs = filesystem.LocalFilesystem()
     temporary = fs.temporary_directory()
     assert temporary.parent == target
     assert temporary == temporary.resolve()
@@ -2726,7 +2730,7 @@ def test_validate_real_filesystem(
     runner = Runner()
     system = replace(
         cli.real_system(),
-        filesystem=o11y.LocalFilesystem(),
+        filesystem=filesystem.LocalFilesystem(),
         runner=runner,
         cwd=root,
         env={"TMPDIR": str(link)},
@@ -2799,7 +2803,7 @@ def test_local_socket_symlinked_parent(
     if sys.platform != "win32":
         with socket.socket(socket.AF_UNIX) as daemon:
             daemon.bind("docker.sock")
-            fs = o11y.LocalFilesystem()
+            fs = filesystem.LocalFilesystem()
             assert fs.socket_lstat(path) == (directory / "docker.sock").lstat()
             runner = ValidationRunner({2: Result(0, f"unix://{path}")})
             system = replace(
@@ -2959,7 +2963,9 @@ def test_render_opt_in_network(tmp_path: Path, hostname: str, fixed: str) -> Non
     source = o11y_source(tmp_path)
     output = tmp_path / "rendered"
     inputs = RENDER_ENV | {"O11Y_TS_HOSTNAME": hostname, "O11Y_FIXED_ADDRESSES": fixed}
-    assert render_run(o11y.LocalFilesystem(), inputs, source=source, output=output) == (
+    assert render_run(
+        filesystem.LocalFilesystem(), inputs, source=source, output=output
+    ) == (
         0,
         "",
         "",
@@ -3058,7 +3064,7 @@ def test_default_release_bytes(tmp_path: Path) -> None:
     source = o11y_source(tmp_path)
     output = tmp_path / "rendered"
     assert render_run(
-        o11y.LocalFilesystem(),
+        filesystem.LocalFilesystem(),
         None,
         "--config-root",
         "/srv/render/config",
@@ -3087,7 +3093,7 @@ def test_render_tls_proxy(tmp_path: Path, fixed: str, hostname: str) -> None:
         "O11Y_GRAFANA_TLS_CERT_DIR": "/srv/o11y/tls",
     }
     assert render_run(
-        o11y.LocalFilesystem(),
+        filesystem.LocalFilesystem(),
         inputs,
         source=source,
         output=output,

@@ -1,11 +1,10 @@
 # Bazel rules
 
-Shared Bazel rules for repository checks, builds, and tests. Each rules module
-lives in its original directory under `lib/rules` and declares its own
-dependencies. The monorepo root uses local overrides for these modules so
-projects can keep loading them by their existing repository names.
+This directory contains shared Bazel rules for repository checks, builds, and
+tests. Each module declares its own dependencies. Local overrides let projects keep
+using existing repository names.
 
-The rules modules depend on each other and on third-party Bazel modules. See
+Rules modules depend on each other and on third-party Bazel modules. See
 the module files for their dependencies and [OWNERS](OWNERS) for ownership.
 
 The shared rules provide whole-tree lint tests with pinned tools, formatters, quality gates, and the plumbing around them. The root module, `tbhb_rules`, holds the checks every repository uses, with one package per family:
@@ -21,7 +20,7 @@ The shared rules provide whole-tree lint tests with pinned tools, formatters, qu
 
 Language and diagram rules live in nested modules. A repository takes on only the toolchains it uses: `tbhb_rules_go` in `go/`, `tbhb_rules_python` in `python/`, `tbhb_rules_typescript` in `typescript/`, `tbhb_rules_cloudflare` in `cloudflare/`, which builds on the TypeScript module, `tbhb_rules_astro` in `astro/`, `tbhb_rules_playwright` in `playwright/`, which pins Playwright's browsers, `tbhb_rules_storybook` in `storybook/`, which builds, tests and serves Storybooks on those browsers, `tbhb_rules_ansible` in `ansible/`, which checks Ansible playbooks, roles and inventories, `tbhb_rules_tokens` in `tokens/`, which checks W3C design tokens and builds them into CSS with Terrazzo, `tbhb_rules_d2` in `diagrams/d2/`, `tbhb_rules_structurizr` in `diagrams/structurizr/`, and `tbhb_rules_swift` in `swift/`, which builds and tests Swift libraries, iOS simulator apps and macOS apps and needs a Mac with Xcode.
 
-The modules require Bazel 9 or newer (`bazel_compatibility = [">=9.0.0"]`), the only release line tbhb-dev repositories use.
+Repositories in `tbhb-dev` use Bazel 9 or newer (`bazel_compatibility = [">=9.0.0"]`).
 
 Load only the `defs.bzl` files. Everything under `private/` is internal and can change without notice.
 
@@ -88,6 +87,8 @@ Notes on individual tools:
 - `gitleaks_test` scans the working tree. `gitleaks_history` scans the Git history of every branch, with `bazel run` (in CI, after a full-depth checkout). `bazel run //:gitleaks_history -- --log-opts=HEAD` scans the full checked-out history. The private config (`GITLEAKS_CONFIG_TOML`) changes out of band. The next full scan (push to main) applies its changes to old history, the same accepted limit as a rules version bump. The history check fails if gitleaks scans zero commits and the checked-out history has added content. `bazel run @tbhb_rules//lint:gitleaks_text < file` scans text, such as a pull request's body, under the workspace's `.gitleaks.toml`. A failing scan also prints `gitleaks_text: rule=<id> line=<n>` for each finding to stderr, never the matched text.
 - `bazel run @tbhb_rules//lint:commit_identity -- BASE HEAD` skips merge commits and checks the author and committer of every other commit in `BASE..HEAD` against `ALLOWED_PAIRS` in `lint/private/commit_identity.bzl`. Commits with `agent@tonyburns.net` as either email also require valid `Generated-by` or `Assisted-by` identity trailers and forbid sign-off and co-author lines. `Merged-by` is valid only on merge commits. `repo-checks.yml` runs the check for each pull request. Read the trailer grammar in [Commit identity](docs/reference/commit-identity.md).
 
+Run `bazelisk run @tbhb_rules//lint:pr_merge_base -- main HEAD` to fetch the base branch from `origin` and print its merge base with `HEAD`. The command stops if the fetch fails. To use an exact revision already in your checkout, pass `--ref` before the base commit hash.
+
 ### Shared vocabulary
 
 `cspell_test` and `vale_test` inherit the public tool names in `lint/vocabulary/words.txt`, including `workerd`, without a word list in each consuming repository. Add common public tool and product names there. Keep repository-specific terms in the consuming repository's own dictionaries or Vale vocabulary.
@@ -124,7 +125,7 @@ expect_failure_test(
 )
 ```
 
-Tag the wrapped test `manual` so `bazel test //...` doesn't run it on its own. The wrapper gives it its own `TEST_TMPDIR` and `HOME` and forwards its `env`. The wrapped test can't write this test's result files. Bazel doesn't expose a provider for a test's `args`, so set those on the `expect_failure_test` instead. A failed proof prints the wrapped test's exit status and output.
+Tag the wrapped test `manual` so `bazel test //...` doesn't run it on its own. The wrapper gives it its own `TEST_TMPDIR` and `HOME` and forwards its `env`. The wrapped test can't write this test's result files. Bazel doesn't expose a provider for a test's `args`, so set those on the `expect_failure_test` instead. A failed proof prints the exit status and output of the wrapped test.
 
 ### Tool pins
 
@@ -201,11 +202,11 @@ The rules' executables are Bash scripts. On Windows each runs through a `.bat` l
 
 ## Develop
 
-Run the shared rules tests from the monorepo root with Bazelisk. Bazel pins the tools used by those tests. Install uv to refresh Python locks.
+Use `bazelisk` from the monorepo root to run the shared rules tests with the tools pinned by Bazel. Install uv to refresh Python lock files.
 
 | Command | Checks |
 | --- | --- |
-| `bazelisk test @tbhb_rules//...` | Buildifier, lint, shell and Python gates for the shared rules module |
+| `bazelisk test @tbhb_rules//...` | `buildifier`, lint, shell and Python gates for the shared rules module |
 | `(cd e2e/smoke && bazelisk test //...)` | the rules as a consumer sees them, including the failure proofs |
 | `(cd go && bazelisk test //...)`, `(cd python && bazelisk test //...)`, `(cd ansible && bazelisk test //...)`, `(cd diagrams/d2 && bazelisk test //...)`, `(cd diagrams/structurizr && bazelisk test //...)` | the nested modules, each with its own consumers under `e2e/` |
 | `(cd apple/e2e/smoke && bazelisk test //...)` | Swift and Apple builds under `rules_swift` and `rules_apple`. It needs macOS and Xcode, so CI runs it on a GitHub-hosted macOS runner. Its README has the findings |

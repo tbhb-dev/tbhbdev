@@ -4,21 +4,22 @@
 
 ``check_prose`` is the stable entry point for tools that post agent-written
 text. It runs vale, cspell and rumdl the way ``tbhbdev alpha pr check`` does,
-through ``tbhbdev.alpha.pull_request.lint``, so one path decides what prose may
+through ``tbhbdev.alpha.pull_request.prose.lint``, so one path decides what prose may
 be posted.
 """
 
 import contextlib
 from typing import TYPE_CHECKING
 
-from tbhbdev.alpha import pull_request
+from tbhbdev.alpha.pull_request import prose as pr_prose
+from tbhbdev.alpha.pull_request.draft import DRAFT
 
 if TYPE_CHECKING:
     from pathlib import Path
 
 # The draft path: every glob in .vale.ini, .cspell.jsonc and .rumdl.toml that
 # matters for prose matches it, and ``pr check`` lints the same path.
-PATH = pull_request.DRAFT
+PATH = DRAFT
 
 
 class ProseRefused(RuntimeError):  # noqa: N818 - the public name callers import
@@ -43,7 +44,7 @@ def check_prose(text: str, what: str, *, root: Path) -> None:
     """
     try:
         with contextlib.chdir(root):
-            problems = pull_request.lint(text.splitlines(), 1, path=PATH)
+            problems = pr_prose.lint(text.splitlines(), 1, path=PATH)
     except SystemExit as exc:
         message = f"{what}\n{exc.code}"
         raise ProseRefused(message) from None

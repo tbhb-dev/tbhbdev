@@ -1,0 +1,57 @@
+"""Register and dispatch observability commands."""
+
+from pathlib import Path
+from typing import TYPE_CHECKING, TextIO
+lazy import argparse
+
+from tbhbops_cli.o11y import init, receipt, render, validate
+from tbhbops_cli.o11y.smoke import command as smoke_command
+
+if TYPE_CHECKING:
+    from tbhbops_cli.cli import System
+
+
+def add_parser(groups: argparse._SubParsersAction[argparse.ArgumentParser]) -> None:
+    group = groups.add_parser("o11y", help="prepare the observability stack")
+    commands = group.add_subparsers(dest="command", required=True)
+    command = commands.add_parser(
+        "init",
+        help="prepare host data directories and secrets",
+        description="Prepare an existing data directory. Exit 3 means the plan is "
+        "incomplete; refusal or I/O errors exit 1, usage errors exit 2.",
+    )
+    command.add_argument("--data-dir", type=Path, required=True)
+    command.add_argument("--dry-run", action="store_true")
+    command = commands.add_parser("render", help="build a content-addressed release")
+    command.add_argument("--source", type=Path, required=True)
+    command.add_argument("--out", type=Path, required=True)
+    command.add_argument("--config-root", type=render.absolute_path)
+    command = commands.add_parser("validate", help="check an observability release")
+    command.add_argument("--source", type=Path, required=True)
+    command = commands.add_parser("receipt", help="send and query an exact receipt")
+    command.add_argument("--otlp-url")
+    command.add_argument("--grafana-url", required=True)
+    command.add_argument("--signals", default="traces,logs,metrics")
+    state = command.add_mutually_exclusive_group()
+    state.add_argument("--state-file", type=Path)
+    state.add_argument("--recheck", type=Path)
+    command = commands.add_parser("smoke", help="exercise a disposable local stack")
+    command.add_argument("--dedicated-engine", metavar="ENDPOINT")
+    command.add_argument("--source", type=Path, required=True)
+    command.add_argument("--out", type=Path, required=True)
+    command.add_argument("--artifacts", type=Path, required=True)
+
+
+def dispatch(args: argparse.Namespace, system: System, out: TextIO) -> int:
+    """Run the selected observability command."""
+    if args.command == "receipt":
+        return receipt.dispatch(args, system, out)
+    if args.command == "smoke":
+        return smoke_command.dispatch(args, system, out)
+    if args.command == "render":
+        render.dispatch(args, system)
+    elif args.command == "validate":
+        return validate.dispatch(args, system, out)
+    else:
+        return init.dispatch(args, system, out)
+    return 0

@@ -2,9 +2,9 @@
 description: Agent settings, run requests, and host preparation.
 generated:
   - role: generated
-    harness: codex
-    model: openai:gpt-6
-    at: "2026-11-27T14:44:32Z"
+    harness: codex:0.171.0
+    model: openai:gpt-6.2-sol
+    at: "2026-11-27T19:46:12Z"
 status: stable
 tags: [alpha]
 title: Agent configuration
@@ -53,9 +53,9 @@ After applying the endpoint fallback, `agent exec` looks for non-empty process e
 
 Use the hidden host command as `tbhbdev alpha agent run-host NAME [REQUEST] --host HOST [--prompt FILE] [--preflight] [--owned]`. The driver's tmux start passes `--owned`. With the flag, run-host checks that `<name>.owner`, which the driver wrote, is a private regular file, and doesn't create it. The run ID itself never appears in a command line: the driver sends it as the first line of stdin to each remote script, which compares it with the file. Without the flag, run-host creates the owner file and refuses a name that already has one. Supply a versioned JSON request through `REQUEST`, stdin with `REQUEST` set to `-`, or `<name>.request.json` by leaving out the path. A prompt path defaults to the run's recorded prompt. Config must list the host. During setup, run-host fetches a bare mirror over HTTPS under `$XDG_STATE_HOME/tbhbdev/agent-mirrors/github.com/<owner>/<repo>.git` and creates a separate clone at `<account clone>/.worktrees/agent-<name>`. It reads credentials through the secrets library. It then starts the harness with the policy's explicit environment and records its exit. Run files and the index live under `tbhbdev/agent-runs` in the state directory. SIGHUP, SIGTERM, and SIGINT stop the harness group and refresh Codex auth before run-host writes `<name>.rc`.
 
-At the end of a run, the supervisor lists the agent account's processes before stopping the harness group, then shuts the Bazel servers down after the group has stopped. A server that is still alive after a shutdown that returned 0, which happens while the server starts, gets up to three more attempts two seconds apart. On macOS and Linux, it uses process ancestry, harness group membership, or the Bazel workspace path to identify the run's servers. The supervisor accepts workspace paths at or below the run clone root, including checkouts in `.worktrees`. It checks Bazel's process ID file against the process listing before it attempts shutdown. If the process listing fails, it uses the run's recorded output bases.
+At the end of a run, the supervisor lists processes under the agent account before it stops the harness group. On macOS and Linux, it uses process ancestry, harness group membership, or the Bazel workspace path to identify the run's servers. The supervisor accepts workspace paths at or below the run clone root, including checkouts in `.worktrees`. If the process listing fails, it uses the run's recorded output bases.
 
-The supervisor calls `bazelisk shutdown` or `bazel shutdown` with each output base and allows up to 60 seconds per command. It logs the base path and result for each attempt, then lists the distinct results in the `bazel_shutdown` field of the completion index entry. A failed shutdown leaves the run's exit status intact and the supervisor continues with the remaining bases. Only the recorded bases qualify for deletion after shutdown.
+After the group stops, the supervisor checks that Bazel's process ID file and the server's start time still match the process it found. It sends `SIGKILL` to that process and waits up to 200 milliseconds for it to exit. It logs the base path and result for each attempt, then lists the distinct results in the `bazel_shutdown` field of the completion index entry. If shutdown fails, cleanup continues with the remaining bases and keeps the exit status. The supervisor limits deletion to recorded bases after shutdown.
 
 Every `tbhb-dev` repository on GitHub runs on any host with no list entry, and any other repository is refused before run-host creates a mirror. `public_repos` accepts only `tbhb-dev` entries (`owner/name` or `github.com/owner/name`) and the config refuses any other owner. Git never follows a redirect, so a repository that moved out of the organization fails the fetch. Mirrors fetch from `https://github.com/<owner>/<name>.git` without credentials, prompts, SSH, or token fallback. Existing mirror configs switch to HTTPS on the next run.
 

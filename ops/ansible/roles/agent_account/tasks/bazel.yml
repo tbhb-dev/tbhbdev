@@ -1,0 +1,17 @@
+---
+- name: bazel | Create the shared disk cache directory
+  ansible.builtin.file:
+    path: "{{ agent_account_home }}/.cache/bazel-disk"
+    state: directory
+    owner: '24368'
+    group: "{{ '24368' if agent_account_primary_group == 'agent' else '33835' }}"
+    mode: '0700'
+    follow: false
+
+- name: bazel | Write the agent's Bazel settings
+  ansible.builtin.template:
+    src: bazelrc.j2
+    dest: "{{ agent_account_home }}/.bazelrc"
+    owner: '24368'
+    group: "{{ '24368' if agent_account_primary_group == 'agent' else '33835' }}"
+    mode: '0600'

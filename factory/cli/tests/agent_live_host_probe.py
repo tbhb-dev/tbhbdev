@@ -24,7 +24,7 @@ from typing import TYPE_CHECKING
 lazy from test_alpha_agent_sandbox_live import probe_run, sandbox_command
 
 lazy from tbhbdev import userconfig
-lazy from tbhbdev.alpha.agent import credentials, host_tools, run_host, worktree
+lazy from tbhbdev.alpha.agent import credentials, host_tools, run_host, worktree_mirror
 lazy from tbhbdev.alpha.agent.model import Harness
 
 if TYPE_CHECKING:
@@ -96,7 +96,7 @@ def protected_sources(run: run_host.Run) -> tuple[Path, ...]:
     readable = userconfig.path()
     readable.parent.mkdir(parents=True)
     readable.write_text('value = "original"\n')
-    mirror = worktree.mirror_path(run.home, run.request.repo)
+    mirror = worktree_mirror.mirror_path(run.home, run.request.repo)
     objects = mirror / "objects"
     data = b"blob 9\0original\n"
     digest = hashlib.sha1(data, usedforsecurity=False).hexdigest()

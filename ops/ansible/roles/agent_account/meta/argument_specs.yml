@@ -4,7 +4,20 @@ argument_specs:
     short_description: Create the Linux or macOS agent account with fixed ids
     description:
       - Checks all account ids before changing the host. Existing supplementary groups survive.
+      - Manages the agent's Bazel settings and shared disk cache directory.
     options:
+      agent_account_bazel_disk_cache_max_size:
+        type: str
+        default: 50G
+        description: Maximum size of the shared Bazel disk cache before garbage collection.
+      agent_account_bazel_disk_cache_max_age:
+        type: str
+        default: 7d
+        description: Maximum age of unused entries in the shared Bazel disk cache.
+      agent_account_bazel_resource_fraction:
+        type: str
+        default: '.25'
+        description: Fraction of host CPU and memory Bazel may use and of host CPUs allowed as concurrent jobs.
       agent_account_chezmoi_version:
         type: str
         default: 2.73.3

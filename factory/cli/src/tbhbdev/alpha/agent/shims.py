@@ -6,7 +6,7 @@ import re
 import subprocess  # nosec B404
 from pathlib import Path
 
-from tbhbdev.alpha.agent import worktree
+from tbhbdev.alpha.agent import worktree_errors
 from tbhbdev.alpha.agent.model import Invalid, Profile
 
 SHIM_SECONDS = 600
@@ -71,7 +71,7 @@ def _build(workspace: Path, tool: str, directory: Path, names: set[str]) -> None
         if not (workspace / directory / name).exists()
     ]
     if missing:
-        detail = worktree.safe_preparation_detail(
+        detail = worktree_errors.safe_preparation_detail(
             result.stderr.decode(errors="replace")
         )
         message = (
