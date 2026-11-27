@@ -413,6 +413,7 @@ tcgetpgrp
 tcsetpgrp
 temproot
 Temurin
+Tera
 testdata
 testifylint
 testonly
