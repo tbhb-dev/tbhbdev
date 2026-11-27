@@ -216,6 +216,7 @@ cli_py_library(
         ":push",
         ":render",
         ":review_post",
+        ":run_host_telemetry",
         ":runfiles",
         ":settings",
         ":shims",
@@ -387,4 +388,11 @@ cli_py_library(
         "//factory/cli/src/tbhbdev/alpha:worker_identity",
         "//factory/cli/src/tbhbdev/alpha/agent/decisions:config",
     ],
+)
+
+cli_py_library(
+    name = "run_host_telemetry",
+    srcs = ["run_host_telemetry.py"],
+    imports = ["../../.."],
+    visibility = ["//factory/cli:__subpackages__"],
 )
