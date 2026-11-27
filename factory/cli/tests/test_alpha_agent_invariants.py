@@ -31,36 +31,25 @@ def owned_calls(
         yield from owned_calls(child, owner)
 
 
-def aliases_named(names: list[ast.alias], name: str) -> set[str]:
-    return {alias.asname or alias.name for alias in names if alias.name == name}
-
-
-def worktree_imports(tree: ast.AST) -> set[str]:
-    modules = {"worktree"}
+def operation_names(tree: ast.AST, module: str, operation: str) -> set[str]:
+    names = {f"{module}.{operation}"}
     for node in ast.walk(tree):
-        if isinstance(node, (ast.Import, ast.ImportFrom)):
-            modules.update(
+        if not isinstance(node, (ast.Import, ast.ImportFrom)):
+            continue
+        names.update(
+            f"{alias.asname or alias.name}.{operation}"
+            for alias in node.names
+            if alias.name.rsplit(".", 1)[-1] == module
+        )
+        if isinstance(node, ast.ImportFrom) and (
+            (node.module or "").rsplit(".", 1)[-1] == module
+        ):
+            names.update(
                 alias.asname or alias.name
                 for alias in node.names
-                if alias.name.rsplit(".", 1)[-1] == "worktree"
+                if alias.name == operation
             )
-    return modules
-
-
-def imported_git_names(tree: ast.AST, *, local: bool) -> tuple[set[str], set[str]]:
-    git_names = {"git"} if local else set()
-    clone_names = {"clone_run"} if local else set()
-    for node in ast.walk(tree):
-        if (
-            isinstance(node, ast.ImportFrom)
-            and (node.module or "").rsplit(".", 1)[-1] == "worktree"
-        ):
-            git_names.update(aliases_named(node.names, "git"))
-            clone_names.update(aliases_named(node.names, "clone_run"))
-    modules = worktree_imports(tree)
-    git_names.update(f"{module}.git" for module in modules)
-    clone_names.update(f"{module}.clone_run" for module in modules)
-    return git_names, clone_names
+    return names
 
 
 def workspace_expression(node: ast.AST, aliases: set[str]) -> bool:
@@ -85,7 +74,11 @@ def workspace_aliases(tree: ast.AST) -> set[str]:
 
 def git_invariant_errors(source: str, *, local: bool) -> list[str]:
     tree = ast.parse(source)
-    git_names, clone_names = imported_git_names(tree, local=local)
+    git_names = operation_names(tree, "worktree_git", "git")
+    clone_names = operation_names(tree, "worktree_clone", "clone_run")
+    if local:
+        git_names.add("git")
+        clone_names.add("clone_run")
     aliases = workspace_aliases(tree)
     errors = []
     for call, owner in owned_calls(tree):
@@ -112,10 +105,18 @@ def git_invariant_errors(source: str, *, local: bool) -> list[str]:
 @pytest.mark.parametrize(
     ("local", "source", "valid"),
     [
-        (False, "worktree.git(path, 'status')", False),
-        (False, "from tbhbdev.alpha.agent import worktree as w\nw.git(path)", False),
-        (False, "from tbhbdev.alpha.agent.worktree import git as g\ng(path)", False),
-        (False, "worktree.clone_run(mirror, workspace, url)", False),
+        (False, "worktree_git.git(path, 'status')", False),
+        (
+            False,
+            "from tbhbdev.alpha.agent import worktree_git as w\nw.git(path)",
+            False,
+        ),
+        (
+            False,
+            "from tbhbdev.alpha.agent.worktree_git import git as g\ng(path)",
+            False,
+        ),
+        (False, "worktree_clone.clone_run(mirror, workspace, url)", False),
         (True, "def finish(workspace):\n git(workspace, 'status')", False),
         (True, "def finish(run):\n git(run.worktree, 'status')", False),
         (True, "def finish(workspace):\n path = workspace\n git(path)", False),
@@ -138,10 +139,13 @@ def test_git_invariant_rejects_later_calls_and_import_aliases(
 
 def test_git_after_launch_invariant() -> None:
     root = Path(__file__).resolve().parents[1] / "src"
-    owner = root / "tbhbdev/alpha/agent/worktree.py"
+    agent = root / "tbhbdev/alpha/agent"
+    preparation = {
+        agent / f"worktree_{stage}.py" for stage in ("checkout", "clone", "mirror")
+    }
     violations = {
         str(path.relative_to(root)): errors
         for path in root.rglob("*.py")
-        if (errors := git_invariant_errors(path.read_text(), local=path == owner))
+        if (errors := git_invariant_errors(path.read_text(), local=path in preparation))
     }
     assert not violations

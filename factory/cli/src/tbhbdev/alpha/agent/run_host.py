@@ -43,7 +43,11 @@ from tbhbdev.alpha.agent import (
     runfiles,
     settings,
     shims,
-    worktree,
+    worktree_checkout,
+    worktree_errors,
+    worktree_hooks,
+    worktree_mirror,
+    worktree_writes,
 )
 from tbhbdev.alpha.agent.decisions import argv, config, policy, repo, request, run_state
 from tbhbdev.alpha.agent.model import (
@@ -162,19 +166,16 @@ def check_config(configured: Settings) -> None:
 
 
 def protected_home(run: Run) -> tuple[str, ...]:
-    clone = Path(repo.clone_path(run.home, run.request.repo))
-    account_git = clone / ".git"
+    account_git = Path(repo.clone_path(run.home, run.request.repo)) / ".git"
     if account_git.is_file():
         message = "account clone must have its own git directory"
         raise Invalid(message)
-    mirror = worktree.mirror_path(run.home, run.request.repo)
+    mirror = worktree_mirror.mirror_path(run.home, run.request.repo)
     paths = (
         *protected_home_paths(run.home, run.settings.sockets_dir),
         account_git,
         mirror,
-        mirror.parent,
-        mirror.parent.parent,
-        mirror.parent.parent.parent,
+        *mirror.parents[:3],
         userconfig.path(),
     )
     if os.environ.get("ZDOTDIR"):
@@ -184,12 +185,11 @@ def protected_home(run: Run) -> tuple[str, ...]:
 
 def full_denies(run: Run, paths: RunPaths) -> tuple[str, ...]:
     candidates = policy.denied_paths(run.settings, run.host, paths.home, paths.uid)
-    mirror = str(worktree.mirror_path(run.home, run.request.repo))
-    recovery = str(run.home / ".codex-recovery")
+    mirror = str(worktree_mirror.mirror_path(run.home, run.request.repo))
     return tuple(
         dict.fromkeys(
             alias
-            for p in (*candidates, mirror, recovery)
+            for p in (*candidates, mirror, str(run.home / ".codex-recovery"))
             for alias in (p, os.path.realpath(p))
         )
     )
@@ -253,7 +253,7 @@ def audit_writes(
 ) -> None:
     """Record the write roots a stricter policy would refuse, and refuse none."""
     findings = dict.fromkeys(_audit_findings(run))
-    for finding in worktree.validate_writes(workspace, clone, write_roots):
+    for finding in worktree_writes.validate_writes(workspace, clone, write_roots):
         if finding not in findings:
             findings[finding] = None
             run.files.write("log", f"audit: would refuse: {json.dumps(finding)}\n")
@@ -326,7 +326,7 @@ def checked_policy(run: Run, paths: RunPaths) -> tuple[Policy, str]:
         *check_settings.sandbox.agy.build_write,
     )
     audit_writes(run, Path(resolved.worktree), clone, write_roots)
-    worktree.validate_hooks(Path(resolved.worktree), write_roots)
+    worktree_hooks.validate_hooks(Path(resolved.worktree), write_roots)
     name = (
         "agy-agent"
         if run.request.harness is Harness.AGY and run.request.profile is Profile.BUILD
@@ -470,14 +470,14 @@ def prepare_workspace(run: Run) -> Prepared:
     clone = Path(repo.clone_path(run.home, run.request.repo))
     paths = planned_paths(run)
     value, _ = checked_policy(run, paths)
-    workspace = worktree.create(
+    workspace = worktree_checkout.create(
         clone,
         run.files.name,
         run.request,
         lambda: credentials.fetch_token(run.request, run.settings),
         hook_env=hook_environment(value, unsandboxed=run.request.unsandboxed),
     )
-    with worktree.preparation_step("credential delivery"):
+    with worktree_errors.preparation_step("credential delivery"):
         delivery = credentials.deliver(run.request, run.settings, run.tmpdir)
     paths = RunPaths(
         home=str(run.home),
@@ -491,22 +491,22 @@ def prepare_workspace(run: Run) -> Prepared:
         if delivery.signing is not None
         else None,
     )
-    with worktree.preparation_step("audit directory"):
+    with worktree_errors.preparation_step("audit directory"):
         runfiles.private_dir(Path(paths.audit_dir))
     before = None
     headless = run.request.kind is RunKind.EXEC
     if run.request.harness is Harness.CODEX:
-        with worktree.preparation_step("codex auth copy"):
+        with worktree_errors.preparation_step("codex auth copy"):
             runfiles.private_dir(Path(paths.codex_home))
             source = runfiles.private_dir(run.home / ".codex") / "auth.json"
             before = credentials.auth_copy(source, Path(paths.codex_home) / "auth.json")
-        with worktree.preparation_step("codex config"):
+        with worktree_errors.preparation_step("codex config"):
             prepare_codex_config(
                 Path(paths.codex_home), run.settings.otel_endpoint, headless=headless
             )
     start = None
     if headless and run.request.profile is Profile.BUILD and not run.request.no_commit:
-        with worktree.preparation_step("stop hook baseline"):
+        with worktree_errors.preparation_step("stop hook baseline"):
             start = push.head(workspace, f"agent/{run.files.name}")
     return Prepared(
         paths, delivery, before, bazel_bases(run.home, str(workspace)), start

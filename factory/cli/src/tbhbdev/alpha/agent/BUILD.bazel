@@ -180,7 +180,11 @@ cli_py_library(
         ":runfiles",
         ":settings",
         ":shims",
-        ":worktree",
+        ":worktree_checkout",
+        ":worktree_errors",
+        ":worktree_hooks",
+        ":worktree_mirror",
+        ":worktree_writes",
         "//factory/cli/src/tbhbdev:github_tls",
         "//factory/cli/src/tbhbdev:userconfig",
         "//factory/cli/src/tbhbdev/alpha:run_stop_hook",
@@ -227,7 +231,7 @@ cli_py_library(
     visibility = ["//factory/cli:__subpackages__"],
     deps = [
         ":model",
-        ":worktree",
+        ":worktree_errors",
     ],
 )
 
@@ -276,24 +280,6 @@ cli_py_library(
         "//factory/cli/src/tbhbdev/alpha/agent/decisions:argv",
         "//factory/cli/src/tbhbdev/alpha/agent/decisions:remote_run",
         "//factory/cli/src/tbhbdev/alpha/agent/decisions:runfiles_names",
-    ],
-)
-
-cli_py_library(
-    name = "worktree",
-    srcs = ["worktree.py"],
-    imports = ["../../.."],
-    visibility = ["//factory/cli:__subpackages__"],
-    deps = [
-        ":host_tools",
-        ":model",
-        ":runfiles",
-        "//factory/cli/src/tbhbdev/alpha:pre_push_guard",
-        "//factory/cli/src/tbhbdev/alpha:repo",
-        "//factory/cli/src/tbhbdev/alpha/agent/decisions:repo",
-        "//factory/cli/src/tbhbdev/alpha/agent/decisions:request",
-        "//factory/cli/src/tbhbdev/alpha/identity/commit:policy",
-        "//factory/cli/src/tbhbdev/alpha/install:scripts",
     ],
 )
 
@@ -347,6 +333,89 @@ cli_py_library(
 cli_py_library(
     name = "run_host_telemetry",
     srcs = ["run_host_telemetry.py"],
+    imports = ["../../.."],
+    visibility = ["//factory/cli:__subpackages__"],
+)
+
+cli_py_library(
+    name = "worktree_checkout",
+    srcs = ["worktree_checkout.py"],
+    imports = ["../../.."],
+    visibility = ["//factory/cli:__subpackages__"],
+    deps = [
+        ":model",
+        ":runfiles",
+        ":worktree_clone",
+        ":worktree_errors",
+        ":worktree_git",
+        ":worktree_hooks",
+        ":worktree_mirror",
+        "//factory/cli/src/tbhbdev/alpha/agent/decisions:repo",
+        "//factory/cli/src/tbhbdev/alpha/agent/decisions:request",
+    ],
+)
+
+cli_py_library(
+    name = "worktree_clone",
+    srcs = ["worktree_clone.py"],
+    imports = ["../../.."],
+    visibility = ["//factory/cli:__subpackages__"],
+    deps = [
+        ":model",
+        ":worktree_git",
+        "//factory/cli/src/tbhbdev/alpha/agent/decisions:repo",
+    ],
+)
+
+cli_py_library(
+    name = "worktree_errors",
+    srcs = ["worktree_errors.py"],
+    imports = ["../../.."],
+    visibility = ["//factory/cli:__subpackages__"],
+    deps = [":model"],
+)
+
+cli_py_library(
+    name = "worktree_git",
+    srcs = ["worktree_git.py"],
+    imports = ["../../.."],
+    visibility = ["//factory/cli:__subpackages__"],
+    deps = [":host_tools"],
+)
+
+cli_py_library(
+    name = "worktree_hooks",
+    srcs = ["worktree_hooks.py"],
+    imports = ["../../.."],
+    visibility = ["//factory/cli:__subpackages__"],
+    deps = [
+        ":host_tools",
+        ":model",
+        ":worktree_errors",
+        "//factory/cli/src/tbhbdev/alpha:pre_push_guard",
+        "//factory/cli/src/tbhbdev/alpha:repo",
+        "//factory/cli/src/tbhbdev/alpha/identity/commit:policy",
+        "//factory/cli/src/tbhbdev/alpha/install:scripts",
+    ],
+)
+
+cli_py_library(
+    name = "worktree_mirror",
+    srcs = ["worktree_mirror.py"],
+    imports = ["../../.."],
+    visibility = ["//factory/cli:__subpackages__"],
+    deps = [
+        ":model",
+        ":runfiles",
+        ":worktree_git",
+        "//factory/cli/src/tbhbdev/alpha/agent/decisions:repo",
+        "//factory/cli/src/tbhbdev/alpha/agent/decisions:request",
+    ],
+)
+
+cli_py_library(
+    name = "worktree_writes",
+    srcs = ["worktree_writes.py"],
     imports = ["../../.."],
     visibility = ["//factory/cli:__subpackages__"],
 )

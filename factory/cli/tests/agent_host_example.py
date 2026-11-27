@@ -18,7 +18,7 @@ if TYPE_CHECKING:
 from agent_example import settings
 from test_alpha_agent_request import BUILD
 
-from tbhbdev.alpha.agent import build_info, host_tools, model, worktree
+from tbhbdev.alpha.agent import build_info, host_tools, model, worktree_git
 from tbhbdev.alpha.agent.decisions import request
 
 
@@ -120,14 +120,14 @@ def run_request(**changes: object) -> model.RunRequest:
 
 
 def local_mirror_fetches(monkeypatch: pytest.MonkeyPatch, origin: Path) -> None:
-    original = worktree.git
+    original = worktree_git.git
 
     def git(path: Path, *args: str, token: str | None = None) -> str:
         if path.name == "example-repo.git" and args[0] in ("fetch", "ls-remote"):
             args = tuple(str(origin) if value == "origin" else value for value in args)
         return original(path, *args, token=token)
 
-    monkeypatch.setattr(worktree, "git", git)
+    monkeypatch.setattr(worktree_git, "git", git)
 
 
 def host_settings() -> model.Settings:

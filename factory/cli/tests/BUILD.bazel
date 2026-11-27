@@ -71,7 +71,7 @@ cli_py_library(
         "//factory/cli/src/tbhbdev/alpha/agent:build_info",
         "//factory/cli/src/tbhbdev/alpha/agent:host_tools",
         "//factory/cli/src/tbhbdev/alpha/agent:model",
-        "//factory/cli/src/tbhbdev/alpha/agent:worktree",
+        "//factory/cli/src/tbhbdev/alpha/agent:worktree_git",
         "//factory/cli/src/tbhbdev/alpha/agent/decisions:request",
         "//factory/cli/tests:test_alpha_agent_request_support",
         "@cli_pip//pytest",
@@ -111,7 +111,7 @@ py_binary(
         "//factory/cli/src/tbhbdev/alpha/agent:host_tools",
         "//factory/cli/src/tbhbdev/alpha/agent:model",
         "//factory/cli/src/tbhbdev/alpha/agent:run_host",
-        "//factory/cli/src/tbhbdev/alpha/agent:worktree",
+        "//factory/cli/src/tbhbdev/alpha/agent:worktree_mirror",
         "//factory/cli/tests:test_alpha_agent_sandbox_live_support",
     ],
 )
@@ -422,7 +422,8 @@ cli_py_test(
         ":agent_host_example",
         ":conftest",
         "//factory/cli/src/tbhbdev/alpha/agent:model",
-        "//factory/cli/src/tbhbdev/alpha/agent:worktree",
+        "//factory/cli/src/tbhbdev/alpha/agent:worktree_checkout",
+        "//factory/cli/src/tbhbdev/alpha/agent:worktree_mirror",
         "//factory/cli/src/tbhbdev/alpha/agent/decisions:request",
         "//factory/cli/src/tbhbdev/alpha/agent/driver:arguments",
         "//factory/cli/src/tbhbdev/alpha/agent/driver:launch",
@@ -440,7 +441,7 @@ cli_py_test(
         ":agent_live_git_commit",
         ":conftest",
         "//factory/cli/src/tbhbdev/alpha/agent:model",
-        "//factory/cli/src/tbhbdev/alpha/agent:worktree",
+        "//factory/cli/src/tbhbdev/alpha/agent:worktree_hooks",
         "//factory/cli/src/tbhbdev/alpha/agent/decisions:policy",
         "//factory/cli/src/tbhbdev/alpha/identity/commit:policy",
         "//factory/cli/src/tbhbdev/alpha/install:scripts",
@@ -463,7 +464,7 @@ cli_py_test(
         "//factory/cli/src/tbhbdev/alpha/agent:host_tools",
         "//factory/cli/src/tbhbdev/alpha/agent:model",
         "//factory/cli/src/tbhbdev/alpha/agent:run_host",
-        "//factory/cli/src/tbhbdev/alpha/agent:worktree",
+        "//factory/cli/src/tbhbdev/alpha/agent:worktree_checkout",
         "//factory/cli/src/tbhbdev/alpha/agent/decisions:argv",
         "//factory/cli/src/tbhbdev/alpha/agent/decisions:policy",
         "//factory/cli/tests:test_alpha_agent_run_host_support",
@@ -580,20 +581,6 @@ cli_py_test(
 )
 
 cli_py_test(
-    name = "test_alpha_agent_preparation",
-    srcs = ["test_alpha_agent_preparation.py"],
-    deps = [
-        ":agent_host_example",
-        ":conftest",
-        "//factory/cli/src/tbhbdev/alpha/agent:model",
-        "//factory/cli/src/tbhbdev/alpha/agent:process_group",
-        "//factory/cli/src/tbhbdev/alpha/agent:runfiles",
-        "//factory/cli/src/tbhbdev/alpha/agent:worktree",
-        "@cli_pip//pytest",
-    ],
-)
-
-cli_py_test(
     name = "test_alpha_agent_process_group",
     srcs = ["test_alpha_agent_process_group.py"],
     deps = [
@@ -699,6 +686,11 @@ cli_py_test(
         "//factory/cli/src/tbhbdev/alpha/agent:run_host",
         "//factory/cli/src/tbhbdev/alpha/agent:runfiles",
         "//factory/cli/src/tbhbdev/alpha/agent:shims",
+        "//factory/cli/src/tbhbdev/alpha/agent:worktree_checkout",
+        "//factory/cli/src/tbhbdev/alpha/agent:worktree_git",
+        "//factory/cli/src/tbhbdev/alpha/agent:worktree_hooks",
+        "//factory/cli/src/tbhbdev/alpha/agent:worktree_mirror",
+        "//factory/cli/src/tbhbdev/alpha/agent:worktree_writes",
         "//factory/cli/src/tbhbdev/alpha/agent/decisions:policy",
         "//factory/cli/src/tbhbdev/alpha/agent/decisions:request",
         "//factory/cli/src/tbhbdev/alpha/agent/decisions:run_state",
@@ -836,7 +828,7 @@ cli_py_test(
         ":agent_host_example",
         ":conftest",
         "//factory/cli/src/tbhbdev/alpha/agent:run_host",
-        "//factory/cli/src/tbhbdev/alpha/agent:worktree",
+        "//factory/cli/src/tbhbdev/alpha/agent:worktree_mirror",
         "//factory/cli/tests:test_alpha_agent_run_host_support",
         "@cli_pip//pytest",
     ],
@@ -862,20 +854,6 @@ cli_py_test(
         "//factory/cli/src/tbhbdev/alpha/agent:model",
         "//factory/cli/src/tbhbdev/alpha/agent:transport",
         "//factory/cli/src/tbhbdev/alpha/agent/decisions:remote_run",
-        "@cli_pip//pytest",
-    ],
-)
-
-cli_py_test(
-    name = "test_alpha_agent_worktree",
-    srcs = ["test_alpha_agent_worktree.py"],
-    deps = [
-        ":agent_host_example",
-        ":conftest",
-        "//factory/cli/src/tbhbdev/alpha/agent:model",
-        "//factory/cli/src/tbhbdev/alpha/agent:worktree",
-        "//factory/cli/src/tbhbdev/alpha/identity/commit:policy",
-        "//factory/cli/src/tbhbdev/alpha/install:scripts",
         "@cli_pip//pytest",
     ],
 )
@@ -1066,7 +1044,8 @@ cli_py_test(
         ":fake_tool",
         "//factory/cli/src/tbhbdev/alpha:gh_shim",
         "//factory/cli/src/tbhbdev/alpha:pre_push_guard",
-        "//factory/cli/src/tbhbdev/alpha/agent:worktree",
+        "//factory/cli/src/tbhbdev/alpha/agent:host_tools",
+        "//factory/cli/src/tbhbdev/alpha/agent:worktree_hooks",
         "//factory/cli/src/tbhbdev/alpha/install/git:shims",
         "@cli_pip//httpx2",
         "@cli_pip//pytest",
