@@ -709,9 +709,12 @@ WORKFLOW_LINT_ROOT = "lint/tests/testdata/workflow_lint/"
         tags = ["manual"],
     )
     for case in [
-        "tag",
+        "docker_tag",
         "latest",
+        "local_outside",
+        "local_traversal",
         "self_hosted",
+        "tag",
     ]
 ]
 
@@ -722,7 +725,10 @@ WORKFLOW_LINT_ROOT = "lint/tests/testdata/workflow_lint/"
         test = ":proof_workflow_lint_" + case,
     )
     for case, pattern in {
+        "docker_tag": "uses 'docker://alpine:3.20' is not pinned to a SHA-256 image digest",
         "latest": "workflows/ci.yml:5: runner label 'ubuntu-latest' floats",
+        "local_outside": "uses './tools/action' must name an action directory under .github/actions/",
+        "local_traversal": "uses './.github/actions/../../tools/action' must name an action directory under .github/actions/",
         "self_hosted": "workflows/ci.yml:5: the self-hosted label is allowed only in a private repository",
         "tag": "workflows/ci.yml:7: uses 'actions/checkout@v4' is not pinned to a full commit SHA",
     }.items()

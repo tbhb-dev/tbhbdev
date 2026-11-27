@@ -3,17 +3,14 @@
 # Copyright Tony Burns
 
 # Checks GitHub Actions YAML files for three things:
-#   1. a `uses:` ref that is not a full 40-hex commit SHA,
+#   1. a `uses:` ref without a full commit SHA, an image digest, or a local
+#      action directory under .github/actions/,
 #   2. a floating runner label (ubuntu-latest, macos-latest, windows-latest),
 #   3. a `self-hosted` label, unless --private says the repository is private.
 #
 # Usage: workflow_lint.sh [--private] [PATH...]
 # PATH is a file or directory, default `.github`. Every *.yml and *.yaml file
-# below it is scanned. Comments are ignored.
-#
-# Local actions (`./...`) are skipped because they live in the same commit as
-# the caller, so they have no ref to pin. `docker://` references are skipped
-# because their pin is an image digest, not a commit SHA.
+# below it is scanned. Run from the repository root. Comments are ignored.
 
 set -euo pipefail
 
@@ -29,10 +26,22 @@ fi
 
 problems=0
 scanned=0
+root=$(pwd -P)
 
 report() {
   echo "workflow_lint: FAIL: $1:$2: $3" >&2
   problems=$((problems + 1))
+}
+
+local_action_is_allowed() {
+  local dir manifest
+  [[ $1 =~ ^\./\.github/actions/[a-zA-Z0-9_.-]+(/[a-zA-Z0-9_.-]+)*$ ]] || return 1
+  dir=$(cd -P -- "$1" 2>/dev/null && pwd) || return 1
+  [[ $dir == "$root/${1#./}" ]] || return 1
+  for manifest in "$dir/action.yml" "$dir/action.yaml"; do
+    [[ ! -L $manifest ]] || return 1
+  done
+  [[ -f $dir/action.yml || -f $dir/action.yaml ]]
 }
 
 files=$(find "${paths[@]}" -type f \( -name '*.yml' -o -name '*.yaml' \))
@@ -49,7 +58,16 @@ while IFS= read -r file; do
     value=${rest#*uses:}
     value=${value//[\"\' ]/}
     case $value in
-    ./* | docker://*) continue ;;
+    ./*)
+      local_action_is_allowed "$value" ||
+        report "$file" "$line" "uses '$value' must name an action directory under .github/actions/."
+      continue
+      ;;
+    docker://*)
+      [[ $value =~ ^docker://[^@[:space:]]+@sha256:[0-9a-f]{64}$ ]] ||
+        report "$file" "$line" "uses '$value' is not pinned to a SHA-256 image digest."
+      continue
+      ;;
     esac
     ref=
     if [[ $value == *@* ]]; then

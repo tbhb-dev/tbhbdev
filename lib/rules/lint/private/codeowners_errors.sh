@@ -6,8 +6,8 @@ set -euo pipefail
 
 cd "${BUILD_WORKSPACE_DIRECTORY:?run this target with bazel run}"
 if [[ ! -f .github/CODEOWNERS && ! -f CODEOWNERS && ! -f docs/CODEOWNERS ]]; then
-  echo "::notice::Skipped CODEOWNERS owner and syntax check: no CODEOWNERS file in .github/, the repository root, or docs/."
-  exit 0
+  echo "::error::No CODEOWNERS file in .github/, the repository root, or docs/."
+  exit 1
 fi
 
 # Self-hosted runners may lack gh, so the call uses curl.

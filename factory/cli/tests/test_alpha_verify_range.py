@@ -269,8 +269,11 @@ def test_root_is_not_one_parent(repo: Repository) -> None:
 
 
 def test_empty_range(repo: Repository, capsys: pytest.CaptureFixture[str]) -> None:
-    assert verify_range.main([repo.base, repo.base], PROG) == 0
-    assert capsys.readouterr() == ("verify-range: 0 commits, 0 failed\n", "")
+    assert verify_range.main([repo.base, repo.base], PROG) == 1
+    assert capsys.readouterr() == (
+        "",
+        f"{PROG}: no commits in {repo.base}..{repo.base}\n",
+    )
 
 
 @pytest.mark.parametrize(

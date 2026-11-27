@@ -104,6 +104,9 @@ def main(argv: list[str], prog: str) -> int:
         commits = git_output(
             args.path, "rev-list", "--reverse", "--topo-order", f"{base}..{tip}", "--"
         ).splitlines()
+        if not commits:
+            print(f"{prog}: no commits in {base}..{tip}", file=sys.stderr)
+            return 1
         failed = 0
         for sha in commits:
             reasons, subject = inspect_commit(

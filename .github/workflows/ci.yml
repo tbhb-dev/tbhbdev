@@ -62,10 +62,15 @@ jobs:
           base: ${{ inputs.base }}
 
       - name: Test
-        if: steps.affected.outputs.count != '0'
+        if: steps.affected.outputs.docs_only != 'true'
         env:
           TARGETS: ${{ steps.affected.outputs.file }}
-        run: bazel test --config=ci --build_tests_only --target_pattern_file="$TARGETS"
+        run: |
+          if [[ ! -s ${TARGETS:-} ]]; then
+            echo 'The Bazel test target pattern file is missing or empty.' >&2
+            exit 1
+          fi
+          bazel test --config=ci --build_tests_only --target_pattern_file="$TARGETS"
 
   gazelle-current:
     name: gazelle-current

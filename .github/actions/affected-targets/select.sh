@@ -4,7 +4,8 @@
 
 # Chooses the Bazel test targets that the change from BASE_SHA to HEAD_SHA can
 # affect, with target-determinator (TD). When the script can't decide, it
-# selects the root and all shared rules modules. Every path ends in finish,
+# selects the root and all shared rules modules. An empty selection is valid
+# with a docs-only proof from main. Every success ends in finish,
 # which restores HEAD_SHA, verifies a clean checkout after running tools,
 # and writes the outputs and a job summary. Without a checkout to verify,
 # the script fails.
@@ -16,7 +17,7 @@ out=$(mktemp -d "${RUNNER_TEMP:?}/affected-targets.XXXXXXXX")
 file=$out/targets.txt
 log=$out/target-determinator.log
 changed=$out/changed
-want='' ran=''
+want='' ran='' docs_proof=''
 
 # Match the local rules modules in MODULE.bazel. Use the same scope and
 # exclusions for discovery and the fallback pattern file.
@@ -81,24 +82,34 @@ ensure_head() {
   at_head
 }
 
-# finish MODE REASON: MODE is `all` or `selected`. REASON can hold a changed
+# finish MODE REASON: MODE is `all`, `selected` or `docs`. REASON can hold a changed
 # path, so it loses control characters here and Markdown in the summary. A
 # selection holds only for the clean head the tools analyzed, so finish
 # never repairs the checkout under one and falls back instead.
 finish() {
   [[ $1 == all ]] || at_head || set -- all 'the checkout changed while the tools ran'
-  local all=false count line reason=${2//[[:cntrl:]]/?} delim
+  local all=false docs_only=false count line reason=${2//[[:cntrl:]]/?} delim
   ensure_head || die "can't restore a clean checkout of the event's head $want"
-  if [[ $1 == all ]]; then
+  case $1 in
+  all)
     all=true count=all line="Running every target in the root and shared rules modules: "
     printf '%s\n' "${patterns[@]}" "${excluded[@]/#/-}" >"$file"
-  else
-    count=$(grep -c . "$file" || true) line="Selected $count test targets: "
-  fi
+    ;;
+  selected)
+    count=$(grep -c '[^[:space:]]' "$file") || die 'no usable selected test targets'
+    line="Selected $count test targets: "
+    ;;
+  docs)
+    docs_only=true count=0 line="Skipping Bazel tests: "
+    : >"$file"
+    printf '%s\n' "$docs_proof" | show
+    ;;
+  esac
   # A random delimiter, which no target line can match by chance.
   delim=EOF_$(rand)
   {
     echo "all=$all"
+    echo "docs_only=$docs_only"
     echo "count=$count"
     echo "reason=$reason"
     echo "file=$file"
@@ -110,6 +121,34 @@ finish() {
   printf '### Affected Bazel targets\n\n%s\n' "$line" >>"${GITHUB_STEP_SUMMARY:-/dev/null}"
   echo "affected-targets: $count: $reason" | show
   exit 0
+}
+
+# A proof needs a nonempty raw diff of ordinary files, all matching the list.
+prove_docs_only() {
+  local policy=$1 meta path pattern matched paths=0
+  while IFS= read -r -d '' meta; do
+    IFS= read -r -d '' path || return 1
+    [[ ${meta:1:6} =~ ^(000000|100644)$ && ${meta:8:6} =~ ^(000000|100644)$ ]] || return 1
+    matched=false
+    while IFS= read -r pattern; do
+      [[ -n $pattern && $pattern != \#* && $path == $pattern ]] || continue
+      printf '%q matched %q\n' "$path" "$pattern"
+      matched=true
+      break
+    done <<<"$policy"
+    [[ $matched == true ]] || return 1
+    paths=$((paths + 1))
+  done
+  [[ -z $meta ]] && ((paths > 0))
+}
+
+# The policy comes from main regardless of the event's chosen base.
+load_docs_proof() {
+  local main policy
+  main=$(git rev-parse --verify refs/remotes/origin/main 2>/dev/null) || return 1
+  policy=$(git --no-replace-objects show "$main:.github/actions/affected-targets/docs-only-patterns.txt" 2>/dev/null) || return 1
+  printf 'Docs-only patterns from origin/main (%s):\n' "$main"
+  prove_docs_only "$policy" <"$changed"
 }
 
 # deadline SECONDS COMMAND...: run COMMAND in a process group of its own,
@@ -156,7 +195,8 @@ if [[ ${EVENT:-} == workflow_dispatch ]]; then
 fi
 git cat-file -e "${BASE_SHA:-}^{commit}" 2>/dev/null ||
   finish all "the base '${BASE_SHA:-}' is missing from the checkout (check out with fetch-depth: 0)"
-git -c core.quotePath=false diff -z --raw --no-renames --ignore-submodules=none --output="$changed" "$BASE_SHA" "$head" 2>&1 | show >&2 ||
+git --no-replace-objects -c core.quotePath=false diff -z --raw --no-renames --no-relative \
+  --ignore-submodules=none --output="$changed" "$BASE_SHA" "$head" 2>&1 | show >&2 ||
   finish all 'git diff failed'
 
 # A submodule's commit (mode 160000) is no file target-determinator can
@@ -185,6 +225,7 @@ seconds=${TIMEOUT_SECONDS:-$((minutes * 60))}
 
 # target-determinator would analyze a change on top of the head as the head.
 clean || finish all "the checkout of $head has changes or flagged index entries, or git failed"
+docs_proof=$(load_docs_proof) || docs_proof=''
 
 read -ra opts <<<"${BAZEL_OPTS:-}"
 opts+=(--skip_incompatible_explicit_targets)
@@ -257,14 +298,14 @@ select_targets() {
   # matched rule, including intentionally failing manual proof targets.
   step='the query of candidate tests'
   query_candidates . "$scope" >"$out/candidates" || return
-  [[ -s $out/candidates ]] || return 0
+  grep -q '[^[:space:]]' "$out/candidates" || return 0
   check_base_candidates "$scope" || return
   targets=$(label_set "$out/candidates") || return
 
   # The determinator hashes configured dependencies in local overrides too.
   run_step target-determinator "$TD" -bazel bazelisk -nocache_results -delete-cached-worktree \
     -before-query-error-behavior=fatal -targets "$targets" "${opts[@]/#/-bazel-opts=}" "$BASE_SHA" >"$file" || return
-  [[ -s $file ]] || return 0
+  grep -q '[^[:space:]]' "$file" || return 0
   targets=$(label_set "$file") || return
   run_step 'the cquery of manual tags' bazelisk cquery --output=jsonproto "${opts[@]}" \
     "attr(tags, '$manual', $targets)" >"$out/tags.json" || return
@@ -277,7 +318,13 @@ select_targets() {
 : >"$log"
 status=0
 select_targets || status=$?
-[[ $status != 0 ]] || finish selected "target-determinator compared $BASE_SHA with $head"
+if ((status == 0)); then
+  if grep -q '[^[:space:]]' "$file"; then
+    finish selected "target-determinator compared $BASE_SHA with $head"
+  fi
+  [[ -z $docs_proof ]] || finish docs 'every changed path matched the docs-only patterns from origin/main'
+  finish all "$step found no tests and the diff has no docs-only proof"
+fi
 # The log comes from the change too.
 tail -n 40 "$log" | show >&2
 [[ $status != 124 ]] || finish all "$step timed out after $seconds seconds"

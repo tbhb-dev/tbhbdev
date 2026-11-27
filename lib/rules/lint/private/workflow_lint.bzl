@@ -11,10 +11,9 @@ visibility("//lint/...")
 def workflow_lint_test(name, srcs, private = False, paths = [".github"], **kwargs):
     """Checks workflow and action YAML for the rules zizmor does not enforce alone.
 
-    Fails on a `uses:` ref that is not a full commit SHA, on `ubuntu-latest`,
-    `macos-latest` and `windows-latest`, and on `self-hosted` unless the
-    repository is private. The check does not depend on a zizmor config, so
-    loosening that config cannot turn the pin rule off.
+    Requires full commit SHAs, SHA-256 Docker image digests, and local action
+    directories under `.github/actions/`. Also rejects floating runner labels
+    and public self-hosted runners. The check is independent of zizmor config.
 
     Args:
         name: Target name.

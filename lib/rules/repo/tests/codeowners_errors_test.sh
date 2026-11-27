@@ -57,8 +57,8 @@ expect_curl() {
 }
 
 run_check
-[[ $status == 0 ]] || fail 'missing CODEOWNERS did not pass'
-[[ $output == '::notice::Skipped CODEOWNERS owner and syntax check: no CODEOWNERS file in .github/, the repository root, or docs/.' ]] || fail 'missing skip notice'
+[[ $status == 1 ]] || fail 'missing CODEOWNERS did not fail'
+[[ $output == '::error::No CODEOWNERS file in .github/, the repository root, or docs/.' ]] || fail 'missing CODEOWNERS error'
 [[ ! -e $CURL_LOG ]] || fail 'missing CODEOWNERS called curl'
 
 # Each supported location must call the API and pass with zero errors.

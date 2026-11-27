@@ -45,6 +45,7 @@ if [[ ${0##*/} == bazelisk ]]; then
       fi
       exit 0
     fi
+    [[ $FAKE_QUERY != empty ]] || exit 0
     if [[ $FAKE_QUERY == near_manual && ${!#} != *'attr(tags,'* && ${!#} != *//go:near_manual_test* ]]; then
       echo //go:near_manual_test
     fi
@@ -193,8 +194,13 @@ commit() {
     -c commit.gpgsign=false commit -q -m change
   git rev-parse HEAD
 }
+policy=.github/actions/affected-targets/docs-only-patterns.txt
+mkdir -p "${policy%/*}"
+printf '%s\n' 'README.md' 'docs/*.md' >"$policy"
 base=$(commit README.md sub/keep.txt)
+git update-ref refs/remotes/origin/main "$base"
 docs_head=$(commit docs/guide.md)
+code_head=$(commit src/lib.go)
 
 # [HEAD_SHA=SHA] [STATUS=LINES] run CASE EVENT HEAD [EXPECTED_ALL]
 # [EXPECTED_COUNT]: check out HEAD, run the script from sub/ with HEAD_SHA,
@@ -320,8 +326,26 @@ grep -qxF '//a:with space' "$file" || fail 'space: file'
 
 HEAD_SHA=$docs_head run 'merge group' merge_group "$docs_head" false 2
 HEAD_SHA=$docs_head run 'checkout behind the head' merge_group "$base"
-FAKE=none run 'no affected tests' pull_request "$docs_head" false 0
-[[ -z $targets ]] || fail 'empty selection'
+FAKE_QUERY=empty run 'no candidate tests for a mixed diff' pull_request "$code_head"
+[[ $reason == *'candidate tests found no tests'* ]] || fail 'empty candidates: missing reason'
+[[ $(output docs_only) == false ]] || fail 'empty candidates: skipped tests'
+FAKE=none run 'no affected tests for a mixed diff' pull_request "$code_head"
+[[ $reason == *'target-determinator found no tests'* ]] || fail 'empty selection: missing reason'
+git config diff.relative true
+FAKE=none run 'relative diff config cannot hide changed paths' pull_request "$code_head"
+git config --unset diff.relative
+FAKE=none run 'no affected tests for a docs-only diff' pull_request "$docs_head" false 0
+[[ -z $targets ]] || fail 'docs-only diff selected targets'
+[[ $(output docs_only) == true ]] || fail 'docs-only diff did not authorize skipping tests'
+grep -qF 'docs/guide.md matched docs/\*.md' "$scratch/stdout" || fail 'missing docs-only path proof'
+git update-ref -d refs/remotes/origin/main
+FAKE=none run 'no local copy of main for the docs-only policy' pull_request "$docs_head"
+git update-ref refs/remotes/origin/main "$base"
+FAKE=none run 'no changed paths' pull_request "$base"
+printf '%s\n' '*' >"$policy"
+untrusted_head=$(commit src/lib.go)
+FAKE=none run 'head cannot broaden the docs-only policy' pull_request "$untrusted_head"
+BASE_SHA=$untrusted_head FAKE=none run 'dispatch base cannot broaden the docs-only policy' workflow_dispatch "$(commit src/lib.go)"
 FAKE=smudge run 'changed under a selection' pull_request "$docs_head"
 FAKE=fail run 'tool failure' pull_request "$docs_head"
 [[ $reason == *'exit status 3' ]] || fail 'failure status missing'
