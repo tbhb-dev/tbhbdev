@@ -230,4 +230,6 @@ func TestActValidation(t *testing.T) {
 	checkDelivery(t, got.Act(t.Context(), match, fields, nil), "signal", "")
 	fields.Delivery += "a"
 	checkDelivery(t, got.Act(t.Context(), match, fields, nil), "event reference", permanent)
+	fields.Delivery = "\xff"
+	checkDelivery(t, got.Act(t.Context(), match, fields, nil), "event reference", permanent)
 }

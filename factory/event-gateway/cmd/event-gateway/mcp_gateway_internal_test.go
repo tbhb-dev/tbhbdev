@@ -608,7 +608,7 @@ func TestMCPGatewayRejectionNotice(t *testing.T) {
 	select {
 	case req := <-notifications:
 		notice := readChannelNotification(t, req)
-		checkEqual(t, notice.Meta[channelEventKey], "notice")
+		checkEqual(t, notice.Meta[eventKey], "notice")
 		checkEqual(t, notice.Content == `{"level":"warning","text":"Gateway token was rejected."}`, true)
 	case <-ctx.Done():
 		t.Fatal("gateway rejection notice did not arrive")
@@ -726,7 +726,7 @@ func checkGatewayLifetimeNotice(
 	if name == claudeCodeClient {
 		select {
 		case req := <-notifications:
-			checkEqual(t, readChannelNotification(t, req).Meta[channelEventKey], "notice")
+			checkEqual(t, readChannelNotification(t, req).Meta[eventKey], "notice")
 		case <-ctx.Done():
 			t.Fatal("gateway notification did not arrive")
 		}

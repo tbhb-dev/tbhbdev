@@ -119,21 +119,22 @@ func connectStore(ctx context.Context, embedded *server.Server, maxAge time.Dura
 		return eventStore{}, nil, fmt.Errorf("connect to embedded NATS: %w", err)
 	}
 
-	return openStream(ctx, embedded, conn, maxAge)
+	return openStream(ctx, embedded.Shutdown, conn, maxAge)
 }
 
 func openStream(
 	ctx context.Context,
-	embedded *server.Server,
+	shutdown func(),
 	conn *nats.Conn,
 	maxAge time.Duration,
+	options ...jetstream.JetStreamOpt,
 ) (eventStore, func(), error) {
 	closeStore := func() {
 		conn.Close()
-		embedded.Shutdown()
+		shutdown()
 	}
 
-	jet, err := jetstream.New(conn)
+	jet, err := jetstream.New(conn, options...)
 	if err != nil {
 		closeStore()
 
@@ -194,7 +195,12 @@ func (s eventStore) publish(ctx context.Context, event envelope) error {
 	sum := sha256.Sum256(event.Payload)
 	hash := hex.EncodeToString(sum[:])
 	msg := nats.NewMsg("events." + event.Provider + "." + event.Event)
-	msg.Data = event.encode()
+
+	msg.Data, err = event.encode()
+	if err != nil {
+		return fmt.Errorf("encode event: %w", err)
+	}
+
 	msg.Header.Set(nats.MsgIdHdr, event.Provider+":"+event.Delivery)
 	msg.Header.Set(bodyHashKey, hash)
 

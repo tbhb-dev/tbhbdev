@@ -19,7 +19,7 @@ import (
 
 var (
 	errTokenFormat = errors.New("read token file requires at least one name:SHA-256 hex entry")
-	tokenEntry     = regexp.MustCompile(`^([^:]+):([a-fA-F0-9]{64})$`)
+	tokenEntry     = regexp.MustCompile(`^([^:]+):(.{64})$`)
 )
 
 type readTokens struct {

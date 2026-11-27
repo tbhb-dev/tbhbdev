@@ -372,6 +372,7 @@ type runnerMessage struct {
 	jetstream.Msg
 
 	ackError error
+	nakError error
 }
 
 func (runnerMessage) Metadata() (*jetstream.MsgMetadata, error) {
@@ -381,6 +382,8 @@ func (runnerMessage) Metadata() (*jetstream.MsgMetadata, error) {
 func (runnerMessage) Data() []byte { return []byte(testEnvelope) }
 
 func (message runnerMessage) DoubleAck(context.Context) error { return message.ackError }
+
+func (message runnerMessage) NakWithDelay(time.Duration) error { return message.nakError }
 
 func TestRunnerAcknowledgment(t *testing.T) {
 	t.Parallel()
@@ -395,6 +398,10 @@ func TestRunnerAcknowledgment(t *testing.T) {
 
 	var run runner
 
-	checkEqual(t, run.deliver(t.Context(), target, runnerMessage{Msg: nil, ackError: errRetryDelivery}, 1), uint64(1))
-	checkEqual(t, run.deliver(t.Context(), target, runnerMessage{Msg: nil, ackError: nil}, 1), uint64(0))
+	checkEqual(
+		t,
+		run.deliver(t.Context(), target, runnerMessage{Msg: nil, nakError: nil, ackError: errRetryDelivery}, 1),
+		uint64(1),
+	)
+	checkEqual(t, run.deliver(t.Context(), target, runnerMessage{Msg: nil, nakError: nil, ackError: nil}, 1), uint64(0))
 }

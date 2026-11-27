@@ -310,10 +310,10 @@ func forwardGatewayFrame(
 	frame sessionObject, subscriptions *mcpSubscriptions, deliveries *gatewayDeliveries, notify func(channelEvent) bool,
 ) {
 	switch *sessionJSON[string](frame[typeKey]) {
-	case channelEventKey:
+	case eventKey:
 		event := channelEvent{
 			provider:   *sessionJSON[string](frame[channelProviderKey]),
-			event:      *sessionJSON[string](frame[channelEventKey]),
+			event:      *sessionJSON[string](frame[eventKey]),
 			delivery:   *sessionJSON[string](frame["delivery"]),
 			repository: *sessionJSON[*string](frame[channelRepositoryKey]),
 			payload:    frame["payload"],

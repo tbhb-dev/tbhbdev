@@ -187,3 +187,27 @@ func TestExtractEmpty(t *testing.T) {
 		}
 	}
 }
+
+func TestInvalidSubscriptionJSON(t *testing.T) {
+	t.Parallel()
+
+	valid := mustParse(t, githubSub(workflowRun, `,"name":"CI"`))
+	invalidProvider := valid
+	invalidProvider.Provider = "\xff"
+	invalidPath := valid
+	invalidPath.WorkflowPath = "\xff"
+
+	for _, sub := range []filter.Subscription{invalidProvider, invalidPath} {
+		_, err := json.Marshal(sub)
+		if err == nil {
+			t.Error("marshal accepted invalid UTF-8")
+		}
+	}
+
+	for _, raw := range []string{`[]`, `{"workflow_path":42}`, `{"provider":42}`} {
+		var sub filter.Subscription
+		if json.Unmarshal([]byte(raw), &sub) == nil {
+			t.Errorf("unmarshal accepted %s", raw)
+		}
+	}
+}

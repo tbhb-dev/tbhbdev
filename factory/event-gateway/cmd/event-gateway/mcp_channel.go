@@ -16,6 +16,8 @@ import (
 	"github.com/modelcontextprotocol/go-sdk/jsonrpc"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
+	jsonv2 "encoding/json/v2"
+
 	"github.com/tbhb-dev/tbhbdev/factory/event-gateway/internal/filter"
 )
 
@@ -63,7 +65,7 @@ type channelParameters struct {
 func channelParams(event channelEvent) channelParameters {
 	meta := map[string]string{
 		channelProviderKey: channelAttribute(event.provider),
-		channelEventKey:    channelAttribute(event.event),
+		eventKey:           channelAttribute(event.event),
 		"delivery":         channelAttribute(event.delivery),
 	}
 	if event.repository != nil {
@@ -81,7 +83,7 @@ func channelParams(event channelEvent) channelParameters {
 	if len(event.payload) > maxChannelContent {
 		meta["truncated"] = channelTruncated
 		content := fmt.Sprintf("%s %s (action '%s'): payload of %d bytes omitted.",
-			meta[channelProviderKey], meta[channelEventKey], meta["action"], len(event.payload))
+			meta[channelProviderKey], meta[eventKey], meta["action"], len(event.payload))
 
 		return channelParameters{Meta: meta, Content: content}
 	}
@@ -103,7 +105,7 @@ func (t *mcpNotifier) deliverChannel(ctx context.Context, session *mcp.ServerSes
 		return errChannelClient
 	}
 
-	data, err := json.Marshal(channelParams(event))
+	data, err := jsonv2.Marshal(channelParams(event))
 	if err != nil {
 		return fmt.Errorf("encode MCP channel event: %w", err)
 	}
@@ -148,7 +150,7 @@ func gatewayGap(from, to uint64) channelNotice {
 }
 
 func (notice channelNotice) channelEvent() channelEvent {
-	payload, err := json.Marshal(notice)
+	payload, err := jsonv2.Marshal(notice)
 	if err != nil {
 		payload = []byte(`{"level":"warning","text":"Gateway notice unavailable."}`)
 	}

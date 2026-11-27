@@ -60,6 +60,13 @@ type otlpConfig struct {
 }
 
 func openTelemetry(ctx context.Context, handler slog.Handler, cfg otlpConfig) (telemetry, func(), error) {
+	return openTelemetryWithTrace(ctx, handler, cfg, newOTLPTracer)
+}
+
+func openTelemetryWithTrace(
+	ctx context.Context, handler slog.Handler, cfg otlpConfig,
+	startTrace func(context.Context, *resource.Resource, otlptrace.Client) (*sdktrace.TracerProvider, error),
+) (telemetry, func(), error) {
 	if cfg.Endpoint == "" {
 		return newTelemetry(handler, nil, nil), func() {}, nil
 	}
@@ -73,13 +80,13 @@ func openTelemetry(ctx context.Context, handler slog.Handler, cfg otlpConfig) (t
 	otel.SetLogger(logr.Discard())
 	otel.SetErrorHandler(otel.ErrorHandlerFunc(func(error) {}))
 
-	traceExporter, err := otlptrace.New(ctx, writer)
+	res := resource.NewSchemaless(attribute.String("service.name", serviceName))
+
+	tracer, err := startTrace(ctx, res, writer)
 	if err != nil {
-		return telemetry{}, nil, fmt.Errorf("start OTLP traces: %w", err)
+		return telemetry{}, nil, err
 	}
 
-	res := resource.NewSchemaless(attribute.String("service.name", serviceName))
-	tracer := newOTLPTracer(res, traceExporter)
 	meter, stopMetrics := newOTLPMeter(ctx, res, writer)
 	logger := newOTLPLogger(res, writer)
 	local := slog.New(handler)
@@ -100,7 +107,15 @@ func openTelemetry(ctx context.Context, handler slog.Handler, cfg otlpConfig) (t
 	return newTelemetry(both, tracer, meter), closeSignals, nil
 }
 
-func newOTLPTracer(res *resource.Resource, traceExporter *otlptrace.Exporter) *sdktrace.TracerProvider {
+func newOTLPTracer(
+	ctx context.Context,
+	res *resource.Resource,
+	client otlptrace.Client,
+) (*sdktrace.TracerProvider, error) {
+	traceExporter, err := otlptrace.New(ctx, client)
+	if err != nil {
+		return nil, fmt.Errorf("start OTLP traces: %w", err)
+	}
 	// WithResource merges OTEL_RESOURCE_ATTRIBUTES and OTEL_SERVICE_NAME. The wire
 	// resource is rebuilt in UploadTraces to honor the gateway's explicit settings.
 	return sdktrace.NewTracerProvider(
@@ -121,7 +136,7 @@ func newOTLPTracer(res *resource.Resource, traceExporter *otlptrace.Exporter) *s
 			sdktrace.WithMaxExportBatchSize(batchSize),
 			sdktrace.WithExportTimeout(exportTimeout),
 		),
-	)
+	), nil
 }
 
 func newOTLPLogger(res *resource.Resource, writer *otlpWriter) *sdklog.LoggerProvider {

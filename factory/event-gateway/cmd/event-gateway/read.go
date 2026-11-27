@@ -4,6 +4,7 @@
 package main
 
 import (
+	"bytes"
 	"cmp"
 	"context"
 	"encoding/json"
@@ -40,13 +41,9 @@ func (page *eventPage) MarshalJSON() ([]byte, error) {
 	type fields eventPage
 
 	data, err := json.Marshal((*fields)(page))
-	if err != nil {
-		return nil, fmt.Errorf("encode event page: %w", err)
-	}
+	data = strconv.AppendUint(append(bytes.TrimSuffix(data, []byte("}")), `,"last_seq":`...), page.LastSeq, decimal)
 
-	data = strconv.AppendUint(append(data[:len(data)-1], `,"last_seq":`...), page.LastSeq, decimal)
-
-	return append(data, '}'), nil
+	return append(data, '}'), errors.Join(err)
 }
 
 func (api readAPI) handler() http.Handler {
@@ -191,6 +188,10 @@ func (page *eventPage) fetch(
 		return fmt.Errorf("fetch event page: %w", err)
 	}
 
+	return page.appendBatch(batch)
+}
+
+func (page *eventPage) appendBatch(batch jetstream.MessageBatch) error {
 	for message := range batch.Messages() {
 		meta, metadataErr := message.Metadata()
 		if metadataErr != nil {
@@ -201,12 +202,7 @@ func (page *eventPage) fetch(
 		page.Events = append(page.Events, sequenceEnvelope(page.LastSeq, message.Data()))
 	}
 
-	err = batch.Error()
-	if err != nil {
-		return fmt.Errorf("read event page: %w", err)
-	}
-
-	return nil
+	return errors.Join(batch.Error())
 }
 
 func sequenceEnvelope(seq uint64, data []byte) json.RawMessage {

@@ -9,10 +9,13 @@ package temporaltarget
 import (
 	"context"
 	"encoding/json"
+	"encoding/json/jsontext"
 	"errors"
 	"fmt"
 	"regexp"
 	"slices"
+
+	jsonv2 "encoding/json/v2"
 
 	"github.com/tbhb-dev/tbhbdev/factory/event-gateway/internal/eventfields"
 	"github.com/tbhb-dev/tbhbdev/factory/event-gateway/internal/routing"
@@ -143,7 +146,7 @@ func reference(fields *eventfields.Fields, envelope []byte, rule, target string)
 	}
 	repository := value("repository", fields.Repository)
 
-	input, err := json.Marshal(map[string]any{
+	input, err := jsonv2.Marshal(map[string]any{
 		"seq": fields.Seq, "provider": fields.Provider, "event": fields.Event, "delivery": fields.Delivery,
 		"repository": repository, "received_at": receivedAt, "rule": rule, "target": target,
 		"fields": map[string]any{
@@ -151,7 +154,7 @@ func reference(fields *eventfields.Fields, envelope []byte, rule, target string)
 			"head_sha": value("head_sha", fields.HeadSHA), "label": value("label", fields.Label),
 			"sender": value("sender", fields.Sender),
 		},
-	})
+	}, jsonv2.Deterministic(true), jsontext.EscapeForHTML(true), jsontext.EscapeForJS(true))
 	if err != nil {
 		return nil, fmt.Errorf("encode Temporal event reference: %w", err)
 	}

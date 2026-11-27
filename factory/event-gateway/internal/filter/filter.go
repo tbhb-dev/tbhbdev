@@ -7,6 +7,7 @@ package filter
 import (
 	"cmp"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"regexp"
 	"slices"
@@ -57,14 +58,9 @@ func (s Subscription) MarshalJSON() ([]byte, error) {
 func (s *Subscription) UnmarshalJSON(data []byte) error {
 	type fields Subscription
 
-	err := json.Unmarshal(data, (*fields)(s))
-	if err != nil {
-		return fmt.Errorf("decode subscription: %w", err)
-	}
-
 	var object map[string]json.RawMessage
 
-	err = json.Unmarshal(data, &object)
+	err := json.Unmarshal(data, &object)
 	if err != nil {
 		return fmt.Errorf("decode subscription: %w", err)
 	}
@@ -76,7 +72,7 @@ func (s *Subscription) UnmarshalJSON(data []byte) error {
 		}
 	}
 
-	return nil
+	return errors.Join(json.Unmarshal(data, (*fields)(s)))
 }
 
 // Error reports a subscription validation failure with its protocol code.
@@ -122,7 +118,11 @@ var (
 
 // Parse validates and normalizes a subscription received as JSON.
 func Parse(raw json.RawMessage) (Subscription, error) {
-	object := *decode[map[string]json.RawMessage](raw)
+	return ParseObject(*decode[map[string]json.RawMessage](raw))
+}
+
+// ParseObject validates a subscription whose fields have already been decoded.
+func ParseObject(object map[string]json.RawMessage) (Subscription, error) {
 	if object == nil {
 		return Subscription{}, &Error{Code: badMessage, Message: "subscription must be an object"}
 	}
