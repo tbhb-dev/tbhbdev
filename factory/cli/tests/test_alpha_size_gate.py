@@ -99,8 +99,12 @@ def test_size_count_matches_rules_counting(
 
 @pytest.mark.parametrize("failed", [None, "code", "raw"])
 @pytest.mark.parametrize("tools", [{}, {"scc": "/tools/scc", "git": "/tools/git"}])
+@pytest.mark.parametrize("default_ref", [None, "origin/trunk"])
 def test_counts(
-    monkeypatch: pytest.MonkeyPatch, failed: str | None, tools: dict[str, str]
+    monkeypatch: pytest.MonkeyPatch,
+    failed: str | None,
+    tools: dict[str, str],
+    default_ref: str | None,
 ) -> None:
     runner = Mock(
         return_value=subprocess.CompletedProcess(
@@ -108,9 +112,9 @@ def test_counts(
         )
     )
     monkeypatch.setattr(sg.subprocess, "run", runner)
-    assert sg.size_counts("origin/main", "HEAD", **tools) == sg.SizeCounts(
-        400, 400, 1500, 1500, failed
-    )
+    assert sg.size_counts(
+        "origin/main", "HEAD", default_ref=default_ref, **tools
+    ) == sg.SizeCounts(400, 400, 1500, 1500, failed)
     assert runner.call_count == 1
     assert runner.call_args.args == (
         [
@@ -121,6 +125,7 @@ def test_counts(
             tools.get("scc", "scc"),
             tools.get("git", "git"),
             str(sg.DATA / "pr-size-exempt.txt"),
+            default_ref or "",
         ],
     )
     assert runner.call_args.kwargs == {
@@ -254,7 +259,11 @@ def test_pr_check(
     ) == bool(problem)
     lint.assert_called_once_with("draft.md")
     counter.assert_called_once_with(
-        "refs/remotes/origin/main", "HEAD", scc="/tools/scc", git="/tools/git"
+        "refs/remotes/origin/main",
+        "HEAD",
+        default_ref=None,
+        scc="/tools/scc",
+        git="/tools/git",
     )
     captured = capsys.readouterr()
     assert captured.err == ""
@@ -343,26 +352,37 @@ def test_pr_create_size(
     assert call(*fetched) in git.call_args_list
     if failure != "base":
         counter.assert_called_once_with(
-            "refs/remotes/origin/main", "HEAD", scc="/tools/scc", git="/tools/git"
+            "refs/remotes/origin/main",
+            "HEAD",
+            default_ref=None,
+            scc="/tools/scc",
+            git="/tools/git",
         )
 
 
-def test_the_base_is_refreshed_without_tags_then_counted(
+def test_both_stacked_refs_are_refreshed_without_tags_then_counted(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     counter = Mock(return_value=sg.SizeCounts(5, 400, 9, 1500, None))
     monkeypatch.setattr(sg, "size_counts", counter)
     git = git_exits()
     monkeypatch.setattr(pr, "git", git)
-    monkeypatch.setattr(pr, "base_of", Mock(return_value="topic"))
-    checked = pr.Checked([])
+    monkeypatch.setattr(pr, "default_base", Mock(return_value="main"))
+    checked = pr.Checked([], meta={"base": "topic"})
     pr.check_size(argparse.Namespace(command="create", draft="d.md"), checked)
     assert checked.problems == []
     assert git.call_args_list[0] == call(
-        *FETCH, "origin", "+refs/heads/topic:refs/remotes/origin/topic"
+        *FETCH,
+        "origin",
+        "+refs/heads/topic:refs/remotes/origin/topic",
+        "+refs/heads/main:refs/remotes/origin/main",
     )
     counter.assert_called_once_with(
-        "refs/remotes/origin/topic", "HEAD", scc="scc", git="git"
+        "refs/remotes/origin/topic",
+        "HEAD",
+        default_ref="refs/remotes/origin/main",
+        scc="scc",
+        git="git",
     )
 
 
