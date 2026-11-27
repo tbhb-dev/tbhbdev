@@ -73,7 +73,7 @@ func signedRequest(ctx context.Context, event, delivery, body string) *http.Requ
 	req.Header.Set(deliveryHeader, delivery)
 
 	mac := hmac.New(sha256.New, []byte(fixtureKey))
-	//nolint:errcheck // The hash.Hash contract guarantees that Write succeeds.
+
 	_, _ = io.WriteString(mac, body)
 	req.Header.Set("X-Hub-Signature-256", "sha256="+hex.EncodeToString(mac.Sum(nil)))
 

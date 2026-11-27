@@ -49,7 +49,6 @@ var (
 	errChannelClient = errors.New("channel delivery requires a claude-code client")
 )
 
-//nolint:gochecknoglobals // Reuse the same immutable framing escapes for every notification.
 var channelFraming = strings.NewReplacer("<", `\u003c`, ">", `\u003e`, "&", `\u0026`)
 
 func runMCP(ctx context.Context, logHandler slog.Handler, args []string) error {
@@ -106,7 +105,7 @@ func (in mcpStdin) Read(p []byte) (int, error) {
 		in.cancel()
 	}
 
-	return n, err //nolint:wrapcheck // Preserve the stdin read result for the SDK.
+	return n, err
 }
 
 type mcpStdout struct {
@@ -151,40 +150,77 @@ func newMCPServer(
 	notifier *notifyingTransport,
 	initialized func(context.Context, *mcp.InitializedRequest),
 ) *mcp.Server {
-	//nolint:exhaustruct_v5 // Keep SDK defaults for unused protocol features.
-	server := mcp.NewServer(&mcp.Implementation{Name: mcpServerName, Version: version}, &mcp.ServerOptions{
-		Logger:             logger,
-		InitializedHandler: initialized,
-		Instructions: "After a restart or reconnect, call check_delivery and confirm both events arrive: " +
-			"self_test and echo.",
-		Capabilities: &mcp.ServerCapabilities{
-			Experimental: map[string]any{channelCapability: map[string]any{}},
-			Logging:      &mcp.LoggingCapabilities{}, //nolint:staticcheck // Advertise logging for the negotiated protocols.
-			Tools:        &mcp.ToolCapabilities{},
+	server := mcp.NewServer(
+		&mcp.Implementation{
+			Title:       "",
+			Description: "",
+			WebsiteURL:  "",
+			Icons:       nil,
+			Name:        mcpServerName,
+			Version:     version,
 		},
-		// These versions use initialize, which supplies the client's name.
-		SupportedProtocolVersions: []string{"2025-11-25", "2025-06-18", "2025-03-26"},
-	})
+		&mcp.ServerOptions{
+			Logger:             logger,
+			InitializedHandler: initialized,
+			Instructions: "After a restart or reconnect, call check_delivery and confirm both events arrive: " +
+				"self_test and echo.",
+			Capabilities: &mcp.ServerCapabilities{
+				Extensions:  nil,
+				Completions: nil,
+				Prompts:     nil,
+				Resources:   nil,
 
-	//nolint:exhaustruct_v5 // Only the tool name, description and input schema are needed.
+				Experimental: map[string]any{channelCapability: map[string]any{}},
+				Logging:      &mcp.LoggingCapabilities{},
+				Tools:        &mcp.ToolCapabilities{ListChanged: false},
+			},
+			// These versions use initialize, which supplies the client's name.
+			SupportedProtocolVersions: []string{"2025-11-25", "2025-06-18", "2025-03-26"},
+		},
+	)
+
 	mcp.AddTool(server, &mcp.Tool{
+		Meta:         nil,
+		Annotations:  nil,
+		OutputSchema: nil,
+		Title:        "",
+		Icons:        nil,
+
 		Name: subscribeTool, Description: "Start receiving matching webhook events in this session.",
 		InputSchema: subscriptionSchema(`["provider","event","repository"]`),
 	}, subs.change)
-	//nolint:exhaustruct_v5 // Only the tool name, description and input schema are needed.
+
 	mcp.AddTool(server, &mcp.Tool{
+		Meta:         nil,
+		Annotations:  nil,
+		OutputSchema: nil,
+		Title:        "",
+		Icons:        nil,
+
 		Name: unsubscribeTool, Description: "Stop receiving the events a subscription matched.",
 		InputSchema: subscriptionSchema(`["provider"]`),
 	}, subs.change)
-	//nolint:exhaustruct_v5 // Only the tool name, description and input schema are needed.
+
 	mcp.AddTool(server, &mcp.Tool{
+		Meta:         nil,
+		Annotations:  nil,
+		OutputSchema: nil,
+		Title:        "",
+		Icons:        nil,
+
 		Name: listSubscriptionsTool, Description: "List this session's subscriptions.",
 		InputSchema: json.RawMessage(noArgumentsSchema),
 	}, func(context.Context, *mcp.CallToolRequest, json.RawMessage) (*mcp.CallToolResult, any, error) {
 		return nil, map[string][]filter.Subscription{subsKey: subs.list()}, nil
 	})
-	//nolint:exhaustruct_v5 // Only the tool name, description and input schema are needed.
+
 	mcp.AddTool(server, &mcp.Tool{
+		Meta:         nil,
+		Annotations:  nil,
+		OutputSchema: nil,
+		Title:        "",
+		Icons:        nil,
+
 		Name: checkDeliveryTool,
 		Description: "Send a self-test event and confirm it reaches this session. " +
 			"This proves delivery to the client over stdio but does not prove the gateway connection.",
@@ -203,7 +239,6 @@ type notifyingTransport struct {
 	mu    sync.Mutex
 }
 
-//nolint:ireturn // Implement mcp.Transport.
 func (t *notifyingTransport) Connect(ctx context.Context) (mcp.Connection, error) {
 	conn, err := t.inner.Connect(ctx)
 	if err != nil {
@@ -226,7 +261,6 @@ func (t *notifyingTransport) Notify(ctx context.Context, method string, params j
 		return errNoConnection
 	}
 
-	//nolint:wrapcheck // Preserve the connection's write error.
 	return conn.Write(ctx, &jsonrpc.Request{ID: jsonrpc.ID{}, Method: method, Params: params, Extra: nil})
 }
 
@@ -282,7 +316,6 @@ func (t *notifyingTransport) deliverChannel(ctx context.Context, session *mcp.Se
 		return errChannelClient
 	}
 
-	//nolint:errcheck,errchkjson // The params contain only strings and a string map.
 	data, _ := json.Marshal(channelParams(event))
 
 	return t.Notify(ctx, channelMethod, data)
@@ -325,7 +358,6 @@ func gatewayGap(from, to uint64) channelNotice {
 }
 
 func (notice channelNotice) channelEvent() channelEvent {
-	//nolint:errcheck,errchkjson // The notice contains only strings.
 	payload, _ := json.Marshal(notice)
 
 	return channelEvent{

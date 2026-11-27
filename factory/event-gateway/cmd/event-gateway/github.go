@@ -35,7 +35,6 @@ var (
 	githubDelivery = regexp.MustCompile(`^[A-Za-z0-9_-]{1,128}$`)
 )
 
-//nolint:tagliatelle // The envelope uses the gateway protocol field names.
 type envelope struct {
 	Type       string  `json:"type"`
 	Provider   string  `json:"provider"`
@@ -48,7 +47,6 @@ type envelope struct {
 }
 
 func (event envelope) encode() []byte {
-	//nolint:errcheck,errchkjson // Envelope metadata contains only strings and null.
 	data, _ := json.Marshal(event)
 
 	payload := event.Payload
@@ -63,7 +61,6 @@ func (event envelope) encode() []byte {
 	return append(data, '}')
 }
 
-//nolint:tagliatelle // GitHub sends full_name.
 type githubRepository struct {
 	FullName *string `json:"full_name"`
 }
@@ -73,8 +70,6 @@ type githubPayload struct {
 }
 
 // truncatedGitHub keeps filter fields at their original JSON paths.
-//
-//nolint:tagliatelle // GitHub sends these field names.
 type truncatedGitHub struct {
 	Action      *string            `json:"action,omitempty"`
 	CheckRun    *githubCheck       `json:"check_run,omitempty"`
@@ -126,8 +121,7 @@ func newGitHubWebhook(secret []byte, bodyCap int) (*githubWebhook, error) {
 		return nil, errSecret
 	}
 
-	//nolint:exhaustruct_v5 // Serve opens and attaches the store and telemetry after validating the secret.
-	return &githubWebhook{secret: secret, bodyCap: bodyCap}, nil
+	return &githubWebhook{store: eventStore{}, telemetry: telemetry{}, secret: secret, bodyCap: bodyCap}, nil
 }
 
 func (h *githubWebhook) ServeHTTP(response http.ResponseWriter, request *http.Request) {
@@ -292,7 +286,6 @@ func truncateGitHub(body []byte) ([]byte, error) {
 
 	payload.Truncated = true
 
-	//nolint:errcheck,errchkjson // The retained fields have fixed JSON types.
 	data, _ := json.Marshal(payload)
 
 	return data, nil

@@ -42,9 +42,9 @@ func TestMCPCommand(t *testing.T) {
 		checkError(t, err)
 
 		stdin := os.Stdin
-		os.Stdin = reader //nolint:reassign // Exercise the command's actual stdio transport.
+		os.Stdin = reader
 
-		t.Cleanup(func() { os.Stdin = stdin }) //nolint:reassign // Restore the test process's stdin.
+		t.Cleanup(func() { os.Stdin = stdin })
 
 		ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
 		t.Cleanup(cancel)
@@ -68,7 +68,6 @@ func TestMCPCommand(t *testing.T) {
 	checkEqual(t, errors.Is(err, errMCPUsage), true)
 }
 
-//nolint:paralleltest // The gateway fixture sets process-wide environment variables.
 func TestMCPStdinErrors(t *testing.T) {
 	t.Setenv(gatewayURLEnv, "")
 	t.Setenv(gatewayTokenEnv, "")
@@ -137,12 +136,10 @@ func TestMCPStdoutAfterCancel(t *testing.T) {
 	checkEqual(t, err, io.ErrClosedPipe)
 }
 
-//nolint:paralleltest // The gateway fixture sets process-wide environment variables.
 func TestMCPStdinCloseStopsGateway(t *testing.T) {
 	checkMCPBlockedStdout(t, false)
 }
 
-//nolint:paralleltest // The gateway fixture sets process-wide environment variables.
 func TestMCPMalformedInputWithBlockedStdout(t *testing.T) {
 	checkMCPBlockedStdout(t, true)
 }
@@ -215,17 +212,17 @@ func checkMCPBlockedStdout(t *testing.T, malformed bool) {
 func startMCPPipeClient(input io.Writer, output io.Reader) error {
 	_, err := io.WriteString(input, mcpTestInit)
 	if err != nil {
-		return err //nolint:wrapcheck // Report the pipe error to the test.
+		return err
 	}
 
 	_, err = bufio.NewReader(output).ReadBytes('\n')
 	if err != nil {
-		return err //nolint:wrapcheck // Report the pipe error to the test.
+		return err
 	}
 
 	_, err = io.WriteString(input, `{"jsonrpc":"2.0","method":"notifications/initialized"}`+"\n")
 	if err != nil {
-		return err //nolint:wrapcheck // Report the pipe error to the test.
+		return err
 	}
 
 	// Read only the first byte so the notification stays blocked in the pipe write.
@@ -233,7 +230,7 @@ func startMCPPipeClient(input io.Writer, output io.Reader) error {
 
 	_, err = io.ReadFull(output, firstByte[:])
 
-	return err //nolint:wrapcheck // Report the pipe error to the test.
+	return err
 }
 
 func mcpTestPipe(t *testing.T) (*os.File, *os.File) {
@@ -294,8 +291,10 @@ func connectMCPWithSubscriptions(
 	checkError(t, err)
 	t.Cleanup(func() { checkError(t, peer.Close()) })
 
-	//nolint:exhaustruct_v5 // Use SDK defaults for the test client.
-	client := mcp.NewClient(&mcp.Implementation{Name: name, Version: version}, &mcp.ClientOptions{Logger: logger})
+	client := mcp.NewClient(
+		&mcp.Implementation{Title: "", Description: "", WebsiteURL: "", Icons: nil, Name: name, Version: version},
+		&mcp.ClientOptions{Logger: logger},
+	)
 	session, err := client.Connect(ctx, captureMCPTransport{transport: out, notifications: notifications}, nil)
 	checkError(t, err)
 	t.Cleanup(func() { checkError(t, session.Close()) })
@@ -308,14 +307,13 @@ type captureMCPTransport struct {
 	notifications chan<- *jsonrpc.Request
 }
 
-//nolint:ireturn // Implement mcp.Transport.
 func (t captureMCPTransport) Connect(ctx context.Context) (mcp.Connection, error) {
 	conn, err := t.transport.Connect(ctx)
 
 	return captureMCPConnection{
 		Connection:    conn,
 		notifications: t.notifications,
-	}, err //nolint:wrapcheck // Pass through the SDK error.
+	}, err
 }
 
 type captureMCPConnection struct {
@@ -324,7 +322,6 @@ type captureMCPConnection struct {
 	notifications chan<- *jsonrpc.Request
 }
 
-//nolint:ireturn // Implement mcp.Connection.
 func (c captureMCPConnection) Read(ctx context.Context) (jsonrpc.Message, error) {
 	msg, err := c.Connection.Read(ctx)
 	if request, ok := msg.(*jsonrpc.Request); ok && c.notifications != nil &&
@@ -332,7 +329,7 @@ func (c captureMCPConnection) Read(ctx context.Context) (jsonrpc.Message, error)
 		c.notifications <- request
 	}
 
-	return msg, err //nolint:wrapcheck // Pass through the SDK error.
+	return msg, err
 }
 
 func TestMCPTools(t *testing.T) {
@@ -342,7 +339,7 @@ func TestMCPTools(t *testing.T) {
 	init := session.InitializeResult()
 	checkEqual(t, init.ServerInfo.Name, "event-gateway")
 	checkEqual(t, init.ProtocolVersion, "2025-11-25")
-	checkEqual(t, init.Capabilities.Logging != nil, true) //nolint:staticcheck // Check the legacy logging capability.
+	checkEqual(t, init.Capabilities.Logging != nil, true)
 	checkEqual(t, init.Capabilities.Tools.ListChanged, false)
 	capabilities, err := json.Marshal(init.Capabilities.Experimental)
 	checkError(t, err)
@@ -446,7 +443,6 @@ func readChannelNotification(t *testing.T, req *jsonrpc.Request) channelParamete
 
 type failingMCPTransport struct{}
 
-//nolint:ireturn // Implement mcp.Transport.
 func (failingMCPTransport) Connect(context.Context) (mcp.Connection, error) {
 	return nil, io.ErrClosedPipe
 }
@@ -470,8 +466,15 @@ func TestMCPChannelBeforeClientName(t *testing.T) {
 		in, _ := mcp.NewInMemoryTransports()
 		notifier := &notifyingTransport{inner: in, conn: nil, mu: sync.Mutex{}}
 		server := newMCPServer(slog.New(slog.DiscardHandler), new(mcpSubscriptions), notifier, nil)
-		//nolint:exhaustruct_v5 // Only the client's initialization state matters here.
-		opts := &mcp.ServerSessionOptions{State: &mcp.ServerSessionState{InitializeParams: init}}
+
+		opts := &mcp.ServerSessionOptions{
+			State: &mcp.ServerSessionState{
+				InitializedParams:         nil,
+				NegotiatedProtocolVersion: "",
+				LogLevel:                  "",
+				InitializeParams:          init,
+			},
+		}
 		peer, err := server.Connect(t.Context(), notifier, opts)
 		checkError(t, err)
 		checkEqual(t, notifier.deliverChannel(t.Context(), peer, event), errChannelClient)
@@ -650,8 +653,10 @@ func callMCPTool(t *testing.T, session *mcp.ClientSession, tool, arguments strin
 		raw = json.RawMessage(arguments)
 	}
 
-	//nolint:exhaustruct_v5 // This test sends only the tool name and arguments.
-	result, err := session.CallTool(t.Context(), &mcp.CallToolParams{Name: tool, Arguments: raw})
+	result, err := session.CallTool(
+		t.Context(),
+		&mcp.CallToolParams{Meta: nil, InputResponses: nil, RequestState: "", Name: tool, Arguments: raw},
+	)
 	checkError(t, err)
 
 	return result

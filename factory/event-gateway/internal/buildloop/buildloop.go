@@ -106,7 +106,6 @@ func (r *Runner) Run(ctx context.Context, command Command) (Result, error) {
 
 	var out bytes.Buffer
 
-	//nolint:gosec // The executable is matched against the allow-list above.
 	cmd := exec.CommandContext(ctx, command.Executable, command.Args...)
 	cmd.Dir = command.Dir
 	cmd.Stdout = &out

@@ -3,7 +3,7 @@
 
 // cspell:ignore testpackage
 
-package redelivery //nolint:testpackage // Exercise redaction and signer failures through private state.
+package redelivery
 
 import (
 	"bytes"
@@ -33,7 +33,7 @@ import (
 )
 
 const (
-	tokenPath   = "/app/installations/42/access_tokens" //nolint:gosec // This is a fake API path.
+	tokenPath   = "/app/installations/42/access_tokens"
 	secretToken = "test-installation-secret"
 	secretKey   = "test-key-material"
 	testAppID   = "12345"
@@ -61,7 +61,7 @@ func TestTokenCacheAndJWT(t *testing.T) {
 		}
 
 		writer.WriteHeader(http.StatusCreated)
-		//nolint:errcheck // The client reports an incomplete response.
+
 		_, _ = io.Copy(writer, tokenResponse(fmt.Sprint(secretToken, call), start.Add(time.Duration(call)*time.Hour)))
 	}))
 	t.Cleanup(server.Close)
@@ -209,7 +209,6 @@ func TestExchangeErrors(t *testing.T) {
 				t.Error("token request followed a redirect")
 			}
 
-			//nolint:exhaustruct_v5 // The transport supplies only fields used by the client.
 			return &http.Response{
 				StatusCode: test.status, Header: http.Header{"Location": {"/other"}}, Body: io.NopCloser(test.body),
 			}, nil
@@ -219,7 +218,6 @@ func TestExchangeErrors(t *testing.T) {
 	}
 
 	client.options.HTTPClient.Transport = roundTripFunc(func(req *http.Request) (*http.Response, error) {
-		//nolint:err113 // Simulate a transport error containing the Authorization header.
 		return nil, errors.New(req.Header.Get("Authorization") + secretToken)
 	})
 	assertTokenError(t, client, "transport", "send token request")

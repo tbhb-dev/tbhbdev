@@ -41,7 +41,7 @@ var (
 func (cfg *serveConfig) grafanaHandler() (*grafanaWebhook, error) {
 	_, fromEnv := os.LookupEnv(grafanaEnv)
 	if cfg.grafSecret == nil && cfg.grafFile == nil && !fromEnv {
-		return nil, nil //nolint:nilnil // A nil handler means the route is disabled.
+		return nil, nil
 	}
 
 	secret, err := readSecret(cfg.grafSecret, cfg.grafFile, grafanaEnv)
@@ -65,8 +65,7 @@ func newGrafanaWebhook(secret []byte) (*grafanaWebhook, error) {
 		return nil, errGrafanaSecret
 	}
 
-	//nolint:exhaustruct_v5 // Serve opens and attaches the store, telemetry and next handler after validating the secret.
-	return &grafanaWebhook{secret: secret}, nil
+	return &grafanaWebhook{next: nil, store: eventStore{}, telemetry: telemetry{}, secret: secret}, nil
 }
 
 // withGrafana puts the Grafana route in front of the GitHub handler when enabled.
@@ -177,7 +176,7 @@ func normalizeGrafana(raw json.RawMessage, delivery string, receivedAt time.Time
 	}
 
 	status := text(entry, "status")
-	labels, _ := entry["labels"].(map[string]any) //nolint:errcheck // A labels value that is not an object has no scope.
+	labels, _ := entry["labels"].(map[string]any)
 	kind, scopeID := "", ""
 
 	for _, scope := range [][2]string{{"host_name", "hosts"}, {"agent_account", "capacity"}} {
@@ -209,7 +208,6 @@ func normalizeGrafana(raw json.RawMessage, delivery string, receivedAt time.Time
 		}
 	}
 
-	//nolint:errcheck,errchkjson // The payload holds only strings.
 	data, _ := json.Marshal(payload)
 	repository := kind + "/" + scopeID
 

@@ -188,10 +188,8 @@ func checkServeSession(ctx context.Context, t *testing.T, base, token string) {
 	options.Subprotocols = []string{sessionProtocol}
 
 	for {
-		//nolint:bodyclose // Dial owns the HTTP response body.
 		conn, _, err := websocket.Dial(ctx, base+sessionPath, options)
 		if err == nil {
-			//nolint:errcheck // The server may have already closed the socket.
 			defer conn.CloseNow()
 
 			checkSessionReply(ctx, t, conn, `{"type":"ping"}`, typeKey, pong)

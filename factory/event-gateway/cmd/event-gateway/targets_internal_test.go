@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright Tony Burns
 
-//nolint:exhaustruct_v5 // Fixtures use zero defaults for fields unrelated to the case.
 package main
 
 // cspell:words eventfields temporaltarget
@@ -116,7 +115,7 @@ func TestServeTargets(t *testing.T) {
 		{name: "invalid JSON", data: "private-fixture", want: errTargetsFile},
 		{name: "invalid array", data: `{"targets":[null]}`, want: errTargetsFile},
 		{name: "null targets", data: `{"targets":null}`, want: errTargetsFile},
-		{name: "missing file", want: os.ErrNotExist},
+		{data: "", name: "missing file", want: os.ErrNotExist},
 		{name: "empty array", data: `{ "target\u0073": [ ] }`, want: errStoreDir},
 		{name: "empty object", data: "{}", want: errStoreDir},
 	} {
@@ -137,7 +136,6 @@ func TestServeTargets(t *testing.T) {
 	}
 }
 
-//nolint:paralleltest // Serve uses the process-wide target registry.
 func TestServeStartsConfiguredRunner(t *testing.T) {
 	targetTypes[fakeType] = func(routing.Target) (actor, func(), error) { return actorFunc(nil), nil, nil }
 
@@ -149,17 +147,22 @@ func TestServeStartsConfiguredRunner(t *testing.T) {
 		name, data, consumer string
 		dials                int
 	}{
-		{name: "registered", data: fixtureNewTarget, consumer: receiverName},
-		{name: "empty", data: `{"targets":[]}`, consumer: receiverName},
+		{dials: 0, name: "registered", data: fixtureNewTarget, consumer: receiverName},
+		{dials: 0, name: "empty", data: `{"targets":[]}`, consumer: receiverName},
 		{name: "temporal", data: temporalTargets, consumer: "workflow", dials: 1},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			const socket = "s"
 
-			client := &fakeTemporalClient{onClose: func() {
-				_, err := os.Lstat(socket)
-				checkEqual(t, errors.Is(err, os.ErrNotExist), true)
-			}}
+			client := &fakeTemporalClient{
+				Client: nil,
+				starts: nil,
+				closed: 0,
+				onClose: func() {
+					_, err := os.Lstat(socket)
+					checkEqual(t, errors.Is(err, os.ErrNotExist), true)
+				},
+			}
 			dials := 0
 
 			useTemporalDial(t, func(temporaltarget.Connection) (temporalClient, error) {
@@ -197,12 +200,15 @@ func TestServeStartsConfiguredRunner(t *testing.T) {
 	}
 }
 
-//nolint:paralleltest // The Temporal dialer is shared by serve.
 func TestTemporalTargetDelivery(t *testing.T) {
 	client := new(fakeTemporalClient)
 
 	useTemporalDial(t, func(connection temporaltarget.Connection) (temporalClient, error) {
-		checkEqual(t, connection, temporaltarget.Connection{HostPort: "temporal.example:7233", Namespace: "default"})
+		checkEqual(
+			t,
+			connection,
+			temporaltarget.Connection{TLS: nil, HostPort: "temporal.example:7233", Namespace: "default"},
+		)
 
 		return client, nil
 	})
@@ -228,7 +234,6 @@ func TestTemporalTargetDelivery(t *testing.T) {
 			`"rule":"start-event","seq":42,"target":"workflow"}`)
 }
 
-//nolint:paralleltest // The Temporal dialer is shared by serve.
 func TestTemporalTargetErrors(t *testing.T) {
 	badAction := strings.Replace(temporalTargets, temporalAction, `{"kind":"private-fixture"}`, 1)
 	later := strings.Replace(temporalEntry, `"name":"workflow"`, `"name":"later"`, 1)
@@ -239,34 +244,51 @@ func TestTemporalTargetErrors(t *testing.T) {
 		closes           int
 	}{
 		{
+			failDial: false,
+			closes:   0,
+
 			name: "bad connection",
 			data: strings.Replace(temporalTargets, temporalConnection, `{"host_port":"private-fixture"}`, 1),
 			want: `configure target "workflow": parse Temporal connection: invalid host_port`,
 		},
 		{
+			failDial: false,
+			closes:   0,
+
 			name: "connection shape",
 			data: strings.Replace(temporalTargets, temporalConnection, `"private-fixture"`, 1),
 			want: `configure target "workflow": invalid targets file`,
 		},
 		{
+			failDial: false,
+			closes:   0,
+
 			name: "action shape",
 			data: strings.Replace(temporalTargets, temporalAction, `"private-fixture"`, 1),
 			want: `configure target "workflow": invalid targets file`,
 		},
 		{
+			failDial: false,
+
 			name: "bad action", data: badAction, closes: 1,
 			want: `configure target "workflow": invalid Temporal rule action`,
 		},
 		{
+			closes: 0,
+
 			name: "dial failure", data: temporalTargets, failDial: true,
 			want: `configure target "workflow": dial Temporal failed`,
 		},
 		{
+			failDial: false,
+
 			name: "later unknown type", closes: 1,
 			data: `{"targets":[` + temporalEntry + `,` + strings.Replace(later, `"temporal"`, `"other"`, 1) + `]}`,
 			want: `unknown target type "other"`,
 		},
 		{
+			failDial: false,
+
 			name: "later bad action", closes: 2,
 			data: `{"targets":[` + temporalEntry + `,` + strings.Replace(later, temporalAction, `{}`, 1) + `]}`,
 			want: `configure target "later": invalid Temporal rule action`,
@@ -307,7 +329,7 @@ func TestTargetStartPositions(t *testing.T) {
 	since, parseErr := time.Parse(time.RFC3339, timestamp)
 	checkError(t, parseErr)
 
-	for start, want := range map[string]startPosition{"new": {}, "all": {all: true}, timestamp: {at: &since}} {
+	for start, want := range map[string]startPosition{"new": {at: nil, all: false}, "all": {all: true}, timestamp: {at: &since}} {
 		path := writeTargets(t, strings.Replace(fixtureTargets, `"all"`, `"`+start+`"`, 1))
 
 		var cfg serveConfig
@@ -341,13 +363,13 @@ func TestRuleTargetDelivery(t *testing.T) {
 		calls          []string
 		permanent      bool
 	}{
-		{name: "match", envelope: ruleEnvelope, calls: []string{firstRule, "second"}},
-		{name: "no match", envelope: strings.Replace(ruleEnvelope, "opened", "closed", 1)},
-		{name: "retry", envelope: ruleEnvelope, failure: errRetryDelivery, calls: []string{firstRule}},
+		{failure: nil, permanent: false, name: "match", envelope: ruleEnvelope, calls: []string{firstRule, "second"}},
+		{failure: nil, calls: nil, permanent: false, name: "no match", envelope: strings.Replace(ruleEnvelope, "opened", "closed", 1)},
+		{permanent: false, name: "retry", envelope: ruleEnvelope, failure: errRetryDelivery, calls: []string{firstRule}},
 		{name: "permanent", envelope: ruleEnvelope, failure: actorError(true), calls: []string{firstRule}, permanent: true},
-		{name: "temporary", envelope: ruleEnvelope, failure: actorError(false), calls: []string{firstRule}},
-		{name: "sentinel", envelope: ruleEnvelope, failure: ErrPermanent, calls: []string{firstRule}},
-		{name: "malformed", envelope: "private envelope fixture", permanent: true},
+		{permanent: false, name: "temporary", envelope: ruleEnvelope, failure: actorError(false), calls: []string{firstRule}},
+		{permanent: false, name: "sentinel", envelope: ruleEnvelope, failure: ErrPermanent, calls: []string{firstRule}},
+		{failure: nil, calls: nil, name: "malformed", envelope: "private envelope fixture", permanent: true},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			t.Parallel()
@@ -482,7 +504,7 @@ func TestRunWithTargetsErrors(t *testing.T) {
 
 	store := testStore(t, retention)
 	signals := newTelemetry(slog.DiscardHandler, nil, nil)
-	targets := []runnerTarget{{Target: fakeTarget{name: "."}}}
+	targets := []runnerTarget{{Start: startPosition{}, Subjects: nil, Target: fakeTarget{name: "."}}}
 	called := false
 	http := func(context.Context) error {
 		called = true
@@ -524,7 +546,13 @@ func TestRunWithTargetsStartupCancellation(t *testing.T) {
 
 	store := testStore(t, retention)
 	signals := newTelemetry(slog.DiscardHandler, nil, nil)
-	targets := []runnerTarget{{Target: cancelTarget{Target: fakeTarget{name: receiverName}, cancel: cancel}}}
+	targets := []runnerTarget{
+		{
+			Start:    startPosition{},
+			Subjects: nil,
+			Target:   cancelTarget{Target: fakeTarget{name: receiverName}, cancel: cancel},
+		},
+	}
 	called := false
 	err := runWithTargets(ctx, store, signals, targets, func(context.Context) error {
 		called = true

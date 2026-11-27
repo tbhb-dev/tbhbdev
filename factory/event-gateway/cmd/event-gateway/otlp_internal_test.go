@@ -143,7 +143,6 @@ func TestOTLPRedirects(t *testing.T) {
 	}
 }
 
-//nolint:paralleltest // The SDK's diagnostics are process-wide.
 func TestOTLPFailureKeepsWebhookAccepted(t *testing.T) {
 	collector := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, _ *http.Request) {
 		http.Error(response, collectorToken, http.StatusBadRequest)
@@ -156,7 +155,7 @@ func TestOTLPFailureKeepsWebhookAccepted(t *testing.T) {
 	otel.SetErrorHandler(otel.ErrorHandlerFunc(func(err error) { t.Errorf("SDK exposed an error: %v", err) }))
 	otel.SetLogger(funcr.New(func(prefix, args string) {
 		t.Errorf("SDK exposed a diagnostic: %s %s", prefix, args)
-	}, funcr.Options{})) //nolint:exhaustruct_v5 // The test uses default logger options.
+	}, funcr.Options{}))
 
 	var logs bytes.Buffer
 
@@ -177,8 +176,10 @@ func TestOTLPFailureKeepsWebhookAccepted(t *testing.T) {
 	collector.Close()
 	writer, err := newOTLPWriter(otlpConfig{Endpoint: collector.URL, Headers: nil, CAFile: ""})
 	checkError(t, err)
-	//nolint:exhaustruct_v5 // Simulate an unsupported SDK instrument.
+
 	unusedMetric := &metricdata.ResourceMetrics{
+		Resource: nil,
+
 		ScopeMetrics: []metricdata.ScopeMetrics{{Metrics: []metricdata.Metrics{{}}}},
 	}
 	checkEqual(
@@ -222,7 +223,6 @@ func setOTELVariables(t *testing.T) {
 	}
 }
 
-//nolint:paralleltest // Environment variables are process-wide.
 func TestOTLPIgnoresOTELVariables(t *testing.T) {
 	setOTELVariables(t)
 

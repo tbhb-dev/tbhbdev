@@ -110,7 +110,6 @@ func checkDelivery(t *testing.T, err error, step, class string) {
 	}
 }
 
-//nolint:gocognit // The nested tables exercise each action, reuse policy, and error.
 func TestAct(t *testing.T) {
 	t.Parallel()
 

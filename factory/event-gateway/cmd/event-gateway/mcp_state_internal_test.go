@@ -184,7 +184,6 @@ func TestMCPStateAwrelImport(t *testing.T) {
 	checkMCPStateLog(t, &logs, "")
 }
 
-//nolint:paralleltest // The awrel state fixture sets process-wide environment variables.
 func TestMCPStateAwrelSkip(t *testing.T) {
 	own, legacy := awrelStatePaths(t)
 	checkError(t, os.WriteFile(legacy, []byte(mcpStateDocument(mcpStateTestSubscription)), 0o600))
@@ -227,7 +226,6 @@ func TestMCPStateAwrelSkip(t *testing.T) {
 	}
 }
 
-//nolint:paralleltest // Each awrel state fixture sets process-wide environment variables.
 func TestMCPStateAwrelInvalid(t *testing.T) {
 	valid := mcpStateDocument(mcpStateTestSubscription)
 	for _, test := range []struct {

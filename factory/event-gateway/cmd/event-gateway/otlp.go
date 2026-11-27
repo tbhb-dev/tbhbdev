@@ -81,7 +81,6 @@ func openTelemetry(ctx context.Context, handler slog.Handler, cfg otlpConfig) (t
 	otel.SetLogger(logr.Discard())
 	otel.SetErrorHandler(otel.ErrorHandlerFunc(func(error) {}))
 
-	//nolint:errcheck // The HTTP client has no connection to start.
 	traceExporter, _ := otlptrace.New(ctx, writer)
 	// The SDK's WithResource options always merge OTEL_RESOURCE_ATTRIBUTES and OTEL_SERVICE_NAME
 	// into the provider resource, and v1.47.0 has no option to skip that. The wire resource is
@@ -159,8 +158,8 @@ func newOTLPWriter(cfg otlpConfig) (*otlpWriter, error) {
 		return nil, errOTLPEndpoint
 	}
 
-	//nolint:exhaustruct_v5 // A nil root pool uses the system trust store.
-	tlsConfig := &tls.Config{MinVersion: tls.VersionTLS12}
+	var tlsConfig tls.Config
+	tlsConfig.MinVersion = tls.VersionTLS12
 
 	if cfg.CAFile != "" {
 		pem, readErr := os.ReadFile(cfg.CAFile)
@@ -179,14 +178,13 @@ func newOTLPWriter(cfg otlpConfig) (*otlpWriter, error) {
 
 	headers.Set("Content-Type", "application/x-protobuf")
 
-	//nolint:exhaustruct_v5 // The exporter uses a direct connection with its own TLS policy.
-	transport := &http.Transport{TLSClientConfig: tlsConfig}
-
-	//nolint:exhaustruct_v5 // Collector requests use this transport and redirect policy.
+	var transport http.Transport
+	transport.TLSClientConfig = &tlsConfig
 	client := &http.Client{
-		Transport:     transport,
+		Jar:           nil,
+		Transport:     &transport,
 		Timeout:       exportTimeout,
-		CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse },
+		CheckRedirect: rejectRedirect,
 	}
 
 	return &otlpWriter{endpoint: endpoint, headers: headers, client: client}, nil
@@ -247,17 +245,19 @@ func (otlpMetrics) Temporality(kind sdkmetric.InstrumentKind) metricdata.Tempora
 	return sdkmetric.DefaultTemporalitySelector(kind)
 }
 
-//nolint:ireturn // The SDK exporter interface requires this return type.
 func (otlpMetrics) Aggregation(kind sdkmetric.InstrumentKind) sdkmetric.Aggregation {
 	return sdkmetric.DefaultAggregationSelector(kind)
 }
 
-//nolint:exhaustruct_v5 // Optional OTLP fields are omitted for the gateway's counter.
 func (w otlpMetrics) Export(ctx context.Context, data *metricdata.ResourceMetrics) error {
-	metrics := &metricpb.ResourceMetrics{Resource: otlpResource()}
+	metrics := &metricpb.ResourceMetrics{ScopeMetrics: nil, SchemaUrl: "", Resource: otlpResource()}
 
 	for _, scope := range data.ScopeMetrics {
-		group := &metricpb.ScopeMetrics{Scope: &commonpb.InstrumentationScope{Name: scope.Scope.Name}}
+		group := &metricpb.ScopeMetrics{
+			Metrics:   nil,
+			SchemaUrl: "",
+			Scope:     &commonpb.InstrumentationScope{Name: scope.Scope.Name},
+		}
 		for _, metric := range scope.Metrics {
 			sum, ok := metric.Data.(metricdata.Sum[int64])
 			if !ok {
@@ -265,6 +265,8 @@ func (w otlpMetrics) Export(ctx context.Context, data *metricdata.ResourceMetric
 			}
 
 			value := &metricpb.Sum{
+				DataPoints: nil,
+
 				IsMonotonic:            sum.IsMonotonic,
 				AggregationTemporality: metricpb.AggregationTemporality_AGGREGATION_TEMPORALITY_CUMULATIVE,
 			}
@@ -273,6 +275,9 @@ func (w otlpMetrics) Export(ctx context.Context, data *metricdata.ResourceMetric
 			// reports the one start time fixed when the provider was built.
 			for _, point := range sum.DataPoints {
 				value.DataPoints = append(value.DataPoints, &metricpb.NumberDataPoint{
+					Exemplars: nil,
+					Flags:     0,
+
 					Attributes:        otlpAttributes(point.Attributes.ToSlice()),
 					StartTimeUnixNano: uint64(w.start.UnixNano()),
 					TimeUnixNano:      uint64(point.Time.UnixNano()),
@@ -280,7 +285,13 @@ func (w otlpMetrics) Export(ctx context.Context, data *metricdata.ResourceMetric
 				})
 			}
 
-			metric := &metricpb.Metric{Name: metric.Name, Data: &metricpb.Metric_Sum{Sum: value}}
+			metric := &metricpb.Metric{
+				Description: "",
+				Unit:        "",
+				Metadata:    nil,
+				Name:        metric.Name,
+				Data:        &metricpb.Metric_Sum{Sum: value},
+			}
 			group.Metrics = append(group.Metrics, metric)
 		}
 
@@ -294,14 +305,19 @@ func (w otlpMetrics) Export(ctx context.Context, data *metricdata.ResourceMetric
 
 type otlpLogs struct{ *otlpWriter }
 
-//nolint:exhaustruct_v5,gosec // The bridge supplies valid OTLP severity numbers and the gateway omits optional fields.
 func (w otlpLogs) Export(ctx context.Context, records []sdklog.Record) error {
-	group := &logpb.ScopeLogs{Scope: &commonpb.InstrumentationScope{Name: serviceName}}
+	group := &logpb.ScopeLogs{LogRecords: nil, SchemaUrl: "", Scope: &commonpb.InstrumentationScope{Name: serviceName}}
 
 	for i := range records {
 		record := &records[i]
 		traceID, spanID := record.TraceID(), record.SpanID()
 		group.LogRecords = append(group.LogRecords, &logpb.LogRecord{
+			ObservedTimeUnixNano:   0,
+			Attributes:             nil,
+			DroppedAttributesCount: 0,
+			Flags:                  0,
+			EventName:              "",
+
 			TimeUnixNano:   uint64(record.Timestamp().UnixNano()),
 			SeverityNumber: logpb.SeverityNumber(record.Severity()),
 			SeverityText:   record.SeverityText(),
@@ -311,14 +327,16 @@ func (w otlpLogs) Export(ctx context.Context, records []sdklog.Record) error {
 		})
 	}
 
-	logs := &logpb.ResourceLogs{Resource: otlpResource(), ScopeLogs: []*logpb.ScopeLogs{group}}
+	logs := &logpb.ResourceLogs{SchemaUrl: "", Resource: otlpResource(), ScopeLogs: []*logpb.ScopeLogs{group}}
 
 	return w.send(ctx, "logs", &logexport.ExportLogsServiceRequest{ResourceLogs: []*logpb.ResourceLogs{logs}})
 }
 
 func otlpResource() *resourcepb.Resource {
-	//nolint:exhaustruct_v5 // The gateway sets only the service name.
 	return &resourcepb.Resource{
+		DroppedAttributesCount: 0,
+		EntityRefs:             nil,
+
 		Attributes: otlpAttributes([]attribute.KeyValue{attribute.String("service.name", serviceName)}),
 	}
 }
@@ -335,8 +353,7 @@ func otlpAttributes(attributes []attribute.KeyValue) []*commonpb.KeyValue {
 			value.Value = &commonpb.AnyValue_IntValue{IntValue: attr.Value.AsInt64()}
 		}
 
-		//nolint:exhaustruct_v5 // Attribute keys use inline strings.
-		values = append(values, &commonpb.KeyValue{Key: string(attr.Key), Value: value})
+		values = append(values, &commonpb.KeyValue{KeyStrindex: 0, Key: string(attr.Key), Value: value})
 	}
 
 	return values

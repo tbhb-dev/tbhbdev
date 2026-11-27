@@ -294,13 +294,12 @@ type sessionOpeningStream struct {
 	publish func()
 }
 
-//nolint:ireturn // Match the JetStream stream interface.
 func (s sessionOpeningStream) OrderedConsumer(
 	ctx context.Context, config jetstream.OrderedConsumerConfig,
 ) (jetstream.Consumer, error) {
 	s.publish()
 
-	return s.Stream.OrderedConsumer(ctx, config) //nolint:wrapcheck // Preserve the stream's result.
+	return s.Stream.OrderedConsumer(ctx, config)
 }
 
 func TestSessionResumeMissingTail(t *testing.T) {
@@ -450,13 +449,13 @@ func checkClose(ctx context.Context, t *testing.T, conn *websocket.Conn, code we
 
 func dialSession(ctx context.Context, t *testing.T, url string) *websocket.Conn {
 	t.Helper()
-	//nolint:exhaustruct_v5,bodyclose // A successful upgrade transfers ownership to the socket.
+
 	conn, _, err := websocket.Dial(ctx, url+sessionPath, &websocket.DialOptions{
 		HTTPHeader: http.Header{authorization: {"Bearer " + readFixture}}, Subprotocols: []string{sessionProtocol},
 	})
 	checkError(t, err)
 	checkEqual(t, conn.Subprotocol(), sessionProtocol)
-	//nolint:errcheck // The server may have already closed the socket.
+
 	t.Cleanup(func() { _ = conn.CloseNow() })
 
 	return conn

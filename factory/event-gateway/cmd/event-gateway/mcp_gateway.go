@@ -80,8 +80,12 @@ func runMCPGateway(
 	options := new(websocket.DialOptions)
 	options.HTTPHeader = http.Header{"Authorization": {"Bearer " + token}}
 	options.Subprotocols = []string{sessionProtocol}
-	//nolint:exhaustruct_v5 // Keep the default transport and reject redirects.
+
 	options.HTTPClient = &http.Client{
+		Transport: nil,
+		Jar:       nil,
+		Timeout:   0,
+
 		CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse },
 	}
 

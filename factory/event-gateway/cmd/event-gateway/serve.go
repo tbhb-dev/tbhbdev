@@ -281,17 +281,15 @@ type parkedService func(eventStore) []httpService
 func noParkedService(eventStore) []httpService { return nil }
 
 func gatewayHTTP(address string, handler http.Handler) httpService {
-	//nolint:exhaustruct_v5 // The gateway sets the address, handler, and timeouts it needs.
-	server := &http.Server{
-		Addr:                         address,
-		Handler:                      handler,
-		DisableGeneralOptionsHandler: true,
-		ReadHeaderTimeout:            readTimeout,
-		ReadTimeout:                  readTimeout,
-		WriteTimeout:                 writeTimeout,
-	}
+	var server http.Server
+	server.Addr = address
+	server.Handler = handler
+	server.DisableGeneralOptionsHandler = true
+	server.ReadHeaderTimeout = readTimeout
+	server.ReadTimeout = readTimeout
+	server.WriteTimeout = writeTimeout
 
-	return httpService{Server: server, serve: server.ListenAndServe}
+	return httpService{Server: &server, serve: server.ListenAndServe}
 }
 
 func runHTTP(ctx context.Context, tokens *readTokens, logger *slog.Logger, servers ...httpService) error {

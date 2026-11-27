@@ -20,7 +20,6 @@ import (
 
 type targetFactory func(routing.Target) (actor, func(), error)
 
-//nolint:gochecknoglobals // Serve uses the registry of supported target types.
 var targetTypes = map[string]targetFactory{"temporal": newTemporalTarget}
 
 var (
@@ -35,12 +34,10 @@ type temporalClient interface {
 	Close()
 }
 
-//nolint:gochecknoglobals // Tests substitute a client without network access.
 var dialTemporal = func(connection temporaltarget.Connection) (temporalClient, error) {
 	return temporaltarget.Dial(connection)
 }
 
-//nolint:ireturn // The registry accepts actors from each target type.
 func newTemporalTarget(config routing.Target) (actor, func(), error) {
 	connection, err := temporaltarget.ParseConnection(config.Connection)
 	if err != nil {
@@ -223,7 +220,6 @@ func runWithTargets(
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
-	//nolint:exhaustruct_v5 // The runner uses the default retry base and a fresh gap counter.
 	run := runner{
 		stream:      store.stream,
 		targets:     targets,

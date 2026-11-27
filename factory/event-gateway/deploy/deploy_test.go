@@ -58,7 +58,7 @@ func fixture(t *testing.T) string {
 	write := func(name, content string, mode os.FileMode) {
 		path := filepath.Join(dir, name)
 		must(t, os.MkdirAll(filepath.Dir(path), 0o700))
-		must(t, os.WriteFile(path, []byte(content), mode)) //nolint:gosec // the path is in the test's own directory
+		must(t, os.WriteFile(path, []byte(content), mode))
 	}
 
 	script, err := os.ReadFile("up.sh")
@@ -116,7 +116,7 @@ func runUp(t *testing.T, mutate func(dir string), env []string, args ...string) 
 	}
 
 	// The record is absent when up.sh never reached docker.
-	got, _ := os.ReadFile(filepath.Join(dir, "record")) //nolint:errcheck // see above
+	got, _ := os.ReadFile(filepath.Join(dir, "record"))
 	res.record = string(got)
 
 	return res
@@ -203,7 +203,7 @@ func TestUpRequiresSecrets(t *testing.T) {
 		path := func(dir string) string { return filepath.Join(dir, "secrets", name) }
 
 		for kind, mutate := range map[string]func(string){
-			"mode 440": func(dir string) { must(t, os.Chmod(path(dir), 0o440)) }, //nolint:gosec // a refused mode
+			"mode 440": func(dir string) { must(t, os.Chmod(path(dir), 0o440)) },
 			"mode 600": func(dir string) { must(t, os.Chmod(path(dir), 0o600)) },
 			"symlink": func(dir string) {
 				must(t, os.Remove(path(dir)))

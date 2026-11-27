@@ -143,7 +143,6 @@ func TestReadEventRoutes(t *testing.T) {
 	response = readRequest(t, api, eventsPath+"/2", header, http.StatusOK)
 	checkEqual(t, strings.Contains(response.Body.String(), `"payload":{"message":"stored"}`), true)
 
-	//nolint:exhaustruct_v5 // The test consumer only needs a bounded reset.
 	consumer, err := store.stream.OrderedConsumer(t.Context(), jetstream.OrderedConsumerConfig{MaxResetAttempts: 1})
 	checkError(t, err)
 	exerciseSession(t, api, hook, consumer)
@@ -163,7 +162,6 @@ type readFetchStream struct {
 	consumer jetstream.Consumer
 }
 
-//nolint:ireturn // Match the JetStream stream interface.
 func (s readFetchStream) OrderedConsumer(context.Context, jetstream.OrderedConsumerConfig) (jetstream.Consumer, error) {
 	return s.consumer, nil
 }
