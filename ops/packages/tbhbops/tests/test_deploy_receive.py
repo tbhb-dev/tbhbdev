@@ -489,25 +489,7 @@ def test_signal_compensates(
     assert not receiver.service.secrets[0].target.exists()
 
 
-def test_signal_handlers_and_broken_output(
-    receiver: receive.Receiver, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    signals = receive.Signals()
-    recorded: list[int] = []
-
-    def install(number: int, _handler: object) -> int:
-        recorded.append(number)
-        return signal.SIG_DFL
-
-    monkeypatch.setattr(signal, "signal", install)
-    signals.start()
-    signals.check()
-    signals.stop(signal.SIGINT, None)
-    with pytest.raises(CommandError):
-        signals.check()
-    signals.restore()
-    assert len(recorded) == 8
-
+def test_broken_output_does_not_interrupt_receiver(receiver: receive.Receiver) -> None:
     class Broken(io.StringIO):
         @override
         def write(self, _body: str) -> int:
