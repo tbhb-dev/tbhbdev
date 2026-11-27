@@ -25,7 +25,7 @@ from agent_example import LINUX, settings, trusted_executables
 
 from tbhbdev.alpha.agent import settings as agent_settings
 from tbhbdev.alpha.agent import transport
-from tbhbdev.alpha.agent.decisions import policy, remote
+from tbhbdev.alpha.agent.decisions import policy, remote, remote_shell
 from tbhbdev.alpha.agent.driver import arguments as agent_arguments
 from tbhbdev.alpha.agent.driver import metadata
 from tbhbdev.alpha.agent.driver.inspection import inspect
@@ -272,7 +272,7 @@ def test_scripts_have_fixed_path_socket_and_git_environment() -> None:
 
 @pytest.mark.parametrize("path", [".private/sockets", "~/.private/sockets"])
 def test_socket_home_relative_paths(host: Path, path: str) -> None:
-    script = remote.socket_root(path) + 'printf "%s" "$s/agents"\n'
+    script = remote_shell.socket_root(path) + 'printf "%s" "$s/agents"\n'
     result = execute(script)
     assert result.returncode == 0
     assert result.stdout.decode() == policy.resolve(str(host), path) + "/agents"
@@ -1423,7 +1423,7 @@ def test_remote_state_matches_run_host(
         monkeypatch.setenv(
             "XDG_STATE_HOME", str(host / "state") if xdg == "absolute" else xdg
         )
-    result = execute(remote.ROOT + "printf '%s' \"$d\"")
+    result = execute(remote_shell.ROOT + "printf '%s' \"$d\"")
     expected = host / ("state" if xdg == "absolute" else ".local/state")
     assert result.returncode == 0
     assert result.stdout.decode() == str(expected / "tbhbdev/agent-runs")

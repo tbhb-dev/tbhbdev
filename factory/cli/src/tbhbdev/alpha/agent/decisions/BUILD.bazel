@@ -67,9 +67,18 @@ cli_py_library(
     pyi_deps = ["//factory/cli/src/tbhbdev/alpha/agent:model"],
     visibility = ["//factory/cli:__subpackages__"],
     deps = [
+        ":remote_shell",
         ":repo",
         ":runfiles_names",
     ],
+)
+
+cli_py_library(
+    name = "remote_shell",
+    srcs = ["remote_shell.py"],
+    imports = ["../../../.."],
+    visibility = ["//factory/cli:__subpackages__"],
+    deps = [":runfiles_names"],
 )
 
 cli_py_library(

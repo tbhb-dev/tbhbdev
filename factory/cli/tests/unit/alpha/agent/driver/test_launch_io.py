@@ -31,7 +31,7 @@ from tbhbdev import version
 from tbhbdev.alpha.agent import model, transport
 from tbhbdev.alpha.agent import settings as agent_settings
 from tbhbdev.alpha.agent.decisions import remote as remote_commands
-from tbhbdev.alpha.agent.decisions import request
+from tbhbdev.alpha.agent.decisions import remote_shell, request
 from tbhbdev.alpha.agent.driver import launch as coordinator
 from tbhbdev.alpha.agent.driver import (
     metadata,
@@ -301,7 +301,7 @@ def test_review_ref(remote: Remote, ref: str) -> None:
         assert git == [
             {
                 "args": [
-                    *shlex.split(remote_commands.GIT_FLAGS)[1:],
+                    *shlex.split(remote_shell.GIT_FLAGS)[1:],
                     "ls-remote",
                     "--exit-code",
                     "--",
