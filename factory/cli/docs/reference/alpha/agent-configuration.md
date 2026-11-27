@@ -5,7 +5,8 @@ generated:
     harness: codex:0.171.0
     model: openai:gpt-6.2-sol
     surface: exec
-    at: "2026-11-26T22:46:58Z"
+    session: sha-256-64:eb99310f9edb9d70
+    at: "2026-11-26T22:53:24Z"
 status: stable
 tags: [alpha]
 title: Agent configuration
@@ -169,7 +170,7 @@ Host tools use a fixed search path with optional absolute directories from `host
 
 Codex uses the account’s existing executable. Runs skip standalone release validation and copying. A missing executable still fails with `host executable codex was not found on PATH <directories>`. Codex uses full access with its network proxy off. An agy review omits `--sandbox`.
 
-Run-host announces full access before preparation. Reviews still require reviews App references and refuse token request failures. A review token holds read permissions only (contents, pull requests, checks and statuses). Reviews App credentials can remain configured on any run host.
+Run-host announces full access before preparation. Reviews still require reviews App references and refuse token request failures. A review token holds read permissions only (contents, pull requests, checks, statuses and Actions). Actions read lets reviews read workflow runs in a pull request's status rollup. Reviews App credentials can remain configured on any run host.
 
 Run-host builds the harness command and adds the brief header. The driver sends the raw brief, an optional `<name>.schema.json`, and `--host` with a configured host name. Codex receives the schema path. Claude receives its contents. An unset, empty or relative `XDG_STATE_HOME` uses the home directory default. Finished runs keep their completion and log files when a rerun fails.
 
