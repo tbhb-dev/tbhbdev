@@ -34,9 +34,7 @@ def staged_docs(top: Path) -> list[tuple[str, str, str]]:
     )  # fmt: skip
     docs = stampable_docs(os.fsdecode(raw))
     heads = merge_heads(top)
-    if len(heads) > 1:
-        return []
-    return not_from_merge(top, docs, heads[0]) if heads else docs
+    return not_from_merge(top, docs, heads) if heads else docs
 
 
 def merge_heads(top: Path) -> list[str]:
@@ -53,20 +51,23 @@ def merge_heads(top: Path) -> list[str]:
 
 
 def not_from_merge(
-    top: Path, docs: list[tuple[str, str, str]], head: str
+    top: Path, docs: list[tuple[str, str, str]], heads: list[str]
 ) -> list[tuple[str, str, str]]:
-    """The staged documents whose content differs from the incoming parent."""
-    code, raw = git_raw(
-        "diff", "--cached", "--raw", "-z", "--no-renames", head, cwd=top
-    )
-    if code != 0:
-        print(
-            f"{PROG}: can't compare with {head}; stamping every staged document",
-            file=sys.stderr,
+    """The staged documents whose content differs from every incoming parent."""
+    paths = {path for path, _, _ in docs}
+    for head in heads:
+        code, raw = git_raw(
+            "diff", "--cached", "--raw", "-z", "--no-renames", head, cwd=top
         )
-        return docs
-    changed = {os.fsdecode(path) for path in raw.split(b"\0")[1::2]}
-    return [doc for doc in docs if doc[0] in changed]
+        if code != 0:
+            print(
+                f"{PROG}: can't compare with {head}; stamping every staged document",
+                file=sys.stderr,
+            )
+            return docs
+        changed = {os.fsdecode(path) for path in raw.split(b"\0")[1::2]}
+        paths &= changed
+    return [doc for doc in docs if doc[0] in paths]
 
 
 def stamp_document(top: Path, doc: tuple[str, str, str], entries: list[Entry]) -> None:

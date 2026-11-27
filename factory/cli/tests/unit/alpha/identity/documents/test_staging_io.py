@@ -140,6 +140,22 @@ def test_staged_docs_keeps_a_file_that_differs_from_both_parents(repo: Path) -> 
     assert [d[0] for d in documents_staging.staged_docs(repo)] == ["docs/a.md"]
 
 
+def test_staged_docs_skips_files_any_octopus_parent_brings_in(repo: Path) -> None:
+    stage_doc(repo, "docs/base.md", "base\n")
+    commit(repo)
+    for name in ("one", "two"):
+        run_git(repo, "switch", "-q", "-c", name)
+        stage_doc(repo, f"docs/{name}.md", f"{name}\n")
+        commit(repo)
+        run_git(repo, "switch", "-q", "-")
+    stage_doc(repo, "docs/main.md", "main\n")
+    commit(repo)
+    run_git(repo, "merge", "-q", "--no-commit", "one", "two")
+    assert documents_staging.staged_docs(repo) == []
+    stage_doc(repo, "docs/resolved.md", "by the merge\n")
+    assert [d[0] for d in documents_staging.staged_docs(repo)] == ["docs/resolved.md"]
+
+
 def test_staged_docs_warns_and_keeps_all_when_git_cannot_compare(
     repo: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
