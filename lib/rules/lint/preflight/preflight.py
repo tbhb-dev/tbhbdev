@@ -161,54 +161,35 @@ async def check(name: str, revisions: Revisions, scratch: Path) -> None:
         case "cli-coverage":
             await run(*BAZEL_RUN, "//factory/cli:coverage")
         case "lint-baselines":
-            await run(
-                *BAZEL_RUN, "@tbhb_rules//lint:lint_baselines", "--", merge_base, head
-            )
+            target = "@tbhb_rules//lint:lint_baselines"
+            await run(*BAZEL_RUN, target, "--", merge_base, head)
         case "gitleaks-text":
-            await run(
-                *BAZEL_RUN,
-                "@tbhb_rules//lint:gitleaks_text",
-                stdin=await asyncio.to_thread(DRAFT.read_bytes),
-            )
+            draft = await asyncio.to_thread(DRAFT.read_bytes)
+            await run(*BAZEL_RUN, "@tbhb_rules//lint:gitleaks_text", stdin=draft)
         case "module-tidy" | "prose":
             prefix = ("mise", "exec", "--") if name == "prose" else ()
             await run(*prefix, "bash", script, name, scratch)
         case "agent-capacity-vulnerabilities":
-            await run(
-                *BAZEL_RUN,
-                "//factory/agent-capacity:govulncheck",
-                "--",
-                f"--sarif={scratch}/agent-capacity.sarif",
-            )
+            target = "//factory/agent-capacity:govulncheck"
+            report = scratch / "agent-capacity.sarif"
+            await run(*BAZEL_RUN, target, "--", f"--sarif={report}")
         case "agent-capacity-modules":
             scanner, vendor = scratch / "gomodscan", scratch / "vendored"
             await run("bash", script, "scanner-checkout", scanner, seconds=120)
             await run("bash", script, "vendor", vendor)
-            await run(
-                "bash", script, "modules", scanner, vendor, scratch / "gomodscan.sarif"
-            )
+            report = scratch / "gomodscan.sarif"
+            await run("bash", script, "modules", scanner, vendor, report)
         case "pr-size" | "design-report":
             checkout = scratch / "base"
             await run("git", "worktree", "add", "--quiet", "--detach", checkout, base)
             try:
                 if name == "pr-size":
-                    args = (
-                        base,
-                        head,
-                        ref,
-                        DEFAULT_BASE,
-                        await git("branch", "--show-current"),
-                    )
+                    branch = await git("branch", "--show-current")
+                    args = (base, head, ref, DEFAULT_BASE, branch)
                     await run("bash", script, name, *args, cwd=checkout)
                     return
-                await run(
-                    "bash",
-                    script,
-                    name,
-                    checkout,
-                    scratch,
-                    env={**os.environ, "PYTHON": sys.executable},
-                )
+                env = {**os.environ, "PYTHON": sys.executable}
+                await run("bash", script, name, checkout, scratch, env=env)
             finally:
                 await run("git", "worktree", "remove", "--force", checkout)
         case _:
@@ -239,13 +220,11 @@ async def main() -> int:
     if not ref or args.base == "HEAD" or ref == "main":
         ref = DEFAULT_BASE
     paths = await git("diff", "--name-only", "-z", "--no-renames", merge_base, head)
-    checks = (
-        (args.check,)
-        if args.check
-        else checks_for(
-            paths.split("\0")[:-1], has_draft=await asyncio.to_thread(DRAFT.is_file)
-        )
-    )
+    if args.check:
+        checks = (args.check,)
+    else:
+        has_draft = await asyncio.to_thread(DRAFT.is_file)
+        checks = checks_for(paths.split("\0")[:-1], has_draft=has_draft)
     revisions = Revisions(base, merge_base, head, ref)
     results = []
     scratch = Path(tempfile.mkdtemp(prefix="preflight-"))
