@@ -1,6 +1,5 @@
 ---
 # Versions stay beside each other; activating one switches only the link.
-claude_code_install: true
 claude_code_account: agent
 claude_code_version: 2.1.330
 claude_code_activate: true

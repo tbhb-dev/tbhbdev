@@ -3,21 +3,6 @@ argument_specs:
   main:
     short_description: Keep the WSL guest running and schedule Windows updates
     options:
-      windows_update_policy_wsl_subscription:
-        type: str
-        description: Event subscription XML for successful Windows Update installation.
-      windows_update_policy_wsl_interval:
-        type: str
-        description: ISO 8601 duration between WSL watchdog runs.
-      windows_update_policy_wsl_boot_delay:
-        type: str
-        description: ISO 8601 delay after boot before starting Ubuntu.
-      windows_update_policy_wsl_event_delay:
-        type: str
-        description: ISO 8601 delay after the event before starting Ubuntu.
-      windows_update_policy_wsl_start_boundary:
-        type: str
-        description: Fixed past start boundary for the indefinite time trigger.
       windows_update_policy_updates:
         type: dict
         description: DWORD values under the WindowsUpdate policy key.

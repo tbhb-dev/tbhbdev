@@ -86,13 +86,6 @@ argument_specs:
         type: str
         default: https://pkgs.tailscale.com/stable/ubuntu
         description: Tailscale's apt repository, to which the seed adds the resolute suite.
-      ci_vm_tailscale_join:
-        type: bool
-        default: true
-        description: >-
-          Whether a new VM joins the tailnet at its first boot. The controller mints the key only when the
-          domain doesn't exist, ci_vm_hardware is true and this is true, and never in a check run. The
-          seed holds the key until the run after the domain exists replaces it.
       ci_vm_tailscale_oauth_ref_id:
         type: str
         description: 1Password reference for the OAuth client's ID, read on the controller.

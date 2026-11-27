@@ -14,12 +14,6 @@
 - name: Keep the Ubuntu WSL guest running
   ansible.windows.win_powershell:
     script: "{{ lookup('ansible.builtin.file', 'set-wsl-triggers.ps1') }}"
-    parameters:
-      Subscription: "{{ windows_update_policy_wsl_subscription }}"
-      Interval: "{{ windows_update_policy_wsl_interval }}"
-      BootDelay: "{{ windows_update_policy_wsl_boot_delay }}"
-      EventDelay: "{{ windows_update_policy_wsl_event_delay }}"
-      StartBoundary: "{{ windows_update_policy_wsl_start_boundary }}"
 
 - name: Configure update deferrals
   ansible.windows.win_regedit:

@@ -14,40 +14,36 @@
 # addresses, which the tailnet_addresses filter resolves on the controller at
 # apply time: sshd matches a host name in from= only with UseDNS, which Windows
 # OpenSSH leaves off, so a name would lock every key out.
-- name: Require a clean key list
+- name: Require clean authorized key lists
   ansible.builtin.assert:
     that:
-      - windows_accounts_agent_keys | length > 0
+      - key_list.entries | length > 0
       - >-
-          windows_accounts_agent_keys | map(attribute='key') | select('match',
-          '^(ssh-ed25519|ecdsa-sha2-nistp256|ssh-rsa|sk-ssh-ed25519@openssh\.com) [A-Za-z0-9+/=]+( [^\r\n]*)?$')
-          | list | length == windows_accounts_agent_keys | length
+          key_list.entries | map(attribute='key') | select('match', key_list.key_pattern)
+          | list | length == key_list.entries | length
       - >-
-          windows_accounts_agent_keys | map(attribute='from', default=[]) | flatten
-          | reject('match', '^[a-z0-9]([a-z0-9-]*[a-z0-9])?$') | list | length == 0
-    fail_msg: >-
-      The key list needs at least one key, each key is one line of type, base64 and optional comment with no options,
-      and each from entry is a plain tailnet host name
+          key_list.entries | map(attribute='from', default=[]) | flatten
+          | reject('match', key_list.source_pattern) | list | length == 0
+    fail_msg: "{{ key_list.message }}"
     quiet: true
-
-# One ed25519 key per entry, no options, so a key can't smuggle a second line
-# or a from= restriction into the shared administrators' file. The template
-# adds restrictions from the validated host names, just as it does for agent.
-- name: Require a clean ops key list
-  ansible.builtin.assert:
-    that:
-      - windows_accounts_ops_admin_keys | length > 0
-      - >-
-          windows_accounts_ops_admin_keys | map(attribute='key') | select('match',
-          '^ssh-ed25519 [A-Za-z0-9+/=]+( [^\r\n]*)?\Z')
-          | list | length == windows_accounts_ops_admin_keys | length
-      - >-
-          windows_accounts_ops_admin_keys | map(attribute='from', default=[]) | flatten
-          | reject('match', '^[a-z0-9]([a-z0-9-]*[a-z0-9])?\Z') | list | length == 0
-    fail_msg: >-
-      The ops key list needs at least one key, each key is one ed25519 public key line without options,
-      and each from entry is a plain tailnet host name
-    quiet: true
+  loop_control:
+    loop_var: key_list
+    label: "{{ key_list.name }}"
+  loop:
+    - name: agent
+      entries: "{{ windows_accounts_agent_keys }}"
+      key_pattern: '^(ssh-ed25519|ecdsa-sha2-nistp256|ssh-rsa|sk-ssh-ed25519@openssh\.com) [A-Za-z0-9+/=]+( [^\r\n]*)?$'
+      source_pattern: '^[a-z0-9]([a-z0-9-]*[a-z0-9])?$'
+      message: >-
+        The key list needs at least one key, each key is one line of type, base64 and optional comment with no options,
+        and each from entry is a plain tailnet host name
+    - name: ops
+      entries: "{{ windows_accounts_ops_admin_keys }}"
+      key_pattern: '^ssh-ed25519 [A-Za-z0-9+/=]+( [^\r\n]*)?\Z'
+      source_pattern: '^[a-z0-9]([a-z0-9-]*[a-z0-9])?\Z'
+      message: >-
+        The ops key list needs at least one key, each key is one ed25519 public key line without options,
+        and each from entry is a plain tailnet host name
 
 # In check mode a user the run would create doesn't exist, and the tasks that
 # need it can't resolve it, so they wait for a real run. win_user reports a

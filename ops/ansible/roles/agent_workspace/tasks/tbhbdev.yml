@@ -6,14 +6,16 @@
   register: agent_workspace_tools_origin
   changed_when: false
 
+- name: tbhbdev | Derive the anonymous fetch URL
+  ansible.builtin.set_fact:
+    agent_workspace_tools_fetch_url: >-
+      {{ agent_workspace_tools_origin.stdout | regex_replace('^(?:ssh://)?git@([^/:]+)[:/]', 'https://\1/') }}
+
 - name: tbhbdev | Require an anonymous HTTPS fetch URL
   ansible.builtin.assert:
     that: agent_workspace_tools_fetch_url is match('^https://[A-Za-z0-9.-]+/[A-Za-z0-9_./-]+$')
     fail_msg: Cannot fetch the tools origin anonymously over HTTPS.
     quiet: true
-  vars:
-    agent_workspace_tools_fetch_url: >-
-      {{ agent_workspace_tools_origin.stdout | regex_replace('^(?:ssh://)?git@([^/:]+)[:/]', 'https://\1/') }}
 
 - name: tbhbdev | Fetch origin/main anonymously over HTTPS
   ansible.builtin.command:
@@ -26,9 +28,6 @@
       - "{{ agent_workspace_tools_fetch_url }}"
       - +refs/heads/main:refs/remotes/origin/main
     chdir: "{{ agent_workspace_tools }}"
-  vars:
-    agent_workspace_tools_fetch_url: >-
-      {{ agent_workspace_tools_origin.stdout | regex_replace('^(?:ssh://)?git@([^/:]+)[:/]', 'https://\1/') }}
   changed_when: false
 
 - name: tbhbdev | Read the tools commit
@@ -86,14 +85,16 @@
   register: agent_workspace_tools_project
   changed_when: false
 
+- name: tbhbdev | Read the committed version
+  ansible.builtin.set_fact:
+    agent_workspace_tools_versions: >-
+      {{ agent_workspace_tools_project.stdout | regex_findall('(?m)^version = "([^"\n]+)"$') }}
+
 - name: tbhbdev | Require one committed project version
   ansible.builtin.assert:
     that: agent_workspace_tools_versions | length == 1
     fail_msg: The committed tools pyproject.toml must declare one static version.
     quiet: true
-  vars:
-    agent_workspace_tools_versions: >-
-      {{ agent_workspace_tools_project.stdout | regex_findall('(?m)^version = "([^"\n]+)"$') }}
 
 - name: tbhbdev | Read the installed version and commit
   ansible.builtin.command:
@@ -113,8 +114,6 @@
       - "git+file://{{ agent_workspace_tools }}@{{ agent_workspace_tools_commit.stdout }}"
     chdir: "{{ agent_workspace_home }}"
   vars:
-    agent_workspace_tools_versions: >-
-      {{ agent_workspace_tools_project.stdout | regex_findall('(?m)^version = "([^"\n]+)"$') }}
     agent_workspace_tbhbdev_expected: >-
       tbhbdev {{ agent_workspace_tools_versions[0] }} ({{ agent_workspace_tools_commit.stdout }})
   register: agent_workspace_tbhbdev_install

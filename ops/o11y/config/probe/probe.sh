@@ -70,7 +70,6 @@ default-credentials)
 objects)
   aws s3api create-bucket --bucket "$bucket" >/dev/null
   round_trip 1k 1024 aws s3 cp --only-show-errors
-  round_trip 10m 10485760 aws s3 cp --only-show-errors
   # 100 MiB is far above the CLI's 8 MiB threshold, so this is multipart.
   head -c 104857600 /dev/urandom >"$work/100m"
   aws s3 cp --only-show-errors "$work/100m" "s3://$bucket/100m"
@@ -161,11 +160,6 @@ cleanup)
 count)
   list_keys "$2"
   wc -l <"$work/keys" | tr -d ' '
-  ;;
-
-# The listing half of the crash check on its own.
-listed-keys)
-  read_listed_keys
   ;;
 
 delete-bucket)

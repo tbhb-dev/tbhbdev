@@ -1,10 +1,9 @@
 #!/usr/bin/env bash
 set -euo pipefail
-host=$1
-repo=$2
-path=$3
-public=${4:-false}
-url="https://$host/$repo.git"
+repo=$1
+path=$2
+public=$3
+url="https://github.com/$repo.git"
 credentials=(-c credential.helper=)
 if [[ $public == true ]]; then
   export GIT_TERMINAL_PROMPT=0

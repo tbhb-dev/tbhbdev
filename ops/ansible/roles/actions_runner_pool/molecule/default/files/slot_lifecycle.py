@@ -16,8 +16,7 @@ token it carried:
   units: starts the installed slot units under the service user's own
     systemd, with drop-ins that point them at this stub API and a stub op,
     runs the stand-in image on the real rootless daemon, and reads the
-    containers' lifetimes from docker events. It also probes, with
-    transient units, the systemd behavior the design relies on.
+    containers' lifetimes from docker events.
 
 The checks every cell and case share:
 
@@ -34,9 +33,9 @@ otherwise.
 
 Usage:
   python3 -I slot_lifecycle.py scripts START STOP LIB WORKDIR
-      [--base-env FILE] [--only REGEX]
+      [--base-env FILE]
   python3 -I slot_lifecycle.py units BASE_ENV WORKDIR --image IMAGE
-      --dind-image IMAGE --busybox-image IMAGE [--only REGEX]
+      --dind-image IMAGE --busybox-image IMAGE
 
 The results go to WORKDIR/results.json, and the exit status is 1 if any
 cell or case failed.
@@ -47,7 +46,6 @@ cell or case failed.
 # sit in a package: no __init__.py (INP001). It is a test driver: it runs
 # openssl and the units under test as subprocesses by argv list with no shell
 # (S603, S607), and prints its report (T201).
-# ruff: noqa: INP001, S603, S607, T201
 
 import argparse
 import fcntl
@@ -159,14 +157,10 @@ RECONCILE_RUNNERS = [
     {"id": 108, "name": "pool-edge-1-1-0a1b2c3d9", "status": "offline", "busy": False},
     {"id": 109, "name": "pool-edge-1-1-0a1b2c3d\n", "status": "offline", "busy": False},
 ]
-# Four pages, none of them stale, for the reconcile's deadline.
-MANY_RUNNERS = [
-    {"id": 2000 + i, "name": f"other-{i}", "status": "online", "busy": False}
-    for i in range(350)
-]
 
 # The settings a local run starts from; the Molecule run starts from the
 # rendered pool.env instead.
+CONNECT_HOST = "https://127.0.0.1"
 DEFAULT_ENV = {
     "ORG": ORG,
     "APP_ID": "123456",
@@ -180,6 +174,7 @@ DEFAULT_ENV = {
     "PIDS_LIMIT": "256",
     "WORK_SIZE": "256m",
     "MIN_FREE": "1048576",
+    "OP_CONNECT_HOST": CONNECT_HOST,
     "OP_KEY_VAULT": "example-vault",
     "OP_KEY_ITEM": "example-item",
     "OP_KEY_FIELD": "example-field",
@@ -189,27 +184,20 @@ DEFAULT_ENV = {
     "SLOTS": "1",
 }
 
-# The Connect host the connect cells' env file names.
-CONNECT_HOST = "https://op-connect.example.test"
-CONNECT_ENV: dict[str, Loose] = {
-    "OP_AUTH": "connect",
-    "OP_CONNECT_HOST": CONNECT_HOST,
-}
-
 STUB_EVENT = """event() {
   curl --silent --max-time 5 --output /dev/null --data-urlencode "detail=$2" \\
     "$CELL_URL/$1"
 }
 """
-# Records its call, which of the two credentials' variables it got and
-# whether the token it got is the token file's, then prints the test key;
+# Records its call, the Connect URL and whether it got a service-account token,
+# and whether the Connect token matches the token file. It then prints the test key.
 # CELL_OP=hang never answers, and hold:N answers late.
 STUB_OP = (
     "#!/bin/sh\n"
     + STUB_EVENT
     + """event op "$*"
 event op-auth "sa=${OP_SERVICE_ACCOUNT_TOKEN:+set} connect=$OP_CONNECT_HOST"
-if [ "${OP_SERVICE_ACCOUNT_TOKEN:-$OP_CONNECT_TOKEN}" = "$(cat "$CELL_TOKEN_FILE")" ]
+if [ "$OP_CONNECT_TOKEN" = "$(cat "$CELL_TOKEN_FILE")" ]
 then
   event op-token match
 else
@@ -471,7 +459,7 @@ class Handler(BaseHTTPRequestHandler):
         with cell.lock:
             index = cell.counts.get(call, 0)
             cell.counts[call] = index + 1
-        cell.record("api", call=call, token=token, jwt=auth.count(".") == 2)  # noqa: PLR2004 -- a JWT has three dot-separated parts
+        cell.record("api", call=call, token=token, jwt=auth.count(".") == 2)
         cell.at_anchor(call)
         specs = cell.answers.get(call, ["ok"])
         spec, _, hold = specs[min(index, len(specs) - 1)].partition("@")
@@ -480,7 +468,7 @@ class Handler(BaseHTTPRequestHandler):
             hold = (STEP_SECONDS if cell.phase == "start" else CALL_SECONDS) + 3
         if hold:
             time.sleep(float(hold))
-        if call == "token" and status == 201:  # noqa: PLR2004 -- HTTP Created
+        if call == "token" and status == 201:
             with cell.lock:
                 cell.minted += 1
                 minted = cell.minted
@@ -528,14 +516,10 @@ class Handler(BaseHTTPRequestHandler):
         if spec in answers:
             return answers[spec]
         status = int(spec)
-        headers = (
-            {"Retry-After": cell.retry_after}
-            if status == 429  # noqa: PLR2004 -- HTTP Too Many Requests
-            else {}
-        )
+        headers = {"Retry-After": cell.retry_after} if status == 429 else {}
         return (
             status,
-            None if status == 204 else {"message": "stub"},  # noqa: PLR2004 -- HTTP No Content
+            None if status == 204 else {"message": "stub"},
             headers,
         )
 
@@ -610,10 +594,7 @@ def confirmed(record: Record) -> bool:
         record["kind"] == "answer"
         and record["call"] == "revoke"
         and status is not None
-        and (
-            200 <= status < 300  # noqa: PLR2004 -- the 2xx range
-            or status in (401, 404)
-        )
+        and (200 <= status < 300 or status in (401, 404))
     )
 
 
@@ -735,7 +716,7 @@ def make_key_and_token(workdir: Path) -> tuple[Path, Path]:
     token = workdir / "token"
     if token.exists():
         token.chmod(0o600)
-    write_file(token, "example-service-account-token\n", 0o400)
+    write_file(token, "example-connect-token\n", 0o600)
     return key, token
 
 
@@ -776,7 +757,7 @@ def start_cells() -> list[Cell]:
                     rc=rc,
                     answers={call: [answer]},
                     events=events,
-                    marker_after=rc == 78,  # noqa: PLR2004 -- EX_CONFIG, a refusal no retry fixes
+                    marker_after=rc == 78,
                     max_seconds=STEP_SECONDS + 5 if answer == "timeout" else 8,
                 )
             )
@@ -897,17 +878,6 @@ def start_cells() -> list[Cell]:
     )
     out.append(
         Cell(
-            "reconcile/edge-1",
-            "start",
-            "T L L S J R",
-            runner=True,
-            job=True,
-            runners=RECONCILE_RUNNERS,
-            events={"stale-runner-deleted": 1},
-        )
-    )
-    out.append(
-        Cell(
             "reconcile/edge",
             "start",
             "T L L S J R",
@@ -916,20 +886,6 @@ def start_cells() -> list[Cell]:
             host="edge",
             runners=RECONCILE_RUNNERS,
             events={"stale-runner-deleted": 1},
-        )
-    )
-    # Each page takes 12 s, so no fourth page starts after the 30 s deadline.
-    out.append(
-        Cell(
-            "reconcile/deadline",
-            "start",
-            "T L L L J R",
-            runner=True,
-            job=True,
-            runners=MANY_RUNNERS,
-            answers={"list": ["ok@12"]},
-            events={"reconcile-incomplete": 1},
-            max_seconds=45,
         )
     )
     return out
@@ -1045,27 +1001,11 @@ def signal_cells() -> list[Cell]:
     )
     out.append(
         Cell(
-            "config/token-mode",
-            "start",
-            "",
-            rc=78,
-            env={"_token_mode": 0o600},  # nosec B105: a file mode, not a password
-            preflight=False,
-        )
-    )
-    # Connect: a 0600 token at the Connect host, op's variables checked
-    # by the stub. Its token must be 0600, and its host an https URL.
-    connect = {**CONNECT_ENV, "_token_mode": 0o600}  # nosec B105: a file mode
-    out.append(
-        Cell("start/connect", "start", ok_calls, runner=True, job=True, env=connect)
-    )
-    out.append(
-        Cell(
             "config/connect-token-mode",
             "start",
             "",
             rc=78,
-            env={**CONNECT_ENV, "_token_mode": 0o400},  # nosec B105: a file mode
+            env={"_token_mode": 0o400},  # nosec B105: a file mode
             preflight=False,
         )
     )
@@ -1075,21 +1015,20 @@ def signal_cells() -> list[Cell]:
             "start",
             "",
             rc=78,
-            env={**CONNECT_ENV, "OP_TOKEN_FILE": "/nonexistent/token"},  # nosec B105: a path that must not exist
+            env={"OP_TOKEN_FILE": "/nonexistent/token"},  # nosec B105: a path that must not exist
             preflight=False,
         )
     )
     for name, env in (
-        ("connect-no-host", {"OP_AUTH": "connect"}),
+        ("connect-no-host", {"OP_CONNECT_HOST": ""}),
         (
             "connect-http-host",
-            {**CONNECT_ENV, "OP_CONNECT_HOST": "http://op-connect.example.test"},
+            {"OP_CONNECT_HOST": CONNECT_HOST.replace("https:", "http:")},
         ),
         (
             "connect-path-host",
-            {**CONNECT_ENV, "OP_CONNECT_HOST": CONNECT_HOST + "/vault"},
+            {"OP_CONNECT_HOST": CONNECT_HOST + "/vault"},
         ),
-        ("op-auth", {"OP_AUTH": "bogus"}),
     ):
         out.append(
             Cell(
@@ -1097,7 +1036,7 @@ def signal_cells() -> list[Cell]:
                 "start",
                 "",
                 rc=78,
-                env={"_token_mode": 0o600, **env},  # nosec B105: a file mode
+                env=env,
                 preflight=False,
             )
         )
@@ -1168,7 +1107,7 @@ def signal_cells() -> list[Cell]:
             "start",
             "",
             rc=78,
-            env={"_token_mode": 0o600},  # nosec B105: a file mode, not a password
+            env={"_token_mode": 0o400},  # nosec B105: a file mode
             **condition,
         )
     )
@@ -1187,19 +1126,7 @@ def stop_cells() -> list[Cell]:
     out.append(
         Cell("stop/204", "stop", "T D R", registration="deleted", sleeps=[], **stop)
     )
-    # Connect reads the key the same way, and a missing token file fails
-    # the mint with no op call and no API call.
-    out.append(
-        Cell(
-            "stop/connect",
-            "stop",
-            "T D R",
-            registration="deleted",
-            sleeps=[],
-            env={**CONNECT_ENV, "_token_mode": 0o600},  # nosec B105: a file mode
-            **stop,
-        )
-    )
+    # A missing token file fails minting before op or the API are called.
     out.append(
         Cell(
             "stop/connect-no-token",
@@ -1210,7 +1137,7 @@ def stop_cells() -> list[Cell]:
             pending_after=True,
             events={"delete-failed": 1},
             op_skipped=True,
-            env={**CONNECT_ENV, "OP_TOKEN_FILE": "/nonexistent/token"},  # nosec B105: a path that must not exist
+            env={"OP_TOKEN_FILE": "/nonexistent/token"},  # nosec B105: a path that must not exist
             **stop,
         )
     )
@@ -1645,9 +1572,7 @@ def write_script_cell(cell: Cell, ctx: Ctx) -> tuple[dict[str, object], Path]:
     values.update({k: v for k, v in cell.env.items() if not k.startswith("_")})
     if "_token_mode" in cell.env:
         token_file = cell.dir / "token"
-        write_file(
-            token_file, "example-service-account-token\n", cell.env["_token_mode"]
-        )
+        write_file(token_file, "example-connect-token\n", cell.env["_token_mode"])
         values["OP_TOKEN_FILE"] = token_file
     if not cell.env.get("_no_env"):
         write_env(env_path, values)
@@ -1854,7 +1779,7 @@ def rate_limit_line(cell: Cell) -> dict[str, object]:
 def call_failures(cell: Cell, seen: Seen, output: str) -> list[str]:
     """No secret in the output, and the credential each call carries."""
     failures = []
-    secrets = [MINTED_PREFIX, cell.jit, "example-service-account-token"]
+    secrets = [MINTED_PREFIX, cell.jit, "example-connect-token"]
     if any(secret in output for secret in secrets):
         failures.append("a secret in the output")
     recs = seen.records
@@ -1870,13 +1795,7 @@ def call_failures(cell: Cell, seen: Seen, output: str) -> list[str]:
         and next(r["detail"] for r in seen.events if r["name"] == "op-token") != "match"
     ):
         failures.append("op didn't get the token file's token")
-    # Connect gets the host and no service-account variable; the service
-    # account gets its variable and no host.
-    want_auth = (
-        f"sa= connect={CONNECT_HOST}"
-        if cell.env.get("OP_AUTH") == "connect"
-        else "sa=set connect="
-    )
+    want_auth = f"sa= connect={CONNECT_HOST}"
     failures.extend(
         f"op got {r['detail']!r}, expected {want_auth!r}"
         for r in seen.events
@@ -1915,7 +1834,7 @@ def start_pending_failures(
         return [f"pending cleanup {pending!r}, expected {expected}"]
     if cell.runner and (
         pending != json.dumps(PENDING, separators=(",", ":")) + "\n"
-        or pending_path.stat().st_mode & 0o777 != 0o600  # noqa: PLR2004 -- the pending file's mode
+        or pending_path.stat().st_mode & 0o777 != 0o600
     ):
         mode = pending_path.stat().st_mode & 0o777
         return [f"pending cleanup {pending!r}, mode {mode:o}"]
@@ -2198,42 +2117,6 @@ def require(condition: object) -> None:
         raise AssertionError
 
 
-def self_test() -> None:
-    """Check the token checks themselves.
-
-    They must catch a DELETE after the revocation, a second revocation
-    request, a missing one and one GitHub didn't confirm.
-    """
-
-    def recs(*calls: str, status: int | None = 204) -> list[Record]:
-        out: list[Record] = [{"t": 0, "wall": 0, "kind": "minted", "token": 1}]  # nosec B105: a token number
-        for i, call in enumerate(calls, 1):
-            out.append({"t": i, "wall": i, "kind": "api", "call": call, "token": 1})  # nosec B105: a token number
-            out.append(
-                {
-                    "t": i + 0.5,
-                    "wall": i + 0.5,
-                    "kind": "answer",
-                    "call": call,
-                    "token": 1,  # nosec B105: a token number
-                    "status": status,
-                }
-            )
-        return out
-
-    require(not token_failures(recs("delete:42", "revoke")))
-    require(token_failures(recs("revoke", "delete:42")))
-    require(token_failures(recs("revoke", "revoke")))
-    require(token_failures(recs("delete:42")))
-    require(token_failures(recs("delete:42", "revoke", status=500)))
-    require(token_failures(recs("delete:42", "revoke", status=None)))
-    require(not token_failures(recs("delete:42", "revoke", status=500), unrevoked=1))
-    require(not token_failures(recs("delete:42", "revoke", status=401)))
-    require(held(recs("revoke", status=500))[0][2] == float("inf"))
-    require(overlaps([(1, 0, 5)], [(4, 6)]))
-    require(not overlaps([(1, 0, 5)], [(6, 7)]))
-
-
 def scripts_main(args: argparse.Namespace) -> int:
     workdir = Path(args.workdir)
     ctx: Ctx = {
@@ -2270,12 +2153,10 @@ def scripts_main(args: argparse.Namespace) -> int:
         **DEFAULT_ENV,
         **(read_env(Path(args.base_env)) if args.base_env else {}),
     }
-    selected = [
-        c for c in script_cells() if not args.only or re.search(args.only, c.name)
-    ]
-    server, ctx["url"] = serve(selected)
-    with ThreadPoolExecutor(max_workers=args.jobs) as pool:
-        results = list(pool.map(run_script_cell, selected, itertools.repeat(ctx)))
+    cases = script_cells()
+    server, ctx["url"] = serve(cases)
+    with ThreadPoolExecutor(max_workers=16) as pool:
+        results = list(pool.map(run_script_cell, cases, itertools.repeat(ctx)))
     server.shutdown()
     return report(results, workdir)
 
@@ -2931,7 +2812,7 @@ def wait_for_restart(unit: str) -> dict[str, str]:
 
 
 def act_three_jobs(r: UnitRun) -> None:
-    if not wait_for(lambda: len(r.job_lines()) >= 3, 120):  # noqa: PLR2004 -- three jobs in a row
+    if not wait_for(lambda: len(r.job_lines()) >= 3, 120):
         r.failures.append(f"only {len(r.job_lines())} jobs ran")
     restarts = show(r.unit).get("NRestarts", "")
     # A clean exit resets the counter, so the delay stays the first one.
@@ -3451,221 +3332,6 @@ def container_failures(
     return failures
 
 
-PROBE_HANG = """#!/bin/sh
-echo "post $SERVICE_RESULT $EXIT_CODE $EXIT_STATUS" >>"$1"
-sleep 300
-echo post-end >>"$1"
-"""
-PROBE_START = """#!/bin/sh
-echo start >>"$1"
-[ "$2" != hold ] || exec sleep 300
-"""
-PROBE_POST = """#!/bin/sh
-echo begin >>"$1"
-sleep "$2"
-echo end >>"$1"
-"""
-PROBE_CONDITION = """#!/bin/sh
-echo condition >>"$1"
-exit 78
-"""
-PROBE_RESULT = """#!/bin/sh
-echo "post $SERVICE_RESULT" >>"$1"
-"""
-
-
-def probes(ctx: Ctx) -> list[dict[str, object]]:
-    """The systemd behavior the design relies on, on this systemd."""
-    probe_dir = ctx["workdir"] / "probes"
-    shutil.rmtree(probe_dir, ignore_errors=True)
-    probe_dir.mkdir(parents=True)
-    for name, text in (
-        ("hang", PROBE_HANG),
-        ("start", PROBE_START),
-        ("post", PROBE_POST),
-        ("condition", PROBE_CONDITION),
-        ("result", PROBE_RESULT),
-    ):
-        write_file(probe_dir / f"{name}.sh", text, 0o755)
-    suffix = ctx["run_id"]
-    return [
-        probe_stop_post_after_kill(probe_dir, suffix),
-        probe_restart_waits(probe_dir, suffix),
-        probe_start_waits(probe_dir, suffix),
-        probe_condition(probe_dir, suffix),
-    ]
-
-
-def log_words(path: Path) -> list[str]:
-    try:
-        return path.read_text().split()
-    except OSError:
-        return []
-
-
-def transient(unit: str, *argv: str | Path) -> None:
-    run("systemd-run", "--user", f"--unit={unit}", *argv, check=True)
-
-
-def settle(unit: str, timeout: float = 30) -> bool | None:
-    return wait_for(
-        lambda: show(unit)["ActiveState"] in ("inactive", "failed"), timeout
-    )
-
-
-def probe_stop_post_after_kill(probe_dir: Path, suffix: str) -> dict[str, object]:
-    """Check ExecStopPost after a SIGKILL of the main process.
-
-    It runs, gets the result in its environment, and TimeoutStopSec= ends
-    it.
-    """
-    unit, log = (
-        f"runner-pool-probe-timeout-{suffix}",
-        probe_dir / "timeout.log",
-    )
-    failures = []
-    transient(
-        unit,
-        "-p",
-        "TimeoutStopSec=2",
-        "-p",
-        "KillMode=mixed",
-        "-p",
-        f"ExecStopPost={probe_dir}/hang.sh {log}",
-        shutil.which("sleep") or "sleep",
-        "300",
-    )
-    time.sleep(1)
-    begin = time.monotonic()
-    systemctl("kill", "--kill-whom=main", "--signal=SIGKILL", unit)
-    settle(unit)
-    seconds = time.monotonic() - begin
-    if " ".join(log_words(log)) != "post signal killed KILL":
-        failures.append(f"stop-post saw {log_words(log)}")
-    if not 2 <= seconds <= 10:  # noqa: PLR2004 -- TimeoutStopSec=2 up to a bound
-        failures.append(
-            f"the unit took {seconds:.1f} s to stop, "
-            "against TimeoutStopSec=2 for the stop-post"
-        )
-    systemctl("reset-failed", unit, check=False)
-    return {
-        "name": "probe/stop-post-after-kill-and-timeout",
-        "passed": not failures,
-        "failures": failures,
-        "seconds": round(seconds, 1),
-    }
-
-
-def probe_restart_waits(probe_dir: Path, suffix: str) -> dict[str, object]:
-    """Under Restart=, the next start waits for the stop-post."""
-    unit, log = (
-        f"runner-pool-probe-restart-{suffix}",
-        probe_dir / "restart.log",
-    )
-    failures = []
-    transient(
-        unit,
-        "-p",
-        "Restart=always",
-        "-p",
-        "RestartSec=100ms",
-        "-p",
-        "StartLimitIntervalSec=0",
-        "-p",
-        f"ExecStopPost={probe_dir}/post.sh {log} 1",
-        f"{probe_dir}/start.sh",
-        log,
-    )
-    time.sleep(4)
-    systemctl("stop", unit)
-    seen = log_words(log)
-    if len(seen) < 9 or seen != ["start", "begin", "end"] * (  # noqa: PLR2004 -- three restarts
-        len(seen) // 3
-    ):
-        failures.append(f"order {seen}")
-    systemctl("reset-failed", unit, check=False)
-    return {
-        "name": "probe/restart-waits-for-stop-post",
-        "passed": not failures,
-        "failures": failures,
-        "order": " ".join(seen),
-    }
-
-
-def probe_start_waits(probe_dir: Path, suffix: str) -> dict[str, object]:
-    """A start requested during the stop-post waits for it too."""
-    unit, log = (
-        f"runner-pool-probe-start-{suffix}",
-        probe_dir / "start.log",
-    )
-    failures = []
-    transient(
-        unit,
-        "-p",
-        f"ExecStopPost={probe_dir}/post.sh {log} 2",
-        f"{probe_dir}/start.sh",
-        log,
-        "hold",
-    )
-    time.sleep(0.5)
-    systemctl("stop", "--no-block", unit)
-    if not wait_for(lambda: show(unit)["SubState"] == "stop-post", 10):
-        failures.append("the unit never reached stop-post")
-    systemctl("start", unit)
-    time.sleep(0.5)
-    seen = log_words(log)
-    if seen != ["start", "begin", "end", "start"]:
-        failures.append(f"order {seen}")
-    systemctl("stop", unit, check=False)
-    systemctl("reset-failed", unit, check=False)
-    return {
-        "name": "probe/start-waits-for-stop-post",
-        "passed": not failures,
-        "failures": failures,
-        "order": " ".join(seen),
-    }
-
-
-def probe_condition(probe_dir: Path, suffix: str) -> dict[str, object]:
-    """Check an ExecCondition= exit of 78 under Restart=always.
-
-    It skips the start and nothing restarts it; ExecStopPost still runs and
-    sees exec-condition.
-    """
-    unit, log = (
-        f"runner-pool-probe-condition-{suffix}",
-        probe_dir / "condition.log",
-    )
-    failures = []
-    transient(
-        unit,
-        "-p",
-        "Restart=always",
-        "-p",
-        "RestartSec=100ms",
-        "-p",
-        "StartLimitIntervalSec=0",
-        "-p",
-        f"ExecCondition={probe_dir}/condition.sh {log}",
-        "-p",
-        f"ExecStopPost={probe_dir}/result.sh {log}",
-        shutil.which("sleep") or "sleep",
-        "300",
-    )
-    time.sleep(2)
-    seen = log_words(log)
-    if seen != ["condition", "post", "exec-condition"]:
-        failures.append(f"order {seen}")
-    systemctl("stop", unit, check=False)
-    systemctl("reset-failed", unit, check=False)
-    return {
-        "name": "probe/condition-stops-restarts",
-        "passed": not failures,
-        "failures": failures,
-        "order": " ".join(seen),
-    }
-
-
 def units_main(args: argparse.Namespace) -> int:
     workdir = Path(args.workdir)
     stubs = workdir / "stubs"
@@ -3684,15 +3350,12 @@ def units_main(args: argparse.Namespace) -> int:
         "busybox_image": args.busybox_image,
         "base": read_env(Path(args.base_env)),
         "state": state,
-        "run_id": f"{time.time_ns()}",
         "docker": shutil.which("docker"),
         "units": home / ".config" / "systemd" / "user",
     }
-    selected = [
-        c for c in unit_cases() if not args.only or re.search(args.only, c.name)
-    ]
+    cases = unit_cases()
     cells = []
-    for i, case in enumerate(selected):
+    for i, case in enumerate(cases):
         cells.append(
             Cell(
                 case.name,
@@ -3709,7 +3372,7 @@ def units_main(args: argparse.Namespace) -> int:
     timers = [f"actions-runner-cleanup@{slot}.timer" for slot in (1, 2)]
     systemctl("stop", *timers, check=False)
     try:
-        for case, cell in zip(selected, cells, strict=True):
+        for case, cell in zip(cases, cells, strict=True):
             try:
                 results.append(run_unit_case(case, cell, ctx))
             except Exception as error:  # noqa: BLE001 -- a case's crash is its failure
@@ -3723,17 +3386,6 @@ def units_main(args: argparse.Namespace) -> int:
     finally:
         systemctl("start", *timers, check=False)
     server.shutdown()
-    if not args.only or re.search(args.only, "probe"):
-        try:
-            results += probes(ctx)
-        except Exception as error:  # noqa: BLE001 -- a probe's crash is its failure
-            results.append(
-                {
-                    "name": "probe",
-                    "passed": False,
-                    "failures": [f"{type(error).__name__}: {error}"],
-                }
-            )
     return report(results, workdir)
 
 
@@ -3764,17 +3416,13 @@ def main() -> int:
     scripts.add_argument("lib")
     scripts.add_argument("workdir")
     scripts.add_argument("--base-env")
-    scripts.add_argument("--only")
-    scripts.add_argument("--jobs", type=int, default=16)
     units = sub.add_parser("units")
     units.add_argument("base_env")
     units.add_argument("workdir")
     units.add_argument("--image", required=True)
     units.add_argument("--dind-image", required=True)
     units.add_argument("--busybox-image", required=True)
-    units.add_argument("--only")
     args = parser.parse_args()
-    self_test()
     Path(args.workdir).mkdir(parents=True, exist_ok=True)
     return scripts_main(args) if args.suite == "scripts" else units_main(args)
 

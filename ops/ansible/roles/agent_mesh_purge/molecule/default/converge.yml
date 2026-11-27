@@ -1,9 +1,0 @@
----
-- name: Converge
-  hosts: all
-  vars:
-    agent_mesh_purge_users: [agent, ops, absent]
-    # The scenario has no peers to log in to.
-    agent_mesh_purge_require_proof: false
-  roles:
-    - agent_mesh_purge

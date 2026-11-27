@@ -35,5 +35,4 @@
           set -eu
           commit=$(git -C /home/ops/Code/github.com/fixture/repo rev-parse HEAD)
           test "$(/home/ops/.local/bin/tbhbdev --version)" = "tbhbdev 0 ($commit)"
-          test "$(cat /home/ops/Code/git.example.invalid/fixture/other/tracked)" = first
       changed_when: false

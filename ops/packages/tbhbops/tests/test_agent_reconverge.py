@@ -12,9 +12,7 @@ import yaml
 from ansible.parsing.dataloader import DataLoader
 from ansible.template import Templar, trust_as_template
 
-ROOT = next(
-    path for path in Path(__file__).parents if (path / "ansible").is_dir()
-)
+ROOT = next(path for path in Path(__file__).parents if (path / "ansible").is_dir())
 ROLE = ROOT / "ansible/roles/agent_reconverge"
 DEFAULTS = yaml.safe_load((ROLE / "defaults/main.yml").read_text(encoding="utf-8"))
 
@@ -24,11 +22,20 @@ LINUX = yaml.safe_load((ROLE / "tasks/linux.yml").read_text(encoding="utf-8"))
 
 MACOS = yaml.safe_load((ROLE / "tasks/macos.yml").read_text(encoding="utf-8"))
 
+SNAPSHOT = yaml.safe_load(
+    (ROOT / "ansible/roles/mac_snapshot_thin/tasks/main.yml").read_text(
+        encoding="utf-8"
+    )
+)
+LAUNCH_DAEMON = yaml.safe_load(
+    (ROOT / "ansible/tasks/launch-daemon.yml").read_text(encoding="utf-8")
+)
+
 HANDLERS = yaml.safe_load((ROLE / "handlers/main.yml").read_text(encoding="utf-8"))
 
 
 def render(name: str, **variables: object) -> str:
-    environment = jinja2.Environment(  # noqa: S701 - systemd and XML, not HTML
+    environment = jinja2.Environment(
         undefined=jinja2.StrictUndefined, keep_trailing_newline=True
     )
     template = (ROLE / "templates" / name).read_text(encoding="utf-8")
@@ -76,7 +83,12 @@ def test_linux_units(account: str, clone: str, interval: int) -> None:
 @pytest.mark.parametrize(
     ("account", "home", "clone", "interval"),
     [
-        ("agent", "/Users/example-user", "Code/github.com/example-org/account-config", 900),
+        (
+            "agent",
+            "/Users/example-user",
+            "Code/github.com/example-org/account-config",
+            900,
+        ),
         ("builder", "/Volumes/Agent & Build/builder", "checkouts/config", 1800),
     ],
 )
@@ -155,32 +167,46 @@ def test_linux_installation_contract() -> None:
 
 
 def test_macos_installation_contract() -> None:
-    state, plist, _, bootstrap_task = MACOS[-4:]
+    for caller, label, src in (
+        (
+            MACOS[-1],
+            "dev.tbhb.reconverge.agent",
+            "templates/dev.tbhb.reconverge.agent.plist.j2",
+        ),
+        (
+            SNAPSHOT[-1],
+            "dev.tbhb.mac-snapshot-thin",
+            "files/dev.tbhb.mac-snapshot-thin.plist",
+        ),
+    ):
+        assert caller["ansible.builtin.include_tasks"] == (
+            "{{ role_path }}/../../tasks/launch-daemon.yml"
+        )
+        assert caller["vars"] == {
+            "launch_daemon_label": label,
+            "launch_daemon_source": "{{ role_path }}/" + src,
+        }
+    state, plist, bootout, bootstrap = LAUNCH_DAEMON
     assert plist["ansible.builtin.template"] == {
-        "src": "dev.tbhb.reconverge.agent.plist.j2",
-        "dest": "/Library/LaunchDaemons/dev.tbhb.reconverge.agent.plist",
+        "src": "{{ launch_daemon_source }}",
+        "dest": "/Library/LaunchDaemons/{{ launch_daemon_label }}.plist",
         "owner": "root",
         "group": "wheel",
         "mode": "0644",
     }
     assert state["check_mode"] is False
     assert state["changed_when"] is False
-    handlers = HANDLERS
-    assert handlers[1]["ansible.builtin.command"]["argv"] == [
-        "launchctl",
+    assert bootout["ansible.builtin.command"]["argv"] == [
+        "/bin/launchctl",
         "bootout",
-        "system/dev.tbhb.reconverge.agent",
+        "system/{{ launch_daemon_label }}",
     ]
-    bootstrap = [
-        "launchctl",
+    assert bootstrap["ansible.builtin.command"]["argv"] == [
+        "/bin/launchctl",
         "bootstrap",
         "system",
-        "/Library/LaunchDaemons/dev.tbhb.reconverge.agent.plist",
+        "/Library/LaunchDaemons/{{ launch_daemon_label }}.plist",
     ]
-    assert handlers[2]["ansible.builtin.command"]["argv"] == bootstrap
-    assert bootstrap_task["ansible.builtin.command"]["argv"] == bootstrap
-    assert plist["notify"] == handlers[1]["listen"] == handlers[2]["listen"]
-    assert handlers[2]["when"] == "not ansible_check_mode"
 
 
 @pytest.mark.parametrize("check", [False, True])
@@ -191,13 +217,15 @@ def test_launchd_change_and_check_guards(
 ) -> None:
     variables = {
         "ansible_check_mode": check,
-        "agent_reconverge_plist": {"changed": changed},
-        "agent_reconverge_launchd": {"rc": 0 if loaded else 113},
+        "launch_daemon_plist": {"changed": changed},
+        "launch_daemon_status": {"rc": 0 if loaded else 113},
     }
-    assert conditions(MACOS[-1]["when"], **variables) is (
-        not check and not changed and not loaded
+    assert conditions(LAUNCH_DAEMON[-1]["when"], **variables) is (
+        not check and (changed or not loaded)
     )
-    assert conditions(HANDLERS[1]["when"], **variables) is (not check and loaded)
+    assert conditions(LAUNCH_DAEMON[-2]["when"], **variables) is (
+        not check and changed and loaded
+    )
 
 
 @pytest.mark.parametrize("check", [False, True])
@@ -244,10 +272,14 @@ def test_missing_script_does_not_gate_installation() -> None:
     ],
 )
 def test_input_validation(overrides: dict[str, object]) -> None:
-    variables = DEFAULTS | {
-        "ansible_facts": {"system": "Linux"},
-        "agent_reconverge_clone": "Code/example-account",
-    } | overrides
+    variables = (
+        DEFAULTS
+        | {
+            "ansible_facts": {"system": "Linux"},
+            "agent_reconverge_clone": "Code/example-account",
+        }
+        | overrides
+    )
     templar = Templar(loader=DataLoader(), variables=variables)
     assertions = MAIN[0]["ansible.builtin.assert"]["that"]
     results = [

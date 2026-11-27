@@ -9,10 +9,8 @@
       - name: fixture/repo
         public: true
       - name: fixture/fresh
-        host: github.com
         public: true
       - name: fixture/other
-        host: git.example.invalid
       - name: fixture/skipped
         public: true
         workspace: false

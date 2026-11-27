@@ -103,32 +103,8 @@
         - "/usr/local/bin/python{{ agent_reconverge_macos_python_version.split('.')[:2] | join('.') }}"
         - /Library/tbhb-python/bin/python3
 
-- name: macos | Read the reconverge daemon state
-  ansible.builtin.command:
-    argv: [launchctl, print, system/dev.tbhb.reconverge.agent]
-  register: agent_reconverge_launchd
-  check_mode: false
-  changed_when: false
-  failed_when: false
-
-- name: macos | Install the reconverge daemon
-  ansible.builtin.template:
-    src: dev.tbhb.reconverge.agent.plist.j2
-    dest: /Library/LaunchDaemons/dev.tbhb.reconverge.agent.plist
-    owner: root
-    group: wheel
-    mode: "0644"
-  register: agent_reconverge_plist
-  notify: Reload the agent reconverge daemon
-
-- name: macos | Load the changed reconverge daemon
-  ansible.builtin.meta: flush_handlers
-
-- name: macos | Load an unloaded reconverge daemon
-  ansible.builtin.command:
-    argv: [launchctl, bootstrap, system, /Library/LaunchDaemons/dev.tbhb.reconverge.agent.plist]
-  changed_when: true
-  when:
-    - not ansible_check_mode
-    - agent_reconverge_plist is not changed
-    - agent_reconverge_launchd.rc != 0
+- name: macos | Install the agent reconverge launch daemon
+  ansible.builtin.include_tasks: "{{ role_path }}/../../tasks/launch-daemon.yml"
+  vars:
+    launch_daemon_label: dev.tbhb.reconverge.agent
+    launch_daemon_source: "{{ role_path }}/templates/dev.tbhb.reconverge.agent.plist.j2"

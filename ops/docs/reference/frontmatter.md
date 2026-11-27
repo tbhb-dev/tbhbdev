@@ -106,7 +106,7 @@ The private staging location supplies `CA_SECRETS_DIR` and
 Run `ops/tofu/tofu.sh -chdir=ops/tofu/dns init`. The wrapper
 uses the companion's `ops/tofu/op.env` and the module's `backend.tfbackend`.
 The backend file contains the backend settings as top-level assignments.
-Set `TBHB_TOFU_OP_ENV` or `TBHB_TOFU_BACKEND_CONFIG` to use an explicit path.
+Set `TBHB_TOFU_BACKEND_CONFIG` to the path of a different backend file.
 Plan and apply use the companion's module variable files.
 
 ### Connect deployment

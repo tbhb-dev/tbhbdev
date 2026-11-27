@@ -128,9 +128,6 @@
 # runsc is registered. The daemon keeps runc for runtime runc.
 - name: Configure the Docker daemon
   vars:
-    docker_engine_runsc: >-
-      {{ {'path': '/usr/bin/runsc'}
-          | combine({'runtimeArgs': docker_engine_runsc_args} if docker_engine_runsc_args | length > 0 else {}) }}
     # The classic overlay2 store keeps image layers under the data root, on
     # its logical volume. Docker 29's containerd image store would keep them
     # under /var/lib/containerd on the root file system instead.
@@ -147,7 +144,7 @@
       ip: 127.0.0.1
       ip-forward-no-drop: true
       runtimes:
-        runsc: "{{ docker_engine_runsc }}"
+        runsc: {path: /usr/bin/runsc}
   ansible.builtin.copy:
     dest: /etc/docker/daemon.json
     content: "{{ docker_engine_daemon | to_nice_json(indent=2) }}\n"

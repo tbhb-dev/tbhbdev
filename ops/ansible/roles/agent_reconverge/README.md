@@ -35,7 +35,7 @@ Linux uses `~/.config/systemd/user/reconverge-agent.service` and `reconverge-age
 
 ## macOS daemon
 
-macOS uses the root-owned `0644` LaunchDaemon `/Library/LaunchDaemons/dev.tbhb.reconverge.agent.plist` in the system domain. It sets `UserName` to the account and `WorkingDirectory` and `HOME` to its home. Putting `/Library/tbhb-python/bin` before `/opt/homebrew/bin:/usr/bin:/bin` gives the job a `python3` with `tomllib`. The job runs at load and every 900 seconds by default. The handler waits for a property list change that unloads and bootstraps the daemon. An unchanged, unloaded daemon loads on the next apply.
+macOS uses the root-owned `0644` LaunchDaemon `/Library/LaunchDaemons/dev.tbhb.reconverge.agent.plist` in the system domain. It sets `UserName` to the account and `WorkingDirectory` and `HOME` to its home. Putting `/Library/tbhb-python/bin` before `/opt/homebrew/bin:/usr/bin:/bin` gives the job a `python3` with `tomllib`. The job runs at load and every 900 seconds by default. On apply, launchd reloads the daemon if the property list changed. An unloaded daemon starts on apply.
 
 The role verifies the archive's checksum and extracts it to `/Library/tbhb-python/3.13.18/python` as root. It checks that the extracted tree is root-owned and has no group or world writable files or directories before linking it into the daemon's PATH and at `/usr/local/bin/python3.13`. Update the version, URL, and digest together when changing the pin. Check mode skips the install.
 

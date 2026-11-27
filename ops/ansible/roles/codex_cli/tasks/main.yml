@@ -33,7 +33,7 @@
   when: codex_cli_passwd.rc != 0
 
 - name: Install beside the other versions
-  when: codex_cli_install | bool and codex_cli_passwd.rc == 0
+  when: codex_cli_passwd.rc == 0
   become: true
   become_user: "{{ codex_cli_account }}"
   block:

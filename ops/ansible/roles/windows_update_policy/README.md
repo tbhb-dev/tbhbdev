@@ -26,8 +26,6 @@ IgnoreNew prevents overlapping runs. Execution has a five-minute limit, and batt
 
 PowerShell requires an existing task with the tony/S4U/Limited principal and the watchdog action. A missing task or a mismatch fails before any write. The scheduled task module requires a password for S4U, so `ansible.windows.win_powershell` compares triggers and edits them through `Set-ScheduledTask -Trigger` without credentials or task registration. It preserves the principal, action, and other settings. Settings drift causes a separate `Set-ScheduledTask -Settings` call that limits changes to the four managed fields. Check mode reports changes without writing.
 
-Script parameters come from the `windows_update_policy_wsl_subscription`, `windows_update_policy_wsl_interval`, `windows_update_policy_wsl_boot_delay`, `windows_update_policy_wsl_event_delay`, and `windows_update_policy_wsl_start_boundary` defaults. Read-back checks the documented policy values.
-
 ## Update timing
 
 Quality updates have a three-day deferral, and feature updates have a 365-day deferral. Inventory can override the defaults when the operator chooses feature update timing. A 365-day deferral doesn't pause feature updates indefinitely.

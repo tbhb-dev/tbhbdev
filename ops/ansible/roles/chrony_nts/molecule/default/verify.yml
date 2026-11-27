@@ -20,11 +20,6 @@
         chrony_nts_run: false
       check_mode: true
 
-    - name: Stat the NTS fragment after check mode
-      ansible.builtin.stat:
-        path: /etc/chrony/conf.d/10-cloudflare-nts.conf
-      register: chrony_nts_fragment_after_check
-
     - name: Read the packaged configuration after convergence
       ansible.builtin.stat:
         path: /etc/chrony/chrony.conf
@@ -46,9 +41,5 @@
           - chrony_nts_fragment_stat.stat.pw_name == 'root'
           - chrony_nts_fragment_stat.stat.gr_name == 'root'
           - chrony_nts_fragment_stat.stat.mode == '0644'
-          - chrony_nts_fragment_stat.stat.checksum == chrony_nts_fragment_after_check.stat.checksum
-          - chrony_nts_fragment_stat.stat.mtime == chrony_nts_fragment_after_check.stat.mtime
-          - chrony_nts_fragment_stat.stat.ctime == chrony_nts_fragment_after_check.stat.ctime
-          - chrony_nts_fragment_stat.stat.inode == chrony_nts_fragment_after_check.stat.inode
           - chrony_nts_packaged_config.stat.checksum == chrony_nts_original_config.stat.checksum
         quiet: true

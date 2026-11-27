@@ -69,7 +69,6 @@
 - name: Mint the VM's tailnet key
   ansible.builtin.include_tasks: join.yml
   when:
-    - ci_vm_tailscale_join | bool
     - ci_vm_hardware
     - ci_vm_dom.rc != 0
     - not ansible_check_mode

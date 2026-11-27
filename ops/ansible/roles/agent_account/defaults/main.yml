@@ -2,7 +2,6 @@
 # Fixed ids match bootstrap and agent_host's mounted home.
 agent_account_primary_group: "{{ 'agent' if ansible_facts.system == 'Linux' else 'devel' }}"
 agent_account_keys: []
-agent_account_keys_exclusive: true
 # Creates the controller's agent-exec launch key in a root-owned directory and
 # delivers it to the operator account, and never replaces one. Only the public
 # half is printed.
