@@ -1,0 +1,10 @@
+# SPDX-License-Identifier: Apache-2.0
+# Copyright Tony Burns
+
+load("@tbhb_rules//repo:defs.bzl", "repo_files")
+
+# gazelle:python_root
+# gazelle:python_default_visibility //lib:consumers
+# gazelle:python_generation_mode package
+
+repo_files()

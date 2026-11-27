@@ -14,7 +14,6 @@ allow:
 components:
   cmd: {in: cmd/agent-capacity}
   capacity: {in: internal/capacity}
-  keepalive: {in: internal/keepalive}
   spool: {in: internal/spool}
   session: {in: internal/session}
   claude: {in: internal/source/claude}
@@ -37,9 +36,6 @@ deps:
   capacity:
     mayDependOn: [capacity]
     canUse: [testify]
-  keepalive:
-    mayDependOn: [keepalive]
-    canUse: [testify]
   export:
     mayDependOn: [capacity, export]
     canUse: [otel, testify]
@@ -47,7 +43,7 @@ deps:
     mayDependOn: [capacity, codex, spool]
     canUse: [testify]
   session:
-    mayDependOn: [session, spool]
+    mayDependOn: [session, spool, capacity]
     canUse: [pty, sys]
   spool:
     mayDependOn: [spool, capacity]

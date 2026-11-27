@@ -26,7 +26,6 @@ test_alpha_gh_shim
 test_alpha_guard_gh_poll
 test_alpha_guard_gh_pr
 test_alpha_guard_ssh_agent
-test_alpha_install
 test_alpha_monorepo
 test_alpha_opened
 test_alpha_pre_push_guard
@@ -39,7 +38,6 @@ test_alpha_review_prompt
 test_alpha_run_stop_hook
 test_alpha_secret_scan
 test_alpha_size_gate
-test_alpha_squash_merge
 test_alpha_verify_range
 test_cli
 test_conftest

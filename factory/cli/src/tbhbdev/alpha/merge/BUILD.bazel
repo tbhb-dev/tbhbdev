@@ -1,0 +1,131 @@
+# SPDX-License-Identifier: Apache-2.0
+# Copyright Tony Burns
+
+load("//factory/cli:python.bzl", "cli_py_library")
+
+filegroup(
+    name = "package_files",
+    srcs = glob(["*.py"]),
+    visibility = ["//factory/cli:__pkg__"],
+)
+
+cli_py_library(
+    name = "__init__",
+    srcs = ["__init__.py"],
+    imports = ["../../.."],
+    visibility = ["//factory/cli:__subpackages__"],
+)
+
+cli_py_library(
+    name = "body",
+    srcs = ["body.py"],
+    imports = ["../../.."],
+    visibility = ["//factory/cli:__subpackages__"],
+)
+
+cli_py_library(
+    name = "command",
+    srcs = ["command.py"],
+    imports = ["../../.."],
+    visibility = ["//factory/cli:__subpackages__"],
+    deps = [
+        ":compose",
+        ":github",
+        ":message",
+        ":options",
+        ":queue",
+        ":renovate",
+        ":rules",
+        "//factory/cli/src/tbhbdev/alpha:pull_request",
+        "//factory/cli/src/tbhbdev/alpha/install/git:hooks",
+    ],
+)
+
+cli_py_library(
+    name = "evidence",
+    srcs = ["evidence.py"],
+    imports = ["../../.."],
+    visibility = ["//factory/cli:__subpackages__"],
+    deps = [":review_gate"],
+)
+
+cli_py_library(
+    name = "github",
+    srcs = ["github.py"],
+    imports = ["../../.."],
+    visibility = ["//factory/cli:__subpackages__"],
+    deps = [
+        ":evidence",
+        ":queue",
+        ":review_gate",
+        ":rules",
+        "//factory/cli/src/tbhbdev/alpha:pull_request",
+        "//factory/cli/src/tbhbdev/alpha/identity:models",
+        "//factory/cli/src/tbhbdev/alpha/identity:records",
+        "//factory/cli/src/tbhbdev/alpha/identity:trailers",
+        "//factory/cli/src/tbhbdev/alpha/identity/commit:policy",
+    ],
+)
+
+cli_py_library(
+    name = "message",
+    srcs = ["message.py"],
+    imports = ["../../.."],
+    visibility = ["//factory/cli:__subpackages__"],
+    deps = [":body"],
+)
+
+cli_py_library(
+    name = "compose",
+    srcs = ["compose.py"],
+    imports = ["../../.."],
+    visibility = ["//factory/cli:__subpackages__"],
+    deps = [
+        ":body",
+        ":message",
+        "//factory/cli/src/tbhbdev/alpha:pull_request",
+        "//factory/cli/src/tbhbdev/alpha/identity/commit:grammar",
+    ],
+)
+
+cli_py_library(
+    name = "options",
+    srcs = ["options.py"],
+    imports = ["../../.."],
+    pyi_deps = [":message"],
+    visibility = ["//factory/cli:__subpackages__"],
+    deps = [":review_gate"],
+)
+
+cli_py_library(
+    name = "queue",
+    srcs = ["queue.py"],
+    imports = ["../../.."],
+    visibility = ["//factory/cli:__subpackages__"],
+    deps = [":evidence"],
+)
+
+cli_py_library(
+    name = "renovate",
+    srcs = ["renovate.py"],
+    imports = ["../../.."],
+    visibility = ["//factory/cli:__subpackages__"],
+    deps = [":body"],
+)
+
+cli_py_library(
+    name = "review_gate",
+    srcs = ["review_gate.py"],
+    imports = ["../../.."],
+    visibility = ["//factory/cli:__subpackages__"],
+    deps = ["//factory/cli/src/tbhbdev/alpha/identity:trailers"],
+)
+
+cli_py_library(
+    name = "rules",
+    srcs = ["rules.py"],
+    imports = ["../../.."],
+    pyi_deps = [":review_gate"],
+    visibility = ["//factory/cli:__subpackages__"],
+    deps = [":evidence"],
+)

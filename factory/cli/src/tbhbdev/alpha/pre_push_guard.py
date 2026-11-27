@@ -2,7 +2,8 @@
 
 A non-fast-forward update to an unprotected branch is allowed only when the
 remote tip git reports is the tip this clone fetched into
-``refs/remotes/<remote>/<branch>``, the value ``--force-with-lease`` checks.
+``refs/remotes/<remote>/<branch>``. Start-ref runs use
+``refs/remotes/<remote>/fetched/heads/<branch>`` and pin the tip at launch.
 The hook cannot see the flag, so a plain force reports the same tip. The
 command-line guard (``guard_git_hooks``) refuses plain force, and this hook
 logs ``old -> new`` on stderr for every rewrite it allows.
@@ -220,16 +221,18 @@ def agent_commit_problems(
     return problems
 
 
-def fetched_tip(remote: str, ref: str) -> str:
+def fetched_tip(remote: str, ref: str, start_ref: str | None) -> str:
     """The tip of the remote-tracking branch for a pushed ref, or empty."""
     if not ref.startswith("refs/heads/"):
         return ""
+    branch = ref.removeprefix("refs/heads/")
+    tracking = f"fetched/heads/{branch}" if ref == start_ref else branch
     code, out = git(
         *SAFE,
         "rev-parse",
         "--verify",
         "--quiet",
-        f"refs/remotes/{remote}/{ref.removeprefix('refs/heads/')}^{{commit}}",
+        f"refs/remotes/{remote}/{tracking}^{{commit}}",
     )
     return "" if code else out
 
@@ -283,9 +286,7 @@ def ref_problems(
         else 0
     )
     if ancestry:
-        if ref == start_ref:
-            problems.append(f"{ref}: the start ref requires a fast-forward push")
-        elif fetched_tip(remote, ref) != old:
+        if fetched_tip(remote, ref, start_ref) != old:
             problems.append(
                 f"{ref}: non-fast-forward push refused; the remote tip is not "
                 "the fetched one, so fetch and push with --force-with-lease"
@@ -345,7 +346,7 @@ def inspect_push(remote: str, target: str, lines: Sequence[str]) -> list[str]:
         message = (
             f"{RUN_NAME_ENV} is missing; push from a managed agent run "
             "with its hooks installed (install clone hooks with "
-            "`tbhbdev alpha install --hooks-only`)"
+            "`tbhbdev alpha install`)"
         )
         raise InspectionError(message)
     agent_push = agent_org_push or session_root(os.environ) is not None

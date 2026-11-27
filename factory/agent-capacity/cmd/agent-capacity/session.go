@@ -26,6 +26,12 @@ func accountFlags(name string) (*flag.FlagSet, *session.Options) {
 	flags.StringVar(&options.AliasFile, "alias-file", "", "approved alias file")
 	flags.StringVar(&options.Root, "alias-root", "", "parent of alias directories")
 	flags.StringVar(&options.Binary, "binary", "", "vendor binary path")
+
+	return flags, options
+}
+
+func sessionFlags(name string) (*flag.FlagSet, *session.Options) {
+	flags, options := accountFlags(name)
 	flags.StringVar(&options.Exporter, "exporter", "", "agent-capacity binary path for the status line")
 	flags.StringVar(&options.SpoolDir, "spool-dir", "", "snapshot directory")
 
@@ -49,7 +55,7 @@ func sessionCommand(ctx context.Context, args []string, output io.Writer) int {
 	}
 
 	if args[0] == "render-settings" {
-		flags, options := accountFlags("render-settings")
+		flags, options := sessionFlags("render-settings")
 		if flags.Parse(args[1:]) != nil || flags.NArg() != 0 {
 			return argumentExit
 		}
@@ -71,7 +77,7 @@ func sessionCommand(ctx context.Context, args []string, output io.Writer) int {
 		return argumentExit
 	}
 
-	flags, options := accountFlags("run")
+	flags, options := sessionFlags("run")
 	instance := flags.String("instance", "", "vendor and approved alias")
 	flags.StringVar(&options.Prompt, "prompt", "ping", "one word scheduling prompt")
 

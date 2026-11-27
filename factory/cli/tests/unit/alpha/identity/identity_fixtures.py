@@ -344,7 +344,7 @@ def wired(isolated: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     run_git(path, "commit", "-q", "-m", "init")
     monkeypatch.chdir(path)
     done = subprocess.run(
-        ["tbhbdev", "alpha", "install", "--harness", "claude"],
+        ["tbhbdev", "alpha", "install"],
         capture_output=True,
         text=True,
         check=False,

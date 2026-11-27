@@ -28,11 +28,11 @@ cli_py_test(
     srcs = ["test_hooks_io.py"],
     imports = ["../../../.."],
     deps = [
-        "//factory/cli/src/tbhbdev/alpha:install",
         "//factory/cli/src/tbhbdev/alpha/identity:models",
         "//factory/cli/src/tbhbdev/alpha/identity:records",
         "//factory/cli/src/tbhbdev/alpha/identity:sessions",
         "//factory/cli/src/tbhbdev/alpha/identity/codex:hooks",
+        "//factory/cli/src/tbhbdev/alpha/install:hooks",
         "//factory/cli/tests:conftest",
         "//factory/cli/tests/unit/alpha/identity:conftest",
         "//factory/cli/tests/unit/alpha/identity:identity_examples",

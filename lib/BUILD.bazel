@@ -18,7 +18,7 @@ package_group(
 
 filegroup(
     name = "repo_files",
-    srcs = glob(["**"]),
+    srcs = glob(["**"]) + ["//lib/telemetry:repo_files"],
     visibility = ["//:__pkg__"],
 )
 

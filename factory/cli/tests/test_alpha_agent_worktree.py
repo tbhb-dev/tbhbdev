@@ -24,6 +24,7 @@ from agent_host_example import (
 from tbhbdev.alpha.agent import worktree
 from tbhbdev.alpha.agent.model import Invalid, Profile
 from tbhbdev.alpha.identity.commit import policy as identity_commit_policy
+from tbhbdev.alpha.install import scripts as git_templates
 
 
 class GitOptions(TypedDict, closed=True):
@@ -810,9 +811,9 @@ def test_hook_installation_is_repeatable_private_and_read_only(
         "post-commit.prek",
     }
     assert all(p.stat().st_mode & 0o777 == 0o555 for p in hooks.iterdir())
-    for name, verb in worktree.install.IDENTITY_HOOKS:
+    for name, verb in git_templates.IDENTITY_HOOKS:
         assert (hooks / name).read_text() == worktree.RUN_IDENTITY_SHIM.format(
-            mark=worktree.install.SHIM_MARK,
+            mark=git_templates.SHIM_MARK,
             verb=verb,
             hook=name,
             run_env=identity_commit_policy.RUN_HOOK_ENV,
@@ -820,17 +821,16 @@ def test_hook_installation_is_repeatable_private_and_read_only(
     for name in (
         "pre-commit",
         "pre-push",
-        *(p[0] for p in worktree.install.IDENTITY_HOOKS),
+        *(p[0] for p in git_templates.IDENTITY_HOOKS),
     ):
         destination = name if name == "pre-commit" else f"{name}.prek"
         assert (hooks / destination).read_text() == worktree.RUN_PREK_SHIM.format(
             prek="/example/prek", stage=name
         )
-    assert (hooks / "pre-push").read_text() == worktree.install.PRE_PUSH_SHIM.format(
-        python=Path(sys.base_prefix, "bin", "python3"),
-        mark=worktree.install.SHIM_MARK,
-        pattern=worktree.TBHB_DEV_ORIGIN.pattern,
-        run_env={
+    assert (hooks / "pre-push").read_text() == git_templates.pre_push_shim(
+        Path(sys.base_prefix, "bin", "python3"),
+        worktree.TBHB_DEV_ORIGIN.pattern,
+        {
             "TBHBDEV_RUN_NAME": "example",
             "TBHBDEV_RUN_START_REF": "",
             "TBHBDEV_RUN_START_TIP": "a" * 40,

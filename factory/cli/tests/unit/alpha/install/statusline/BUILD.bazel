@@ -1,0 +1,38 @@
+load("//factory/cli/tests:pytest.bzl", "cli_py_test")
+
+# SPDX-License-Identifier: Apache-2.0
+# Copyright Tony Burns
+
+filegroup(
+    name = "package_files",
+    srcs = glob(["*.py"]),
+    visibility = ["//factory/cli/tests/unit/alpha/install:__pkg__"],
+)
+
+cli_py_test(
+    name = "test_command",
+    srcs = ["test_command.py"],
+    imports = ["../../../.."],
+    deps = [
+        "//factory/cli/src/tbhbdev/alpha/install/statusline:command",
+        "//factory/cli/tests:conftest",
+        "//factory/cli/tests/unit/alpha/install:conftest",
+        "@cli_pip//pytest",
+    ],
+)
+
+cli_py_test(
+    name = "test_pin",
+    srcs = ["test_pin.py"],
+    imports = ["../../../.."],
+    deps = [
+        "//factory/cli/src/tbhbdev/alpha/install:files",
+        "//factory/cli/src/tbhbdev/alpha/install:model",
+        "//factory/cli/src/tbhbdev/alpha/install:settings",
+        "//factory/cli/src/tbhbdev/alpha/install/statusline:command",
+        "//factory/cli/src/tbhbdev/alpha/install/statusline:pin",
+        "//factory/cli/tests:conftest",
+        "//factory/cli/tests/unit/alpha/install:conftest",
+        "@cli_pip//pytest",
+    ],
+)

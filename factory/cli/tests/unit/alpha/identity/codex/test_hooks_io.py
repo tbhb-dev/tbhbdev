@@ -32,9 +32,9 @@ from unit.alpha.identity.identity_fixtures import (
     write_rollout,
 )
 
-from tbhbdev.alpha import install
 from tbhbdev.alpha.identity import models, records, sessions
 from tbhbdev.alpha.identity.codex import hooks as codex_hooks
+from tbhbdev.alpha.install import hooks as install
 
 OTHER_THREAD = "01a19ebf-ffff-7000-8000-0123456789ab"
 

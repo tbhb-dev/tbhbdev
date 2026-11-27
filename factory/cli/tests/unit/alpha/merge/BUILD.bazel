@@ -1,0 +1,209 @@
+# SPDX-License-Identifier: Apache-2.0
+# Copyright Tony Burns
+
+load("//factory/cli:python.bzl", "cli_py_library")
+load("//factory/cli/tests:pytest.bzl", "cli_py_test")
+
+# gazelle:resolve py fake_tool //factory/cli/tests:fake_tool
+
+package(default_testonly = True)
+
+filegroup(
+    name = "package_files",
+    testonly = False,
+    srcs = glob(["*.py"]),
+    visibility = ["//factory/cli/tests:__pkg__"],
+)
+
+cli_py_test(
+    name = "test_command_io",
+    srcs = ["test_command_io.py"],
+    data = [
+        "//factory/cli/src/tbhbdev:tbhbdev_bin",
+        "//factory/cli/tests:alpha_testdata",
+    ],
+    extra_deps = ["//factory/cli/src/tbhbdev:cli"],
+    imports = ["../../.."],
+    deps = [
+        ":conftest",
+        ":examples",
+        ":fake_github",
+        "//factory/cli/src/tbhbdev/alpha:secret_scan",
+        "//factory/cli/src/tbhbdev/alpha/identity/commit:policy",
+        "//factory/cli/src/tbhbdev/alpha/merge:command",
+        "//factory/cli/src/tbhbdev/alpha/merge:github",
+        "//factory/cli/tests:conftest",
+        "//factory/cli/tests:fake_tool",
+        "@cli_pip//pytest",
+    ],
+)
+
+cli_py_test(
+    name = "test_github_io",
+    srcs = ["test_github_io.py"],
+    data = ["//factory/cli/tests:alpha_testdata"],
+    imports = ["../../.."],
+    deps = [
+        ":conftest",
+        ":fake_github",
+        "//factory/cli/src/tbhbdev/alpha/merge:github",
+        "//factory/cli/tests:conftest",
+        "@cli_pip//pytest",
+    ],
+)
+
+cli_py_test(
+    name = "test_compose_io",
+    srcs = ["test_compose_io.py"],
+    data = ["//factory/cli/tests:alpha_testdata"],
+    imports = ["../../.."],
+    deps = [
+        ":conftest",
+        ":examples",
+        ":fake_github",
+        "//factory/cli/src/tbhbdev/alpha/identity/commit:grammar",
+        "//factory/cli/src/tbhbdev/alpha/merge:body",
+        "//factory/cli/src/tbhbdev/alpha/merge:compose",
+        "//factory/cli/src/tbhbdev/alpha/merge:github",
+        "//factory/cli/tests:conftest",
+        "@cli_pip//pytest",
+    ],
+)
+
+cli_py_library(
+    name = "fake_github",
+    srcs = ["fake_github.py"],
+    imports = ["../../.."],
+    visibility = ["//factory/cli/tests:__subpackages__"],
+    deps = ["//factory/cli/src/tbhbdev/alpha/merge:command"],
+)
+
+cli_py_library(
+    name = "examples",
+    srcs = ["examples.py"],
+    imports = ["../../.."],
+    visibility = ["//factory/cli/tests:__subpackages__"],
+)
+
+cli_py_test(
+    name = "test_body",
+    srcs = ["test_body.py"],
+    imports = ["../../.."],
+    deps = [
+        ":conftest",
+        "//factory/cli/src/tbhbdev/alpha:pull_request",
+        "//factory/cli/src/tbhbdev/alpha/merge:body",
+        "//factory/cli/tests:conftest",
+        "@cli_pip//hypothesis",
+        "@cli_pip//pytest",
+    ],
+)
+
+cli_py_test(
+    name = "test_evidence",
+    srcs = ["test_evidence.py"],
+    imports = ["../../.."],
+    deps = [
+        ":conftest",
+        ":examples",
+        "//factory/cli/src/tbhbdev/alpha/merge:evidence",
+        "//factory/cli/tests:conftest",
+        "@cli_pip//pytest",
+    ],
+)
+
+cli_py_test(
+    name = "test_message",
+    srcs = ["test_message.py"],
+    imports = ["../../.."],
+    deps = [
+        ":conftest",
+        ":examples",
+        "//factory/cli/src/tbhbdev/alpha:pull_request",
+        "//factory/cli/src/tbhbdev/alpha/identity/commit:grammar",
+        "//factory/cli/src/tbhbdev/alpha/merge:message",
+        "//factory/cli/tests:conftest",
+        "@cli_pip//pytest",
+    ],
+)
+
+cli_py_test(
+    name = "test_options",
+    srcs = ["test_options.py"],
+    imports = ["../../.."],
+    deps = [
+        ":conftest",
+        "//factory/cli/src/tbhbdev/alpha/merge:message",
+        "//factory/cli/src/tbhbdev/alpha/merge:options",
+        "//factory/cli/tests:conftest",
+        "@cli_pip//pytest",
+    ],
+)
+
+cli_py_test(
+    name = "test_queue",
+    srcs = ["test_queue.py"],
+    imports = ["../../.."],
+    deps = [
+        ":conftest",
+        "//factory/cli/src/tbhbdev/alpha/merge:queue",
+        "//factory/cli/tests:conftest",
+        "@cli_pip//pytest",
+    ],
+)
+
+cli_py_test(
+    name = "test_renovate",
+    srcs = ["test_renovate.py"],
+    imports = ["../../.."],
+    deps = [
+        ":conftest",
+        ":examples",
+        "//factory/cli/src/tbhbdev/alpha/merge:renovate",
+        "//factory/cli/tests:conftest",
+        "@cli_pip//pytest",
+    ],
+)
+
+cli_py_test(
+    name = "test_review_gate",
+    srcs = ["test_review_gate.py"],
+    imports = ["../../.."],
+    deps = [
+        ":conftest",
+        "//factory/cli/src/tbhbdev/alpha/identity:models",
+        "//factory/cli/src/tbhbdev/alpha/identity:records",
+        "//factory/cli/src/tbhbdev/alpha/identity:trailers",
+        "//factory/cli/src/tbhbdev/alpha/merge:review_gate",
+        "//factory/cli/tests:conftest",
+        "@cli_pip//pytest",
+    ],
+)
+
+cli_py_test(
+    name = "test_rules",
+    srcs = ["test_rules.py"],
+    imports = ["../../.."],
+    deps = [
+        ":conftest",
+        "//factory/cli/src/tbhbdev/alpha/merge:evidence",
+        "//factory/cli/src/tbhbdev/alpha/merge:review_gate",
+        "//factory/cli/src/tbhbdev/alpha/merge:rules",
+        "//factory/cli/tests:conftest",
+        "@cli_pip//pytest",
+    ],
+)
+
+cli_py_library(
+    name = "conftest",
+    testonly = True,
+    srcs = ["conftest.py"],
+    imports = ["../../.."],
+    visibility = ["//factory/cli/tests:__subpackages__"],
+    deps = [
+        ":fake_github",
+        "//factory/cli/src/tbhbdev/alpha:tool_pins",
+        "//factory/cli/tests:fake_tool",
+        "@cli_pip//pytest",
+    ],
+)

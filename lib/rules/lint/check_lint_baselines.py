@@ -20,14 +20,20 @@ from typing import cast
 from lint.private.git_read import GitError, git_output
 
 type Ceilings = dict[tuple[str, str], int]
+type Metrics = tuple[dict[str, int], Counter[str]]
 type TomlDocument = dict[str, object]
 
 
-CLI = "factory/cli"
-CLI_CONFIG = f"{CLI}/pyproject.toml"
-LIMIT_KEYS = {"src": "max-module-lines", "tests": "max-test-lines"}
+MODULE_LIMIT = "max-module-lines"
+TEST_LIMIT = "max-test-lines"
+CONFIG_PATH = re.compile(r"factory/[^/]+/(pyproject\.toml|go-lint-baselines\.toml)")
 NOQA = re.compile(r"#\s*(?:(?:ruff|flake8):\s*)?noqa\b(?::\s*(.*))?", re.IGNORECASE)
 CODES = re.compile(r"[A-Z]+\d+(?:[\s,]+[A-Z]+\d+)*", re.IGNORECASE)
+NOLINT = re.compile(r"//[ \t]*nolint(?=$|[ \t:]|//)(?::([^/]*))?")
+GO_GENERATED = re.compile(r"// Code generated .* DO NOT EDIT\.")
+GO_TOKEN = re.compile(
+    r"""//[^\n]*|/\*[\s\S]*?\*/|`[^`]*`|"(?:\\.|[^"\\\n])*"|'(?:\\.|[^'\\\n])*'"""
+)
 
 
 def project_ceilings(doc: TomlDocument) -> Ceilings | None:
@@ -45,10 +51,9 @@ def project_ceilings(doc: TomlDocument) -> Ceilings | None:
     if limits is None:
         # Older revisions kept the module limit in Pylint's format table.
         pylint = cast("dict[str, dict[str, int]]", tool["pylint"])
-        key = LIMIT_KEYS["src"]
-        ceilings["lint-baselines", key] = pylint["format"][key]
+        ceilings["lint-baselines", MODULE_LIMIT] = pylint["format"][MODULE_LIMIT]
     else:
-        for key in LIMIT_KEYS.values():
+        for key in (MODULE_LIMIT, TEST_LIMIT):
             ceilings["lint-baselines", key] = limits[key]
     return dict(ceilings)
 
@@ -92,45 +97,91 @@ def source_metrics(content: bytes) -> tuple[int, Counter[str]]:
     return sum(1 for line in lines if line.strip()), counts
 
 
-def project_metrics(root: Path, revision: str) -> tuple[dict[str, int], Counter[str]]:
-    entries = git_output(
-        root,
-        "ls-tree",
-        "-rz",
-        "--full-tree",
-        revision,
-        "--",
-        f"{CLI}/src",
-        f"{CLI}/tests",
-    )
+def classify_go_source(text: str) -> tuple[str, list[str]] | None:
+    # Match literals with comments so comment markers inside literals stay code.
+    code: list[str] = []
+    line_comments: list[str] = []
+    end = 0
+    for token in GO_TOKEN.finditer(text):
+        start = token.start()
+        code.append(text[end:start])
+        end = token.end()
+        value = token[0]
+        if value.startswith("//"):
+            if (
+                GO_GENERATED.fullmatch(value)
+                and (start == 0 or text[start - 1] == "\n")
+                and not any(part.strip() for part in code)
+            ):
+                return None
+            line_comments.append(value)
+        elif value.startswith("/*"):
+            code.append("\n" * value.count("\n"))
+        else:
+            code.append(value)
+    code.append(text[end:])
+    return "".join(code), line_comments
+
+
+def go_source_metrics(content: bytes) -> tuple[int, Counter[str]] | None:
+    text = content.decode("utf-8-sig").replace("\r\n", "\n")
+    classified = classify_go_source(text)
+    if classified is None:
+        return None
+    code, line_comments = classified
+    counts: Counter[str] = Counter()
+    for comment in line_comments:
+        if directive := NOLINT.match(comment):
+            names = {name.strip().lower() for name in (directive[1] or "").split(",")}
+            counts.update(names - {""} or {"(bare)"})
+    return sum(1 for line in code.split("\n") if line.strip()), counts
+
+
+def project_metrics(
+    root: Path, revision: str, project: str, *, is_python: bool
+) -> Metrics:
+    paths = [f"{project}/src", f"{project}/tests"] if is_python else [project]
+    suffix = b".py" if is_python else b".go"
+    measure = source_metrics if is_python else go_source_metrics
+    entries = git_output(root, "ls-tree", "-rz", "--full-tree", revision, "--", *paths)
     lengths: dict[str, int] = {}
     counts: Counter[str] = Counter()
     for entry in entries.split(b"\0")[:-1]:
         metadata, path = entry.split(b"\t", 1)
-        if metadata.startswith(b"100") and path.endswith(b".py"):
+        if metadata.startswith(b"100") and path.endswith(suffix):
             content = git_output(
                 root, "cat-file", "blob", metadata.split()[-1].decode()
             )
-            lines, file_counts = source_metrics(content)
-            lengths[os.fsdecode(path)] = lines
-            counts.update(file_counts)
+            if (metrics := measure(content)) is not None:
+                lines, file_counts = metrics
+                lengths[os.fsdecode(path)] = lines
+                counts.update(file_counts)
     return lengths, counts
 
 
-def file_growth(root: Path, base: str, head: str, limits: dict[str, int]) -> list[str]:
-    old_lengths, old_counts = project_metrics(root, base)
-    lengths, counts = project_metrics(root, head)
+def file_growth(
+    project: str, limits: Ceilings, before: Metrics, after: Metrics, *, is_python: bool
+) -> list[str]:
+    old_lengths, old_counts = before
+    lengths, counts = after
     errors = []
     for path, lines in lengths.items():
-        directory = path.removeprefix(f"{CLI}/").split("/", 1)[0]
-        ceiling = max(limits[directory], old_lengths.get(path, 0))
+        is_test = (
+            path.startswith(f"{project}/tests/")
+            if is_python
+            else path.endswith("_test.go")
+        )
+        key = TEST_LIMIT if is_test else MODULE_LIMIT
+        ceiling = max(limits["lint-baselines", key], old_lengths.get(path, 0))
         if lines > ceiling:
             errors.append(f"{path}: {lines} code lines (ceiling {ceiling})")
+    suppression = "noqa" if is_python else "nolint"
     for rule, count in sorted(counts.items()):
         ceiling = old_counts[rule]
         if count > ceiling:
             errors.append(
-                f"{CLI}: {rule} has {count} noqa suppressions (ceiling {ceiling})"
+                f"{project}: {rule} has {count} {suppression} suppressions"
+                f" (ceiling {ceiling})"
             )
     return errors
 
@@ -143,31 +194,63 @@ def growth(before: Ceilings, after: Ceilings) -> list[str]:
     ]
 
 
-def read_config(root: Path, revision: str) -> TomlDocument | None:
+def go_ceilings(doc: TomlDocument, path: str) -> Ceilings:
+    limits = {}
+    for key in (MODULE_LIMIT, TEST_LIMIT):
+        limit = doc.get(key)
+        if type(limit) is not int or limit <= 0:
+            msg = f"{path}: {key} must be a positive integer"
+            raise ValueError(msg)
+        limits["lint-baselines", key] = limit
+    return limits
+
+
+def read_configs(root: Path, revision: str) -> dict[str, Ceilings]:
     tree = git_output(
-        root, "ls-tree", "--full-tree", "--name-only", revision, "--", CLI_CONFIG
+        root, "ls-tree", "-rz", "--full-tree", "--name-only", revision, "--", "factory"
     )
-    if not tree:
-        return None
-    return tomllib.loads(git_output(root, "show", f"{revision}:{CLI_CONFIG}").decode())
+    configs = {}
+    for path in map(os.fsdecode, tree.split(b"\0")[:-1]):
+        if not CONFIG_PATH.fullmatch(path):
+            continue
+        doc = tomllib.loads(git_output(root, "show", f"{revision}:{path}").decode())
+        ceilings = (
+            project_ceilings(doc)
+            if path.endswith("/pyproject.toml")
+            else go_ceilings(doc, path)
+        )
+        if ceilings is not None:
+            configs[path] = ceilings
+    return configs
 
 
 def check(root: Path, base: str, head: str) -> list[str]:
-    old_doc = read_config(root, base)
-    doc = read_config(root, head)
-    after = project_ceilings(doc) if doc is not None else None
-    if doc is None or after is None:
-        return [f"{CLI_CONFIG}: missing from {head}"]
-
-    before = project_ceilings(old_doc) if old_doc is not None else None
-    limits = {
-        directory: after["lint-baselines", key] for directory, key in LIMIT_KEYS.items()
-    }
+    base = git_output(root, "merge-base", "--", base, head).decode().strip()
+    old_configs = read_configs(root, base)
+    configs = read_configs(root, head)
     errors = []
-    if before is not None:
-        before.setdefault(("lint-baselines", "max-test-lines"), limits["tests"])
-        errors.extend(f"{CLI_CONFIG}: {error}" for error in growth(before, after))
-    errors.extend(file_growth(root, base, head, limits))
+    for config in sorted(old_configs.keys() | configs.keys()):
+        if config not in configs:
+            errors.append(f"{config}: missing from {head}")
+            continue
+        project, filename = config.rsplit("/", 1)
+        is_python = filename == "pyproject.toml"
+        after = configs[config]
+        if config in old_configs:
+            before = old_configs[config]
+            before.setdefault(
+                ("lint-baselines", TEST_LIMIT), after["lint-baselines", TEST_LIMIT]
+            )
+            errors.extend(f"{config}: {error}" for error in growth(before, after))
+        errors.extend(
+            file_growth(
+                project,
+                after,
+                project_metrics(root, base, project, is_python=is_python),
+                project_metrics(root, head, project, is_python=is_python),
+                is_python=is_python,
+            )
+        )
     return errors
 
 

@@ -25,7 +25,7 @@ from pathlib import Path
 import httpx2
 
 from tbhbdev import github_tls, userconfig
-from tbhbdev.alpha import codex_trust, install, run_stop_hook
+from tbhbdev.alpha import run_stop_hook
 from tbhbdev.alpha.agent import (
     admission,
     app_server,
@@ -63,6 +63,7 @@ from tbhbdev.alpha.agent.model import (
 )
 from tbhbdev.alpha.agent.ownership import RunExistsError
 from tbhbdev.alpha.identity.commit.policy import RUN_MODEL_ENV
+from tbhbdev.alpha.install import hooks, trust
 
 type BazelShutdown = dict[Path, tuple[str, tuple[int, int] | None]]
 
@@ -458,10 +459,9 @@ def prepare_codex_config(home: Path, endpoint: str | None, *, headless: bool) ->
     text = run_host_telemetry.otel_config(endpoint) if endpoint is not None else ""
     if headless:
         path = home / "hooks.json"
-        config = {"hooks": install.stop_hooks("codex")}
+        config = {"hooks": hooks.stop_hooks("codex")}
         runfiles.atomic(path, json.dumps(config))
-        hashes = codex_trust.our_hashes(path, config, install.ours)
-        text = codex_trust.trusted_text(text, path, hashes)
+        text = trust.trusted_text(text, path, trust.our_hashes(path, config))
     if text:
         runfiles.atomic(home / "config.toml", text)
 

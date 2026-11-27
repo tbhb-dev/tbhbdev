@@ -1,0 +1,70 @@
+# SPDX-License-Identifier: Apache-2.0
+# Copyright Tony Burns
+
+---
+# Import contracts for github-metrics.
+version: 3
+
+allow:
+  depOnAnyVendor: false
+  deepScan: false
+
+components:
+  cmd: {in: cmd/github-metrics}
+  appauth: {in: internal/appauth}
+  backfill: {in: internal/backfill}
+  budget: {in: internal/budget}
+  ghclient: {in: internal/ghclient}
+  receiver: {in: internal/receiver}
+  reconcile: {in: internal/reconcile}
+  recorder: {in: internal/recorder}
+  store: {in: internal/store}
+  telemetry: {in: internal/telemetry}
+  version: {in: internal/version}
+  worker: {in: internal/worker}
+
+vendors:
+  bbolt: {in: [go.etcd.io/bbolt, go.etcd.io/bbolt/errors]}
+  otel: {in: go.opentelemetry.io/otel/**}
+  otlp: {in: go.opentelemetry.io/proto/otlp/**}
+  protobuf: {in: google.golang.org/protobuf/proto}
+
+deps:
+  cmd:
+    mayDependOn:
+      - appauth
+      - budget
+      - ghclient
+      - receiver
+      - reconcile
+      - recorder
+      - store
+      - telemetry
+      - worker
+    canUse: [otel]
+  appauth:
+    mayDependOn: [appauth, ghclient]
+  backfill:
+    mayDependOn: [backfill, budget, ghclient]
+  budget:
+    mayDependOn: [budget]
+  ghclient:
+    mayDependOn: [budget, ghclient]
+  receiver:
+    mayDependOn: [receiver, store]
+  reconcile:
+    mayDependOn: [budget, ghclient, reconcile, recorder]
+    canUse: [otel]
+  recorder:
+    mayDependOn: [recorder]
+    canUse: [otel]
+  store:
+    mayDependOn: [store]
+    canUse: [bbolt]
+  telemetry:
+    mayDependOn: [telemetry]
+    canUse: [otel, otlp, protobuf]
+  version:
+    mayDependOn: [version]
+  worker:
+    mayDependOn: [store, worker]

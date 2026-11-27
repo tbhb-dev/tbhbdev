@@ -1,0 +1,164 @@
+load("//factory/cli:python.bzl", "cli_py_library")
+
+# SPDX-License-Identifier: Apache-2.0
+# Copyright Tony Burns
+
+filegroup(
+    name = "package_files",
+    srcs = glob(["*.py"]) + [
+        "//factory/cli/src/tbhbdev/alpha/install/git:package_files",
+        "//factory/cli/src/tbhbdev/alpha/install/statusline:package_files",
+    ],
+    visibility = ["//factory/cli/src/tbhbdev/alpha:__pkg__"],
+)
+
+cli_py_library(
+    name = "__init__",
+    srcs = ["__init__.py"],
+    imports = ["../../.."],
+    visibility = ["//factory/cli:__subpackages__"],
+)
+
+cli_py_library(
+    name = "arguments",
+    srcs = ["arguments.py"],
+    imports = ["../../.."],
+    visibility = ["//factory/cli:__subpackages__"],
+)
+
+cli_py_library(
+    name = "codex",
+    srcs = ["codex.py"],
+    imports = ["../../.."],
+    visibility = ["//factory/cli:__subpackages__"],
+    deps = [
+        ":environment",
+        ":files",
+        ":model",
+        ":settings",
+        ":trust",
+        "//factory/cli/src/tbhbdev/alpha/identity/codex:rollout",
+    ],
+)
+
+cli_py_library(
+    name = "command",
+    srcs = ["command.py"],
+    imports = ["../../.."],
+    visibility = ["//factory/cli:__subpackages__"],
+    deps = [
+        ":arguments",
+        ":config",
+        ":model",
+        ":session",
+        ":shims",
+        "//factory/cli/src/tbhbdev/alpha/install/git:hooks",
+        "//factory/cli/src/tbhbdev/alpha/install/statusline:pin",
+    ],
+)
+
+cli_py_library(
+    name = "config",
+    srcs = ["config.py"],
+    imports = ["../../.."],
+    visibility = ["//factory/cli:__subpackages__"],
+    deps = [
+        ":codex",
+        ":files",
+        ":model",
+        ":settings",
+    ],
+)
+
+cli_py_library(
+    name = "environment",
+    srcs = ["environment.py"],
+    imports = ["../../.."],
+    visibility = ["//factory/cli:__subpackages__"],
+    deps = [
+        ":model",
+        "@cli_pip//tomlkit",
+    ],
+)
+
+cli_py_library(
+    name = "files",
+    srcs = ["files.py"],
+    imports = ["../../.."],
+    visibility = ["//factory/cli:__subpackages__"],
+    deps = [
+        ":model",
+        ":settings",
+    ],
+)
+
+cli_py_library(
+    name = "hooks",
+    srcs = ["hooks.py"],
+    imports = ["../../.."],
+    pyi_deps = [":model"],
+    visibility = ["//factory/cli:__subpackages__"],
+)
+
+cli_py_library(
+    name = "model",
+    srcs = ["model.py"],
+    imports = ["../../.."],
+    visibility = ["//factory/cli:__subpackages__"],
+)
+
+cli_py_library(
+    name = "scripts",
+    srcs = ["scripts.py"],
+    imports = ["../../.."],
+    visibility = ["//factory/cli:__subpackages__"],
+    deps = [":model"],
+)
+
+cli_py_library(
+    name = "session",
+    srcs = ["session.py"],
+    imports = ["../../.."],
+    visibility = ["//factory/cli:__subpackages__"],
+    deps = [
+        ":model",
+        ":scripts",
+        "//factory/cli/src/tbhbdev/alpha:gh_shim",
+        "//factory/cli/src/tbhbdev/alpha:repo",
+        "//factory/cli/src/tbhbdev/alpha/install/git:hooks",
+    ],
+)
+
+cli_py_library(
+    name = "settings",
+    srcs = ["settings.py"],
+    imports = ["../../.."],
+    visibility = ["//factory/cli:__subpackages__"],
+    deps = [
+        ":hooks",
+        ":model",
+    ],
+)
+
+cli_py_library(
+    name = "shims",
+    srcs = ["shims.py"],
+    imports = ["../../.."],
+    visibility = ["//factory/cli:__subpackages__"],
+    deps = [
+        ":model",
+        ":scripts",
+        "//factory/cli/src/tbhbdev/alpha:gh_shim",
+    ],
+)
+
+cli_py_library(
+    name = "trust",
+    srcs = ["trust.py"],
+    imports = ["../../.."],
+    visibility = ["//factory/cli:__subpackages__"],
+    deps = [
+        ":hooks",
+        "@cli_pip//tomlkit",
+    ],
+)

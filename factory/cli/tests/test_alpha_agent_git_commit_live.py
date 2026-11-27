@@ -17,11 +17,11 @@ from agent_live_git_commit import commit_verdict, git_child_verdict
 from test_alpha_agent_git_parent import execute_native_git_probe, real_clone
 from test_alpha_agent_sandbox_live import live_only, report
 
-from tbhbdev.alpha import install
 from tbhbdev.alpha.agent import worktree
 from tbhbdev.alpha.agent.decisions.policy import GIT_CONFIG_PATHS
 from tbhbdev.alpha.agent.model import Harness, Profile
 from tbhbdev.alpha.identity.commit import policy as identity_commit_policy
+from tbhbdev.alpha.install import scripts as install
 
 
 @pytest.mark.parametrize(

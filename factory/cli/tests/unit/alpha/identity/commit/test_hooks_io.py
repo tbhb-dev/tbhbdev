@@ -525,7 +525,7 @@ def with_msg_linter(wired: Path) -> Path:
     )
     config.write_text(yaml.safe_dump(loaded_config), encoding="utf-8")
     subprocess.run(
-        ["tbhbdev", "alpha", "install", "--harness", "claude"],
+        ["tbhbdev", "alpha", "install"],
         check=True,
         capture_output=True,
         env=hook_env(),

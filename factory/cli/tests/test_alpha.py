@@ -25,14 +25,12 @@ from tbhbdev.alpha import (
     guard_scripts,
     guard_sendmessage_clock,
     guard_ssh_agent,
-    install,
     pr_stats,
     pre_push_guard,
     pull_request,
     repo_bootstrap,
     review,
     run_stop_hook,
-    squash_merge,
     verify_range,
     version_check,
 )
@@ -40,6 +38,8 @@ from tbhbdev.alpha import command as alpha
 from tbhbdev.alpha.agent import command as agent
 from tbhbdev.alpha.agent import precheck, run_host, settings, signing_parity, ssh_serve
 from tbhbdev.alpha.identity import dispatcher as identity_dispatcher
+from tbhbdev.alpha.install import command as install
+from tbhbdev.alpha.merge import command as squash_merge
 
 if TYPE_CHECKING:
     from collections.abc import Callable

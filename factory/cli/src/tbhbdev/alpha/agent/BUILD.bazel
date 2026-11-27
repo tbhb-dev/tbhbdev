@@ -226,8 +226,6 @@ cli_py_library(
         ":worktree",
         "//factory/cli/src/tbhbdev:github_tls",
         "//factory/cli/src/tbhbdev:userconfig",
-        "//factory/cli/src/tbhbdev/alpha:codex_trust",
-        "//factory/cli/src/tbhbdev/alpha:install",
         "//factory/cli/src/tbhbdev/alpha:run_stop_hook",
         "//factory/cli/src/tbhbdev/alpha/agent/decisions:argv",
         "//factory/cli/src/tbhbdev/alpha/agent/decisions:config",
@@ -236,6 +234,8 @@ cli_py_library(
         "//factory/cli/src/tbhbdev/alpha/agent/decisions:request",
         "//factory/cli/src/tbhbdev/alpha/agent/decisions:run_state",
         "//factory/cli/src/tbhbdev/alpha/identity/commit:policy",
+        "//factory/cli/src/tbhbdev/alpha/install:hooks",
+        "//factory/cli/src/tbhbdev/alpha/install:trust",
         "@cli_pip//httpx2",
     ],
 )
@@ -345,12 +345,12 @@ cli_py_library(
         ":host_tools",
         ":model",
         ":runfiles",
-        "//factory/cli/src/tbhbdev/alpha:install",
         "//factory/cli/src/tbhbdev/alpha:pre_push_guard",
         "//factory/cli/src/tbhbdev/alpha:repo",
         "//factory/cli/src/tbhbdev/alpha/agent/decisions:repo",
         "//factory/cli/src/tbhbdev/alpha/agent/decisions:request",
         "//factory/cli/src/tbhbdev/alpha/identity/commit:policy",
+        "//factory/cli/src/tbhbdev/alpha/install:scripts",
     ],
 )
 

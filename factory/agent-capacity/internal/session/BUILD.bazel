@@ -20,6 +20,7 @@ go_library(
     importpath = "github.com/tbhb-dev/tbhbdev/factory/agent-capacity/internal/session",
     visibility = ["//factory/agent-capacity:__subpackages__"],
     deps = [
+        "//factory/agent-capacity/internal/capacity",
         "//factory/agent-capacity/internal/spool",
         "@com_github_creack_pty//:pty",
     ] + select({

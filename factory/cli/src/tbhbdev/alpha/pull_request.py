@@ -152,7 +152,7 @@ from tbhbdev.alpha.identity.antigravity import payload as agy_payload
 from tbhbdev.alpha.identity.codex import payload as identity_codex_payload
 from tbhbdev.alpha.identity.commit import grammar as identity_commit_grammar
 from tbhbdev.alpha.identity.trailers import format_value, merge_pr_trailers
-from tbhbdev.alpha.install import require_git_hooks
+from tbhbdev.alpha.install.git.hooks import require_git_hooks
 
 # Each `cast` below carries `pragma: no mutate`: it is a runtime no-op, so no test
 # could tell a mutated type string from the original.
