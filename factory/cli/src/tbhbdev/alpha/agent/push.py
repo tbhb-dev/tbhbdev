@@ -178,6 +178,7 @@ def remote_git(directory: Path, *args: str, token: str | None) -> str:
     """Use the same protected metadata for authenticated remote Git operations."""
     return history_git(
         directory,
+        "--no-replace-objects",
         "-c",
         "http.followRedirects=false",
         "-c",
@@ -205,8 +206,6 @@ def history_git(
         GIT_CONFIG_GLOBAL="/dev/null",
         GIT_CONFIG_NOSYSTEM="1",
         GIT_TERMINAL_PROMPT="0",
-        GIT_NO_REPLACE_OBJECTS="1",
-        GIT_NO_LAZY_FETCH="1",
         PATH=host_tools.search(),
     )
     env.update(host_tools.git_token_env(token))
@@ -215,8 +214,6 @@ def history_git(
             host_tools.resolve("git"),
             "-c",
             "core.hooksPath=/dev/null",
-            "-c",
-            "core.fsmonitor=false",
             "-C",
             str(directory),
             *args,

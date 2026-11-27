@@ -87,7 +87,7 @@ def save_checkout(directory: Path, checkout: Path, ref: str) -> str | None:
     with suppress(FileNotFoundError):
         # Git uses the index timestamp to detect same-tick worktree edits.
         shutil.copy2(index, private_index)
-    git = ("--work-tree", str(checkout))
+    git = ("-c", "core.fsmonitor=false", "--work-tree", str(checkout))
     status = push.history_git(
         directory,
         "--no-optional-locks",

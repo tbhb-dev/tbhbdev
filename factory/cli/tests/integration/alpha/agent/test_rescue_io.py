@@ -248,12 +248,16 @@ def change_checkout(workspace: Path, change: str) -> None:
         "diverged",
     ):
         commit(workspace, "build work")
+    if change == "earlier secret":
+        (workspace / "notes").unlink()
+        commit(workspace, "remove test value")
+    if change == "already pushed":
+        git(workspace, "push", "origin", REF)
+    break_checkout(workspace, change)
+
+
+def break_checkout(workspace: Path, change: str) -> None:
     match change:
-        case "earlier secret":
-            (workspace / "notes").unlink()
-            commit(workspace, "remove test value")
-        case "already pushed":
-            git(workspace, "push", "origin", REF)
         case "checkout error":
             (workspace / ".git" / "index.lock").touch()
         case "missing ref":
@@ -261,6 +265,8 @@ def change_checkout(workspace: Path, change: str) -> None:
         case "symlink index":
             index = workspace / ".git" / "index"
             index.symlink_to(index.rename(index.with_name("original-index")))
+        case _:
+            return
 
 
 def scan_fault(monkeypatch: pytest.MonkeyPatch, change: str) -> None:
