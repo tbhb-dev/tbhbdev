@@ -278,7 +278,12 @@ def test_empty_brief_is_refused_after_driver_restart(
     prompt = tmp_path / "brief.md"
     prompt.touch()
     args = argparse.Namespace(
-        name="sample", prompt_file=prompt, fetch_ref=[], profile="build", start_ref=None
+        name="sample",
+        prompt_file=prompt,
+        fetch_ref=[],
+        profile="build",
+        start_ref=None,
+        ref=None,
     )
     assert driver.checked_prompt(args) == ""
     monkeypatch.setenv(RETRY, "original mismatch")
