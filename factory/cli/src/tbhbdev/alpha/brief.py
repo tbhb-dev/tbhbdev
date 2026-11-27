@@ -131,7 +131,7 @@ PROSE_CONFLICTS = (
     (r"(?<![\w-])(?:prek|pre-commit) install(?![-\w])", "hook install is forbidden"),
 )
 BRANCH_INSTRUCTION = re.compile(
-    rf"(?:\b(?P<checkout>git checkout)(?! -[bB]\b|{COMMAND_ARGS} --(?: |$)) "
+    rf"(?:\b(?P<checkout>git checkout)(?! -[bB]\b|{COMMAND_ARGS} --{ARG_END}) "
     r"|\bgit (?:checkout -[bB]|switch(?: -[cC])?|branch) "
     rf"|\bgit worktree add{COMMAND_ARGS}? -[bB] "
     r"|\b(?:create|switch to|check out|commit on|work on) "
@@ -143,7 +143,6 @@ BRANCH_INSTRUCTION = re.compile(
 REF_START = r"(?<![\w./@+-])"
 REF_END = r"(?=\.*(?:$|[\s`\"'(),;:<>\]]))"
 BRANCH_REF = r"[A-Za-z0-9._/-]*[A-Za-z0-9_/-]"
-BRANCH_PREFIXES = ("agent-", "feat-", "feature-", "fix-", "hotfix-", "release-")
 SHORT_AGENT_REF = rf"agent/{BRANCH_REF}{REF_END}"
 AGENT_BRANCH_MENTION = re.compile(rf"{REF_START}{SHORT_AGENT_REF}")
 FIXED_BY_SECTION = {
@@ -177,7 +176,7 @@ def looks_like_branch(target: str) -> bool:
     return not target.startswith("-") and (
         "/" in target
         or target in {"main", "master"}
-        or target.startswith(BRANCH_PREFIXES)
+        or target.startswith(brief_text.UNQUALIFIED_BRANCH_PREFIXES)
     )
 
 

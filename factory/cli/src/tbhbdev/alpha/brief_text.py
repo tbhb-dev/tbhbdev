@@ -11,21 +11,29 @@ TRAILING_PROHIBITION = re.compile(
     r"|(?:must|should) (?:not|never))\b",
     re.IGNORECASE,
 )
-PROSE_BREAK = re.compile(r"\n(?=[ \t]*(?:\n|[#>]|```|~~~|[-*+] |\d+[.)] ))")
+# Standalone shell commands begin a new instruction. Other line breaks can wrap prose.
+PROSE_BREAK = re.compile(
+    r"\n(?=[ \t]*(?:\n|[#>]|`{3,}|~{3,}|[-*+][ \t]|\d+[.)][ \t]|`*git[ \t]))"
+)
+INLINE_CODE = re.compile(r"(?<!`)(`+)(?!`).*?(?<!`)\1(?!`)", re.DOTALL)
 CLAUSE_END = re.compile(
-    rf"\bbut\b|[.;]|{PROSE_BREAK.pattern}|^[ \t]*`?git [^\n]*\n",
+    # Keep comma-separated code arguments under their common prose introduction.
+    rf"\bbut\b|[:;]|\.(?=\s|$)|\x00(?!\s*,\s*(?:or\s+)?[`\x00])"
+    rf"|{PROSE_BREAK.pattern}|^[ \t]*`*git [^\n]*\n",
     re.IGNORECASE | re.MULTILINE,
 )
 FENCE = re.compile(r"^[ \t]*(?:```|~~~)[^\n]*(?:\n|$)", re.MULTILINE)
-INTRODUCTION = re.compile(r":(?= |$)")
-NEGATED_INTRODUCTION = re.compile(
-    r"\b(?:(?:do not|don['\u2019]t|never|avoid)(?: (?:run|execute|use))?"
-    r"|(?:forbidden|prohibited)(?: commands?)?)$"
-)
 OTHER_TRAILER_OMISSION = re.compile(
     r"\b(?:no|without) (?:an? |the )?[`\"']?(?:signed-off-by|co-authored-by)[`\"']?,"
 )
-CHECKOUT_PATH = re.compile(r"^(?:\./|\.\./|/)|\.[A-Za-z][A-Za-z0-9]*$")
+BRANCH_PREFIXES = ("agent", "feat", "feature", "fix", "hotfix", "release")
+UNQUALIFIED_BRANCH_PREFIXES = tuple(f"{prefix}-" for prefix in BRANCH_PREFIXES)
+QUALIFIED_REF_PREFIXES = (
+    "refs/",
+    "origin/",
+    *(f"{prefix}/" for prefix in BRANCH_PREFIXES),
+)
+FILE_EXTENSION = re.compile(r"\.[A-Za-z][A-Za-z0-9]*$")
 
 
 def normalize(text: str) -> str:
@@ -38,20 +46,18 @@ def prohibiting(text: str, start: int, end: int | None = None) -> bool:
     # A soft line break continues prose. A fenced command has its own line.
     blocks = FENCE.split(text[:start])
     context = blocks[-1] if len(blocks) % 2 else blocks[-1].rsplit("\n", 1)[-1]
-    clause = CLAUSE_END.split(context)[-1]
+    line_break = text.rfind("\n", 0, start)
+    if line_break >= 0 and PROSE_BREAK.match(text, line_break):
+        context = context.rsplit("\n", 1)[-1]
+    clause = CLAUSE_END.split(INLINE_CODE.sub("\0", context))[-1]
     clause = OTHER_TRAILER_OMISSION.sub("", normalize(clause))
-    # A label can introduce a prohibition or start a new instruction.
-    *labels, clause = INTRODUCTION.split(clause)
-    return (
-        (bool(labels) and NEGATED_INTRODUCTION.search(labels[-1]) is not None)
-        or NEGATION.search(clause) is not None
-        or (end is not None and TRAILING_PROHIBITION.match(text, end) is not None)
+    return NEGATION.search(clause) is not None or (
+        end is not None and TRAILING_PROHIBITION.match(text, end) is not None
     )
 
 
 def looks_like_checkout_path(target: str) -> bool:
     """Recognize path syntax in a plain checkout while preserving explicit refs."""
-    return (
-        not target.startswith(("refs/", "agent/", "origin/"))
-        and CHECKOUT_PATH.search(target) is not None
+    return not target.startswith(QUALIFIED_REF_PREFIXES) and (
+        "/" in target or FILE_EXTENSION.search(target) is not None
     )

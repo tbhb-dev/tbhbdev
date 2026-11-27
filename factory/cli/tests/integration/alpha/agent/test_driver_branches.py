@@ -76,12 +76,10 @@ def test_prompt_with_foreign_branch_warns_and_launches(
             "feat/4-exporter",
         ),
         ("Do not open a PR, but push feat/4-exporter.", "feat/4-exporter"),
-        ("No new PR: run git push origin feat/4-exporter.", "feat/4-exporter"),
         ("No new PR: push feat/4-exporter.", "feat/4-exporter"),
         ("Do not open a PR.\n\nPush feat/4-exporter.", "feat/4-exporter"),
         ("```sh\necho no\ngit push origin feat/4-exporter\n```", "feat/4-exporter"),
         ("Run `git push origin develop`.", "develop"),
-        ("Run `git checkout release/1.2`.", "release/1.2"),
         ("Run `git checkout refs/heads/feat/other.md`.", "refs/heads/feat/other.md"),
         ("Run `git checkout -b feat/other.md`.", "feat/other.md"),
         ("Run `git switch docs/README.md`.", "docs/README.md"),
@@ -100,15 +98,39 @@ def test_build_prompt_with_foreign_branch_refuses_launch(
     assert not driver.metadata_path("sample").exists()
 
 
-def test_build_prompt_after_colon_refuses_protected_push(
-    remote: Remote, capsys: pytest.CaptureFixture[str]
+@pytest.mark.parametrize("target", ["main", "feat/4-exporter"])
+@pytest.mark.parametrize(
+    ("template", "status"),
+    [
+        ("Do not\nrun `git push origin {target}`.", 0),
+        ("No new PR\ngit push origin {target}", 1),
+        ("No new PR: run git push origin {target}", 1),
+        ("Do not run: `git push origin {target}`.", 1),
+        ("No new PR.\n```sh\ngit push origin {target}\n```", 1),
+        ("- No new PR\n- Run `git push origin {target}`.", 1),
+        ("Do not use `git status`\nRun `git push origin {target}`.", 1),
+    ],
+)
+def test_build_prompt_limits_prohibition_to_its_instruction(
+    remote: Remote,
+    capsys: pytest.CaptureFixture[str],
+    target: str,
+    template: str,
+    status: int,
 ) -> None:
-    remote.prompt.write_text("No new PR: run git push origin main")
-    assert launch(remote) == 1
-    assert (
-        "hook conflict: push to main or master is forbidden" in capsys.readouterr().err
-    )
-    assert remote.records("ssh", limits=True) == []
+    remote.prompt.write_text(template.format(target=target))
+    assert launch(remote) == status
+    error = capsys.readouterr().err
+    if status == 0:
+        assert error == ""
+    else:
+        expected = (
+            "hook conflict: push to main or master is forbidden"
+            if target == "main"
+            else f"the brief directs work to {target}"
+        )
+        assert expected in error
+        assert remote.records("ssh", limits=True) == []
 
 
 @pytest.mark.parametrize(
@@ -118,10 +140,7 @@ def test_build_prompt_after_colon_refuses_protected_push(
         "Do not create branch feat/other or run `git push origin feat/other`.",
         "Do not push to branch feat/other.",
         "Do not\npush to feat/4-exporter.",
-        "Do not\nrun `git push origin main`.",
         "```sh\ngit status\n```\nDo not\npush to feat/4-exporter.",
-        "Do not run: `git push origin feat/other`.",
-        "Do not run: `git push origin main`.",
         "`git push origin feat/other` is forbidden.",
         "Run `git switch agent/sample`. Then run `git push origin agent/sample`.",
     ],
@@ -144,15 +163,33 @@ def test_build_prompt_refuses_foreign_push_matching_a_local_file(
     assert remote.records("ssh", limits=True) == []
 
 
-@pytest.mark.parametrize("path", ["README.md", "docs/README.md", "./docs/README"])
-def test_build_prompt_that_restores_a_file_launches(
+@pytest.mark.parametrize(
+    ("target", "status"),
+    [
+        ("README.md", 0),
+        ("docs/README.md", 0),
+        ("./docs/README", 0),
+        ("factory/cli/OWNERS", 0),
+        ("-- feat/other", 0),
+        ("release/1.2 -- feat/other", 0),
+        ("release/1.2", 1),
+        ("feat/other.md", 1),
+    ],
+)
+def test_build_prompt_distinguishes_checkout_paths_from_branches(
     remote: Remote,
     capsys: pytest.CaptureFixture[str],
-    path: str,
+    target: str,
+    status: int,
 ) -> None:
-    remote.prompt.write_text(f"Run `git checkout {path}`.")
-    assert launch(remote) == 0
-    assert capsys.readouterr().err == ""
+    remote.prompt.write_text(f"Run `git checkout {target}`.")
+    assert launch(remote) == status
+    error = capsys.readouterr().err
+    if status == 0:
+        assert error == ""
+    else:
+        assert f"the brief directs work to {target}" in error
+        assert remote.records("ssh", limits=True) == []
 
 
 @pytest.mark.parametrize(
