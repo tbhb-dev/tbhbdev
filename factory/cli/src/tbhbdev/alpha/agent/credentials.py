@@ -13,7 +13,7 @@ from typing import TYPE_CHECKING
 import yaml
 
 from tbhbdev import secrets
-from tbhbdev.alpha import gh_app, gh_app_runtime
+from tbhbdev.alpha import gh_app_api, gh_app_runtime
 from tbhbdev.alpha.agent import host_tools, process_group, runfiles
 from tbhbdev.alpha.agent.decisions import auth, config, repo, run_state
 from tbhbdev.alpha.agent.model import Harness, Invalid, Profile
@@ -91,7 +91,7 @@ def installation_token(
     client_id = read(references.reviews_app_client_id, label="reviews app")
     pem = read(references.reviews_app_pem, label="reviews app")
     # Explicit permissions, so the token stays narrow whatever the App holds.
-    return gh_app.mint_token(
+    return gh_app_api.mint_token(
         gh_app_runtime.default_env(),
         app_id=client_id,
         pem=pem,
@@ -119,7 +119,7 @@ def pull_requests_token(
     client_id = read(references.pull_requests_app_client_id, label="pull-requests app")
     pem = read(references.pull_requests_app_pem, label="pull-requests app")
     # Explicit permissions, so the token stays narrow whatever the App holds.
-    return gh_app.mint_token(
+    return gh_app_api.mint_token(
         gh_app_runtime.default_env(),
         app_id=client_id,
         pem=pem,

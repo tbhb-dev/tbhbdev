@@ -13,7 +13,7 @@ import httpx2
 from tbhbdev import github_tls, secrets
 from tbhbdev.admin import policy
 from tbhbdev.admin.audit import Audit, RefusedError, record
-from tbhbdev.alpha import gh_app, gh_app_runtime
+from tbhbdev.alpha import gh_app_api, gh_app_runtime
 
 MAX_RESPONSE = 1024 * 1024
 HTTP_OK = 200
@@ -108,7 +108,7 @@ def send(
     target, permissions = scope(decision, method)
     key = private_key(runtime)
     try:
-        minted = gh_app.mint_token(
+        minted = gh_app_api.mint_token(
             runtime.env,
             app_id=runtime.settings.app_id,
             pem=key,
@@ -117,9 +117,9 @@ def send(
         )
         with (
             httpx2.Client(
-                base_url=gh_app.API,
+                base_url=gh_app_api.API,
                 transport=runtime.env.transport,
-                timeout=gh_app.TIMEOUT,
+                timeout=gh_app_api.TIMEOUT,
                 follow_redirects=False,
                 trust_env=False,
                 verify=github_tls.public_roots(),

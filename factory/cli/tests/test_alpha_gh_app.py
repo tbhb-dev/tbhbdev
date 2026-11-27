@@ -27,7 +27,13 @@ from cryptography.hazmat.primitives.asymmetric import padding
 from cryptography.hazmat.primitives.asymmetric import rsa as rsa_keys
 
 from tbhbdev import secrets
-from tbhbdev.alpha import gh_app, gh_app_args, gh_app_runtime, gh_app_signing
+from tbhbdev.alpha import (
+    gh_app,
+    gh_app_api,
+    gh_app_args,
+    gh_app_runtime,
+    gh_app_signing,
+)
 
 NOW = 1_800_000_000
 # The token a fake GitHub mints lives an hour past the fake clock.
@@ -321,7 +327,9 @@ def test_permissions_parse_sort_and_split_the_cache_directory() -> None:
     assert gh_app.out_dir(state, replace(args, repo="o/r")) == Path(
         "/s/tbhb-dev/bot/o/r+contents-read+pull-requests-write"
     )
-    assert gh_app.token_body("o/r", all_repos=False, permissions=args.permissions) == {
+    assert gh_app_api.token_body(
+        "o/r", all_repos=False, permissions=args.permissions
+    ) == {
         "repositories": ["r"],
         "permissions": {"contents": "read", "pull_requests": "write"},
     }
@@ -455,8 +463,8 @@ def test_b64url_drops_padding_and_uses_the_url_alphabet() -> None:
 def test_the_owner_is_what_precedes_the_first_slash() -> None:
     assert gh_app_args.split_repo("o/r") == ("o", "r")
     assert gh_app_args.split_repo("a/b/c") == ("a", "b/c")
-    assert gh_app.lookup_paths("a/b/c")[1] == "/orgs/a/installation"
-    assert gh_app.token_body("a/b/c", all_repos=False) == {"repositories": ["b/c"]}
+    assert gh_app_api.lookup_paths("a/b/c")[1] == "/orgs/a/installation"
+    assert gh_app_api.token_body("a/b/c", all_repos=False) == {"repositories": ["b/c"]}
     assert gh_app.out_dir(Path("/s"), replace(BASE, repo="a/b")) == Path(
         "/s/tbhb-dev/bot/a/b"
     )
@@ -494,12 +502,12 @@ def test_usage_errors_say_what_is_wrong(argv: list[str], message: str) -> None:
 
 
 def test_request_paths_and_bodies() -> None:
-    assert gh_app.lookup_paths("o/r") == [
+    assert gh_app_api.lookup_paths("o/r") == [
         "/repos/o/r/installation",
         "/orgs/o/installation",
     ]
-    assert gh_app.token_body("o/r", all_repos=False) == {"repositories": ["r"]}
-    assert gh_app.token_body("o/r", all_repos=True) == {}
+    assert gh_app_api.token_body("o/r", all_repos=False) == {"repositories": ["r"]}
+    assert gh_app_api.token_body("o/r", all_repos=True) == {}
 
 
 @pytest.mark.parametrize(
@@ -515,7 +523,7 @@ def test_request_paths_and_bodies() -> None:
     ],
 )
 def test_installation_id(response: httpx2.Response, ident: int | None) -> None:
-    assert gh_app.installation_id(response) == ident
+    assert gh_app_api.installation_id(response) == ident
 
 
 @pytest.mark.parametrize(
@@ -523,14 +531,14 @@ def test_installation_id(response: httpx2.Response, ident: int | None) -> None:
     ["2026-11-09T11:00:00Z", "2026-11-09T11:00:00+00:00", "2026-11-09T06:00:00-05:00"],
 )
 def test_parse_token(expires: str) -> None:
-    minted = gh_app.parse_token({"token": TOKEN, "expires_at": expires})
+    minted = gh_app_api.parse_token({"token": TOKEN, "expires_at": expires})
     assert minted.token == TOKEN
     assert minted.expires_at == int(datetime(2026, 11, 9, 11, tzinfo=UTC).timestamp())
 
 
 def test_a_minted_token_stays_out_of_its_repr() -> None:
-    assert TOKEN not in repr(gh_app.Minted(TOKEN, 5))
-    assert repr(gh_app.Minted(TOKEN, 5)) == "Minted(expires_at=5)"
+    assert TOKEN not in repr(gh_app_api.Minted(TOKEN, 5))
+    assert repr(gh_app_api.Minted(TOKEN, 5)) == "Minted(expires_at=5)"
 
 
 @pytest.mark.parametrize(
@@ -554,10 +562,10 @@ def test_a_minted_token_stays_out_of_its_repr() -> None:
     ],
 )
 def test_parse_token_quotes_only_the_message_from_github(
-    payload: gh_app.Json, detail: str
+    payload: gh_app_api.Json, detail: str
 ) -> None:
     with pytest.raises(gh_app_runtime.GhAppError) as caught:
-        gh_app.parse_token(payload)
+        gh_app_api.parse_token(payload)
     assert str(caught.value) == f"GitHub did not return a token: {detail}"
 
 
@@ -571,8 +579,8 @@ def test_parse_token_quotes_only_the_message_from_github(
         ({}, "no message"),
     ],
 )
-def test_detail(payload: gh_app.Json, text: str) -> None:
-    assert gh_app.detail(payload) == text
+def test_detail(payload: gh_app_api.Json, text: str) -> None:
+    assert gh_app_api.detail(payload) == text
 
 
 RSA_TEXT = (
@@ -1549,13 +1557,13 @@ def test_mint_token_client_uses_only_public_roots(
     client = Mock(wraps=httpx2.Client)
     monkeypatch.setattr(httpx2, "Client", client)
     github = Github()
-    assert gh_app.mint_token(
+    assert gh_app_api.mint_token(
         env_for(tmp_path, Store({}), github),
         app_id=APP_ID,
         pem=rsa.pem,
         repository=REPO,
         permissions=MINT_PERMISSIONS,
-    ) == gh_app.Minted(TOKEN, EXPIRES_EPOCH)
+    ) == gh_app_api.Minted(TOKEN, EXPIRES_EPOCH)
     assert len(github.requests) == 2
     client.assert_called_once()
     assert client.call_args.kwargs["trust_env"] is False
@@ -1584,13 +1592,13 @@ def test_mint_token_ignores_proxy_environment(
         return github(request)
 
     monkeypatch.setattr(httpx2.HTTPTransport, "handle_request", handle_request)
-    assert gh_app.mint_token(
+    assert gh_app_api.mint_token(
         replace(env_for(tmp_path, Store({}), github), transport=None),
         app_id=APP_ID,
         pem=rsa.pem,
         repository=REPO,
         permissions=MINT_PERMISSIONS,
-    ) == gh_app.Minted(TOKEN, EXPIRES_EPOCH)
+    ) == gh_app_api.Minted(TOKEN, EXPIRES_EPOCH)
     assert len(github.requests) == 2
 
 
@@ -1619,14 +1627,14 @@ def test_mint_token_narrows_and_signs_without_files(
     before = list(tmp_path.rglob("*"))
     github = Github()
     env = env_for(tmp_path, Store({}), github, openssl=refuse)
-    minted = gh_app.mint_token(
+    minted = gh_app_api.mint_token(
         env,
         app_id=APP_ID,
         pem=rsa.pem.replace("\n", " "),
         repository=REPO,
         permissions=permissions,
     )
-    assert minted == gh_app.Minted(TOKEN, EXPIRES_EPOCH)
+    assert minted == gh_app_api.Minted(TOKEN, EXPIRES_EPOCH)
     assert TOKEN not in repr(minted)
     assert [(r.method, r.url.path) for r in github.requests] == [
         ("GET", f"/repos/{REPO}/installation"),
@@ -1669,13 +1677,13 @@ def test_mint_token_lookup_falls_back_only_on_404(
     github = Github(routes)
     env = env_for(tmp_path, Store({}), github)
     if status == 404:
-        assert gh_app.mint_token(
+        assert gh_app_api.mint_token(
             env,
             app_id=APP_ID,
             pem=rsa.pem,
             repository=REPO,
             permissions=MINT_PERMISSIONS,
-        ) == gh_app.Minted(TOKEN, EXPIRES_EPOCH)
+        ) == gh_app_api.Minted(TOKEN, EXPIRES_EPOCH)
         assert [r.url.path for r in github.requests] == [
             f"/repos/{REPO}/installation",
             "/orgs/acme/installation",
@@ -1683,7 +1691,7 @@ def test_mint_token_lookup_falls_back_only_on_404(
         ]
     else:
         with pytest.raises(gh_app_runtime.GhAppError) as caught:
-            gh_app.mint_token(
+            gh_app_api.mint_token(
                 env,
                 app_id=APP_ID,
                 pem=rsa.pem,
@@ -1701,7 +1709,7 @@ def test_mint_token_refuses_permissions_before_request(
 ) -> None:
     github = Github()
     with pytest.raises(gh_app_runtime.GhAppError, match="permissions") as caught:
-        gh_app.mint_token(
+        gh_app_api.mint_token(
             env_for(tmp_path, Store({}), github),
             app_id=APP_ID,
             pem="invalid key",
@@ -1723,7 +1731,7 @@ def test_mint_token_refuses_keys_without_disclosing_them(
     pem = ec_key.pem if kind == "ec" else "invalid secret key"
     github = Github()
     with pytest.raises(gh_app_runtime.GhAppError) as caught:
-        gh_app.mint_token(
+        gh_app_api.mint_token(
             env_for(tmp_path, Store({}), github),
             app_id=APP_ID,
             pem=pem,
@@ -1764,7 +1772,7 @@ def test_mint_token_errors_never_disclose_tokens(
         transport=httpx2.MockTransport(transport),
     )
     with pytest.raises(gh_app_runtime.GhAppError) as caught:
-        gh_app.mint_token(
+        gh_app_api.mint_token(
             env,
             app_id=APP_ID,
             pem=rsa.pem,

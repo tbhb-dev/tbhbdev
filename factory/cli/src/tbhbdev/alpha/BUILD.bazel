@@ -41,11 +41,24 @@ cli_py_library(
     imports = ["../.."],
     visibility = ["//factory/cli:__subpackages__"],
     deps = [
+        ":gh_app_api",
+        ":gh_app_args",
+        ":gh_app_runtime",
+        ":gh_app_signing",
+        "//factory/cli/src/tbhbdev:secrets",
+    ],
+)
+
+cli_py_library(
+    name = "gh_app_api",
+    srcs = ["gh_app_api.py"],
+    imports = ["../.."],
+    visibility = ["//factory/cli:__subpackages__"],
+    deps = [
         ":gh_app_args",
         ":gh_app_runtime",
         ":gh_app_signing",
         "//factory/cli/src/tbhbdev:github_tls",
-        "//factory/cli/src/tbhbdev:secrets",
         "@cli_pip//httpx2",
     ],
 )
@@ -288,7 +301,7 @@ cli_py_library(
     imports = ["../.."],
     visibility = ["//factory/cli:__subpackages__"],
     deps = [
-        ":gh_app",
+        ":gh_app_api",
         ":gh_app_runtime",
         "//factory/cli/src/tbhbdev:secrets",
         "@cli_pip//httpx2",

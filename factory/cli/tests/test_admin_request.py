@@ -20,7 +20,7 @@ from tbhbdev import secrets
 from tbhbdev.admin import command as admin
 from tbhbdev.admin import policy, request
 from tbhbdev.admin.audit import Audit, RefusedError
-from tbhbdev.alpha import gh_app, gh_app_runtime
+from tbhbdev.alpha import gh_app_api, gh_app_runtime
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -385,7 +385,7 @@ def test_explicit_http_options(fake: Fake, monkeypatch: pytest.MonkeyPatch) -> N
     monkeypatch.setattr(httpx2, "Client", client)
     request.call(fake.runtime, "GET", "/repos/tbhb-dev/widget", None, "test")
     last = options[-1]
-    assert last["timeout"] == gh_app.TIMEOUT
+    assert last["timeout"] == gh_app_api.TIMEOUT
     assert last["follow_redirects"] is False
     assert last["trust_env"] is False
     assert last["base_url"] == "https://api.github.com"
@@ -418,7 +418,7 @@ def test_invalid_utf8_response(fake: Fake) -> None:
 def test_reused_mint_preserves_installation_arguments(fake: Fake) -> None:
     fake.runtime.audit.append({"phase": "before"})
     found: list[int] = []
-    minted = gh_app.mint_token(
+    minted = gh_app_api.mint_token(
         fake.runtime.env,
         app_id="5733271",
         pem=fake.key,
