@@ -281,6 +281,21 @@ def fetch_commit(mirror: Path, request: RunRequest, token: str | None = None) ->
     return commit
 
 
+def fetch_run_commit(
+    mirror: Path, request: RunRequest, token_source: Callable[[], str | None] | None
+) -> str:
+    try:
+        return fetch_commit(mirror, request)
+    except subprocess.SubprocessError:
+        # A private repository refuses the anonymous fetch. Retry over
+        # https with the run's App token. With no token the fetch fails:
+        # an ssh retry could follow a transfer to another owner.
+        token = token_source() if token_source is not None else None
+        if token is None:
+            raise
+        return fetch_commit(mirror, request, token)
+
+
 def install_hooks(
     workspace: Path, run_name: str, start: str, *, start_ref: str | None = None
 ) -> None:
@@ -551,24 +566,6 @@ def clone_run(mirror: Path, workspace: Path, url: str) -> None:
     git(workspace, "config", "core.hooksPath", str(workspace / ".git" / "hooks"))
 
 
-def checkout_run(
-    mirror: Path, workspace: Path, name: str, request: RunRequest, commit: str
-) -> None:
-    git(
-        workspace, "fetch", "--no-tags", "--no-write-fetch-head",
-        "--no-recurse-submodules", str(mirror),
-        "+refs/heads/*:refs/remotes/origin/*",
-    )  # fmt: skip
-    if (start_ref := request.start_ref) is not None:
-        # Git's implicit push lease uses the branch's tracking ref.
-        branch = start_ref.removeprefix("refs/heads/")
-        git(workspace, "update-ref", f"refs/remotes/origin/{branch}", commit)
-    if request.profile is Profile.BUILD:
-        git(workspace, "checkout", "-b", f"agent/{name}", commit, "--")
-    else:
-        git(workspace, "checkout", "--detach", commit, "--")
-
-
 def prepare_git(workspace: Path) -> None:
     directory = workspace / ".git"
     for name, content in (
@@ -685,19 +682,22 @@ def create(
         if request.fetch_refs:
             fetch_step += f"; requested refs: {', '.join(request.fetch_refs)}"
         with preparation_step(fetch_step):
-            try:
-                commit = fetch_commit(mirror, request)
-            except subprocess.SubprocessError:
-                # A private repository refuses the anonymous fetch. Retry over
-                # https with the run's App token. With no token the fetch fails:
-                # an ssh retry could follow a transfer to another owner.
-                token = token_source() if token_source is not None else None
-                if token is None:
-                    raise
-                commit = fetch_commit(mirror, request, token)
+            commit = fetch_run_commit(mirror, request, token_source)
         prepare_hooks(worktree, name, commit, hook_env, start_ref=request.start_ref)
         with preparation_step("checkout"):
-            checkout_run(mirror, worktree, name, request, commit)
+            git(
+                worktree, "fetch", "--no-tags", "--no-write-fetch-head",
+                "--no-recurse-submodules", str(mirror),
+                "+refs/heads/*:refs/remotes/origin/*",
+            )  # fmt: skip
+            if (start_ref := request.start_ref) is not None:
+                # Git's implicit push lease uses the branch's tracking ref.
+                branch = start_ref.removeprefix("refs/heads/")
+                git(worktree, "update-ref", f"refs/remotes/origin/{branch}", commit)
+            if request.profile is Profile.BUILD:
+                git(worktree, "checkout", "-b", f"agent/{name}", commit, "--")
+            else:
+                git(worktree, "checkout", "--detach", commit, "--")
         with preparation_step("git metadata"):
             prepare_git(worktree)
         discard.pop_all()
