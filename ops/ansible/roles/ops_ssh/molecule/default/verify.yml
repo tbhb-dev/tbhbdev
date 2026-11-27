@@ -1,0 +1,208 @@
+---
+- name: Verify SSH hardening
+  hosts: all
+  gather_facts: false
+  become: true
+  tasks:
+    - name: Read the effective SSH configuration
+      ansible.builtin.command:
+        cmd: /usr/sbin/sshd -T
+      register: ops_ssh_effective
+      changed_when: false
+
+    - name: Look for a pending revert timer
+      ansible.builtin.command:  # noqa: command-instead-of-module
+        cmd: systemctl list-timers --no-legend --plain ops-ssh-revert.timer
+      register: ops_ssh_timers
+      changed_when: false
+
+    # The image carries cloud-init's PasswordAuthentication yes drop-in, as
+    # the lab nodes do, and the role's drop-in must win over it.
+    - name: Check the effective hardening
+      ansible.builtin.assert:
+        that:
+          - "'permitrootlogin no' in ops_ssh_effective.stdout_lines"
+          - "'passwordauthentication no' in ops_ssh_effective.stdout_lines"
+          - "'kbdinteractiveauthentication no' in ops_ssh_effective.stdout_lines"
+          - "'x11forwarding no' in ops_ssh_effective.stdout_lines"
+          - "'loglevel VERBOSE' in ops_ssh_effective.stdout_lines"
+          # sshd -T prints one allowusers line per account.
+          - >-
+              ops_ssh_effective.stdout_lines | select('match', '^allowusers ') | list
+              == ['allowusers ops']
+          - ops_ssh_timers.stdout_lines | length == 0
+
+    - name: Check that validation rejects drift around the drop-in
+      ansible.builtin.include_tasks: tasks/verify-rejected.yml
+      loop:
+        - name: a later AllowUsers
+          dest: /etc/ssh/sshd_config.d/99-conflict.conf
+          content: "AllowUsers someone-else\n"
+        - name: a Match block
+          dest: /etc/ssh/sshd_config.d/99-conflict.conf
+          content: "Match User ops\n    PasswordAuthentication yes\n"
+        - name: a nested Include
+          dest: /etc/ssh/sshd_config.d/99-conflict.conf
+          content: "Include /etc/ssh/sshd_config.d/50-cloud-init.conf\n"
+        - name: an earlier drop-in
+          dest: /etc/ssh/sshd_config.d/00-Override.conf
+          content: "PasswordAuthentication yes\n"
+        - name: an invalid later drop-in
+          dest: /etc/ssh/sshd_config.d/99-invalid.conf
+          content: "NotAnSSHDirective yes\n"
+      loop_control:
+        loop_var: ops_ssh_plant
+        label: "{{ ops_ssh_plant.name }}"
+
+    - name: Read the valid drop-in before testing rejection
+      ansible.builtin.slurp:
+        src: /etc/ssh/sshd_config.d/00-ops-ssh.conf
+      register: ops_ssh_before
+
+    - name: Try an invalid candidate
+      ansible.builtin.copy:
+        content: "NotAnSSHDirective yes\n"
+        dest: /etc/ssh/sshd_config.d/00-ops-ssh.conf
+        mode: "0644"
+        validate: /usr/local/sbin/ops-sshd-validate %s
+      register: ops_ssh_invalid
+      ignore_errors: true
+
+    - name: Try a candidate without an allow list
+      ansible.builtin.copy:
+        content: "PermitRootLogin no\nPasswordAuthentication no\nKbdInteractiveAuthentication no\n"
+        dest: /etc/ssh/sshd_config.d/00-ops-ssh.conf
+        mode: "0644"
+        validate: /usr/local/sbin/ops-sshd-validate %s
+      register: ops_ssh_missing_users
+      ignore_errors: true
+
+    - name: Read the drop-in after both rejections
+      ansible.builtin.slurp:
+        src: /etc/ssh/sshd_config.d/00-ops-ssh.conf
+      register: ops_ssh_after
+
+    - name: Check that failed validation preserved the live file
+      ansible.builtin.assert:
+        that:
+          - ops_ssh_invalid is failed
+          - ops_ssh_missing_users is failed
+          - ops_ssh_before.content == ops_ssh_after.content
+
+    - name: Read the SSH daemon state before activation
+      ansible.builtin.command:  # noqa: command-instead-of-module
+        cmd: systemctl is-active ssh.service
+      register: ops_ssh_idle
+      changed_when: false
+      failed_when: ops_ssh_idle.stdout != 'inactive'
+
+    - name: Exercise the reload target with an idle socket
+      ansible.builtin.command:
+        cmd: /usr/local/sbin/ops-ssh-revert reload
+      changed_when: false
+
+    - name: Check that reloading did not start the idle daemon
+      ansible.builtin.command:  # noqa: command-instead-of-module
+        cmd: systemctl is-active ssh.service
+      register: ops_ssh_still_idle
+      changed_when: false
+      failed_when: ops_ssh_still_idle.stdout != 'inactive'
+
+    - name: Check recovery before rearming over an interrupted run
+      block:
+        - name: Arm the timer for the interrupted run
+          ansible.builtin.command:
+            cmd: /usr/local/sbin/ops-ssh-revert arm
+          changed_when: true
+
+        - name: Rearm over the interrupted run
+          ansible.builtin.command:
+            cmd: /usr/local/sbin/ops-ssh-revert arm
+          register: ops_ssh_rearmed
+          changed_when: true
+
+        - name: Look for the drop-in after recovery
+          ansible.builtin.stat:
+            path: /etc/ssh/sshd_config.d/00-ops-ssh.conf
+          register: ops_ssh_retry_drop_in
+
+        - name: Check that a fresh revert timer is active
+          ansible.builtin.command:  # noqa: command-instead-of-module
+            cmd: systemctl is-active ops-ssh-revert.timer
+          changed_when: false
+
+        - name: Check that rearming ran the full revert first
+          ansible.builtin.assert:
+            that:
+              - "'reverting before rearming' in ops_ssh_rearmed.stderr"
+              - not ops_ssh_retry_drop_in.stat.exists
+      always:
+        - name: Cancel the timer after the interrupted run test
+          ansible.builtin.command:
+            cmd: /usr/local/sbin/ops-ssh-revert cancel
+          changed_when: true
+
+        - name: Restore hardening after the interrupted run test
+          ansible.builtin.include_role:
+            name: ops_ssh
+
+        - name: Apply the restored hardening handlers
+          ansible.builtin.meta: flush_handlers
+
+    - name: Start the SSH daemon for the timer revert test
+      ansible.builtin.systemd_service:
+        name: ssh.service
+        state: started
+
+    - name: Read the SSH daemon PID before reverting
+      ansible.builtin.command:  # noqa: command-instead-of-module
+        cmd: systemctl show --property=MainPID --value ssh.service
+      register: ops_ssh_pid_before
+      changed_when: false
+
+    - name: Arm the real revert timer
+      ansible.builtin.command:
+        cmd: /usr/local/sbin/ops-ssh-revert arm
+      changed_when: true
+
+    - name: Start the transient service the timer would start
+      ansible.builtin.command:  # noqa: command-instead-of-module
+        cmd: systemctl start ops-ssh-revert.service
+      changed_when: true
+
+    - name: Wait for the transient revert units to finish
+      ansible.builtin.command:  # noqa: command-instead-of-module
+        cmd: systemctl is-active {{ item }}
+      loop: [ops-ssh-revert.service, ops-ssh-revert.timer]
+      register: ops_ssh_revert_state
+      changed_when: false
+      failed_when: ops_ssh_revert_state.stdout not in ['active', 'activating', 'deactivating', 'inactive', 'unknown']
+      until: ops_ssh_revert_state.stdout in ['inactive', 'unknown']
+      retries: 5
+      delay: 1
+
+    - name: Read the SSH daemon PID after reverting
+      ansible.builtin.command:  # noqa: command-instead-of-module
+        cmd: systemctl show --property=MainPID --value ssh.service
+      register: ops_ssh_pid_after
+      changed_when: false
+
+    - name: Look for the reverted drop-in
+      ansible.builtin.stat:
+        path: /etc/ssh/sshd_config.d/00-ops-ssh.conf
+      register: ops_ssh_reverted_drop_in
+
+    - name: Read the restored SSH configuration
+      ansible.builtin.command:
+        cmd: /usr/sbin/sshd -T
+      register: ops_ssh_restored
+      changed_when: false
+
+    # sshd re-execs in place on SIGHUP, so a reload keeps its PID.
+    - name: Check the revert
+      ansible.builtin.assert:
+        that:
+          - ops_ssh_pid_before.stdout | int > 0
+          - ops_ssh_pid_before.stdout == ops_ssh_pid_after.stdout
+          - not ops_ssh_reverted_drop_in.stat.exists
+          - "'passwordauthentication yes' in ops_ssh_restored.stdout_lines"

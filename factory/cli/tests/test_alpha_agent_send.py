@@ -11,9 +11,9 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, Mock
 
+import agent_cli_example
 import pytest
 
-from tbhbdev.alpha import agent
 from tbhbdev.alpha.agent import app_server, host_tools
 
 THREAD = '{"type":"thread.started","thread_id":"thread"}\n'
@@ -108,7 +108,7 @@ def test_send_host_proxy(
         )
 
     monkeypatch.setattr(asyncio, "create_subprocess_exec", connect)
-    assert agent.main(["send-host", "sample"], "example agent") == 0
+    assert agent_cli_example.run_agent(["send-host", "sample"]) == 0
     assert capsys.readouterr().out.strip() == error
     if not error:
         assert json.loads(frame.call_args.args[0]) == {

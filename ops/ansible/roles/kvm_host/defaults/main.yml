@@ -1,0 +1,18 @@
+---
+# The bridge takes over the port's DHCP. The port keeps no addresses.
+kvm_host_bridge: br-lab
+kvm_host_bridge_port: enp5s0f0np0
+# The port on Management. The bridge file keeps it up with no address, so
+# the bridge is the host's only uplink.
+kvm_host_management_port: enp4s0
+# The netplan change is always validated, but written to /etc/netplan and
+# applied only when this is true, because a written file takes effect at the
+# next boot. An apply moves the port's addresses to the bridge, removes the
+# management port's addresses, and briefly drops the lab link.
+kvm_host_apply_network: false
+# False on a host without the real NICs and KVM, such as a test container:
+# skips the KVM check, the libvirt services, netplan validation and apply,
+# and the libvirt network.
+kvm_host_hardware: true
+# Name of the libvirt network that attaches guests to the bridge.
+kvm_host_libvirt_network: lab

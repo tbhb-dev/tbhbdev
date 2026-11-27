@@ -1,0 +1,43 @@
+---
+# What the installer left: DHCP on the lab and management ports, and a third
+# port the role must keep.
+- name: Prepare
+  hosts: all
+  gather_facts: false
+  become: true
+  tasks:
+    - name: Create the netplan directory
+      ansible.builtin.file:
+        path: /etc/netplan
+        state: directory
+        mode: "0755"
+
+    - name: Write the installer's netplan file
+      ansible.builtin.copy:
+        dest: /etc/netplan/00-installer-config.yaml
+        content: |
+          # Written by the installer
+          network:
+            version: 2
+            ethernets:
+              eth0:
+                dhcp4: true
+                dhcp6: true
+              lan0:
+                dhcp4: true
+              lan2:
+                optional: true
+        mode: "0600"
+
+    # Another file the role must read and leave alone, because it doesn't
+    # configure the port.
+    - name: Write another netplan file
+      ansible.builtin.copy:
+        dest: /etc/netplan/50-other.yaml
+        content: |
+          network:
+            version: 2
+            ethernets:
+              lan1:
+                optional: true
+        mode: "0600"

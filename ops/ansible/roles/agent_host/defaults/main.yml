@@ -1,0 +1,19 @@
+---
+# tbhbdev host bootstrap, in tbhb-dev/tools (src/tbhbdev/host.py at
+# f9683b3), creates the agent user with this uid, its devel group with
+# this gid, and its home at /home/example-user. It refuses a host where either id
+# belongs to someone else, and never changes an existing home, so the role
+# gives the home these ids before the account exists.
+agent_host_uid: 24368
+agent_host_gid: 33835
+agent_host_user: agent
+agent_host_home: "{{ ['/home', agent_host_user] | join('/') }}"
+# The agent's home and /tmp each get an ext4 logical volume of this size in
+# agent_host_vg. An empty size leaves that path on the root file system.
+agent_host_vg: ubuntu-vg
+agent_host_home_size: 500G
+agent_host_tmp_size: 64G
+# Containers can check the installed policy without changing their host's
+# AppArmor policy or attempting namespaces their runtime does not allow.
+agent_host_load_apparmor: true
+agent_host_verify_bwrap: true

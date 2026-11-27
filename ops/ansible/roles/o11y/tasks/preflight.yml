@@ -1,0 +1,48 @@
+---
+- name: preflight | Require controller credentials and safe paths
+  ansible.builtin.assert:
+    that:
+      - "'lab-ops' not in (ansible_ssh_extra_args | default(''))"
+      - "'lab-ops' not in (ansible_ssh_common_args | default(''))"
+      - o11y_root is match('^/[A-Za-z0-9_/-]+$')
+      - o11y_root != '/'
+      - "'..' not in o11y_root.split('/')"
+      - not o11y_root.endswith('/')
+      - o11y_min_free_gib | int >= 0
+      - o11y_health_retries | int > 0
+      - o11y_health_delay | int > 0
+    fail_msg: Use absolute paths and controller credentials without lab-ops.
+    quiet: true
+
+- name: preflight | Check Docker and Compose
+  ansible.builtin.command:
+    argv: "{{ item }}"
+  loop:
+    - [docker, --version]
+    - [docker, compose, version]
+  changed_when: false
+  check_mode: false
+
+- name: preflight | Find the longest containing mount
+  ansible.builtin.set_fact:
+    o11y_mount: "{{ item }}"
+  loop: "{{ ansible_mounts | sort(attribute='mount') }}"
+  loop_control:
+    label: "{{ item.mount }}"
+  when: item.mount == '/' or o11y_root == item.mount or o11y_root.startswith(item.mount + '/')
+
+- name: preflight | Require the disk reserve
+  ansible.builtin.assert:
+    that:
+      - o11y_mount is defined
+      - o11y_mount.size_available | int >= (o11y_min_free_gib | int * 1073741824)
+    fail_msg: The filesystem holding {{ o11y_root }} needs {{ o11y_min_free_gib }} GiB free.
+    quiet: true
+
+- name: preflight | Create the deployment root
+  ansible.builtin.file:
+    path: "{{ o11y_root }}"
+    state: directory
+    owner: root
+    group: root
+    mode: '0755'

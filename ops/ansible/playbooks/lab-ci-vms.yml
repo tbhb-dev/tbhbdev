@@ -1,0 +1,16 @@
+---
+# One CI runner VM on each lab node: host-example on host-example, on libvirt's
+# NAT network and behind a forward rule that drops its traffic to private,
+# shared, link-local and unique local addresses. Root, through sudo, writes
+# the table, the cloud-init seed, the logical volume and the domain. It
+# follows lab-hosts.yml, whose kvm_host role installs libvirt. Each new VM
+# joins the tailnet at its first boot, with a single-use key the role mints
+# from the controller, and runner-pool.yml then applies the pool to the ci
+# group:
+#   mise run playbook -- playbooks/lab-ci-vms.yml --limit NODE --check --diff
+- name: Apply the CI VMs to the lab nodes
+  hosts: lab
+  gather_facts: false
+  become: true
+  roles:
+    - ci_vm

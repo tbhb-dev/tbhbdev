@@ -1,0 +1,7 @@
+---
+# Check each step-9 host first.
+- name: Configure the agent harness accounts
+  hosts: agent_hosts:!windows
+  gather_facts: true
+  roles:
+    - agent_harness

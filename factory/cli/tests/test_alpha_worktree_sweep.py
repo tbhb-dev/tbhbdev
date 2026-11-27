@@ -4,7 +4,7 @@ from typing import TYPE_CHECKING
 
 import pytest
 
-from tbhbdev import alpha
+from tbhbdev.alpha import command as alpha
 from tbhbdev.alpha import worktree_sweep
 
 if TYPE_CHECKING:

@@ -1,0 +1,37 @@
+---
+argument_specs:
+  main:
+    short_description: Add a main-only job guard and ssh keys, delivered only to an admitted job, to the runner pool
+    description:
+      - >-
+          A layer on the actions_runner_pool role. The pool installs, registers and updates the runner,
+          and this role writes two directories as the service user. The pool mounts the job directory
+          read-only into each job container, and it holds the job-started hook, the guard behind it and the
+          guard's settings. The secrets directory holds two ed25519 key pairs, with mode 0700, and no
+          container mounts it: the pool's slot script carries the private keys to the guard once per job,
+          and the guard writes them into the job only when it admits it.
+      - >-
+          Apply it after docker_rootless and before actions_runner_pool, with actions_runner_pool_job_dir,
+          actions_runner_pool_job_started_hook, a .sh name, and actions_runner_pool_job_secrets_dir set. The
+          role prints each public key. The private keys stay on the VM, with mode 0600.
+    options:
+      deploy_runner_guard_repository:
+        type: str
+        default: tbhb-dev/tbhbdev
+        description: The one repository whose jobs the job guard allows.
+      deploy_runner_guard_ref:
+        type: str
+        default: refs/heads/main
+        description: The one reference whose jobs the job guard allows.
+      deploy_runner_guard_events:
+        type: list
+        elements: str
+        default: [push, workflow_dispatch]
+        description: The events the job guard allows.
+      deploy_runner_guard_url:
+        type: str
+        default: git@github.com:tbhb-dev/tbhbdev.git
+        description: ssh URL the job guard fetches the reference from, with the read-only deploy key.
+      deploy_runner_guard_host_key:
+        type: str
+        description: The known_hosts line for the fetch URL's host. The default is GitHub's ed25519 key.

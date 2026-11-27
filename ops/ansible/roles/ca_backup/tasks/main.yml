@@ -1,0 +1,35 @@
+---
+- name: Check the backup runtime
+  ansible.builtin.command:
+    argv:
+      - "{{ ca_backup_python }}"
+      - -c
+      - "import sys; sys.exit(sys.version_info < (3, 11))"
+  changed_when: false
+  check_mode: false
+
+- name: Create the private staging directory
+  ansible.builtin.file:
+    path: "{{ ca_backup_staging }}"
+    state: directory
+    mode: "0700"
+
+- name: Stage the backup and reporting programs
+  ansible.builtin.copy:
+    src: "{{ ca_backup_source }}/{{ item }}"
+    dest: "{{ ca_backup_staging }}/{{ item }}"
+    mode: "0600"
+  vars:
+    ca_backup_source: "{{ role_path }}/../../../apps/ca/backup"
+  loop: [backup.py, status.py]
+
+- name: Stage SHA-256 checksums from the repository
+  ansible.builtin.copy:
+    content: |
+      {% for name in ['backup.py', 'status.py'] %}
+      {{ lookup('ansible.builtin.file', ca_backup_source + '/' + name, rstrip=false) | hash('sha256') }}  {{ name }}
+      {% endfor %}
+    dest: "{{ ca_backup_staging }}/SHA256SUMS"
+    mode: "0600"
+  vars:
+    ca_backup_source: "{{ role_path }}/../../../apps/ca/backup"

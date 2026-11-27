@@ -1,0 +1,69 @@
+---
+- name: config | Check the Connect endpoint names
+  ansible.builtin.assert:
+    that:
+      - agent_account_tbhbdev_config.connect.endpoints | length > 0
+      - >-
+          agent_account_tbhbdev_config.connect.endpoints |
+          select('match', '^https://[a-zA-Z][a-zA-Z0-9.-]*$') | list ==
+          agent_account_tbhbdev_config.connect.endpoints
+    fail_msg: The agent config requires HTTPS tailnet hostnames without ports or addresses
+    quiet: true
+
+- name: config | Check TOML table names and values
+  ansible.builtin.assert:
+    that:
+      - item.key is match('^[A-Za-z0-9_-]+$')
+      - item.value is mapping
+    fail_msg: TOML tables require bare keys and mapping values
+    quiet: true
+  loop: "{{ agent_account_tbhbdev_config | dict2items }}"
+
+- name: config | Check the Claude token profiles
+  ansible.builtin.assert:
+    that:
+      - item.key is match('^[A-Za-z0-9_-]+$')
+      - item.value is match('^[A-Za-z0-9_-]+/[A-Za-z0-9_-]+/[A-Za-z0-9_-]+$')
+    fail_msg: Claude profile names are bare TOML keys and tokens are vault/item/field references
+    quiet: true
+  loop: "{{ agent_account_claude_profiles | dict2items }}"
+
+- name: config | Check TOML values in each table
+  ansible.builtin.include_tasks: config-values.yml
+  loop: "{{ agent_account_tbhbdev_config | dict2items }}"
+  loop_control:
+    loop_var: agent_account_config_table
+
+- name: config | Resolve Connect endpoints before rendering
+  ansible.builtin.include_tasks: "{{ role_path }}/../../tasks/connect-endpoints.yml"
+  vars:
+    connect_endpoints: "{{ agent_account_tbhbdev_config.connect.endpoints }}"
+
+- name: config | Write the agent configuration
+  when: not (ansible_check_mode and agent_account_user is changed)
+  block:
+    - name: config | Create the tbhbdev config directory
+      ansible.builtin.file:
+        path: "{{ [agent_account_home, '.config', 'tbhbdev'] | join('/') }}"
+        state: directory
+        owner: agent
+        group: "{{ '24368' if agent_account_primary_group == 'agent' else '33835' }}"
+        mode: '0700'
+
+    - name: config | Render the agent's deployment config
+      ansible.builtin.template:
+        src: config.toml.j2
+        dest: "{{ [agent_account_home, '.config', 'tbhbdev'] | join('/') }}/config.toml"
+        owner: agent
+        group: "{{ '24368' if agent_account_primary_group == 'agent' else '33835' }}"
+        mode: '0600'
+        backup: true
+        # The role supports Ubuntu resolute; its python3 includes tomllib.
+        # macOS /usr/bin/python3 has no version guarantee in this role.
+        validate: >-
+          {{ agent_account_config_validate if ansible_facts.system == 'Linux' else omit }}
+      vars:
+        agent_account_config_validate: >-
+          python3 -c 'import sys,tomllib; tomllib.load(open(sys.argv[1],"rb"))' %s
+      diff: false
+      no_log: true

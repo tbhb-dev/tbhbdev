@@ -17,11 +17,13 @@ from unittest.mock import Mock
 
 import pytest
 import tbhb_telemetry
+from agent_cli_example import run_agent
 from agent_driver_example import execution_arguments, setup
 from agent_example import settings
 
 from tbhbdev import telemetry
-from tbhbdev.alpha import agent
+from tbhbdev.alpha.agent import driver
+from tbhbdev.alpha.agent import settings as agent_settings
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -350,7 +352,7 @@ def test_disabled_skips_lookup_and_reporting(
 def flow(root: Path, monkeypatch: pytest.MonkeyPatch, outcome: str) -> list[str]:
     root.mkdir()
     remote = setup(root, monkeypatch)
-    monkeypatch.setattr(agent.settings, "load", settings)
+    monkeypatch.setattr(agent_settings, "load", settings)
     remote.prompt.write_text("private-prompt-marker")
     if outcome == "refused":
         remote.configure(limits="1000 4 1000 900 100 0 -")
@@ -458,7 +460,7 @@ def test_export_failure_preserves_launch(
     monkeypatch.setenv("OTEL_SDK_DISABLED", "true")
     baseline_args = flow(tmp_path / "baseline", monkeypatch, outcome)
     start = time.monotonic()
-    baseline_rc = agent.main(baseline_args, "example agent")
+    baseline_rc = run_agent(baseline_args)
     baseline_time = time.monotonic() - start
     baseline_output = capsys.readouterr()
 
@@ -485,7 +487,7 @@ def test_export_failure_preserves_launch(
         configure_export_fault(monkeypatch, fault, endpoint)
         start = time.monotonic()
         try:
-            assert agent.main(args, "example agent") == baseline_rc
+            assert run_agent(args) == baseline_rc
             elapsed = time.monotonic() - start
             assert capsys.readouterr() == (
                 baseline_output.out,
@@ -529,10 +531,9 @@ def test_resolver_failure_preserves_launch(
         return outcome
 
     monkeypatch.setattr(telemetry, "_resolve_environment", broken)
-    monkeypatch.setattr(agent, "dispatch", launch)
-    assert (
-        agent.main(execution_arguments(tmp_path / "prompt"), "example agent") == outcome
-    )
+    monkeypatch.setattr(agent_settings, "load", settings)
+    monkeypatch.setattr(driver, "dispatch", launch)
+    assert run_agent(execution_arguments(tmp_path / "prompt")) == outcome
     assert capsys.readouterr() == ("launch\n", "")
     assert local_export == {ENDPOINT: None, ALLOW_HOSTS: None}
 
@@ -559,8 +560,7 @@ def test_launch_span_contains_only_allowed_data(
     )
     monkeypatch.setattr(tbhb_telemetry, "_export", export)
     assert (
-        agent.main(args, "example agent")
-        == {"ok": 0, "failed": 7, "refused": 1, "exception": 1}[outcome]
+        run_agent(args) == {"ok": 0, "failed": 7, "refused": 1, "exception": 1}[outcome]
     )
     assert capsys.readouterr().err.startswith(diagnostic("user", "user"))
     assert len(spans) == 1

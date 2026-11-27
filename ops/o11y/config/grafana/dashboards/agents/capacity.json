@@ -1,0 +1,541 @@
+{
+  "uid": "o11y-agents-capacity",
+  "title": "Agent capacity",
+  "description": "Subscription capacity by vendor, window, and account. Live values expire after five minutes and metadata after fifteen; window identities remain for six hours. Projection uses positive six-hour and 24-hour slopes with at least three and 12 hours of data respectively; burn uses existing agent counters.",
+  "tags": [
+    "o11y",
+    "agents"
+  ],
+  "timezone": "America/New_York",
+  "schemaVersion": 39,
+  "version": 6,
+  "refresh": "1m",
+  "time": {
+    "from": "now-24h",
+    "to": "now"
+  },
+  "templating": {
+    "list": []
+  },
+  "panels": [
+    {
+      "id": 100,
+      "title": "Live windows",
+      "type": "row",
+      "collapsed": false,
+      "panels": [],
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 0
+      }
+    },
+    {
+      "id": 110,
+      "title": "Live windows",
+      "type": "table",
+      "gridPos": {
+        "h": 8,
+        "w": 16,
+        "x": 0,
+        "y": 1
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "mimir"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "label_join(max by (agent_plan_vendor, agent_plan_window, agent_account) ((max by (agent_plan_vendor, agent_plan_window, agent_account, agent_plan_bucket) (last_over_time(agent_capacity_window_utilization_ratio{agent_capacity_source=~\"claude_statusline|claude_transcript|codex_rollout|codex_probe|agy_statusline\",agent_capacity_freshness=\"fresh\"}[6h])) or max by (agent_plan_vendor, agent_plan_window, agent_account, agent_plan_bucket) (last_over_time(agent_capacity_window_utilization_ratio{agent_capacity_source=~\"claude_statusline|claude_transcript|codex_rollout|codex_probe|agy_statusline\",agent_capacity_freshness=\"carried\"}[6h])))), \"capacity_key\", \"|\", \"agent_plan_vendor\", \"agent_plan_window\", \"agent_account\")",
+          "instant": true,
+          "range": false,
+          "format": "table"
+        },
+        {
+          "refId": "B",
+          "expr": "label_join((max by (agent_plan_vendor, agent_plan_window, agent_account) ((max by (agent_plan_vendor, agent_plan_window, agent_account, agent_plan_bucket, agent_capacity_source, agent_capacity_freshness) (last_over_time(agent_capacity_window_utilization_ratio{agent_capacity_source=~\"claude_statusline|claude_transcript|codex_rollout|codex_probe|agy_statusline\",agent_capacity_freshness=\"fresh\"}[5m])) or on (agent_plan_vendor, agent_plan_window, agent_account, agent_plan_bucket) max by (agent_plan_vendor, agent_plan_window, agent_account, agent_plan_bucket, agent_capacity_source, agent_capacity_freshness) (last_over_time(agent_capacity_window_utilization_ratio{agent_capacity_source=~\"claude_statusline|claude_transcript|codex_rollout|codex_probe|agy_statusline\",agent_capacity_freshness=\"carried\"}[5m]))))) or on (agent_plan_vendor, agent_plan_window, agent_account) (max by (agent_plan_vendor, agent_plan_window, agent_account) ((max by (agent_plan_vendor, agent_plan_window, agent_account, agent_plan_bucket) (last_over_time(agent_capacity_window_utilization_ratio{agent_capacity_source=~\"claude_statusline|claude_transcript|codex_rollout|codex_probe|agy_statusline\",agent_capacity_freshness=\"fresh\"}[6h])) or max by (agent_plan_vendor, agent_plan_window, agent_account, agent_plan_bucket) (last_over_time(agent_capacity_window_utilization_ratio{agent_capacity_source=~\"claude_statusline|claude_transcript|codex_rollout|codex_probe|agy_statusline\",agent_capacity_freshness=\"carried\"}[6h])))) * NaN), \"capacity_key\", \"|\", \"agent_plan_vendor\", \"agent_plan_window\", \"agent_account\")",
+          "instant": true,
+          "range": false,
+          "format": "table"
+        },
+        {
+          "refId": "C",
+          "expr": "label_join(((max by (agent_plan_vendor, agent_plan_window, agent_account) (max by (agent_plan_vendor, agent_plan_window, agent_account, agent_plan_bucket) (last_over_time(agent_capacity_window_reset_time_seconds{agent_capacity_source=~\"claude_statusline|claude_transcript|codex_rollout|codex_probe|agy_statusline\",agent_capacity_freshness=~\"fresh|carried\"}[5m]) and on (agent_plan_vendor, agent_plan_window, agent_account, agent_plan_bucket, agent_capacity_source, agent_capacity_freshness) (max by (agent_plan_vendor, agent_plan_window, agent_account, agent_plan_bucket, agent_capacity_source, agent_capacity_freshness) (last_over_time(agent_capacity_window_utilization_ratio{agent_capacity_source=~\"claude_statusline|claude_transcript|codex_rollout|codex_probe|agy_statusline\",agent_capacity_freshness=\"fresh\"}[5m])) or on (agent_plan_vendor, agent_plan_window, agent_account, agent_plan_bucket) max by (agent_plan_vendor, agent_plan_window, agent_account, agent_plan_bucket, agent_capacity_source, agent_capacity_freshness) (last_over_time(agent_capacity_window_utilization_ratio{agent_capacity_source=~\"claude_statusline|claude_transcript|codex_rollout|codex_probe|agy_statusline\",agent_capacity_freshness=\"carried\"}[5m])))) and on (agent_plan_vendor, agent_plan_window, agent_account, agent_plan_bucket) (max by (agent_plan_vendor, agent_plan_window, agent_account, agent_plan_bucket) ((max by (agent_plan_vendor, agent_plan_window, agent_account, agent_plan_bucket, agent_capacity_source, agent_capacity_freshness) (last_over_time(agent_capacity_window_utilization_ratio{agent_capacity_source=~\"claude_statusline|claude_transcript|codex_rollout|codex_probe|agy_statusline\",agent_capacity_freshness=\"fresh\"}[5m])) or on (agent_plan_vendor, agent_plan_window, agent_account, agent_plan_bucket) max by (agent_plan_vendor, agent_plan_window, agent_account, agent_plan_bucket, agent_capacity_source, agent_capacity_freshness) (last_over_time(agent_capacity_window_utilization_ratio{agent_capacity_source=~\"claude_statusline|claude_transcript|codex_rollout|codex_probe|agy_statusline\",agent_capacity_freshness=\"carried\"}[5m])))) == on (agent_plan_vendor, agent_plan_window, agent_account) group_left () max by (agent_plan_vendor, agent_plan_window, agent_account) (max by (agent_plan_vendor, agent_plan_window, agent_account, agent_plan_bucket) ((max by (agent_plan_vendor, agent_plan_window, agent_account, agent_plan_bucket, agent_capacity_source, agent_capacity_freshness) (last_over_time(agent_capacity_window_utilization_ratio{agent_capacity_source=~\"claude_statusline|claude_transcript|codex_rollout|codex_probe|agy_statusline\",agent_capacity_freshness=\"fresh\"}[5m])) or on (agent_plan_vendor, agent_plan_window, agent_account, agent_plan_bucket) max by (agent_plan_vendor, agent_plan_window, agent_account, agent_plan_bucket, agent_capacity_source, agent_capacity_freshness) (last_over_time(agent_capacity_window_utilization_ratio{agent_capacity_source=~\"claude_statusline|claude_transcript|codex_rollout|codex_probe|agy_statusline\",agent_capacity_freshness=\"carried\"}[5m]))))))) - time()) and on (agent_plan_vendor, agent_plan_window, agent_account) max by (agent_plan_vendor, agent_plan_window, agent_account) ((max by (agent_plan_vendor, agent_plan_window, agent_account, agent_plan_bucket, agent_capacity_source, agent_capacity_freshness) (last_over_time(agent_capacity_window_utilization_ratio{agent_capacity_source=~\"claude_statusline|claude_transcript|codex_rollout|codex_probe|agy_statusline\",agent_capacity_freshness=\"fresh\"}[5m])) or on (agent_plan_vendor, agent_plan_window, agent_account, agent_plan_bucket) max by (agent_plan_vendor, agent_plan_window, agent_account, agent_plan_bucket, agent_capacity_source, agent_capacity_freshness) (last_over_time(agent_capacity_window_utilization_ratio{agent_capacity_source=~\"claude_statusline|claude_transcript|codex_rollout|codex_probe|agy_statusline\",agent_capacity_freshness=\"carried\"}[5m]))))) or on (agent_plan_vendor, agent_plan_window, agent_account) (max by (agent_plan_vendor, agent_plan_window, agent_account) ((max by (agent_plan_vendor, agent_plan_window, agent_account, agent_plan_bucket) (last_over_time(agent_capacity_window_utilization_ratio{agent_capacity_source=~\"claude_statusline|claude_transcript|codex_rollout|codex_probe|agy_statusline\",agent_capacity_freshness=\"fresh\"}[6h])) or max by (agent_plan_vendor, agent_plan_window, agent_account, agent_plan_bucket) (last_over_time(agent_capacity_window_utilization_ratio{agent_capacity_source=~\"claude_statusline|claude_transcript|codex_rollout|codex_probe|agy_statusline\",agent_capacity_freshness=\"carried\"}[6h])))) * NaN), \"capacity_key\", \"|\", \"agent_plan_vendor\", \"agent_plan_window\", \"agent_account\")",
+          "instant": true,
+          "range": false,
+          "format": "table"
+        },
+        {
+          "refId": "D",
+          "expr": "label_join(clamp_max((max by (agent_plan_vendor, agent_plan_window, agent_account) ((max by (agent_plan_vendor, agent_plan_window, agent_account, agent_plan_bucket, agent_capacity_source, agent_capacity_freshness) (last_over_time(agent_capacity_window_utilization_ratio{agent_capacity_source=~\"claude_statusline|claude_transcript|codex_rollout|codex_probe|agy_statusline\",agent_capacity_freshness=\"fresh\",agent_plan_window=\"5h\"}[5m])) or on (agent_plan_vendor, agent_plan_window, agent_account, agent_plan_bucket) max by (agent_plan_vendor, agent_plan_window, agent_account, agent_plan_bucket, agent_capacity_source, agent_capacity_freshness) (last_over_time(agent_capacity_window_utilization_ratio{agent_capacity_source=~\"claude_statusline|claude_transcript|codex_rollout|codex_probe|agy_statusline\",agent_capacity_freshness=\"carried\",agent_plan_window=\"5h\"}[5m])))) + on (agent_plan_vendor, agent_plan_window, agent_account) (deriv(max by (agent_plan_vendor, agent_plan_window, agent_account) ((max by (agent_plan_vendor, agent_plan_window, agent_account, agent_plan_bucket, agent_capacity_source, agent_capacity_freshness) (last_over_time(agent_capacity_window_utilization_ratio{agent_capacity_source=~\"claude_statusline|claude_transcript|codex_rollout|codex_probe|agy_statusline\",agent_capacity_freshness=\"fresh\",agent_plan_window=\"5h\"}[5m])) or on (agent_plan_vendor, agent_plan_window, agent_account, agent_plan_bucket) max by (agent_plan_vendor, agent_plan_window, agent_account, agent_plan_bucket, agent_capacity_source, agent_capacity_freshness) (last_over_time(agent_capacity_window_utilization_ratio{agent_capacity_source=~\"claude_statusline|claude_transcript|codex_rollout|codex_probe|agy_statusline\",agent_capacity_freshness=\"carried\",agent_plan_window=\"5h\"}[5m]))))[6h:5m]) > 0 and on (agent_plan_vendor, agent_plan_window, agent_account) (count_over_time(max by (agent_plan_vendor, agent_plan_window, agent_account) ((max by (agent_plan_vendor, agent_plan_window, agent_account, agent_plan_bucket, agent_capacity_source, agent_capacity_freshness) (last_over_time(agent_capacity_window_utilization_ratio{agent_capacity_source=~\"claude_statusline|claude_transcript|codex_rollout|codex_probe|agy_statusline\",agent_capacity_freshness=\"fresh\",agent_plan_window=\"5h\"}[5m])) or on (agent_plan_vendor, agent_plan_window, agent_account, agent_plan_bucket) max by (agent_plan_vendor, agent_plan_window, agent_account, agent_plan_bucket, agent_capacity_source, agent_capacity_freshness) (last_over_time(agent_capacity_window_utilization_ratio{agent_capacity_source=~\"claude_statusline|claude_transcript|codex_rollout|codex_probe|agy_statusline\",agent_capacity_freshness=\"carried\",agent_plan_window=\"5h\"}[5m]))))[6h:5m]) >= 36)) * on (agent_plan_vendor, agent_plan_window, agent_account) (max by (agent_plan_vendor, agent_plan_window, agent_account) (max by (agent_plan_vendor, agent_plan_window, agent_account, agent_plan_bucket) (last_over_time(agent_capacity_window_reset_time_seconds{agent_capacity_source=~\"claude_statusline|claude_transcript|codex_rollout|codex_probe|agy_statusline\",agent_capacity_freshness=~\"fresh|carried\",agent_plan_window=\"5h\"}[5m]) and on (agent_plan_vendor, agent_plan_window, agent_account, agent_plan_bucket, agent_capacity_source, agent_capacity_freshness) (max by (agent_plan_vendor, agent_plan_window, agent_account, agent_plan_bucket, agent_capacity_source, agent_capacity_freshness) (last_over_time(agent_capacity_window_utilization_ratio{agent_capacity_source=~\"claude_statusline|claude_transcript|codex_rollout|codex_probe|agy_statusline\",agent_capacity_freshness=\"fresh\",agent_plan_window=\"5h\"}[5m])) or on (agent_plan_vendor, agent_plan_window, agent_account, agent_plan_bucket) max by (agent_plan_vendor, agent_plan_window, agent_account, agent_plan_bucket, agent_capacity_source, agent_capacity_freshness) (last_over_time(agent_capacity_window_utilization_ratio{agent_capacity_source=~\"claude_statusline|claude_transcript|codex_rollout|codex_probe|agy_statusline\",agent_capacity_freshness=\"carried\",agent_plan_window=\"5h\"}[5m])))) and on (agent_plan_vendor, agent_plan_window, agent_account, agent_plan_bucket) (max by (agent_plan_vendor, agent_plan_window, agent_account, agent_plan_bucket) ((max by (agent_plan_vendor, agent_plan_window, agent_account, agent_plan_bucket, agent_capacity_source, agent_capacity_freshness) (last_over_time(agent_capacity_window_utilization_ratio{agent_capacity_source=~\"claude_statusline|claude_transcript|codex_rollout|codex_probe|agy_statusline\",agent_capacity_freshness=\"fresh\",agent_plan_window=\"5h\"}[5m])) or on (agent_plan_vendor, agent_plan_window, agent_account, agent_plan_bucket) max by (agent_plan_vendor, agent_plan_window, agent_account, agent_plan_bucket, agent_capacity_source, agent_capacity_freshness) (last_over_time(agent_capacity_window_utilization_ratio{agent_capacity_source=~\"claude_statusline|claude_transcript|codex_rollout|codex_probe|agy_statusline\",agent_capacity_freshness=\"carried\",agent_plan_window=\"5h\"}[5m])))) == on (agent_plan_vendor, agent_plan_window, agent_account) group_left () max by (agent_plan_vendor, agent_plan_window, agent_account) (max by (agent_plan_vendor, agent_plan_window, agent_account, agent_plan_bucket) ((max by (agent_plan_vendor, agent_plan_window, agent_account, agent_plan_bucket, agent_capacity_source, agent_capacity_freshness) (last_over_time(agent_capacity_window_utilization_ratio{agent_capacity_source=~\"claude_statusline|claude_transcript|codex_rollout|codex_probe|agy_statusline\",agent_capacity_freshness=\"fresh\",agent_plan_window=\"5h\"}[5m])) or on (agent_plan_vendor, agent_plan_window, agent_account, agent_plan_bucket) max by (agent_plan_vendor, agent_plan_window, agent_account, agent_plan_bucket, agent_capacity_source, agent_capacity_freshness) (last_over_time(agent_capacity_window_utilization_ratio{agent_capacity_source=~\"claude_statusline|claude_transcript|codex_rollout|codex_probe|agy_statusline\",agent_capacity_freshness=\"carried\",agent_plan_window=\"5h\"}[5m]))))))) - time())) or on (agent_plan_vendor, agent_plan_window, agent_account) (max by (agent_plan_vendor, agent_plan_window, agent_account) ((max by (agent_plan_vendor, agent_plan_window, agent_account, agent_plan_bucket, agent_capacity_source, agent_capacity_freshness) (last_over_time(agent_capacity_window_utilization_ratio{agent_capacity_source=~\"claude_statusline|claude_transcript|codex_rollout|codex_probe|agy_statusline\",agent_capacity_freshness=\"fresh\",agent_plan_window=\"5h\"}[5m])) or on (agent_plan_vendor, agent_plan_window, agent_account, agent_plan_bucket) max by (agent_plan_vendor, agent_plan_window, agent_account, agent_plan_bucket, agent_capacity_source, agent_capacity_freshness) (last_over_time(agent_capacity_window_utilization_ratio{agent_capacity_source=~\"claude_statusline|claude_transcript|codex_rollout|codex_probe|agy_statusline\",agent_capacity_freshness=\"carried\",agent_plan_window=\"5h\"}[5m])))) and on (agent_plan_vendor, agent_plan_window, agent_account) (count_over_time(max by (agent_plan_vendor, agent_plan_window, agent_account) ((max by (agent_plan_vendor, agent_plan_window, agent_account, agent_plan_bucket, agent_capacity_source, agent_capacity_freshness) (last_over_time(agent_capacity_window_utilization_ratio{agent_capacity_source=~\"claude_statusline|claude_transcript|codex_rollout|codex_probe|agy_statusline\",agent_capacity_freshness=\"fresh\",agent_plan_window=\"5h\"}[5m])) or on (agent_plan_vendor, agent_plan_window, agent_account, agent_plan_bucket) max by (agent_plan_vendor, agent_plan_window, agent_account, agent_plan_bucket, agent_capacity_source, agent_capacity_freshness) (last_over_time(agent_capacity_window_utilization_ratio{agent_capacity_source=~\"claude_statusline|claude_transcript|codex_rollout|codex_probe|agy_statusline\",agent_capacity_freshness=\"carried\",agent_plan_window=\"5h\"}[5m]))))[6h:5m]) >= 36)), 1) or on (agent_plan_vendor, agent_plan_window, agent_account) clamp_max((max by (agent_plan_vendor, agent_plan_window, agent_account) ((max by (agent_plan_vendor, agent_plan_window, agent_account, agent_plan_bucket, agent_capacity_source, agent_capacity_freshness) (last_over_time(agent_capacity_window_utilization_ratio{agent_capacity_source=~\"claude_statusline|claude_transcript|codex_rollout|codex_probe|agy_statusline\",agent_capacity_freshness=\"fresh\",agent_plan_window=\"7d\"}[5m])) or on (agent_plan_vendor, agent_plan_window, agent_account, agent_plan_bucket) max by (agent_plan_vendor, agent_plan_window, agent_account, agent_plan_bucket, agent_capacity_source, agent_capacity_freshness) (last_over_time(agent_capacity_window_utilization_ratio{agent_capacity_source=~\"claude_statusline|claude_transcript|codex_rollout|codex_probe|agy_statusline\",agent_capacity_freshness=\"carried\",agent_plan_window=\"7d\"}[5m])))) + on (agent_plan_vendor, agent_plan_window, agent_account) (deriv(max by (agent_plan_vendor, agent_plan_window, agent_account) ((max by (agent_plan_vendor, agent_plan_window, agent_account, agent_plan_bucket, agent_capacity_source, agent_capacity_freshness) (last_over_time(agent_capacity_window_utilization_ratio{agent_capacity_source=~\"claude_statusline|claude_transcript|codex_rollout|codex_probe|agy_statusline\",agent_capacity_freshness=\"fresh\",agent_plan_window=\"7d\"}[5m])) or on (agent_plan_vendor, agent_plan_window, agent_account, agent_plan_bucket) max by (agent_plan_vendor, agent_plan_window, agent_account, agent_plan_bucket, agent_capacity_source, agent_capacity_freshness) (last_over_time(agent_capacity_window_utilization_ratio{agent_capacity_source=~\"claude_statusline|claude_transcript|codex_rollout|codex_probe|agy_statusline\",agent_capacity_freshness=\"carried\",agent_plan_window=\"7d\"}[5m]))))[24h:5m]) > 0 and on (agent_plan_vendor, agent_plan_window, agent_account) (count_over_time(max by (agent_plan_vendor, agent_plan_window, agent_account) ((max by (agent_plan_vendor, agent_plan_window, agent_account, agent_plan_bucket, agent_capacity_source, agent_capacity_freshness) (last_over_time(agent_capacity_window_utilization_ratio{agent_capacity_source=~\"claude_statusline|claude_transcript|codex_rollout|codex_probe|agy_statusline\",agent_capacity_freshness=\"fresh\",agent_plan_window=\"7d\"}[5m])) or on (agent_plan_vendor, agent_plan_window, agent_account, agent_plan_bucket) max by (agent_plan_vendor, agent_plan_window, agent_account, agent_plan_bucket, agent_capacity_source, agent_capacity_freshness) (last_over_time(agent_capacity_window_utilization_ratio{agent_capacity_source=~\"claude_statusline|claude_transcript|codex_rollout|codex_probe|agy_statusline\",agent_capacity_freshness=\"carried\",agent_plan_window=\"7d\"}[5m]))))[24h:5m]) >= 144)) * on (agent_plan_vendor, agent_plan_window, agent_account) (max by (agent_plan_vendor, agent_plan_window, agent_account) (max by (agent_plan_vendor, agent_plan_window, agent_account, agent_plan_bucket) (last_over_time(agent_capacity_window_reset_time_seconds{agent_capacity_source=~\"claude_statusline|claude_transcript|codex_rollout|codex_probe|agy_statusline\",agent_capacity_freshness=~\"fresh|carried\",agent_plan_window=\"7d\"}[5m]) and on (agent_plan_vendor, agent_plan_window, agent_account, agent_plan_bucket, agent_capacity_source, agent_capacity_freshness) (max by (agent_plan_vendor, agent_plan_window, agent_account, agent_plan_bucket, agent_capacity_source, agent_capacity_freshness) (last_over_time(agent_capacity_window_utilization_ratio{agent_capacity_source=~\"claude_statusline|claude_transcript|codex_rollout|codex_probe|agy_statusline\",agent_capacity_freshness=\"fresh\",agent_plan_window=\"7d\"}[5m])) or on (agent_plan_vendor, agent_plan_window, agent_account, agent_plan_bucket) max by (agent_plan_vendor, agent_plan_window, agent_account, agent_plan_bucket, agent_capacity_source, agent_capacity_freshness) (last_over_time(agent_capacity_window_utilization_ratio{agent_capacity_source=~\"claude_statusline|claude_transcript|codex_rollout|codex_probe|agy_statusline\",agent_capacity_freshness=\"carried\",agent_plan_window=\"7d\"}[5m])))) and on (agent_plan_vendor, agent_plan_window, agent_account, agent_plan_bucket) (max by (agent_plan_vendor, agent_plan_window, agent_account, agent_plan_bucket) ((max by (agent_plan_vendor, agent_plan_window, agent_account, agent_plan_bucket, agent_capacity_source, agent_capacity_freshness) (last_over_time(agent_capacity_window_utilization_ratio{agent_capacity_source=~\"claude_statusline|claude_transcript|codex_rollout|codex_probe|agy_statusline\",agent_capacity_freshness=\"fresh\",agent_plan_window=\"7d\"}[5m])) or on (agent_plan_vendor, agent_plan_window, agent_account, agent_plan_bucket) max by (agent_plan_vendor, agent_plan_window, agent_account, agent_plan_bucket, agent_capacity_source, agent_capacity_freshness) (last_over_time(agent_capacity_window_utilization_ratio{agent_capacity_source=~\"claude_statusline|claude_transcript|codex_rollout|codex_probe|agy_statusline\",agent_capacity_freshness=\"carried\",agent_plan_window=\"7d\"}[5m])))) == on (agent_plan_vendor, agent_plan_window, agent_account) group_left () max by (agent_plan_vendor, agent_plan_window, agent_account) (max by (agent_plan_vendor, agent_plan_window, agent_account, agent_plan_bucket) ((max by (agent_plan_vendor, agent_plan_window, agent_account, agent_plan_bucket, agent_capacity_source, agent_capacity_freshness) (last_over_time(agent_capacity_window_utilization_ratio{agent_capacity_source=~\"claude_statusline|claude_transcript|codex_rollout|codex_probe|agy_statusline\",agent_capacity_freshness=\"fresh\",agent_plan_window=\"7d\"}[5m])) or on (agent_plan_vendor, agent_plan_window, agent_account, agent_plan_bucket) max by (agent_plan_vendor, agent_plan_window, agent_account, agent_plan_bucket, agent_capacity_source, agent_capacity_freshness) (last_over_time(agent_capacity_window_utilization_ratio{agent_capacity_source=~\"claude_statusline|claude_transcript|codex_rollout|codex_probe|agy_statusline\",agent_capacity_freshness=\"carried\",agent_plan_window=\"7d\"}[5m]))))))) - time())) or on (agent_plan_vendor, agent_plan_window, agent_account) (max by (agent_plan_vendor, agent_plan_window, agent_account) ((max by (agent_plan_vendor, agent_plan_window, agent_account, agent_plan_bucket, agent_capacity_source, agent_capacity_freshness) (last_over_time(agent_capacity_window_utilization_ratio{agent_capacity_source=~\"claude_statusline|claude_transcript|codex_rollout|codex_probe|agy_statusline\",agent_capacity_freshness=\"fresh\",agent_plan_window=\"7d\"}[5m])) or on (agent_plan_vendor, agent_plan_window, agent_account, agent_plan_bucket) max by (agent_plan_vendor, agent_plan_window, agent_account, agent_plan_bucket, agent_capacity_source, agent_capacity_freshness) (last_over_time(agent_capacity_window_utilization_ratio{agent_capacity_source=~\"claude_statusline|claude_transcript|codex_rollout|codex_probe|agy_statusline\",agent_capacity_freshness=\"carried\",agent_plan_window=\"7d\"}[5m])))) and on (agent_plan_vendor, agent_plan_window, agent_account) (count_over_time(max by (agent_plan_vendor, agent_plan_window, agent_account) ((max by (agent_plan_vendor, agent_plan_window, agent_account, agent_plan_bucket, agent_capacity_source, agent_capacity_freshness) (last_over_time(agent_capacity_window_utilization_ratio{agent_capacity_source=~\"claude_statusline|claude_transcript|codex_rollout|codex_probe|agy_statusline\",agent_capacity_freshness=\"fresh\",agent_plan_window=\"7d\"}[5m])) or on (agent_plan_vendor, agent_plan_window, agent_account, agent_plan_bucket) max by (agent_plan_vendor, agent_plan_window, agent_account, agent_plan_bucket, agent_capacity_source, agent_capacity_freshness) (last_over_time(agent_capacity_window_utilization_ratio{agent_capacity_source=~\"claude_statusline|claude_transcript|codex_rollout|codex_probe|agy_statusline\",agent_capacity_freshness=\"carried\",agent_plan_window=\"7d\"}[5m]))))[24h:5m]) >= 144)), 1) or on (agent_plan_vendor, agent_plan_window, agent_account) (max by (agent_plan_vendor, agent_plan_window, agent_account) ((max by (agent_plan_vendor, agent_plan_window, agent_account, agent_plan_bucket) (last_over_time(agent_capacity_window_utilization_ratio{agent_capacity_source=~\"claude_statusline|claude_transcript|codex_rollout|codex_probe|agy_statusline\",agent_capacity_freshness=\"fresh\"}[6h])) or max by (agent_plan_vendor, agent_plan_window, agent_account, agent_plan_bucket) (last_over_time(agent_capacity_window_utilization_ratio{agent_capacity_source=~\"claude_statusline|claude_transcript|codex_rollout|codex_probe|agy_statusline\",agent_capacity_freshness=\"carried\"}[6h])))) * NaN), \"capacity_key\", \"|\", \"agent_plan_vendor\", \"agent_plan_window\", \"agent_account\")",
+          "instant": true,
+          "range": false,
+          "format": "table"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Utilization"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "percentunit"
+              },
+              {
+                "id": "noValue",
+                "value": "unknown"
+              },
+              {
+                "id": "mappings",
+                "value": [
+                  {
+                    "type": "special",
+                    "options": {
+                      "match": "nan",
+                      "result": {
+                        "text": "unknown"
+                      }
+                    }
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Time to reset"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "s"
+              },
+              {
+                "id": "noValue",
+                "value": "unknown"
+              },
+              {
+                "id": "mappings",
+                "value": [
+                  {
+                    "type": "special",
+                    "options": {
+                      "match": "nan",
+                      "result": {
+                        "text": "unknown"
+                      }
+                    }
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Projected at reset"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "percentunit"
+              },
+              {
+                "id": "noValue",
+                "value": "unknown"
+              },
+              {
+                "id": "mappings",
+                "value": [
+                  {
+                    "type": "special",
+                    "options": {
+                      "match": "nan",
+                      "result": {
+                        "text": "unknown"
+                      }
+                    }
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "options": {},
+      "transformations": [
+        {
+          "id": "joinByField",
+          "options": {
+            "byField": "capacity_key",
+            "mode": "outerTabular"
+          }
+        },
+        {
+          "id": "organize",
+          "options": {
+            "excludeByName": {
+              "Time": true,
+              "Time 1": true,
+              "Time 2": true,
+              "Time 3": true,
+              "Time 4": true,
+              "Value": true,
+              "Value #A": true,
+              "agent_plan_vendor 2": true,
+              "agent_plan_vendor 3": true,
+              "agent_plan_vendor 4": true,
+              "agent_plan_window 2": true,
+              "agent_plan_window 3": true,
+              "agent_plan_window 4": true,
+              "capacity_key": true,
+              "agent_account 2": true,
+              "agent_account 3": true,
+              "agent_account 4": true
+            },
+            "renameByName": {
+              "Value #B": "Utilization",
+              "Value #C": "Time to reset",
+              "Value #D": "Projected at reset",
+              "agent_plan_vendor": "Vendor",
+              "agent_plan_vendor 1": "Vendor",
+              "agent_plan_window": "Window",
+              "agent_plan_window 1": "Window",
+              "agent_account": "Account",
+              "agent_account 1": "Account"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": 112,
+      "title": "Freshness and source",
+      "type": "table",
+      "gridPos": {
+        "h": 8,
+        "w": 8,
+        "x": 16,
+        "y": 1
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "mimir"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "max by (agent_plan_vendor, agent_plan_window, agent_capacity_source, agent_capacity_freshness, agent_account) (last_over_time(agent_capacity_window_utilization_ratio{agent_capacity_source=~\"claude_statusline|claude_transcript|codex_rollout|codex_probe|agy_statusline\",agent_capacity_freshness=~\"fresh|carried\"}[15m]))",
+          "instant": true,
+          "range": false,
+          "format": "table",
+          "legendFormat": "{{agent_plan_vendor}} / {{agent_plan_window}} / {{agent_account}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "noValue": "unknown"
+        },
+        "overrides": []
+      },
+      "options": {},
+      "transformations": [
+        {
+          "id": "labelsToFields",
+          "options": {
+            "mode": "columns"
+          }
+        },
+        {
+          "id": "merge",
+          "options": {}
+        },
+        {
+          "id": "organize",
+          "options": {
+            "excludeByName": {
+              "Time": true,
+              "Value": true
+            },
+            "renameByName": {
+              "agent_plan_vendor": "Vendor",
+              "agent_plan_window": "Window",
+              "agent_capacity_source": "Source",
+              "agent_capacity_freshness": "Freshness",
+              "agent_account": "Account"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": 114,
+      "title": "Last successful snapshot age",
+      "type": "stat",
+      "description": "Source observation age in seconds by vendor and account. Query: max by (agent_plan_vendor, agent_account) (agent_capacity_snapshot_age_seconds{agent_capacity_source=~\"claude_statusline|claude_transcript|codex_rollout|codex_probe|agy_statusline\"}). The collector exports each reading for at most six hours without a new observation. No series means unknown.",
+      "gridPos": {
+        "h": 4,
+        "w": 24,
+        "x": 0,
+        "y": 9
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "mimir"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "max by (agent_plan_vendor, agent_account) (agent_capacity_snapshot_age_seconds{agent_capacity_source=~\"claude_statusline|claude_transcript|codex_rollout|codex_probe|agy_statusline\"})",
+          "instant": true,
+          "range": false,
+          "format": "time_series",
+          "legendFormat": "{{agent_plan_vendor}} / {{agent_account}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "noValue": "unknown"
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "value_and_name",
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "orientation": "auto"
+      }
+    },
+    {
+      "id": 101,
+      "title": "Projection",
+      "type": "row",
+      "collapsed": false,
+      "panels": [],
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 14
+      }
+    },
+    {
+      "id": 120,
+      "title": "Projected utilization at reset (3 h or 12 h of data, capped at 100%)",
+      "type": "stat",
+      "gridPos": {
+        "h": 8,
+        "w": 24,
+        "x": 0,
+        "y": 15
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "mimir"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "clamp_max((max by (agent_plan_vendor, agent_plan_window, agent_account) ((max by (agent_plan_vendor, agent_plan_window, agent_account, agent_plan_bucket, agent_capacity_source, agent_capacity_freshness) (last_over_time(agent_capacity_window_utilization_ratio{agent_capacity_source=~\"claude_statusline|claude_transcript|codex_rollout|codex_probe|agy_statusline\",agent_capacity_freshness=\"fresh\",agent_plan_window=\"5h\"}[5m])) or on (agent_plan_vendor, agent_plan_window, agent_account, agent_plan_bucket) max by (agent_plan_vendor, agent_plan_window, agent_account, agent_plan_bucket, agent_capacity_source, agent_capacity_freshness) (last_over_time(agent_capacity_window_utilization_ratio{agent_capacity_source=~\"claude_statusline|claude_transcript|codex_rollout|codex_probe|agy_statusline\",agent_capacity_freshness=\"carried\",agent_plan_window=\"5h\"}[5m])))) + on (agent_plan_vendor, agent_plan_window, agent_account) (deriv(max by (agent_plan_vendor, agent_plan_window, agent_account) ((max by (agent_plan_vendor, agent_plan_window, agent_account, agent_plan_bucket, agent_capacity_source, agent_capacity_freshness) (last_over_time(agent_capacity_window_utilization_ratio{agent_capacity_source=~\"claude_statusline|claude_transcript|codex_rollout|codex_probe|agy_statusline\",agent_capacity_freshness=\"fresh\",agent_plan_window=\"5h\"}[5m])) or on (agent_plan_vendor, agent_plan_window, agent_account, agent_plan_bucket) max by (agent_plan_vendor, agent_plan_window, agent_account, agent_plan_bucket, agent_capacity_source, agent_capacity_freshness) (last_over_time(agent_capacity_window_utilization_ratio{agent_capacity_source=~\"claude_statusline|claude_transcript|codex_rollout|codex_probe|agy_statusline\",agent_capacity_freshness=\"carried\",agent_plan_window=\"5h\"}[5m]))))[6h:5m]) > 0 and on (agent_plan_vendor, agent_plan_window, agent_account) (count_over_time(max by (agent_plan_vendor, agent_plan_window, agent_account) ((max by (agent_plan_vendor, agent_plan_window, agent_account, agent_plan_bucket, agent_capacity_source, agent_capacity_freshness) (last_over_time(agent_capacity_window_utilization_ratio{agent_capacity_source=~\"claude_statusline|claude_transcript|codex_rollout|codex_probe|agy_statusline\",agent_capacity_freshness=\"fresh\",agent_plan_window=\"5h\"}[5m])) or on (agent_plan_vendor, agent_plan_window, agent_account, agent_plan_bucket) max by (agent_plan_vendor, agent_plan_window, agent_account, agent_plan_bucket, agent_capacity_source, agent_capacity_freshness) (last_over_time(agent_capacity_window_utilization_ratio{agent_capacity_source=~\"claude_statusline|claude_transcript|codex_rollout|codex_probe|agy_statusline\",agent_capacity_freshness=\"carried\",agent_plan_window=\"5h\"}[5m]))))[6h:5m]) >= 36)) * on (agent_plan_vendor, agent_plan_window, agent_account) (max by (agent_plan_vendor, agent_plan_window, agent_account) (max by (agent_plan_vendor, agent_plan_window, agent_account, agent_plan_bucket) (last_over_time(agent_capacity_window_reset_time_seconds{agent_capacity_source=~\"claude_statusline|claude_transcript|codex_rollout|codex_probe|agy_statusline\",agent_capacity_freshness=~\"fresh|carried\",agent_plan_window=\"5h\"}[5m]) and on (agent_plan_vendor, agent_plan_window, agent_account, agent_plan_bucket, agent_capacity_source, agent_capacity_freshness) (max by (agent_plan_vendor, agent_plan_window, agent_account, agent_plan_bucket, agent_capacity_source, agent_capacity_freshness) (last_over_time(agent_capacity_window_utilization_ratio{agent_capacity_source=~\"claude_statusline|claude_transcript|codex_rollout|codex_probe|agy_statusline\",agent_capacity_freshness=\"fresh\",agent_plan_window=\"5h\"}[5m])) or on (agent_plan_vendor, agent_plan_window, agent_account, agent_plan_bucket) max by (agent_plan_vendor, agent_plan_window, agent_account, agent_plan_bucket, agent_capacity_source, agent_capacity_freshness) (last_over_time(agent_capacity_window_utilization_ratio{agent_capacity_source=~\"claude_statusline|claude_transcript|codex_rollout|codex_probe|agy_statusline\",agent_capacity_freshness=\"carried\",agent_plan_window=\"5h\"}[5m])))) and on (agent_plan_vendor, agent_plan_window, agent_account, agent_plan_bucket) (max by (agent_plan_vendor, agent_plan_window, agent_account, agent_plan_bucket) ((max by (agent_plan_vendor, agent_plan_window, agent_account, agent_plan_bucket, agent_capacity_source, agent_capacity_freshness) (last_over_time(agent_capacity_window_utilization_ratio{agent_capacity_source=~\"claude_statusline|claude_transcript|codex_rollout|codex_probe|agy_statusline\",agent_capacity_freshness=\"fresh\",agent_plan_window=\"5h\"}[5m])) or on (agent_plan_vendor, agent_plan_window, agent_account, agent_plan_bucket) max by (agent_plan_vendor, agent_plan_window, agent_account, agent_plan_bucket, agent_capacity_source, agent_capacity_freshness) (last_over_time(agent_capacity_window_utilization_ratio{agent_capacity_source=~\"claude_statusline|claude_transcript|codex_rollout|codex_probe|agy_statusline\",agent_capacity_freshness=\"carried\",agent_plan_window=\"5h\"}[5m])))) == on (agent_plan_vendor, agent_plan_window, agent_account) group_left () max by (agent_plan_vendor, agent_plan_window, agent_account) (max by (agent_plan_vendor, agent_plan_window, agent_account, agent_plan_bucket) ((max by (agent_plan_vendor, agent_plan_window, agent_account, agent_plan_bucket, agent_capacity_source, agent_capacity_freshness) (last_over_time(agent_capacity_window_utilization_ratio{agent_capacity_source=~\"claude_statusline|claude_transcript|codex_rollout|codex_probe|agy_statusline\",agent_capacity_freshness=\"fresh\",agent_plan_window=\"5h\"}[5m])) or on (agent_plan_vendor, agent_plan_window, agent_account, agent_plan_bucket) max by (agent_plan_vendor, agent_plan_window, agent_account, agent_plan_bucket, agent_capacity_source, agent_capacity_freshness) (last_over_time(agent_capacity_window_utilization_ratio{agent_capacity_source=~\"claude_statusline|claude_transcript|codex_rollout|codex_probe|agy_statusline\",agent_capacity_freshness=\"carried\",agent_plan_window=\"5h\"}[5m]))))))) - time())) or on (agent_plan_vendor, agent_plan_window, agent_account) (max by (agent_plan_vendor, agent_plan_window, agent_account) ((max by (agent_plan_vendor, agent_plan_window, agent_account, agent_plan_bucket, agent_capacity_source, agent_capacity_freshness) (last_over_time(agent_capacity_window_utilization_ratio{agent_capacity_source=~\"claude_statusline|claude_transcript|codex_rollout|codex_probe|agy_statusline\",agent_capacity_freshness=\"fresh\",agent_plan_window=\"5h\"}[5m])) or on (agent_plan_vendor, agent_plan_window, agent_account, agent_plan_bucket) max by (agent_plan_vendor, agent_plan_window, agent_account, agent_plan_bucket, agent_capacity_source, agent_capacity_freshness) (last_over_time(agent_capacity_window_utilization_ratio{agent_capacity_source=~\"claude_statusline|claude_transcript|codex_rollout|codex_probe|agy_statusline\",agent_capacity_freshness=\"carried\",agent_plan_window=\"5h\"}[5m])))) and on (agent_plan_vendor, agent_plan_window, agent_account) (count_over_time(max by (agent_plan_vendor, agent_plan_window, agent_account) ((max by (agent_plan_vendor, agent_plan_window, agent_account, agent_plan_bucket, agent_capacity_source, agent_capacity_freshness) (last_over_time(agent_capacity_window_utilization_ratio{agent_capacity_source=~\"claude_statusline|claude_transcript|codex_rollout|codex_probe|agy_statusline\",agent_capacity_freshness=\"fresh\",agent_plan_window=\"5h\"}[5m])) or on (agent_plan_vendor, agent_plan_window, agent_account, agent_plan_bucket) max by (agent_plan_vendor, agent_plan_window, agent_account, agent_plan_bucket, agent_capacity_source, agent_capacity_freshness) (last_over_time(agent_capacity_window_utilization_ratio{agent_capacity_source=~\"claude_statusline|claude_transcript|codex_rollout|codex_probe|agy_statusline\",agent_capacity_freshness=\"carried\",agent_plan_window=\"5h\"}[5m]))))[6h:5m]) >= 36)), 1) or on (agent_plan_vendor, agent_plan_window, agent_account) clamp_max((max by (agent_plan_vendor, agent_plan_window, agent_account) ((max by (agent_plan_vendor, agent_plan_window, agent_account, agent_plan_bucket, agent_capacity_source, agent_capacity_freshness) (last_over_time(agent_capacity_window_utilization_ratio{agent_capacity_source=~\"claude_statusline|claude_transcript|codex_rollout|codex_probe|agy_statusline\",agent_capacity_freshness=\"fresh\",agent_plan_window=\"7d\"}[5m])) or on (agent_plan_vendor, agent_plan_window, agent_account, agent_plan_bucket) max by (agent_plan_vendor, agent_plan_window, agent_account, agent_plan_bucket, agent_capacity_source, agent_capacity_freshness) (last_over_time(agent_capacity_window_utilization_ratio{agent_capacity_source=~\"claude_statusline|claude_transcript|codex_rollout|codex_probe|agy_statusline\",agent_capacity_freshness=\"carried\",agent_plan_window=\"7d\"}[5m])))) + on (agent_plan_vendor, agent_plan_window, agent_account) (deriv(max by (agent_plan_vendor, agent_plan_window, agent_account) ((max by (agent_plan_vendor, agent_plan_window, agent_account, agent_plan_bucket, agent_capacity_source, agent_capacity_freshness) (last_over_time(agent_capacity_window_utilization_ratio{agent_capacity_source=~\"claude_statusline|claude_transcript|codex_rollout|codex_probe|agy_statusline\",agent_capacity_freshness=\"fresh\",agent_plan_window=\"7d\"}[5m])) or on (agent_plan_vendor, agent_plan_window, agent_account, agent_plan_bucket) max by (agent_plan_vendor, agent_plan_window, agent_account, agent_plan_bucket, agent_capacity_source, agent_capacity_freshness) (last_over_time(agent_capacity_window_utilization_ratio{agent_capacity_source=~\"claude_statusline|claude_transcript|codex_rollout|codex_probe|agy_statusline\",agent_capacity_freshness=\"carried\",agent_plan_window=\"7d\"}[5m]))))[24h:5m]) > 0 and on (agent_plan_vendor, agent_plan_window, agent_account) (count_over_time(max by (agent_plan_vendor, agent_plan_window, agent_account) ((max by (agent_plan_vendor, agent_plan_window, agent_account, agent_plan_bucket, agent_capacity_source, agent_capacity_freshness) (last_over_time(agent_capacity_window_utilization_ratio{agent_capacity_source=~\"claude_statusline|claude_transcript|codex_rollout|codex_probe|agy_statusline\",agent_capacity_freshness=\"fresh\",agent_plan_window=\"7d\"}[5m])) or on (agent_plan_vendor, agent_plan_window, agent_account, agent_plan_bucket) max by (agent_plan_vendor, agent_plan_window, agent_account, agent_plan_bucket, agent_capacity_source, agent_capacity_freshness) (last_over_time(agent_capacity_window_utilization_ratio{agent_capacity_source=~\"claude_statusline|claude_transcript|codex_rollout|codex_probe|agy_statusline\",agent_capacity_freshness=\"carried\",agent_plan_window=\"7d\"}[5m]))))[24h:5m]) >= 144)) * on (agent_plan_vendor, agent_plan_window, agent_account) (max by (agent_plan_vendor, agent_plan_window, agent_account) (max by (agent_plan_vendor, agent_plan_window, agent_account, agent_plan_bucket) (last_over_time(agent_capacity_window_reset_time_seconds{agent_capacity_source=~\"claude_statusline|claude_transcript|codex_rollout|codex_probe|agy_statusline\",agent_capacity_freshness=~\"fresh|carried\",agent_plan_window=\"7d\"}[5m]) and on (agent_plan_vendor, agent_plan_window, agent_account, agent_plan_bucket, agent_capacity_source, agent_capacity_freshness) (max by (agent_plan_vendor, agent_plan_window, agent_account, agent_plan_bucket, agent_capacity_source, agent_capacity_freshness) (last_over_time(agent_capacity_window_utilization_ratio{agent_capacity_source=~\"claude_statusline|claude_transcript|codex_rollout|codex_probe|agy_statusline\",agent_capacity_freshness=\"fresh\",agent_plan_window=\"7d\"}[5m])) or on (agent_plan_vendor, agent_plan_window, agent_account, agent_plan_bucket) max by (agent_plan_vendor, agent_plan_window, agent_account, agent_plan_bucket, agent_capacity_source, agent_capacity_freshness) (last_over_time(agent_capacity_window_utilization_ratio{agent_capacity_source=~\"claude_statusline|claude_transcript|codex_rollout|codex_probe|agy_statusline\",agent_capacity_freshness=\"carried\",agent_plan_window=\"7d\"}[5m])))) and on (agent_plan_vendor, agent_plan_window, agent_account, agent_plan_bucket) (max by (agent_plan_vendor, agent_plan_window, agent_account, agent_plan_bucket) ((max by (agent_plan_vendor, agent_plan_window, agent_account, agent_plan_bucket, agent_capacity_source, agent_capacity_freshness) (last_over_time(agent_capacity_window_utilization_ratio{agent_capacity_source=~\"claude_statusline|claude_transcript|codex_rollout|codex_probe|agy_statusline\",agent_capacity_freshness=\"fresh\",agent_plan_window=\"7d\"}[5m])) or on (agent_plan_vendor, agent_plan_window, agent_account, agent_plan_bucket) max by (agent_plan_vendor, agent_plan_window, agent_account, agent_plan_bucket, agent_capacity_source, agent_capacity_freshness) (last_over_time(agent_capacity_window_utilization_ratio{agent_capacity_source=~\"claude_statusline|claude_transcript|codex_rollout|codex_probe|agy_statusline\",agent_capacity_freshness=\"carried\",agent_plan_window=\"7d\"}[5m])))) == on (agent_plan_vendor, agent_plan_window, agent_account) group_left () max by (agent_plan_vendor, agent_plan_window, agent_account) (max by (agent_plan_vendor, agent_plan_window, agent_account, agent_plan_bucket) ((max by (agent_plan_vendor, agent_plan_window, agent_account, agent_plan_bucket, agent_capacity_source, agent_capacity_freshness) (last_over_time(agent_capacity_window_utilization_ratio{agent_capacity_source=~\"claude_statusline|claude_transcript|codex_rollout|codex_probe|agy_statusline\",agent_capacity_freshness=\"fresh\",agent_plan_window=\"7d\"}[5m])) or on (agent_plan_vendor, agent_plan_window, agent_account, agent_plan_bucket) max by (agent_plan_vendor, agent_plan_window, agent_account, agent_plan_bucket, agent_capacity_source, agent_capacity_freshness) (last_over_time(agent_capacity_window_utilization_ratio{agent_capacity_source=~\"claude_statusline|claude_transcript|codex_rollout|codex_probe|agy_statusline\",agent_capacity_freshness=\"carried\",agent_plan_window=\"7d\"}[5m]))))))) - time())) or on (agent_plan_vendor, agent_plan_window, agent_account) (max by (agent_plan_vendor, agent_plan_window, agent_account) ((max by (agent_plan_vendor, agent_plan_window, agent_account, agent_plan_bucket, agent_capacity_source, agent_capacity_freshness) (last_over_time(agent_capacity_window_utilization_ratio{agent_capacity_source=~\"claude_statusline|claude_transcript|codex_rollout|codex_probe|agy_statusline\",agent_capacity_freshness=\"fresh\",agent_plan_window=\"7d\"}[5m])) or on (agent_plan_vendor, agent_plan_window, agent_account, agent_plan_bucket) max by (agent_plan_vendor, agent_plan_window, agent_account, agent_plan_bucket, agent_capacity_source, agent_capacity_freshness) (last_over_time(agent_capacity_window_utilization_ratio{agent_capacity_source=~\"claude_statusline|claude_transcript|codex_rollout|codex_probe|agy_statusline\",agent_capacity_freshness=\"carried\",agent_plan_window=\"7d\"}[5m])))) and on (agent_plan_vendor, agent_plan_window, agent_account) (count_over_time(max by (agent_plan_vendor, agent_plan_window, agent_account) ((max by (agent_plan_vendor, agent_plan_window, agent_account, agent_plan_bucket, agent_capacity_source, agent_capacity_freshness) (last_over_time(agent_capacity_window_utilization_ratio{agent_capacity_source=~\"claude_statusline|claude_transcript|codex_rollout|codex_probe|agy_statusline\",agent_capacity_freshness=\"fresh\",agent_plan_window=\"7d\"}[5m])) or on (agent_plan_vendor, agent_plan_window, agent_account, agent_plan_bucket) max by (agent_plan_vendor, agent_plan_window, agent_account, agent_plan_bucket, agent_capacity_source, agent_capacity_freshness) (last_over_time(agent_capacity_window_utilization_ratio{agent_capacity_source=~\"claude_statusline|claude_transcript|codex_rollout|codex_probe|agy_statusline\",agent_capacity_freshness=\"carried\",agent_plan_window=\"7d\"}[5m]))))[24h:5m]) >= 144)), 1) or on (agent_plan_vendor, agent_plan_window, agent_account) (max by (agent_plan_vendor, agent_plan_window, agent_account) ((max by (agent_plan_vendor, agent_plan_window, agent_account, agent_plan_bucket) (last_over_time(agent_capacity_window_utilization_ratio{agent_capacity_source=~\"claude_statusline|claude_transcript|codex_rollout|codex_probe|agy_statusline\",agent_capacity_freshness=\"fresh\"}[6h])) or max by (agent_plan_vendor, agent_plan_window, agent_account, agent_plan_bucket) (last_over_time(agent_capacity_window_utilization_ratio{agent_capacity_source=~\"claude_statusline|claude_transcript|codex_rollout|codex_probe|agy_statusline\",agent_capacity_freshness=\"carried\"}[6h])))) * NaN)",
+          "instant": true,
+          "range": false,
+          "format": "time_series",
+          "legendFormat": "{{agent_plan_vendor}} / {{agent_plan_window}} / {{agent_account}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "noValue": "unknown"
+        },
+        "overrides": []
+      },
+      "options": {}
+    },
+    {
+      "id": 102,
+      "title": "Burn",
+      "type": "row",
+      "collapsed": false,
+      "panels": [],
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 24
+      }
+    },
+    {
+      "id": 130,
+      "title": "Claude Code tokens per second (fleet total)",
+      "type": "stat",
+      "gridPos": {
+        "h": 8,
+        "w": 8,
+        "x": 0,
+        "y": 25
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "mimir"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum(rate(claude_code_token_usage_tokens_total[5m]))",
+          "instant": true,
+          "range": false,
+          "format": "time_series",
+          "legendFormat": "fleet total"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "tps",
+          "noValue": "unknown"
+        },
+        "overrides": []
+      },
+      "options": {}
+    },
+    {
+      "id": 131,
+      "title": "Claude Code cost per hour (fleet total)",
+      "type": "stat",
+      "gridPos": {
+        "h": 8,
+        "w": 8,
+        "x": 8,
+        "y": 25
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "mimir"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum(rate(claude_code_cost_usage_USD_total[5m])) * 3600",
+          "instant": true,
+          "range": false,
+          "format": "time_series",
+          "legendFormat": "fleet total"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "currencyUSD",
+          "noValue": "unknown"
+        },
+        "overrides": []
+      },
+      "options": {}
+    },
+    {
+      "id": 132,
+      "title": "Codex tokens per second",
+      "type": "stat",
+      "gridPos": {
+        "h": 8,
+        "w": 8,
+        "x": 16,
+        "y": 25
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "mimir"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "max by (agent_account) (sum by (host_name, agent_account) (rate(codex_turn_token_usage_sum{token_type=\"total\"}[5m])))",
+          "instant": true,
+          "range": false,
+          "format": "time_series",
+          "legendFormat": "Codex tokens / {{agent_account}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "tps",
+          "noValue": "unknown"
+        },
+        "overrides": []
+      },
+      "options": {}
+    },
+    {
+      "id": 140,
+      "type": "timeseries",
+      "title": "Utilization history by account and window",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "mimir"
+      },
+      "gridPos": {
+        "h": 9,
+        "w": 24,
+        "x": 0,
+        "y": 33
+      },
+      "timeFrom": "7d",
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "min": 0,
+          "max": 1
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "mimir"
+          },
+          "expr": "max by (agent_plan_vendor, agent_account, agent_plan_window, agent_plan_bucket) ((max by (agent_plan_vendor, agent_plan_window, agent_account, agent_plan_bucket) (agent_capacity_window_utilization_ratio{agent_capacity_source=~\"claude_statusline|claude_transcript|codex_rollout|codex_probe|agy_statusline\",agent_capacity_freshness=\"fresh\"}) or max by (agent_plan_vendor, agent_plan_window, agent_account, agent_plan_bucket) (agent_capacity_window_utilization_ratio{agent_capacity_source=~\"claude_statusline|claude_transcript|codex_rollout|codex_probe|agy_statusline\",agent_capacity_freshness=\"carried\"})))",
+          "legendFormat": "{{agent_plan_vendor}} {{agent_account}} {{agent_plan_window}} {{agent_plan_bucket}}"
+        }
+      ]
+    }
+  ],
+  "links": [
+    {
+      "title": "Agents",
+      "type": "dashboards",
+      "tags": [
+        "agents"
+      ],
+      "keepTime": true,
+      "includeVars": true
+    }
+  ]
+}

@@ -1,0 +1,30 @@
+---
+# The agent and ops accounts on the storage servers, nas-a and nas-b.
+# Check a run before applying it; both plays read the NAS and change nothing
+# unless you ask for a password or key tag:
+#   mise run playbook -- playbooks/nas-accounts.yml --check --diff
+# nas_python puts a uv-managed Python in ops' home first, since DSM's Python
+# 3.8 is below ansible-core's floor, and dsm_accounts then runs on it. Setting
+# ops' DSM password is opt-in, by the tag, and needs a working become; the
+# first password is set as root by another route (docs/lab/nas-access.md):
+#   mise run playbook -- playbooks/nas-accounts.yml --tags dsm_accounts_set_password
+# Authorize controller session keys for ops; this adds lines and never removes one:
+#   mise run playbook -- playbooks/nas-accounts.yml --tags dsm_accounts_ops_keys
+# Retire lab-ops using the default session key connection, without a vault lookup:
+#   mise run playbook -- playbooks/nas-accounts.yml --limit nas-b \
+#     --tags dsm_accounts_ops_retire_lab_ops -e ansible_become_password= --check --diff
+- name: Install the managed Python on the storage servers
+  hosts: nas
+  gather_facts: false
+  # The raw tasks use no become. Ansible would otherwise read the vault for
+  # the password on every task, which makes the Python bootstrap wait for it.
+  vars:
+    ansible_become_password: ""
+  roles:
+    - nas_python
+
+- name: Check the storage servers' accounts
+  hosts: nas
+  gather_facts: false
+  roles:
+    - dsm_accounts

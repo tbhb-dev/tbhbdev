@@ -1,0 +1,170 @@
+---
+- name: install | Install uv and tbhbops as the tool account
+  become: true
+  become_user: "{{ tbhbops_tool_user }}"
+  environment:
+    HOME: "{{ tbhbops_tool_home }}"
+    XDG_DATA_HOME: "{{ tbhbops_tool_home }}/.local/share"
+    XDG_CACHE_HOME: "{{ tbhbops_tool_home }}/.cache"
+    UV_PYTHON_INSTALL_DIR: "{{ tbhbops_tool_home }}/.local/share/tbhbops-tool/python"
+  block:
+    - name: install | Install the pinned uv archive
+      when: (tbhbops_tool_uv.stdout | default('')).split()[:2] != ['uv', tbhbops_tool_uv_version]
+      block:
+        - name: install | Create a uv download directory
+          ansible.builtin.tempfile:
+            state: directory
+            prefix: tbhbops-uv-
+          register: tbhbops_tool_uv_tmp
+
+        - name: install | Download the verified uv archive
+          ansible.builtin.get_url:
+            url: >-
+              https://github.com/astral-sh/uv/releases/download/{{ tbhbops_tool_uv_version
+              }}/uv-{{ ansible_facts.architecture }}-unknown-linux-gnu.tar.gz
+            dest: "{{ tbhbops_tool_uv_tmp.path }}/uv.tar.gz"
+            checksum: "sha256:{{ tbhbops_tool_uv_sha256[ansible_facts.architecture] }}"
+            mode: '0600'
+
+        - name: install | Unpack uv on the host
+          ansible.builtin.unarchive:
+            src: "{{ tbhbops_tool_uv_tmp.path }}/uv.tar.gz"
+            dest: "{{ tbhbops_tool_uv_tmp.path }}"
+            remote_src: true
+
+        - name: install | Create the user executable directory
+          ansible.builtin.file:
+            path: "{{ tbhbops_tool_bin }}"
+            state: directory
+            mode: '0755'
+
+        - name: install | Install the uv executable
+          ansible.builtin.copy:
+            src: "{{ tbhbops_tool_uv_tmp.path }}/uv-{{ ansible_facts.architecture }}-unknown-linux-gnu/uv"
+            dest: "{{ tbhbops_tool_bin }}/uv"
+            remote_src: true
+            mode: '0755'
+      always:
+        - name: install | Remove the uv download directory
+          ansible.builtin.file:
+            path: "{{ tbhbops_tool_uv_tmp.path }}"
+            state: absent
+          when: tbhbops_tool_uv_tmp.path is defined
+
+    - name: install | Create the per-commit artifact directory
+      ansible.builtin.file:
+        path: "{{ tbhbops_tool_cache }}"
+        state: directory
+        mode: '0700'
+
+    - name: install | Copy the two wheels
+      ansible.builtin.copy:
+        src: "{{ item }}"
+        dest: "{{ tbhbops_tool_cache }}/{{ item | basename }}"
+        mode: '0600'
+      loop:
+        - "{{ tbhbops_tool_library_wheels.files[0].path }}"
+        - "{{ tbhbops_tool_cli_wheels.files[0].path }}"
+      loop_control:
+        label: "{{ item | basename }}"
+
+    - name: install | Check each wheel on the host after copying
+      ansible.builtin.stat:
+        path: "{{ tbhbops_tool_cache }}/{{ item.item | basename }}"
+        checksum_algorithm: sha256
+      loop: "{{ tbhbops_tool_wheel_digests.results }}"
+      loop_control:
+        label: "{{ item.item | basename }}"
+      register: tbhbops_tool_copied_wheels
+
+    - name: install | Require the controller wheel digests on the host
+      ansible.builtin.assert:
+        that:
+          - item.stat.checksum == item.item.stat.checksum
+        quiet: true
+      loop: "{{ tbhbops_tool_copied_wheels.results }}"
+      loop_control:
+        label: "{{ item.item.item | basename }}"
+
+    - name: install | Write the final hashed requirements beside the wheels
+      ansible.builtin.copy:
+        content: "{{ tbhbops_tool_requirements }}"
+        dest: "{{ tbhbops_tool_cache }}/requirements.txt"
+        mode: '0600'
+
+    - name: install | Hash the final requirements on the host
+      ansible.builtin.stat:
+        path: "{{ tbhbops_tool_cache }}/requirements.txt"
+        checksum_algorithm: sha256
+      register: tbhbops_tool_copied_requirements
+
+    - name: install | Require the final requirements digest on the host
+      ansible.builtin.assert:
+        that:
+          - tbhbops_tool_copied_requirements.stat.checksum == tbhbops_tool_requirements | hash('sha256')
+        quiet: true
+
+    - name: install | Create the install state directory
+      ansible.builtin.file:
+        path: "{{ tbhbops_tool_state }}"
+        state: directory
+        mode: '0700'
+
+    - name: install | Recreate the venv only when the marker differs
+      when: tbhbops_tool_marker_differs
+      block:
+        - name: install | Remove the previous marker and venv
+          ansible.builtin.file:
+            path: "{{ item }}"
+            state: absent
+          loop:
+            - "{{ tbhbops_tool_state }}/marker"
+            - "{{ tbhbops_tool_environment }}"
+
+        # uv downloads CPython 3.15 when the host has none. The pinned uv binary
+        # checks the download against checksums built into that uv release,
+        # so the uv pin covers the interpreter.
+        - name: install | Create the dedicated venv at the Python floor
+          ansible.builtin.command:
+            argv:
+              - "{{ tbhbops_tool_bin }}/uv"
+              - venv
+              - --python
+              - '3.15'
+              - "{{ tbhbops_tool_environment }}"
+          changed_when: true
+
+    - name: install | Install only the exact hash-checked requirements
+      ansible.builtin.command:
+        argv:
+          - "{{ tbhbops_tool_bin }}/uv"
+          - pip
+          - install
+          - --python
+          - "{{ tbhbops_tool_environment }}/bin/python"
+          - --require-hashes
+          - --no-deps
+          - --reinstall
+          - -r
+          - "{{ tbhbops_tool_cache }}/requirements.txt"
+      changed_when: true
+
+    - name: install | Link the command into the user executable directory
+      ansible.builtin.file:
+        src: "{{ tbhbops_tool_environment }}/bin/tbhbops"
+        dest: "{{ tbhbops_tool_bin }}/tbhbops"
+        state: link
+
+    - name: install | Verify the installed command and o11y group
+      ansible.builtin.command:
+        argv: "{{ [tbhbops_tool_bin + '/tbhbops'] + item }}"
+      loop:
+        - [--help]
+        - [o11y, --help]
+      changed_when: false
+
+    - name: install | Record the verified commit and final requirements digest
+      ansible.builtin.copy:
+        content: "{{ tbhbops_tool_expected_marker }}"
+        dest: "{{ tbhbops_tool_state }}/marker"
+        mode: '0600'

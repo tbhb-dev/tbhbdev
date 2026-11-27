@@ -1,0 +1,16 @@
+---
+- name: Converge
+  hosts: all
+  vars:
+    ops_tbhbdev_home: /home/ops
+    ops_tbhbdev_mise: /usr/local/bin/mise
+    ops_tbhbdev_connect_endpoints: [https://op-connect, https://connect.other.example.invalid]
+  pre_tasks:
+    # The container exercises the role's config and recorded install path.
+    # macOS account and keychain behavior still requires a Mac.
+    - name: Supply the macOS platform fact for the isolated tools fixture
+      ansible.builtin.set_fact:
+        ansible_facts:
+          system: Darwin
+  roles:
+    - ops_tbhbdev
