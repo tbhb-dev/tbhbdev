@@ -34,8 +34,8 @@ SENSITIVE = re.compile(
 @dataclass(frozen=True)
 class Settings:
     app: str = "tbhb-dev-admin"
-    item: str = "github-app-tbhb-dev-admin"
-    vault: str = "tbhb-dev-admin"
+    item: str | None = None
+    vault: str | None = None
     app_id: str = "5733271"
 
 
@@ -79,7 +79,7 @@ def private_key(runtime: Runtime) -> str:
     Every runtime names one, so a missing marker refuses.
     """
     settings = runtime.settings
-    if not enabled(runtime.marker):
+    if not enabled(runtime.marker) or settings.vault is None or settings.item is None:
         msg = "credential_unavailable"
         raise RefusedError(msg)
     try:

@@ -5,7 +5,7 @@
 import base64
 import json
 import os
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import TYPE_CHECKING, cast
 lazy from collections.abc import Callable
@@ -42,7 +42,11 @@ class Fake:
 
 
 @pytest.fixture
-def fake(tmp_path: Path) -> Fake:
+def fake(tmp_path: Path, config_file: Path) -> Fake:
+    settings = request.Settings(item="item-admin", vault="vault-admin")
+    config_file.write_text(
+        f'[admin]\nvault = "{settings.vault}"\nitem = "{settings.item}"\n'
+    )
     key = (
         rsa.generate_private_key(public_exponent=65537, key_size=2048)
         .private_bytes(
@@ -98,7 +102,7 @@ def fake(tmp_path: Path) -> Fake:
         httpx.MockTransport(transport),
     )
     result = Fake(
-        request.Runtime(Audit(tmp_path / "audit"), env, tmp_path / "enabled"),
+        request.Runtime(Audit(tmp_path / "audit"), env, tmp_path / "enabled", settings),
         key,
         reads,
         requests,
@@ -198,7 +202,7 @@ def test_scope_and_real_mint(
         200,
         '{"ok":true}',
     )
-    assert fake.reads == ["op://tbhb-dev-admin/github-app-tbhb-dev-admin/private_key"]
+    assert fake.reads == ["op://vault-admin/item-admin/private_key"]
     assert fake.requests[0].url.path == (
         f"/repos/{target}/installation"
         if "/" in target
@@ -269,6 +273,17 @@ def test_dry_run(fake: Fake) -> None:
         fake.runtime, "GET", "/repos/tbhb-dev/widget", None, "test", dry_run=True
     ) == (0, "")
     assert fake.reads == fake.requests == []
+
+
+@pytest.mark.parametrize(
+    "settings",
+    [request.Settings(item="item-admin"), request.Settings(vault="vault-admin")],
+)
+def test_missing_runtime_credentials(fake: Fake, settings: request.Settings) -> None:
+    runtime = replace(fake.runtime, settings=settings)
+    with pytest.raises(RefusedError, match=r"^credential_unavailable$"):
+        request.private_key(runtime)
+    assert fake.stores == fake.reads == fake.requests == []
 
 
 @pytest.mark.parametrize(
