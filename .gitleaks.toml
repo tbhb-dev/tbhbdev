@@ -181,12 +181,3 @@ description = "The alpha agent identity hook finds Codex's session logs under CO
 paths = ['''^factory/cli/src/tbhbdev/alpha/identity\.py$''']
 regexTarget = "line"
 regexes = ['''^    return Path\(env\.get\("CODEX_HOME"\) or Path\("~/\.codex"\)\.expanduser\(\)\)$''']
-
-[[rules.allowlists]]
-description = "The import map records two tracked project configuration paths"
-paths = ['''^factory/cli/IMPORT-MAP\.toml$''']
-regexTarget = "line"
-regexes = [
-  '''^"\.claude/settings\.json" = "factory/cli/\.claude/settings\.json"$''',
-  '''^"\.codex/rules/pull-request\.rules" = "factory/cli/\.codex/rules/pull-request\.rules"$''',
-]
