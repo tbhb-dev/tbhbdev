@@ -12,7 +12,6 @@ import pytest
 import tbhbdev.alpha.monorepo.command as monorepo
 from tbhbdev import cli
 from tbhbdev.alpha import (
-    agent,
     brief,
     close,
     gh_app,
@@ -25,7 +24,6 @@ from tbhbdev.alpha import (
     guard_ssh_agent,
     identity,
     install,
-    loop,
     pr_stats,
     pre_push_guard,
     pull_request,
@@ -37,6 +35,8 @@ from tbhbdev.alpha import (
     version_check,
 )
 from tbhbdev.alpha import command as alpha
+from tbhbdev.alpha.agent import command as agent
+from tbhbdev.alpha.loop import command as loop
 
 if TYPE_CHECKING:
     from types import ModuleType

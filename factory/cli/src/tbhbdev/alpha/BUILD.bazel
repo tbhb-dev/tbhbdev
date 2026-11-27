@@ -150,10 +150,7 @@ cli_py_library(
     srcs = ["guard_ssh_agent.py"],
     imports = ["../.."],
     visibility = ["//factory/cli:__subpackages__"],
-    deps = [
-        ":guard_gh_pr",
-        ":repo",
-    ],
+    deps = [":guard_gh_pr"],
 )
 
 cli_py_library(
@@ -476,6 +473,7 @@ cli_py_library(
     visibility = ["//factory/cli:__subpackages__"],
     deps = [
         ":brief",
+        ":chase_context",
         ":close",
         ":gh_app",
         ":gh_shim",
@@ -499,8 +497,9 @@ cli_py_library(
         ":state_guard",
         ":verify_range",
         ":version_check",
-        "//factory/cli/src/tbhbdev/alpha/agent:__init__",
-        "//factory/cli/src/tbhbdev/alpha/loop:__init__",
+        ":worktree_sweep",
+        "//factory/cli/src/tbhbdev/alpha/agent:command",
+        "//factory/cli/src/tbhbdev/alpha/loop:command",
         "//factory/cli/src/tbhbdev/alpha/monorepo:command",
     ],
 )
@@ -508,6 +507,25 @@ cli_py_library(
 cli_py_library(
     name = "terminal",
     srcs = ["terminal.py"],
+    imports = ["../.."],
+    visibility = ["//factory/cli:__subpackages__"],
+)
+
+cli_py_library(
+    name = "chase_context",
+    srcs = ["chase_context.py"],
+    imports = ["../.."],
+    visibility = ["//factory/cli:__subpackages__"],
+    deps = [
+        ":gh_shim",
+        ":repo",
+        "//factory/cli/src/tbhbdev/alpha/agent:runfiles",
+    ],
+)
+
+cli_py_library(
+    name = "worktree_sweep",
+    srcs = ["worktree_sweep.py"],
     imports = ["../.."],
     visibility = ["//factory/cli:__subpackages__"],
 )

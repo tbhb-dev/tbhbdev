@@ -3,8 +3,8 @@ description: The user configuration file and deployment settings.
 generated:
   - role: generated
     harness: codex
-    model: openai:gpt-6
-    at: "2026-11-12T03:35:46Z"
+    model: openai:gpt-6.2-sol
+    at: "2026-11-26T23:46:49Z"
 status: stable
 tags: [config]
 title: Config
@@ -31,6 +31,10 @@ host_tag = "tag:example-agents"
 all = "vault-all"
 host_prefix = "vault-"
 
+[admin]
+vault = "vault-admin"
+item = "item-admin"
+
 [gitleaks]
 owners = ["example-org", "example-user"]
 session_sockets = ["/tmp/example-socks/"]
@@ -43,6 +47,8 @@ repos = ["example-org/app"]
 hourly_limit = 300
 core_floor = 1000
 ```
+
+`tbhbdev admin` reads `[admin] vault` and `[admin] item` unless you supply the corresponding flags. The package has no defaults for these two settings.
 
 `[gh_budget]` sets the agent `gh` budget that [GitHub polling](alpha/github-polling.md) describes. Its values are whole numbers, and the ones shown are the defaults.
 

@@ -9,7 +9,8 @@ from pathlib import Path
 import pytest
 
 from tbhbdev import userconfig
-from tbhbdev.alpha.loop import config, main
+from tbhbdev.alpha.loop import config
+from tbhbdev.alpha.loop.command import main
 
 SETTINGS: dict[str, object] = {
     "repositories": ["example-org/example-repo", "example-org/another_repo.name"],

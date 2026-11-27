@@ -13,8 +13,9 @@ import os
 import sys
 from typing import TYPE_CHECKING
 
-import tbhbdev.alpha.agent
+import tbhbdev.alpha.agent.command
 import tbhbdev.alpha.brief
+import tbhbdev.alpha.chase_context
 import tbhbdev.alpha.gh_shim
 import tbhbdev.alpha.guard_agent_model
 import tbhbdev.alpha.guard_gh_config_dir
@@ -25,13 +26,14 @@ import tbhbdev.alpha.guard_scripts
 import tbhbdev.alpha.guard_ssh_agent
 import tbhbdev.alpha.identity
 import tbhbdev.alpha.install
-import tbhbdev.alpha.loop
+import tbhbdev.alpha.loop.command
 import tbhbdev.alpha.pre_push_guard
 import tbhbdev.alpha.run_stop_hook
 import tbhbdev.alpha.session_context
 import tbhbdev.alpha.state_guard
 import tbhbdev.alpha.verify_range
 import tbhbdev.alpha.version_check
+import tbhbdev.alpha.worktree_sweep
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -53,6 +55,8 @@ commands:
   state-guard  Claude Code hook: block sign-off commits and unchecked open items
   session-context
                SessionStart hook: name the host, the other hosts and the time
+  chase-context UserPromptSubmit hook: show stale pull requests to coordination
+  worktree-sweep classify and clean up merged worktrees
   guard-gh-poll PreToolUse hook: block bulk GitHub reads and token unsets
   guard-gh-config-dir PreToolUse hook: require nonempty GH_CONFIG_DIR for gh
   guard-scripts PreToolUse hook: keep scripts for the operator in
@@ -202,6 +206,8 @@ COMMANDS: dict[str, Callable[[list[str], str], int]] = {
     "guard-op": guard_op_command,
     "state-guard": state_guard_command,
     "session-context": session_context_command,
+    "chase-context": tbhbdev.alpha.chase_context.main,
+    "worktree-sweep": tbhbdev.alpha.worktree_sweep.main,
     "guard-gh-poll": poll_command,
     "guard-gh-config-dir": gh_config_dir_command,
     "guard-ssh-agent": ssh_agent_command,
@@ -221,8 +227,8 @@ COMMANDS: dict[str, Callable[[list[str], str], int]] = {
     "version-check": tbhbdev.alpha.version_check.main,
     "install": install_command,
     "pre-push-guard": tbhbdev.alpha.pre_push_guard.main,
-    "loop": tbhbdev.alpha.loop.main,
-    "agent": tbhbdev.alpha.agent.main,
+    "loop": tbhbdev.alpha.loop.command.main,
+    "agent": tbhbdev.alpha.agent.command.main,
     "run-stop-hook": tbhbdev.alpha.run_stop_hook.main,
     "brief": tbhbdev.alpha.brief.main,
 }

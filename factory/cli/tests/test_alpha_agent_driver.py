@@ -30,7 +30,7 @@ from agent_driver_example import (
 from agent_example import MARKER, settings
 
 from tbhbdev import version
-from tbhbdev.alpha import agent
+from tbhbdev.alpha.agent import command as agent
 from tbhbdev.alpha.agent import driver, model, render, transport, version_heal
 from tbhbdev.alpha.agent.decisions import remote as remote_commands
 from tbhbdev.alpha.agent.decisions import repo, request, runfiles_names

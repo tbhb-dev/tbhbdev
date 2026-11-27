@@ -13,7 +13,7 @@ import pytest
 from agent_driver_example import Remote, setup
 from agent_example import LINUX, MARKER, settings
 
-from tbhbdev.alpha import agent
+from tbhbdev.alpha.agent import command as agent
 from tbhbdev.alpha.agent import driver
 from tbhbdev.alpha.agent.decisions import limits, remote
 from tbhbdev.alpha.agent.model import Invalid, Os, Profile, Settings

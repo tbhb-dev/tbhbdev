@@ -8,7 +8,7 @@ from typing import TYPE_CHECKING
 import pytest
 
 from tbhbdev import userconfig
-from tbhbdev.alpha import agent
+from tbhbdev.alpha.agent import command as agent
 from tbhbdev.alpha.agent import model, settings
 
 if TYPE_CHECKING:
