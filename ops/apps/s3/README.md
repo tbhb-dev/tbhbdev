@@ -1,7 +1,7 @@
 ---
 type: Readme
 title: Production object store
-description: Compose project for the RustFS interim store on nas-a.
+description: Compose project for the RustFS interim store.
 tags: [s3, rustfs, tailscale, docker]
 status: draft
 generated:
@@ -16,11 +16,11 @@ generated:
 
 <!-- cspell:words rustfs tbhbops -->
 
-The [`s3` project](compose.yaml) is the compose file from nas-a. Ops' read of the live host on 2026-11-14 found the same file, except for the process limit and logging settings added on both services and different comments in this copy. Project `s3` and service `rustfs` give the container its name, `s3-rustfs-1`. The image is `rustfs/rustfs:1.0.4`, pinned by digest. Ops' read of the live host on 2026-11-14 found the same digest pin on the running container.
+Ops' read of the storage server on 2026-11-14 found the same Compose file as the [`s3` project](compose.yaml), apart from the process limit and logging settings added on both services and different comments in this copy. Project `s3` and service `rustfs` give the container its name, `s3-rustfs-1`. The image is `rustfs/rustfs:1.0.4`, pinned by digest. Ops' read of the live host on 2026-11-14 found the same digest pin on the running container.
 
 ## Modes
 
-Interim mode is the default. It serves plain HTTP on TCP 9000, with access restricted to `Tailscale`. The store binds `S3_BIND_ADDR`, the host's `Tailscale` address. On nas-a, that value comes from `compose.env`, and ops' read of the live host on 2026-11-14 found the running container publishing TCP 9000 on that address. The live `compose.env` defines one key, `S3_BIND_ADDR`, with mode 600, and the repository omits the value.
+Interim mode is the default. It serves plain HTTP on TCP 9000, with access restricted to `Tailscale`. The store binds `S3_BIND_ADDR`, the host's `Tailscale` address. On the storage server, that value comes from `compose.env`, and ops' read of the live host on 2026-11-14 found the running container publishing TCP 9000 on that address. The live `compose.env` defines one key, `S3_BIND_ADDR`, with mode 600, and the repository omits the value.
 
 Without `S3_BIND_ADDR`, Compose uses the local host address `127.0.0.1`. A wildcard value would break the rule restricting access to `Tailscale`. `packages/tbhbops/tests/test_s3_compose.py` checks the Compose default for a wildcard. No check rejects a wildcard in `compose.env`, and the operator checks that file before `up`.
 
@@ -28,7 +28,9 @@ Setting `S3_TLS=1` switches the store to Transport Layer Security (TLS) with the
 
 ## Start after a restart
 
-Docker can try to start RustFS before Tailscale assigns `S3_BIND_ADDR`. A failed bind leaves RustFS stopped. The boot task checks for the address every five seconds and runs `docker compose up -d rustfs` once it appears. After 60 failed attempts, it logs an error and exits with a nonzero status.
+Docker can try to start RustFS before Tailscale assigns `S3_BIND_ADDR`. A failed bind leaves RustFS stopped. At boot, the task checks for the address every five seconds and starts RustFS once the address appears. After 60 failed attempts, it logs an error and exits with a nonzero status.
+
+If `docker compose version` succeeds, the script uses `docker compose`. Otherwise, it looks for `docker-compose` on `PATH`. With neither command available, the script reports an error and exits at startup.
 
 - Copy the boot script beside the deployed `compose.yaml` and `compose.env`. [Boot script](start-on-boot.sh)
 - In DSM Task Scheduler, choose **Create > Triggered Task > User-defined script**. Select **root** as the user and **Boot-up** as the event.

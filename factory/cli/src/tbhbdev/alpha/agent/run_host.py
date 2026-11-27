@@ -894,8 +894,7 @@ def origin_contains(run: Run, commit: str) -> bool | None:
 def require_commit(run: Run, rc: int) -> int:
     if rc or not run.request.expect_commit:
         return rc
-    head = run.files.path("head")
-    if not head.exists():
+    if not (head := run.files.path("head")).exists():
         run.files.write(
             "log", "no new commit: the build required one (--expect-commit)\n"
         )
