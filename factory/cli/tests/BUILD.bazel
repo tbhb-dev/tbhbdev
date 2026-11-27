@@ -1924,6 +1924,15 @@ cli_py_test(
 )
 
 cli_py_test(
+    name = "test_host_tokens",
+    srcs = ["test_host_tokens.py"],
+    deps = [
+        "//factory/cli/src/tbhbdev:host_tokens",
+        "@cli_pip//pytest",
+    ],
+)
+
+cli_py_test(
     name = "test_issue",
     srcs = ["test_issue.py"],
     deps = [
@@ -2132,15 +2141,6 @@ cli_py_test(
         ":conftest",
         "//factory/cli/src/tbhbdev/alpha:__init__",
         "//factory/cli/src/tbhbdev/alpha:worktree_sweep",
-        "@cli_pip//pytest",
-    ],
-)
-
-cli_py_test(
-    name = "test_host_tokens",
-    srcs = ["test_host_tokens.py"],
-    deps = [
-        "//factory/cli/src/tbhbdev:host_tokens",
         "@cli_pip//pytest",
     ],
 )
