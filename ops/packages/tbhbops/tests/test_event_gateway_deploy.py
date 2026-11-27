@@ -36,7 +36,7 @@ def test_playbook_targets_the_companion_group() -> None:
     ("commit", "accepted"),
     [
         ("0123456789abcdefABCD" * 2, True),
-        ("f31b3ec2", False),
+        ("01234567", False),
         ("g" * 40, False),
         ("a" * 40 + "\n", False),
     ],
@@ -51,9 +51,13 @@ def test_pin_requires_full_git_hash(commit: str, accepted: bool) -> None:
 
 def test_secret_preflight_reads_only_file_metadata() -> None:
     check = MAIN_TASKS[2]
-    assert check["loop"] == ["github_webhook_secret", "tunnel_token"]
+    assert check["loop"] == [
+        "github_webhook_secret",
+        "event_gateway_session_tokens",
+        "tunnel_token",
+    ]
     assert check["ansible.builtin.stat"] == {
-        "path": "{{ event_gateway_deploy_checkout }}/deploy/secrets/{{ item }}",
+        "path": "{{ event_gateway_deploy_dir }}/secrets/{{ item }}",
         "get_checksum": False,
         "get_attributes": False,
         "get_mime": False,
@@ -63,12 +67,12 @@ def test_secret_preflight_reads_only_file_metadata() -> None:
         loader=LOADER,
         variables={
             "item": {"item": "tunnel_token", "stat": {"exists": False}},
-            "event_gateway_deploy_checkout": "/home/ops/event-gateway-deploy/repo",
+            "event_gateway_deploy_dir": "/checkout/factory/event-gateway/deploy",
         },
     )
     assert templar.evaluate_expression(failure["that"]) is False
     assert templar.template(failure["fail_msg"]).endswith(
-        "/home/ops/event-gateway-deploy/repo/deploy/secrets/tunnel_token"
+        "/checkout/factory/event-gateway/deploy/secrets/tunnel_token"
     )
 
 
@@ -108,12 +112,15 @@ def test_start_uses_local_image_id_only_when_running_images_differ(
     )
     assert templar.evaluate_expression(START["when"]) is start
     assert templar.template(START["ansible.builtin.command"]["argv"]) == [
-        "deploy/up.sh",
+        "./up.sh",
         GATEWAY_ID,
         "--pull",
         "never",
     ]
-    assert START["environment"] == {"DEPLOY_DOCKER_SUDO": "1"}
+    assert START["environment"] == {
+        "EVENT_GATEWAY_SESSION_BIND": "{{ event_gateway_deploy_session_bind }}",
+        "DEPLOY_DOCKER_SUDO": "1",
+    }
 
 
 @pytest.mark.parametrize(
