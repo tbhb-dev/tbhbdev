@@ -23,6 +23,7 @@
 "src/tbhbdev/alpha/guard_gh_pr.py" = 727
 "src/tbhbdev/alpha/guard_op.py" = 673
 "src/tbhbdev/alpha/guard_scripts.py" = 556
+"src/tbhbdev/alpha/guard_ssh_agent.py" = 349
 "src/tbhbdev/alpha/identity.py" = 3144
 "src/tbhbdev/alpha/install.py" = 1543
 "src/tbhbdev/alpha/loop/rules.py" = 478
@@ -83,7 +84,8 @@
 "tests/test_alpha_guard_gh_pr.py" = 1260
 "tests/test_alpha_guard_op.py" = 1119
 "tests/test_alpha_guard_scripts.py" = 1900
-"tests/test_alpha_identity.py" = 9144
+"tests/test_alpha_guard_ssh_agent.py" = 328
+"tests/test_alpha_identity.py" = 9145
 "tests/test_alpha_install.py" = 3540
 "tests/test_alpha_install_statusline.py" = 819
 "tests/test_alpha_loop_config.py" = 411

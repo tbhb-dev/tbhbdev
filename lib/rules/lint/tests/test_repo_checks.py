@@ -16,8 +16,11 @@ ROOT = Path(__file__).absolute().parents[2]
 
 
 def test_lint_baseline_growth(monkeypatch: pytest.MonkeyPatch) -> None:
-    registry = {"counts.toml": "counts", "pyproject.toml": "python-project"}
-    base = {"module_lines": {"a.py": 320}, "noqa": {"S105": 2}}
+    registry: dict[str, object] = {
+        "counts.toml": "counts",
+        "pyproject.toml": "python-project",
+    }
+    base: dict[str, object] = {"module_lines": {"a.py": 320}, "noqa": {"S105": 2}}
 
     def project(edges: list[str], limit: int) -> dict[str, object]:
         return {
@@ -29,7 +32,7 @@ def test_lint_baseline_growth(monkeypatch: pytest.MonkeyPatch) -> None:
             }
         }
 
-    docs = {
+    docs: dict[tuple[str, str], dict[str, object]] = {
         ("base", check_lint_baselines.REGISTRY): registry,
         ("head", check_lint_baselines.REGISTRY): registry,
         ("base", "counts.toml"): base,
@@ -37,9 +40,11 @@ def test_lint_baseline_growth(monkeypatch: pytest.MonkeyPatch) -> None:
         ("head", "counts.toml"): {"module_lines": {"a.py": 321}, "noqa": {"S105": 3}},
         ("head", "pyproject.toml"): project(["a -> c"], 301),
     }
-    monkeypatch.setattr(
-        check_lint_baselines, "read_at", lambda _, rev, path: docs[rev, path]
-    )
+
+    def read_at(_root: Path, revision: str, path: str) -> dict[str, object]:
+        return docs[revision, path]
+
+    monkeypatch.setattr(check_lint_baselines, "read_at", read_at)
     assert len(check_lint_baselines.check(ROOT, "base", "head")) == 4
 
     docs["head", "counts.toml"] = {"module_lines": {"a.py": 319}, "noqa": {"S105": 1}}

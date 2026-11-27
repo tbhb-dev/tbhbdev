@@ -27,9 +27,10 @@ HOOK_EXCLUDE = re.compile(
 # The remaining path expression in the Bedrock allowlist in .gitleaks.toml.
 BEDROCK_EXCLUDE = re.compile(rb"(^|/)\.gitleaks-rules\.toml$")
 TEXT_SAMPLE_SIZE = 8192
+GitError = subprocess.CalledProcessError
 
 
-def _git(root: Path, *args: str) -> bytes:
+def git_output(root: Path, *args: str) -> bytes:
     return subprocess.check_output(  # noqa: S603  # nosec B603, B607
         ["git", *args],  # noqa: S607
         cwd=root,
@@ -39,7 +40,7 @@ def _git(root: Path, *args: str) -> bytes:
 def check(root: Path, base: str, head: str) -> int:
     # Treat a rename as an addition at its new path. Raw output gives us
     # both the mode and the object ID of the committed file.
-    records = _git(
+    records = git_output(
         root,
         "diff",
         "--raw",
@@ -62,7 +63,7 @@ def check(root: Path, base: str, head: str) -> int:
             or not mode.startswith(b"100")
         ):
             continue
-        blob = _git(root, "cat-file", "blob", object_id.decode("ascii"))
+        blob = git_output(root, "cat-file", "blob", object_id.decode("ascii"))
         if blob and b"\0" not in blob[:TEXT_SAMPLE_SIZE] and not blob.endswith(b"\n"):
             sys.stderr.write(f"{os.fsdecode(path)!r}: missing trailing newline\n")
             status = 1
@@ -77,7 +78,7 @@ def main() -> int:
     root = Path(os.environ.get("BUILD_WORKSPACE_DIRECTORY", "."))
     try:
         return check(root, args.base, args.head)
-    except subprocess.CalledProcessError:
+    except GitError:
         return 2
 
 

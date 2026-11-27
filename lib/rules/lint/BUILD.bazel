@@ -138,7 +138,11 @@ sh_binary(
 
 python_tool(
     name = "lint_baselines",
-    main = "check_lint_baselines.py",
+    data = [
+        "check_lint_baselines.py",
+        "//lint/private:check_trailing_newline.py",
+    ],
+    main = "//:check_lint_baselines.py",
     python_env = "@tbhb_rules_python_runtime//:env",
     visibility = ["//visibility:public"],
 )
