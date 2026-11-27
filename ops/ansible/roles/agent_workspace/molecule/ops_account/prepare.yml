@@ -17,7 +17,7 @@
         mode: '0700'
       loop:
         - /home/ops/.local/bin
-        - /home/ops/fixture/tbhbdev
+        - /home/ops/fixture/tbhbdev/secrets
         - "{{ ['/home/ops/.config', 'tbhbdev', 'secrets'] | join('/') }}"
     - name: Install command fixtures
       ansible.builtin.copy:
@@ -26,13 +26,18 @@
         owner: ops
         mode: '0700'
       loop: [uv, mise]
-    - name: Install the isolated secrets fixture
+    - name: Install the Connect token reader fixture
       ansible.builtin.copy:
-        dest: /home/ops/fixture/tbhbdev/secrets.py
+        dest: /home/ops/fixture/tbhbdev/secrets/config.py
         content: |
           def token():
               return 'molecule-fixture'
-
+        owner: ops
+        mode: '0600'
+    - name: Install the Connect client fixture
+      ansible.builtin.copy:
+        dest: /home/ops/fixture/tbhbdev/secrets/connect.py
+        content: |
           class Connect:
               def __init__(self, value, endpoints):
                   assert value == 'molecule-fixture'

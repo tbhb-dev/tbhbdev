@@ -40,7 +40,7 @@
         mode: "{{ item.mode }}"
       loop:
         - {path: /home/example-user/.local/bin, mode: '0700'}
-        - {path: /home/example-user/fixture/tbhbdev, mode: '0700'}
+        - {path: /home/example-user/fixture/tbhbdev/secrets, mode: '0700'}
         - {path: "{{ ['/home/example-user/.config', 'tbhbdev'] | join('/') }}", mode: '0700'}
         - {path: "{{ ['/home/example-user/.config', 'tbhbdev', 'secrets'] | join('/') }}", mode: '0700'}
         # An existing root that is too open: the role tightens it.
@@ -57,13 +57,18 @@
         dest: /home/example-user/fixture/uv
         owner: agent
         mode: '0700'
-    - name: Install the isolated secrets fixture
+    - name: Install the Connect token reader fixture
       ansible.builtin.copy:
-        dest: /home/example-user/fixture/tbhbdev/secrets.py
+        dest: /home/example-user/fixture/tbhbdev/secrets/config.py
         content: |
           def token():
               return 'molecule-fixture'
-
+        owner: agent
+        mode: '0600'
+    - name: Install the Connect client fixture
+      ansible.builtin.copy:
+        dest: /home/example-user/fixture/tbhbdev/secrets/connect.py
+        content: |
           class Connect:
               def __init__(self, value, endpoints):
                   assert value == 'molecule-fixture'

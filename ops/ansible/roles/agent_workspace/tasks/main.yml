@@ -97,15 +97,16 @@
           - -c
           - |
               import json, pathlib, sys
-              from tbhbdev import secrets
+              from tbhbdev.secrets.config import token
+              from tbhbdev.secrets.connect import Connect
               settings = json.load(sys.stdin)
               if settings['storage'] == 'file':
                   value = pathlib.Path(settings['file']).read_text().strip()
               else:
-                  value = secrets.token()
+                  value = token()
               if not value:
                   raise SystemExit('No host Connect token')
-              vaults = secrets.Connect(value, settings['endpoints']).vaults()
+              vaults = Connect(value, settings['endpoints']).vaults()
               if {v['name'] for v in vaults} != set(settings['vaults']):
                   raise SystemExit('Host Connect token has the wrong vault scope')
         stdin: >-

@@ -1,5 +1,5 @@
 ---
-# macOS keeps the token in its keychain, which tbhbdev.secrets.token() reads.
+# macOS keeps the token in its keychain, which tbhbdev.secrets.config.token() reads.
 # Linux keeps it in an agent-owned 0600 file, because a headless keyring has
 # no useful protection beyond that.
 connect_token_storage: "{{ 'native' if ansible_facts.system == 'Darwin' else 'file' }}"
