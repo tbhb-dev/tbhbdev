@@ -1240,14 +1240,6 @@ cli_py_test(
     ],
 )
 
-genrule(
-    name = "rules_tool_pins",
-    testonly = True,
-    srcs = ["@tbhb_rules//pins:tools.json"],
-    outs = ["rules-tool-pins.json"],
-    cmd = "cp $< $@",
-)
-
 cli_py_test(
     name = "test_alpha_pull_request",
     size = "large",
@@ -1255,7 +1247,6 @@ cli_py_test(
     srcs = ["test_alpha_pull_request.py"],
     data = [
         ":alpha_testdata",
-        ":rules_tool_pins",
         "//:cli_check_inputs",
         "//factory/cli/src/tbhbdev:tbhbdev_bin",
     ],
@@ -1735,7 +1726,10 @@ cli_py_test(
 cli_py_test(
     name = "test_ci_workflow_io",
     srcs = ["test_ci_workflow_io.py"],
-    data = ["//:.github/workflows/ci.yml"],
+    data = [
+        "//:.github/prose-lint.sh",
+        "//:.github/workflows/ci.yml",
+    ],
     deps = [
         ":conftest",
         "@cli_pip//pytest",

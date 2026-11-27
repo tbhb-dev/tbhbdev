@@ -11,6 +11,12 @@ from pathlib import Path
 import pytest
 import yaml
 
+WORKSPACE = next(
+    parent.parent
+    for parent in Path(__file__).resolve().parents
+    if parent.name == "factory"
+)
+
 
 def _mapping(value: object) -> dict[object, object]:
     assert isinstance(value, dict)
@@ -23,9 +29,7 @@ def _list(value: object) -> list[object]:
 
 
 def _workflow_jobs() -> dict[object, object]:
-    parents = Path(__file__).resolve().parents
-    workspace = next(parent.parent for parent in parents if parent.name == "factory")
-    workflow_path = workspace / ".github/workflows/ci.yml"
+    workflow_path = WORKSPACE / ".github/workflows/ci.yml"
     workflow = _mapping(yaml.safe_load(workflow_path.read_text()))
     return _mapping(workflow["jobs"])
 
@@ -193,6 +197,11 @@ def test_ci_prose_skip_list(tmp_path: Path, case: str) -> None:
     (tmp_path / "clean.md").write_text("Clean prose.\n")
     skip_list = tmp_path / ".github/prose-lint-debt.txt"
     skip_list.parent.mkdir()
+    script = Path(".github/prose-lint.sh")
+    (tmp_path / script).write_bytes((WORKSPACE / script).read_bytes())
+    (tmp_path / ".vale.ini").touch()
+    (tmp_path / ".vale/project").mkdir(parents=True)
+    (tmp_path / ".vale/config/vocabularies").mkdir(parents=True)
     entries = ["# Example import", ""]
     if case != "unlisted":
         entries.append(imported_copy)
@@ -225,7 +234,6 @@ done
         env={
             **os.environ,
             "PATH": f"{bin_dir}:{os.environ['PATH']}",
-            "RUNNER_TEMP": str(tmp_path),
         },
         check=False,
         capture_output=True,

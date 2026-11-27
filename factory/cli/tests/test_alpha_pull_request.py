@@ -746,14 +746,6 @@ def test_line_numbers_follow_the_frontmatter() -> None:
 # -------------------------------------------------------------- tool lookup
 
 
-def test_cli_versions_match_the_rules_pins() -> None:
-    manifest = Path(__file__).with_name("rules-tool-pins.json")
-    if not manifest.exists():
-        manifest = WORKSPACE / "lib/rules/pins/tools.json"
-    rules = cast("dict[str, dict[str, object]]", json.loads(manifest.read_text()))
-    assert {name: rules[name]["version"] for name in TOOL_VERSIONS} == TOOL_VERSIONS
-
-
 @pytest.mark.parametrize("pin", [None, '{"vale": ""}', '{"vale": 123}', "{}", "{"])
 def test_tool_version_pin_must_be_readable(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, pin: str | None

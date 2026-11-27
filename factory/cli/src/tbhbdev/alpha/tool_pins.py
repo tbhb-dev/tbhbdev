@@ -1,4 +1,4 @@
-"""Check PR tools against the versions pinned by the rules module."""
+"""Check PR tools against the versions pinned by the repository."""
 
 import json
 import re
@@ -7,12 +7,14 @@ from pathlib import Path
 from typing import cast
 
 VERSIONS = Path(__file__).with_name("pr-tool-versions.json")
-PINNED = frozenset({"gitleaks", "scc", "vale"})
+PINNED = frozenset({"cspell", "gitleaks", "rumdl", "scc", "vale"})
 
 
 def version_problem(name: str, expected: str, output: str) -> str | None:
     """Explain why a bare or tool-prefixed version report fails the pin."""
-    match = re.fullmatch(rf"(?:{re.escape(name)} version )?v?(\S+)", output.strip())
+    match = re.fullmatch(
+        rf"(?:{re.escape(name)} (?:version )?)?v?(\S+)", output.strip()
+    )
     version = match[1] if match else None
     if version == expected:
         return None

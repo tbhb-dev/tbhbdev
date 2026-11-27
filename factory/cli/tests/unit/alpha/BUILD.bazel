@@ -9,6 +9,14 @@ filegroup(
     visibility = ["//factory/cli/tests:__pkg__"],
 )
 
+genrule(
+    name = "rules_tool_pins",
+    testonly = True,
+    srcs = ["@tbhb_rules//pins:tools.json"],
+    outs = ["rules-tool-pins.json"],
+    cmd = "cp $< $@",
+)
+
 cli_py_test(
     name = "test_pre_push_guard_host_names",
     srcs = ["test_pre_push_guard_host_names.py"],
@@ -39,6 +47,21 @@ cli_py_test(
     imports = ["../.."],
     deps = [
         "//factory/cli/src/tbhbdev/alpha:pre_push_guard",
+        "//factory/cli/tests:conftest",
+        "@cli_pip//pytest",
+    ],
+)
+
+cli_py_test(
+    name = "test_tool_pins",
+    srcs = ["test_tool_pins.py"],
+    data = [
+        ":rules_tool_pins",
+        "//:mise.toml",
+    ],
+    imports = ["../.."],
+    deps = [
+        "//factory/cli/src/tbhbdev/alpha:tool_pins",
         "//factory/cli/tests:conftest",
         "@cli_pip//pytest",
     ],
