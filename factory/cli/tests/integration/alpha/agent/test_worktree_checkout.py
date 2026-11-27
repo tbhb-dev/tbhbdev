@@ -354,6 +354,8 @@ def test_prelaunch_git_protocol(
     workspace = clone / ".worktrees" / "agent-protocol"
     calls: list[tuple[Path, tuple[str, ...]]] = []
 
+    responses = {"ls-remote": "ref: refs/heads/main\tHEAD", "rev-parse": full_sha}
+
     def checked(path: Path, *args: str) -> str:
         # The mirror tests assert the fetch flags. This test checks when it runs.
         calls.append(
@@ -361,9 +363,7 @@ def test_prelaunch_git_protocol(
         )
         if args[0] == "clone":
             (workspace / ".git").mkdir()
-        if args[0] == "ls-remote":
-            return "ref: refs/heads/main\tHEAD"
-        return full_sha if args[0] == "rev-parse" else ""
+        return responses.get(args[0], "")
 
     monkeypatch.setattr(worktree_git, "git", checked)
 
