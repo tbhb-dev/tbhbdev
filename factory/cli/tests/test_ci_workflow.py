@@ -34,11 +34,12 @@ def test_ci_shards_affected_targets(tmp_path: Path) -> None:
         cat "${4#--target_pattern_file=}"
     }
     """
-    for selected, exclusions in (
+    cases: tuple[tuple[list[str], list[str]], ...] = (
         (["//:d", "//:a", "//:e", "//:b", "//:c"], []),
         (["@rules//...", "//..."], ["-//:manual", "-@rules//:manual"]),
         ([], []),
-    ):
+    )
+    for selected, exclusions in cases:
         targets.write_text("\n".join([*selected, *exclusions]))
         for shard in shards:
             run = subprocess.run(
