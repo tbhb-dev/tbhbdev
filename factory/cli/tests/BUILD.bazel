@@ -1692,16 +1692,6 @@ cli_py_test(
 )
 
 cli_py_test(
-    name = "test_decision_record",
-    srcs = ["test_decision_record.py"],
-    deps = [
-        ":conftest",
-        "//factory/cli/src/tbhbdev:content",
-        "@cli_pip//pytest",
-    ],
-)
-
-cli_py_test(
     name = "test_gitleaks_check",
     srcs = ["test_gitleaks_check.py"],
     deps = [
@@ -1853,6 +1843,7 @@ filegroup(
         "//factory/cli/tests/integration/alpha:test_pull_request_timestamps_io.py",
         "//factory/cli/tests/integration/alpha/agent:package_files",
         "//factory/cli/tests/integration/alpha/identity:test_dispatcher_timestamps_io.py",
+        "//factory/cli/tests/unit:test_content_decision_record.py",
         "//factory/cli/tests/unit/alpha:package_files",
         "//factory/cli/tests/unit/alpha/agent:package_files",
         "//factory/cli/tests/unit/alpha/agent/decisions:package_files",

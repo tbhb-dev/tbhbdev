@@ -29,6 +29,7 @@ cli_py_library(
     deps = [
         ":adr_decision",
         ":content",
+        ":content_decision_record",
         ":runner",
         "//factory/cli/src/tbhbdev/alpha:pull_request",
         "//factory/cli/src/tbhbdev/alpha:pull_request_frontmatter",
@@ -91,6 +92,15 @@ cli_py_library(
         "//factory/cli/src/tbhbdev/alpha:pull_request",
         "//factory/cli/src/tbhbdev/alpha:secret_scan",
     ],
+)
+
+cli_py_library(
+    name = "content_decision_record",
+    srcs = ["content_decision_record.py"],
+    imports = [".."],
+    pyi_deps = [":content_vet"],
+    visibility = ["//factory/cli:__subpackages__"],
+    deps = [":content_model"],
 )
 
 cli_py_library(
