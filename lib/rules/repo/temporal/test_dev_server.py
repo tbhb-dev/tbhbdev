@@ -3,6 +3,7 @@
 
 import os
 import signal
+import socket
 import subprocess
 import sys
 from concurrent.futures import ThreadPoolExecutor
@@ -42,17 +43,31 @@ def _stopped(state: Path, count: int) -> set[tuple[str, str]]:
     return instances
 
 
-@pytest.mark.parametrize(("mode", "status"), [("probe", 0), ("retry", 7)])
-def test_runs_command_and_cleans_up(
-    state: Path,
-    monkeypatch: pytest.MonkeyPatch,
-    mode: str,
-    status: int,
+def test_runs_command_after_frontend_becomes_reachable(
+    state: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    monkeypatch.setenv("FAKE_MODE", mode)
-    command = [sys.executable, "-c", CONNECT + f"raise SystemExit({status})"]
-    assert dev_server.run(CLI, command, None) == status
-    _stopped(state, 2 if mode == "retry" else 1)
+    monkeypatch.setenv("FAKE_MODE", "probe")
+    create_connection = socket.create_connection
+
+    def connect(address: tuple[str, int], timeout: float) -> socket.socket:
+        try:
+            return create_connection(address, timeout=timeout)
+        except ConnectionRefusedError:
+            (state / "probe-refused").touch()
+            raise
+
+    monkeypatch.setattr(socket, "create_connection", connect)
+    assert dev_server.run(CLI, [sys.executable, "-c", CONNECT], None) == 0
+    _stopped(state, 1)
+
+
+def test_retries_startup_and_propagates_command_status(
+    state: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("FAKE_MODE", "retry")
+    command = [sys.executable, "-c", CONNECT + "raise SystemExit(7)"]
+    assert dev_server.run(CLI, command, None) == 7
+    _stopped(state, 2)
 
 
 def test_concurrent_servers(state: Path) -> None:

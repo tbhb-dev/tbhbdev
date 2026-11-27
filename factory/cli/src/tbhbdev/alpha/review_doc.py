@@ -20,11 +20,6 @@ type _ReviewRow = dict[str, dict[str, object] | str | int] | None
 type _Pull = dict[str, dict[str, object]] | None
 
 _HEAD = re.compile(r"[0-9a-f]{40}")
-_MARKER = re.compile(
-    r"^<!-- tbhb-review v1 repo=(?u:(\S+)) pr=([1-9][0-9]{0,11}) "
-    r"head=([0-9a-f]{40}) run=(?u:(\S+)) -->$",
-    re.ASCII | re.MULTILINE,
-)
 _MARKER_V2 = re.compile(r"^<!-- tbhb-review v2 ([0-9a-f]{64}) -->$", re.MULTILINE)
 _PAGE_SIZE = 100
 _MARKER_SYNTAX = re.compile(r"<!--\s*tbhb-(?:review|reply)\b", re.IGNORECASE)
@@ -60,7 +55,7 @@ class Marker:
 class Existing:
     id: int
     author: str
-    marker: Marker | str
+    marker: str
     state: str
     body: str
 
@@ -130,19 +125,15 @@ def render(doc: ReviewDoc) -> str:
     return f"{prose}\n\n<!-- tbhb-review v2 {marker} -->\n"
 
 
-def parse_marker(body: str) -> Marker | str | None:
-    """Read a current or legacy review marker."""
+def parse_marker(body: str) -> str | None:
+    """Read the posted review marker."""
     text = body.replace("\r\n", "\n")
     before, _, last = text.rstrip().rpartition("\n")
     if last.startswith(f"{identity.KEY_GEN}: LLM "):
         last = before.rstrip().rpartition("\n")[2]
     if matched := _MARKER_V2.fullmatch(last):
         return matched[1]
-    matches = list(_MARKER.finditer(text))
-    if not matches:
-        return None
-    repo, number, head, run = matches[-1].groups()
-    return Marker(repo, int(number), head, run)
+    return None
 
 
 def is_dismissed(existing: Existing) -> bool:
@@ -166,8 +157,7 @@ def _active_id(entry: object, expected: Marker, author: str, state: str) -> int 
         } if actual_state == state and (key := parse_marker(body)) is not None:
             existing = Existing(review_id, login, key, state, body)
             same_marker = (
-                existing.marker
-                in (expected, marker_id(expected.repo, expected.pr, expected.run))
+                existing.marker == marker_id(expected.repo, expected.pr, expected.run)
                 and head == expected.head_sha
             )
             same_author = existing.author.casefold() == author.casefold()
@@ -296,10 +286,7 @@ def dismiss(
                 "COMMENTED" | "APPROVED" | "CHANGES_REQUESTED" | "DISMISSED"
             ) as state,
         }:
-            key = parse_marker(body)
-            if isinstance(key, str) or (
-                isinstance(key, Marker) and (key.repo, key.pr) == (repo, pr)
-            ):
+            if parse_marker(body) is not None:
                 if not _dismissed(state, body):
                     body = f"SUPERSEDED: {reason}\n{body}"
                     api.request("PUT", path, {"body": body})

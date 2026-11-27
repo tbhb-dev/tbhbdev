@@ -65,7 +65,6 @@ cli_py_library(
         ":agy",
         ":cue_runtime",
         ":issue",
-        ":plugins",
         ":secret",
         ":version",
         "//factory/cli/src/tbhbdev/admin:command",
@@ -166,7 +165,6 @@ cli_py_library(
     name = "plugins",
     srcs = ["plugins.py"],
     imports = [".."],
-    pyi_deps = [":cli"],
     visibility = ["//factory/cli:__subpackages__"],
 )
 
