@@ -17,7 +17,6 @@ load(":pytest.bzl", "cli_py_test")
 # gazelle:resolve py test_alpha_agent_run_host :test_alpha_agent_run_host_support
 # gazelle:resolve py test_alpha_agent_sandbox_live :test_alpha_agent_sandbox_live_support
 # gazelle:resolve py test_alpha_agent_settings :test_alpha_agent_settings_support
-# gazelle:resolve py test_alpha_pull_request :test_alpha_pull_request_support
 # gazelle:resolve py test_alpha_review_doc :test_alpha_review_doc_support
 
 package(default_testonly = True)
@@ -256,7 +255,7 @@ cli_py_test(
         "//factory/cli/src/tbhbdev:adr_decision",
         "//factory/cli/src/tbhbdev:cli",
         "//factory/cli/src/tbhbdev:content",
-        "//factory/cli/src/tbhbdev/alpha:pull_request_frontmatter",
+        "//factory/cli/src/tbhbdev/alpha/pull_request:frontmatter",
         "@cli_pip//pytest",
     ],
 )
@@ -294,7 +293,6 @@ cli_py_test(
         "//factory/cli/src/tbhbdev/alpha:guard_sendmessage_clock",
         "//factory/cli/src/tbhbdev/alpha:guard_ssh_agent",
         "//factory/cli/src/tbhbdev/alpha:pre_push_guard",
-        "//factory/cli/src/tbhbdev/alpha:pull_request",
         "//factory/cli/src/tbhbdev/alpha:repo_bootstrap",
         "//factory/cli/src/tbhbdev/alpha:review",
         "//factory/cli/src/tbhbdev/alpha:run_stop_hook",
@@ -310,6 +308,7 @@ cli_py_test(
         "//factory/cli/src/tbhbdev/alpha/install:command",
         "//factory/cli/src/tbhbdev/alpha/merge:command",
         "//factory/cli/src/tbhbdev/alpha/monorepo:command",
+        "//factory/cli/src/tbhbdev/alpha/pull_request:command",
         "//factory/cli/tests:test_alpha_agent_settings_support",
         "@cli_pip//pytest",
     ],
@@ -902,8 +901,10 @@ cli_py_test(
         "//factory/cli/src/tbhbdev:userconfig",
         "//factory/cli/src/tbhbdev/alpha:close",
         "//factory/cli/src/tbhbdev/alpha:opened",
-        "//factory/cli/src/tbhbdev/alpha:pull_request",
         "//factory/cli/src/tbhbdev/alpha/identity:trailers",
+        "//factory/cli/src/tbhbdev/alpha/pull_request:attribution",
+        "//factory/cli/src/tbhbdev/alpha/pull_request:repository",
+        "//factory/cli/src/tbhbdev/alpha/pull_request:tools",
         "@cli_pip//pytest",
     ],
 )
@@ -981,9 +982,9 @@ cli_py_test(
         "//factory/cli/src/tbhbdev/alpha:close",
         "//factory/cli/src/tbhbdev/alpha:guard_gh_pr",
         "//factory/cli/src/tbhbdev/alpha:opened",
-        "//factory/cli/src/tbhbdev/alpha:pull_request",
         "//factory/cli/src/tbhbdev/alpha/identity:records",
         "//factory/cli/src/tbhbdev/alpha/merge:options",
+        "//factory/cli/src/tbhbdev/alpha/pull_request:arguments",
         "@cli_pip//hypothesis",
         "@cli_pip//pytest",
     ],
@@ -1083,57 +1084,6 @@ cli_py_test(
 )
 
 cli_py_test(
-    name = "test_alpha_pull_request",
-    size = "large",
-    timeout = "long",
-    srcs = ["test_alpha_pull_request.py"],
-    data = [
-        ":alpha_testdata",
-        "//:cli_check_inputs",
-        "//factory/cli/src/tbhbdev:tbhbdev_bin",
-    ],
-    extra_deps = ["//factory/cli/src/tbhbdev:cli"],
-    path_tools = [
-        "@tbhb_rules_cog//:cog",
-        "@tbhb_rules_gitleaks//:gitleaks",
-        "@tbhb_rules_scc//:scc",
-    ],
-    shard_count = 4,
-    deps = [
-        ":conftest",
-        ":fake_tool",
-        "//factory/cli/src/tbhbdev/alpha:opened",
-        "//factory/cli/src/tbhbdev/alpha:pull_request",
-        "//factory/cli/src/tbhbdev/alpha:pull_request_frontmatter",
-        "//factory/cli/src/tbhbdev/alpha:secret_scan",
-        "//factory/cli/src/tbhbdev/alpha:size_gate",
-        "//factory/cli/src/tbhbdev/alpha:tool_pins",
-        "//factory/cli/src/tbhbdev/alpha/identity:attribution",
-        "//factory/cli/src/tbhbdev/alpha/identity:records",
-        "//factory/cli/src/tbhbdev/alpha/identity:sessions",
-        "//factory/cli/src/tbhbdev/alpha/identity:trailers",
-        "//factory/cli/src/tbhbdev/alpha/identity/claude:ancestry",
-        "//factory/cli/src/tbhbdev/alpha/identity/claude:commands",
-        "//factory/cli/src/tbhbdev/alpha/identity/commit:grammar",
-        "//factory/cli/src/tbhbdev/alpha/identity/commit:policy",
-        "@cli_pip//hypothesis",
-        "@cli_pip//jsonschema",
-        "@cli_pip//pytest",
-    ],
-)
-
-cli_py_test(
-    name = "test_alpha_pull_request_frontmatter",
-    srcs = ["test_alpha_pull_request_frontmatter.py"],
-    # keep: The shared conftest writes files for its autouse fixtures.
-    deps = [
-        "//factory/cli/src/tbhbdev/alpha:pull_request_frontmatter",
-        "@cli_pip//jsonschema",
-        "@cli_pip//pytest",
-    ],
-)
-
-cli_py_test(
     name = "test_alpha_repo",
     srcs = ["test_alpha_repo.py"],
     deps = [
@@ -1189,11 +1139,14 @@ cli_py_test(
     deps = [
         ":conftest",
         ":cue_fixtures",
-        "//factory/cli/src/tbhbdev/alpha:pull_request",
-        "//factory/cli/src/tbhbdev/alpha:pull_request_frontmatter",
         "//factory/cli/src/tbhbdev/alpha:review",
         "//factory/cli/src/tbhbdev/alpha:review_doc",
-        "//factory/cli/tests:test_alpha_pull_request_support",
+        "//factory/cli/src/tbhbdev/alpha/identity/commit:grammar",
+        "//factory/cli/src/tbhbdev/alpha/pull_request:baseline",
+        "//factory/cli/src/tbhbdev/alpha/pull_request:body",
+        "//factory/cli/src/tbhbdev/alpha/pull_request:frontmatter",
+        "//factory/cli/src/tbhbdev/alpha/pull_request:prose",
+        "//factory/cli/tests/unit/alpha/pull_request:pr_test_support",
         "@cli_pip//jsonschema",
         "@cli_pip//pytest",
     ],
@@ -1205,9 +1158,12 @@ cli_py_test(
     deps = [
         ":conftest",
         ":cue_fixtures",
-        "//factory/cli/src/tbhbdev/alpha:pull_request",
         "//factory/cli/src/tbhbdev/alpha:review",
         "//factory/cli/src/tbhbdev/alpha:review_doc",
+        "//factory/cli/src/tbhbdev/alpha/pull_request:attribution",
+        "//factory/cli/src/tbhbdev/alpha/pull_request:prose",
+        "//factory/cli/src/tbhbdev/alpha/pull_request:repository",
+        "//factory/cli/src/tbhbdev/alpha/pull_request:tools",
         "@cli_pip//pytest",
     ],
 )
@@ -1243,6 +1199,7 @@ cli_py_test(
         ":conftest",
         "//factory/cli/src/tbhbdev/alpha:review",
         "//factory/cli/src/tbhbdev/alpha:review_threads",
+        "//factory/cli/src/tbhbdev/alpha/pull_request:repository",
         "//factory/cli/tests:test_alpha_review_doc_support",
         "@cli_pip//pytest",
     ],
@@ -1278,10 +1235,10 @@ cli_py_test(
     deps = [
         ":conftest",
         "//factory/cli/src/tbhbdev/alpha:close",
-        "//factory/cli/src/tbhbdev/alpha:pull_request",
         "//factory/cli/src/tbhbdev/alpha:session_context",
         "//factory/cli/src/tbhbdev/alpha/agent/driver:arguments",
         "//factory/cli/src/tbhbdev/alpha/merge:options",
+        "//factory/cli/src/tbhbdev/alpha/pull_request:arguments",
         "@cli_pip//pytest",
     ],
 )
@@ -1292,8 +1249,16 @@ cli_py_test(
     path_tools = ["@tbhb_rules_scc//:scc"],
     deps = [
         ":conftest",
-        "//factory/cli/src/tbhbdev/alpha:pull_request",
         "//factory/cli/src/tbhbdev/alpha:size_gate",
+        "//factory/cli/src/tbhbdev/alpha/pull_request:attribution",
+        "//factory/cli/src/tbhbdev/alpha/pull_request:command",
+        "//factory/cli/src/tbhbdev/alpha/pull_request:draft",
+        "//factory/cli/src/tbhbdev/alpha/pull_request:draft_io",
+        "//factory/cli/src/tbhbdev/alpha/pull_request:github",
+        "//factory/cli/src/tbhbdev/alpha/pull_request:publish",
+        "//factory/cli/src/tbhbdev/alpha/pull_request:repository",
+        "//factory/cli/src/tbhbdev/alpha/pull_request:sizing",
+        "//factory/cli/src/tbhbdev/alpha/pull_request:tools",
         "@cli_pip//pytest",
     ],
 )
@@ -1576,7 +1541,7 @@ cli_py_test(
         ":conftest",
         "//factory/cli/src/tbhbdev:content",
         "//factory/cli/src/tbhbdev/alpha:close",
-        "//factory/cli/src/tbhbdev/alpha:pull_request",
+        "//factory/cli/src/tbhbdev/alpha/pull_request:repository",
         "@cli_pip//pytest",
     ],
 )
@@ -1689,7 +1654,8 @@ cli_py_test(
     deps = [
         ":conftest",
         "//factory/cli/src/tbhbdev:prose_check",
-        "//factory/cli/src/tbhbdev/alpha:pull_request",
+        "//factory/cli/src/tbhbdev/alpha/pull_request:draft",
+        "//factory/cli/src/tbhbdev/alpha/pull_request:prose",
         "@cli_pip//pytest",
     ],
 )
@@ -1790,7 +1756,6 @@ filegroup(
         ["**"],
         exclude = ["BUILD.bazel"],
     ) + [
-        "//factory/cli/tests/integration/alpha:test_pull_request_timestamps_io.py",
         "//factory/cli/tests/integration/alpha/agent:package_files",
         "//factory/cli/tests/integration/alpha/agent/decisions:package_files",
         "//factory/cli/tests/integration/alpha/identity:test_dispatcher_timestamps_io.py",
@@ -1801,6 +1766,7 @@ filegroup(
         "//factory/cli/tests/unit/alpha/identity:package_files",
         "//factory/cli/tests/unit/alpha/install:package_files",
         "//factory/cli/tests/unit/alpha/merge:package_files",
+        "//factory/cli/tests/unit/alpha/pull_request:package_files",
     ],
     visibility = ["//factory/cli:__pkg__"],
 )
@@ -1844,6 +1810,7 @@ filegroup(
     visibility = [
         "//factory/cli/tests/unit/alpha/identity:__pkg__",
         "//factory/cli/tests/unit/alpha/merge:__pkg__",
+        "//factory/cli/tests/unit/alpha/pull_request:__pkg__",
     ],
 )
 

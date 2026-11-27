@@ -17,7 +17,8 @@ from tbhbdev.alpha.merge.message import (
     require_clean_message,
     split_trailers,
 )
-from tbhbdev.alpha.pull_request import OPENED_LINE, Line, scan, trailer_problems
+from tbhbdev.alpha.pull_request.body import Line, scan, trailer_problems
+from tbhbdev.alpha.pull_request.description import OPENED_LINE
 
 
 def test_a_trailer_git_cannot_read_back_fails() -> None:
@@ -75,7 +76,7 @@ def test_valid_final_trailers_do_not_excuse_a_stray_trailer(agent: bool) -> None
     lines = [Line(1, GEN, GEN, code=False)]
     with pytest.raises(SystemExit) as info:
         check_trailers(
-            [GEN], [why for _, why in trailer_problems(lines)], [], agent=agent
+            [GEN], [why for _, why in trailer_problems(lines, LINE)], [], agent=agent
         )
     assert str(info.value) == (
         "the PR body cannot be merged as is: "

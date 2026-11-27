@@ -5,7 +5,7 @@
 import pytest
 from jsonschema import Draft202012Validator
 
-from tbhbdev.alpha import pull_request_frontmatter as frontmatter
+from tbhbdev.alpha.pull_request import frontmatter
 
 SCHEMA: dict[str, object] = {
     "type": "object",

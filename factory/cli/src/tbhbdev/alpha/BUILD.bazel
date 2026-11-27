@@ -25,7 +25,6 @@ cli_py_library(
     visibility = ["//factory/cli:__subpackages__"],
     deps = [
         ":opened",
-        ":pull_request",
         ":worker_identity",
         "//factory/cli/src/tbhbdev:content",
         "//factory/cli/src/tbhbdev:issue_import",
@@ -33,6 +32,12 @@ cli_py_library(
         "//factory/cli/src/tbhbdev/alpha/agent:settings",
         "//factory/cli/src/tbhbdev/alpha/identity:trailers",
         "//factory/cli/src/tbhbdev/alpha/identity/commit:grammar",
+        "//factory/cli/src/tbhbdev/alpha/pull_request:attribution",
+        "//factory/cli/src/tbhbdev/alpha/pull_request:description",
+        "//factory/cli/src/tbhbdev/alpha/pull_request:github",
+        "//factory/cli/src/tbhbdev/alpha/pull_request:metadata",
+        "//factory/cli/src/tbhbdev/alpha/pull_request:repository",
+        "//factory/cli/src/tbhbdev/alpha/pull_request:tools",
     ],
 )
 
@@ -192,43 +197,6 @@ cli_py_library(
 )
 
 cli_py_library(
-    name = "pull_request",
-    srcs = ["pull_request.py"],
-    imports = ["../.."],
-    visibility = ["//factory/cli:__subpackages__"],
-    deps = [
-        ":opened",
-        ":pull_request_frontmatter",
-        ":repo",
-        ":secret_scan",
-        ":size_gate",
-        ":tool_pins",
-        "//factory/cli/src/tbhbdev:userconfig",
-        "//factory/cli/src/tbhbdev/alpha/agent:settings",
-        "//factory/cli/src/tbhbdev/alpha/agent/decisions:host_names",
-        "//factory/cli/src/tbhbdev/alpha/identity:attribution",
-        "//factory/cli/src/tbhbdev/alpha/identity:models",
-        "//factory/cli/src/tbhbdev/alpha/identity:payload",
-        "//factory/cli/src/tbhbdev/alpha/identity:records",
-        "//factory/cli/src/tbhbdev/alpha/identity:trailers",
-        "//factory/cli/src/tbhbdev/alpha/identity/antigravity:payload",
-        "//factory/cli/src/tbhbdev/alpha/identity/codex:payload",
-        "//factory/cli/src/tbhbdev/alpha/identity/commit:grammar",
-        "//factory/cli/src/tbhbdev/alpha/install/git:hooks",
-        "@cli_pip//jsonschema",
-    ],
-)
-
-cli_py_library(
-    name = "pull_request_frontmatter",
-    srcs = ["pull_request_frontmatter.py"],
-    imports = ["../.."],
-    pyi_deps = ["@cli_pip//jsonschema"],
-    visibility = ["//factory/cli:__subpackages__"],
-    deps = ["@cli_pip//pyyaml"],
-)
-
-cli_py_library(
     name = "repo",
     srcs = ["repo.py"],
     imports = ["../.."],
@@ -274,12 +242,17 @@ cli_py_library(
     imports = ["../.."],
     visibility = ["//factory/cli:__subpackages__"],
     deps = [
-        ":pull_request",
-        ":pull_request_frontmatter",
         ":review_doc",
         ":review_policy",
         ":review_threads",
         "//factory/cli/src/tbhbdev:content",
+        "//factory/cli/src/tbhbdev/alpha/pull_request:attribution",
+        "//factory/cli/src/tbhbdev/alpha/pull_request:body",
+        "//factory/cli/src/tbhbdev/alpha/pull_request:frontmatter",
+        "//factory/cli/src/tbhbdev/alpha/pull_request:github",
+        "//factory/cli/src/tbhbdev/alpha/pull_request:prose",
+        "//factory/cli/src/tbhbdev/alpha/pull_request:repository",
+        "//factory/cli/src/tbhbdev/alpha/pull_request:tools",
         "@cli_pip//jsonschema",
         "@cli_pip//pyyaml",
     ],
@@ -292,12 +265,13 @@ cli_py_library(
     imports = ["../.."],
     visibility = ["//factory/cli:__subpackages__"],
     deps = [
-        ":pull_request",
-        ":pull_request_frontmatter",
         ":review_inline",
         "//factory/cli/src/tbhbdev:content",
         "//factory/cli/src/tbhbdev/alpha/identity:trailers",
         "//factory/cli/src/tbhbdev/alpha/identity/commit:grammar",
+        "//factory/cli/src/tbhbdev/alpha/pull_request:frontmatter",
+        "//factory/cli/src/tbhbdev/alpha/pull_request:prose",
+        "//factory/cli/src/tbhbdev/alpha/pull_request:tools",
     ],
 )
 
@@ -308,7 +282,7 @@ cli_py_library(
     imports = ["../.."],
     visibility = ["//factory/cli:__subpackages__"],
     deps = [
-        ":pull_request_frontmatter",
+        "//factory/cli/src/tbhbdev/alpha/pull_request:frontmatter",
         "@cli_pip//jsonschema",
     ],
 )
@@ -320,10 +294,10 @@ cli_py_library(
     imports = ["../.."],
     visibility = ["//factory/cli:__subpackages__"],
     deps = [
-        ":pull_request_frontmatter",
         ":review",
         ":review_doc",
         ":review_policy",
+        "//factory/cli/src/tbhbdev/alpha/pull_request:frontmatter",
     ],
 )
 
@@ -481,7 +455,6 @@ cli_py_library(
         ":guard_sendmessage_clock",
         ":guard_ssh_agent",
         ":pre_push_guard",
-        ":pull_request",
         ":repo_bootstrap",
         ":review",
         ":run_stop_hook",
@@ -495,6 +468,7 @@ cli_py_library(
         "//factory/cli/src/tbhbdev/alpha/install:command",
         "//factory/cli/src/tbhbdev/alpha/merge:command",
         "//factory/cli/src/tbhbdev/alpha/monorepo:command",
+        "//factory/cli/src/tbhbdev/alpha/pull_request:command",
     ],
 )
 

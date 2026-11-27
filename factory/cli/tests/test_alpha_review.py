@@ -10,12 +10,15 @@ from unittest.mock import patch
 import pytest
 from cue_fixtures import review_cue as review_cue  # noqa: PLC0414
 from jsonschema import Draft202012Validator
-from test_alpha_pull_request import REAL, World
-from test_alpha_pull_request import world as world  # noqa: PLC0414
+from unit.alpha.pull_request.pr_test_support import REAL, World
+from unit.alpha.pull_request.pr_test_support import world as world  # noqa: PLC0414
 
-from tbhbdev.alpha import pull_request as pr
 from tbhbdev.alpha import review, review_doc
-from tbhbdev.alpha.pull_request_frontmatter import parse_frontmatter
+from tbhbdev.alpha.identity.commit.grammar import LINE
+from tbhbdev.alpha.pull_request import baseline as pr_baseline
+from tbhbdev.alpha.pull_request import body as pr_body
+from tbhbdev.alpha.pull_request import prose as pr_prose
+from tbhbdev.alpha.pull_request.frontmatter import parse_frontmatter
 
 pytestmark = pytest.mark.usefixtures("review_cue")  # noqa: V107
 
@@ -33,8 +36,8 @@ def run_main(*argv: str) -> int:
     return review.main(list(argv), prog="tbhbdev alpha review")
 
 
-def structure(text: str, number: int = 7) -> list[pr.Problem]:
-    with patch.object(pr, "lint", return_value=[]):
+def structure(text: str, number: int = 7) -> list[pr_body.Problem]:
+    with patch.object(pr_prose, "lint", return_value=[]):
         return review.check_text(text, number)
 
 
@@ -79,7 +82,7 @@ def test_check_without_lint_accepts_a_filled_comment_draft(
     head(world)
     assert run_main("draft", "7") == 0
     path = Path(capsys.readouterr().out.strip())
-    with patch.object(pr, "lint", return_value=[]) as lint:
+    with patch.object(pr_prose, "lint", return_value=[]) as lint:
         assert run_main("check", "7", "--no-lint") == 1
         assert "frontmatter" in capsys.readouterr().err
         path.write_text(FILLED)
@@ -174,7 +177,7 @@ def test_bad_gh_leaves_draft_unchanged(
 
 @pytest.mark.parametrize("text", [BODY, "---\n---\n" + BODY, "---\n{}\n---\n" + BODY])
 def test_missing_or_empty_frontmatter_stops_before_body_and_lint(text: str) -> None:
-    with patch.object(pr, "lint") as lint:
+    with patch.object(pr_prose, "lint") as lint:
         assert review.check_text(text, 7) == [
             (1, "review frontmatter is required and must not be empty")
         ]
@@ -183,7 +186,7 @@ def test_missing_or_empty_frontmatter_stops_before_body_and_lint(text: str) -> N
 
 @pytest.mark.parametrize("text", ["---\n", "---\n[\n---\n"])
 def test_bad_yaml_stops_before_lint(text: str) -> None:
-    with patch.object(pr, "lint") as lint:
+    with patch.object(pr_prose, "lint") as lint:
         found = review.check_text(text, 7)
         assert found[0][0] == 1
         assert found[0][1].startswith("frontmatter: ")
@@ -492,9 +495,9 @@ def test_policy_dispatch_forwards_arguments_program_and_status() -> None:
 
 
 def test_explicit_empty_sections_do_not_load_the_repository_scheme() -> None:
-    anchor = pr.Line(9, "", "", code=False)
-    with patch.object(pr, "load_sections") as load:
-        assert pr.body_problems([], anchor, []) == []
+    anchor = pr_body.Line(9, "", "", code=False)
+    with patch.object(pr_baseline, "load_sections") as load:
+        assert pr_body.body_problems([], anchor, [], LINE) == []
         load.assert_not_called()
 
 
@@ -510,14 +513,14 @@ def test_lint_can_keep_the_default_title_alert(world: World) -> None:
             }
         ),
     )
-    assert pr.lint(["# title"], 12, drop=frozenset()) == [
+    assert pr_prose.lint(["# title"], 12, drop=frozenset()) == [
         (12, "vale project.HeadingTitleCase: case")
     ]
 
 
 @pytest.mark.parametrize("path", [Path("draft.md"), Path(".github/reviews/draft.md")])
 def test_lint_creates_the_requested_relative_path(world: World, path: Path) -> None:
-    assert pr.lint(["## Summary", "", "Fine."], 6, path=path) == []
+    assert pr_prose.lint(["## Summary", "", "Fine."], 6, path=path) == []
     for name in ("vale", "cspell", "rumdl"):
         (call,) = world.calls(name)
         assert cast("list[str]", call["argv"])[-1] == str(path)
@@ -578,7 +581,7 @@ def test_refresh_fills_an_empty_commit_value(value: str) -> None:
 
 
 def test_empty_body_skips_external_linters() -> None:
-    with patch.object(pr, "lint") as lint:
+    with patch.object(pr_prose, "lint") as lint:
         assert review.check_text(FRONT + " \n", 7)
         lint.assert_not_called()
 

@@ -11,7 +11,11 @@ from cue_fixtures import review_cue as review_cue  # noqa: PLC0414
 
 from tbhbdev.alpha import review as cli
 from tbhbdev.alpha import review_doc as review
-from tbhbdev.alpha.pull_request import lint as lint_review_prose
+from tbhbdev.alpha.pull_request import attribution as pr_attribution
+from tbhbdev.alpha.pull_request import prose as pr_prose
+from tbhbdev.alpha.pull_request import repository as pr_repository
+from tbhbdev.alpha.pull_request import tools as pr_tools
+from tbhbdev.alpha.pull_request.prose import lint as lint_review_prose
 from tbhbdev.alpha.review_doc import Existing, ReviewDoc
 
 if TYPE_CHECKING:
@@ -64,7 +68,7 @@ DECISION_ROW = ROW | {"state": "CHANGES_REQUESTED"}
 
 @pytest.fixture(autouse=True)
 def stub_vale(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(review.pr, "lint", Mock(return_value=[]))
+    monkeypatch.setattr(pr_prose, "lint", Mock(return_value=[]))
 
 
 @pytest.mark.parametrize(
@@ -154,8 +158,8 @@ def test_post_refuses_moved_head() -> None:
 def draft(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     stem = tmp_path / "review-384"
     monkeypatch.setattr(cli, "draft_directory", lambda: tmp_path)
-    monkeypatch.setattr(cli.pr, "origin_repository", lambda: REPO)
-    monkeypatch.setattr(cli.pr, "posting_value", Mock(return_value=IDENTITY))
+    monkeypatch.setattr(pr_repository, "origin_repository", lambda: REPO)
+    monkeypatch.setattr(pr_attribution, "posting_value", Mock(return_value=IDENTITY))
     return stem.with_suffix(".doc.md")
 
 
@@ -240,8 +244,8 @@ def test_cli_can_retry_and_dismiss_a_posted_decision(
 def test_cli_posts_a_checked_document_without_vale_config(
     draft: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    monkeypatch.setattr(cli.pr, "root", lambda: draft.parent)
-    monkeypatch.setattr(cli.pr, "lint", lint_review_prose)
+    monkeypatch.setattr(pr_tools, "root", lambda: draft.parent)
+    monkeypatch.setattr(pr_prose, "lint", lint_review_prose)
     api = FakeApi(LIVE, [], {"id": 16})
     monkeypatch.setattr(cli, "GhApi", lambda: api)
     draft.write_text(PREAMBLE + BODY)
@@ -253,10 +257,10 @@ def test_cli_posts_a_checked_document_without_vale_config(
 def test_lint_post_reports_vale_execution_failure(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    (tmp_path / review.pr.VALE_INI).touch()
-    monkeypatch.setattr(review.pr, "root", lambda: tmp_path)
+    (tmp_path / pr_prose.VALE_INI).touch()
+    monkeypatch.setattr(pr_tools, "root", lambda: tmp_path)
     monkeypatch.setattr(
-        review.pr, "lint", Mock(side_effect=SystemExit("vale not found"))
+        pr_prose, "lint", Mock(side_effect=SystemExit("vale not found"))
     )
 
     assert review.lint_post(BODY) == ["Vale could not run: vale not found"]
@@ -267,7 +271,9 @@ def test_cli_refuses_an_invalid_rendered_review(
     draft: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
     draft.write_text(PREAMBLE + BODY)
-    monkeypatch.setattr(cli.pr, "posting_value", Mock(return_value=f"{IDENTITY} text"))
+    monkeypatch.setattr(
+        pr_attribution, "posting_value", Mock(return_value=f"{IDENTITY} text")
+    )
     api = FakeApi(LIVE, [], {"id": 16})
     monkeypatch.setattr(cli, "GhApi", lambda: api)
     assert cli.main(["check", "384", "--no-lint"], "review") == 0
@@ -348,7 +354,7 @@ def test_post_cli_refuses_an_unavailable_or_invalid_identity(
     draft.write_text(PREAMBLE + BODY)
     api = FakeApi(USER, LIVE, [])
     monkeypatch.setattr(cli, "GhApi", lambda: api)
-    monkeypatch.setattr(cli.pr, "posting_value", Mock(return_value=value))
+    monkeypatch.setattr(pr_attribution, "posting_value", Mock(return_value=value))
     assert cli.main(["post", "384"], "review") == 1
     assert capsys.readouterr() == ("", f"{draft}: {message}\n")
     assert api.calls == [
@@ -477,8 +483,8 @@ def test_gh_api(
         assert stdin == (json.dumps(payload) if payload is not None else "")
         return CompletedProcess(args, code, stdout, error + "\n")
 
-    monkeypatch.setattr(cli.pr, "find_tool", {cli.pr.GH: "/fake/gh"}.__getitem__)
-    monkeypatch.setattr(cli.pr, "run", run)
+    monkeypatch.setattr(pr_tools, "find_tool", {pr_tools.GH: "/fake/gh"}.__getitem__)
+    monkeypatch.setattr(pr_tools, "run", run)
     if error:
         with pytest.raises(review.ReviewError, match=f"^{error}$"):
             cli.GhApi().request("POST", REVIEWS, payload)
@@ -514,7 +520,7 @@ def test_dismiss_cli_and_idempotence(
     body = f"SUPERSEDED: {reason}\n{MARKER}"
     api = FakeApi(ROW, {}, ROW | {"body": body}, ROW | {"state": "DISMISSED"}, {})
     monkeypatch.setattr(cli, "GhApi", lambda: api)
-    monkeypatch.setattr(cli.pr, "origin_repository", lambda: REPO)
+    monkeypatch.setattr(pr_repository, "origin_repository", lambda: REPO)
     args = ["dismiss", "384", "942", "--reason", reason]
     for _ in range(3):
         assert cli.main(args, "review") == 0
@@ -530,7 +536,7 @@ def test_reply_cli(
 ) -> None:
     api = FakeApi({"commit_id": HEAD}, {"id": 12})
     monkeypatch.setattr(cli, "GhApi", lambda: api)
-    monkeypatch.setattr(cli.pr, "origin_repository", lambda: REPO)
+    monkeypatch.setattr(pr_repository, "origin_repository", lambda: REPO)
     assert cli.main(["reply", "384", "1", "--text", "Retested."], "review") == 0
     assert capsys.readouterr() == ("replied 12\n", "")
     body = "Re review 1 (head 01234567): Retested.\n<!-- tbhb-reply v1 review=1 -->"
