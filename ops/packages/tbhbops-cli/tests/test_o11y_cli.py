@@ -3050,7 +3050,7 @@ def test_default_release_bytes(tmp_path: Path) -> None:
     }
     # Snapshot of all rendered bytes and filenames after the image updates.
     assert hashlib.sha256(model.manifest(files).encode()).hexdigest() == (
-        "28e61ac700c3b7c8139a2ee68cc389a1c742d0cc2c7a2c1b78acaecbf48b6494"
+        "35337df04e4372ac3fd65f39aad7d7b40791c01f52dfdca3d8902de73c8e13a7"
     )
 
 
