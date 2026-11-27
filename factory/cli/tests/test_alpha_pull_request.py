@@ -33,10 +33,10 @@ from hypothesis import given
 from hypothesis import strategies as st
 from jsonschema import Draft202012Validator
 
-from tbhbdev.alpha import identity as agent_identity
 from tbhbdev.alpha import opened, size_gate, tool_pins
 from tbhbdev.alpha import pull_request as pr
 from tbhbdev.alpha import pull_request_frontmatter as frontmatter
+from tbhbdev.alpha.identity import dispatcher as agent_identity
 from tbhbdev.alpha.secret_scan import REPO_RULES, without_name_rules
 
 # Tests can run from the project or a copy made by mutmut.

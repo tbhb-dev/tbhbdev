@@ -5,7 +5,6 @@ from pathlib import Path
 
 import pytest
 import yaml
-
 from tbhbops.o11y import validate as v
 
 ALLOY = """prometheus.scrape "test" {
@@ -366,6 +365,49 @@ def test_real_tree() -> None:
     assert v.alignment(b, text, health, alert, rules) == []
 
 
+@pytest.fixture(name="metrics_queries_rule")
+def load_metrics_queries_rule() -> v.Document:
+    path = repo_tree() / "config/grafana/provisioning/alerting/rules.yaml"
+    rules = yaml.safe_load(path.read_text())
+    return next(
+        rule
+        for group in rules["groups"]
+        for rule in group["rules"]
+        if rule["uid"] == "o11y-metrics-queries-failing"
+    )
+
+
+@pytest.mark.parametrize(
+    "state", ["execErrState", "noDataState"], ids=["query-error", "no-data"]
+)
+def test_metrics_queries_failing_alerts_after_ten_minutes(
+    metrics_queries_rule: v.Document, state: str
+) -> None:
+    assert metrics_queries_rule["for"] == "10m"
+    assert metrics_queries_rule[state] == "Alerting"
+
+
+def test_metrics_queries_failing_probe_and_routing(
+    metrics_queries_rule: v.Document,
+) -> None:
+    query, condition = metrics_queries_rule["data"]
+    assert query["datasourceUid"] == "mimir"
+    assert query["model"]["instant"] is True
+    assert query["model"]["expr"] == 'count(up{namespace="o11y"} offset 26h)'
+    assert condition["refId"] == metrics_queries_rule["condition"]
+    assert condition["model"]["expression"] == query["refId"]
+    assert condition["model"]["conditions"] == [
+        {"evaluator": {"type": "lt", "params": [1]}}
+    ]
+    path = repo_tree() / "config/grafana/provisioning/alerting/alerting.yaml"
+    routing = yaml.safe_load(path.read_text())
+    assert routing["policies"][0]["receiver"] == "o11y"
+    assert any(
+        point["name"] == "o11y" and point["receivers"]
+        for point in routing["contactPoints"]
+    )
+
+
 @pytest.mark.parametrize(
     ("value", "expected"),
     [
@@ -542,7 +584,6 @@ def test_environment() -> None:
             "O11Y_BIND_ADDR",
             "O11Y_S3_ENV_FILE",
             "O11Y_DATA_DIR",
-            "O11Y_POSTGRES_PORT",
             "O11Y_GRAFANA_PORT",
             "COMPOSE_PROFILES",
             "COMPOSE_FILE",
@@ -811,7 +852,7 @@ def test_compose_include_refused(filename: str, include: object) -> None:
         ),
     ],
 )
-def test_dedicated_engine(  # noqa: PLR0913, PLR0917  # decision table columns
+def test_dedicated_engine(  # decision table columns
     named: str,
     context: str,
     endpoint: str,

@@ -284,7 +284,6 @@ cli_py_test(
         "//factory/cli/src/tbhbdev/alpha:guard_scripts",
         "//factory/cli/src/tbhbdev/alpha:guard_sendmessage_clock",
         "//factory/cli/src/tbhbdev/alpha:guard_ssh_agent",
-        "//factory/cli/src/tbhbdev/alpha:identity",
         "//factory/cli/src/tbhbdev/alpha:install",
         "//factory/cli/src/tbhbdev/alpha:pr_stats",
         "//factory/cli/src/tbhbdev/alpha:pre_push_guard",
@@ -301,6 +300,7 @@ cli_py_test(
         "//factory/cli/src/tbhbdev/alpha/agent:settings",
         "//factory/cli/src/tbhbdev/alpha/agent:signing_parity",
         "//factory/cli/src/tbhbdev/alpha/agent:ssh_serve",
+        "//factory/cli/src/tbhbdev/alpha/identity:dispatcher",
         "//factory/cli/src/tbhbdev/alpha/monorepo:command",
         "//factory/cli/tests:test_alpha_agent_settings_support",
         "@cli_pip//pytest",
@@ -438,10 +438,10 @@ cli_py_test(
     deps = [
         ":agent_example",
         ":conftest",
-        "//factory/cli/src/tbhbdev/alpha:identity",
         "//factory/cli/src/tbhbdev/alpha/agent:model",
         "//factory/cli/src/tbhbdev/alpha/agent/decisions:driver",
         "//factory/cli/src/tbhbdev/alpha/agent/decisions:request",
+        "//factory/cli/src/tbhbdev/alpha/identity:models",
         "//factory/cli/tests:test_alpha_agent_request_support",
         "@cli_pip//pytest",
     ],
@@ -473,11 +473,11 @@ cli_py_test(
         ":agent_live_evidence",
         ":agent_live_git_commit",
         ":conftest",
-        "//factory/cli/src/tbhbdev/alpha:identity",
         "//factory/cli/src/tbhbdev/alpha:install",
         "//factory/cli/src/tbhbdev/alpha/agent:model",
         "//factory/cli/src/tbhbdev/alpha/agent:worktree",
         "//factory/cli/src/tbhbdev/alpha/agent/decisions:policy",
+        "//factory/cli/src/tbhbdev/alpha/identity:dispatcher",
         "//factory/cli/tests:test_alpha_agent_git_parent_support",
         "//factory/cli/tests:test_alpha_agent_sandbox_live_support",
         "@cli_pip//pytest",
@@ -754,7 +754,6 @@ cli_py_test(
         ":conftest",
         ":cue_fixtures",
         "//factory/cli/src/tbhbdev:content",
-        "//factory/cli/src/tbhbdev/alpha:identity",
         "//factory/cli/src/tbhbdev/alpha:review",
         "//factory/cli/src/tbhbdev/alpha:review_doc",
         "//factory/cli/src/tbhbdev/alpha/agent:credentials",
@@ -762,6 +761,7 @@ cli_py_test(
         "//factory/cli/src/tbhbdev/alpha/agent:review_post",
         "//factory/cli/src/tbhbdev/alpha/agent:runfiles",
         "//factory/cli/src/tbhbdev/alpha/agent/decisions:request",
+        "//factory/cli/src/tbhbdev/alpha/identity:dispatcher",
         "@cli_pip//httpx2",
         "@cli_pip//pytest",
     ],
@@ -984,9 +984,9 @@ cli_py_test(
     deps = [
         ":agent_host_example",
         ":conftest",
-        "//factory/cli/src/tbhbdev/alpha:identity",
         "//factory/cli/src/tbhbdev/alpha/agent:model",
         "//factory/cli/src/tbhbdev/alpha/agent:worktree",
+        "//factory/cli/src/tbhbdev/alpha/identity:dispatcher",
         "@cli_pip//pytest",
     ],
 )
@@ -1010,9 +1010,9 @@ cli_py_test(
         ":conftest",
         "//factory/cli/src/tbhbdev:userconfig",
         "//factory/cli/src/tbhbdev/alpha:close",
-        "//factory/cli/src/tbhbdev/alpha:identity",
         "//factory/cli/src/tbhbdev/alpha:opened",
         "//factory/cli/src/tbhbdev/alpha:pull_request",
+        "//factory/cli/src/tbhbdev/alpha/identity:dispatcher",
         "@cli_pip//pytest",
     ],
 )
@@ -1099,11 +1099,11 @@ cli_py_test(
         ":fake_tool",
         "//factory/cli/src/tbhbdev/alpha:close",
         "//factory/cli/src/tbhbdev/alpha:guard_gh_pr",
-        "//factory/cli/src/tbhbdev/alpha:identity",
         "//factory/cli/src/tbhbdev/alpha:install",
         "//factory/cli/src/tbhbdev/alpha:opened",
         "//factory/cli/src/tbhbdev/alpha:pull_request",
         "//factory/cli/src/tbhbdev/alpha:squash_merge",
+        "//factory/cli/src/tbhbdev/alpha/identity:dispatcher",
         "@cli_pip//hypothesis",
         "@cli_pip//pytest",
     ],
@@ -1165,9 +1165,10 @@ cli_py_test(
     deps = [
         ":conftest",
         ":fake_tool",
-        "//factory/cli/src/tbhbdev/alpha:identity",
-        "//factory/cli/src/tbhbdev/alpha:identity_commands",
         "//factory/cli/src/tbhbdev/alpha:install",
+        "//factory/cli/src/tbhbdev/alpha/identity:commands",
+        "//factory/cli/src/tbhbdev/alpha/identity:dispatcher",
+        "//factory/cli/src/tbhbdev/alpha/identity:models",
         "@cli_pip//hypothesis",
         "@cli_pip//jsonschema",
         "@cli_pip//pytest",
@@ -1179,7 +1180,7 @@ cli_py_test(
     name = "test_alpha_identity_commands",
     srcs = ["test_alpha_identity_commands.py"],
     deps = [
-        "//factory/cli/src/tbhbdev/alpha:identity_commands",
+        "//factory/cli/src/tbhbdev/alpha/identity:commands",
         "@cli_pip//hypothesis",
         "@cli_pip//pytest",
     ],
@@ -1238,8 +1239,8 @@ cli_py_test(
     srcs = ["test_alpha_opened.py"],
     deps = [
         ":conftest",
-        "//factory/cli/src/tbhbdev/alpha:identity",
         "//factory/cli/src/tbhbdev/alpha:opened",
+        "//factory/cli/src/tbhbdev/alpha/identity:dispatcher",
         "@cli_pip//pytest",
     ],
 )
@@ -1275,8 +1276,8 @@ cli_py_test(
     srcs = ["test_alpha_process.py"],
     deps = [
         ":conftest",
-        "//factory/cli/src/tbhbdev/alpha:identity",
         "//factory/cli/src/tbhbdev/alpha:process",
+        "//factory/cli/src/tbhbdev/alpha/identity:dispatcher",
         "@cli_pip//pytest",
     ],
 )
@@ -1310,13 +1311,13 @@ cli_py_test(
     deps = [
         ":conftest",
         ":fake_tool",
-        "//factory/cli/src/tbhbdev/alpha:identity",
         "//factory/cli/src/tbhbdev/alpha:opened",
         "//factory/cli/src/tbhbdev/alpha:pull_request",
         "//factory/cli/src/tbhbdev/alpha:pull_request_frontmatter",
         "//factory/cli/src/tbhbdev/alpha:secret_scan",
         "//factory/cli/src/tbhbdev/alpha:size_gate",
         "//factory/cli/src/tbhbdev/alpha:tool_pins",
+        "//factory/cli/src/tbhbdev/alpha/identity:dispatcher",
         "@cli_pip//hypothesis",
         "@cli_pip//jsonschema",
         "@cli_pip//pytest",
@@ -1526,11 +1527,11 @@ cli_py_test(
     deps = [
         ":conftest",
         ":fake_tool",
-        "//factory/cli/src/tbhbdev/alpha:identity",
         "//factory/cli/src/tbhbdev/alpha:pull_request",
         "//factory/cli/src/tbhbdev/alpha:secret_scan",
         "//factory/cli/src/tbhbdev/alpha:squash_merge",
         "//factory/cli/src/tbhbdev/alpha:tool_pins",
+        "//factory/cli/src/tbhbdev/alpha/identity:dispatcher",
         "@cli_pip//hypothesis",
         "@cli_pip//pytest",
     ],
@@ -1551,8 +1552,8 @@ cli_py_test(
     srcs = ["test_alpha_verify_range.py"],
     deps = [
         ":conftest",
-        "//factory/cli/src/tbhbdev/alpha:identity",
         "//factory/cli/src/tbhbdev/alpha:verify_range",
+        "//factory/cli/src/tbhbdev/alpha/identity:dispatcher",
         "@cli_pip//pytest",
     ],
 )
@@ -2144,6 +2145,15 @@ cli_py_test(
     deps = [
         ":conftest",
         "//factory/cli/src/tbhbdev/alpha:guard_sendmessage_clock",
+        "@cli_pip//pytest",
+    ],
+)
+
+cli_py_test(
+    name = "test_alpha_identity_models",
+    srcs = ["test_alpha_identity_models.py"],
+    deps = [
+        "//factory/cli/src/tbhbdev/alpha/identity:models",
         "@cli_pip//pytest",
     ],
 )

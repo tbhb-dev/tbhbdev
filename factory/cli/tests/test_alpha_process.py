@@ -9,8 +9,8 @@ from typing import TYPE_CHECKING
 
 import pytest
 
-from tbhbdev.alpha import identity as ai
 from tbhbdev.alpha import process
+from tbhbdev.alpha.identity import dispatcher as ai
 
 if TYPE_CHECKING:
     import ctypes

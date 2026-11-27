@@ -11,7 +11,7 @@ from pathlib import Path
 from typing import TypedDict, cast
 
 from tbhbdev.alpha.agent import runfiles
-from tbhbdev.alpha.identity import as_str, parse_line, read_tail
+from tbhbdev.alpha.identity.dispatcher import as_str, parse_line, read_tail
 from tbhbdev.alpha.repo import git, read_hook_stdin
 
 ENV = "TBHBDEV_RUN_STOP"
