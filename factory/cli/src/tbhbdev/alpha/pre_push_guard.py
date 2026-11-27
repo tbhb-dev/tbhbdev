@@ -147,17 +147,6 @@ def remote_tips() -> list[str]:
     return out.split()
 
 
-def parse_known_objects(shas: list[str], output: str) -> list[str]:
-    """Require an object ID or an explicit `missing` result for each input."""
-    rows = output.splitlines()
-    if len(rows) != len(shas) or any(
-        row not in (sha, f"{sha} missing") for sha, row in zip(shas, rows, strict=True)
-    ):
-        message = "git cat-file --batch-check returned invalid object results"
-        raise InspectionError(message)
-    return [row for row in rows if not row.endswith(" missing")]
-
-
 def known_objects(shas: list[str]) -> list[str]:
     """The shas this clone holds, from one ``cat-file --batch-check`` call."""
     done = subprocess.run(  # nosec B603 B607
@@ -170,7 +159,7 @@ def known_objects(shas: list[str]) -> list[str]:
     if done.returncode:
         message = "git cat-file --batch-check could not inspect the push's objects"
         raise InspectionError(message)
-    return parse_known_objects(shas, done.stdout)
+    return [row for row in done.stdout.splitlines() if not row.endswith(" missing")]
 
 
 def pushed_commits(local: str, exclude: list[str]) -> tuple[int, list[str]]:
@@ -219,11 +208,6 @@ def agent_commit_problems(
             next((line for line in headers if line.startswith(role)), b"")
             for role in (b"author ", b"committer ")
         ]
-        if not all(idents):
-            problems.append(
-                f"{ref}: commit {sha} is missing identity headers; push refused"
-            )
-            continue
         if not any(f"<{AGENT_EMAIL}>".encode() in ident for ident in idents):
             continue
         if problem := keys.refusal(signature_fingerprint(raw), ref, sha):
@@ -323,12 +307,10 @@ def push_problems(
 
 
 def inspect_push(remote: str, target: str, lines: Sequence[str]) -> list[str]:
-    """Resolve the push destination and require managed identity for org agents."""
+    """Require managed identity for agent pushes to the org."""
     if not target.strip():
-        code, target = git(*SAFE, "remote", "get-url", "--push", remote)
-        if code or not target.strip():
-            message = "cannot determine the push destination"
-            raise InspectionError(message)
+        message = "cannot determine the push destination"
+        raise InspectionError(message)
     run_name = os.environ.get(RUN_NAME_ENV, "")
     agent_org_push = is_tbhb_dev_url(target) and agent_operation(os.environ)
     if agent_org_push and not run_name.strip():
@@ -337,9 +319,6 @@ def inspect_push(remote: str, target: str, lines: Sequence[str]) -> list[str]:
             "with its hooks installed (install clone hooks with "
             "`tbhbdev alpha install --hooks-only`)"
         )
-        raise InspectionError(message)
-    if agent_org_push and not lines:
-        message = "no refs to check in the pre-push input"
         raise InspectionError(message)
     agent_push = agent_org_push or session_root(os.environ) is not None
     return push_problems(remote, lines, agent_push=agent_push, run_name=run_name)

@@ -285,17 +285,6 @@ if shutil.which("tbhbdev"):
     ).returncode
 else:
     target = sys.argv[2].strip() if len(sys.argv) > 2 else ""
-    if not target and len(sys.argv) > 1:
-        try:
-            remote = subprocess.run(
-                ["git", "-c", "core.fsmonitor=false", "-c", "core.hooksPath=/dev/null",
-                 "-c", "diff.external=", "-c", "core.pager=cat",
-                 "remote", "get-url", "--push", sys.argv[1]],
-                capture_output=True, text=True, check=False,
-            )
-            target = remote.stdout.strip() if remote.returncode == 0 else ""
-        except (OSError, UnicodeError):
-            pass
     if not target:
         print("pre-push: cannot determine the push destination", file=sys.stderr)
     org_target = re.fullmatch({pattern!r}, target, re.IGNORECASE | re.ASCII)

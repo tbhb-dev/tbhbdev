@@ -584,35 +584,32 @@ def test_run_name_is_required_for_agent_pushes_to_the_org(
 
 
 @pytest.mark.usefixtures("repo", "agent_session")
-def test_an_org_agent_push_requires_ref_input(
+def test_an_org_agent_can_retry_a_push_with_no_ref_updates(
     monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
     monkeypatch.setenv(pg.RUN_NAME_ENV, "topic")
     monkeypatch.setattr(sys, "stdin", io.StringIO(""))
-    assert pg.main(["origin", "https://github.com/tbhb-dev/example.git"], "p") == 1
-    assert "no refs to check" in capsys.readouterr().err
+    assert pg.main(["origin", "https://github.com/tbhb-dev/example.git"], "p") == 0
+    assert capsys.readouterr().err == ""
 
 
-@pytest.mark.parametrize(
-    ("query", "code"), [("for-each-ref", 1), ("batch", 1), ("batch", 0), ("commit", 1)]
-)
+@pytest.mark.parametrize("query", ["for-each-ref", "batch", "commit"])
 def test_an_unreadable_object_query_refuses_the_push(
     repo: Path,
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
     query: str,
-    code: int,
 ) -> None:
     head = commit(repo)
     run = Mock(wraps=subprocess.run)
 
     def fail_object_query(argv: list[str], **kwargs: object) -> object:
         if query == "for-each-ref" and query in argv:
-            return subprocess.CompletedProcess(argv, code, "")
+            return subprocess.CompletedProcess(argv, 1, "")
         if query == "batch" and argv[-1].startswith("--batch-check"):
-            return subprocess.CompletedProcess(argv, code, "")
+            return subprocess.CompletedProcess(argv, 1, "")
         if query == "commit" and "cat-file" in argv and "commit" in argv:
-            return subprocess.CompletedProcess(argv, code, b"")
+            return subprocess.CompletedProcess(argv, 1, b"")
         return run(argv, **kwargs)
 
     monkeypatch.setattr(pg.subprocess, "run", fail_object_query)

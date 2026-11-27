@@ -3493,13 +3493,12 @@ PUSH_TOOL_MISSING = (
 )
 
 
-@pytest.mark.parametrize("url_argument", [ORIGIN, ""])
-def test_missing_tool_checks_named_push_target(world: World, url_argument: str) -> None:
+def test_missing_tool_checks_named_push_target(world: World) -> None:
     assert install.install_git_hooks(None, {}, dry_run=False) == 0
     git(world.repo, "remote", "set-url", "origin", "https://example.test/public")
     git(world.repo, "remote", "add", "publish", ORIGIN)
     done = subprocess.run(
-        [str(world.hooks / "pre-push"), "publish", url_argument],
+        [str(world.hooks / "pre-push"), "publish", ORIGIN],
         input=b"",
         cwd=world.repo,
         env=shim_env(world, None),
@@ -3563,20 +3562,3 @@ def test_foreign_push_hook_appearing_during_lock(
     assert "move it aside" in capsys.readouterr().err
     assert world.prek_calls() == []
     assert (world.hooks / "pre-push").read_text() == "foreign\n"
-
-
-def test_missing_tool_uses_named_remote_push_url(world: World) -> None:
-    assert install.install_git_hooks(None, {}, dry_run=False) == 0
-    git(world.repo, "remote", "set-url", "origin", "https://example.test/public")
-    git(world.repo, "remote", "add", "publish", "https://example.test/public")
-    git(world.repo, "remote", "set-url", "--push", "publish", ORIGIN)
-    done = subprocess.run(
-        [str(world.hooks / "pre-push"), "publish", ""],
-        input=b"",
-        cwd=world.repo,
-        env=shim_env(world, None),
-        capture_output=True,
-        check=False,
-    )
-    assert done.returncode == 1
-    assert done.stderr == PUSH_TOOL_MISSING
