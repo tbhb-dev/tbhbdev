@@ -2593,7 +2593,7 @@ def test_runs_as_tbhbdev_alpha_pr(world: World) -> None:
         env=env,
     )
     assert (done.returncode, done.stderr) == (
-        0,
+        1,
         "size count unavailable: missing counter\n",
     )
 

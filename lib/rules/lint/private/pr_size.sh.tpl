@@ -7,17 +7,20 @@ set -euo pipefail
 scc="$PWD/@@SCC@@"
 git="$PWD/@@GIT@@"
 policy="$PWD/@@POLICY@@"
+helper="$PWD/@@IMPORT@@"
 if (($# != 2)); then
   echo 'usage: pr_size_count BASE HEAD' >&2
   exit 2
 fi
-if [[ ! -x $scc ]]; then
-  echo 'pr_size_count: scc missing or not executable' >&2
-  exit 1
-fi
+for tool in "$scc" "$git"; do
+  if [[ ! -x $tool ]]; then
+    echo "pr_size_count: ${tool##*/} missing or not executable" >&2
+    exit 1
+  fi
+done
 cd "${BUILD_WORKSPACE_DIRECTORY:?run with bazel run}"
 if [[ ${PR_AUTHOR:-} == 'tbhb-dev-renovate[bot]' ]]; then
-  echo '{"code_lines": 0, "code_limit": 400, "raw_lines": 0, "raw_limit": 1500, "failed": null}'
+  echo '{"code_lines": 0, "code_limit": 400, "raw_lines": 0, "raw_limit": 1500, "imported_lines": null, "failed": null}'
   exit 0
 fi
 base=$1 head=$2
@@ -36,7 +39,7 @@ if [[ -n $base_commit ]]; then
 fi
 if [[ -n $base_commit && $shallow == false && $root_count == 1 &&
   ${MAIN_TIP:-} == "$base_commit" ]]; then
-  echo '{"code_lines": 0, "code_limit": 400, "raw_lines": 0, "raw_limit": 1500, "failed": null}'
+  echo '{"code_lines": 0, "code_limit": 400, "raw_lines": 0, "raw_limit": 1500, "imported_lines": null, "failed": null}'
   exit 0
 fi
 work=$(mktemp -d "${TMPDIR:-/tmp}/pr-size.XXXXXX")
@@ -68,8 +71,19 @@ scan() {
     --exclude-file '' --count-as-pattern '*/BUILD:Bazel:Bazel' \
     --count-as-pattern '*.bazel:Bazel:Bazel' --gen --format csv "$1"
 }
-code=0 raw=0
-"$git" diff --no-renames --diff-filter=AM --name-only -z "$base...$head" >"$work/files"
+code=0 raw=0 imported_lines=null
+"$git" diff --no-renames --diff-filter=AMT --name-only -z "$base...$head" >"$work/files"
+"$git" diff --no-renames --diff-filter=AMT --name-only -z "$base...$head" \
+  -- ':(glob)**/IMPORT-MAP.toml' >"$work/maps"
+if [[ -s $work/maps ]]; then
+  imported_lines=0
+  python3 -I "$helper" "$git" "$head" "$work/files" <"$work/maps" >"$work/imports"
+  while IFS= read -r -d '' path; do
+    stat=$("$git" --literal-pathspecs diff --no-ext-diff --no-textconv --numstat "$base...$head" -- "$path")
+    IFS=$'\t' read -r additions _ <<<"$stat"
+    [[ $additions == - ]] || imported_lines=$((imported_lines + additions))
+  done <"$work/imports"
+fi
 while IFS= read -r -d '' path; do
   exempt=0
   for pattern in "${paths[@]}"; do
@@ -82,7 +96,7 @@ while IFS= read -r -d '' path; do
   ((exempt)) && continue
   attributes=$("$git" check-attr linguist-generated linguist-vendored -- "$path")
   if awk -F': ' '$NF == "set" || $NF == "true" {found=1} END {exit !found}' <<<"$attributes"; then continue; fi
-  stat=$("$git" diff --no-ext-diff --no-textconv --numstat "$base...$head" -- "$path")
+  stat=$("$git" --literal-pathspecs diff --no-ext-diff --no-textconv --numstat "$base...$head" -- "$path")
   [[ $stat == -* ]] && continue
   name=${path##*/}
   "$git" show "$head:$path" >"$work/full/$name"
@@ -97,7 +111,7 @@ while IFS= read -r -d '' path; do
     fi
   done
   ((exempt)) && continue
-  "$git" diff --no-ext-diff --no-textconv --no-renames --unified=0 "$base...$head" -- "$path" |
+  "$git" --literal-pathspecs diff --no-ext-diff --no-textconv --no-renames --unified=0 "$base...$head" -- "$path" |
     awk '/^@@/ {hunk=1; next} hunk && /^\+/ {print substr($0,2)}' >"$work/added/$name"
   count=$(wc -l <"$work/added/$name")
   raw=$((raw + count))
@@ -118,4 +132,4 @@ if ((code > 400)); then
 elif ((raw > 1500)); then
   failed='"raw"'
 fi
-printf '{"code_lines": %d, "code_limit": 400, "raw_lines": %d, "raw_limit": 1500, "failed": %s}\n' "$code" "$raw" "$failed"
+printf '{"code_lines": %d, "code_limit": 400, "raw_lines": %d, "raw_limit": 1500, "imported_lines": %s, "failed": %s}\n' "$code" "$raw" "$imported_lines" "$failed"
