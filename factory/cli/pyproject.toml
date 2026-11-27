@@ -72,7 +72,7 @@ type = "layers"
 unmatched_ignore_imports_alerting = "error"
 layers = [
   "tbhbdev.cli",
-  "tbhbdev.admin | tbhbdev.analytics | tbhbdev.adr | tbhbdev.agy | tbhbdev.host | tbhbdev.issue | tbhbdev.secret | tbhbdev.content | tbhbdev.prose_check | tbhbdev.gitleaks_check",
+  "tbhbdev.admin | tbhbdev.analytics | tbhbdev.adr | tbhbdev.agy | tbhbdev.issue | tbhbdev.secret | tbhbdev.content | tbhbdev.prose_check | tbhbdev.gitleaks_check",
   "tbhbdev.alpha",
   "tbhbdev.runner : tbhbdev.userconfig : tbhbdev.secrets : tbhbdev.telemetry : tbhbdev.gh_agent : tbhbdev.plugins : tbhbdev.content_vet : tbhbdev.cue_runtime",
   "tbhbdev.version | tbhbdev.content_model | tbhbdev.adr_decision | tbhbdev.issue_import",
