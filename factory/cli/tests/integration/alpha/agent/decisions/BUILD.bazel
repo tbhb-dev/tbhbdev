@@ -11,6 +11,19 @@ filegroup(
 )
 
 cli_py_test(
+    name = "test_policy_environment_io",
+    srcs = ["test_policy_environment_io.py"],
+    imports = ["../../../.."],
+    deps = [
+        ":conftest",
+        "//factory/cli/src/tbhbdev/alpha/agent:model",
+        "//factory/cli/tests:conftest",
+        "//factory/cli/tests:policy_example",
+        "//factory/cli/tests/integration/alpha/agent:conftest",
+    ],
+)
+
+cli_py_test(
     name = "test_remote_cleanup",
     srcs = ["test_remote_cleanup.py"],
     imports = ["../../../.."],

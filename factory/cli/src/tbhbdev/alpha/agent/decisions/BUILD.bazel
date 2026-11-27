@@ -54,8 +54,65 @@ cli_py_library(
     imports = ["../../../.."],
     visibility = ["//factory/cli:__subpackages__"],
     deps = [
-        "//factory/cli/src/tbhbdev:secrets",
+        ":policy_agy",
+        ":policy_claude",
+        ":policy_codex",
+        ":policy_environment",
+        ":policy_paths",
         "//factory/cli/src/tbhbdev/alpha/agent:host_tools",
+        "//factory/cli/src/tbhbdev/alpha/agent:model",
+    ],
+)
+
+cli_py_library(
+    name = "policy_agy",
+    srcs = ["policy_agy.py"],
+    imports = ["../../../.."],
+    visibility = ["//factory/cli:__subpackages__"],
+    deps = [
+        ":policy_paths",
+        "//factory/cli/src/tbhbdev/alpha/agent:model",
+    ],
+)
+
+cli_py_library(
+    name = "policy_claude",
+    srcs = ["policy_claude.py"],
+    imports = ["../../../.."],
+    visibility = ["//factory/cli:__subpackages__"],
+    deps = [
+        ":policy_paths",
+        "//factory/cli/src/tbhbdev/alpha/agent:model",
+    ],
+)
+
+cli_py_library(
+    name = "policy_codex",
+    srcs = ["policy_codex.py"],
+    imports = ["../../../.."],
+    visibility = ["//factory/cli:__subpackages__"],
+    deps = ["//factory/cli/src/tbhbdev/alpha/agent:model"],
+)
+
+cli_py_library(
+    name = "policy_environment",
+    srcs = ["policy_environment.py"],
+    imports = ["../../../.."],
+    visibility = ["//factory/cli:__subpackages__"],
+    deps = [
+        ":policy_paths",
+        "//factory/cli/src/tbhbdev/alpha/agent:host_tools",
+        "//factory/cli/src/tbhbdev/alpha/agent:model",
+    ],
+)
+
+cli_py_library(
+    name = "policy_paths",
+    srcs = ["policy_paths.py"],
+    imports = ["../../../.."],
+    visibility = ["//factory/cli:__subpackages__"],
+    deps = [
+        "//factory/cli/src/tbhbdev:secrets",
         "//factory/cli/src/tbhbdev/alpha/agent:model",
     ],
 )

@@ -178,6 +178,18 @@ cli_py_library(
     ],
 )
 
+cli_py_library(
+    name = "policy_example",
+    srcs = ["policy_example.py"],
+    visibility = ["//factory/cli/tests:__subpackages__"],
+    deps = [
+        ":agent_example",
+        "//factory/cli/src/tbhbdev/alpha/agent:host_tools",
+        "//factory/cli/src/tbhbdev/alpha/agent:model",
+        "//factory/cli/src/tbhbdev/alpha/agent/decisions:policy",
+    ],
+)
+
 cli_py_test(
     name = "test_admin",
     srcs = ["test_admin.py"],
@@ -552,20 +564,6 @@ cli_py_test(
         ":conftest",
         "//factory/cli/src/tbhbdev/alpha/agent:ownership",
         "//factory/cli/src/tbhbdev/alpha/agent:runfiles",
-        "@cli_pip//pytest",
-    ],
-)
-
-cli_py_test(
-    name = "test_alpha_agent_policy",
-    srcs = ["test_alpha_agent_policy.py"],
-    deps = [
-        ":agent_example",
-        ":conftest",
-        "//factory/cli/src/tbhbdev:secrets",
-        "//factory/cli/src/tbhbdev/alpha/agent:host_tools",
-        "//factory/cli/src/tbhbdev/alpha/agent:model",
-        "//factory/cli/src/tbhbdev/alpha/agent/decisions:policy",
         "@cli_pip//pytest",
     ],
 )

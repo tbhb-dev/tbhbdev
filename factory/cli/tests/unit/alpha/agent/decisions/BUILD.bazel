@@ -21,6 +21,93 @@ cli_py_test(
 )
 
 cli_py_test(
+    name = "test_policy",
+    srcs = ["test_policy.py"],
+    imports = ["../../../.."],
+    deps = [
+        "//factory/cli/src/tbhbdev:secrets",
+        "//factory/cli/src/tbhbdev/alpha/agent:host_tools",
+        "//factory/cli/src/tbhbdev/alpha/agent:model",
+        "//factory/cli/src/tbhbdev/alpha/agent/decisions:policy",
+        "//factory/cli/src/tbhbdev/alpha/agent/decisions:policy_agy",
+        "//factory/cli/tests:agent_example",
+        "//factory/cli/tests:conftest",
+        "//factory/cli/tests:policy_example",
+        "@cli_pip//pytest",
+    ],
+)
+
+cli_py_test(
+    name = "test_policy_agy",
+    srcs = ["test_policy_agy.py"],
+    imports = ["../../../.."],
+    deps = [
+        "//factory/cli/src/tbhbdev/alpha/agent:model",
+        "//factory/cli/tests:agent_example",
+        "//factory/cli/tests:conftest",
+        "//factory/cli/tests:policy_example",
+        "@cli_pip//pytest",
+    ],
+)
+
+cli_py_test(
+    name = "test_policy_claude",
+    srcs = ["test_policy_claude.py"],
+    imports = ["../../../.."],
+    deps = [
+        "//factory/cli/src/tbhbdev/alpha/agent:model",
+        "//factory/cli/src/tbhbdev/alpha/agent/decisions:policy",
+        "//factory/cli/tests:agent_example",
+        "//factory/cli/tests:conftest",
+        "//factory/cli/tests:policy_example",
+        "@cli_pip//pytest",
+    ],
+)
+
+cli_py_test(
+    name = "test_policy_codex",
+    srcs = ["test_policy_codex.py"],
+    imports = ["../../../.."],
+    deps = [
+        "//factory/cli/src/tbhbdev/alpha/agent:host_tools",
+        "//factory/cli/src/tbhbdev/alpha/agent:model",
+        "//factory/cli/src/tbhbdev/alpha/agent/decisions:policy",
+        "//factory/cli/tests:agent_example",
+        "//factory/cli/tests:conftest",
+        "//factory/cli/tests:policy_example",
+        "@cli_pip//pytest",
+    ],
+)
+
+cli_py_test(
+    name = "test_policy_environment",
+    srcs = ["test_policy_environment.py"],
+    imports = ["../../../.."],
+    deps = [
+        "//factory/cli/src/tbhbdev/alpha/agent:model",
+        "//factory/cli/tests:agent_example",
+        "//factory/cli/tests:conftest",
+        "//factory/cli/tests:policy_example",
+        "@cli_pip//pytest",
+    ],
+)
+
+cli_py_test(
+    name = "test_policy_paths",
+    srcs = ["test_policy_paths.py"],
+    imports = ["../../../.."],
+    deps = [
+        "//factory/cli/src/tbhbdev:secrets",
+        "//factory/cli/src/tbhbdev/alpha/agent:model",
+        "//factory/cli/src/tbhbdev/alpha/agent/decisions:policy",
+        "//factory/cli/tests:agent_example",
+        "//factory/cli/tests:conftest",
+        "//factory/cli/tests:policy_example",
+        "@cli_pip//pytest",
+    ],
+)
+
+cli_py_test(
     name = "test_runfiles_names",
     srcs = ["test_runfiles_names.py"],
     data = ["//factory/cli/tests:agent_runfile_names_inputs"],

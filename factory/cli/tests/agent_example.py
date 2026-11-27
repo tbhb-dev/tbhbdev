@@ -121,3 +121,26 @@ def trusted_executables(monkeypatch: pytest.MonkeyPatch) -> None:
         return f"/usr/bin/{name}"
 
     monkeypatch.setattr(argv.shutil, "which", which)
+
+
+MACOS_TOKEN_PATHS = (
+    "Library/Keychains/tbhbdev.keychain-db",
+    "Library/Keychains/tbhbdev.keychain",
+)
+
+
+def denied(os: model.Os, home: str) -> tuple[str, ...]:
+    """The literal deny list: the token store, the sockets, a denied path."""
+    if os is model.Os.LINUX:
+        return (
+            f"{home}/{TOKEN_DIR}",
+            *LINUX_SOCKET_DENIES,
+            "/tmp/example-sockets",
+            f"{home}/{DENIED}",
+        )
+    return (
+        *(f"{home}/{p}" for p in MACOS_TOKEN_PATHS),
+        "/tmp/example-sockets",
+        "/private/tmp/example-sockets",
+        f"{home}/{DENIED}",
+    )

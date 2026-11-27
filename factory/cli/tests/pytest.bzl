@@ -27,7 +27,6 @@ _IO_TESTS = [
     "test_alpha_agent_credentials",
     "test_alpha_agent_git_parent",
     "test_alpha_agent_ownership",
-    "test_alpha_agent_policy",
     "test_alpha_agent_precheck",
     "test_alpha_agent_process_group",
     "test_alpha_agent_push",
