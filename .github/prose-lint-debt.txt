@@ -1,3 +1,8 @@
+# List one tracked Markdown path per line, relative to the repository root.
+# Add unchanged Markdown copies in the import PR under a comment naming the import.
+# Remove each entry when its file is deleted or ready for prose linting.
+
+# Existing prose debt
 AGENTS.md
 CLAUDE.md
 docs/README.md
