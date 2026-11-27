@@ -33,6 +33,7 @@ from tbhbdev.alpha import (
     gh_app_args,
     gh_app_runtime,
     gh_app_signing,
+    gh_app_state,
 )
 
 NOW = 1_800_000_000
@@ -324,7 +325,7 @@ def test_permissions_parse_sort_and_split_the_cache_directory() -> None:
     assert args.permissions == (("contents", "read"), ("pull_requests", "write"))
     assert gh_app_args.parse_args(["bot", REPO]).permissions == ()
     state = Path("/s")
-    assert gh_app.out_dir(state, replace(args, repo="o/r")) == Path(
+    assert gh_app_state.out_dir(state, replace(args, repo="o/r")) == Path(
         "/s/tbhb-dev/bot/o/r+contents-read+pull-requests-write"
     )
     assert gh_app_api.token_body(
@@ -366,12 +367,12 @@ def test_a_cooldown_option_refuses_permissions() -> None:
 def test_layout() -> None:
     state = Path("/s")
     args = replace(BASE, repo="o/r")
-    assert gh_app.out_dir(state, args) == Path("/s/tbhb-dev/bot/o/r")
-    assert gh_app.out_dir(state, replace(args, all_repos=True)) == Path(
+    assert gh_app_state.out_dir(state, args) == Path("/s/tbhb-dev/bot/o/r")
+    assert gh_app_state.out_dir(state, replace(args, all_repos=True)) == Path(
         "/s/tbhb-dev/bot/o/+all"
     )
-    assert gh_app.out_dir(state, replace(args, vault="v")) == Path("/s/v/bot/o/r")
-    assert gh_app.cooldown_path(state, "bot") == Path("/s/cooldown/bot")
+    assert gh_app_state.out_dir(state, replace(args, vault="v")) == Path("/s/v/bot/o/r")
+    assert gh_app_state.cooldown_path(state, "bot") == Path("/s/cooldown/bot")
     # GitHub can't name a repository `+all`, so it never shares a directory.
     assert not gh_app_args.REPO_PATTERN.fullmatch("o/+all")
 
@@ -388,7 +389,7 @@ def test_layout() -> None:
     ],
 )
 def test_cooldown_decision(text: str | None, until: int | None) -> None:
-    assert gh_app.cooldown_until(text, 100) == until
+    assert gh_app_state.cooldown_until(text, 100) == until
 
 
 @pytest.mark.parametrize(
@@ -406,13 +407,13 @@ def test_cooldown_decision(text: str | None, until: int | None) -> None:
     ],
 )
 def test_reuse_decision(expires: str | None, fresh: bool, reuse: bool) -> None:
-    assert gh_app.reusable(expires, NOW, fresh=fresh) is reuse
+    assert gh_app_state.reusable(expires, NOW, fresh=fresh) is reuse
 
 
 def test_utc() -> None:
-    assert gh_app.utc(0) == "1970-01-01T00:00:00Z"
-    assert gh_app.utc(EXPIRES_EPOCH) == EXPIRES
-    assert gh_app.cooldown_message(0) == "cooldown until 1970-01-01T00:00:00Z"
+    assert gh_app_state.utc(0) == "1970-01-01T00:00:00Z"
+    assert gh_app_state.utc(EXPIRES_EPOCH) == EXPIRES
+    assert gh_app_state.cooldown_message(0) == "cooldown until 1970-01-01T00:00:00Z"
 
 
 def test_rebuild_pem_refolds_a_flattened_key() -> None:
@@ -465,7 +466,7 @@ def test_the_owner_is_what_precedes_the_first_slash() -> None:
     assert gh_app_args.split_repo("a/b/c") == ("a", "b/c")
     assert gh_app_api.lookup_paths("a/b/c")[1] == "/orgs/a/installation"
     assert gh_app_api.token_body("a/b/c", all_repos=False) == {"repositories": ["b/c"]}
-    assert gh_app.out_dir(Path("/s"), replace(BASE, repo="a/b")) == Path(
+    assert gh_app_state.out_dir(Path("/s"), replace(BASE, repo="a/b")) == Path(
         "/s/tbhb-dev/bot/a/b"
     )
 
@@ -610,7 +611,7 @@ def test_is_rsa(text: bytes, rsa_key: bool) -> None:
 
 
 def test_render_hosts() -> None:
-    assert gh_app.render_hosts("bot", TOKEN) == (
+    assert gh_app_state.render_hosts("bot", TOKEN) == (
         "github.com:\n"
         "    users:\n"
         '        "bot[bot]":\n'
@@ -727,7 +728,9 @@ def test_a_mint_writes_hosts_yml_and_prints_only_the_dir(
     )
     out_dir = out_path(tmp_path, "widget", vault=APP_VAULT)
     assert (code, out, err) == (0, f"{out_dir}\n", "")
-    assert (out_dir / "hosts.yml").read_text() == gh_app.render_hosts("bot", TOKEN)
+    assert (out_dir / "hosts.yml").read_text() == gh_app_state.render_hosts(
+        "bot", TOKEN
+    )
     assert (out_dir / "app-slug").read_text() == "bot\n"
     assert (out_dir / "expires-at").read_text() == f"{EXPIRES_EPOCH}\n"
     assert mode(out_dir) == 0o700
@@ -1281,7 +1284,9 @@ def test_a_token_that_cannot_be_reused_is_minted_again(
     )
     assert (code, out) == (0, f"{out_dir}\n")
     assert len(github.requests) == 2
-    assert (out_dir / "hosts.yml").read_text() == gh_app.render_hosts("bot", TOKEN)
+    assert (out_dir / "hosts.yml").read_text() == gh_app_state.render_hosts(
+        "bot", TOKEN
+    )
 
 
 def test_the_state_file_is_replaced_atomically(
@@ -1471,7 +1476,7 @@ def test_a_cooldown_serves_a_cached_token_and_refuses_any_other_mint(
     assert run(capsys, env, "bot", REPO) == (0, f"{out_dir}\n", "")
     assert (store.created, store.reads, github.requests) == (0, [], [])
     # Every other mint, a --fresh one included, stops before any read.
-    refused = f"cooldown until {gh_app.utc(NOW + 1)}\n"
+    refused = f"cooldown until {gh_app_state.utc(NOW + 1)}\n"
     extras: list[list[str]] = [["--fresh"], ["--dry-run"], ["--all-repos"]]
     for extra in extras:
         assert run(capsys, env, "bot", REPO, *extra) == (75, "", refused)
@@ -1505,7 +1510,7 @@ def test_cooldown_status(capsys: pytest.CaptureFixture[str], tmp_path: Path) -> 
     run(capsys, env, "bot", "--cooldown-until", str(NOW + 1))
     assert run(capsys, env, "bot", "--cooldown-status") == (
         75,
-        f"cooldown until {gh_app.utc(NOW + 1)}\n",
+        f"cooldown until {gh_app_state.utc(NOW + 1)}\n",
         "",
     )
     run(capsys, env, "bot", "--cooldown-until", str(NOW))

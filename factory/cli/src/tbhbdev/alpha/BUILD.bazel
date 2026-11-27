@@ -45,6 +45,7 @@ cli_py_library(
         ":gh_app_args",
         ":gh_app_runtime",
         ":gh_app_signing",
+        ":gh_app_state",
         "//factory/cli/src/tbhbdev:secrets",
     ],
 )
@@ -90,6 +91,18 @@ cli_py_library(
     deps = [
         ":gh_app_runtime",
         "@cli_pip//cryptography",
+    ],
+)
+
+cli_py_library(
+    name = "gh_app_state",
+    srcs = ["gh_app_state.py"],
+    imports = ["../.."],
+    visibility = ["//factory/cli:__subpackages__"],
+    deps = [
+        ":gh_app_api",
+        ":gh_app_args",
+        ":gh_app_runtime",
     ],
 )
 

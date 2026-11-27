@@ -952,6 +952,7 @@ cli_py_test(
         "//factory/cli/src/tbhbdev/alpha:gh_app_args",
         "//factory/cli/src/tbhbdev/alpha:gh_app_runtime",
         "//factory/cli/src/tbhbdev/alpha:gh_app_signing",
+        "//factory/cli/src/tbhbdev/alpha:gh_app_state",
         "@cli_pip//certifi",
         "@cli_pip//cryptography",
         "@cli_pip//httpx2",
