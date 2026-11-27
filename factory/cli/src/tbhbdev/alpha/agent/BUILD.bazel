@@ -228,6 +228,7 @@ cli_py_library(
         ":push",
         ":render",
         ":review_post",
+        ":run_host_launch",
         ":runfiles",
         ":settings",
         ":shims",
@@ -369,4 +370,12 @@ filegroup(
         "//factory/cli:__pkg__",
         "//factory/cli/tests:__pkg__",
     ],
+)
+
+cli_py_library(
+    name = "run_host_launch",
+    srcs = ["run_host_launch.py"],
+    imports = ["../../.."],
+    visibility = ["//factory/cli:__subpackages__"],
+    deps = [":model"],
 )

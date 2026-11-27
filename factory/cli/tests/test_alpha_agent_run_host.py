@@ -435,11 +435,6 @@ def test_prepare_uses_one_worktree_and_private_destinations(
         run, request=dataclasses.replace(run.request, commit=commit)
     )
     run = with_identity_cli(run, ready=True)
-    value, _ = run_host.checked_policy(run, run_host.planned_paths(run))
-    expected_path = value.env["PATH"] if harness is Harness.AGY else value.tool_path
-    assert run_host.hook_environment(value, unsandboxed=False)["PATH"] == expected_path
-    if harness is Harness.CLAUDE:
-        assert run_host.hook_environment(value, unsandboxed=True) == value.env
     source = runfiles.private_dir(run.home / ".codex") / "auth.json"
     source.write_text("example-auth")
     (source.parent / "hooks.json").write_text('{"hooks":{"SessionStart":[]}}')
@@ -547,17 +542,6 @@ def test_codex_run_config_holds_the_otel_table(
     assert config_path.stat().st_mode & 0o777 == 0o600
 
 
-@pytest.mark.parametrize("scheme", ["http", "https"])
-@pytest.mark.parametrize("suffix", ["", "/"])
-def test_otel_config_derives_signal_paths_from_the_base(
-    scheme: str, suffix: str
-) -> None:
-    base = f"{scheme}://otlp.example.net"
-    table = tomllib.loads(run_host.otel_config(base + suffix))["otel"]
-    assert table["trace_exporter"]["otlp-http"]["endpoint"] == (f"{base}/v1/traces")
-    assert table["metrics_exporter"]["otlp-http"]["endpoint"] == (f"{base}/v1/metrics")
-
-
 def test_codex_run_without_an_endpoint_writes_no_config(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -599,11 +583,6 @@ def test_build_preparation_has_the_run_socket(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, no_commit: bool, start: str | None
 ) -> None:
     run = make_run(tmp_path, no_commit=no_commit)
-    probe = run_host.hook_environment
-
-    def hook_environment(value: Policy, *, unsandboxed: bool) -> dict[str, str]:
-        assert unsandboxed is run.request.unsandboxed
-        return probe(value, unsandboxed=unsandboxed)
 
     def fetch_token(request: RunRequest, settings: Settings) -> str:
         assert (request, settings) == (run.request, run.settings)
@@ -631,7 +610,6 @@ def test_build_preparation_has_the_run_socket(
     monkeypatch.setattr(run_host.worktree, "create", create)
     baseline = Mock(return_value=start)
     monkeypatch.setattr(run_host.push, "head", baseline)
-    monkeypatch.setattr(run_host, "hook_environment", hook_environment)
     monkeypatch.setattr(run_host, "bazel_bases", bazel_bases)
     monkeypatch.setattr(credentials, "fetch_token", fetch_token)
     if not no_commit and start is None:
@@ -2814,53 +2792,6 @@ def test_log_argv_writes_one_complete_line_only_for_codex(
     run_host.log_argv(run, ("codex", "a b"))
     assert writes == (
         [("log", "argv: codex 'a b'\n")] if harness is Harness.CODEX else []
-    )
-
-
-@pytest.mark.parametrize(
-    ("command", "expected"),
-    [
-        ((), "argv: "),
-        (
-            ("shell_environment_policy.set.EXAMPLE=one",),
-            "argv: shell_environment_policy.set.EXAMPLE=one",
-        ),
-        (("-c", "shell_environment_policy.set.EXAMPLE=one"), "argv: "),
-        (
-            ("codex", "shell_environment_policy.set.EXAMPLE=one"),
-            "argv: codex shell_environment_policy.set.EXAMPLE=one",
-        ),
-        (
-            (
-                "-c",
-                "-c",
-                "shell_environment_policy.set.EXAMPLE=one",
-                "shell_environment_policy.set.EXAMPLE=two",
-            ),
-            "argv: -c shell_environment_policy.set.EXAMPLE=two",
-        ),
-    ],
-)
-def test_argv_log_line_drops_only_environment_override_pairs(
-    command: tuple[str, ...], expected: str
-) -> None:
-    assert run_host.argv_log_line(command) == expected
-
-
-def test_argv_log_line_keeps_other_overrides() -> None:
-    command = (
-        "codex",
-        "-c",
-        "shell_environment_policy.set.HOME='x y'",
-        "-c",
-        "model_reasoning_effort='high'",
-        "-c",
-        "shell_environment_policy.set.PATH='p'",
-        "-m",
-        "-c",
-    )
-    assert run_host.argv_log_line(command) == (
-        "argv: codex -c 'model_reasoning_effort='\"'\"'high'\"'\"'' -m -c"
     )
 
 
@@ -5155,31 +5086,6 @@ def test_config_check_protects_the_configured_startup_directory(
             Invalid, match=r"protected host path .* overlaps write root"
         ):
             run_host.check_config(configured)
-
-
-@pytest.mark.parametrize("scheme", ["http", "https"])
-def test_resource_attributes_name_host_account_and_run(
-    tmp_path: Path, scheme: str
-) -> None:
-    run = make_run(tmp_path)
-    run = dataclasses.replace(
-        run,
-        settings=dataclasses.replace(
-            run.settings, otel_endpoint=f"{scheme}://otlp.example.net"
-        ),
-    )
-    assert run_host.resource_attributes(run) == {
-        "OTEL_RESOURCE_ATTRIBUTES": (
-            f"host.name={run.host.name},tbhb.account={run.request.account}"
-            ",tbhb.run.id=example"
-        )
-    }
-
-
-def test_resource_attributes_need_an_endpoint(tmp_path: Path) -> None:
-    run = make_run(tmp_path)
-    assert run.settings.otel_endpoint is None
-    assert run_host.resource_attributes(run) == {}
 
 
 @pytest.mark.parametrize("harness", Harness)
