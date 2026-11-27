@@ -218,14 +218,14 @@ def build_provenance(
         (checkout / ".git").write_text("gitdir: metadata\n")
         (tmp_path / ".git").mkdir()
     else:
-        exists = build_info.Path.exists
+        exists = Path.exists
 
         def without_git(path: Path, *, follow_symlinks: bool = True) -> bool:
             if path.name == ".git" and path.parent in source.parents:
                 return False
             return exists(path, follow_symlinks=follow_symlinks)
 
-        monkeypatch.setattr(build_info.Path, "exists", without_git)
+        monkeypatch.setattr(Path, "exists", without_git)
 
     def distribution(name: str) -> SimpleNamespace:
         assert name == "tbhbdev"

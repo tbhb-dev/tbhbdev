@@ -12,6 +12,7 @@ FINAL = ".out.final"
 LOG = ".log"
 BRANCH = ".branch"
 PR = ".pr"
+BASE = ".base"
 HEAD = ".head"
 RC = ".rc"
 KEEP = ".keep"
@@ -34,6 +35,7 @@ SUFFIXES = (
     LOG,
     BRANCH,
     PR,
+    BASE,
     HEAD,
     KEEP,
     RC_PENDING,
