@@ -121,14 +121,15 @@ def writes(data: dict[str, object]) -> Iterator[tuple[Path, str, str]]:
     if tool == "apply_patch":
         yield from patch_files(str(fields.get("command")), cwd)
         return
-    if tool == "NotebookEdit":
-        return
-    name = agy_edit_path(fields)
+    notebook_path = fields.get("notebook_path") if tool == "NotebookEdit" else None
+    name = notebook_path or agy_edit_path(fields)
     if not isinstance(name, str):
         return
     path = cwd / name
     before = read_file(path)
     content = pick(fields, CONTENT_FIELDS)
+    if tool == "NotebookEdit":
+        content = notebook_edit(before, fields)
     if not isinstance(content, str):
         edits = pick(fields, EDIT_FIELDS)
         if isinstance(edits, list):
@@ -137,3 +138,29 @@ def writes(data: dict[str, object]) -> Iterator[tuple[Path, str, str]]:
             operations = [fields]
         content = replacements(before, operations)
     yield path, before, content
+
+
+def notebook_edit(before: str, inputs: dict[str, object]) -> str:
+    """Apply a proposed notebook cell insertion, replacement or deletion."""
+    book: dict[str, list[dict[str, object]]] = json.loads(before)
+    cell_id = inputs.get("cell_id")
+    cells = book["cells"]
+    index = next((i for i, cell in enumerate(cells) if cell.get("id") == cell_id), None)
+    if index is None:
+        return before
+    mode = inputs.get("edit_mode")
+    if mode == "delete":
+        del cells[index]
+    elif mode == "insert":
+        cells.insert(
+            index,
+            {
+                "cell_type": inputs.get("cell_type", "code"),
+                "source": inputs["new_source"],
+            },
+        )
+    else:
+        cells[index]["source"] = inputs["new_source"]
+        if "cell_type" in inputs:
+            cells[index]["cell_type"] = inputs["cell_type"]
+    return json.dumps(book)

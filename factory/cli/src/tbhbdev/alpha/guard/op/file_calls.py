@@ -3,8 +3,9 @@
 """Find 1Password invocations in proposed file contents."""
 
 import ast
+import json
 import re
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, TypedDict
 
 import yaml
 
@@ -32,6 +33,19 @@ SHEBANG = re.compile(r"^#!.*\b(?:sh|bash|zsh)\b")
 
 
 SHELL_FENCES = {"sh", "bash", "shell", "zsh", "console", "sh-session", "shellscript"}
+
+
+class Cell(TypedDict, total=False):
+    """The notebook code fields this hook inspects."""
+
+    cell_type: str
+    source: str | list[str]
+
+
+class Notebook(TypedDict, total=False):
+    """Notebook code cells, decoded from JSON."""
+
+    cells: list[Cell]
 
 
 def literal(value: ast.AST) -> object:
@@ -161,6 +175,29 @@ def fence_calls(language: str | None, lines: list[str]) -> Iterator[list[str]]:
         yield from shell_calls("\n".join(lines))
 
 
+def notebook_calls(text: str) -> Iterator[list[str]]:
+    """Code cells support shell magics and Python command expressions."""
+    book: Notebook = json.loads(text or "{}")
+    for cell in book.get("cells", []):
+        cell_type = cell.get("cell_type")
+        if cell_type != "code":
+            continue
+        source = "".join(cell.get("source", []))
+        header, _, body = source.partition("\n")
+        if header.split()[:1] in (["%%bash"], ["%%sh"]) or header.split()[:2] in (
+            ["%%script", "bash"],
+            ["%%script", "sh"],
+            ["%%script", "zsh"],
+        ):
+            yield from shell_calls(body)
+        else:
+            for line in source.splitlines():
+                magic = re.match(r"^\s*(?:[A-Za-z_]\w*\s*=\s*)?!(.*)$", line)
+                if magic:
+                    yield from shell_calls(magic[1])
+            yield from python_calls(source)
+
+
 def file_calls(path: Path, text: str) -> Iterator[list[str]]:
     """Select the supported parser by filename or shell shebang."""
     name = path.name.removesuffix(".j2")
@@ -170,6 +207,8 @@ def file_calls(path: Path, text: str) -> Iterator[list[str]]:
         yield from markdown_calls(text)
     elif path.suffix == ".py":
         yield from python_calls(text)
+    elif path.suffix == ".ipynb":
+        yield from notebook_calls(text)
     elif path.suffix in {".yml", ".yaml"}:
         try:
             for value in yaml.safe_load_all(text):

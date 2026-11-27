@@ -141,6 +141,32 @@ def test_edits(
     assert invoke(monkeypatch, capsys, payload)
 
 
+@pytest.mark.parametrize("mode", ["replace", "insert", "delete"])
+def test_notebook_edit(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    mode: str,
+) -> None:
+    path = tmp_path / "x.ipynb"
+    cell = {"id": "one", "cell_type": "code", "source": "print(1)"}
+    path.write_text(json.dumps({"cells": [cell]}))
+    payload: dict[str, object] = {
+        "tool_name": "NotebookEdit",
+        "tool_input": {
+            "notebook_path": str(path),
+            "cell_id": "one",
+            "edit_mode": mode,
+            "new_source": "!op read x",
+        },
+    }
+    out = invoke(monkeypatch, capsys, payload)
+    if mode == "delete":
+        assert not out
+    else:
+        assert json.loads(out)["hookSpecificOutput"]["permissionDecision"] == "deny"
+
+
 def test_failures(
     monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:

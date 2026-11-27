@@ -2,6 +2,7 @@
 # Copyright Tony Burns
 """Exercise how file contents expose proposed 1Password invocations."""
 
+import json
 from pathlib import Path
 
 import pytest
@@ -122,3 +123,53 @@ def test_yaml_script_non_string() -> None:
 @pytest.mark.parametrize("info", ["", "XBashX", "{XBashX}"])
 def test_non_shell_fence_info(info: str) -> None:
     assert not list(guard.markdown_calls(f"```{info}\nop read x\n```"))
+
+
+def book(source: str) -> str:
+    return json.dumps({"cells": [{"id": "one", "cell_type": "code", "source": source}]})
+
+
+def test_notebook_magic_options() -> None:
+    assert list(guard.notebook_calls(book("%%bash -e\nop read x"))) == [
+        ["op", "read", "x"]
+    ]
+
+
+def test_notebook_multiple_cells() -> None:
+    cells = [
+        {"cell_type": "markdown", "source": "op read z"},
+        {"cell_type": "code", "source": ["%%sh\n", "op read x\n"]},
+        {"cell_type": "code", "source": "  !op read y\n"},
+        {"cell_type": "code"},
+    ]
+    assert list(guard.notebook_calls(json.dumps({"cells": cells}))) == [
+        ["op", "read", "x"],
+        ["op", "read", "y"],
+    ]
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        "x = !op read x",
+        "%%script bash\nop read x",
+        "%%script sh\nop read x",
+        "%%script zsh\nop read x",
+        'subprocess.run("op read x", shell=True)',
+    ],
+)
+def test_notebook_review_shapes(source: str) -> None:
+    assert list(guard.notebook_calls(book(source))) == [["op", "read", "x"]]
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        "%%script bash -e\nop read x",
+        "%%script sh -e\nop read x",
+        "%%script zsh -e\nop read x",
+        "X = !op read x",
+    ],
+)
+def test_notebook_magic_arguments(source: str) -> None:
+    assert list(guard.notebook_calls(book(source))) == [["op", "read", "x"]]

@@ -2,6 +2,7 @@
 # Copyright Tony Burns
 """Exercise edit reconstruction from tool payloads and files."""
 
+import json
 from pathlib import Path
 
 import pytest
@@ -106,16 +107,40 @@ def test_patch_command_field(tmp_path: Path) -> None:
     ) == [(tmp_path / "x.sh", "", "op read x\n")]
 
 
-def test_notebook_edit_yields_no_text_writes(tmp_path: Path) -> None:
-    payload: dict[str, object] = {
-        "cwd": str(tmp_path),
-        "tool_name": "NotebookEdit",
-        "tool_input": {
-            "notebook_path": str(tmp_path / "notes.ipynb"),
-            "new_source": "print(1)",
-        },
+@pytest.mark.parametrize("mode", ["replace", "insert", "delete"])
+def test_notebook_cell_selection(mode: str) -> None:
+    first = {"id": "first", "cell_type": "code", "source": "print(1)"}
+    second = {"id": "second", "cell_type": "code", "source": "print(2)"}
+    inputs: dict[str, object] = {
+        "cell_id": "second",
+        "edit_mode": mode,
+        "new_source": "op read x",
+        "cell_type": "markdown",
     }
-    assert list(guard.writes(payload)) == []
+    book_before = json.dumps({"cells": [first, second]})
+    expected = [first, {**second, "source": "op read x", "cell_type": "markdown"}]
+    if mode == "insert":
+        expected = [first, {"cell_type": "markdown", "source": "op read x"}, second]
+    elif mode == "delete":
+        expected = [first]
+    assert json.loads(guard.notebook_edit(book_before, inputs)) == {"cells": expected}
+    assert json.loads(guard.notebook_edit(book_before, {"new_source": "updated"})) == {
+        "cells": [first, second]
+    }
+
+
+@pytest.mark.parametrize("mode", ["replace", "insert", "delete"])
+def test_unknown_notebook_cell(mode: str) -> None:
+    before = json.dumps(
+        {"cells": [{"id": "one", "cell_type": "code", "source": "print(1)"}]}
+    )
+    assert (
+        guard.notebook_edit(
+            before,
+            {"cell_id": "unknown", "edit_mode": mode, "new_source": "!op read x"},
+        )
+        == before
+    )
 
 
 def test_patch_without_final_newline(tmp_path: Path) -> None:
