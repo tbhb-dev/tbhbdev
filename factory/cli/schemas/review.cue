@@ -19,8 +19,9 @@ import (
 #VerdictStart:   #"^[\t\p{Z}]*(?:(?i:Decision|Verdict)[\t\p{Z}]*:[\t\p{Z}]*)?(?:GO|NO-GO|APPROVE|BLOCK|HOLD|REQUEST_CHANGES)"#
 #SummaryVerdict: #"\#(#VerdictStart)(?:$|[.!?:;\s\p{Z}])|(?im:\#(#VerdictStart)[.!?:;]?[\t\p{Z}]*\r?$)"#
 
-#Abbreviation: #"(?i:\b(?:mr|mrs|ms|dr|prof|vs)\.)|\b(?:\p{L}\.){2,}"#
-#QuotedString: #""[^"]*"|“[^”]*”|‘[^’]*’"#
+#Abbreviation:    #"(?i:\b(?:mr|mrs|ms|dr|prof|vs)\.)|\b(?:\p{L}\.){2,}"#
+#CurlyApostrophe: #"(\p{L})’(\p{L})"#
+#QuotedString:    #""[^"]*"|“[^”]*”|‘[^’]*’"#
 
 // After a closing quote or bracket, lowercase prose continues the sentence.
 #SentenceBoundary: #"[.!?][\s\p{Z}]+[\p{L}\p{N}"'“‘`(\[{]|[.!?]["'”’`)\]}]+[\s\p{Z}]+[\p{Lu}\p{Lt}\p{N}"'“‘`(\[{]"#
@@ -40,8 +41,12 @@ import (
 	_text:        visible & !~#ReviewStamp
 	_words:       <=40
 	sentenceText: *visible | string
+	// Normalize apostrophes between letters. A second pass catches matches that share a letter.
+	let firstPass = regexp.ReplaceAll(#CurlyApostrophe, sentenceText, "$1'$2")
+	let normalized = regexp.ReplaceAll(#CurlyApostrophe, firstPass, "$1'$2")
+
 	// Mask quoted text and strip abbreviations before counting sentence boundaries.
-	_withoutQuotes: regexp.ReplaceAll(#QuotedString, sentenceText, "Quote")
+	_withoutQuotes: regexp.ReplaceAll(#QuotedString, normalized, "Quote")
 	_sentences:     regexp.ReplaceAll(#Abbreviation, _withoutQuotes, "") & !~#ThreeSentences
 }
 

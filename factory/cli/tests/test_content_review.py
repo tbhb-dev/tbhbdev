@@ -84,6 +84,10 @@ def test_summary_refuses_excess_words_sentences_or_size(summary: str) -> None:
             "The parser preserves \u2018Retry? yes\u2019 as a single string. "
             "Tests cover it."
         ),
+        (
+            "The parser preserves \u2018Don\u2019t retry? yes\u2019 as a string. "
+            "Tests cover it."
+        ),
         "The handler returns the `APPROVE` enum.",
         "The handler checks each result, e.g. a stale value. Retries preserve it.",
         "The handler checks labels, e.g. Ready or Saved. Retries preserve them.",
