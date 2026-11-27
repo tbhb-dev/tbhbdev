@@ -11,8 +11,9 @@ lazy import fcntl
 lazy from pathlib import Path
 
 from tbhbops.deploy import filesystem as fs
+from tbhbops.deploy.command import CommandError
+from tbhbops.deploy.compose import Engine
 from tbhbops.deploy.config import Secret, Service, integer, text
-from tbhbops.deploy.engine import CommandError, Engine
 from tbhbops.deploy.protocol import Json, RefusalError, decode, mapping, require
 
 

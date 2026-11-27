@@ -13,9 +13,14 @@ import yaml
 from jsonschema import Draft202012Validator
 
 from tbhbdev import content
-from tbhbdev.alpha import pull_request as pr
-from tbhbdev.alpha import pull_request_frontmatter as frontmatter
 from tbhbdev.alpha import review_doc, review_policy, review_threads
+from tbhbdev.alpha.pull_request import attribution as pr_attribution
+from tbhbdev.alpha.pull_request import body as pr_body
+from tbhbdev.alpha.pull_request import frontmatter
+from tbhbdev.alpha.pull_request import github as pr_github
+from tbhbdev.alpha.pull_request import prose as pr_prose
+from tbhbdev.alpha.pull_request import repository as pr_repository
+from tbhbdev.alpha.pull_request import tools as pr_tools
 
 SCHEMA = {
     "$schema": "https://json-schema.org/draft/2020-12/schema",
@@ -44,7 +49,7 @@ TEMPLATE = (
 
 def draft_directory() -> Path:
     """The directory for reviews in this worktree."""
-    code, directory = pr.git("rev-parse", "--git-dir")
+    code, directory = pr_tools.git("rev-parse", "--git-dir")
     if code != 0:
         message = "review drafts require a git worktree"
         raise SystemExit(message)
@@ -70,13 +75,20 @@ def fetch_head(number: int) -> str:
     Raises:
         SystemExit: gh fails or does not return a head SHA.
     """
-    done = pr.run(
-        [pr.find_tool(pr.GH), "pr", "view", str(number), "--json", "headRefOid"]
+    done = pr_tools.run(
+        [
+            pr_tools.find_tool(pr_tools.GH),
+            "pr",
+            "view",
+            str(number),
+            "--json",
+            "headRefOid",
+        ]
     )
     if done.returncode != 0:
         message = f"gh pr view failed: {' '.join(done.stderr.split())}"
         raise SystemExit(message)
-    data = pr.gh_data(done)
+    data = pr_github.gh_data(done)
     head = data.get("headRefOid") if isinstance(data, dict) else None
     if not isinstance(head, str) or HEAD.fullmatch(head) is None:
         message = "gh pr view did not return a 40-hex headRefOid"
@@ -135,7 +147,7 @@ def draft(number: int, *, force: bool) -> Path:
     return path
 
 
-def check_text(text: str, number: int, *, lint: bool = True) -> list[pr.Problem]:
+def check_text(text: str, number: int, *, lint: bool = True) -> list[pr_body.Problem]:
     """Validate review metadata and its title-free body without reading GitHub."""
     try:
         data, body = frontmatter.parse_frontmatter(text)
@@ -158,12 +170,12 @@ def check_text(text: str, number: int, *, lint: bool = True) -> list[pr.Problem]
     return lint_body(body, first) if lint and not problems else problems
 
 
-def lint_body(body: str, first: int) -> list[pr.Problem]:
+def lint_body(body: str, first: int) -> list[pr_body.Problem]:
     rendered = body.splitlines()
     first_content = next(i for i, line in enumerate(rendered, 1) if line.strip())
     return sorted(
         set(
-            pr.lint(
+            pr_prose.lint(
                 rendered,
                 first,
                 path=review_doc.LINT_PATH,
@@ -179,12 +191,12 @@ class GhApi:
     def request(
         self, method: str, path: str, payload: dict[str, object] | None = None
     ) -> object:
-        args = [pr.find_tool(pr.GH), "api", "--method", method, path]
+        args = [pr_tools.find_tool(pr_tools.GH), "api", "--method", method, path]
         stdin = ""
         if payload is not None:
             args += ["--input", "-"]
             stdin = json.dumps(payload)
-        if (done := pr.run(args, stdin=stdin)).returncode != 0:
+        if (done := pr_tools.run(args, stdin=stdin)).returncode != 0:
             raise review_doc.ReviewError(done.stderr.strip())
         try:
             return json.loads(done.stdout or "null")
@@ -217,11 +229,11 @@ def post_event_draft(text: str, number: int) -> int | None:
     commit = str(fields["commit_id"]).lower()
     if problems := review_doc.lint_post(body):
         raise review_doc.ReviewError("\n".join(problems))
-    repo = pr.origin_repository()
+    repo = pr_repository.origin_repository()
     path = f"repos/{repo}/pulls/{number}"
     api = GhApi()
     review_doc.check_head(api, path, commit)
-    trailer = review_doc.attribution(pr.posting_value(os.environ))
+    trailer = review_doc.attribution(pr_attribution.posting_value(os.environ))
     prose = body.strip("\n")
     return review_doc.send_review(api, path, commit, f"{prose}\n\n{trailer}\n", event)
 
@@ -234,7 +246,7 @@ def parse_document(text: str, number: int) -> review_doc.ReviewDoc:
     return doc
 
 
-def check_document(text: str, number: int, *, lint: bool) -> list[pr.Problem]:
+def check_document(text: str, number: int, *, lint: bool) -> list[pr_body.Problem]:
     try:
         doc = parse_document(text, number)
     except review_doc.ReviewError as exc:
@@ -248,7 +260,7 @@ def check_document(text: str, number: int, *, lint: bool) -> list[pr.Problem]:
 
 def post_document(text: str, number: int, author: str | None) -> tuple[str, int | None]:
     doc = parse_document(text, number)
-    repo = pr.origin_repository()
+    repo = pr_repository.origin_repository()
     if doc.repo != repo:
         message = f"draft repo {doc.repo} differs from origin repo {repo}"
         raise review_doc.ReviewError(message)
@@ -257,7 +269,7 @@ def post_document(text: str, number: int, author: str | None) -> tuple[str, int 
         api,
         doc,
         author=author or api_author(api),
-        identity_value=pr.posting_value(os.environ),
+        identity_value=pr_attribution.posting_value(os.environ),
     )
 
 
@@ -279,7 +291,12 @@ def post_draft(number: int, author: str | None) -> int:
 
 def edit_review(args: argparse.Namespace) -> int:
     try:
-        target = (GhApi(), pr.origin_repository(), args.number, args.review_id)
+        target = (
+            GhApi(),
+            pr_repository.origin_repository(),
+            args.number,
+            args.review_id,
+        )
         if args.command == "dismiss":
             review_doc.dismiss(*target, args.reason)
             result = f"superseded {args.review_id}"
@@ -295,7 +312,7 @@ def edit_review(args: argparse.Namespace) -> int:
 
 def thread_command(args: argparse.Namespace) -> int:
     try:
-        target = (GhApi(), pr.origin_repository(), args.number)
+        target = (GhApi(), pr_repository.origin_repository(), args.number)
         if args.command == "threads":
             for row in review_threads.list_rows(*target, unresolved=args.unresolved):
                 print(row)

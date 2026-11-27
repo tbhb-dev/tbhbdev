@@ -1,0 +1,9 @@
+# Managed by Ansible (agent_account).
+build --local_resources=cpu=HOST_CPUS*{{ agent_account_bazel_resource_fraction }}
+build --local_resources=memory=HOST_RAM*{{ agent_account_bazel_resource_fraction }}
+build --jobs=HOST_CPUS*{{ agent_account_bazel_resource_fraction }}
+startup --host_jvm_args=-Xmx3g
+startup --max_idle_secs=900
+build --disk_cache={{ (agent_account_home ~ '/.cache/bazel-disk') | quote }}
+build --experimental_disk_cache_gc_max_size={{ agent_account_bazel_disk_cache_max_size }}
+build --experimental_disk_cache_gc_max_age={{ agent_account_bazel_disk_cache_max_age }}

@@ -27,7 +27,8 @@ from tbhbdev.alpha.merge.rules import (
     require_merge_commits,
     required_checks,
 )
-from tbhbdev.alpha.pull_request import GH, NAME_WITH_OWNER, find_tool, run, target_of_pr
+from tbhbdev.alpha.pull_request.metadata import NAME_WITH_OWNER, target_of_pr
+from tbhbdev.alpha.pull_request.tools import GH, find_tool, run
 
 VIEW_FIELDS = (
     "title,body,headRefOid,baseRefName,state,isDraft,mergeable,"

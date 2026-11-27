@@ -38,14 +38,14 @@ if [[ ${1:-} == -Djava.awt.headless=true ]]; then
   json) echo '{}' >"$destination/workspace.json" ;;
   plantuml) printf '@startuml\n@enduml\n' >"$destination/view.puml" ;;
   svg)
-    printf '<text font-family="Liberation Sans">text</text>\n' >"$STUB_OUT/diagrams/view.svg"
+    printf '<text font-family="IBM Plex Sans">text</text>\n' >"$STUB_OUT/diagrams/view.svg"
     for face in Regular Bold Italic BoldItalic; do
-      file=$fonts/LiberationSans-$face.ttf
-      family="Liberation Sans"
+      file=$fonts/IBMPlexSans-$face.ttf
+      family="IBM Plex Sans"
       if [[ $face == "${STUB_BAD_FACE:-}" ]]; then
         case $STUB_BAD_KIND in
         missing) continue ;;
-        system) file=/system/fonts/LiberationSans-$face.ttf ;;
+        system) file=/system/fonts/IBMPlexSans-$face.ttf ;;
         suffix) file=$file.other ;;
         family) family='Other Sans' ;;
         esac
@@ -67,7 +67,7 @@ scratch=$(mktemp -d "${TEST_TMPDIR:-${TMPDIR:-/tmp}}/font-usage.XXXXXX")
 trap 'rm -rf "$scratch"' EXIT
 mkdir -p "$scratch/fonts" "$scratch/bin"
 for face in Regular Bold Italic BoldItalic; do
-  touch "$scratch/fonts/LiberationSans-$face.ttf"
+  touch "$scratch/fonts/IBMPlexSans-$face.ttf"
 done
 # The stub expands the operating system when the runner invokes it.
 # shellcheck disable=SC2016
@@ -97,7 +97,7 @@ for os in Linux Darwin; do
     for kind in system missing suffix family; do
       render_on "$os" "$log" "$face" "$kind"
       [[ $status == 2 ]] || fail "$os accepted $kind $face (exit $status)"
-      grep -F "JVM did not use the pinned Liberation Sans TTF: $face" "$scratch/render.log" >/dev/null || fail "missing diagnostic for $os $kind $face"
+      grep -F "JVM did not use the pinned IBM Plex Sans TTF: $face" "$scratch/render.log" >/dev/null || fail "missing diagnostic for $os $kind $face"
     done
   done
 done

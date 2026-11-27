@@ -1,6 +1,7 @@
 # SPDX-License-Identifier: Apache-2.0
 # Copyright Tony Burns
 
+load("//factory/cli:python.bzl", "cli_py_library")
 load("//factory/cli/tests:pytest.bzl", "cli_py_test")
 
 filegroup(
@@ -14,6 +15,7 @@ cli_py_test(
     srcs = ["test_command_host_names.py"],
     imports = ["../../.."],
     deps = [
+        ":conftest",
         "//factory/cli/src/tbhbdev/alpha/agent:settings",
         "//factory/cli/tests:agent_cli_example",
         "//factory/cli/tests:agent_driver_example",
@@ -24,13 +26,55 @@ cli_py_test(
     ],
 )
 
+cli_py_library(
+    name = "conftest",
+    testonly = True,
+    srcs = ["conftest.py"],
+    imports = ["../../.."],
+    visibility = ["//factory/cli/tests:__subpackages__"],
+    deps = [
+        "//factory/cli/src/tbhbdev/alpha/agent:host_tools",
+        "//factory/cli/tests:agent_host_example",
+        "@cli_pip//pytest",
+    ],
+)
+
 cli_py_test(
-    name = "test_worktree_credentials_io",
-    srcs = ["test_worktree_credentials_io.py"],
+    name = "test_worktree_checkout",
+    srcs = ["test_worktree_checkout.py"],
     imports = ["../../.."],
     deps = [
+        ":conftest",
+        "//factory/cli/src/tbhbdev/alpha:pre_push_guard",
+        "//factory/cli/src/tbhbdev/alpha:run_stop_hook",
         "//factory/cli/src/tbhbdev/alpha/agent:model",
-        "//factory/cli/src/tbhbdev/alpha/agent:worktree",
+        "//factory/cli/src/tbhbdev/alpha/agent:push",
+        "//factory/cli/src/tbhbdev/alpha/agent:runfiles",
+        "//factory/cli/src/tbhbdev/alpha/agent:worktree_checkout",
+        "//factory/cli/src/tbhbdev/alpha/agent:worktree_clone",
+        "//factory/cli/src/tbhbdev/alpha/agent:worktree_git",
+        "//factory/cli/src/tbhbdev/alpha/agent:worktree_hooks",
+        "//factory/cli/src/tbhbdev/alpha/agent:worktree_mirror",
+        "//factory/cli/tests:agent_host_example",
+        "//factory/cli/tests:conftest",
+        "//factory/cli/tests:fake_tool",
+        "//factory/cli/tests/integration/alpha:conftest",
+        "@cli_pip//pytest",
+    ],
+)
+
+cli_py_test(
+    name = "test_worktree_clone",
+    srcs = ["test_worktree_clone.py"],
+    imports = ["../../.."],
+    deps = [
+        ":conftest",
+        "//factory/cli/src/tbhbdev/alpha/agent:model",
+        "//factory/cli/src/tbhbdev/alpha/agent:worktree_checkout",
+        "//factory/cli/src/tbhbdev/alpha/agent:worktree_clone",
+        "//factory/cli/src/tbhbdev/alpha/agent:worktree_git",
+        "//factory/cli/src/tbhbdev/alpha/agent:worktree_mirror",
+        "//factory/cli/tests:agent_host_example",
         "//factory/cli/tests:conftest",
         "//factory/cli/tests/integration/alpha:conftest",
         "@cli_pip//pytest",
@@ -38,18 +82,91 @@ cli_py_test(
 )
 
 cli_py_test(
-    name = "test_worktree_rewrite_io",
-    srcs = ["test_worktree_rewrite_io.py"],
+    name = "test_worktree_errors",
+    srcs = ["test_worktree_errors.py"],
     imports = ["../../.."],
     deps = [
-        "//factory/cli/src/tbhbdev/alpha:pre_push_guard",
-        "//factory/cli/src/tbhbdev/alpha:run_stop_hook",
-        "//factory/cli/src/tbhbdev/alpha/agent:push",
+        ":conftest",
+        "//factory/cli/src/tbhbdev/alpha/agent:host_tools",
+        "//factory/cli/src/tbhbdev/alpha/agent:model",
+        "//factory/cli/src/tbhbdev/alpha/agent:process_group",
         "//factory/cli/src/tbhbdev/alpha/agent:runfiles",
-        "//factory/cli/src/tbhbdev/alpha/agent:worktree",
+        "//factory/cli/src/tbhbdev/alpha/agent:worktree_checkout",
+        "//factory/cli/src/tbhbdev/alpha/agent:worktree_clone",
+        "//factory/cli/src/tbhbdev/alpha/agent:worktree_errors",
+        "//factory/cli/src/tbhbdev/alpha/agent:worktree_git",
+        "//factory/cli/src/tbhbdev/alpha/agent:worktree_mirror",
         "//factory/cli/tests:agent_host_example",
         "//factory/cli/tests:conftest",
-        "//factory/cli/tests:fake_tool",
+        "//factory/cli/tests/integration/alpha:conftest",
+        "@cli_pip//pytest",
+    ],
+)
+
+cli_py_test(
+    name = "test_worktree_git",
+    srcs = ["test_worktree_git.py"],
+    imports = ["../../.."],
+    deps = [
+        ":conftest",
+        "//factory/cli/src/tbhbdev/alpha/agent:host_tools",
+        "//factory/cli/src/tbhbdev/alpha/agent:worktree_checkout",
+        "//factory/cli/src/tbhbdev/alpha/agent:worktree_git",
+        "//factory/cli/tests:agent_host_example",
+        "//factory/cli/tests:conftest",
+        "//factory/cli/tests/integration/alpha:conftest",
+        "@cli_pip//pytest",
+    ],
+)
+
+cli_py_test(
+    name = "test_worktree_hooks",
+    srcs = ["test_worktree_hooks.py"],
+    imports = ["../../.."],
+    deps = [
+        ":conftest",
+        "//factory/cli/src/tbhbdev/alpha:repo",
+        "//factory/cli/src/tbhbdev/alpha/agent:host_tools",
+        "//factory/cli/src/tbhbdev/alpha/agent:model",
+        "//factory/cli/src/tbhbdev/alpha/agent:worktree_checkout",
+        "//factory/cli/src/tbhbdev/alpha/agent:worktree_hooks",
+        "//factory/cli/src/tbhbdev/alpha/identity/commit:policy",
+        "//factory/cli/src/tbhbdev/alpha/install:scripts",
+        "//factory/cli/tests:agent_host_example",
+        "//factory/cli/tests:conftest",
+        "//factory/cli/tests/integration/alpha:conftest",
+        "@cli_pip//pytest",
+    ],
+)
+
+cli_py_test(
+    name = "test_worktree_mirror",
+    srcs = ["test_worktree_mirror.py"],
+    imports = ["../../.."],
+    deps = [
+        ":conftest",
+        "//factory/cli/src/tbhbdev/alpha/agent:model",
+        "//factory/cli/src/tbhbdev/alpha/agent:worktree_checkout",
+        "//factory/cli/src/tbhbdev/alpha/agent:worktree_clone",
+        "//factory/cli/src/tbhbdev/alpha/agent:worktree_git",
+        "//factory/cli/src/tbhbdev/alpha/agent:worktree_hooks",
+        "//factory/cli/src/tbhbdev/alpha/agent:worktree_mirror",
+        "//factory/cli/tests:agent_host_example",
+        "//factory/cli/tests:conftest",
+        "//factory/cli/tests/integration/alpha:conftest",
+        "@cli_pip//pytest",
+    ],
+)
+
+cli_py_test(
+    name = "test_worktree_writes",
+    srcs = ["test_worktree_writes.py"],
+    imports = ["../../.."],
+    deps = [
+        ":conftest",
+        "//factory/cli/src/tbhbdev/alpha/agent:worktree_writes",
+        "//factory/cli/tests:agent_host_example",
+        "//factory/cli/tests:conftest",
         "//factory/cli/tests/integration/alpha:conftest",
         "@cli_pip//pytest",
     ],

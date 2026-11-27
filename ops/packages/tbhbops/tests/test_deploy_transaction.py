@@ -14,7 +14,8 @@ lazy from pathlib import Path
 
 import pytest
 from tbhbops.deploy import filesystem as fs
-from tbhbops.deploy.engine import Command, CommandError, Engine
+from tbhbops.deploy.command import Command, CommandError
+from tbhbops.deploy.compose import Engine
 from tbhbops.deploy.protocol import Json, RefusalError
 from tbhbops.deploy.transaction import BusyError, Lock, Transaction
 lazy from tbhbops.deploy.config import Service
@@ -599,7 +600,7 @@ def test_prune_removes_release_digests(transaction: Transaction) -> None:
 
 def test_windows_import_does_not_load_unix_only_locking() -> None:
     script = """import builtins, sys
-from tbhbops.deploy import engine
+from tbhbops.deploy import compose
 original = builtins.__import__
 def without_fcntl(name, *args, **kwargs):
     if name == "fcntl":
