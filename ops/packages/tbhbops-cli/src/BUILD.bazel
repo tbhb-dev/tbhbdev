@@ -39,6 +39,7 @@ py_library(
         "tbhbops_cli/token_keychain.py",
         "tbhbops_cli/token_policy.py",
         "tbhbops_cli/token_shell.py",
+        "tbhbops_cli/token_vaults.py",
         "tbhbops_cli/tokens.py",
     ],
     data = glob(
