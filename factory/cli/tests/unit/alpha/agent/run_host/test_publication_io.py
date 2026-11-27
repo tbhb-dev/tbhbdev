@@ -16,6 +16,7 @@ from agent_host_example import (
     repository,
 )
 from run_host_fixtures import (
+    HOST_FIXTURES,
     PUSH_RUN,
     HostRuntime,
     preparation,
@@ -37,9 +38,9 @@ from tbhbdev.alpha.agent.run_host import preflight as host_preflight
 from tbhbdev.alpha.agent.run_host import publication as host_publication
 from tbhbdev.alpha.agent.run_host import state
 
-pytestmark = pytest.mark.usefixtures(
-    "empty_bazel_listing", "fake_secrets", "portable_run_protocol", "stub_push"
-)
+__all__ = ["pytestmark"]
+
+pytestmark = HOST_FIXTURES
 
 
 @pytest.mark.parametrize(

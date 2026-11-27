@@ -8,17 +8,12 @@ lazy from pathlib import Path
 import pytest
 from agent_host_example import (
     host_settings,
-    make_run,
 )
 
 from tbhbdev.alpha.agent.model import (
     Invalid,
 )
 from tbhbdev.alpha.agent.run_host import configuration as host_configuration
-
-pytestmark = pytest.mark.usefixtures(
-    "empty_bazel_listing", "fake_secrets", "portable_run_protocol", "stub_push"
-)
 
 
 @pytest.mark.parametrize(
@@ -68,17 +63,15 @@ def test_config_check_protects_the_configured_startup_directory(
         ".control/sockets",
     ],
 )
-def test_startup_and_socket_parents_are_protected(tmp_path: Path, entry: str) -> None:
-    run = make_run(tmp_path)
-    run = dataclasses.replace(
-        run,
-        settings=dataclasses.replace(
-            run.settings,
-            sockets_dir=".control/sockets/private",
-            sandbox=dataclasses.replace(run.settings.sandbox, audit_dir=entry),
-        ),
+def test_startup_and_socket_parents_are_protected(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, entry: str
+) -> None:
+    original = host_settings()
+    configured = dataclasses.replace(
+        original,
+        sockets_dir=".control/sockets/private",
+        sandbox=dataclasses.replace(original.sandbox, audit_dir=entry),
     )
-    with pytest.MonkeyPatch.context() as monkeypatch:
-        monkeypatch.setenv("HOME", str(run.home))
-        with pytest.raises(Invalid, match="protected host path"):
-            host_configuration.check_config(run.settings)
+    monkeypatch.setenv("HOME", str(tmp_path))
+    with pytest.raises(Invalid, match="protected host path"):
+        host_configuration.check_config(configured)

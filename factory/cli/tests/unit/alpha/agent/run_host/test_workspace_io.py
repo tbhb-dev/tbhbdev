@@ -20,6 +20,7 @@ from agent_host_example import (
     repository,
 )
 from run_host_fixtures import (
+    HOST_FIXTURES,
     preparation,
 )
 
@@ -46,9 +47,9 @@ from tbhbdev.alpha.agent.run_host import workspace as host_workspace
 if TYPE_CHECKING:
     from collections.abc import Callable, Mapping
 
-pytestmark = pytest.mark.usefixtures(
-    "empty_bazel_listing", "fake_secrets", "portable_run_protocol", "stub_push"
-)
+__all__ = ["pytestmark"]
+
+pytestmark = HOST_FIXTURES
 
 
 @pytest.mark.parametrize(

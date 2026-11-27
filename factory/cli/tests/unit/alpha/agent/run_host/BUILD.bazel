@@ -180,6 +180,7 @@ cli_py_test(
         "//factory/cli/src/tbhbdev/alpha/agent/run_host:state",
         "//factory/cli/tests:agent_host_example",
         "//factory/cli/tests:conftest",
+        "//factory/cli/tests:run_host_fixtures",
         "//factory/cli/tests:test_alpha_agent_settings_support",
         "@cli_pip//pytest",
     ],
@@ -287,6 +288,7 @@ cli_py_test(
         "//factory/cli/src/tbhbdev/alpha/agent/run_host:paths",
         "//factory/cli/tests:agent_host_example",
         "//factory/cli/tests:conftest",
+        "//factory/cli/tests:run_host_fixtures",
         "@cli_pip//pytest",
     ],
 )
@@ -400,6 +402,7 @@ cli_py_test(
         "//factory/cli/src/tbhbdev/alpha/agent/run_host:state",
         "//factory/cli/tests:agent_host_example",
         "//factory/cli/tests:conftest",
+        "//factory/cli/tests:run_host_fixtures",
         "//factory/cli/tests:test_alpha_agent_settings_support",
         "@cli_pip//pytest",
     ],

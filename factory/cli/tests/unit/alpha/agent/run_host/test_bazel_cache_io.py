@@ -10,6 +10,7 @@ from pathlib import Path
 
 import pytest
 from run_host_fixtures import (
+    HOST_FIXTURES,
     bazel_base,
     bazel_run,
     fake_bazel,
@@ -20,9 +21,9 @@ from run_host_fixtures import (
 from tbhbdev.alpha.agent.run_host import bazel_cache as host_bazel_cache
 from tbhbdev.alpha.agent.run_host import bazel_shutdown as host_bazel_shutdown
 
-pytestmark = pytest.mark.usefixtures(
-    "empty_bazel_listing", "fake_secrets", "portable_run_protocol", "stub_push"
-)
+__all__ = ["pytestmark"]
+
+pytestmark = HOST_FIXTURES
 
 
 def test_cleanup_deletes_only_the_recorded_base_and_its_links(

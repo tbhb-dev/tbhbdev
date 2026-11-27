@@ -24,7 +24,10 @@ live_only = pytest.mark.skipif(
 
 
 @live_only
-def test_codex_exec_refuses_project_config(tmp_path: Path) -> None:
+def test_codex_exec_refuses_project_config(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.delenv("XDG_STATE_HOME", raising=False)
     installed = shutil.which("codex")
     if installed is None:
         pytest.fail("codex: harness binary not installed")

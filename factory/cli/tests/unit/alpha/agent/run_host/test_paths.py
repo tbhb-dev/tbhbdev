@@ -6,6 +6,7 @@ from pathlib import Path
 
 import pytest
 from agent_host_example import make_run
+from run_host_fixtures import HOST_FIXTURES
 
 from tbhbdev.alpha.agent.decisions import repo
 from tbhbdev.alpha.agent.model import (
@@ -14,9 +15,9 @@ from tbhbdev.alpha.agent.model import (
 from tbhbdev.alpha.agent.run_host import dispatcher as host_dispatcher
 from tbhbdev.alpha.agent.run_host import paths as host_paths
 
-pytestmark = pytest.mark.usefixtures(
-    "empty_bazel_listing", "fake_secrets", "portable_run_protocol", "stub_push"
-)
+__all__ = ["pytestmark"]
+
+pytestmark = HOST_FIXTURES
 
 
 @pytest.mark.parametrize("common", [False, True])

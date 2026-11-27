@@ -1,27 +1,14 @@
-"""Example agent settings, hosts and run paths for the policy and argv tests."""
+"""Literal settings, hosts, and paths for agent tests."""
 
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from tbhbdev import secrets
 from tbhbdev.alpha.agent import model
 from tbhbdev.alpha.agent.decisions import argv
 
 if TYPE_CHECKING:
     import pytest
-
-MARKER = "marker-secret-reference-0451"
-# The Connect token store's directory and its first part, as secrets.py has them.
-TOKEN_DIR = str(secrets.LINUX_TOKEN_FILE.parent)
-TOKEN_TOP = secrets.LINUX_TOKEN_FILE.parts[0]
-# The fixture's one denied home path.
-LINUX_SOCKET_DENIES = (
-    "/run/WSL",
-    "/var/run/docker.sock",
-    "/run/docker.sock",
-    "/run/user/0",
-)
 
 SANDBOX = model.Sandbox(
     audit_dir=".local/state/example-audit",

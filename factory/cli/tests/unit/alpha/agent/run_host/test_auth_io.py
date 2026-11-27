@@ -16,6 +16,7 @@ from agent_host_example import (
     make_run,
 )
 from run_host_fixtures import (
+    HOST_FIXTURES,
     Child,
     preparation,
 )
@@ -34,9 +35,9 @@ from tbhbdev.alpha.agent.run_host import harness as host_harness
 from tbhbdev.alpha.agent.run_host import preflight as host_preflight
 from tbhbdev.alpha.agent.run_host import workspace as host_workspace
 
-pytestmark = pytest.mark.usefixtures(
-    "empty_bazel_listing", "fake_secrets", "portable_run_protocol", "stub_push"
-)
+__all__ = ["pytestmark"]
+
+pytestmark = HOST_FIXTURES
 
 
 def test_agent_cleanup_stops_and_reaps_the_child(

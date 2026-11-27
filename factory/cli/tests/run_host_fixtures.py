@@ -12,9 +12,8 @@ from contextlib import ExitStack
 from pathlib import Path
 lazy from collections.abc import Callable
 
+import pytest
 from agent_host_example import make_run
-from runfile_fixtures import agent_suffix_case as agent_suffix_case  # noqa: PLC0414
-lazy import pytest
 
 from tbhbdev.alpha.agent import (
     credentials,
@@ -32,6 +31,10 @@ from tbhbdev.alpha.agent.run_host import bazel_cache as host_bazel_cache
 from tbhbdev.alpha.agent.run_host import bazel_shutdown as host_bazel_shutdown
 from tbhbdev.alpha.agent.run_host import harness as host_harness
 from tbhbdev.alpha.agent.run_host import state
+
+HOST_FIXTURES = pytest.mark.usefixtures(
+    "empty_bazel_listing", "fake_secrets", "portable_run_protocol", "stub_push"
+)
 
 
 def preparation(run: state.Run) -> state.Prepared:

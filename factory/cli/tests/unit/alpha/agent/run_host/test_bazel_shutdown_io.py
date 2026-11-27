@@ -14,6 +14,7 @@ from agent_host_example import (
     constant,
 )
 from run_host_fixtures import (
+    HOST_FIXTURES,
     bazel_base,
     bazel_run,
     fake_bazel,
@@ -27,9 +28,9 @@ from tbhbdev.alpha.agent.run_host import bazel_shutdown as host_bazel_shutdown
 from tbhbdev.alpha.agent.run_host import completion as host_completion
 from tbhbdev.alpha.agent.run_host import environment as host_environment
 
-pytestmark = pytest.mark.usefixtures(
-    "empty_bazel_listing", "fake_secrets", "portable_run_protocol", "stub_push"
-)
+__all__ = ["pytestmark"]
+
+pytestmark = HOST_FIXTURES
 
 
 def test_shutdown_bazel_pins_the_recorded_output_base(

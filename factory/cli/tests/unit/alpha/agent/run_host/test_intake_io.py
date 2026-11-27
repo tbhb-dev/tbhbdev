@@ -18,6 +18,7 @@ from agent_host_example import (
     make_run,
     run_request,
 )
+from run_host_fixtures import HOST_FIXTURES
 from test_alpha_agent_settings import EXAMPLE
 
 from tbhbdev.alpha.agent import (
@@ -33,9 +34,9 @@ from tbhbdev.alpha.agent.run_host import execution as host_execution
 from tbhbdev.alpha.agent.run_host import intake as host_intake
 from tbhbdev.alpha.agent.run_host import state
 
-pytestmark = pytest.mark.usefixtures(
-    "empty_bazel_listing", "fake_secrets", "portable_run_protocol", "stub_push"
-)
+__all__ = ["pytestmark"]
+
+pytestmark = HOST_FIXTURES
 
 
 @pytest.mark.parametrize("source", ["file", "stdin", "recorded"])
