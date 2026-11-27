@@ -5050,6 +5050,19 @@ def test_unsandboxed_codex_uses_account_path(
         binary.chmod(0o755)
     inherited_path = str(tmp_path / "empty") if configured else str(directory)
     monkeypatch.setenv("PATH", inherited_path)
+
+    # Keep the real lookup within the fixture when Codex is installed on the host.
+    which = shutil.which
+
+    def fixture_which(name: str, *, path: str) -> str | None:
+        roots = (
+            root
+            for root in path.split(os.pathsep)
+            if Path(root).is_relative_to(tmp_path)
+        )
+        return which(name, path=os.pathsep.join(roots))
+
+    monkeypatch.setattr(shutil, "which", fixture_which)
     sandbox_path = dataclasses.replace(
         run.settings.sandbox.path, linux=(str(directory),)
     )
