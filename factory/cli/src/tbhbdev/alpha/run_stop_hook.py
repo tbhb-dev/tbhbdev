@@ -97,11 +97,11 @@ def build_reason(run: StopRun) -> str | None:
         return "Check git status and commit the intended tracked changes."
     start = run["start"]
     if start is not None:
-        bases = run.get("rewrite_bases")
+        rewrite_bases = run.get("rewrite_bases")
         history = (
             (f"--ancestry-path={start}",)
-            if bases is None
-            else tuple(f"^{base}" for base in bases)
+            if rewrite_bases is None
+            else tuple(f"^{base}" for base in rewrite_bases)
         )
         _, commit = git(
             "--no-replace-objects",
