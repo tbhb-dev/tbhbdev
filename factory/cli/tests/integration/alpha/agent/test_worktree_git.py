@@ -22,8 +22,6 @@ from tbhbdev.alpha.agent import (
     worktree_git,
 )
 
-pytestmark = pytest.mark.usefixtures("scratch_cwd")
-
 
 def test_git_suppresses_command_errors_and_returns_text(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch

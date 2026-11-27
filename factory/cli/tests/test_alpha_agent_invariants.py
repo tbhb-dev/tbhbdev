@@ -34,24 +34,21 @@ def owned_calls(
 def operation_names(tree: ast.AST, module: str, operation: str) -> set[str]:
     names = {f"{module}.{operation}"}
     for node in ast.walk(tree):
-        if isinstance(node, ast.Import):
+        if not isinstance(node, (ast.Import, ast.ImportFrom)):
+            continue
+        names.update(
+            f"{alias.asname or alias.name}.{operation}"
+            for alias in node.names
+            if alias.name.rsplit(".", 1)[-1] == module
+        )
+        if isinstance(node, ast.ImportFrom) and (
+            (node.module or "").rsplit(".", 1)[-1] == module
+        ):
             names.update(
-                f"{alias.asname or alias.name}.{operation}"
+                alias.asname or alias.name
                 for alias in node.names
-                if alias.name.rsplit(".", 1)[-1] == module
+                if alias.name == operation
             )
-        if isinstance(node, ast.ImportFrom):
-            names.update(
-                f"{alias.asname or alias.name}.{operation}"
-                for alias in node.names
-                if alias.name == module
-            )
-            if (node.module or "").rsplit(".", 1)[-1] == module:
-                names.update(
-                    alias.asname or alias.name
-                    for alias in node.names
-                    if alias.name == operation
-                )
     return names
 
 

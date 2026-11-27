@@ -8,8 +8,18 @@ from agent_host_example import isolate_host_git, local_mirror_fetches
 from tbhbdev.alpha.agent import host_tools
 
 
-@pytest.fixture
-def scratch_cwd(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+@pytest.fixture(autouse=True)
+def scratch_cwd(
+    request: pytest.FixtureRequest, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    if request.path.stem not in {
+        "test_worktree_checkout",
+        "test_worktree_clone",
+        "test_worktree_git",
+        "test_worktree_hooks",
+        "test_worktree_mirror",
+    }:
+        return
     monkeypatch.chdir(tmp_path)
     monkeypatch.setenv("HOME", str(tmp_path))
     monkeypatch.setenv("GIT_CONFIG_NOSYSTEM", "1")

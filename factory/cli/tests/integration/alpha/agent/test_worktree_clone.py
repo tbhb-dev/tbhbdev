@@ -22,8 +22,6 @@ from tbhbdev.alpha.agent import (
 )
 from tbhbdev.alpha.agent.model import Invalid, Profile
 
-pytestmark = pytest.mark.usefixtures("scratch_cwd")
-
 
 def test_copying_clone_has_no_shared_object_inode(tmp_path: Path) -> None:
     _, clone = repository(tmp_path)

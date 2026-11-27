@@ -24,8 +24,6 @@ from tbhbdev.alpha.agent import (
 )
 from tbhbdev.alpha.agent.model import Invalid
 
-pytestmark = pytest.mark.usefixtures("scratch_cwd")
-
 URL = "https://github.com/tbhb-dev/example-repo.git"
 
 

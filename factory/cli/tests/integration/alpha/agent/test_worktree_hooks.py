@@ -27,8 +27,6 @@ from tbhbdev.alpha.identity import dispatcher as identity
 from tbhbdev.alpha.install import scripts as git_templates
 from tbhbdev.alpha.repo import TBHB_DEV_ORIGIN
 
-pytestmark = pytest.mark.usefixtures("scratch_cwd")
-
 
 def test_hook_installation_is_repeatable_private_and_read_only(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch

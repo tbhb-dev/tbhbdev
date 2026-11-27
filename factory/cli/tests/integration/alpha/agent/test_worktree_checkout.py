@@ -33,8 +33,6 @@ from tbhbdev.alpha.agent import (
 )
 from tbhbdev.alpha.agent.model import Invalid
 
-pytestmark = pytest.mark.usefixtures("scratch_cwd")
-
 URL = "https://github.com/tbhb-dev/example-repo.git"
 
 
@@ -357,7 +355,10 @@ def test_prelaunch_git_protocol(
     calls: list[tuple[Path, tuple[str, ...]]] = []
 
     def checked(path: Path, *args: str) -> str:
-        calls.append((path, args))
+        # The mirror tests assert the fetch flags. This test checks when it runs.
+        calls.append(
+            (path, args[:1] if path == mirror and args[0] == "fetch" else args)
+        )
         if args[0] == "clone":
             (workspace / ".git").mkdir()
         if args[0] == "ls-remote":
@@ -367,28 +368,6 @@ def test_prelaunch_git_protocol(
     monkeypatch.setattr(worktree_git, "git", checked)
 
     assert worktree_checkout.create(clone, "protocol", request) == workspace
-    options = ("--no-recurse-submodules", "--no-write-fetch-head", "--no-tags")
-    common = [
-        (mirror, ("init", "--bare", "--template=")),
-        (mirror, ("ls-remote", "--symref", "--end-of-options", "origin", "HEAD")),
-        (mirror, ("check-ref-format", "--branch", "main")),
-        (
-            mirror,
-            (
-                "fetch",
-                *options,
-                "--upload-pack=git-upload-pack",
-                "--no-prune",
-                "origin",
-                "+refs/heads/main:refs/heads/main",
-                *(
-                    (f"+{full_sha}:refs/heads/tbhbdev-review",)
-                    if profile == "review"
-                    else ()
-                ),
-            ),
-        ),
-    ]
     reference = "refs/heads/main" if profile == "build" else full_sha
     checkout = (
         ("checkout", "-b", "agent/protocol", full_sha, "--")
@@ -399,7 +378,7 @@ def test_prelaunch_git_protocol(
     helper = ("config", "--add", "credential.https://github.com.helper")
     values = ("", "!gh auth git-credential") if profile == "build" else ()
     assert calls == [
-        common[0],
+        (mirror, ("init", "--bare", "--template=")),
         (mirror, (*options, str(mirror), str(workspace))),
         (
             workspace,
@@ -411,7 +390,9 @@ def test_prelaunch_git_protocol(
         ),
         (workspace, ("config", "core.hooksPath", str(workspace / ".git" / "hooks"))),
         *((workspace, (*helper, value)) for value in values),
-        *common[1:],
+        (mirror, ("ls-remote", "--symref", "--end-of-options", "origin", "HEAD")),
+        (mirror, ("check-ref-format", "--branch", "main")),
+        (mirror, ("fetch",)),
         (
             mirror,
             ("rev-parse", "--verify", "--end-of-options", reference + "^{commit}"),
