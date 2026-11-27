@@ -31,6 +31,7 @@ exports_files([
     ".vale/project/HeadingTitleCase.yml",
     ".vale/project/WordList.yml",
     "go.mod",
+    "go.sum",
     "tombi.toml",
 ])
 
@@ -39,6 +40,7 @@ exports_files(
     visibility = ["//factory/cli:__pkg__"],
 )
 
+# gazelle:prefix github.com/tbhb-dev/tbhbdev
 # gazelle:python_extension disabled
 
 gazelle_binary(
