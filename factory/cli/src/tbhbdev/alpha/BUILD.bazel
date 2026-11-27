@@ -291,6 +291,7 @@ cli_py_library(
     deps = [
         ":pull_request",
         ":pull_request_frontmatter",
+        ":review_inline",
         "//factory/cli/src/tbhbdev:content",
         "//factory/cli/src/tbhbdev/alpha/identity:dispatcher",
     ],
@@ -520,4 +521,12 @@ cli_py_library(
         ":guard_gh_pr",
         ":repo",
     ],
+)
+
+cli_py_library(
+    name = "review_inline",
+    srcs = ["review_inline.py"],
+    imports = ["../.."],
+    visibility = ["//factory/cli:__subpackages__"],
+    deps = ["@cli_pip//markdown_it_py"],
 )
