@@ -21,17 +21,19 @@ class SizeCounts:
     raw_limit: int
     failed: str | None
     imported_lines: int | None = None
+    branch_exempt: bool = False
 
 
 class SizeCountError(Exception):
     """The counter could not run or returned an invalid result."""
 
 
-def size_counts(
+def size_counts(  # noqa: PLR0913 -- refs, branch name and counter tools are independent inputs.
     base: str,
     head: str,
     *,
     default_ref: str | None = None,
+    head_branch: str = "",
     scc: str = "scc",
     git: str = "git",
 ) -> SizeCounts:
@@ -52,6 +54,7 @@ def size_counts(
                 str(DATA / "pr-size-exempt.txt"),
                 default_ref or "",
                 sys.executable,
+                head_branch,
             ],
             capture_output=True,
             text=True,
@@ -70,6 +73,7 @@ def size_counts(
     if (
         not isinstance(data, dict)
         or any(type(data.get(key)) is not int for key in COUNT_KEYS)
+        or type(data.get("branch_exempt")) is not bool
         or "imported_lines" not in data
         or (
             data["imported_lines"] is not None
@@ -97,6 +101,7 @@ def size_counts(
             data["failed"],
         ),
         imported_lines=data["imported_lines"],
+        branch_exempt=data["branch_exempt"],
     )
 
 
