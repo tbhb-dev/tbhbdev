@@ -7,8 +7,10 @@ load("//factory/cli/tests:pytest.bzl", "cli_py_test")
 
 package(default_testonly = True)
 
-exports_files(
-    ["test_run_host_publication.py"],
+filegroup(
+    name = "package_files",
+    testonly = False,
+    srcs = glob(["*.py"]) + ["//factory/cli/tests/unit/alpha/agent/driver:package_files"],
     visibility = ["//factory/cli/tests:__pkg__"],
 )
 
@@ -20,6 +22,18 @@ cli_py_test(
         "//factory/cli/src/tbhbdev/alpha/agent:run_host",
         "//factory/cli/tests:conftest",
         "@cli_pip//httpx2",
+        "@cli_pip//pytest",
+    ],
+)
+
+cli_py_test(
+    name = "test_app_server_io",
+    srcs = ["test_app_server_io.py"],
+    imports = ["../../.."],
+    deps = [
+        "//factory/cli/src/tbhbdev/alpha/agent:app_server",
+        "//factory/cli/tests:agent_cli_example",
+        "//factory/cli/tests:conftest",
         "@cli_pip//pytest",
     ],
 )

@@ -124,7 +124,6 @@ ignore_imports = [
   "tbhbdev.alpha.agent.decisions.argv -> shutil",
   "tbhbdev.alpha.agent.decisions.argv -> socket",
   "tbhbdev.alpha.agent.decisions.argv -> tbhbdev.alpha.install",
-  "tbhbdev.alpha.agent.decisions.driver -> tbhbdev.alpha.brief",
   "tbhbdev.alpha.agent.decisions.policy -> tbhbdev.alpha.agent.host_tools",
   "tbhbdev.alpha.agent.decisions.policy -> tbhbdev.secrets",
 ]

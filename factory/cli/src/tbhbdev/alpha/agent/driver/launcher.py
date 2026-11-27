@@ -6,7 +6,7 @@ import os
 import subprocess  # nosec B404
 
 from tbhbdev.alpha import worker_identity
-from tbhbdev.alpha.agent.decisions import launcher as rules
+from tbhbdev.alpha.agent.driver.decisions import launcher as rules
 from tbhbdev.alpha.agent.model import Invalid
 
 TMUX_TIMEOUT_SECONDS = 5

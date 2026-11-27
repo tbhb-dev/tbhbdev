@@ -15,6 +15,7 @@ cli_py_library(
     srcs = ["brief.py"],
     imports = ["../.."],
     visibility = ["//factory/cli:__subpackages__"],
+    deps = ["//factory/cli/src/tbhbdev/alpha/agent/driver/decisions:prompt"],
 )
 
 cli_py_library(

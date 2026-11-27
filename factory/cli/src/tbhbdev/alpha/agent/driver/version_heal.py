@@ -14,8 +14,8 @@ from typing import TYPE_CHECKING
 from tbhbdev import version
 from tbhbdev.alpha import version_check
 from tbhbdev.alpha.agent import transport
-from tbhbdev.alpha.agent.decisions import driver as rules
 from tbhbdev.alpha.agent.decisions import remote
+from tbhbdev.alpha.agent.driver.decisions.launch import check_retry, same_version
 from tbhbdev.alpha.agent.model import Invalid
 
 if TYPE_CHECKING:
@@ -80,14 +80,6 @@ def restart(mismatch: str) -> NoReturn:
         os.environ.pop(_RETRY, None)
 
 
-def check_retry(local: str, installed: str, original: str) -> None:
-    try:
-        rules.same_version(local, installed)
-    except Invalid as exc:
-        message = f"{original} (after one sync)"
-        raise Invalid(message) from exc
-
-
 def check(settings: Settings, host: Host, local: str, installed: str) -> str | None:
     """Check parity and return the original error if the host needs a reread."""
     previous = os.environ.pop(_RETRY, None)
@@ -95,7 +87,7 @@ def check(settings: Settings, host: Host, local: str, installed: str) -> str | N
         check_retry(local, installed, previous)
         return None
     try:
-        rules.same_version(local, installed)
+        same_version(local, installed)
     except Invalid as mismatch:
         head = version_check.latest(read_origin)
         if head is None:

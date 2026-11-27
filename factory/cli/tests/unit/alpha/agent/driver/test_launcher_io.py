@@ -11,10 +11,9 @@ from agent_cli_example import run_agent
 from agent_driver_example import Remote, execution_arguments, setup
 from agent_example import settings
 
-from tbhbdev.alpha.agent import driver, launcher
 from tbhbdev.alpha.agent import settings as agent_settings
-from tbhbdev.alpha.agent.decisions import launcher as rules
-from tbhbdev.alpha.agent.model import Invalid, Profile
+from tbhbdev.alpha.agent.driver import launcher, metadata
+from tbhbdev.alpha.agent.model import Invalid
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -42,50 +41,6 @@ def remote(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Remote:
     return result
 
 
-@pytest.mark.parametrize(
-    ("title", "name"),
-    [
-        ("✳ tools", "tools"),
-        ("tools", "tools"),
-        ("  ⠂ helper-session  ", "helper-session"),
-        ("✳", None),
-        ("", None),
-    ],
-)
-def test_session_name_drops_the_status_glyph(title: str, name: str | None) -> None:
-    assert rules.session_name(title) == name
-
-
-@pytest.mark.parametrize(
-    ("role", "profile", "expected"),
-    [
-        ("reviewer", Profile.BUILD, True),
-        (None, Profile.REVIEW, True),
-        ("builder", Profile.BUILD, False),
-        (None, Profile.BUILD, False),
-    ],
-)
-def test_a_review_profile_run_is_reviewer_role_too(
-    role: str | None, profile: Profile, *, expected: bool
-) -> None:
-    assert rules.is_reviewer(role, profile) is expected
-
-
-@pytest.mark.parametrize("launcher_name", ["tools", "helper", "alpha"])
-def test_any_named_session_may_launch_reviews(launcher_name: str) -> None:
-    rules.check(launcher_name)
-
-
-def test_a_reviewer_run_without_a_session_name_is_refused() -> None:
-    with pytest.raises(Invalid) as caught:
-        rules.check(None)
-    assert str(caught.value) == (
-        "a reviewer-role run needs the launching session's name, from the "
-        "tmux pane title; TMUX_PANE or its title is missing, so "
-        "name the launching session via the tmux pane title"
-    )
-
-
 @pytest.mark.parametrize("session", ["tools", "example-repo", "helper"])
 @pytest.mark.parametrize("profile", ["build", "review"])
 def test_a_named_session_can_launch_reviews_for_any_repo(
@@ -99,7 +54,7 @@ def test_a_named_session_can_launch_reviews_for_any_repo(
     if profile == "review":
         arguments[-2:-2] = ["--ref", "a" * 40]
     assert run_agent(arguments) == 0
-    run = driver.load(settings(), "sample")
+    run = metadata.load(settings(), "sample")
     assert run.launched_by == (session, "s")
     assert run.request.max_concurrent_runs == 3
 
@@ -122,7 +77,7 @@ def test_a_reviewer_launch_without_a_session_name_is_refused(
     assert (
         "name the launching session via the tmux pane title" in capsys.readouterr().err
     )
-    assert not driver.metadata_path("sample").exists()
+    assert not metadata.metadata_path("sample").exists()
 
 
 def test_a_build_launch_without_a_session_name_records_unknown(
@@ -132,19 +87,7 @@ def test_a_build_launch_without_a_session_name_records_unknown(
     assert run_agent(execution_arguments(remote.prompt)) == 0
     assert run_agent(["status", "sample"]) == 0
     assert "launcher=unknown" in capsys.readouterr().out
-    assert driver.load(settings(), "sample").launched_by == (None, None)
-
-
-def test_a_record_saved_before_the_launcher_field_loads(remote: Remote) -> None:
-    assert run_agent(execution_arguments(remote.prompt)) == 0
-    path = driver.metadata_path("sample")
-    record = path.read_text()
-    path.write_text(
-        record.replace('"launcher": "tools", ', "").replace(
-            '"launcher_session": "session-1", ', ""
-        )
-    )
-    assert driver.load(settings(), "sample").launched_by == (None, None)
+    assert metadata.load(settings(), "sample").launched_by == (None, None)
 
 
 def reading(
@@ -282,7 +225,7 @@ def test_a_review_prepares_for_a_matched_worker(
     )
     arguments = worker_arguments(remote, "--worker-workflow", "run:7")
     assert run_agent(arguments) == 0
-    assert driver.load(settings(), "sample").launched_by == ("worker/run:7", None)
+    assert metadata.load(settings(), "sample").launched_by == ("worker/run:7", None)
     assert asked == [WORKER]
 
 
@@ -307,7 +250,7 @@ def test_a_review_flag_without_a_matched_worker_is_refused(
         "tbhbdev alpha agent: --worker-workflow needs the registered worker: "
         "no ancestor process runs the worker\n"
     )
-    assert not driver.metadata_path("sample").exists()
+    assert not metadata.metadata_path("sample").exists()
 
 
 def test_a_non_tmux_review_without_the_flag_fails_as_before(

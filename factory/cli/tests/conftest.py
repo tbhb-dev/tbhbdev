@@ -96,7 +96,7 @@ def launching_session(monkeypatch: pytest.MonkeyPatch) -> None:
         return "tools", "session-1"
 
     # The driver imports launcher when the test module loads.
-    launcher = sys.modules.get("tbhbdev.alpha.agent.launcher")
+    launcher = sys.modules.get("tbhbdev.alpha.agent.driver.launcher")
     if launcher is not None:
         monkeypatch.setattr(launcher, "session", session)
 
