@@ -5260,7 +5260,7 @@ def test_shutdown_bazel_uses_recorded_bases_without_listed_servers(
 
     monkeypatch.setattr(bazel_servers, "listing", empty_bazel_listing)
     monkeypatch.setattr(subprocess, "check_output", listing)
-    assert list(run_host.shutdown_bazel(run, prepared, group=7)) == [base]
+    assert list(run_host.shutdown_bazel(run, prepared)) == [base]
 
 
 def test_timed_out_run_kills_bazel_and_removes_its_output_base(
@@ -5302,7 +5302,7 @@ def test_stop_bazel_validates_the_process_and_bounds_the_wait(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, state: str, result: str
 ) -> None:
     base = tmp_path / "base"
-    server = bazel_servers.Server(17, tmp_path, belongs=True, started="start")
+    server = bazel_servers.Server(17, belongs=True, started="start")
     server_row(base, tmp_path, 18 if state == "pidfile changed" else 17, 1, 1)
     starts = {
         "pid reused": ["new"],
@@ -5367,15 +5367,22 @@ def test_discovery_refuses_unconfirmed_server_metadata(
     ]
     cmdline.unlink()
     monkeypatch.setattr(bazel_servers, "listing", constant("\n".join([*rows, row])))
-    assert bazel_servers.find(workspace, 17) == {}
-    monkeypatch.setattr(process_group, "leader_start", constant(None))
-    for args in (
-        "bazel(workspace)",
-        "--workspace_directory=/workspace/../other",
-        f"--workspace_directory={workspace}",
-    ):
+    monkeypatch.setattr(process_group, "leader_start", constant("start"))
+    assert bazel_servers.find(workspace) == {}
+    for args in ("bazel(workspace)", f"--workspace_directory={workspace}/../other"):
         cmdline.write_text(args)
-        assert bazel_servers.find(workspace, 17) == {}
+        assert bazel_servers.find(workspace) == {}
+
+    cmdline.write_text(f"--workspace_directory={tmp_path / 'other'}")
+    assert bazel_servers.find(workspace) == {
+        base.resolve(): bazel_servers.Server(17, belongs=False, started="start")
+    }
+    cmdline.write_text(f"--workspace_directory={workspace}")
+    assert bazel_servers.find(workspace) == {
+        base.resolve(): bazel_servers.Server(17, belongs=True, started="start")
+    }
+    monkeypatch.setattr(process_group, "leader_start", constant(None))
+    assert bazel_servers.find(workspace) == {}
 
     link = tmp_path / "link"
     link.symlink_to(base)
@@ -5389,7 +5396,7 @@ def test_stop_harness_shuts_servers_down_after_stopping_the_group(
 ) -> None:
     run, prepared = bazel_run(tmp_path)
     worktree = Path(prepared.paths.worktree)
-    server = bazel_servers.Server(41, worktree, belongs=True, started="start")
+    server = bazel_servers.Server(41, belongs=True, started="start")
     base = tmp_path / "base"
     events: list[str] = []
 

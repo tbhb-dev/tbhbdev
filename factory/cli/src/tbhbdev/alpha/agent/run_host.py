@@ -1088,7 +1088,6 @@ def shutdown_bazel(
     run: Run,
     prepared: Prepared | None,
     *,
-    group: int | None = None,
     servers: dict[Path, bazel_servers.Server] | None = None,
 ) -> BazelShutdown:
     """Stop the run's Bazel servers and mark recorded bases for deletion."""
@@ -1102,7 +1101,7 @@ def shutdown_bazel(
     # Rescan after stopping the harness to catch servers launched during teardown.
     targets.update(
         (base, server)
-        for base, server in bazel_servers.find(worktree, group).items()
+        for base, server in bazel_servers.find(worktree).items()
         if base not in previous or server.belongs
     )
     stopped: BazelShutdown = {}

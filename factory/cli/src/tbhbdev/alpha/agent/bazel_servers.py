@@ -30,7 +30,6 @@ class Process:
 @dataclass(frozen=True)
 class Server:
     pid: int
-    workspace: Path
     belongs: bool
     started: str
 
@@ -115,7 +114,7 @@ def _server_workspace(base: Path) -> Path | None:
     return None
 
 
-def find(worktree: Path, group: int | None) -> dict[Path, Server]:
+def find(worktree: Path, group: int | None = None) -> dict[Path, Server]:
     processes = _processes(os.getuid())
     owned = _run_pids(processes, group)
     servers: dict[Path, Server] = {}
@@ -134,7 +133,7 @@ def find(worktree: Path, group: int | None) -> dict[Path, Server]:
         started = process_group.leader_start(pid)
         if workspace is not None and started is not None:
             belongs = pid in owned or workspace.is_relative_to(worktree)
-            servers[base.resolve()] = Server(pid, workspace, belongs, started)
+            servers[base.resolve()] = Server(pid, belongs, started)
     return servers
 
 
