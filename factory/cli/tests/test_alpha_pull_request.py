@@ -166,8 +166,9 @@ class World:
         self.git("commit", "--allow-empty", "-q", "-m", message)
 
 
-# The world fixture replaces the counter; a test can put this one back.
+# The world fixture replaces these checks; tests can put them back.
 REAL_SIZE_COUNTS = size_gate.size_counts
+REAL_TARGET_IS_ORIGIN = pr.target_is_origin
 
 
 @pytest.fixture(autouse=True)
@@ -1739,8 +1740,8 @@ def test_a_draft_without_a_base_takes_the_default_branch(
     write_draft(world, BASE)
     run_main("check")
     counted.assert_called_once_with(
-        world.git("rev-parse", "refs/remotes/origin/trunk"),
-        world.git("rev-parse", "HEAD"),
+        "refs/remotes/origin/trunk",
+        "HEAD",
         scc=str(world.bin / "scc"),
         git=str(world.root.parent / "git_dir" / "git"),
     )
@@ -1819,9 +1820,7 @@ def test_create_reads_the_default_branch_once(
     write_draft(world)
     assert run_main("create") == 0
     assert read.call_count == 1
-    assert counted.call_args.args[0] == world.git(
-        "rev-parse", "refs/remotes/origin/trunk"
-    )
+    assert counted.call_args.args[0] == "refs/remotes/origin/trunk"
     trailers.assert_called_once_with("trunk")
     _, call = world.calls("gh")
     argv = call["argv"]
@@ -5301,12 +5300,46 @@ def test_create_normalizes_empty_error_streams(
     assert capsys.readouterr() == ("", expected)
 
 
-def test_origin_repository_reads_the_push_url(world: World) -> None:
-    world.git("remote", "set-url", "origin", str(world.root))
-    world.git("config", "remote.origin.pushurl", ORIGIN)
-    world.fake("gh", cases=branch_cases())
-    assert pr.origin_repository() == "tbhb-dev/example"
-    assert gh_argvs(world) == [["repo", "view", ORIGIN, "--json", "nameWithOwner,url"]]
+@pytest.mark.parametrize("local_mirror", [False, True], ids=["github", "local-mirror"])
+def test_create_counts_against_origin_fetch_repository(
+    world: World, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, local_mirror: bool
+) -> None:
+    push_repo = "example-org/fork"
+    if local_mirror:
+        remote_default(world, tmp_path, "main")
+        push_repo = "tbhb-dev/example"
+    push_url = f"https://github.com/{push_repo}.git"
+    world.git("config", "remote.origin.pushurl", push_url)
+    monkeypatch.delenv("GH_REPO", raising=False)
+    monkeypatch.setattr(pr, "target_is_origin", REAL_TARGET_IS_ORIGIN)
+    counter = Mock(return_value=size_gate.SizeCounts(0, 400, 0, 1500, None))
+    monkeypatch.setattr(size_gate, "size_counts", counter)
+    world.fake(
+        "gh",
+        cases={
+            f"repo view {push_url}": {
+                "rc": 0,
+                "stdout": json.dumps(
+                    {
+                        "nameWithOwner": push_repo,
+                        "url": f"https://github.com/{push_repo}",
+                    }
+                ),
+                "stderr": "",
+            },
+            "repo view /": {"rc": 1, "stdout": "", "stderr": "invalid repository"},
+            **branch_cases(),
+        },
+    )
+    write_draft(world)
+
+    assert run_main("create", "--dry-run") == 0
+    counter.assert_called_once()
+    assert counter.call_args.args == ("refs/remotes/origin/main", "HEAD")
+    lookup_url = push_url if local_mirror else ORIGIN
+    assert [argv for argv in gh_argvs(world) if "nameWithOwner,url" in argv] == [
+        ["repo", "view", lookup_url, "--json", "nameWithOwner,url"],
+    ]
 
 
 def test_origin_repository_without_a_push_url_reads_origin(world: World) -> None:

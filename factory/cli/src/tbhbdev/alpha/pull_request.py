@@ -224,6 +224,11 @@ PR_URL = re.compile(r"https://[^/\s]+/([^/\s]+/[^/\s]+)/pull/(\d+)")
 # as a flag.
 REPO = r"[A-Za-z0-9][A-Za-z0-9-]*/(?!\.+(?:/|\Z))[A-Za-z0-9_.-]+"
 NAME_WITH_OWNER = re.compile(REPO)
+GITHUB_REMOTE = re.compile(
+    r"(?:[a-z][a-z0-9+.-]*://(?:[^/@\s]+@)?(?:ssh\.)?github\.com(?::\d+)?/"
+    r"|(?:[^@/:\s]+@)?github\.com:)",
+    re.IGNORECASE,
+)
 PR_PAGE = re.compile(rf"https://github\.com/({REPO})/pull/[0-9]+")
 REPO_LIMIT = 1000
 PR_LIMIT = 10000
@@ -1283,13 +1288,18 @@ def invoke_gh(
     return done.returncode, done.stdout
 
 
-def origin_repository() -> str:
-    """Resolve origin explicitly, independent of gh's default repository.
+def origin_repository(*, allow_push_fallback: bool = False) -> str:
+    """Resolve origin's fetch URL, independent of gh's default repository.
+
+    For the size check, a mirror fetch URL can use origin's push URL for
+    repository identity. Git still fetches the base through origin.
 
     Raises:
         SystemExit: origin or its GitHub repository can't be read.
     """
-    code, url = git("remote", "get-url", "--push", "origin")
+    code, url = git("remote", "get-url", "origin")
+    if allow_push_fallback and code == 0 and url and not GITHUB_REMOTE.match(url):
+        code, url = git("remote", "get-url", "--push", "origin")
     if code or not url:
         message = "cannot read origin"
         raise SystemExit(message)
@@ -1321,7 +1331,7 @@ def target_is_origin() -> bool:
     data = gh_data(run([find_tool(GH), "repo", "view", "--json", "nameWithOwner"]))
     target = data.get("nameWithOwner") if isinstance(data, dict) else None
     try:
-        origin = origin_repository()
+        origin = origin_repository(allow_push_fallback=True)
     except SystemExit:
         return False
     return isinstance(target, str) and target.casefold() == origin.casefold()
@@ -2164,7 +2174,7 @@ def size_review_allows(
 ) -> bool:
     """Read the verdict for this head or start the review that supplies it."""
     try:
-        repo = origin_repository()
+        repo = origin_repository(allow_push_fallback=True)
         state = size_gate.size_review_state(repo, head)
         if state == "success":
             return True
@@ -2180,9 +2190,8 @@ def size_review_allows(
     return False
 
 
-def size_commits(branch: str, *, dry_run: bool) -> tuple[str, str] | None:
+def size_commits(branch: str, base: str, *, dry_run: bool) -> tuple[str, str] | None:
     """Resolve the base and head, refreshing the tracking ref outside dry runs."""
-    base = f"refs/remotes/origin/{branch}"
     if not dry_run:
         fetch = (
             "fetch",
@@ -2218,6 +2227,7 @@ def check_size(
     PR. A dry run reports an excess as a warning and still previews.
     """
     branch = base_of(checked.meta)
+    base = f"refs/remotes/origin/{branch}"
     dry_run = getattr(
         args,
         "dry_run",
@@ -2228,14 +2238,14 @@ def check_size(
         message = "size count unavailable: gh may target a repository other than origin"
         print(message, file=sys.stderr)
         return
-    commits = size_commits(branch, dry_run=dry_run)
+    commits = size_commits(branch, base, dry_run=dry_run)
     if commits is None:
         return
     base_commit, head = commits
     try:
         counts = size_gate.size_counts(
-            base_commit,
-            head,
+            base,
+            "HEAD",
             scc=_TOOL_PATHS.get().get((SCC, False), SCC),
             git=_TOOL_PATHS.get().get((GIT, False), GIT),
         )

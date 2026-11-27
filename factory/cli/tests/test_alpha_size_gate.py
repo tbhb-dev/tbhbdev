@@ -264,7 +264,7 @@ def test_pr_check(
     ) == bool(problem)
     lint.assert_called_once_with("draft.md")
     counter.assert_called_once_with(
-        BASE_COMMIT, HEAD_COMMIT, scc="/tools/scc", git="/tools/git"
+        "refs/remotes/origin/main", "HEAD", scc="/tools/scc", git="/tools/git"
     )
     captured = capsys.readouterr()
     assert captured.err == ""
@@ -378,7 +378,7 @@ def test_pr_create_size(
     assert call(*fetched) in git.call_args_list
     if failure != "base":
         counter.assert_called_once_with(
-            BASE_COMMIT, HEAD_COMMIT, scc="/tools/scc", git="/tools/git"
+            "refs/remotes/origin/main", "HEAD", scc="/tools/scc", git="/tools/git"
         )
 
 
@@ -396,7 +396,9 @@ def test_the_base_is_refreshed_without_tags_then_counted(
     assert git.call_args_list[0] == call(
         *FETCH, "origin", "+refs/heads/topic:refs/remotes/origin/topic"
     )
-    counter.assert_called_once_with(BASE_COMMIT, HEAD_COMMIT, scc="scc", git="git")
+    counter.assert_called_once_with(
+        "refs/remotes/origin/topic", "HEAD", scc="scc", git="git"
+    )
 
 
 def test_a_failed_fetch_warns_and_never_counts_a_stale_ref(
