@@ -10,6 +10,7 @@ import subprocess
 import sys
 import threading
 import time
+from contextlib import contextmanager, nullcontext
 from pathlib import Path
 from types import SimpleNamespace
 from typing import TYPE_CHECKING, override
@@ -23,10 +24,11 @@ from agent_example import settings
 
 from tbhbdev import telemetry
 from tbhbdev.alpha.agent import settings as agent_settings
+from tbhbdev.alpha.agent import transport
 from tbhbdev.alpha.agent.driver import dispatch as coordinator
 
 if TYPE_CHECKING:
-    from collections.abc import Callable
+    from collections.abc import Callable, Iterator
     from typing import BinaryIO
 
     from opentelemetry.sdk.trace import ReadableSpan
@@ -446,6 +448,52 @@ def configure_export_fault(
     monkeypatch.setenv(ENDPOINT, endpoint)
 
 
+@contextmanager
+def stalled_export(monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
+    release = threading.Event()
+    finished = threading.Event()
+    completion = Mock(wraps=finished)
+
+    def block(*_args: object) -> None:
+        release.wait(3)
+
+    export = Mock(side_effect=block)
+    monkeypatch.setattr(tbhb_telemetry, "_export", export)
+    monkeypatch.setattr(
+        tbhb_telemetry,
+        "threading",
+        SimpleNamespace(Event=lambda: completion, Thread=threading.Thread),
+    )
+    try:
+        yield
+        completion.wait.assert_called_once_with(0.25)
+        assert not finished.is_set()
+    finally:
+        release.set()
+        assert finished.wait(3)
+    export.assert_called_once()
+
+
+def timed_launch(args: list[str], monkeypatch: pytest.MonkeyPatch) -> tuple[int, float]:
+    execute = transport.execute
+    transport_time = 0.0
+
+    async def timed_execute(argv: tuple[str, ...], data: bytes) -> tuple[int, bytes]:
+        nonlocal transport_time
+        start = time.monotonic()
+        try:
+            return await execute(argv, data)
+        finally:
+            transport_time += time.monotonic() - start
+
+    # Exclude the fake SSH subprocesses from the telemetry overhead measurement.
+    with monkeypatch.context() as patch:
+        patch.setattr(transport, "execute", timed_execute)
+        start = time.monotonic()
+        result = run_agent(args)
+        return result, time.monotonic() - start - transport_time
+
+
 @pytest.mark.parametrize("outcome", ["ok", "failed", "refused"])
 @pytest.mark.parametrize(
     "fault", ["offline", "stall", "import", "disabled", "endpoint", "attributes"]
@@ -459,63 +507,31 @@ def test_export_failure_preserves_launch(
 ) -> None:
     monkeypatch.setenv("OTEL_SDK_DISABLED", "true")
     baseline_args = flow(tmp_path / "baseline", monkeypatch, outcome)
-    start = time.monotonic()
-    baseline_rc = run_agent(baseline_args)
-    baseline_time = time.monotonic() - start
+    baseline_rc, baseline_time = timed_launch(baseline_args, monkeypatch)
     baseline_output = capsys.readouterr()
 
     args = flow(tmp_path / "measured", monkeypatch, outcome)
     monkeypatch.setenv("OTEL_SDK_DISABLED", str(fault == "disabled").lower())
     monkeypatch.delenv("TBHB_TELEMETRY_ALLOW_HOSTS", raising=False)
-    with socket.create_server(("localhost", 0)) as listener:
-        port = listener.getsockname()[1]
-        endpoint = f"http://localhost:{port}"
-        release, accepted = threading.Event(), threading.Event()
-
-        def stall() -> None:
-            with listener.accept()[0] as connection:
-                connection.recv(65536)
-                accepted.set()
-                release.wait(3)
-
-        thread = threading.Thread(target=stall, daemon=True)
-        if fault == "stall":
-            listener.settimeout(3)
-            thread.start()
-        else:
-            listener.close()
-        configure_export_fault(monkeypatch, fault, endpoint)
-        start = time.monotonic()
-        try:
-            assert run_agent(args) == baseline_rc
-            elapsed = time.monotonic() - start
-            assert capsys.readouterr() == (
-                baseline_output.out,
-                ("" if fault == "disabled" else diagnostic("environment", "none"))
-                + baseline_output.err,
-            )
-            if fault != "offline":
-                # 250 ms export wait plus 750 ms for SDK imports, drop I/O and jitter
-                # on a loaded Mac. A stalled export would hold the launch for 3 s.
-                assert elapsed < baseline_time + 1.0
-            if fault == "stall":
-                assert accepted.wait(0.5)
-        finally:
-            release.set()
-            if fault == "stall":
-                thread.join(3)
-                assert not thread.is_alive()
+    with socket.create_server(("127.0.0.1", 0)) as listener:
+        endpoint = f"http://127.0.0.1:{listener.getsockname()[1]}"
+    configure_export_fault(monkeypatch, fault, endpoint)
+    with stalled_export(monkeypatch) if fault == "stall" else nullcontext():
+        rc, elapsed = timed_launch(args, monkeypatch)
+        assert rc == baseline_rc
+        assert capsys.readouterr() == (
+            baseline_output.out,
+            ("" if fault == "disabled" else diagnostic("environment", "none"))
+            + baseline_output.err,
+        )
+        if fault != "offline":
+            # 250 ms export wait plus 750 ms for SDK imports and drop I/O.
+            assert elapsed < baseline_time + 1.0
     if fault in {"endpoint", "offline", "stall"}:
         drops = tmp_path / "measured/local-state/tbhb/telemetry/drops.jsonl"
         records = [json.loads(line) for line in drops.read_text().splitlines()]
-        # A stalled collector is dropped as a timeout, or as an export error when the
-        # SDK gives up on the connection first, which happens on a loaded Mac.
-        expected = {
-            "endpoint": {"endpoint"},
-            "offline": {"export"},
-            "stall": {"timeout", "export"},
-        }[fault]
-        assert records[-1]["reason"] in expected
+        expected = {"endpoint": "endpoint", "offline": "export", "stall": "timeout"}
+        assert records[-1]["reason"] == expected[fault]
 
 
 @pytest.mark.parametrize("outcome", [0, 7])

@@ -1816,6 +1816,7 @@ cli_py_test(
         ":conftest",
         "//factory/cli/src/tbhbdev:telemetry",
         "//factory/cli/src/tbhbdev/alpha/agent:settings",
+        "//factory/cli/src/tbhbdev/alpha/agent:transport",
         "//factory/cli/src/tbhbdev/alpha/agent/driver:dispatch",
         "@cli_pip//pytest",
         "@cli_pip//tbhb_telemetry",
