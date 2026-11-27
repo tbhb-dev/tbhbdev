@@ -277,17 +277,17 @@ def parse_permissions(values: list[str] | None) -> tuple[tuple[str, str], ...]:
     text = values[0]
     pairs: dict[str, str] = {}
     for entry in text.split(","):
+        name, _, level = entry.partition(":")
         if (
             PERMISSION_PATTERN.fullmatch(entry) is None
-            or entry.partition(":")[0] not in PERMISSION_NAMES
-            or entry.partition(":")[0] in pairs
+            or name not in PERMISSION_NAMES
+            or name in pairs
         ):
             message = (
                 f"--permissions entry {entry!r} must be a known NAME:read "
                 "or NAME:write, once"
             )
             raise UsageError(message)
-        name, _, level = entry.partition(":")
         pairs[name] = level
     return tuple(sorted(pairs.items()))
 
@@ -392,7 +392,10 @@ def lookup_paths(repo: str) -> list[str]:
 
 
 def token_body(
-    repo: str, *, all_repos: bool, permissions: tuple[tuple[str, str], ...] = ()
+    repo: str,
+    *,
+    all_repos: bool,
+    permissions: Mapping[str, str] | tuple[tuple[str, str], ...] = (),
 ) -> Json:
     body: Json = {} if all_repos else {"repositories": [split_repo(repo)[1]]}
     if permissions:
@@ -706,9 +709,9 @@ def mint_token(  # noqa: PLR0913  # Explicit credentials and installation cache.
     data = signing_input(app_id, env.now())
     signature = key.sign(data, padding.PKCS1v15(), hashes.SHA256())
     jwt = f"{data.decode()}.{b64url(signature)}"
-    body: Json = {"permissions": dict(permissions)}
-    if "/" in repository:
-        body["repositories"] = [split_repo(repository)[1]]
+    body = token_body(
+        repository, all_repos="/" not in repository, permissions=permissions
+    )
     try:
         return exchange_token(
             env,

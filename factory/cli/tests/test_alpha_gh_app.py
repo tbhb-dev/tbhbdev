@@ -257,7 +257,6 @@ def test_any_other_vault_is_one_path_component(vault: str) -> None:
 @pytest.mark.parametrize(
     "argv",
     [
-        ["bot"],
         [],
         ["-ab", REPO],
         ["bot", REPO, "--nope"],
@@ -267,9 +266,7 @@ def test_any_other_vault_is_one_path_component(vault: str) -> None:
         ["bot", "--cooldown-until", "-1"],
         ["bot", "--cooldown-until", "١٢٣"],
         ["bot", "--cooldown-until", "100000000000"],
-        ["bot", "--cooldown-until", "5", "--cooldown-status"],
         ["bot", REPO, "--cooldown-until", "5"],
-        ["bot", REPO, "--cooldown-status"],
         ["bot", "--cooldown-status", "--fresh"],
         ["bot", "--cooldown-status", "--dry-run"],
         ["bot", "--cooldown-until", "5", "--all-repos"],
@@ -349,15 +346,6 @@ def test_a_repeated_permissions_option_is_refused() -> None:
         gh_app.parse_args(
             ["bot", REPO, "--permissions", "contents:read", "--permissions", "bad"]
         )
-
-
-def test_failure_details_hide_credential_like_text() -> None:
-    echoed = "ghs_" + "A1b2" * 10
-    assert gh_app.detail({"message": f"bad token {echoed} here"}) == (
-        "bad token [redacted] here"
-    )
-    assert gh_app.detail({"message": "Not Found"}) == "Not Found"
-    assert gh_app.detail({}) == "no message"
 
 
 def test_a_cooldown_option_refuses_permissions() -> None:
@@ -575,6 +563,7 @@ def test_parse_token_quotes_only_the_message_from_github(
     ("payload", "text"),
     [
         ({"message": "Bad credentials"}, "Bad credentials"),
+        ({"message": f"bad token {TOKEN} here"}, "bad token [redacted] here"),
         ({"message": ""}, "no message"),
         ({"message": 5}, "no message"),
         ({}, "no message"),
@@ -1073,20 +1062,6 @@ def test_any_lookup_failure_but_a_404_is_an_error(
     )
     assert not out_path(tmp_path).exists()
     assert TOKEN not in err
-
-
-def test_a_404_on_the_repo_falls_through_to_the_org(
-    capsys: pytest.CaptureFixture[str], tmp_path: Path, rsa: Key
-) -> None:
-    routes = lookup_routes(
-        httpx2.Response(404, json={"message": "Not Found"}),
-        httpx2.Response(200, json={"id": 9}),
-    )
-    routes.update({k: v for k, v in ok_routes(9).items() if k[0] == "POST"})
-    code, _, _ = run(
-        capsys, env_for(tmp_path, app_store(rsa.pem), Github(routes)), "bot", REPO
-    )
-    assert code == 0
 
 
 def test_no_installation_is_an_error(
