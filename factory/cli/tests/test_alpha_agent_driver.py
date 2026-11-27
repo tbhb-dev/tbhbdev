@@ -1558,7 +1558,7 @@ def test_build_prompt_with_foreign_branch_refuses_launch(
     remote.prompt.write_text(prompt)
     assert launch(remote) == 1
     assert capsys.readouterr().err == (
-        f"example agent: {remote.prompt}: the brief directs work to {target}. "
+        f"tbhbdev alpha agent: {remote.prompt}: the brief directs work to {target}. "
         "Use the launcher branch agent/sample.\n"
     )
     assert remote.records("ssh", limits=True) == []
