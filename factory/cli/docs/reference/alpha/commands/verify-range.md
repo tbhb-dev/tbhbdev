@@ -5,8 +5,8 @@ generated:
     harness: codex:0.171.0
     model: openai:gpt-6.2-sol
     surface: exec
-    session: sha-256-64:fd9f4c52025e5038
-    at: "2026-11-27T03:27:16Z"
+    session: sha-256-64:4092cfd949b5c2cb
+    at: "2026-11-27T04:11:11Z"
 status: stable
 tags: [alpha]
 title: Verify range
@@ -27,7 +27,7 @@ Sign-off trailers, co-author trailers and GitHub's no-reply addresses fail it.
 
 ## Identity trailer checks
 
-With `--identity-only`, the command checks the identity trailers of every non-merge commit in the range. It reports full commit hashes. Signatures are optional.
+Pass `--identity-only` to check the identity trailers of every non-merge commit in the range on demand. The command reports full commit hashes. Signatures are optional.
 
 - A commit with the agent email as author or committer requires a valid `Generated-by` trailer.
 - Other commits require a valid `Generated-by` or `Committed-by` trailer.
