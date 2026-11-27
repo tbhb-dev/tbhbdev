@@ -1,51 +1,56 @@
 # SPDX-License-Identifier: Apache-2.0
 # Copyright Tony Burns
 
-"""Dispatch harness and Git hooks for agent identity.
+"""Dispatch the identity CLI commands and report hook failures."""
 
-Harness hooks record observed sessions and edits. Git's prepare-commit-msg
-hook stamps the attribution, commit-msg validates it, and post-commit
-consumes the receipts. The pre-commit hook also stamps Markdown frontmatter.
-"""
+from __future__ import annotations
 
 import sys
 import traceback
-from pathlib import Path
-from typing import TYPE_CHECKING
+lazy from collections.abc import Mapping
 
-from tbhbdev.alpha.identity.claims import cmd_consume
-from tbhbdev.alpha.identity.claude_commands import AttributionError
-from tbhbdev.alpha.identity.commit import cmd_trailer
-from tbhbdev.alpha.identity.documents import cmd_stamp_docs
-from tbhbdev.alpha.identity.record import cmd_record
-from tbhbdev.alpha.identity.trailers import KEY_GEN
-from tbhbdev.alpha.identity.validation import SESSION_ERROR, cmd_check, llm_trailers
-from tbhbdev.alpha.identity.values import PROG, RUN_HOOK_ENV, detect
-
-if TYPE_CHECKING:
-    from collections.abc import Mapping
-
-# prek and pre-commit pass the commit source here, not as an argument.
-SOURCE_ENV = "PRE_COMMIT_COMMIT_MSG_SOURCE"
+from tbhbdev.alpha.identity.antigravity.session import record_agy, save_agy_session
+from tbhbdev.alpha.identity.claude.hooks import handle_claude
+from tbhbdev.alpha.identity.codex.hooks import handle_codex
+from tbhbdev.alpha.identity.commit import claims
+from tbhbdev.alpha.identity.commit import hooks as commit_hooks
+from tbhbdev.alpha.identity.commit.hooks import trailer_command
+from tbhbdev.alpha.identity.diagnostics import PROG, hook_failure
+from tbhbdev.alpha.identity.documents import hooks as document_hooks
+from tbhbdev.alpha.identity.models import CLAUDE, CODEX, SLUGS, detect
+from tbhbdev.alpha.identity.payload import parse_stdin
+from tbhbdev.alpha.identity.records import AttributionError
+from tbhbdev.alpha.identity.storage import state_dir
+from tbhbdev.alpha.repo import hook_cwd, in_tbhb_dev, read_hook_stdin
 
 
-def trailer_command(msgfile: str, source: str | None, env: Mapping[str, str]) -> int:
-    if msgfile == "--dry-run":
+def cmd_record(harness: str, env: Mapping[str, str]) -> int:
+    """Harness hook entry point: persist what the event reveals."""
+    if harness not in SLUGS:
         return 0
-    required = env.get(RUN_HOOK_ENV) == "1"
-    if required and detect(env) is None:
-        raise AttributionError(SESSION_ERROR)
-    status = cmd_trailer(msgfile, source, env)
-    if (
-        required
-        and status == 0
-        and not any(
-            key == KEY_GEN for key, _ in llm_trailers(Path(msgfile).read_text())
-        )
-    ):
-        message = "run commit requires a Generated-by trailer"
-        raise AttributionError(message)
-    return status
+    data = read_hook_stdin()
+    cwd = hook_cwd(data)
+    # A Claude session can later commit in a tbhb-dev clone even when rooted
+    # elsewhere. In another owner's repository keep only its main user record:
+    # no repository state, commands, edit receipts or subagent records.
+    user_only = bool(state_dir(cwd) and not in_tbhb_dev(cwd))
+    if user_only and harness != CLAUDE:
+        return 0
+    if harness == CODEX:
+        handle_codex(data, env)
+        return 0
+    sid, model, effort = parse_stdin(data)
+    if harness == CLAUDE:
+        if sid:
+            handle_claude({**data, "session_id": sid}, env, user_only=user_only)
+        return 0
+    sid = sid or (detect(env) or (None, None))[1]
+    if not sid:
+        return 0
+    rec = save_agy_session(harness, sid, data, (model, effort), env)
+    if rec is not None:
+        record_agy(sid, data, rec, env)
+    return 0
 
 
 USAGE = (
@@ -61,15 +66,13 @@ def main(argv: list[str], env: Mapping[str, str]) -> int:
         case ["record", harness, *_]:
             return cmd_record(harness, env)
         case ["trailer", msgfile, *rest]:
-            return trailer_command(
-                msgfile, rest[0] if rest else env.get(SOURCE_ENV), env
-            )
+            return trailer_command(msgfile, rest[0] if rest else None, env)
         case ["consume", *_]:
-            return cmd_consume()
+            return claims.cmd_consume()
         case ["stamp-docs", *_]:
-            return cmd_stamp_docs(env)
+            return document_hooks.cmd_stamp_docs(env)
         case ["check", msgfile, *_]:
-            return cmd_check(msgfile, env)
+            return commit_hooks.cmd_check(msgfile, env)
         case _:
             print(USAGE, file=sys.stderr)
             return 2
@@ -90,9 +93,8 @@ def run(argv: list[str], env: Mapping[str, str]) -> int:
         return 1
     except Exception as exc:  # noqa: BLE001 -- every failure becomes one clear line
         where = traceback.extract_tb(exc.__traceback__)[-1]
-        print(
-            f"{PROG} {argv[0]}: failed: {type(exc).__name__} in "
-            f"{where.name} (line {where.lineno})",
-            file=sys.stderr,
+        message, code = hook_failure(
+            argv[0], type(exc).__name__, where.name, where.lineno
         )
-        return 0 if argv[0] == "record" else 1
+        print(message, file=sys.stderr)
+        return code

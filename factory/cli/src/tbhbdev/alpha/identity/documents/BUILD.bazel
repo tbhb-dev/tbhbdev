@@ -1,0 +1,77 @@
+# SPDX-License-Identifier: Apache-2.0
+# Copyright Tony Burns
+
+load("//factory/cli:python.bzl", "cli_py_library")
+
+filegroup(
+    name = "package_files",
+    srcs = glob(["*.py"]),
+    visibility = ["//factory/cli/src/tbhbdev/alpha/identity:__pkg__"],
+)
+
+cli_py_library(
+    name = "__init__",
+    srcs = ["__init__.py"],
+    imports = ["../../../.."],
+    visibility = ["//factory/cli:__subpackages__"],
+)
+
+cli_py_library(
+    name = "contributors",
+    srcs = ["contributors.py"],
+    imports = ["../../../.."],
+    visibility = ["//factory/cli:__subpackages__"],
+    deps = [
+        ":frontmatter",
+        "//factory/cli/src/tbhbdev/alpha/identity:models",
+    ],
+)
+
+cli_py_library(
+    name = "frontmatter",
+    srcs = ["frontmatter.py"],
+    imports = ["../../../.."],
+    visibility = ["//factory/cli:__subpackages__"],
+)
+
+cli_py_library(
+    name = "hooks",
+    srcs = ["hooks.py"],
+    imports = ["../../../.."],
+    pyi_deps = [":frontmatter"],
+    visibility = ["//factory/cli:__subpackages__"],
+    deps = [
+        ":contributors",
+        ":staging",
+        "//factory/cli/src/tbhbdev/alpha/identity:attribution",
+        "//factory/cli/src/tbhbdev/alpha/identity:models",
+        "//factory/cli/src/tbhbdev/alpha/identity:receipts",
+        "//factory/cli/src/tbhbdev/alpha/identity:records",
+        "//factory/cli/src/tbhbdev/alpha/identity:sessions",
+        "//factory/cli/src/tbhbdev/alpha/identity:storage",
+        "//factory/cli/src/tbhbdev/alpha/identity:trailers",
+        "//factory/cli/src/tbhbdev/alpha/identity/claude:logs",
+        "//factory/cli/src/tbhbdev/alpha/identity/codex:rollout",
+        "//factory/cli/src/tbhbdev/alpha/identity/commit:inputs",
+    ],
+)
+
+cli_py_library(
+    name = "selection",
+    srcs = ["selection.py"],
+    imports = ["../../../.."],
+    visibility = ["//factory/cli:__subpackages__"],
+)
+
+cli_py_library(
+    name = "staging",
+    srcs = ["staging.py"],
+    imports = ["../../../.."],
+    visibility = ["//factory/cli:__subpackages__"],
+    deps = [
+        ":frontmatter",
+        ":selection",
+        "//factory/cli/src/tbhbdev/alpha:repo",
+        "//factory/cli/src/tbhbdev/alpha/identity:diagnostics",
+    ],
+)

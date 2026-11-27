@@ -36,10 +36,10 @@ from jsonschema import Draft202012Validator
 from tbhbdev.alpha import opened, size_gate, tool_pins
 from tbhbdev.alpha import pull_request as pr
 from tbhbdev.alpha import pull_request_frontmatter as frontmatter
-from tbhbdev.alpha.identity import attribution, claude_commit, sessions, values
-from tbhbdev.alpha.identity.claude_commands import record_command
+from tbhbdev.alpha.identity import attribution, records, sessions, trailers
+from tbhbdev.alpha.identity.claude import ancestry, commands
+from tbhbdev.alpha.identity.commit import grammar, policy
 from tbhbdev.alpha.identity.trailers import identity_key, merge_pr_trailers
-from tbhbdev.alpha.identity.validation import AGENT_EMAIL, check_message
 from tbhbdev.alpha.secret_scan import REPO_RULES, without_name_rules
 
 # Tests can run from the project or a copy made by mutmut.
@@ -747,14 +747,6 @@ def test_line_numbers_follow_the_frontmatter() -> None:
 # -------------------------------------------------------------- tool lookup
 
 
-def test_cli_versions_match_the_rules_pins() -> None:
-    manifest = Path(__file__).with_name("rules-tool-pins.json")
-    if not manifest.exists():
-        manifest = WORKSPACE / "lib/rules/pins/tools.json"
-    rules = cast("dict[str, dict[str, object]]", json.loads(manifest.read_text()))
-    assert {name: rules[name]["version"] for name in TOOL_VERSIONS} == TOOL_VERSIONS
-
-
 @pytest.mark.parametrize("pin", [None, '{"vale": ""}', '{"vale": 123}', "{}", "{"])
 def test_tool_version_pin_must_be_readable(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, pin: str | None
@@ -1334,7 +1326,7 @@ class TestRealLinters:
 
 
 def value(**attrs: str) -> str:
-    return values.format_value(attrs)
+    return trailers.format_value(attrs)
 
 
 def test_merge_dedupes_and_orders() -> None:
@@ -1404,7 +1396,7 @@ def test_merge_properties(found: list[tuple[str, str]], posting: str | None) -> 
     generated = {identity_key(v) for k, v in found if k == "Generated-by"}
     for (role, _), key in zip(merged, keys, strict=True):
         assert (role == "Generated-by") == (key in generated)
-    assert not check_message("\n".join(f"{k}: {v}" for k, v in merged))
+    assert not grammar.check_message("\n".join(f"{k}: {v}" for k, v in merged))
 
 
 AGENT = {
@@ -1413,11 +1405,11 @@ AGENT = {
     "CLAUDE_CODE_ENTRYPOINT": "cli",
     "CLAUDE_EFFORT": "high",
 }
-ROOT = values.sha256_64("raw-session")
 POSTING = (
     "LLM effort=high;harness=claude-code:2.1.0;model=anthropic:claude-opus-5-5;"
-    f"session={ROOT};surface=cli"
+    f"session={records.sha256_64('raw-session')};surface=cli"
 )
+ROOT = records.sha256_64("raw-session")
 OPENER = (
     "Opened-by: LLM harness=claude-code:2.1.0;model=anthropic:claude-opus-5-5;"
     f"session={ROOT};surface=cli"
@@ -1427,10 +1419,6 @@ OPENER = (
 def ledgers(world: World) -> Path:
     """The directory of opened ledgers in the world's user store."""
     return world.root.parent / "state" / "tbhbdev" / "tbhb-alpha" / "opened"
-
-
-def no_ancestry(*_args: object, **_kwargs: object) -> list[str]:
-    return []
 
 
 def seed_session(world: World, model: str | None = "claude-opus-5-5") -> None:
@@ -1443,7 +1431,7 @@ def seed_session(world: World, model: str | None = "claude-opus-5-5") -> None:
 
 @pytest.fixture
 def agent(world: World, monkeypatch: pytest.MonkeyPatch) -> dict[str, str]:
-    monkeypatch.setattr(claude_commit, "ancestry", no_ancestry)
+    monkeypatch.setattr(ancestry, "ancestry", lambda: ["sh -c eval 'open'"])
     seed_session(world)
     return AGENT
 
@@ -1562,7 +1550,7 @@ def test_a_resolved_posting_value_is_one_line_with_its_commit_trailer(
     world.git("switch", "-q", "-c", "topic")
     world.commit(f"one\n\nGenerated-by: {POSTING}")
     got = pr.description(checked_for(), agent, pr.branch_trailers("main"))
-    session = f"session={ROOT}"
+    session = f"session={records.sha256_64('raw-session')}"
     lines = [line for line in got.splitlines() if session in line]
     assert lines == [f"Generated-by: {POSTING}"]
     assert "Assisted-by" not in got
@@ -1578,7 +1566,7 @@ def test_the_posting_session_dedupes_against_its_commit_trailer(
     # The trailer the session's commit got, from the same commit-time source.
     committed = attribution.committer_identity(agent, [])
     assert committed is not None
-    trailer = values.format_value(committed.ident.attrs())
+    trailer = trailers.format_value(committed.ident.attrs())
     assert "model=anthropic:claude-opus-5-5" in trailer
     world.commit(f"one\n\nGenerated-by: {trailer}")
     assert pr.posting_value(agent) == trailer
@@ -1586,7 +1574,7 @@ def test_the_posting_session_dedupes_against_its_commit_trailer(
     assert merged == [("Generated-by", trailer)]
     assert run_main("create", env=agent) == 0
     _, call = world.calls("gh")
-    session = f"session={ROOT}"
+    session = f"session={records.sha256_64('raw-session')}"
     lines = [line for line in str(call["stdin"]).splitlines() if session in line]
     assert lines == [OPENER, f"Generated-by: {trailer}"]
 
@@ -1750,7 +1738,7 @@ def test_agent_create_refuses_when_hooks_are_disabled(
     world.git("config", "core.hooksPath", "/dev/null")
     env = agent if context == "session" else {}
     if context == "account":
-        world.git("config", "user.email", AGENT_EMAIL)
+        world.git("config", "user.email", policy.AGENT_EMAIL)
     assert run_main("create", env=env) == 1
     assert world.calls("gh") == []
     assert "/dev/null/" in capsys.readouterr().err
@@ -3231,7 +3219,7 @@ def test_create_writes_opened_by_first_and_the_ledger(
         f"\nv\n\n{OPENER}\nGenerated-by: {GEN}\nAssisted-by: {POSTING}\n"
     )
     assert "subagent=" not in OPENER
-    path = ledgers(world) / f"{values.hx(ROOT)}.json"
+    path = ledgers(world) / f"{records.hx(ROOT)}.json"
     assert json.loads(path.read_text()) == {"prs": ["tbhb-dev/tbhbdev#1"]}
     assert capsys.readouterr() == ("https://github.com/tbhb-dev/tbhbdev/pull/1\n", "")
     world.fake("gh", stdout="Created\nhttps://github.com/tbhb-dev/tbhbdev/pull/12\n")
@@ -3250,7 +3238,7 @@ def test_pr_commands_report_unresolved_attribution(
     site: str,
 ) -> None:
     write_draft(world)
-    record_command(ROOT, SUBAGENT, "background command", world.root)
+    commands.record_command(ROOT, SUBAGENT, "background command", world.root)
     if site == "create-description":
         monkeypatch.setattr(pr, "opened_by", Mock(return_value=(None, None)))
     argv = (
@@ -3277,17 +3265,33 @@ def test_pr_commands_report_unresolved_attribution(
         assert reads == []
 
 
-def test_a_subagent_opens_under_its_root(world: World, agent: dict[str, str]) -> None:
+@pytest.mark.parametrize("root_model", ["claude-opus-5-5", None])
+def test_a_subagent_opens_under_its_root(
+    world: World,
+    agent: dict[str, str],
+    root_model: str | None,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    seed_session(world, root_model)
     write_draft(world)
-    child = values.sha256_64("agent-raw")
+    child = records.sha256_64("agent-raw")
     sessions.write_user_record(child, {"root": ROOT, "model": "claude-x"})
-    assert run_main("create", env={**agent, "ASCM_AGENT_ID": child}) == 0
+    commands.record_command(ROOT, child, "open")
+    assert run_main("create", env=agent) == 0
     _, call = world.calls("gh")
-    assert str(call["stdin"]).endswith(
-        f"\n\n{OPENER}\nAssisted-by: LLM harness=claude-code:2.1.0;"
-        f"model=anthropic:claude-x;session={ROOT};subagent={child};surface=cli\n"
-    )
-    assert opened.read_ledger(ROOT) == {"tbhb-dev/tbhbdev#1"}
+    if root_model:
+        assert str(call["stdin"]).endswith(
+            f"\n\n{OPENER}\nAssisted-by: LLM harness=claude-code:2.1.0;"
+            f"model=anthropic:claude-x;session={ROOT};subagent={child};surface=cli\n"
+        )
+        assert opened.read_ledger(ROOT) == {"tbhb-dev/tbhbdev#1"}
+    else:
+        assert "Opened-by" not in str(call["stdin"])
+        assert not ledgers(world).exists()
+        assert capsys.readouterr().err == (
+            "warning: no Opened-by line or ledger entry: LLM harness=claude-code:2.1.0;"
+            f"session={ROOT};surface=cli: model required\n"
+        )
 
 
 @pytest.mark.parametrize(
@@ -3297,7 +3301,7 @@ def test_no_root_means_no_line_and_no_ledger(
     world: World, env: dict[str, str], capsys: pytest.CaptureFixture[str]
 ) -> None:
     write_draft(world)
-    conv = values.sha256_64("conv-raw")
+    conv = records.sha256_64("conv-raw")
     sessions.write_user_record(conv, {"model": "gemini-x"})
     assert run_main("create", env=env) == 0
     _, call = world.calls("gh")
@@ -3336,7 +3340,7 @@ def test_create_without_a_url_records_nothing(
 def test_create_with_a_corrupt_ledger_reports_it(
     world: World, agent: dict[str, str], capsys: pytest.CaptureFixture[str]
 ) -> None:
-    path = ledgers(world) / f"{values.hx(ROOT)}.json"
+    path = ledgers(world) / f"{records.hx(ROOT)}.json"
     path.parent.mkdir(parents=True)
     path.write_text("[]")
     write_draft(world)
@@ -3424,10 +3428,10 @@ def test_check_rejects_opened_by_in_code_too() -> None:
     assert structure(BASE + "\nSee the Opened-by: line.\n") == []
 
 
-R1 = values.sha256_64("r1")
-R2 = values.sha256_64("r2")
-R3 = values.sha256_64("r3")
-SUB = values.sha256_64("sub")
+R1 = records.sha256_64("r1")
+R2 = records.sha256_64("r2")
+R3 = records.sha256_64("r3")
+SUB = records.sha256_64("sub")
 
 
 def gh_list(items: list[dict[str, object]], rc: int = 0) -> dict[str, object]:
@@ -3479,7 +3483,7 @@ def test_backfill_records_every_session_on_every_pr(
         assert opened.read_ledger(R2) == {"tbhb-dev/a#1"}
         assert opened.read_ledger(R3) == {"tbhb-dev/a#2"}
         assert sorted(p.name for p in ledgers(world).glob("*.json")) == sorted(
-            f"{values.hx(r)}.json" for r in (R1, R2, R3)
+            f"{records.hx(r)}.json" for r in (R1, R2, R3)
         )
     calls = [call["argv"] for call in world.calls("gh")][:3]
     assert calls == [
@@ -3518,7 +3522,7 @@ def test_backfill_stops_when_gh_fails(
 
 def test_backfill_stops_at_a_corrupt_ledger(world: World) -> None:
     world.fake("gh", cases=BACKFILL_CASES)
-    path = ledgers(world) / f"{values.hx(R1)}.json"
+    path = ledgers(world) / f"{records.hx(R1)}.json"
     path.parent.mkdir(parents=True)
     path.write_text("{")
     with pytest.raises(SystemExit, match=f"^{re.escape(str(path))} is not JSON$"):
@@ -5076,7 +5080,7 @@ def test_create_warns_when_the_ledger_cant_be_written(
 ) -> None:
     store = ledgers(world)
     store.mkdir(parents=True)
-    path = store / f"{values.hx(ROOT)}.json"
+    path = store / f"{records.hx(ROOT)}.json"
     if make == "file":
         # A directory where the ledger file goes: the write fails with OSError.
         path.mkdir()
@@ -5106,23 +5110,6 @@ def test_create_warns_when_the_write_fails(
     assert capsys.readouterr().err == (
         "warning: the PR is open, but the ledger was not updated: "
         "[Errno 28] No space left on device\n"
-    )
-
-
-def test_an_opener_without_a_model_gets_no_line_and_no_ledger(
-    world: World, agent: dict[str, str], capsys: pytest.CaptureFixture[str]
-) -> None:
-    child = values.sha256_64("agent-raw")
-    sessions.write_user_record(child, {"root": ROOT, "model": "claude-x"})
-    seed_session(world, None)
-    write_draft(world)
-    assert run_main("create", env={**agent, "ASCM_AGENT_ID": child}) == 0
-    _, call = world.calls("gh")
-    assert "Opened-by" not in str(call["stdin"])
-    assert not ledgers(world).exists()
-    value = f"LLM harness=claude-code:2.1.0;session={ROOT};surface=cli"
-    assert capsys.readouterr().err == (
-        f"warning: no Opened-by line or ledger entry: {value}: model required\n"
     )
 
 

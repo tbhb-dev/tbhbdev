@@ -32,7 +32,7 @@ cli_py_library(
         "//factory/cli/src/tbhbdev:userconfig",
         "//factory/cli/src/tbhbdev/alpha/agent:settings",
         "//factory/cli/src/tbhbdev/alpha/identity:trailers",
-        "//factory/cli/src/tbhbdev/alpha/identity:validation",
+        "//factory/cli/src/tbhbdev/alpha/identity/commit:grammar",
     ],
 )
 
@@ -62,7 +62,7 @@ cli_py_library(
         ":repo",
         "//factory/cli/src/tbhbdev:userconfig",
         "//factory/cli/src/tbhbdev/alpha/identity:storage",
-        "//factory/cli/src/tbhbdev/alpha/identity:validation",
+        "//factory/cli/src/tbhbdev/alpha/identity/commit:policy",
     ],
 )
 
@@ -73,8 +73,9 @@ cli_py_library(
     visibility = ["//factory/cli:__subpackages__"],
     deps = [
         ":repo",
-        "//factory/cli/src/tbhbdev/alpha/identity:claude_model",
-        "//factory/cli/src/tbhbdev/alpha/identity:payload",
+        "//factory/cli/src/tbhbdev/alpha/identity:records",
+        "//factory/cli/src/tbhbdev/alpha/identity:storage",
+        "//factory/cli/src/tbhbdev/alpha/identity/claude:transcript",
     ],
 )
 
@@ -126,7 +127,7 @@ cli_py_library(
         ":guard_gh_pr",
         ":repo",
         "//factory/cli/src/tbhbdev:userconfig",
-        "//factory/cli/src/tbhbdev/alpha/identity:antigravity",
+        "//factory/cli/src/tbhbdev/alpha/identity/antigravity:payload",
         "@cli_pip//pyyaml",
     ],
 )
@@ -140,7 +141,7 @@ cli_py_library(
         ":guard_gh_poll",
         ":guard_gh_pr",
         ":repo",
-        "//factory/cli/src/tbhbdev/alpha/identity:antigravity",
+        "//factory/cli/src/tbhbdev/alpha/identity/antigravity:payload",
     ],
 )
 
@@ -158,11 +159,12 @@ cli_py_library(
     imports = ["../.."],
     visibility = ["//factory/cli:__subpackages__"],
     deps = [
-        "//factory/cli/src/tbhbdev/alpha/identity:antigravity",
         "//factory/cli/src/tbhbdev/alpha/identity:attribution",
+        "//factory/cli/src/tbhbdev/alpha/identity:models",
+        "//factory/cli/src/tbhbdev/alpha/identity:records",
         "//factory/cli/src/tbhbdev/alpha/identity:sessions",
         "//factory/cli/src/tbhbdev/alpha/identity:storage",
-        "//factory/cli/src/tbhbdev/alpha/identity:values",
+        "//factory/cli/src/tbhbdev/alpha/identity/antigravity:session",
     ],
 )
 
@@ -178,7 +180,7 @@ cli_py_library(
         "//factory/cli/src/tbhbdev/alpha/agent:settings",
         "//factory/cli/src/tbhbdev/alpha/agent:signing_parity",
         "//factory/cli/src/tbhbdev/alpha/agent/decisions:host_names",
-        "//factory/cli/src/tbhbdev/alpha/identity:validation",
+        "//factory/cli/src/tbhbdev/alpha/identity/commit:policy",
     ],
 )
 
@@ -204,15 +206,14 @@ cli_py_library(
         "//factory/cli/src/tbhbdev:userconfig",
         "//factory/cli/src/tbhbdev/alpha/agent:settings",
         "//factory/cli/src/tbhbdev/alpha/agent/decisions:host_names",
-        "//factory/cli/src/tbhbdev/alpha/identity:antigravity",
         "//factory/cli/src/tbhbdev/alpha/identity:attribution",
-        "//factory/cli/src/tbhbdev/alpha/identity:claude",
-        "//factory/cli/src/tbhbdev/alpha/identity:claude_commands",
-        "//factory/cli/src/tbhbdev/alpha/identity:codex_rollout",
+        "//factory/cli/src/tbhbdev/alpha/identity:models",
         "//factory/cli/src/tbhbdev/alpha/identity:payload",
+        "//factory/cli/src/tbhbdev/alpha/identity:records",
         "//factory/cli/src/tbhbdev/alpha/identity:trailers",
-        "//factory/cli/src/tbhbdev/alpha/identity:validation",
-        "//factory/cli/src/tbhbdev/alpha/identity:values",
+        "//factory/cli/src/tbhbdev/alpha/identity/antigravity:payload",
+        "//factory/cli/src/tbhbdev/alpha/identity/codex:payload",
+        "//factory/cli/src/tbhbdev/alpha/identity/commit:grammar",
         "//factory/cli/src/tbhbdev/alpha/install/git:hooks",
         "@cli_pip//jsonschema",
     ],
@@ -296,7 +297,7 @@ cli_py_library(
         ":review_inline",
         "//factory/cli/src/tbhbdev:content",
         "//factory/cli/src/tbhbdev/alpha/identity:trailers",
-        "//factory/cli/src/tbhbdev/alpha/identity:validation",
+        "//factory/cli/src/tbhbdev/alpha/identity/commit:grammar",
     ],
 )
 
@@ -345,7 +346,8 @@ cli_py_library(
         ":size_gate",
         "//factory/cli/src/tbhbdev/alpha/agent:push",
         "//factory/cli/src/tbhbdev/alpha/agent:runfiles",
-        "//factory/cli/src/tbhbdev/alpha/identity:payload",
+        "//factory/cli/src/tbhbdev/alpha/identity:records",
+        "//factory/cli/src/tbhbdev/alpha/identity:storage",
     ],
 )
 
@@ -391,9 +393,10 @@ cli_py_library(
     visibility = ["//factory/cli:__subpackages__"],
     deps = [
         ":terminal",
-        "//factory/cli/src/tbhbdev/alpha/identity:replay",
         "//factory/cli/src/tbhbdev/alpha/identity:trailers",
-        "//factory/cli/src/tbhbdev/alpha/identity:validation",
+        "//factory/cli/src/tbhbdev/alpha/identity/commit:grammar",
+        "//factory/cli/src/tbhbdev/alpha/identity/commit:picking",
+        "//factory/cli/src/tbhbdev/alpha/identity/commit:policy",
     ],
 )
 
@@ -428,8 +431,10 @@ filegroup(
     name = "package_files",
     srcs = glob(
         ["**"],
+        # The dispatcher is collected through identity/dispatcher.py.
         exclude = [
             "BUILD.bazel",
+            "identity.py",
         ],
     ) + [
         "//factory/cli/src/tbhbdev/alpha/identity:package_files",

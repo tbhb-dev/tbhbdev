@@ -4,9 +4,164 @@
 
 """Tests for identity models."""
 
-import pytest
+from __future__ import annotations
 
-from tbhbdev.alpha.identity import models
+import re
+
+import pytest
+from hypothesis import given, settings
+from hypothesis import strategies as st
+from unit.alpha.identity.identity_examples import (
+    CHILD,
+    CODEX_TRAILER_ATTRS,
+    ROOT,
+    make_receipt,
+)
+
+from tbhbdev.alpha.identity import models, trailers
+
+
+def test_detect_innermost_wins() -> None:
+    assert models.detect({}) is None
+    assert models.detect({"CLAUDE_CODE_SESSION_ID": ""}) is None
+    assert models.detect({"CLAUDE_CODE_SESSION_ID": "a"}) == ("claude", "a")
+    both = {"CLAUDE_CODE_SESSION_ID": "a", "CODEX_SESSION_ID": "b"}
+    assert models.detect(both) == ("codex", "b")
+    all3 = {**both, "ANTIGRAVITY_CONVERSATION_ID": "c"}
+    assert models.detect(all3) == ("antigravity", "c")
+    assert models.detect({"ANTIGRAVITY_CONVERSATION_ID": "c"}) == ("antigravity", "c")
+
+
+@pytest.mark.parametrize(
+    ("value", "expected"),
+    [
+        ("High", "high"),
+        ("  low  ", "low"),
+        ("", None),
+        ("   ", None),
+        (None, None),
+        ("a b", None),
+        ("a;b", None),
+        ("a,b", None),
+        ("<synthetic>", None),
+        (5, "5"),
+    ],
+)
+def test_clean_value(value: object, expected: str | None) -> None:
+    assert models.clean_value(value) == expected
+
+
+@settings(database=None)
+@given(st.text())
+def test_clean_value_is_grammar_safe(text: str) -> None:
+    cleaned = models.clean_value(text)
+    if cleaned is not None:
+        assert cleaned
+        assert cleaned == cleaned.strip().lower()
+        assert not re.search(r"[\s;,]", cleaned)
+
+
+def test_slugs() -> None:
+    assert models.SLUGS == {
+        "claude": "claude-code",
+        "codex": "codex",
+        "antigravity": "antigravity",
+    }
+
+
+def test_make_ident_omits_unknowns() -> None:
+    assert models.make_ident("claude", ROOT, models.Seen()) == models.Ident(
+        ROOT, "claude-code"
+    )
+    seen = models.Seen("2.1.316", "m", "High", "cli")
+    assert models.make_ident("claude", ROOT, seen, CHILD) == models.Ident(
+        ROOT, "claude-code:2.1.316", CHILD, "anthropic:m", "high", "cli"
+    )
+    assert models.make_ident("claude", ROOT, models.Seen(effort="huge")).effort is None
+    assert models.make_ident("claude", ROOT, models.Seen(surface="")).surface is None
+    assert (
+        models.make_ident("claude", ROOT, models.Seen(version="a b")).harness
+        == "claude-code"
+    )
+    assert models.make_ident("claude", ROOT, models.Seen(model=5)).model is None
+    assert models.make_ident("claude", ROOT, models.Seen(), "").subagent is None
+
+
+def test_make_ident_agy_effort_only_from_table() -> None:
+    known = models.make_ident(
+        "antigravity", ROOT, models.Seen(model="gemini-3.8-flash-low")
+    )
+    assert (known.model, known.effort) == ("gcp.gemini:gemini-3.8-flash", "low")
+    explicit = models.make_ident(
+        "antigravity", ROOT, models.Seen(model="gemini-3.8-flash-low", effort="high")
+    )
+    assert explicit.effort == "high"
+    unknown = models.make_ident(
+        "antigravity", ROOT, models.Seen(model="gemini-3.8-flash-tiered")
+    )
+    assert (unknown.model, unknown.effort) == ("gemini-3.8-flash-tiered", None)
+    assert models.make_ident("antigravity", ROOT, models.Seen()).effort is None
+    other = models.make_ident("codex", ROOT, models.Seen(model="gemini-3.8-flash-low"))
+    assert other.effort is None
+
+
+@pytest.mark.parametrize(
+    ("model", "expected"),
+    [
+        (
+            "gemini-4-hydrogen-xhigh",
+            (
+                "effort=xhigh;harness=antigravity:1.5.7;"
+                "model=gcp.gemini:gemini-4-hydrogen;session={s};surface=cli"
+            ),
+        ),
+        (
+            "gemini-4-carbon-medium",
+            (
+                "effort=medium;harness=antigravity:1.5.7;"
+                "model=gcp.gemini:gemini-4-carbon;session={s};surface=cli"
+            ),
+        ),
+        (
+            "gemini-pro-orchestrator-argon",
+            (
+                "harness=antigravity:1.5.7;"
+                "model=gcp.gemini:gemini-pro-orchestrator-argon;session={s};surface=cli"
+            ),
+        ),
+    ],
+)
+def test_agy_1_5_7_models_render_a_complete_trailer(model: str, expected: str) -> None:
+    ident = models.make_ident(
+        "antigravity", ROOT, models.Seen(model=model, version="1.5.7", surface="cli")
+    )
+    assert trailers.format_value(ident.attrs()) == "LLM " + expected.format(s=ROOT)
+
+
+def test_ident_attrs_and_keys() -> None:
+    who = models.Ident(ROOT, "codex", CHILD, "openai:m", "low", "exec")
+    assert who.attrs() == {**CODEX_TRAILER_ATTRS, "surface": "exec"}
+    assert models.Ident(ROOT, "codex").attrs() == {"harness": "codex", "session": ROOT}
+    assert who.agent_key() == (ROOT, CHILD)
+    receipt = make_receipt("p", who)
+    assert models.Ident.from_receipt(receipt) == who
+    bare = models.Ident.from_receipt({"root": ROOT, "harness": "codex"})
+    assert bare == models.Ident(ROOT, "codex")
+
+
+def test_detect_prefers_the_innermost_harness() -> None:
+    env = {
+        "CLAUDE_CODE_SESSION_ID": "c",
+        "CODEX_SESSION_ID": "x",
+        "ANTIGRAVITY_CONVERSATION_ID": "a",
+    }
+    assert models.detect(env) == (models.ANTIGRAVITY, "a")
+    del env["ANTIGRAVITY_CONVERSATION_ID"]
+    assert models.detect(env) == (models.CODEX, "x")
+    del env["CODEX_SESSION_ID"]
+    assert models.detect(env) == (models.CLAUDE, "c")
+    assert models.detect({"CLAUDE_CODE_SESSION_ID": ""}) is None
+    assert models.detect({}) is None
 
 
 def test_version_per_harness() -> None:

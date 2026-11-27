@@ -54,7 +54,7 @@ from tbhbdev.alpha.guard_gh_pr import (
     program_of,
     shell_script,
 )
-from tbhbdev.alpha.identity import antigravity
+from tbhbdev.alpha.identity.antigravity import payload as agy_payload
 from tbhbdev.alpha.repo import hook_cwd, read_hook_stdin
 
 SSH_VALUES = {
@@ -547,7 +547,7 @@ def writes(data: dict[str, object]) -> Iterator[tuple[Path, str, str]]:
     tool = data.get("tool_name")
     inputs = data.get("tool_input")
     if "toolCall" in data:
-        tool, inputs = antigravity.agy_tool(data)
+        tool, inputs = agy_payload.agy_tool(data)
         if isinstance(inputs, str):
             inputs = json.loads(inputs)
     if not isinstance(inputs, dict):
@@ -559,7 +559,7 @@ def writes(data: dict[str, object]) -> Iterator[tuple[Path, str, str]]:
             cwd,
         )
         return
-    name = fields.get("notebook_path") or antigravity.agy_edit_path(fields)
+    name = fields.get("notebook_path") or agy_payload.agy_edit_path(fields)
     if not isinstance(name, str):
         return
     path = cwd / name
@@ -653,7 +653,7 @@ def main() -> int:
     try:
         data = read_hook_stdin()
         text, check.antigravity = command_of(data)
-        tool = antigravity.agy_tool(data)[0]
+        tool = agy_payload.agy_tool(data)[0]
         bad = (
             check.offenders(shell_calls(text))
             if tool in {"Bash", "shell", "run_command"}

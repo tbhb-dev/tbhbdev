@@ -136,28 +136,23 @@ from contextvars import ContextVar
 from dataclasses import dataclass, field
 from pathlib import Path
 from types import MappingProxyType
-from typing import TYPE_CHECKING, cast
+from typing import cast
 from urllib.parse import quote
+lazy from collections.abc import Callable, Collection, Mapping, Sequence
 
 from jsonschema import Draft202012Validator
 
 from tbhbdev import userconfig
-from tbhbdev.alpha import opened, secret_scan, size_gate, tool_pins
+from tbhbdev.alpha import opened, repo, secret_scan, size_gate, tool_pins
 from tbhbdev.alpha import pull_request_frontmatter as frontmatter
 from tbhbdev.alpha.agent import settings
 from tbhbdev.alpha.agent.decisions import host_names
-from tbhbdev.alpha.identity import antigravity, attribution, payload, values
-from tbhbdev.alpha.identity.claude import tool_input_of
-from tbhbdev.alpha.identity.claude_commands import AttributionError
-from tbhbdev.alpha.identity.codex_rollout import patch_paths
-from tbhbdev.alpha.identity.trailers import merge_pr_trailers
-from tbhbdev.alpha.identity.validation import LINE, check_value
+from tbhbdev.alpha.identity import attribution, models, payload, records
+from tbhbdev.alpha.identity.antigravity import payload as agy_payload
+from tbhbdev.alpha.identity.codex import payload as identity_codex_payload
+from tbhbdev.alpha.identity.commit import grammar as identity_commit_grammar
+from tbhbdev.alpha.identity.trailers import format_value, merge_pr_trailers
 from tbhbdev.alpha.install.git.hooks import require_git_hooks
-from tbhbdev.alpha.repo import git as repo_git
-from tbhbdev.alpha.repo import hook_cwd, in_tbhb_dev, read_hook_stdin
-
-if TYPE_CHECKING:
-    from collections.abc import Callable, Collection, Mapping, Sequence
 
 # Each `cast` below carries `pragma: no mutate`: it is a runtime no-op, so no test
 # could tell a mutated type string from the original.
@@ -191,6 +186,10 @@ REBASE_MARKER = "<!-- rebase-check -->"
 REBASE_UNCHECKED = "- [ ]"
 REBASE_CHECKED = "- [x]"
 GIT = "git"
+CLAUDE = "claude"
+CODEX = "codex"
+ANTIGRAVITY = "antigravity"
+AGY_EDITS = agy_payload.AGY_EDIT_TOOLS
 # The exit code that makes a harness feed a PostToolUse hook's stderr to the agent.
 HOOK_FEEDBACK = 2
 COG = "cog"
@@ -297,7 +296,7 @@ class Checked:
 
 def git(*args: str, cwd: Path | None = None) -> tuple[int, str]:
     """Run Git with the executable resolved during command startup, if any."""
-    return repo_git(*args, cwd=cwd, executable=_TOOL_PATHS.get().get((GIT, False), GIT))
+    return repo.git(*args, cwd=cwd, executable=_TOOL_PATHS.get().get((GIT, False), GIT))
 
 
 def root(cwd: Path | None = None) -> Path:
@@ -492,7 +491,7 @@ def wrap_problems(lines: Sequence[Line]) -> list[Problem]:
             or HEADING.fullmatch(line.text)
             or text.startswith("|")
             or HUMAN_TRAILER.match(text)
-            or LINE.match(text)
+            or identity_commit_grammar.LINE.match(text)
         ):
             start = None
         elif start is None or LIST_ITEM.match(line.text):
@@ -516,7 +515,7 @@ def trailer_problems(lines: Sequence[Line]) -> list[Problem]:
             continue
         if line.code:
             continue
-        if LINE.match(line.text):
+        if identity_commit_grammar.LINE.match(line.text):
             problems.append(
                 (
                     line.no,
@@ -870,7 +869,7 @@ def branch_trailers(base: str) -> list[tuple[str, str]]:
 
 def trailer_lines(text: str) -> list[tuple[str, str]]:
     """Match LLM trailer lines in Git's parsed trailer output."""
-    found = (LINE.match(line) for line in text.splitlines())
+    found = (identity_commit_grammar.LINE.match(line) for line in text.splitlines())
     return [(match[1], match[2]) for match in found if match]
 
 
@@ -881,8 +880,8 @@ def commit_messages(pages: Sequence[object], invalid: str) -> list[str]:
         if not isinstance(page, list):
             raise SystemExit(invalid)
         for entry in cast("list[object]", page):  # pragma: no mutate
-            item = payload.as_dict(entry) or {}
-            commit = payload.as_dict(item.get("commit")) or {}
+            item = records.as_dict(entry) or {}
+            commit = records.as_dict(item.get("commit")) or {}
             message = commit.get("message")
             if not isinstance(message, str):
                 raise SystemExit(invalid)
@@ -926,7 +925,7 @@ def posting_value(env: Mapping[str, str]) -> str | None:
     committer = attribution.committer_identity(env)
     if committer is None:
         return None
-    return values.format_value(committer.ident.attrs())
+    return format_value(committer.ident.attrs())
 
 
 def default_base(*, origin_only: bool = False) -> str:
@@ -1024,7 +1023,11 @@ def description(
     """
     posting = posting_value(env)
     values = [value for _, value in found] + ([posting] if posting else [])
-    errors = [f"{value}: {why}" for value in values if (why := check_value(value))]
+    errors = [
+        f"{value}: {why}"
+        for value in values
+        if (why := identity_commit_grammar.check_value(value))
+    ]
     if errors:
         raise SystemExit("invalid LLM trailer: " + "; ".join(errors))
     merged = [f"{key}: {value}" for key, value in merge_pr_trailers(found, posting)]
@@ -1956,24 +1959,24 @@ def backfill(owner: str) -> int:
         ["repo", "list", owner, "--limit", str(REPO_LIMIT), "--json", "nameWithOwner"]
     )
     warn_at_limit(len(repos), REPO_LIMIT, f"gh repo list {owner}")
-    for repo in sorted(str(entry["nameWithOwner"]) for entry in repos):
+    for name in sorted(str(entry["nameWithOwner"]) for entry in repos):
         pulls = gh_json(
-            ["pr", "list", "-R", repo, "--state", "all", "--limit", str(PR_LIMIT),
+            ["pr", "list", "-R", name, "--state", "all", "--limit", str(PR_LIMIT),
              "--json", "number,body"]
         )  # fmt: skip
-        warn_at_limit(len(pulls), PR_LIMIT, f"gh pr list -R {repo}")
+        warn_at_limit(len(pulls), PR_LIMIT, f"gh pr list -R {name}")
         by_root: dict[str, set[str]] = {}
         for pull in pulls:
             body = str(pull.get("body") or "")  # pragma: no mutate -- no roots
             for root in body_roots(body):
-                by_root.setdefault(root, set()).add(f"{repo}#{pull['number']}")
+                by_root.setdefault(root, set()).add(f"{name}#{pull['number']}")
         try:
             for root, refs in sorted(by_root.items()):
                 opened.record_opened(root, refs)
         except opened.LedgerError as exc:
             raise SystemExit(str(exc)) from exc
         recorded = set().union(*by_root.values())
-        print(f"{repo}: {len(recorded)} of {len(pulls)} pull requests recorded")
+        print(f"{name}: {len(recorded)} of {len(pulls)} pull requests recorded")
     return 0
 
 
@@ -1985,15 +1988,15 @@ def opened_by(env: Mapping[str, str]) -> tuple[str | None, str | None]:
     """
     ident = opened.opener(env)
     if ident is None:
-        if values.detect(env) is not None:
+        if models.detect(env) is not None:
             message = (
                 f"warning: no {OPENED_KEY} line or ledger entry: "
                 "cannot resolve the root session"
             )
             print(message, file=sys.stderr)
         return None, None
-    value = values.format_value(ident.attrs())
-    if why := check_value(value):
+    value = format_value(ident.attrs())
+    if why := identity_commit_grammar.check_value(value):
         message = f"warning: no {OPENED_KEY} line or ledger entry: {value}: {why}"
         print(message, file=sys.stderr)
         return None, None
@@ -2168,19 +2171,15 @@ def _run_command(args: argparse.Namespace, env: Mapping[str, str]) -> int:
     return invoke_gh(argv, body)[0]
 
 
-def touched_paths(harness: str, data: payload.Json) -> list[str]:
+def touched_paths(harness: str, data: records.Json) -> list[str]:
     """Files a harness's PostToolUse payload says the tool call wrote."""
-    inputs = tool_input_of(data)
+    inputs = payload.tool_input_of(data)
     path: object
-    if harness == values.CODEX:
-        return patch_paths(inputs.get("command"))
-    if harness == values.ANTIGRAVITY:
-        tool, args = antigravity.agy_tool(data)
-        path = (
-            antigravity.agy_edit_path(args)
-            if tool in antigravity.AGY_EDIT_TOOLS
-            else None
-        )
+    if harness == CODEX:
+        return identity_codex_payload.patch_paths(inputs.get("command"))
+    if harness == ANTIGRAVITY:
+        tool, args = agy_payload.agy_tool(data)
+        path = agy_payload.agy_edit_path(args) if tool in AGY_EDITS else None
     else:
         path = inputs.get("file_path")
     return [path] if isinstance(path, str) and path else []
@@ -2195,9 +2194,9 @@ def hook(harness: str) -> int:
     hook must never stop the agent's work.
     """
     try:
-        data = read_hook_stdin()
-        cwd = hook_cwd(data) or Path.cwd()
-        if not in_tbhb_dev(cwd):
+        data = repo.read_hook_stdin()
+        cwd = repo.hook_cwd(data) or Path.cwd()
+        if not repo.in_tbhb_dev(cwd):
             return 0
         # The checks read the worktree's own schema, sections and configs.
         os.chdir(root(cwd))
@@ -2222,7 +2221,7 @@ def build_parser(prog: str | None = None) -> argparse.ArgumentParser:
         prog=prog, description="Check a PR draft and open the PR."
     )
     sub = parser.add_subparsers(dest="command", required=True)
-    sub.add_parser("hook").add_argument("harness", choices=values.SLUGS)
+    sub.add_parser("hook").add_argument("harness", choices=[CLAUDE, CODEX, ANTIGRAVITY])
     sub.add_parser("backfill-opened").add_argument("owner")
     sub.add_parser("ready").add_argument("pr", type=int, nargs="+")
     sub.add_parser("rebase").add_argument("pr", type=int, nargs="+")
@@ -2273,7 +2272,7 @@ def main(
         return command(args, env)
     except userconfig.ConfigError as exc:
         print(f"tbhbdev alpha pr: {exc}", file=sys.stderr)
-    except AttributionError:
+    except records.AttributionError:
         print(
             "tbhbdev alpha pr: Attribution couldn't be resolved. Retry the pull "
             "request command from the main session after the subagent's command "

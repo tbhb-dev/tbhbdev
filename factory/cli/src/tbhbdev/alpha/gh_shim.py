@@ -86,8 +86,8 @@ from typing import TYPE_CHECKING
 from tbhbdev import userconfig
 from tbhbdev.alpha.gh_app import RUN_ENV
 from tbhbdev.alpha.guard_gh_poll import POLL_REASON
+from tbhbdev.alpha.identity.commit.policy import AGENT_EMAIL
 from tbhbdev.alpha.identity.storage import locked, write_private_json
-from tbhbdev.alpha.identity.validation import AGENT_EMAIL
 from tbhbdev.alpha.repo import git
 
 if TYPE_CHECKING:

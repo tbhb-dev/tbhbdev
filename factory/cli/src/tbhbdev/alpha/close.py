@@ -36,7 +36,8 @@ from tbhbdev import content, issue_import, userconfig
 from tbhbdev.alpha import opened, worker_identity
 from tbhbdev.alpha import pull_request as pr
 from tbhbdev.alpha.agent import settings as agent_settings
-from tbhbdev.alpha.identity import trailers, validation
+from tbhbdev.alpha.identity import trailers as identity_trailers
+from tbhbdev.alpha.identity.commit import grammar as identity_commit_grammar
 
 if TYPE_CHECKING:
     from collections.abc import Mapping, Sequence
@@ -91,10 +92,10 @@ def trailer(env: Mapping[str, str]) -> str:
     if value is None:
         message = "not closing: the caller isn't a recognized agent session"
         raise SystemExit(message)
-    if why := validation.check_value(value):
+    if why := identity_commit_grammar.check_value(value):
         message = f"invalid LLM trailer: {value}: {why}"
         raise SystemExit(message)
-    return f"{trailers.KEY_GEN}: {value}"
+    return f"{identity_trailers.KEY_GEN}: {value}"
 
 
 def closer(env: Mapping[str, str], workflow: str | None) -> str:

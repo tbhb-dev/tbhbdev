@@ -1,14 +1,9 @@
 # SPDX-License-Identifier: Apache-2.0
 # Copyright Tony Burns
 
-"""Locate worktree state and read, write, and lock its files.
+"""Read and write private files in the user and worktree stores."""
 
-Each worktree keeps its own session records, command records, edit receipts,
-and commit claims. Codex rollout offsets use the common Git directory because
-a rollout can record changes in several worktrees. Session and agent IDs are
-stored as hashes. Writers hold a lock across each read-modify-write and
-replace files atomically so readers never see partial records.
-"""
+from __future__ import annotations
 
 import fcntl
 import json
@@ -16,17 +11,11 @@ import os
 from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING
+lazy from collections.abc import Generator
 
-from tbhbdev.alpha.repo import git
+from tbhbdev.alpha import repo as git_repo
+lazy from tbhbdev.alpha.identity.records import Json
 
-if TYPE_CHECKING:
-    from collections.abc import Generator
-
-    from tbhbdev.alpha.identity.payload import Json
-
-# Each worktree's store, under its git dir, and the shared one, under the
-# common dir. The earlier tools used another name; a new name keeps the two apart.
 STORE = "tbhb-alpha"
 
 
@@ -45,7 +34,7 @@ def stores(cwd: Path | None = None) -> list[Path]:
     Empty outside a repository. The main worktree's git dir is the common dir,
     and each linked worktree's is under ``<common>/worktrees/``.
     """
-    code, out = git(
+    code, out = git_repo.git(
         "rev-parse", "--path-format=absolute", "--git-dir", "--git-common-dir", cwd=cwd
     )
     if code != 0:
@@ -63,7 +52,7 @@ def state_dir(cwd: Path | None = None) -> Path | None:
 
 def repo_info(cwd: Path | None = None) -> Repo | None:
     """The work tree containing ``cwd`` and its stores, or None."""
-    code, out = git(
+    code, out = git_repo.git(
         "rev-parse",
         "--path-format=absolute",
         "--show-toplevel",
@@ -106,6 +95,17 @@ def locked(store: Path, name: str = "lock") -> Generator[None]:
     with (store / name).open("a") as handle:
         fcntl.flock(handle, fcntl.LOCK_EX)
         yield
+
+
+def read_tail(path: Path, size: int) -> list[str] | None:
+    """The lines in the last ``size`` bytes of a file, or None if unreadable."""
+    try:
+        with path.open("rb") as handle:
+            handle.seek(0, os.SEEK_END)
+            handle.seek(max(0, handle.tell() - size))
+            return handle.read().decode(errors="replace").splitlines()
+    except OSError:
+        return None
 
 
 def user_store() -> Path:

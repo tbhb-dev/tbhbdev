@@ -1,5 +1,6 @@
 # SPDX-License-Identifier: Apache-2.0
 # Copyright Tony Burns
+
 load("//factory/cli:python.bzl", "cli_py_library")
 
 cli_py_library(
@@ -22,14 +23,18 @@ cli_py_library(
     imports = ["../../.."],
     visibility = ["//factory/cli:__subpackages__"],
     deps = [
-        ":claims",
-        ":claude_commands",
-        ":commit",
-        ":documents",
-        ":record",
-        ":trailers",
-        ":validation",
-        ":values",
+        ":diagnostics",
+        ":models",
+        ":payload",
+        ":records",
+        ":storage",
+        "//factory/cli/src/tbhbdev/alpha:repo",
+        "//factory/cli/src/tbhbdev/alpha/identity/antigravity:session",
+        "//factory/cli/src/tbhbdev/alpha/identity/claude:hooks",
+        "//factory/cli/src/tbhbdev/alpha/identity/codex:hooks",
+        "//factory/cli/src/tbhbdev/alpha/identity/commit:claims",
+        "//factory/cli/src/tbhbdev/alpha/identity/commit:hooks",
+        "//factory/cli/src/tbhbdev/alpha/identity/documents:hooks",
     ],
 )
 
@@ -38,12 +43,7 @@ cli_py_library(
     srcs = ["models.py"],
     imports = ["../../.."],
     visibility = ["//factory/cli:__subpackages__"],
-)
-
-filegroup(
-    name = "package_files",
-    srcs = glob(["*.py"]),
-    visibility = ["//factory/cli/src/tbhbdev/alpha:__pkg__"],
+    deps = [":records"],
 )
 
 cli_py_library(
@@ -53,29 +53,16 @@ cli_py_library(
     visibility = ["//factory/cli:__subpackages__"],
 )
 
-cli_py_library(
-    name = "ancestry",
-    srcs = ["ancestry.py"],
-    imports = ["../../.."],
-    visibility = ["//factory/cli:__subpackages__"],
-    deps = ["//factory/cli/src/tbhbdev/alpha:process"],
-)
-
-cli_py_library(
-    name = "antigravity",
-    srcs = ["antigravity.py"],
-    imports = ["../../.."],
-    visibility = ["//factory/cli:__subpackages__"],
-    deps = [
-        ":edits",
-        ":launch",
-        ":models",
-        ":payload",
-        ":sessions",
-        ":storage",
-        ":values",
-        "//factory/cli/src/tbhbdev/alpha:repo",
+filegroup(
+    name = "package_files",
+    srcs = glob(["*.py"]) + [
+        "//factory/cli/src/tbhbdev/alpha/identity/antigravity:package_files",
+        "//factory/cli/src/tbhbdev/alpha/identity/claude:package_files",
+        "//factory/cli/src/tbhbdev/alpha/identity/codex:package_files",
+        "//factory/cli/src/tbhbdev/alpha/identity/commit:package_files",
+        "//factory/cli/src/tbhbdev/alpha/identity/documents:package_files",
     ],
+    visibility = ["//factory/cli/src/tbhbdev/alpha:__pkg__"],
 )
 
 cli_py_library(
@@ -84,235 +71,18 @@ cli_py_library(
     imports = ["../../.."],
     visibility = ["//factory/cli:__subpackages__"],
     deps = [
-        ":antigravity",
-        ":claude_commit",
-        ":claude_model",
-        ":codex",
         ":models",
-        ":payload",
-        ":sessions",
-        ":values",
+        "//factory/cli/src/tbhbdev/alpha/identity/antigravity:session",
+        "//factory/cli/src/tbhbdev/alpha/identity/claude:attribution",
+        "//factory/cli/src/tbhbdev/alpha/identity/codex:attribution",
     ],
 )
 
 cli_py_library(
-    name = "claims",
-    srcs = ["claims.py"],
-    imports = ["../../.."],
-    pyi_deps = [":payload"],
-    visibility = ["//factory/cli:__subpackages__"],
-    deps = [
-        ":edits",
-        ":storage",
-        ":values",
-        "//factory/cli/src/tbhbdev/alpha:repo",
-    ],
-)
-
-cli_py_library(
-    name = "claude",
-    srcs = ["claude.py"],
+    name = "diagnostics",
+    srcs = ["diagnostics.py"],
     imports = ["../../.."],
     visibility = ["//factory/cli:__subpackages__"],
-    deps = [
-        ":claude_commands",
-        ":claude_model",
-        ":commands",
-        ":edits",
-        ":launch",
-        ":models",
-        ":payload",
-        ":sessions",
-        ":trailers",
-        ":values",
-        "//factory/cli/src/tbhbdev/alpha:repo",
-    ],
-)
-
-cli_py_library(
-    name = "claude_commands",
-    srcs = ["claude_commands.py"],
-    imports = ["../../.."],
-    visibility = ["//factory/cli:__subpackages__"],
-    deps = [
-        ":commands",
-        ":payload",
-        ":sessions",
-        ":storage",
-        ":values",
-    ],
-)
-
-cli_py_library(
-    name = "claude_commit",
-    srcs = ["claude_commit.py"],
-    imports = ["../../.."],
-    pyi_deps = [":payload"],
-    visibility = ["//factory/cli:__subpackages__"],
-    deps = [
-        ":ancestry",
-        ":claude_commands",
-        ":claude_model",
-        ":models",
-        ":sessions",
-        ":values",
-    ],
-)
-
-cli_py_library(
-    name = "claude_model",
-    srcs = ["claude_model.py"],
-    imports = ["../../.."],
-    visibility = ["//factory/cli:__subpackages__"],
-    deps = [
-        ":claude_commands",
-        ":payload",
-    ],
-)
-
-cli_py_library(
-    name = "codex",
-    srcs = ["codex.py"],
-    imports = ["../../.."],
-    visibility = ["//factory/cli:__subpackages__"],
-    deps = [
-        ":claude",
-        ":codex_rollout",
-        ":edits",
-        ":launch",
-        ":models",
-        ":payload",
-        ":sessions",
-        ":values",
-        "//factory/cli/src/tbhbdev/alpha:repo",
-    ],
-)
-
-cli_py_library(
-    name = "codex_rollout",
-    srcs = ["codex_rollout.py"],
-    imports = ["../../.."],
-    visibility = ["//factory/cli:__subpackages__"],
-    deps = [
-        ":models",
-        ":payload",
-        ":values",
-    ],
-)
-
-cli_py_library(
-    name = "codex_scan",
-    srcs = ["codex_scan.py"],
-    imports = ["../../.."],
-    visibility = ["//factory/cli:__subpackages__"],
-    deps = [
-        ":codex_rollout",
-        ":edits",
-        ":payload",
-        ":storage",
-        ":values",
-    ],
-)
-
-cli_py_library(
-    name = "commit",
-    srcs = ["commit.py"],
-    imports = ["../../.."],
-    visibility = ["//factory/cli:__subpackages__"],
-    deps = [
-        ":attribution",
-        ":claims",
-        ":codex_scan",
-        ":commit_trailers",
-        ":edits",
-        ":replay",
-        ":storage",
-        ":trailers",
-        ":validation",
-        ":values",
-        "//factory/cli/src/tbhbdev/alpha:repo",
-    ],
-)
-
-cli_py_library(
-    name = "commit_trailers",
-    srcs = ["commit_trailers.py"],
-    imports = ["../../.."],
-    visibility = ["//factory/cli:__subpackages__"],
-    deps = [
-        ":sessions",
-        ":trailers",
-        ":validation",
-        ":values",
-        "//factory/cli/src/tbhbdev/alpha:repo",
-    ],
-)
-
-cli_py_library(
-    name = "contributors",
-    srcs = ["contributors.py"],
-    imports = ["../../.."],
-    visibility = ["//factory/cli:__subpackages__"],
-    deps = [
-        ":attribution",
-        ":claude_model",
-        ":frontmatter",
-        ":payload",
-        ":sessions",
-        ":trailers",
-        ":values",
-    ],
-)
-
-cli_py_library(
-    name = "documents",
-    srcs = ["documents.py"],
-    imports = ["../../.."],
-    visibility = ["//factory/cli:__subpackages__"],
-    deps = [
-        ":attribution",
-        ":codex_scan",
-        ":contributors",
-        ":edits",
-        ":frontmatter",
-        ":storage",
-        ":values",
-        "//factory/cli/src/tbhbdev/alpha:repo",
-    ],
-)
-
-cli_py_library(
-    name = "edits",
-    srcs = ["edits.py"],
-    imports = ["../../.."],
-    pyi_deps = [":payload"],
-    visibility = ["//factory/cli:__subpackages__"],
-    deps = [
-        ":storage",
-        ":values",
-        "//factory/cli/src/tbhbdev/alpha:repo",
-    ],
-)
-
-cli_py_library(
-    name = "frontmatter",
-    srcs = ["frontmatter.py"],
-    imports = ["../../.."],
-    visibility = ["//factory/cli:__subpackages__"],
-)
-
-cli_py_library(
-    name = "launch",
-    srcs = ["launch.py"],
-    imports = ["../../.."],
-    pyi_deps = [":payload"],
-    visibility = ["//factory/cli:__subpackages__"],
-    deps = [
-        ":sessions",
-        ":storage",
-        ":trailers",
-        ":values",
-    ],
 )
 
 cli_py_library(
@@ -320,37 +90,27 @@ cli_py_library(
     srcs = ["payload.py"],
     imports = ["../../.."],
     visibility = ["//factory/cli:__subpackages__"],
+    deps = [":records"],
 )
 
 cli_py_library(
-    name = "record",
-    srcs = ["record.py"],
+    name = "receipts",
+    srcs = ["receipts.py"],
     imports = ["../../.."],
     visibility = ["//factory/cli:__subpackages__"],
     deps = [
-        ":antigravity",
-        ":claude",
-        ":codex",
-        ":payload",
+        ":models",
+        ":records",
         ":storage",
-        ":values",
         "//factory/cli/src/tbhbdev/alpha:repo",
     ],
 )
 
 cli_py_library(
-    name = "replay",
-    srcs = ["replay.py"],
+    name = "records",
+    srcs = ["records.py"],
     imports = ["../../.."],
-    pyi_deps = [":values"],
     visibility = ["//factory/cli:__subpackages__"],
-    deps = [
-        ":ancestry",
-        ":commands",
-        ":trailers",
-        ":validation",
-        "//factory/cli/src/tbhbdev/alpha:repo",
-    ],
 )
 
 cli_py_library(
@@ -359,9 +119,9 @@ cli_py_library(
     imports = ["../../.."],
     visibility = ["//factory/cli:__subpackages__"],
     deps = [
-        ":payload",
+        ":records",
         ":storage",
-        ":values",
+        ":trailers",
     ],
 )
 
@@ -369,31 +129,9 @@ cli_py_library(
     name = "storage",
     srcs = ["storage.py"],
     imports = ["../../.."],
-    pyi_deps = [":payload"],
-    visibility = ["//factory/cli:__subpackages__"],
-    deps = ["//factory/cli/src/tbhbdev/alpha:repo"],
-)
-
-cli_py_library(
-    name = "validation",
-    srcs = ["validation.py"],
-    imports = ["../../.."],
     visibility = ["//factory/cli:__subpackages__"],
     deps = [
-        ":models",
-        ":trailers",
-        ":values",
+        ":records",
         "//factory/cli/src/tbhbdev/alpha:repo",
-    ],
-)
-
-cli_py_library(
-    name = "values",
-    srcs = ["values.py"],
-    imports = ["../../.."],
-    visibility = ["//factory/cli:__subpackages__"],
-    deps = [
-        ":models",
-        ":payload",
     ],
 )

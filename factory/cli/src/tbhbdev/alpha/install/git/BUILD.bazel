@@ -57,7 +57,7 @@ cli_py_library(
         ":prek",
         "//factory/cli/src/tbhbdev/alpha:gh_shim",
         "//factory/cli/src/tbhbdev/alpha:repo",
-        "//factory/cli/src/tbhbdev/alpha/identity:validation",
+        "//factory/cli/src/tbhbdev/alpha/identity/commit:policy",
         "//factory/cli/src/tbhbdev/alpha/install:files",
         "//factory/cli/src/tbhbdev/alpha/install:model",
         "//factory/cli/src/tbhbdev/alpha/install:scripts",

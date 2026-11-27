@@ -37,7 +37,7 @@ cli_py_library(
         ":model",
         ":settings",
         ":trust",
-        "//factory/cli/src/tbhbdev/alpha/identity:codex_rollout",
+        "//factory/cli/src/tbhbdev/alpha/identity/codex:rollout",
     ],
 )
 

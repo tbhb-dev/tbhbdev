@@ -15,7 +15,7 @@ from agent_example import settings
 from tbhbdev import userconfig
 from tbhbdev.alpha import close, opened
 from tbhbdev.alpha import pull_request as pr
-from tbhbdev.alpha.identity import trailers
+from tbhbdev.alpha.identity import trailers as identity_trailers
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
@@ -101,7 +101,7 @@ def root() -> str:
 def trailer_line() -> str:
     value = pr.posting_value(ENV)
     assert value is not None
-    return f"{trailers.KEY_GEN}: {value}"
+    return f"{identity_trailers.KEY_GEN}: {value}"
 
 
 def test_close_pr_it_opened_comments_the_reason_and_the_trailer(

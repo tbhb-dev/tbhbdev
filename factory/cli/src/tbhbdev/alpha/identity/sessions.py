@@ -1,21 +1,26 @@
 # SPDX-License-Identifier: Apache-2.0
 # Copyright Tony Burns
 
-"""Read and update identity records across project and user stores."""
+"""Persist harness sessions and claim launch records."""
 
+from __future__ import annotations
+
+import time
 from pathlib import Path
 
-from tbhbdev.alpha.identity.payload import Json, as_str
+from tbhbdev.alpha.identity import storage
+from tbhbdev.alpha.identity.records import Json, as_str, hash_ok, hx, merge_records
 from tbhbdev.alpha.identity.storage import (
     locked,
-    read_record,
     state_dir,
     stores,
     user_store,
     write_json,
     write_private_json,
 )
-from tbhbdev.alpha.identity.values import hx
+from tbhbdev.alpha.identity.trailers import start_ok, utc
+
+LAUNCH_FILE = "launch.json"
 
 
 def write_record(
@@ -35,10 +40,55 @@ def write_record(
     if state:
         path = state / "sessions" / f"{hx(sid_hash)}.json"
         with locked(state):
-            rec = read_record(path)
+            rec = storage.read_record(path)
             rec.update(known)
             write_json(path, {**first, **rec})
     write_user_record(sid_hash, known, first)
+
+
+def claim_launch(root: str, cwd: Path | None = None) -> Json:
+    """Claim the worktree's launch file for a root session; its launch fields.
+
+    The launcher writes ``launch`` and ``started_at`` there before the harness
+    starts. The first root session to run a hook writes its hash in as
+    ``session``. A file another session claimed, or one with invalid fields,
+    gives an empty dict.
+    """
+    state = state_dir(cwd)
+    if not state:
+        return {}
+    path = state / LAUNCH_FILE
+    with locked(state):
+        rec = storage.read_record(path)
+        fields: Json = {
+            "launch": hash_ok(rec.get("launch")),
+            "started_at": start_ok(rec.get("started_at")),
+        }
+        if not all(fields.values()) or rec.get("session", root) != root:
+            return {}
+        if "session" not in rec:
+            write_json(path, {**rec, "session": root})
+    return fields
+
+
+def start_fields(agent: str, root: str, cwd: Path | None = None) -> Json:
+    """The set-once launch fields an agent's hook event gives its record.
+
+    A root session takes them from the launch file it claims, or the time of
+    this event when it has none to claim. A subagent takes the time of this
+    event and its root's ``launch``. An agent whose record has a
+    ``started_at`` already gets an empty dict, or only the ``launch`` it lacks.
+    """
+    rec = load_record(agent, cwd, root=root)
+    if start_ok(rec.get("started_at")):
+        # A root that began elsewhere still claims its launch file for ``launch``.
+        claiming = agent == root and not rec.get("launch")
+        launch = claim_launch(root, cwd) if claiming else None
+        return {"launch": launch["launch"]} if launch else {}
+    now = utc(time.time())
+    if agent != root:
+        return {"started_at": now, "launch": load_record(root, cwd).get("launch")}
+    return claim_launch(root, cwd) or {"started_at": now}
 
 
 def write_user_record(sid_hash: str, updates: Json, once: Json | None = None) -> None:
@@ -56,7 +106,7 @@ def write_user_record(sid_hash: str, updates: Json, once: Json | None = None) ->
         user.mkdir(mode=0o700, parents=True, exist_ok=True)  # pragma: no mutate
         user.chmod(0o700)
         with locked(user):
-            rec = read_record(path)
+            rec = storage.read_record(path)
             rec.update(updates)
             write_private_json(
                 path, {**{k: v for k, v in (once or {}).items() if v}, **rec}
@@ -74,7 +124,7 @@ def session_stores(
         [store for store in stores(project) if store not in local] if project else []
     )
     for path in (user_store() / "cmd-stores" / hx(root)).glob("*.json"):
-        store = as_str(read_record(path).get("store"))
+        store = as_str(storage.read_record(path).get("store"))
         if store and Path(store) not in local and Path(store) not in registered:
             registered.append(Path(store))
     return [*registered, *local]
@@ -97,19 +147,9 @@ def load_record(
     because the session may have switched again while its hooks ran in another
     worktree.
     """
-    records = [read_record(user_store() / f"{hx(hashed)}.json")]
+    records = [storage.read_record(user_store() / f"{hx(hashed)}.json")]
     records += [
-        read_record(store / "sessions" / f"{hx(hashed)}.json")
+        storage.read_record(store / "sessions" / f"{hx(hashed)}.json")
         for store in session_stores(root or hashed, cwd, project=project)
     ]
-    merged: Json = {}
-    for rec in records:
-        merged.update(rec)
-    switches = [
-        (at, rec.get("switch_model"))
-        for rec in records
-        if isinstance(at := rec.get("switch_at"), float)
-    ]
-    if switches:
-        merged["switch_at"], merged["switch_model"] = max(switches, key=lambda s: s[0])
-    return merged
+    return merge_records(records)

@@ -10,7 +10,6 @@ from typing import TYPE_CHECKING
 import pytest
 
 from tbhbdev.alpha import process
-from tbhbdev.alpha.identity import ancestry
 
 if TYPE_CHECKING:
     import ctypes
@@ -250,22 +249,3 @@ def fixed(value: tuple[str, str] | None) -> Callable[[str], tuple[str, str] | No
         return value
 
     return row
-
-
-def test_ps_row_prefers_the_native_lookup(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(ancestry, "process_row", fixed(("1", "native")))
-    monkeypatch.setattr(ancestry, "run_ps", fixed(("2", "ps")))
-    assert ancestry.ps_row("5") == ("1", "native")
-
-
-def test_ps_row_falls_back_to_ps(monkeypatch: pytest.MonkeyPatch) -> None:
-    asked: list[str] = []
-
-    def run_ps(pid: str) -> tuple[str, str]:
-        asked.append(pid)
-        return "2", "ps"
-
-    monkeypatch.setattr(ancestry, "process_row", fixed(None))
-    monkeypatch.setattr(ancestry, "run_ps", run_ps)
-    assert ancestry.ps_row("5") == ("2", "ps")
-    assert asked == ["5"]
