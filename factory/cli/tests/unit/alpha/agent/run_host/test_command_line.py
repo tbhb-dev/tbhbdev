@@ -10,7 +10,7 @@ from agent_example import LINUX, paths, settings
 from test_alpha_agent_request import BUILD
 
 from tbhbdev.alpha.agent.decisions import request
-from tbhbdev.alpha.agent.model import Harness, Profile
+from tbhbdev.alpha.agent.model import Harness, Invalid, Profile
 from tbhbdev.alpha.agent.run_host import command_line, environment
 
 
@@ -101,3 +101,54 @@ def test_agy_project_uses_the_supplied_run_facts() -> None:
         "permissions": [],
         "timeout": 600,
     }
+
+
+@pytest.mark.parametrize(
+    ("project", "brief", "timeout", "error"),
+    [
+        (None, "example", 60, "requires agy_project"),
+        ("/example/project", None, 60, "requires agy_brief"),
+        ("/example/project", "example", None, "requires a timeout"),
+    ],
+)
+def test_agy_command_refuses_missing_inputs(
+    project: str | None, brief: str | None, timeout: int | None, error: str
+) -> None:
+    value = request.parse(BUILD | {"harness": "agy", "timeout": 60})
+    files = paths("agent")
+    policy = environment.build(settings(), LINUX, value, files, "/example/bin")
+    with pytest.raises(Invalid, match=error):
+        command_line.harness(
+            dataclasses.replace(value, timeout=timeout),
+            policy,
+            worktree=files.worktree,
+            executable="/example/tool",
+            final_message="/example/final",
+            stop_hooks={},
+            agy_project=project,
+            agy_brief=brief,
+        )
+
+
+@pytest.mark.parametrize(
+    ("profile", "harness"),
+    [(Profile.REVIEW, Harness.CODEX), (Profile.BUILD, Harness.CLAUDE)],
+)
+def test_command_refuses_unmatched_policy(
+    profile: Profile,
+    harness: Harness,
+) -> None:
+    value = request.parse(BUILD)
+    files = paths("agent")
+    policy = environment.build(settings(), LINUX, value, files, "/example/bin")
+    with pytest.raises(
+        Invalid, match="policy was built for another harness or profile"
+    ):
+        command_line.harness(
+            value,
+            dataclasses.replace(policy, profile=profile, harness=harness),
+            worktree=files.worktree,
+            executable="/example/tool",
+            final_message="/example/final",
+            stop_hooks={},
+        )

@@ -662,3 +662,8 @@ def test_preflight_flag_reaches_execute(
         )
         == 0
     )
+
+
+def test_interrupt_during_cleanup_preserves_the_result() -> None:
+    with process_group.ignore_signals():
+        host_dispatcher.interrupt(signal.SIGTERM, None)

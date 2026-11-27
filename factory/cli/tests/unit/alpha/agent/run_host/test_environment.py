@@ -12,6 +12,7 @@ from tbhbdev.alpha.agent.model import (
     CodexPolicy,
     Harness,
     Host,
+    Invalid,
     Profile,
     WebSearch,
 )
@@ -76,3 +77,9 @@ def test_claude_guard_uses_the_supplied_command() -> None:
             }
         ]
     }
+
+
+def test_policy_refuses_an_account_the_host_does_not_enable() -> None:
+    value = request.parse(BUILD | {"account": "other"})
+    with pytest.raises(Invalid, match="isn't one of the accounts"):
+        environment.build(settings(), LINUX, value, paths("other"), "/example/bin")

@@ -66,5 +66,4 @@ def prepare_codex_config(home: Path, endpoint: str | None) -> None:
     config = {"hooks": hooks.stop_hooks("codex")}
     runfiles.atomic(path, json.dumps(config))
     text = trust.trusted_text(text, path, trust.our_hashes(path, config))
-    if text:
-        runfiles.atomic(home / "config.toml", text)
+    runfiles.atomic(home / "config.toml", text)
