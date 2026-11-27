@@ -74,6 +74,18 @@ cli_py_library(
 )
 
 cli_py_library(
+    name = "remote_cleanup",
+    srcs = ["remote_cleanup.py"],
+    imports = ["../../../.."],
+    visibility = ["//factory/cli:__subpackages__"],
+    deps = [
+        ":remote_shell",
+        ":repo",
+        ":runfiles_names",
+    ],
+)
+
+cli_py_library(
     name = "remote_run",
     srcs = ["remote_run.py"],
     imports = ["../../../.."],
