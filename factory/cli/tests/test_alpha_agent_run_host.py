@@ -48,7 +48,7 @@ from test_alpha_agent_credentials import VALUES
 from test_alpha_agent_settings import EXAMPLE
 
 from tbhbdev import secrets
-from tbhbdev.alpha import install, run_stop_hook
+from tbhbdev.alpha import run_stop_hook
 from tbhbdev.alpha.agent import (
     admission,
     bazel_servers,
@@ -71,6 +71,7 @@ from tbhbdev.alpha.agent.model import (
     Profile,
     RunKind,
 )
+from tbhbdev.alpha.install.hooks import stop_hooks as stop
 
 RESOLVE = host_tools.resolve
 PUSH_RUN = run_host.push.run
@@ -485,10 +486,9 @@ def test_prepare_uses_one_worktree_and_private_destinations(
 
 
 def assert_stop_config(home: Path) -> None:
-    path = home / "hooks.json"
-    assert json.loads(path.read_text()) == {"hooks": install.stop_hooks("codex")}
-    config = tomllib.loads(path.with_name("config.toml").read_text())
-    assert config["hooks"]["state"].keys() == {f"{path}:stop:0:0"}
+    assert json.loads((home / "hooks.json").read_text()) == {"hooks": stop("codex")}
+    config = tomllib.loads((home / "config.toml").read_text())
+    assert config["hooks"]["state"].keys() == {f"{home}/hooks.json:stop:0:0"}
 
 
 def otel_run(

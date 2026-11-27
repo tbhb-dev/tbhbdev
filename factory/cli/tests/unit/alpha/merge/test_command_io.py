@@ -114,7 +114,7 @@ def test_agent_merge_refuses_a_missing_pre_push_hook(
     assert not (tools.bin / "gh.log").exists()
     err = capsys.readouterr().err
     assert "pre-push" in err
-    assert "tbhbdev alpha install --hooks-only" in err
+    assert "tbhbdev alpha install" in err
 
 
 def test_merge_scans_the_final_message(tools: Tools, tmp_path: Path) -> None:

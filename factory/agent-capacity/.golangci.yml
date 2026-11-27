@@ -73,14 +73,6 @@ linters:
           deny:
             - pkg: log$
               desc: "Use log/slog instead"
-        # Stub for the Go CLI port (stdlib-only-front): once factory/tbhbdev
-        # lands, match its front-end package files here so they may import only
-        # $gostd and internal packages, never third-party vendors.
-        "stdlib-only-front":
-          files:
-            - "**/front/**/*.go"
-          allow:
-            - $gostd
 
     gomodguard_v2:
       blocked:

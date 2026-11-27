@@ -283,7 +283,6 @@ cli_py_test(
         "//factory/cli/src/tbhbdev/alpha:guard_scripts",
         "//factory/cli/src/tbhbdev/alpha:guard_sendmessage_clock",
         "//factory/cli/src/tbhbdev/alpha:guard_ssh_agent",
-        "//factory/cli/src/tbhbdev/alpha:install",
         "//factory/cli/src/tbhbdev/alpha:pr_stats",
         "//factory/cli/src/tbhbdev/alpha:pre_push_guard",
         "//factory/cli/src/tbhbdev/alpha:pull_request",
@@ -299,6 +298,7 @@ cli_py_test(
         "//factory/cli/src/tbhbdev/alpha/agent:signing_parity",
         "//factory/cli/src/tbhbdev/alpha/agent:ssh_serve",
         "//factory/cli/src/tbhbdev/alpha/identity:dispatcher",
+        "//factory/cli/src/tbhbdev/alpha/install:command",
         "//factory/cli/src/tbhbdev/alpha/merge:command",
         "//factory/cli/src/tbhbdev/alpha/monorepo:command",
         "//factory/cli/tests:test_alpha_agent_settings_support",
@@ -335,10 +335,10 @@ cli_py_test(
     deps = [
         ":agent_example",
         ":conftest",
-        "//factory/cli/src/tbhbdev/alpha:install",
         "//factory/cli/src/tbhbdev/alpha/agent:model",
         "//factory/cli/src/tbhbdev/alpha/agent/decisions:argv",
         "//factory/cli/src/tbhbdev/alpha/agent/decisions:policy",
+        "//factory/cli/src/tbhbdev/alpha/install:hooks",
         "@cli_pip//pytest",
     ],
 )
@@ -472,11 +472,11 @@ cli_py_test(
         ":agent_live_evidence",
         ":agent_live_git_commit",
         ":conftest",
-        "//factory/cli/src/tbhbdev/alpha:install",
         "//factory/cli/src/tbhbdev/alpha/agent:model",
         "//factory/cli/src/tbhbdev/alpha/agent:worktree",
         "//factory/cli/src/tbhbdev/alpha/agent/decisions:policy",
         "//factory/cli/src/tbhbdev/alpha/identity:dispatcher",
+        "//factory/cli/src/tbhbdev/alpha/install:scripts",
         "//factory/cli/tests:test_alpha_agent_git_parent_support",
         "//factory/cli/tests:test_alpha_agent_sandbox_live_support",
         "@cli_pip//pytest",
@@ -776,7 +776,6 @@ cli_py_test(
         ":conftest",
         ":runfile_fixtures",
         "//factory/cli/src/tbhbdev:secrets",
-        "//factory/cli/src/tbhbdev/alpha:install",
         "//factory/cli/src/tbhbdev/alpha:run_stop_hook",
         "//factory/cli/src/tbhbdev/alpha/agent:admission",
         "//factory/cli/src/tbhbdev/alpha/agent:bazel_servers",
@@ -792,6 +791,7 @@ cli_py_test(
         "//factory/cli/src/tbhbdev/alpha/agent/decisions:policy",
         "//factory/cli/src/tbhbdev/alpha/agent/decisions:request",
         "//factory/cli/src/tbhbdev/alpha/agent/decisions:run_state",
+        "//factory/cli/src/tbhbdev/alpha/install:hooks",
         "//factory/cli/tests:test_alpha_agent_codex_install_support",
         "//factory/cli/tests:test_alpha_agent_credentials_support",
         "//factory/cli/tests:test_alpha_agent_settings_support",
@@ -985,6 +985,7 @@ cli_py_test(
         "//factory/cli/src/tbhbdev/alpha/agent:model",
         "//factory/cli/src/tbhbdev/alpha/agent:worktree",
         "//factory/cli/src/tbhbdev/alpha/identity:dispatcher",
+        "//factory/cli/src/tbhbdev/alpha/install:scripts",
         "@cli_pip//pytest",
     ],
 )
@@ -1011,16 +1012,6 @@ cli_py_test(
         "//factory/cli/src/tbhbdev/alpha:opened",
         "//factory/cli/src/tbhbdev/alpha:pull_request",
         "//factory/cli/src/tbhbdev/alpha/identity:dispatcher",
-        "@cli_pip//pytest",
-    ],
-)
-
-cli_py_test(
-    name = "test_alpha_codex_trust",
-    srcs = ["test_alpha_codex_trust.py"],
-    deps = [
-        ":conftest",
-        "//factory/cli/src/tbhbdev/alpha:codex_trust",
         "@cli_pip//pytest",
     ],
 )
@@ -1097,7 +1088,6 @@ cli_py_test(
         ":fake_tool",
         "//factory/cli/src/tbhbdev/alpha:close",
         "//factory/cli/src/tbhbdev/alpha:guard_gh_pr",
-        "//factory/cli/src/tbhbdev/alpha:install",
         "//factory/cli/src/tbhbdev/alpha:opened",
         "//factory/cli/src/tbhbdev/alpha:pull_request",
         "//factory/cli/src/tbhbdev/alpha/identity:dispatcher",
@@ -1163,10 +1153,10 @@ cli_py_test(
     deps = [
         ":conftest",
         ":fake_tool",
-        "//factory/cli/src/tbhbdev/alpha:install",
         "//factory/cli/src/tbhbdev/alpha/identity:commands",
         "//factory/cli/src/tbhbdev/alpha/identity:dispatcher",
         "//factory/cli/src/tbhbdev/alpha/identity:models",
+        "//factory/cli/src/tbhbdev/alpha/install:hooks",
         "@cli_pip//hypothesis",
         "@cli_pip//jsonschema",
         "@cli_pip//pytest",
@@ -1180,42 +1170,6 @@ cli_py_test(
     deps = [
         "//factory/cli/src/tbhbdev/alpha/identity:commands",
         "@cli_pip//hypothesis",
-        "@cli_pip//pytest",
-    ],
-)
-
-cli_py_test(
-    name = "test_alpha_install",
-    srcs = ["test_alpha_install.py"],
-    deps = [
-        ":conftest",
-        ":fake_tool",
-        ":origin_urls",
-        "//factory/cli/src/tbhbdev/alpha:codex_trust",
-        "//factory/cli/src/tbhbdev/alpha:gh_shim",
-        "//factory/cli/src/tbhbdev/alpha:install",
-        "//factory/cli/src/tbhbdev/alpha:repo",
-        "@cli_pip//pytest",
-    ],
-)
-
-cli_py_test(
-    name = "test_alpha_install_statusline",
-    srcs = ["test_alpha_install_statusline.py"],
-    deps = [
-        ":conftest",
-        "//factory/cli/src/tbhbdev/alpha:install",
-        "//factory/cli/src/tbhbdev/alpha:install_statusline_decisions",
-        "@cli_pip//pytest",
-    ],
-)
-
-cli_py_test(
-    name = "test_alpha_install_statusline_decisions",
-    srcs = ["test_alpha_install_statusline_decisions.py"],
-    deps = [
-        ":conftest",
-        "//factory/cli/src/tbhbdev/alpha:install_statusline_decisions",
         "@cli_pip//pytest",
     ],
 )
@@ -1261,9 +1215,9 @@ cli_py_test(
         ":conftest",
         ":fake_tool",
         "//factory/cli/src/tbhbdev/alpha:gh_shim",
-        "//factory/cli/src/tbhbdev/alpha:install",
         "//factory/cli/src/tbhbdev/alpha:pre_push_guard",
         "//factory/cli/src/tbhbdev/alpha/agent:worktree",
+        "//factory/cli/src/tbhbdev/alpha/install/git:shims",
         "@cli_pip//httpx2",
         "@cli_pip//pytest",
     ],
@@ -1991,9 +1945,10 @@ filegroup(
         "//factory/cli/tests/integration/alpha/agent:package_files",
         "//factory/cli/tests/integration/alpha/identity:test_dispatcher_timestamps_io.py",
         "//factory/cli/tests/unit/alpha:package_files",
-        "//factory/cli/tests/unit/alpha/agent:test_run_host_publication.py",
+        "//factory/cli/tests/unit/alpha/agent:package_files",
         "//factory/cli/tests/unit/alpha/agent/decisions:package_files",
         "//factory/cli/tests/unit/alpha/identity:test_trailers.py",
+        "//factory/cli/tests/unit/alpha/install:package_files",
         "//factory/cli/tests/unit/alpha/merge:package_files",
     ],
     visibility = ["//factory/cli:__pkg__"],

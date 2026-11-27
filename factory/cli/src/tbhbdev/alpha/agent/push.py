@@ -123,7 +123,8 @@ def new_commits(
     with publication(
         run.files.root, workspace, next(iter(candidates.values()))
     ) as directory:
-        found = eligible_tips(directory, candidates, bases, start)
+        rewrite_ref = reference if run.request.start_ref is not None else None
+        found = eligible_tips(directory, candidates, bases, start, rewrite_ref)
         if found and checkout == f"ref: {reference}":
             if reference in found:
                 return [(reference, found[reference])]
@@ -140,15 +141,20 @@ def new_commits(
 
 
 def eligible_tips(
-    directory: Path, candidates: dict[str, str], bases: tuple[str, ...], start: str
+    directory: Path,
+    candidates: dict[str, str],
+    bases: tuple[str, ...],
+    start: str,
+    rewrite_ref: str | None = None,
 ) -> dict[str, str]:
-    """Keep tips with new run history and refuse new history outside the start."""
+    """Keep new run history, allowing rewrites on the selected run branch."""
     found: dict[str, str] = {}
     dropped: set[str] = set()
     for name, tip in sorted(candidates.items()):
-        if outside_history(directory, tip, bases, start):
+        ancestor = None if name == rewrite_ref else start
+        if outside_history(directory, tip, bases, ancestor):
             found[name] = tip
-        elif outside_history(directory, tip, bases):
+        elif ancestor and outside_history(directory, tip, bases):
             dropped.add(tip)
     if dropped:
         short = " ".join(tip[:12] for tip in sorted(dropped))

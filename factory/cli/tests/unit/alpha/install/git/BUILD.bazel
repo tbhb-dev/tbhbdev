@@ -1,0 +1,69 @@
+load("//factory/cli/tests:pytest.bzl", "cli_py_test")
+
+# SPDX-License-Identifier: Apache-2.0
+# Copyright Tony Burns
+
+filegroup(
+    name = "package_files",
+    srcs = glob(["*.py"]),
+    visibility = ["//factory/cli/tests/unit/alpha/install:__pkg__"],
+)
+
+cli_py_test(
+    name = "test_hooks_io",
+    srcs = ["test_hooks_io.py"],
+    imports = ["../../../.."],
+    deps = [
+        "//factory/cli/src/tbhbdev/alpha/install:scripts",
+        "//factory/cli/src/tbhbdev/alpha/install/git:hooks",
+        "//factory/cli/src/tbhbdev/alpha/install/git:lock",
+        "//factory/cli/tests:conftest",
+        "//factory/cli/tests/unit/alpha/install:conftest",
+        "@cli_pip//pytest",
+    ],
+)
+
+cli_py_test(
+    name = "test_lock_io",
+    srcs = ["test_lock_io.py"],
+    imports = ["../../../.."],
+    deps = [
+        "//factory/cli/src/tbhbdev/alpha/install:model",
+        "//factory/cli/src/tbhbdev/alpha/install/git:lock",
+        "//factory/cli/tests:conftest",
+        "//factory/cli/tests/unit/alpha/install:conftest",
+        "@cli_pip//pytest",
+    ],
+)
+
+cli_py_test(
+    name = "test_prek_io",
+    srcs = ["test_prek_io.py"],
+    imports = ["../../../.."],
+    deps = [
+        "//factory/cli/src/tbhbdev/alpha/install:model",
+        "//factory/cli/src/tbhbdev/alpha/install/git:prek",
+        "//factory/cli/tests:conftest",
+        "//factory/cli/tests:fake_tool",
+        "//factory/cli/tests/unit/alpha/install:conftest",
+        "@cli_pip//pytest",
+    ],
+)
+
+cli_py_test(
+    name = "test_shims_io",
+    srcs = ["test_shims_io.py"],
+    imports = ["../../../.."],
+    deps = [
+        "//factory/cli/src/tbhbdev/alpha:repo",
+        "//factory/cli/src/tbhbdev/alpha/install:model",
+        "//factory/cli/src/tbhbdev/alpha/install:scripts",
+        "//factory/cli/src/tbhbdev/alpha/install/git:hooks",
+        "//factory/cli/src/tbhbdev/alpha/install/git:shims",
+        "//factory/cli/tests:conftest",
+        "//factory/cli/tests:fake_tool",
+        "//factory/cli/tests:origin_urls",
+        "//factory/cli/tests/unit/alpha/install:conftest",
+        "@cli_pip//pytest",
+    ],
+)

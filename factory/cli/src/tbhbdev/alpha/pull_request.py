@@ -148,7 +148,7 @@ from tbhbdev.alpha.agent import settings
 from tbhbdev.alpha.agent.decisions import host_names
 from tbhbdev.alpha.identity import dispatcher as agent_identity
 from tbhbdev.alpha.identity.trailers import merge_pr_trailers
-from tbhbdev.alpha.install import require_git_hooks
+from tbhbdev.alpha.install.git.hooks import require_git_hooks
 from tbhbdev.alpha.repo import git as repo_git
 from tbhbdev.alpha.repo import hook_cwd, in_tbhb_dev, read_hook_stdin
 

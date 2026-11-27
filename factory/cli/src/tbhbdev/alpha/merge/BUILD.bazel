@@ -36,8 +36,8 @@ cli_py_library(
         ":queue",
         ":renovate",
         ":rules",
-        "//factory/cli/src/tbhbdev/alpha:install",
         "//factory/cli/src/tbhbdev/alpha:pull_request",
+        "//factory/cli/src/tbhbdev/alpha/install/git:hooks",
     ],
 )
 

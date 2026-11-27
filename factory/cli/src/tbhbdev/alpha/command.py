@@ -27,7 +27,7 @@ import tbhbdev.alpha.guard_scripts
 import tbhbdev.alpha.guard_sendmessage_clock
 import tbhbdev.alpha.guard_ssh_agent
 import tbhbdev.alpha.identity.dispatcher
-import tbhbdev.alpha.install
+import tbhbdev.alpha.install.command
 import tbhbdev.alpha.pre_push_guard
 import tbhbdev.alpha.run_stop_hook
 import tbhbdev.alpha.session_context
@@ -207,7 +207,7 @@ def monorepo_command(argv: list[str], prog: str) -> int:
 
 
 def install_command(argv: list[str], prog: str) -> int:
-    return tbhbdev.alpha.install.main(argv, prog)
+    return tbhbdev.alpha.install.command.main(argv, prog)
 
 
 COMMANDS: dict[str, Callable[[list[str], str], int]] = {

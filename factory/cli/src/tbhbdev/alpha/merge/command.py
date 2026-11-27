@@ -6,7 +6,7 @@ import os
 import sys
 from typing import TYPE_CHECKING
 
-from tbhbdev.alpha.install import require_git_hooks
+from tbhbdev.alpha.install.git.hooks import require_git_hooks
 from tbhbdev.alpha.merge.compose import build_message
 from tbhbdev.alpha.merge.github import check_repository, queue_state, verify_head
 from tbhbdev.alpha.merge.message import require_clean_message
