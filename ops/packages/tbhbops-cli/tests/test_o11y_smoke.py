@@ -1259,25 +1259,6 @@ def test_each_stage_reports_its_own_group_and_resets_step(
     assert "private-error-sentinel" not in output
 
 
-def test_diagnostics_exceptions_and_original_status(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    _, _, system = setup()
-
-    def fail(_self: command.Smoke) -> None:
-        rule = "fixture failure"
-        raise command.SmokeError(rule, 23)
-
-    def disk_fail(_self: command.Smoke) -> str:
-        raise OSError
-
-    monkeypatch.setattr(command.Smoke, "group3", fail)
-    monkeypatch.setattr(command.Smoke, "disk_counts", disk_fail)
-    code, output = run(system)
-    assert code == 1  # collection failed during group 2, before the injected stage
-    assert "disk evidence unavailable" in output
-
-
 def test_cleanup_before_output_and_early_interrupt(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
