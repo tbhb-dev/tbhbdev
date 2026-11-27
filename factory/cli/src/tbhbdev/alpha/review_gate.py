@@ -3,8 +3,8 @@
 """The review-gate check of a pull request, as a pure function.
 
 A pull request passes at its current head when the reviews App approved it
-twice from two providers, never requested changes, every other check run
-finished well, and no approving provider wrote the head commits.
+twice from two providers, never requested changes, the conclusion check
+succeeded, and no approving provider wrote the head commits.
 """
 
 import re
@@ -16,10 +16,8 @@ from tbhbdev.alpha import identity
 if TYPE_CHECKING:
     from collections.abc import Sequence
 
-CONTEXT = "review-gate"
 MIN_APPROVALS = 2
 MIN_PROVIDERS = 2
-GOOD_CONCLUSIONS = frozenset({"success", "skipped", "neutral"})
 
 # Map a trailer harness to its provider.
 PROVIDERS = {
@@ -35,7 +33,7 @@ LEGACY_FOOTER = re.compile(r"Run \S+, (\S+) \S+, judged head ([0-9a-f]{40})\.")
 
 
 class Review(TypedDict):
-    id: int
+    id: int | str
     state: str
     commit_id: str
     body: str
@@ -122,16 +120,15 @@ def _outcome(check: Check) -> str:
     return check["status"]
 
 
-def check_reasons(pull: Pull, ignore: Sequence[str]) -> list[str]:
-    """The reasons for each check run, bar the gate and ignored ones, not done well."""
-    skipped = {CONTEXT, *ignore}
+def check_reasons(pull: Pull) -> list[str]:
+    """The reasons the conclusion check has not succeeded."""
+    checks = [check for check in pull.checks if check["name"] == "conclusion"]
+    if not checks:
+        return ["no checks to verify"]
     return [
         f"check {check['name']} is {_outcome(check)}"
-        for check in pull.checks
-        if check["name"] not in skipped
-        and not (
-            check["status"] == "completed" and check["conclusion"] in GOOD_CONCLUSIONS
-        )
+        for check in checks
+        if not (check["status"] == "completed" and check["conclusion"] == "success")
     ]
 
 
@@ -146,7 +143,7 @@ def author_reasons(pull: Pull, providers: set[str]) -> list[str]:
     return reasons
 
 
-def evaluate(app: str, pull: Pull, ignore: Sequence[str] = ()) -> list[str]:
+def evaluate(app: str, pull: Pull) -> list[str]:
     """The reasons a pull request fails at its head; none means it passes."""
     if not HEAD_SHA.fullmatch(pull.head):
         return [f"the pull request head {pull.head!r} is not a full commit SHA"]
@@ -155,6 +152,6 @@ def evaluate(app: str, pull: Pull, ignore: Sequence[str] = ()) -> list[str]:
         reasons.append(f"{approvals} approvals at the head, need {MIN_APPROVALS}")
     if len(providers) < MIN_PROVIDERS:
         reasons.append(f"{len(providers)} approving providers, need {MIN_PROVIDERS}")
-    reasons.extend(check_reasons(pull, ignore))
+    reasons.extend(check_reasons(pull))
     reasons.extend(author_reasons(pull, providers))
     return reasons

@@ -181,10 +181,18 @@ cli_py_library(
         ":codex_trust",
         ":gh_shim",
         ":identity",
+        ":install_statusline_decisions",
         ":repo",
         "//factory/cli/src/tbhbdev:plugins",
         "@cli_pip//tomlkit",
     ],
+)
+
+cli_py_library(
+    name = "install_statusline_decisions",
+    srcs = ["install_statusline_decisions.py"],
+    imports = ["../.."],
+    visibility = ["//factory/cli:__subpackages__"],
 )
 
 cli_py_library(
@@ -386,10 +394,7 @@ cli_py_library(
     srcs = ["secret_scan.py"],
     imports = ["../.."],
     visibility = ["//factory/cli:__subpackages__"],
-    deps = [
-        "//factory/cli/src/tbhbdev:host",
-        "@cli_pip//tomlkit",
-    ],
+    deps = ["@cli_pip//tomlkit"],
 )
 
 cli_py_library(
@@ -417,6 +422,7 @@ cli_py_library(
     deps = [
         ":identity",
         ":pull_request",
+        ":review_gate",
     ],
 )
 
