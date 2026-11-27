@@ -328,6 +328,7 @@ def test_pr_create_size(
     monkeypatch.setattr(pr, "branch_trailers", Mock(return_value=[]))
     monkeypatch.setattr(pr, "post_text", Mock())
     monkeypatch.setattr(pr, "base_visibility", Mock(return_value="public"))
+    monkeypatch.setattr(pr.secret_scan, "scan_commits", Mock())
     post = Mock(return_value=0)
     monkeypatch.setattr(pr, "create_pr", post)
     assert pr.command(
