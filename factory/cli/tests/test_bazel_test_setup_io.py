@@ -7,6 +7,7 @@ import sys
 import time
 
 import pytest
+from bazel_test_io import block_io
 
 
 def test_allows_connect() -> None:
@@ -23,6 +24,15 @@ def test_allows_subprocess() -> None:
 
 def test_allows_sleep() -> None:
     time.sleep(0)
+
+
+def test_guard_handles_missing_fork(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delattr(os, "fork", raising=False)
+    block_io(monkeypatch)
+
+    assert not hasattr(os, "fork")
+    with pytest.raises(RuntimeError, match=r"CLI unit tests.*time\.sleep"):
+        time.sleep(0)
 
 
 def test_allows_system() -> None:

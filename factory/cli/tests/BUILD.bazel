@@ -1809,6 +1809,7 @@ cli_py_test(
     name = "test_bazel_test_setup_io",
     srcs = ["test_bazel_test_setup_io.py"],
     deps = [
+        ":bazel_test_io",
         ":conftest",
         "@cli_pip//pytest",
     ],
