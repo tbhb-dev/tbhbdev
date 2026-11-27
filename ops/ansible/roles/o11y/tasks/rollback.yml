@@ -1,0 +1,8 @@
+---
+- name: rollback | Run preflight
+  ansible.builtin.include_tasks: preflight.yml
+
+- name: rollback | Run under the exclusive lock
+  ansible.builtin.include_tasks: locked.yml
+  vars:
+    o11y_action: previous.yml

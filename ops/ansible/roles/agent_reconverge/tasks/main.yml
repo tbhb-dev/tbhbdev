@@ -1,0 +1,63 @@
+---
+- name: Check the reconverge platform and inputs
+  ansible.builtin.assert:
+    that:
+      - ansible_facts.system in ['Linux', 'Darwin']
+      - agent_reconverge_account is match('^[a-z_][a-z0-9_-]{0,31}$')
+      - agent_reconverge_clone is match('^[A-Za-z0-9_.-]+(/[A-Za-z0-9_.-]+)*$')
+      - "'..' not in agent_reconverge_clone.split('/')"
+      - agent_reconverge_interval_seconds > 0
+    quiet: true
+
+- name: Report a planned account before it exists
+  ansible.builtin.debug:
+    msg: The reconverge units will be installed after the agent account exists.
+  when:
+    - ansible_check_mode
+    - agent_reconverge_account == 'agent'
+    - agent_account_new_user | default(false)
+
+- name: Stop check mode before looking up a planned account
+  ansible.builtin.meta: end_role
+  when:
+    - ansible_check_mode
+    - agent_reconverge_account == 'agent'
+    - agent_account_new_user | default(false)
+
+- name: Read the reconverge account home and IDs
+  ansible.builtin.command:
+    argv:
+      - python3
+      - -c
+      - >-
+          import json, pwd, sys;
+          account = pwd.getpwnam(sys.argv[1]);
+          print(json.dumps(dict(home=account.pw_dir, uid=account.pw_uid, gid=account.pw_gid)))
+      - "{{ agent_reconverge_account }}"
+  register: agent_reconverge_lookup
+  check_mode: false
+  changed_when: false
+
+- name: Remember the reconverge account
+  ansible.builtin.set_fact:
+    agent_reconverge_identity: "{{ agent_reconverge_lookup.stdout | from_json }}"
+
+- name: Look for the existing reconverge script
+  ansible.builtin.stat:
+    path: "{{ agent_reconverge_identity.home }}/{{ agent_reconverge_clone }}/tony/reconverge.sh"
+  register: agent_reconverge_script
+
+- name: Report a missing reconverge script
+  ansible.builtin.debug:
+    msg: >-
+      The reconverge script is missing. Installing the schedule anyway so the job logs its own error.
+      This role does not create or update the agent-config clone.
+  when: not agent_reconverge_script.stat.exists
+
+- name: Install the Linux reconverge schedule
+  ansible.builtin.include_tasks: linux.yml
+  when: ansible_facts.system == 'Linux'
+
+- name: Install the macOS reconverge schedule
+  ansible.builtin.include_tasks: macos.yml
+  when: ansible_facts.system == 'Darwin'

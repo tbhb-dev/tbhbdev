@@ -31,6 +31,7 @@ cli_py_library(
         ":content",
         ":runner",
         "//factory/cli/src/tbhbdev/alpha:pull_request",
+        "//factory/cli/src/tbhbdev/alpha:pull_request_frontmatter",
         "//factory/cli/src/tbhbdev/alpha:repo_bootstrap",
     ],
 )
@@ -67,9 +68,9 @@ cli_py_library(
         ":plugins",
         ":secret",
         ":version",
-        "//factory/cli/src/tbhbdev/admin:__init__",
-        "//factory/cli/src/tbhbdev/alpha:__init__",
-        "//factory/cli/src/tbhbdev/analytics:__init__",
+        "//factory/cli/src/tbhbdev/admin:command",
+        "//factory/cli/src/tbhbdev/alpha:command",
+        "//factory/cli/src/tbhbdev/analytics:command",
     ],
 )
 

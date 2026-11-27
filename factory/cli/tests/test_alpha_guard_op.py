@@ -9,8 +9,8 @@ if TYPE_CHECKING:
 
 import pytest
 
-from tbhbdev import alpha, userconfig
-from tbhbdev.alpha import guard_op as guard
+import tbhbdev.alpha.guard_op as guard
+from tbhbdev import userconfig
 
 ACCOUNT = "example.1password.com"
 
@@ -298,11 +298,6 @@ def test_failures(
     out = capsys.readouterr().out
     assert "add --account example.1password.com" in out
     assert "`op read x --account example.1password.com`" in out
-
-
-def test_entry(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(guard, "main", lambda: 7)
-    assert alpha.main(["guard-op"], "p") == 7
 
 
 @pytest.mark.parametrize(

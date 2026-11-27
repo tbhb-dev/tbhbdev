@@ -1,0 +1,32 @@
+---
+windows_update_policy_wsl_subscription: >-
+  <QueryList><Query Id="0" Path="System"><Select Path="System">*[System[
+  Provider[@Name='Microsoft-Windows-WindowsUpdateClient']
+  and EventID=19]]</Select></Query></QueryList>
+windows_update_policy_wsl_interval: PT5M
+windows_update_policy_wsl_boot_delay: PT30S
+windows_update_policy_wsl_event_delay: PT1M
+# A fixed past boundary keeps indefinite repetition idempotent.
+windows_update_policy_wsl_start_boundary: '2026-01-01T00:00:00'
+
+windows_update_policy_updates:
+  # Enable the quality update deferral policy.
+  DeferQualityUpdates: 1
+  # Wait three days before offering a quality update.
+  DeferQualityUpdatesPeriodInDays: 3
+  # Enable the feature update deferral policy.
+  DeferFeatureUpdates: 1
+  # Defer feature updates for 365 days so the operator can schedule them.
+  DeferFeatureUpdatesPeriodInDays: 365
+
+windows_update_policy_automatic_updates:
+  # Keep automatic updates enabled.
+  NoAutoUpdate: 0
+  # Download automatically and install on the configured schedule.
+  AUOptions: 4
+  # Schedule installation on Sunday (1), rather than every day (0).
+  ScheduledInstallDay: 1
+  # Install at 04:00 in the host's local time zone.
+  ScheduledInstallTime: 4
+  # Prevent a scheduled automatic restart while a user is logged on.
+  NoAutoRebootWithLoggedOnUsers: 1

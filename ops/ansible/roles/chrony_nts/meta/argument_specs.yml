@@ -1,0 +1,14 @@
+---
+argument_specs:
+  main:
+    short_description: Add Cloudflare NTS to the lab nodes' existing chrony sources
+    description:
+      - >-
+          Requires chrony to be installed and to read /etc/chrony/conf.d. Writes one
+          configuration fragment and restarts the Ubuntu chrony service when it changes.
+          The checks also run in check mode.
+    options:
+      chrony_nts_run:
+        type: bool
+        default: true
+        description: Restart chrony when the fragment changes. False only without systemd.

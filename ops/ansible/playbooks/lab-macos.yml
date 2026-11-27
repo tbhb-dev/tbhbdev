@@ -1,0 +1,15 @@
+---
+# Schedule agent account settings reconverge every 15 minutes.
+# The macOS lab node. Root, through sudo, prepares the host and creates
+# the agent account:
+#   mise run playbook -- playbooks/lab-macos.yml --check --diff
+- name: Apply the macOS lab node
+  hosts: lab_macos
+  gather_facts: true
+  become: true
+  roles:
+    - agent_host
+    - agent_account
+    - agent_reconverge
+    - codex_cli
+    - claude_code

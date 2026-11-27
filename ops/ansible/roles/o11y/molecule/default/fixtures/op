@@ -1,0 +1,7 @@
+#!/bin/sh
+# Synthetic password; never calls a secret service.
+case "$1 $2" in
+'item get' | 'item create') exit 0 ;;
+'read op://'"molecule/collector/password") printf 'MoleculeAgentsCanary42' ;;
+*) exit 1 ;;
+esac

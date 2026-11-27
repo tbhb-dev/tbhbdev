@@ -1,0 +1,39 @@
+---
+- name: Verify
+  hosts: all
+  become: true
+  tasks:
+    - name: Inspect the root, the clone and the private config
+      ansible.builtin.stat:
+        path: "{{ item }}"
+      loop:
+        - /home/ops/Code
+        - /home/ops/Code/github.com/fixture/repo
+        - "{{ ['/home/ops/.config', 'gitleaks', 'private.toml'] | join('/') }}"
+        - /home/example-user
+      register: agent_workspace_fixture_paths
+    - name: Check the layout, ownership and mode
+      ansible.builtin.assert:
+        that:
+          - agent_workspace_fixture_paths.results[0].stat.mode == '0700'
+          - agent_workspace_fixture_paths.results[1].stat.isdir
+          - agent_workspace_fixture_paths.results[:3] | map(attribute='stat.pw_name') | unique | list == ['ops']
+          - agent_workspace_fixture_paths.results[:3] | map(attribute='stat.gr_name') | unique | list == ['ops']
+          - agent_workspace_fixture_paths.results[2].stat.mode == '0600'
+          - not agent_workspace_fixture_paths.results[3].stat.exists
+    - name: Check the clone
+      ansible.builtin.command:
+        cmd: cat /home/ops/Code/github.com/fixture/repo/tracked
+      register: agent_workspace_fixture_tracked
+      changed_when: false
+      failed_when: agent_workspace_fixture_tracked.stdout != 'first'
+    - name: Check tbhbdev was installed from the private clone with the existing uv
+      become: true
+      become_user: ops
+      ansible.builtin.shell:
+        cmd: |
+          set -eu
+          commit=$(git -C /home/ops/Code/github.com/fixture/repo rev-parse HEAD)
+          test "$(/home/ops/.local/bin/tbhbdev --version)" = "tbhbdev 0 ($commit)"
+          test "$(cat /home/ops/Code/git.example.invalid/fixture/other/tracked)" = first
+      changed_when: false

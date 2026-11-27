@@ -1,0 +1,44 @@
+---
+# These derive from the account being harnessed, so the argument specs can't validate them.
+# An account entry can set its own home and repository.
+agent_harness_home: >-
+  {{ agent_harness_account.home | default(('/Users' if ansible_facts.system == 'Darwin' else '/home')
+  + '/' + agent_harness_account.name, true) }}
+agent_harness_repository: >-
+  {{ agent_harness_account.repository | default(agent_harness_home + '/Code/github.com/tbhb-dev/tbhbdev', true) }}
+agent_harness_signing_key: "{{ agent_harness_home }}/.config/devtools/agent-signing-key.pub"
+agent_harness_signing_program: "{{ agent_harness_home }}/.local/bin/ssh-sign"
+agent_harness_prerequisite_paths: >-
+  {{ ([agent_harness_account.workspace] if agent_harness_account.workspace is defined else []) +
+  [agent_harness_repository + '/.git', agent_harness_signing_key, agent_harness_signing_program] }}
+agent_harness_environment:
+  SSH_AUTH_SOCK: ""
+  GIT_CONFIG_COUNT: "2"
+  GIT_CONFIG_KEY_0: user.signingkey
+  GIT_CONFIG_VALUE_0: "{{ agent_harness_signing_key }}"
+  GIT_CONFIG_KEY_1: gpg.ssh.program
+  GIT_CONFIG_VALUE_1: "{{ agent_harness_signing_program }}"
+  GIT_AUTHOR_NAME: "{{ agent_harness_name }}"
+  GIT_AUTHOR_EMAIL: "{{ agent_harness_email }}"
+  GIT_COMMITTER_NAME: "{{ agent_harness_name }}"
+  GIT_COMMITTER_EMAIL: "{{ agent_harness_email }}"
+# Claude settings own this key; keep it out of the Codex environment.
+agent_harness_claude_environment:
+  DISABLE_AUTOUPDATER: "1"
+agent_harness_process_environment:
+  HOME: "{{ agent_harness_home }}"
+  XDG_CONFIG_HOME: "{{ agent_harness_home }}/.config"
+  XDG_DATA_HOME: "{{ agent_harness_home }}/.local/share"
+  XDG_CACHE_HOME: "{{ agent_harness_home }}/.cache"
+  PATH: >-
+    {{ [agent_harness_home + '/.local/bin', agent_harness_home + '/.local/share/mise/shims',
+    '/opt/homebrew/bin', '/usr/local/bin', '/usr/bin', '/bin', '/usr/sbin', '/sbin'] | join(':') }}
+  SSH_AUTH_SOCK: ""
+  GIT_TERMINAL_PROMPT: "0"
+  GIT_ASKPASS: /usr/bin/false
+  SSH_ASKPASS: /usr/bin/false
+  SSH_ASKPASS_REQUIRE: never
+  OP_BIOMETRIC_UNLOCK_ENABLED: "false"
+  CI: "true"
+  CLAUDE_CONFIG_DIR: "{{ agent_harness_home }}/.claude"
+  CODEX_HOME: "{{ agent_harness_home }}/.codex"

@@ -1,0 +1,61 @@
+---
+argument_specs:
+  main:
+    short_description: Put a directory on its own ext4 logical volume
+    description:
+      - >-
+          Creates a logical volume, makes an ext4 file system on it, and mounts it at a path through
+          /etc/fstab. It refuses a mount point that already holds data and isn't yet that volume,
+          and a volume of another size, and never resizes, reformats or deletes anything.
+      - >-
+          With lvm_volume_mount_now false it writes the fstab entry only, and the volume replaces
+          whatever is mounted at the path at the next boot.
+    options:
+      lvm_volume_vg:
+        type: str
+        default: ubuntu-vg
+        description: Volume group that holds the logical volume.
+      lvm_volume_lv:
+        type: str
+        required: true
+        description: Name of the logical volume.
+      lvm_volume_size:
+        type: str
+        required: true
+        description: >-
+          Size of the logical volume, a multiple of the volume group's extent size, 4M by default.
+          The role creates the volume only when it doesn't exist and fails when an existing one has
+          another size.
+      lvm_volume_path:
+        type: path
+        required: true
+        description: Mount point of the logical volume.
+      lvm_volume_opts:
+        type: str
+        default: defaults
+        description: Mount options for the fstab entry.
+      lvm_volume_passno:
+        type: int
+        default: 2
+        description: >-
+          The fstab entry's fsck pass. 2 checks the volume at boot after the root file system, and 0
+          skips it.
+      lvm_volume_mount_now:
+        type: bool
+        default: true
+        description: >-
+          False writes the fstab entry and leaves the mount for the next boot, for a path that
+          something else is mounted on now. The empty-path check and the root's owner, group and mode
+          are skipped.
+      lvm_volume_owner:
+        type: str
+        default: ""
+        description: Owner of the mounted volume's root, a name or a numeric uid. Empty leaves it as is.
+      lvm_volume_group:
+        type: str
+        default: ""
+        description: Group of the mounted volume's root, a name or a numeric gid. Empty leaves it as is.
+      lvm_volume_mode:
+        type: str
+        default: ""
+        description: Mode of the mounted volume's root, such as "0700". Empty leaves it as is.

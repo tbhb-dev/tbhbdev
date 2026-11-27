@@ -1,0 +1,35 @@
+---
+kvm_host_netplan_path: /etc/netplan/60-{{ kvm_host_bridge }}.yaml
+kvm_host_installer_path: /etc/netplan/00-installer-config.yaml
+# The ports the bridge file takes over from the installer's file.
+kvm_host_ports:
+  - "{{ kvm_host_bridge_port }}"
+  - "{{ kvm_host_management_port }}"
+# The bridge is the host's only uplink, so its DHCP installs the default
+# route and the DNS servers. accept-ra is explicit because networkd ignores
+# advertisements on a forwarding host by default, and Docker and libvirt
+# turn on forwarding. optional keeps a dead lab link from stalling boot.
+#
+# The management port stays up with no address, so the host has no second
+# path that a reply could take around the Lab gateway. optional keeps the
+# boot from waiting on it. A dict literal, because Ansible's variable
+# templating doesn't template a YAML mapping's keys.
+kvm_host_netplan: >-
+  {{ {'network': {
+        'version': 2,
+        'ethernets': {
+          kvm_host_bridge_port: {'link-local': []},
+          kvm_host_management_port: {
+            'dhcp4': false,
+            'dhcp6': false,
+            'accept-ra': false,
+            'link-local': [],
+            'optional': true}},
+        'bridges': {kvm_host_bridge: {
+          'interfaces': [kvm_host_bridge_port],
+          'macaddress': ansible_facts[kvm_host_bridge_port].macaddress | default(''),
+          'dhcp4': true,
+          'dhcp6': true,
+          'accept-ra': true,
+          'optional': true,
+          'parameters': {'stp': false, 'forward-delay': 0}}}}} }}

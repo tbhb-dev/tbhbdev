@@ -1,0 +1,29 @@
+# The Ansible toolchain for ansible/, apart from the root workspace until
+# ansible-core runs on the root's Python. ansible-core 2.21 doesn't import on
+# Python 3.15, and 2.22.0, the first release that does, came out on
+# 2026-11-02. Once 2.22.x is two weeks old and the Molecule scenarios pass on
+# it, these pins move into a dependency group of the root project and this
+# file and its lockfile go.
+#
+# The pins are exact, carried over with the roles from the repository they
+# came from.
+[project]
+name = "ops-ansible"
+# Inert. Nothing builds or publishes from this table.
+version = "0"
+description = "The Ansible toolchain for the tbhb-dev/tbhbdev roles"
+requires-python = "==3.15.*"
+dependencies = [
+  "ansible-core==2.22.0",
+  "ansible-lint==26.11.0",
+  "molecule==26.11.0",
+  "molecule-plugins[docker]==26.11.0",
+  # password_hash needs a crypt backend, and Python 3.14 has no crypt module.
+  "passlib==1.7.4",
+]
+
+[tool.uv]
+package = false
+# Lock refreshes skip releases younger than 5 days, the same cooldown
+# Renovate applies to version bumps.
+exclude-newer = "5 days"

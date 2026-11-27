@@ -1,0 +1,29 @@
+[project]
+name = "tbhbops-cli"
+version = "0"
+description = "The tbhbops command for the tbhb-dev/tbhbdev tools"
+requires-python = ">=3.15"
+dependencies = [
+  "tbhbops",
+  "pyyaml>=6.0.3",
+]
+
+[project.scripts]
+tbhbops = "tbhbops_cli.cli:main"
+
+# mutmut runs from this directory, because it maps a mutated file to its
+# module name only under src/.
+[tool.mutmut]
+source_paths = ["src"]
+also_copy = ["src"]
+pytest_add_cli_args_test_selection = ["tests"]
+
+[tool.uv.sources]
+tbhbops = { workspace = true }
+
+[tool.pytest]
+addopts = ["-ra", "--strict-markers", "--strict-config", "--import-mode=importlib"]
+
+[build-system]
+requires = ["uv_build>=0.13.0,<0.14"]
+build-backend = "uv_build"

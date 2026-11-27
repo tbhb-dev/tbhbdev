@@ -1,0 +1,10 @@
+---
+- name: deploy | Prepare and stage the release
+  ansible.builtin.include_tasks: release.yml
+
+- name: deploy | Select the staged release
+  ansible.builtin.set_fact:
+    o11y_target: "{{ o11y_root }}/releases/{{ o11y_release_id }}"
+
+- name: deploy | Switch and check readiness
+  ansible.builtin.include_tasks: switch.yml

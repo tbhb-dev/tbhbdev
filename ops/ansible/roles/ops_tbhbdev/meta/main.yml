@@ -1,0 +1,10 @@
+---
+galaxy_info:
+  author: tbhb
+  description: Install uv and tbhbdev for the ops account on the operator's Macs
+  license: Apache-2.0
+  min_ansible_version: "2.21"
+  platforms:
+    - name: MacOSX
+      versions: [all]
+dependencies: []

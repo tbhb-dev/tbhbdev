@@ -1,0 +1,18 @@
+---
+- name: Load the bubblewrap AppArmor profile
+  ansible.builtin.command:
+    argv: [apparmor_parser, -r, "{{ item }}"]
+  loop: "{{ agent_host_bwrap_profiles | default([]) }}"
+  changed_when: true
+  when:
+    - agent_host_load_apparmor
+    - not ansible_check_mode
+    - (agent_host_userns_restriction.content | default('MAo=') | b64decode | trim) == '1'
+
+- name: Verify bubblewrap after account creation
+  ansible.builtin.command:
+    argv: [bwrap, --ro-bind, /, /, --dev, /dev, --proc, /proc, "true"]
+  become: true
+  become_user: agent
+  changed_when: false
+  when: agent_host_verify_bwrap and not ansible_check_mode

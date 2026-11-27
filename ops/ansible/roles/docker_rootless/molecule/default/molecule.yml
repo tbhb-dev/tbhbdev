@@ -1,0 +1,58 @@
+---
+# Privileged mode lets systemd run as PID 1 and lets the service user's
+# rootlesskit create its namespaces. Two settings differ from ops_ssh:
+#
+# - A private cgroup namespace without the host's /sys/fs/cgroup. The
+#   rootless daemon looks for user@<uid>.service under the cgroup root, and
+#   with the host namespace that root is the Docker host's, so the daemon
+#   finds no controllers and refuses --cpus and --memory.
+# - A volume for the service user's home. The image's root file system is
+#   overlayfs, and the daemon's overlayfs snapshotter can't stack on it.
+dependency:
+  name: galaxy
+  enabled: false
+driver:
+  name: docker
+platforms:
+  # test-ansible sets MOLECULE_RUN_ID, so concurrent runs get distinct containers.
+  - name: edge-1-${MOLECULE_RUN_ID:-local}
+    # The runner builds this content-addressed image when its cache is missing.
+    image: ${MOLECULE_IMAGE}
+    pre_build_image: true
+    privileged: true
+    command: /sbin/init
+    cgroupns_mode: private
+    volumes:
+      - /var/lib/ghrunner
+    keep_volumes: false
+    tmpfs:
+      - /run
+      - /tmp
+prerun: false
+provisioner:
+  name: ansible
+  # The driver sets community.docker.docker on each host, which inventory
+  # group_vars can't override. docker_api talks to the daemon's API
+  # instead of piping modules through docker exec stdin.
+  connection_options:
+    ansible_connection: community.docker.docker_api
+  inventory:
+    group_vars:
+      all:
+        ansible_user: ops
+        # Room for the test images; the image file is sparse.
+        docker_rootless_data_size: 2G
+        # The container can't load modules into its host's kernel.
+        docker_rootless_load_br_netfilter: false
+verifier:
+  name: ansible
+scenario:
+  test_sequence:
+    - destroy
+    - syntax
+    - create
+    - check
+    - converge
+    - idempotence
+    - verify
+    - destroy

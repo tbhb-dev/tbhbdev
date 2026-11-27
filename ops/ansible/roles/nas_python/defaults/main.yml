@@ -1,0 +1,13 @@
+---
+# The uv release and the digests of its Linux archives for the two CPU
+# architectures a Synology runs. They are the glibc builds that mise.lock pins
+# for the same version, so move them with the uv pin in mise.toml.
+nas_python_uv_version: 0.13.6
+nas_python_uv_sha256:
+  x86_64: f29c3e94ffabd7e6f3ba521dba169a9b7ec12100bf3257087f0f24f6123f3645
+  aarch64: 229e194255c7958d86d56e8790d969a6f74736592133f0dfd0076f754c642c1d
+# ansible-core 2.21.5 supports managed nodes on CPython 3.9 to 3.14.
+nas_python_version: "3.14"
+# Where uv links the Python for the connecting user; group_vars/nas.yml sets
+# the same path as the interpreter the other roles use.
+nas_python_interpreter: "{{ ansible_python_interpreter }}"

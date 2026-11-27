@@ -1,0 +1,7 @@
+[Unit]
+Description=Reconverge the {{ agent_reconverge_account }} account settings
+
+[Service]
+Type=oneshot
+ExecStart="%h/{{ agent_reconverge_clone }}/tony/reconverge.sh" --account {{ agent_reconverge_account }}
+SuccessExitStatus=0 1

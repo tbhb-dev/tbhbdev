@@ -1,0 +1,184 @@
+---
+- name: Verify
+  hosts: all
+  become: true
+  tasks:
+    - name: Inspect the private config, the root and each clone
+      ansible.builtin.stat:
+        path: "{{ item }}"
+      loop:
+        - "{{ ['/'.join(('/home', 'agent', '.config')), 'gitleaks', 'private.toml'] | join('/') }}"
+        - /home/example-user/Code
+        - /home/example-user/Code/github.com/fixture/repo
+        - /home/example-user/Code/github.com/fixture/fresh
+        - /home/example-user/.local/bin/tbhbdev
+      register: agent_workspace_fixture_paths
+    - name: Check ownership and mode
+      ansible.builtin.assert:
+        that:
+          - agent_workspace_fixture_paths.results[0].stat.mode == '0600'
+          - agent_workspace_fixture_paths.results[0].stat.pw_name == 'agent'
+          - agent_workspace_fixture_paths.results[1].stat.mode == '0700'
+          - agent_workspace_fixture_paths.results | map(attribute='stat.pw_name') | unique | list == ['agent']
+          - agent_workspace_fixture_paths.results | map(attribute='stat.gr_name') | unique | list == ['devel']
+          - agent_workspace_fixture_paths.results[2:4] | map(attribute='stat.isdir') | unique | list == [true]
+          - agent_workspace_fixture_paths.results[4].stat.executable
+    - name: Inspect the skipped private clone
+      ansible.builtin.stat:
+        path: /home/example-user/Code/git.example.invalid/fixture/other
+      register: agent_workspace_fixture_private
+    - name: Check the private repository was skipped
+      ansible.builtin.assert:
+        that: not agent_workspace_fixture_private.stat.exists
+    - name: Check the clones and the tools install
+      become: true
+      become_user: agent
+      ansible.builtin.shell:
+        cmd: |
+          set -eu
+          test "$(cat /home/example-user/Code/github.com/fixture/repo/tracked)" = second
+          test "$(cat /home/example-user/Code/github.com/fixture/fresh/tracked)" = first
+          test "$(cat /home/example-user/Code/github.com/fixture/kept/tracked)" = first
+          test ! -e /home/example-user/Code/github.com/fixture/skipped
+          test -e /home/example-user/Code/.tools-installed
+          test -x /home/example-user/.local/bin/uv
+          commit=$(git -C /home/example-user/Code/github.com/fixture/fresh rev-parse HEAD)
+          test "$(/home/example-user/.local/bin/tbhbdev --version)" = "tbhbdev 0 ($commit)"
+      changed_when: false
+    - name: Exercise checkout refusals and clean installs
+      become: true
+      become_user: agent
+      environment:
+        HOME: /home/example-user
+        PATH: /home/example-user/.local/bin:/usr/bin:/bin
+        SSH_AUTH_SOCK: ""
+        GH_CONFIG_DIR: "{{ ['/'.join(('/home', 'agent', '.config')), 'gh-agent'] | join('/') }}"
+        GIT_TERMINAL_PROMPT: "0"
+        UV_TOOL_DIR: /home/example-user/.local/share/uv/tools
+        UV_TOOL_BIN_DIR: /home/example-user/.local/bin
+      vars:
+        agent_workspace_tools: /home/example-user/Code/github.com/fixture/fresh
+      block:
+        - name: Use an SSH origin to check the install still fetches anonymously over HTTPS
+          ansible.builtin.command:
+            argv: [git, remote, set-url, origin, 'git@github.com:fixture/fresh.git']
+            chdir: "{{ agent_workspace_tools }}"
+          changed_when: true
+        - name: Exercise checkout refusals before any reinstall
+          ansible.builtin.include_tasks: tasks/refuse.yml
+          loop:
+            - reason: ahead, behind or diverged
+              setup:
+                - - git
+                  - -c
+                  - user.name=Molecule
+                  - -c
+                  - user.email=molecule@example.invalid
+                  - commit
+                  - --quiet
+                  - --allow-empty
+                  - -m
+                  - local
+                # A stale tracking ref must not allow a local commit through.
+                - [git, update-ref, refs/remotes/origin/main, HEAD]
+              cleanup:
+                - [git, reset, --hard, origin/main]
+            - reason: dirty
+              setup:
+                - [python3, -c, 'from pathlib import Path; Path("pyproject.toml").write_text("invalid dirty metadata")']
+              cleanup:
+                - [git, restore, pyproject.toml]
+            - reason: dirty
+              setup:
+                - [python3, -c, 'from pathlib import Path; Path("untracked").touch()']
+              cleanup:
+                - [python3, -c, 'from pathlib import Path; Path("untracked").unlink()']
+            - reason: off main
+              setup:
+                - [git, checkout, -b, side]
+              cleanup:
+                - [git, checkout, main]
+            - reason: off main
+              setup:
+                - [git, checkout, --detach]
+              cleanup:
+                - [git, checkout, main]
+          loop_control:
+            loop_var: agent_workspace_refusal
+        - name: Advance the remote main without updating the checkout
+          ansible.builtin.command:
+            argv: "{{ item }}"
+            chdir: /home/example-user/seed-fresh
+          loop:
+            - [git, commit, --quiet, --allow-empty, -m, remote]
+            - [git, push, --quiet, origin, main]
+          changed_when: true
+        - name: Refuse a checkout behind the newly fetched main
+          ansible.builtin.include_tasks: tasks/refuse.yml
+          vars:
+            agent_workspace_refusal:
+              reason: ahead, behind or diverged
+              setup: []
+              cleanup:
+                - [git, merge, --ff-only, origin/main]
+        - name: Install the clean updated origin/main commit
+          ansible.builtin.include_role:
+            name: agent_workspace
+            tasks_from: tbhbdev
+        - name: Check the changed commit was installed
+          ansible.builtin.assert:
+            that: agent_workspace_tbhbdev_install.changed
+        - name: Check the installed version and commit
+          ansible.builtin.command:
+            argv: [/home/example-user/.local/bin/tbhbdev, --version]
+          register: agent_workspace_fixture_version
+          changed_when: false
+        - name: Check the install uses the committed version and full commit
+          ansible.builtin.assert:
+            that: agent_workspace_fixture_version.stdout == 'tbhbdev 0 (' + agent_workspace_tools_commit.stdout + ')'
+        - name: Repeat the clean install
+          ansible.builtin.include_role:
+            name: agent_workspace
+            tasks_from: tbhbdev
+        - name: Check a matching install is unchanged
+          ansible.builtin.assert:
+            that: not agent_workspace_tbhbdev_install.changed
+        - name: Give the installed command a different recorded version
+          ansible.builtin.copy:
+            dest: /home/example-user/.local/bin/tbhbdev
+            content: |
+              #!/usr/bin/python3
+              print("tbhbdev wrong ({{ agent_workspace_tools_commit.stdout }})")
+            mode: '0700'
+        - name: Repair the installed version from clean origin/main
+          ansible.builtin.include_role:
+            name: agent_workspace
+            tasks_from: tbhbdev
+        - name: Check the version mismatch triggered an install
+          ansible.builtin.assert:
+            that: agent_workspace_tbhbdev_install.changed
+        - name: Repeat the repaired install
+          ansible.builtin.include_role:
+            name: agent_workspace
+            tasks_from: tbhbdev
+        - name: Check the repaired install is unchanged
+          ansible.builtin.assert:
+            that: not agent_workspace_tbhbdev_install.changed
+    - name: Re-list the second user's home
+      ansible.builtin.shell:
+        executable: /bin/bash
+        cmd: |
+          set -euo pipefail
+          find /home/labop -printf '%p %y %m %U:%G %s %T@\n' | sort | diff /var/tmp/labop-home.listing -
+          find /home/labop -type f -exec sha256sum {} + | sort | diff /var/tmp/labop-home.sums -
+      changed_when: false
+    - name: Look for a Code directory in any home
+      ansible.builtin.shell:
+        executable: /bin/bash
+        cmd: set -o pipefail; find /home -maxdepth 2 -name Code | sort
+      register: agent_workspace_fixture_roots
+      changed_when: false
+    - name: Check the role wrote to no other home
+      ansible.builtin.assert:
+        that:
+          - agent_workspace_fixture_roots.stdout_lines == ['/home/example-user/Code', '/home/labop/Code']
