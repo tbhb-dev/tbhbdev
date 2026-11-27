@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import base64
 import re
 import subprocess  # nosec B404
 import tempfile
@@ -210,13 +209,7 @@ def history_git(
         GIT_NO_LAZY_FETCH="1",
         PATH=host_tools.search(),
     )
-    if token is not None:
-        basic = base64.b64encode(f"x-access-token:{token}".encode()).decode()
-        env.update(
-            GIT_CONFIG_COUNT="1",
-            GIT_CONFIG_KEY_0="http.extraheader",
-            GIT_CONFIG_VALUE_0=f"Authorization: Basic {basic}",
-        )
+    env.update(host_tools.git_token_env(token))
     return subprocess.run(  # nosec B603
         [
             host_tools.resolve("git"),
