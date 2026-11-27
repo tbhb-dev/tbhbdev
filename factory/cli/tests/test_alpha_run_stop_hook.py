@@ -72,7 +72,11 @@ def test_review_uses_current_reply_and_limits_retries(
             )
             == ""
         )
-    for message in (None, "Asking for approval", "Quoted VERDICT: GO\nVERDICT: GONE"):
+    for message in (
+        None,
+        f"VERDICT: SPLIT {'a' * 40}",
+        "Quoted VERDICT: GO\nVERDICT: GONE",
+    ):
         result = json.loads(
             stop(harness, {**payload, "last_assistant_message": message})
         )

@@ -166,6 +166,7 @@ cli_py_library(
         ":repo",
         "//factory/cli/src/tbhbdev/alpha/identity:commands",
         "//factory/cli/src/tbhbdev/alpha/identity:models",
+        "//factory/cli/src/tbhbdev/alpha/identity:trailers",
     ],
 )
 
@@ -254,6 +255,7 @@ cli_py_library(
         "//factory/cli/src/tbhbdev/alpha/agent:settings",
         "//factory/cli/src/tbhbdev/alpha/agent/decisions:host_names",
         "//factory/cli/src/tbhbdev/alpha/identity:dispatcher",
+        "//factory/cli/src/tbhbdev/alpha/identity:trailers",
         "@cli_pip//jsonschema",
     ],
 )
@@ -272,6 +274,7 @@ cli_py_library(
     srcs = ["repo.py"],
     imports = ["../.."],
     visibility = ["//factory/cli:__subpackages__"],
+    deps = ["//factory/cli/src/tbhbdev/alpha/identity:trailers"],
 )
 
 cli_py_library(
@@ -383,9 +386,11 @@ cli_py_library(
     name = "run_stop_hook",
     srcs = ["run_stop_hook.py"],
     imports = ["../.."],
+    pyi_deps = ["//factory/cli/src/tbhbdev/alpha/agent:model"],
     visibility = ["//factory/cli:__subpackages__"],
     deps = [
         ":repo",
+        ":size_gate",
         "//factory/cli/src/tbhbdev/alpha/agent:runfiles",
         "//factory/cli/src/tbhbdev/alpha/identity:dispatcher",
     ],

@@ -670,13 +670,8 @@ def run_harness(
     terminal = None if headless else sys.stdin.fileno()
     streams = (None, None, None)
     if headless:
-        context = run_stop_hook.StopRun(
-            profile=run.request.profile.value,
-            workspace=paths.worktree,
-            reference=f"refs/heads/agent/{run.files.name}",
-            start=prepared.start,
-            counter=str(run.tmpdir / "stop-count"),
-            log=str(run.files.path("log")),
+        context = run_stop_hook.run_context(
+            run.request, paths.worktree, run.files, run.tmpdir, prepared.start
         )
         env[run_stop_hook.ENV] = json.dumps(context)
         streams = (

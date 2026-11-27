@@ -600,12 +600,26 @@ def test_size_reports_verified_imports(
     assert capsys.readouterr() == ((output, "") if command == "check" else ("", output))
 
 
+@pytest.mark.parametrize("direct_ref", [True, False])
 def test_both_stacked_refs_are_refreshed_without_tags_then_counted(
-    monkeypatch: pytest.MonkeyPatch,
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, direct_ref: bool
 ) -> None:
     counter = Mock(return_value=sg.SizeCounts(5, 400, 9, 1500, None))
     monkeypatch.setattr(sg, "size_counts", counter)
-    git = git_exits()
+    topic_ref = "refs/heads/topic"
+    mirror_ref = "refs/heads/fetched/heads/topic"
+    advertised = f"def\t{mirror_ref}"
+    if direct_ref:
+        advertised += f"\nabc\t{topic_ref}"
+    git = Mock(
+        side_effect=[
+            (0, str(tmp_path / "mirror.git")),
+            (0, advertised),
+            (0, ""),
+            (0, ""),
+            (0, ""),
+        ]
+    )
     monkeypatch.setattr(pr, "git", git)
     monkeypatch.setattr(pr, "default_base", Mock(return_value="main"))
     find = Mock(return_value="/tools/scc")
@@ -613,10 +627,12 @@ def test_both_stacked_refs_are_refreshed_without_tags_then_counted(
     checked = pr.Checked([], meta={"base": "topic"})
     pr.check_size(argparse.Namespace(command="create", draft="d.md"), checked)
     assert checked.problems == []
-    assert git.call_args_list[0] == call(
+    assert git.call_args_list[0] == call("remote", "get-url", "origin")
+    assert git.call_args_list[1] == call("ls-remote", "origin", topic_ref, mirror_ref)
+    assert git.call_args_list[2] == call(
         *FETCH,
         "origin",
-        "+refs/heads/topic:refs/remotes/origin/topic",
+        f"+{topic_ref if direct_ref else mirror_ref}:refs/remotes/origin/topic",
         "+refs/heads/main:refs/remotes/origin/main",
     )
     counter.assert_called_once_with(
@@ -646,6 +662,30 @@ def test_a_failed_fetch_refuses_and_never_counts_a_stale_ref(
     counter.assert_not_called()
     assert [c.args[0] for c in git.call_args_list] == ["fetch"]
     assert "--refmap=" in git.call_args_list[0].args
+
+
+def test_a_failed_stacked_fetch_from_github_refuses_without_retrying(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    counter = Mock()
+    monkeypatch.setattr(sg, "size_counts", counter)
+    git = Mock(side_effect=[(0, "https://github.com/o/r.git"), (1, "")])
+    monkeypatch.setattr(pr, "git", git)
+    monkeypatch.setattr(pr, "default_base", Mock(return_value="main"))
+    checked = pr.Checked([], meta={"base": "topic"})
+    pr.check_size(argparse.Namespace(command="create", draft="d.md"), checked)
+
+    assert checked.problems == [(1, "size count unavailable: cannot fetch topic")]
+    assert git.call_args_list == [
+        call("remote", "get-url", "origin"),
+        call(
+            *FETCH,
+            "origin",
+            "+refs/heads/topic:refs/remotes/origin/topic",
+            "+refs/heads/main:refs/remotes/origin/main",
+        ),
+    ]
+    counter.assert_not_called()
 
 
 def test_create_refuses_when_gh_targets_another_repository(
