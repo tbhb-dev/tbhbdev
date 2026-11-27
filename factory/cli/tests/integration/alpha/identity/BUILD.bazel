@@ -17,6 +17,7 @@ cli_py_library(
     name = "conftest",
     testonly = True,
     srcs = ["conftest.py"],
+    data = ["//factory/cli/src/tbhbdev:tbhbdev_bin"],
     extra_deps = ["//factory/cli/src/tbhbdev:cli"],
     imports = ["../../.."],
     visibility = ["//factory/cli/tests:__subpackages__"],
