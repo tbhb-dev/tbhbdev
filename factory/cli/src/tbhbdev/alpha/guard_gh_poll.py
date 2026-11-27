@@ -225,11 +225,13 @@ class BodyScanner(Scanner):
     group_starts: dict[int, int] = field(default_factory=dict)
     closed_group: int | None = None
     redirect_target: bool = False
+    redirect_targets: list[str] = field(default_factory=list)
 
     @override
     def end_word(self) -> None:
         """Consume a redirect target without adding it to the command words."""
         if self.in_word and self.redirect_target:
+            self.redirect_targets.append("".join(self.word))
             self.in_word = self.redirect_target = False
         super().end_word()
 
@@ -768,6 +770,16 @@ def attached(word: str) -> str:
     return word.removeprefix("-t")
 
 
+def names_protected_file(words: list[str]) -> bool:
+    """Whether the unquoted words contain an allowance file name."""
+    return any(name in word.lower() for word in flattened(words) for name in PROTECTED)
+
+
+def redirects_or_pipes_protected_state(scanner: BodyScanner) -> bool:
+    """Check allowance filenames in redirects and state paths piped to movers."""
+    return names_protected_file(scanner.redirect_targets) or pipes_state_dir(scanner)
+
+
 def protected_words(command: list[str]) -> bool:
     """Whether a command's unquoted words name a protected file.
 
@@ -776,8 +788,7 @@ def protected_words(command: list[str]) -> bool:
     ``/`` word doesn't: prose such as a ledger line has one, and it names no
     state file.
     """
-    words = flattened(command)
-    if any(name in word.lower() for word in words for name in PROTECTED):
+    if names_protected_file(command):
         return True
     mover = state_mover(command)
     return any(word != "/" and names_state_dir(attached(word)) for word in mover[1:])
@@ -874,7 +885,7 @@ def scan_commands(text: str, *, repeated: bool = False) -> tuple[str | None, set
     programs: set[str] = set()
     scanner = BodyScanner(text)
     commands = scanner.run()
-    if pipes_state_dir(scanner):
+    if redirects_or_pipes_protected_state(scanner):
         return PROTECT_REASON, set()
     for index, command in enumerate(commands):
         if opens_loop(command):

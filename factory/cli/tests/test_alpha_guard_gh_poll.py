@@ -1385,6 +1385,10 @@ def test_compound_state_directory_movers_are_denied(command: str) -> None:
             )
         ),
         ("echo ~/.local/state/tbhb/* | xargs >out rm", guard.PROTECT_REASON),
+        (
+            'echo x > ~/.local/state/tbhb/gh-poll-allowance."count"',
+            guard.PROTECT_REASON,
+        ),
         ("echo /tmp/scratch/* > ~/.local/state/tbhb/* | xargs rm", None),
         ("echo ~/.local/state/tbhb/* | xargs >rm echo", None),
         ("ssh host 'ls ~/.local/state/tbhb && ls /tmp/scratch/* | xargs rm -rf'", None),
