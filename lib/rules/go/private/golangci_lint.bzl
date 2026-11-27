@@ -14,12 +14,11 @@ report is an ordinary cacheable action output.
 """
 
 load("@bazel_skylib//lib:shell.bzl", "shell")
-load("@bazel_skylib//rules:common_settings.bzl", "BuildSettingInfo")
 load("@rules_go//go:def.bzl", "GoArchive")
 
-# GoStdLib, the precompiled standard library, is not exported by go:def.bzl.
+# The Go build configuration and standard library providers are private to rules_go.
 # buildifier: disable=bzl-visibility
-load("@rules_go//go/private:providers.bzl", "GoStdLib")
+load("@rules_go//go/private:providers.bzl", "GoConfigInfo", "GoStdLib")
 load("@rules_go//go/tools/gopackagesdriver:aspect.bzl", "GoPkgInfo", "go_pkg_info_aspect")
 load("@tbhb_rules//shell:defs.bzl", "SHELL_ATTRS", "SHELL_TOOLCHAINS", "shell_executable")
 
@@ -50,8 +49,8 @@ def driver_config(ctx, out, pkg_info, roots, stdlib, test_main = False):
     """Writes the static driver's config file.
 
     Args:
-        ctx: The aspect or rule context; needs the `_go_tags` and `_go_pure`
-            attributes and the Go toolchain.
+        ctx: The aspect or rule context with the `_go_config` attribute
+            and the Go toolchain.
         out: The file to write.
         pkg_info: GoPkgInfo of the roots, which covers their dependencies.
         roots: Package IDs (labels) to answer with.
@@ -60,14 +59,23 @@ def driver_config(ctx, out, pkg_info, roots, stdlib, test_main = False):
             that is a go_test.
     """
     toolchain = ctx.toolchains[GO_TOOLCHAIN]
+    mode = ctx.attr._go_config[GoConfigInfo]
+
+    # rules_go installs instrumented archives under a suffixed directory.
+    install_dir = mode.goos + "_" + mode.goarch
+    if mode.race:
+        install_dir += "_race"
+    elif mode.msan:
+        install_dir += "_msan"
+
     args = ctx.actions.args()
     args.set_param_file_format("multiline")
-    args.add("goos=" + toolchain.default_goos)
-    args.add("goarch=" + toolchain.default_goarch)
+    args.add("goos=" + mode.goos)
+    args.add("goarch=" + mode.goarch)
     args.add("go_version=" + toolchain.sdk.version)
-    args.add("cgo_enabled=" + ("0" if ctx.attr._go_pure[BuildSettingInfo].value else "1"))
-    args.add_all(ctx.attr._go_tags[BuildSettingInfo].value, format_each = "tag=%s")
-    args.add_all(stdlib.libs, map_each = _path, format_each = "stdlib_pkg_dir=%s", expand_directories = False)
+    args.add("cgo_enabled=" + ("0" if mode.pure else "1"))
+    args.add_all(mode.tags, format_each = "tag=%s")
+    args.add_all(stdlib.libs, map_each = _path, format_each = "stdlib_pkg_dir=%s/" + install_dir, expand_directories = False)
     args.add_all(roots, format_each = "root=%s")
     if test_main:
         args.add("test_main=1")
@@ -306,9 +314,8 @@ def golangci_lint_aspect_factory(
             executable = True,
             cfg = "exec",
         ),
-        "_go_pure": attr.label(default = Label("@rules_go//go/config:pure")),
+        "_go_config": attr.label(default = Label("@rules_go//:go_config")),
         "_go_stdlib": attr.label(default = Label("@rules_go//:stdlib")),
-        "_go_tags": attr.label(default = Label("@rules_go//go/config:tags")),
         "_golangci_lint": attr.label(default = tool, executable = True, allow_files = True, cfg = "exec"),
         "_key": attr.string(default = key),
         "_report": attr.label(
