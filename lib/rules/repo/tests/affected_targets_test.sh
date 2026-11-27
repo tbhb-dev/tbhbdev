@@ -404,6 +404,11 @@ cli_head=$(commit cli/main.go)
 run 'root-only change' pull_request "$cli_head" false 2
 [[ $targets == $'//go:lib_test\n//go:cmd_test' ]] || fail 'root-only change selected rules tests'
 
+git checkout -q "$docs_head"
+head=$(commit go/BUILD.bazel src/lib.go)
+run 'root BUILD change' pull_request "$head" false 2
+[[ $targets == $'//go:lib_test\n//go:cmd_test' ]] || fail 'root BUILD change selected unexpected tests'
+
 # No checkout at all: the event's head can't be checked, so the step fails.
 refuse 'no checkout' "$scratch/no-git"
 
@@ -418,7 +423,7 @@ rm '##[notice]x'
 
 for path in MODULE.bazel MODULE.bazel.lock .bazelrc .bazelrc.user preset.bazelrc \
   WORKSPACE WORKSPACE.bazel WORKSPACE.extra .bazelversion go/MODULE.bazel \
-  go/deps.MODULE.bazel 'café/MODULE.bazel' go/BUILD go/BUILD.bazel defs/rules.bzl \
+  go/deps.MODULE.bazel 'café/MODULE.bazel' \
   .bazelignore REPO.bazel; do
   git checkout -q "$docs_head"
   head=$(commit "$path" src/lib.go)
