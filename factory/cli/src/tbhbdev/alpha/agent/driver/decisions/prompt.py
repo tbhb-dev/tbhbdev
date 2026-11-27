@@ -1,4 +1,4 @@
-"""Validate launch briefs and detect credentials in coordinator inputs."""
+"""Validate launch briefs and schemas."""
 
 from __future__ import annotations
 
@@ -8,6 +8,7 @@ import unicodedata
 from typing import TYPE_CHECKING
 
 from tbhbdev.alpha.agent.decisions import request
+from tbhbdev.alpha.agent.driver.decisions.credentials import check_secret
 from tbhbdev.alpha.agent.model import Invalid, Profile
 
 if TYPE_CHECKING:
@@ -113,17 +114,6 @@ _UPDATE = re.compile(
     r"|(?i:git push) [^\s`]+ (?:[^\s`:]+:)?)"
     rf"(?:[`\"']?(refs/heads/{BRANCH_REF}{REF_END}|{SHORT_AGENT_REF})"
     r"|(?i:(?:PR|pull request)(?: #\d+)? (?:head|branch))\b)"
-)
-
-_SECRET_PATTERNS = (
-    ("1Password reference", re.compile(r"op://")),
-    (
-        "private key header",
-        re.compile(
-            r"-----BEGIN (?:(?:[A-Z0-9 ]+ )?PRIVATE KEY|PGP PRIVATE KEY BLOCK)-----"
-        ),
-    ),
-    ("token prefix", re.compile(r"ghp_|github_pat_|sk-ant-|AKIA|xoxb-")),
 )
 
 
@@ -268,20 +258,6 @@ def prompt_launch_problems(
             f"Use `--fetch-ref {ref} --start-ref {ref}`"
         )
     return problems
-
-
-def secret_kind(text: str) -> str | None:
-    """Return the kind of the first matching pattern."""
-    for kind, pattern in _SECRET_PATTERNS:
-        if pattern.search(text):
-            return kind
-    return None
-
-
-def check_secret(text: str, description: str) -> None:
-    if kind := secret_kind(text):
-        message = f"{description} refused: {kind}"
-        raise Invalid(message)
 
 
 def check_schema(schema: str) -> None:

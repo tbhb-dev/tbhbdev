@@ -316,6 +316,8 @@ def test_clean_retry_after_rc_was_trashed(
     assert launch(remote) == 0
     remote.configure(session=False)
     remote.file(".rc", "0\n")
+    path = metadata.metadata_path("sample")
+    before = path.read_bytes()
     original = transport.shell
 
     def fail(
@@ -334,7 +336,9 @@ def test_clean_retry_after_rc_was_trashed(
 
     monkeypatch.setattr(transport, "shell", fail)
     assert command("clean", "--force") == 1
+    assert path.read_bytes() == before
     monkeypatch.setattr(transport, "shell", original)
+    assert command("clean") == 1
     assert command("clean", "--force") == 0
 
 

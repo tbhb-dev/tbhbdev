@@ -16,47 +16,16 @@ CONFIG = settings()
 COMMIT = "0123456789abcdef0123456789abcdef01234567"
 
 
-@pytest.mark.parametrize("name", ["sample", "1", "A-z_0", "a" * 64])
-def test_name(name: str) -> None:
-    assert launch.check_name(name) is None
-
-
-@pytest.mark.parametrize("name", ["", "../bad", "a b", "a" * 65])
-def test_bad_name(name: str) -> None:
-    with pytest.raises(Invalid, match=r"run name .* must match"):
-        launch.check_name(name)
-
-
-@pytest.mark.parametrize("account", [None, "agent", "ops"])
-def test_host(account: str | None) -> None:
-    host = launch.select_host(CONFIG, "example-linux", account)
-    assert host == dataclasses.replace(LINUX, account=account or "agent")
-
-
-@pytest.mark.parametrize(
-    ("host", "account", "message"),
-    [
-        ("other", None, "host 'other' isn't configured"),
-        (
-            "example-linux",
-            "other",
-            "account 'other' isn't one of the accounts of example-linux",
-        ),
-    ],
-)
-def test_bad_host(host: str, account: str | None, message: str) -> None:
-    with pytest.raises(Invalid) as caught:
-        launch.select_host(CONFIG, host, account)
-    assert str(caught.value) == message
-
-
 @pytest.mark.parametrize(
     ("existing_name", "ref", "message"),
     [
         (
             "example",
             None,
-            "run metadata already exists. Run `tbhbdev alpha agent clean example`",
+            (
+                "run metadata already exists. "
+                "Run `tbhbdev alpha agent clean --force example`"
+            ),
         ),
         (
             None,

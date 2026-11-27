@@ -24,7 +24,6 @@ from tbhbdev.alpha.agent.driver import (
     metadata,
 )
 from tbhbdev.alpha.agent.driver.decisions import output
-from tbhbdev.alpha.agent.model import RunKind
 
 if TYPE_CHECKING:
     from agent_driver_example import Remote
@@ -210,17 +209,6 @@ def test_kill_fallback(remote: Remote, monkeypatch: pytest.MonkeyPatch) -> None:
     assert command("kill") == 0
     assert (remote.state / "sample.rc").read_text() == "137\n"
     assert (remote.state / "sample.rc").stat().st_mode & 0o777 == 0o600
-
-
-def test_wait_start_refused(remote: Remote, capsys: pytest.CaptureFixture[str]) -> None:
-    assert launch(remote) == 0
-    record = metadata.load(CONFIG, "sample")
-    path = metadata.metadata_path("sample")
-    path.rename(path.with_suffix(".saved"))
-    record.request = dataclasses.replace(record.request, kind=RunKind.START)
-    metadata.save(record)
-    assert command("wait") == 1
-    assert "wait applies only to an exec run" in capsys.readouterr().err
 
 
 def test_wait_retries_and_resets_failure_time(

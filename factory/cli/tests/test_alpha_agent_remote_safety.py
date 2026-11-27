@@ -851,6 +851,42 @@ def test_mirror_refuses_symlinks(host: Path, component: str, kind: str) -> None:
     assert result.stdout == b""
 
 
+@pytest.mark.parametrize("limit", [None, 10], ids=["diff", "log"])
+def test_inspection_holds_mirror_lock_and_hardens_git(
+    host: Path, limit: int | None
+) -> None:
+    mirror = mirror_in(host)
+    write_standalone_fake(
+        host / "bin/git",
+        "import os, sys, fcntl\nfrom pathlib import Path\n"
+        "assert os.environ['GIT_NO_LAZY_FETCH'] == '1'\n"
+        "assert os.environ['GIT_CONFIG_NOSYSTEM'] == '1'\n"
+        "assert os.environ['GIT_TERMINAL_PROMPT'] == '0'\n"
+        "assert os.environ['GIT_ASKPASS'] == '/bin/false'\n"
+        "assert os.environ['SSH_ASKPASS'] == '/bin/false'\n"
+        "assert os.environ['LANG'] == os.environ['LC_ALL'] == 'C'\n"
+        "options = {}\nargs = sys.argv[1:]\n"
+        "while args and args[0] == '-c':\n"
+        "    key, value = args[1].split('=', 1)\n"
+        "    options[key] = value\n    args = args[2:]\n"
+        "assert options == {\n"
+        "    'core.hooksPath': '/dev/null', 'core.fsmonitor': 'false',\n"
+        "    'core.sshCommand': 'ssh', 'credential.helper': '', 'core.askPass': '',\n"
+        "    'protocol.ext.allow': 'never', 'core.pager': 'cat',\n"
+        "    'gc.auto': '0', 'maintenance.auto': 'false',\n"
+        "    'fetch.recurseSubmodules': 'false', 'submodule.recurse': 'false'}\n"
+        f"assert args[0] == {('--git-dir=' + str(mirror))!r}\n"
+        f"with Path({str(mirror / 'agent-mirror.lock')!r}).open('r') as lock:\n"
+        "    try:\n        fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)\n"
+        "    except BlockingIOError:\n        pass\n"
+        "    else:\n        raise AssertionError('mirror lock required')\n"
+        "os.execv('/usr/bin/git', ['/usr/bin/git', *sys.argv[1:]])\n",
+    )
+    result = execute(remote.inspect("example-org/example-repo", "sample", limit=limit))
+    assert result.returncode == 0, result.stderr
+    assert b"pushed change" in result.stdout
+
+
 @pytest.mark.parametrize("limit", [None, 1, 10])
 def test_inspection_reads_pushed_history(
     host: Path,

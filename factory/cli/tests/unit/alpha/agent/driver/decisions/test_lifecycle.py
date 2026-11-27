@@ -5,7 +5,7 @@ from __future__ import annotations
 import pytest
 
 from tbhbdev.alpha.agent.driver.decisions import lifecycle
-from tbhbdev.alpha.agent.model import Invalid, RunKind
+from tbhbdev.alpha.agent.model import Invalid
 
 
 @pytest.mark.parametrize(
@@ -111,16 +111,6 @@ def test_clean(rc: int | None, session: bool, force: bool, message: str | None) 
         with pytest.raises(Invalid) as caught:
             lifecycle.clean(rc, session=session, force=force)
         assert str(caught.value) == message
-
-
-@pytest.mark.parametrize("kind", RunKind)
-def test_wait_kind(kind: RunKind) -> None:
-    if kind is RunKind.EXEC:
-        assert lifecycle.wait_kind(kind) is None
-    else:
-        with pytest.raises(Invalid) as caught:
-            lifecycle.wait_kind(kind)
-        assert str(caught.value) == "wait applies only to an exec run"
 
 
 @pytest.mark.parametrize(("rc", "label"), [(None, "unknown"), (0, "0"), (7, "7")])

@@ -255,12 +255,8 @@ cli_py_test(
     name = "test_arguments_io",
     srcs = ["test_arguments_io.py"],
     imports = ["../../../.."],
-    pyi_deps = ["//factory/cli/tests:agent_driver_example"],
     deps = [
-        ":conftest",
-        "//factory/cli/tests:agent_cli_example",
-        "//factory/cli/tests:conftest",
-        "//factory/cli/tests:driver_scenarios",
+        "//factory/cli/src/tbhbdev/alpha/agent/driver:arguments",
         "@cli_pip//pytest",
     ],
 )

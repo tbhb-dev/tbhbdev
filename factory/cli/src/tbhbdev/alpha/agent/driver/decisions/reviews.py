@@ -62,7 +62,7 @@ def check_live_review(run: Run, other: Run, live: int) -> None:
         f"{run.request.repo}@{run.request.commit} with the "
         f"{run.request.profile.value} profile and hasn't ended. "
         f"Check `tbhbdev alpha agent status {other.name}` and use "
-        f"`tbhbdev alpha agent clean {other.name}` once it ends. "
+        f"`tbhbdev alpha agent clean --force {other.name}` once it ends. "
         "For concurrent reviewers, launch both with distinct --variant values"
     )
     raise Invalid(message)

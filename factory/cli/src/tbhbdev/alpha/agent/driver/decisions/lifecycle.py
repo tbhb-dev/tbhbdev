@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from tbhbdev.alpha.agent.model import Invalid, RunKind
+from tbhbdev.alpha.agent.model import Invalid
 
 
 def launch(rc: int | None, *, launched: bool, expired: bool) -> str:
@@ -41,23 +41,15 @@ def kill(rc: int | None, *, session: bool, expired: bool) -> str:
     return "refuse" if session else "write"
 
 
-def wait_kind(kind: RunKind) -> None:
-    if kind is not RunKind.EXEC:
-        message = "wait applies only to an exec run"
-        raise Invalid(message)
-
-
 def answer_state(rc: int | None) -> str:
     return "unknown" if rc is None else str(rc)
 
 
-def clean(
-    rc: int | None, *, session: bool, force: bool, cleaning: bool = False
-) -> None:
+def clean(rc: int | None, *, session: bool, force: bool) -> None:
     if session:
         message = "run is running; clean refused"
         raise Invalid(message)
-    if rc is None and not (force or cleaning):
+    if rc is None and not force:
         message = "run is unknown; clean requires --force"
         raise Invalid(message)
     if not force:

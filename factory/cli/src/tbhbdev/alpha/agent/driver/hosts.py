@@ -10,7 +10,7 @@ from typing import TYPE_CHECKING
 from tbhbdev import telemetry
 from tbhbdev.alpha.agent import admission, transport
 from tbhbdev.alpha.agent.decisions import limits, remote
-from tbhbdev.alpha.agent.driver.decisions.launch import candidates, select_host
+from tbhbdev.alpha.agent.driver.decisions.hosts import candidates, select_host
 from tbhbdev.alpha.agent.model import Invalid, Profile
 
 if TYPE_CHECKING:

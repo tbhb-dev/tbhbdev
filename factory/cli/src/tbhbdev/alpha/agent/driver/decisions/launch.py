@@ -9,7 +9,6 @@ from typing import TYPE_CHECKING
 from tbhbdev.alpha.agent.decisions import config, request
 from tbhbdev.alpha.agent.driver.decisions.launcher import is_reviewer
 from tbhbdev.alpha.agent.model import (
-    NAME,
     Harness,
     Invalid,
     Profile,
@@ -21,28 +20,10 @@ from tbhbdev.alpha.identity import models as identity
 if TYPE_CHECKING:
     import argparse
 
-    from tbhbdev.alpha.agent.model import Host, Os, Settings
+    from tbhbdev.alpha.agent.model import Host, Settings
 
 
 COMMIT = re.compile(r"[0-9a-f]{40}|[0-9a-f]{64}")
-
-
-def check_name(name: str) -> None:
-    if not NAME.fullmatch(name):
-        message = f"run name {name!r} must match {NAME.pattern}"
-        raise Invalid(message)
-
-
-def select_host(settings: Settings, name: str, account: str | None) -> Host:
-    for host in settings.hosts:
-        if host.name == name:
-            chosen = host.account if account is None else account
-            if chosen not in host.accounts:
-                message = f"account {chosen!r} isn't one of the accounts of {name}"
-                raise Invalid(message)
-            return replace(host, account=chosen)
-    message = f"host {name!r} isn't configured"
-    raise Invalid(message)
 
 
 def check(
@@ -56,7 +37,7 @@ def check(
     if existing_name is not None:
         message = (
             "run metadata already exists. "
-            f"Run `tbhbdev alpha agent clean {existing_name}`"
+            f"Run `tbhbdev alpha agent clean --force {existing_name}`"
         )
         raise Invalid(message)
     if ref is not None and run.profile is Profile.BUILD:
@@ -130,20 +111,6 @@ def agy_timeout(settings: Settings, harness: Harness, profile: Profile) -> int |
     if profile is Profile.BUILD:
         return settings.agy_build_timeout_seconds
     return settings.agy_timeout_seconds
-
-
-def candidates(
-    settings: Settings, system: Os, account: str | None, exclude: str | None
-) -> list[Host]:
-    return [
-        host
-        for host in settings.hosts
-        if host.auto_select
-        and host.os is system
-        and host.name != exclude
-        and host.max_concurrent_runs != 0
-        and (account is None or account in host.accounts)
-    ]
 
 
 def check_steer(args: argparse.Namespace) -> None:

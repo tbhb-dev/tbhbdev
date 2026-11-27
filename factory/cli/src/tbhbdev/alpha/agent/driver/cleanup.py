@@ -8,7 +8,6 @@ from typing import TYPE_CHECKING
 from tbhbdev.alpha.agent import transport
 from tbhbdev.alpha.agent.decisions import remote
 from tbhbdev.alpha.agent.driver.decisions.lifecycle import clean as check_clean
-from tbhbdev.alpha.agent.driver.decisions.metadata import cleaning_record
 from tbhbdev.alpha.agent.driver.metadata import (
     archive_metadata,
     directory,
@@ -36,11 +35,8 @@ def clean(
         except transport.CollisionError:
             pass
         else:
-            check_clean(
-                reading.rc, session=reading.session, force=force, cleaning=run.cleaning
-            )
+            check_clean(reading.rc, session=reading.session, force=force)
             ownerless_only = False
-        path.write_text(cleaning_record(path.read_text()))
     stamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%S%fZ")
     transport.shell(
         settings,

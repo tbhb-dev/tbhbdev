@@ -1,24 +1,32 @@
-"""Exercise coordinator arguments through fake tools and run records."""
+"""Test the coordinator argument parser."""
+
+# gazelle:include_pytest_conftest false
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
-
 import pytest
-from agent_cli_example import run_agent
-from driver_scenarios import (
-    arguments,
-    launch,
-)
 
-if TYPE_CHECKING:
-    from agent_driver_example import Remote
+from tbhbdev.alpha.agent.driver.arguments import parser
+
+REQUIRED = {
+    "--repo": "example/repo",
+    "--model": "example",
+    "--effort": "high",
+    "--profile": "build",
+}
+
+
+def exec_args(options: dict[str, str]) -> list[str]:
+    flags = [part for pair in options.items() for part in pair]
+    return ["exec", *flags, "sample", "brief.md"]
 
 
 def test_exec_help_describes_expected_commits(
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    assert run_agent(["exec", "--help"]) == 0
+    with pytest.raises(SystemExit) as caught:
+        parser("tbhbdev alpha agent").parse_args(["exec", "--help"])
+    assert caught.value.code == 0
     help_text = " ".join(capsys.readouterr().out.split())
     assert (
         "--expect-commit, --no-expect-commit require a new commit and a push"
@@ -30,7 +38,9 @@ def test_exec_help_lists_model_examples(
     capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
 ) -> None:
     monkeypatch.setenv("COLUMNS", "200")
-    assert run_agent(["exec", "--help"]) == 0
+    with pytest.raises(SystemExit) as caught:
+        parser("tbhbdev alpha agent").parse_args(["exec", "--help"])
+    assert caught.value.code == 0
     help_text = " ".join(capsys.readouterr().out.split())
     assert "--harness {codex,claude,agy} harness to launch: Codex, Claude or agy" in (
         help_text
@@ -40,24 +50,23 @@ def test_exec_help_lists_model_examples(
     assert "claude-opus-5-5" in help_text
 
 
-@pytest.mark.parametrize("flag", ["--repo", "--model", "--effort", "--profile"])
-def test_required_flags(remote: Remote, flag: str) -> None:
-    args = arguments(remote)
-    index = args.index(flag)
-    del args[index : index + 2]
-    assert run_agent(args) == 2
-    assert not remote.records("ssh")
+@pytest.mark.parametrize("flag", REQUIRED)
+def test_required_flags(flag: str, capsys: pytest.CaptureFixture[str]) -> None:
+    options = {name: value for name, value in REQUIRED.items() if name != flag}
+    with pytest.raises(SystemExit) as caught:
+        parser("tbhbdev alpha agent").parse_args(exec_args(options))
+    assert caught.value.code == 2
+    assert f"the following arguments are required: {flag}" in capsys.readouterr().err
 
 
 @pytest.mark.parametrize(
     ("flag", "value"),
     [("--harness", "bad"), ("--profile", "bad"), ("--timeout", "bad")],
 )
-def test_parser_rejects_invalid_choices_before_ssh(
-    remote: Remote, flag: str, value: str
-) -> None:
-    assert launch(remote, flag, value) == 2
-    assert remote.records("ssh") == []
+def test_parser_rejects_invalid_values(flag: str, value: str) -> None:
+    with pytest.raises(SystemExit) as caught:
+        parser("tbhbdev alpha agent").parse_args(exec_args(REQUIRED | {flag: value}))
+    assert caught.value.code == 2
 
 
 @pytest.mark.parametrize(
@@ -69,4 +78,6 @@ def test_parser_rejects_invalid_choices_before_ssh(
     ],
 )
 def test_inspection_rejects_extra_options(args: list[str]) -> None:
-    assert run_agent(args) == 2
+    with pytest.raises(SystemExit) as caught:
+        parser("tbhbdev alpha agent").parse_args(args)
+    assert caught.value.code == 2

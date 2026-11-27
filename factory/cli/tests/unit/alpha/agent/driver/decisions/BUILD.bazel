@@ -80,6 +80,7 @@ cli_py_test(
     srcs = ["test_metadata.py"],
     imports = ["../../../../.."],
     deps = [
+        "//factory/cli/src/tbhbdev/alpha/agent:model",
         "//factory/cli/src/tbhbdev/alpha/agent/driver/decisions:metadata",
         "//factory/cli/tests:agent_example",
         "//factory/cli/tests:conftest",
@@ -111,6 +112,20 @@ cli_py_test(
     deps = [
         "//factory/cli/src/tbhbdev/alpha/agent:model",
         "//factory/cli/src/tbhbdev/alpha/agent/driver/decisions:steering",
+        "//factory/cli/tests:conftest",
+        "//factory/cli/tests/unit/alpha/agent/driver:conftest",
+        "@cli_pip//pytest",
+    ],
+)
+
+cli_py_test(
+    name = "test_hosts",
+    srcs = ["test_hosts.py"],
+    imports = ["../../../../.."],
+    deps = [
+        "//factory/cli/src/tbhbdev/alpha/agent:model",
+        "//factory/cli/src/tbhbdev/alpha/agent/driver/decisions:hosts",
+        "//factory/cli/tests:agent_example",
         "//factory/cli/tests:conftest",
         "//factory/cli/tests/unit/alpha/agent/driver:conftest",
         "@cli_pip//pytest",

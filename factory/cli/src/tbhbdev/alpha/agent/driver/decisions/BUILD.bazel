@@ -44,10 +44,10 @@ cli_py_library(
     name = "metadata",
     srcs = ["metadata.py"],
     imports = ["../../../../.."],
-    pyi_deps = ["//factory/cli/src/tbhbdev/alpha/agent:model"],
     visibility = ["//factory/cli:__subpackages__"],
     deps = [
-        ":launch",
+        ":hosts",
+        "//factory/cli/src/tbhbdev/alpha/agent:model",
         "//factory/cli/src/tbhbdev/alpha/agent/decisions:request",
     ],
 )
@@ -69,6 +69,7 @@ cli_py_library(
     imports = ["../../../../.."],
     visibility = ["//factory/cli:__subpackages__"],
     deps = [
+        ":credentials",
         "//factory/cli/src/tbhbdev/alpha/agent:model",
         "//factory/cli/src/tbhbdev/alpha/agent/decisions:request",
     ],
@@ -89,7 +90,7 @@ cli_py_library(
     imports = ["../../../../.."],
     visibility = ["//factory/cli:__subpackages__"],
     deps = [
-        ":prompt",
+        ":credentials",
         "//factory/cli/src/tbhbdev/alpha/agent:model",
     ],
 )
@@ -98,4 +99,20 @@ filegroup(
     name = "package_files",
     srcs = glob(["*.py"]),
     visibility = ["//factory/cli/src/tbhbdev/alpha/agent/driver:__pkg__"],
+)
+
+cli_py_library(
+    name = "credentials",
+    srcs = ["credentials.py"],
+    imports = ["../../../../.."],
+    visibility = ["//factory/cli:__subpackages__"],
+    deps = ["//factory/cli/src/tbhbdev/alpha/agent:model"],
+)
+
+cli_py_library(
+    name = "hosts",
+    srcs = ["hosts.py"],
+    imports = ["../../../../.."],
+    visibility = ["//factory/cli:__subpackages__"],
+    deps = ["//factory/cli/src/tbhbdev/alpha/agent:model"],
 )

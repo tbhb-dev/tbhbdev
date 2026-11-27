@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from tbhbdev.alpha.agent.driver.decisions.prompt import check_secret
+from tbhbdev.alpha.agent.driver.decisions.credentials import check_secret
 from tbhbdev.alpha.agent.model import Harness, Invalid
 
 CLAUDE_UNAVAILABLE = "Claude delivery is not built"

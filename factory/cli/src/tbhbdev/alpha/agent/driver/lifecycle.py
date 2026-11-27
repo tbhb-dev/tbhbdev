@@ -9,11 +9,7 @@ from tbhbdev.alpha.agent import transport
 from tbhbdev.alpha.agent.decisions import remote
 from tbhbdev.alpha.agent.driver.decisions import lifecycle as rules
 from tbhbdev.alpha.agent.driver.decisions import output
-from tbhbdev.alpha.agent.driver.decisions.lifecycle import (
-    answer_state,
-    state,
-    wait_kind,
-)
+from tbhbdev.alpha.agent.driver.decisions.lifecycle import answer_state, state
 from tbhbdev.alpha.agent.model import Invalid
 
 if TYPE_CHECKING:
@@ -22,7 +18,6 @@ if TYPE_CHECKING:
 
 
 def wait(settings: Settings, run: Run) -> int:
-    wait_kind(run.request.kind)
     unreachable = 240
     failed_since = None
     while True:

@@ -48,7 +48,7 @@ def test_a_second_live_review_of_the_same_commit_is_refused(remote: Remote) -> N
         f"second: run sample already reviews example-org/example-repo@{COMMIT} "
         "with the review profile and hasn't ended. "
         "Check `tbhbdev alpha agent status sample` and use "
-        "`tbhbdev alpha agent clean sample` once it ends. "
+        "`tbhbdev alpha agent clean --force sample` once it ends. "
         "For concurrent reviewers, launch both with distinct --variant values"
     )
 

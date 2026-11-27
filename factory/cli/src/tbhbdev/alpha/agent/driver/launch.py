@@ -14,8 +14,9 @@ from tbhbdev.alpha.agent import transport
 from tbhbdev.alpha.agent.decisions import remote, request
 from tbhbdev.alpha.agent.driver import launcher, startup, version_heal
 from tbhbdev.alpha.agent.driver.decisions import launch as plan
+from tbhbdev.alpha.agent.driver.decisions.hosts import select_host
 from tbhbdev.alpha.agent.driver.decisions.launcher import check as check_launcher
-from tbhbdev.alpha.agent.driver.decisions.metadata import Run
+from tbhbdev.alpha.agent.driver.decisions.metadata import Run, check_name
 from tbhbdev.alpha.agent.driver.decisions.output import sandbox
 from tbhbdev.alpha.agent.driver.hosts import launch_host
 from tbhbdev.alpha.agent.driver.inputs import checked_prompt, checked_schema
@@ -38,9 +39,9 @@ if TYPE_CHECKING:
 def prepare(
     settings: Settings, args: argparse.Namespace, *, host: Host | None = None
 ) -> Run:
-    plan.check_name(args.name)
+    check_name(args.name)
     if host is None:
-        host = plan.select_host(settings, args.host, args.account)
+        host = select_host(settings, args.host, args.account)
     reviewer = plan.check_options(args, Profile(args.profile))
     launched_by = launcher.session(args.worker_workflow, settings.worker_path)
     if reviewer:

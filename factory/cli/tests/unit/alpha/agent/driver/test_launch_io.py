@@ -187,7 +187,7 @@ def test_reused_name(remote: Remote, capsys: pytest.CaptureFixture[str]) -> None
     before = remote.records("ssh")
     assert launch(remote) == 1
     assert (
-        "run metadata already exists. Run `tbhbdev alpha agent clean sample`"
+        "run metadata already exists. Run `tbhbdev alpha agent clean --force sample`"
         in capsys.readouterr().err
     )
     assert remote.records("ssh") == before
