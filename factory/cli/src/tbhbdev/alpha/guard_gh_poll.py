@@ -166,6 +166,7 @@ REPEATER_VALUE_FLAGS = {
 }  # fmt: skip
 GH_RUN = re.compile(r"\bgh\b.*\brun\b", re.DOTALL)
 REDIRECT = re.compile(r"(?:[0-9]+(?=[<>]))?(&>>?|>>|>[&|]?|<<<|<<-?|<[&>]?)")
+AMPERSAND_REDIRECTS = (">&", "<&", "&>")
 REPEAT_REASON = (
     "Don't run a CI listing through xargs or parallel; each repeat is a separate "
     "call. Ask the coordinator."
@@ -224,49 +225,23 @@ class BodyScanner(Scanner):
     piped: dict[int, int] = field(default_factory=dict)
     group_starts: dict[int, int] = field(default_factory=dict)
     closed_group: int | None = None
-    redirect_target: bool = False
-    redirect_targets: list[str] = field(default_factory=list)
-
-    @override
-    def end_word(self) -> None:
-        """Consume a redirect target without adding it to the command words."""
-        if self.in_word and self.redirect_target:
-            self.redirect_targets.append("".join(self.word))
-            self.in_word = self.redirect_target = False
-        super().end_word()
-
-    @override
-    def end_command(self) -> None:
-        """Clear any pending redirect at a command boundary."""
-        super().end_command()
-        self.redirect_target = False
-
-    @override
-    def unquoted(self, char: str) -> None:
-        """Recognize redirects before their operators reach the separator scan."""
-        if (char in "<>&" or not self.in_word) and (
-            redirect := REDIRECT.match(self.text, self.pos)
-        ):
-            self.end_word()
-            self.pos = redirect.end()
-            operator = redirect[1]
-            if operator in {"<<", "<<-"}:
-                self.pos -= len(operator)
-                self.heredoc()
-            else:
-                self.redirect_target = True
-            return
-        super().unquoted(char)
 
     @override
     def plain(self, char: str) -> None:
-        """Keep the command indices followed by a pipe."""
+        """Keep the command indices followed by a pipe and scan redirects as words."""
+        if self.text.startswith(AMPERSAND_REDIRECTS, self.pos):
+            self.add(self.text[self.pos : self.pos + 2])
+            self.pos += 2
+            return
         if self.text.startswith(("&&", "||"), self.pos):
             self.pos += 1
         elif char == "|":
             if self.closed_group is not None:
-                self.piped[len(self.commands) - 1] = self.closed_group
-            elif self.words or (self.in_word and not self.redirect_target):
+                index = len(self.commands)
+                if not (self.words or self.in_word):
+                    index -= 1
+                self.piped[index] = self.closed_group
+            elif self.words or self.in_word:
                 index = len(self.commands)
                 self.piped[index] = index
         if char in ";&|\n":
@@ -302,6 +277,47 @@ class BodyScanner(Scanner):
         for index in self.pending:
             self.bodies[index] = self.text[start : self.pos]
         self.pending = []
+
+
+@dataclass
+class PollScanner(BodyScanner):
+    """Scan command words for the polling guard, keeping redirect targets separately."""
+
+    redirect_target: bool = False
+    redirect_targets: list[str] = field(default_factory=list)
+
+    @override
+    def end_word(self) -> None:
+        """Consume a redirect target without adding it to the command words."""
+        if self.in_word and self.redirect_target:
+            self.redirect_targets.append("".join(self.word))
+            self.in_word = self.redirect_target = False
+        super().end_word()
+
+    @override
+    def end_command(self) -> None:
+        """Clear any pending redirect at a command boundary."""
+        super().end_command()
+        self.redirect_target = False
+
+    @override
+    def unquoted(self, char: str) -> None:
+        """Recognize redirects before their operators reach the separator scan."""
+        if (char in "<>&" or not self.in_word) and (
+            redirect := REDIRECT.match(self.text, self.pos)
+        ):
+            self.end_word()
+            self.pos = redirect.end()
+            operator = redirect[1]
+            if operator in {"<<", "<<-"}:
+                self.pos -= len(operator)
+                self.heredoc()
+            else:
+                self.redirect_target = True
+            return
+        if char == "|":
+            self.end_word()
+        super().unquoted(char)
 
 
 def writes(args: list[str], flags: list[str]) -> bool:
@@ -727,7 +743,7 @@ def shell_mover(words: list[str]) -> list[str]:
     """The first mover run by a shell's inline script."""
     script = shell_script(words[1:])
     if script is not None:
-        for command in BodyScanner(script).run():
+        for command in PollScanner(script).run():
             if mover := state_mover(command):
                 return mover
     return []
@@ -775,7 +791,7 @@ def names_protected_file(words: list[str]) -> bool:
     return any(name in word.lower() for word in flattened(words) for name in PROTECTED)
 
 
-def redirects_or_pipes_protected_state(scanner: BodyScanner) -> bool:
+def redirects_or_pipes_protected_state(scanner: PollScanner) -> bool:
     """Check allowance filenames in redirects and state paths piped to movers."""
     return names_protected_file(scanner.redirect_targets) or pipes_state_dir(scanner)
 
@@ -883,7 +899,7 @@ def scan_commands(text: str, *, repeated: bool = False) -> tuple[str | None, set
     """
     loops: list[set[str]] = []
     programs: set[str] = set()
-    scanner = BodyScanner(text)
+    scanner = PollScanner(text)
     commands = scanner.run()
     if redirects_or_pipes_protected_state(scanner):
         return PROTECT_REASON, set()

@@ -1535,6 +1535,7 @@ def test_protected_words_reads_a_protected_name_in_any_case(name: str) -> None:
         ("echo ~/.local/state/tbhb | xargs -r", False),
         ("xargs rm /tmp/x", False),
         ("ls ~/.local/state/tbhb || xargs rm /tmp/x", False),
+        ("(echo ~/.local/state/tbhb/*) 2>&1 | xargs rm", True),
         ("cd ~ && cat list | xargs rm -rf", False),
         ("cd $HOME && cat list | xargs rm -rf", False),
         ("cd ${HOME} && cat list | xargs rm -rf", False),
