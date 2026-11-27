@@ -5,6 +5,7 @@ package receiver
 
 import (
 	"io"
+	"log/slog"
 	"net"
 	"net/http"
 	"net/http/httptest"
@@ -17,8 +18,8 @@ import (
 func TestRejectBusyClosesConnection(t *testing.T) {
 	t.Parallel()
 
-	srv := httptest.NewServer(http.HandlerFunc(func(resp http.ResponseWriter, _ *http.Request) {
-		rejectBusy(resp)
+	srv := httptest.NewServer(http.HandlerFunc(func(resp http.ResponseWriter, req *http.Request) {
+		rejectBusy(req.Context(), resp, slog.New(slog.DiscardHandler))
 	}))
 	t.Cleanup(srv.Close)
 
@@ -39,7 +40,12 @@ func assertBusyClosesConnection(t *testing.T, addr, framing string) {
 		t.Fatal(err)
 	}
 
-	t.Cleanup(func() { _ = conn.Close() })
+	t.Cleanup(func() {
+		closeErr := conn.Close()
+		if closeErr != nil {
+			t.Error(closeErr)
+		}
+	})
 
 	_, err = io.WriteString(conn, "POST /webhook HTTP/1.1\r\nHost: x\r\n"+framing+"\r\n\r\na")
 	if err != nil {

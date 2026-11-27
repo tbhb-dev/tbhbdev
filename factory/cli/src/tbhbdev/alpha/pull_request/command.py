@@ -10,7 +10,7 @@ from tbhbdev import userconfig
 from tbhbdev.alpha.agent import settings
 from tbhbdev.alpha.agent.decisions import host_names
 from tbhbdev.alpha.identity import dispatcher as agent_identity
-from tbhbdev.alpha.install import require_git_hooks
+from tbhbdev.alpha.install.git.hooks import require_git_hooks
 
 if TYPE_CHECKING:
     import argparse

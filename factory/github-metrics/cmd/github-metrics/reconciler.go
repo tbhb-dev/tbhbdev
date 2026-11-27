@@ -11,7 +11,6 @@ import (
 	"log/slog"
 	"net/http"
 	"net/url"
-	"os"
 	"regexp"
 	"strconv"
 	"strings"
@@ -171,7 +170,7 @@ func newReconciler(
 		return nil, nil, errInvalidBaseURL
 	}
 
-	key, err := os.ReadFile(cfg.keyFile)
+	key, err := readConfiguredFile(cfg.keyFile)
 	if err != nil {
 		return nil, nil, errReadAppKey
 	}

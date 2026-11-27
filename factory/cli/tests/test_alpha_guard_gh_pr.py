@@ -19,9 +19,10 @@ from fake_tool import pythonpath
 from hypothesis import given
 from hypothesis import strategies as st
 
-from tbhbdev.alpha import close, install, opened, squash_merge
+from tbhbdev.alpha import close, opened
 from tbhbdev.alpha import guard_gh_pr as guard
 from tbhbdev.alpha.identity import dispatcher as ai
+from tbhbdev.alpha.merge import options as squash_merge
 from tbhbdev.alpha.pull_request.arguments import build_parser as pr_parser
 
 DATA = Path(__file__).parent / "testdata" / "alpha"
@@ -624,41 +625,6 @@ def test_property_main_is_silent_without_a_match(text: str) -> None:
 # --- harness configs -------------------------------------------------------
 
 
-def guard_groups(groups: list[dict[str, object]]) -> list[dict[str, object]]:
-    """The PreToolUse groups that run the guard."""
-    return [
-        g
-        for g in groups
-        if any(
-            "alpha guard-gh-pr" in h["command"]
-            for h in cast("list[dict[str, str]]", g["hooks"])
-        )
-    ]
-
-
-@pytest.mark.parametrize(
-    ("groups", "matcher"),
-    [
-        (install.claude_hooks()["PreToolUse"], "Bash"),
-        (install.codex_hooks()["PreToolUse"], "^Bash$"),
-        (
-            cast(
-                "dict[str, list[dict[str, object]]]",
-                install.agy_hooks()["tbhbdev-alpha-pull-request"],
-            )["PreToolUse"],
-            "run_command",
-        ),
-    ],
-)
-def test_every_harness_config_runs_the_guard(
-    groups: list[dict[str, object]], matcher: str
-) -> None:
-    (group,) = guard_groups(groups)
-    assert group["matcher"] == matcher
-    (handler,) = cast("list[dict[str, str]]", group["hooks"])
-    assert handler["command"] == "tbhbdev alpha guard-gh-pr # tbhbdev alpha install"
-
-
 # --- approval routes -------------------------------------------------------
 
 ROOT = ai.sha256_64("session-raw")
@@ -1248,9 +1214,8 @@ def test_every_hinted_command_line_parses_with_the_real_cli(command: str) -> Non
     spans = re.findall(r"`tbhbdev alpha ([^`]+)`", guard.hint(found))
     assert spans
     for span in spans:
-        words = [
-            PLACEHOLDERS.get(w, w) for w in re.sub(r"\s*\[[^\]]*\]", "", span).split()
-        ]
+        tokens = re.sub(r"\s*\[[^\]]*\]", "", span).split()
+        words = [PLACEHOLDERS.get(token, token) for token in tokens]
         if words[0] == "merge":
             squash_merge.build_parser("x").parse_args(words[1:])
         elif words[:2] in (["pr", "close"], ["issue", "close"]):

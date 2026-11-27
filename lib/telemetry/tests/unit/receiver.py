@@ -1,0 +1,54 @@
+# SPDX-License-Identifier: Apache-2.0
+# Copyright Tony Burns
+
+"""In-memory OTLP fixture, including a collector that never responds."""
+
+import threading
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from typing import override
+
+from opentelemetry.proto.collector.trace.v1.trace_service_pb2 import (
+    ExportTraceServiceRequest,
+)
+
+
+class Receiver:
+    def __init__(self, stalled=False, *, status=200):
+        self.batches, self.release = [], threading.Event()
+        owner = self
+
+        class Handler(BaseHTTPRequestHandler):
+            def do_POST(self):  # noqa: V105 -- HTTP server dispatches by method name.
+                owner.batches.append(
+                    ExportTraceServiceRequest.FromString(
+                        self.rfile.read(int(self.headers["Content-Length"]))
+                    )
+                )
+                if stalled:
+                    owner.release.wait(3)
+                else:
+                    self.send_response(status)
+                    self.end_headers()
+
+            @override
+            def log_message(self, format, *args):
+                del format, args
+
+        self.server = ThreadingHTTPServer(("localhost", 0), Handler)
+        self.thread = threading.Thread(target=self.server.serve_forever, daemon=True)
+        self.thread.start()
+        self.endpoint = f"http://localhost:{self.server.server_port}"
+
+    def close(self):
+        self.release.set()
+        self.server.shutdown()
+        self.server.server_close()
+
+    def spans(self):
+        return [
+            span
+            for batch in self.batches
+            for resource in batch.resource_spans
+            for scope in resource.scope_spans
+            for span in scope.spans
+        ]

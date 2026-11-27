@@ -69,7 +69,7 @@ func fixture(t *testing.T) (root string, cfg *config) {
 	write(t, root, "b.pkg.json", `{"ID":"//b:b","PkgPath":"example.com/b","GoFiles":["__BAZEL_WORKSPACE__/b/b.go"],"Imports":{"example.com/a":"//a:a"}}`)
 	cfg = &config{
 		PkgJSON:      []string{"stdlib.pkg.json", "a.pkg.json", "a_test.pkg.json", "a_test~testmain.pkg.json", "b.pkg.json"},
-		StdlibPkgDir: "stdlib",
+		StdlibPkgDir: "stdlib/darwin_arm64",
 		GOOS:         "darwin",
 		GOARCH:       "arm64",
 		GoVersion:    27,

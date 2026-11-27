@@ -174,7 +174,7 @@ func waitForSlot(
 			reasonKey, "no free slot after wait",
 			deliveryKey, oneLine(delivery),
 			eventKey, oneLine(event))
-		rejectBusy(resp)
+		rejectBusy(ctx, resp, log)
 
 		return false
 	}
@@ -254,7 +254,7 @@ func parseSignature(secret []byte, header string) ([]byte, bool) {
 // of an unread body after the handler returns, outside the slot limit, even
 // with Connection: close. Writing the response on a hijacked connection and
 // closing it skips that drain.
-func rejectBusy(resp http.ResponseWriter) {
+func rejectBusy(ctx context.Context, resp http.ResponseWriter, log *slog.Logger) {
 	conn, buf, err := http.NewResponseController(resp).Hijack()
 	if err != nil {
 		// No hijack, as with an HTTP/2 connection or a test recorder.
@@ -265,21 +265,20 @@ func rejectBusy(resp http.ResponseWriter) {
 		return
 	}
 
-	defer func() { _ = conn.Close() }()
-
 	// Hijacking clears the connection's deadlines. A peer that doesn't read
 	// would block the write, so bound it.
 	err = conn.SetWriteDeadline(time.Now().Add(busyWriteTimeout))
-	if err != nil {
-		return
+	if err == nil {
+		const busy = "HTTP/1.1 503 Service Unavailable\r\nRetry-After: 5\r\nConnection: close\r\nContent-Length: 0\r\n\r\n"
+
+		_, err = buf.WriteString(busy)
+		if err == nil {
+			err = buf.Flush()
+		}
 	}
 
-	const busy = "HTTP/1.1 503 Service Unavailable\r\nRetry-After: 5\r\nConnection: close\r\nContent-Length: 0\r\n\r\n"
-
-	_, err = buf.WriteString(busy)
+	err = errors.Join(err, conn.Close())
 	if err != nil {
-		return
+		log.DebugContext(ctx, "send busy response", "error", err)
 	}
-
-	_ = buf.Flush()
 }
