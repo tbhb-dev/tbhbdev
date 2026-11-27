@@ -452,3 +452,15 @@ cli_py_test(
         "@cli_pip//pytest",
     ],
 )
+
+cli_py_test(
+    name = "test_publication_io",
+    srcs = ["test_publication_io.py"],
+    data = ["//:cli_check_inputs"],
+    imports = ["../../.."],
+    deps = [
+        ":pr_test_support",
+        "//factory/cli/tests:conftest",
+        "@cli_pip//pytest",
+    ],
+)

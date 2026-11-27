@@ -300,6 +300,32 @@ def test_checks_prints_the_head_and_each_job(
     assert "... on StatusContext { context state }" in pr_checks.HEAD_CHECKS_QUERY
 
 
+@pytest.mark.parametrize(
+    ("answer", "why"),
+    [
+        (
+            {"rc": 1, "stdout": "{}", "stderr": "request\n failed\n"},
+            "request failed",
+        ),
+        ({"rc": 0, "stdout": '{"data": null}\n', "stderr": ""}, '{"data": null}'),
+    ],
+)
+def test_checks_refuses_an_unreadable_check_list(
+    world: World,
+    capsys: pytest.CaptureFixture[str],
+    answer: dict[str, object],
+    why: str,
+) -> None:
+    sha = "a1b2c3d4" * 5
+    world.fake(
+        "gh",
+        cases={"pr view": gh_object({"headRefOid": sha}), "api graphql": answer},
+    )
+    with pytest.raises(SystemExit, match=f"^gh api graphql failed: {re.escape(why)}$"):
+        run_main("checks", "45")
+    assert capsys.readouterr() == (f"{sha}\n", "")
+
+
 def test_checks_waits_without_any_check(
     world: World, capsys: pytest.CaptureFixture[str]
 ) -> None:
