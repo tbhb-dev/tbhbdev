@@ -689,11 +689,10 @@ def resource_attributes(run: Run) -> dict[str, str]:
     }
 
 
-def launch_command(
-    run: Run, paths: RunPaths, command: tuple[str, ...]
-) -> tuple[str, ...]:
+def launch_command(run: Run, command: tuple[str, ...]) -> tuple[str, ...]:
     if run.steer:
-        return app_server.launch_command(command, Path(paths.codex_home))
+        socket_path = app_server.socket_path(run.files.root, run.files.name)
+        return app_server.launch_command(command, socket_path)
     return command
 
 
@@ -746,7 +745,7 @@ def run_harness(
         with process_group.defer_signals():
             child = process_group.launch_owned(
                 process_group.Launch(
-                    launch_command(run, paths, command),
+                    launch_command(run, command),
                     env,
                     paths.worktree,
                     streams,

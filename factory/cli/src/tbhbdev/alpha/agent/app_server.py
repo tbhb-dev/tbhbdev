@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import base64
+import hashlib
 import json
 import os
 import secrets
@@ -25,15 +26,19 @@ type Rpc = Callable[[str, dict[str, object]], Awaitable[dict[str, object]]]
 
 CLAUDE_UNAVAILABLE = "Claude delivery is not built"
 UNLOADED = "Codex thread is unknown or unloaded"
-SOCKET = "steer.sock"
 TEXT_FRAME = 0x81
 EXTENDED_LENGTH = 126
 LARGE_LENGTH = 127
 
 
-def launch_command(command: tuple[str, ...], codex_home: Path) -> tuple[str, ...]:
+def socket_path(root: Path, name: str) -> Path:
+    """Keep the socket in the private run directory with a fixed-length name."""
+    digest = hashlib.sha256(name.encode()).hexdigest()[:24]
+    return root / f"steer-{digest}.sock"
+
+
+def launch_command(command: tuple[str, ...], socket: Path) -> tuple[str, ...]:
     """Keep the server and exec client in the supervisor's owned process group."""
-    socket = codex_home / SOCKET
     endpoint = f"unix://{socket}"
     output = command.index("--output-last-message")
     start = command.index("-C") + 2
@@ -45,16 +50,17 @@ def launch_command(command: tuple[str, ...], codex_home: Path) -> tuple[str, ...
     client = (command[0], "exec", "--remote", endpoint, "--json", *command[output:])
     path = shlex.quote(str(socket))
     script = f"""\
+socket={path}
 {shlex.join(server)} </dev/null >&2 &
 server=$!
-trap 'kill "$server" 2>/dev/null; wait "$server" 2>/dev/null' EXIT
+trap 'kill "$server" 2>/dev/null; wait "$server" 2>/dev/null; rm -f "$socket"' EXIT
 trap 'exit 143' HUP INT TERM
 for attempt in 1 2 3 4 5 6 7 8 9 10; do
-    test -S {path} && break
+    test -S "$socket" && break
     kill -0 "$server" || exit 1
     sleep 1
 done
-test -S {path} || exit 1
+test -S "$socket" || exit 1
 {shlex.join(client)}
 """
     return ("/bin/sh", "-c", script)
@@ -171,7 +177,7 @@ def main(arguments: list[str], _prog: str) -> int:
     state = runfiles.state_home(Path.home())
     try:
         files = runfiles.RunFiles(state / runfiles_names.DIRECTORY, name)
-        socket = state / "tbhbdev" / "agent-codex" / files.name / SOCKET
+        socket = socket_path(files.root, files.name)
         thread = thread_id(files)
         message = sys.stdin.read()
         command = ("codex", "app-server", "proxy", "--sock", str(socket))

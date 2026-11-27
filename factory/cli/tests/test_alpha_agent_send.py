@@ -5,9 +5,10 @@ from __future__ import annotations
 import asyncio
 import io
 import json
+import os
 import sys
+from pathlib import Path
 from types import SimpleNamespace
-from typing import TYPE_CHECKING
 from unittest.mock import AsyncMock, Mock
 
 import pytest
@@ -15,12 +16,15 @@ import pytest
 from tbhbdev.alpha import agent
 from tbhbdev.alpha.agent import app_server, host_tools
 
-if TYPE_CHECKING:
-    from pathlib import Path
-
 THREAD = '{"type":"thread.started","thread_id":"thread"}\n'
 INACTIVE = "Codex thread has no active turn"
 MESSAGE = "next\u00a0line\nthen this"
+
+
+def test_socket_path_fits_macos_with_long_run_name() -> None:
+    root = Path("/Users/agent/.local/state/tbhbdev/agent-runs")
+    name = "a" * 51
+    assert len(os.fsencode(app_server.socket_path(root, name))) < 104
 
 
 @pytest.fixture
