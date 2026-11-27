@@ -21,7 +21,7 @@ from hypothesis import strategies as st
 
 from tbhbdev.alpha import close, install, opened, pull_request, squash_merge
 from tbhbdev.alpha import guard_gh_pr as guard
-from tbhbdev.alpha import identity as ai
+from tbhbdev.alpha.identity import dispatcher as ai
 
 DATA = Path(__file__).parent / "testdata" / "alpha"
 SRC = Path(guard.__file__).parents[2]
@@ -662,7 +662,6 @@ def test_every_harness_config_runs_the_guard(
 
 ROOT = ai.sha256_64("session-raw")
 TARGET = "tbhb-dev/tbhbdev#7"
-APPROVE = "tbhb-approve tools 7 abc123"
 GH_ROUTES = [
     ("gh pr review 7 --approve -R tbhb-dev/tbhbdev", "`gh pr review --approve`"),
     (
@@ -702,8 +701,8 @@ def guard_reason(
 
 GH_DENIED = (
     "An agent can't approve a pull request through gh, whoever opened it. "
-    "Approval comes only from `tbhb-approve`, run by the coordinator. "
-    "Post the verdict as a COMMENT review instead: it refuses {route}."
+    "Review runs post the approving review. "
+    "Use a COMMENT review to leave feedback directly. The hook blocks {route}."
 )
 
 
@@ -723,26 +722,13 @@ def test_no_session_approves_through_gh(
     assert guard_reason(monkeypatch, capsys, payload, text) == expected
 
 
-@pytest.mark.usefixtures("isolated_opened_ledger")
-@pytest.mark.parametrize(
-    "payload",
-    [
-        CLAUDE_PAYLOAD,
-        CLAUDE_CHILD,
-        CODEX_PAYLOAD,
-        AGY_PAYLOAD,
-        {"tool_input": {}},
-    ],
-)
-def test_tbhb_approve_passes_regardless_of_which_session_opened_the_pr(
-    monkeypatch: pytest.MonkeyPatch,
-    capsys: pytest.CaptureFixture[str],
-    payload: dict[str, object],
+def test_retired_approval_command_is_denied(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    stdin = json.dumps(with_command(payload, APPROVE))
-    assert run_main(monkeypatch, capsys, stdin) == (0, "", "")
-    opened.record_opened(ROOT, [TARGET])
-    assert run_main(monkeypatch, capsys, stdin) == (0, "", "")
+    text = "tbhb-" + "approve tools 7 abc123"
+    assert guard_reason(monkeypatch, capsys, CLAUDE_PAYLOAD, text) == GH_DENIED.format(
+        route="the retired approval command"
+    )
 
 
 def test_a_crash_while_matching_an_approval_fails_open(
@@ -771,15 +757,6 @@ def test_approval_rules_apply_outside_tbhb_dev(
         route=route
     )
     assert guard_reason(monkeypatch, capsys, CLAUDE_PAYLOAD, "gh pr merge 1") is None
-
-
-def test_gh_approval_is_denied_alongside_tbhb_approve(
-    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
-) -> None:
-    text, route = GH_ROUTES[0]
-    assert guard_reason(
-        monkeypatch, capsys, CLAUDE_PAYLOAD, f"{APPROVE} && {text}"
-    ) == GH_DENIED.format(route=route)
 
 
 @pytest.mark.parametrize(

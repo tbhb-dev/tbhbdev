@@ -25,9 +25,18 @@ concurrency:
 
 jobs:
   bazel:
-    name: bazel
+    name: bazel (${{ matrix.shard }})
     runs-on: ubuntu-26.04
     timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3, 4]
+    outputs:
+      shard-1: ${{ matrix.shard == 1 && steps.selection.outputs.digest || '' }}
+      shard-2: ${{ matrix.shard == 2 && steps.selection.outputs.digest || '' }}
+      shard-3: ${{ matrix.shard == 3 && steps.selection.outputs.digest || '' }}
+      shard-4: ${{ matrix.shard == 4 && steps.selection.outputs.digest || '' }}
     # A push to main or a merge_group run uses the main token, a secret
     # of the main-only `cache` environment that no pull request can read.
     # Pull requests use the org's PR token, which writes only their own
@@ -44,7 +53,7 @@ jobs:
       - name: Set up Bazel for CI
         uses: ./.github/actions/setup-bazel-ci
         with:
-          disk-cache: ${{ github.workflow }}-${{ github.job }}-ubuntu-26.04
+          disk-cache: ${{ github.workflow }}-${{ github.job }}-${{ matrix.shard }}-ubuntu-26.04
           cache-save: ${{ github.event_name == 'merge_group' }}
 
       # The bazel-r2-cache remote cache, through its shared action. A fork's
@@ -61,11 +70,81 @@ jobs:
         with:
           base: ${{ inputs.base }}
 
+      - name: Check lint allowances against Git history
+        if: matrix.shard == 1
+        shell: bash
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha || inputs.base }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha || github.event.merge_group.head_sha || github.sha }}
+        run: |
+          base=$(git merge-base -- "${BASE_SHA:-HEAD^}" "$HEAD_SHA")
+          bazel run --config=ci @tbhb_rules//lint:lint_baselines -- "$base" "$HEAD_SHA"
+
       - name: Test
         if: steps.affected.outputs.count != '0'
+        shell: bash
         env:
           TARGETS: ${{ steps.affected.outputs.file }}
-        run: bazel test --config=ci --build_tests_only --target_pattern_file="$TARGETS"
+          SHARD: ${{ matrix.shard }}
+          SHARD_COUNT: ${{ strategy.job-total }}
+        run: |
+          shard_targets=$(mktemp "${RUNNER_TEMP}/bazel-shard.XXXXXXXX")
+          LC_ALL=C sort "$TARGETS" | awk -v shard="$SHARD" -v count="$SHARD_COUNT" \
+            'NF && !/^-/ && (positive++ % count == shard - 1)' >"$shard_targets"
+          if [[ ! -s $shard_targets ]]; then
+            echo "No targets in shard $SHARD."
+            exit 0
+          fi
+          # Apply fallback exclusions after the positive patterns in every shard.
+          sed -n '/^-/p' "$TARGETS" >>"$shard_targets"
+          bazel test --config=ci --build_tests_only --target_pattern_file="$shard_targets"
+
+      - name: Record the target selection
+        id: selection
+        shell: bash
+        env:
+          TARGETS: ${{ steps.affected.outputs.file }}
+        run: |
+          digest=$(LC_ALL=C sort "$TARGETS" | sha256sum)
+          echo "digest=${digest%% *}" >>"$GITHUB_OUTPUT"
+
+  cli-coverage:
+    name: factory/cli branch coverage
+    if: github.event_name == 'pull_request' || github.event_name == 'merge_group'
+    runs-on: ubuntu-26.04
+    timeout-minutes: 30
+    outputs:
+      coverage: ${{ steps.coverage.outcome }}
+    environment: ${{ github.event_name == 'merge_group' && 'cache' || '' }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Set up Bazel for CI
+        uses: ./.github/actions/setup-bazel-ci
+        with:
+          disk-cache: ${{ github.workflow }}-${{ github.job }}-ubuntu-26.04
+          cache-save: ${{ github.event_name == 'merge_group' }}
+
+      - name: Use the remote cache
+        uses: tbhb-dev/bazel-r2-cache/.github/actions/remote-cache@bdd7e71f0281998f10a52f253bcf4b9ec81396e8  # main
+        with:
+          main-token: ${{ secrets.BAZEL_CACHE_TOKEN }}
+          pr-token: ${{ secrets.BAZEL_CACHE_PR_TOKEN }}
+
+      - name: Select affected targets
+        id: affected
+        uses: ./.github/actions/affected-targets
+        with:
+          base: ${{ inputs.base }}
+
+      - name: Combine coverage from the CLI tests
+        id: coverage
+        if: steps.affected.outputs.count != '0'
+        run: bazelisk run --config=ci //factory/cli:coverage
 
   gazelle-current:
     name: gazelle-current
@@ -137,10 +216,148 @@ jobs:
             printf '%s\n\n%s\n' "$PR_TITLE" "$PR_BODY" | bazel run --config=ci @tbhb_rules//lint:gitleaks_text
           fi
 
+      - name: Scan github-metrics for Go vulnerabilities
+        run: |
+          bazel test --config=ci //factory/github-metrics:govulncheck_test
+
+  pr-size:
+    name: pr-size
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-26.04
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Use the base commit's counter and rules
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: git checkout --detach "$BASE_SHA"
+
+      - name: Set up Bazel
+        uses: bazel-contrib/setup-bazel@104e3eea9447cdaa4b00d0fb46191a3985d26ab3  # 0.19.1
+        with:
+          bazelisk-version: 1.30.0
+          bazelisk-cache: true
+
+      - name: Count added lines
+        env:
+          BASE_REF: ${{ github.event.pull_request.base.ref }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+          PR_SIZE_HEAD_BRANCH: ${{ github.event.pull_request.head.ref }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        shell: bash
+        run: |
+          base=$BASE_SHA head=$HEAD_SHA
+          if [[ -n $DEFAULT_BRANCH && $BASE_REF != "$DEFAULT_BRANCH" ]]; then
+            shared_base=$(git merge-base "$base" "$head")
+            shared_default=$(git merge-base "refs/remotes/origin/$DEFAULT_BRANCH" "$head")
+            if shared_tree=$(git merge-tree --write-tree --no-messages "$shared_base" "$shared_default"); then
+              # Give the base revision's three-dot counter a pair of commits with the desired trees.
+              commit_tree=(git -c user.name='GitHub Actions' -c user.email=actions@github.com commit-tree)
+              base=$("${commit_tree[@]}" "$shared_tree" -m 'Shared base and default branch changes')
+              head=$("${commit_tree[@]}" "$head^{tree}" -p "$base" -m 'Pull request head tree')
+            else
+              [[ $? == 1 ]] || exit 1
+              base=$shared_default
+            fi
+          fi
+          # A stacked diff can use a synthetic base tree. Read policy from the actual base.
+          PR_SIZE_POLICY_BASE="$BASE_SHA" bazel run --config=ci @tbhb_rules//lint:pr_size -- "$base" "$head"
+
+  design-report:
+    name: design-report
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-26.04
+    timeout-minutes: 5
+    steps:
+      - name: Checkout head
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          persist-credentials: false
+
+      - name: Checkout base
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.base.sha }}
+          path: design-base
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1  # v6.3.0
+        with:
+          python-version-file: .python-version
+
+      - name: Compare design metrics
+        run: |
+          tool=lib.rules.lint.private.design_report
+          python -m unittest "$tool.test_design_report"
+          python -m "$tool.design_report" design-base/factory/cli factory/cli > design-report.md
+          cat design-report.md >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload design report
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9  # v7.0.2
+        with:
+          name: design-report
+          path: |
+            design-report.md
+            base.json
+            head.json
+
+  prose:
+    name: prose
+    runs-on: ubuntu-26.04
+    timeout-minutes: 15
+    steps:
+      - name: Harden the runner
+        uses: step-security/harden-runner@1d88384fd173af6ecb012dfd0264a306b711241a  # v2.22.4
+        with:
+          egress-policy: audit
+
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up the prose tools
+        uses: jdx/mise-action@236a21c3b91f5db6d4e174b348674a0f0caac06d  # v5.2.9
+        with:
+          version: 2026.11.9
+
+      - name: Lint prose
+        shell: bash
+        run: |
+          skip_paths=()
+          exclusions=()
+          while IFS= read -r path || [[ -n $path ]]; do
+            [[ -z $path || $path == \#* ]] && continue
+            if [[ $path != *.md || ! -f $path ]]; then
+              printf 'Prose skip list entry must name an existing Markdown file: %s\n' "$path" >&2
+              exit 1
+            fi
+            skip_paths+=("$path")
+            exclusions+=(":(exclude,literal)$path")
+          done < .github/prose-lint-debt.txt
+          if (( ${#skip_paths[@]} )); then
+            git --literal-pathspecs ls-files --error-unmatch -- "${skip_paths[@]}" >/dev/null
+          fi
+
+          files="$RUNNER_TEMP/prose-files"
+          git ls-files -z -- '*.md' "${exclusions[@]}" >"$files"
+          vale sync
+          xargs -0 -r vale <"$files"
+          xargs -0 -r cspell --no-progress <"$files"
+          xargs -0 -r rumdl check <"$files"
+
   conclusion:
     name: conclusion
     if: always()
-    needs: [bazel, gazelle-current, gitleaks]
+    needs: [bazel, cli-coverage, gazelle-current, gitleaks, prose, pr-size]
     runs-on: ubuntu-26.04
     timeout-minutes: 5
     steps:
@@ -150,11 +367,36 @@ jobs:
           egress-policy: audit
 
       - name: Fail if any needed job did not succeed
+        shell: bash
         env:
+          EVENT: ${{ github.event_name }}
           NEEDS: ${{ toJSON(needs) }}
         run: |
           echo "$NEEDS"
-          if ! jq -e 'all(.[]; .result == "success")' <<<"$NEEDS" >/dev/null; then
+          if ! jq -e --arg event "$EVENT" 'all(to_entries[];
+            .value.result == "success" or
+            (.value.result == "skipped" and (
+              (.key == "pr-size" and $event != "pull_request") or
+              (.key == "cli-coverage" and $event == "workflow_dispatch")
+            ))
+          )' <<<"$NEEDS" >/dev/null; then
             echo "A required job did not succeed." >&2
+            exit 1
+          fi
+          # A runner can fall back to all targets independently of the others.
+          if ! jq -e '.bazel.outputs | [."shard-1", ."shard-2", ."shard-3", ."shard-4"]
+            | all(.[]; type == "string" and length == 64) and (unique | length == 1)' \
+            <<<"$NEEDS" >/dev/null; then
+            echo "Bazel shards did not agree on the selected targets." >&2
+            exit 1
+          fi
+          # The coverage job selects targets independently of the test shards.
+          empty_digest=$(sha256sum </dev/null)
+          if ! jq -e --arg empty "${empty_digest%% *}" '
+            ."cli-coverage" as $coverage |
+            $coverage.result == "skipped" or $coverage.outputs.coverage == "success" or
+            ($coverage.outputs.coverage == "skipped" and .bazel.outputs."shard-1" == $empty)
+          ' <<<"$NEEDS" >/dev/null; then
+            echo "CLI branch coverage was required but did not run." >&2
             exit 1
           fi

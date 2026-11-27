@@ -1,0 +1,289 @@
+{
+  "commands": [
+    [
+      [
+        "docker",
+        "compose",
+        "-p",
+        "o11y-smoke-fixture",
+        "--env-file",
+        "/output/release/.env",
+        "-f",
+        "/output/release/compose.yaml",
+        "-f",
+        "/output/release/compose.tools.yaml",
+        "--profile",
+        "tools",
+        "exec",
+        "-T",
+        "alert-stub",
+        "cat",
+        "/tmp/posts"
+      ],
+      120
+    ],
+    [
+      [
+        "docker",
+        "compose",
+        "-p",
+        "o11y-smoke-fixture",
+        "--env-file",
+        "/output/release/.env",
+        "-f",
+        "/output/release/compose.yaml",
+        "-f",
+        "/output/release/compose.tools.yaml",
+        "--profile",
+        "tools",
+        "exec",
+        "-T",
+        "alert-mail",
+        "wget",
+        "-qO-",
+        "http://127.0.0.1:8025/api/v1/messages"
+      ],
+      120
+    ],
+    [
+      [
+        "docker",
+        "compose",
+        "-p",
+        "o11y-smoke-fixture",
+        "--env-file",
+        "/output/release/.env",
+        "-f",
+        "/output/release/compose.yaml",
+        "logs",
+        "--no-color",
+        "grafana"
+      ],
+      120
+    ]
+  ],
+  "http": [
+    [
+      "GET",
+      "http://127.0.0.1:13000/api/prometheus/grafana/api/v1/rules",
+      null,
+      {},
+      15
+    ],
+    [
+      "GET",
+      "http://127.0.0.1:13000/api/v1/provisioning/alert-rules/o11y-disk-low",
+      null,
+      {},
+      15
+    ],
+    [
+      "POST",
+      "http://127.0.0.1:13000/api/v1/eval",
+      "{\"condition\": \"C\", \"data\": [{\"refId\": \"A\", \"datasourceUid\": \"mimir\", \"relativeTimeRange\": {\"from\": 600, \"to\": 0}, \"model\": {\"refId\": \"A\", \"instant\": true, \"expr\": \"(min by (job) (rustfs_cluster_capacity_free_bytes{job=\\\"o11y/rustfs\\\"}) < bool @O11Y_DISK_RESERVE_BYTES@) + (min by (job) (rustfs_cluster_capacity_free_bytes{job=\\\"o11y/rustfs\\\"})\\n  < bool 0.1 * max by (job) (rustfs_cluster_capacity_usable_total_bytes{job=\\\"o11y/rustfs\\\"}))\"}}, {\"refId\": \"C\", \"datasourceUid\": \"__expr__\", \"model\": {\"refId\": \"C\", \"type\": \"threshold\", \"expression\": \"A\", \"conditions\": [{\"evaluator\": {\"type\": \"gt\", \"params\": [0]}}]}}]}",
+      {
+        "Content-Type": "application/json"
+      },
+      30
+    ],
+    [
+      "GET",
+      "http://127.0.0.1:13000/api/v1/provisioning/alert-rules/o11y-rustfs-memory",
+      null,
+      {},
+      15
+    ],
+    [
+      "POST",
+      "http://127.0.0.1:13000/api/v1/eval",
+      "{\"condition\": \"C\", \"data\": [{\"refId\": \"A\", \"datasourceUid\": \"mimir\", \"relativeTimeRange\": {\"from\": 600, \"to\": 0}, \"model\": {\"refId\": \"A\", \"instant\": true, \"expr\": \"max by (job) (rustfs_system_process_resident_memory_bytes{job=\\\"o11y/rustfs\\\"}) / 805306368\"}}, {\"refId\": \"C\", \"datasourceUid\": \"__expr__\", \"model\": {\"refId\": \"C\", \"type\": \"threshold\", \"expression\": \"A\", \"conditions\": [{\"evaluator\": {\"type\": \"gt\", \"params\": [0.85]}}]}}]}",
+      {
+        "Content-Type": "application/json"
+      },
+      30
+    ],
+    [
+      "GET",
+      "http://127.0.0.1:13000/api/v1/provisioning/alert-rules/o11y-rustfs-memory",
+      null,
+      {},
+      15
+    ],
+    [
+      "POST",
+      "http://127.0.0.1:13000/api/v1/eval",
+      "{\"condition\": \"C\", \"data\": [{\"refId\": \"A\", \"datasourceUid\": \"mimir\", \"relativeTimeRange\": {\"from\": 600, \"to\": 0}, \"model\": {\"refId\": \"A\", \"instant\": true, \"expr\": \"max by (job) (rustfs_system_process_resident_memory_bytes{job=\\\"o11y/rustfs\\\"}) / 805306368\"}}, {\"refId\": \"C\", \"datasourceUid\": \"__expr__\", \"model\": {\"refId\": \"C\", \"type\": \"threshold\", \"expression\": \"A\", \"conditions\": [{\"evaluator\": {\"type\": \"gt\", \"params\": [0]}}]}}]}",
+      {
+        "Content-Type": "application/json"
+      },
+      30
+    ],
+    [
+      "GET",
+      "http://127.0.0.1:13000/api/v1/provisioning/alert-rules/o11y-ingest-dropped",
+      null,
+      {},
+      15
+    ],
+    [
+      "POST",
+      "http://127.0.0.1:13000/api/v1/eval",
+      "{\"condition\": \"C\", \"data\": [{\"refId\": \"A\", \"datasourceUid\": \"mimir\", \"relativeTimeRange\": {\"from\": 1200, \"to\": 0}, \"model\": {\"refId\": \"A\", \"instant\": true, \"expr\": \"sum by (job, reason) ((loki_discarded_samples_total{job=\\\"o11y/loki\\\"}\\n  unless loki_discarded_samples_total{job=\\\"o11y/loki\\\"} offset 10m)\\n  or increase(loki_discarded_samples_total{job=\\\"o11y/loki\\\"}[10m])) > 0\\nor sum by (job, reason) ((cortex_discarded_samples_total{job=\\\"o11y/mimir\\\"}\\n  unless cortex_discarded_samples_total{job=\\\"o11y/mimir\\\"} offset 10m)\\n  or increase(cortex_discarded_samples_total{job=\\\"o11y/mimir\\\"}[10m])) > 0\\nor sum by (job, reason) ((tempo_discarded_spans_total{job=\\\"o11y/tempo\\\"}\\n  unless tempo_discarded_spans_total{job=\\\"o11y/tempo\\\"} offset 10m)\\n  or increase(tempo_discarded_spans_total{job=\\\"o11y/tempo\\\"}[10m])) > 0\\nor label_replace(sum by (job) ((otelcol_receiver_refused_spans_total{job=\\\"o11y/alloy\\\"}\\n  unless otelcol_receiver_refused_spans_total{job=\\\"o11y/alloy\\\"} offset 10m)\\n  or increase(otelcol_receiver_refused_spans_total{job=\\\"o11y/alloy\\\"}[10m])) > 0,\\n  \\\"reason\\\", \\\"refused spans\\\", \\\"\\\", \\\"\\\")\\nor label_replace(sum by (job) ((otelcol_receiver_refused_metric_points_total{job=\\\"o11y/alloy\\\"}\\n  unless otelcol_receiver_refused_metric_points_total{job=\\\"o11y/alloy\\\"} offset 10m)\\n  or increase(otelcol_receiver_refused_metric_points_total{job=\\\"o11y/alloy\\\"}[10m])) > 0,\\n  \\\"reason\\\", \\\"refused metric points\\\", \\\"\\\", \\\"\\\")\\nor label_replace(sum by (job) ((otelcol_receiver_refused_log_records_total{job=\\\"o11y/alloy\\\"}\\n  unless otelcol_receiver_refused_log_records_total{job=\\\"o11y/alloy\\\"} offset 10m)\\n  or increase(otelcol_receiver_refused_log_records_total{job=\\\"o11y/alloy\\\"}[10m])) > 0,\\n  \\\"reason\\\", \\\"refused log records\\\", \\\"\\\", \\\"\\\")\"}}, {\"refId\": \"C\", \"datasourceUid\": \"__expr__\", \"model\": {\"refId\": \"C\", \"type\": \"threshold\", \"expression\": \"A\", \"conditions\": [{\"evaluator\": {\"type\": \"gt\", \"params\": [0]}}]}}]}",
+      {
+        "Content-Type": "application/json"
+      },
+      30
+    ],
+    [
+      "GET",
+      "http://127.0.0.1:13000/api/v1/provisioning/alert-rules/o11y-alloy-export",
+      null,
+      {},
+      15
+    ],
+    [
+      "POST",
+      "http://127.0.0.1:13000/api/v1/eval",
+      "{\"condition\": \"C\", \"data\": [{\"refId\": \"A\", \"datasourceUid\": \"mimir\", \"relativeTimeRange\": {\"from\": 1200, \"to\": 0}, \"model\": {\"refId\": \"A\", \"instant\": true, \"expr\": \"label_replace(max by (component_id) (otelcol_exporter_queue_size{job=\\\"o11y/alloy\\\"}\\n  / otelcol_exporter_queue_capacity{job=\\\"o11y/alloy\\\"}) > 0.9,\\n  \\\"problem\\\", \\\"queue over 90 percent full\\\", \\\"\\\", \\\"\\\")\\nor label_replace(\\n  sum by (component_id) (increase({job=\\\"o11y/alloy\\\",\\n    __name__=~\\\"otelcol_exporter_send_failed_.*_total|prometheus_remote_storage_samples_failed_total\\\"\\n  }[5m])) > 0\\n  and sum by (component_id) (increase({job=\\\"o11y/alloy\\\",\\n    __name__=~\\\"otelcol_exporter_send_failed_.*_total|prometheus_remote_storage_samples_failed_total\\\"\\n  }[5m] offset 5m)) > 0\\n  and sum by (component_id) (increase({job=\\\"o11y/alloy\\\",\\n    __name__=~\\\"otelcol_exporter_send_failed_.*_total|prometheus_remote_storage_samples_failed_total\\\"\\n  }[5m] offset 10m)) > 0,\\n  \\\"problem\\\", \\\"export failed\\\", \\\"\\\", \\\"\\\")\\nor label_replace(\\n  sum by (component_id) (increase({job=\\\"o11y/alloy\\\",\\n    __name__=~\\\"otelcol_exporter_enqueue_failed_(spans|metric_points|log_records)_total\\\"\\n  }[5m])) > 0\\n  and sum by (component_id) (increase({job=\\\"o11y/alloy\\\",\\n    __name__=~\\\"otelcol_exporter_enqueue_failed_(spans|metric_points|log_records)_total\\\"\\n  }[5m] offset 5m)) > 0\\n  and sum by (component_id) (increase({job=\\\"o11y/alloy\\\",\\n    __name__=~\\\"otelcol_exporter_enqueue_failed_(spans|metric_points|log_records)_total\\\"\\n  }[5m] offset 10m)) > 0,\\n  \\\"problem\\\", \\\"queue full\\\", \\\"\\\", \\\"\\\")\"}}, {\"refId\": \"C\", \"datasourceUid\": \"__expr__\", \"model\": {\"refId\": \"C\", \"type\": \"threshold\", \"expression\": \"A\", \"conditions\": [{\"evaluator\": {\"type\": \"gt\", \"params\": [0]}}]}}]}",
+      {
+        "Content-Type": "application/json"
+      },
+      30
+    ],
+    [
+      "GET",
+      "http://127.0.0.1:13000/api/v1/provisioning/alert-rules/o11y-log-rate",
+      null,
+      {},
+      15
+    ],
+    [
+      "POST",
+      "http://127.0.0.1:13000/api/v1/eval",
+      "{\"condition\": \"C\", \"data\": [{\"refId\": \"A\", \"datasourceUid\": \"loki\", \"relativeTimeRange\": {\"from\": 600, \"to\": 0}, \"model\": {\"refId\": \"A\", \"queryType\": \"instant\", \"expr\": \"sum(rate({service_namespace=\\\"o11y\\\"}[5m])) or vector(0)\"}}, {\"refId\": \"C\", \"datasourceUid\": \"__expr__\", \"model\": {\"refId\": \"C\", \"type\": \"threshold\", \"expression\": \"A\", \"conditions\": [{\"evaluator\": {\"type\": \"gt\", \"params\": [50]}}]}}]}",
+      {
+        "Content-Type": "application/json"
+      },
+      30
+    ],
+    [
+      "GET",
+      "http://127.0.0.1:13000/api/v1/provisioning/alert-rules/o11y-log-rate",
+      null,
+      {},
+      15
+    ],
+    [
+      "POST",
+      "http://127.0.0.1:13000/api/v1/eval",
+      "{\"condition\": \"C\", \"data\": [{\"refId\": \"A\", \"datasourceUid\": \"loki\", \"relativeTimeRange\": {\"from\": 600, \"to\": 0}, \"model\": {\"refId\": \"A\", \"queryType\": \"instant\", \"expr\": \"sum(rate({service_namespace=\\\"o11y\\\"}[5m])) or vector(0)\"}}, {\"refId\": \"C\", \"datasourceUid\": \"__expr__\", \"model\": {\"refId\": \"C\", \"type\": \"threshold\", \"expression\": \"A\", \"conditions\": [{\"evaluator\": {\"type\": \"gt\", \"params\": [0]}}]}}]}",
+      {
+        "Content-Type": "application/json"
+      },
+      30
+    ],
+    [
+      "POST",
+      "http://127.0.0.1:14318/v1/logs",
+      "{\"resourceLogs\": [{\"resource\": {\"attributes\": [{\"key\": \"service.name\", \"value\": {\"stringValue\": \"o11y-smoke-old\"}}]}, \"scopeLogs\": [{\"scope\": {\"name\": \"o11y-smoke\"}, \"logRecords\": [{\"timeUnixNano\": \"-690200000000000\", \"body\": {\"stringValue\": \"too old\"}}]}]}]}",
+      {
+        "Content-Type": "application/json"
+      },
+      15
+    ],
+    [
+      "GET",
+      "http://127.0.0.1:13000/api/v1/provisioning/alert-rules/o11y-ingest-dropped",
+      null,
+      {},
+      15
+    ],
+    [
+      "POST",
+      "http://127.0.0.1:13000/api/v1/eval",
+      "{\"condition\": \"C\", \"data\": [{\"refId\": \"A\", \"datasourceUid\": \"mimir\", \"relativeTimeRange\": {\"from\": 1200, \"to\": 0}, \"model\": {\"refId\": \"A\", \"instant\": true, \"expr\": \"sum by (job, reason) ((loki_discarded_samples_total{job=\\\"o11y/loki\\\"}\\n  unless loki_discarded_samples_total{job=\\\"o11y/loki\\\"} offset 10m)\\n  or increase(loki_discarded_samples_total{job=\\\"o11y/loki\\\"}[10m])) > 0\\nor sum by (job, reason) ((cortex_discarded_samples_total{job=\\\"o11y/mimir\\\"}\\n  unless cortex_discarded_samples_total{job=\\\"o11y/mimir\\\"} offset 10m)\\n  or increase(cortex_discarded_samples_total{job=\\\"o11y/mimir\\\"}[10m])) > 0\\nor sum by (job, reason) ((tempo_discarded_spans_total{job=\\\"o11y/tempo\\\"}\\n  unless tempo_discarded_spans_total{job=\\\"o11y/tempo\\\"} offset 10m)\\n  or increase(tempo_discarded_spans_total{job=\\\"o11y/tempo\\\"}[10m])) > 0\\nor label_replace(sum by (job) ((otelcol_receiver_refused_spans_total{job=\\\"o11y/alloy\\\"}\\n  unless otelcol_receiver_refused_spans_total{job=\\\"o11y/alloy\\\"} offset 10m)\\n  or increase(otelcol_receiver_refused_spans_total{job=\\\"o11y/alloy\\\"}[10m])) > 0,\\n  \\\"reason\\\", \\\"refused spans\\\", \\\"\\\", \\\"\\\")\\nor label_replace(sum by (job) ((otelcol_receiver_refused_metric_points_total{job=\\\"o11y/alloy\\\"}\\n  unless otelcol_receiver_refused_metric_points_total{job=\\\"o11y/alloy\\\"} offset 10m)\\n  or increase(otelcol_receiver_refused_metric_points_total{job=\\\"o11y/alloy\\\"}[10m])) > 0,\\n  \\\"reason\\\", \\\"refused metric points\\\", \\\"\\\", \\\"\\\")\\nor label_replace(sum by (job) ((otelcol_receiver_refused_log_records_total{job=\\\"o11y/alloy\\\"}\\n  unless otelcol_receiver_refused_log_records_total{job=\\\"o11y/alloy\\\"} offset 10m)\\n  or increase(otelcol_receiver_refused_log_records_total{job=\\\"o11y/alloy\\\"}[10m])) > 0,\\n  \\\"reason\\\", \\\"refused log records\\\", \\\"\\\", \\\"\\\")\"}}, {\"refId\": \"C\", \"datasourceUid\": \"__expr__\", \"model\": {\"refId\": \"C\", \"type\": \"threshold\", \"expression\": \"A\", \"conditions\": [{\"evaluator\": {\"type\": \"gt\", \"params\": [0]}}]}}]}",
+      {
+        "Content-Type": "application/json"
+      },
+      30
+    ],
+    [
+      "GET",
+      "http://127.0.0.1:13000/api/datasources/proxy/uid/mimir/api/v1/query?query=otelcol_exporter_send_failed_log_records_total%7Bjob%3D%22o11y%2Falloy%22%2Ccomponent_id%3D%22otelcol.exporter.otlphttp.loki%22%7D+%3E+0",
+      null,
+      {},
+      15
+    ],
+    [
+      "GET",
+      "http://127.0.0.1:13000/api/v1/provisioning/alert-rules/o11y-alloy-export",
+      null,
+      {},
+      15
+    ],
+    [
+      "POST",
+      "http://127.0.0.1:13000/api/v1/eval",
+      "{\"condition\": \"C\", \"data\": [{\"refId\": \"A\", \"datasourceUid\": \"mimir\", \"relativeTimeRange\": {\"from\": 1200, \"to\": 0}, \"model\": {\"refId\": \"A\", \"instant\": true, \"expr\": \"label_replace(max by (component_id) (otelcol_exporter_queue_size{job=\\\"o11y/alloy\\\"}\\n  / otelcol_exporter_queue_capacity{job=\\\"o11y/alloy\\\"}) > 0.9,\\n  \\\"problem\\\", \\\"queue over 90 percent full\\\", \\\"\\\", \\\"\\\")\\nor label_replace(\\n  sum by (component_id) (increase({job=\\\"o11y/alloy\\\",\\n    __name__=~\\\"otelcol_exporter_send_failed_.*_total|prometheus_remote_storage_samples_failed_total\\\"\\n  }[5m])) > 0\\n  and sum by (component_id) (increase({job=\\\"o11y/alloy\\\",\\n    __name__=~\\\"otelcol_exporter_send_failed_.*_total|prometheus_remote_storage_samples_failed_total\\\"\\n  }[5m] offset 5m)) > 0\\n  and sum by (component_id) (increase({job=\\\"o11y/alloy\\\",\\n    __name__=~\\\"otelcol_exporter_send_failed_.*_total|prometheus_remote_storage_samples_failed_total\\\"\\n  }[5m] offset 10m)) > 0,\\n  \\\"problem\\\", \\\"export failed\\\", \\\"\\\", \\\"\\\")\\nor label_replace(\\n  sum by (component_id) (increase({job=\\\"o11y/alloy\\\",\\n    __name__=~\\\"otelcol_exporter_enqueue_failed_(spans|metric_points|log_records)_total\\\"\\n  }[5m])) > 0\\n  and sum by (component_id) (increase({job=\\\"o11y/alloy\\\",\\n    __name__=~\\\"otelcol_exporter_enqueue_failed_(spans|metric_points|log_records)_total\\\"\\n  }[5m] offset 5m)) > 0\\n  and sum by (component_id) (increase({job=\\\"o11y/alloy\\\",\\n    __name__=~\\\"otelcol_exporter_enqueue_failed_(spans|metric_points|log_records)_total\\\"\\n  }[5m] offset 10m)) > 0,\\n  \\\"problem\\\", \\\"queue full\\\", \\\"\\\", \\\"\\\")\"}}, {\"refId\": \"C\", \"datasourceUid\": \"__expr__\", \"model\": {\"refId\": \"C\", \"type\": \"threshold\", \"expression\": \"A\", \"conditions\": [{\"evaluator\": {\"type\": \"gt\", \"params\": [0]}}]}}]}",
+      {
+        "Content-Type": "application/json"
+      },
+      30
+    ],
+    [
+      "POST",
+      "http://127.0.0.1:14318/v1/logs",
+      "{\"resourceLogs\": [{\"resource\": {\"attributes\": [{\"key\": \"service.name\", \"value\": {\"stringValue\": \"o11y-smoke-rate\"}}, {\"key\": \"service.namespace\", \"value\": {\"stringValue\": \"o11y\"}}]}, \"scopeLogs\": [{\"scope\": {\"name\": \"o11y-smoke\"}, \"logRecords\": [{\"timeUnixNano\": \"1000000000000\", \"body\": {\"stringValue\": \"rate one\"}}, {\"timeUnixNano\": \"1000000000001\", \"body\": {\"stringValue\": \"rate two\"}}]}]}]}",
+      {
+        "Content-Type": "application/json"
+      },
+      15
+    ],
+    [
+      "GET",
+      "http://127.0.0.1:13000/api/v1/provisioning/alert-rules/o11y-log-rate",
+      null,
+      {},
+      15
+    ],
+    [
+      "POST",
+      "http://127.0.0.1:13000/api/v1/eval",
+      "{\"condition\": \"C\", \"data\": [{\"refId\": \"A\", \"datasourceUid\": \"loki\", \"relativeTimeRange\": {\"from\": 600, \"to\": 0}, \"model\": {\"refId\": \"A\", \"queryType\": \"instant\", \"expr\": \"sum(rate({service_namespace=\\\"o11y\\\"}[5m])) or vector(0)\"}}, {\"refId\": \"C\", \"datasourceUid\": \"__expr__\", \"model\": {\"refId\": \"C\", \"type\": \"threshold\", \"expression\": \"A\", \"conditions\": [{\"evaluator\": {\"type\": \"gt\", \"params\": [0]}}]}}]}",
+      {
+        "Content-Type": "application/json"
+      },
+      30
+    ],
+    [
+      "GET",
+      "http://127.0.0.1:13000/api/v1/provisioning/alert-rules/o11y-log-rate",
+      null,
+      {},
+      15
+    ],
+    [
+      "POST",
+      "http://127.0.0.1:13000/api/v1/eval",
+      "{\"condition\": \"C\", \"data\": [{\"refId\": \"A\", \"datasourceUid\": \"loki\", \"relativeTimeRange\": {\"from\": 600, \"to\": 0}, \"model\": {\"refId\": \"A\", \"queryType\": \"instant\", \"expr\": \"sum(rate({service_namespace=\\\"o11y\\\"}[5m])) or vector(0)\"}}, {\"refId\": \"C\", \"datasourceUid\": \"__expr__\", \"model\": {\"refId\": \"C\", \"type\": \"threshold\", \"expression\": \"A\", \"conditions\": [{\"evaluator\": {\"type\": \"gt\", \"params\": [50]}}]}}]}",
+      {
+        "Content-Type": "application/json"
+      },
+      30
+    ]
+  ],
+  "uploads": [],
+  "transcript": [
+    "ok 12: alert conditions isolate their targets; disk notifications reach the seeded webhook and SMTP stubs\n"
+  ],
+  "admin": [],
+  "writes": {
+    "/output/grafana.log": [
+      384,
+      "2ccfbf469dac937bc196b64cc42c1938737190a343630f7afb76e24d19acef8a"
+    ]
+  },
+  "files": {
+    "config/grafana-192117e1275f/rules.yaml": "999999 1073740750258176\n"
+  }
+}

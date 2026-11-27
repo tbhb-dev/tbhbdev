@@ -1,0 +1,37 @@
+---
+- name: serve | Read the local Tailscale Serve configuration
+  ansible.builtin.command:
+    argv: [tailscale, serve, status, --json]
+  register: temporal_dev_serve_status
+  changed_when: false
+  check_mode: false
+  no_log: true
+
+- name: serve | Advertise the Temporal frontend
+  vars:
+    temporal_dev_frontend: >-
+      {{ (temporal_dev_serve_status.stdout | from_json).Services['svc:temporal-frontend'] | default({}) }}
+    temporal_dev_frontend_target: "{{ temporal_dev_address.stdout }}:7233"
+  ansible.builtin.command:
+    argv:
+      - tailscale
+      - serve
+      - --service=svc:temporal-frontend
+      - --tcp=7233
+      - tcp://{{ temporal_dev_frontend_target }}
+  when: (temporal_dev_frontend.TCP['7233'].TCPForward | default('')) != temporal_dev_frontend_target
+  changed_when: true
+  no_log: true
+
+- name: serve | Advertise the Temporal UI
+  vars:
+    temporal_dev_ui: "{{ (temporal_dev_serve_status.stdout | from_json).Services['svc:temporal-ui'] | default({}) }}"
+    temporal_dev_ui_target: "http://{{ temporal_dev_address.stdout }}:8233"
+  ansible.builtin.command:
+    argv: [tailscale, serve, "--service=svc:temporal-ui", "--https=443", "{{ temporal_dev_ui_target }}"]
+  when: >-
+    not (temporal_dev_ui.TCP['443'].HTTPS | default(false)) or
+    temporal_dev_ui_target not in (temporal_dev_ui.Web | default({})).values()
+    | map(attribute='Handlers') | map(attribute='/') | map(attribute='Proxy', default='') | list
+  changed_when: true
+  no_log: true

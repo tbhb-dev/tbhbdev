@@ -55,14 +55,14 @@ On macOS, the controller uses `/Library/Application Support/tbhbdev/agent-launch
 `run-host NAME` and `preflight NAME` read one JSON object from stdin, at most 1 MiB:
 
 ```json
-{"v": 1, "request": {"v": 2}, "push_token": null}
+{"v": 1, "request": {"v": 2}}
 ```
 
 Replace `request` with the complete existing run-host request for a public GitHub repository. Request and envelope versions are separate. Prepare `NAME.prompt` in the existing run state directory before connecting. This interface uses run-host's current prompt and configuration files. It creates `NAME.request.json` with mode `0600` under `$XDG_STATE_HOME/tbhbdev/agent-runs`, which defaults to `$HOME/.local/state/tbhbdev/agent-runs`. Each entry claims `NAME.owner` with exclusive creation before launch. An existing owner or request refuses a second run of that name.
 
-Supply a short-lived push token as `push_token`, or `null` to skip pushing. One SSH connection remains open until the run finishes. It shows run-host's normal output. After the harness exits with a new commit on `agent/NAME`, the host pushes that branch over GitHub HTTPS. A one-shot credential helper reads the token through an inherited pipe. Tokens stay out of arguments, environment variables, config files, and run files. Push disables git hooks. A failed push records one error line and doesn't retry. After a failed harness, nothing pushes. The `preflight` verb takes only a JSON `null` push token and refuses any other value.
+One SSH connection remains open until the run finishes and shows run-host's normal output. Build runs use the GitHub credentials delivered to the harness to push and open pull requests.
 
-`result NAME` prints one JSON object with `v`, `name`, `rc`, `state`, `report`, `log_tail`, `branch`, `head`, `tools_commit` and `wheel_commit`. It reads the existing run files and limits the log to its last 200 lines. While a run continues, `rc` is `null`. Missing output fields use `null`. The `branch` field names only a branch the host pushed. `tools_commit` and `wheel_commit` identify the tools checkout and installed distribution, and absent provenance prints `unknown`. Run-host records both identities in its log header.
+`result NAME` prints one JSON object with `v`, `name`, `rc`, `state`, `report`, `log_tail`, `branch`, `head`, `tools_commit` and `wheel_commit`. It reads the existing run files and limits the log to its last 200 lines. While a run continues, `rc` is `null`. Missing output fields use `null`. The `branch` field names the branch verified on origin for a successful build. `tools_commit` and `wheel_commit` identify the tools checkout and installed distribution, and absent provenance prints `unknown`. Run-host records both identities in its log header.
 
 `kill NAME` stops the recorded process group after checking its identity. A supervisor records the run's completion. For a finished run it prints `already finished` and exits successfully.
 

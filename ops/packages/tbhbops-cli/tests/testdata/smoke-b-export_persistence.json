@@ -1,0 +1,59 @@
+{
+  "commands": [
+    [
+      [
+        "docker",
+        "compose",
+        "-p",
+        "o11y-smoke-fixture",
+        "--env-file",
+        "/output/release/.env",
+        "-f",
+        "/output/release/compose.yaml",
+        "exec",
+        "-T",
+        "rustfs",
+        "curl",
+        "-s",
+        "-w",
+        "\n%{http_code}",
+        "-m",
+        "15",
+        "-X",
+        "POST",
+        "-H",
+        "Content-Type: application/json",
+        "--data-binary",
+        "@-",
+        "http://mimir:8080/otlp/v1/metrics"
+      ],
+      20
+    ]
+  ],
+  "http": [
+    [
+      "GET",
+      "http://127.0.0.1:13000/api/v1/provisioning/alert-rules/o11y-alloy-export",
+      null,
+      {},
+      15
+    ],
+    [
+      "GET",
+      "http://127.0.0.1:13000/api/datasources/proxy/uid/mimir/api/v1/query?query=count%28%7Bjob%3D%22o11y%2Falloy%22%2Ccomponent_id%3D~%22smoke-.%2A%22%7D%29&time=-800",
+      null,
+      {},
+      15
+    ],
+    [
+      "GET",
+      "http://127.0.0.1:13000/api/datasources/proxy/uid/mimir/api/v1/query_range?query=production&start=-920&end=-800&step=30",
+      null,
+      {},
+      30
+    ]
+  ],
+  "transcript": [
+    "ok export persistence: bursts, resets and healed loss stay quiet; sustained loss spans the pending period (0 seconds)\n"
+  ]
+}

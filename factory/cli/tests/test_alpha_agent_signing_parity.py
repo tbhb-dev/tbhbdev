@@ -9,13 +9,12 @@ import urllib.error
 from typing import TYPE_CHECKING
 from unittest.mock import Mock
 
-import httpx
+import httpx2
 import pytest
 from agent_example import LINUX, MACOS, settings
 
-from tbhbdev.alpha import agent
-from tbhbdev.alpha.agent import driver, signing_parity, transport
 from tbhbdev.alpha.agent import settings as agent_settings
+from tbhbdev.alpha.agent import signing_parity, transport
 from tbhbdev.alpha.agent.model import Invalid
 
 if TYPE_CHECKING:
@@ -101,9 +100,9 @@ def test_host_main_arguments(argv: list[str], code: int) -> None:
 
 def keys_transport(
     status: int, body: bytes, headers: dict[str, str] | None = None
-) -> httpx.MockTransport:
-    return httpx.MockTransport(
-        lambda _request: httpx.Response(status, content=body, headers=headers)
+) -> httpx2.MockTransport:
+    return httpx2.MockTransport(
+        lambda _request: httpx2.Response(status, content=body, headers=headers)
     )
 
 
@@ -135,12 +134,12 @@ def test_public_keys_refuses_an_oversized_body() -> None:
 
 
 def test_public_keys_reports_a_failed_request() -> None:
-    def refuse(request: httpx.Request) -> httpx.Response:
+    def refuse(request: httpx2.Request) -> httpx2.Response:
         message = "offline"
-        raise httpx.ConnectError(message, request=request)
+        raise httpx2.ConnectError(message, request=request)
 
     with pytest.raises(OSError, match="ConnectError"):
-        signing_parity.public_keys(timeout=5, transport=httpx.MockTransport(refuse))
+        signing_parity.public_keys(timeout=5, transport=httpx2.MockTransport(refuse))
 
 
 def test_remote_fingerprint_runs_the_host_command(
@@ -210,13 +209,3 @@ def test_main_exit_status_follows_coverage(
     monkeypatch.setattr(signing_parity, "check", Mock(return_value=(["y"], ["host-y"])))
     assert signing_parity.main(settings()) == 1
     assert "not covered: host-y" in capsys.readouterr().err
-
-
-def test_the_verb_and_the_host_command_are_wired(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    monkeypatch.setattr(agent_settings, "load", settings)
-    monkeypatch.setattr(driver.signing_parity, "main", Mock(return_value=7))
-    assert agent.main(["signing-parity"], "p") == 7
-    monkeypatch.setattr(signing_parity, "host_main", Mock(return_value=9))
-    assert agent.main(["signing-fingerprint", "agent"], "p") == 9

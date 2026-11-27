@@ -1,0 +1,11 @@
+# SPDX-License-Identifier: Apache-2.0
+# Copyright Tony Burns
+
+# Operator, 2026-11-27: cleanup exempt from the size limit. Remove this file when the cleanup tracker closes.
+agent/tbhbdev-split-*
+
+# Operator, 2026-11-27: cleanup exempt from the size limit. Remove this file when the cleanup tracker closes.
+agent/tbhbdev-cleanup-*
+
+# Operator, 2026-11-27: cleanup exempt from the size limit. Remove this file when the cleanup tracker closes.
+agent/tbhbdev-ops-packages-*

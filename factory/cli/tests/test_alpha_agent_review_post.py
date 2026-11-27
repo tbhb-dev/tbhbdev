@@ -8,20 +8,23 @@ from dataclasses import replace
 from types import SimpleNamespace
 from typing import TYPE_CHECKING, cast
 from unittest.mock import Mock
+from urllib.parse import urlsplit
 
-import httpx
+import httpx2
 import pytest
 from cue_fixtures import review_cue as review_cue  # noqa: PLC0414
 
 from tbhbdev import content
-from tbhbdev.alpha import identity, review, review_doc, run_stop_hook
-from tbhbdev.alpha.agent import credentials, review_post, run_host, runfiles
+from tbhbdev.alpha import review, review_doc, run_stop_hook
+from tbhbdev.alpha.agent import credentials, review_post, runfiles
 from tbhbdev.alpha.agent.decisions import request as requests
 from tbhbdev.alpha.agent.model import Harness, Invalid, Profile, RunKind, RunRequest
+from tbhbdev.alpha.identity import dispatcher as identity
 
 if TYPE_CHECKING:
     from pathlib import Path
 
+    from tbhbdev.alpha.agent import run_host
     from tbhbdev.alpha.agent.model import Settings
 
 pytestmark = pytest.mark.usefixtures("review_cue")  # noqa: V107
@@ -32,7 +35,10 @@ MINTED = "minted"
 
 def draft(event: str = "COMMENT", head: str = HEAD, *, findings: bool = False) -> str:
     extra = (
-        "## Findings\n\n- F1: P1 correctness Fix the data loss.\n\n" if findings else ""
+        "## Findings\n\n- F1: P1 correctness The saved record disappears. "
+        "Occurs when: a caller retries a write.\n\n"
+        if findings
+        else ""
     )
     return (
         f"---\npr: 7\ncommit_id: '{head}'\nevent: {event}\n---\n\n"
@@ -82,8 +88,10 @@ def make(
     )
 
 
-def reply(status: int, data: object) -> httpx.Response:
-    return httpx.Response(status, json=data, request=httpx.Request("GET", "https://x"))
+def reply(status: int, data: object) -> httpx2.Response:
+    return httpx2.Response(
+        status, json=data, request=httpx2.Request("GET", "https://x")
+    )
 
 
 def mint_token(_request: object, _settings: object) -> str | None:
@@ -94,7 +102,7 @@ def no_token(_request: object, _settings: object) -> str | None:
     return None
 
 
-def forbidden(*_args: object, **_options: object) -> httpx.Response:
+def forbidden(*_args: object, **_options: object) -> httpx2.Response:
     raise AssertionError
 
 
@@ -107,12 +115,12 @@ class Api:
 
     def __init__(self, monkeypatch: pytest.MonkeyPatch) -> None:
         self.calls: list[tuple[str, str, dict[str, str] | None]] = []
-        self.pull: httpx.Response | Exception = reply(200, {"head": {"sha": HEAD}})
+        self.pull: httpx2.Response | Exception = reply(200, {"head": {"sha": HEAD}})
         self.later = reply(200, {"head": {"sha": HEAD}})
-        self.created: httpx.Response | Exception = reply(201, {"id": 99})
-        monkeypatch.setattr(httpx, "request", self.request)
+        self.created: httpx2.Response | Exception = reply(201, {"id": 99})
+        monkeypatch.setattr(httpx2, "request", self.request)
 
-    def request(self, method: str, url: str, **options: object) -> httpx.Response:
+    def request(self, method: str, url: str, **options: object) -> httpx2.Response:
         payload = cast("dict[str, str] | None", options.get("json"))
         self.calls.append((method, url, payload))
         gets = [c for c in self.calls if c[0] == "GET"]
@@ -298,7 +306,7 @@ def test_a_bad_draft_posts_nothing(
 ) -> None:
     run, prepared = make(tmp_path, text, name)
     monkeypatch.setattr(credentials, "review_post_token", mint_token)
-    monkeypatch.setattr(httpx, "request", forbidden)
+    monkeypatch.setattr(httpx2, "request", forbidden)
     assert not review_post.posted(run, prepared)
     assert message in run.files.path("log").read_text()
 
@@ -371,7 +379,8 @@ def test_host_and_cli_prefer_the_same_draft(
     if verdict == "NO-GO":
         text = text.replace("verdict: GO", "verdict: NO-GO").replace(
             "## Verification",
-            "## Findings\n\n- F1: P1 correctness Fix the cache.\n\n## Verification",
+            "## Findings\n\n- F1: P1 correctness The cache returns a stale record. "
+            "Occurs when: a caller retries a write.\n\n## Verification",
         )
     run, prepared = make(tmp_path, text, "review-7.doc.md")
     directory = tmp_path / "ws" / ".git" / "tbhb-alpha"
@@ -430,7 +439,7 @@ def test_host_refuses_an_invalid_rendered_review(
     [reply(200, {"head": {"sha": "b" * 40}}), reply(200, {}), reply(200, [])],
 )
 def test_an_approval_requires_one_read_of_the_pinned_head(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, pull: httpx.Response
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, pull: httpx2.Response
 ) -> None:
     run, prepared = make(tmp_path, draft("APPROVE"))
     monkeypatch.setattr(credentials, "review_post_token", mint_token)
@@ -446,7 +455,7 @@ def test_a_missing_token_blocks_the_post(
 ) -> None:
     run, prepared = make(tmp_path, draft())
     monkeypatch.setattr(credentials, "review_post_token", no_token)
-    monkeypatch.setattr(httpx, "request", forbidden)
+    monkeypatch.setattr(httpx2, "request", forbidden)
     assert not review_post.posted(run, prepared)
     assert "token unavailable" in run.files.path("log").read_text()
 
@@ -459,6 +468,7 @@ def test_a_missing_token_blocks_the_post(
         (f"VERDICT: OVERRIDE {'b' * 40}", ""),
         ("VERDICT: OVERRIDE", ""),
         (f"VERDICT: GO {HEAD}", ""),
+        (f"VERDICT: SPLIT {HEAD}\nMore text.", ""),
     ],
 )
 def test_sizing_review_posts_only_a_status_for_its_exact_head(
@@ -471,24 +481,26 @@ def test_sizing_review_posts_only_a_status_for_its_exact_head(
     run, prepared = make(tmp_path, None)
     run.request = replace(run.request, variant="size-review")
     answer = f"Review complete.\n{line}\n"
-    monkeypatch.setenv(
-        run_stop_hook.ENV, json.dumps(run_host.stop_context(run, prepared))
+    context = run_stop_hook.run_context(
+        run.request, prepared.paths.worktree, run.files, run.tmpdir, prepared.start
     )
+    monkeypatch.setenv(run_stop_hook.ENV, json.dumps(context))
     monkeypatch.setattr(
         "sys.stdin", io.StringIO(json.dumps({"last_assistant_message": answer}))
     )
     assert run_stop_hook.main(["codex"], "tbhbdev alpha run-stop-hook") == 0
     hook_output = capsys.readouterr().out
     run.files.write("out.final", answer)
-    monkeypatch.setattr(credentials, "review_post_token", Mock(return_value=MINTED))
+    mint = Mock(return_value=MINTED)
+    monkeypatch.setattr(credentials, "review_post_token", mint)
     api = Api(monkeypatch)
     assert review_post.posted(run, prepared) == bool(state)
     if state:
         assert hook_output == ""
         ((method, url, payload),) = api.calls
-        assert (method, url) == (
-            "POST",
-            f"https://api.github.com/repos/o/r/statuses/{HEAD}",
+        assert (method, urlsplit(url).path) == ("POST", f"/repos/o/r/statuses/{HEAD}")
+        mint.assert_called_once_with(
+            run.request, run.settings, permissions={"statuses": "write"}
         )
         assert payload is not None
         assert payload["context"] == "size-review"
@@ -498,20 +510,33 @@ def test_sizing_review_posts_only_a_status_for_its_exact_head(
         assert retry["decision"] == "block"
         assert f"VERDICT: SPLIT {HEAD}" in retry["reason"]
         assert f"VERDICT: OVERRIDE {HEAD}" in retry["reason"]
+        mint.assert_not_called()
         assert api.calls == []
+
+
+def test_sizing_review_cannot_post_without_status_write_access(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    run, prepared = make(tmp_path, None)
+    run.request = replace(run.request, variant="size-review")
+    run.files.write("out.final", f"VERDICT: OVERRIDE {HEAD}\n")
+    monkeypatch.setattr(credentials, "review_post_token", Mock(return_value=None))
+    monkeypatch.setattr(httpx2, "request", forbidden)
+    assert not review_post.posted(run, prepared)
+    assert "commit-status write access unavailable" in run.files.path("log").read_text()
 
 
 @pytest.mark.parametrize(
     ("outcome", "message"),
     [
         (reply(403, {"message": "no"}), "status 403"),
-        (httpx.ConnectError("x"), "ConnectError"),
+        (httpx2.ConnectError("x"), "ConnectError"),
     ],
 )
 def test_post_failures_are_logged(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
-    outcome: httpx.Response | Exception,
+    outcome: httpx2.Response | Exception,
     message: str,
 ) -> None:
     run, prepared = make(tmp_path, draft())
@@ -536,17 +561,17 @@ def test_any_2xx_post_is_a_success(
 @pytest.mark.parametrize(
     "outcome",
     [
-        httpx.Response(204),
+        httpx2.Response(204),
         reply(201, {}),
         reply(202, {}),
         reply(200, []),
         reply(201, {"id": "x"}),
-        httpx.Response(200, text="OK"),
-        httpx.Response(200, text="not json"),
+        httpx2.Response(200, text="OK"),
+        httpx2.Response(200, text="not json"),
     ],
 )
 def test_a_2xx_post_without_an_integer_id_counts_as_posted(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, outcome: httpx.Response
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, outcome: httpx2.Response
 ) -> None:
     run, prepared = make(tmp_path, draft())
     monkeypatch.setattr(credentials, "review_post_token", mint_token)

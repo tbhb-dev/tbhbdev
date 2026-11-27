@@ -1,0 +1,44 @@
+---
+- name: Verify
+  hosts: all
+  become: true
+  tasks:
+    - name: Check the rendered table with nft
+      ansible.builtin.command:
+        cmd: /usr/sbin/nft -c -f /etc/nftables.d/host.nft
+      changed_when: false
+
+    - name: Read the table, the unit and the sysctl drop-in
+      ansible.builtin.slurp:
+        src: "{{ item }}"
+      loop:
+        - /etc/nftables.d/host.nft
+        - /etc/systemd/system/host-hardening-nft.service
+        - /etc/sysctl.d/60-host-hardening.conf
+      register: host_hardening_files
+
+    - name: Check the contents
+      vars:
+        table: "{{ host_hardening_files.results[0].content | b64decode }}"
+        unit: "{{ host_hardening_files.results[1].content | b64decode }}"
+        sysctl: "{{ host_hardening_files.results[2].content | b64decode }}"
+      ansible.builtin.assert:
+        that:
+          - "'hook input priority filter + 10; policy drop;' in table"
+          - "'delete table inet host' in table"
+          - "'flush ruleset' not in table"
+          - "'hook forward' not in table"
+          - "'iifname \"tailscale0\" accept' in table"
+          - "'udp dport 41641 accept' in table"
+          - "'iifname \"br-lab\" ip saddr 198.51.100.128/25 tcp dport 22 accept' in table"
+          - "'ExecStart=/usr/sbin/nft -f /etc/nftables.d/host.nft' in unit"
+          - "'After=nftables.service docker.service' in unit"
+          - "'kernel.kexec_load_disabled = 1' in sysctl"
+          - "'fs.protected_regular = 2' in sysctl"
+          - "'ip_forward' not in sysctl | regex_replace('(?m)^#.*$', '')"
+        quiet: true
+
+    - name: Revert with nothing saved removes a missing table quietly
+      ansible.builtin.command:
+        cmd: /usr/local/sbin/host-hardening-revert revert
+      changed_when: false

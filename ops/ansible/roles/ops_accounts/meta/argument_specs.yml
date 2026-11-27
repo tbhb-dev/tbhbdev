@@ -1,0 +1,10 @@
+---
+argument_specs:
+  main:
+    short_description: Create the ops remote account and remove ops-ro
+    options:
+      ops_accounts_admin_keys:
+        type: list
+        elements: str
+        required: true
+        description: Public keys authorized for ops, which has full sudo.

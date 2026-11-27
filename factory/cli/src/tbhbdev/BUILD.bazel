@@ -31,6 +31,7 @@ cli_py_library(
         ":content",
         ":runner",
         "//factory/cli/src/tbhbdev/alpha:pull_request",
+        "//factory/cli/src/tbhbdev/alpha:pull_request_frontmatter",
         "//factory/cli/src/tbhbdev/alpha:repo_bootstrap",
     ],
 )
@@ -49,8 +50,8 @@ cli_py_library(
     imports = [".."],
     visibility = ["//factory/cli:__subpackages__"],
     deps = [
-        "//factory/cli/src/tbhbdev/alpha:identity",
-        "@cli_pip//httpx",
+        "//factory/cli/src/tbhbdev/alpha/identity:models",
+        "@cli_pip//httpx2",
     ],
 )
 
@@ -63,14 +64,13 @@ cli_py_library(
         ":adr",
         ":agy",
         ":cue_runtime",
-        ":host",
         ":issue",
         ":plugins",
         ":secret",
         ":version",
-        "//factory/cli/src/tbhbdev/admin:__init__",
-        "//factory/cli/src/tbhbdev/alpha:__init__",
-        "//factory/cli/src/tbhbdev/analytics:__init__",
+        "//factory/cli/src/tbhbdev/admin:command",
+        "//factory/cli/src/tbhbdev/alpha:command",
+        "//factory/cli/src/tbhbdev/analytics:command",
     ],
 )
 
@@ -119,7 +119,10 @@ cli_py_library(
     data = [":cue-pin.json"],
     imports = [".."],
     visibility = ["//factory/cli:__subpackages__"],
-    deps = ["@cli_pip//httpx"],
+    deps = [
+        ":github_tls",
+        "@cli_pip//httpx2",
+    ],
 )
 
 cli_py_library(
@@ -138,16 +141,10 @@ cli_py_library(
 )
 
 cli_py_library(
-    name = "host",
-    srcs = ["host.py"],
+    name = "host_tokens",
+    srcs = ["host_tokens.py"],
     imports = [".."],
     visibility = ["//factory/cli:__subpackages__"],
-    deps = [
-        ":gh_agent",
-        ":runner",
-        ":secrets",
-        ":userconfig",
-    ],
 )
 
 cli_py_library(
@@ -210,6 +207,7 @@ cli_py_library(
         "//factory/cli/src/tbhbdev/alpha/agent:model",
         "@cli_pip//cryptography",
         "@cli_pip//httpx",
+        "@cli_pip//httpx2",
         "@cli_pip//onepasswordconnectsdk",
     ],
 )
@@ -247,4 +245,12 @@ py_binary(
     main = "__main__.py",
     visibility = ["//factory/cli:__subpackages__"],
     deps = [":cli"],
+)
+
+cli_py_library(
+    name = "github_tls",
+    srcs = ["github_tls.py"],
+    imports = [".."],
+    visibility = ["//factory/cli:__subpackages__"],
+    deps = ["@cli_pip//certifi"],
 )

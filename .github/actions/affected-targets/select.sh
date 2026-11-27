@@ -156,23 +156,48 @@ if [[ ${EVENT:-} == workflow_dispatch ]]; then
 fi
 git cat-file -e "${BASE_SHA:-}^{commit}" 2>/dev/null ||
   finish all "the base '${BASE_SHA:-}' is missing from the checkout (check out with fetch-depth: 0)"
-git -c core.quotePath=false diff -z --raw --no-renames --ignore-submodules=none --output="$changed" "$BASE_SHA" "$head" 2>&1 | show >&2 ||
+git -c core.quotePath=false diff -z --raw --no-renames --no-relative --ignore-submodules=none --output="$changed" "$BASE_SHA" "$head" 2>&1 | show >&2 ||
   finish all 'git diff failed'
 
-# A submodule's commit (mode 160000) is no file target-determinator can
-# trace. The other files change the module graph, the flags, the Bazel
-# version, the package set or the rules for the whole workspace. Match the
-# base name since a module can override a nested one by path. Let TD compare
-# rules-module BUILD and .bzl changes through the configured dependency graph.
+# Target-determinator hashes the configured graph. Submodule and symlink
+# changes can affect files outside the paths in the diff. Module and Bazel
+# configuration changes can invalidate the whole graph.
+declare -A workspace_checks=()
+# Gazelle walks the checkout for sources, BUILD directives, and embedded
+# files. Embeds can have any extension.
+if [[ -s $changed ]]; then
+  workspace_checks[//:gazelle_test]=1
+fi
 while IFS= read -r -d '' meta && IFS= read -r -d '' path; do
   [[ ${meta:0:15} != *160000* ]] || finish all "the submodule $path changed"
+  [[ ${meta:0:15} != *120000* ]] || finish all "the symlink $path changed"
   case ${path##*/} in
   MODULE.bazel* | *.MODULE.bazel | WORKSPACE* | REPO.bazel | \
     .bazelrc* | *bazelrc | .bazelversion | .bazeliskrc | .bazelignore)
     finish all "$path changed"
     ;;
-  BUILD | BUILD.* | *.bzl)
-    [[ $path == lib/rules/* ]] || finish all "$path changed"
+  BUILD | BUILD.* | *.BUILD | *.bazel | *.bzl | *.sky | *.star)
+    # The root buildifier excludes lib/rules, which has its own scan.
+    if [[ $path == lib/rules/* ]]; then
+      workspace_checks[@tbhb_rules//:buildifier_test]=1
+    else
+      workspace_checks[//:buildifier_test]=1
+    fi
+    ;;
+  esac
+  case $path in
+  lib/rules/*.sh | lib/rules/*.sh.tpl | lib/rules/*.yml)
+    workspace_checks[@tbhb_rules//repo/tests:mktemp_test]=1
+    ;;
+  esac
+  # Markdown links can point to any tracked file or directory in lib/rules.
+  if [[ $path == lib/rules/* && (${meta: -1} != M || $path == *.md || $path == lib/rules/.markdown-links.toml) ]]; then
+    workspace_checks[@tbhb_rules//repo/tests:markdown_links_test]=1
+  fi
+  case $path in
+  lib/rules/.gitleaks*.toml | lib/rules/*/.gitleaks*.toml | lib/rules/lint/gitleaks/* | \
+    lib/rules/pins/extensions.bzl | LICENSES/MIT.txt)
+    workspace_checks[@tbhb_rules//lint/tests:gitleaks_configs_test]=1
     ;;
   esac
 done <"$changed"
@@ -257,13 +282,24 @@ select_targets() {
   # matched rule, including intentionally failing manual proof targets.
   step='the query of candidate tests'
   query_candidates . "$scope" >"$out/candidates" || return
-  [[ -s $out/candidates ]] || return 0
-  check_base_candidates "$scope" || return
-  targets=$(label_set "$out/candidates") || return
+  if [[ -s $out/candidates ]]; then
+    check_base_candidates "$scope" || return
+    targets=$(label_set "$out/candidates") || return
 
-  # The determinator hashes configured dependencies in local overrides too.
-  run_step target-determinator "$TD" -bazel bazelisk -nocache_results -delete-cached-worktree \
-    -before-query-error-behavior=fatal -targets "$targets" "${opts[@]/#/-bazel-opts=}" "$BASE_SHA" >"$file" || return
+    # The determinator hashes configured dependencies in local overrides too.
+    run_step target-determinator "$TD" -bazel bazelisk -nocache_results -delete-cached-worktree \
+      -before-query-error-behavior=fatal -targets "$targets" "${opts[@]/#/-bazel-opts=}" "$BASE_SHA" >"$file" || return
+  fi
+  if ((${#workspace_checks[@]})); then
+    step='the query of workspace checks'
+    run_step "$step" bazelisk query --consistent_labels --output=label \
+      "kind('.*_test rule', set(${!workspace_checks[*]}))" >"$out/workspace-checks" || return
+    [[ $(wc -l <"$out/workspace-checks") -eq ${#workspace_checks[@]} ]] || return 1
+    # Bazel can spell the main repository with or without an explicit @@.
+    step='combining affected tests and workspace checks'
+    LC_ALL=C sed 's,^@@//,//,' "$file" "$out/workspace-checks" | LC_ALL=C sort -u >"$out/combined" || return
+    mv "$out/combined" "$file" || return
+  fi
   [[ -s $file ]] || return 0
   targets=$(label_set "$file") || return
   run_step 'the cquery of manual tags' bazelisk cquery --output=jsonproto "${opts[@]}" \

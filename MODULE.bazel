@@ -38,6 +38,24 @@ go_sdk.nogo(
 
 go_deps = use_extension("@gazelle//:extensions.bzl", "go_deps")
 go_deps.from_file(go_mod = "//:go.mod")
+use_repo(
+    go_deps,
+    "io_etcd_go_bbolt",
+    "io_opentelemetry_go_otel",
+    "io_opentelemetry_go_otel_exporters_otlp_otlpmetric_otlpmetrichttp",
+    "io_opentelemetry_go_otel_metric",
+    "io_opentelemetry_go_otel_sdk",
+    "io_opentelemetry_go_otel_sdk_metric",
+    "io_opentelemetry_go_proto_otlp",
+    "org_golang_google_protobuf",
+)
+
+go_mod_proxy = use_extension("@tbhb_rules_go//:extensions.bzl", "go_mod_proxy")
+go_mod_proxy.from_file(
+    name = "go_mod_proxy",
+    go_sum = "//:go.sum",
+)
+use_repo(go_mod_proxy, "go_mod_proxy")
 
 python_toolchains = use_extension("@rules_python//python/extensions:python.bzl", "python")
 python_toolchains.toolchain(python_version = "3.15")
@@ -63,6 +81,12 @@ bazel_dep(name = "tbhb_rules_ansible", version = "0.0.0")
 local_path_override(
     module_name = "tbhb_rules_ansible",
     path = "lib/rules/ansible",
+)
+
+ansible = use_extension("@tbhb_rules_ansible//:extensions.bzl", "ansible")
+ansible.collections(
+    lock = "//ops/ansible:requirements.lock.json",
+    requirements = "//ops/ansible:requirements.yml",
 )
 
 bazel_dep(name = "tbhb_rules_python", version = "0.0.0")
@@ -160,6 +184,13 @@ cue_test_tool = use_repo_rule("//factory/cli/tests:cue_test_tool.bzl", "cue_test
 
 cue_test_tool(
     name = "cue_test_tool",
+    dev_dependency = True,
+)
+
+promtool_test_tool = use_repo_rule("//ops/packages/tbhbops/tests:promtool_test_tool.bzl", "promtool_test_tool")
+
+promtool_test_tool(
+    name = "promtool_test_tool",
     dev_dependency = True,
 )
 

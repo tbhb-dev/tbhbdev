@@ -1,0 +1,17 @@
+#!/usr/bin/env bash
+set -euo pipefail
+if [[ ${1:-} == which ]]; then
+	[[ $2 == uv && $3 == --tool && $4 == uv@0.13.8 ]]
+	echo "$HOME/fixture/mise-uv/bin/uv"
+	exit
+fi
+if [[ ${2:-} == uv@0.13.8 ]]; then
+	if [[ $1 == install ]]; then
+		mkdir -p "$HOME/fixture/mise-uv/bin"
+		cp "$HOME/fixture/uv" "$HOME/fixture/mise-uv/bin/uv"
+	else
+		exit 1
+	fi
+	exit
+fi
+exit 1

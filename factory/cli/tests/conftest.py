@@ -13,6 +13,7 @@ from __future__ import annotations
 import inspect
 import json
 import os
+import shutil
 import sys
 import threading
 from dataclasses import dataclass, field
@@ -32,12 +33,28 @@ if TYPE_CHECKING:
 
 type Json = dict[str, object]
 
+
+@pytest.fixture
+def pr_checkout(
+    pr_git_baseline: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> Path:
+    """A checkout seeded with a commit and the origin's tracking refs."""
+    root = tmp_path / "repo"
+    shutil.copytree(pr_git_baseline, root / ".git")
+    monkeypatch.chdir(root)
+    for role in ("AUTHOR", "COMMITTER"):
+        monkeypatch.setenv(f"GIT_{role}_NAME", "Example")
+        monkeypatch.setenv(f"GIT_{role}_EMAIL", "example@example.test")
+    return root
+
+
 # The fake Connect API's own token, which reaches every vault.
 TOKEN = "fake-test-token"  # noqa: S105
 
 
-# Capture the account before any fixture redirects HOME to its scratch home.
-ACCOUNT_CODEX_HOME = Path.home() / ".codex"
+# Guarded Bazel targets redirect HOME before this module is imported.
+_account_home = os.environ.get("CLI_TEST_ACCOUNT_HOME")
+ACCOUNT_CODEX_HOME = (Path(_account_home) if _account_home else Path.home()) / ".codex"
 type FilePath = str | bytes | os.PathLike[str] | os.PathLike[bytes]
 
 

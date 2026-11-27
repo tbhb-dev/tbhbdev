@@ -1,0 +1,14 @@
+{
+  "O11Y_TS_HOSTNAME": {{ o11y_ts_hostname | string | to_json }},
+  "O11Y_FIXED_ADDRESSES": {{ o11y_fixed_addresses | string | to_json }},
+  "O11Y_DATA_DIR": {{ o11y_data_dir | string | to_json }},
+  "O11Y_HOST_NAME": {{ o11y_host_name | string | to_json }},
+  "O11Y_GRAFANA_ROOT_URL": {{ o11y_grafana_root_url | string | to_json }},
+  "O11Y_GRAFANA_OWNER_LOGIN": {{ o11y_grafana_owner_login | string | to_json }},
+  "O11Y_ALERT_EMAIL_TO": {{ o11y_alert_email_to | string | to_json }},
+  "O11Y_ALERT_SMTP_FROM": {{ o11y_alert_smtp_from | string | to_json }},
+  "O11Y_ALERT_SMTP_HOST": {{ o11y_alert_smtp_host | string | to_json }},
+  "O11Y_ALERT_SMTP_PORT": {{ o11y_alert_smtp_port | string | to_json }},
+  "O11Y_ALERT_SMTP_USER": {{ o11y_alert_smtp_user | string | to_json }},
+  "O11Y_DISK_RESERVE_GB": {{ o11y_min_free_gib | string | to_json }}
+}

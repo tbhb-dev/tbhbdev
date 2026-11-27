@@ -1,0 +1,7 @@
+---
+agent_reconverge_account: agent
+agent_reconverge_interval_seconds: 900
+agent_reconverge_macos_python_version: "3.13.18"
+agent_reconverge_macos_python_url: "https://github.com/astral-sh/python-build-standalone/releases/download/20261124/\
+  cpython-3.13.18%2B20261124-aarch64-apple-darwin-install_only.tar.gz"
+agent_reconverge_macos_python_sha256: ae7030747b3daddea6925f4e270918c5d977f0347fe5d03adae94ce3a630ed74

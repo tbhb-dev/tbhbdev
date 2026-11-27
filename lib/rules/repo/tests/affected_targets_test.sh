@@ -37,8 +37,23 @@ done
 if [[ ${0##*/} == bazelisk ]]; then
   [[ $1 != --batch ]] || shift
   if [[ $1 == query ]]; then
+    if [[ $2 == --consistent_labels ]]; then
+      [[ ${FAKE_WORKSPACE:-} != empty ]] || exit 0
+      labels=${!#}
+      labels=${labels#*set(}
+      labels=${labels%))}
+      for label in $labels; do
+        case $label in
+          //:*) echo "@@$label" ;;
+          @tbhb_rules//*) echo "@@tbhb_rules+//${label#*//}" ;;
+          *) exit 9 ;;
+        esac
+      done
+      exit 0
+    fi
     printf '%s\n' "$@" >"$QUERY_LOG"
     [[ $FAKE_QUERY != fail ]] || { echo 'ERROR: loading failed' >&2 && exit 6; }
+    [[ $FAKE_QUERY != empty ]] || exit 0
     if [[ $2 == --output=streamed_jsonproto ]]; then
       if [[ $FAKE_QUERY == near_manual ]] && matches_tag "$FAKE_TAG" "${!#}"; then
         printf '{"rule":{"name":"//go:near_manual_test","attribute":[{"name":"tags","stringListValue":["%s"]}]}}\n' "$FAKE_TAG"
@@ -82,6 +97,7 @@ printf '%s\n' "$@" >"$ARGS_LOG"
 straggle() { (sleep 2 && git checkout -q "$1" && : >"$CHILD_MARK") </dev/null >/dev/null 2>&1 & }
 case $FAKE in
   two) printf '//go:lib_test\n//go:cmd_test\n' ;;
+  two_and_buildifier) printf '//go:lib_test\n//go:cmd_test\n//:buildifier_test\n' ;;
   tagged) printf '//go:lib_test\n//go:manual_test\n//go:cmd_test\n' ;;
   cli_leaf)
     [[ $(git diff --name-only "${!#}" HEAD) == factory/cli/src/tbhbdev/alpha/repo_token.py ]] || exit 8
@@ -93,7 +109,7 @@ case $FAKE in
     ;;
   near_manual) [[ $* != *//go:near_manual_test* ]] || echo //go:near_manual_test ;;
   rules)
-    printf '%s\n' '@@tbhb_rules_d2+//private:inputs_test' \
+    printf '%s\n' '@@tbhb_rules+//:buildifier_test' '@@tbhb_rules_d2+//private:inputs_test' \
       '@@tbhb_rules_structurizr+//private:d2_test' //diagrams:integration_test ;;
   rules_tagged) echo '@@tbhb_rules_structurizr+//private:manual_test' ;;
   space) printf '//a:with space\n//b:t\n' ;;
@@ -251,6 +267,21 @@ refuse() {
 
 unset HEAD_SHA
 export BASE_SHA=$base FAKE=two TIMEOUT_SECONDS=''
+
+git checkout -q "$docs_head"
+printf 'VALUE = 1\n' >defs.bzl
+starlark_base=$(commit)
+printf 'VALUE  = 1\n' >defs.bzl
+starlark_head=$(commit)
+git config diff.relative true
+BASE_SHA=$starlark_base FAKE=none run 'root .bzl formatting edit' pull_request "$starlark_head" false 2
+[[ $targets == $'//:buildifier_test\n//:gazelle_test' ]] || fail 'root .bzl edit: missing workspace checks'
+git config --unset diff.relative
+BASE_SHA=$starlark_base FAKE_QUERY=empty run 'empty candidate query' pull_request "$starlark_head" false 2
+[[ $targets == $'//:buildifier_test\n//:gazelle_test' ]] || fail 'empty candidate query: missing workspace checks'
+BASE_SHA=$starlark_base FAKE_WORKSPACE=empty run 'workspace checks not found' pull_request "$starlark_head"
+[[ $reason == 'the query of workspace checks failed with exit status 1' ]] || fail 'workspace checks not found: wrong reason'
+
 for event in push schedule ''; do
   run "event '$event'" "$event" "$docs_head"
   [[ $reason == "a '$event' event tests everything" ]] || fail 'unsupported event: wrong reason'
@@ -264,10 +295,10 @@ dispatch_parent=$(commit src/lib.go)
 git -c user.name=test -c user.email=test@example.invalid -c commit.gpgsign=false \
   merge -q --no-ff --no-edit "$dispatch_side"
 dispatch_head=$(git rev-parse HEAD)
-BASE_SHA=$base FAKE=dispatch run 'dispatch with explicit base' workflow_dispatch "$dispatch_head" false 2
-[[ $targets == $'//go:lib_test\n//go:cmd_test' ]] || fail 'dispatch explicit base: wrong targets'
-BASE_SHA='' FAKE=dispatch run 'dispatch with default base' workflow_dispatch "$dispatch_head" false 1
-[[ $targets == '//go:cmd_test' ]] || fail 'dispatch default base: wrong targets'
+BASE_SHA=$base FAKE=dispatch run 'dispatch with explicit base' workflow_dispatch "$dispatch_head" false 3
+[[ $targets == $'//:gazelle_test\n//go:cmd_test\n//go:lib_test' ]] || fail 'dispatch explicit base: wrong targets'
+BASE_SHA='' FAKE=dispatch run 'dispatch with default base' workflow_dispatch "$dispatch_head" false 2
+[[ $targets == $'//:gazelle_test\n//go:cmd_test' ]] || fail 'dispatch default base: wrong targets'
 last=$(tail -n 1 "$ARGS_LOG")
 [[ $last == "$dispatch_parent" ]] || fail 'dispatch default base: expected the first parent SHA'
 BASE_SHA=0123456789abcdef0123456789abcdef01234567 run 'dispatch with missing base' workflow_dispatch "$dispatch_head"
@@ -275,9 +306,9 @@ BASE_SHA=0123456789abcdef0123456789abcdef01234567 run 'dispatch with missing bas
 BASE_SHA='' run 'dispatch of root commit' workflow_dispatch "$base"
 [[ $reason == *"'HEAD^' is missing from the checkout"* ]] || fail 'dispatch of root commit: wrong reason'
 
-run 'pull request' pull_request "$docs_head" false 2
-[[ $targets == $'//go:lib_test\n//go:cmd_test' ]] || fail 'targets output'
-grep -qF 'Selected 2 test targets' "$GITHUB_STEP_SUMMARY" || fail 'summary count'
+run 'pull request' pull_request "$docs_head" false 3
+[[ $targets == $'//:gazelle_test\n//go:cmd_test\n//go:lib_test' ]] || fail 'targets output'
+grep -qF 'Selected 3 test targets' "$GITHUB_STEP_SUMMARY" || fail 'summary count'
 for arg in -bazel bazelisk -targets -bazel-opts=--config=ci -bazel-opts=--keep_going \
   -bazel-opts=--skip_incompatible_explicit_targets "$base"; do
   grep -qxF -- "$arg" "$ARGS_LOG" || fail "target-determinator missed argument $arg"
@@ -287,7 +318,7 @@ last=$(tail -n 1 "$ARGS_LOG")
 for arg in cquery --output=jsonproto --config=ci --keep_going --skip_incompatible_explicit_targets; do
   grep -qxF -- "$arg" "$CQUERY_LOG" || fail "cquery missed argument $arg"
 done
-grep -Fq -- 'set("//go:lib_test" "//go:cmd_test")' "$CQUERY_LOG" || fail 'cquery missed selected tests'
+grep -Fq -- 'set("//:gazelle_test" "//go:cmd_test" "//go:lib_test")' "$CQUERY_LOG" || fail 'cquery missed selected tests'
 while IFS= read -r pattern; do
   grep -Fq -- "${pattern#-}" "$QUERY_LOG" || fail "candidate query missed $pattern"
 done <<<"$fallback"
@@ -300,33 +331,35 @@ FAKE_QUERY=fail run 'candidate query failure' pull_request "$docs_head"
 FAKE=tagged run 'manual tag' pull_request "$docs_head"
 [[ $reason == *'tagged manual'* ]] || fail 'manual tag: wrong reason'
 for tag in 'review manual' 'review, manual'; do
-  FAKE_TAG=$tag FAKE_QUERY=near_manual FAKE=near_manual run "near-match manual tag '$tag'" pull_request "$docs_head" false 1
-  [[ $targets == '//go:near_manual_test' ]] || fail 'near-match manual tag: missing test'
+  FAKE_TAG=$tag FAKE_QUERY=near_manual FAKE=near_manual run "near-match manual tag '$tag'" pull_request "$docs_head" false 2
+  [[ $targets == $'//:gazelle_test\n//go:near_manual_test' ]] || fail 'near-match manual tag: missing test'
 done
 FAKE_CQUERY=fail run 'tag cquery failure' pull_request "$docs_head"
 [[ $reason == *'exit status 7' ]] || fail 'tag cquery failure: status missing'
 
 cli_head=$(commit factory/cli/src/tbhbdev/alpha/repo_token.py)
-BASE_SHA=$docs_head FAKE=cli_leaf run 'CLI leaf edit' pull_request "$cli_head" false 10
+BASE_SHA=$docs_head FAKE=cli_leaf run 'CLI leaf edit' pull_request "$cli_head" false 11
 cli_tests=$(printf '%s\n' "$targets" | grep '^//factory/cli/tests:')
 [[ $cli_tests == $'//factory/cli/tests:test_alpha_agent_invariants\n//factory/cli/tests:test_alpha_repo_token' ]] ||
   fail 'CLI leaf edit: wrong per-file tests'
 [[ $targets != *mutmut_test* ]] || fail 'CLI leaf edit: selected nightly mutation test'
-grep -qF 'Selected 10 test targets' "$GITHUB_STEP_SUMMARY" || fail 'CLI leaf edit: summary count'
+grep -qF 'Selected 11 test targets' "$GITHUB_STEP_SUMMARY" || fail 'CLI leaf edit: summary count'
 
-FAKE=space run 'label with a space' pull_request "$docs_head" false 2
-[[ $targets == $'//a:with space\n//b:t' ]] || fail 'space: targets output'
+FAKE=space run 'label with a space' pull_request "$docs_head" false 3
+[[ $targets == $'//:gazelle_test\n//a:with space\n//b:t' ]] || fail 'space: targets output'
 grep -qxF '//a:with space' "$file" || fail 'space: file'
 
-HEAD_SHA=$docs_head run 'merge group' merge_group "$docs_head" false 2
+HEAD_SHA=$docs_head run 'merge group' merge_group "$docs_head" false 3
 HEAD_SHA=$docs_head run 'checkout behind the head' merge_group "$base"
-FAKE=none run 'no affected tests' pull_request "$docs_head" false 0
+FAKE=none run 'only a workspace check' pull_request "$docs_head" false 1
+[[ $targets == '//:gazelle_test' ]] || fail 'only a workspace check: targets output'
+FAKE=none run 'no changed files' pull_request "$base" false 0
 [[ -z $targets ]] || fail 'empty selection'
 FAKE=smudge run 'changed under a selection' pull_request "$docs_head"
 FAKE=fail run 'tool failure' pull_request "$docs_head"
 [[ $reason == *'exit status 3' ]] || fail 'failure status missing'
 first=$file
-run 'second run in the job' pull_request "$docs_head" false 2
+run 'second run in the job' pull_request "$docs_head" false 3
 [[ $file != "$first" ]] || fail 'second run: same file'
 diff -u <(printf '%s\n' "$fallback") "$first" || fail 'second run: replaced the first file'
 FAKE=bare run 'log with no last newline' pull_request "$docs_head"
@@ -365,8 +398,8 @@ done
 git checkout -q "$base"
 rules_head=$(commit lib/rules/diagrams/d2/private/BUILD.bazel lib/rules/diagrams/d2/private/inputs.txt)
 for event in pull_request merge_group; do
-  FAKE=rules run "rules dependents on $event" "$event" "$rules_head" false 3
-  [[ $targets == $'@@tbhb_rules_d2+//private:inputs_test\n@@tbhb_rules_structurizr+//private:d2_test\n//diagrams:integration_test' ]] ||
+  FAKE=rules run "rules dependents on $event" "$event" "$rules_head" false 6
+  [[ $targets == $'//:gazelle_test\n//diagrams:integration_test\n@@tbhb_rules+//:buildifier_test\n@@tbhb_rules+//repo/tests:markdown_links_test\n@@tbhb_rules_d2+//private:inputs_test\n@@tbhb_rules_structurizr+//private:d2_test' ]] ||
     fail 'rules dependents: targets output'
   diff -u <(printf '%s\n' "$targets") "$file" || fail 'rules dependents: pattern file'
   grep -Fq -- '@tbhb_rules_d2//private:inputs_test' "$ARGS_LOG" || fail 'rules candidates were not hashed'
@@ -401,8 +434,42 @@ BASE_SHA=$rules_head run 'rules preset change' pull_request "$rules_config"
 [[ $reason == 'lib/rules/diagrams/d2/preset.bazelrc changed' ]] || fail 'rules preset: wrong reason'
 git checkout -q "$base"
 cli_head=$(commit cli/main.go)
-run 'root-only change' pull_request "$cli_head" false 2
-[[ $targets == $'//go:lib_test\n//go:cmd_test' ]] || fail 'root-only change selected rules tests'
+run 'root-only change' pull_request "$cli_head" false 3
+[[ $targets == $'//:gazelle_test\n//go:cmd_test\n//go:lib_test' ]] || fail 'root-only change selected rules tests'
+
+git checkout -q "$docs_head"
+head=$(commit go/BUILD.bazel src/lib.go)
+FAKE=two_and_buildifier run 'root BUILD change' pull_request "$head" false 4
+[[ $targets == $'//:buildifier_test\n//:gazelle_test\n//go:cmd_test\n//go:lib_test' ]] ||
+  fail 'root BUILD change: wrong tests'
+
+# These checks read the Git checkout, including nested modules outside the
+# rules module's dependency graph.
+for check in 'repo/tests:mktemp_test|lib/rules/go/tools/install.sh.tpl' \
+  'repo/tests:markdown_links_test|lib/rules/go/README.md' \
+  'lint/tests:gitleaks_configs_test|lib/rules/go/.gitleaks.toml' \
+  'lint/tests:gitleaks_configs_test|LICENSES/MIT.txt'; do
+  git checkout -q "$base"
+  path=${check#*|}
+  label=${check%|*}
+  check_base=$(commit "$path")
+  check_head=$(commit "$path")
+  BASE_SHA=$check_base FAKE=none run "$path content edit" pull_request "$check_head" false 2
+  [[ $targets == "//:gazelle_test"$'\n'"@@tbhb_rules+//$label" ]] || fail "$path: missing $label"
+done
+
+git checkout -q "$base"
+link_target=$(commit lib/rules/go/target.txt)
+git rm -q lib/rules/go/target.txt
+link_target_deleted=$(commit)
+BASE_SHA=$link_target FAKE=none run 'Markdown link target removed' pull_request "$link_target_deleted" false 2
+[[ $targets == $'//:gazelle_test\n@@tbhb_rules+//repo/tests:markdown_links_test' ]] || fail 'link target removed: wrong tests'
+
+git checkout -q "$base"
+ln -s README.md link
+linked=$(commit)
+run 'symlink change' pull_request "$linked"
+[[ $reason == 'the symlink link changed' ]] || fail 'symlink change: wrong reason'
 
 # No checkout at all: the event's head can't be checked, so the step fails.
 refuse 'no checkout' "$scratch/no-git"
@@ -418,7 +485,7 @@ rm '##[notice]x'
 
 for path in MODULE.bazel MODULE.bazel.lock .bazelrc .bazelrc.user preset.bazelrc \
   WORKSPACE WORKSPACE.bazel WORKSPACE.extra .bazelversion go/MODULE.bazel \
-  go/deps.MODULE.bazel 'café/MODULE.bazel' go/BUILD go/BUILD.bazel defs/rules.bzl \
+  go/deps.MODULE.bazel 'café/MODULE.bazel' \
   .bazelignore REPO.bazel; do
   git checkout -q "$docs_head"
   head=$(commit "$path" src/lib.go)

@@ -1,0 +1,110 @@
+---
+- name: macos | Provision the standalone Python runtime
+  vars:
+    agent_reconverge_python_install: "/Library/tbhb-python/{{ agent_reconverge_macos_python_version }}"
+    agent_reconverge_python_marker: >-
+      {{ agent_reconverge_python_install }}/.installed-{{ agent_reconverge_macos_python_sha256 }}
+  when: not ansible_check_mode
+  block:
+    - name: macos | Create the Python directories
+      ansible.builtin.file:
+        path: "{{ item }}"
+        state: directory
+        owner: root
+        group: wheel
+        mode: "0755"
+      loop:
+        - /Library/tbhb-python
+        - /Library/tbhb-python/bin
+        - "{{ agent_reconverge_python_install }}"
+
+    - name: macos | Check whether this archive was installed
+      ansible.builtin.stat:
+        path: "{{ agent_reconverge_python_marker }}"
+      register: agent_reconverge_python_installed
+
+    - name: macos | Install the pinned CPython archive
+      when: not agent_reconverge_python_installed.stat.exists
+      block:
+        - name: macos | Download and checksum the Python archive
+          ansible.builtin.get_url:
+            url: "{{ agent_reconverge_macos_python_url }}"
+            checksum: "sha256:{{ agent_reconverge_macos_python_sha256 }}"
+            dest: "{{ agent_reconverge_python_install }}/python.tar.gz"
+            owner: root
+            group: wheel
+            mode: "0644"
+
+        - name: macos | Extract Python using the system tar and a safe umask
+          ansible.builtin.shell: |
+            umask 022
+            /usr/bin/tar --no-same-owner --no-same-permissions -xzf python.tar.gz
+          args:
+            chdir: "{{ agent_reconverge_python_install }}"
+          changed_when: true
+
+    - name: macos | Verify ownership and permissions of the extracted Python tree
+      ansible.builtin.command:
+        argv:
+          - /usr/bin/find
+          - "{{ agent_reconverge_python_install }}/python"
+          - "!"
+          - -user
+          - root
+          - -print
+          - -o
+          - "!"
+          - -type
+          - l
+          - "("
+          - -perm
+          - "-0020"
+          - -o
+          - -perm
+          - "-0002"
+          - ")"
+          - -print
+      register: agent_reconverge_python_permissions
+      changed_when: false
+      failed_when: agent_reconverge_python_permissions.rc != 0 or agent_reconverge_python_permissions.stdout != ''
+
+    - name: macos | Record the verified Python installation
+      ansible.builtin.copy:
+        content: "{{ agent_reconverge_macos_python_sha256 }}\n"
+        dest: "{{ agent_reconverge_python_marker }}"
+        owner: root
+        group: wheel
+        mode: "0644"
+
+    - name: macos | Check for the shared binary directory
+      ansible.builtin.stat:
+        path: /usr/local/bin
+        follow: true
+      register: agent_reconverge_local_bin
+
+    - name: macos | Create the shared binary directory if missing
+      ansible.builtin.file:
+        path: /usr/local/bin
+        state: directory
+        owner: root
+        group: wheel
+        mode: "0755"
+      when: not agent_reconverge_local_bin.stat.exists
+
+    - name: macos | Link the versioned Python and the daemon's python3
+      ansible.builtin.file:
+        src: "{{ agent_reconverge_python_install }}/python/bin/python3"
+        dest: "{{ item }}"
+        state: link
+        follow: false
+        owner: root
+        group: wheel
+      loop:
+        - "/usr/local/bin/python{{ agent_reconverge_macos_python_version.split('.')[:2] | join('.') }}"
+        - /Library/tbhb-python/bin/python3
+
+- name: macos | Install the agent reconverge launch daemon
+  ansible.builtin.include_tasks: "{{ role_path }}/../../tasks/launch-daemon.yml"
+  vars:
+    launch_daemon_label: dev.tbhb.reconverge.agent
+    launch_daemon_source: "{{ role_path }}/templates/dev.tbhb.reconverge.agent.plist.j2"

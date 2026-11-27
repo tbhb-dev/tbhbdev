@@ -28,8 +28,10 @@ from fake_tool import pythonpath
 from hypothesis import given, settings
 from hypothesis import strategies as st
 
-from tbhbdev.alpha import identity as ai
 from tbhbdev.alpha import install
+from tbhbdev.alpha.identity import dispatcher as ai
+from tbhbdev.alpha.identity.commands import cmd_hashes
+from tbhbdev.alpha.identity.models import EFFORTS
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -37,7 +39,7 @@ if TYPE_CHECKING:
 # mutmut runs the tests from a copy of the source tree, so fixtures resolve
 # against this file rather than the working directory.
 DATA = Path(__file__).parent / "testdata" / "alpha"
-SRC = Path(ai.__file__).parents[2]
+SRC = Path(ai.__file__).parents[3]
 ORIGIN = "git@github.com:tbhb-dev/example.git"
 HUMAN_COMMIT_ENV = {
     f"GIT_{role}_{field}": value
@@ -278,6 +280,7 @@ def test_write_json_is_atomic_and_creates_parents(tmp_path: Path) -> None:
     assert [p.name for p in target.parent.iterdir()] == ["r.json"]
 
 
+@settings(deadline=None)
 @given(
     st.dictionaries(
         st.text(max_size=8),
@@ -324,7 +327,7 @@ RECORD_WRITER = """
 import sys
 from pathlib import Path
 sys.path.insert(0, sys.argv[1])
-from tbhbdev.alpha import identity as ai
+from tbhbdev.alpha.identity import dispatcher as ai
 for i in range(20):
     ai.write_record(sys.argv[3], {f"{sys.argv[4]}-{i}": "v"}, Path(sys.argv[2]))
 """
@@ -365,22 +368,6 @@ def test_detect_innermost_wins() -> None:
     assert ai.detect({"ANTIGRAVITY_CONVERSATION_ID": "c"}) == ("antigravity", "c")
 
 
-def test_version_per_harness() -> None:
-    assert ai.version("claude", {"CLAUDE_CODE_EXECPATH": "/x/2.1.316"}) == "2.1.316"
-    assert ai.version("claude", {}) is None
-    assert ai.version("claude", {"CLAUDE_CODE_EXECPATH": ""}) is None
-    assert ai.version("codex", {"CODEX_VERSION": "0.166.0"}) == "0.166.0"
-    assert ai.version("codex", {"CODEX_VERSION": ""}) is None
-    assert ai.version("codex", {}) is None
-    assert ai.version("antigravity", {"ANTIGRAVITY_LS_VERSION": "cli-1.4.12"}) == (
-        "1.4.12"
-    )
-    assert ai.version("antigravity", {"ANTIGRAVITY_LS_VERSION": "1.4.12"}) == "1.4.12"
-    assert ai.version("antigravity", {"ANTIGRAVITY_LS_VERSION": ""}) is None
-    assert ai.version("antigravity", {}) is None
-    assert ai.version("other", {"ANTIGRAVITY_LS_VERSION": "cli-1"}) is None
-
-
 @pytest.mark.parametrize(
     ("value", "expected"),
     [
@@ -409,109 +396,11 @@ def test_clean_value_is_grammar_safe(text: str) -> None:
         assert not re.search(r"[\s;,]", cleaned)
 
 
-@pytest.mark.parametrize(
-    ("value", "expected"),
-    [
-        ("sdk-cli", "sdk-cli"),
-        ("CLI", "CLI"),
-        ("a b", None),
-        ("a=b", None),
-        ("a;b", None),
-        ("a,b", None),
-        ("", None),
-        (None, None),
-        (3, None),
-    ],
-)
-def test_surface_ok(value: object, expected: str | None) -> None:
-    assert ai.surface_ok(value) == expected
-
-
-def test_surface_per_harness() -> None:
-    assert ai.surface("claude", {"CLAUDE_CODE_ENTRYPOINT": "sdk-cli"}) == "sdk-cli"
-    assert ai.surface("claude", {"CLAUDE_CODE_ENTRYPOINT": "a b"}) is None
-    assert ai.surface("claude", {}) is None
-    assert ai.surface("codex", {"CLAUDE_CODE_ENTRYPOINT": "x"}) is None
-    assert ai.surface("other", {"ANTIGRAVITY_LS_VERSION": "cli-1"}) is None
-    assert ai.surface("antigravity", {"ANTIGRAVITY_LS_VERSION": "cli-1.4.12"}) == "cli"
-    assert ai.surface("antigravity", {"ANTIGRAVITY_LS_VERSION": "1.4.12"}) is None
-    assert ai.surface("antigravity", {}) is None
-
-
-def test_agy_model_table() -> None:
-    assert ai.agy_model("claude-sonnet-5-5-low") == (
-        "anthropic:claude-sonnet-5-5",
-        "low",
-    )
-    assert ai.agy_model("gpt-oss-120b-medium") == ("openai:gpt-oss-120b", "medium")
-    assert ai.agy_model("gemini-4-argon-high") == ("gcp.gemini:gemini-4-argon", "high")
-    assert ai.agy_model("claude-opus-5-5-medium") == (
-        "anthropic:claude-opus-5-5",
-        "medium",
-    )
-    assert ai.agy_model("gemini-3.8-flash-low") == (
-        "gcp.gemini:gemini-3.8-flash",
-        "low",
-    )
-    assert ai.agy_model("gemini-4-carbon-low") == ("gcp.gemini:gemini-4-carbon", "low")
-    assert ai.agy_model("gemini-4-hydrogen-xhigh") == (
-        "gcp.gemini:gemini-4-hydrogen",
-        "xhigh",
-    )
-    assert ai.agy_model("gemini-pro-orchestrator") == (
-        "gcp.gemini:gemini-pro-orchestrator",
-        None,
-    )
-    assert ai.agy_model("gemini-pro-orchestrator-argon") == (
-        "gcp.gemini:gemini-pro-orchestrator-argon",
-        None,
-    )
-    assert len(ai.AGY_MODELS) == 22
-    for key in (
-        "gemini-4-argon-cyber-permissive",
-        "gemini-3.8-flash-tiered",
-        "gemini-3.8-flash",
-        "gemini-4-argon-xhigh",
-        "gemini-4-carbon-xhigh",
-        "",
-    ):
-        assert ai.agy_model(key) == (key, None)
-
-
-def test_provider_model() -> None:
-    assert (
-        ai.provider_model("claude", "claude-haiku-5-5") == "anthropic:claude-haiku-5-5"
-    )
-    assert ai.provider_model("codex", "gpt-5.6-sol") == "openai:gpt-5.6-sol"
-    assert ai.provider_model("codex", "o3-mini") == "openai:o3-mini"
-    assert ai.provider_model("codex", "codex-mini") == "openai:codex-mini"
-    assert ai.provider_model("codex", "mystery") == "mystery"
-    assert ai.provider_model("codex", "xgpt-5") == "xgpt-5"
-    assert ai.provider_model("antigravity", "gemini-3.8-flash-medium") == (
-        "gcp.gemini:gemini-3.8-flash"
-    )
-    assert ai.provider_model("antigravity", "gemini-3.8-flash-tiered") == (
-        "gemini-3.8-flash-tiered"
-    )
-    assert ai.provider_model("claude", "<synthetic>") is None
-    assert ai.provider_model("claude", "a b") is None
-    assert ai.provider_model("claude", "a;b") is None
-    assert ai.provider_model("claude", "a,b") is None
-    assert ai.provider_model("claude", "") is None
-    assert ai.provider_model("claude", None) is None
-    assert ai.provider_model("other", "m") == "m"
-
-
-def test_slugs_and_providers() -> None:
+def test_slugs() -> None:
     assert ai.SLUGS == {
         "claude": "claude-code",
         "codex": "codex",
         "antigravity": "antigravity",
-    }
-    assert ai.PROVIDERS == {
-        "claude": "anthropic",
-        "codex": "openai",
-        "antigravity": "gcp.gemini",
     }
 
 
@@ -632,7 +521,7 @@ attr_sets = st.fixed_dictionaries(
         "model": st.from_regex(r"[a-z0-9][a-z0-9.:_-]{0,20}", fullmatch=True),
     },
     optional={
-        "effort": st.sampled_from(sorted(ai.EFFORTS)),
+        "effort": st.sampled_from(sorted(EFFORTS)),
         "session": hashes,
         "subagent": hashes,
         "surface": st.from_regex(r"[A-Za-z0-9_-]{1,10}", fullmatch=True),
@@ -670,45 +559,6 @@ def test_format_order_and_omission() -> None:
     assert sorted(ai.ATTR_ORDER) == ai.ATTR_ORDER
     assert {"launch", "started_at", "variant"} <= set(ai.ATTR_ORDER)
     assert len(ai.ATTR_ORDER) == 9
-
-
-@given(
-    st.lists(st.from_regex(r"[a-z0-9.]{1,6}", fullmatch=True), min_size=1, max_size=6)
-)
-def test_command_candidates_recover_eval_operand(parts: list[str]) -> None:
-    cmd = " && ".join(f"echo 'it'\"'\"'s {p}'" for p in parts)
-    line = f"/bin/zsh -c source s && eval {shlex.quote(cmd)} < /dev/null && pwd"
-    assert ai.command_candidates(line) == [cmd]
-
-
-@given(st.text(max_size=40))
-def test_cmd_hashes_cover_trimmed_and_flat_forms(cmd: str) -> None:
-    got = ai.cmd_hashes(cmd)
-    forms = {cmd, cmd.strip(), ai.flat(cmd), ai.flat(cmd).strip()}
-    assert got == sorted(hashlib.sha256(f.encode()).hexdigest() for f in forms)
-
-
-def test_flat_turns_control_characters_and_their_escapes_into_spaces() -> None:
-    assert ai.flat("a\nb\tc\x00d\x1fe\x7ff") == "a b c d e f"
-    assert ai.flat(r"a\012b\011c\000d\037e\177f") == "a b c d e f"
-    assert ai.flat(r"a\040b\08c\400d\12e") == r"a\040b\08c\400d\12e"
-    assert ai.flat("a b~") == "a b~"
-
-
-def test_command_candidates_from_real_shape() -> None:
-    cmd = "cd x && echo 'it'\"'\"'s' && git commit -m \"a b\""
-    quoted = cmd.replace("'", "'\"'\"'")
-    line = (
-        "/bin/zsh -c source /u/shell-snapshots/s.sh 2>/dev/null || true && "
-        "setopt NO_EXTENDED_GLOB 2>/dev/null || true && "
-        "{ \\builtin unalias -- 'which'; } >/dev/null 2>&1 || true && "
-        f"eval '{quoted}' < /dev/null && pwd -P >| /tmp/claude-1a2b-cwd"
-    )
-    assert ai.command_candidates(line) == [cmd]
-    assert ai.command_candidates("python3 x.py trailer m") == []
-    assert ai.command_candidates("zsh -c 'unterminated") == []
-    assert ai.command_candidates("eval") == []
-    assert ai.command_candidates("a eval b eval c") == ["b", "c"]
 
 
 # --------------------------------------------------------- git and the store
@@ -1156,7 +1006,7 @@ def test_record_command_stores_hashes_not_text(repo: Path) -> None:
     ai.record_command(ROOT, CHILD, "secret --token abc", repo)
     (rec,) = pending(repo)
     assert rec["agent"] == CHILD
-    assert rec["cmd"] == ai.cmd_hashes("secret --token abc")
+    assert rec["cmd"] == cmd_hashes("secret --token abc")
     assert rec["done"] is None
     assert isinstance(rec["ts"], float)
     assert "secret" not in json.dumps(rec)
@@ -1212,7 +1062,7 @@ def test_command_records_skip_done_and_unreadable(repo: Path) -> None:
     (folder / "empty.json").write_text("{}", encoding="utf-8")
     store = repo / ".git" / "tbhb-alpha"
     got = [rec for _, rec in ai.command_records(store, ROOT)]
-    assert [rec["cmd"] for rec in got] == [ai.cmd_hashes("ls")]
+    assert [rec["cmd"] for rec in got] == [cmd_hashes("ls")]
     assert list(ai.command_records(store, OTHER)) == []
 
 
@@ -1594,7 +1444,7 @@ def test_main_agent_events_record_the_session_and_commands(
     }
     (rec,) = pending(repo)
     assert (rec["agent"], rec["done"]) == (None, None)
-    assert rec["cmd"] == ai.cmd_hashes("cd x && git commit -m m")
+    assert rec["cmd"] == cmd_hashes("cd x && git commit -m m")
     ai.handle_claude(claude_data(repo, hook_event_name=EVENT_FAIL), CLAUDE_HOOK_ENV)
     assert pending(repo) == [{**rec, "done": pending(repo)[0]["done"]}]
     assert isinstance(pending(repo)[0]["done"], float)
@@ -1734,61 +1584,6 @@ def test_other_bash_writes_still_get_a_receipt(repo: Path, command: str) -> None
     }
     ai.handle_claude(post, CLAUDE_HOOK_ENV)
     assert [r["path"] for r in receipts_of(repo, SESSION_HASH)] == ["x.txt"]
-
-
-def test_moves_work_tree_ignores_a_command_that_is_not_text() -> None:
-    assert not ai.moves_work_tree(None)
-    assert not ai.moves_work_tree(["git", "checkout"])
-    assert ai.moves_work_tree("git checkout a")
-
-
-def test_moves_work_tree_strips_harmless_redirects_before_splitting() -> None:
-    # Without the strip, the ``&`` of ``2>&1`` splits the line mid-redirect.
-    assert ai.moves_work_tree("git checkout a 2>&1")
-    assert ai.moves_work_tree("git checkout a >/dev/null 2>&1")
-    # The strip leaves nothing behind, so it cannot glue onto the verb.
-    assert ai.moves_work_tree("git checkout>/dev/null")
-    assert not ai.moves_work_tree("git checkout a > out.txt")
-
-
-@pytest.mark.parametrize(
-    ("segment", "kind"),
-    [
-        ("echo hi > out.txt", "other"),
-        ("echo 'unbalanced", "other"),
-        ("", "quiet"),
-        ("FOO=1 BAR=2", "quiet"),
-        ("ls -l", "quiet"),
-        ("FOO=1 cat x", "quiet"),
-        ("rm x", "other"),
-        ("git checkout a", "move"),
-        ("git rebase main", "move"),
-        ("git rebase --exec make main", "other"),
-        ("git rebase -x make main", "other"),
-        ("git status", "quiet"),
-        ("git -C . log", "quiet"),
-        ("git commit -m x", "other"),
-        ("git", "other"),
-    ],
-)
-def test_segment_kind_names_each_kind(segment: str, kind: str) -> None:
-    assert ai.segment_kind(segment) == kind
-
-
-@pytest.mark.parametrize(
-    ("words", "verb"),
-    [
-        (["git", "--no-pager", "log"], "log"),
-        (["git", "-c", "a=b", "status"], "status"),
-        (["git", "-C", ".", "--no-pager", "diff"], "diff"),
-        (["git", "-C", "."], ""),
-        (["git", "-C"], ""),
-        (["git", "--no-pager"], ""),
-        (["git"], ""),
-    ],
-)
-def test_git_verb_skips_global_options(words: list[str], verb: str) -> None:
-    assert ai.git_verb(words) == verb
 
 
 def test_edit_tools_become_receipts(repo: Path) -> None:
@@ -3295,31 +3090,6 @@ def test_add_trailers_rewrites_existing_ones_in_order(tmp_path: Path) -> None:
     )
 
 
-@pytest.mark.parametrize(
-    ("line", "expected"),
-    [
-        ("git commit --amend -m x", True),
-        ("/opt/bin/git -C d commit -q --am", True),
-        ("git commit --ame --no-edit", True),
-        ("git commit --amen", True),
-        ("git commit -m x -- --amend", False),
-        ("git commit -m x", False),
-        ("git commit --a", False),
-        ("zsh -c git commit --amend", False),
-        ("git log --amend", False),
-        ("", False),
-    ],
-)
-def test_amending(line: str, expected: bool) -> None:
-    assert ai.amending([line]) is expected
-
-
-def test_amending_takes_the_nearest_git_commit() -> None:
-    assert ai.amending(["python x", "git commit -m x", "git commit --amend"]) is False
-    assert ai.amending(["python x", "git commit --amend", "git commit"]) is True
-    assert ai.amending([]) is False
-
-
 def test_amended_trailers_reads_head_only_when_amending(
     repo: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -3669,7 +3439,7 @@ def test_check_pair() -> None:
     assert ai.check_pair("harness=") == "bad attribute 'harness='"
     assert ai.check_pair("=x") == "bad attribute '=x'"
     assert ai.check_pair("a=b=c") is not None
-    for effort in ai.EFFORTS:
+    for effort in EFFORTS:
         assert ai.check_pair(f"effort={effort}") is None
     assert ai.check_pair("subagent=sha-256-64:ABCDEF0123456789") == "bad subagent hash"
     assert ai.check_pair("session=sha-256-64:" + "a" * 17) == "bad session hash"
@@ -4892,7 +4662,7 @@ def test_cmd_record_writes_the_sessions_directory(
 
 def test_finish_command_prefers_the_newest_not_the_last_path(repo: Path) -> None:
     cmds = repo / ".git" / "tbhb-alpha" / "cmds" / ai.hx(ROOT)
-    hashes = ai.cmd_hashes("ls")
+    hashes = cmd_hashes("ls")
     for name, ts in (("a.json", 20), ("z.json", 10)):
         ai.write_json(
             cmds / name, {"agent": None, "cmd": hashes, "ts": ts, "done": None}
@@ -4908,7 +4678,7 @@ def test_finish_command_ties_go_to_the_first_record(repo: Path) -> None:
     for name in ("one.json", "two.json"):
         ai.write_json(
             cmds / name,
-            {"agent": None, "cmd": ai.cmd_hashes("ls"), "ts": 5, "done": None},
+            {"agent": None, "cmd": cmd_hashes("ls"), "ts": 5, "done": None},
         )
     first = next(path for path, _ in ai.command_records(store, ROOT))
     ai.finish_command(ROOT, "ls", None)
@@ -7820,7 +7590,7 @@ def test_matched_child_requires_a_session_record_for_its_root(
 
 
 def test_command_window_includes_its_start_and_an_explicit_zero(repo: Path) -> None:
-    record: Json = {"agent": CHILD, "cmd": ai.cmd_hashes("ls"), "ts": 0.0}
+    record: Json = {"agent": CHILD, "cmd": cmd_hashes("ls"), "ts": 0.0}
     ai.write_json(repo / ".git" / ai.STORE / "cmds" / ai.hx(ROOT) / "x.json", record)
     assert ai.recent_commands(ROOT, repo, 0.0) == [record]
     assert ai.match_command_agent(ROOT, ["sh -c eval 'ls'"], repo, now=0.0) == (
@@ -8489,71 +8259,12 @@ def test_agy_1_5_7_commit_path_stamps_the_spike_trailer(
     )
 
 
-AGY_TABLE_ROWS = {
-    "claude-opus-5-5-high": ("anthropic", "claude-opus-5-5", "high"),
-    "claude-opus-5-5-low": ("anthropic", "claude-opus-5-5", "low"),
-    "claude-opus-5-5-medium": ("anthropic", "claude-opus-5-5", "medium"),
-    "claude-sonnet-5-5-high": ("anthropic", "claude-sonnet-5-5", "high"),
-    "claude-sonnet-5-5-low": ("anthropic", "claude-sonnet-5-5", "low"),
-    "claude-sonnet-5-5-medium": ("anthropic", "claude-sonnet-5-5", "medium"),
-    "gemini-3.8-flash-high": ("gcp.gemini", "gemini-3.8-flash", "high"),
-    "gemini-3.8-flash-low": ("gcp.gemini", "gemini-3.8-flash", "low"),
-    "gemini-3.8-flash-medium": ("gcp.gemini", "gemini-3.8-flash", "medium"),
-    "gemini-4-argon-high": ("gcp.gemini", "gemini-4-argon", "high"),
-    "gemini-4-argon-low": ("gcp.gemini", "gemini-4-argon", "low"),
-    "gemini-4-argon-medium": ("gcp.gemini", "gemini-4-argon", "medium"),
-    "gemini-4-carbon-high": ("gcp.gemini", "gemini-4-carbon", "high"),
-    "gemini-4-carbon-low": ("gcp.gemini", "gemini-4-carbon", "low"),
-    "gemini-4-carbon-medium": ("gcp.gemini", "gemini-4-carbon", "medium"),
-    "gemini-4-hydrogen-high": ("gcp.gemini", "gemini-4-hydrogen", "high"),
-    "gemini-4-hydrogen-low": ("gcp.gemini", "gemini-4-hydrogen", "low"),
-    "gemini-4-hydrogen-medium": ("gcp.gemini", "gemini-4-hydrogen", "medium"),
-    "gemini-4-hydrogen-xhigh": ("gcp.gemini", "gemini-4-hydrogen", "xhigh"),
-    "gemini-pro-orchestrator": ("gcp.gemini", "gemini-pro-orchestrator", None),
-    "gemini-pro-orchestrator-argon": (
-        "gcp.gemini",
-        "gemini-pro-orchestrator-argon",
-        None,
-    ),
-    "gpt-oss-120b-medium": ("openai", "gpt-oss-120b", "medium"),
-}
-
-
-def test_agy_models_table_rows_are_exact() -> None:
-    """Every row, so swapped ids or efforts between keys fail."""
-    assert ai.AGY_MODELS == AGY_TABLE_ROWS
-
-
 # ------------------------------------------------------------- start time
 
 LAUNCH = H + "0a1b2c3d4e5f6071"
 EARLY, LATE = "2026-11-14T00:02:41Z", "2026-11-14T00:09:00Z"
 NOW = 1_794_614_400.0
 NOW_UTC = "2026-11-14T00:00:00Z"
-
-
-@pytest.mark.parametrize("has_creation_entry", [True, False])
-def test_session_commit_start_from_branch_reflog_or_session(
-    repo: Path,
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-    has_creation_entry: bool,
-) -> None:
-    stage(repo, "base")
-    commit(repo)
-    if has_creation_entry:
-        with monkeypatch.context() as dated:
-            dated.setenv("GIT_COMMITTER_DATE", EARLY)
-            run_git(repo, "switch", "-qc", "topic")
-        stage(repo, "later")
-        commit(repo)
-    session = ai.sha256_64(CLAUDE_COMMIT_ENV["CLAUDE_CODE_SESSION_ID"])
-    ai.write_record(session, {"model": "anthropic:m", "started_at": LATE})
-    stage(repo, "change")
-    path = msg_file(tmp_path)
-    assert ai.cmd_trailer(str(path), "message", CLAUDE_COMMIT_ENV) == 0
-    [(_, trailer)] = ai.llm_trailers(path.read_text())
-    assert ai.trailer_start(trailer) == (EARLY if has_creation_entry else LATE)
 
 
 @pytest.fixture

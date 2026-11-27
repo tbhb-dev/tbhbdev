@@ -1,0 +1,18 @@
+---
+- name: Converge
+  hosts: all
+  become: true
+  tasks:
+    - name: Expect an id clash
+      block:
+        - name: Try the account role
+          ansible.builtin.include_role:
+            name: agent_account
+        - name: Reject an unexpected success
+          ansible.builtin.fail:
+            msg: The role accepted an id clash
+      rescue:
+        - name: Check the clash message
+          ansible.builtin.assert:
+            that:
+              - ansible_failed_result.msg == 'gid 24368 belongs to clash, not agent'

@@ -2,16 +2,17 @@
 # Copyright Tony Burns
 """Tests for the SSH agent guard."""
 
+import codecs
 import io
 import json
+import socket
 import sys
 from pathlib import Path
 from typing import override
 
 import pytest
 
-from tbhbdev import alpha
-from tbhbdev.alpha import guard_ssh_agent as guard
+import tbhbdev.alpha.guard_ssh_agent as guard
 
 S = ".ssh"
 
@@ -19,7 +20,7 @@ S = ".ssh"
 @pytest.mark.parametrize(
     ("command", "reason"),
     [
-        ("ssh-add -l", guard.REASON_ADD),
+        ("ssh-add -l key", guard.REASON_ADD),
         ("/usr/bin/ssh-add", guard.REASON_ADD),
         ("true && ssh-add", guard.REASON_ADD),
         ("\\ssh-add", guard.REASON_ADD),
@@ -27,12 +28,22 @@ S = ".ssh"
         ("echo ok & ssh-add", guard.REASON_ADD),
         ("echo a\nssh-add", guard.REASON_ADD),
         ("env FOO=1 ssh-add", guard.REASON_ADD),
-        ("/usr/bin/env ssh-add -l", guard.REASON_ADD),
+        ("/usr/bin/env ssh-add", guard.REASON_ADD),
+        ("/usr/local/opt/coreutils/libexec/gnubin/env ssh-add", guard.REASON_ADD),
+        ("/usr/bin/../bin/env ssh-add", guard.REASON_ADD),
+        ("/usr/bin/../bin/nohup ssh-add", guard.REASON_ADD),
+        ("./time ssh-add", guard.REASON_ADD),
+        ("tools/env ssh-add", guard.REASON_ADD),
+        ("/home/u/project/command ssh-add", guard.REASON_ADD),
         ("nohup ssh-add", guard.REASON_ADD),
         ("exec ssh-add", guard.REASON_ADD),
         ("time ssh-add", guard.REASON_ADD),
         ("ssh-add; sudo -nl", guard.REASON_ADD),
         ("FOO=1 command ssh-add", guard.REASON_ADD),
+        ("ssh-add -l; echo $'done'; ssh-add", guard.REASON_ADD),
+        ('"ssh-\\\nadd"', guard.REASON_ADD),
+        ("{ ssh-add; }", guard.REASON_ADD),
+        ("[[ -n $x ]] && ssh-add", guard.REASON_ADD),
     ],
 )
 def test_denied(command: str, reason: str) -> None:
@@ -42,6 +53,9 @@ def test_denied(command: str, reason: str) -> None:
 @pytest.mark.parametrize(
     "command",
     [
+        "ssh-add -l",
+        'echo "Build (debug)"',
+        "/usr/bin/env ssh-add -l",
         f"ls ~/{S}/sessions",
         f"ls ~/{S}x",
         f"git commit -m {Path.home()}/{S}",
@@ -56,7 +70,6 @@ def test_denied(command: str, reason: str) -> None:
         f"grep -F '~/{S}/config' reference.txt",
         "git status  # ssh-add",
         "cat <<'X'\nssh-add\nX\nls",
-        "echo 'unbalanced",
         "cat <<'END-DOC'\nssh-add\nEND-DOC\nls",
         "cat <<-EOF\n\tssh-add\nEOF",
         f'git commit -m "$HOME/{S}/config"',
@@ -98,10 +111,8 @@ def test_denied(command: str, reason: str) -> None:
         "env --unset FOO ssh-add -l",
         "env -S 'printf %s' ssh-add",
         "env --chdir=./ssh-add pwd",
-        "./time ssh-add",
-        "tools/env ssh-add",
-        "/home/u/project/env ssh-add",
-        "printf '%s\\n' $'it\\'s text; ssh-add -l; # end'",
+        "/home/u/project/nohup ssh-add",
+        "printf '%s\\n' $'it\\'s text; ssh-add; # end'",
         "/usr/bin/time -o./ssh-add /usr/bin/true",
         "env -C./ssh-add pwd",
         "env --split-string='printf %s ./ssh-add'",
@@ -123,6 +134,21 @@ def test_quoting_and_continuations() -> None:
     assert guard.verdict("ls \\\n -l") is None
 
 
+def test_ansi_c_quote_keeps_the_read_only_command_in_the_parse() -> None:
+    command = "ssh-add -l; echo $'done'"
+    assert guard.segments(command) == [["ssh-add", "-l"], ["echo", "done"]]
+    assert guard.verdict(command) is None
+
+
+def test_single_brackets_are_preserved_as_shell_words() -> None:
+    assert guard.segments("[ -n a[b] ]") == [["[", "-n", "a[b]", "]"]]
+
+
+@pytest.mark.parametrize("command", ["echo 'unbalanced", 'echo "Build (debug)'])
+def test_an_unterminated_quote_is_reported(command: str) -> None:
+    assert guard.verdict(command) == guard.REASON_QUOTE
+
+
 def test_a_bare_name_counts_when_the_file_is_in_the_ssh_directory(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -133,6 +159,57 @@ def test_a_bare_name_counts_when_the_file_is_in_the_ssh_directory(
     assert guard.path_reason({"tool_input": {"path": "id_x"}}, str(ssh)) is not None
     assert guard.path_reason({"tool_input": {"path": "main"}}, str(ssh)) is None
     assert guard.path_reason({"tool_input": {"path": "-s"}}, str(ssh)) is None
+    (ssh / "-s").touch()
+    reason = guard.path_reason({"tool_input": {"path": "-s"}}, str(ssh))
+    assert reason == guard.REASON_DIR
+
+
+@pytest.mark.skipif(not hasattr(socket, "AF_UNIX"), reason="requires Unix sockets")
+def test_a_socket_outside_ssh_is_denied(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    with socket.socket(socket.AF_UNIX) as listener:
+        listener.bind("agent.sock")
+        reason = guard.path_reason(
+            {"tool_input": {"path": "agent.sock"}}, str(tmp_path)
+        )
+        assert reason
+
+
+@pytest.mark.parametrize(
+    ("payload", "antigravity"),
+    [
+        (b'{"tool_input": {"command": "echo \xff"}}', False),
+        (b'{"toolCall": {"args": {"CommandLine": "echo \xff"}}}', True),
+    ],
+)
+def test_non_utf8_input_is_reported(
+    payload: bytes,
+    *,
+    antigravity: bool,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    with io.TextIOWrapper(io.BytesIO(payload), encoding="utf-8") as stdin:
+        monkeypatch.setattr(sys, "stdin", stdin)
+        assert guard.main() == 0
+    decision = json.loads(capsys.readouterr().out)
+    if antigravity:
+        assert decision["decision"] == "deny"
+    else:
+        assert decision["hookSpecificOutput"]["permissionDecision"] == "deny"
+
+
+def test_non_utf8_text_stream_is_reported(monkeypatch: pytest.MonkeyPatch) -> None:
+    stdin = codecs.getreader("utf-8")(io.BytesIO(b"\xff"))
+    monkeypatch.setattr(sys, "stdin", stdin)
+    assert guard.read_payload() == ({}, guard.REASON_ENCODING)
+
+
+def test_invalid_json_is_allowed(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(sys, "stdin", io.StringIO("{"))
+    assert guard.denial() is None
 
 
 def test_the_payload_cwd_resolves_relative_paths(
@@ -173,7 +250,7 @@ def test_hook_contract(
     else:
         stdin = json.dumps({"tool_input": {"command": "ssh-add"}})
     monkeypatch.setattr(sys, "stdin", io.StringIO(stdin))
-    assert alpha.main(["guard-ssh-agent"], "tbhbdev alpha") == 0
+    assert guard.main() == 0
     out = json.loads(capsys.readouterr().out)
     if agy:
         assert out == {"decision": "deny", "reason": guard.REASON_ADD}
@@ -190,6 +267,7 @@ def test_hook_contract(
         ({"file_path": f"{Path.home()}/{S}/sessions/k"}, False),
         ({"file_path": "/etc/hosts"}, False),
         ({"file_path": 3}, False),
+        ({"file_path": ""}, False),
     ],
 )
 def test_a_tool_path_is_checked(

@@ -10,7 +10,6 @@ import time
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
-import httpx
 import yaml
 
 from tbhbdev import secrets
@@ -53,11 +52,6 @@ class Delivery:
     signing: str | None = field(repr=False)
     gh_fallback: bool
     claude_profile: str | None
-
-
-@dataclass(frozen=True)
-class PushTokenFailure:
-    reason: str
 
 
 def read(reference: str, *, label: str) -> str:
@@ -140,7 +134,6 @@ TOKEN_ERRORS = (
     ValueError,
     KeyError,
     TypeError,
-    httpx.HTTPError,
     gh_app.GhAppError,
 )
 
@@ -171,22 +164,10 @@ def github_token(
         raise Invalid(message) from None
 
 
-def push_token(
-    request: RunRequest, settings: Settings
-) -> str | PushTokenFailure | None:
-    """Return a build's write token or the class name of the minting error."""
-    if request.profile is not Profile.BUILD:
-        return None
-    references = next(c for c in settings.credentials if c.account == request.account)
-    try:
-        return pull_requests_token(references, request.repo, PUSH_PERMISSIONS)
-    except TOKEN_ERRORS as exc:
-        return PushTokenFailure(type(exc).__name__)
-
-
 def review_post_token(
     request: RunRequest,
     settings: Settings,
+    *,
     permissions: dict[str, str] = REVIEW_POST_PERMISSIONS,
 ) -> str | None:
     """The run-scoped token that posts a review run's verdict, or None."""

@@ -13,7 +13,7 @@ from contextlib import contextmanager
 from pathlib import Path
 from typing import TYPE_CHECKING, cast
 
-import httpx
+import httpx2
 import pytest
 import yaml
 from agent_host_example import constant, git, host_settings, repository, run_request
@@ -136,7 +136,6 @@ def test_each_credential_only_reaches_its_destination(
         ValueError,
         KeyError,
         TypeError,
-        httpx.HTTPError,
         gh_app.GhAppError,
     ],
 )
@@ -273,12 +272,12 @@ def test_review_token_request_is_read_only_for_only_run_repository(
         encryption_algorithm=serialization.NoEncryption(),
     ).decode()
     monkeypatch.setitem(VALUES, "example/app/pem", pem)
-    requests: list[httpx.Request] = []
+    requests: list[httpx2.Request] = []
     replies = {
-        ("GET", "/repos/tbhb-dev/example-repo/installation"): httpx.Response(
+        ("GET", "/repos/tbhb-dev/example-repo/installation"): httpx2.Response(
             200, json={"id": 7}
         ),
-        ("POST", "/app/installations/7/access_tokens"): httpx.Response(
+        ("POST", "/app/installations/7/access_tokens"): httpx2.Response(
             201,
             json={
                 "token": "example-installation",
@@ -287,7 +286,7 @@ def test_review_token_request_is_read_only_for_only_run_repository(
         ),
     }
 
-    def respond(request: httpx.Request) -> httpx.Response:
+    def respond(request: httpx2.Request) -> httpx2.Response:
         requests.append(request)
         return replies[request.method, request.url.path]
 
@@ -296,7 +295,7 @@ def test_review_token_request_is_read_only_for_only_run_repository(
         lambda: 1000,
         secrets.Store,
         gh_app.run_openssl,
-        httpx.MockTransport(respond),
+        httpx2.MockTransport(respond),
     )
     monkeypatch.setattr(gh_app, "default_env", lambda: env)
     monkeypatch.setattr(gh_app, "sign", constant("example-jwt"))
@@ -1034,12 +1033,12 @@ def test_build_token_request_names_one_repository_and_write_permissions(
         encryption_algorithm=serialization.NoEncryption(),
     ).decode()
     monkeypatch.setitem(VALUES, "example/app/pem", pem)
-    requests: list[httpx.Request] = []
+    requests: list[httpx2.Request] = []
     replies = {
-        ("GET", "/repos/tbhb-dev/example-repo/installation"): httpx.Response(
+        ("GET", "/repos/tbhb-dev/example-repo/installation"): httpx2.Response(
             200, json={"id": 7}
         ),
-        ("POST", "/app/installations/7/access_tokens"): httpx.Response(
+        ("POST", "/app/installations/7/access_tokens"): httpx2.Response(
             201,
             json={
                 "token": BUILD_TOKEN,
@@ -1048,7 +1047,7 @@ def test_build_token_request_names_one_repository_and_write_permissions(
         ),
     }
 
-    def respond(request: httpx.Request) -> httpx.Response:
+    def respond(request: httpx2.Request) -> httpx2.Response:
         requests.append(request)
         return replies[request.method, request.url.path]
 
@@ -1060,7 +1059,7 @@ def test_build_token_request_names_one_repository_and_write_permissions(
         lambda: 1000,
         secrets.Store,
         gh_app.run_openssl,
-        httpx.MockTransport(respond),
+        httpx2.MockTransport(respond),
     )
     monkeypatch.setattr(gh_app, "default_env", lambda: env)
     # The build path signs in memory, never through the key-file signer.
@@ -1280,7 +1279,7 @@ def test_build_fetch_fallback_requests_read_only_pull_requests_token(
 
 
 @pytest.mark.parametrize("profile", Profile)
-def test_harness_and_driver_mint_permissions_for_the_profile(
+def test_harness_mints_permissions_for_the_profile(
     monkeypatch: pytest.MonkeyPatch, profile: Profile
 ) -> None:
     monkeypatch.setitem(VALUES, "example/app/pem", "example-pem")
@@ -1299,36 +1298,6 @@ def test_harness_and_driver_mint_permissions_for_the_profile(
     scopes = [keywords["permissions"] for keywords in seen]
     if profile is Profile.BUILD:
         assert scopes == [BUILD_PERMISSIONS]
-        assert credentials.push_token(request, settings) == REVIEW_TOKEN
-        assert seen[-1]["permissions"] == BUILD_PERMISSIONS
     else:
         assert scopes == [REVIEW_PERMISSIONS]
-        assert credentials.push_token(request, settings) is None
-        assert len(seen) == 1
     assert all(keywords["repository"] == request.repo for keywords in seen)
-
-
-def test_push_token_is_none_for_a_review_without_minting(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    def refuse(_env: gh_app.Env, **_keywords: object) -> gh_app.Minted:
-        raise AssertionError
-
-    monkeypatch.setattr(gh_app, "mint_token", refuse)
-    request = run_request(profile="review", commit="0" * 40)
-    assert credentials.push_token(request, pull_requests_settings()) is None
-
-
-def test_push_token_reports_when_the_app_refuses_the_permissions(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    monkeypatch.setitem(VALUES, "example/app/pem", "example-pem")
-
-    def refuse(_env: gh_app.Env, **_keywords: object) -> gh_app.Minted:
-        message = "permissions refused"
-        raise gh_app.GhAppError(message)
-
-    monkeypatch.setattr(gh_app, "mint_token", refuse)
-    assert credentials.push_token(
-        run_request(), pull_requests_settings()
-    ) == credentials.PushTokenFailure("GhAppError")

@@ -1,0 +1,13 @@
+---
+# augenrules merges rules.d into audit.rules and loads it only when it changed.
+- name: Load audit rules
+  ansible.builtin.command:
+    cmd: augenrules --load
+  changed_when: true
+  when: host_audit_load
+
+- name: Reload auditd
+  ansible.builtin.command:
+    cmd: auditctl --signal reload
+  changed_when: true
+  when: host_audit_load

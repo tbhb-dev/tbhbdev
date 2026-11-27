@@ -9,12 +9,6 @@ cli_py_library(
     srcs = ["__init__.py"],
     imports = ["../.."],
     visibility = ["//factory/cli:__subpackages__"],
-    deps = [
-        ":audit",
-        ":policy",
-        ":request",
-        "//factory/cli/src/tbhbdev/alpha:gh_app",
-    ],
 )
 
 cli_py_library(
@@ -47,9 +41,10 @@ cli_py_library(
     deps = [
         ":audit",
         ":policy",
+        "//factory/cli/src/tbhbdev:github_tls",
         "//factory/cli/src/tbhbdev:secrets",
         "//factory/cli/src/tbhbdev/alpha:gh_app",
-        "@cli_pip//httpx",
+        "@cli_pip//httpx2",
     ],
 )
 
@@ -60,4 +55,17 @@ filegroup(
         exclude = ["BUILD.bazel"],
     ),
     visibility = ["//factory/cli:__pkg__"],
+)
+
+cli_py_library(
+    name = "command",
+    srcs = ["command.py"],
+    imports = ["../.."],
+    visibility = ["//factory/cli:__subpackages__"],
+    deps = [
+        ":audit",
+        ":request",
+        "//factory/cli/src/tbhbdev:userconfig",
+        "//factory/cli/src/tbhbdev/alpha:gh_app",
+    ],
 )

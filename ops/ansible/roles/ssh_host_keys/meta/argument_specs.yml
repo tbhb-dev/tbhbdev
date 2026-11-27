@@ -1,0 +1,20 @@
+---
+argument_specs:
+  main:
+    short_description: Create a per-host ed25519 key for each account and print its public half
+    options:
+      ssh_host_keys_users:
+        type: list
+        elements: str
+        default: [agent, ops]
+        description: Accounts that each get their own key. An account missing from the host is skipped.
+      ssh_host_keys_known_hosts_src:
+        type: str
+        default: "{{ inventory_dir }}/../known_hosts"
+        description: Controller path of the pinned host keys, installed as ~/.ssh/known_hosts_tbhb.
+      ssh_host_keys_peers:
+        type: list
+        elements: str
+        description: >-
+          Hosts that the account's ssh config points at its own key for. The default is every agent
+          host except this one and the Windows hosts.

@@ -63,13 +63,7 @@ def gh_env(env: Mapping[str, str], home: Path) -> dict[str, str]:
     return {**kept, "GH_CONFIG_DIR": str(home / gh_agent.CONFIG_DIR)}
 
 
-def gh_api(
-    method: str,
-    path: str,
-    body: Mapping[str, object] | None = None,
-    *,
-    env: Mapping[str, str] | None = None,
-) -> object:
+def gh_api(method: str, path: str, body: Mapping[str, object] | None = None) -> object:
     """The JSON reply of ``gh api --method METHOD PATH``, sending BODY on stdin.
 
     Raises:
@@ -87,7 +81,7 @@ def gh_api(
             capture_output=True,
             text=True,
             check=False,
-            env=gh_env(os.environ, Path.home()) if env is None else env,
+            env=gh_env(os.environ, Path.home()),
         )
     except OSError as exc:
         message = f"cannot run gh: {exc}"

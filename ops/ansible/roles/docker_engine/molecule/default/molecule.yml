@@ -1,0 +1,52 @@
+---
+# Privileged mode lets systemd run as PID 1 and lets the daemon start
+# containers. The data root is a volume because the image's root file
+# system is overlayfs, and the daemon's overlay2 driver can't stack on it.
+# The container has no LVM, so the scenario sets an empty
+# docker_engine_data_size, which skips the logical volume.
+dependency:
+  name: galaxy
+  enabled: false
+driver:
+  name: docker
+platforms:
+  # test-ansible sets MOLECULE_RUN_ID, so concurrent runs get distinct containers.
+  - name: lab-1-${MOLECULE_RUN_ID:-local}
+    # The runner builds this content-addressed image when its cache is missing.
+    image: ${MOLECULE_IMAGE}
+    pre_build_image: true
+    privileged: true
+    command: /sbin/init
+    cgroupns_mode: private
+    volumes:
+      - /var/lib/docker
+    keep_volumes: false
+    tmpfs:
+      - /run
+      - /tmp
+prerun: false
+provisioner:
+  name: ansible
+  # The driver sets community.docker.docker on each host, which inventory
+  # group_vars can't override. docker_api talks to the daemon's API
+  # instead of piping modules through docker exec stdin.
+  connection_options:
+    ansible_connection: community.docker.docker_api
+  inventory:
+    group_vars:
+      all:
+        ansible_user: ops
+        # No LVM in the container, so no logical volume.
+        docker_engine_data_size: ""
+verifier:
+  name: ansible
+scenario:
+  test_sequence:
+    - destroy
+    - syntax
+    - create
+    - check
+    - converge
+    - idempotence
+    - verify
+    - destroy

@@ -1,0 +1,13 @@
+---
+- name: Prepare
+  hosts: all
+  become: true
+  tasks:
+    - name: Save the packaged configuration before convergence
+      ansible.builtin.copy:
+        src: /etc/chrony/chrony.conf
+        dest: /var/tmp/chrony-nts-original.conf
+        remote_src: true
+        owner: root
+        group: root
+        mode: "0600"

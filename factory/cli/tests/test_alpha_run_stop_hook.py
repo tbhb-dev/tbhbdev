@@ -8,7 +8,8 @@ from typing import TYPE_CHECKING
 import pytest
 from agent_host_example import commit, git, repository
 
-from tbhbdev.alpha import main, run_stop_hook
+from tbhbdev.alpha import run_stop_hook
+from tbhbdev.alpha.run_stop_hook import main
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Mapping
@@ -44,7 +45,7 @@ def stop(
     def call(harness: str, payload: Mapping[str, object]) -> str:
         monkeypatch.setenv(run_stop_hook.ENV, json.dumps(run))
         monkeypatch.setattr("sys.stdin", io.StringIO(json.dumps(payload)))
-        assert main(["run-stop-hook", harness], "tbhbdev alpha") == 0
+        assert main([harness], "tbhbdev alpha run-stop-hook") == 0
         return capsys.readouterr().out
 
     return call
@@ -53,7 +54,7 @@ def stop(
 def test_interactive_stop_never_reads_stdin(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.delenv(run_stop_hook.ENV, raising=False)
     monkeypatch.setattr("sys.stdin", None)
-    assert main(["run-stop-hook", "claude"], "tbhbdev alpha") == 0
+    assert main(["claude"], "tbhbdev alpha run-stop-hook") == 0
 
 
 @pytest.mark.parametrize(("harness", "payload"), [("claude", CLAUDE), ("codex", CODEX)])

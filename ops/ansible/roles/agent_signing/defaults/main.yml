@@ -1,0 +1,6 @@
+---
+agent_signing_devtools_version: v0.23.0
+# A clone of example-org/devtools-example on the controller. The role builds from it and never fetches.
+agent_signing_devtools_src: "{{ lookup('ansible.builtin.env', 'HOME') }}/Code/github.com/example-org/devtools-example"
+agent_signing_git_name: tbhb.dev Agent
+agent_signing_git_email: agent@example.invalid

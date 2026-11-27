@@ -18,6 +18,8 @@ import sys
 from pathlib import Path
 from typing import cast
 
+from tbhbdev.alpha.identity.trailers import utc
+
 type Json = dict[str, object]
 
 # git@github.com:tbhb-dev/x, ssh://git@github.com/tbhb-dev/x(.git) and
@@ -58,6 +60,24 @@ def git(
     except OSError:
         return 128, ""
     return result.returncode, result.stdout.strip("\n")
+
+
+def branch_created_at(top: Path) -> str | None:
+    """Return the first branch creation time in the current branch's reflog."""
+    code, branch = git("symbolic-ref", "--quiet", "HEAD", cwd=top)
+    if code != 0:
+        return None
+    _, log = git(
+        "reflog",
+        "show",
+        "--grep-reflog=^branch: Created from ",
+        "--date=raw",
+        "--format=%gd",
+        branch,
+        cwd=top,
+    )
+    matches = re.findall(r"@\{(\d+) [+-]\d{4}\}", log)
+    return utc(int(matches[-1])) if matches else None
 
 
 def is_tbhb_dev_url(url: str) -> bool:

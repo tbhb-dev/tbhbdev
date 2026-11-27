@@ -1,0 +1,37 @@
+---
+- name: tls | Read the selected release's Compose settings
+  # Inspect mount sources without loading secret service environment files.
+  ansible.builtin.command:
+    argv: [docker, compose, config, --format, json, --no-env-resolution]
+    chdir: "{{ o11y_target }}"
+  register: o11y_target_compose
+  changed_when: false
+  no_log: true
+  diff: false
+
+- name: tls | Check Grafana TLS certificates when enabled
+  vars:
+    o11y_target_tls_cert_dir: >-
+      {{ (o11y_target_compose.stdout | from_json).services['grafana-tls'].volumes
+        | selectattr('target', 'equalto', '/tls') | map(attribute='source') | first }}
+  when: "'grafana-tls' in (o11y_target_compose.stdout | from_json).services"
+  block:
+    - name: tls | Stat Grafana TLS certificate files
+      ansible.builtin.stat:
+        path: "{{ o11y_target_tls_cert_dir }}/{{ item }}"
+        follow: true
+        get_checksum: false
+        get_mime: false
+      loop: [grafana.crt.pem, grafana.key.pem]
+      register: o11y_grafana_tls_files
+
+    - name: tls | Require Grafana TLS certificate files
+      ansible.builtin.assert:
+        that:
+          - item.stat.exists
+          - item.stat.isreg | default(false)
+        fail_msg: "Grafana TLS requires {{ o11y_target_tls_cert_dir }}/{{ item.item }} to exist as a regular file."
+        quiet: true
+      loop: "{{ o11y_grafana_tls_files.results }}"
+      loop_control:
+        label: "{{ item.item }}"
