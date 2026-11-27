@@ -31,6 +31,18 @@ bzl_library(
     deps = ["//private:structurizr_workspace"],
 )
 
+filegroup(
+    name = "fonts",
+    srcs = [
+        "fonts/IBMPlexSans-Bold.ttf",
+        "fonts/IBMPlexSans-BoldItalic.ttf",
+        "fonts/IBMPlexSans-Italic.ttf",
+        "fonts/IBMPlexSans-Regular.ttf",
+        "fonts/OFL.txt",
+    ],
+    visibility = ["//:__subpackages__"],
+)
+
 # This module is released on its own (strip_prefix diagrams/structurizr/), so it
 # carries its own copies of the parent module's lint configs. Each copy must
 # match the parent's byte for byte; a change goes to both. .gitignore and

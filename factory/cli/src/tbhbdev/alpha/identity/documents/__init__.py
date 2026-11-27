@@ -1,0 +1,1 @@
+"""Attribution in Markdown frontmatter."""

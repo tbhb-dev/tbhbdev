@@ -9,7 +9,7 @@ from typing import TYPE_CHECKING
 
 from tbhbdev import telemetry
 from tbhbdev.alpha.agent import admission, transport
-from tbhbdev.alpha.agent.decisions import limits, remote
+from tbhbdev.alpha.agent.decisions import limits, remote_host
 from tbhbdev.alpha.agent.driver.decisions.hosts import candidates, select_host
 from tbhbdev.alpha.agent.model import Invalid, Profile
 
@@ -34,7 +34,7 @@ def read_limits(
         raise Invalid(message)
     try:
         found = limits.parse(
-            transport.shell(settings, host, remote.limits(), timeout=timeout)
+            transport.shell(settings, host, remote_host.limits(), timeout=timeout)
         )
     except transport.TransportError as exc:
         found = str(exc)
@@ -102,7 +102,7 @@ def usable_hosts(
                 slot = transport.shell(
                     settings,
                     host,
-                    remote.check_slot(host, profile),
+                    remote_host.check_slot(host, profile),
                     timeout=slot_timeout,
                 )
                 if slot.strip() == admission.SLOT_FULL:

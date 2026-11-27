@@ -26,7 +26,7 @@ from tbhbdev.alpha.agent import settings
 from tbhbdev.alpha.agent.decisions import host_names
 from tbhbdev.alpha.agent.signing_parity import public_keys
 from tbhbdev.alpha.gh_shim import RUN_NAME_ENV, agent_operation, session_root
-from tbhbdev.alpha.identity.dispatcher import AGENT_EMAIL
+from tbhbdev.alpha.identity.commit.policy import AGENT_EMAIL
 from tbhbdev.alpha.repo import git, is_tbhb_dev_url
 
 if TYPE_CHECKING:

@@ -25,8 +25,8 @@ expect_failure_test(
     first_line = True,
     pattern = "^stale: diagrams/structurizr\\-containers\\-key\\.png differs from a fresh render$",
     target_compatible_with = [
-        "@platforms//os:macos",
-        "@platforms//cpu:arm64",
+        "@platforms//os:linux",
+        "@platforms//cpu:x86_64",
     ],
     test = ":workspace_png_test",
 )

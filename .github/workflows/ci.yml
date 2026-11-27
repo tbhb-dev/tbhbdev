@@ -331,28 +331,7 @@ jobs:
 
       - name: Lint prose
         shell: bash
-        run: |
-          skip_paths=()
-          exclusions=()
-          while IFS= read -r path || [[ -n $path ]]; do
-            [[ -z $path || $path == \#* ]] && continue
-            if [[ $path != *.md || ! -f $path ]]; then
-              printf 'Prose skip list entry must name an existing Markdown file: %s\n' "$path" >&2
-              exit 1
-            fi
-            skip_paths+=("$path")
-            exclusions+=(":(exclude,literal)$path")
-          done < .github/prose-lint-debt.txt
-          if (( ${#skip_paths[@]} )); then
-            git --literal-pathspecs ls-files --error-unmatch -- "${skip_paths[@]}" >/dev/null
-          fi
-
-          files="$RUNNER_TEMP/prose-files"
-          git ls-files -z -- '*.md' "${exclusions[@]}" >"$files"
-          vale sync
-          xargs -0 -r vale <"$files"
-          xargs -0 -r cspell --no-progress <"$files"
-          xargs -0 -r rumdl check <"$files"
+        run: bash .github/prose-lint.sh all
 
   agent-capacity:
     name: agent-capacity image and vulnerability scans

@@ -21,7 +21,7 @@ problems=0
 for mode in check png; do
   if [[ $mode == check ]]; then
     expected='structurizr_workspace: committed JSON and SVG exports are current
-structurizr_workspace: PNG bytes were not compared by this test; the PNG test compares them on macOS arm64 only'
+structurizr_workspace: PNG bytes were not compared by this test; the PNG test compares them on Linux x86_64 only'
   else
     expected='structurizr_workspace: committed PNG exports are current'
   fi
