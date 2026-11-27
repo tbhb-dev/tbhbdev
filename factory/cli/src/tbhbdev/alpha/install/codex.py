@@ -3,7 +3,7 @@
 import sys
 from typing import TYPE_CHECKING
 
-from tbhbdev.alpha.identity.dispatcher import codex_home
+from tbhbdev.alpha.identity.codex.rollout import codex_home
 from tbhbdev.alpha.install.environment import with_environment
 from tbhbdev.alpha.install.files import read_text, write_config
 from tbhbdev.alpha.install.model import PROG, InstallError

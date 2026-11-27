@@ -1,0 +1,73 @@
+# SPDX-License-Identifier: Apache-2.0
+# Copyright Tony Burns
+
+load("//factory/cli/tests:pytest.bzl", "cli_py_test")
+
+filegroup(
+    name = "package_files",
+    srcs = glob(["*.py"]),
+    visibility = ["//factory/cli/tests/unit/alpha/identity:__pkg__"],
+)
+
+cli_py_test(
+    name = "test_attribution_io",
+    srcs = ["test_attribution_io.py"],
+    imports = ["../../../.."],
+    deps = [
+        "//factory/cli/src/tbhbdev/alpha/identity:attribution",
+        "//factory/cli/src/tbhbdev/alpha/identity:models",
+        "//factory/cli/src/tbhbdev/alpha/identity:records",
+        "//factory/cli/tests:conftest",
+        "//factory/cli/tests/unit/alpha/identity:conftest",
+        "//factory/cli/tests/unit/alpha/identity:identity_fixtures",
+    ],
+)
+
+cli_py_test(
+    name = "test_hooks_io",
+    srcs = ["test_hooks_io.py"],
+    imports = ["../../../.."],
+    deps = [
+        "//factory/cli/src/tbhbdev/alpha/identity:models",
+        "//factory/cli/src/tbhbdev/alpha/identity:records",
+        "//factory/cli/src/tbhbdev/alpha/identity:sessions",
+        "//factory/cli/src/tbhbdev/alpha/identity/codex:hooks",
+        "//factory/cli/src/tbhbdev/alpha/install:hooks",
+        "//factory/cli/tests:conftest",
+        "//factory/cli/tests/unit/alpha/identity:conftest",
+        "//factory/cli/tests/unit/alpha/identity:identity_examples",
+        "//factory/cli/tests/unit/alpha/identity:identity_fixtures",
+        "@cli_pip//pytest",
+    ],
+)
+
+cli_py_test(
+    name = "test_payload",
+    srcs = ["test_payload.py"],
+    imports = ["../../../.."],
+    deps = [
+        "//factory/cli/src/tbhbdev/alpha/identity:models",
+        "//factory/cli/src/tbhbdev/alpha/identity:records",
+        "//factory/cli/src/tbhbdev/alpha/identity/codex:payload",
+        "//factory/cli/tests/unit/alpha/identity:identity_examples",
+        "@cli_pip//hypothesis",
+    ],
+)
+
+cli_py_test(
+    name = "test_rollout_io",
+    srcs = ["test_rollout_io.py"],
+    imports = ["../../../.."],
+    deps = [
+        "//factory/cli/src/tbhbdev/alpha/identity:models",
+        "//factory/cli/src/tbhbdev/alpha/identity:receipts",
+        "//factory/cli/src/tbhbdev/alpha/identity:records",
+        "//factory/cli/src/tbhbdev/alpha/identity:storage",
+        "//factory/cli/src/tbhbdev/alpha/identity/codex:rollout",
+        "//factory/cli/tests:conftest",
+        "//factory/cli/tests/unit/alpha/identity:conftest",
+        "//factory/cli/tests/unit/alpha/identity:identity_examples",
+        "//factory/cli/tests/unit/alpha/identity:identity_fixtures",
+        "@cli_pip//pytest",
+    ],
+)

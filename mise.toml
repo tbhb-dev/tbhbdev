@@ -58,6 +58,10 @@ node = "22.23.4"
 cspell = "10.5.2"
 ruff = "0.17.3"
 
+[tasks.lint-prose]
+description = "Lint Markdown with the same tools and styles as CI"
+run = "bash .github/prose-lint.sh"
+
 [tasks.scan-secrets]
 description = "Run Gitleaks with the repository policy"
 run = '''

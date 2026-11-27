@@ -152,7 +152,10 @@ cli_py_library(
         "//factory/cli/src/tbhbdev/alpha:size_gate",
         "//factory/cli/src/tbhbdev/alpha/agent/decisions:repo",
         "//factory/cli/src/tbhbdev/alpha/agent/decisions:request",
-        "//factory/cli/src/tbhbdev/alpha/identity:dispatcher",
+        "//factory/cli/src/tbhbdev/alpha/identity:models",
+        "//factory/cli/src/tbhbdev/alpha/identity:records",
+        "//factory/cli/src/tbhbdev/alpha/identity:trailers",
+        "//factory/cli/src/tbhbdev/alpha/identity/commit:grammar",
         "@cli_pip//httpx2",
     ],
 )
@@ -190,7 +193,7 @@ cli_py_library(
         "//factory/cli/src/tbhbdev/alpha/agent/decisions:repo",
         "//factory/cli/src/tbhbdev/alpha/agent/decisions:request",
         "//factory/cli/src/tbhbdev/alpha/agent/decisions:run_state",
-        "//factory/cli/src/tbhbdev/alpha/identity:dispatcher",
+        "//factory/cli/src/tbhbdev/alpha/identity/commit:policy",
         "//factory/cli/src/tbhbdev/alpha/install:hooks",
         "//factory/cli/src/tbhbdev/alpha/install:trust",
         "@cli_pip//httpx2",
@@ -243,7 +246,8 @@ cli_py_library(
         ":settings",
         ":transport",
         "//factory/cli/src/tbhbdev:github_tls",
-        "//factory/cli/src/tbhbdev/alpha/agent/decisions:remote",
+        "//factory/cli/src/tbhbdev/alpha/agent/decisions:remote_host",
+        "//factory/cli/src/tbhbdev/alpha/agent/decisions:remote_shell",
         "@cli_pip//httpx2",
     ],
 )
@@ -273,7 +277,7 @@ cli_py_library(
         ":model",
         "//factory/cli/src/tbhbdev/alpha:terminal",
         "//factory/cli/src/tbhbdev/alpha/agent/decisions:argv",
-        "//factory/cli/src/tbhbdev/alpha/agent/decisions:remote",
+        "//factory/cli/src/tbhbdev/alpha/agent/decisions:remote_run",
         "//factory/cli/src/tbhbdev/alpha/agent/decisions:runfiles_names",
     ],
 )
@@ -291,7 +295,7 @@ cli_py_library(
         "//factory/cli/src/tbhbdev/alpha:repo",
         "//factory/cli/src/tbhbdev/alpha/agent/decisions:repo",
         "//factory/cli/src/tbhbdev/alpha/agent/decisions:request",
-        "//factory/cli/src/tbhbdev/alpha/identity:dispatcher",
+        "//factory/cli/src/tbhbdev/alpha/identity/commit:policy",
         "//factory/cli/src/tbhbdev/alpha/install:scripts",
     ],
 )

@@ -1,0 +1,7 @@
+[[approval]]
+repository = "tbhb-dev/tbhbdev"
+ruleset_id = 28092610
+rule = "pull_request"
+parameter = "required_review_thread_resolution"
+value = false
+decision = "2026-11-27-merge-does-not-require-resolved-threads"

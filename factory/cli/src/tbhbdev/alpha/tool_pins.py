@@ -15,7 +15,7 @@ if TYPE_CHECKING:
     from collections.abc import Mapping
 
 VERSIONS = Path(__file__).with_name("pr-tool-versions.json")
-PINNED = frozenset({"gitleaks", "scc", "vale"})
+PINNED = frozenset({"cspell", "gitleaks", "rumdl", "scc", "vale"})
 CHECK_TOOLS = {
     "node": "node",
     "cspell": "cspell",
