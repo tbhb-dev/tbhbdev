@@ -10,9 +10,11 @@ ops_py_test(
     srcs = [
         "test_token_keychain.py",
         "test_token_policy.py",
+        "test_token_script.py",
         "test_token_shell.py",
         "test_token_vaults.py",
     ],
+    data = glob(["testdata/*.txt"]),
     deps = [
         "//ops/packages/tbhbops-cli/src",
         "@cli_pip//pytest",

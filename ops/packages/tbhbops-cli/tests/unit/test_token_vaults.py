@@ -10,7 +10,7 @@ from pathlib import Path
 lazy from collections.abc import Collection
 
 import pytest
-from tbhbops_cli import token_policy, tokens
+from tbhbops_cli import token_policy, token_script
 from tbhbops_cli.token_vaults import VAULT_JQ
 
 AGENTS = ("ex-ctl1", "ex-ctl2", "ex-lab1", "ex-win1")
@@ -113,7 +113,7 @@ def run_live(  # the fake's knobs, each one a fact
     env = sh_env(root, bin_dir)
     return subprocess.run(  # the fixed shell, a script on stdin
         [SH],
-        input=tokens.commands(
+        input=token_script.commands(
             "srv",
             hosts,
             AGENTS,

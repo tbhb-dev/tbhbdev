@@ -1,17 +1,17 @@
-"""Tests for the token grants, the script that creates them and the reach check."""
+"""Tests for the complete Connect token scripts."""
 
 import re
 import subprocess
 from pathlib import Path
 
 import pytest
-from tbhbops_cli import token_policy, tokens
+from tbhbops_cli import token_policy, token_script
 
 AGENTS = ("ex-ctl1", "ex-ctl2", "ex-lab1", "ex-win1")
 CONTROLLERS = ("ex-ctl1", "ex-ctl2")
 WHEN = "20261108T142100Z"
 ACCOUNT = "acct.example.com"
-HERE = Path(__file__).parent
+HERE = Path(__file__).with_name("testdata")
 SH = "/bin/sh"
 OPS_VAULTS = ("host-storage-nas-a", "host-storage-nas-b")
 NEEDED = ("host-0-shared", *(f"host-{h}" for h in AGENTS), *OPS_VAULTS)
@@ -19,17 +19,16 @@ NEEDED = ("host-0-shared", *(f"host-{h}" for h in AGENTS), *OPS_VAULTS)
 
 def script(
     hosts: tuple[str, ...] = AGENTS,
-    agents: tuple[str, ...] = AGENTS,
     *,
     session: str | None = None,
     runner_vms: tuple[str, ...] = (),
     dry_run: bool = False,
 ) -> str:
     ops = token_policy.select_ops(CONTROLLERS, hosts)
-    return tokens.commands(
+    return token_script.commands(
         "srv",
         hosts,
-        agents,
+        AGENTS,
         CONTROLLERS,
         WHEN,
         account=ACCOUNT,
@@ -175,7 +174,7 @@ def test_the_header_names_ssh_only_when_an_ops_token_is_made() -> None:
 
 
 def test_a_server_name_with_a_space_is_quoted() -> None:
-    text = tokens.commands(
+    text = token_script.commands(
         "my server",
         ("ex-lab1",),
         AGENTS,
@@ -189,7 +188,7 @@ def test_a_server_name_with_a_space_is_quoted() -> None:
 
 
 def test_an_account_name_with_a_space_is_quoted_on_every_op_command() -> None:
-    text = tokens.commands(
+    text = token_script.commands(
         "srv",
         ("ex-ctl1",),
         AGENTS,
@@ -308,7 +307,7 @@ def test_a_script_for_an_ordinary_host_creates_only_its_own_vaults() -> None:
 
 
 def test_a_vault_name_with_a_space_is_quoted_in_the_vault_loop() -> None:
-    text = tokens.commands(
+    text = token_script.commands(
         "srv",
         ("a b",),
         ("a b",),
@@ -319,7 +318,7 @@ def test_a_vault_name_with_a_space_is_quoted_in_the_vault_loop() -> None:
         dry_run=False,
     )
     assert "for name in host-0-shared 'host-a b'; do\n" in text
-    dry = tokens.commands(
+    dry = token_script.commands(
         "srv",
         ("a b",),
         ("a b",),
@@ -417,9 +416,9 @@ def runner_script(*, dry_run: bool = False) -> str:
     return script((), runner_vms=(RUNNER_VM,), dry_run=dry_run)
 
 
-def mixed_script(*, dry_run: bool = False) -> str:
+def mixed_script() -> str:
     """The script for an agent host and a runner VM, which makes both kinds."""
-    return script(("ex-lab1",), runner_vms=(RUNNER_VM,), dry_run=dry_run)
+    return script(("ex-lab1",), runner_vms=(RUNNER_VM,))
 
 
 def test_the_runner_vm_script_matches_its_golden_text() -> None:

@@ -35,7 +35,7 @@ from tbhbops_cli import (
     s3,
     sources,
     token_policy,
-    tokens,
+    token_script,
 )
 from tbhbops_cli.common import CliError, Http, Run, https_request
 from tbhbops_cli.o11y.http import AdminHttp, LocalAdminHttp, LocalHttp
@@ -332,7 +332,7 @@ def token_commands(  # the command's options, each one a fact
     # Runner VMs alone make a script of only their tokens.
     alone = bool(runners) and not hosts and ops_session is None
     chosen = () if alone else token_policy.select(agents, hosts)
-    script = tokens.commands(
+    script = token_script.commands(
         server,
         chosen,
         agents,

@@ -1,6 +1,4 @@
-"""The Connect tokens of the agent hosts, and the script that creates them.
-
-This holds each token's grants, the script, and the reach check.
+"""Assemble the script that creates the agent hosts' Connect tokens.
 
 Each agent host holds one token with no expiry, in the item `connect-token`
 of its own vault `host-<host>`, which the Ansible `connect_token` role reads
@@ -14,9 +12,8 @@ keys), and goes into the keychain of the user who runs the script. No other
 token reaches overlay-oauth. Each CI runner VM, on request, gets a token that
 reads only the vault runner-fixture, which holds the runner App's key. It sits
 in the item `runner-access-token` of its lab node's vault `host-<node>`, which
-the Ansible `actions_runner_pool` role reads at
-from the vault and item configured for the node. The command
-prints the script and never runs it.
+the Ansible `actions_runner_pool` role reads from the vault and item
+configured for the node. The command prints the script for the operator.
 """
 
 import shlex
@@ -52,7 +49,7 @@ def _echoed(text: str) -> str:
     return f"echo {shlex.quote(text)}"
 
 
-def _header(  # the header's inputs, each one a fact
+def _header(
     server: str,
     *,
     with_ops: bool,
@@ -149,7 +146,7 @@ def _granted(
     return sorted(wanted - {VAULT_ALL})
 
 
-def commands(  # the script's inputs, each one a fact
+def commands(
     server: str,
     hosts: Sequence[str],
     agents: Sequence[str],
