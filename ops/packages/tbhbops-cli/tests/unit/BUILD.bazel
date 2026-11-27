@@ -8,6 +8,7 @@ package(default_testonly = True)
 ops_py_test(
     name = "unit_test",
     srcs = [
+        "test_token_keychain.py",
         "test_token_policy.py",
         "test_token_shell.py",
     ],
