@@ -25,7 +25,6 @@ import tbhbdev.alpha.guard.ops_no_lazy_stop
 import tbhbdev.alpha.guard.scripts.command
 import tbhbdev.alpha.guard.sendmessage_clock
 import tbhbdev.alpha.guard.state
-import tbhbdev.alpha.identity.dispatcher
 import tbhbdev.alpha.install.command
 import tbhbdev.alpha.pre_push_guard
 import tbhbdev.alpha.run_stop_hook
@@ -33,6 +32,7 @@ import tbhbdev.alpha.session_context
 import tbhbdev.alpha.verify_range
 import tbhbdev.alpha.version_check
 import tbhbdev.alpha.worktree_sweep
+from tbhbdev.alpha.identity import dispatcher as identity_dispatcher
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -101,7 +101,7 @@ commands:
 
 
 def identity_command(argv: list[str], _prog: str) -> int:
-    return tbhbdev.alpha.identity.dispatcher.run(argv, os.environ)
+    return identity_dispatcher.run(argv, os.environ)
 
 
 def guard_command(_argv: list[str], _prog: str) -> int:

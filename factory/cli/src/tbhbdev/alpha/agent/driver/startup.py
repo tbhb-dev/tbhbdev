@@ -6,7 +6,7 @@ import time
 from typing import TYPE_CHECKING
 
 from tbhbdev.alpha.agent import shims, transport
-from tbhbdev.alpha.agent.decisions import remote
+from tbhbdev.alpha.agent.decisions import remote_shell
 from tbhbdev.alpha.agent.driver.cleanup import clean
 from tbhbdev.alpha.agent.driver.decisions import lifecycle as rules
 from tbhbdev.alpha.agent.driver.decisions.output import launched, sandbox
@@ -21,7 +21,7 @@ if TYPE_CHECKING:
 def recover_transfer(settings: Settings, run: Run) -> None:
     try:
         transport.shell(
-            settings, run.host, remote.owned(run.name), transport.Stdin(run.owner)
+            settings, run.host, remote_shell.owned(run.name), transport.Stdin(run.owner)
         )
     except transport.CollisionError:
         not_owner(run)

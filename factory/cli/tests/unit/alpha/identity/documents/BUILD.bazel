@@ -1,0 +1,81 @@
+# SPDX-License-Identifier: Apache-2.0
+# Copyright Tony Burns
+
+load("//factory/cli/tests:pytest.bzl", "cli_py_test")
+
+filegroup(
+    name = "package_files",
+    srcs = glob(["*.py"]),
+    visibility = ["//factory/cli/tests/unit/alpha/identity:__pkg__"],
+)
+
+cli_py_test(
+    name = "test_contributors",
+    srcs = ["test_contributors.py"],
+    imports = ["../../../.."],
+    deps = [
+        "//factory/cli/src/tbhbdev/alpha/identity:models",
+        "//factory/cli/src/tbhbdev/alpha/identity/documents:contributors",
+        "//factory/cli/src/tbhbdev/alpha/identity/documents:frontmatter",
+        "//factory/cli/tests/unit/alpha/identity:identity_examples",
+    ],
+)
+
+cli_py_test(
+    name = "test_frontmatter",
+    srcs = ["test_frontmatter.py"],
+    imports = ["../../../.."],
+    deps = [
+        "//factory/cli/src/tbhbdev/alpha/identity/documents:frontmatter",
+        "//factory/cli/tests/unit/alpha/identity:identity_examples",
+        "@cli_pip//hypothesis",
+        "@cli_pip//pytest",
+        "@cli_pip//pyyaml",
+    ],
+)
+
+cli_py_test(
+    name = "test_hooks_io",
+    srcs = ["test_hooks_io.py"],
+    imports = ["../../../.."],
+    deps = [
+        "//factory/cli/src/tbhbdev/alpha/identity:models",
+        "//factory/cli/src/tbhbdev/alpha/identity:records",
+        "//factory/cli/src/tbhbdev/alpha/identity:sessions",
+        "//factory/cli/src/tbhbdev/alpha/identity:storage",
+        "//factory/cli/src/tbhbdev/alpha/identity:trailers",
+        "//factory/cli/src/tbhbdev/alpha/identity/documents:frontmatter",
+        "//factory/cli/src/tbhbdev/alpha/identity/documents:hooks",
+        "//factory/cli/tests:conftest",
+        "//factory/cli/tests/unit/alpha/identity:conftest",
+        "//factory/cli/tests/unit/alpha/identity:identity_examples",
+        "//factory/cli/tests/unit/alpha/identity:identity_fixtures",
+        "@cli_pip//jsonschema",
+        "@cli_pip//pytest",
+        "@cli_pip//pyyaml",
+    ],
+)
+
+cli_py_test(
+    name = "test_staging_io",
+    srcs = ["test_staging_io.py"],
+    imports = ["../../../.."],
+    deps = [
+        "//factory/cli/src/tbhbdev/alpha/identity/documents:frontmatter",
+        "//factory/cli/src/tbhbdev/alpha/identity/documents:staging",
+        "//factory/cli/tests:conftest",
+        "//factory/cli/tests/unit/alpha/identity:conftest",
+        "//factory/cli/tests/unit/alpha/identity:identity_examples",
+        "//factory/cli/tests/unit/alpha/identity:identity_fixtures",
+        "@cli_pip//jsonschema",
+        "@cli_pip//pytest",
+        "@cli_pip//pyyaml",
+    ],
+)
+
+cli_py_test(
+    name = "test_selection",
+    srcs = ["test_selection.py"],
+    imports = ["../../../.."],
+    deps = ["//factory/cli/src/tbhbdev/alpha/identity/documents:selection"],
+)

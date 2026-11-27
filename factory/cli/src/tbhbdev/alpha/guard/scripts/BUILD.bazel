@@ -61,7 +61,7 @@ cli_py_library(
         "//factory/cli/src/tbhbdev/alpha/guard:options",
         "//factory/cli/src/tbhbdev/alpha/guard:payload",
         "//factory/cli/src/tbhbdev/alpha/guard:shell_commands",
-        "//factory/cli/src/tbhbdev/alpha/identity:dispatcher",
+        "//factory/cli/src/tbhbdev/alpha/identity/antigravity:payload",
     ],
 )
 

@@ -16,7 +16,7 @@ other tool, and input it can't read, is allowed.
 import sys
 from contextlib import suppress
 
-from tbhbdev.alpha.identity.dispatcher import transcript_model
+from tbhbdev.alpha.identity.claude.logs import transcript_model
 from tbhbdev.alpha.repo import Json, read_hook_stdin
 
 TOOL = "Agent"

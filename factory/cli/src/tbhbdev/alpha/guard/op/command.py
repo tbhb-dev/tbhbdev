@@ -12,7 +12,7 @@ from tbhbdev.alpha.guard.op.edits import writes
 from tbhbdev.alpha.guard.op.file_calls import file_calls
 from tbhbdev.alpha.guard.op.shell_calls import shell_calls
 from tbhbdev.alpha.guard.payload import command_of, decision
-from tbhbdev.alpha.identity.dispatcher import agy_tool
+from tbhbdev.alpha.identity.antigravity.payload import agy_tool
 from tbhbdev.alpha.repo import read_hook_stdin
 
 if TYPE_CHECKING:

@@ -19,7 +19,7 @@ from tbhbdev.alpha.guard.shell_commands import (
     program_of,
     skip_prefix,
 )
-from tbhbdev.alpha.identity.dispatcher import agy_edit_path, agy_tool
+from tbhbdev.alpha.identity.antigravity.payload import agy_edit_path, agy_tool
 
 if TYPE_CHECKING:
     from collections.abc import Iterator

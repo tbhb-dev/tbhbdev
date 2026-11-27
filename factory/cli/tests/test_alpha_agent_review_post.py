@@ -19,7 +19,7 @@ from tbhbdev.alpha import review, review_doc, run_stop_hook
 from tbhbdev.alpha.agent import credentials, review_post, runfiles
 from tbhbdev.alpha.agent.decisions import request as requests
 from tbhbdev.alpha.agent.model import Harness, Invalid, Profile, RunKind, RunRequest
-from tbhbdev.alpha.identity import dispatcher as identity
+from tbhbdev.alpha.identity.commit import grammar as identity_commit_grammar
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -714,7 +714,7 @@ def test_review_attribution(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> 
     trailer = review_post.stamp(run)
     assert "harness=antigravity;" in trailer
     assert trailer.endswith(";variant=a")
-    assert identity.check_message(trailer) == []
+    assert identity_commit_grammar.check_message(trailer) == []
     monkeypatch.setattr(run, "request", replace(request, variant="a;b"))
     with pytest.raises(review_post.PostRefusedError, match="invalid LLM trailer"):
         review_post.stamp(run)

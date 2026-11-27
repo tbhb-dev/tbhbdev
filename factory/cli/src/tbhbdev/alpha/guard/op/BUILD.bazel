@@ -23,7 +23,7 @@ cli_py_library(
         "//factory/cli/src/tbhbdev:userconfig",
         "//factory/cli/src/tbhbdev/alpha:repo",
         "//factory/cli/src/tbhbdev/alpha/guard:payload",
-        "//factory/cli/src/tbhbdev/alpha/identity:dispatcher",
+        "//factory/cli/src/tbhbdev/alpha/identity/antigravity:payload",
     ],
 )
 
@@ -42,7 +42,7 @@ cli_py_library(
     visibility = ["//factory/cli:__subpackages__"],
     deps = [
         "//factory/cli/src/tbhbdev/alpha:repo",
-        "//factory/cli/src/tbhbdev/alpha/identity:dispatcher",
+        "//factory/cli/src/tbhbdev/alpha/identity/antigravity:payload",
     ],
 )
 

@@ -7,7 +7,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from tbhbdev.alpha.identity.dispatcher import agy_edit_path, agy_tool
+from tbhbdev.alpha.identity.antigravity.payload import agy_edit_path, agy_tool
 from tbhbdev.alpha.repo import hook_cwd
 
 if TYPE_CHECKING:

@@ -22,7 +22,7 @@ from tbhbdev import version
 from tbhbdev.alpha import version_check
 from tbhbdev.alpha.agent import settings as agent_settings
 from tbhbdev.alpha.agent import transport
-from tbhbdev.alpha.agent.decisions import remote
+from tbhbdev.alpha.agent.decisions import remote_shell
 from tbhbdev.alpha.agent.driver import metadata, startup, version_heal
 from tbhbdev.alpha.agent.driver.inputs import checked_prompt
 from tbhbdev.alpha.agent.model import Invalid
@@ -203,8 +203,8 @@ def test_host_sync_retries_review_preflight(
     assert preflight == reread
     assert install[:2] == (CONFIG, HOST)
     command = install[2]
-    assert command.startswith(remote.PREFIX)
-    assert shlex.split(command.removeprefix(remote.PREFIX)) == ["exec", *INSTALL]
+    assert command.startswith(remote_shell.PREFIX)
+    assert shlex.split(command.removeprefix(remote_shell.PREFIX)) == ["exec", *INSTALL]
     err = capsys.readouterr().err
     assert err.splitlines()[0] == f"version heal: host {HOST.name} {OLD}->{HEAD}"
     if host_after == NEW_LINE:
