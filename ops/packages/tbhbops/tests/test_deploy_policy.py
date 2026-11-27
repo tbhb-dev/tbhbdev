@@ -1,5 +1,6 @@
 """Policy checks the normalized model, including every nested key boundary."""
 
+# gazelle:include_dep :tests
 import json
 from dataclasses import replace
 from pathlib import Path

@@ -1,0 +1,25 @@
+# SPDX-License-Identifier: Apache-2.0
+# Copyright Tony Burns
+
+# The ops Python tests also exercise the checked-in deployment assets.
+package(default_visibility = ["//ops/packages:__subpackages__"])
+
+filegroup(
+    name = "deployment_fixtures",
+    srcs = glob([
+        "ansible/playbooks/**",
+        "ansible/plugins/filter/**",
+        "ansible/roles/**",
+        "ansible/tasks/**",
+        "apps/**",
+        "tools/*",
+    ]) + [
+        "ansible/ansible.cfg",
+        "ansible/scripts/first-run-macos.sh",
+    ],
+)
+
+filegroup(
+    name = "o11y_fixtures",
+    srcs = glob(["o11y/**"]),
+)

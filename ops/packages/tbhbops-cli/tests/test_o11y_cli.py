@@ -1028,12 +1028,20 @@ def rendered_fake() -> Fake:
     return fs
 
 
-def test_render_grafana_resolver_and_exclusive_mount(tmp_path: Path) -> None:
+def o11y_source(tmp_path: Path) -> Path:
     source = next(
         parent / "o11y"
-        for parent in Path(__file__).resolve().parents
+        for parent in Path(__file__).parents
         if (parent / "o11y/compose.yaml").is_file()
     )
+    # Render rejects symlinks in its input tree, including Bazel runfiles.
+    if "TEST_SRCDIR" in os.environ:
+        return shutil.copytree(source, tmp_path / "source")
+    return source
+
+
+def test_render_grafana_resolver_and_exclusive_mount(tmp_path: Path) -> None:
+    source = o11y_source(tmp_path)
     output = tmp_path / "rendered"
     assert render_run(o11y.LocalFilesystem(), source=source, output=output) == (
         0,
@@ -2679,7 +2687,7 @@ def test_validate_real_filesystem(
     source = root / "source"
     repo = next(
         parent
-        for parent in Path(__file__).resolve().parents
+        for parent in Path(__file__).parents
         if (parent / "o11y/compose.yaml").is_file()
     )
     shutil.copytree(repo / "o11y", source)
@@ -3920,11 +3928,7 @@ def test_dedicated_engine_help(name: str, capsys: pytest.CaptureFixture[str]) ->
 @pytest.mark.parametrize("hostname", ["", "host-c-o11y"])
 @pytest.mark.parametrize("fixed", ["", "false", "true"])
 def test_render_opt_in_network(tmp_path: Path, hostname: str, fixed: str) -> None:
-    source = next(
-        p / "o11y"
-        for p in Path(__file__).resolve().parents
-        if (p / "o11y/compose.yaml").is_file()
-    )
+    source = o11y_source(tmp_path)
     output = tmp_path / "rendered"
     inputs = RENDER_ENV | {"O11Y_TS_HOSTNAME": hostname, "O11Y_FIXED_ADDRESSES": fixed}
     assert render_run(o11y.LocalFilesystem(), inputs, source=source, output=output) == (
@@ -4023,11 +4027,7 @@ def test_disabled_sidecar_keeps_later_config_directories() -> None:
 
 
 def test_default_release_bytes(tmp_path: Path) -> None:
-    source = next(
-        p / "o11y"
-        for p in Path(__file__).resolve().parents
-        if (p / "o11y/compose.yaml").is_file()
-    )
+    source = o11y_source(tmp_path)
     output = tmp_path / "rendered"
     assert render_run(
         o11y.LocalFilesystem(),
@@ -4051,11 +4051,7 @@ def test_default_release_bytes(tmp_path: Path) -> None:
 @pytest.mark.parametrize("fixed", ["false", "true"])
 @pytest.mark.parametrize("hostname", ["", "host-c-o11y"])
 def test_render_tls_proxy(tmp_path: Path, fixed: str, hostname: str) -> None:
-    source = next(
-        p / "o11y"
-        for p in Path(__file__).resolve().parents
-        if (p / "o11y/compose.yaml").is_file()
-    )
+    source = o11y_source(tmp_path)
     output = tmp_path / "rendered"
     inputs = RENDER_ENV | {
         "O11Y_TS_HOSTNAME": hostname,

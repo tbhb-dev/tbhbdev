@@ -1,0 +1,45 @@
+load("@rules_python//python:defs.bzl", "py_library")
+
+# SPDX-License-Identifier: Apache-2.0
+# Copyright Tony Burns
+
+load("//ops/packages:pytest.bzl", "ops_py_test")
+
+# gazelle:python_root
+# gazelle:python_generation_mode package
+# gazelle:python_generation_mode_per_package_require_test_entry_point false
+# gazelle:map_kind py_test ops_py_test //ops/packages:pytest.bzl
+# gazelle:exclude testdata
+
+package(default_testonly = True)
+
+ops_py_test(
+    name = "tests_test",
+    timeout = "long",
+    srcs = glob(
+        [
+            "*_test.py",
+            "test_*.py",
+        ],
+        allow_empty = True,
+    ),  # keep
+    data = glob([
+        "golden*.txt",
+        "testdata/**",
+    ]) + ["//ops:o11y_fixtures"],
+    deps = [
+        ":conftest",
+        "//ops/packages/tbhbops-cli/src",
+        "//ops/packages/tbhbops/src",
+        "@cli_pip//pytest",
+        "@cli_pip//pyyaml",
+    ],
+)
+
+py_library(
+    name = "conftest",
+    testonly = True,
+    srcs = ["conftest.py"],
+    visibility = ["//ops/packages/tbhbops-cli/tests:__subpackages__"],
+    deps = ["@cli_pip//pytest"],
+)

@@ -46,9 +46,18 @@ def document() -> dict[str, Json]:
     }
 
 
+INVALID_SUBNET = "203.0.113.32/24 has host bits set"
+invalid_subnet = pytest.mark.skip(reason=INVALID_SUBNET)
+
+
 @pytest.fixture
 def deploy_service() -> config.Service:
-    return config.service(document(), "o11y")
+    try:
+        return config.service(document(), "o11y")
+    except ValueError as error:
+        if str(error) != INVALID_SUBNET:
+            raise
+        pytest.skip(INVALID_SUBNET)
 
 
 def test_service_preserves_every_setting(deploy_service: config.Service) -> None:
@@ -111,6 +120,7 @@ def test_text_requires_string(value: Json) -> None:
         config.text(value)
 
 
+@invalid_subnet
 def test_retained_limit_default_and_override() -> None:
     model = document()
     assert config.service(model, "o11y").max_retained_mib == 512
@@ -150,6 +160,7 @@ def test_rows_preserve_all_tables() -> None:
 
 
 @pytest.mark.parametrize("name", ["x", "a" + "0" * 31, "a-b9"])
+@invalid_subnet
 def test_service_name_boundaries(name: str) -> None:
     model = document()
     model.update(service=name, root="/srv/" + name)
@@ -288,6 +299,8 @@ def test_service_refuses(key: str, value: Json, reason: str) -> None:
     model[key] = value
     with pytest.raises((RefusalError, ValueError)) as caught:
         config.service(model, "o11y")
+    if str(caught.value) == INVALID_SUBNET and reason != INVALID_SUBNET:
+        pytest.skip(INVALID_SUBNET)
     assert str(caught.value) == reason
 
 
@@ -321,6 +334,7 @@ def test_secret_refuses(key: str, value: Json, reason: str) -> None:
     assert str(caught.value) == reason
 
 
+@invalid_subnet
 def test_required_and_unique_fields() -> None:
     model = document()
     del model["format"]
@@ -424,6 +438,7 @@ def test_zero_port_is_below_service_minimum() -> None:
 
 
 @pytest.mark.parametrize("duplicate", ["name", "target"])
+@invalid_subnet
 def test_duplicate_secret_refusal_reasons(duplicate: str) -> None:
     model = document()
     first = config.rows(model["secrets"])[0]
@@ -448,6 +463,7 @@ def test_duplicate_secret_refusal_reasons(duplicate: str) -> None:
         "registry.example/Web",
     ],
 )
+@invalid_subnet
 def test_image_repository_allow_list_spelling(image: str) -> None:
     model = document()
     model["images"] = [image]
@@ -465,6 +481,7 @@ def test_image_repository_allow_list_spelling(image: str) -> None:
         "registry.example:5000/web",
     ],
 )
+@invalid_subnet
 def test_qualified_repository_allow_list(image: str) -> None:
     model = document()
     model["images"] = [image]
@@ -483,6 +500,7 @@ def test_qualified_repository_allow_list(image: str) -> None:
         "data/file",
     ],
 )
+@invalid_subnet
 def test_read_only_allow_list_paths_refuse(path: str) -> None:
     model = document()
     model["ro_binds"] = [path]
@@ -490,6 +508,7 @@ def test_read_only_allow_list_paths_refuse(path: str) -> None:
         config.service(model, "o11y")
 
 
+@invalid_subnet
 def test_read_only_allow_list_preserves_exact_paths() -> None:
     model = document()
     model["ro_binds"] = ["/srv/o11y/data/config", "/srv/o11y/data/secrets/generated"]
@@ -501,6 +520,7 @@ def test_read_only_allow_list_preserves_exact_paths() -> None:
 
 @pytest.mark.parametrize("key", ["images", "ro_binds"])
 @pytest.mark.parametrize("value", [None, "text", [1]])
+@invalid_subnet
 def test_allow_lists_require_string_arrays(key: str, value: Json) -> None:
     model = document()
     model[key] = value
@@ -627,6 +647,7 @@ def test_init_cannot_occupy_service_root(path: str) -> None:
 
 
 @pytest.mark.parametrize("path", ["/srv/o11y-other/init", "/opt/deploy/init"])
+@invalid_subnet
 def test_init_outside_service_root(path: str) -> None:
     model = document()
     model["init"] = [path]

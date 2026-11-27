@@ -7,6 +7,9 @@ common --lockfile_mode=error
 common --check_direct_dependencies=error
 common --enable_platform_specific_config
 common --downloader_config=third_party/zig-downloader.cfg
+# The ops Python tests use Ansible sources as fixtures. Omit the Ansible
+# package boundary so those files can be declared as data by //ops.
+common --deleted_packages=ops/ansible
 
 # Per-package test time caps (short=60s, moderate=180s, long=300s, eternal=900s).
 test --test_timeout=60,180,300,900

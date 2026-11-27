@@ -18,13 +18,13 @@ from pathlib import Path
 from unittest.mock import Mock
 
 import pytest
-from uv import find_uv_bin
+import uv
 
 from tbhbops import op_connect
 
 ROOT = next(
     path
-    for path in Path(__file__).resolve().parents
+    for path in Path(__file__).parents
     if (path / "tools").is_dir() and (path / "packages" / "tbhbops").is_dir()
 )
 LAUNCHERS = sorted(path.name for path in (ROOT / "tools").iterdir() if path.is_file())
@@ -46,6 +46,14 @@ def repo(tmp_path: Path) -> Path:
     return copy
 
 
+def uv_bin() -> str:
+    if "TEST_SRCDIR" in os.environ:
+        # rules_python places wheel scripts beside site-packages.
+        executable = "uv.exe" if sys.platform == "win32" else "uv"
+        return str(Path(uv.__file__).parents[2] / "bin" / executable)
+    return uv.find_uv_bin()
+
+
 def uv_run(repo: Path, script: str, *args: str) -> subprocess.CompletedProcess[str]:
     """Run tools/<script> through uv, offline, with the repo's own uv cache."""
     # Nothing from the test's own environment that picks a Python, a package
@@ -64,7 +72,7 @@ def uv_run(repo: Path, script: str, *args: str) -> subprocess.CompletedProcess[s
     }
     return subprocess.run(
         [
-            find_uv_bin(),
+            uv_bin(),
             "run",
             "--quiet",
             "--python",
@@ -97,6 +105,8 @@ def test_the_launcher_sees_a_module_added_after_its_first_run(
     repo: Path, launcher: str
 ) -> None:
     if launcher == "install-step-ca-root":
+        if not (ROOT / "apps/ca/roots/root_ca.crt").is_file():
+            pytest.skip("requires apps/ca/roots/root_ca.crt")
         # This launcher has no help option. Stop at validation on macOS so
         # the first run can populate the uv cache without using the keychain.
         (repo / "apps/ca/roots/root_ca.crt").write_bytes(b"")
@@ -144,6 +154,10 @@ def test_the_launcher_sees_a_module_added_after_its_first_run(
             "The CA trust defaults lack a valid ca_client_trust_root_sha256 pin.",
         ),
     ],
+)
+@pytest.mark.skipif(
+    not (ROOT / "apps/ca/roots/root_ca.crt").is_file(),
+    reason="requires apps/ca/roots/root_ca.crt",
 )
 def test_step_ca_root_pin(
     repo: Path, monkeypatch: pytest.MonkeyPatch, defaults_text: str, message: str
