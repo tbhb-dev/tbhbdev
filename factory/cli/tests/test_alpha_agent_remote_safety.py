@@ -239,7 +239,7 @@ def test_scripts_have_fixed_path_socket_and_git_environment() -> None:
         assert "tmux -L" not in script
         assert f"s={config.sockets_dir}\n" in script
     assert " git " not in scripts[-1]
-    assert "perl" not in scripts[-1]
+    assert "agent-mirror.lock" not in scripts[-1]
     assert remote.installed(LINUX).endswith('"$HOME/.local/bin/tbhbdev" --version')
     assert "-lc" not in remote.start("sample", config.sockets_dir, LINUX)[2]
     for script in [
@@ -525,6 +525,8 @@ def test_real_ssh_shell_quoting(host: Path) -> None:
 def test_owner_check_precedes_every_effect(
     host: Path, script: str, owner_kind: str
 ) -> None:
+    if script == "clean" and owner_kind == "missing":
+        no_session(host)
     owner = host / "state/tbhbdev/agent-runs/sample.owner"
     owner.rename(host / "saved-owner")
     if owner_kind == "other":
@@ -543,9 +545,31 @@ def test_owner_check_precedes_every_effect(
         "start": remote.start("sample", settings().sockets_dir, LINUX)[2],
     }
     result = execute(scripts[script])
+    if script == "clean" and owner_kind == "missing":
+        assert result.returncode == 0
+        assert execute(scripts[script]).returncode == 0
+        return
     assert result.returncode == 73
     assert not (host / "sockets").exists()
     assert not (host / "state/tbhbdev/agent-runs/trash").exists()
+
+
+def test_clean_preserves_an_ownerless_detached_group(host: Path) -> None:
+    no_session(host)
+    state = host / "state/tbhbdev/agent-runs"
+    (state / "sample.owner").unlink()
+    group = state / "sample.pgid"
+    (state / "sample.rc").write_text("137\n")
+    with subprocess.Popen(["sleep", "30"], start_new_session=True) as process:
+        try:
+            group.write_text(json.dumps({"pgid": process.pid}))
+            assert execute(cleanup()).returncode == 1
+            assert group.exists()
+            assert not (state / "sample.owner").exists()
+        finally:
+            process.terminate()
+    assert execute(cleanup()).returncode == 0
+    assert not group.exists()
 
 
 def test_locale_precedes_tmux_and_git(host: Path) -> None:
@@ -1140,6 +1164,26 @@ def test_unpublished_diff_bounds_output_and_preserves_failure(
     result = fallback_diff()
     assert result.returncode == (74 if failure else 0)
     assert result.stdout == b"x" * 65536 + b"\n[output truncated at 65536 bytes]\n"
+
+
+@pytest.mark.parametrize("entry", [".git", ".git/objects/pack"])
+def test_unpublished_diff_withholds_patch_if_a_symlink_appears(
+    host: Path, entry: str
+) -> None:
+    path = unpublished_run(host) / entry
+    write_standalone_fake(
+        host / "bin/git",
+        "import os, sys\n"
+        "from pathlib import Path\n"
+        "if 'format-patch' not in sys.argv:\n"
+        "    os.execv('/usr/bin/git', ['/usr/bin/git', *sys.argv[1:]])\n"
+        f"path = Path({str(path)!r})\n"
+        f"path.rename({str(host / 'saved')!r})\n"
+        f"path.symlink_to({str(host / 'missing')!r}, target_is_directory=True)\n"
+        "print('generated patch')\n",
+    )
+    assert_refused()
+    assert path.is_symlink()
 
 
 @pytest.mark.parametrize(

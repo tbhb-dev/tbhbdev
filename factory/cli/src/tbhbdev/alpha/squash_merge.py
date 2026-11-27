@@ -23,7 +23,7 @@ successful gh call.
 
 Usage, from anywhere in a worktree:
 
-    tbhbdev alpha merge PR [--dry-run]
+    tbhbdev alpha merge PR [--expect-head SHA] [--dry-run]
 
 The subject is the PR title plus ` (#N)`. It must still pass ``cog verify`` and
 fit 72 characters, or the script stops. The body comes from the PR body:
@@ -52,9 +52,11 @@ Agents run this script to merge once the PR is approved. Branch rulesets keep
 GitHub enforcing the human review. The script refuses a draft PR, one that is
 not open or not mergeable, and one whose merge state gh reports as blocked,
 behind, dirty or unknown (which includes failing required checks), and it names
-any failing checks. It leaves the rules themselves to GitHub. The merge passes
-``--match-head-commit`` so that a push after the preview cannot slip in.
-``--dry-run`` previews the message and the command and merges nothing.
+any failing checks. It leaves the rules themselves to GitHub. With
+``--expect-head SHA``, the PR's current head must match the approved commit.
+The merge passes the approved head, or the fetched head by default, as
+``--match-head-commit`` to guard against a later push. ``--dry-run`` previews
+the message and the command and merges nothing.
 
 Before the preview or the merge, the final commit message goes through gitleaks
 under the host's private config (see ``tbhbdev.alpha.secret_scan``), and a
@@ -728,6 +730,31 @@ def report_queue(target: str, number: int, previous_removal: str) -> int:
     stop(f"PR #{number}: GitHub reports no merge commit, queue entry, or new removal")
 
 
+def parse_head(value: str) -> str:
+    """Read a full commit SHA in GitHub's lowercase form.
+
+    Raises:
+        argparse.ArgumentTypeError: The value is not a full hexadecimal SHA.
+    """
+    head = value.lower()
+    if not re.fullmatch(r"[0-9a-f]{40}", head):
+        message = "expected a full 40-character hexadecimal SHA"
+        raise argparse.ArgumentTypeError(message)
+    return head
+
+
+def merge_head(current: str, expected: str | None, number: int) -> str:
+    """Select the commit to send to GitHub and refuse a changed head."""
+    if expected is None:
+        return current
+    if expected != current:
+        stop(
+            f"not merging PR #{number}: expected head {expected}, "
+            f"but the current head is {current}"
+        )
+    return expected
+
+
 def build_parser(prog: str | None = None) -> argparse.ArgumentParser:
     """The command line."""
     parser = argparse.ArgumentParser(
@@ -735,6 +762,12 @@ def build_parser(prog: str | None = None) -> argparse.ArgumentParser:
         description="Merge a PR (merge commit, else squash) with a clean message.",
     )
     parser.add_argument("number", type=int, metavar="PR")
+    parser.add_argument(
+        "--expect-head",
+        type=parse_head,
+        metavar="SHA",
+        help="approved 40-character SHA",
+    )
     parser.add_argument("--dry-run", action="store_true", help="show it, merge nothing")
     return parser
 
@@ -743,6 +776,7 @@ def main(argv: Sequence[str] | None = None, prog: str | None = None) -> int:
     """Preview or perform the merge."""
     args = build_parser(prog).parse_args(argv)
     request = fetch(args.number)
+    head = merge_head(request.head, args.expect_head, args.number)
     if reasons := refusals(request):
         stop(f"not merging PR #{args.number}: " + "; ".join(reasons))
     target = pr.target_of_pr(request.url)
@@ -776,7 +810,7 @@ def main(argv: Sequence[str] | None = None, prog: str | None = None) -> int:
     )
     argv_gh = [
         GH, "pr", "merge", str(args.number), methods[0], "--subject", message.subject,
-        "--body-file", "-", "--match-head-commit", request.head,
+        "--body-file", "-", "--match-head-commit", head,
     ]  # fmt: skip
     if args.dry_run:
         print(shlex.join(argv_gh))

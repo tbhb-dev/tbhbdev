@@ -90,20 +90,28 @@ test "$(find "$s" -prune -type d -user "$(id -un)" -perm 0700)" = "$s" || exit 6
     )
 
 
+OWNER_MATCH = (
+    'test ! -L "$owner" && test -f "$owner" && '
+    'test "$(cat "$owner")" = "$given" || exit 73\n'
+)
+
+
+def owner_input(name: str) -> str:
+    return (
+        PREFIX
+        + ROOT
+        + f'owner="$d/{name}{files.OWNER}"\n'
+        + 'IFS= read -r given || exit 73\ntest -n "$given" || exit 73\n'
+    )
+
+
 def owned(name: str) -> str:
     """Check the owner on stdin's first line against the run's owner file.
 
     The owner never appears in the script, because ssh arguments reach audit
     logs. ``transport`` writes the owner as the first line of stdin.
     """
-    path = f'"$d/{name}{files.OWNER}"'
-    return (
-        PREFIX
-        + ROOT
-        + 'IFS= read -r given || exit 73\ntest -n "$given" || exit 73\n'
-        + f"test ! -L {path} && test -f {path} && "
-        + f'test "$(cat {path})" = "$given" || exit 73\n'
-    )
+    return owner_input(name) + OWNER_MATCH
 
 
 def session(name: str, command: str, sockets_dir: str) -> str:
@@ -409,6 +417,21 @@ def inspect(repository: str, name: str, *, limit: int | None) -> str:
         # two commits come from reading HEAD and the ref files as plain text.
         patch = (
             f"run={run}\n"
+            "check_paths() {\n"
+            f"    for p in {paths}; do\n"
+            '        test ! -L "$p" && test -d "$p" || exit 65\n'
+            "    done\n"
+            f"    for p in {internals}; do\n"
+            '        test ! -L "$p" || exit 65\n'
+            "    done\n"
+            '    links=$(find "$run/objects" "$run/refs" -type l -print -quit) '
+            "|| exit 65\n"
+            '    test -z "$links" || exit 65\n'
+            '    pack_index=$(find "$run/objects/pack" -name "multi-pack-index*" '
+            "-print -quit) || exit 65\n"
+            '    test -z "$pack_index" || exit 65\n'
+            '    test ! -e "$run/objects/info/alternates" || exit 65\n'
+            "}\n"
             "resolve() {\n"
             '    case "$1" in *[!A-Za-z0-9._/-]*|*..*|*//*) return 65 ;; esac\n'
             '    if test -f "$run/$1" && test ! -L "$run/$1"; then\n'
@@ -421,13 +444,11 @@ def inspect(repository: str, name: str, *, limit: int | None) -> str:
             '    test "${#sha}" -eq 40 || return 65\n'
             "    printf '%s\\n' \"$sha\"\n"
             "}\n"
-            'links=$(find "$run/objects" "$run/refs" -type l -print -quit) '
-            "|| exit 65\n"
-            'test -z "$links" || exit 65\n'
-            'pack_index=$(find "$run/objects/pack" -name "multi-pack-index*" '
-            "-print -quit) || exit 65\n"
-            'test -z "$pack_index" || exit 65\n'
-            'test ! -e "$run/objects/info/alternates" || exit 65\n'
+            "scratch=$(mktemp -d) || exit 65\n"
+            "trap 'rm -rf \"$scratch\"' EXIT\n"
+            f"{GIT} GIT_CONFIG_GLOBAL=/dev/null {GIT_FLAGS} "
+            'init -q --bare --template= "$scratch" || exit 65\n'
+            "check_paths\n"
             'head=$(sed -n 1p "$run/HEAD")\n'
             'case "$head" in\n'
             '    "ref: refs/heads/"*) tip=$(resolve "${head#ref: }") || exit 65 ;;\n'
@@ -437,17 +458,19 @@ def inspect(repository: str, name: str, *, limit: int | None) -> str:
             'test "${#tip}" -eq 40 || exit 65\n'
             'case "$1" in refs/remotes/origin/*) ;; *) exit 65 ;; esac\n'
             'base=$(resolve "$1") || exit 65\n'
-            "scratch=$(mktemp -d) || exit 65\n"
-            "trap 'rm -rf \"$scratch\"' EXIT\n"
-            f"{GIT} GIT_CONFIG_GLOBAL=/dev/null {GIT_FLAGS} "
-            'init -q --bare --template= "$scratch" || exit 65\n'
+            # Hold the capped output until the same path checks pass again.
+            f"perl -e {shlex.quote(INSPECTION_OUTPUT)} "
             f'{GIT} GIT_CONFIG_GLOBAL=/dev/null GIT_DIR="$scratch" '
             f'GIT_OBJECT_DIRECTORY="$run/objects" {GIT_FLAGS} '
             "-c protocol.allow=never -c diff.external= -c core.multiPackIndex=false "
             "--no-optional-locks "
             "format-patch --stdout --no-ext-diff --no-textconv --no-color "
             "--no-signature --no-attach --no-add-header --no-notes "
-            '"$base..$tip" --\n'
+            '"$base..$tip" -- > "$scratch/patch"\n'
+            "status=$?\n"
+            "check_paths\n"
+            'cat "$scratch/patch" || exit "$?"\n'
+            'exit "$status"\n'
         )
         fallback = (
             f"pushed=$({MIRROR_GIT} ls-remote --end-of-options origin {branch}) "
@@ -459,14 +482,7 @@ def inspect(repository: str, name: str, *, limit: int | None) -> str:
             'awk \'$1 == "ref:" && $2 ~ /^refs\\/heads\\// && $3 == "HEAD" '
             '{sub(/^refs\\/heads\\//, "refs/remotes/origin/", $2); print $2}\')\n'
             '    test -n "$base" || exit 65\n'
-            f"    for p in {paths}; do\n"
-            '        test ! -L "$p" && test -d "$p" || exit 65\n'
-            "    done\n"
-            f"    for p in {internals}; do\n"
-            '        test ! -L "$p" || exit 65\n'
-            "    done\n"
-            f"    perl -e {shlex.quote(INSPECTION_OUTPUT)} "
-            f'/bin/sh -c {shlex.quote(patch)} -- "$base"\n'
+            f'    /bin/sh -c {shlex.quote(patch)} -- "$base"\n'
             '    exit "$?"\n'
             "fi\n"
         )
@@ -482,13 +498,33 @@ def inspect(repository: str, name: str, *, limit: int | None) -> str:
     )
 
 
-def clean(
+# A supervisor may hold the lock outside tmux, or leave a detached group.
+OWNERLESS_LIVENESS = r"""
+my ($lock, $group) = @ARGV;
+if (-f $lock) {
+    open(my $fh, "<", $lock) or exit 65;
+    flock($fh, LOCK_EX | LOCK_NB) or exit 1;
+}
+if (-f $group) {
+    open(my $fh, "<", $group) or exit 65;
+    defined(read($fh, my $data, 4097)) && length($data) <= 4096 or exit 65;
+    my $record = eval { decode_json($data) };
+    ref($record) eq "HASH" or exit 65;
+    my $pgid = $record->{pgid} // "";
+    $pgid =~ /\A[0-9]{1,10}\z/ && $pgid > 1 && $pgid <= 2147483647 or exit 65;
+    exit 1 if kill(0, -$pgid) || $! != ESRCH;
+}
+"""
+
+
+def clean(  # noqa: PLR0913 -- separate the target from the two cleanup guards
     repository: str,
     name: str,
     stamp: str,
     sockets_dir: str,
     *,
     force: bool,
+    ownerless_only: bool = False,
 ) -> str:
     clone = repo.clone_path(PurePosixPath("."), repository)
     tree = f".worktrees/agent-{name}"
@@ -510,16 +546,34 @@ if test -d "$path"; then
 fi
 """
     command = (
-        owned(name)
-        + FILE_HELPERS
+        owner_input(name)
+        + 'orphan=0\nif test ! -e "$owner" && test ! -L "$owner"; then\n'
+        + "    orphan=1\nelse\n"
+        + ("    exit 73\n" if ownerless_only else f"    {OWNER_MATCH}")
+        + "fi\n"
         + socket_root(sockets_dir)
         + f"""tmux_state has-session ag-{name}
 test "$present" -eq 0 || exit 1
+if test "$orphan" -eq 1; then
+    lock="$d/{name}{files.RUN_LOCK}"
+    group="$d/{name}{files.PGID}"
+    safe_file "$lock"
+    safe_file "$group"
+    if test -f "$lock" || test -f "$group"; then
+        perl -MFcntl=:flock -MJSON::PP -MErrno=ESRCH \\
+            -e {shlex.quote(OWNERLESS_LIVENESS)} "$lock" "$group" || exit "$?"
+    fi
+    # Claim the name just as transfer does, and keep it until all moves finish.
+    mkdir -p -m 700 "$d" || exit "$?"
+    (set -C; printf '%s\\n' "$given" > "$owner") || exit 73
+    trap 'rm -f "$owner" || exit "$?"' EXIT
+    trap 'exit 1' HUP INT TERM
+fi
 """
     )
     if not force:
         command += f"""fallback="$d/{name}{files.FALLBACK}"
-if test -e "$fallback" || test -L "$fallback"; then
+if test "$orphan" -eq 0 && {{ test -e "$fallback" || test -L "$fallback"; }}; then
     printf '%s\\n' 'clean refused: fallback rc requires --force' >&2
     exit 65
 fi
@@ -532,6 +586,8 @@ mkdir -p "$trash" || exit "$?"
         + move
     )
     for suffix in files.SUFFIXES:
+        if suffix == files.OWNER:
+            command += 'test "$orphan" -eq 0 || exit 0\n'
         path = f'"$d/{name}{suffix}"'
         command += (
             f"safe_file {path}\n"

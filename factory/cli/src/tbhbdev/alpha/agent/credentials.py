@@ -43,6 +43,7 @@ REVIEW_PERMISSIONS = {
     "pull_requests": "read",
     "checks": "read",
     "statuses": "read",
+    "actions": "read",
 }
 
 

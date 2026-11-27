@@ -135,6 +135,7 @@ def environment(
         "SHELL": f"/bin/{host.shell}",
         "LANG": LINUX_LANG if host.os is Os.LINUX else MACOS_LANG,
         "TMPDIR": paths.tmpdir,
+        "CLAUDE_CODE_TMPDIR": paths.tmpdir,
         "TMPPREFIX": resolve(paths.tmpdir, "zsh"),
         "DOCKER_CONFIG": resolve(paths.tmpdir, DOCKER_CONFIG_SUBDIR),
         "GH_CONFIG_DIR": resolve(paths.tmpdir, GH_CONFIG_SUBDIR),
@@ -263,6 +264,7 @@ def _claude(  # noqa: PLR0913 -- one value per policy input
         return ClaudePolicy(
             {
                 "env": {
+                    "CLAUDE_CODE_TMPDIR": env["CLAUDE_CODE_TMPDIR"],
                     "GH_CONFIG_DIR": env["GH_CONFIG_DIR"],
                     "DOCKER_CONFIG": env["DOCKER_CONFIG"],
                     **_CLAUDE_SUBAGENT_ENV,
@@ -311,6 +313,7 @@ def _claude(  # noqa: PLR0913 -- one value per policy input
         k: env[k]
         for k in (
             "TMPDIR",
+            "CLAUDE_CODE_TMPDIR",
             "PATH",
             "TMPPREFIX",
             "GH_CONFIG_DIR",

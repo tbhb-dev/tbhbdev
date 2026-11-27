@@ -9,9 +9,8 @@ package content
 // Set on Requests only.
 #Handler: "Operator" | "Agent"
 
-// area:<repo> names an org repository. CUE checks the spelling and the
-// content module checks the repository against the live org list.
-#AreaLabel: =~"^area:[a-z0-9][a-z0-9-]*$"
+// An area may be a path of slash-separated lowercase segments.
+#AreaLabel: =~"^area:[a-z0-9][a-z0-9-]*(/[a-z0-9][a-z0-9-]*)*$"
 
 // role:<name> names the agent role that owns the issue. The content module
 // checks the name against the role list kept outside this public file.

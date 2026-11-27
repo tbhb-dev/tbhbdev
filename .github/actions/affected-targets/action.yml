@@ -3,7 +3,7 @@
 
 ---
 # Vendored from rules#422 at aa2f970279ca268aea6e6fc7fc3851a5b3d2fc5e.
-# Chooses the Bazel test targets a pull request or merge group can affect.
+# Chooses the Bazel test targets a pull request, merge group, or manual dispatch can affect.
 # Run it after checkout with `fetch-depth: 0` and after setup-bazel-ci, which
 # puts bazelisk on PATH. When it can't decide, it selects the root and all
 # shared rules modules.
@@ -14,14 +14,18 @@ description: >-
   change can't be decided.
 
 inputs:
+  base:
+    description: Base commit for a manual dispatch. Defaults to the dispatched commit's first parent.
+    required: false
   working-directory:
     description: The directory of the Bazel workspace to query.
     required: false
     default: .
   query:
     description: >-
-      An optional one-line Bazel query that narrows the candidate tests.
+      An optional one-line Bazel query that narrows the graph-based candidates.
       By default the candidates come from the root and shared rules modules.
+      Workspace checks can also be selected directly from changed paths.
       When an affected test is tagged `manual`, the action falls back to
       test patterns that can run it through a test_suite.
     required: false
@@ -96,7 +100,7 @@ runs:
       working-directory: ${{ inputs.working-directory }}
       env:
         EVENT: ${{ github.event_name }}
-        BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha }}
+        BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha || inputs.base }}
         HEAD_SHA: ${{ github.event.merge_group.head_sha || github.sha }}
         TD: ${{ steps.download.outputs.path }}
         QUERY: ${{ inputs.query }}
