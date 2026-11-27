@@ -1,0 +1,6 @@
+# SPDX-License-Identifier: Apache-2.0
+# Copyright Tony Burns
+
+# List each shrink-only baseline by repository path and extractor.
+"factory/cli/lint-baseline.toml" = "counts"
+"factory/cli/pyproject.toml" = "python-project"

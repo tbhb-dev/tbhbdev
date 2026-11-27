@@ -163,7 +163,10 @@ pytest_test(
 pytest_test(
     name = "repo_checks_test",
     srcs = ["//:repo_files"],
-    args = ["lint/tests/test_repo_checks.py::test_runner"],
+    args = [
+        "lint/tests/test_repo_checks.py::test_lint_baseline_growth",
+        "lint/tests/test_repo_checks.py::test_runner",
+    ],
     coverage = None,
     # Tech debt (AGENTS.md): port the runner's subprocess fixture to Windows.
     target_compatible_with = select({

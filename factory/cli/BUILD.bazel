@@ -5,16 +5,16 @@ load("@rules_python//python:defs.bzl", "py_binary")
 load("@rules_python_gazelle_plugin//manifest:defs.bzl", "gazelle_python_manifest")
 load("@rules_python_gazelle_plugin//modules_mapping:def.bzl", "modules_mapping")
 load("@rules_shell//shell:sh_binary.bzl", "sh_binary")
-load("@tbhb_rules//lint:defs.bzl", "tombi_test")
+load("@tbhb_rules//lint:defs.bzl", "tombi_test", "tree_check_test")
 load(
     "@tbhb_rules_python//:defs.bzl",
     "bandit_test",
     "complexipy_test",
     "deptry_test",
+    "import_linter_test",
     "mutmut_test",
     "pip_audit",
     "pip_audit_test",
-    "pylint_test",
     "pyrefly_test",
     "python_tool",
     "ruff_test",
@@ -24,6 +24,7 @@ load(
 # gazelle:python_extension enabled
 # gazelle:python_generation_mode file
 # gazelle:map_kind py_library cli_py_library //factory/cli:python.bzl
+# gazelle:exclude checks
 
 exports_files(["pyproject.toml"])
 
@@ -131,10 +132,42 @@ pyrefly_test(
     ],
 )
 
-pylint_test(
-    name = "pylint_test",
+import_linter_test(
+    name = "import_linter_test",
     srcs = CLI_CHECK_INPUTS,
-    args = ["--rcfile=factory/cli/pyproject.toml"],
+    chdir = "factory/cli",
+)
+
+python_tool(
+    name = "pylint_tool",
+    testonly = True,
+    main = "checks/check_cli_lint.py",
+    select = True,
+    tags = ["manual"],
+)
+
+tree_check_test(
+    name = "pylint_test",
+    srcs = CLI_CHECK_INPUTS + ["lint-baseline.toml"],
+    tool = ":pylint_tool",
+)
+
+python_tool(
+    name = "lint_guards_test_tool",
+    testonly = True,
+    data = ["checks/check_cli_lint.py"],
+    main = "checks/test_lint_guards.py",
+    tags = ["manual"],
+)
+
+tree_check_test(
+    name = "lint_guards_test",
+    srcs = [
+        ":pyproject.toml",
+        ":source_files",
+    ],
+    path_tools = [":import_linter_test.tool"],
+    tool = ":lint_guards_test_tool",
 )
 
 vulture_test(
