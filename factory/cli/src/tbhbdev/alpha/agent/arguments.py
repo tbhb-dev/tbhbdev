@@ -4,6 +4,7 @@ import argparse
 
 from tbhbdev.alpha import worker_identity
 from tbhbdev.alpha.agent.decisions import config
+from tbhbdev.alpha.agent.model import Os
 
 
 def duration(text: str) -> int:
@@ -18,7 +19,15 @@ def parser(prog: str) -> argparse.ArgumentParser:
     command = argparse.ArgumentParser(prog=prog)
     verbs = command.add_subparsers(dest="verb", required=True)
     execute = verbs.add_parser("exec", help="launch a headless run")
-    execute.add_argument("--host", required=True)
+    target = execute.add_mutually_exclusive_group()
+    target.add_argument("--host", help="launch on this configured host")
+    target.add_argument(
+        "--os",
+        type=Os,
+        choices=list(Os),
+        default=Os.LINUX,
+        help="OS for automatic host selection (default: linux)",
+    )
     execute.add_argument("--repo", required=True)
     execute.add_argument("--ref")
     execute.add_argument(
@@ -52,7 +61,7 @@ def parser(prog: str) -> argparse.ArgumentParser:
         "--ignore-limits",
         action="store_true",
         help=(
-            "launch although the host's load, memory, memory pressure or swap "
+            "launch on a named host although its load, memory, memory pressure or swap "
             "exceeds its limits"
         ),
     )

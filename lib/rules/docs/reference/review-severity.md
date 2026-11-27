@@ -6,12 +6,12 @@ title: Review severity and finding ids
 type: Reference
 generated:
   - role: generated
-    harness: codex:0.167.2
-    model: openai:gpt-6.1-sol
-    effort: medium
+    harness: codex:0.171.0
+    model: openai:gpt-6.2-sol
+    effort: high
     surface: exec
-    session: sha-256-64:5a62a6ed2fabf767
-    at: "2026-11-14T21:54:33Z"
+    session: sha-256-64:21ed95b52a1eaffe
+    at: "2026-11-27T04:18:41Z"
 ---
 
 # Review severity and finding ids
@@ -24,6 +24,8 @@ generated:
 
 ## Rating rules
 
+- State when each finding occurs with the actual callers, hosts, repositories, and tool inputs. Exclude impossible cases at every severity. From round 2, restrict new findings to lines the fix changed.
+- Flag code in the diff that handles an impossible case or adds an option, layer, or abstraction with one user. Ask for deletion.
 - The reviewer rates a finding that predates the PR by what it can do now, not by when it first entered the code. It blocks this PR when the PR relies on it or changes the same code path. Otherwise, it becomes a tracked follow-up with a named owner. The author and the reviewer record the follow-up where readers can find the PR.
 - When reviewers rate the same defect differently, use the higher severity.
 - An irreversible effect, such as a fence, a deletion, or a published record, raises the rating one level, capped at P1.

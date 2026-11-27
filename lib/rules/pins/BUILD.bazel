@@ -6,6 +6,8 @@ load("//repo:defs.bzl", "repo_files")
 
 repo_files()
 
+exports_files(["tools.json"])
+
 bzl_library(
     name = "extensions",
     srcs = ["extensions.bzl"],
