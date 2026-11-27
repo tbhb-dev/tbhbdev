@@ -159,20 +159,20 @@ def test_branch_exemption_uses_the_base_policy(
 
 
 @pytest.mark.parametrize(
-    ("change", "imported", "counted"),
+    ("change", "expected"),
     [
-        ("clean", 600, 0),
-        ("handwritten", 600, 500),
-        ("mismatch", 0, 600),
-        ("missing", 0, 600),
+        ("clean", (605, 0, 0)),
+        ("handwritten", (605, 500, 500)),
+        ("mismatch", (5, 600, 600)),
+        ("missing", (0, 600, 605)),
+        ("invalid", (0, 600, 606)),
     ],
 )
 def test_only_verified_imports_are_exempt(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     change: str,
-    imported: int,
-    counted: int,
+    expected: tuple[int, int, int],
 ) -> None:
     def commit(repo: Path, *, base: bool = False) -> str:
         def git(*args: str) -> str:
@@ -209,10 +209,13 @@ def test_only_verified_imports_are_exempt(
     )
     if change == "handwritten":
         (repo / "project/extra.py").write_text("handwritten = 1\n" * 500)
-    (repo / "project/IMPORT-MAP.toml").write_text(
+    import_map = (
         f'repo = "example/source"\ncommit = "{frozen}"\ndest = "project"\n'
         '[copy]\n"module.py" = "project/module.py"\n'
     )
+    if change == "invalid":
+        import_map += "[rewrite\n"
+    (repo / "project/IMPORT-MAP.toml").write_text(import_map)
     head = commit(repo)
     clone = source if change != "missing" else tmp_path / "absent"
     monkeypatch.setenv("GIT_CONFIG_COUNT", "1")
@@ -220,8 +223,8 @@ def test_only_verified_imports_are_exempt(
     monkeypatch.setenv("GIT_CONFIG_VALUE_0", "https://github.com/example/source.git")
     monkeypatch.chdir(repo)
     counts = sg.size_counts(base, head)
-    assert (counts.imported_lines, counts.code_lines) == (imported, counted)
-    assert counts.failed == ("code" if counted > 400 else None)
+    assert (counts.imported_lines, counts.code_lines, counts.raw_lines) == expected
+    assert counts.failed == ("code" if expected[1] > 400 else None)
 
 
 @pytest.mark.parametrize(

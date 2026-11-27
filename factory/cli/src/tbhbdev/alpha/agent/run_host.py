@@ -62,7 +62,7 @@ from tbhbdev.alpha.agent.model import (
     Settings,
 )
 from tbhbdev.alpha.agent.ownership import RunExistsError
-from tbhbdev.alpha.identity import RUN_MODEL_ENV
+from tbhbdev.alpha.identity.dispatcher import RUN_MODEL_ENV
 
 type BazelShutdown = dict[Path, tuple[str, tuple[int, int] | None]]
 

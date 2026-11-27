@@ -235,5 +235,8 @@ bzl_library(
     name = "pr_size",
     srcs = ["pr_size.bzl"],
     visibility = ["//lint:__subpackages__"],
-    deps = ["//shell:defs"],
+    deps = [
+        "//runtime:defs",
+        "//shell:defs",
+    ],
 )

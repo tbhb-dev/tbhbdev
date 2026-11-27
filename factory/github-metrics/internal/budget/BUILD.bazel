@@ -1,0 +1,22 @@
+# SPDX-License-Identifier: Apache-2.0
+# Copyright Tony Burns
+
+load("@rules_go//go:def.bzl", "go_library")
+load("@tbhb_rules//repo:defs.bzl", "repo_files")
+load("//factory:go.bzl", "go_test")
+
+repo_files(visibility = ["//factory/github-metrics:__subpackages__"])
+
+go_library(
+    name = "budget",
+    srcs = ["budget.go"],
+    importpath = "github.com/tbhb-dev/tbhbdev/factory/github-metrics/internal/budget",
+    visibility = ["//factory/github-metrics:__subpackages__"],
+)
+
+go_test(
+    name = "budget_test",
+    srcs = ["budget_test.go"],
+    visibility = ["//factory/github-metrics:__pkg__"],
+    deps = [":budget"],
+)

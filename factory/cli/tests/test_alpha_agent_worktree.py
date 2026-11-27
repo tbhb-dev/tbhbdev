@@ -21,9 +21,9 @@ from agent_host_example import (
     unusual_git_metadata,
 )
 
-from tbhbdev.alpha import identity
 from tbhbdev.alpha.agent import worktree
 from tbhbdev.alpha.agent.model import Invalid
+from tbhbdev.alpha.identity import dispatcher as identity
 
 
 class GitOptions(TypedDict, closed=True):

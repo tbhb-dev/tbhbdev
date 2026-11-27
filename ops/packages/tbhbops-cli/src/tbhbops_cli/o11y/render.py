@@ -9,13 +9,12 @@ from typing import TYPE_CHECKING
 lazy from collections.abc import Generator
 
 from tbhbops.o11y import render
+
 from tbhbops_cli.common import CliError
 lazy from tbhbops_cli.o11y.filesystem import Filesystem
 
 if TYPE_CHECKING:
     from tbhbops_cli.cli import System
-
-_BINARY_ENCODING = "latin1"
 
 
 def absolute_path(value: str) -> Path:
@@ -77,6 +76,12 @@ def remove_tree(fs: Filesystem, path: Path) -> None:
         fs.unlink(path)
 
 
+def _substitute(content: bytes, settings: render.Settings) -> bytes:
+    if b"@O11Y_" in content:
+        return render.substitute(content.decode(), settings).encode()
+    return content
+
+
 def _copy_tree(
     fs: Filesystem,
     source: Path,
@@ -95,11 +100,7 @@ def _copy_tree(
         if stat.S_ISDIR(info.st_mode):
             _copy_tree(fs, src, dst, settings, written)
         elif stat.S_ISREG(info.st_mode):
-            content = fs.read_bytes(src)
-            if b"@O11Y_" in content:
-                content = render.substitute(
-                    content.decode(_BINARY_ENCODING), settings
-                ).encode(_BINARY_ENCODING)
+            content = _substitute(fs.read_bytes(src), settings)
             mode = 0o755 if info.st_mode & 0o111 else 0o644
             files.append(dst)
             fs.write_atomic(dst, content, mode)
@@ -175,10 +176,9 @@ def _release(
     fs.mkdir(release)
     for name in ("compose.yaml", "compose.tools.yaml"):
         with _step("CopyCompose", Path("release") / name):
-            text = fs.read_bytes(source / name).decode(_BINARY_ENCODING)
             fs.write_atomic(
                 release / name,
-                render.substitute(text, settings).encode(_BINARY_ENCODING),
+                _substitute(fs.read_bytes(source / name), settings),
                 0o600,
             )
     fs.write_atomic(

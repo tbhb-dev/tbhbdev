@@ -9,7 +9,6 @@ from pathlib import Path
 from unittest.mock import Mock, call, patch
 
 import pytest
-
 from tbhbops.deploy import filesystem as fs
 from tbhbops.deploy.protocol import RefusalError
 
@@ -166,36 +165,9 @@ def test_write_failure_cleans_temporary(
     assert list(trusted_tree.iterdir()) == []
 
 
-def test_platform_and_relative(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_relative_parent_refused() -> None:
     with pytest.raises(RefusalError), fs.parent(Path("relative")):
         pytest.fail("opened relative path")
-    monkeypatch.setattr(fs.sys, "platform", "win32")
-    with pytest.raises(OSError, match=r"^receive requires Unix$"):
-        fs.open_entry("/")
-
-
-def test_write_without_unix_owner_call(
-    trusted_tree: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    original = fs.open_entry
-
-    def open_unix(
-        name: str,
-        flags: int = os.O_RDONLY,
-        *,
-        directory: bool = False,
-        dir_fd: int | None = None,
-    ) -> int:
-        with monkeypatch.context() as patch:
-            patch.setattr(fs.sys, "platform", "darwin")
-            return original(name, flags, directory=directory, dir_fd=dir_fd)
-
-    monkeypatch.setattr(fs, "open_entry", open_unix)
-    monkeypatch.setattr(fs.sys, "platform", "win32")
-    with patch.object(os, "fchown", create=True) as owner:
-        fs.write(trusted_tree / "file", b"fixture")
-    owner.assert_not_called()
-    assert (trusted_tree / "file").read_bytes() == b"fixture"
 
 
 @pytest.mark.parametrize(

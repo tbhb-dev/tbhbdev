@@ -4,7 +4,6 @@ import errno
 import os
 import re
 import stat
-import sys
 import uuid
 from contextlib import contextmanager, suppress
 from pathlib import Path
@@ -106,8 +105,7 @@ def write(
             with os.fdopen(target, "wb") as stream:
                 stream.write(data)
                 stream.flush()
-                if sys.platform != "win32":
-                    os.fchown(stream.fileno(), uid, gid)
+                os.fchown(stream.fileno(), uid, gid)
                 os.fchmod(stream.fileno(), mode)
                 os.fsync(stream.fileno())
             # Refuse a symlink even though rename itself would replace the link.
@@ -195,10 +193,7 @@ def open_entry(
     directory: bool = False,
     dir_fd: int | None = None,
 ) -> int:
-    if sys.platform != "win32":
-        flags |= os.O_NOFOLLOW
-        if directory:
-            flags |= os.O_DIRECTORY
-        return os.open(name, flags, 0o600, dir_fd=dir_fd)
-    message = "receive requires Unix"
-    raise OSError(message)
+    flags |= os.O_NOFOLLOW
+    if directory:
+        flags |= os.O_DIRECTORY
+    return os.open(name, flags, 0o600, dir_fd=dir_fd)

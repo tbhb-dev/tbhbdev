@@ -11,7 +11,7 @@ from tbhbops_cli.o11y.filesystem import (
     effective_gid,
     effective_uid,
 )
-from tbhbops_cli.o11y.init import execute, gather, generate, owner
+from tbhbops_cli.o11y.init import execute, gather, generate
 
 if TYPE_CHECKING:
     from tbhbops_cli.cli import System
@@ -25,7 +25,6 @@ __all__ = [
     "gather",
     "generate",
     "init",
-    "owner",
     "receipt",
     "render",
     "smoke",
@@ -43,7 +42,6 @@ def add_parser(groups: argparse._SubParsersAction[argparse.ArgumentParser]) -> N
         "incomplete; refusal or I/O errors exit 1, usage errors exit 2.",
     )
     command.add_argument("--data-dir", type=Path, required=True)
-    command.add_argument("--secrets-owner", type=owner, default=(0, 0))
     command.add_argument("--dry-run", action="store_true")
     command = commands.add_parser("render", help="build a content-addressed release")
     command.add_argument("--source", type=Path, required=True)
@@ -58,11 +56,8 @@ def add_parser(groups: argparse._SubParsersAction[argparse.ArgumentParser]) -> N
     state = command.add_mutually_exclusive_group()
     state.add_argument("--state-file", type=Path)
     state.add_argument("--recheck", type=Path)
-    command.add_argument("--grpc", action="store_true")
-    command.add_argument("grpc_argv", nargs=argparse.REMAINDER)
     command = commands.add_parser("smoke", help="exercise a disposable local stack")
     command.add_argument("--dedicated-engine", metavar="ENDPOINT")
-    command.add_argument("--stop-after", type=int, choices=[5])
     command.add_argument("--source", type=Path, required=True)
     command.add_argument("--out", type=Path, required=True)
     command.add_argument("--artifacts", type=Path, required=True)

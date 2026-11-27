@@ -2,14 +2,11 @@
 
 import os
 import stat
-import sys
 import tempfile
 from contextlib import contextmanager, suppress
 from typing import Protocol
 lazy from collections.abc import Generator
 lazy from pathlib import Path
-
-from tbhbops_cli.common import CliError
 
 
 class Filesystem(Protocol):
@@ -31,16 +28,13 @@ class Filesystem(Protocol):
 
 def _open(name: str, flags: int, *, dir_fd: int | None = None) -> int:
     """Open an entry without following links on supported Unix hosts."""
-    if sys.platform != "win32":
-        flags |= os.O_NOFOLLOW
-        return os.open(
-            name,
-            flags,
-            0o600,  # pragma: no mutate  # umask and fchmod also fix access
-            dir_fd=dir_fd,
-        )
-    message = "init filesystem operations require Unix"
-    raise CliError(message)
+    flags |= os.O_NOFOLLOW
+    return os.open(
+        name,
+        flags,
+        0o600,  # pragma: no mutate  # umask and fchmod also fix access
+        dir_fd=dir_fd,
+    )
 
 
 @contextmanager
@@ -53,8 +47,7 @@ def _parent(
     # still rejects symlinks at every component, even though O_PATH alone could
     # open a symlink itself. Atomic writes need a readable fd for directory fsync.
     flags = os.O_RDONLY if read_directory else getattr(os, "O_PATH", os.O_RDONLY)
-    if sys.platform != "win32":
-        flags |= os.O_DIRECTORY
+    flags |= os.O_DIRECTORY
     start = (
         root if root is not None and root in absolute.parents else Path(absolute.anchor)
     )
@@ -144,17 +137,12 @@ class LocalFilesystem:
             raise NotADirectoryError
 
     def chown(self, path: Path, uid: int, gid: int) -> None:
-        # The parent opener also refuses Windows; this guard aids type checks.
-        if sys.platform != "win32":  # pragma: no mutate  # _parent also refuses
-            with _parent(path, self.root) as (fd, name):
-                target = _open(name, os.O_RDONLY, dir_fd=fd)
-                try:
-                    os.fchown(target, uid, gid)
-                finally:
-                    os.close(target)
-        else:
-            message = "init filesystem operations require Unix"
-            raise CliError(message)
+        with _parent(path, self.root) as (fd, name):
+            target = _open(name, os.O_RDONLY, dir_fd=fd)
+            try:
+                os.fchown(target, uid, gid)
+            finally:
+                os.close(target)
 
     def chmod(self, path: Path, mode: int) -> None:
         with _parent(path, self.root) as (fd, name):
@@ -168,7 +156,9 @@ class LocalFilesystem:
         with _parent(path, self.root) as (fd, name):
             child = _open(name, os.O_RDONLY, dir_fd=fd)
             try:
-                return tuple(sorted(os.listdir(child)))  # noqa: PTH208  # directory fd prevents symlink traversal
+                return tuple(
+                    sorted(os.listdir(child))
+                )  # directory fd prevents symlink traversal
             finally:
                 os.close(child)
 
@@ -189,14 +179,10 @@ class LocalFilesystem:
 
 
 def effective_uid() -> int:
-    """The Unix effective uid; other platforms cannot apply an init plan."""
-    if sys.platform != "win32":
-        return os.geteuid()
-    return -1
+    """The Unix effective uid used for init."""
+    return os.geteuid()
 
 
 def effective_gid() -> int:
     """The Unix effective group used for private probe preparation."""
-    if sys.platform != "win32":
-        return os.getegid()
-    return -1
+    return os.getegid()

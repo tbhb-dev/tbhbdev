@@ -5,7 +5,8 @@ from typing import TYPE_CHECKING, Literal, TypedDict
 
 import pytest
 
-from tbhbdev.alpha import identity, verify_range
+from tbhbdev.alpha import verify_range
+from tbhbdev.alpha.identity import dispatcher as identity
 from tbhbdev.alpha.verify_range import main as verify_main
 
 if TYPE_CHECKING:

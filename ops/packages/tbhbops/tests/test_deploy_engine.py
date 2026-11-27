@@ -13,7 +13,6 @@ from typing import BinaryIO, TypedDict, Unpack, override
 from unittest.mock import Mock, call, patch
 
 import pytest
-
 from tbhbops.deploy import engine as engine_module
 from tbhbops.deploy import filesystem as fs
 from tbhbops.deploy import policy
@@ -1141,14 +1140,6 @@ def test_capture_unregisters_only_streams_that_reached_eof(open_stream: bool) ->
         selected.unregister.assert_not_called()
     else:
         selected.unregister.assert_called_once_with(11)
-
-
-def test_command_termination_uses_portable_kill_on_windows() -> None:
-    child = Mock()
-    with patch.object(engine_module.sys, "platform", "win32"):
-        Command().terminate(child, None)
-    child.kill.assert_called_once_with()
-    child.wait.assert_called_once_with()
 
 
 @pytest.mark.parametrize("running", [b"", b"abc\n", b"invalid/id"])

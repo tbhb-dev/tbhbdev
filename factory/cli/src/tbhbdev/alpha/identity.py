@@ -112,7 +112,16 @@ from itertools import islice, takewhile
 from pathlib import Path, PurePosixPath
 from typing import TYPE_CHECKING, cast
 
-from tbhbdev.alpha import identity_commands
+from tbhbdev.alpha.identity import commands as identity_commands
+from tbhbdev.alpha.identity.models import (
+    BAD_VALUE,
+    EFFORTS,
+    agy_model,
+    provider_model,
+    surface,
+    surface_ok,
+    version,
+)
 from tbhbdev.alpha.process import process_row
 from tbhbdev.alpha.repo import git, hook_cwd, in_tbhb_dev, read_hook_stdin
 
@@ -132,10 +141,8 @@ CLAUDE = "claude"
 CODEX = "codex"
 ANTIGRAVITY = "antigravity"
 
-# Internal harness key -> trailer slug, and -> OpenTelemetry gen_ai.provider.name.
+# Internal harness key -> trailer slug.
 SLUGS = {CLAUDE: "claude-code", CODEX: "codex", ANTIGRAVITY: "antigravity"}
-PROVIDERS = {CLAUDE: "anthropic", CODEX: "openai", ANTIGRAVITY: "gcp.gemini"}
-EFFORTS = {"none", "minimal", "low", "medium", "high", "xhigh", "max"}
 EDITS = "edits"
 CLAIMS = "claims"
 ATTR_ORDER = [
@@ -151,13 +158,10 @@ ATTR_ORDER = [
 ]
 # Attributes every trailer value needs, in the order a missing one is reported.
 REQUIRED = ("harness", "model")
-BAD_VALUE = re.compile(r"[\s;,]")
-SURFACE_VALUE = re.compile(r"[^\s;,=]+")
 HASH_RE = re.compile(r"sha-256-64:[0-9a-f]{16}")
 START_FORMAT = "%Y-%m-%dT%H:%M:%SZ"
 START_RE = re.compile(r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z", re.ASCII)
 LAUNCH_FILE = "launch.json"
-CODEX_MODEL = re.compile(r"(gpt-|o\d|codex-)")
 THREAD_ID = re.compile(r"[0-9a-fA-F-]{8,64}")
 
 # Only used by the optional rewrite path, which stays off unless
@@ -198,34 +202,6 @@ CLAUDE_TAIL = 256 * 1024
 CODEX_TAIL = 1024 * 1024
 CODEX_HEAD = 1024 * 1024
 CODEX_MAX_AGE = 3 * 86400
-
-# Antigravity model keys -> (provider, canonical model id, effort or None).
-# Source of every entry: `agy models` on 1.5.7 (key plus display name, such as
-# "Gemini 3.8 Flash (Medium)"). Effort is the key suffix, confirmed by the
-# display-name parenthetical in each case. Each base has its own effort set:
-# gemini-4-hydrogen has xhigh, and the other bases stop at high. The two
-# orchestrator keys carry no effort suffix, so their entries have no effort, and
-# their model id is the key itself: the display name ("Orchestrator (Carbon)")
-# names an underlying model, but nothing observed says which model answers. The
-# gemini-* canonical IDs are inferred from display names and the old design,
-# NOT verified against Google's API. Never regex-strip: unknown keys
-# (gemini-3.8-flash-tiered, ...) pass through whole.
-AGY_EFFORTS = ("low", "medium", "high")
-AGY_MODELS: dict[str, tuple[str, str, str | None]] = {
-    f"{base}-{effort}": (provider, base, effort)
-    for base, provider, efforts in (
-        ("gemini-4-argon", "gcp.gemini", AGY_EFFORTS),
-        ("gemini-4-carbon", "gcp.gemini", AGY_EFFORTS),
-        ("gemini-4-hydrogen", "gcp.gemini", (*AGY_EFFORTS, "xhigh")),
-        ("gemini-3.8-flash", "gcp.gemini", AGY_EFFORTS),
-        ("claude-opus-5-5", "anthropic", AGY_EFFORTS),
-        ("claude-sonnet-5-5", "anthropic", AGY_EFFORTS),
-    )
-    for effort in efforts
-}
-AGY_MODELS["gpt-oss-120b-medium"] = ("openai", "gpt-oss-120b", "medium")
-for _orchestrator in ("gemini-pro-orchestrator", "gemini-pro-orchestrator-argon"):
-    AGY_MODELS[_orchestrator] = ("gcp.gemini", _orchestrator, None)
 
 type Json = dict[str, object]
 
@@ -430,19 +406,6 @@ def detect(env: Mapping[str, str]) -> tuple[str, str] | None:
     return None
 
 
-def version(key: str, env: Mapping[str, str]) -> str | None:
-    """The harness version from its environment, or None."""
-    if key == CLAUDE:
-        path = env.get("CLAUDE_CODE_EXECPATH")
-        return Path(path).name if path else None
-    if key == CODEX:
-        return env.get("CODEX_VERSION") or None
-    if key == ANTIGRAVITY:
-        ls_version = env.get("ANTIGRAVITY_LS_VERSION")
-        return ls_version.removeprefix("cli-") if ls_version else None
-    return None
-
-
 def clean_value(value: object) -> str | None:
     """Lowercase a trailer value; None when empty or not grammar-safe."""
     text = str(value).strip().lower() if value is not None else ""
@@ -465,50 +428,6 @@ def start_ok(value: object) -> str | None:
 def hash_ok(value: object) -> str | None:
     """A ``sha-256-64:`` hash, or None for anything else."""
     return value if isinstance(value, str) and HASH_RE.fullmatch(value) else None
-
-
-def surface_ok(value: object) -> str | None:
-    """A raw vendor surface value (case preserved) if the grammar allows it."""
-    if isinstance(value, str) and SURFACE_VALUE.fullmatch(value):
-        return value
-    return None
-
-
-def surface(key: str, env: Mapping[str, str]) -> str | None:
-    """The surface a harness runs on (IDE, CLI, SDK and so on), from its env.
-
-    Codex has none in its env; its surface is the rollout's ``source``.
-    """
-    if key == CLAUDE:
-        return surface_ok(env.get("CLAUDE_CODE_ENTRYPOINT"))
-    if key == ANTIGRAVITY:
-        ls_version = env.get("ANTIGRAVITY_LS_VERSION")
-        return "cli" if ls_version and ls_version.startswith("cli-") else None
-    return None
-
-
-def agy_model(raw: str) -> tuple[str, str | None]:
-    """Explicit table lookup only: (model value, effort or None).
-
-    Unknown keys pass through whole.
-    """
-    entry = AGY_MODELS.get(raw)
-    if entry:
-        return f"{entry[0]}:{entry[1]}", entry[2]
-    return raw, None
-
-
-def provider_model(key: str, model: str | None) -> str | None:
-    """``provider:model`` for a raw model name, or None if unusable."""
-    if not model or model.startswith("<") or BAD_VALUE.search(model):
-        return None
-    if key == CLAUDE:
-        return f"{PROVIDERS[CLAUDE]}:{model}"
-    if key == CODEX and CODEX_MODEL.match(model):
-        return f"{PROVIDERS[CODEX]}:{model}"
-    if key == ANTIGRAVITY:
-        return agy_model(model)[0]
-    return model
 
 
 def format_value(attrs: Mapping[str, str]) -> str:
