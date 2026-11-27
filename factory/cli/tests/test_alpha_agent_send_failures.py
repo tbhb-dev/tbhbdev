@@ -14,8 +14,11 @@ from agent_cli_example import run_agent
 from agent_driver_example import execution_arguments
 from agent_example import settings
 
-from tbhbdev.alpha.agent import app_server, arguments, driver, host_tools, transport
+from tbhbdev.alpha.agent import app_server, host_tools, transport
 from tbhbdev.alpha.agent import settings as agent_settings
+from tbhbdev.alpha.agent.driver import arguments
+from tbhbdev.alpha.agent.driver.launch import prepare
+from tbhbdev.alpha.agent.driver.metadata import save
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -30,7 +33,7 @@ def test_send_refuses_agy_run(
     args = arguments.parser("agent").parse_args(
         execution_arguments("brief.md", "--harness", "agy", "--model", "gemini-example")
     )
-    driver.save(driver.prepare(config, args))
+    save(prepare(config, args))
     shell = Mock()
     monkeypatch.setattr(transport, "shell", shell)
 

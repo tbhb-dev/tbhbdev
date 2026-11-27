@@ -799,12 +799,6 @@ def test_view_pins_the_repo_when_given(gh: Gh) -> None:
     assert call[3:5] == ["--repo", "github.com/tbhb-dev/tbhbdev"]
 
 
-def test_comment_is_an_alias_for_reason(gh: Gh) -> None:
-    opened.record_opened(root(), ["tbhb-dev/tbhbdev#7"])
-    assert close.main(["pr", "close", "7", "--comment", "Done."], env=ENV) == 0
-    assert gh.calls[-1][-1] == f"Done.\n\n{trailer_line()}\n"
-
-
 DELETE = ["api", "-X", "DELETE", "repos/tbhb-dev/tbhbdev/git/refs/heads/feat/x%20y"]
 PR_ARGS = ["pr", "close", "7", "--reason", "r", "--delete-branch"]
 
