@@ -1366,18 +1366,20 @@ def test_compound_state_directory_movers_are_denied(command: str) -> None:
     "producer",
     ["echo ~/.local/state/tbhb/*", "echo ~/.local/state/tbhb/*; echo /tmp/scratch"],
 )
-@pytest.mark.parametrize("redirect", ["2>/dev/null", "2> /dev/null"])
+@pytest.mark.parametrize(
+    "redirect", ["2>/dev/null", "2> /dev/null", "2>&1", ">&2", "&>file"]
+)
 def test_redirected_group_keeps_state_directory_in_pipeline(
     producer: str, redirect: str
 ) -> None:
-    command = f"({producer}) {redirect} | xargs rm -rf"
+    command = f"({producer}) {redirect} | xargs rm"
     assert guard.inspect(command)[0] == guard.PROTECT_REASON
 
 
-@pytest.mark.parametrize("separator", [";", "&&", "||", "\n"])
+@pytest.mark.parametrize("separator", [";", "&", "&&", "||", "\n"])
 def test_redirected_group_does_not_supply_a_later_pipeline(separator: str) -> None:
     command = (
-        f"(echo ~/.local/state/tbhb/*) 2>/dev/null {separator} "
+        f"(echo ~/.local/state/tbhb/*) 2>&1 {separator} "
         "echo /tmp/scratch/* | xargs rm -rf"
     )
     assert guard.inspect(command)[0] is None

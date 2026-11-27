@@ -165,7 +165,8 @@ REPEATER_VALUE_FLAGS = {
     "--max-lines", "--max-procs", "--replace",
 }  # fmt: skip
 GH_RUN = re.compile(r"\bgh\b.*\brun\b", re.DOTALL)
-REDIRECT = re.compile(r"\d*(?:>>?|<|>&|&>)")
+REDIRECT = re.compile(r"\d*(?:[<>]&|&>>?|>>?|<)")
+AMPERSAND_REDIRECTS = (">&", "<&", "&>")
 REPEAT_REASON = (
     "Don't run a CI listing through xargs or parallel; each repeat is a separate "
     "call. Ask the coordinator."
@@ -227,11 +228,15 @@ class BodyScanner(Scanner):
 
     @override
     def plain(self, char: str) -> None:
-        """Keep the command indices followed by a pipe."""
-        if char == "|":
-            if self.text.startswith("||", self.pos):
-                self.pos += 1
-            elif self.closed_group is not None:
+        """Keep the command indices followed by a pipe and scan redirects as words."""
+        if self.text.startswith(AMPERSAND_REDIRECTS, self.pos):
+            self.add(self.text[self.pos : self.pos + 2])
+            self.pos += 2
+            return
+        if self.text.startswith(("&&", "||"), self.pos):
+            self.pos += 1
+        elif char == "|":
+            if self.closed_group is not None:
                 index = len(self.commands)
                 if not (self.words or self.in_word):
                     index -= 1
