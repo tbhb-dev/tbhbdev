@@ -18,7 +18,9 @@ PROVIDERS = {
     "random": "hashicorp/random",
 }
 
-# The OpenTofu binary pinned in MODULE.bazel for the host platform.
+# The OpenTofu binary for the host platform. The pin does not exist yet:
+# MODULE.bazel has no tofu entry and no @tofu_* repository, so this target
+# cannot build. See "Hold two Renovate updates that need planned migrations".
 pinned_binary(
     name = "tofu",
     binary = select({
