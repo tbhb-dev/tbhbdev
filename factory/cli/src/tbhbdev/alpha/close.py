@@ -32,7 +32,8 @@ from pathlib import Path
 from textwrap import indent
 from typing import TYPE_CHECKING
 
-from tbhbdev import content, issue_import, userconfig
+from tbhbdev import content_issues as content
+from tbhbdev import issue_import, userconfig
 from tbhbdev.alpha import opened, worker_identity
 from tbhbdev.alpha import pull_request as pr
 from tbhbdev.alpha.agent import settings as agent_settings

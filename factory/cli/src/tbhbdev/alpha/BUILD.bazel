@@ -27,7 +27,7 @@ cli_py_library(
         ":opened",
         ":pull_request",
         ":worker_identity",
-        "//factory/cli/src/tbhbdev:content",
+        "//factory/cli/src/tbhbdev:content_issues",
         "//factory/cli/src/tbhbdev:issue_import",
         "//factory/cli/src/tbhbdev:userconfig",
         "//factory/cli/src/tbhbdev/alpha/agent:settings",

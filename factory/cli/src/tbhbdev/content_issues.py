@@ -1,4 +1,4 @@
-"""Shared GitHub content validation and writes for plugins."""
+"""Scan and audit GitHub issue and project writes."""
 
 import json
 import os

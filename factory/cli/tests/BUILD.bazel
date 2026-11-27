@@ -244,7 +244,7 @@ cli_py_test(
         "//factory/cli/src/tbhbdev:adr",
         "//factory/cli/src/tbhbdev:adr_decision",
         "//factory/cli/src/tbhbdev:cli",
-        "//factory/cli/src/tbhbdev:content",
+        "//factory/cli/src/tbhbdev:content_issues",
         "//factory/cli/src/tbhbdev/alpha:pull_request_frontmatter",
         "@cli_pip//pytest",
     ],
@@ -1631,18 +1631,6 @@ cli_py_test(
 )
 
 cli_py_test(
-    name = "test_content",
-    srcs = ["test_content.py"],
-    deps = [
-        ":conftest",
-        "//factory/cli/src/tbhbdev:content",
-        "//factory/cli/src/tbhbdev/alpha:close",
-        "//factory/cli/src/tbhbdev/alpha:pull_request",
-        "@cli_pip//pytest",
-    ],
-)
-
-cli_py_test(
     name = "test_content_model",
     srcs = ["test_content_model.py"],
     data = ["//factory/cli:schemas"],
@@ -1833,6 +1821,7 @@ filegroup(
         "//factory/cli/tests/integration/alpha/agent:package_files",
         "//factory/cli/tests/integration/alpha/identity:test_dispatcher_timestamps_io.py",
         "//factory/cli/tests/unit:test_content_decision_record.py",
+        "//factory/cli/tests/unit:test_content_issues.py",
         "//factory/cli/tests/unit/alpha:package_files",
         "//factory/cli/tests/unit/alpha/agent:package_files",
         "//factory/cli/tests/unit/alpha/agent/decisions:package_files",

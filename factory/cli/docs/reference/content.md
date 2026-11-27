@@ -16,7 +16,7 @@ type: Reference
 
 # Content writes
 
-`tbhbdev.content` is the shared library for GitHub content validation and for writes by the `pm` and `sm` plugins. Import it directly.
+Import issue and project writes from `tbhbdev.content_issues`.
 
 - `create_issue(repo, title, body, *, issue_type, labels=(), fields=None, project=None, client=None)` creates an issue with its type and labels. `repo` is `owner/repo`. When given a project, it adds the issue and sets the fields after creation.
 - `add_comment(ref, text, *, client=None)` posts a comment.
@@ -73,6 +73,8 @@ With `dry_run=True`, text is scanned, no REST or GraphQL write is sent, and no a
 
 ## Decision records
 
+Import `check_decision_record` from `tbhbdev.content_decision_record`.
+
 ```python
 check_decision_record(markdown: str) -> list[str]
 ```
@@ -84,6 +86,8 @@ The title needs at least four visible words and cannot end in a colon or questio
 Write each paragraph on one source line, including paragraphs within bullets. A sentence cannot start a line as a quotation. Tables, code blocks, and block quotes are forbidden.
 
 ## Draft validation
+
+Import the draft validators from `tbhbdev.content_vet`.
 
 `check(draft, schemas, *, variant_schema=None, definition="#Draft", parent_type=None)` takes a normalized draft and the path to the shared `schemas` directory. It runs `cue vet --all-errors` against `#Draft` and the selected definition. A caller can supply one additional CUE file with its variant definition. Install the pinned executable with `tbhbdev cue install`. [Markdown normalization](content-model.md)
 

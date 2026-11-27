@@ -28,8 +28,8 @@ cli_py_library(
     visibility = ["//factory/cli:__subpackages__"],
     deps = [
         ":adr_decision",
-        ":content",
         ":content_decision_record",
+        ":content_issues",
         ":runner",
         "//factory/cli/src/tbhbdev/alpha:pull_request",
         "//factory/cli/src/tbhbdev/alpha:pull_request_frontmatter",
@@ -42,7 +42,7 @@ cli_py_library(
     srcs = ["adr_decision.py"],
     imports = [".."],
     visibility = ["//factory/cli:__subpackages__"],
-    deps = [":content"],
+    deps = [":content_issues"],
 )
 
 cli_py_library(
@@ -75,8 +75,17 @@ cli_py_library(
 )
 
 cli_py_library(
-    name = "content",
-    srcs = ["content.py"],
+    name = "content_decision_record",
+    srcs = ["content_decision_record.py"],
+    imports = [".."],
+    pyi_deps = [":content_vet"],
+    visibility = ["//factory/cli:__subpackages__"],
+    deps = [":content_model"],
+)
+
+cli_py_library(
+    name = "content_issues",
+    srcs = ["content_issues.py"],
     imports = [".."],
     visibility = ["//factory/cli:__subpackages__"],
     deps = [
@@ -85,15 +94,6 @@ cli_py_library(
         "//factory/cli/src/tbhbdev/alpha:pull_request",
         "//factory/cli/src/tbhbdev/alpha:secret_scan",
     ],
-)
-
-cli_py_library(
-    name = "content_decision_record",
-    srcs = ["content_decision_record.py"],
-    imports = [".."],
-    pyi_deps = [":content_vet"],
-    visibility = ["//factory/cli:__subpackages__"],
-    deps = [":content_model"],
 )
 
 cli_py_library(

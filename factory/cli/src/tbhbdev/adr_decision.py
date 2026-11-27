@@ -4,7 +4,7 @@ import re
 from dataclasses import dataclass
 from typing import Self, cast
 
-from tbhbdev.content import Json, Refused
+from tbhbdev.content_issues import Json, Refused
 
 ADR_LABEL = "adr"
 DECISION_TYPE = "Decision"
