@@ -24,7 +24,7 @@ from pathlib import Path
 
 import httpx2
 
-from tbhbdev import userconfig
+from tbhbdev import github_tls, userconfig
 from tbhbdev.alpha import codex_trust, install, run_stop_hook
 from tbhbdev.alpha.agent import (
     admission,
@@ -857,11 +857,22 @@ def publication_branch(run: Run) -> str:
     return f"agent/{run.files.name}"
 
 
+def github_get(run: Run, endpoint: str) -> httpx2.Response:
+    _, owner, repository = repo.parts(run.request.repo)
+    url = f"https://api.github.com/repos/{owner}/{repository}/{endpoint}"
+    headers = {"Accept": "application/vnd.github+json"}
+    if (token := credentials.fetch_token(run.request, run.settings)) is not None:
+        headers["Authorization"] = f"Bearer {token}"
+    return httpx2.get(
+        url, headers=headers, timeout=20, verify=github_tls.public_roots()
+    )
+
+
 def origin_tip(run: Run) -> str | None:
     """Read the exact branch from origin. Empty means absent, None unreadable."""
     branch = f"heads/{publication_branch(run)}"
     try:
-        response = push.github_get(run, f"git/ref/{branch}")
+        response = github_get(run, f"git/ref/{branch}")
         if response.status_code == httpx2.codes.NOT_FOUND:
             return ""
         response.raise_for_status()
@@ -881,7 +892,7 @@ def origin_contains(run: Run, commit: str) -> bool | None:
         return None if tip is None else bool(tip)
     # Compare pinned commits so that a concurrent push cannot change the answer.
     try:
-        response = push.github_get(run, f"compare/{commit}...{tip}?per_page=1")
+        response = github_get(run, f"compare/{commit}...{tip}?per_page=1")
         if response.status_code == httpx2.codes.NOT_FOUND:
             return False
         response.raise_for_status()

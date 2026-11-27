@@ -830,7 +830,11 @@ def test_hook_installation_is_repeatable_private_and_read_only(
         python=Path(sys.base_prefix, "bin", "python3"),
         mark=worktree.install.SHIM_MARK,
         pattern=worktree.TBHB_DEV_ORIGIN.pattern,
-        run_env={"TBHBDEV_RUN_NAME": "example", "TBHBDEV_RUN_START_REF": ""},
+        run_env={
+            "TBHBDEV_RUN_NAME": "example",
+            "TBHBDEV_RUN_START_REF": "",
+            "TBHBDEV_RUN_START_TIP": "a" * 40,
+        },
     )
 
 

@@ -2,9 +2,9 @@
 description: Agent settings, run requests, and host preparation.
 generated:
   - role: generated
-    harness: codex
-    model: openai:gpt-6
-    at: "2026-11-27T09:06:58Z"
+    harness: codex:0.171.0
+    model: openai:gpt-6.2-sol
+    at: "2026-11-27T10:07:25Z"
 status: stable
 tags: [alpha]
 title: Agent configuration
@@ -21,7 +21,7 @@ When the host reports a failed launch before the harness starts, `agent exec` pr
 
 The launcher warns when the prompt mentions a ref that no `--fetch-ref` option covers.
 
-The build profile enables `--expect-commit` by default. If the harness succeeds and the host records no new commit, the run exits 6 and logs `no new commit:`. For a build using its own branch, the host compares the live tip of `refs/heads/agent/<name>` on origin before and after the harness. An absent branch after the run, an unchanged tip, or a failed lookup exits 9 and logs `push failed:`. Builds using `--start-ref` use the selected branch's fast-forward check. Pass `--no-expect-commit` to waive the commit and run branch requirements for research builds. Both flags apply only to the build profile.
+The build profile enables `--expect-commit` by default. If the harness succeeds without a new local commit, the run exits 6 and logs `no new commit:`. The host checks that the recorded commit is the tip of `refs/heads/agent/<name>` on origin or an ancestor of that tip. With `--start-ref`, the host checks the selected branch on origin. If the branch is missing or doesn't contain the commit, the run exits 9 and logs `push failed:`. A failed lookup gives the same exit code and log prefix. The selected branch must still point to the fetched commit when the build pushes, and the push must be a fast-forward. For research builds, pass `--no-expect-commit` to skip commit verification. The build profile supports both flags.
 
 The Stop hook checks the run worktree for uncommitted tracked changes and the run branch for a commit past its starting point. Use `agent exec --no-expect-commit` for a build that can finish without a new commit; the worktree still has to be clean of tracked changes. For reviews, the hook requires a standalone `VERDICT: GO`, `VERDICT: BLOCK` or `VERDICT: NO-GO` line in the final reply, with an optional full commit SHA. The hook asks the model to continue up to three times per run, then allows the stop and logs the reason.
 

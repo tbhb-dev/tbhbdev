@@ -4,7 +4,6 @@ import os
 import subprocess
 lazy from pathlib import Path
 
-from agent_host_example import git, isolate_host_git
 lazy import pytest
 
 from tbhbdev.alpha.agent import worktree
@@ -14,12 +13,11 @@ from tbhbdev.alpha.agent.model import Profile
 def test_build_git_uses_the_run_gh_credential(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    isolate_host_git(tmp_path, monkeypatch)
-    git(tmp_path, "init", "--bare", "mirror")
+    mirror = tmp_path / "mirror"
+    mirror.mkdir()
+    worktree.git(mirror, "init", "--bare", "--template=")
     clone = tmp_path / "clone"
-    worktree.clone_run(
-        tmp_path / "mirror", clone, "https://example.test/repo.git", Profile.BUILD
-    )
+    worktree.clone_run(mirror, clone, "https://example.test/repo.git", Profile.BUILD)
     helper = tmp_path / "gh"
     helper.write_text('#!/bin/sh\ncat "$GH_CONFIG_DIR/credential"\n')
     helper.chmod(0o700)

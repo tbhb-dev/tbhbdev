@@ -5,7 +5,7 @@ from unittest.mock import Mock
 import httpx2
 import pytest
 
-from tbhbdev.alpha.agent import push, run_host
+from tbhbdev.alpha.agent import run_host
 
 
 @pytest.mark.parametrize(
@@ -31,7 +31,7 @@ def test_origin_contains_recorded_commit(
     )
     lookup = Mock(return_value=response)
     monkeypatch.setattr(run_host, "origin_tip", Mock(return_value=tip))
-    monkeypatch.setattr(push, "github_get", lookup)
+    monkeypatch.setattr(run_host, "github_get", lookup)
     commit = "a" * 40
     assert run_host.origin_contains(run, commit) is expected
     if tip and tip != commit:

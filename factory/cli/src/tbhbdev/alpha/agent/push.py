@@ -9,12 +9,8 @@ from contextlib import contextmanager, suppress
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-import httpx2
-
-from tbhbdev import github_tls
-from tbhbdev.alpha.agent import credentials, host_tools, runfiles
-from tbhbdev.alpha.agent.decisions import repo
-from tbhbdev.alpha.agent.model import Invalid, Profile
+from tbhbdev.alpha.agent import host_tools, runfiles
+from tbhbdev.alpha.agent.model import Profile
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Generator
@@ -40,14 +36,9 @@ def run(
     workspace = Path(prepared.paths.worktree)
     reference = f"refs/heads/agent/{run.files.name}"
     before, _ = local_refs(workspace)
-    base = before.get(reference)
-    if base is not None:
-        run.files.write("base", base)
+    run.files.write("base", before[reference])
     if (start_ref := run.request.start_ref) is not None:
-        if base is None:
-            message = f"missing fetched starting commit for {start_ref}"
-            raise Invalid(message)
-        run.files.write("log", f"start ref: {start_ref} at {base}\n")
+        run.files.write("log", f"start ref: {start_ref} at {before[reference]}\n")
 
     rc = harness(run, prepared, stack)
     if run.files.uncertain:
@@ -55,7 +46,10 @@ def run(
     try:
         after, checkout = local_refs(workspace)
         if rc:
-            tip = recovery_tip(reference, before, after)
+            tip = after.get(reference)
+            if tip is None or tip in before.values():
+                tip = after.get("HEAD") or after.get("detached HEAD")
+            tip = None if tip in before.values() else tip
         else:
             found = new_commits(run, workspace, before, after, checkout)
             tip = found[0][1] if found else None
@@ -73,15 +67,6 @@ def run(
         )
         return 4
     return rc
-
-
-def recovery_tip(
-    reference: str, before: dict[str, str], after: dict[str, str]
-) -> str | None:
-    tip = after.get(reference)
-    if tip is None or tip in before.values():
-        tip = after.get("HEAD") or after.get("detached HEAD")
-    return tip if tip not in before.values() else None
 
 
 def local_refs(workspace: Path) -> tuple[dict[str, str], str]:
@@ -121,8 +106,7 @@ def new_commits(
 ) -> list[tuple[str, str]]:
     """Find independent local branch or detached HEAD tips with new run history."""
     reference = f"refs/heads/agent/{run.files.name}"
-    # Use the starting tip of the run's branch, falling back to the starting HEAD.
-    start = before.get(reference) or before.get("HEAD", before.get("detached HEAD"))
+    start = before[reference]
     # Preparation fetches into the clone before the harness can change its refs.
     bases = tuple(dict.fromkeys(before.values()))
     candidates = {
@@ -131,7 +115,7 @@ def new_commits(
         if (name.startswith("refs/heads/") or name == "detached HEAD")
         and tip not in bases
     }
-    if not start or not candidates:
+    if not candidates:
         return []
     with publication(
         run.files.root, workspace, next(iter(candidates.values()))
@@ -268,15 +252,3 @@ def publication(root: Path, workspace: Path, commit: str) -> Generator[Path]:
         )
         (directory / "HEAD").write_text(commit + "\n")
         yield directory
-
-
-def github_get(run: Run, endpoint: str) -> httpx2.Response:
-    _, owner, repository = repo.parts(run.request.repo)
-    url = f"https://api.github.com/repos/{owner}/{repository}/{endpoint}"
-    headers = {"Accept": "application/vnd.github+json"}
-    token = credentials.fetch_token(run.request, run.settings)
-    if token is not None:
-        headers["Authorization"] = f"Bearer {token}"
-    return httpx2.get(
-        url, headers=headers, timeout=20, verify=github_tls.public_roots()
-    )

@@ -156,13 +156,9 @@ cli_py_library(
     pyi_deps = [":run_host"],
     visibility = ["//factory/cli:__subpackages__"],
     deps = [
-        ":credentials",
         ":host_tools",
         ":model",
         ":runfiles",
-        "//factory/cli/src/tbhbdev:github_tls",
-        "//factory/cli/src/tbhbdev/alpha/agent/decisions:repo",
-        "@cli_pip//httpx2",
     ],
 )
 
@@ -223,6 +219,7 @@ cli_py_library(
         ":settings",
         ":shims",
         ":worktree",
+        "//factory/cli/src/tbhbdev:github_tls",
         "//factory/cli/src/tbhbdev:userconfig",
         "//factory/cli/src/tbhbdev/alpha:codex_trust",
         "//factory/cli/src/tbhbdev/alpha:install",

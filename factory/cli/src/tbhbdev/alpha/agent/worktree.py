@@ -288,6 +288,7 @@ def install_hooks(
         run_env={
             pre_push_guard.RUN_NAME_ENV: run_name,
             pre_push_guard.RUN_START_REF_ENV: start_ref or "",
+            pre_push_guard.RUN_START_TIP_ENV: start,
         },
     )
     scripts[hooks / "reference-transaction"] = RUN_REFERENCE_TRANSACTION.format(

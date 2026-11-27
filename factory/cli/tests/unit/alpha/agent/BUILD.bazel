@@ -17,7 +17,6 @@ cli_py_test(
     srcs = ["test_run_host_publication.py"],
     imports = ["../../.."],
     deps = [
-        "//factory/cli/src/tbhbdev/alpha/agent:push",
         "//factory/cli/src/tbhbdev/alpha/agent:run_host",
         "//factory/cli/tests:conftest",
         "@cli_pip//httpx2",

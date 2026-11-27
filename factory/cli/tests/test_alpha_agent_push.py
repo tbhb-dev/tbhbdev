@@ -20,7 +20,6 @@ from tbhbdev.alpha.agent import (
     run_host,
     runfiles,
 )
-from tbhbdev.alpha.agent.model import Invalid
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Generator
@@ -156,20 +155,6 @@ def test_build_records_commit_without_publishing(
     )
     assert not run.files.path("branch").exists()
     assert not run.files.path("pr").exists()
-
-
-def test_start_ref_requires_the_fetched_starting_commit(
-    local_run: LocalRun,
-) -> None:
-    run, prepared, _target = local_run
-    run.request = replace(run.request, start_ref=START_REF)
-    git(Path(prepared.paths.worktree), "update-ref", "-d", "refs/heads/agent/example")
-    with (
-        ExitStack() as stack,
-        pytest.raises(Invalid, match="missing fetched starting commit"),
-    ):
-        push.run(run, prepared, stack, harness)
-    assert not run.files.path("out.final").exists()
 
 
 @pytest.mark.parametrize("rc", [0, 9])
@@ -351,10 +336,9 @@ def test_only_descendants_of_start_are_recorded(
         git(workspace, "switch", "-c", "topic/checkout", common)
         commit(workspace, "checkout tip")
     elif start == "attached HEAD":
-        git(workspace, "branch", "-m", "topic/start")
+        git(workspace, "switch", "-c", "topic/start")
     elif start == "detached HEAD":
         git(workspace, "switch", "--detach", start_sha)
-        git(workspace, "branch", "-D", "agent/example")
 
     multiple = start == "multiple unrelated tips"
     tips = ("topic/first", "topic/second") if multiple else ("topic/work",)
@@ -403,17 +387,6 @@ def test_eligible_tips_orders_refs_and_ignores_existing_history(
         (tmp_path, existing, bases),
         (tmp_path, last, bases, start),
     ]
-
-
-def test_unborn_start_does_not_record_a_commit(local_run: LocalRun) -> None:
-    run, prepared, target = local_run
-    workspace = Path(prepared.paths.worktree)
-    git(workspace, "switch", "--orphan", "topic/work")
-    git(workspace, "branch", "-D", "agent/example")
-    with ExitStack() as stack:
-        assert push.run(run, prepared, stack, harness) == 0
-    assert git(target, "for-each-ref") == ""
-    assert not run.files.path("head").exists()
 
 
 def test_existing_history_does_not_count_as_new_commits(

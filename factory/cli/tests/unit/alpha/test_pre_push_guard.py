@@ -20,6 +20,8 @@ from tbhbdev.alpha import pre_push_guard as pg
         ),
         ("fix/topic", "b0", 0, "the start ref must already exist; push refused"),
         ("fix/topic", "ba", 1, "the start ref requires a fast-forward push"),
+        # The advertised tip c is an ancestor of the fetched start a and the fix b.
+        ("fix/topic", "bc", 0, "remote tip changed since fetch; push refused"),
     ],
 )
 def test_start_ref_push(
@@ -27,6 +29,7 @@ def test_start_ref_push(
 ) -> None:
     branch, shas, ancestry, expected = case
     monkeypatch.setenv(pg.RUN_START_REF_ENV, "refs/heads/fix/topic")
+    monkeypatch.setenv(pg.RUN_START_TIP_ENV, "a" * 40)
     for name in ("remote_tips", "known_objects", "agent_commit_problems"):
         monkeypatch.setattr(pg, name, Mock(return_value=[]))
     monkeypatch.setattr(pg, "git", Mock(return_value=(ancestry, "")))
