@@ -23,8 +23,8 @@ Before every push, run `bazelisk run //:preflight` at the branch head and make s
 
 ## Python
 
-- An `__init__.py` holds only a short docstring that says what the package contains. Leave out imports, re-exports, and code. In reviews, don't ask for the docstring to be removed or for an empty initializer.
-- Mirror the module structure of `src` in `tests/unit` and `tests/integration`, omitting the top-level package folder. For example, `tests/unit/alpha/agent/test_run_host.py` tests `src/tbhbdev/alpha/agent/run_host.py`. When you move or split a module, move its tests to the matching path in the same pull request. Don't block a pull request because untouched tests are still in their old locations.
+- Use a short docstring in `__init__.py` to describe the package. Leave out imports, re-exports, and code. In reviews, keep the docstring and avoid asking for an empty initializer.
+- Mirror the module structure of `src` in `tests/unit` and `tests/integration`, omitting the top-level package folder. A test at `tests/unit/alpha/agent/test_run_host.py` covers `src/tbhbdev/alpha/agent/run_host.py`. When you move or split a module, move its tests to the matching path in the same pull request. Don't block a pull request because untouched tests are still in their old locations.
 
 ## Commands
 
