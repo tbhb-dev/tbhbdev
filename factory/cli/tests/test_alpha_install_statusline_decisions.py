@@ -93,21 +93,6 @@ def test_replaceable_line_keeps_the_other_fields(command: str) -> None:
     assert decisions.replaceable_line({"statusLine": line}, INSTALL_DIR) == line
 
 
-@pytest.mark.parametrize(
-    ("node", "bun", "installed", "expected"),
-    [
-        (None, None, False, "node"),
-        ("/bin/node", None, False, "bun"),
-        ("/bin/node", None, True, None),
-        ("/bin/node", "/bin/bun", False, None),
-    ],
-)
-def test_missing_tool(
-    node: str | None, bun: str | None, *, installed: bool, expected: str | None
-) -> None:
-    assert decisions.missing_tool(node, bun, installed=installed) == expected
-
-
 def test_the_package_lives_in_node_modules_under_the_root() -> None:
     assert decisions.statusline_package(ROOT).relative_to(ROOT).parts == (
         "node_modules",

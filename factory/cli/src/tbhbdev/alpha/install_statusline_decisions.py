@@ -32,13 +32,6 @@ def statusline_command(node: str, script: PurePath) -> str:
     return f"{COLUMNS_PREFIX} {shlex.quote(node)} {shlex.quote(str(script))}"
 
 
-def missing_tool(node: str | None, bun: str | None, *, installed: bool) -> str | None:
-    """Name the tool the pin can't run without, or None when it has both."""
-    if not node:
-        return "node"
-    return "bun" if not installed and not bun else None
-
-
 def is_ours(command: str, install_dir: PurePath) -> bool:
     """Whether COMMAND is exactly what this installer writes, for any node and version.
 

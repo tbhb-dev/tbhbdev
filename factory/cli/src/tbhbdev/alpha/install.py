@@ -902,7 +902,11 @@ def install_statusline(  # noqa: PLR0911 -- one early return per outcome
     if line["command"] == wanted and installed:
         print(f"claude: statusLine in {path} is up to date")
         return 0
-    missing = statusline.missing_tool(node, bun, installed=installed)
+    missing = None
+    if not node:
+        missing = "node"
+    elif not installed and not bun:
+        missing = "bun"
     if missing:
         print(
             f"claude: {missing} not found; left the statusLine command in {path}",
