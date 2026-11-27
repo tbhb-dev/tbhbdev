@@ -13,7 +13,7 @@ type: Reference
 
 # Config
 
-The values of one deployment come from the user config at `$XDG_CONFIG_HOME/tbhbdev/config.toml`, where `XDG_CONFIG_HOME` defaults to `.config` in the home directory. The package has no defaults for them, and no environment variable or plugin overrides them. When the file or a required key is missing, the command fails, and its error gives the file's path and the `[table] key`. Optional settings include the `[loop]`, `[agent]` and `[gh_budget]` tables. Calling `alpha loop` requires its settings in `[loop]`. Commands read the file when they first need a value. `--help` works without the file.
+The values of one deployment come from the user config at `$XDG_CONFIG_HOME/tbhbdev/config.toml`, where `XDG_CONFIG_HOME` defaults to `.config` in the home directory. The package has no defaults for them, and no environment variable or plugin overrides them. When the file or a required key is missing, the command fails, and its error gives the file's path and the `[table] key`. Optional settings include the `[agent]` and `[gh_budget]` tables. Commands read the file when they first need a value. `--help` works without the file.
 
 ```toml
 [op]

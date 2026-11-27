@@ -17,8 +17,6 @@ load(":pytest.bzl", "cli_py_test")
 # gazelle:resolve py test_alpha_agent_run_host :test_alpha_agent_run_host_support
 # gazelle:resolve py test_alpha_agent_sandbox_live :test_alpha_agent_sandbox_live_support
 # gazelle:resolve py test_alpha_agent_settings :test_alpha_agent_settings_support
-# gazelle:resolve py test_alpha_loop_rules :test_alpha_loop_rules_support
-# gazelle:resolve py test_alpha_loop_store :test_alpha_loop_store_support
 # gazelle:resolve py test_alpha_pull_request :test_alpha_pull_request_support
 # gazelle:resolve py test_alpha_review_doc :test_alpha_review_doc_support
 
@@ -301,7 +299,6 @@ cli_py_test(
         "//factory/cli/src/tbhbdev/alpha/agent:settings",
         "//factory/cli/src/tbhbdev/alpha/agent:signing_parity",
         "//factory/cli/src/tbhbdev/alpha/agent:ssh_serve",
-        "//factory/cli/src/tbhbdev/alpha/loop:command",
         "//factory/cli/src/tbhbdev/alpha/monorepo:command",
         "//factory/cli/tests:test_alpha_agent_settings_support",
         "@cli_pip//pytest",
@@ -1222,104 +1219,6 @@ cli_py_test(
 )
 
 cli_py_test(
-    name = "test_alpha_loop_config",
-    srcs = ["test_alpha_loop_config.py"],
-    deps = [
-        ":conftest",
-        "//factory/cli/src/tbhbdev:userconfig",
-        "//factory/cli/src/tbhbdev/alpha/loop:command",
-        "//factory/cli/src/tbhbdev/alpha/loop:config",
-        "@cli_pip//pytest",
-    ],
-)
-
-cli_py_test(
-    name = "test_alpha_loop_events",
-    srcs = ["test_alpha_loop_events.py"],
-    data = [":loop_testdata"],
-    deps = [
-        ":conftest",
-        "//factory/cli/src/tbhbdev/alpha/loop:events",
-        "@cli_pip//hypothesis",
-        "@cli_pip//pytest",
-    ],
-)
-
-cli_py_test(
-    name = "test_alpha_loop_rules",
-    srcs = ["test_alpha_loop_rules.py"],
-    deps = [
-        ":conftest",
-        "//factory/cli/src/tbhbdev/alpha/loop:rules",
-        "//factory/cli/src/tbhbdev/alpha/loop:state",
-        "@cli_pip//pytest",
-    ],
-)
-
-cli_py_test(
-    name = "test_alpha_loop_runner",
-    srcs = ["test_alpha_loop_runner.py"],
-    deps = [
-        ":conftest",
-        "//factory/cli/src/tbhbdev/alpha/loop:config",
-        "//factory/cli/src/tbhbdev/alpha/loop:rules",
-        "//factory/cli/src/tbhbdev/alpha/loop:runner",
-        "//factory/cli/src/tbhbdev/alpha/loop:scoring",
-        "//factory/cli/src/tbhbdev/alpha/loop:store",
-        "//factory/cli/tests:test_alpha_loop_rules_support",
-        "//factory/cli/tests:test_alpha_loop_store_support",
-        "@cli_pip//pytest",
-    ],
-)
-
-cli_py_test(
-    name = "test_alpha_loop_scoring",
-    srcs = ["test_alpha_loop_scoring.py"],
-    deps = [
-        ":conftest",
-        "//factory/cli/src/tbhbdev/alpha/loop:runner",
-        "//factory/cli/src/tbhbdev/alpha/loop:scoring",
-        "//factory/cli/src/tbhbdev/alpha/loop:store",
-        "//factory/cli/tests:test_alpha_loop_rules_support",
-        "@cli_pip//pytest",
-    ],
-)
-
-cli_py_test(
-    name = "test_alpha_loop_state",
-    srcs = ["test_alpha_loop_state.py"],
-    deps = [
-        ":conftest",
-        "//factory/cli/src/tbhbdev/alpha/loop:state",
-        "@cli_pip//pytest",
-    ],
-)
-
-cli_py_test(
-    name = "test_alpha_loop_store",
-    srcs = ["test_alpha_loop_store.py"],
-    deps = [
-        ":conftest",
-        "//factory/cli/src/tbhbdev/alpha/loop:events",
-        "//factory/cli/src/tbhbdev/alpha/loop:rules",
-        "//factory/cli/src/tbhbdev/alpha/loop:store",
-        "@cli_pip//pytest",
-    ],
-)
-
-cli_py_test(
-    name = "test_alpha_loop_store_recovery",
-    srcs = ["test_alpha_loop_store_recovery.py"],
-    deps = [
-        ":conftest",
-        "//factory/cli/src/tbhbdev/alpha/loop:rules",
-        "//factory/cli/src/tbhbdev/alpha/loop:store",
-        "//factory/cli/tests:test_alpha_loop_store_support",
-        "@cli_pip//pytest",
-    ],
-)
-
-cli_py_test(
     name = "test_alpha_monorepo",
     srcs = ["test_alpha_monorepo.py"],
     deps = [
@@ -2160,11 +2059,6 @@ cli_py_library(
 filegroup(
     name = "alpha_testdata",
     srcs = glob(["testdata/alpha/**"]),
-)
-
-filegroup(
-    name = "loop_testdata",
-    srcs = glob(["testdata/loop/**"]),
 )
 
 filegroup(

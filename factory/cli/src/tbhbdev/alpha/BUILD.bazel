@@ -540,7 +540,6 @@ cli_py_library(
         ":version_check",
         ":worktree_sweep",
         "//factory/cli/src/tbhbdev/alpha/agent:command",
-        "//factory/cli/src/tbhbdev/alpha/loop:command",
         "//factory/cli/src/tbhbdev/alpha/monorepo:command",
     ],
 )

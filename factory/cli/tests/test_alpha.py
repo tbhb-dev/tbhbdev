@@ -38,7 +38,6 @@ from tbhbdev.alpha import (
 from tbhbdev.alpha import command as alpha
 from tbhbdev.alpha.agent import command as agent
 from tbhbdev.alpha.agent import precheck, run_host, settings, signing_parity, ssh_serve
-from tbhbdev.alpha.loop import command as loop
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -144,7 +143,6 @@ def test_dispatch(monkeypatch: pytest.MonkeyPatch) -> None:
         ("guard-op", guard_op, [], "hook"),
         ("guard-scripts", guard_scripts, [], "hook"),
         ("guard-ssh-agent", guard_ssh_agent, [], "hook"),
-        ("loop", loop, [], "direct"),
         ("monorepo", monorepo, ["-h"], "positional"),
         ("pre-push-guard", pre_push_guard, ["origin", "url"], "direct"),
         ("repo", repo_bootstrap, ["bootstrap", "o/r"], "keyword"),
