@@ -57,7 +57,7 @@ go_deadcode_test(
 go_arch_lint_test(
     name = "go_arch_lint_test",
     size = "small",
-    srcs = GO_TARGETS,
+    srcs = ["//:repo_files"],
     config = "//:.go-arch-lint.yml",
     go_mod = "//:go.mod",
 )

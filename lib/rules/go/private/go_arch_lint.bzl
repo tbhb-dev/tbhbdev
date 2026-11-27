@@ -18,7 +18,14 @@ load(":go_srcs.bzl", "GoSrcsInfo", "go_srcs_aspect")
 visibility(["//", "//private/...", "//tests/..."])
 
 def _go_arch_lint_test_impl(ctx):
-    srcs = depset(transitive = [t[GoSrcsInfo].srcs for t in ctx.attr.srcs])
+    srcs = depset(
+        direct = [
+            f
+            for f in ctx.files.srcs
+            if f.is_source and f.extension == "go" and f.owner.repo_name == ctx.label.repo_name
+        ],
+        transitive = [t[GoSrcsInfo].srcs for t in ctx.attr.srcs],
+    )
     if not srcs:
         fail("srcs reach no Go source of the main repository")
 
@@ -56,10 +63,12 @@ go_arch_lint_test = rule(
     toolchains = SHELL_TOOLCHAINS,
     doc = """Fails when the module breaks the contracts of a go-arch-lint config.
 
-The test copies `go_mod`, `config` and the main-repository Go sources that
-`srcs` reach (through `deps` and `embed`) to a scratch tree laid out
-relative to go.mod's directory, and runs `go-arch-lint check` there. The
-config must set `allow.deepScan: false`: deep scanning runs the go command,
+The test copies `go_mod`, `config` and the main-repository Go sources from
+filegroups and Go targets in `srcs` (including through `deps` and `embed`)
+to a scratch tree laid out relative to go.mod's directory. It runs
+`go-arch-lint check` there.
+
+The config must set `allow.deepScan: false`: deep scanning runs the go command,
 which the test does not have. The test fails when no Go file reaches the
 copy, and go-arch-lint fails on a file that belongs to no component, so a
 package `srcs` reach cannot escape the contracts. A package `srcs` does not
@@ -76,7 +85,7 @@ The test's `args` go to `go-arch-lint check`, such as `--max-warnings`.""",
         "srcs": attr.label_list(
             aspects = [go_srcs_aspect],
             mandatory = True,
-            doc = "Go targets whose main-repository sources make up the module.",
+            doc = "Filegroups or Go targets whose main-repository sources make up the module.",
         ),
         "tool": attr.label(
             default = Label("@tbhb_rules_go_arch_lint//:go-arch-lint"),

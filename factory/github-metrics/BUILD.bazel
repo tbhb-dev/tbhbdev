@@ -10,7 +10,10 @@ load("//factory:go_lint.bzl", "golangci_lint_test")
 
 package(default_visibility = ["//factory:__subpackages__"])
 
-repo_files(visibility = ["//factory/github-metrics:__subpackages__"])
+repo_files(visibility = [
+    "//factory:__pkg__",
+    "//factory/github-metrics:__subpackages__",
+])
 
 # Keep test-only packages in the scope alongside the service entry point.
 GO_TARGETS = [
@@ -38,7 +41,7 @@ golangci_lint_test(
 go_arch_lint_test(
     name = "go_arch_lint_test",
     size = "small",
-    srcs = GO_TARGETS,
+    srcs = ["//:repo_files"],
     config = "//:.go-arch-lint.yml",
     go_mod = "//:go.mod",
 )
@@ -50,7 +53,7 @@ go_deadcode_test(
 
 go_mod_tidy_test(
     name = "go_mod_tidy_test",
-    srcs = [":repo_files"],
+    srcs = ["//:repo_files"],
     go_mod = "//:go.mod",
     go_sum = "//:go.sum",
     proxy = "@go_mod_proxy//:proxy",

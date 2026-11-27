@@ -15,6 +15,7 @@ filegroup(
     name = "repo_files",
     srcs = glob(["**"]) + [
         "//factory/agent-capacity:repo_files",
+        "//factory/github-metrics:repo_files",
     ],
     visibility = ["//:__pkg__"],
 )
