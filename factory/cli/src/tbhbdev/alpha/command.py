@@ -25,7 +25,6 @@ import tbhbdev.alpha.guard_ops_no_lazy_stop
 import tbhbdev.alpha.guard_scripts
 import tbhbdev.alpha.guard_sendmessage_clock
 import tbhbdev.alpha.guard_ssh_agent
-import tbhbdev.alpha.identity.dispatcher
 import tbhbdev.alpha.install.command
 import tbhbdev.alpha.pre_push_guard
 import tbhbdev.alpha.run_stop_hook
@@ -34,6 +33,7 @@ import tbhbdev.alpha.state_guard
 import tbhbdev.alpha.verify_range
 import tbhbdev.alpha.version_check
 import tbhbdev.alpha.worktree_sweep
+from tbhbdev.alpha.identity import dispatcher as identity_dispatcher
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -67,7 +67,6 @@ commands:
   gh-shim      budget gh calls made by agent sessions and their scripts
   agent-env    launch a harness with the gh shim first on PATH
   pr           check | create | edit | hook: the pull request draft
-               | backfill-opened OWNER: the opened ledgers
                | rerun N [--stuck]: rerun failed jobs of the head; --stuck reruns
                a run of only this PR with a job in progress over an hour,
                cancelled first and rerun in full
@@ -103,7 +102,7 @@ commands:
 
 
 def identity_command(argv: list[str], _prog: str) -> int:
-    return tbhbdev.alpha.identity.dispatcher.run(argv, os.environ)
+    return identity_dispatcher.run(argv, os.environ)
 
 
 def guard_command(_argv: list[str], _prog: str) -> int:
@@ -156,7 +155,7 @@ def pr(argv: list[str], prog: str) -> int:
         from tbhbdev.alpha.close import main as close_main  # noqa: PLC0415 -- see the docstring
 
         return close_main(["pr", *argv], prog=prog)
-    from tbhbdev.alpha.pull_request import main as pull_request_main  # noqa: PLC0415 -- see the docstring
+    from tbhbdev.alpha.pull_request.command import main as pull_request_main  # noqa: PLC0415 -- see the docstring
 
     return pull_request_main(argv, prog=prog)
 

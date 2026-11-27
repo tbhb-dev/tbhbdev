@@ -22,6 +22,7 @@ pytest_add_cli_args_test_selection = ["tests"]
 tbhbops = { workspace = true }
 
 [tool.pytest]
+pythonpath = ["tests"]
 addopts = ["-ra", "--strict-markers", "--strict-config", "--import-mode=importlib"]
 
 [build-system]

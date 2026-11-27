@@ -10,6 +10,7 @@ from typing import TYPE_CHECKING, TextIO
 lazy import argparse
 
 from tbhbops.deploy.config import load_sender, service, text
+from tbhbops.deploy.entrypoint import receive
 from tbhbops.deploy.protocol import (
     RefusalError,
     array,
@@ -19,7 +20,7 @@ from tbhbops.deploy.protocol import (
     request,
     require,
 )
-from tbhbops.deploy.receive import receive
+
 from tbhbops_cli import connect
 from tbhbops_cli.common import CliError
 
@@ -148,7 +149,7 @@ def send(args: argparse.Namespace, out: TextIO) -> int:
         f"deploy@{host}",
         remote,
     ]
-    result = subprocess.run(  # noqa: S603  # nosec B603
+    result = subprocess.run(  # nosec B603
         argv,
         stdin=sys.stdin.buffer,
         stdout=subprocess.PIPE,

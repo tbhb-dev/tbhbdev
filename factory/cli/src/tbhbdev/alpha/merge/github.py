@@ -4,13 +4,10 @@
 
 from urllib.parse import quote
 
-from tbhbdev.alpha.identity.dispatcher import (
-    AGENT_EMAIL,
-    ATTR_PAIR,
-    HASH_RE,
-    SLUGS,
-    llm_trailers,
-)
+from tbhbdev.alpha.identity.commit.policy import AGENT_EMAIL
+from tbhbdev.alpha.identity.models import SLUGS
+from tbhbdev.alpha.identity.records import HASH_RE
+from tbhbdev.alpha.identity.trailers import ATTR_PAIR, llm_trailers
 from tbhbdev.alpha.merge.evidence import (
     EvidenceError,
     PullRequest,
@@ -30,7 +27,8 @@ from tbhbdev.alpha.merge.rules import (
     require_merge_commits,
     required_checks,
 )
-from tbhbdev.alpha.pull_request import GH, NAME_WITH_OWNER, find_tool, run, target_of_pr
+from tbhbdev.alpha.pull_request.metadata import NAME_WITH_OWNER, target_of_pr
+from tbhbdev.alpha.pull_request.tools import GH, find_tool, run
 
 VIEW_FIELDS = (
     "title,body,headRefOid,baseRefName,state,isDraft,mergeable,"

@@ -30,8 +30,7 @@ from driver_scenarios import (
 from tbhbdev import version
 from tbhbdev.alpha.agent import model, transport
 from tbhbdev.alpha.agent import settings as agent_settings
-from tbhbdev.alpha.agent.decisions import remote as remote_commands
-from tbhbdev.alpha.agent.decisions import request
+from tbhbdev.alpha.agent.decisions import remote_host, remote_run, remote_shell, request
 from tbhbdev.alpha.agent.driver import launch as coordinator
 from tbhbdev.alpha.agent.driver import (
     metadata,
@@ -301,7 +300,7 @@ def test_review_ref(remote: Remote, ref: str) -> None:
         assert git == [
             {
                 "args": [
-                    *shlex.split(remote_commands.GIT_FLAGS)[1:],
+                    *shlex.split(remote_shell.GIT_FLAGS)[1:],
                     "ls-remote",
                     "--exit-code",
                     "--",
@@ -391,11 +390,11 @@ def test_exec_spends_one_startup_budget(
     ) -> str:
         assert settings == CONFIG
         assert host == CONFIG.hosts[0]
-        if script == remote_commands.limits():
+        if script == remote_host.limits():
             assert timeout == 110
             steps.append("limits")
             return "0.5 4 12582912 6291456 100 0 -"
-        assert script == remote_commands.installed(CONFIG.hosts[0])
+        assert script == remote_host.installed(CONFIG.hosts[0])
         assert timeout == 100
         steps.append("preflight")
         return version.line() + "\n"
@@ -429,9 +428,7 @@ def test_exec_spends_one_startup_budget(
         assert settings == CONFIG
         assert host == CONFIG.hosts[0]
         assert stdin == transport.Stdin(metadata.load(CONFIG, "sample").owner)
-        assert argv == remote_commands.start(
-            "sample", CONFIG.sockets_dir, CONFIG.hosts[0]
-        )
+        assert argv == remote_run.start("sample", CONFIG.sockets_dir, CONFIG.hosts[0])
         assert timeout == 80
         steps.append("start")
         return ""

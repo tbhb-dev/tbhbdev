@@ -2,7 +2,7 @@
 # Copyright Tony Burns
 """Read commit linter and Git results while building a merge message."""
 
-from tbhbdev.alpha.identity.dispatcher import LINE, check_message
+from tbhbdev.alpha.identity.commit.grammar import LINE, check_message
 from tbhbdev.alpha.merge.body import WIDTH, Syntax, render_body
 from tbhbdev.alpha.merge.message import (
     Message,
@@ -13,20 +13,18 @@ from tbhbdev.alpha.merge.message import (
     drop_opened,
     split_trailers,
 )
-from tbhbdev.alpha.pull_request import (
+from tbhbdev.alpha.pull_request.body import (
     FENCE,
-    GIT,
     INLINE_CODE,
-    OPENED_LINE,
     fence_flags,
-    find_tool,
     heading_of,
-    run,
     scan,
     split_blocks,
-    title_problems,
     trailer_problems,
 )
+from tbhbdev.alpha.pull_request.description import OPENED_LINE
+from tbhbdev.alpha.pull_request.prose import title_problems
+from tbhbdev.alpha.pull_request.tools import GIT, find_tool, run
 
 SYNTAX = Syntax(FENCE, INLINE_CODE, heading_of)
 
@@ -46,7 +44,7 @@ def build_message(
         )
         raise SystemExit(error)
     rest, trailers = split_trailers(drop_opened(lines, LINE, OPENED_LINE), LINE)
-    stray = [why for _, why in trailer_problems(rest)]
+    stray = [why for _, why in trailer_problems(rest, LINE)]
     check_trailers(trailers, stray, check_message("\n".join(trailers)), agent=agent)
     preamble, blocks, _ = split_blocks(rest)
     sections = [("", preamble), *((block.heading, block.lines) for block in blocks)]

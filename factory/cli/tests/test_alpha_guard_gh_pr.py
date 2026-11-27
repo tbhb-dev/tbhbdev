@@ -19,10 +19,11 @@ from fake_tool import pythonpath
 from hypothesis import given
 from hypothesis import strategies as st
 
-from tbhbdev.alpha import close, opened, pull_request
+from tbhbdev.alpha import close, opened
 from tbhbdev.alpha import guard_gh_pr as guard
-from tbhbdev.alpha.identity import dispatcher as ai
+from tbhbdev.alpha.identity import records as identity_records
 from tbhbdev.alpha.merge import options as squash_merge
+from tbhbdev.alpha.pull_request.arguments import build_parser as pr_parser
 
 DATA = Path(__file__).parent / "testdata" / "alpha"
 SRC = Path(guard.__file__).parents[2]
@@ -626,7 +627,7 @@ def test_property_main_is_silent_without_a_match(text: str) -> None:
 
 # --- approval routes -------------------------------------------------------
 
-ROOT = ai.sha256_64("session-raw")
+ROOT = identity_records.sha256_64("session-raw")
 TARGET = "tbhb-dev/tbhbdev#7"
 GH_ROUTES = [
     ("gh pr review 7 --approve -R tbhb-dev/tbhbdev", "`gh pr review --approve`"),
@@ -1220,6 +1221,4 @@ def test_every_hinted_command_line_parses_with_the_real_cli(command: str) -> Non
         elif words[:2] in (["pr", "close"], ["issue", "close"]):
             close.build_parser("x").parse_args(words)
         else:
-            pull_request.build_parser("x").parse_args(
-                words[1:] if words[0] == "pr" else words
-            )
+            pr_parser("x").parse_args(words[1:] if words[0] == "pr" else words)

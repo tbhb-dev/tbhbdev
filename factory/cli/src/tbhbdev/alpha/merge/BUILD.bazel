@@ -36,8 +36,10 @@ cli_py_library(
         ":queue",
         ":renovate",
         ":rules",
-        "//factory/cli/src/tbhbdev/alpha:pull_request",
         "//factory/cli/src/tbhbdev/alpha/install/git:hooks",
+        "//factory/cli/src/tbhbdev/alpha/pull_request:publish",
+        "//factory/cli/src/tbhbdev/alpha/pull_request:repository",
+        "//factory/cli/src/tbhbdev/alpha/pull_request:tools",
     ],
 )
 
@@ -59,8 +61,12 @@ cli_py_library(
         ":queue",
         ":review_gate",
         ":rules",
-        "//factory/cli/src/tbhbdev/alpha:pull_request",
-        "//factory/cli/src/tbhbdev/alpha/identity:dispatcher",
+        "//factory/cli/src/tbhbdev/alpha/identity:models",
+        "//factory/cli/src/tbhbdev/alpha/identity:records",
+        "//factory/cli/src/tbhbdev/alpha/identity:trailers",
+        "//factory/cli/src/tbhbdev/alpha/identity/commit:policy",
+        "//factory/cli/src/tbhbdev/alpha/pull_request:metadata",
+        "//factory/cli/src/tbhbdev/alpha/pull_request:tools",
     ],
 )
 
@@ -80,8 +86,11 @@ cli_py_library(
     deps = [
         ":body",
         ":message",
-        "//factory/cli/src/tbhbdev/alpha:pull_request",
-        "//factory/cli/src/tbhbdev/alpha/identity:dispatcher",
+        "//factory/cli/src/tbhbdev/alpha/identity/commit:grammar",
+        "//factory/cli/src/tbhbdev/alpha/pull_request:body",
+        "//factory/cli/src/tbhbdev/alpha/pull_request:description",
+        "//factory/cli/src/tbhbdev/alpha/pull_request:prose",
+        "//factory/cli/src/tbhbdev/alpha/pull_request:tools",
     ],
 )
 
