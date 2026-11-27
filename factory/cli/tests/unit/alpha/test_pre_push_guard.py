@@ -14,8 +14,7 @@ from tbhbdev.alpha import pre_push_guard as pg
         ("agent/example", "ba", 0, "this run may only push refs/heads/fix/topic"),
         (
             "fix/topic",
-            "0",
-            "a",
+            "0a",
             0,
             "deletion refused; this run may only update its start ref",
         ),

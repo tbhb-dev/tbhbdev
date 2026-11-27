@@ -28,7 +28,7 @@ def test_build_git_uses_the_run_gh_credential(
     monkeypatch.setenv("PATH", f"{tmp_path}{os.pathsep}{os.environ['PATH']}")
     monkeypatch.setenv("GH_CONFIG_DIR", str(tmp_path))
     config = tmp_path / "global"
-    config.write_text("[credential]\n    helper = store\n")
+    config.write_text('[credential]\nhelper = "!echo username=x; echo password=x"\n')
     monkeypatch.setenv("GIT_CONFIG_GLOBAL", str(config))
     output = subprocess.check_output(
         ["git", "-C", str(clone), "credential", "fill"],
