@@ -11,7 +11,6 @@ import (
 	"crypto/x509"
 	"encoding/json"
 	"encoding/pem"
-	"fmt"
 	"log/slog"
 	"net"
 	"net/http"
@@ -214,8 +213,8 @@ func TestTokenRefreshFailureKeepsValidCache(t *testing.T) {
 		case 1:
 			resp.WriteHeader(http.StatusCreated)
 
-			_, _ = fmt.Fprintf(
-				resp,
+			writeResponsef(
+				t, resp,
 				`{"token":"cached-token","expires_at":%q}`,
 				expires.Format(time.RFC3339),
 			)
@@ -259,7 +258,7 @@ func TestExpiryBound(t *testing.T) {
 
 		resp.WriteHeader(http.StatusCreated)
 
-		_, _ = fmt.Fprintf(resp, `{"token":"response-marker","expires_at":%q}`,
+		writeResponsef(t, resp, `{"token":"response-marker","expires_at":%q}`,
 			now.Add(lifetime).Format(time.RFC3339Nano))
 	}))
 	t.Cleanup(server.Close)
@@ -306,8 +305,8 @@ func TestRenewFailureDiscardsCache(t *testing.T) {
 
 		resp.WriteHeader(http.StatusCreated)
 
-		_, _ = fmt.Fprintf(
-			resp,
+		writeResponsef(
+			t, resp,
 			`{"token":"fresh-token","expires_at":%q}`,
 			now.Add(time.Hour).Format(time.RFC3339),
 		)

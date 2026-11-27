@@ -7,6 +7,7 @@ import (
 	"bufio"
 	"context"
 	"errors"
+	"io"
 	"log/slog"
 	"net"
 	"net/http"
@@ -15,6 +16,15 @@ import (
 
 	"github.com/tbhb-dev/tbhbdev/factory/github-metrics/internal/receiver"
 )
+
+func checkClose(t *testing.T, closer io.Closer) {
+	t.Helper()
+
+	err := closer.Close()
+	if err != nil {
+		t.Error(err)
+	}
+}
 
 // serve starts the real server on a loopback listener and returns its address.
 func serve(t *testing.T, network, addr string) string {
@@ -39,7 +49,7 @@ func serve(t *testing.T, network, addr string) string {
 		}
 	}()
 
-	t.Cleanup(func() { _ = srv.Close() })
+	t.Cleanup(func() { checkClose(t, srv) })
 
 	return lis.Addr().String()
 }
@@ -56,7 +66,7 @@ func rawStatus(t *testing.T, addr, request string) int {
 		t.Fatalf("dial: %v", err)
 	}
 
-	defer func() { _ = conn.Close() }()
+	defer checkClose(t, conn)
 
 	_, err = conn.Write([]byte(request))
 	if err != nil {
@@ -68,7 +78,7 @@ func rawStatus(t *testing.T, addr, request string) int {
 		t.Fatalf("read response: %v", err)
 	}
 
-	defer func() { _ = resp.Body.Close() }()
+	defer checkClose(t, resp.Body)
 
 	return resp.StatusCode
 }
@@ -154,7 +164,7 @@ func TestHealthURLReachesListener(t *testing.T) {
 				t.Fatalf("GET %s: %v", url, err)
 			}
 
-			defer func() { _ = resp.Body.Close() }()
+			defer checkClose(t, resp.Body)
 
 			if resp.StatusCode != http.StatusOK ||
 				strings.Contains(url, "::") != (spec.network == "tcp6") {

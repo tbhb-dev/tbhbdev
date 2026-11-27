@@ -22,6 +22,7 @@ package main
 
 import (
 	"bytes"
+	"cmp"
 	"context"
 	"errors"
 	"flag"
@@ -30,6 +31,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"syscall"
 	"time"
 
@@ -85,7 +87,6 @@ func main() {
 	}
 }
 
-//nolint:funlen // Startup owns service shutdown ordering.
 func run(ctx context.Context, addr string, log *slog.Logger) error {
 	cfg, err := reconcilerConfig(os.Getenv)
 	if err != nil {
@@ -114,12 +115,23 @@ func run(ctx context.Context, addr string, log *slog.Logger) error {
 
 	srv := receiver.NewServer(addr, receiver.Handler(secret, repo, log))
 
+	return errors.Join(serve(ctx, srv, repo, log, cfg, backfillCfg), repo.Close())
+}
+
+func serve(
+	ctx context.Context,
+	srv *http.Server,
+	repo *store.Bolt,
+	log *slog.Logger,
+	cfg reconcileConfig,
+	backfillCfg reconcile.CIConfig,
+) error {
 	ctx, stop := context.WithCancel(ctx)
 	defer stop()
 
 	shutdownTelemetry, meter, err := telemetry.Setup(ctx, "github-metrics", version)
 	if err != nil {
-		return errors.Join(err, repo.Close())
+		return fmt.Errorf("set up telemetry: %w", err)
 	}
 
 	endpoint := os.Getenv("OTEL_EXPORTER_OTLP_ENDPOINT")
@@ -129,24 +141,17 @@ func run(ctx context.Context, addr string, log *slog.Logger) error {
 		shutdownCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), shutdownTimeout)
 		defer cancel()
 
-		return errors.Join(err, shutdownTelemetry(shutdownCtx), repo.Close())
+		return errors.Join(err, shutdownTelemetry(shutdownCtx))
 	}
 
-	workerErr := make(chan error, 1)
-
-	go func() {
-		workerErr <- worker.New(repo, consumer, log).Run(ctx, pollInterval)
-
-		stop()
-	}()
-
+	workerErr := startWorker(ctx, stop, worker.New(repo, consumer, log))
 	reconcileErr := startReconciler(ctx, loop, stop)
 
 	serveErr := make(chan error, 1)
 
 	go func() { serveErr <- srv.ListenAndServe() }()
 
-	log.InfoContext(ctx, "listening", "addr", addr)
+	log.InfoContext(ctx, "listening", "addr", srv.Addr)
 
 	backfillDone := startBackfill(ctx, client, repo, log, backfillCfg)
 
@@ -169,8 +174,19 @@ func run(ctx context.Context, addr string, log *slog.Logger) error {
 		<-workerErr,
 		<-reconcileErr,
 		shutdownTelemetry(shutdownCtx),
-		repo.Close(),
 	)
+}
+
+func startWorker(ctx context.Context, stop context.CancelFunc, w *worker.Worker) <-chan error {
+	done := make(chan error, 1)
+
+	go func() {
+		done <- w.Run(ctx, pollInterval)
+
+		stop()
+	}()
+
+	return done
 }
 
 func startBackfill(
@@ -202,7 +218,7 @@ func webhookSecret() ([]byte, error) {
 		return nil, errNoSecretFile
 	}
 
-	raw, err := os.ReadFile(file) //nolint:gosec // The operator names this path.
+	raw, err := readConfiguredFile(file)
 	if err != nil {
 		return nil, fmt.Errorf("read webhook secret: %w", err)
 	}
@@ -213,6 +229,20 @@ func webhookSecret() ([]byte, error) {
 	}
 
 	return secret, nil
+}
+
+// readConfiguredFile confines each credential read to its configured directory.
+func readConfiguredFile(path string) ([]byte, error) {
+	dir, name := filepath.Split(path)
+
+	root, err := os.OpenRoot(cmp.Or(dir, "."))
+	if err != nil {
+		return nil, fmt.Errorf("open configured directory: %w", err)
+	}
+
+	data, err := root.ReadFile(name)
+
+	return data, errors.Join(err, root.Close())
 }
 
 func openStore() (*store.Bolt, error) {
@@ -288,7 +318,7 @@ func probe(addr string) int {
 		return 1
 	}
 
-	defer func() { _ = resp.Body.Close() }()
+	_ = resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
 		return 1

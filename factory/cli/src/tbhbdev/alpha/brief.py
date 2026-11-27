@@ -7,12 +7,14 @@ Hard rules are allowed. The checks catch omissions and common mistakes.
 import argparse
 import re
 import shlex
-import unicodedata
 from collections import defaultdict
 from pathlib import Path
 
-from tbhbdev.alpha import brief_text
-from tbhbdev.alpha.brief_text import PROSE_BREAK, normalize, prohibiting
+from tbhbdev.alpha.agent.driver.decisions.prompt import (
+    branch_warnings,
+    check_hooks,
+)
+from tbhbdev.alpha.brief_text import normalize
 
 HOOK_RULE = (
     "Never run `prek install`, `pre-commit install`, `tbhbdev alpha install`, "
@@ -86,65 +88,6 @@ FORBIDDEN_REGEX = (
         r"\bgit push\b[^`;&|]*\s(?:--force\b(?!-with-lease\b)|-f\b)",
     ),
 )
-COMMAND_ARGS = r"[^`\n;&|]*"
-ARG_END = r"(?=$|[ \n`;&|\"'(),]|\.(?=$|[ \n]))"
-TRAILER = r"(?:generated-by|assisted-by)"
-COMMAND_CONFLICTS = (
-    (
-        (
-            r"\bgit merge(?![-\w])"
-            rf"(?!{COMMAND_ARGS} --(?:no-commit|squash|ff-only|abort|continue|quit)"
-            rf"{ARG_END})"
-        ),
-        (
-            "merge commits lack the required Generated-by trailer. "
-            "Use git merge --no-commit, then a plain git commit"
-        ),
-    ),
-    (
-        (
-            r"\bgit commit(?![-\w])"
-            rf"(?={COMMAND_ARGS} (?:-[mf]|--(?:message|file)(?=[ =])))"
-            rf"{COMMAND_ARGS}\b{TRAILER}:"
-        ),
-        "leave hand-written identity trailers out of the commit message",
-    ),
-    (rf"\bgit commit(?![-\w]){COMMAND_ARGS} -n{ARG_END}", "hook bypass is forbidden"),
-    (
-        (
-            rf"\bgit push(?![-\w]){COMMAND_ARGS} [\"']?\+?(?:head:)?"
-            rf"(?:refs/heads/)?(?:main|master){ARG_END}"
-        ),
-        "push to main or master is forbidden",
-    ),
-)
-PROSE_CONFLICTS = (
-    (
-        (
-            r"\b(?:no|without|omit|strip|remove|drop|skip|exclude|leave out|"
-            r"(?:don['\u2019]t|do not|never) (?:add|include|stamp|write)) "
-            rf"(?:an? |the |any )?[`\"']?{TRAILER}(?![-\w])"
-        ),
-        "let the hooks stamp the identity trailers",
-    ),
-    (r"(?<![\w-])--no-verify(?![-\w])", "hook bypass is forbidden"),
-    (r"(?<![\w-])(?:prek|pre-commit) install(?![-\w])", "hook install is forbidden"),
-)
-BRANCH_INSTRUCTION = re.compile(
-    r"(?:\bgit (?:checkout -[bB]|switch(?: -[cC])?|branch) "
-    rf"|\b(?P<checkout>git checkout)(?!{COMMAND_ARGS} --{ARG_END}) "
-    rf"|\bgit worktree add{COMMAND_ARGS}? -[bB] "
-    r"|\b(?:create|switch to|check out|commit on|work on) "
-    r"(?:a |the )?branch (?:named )?)"
-    r"[`\"']?(?P<target>[^\s`\"';&|<>()]+)",
-    re.IGNORECASE,
-)
-# A period can be part of a branch name or punctuation after a ref.
-REF_START = r"(?<![\w./@+-])"
-REF_END = r"(?=\.*(?:$|[\s`\"'(),;:<>\]]))"
-BRANCH_REF = r"[A-Za-z0-9._/-]*[A-Za-z0-9_/-]"
-SHORT_AGENT_REF = rf"agent/{BRANCH_REF}{REF_END}"
-AGENT_BRANCH_MENTION = re.compile(rf"{REF_START}{SHORT_AGENT_REF}")
 FIXED_BY_SECTION = {
     REQUIRED_HEADINGS[0]: (HOOK_RULE,),
     "## Commits": (COMMITS_BLOCK, NO_PUSH_BLOCK),
@@ -155,79 +98,6 @@ BUILD_HEADING = "## Build"
 FIX_HEADING = "## Fix"
 EXPECTED_SIZE = "Expected size (code lines)"
 FAILING_LINE = "Failing file and line"
-
-
-def check_hooks(text: str) -> list[str]:
-    """Return hook conflicts in a free-form brief."""
-    lines = "\n".join(normalize(line) for line in text.splitlines())
-    # Prose can wrap within a prohibition. Shell commands end at a newline.
-    prose = "\n\n".join(normalize(block) for block in PROSE_BREAK.split(lines))
-    return [
-        f"hook conflict: {reason}"
-        for content, rules in ((lines, COMMAND_CONFLICTS), (prose, PROSE_CONFLICTS))
-        for pattern, reason in rules
-        for match in re.finditer(pattern, content)
-        if not prohibiting(content, match.start())
-    ]
-
-
-def looks_like_branch(target: str) -> bool:
-    """Recognize qualified refs and conventional unqualified branch names."""
-    return not target.startswith("-") and (
-        "/" in target
-        or target in {"main", "master"}
-        or target.startswith(brief_text.UNQUALIFIED_BRANCH_PREFIXES)
-    )
-
-
-def branch_instructions(text: str) -> list[str]:
-    """Return branch names from affirmative branch selection instructions."""
-    text = "\n".join(
-        " ".join(line.split())
-        for line in unicodedata.normalize("NFKC", text).splitlines()
-    )
-    branches = []
-    for match in BRANCH_INSTRUCTION.finditer(text):
-        branch = match["target"].rstrip(".,")
-        if (
-            looks_like_branch(branch)
-            and not (match["checkout"] and brief_text.looks_like_checkout_path(branch))
-            and not prohibiting(text, *match.span())
-        ):
-            branches.append(branch)
-    return branches
-
-
-def branch_warnings(
-    text: str,
-    run: str | None = None,
-    *,
-    fetch_refs: tuple[str, ...] = (),
-    ignored_refs: tuple[str, ...] = (),
-) -> list[str]:
-    """Warn about foreign branch instructions and unfetched agent branch mentions."""
-    allowed = "agent/" if run is None else f"agent/{run}"
-    branches = branch_instructions(text)
-    if run is not None:
-        branches.extend(
-            branch
-            for branch in AGENT_BRANCH_MENTION.findall(
-                unicodedata.normalize("NFKC", text)
-            )
-            if f"refs/heads/{branch}" not in fetch_refs
-        )
-    warnings = []
-    for branch in dict.fromkeys(branches):
-        name = branch.removeprefix("refs/heads/")
-        allowed_branch = name.startswith(allowed) if run is None else name == allowed
-        if (
-            allowed_branch
-            or branch in ignored_refs
-            or f"refs/heads/{name}" in ignored_refs
-        ):
-            continue
-        warnings.append(f"use the launcher branch {allowed} instead of {branch}")
-    return warnings
 
 
 def render(  # noqa: PLR0913 -- Explicit template fields and worktree options.

@@ -1,8 +1,6 @@
 test_agy_otel
 test_alpha_agent_credentials
-test_alpha_agent_driver
 test_alpha_agent_git_parent
-test_alpha_agent_launcher
 test_alpha_agent_limits
 test_alpha_agent_ownership
 test_alpha_agent_policy
@@ -18,7 +16,6 @@ test_alpha_agent_signing_parity
 test_alpha_agent_ssh_serve
 test_alpha_agent_terminal_descriptors
 test_alpha_agent_transport
-test_alpha_agent_version_heal
 test_alpha_agent_worktree
 test_alpha_close
 test_alpha_gh_app
@@ -27,7 +24,6 @@ test_alpha_guard_gh_poll
 test_alpha_guard_gh_pr
 test_alpha_guard_ssh_agent
 test_alpha_identity
-test_alpha_install
 test_alpha_monorepo
 test_alpha_opened
 test_alpha_pre_push_guard
@@ -40,7 +36,6 @@ test_alpha_review_prompt
 test_alpha_run_stop_hook
 test_alpha_secret_scan
 test_alpha_size_gate
-test_alpha_squash_merge
 test_alpha_verify_range
 test_cli
 test_conftest

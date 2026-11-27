@@ -270,16 +270,17 @@ func (s *Source) fetch(ctx context.Context) (string, error) {
 		return s.failure(ctx, "send", 0)
 	}
 
-	defer func() { _ = res.Body.Close() }()
-
 	if res.StatusCode != http.StatusCreated {
-		_, _ = io.Copy(io.Discard, io.LimitReader(res.Body, maxBody))
+		_, err = io.Copy(io.Discard, io.LimitReader(res.Body, maxBody))
+		if errors.Join(err, res.Body.Close()) != nil {
+			return s.failure(ctx, "read", res.StatusCode)
+		}
 
 		return s.failure(ctx, "status", res.StatusCode)
 	}
 
 	body, err := io.ReadAll(io.LimitReader(res.Body, maxBody+1))
-	if err != nil || len(body) > maxBody {
+	if errors.Join(err, res.Body.Close()) != nil || len(body) > maxBody {
 		return s.failure(ctx, "read", res.StatusCode)
 	}
 

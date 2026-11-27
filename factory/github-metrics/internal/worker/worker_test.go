@@ -163,7 +163,12 @@ func testRecorderRetry(t *testing.T, passes int) {
 		t.Fatal(err)
 	}
 
-	t.Cleanup(func() { _ = queue.Close() })
+	t.Cleanup(func() {
+		closeErr := queue.Close()
+		if closeErr != nil {
+			t.Error(closeErr)
+		}
+	})
 
 	for _, body := range []string{openedBody, openedBody + " "} {
 		_, err = queue.Enqueue(body, pullRequestEvent, []byte(body))

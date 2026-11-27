@@ -17,14 +17,15 @@ type: Reference
 # Install
 
 `install` installs the git hooks and the user-level harness hooks.
-`--hooks-only` installs only this clone's git hooks without writing user-level config.
 
 Run `tbhbdev alpha install` once on each host, from a clone of a tbhb-dev repository.
-It does seven things:
+It installs Git hooks, updates harness settings and installs the tools those hooks use.
 
 - It installs that clone's git hooks into `$(git rev-parse --git-common-dir)/hooks`, which every worktree of the clone shares.
   The pre-push guard runs before prek and refuses pushes when `tbhbdev` is missing from PATH. prek runs pre-commit and pre-push, and three shims run `tbhbdev alpha identity` for prepare-commit-msg, commit-msg and post-commit.
   Without `tbhbdev` on PATH, the shims block a commit in a tbhb-dev repository and do nothing elsewhere.
+  The installer waits up to 15 seconds for the hooks directory lock and can remove a lock after its owner exits.
+  If `core.hooksPath` redirects Git, the installer warns and skips the clone's hooks.
 - It merges the hooks into each harness's user-level config: `settings.json` in `$CLAUDE_CONFIG_DIR` or `.claude` in `$HOME` for Claude Code, `hooks.json` in `$CODEX_HOME` or `.codex` in `$HOME` for Codex, and `.gemini/config/hooks.json` in `$HOME` for Antigravity.
 - It records Codex's trust for the hooks it wrote.
   Codex runs a hook only when `config.toml` in `$CODEX_HOME` holds a trusted hash for it, so install sets `trusted_hash` under `[hooks.state."<key>"]` for each hook of its own, which is the trust `/hooks` grants a person.
@@ -35,9 +36,7 @@ It does seven things:
   If Codex hashes `"matcher": null` or `""` instead, those two hooks show as untrusted again.
   When a hook of its own moves to a new position, install removes the entry for the old one.
   A new `config.toml` is readable by the user only, an existing one keeps its mode, and one that isn't valid TOML is reported and left alone.
-  The `SSH_AUTH_SOCK` setting below edits the same `config.toml` right after, so one run applies both, trust first, and each keeps the other's keys.
-- When an installed plugin supplies `claude-private.md` or `mise-private.toml`, it writes them to `.claude/CLAUDE.private.md` and `.config/mise/conf.d/private.toml` in `$HOME`, readable by the user only.
-  When no plugin supplies a file, it skips that file.
+  One edit records both hook trust and the `SSH_AUTH_SOCK` setting below.
 - It sets `SSH_AUTH_SOCK` to the empty string for every agent command, in the `env` object of Claude Code's `settings.json` and in `shell_environment_policy.set` of Codex's `config.toml`, so an agent's command doesn't connect to the 1Password SSH agent and prompt the operator.
   Host provisioning sets the variable for the account an agent runs as, but gives the operator's own account no harness environment, so `install` is the only thing that sets it there.
   It keeps every other key of both files, and the comments and layout of `config.toml`.
@@ -55,11 +54,11 @@ It does seven things:
   The staged package must pass the same check a later run applies.
   Then the directory moves into place.
   If `bun` fails or times out, no install appears at the final path, and the next run installs again.
-  A run reuses an install only when the `.complete` marker names the version and the package files hash to a digest pinned in the code.
+  A run reuses an install only when the package files hash to a digest pinned in the code.
   A symlink on the path from the install root to the package fails the check, and so does any file change.
   A failed check makes the run install again.
   The command runs the installed script through `node`, and the `COLUMNS` fallback stays.
-  Install backs up `settings.json` first and reads the written command back.
+  Install backs up `settings.json` before replacing it.
   It reads `settings.json` again just before the replace and aborts if the file differs from what install read first, so an edit made during the install stays and install reports it.
   An edit in the instant between that read and the replace disappears from the new file, and the backup keeps the earlier text.
   Install rewrites a command it wrote earlier, whatever the `node` path or version, but only when the command matches the installer's own form exactly.
@@ -76,8 +75,7 @@ It never prompts, runs `op` or needs the 1Password app, so configuration managem
 Each hook command it writes ends in `# tbhbdev alpha install`.
 A rerun replaces only those entries, and keeps everything else in place.
 Before it changes a config, `config.toml` included, it saves the old one beside it as `<name>.tbhbdev-backup.<time>`.
-`--dry-run` prints the changes without writing them, and `--harness claude|codex|antigravity` limits the merge to one harness.
-`--hooks-only` installs only this clone's git hooks without writing user-level config and accepts `--dry-run` but rejects `--hook` and `--harness`.
+`--dry-run` previews a manual installation without writing changes. It cannot be combined with `--hook`.
 
 For Claude Code it also installs `state-guard` (PreToolUse for Bash, Write and Edit, plus SessionStart) and `session-context` (SessionStart), each with a 10 second timeout.
 Their private values come from an optional `[harness]` table in the user config, and a missing table or key turns off the check that needs it, never blocks:

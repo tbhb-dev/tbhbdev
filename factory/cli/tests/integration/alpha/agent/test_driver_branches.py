@@ -9,8 +9,8 @@ from agent_cli_example import run_agent
 from agent_driver_example import Remote, execution_arguments, setup
 from agent_example import settings
 
-from tbhbdev.alpha.agent import driver
 from tbhbdev.alpha.agent import settings as agent_settings
+from tbhbdev.alpha.agent.driver.metadata import metadata_path
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -47,7 +47,7 @@ def check_launch(
         message = "\n".join(f"{remote.prompt}: {problem}" for problem in problems)
         assert error == f"tbhbdev alpha agent: {message}\n"
         assert not remote.records("ssh", limits=True)
-        assert not driver.metadata_path("sample").exists()
+        assert not metadata_path("sample").exists()
     else:
         assert error == ""
 

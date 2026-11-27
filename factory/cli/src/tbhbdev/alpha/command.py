@@ -15,7 +15,6 @@ from typing import TYPE_CHECKING
 
 import tbhbdev.alpha.agent.command
 import tbhbdev.alpha.brief
-import tbhbdev.alpha.chase_context
 import tbhbdev.alpha.gh_shim
 import tbhbdev.alpha.guard_agent_model
 import tbhbdev.alpha.guard_gh_config_dir
@@ -27,7 +26,7 @@ import tbhbdev.alpha.guard_scripts
 import tbhbdev.alpha.guard_sendmessage_clock
 import tbhbdev.alpha.guard_ssh_agent
 import tbhbdev.alpha.identity.dispatcher
-import tbhbdev.alpha.install
+import tbhbdev.alpha.install.command
 import tbhbdev.alpha.pre_push_guard
 import tbhbdev.alpha.run_stop_hook
 import tbhbdev.alpha.session_context
@@ -58,7 +57,6 @@ commands:
   state-guard  Claude Code hook: block sign-off commits and unchecked open items
   session-context
                SessionStart hook: name the host, the other hosts and the time
-  chase-context UserPromptSubmit hook: show stale pull requests to coordination
   worktree-sweep classify and clean up merged worktrees
   guard-gh-poll PreToolUse hook: block bulk GitHub reads and token unsets
   guard-gh-config-dir PreToolUse hook: require nonempty GH_CONFIG_DIR for gh
@@ -74,8 +72,7 @@ commands:
                a run of only this PR with a job in progress over an hour,
                cancelled first and rerun in full
                | delete-branch N: delete a finished PR's head branch on origin
-               | close N --reason TEXT: close a pull request (--comment is an alias)
-  pr-stats     OWNER/REPO [--limit N]: cycle time of merged and closed pull requests
+               | close N --reason TEXT: close a pull request
   review       draft N [--force] | check N: the review draft
   issue        close N --reason completed|not-planned: close an issue
                | create --repo OWNER/REPO --type TYPE --title TEXT --body-file FILE
@@ -164,12 +161,6 @@ def pr(argv: list[str], prog: str) -> int:
     return pull_request_main(argv, prog=prog)
 
 
-def pr_stats_command(argv: list[str], prog: str) -> int:
-    from tbhbdev.alpha.pr_stats import main as pr_stats_main  # noqa: PLC0415 -- see the docstring
-
-    return pr_stats_main(argv, prog=prog)
-
-
 def review_command(argv: list[str], prog: str) -> int:
     from tbhbdev.alpha.review import main as review_main  # noqa: PLC0415 -- see the docstring
 
@@ -195,7 +186,7 @@ def repo_command(argv: list[str], prog: str) -> int:
 
 
 def merge(argv: list[str], prog: str) -> int:
-    from tbhbdev.alpha.squash_merge import main as merge_main  # noqa: PLC0415 -- see the docstring
+    from tbhbdev.alpha.merge.command import main as merge_main  # noqa: PLC0415 -- see the docstring
 
     return merge_main(argv, prog=prog)
 
@@ -207,7 +198,7 @@ def monorepo_command(argv: list[str], prog: str) -> int:
 
 
 def install_command(argv: list[str], prog: str) -> int:
-    return tbhbdev.alpha.install.main(argv, prog)
+    return tbhbdev.alpha.install.command.main(argv, prog)
 
 
 COMMANDS: dict[str, Callable[[list[str], str], int]] = {
@@ -216,7 +207,6 @@ COMMANDS: dict[str, Callable[[list[str], str], int]] = {
     "guard-op": guard_op_command,
     "state-guard": state_guard_command,
     "session-context": session_context_command,
-    "chase-context": tbhbdev.alpha.chase_context.main,
     "worktree-sweep": tbhbdev.alpha.worktree_sweep.main,
     "guard-gh-poll": poll_command,
     "guard-gh-config-dir": gh_config_dir_command,
@@ -228,7 +218,6 @@ COMMANDS: dict[str, Callable[[list[str], str], int]] = {
     "gh-shim": tbhbdev.alpha.gh_shim.main,
     "agent-env": tbhbdev.alpha.gh_shim.agent_env,
     "pr": pr,
-    "pr-stats": pr_stats_command,
     "review": review_command,
     "issue": issue,
     "gh-app": gh_app_command,

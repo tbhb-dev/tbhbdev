@@ -521,7 +521,6 @@ def git_env() -> dict[str, str]:
 
 
 def test_probe_real_git_pipe(tmp_path: Path) -> None:
-    assert rt.USE_PIPE is True
     done = rt._git(
         rt.Minted(TOKEN, 100),
         ["credential", "fill"],
@@ -536,41 +535,10 @@ def test_probe_real_git_pipe(tmp_path: Path) -> None:
     assert TOKEN not in repr(done.args)
 
 
-def test_probe_real_git_fallback(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    monkeypatch.setattr(rt, "USE_PIPE", False)
-    environment = git_env() | {
-        "GIT_CONFIG_COUNT": "1",
-        "GIT_CONFIG_KEY_0": "example.retained",
-        "GIT_CONFIG_VALUE_0": "yes",
-    }
-    done = rt.git(
-        rt.Minted(TOKEN, 100),
-        ["config", "--get", "http.https://github.com/.extraheader"],
-        cwd=tmp_path,
-        env=environment,
-    )
-    assert done.returncode == 0
-    encoded = done.stdout.strip().removeprefix("AUTHORIZATION: basic ")
-    assert base64.b64decode(encoded).decode() == f"x-access-token:{TOKEN}"
-    retained = rt.git(
-        rt.Minted(TOKEN, 100),
-        ["config", "--get", "example.retained"],
-        cwd=tmp_path,
-        env=environment,
-    )
-    assert retained.stdout == "yes\n"
-    assert environment["GIT_CONFIG_COUNT"] == "1"
-    assert TOKEN not in repr(done.args)
-
-
-@pytest.mark.parametrize("pipe", [True, False])
 @pytest.mark.parametrize("prompt", [None, "1", "arbitrary"])
 def test_git_invocation_and_environment(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, pipe: bool, prompt: str | None
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, prompt: str | None
 ) -> None:
-    monkeypatch.setattr(rt, "USE_PIPE", pipe)
     executable = shutil.which("git")
     assert executable
     environment = {"PATH": str(Path(executable).parent), "EXPLICIT": "kept"}
@@ -601,30 +569,19 @@ def test_git_invocation_and_environment(
         assert text is True
         assert check is False
         assert input is None
-        if pipe:
-            assert env == environment | {"GIT_TERMINAL_PROMPT": "0"}
-            assert len(pass_fds) == 1
-            assert os.read(pass_fds[0], 1000).decode() == TOKEN
-            assert os.read(pass_fds[0], 1000) == b""
-            assert argv[4] == "credential.helper=!" + rt.shlex.join(
-                [
-                    sys.executable,
-                    "-I",
-                    "-c",
-                    rt.HELPER_CODE,
-                    str(pass_fds[0]),
-                ]
-            )
-        else:
-            assert pass_fds == ()
-            assert env == environment | {
-                "GIT_TERMINAL_PROMPT": "0",
-                "GIT_CONFIG_COUNT": "1",
-                "GIT_CONFIG_KEY_0": "http.https://github.com/.extraheader",
-                "GIT_CONFIG_VALUE_0": "AUTHORIZATION: basic "
-                + base64.b64encode(f"x-access-token:{TOKEN}".encode()).decode(),
-            }
-            assert argv[4] == "credential.helper="
+        assert env == environment | {"GIT_TERMINAL_PROMPT": "0"}
+        assert len(pass_fds) == 1
+        assert os.read(pass_fds[0], 1000).decode() == TOKEN
+        assert os.read(pass_fds[0], 1000) == b""
+        assert argv[4] == "credential.helper=!" + rt.shlex.join(
+            [
+                sys.executable,
+                "-I",
+                "-c",
+                rt.HELPER_CODE,
+                str(pass_fds[0]),
+            ]
+        )
         return subprocess.CompletedProcess(argv, 17, "out", "err")
 
     monkeypatch.setattr(subprocess, "run", run)
@@ -640,7 +597,7 @@ def test_git_invocation_and_environment(
 
 @pytest.mark.parametrize(
     "problem",
-    ["no_path", "missing_git", "timeout", "oserror", "bad_count", "negative_count"],
+    ["no_path", "missing_git", "timeout", "oserror"],
 )
 def test_git_errors(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, problem: str
@@ -650,9 +607,6 @@ def test_git_errors(
         environment.pop("PATH")
     elif problem == "missing_git":
         environment["PATH"] = str(tmp_path)
-    elif "count" in problem:
-        monkeypatch.setattr(rt, "USE_PIPE", False)
-        environment["GIT_CONFIG_COUNT"] = "bad" if problem == "bad_count" else "-1"
     else:
 
         def fail(*_args: object, **_kwargs: object) -> NoReturn:

@@ -57,8 +57,8 @@ cli_py_test(
     srcs = ["test_driver_branches.py"],
     imports = ["../../.."],
     deps = [
-        "//factory/cli/src/tbhbdev/alpha/agent:driver",
         "//factory/cli/src/tbhbdev/alpha/agent:settings",
+        "//factory/cli/src/tbhbdev/alpha/agent/driver:metadata",
         "//factory/cli/tests:agent_cli_example",
         "//factory/cli/tests:agent_driver_example",
         "//factory/cli/tests:agent_example",

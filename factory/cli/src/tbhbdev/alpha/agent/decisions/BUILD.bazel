@@ -17,8 +17,8 @@ cli_py_library(
     visibility = ["//factory/cli:__subpackages__"],
     deps = [
         ":policy",
-        "//factory/cli/src/tbhbdev/alpha:install",
         "//factory/cli/src/tbhbdev/alpha/agent:model",
+        "//factory/cli/src/tbhbdev/alpha/install:hooks",
     ],
 )
 
@@ -38,29 +38,6 @@ cli_py_library(
         ":repo",
         "//factory/cli/src/tbhbdev/alpha/agent:model",
     ],
-)
-
-cli_py_library(
-    name = "driver",
-    srcs = ["driver.py"],
-    imports = ["../../../.."],
-    visibility = ["//factory/cli:__subpackages__"],
-    deps = [
-        ":config",
-        ":request",
-        "//factory/cli/src/tbhbdev/alpha:brief",
-        "//factory/cli/src/tbhbdev/alpha:brief_text",
-        "//factory/cli/src/tbhbdev/alpha/agent:model",
-        "//factory/cli/src/tbhbdev/alpha/identity:models",
-    ],
-)
-
-cli_py_library(
-    name = "launcher",
-    srcs = ["launcher.py"],
-    imports = ["../../../.."],
-    visibility = ["//factory/cli:__subpackages__"],
-    deps = ["//factory/cli/src/tbhbdev/alpha/agent:model"],
 )
 
 cli_py_library(
