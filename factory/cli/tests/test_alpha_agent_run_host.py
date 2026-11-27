@@ -746,6 +746,7 @@ def test_launch_uses_the_policy_and_marks_only_after_spawn(
     assert [entry for entry in metadata if not entry[1].startswith("argv: ")] == [
         ("launched", "\n"),
         ("phase", "running"),
+        ("log", "harness exited 7\n"),
         ("phase", "exited"),
         ("phase", "stopped"),
     ]
@@ -788,6 +789,7 @@ def test_harness_deadlines(
         else:
             assert run_host.run_harness(run, prepared, stack) == 124
             assert stopped == [23]
+            assert "harness exited 124\n" in run.files.path("log").read_text()
 
 
 @pytest.mark.parametrize(
@@ -3012,7 +3014,7 @@ def test_unproven_harness_stop_keeps_rc_and_withholds_auth(
     assert run.files.path("rc").read_text() == "7\n"
     log = run.files.path("log").read_text().splitlines()
     assert log[0].startswith("argv: ")
-    assert log[1:] == ["run group stop unproven; phase unknown"]
+    assert log[1:] == ["harness exited 7", "run group stop unproven; phase unknown"]
     assert not (run.home / ".codex" / "auth.json").exists()
 
 
