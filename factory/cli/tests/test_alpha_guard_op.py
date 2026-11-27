@@ -9,7 +9,8 @@ if TYPE_CHECKING:
 
 import pytest
 
-from tbhbdev import alpha, userconfig
+from tbhbdev import userconfig
+from tbhbdev.alpha import command as alpha
 from tbhbdev.alpha import guard_op as guard
 
 ACCOUNT = "example.1password.com"

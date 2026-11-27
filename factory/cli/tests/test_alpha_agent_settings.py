@@ -7,7 +7,8 @@ from typing import TYPE_CHECKING
 
 import pytest
 
-from tbhbdev import alpha, cli, userconfig
+from tbhbdev import cli, userconfig
+from tbhbdev.alpha import command as alpha
 from tbhbdev.alpha.agent import command as agent
 from tbhbdev.alpha.agent import model, settings
 

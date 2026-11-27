@@ -15,7 +15,7 @@ from typing import TYPE_CHECKING
 
 import pytest
 
-from tbhbdev import alpha
+from tbhbdev.alpha import command as alpha
 from tbhbdev.alpha import guard_scripts as guard
 
 if TYPE_CHECKING:

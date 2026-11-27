@@ -13,7 +13,7 @@ from jsonschema import Draft202012Validator
 from test_alpha_pull_request import REAL, World
 from test_alpha_pull_request import world as world  # noqa: PLC0414
 
-from tbhbdev import alpha
+from tbhbdev.alpha import command as alpha
 from tbhbdev.alpha import pull_request as pr
 from tbhbdev.alpha import review, review_doc
 

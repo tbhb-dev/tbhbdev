@@ -8,7 +8,8 @@ from typing import TYPE_CHECKING
 import pytest
 from agent_host_example import commit, git, repository
 
-from tbhbdev.alpha import main, run_stop_hook
+from tbhbdev.alpha import run_stop_hook
+from tbhbdev.alpha.command import main
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Mapping

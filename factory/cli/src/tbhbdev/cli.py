@@ -10,10 +10,8 @@ import sys
 from collections.abc import Callable, Mapping, Sequence
 
 from tbhbdev import (
-    admin,
     adr,
     agy,
-    alpha,
     analytics,
     cue_runtime,
     host,
@@ -22,15 +20,17 @@ from tbhbdev import (
     secret,
     version,
 )
+from tbhbdev.admin import command as admin_command
+from tbhbdev.alpha import command as alpha_command
 
 Tool = Callable[[list[str], str], int]
 
 # The built-in tools. main adds the plugins' tools when it runs.
 TOOLS: dict[str, Tool] = {
-    "admin": admin.main,
+    "admin": admin_command.main,
     "adr": adr.main,
     "agy": agy.main,
-    "alpha": alpha.main,
+    "alpha": alpha_command.main,
     "analytics": analytics.main,
     "cue": cue_runtime.main,
     "host": host.main,

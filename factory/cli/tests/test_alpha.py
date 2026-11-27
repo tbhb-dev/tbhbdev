@@ -7,7 +7,7 @@ import sys
 
 import pytest
 
-from tbhbdev import alpha, cli
+from tbhbdev import cli
 from tbhbdev.alpha import (
     close,
     guard_gh_pr,
@@ -16,6 +16,7 @@ from tbhbdev.alpha import (
     pull_request,
     squash_merge,
 )
+from tbhbdev.alpha import command as alpha
 
 USAGE = alpha.USAGE.format(prog="tbhbdev alpha")
 

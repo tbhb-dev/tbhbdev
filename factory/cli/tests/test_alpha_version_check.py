@@ -8,7 +8,7 @@ from pathlib import Path
 
 import pytest
 
-from tbhbdev import alpha
+from tbhbdev.alpha import command as alpha
 from tbhbdev.alpha import version_check
 
 A = "a" * 40

@@ -5,7 +5,7 @@ from typing import TYPE_CHECKING, Literal, TypedDict
 
 import pytest
 
-from tbhbdev import alpha
+from tbhbdev.alpha import command as alpha
 from tbhbdev.alpha import identity, verify_range
 
 if TYPE_CHECKING:

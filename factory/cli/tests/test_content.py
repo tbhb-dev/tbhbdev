@@ -8,8 +8,8 @@ lazy from pathlib import Path
 import pytest
 
 from tbhbdev import content as cw
-from tbhbdev.alpha import main as alpha_main
 from tbhbdev.alpha import pull_request as pr
+from tbhbdev.alpha.command import main as alpha_main
 
 type Call = tuple[str, str, cw.Json | None]
 REF = cw.IssueRef("example", "demo", 7)

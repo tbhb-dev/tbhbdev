@@ -10,7 +10,7 @@ from typing import TYPE_CHECKING
 import pytest
 from stub_fixtures import stubs as stubs  # noqa: PLC0414
 
-from tbhbdev import alpha
+from tbhbdev.alpha import command as alpha
 from tbhbdev.alpha import guard_gh_config_dir as guard
 
 if TYPE_CHECKING:

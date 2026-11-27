@@ -23,7 +23,8 @@ from cryptography.hazmat.primitives import hashes, serialization
 from cryptography.hazmat.primitives.asymmetric import padding
 from cryptography.hazmat.primitives.asymmetric import rsa as rsa_keys
 
-from tbhbdev import alpha, secrets
+from tbhbdev import secrets
+from tbhbdev.alpha import command as alpha
 from tbhbdev.alpha import gh_app
 
 NOW = 1_800_000_000

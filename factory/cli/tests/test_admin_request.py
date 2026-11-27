@@ -16,7 +16,8 @@ from conftest import SAFE_ENVIRONMENT
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric import rsa
 
-from tbhbdev import admin, secrets
+from tbhbdev import secrets
+from tbhbdev.admin import command as admin
 from tbhbdev.admin import policy, request
 from tbhbdev.admin.audit import Audit, RefusedError
 from tbhbdev.alpha import gh_app

@@ -3,7 +3,7 @@ from datetime import UTC, datetime
 
 import pytest
 
-from tbhbdev import alpha
+from tbhbdev.alpha import command as alpha
 from tbhbdev.alpha import pr_stats
 from tbhbdev.alpha import pull_request as pr
 

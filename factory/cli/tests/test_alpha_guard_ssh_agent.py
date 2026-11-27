@@ -10,7 +10,7 @@ from typing import override
 
 import pytest
 
-from tbhbdev import alpha
+from tbhbdev.alpha import command as alpha
 from tbhbdev.alpha import guard_ssh_agent as guard
 
 S = ".ssh"

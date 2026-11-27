@@ -9,6 +9,13 @@ cli_py_library(
     srcs = ["__init__.py"],
     imports = ["../.."],
     visibility = ["//factory/cli:__subpackages__"],
+)
+
+cli_py_library(
+    name = "command",
+    srcs = ["command.py"],
+    imports = ["../.."],
+    visibility = ["//factory/cli:__subpackages__"],
     deps = [
         ":audit",
         ":policy",

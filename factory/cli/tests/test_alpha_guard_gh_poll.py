@@ -13,7 +13,7 @@ from typing import TYPE_CHECKING
 
 import pytest
 
-from tbhbdev import alpha
+from tbhbdev.alpha import command as alpha
 from tbhbdev.alpha import guard_gh_poll as guard
 
 # The guard builds its paths from Path.home(), so the tests do too.

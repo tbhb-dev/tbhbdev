@@ -9,7 +9,7 @@ from pathlib import Path
 
 import pytest
 
-from tbhbdev import alpha
+from tbhbdev.alpha import command as alpha
 from tbhbdev.alpha import guard_agent_model as guard
 
 
