@@ -198,9 +198,9 @@ def check_layout(run: Smoke) -> None:
 
 
 def group1(run: Smoke) -> None:
-    values = dict(run.sentinels.values)
+    expected_secrets = dict(run.sentinels.values)
     for secret in init.SECRETS:
-        seed(run, secret.name, values[secret.name])
+        seed(run, secret.name, expected_secrets[secret.name])
     initialize_and_sync(run)
     check_layout(run)
     reclaim(run)
@@ -211,12 +211,12 @@ def group1(run: Smoke) -> None:
         smoke.FAILURES["1_alert_placeholders_differ"],
     )
     for name in (init.WEBHOOK, init.SMTP):
-        seed(run, name, values[name])
+        seed(run, name, expected_secrets[name])
     initialize_and_sync(run)
     check_layout(run)
     reclaim(run)
     require(
-        values(run) == values,
+        values(run) == expected_secrets,
         smoke.FAILURES["1_init_replaced_a_valid_existing_secret"],
     )
     consistent(run)
@@ -240,14 +240,14 @@ def group1(run: Smoke) -> None:
     reclaim(run)
     consistent(run)
     require(
-        values(run)[init.SECRETS[0].name] != values[init.SECRETS[0].name],
+        values(run)[init.SECRETS[0].name] != expected_secrets[init.SECRETS[0].name],
         smoke.FAILURES["1_truncated_key_was_left_in_place"],
     )
-    seed(run, init.SECRETS[0].name, values[init.SECRETS[0].name])
+    seed(run, init.SECRETS[0].name, expected_secrets[init.SECRETS[0].name])
     initialize_and_sync(run)
     reclaim(run)
     require(
-        values(run) == values,
+        values(run) == expected_secrets,
         smoke.FAILURES["1_sentinel_key_could_not_be_restored"],
     )
     consistent(run)
