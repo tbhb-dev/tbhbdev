@@ -48,7 +48,11 @@ go_deadcode_test(
 
 go_arch_lint_test(
     name = "go_arch_lint_test",
-    srcs = GO_TARGETS,
+    size = "small",
+    srcs = GO_TARGETS + [
+        "//factory/cli/cmd/tbhbdev:tbhbdev_test",
+        "//factory/cli/internal/dispatch:dispatch_test",
+    ],
     config = "//:.go-arch-lint.yml",
     go_mod = "//:go.mod",
 )
