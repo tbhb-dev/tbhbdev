@@ -61,8 +61,8 @@ cli_py_library(
 )
 
 cli_py_library(
-    name = "remote",
-    srcs = ["remote.py"],
+    name = "remote_inspection",
+    srcs = ["remote_inspection.py"],
     imports = ["../../../.."],
     visibility = ["//factory/cli:__subpackages__"],
     deps = [

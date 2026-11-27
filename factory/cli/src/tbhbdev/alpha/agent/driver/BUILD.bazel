@@ -86,7 +86,7 @@ cli_py_library(
         "//factory/cli/src/tbhbdev/alpha:terminal",
         "//factory/cli/src/tbhbdev/alpha/agent:model",
         "//factory/cli/src/tbhbdev/alpha/agent:transport",
-        "//factory/cli/src/tbhbdev/alpha/agent/decisions:remote",
+        "//factory/cli/src/tbhbdev/alpha/agent/decisions:remote_inspection",
         "//factory/cli/src/tbhbdev/alpha/agent/decisions:remote_run",
     ],
 )

@@ -1,4 +1,4 @@
-"""Remote agent scripts awaiting their dedicated modules."""
+"""Remote Git inspection and patch export scripts."""
 
 from __future__ import annotations
 
