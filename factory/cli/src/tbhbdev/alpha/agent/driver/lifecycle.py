@@ -6,7 +6,7 @@ import time
 from typing import TYPE_CHECKING
 
 from tbhbdev.alpha.agent import transport
-from tbhbdev.alpha.agent.decisions import remote
+from tbhbdev.alpha.agent.decisions import remote_run
 from tbhbdev.alpha.agent.driver.decisions import lifecycle as rules
 from tbhbdev.alpha.agent.driver.decisions import output
 from tbhbdev.alpha.agent.driver.decisions.lifecycle import answer_state, state
@@ -124,7 +124,7 @@ def close_session(settings: Settings, run: Run) -> None:
     transport.shell(
         settings,
         run.host,
-        remote.session(run.name, "kill-session", settings.sockets_dir),
+        remote_run.session(run.name, "kill-session", settings.sockets_dir),
         transport.Stdin(run.owner),
     )
 
@@ -149,7 +149,7 @@ def kill(settings: Settings, run: Run) -> int:
             transport.shell(
                 settings,
                 run.host,
-                remote.fallback(run.name, settings.sockets_dir),
+                remote_run.fallback(run.name, settings.sockets_dir),
                 transport.Stdin(run.owner),
             )
             return 0

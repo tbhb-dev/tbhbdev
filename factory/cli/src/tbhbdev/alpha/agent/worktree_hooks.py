@@ -14,7 +14,7 @@ lazy from collections.abc import Mapping
 from tbhbdev.alpha import pre_push_guard
 from tbhbdev.alpha.agent import host_tools, worktree_errors
 from tbhbdev.alpha.agent.model import Invalid
-from tbhbdev.alpha.identity.dispatcher import RUN_HOOK_ENV
+from tbhbdev.alpha.identity.commit.policy import RUN_HOOK_ENV
 from tbhbdev.alpha.install.scripts import IDENTITY_HOOKS, SHIM_MARK, pre_push_shim
 from tbhbdev.alpha.repo import TBHB_DEV_ORIGIN
 

@@ -4,7 +4,7 @@ import sys
 from pathlib import Path
 
 from tbhbdev.alpha.gh_shim import AGENT_MARKERS
-from tbhbdev.alpha.identity.dispatcher import AGENT_EMAIL
+from tbhbdev.alpha.identity.commit.policy import AGENT_EMAIL
 from tbhbdev.alpha.install.files import free_name, stamp
 from tbhbdev.alpha.install.git.prek import prek_install, prek_run
 from tbhbdev.alpha.install.model import PROG, InstallError

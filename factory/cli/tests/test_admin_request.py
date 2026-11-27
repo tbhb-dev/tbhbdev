@@ -123,6 +123,7 @@ def fake(tmp_path: Path, config_file: Path) -> Fake:
             "public_visibility",
         ),
         ("GET", "/graphql", None, "endpoint_denied"),
+        ("PUT", "/orgs/tbhb-dev/rulesets/28092610", {}, "protection_weakening"),
         *[
             (
                 "POST",
