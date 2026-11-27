@@ -20,6 +20,7 @@ cli_py_test(
         "//factory/cli/tests:agent_driver_example",
         "//factory/cli/tests:conftest",
         "//factory/cli/tests:remote_script_example",
+        "//factory/cli/tests/integration/alpha/agent:conftest",
         "@cli_pip//pytest",
     ],
 )
@@ -36,6 +37,7 @@ cli_py_test(
         "//factory/cli/tests:agent_example",
         "//factory/cli/tests:conftest",
         "//factory/cli/tests:remote_script_example",
+        "//factory/cli/tests/integration/alpha/agent:conftest",
         "@cli_pip//pytest",
     ],
 )
@@ -62,6 +64,7 @@ cli_py_test(
         "//factory/cli/tests:agent_example",
         "//factory/cli/tests:conftest",
         "//factory/cli/tests:remote_script_example",
+        "//factory/cli/tests/integration/alpha/agent:conftest",
         "@cli_pip//pytest",
     ],
 )
@@ -79,6 +82,7 @@ cli_py_test(
         "//factory/cli/tests:agent_example",
         "//factory/cli/tests:conftest",
         "//factory/cli/tests:remote_script_example",
+        "//factory/cli/tests/integration/alpha/agent:conftest",
         "@cli_pip//pytest",
     ],
 )
@@ -99,6 +103,7 @@ cli_py_test(
         "//factory/cli/tests:agent_example",
         "//factory/cli/tests:conftest",
         "//factory/cli/tests:remote_script_example",
+        "//factory/cli/tests/integration/alpha/agent:conftest",
         "@cli_pip//pytest",
     ],
 )

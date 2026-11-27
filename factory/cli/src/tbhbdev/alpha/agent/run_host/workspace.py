@@ -5,7 +5,13 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from tbhbdev.alpha.agent import credentials, push, runfiles, worktree
+from tbhbdev.alpha.agent import (
+    credentials,
+    push,
+    runfiles,
+    worktree_checkout,
+    worktree_errors,
+)
 from tbhbdev.alpha.agent.decisions import repo
 from tbhbdev.alpha.agent.model import Harness, Profile, RunPaths
 from tbhbdev.alpha.agent.run_host import bazel_cache, environment, preflight, telemetry
@@ -18,14 +24,14 @@ def prepare_workspace(run: Run) -> Prepared:
     clone = Path(repo.clone_path(run.home, run.request.repo))
     paths = planned_paths(run)
     value, _ = preflight.resolve_harness(run, paths)
-    workspace = worktree.create(
+    workspace = worktree_checkout.create(
         clone,
         run.files.name,
         run.request,
         lambda: credentials.fetch_token(run.request, run.settings),
         hook_env=environment.hook_environment(value),
     )
-    with worktree.preparation_step("credential delivery"):
+    with worktree_errors.preparation_step("credential delivery"):
         delivery = credentials.deliver(run.request, run.settings, run.tmpdir)
     paths = RunPaths(
         home=str(run.home),
@@ -37,19 +43,19 @@ def prepare_workspace(run: Run) -> Prepared:
         if delivery.signing is not None
         else None,
     )
-    with worktree.preparation_step("audit directory"):
+    with worktree_errors.preparation_step("audit directory"):
         runfiles.private_dir(Path(paths.audit_dir))
     before = None
     if run.request.harness is Harness.CODEX:
-        with worktree.preparation_step("codex auth copy"):
+        with worktree_errors.preparation_step("codex auth copy"):
             runfiles.private_dir(Path(paths.codex_home))
             source = runfiles.private_dir(run.home / ".codex") / "auth.json"
             before = credentials.auth_copy(source, Path(paths.codex_home) / "auth.json")
-        with worktree.preparation_step("codex config"):
+        with worktree_errors.preparation_step("codex config"):
             prepare_codex_config(Path(paths.codex_home), run.settings.otel_endpoint)
     start = None
     if run.request.profile is Profile.BUILD and not run.request.no_commit:
-        with worktree.preparation_step("stop hook baseline"):
+        with worktree_errors.preparation_step("stop hook baseline"):
             start = push.head(workspace, f"agent/{run.files.name}")
     return Prepared(
         paths,

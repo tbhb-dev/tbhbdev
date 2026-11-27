@@ -23,7 +23,7 @@ from tbhbdev.alpha.identity import models as identity_models
 from tbhbdev.alpha.identity import records as identity_records
 from tbhbdev.alpha.identity import trailers as identity_trailers
 from tbhbdev.alpha.identity.commit import grammar as identity_commit_grammar
-from tbhbdev.alpha.pull_request_frontmatter import parse_frontmatter
+from tbhbdev.alpha.pull_request.frontmatter import parse_frontmatter
 from tbhbdev.alpha.size_gate import SIZE_REVIEW, size_verdict
 
 if TYPE_CHECKING:

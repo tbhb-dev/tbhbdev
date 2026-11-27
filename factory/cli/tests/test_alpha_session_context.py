@@ -10,9 +10,10 @@ lazy from pathlib import Path
 
 import pytest
 
-from tbhbdev.alpha import close, pull_request, session_context
+from tbhbdev.alpha import close, session_context
 from tbhbdev.alpha.agent.driver import arguments as agent_arguments
 from tbhbdev.alpha.merge import options as squash_merge
+from tbhbdev.alpha.pull_request.arguments import build_parser as pr_parser
 
 NOW = datetime(2026, 1, 2, 3, 4, tzinfo=UTC)
 
@@ -161,9 +162,9 @@ def test_the_reminder_lists_the_top_commands_with_real_argument_shapes() -> None
     for named in ("pr create|check", "pr ready N", "merge N", "review draft N"):
         assert named in text
     assert text.endswith("`tbhbdev alpha --help` lists the rest.")
-    pull_request.build_parser("x").parse_args(["create"])
-    pull_request.build_parser("x").parse_args(["check"])
-    pull_request.build_parser("x").parse_args(["ready", "7"])
+    pr_parser("x").parse_args(["create"])
+    pr_parser("x").parse_args(["check"])
+    pr_parser("x").parse_args(["ready", "7"])
     close.build_parser("x").parse_args(["pr", "close", "7", "--reason", "why"])
     squash_merge.build_parser("x").parse_args(["7"])
     agent_arguments.parser("x").parse_args(

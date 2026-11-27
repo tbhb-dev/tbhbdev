@@ -5,7 +5,6 @@ from __future__ import annotations
 import dataclasses
 import os
 import shutil
-import time
 from pathlib import Path
 
 import pytest
@@ -13,7 +12,6 @@ from run_host_fixtures import (
     HOST_FIXTURES,
     bazel_base,
     bazel_run,
-    fake_bazel,
     make_base,
     stop_and_clean,
 )
@@ -44,7 +42,6 @@ def test_cleanup_deletes_only_the_recorded_base_and_its_links(
     (worktree / ".bazel-ws").symlink_to(base)
     (worktree / "bazel-other").symlink_to(other)
     (worktree / "bazel-file").write_text("keep")
-    fake_bazel(monkeypatch)
     spaces = iter([(100, 10), (4100, 14)])
 
     def space(_fd: int) -> tuple[int, int]:
@@ -72,9 +69,7 @@ def test_space_reads_statvfs(tmp_path: Path) -> None:
     assert free_inodes >= 0
 
 
-def test_cleanup_ignores_a_swapped_worktree(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_cleanup_ignores_a_swapped_worktree(tmp_path: Path) -> None:
     run, prepared = bazel_run(tmp_path)
     worktree = Path(prepared.paths.worktree)
     base = make_base(prepared)
@@ -85,16 +80,13 @@ def test_cleanup_ignores_a_swapped_worktree(
     (victim / "bazel-out").symlink_to(victim_base)
     shutil.rmtree(worktree)
     worktree.symlink_to(victim)
-    fake_bazel(monkeypatch)
     assert stop_and_clean(run, prepared)["bases"] == 1
     assert not base.exists()
     assert victim_base.is_dir()
     assert (victim / "bazel-out").is_symlink()
 
 
-def test_cleanup_refuses_a_symlinked_ancestor(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_cleanup_refuses_a_symlinked_ancestor(tmp_path: Path) -> None:
     run, prepared = bazel_run(tmp_path)
     base = prepared.bases[0]
     victim = tmp_path / "victim"
@@ -104,24 +96,18 @@ def test_cleanup_refuses_a_symlinked_ancestor(
     (run.home / ".cache").symlink_to(victim)
     (victim / "bazel").mkdir()
     (victim / "bazel" / base.parent.name).symlink_to(victim / base.parent.name)
-    calls: list[list[str]] = []
-    fake_bazel(monkeypatch, calls=calls)
     assert stop_and_clean(run, prepared)["bases"] == 0
     assert victim_base.is_dir()
-    assert calls == []
     assert "refused" in run.files.path("log").read_text()
 
 
-def test_cleanup_refuses_a_symlinked_base(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_cleanup_refuses_a_symlinked_base(tmp_path: Path) -> None:
     run, prepared = bazel_run(tmp_path)
     victim = tmp_path / "victim"
     victim.mkdir()
     (victim / "file").write_text("keep")
     prepared.bases[0].parent.mkdir(parents=True)
     prepared.bases[0].symlink_to(victim)
-    fake_bazel(monkeypatch)
     assert stop_and_clean(run, prepared)["bases"] == 0
     assert (victim / "file").read_text() == "keep"
     assert host_bazel_cache.cleanup_bazel(run, None, {})["bases"] == 0
@@ -132,21 +118,17 @@ def test_cleanup_refuses_a_foreign_uid(
 ) -> None:
     run, prepared = bazel_run(tmp_path)
     base = make_base(prepared)
-    fake_bazel(monkeypatch)
     monkeypatch.setattr(os, "getuid", lambda: tmp_path.stat().st_uid + 1)
     assert stop_and_clean(run, prepared)["bases"] == 0
     assert base.is_dir()
 
 
-def test_cleanup_refuses_paths_outside_the_cache_roots(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_cleanup_refuses_paths_outside_the_cache_roots(tmp_path: Path) -> None:
     run, prepared = bazel_run(tmp_path)
     outside = tmp_path / "elsewhere"
     outside.mkdir()
     (outside / "file").write_text("keep")
     prepared = dataclasses.replace(prepared, bases=(outside,))
-    fake_bazel(monkeypatch)
     assert stop_and_clean(run, prepared)["bases"] == 0
     assert (outside / "file").read_text() == "keep"
     assert host_bazel_cache.owned_base(run.home, outside) is None
@@ -158,20 +140,12 @@ def test_cleanup_refuses_paths_outside_the_cache_roots(
     assert file_base.exists()
 
 
-def test_cleanup_keeps_a_base_whose_server_is_alive(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_cleanup_keeps_a_base_whose_server_is_alive(tmp_path: Path) -> None:
     run, prepared = bazel_run(tmp_path)
     base = make_base(prepared)
     (base / "server").mkdir()
     (base / "server/server.pid.txt").write_text(str(os.getpid()))
-    calls: list[list[str]] = []
-    pauses: list[float] = []
-    fake_bazel(monkeypatch, calls=calls)
-    monkeypatch.setattr(time, "sleep", pauses.append)
     stopped = host_bazel_shutdown.shutdown_bazel(run, prepared)
-    assert stopped[base][0] == "server alive"
-    assert (len(calls), pauses) == (4, [2, 2, 2])
     assert host_bazel_cache.cleanup_bazel(run, prepared, stopped)["bases"] == 0
     assert base.is_dir()
     assert "kept" in run.files.path("log").read_text()
@@ -186,22 +160,23 @@ def test_a_dead_or_unreadable_server_pid_is_not_alive(
     assert not host_bazel_cache.server_alive(tmp_path)
 
 
-def test_cleanup_keeps_a_base_when_shutdown_fails(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_cleanup_keeps_a_base_when_shutdown_fails(tmp_path: Path) -> None:
     run, prepared = bazel_run(tmp_path)
     base = make_base(prepared)
-    fake_bazel(monkeypatch, code=1)
-    assert stop_and_clean(run, prepared)["bases"] == 0
+    stopped = host_bazel_shutdown.shutdown_bazel(run, prepared)
+    _, identity = stopped[base]
+    assert (
+        host_bazel_cache.cleanup_bazel(
+            run, prepared, {base: ("permission denied", identity)}
+        )["bases"]
+        == 0
+    )
     assert base.is_dir()
 
 
-def test_cleanup_refuses_a_base_swapped_after_shutdown(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_cleanup_refuses_a_base_swapped_after_shutdown(tmp_path: Path) -> None:
     run, prepared = bazel_run(tmp_path)
     base = make_base(prepared)
-    fake_bazel(monkeypatch)
     stopped = host_bazel_shutdown.shutdown_bazel(run, prepared)
     base.rename(base.with_name("moved"))
     base.mkdir()
@@ -224,11 +199,10 @@ def test_server_alive_keeps_a_base_on_permission_error(
 
 
 def test_cleanup_keeps_a_base_whose_server_restarted_after_shutdown(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    tmp_path: Path,
 ) -> None:
     run, prepared = bazel_run(tmp_path)
     base = make_base(prepared)
-    fake_bazel(monkeypatch)
     stopped = host_bazel_shutdown.shutdown_bazel(run, prepared)
     assert stopped[base][0] == "rc=0"
     (base / "server").mkdir()
@@ -246,7 +220,6 @@ def test_cleanup_refuses_a_base_swapped_for_a_symlink_before_removal(
     victim = tmp_path / "victim"
     victim.mkdir()
     (victim / "file").write_text("keep")
-    fake_bazel(monkeypatch)
     stopped = host_bazel_shutdown.shutdown_bazel(run, prepared)
     original = host_bazel_cache.server_alive
 
@@ -271,7 +244,6 @@ def test_cleanup_deletes_through_the_validated_ancestors_after_a_swap(
     victim = tmp_path / "victim"
     (victim / base.name).mkdir(parents=True)
     (victim / base.name / "file").write_text("keep")
-    fake_bazel(monkeypatch)
     stopped = host_bazel_shutdown.shutdown_bazel(run, prepared)
     original = host_bazel_cache.server_alive
 
@@ -291,7 +263,6 @@ def test_cleanup_refuses_a_base_replaced_by_another_directory_before_removal(
 ) -> None:
     run, prepared = bazel_run(tmp_path)
     base = make_base(prepared)
-    fake_bazel(monkeypatch)
     stopped = host_bazel_shutdown.shutdown_bazel(run, prepared)
     original = host_bazel_cache.server_alive
 
@@ -306,27 +277,21 @@ def test_cleanup_refuses_a_base_replaced_by_another_directory_before_removal(
     assert (base / "file").is_file()
 
 
-def test_cleanup_unlinks_relative_links_into_a_deleted_base(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_cleanup_unlinks_relative_links_into_a_deleted_base(tmp_path: Path) -> None:
     run, prepared = bazel_run(tmp_path)
     worktree = Path(prepared.paths.worktree)
     base = make_base(prepared)
     (base / "execroot").mkdir()
     (worktree / "bazel-rel").symlink_to(os.path.relpath(base / "execroot", worktree))
     (worktree / "bazel-keep").symlink_to("../nowhere")
-    fake_bazel(monkeypatch)
     assert stop_and_clean(run, prepared)["bases"] == 1
     assert not (worktree / "bazel-rel").is_symlink()
     assert (worktree / "bazel-keep").is_symlink()
 
 
-def test_cleanup_keeps_a_base_that_vanished_after_shutdown(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_cleanup_keeps_a_base_that_vanished_after_shutdown(tmp_path: Path) -> None:
     run, prepared = bazel_run(tmp_path)
     base = make_base(prepared)
-    fake_bazel(monkeypatch)
     stopped = host_bazel_shutdown.shutdown_bazel(run, prepared)
     base.rmdir()
     assert host_bazel_cache.cleanup_bazel(run, prepared, stopped)["bases"] == 0
@@ -354,7 +319,6 @@ def test_failed_deletion_reports_no_counts(
 ) -> None:
     run, prepared = bazel_run(tmp_path)
     make_base(prepared)
-    fake_bazel(monkeypatch)
 
     def rmtree(*_args: object, **_options: object) -> None:
         if mode == "error":

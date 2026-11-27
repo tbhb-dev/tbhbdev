@@ -606,7 +606,7 @@ def test_stop_harness_shuts_servers_down_after_stopping_the_group(
 ) -> None:
     run, prepared = bazel_run(tmp_path)
     worktree = Path(prepared.paths.worktree)
-    server = bazel_servers.Server(41, worktree, belongs=True)
+    server = bazel_servers.Server(41, belongs=True, started="start")
     base = tmp_path / "base"
     events: list[str] = []
 

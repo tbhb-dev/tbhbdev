@@ -167,11 +167,9 @@ def wait_harness(run: Run, child: subprocess.Popen[str]) -> int:
 def _stop_harness(run: Run, prepared: Prepared, child: subprocess.Popen[str]) -> bool:
     with suppress(OSError):
         run.files.write("phase", "exited")
-    # Snapshot ancestry before the harness group stops, but shut the servers
-    # down after it: a shutdown issued while the harness is mid-build waits
-    # for that build. Finish retries the recorded bases if an unexpected error
-    # prevents the second pass from completing.
-    servers: dict[Path, bazel_servers.Server] = {}
+    # Capture ancestry before stopping the harness. Stop Bazel afterwards so
+    # the harness cannot restart its server during cleanup.
+    servers = None
     with suppress(Exception):
         servers = bazel_servers.find(Path(prepared.paths.worktree), child.pid)
     stopped = process_group.stop_owned(

@@ -1,7 +1,7 @@
 ---
 type: Readme
 title: The agent account role
-description: Manage the agent account and its SSH launch keys.
+description: Manage the agent account, its SSH launch keys, and its Bazel settings.
 tags: [ansible, agents, ssh]
 status: stable
 generated:
@@ -28,9 +28,15 @@ Before migration, task output records the old primary group and its ID, the prev
 
 On macOS, the role preserves account behavior, preflight checks, and the existing `devel` primary group. Controller launch-key delivery outside the agent home keeps its existing operator ownership and group. Inside the agent home, the role migrates keys with the legacy group ID along with the other files.
 
+## Bazel settings
+
+`agent_account` replaces the agent's entire `~/.bazelrc` and creates `~/.cache/bazel-disk` with mode `0700` under the agent's home. Checkouts on the host share this cache. The Bazel server uses a 3 GiB heap and exits after 900 idle seconds.
+
+Set `agent_account_bazel_resource_fraction` to change the default fraction of `.25` for CPU, memory, and job limits. Garbage collection uses a size limit of `50G` and an age limit of `7d` for unused entries. Configure those limits with `agent_account_bazel_disk_cache_max_size` and `agent_account_bazel_disk_cache_max_age`. Lab Macs in the `lab_macos` inventory group use `20G`. A host variable can override that size.
+
 ## Tests
 
-Molecule runs scenarios for a fresh account, migration of an existing account, a user ID clash, and a group ID clash. The existing-account scenario checks that check mode preserves the fixture, convergence migrates it, a repeat run leaves the account unchanged, outside paths and symlink targets keep their old groups, and a shared `devel` group survives.
+Molecule runs scenarios for a fresh account, migration of an existing account, a user ID clash, and a group ID clash. The existing-account scenario checks that check mode preserves the fixture, convergence migrates it, a repeat run leaves the account unchanged, outside paths and symlink targets keep their old groups, and a shared `devel` group survives. It also checks the rendered Bazel settings and the disk cache directory's ownership and mode.
 
 ## Known hazard
 

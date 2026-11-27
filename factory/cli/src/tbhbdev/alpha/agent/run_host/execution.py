@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import os
+import shutil
 import subprocess  # nosec B404
 import time
 from contextlib import ExitStack
@@ -18,8 +20,8 @@ from tbhbdev.alpha.agent import (
 )
 from tbhbdev.alpha.agent.model import Invalid, Profile
 from tbhbdev.alpha.agent.run_host import (
-    bazel_shutdown,
     completion,
+    environment,
     harness,
     preflight,
     publication,
@@ -129,5 +131,12 @@ def build_shims(run: Run, workspace: Path) -> None:
     # Keep this phase until launch so polling uses the extra time through startup.
     run.files.write("phase", "shims")
     started = time.monotonic()
-    shims.build(workspace, bazel_shutdown.bazel_tool(run))
+    search = ":".join(
+        (
+            os.environ.get("PATH", os.defpath),
+            environment.tool_path(run.settings, run.host, str(run.home)),
+        )
+    )
+    tool = shutil.which("bazelisk", path=search) or shutil.which("bazel", path=search)
+    shims.build(workspace, tool)
     run.deadline += time.monotonic() - started

@@ -94,6 +94,7 @@ filegroup(
         "//factory/cli/src/tbhbdev/alpha/agent/run_host:package_files",
         "//factory/cli/src/tbhbdev/alpha/merge:package_files",
         "//factory/cli/src/tbhbdev/alpha/monorepo:package_files",
+        "//factory/cli/src/tbhbdev/alpha/pull_request:package_files",
         "//factory/cli/src/tbhbdev/analytics:package_files",
         "//factory/cli/src/tbhbdev/analytics/decisions:package_files",
     ],

@@ -48,6 +48,10 @@ cli_py_library(
     imports = ["../../../.."],
     pyi_deps = [":state"],
     visibility = ["//factory/cli:__subpackages__"],
+    deps = [
+        "//factory/cli/src/tbhbdev/alpha/agent:bazel_servers",
+        "//factory/cli/src/tbhbdev/alpha/agent:process_group",
+    ],
 )
 
 cli_py_library(
@@ -58,7 +62,6 @@ cli_py_library(
     visibility = ["//factory/cli:__subpackages__"],
     deps = [
         ":bazel_cache",
-        ":environment",
         "//factory/cli/src/tbhbdev/alpha/agent:bazel_servers",
     ],
 )
@@ -134,8 +137,8 @@ cli_py_library(
     imports = ["../../../.."],
     visibility = ["//factory/cli:__subpackages__"],
     deps = [
-        ":bazel_shutdown",
         ":completion",
+        ":environment",
         ":harness",
         ":preflight",
         ":publication",
@@ -289,7 +292,8 @@ cli_py_library(
         "//factory/cli/src/tbhbdev/alpha/agent:model",
         "//factory/cli/src/tbhbdev/alpha/agent:push",
         "//factory/cli/src/tbhbdev/alpha/agent:runfiles",
-        "//factory/cli/src/tbhbdev/alpha/agent:worktree",
+        "//factory/cli/src/tbhbdev/alpha/agent:worktree_checkout",
+        "//factory/cli/src/tbhbdev/alpha/agent:worktree_errors",
         "//factory/cli/src/tbhbdev/alpha/agent/decisions:repo",
         "//factory/cli/src/tbhbdev/alpha/install:hooks",
         "//factory/cli/src/tbhbdev/alpha/install:trust",

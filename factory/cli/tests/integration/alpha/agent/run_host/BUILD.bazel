@@ -46,11 +46,11 @@ cli_py_test(
     imports = ["../../../.."],
     deps = [
         ":conftest",
+        "//factory/cli/src/tbhbdev/alpha/agent:__init__",
         "//factory/cli/src/tbhbdev/alpha/agent:credentials",
         "//factory/cli/src/tbhbdev/alpha/agent:process_group",
         "//factory/cli/src/tbhbdev/alpha/agent:push",
         "//factory/cli/src/tbhbdev/alpha/agent:runfiles",
-        "//factory/cli/src/tbhbdev/alpha/agent:worktree",
         "//factory/cli/src/tbhbdev/alpha/agent/run_host:auth",
         "//factory/cli/src/tbhbdev/alpha/agent/run_host:completion",
         "//factory/cli/src/tbhbdev/alpha/agent/run_host:execution",
@@ -60,6 +60,7 @@ cli_py_test(
         "//factory/cli/tests:agent_host_example",
         "//factory/cli/tests:conftest",
         "//factory/cli/tests:run_host_fixtures",
+        "//factory/cli/tests/integration/alpha/agent:conftest",
         "@cli_pip//pytest",
     ],
 )
@@ -74,6 +75,7 @@ cli_py_test(
         "//factory/cli/src/tbhbdev/alpha/agent/run_host:bazel_shutdown",
         "//factory/cli/tests:conftest",
         "//factory/cli/tests:run_host_fixtures",
+        "//factory/cli/tests/integration/alpha/agent:conftest",
         "@cli_pip//pytest",
     ],
 )
@@ -85,12 +87,13 @@ cli_py_test(
     deps = [
         ":conftest",
         "//factory/cli/src/tbhbdev/alpha/agent:bazel_servers",
+        "//factory/cli/src/tbhbdev/alpha/agent:process_group",
         "//factory/cli/src/tbhbdev/alpha/agent/run_host:bazel_shutdown",
         "//factory/cli/src/tbhbdev/alpha/agent/run_host:completion",
-        "//factory/cli/src/tbhbdev/alpha/agent/run_host:environment",
         "//factory/cli/tests:agent_host_example",
         "//factory/cli/tests:conftest",
         "//factory/cli/tests:run_host_fixtures",
+        "//factory/cli/tests/integration/alpha/agent:conftest",
         "@cli_pip//pytest",
     ],
 )
@@ -115,6 +118,7 @@ cli_py_test(
         "//factory/cli/tests:agent_host_example",
         "//factory/cli/tests:conftest",
         "//factory/cli/tests:run_host_fixtures",
+        "//factory/cli/tests/integration/alpha/agent:conftest",
         "@cli_pip//pytest",
     ],
 )
@@ -129,6 +133,7 @@ cli_py_test(
         "//factory/cli/src/tbhbdev/alpha/agent/run_host:configuration",
         "//factory/cli/tests:agent_host_example",
         "//factory/cli/tests:conftest",
+        "//factory/cli/tests/integration/alpha/agent:conftest",
         "@cli_pip//pytest",
     ],
 )
@@ -155,6 +160,7 @@ cli_py_test(
         "//factory/cli/tests:conftest",
         "//factory/cli/tests:run_host_fixtures",
         "//factory/cli/tests:test_alpha_agent_settings_support",
+        "//factory/cli/tests/integration/alpha/agent:conftest",
         "@cli_pip//pytest",
     ],
 )
@@ -173,10 +179,12 @@ cli_py_test(
         "//factory/cli/src/tbhbdev/alpha/agent:render",
         "//factory/cli/src/tbhbdev/alpha/agent:runfiles",
         "//factory/cli/src/tbhbdev/alpha/agent:shims",
-        "//factory/cli/src/tbhbdev/alpha/agent:worktree",
+        "//factory/cli/src/tbhbdev/alpha/agent:worktree_checkout",
+        "//factory/cli/src/tbhbdev/alpha/agent:worktree_git",
+        "//factory/cli/src/tbhbdev/alpha/agent:worktree_hooks",
         "//factory/cli/src/tbhbdev/alpha/agent/run_host:auth",
-        "//factory/cli/src/tbhbdev/alpha/agent/run_host:bazel_shutdown",
         "//factory/cli/src/tbhbdev/alpha/agent/run_host:dispatcher",
+        "//factory/cli/src/tbhbdev/alpha/agent/run_host:environment",
         "//factory/cli/src/tbhbdev/alpha/agent/run_host:execution",
         "//factory/cli/src/tbhbdev/alpha/agent/run_host:harness",
         "//factory/cli/src/tbhbdev/alpha/agent/run_host:intake",
@@ -186,6 +194,7 @@ cli_py_test(
         "//factory/cli/tests:agent_host_example",
         "//factory/cli/tests:conftest",
         "//factory/cli/tests:run_host_fixtures",
+        "//factory/cli/tests/integration/alpha/agent:conftest",
         "@cli_pip//pytest",
     ],
 )
@@ -215,6 +224,7 @@ cli_py_test(
         "//factory/cli/tests:agent_host_example",
         "//factory/cli/tests:conftest",
         "//factory/cli/tests:run_host_fixtures",
+        "//factory/cli/tests/integration/alpha/agent:conftest",
         "@cli_pip//pytest",
     ],
 )
@@ -232,6 +242,7 @@ cli_py_test(
         "//factory/cli/tests:agent_host_example",
         "//factory/cli/tests:conftest",
         "//factory/cli/tests:run_host_fixtures",
+        "//factory/cli/tests/integration/alpha/agent:conftest",
         "@cli_pip//pytest",
     ],
 )
@@ -250,6 +261,7 @@ cli_py_test(
         "//factory/cli/tests:agent_host_example",
         "//factory/cli/tests:conftest",
         "//factory/cli/tests:run_host_fixtures",
+        "//factory/cli/tests/integration/alpha/agent:conftest",
         "@cli_pip//pytest",
     ],
 )
@@ -274,6 +286,7 @@ cli_py_test(
         "//factory/cli/tests:agent_host_example",
         "//factory/cli/tests:conftest",
         "//factory/cli/tests:run_host_fixtures",
+        "//factory/cli/tests/integration/alpha/agent:conftest",
         "@cli_pip//httpx2",
         "@cli_pip//pytest",
     ],
@@ -289,7 +302,8 @@ cli_py_test(
         "//factory/cli/src/tbhbdev/alpha/agent:model",
         "//factory/cli/src/tbhbdev/alpha/agent:push",
         "//factory/cli/src/tbhbdev/alpha/agent:runfiles",
-        "//factory/cli/src/tbhbdev/alpha/agent:worktree",
+        "//factory/cli/src/tbhbdev/alpha/agent:worktree_checkout",
+        "//factory/cli/src/tbhbdev/alpha/agent:worktree_mirror",
         "//factory/cli/src/tbhbdev/alpha/agent/run_host:bazel_cache",
         "//factory/cli/src/tbhbdev/alpha/agent/run_host:environment",
         "//factory/cli/src/tbhbdev/alpha/agent/run_host:paths",
@@ -300,6 +314,7 @@ cli_py_test(
         "//factory/cli/tests:agent_host_example",
         "//factory/cli/tests:conftest",
         "//factory/cli/tests:run_host_fixtures",
+        "//factory/cli/tests/integration/alpha/agent:conftest",
         "@cli_pip//pytest",
     ],
 )
@@ -322,6 +337,7 @@ cli_py_test(
         "//factory/cli/tests:conftest",
         "//factory/cli/tests:run_host_fixtures",
         "//factory/cli/tests:test_alpha_agent_settings_support",
+        "//factory/cli/tests/integration/alpha/agent:conftest",
         "@cli_pip//pytest",
     ],
 )
@@ -336,6 +352,7 @@ cli_py_test(
         "//factory/cli/tests:agent_host_example",
         "//factory/cli/tests:agent_live_evidence",
         "//factory/cli/tests:conftest",
+        "//factory/cli/tests/integration/alpha/agent:conftest",
         "@cli_pip//pytest",
     ],
 )
@@ -354,6 +371,7 @@ cli_py_test(
         "//factory/cli/tests:agent_host_example",
         "//factory/cli/tests:agent_live_evidence",
         "//factory/cli/tests:conftest",
+        "//factory/cli/tests/integration/alpha/agent:conftest",
         "@cli_pip//pytest",
     ],
 )

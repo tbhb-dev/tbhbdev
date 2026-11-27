@@ -26,6 +26,13 @@
       ansible.posix.authorized_key:
         user: agent
         key: ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIMBxMcLBO2dNsuwi0clAzEHghsyOUtwtQU2PXYShQKQa existing-test
+    - name: Seed unmanaged Bazel settings
+      ansible.builtin.copy:
+        dest: /srv/agent/.bazelrc
+        content: "build --jobs=2\n"
+        owner: agent
+        group: devel
+        mode: '0644'
     - name: Create the separate workspace and outside fixture directories
       ansible.builtin.file:
         path: "{{ item }}"

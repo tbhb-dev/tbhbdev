@@ -19,7 +19,6 @@ from run_host_fixtures import (
     HOST_FIXTURES,
     Child,
     bazel_run,
-    fake_bazel,
     make_base,
     preparation,
 )
@@ -193,7 +192,6 @@ def test_finish_survives_a_locked_base_and_a_failing_cleanup(
     base = make_base(prepared)
     (base / "dead").mkdir()
     (base / "dead").chmod(0)
-    fake_bazel(monkeypatch)
     entries: list[dict[str, object]] = []
 
     def record(_root: Path, entry: dict[str, object]) -> None:

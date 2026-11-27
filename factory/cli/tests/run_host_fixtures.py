@@ -6,7 +6,6 @@ import dataclasses
 import getpass
 import hashlib
 import os
-import shutil
 import subprocess
 from contextlib import ExitStack
 from pathlib import Path
@@ -77,24 +76,6 @@ def bazel_run(tmp_path: Path) -> tuple[state.Run, state.Prepared]:
     prepared = preparation(run)
     bases = host_bazel_cache.bazel_bases(run.home, prepared.paths.worktree)
     return run, dataclasses.replace(prepared, bases=bases)
-
-
-def fake_bazel(
-    monkeypatch: pytest.MonkeyPatch, code: int = 0, calls: list[list[str]] | None = None
-) -> None:
-    def run(
-        command: list[str], **_options: object
-    ) -> subprocess.CompletedProcess[bytes]:
-        if calls is not None:
-            calls.append(command)
-        return subprocess.CompletedProcess(command, code)
-
-    def found(name: str, *, path: str | None = None) -> str:
-        assert path is not None
-        return f"/bin/{name}"
-
-    monkeypatch.setattr(shutil, "which", found)
-    monkeypatch.setattr(subprocess, "run", run)
 
 
 def make_base(prepared: state.Prepared) -> Path:

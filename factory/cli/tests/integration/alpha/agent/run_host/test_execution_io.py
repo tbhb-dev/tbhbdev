@@ -6,6 +6,7 @@ import dataclasses
 import json
 import os
 import select
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -29,6 +30,8 @@ from run_host_fixtures import (
     HOST_FIXTURES,
     Child,
     HostRuntime,
+    bazel_run,
+    make_base,
     preparation,
 )
 
@@ -40,7 +43,9 @@ from tbhbdev.alpha.agent import (
     render,
     runfiles,
     shims,
-    worktree,
+    worktree_checkout,
+    worktree_git,
+    worktree_hooks,
 )
 from tbhbdev.alpha.agent.model import (
     Harness,
@@ -48,8 +53,8 @@ from tbhbdev.alpha.agent.model import (
     Policy,
 )
 from tbhbdev.alpha.agent.run_host import auth as host_auth
-from tbhbdev.alpha.agent.run_host import bazel_shutdown as host_bazel_shutdown
 from tbhbdev.alpha.agent.run_host import dispatcher as host_dispatcher
+from tbhbdev.alpha.agent.run_host import environment as host_environment
 from tbhbdev.alpha.agent.run_host import execution as host_execution
 from tbhbdev.alpha.agent.run_host import harness as host_harness
 from tbhbdev.alpha.agent.run_host import intake as host_intake
@@ -161,7 +166,7 @@ def test_startup_deadline_stops_the_recorded_setup_group(
     _, clone = repository(run.home / "Code" / "github.com" / "tbhb-dev")
     clone.rename(clone.parent / "example-repo")
     local_mirror_fetches(monkeypatch, clone.parent / "origin")
-    original = worktree.git
+    original = worktree_git.git
 
     def hang() -> str:
         code = (
@@ -199,11 +204,13 @@ def test_startup_deadline_stops_the_recorded_setup_group(
         return None
 
     monkeypatch.setattr(process_group, "boot_id", boot)
-    monkeypatch.setattr(worktree, "git", git)
-    monkeypatch.setattr(worktree, "verify_run_hooks", skip_verification)
+    monkeypatch.setattr(worktree_git, "git", git)
+    monkeypatch.setattr(worktree_hooks, "verify_run_hooks", skip_verification)
     if phase == "secret":
         prepared = preparation(run)
-        monkeypatch.setattr(worktree, "create", constant(Path(prepared.paths.worktree)))
+        monkeypatch.setattr(
+            worktree_checkout, "create", constant(Path(prepared.paths.worktree))
+        )
         monkeypatch.setattr(secrets, "read", read)
     ready_read, ready_write = os.pipe()
     with os.fdopen(ready_read, "rb") as ready, os.fdopen(ready_write, "wb"):
@@ -369,17 +376,18 @@ def test_run_builds_required_shims_before_harness(
     enabled: bool,
     expected: int,
 ) -> None:
-    run = make_run(tmp_path)
+    run, prepared = bazel_run(tmp_path)
     run.host = dataclasses.replace(run.host, build_shims=enabled)
-    prepared = dataclasses.replace(preparation(run), auth_before="example-before")
+    prepared = dataclasses.replace(prepared, auth_before="example-before")
+    base = make_base(prepared)
     workspace = Path(prepared.paths.worktree)
     if hook_reference:
         (workspace / "prek.toml").write_text(".bazel_env/bin/cog")
     runtime = HostRuntime(run, prepared, None)
     runtime.patch(monkeypatch)
     monkeypatch.setattr(host_preflight, "preflight", Mock())
-    tool = Mock(return_value="/tools/bazelisk")
-    monkeypatch.setattr(host_bazel_shutdown, "bazel_tool", tool)
+    which = Mock(return_value="/tools/bazelisk")
+    monkeypatch.setattr(shutil, "which", which)
     deadline = run.deadline
     ticks = iter([100, 130])
     monkeypatch.setattr(
@@ -400,16 +408,22 @@ def test_run_builds_required_shims_before_harness(
     monkeypatch.setattr(shims.subprocess, "run", call)
     assert host_execution.execute(run, "example") == expected
     assert run.files.path("rc").read_text() == f"{expected}\n"
+    assert not base.exists()
     if enabled:
         assert runtime.events == ["group-stopped", "auth"]
         assert runtime.phases == ["check", "workspace", "shims", "ended"]
         assert run.deadline == deadline + 30
-        assert tool.call_count == 2  # Shim build and Bazel shutdown.
-        assert tool.call_args_list[0].args == (run,)
-        call.assert_called_once()
+        which.assert_called_once()
+        call.assert_called_once_with(
+            ["/tools/bazelisk", "run", "//:bazel_env"],
+            cwd=workspace,
+            capture_output=True,
+            timeout=shims.SHIM_SECONDS,
+            check=False,
+        )
     else:
         assert run.deadline == deadline
-        tool.assert_called_once_with(run)  # Cleanup still looks for Bazel.
+        which.assert_not_called()
         call.assert_not_called()
         if hook_reference:
             assert runtime.events == ["auth"]
@@ -578,3 +592,18 @@ def test_finish_orders_cleanup_auth_agent_index_and_atomic_rc(
         assert entries[0]["worktree"] == prepared.paths.worktree
         assert entries[0]["state"] == "running"
         assert entries[0]["rc"] is None
+
+
+def test_bazel_shims_use_the_configured_tool_path(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    run, prepared = bazel_run(tmp_path)
+    which = Mock(side_effect=[None, "/bin/bazel"])
+    build = Mock()
+    monkeypatch.setattr(shutil, "which", which)
+    monkeypatch.setattr(shims, "build", build)
+    host_execution.build_shims(run, Path(prepared.paths.worktree))
+    build.assert_called_once_with(Path(prepared.paths.worktree), "/bin/bazel")
+    assert which.call_args.kwargs["path"].endswith(
+        ":" + host_environment.tool_path(run.settings, run.host, str(run.home))
+    )

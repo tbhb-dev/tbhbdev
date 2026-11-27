@@ -28,7 +28,8 @@ from tbhbdev.alpha.agent import (
     credentials,
     push,
     runfiles,
-    worktree,
+    worktree_checkout,
+    worktree_mirror,
 )
 from tbhbdev.alpha.agent.model import (
     Harness,
@@ -75,7 +76,7 @@ def test_workspace_failure_names_its_step_and_safe_cause(
     monkeypatch.setenv("EXAMPLE_STDERR", "sensitive-stderr")
     run = make_run(tmp_path)
     monkeypatch.setattr(credentials, "deliver", constant(preparation(run).delivery))
-    monkeypatch.setattr(worktree, "create", constant(run.home / "workspace"))
+    monkeypatch.setattr(worktree_checkout, "create", constant(run.home / "workspace"))
 
     fail = partial(preparation_failure, error)
 
@@ -115,7 +116,7 @@ def test_hook_probe_refuses_before_credentials(
     def forbidden(*_args: object) -> str:
         pytest.fail("hook failure must precede fetch and credential delivery")
 
-    monkeypatch.setattr(worktree, "fetch_commit", forbidden)
+    monkeypatch.setattr(worktree_mirror, "fetch_commit", forbidden)
     monkeypatch.setattr(credentials, "deliver", forbidden)
     with pytest.raises(Invalid) as caught:
         host_workspace.prepare_workspace(run)
@@ -222,7 +223,7 @@ def otel_run(
     run = dataclasses.replace(run, settings=settings)
     runfiles.private_dir(run.home / ".codex")
     monkeypatch.setattr(credentials, "deliver", constant(preparation(run).delivery))
-    monkeypatch.setattr(worktree, "create", constant(run.home / "workspace"))
+    monkeypatch.setattr(worktree_checkout, "create", constant(run.home / "workspace"))
     monkeypatch.setattr(push, "head", constant("a" * 40))
     monkeypatch.setattr(credentials, "auth_copy", constant(None))
     return run
@@ -319,7 +320,7 @@ def test_build_preparation_has_the_run_socket(
         assert token_source() == "example-credential"
         return runfiles.private_dir(run.home / "worktree")
 
-    monkeypatch.setattr(worktree, "create", create)
+    monkeypatch.setattr(worktree_checkout, "create", create)
     baseline = Mock(return_value=start)
     monkeypatch.setattr(push, "head", baseline)
     monkeypatch.setattr(host_bazel_cache, "bazel_bases", bazel_bases)

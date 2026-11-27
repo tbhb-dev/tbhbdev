@@ -47,7 +47,7 @@ def _renders_impl(ctx):
 
 _TOOL_ATTRS = {
     "_cli": attr.label(default = Label("@tbhb_rules_structurizr_cli//:structurizr"), cfg = "exec"),
-    "_fonts": attr.label(default = Label("@tbhb_rules_liberation_fonts//:fonts"), cfg = "exec"),
+    "_fonts": attr.label(default = Label("//:fonts"), cfg = "exec"),
     "_jre": attr.label(default = Label("@tbhb_rules_jre//:java"), executable = True, cfg = "exec"),
     "_plantuml": attr.label(default = Label("@tbhb_rules_plantuml//:plantuml"), allow_single_file = True, cfg = "exec"),
     "_runner": attr.label(default = Label("//private:runner"), executable = True, cfg = "exec"),
@@ -154,28 +154,19 @@ def structurizr_workspace(name, dsl, workspace_json, diagrams_dir, data = [], **
     IGNORE do not. Any command error fails. Violation lines in the inspect
     output also fail.
 
-    Freshness compares JSON and SVG bytes and reports those exports as
-    current, stating that it did not compare PNG bytes. The PNG test compares
-    bytes and reports committed PNG exports as current only on macOS arm64;
-    stale PNGs fail only there. Linux x86_64 and macOS arm64 produce
-    byte-identical JSON and SVG output, checked against the committed files.
-    Linux arm64 is in the CI plan but has no recorded measurement, and macOS
-    x86_64 has no CI leg. PNG byte comparisons run only on macOS arm64, and
-    the update target writes PNGs only there. Missing SVGs or PNGs and orphan
-    files fail on every platform. JVM settings use UTC and en_US.UTF-8. The CI
-    plan selects Linux x86_64, Linux arm64 and macOS arm64, excluding Windows
-    (no JRE pin).
+    Freshness compares JSON and SVG bytes. The PNG test compares bytes on
+    Linux x86_64, where the update target writes PNGs. Missing or orphan
+    SVGs and PNGs fail on every platform. JVM settings use UTC and en_US.UTF-8.
 
     The exporter produces a main diagram and a legend (`-key`) for each
     view. Both are rendered with `!pragma layout smetana`, headless, using
-    the pinned JRE, MIT PlantUML and SIL-OFL-1.1 Liberation Sans 2.1.5.
-    Graphviz is unnecessary. On Linux, Fontconfig sees only pinned fonts and
-    the host needs libfontconfig and libfreetype; on macOS nothing restricts
-    host fonts. On both, the renderer checks that the JVM opened the pinned
-    TTFs and that SVGs specify Liberation Sans, which no test covers. Java
-    HTTP(S) requests use an unreachable proxy; PlantUML uses its sandbox
-    profile. DSL is trusted input: scripts, plugins and absolute includes can
-    access the host.
+    the pinned JRE, MIT PlantUML and the bundled IBM Plex Sans fonts (OFL 1.1).
+    Graphviz is unnecessary. On Linux, Fontconfig sees only bundled fonts and
+    requires libfontconfig and libfreetype. On both Linux and macOS, the
+    renderer checks that the JVM used the bundled TTFs and that SVGs specify
+    IBM Plex Sans. Java HTTP(S) requests use an unreachable proxy. PlantUML
+    uses its sandbox profile. DSL is trusted input: scripts, plugins and
+    absolute includes can access the host.
 
     Paths are relative to this package. Keep committed renders byte for
     byte in Git and exclude them from whitespace and line-ending fixers.
@@ -212,7 +203,7 @@ def structurizr_workspace(name, dsl, workspace_json, diagrams_dir, data = [], **
     _exports_test(
         name = name + "_png_test",
         mode = "png",
-        **(common | kwargs | {"target_compatible_with": kwargs.get("target_compatible_with", []) + ["@platforms//os:macos", "@platforms//cpu:arm64"]})
+        **(common | kwargs | {"target_compatible_with": kwargs.get("target_compatible_with", []) + ["@platforms//os:linux", "@platforms//cpu:x86_64"]})
     )
     native.test_suite(
         name = name + "_test",

@@ -15,7 +15,7 @@ import pytest
 from agent_git_plants import PLANTS
 from agent_host_example import commit, git, local_mirror_fetches, make_run, repository
 
-from tbhbdev.alpha.agent import host_tools, worktree
+from tbhbdev.alpha.agent import host_tools, worktree_checkout
 from tbhbdev.alpha.agent.decisions import repo
 from tbhbdev.alpha.agent.model import Harness, Os, RunPaths
 from tbhbdev.alpha.agent.run_host import command_line, environment
@@ -56,7 +56,7 @@ def real_clone(
         run, settings=dataclasses.replace(run.settings, sandbox=sandbox)
     )
     with host_tools.configured(run.settings, run.host.os):
-        workspace = worktree.create(clone, run.files.name, run.request)
+        workspace = worktree_checkout.create(clone, run.files.name, run.request)
     return run, dataclasses.replace(planned_paths(run), worktree=str(workspace))
 
 

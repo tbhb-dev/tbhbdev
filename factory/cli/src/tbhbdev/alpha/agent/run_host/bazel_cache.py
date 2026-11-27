@@ -11,6 +11,8 @@ from contextlib import suppress
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from tbhbdev.alpha.agent import bazel_servers, process_group
+
 if TYPE_CHECKING:
     from tbhbdev.alpha.agent.run_host.state import BazelShutdown, Prepared, Run
 
@@ -55,6 +57,8 @@ def _open_owned(home: Path, base: Path) -> tuple[int, os.stat_result] | None:
     chain even if a path is replaced later. The caller closes the fd.
     """
     anchor = next((a for a, root in _bazel_roots(home) if base.parent == root), None)
+    if anchor is None and base.parent.is_relative_to(bazel_servers.MEMORY_DISK):
+        anchor = bazel_servers.MEMORY_DISK
     if anchor is None or ".." in base.parts:
         return None
     names = base.relative_to(anchor).parts
@@ -89,17 +93,17 @@ def owned_base(home: Path, base: Path) -> os.stat_result | None:
 
 def server_alive(base: Path) -> bool:
     try:
-        pid = int((base / "server/server.pid.txt").read_text())
+        pid = int(bazel_servers.pid_text(base))
         if pid <= 0:
             return False
         os.kill(pid, 0)
+        return process_group.leader_start(pid) is not None
     except PermissionError:
         # A live process of another uid, or an unreadable pid file: keep the base.
         return True
     except OSError, ValueError, OverflowError:
         # No readable pid file, or no such process, means no server we can see.
         return False
-    return True
 
 
 def _remove_base(parent_fd: int, name: str) -> None:
@@ -197,12 +201,9 @@ def cleanup_bazel(
 ) -> dict[str, int]:
     """Delete the recorded output bases whose server is gone, and the links into them.
 
-    A base is deleted only when its shutdown returned 0 and its server pid is
-    dead at that moment, it is still the same directory (st_dev, st_ino) as at
-    shutdown, and it is owned by the agent with no symlinked ancestor. The
-    deletion runs relative to an fd that pins the validated ancestors. The freed
-    counts are the statvfs delta on the base's filesystem across the deletion, so
-    they include any other writer on that host, and a failed deletion adds nothing.
+    Deletion requires a dead server PID and an unchanged, owned directory.
+    The parent descriptor pins the validated ancestors. The freed counts use
+    the filesystem delta across the deletion and can include concurrent writes.
     """
     freed = {"bytes": 0, "inodes": 0, "bases": 0}
     if prepared is None:
