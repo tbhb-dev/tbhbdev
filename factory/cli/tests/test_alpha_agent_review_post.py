@@ -542,7 +542,7 @@ def test_host_refuses_an_invalid_rendered_review(
     )
     api = Api(monkeypatch)
     run, _ = make(tmp_path, None)
-    with pytest.raises(review_post.PostRefusedError, match="Write Verification"):
+    with pytest.raises(review_doc.ReviewError, match="Write Verification"):
         review_post.create(sub, MINTED, run)
     assert [(method, url) for method, url, _ in api.calls] == [("GET", BASE)]
 

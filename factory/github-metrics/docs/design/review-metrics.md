@@ -41,13 +41,13 @@ In code the metric names are `github.pr.merges` and `github.pr.cycle_time`, with
 
 ### Body format
 
-The schema allows four sections in a fixed order: `## Summary`, an optional `## Findings`, an optional `## Suggestions`, and `## Verification`. Findings allows up to eight bullets. Each bullet's text must match `#FindingPrefix` at `review.cue:14`:
+The schema allows four sections in a fixed order. `## Summary` comes first, followed by optional `## Findings` and `## Suggestions`, then `## Verification`. Findings allows up to eight findings. Each bullet's text must match `#FindingPrefix` in `review.cue`.
 
 ```text
 ^F([1-8]): P([0-3]) (correctness|security|design|test|docs)\s+([\s\S]+)$
 ```
 
-That differs from the task brief in three ways. Priorities run from P0 to P3, not P1 to P3. A finding cites a `path:line` or a check and its result, and the grammar doesn't require a `path:line` at all. Posted bodies end with the `Generated-by: LLM key=value;…` trailer or with an HTML marker, `<!-- tbhb-review v2 <hash> -->`, in either order (`review.cue:135-137`). Among the trailer's attributes are `harness`, `model`, and `effort`. Priority also depends on the review event: P0 and P1 require `REQUEST_CHANGES`, and `REQUEST_CHANGES` requires one of them (`review.cue:142-147`). An approval can list P2 and P3 findings and nothing higher.
+Posted Findings bullets cover the whole PR or cite a line with the unanchored suffix. A count line such as `Inline findings: 3 (P1 correctness 1, P2 design 2).` summarizes the inline findings. The same paragraph then gives their finding numbers. Posted bodies end with a `Generated-by: LLM key=value;…` trailer, an HTML marker `<!-- tbhb-review v2 <hash> -->`, or the marker followed by the trailer. Among the trailer's attributes are `harness`, `model`, and `effort`. P0 and P1 findings in the bullets or the inline count require `REQUEST_CHANGES`, and `REQUEST_CHANGES` requires at least one of them.
 
 ### Parser package
 
@@ -57,10 +57,10 @@ Steps:
 
 1. Drop a first line that starts with `SUPERSEDED:` and note that it existed.
 2. Split the body on lines that start with `##` and a space. Require `Summary` and `Verification`, and accept `Findings` and `Suggestions`.
-3. Strip the leading dash and space from each bullet in `Findings`, then match it against the same expression as `#FindingPrefix`. Numbers must run from F1 without gaps.
+3. Strip the leading dash and space from each bullet in `Findings`, then match it against the same expression as `#FindingPrefix`. Accept gaps in the bullet numbers. If the section starts with an `Inline findings:` count, add each `P<n> <kind> <count>` pair to the counts from the bullets. The optional finding range gives the comment numbers. An inline count can be the entire section.
 4. Read the last line that starts with `Generated-by: LLM` and split its attribute list on semicolons and equals signs.
 
-Strict parsing beats lenient parsing here. One bad bullet in `Findings`, a gap in numbering, or a missing required section sets `Parsed` to false, and the review then counts zero findings. A partial count would hide template drift behind plausible numbers. The fixed reasons are `no_sections`, `bad_finding`, and `no_trailer`. A missing trailer blanks the trailer fields and leaves the findings counted. A human review in free text fails as `no_sections`.
+A malformed bullet in `Findings`, a malformed inline count, or a missing required section sets `Parsed` to false, and the review then counts zero findings. A partial count would hide template drift behind plausible numbers. The fixed reasons are `no_sections`, `bad_finding`, and `no_trailer`. A missing trailer blanks the trailer fields and leaves the findings counted. A human review in free text fails as `no_sections`.
 
 ### Matching the template
 
@@ -113,7 +113,7 @@ A review counts once GitHub reports it submitted, provided someone other than th
 - **Wait after changes requested.** Here the PR waits first for a fix and then for a reviewer. When long, this wait dominates turnaround, and the existing timing histograms can't isolate it.
 - **Wait for the first review.** Appendix A sets a turnaround goal of a median of 10 minutes from open to merge. Reviewers control the stretch from ready for review to the first review. Measuring from `created_at` would count draft time that nobody waits on.
 - **Reviews and findings per merged PR.** Together these measure the review rounds and the issues raised for each merged change.
-- **Inline comments.** A change in progress posts each finding that cites a diff line as an inline comment too. Comparing inline comments with findings checks that change. Before it merges the count means nothing, so it comes last.
+- **Inline comments.** Each finding on a diff line appears as an inline comment and contributes to the body count. Comparing inline comments with total findings measures how often reviews cite lines in the diff.
 
 ### Excluded metrics
 
@@ -303,7 +303,7 @@ Both findings-per-review queries count parsed reviews directly. They return zero
 
 ## 12. Tests
 
-- **Parser.** The shared examples cover each section order the schema allows and from zero to eight findings. They also cover every priority and kind. Failure examples include a gap in numbering and a malformed bullet, along with a missing section. Further examples cover a `SUPERSEDED:` first line, the marker before and after the trailer, a missing trailer, CRLF endings, and a human review in free text. A fuzz test checks that `Parse` never panics and returns no body text apart from the trailer fields.
+- **Parser.** The shared examples cover each section order the schema allows and from zero to eight findings. They include every priority and kind. The examples also cover gaps in bullet numbers and inline counts with or without body bullets. Failure examples include a missing section and malformed bullets or counts. Further examples cover a `SUPERSEDED:` first line, the marker before the trailer, a missing trailer, CRLF endings, and a human review in free text. A fuzz test checks that `Parse` never panics and returns no body text apart from the trailer fields.
 - **Example check in `factory/cli`.** `check_review` accepts every valid example and refuses every invalid one, so the examples can't drift from the schema.
 - **Store.** Get, put, and delete on `review_prs`, a put that never moves a time backward, and retention that deletes records older than 30 days and keeps the rest.
 - **Recorder.** For each instrument, a fake ledger and a manual reader check the gates and claim-before-record. Tests cover a claim error, the empty-body and PR-author rules, and each dismissal cause. Exercise both delivery orders for supersessions and check that repair records an eligible supersession once. Check that repair counts `stale_head` once and a later webhook returns `already_counted`. Check that a webhook followed by repair yields one count. When the event omits `dismissed_review.dismissal_commit_id`, check that the first repair records one `no_dismissal_head` drop and a second repair leaves the drop counter at one. Check that a pre-floor repair leaves a claim open for the webhook. A final test asserts that no recorded attribute value comes from body text.

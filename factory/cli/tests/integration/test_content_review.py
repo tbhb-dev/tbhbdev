@@ -279,6 +279,16 @@ def test_posted_review_counts_inline_blockers(priority: str) -> None:
     assert check_review(body_with("Findings", gap))
 
 
+def test_posted_review_reports_an_invalid_count() -> None:
+    body = body_with("Findings", "Inline findings: 1 (P1 correctness).") + ATTRIBUTION
+    assert check_review(body, posted=True) == [
+        (
+            "Use an inline findings count, Findings bullets with severity and "
+            "kind, or both with the count first"
+        )
+    ]
+
+
 def test_check_review_reports_normalization_refusal() -> None:
     assert check_review("## <!-- invisible -->\n") == [
         "Section headings must have visible text"

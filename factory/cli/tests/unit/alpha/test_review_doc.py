@@ -3,16 +3,14 @@
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
+from unittest.mock import Mock
 
 import pytest
-from cue_fixtures import review_cue as review_cue  # noqa: PLC0414
 
 from tbhbdev.alpha import review_doc
 
 if TYPE_CHECKING:
     from collections.abc import Callable
-
-pytestmark = pytest.mark.usefixtures("review_cue")  # noqa: V107
 
 BASE = "b" * 40
 JUDGED = "a" * 40
@@ -101,22 +99,33 @@ class ReviewApi:
     ],
 )
 def test_submit_review(
-    findings: str, sent: str, extra: dict[str, object], lookups: list[tuple[str, str]]
+    findings: str,
+    sent: str,
+    extra: dict[str, object],
+    lookups: list[tuple[str, str]],
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     body = BODY.format(findings=findings)
     posted: list[dict[str, object]] = []
+    check = Mock(return_value=[])
+    monkeypatch.setattr(review_doc, "check_review", check)
 
     def poster(payload: dict[str, object]) -> object:
         posted.append(payload)
         return {"id": 17}
 
     api = ReviewApi(DIFF, poster)
-    assert review_doc.send_review(api, PULL, JUDGED, body, "APPROVE") == 17
+    review = review_doc.ReviewSubmission(PULL, JUDGED, body, "APPROVE")
+    assert review_doc.send_review(api, review) == 17
     assert api.calls == [*lookups, ("POST", f"{PULL}/reviews")]
+    sent_body = BODY.format(findings=sent)
+    check.assert_called_once_with(
+        sent_body, metadata=None, event="APPROVE", posted=True
+    )
     assert posted == [
         {
             "commit_id": JUDGED,
-            "body": BODY.format(findings=sent),
+            "body": sent_body,
             "event": "APPROVE",
             **extra,
         }
@@ -131,9 +140,10 @@ def test_submit_review(
     ],
 )
 def test_submit_review_when_inline_comments_cannot_be_built(
-    diff: object, capsys: pytest.CaptureFixture[str]
+    diff: object, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
 ) -> None:
     body = BODY.format(findings=f"- {IN_DIFF}\n- {OUTSIDE_DIFF}")
+    monkeypatch.setattr(review_doc, "check_review", Mock(return_value=[]))
 
     def poster(payload: dict[str, object]) -> object:
         expected = BODY.format(
@@ -143,7 +153,8 @@ def test_submit_review_when_inline_comments_cannot_be_built(
         return {"id": 17}
 
     api = ReviewApi(diff, poster)
-    assert review_doc.send_review(api, PULL, JUDGED, body, "COMMENT") == 17
+    review = review_doc.ReviewSubmission(PULL, JUDGED, body, "COMMENT")
+    assert review_doc.send_review(api, review) == 17
     assert api.calls == [("GET", PULL), ("GET", COMPARE), ("POST", f"{PULL}/reviews")]
     notice = capsys.readouterr().err
     if isinstance(diff, review_doc.ReviewError):
