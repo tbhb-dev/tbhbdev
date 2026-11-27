@@ -918,6 +918,27 @@ def test_failed_preparation_still_writes_host_audit_summary(
     }
 
 
+@pytest.mark.parametrize("raises", [False, True])
+def test_finish_records_exit_before_fault_publication(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, raises: bool
+) -> None:
+    run = make_run(tmp_path)
+    seen: list[tuple[str, ...]] = []
+
+    def publish(*_args: object) -> None:
+        seen.append(tuple(run.files.path(name).read_text() for name in ("phase", "rc")))
+        if raises:
+            raise RuntimeError
+
+    monkeypatch.setattr(run_host.rescue, "on_fault", publish)
+    assert run_host.finish(run, None, None, 3) == 3
+    assert seen == [("ended", "3\n")]
+    assert runfiles.latest(run.files.root)["example"]["rc"] == 3
+    assert run.files.path("audit.json").exists()
+    if raises:
+        assert "fault publication failed" in run.files.path("log").read_text()
+
+
 def test_audit_summary_error_preserves_the_runs_exit_code(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

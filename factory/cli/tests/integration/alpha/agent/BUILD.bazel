@@ -171,6 +171,7 @@ cli_py_test(
     path_tools = ["@tbhb_rules_gitleaks//:gitleaks"],
     deps = [
         ":conftest",
+        "//factory/cli/src/tbhbdev/alpha:pre_push_guard",
         "//factory/cli/src/tbhbdev/alpha/agent:credentials",
         "//factory/cli/src/tbhbdev/alpha/agent:host_tools",
         "//factory/cli/src/tbhbdev/alpha/agent:process_group",
