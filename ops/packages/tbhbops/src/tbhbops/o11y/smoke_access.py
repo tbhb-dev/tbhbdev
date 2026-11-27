@@ -37,6 +37,7 @@ RULES = (
     "o11y-disk-low",
     "o11y-ingest-dropped",
     "o11y-log-rate",
+    "o11y-metrics-queries-failing",
     "o11y-rustfs-memory",
     "o11y-service-down",
 )

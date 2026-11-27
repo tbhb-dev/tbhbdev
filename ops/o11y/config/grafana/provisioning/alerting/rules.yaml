@@ -19,8 +19,7 @@
 # does. The limit: once the series has been absent for 7 days (well inside
 # Mimir's 365 day retention) the row is gone and the rule goes quiet again.
 #
-# A failed query fires the service-down rule's error alert and leaves the
-# others as they were, so a Mimir outage sends one message, not five.
+# The metrics query rule owns notifications for failed Mimir evaluations.
 apiVersion: 1
 
 groups:
@@ -34,7 +33,7 @@ groups:
         condition: C
         for: 5m
         noDataState: Alerting
-        execErrState: Error
+        execErrState: KeepLast
         labels: {}
         annotations:
           summary: "{{ $labels.job }} has been down for 5 minutes."
@@ -59,6 +58,33 @@ groups:
                 or (label_replace(vector(0), "job", "o11y/rustfs", "", "")
                   and on() count(count_over_time(rustfs_start_total{job="o11y/rustfs"}[7d])))
                 or label_replace(vector(0), "job", "o11y/tempo", "", "")
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: A
+              conditions:
+                - evaluator: {type: lt, params: [1]}
+
+      - uid: o11y-metrics-queries-failing
+        title: Metrics queries failing
+        condition: C
+        for: 10m
+        noDataState: Alerting
+        execErrState: Alerting
+        labels: {}
+        annotations:
+          summary: Mimir queries have failed or returned no metrics for 10 minutes.
+          description: Check Mimir and its connection to the object store.
+        data:
+          - refId: A
+            datasourceUid: mimir
+            relativeTimeRange: {from: 600, to: 0}
+            model:
+              refId: A
+              instant: true
+              expr: count(up{namespace="o11y"})
           - refId: C
             datasourceUid: __expr__
             model:
