@@ -14,7 +14,7 @@ title: YAML metadata reference
 type: Reference
 ---
 
-Each Markdown file in the repository starts with a YAML metadata block, except a reserved `index.md`, the files at the repository root, and agent instruction files (`AGENTS.md`, `CLAUDE.md`) anywhere, which have none. [YAML metadata schema](../schemas/frontmatter.schema.json) is the JSON Schema (draft 2020-12) that defines it, and it rejects any field not listed below. `bazelisk test //:okf_docs_test` validates the files against it.
+Each Markdown file in the repository starts with a YAML metadata block, except a reserved `index.md`, the files at the repository root, and agent instruction files (`AGENTS.md`, `CLAUDE.md`) anywhere, which have none. The fields below define it. Any other field breaks the convention.
 
 ## Document fields
 
@@ -75,7 +75,7 @@ verified:
 
 ## Root index
 
-Among the indexes, `docs/index.md` alone has YAML metadata. [index metadata schema](../schemas/index-frontmatter.schema.json) allows `okf_version` and nothing else, and its value is the string `"0.2"`.
+Among the indexes, `docs/index.md` alone has YAML metadata. It allows `okf_version` and nothing else, and its value is the string `"0.2"`.
 
 ## Deployment values for ops
 

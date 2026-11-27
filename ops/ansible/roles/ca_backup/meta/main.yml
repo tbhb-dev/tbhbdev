@@ -2,7 +2,7 @@
 galaxy_info:
   author: tbhb
   description: Stage the certificate authority backup programs on Synology
-  license: LicenseRef-Proprietary
+  license: Apache-2.0
   min_ansible_version: "2.22"
   platforms:
     - name: GenericLinux
