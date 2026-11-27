@@ -897,11 +897,15 @@ def dispatch(settings: Settings, args: argparse.Namespace) -> int:
     verbs = {"wait": wait, "status": status, "kill": kill, "keep": keep}
     try:
         if args.verb == "diff" and args.patch:
-            return export_patch(settings, run)
-        if args.verb in {"log", "diff"}:
-            return inspect(settings, run, limit=args.n if args.verb == "log" else None)
-        if args.verb == "clean":
-            return clean(settings, run, force=args.force)
-        return verbs[args.verb](settings, run)
+            result = export_patch(settings, run)
+        elif args.verb in {"log", "diff"}:
+            limit = args.n if args.verb == "log" else None
+            result = inspect(settings, run, limit=limit)
+        elif args.verb == "clean":
+            result = clean(settings, run, force=args.force)
+        else:
+            result = verbs[args.verb](settings, run)
     except transport.CollisionError:
         not_owner(run)
+    else:
+        return result
