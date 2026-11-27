@@ -164,7 +164,7 @@ pytest_test(
     name = "repo_checks_test",
     srcs = ["//:repo_files"],
     args = [
-        "lint/tests/test_repo_checks.py::test_lint_baseline_growth",
+        "lint/tests/test_check_lint_baselines.py",
         "lint/tests/test_repo_checks.py::test_runner",
     ],
     coverage = None,
