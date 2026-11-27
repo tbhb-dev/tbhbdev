@@ -57,8 +57,8 @@ type config struct {
 	// TestMain adds the generated main package of each root that is a
 	// go_test (key test_main=1), for whole-program tools like deadcode.
 	TestMain bool
-	// StdlibPkgDir holds the precompiled standard library as
-	// <goos>_<goarch>/<importpath>.a, the export data of each package.
+	// StdlibPkgDir is the platform and build mode directory that holds
+	// the standard library's <importpath>.a archives.
 	StdlibPkgDir string
 	GOOS         string
 	GOARCH       string
@@ -218,7 +218,7 @@ func respond(cfg *config, root, mirror string) (*driverResponse, error) {
 		resolvePaths(p, root, mirror)
 		if p.Standard {
 			if p.ExportFile == "" && cfg.StdlibPkgDir != "" {
-				p.ExportFile = filepath.Join(root, cfg.StdlibPkgDir, cfg.GOOS+"_"+cfg.GOARCH, p.PkgPath+".a")
+				p.ExportFile = filepath.Join(root, cfg.StdlibPkgDir, p.PkgPath+".a")
 			}
 			// rules_go lists the standard library with `go list -compiled`
 			// only when cgo is on (go/tools/builders/stdliblist.go,

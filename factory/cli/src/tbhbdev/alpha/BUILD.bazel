@@ -35,14 +35,6 @@ cli_py_library(
 )
 
 cli_py_library(
-    name = "codex_trust",
-    srcs = ["codex_trust.py"],
-    imports = ["../.."],
-    visibility = ["//factory/cli:__subpackages__"],
-    deps = ["@cli_pip//tomlkit"],
-)
-
-cli_py_library(
     name = "gh_app",
     srcs = ["gh_app.py"],
     imports = ["../.."],
@@ -171,29 +163,6 @@ cli_py_library(
 )
 
 cli_py_library(
-    name = "install",
-    srcs = ["install.py"],
-    imports = ["../.."],
-    visibility = ["//factory/cli:__subpackages__"],
-    deps = [
-        ":codex_trust",
-        ":gh_shim",
-        ":install_statusline_decisions",
-        ":repo",
-        "//factory/cli/src/tbhbdev:plugins",
-        "//factory/cli/src/tbhbdev/alpha/identity:dispatcher",
-        "@cli_pip//tomlkit",
-    ],
-)
-
-cli_py_library(
-    name = "install_statusline_decisions",
-    srcs = ["install_statusline_decisions.py"],
-    imports = ["../.."],
-    visibility = ["//factory/cli:__subpackages__"],
-)
-
-cli_py_library(
     name = "opened",
     srcs = ["opened.py"],
     imports = ["../.."],
@@ -230,7 +199,6 @@ cli_py_library(
     imports = ["../.."],
     visibility = ["//factory/cli:__subpackages__"],
     deps = [
-        ":install",
         ":opened",
         ":pull_request_frontmatter",
         ":repo",
@@ -242,6 +210,7 @@ cli_py_library(
         "//factory/cli/src/tbhbdev/alpha/agent/decisions:host_names",
         "//factory/cli/src/tbhbdev/alpha/identity:dispatcher",
         "//factory/cli/src/tbhbdev/alpha/identity:trailers",
+        "//factory/cli/src/tbhbdev/alpha/install/git:hooks",
         "@cli_pip//jsonschema",
     ],
 )
@@ -327,14 +296,6 @@ cli_py_library(
 )
 
 cli_py_library(
-    name = "review_gate",
-    srcs = ["review_gate.py"],
-    imports = ["../.."],
-    visibility = ["//factory/cli:__subpackages__"],
-    deps = ["//factory/cli/src/tbhbdev/alpha/identity:dispatcher"],
-)
-
-cli_py_library(
     name = "review_policy",
     srcs = ["review_policy.py"],
     data = [":review_data"],
@@ -377,6 +338,7 @@ cli_py_library(
     deps = [
         ":repo",
         ":size_gate",
+        "//factory/cli/src/tbhbdev/alpha/agent:push",
         "//factory/cli/src/tbhbdev/alpha/agent:runfiles",
         "//factory/cli/src/tbhbdev/alpha/identity:dispatcher",
     ],
@@ -404,19 +366,6 @@ cli_py_library(
     data = [":size_gate_data"],
     imports = ["../.."],
     visibility = ["//factory/cli:__subpackages__"],
-)
-
-cli_py_library(
-    name = "squash_merge",
-    srcs = ["squash_merge.py"],
-    imports = ["../.."],
-    visibility = ["//factory/cli:__subpackages__"],
-    deps = [
-        ":install",
-        ":pull_request",
-        ":review_gate",
-        "//factory/cli/src/tbhbdev/alpha/identity:dispatcher",
-    ],
 )
 
 cli_py_library(
@@ -477,7 +426,10 @@ filegroup(
             "BUILD.bazel",
             "identity.py",
         ],
-    ) + ["//factory/cli/src/tbhbdev/alpha/identity:package_files"],
+    ) + [
+        "//factory/cli/src/tbhbdev/alpha/identity:package_files",
+        "//factory/cli/src/tbhbdev/alpha/install:package_files",
+    ],
     visibility = ["//factory/cli:__pkg__"],
 )
 
@@ -518,20 +470,20 @@ cli_py_library(
         ":guard_scripts",
         ":guard_sendmessage_clock",
         ":guard_ssh_agent",
-        ":install",
         ":pre_push_guard",
         ":pull_request",
         ":repo_bootstrap",
         ":review",
         ":run_stop_hook",
         ":session_context",
-        ":squash_merge",
         ":state_guard",
         ":verify_range",
         ":version_check",
         ":worktree_sweep",
         "//factory/cli/src/tbhbdev/alpha/agent:command",
         "//factory/cli/src/tbhbdev/alpha/identity:dispatcher",
+        "//factory/cli/src/tbhbdev/alpha/install:command",
+        "//factory/cli/src/tbhbdev/alpha/merge:command",
         "//factory/cli/src/tbhbdev/alpha/monorepo:command",
     ],
 )

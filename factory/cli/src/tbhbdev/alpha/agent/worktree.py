@@ -18,12 +18,13 @@ from functools import partial
 from pathlib import Path
 lazy from collections.abc import Callable, Generator, Mapping
 
-from tbhbdev.alpha import install, pre_push_guard
+from tbhbdev.alpha import pre_push_guard
 from tbhbdev.alpha.agent import host_tools, runfiles
 from tbhbdev.alpha.agent.decisions import repo
 from tbhbdev.alpha.agent.decisions.request import check_fetch_refs, check_start_ref
 from tbhbdev.alpha.agent.model import Invalid, Profile, RunRequest
 from tbhbdev.alpha.identity.dispatcher import RUN_HOOK_ENV
+from tbhbdev.alpha.install.scripts import IDENTITY_HOOKS, SHIM_MARK, pre_push_shim
 from tbhbdev.alpha.repo import TBHB_DEV_ORIGIN
 
 GIT_OVERRIDES = (
@@ -89,12 +90,13 @@ RUN_REFERENCE_TRANSACTION = r"""#!/bin/sh
 [ "$1" = prepared ] || exit 0
 branch={branch}
 start={start}
+start_ref={start_ref}
 while read -r _old new ref; do
   case "$ref" in
     "$branch")
       case "$new" in
         *[!0]*)
-          if ! git merge-base --is-ancestor "$start" "$new"; then
+          if [ -z "$start_ref" ] && ! git merge-base --is-ancestor "$start" "$new"; then
             printf 'reference-transaction: %s must descend from %s\n' \
               "$branch" "$start" >&2
             exit 1
@@ -109,7 +111,7 @@ while read -r _old new ref; do
   esac
 done
 """
-PREK_STAGES = ("pre-commit", "pre-push", *(name for name, _ in install.IDENTITY_HOOKS))
+PREK_STAGES = ("pre-commit", "pre-push", *(name for name, _ in IDENTITY_HOOKS))
 REQUIRED_HOOKS = (
     "reference-transaction",
     *PREK_STAGES,
@@ -150,10 +152,9 @@ def git(clone: Path, *args: str, token: str | None = None) -> str:
     )
     # A moved repository answers with a redirect, and the owner gate checks only
     # the requested name, so an online command never follows one.
-    offline = ["-c", "protocol.allow=never"]
-    online_only = ["-c", "http.followRedirects=false"]
+    offline = [*command, "-c", "protocol.allow=never"]
     online = args[0] in ("fetch", "ls-remote")
-    invocation = [*command, *(online_only if online else offline), *args]
+    invocation = [*command, "-c", "http.followRedirects=false"] if online else offline
     output = partial(
         subprocess.check_output,
         env=env,
@@ -164,18 +165,16 @@ def git(clone: Path, *args: str, token: str | None = None) -> str:
     )
     timeout = 300 if args[0] in ("fetch", "clone") else 30
     if args[0] == "init":
-        return output(invocation).strip()
+        return output([*invocation, *args]).strip()
     query = ("config", "--null", "--name-only", "--get-regexp", r"^(filter|merge)\.")
     try:
-        keys = output([*command, *offline, *query])
+        keys = output([*offline, *query])
     except subprocess.CalledProcessError as exc:
         if exc.returncode != 1:
             raise
-        return output(invocation, timeout=timeout).strip()
-    overrides = driver_overrides(keys)
-    return output(
-        [*invocation[: -len(args)], *overrides, *args], timeout=timeout
-    ).strip()
+        keys = ""
+    invocation.extend((*driver_overrides(keys), *args))
+    return output(invocation, timeout=timeout).strip()
 
 
 def driver_overrides(keys: str) -> list[str]:
@@ -277,22 +276,23 @@ def install_hooks(
     for name in PREK_STAGES:
         hook = hooks / (name if name == "pre-commit" else f"{name}.prek")
         scripts[hook] = RUN_PREK_SHIM.format(prek=prek, stage=name)
-    for name, verb in install.IDENTITY_HOOKS:
+    for name, verb in IDENTITY_HOOKS:
         scripts[hooks / name] = RUN_IDENTITY_SHIM.format(
-            mark=install.SHIM_MARK, verb=verb, hook=name, run_env=RUN_HOOK_ENV
+            mark=SHIM_MARK, verb=verb, hook=name, run_env=RUN_HOOK_ENV
         )
-    scripts[hooks / "pre-push"] = install.PRE_PUSH_SHIM.format(
-        python=Path(sys.base_prefix, "bin", "python3"),
-        mark=install.SHIM_MARK,
-        pattern=TBHB_DEV_ORIGIN.pattern,
-        run_env={
+    scripts[hooks / "pre-push"] = pre_push_shim(
+        Path(sys.base_prefix, "bin", "python3"),
+        TBHB_DEV_ORIGIN.pattern,
+        {
             pre_push_guard.RUN_NAME_ENV: run_name,
             pre_push_guard.RUN_START_REF_ENV: start_ref or "",
             pre_push_guard.RUN_START_TIP_ENV: start,
         },
     )
     scripts[hooks / "reference-transaction"] = RUN_REFERENCE_TRANSACTION.format(
-        branch=shlex.quote(f"refs/heads/agent/{run_name}"), start=shlex.quote(start)
+        branch=shlex.quote(f"refs/heads/agent/{run_name}"),
+        start=shlex.quote(start),
+        start_ref=shlex.quote(start_ref or ""),
     )
     for hook, content in scripts.items():
         if hook.exists():
