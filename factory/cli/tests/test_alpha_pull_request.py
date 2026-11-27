@@ -2093,6 +2093,44 @@ def fake_pr_commits(
     return argv
 
 
+def test_edit_pr_40_uses_github_commit_trailers(
+    world: World, agent: dict[str, str]
+) -> None:
+    local = (
+        "LLM effort=medium;harness=codex:0.171.0;model=openai:gpt-6.2-sol;"
+        "session=sha-256-64:ae40cbadd8ab72ec;surface=cli"
+    )
+    attrs = (
+        "effort=medium;harness=claude-code;model=anthropic:claude-sonnet-5-5;"
+        "session=sha-256-64:7ff1a5b545107a55;surface=cli"
+    )
+    merged = attrs.replace("7ff1a5b545107a55", "1234567890abcdef")
+    world.git("switch", "-q", "-c", "other-branch")
+    world.commit(f"other PR\n\nGenerated-by: {local}")
+    pages = [
+        [{"commit": {"message": f"one\n\nGenerated-by: LLM {attrs}"}}],
+        [
+            {"commit": {"message": f"two\n\nGenerated-by: LLM {attrs}"}},
+            {
+                "parents": [{"sha": "a" * 40}, {"sha": "b" * 40}],
+                "commit": {"message": f"merge\n\n---\n\nGenerated-by: LLM\n {merged}"},
+            },
+            {"commit": {"message": f"body\n\nGenerated-by: {local}\n\nMore prose."}},
+        ],
+    ]
+    argv = fake_pr_commits(world, 40, json.dumps(pages))
+    write_draft(world)
+    assert run_main("edit", str(pr.DRAFT), "--pr", "40", env=agent) == 0
+    _, commits, edit = world.calls("gh")
+    assert commits["argv"] == argv
+    assert str(edit["stdin"]).split("\n\n")[-1] == (
+        f"Generated-by: LLM {attrs}\nGenerated-by: LLM {merged}\n"
+        f"Assisted-by: {POSTING}\n"
+    )
+    (scan,) = world.calls("gitleaks")
+    assert scan["stdin"] == f"fix: x\n\n{edit['stdin']}"
+
+
 @pytest.mark.parametrize(
     ("rc", "stdout", "stderr", "why"),
     [

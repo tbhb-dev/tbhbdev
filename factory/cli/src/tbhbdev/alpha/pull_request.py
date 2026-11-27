@@ -144,7 +144,7 @@ from jsonschema import Draft202012Validator
 from tbhbdev.alpha import opened, secret_scan, size_gate, tool_pins
 from tbhbdev.alpha import pull_request_frontmatter as frontmatter
 from tbhbdev.alpha.identity import dispatcher as agent_identity
-from tbhbdev.alpha.identity.trailers import merge_pr_trailers
+from tbhbdev.alpha.identity import trailers as identity_trailers
 from tbhbdev.alpha.install import require_git_hooks
 from tbhbdev.alpha.repo import git as repo_git
 from tbhbdev.alpha.repo import hook_cwd, in_tbhb_dev, read_hook_stdin
@@ -846,6 +846,10 @@ def body_of(rendered: Sequence[str]) -> str:
     return "\n".join(rendered[1:]).strip("\n") + "\n"
 
 
+identity_key = identity_trailers.identity_key
+merge_trailers = identity_trailers.merge_pr_trailers
+
+
 def branch_trailers(base: str) -> list[tuple[str, str]]:
     """The LLM trailers of the commits on this branch, oldest first.
 
@@ -1028,7 +1032,7 @@ def description(
     ]
     if errors:
         raise SystemExit("invalid LLM trailer: " + "; ".join(errors))
-    merged = [f"{key}: {value}" for key, value in merge_pr_trailers(found, posting)]
+    merged = [f"{key}: {value}" for key, value in merge_trailers(found, posting)]
     trailers = ([opened_by] if opened_by else []) + merged
     body = body_of(checked.rendered)
     if not trailers:
