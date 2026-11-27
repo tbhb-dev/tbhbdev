@@ -2,7 +2,6 @@
 # Copyright Tony Burns
 
 load("@rules_go//go:def.bzl", "go_binary", "go_library")
-load("@tbhb_rules_go//:defs.bzl", "go_arch_lint_test")
 load("//factory:go.bzl", "go_test", "golangci_lint_test")
 
 # gazelle:map_kind go_test go_test //factory:go.bzl
@@ -31,6 +30,7 @@ go_test(
     name = "tbhbdev_test",
     srcs = ["main_test.go"],
     embed = [":tbhbdev_lib"],
+    visibility = ["//factory/event-gateway:__pkg__"],
 )
 
 golangci_lint_test(
@@ -42,13 +42,8 @@ golangci_lint_test(
     ],
 )
 
-go_arch_lint_test(
+# The root Go module has one set of import contracts with entries for both projects.
+test_suite(
     name = "go_arch_lint_test",
-    size = "small",
-    srcs = [
-        ":tbhbdev_test",
-        "//factory/cli/internal/dispatch:dispatch_test",
-    ],
-    config = "//:.go-arch-lint.yml",
-    go_mod = "//:go.mod",
+    tests = ["//factory/event-gateway:go_arch_lint_test"],
 )

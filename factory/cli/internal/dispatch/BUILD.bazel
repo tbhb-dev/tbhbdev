@@ -22,6 +22,9 @@ go_library(
 go_test(
     name = "dispatch_test",
     srcs = ["dispatch_test.go"],
-    visibility = ["//factory/cli/cmd/tbhbdev:__pkg__"],
+    visibility = [
+        "//factory/cli/cmd/tbhbdev:__pkg__",
+        "//factory/event-gateway:__pkg__",
+    ],
     deps = [":dispatch"],
 )
