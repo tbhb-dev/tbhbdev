@@ -159,9 +159,17 @@ cli_py_library(
     imports = ["../.."],
     visibility = ["//factory/cli:__subpackages__"],
     deps = [
+        ":identity_commands",
         ":process",
         ":repo",
     ],
+)
+
+cli_py_library(
+    name = "identity_commands",
+    srcs = ["identity_commands.py"],
+    imports = ["../.."],
+    visibility = ["//factory/cli:__subpackages__"],
 )
 
 cli_py_library(
