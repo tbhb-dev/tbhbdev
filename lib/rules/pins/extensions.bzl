@@ -681,7 +681,11 @@ def _tools_impl(mctx):
         build_file_content = "filegroup(name = \"fonts\", srcs = glob([\"LiberationSans-*.ttf\"]) + [\"LICENSE\"], visibility = [\"//visibility:public\"])",
         sha256 = "7191c669bf38899f73a2094ed00f7b800553364f90e2637010a69c0e268f25d0",
         strip_prefix = "liberation-fonts-ttf-2.1.5",
-        url = "https://github.com/liberationfonts/liberation-fonts/files/7261482/liberation-fonts-ttf-2.1.5.tar.gz",
+        urls = [
+            "https://distfiles.macports.org/liberation-fonts/liberation-fonts-ttf-2.1.5.tar.gz",
+            "https://distfiles.alpinelinux.org/distfiles/v3.22/liberation-fonts-ttf-2.1.5.tar.gz",
+            "https://github.com/liberationfonts/liberation-fonts/files/7261482/liberation-fonts-ttf-2.1.5.tar.gz",
+        ],
     )
 
     _tool_files_hub(
