@@ -27,7 +27,6 @@ py_library(
         "tbhbops_cli/o11y/receipt.py",
         "tbhbops_cli/o11y/render.py",
         "tbhbops_cli/o11y/runner.py",
-        "tbhbops_cli/o11y/rustfs_probe.py",
         "tbhbops_cli/o11y/smoke.py",
         "tbhbops_cli/o11y/smoke_capacity.py",
         "tbhbops_cli/o11y/smoke_checks.py",
