@@ -6,13 +6,15 @@ import asyncio
 import io
 import re
 import tarfile
-import unicodedata
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 from tbhbdev.alpha.agent.decisions import argv, remote
 from tbhbdev.alpha.agent.decisions import runfiles_names as files
 from tbhbdev.alpha.agent.model import Invalid
+
+# Keep the transport's existing terminal_text export.
+from tbhbdev.alpha.terminal import terminal_text as terminal_text  # noqa: PLC0414
 
 if TYPE_CHECKING:
     from tbhbdev.alpha.agent.model import Host, Settings
@@ -39,14 +41,6 @@ class TransportError(OSError):
     """A failed or timed-out ssh call, whose output contains no input bytes."""
 
 
-def terminal_text(text: str) -> str:
-    return "".join(
-        c
-        for c in text
-        if c in {"\n", "\t"} or not unicodedata.category(c).startswith("C")
-    )
-
-
 @dataclass(frozen=True)
 class Stdin:
     """What a remote command reads: the run owner, then ``data``.
@@ -69,6 +63,19 @@ def call(
     *,
     timeout: float = 30,
 ) -> str:
+    return call_bytes(settings, host, command, stdin, timeout=timeout).decode(
+        errors="replace"
+    )
+
+
+def call_bytes(
+    settings: Settings,
+    host: Host,
+    command: tuple[str, ...],
+    stdin: Stdin | None = None,
+    *,
+    timeout: float = 30,
+) -> bytes:
     data = b"" if stdin is None else stdin.encode()
     args = argv.ssh(
         host,
@@ -90,7 +97,7 @@ def call(
     if code:
         message = f"{host.name}: remote command failed ({code})"
         raise TransportError(message)
-    return output.decode(errors="replace")
+    return output
 
 
 async def execute(args: tuple[str, ...], data: bytes) -> tuple[int, bytes]:

@@ -1,0 +1,121 @@
+---
+- name: tbhbdev | Read the tools origin URL
+  ansible.builtin.command:
+    argv: [git, config, --get, remote.origin.url]
+    chdir: "{{ agent_workspace_tools }}"
+  register: agent_workspace_tools_origin
+  changed_when: false
+
+- name: tbhbdev | Derive the anonymous fetch URL
+  ansible.builtin.set_fact:
+    agent_workspace_tools_fetch_url: >-
+      {{ agent_workspace_tools_origin.stdout | regex_replace('^(?:ssh://)?git@([^/:]+)[:/]', 'https://\1/') }}
+
+- name: tbhbdev | Require an anonymous HTTPS fetch URL
+  ansible.builtin.assert:
+    that: agent_workspace_tools_fetch_url is match('^https://[A-Za-z0-9.-]+/[A-Za-z0-9_./-]+$')
+    fail_msg: Cannot fetch the tools origin anonymously over HTTPS.
+    quiet: true
+
+- name: tbhbdev | Fetch origin/main anonymously over HTTPS
+  ansible.builtin.command:
+    argv:
+      - git
+      - -c
+      - credential.helper=
+      - fetch
+      - --quiet
+      - "{{ agent_workspace_tools_fetch_url }}"
+      - +refs/heads/main:refs/remotes/origin/main
+    chdir: "{{ agent_workspace_tools }}"
+  changed_when: false
+
+- name: tbhbdev | Read the tools commit
+  ansible.builtin.command:
+    argv: [git, rev-parse, HEAD]
+    chdir: "{{ agent_workspace_tools }}"
+  register: agent_workspace_tools_commit
+  changed_when: false
+
+- name: tbhbdev | Read the fetched main commit
+  ansible.builtin.command:
+    argv: [git, rev-parse, origin/main]
+    chdir: "{{ agent_workspace_tools }}"
+  register: agent_workspace_tools_main
+  changed_when: false
+
+- name: tbhbdev | Read the tools branch
+  ansible.builtin.command:
+    argv: [git, symbolic-ref, --short, -q, HEAD]
+    chdir: "{{ agent_workspace_tools }}"
+  register: agent_workspace_tools_branch
+  changed_when: false
+  failed_when: agent_workspace_tools_branch.rc not in [0, 1]
+
+- name: tbhbdev | Read the tools working tree status
+  ansible.builtin.command:
+    argv: [git, status, --porcelain]
+    chdir: "{{ agent_workspace_tools }}"
+  register: agent_workspace_tools_status
+  changed_when: false
+
+- name: tbhbdev | Refuse a dirty tools checkout
+  ansible.builtin.assert:
+    that: agent_workspace_tools_status.stdout == ''
+    fail_msg: Refusing to install tbhbdev because the tools checkout is dirty.
+    quiet: true
+
+- name: tbhbdev | Refuse a tools checkout off main
+  ansible.builtin.assert:
+    that: agent_workspace_tools_branch.stdout == 'main'
+    fail_msg: Refusing to install tbhbdev because the tools checkout is off main (or detached).
+    quiet: true
+
+- name: tbhbdev | Refuse a tools checkout that differs from origin/main
+  ansible.builtin.assert:
+    that: agent_workspace_tools_commit.stdout == agent_workspace_tools_main.stdout
+    fail_msg: >-
+      Refusing to install tbhbdev because tools HEAD differs from fetched origin/main (ahead, behind or diverged).
+    quiet: true
+
+- name: tbhbdev | Read committed project metadata
+  ansible.builtin.command:
+    argv: [git, show, "{{ agent_workspace_tools_commit.stdout }}:pyproject.toml"]
+    chdir: "{{ agent_workspace_tools }}"
+  register: agent_workspace_tools_project
+  changed_when: false
+
+- name: tbhbdev | Read the committed version
+  ansible.builtin.set_fact:
+    agent_workspace_tools_versions: >-
+      {{ agent_workspace_tools_project.stdout | regex_findall('(?m)^version = "([^"\n]+)"$') }}
+
+- name: tbhbdev | Require one committed project version
+  ansible.builtin.assert:
+    that: agent_workspace_tools_versions | length == 1
+    fail_msg: The committed tools pyproject.toml must declare one static version.
+    quiet: true
+
+- name: tbhbdev | Read the installed version and commit
+  ansible.builtin.command:
+    argv: ["{{ agent_workspace_home }}/.local/bin/tbhbdev", --version]
+    chdir: "{{ agent_workspace_home }}"
+  register: agent_workspace_tbhbdev_version
+  changed_when: false
+  failed_when: false
+
+- name: tbhbdev | Install the tools commit when its version or commit differs
+  ansible.builtin.command:
+    argv:
+      - uv
+      - tool
+      - install
+      - --reinstall
+      - "git+file://{{ agent_workspace_tools }}@{{ agent_workspace_tools_commit.stdout }}"
+    chdir: "{{ agent_workspace_home }}"
+  vars:
+    agent_workspace_tbhbdev_expected: >-
+      tbhbdev {{ agent_workspace_tools_versions[0] }} ({{ agent_workspace_tools_commit.stdout }})
+  register: agent_workspace_tbhbdev_install
+  changed_when: true
+  when: agent_workspace_tbhbdev_version.stdout != agent_workspace_tbhbdev_expected

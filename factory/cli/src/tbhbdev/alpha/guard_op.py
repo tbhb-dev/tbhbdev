@@ -42,7 +42,6 @@ from pathlib import Path
 import yaml
 
 from tbhbdev import userconfig
-from tbhbdev.alpha import identity
 from tbhbdev.alpha.guard_gh_pr import (
     ASSIGNMENT,
     KEYWORDS,
@@ -55,6 +54,7 @@ from tbhbdev.alpha.guard_gh_pr import (
     program_of,
     shell_script,
 )
+from tbhbdev.alpha.identity import dispatcher as identity
 from tbhbdev.alpha.repo import hook_cwd, read_hook_stdin
 
 SSH_VALUES = {

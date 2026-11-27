@@ -171,6 +171,29 @@ def test_title_definitions(kind: str, title: str, refused: bool) -> None:
     assert all(item.path.startswith("blocks.title.") for item in result.refusals)
 
 
+@pytest.mark.parametrize(
+    ("area", "refused"),
+    [
+        ("area:cli", False),
+        ("area:factory/cli", False),
+        ("area:Factory/cli", True),
+        ("area:/cli", True),
+        ("area:factory//cli", True),
+        ("area:factory/", True),
+    ],
+)
+def test_area_label(area: str, refused: bool) -> None:
+    draft = normalize(
+        f"# {TITLE}\n", object="issue", variant="Fixture", metadata={"area": area}
+    )
+    result = content.check(
+        draft, SCHEMAS, definition="{metadata: {area: #AreaLabel, ...}, ...}"
+    )
+    assert tuple(item.path for item in result.refusals) == (
+        ("metadata.area",) if refused else ()
+    )
+
+
 def test_vet_reports_multiple_fields() -> None:
     result = content.check({"schemaVersion": 1}, SCHEMAS)
     fields = "blockOrder blocks inline metadata metrics object variant"

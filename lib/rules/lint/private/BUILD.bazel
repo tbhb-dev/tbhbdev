@@ -11,6 +11,7 @@ repo_files()
 exports_files([
     "check_actionlint_labels.py",
     "check_trailing_newline.py",
+    "git_read.py",
     "gitleaks_guard.py",
 ])
 
@@ -234,5 +235,8 @@ bzl_library(
     name = "pr_size",
     srcs = ["pr_size.bzl"],
     visibility = ["//lint:__subpackages__"],
-    deps = ["//shell:defs"],
+    deps = [
+        "//runtime:defs",
+        "//shell:defs",
+    ],
 )

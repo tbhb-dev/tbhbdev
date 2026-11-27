@@ -1,0 +1,91 @@
+---
+- name: switch | Read current without following it
+  ansible.builtin.stat:
+    path: "{{ o11y_root }}/current"
+    follow: false
+  register: o11y_current
+
+- name: switch | Require a managed current link
+  ansible.builtin.assert:
+    that:
+      - not o11y_current.stat.exists or o11y_current.stat.islnk | default(false)
+      - >-
+          not o11y_current.stat.exists or
+          (o11y_current.stat.lnk_source | dirname) == o11y_root + '/releases'
+    quiet: true
+
+- name: switch | Remember the active release
+  ansible.builtin.set_fact:
+    o11y_old: "{{ o11y_current.stat.lnk_source | default('') }}"
+
+- name: switch | Save the previous healthy release
+  ansible.builtin.file:
+    src: "{{ o11y_old }}"
+    dest: "{{ o11y_root }}/previous"
+    state: link
+    force: true
+  when:
+    - o11y_old | length > 0
+    - o11y_old != o11y_target
+
+- name: switch | Activate the candidate
+  block:
+    - name: switch | Point current at the candidate
+      ansible.builtin.file:
+        src: "{{ o11y_target }}"
+        dest: "{{ o11y_root }}/current"
+        state: link
+        force: true
+
+    - name: switch | Start and check the candidate
+      ansible.builtin.include_tasks: up.yml
+
+  rescue:
+    - name: switch | Unset current until recovery succeeds
+      ansible.builtin.file:
+        path: "{{ o11y_root }}/current"
+        state: absent
+
+    - name: switch | Stop the failed candidate
+      ansible.builtin.command:
+        argv: [docker, compose, down, --remove-orphans]
+        chdir: "{{ o11y_target }}"
+      register: o11y_stop
+      changed_when: true
+      # A cleanup error must not prevent an attempt to recover the old stack.
+      failed_when: false
+
+    - name: switch | Report an unsuccessful first deployment cleanup
+      ansible.builtin.fail:
+        msg: >-
+          No previous release exists; current is unset, but stopping the candidate failed.
+          Check the services in {{ o11y_target }} by hand.
+      when:
+        - o11y_old | length == 0
+        - o11y_stop.rc != 0
+
+    - name: switch | Recover the old release
+      when: o11y_old | length > 0
+      block:
+        - name: switch | Select the old release for recovery
+          ansible.builtin.set_fact:
+            o11y_target: "{{ o11y_old }}"
+
+        - name: switch | Start and check the old release
+          ansible.builtin.include_tasks: up.yml
+
+        - name: switch | Restore current to the healthy release
+          ansible.builtin.file:
+            src: "{{ o11y_old }}"
+            dest: "{{ o11y_root }}/current"
+            state: link
+      rescue:
+        - name: switch | Report unsuccessful recovery
+          ansible.builtin.fail:
+            msg: Recovery failed; current is unset. Check the services in {{ o11y_old }} by hand.
+
+    - name: switch | Report the rejected deployment
+      ansible.builtin.fail:
+        msg: >-
+          Health gate failed. {{ 'The previous release is up and current was restored.'
+          if o11y_old | length > 0 else 'No previous release exists; the stack is down and current is unset.' }}

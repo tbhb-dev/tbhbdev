@@ -1,0 +1,3 @@
+# Converts GitHub pull request activity into OpenTelemetry data.
+# Depends on lib/rules and external Go modules.
+@tbhb

@@ -1,0 +1,57 @@
+# SPDX-License-Identifier: Apache-2.0
+# Copyright Tony Burns
+
+load("@rules_go//go:def.bzl", "go_library")
+load("@tbhb_rules//repo:defs.bzl", "repo_files")
+load("//factory:go.bzl", "go_test")
+
+repo_files(visibility = ["//factory/github-metrics:__subpackages__"])
+
+go_library(
+    name = "reconcile",
+    srcs = [
+        "cibackfill.go",
+        "events.go",
+        "list.go",
+        "loop.go",
+        "run.go",
+    ],
+    importpath = "github.com/tbhb-dev/tbhbdev/factory/github-metrics/internal/reconcile",
+    visibility = ["//factory/github-metrics:__subpackages__"],
+    deps = [
+        "//factory/github-metrics/internal/budget",
+        "//factory/github-metrics/internal/ghclient",
+        "//factory/github-metrics/internal/recorder",
+        "@io_opentelemetry_go_otel//attribute",
+        "@io_opentelemetry_go_otel_metric//:metric",
+    ],
+)
+
+go_test(
+    name = "reconcile_test",
+    srcs = [
+        "cibackfill_test.go",
+        "events_test.go",
+        "list_test.go",
+        "loop_test.go",
+        "run_test.go",
+    ],
+    data = glob(["testdata/**"]),
+    embedsrcs = ["testdata/ci_jobs.json"],
+    visibility = ["//factory/github-metrics:__pkg__"],
+    deps = [
+        ":reconcile",
+        "//factory/github-metrics/internal/budget",
+        "//factory/github-metrics/internal/ghclient",
+        "//factory/github-metrics/internal/recorder",
+        "@io_opentelemetry_go_otel//attribute",
+        "@io_opentelemetry_go_otel_metric//noop",
+        "@io_opentelemetry_go_otel_sdk_metric//:metric",
+        "@io_opentelemetry_go_otel_sdk_metric//metricdata",
+    ],
+)
+
+exports_files(
+    ["testdata/ci_jobs.json"],
+    visibility = ["//factory/github-metrics:__pkg__"],
+)

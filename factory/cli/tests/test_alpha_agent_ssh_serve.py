@@ -12,8 +12,8 @@ from types import SimpleNamespace
 
 import pytest
 from agent_host_example import build_provenance
+from runfile_fixtures import agent_suffix_case as agent_suffix_case  # noqa: PLC0414
 
-from tbhbdev.alpha import agent
 from tbhbdev.alpha.agent import build_info, process_group, run_host, runfiles, ssh_serve
 from tbhbdev.alpha.agent.decisions.run_state import Group
 
@@ -30,39 +30,27 @@ def incoming(monkeypatch: pytest.MonkeyPatch, value: bytes) -> None:
     monkeypatch.setattr("sys.stdin", io.TextIOWrapper(io.BytesIO(value)))
 
 
-@pytest.mark.parametrize("token", [None, "synthetic-push-value"])
 def test_preflight_envelope(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
-    token: str | None,
 ) -> None:
     monkeypatch.setenv("SSH_ORIGINAL_COMMAND", "preflight example")
-    incoming(
-        monkeypatch, json.dumps({"v": 1, "request": {}, "push_token": token}).encode()
-    )
+    incoming(monkeypatch, b'{"v":1,"request":{}}')
     calls: list[list[str]] = []
 
     def main(arguments: list[str], prog: str, **kwargs: object) -> int:
         calls.append(arguments)
         assert prog == "ssh-serve preflight"
-        assert kwargs == {"push_token": None, "claimed": True}
+        assert kwargs == {"claimed": True}
         return 0
 
     monkeypatch.setattr(run_host, "main", main)
-    assert ssh_serve.main([], "ssh-serve") == (0 if token is None else 2)
+    assert ssh_serve.main([], "ssh-serve") == 0
     files = files_for("example")
-    if token is None:
-        assert calls == [["example", "--preflight"]]
-        assert files.path("request.json").read_text() == "{}\n"
-        assert files.path("owner").read_text() == "host\n"
-        assert capsys.readouterr().err == ""
-    else:
-        assert calls == []
-        assert not files.path("request.json").exists()
-        assert not files.path("owner").exists()
-        assert capsys.readouterr().err == (
-            "ssh-serve: refused: preflight requires a null push_token\n"
-        )
+    assert calls == [["example", "--preflight"]]
+    assert files.path("request.json").read_text() == "{}\n"
+    assert files.path("owner").read_text() == "host\n"
+    assert capsys.readouterr().err == ""
 
 
 @pytest.mark.parametrize(
@@ -108,7 +96,7 @@ def test_wrong_account(
 ) -> None:
     monkeypatch.setenv("SSH_ORIGINAL_COMMAND", command)
     monkeypatch.setattr(pwd, "getpwuid", other_account)
-    assert agent.main(["ssh-serve"], "agent") == 2
+    assert ssh_serve.main([], "agent ssh-serve") == 2
     assert capsys.readouterr().err == "ssh-serve: refused: requires agent account\n"
 
 
@@ -118,11 +106,7 @@ def test_wrong_account(
         b"x",
         b"[]",
         b"{}",
-        b'{"v":2,"request":{},"push_token":null}',
-        b'{"v":true,"request":{},"push_token":null}',
-        b'{"v":1,"request":[],"push_token":null}',
-        b'{"v":1,"request":{},"push_token":3}',
-        b'{"v":1,"request":{},"push_token":"a\\nb"}',
+        b'{"v":true,"request":{}}',
         b" " * (1024 * 1024 + 1),
         b"\xff",
     ],
@@ -140,21 +124,19 @@ def test_run_dispatch(
     monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
     monkeypatch.setenv("SSH_ORIGINAL_COMMAND", "run-host Example_1")
-    document = {"v": 1, "request": {"v": 2}, "push_token": "synthetic-push-secret"}
+    document = {"v": 1, "request": {"v": 2}}
     incoming(monkeypatch, json.dumps(document).encode())
 
     def run(
         arguments: list[str],
         prog: str,
         *,
-        push_token: str | None = None,
         claimed: bool = False,
     ) -> int:
         assert claimed is True
         assert files_for("Example_1").path("owner").read_text() == "host\n"
         assert arguments == ["Example_1"]
         assert prog == "ssh-serve run-host"
-        assert push_token == document["push_token"]
         files = files_for("Example_1")
         assert (
             files.path("request.json").read_text()
@@ -167,9 +149,6 @@ def test_run_dispatch(
     monkeypatch.setattr(run_host, "main", run)
     assert ssh_serve.main([], "ssh-serve") == 7
     assert capsys.readouterr().out == "normal run output\n"
-    for path in Path.cwd().rglob("*"):
-        if path.is_file():
-            assert "synthetic-push-secret" not in path.read_text()
 
 
 @pytest.mark.parametrize("command", ["result", "kill"])
@@ -294,22 +273,10 @@ def cannot_stop(*_args: object) -> bool:
     return False
 
 
-@pytest.mark.parametrize("token", [None, "", "a\r", "a\0"])
-def test_token_values(token: str | None, monkeypatch: pytest.MonkeyPatch) -> None:
-    incoming(
-        monkeypatch, json.dumps({"v": 1, "request": {}, "push_token": token}).encode()
-    )
-    if token is None:
-        assert ssh_serve.envelope() == ({}, None)
-    else:
-        with pytest.raises(ValueError, match="single line"):
-            ssh_serve.envelope()
-
-
 def test_input_boundary(monkeypatch: pytest.MonkeyPatch) -> None:
-    body = b'{"v":1,"request":{},"push_token":null}'
+    body = b'{"v":1,"request":{}}'
     incoming(monkeypatch, body + b" " * (1024 * 1024 - len(body)))
-    assert ssh_serve.envelope() == ({}, None)
+    assert ssh_serve.envelope() == {}
 
 
 def test_os_error_is_generic(
@@ -357,7 +324,7 @@ def test_existing_request_is_preserved(
     files = files_for("example")
     files.write("request.json", "original")
     monkeypatch.setenv("SSH_ORIGINAL_COMMAND", "run-host example")
-    incoming(monkeypatch, b'{"v":1,"request":{},"push_token":null}')
+    incoming(monkeypatch, b'{"v":1,"request":{}}')
     assert ssh_serve.main([], "ssh-serve") == 2
     assert (
         capsys.readouterr().err == "ssh-serve: refused: invalid command or run data\n"
@@ -387,13 +354,10 @@ def test_command_refusal_reason(
 @pytest.mark.parametrize(
     ("data", "reason"),
     [
-        ({}, "expected v, request and push_token"),
-        ({"v": 2, "request": {}, "push_token": None}, "unsupported envelope version"),
-        ({"v": 1, "request": [], "push_token": None}, "request must be an object"),
-        (
-            {"v": 1, "request": {}, "push_token": 3},
-            "push_token must be a nonempty single line or null",
-        ),
+        ({}, "expected v and request"),
+        ({"v": 2, "request": {}}, "unsupported envelope version"),
+        ({"v": 1, "request": []}, "request must be an object"),
+        ({"v": 1, "request": {}, "push_token": None}, "expected v and request"),
     ],
 )
 def test_envelope_refusal_reason(
@@ -415,16 +379,6 @@ def test_oversized_refusal_reason(
     incoming(monkeypatch, b" " * (1024 * 1024 + 1))
     assert ssh_serve.main([], "ssh-serve") == 2
     assert capsys.readouterr().err == "ssh-serve: refused: stdin exceeds 1 MiB\n"
-
-
-def test_agent_dispatch_forwards_arguments(monkeypatch: pytest.MonkeyPatch) -> None:
-    def serve(arguments: list[str], prog: str) -> int:
-        assert arguments == ["extra"]
-        assert prog == "alpha agent ssh-serve"
-        return 9
-
-    monkeypatch.setattr(ssh_serve, "main", serve)
-    assert agent.main(["ssh-serve", "extra"], "alpha agent") == 9
 
 
 def test_missing_account_is_refused(
@@ -460,7 +414,7 @@ def test_existing_owner_refuses_before_request(
     files = files_for("example")
     files.write("owner", "existing owner")
     monkeypatch.setenv("SSH_ORIGINAL_COMMAND", "run-host example")
-    incoming(monkeypatch, b'{"v":1,"request":{},"push_token":null}')
+    incoming(monkeypatch, b'{"v":1,"request":{}}')
     assert ssh_serve.main([], "ssh-serve") == 2
     assert (
         capsys.readouterr().err
@@ -490,19 +444,11 @@ def test_oversized_input_reads_only_one_lookahead_byte(
     assert source.tell() == ssh_serve.INPUT_LIMIT + 1
 
 
-def test_token_with_uppercase_character(monkeypatch: pytest.MonkeyPatch) -> None:
-    value = "synthetic-X-push-value"
-    incoming(
-        monkeypatch, json.dumps({"v": 1, "request": {}, "push_token": value}).encode()
-    )
-    assert ssh_serve.envelope() == ({}, value)
-
-
 def test_private_run_files_ignore_permissive_umask(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setenv("SSH_ORIGINAL_COMMAND", "run-host example")
-    incoming(monkeypatch, b'{"v":1,"request":{},"push_token":null}')
+    incoming(monkeypatch, b'{"v":1,"request":{}}')
 
     def run(*_args: object, **_kwargs: object) -> int:
         return 0
@@ -604,7 +550,6 @@ def test_non_utf8_envelope_is_refused(
             {
                 "v": 1,
                 "request": {"a": "[" * 100000 + "0" + "]" * 100000},
-                "push_token": None,
             }
         )
         .replace('"[', "[")
@@ -624,7 +569,7 @@ def test_unserializable_request_is_refused_before_claiming(
 
     monkeypatch.setenv("SSH_ORIGINAL_COMMAND", "run-host example")
     monkeypatch.setattr(ssh_serve.json, "dumps", overflow)
-    incoming(monkeypatch, b'{"v": 1, "request": {}, "push_token": null}')
+    incoming(monkeypatch, b'{"v":1,"request":{}}')
     assert ssh_serve.main([], "ssh-serve") == 2
     refused_untouched(capsys, "invalid command or run data")
 

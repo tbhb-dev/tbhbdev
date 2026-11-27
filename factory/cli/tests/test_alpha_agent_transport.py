@@ -291,7 +291,7 @@ def test_timeout_reaps_only_its_ssh_child(
         os.waitpid(pid, os.WNOHANG)
 
 
-@pytest.mark.parametrize("rc", ["0", "1", "255", "000", "255\n"])
+@pytest.mark.parametrize("rc", ["0", "1", "255", "255\n"])
 @pytest.mark.parametrize("phase", ["running", "a" * 32, "running\n"])
 def test_valid_status_boundaries(
     monkeypatch: pytest.MonkeyPatch, rc: str, phase: str

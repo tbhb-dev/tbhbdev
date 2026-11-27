@@ -1,0 +1,256 @@
+load("@rules_python//python:defs.bzl", "py_binary")
+load("//factory/cli:python.bzl", "cli_py_library")
+# SPDX-License-Identifier: Apache-2.0
+# Copyright Tony Burns
+
+exports_files(["cue-pin.json"])
+
+filegroup(
+    name = "package_files",
+    srcs = glob(
+        ["**"],
+        exclude = ["BUILD.bazel"],
+    ),
+    visibility = ["//factory/cli:__pkg__"],
+)
+
+cli_py_library(
+    name = "__init__",
+    srcs = ["__init__.py"],
+    imports = [".."],
+    visibility = ["//factory/cli:__subpackages__"],
+)
+
+cli_py_library(
+    name = "adr",
+    srcs = ["adr.py"],
+    imports = [".."],
+    visibility = ["//factory/cli:__subpackages__"],
+    deps = [
+        ":adr_decision",
+        ":content",
+        ":runner",
+        "//factory/cli/src/tbhbdev/alpha:pull_request",
+        "//factory/cli/src/tbhbdev/alpha:pull_request_frontmatter",
+        "//factory/cli/src/tbhbdev/alpha:repo_bootstrap",
+    ],
+)
+
+cli_py_library(
+    name = "adr_decision",
+    srcs = ["adr_decision.py"],
+    imports = [".."],
+    visibility = ["//factory/cli:__subpackages__"],
+    deps = [":content"],
+)
+
+cli_py_library(
+    name = "agy",
+    srcs = ["agy.py"],
+    imports = [".."],
+    visibility = ["//factory/cli:__subpackages__"],
+    deps = [
+        "//factory/cli/src/tbhbdev/alpha/identity:models",
+        "@cli_pip//httpx2",
+    ],
+)
+
+cli_py_library(
+    name = "cli",
+    srcs = ["cli.py"],
+    imports = [".."],
+    visibility = ["//factory/cli:__subpackages__"],
+    deps = [
+        ":adr",
+        ":agy",
+        ":cue_runtime",
+        ":issue",
+        ":plugins",
+        ":secret",
+        ":version",
+        "//factory/cli/src/tbhbdev/admin:command",
+        "//factory/cli/src/tbhbdev/alpha:command",
+        "//factory/cli/src/tbhbdev/analytics:command",
+    ],
+)
+
+cli_py_library(
+    name = "content",
+    srcs = ["content.py"],
+    data = [
+        ":schemas/core.cue",
+        ":schemas/issue.cue",
+        ":schemas/review.cue",
+        "//factory/cli:schemas",
+    ],
+    imports = [".."],
+    visibility = ["//factory/cli:__subpackages__"],
+    deps = [
+        ":content_model",
+        ":content_vet",
+        ":cue_runtime",
+        "//factory/cli/src/tbhbdev/alpha:pull_request",
+        "//factory/cli/src/tbhbdev/alpha:secret_scan",
+    ],
+)
+
+cli_py_library(
+    name = "content_model",
+    srcs = ["content_model.py"],
+    imports = [".."],
+    visibility = ["//factory/cli:__subpackages__"],
+    deps = [
+        "@cli_pip//markdown_it_py",
+        "@cli_pip//mdit_py_plugins",
+    ],
+)
+
+cli_py_library(
+    name = "content_vet",
+    srcs = ["content_vet.py"],
+    imports = [".."],
+    visibility = ["//factory/cli:__subpackages__"],
+    deps = [":cue_runtime"],
+)
+
+cli_py_library(
+    name = "cue_runtime",
+    srcs = ["cue_runtime.py"],
+    data = [":cue-pin.json"],
+    imports = [".."],
+    visibility = ["//factory/cli:__subpackages__"],
+    deps = [
+        ":github_tls",
+        "@cli_pip//httpx2",
+    ],
+)
+
+cli_py_library(
+    name = "gh_agent",
+    srcs = ["gh_agent.py"],
+    imports = [".."],
+    visibility = ["//factory/cli:__subpackages__"],
+)
+
+cli_py_library(
+    name = "gitleaks_check",
+    srcs = ["gitleaks_check.py"],
+    imports = [".."],
+    visibility = ["//factory/cli:__subpackages__"],
+    deps = ["//factory/cli/src/tbhbdev/alpha:secret_scan"],
+)
+
+cli_py_library(
+    name = "host_tokens",
+    srcs = ["host_tokens.py"],
+    imports = [".."],
+    visibility = ["//factory/cli:__subpackages__"],
+)
+
+cli_py_library(
+    name = "issue",
+    srcs = ["issue.py"],
+    imports = [".."],
+    visibility = ["//factory/cli:__subpackages__"],
+    deps = [":issue_import"],
+)
+
+cli_py_library(
+    name = "issue_import",
+    srcs = ["issue_import.py"],
+    imports = [".."],
+    visibility = ["//factory/cli:__subpackages__"],
+)
+
+cli_py_library(
+    name = "plugins",
+    srcs = ["plugins.py"],
+    imports = [".."],
+    pyi_deps = [":cli"],
+    visibility = ["//factory/cli:__subpackages__"],
+)
+
+cli_py_library(
+    name = "prose_check",
+    srcs = ["prose_check.py"],
+    imports = [".."],
+    visibility = ["//factory/cli:__subpackages__"],
+    deps = ["//factory/cli/src/tbhbdev/alpha:pull_request"],
+)
+
+cli_py_library(
+    name = "runner",
+    srcs = ["runner.py"],
+    imports = [".."],
+    visibility = ["//factory/cli:__subpackages__"],
+)
+
+cli_py_library(
+    name = "secret",
+    srcs = ["secret.py"],
+    imports = [".."],
+    visibility = ["//factory/cli:__subpackages__"],
+    deps = [
+        ":runner",
+        ":secrets",
+    ],
+)
+
+cli_py_library(
+    name = "secrets",
+    srcs = ["secrets.py"],
+    imports = [".."],
+    visibility = ["//factory/cli:__subpackages__"],
+    deps = [
+        ":userconfig",
+        "//factory/cli/src/tbhbdev/alpha/agent:host_tools",
+        "//factory/cli/src/tbhbdev/alpha/agent:model",
+        "@cli_pip//cryptography",
+        "@cli_pip//httpx",
+        "@cli_pip//httpx2",
+        "@cli_pip//onepasswordconnectsdk",
+    ],
+)
+
+cli_py_library(
+    name = "telemetry",
+    srcs = ["telemetry.py"],
+    data = ["//factory/cli/src:distribution_metadata"],
+    imports = [".."],
+    visibility = ["//factory/cli:__subpackages__"],
+    deps = ["@cli_pip//tbhb_telemetry"],
+)
+
+cli_py_library(
+    name = "userconfig",
+    srcs = ["userconfig.py"],
+    imports = [".."],
+    visibility = ["//factory/cli:__subpackages__"],
+)
+
+cli_py_library(
+    name = "version",
+    srcs = ["version.py"],
+    data = ["//factory/cli/src:distribution_metadata"],
+    imports = [".."],
+    visibility = ["//factory/cli:__subpackages__"],
+)
+
+py_binary(
+    name = "tbhbdev_bin",
+    srcs = ["__main__.py"],
+    data = [":__init__"],
+    imports = [".."],
+    legacy_create_init = False,
+    main = "__main__.py",
+    visibility = ["//factory/cli:__subpackages__"],
+    deps = [":cli"],
+)
+
+cli_py_library(
+    name = "github_tls",
+    srcs = ["github_tls.py"],
+    imports = [".."],
+    visibility = ["//factory/cli:__subpackages__"],
+    deps = ["@cli_pip//certifi"],
+)

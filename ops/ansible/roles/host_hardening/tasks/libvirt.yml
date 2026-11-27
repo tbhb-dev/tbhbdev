@@ -1,0 +1,53 @@
+---
+- name: libvirt | Check the libvirt bridge names
+  ansible.builtin.assert:
+    that: item is regex('^[A-Za-z0-9_.-]+\\Z')
+    fail_msg: "Invalid bridge {{ item }} in host_hardening_libvirt_bridges."
+    quiet: true
+  loop: "{{ host_hardening_libvirt_bridges }}"
+
+- name: libvirt | Look for virsh
+  ansible.builtin.command:
+    cmd: virsh --version
+  register: host_hardening_virsh
+  changed_when: false
+  failed_when: false
+  check_mode: false
+
+- name: libvirt | Check every defined libvirt network
+  when: host_hardening_virsh.rc == 0
+  environment:
+    LC_ALL: C
+  block:
+    - name: libvirt | List all libvirt networks
+      ansible.builtin.command:
+        argv: [virsh, --connect=qemu:///system, net-list, --all, --name]
+      register: host_hardening_networks
+      changed_when: false
+      check_mode: false
+
+    - name: libvirt | Read each libvirt network's bridge
+      ansible.builtin.command:
+        argv: [virsh, --connect=qemu:///system, net-info, "{{ item }}"]
+      loop: "{{ host_hardening_networks.stdout_lines | reject('equalto', '') | list }}"
+      register: host_hardening_network_info
+      changed_when: false
+      check_mode: false
+
+    - name: libvirt | Require guest DNS and DHCP for every libvirt bridge
+      when: item.stdout_lines | select('match', '^Bridge:') | list | length > 0
+      vars:
+        host_hardening_network_bridge: >-
+          {{ item.stdout_lines | select('match', '^Bridge:') | first | split | last }}
+      ansible.builtin.assert:
+        that: >-
+          host_hardening_network_bridge in host_hardening_libvirt_bridges
+          or host_hardening_network_bridge == host_hardening_lab_bridge
+        fail_msg: >-
+          Libvirt bridge {{ host_hardening_network_bridge }} (network {{ item.item }}) is missing
+          from host_hardening_libvirt_bridges and does not match host_hardening_lab_bridge.
+          Update the bridge configuration before applying the host firewall.
+        quiet: true
+      loop: "{{ host_hardening_network_info.results }}"
+      loop_control:
+        label: "{{ item.item }}"

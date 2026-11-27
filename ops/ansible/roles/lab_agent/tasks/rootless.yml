@@ -1,0 +1,99 @@
+---
+- name: rootless | Enable lingering for the agent
+  ansible.builtin.command:
+    cmd: loginctl enable-linger agent
+    creates: /var/lib/systemd/linger/agent
+  when: lab_agent_manage_user_service
+
+- name: rootless | Start the agent's systemd instance
+  ansible.builtin.systemd_service:
+    name: user@{{ lab_agent_account.uid }}.service
+    state: started
+  when: lab_agent_manage_user_service
+
+- name: rootless | Configure Docker as the agent
+  become: true
+  become_user: agent
+  environment:
+    XDG_RUNTIME_DIR: /run/user/{{ lab_agent_account.uid }}
+  block:
+    - name: rootless | Create the agent's Docker directories
+      ansible.builtin.file:
+        path: /home/example-user/{{ item.path }}
+        state: directory
+        mode: "{{ item.mode }}"
+      loop:
+        - {path: .config, mode: "0700"}
+        - {path: .config/systemd, mode: "0755"}
+        - {path: .config/systemd/user, mode: "0755"}
+        - {path: .config/docker, mode: "0755"}
+
+    - name: rootless | Install the agent's Docker user unit
+      ansible.builtin.template:
+        src: docker.service.j2
+        dest: /home/example-user/.config/systemd/user/docker.service
+        mode: "0644"
+      register: lab_agent_rootless_unit
+
+    - name: rootless | Configure gVisor for the agent's Docker daemon
+      ansible.builtin.copy:
+        src: daemon.json
+        dest: /home/example-user/.config/docker/daemon.json
+        mode: "0644"
+      register: lab_agent_rootless_config
+
+    - name: rootless | Enable and start the agent's Docker daemon
+      ansible.builtin.systemd_service:
+        name: docker.service
+        scope: user
+        daemon_reload: "{{ lab_agent_rootless_unit is changed }}"
+        enabled: true
+        state: >-
+          {{ 'restarted' if (lab_agent_rootless_unit is changed or lab_agent_rootless_config is changed)
+            else 'started' }}
+      when:
+        - lab_agent_manage_user_service
+        - not (ansible_check_mode and lab_agent_rootless_unit is changed)
+
+- name: rootless | Look for the agent's rootless Docker context
+  become: true
+  become_user: agent
+  ansible.builtin.command:
+    cmd: docker context inspect rootless
+  register: lab_agent_docker_context
+  changed_when: false
+  failed_when: false
+  check_mode: false
+  when: lab_agent_manage_user_service
+
+- name: rootless | Create the agent's rootless Docker context
+  become: true
+  become_user: agent
+  ansible.builtin.command:
+    cmd: docker context create rootless --docker host=unix:///run/user/{{ lab_agent_account.uid }}/docker.sock
+  changed_when: true
+  when:
+    - lab_agent_manage_user_service
+    - lab_agent_docker_context.rc != 0
+
+- name: rootless | Look for the agent's current Docker context
+  become: true
+  become_user: agent
+  ansible.builtin.command:
+    cmd: docker context show
+  register: lab_agent_docker_current
+  changed_when: false
+  check_mode: false
+  when: lab_agent_manage_user_service
+
+# Without this the agent's client keeps aiming at the system socket, which the
+# agent can no longer open.
+- name: rootless | Point the agent's Docker client at its own daemon
+  become: true
+  become_user: agent
+  ansible.builtin.command:
+    cmd: docker context use rootless
+  changed_when: true
+  when:
+    - lab_agent_manage_user_service
+    - lab_agent_docker_current.stdout | trim != 'rootless'

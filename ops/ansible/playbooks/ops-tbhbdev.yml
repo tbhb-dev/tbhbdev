@@ -1,0 +1,9 @@
+---
+# tbhbdev for the ops account on the operator's Macs. Connects as ops
+# (group_vars/operator_macs.yml) and needs no sudo. Check first:
+#   mise run playbook -- playbooks/ops-tbhbdev.yml --check --diff
+- name: Install tbhbdev for ops on the operator's Macs
+  hosts: operator_macs
+  gather_facts: true
+  roles:
+    - ops_tbhbdev

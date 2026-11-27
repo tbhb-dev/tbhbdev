@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>dev.tbhb.reconverge.agent</string>
+    <key>UserName</key>
+    <string>{{ agent_reconverge_account | e }}</string>
+    <key>WorkingDirectory</key>
+    <string>{{ agent_reconverge_identity.home | e }}</string>
+    <key>ProgramArguments</key>
+    <array>
+        <string>/bin/bash</string>
+        <string>-c</string>
+        <string>exec "$HOME/{{ agent_reconverge_clone | e }}/tony/reconverge.sh" --account {{ agent_reconverge_account | e }}</string>
+    </array>
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>HOME</key>
+        <string>{{ agent_reconverge_identity.home | e }}</string>
+        <key>PATH</key>
+        <string>/Library/tbhb-python/bin:/opt/homebrew/bin:/usr/bin:/bin</string>
+    </dict>
+    <key>StartInterval</key>
+    <integer>{{ agent_reconverge_interval_seconds }}</integer>
+    <key>RunAtLoad</key>
+    <true/>
+</dict>
+</plist>

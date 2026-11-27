@@ -1,0 +1,8 @@
+---
+# Prerequisites: agent_account, uv, mise, git, gh and the tools checkout's
+# dependencies. No host discovery: --limit selects only inventory members.
+- name: Maintain agent workspaces
+  hosts: agent_hosts:!windows
+  gather_facts: true
+  roles:
+    - agent_workspace

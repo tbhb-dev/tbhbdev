@@ -4,18 +4,47 @@ import io
 import json
 import os
 import sys
+from typing import TYPE_CHECKING
+from unittest.mock import Mock
 
 import pytest
+from test_alpha_agent_settings import EXAMPLE
 
-from tbhbdev import alpha, cli
+import tbhbdev.alpha.monorepo.command as monorepo
+from tbhbdev import cli
 from tbhbdev.alpha import (
+    brief,
     close,
+    gh_app,
+    guard_agent_model,
+    guard_gh_config_dir,
+    guard_gh_poll,
     guard_gh_pr,
-    identity,
+    guard_op,
+    guard_ops_no_lazy_stop,
+    guard_scripts,
+    guard_sendmessage_clock,
+    guard_ssh_agent,
     install,
+    pr_stats,
+    pre_push_guard,
     pull_request,
+    repo_bootstrap,
+    review,
+    run_stop_hook,
     squash_merge,
+    verify_range,
+    version_check,
 )
+from tbhbdev.alpha import command as alpha
+from tbhbdev.alpha.agent import command as agent
+from tbhbdev.alpha.agent import precheck, run_host, settings, signing_parity, ssh_serve
+from tbhbdev.alpha.identity import dispatcher as identity
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
+    from pathlib import Path
+    from types import ModuleType
 
 USAGE = alpha.USAGE.format(prog="tbhbdev alpha")
 
@@ -74,6 +103,7 @@ def test_dispatch(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(identity, "run", run)
     monkeypatch.setattr(guard_gh_pr, "main", guard)
     monkeypatch.setattr(pull_request, "main", fake("pr", 5))
+    monkeypatch.setattr(pr_stats, "main", fake("pr-stats", 9))
     monkeypatch.setattr(squash_merge, "main", fake("merge", 6))
     monkeypatch.setattr(install, "main", fake("install", 7))
     monkeypatch.setattr(close, "main", fake("close", 8))
@@ -81,6 +111,7 @@ def test_dispatch(monkeypatch: pytest.MonkeyPatch) -> None:
     assert alpha.main(["guard-gh-pr", "x"], "p") == 4
     assert alpha.main(["pr", "check"], "p") == 5
     assert alpha.main(["pr", "delete-branch", "3"], "p") == 5
+    assert alpha.main(["pr-stats", "o/r"], "p") == 9
     assert alpha.main(["merge", "3"], "p") == 6
     assert alpha.main(["install", "--dry-run"], "p") == 7
     assert alpha.main(["pr", "close", "3", "--reason", "r"], "p") == 8
@@ -92,6 +123,7 @@ def test_dispatch(monkeypatch: pytest.MonkeyPatch) -> None:
         ("guard", None),
         ("pr", (["check"], "p pr")),
         ("pr", (["delete-branch", "3"], "p pr")),
+        ("pr-stats", (["o/r"], "p pr-stats")),
         ("merge", (["3"], "p merge")),
         ("install", (["--dry-run"], "p install")),
         ("close", (["pr", "close", "3", "--reason", "r"], "p pr")),
@@ -99,6 +131,53 @@ def test_dispatch(monkeypatch: pytest.MonkeyPatch) -> None:
         ("close", (["pr", "close", "3", "--comment", "c"], "p pr")),
         ("close", (["issue", "close", "3"], "p issue")),
     ]
+
+
+@pytest.mark.parametrize(
+    ("name", "module", "args", "style"),
+    [
+        ("agent", agent, ["status", "sample"], "direct"),
+        ("brief", brief, ["new", "demo"], "direct"),
+        ("gh-app", gh_app, ["--help"], "positional"),
+        ("guard-agent-model", guard_agent_model, [], "hook"),
+        ("guard-gh-config-dir", guard_gh_config_dir, [], "hook"),
+        ("guard-gh-poll", guard_gh_poll, [], "hook"),
+        ("guard-op", guard_op, [], "hook"),
+        ("guard-ops-no-lazy-stop", guard_ops_no_lazy_stop, [], "hook"),
+        ("guard-scripts", guard_scripts, [], "hook"),
+        ("guard-sendmessage-clock", guard_sendmessage_clock, [], "hook"),
+        ("guard-ssh-agent", guard_ssh_agent, [], "hook"),
+        ("monorepo", monorepo, ["-h"], "positional"),
+        ("pre-push-guard", pre_push_guard, ["origin", "url"], "direct"),
+        ("repo", repo_bootstrap, ["bootstrap", "o/r"], "keyword"),
+        ("review", review, ["check", "7"], "keyword"),
+        ("run-stop-hook", run_stop_hook, ["claude"], "direct"),
+        ("verify-range", verify_range, ["base", "tip"], "direct"),
+        ("version-check", version_check, ["--json"], "direct"),
+    ],
+)
+def test_command_wiring(
+    name: str,
+    module: ModuleType,
+    args: list[str],
+    style: str,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    assert f"\n  {name} " in USAGE
+    run = Mock(return_value=7)
+    if style == "direct":
+        assert alpha.COMMANDS[name] is vars(module)["main"]
+        monkeypatch.setitem(alpha.COMMANDS, name, run)
+    else:
+        monkeypatch.setattr(module, "main", run)
+    assert alpha.main([name, *args], "p") == 7
+    prog = f"p {name}"
+    if style == "hook":
+        run.assert_called_once_with()
+    elif style == "keyword":
+        run.assert_called_once_with(args, prog=prog)
+    else:
+        run.assert_called_once_with(args, prog)
 
 
 def test_guard_runs_from_the_top(
@@ -120,3 +199,157 @@ def test_harness_hooks_run_from_the_top_without_config(
     monkeypatch.setattr(sys, "stdin", io.StringIO(json.dumps({})))
     assert cli.main(["alpha", command]) == 0
     assert capsys.readouterr() == ("", "")
+
+
+@pytest.mark.parametrize(
+    ("verb", "module", "function", "args"),
+    [
+        ("precheck", precheck, "main", ["a", "--reference", "b"]),
+        ("run-host", run_host, "main", ["example", "--host", "example-linux"]),
+        ("ssh-serve", ssh_serve, "main", ["extra"]),
+        ("signing-fingerprint", signing_parity, "host_main", ["agent"]),
+    ],
+)
+def test_agent_host_command_wiring(
+    verb: str,
+    module: ModuleType,
+    function: str,
+    args: list[str],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    run = Mock(return_value=37)
+    monkeypatch.setattr(module, function, run)
+    assert agent.main([verb, *args], "example agent") == 37
+    run.assert_called_once_with(args, f"example agent {verb}")
+
+
+def test_agent_signing_parity_uses_coordinator_settings(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    loaded = Mock()
+    run = Mock(return_value=7)
+    monkeypatch.setattr(settings, "load", lambda: loaded)
+    monkeypatch.setattr(signing_parity, "main", run)
+    assert agent.main(["signing-parity"], "example agent") == 7
+    run.assert_called_once_with(loaded)
+
+
+@pytest.mark.parametrize(
+    "run",
+    [
+        lambda: agent.main([], "example agent"),
+        lambda: agent.main(["status", "sample"], "example agent"),
+    ],
+)
+def test_command_refuses_missing_configuration(
+    config_file: Path, capsys: pytest.CaptureFixture[str], run: Callable[[], int]
+) -> None:
+    assert run() == 1
+    out = capsys.readouterr()
+    assert out.out == ""
+    assert str(config_file) in out.err
+    assert "config cannot be read" in out.err
+
+
+def test_command_reports_a_config_error(
+    config_file: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    config_file.write_text('[agent]\nsockets_dir = "/x"\nzeta = 1\n')
+    assert agent.main(["status", "sample"], "example agent") == 1
+    assert capsys.readouterr() == (
+        "",
+        f"example agent: {config_file}: [agent] zeta not recognized\n",
+    )
+
+
+@pytest.mark.parametrize("field", ["audit_dir", "write_roots", "build_write"])
+@pytest.mark.parametrize("absolute", [False, True])
+def test_config_check_refuses_write_paths_under_socket_parents(
+    config_file: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    field: str,
+    absolute: bool,
+) -> None:
+    home = config_file.parent.parent / "agent"
+    monkeypatch.setenv("HOME", str(home))
+    write = ".local/state/tbhbdev/agent-audit"
+    configured = str(home / write) if absolute else write
+    text = (
+        EXAMPLE.replace(
+            'sockets_dir = "/example/sockets"',
+            'sockets_dir = ".local/state/tbhbdev/sockets"',
+        )
+        .replace(
+            'write_roots = [".cache", ".local/share/mise", ".local/state"]',
+            f'write_roots = ["{configured if field == "write_roots" else ".cache"}"]',
+        )
+        .replace(
+            'audit_dir = ".local/state/example-audit"',
+            f'audit_dir = "{configured if field == "audit_dir" else "audit"}"',
+        )
+        .replace(
+            'build_write = [".local/state/mise", ".local/share/mise"]',
+            f'build_write = ["{configured if field == "build_write" else ".cache"}"]',
+        )
+    )
+    config_file.write_text(text)
+
+    assert agent.main([], "example agent") == 1
+    assert capsys.readouterr() == (
+        "",
+        (
+            f"example agent: protected host path {home}/.local/state/tbhbdev "
+            f"overlaps write root {home / write}; narrow that write root\n"
+        ),
+    )
+
+
+@pytest.mark.parametrize("sockets", [".control/sockets", "/example/sockets"])
+def test_config_check_accepts_unrelated_write_paths(
+    config_file: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    sockets: str,
+) -> None:
+    monkeypatch.setenv("HOME", str(config_file.parent.parent / "agent"))
+    config_file.write_text(EXAMPLE.replace("/example/sockets", sockets))
+    assert agent.main([], "example agent") == 0
+    assert capsys.readouterr() == ("example agent: configuration valid\n", "")
+
+
+def test_config_check_refuses_write_paths_under_the_shell_config_directory(
+    config_file: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    home = config_file.parent.parent / "agent"
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.setenv("ZDOTDIR", ".shell-config")
+    config_file.write_text(
+        EXAMPLE.replace(
+            'audit_dir = ".local/state/example-audit"',
+            'audit_dir = ".shell-config/audit"',
+        )
+    )
+
+    assert agent.main([], "example agent") == 1
+    assert capsys.readouterr() == (
+        "",
+        (
+            f"example agent: protected host path {home}/.shell-config "
+            f"overlaps write root {home}/.shell-config/audit; narrow that write root\n"
+        ),
+    )
+
+
+@pytest.mark.parametrize(
+    ("argv", "rc"), [(["--help"], 0), (["exec", "x"], 2), (["-x"], 2)]
+)
+def test_command_options(
+    argv: list[str], capsys: pytest.CaptureFixture[str], rc: int
+) -> None:
+    assert agent.main(argv, "example agent") == rc
+    out = capsys.readouterr()
+    assert "usage: example agent" in out.out + out.err
+    assert "run-host" not in out.out

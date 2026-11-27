@@ -1,0 +1,47 @@
+---
+- name: build | Build both workspace wheels on the controller
+  run_once: true
+  delegate_to: localhost
+  become: false
+  check_mode: false
+  block:
+    - name: build | Build the workspace wheels
+      ansible.builtin.command:
+        argv:
+          - uv
+          - build
+          - --all-packages
+          - --wheel
+          - --out-dir
+          - "{{ tbhbops_tool_source.path }}/dist"
+        chdir: "{{ tbhbops_tool_source.path }}"
+      changed_when: false
+
+    - name: build | Find the library wheel
+      ansible.builtin.find:
+        paths: "{{ tbhbops_tool_source.path }}/dist"
+        patterns: tbhbops-*.whl
+      register: tbhbops_tool_library_wheels
+
+    - name: build | Find the CLI wheel
+      ansible.builtin.find:
+        paths: "{{ tbhbops_tool_source.path }}/dist"
+        patterns: tbhbops_cli-*.whl
+      register: tbhbops_tool_cli_wheels
+
+    - name: build | Require both wheels
+      ansible.builtin.assert:
+        that:
+          - tbhbops_tool_library_wheels.matched == 1
+          - tbhbops_tool_cli_wheels.matched == 1
+        fail_msg: uv build must produce exactly one tbhbops wheel and one tbhbops-cli wheel
+        quiet: true
+
+    - name: build | Hash both wheels on the controller
+      ansible.builtin.stat:
+        path: "{{ item }}"
+        checksum_algorithm: sha256
+      loop:
+        - "{{ tbhbops_tool_library_wheels.files[0].path }}"
+        - "{{ tbhbops_tool_cli_wheels.files[0].path }}"
+      register: tbhbops_tool_wheel_digests

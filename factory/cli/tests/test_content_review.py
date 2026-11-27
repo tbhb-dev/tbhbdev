@@ -2,6 +2,7 @@ import subprocess
 from pathlib import Path
 
 import pytest
+from cue_fixtures import review_cue as review_cue  # noqa: PLC0414
 
 from tbhbdev import content, cue_runtime
 
@@ -9,7 +10,10 @@ pytestmark = pytest.mark.usefixtures("review_cue")  # noqa: V107
 
 SUMMARY = "## Summary\n\nThe cache preserves the last saved value.\n"
 VERIFICATION = "\n## Verification\n\n- Read the cache implementation.\n"
-FINDING = "- F1: P1 correctness The cache returns stale values.\n"
+FINDING = (
+    "- F1: P1 correctness The cache returns stale values. "
+    "Occurs when: a caller saves a record.\n"
+)
 DEBT = "- F1: P2 design Rename the fixture. It also serves the CLI.\n"
 
 
@@ -57,7 +61,9 @@ def test_summary_counts_words_instead_of_characters() -> None:
     [
         "A " + "a " * 39 + "day.",
         "The tests passed. The cache stays warm. Retries are safe.",
-        'Retries are safe. The handler reports "Saved." The cache keeps the result.',
+        "The driver validates the request. `pytest` passed. The host posts the review.",
+        "The driver validates the request. retries passed. The host posts the review.",
+        "The driver validates the request. 3 tests passed. The host posts the review.",
         "é" * 4097,
     ],
 )
@@ -70,14 +76,33 @@ def test_summary_refuses_excess_words_sentences_or_size(summary: str) -> None:
 @pytest.mark.parametrize(
     "summary",
     [
+        "Go-based fixtures cover the parser",
+        "Go, Python, and Rust use the same fixture.",
+        "Block the build when the request is invalid.",
+        'The parser accepts "Retry?" as a label. Tests cover it.',
+        "The parser accepts `Retry?` as a label. Tests cover it.",
+        "The parser preserves `Retry? yes` as a single string. Tests cover it.",
+        "The parser preserves “Retry? yes” as a single string. Tests cover it.",
+        (
+            "The parser preserves \u2018Retry? yes\u2019 as a single string. "
+            "Tests cover it."
+        ),
+        (
+            "The parser preserves \u2018Don\u2019t retry? yes\u2019 as a string. "
+            "Tests cover it."
+        ),
         "The handler returns the `APPROVE` enum.",
         "The handler checks each result, e.g. a stale value. Retries preserve it.",
         "The handler checks labels, e.g. Ready or Saved. Retries preserve them.",
         'The handler reports "Saved." The cache keeps the result.',
+        'Retries are safe. The handler reports "Saved." The cache keeps the result.',
         "Dr. Lee inspected the cache. It keeps the result.",
+        "Dr. Lee tested warm vs. cold caches. `pytest` passed.",
         "The handler recognizes `VERDICT: GO`.",
         "Decision: approve the change after the cache check.",
+        "Verdict: Hold. The driver skips validation.",
         "The handler returns HOLD while the cache warms.",
+        "The cache is warm. HOLD applies to stale requests.",
     ],
 )
 def test_summary_accepts_prose_without_interpreting_it(summary: str) -> None:
@@ -110,6 +135,36 @@ def test_summary_rejects_bare_and_prefixed_verdicts(
     ]
 
 
+@pytest.mark.parametrize(
+    "summary",
+    [
+        "GO. The driver validates the request.",
+        "NO-GO: The cache returns a stale value.",
+        "NO-GO because the cache returns a stale value.",
+        "Decision: APPROVE. The driver validates the request.",
+        "vErDiCt: HOLD until the cache is warm.",
+    ],
+)
+def test_summary_rejects_leading_verdict_with_reasons(summary: str) -> None:
+    assert content.check_review(body_with("Summary", summary)) == [
+        "Remove the standalone verdict line from Summary"
+    ]
+
+
+@pytest.mark.parametrize(
+    "summary",
+    [
+        "The driver validates the request.\nRun: review-build",
+        "**Provider:** codex",
+        "The driver checked the judged head.",
+        "The driver checked commit a123456.",
+        f"The driver checked `{'a' * 40}`.",
+    ],
+)
+def test_summary_rejects_review_stamps(summary: str) -> None:
+    assert content.check_review(body_with("Summary", summary))
+
+
 @pytest.mark.parametrize("verdict", ["GO", "BLOCK"])
 def test_review_refuses_standalone_verdict_line(verdict: str) -> None:
     assert content.check_review(
@@ -122,8 +177,18 @@ def test_review_refuses_standalone_verdict_line(verdict: str) -> None:
 
 @pytest.mark.parametrize("evidence", ["src/app.py:4", "`src/app.py:4`"])
 def test_review_accepts_path_line_evidence(evidence: str) -> None:
-    body = body_with("Findings", f"- F1: P1 correctness Fix the cache at {evidence}.")
+    body = body_with(
+        "Findings",
+        f"- F1: P1 correctness {evidence} returns stale values. "
+        "Occurs when: a caller saves a record.",
+    )
     assert not content.check_review(body, event="REQUEST_CHANGES")
+
+
+@pytest.mark.parametrize("clause", ["", " Occurs when:", " Occurs when: ."])
+def test_p1_requires_a_nonempty_occurs_when_clause(clause: str) -> None:
+    body = body_with("Findings", f"- F1: P1 correctness The cache is stale.{clause}")
+    assert "Occurs when:" in content.check_review(body, event="REQUEST_CHANGES")[0]
 
 
 @pytest.mark.parametrize(

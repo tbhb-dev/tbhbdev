@@ -4,11 +4,8 @@
 stub plugins in their place. `config_file` is the user config in a temporary
 XDG_CONFIG_HOME, which no test has until it writes one, and `config` writes
 one of example values there. `connect` starts in-memory 1Password Connect APIs
-on 127.0.0.1, and `stubs` makes PATH hold only stub op, ssh, sudo, security,
-tailscale, dscl, chmod, git and friends (see stubtool.py), and
-the system tools the host scripts use, with HOME in tmp_path. `plain` turns
-argparse color off for the tests that compare help and usage exactly. No test
-reaches 1Password, a keychain, the tailnet, a host, an account or an ACL.
+on 127.0.0.1. `plain` turns argparse color off for tests that compare help
+and usage exactly.
 """
 
 from __future__ import annotations
@@ -16,7 +13,6 @@ from __future__ import annotations
 import inspect
 import json
 import os
-import shlex
 import shutil
 import sys
 import threading
@@ -28,8 +24,7 @@ from typing import TYPE_CHECKING, cast, override
 import pytest
 from fake_tool import pr_git_baseline as pr_git_baseline  # noqa: PLC0414
 
-from tbhbdev import cue_runtime, host, plugins, secrets
-from tbhbdev.alpha.agent import credentials, host_tools, launcher, runfiles
+from tbhbdev import plugins
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Iterator
@@ -38,61 +33,38 @@ if TYPE_CHECKING:
 
 type Json = dict[str, object]
 
-STUBTOOL = Path(__file__).resolve().parent / "stubtool.py"
-STUB_TOOLS = (
-    "chmod",
-    "dscl",
-    "getent",
-    "getfacl",
-    "gh",
-    "git",
-    "groupadd",
-    "id",
-    "install",
-    "ls",
-    "mise",
-    "op",
-    "security",
-    "setfacl",
-    "ssh",
-    "sudo",
-    "swift",
-    "tailscale",
-    "useradd",
-    "usermod",
-)
-# The system tools the host scripts, the stubs and the exec tests run, linked
-# beside the stubs so PATH holds nothing else, and no real tailscale, op or
-# ssh can run. The chmod stub runs the real chmod for a plain mode change.
-SYSTEM_TOOLS = (
-    "cat",
-    "cmp",
-    "echo",
-    "find",
-    "mkdir",
-    "mktemp",
-    "mv",
-    "rm",
-    "sh",
-    "stat",
-    "true",
-)
+
+@pytest.fixture
+def pr_checkout(
+    pr_git_baseline: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> Path:
+    """A checkout seeded with a commit and the origin's tracking refs."""
+    root = tmp_path / "repo"
+    shutil.copytree(pr_git_baseline, root / ".git")
+    monkeypatch.chdir(root)
+    for role in ("AUTHOR", "COMMITTER"):
+        monkeypatch.setenv(f"GIT_{role}_NAME", "Example")
+        monkeypatch.setenv(f"GIT_{role}_EMAIL", "example@example.test")
+    return root
+
+
 # The fake Connect API's own token, which reaches every vault.
 TOKEN = "fake-test-token"  # noqa: S105
 
 
-# Capture the account before any fixture redirects HOME to its scratch home.
-ACCOUNT_CODEX_HOME = Path.home() / ".codex"
-ACCOUNT_AUTH_WRITERS = frozenset(
-    (credentials.auth_copy.__code__, credentials.auth_write_back.__code__)
-)
+# Guarded Bazel targets redirect HOME before this module is imported.
+_account_home = os.environ.get("CLI_TEST_ACCOUNT_HOME")
+ACCOUNT_CODEX_HOME = (Path(_account_home) if _account_home else Path.home()) / ".codex"
 type FilePath = str | bytes | os.PathLike[str] | os.PathLike[bytes]
 
 
 def account_auth_write() -> bool:
     frame = inspect.currentframe()
     while frame is not None:
-        if frame.f_code in ACCOUNT_AUTH_WRITERS:
+        if (
+            frame.f_globals.get("__name__") == "tbhbdev.alpha.agent.credentials"
+            and frame.f_code.co_name in {"auth_copy", "auth_write_back"}
+        ):
             return True
         frame = frame.f_back
     return False
@@ -123,7 +95,10 @@ def launching_session(monkeypatch: pytest.MonkeyPatch) -> None:
     def session(*_: object) -> tuple[str, str]:
         return "tools", "session-1"
 
-    monkeypatch.setattr(launcher, "session", session)
+    # The driver imports launcher when the test module loads.
+    launcher = sys.modules.get("tbhbdev.alpha.agent.launcher")
+    if launcher is not None:
+        monkeypatch.setattr(launcher, "session", session)
 
 
 @pytest.fixture(autouse=True)
@@ -474,82 +449,6 @@ def config(config_file: Path) -> Callable[[list[str] | None], None]:
     return supply
 
 
-@dataclass
-class Stubs:
-    """The stub executables' directory, scenario state and call log."""
-
-    dir: Path
-    bin: Path
-
-    def state(self) -> Json:
-        path = self.dir / "state.json"
-        return cast("Json", json.loads(path.read_text())) if path.exists() else {}
-
-    def set(self, **values: object) -> None:
-        state = self.state()
-        state.update(values)
-        (self.dir / "state.json").write_text(json.dumps(state))
-
-    def calls(self, tool: str | None = None) -> list[Json]:
-        path = self.dir / "calls.jsonl"
-        if not path.exists():
-            return []
-        entries = [
-            cast("Json", json.loads(line)) for line in path.read_text().splitlines()
-        ]
-        return [e for e in entries if tool is None or e["tool"] == tool]
-
-    def argvs(self, tool: str) -> list[list[str]]:
-        return [cast("list[str]", e["argv"]) for e in self.calls(tool)]
-
-    def home(self, host: str = "local") -> Path:
-        return self.dir / "homes" / host / "agent"
-
-
-def write_stub(launcher: Path, tool: str) -> None:
-    """Write an executable that runs stubtool.main(tool, argv) under -I.
-
-    The launcher is a /bin/sh script that execs the interpreter, because
-    Linux refuses a script whose first line passes 256 bytes, and a
-    `#!{sys.executable}` line does in a deep sandbox.
-    """
-    code = (
-        "import sys\n"
-        f"sys.path.insert(0, {str(STUBTOOL.parent)!r})\n"
-        "import stubtool\n"
-        f"stubtool.main({tool!r}, sys.argv[1:])\n"
-    )
-    launcher.write_text(
-        "#!/bin/sh\n"
-        f'exec {shlex.quote(sys.executable)} -I -c {shlex.quote(code)} "$@"\n'
-    )
-    launcher.chmod(0o755)
-
-
-@pytest.fixture
-def stubs(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Stubs:
-    """Stub tools alone on PATH, HOME in tmp_path, and no token override."""
-    stub_dir = tmp_path / "stub"
-    bin_dir = stub_dir / "bin"
-    bin_dir.mkdir(parents=True)
-    for tool in STUB_TOOLS:
-        write_stub(bin_dir / tool, tool)
-    for tool in SYSTEM_TOOLS:
-        found = shutil.which(tool, path=f"/usr/bin{os.pathsep}/bin")
-        assert found is not None, tool
-        (bin_dir / tool).symlink_to(found)
-    home = tmp_path / "home"
-    home.mkdir()
-    monkeypatch.setenv("PATH", str(bin_dir))
-    monkeypatch.setattr(host_tools, "search", lambda: str(bin_dir))
-    # Without a tailscale on PATH, host falls back to the app bundle.
-    monkeypatch.setattr(host, "TAILSCALE_APP", str(stub_dir / "no-tailscale-app"))
-    monkeypatch.setenv("HOME", str(home))
-    monkeypatch.setenv("STUB_DIR", str(stub_dir))
-    monkeypatch.delenv(secrets.TEST_TOKEN_ENV, raising=False)
-    return Stubs(stub_dir, bin_dir)
-
-
 @pytest.fixture
 def isolated_agent_home(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """Keep host protocol tests inside one temporary account and repository."""
@@ -566,18 +465,6 @@ def isolated_agent_home(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None
         monkeypatch.delenv(key, raising=False)
 
 
-@pytest.fixture
-def agent_suffix_case(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Check run-file spelling on case-insensitive filesystems too."""
-    original = runfiles.RunFiles.path
-
-    def path(files: runfiles.RunFiles, suffix: str) -> Path:
-        assert suffix == suffix.lower()
-        return original(files, suffix)
-
-    monkeypatch.setattr(runfiles.RunFiles, "path", path)
-
-
 SAFE_ENVIRONMENT: dict[str, object] = {
     "reviewers": [{"type": "User", "id": 1}],
     "can_admins_bypass": False,
@@ -587,12 +474,3 @@ SAFE_ENVIRONMENT: dict[str, object] = {
         "custom_branch_policies": False,
     },
 }
-
-
-_REVIEW_CUE = Path(shutil.which("cue") or cue_runtime.binary_path())
-
-
-@pytest.fixture
-def review_cue(monkeypatch: pytest.MonkeyPatch) -> None:
-    # Bazel supplies the pinned tool on PATH in its test sandbox.
-    monkeypatch.setattr(cue_runtime, "resolve", lambda: _REVIEW_CUE)

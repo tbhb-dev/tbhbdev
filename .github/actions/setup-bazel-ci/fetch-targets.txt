@@ -7,6 +7,7 @@
 @tbhb_rules//lint:pr_merge_base
 @tbhb_rules//lint:repo_checks
 @tbhb_rules//lint:trailing_newline
+@tbhb_rules//lint:lint_baselines
 @tbhb_rules//lint:codeowners_errors
 @tbhb_rules_go//tools:go_sdk_checksums
 @tbhb_rules//lint:job_timeouts

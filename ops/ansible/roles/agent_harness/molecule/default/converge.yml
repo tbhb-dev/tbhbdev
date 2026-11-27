@@ -1,0 +1,9 @@
+---
+- name: Converge
+  hosts: all
+  vars:
+    agent_harness_accounts: >-
+      {{ (lookup('ansible.builtin.file', playbook_dir + '/../../../../inventory/group_vars/lab.yml')
+      | from_yaml).agent_harness_accounts }}
+  roles:
+    - agent_harness

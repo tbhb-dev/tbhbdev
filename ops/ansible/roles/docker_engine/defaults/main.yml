@@ -1,0 +1,9 @@
+---
+# The data root is an ext4 file system on a logical volume of this size in
+# this volume group, mounted at docker_engine_data_root. The role creates
+# the volume once and never resizes it. An empty size means no logical
+# volume, and the data root stays on the root file system.
+docker_engine_data_vg: ubuntu-vg
+docker_engine_data_lv: docker
+docker_engine_data_size: 500G
+docker_engine_data_root: /var/lib/docker

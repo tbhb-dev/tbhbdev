@@ -7,9 +7,11 @@ from typing import TYPE_CHECKING
 from unittest.mock import Mock
 
 import pytest
+from cue_fixtures import review_cue as review_cue  # noqa: PLC0414
 
 from tbhbdev.alpha import review as cli
 from tbhbdev.alpha import review_doc as review
+from tbhbdev.alpha.pull_request import lint as lint_review_prose
 from tbhbdev.alpha.review_doc import Existing, Marker, ReviewDoc
 
 if TYPE_CHECKING:
@@ -23,7 +25,7 @@ A warm cache can return a stale value.
 
 ## Findings
 
-- F1: P1 correctness Return the saved value.
+- F1: P1 correctness The cache goes stale. Occurs when: a caller saves a new value.
 
 ## Verification
 
@@ -229,6 +231,80 @@ def test_post_and_cli_send_the_verdict_as_event(  # noqa: PLR0913, PLR0917
     assert api.calls == [("GET", "user", None), *calls]
     output = "posted\n" if expected is None else f"posted {expected}\n"
     assert capsys.readouterr() == (output, "")
+
+
+@pytest.mark.usefixtures("review_cue")
+@pytest.mark.parametrize(
+    ("doc", "state"), [(GO, "APPROVED"), (DOC, "CHANGES_REQUESTED")]
+)
+def test_cli_can_retry_and_dismiss_a_posted_decision(
+    doc: ReviewDoc,
+    state: str,
+    draft: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    draft.write_text(PREAMBLE.replace("NO-GO", doc.verdict) + doc.body)
+    args = ["post", "384", "--author", EXISTING.author]
+    api = FakeApi(LIVE, [], {"id": 942})
+    monkeypatch.setattr(cli, "GhApi", lambda: api)
+    assert cli.main(args, "review") == 0
+    assert capsys.readouterr() == ("posted 942\n", "")
+    payload = api.calls[-1][2]
+    assert payload is not None
+    row = ROW | {"state": state, "body": payload["body"]}
+    api = FakeApi(LIVE, [row], row, {})
+    assert cli.main(args, "review") == 0
+    assert capsys.readouterr() == ("exists 942\n", "")
+    assert cli.main(["dismiss", "384", "942", "--reason", "stale"], "review") == 0
+    assert capsys.readouterr() == ("superseded 942\n", "")
+    path = f"{REVIEWS}/942"
+    assert api.calls == [
+        ("GET", PULL, None),
+        ("GET", PAGE + "1", None),
+        ("GET", path, None),
+        ("PUT", path, {"body": f"SUPERSEDED: stale\n{payload['body']}"}),
+    ]
+
+
+@pytest.mark.usefixtures("review_cue")
+def test_cli_posts_a_checked_document_without_vale_config(
+    draft: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(cli.pr, "root", lambda: draft.parent)
+    monkeypatch.setattr(cli.pr, "lint", lint_review_prose)
+    api = FakeApi(LIVE, [], {"id": 16})
+    monkeypatch.setattr(cli, "GhApi", lambda: api)
+    draft.write_text(PREAMBLE + BODY)
+    assert cli.main(["check", "384", "--no-lint"], "review") == 0
+    assert cli.main(["post", "384", "--author", EXISTING.author], "review") == 0
+    assert api.calls[-1][:2] == ("POST", REVIEWS)
+
+
+def test_lint_post_reports_vale_execution_failure(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    (tmp_path / review.pr.VALE_INI).touch()
+    monkeypatch.setattr(review.pr, "root", lambda: tmp_path)
+    monkeypatch.setattr(
+        review.pr, "lint", Mock(side_effect=SystemExit("vale not found"))
+    )
+
+    assert review.lint_post(BODY) == ["Vale could not run: vale not found"]
+
+
+@pytest.mark.usefixtures("review_cue")
+def test_cli_refuses_an_invalid_rendered_review(
+    draft: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    draft.write_text(PREAMBLE + BODY)
+    monkeypatch.setattr(cli.pr, "posting_value", Mock(return_value=f"{IDENTITY} text"))
+    api = FakeApi(LIVE, [], {"id": 16})
+    monkeypatch.setattr(cli, "GhApi", lambda: api)
+    assert cli.main(["check", "384", "--no-lint"], "review") == 0
+    assert cli.main(["post", "384", "--author", EXISTING.author], "review") == 1
+    assert "Write Verification" in capsys.readouterr().err
+    assert api.calls == [("GET", PULL, None), ("GET", PAGE + "1", None)]
 
 
 @pytest.mark.usefixtures("review_cue")
@@ -454,13 +530,13 @@ def test_dismiss_refuses_invalid_reason(reason: str) -> None:
     "changes",
     [
         {"body": ""},
-        {"state": "APPROVED"},
+        {"state": "PENDING"},
         {"body": MARKER.replace("pr=384", "pr=383")},
     ],
 )
 def test_dismiss_refuses_wrong_review(changes: dict[str, str]) -> None:
     api = FakeApi(ROW | changes)
-    with pytest.raises(review.ReviewError, match="expected a COMMENT review"):
+    with pytest.raises(review.ReviewError, match="expected a submitted review"):
         review.dismiss(api, REPO, DOC.pr, 942, "stale")
     assert api.calls == [("GET", f"{REVIEWS}/942", None)]
 
@@ -481,7 +557,7 @@ def test_dismiss_cli_and_idempotence(
     get = ("GET", f"{REVIEWS}/942", None)
     assert api.calls == [get, ("PUT", f"{REVIEWS}/942", {"body": body}), get, get]
     assert cli.main(args, "review") == 1
-    assert capsys.readouterr().err.startswith("review 942: expected a COMMENT review")
+    assert capsys.readouterr().err.startswith("review 942: expected a submitted review")
 
 
 def test_reply_cli(

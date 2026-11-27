@@ -1,0 +1,55 @@
+---
+argument_specs:
+  main:
+    short_description: Keep the WSL guest running and schedule Windows updates
+    options:
+      windows_update_policy_updates:
+        type: dict
+        description: DWORD values under the WindowsUpdate policy key.
+        options:
+          DeferQualityUpdates:
+            type: int
+            required: true
+            choices: [0, 1]
+            description: Enable quality update deferral.
+          DeferQualityUpdatesPeriodInDays:
+            type: int
+            required: true
+            description: Number of days to defer quality updates, from 0 to 30.
+          DeferFeatureUpdates:
+            type: int
+            required: true
+            choices: [0, 1]
+            description: Enable feature update deferral.
+          DeferFeatureUpdatesPeriodInDays:
+            type: int
+            required: true
+            description: Number of days to defer feature updates, from 0 to 365.
+      windows_update_policy_automatic_updates:
+        type: dict
+        description: DWORD values under the WindowsUpdate policy's AU key.
+        options:
+          NoAutoUpdate:
+            type: int
+            required: true
+            choices: [0, 1]
+            description: Disable automatic updates when set to 1.
+          AUOptions:
+            type: int
+            required: true
+            choices: [2, 3, 4, 5]
+            description: Automatic update mode, with 4 selecting scheduled installation.
+          ScheduledInstallDay:
+            type: int
+            required: true
+            choices: [0, 1, 2, 3, 4, 5, 6, 7]
+            description: Installation day, with 0 meaning daily and 1 meaning Sunday.
+          ScheduledInstallTime:
+            type: int
+            required: true
+            description: Installation hour in local time, from 0 to 23.
+          NoAutoRebootWithLoggedOnUsers:
+            type: int
+            required: true
+            choices: [0, 1]
+            description: Prevent scheduled automatic restarts while users are logged on.

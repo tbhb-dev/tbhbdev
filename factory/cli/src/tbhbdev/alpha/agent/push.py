@@ -1,28 +1,23 @@
-"""Record build commits and push updates to branches named by --start-ref."""
+"""Run the harness and record local build commits."""
 
 from __future__ import annotations
 
-import os
 import re
 import subprocess  # nosec B404
 import tempfile
-import threading
-from contextlib import ExitStack, contextmanager, suppress
+from contextlib import contextmanager, suppress
 from pathlib import Path
 from typing import TYPE_CHECKING
 
 from tbhbdev.alpha.agent import host_tools, runfiles
-from tbhbdev.alpha.agent.decisions import repo
-from tbhbdev.alpha.agent.model import Invalid, Profile
+from tbhbdev.alpha.agent.model import Profile
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Generator
+    from contextlib import ExitStack
 
-    from tbhbdev.alpha.agent.credentials import PushTokenFailure
     from tbhbdev.alpha.agent.run_host import Prepared, Run
 
-# A remote rejection is on a later stderr line than the URL, so keep all of it.
-PUSH_ERROR_LIMIT = 4000
 HISTORY_TIMEOUT = 30
 
 
@@ -30,256 +25,51 @@ class PublicationRefusedError(ValueError):
     """The run has new history that cannot be recorded as its head."""
 
 
-def url(repository: str) -> str:
-    host, owner, name = repo.parts(repository)
-    if host != "github.com":
-        message = "push requires github.com"
-        raise ValueError(message)
-    return f"https://{host}/{owner}/{name}.git"
-
-
-def helper(fd: int) -> str:
-    return (
-        '!f() { [ "$1" = get ] || exit 1; protocol=; host=; '
-        'while IFS= read -r line && [ -n "$line" ]; do case "$line" in '
-        "protocol=https) protocol=yes ;; host=github.com) host=yes ;; esac; done; "
-        '[ "$protocol:$host" = yes:yes ] || exit 1; '
-        f"IFS= read -r token < /dev/fd/{fd} || exit 1; "
-        'printf "username=x-access-token\\npassword=%s\\n\\n" "$token"; }; f'
-    )
-
-
-def feed(fd: int, token: str) -> None:
-    try:
-        with os.fdopen(fd, "w") as stream:
-            stream.write(token + "\n")
-    except BrokenPipeError:
-        pass
-
-
-def send(workspace: Path, target: str, branch: str, token: str) -> tuple[int, str]:
-    status, _, error = git_with_token(
-        workspace, token, "push", "--", target, f"HEAD:refs/heads/{branch}"
-    )
-    return status, error
-
-
-def git_with_token(
-    workspace: Path, token: str, *args: str, capture_output: bool = False
-) -> tuple[int, str, str]:
-    with ExitStack() as stack:
-        read_fd, write_fd = os.pipe()
-        pipe = stack.enter_context(os.fdopen(read_fd))
-        writer = threading.Thread(target=feed, args=(write_fd, token))
-        command = [
-            host_tools.resolve("git"),
-            "-c",
-            "credential.helper=",
-            "-c",
-            f"credential.helper={helper(read_fd)}",
-            "-c",
-            "credential.useHttpPath=false",
-            "-c",
-            "core.hooksPath=/dev/null",
-            "-c",
-            "core.askPass=",
-            "-c",
-            "core.fsmonitor=false",
-            "-C",
-            str(workspace),
-            *args,
-        ]
-        env = {
-            "HOME": str(workspace),
-            "XDG_CONFIG_HOME": str(workspace),
-            "XDG_STATE_HOME": str(workspace),
-            "XDG_CACHE_HOME": str(workspace),
-            "XDG_DATA_HOME": str(workspace),
-            "PATH": host_tools.search(),
-            "GIT_TERMINAL_PROMPT": "0",
-            "GIT_CONFIG_NOSYSTEM": "1",
-            "GIT_CONFIG_GLOBAL": "/dev/null",
-            "GIT_ASKPASS": "/bin/false",
-        }
-        try:
-            child = stack.enter_context(
-                subprocess.Popen(  # nosec B603
-                    command,
-                    env=env,
-                    cwd=workspace,
-                    pass_fds=(pipe.fileno(),),
-                    stdin=subprocess.DEVNULL,
-                    stdout=subprocess.PIPE if capture_output else subprocess.DEVNULL,
-                    stderr=subprocess.PIPE,
-                    text=True,
-                    errors="replace",
-                )
-            )
-        except BaseException:
-            os.close(write_fd)
-            raise
-        pipe.close()
-        writer.start()
-        output, error = child.communicate()
-        writer.join()
-    return child.returncode, output or "", error
-
-
 def run(
     run: Run,
     prepared: Prepared,
     stack: ExitStack,
     harness: Callable[[Run, Prepared, ExitStack], int],
-    token: str | PushTokenFailure | None,
 ) -> int:
     if run.request.profile is not Profile.BUILD:
         return harness(run, prepared, stack)
     workspace = Path(prepared.paths.worktree)
-    branch = f"agent/{run.files.name}"
-    reference = f"refs/heads/{branch}"
+    reference = f"refs/heads/agent/{run.files.name}"
     before, _ = local_refs(workspace)
-    base = before.get(reference)
-    start = start_ref_target(run, base)
+    run.files.write("base", before[reference])
+    if (start_ref := run.request.start_ref) is not None:
+        run.files.write("log", f"start ref: {start_ref} at {before[reference]}\n")
+
     rc = harness(run, prepared, stack)
     if run.files.uncertain:
         return rc
-    if rc:
-        with suppress(OSError, ValueError):
-            commit = head(workspace, branch)
-            if commit is not None and commit != base:
-                run.files.write("head", commit)
-                if start is not None:
-                    run.files.write("log", f"push skipped: harness exited {rc}\n")
-        return rc
     try:
-        if start is not None:
-            return publish_start_ref(run, workspace, before, token, start)
         after, checkout = local_refs(workspace)
-        found = new_commits(run, workspace, before, after, checkout)
+        if rc:
+            tip = recovery_tip(reference, before, after)
+        else:
+            found = new_commits(run, workspace, before, after, checkout)
+            tip = found[0][1] if found else None
+        if tip is not None:
+            run.files.write("head", tip)
     except PublicationRefusedError as exc:
         run.files.write("log", f"commit check failed: {exc}\n")
+        return 4
     except (OSError, ValueError, subprocess.SubprocessError) as exc:
+        if rc:
+            return rc
         run.files.write(
             "log",
             f"commit check failed: cannot check new commits ({type(exc).__name__})\n",
         )
-    else:
-        if found:
-            run.files.write("head", found[0][1])
-        return 0
-    return 4
-
-
-def start_ref_target(run: Run, base: str | None) -> tuple[str, str] | None:
-    ref = run.request.start_ref
-    if ref is None:
-        return None
-    if base is None:
-        message = f"missing fetched starting commit for {ref}"
-        raise Invalid(message)
-    run.files.write("log", f"start ref: {ref} at {base}\n")
-    return ref, base
-
-
-def publish_start_ref(
-    run: Run,
-    workspace: Path,
-    before: dict[str, str],
-    token: str | PushTokenFailure | None,
-    start: tuple[str, str],
-) -> int:
-    branch = f"agent/{run.files.name}"
-    reference = f"refs/heads/{branch}"
-    after, _ = local_refs(workspace)
-    after.pop("HEAD", None)
-    commit = after.pop(reference, None)
-    if commit is not None:
-        if isinstance(token, str) and head(workspace, branch) is None:
-            after[reference] = commit
-        else:
-            after = {reference: commit, **after}
-    change = first_change(run, workspace, before, after)
-    return (
-        0 if change is None else push_start_branch(run, workspace, change, token, start)
-    )
-
-
-def check_not_moved(
-    directory: Path, target: str, ref: str, base: str, token: str
-) -> None:
-    status, listing, _ = git_with_token(
-        directory, token, "-c", "http.followRedirects=false",
-        "ls-remote", "--symref", "--exit-code", "--", target, "HEAD", ref,
-        capture_output=True,
-    )  # fmt: skip
-    if status:
-        message = f"cannot read remote tip of {ref}"
-        raise Invalid(message)
-    records = {
-        name: value
-        for value, _, name in (line.partition("\t") for line in listing.splitlines())
-    }
-    # HEAD can appear twice, once as a symref and once as a commit.
-    default = re.search(r"^ref: (refs/heads/[^\s]+)\tHEAD$", listing, re.MULTILINE)
-    if default is None or default[1] == ref:
-        message = f"cannot verify {ref} is a non-default branch"
-        raise Invalid(message)
-    if records.get(ref) != base:
-        message = f"remote branch {ref} moved from {base} or no longer exists"
-        raise Invalid(message)
-
-
-def push_start_branch(
-    run: Run,
-    workspace: Path,
-    change: tuple[str, str],
-    token: str | PushTokenFailure | None,
-    start: tuple[str, str],
-) -> int:
-    ref, base = start
-    name, commit = change
-    run_branch = f"agent/{run.files.name}"
-    if name == f"refs/heads/{run_branch}":
-        run.files.write("head", commit)
-    if not isinstance(token, str):
-        reason = token.reason if token is not None else "unavailable"
-        run.files.write(
-            "log", f"push failed: no push token ({reason}) for commit {commit}\n"
-        )
         return 4
-    try:
-        if name != f"refs/heads/{run_branch}" or head(workspace, run_branch) != commit:
-            run.files.write(
-                "log", f"push failed: commit {commit} needs {run_branch} checked out\n"
-            )
-            return 4
-        target = url(run.request.repo)
-        branch = ref.removeprefix("refs/heads/")
-        with publication(run.files.root, workspace, commit) as directory:
-            if outside_history(directory, base, (commit,)):
-                run.files.write(
-                    "log",
-                    f"push failed: commit {commit} does not fast-forward "
-                    f"{ref} from {base}\n",
-                )
-                return 4
-            check_not_moved(directory, target, ref, base, token)
-            status, error = send(directory, target, branch, token)
-        if not status:
-            run.files.write("branch", branch)
-            run.files.write("log", f"pushed {ref} at {commit}\n")
-            return 0
-        error = (
-            " ".join(error.replace(token, "[redacted]").split()) or "git push failed"
-        )
-    except Invalid as exc:
-        error = str(exc)
-    except subprocess.TimeoutExpired:
-        error = "git timed out"
-    except OSError, ValueError, subprocess.SubprocessError:
-        error = "git push unavailable"
-    run.files.write("log", f"push failed: {error[:PUSH_ERROR_LIMIT]}\n")
-    return 4
+    return rc
+
+
+def recovery_tip(ref: str, before: dict[str, str], after: dict[str, str]) -> str | None:
+    if (tip := after.get(ref)) is None or tip in before.values():
+        tip = after.get("HEAD") or after.get("detached HEAD")
+    return None if tip in before.values() else tip
 
 
 def local_refs(workspace: Path) -> tuple[dict[str, str], str]:
@@ -310,23 +100,6 @@ def local_refs(workspace: Path) -> tuple[dict[str, str], str]:
     return refs, current
 
 
-def first_change(
-    run: Run, workspace: Path, before: dict[str, str], after: dict[str, str]
-) -> tuple[str, str] | None:
-    """Find a commit that no starting ref reaches."""
-    bases = tuple(dict.fromkeys(before.values()))
-    candidates = {name: tip for name, tip in after.items() if tip not in bases}
-    if not candidates:
-        return None
-    with publication(
-        run.files.root, workspace, next(iter(candidates.values()))
-    ) as directory:
-        for name, tip in candidates.items():
-            if commit := outside_history(directory, tip, bases):
-                return name, commit
-    return None
-
-
 def new_commits(
     run: Run,
     workspace: Path,
@@ -336,8 +109,7 @@ def new_commits(
 ) -> list[tuple[str, str]]:
     """Find independent local branch or detached HEAD tips with new run history."""
     reference = f"refs/heads/agent/{run.files.name}"
-    # Use the starting tip of the run's branch, falling back to the starting HEAD.
-    start = before.get(reference) or before.get("HEAD", before.get("detached HEAD"))
+    start = before[reference]
     # Preparation fetches into the clone before the harness can change its refs.
     bases = tuple(dict.fromkeys(before.values()))
     candidates = {
@@ -346,7 +118,7 @@ def new_commits(
         if (name.startswith("refs/heads/") or name == "detached HEAD")
         and tip not in bases
     }
-    if not start or not candidates:
+    if not candidates:
         return []
     with publication(
         run.files.root, workspace, next(iter(candidates.values()))
@@ -397,7 +169,7 @@ def outside_history(
 
 
 def history_git(directory: Path, *args: str, revisions: str | None = None) -> str:
-    """Run a Git history query with the protected publication metadata."""
+    """Run a Git history query with the protected repository metadata."""
     env = dict.fromkeys(
         (
             "HOME",
@@ -433,14 +205,9 @@ def history_git(directory: Path, *args: str, revisions: str | None = None) -> st
     ).stdout
 
 
-def head(workspace: Path, branch: str) -> str | None:
+def head(workspace: Path, branch: str) -> str:
     """Read refs as data; never load the sandbox's git configuration."""
     directory = workspace / ".git"
-    if (
-        runfiles.read_owned(directory / "HEAD", 1024, "run HEAD").strip()
-        != f"ref: refs/heads/{branch}"
-    ):
-        return None
     reference = f"refs/heads/{branch}"
     try:
         value = runfiles.read_owned(directory / reference, 1024, "run ref").strip()

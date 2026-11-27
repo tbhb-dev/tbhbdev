@@ -1,0 +1,36 @@
+---
+argument_specs:
+  main:
+    short_description: Install a uv-managed CPython in the connecting user's home on a Synology NAS
+    description:
+      - >-
+          Uses only raw tasks, because DSM's own Python 3.8 is below ansible-core's floor of 3.9.
+          Installs the pinned uv release into ~/.local/bin after checking the archive's sha256,
+          then runs uv python install. It needs sh, curl, tar and sha256sum on the NAS and no
+          root. Run it with gather_facts false. Check mode reads the NAS and reports what a run
+          would change.
+    options:
+      nas_python_uv_version:
+        type: str
+        default: 0.13.6
+        description: The uv release to install.
+      nas_python_uv_sha256:
+        type: dict
+        required: true
+        description: The sha256 of the release's Linux glibc archive, by CPU architecture (x86_64 and aarch64).
+        options:
+          x86_64:
+            type: str
+            required: true
+          aarch64:
+            type: str
+            required: true
+      nas_python_version:
+        type: str
+        default: "3.14"
+        description: The CPython minor version to install, as uv names it.
+      nas_python_interpreter:
+        type: path
+        description: >-
+          The path uv's link to the Python must have, which the role asserts. Defaults to
+          ansible_python_interpreter.

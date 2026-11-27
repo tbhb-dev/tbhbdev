@@ -1,0 +1,701 @@
+{
+  "images": [
+    "docker.io/grafana/alloy",
+    "docker.io/grafana/grafana",
+    "docker.io/grafana/loki",
+    "docker.io/grafana/mimir",
+    "docker.io/grafana/tempo",
+    "docker.io/library/busybox",
+    "docker.io/rustfs/rustfs"
+  ],
+  "model": {
+    "name": "o11y",
+    "networks": {
+      "default": {
+        "ipam": {},
+        "name": "o11y_default"
+      }
+    },
+    "services": {
+      "alloy": {
+        "command": [
+          "run",
+          "/etc/alloy/config.alloy",
+          "--storage.path=/var/lib/alloy/data",
+          "--server.http.listen-addr=0.0.0.0:12345",
+          "--disable-reporting",
+          "--stability.level=experimental"
+        ],
+        "depends_on": {
+          "grafana-owner": {
+            "condition": "service_completed_successfully",
+            "required": true
+          },
+          "loki": {
+            "condition": "service_started",
+            "required": true,
+            "restart": true
+          },
+          "mimir": {
+            "condition": "service_started",
+            "required": true
+          },
+          "tempo": {
+            "condition": "service_started",
+            "required": true
+          }
+        },
+        "entrypoint": null,
+        "environment": {
+          "GOMEMLIMIT": "600MiB",
+          "O11Y_CLUSTER": "lab",
+          "O11Y_ENVIRONMENT": "test",
+          "O11Y_HOST_NAME": "fixture"
+        },
+        "healthcheck": {
+          "interval": "30s",
+          "retries": 3,
+          "start_period": "40s",
+          "test": [
+            "CMD",
+            "/bin/bash",
+            "-c",
+            "exec 3<>/dev/tcp/127.0.0.1/12345 && printf 'GET /-/ready HTTP/1.0\\r\\n\\r\\n' >&3 && read -r status <&3 && [[ $$status == *\" 200 \"* ]]"
+          ],
+          "timeout": "10s"
+        },
+        "image": "docker.io/grafana/alloy:v1.22.0@sha256:9acc2529bc1edb7f5b2bd801dd8334ebc80c158e3a9e5526ecd7c9a273d43189",
+        "logging": {
+          "driver": "json-file",
+          "options": {
+            "max-file": "3",
+            "max-size": "10m"
+          }
+        },
+        "mem_limit": "805306368",
+        "networks": {
+          "default": null
+        },
+        "pids_limit": 256,
+        "ports": [
+          {
+            "host_ip": "127.0.0.1",
+            "mode": "ingress",
+            "protocol": "tcp",
+            "published": "4317",
+            "target": 4317
+          },
+          {
+            "host_ip": "127.0.0.1",
+            "mode": "ingress",
+            "protocol": "tcp",
+            "published": "4318",
+            "target": 4318
+          }
+        ],
+        "restart": "unless-stopped",
+        "stop_grace_period": "30s",
+        "volumes": [
+          {
+            "bind": {},
+            "read_only": true,
+            "source": "/srv/o11y/releases/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/config/alloy",
+            "target": "/etc/alloy",
+            "type": "bind"
+          },
+          {
+            "bind": {},
+            "source": "/srv/o11y/data/alloy",
+            "target": "/var/lib/alloy/data",
+            "type": "bind"
+          }
+        ]
+      },
+      "grafana": {
+        "command": null,
+        "depends_on": {
+          "loki": {
+            "condition": "service_started",
+            "required": true,
+            "restart": true
+          },
+          "mimir": {
+            "condition": "service_started",
+            "required": true
+          },
+          "tempo": {
+            "condition": "service_started",
+            "required": true
+          }
+        },
+        "entrypoint": [
+          "/bin/sh",
+          "/etc/o11y-grafana/entrypoint.sh"
+        ],
+        "environment": {
+          "GF_ANALYTICS_CHECK_FOR_UPDATES": "false",
+          "GF_ANALYTICS_REPORTING_ENABLED": "false",
+          "GF_AUTH_ANONYMOUS_ENABLED": "true",
+          "GF_AUTH_ANONYMOUS_ORG_ROLE": "Viewer",
+          "GF_AUTH_PROXY_AUTO_SIGN_UP": "true",
+          "GF_AUTH_PROXY_ENABLED": "true",
+          "GF_AUTH_PROXY_HEADER_NAME": "Tailscale-User-Login",
+          "GF_AUTH_PROXY_HEADER_PROPERTY": "username",
+          "GF_PATHS_PROVISIONING": "/etc/o11y-grafana/provisioning",
+          "GF_SECURITY_ADMIN_PASSWORD__FILE": "/run/o11y/grafana_admin_password",
+          "GF_SECURITY_ADMIN_USER": "admin",
+          "GF_SERVER_ROOT_URL": "https://example.invalid",
+          "GF_SMTP_ENABLED": "false",
+          "GF_SMTP_FROM_ADDRESS": "",
+          "GF_SMTP_FROM_NAME": "o11y",
+          "GF_SMTP_HOST": ":",
+          "GF_SMTP_PASSWORD__FILE": "/run/o11y/alert_smtp_password",
+          "GF_SMTP_SKIP_VERIFY": "false",
+          "GF_SMTP_STARTTLS_POLICY": "MandatoryStartTLS",
+          "GF_SMTP_USER": "",
+          "GF_USERS_ALLOW_SIGN_UP": "false",
+          "GF_USERS_AUTO_ASSIGN_ORG_ROLE": "Editor",
+          "O11Y_ALERT_EMAIL_TO": ""
+        },
+        "healthcheck": {
+          "interval": "30s",
+          "retries": 3,
+          "start_period": "40s",
+          "test": [
+            "CMD",
+            "wget",
+            "-q",
+            "--spider",
+            "http://127.0.0.1:3000/api/health"
+          ],
+          "timeout": "10s"
+        },
+        "image": "docker.io/grafana/grafana:13.2.4@sha256:dbbc38ea21103cefb50396340cd88afec779c7e070b0a7bf5a75b4ce46651d3f",
+        "logging": {
+          "driver": "json-file",
+          "options": {
+            "max-file": "3",
+            "max-size": "10m"
+          }
+        },
+        "mem_limit": "805306368",
+        "networks": {
+          "default": null
+        },
+        "pids_limit": 256,
+        "ports": [
+          {
+            "host_ip": "127.0.0.1",
+            "mode": "ingress",
+            "protocol": "tcp",
+            "published": "3000",
+            "target": 3000
+          }
+        ],
+        "restart": "unless-stopped",
+        "user": "472:472",
+        "volumes": [
+          {
+            "bind": {},
+            "read_only": true,
+            "source": "/srv/o11y/releases/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/config/grafana",
+            "target": "/etc/o11y-grafana",
+            "type": "bind"
+          },
+          {
+            "bind": {},
+            "read_only": true,
+            "source": "/srv/o11y/releases/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/config/grafana/resolv.conf",
+            "target": "/etc/resolv.conf",
+            "type": "bind"
+          },
+          {
+            "bind": {},
+            "source": "/srv/o11y/data/grafana",
+            "target": "/var/lib/grafana",
+            "type": "bind"
+          },
+          {
+            "bind": {},
+            "read_only": true,
+            "source": "/srv/o11y/data/secrets/grafana_admin_password",
+            "target": "/run/o11y/grafana_admin_password",
+            "type": "bind"
+          },
+          {
+            "bind": {},
+            "read_only": true,
+            "source": "/srv/o11y/data/secrets/grafana_agents_password",
+            "target": "/run/o11y/grafana_agents_password",
+            "type": "bind"
+          },
+          {
+            "bind": {},
+            "read_only": true,
+            "source": "/srv/o11y/data/secrets/alert_discord_webhook_url",
+            "target": "/run/o11y/alert_discord_webhook_url",
+            "type": "bind"
+          },
+          {
+            "bind": {},
+            "read_only": true,
+            "source": "/srv/o11y/data/secrets/alert_smtp_password",
+            "target": "/run/o11y/alert_smtp_password",
+            "type": "bind"
+          }
+        ]
+      },
+      "grafana-owner": {
+        "command": null,
+        "depends_on": {
+          "grafana": {
+            "condition": "service_healthy",
+            "required": true
+          }
+        },
+        "entrypoint": [
+          "/bin/sh",
+          "/etc/o11y-grafana/owner.sh"
+        ],
+        "environment": {
+          "O11Y_GRAFANA_OWNER_LOGIN": "operator"
+        },
+        "image": "docker.io/rustfs/rustfs:1.0.6@sha256:ee717072290bec9b11abfc0365f8310b00df1cd9b3639943edae47bdef05044a",
+        "logging": {
+          "driver": "json-file",
+          "options": {
+            "max-file": "3",
+            "max-size": "10m"
+          }
+        },
+        "mem_limit": "134217728",
+        "networks": {
+          "default": null
+        },
+        "pids_limit": 256,
+        "restart": "no",
+        "user": "472:472",
+        "volumes": [
+          {
+            "bind": {},
+            "read_only": true,
+            "source": "/srv/o11y/releases/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/config/grafana",
+            "target": "/etc/o11y-grafana",
+            "type": "bind"
+          },
+          {
+            "bind": {},
+            "read_only": true,
+            "source": "/srv/o11y/data/secrets/grafana_admin_password",
+            "target": "/run/o11y/grafana_admin_password",
+            "type": "bind"
+          },
+          {
+            "bind": {},
+            "read_only": true,
+            "source": "/srv/o11y/data/secrets/grafana_agents_password",
+            "target": "/run/o11y/grafana_agents_password",
+            "type": "bind"
+          }
+        ]
+      },
+      "loki": {
+        "command": [
+          "-config.file=/etc/loki/config.yaml",
+          "-config.expand-env=true"
+        ],
+        "depends_on": {
+          "s3-buckets": {
+            "condition": "service_completed_successfully",
+            "required": true
+          }
+        },
+        "entrypoint": null,
+        "env_file": [
+          {
+            "path": "/srv/o11y/data/secrets/s3.env"
+          }
+        ],
+        "environment": {
+          "O11Y_LOKI_WAL_DISK_FULL_THRESHOLD": "0.90"
+        },
+        "healthcheck": {
+          "interval": "30s",
+          "retries": 3,
+          "start_period": "40s",
+          "test": [
+            "CMD",
+            "/usr/bin/loki",
+            "-health",
+            "-health.url=http://127.0.0.1:3100/ready"
+          ],
+          "timeout": "10s"
+        },
+        "image": "docker.io/grafana/loki:3.7.8@sha256:1107dd5274e0ada47e42472b7a7e71f3b2a2fe878878108f3e2f9e51528f0193",
+        "logging": {
+          "driver": "json-file",
+          "options": {
+            "max-file": "3",
+            "max-size": "10m"
+          }
+        },
+        "mem_limit": "1073741824",
+        "networks": {
+          "default": null
+        },
+        "pids_limit": 256,
+        "restart": "unless-stopped",
+        "user": "10001:10001",
+        "volumes": [
+          {
+            "bind": {},
+            "read_only": true,
+            "source": "/srv/o11y/releases/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/config/loki",
+            "target": "/etc/loki",
+            "type": "bind"
+          },
+          {
+            "bind": {},
+            "source": "/srv/o11y/data/loki",
+            "target": "/loki",
+            "type": "bind"
+          }
+        ]
+      },
+      "mimir": {
+        "command": [
+          "-config.file=/etc/mimir/config.yaml",
+          "-config.expand-env=true"
+        ],
+        "depends_on": {
+          "mimir-health-tools": {
+            "condition": "service_completed_successfully",
+            "required": true
+          },
+          "s3-buckets": {
+            "condition": "service_completed_successfully",
+            "required": true
+          }
+        },
+        "entrypoint": null,
+        "env_file": [
+          {
+            "path": "/srv/o11y/data/secrets/s3.env"
+          }
+        ],
+        "healthcheck": {
+          "interval": "30s",
+          "retries": 3,
+          "start_period": "40s",
+          "test": [
+            "CMD",
+            "/o11y-health/busybox",
+            "wget",
+            "-q",
+            "-O",
+            "/dev/null",
+            "http://127.0.0.1:8080/ready"
+          ],
+          "timeout": "10s"
+        },
+        "image": "docker.io/grafana/mimir:3.2.6@sha256:32d79dc873a804d4dbf2724afcbb7b141553b5ed9118f9295972c4bb2982d6fd",
+        "logging": {
+          "driver": "json-file",
+          "options": {
+            "max-file": "3",
+            "max-size": "10m"
+          }
+        },
+        "mem_limit": "2147483648",
+        "networks": {
+          "default": null
+        },
+        "pids_limit": 256,
+        "restart": "unless-stopped",
+        "volumes": [
+          {
+            "bind": {},
+            "read_only": true,
+            "source": "/srv/o11y/releases/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/config/mimir",
+            "target": "/etc/mimir",
+            "type": "bind"
+          },
+          {
+            "bind": {},
+            "source": "/srv/o11y/data/mimir",
+            "target": "/data",
+            "type": "bind"
+          },
+          {
+            "read_only": true,
+            "source": "mimir-health-tools",
+            "target": "/o11y-health",
+            "type": "volume",
+            "volume": {}
+          }
+        ]
+      },
+      "mimir-health-tools": {
+        "command": [
+          "sh",
+          "-ec",
+          "cp /bin/busybox /o11y-health/busybox.tmp && chmod 0555 /o11y-health/busybox.tmp && mv /o11y-health/busybox.tmp /o11y-health/busybox"
+        ],
+        "entrypoint": null,
+        "image": "docker.io/library/busybox:1.38.0-musl@sha256:80e38f9a1b39188b8bdb28879178edb322a4402b081a9aedda1924609decd6f6",
+        "logging": {
+          "driver": "json-file",
+          "options": {
+            "max-file": "3",
+            "max-size": "10m"
+          }
+        },
+        "mem_limit": "134217728",
+        "networks": {
+          "default": null
+        },
+        "pids_limit": 256,
+        "restart": "no",
+        "volumes": [
+          {
+            "source": "mimir-health-tools",
+            "target": "/o11y-health",
+            "type": "volume",
+            "volume": {}
+          }
+        ]
+      },
+      "rustfs": {
+        "command": null,
+        "entrypoint": null,
+        "environment": {
+          "RUSTFS_ACCESS_KEY_FILE": "/run/o11y/rustfs.access_key",
+          "RUSTFS_ADDRESS": "0.0.0.0:9000",
+          "RUSTFS_CONSOLE_ENABLE": "false",
+          "RUSTFS_OBS_ENDPOINT": "http://alloy:4320",
+          "RUSTFS_OBS_ENVIRONMENT": "production",
+          "RUSTFS_OBS_LOGGER_LEVEL": "info",
+          "RUSTFS_OBS_LOGS_EXPORT_ENABLED": "false",
+          "RUSTFS_OBS_LOG_DIRECTORY": "",
+          "RUSTFS_OBS_LOG_STDOUT_ENABLED": "true",
+          "RUSTFS_OBS_PROFILING_EXPORT_ENABLED": "false",
+          "RUSTFS_OBS_SERVICE_NAME": "rustfs",
+          "RUSTFS_OBS_TRACES_EXPORT_ENABLED": "false",
+          "RUSTFS_OBS_USE_STDOUT": "false",
+          "RUSTFS_SCANNER_CYCLE": "3600",
+          "RUSTFS_SCANNER_SPEED": "slow",
+          "RUSTFS_SECRET_KEY_FILE": "/run/o11y/rustfs.secret_key",
+          "RUSTFS_UNSUPPORTED_FS_POLICY": "fail",
+          "RUSTFS_VOLUMES": "/data"
+        },
+        "healthcheck": {
+          "interval": "30s",
+          "retries": 3,
+          "start_period": "40s",
+          "test": [
+            "CMD",
+            "curl",
+            "-fsS",
+            "http://127.0.0.1:9000/health/ready"
+          ],
+          "timeout": "10s"
+        },
+        "image": "docker.io/rustfs/rustfs:1.0.6@sha256:ee717072290bec9b11abfc0365f8310b00df1cd9b3639943edae47bdef05044a",
+        "logging": {
+          "driver": "json-file",
+          "options": {
+            "max-file": "3",
+            "max-size": "10m"
+          }
+        },
+        "mem_limit": "805306368",
+        "networks": {
+          "default": null
+        },
+        "pids_limit": 256,
+        "restart": "unless-stopped",
+        "stop_grace_period": "30s",
+        "volumes": [
+          {
+            "bind": {},
+            "source": "/srv/o11y/data/rustfs",
+            "target": "/data",
+            "type": "bind"
+          },
+          {
+            "bind": {},
+            "read_only": true,
+            "source": "/srv/o11y/data/secrets/rustfs.access_key",
+            "target": "/run/o11y/rustfs.access_key",
+            "type": "bind"
+          },
+          {
+            "bind": {},
+            "read_only": true,
+            "source": "/srv/o11y/data/secrets/rustfs.secret_key",
+            "target": "/run/o11y/rustfs.secret_key",
+            "type": "bind"
+          }
+        ]
+      },
+      "s3-buckets": {
+        "command": null,
+        "depends_on": {
+          "rustfs": {
+            "condition": "service_healthy",
+            "required": true
+          }
+        },
+        "entrypoint": [
+          "/bin/sh",
+          "/buckets/buckets.sh"
+        ],
+        "env_file": [
+          {
+            "path": "/srv/o11y/data/secrets/s3.env"
+          }
+        ],
+        "image": "docker.io/rustfs/rustfs:1.0.6@sha256:ee717072290bec9b11abfc0365f8310b00df1cd9b3639943edae47bdef05044a",
+        "logging": {
+          "driver": "json-file",
+          "options": {
+            "max-file": "3",
+            "max-size": "10m"
+          }
+        },
+        "mem_limit": "134217728",
+        "networks": {
+          "default": null
+        },
+        "pids_limit": 256,
+        "restart": "no",
+        "volumes": [
+          {
+            "bind": {},
+            "read_only": true,
+            "source": "/srv/o11y/releases/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/config/buckets",
+            "target": "/buckets",
+            "type": "bind"
+          }
+        ]
+      },
+      "tempo": {
+        "command": [
+          "-target=all",
+          "-config.file=/etc/tempo/config.yaml"
+        ],
+        "depends_on": {
+          "mimir": {
+            "condition": "service_started",
+            "required": true
+          },
+          "s3-buckets": {
+            "condition": "service_completed_successfully",
+            "required": true
+          }
+        },
+        "entrypoint": null,
+        "env_file": [
+          {
+            "path": "/srv/o11y/data/secrets/s3.env"
+          }
+        ],
+        "healthcheck": {
+          "interval": "30s",
+          "retries": 3,
+          "start_period": "40s",
+          "test": [
+            "CMD",
+            "/tempo",
+            "-health",
+            "-health.url=http://127.0.0.1:3200/ready"
+          ],
+          "timeout": "10s"
+        },
+        "image": "docker.io/grafana/tempo:3.1.0@sha256:3076b8dcdfb32fd6bc5ccef85e7b7313e6199b9cb84366257fc17ecb696db5fd",
+        "logging": {
+          "driver": "json-file",
+          "options": {
+            "max-file": "3",
+            "max-size": "10m"
+          }
+        },
+        "mem_limit": "1073741824",
+        "networks": {
+          "default": null
+        },
+        "pids_limit": 256,
+        "restart": "unless-stopped",
+        "user": "10001:10001",
+        "volumes": [
+          {
+            "bind": {},
+            "read_only": true,
+            "source": "/srv/o11y/releases/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/config/tempo",
+            "target": "/etc/tempo",
+            "type": "bind"
+          },
+          {
+            "bind": {},
+            "source": "/srv/o11y/data/tempo",
+            "target": "/var/tempo",
+            "type": "bind"
+          }
+        ]
+      }
+    },
+    "volumes": {
+      "mimir-health-tools": {
+        "name": "o11y_mimir-health-tools"
+      }
+    },
+    "x-common": {
+      "logging": {
+        "driver": "json-file",
+        "options": {
+          "max-file": "3",
+          "max-size": "10m"
+        }
+      },
+      "restart": "unless-stopped"
+    },
+    "x-healthcheck": {
+      "interval": "30s",
+      "retries": 3,
+      "start_period": "40s",
+      "timeout": "10s"
+    },
+    "x-logging": {
+      "driver": "json-file",
+      "options": {
+        "max-file": "3",
+        "max-size": "10m"
+      }
+    },
+    "x-needs-backends": {
+      "loki": {
+        "condition": "service_started",
+        "restart": true
+      },
+      "mimir": {
+        "condition": "service_started"
+      },
+      "tempo": {
+        "condition": "service_started"
+      }
+    },
+    "x-needs-buckets": {
+      "s3-buckets": {
+        "condition": "service_completed_successfully"
+      }
+    }
+  },
+  "ro_binds": [
+    "/srv/o11y/data/secrets/alert_discord_webhook_url",
+    "/srv/o11y/data/secrets/alert_smtp_password",
+    "/srv/o11y/data/secrets/grafana_admin_password",
+    "/srv/o11y/data/secrets/grafana_agents_password",
+    "/srv/o11y/data/secrets/rustfs.access_key",
+    "/srv/o11y/data/secrets/rustfs.secret_key"
+  ]
+}

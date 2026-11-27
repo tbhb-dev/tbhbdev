@@ -1,33 +1,29 @@
-"""Push only disposable branches, with synthetic credentials in a pipe."""
+"""Record build history in disposable Git repositories."""
 
 from __future__ import annotations
 
 import os
-import select
 import subprocess
-from contextlib import ExitStack, contextmanager
+from contextlib import ExitStack
 from dataclasses import replace
 from pathlib import Path
-from types import SimpleNamespace
 from typing import TYPE_CHECKING, cast
 from unittest.mock import Mock
 
 import pytest
 from agent_host_example import constant, host_settings, run_request
+from runfile_fixtures import agent_suffix_case as agent_suffix_case  # noqa: PLC0414
 
 from tbhbdev.alpha.agent import (
     credentials,
-    host_tools,
     push,
     run_host,
     runfiles,
 )
-from tbhbdev.alpha.agent.model import Invalid
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Generator
 
-SYNTHETIC = "distinctive-synthetic-push-value-7391"
 type LocalRun = tuple[run_host.Run, run_host.Prepared, Path]
 
 
@@ -63,7 +59,7 @@ def push_account(
 
 
 @pytest.fixture
-def local_run(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> LocalRun:
+def local_run(tmp_path: Path) -> LocalRun:
     workspace = tmp_path / "workspace"
     workspace.mkdir()
     target = tmp_path / "target.git"
@@ -97,11 +93,6 @@ def local_run(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> LocalRun:
         None,
     )
 
-    def destination(repository: str) -> str:
-        assert repository == run.request.repo
-        return target.as_uri()
-
-    monkeypatch.setattr(push, "url", destination)
     return run, prepared, target
 
 
@@ -139,21 +130,6 @@ def harness(run: run_host.Run, prepared: run_host.Prepared, stack: ExitStack) ->
 
 
 START_REF = "refs/heads/fix/topic"
-DEFAULT_REF = "refs/heads/trunk"
-
-
-@pytest.fixture
-def fix_run(
-    local_run: tuple[run_host.Run, run_host.Prepared, Path],
-) -> tuple[run_host.Run, run_host.Prepared, Path]:
-    run, prepared, target = local_run
-    work = Path(prepared.paths.worktree)
-    git(work, "push", target.as_uri(), f"HEAD:{DEFAULT_REF}")
-    git(target, "symbolic-ref", "HEAD", DEFAULT_REF)
-    commit(work, "PR head")
-    git(work, "push", target.as_uri(), f"HEAD:{START_REF}")
-    run.request = replace(run.request, start_ref=START_REF, fetch_refs=(START_REF,))
-    return run, prepared, target
 
 
 @pytest.mark.parametrize("pushed_in_run", [False, True])
@@ -171,7 +147,7 @@ def test_build_records_commit_without_publishing(
         return rc
 
     with ExitStack() as stack:
-        assert push.run(run, prepared, stack, work, SYNTHETIC) == 0
+        assert push.run(run, prepared, stack, work) == 0
     sha = git(workspace, "rev-parse", "HEAD")
     assert run.files.path("head").read_text() == sha
     assert git(target, "for-each-ref", "--format=%(objectname) %(refname)") == (
@@ -181,280 +157,28 @@ def test_build_records_commit_without_publishing(
     assert not run.files.path("pr").exists()
 
 
-def test_start_ref_push_fast_forwards_the_existing_branch_without_a_pr(
-    fix_run: tuple[run_host.Run, run_host.Prepared, Path],
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    run, prepared, target = fix_run
-    base = git(target, "rev-parse", START_REF)
-    original = push.git_with_token
-    operations: list[str] = []
-
-    def command(
-        directory: Path, token: str, *args: str, capture_output: bool = False
-    ) -> tuple[int, str, str]:
-        assert directory.parent == run.files.root
-        assert token == SYNTHETIC
-        if "ls-remote" in args:
-            assert args[-3:] == (target.as_uri(), "HEAD", START_REF)
-            operations.append("ls-remote")
-        else:
-            assert args == ("push", "--", target.as_uri(), f"HEAD:{START_REF}")
-            operations.append("push")
-        return original(directory, token, *args, capture_output=capture_output)
-
-    monkeypatch.setattr(push, "git_with_token", command)
-    with ExitStack() as stack:
-        assert push.run(run, prepared, stack, harness, SYNTHETIC) == 0
-
-    assert operations == ["ls-remote", "push"]
-    tip = git(target, "rev-parse", START_REF)
-    assert git(target, "rev-parse", f"{START_REF}^") == base
-    assert run.files.path("head").read_text() == tip
-    assert run.files.path("branch").read_text() == "fix/topic"
-    assert run.files.path("log").read_text() == (
-        f"start ref: {START_REF} at {base}\npushed {START_REF} at {tip}\n"
-    )
-    assert set(git(target, "for-each-ref", "--format=%(refname)").splitlines()) == {
-        START_REF,
-        DEFAULT_REF,
-    }
-    assert not run.files.path("pr").exists()
-
-
-@pytest.mark.parametrize("remote_change", ["rewound", "deleted", "default", "missing"])
-def test_changed_remote_ref_leaves_the_worktree_and_pushes_nothing(
-    fix_run: tuple[run_host.Run, run_host.Prepared, Path],
-    monkeypatch: pytest.MonkeyPatch,
-    remote_change: str,
-) -> None:
-    run, prepared, target = fix_run
-    base = git(target, "rev-parse", START_REF)
-
-    def change_remote(
-        run: run_host.Run, ready: run_host.Prepared, stack: ExitStack
-    ) -> int:
-        status = harness(run, ready, stack)
-        if remote_change == "rewound":
-            git(target, "update-ref", START_REF, DEFAULT_REF)
-        elif remote_change == "deleted":
-            git(target, "update-ref", "-d", START_REF)
-        elif remote_change == "default":
-            git(target, "symbolic-ref", "HEAD", START_REF)
-        else:
-            git(target, "symbolic-ref", "HEAD", "refs/heads/missing")
-        return status
-
-    def unexpected_push(*_args: object) -> tuple[int, str]:
-        pytest.fail("push ran after the remote changed")
-
-    monkeypatch.setattr(push, "send", unexpected_push)
-    with ExitStack() as stack:
-        assert push.run(run, prepared, stack, change_remote, SYNTHETIC) == 4
-
-    reason = (
-        f"remote branch {START_REF} moved from {base} or no longer exists"
-        if remote_change in ("rewound", "deleted")
-        else f"cannot verify {START_REF} is a non-default branch"
-    )
-    assert f"push failed: {reason}\n" in run.files.path("log").read_text()
-    assert Path(prepared.paths.worktree).is_dir()
-    assert run.files.path("head").read_text() != base
-    assert not run.files.path("branch").exists()
-    assert not run.files.path("pr").exists()
-
-
-def test_start_ref_requires_the_fetched_starting_commit(
-    fix_run: tuple[run_host.Run, run_host.Prepared, Path],
-) -> None:
-    run, prepared, _target = fix_run
-    git(Path(prepared.paths.worktree), "update-ref", "-d", "refs/heads/agent/example")
-    with (
-        ExitStack() as stack,
-        pytest.raises(Invalid, match="missing fetched starting commit"),
-    ):
-        push.run(run, prepared, stack, harness, SYNTHETIC)
-    assert not run.files.path("out.final").exists()
-
-
-@pytest.mark.parametrize("branch_state", ["off-branch", "detached", "diverged"])
-def test_start_ref_requires_a_fast_forward_on_the_run_branch(
-    fix_run: tuple[run_host.Run, run_host.Prepared, Path], branch_state: str
-) -> None:
-    run, prepared, target = fix_run
-    work = Path(prepared.paths.worktree)
-    base = git(target, "rev-parse", START_REF)
-
-    def change_branch(
-        run: run_host.Run, ready: run_host.Prepared, stack: ExitStack
-    ) -> int:
-        if branch_state == "off-branch":
-            git(work, "checkout", "-b", "other")
-        if branch_state == "diverged":
-            git(work, "reset", "--hard", f"{base}^")
-        status = harness(run, ready, stack)
-        if branch_state == "detached":
-            git(work, "checkout", "--detach", base)
-        return status
-
-    with ExitStack() as stack:
-        assert push.run(run, prepared, stack, change_branch, SYNTHETIC) == 4
-
-    expected = {
-        "off-branch": "needs agent/example checked out",
-        "detached": "needs agent/example checked out",
-        "diverged": f"does not fast-forward {START_REF} from {base}",
-    }
-    assert expected[branch_state] in run.files.path("log").read_text()
-    assert git(target, "rev-parse", START_REF) == base
-
-
-@pytest.mark.parametrize(
-    ("outcome", "reason"),
-    [
-        (None, "no push token (unavailable)"),
-        (credentials.PushTokenFailure("denied"), "no push token (denied)"),
-        ((1, "", ""), f"cannot read remote tip of {START_REF}"),
-        ((1, SYNTHETIC), "[redacted]"),
-        ((1, ""), "git push failed"),
-        (subprocess.TimeoutExpired("git", 1), "git timed out"),
-        (OSError(), "git push unavailable"),
-    ],
-)
-def test_start_ref_reports_push_failures(
-    fix_run: tuple[run_host.Run, run_host.Prepared, Path],
-    monkeypatch: pytest.MonkeyPatch,
-    outcome: tuple[int, str]
-    | tuple[int, str, str]
-    | Exception
-    | credentials.PushTokenFailure
-    | None,
-    reason: str,
-) -> None:
-    run, prepared, _target = fix_run
-    token: str | credentials.PushTokenFailure | None = SYNTHETIC
-    if outcome is None or isinstance(outcome, credentials.PushTokenFailure):
-        token = outcome
-    elif isinstance(outcome, tuple):
-        monkeypatch.setattr(
-            push, "send" if len(outcome) == 2 else "git_with_token", constant(outcome)
-        )
-    else:
-
-        def fail(*_args: object) -> tuple[int, str]:
-            raise outcome
-
-        monkeypatch.setattr(push, "send", fail)
-
-    with ExitStack() as stack:
-        assert push.run(run, prepared, stack, harness, token) == 4
-    assert f"push failed: {reason}" in run.files.path("log").read_text()
-    assert not run.files.path("branch").exists()
-
-
-@pytest.mark.parametrize(
-    "rule", ["argv", "environment", "config", "write_roots", "output"]
-)
-def test_token_rules(
-    rule: str,
-    fix_run: tuple[run_host.Run, run_host.Prepared, Path],
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    run, prepared, _target = fix_run
-    original = cast("Callable[..., subprocess.Popen[str]]", subprocess.Popen)
-    commands: list[str] = []
-    environments: list[str] = []
-
-    def spawn(*args: object, **kwargs: object) -> subprocess.Popen[str]:
-        commands.append(str(args))
-        environments.append(str(kwargs["env"]))
-        return original(*args, **kwargs)
-
-    monkeypatch.setattr(subprocess, "Popen", spawn)
-    with ExitStack() as stack:
-        assert push.run(run, prepared, stack, harness, SYNTHETIC) == 0
-    match rule:
-        case "argv":
-            values = commands
-        case "environment":
-            values = environments
-        case "config":
-            values = [p.read_text() for p in run.home.rglob("config") if p.is_file()]
-        case "write_roots":
-            values = [
-                p.read_bytes().decode(errors="replace")
-                for p in run.home.rglob("*")
-                if p.is_file()
-            ]
-        case _:
-            values = [p.read_text() for p in run.files.root.iterdir() if p.is_file()]
-    assert values
-    assert all(SYNTHETIC not in value for value in values)
-
-
 @pytest.mark.parametrize("rc", [0, 9])
-@pytest.mark.parametrize("token", [SYNTHETIC, None])
 def test_no_commit(
-    local_run: tuple[run_host.Run, run_host.Prepared, Path], rc: int, token: str | None
+    local_run: tuple[run_host.Run, run_host.Prepared, Path], rc: int
 ) -> None:
     run, prepared, target = local_run
     with ExitStack() as stack:
-        assert push.run(run, prepared, stack, constant(rc), token) == rc
+        assert push.run(run, prepared, stack, constant(rc)) == rc
     assert git(target, "for-each-ref") == ""
     assert not run.files.path("head").exists()
     assert not run.files.path("log").exists()
 
 
-@pytest.mark.parametrize("token", [SYNTHETIC, None])
 def test_review_bypasses_publication(
-    local_run: tuple[run_host.Run, run_host.Prepared, Path], token: str | None
+    local_run: tuple[run_host.Run, run_host.Prepared, Path],
 ) -> None:
     run, prepared, target = local_run
     review = replace(run, request=run_request(profile="review", commit="0" * 40))
     with ExitStack() as stack:
-        assert push.run(review, prepared, stack, harness, token) == 0
+        assert push.run(review, prepared, stack, harness) == 0
     assert git(target, "for-each-ref") == ""
     assert not run.files.path("head").exists()
     assert not run.files.path("log").exists()
-
-
-def test_helper_once(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.chdir(tmp_path)
-    read_fd, write_fd = os.pipe()
-    os.write(write_fd, (SYNTHETIC + "\n").encode())
-    os.close(write_fd)
-    try:
-        command = push.helper(read_fd).removeprefix("!")
-        for rc in (0, 1):
-            child = subprocess.run(
-                ["/bin/sh", "-c", command + " get"],
-                input="protocol=https\nhost=github.com\n\n",
-                text=True,
-                capture_output=True,
-                pass_fds=(read_fd,),
-                cwd=tmp_path,
-                check=False,
-            )
-            assert child.returncode == rc
-            assert child.stdout == (
-                f"username=x-access-token\npassword={SYNTHETIC}\n\n" if rc == 0 else ""
-            )
-    finally:
-        os.close(read_fd)
-
-
-def test_github_url() -> None:
-    assert push.url("example/repo") == "https://github.com/example/repo.git"
-    with pytest.raises(ValueError, match=r"^push requires github\.com$"):
-        push.url("example.org/example/repo")
-
-
-def test_broken_credential_pipe() -> None:
-    read_fd, write_fd = os.pipe()
-    os.close(read_fd)
-    push.feed(write_fd, SYNTHETIC)
-    with pytest.raises(OSError, match="Bad file descriptor"):
-        os.fstat(write_fd)
 
 
 def test_do_not_record_uncertain_run(
@@ -463,7 +187,7 @@ def test_do_not_record_uncertain_run(
     run, prepared, target = local_run
     run.files.uncertain = True
     with ExitStack() as stack:
-        assert push.run(run, prepared, stack, harness, SYNTHETIC) == 0
+        assert push.run(run, prepared, stack, harness) == 0
     assert git(target, "for-each-ref") == ""
     assert not run.files.path("log").exists()
 
@@ -476,7 +200,7 @@ def run_with_work(local_run: LocalRun, work: Callable[[], None]) -> int:
         return 0
 
     with ExitStack() as stack:
-        return push.run(run, prepared, stack, finish, SYNTHETIC)
+        return push.run(run, prepared, stack, finish)
 
 
 def assert_run_file(run: run_host.Run, name: str, expected: str | None) -> None:
@@ -612,10 +336,9 @@ def test_only_descendants_of_start_are_recorded(
         git(workspace, "switch", "-c", "topic/checkout", common)
         commit(workspace, "checkout tip")
     elif start == "attached HEAD":
-        git(workspace, "branch", "-m", "topic/start")
+        git(workspace, "switch", "-c", "topic/start")
     elif start == "detached HEAD":
         git(workspace, "switch", "--detach", start_sha)
-        git(workspace, "branch", "-D", "agent/example")
 
     multiple = start == "multiple unrelated tips"
     tips = ("topic/first", "topic/second") if multiple else ("topic/work",)
@@ -666,17 +389,6 @@ def test_eligible_tips_orders_refs_and_ignores_existing_history(
     ]
 
 
-def test_unborn_start_does_not_record_a_commit(local_run: LocalRun) -> None:
-    run, prepared, target = local_run
-    workspace = Path(prepared.paths.worktree)
-    git(workspace, "switch", "--orphan", "topic/work")
-    git(workspace, "branch", "-D", "agent/example")
-    with ExitStack() as stack:
-        assert push.run(run, prepared, stack, harness, SYNTHETIC) == 0
-    assert git(target, "for-each-ref") == ""
-    assert not run.files.path("head").exists()
-
-
 def test_existing_history_does_not_count_as_new_commits(
     local_run: tuple[run_host.Run, run_host.Prepared, Path],
 ) -> None:
@@ -696,7 +408,7 @@ def test_existing_history_does_not_count_as_new_commits(
         return 0
 
     with ExitStack() as stack:
-        assert push.run(run, prepared, stack, switch, None) == 0
+        assert push.run(run, prepared, stack, switch) == 0
     assert git(target, "for-each-ref") == ""
     assert not run.files.path("head").exists()
     assert not run.files.path("log").exists()
@@ -736,7 +448,7 @@ def test_starting_fetched_history(
         return 0
 
     with ExitStack() as stack:
-        assert push.run(run, prepared, stack, checkout, None) == 0
+        assert push.run(run, prepared, stack, checkout) == 0
     assert_run_file(
         run, "log", f"start ref: {start_ref} at {base}\n" if start_ref else None
     )
@@ -769,7 +481,7 @@ def test_history_lookup_has_a_deadline(
         assert directory.parent == run.files.root
         git_options = ["-c", "core.hooksPath=/dev/null", "-C", str(directory)]
         assert command == [
-            host_tools.resolve("git"),
+            push.host_tools.resolve("git"),
             *git_options,
             "rev-list",
             f"--ancestry-path={base}",
@@ -782,7 +494,7 @@ def test_history_lookup_has_a_deadline(
             "GIT_CONFIG_NOSYSTEM": "1",
             "GIT_TERMINAL_PROMPT": "0",
             "HOME": str(directory),
-            "PATH": host_tools.search(),
+            "PATH": push.host_tools.search(),
             "XDG_CACHE_HOME": str(directory),
             "XDG_CONFIG_HOME": str(directory),
             "XDG_DATA_HOME": str(directory),
@@ -800,7 +512,7 @@ def test_history_lookup_has_a_deadline(
         return rc
 
     with ExitStack() as stack:
-        assert push.run(run, prepared, stack, expires, SYNTHETIC) == 4
+        assert push.run(run, prepared, stack, expires) == 4
     assert run.files.path("log").read_text() == (
         "commit check failed: cannot check new commits (TimeoutExpired)\n"
     )
@@ -870,132 +582,6 @@ def test_prefer_checked_out_run_branch_over_leftover_branch(
         assert_run_file(run, "log", expected)
 
 
-@pytest.mark.parametrize(
-    "error", ["", "fatal: " + SYNTHETIC + "\n ! [remote rejected] x"]
-)
-def test_failure_redacted(
-    error: str,
-    fix_run: tuple[run_host.Run, run_host.Prepared, Path],
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    run, prepared, _target = fix_run
-    monkeypatch.setattr(push, "send", constant((1, error)))
-    with ExitStack() as stack:
-        assert push.run(run, prepared, stack, harness, SYNTHETIC) == 4
-    assert run.files.path("log").read_text().splitlines()[-1] == (
-        "push failed: fatal: [redacted] ! [remote rejected] x"
-        if error
-        else "push failed: git push failed"
-    )
-
-
-def test_failure_log_is_capped(
-    fix_run: tuple[run_host.Run, run_host.Prepared, Path],
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    run, prepared, _target = fix_run
-    monkeypatch.setattr(push, "send", constant((1, "x" * 9000)))
-    with ExitStack() as stack:
-        assert push.run(run, prepared, stack, harness, SYNTHETIC) == 4
-    assert (
-        run.files.path("log").read_text().endswith("push failed: " + "x" * 4000 + "\n")
-    )
-
-
-def test_spawn_failure_closes_pipe(
-    local_run: tuple[run_host.Run, run_host.Prepared, Path],
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    _run, prepared, _target = local_run
-    created: list[int] = []
-    original = os.pipe
-
-    def pipe() -> tuple[int, int]:
-        descriptors = original()
-        created.extend(descriptors)
-        return descriptors
-
-    def fail(*_args: object, **_kwargs: object) -> None:
-        message = "spawn failed"
-        raise OSError(message)
-
-    monkeypatch.setattr(os, "pipe", pipe)
-    monkeypatch.setattr(subprocess, "Popen", fail)
-    with pytest.raises(OSError, match="spawn failed"):
-        push.send(Path(prepared.paths.worktree), "unused", "agent/example", SYNTHETIC)
-    for descriptor in created:
-        with pytest.raises(OSError, match="Bad file descriptor"):
-            os.fstat(descriptor)
-
-
-@pytest.mark.parametrize(
-    ("operation", "query"),
-    [
-        ("store", "protocol=https\nhost=github.com\n\n"),
-        ("erase", "protocol=https\nhost=github.com\n\n"),
-        ("get", "protocol=http\nhost=github.com\n\n"),
-        ("get", "protocol=https\nhost=example.org\n\n"),
-        ("get", "protocol=https\n\n"),
-        ("get", "host=github.com\n\n"),
-        ("get", " protocol=https\nhost=github.com\n\n"),
-        ("get", "protocol=https\nhost=github.com \n\n"),
-        ("get", ""),
-    ],
-)
-def test_helper_refuses_other_destinations(
-    operation: str, query: str, tmp_path: Path
-) -> None:
-    read_fd, write_fd = os.pipe()
-    os.write(write_fd, (SYNTHETIC + "\n").encode())
-    os.close(write_fd)
-    try:
-        command = push.helper(read_fd).removeprefix("!")
-        child = subprocess.run(
-            ["/bin/sh", "-c", command + " " + operation],
-            input=query,
-            text=True,
-            capture_output=True,
-            pass_fds=(read_fd,),
-            cwd=tmp_path,
-            check=False,
-        )
-        assert child.returncode == 1
-        assert child.stdout == ""
-        assert child.stderr == ""
-        assert os.read(read_fd, 4096) == (SYNTHETIC + "\n").encode()
-    finally:
-        os.close(read_fd)
-
-
-def test_host_push_ignores_sandbox_git_config(
-    fix_run: tuple[run_host.Run, run_host.Prepared, Path],
-) -> None:
-    run, prepared, target = fix_run
-    workspace = Path(prepared.paths.worktree)
-    hook = workspace / "pre-push"
-    marker = workspace / "hook-ran"
-    hook.write_text(f'#!/bin/sh\ntouch "{marker}"\nexit 1\n')
-    hook.chmod(0o700)
-
-    def hostile_harness(
-        actual: run_host.Run, paths: run_host.Prepared, stack: ExitStack
-    ) -> int:
-        rc = harness(actual, paths, stack)
-        git(workspace, "config", "core.hooksPath", str(workspace))
-        git(
-            workspace,
-            "config",
-            f"url.{(run.home / 'missing').as_uri()}.insteadOf",
-            target.as_uri(),
-        )
-        return rc
-
-    with ExitStack() as stack:
-        assert push.run(run, prepared, stack, hostile_harness, SYNTHETIC) == 0
-    assert not marker.exists()
-    assert git(target, "rev-parse", START_REF) == run.files.path("head").read_text()
-
-
 @pytest.mark.parametrize("packed", [False, True])
 @pytest.mark.parametrize("valid", [False, True])
 def test_head_reads_only_owned_ref_data(
@@ -1035,128 +621,6 @@ def test_packed_ref_rejects_leading_whitespace(
         push.head(workspace, "agent/example")
 
 
-def test_large_token_does_not_block_unused_helper(
-    fix_run: tuple[run_host.Run, run_host.Prepared, Path],
-) -> None:
-    run, prepared, _target = fix_run
-    with ExitStack() as stack:
-        assert push.run(run, prepared, stack, harness, SYNTHETIC * 10000) == 0
-
-
-def test_push_start_failure_is_recorded(
-    fix_run: tuple[run_host.Run, run_host.Prepared, Path],
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    run, prepared, _target = fix_run
-
-    def fail(*_args: object) -> None:
-        raise OSError
-
-    monkeypatch.setattr(push, "send", fail)
-    with ExitStack() as stack:
-        assert push.run(run, prepared, stack, harness, SYNTHETIC) == 4
-    assert (
-        run.files.path("log").read_text().splitlines()[-1]
-        == "push failed: git push unavailable"
-    )
-
-
-def test_push_timeout_is_labeled_as_a_timeout(
-    fix_run: tuple[run_host.Run, run_host.Prepared, Path],
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    run, prepared, _target = fix_run
-
-    def stall(*_args: object) -> None:
-        command = "git"
-        raise subprocess.TimeoutExpired(command, 1)
-
-    monkeypatch.setattr(push, "send", stall)
-    with ExitStack() as stack:
-        assert push.run(run, prepared, stack, harness, SYNTHETIC) == 4
-    assert (
-        run.files.path("log").read_text().splitlines()[-1]
-        == "push failed: git timed out"
-    )
-
-
-def test_send_limits_child_capabilities(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    captured: list[dict[str, object]] = []
-
-    @contextmanager
-    def child(command: list[str], **kwargs: object) -> Generator[SimpleNamespace]:
-        captured.append({"command": command, **kwargs})
-        descriptors = cast("tuple[int, ...]", kwargs["pass_fds"])
-        duplicate = os.dup(descriptors[0])
-
-        def communicate() -> tuple[None, str]:
-            assert select.select([duplicate], [], [], 5)[0] == [duplicate]
-            assert os.read(duplicate, 4096) == (SYNTHETIC + "\n").encode()
-            return None, "one error\n"
-
-        try:
-            yield SimpleNamespace(returncode=4, communicate=communicate)
-        finally:
-            os.close(duplicate)
-
-    monkeypatch.setattr(subprocess, "Popen", child)
-    assert push.send(
-        tmp_path, "https://github.com/example/repo.git", "agent/example", SYNTHETIC
-    ) == (4, "one error\n")
-    assert len(captured) == 1
-    spec = captured[0]
-    descriptors = cast("tuple[int, ...]", spec["pass_fds"])
-    assert len(descriptors) == 1
-    command = cast("list[str]", spec.pop("command"))
-    assert command[0] == host_tools.resolve("git")
-    assert command[-6:] == [
-        "-C",
-        str(tmp_path),
-        "push",
-        "--",
-        "https://github.com/example/repo.git",
-        "HEAD:refs/heads/agent/example",
-    ]
-    options = command[1:-6]
-    assert options[::2] == ["-c"] * 6
-    assert options[1::2][:2] == [
-        "credential.helper=",
-        f"credential.helper={push.helper(descriptors[0])}",
-    ]
-    assert set(options[1::2][2:]) == {
-        "core.askPass=",
-        "core.fsmonitor=false",
-        "core.hooksPath=/dev/null",
-        "credential.useHttpPath=false",
-    }
-    environment = cast("dict[str, str]", spec.pop("env"))
-    assert environment == {
-        "GIT_ASKPASS": "/bin/false",
-        "GIT_CONFIG_GLOBAL": "/dev/null",
-        "GIT_CONFIG_NOSYSTEM": "1",
-        "GIT_TERMINAL_PROMPT": "0",
-        "HOME": str(tmp_path),
-        "PATH": host_tools.search(),
-        "XDG_CACHE_HOME": str(tmp_path),
-        "XDG_CONFIG_HOME": str(tmp_path),
-        "XDG_DATA_HOME": str(tmp_path),
-        "XDG_STATE_HOME": str(tmp_path),
-    }
-    assert spec == {
-        "cwd": tmp_path,
-        "errors": "replace",
-        "pass_fds": descriptors,
-        "stderr": subprocess.PIPE,
-        "stdin": subprocess.DEVNULL,
-        "stdout": subprocess.DEVNULL,
-        "text": True,
-    }
-    with pytest.raises(OSError, match="Bad file descriptor"):
-        os.fstat(descriptors[0])
-
-
 @pytest.mark.parametrize("start_ref", [START_REF, None])
 @pytest.mark.parametrize("on_run_branch", [True, False])
 def test_push_preserves_harness_failure(
@@ -1174,18 +638,18 @@ def test_push_preserves_harness_failure(
         if not on_run_branch:
             git(Path(paths.paths.worktree), "switch", "-c", "topic/work")
         harness(actual, paths, stack)
-        return 7
+        return 124
 
     with ExitStack() as stack:
-        assert push.run(run, prepared, stack, failed_harness, SYNTHETIC) == 7
+        assert push.run(run, prepared, stack, failed_harness) == 124
     assert git(target, "for-each-ref") == ""
-    assert run.files.path("head").exists() is on_run_branch
+    assert_run_file(
+        run, "head", git(Path(prepared.paths.worktree), "rev-parse", "HEAD")
+    )
     assert not run.files.path("branch").exists()
     expected = None
     if start_ref:
         expected = f"start ref: {start_ref} at {base}\n"
-        if on_run_branch:
-            expected += "push skipped: harness exited 7\n"
     assert_run_file(run, "log", expected)
 
 
@@ -1204,16 +668,6 @@ def test_push_preserves_harness_failure_when_git_metadata_is_unusable(
         return 7
 
     with ExitStack() as stack:
-        assert push.run(run, prepared, stack, failed, SYNTHETIC) == 7
+        assert push.run(run, prepared, stack, failed) == 7
     assert git(target, "for-each-ref") == ""
     assert not run.files.path("log").exists()
-
-
-def test_feed_sends_one_line_and_closes() -> None:
-    read_fd, write_fd = os.pipe()
-    try:
-        push.feed(write_fd, SYNTHETIC)
-        assert os.read(read_fd, 4096) == (SYNTHETIC + "\n").encode()
-        assert os.read(read_fd, 4096) == b""
-    finally:
-        os.close(read_fd)

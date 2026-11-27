@@ -6,6 +6,9 @@ import os
 import shlex
 import subprocess  # nosec B404
 import sys
+from pathlib import Path
+from pwd import getpwuid
+from tempfile import TemporaryDirectory
 from typing import TYPE_CHECKING
 
 from tbhbdev import version
@@ -23,28 +26,40 @@ if TYPE_CHECKING:
 _RETRY = "_TBHB_AGENT_VERSION_HEAL"
 _INSTALL_TIMEOUT = 300
 _INSTALL = ("uv", "tool", "install", "--no-config", "--force")
+# TemporaryDirectory creates the private cwd under this fixed parent.
+_TEMP_ROOT = "/tmp"  # noqa: S108  # nosec B108
+_NETWORK_ENV = ("HTTPS_PROXY", "SSL_CERT_FILE", "GIT_SSL_CAINFO")
+
+
+def heal_env(cwd: str) -> dict[str, str]:
+    home = getpwuid(os.getuid()).pw_dir
+    return {
+        "HOME": home,
+        "PATH": f"{version_check.TOOL_PATH}:{home}/.local/bin",
+        "GIT_CEILING_DIRECTORIES": str(Path(cwd).parent),
+        "GIT_CONFIG_NOSYSTEM": "1",
+        "GIT_CONFIG_GLOBAL": os.devnull,
+        "GIT_TERMINAL_PROMPT": "0",
+        "GIT_ASKPASS": "/bin/false",
+        **{key: os.environ[key] for key in _NETWORK_ENV if key in os.environ},
+    }
 
 
 def read_origin(argv: list[str]) -> tuple[int, str]:
     flags = ("-c", "credential.helper=", "-c", "http.extraHeader=")
     try:
-        result = subprocess.run(  # nosec B603
-            [argv[0], *flags, *argv[1:]],
-            cwd="/",
-            env={
-                "PATH": os.environ.get("PATH", os.defpath),
-                "GIT_CONFIG_NOSYSTEM": "1",
-                "GIT_CONFIG_GLOBAL": os.devnull,
-                "GIT_TERMINAL_PROMPT": "0",
-                "GIT_ASKPASS": "/bin/false",
-            },
-            stdin=subprocess.DEVNULL,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.DEVNULL,
-            errors="replace",
-            timeout=version_check.TIMEOUT,
-            check=False,
-        )
+        with TemporaryDirectory(dir=_TEMP_ROOT) as cwd:
+            result = subprocess.run(  # nosec B603
+                [argv[0], *flags, *argv[1:]],
+                cwd=cwd,
+                env=heal_env(cwd),
+                stdin=subprocess.DEVNULL,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.DEVNULL,
+                errors="replace",
+                timeout=version_check.TIMEOUT,
+                check=False,
+            )
     except OSError, subprocess.TimeoutExpired:
         return 1, ""
     return result.returncode, result.stdout
@@ -104,14 +119,17 @@ def check(settings: Settings, host: Host, local: str, installed: str) -> str | N
                     file=sys.stderr,
                 )
             if driver_commit != head:
-                subprocess.run(  # nosec B603 B607
-                    install,
-                    stdin=subprocess.DEVNULL,
-                    stdout=subprocess.DEVNULL,
-                    stderr=subprocess.DEVNULL,
-                    timeout=_INSTALL_TIMEOUT,
-                    check=True,
-                )
+                with TemporaryDirectory(dir=_TEMP_ROOT) as cwd:
+                    subprocess.run(  # nosec B603
+                        install,
+                        cwd=cwd,
+                        env=heal_env(cwd),
+                        stdin=subprocess.DEVNULL,
+                        stdout=subprocess.DEVNULL,
+                        stderr=subprocess.DEVNULL,
+                        timeout=_INSTALL_TIMEOUT,
+                        check=True,
+                    )
                 print(
                     f"version heal: driver {driver_commit}->{head}",
                     file=sys.stderr,

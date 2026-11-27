@@ -162,6 +162,10 @@ FIXED_BY_SECTION = {
     "## Push": (PUSH_BLOCK,),
     "## Hard rules": tuple(HARD_RULES_BLOCK.splitlines()),
 }
+BUILD_HEADING = "## Build"
+FIX_HEADING = "## Fix"
+EXPECTED_SIZE = "Expected size (code lines)"
+FAILING_LINE = "Failing file and line"
 
 
 def normalize(text: str) -> str:
@@ -217,7 +221,11 @@ def branch_instructions(text: str) -> list[str]:
 
 
 def branch_warnings(
-    text: str, run: str | None = None, *, fetch_refs: tuple[str, ...] = ()
+    text: str,
+    run: str | None = None,
+    *,
+    fetch_refs: tuple[str, ...] = (),
+    ignored_refs: tuple[str, ...] = (),
 ) -> list[str]:
     """Warn about foreign branch instructions and unfetched agent branch mentions."""
     allowed = "agent/" if run is None else f"agent/{run}"
@@ -234,24 +242,31 @@ def branch_warnings(
         )
     warnings = []
     for branch in dict.fromkeys(branches):
-        allowed_branch = (
-            branch.startswith(allowed) if run is None else branch == allowed
-        )
-        if allowed_branch:
+        name = branch.removeprefix("refs/heads/")
+        allowed_branch = name.startswith(allowed) if run is None else name == allowed
+        if (
+            allowed_branch
+            or branch in ignored_refs
+            or f"refs/heads/{name}" in ignored_refs
+        ):
             continue
         warnings.append(f"use the launcher branch {allowed} instead of {branch}")
     return warnings
 
 
-def render(
+def render(  # noqa: PLR0913 -- Explicit template fields and worktree options.
     run: str,
     repo: str,
     branch: str | None = None,
     base: str = "origin/main",
     *,
     scan_command: str | None = None,
+    kind: str = "build",
+    expected_size: str = "",
+    failing_line: str = "",
+    proven_fix: str = "",
 ) -> str:
-    """Return a skeleton; callers fill every brace placeholder before checking."""
+    """Return a skeleton with the fields for the selected brief kind."""
     step = STEP_BLOCK.format(
         repo=repo,
         path=shlex.quote(f".worktrees/{run}"),
@@ -259,11 +274,28 @@ def render(
         base=shlex.quote(base),
         hook_rule=HOOK_RULE,
     )
+    if kind == "fix":
+        details = "\n\n".join(
+            (
+                FIX_HEADING,
+                f"{FAILING_LINE}: {failing_line}".rstrip(),
+                f"Proven fix: {proven_fix}".rstrip(),
+            )
+        )
+    else:
+        details = "\n\n".join(
+            (
+                BUILD_HEADING,
+                f"{EXPECTED_SIZE}: {expected_size}".rstrip(),
+                "Above 400 code lines, split the work into stacked PRs.",
+            )
+        )
     return "\n\n".join(
         (
             f"# {{TASK}} ({repo}, {run})",
             step,
             "## Task\n\n{TASK_DETAILS}",
+            details,
             "## Gates\n\n{GATES}",
             f"## Commits\n\n{COMMITS_BLOCK}",
             f"## Push\n\n{PUSH_BLOCK}\nOutgoing scan command: `{scan_command}`"
@@ -318,6 +350,21 @@ def check_push_section(content: str) -> list[str]:
     return problems
 
 
+def check_template_fields(found: dict[str, str]) -> list[str]:
+    """Check required single-line fields in build and fix sections."""
+    return [
+        f"missing value for {field}"
+        for heading, field in (
+            (BUILD_HEADING, EXPECTED_SIZE),
+            (FIX_HEADING, FAILING_LINE),
+        )
+        if heading in found
+        and not re.search(
+            rf"^{re.escape(field)}:[^\S\n]*\S", found[heading], re.MULTILINE
+        )
+    ]
+
+
 def check(text: str) -> list[str]:
     """Return missing safeguards, placeholders and forbidden instructions."""
     found = sections(text)
@@ -326,6 +373,7 @@ def check(text: str) -> list[str]:
         for heading in REQUIRED_HEADINGS
         if heading not in found
     ]
+    problems.extend(check_template_fields(found))
     step = found[REQUIRED_HEADINGS[0]]
     if not any(
         re.match(r"^\s*(?:[-*+]\s+|\$ )?git worktree add \.worktrees/", line)
@@ -386,6 +434,14 @@ def check_files(files: list[str]) -> int:
     return status
 
 
+def field_value(value: str) -> str:
+    """Read a populated single-line template field."""
+    if not value.strip() or value.splitlines() != [value]:
+        msg = "expected a non-empty single-line value"
+        raise argparse.ArgumentTypeError(msg)
+    return value
+
+
 def main(argv: list[str], prog: str) -> int:
     parser = argparse.ArgumentParser(prog=prog, description=__doc__)
     commands = parser.add_subparsers(dest="command", required=True)
@@ -396,6 +452,17 @@ def main(argv: list[str], prog: str) -> int:
     new.add_argument("--base", default="origin/main", metavar="REF")
     new.add_argument("--push", action="store_true")
     new.add_argument("--scan-command", metavar="CMD")
+    new.add_argument("--kind", choices=("build", "fix"), default="build")
+    new.add_argument(
+        "--expected-size", type=field_value, metavar="LINES", help="build code estimate"
+    )
+    new.add_argument(
+        "--failing-line",
+        type=field_value,
+        metavar="FILE:LINE",
+        help="fix failure location",
+    )
+    new.add_argument("--proven-fix", type=field_value, help="fix evidence")
     new.add_argument("-o", metavar="FILE")
     lint = commands.add_parser("check", help="check completed peer-run briefs")
     lint.add_argument("files", nargs="+", metavar="FILE")
@@ -404,6 +471,10 @@ def main(argv: list[str], prog: str) -> int:
         return check_files(args.files)
     if args.push != (args.scan_command is not None):
         parser.error("--push and --scan-command must be used together")
+    if args.kind == "fix" and args.expected_size is not None:
+        parser.error("--expected-size is only for build briefs")
+    if args.kind == "build" and (args.failing_line or args.proven_fix):
+        parser.error("--failing-line and --proven-fix are only for fix briefs")
     for value, pattern, label in (
         (args.run, r"[A-Za-z0-9][A-Za-z0-9._-]*", "RUN"),
         (args.repo, r"[A-Za-z0-9-]+/[A-Za-z0-9._-]+", "REPO"),
@@ -419,6 +490,10 @@ def main(argv: list[str], prog: str) -> int:
         args.branch,
         args.base,
         scan_command=args.scan_command,
+        kind=args.kind,
+        expected_size=args.expected_size or "",
+        failing_line=args.failing_line or "",
+        proven_fix=args.proven_fix or "",
     )
     if args.o:
         try:

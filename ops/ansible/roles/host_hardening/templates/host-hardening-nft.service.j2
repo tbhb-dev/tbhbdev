@@ -1,0 +1,15 @@
+# {{ ansible_managed }}
+# Ubuntu's nftables.service starts from /etc/nftables.conf, which begins
+# with "flush ruleset" and would wipe Docker's and libvirt's tables. This
+# unit loads only the host table, after both daemons have written theirs.
+[Unit]
+Description=Load the host firewall table (table inet host)
+After=nftables.service docker.service libvirtd.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/sbin/nft -f /etc/nftables.d/host.nft
+
+[Install]
+WantedBy=multi-user.target

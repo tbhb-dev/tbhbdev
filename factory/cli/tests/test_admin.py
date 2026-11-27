@@ -6,12 +6,13 @@ import sys
 from dataclasses import replace
 lazy from pathlib import Path
 
-import httpx
+import httpx2
 import pytest
 from test_admin_request import fake as admin_fake
 lazy from test_admin_request import Fake
 
-from tbhbdev import admin
+from tbhbdev.admin import command as admin
+from tbhbdev.admin.audit import RefusedError
 lazy from tbhbdev.admin import request
 
 fake = admin_fake
@@ -57,14 +58,70 @@ def test_invalid_options(
 
 
 def test_default_runtime_dispatch(fake: Fake, monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(admin, "default_runtime", lambda: fake.runtime)
-    fake.reply = httpx.Response(404, text="missing")
+    runtime = replace(fake.runtime, settings=request.Settings())
+    monkeypatch.setattr(admin, "default_runtime", lambda: runtime)
+    fake.reply = httpx2.Response(404, text="missing")
     assert (
         admin.main(
             ["call", "GET", "/repos/tbhb-dev/widget", "--reason", "test"], "admin"
         )
         == 1
     )
+    assert fake.reads == ["op://vault-admin/item-admin/private_key"]
+
+
+@pytest.mark.parametrize(
+    ("config", "flags", "reference"),
+    [
+        (True, ["--vault", "vault-override"], "vault-override/item-admin"),
+        (True, ["--item", "item-override"], "vault-admin/item-override"),
+        (
+            False,
+            ["--vault", "vault-admin", "--item", "item-admin"],
+            "vault-admin/item-admin",
+        ),
+    ],
+)
+def test_credential_flags(
+    fake: Fake, config_file: Path, config: bool, flags: list[str], reference: str
+) -> None:
+    if not config:
+        config_file.unlink()
+    assert (
+        admin.main(
+            ["call", "GET", "/repos/tbhb-dev/widget", "--reason", "test", *flags],
+            "admin",
+            runtime=fake.runtime,
+        )
+        == 0
+    )
+    assert fake.reads == [f"op://{reference}/private_key"]
+
+
+@pytest.mark.parametrize(
+    ("flags", "missing"), [([], "vault"), (["--vault", "vault-admin"], "item")]
+)
+def test_missing_credential_settings(
+    fake: Fake,
+    config_file: Path,
+    flags: list[str],
+    missing: str,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    config_file.unlink()
+    assert (
+        admin.main(
+            ["call", "GET", "/repos/tbhb-dev/widget", "--reason", "test", *flags],
+            "admin",
+            runtime=fake.runtime,
+        )
+        == 3
+    )
+    assert capsys.readouterr() == (
+        "",
+        f"Set --{missing} or [admin] {missing} in {config_file}.\n",
+    )
+    assert fake.stores == fake.reads == fake.requests == []
 
 
 @pytest.mark.parametrize("source", ["-", "file", "missing", "invalid"])
@@ -81,24 +138,24 @@ def test_body_input(
     else:
         if source == "invalid":
             path.write_text("invalid")
-        with pytest.raises(admin.RefusedError, match=r"^invalid_body$"):
+        with pytest.raises(RefusedError, match=r"^invalid_body$"):
             admin.body_from(str(path))
 
 
 def selected_transport(
-    fake: Fake, replies: dict[str, httpx.Response]
+    fake: Fake, replies: dict[str, httpx2.Response]
 ) -> request.Runtime:
     original = fake.runtime.env.transport
     assert original is not None
 
-    def transport(req: httpx.Request) -> httpx.Response:
+    def transport(req: httpx2.Request) -> httpx2.Response:
         if req.url.path in replies:
             fake.reply = replies[req.url.path]
         return original.handle_request(req)
 
     return replace(
         fake.runtime,
-        env=replace(fake.runtime.env, transport=httpx.MockTransport(transport)),
+        env=replace(fake.runtime.env, transport=httpx2.MockTransport(transport)),
     )
 
 
@@ -106,13 +163,13 @@ def test_secret_repos_add(fake: Fake) -> None:
     runtime = selected_transport(
         fake,
         {
-            "/orgs/tbhb-dev/actions/secrets/build": httpx.Response(
+            "/orgs/tbhb-dev/actions/secrets/build": httpx2.Response(
                 200, json={"visibility": "selected"}
             ),
-            "/repos/tbhb-dev/widget": httpx.Response(200, json={"id": 1}),
-            "/repos/tbhb-dev/other": httpx.Response(200, json={"id": 9}),
-            "/orgs/tbhb-dev/actions/secrets/build/repositories/1": httpx.Response(204),
-            "/orgs/tbhb-dev/actions/secrets/build/repositories/9": httpx.Response(204),
+            "/repos/tbhb-dev/widget": httpx2.Response(200, json={"id": 1}),
+            "/repos/tbhb-dev/other": httpx2.Response(200, json={"id": 9}),
+            "/orgs/tbhb-dev/actions/secrets/build/repositories/1": httpx2.Response(204),
+            "/orgs/tbhb-dev/actions/secrets/build/repositories/9": httpx2.Response(204),
         },
     )
     assert (
@@ -163,7 +220,7 @@ def test_secret_repos_add(fake: Fake) -> None:
 def test_secret_visibility_refused(
     fake: Fake, payload: object, status: int, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    fake.reply = httpx.Response(
+    fake.reply = httpx2.Response(
         status, text=payload if isinstance(payload, str) else json.dumps(payload)
     )
     assert (
@@ -207,11 +264,11 @@ def test_repository_selection_errors(  # noqa: PLR0913, PLR0917  # Table plus fi
     runtime = selected_transport(
         fake,
         {
-            "/orgs/tbhb-dev/actions/secrets/build": httpx.Response(
+            "/orgs/tbhb-dev/actions/secrets/build": httpx2.Response(
                 200, json={"visibility": "selected"}
             ),
-            "/repos/tbhb-dev/widget": httpx.Response(200, json={"id": ident}),
-            "/orgs/tbhb-dev/actions/secrets/build/repositories/1": httpx.Response(
+            "/repos/tbhb-dev/widget": httpx2.Response(200, json={"id": ident}),
+            "/orgs/tbhb-dev/actions/secrets/build/repositories/1": httpx2.Response(
                 status
             ),
         },
@@ -260,9 +317,9 @@ def test_parser_contract() -> None:
         "json": None,
         "reason": "test",
         "dry_run": True,
-        "app": "tbhb-dev-admin",
-        "item": "github-app-tbhb-dev-admin",
-        "vault": "tbhb-dev-admin",
+        "app": request.Settings.app,
+        "item": None,
+        "vault": None,
         "app_id": "5733271",
     }
     selected = parser.parse_args(
@@ -275,9 +332,9 @@ def test_parser_contract() -> None:
         "secret": "build",
         "repos": ["widget"],
         "reason": "add repositories to selected secret",
-        "app": "tbhb-dev-admin",
-        "item": "github-app-tbhb-dev-admin",
-        "vault": "tbhb-dev-admin",
+        "app": request.Settings.app,
+        "item": None,
+        "vault": None,
         "app_id": "5733271",
     }
 

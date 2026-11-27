@@ -1,0 +1,4 @@
+---
+ca_client_trust_macos_accounts: [agent, ops]
+ca_client_trust_macos_homes: {}
+ca_client_trust_system_keychain: false

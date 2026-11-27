@@ -1,0 +1,31 @@
+---
+- name: verify-connect-failure | Set the failing Tailscale status fixture
+  ansible.builtin.copy:
+    dest: /var/tmp/tailscale-status.json
+    content: "{{ connect_fixture_status }}"
+    mode: '0644'
+
+- name: verify-connect-failure | Reset the expected failure marker
+  ansible.builtin.set_fact:
+    connect_fixture_failed: false
+
+- name: verify-connect-failure | Reject unavailable Tailscale or an empty suffix
+  block:
+    - name: verify-connect-failure | Resolve a short name with the failing fixture
+      ansible.builtin.include_tasks: "{{ playbook_dir }}/../../../../tasks/connect-endpoints.yml"
+      vars:
+        connect_endpoints: [https://op-connect]
+  rescue:
+    - name: verify-connect-failure | Check that the failure explains the Tailscale requirement
+      ansible.builtin.assert:
+        that:
+          - >-
+              ansible_failed_result.msg ==
+              'Connect short names require Tailscale running on the target with a nonempty MagicDNS suffix'
+    - name: verify-connect-failure | Record the expected rejection
+      ansible.builtin.set_fact:
+        connect_fixture_failed: true
+
+- name: verify-connect-failure | Require the invalid status to fail
+  ansible.builtin.assert:
+    that: connect_fixture_failed
