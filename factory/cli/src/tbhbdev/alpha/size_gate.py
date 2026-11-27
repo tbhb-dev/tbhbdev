@@ -1,7 +1,6 @@
 """PR size counts from rules and size review statuses from GitHub."""
 
 import json
-import os
 import subprocess  # nosec B404
 import sys
 from dataclasses import dataclass
@@ -12,8 +11,6 @@ from tbhbdev.alpha.repo_bootstrap import gh_api
 
 DATA = Path(__file__).with_name("size_gate_data")
 COUNT_KEYS = ("code_lines", "code_limit", "raw_lines", "raw_limit")
-SIZE_REVIEW = "size-review"
-SIZE_VERDICTS = frozenset({"OVERRIDE", "SPLIT"})
 
 
 @dataclass(frozen=True)
@@ -23,8 +20,6 @@ class SizeCounts:
     raw_lines: int
     raw_limit: int
     failed: str | None
-    diff_range: str = ""
-    merge_tree_command: str = ""
     imported_lines: int | None = None
     branch_exempt: bool = False
 
@@ -78,8 +73,6 @@ def size_counts(  # noqa: PLR0913 -- refs, branch name and counter tools are ind
     if (
         not isinstance(data, dict)
         or any(type(data.get(key)) is not int for key in COUNT_KEYS)
-        or not isinstance(diff_range := data.get("diff_range"), str)
-        or not isinstance(merge_tree_command := data.get("merge_tree_command"), str)
         or type(data.get("branch_exempt")) is not bool
         or "imported_lines" not in data
         or (
@@ -107,8 +100,6 @@ def size_counts(  # noqa: PLR0913 -- refs, branch name and counter tools are ind
             "str | None",  # pragma: no mutate -- Type-only argument.
             data["failed"],
         ),
-        diff_range=diff_range,
-        merge_tree_command=merge_tree_command,
         imported_lines=data["imported_lines"],
         branch_exempt=data["branch_exempt"],
     )
@@ -116,24 +107,15 @@ def size_counts(  # noqa: PLR0913 -- refs, branch name and counter tools are ind
 
 def has_size_review_success(repo: str, head: str) -> bool:
     """Whether this exact commit has a successful size-review status."""
-    return size_review_state(repo, head) == "success"
-
-
-def size_review_state(repo: str, head: str) -> str:
-    """The sizing status of this exact commit, or an empty string."""
-    data = gh_api("GET", f"repos/{repo}/commits/{head}/status", env=os.environ)
+    data = gh_api("GET", f"repos/{repo}/commits/{head}/status")
     if not isinstance(data, dict) or data.get("sha") != head:
-        return ""
+        return False
     statuses = data.get("statuses")
     if not isinstance(statuses, list):
-        return ""
-    return next(
-        (
-            state
-            for status in cast("list[object]", statuses)  # pragma: no mutate
-            if isinstance(status, dict)
-            and status.get("context") == SIZE_REVIEW
-            and isinstance(state := status.get("state"), str)
-        ),
-        "",
+        return False
+    return any(
+        isinstance(status, dict)
+        and status.get("context") == "size-review"
+        and status.get("state") == "success"
+        for status in cast("list[object]", statuses)
     )

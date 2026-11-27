@@ -2,10 +2,8 @@
 
 import argparse
 import json
-import os
 import subprocess
 import sys
-from dataclasses import replace
 from unittest.mock import Mock, call
 lazy from pathlib import Path
 
@@ -14,9 +12,6 @@ import pytest
 from tbhbdev.alpha import pull_request as pr
 from tbhbdev.alpha import size_gate as sg
 
-BASE_COMMIT = "a" * 40
-HEAD_COMMIT = "b" * 40
-DIFF_RANGE = f"{BASE_COMMIT}...{HEAD_COMMIT}"
 GOOD = {
     "code_lines": 400,
     "code_limit": 400,
@@ -24,8 +19,6 @@ GOOD = {
     "raw_limit": 1500,
     "imported_lines": None,
     "failed": None,
-    "diff_range": DIFF_RANGE,
-    "merge_tree_command": "",
     "branch_exempt": False,
 }
 
@@ -95,11 +88,6 @@ def test_size_count_matches_rules_counting(
         "-qm",
         "change",
     )
-    linked = tmp_path / "linked"
-    git("worktree", "add", "-q", "--detach", str(linked), "HEAD")
-    assert (linked / ".git").is_file()
-    monkeypatch.chdir(linked / ".github")
-    head = git("rev-parse", "HEAD")
     runner = sg.subprocess.run
 
     def without_bazel(
@@ -109,9 +97,7 @@ def test_size_count_matches_rules_counting(
         return runner(argv, capture_output=capture_output, text=text, check=check)
 
     monkeypatch.setattr(sg.subprocess, "run", without_bazel)
-    assert sg.size_counts(base, "HEAD") == replace(
-        expected, diff_range=f"{base}...{head}"
-    )
+    assert sg.size_counts(base, "HEAD") == expected
 
 
 @pytest.mark.parametrize("command", ["check", "create"])
@@ -153,12 +139,10 @@ def test_branch_exemption_uses_the_base_policy(
     git("commit", "-qm", "change")
 
     monkeypatch.setattr(pr, "git", Mock(return_value=(0, head_branch)))
-    head = git("rev-parse", "HEAD")
-    monkeypatch.setattr(pr, "_size_commits", Mock(return_value=(base, head, None)))
+    monkeypatch.setattr(pr, "_size_base", Mock(return_value=(base, None)))
     monkeypatch.setattr(pr, "find_tool", Mock(return_value="scc"))
-    monkeypatch.setattr(pr, "size_review_allows", Mock(return_value=False))
     checked = pr.Checked([], meta={"base": "main"})
-    pr.check_size(argparse.Namespace(command=command, draft="d.md"), checked, {})
+    pr.check_size(argparse.Namespace(command=command, draft="d.md"), checked)
 
     captured = capsys.readouterr()
     if head_branch == "agent/cleanup-module":
@@ -276,10 +260,8 @@ def test_stacked_count_includes_child_lines_in_a_resolved_conflict(
     monkeypatch.chdir(tmp_path)
     parent, main, resolved, additions = history
 
-    def git(*args: str) -> str:
-        return subprocess.check_output(
-            ["git", *args], stderr=subprocess.PIPE, text=True
-        ).strip()
+    def git(*args: str) -> None:
+        subprocess.run(["git", *args], capture_output=True, check=True)
 
     git("init", "-q", "-b", "main")
     git("config", "user.name", "test")
@@ -306,9 +288,7 @@ def test_stacked_count_includes_child_lines_in_a_resolved_conflict(
         out.write(additions)
     git("commit", "-qam", "child work")
 
-    assert sg.size_counts("parent", "HEAD", default_ref="main") == replace(
-        expected, diff_range=f"{git('rev-parse', 'main')}..{git('rev-parse', 'HEAD')}"
-    )
+    assert sg.size_counts("parent", "HEAD", default_ref="main") == expected
 
 
 @pytest.mark.parametrize("failed", [None, "code", "raw"])
@@ -328,7 +308,7 @@ def test_counts(
     monkeypatch.setattr(sg.subprocess, "run", runner)
     assert sg.size_counts(
         "origin/main", "HEAD", default_ref=default_ref, **tools
-    ) == sg.SizeCounts(400, 400, 1500, 1500, failed, diff_range=DIFF_RANGE)
+    ) == sg.SizeCounts(400, 400, 1500, 1500, failed)
     assert runner.call_count == 1
     assert runner.call_args.args == (
         [
@@ -444,9 +424,7 @@ def test_review(monkeypatch: pytest.MonkeyPatch, data: object, expected: bool) -
     reader = Mock(return_value=data)
     monkeypatch.setattr(sg, "gh_api", reader)
     assert sg.has_size_review_success("owner/repo", "head") is expected
-    reader.assert_called_once_with(
-        "GET", "repos/owner/repo/commits/head/status", env=os.environ
-    )
+    reader.assert_called_once_with("GET", "repos/owner/repo/commits/head/status")
 
 
 @pytest.mark.parametrize(
@@ -464,22 +442,21 @@ def test_pr_check(
     capsys: pytest.CaptureFixture[str],
     counts: sg.SizeCounts,
     problem: str,
-    size_launcher: Mock,
 ) -> None:
     checked = pr.Checked([])
     lint = Mock(return_value=checked)
     monkeypatch.setattr(pr, "read_checked", lint)
     counter = Mock(return_value=counts)
     monkeypatch.setattr(sg, "size_counts", counter)
-    monkeypatch.setattr(pr, "git", git_exits())
+    monkeypatch.setattr(pr, "git", Mock(return_value=(0, "")))
     monkeypatch.setattr(pr, "base_of", Mock(return_value="main"))
     assert pr.command(
         argparse.Namespace(command="check", draft="draft.md"), {}
     ) == bool(problem)
     lint.assert_called_once_with("draft.md")
     counter.assert_called_once_with(
-        BASE_COMMIT,
-        HEAD_COMMIT,
+        "refs/remotes/origin/main",
+        "HEAD",
         default_ref=None,
         head_branch="",
         scc="/tools/scc",
@@ -492,13 +469,9 @@ def test_pr_check(
         f"{counts.raw_lines} raw lines, limit 1500\n"
     )
     if problem:
-        size_launcher.assert_called_once_with(
-            "owner/repo", "main", HEAD_COMMIT, counts, {}
-        )
         assert checked.problems == [(1, f"{problem}: split into stacked PRs")]
         assert captured.out.endswith(f"draft.md:1: {problem}: split into stacked PRs\n")
     else:
-        size_launcher.assert_not_called()
         assert captured.out.endswith("OK: the draft conforms\n")
 
 
@@ -527,15 +500,6 @@ def pr_tools(monkeypatch: pytest.MonkeyPatch) -> None:
         return {name: f"/tools/{name}" for name in names}
 
     monkeypatch.setattr(pr, "find_tools", Mock(side_effect=paths))
-    monkeypatch.setattr(pr, "origin_repository", Mock(return_value="owner/repo"))
-    monkeypatch.setattr(sg, "size_review_state", Mock(return_value=""))
-
-
-@pytest.fixture
-def size_launcher(monkeypatch: pytest.MonkeyPatch) -> Mock:
-    launcher = Mock()
-    monkeypatch.setattr(pr, "start_size_review", launcher)
-    return launcher
 
 
 @pytest.fixture(autouse=True)
@@ -547,23 +511,16 @@ FETCH = ["fetch", "--quiet", "--no-tags", "--no-write-fetch-head", "--refmap="]
 
 
 def git_exits(code: int = 0) -> Mock:
-    """A git mock that returns pinned commit IDs."""
-
-    def resolve(*args: str) -> tuple[int, str]:
-        if args[0] == "branch":
-            return code, ""
-        return code, HEAD_COMMIT if args[-1] == "HEAD" else BASE_COMMIT
-
-    return Mock(side_effect=resolve)
+    """A git mock that exits ``code`` with no output."""
+    return Mock(return_value=(code, ""))
 
 
-@pytest.mark.parametrize("failure", ["count", "over", "base", "missing", "override"])
+@pytest.mark.parametrize("failure", ["count", "over", "base", "missing"])
 @pytest.mark.usefixtures("pr_tools")
 def test_pr_create_size(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
     failure: str,
-    size_launcher: Mock,
 ) -> None:
     counts = sg.SizeCounts(401, 400, 500, 1500, "code")
     counter = Mock(return_value=counts)
@@ -580,33 +537,29 @@ def test_pr_create_size(
     monkeypatch.setattr(pr, "base_visibility", Mock(return_value="public"))
     post = Mock(return_value=0)
     monkeypatch.setattr(pr, "create_pr", post)
-    if failure == "override":
-        monkeypatch.setattr(sg, "size_review_state", Mock(return_value="success"))
-    assert pr.command(
-        argparse.Namespace(command="create", draft="d.md", dry_run=False), {}
-    ) == (failure != "override")
-    captured = capsys.readouterr()
-    assert post.called is (failure == "override")
-    if failure == "over":
-        size_launcher.assert_called_once_with(
-            "owner/repo", "main", HEAD_COMMIT, counts, {}
+    assert (
+        pr.command(
+            argparse.Namespace(command="create", draft="d.md", dry_run=False), {}
         )
+        == 1
+    )
+    captured = capsys.readouterr()
+    post.assert_not_called()
+    if failure == "over":
         assert captured.out == "d.md:1: 401 lines, limit 400: split into stacked PRs\n"
     elif failure == "missing":
         assert captured.err == (
             "size count unavailable: pr_size_count: "
             "/tools/scc missing or not executable\n"
         )
-    elif failure != "override":
+    else:
         assert captured.err.startswith("size count unavailable: ")
-    if failure != "over":
-        size_launcher.assert_not_called()
     fetched = [*FETCH, "origin", "+refs/heads/main:refs/remotes/origin/main"]
     assert call(*fetched) in git.call_args_list
-    if failure in ("count", "over", "override"):
+    if failure in ("count", "over"):
         counter.assert_called_once_with(
-            BASE_COMMIT,
-            HEAD_COMMIT,
+            "refs/remotes/origin/main",
+            "HEAD",
             default_ref=None,
             head_branch="",
             scc="/tools/scc",
@@ -627,9 +580,8 @@ def test_size_reports_verified_imports(
     counts = sg.SizeCounts(5, 400, 9, 1500, None, imported_lines=imported_lines)
     monkeypatch.setattr(sg, "size_counts", Mock(return_value=counts))
     monkeypatch.setattr(pr, "git", git_exits())
-    monkeypatch.setattr(pr, "find_tool", Mock(return_value="scc"))
     checked = pr.Checked([], meta={"base": "main"})
-    pr.check_size(argparse.Namespace(command=command, draft="d.md"), checked, {})
+    pr.check_size(argparse.Namespace(command=command, draft="d.md"), checked)
     assert checked.problems == []
     output = (
         f"{imported_lines} added lines verified by import maps\n"
@@ -650,7 +602,7 @@ def test_both_stacked_refs_are_refreshed_without_tags_then_counted(
     find = Mock(return_value="/tools/scc")
     monkeypatch.setattr(pr, "find_tool", find)
     checked = pr.Checked([], meta={"base": "topic"})
-    pr.check_size(argparse.Namespace(command="create", draft="d.md"), checked, {})
+    pr.check_size(argparse.Namespace(command="create", draft="d.md"), checked)
     assert checked.problems == []
     assert git.call_args_list[0] == call(
         *FETCH,
@@ -659,8 +611,8 @@ def test_both_stacked_refs_are_refreshed_without_tags_then_counted(
         "+refs/heads/main:refs/remotes/origin/main",
     )
     counter.assert_called_once_with(
-        BASE_COMMIT,
-        HEAD_COMMIT,
+        "refs/remotes/origin/topic",
+        "HEAD",
         default_ref="refs/remotes/origin/main",
         head_branch="",
         scc="/tools/scc",
@@ -679,11 +631,11 @@ def test_a_failed_fetch_refuses_and_never_counts_a_stale_ref(
     monkeypatch.setattr(pr, "git", git)
     monkeypatch.setattr(pr, "base_of", Mock(return_value="main"))
     checked = pr.Checked([])
-    pr.check_size(argparse.Namespace(command="create", draft="d.md"), checked, {})
+    pr.check_size(argparse.Namespace(command="create", draft="d.md"), checked)
     assert checked.problems == [(1, "size count unavailable: cannot fetch main")]
     assert capsys.readouterr().err == "size count unavailable: cannot fetch main\n"
     counter.assert_not_called()
-    assert [c.args[0] for c in git.call_args_list] == ["fetch", "fetch"]
+    assert [c.args[0] for c in git.call_args_list] == ["fetch"]
     assert "--refmap=" in git.call_args_list[0].args
 
 
@@ -697,7 +649,7 @@ def test_create_refuses_when_gh_targets_another_repository(
     monkeypatch.setattr(pr, "target_is_origin", Mock(return_value=False))
     monkeypatch.setattr(pr, "base_of", Mock(return_value="main"))
     checked = pr.Checked([])
-    pr.check_size(argparse.Namespace(command="create", draft="d.md"), checked, {})
+    pr.check_size(argparse.Namespace(command="create", draft="d.md"), checked)
     assert len(checked.problems) == 1
     assert capsys.readouterr().err == (
         "size count unavailable: gh may target a repository other than origin\n"
@@ -751,7 +703,7 @@ def test_a_dry_run_fetches_nothing_and_warns_on_an_excess(
     monkeypatch.setattr(pr, "find_tool", Mock(return_value="/tools/scc"))
     checked = pr.Checked([])
     args = argparse.Namespace(command="create", draft="d.md", dry_run=True)
-    pr.check_size(args, checked, {})
+    pr.check_size(args, checked)
     captured = capsys.readouterr()
     assert checked.problems == []
     assert captured.out == ""
@@ -762,7 +714,7 @@ def test_a_dry_run_fetches_nothing_and_warns_on_an_excess(
     assert all(c.args[0] != "fetch" for c in git.call_args_list)
     failing = Mock(return_value=(1, ""))
     monkeypatch.setattr(pr, "git", failing)
-    pr.check_size(args, checked, {})
+    pr.check_size(args, checked)
     assert capsys.readouterr().err == (
         "size count unavailable: base branch refs/remotes/origin/main not found\n"
     )

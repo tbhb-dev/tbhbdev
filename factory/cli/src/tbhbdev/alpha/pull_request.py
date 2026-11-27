@@ -71,8 +71,7 @@ The ``op-*`` rules, the address, MAC, endpoint and keychain rules, the canary
 and .gitleaks.toml still apply. Any visibility but ``PRIVATE`` or a failed
 read scans under the full private config, so the read alone never refuses a
 command.
-``check`` doesn't scan the draft. For an oversized head, both commands
-check GitHub for a sizing verdict and launch a review when none exists.
+``check`` makes no gh calls and doesn't scan.
 
 ``create`` also writes ``Opened-by: LLM ...`` as the first line of that
 paragraph: the posting agent's root identity, with no ``subagent=``. Once gh
@@ -142,15 +141,12 @@ from urllib.parse import quote
 
 from jsonschema import Draft202012Validator
 
-from tbhbdev import userconfig
 from tbhbdev.alpha import identity as agent_identity
 from tbhbdev.alpha import opened, secret_scan, size_gate, tool_pins
 from tbhbdev.alpha import pull_request_frontmatter as frontmatter
-from tbhbdev.alpha.agent import settings as agent_settings
 from tbhbdev.alpha.install import require_git_hooks
 from tbhbdev.alpha.repo import git as repo_git
 from tbhbdev.alpha.repo import hook_cwd, in_tbhb_dev, read_hook_stdin
-from tbhbdev.alpha.repo_bootstrap import GhError, NotFoundError
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Collection, Mapping, Sequence
@@ -2047,120 +2043,16 @@ def opened_by(env: Mapping[str, str]) -> tuple[str | None, str | None]:
     return ident.root, f"{OPENED_KEY}: {value}"
 
 
-def run_size_review_in_pane(
-    argv: Sequence[str], name: str, directory: Path
-) -> tuple[str, str]:
-    """Give a caller outside tmux a named pane for the launcher to identify."""
-    tmux = find_tool("tmux")
-    server = [tmux, "-S", str(directory / "tmux.sock"), "-f", os.devnull]
-    stdout, stderr = directory / "stdout", directory / "stderr"
-    signal = shlex.join([tmux, "wait-for", "-S", "finished"])
-    select = shlex.join([tmux, "select-pane", "-T", name])
-    # Keep the shell's pane open while the launcher uses noninteractive stdin.
-    script = (
-        f"trap {shlex.quote(signal)} EXIT\n"
-        f"{{ {select} && {shlex.join(argv)} </dev/null; }} "
-        f">{shlex.quote(str(stdout))} 2>{shlex.quote(str(stderr))}\n"
-    )
-    try:
-        done = run([
-            *server, "start-server", ";", "set-option", "-s", "exit-empty", "off",
-            ";", "new-session", "-d", "-s", name, "/bin/sh", "-c", script,
-            ";", "wait-for", "finished",
-        ])  # fmt: skip
-        if done.returncode:
-            return done.stdout, done.stderr
-        return stdout.read_text(), stderr.read_text()
-    finally:
-        run([*server, "kill-server"])
-
-
-def start_size_review(
-    repo: str,
-    branch: str,
-    head: str,
-    counts: size_gate.SizeCounts,
-    env: Mapping[str, str],
-) -> None:
-    """Start the sizing review for the same range used to count lines."""
-    host = env.get("TBHBDEV_SIZE_REVIEW_HOST")
-    detected = agent_identity.detect(env)
-    harness, model = (
-        ("codex", "gpt-6.1-sol")
-        if detected and detected[0] == agent_identity.ANTIGRAVITY
-        else ("agy", "gemini-4-argon-high")
-    )
-    if not host:
-        hosts = agent_settings.load().hosts
-        host = next(
-            (h.name for h in hosts if harness in h.proven_harnesses), hosts[0].name
-        )
-    argv = [
-        find_tool("tbhbdev"), "alpha", "agent", "exec",
-        "--host", host, "--repo", repo, "--ref", head,
-        "--fetch-ref", f"refs/heads/{branch}",
-        "--harness", harness, "--model", model, "--effort", "high",
-        "--profile", "review", "--class", "review", "--role", "reviewer",
-        "--variant", size_gate.SIZE_REVIEW,
-    ]  # fmt: skip
-    name = f"{size_gate.SIZE_REVIEW}-{head[:12]}"
-    prepare_diff = (
-        f"First run `{counts.merge_tree_command}` to create the comparison tree. "
-        if counts.merge_tree_command
-        else ""
-    )
-    with tempfile.TemporaryDirectory() as directory:
-        prompt = Path(directory) / "sizing.md"
-        prompt.write_text(
-            (size_gate.DATA / "review.md").read_text().format(
-                diff_range=counts.diff_range, prepare_diff=prepare_diff, head=head,
-                code=counts.code_lines, raw=counts.raw_lines,
-            )
-        )  # fmt: skip
-        argv.extend((name, str(prompt)))
-        if not env.get("TMUX_PANE"):
-            stdout, stderr = run_size_review_in_pane(argv, name, prompt.parent)
-        else:
-            done = run(argv)
-            stdout, stderr = done.stdout, done.stderr
-    print(stdout, end="")
-    print(stderr, end="", file=sys.stderr)
-
-
-def size_review_allows(
-    branch: str,
-    head: str,
-    counts: size_gate.SizeCounts,
-    env: Mapping[str, str],
-) -> bool:
-    """Read the verdict for this head or start the review that supplies it."""
-    try:
-        repo = origin_repository(allow_push_fallback=True)
-        state = size_gate.size_review_state(repo, head)
-        if state == "success":
-            return True
-        if state not in {"pending", "failure"}:
-            start_size_review(repo, branch, head, counts, env)
-    except NotFoundError:
-        print(
-            "push this head to origin before starting its sizing review",
-            file=sys.stderr,
-        )
-    except (GhError, OSError, SystemExit, userconfig.ConfigError) as exc:
-        print(f"cannot start sizing review: {exc}", file=sys.stderr)
-    return False
-
-
 def size_unavailable(checked: Checked, reason: str) -> None:
     message = f"size count unavailable: {reason}"
     checked.problems.append((1, message))
     print(message, file=sys.stderr)
 
 
-def _size_commits(
+def _size_base(
     branch: str, *, explicit_base: bool, dry_run: bool
-) -> tuple[str, str, str | None]:
-    """Resolve the base and head, refreshing the base and any stacked default ref."""
+) -> tuple[str, str | None]:
+    """Refresh the base and any stacked default ref together, except in a dry run."""
     base = f"refs/remotes/origin/{branch}"
     default = branch
     if explicit_base:
@@ -2175,25 +2067,17 @@ def _size_commits(
             "--no-write-fetch-head",
             "--refmap=",
             "origin",
+            f"+refs/heads/{branch}:{base}",
         )
-        default_fetch = ()
         if default_ref is not None:
-            default_fetch = (f"+refs/heads/{default}:{default_ref}",)
-        for prefix in ("refs/heads", "refs/heads/fetched/heads"):
-            if git(*fetch, f"+{prefix}/{branch}:{base}", *default_fetch)[0] == 0:
-                break
-        else:
+            fetch += (f"+refs/heads/{default}:{default_ref}",)
+        if git(*fetch)[0] != 0:
             message = f"cannot fetch {branch}"
             raise size_gate.SizeCountError(message)
-    base_code, base_commit = git(
-        "rev-parse", "--verify", "--quiet", f"{base}^{{commit}}"
-    )
-    head_code, head = git("rev-parse", "--verify", "HEAD")
-    if base_code or head_code:
-        missing = f"base branch {base}" if base_code else "HEAD"
-        message = f"{missing} not found"
+    if git("rev-parse", "--verify", "--quiet", f"{base}^{{commit}}")[0] != 0:
+        message = f"base branch {base} not found"
         raise size_gate.SizeCountError(message)
-    return base_commit, head, default_ref
+    return base, default_ref
 
 
 def _print_size_counts(
@@ -2237,9 +2121,7 @@ def _report_size_excess(
     print(f"{draft}:1: {why}")
 
 
-def check_size(
-    args: argparse.Namespace, checked: Checked, env: Mapping[str, str]
-) -> None:
+def check_size(args: argparse.Namespace, checked: Checked) -> None:
     """Count added lines and refuse an unavailable count, including in a dry run."""
     explicit_base = "base" in checked.meta
     branch = base_of(checked.meta)
@@ -2254,14 +2136,14 @@ def check_size(
         size_unavailable(checked, "gh may target a repository other than origin")
         return
     try:
-        base_commit, head, default_ref = _size_commits(
+        base, default_ref = _size_base(
             branch, explicit_base=explicit_base, dry_run=dry_run
         )
         _, head_branch = git("branch", "--show-current")
         tools = _TOOL_PATHS.get()
         counts = size_gate.size_counts(
-            base_commit,
-            head,
+            base,
+            "HEAD",
             default_ref=default_ref,
             head_branch=head_branch,
             scc=find_tool(SCC),
@@ -2271,9 +2153,7 @@ def check_size(
         size_unavailable(checked, str(exc))
         return
     _print_size_counts(args.command, counts, head_branch)
-    if counts.failed is not None and (
-        dry_run or not size_review_allows(branch, head, counts, env)
-    ):
+    if counts.failed is not None:
         _report_size_excess(args.draft, checked, counts, dry_run=dry_run)
 
 
@@ -2299,7 +2179,7 @@ def _run_command(args: argparse.Namespace, env: Mapping[str, str]) -> int:
     """Check the draft and carry out the requested action."""
     checked = read_checked(args.draft)
     if args.command in ("check", "create"):
-        check_size(args, checked, env)
+        check_size(args, checked)
     if checked.problems:
         return 1
     if args.command == "check":

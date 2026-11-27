@@ -251,12 +251,9 @@ cli_py_library(
         ":opened",
         ":pull_request_frontmatter",
         ":repo",
-        ":repo_bootstrap",
         ":secret_scan",
         ":size_gate",
         ":tool_pins",
-        "//factory/cli/src/tbhbdev:userconfig",
-        "//factory/cli/src/tbhbdev/alpha/agent:settings",
         "@cli_pip//jsonschema",
     ],
 )

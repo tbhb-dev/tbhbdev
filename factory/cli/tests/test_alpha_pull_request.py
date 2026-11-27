@@ -292,7 +292,6 @@ def draft_world(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> World:
         ("symbolic-ref", "--quiet", "refs/remotes/origin/HEAD"): (0, base),
         ("fetch", *fetch_options, "origin", f"+refs/heads/main:{base}"): (0, ""),
         ("rev-parse", "--verify", "--quiet", f"{base}^{{commit}}"): (0, ""),
-        ("rev-parse", "--verify", "HEAD"): (0, ""),
         ("branch", "--show-current"): (0, "agent/topic"),
     }
 
@@ -1853,108 +1852,14 @@ def test_a_draft_without_a_base_takes_the_default_branch(
     remote_default(world, tmp_path, "trunk")
     write_draft(world, BASE)
     run_main("check")
-    head = world.git("rev-parse", "HEAD")
     counted.assert_called_once_with(
-        head,
-        head,
+        "refs/remotes/origin/trunk",
+        "HEAD",
         default_ref=None,
         head_branch=world.git("branch", "--show-current"),
         scc=str(world.bin / "scc"),
         git=str(world.root.parent / "git_dir" / "git"),
     )
-
-
-def oversized_stack(world: World) -> tuple[str, str]:
-    world.git("switch", "-qc", "parent")
-    (world.root / "parent.py").write_text("parent = 1\n")
-    world.git("add", "parent.py")
-    world.commit("parent work")
-    base = world.git("rev-parse", "HEAD")
-    world.git("switch", "-q", "main")
-    (world.root / "upstream.py").write_text("upstream = 1\n")
-    world.git("add", "upstream.py")
-    world.commit("upstream work")
-    main = world.git("rev-parse", "HEAD")
-    remote_default(world, world.root.parent, "main")
-    remote = world.git("remote", "get-url", "origin")
-    world.git("push", "-q", remote, "parent:refs/heads/fetched/heads/agent/base")
-    world.git("switch", "-qc", "child", "parent")
-    (world.root / "child.py").write_text("child = 1\n" * 401)
-    world.git("add", "child.py")
-    world.commit("child work")
-    world.git("merge", "-q", "--no-edit", "main")
-    return base, main
-
-
-@pytest.mark.parametrize(
-    ("verb", "env"),
-    [
-        ("check", {"TBHBDEV_AGENT_RUN": "1"}),
-        ("create", {"TBHBDEV_SIZE_REVIEW_HOST": "override"}),
-    ],
-)
-def test_oversized_stacked_pr_launches_a_review_outside_tmux(
-    world: World,
-    monkeypatch: pytest.MonkeyPatch,
-    capsys: pytest.CaptureFixture[str],
-    verb: str,
-    env: dict[str, str],
-) -> None:
-    assert REAL_SCC is not None
-    (world.bin / "scc").unlink()
-    path = (os.environ["PATH"], str(Path(REAL_SCC).absolute().parent), os.defpath)
-    monkeypatch.setenv("PATH", os.pathsep.join(path))
-    monkeypatch.setattr(size_gate, "size_counts", REAL_SIZE_COUNTS)
-    monkeypatch.setattr(size_gate, "size_review_state", Mock(return_value="missing"))
-    monkeypatch.setattr(pr, "origin_repository", Mock(return_value=TARGET))
-    monkeypatch.setattr(pr, "git", pr.repo_git)
-
-    base, main = oversized_stack(world)
-    head = world.git("rev-parse", "HEAD")
-    review_clone = str(world.root.parent / "review")
-    world.git("clone", "-q", "--no-local", str(world.root), review_clone)
-    name = f"size-review-{head[:12]}"
-    world.fake("tbhbdev")
-    world.fake("tmux")
-    write_draft(world, "---\nbase: agent/base\n---\n" + BASE)
-    host = Mock(proven_harnesses=("agy",))
-    host.name = "review"
-    expected_host = env.get("TBHBDEV_SIZE_REVIEW_HOST", "review")
-    monkeypatch.setattr(
-        pr.agent_settings, "load", Mock(return_value=Mock(hosts=(host,)))
-    )
-    actual_run = pr.run
-
-    def run(
-        argv: list[str], *, cwd: Path | None = None, stdin: str = ""
-    ) -> subprocess.CompletedProcess[str]:
-        if argv[0] != str(world.bin / "tmux"):
-            return actual_run(argv, cwd=cwd, stdin=stdin)
-        directory = Path(argv[2]).parent
-        if argv[-1] != "kill-server":
-            assert argv[argv.index("-s", argv.index("new-session")) + 1] == name
-            script = argv[argv.index("-c") + 1]
-            assert f"select-pane -T {name}" in script
-            assert "tbhbdev alpha agent exec" in script
-            assert f"--host {expected_host} " in script
-            assert f"--ref {head} --fetch-ref refs/heads/agent/base" in script
-            prompt = (directory / "sizing.md").read_text()
-            prepare = ("merge-tree", "--write-tree", "--no-messages", base, main)
-            assert f"git {' '.join(prepare)}" in prompt
-            tree = world.git("-C", review_clone, *prepare)
-            assert f"git diff {tree}..{head}" in prompt
-            assert (
-                world.git("-C", review_clone, "diff", "--name-only", f"{tree}..{head}")
-                == "child.py"
-            )
-            assert "401/400 added code lines and 401/1500 added raw lines" in prompt
-            (directory / "stdout").write_text("launched\n")
-            (directory / "stderr").write_text("launcher output\n")
-        return subprocess.CompletedProcess(argv, 0, "", "")
-
-    monkeypatch.setattr(pr, "run", run)
-    assert run_main(verb, env=env) == 1
-    assert capsys.readouterr().err == "launcher output\n"
 
 
 def test_the_default_branch_ignores_a_tag_of_the_same_name(
@@ -2012,10 +1917,9 @@ def test_check_counts_an_explicit_base_with_gh_repo(
     write_draft(world, "---\nbase: trunk\n---\n" + BASE)
 
     assert run_main("check") == 1
-    head = world.git("rev-parse", "HEAD")
     counter.assert_called_once_with(
-        head,
-        head,
+        "refs/remotes/origin/trunk",
+        "HEAD",
         default_ref=None,
         head_branch=world.git("branch", "--show-current"),
         scc=str(world.bin / "scc"),
@@ -2052,7 +1956,7 @@ def test_create_reads_the_default_branch_once(
     write_draft(world)
     assert run_main("create") == 0
     assert read.call_count == 1
-    assert counted.call_args.args[0] == world.git("rev-parse", "origin/trunk")
+    assert counted.call_args.args[0] == "refs/remotes/origin/trunk"
     trailers.assert_called_once_with("trunk")
     _, call = world.calls("gh")
     argv = call["argv"]
@@ -5520,10 +5424,7 @@ def test_create_counts_against_origin_fetch_repository(
 
     assert run_main("create", "--dry-run") == 0
     counter.assert_called_once()
-    assert counter.call_args.args == (
-        world.git("rev-parse", "origin/main"),
-        world.git("rev-parse", "HEAD"),
-    )
+    assert counter.call_args.args == ("refs/remotes/origin/main", "HEAD")
     lookup_url = push_url if local_mirror else ORIGIN
     assert [argv for argv in gh_argvs(world) if "nameWithOwner,url" in argv] == [
         ["repo", "view", lookup_url, "--json", "nameWithOwner,url"],
