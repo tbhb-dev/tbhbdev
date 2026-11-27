@@ -431,7 +431,8 @@ def worktree_patch(repository: str, name: str, *, export: bool) -> str:
     )
     # Read refs as data and give Git only the object directory, never the
     # run's Git configuration. Older runs get their base from branch creation.
-    script = f"""run={run}
+    script = (
+        f"""run={run}
 check_paths() {{
     for p in {paths}; do
         test ! -L "$p" && test -d "$p" || exit 65
@@ -441,8 +442,10 @@ check_paths() {{
     done
     links=$(find "$run/objects" "$run/refs" -type l -print -quit) || exit 65
     test -z "$links" || exit 65
-    pack_index=$(find "$run/objects/pack" -name "multi-pack-index*" -print -quit) || exit 65
-    test -z "$pack_index" || exit 65
+"""
+        '    pack_index=$(find "$run/objects/pack" -name "multi-pack-index*" '
+        "-print -quit) || exit 65\n"
+        f"""    test -z "$pack_index" || exit 65
     test ! -e "$run/objects/info/alternates" || exit 65
 }}
 check_paths
@@ -499,6 +502,7 @@ if test -n "$merges" || ! patch_git merge-base --is-ancestor "$base" "$tip"; the
         commit-tree "$tree" -p "$base" -m "Run {name} ($tip)") || exit 65
 fi
 """
+    )
     format_patch = (
         "format-patch --stdout --no-ext-diff --no-textconv --no-color "
         '--no-signature --no-attach --no-add-header --no-notes "$base..$tip" --'
