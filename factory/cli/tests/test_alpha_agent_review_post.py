@@ -169,6 +169,7 @@ def test_a_failed_comparison_still_posts_the_verdict(
     assert payload is not None
     assert payload["event"] == "REQUEST_CHANGES"
     assert "The saved record disappears" in payload["body"]
+    assert "(not anchored: line not in the diff)" in payload["body"]
     assert "comments" not in payload
     notice = run.files.path("log").read_text()
     assert "inline comments skipped" in notice
@@ -199,6 +200,16 @@ def test_review_mints_only_the_permissions_needed_to_post(
     payload = api.calls[-1][2]
     assert payload is not None
     assert ("comments" in payload) == cited
+    assert payload["event"] == "REQUEST_CHANGES"
+    if cited:
+        assert (
+            payload["body"]
+            .split("\n## Verification", 1)[0]
+            .endswith("## Findings\n\nInline findings: 1 (P1 correctness 1).\nF1.\n")
+        )
+        assert not content_review.check_review(
+            payload["body"], event="REQUEST_CHANGES", posted=True
+        )
 
 
 def test_an_unavailable_read_token_still_posts_the_verdict(
@@ -219,6 +230,8 @@ def test_an_unavailable_read_token_still_posts_the_verdict(
     ]
     payload = api.calls[-1][2]
     assert payload is not None
+    assert payload["event"] == "REQUEST_CHANGES"
+    assert "(not anchored: line not in the diff)" in payload["body"]
     assert "comments" not in payload
     assert (
         "inline comments skipped: read-only reviews App token unavailable"
@@ -473,7 +486,7 @@ def test_host_and_cli_prefer_the_same_draft(
     if verdict == "NO-GO":
         text = text.replace("verdict: GO", "verdict: NO-GO").replace(
             "## Verification",
-            "## Findings\n\n- F1: P1 correctness The cache returns a stale record. "
+            "## Findings\n\n- F1: P1 correctness `cache.py:1` returns a stale record. "
             "Occurs when: a caller retries a write.\n\n## Verification",
         )
     run, prepared = make(tmp_path, text, "review-7.doc.md")
@@ -482,11 +495,15 @@ def test_host_and_cli_prefer_the_same_draft(
     monkeypatch.setattr(review, "draft_directory", lambda: directory)
     assert review.main(["check", "7", "--no-lint"], "review") == 0
     monkeypatch.setattr(credentials, "review_post_token", mint_token)
+    monkeypatch.setattr(credentials, "fetch_token", mint_token)
     api = Api(monkeypatch)
     assert review_post.posted(run, prepared)
     payload = api.calls[-1][2]
     assert payload is not None
     assert payload["event"] == ("APPROVE" if verdict == "GO" else "REQUEST_CHANGES")
+    if verdict == "NO-GO":
+        assert "Inline findings: 1 (P1 correctness 1)." in payload["body"]
+        assert "comments" in payload
     assert payload["commit_id"] == HEAD
     assert not content_review.check_review(
         payload["body"], metadata=review_doc.parse(text).metadata, posted=True
@@ -527,7 +544,7 @@ def test_host_refuses_an_invalid_rendered_review(
     run, _ = make(tmp_path, None)
     with pytest.raises(review_post.PostRefusedError, match="Write Verification"):
         review_post.create(sub, MINTED, run)
-    assert api.calls == []
+    assert [(method, url) for method, url, _ in api.calls] == [("GET", BASE)]
 
 
 @pytest.mark.parametrize(

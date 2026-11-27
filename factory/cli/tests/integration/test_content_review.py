@@ -16,6 +16,7 @@ FINDING = (
     "Occurs when: a caller saves a record.\n"
 )
 DEBT = "- F1: P2 design Rename the fixture. It also serves the CLI.\n"
+ATTRIBUTION = "\nGenerated-by: LLM harness=codex;model=m1\n"
 
 
 def body_with(heading: str, text: str) -> str:
@@ -250,6 +251,32 @@ def test_review_event_matches_severity(event: str, item: str, *, refused: bool) 
     findings = f"\n## Findings\n\n{item}" if item else ""
     problems = check_review(SUMMARY + findings + VERIFICATION, event=event)
     assert bool(problems) == refused
+
+
+def test_posted_review_requires_a_mark_on_cited_findings() -> None:
+    finding = "- F1: P2 design `cache.py:1` duplicates the default."
+    body = body_with("Findings", finding) + ATTRIBUTION
+    assert check_review(body, event="APPROVE", posted=True) == [
+        (
+            "Findings: Move an anchored finding to an inline comment, "
+            "or mark it not anchored"
+        )
+    ]
+    marked = finding + " (not anchored: line not in the diff)"
+    assert not check_review(body_with("Findings", marked) + ATTRIBUTION, posted=True)
+
+
+@pytest.mark.parametrize("priority", ["P0", "P1"])
+def test_posted_review_counts_inline_blockers(priority: str) -> None:
+    gap = DEBT.replace("F1:", "F3:")
+    count = f"Inline findings: 1 ({priority} correctness 1)."
+    body = body_with("Findings", f"{count}\n\n{gap}") + ATTRIBUTION
+    assert not check_review(body, event="REQUEST_CHANGES", posted=True)
+    assert check_review(body, event="APPROVE", posted=True) == [
+        "Findings: P0 and P1 findings require REQUEST_CHANGES"
+    ]
+    assert check_review(body_with("Findings", f"{count}\n\n{gap}"))
+    assert check_review(body_with("Findings", gap))
 
 
 def test_check_review_reports_normalization_refusal() -> None:

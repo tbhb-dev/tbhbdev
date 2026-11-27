@@ -33,7 +33,4 @@ def test_anchors_use_the_judged_side_and_current_filename() -> None:
         review_inline.Finding("old_cache.py", 11, "old name"),
         review_inline.Finding("image.png", 1, "binary file"),
     ]
-    assert review_inline.comments(found, DIFF) == [
-        {"path": "cache.py", "line": 10, "side": "RIGHT", "body": "context"},
-        {"path": "cache.py", "line": 15, "side": "RIGHT", "body": "next hunk"},
-    ]
+    assert review_inline.split_findings(found, DIFF) == (found[:2], found[2:])
