@@ -160,7 +160,6 @@ cli_py_library(
     testonly = True,
     srcs = ["conftest.py"],
     extra_deps = ["//factory/cli/src/tbhbdev:__init__"],
-    pyi_deps = ["//factory/cli/src/tbhbdev:cli"],
     visibility = ["//factory/cli/tests:__subpackages__"],
     deps = [
         ":fake_tool",
@@ -283,7 +282,6 @@ cli_py_test(
         "//factory/cli/src/tbhbdev/alpha:guard_scripts",
         "//factory/cli/src/tbhbdev/alpha:guard_sendmessage_clock",
         "//factory/cli/src/tbhbdev/alpha:guard_ssh_agent",
-        "//factory/cli/src/tbhbdev/alpha:pr_stats",
         "//factory/cli/src/tbhbdev/alpha:pre_push_guard",
         "//factory/cli/src/tbhbdev/alpha:pull_request",
         "//factory/cli/src/tbhbdev/alpha:repo_bootstrap",
@@ -1198,17 +1196,6 @@ cli_py_test(
 )
 
 cli_py_test(
-    name = "test_alpha_pr_stats",
-    srcs = ["test_alpha_pr_stats.py"],
-    deps = [
-        ":conftest",
-        "//factory/cli/src/tbhbdev/alpha:pr_stats",
-        "//factory/cli/src/tbhbdev/alpha:pull_request",
-        "@cli_pip//pytest",
-    ],
-)
-
-cli_py_test(
     name = "test_alpha_pre_push_guard",
     srcs = ["test_alpha_pre_push_guard.py"],
     deps = [
@@ -2014,17 +2001,6 @@ cli_py_library(
     visibility = ["//factory/cli/tests:__subpackages__"],
     deps = [
         "//factory/cli/src/tbhbdev/alpha/agent:runfiles",
-        "@cli_pip//pytest",
-    ],
-)
-
-cli_py_test(
-    name = "test_alpha_chase_context",
-    srcs = ["test_alpha_chase_context.py"],
-    deps = [
-        ":conftest",
-        "//factory/cli/src/tbhbdev/alpha:chase_context",
-        "//factory/cli/src/tbhbdev/alpha:command",
         "@cli_pip//pytest",
     ],
 )

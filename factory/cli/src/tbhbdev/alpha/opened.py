@@ -17,28 +17,24 @@ the ledger existed. The guard reads the ledger with no network call.
 """
 
 import json
-from pathlib import Path
 from typing import TYPE_CHECKING, cast
 
 from tbhbdev.alpha.identity.dispatcher import (
     ANTIGRAVITY,
-    Json,
     agy_brain_root,
     agy_root,
-    as_str,
     committer_identity,
     hx,
     load_record,
     locked,
-    parse_stdin,
     sha256_64,
     user_store,
     write_private_json,
 )
-from tbhbdev.alpha.repo import hook_cwd
 
 if TYPE_CHECKING:
     from collections.abc import Iterable, Mapping
+    from pathlib import Path
 
     from tbhbdev.alpha.identity.dispatcher import Ident
 
@@ -124,24 +120,3 @@ def opener(env: Mapping[str, str]) -> Ident | None:
         if agy_root_hash(cid, brain) is None:
             return None
     return committer.root_ident
-
-
-def caller_root(data: Json, env: Mapping[str, str]) -> str | None:
-    """The root session hash behind a PreToolUse payload, or None.
-
-    Claude Code and Codex send the root's ``session_id``. Antigravity sends
-    the executing conversation, whose brain directory is the parent of its
-    ``artifactDirectoryPath``.
-    """
-    sid = parse_stdin(data)[0]
-    if "toolCall" not in data:
-        return sha256_64(sid) if sid else None
-    cid = sid or env.get(AGY_ENV)
-    if not cid:
-        return None
-    artifacts = as_str(data.get("artifactDirectoryPath"))
-    if artifacts:
-        brain: Path | None = Path(artifacts).parent
-    else:
-        brain = agy_brain_root(load_record(sha256_64(cid), hook_cwd(data)), env)
-    return agy_root_hash(cid, brain)

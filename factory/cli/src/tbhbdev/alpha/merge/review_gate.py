@@ -20,7 +20,6 @@ if TYPE_CHECKING:
 MIN_APPROVALS = 1
 
 HEAD_SHA = re.compile(r"[0-9a-f]{40}")
-LEGACY_FOOTER = re.compile(r"Run \S+, (\S+) \S+, judged head ([0-9a-f]{40})\.")
 
 
 class Review(TypedDict):
@@ -74,17 +73,12 @@ class Attribution:
         return value if value and self.hash_pattern.fullmatch(value) else None
 
 
-def review_attribution(
-    body: str, head: str, attribution: Attribution
-) -> dict[str, str]:
-    """Read the approving run's attribution from either host-written footer."""
+def review_attribution(body: str, attribution: Attribution) -> dict[str, str]:
+    """Read the approving run's attribution from the trailer."""
     footer = body.rstrip().rpartition("\n")[2]
     trailers = attribution.generated(footer)
     if trailers:
         return trailers[0]
-    legacy = LEGACY_FOOTER.fullmatch(footer)
-    if legacy and legacy[2] == head:
-        return {"harness": legacy[1]}
     return {}
 
 
@@ -119,7 +113,7 @@ def review_reasons(
         if review["state"] == "CHANGES_REQUESTED":
             reasons.append(f"review {review['id']} requests changes at the head")
         elif review["state"] == "APPROVED":
-            attrs = review_attribution(review["body"], pull.head, attribution)
+            attrs = review_attribution(review["body"], attribution)
             if not attribution.known_harness(attrs.get("harness", "")):
                 reasons.append(f"review {review['id']} names no known harness")
             elif attribution.launch(attrs) in launches:

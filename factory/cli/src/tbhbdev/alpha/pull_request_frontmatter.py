@@ -3,12 +3,12 @@
 """Parse YAML frontmatter and report validation findings for a draft."""
 
 import re
-from typing import TYPE_CHECKING, cast, override
+from typing import TYPE_CHECKING, override
 
 import yaml
 
 if TYPE_CHECKING:
-    from collections.abc import Mapping, Sequence
+    from collections.abc import Sequence
 
     from jsonschema import Draft202012Validator
     from jsonschema.exceptions import ValidationError
@@ -67,14 +67,6 @@ def parse_frontmatter(text: str) -> tuple[object, str]:
         message = f"invalid YAML: {' '.join(str(exc).split())}"
         raise FrontmatterError(message) from exc
     return data, text[match.end() :]
-
-
-def schema_default(schema: Mapping[str, object], name: str) -> object:
-    """The default the schema declares for a property."""
-    props = cast(
-        "dict[str, dict[str, object]]", schema["properties"]
-    )  # pragma: no mutate
-    return props[name]["default"]
 
 
 def meta_problems(

@@ -17,7 +17,7 @@ okf_version: "0.2"
 * [Agent hosts](reference/agent-hosts.md) - Config and credentials for agent hosts.
 * [Content writes](reference/content.md) - Shared GitHub content validation and writes for plugins.
 * [Content model](reference/content-model.md) - Markdown normalization, source spans, and content metrics.
-* [Plugins](reference/plugins.md) - Commands and configuration from installed packages.
+* [Plugins](reference/plugins.md) - Configuration from installed packages.
 * [Alpha commands](reference/alpha/commands.md) - Interim agent commands, installation, and harness hooks.
 * [Agent configuration](reference/alpha/agent-configuration.md) - Agent settings, run requests, and host preparation.
 * [Agent isolation limits](reference/alpha/agent-isolation-limits.md) - Agent isolation constraints, coordination, and cleanup.
