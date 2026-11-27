@@ -30,6 +30,9 @@ type Reading struct {
 // WindowTokenBytes bounds token scans across all windows in one source collection.
 const WindowTokenBytes = 64 * 1024 * 1024
 
+// CodexWeeklyWindow is the duration of the weekly Codex usage window.
+const CodexWeeklyWindow = 7 * 24 * time.Hour
+
 // Source names identify the passive input format.
 const (
 	ClaudeStatusline   = "claude_statusline"

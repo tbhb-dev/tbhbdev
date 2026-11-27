@@ -47,7 +47,7 @@ deps:
     mayDependOn: [capacity, codex, spool]
     canUse: [testify]
   session:
-    mayDependOn: [session, spool]
+    mayDependOn: [session, spool, capacity]
     canUse: [pty, sys]
   spool:
     mayDependOn: [spool, capacity]

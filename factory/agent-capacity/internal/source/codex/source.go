@@ -27,7 +27,7 @@ const (
 	maxBytes     = 8 * 1024 * 1024
 	percentScale = 100
 	shortMinutes = 300
-	weekMinutes  = 10080
+	weekMinutes  = int(capacity.CodexWeeklyWindow / time.Minute)
 	seenCooldown = time.Hour
 )
 

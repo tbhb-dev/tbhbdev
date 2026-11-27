@@ -1275,10 +1275,11 @@ func TestRemoveOldRolloutFailures(t *testing.T) {
 
 	dir := canonicalTempDir(t)
 	now := time.Date(2026, 1, 10, 0, 0, 0, 0, time.UTC)
+	old := now.Add(-8 * 24 * time.Hour)
 
 	must(t, os.Mkdir(filepath.Join(dir, "directory"), 0o700))
 	must(t, os.WriteFile(filepath.Join(dir, "old"), nil, 0o600))
-	must(t, os.Chtimes(filepath.Join(dir, "old"), now.Add(-72*time.Hour), now.Add(-72*time.Hour)))
+	must(t, os.Chtimes(filepath.Join(dir, "old"), old, old))
 
 	root, err := os.OpenRoot(dir)
 	must(t, err)
@@ -1310,9 +1311,9 @@ func TestRemoveOldRolloutAgeRule(t *testing.T) {
 		age     time.Duration
 		removed bool
 	}{
-		"newer":    {47*time.Hour + 59*time.Minute, false},
-		"boundary": {48 * time.Hour, false},
-		"older":    {48*time.Hour + time.Minute, true},
+		"newer":    {7*24*time.Hour - time.Minute, false},
+		"boundary": {7 * 24 * time.Hour, false},
+		"older":    {7*24*time.Hour + time.Minute, true},
 	}
 
 	for name, rollout := range ages {
@@ -1323,7 +1324,7 @@ func TestRemoveOldRolloutAgeRule(t *testing.T) {
 
 	oldDirectory := filepath.Join(dir, "directory")
 	must(t, os.Mkdir(oldDirectory, 0o700))
-	must(t, os.Chtimes(oldDirectory, now.Add(-72*time.Hour), now.Add(-72*time.Hour)))
+	must(t, os.Chtimes(oldDirectory, now.Add(-8*24*time.Hour), now.Add(-8*24*time.Hour)))
 	must(t, os.Symlink("newer", filepath.Join(dir, "link")))
 
 	root, err := os.OpenRoot(dir)
@@ -1345,7 +1346,7 @@ func TestRemoveOldRolloutAgeRule(t *testing.T) {
 	_, err = os.Lstat(oldDirectory)
 	must(t, err)
 
-	must(t, removeOldRollout(root, "link", time.Now().Add(72*time.Hour)))
+	must(t, removeOldRollout(root, "link", time.Now().Add(8*24*time.Hour)))
 
 	_, err = os.Lstat(filepath.Join(dir, "link"))
 	must(t, err)
@@ -2226,7 +2227,7 @@ func TestCleanupRejectsSwappedSessionsDirectory(t *testing.T) {
 	home := filepath.Join(fixtureValue.options.directory(), directoryHome)
 	sessions := filepath.Join(fixtureValue.options.directory(), vendorCodex, "sessions")
 	now := fixtureValue.clock.Now()
-	old := now.Add(-3 * 24 * time.Hour)
+	old := now.Add(-8 * 24 * time.Hour)
 
 	must(t, os.Mkdir(sessions, 0o700))
 
@@ -2396,7 +2397,7 @@ func TestHeldPipeResults(t *testing.T) {
 
 			sessions := filepath.Join(fixtureValue.options.directory(), vendorCodex, "sessions")
 			rollout := filepath.Join(sessions, "rollout.jsonl")
-			old := fixtureValue.clock.Now().Add(-3 * 24 * time.Hour)
+			old := fixtureValue.clock.Now().Add(-8 * 24 * time.Hour)
 
 			must(t, os.Mkdir(sessions, 0o700))
 			must(t, os.WriteFile(rollout, nil, 0o600))

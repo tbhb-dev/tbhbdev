@@ -891,7 +891,7 @@ func TestCodexTimerAndRolloutCleanup(t *testing.T) {
 		must(t, os.WriteFile(path, nil, 0o600))
 	}
 
-	before := fixtureValue.clock.Now().Add(-3 * 24 * time.Hour)
+	before := fixtureValue.clock.Now().Add(-8 * 24 * time.Hour)
 	must(t, os.Chtimes(old, before, before))
 	must(t, os.Chtimes(target, before, before))
 	must(t, os.Chtimes(fresh, fixtureValue.clock.Now(), fixtureValue.clock.Now()))
@@ -940,6 +940,37 @@ func TestCodexTimerAndRolloutCleanup(t *testing.T) {
 		return count == 2
 	})
 	cancel()
+}
+
+func TestSuccessfulCodexSessionKeepsWeeklyRollouts(t *testing.T) {
+	t.Parallel()
+
+	fixtureValue := setup(t, vendorCodex)
+	sessions := filepath.Join(fixtureValue.options.directory(), vendorCodex, "sessions")
+
+	var rollouts []string
+
+	for days := 3; days <= 7; days++ {
+		modified := fixtureValue.clock.Now().Add(-time.Duration(days) * 24 * time.Hour)
+		dir := filepath.Join(sessions, modified.Format("2006/01/02"))
+		must(t, os.MkdirAll(dir, 0o700))
+		path := filepath.Join(dir, "rollout-sample.jsonl")
+		must(t, os.WriteFile(path, nil, 0o600))
+		must(t, os.Chtimes(path, modified, modified))
+		rollouts = append(rollouts, path)
+	}
+
+	cancel, _ := fixtureValue.run(t)
+	defer cancel()
+
+	fixtureValue.until(t, func() bool { return fixtureValue.status(t).Phase == phaseIdle })
+
+	for _, path := range rollouts {
+		_, err := os.Stat(path)
+		if err != nil {
+			t.Error(err)
+		}
+	}
 }
 
 func TestStatusLineCommandQuoting(t *testing.T) {
