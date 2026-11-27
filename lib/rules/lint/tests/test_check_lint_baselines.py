@@ -221,7 +221,7 @@ def test_go_count_comments_and_literals() -> None:
 */
 package example /* trailing comment */
 var text = "before // after \"//nolint:ignored"
-var slash = '/' //nolint:errcheck, gosec // explanation
+var slash = '/' //nolint:errcheck, revive // explanation
 var raw = `literal
 //nolint:ignored
 // Code generated example. DO NOT EDIT.
@@ -231,11 +231,11 @@ comment */ 2 // trailing comment
 //nolint // explanation
 //nolint:errcheck,errcheck
 //nolint:all
-//nolinting is ordinary prose
+//nolint-ignore is ordinary prose
 """
     assert go_source_metrics(content.encode("utf-8-sig").replace(b"\n", b"\r\n")) == (
         9,
-        {"errcheck": 2, "gosec": 1, "(bare)": 1, "all": 1},
+        {"errcheck": 2, "revive": 1, "(bare)": 1, "all": 1},
     )
 
 
@@ -286,15 +286,15 @@ def test_go_suppressions_are_per_linter_and_project(repo: Path) -> None:
     other = "factory/other"
     write(repo, f"{other}/go-lint-baselines.toml", GO_LIMITS)
     write(repo, path, "package example //nolint:errcheck\n")
-    write(repo, f"{other}/file.go", "package other //nolint:gosec\n")
+    write(repo, f"{other}/file.go", "package other //nolint:revive\n")
     base = commit(repo)
 
     write(repo, GO_CONFIG, GO_LIMITS)
-    write(repo, path, "package example //nolint:errcheck,gosec\n//nolint\n")
+    write(repo, path, "package example //nolint:errcheck,revive\n//nolint\n")
     write(repo, f"{other}/file.go", "package other\n")
     assert check(repo, base, commit(repo)) == [
         f"{GO_PROJECT}: (bare) has 1 nolint suppressions (ceiling 0)",
-        f"{GO_PROJECT}: gosec has 1 nolint suppressions (ceiling 0)",
+        f"{GO_PROJECT}: revive has 1 nolint suppressions (ceiling 0)",
     ]
 
 
@@ -324,10 +324,10 @@ def test_go_suppressions_use_merge_base(repo: Path) -> None:
     write(repo, GO_CONFIG, GO_LIMITS)
     write(repo, path, "package example\n")
     fork = commit(repo)
-    write(repo, path, "package example //nolint:gosec\n")
+    write(repo, path, "package example //nolint:revive\n")
     base = commit(repo)
     git_output(repo, "checkout", "--detach", fork)
-    write(repo, path, "package example\n//nolint:gosec\n")
+    write(repo, path, "package example\n//nolint:revive\n")
     assert check(repo, base, commit(repo)) == [
-        f"{GO_PROJECT}: gosec has 1 nolint suppressions (ceiling 0)",
+        f"{GO_PROJECT}: revive has 1 nolint suppressions (ceiling 0)",
     ]
