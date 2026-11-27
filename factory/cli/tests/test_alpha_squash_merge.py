@@ -27,6 +27,7 @@ from hypothesis import strategies as st
 from tbhbdev.alpha import identity as agent_identity
 from tbhbdev.alpha import pull_request as pr
 from tbhbdev.alpha import squash_merge as sm
+from tbhbdev.alpha import tool_pins
 from tbhbdev.alpha.secret_scan import REPO_RULES, without_name_rules
 
 SRC = Path(sm.__file__).parents[2]
@@ -102,6 +103,9 @@ sys.stderr.write(spec["merge_refused"] if refused else spec[kind + "_err"])
 sys.exit(1 if refused else spec[kind + "_rc"])
 """
 GITLEAKS = """import json, os, sys
+if sys.argv[1:] == ["--version"]:
+    print({version!r})
+    sys.exit(0)
 here = os.path.dirname(os.path.abspath(__file__))
 spec = os.path.join(here, "gitleaks.spec")
 rc, out = json.load(open(spec)) if os.path.exists(spec) else (0, "[]")
@@ -212,8 +216,9 @@ def tools(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Tools:
     bin_dir.mkdir()
     git_dir = tmp_path / "git"
     link_git(git_dir)
+    version = tool_pins.pinned_version("gitleaks")
     for name, body in (("gh", GH), ("cog", COG), ("gitleaks", GITLEAKS)):
-        write_fake(bin_dir / name, body.format())
+        write_fake(bin_dir / name, body.format(version=version))
     # One statement, not a loop: under Bazel's clean environment there is
     # nothing to remove, and a loop body that never runs is a missed branch.
     prefixes = ("CLAUDE", "CODEX", "ANTIGRAVITY", "GIT_")
@@ -555,15 +560,17 @@ def test_the_passing_draft_becomes_a_clean_message(tools: Tools) -> None:
     assert message == (
         "feat(cli): add the stamp subcommand (#12)\n\n"
         "Why\n"
-        "Running `tool stamp` on a tree with a read-only file stops partway. The\n"
-        "command leaves some files stamped and others not, and prints nothing\n"
-        "that says which. See the issue [1].\n\n"
+        "Running `tool stamp` on a tree with a write-protected file stops\n"
+        "partway. The command leaves some files stamped and others not, and\n"
+        "prints nothing that says which. See the issue [1].\n\n"
         "Behavior change\n"
-        "The command now checks every target before it writes one. A read-only\n"
-        "file fails the whole run with an exit code of 1 and a list of the\n"
-        "blocked paths. A run that passes the check stamps every file.\n\n"
+        "The command now checks every target before it writes one. A\n"
+        "write-protected file fails the whole run with an exit code of 1 and a\n"
+        "list of the blocked paths. A run that passes the check stamps every\n"
+        "file.\n\n"
         "Verification\n"
-        "Ran the new unit tests, then stamped a tree with one read-only file:\n\n"
+        "Ran the new unit tests, then stamped a tree with one write-protected\n"
+        "file:\n\n"
         "    $ go test ./internal/stamp/...\n"
         "    ok  \tgithub.com/tbhb-dev/tbhbdev/internal/stamp\t0.412s\n"
         "    $ tool stamp ./fixture\n"
@@ -721,7 +728,7 @@ def test_a_finding_in_the_current_body_stops_the_merge(
 def test_a_missing_gitleaks_stops_the_merge(tools: Tools) -> None:
     (tools.bin / "gitleaks").unlink()
     code, _ = run_main("12")
-    assert str(code).startswith("gitleaks not found on PATH")
+    assert str(code).startswith("gitleaks not found in .bazel_env")
     assert [call["argv"][1] for call in tools.calls()] == ["view"]  # type: ignore[index]
 
 

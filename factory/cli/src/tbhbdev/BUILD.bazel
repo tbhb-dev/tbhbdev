@@ -138,6 +138,13 @@ cli_py_library(
 )
 
 cli_py_library(
+    name = "host_tokens",
+    srcs = ["host_tokens.py"],
+    imports = [".."],
+    visibility = ["//factory/cli:__subpackages__"],
+)
+
+cli_py_library(
     name = "issue",
     srcs = ["issue.py"],
     imports = [".."],
