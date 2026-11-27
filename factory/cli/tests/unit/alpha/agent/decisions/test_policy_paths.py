@@ -323,13 +323,8 @@ def test_resolve(home: str, path: str, expected: str) -> None:
 
 def test_write_roots_come_only_from_the_config() -> None:
     sandbox = dataclasses.replace(SANDBOX, write_roots=(".only-this", "/example/abs"))
-    result = made(
-        Os.LINUX,
-        Profile.BUILD,
-        Harness.CODEX,
-        "agent",
-        config=settings(sandbox=sandbox),
-    )
+    config = settings(sandbox=sandbox)
+    result = made(Os.LINUX, Profile.BUILD, Harness.CODEX, config=config)
     assert isinstance(result.detail, model.CodexPolicy)
     home = "/example/home/agent"
     assert result.detail.write_roots == (

@@ -19,6 +19,7 @@ from tbhbdev.alpha.agent.decisions import (
     policy_agy,
     policy_claude,
     policy_codex,
+    policy_environment,
     policy_paths,
 )
 from tbhbdev.alpha.agent.decisions.policy_codex import (
@@ -32,7 +33,6 @@ from tbhbdev.alpha.agent.decisions.policy_environment import (
     LINUX_LANG,
     MACOS_LANG,
     XDIST_WORKERS,
-    environment,
     review_environment,
     tool_path,
 )
@@ -90,6 +90,14 @@ def denied_paths(
         keychain = secrets.MACOS_KEYCHAIN_FILE
         token_paths = (str(keychain), str(keychain.with_suffix(".keychain")))
     return policy_paths.denied_paths(settings, host.os, home, uid, token_paths)
+
+
+def environment(
+    settings: Settings, host: Host, harness: Harness, paths: RunPaths, account: str
+) -> dict[str, str]:
+    """Build the child's environment using the configured host tool search path."""
+    search_path = host_tools.search_path(settings, host.os)
+    return policy_environment.environment(search_path, host, harness, paths, account)
 
 
 def _check(host: Host, *, account: str) -> None:

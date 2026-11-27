@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from tbhbdev.alpha.agent import host_tools
 from tbhbdev.alpha.agent.decisions.policy_paths import resolve
 from tbhbdev.alpha.agent.model import Harness, Os, Profile
 
@@ -22,7 +21,11 @@ XDIST_WORKERS = "4"
 
 
 def environment(
-    settings: Settings, host: Host, harness: Harness, paths: RunPaths, account: str
+    search_path: tuple[str, ...],
+    host: Host,
+    harness: Harness,
+    paths: RunPaths,
+    account: str,
 ) -> dict[str, str]:
     """The child's whole environment: an allowlist, with no parent values.
 
@@ -30,7 +33,7 @@ def environment(
     TMPDIR that run-host creates and fills. They hold no credential.
     """
     env = {
-        "PATH": ":".join(host_tools.search_path(settings, host.os)),
+        "PATH": ":".join(search_path),
         "HOME": paths.home,
         "USER": account,
         "LOGNAME": account,

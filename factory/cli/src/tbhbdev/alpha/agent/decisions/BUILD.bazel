@@ -102,7 +102,6 @@ cli_py_library(
     visibility = ["//factory/cli:__subpackages__"],
     deps = [
         ":policy_paths",
-        "//factory/cli/src/tbhbdev/alpha/agent:host_tools",
         "//factory/cli/src/tbhbdev/alpha/agent:model",
     ],
 )
