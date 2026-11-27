@@ -7,7 +7,10 @@ package(default_testonly = True)
 
 ops_py_test(
     name = "unit_test",
-    srcs = ["test_token_policy.py"],
+    srcs = [
+        "test_token_policy.py",
+        "test_token_shell.py",
+    ],
     deps = [
         "//ops/packages/tbhbops-cli/src",
         "@cli_pip//pytest",

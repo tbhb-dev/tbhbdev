@@ -39,6 +39,7 @@ from tbhbops_cli.token_policy import (
     vault_of,
     vault_option,
 )
+from tbhbops_cli.token_shell import indent, quote
 
 PREFIX = "agent-host"
 ITEM = "connect-token"
@@ -51,7 +52,7 @@ KEYCHAIN = "ops-connect.keychain"
 SERVICE = "ops-connect"
 ACCOUNT = "agent"
 # The operator's shell expands HOME and hostname when the script runs.
-# _ssh inserts these options directly; only the remote command is _quote'd.
+# _ssh inserts these options directly; only the remote command is quoted.
 SSH_OPTIONS = (
     "-o IdentityAgent=none -o IdentitiesOnly=yes"
     ' -i "$HOME/.ssh/sessions/$(hostname -s)_ed25519"'
@@ -67,11 +68,6 @@ def item_template(item: str) -> str:
         f'{{title: "{item}", category: "{CATEGORY}", '
         f'fields: [{{label: "{FIELD}", type: "CONCEALED", value: .}}]}}'
     )
-
-
-def _quote(text: str) -> str:
-    """TEXT in single quotes, whatever it holds."""
-    return "'" + text.replace("'", "'\\''") + "'"
 
 
 def _live(text: str) -> str:
@@ -110,18 +106,13 @@ CHARSET = "A-Za-z0-9._-"
 VAULT_JQ = "any(.[]; .name == $name)"
 
 
-def _indent(lines: Sequence[str], width: int) -> list[str]:
-    """LINES, each one indented by WIDTH spaces."""
-    return [" " * width + line for line in lines]
-
-
 def _ssh(host: str, command: str, *, quiet: bool = False) -> str:
     """The ssh line that runs COMMAND as ops on HOST.
 
     With QUIET, ssh reads no stdin, so the line never reads the script.
     """
     flag = "-n " if quiet else ""
-    return f"ssh {flag}{SSH_OPTIONS} {OPS_USER}@{host} {_quote(command)}"
+    return f"ssh {flag}{SSH_OPTIONS} {OPS_USER}@{host} {quote(command)}"
 
 
 def _keychain_block(  # the block's inputs, each one a fact
@@ -143,18 +134,18 @@ def _keychain_block(  # the block's inputs, each one a fact
     where = f"--server {shlex.quote(server)}"
     prefix = OPS_PREFIX if remote else SESSION_PREFIX
     token = token_name(prefix, host, when)
-    name = _quote(token)
+    name = quote(token)
     options = " ".join(vault_option(g) for g in plan)
     if remote:
         # Pass the preparation script on stdin to avoid nested shell quoting.
-        prepare = f"echo {_quote(PREPARE)} | {_ssh(host, 'sh -s')}"
+        prepare = f"echo {quote(PREPARE)} | {_ssh(host, 'sh -s')}"
         look = _ssh(host, LOOK, quiet=True)
         store = f'echo "{STORE_LINE}" | {_ssh(host, STORE_COMMAND)}'
         keychain = f"the {OPS_USER} keychain"
         holder = f"{OPS_USER} on {host}"
         transport = "ssh session"
     else:
-        prepare = f"sh -c {_quote(PREPARE)}"
+        prepare = f"sh -c {quote(PREPARE)}"
         look = LOOK
         # The braces keep the pipe on security -i, after the unlock.
         store = f'echo "{STORE_LINE}" | {{ {STORE_COMMAND}; }}'
@@ -163,8 +154,8 @@ def _keychain_block(  # the block's inputs, each one a fact
         transport = "command"
     create = f"tok=$(op connect token create {acct} {name} {where} {options})"
     delete = f"op connect token delete {acct} {name} {where}"
-    deleted = _quote(f"deleted the {prefix} token {token} from {server}")
-    kept = _quote(
+    deleted = quote(f"deleted the {prefix} token {token} from {server}")
+    kept = quote(
         f"could not delete the {prefix} token {token};"
         " delete it by hand with op connect token delete"
     )
@@ -244,7 +235,7 @@ def _keychain_block(  # the block's inputs, each one a fact
         f"    echo '{holder} already holds {SERVICE}; skipping' >&2",
         "    ;;",
         f"  {NOT_FOUND})",
-        *_indent(made, 4),
+        *indent(made, 4),
         "    ;;",
         "  *)",
         f"    echo 'could not look in {keychain} on {host}' >&2",
@@ -275,7 +266,7 @@ def _vault_block(
         f"for name in {' '.join(shlex.quote(n) for n in names)}; do",
         (
             "  found=$(printf '%s' \"$vaults\""
-            f' | jq -r --arg name "$name" {_quote(VAULT_JQ)}) || {{'
+            f' | jq -r --arg name "$name" {quote(VAULT_JQ)}) || {{'
         ),
         "    echo 'could not read the vault list' >&2",
         "    exit 1",
@@ -307,13 +298,13 @@ def _stored_block(  # the block's inputs, each one a fact
     A STORE that already holds ITEM is skipped, so a rerun makes no token.
     """
     own = shlex.quote(store)
-    name = _quote(token)
+    name = quote(token)
     options = " ".join(vault_option(g) for g in plan)
     get = f"op item get {acct} {item} --vault {own}"
     create = f"tok=$(op connect token create {acct} {name} {where} {options})"
     feed = [
         "printf '%s' \"$tok\"",
-        f"jq -R {_quote(item_template(item))}",
+        f"jq -R {quote(item_template(item))}",
         f"op item create {acct} --vault {own} -",
     ]
     lines = ["", f"# {label or host}"]
@@ -341,7 +332,7 @@ def _stored_block(  # the block's inputs, each one a fact
         f"if {get} >/dev/null 2>&1; then",
         f"  echo '{store} already holds {item}; skipping' >&2",
         "else",
-        *_indent(made, 2),
+        *indent(made, 2),
         "fi",
     ]
 

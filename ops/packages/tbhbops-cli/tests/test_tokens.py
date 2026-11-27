@@ -181,11 +181,6 @@ def test_the_header_names_ssh_only_when_an_ops_token_is_made() -> None:
     assert "# Dry run: each op and ssh command below is echoed, not run.\n" in dry_ops
 
 
-def test_quoting_keeps_a_single_quote_inside_a_quoted_name() -> None:
-    assert tokens._quote("a'b") == "'a'\\''b'"
-    assert tokens._quote("ab") == "'ab'"
-
-
 def test_a_server_name_with_a_space_is_quoted() -> None:
     text = tokens.commands(
         "my server",
