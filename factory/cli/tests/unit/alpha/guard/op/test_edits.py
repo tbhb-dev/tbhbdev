@@ -106,6 +106,18 @@ def test_patch_command_field(tmp_path: Path) -> None:
     ) == [(tmp_path / "x.sh", "", "op read x\n")]
 
 
+def test_notebook_edit_yields_no_text_writes(tmp_path: Path) -> None:
+    payload = {
+        "cwd": str(tmp_path),
+        "tool_name": "NotebookEdit",
+        "tool_input": {
+            "notebook_path": str(tmp_path / "notes.ipynb"),
+            "new_source": "print(1)",
+        },
+    }
+    assert list(guard.writes(payload)) == []
+
+
 def test_patch_without_final_newline(tmp_path: Path) -> None:
     path = tmp_path / "x.sh"
     path.write_text("echo x")
