@@ -28,7 +28,6 @@ cli_py_library(
     pyi_deps = ["@cli_pip//pytest"],
     visibility = ["//factory/cli/tests:__subpackages__"],
     deps = [
-        ":fake_tool",
         "//factory/cli/src/tbhbdev:version",
         "//factory/cli/src/tbhbdev/alpha/agent/decisions:argv",
     ],
@@ -415,6 +414,7 @@ cli_py_test(
 cli_py_test(
     name = "test_alpha_agent_driver",
     srcs = ["test_alpha_agent_driver.py"],
+    shard_count = 4,
     deps = [
         ":agent_cli_example",
         ":agent_driver_example",
