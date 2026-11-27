@@ -16,6 +16,15 @@ go_library(
 go_test(
     name = "dispatch_test",
     srcs = ["dispatch_test.go"],
-    visibility = ["//factory/cli/cmd/tbhbdev:__pkg__"],
+    visibility = [
+        "//factory/cli/cmd/tbhbdev:__pkg__",
+        "//factory/github-metrics:__pkg__",
+    ],
     deps = [":dispatch"],
+)
+
+filegroup(
+    name = "go_module_sources",
+    srcs = glob(["*.go"]),
+    visibility = ["//factory/github-metrics:__pkg__"],
 )

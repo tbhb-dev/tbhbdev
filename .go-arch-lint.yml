@@ -14,9 +14,65 @@ allow:
 components:
   front: {in: factory/cli/cmd/tbhbdev}
   dispatch: {in: factory/cli/internal/dispatch}
+  metrics-cmd: {in: factory/github-metrics/cmd/github-metrics}
+  metrics-appauth: {in: factory/github-metrics/internal/appauth}
+  metrics-backfill: {in: factory/github-metrics/internal/backfill}
+  metrics-budget: {in: factory/github-metrics/internal/budget}
+  metrics-ghclient: {in: factory/github-metrics/internal/ghclient}
+  metrics-receiver: {in: factory/github-metrics/internal/receiver}
+  metrics-reconcile: {in: factory/github-metrics/internal/reconcile}
+  metrics-recorder: {in: factory/github-metrics/internal/recorder}
+  metrics-store: {in: factory/github-metrics/internal/store}
+  metrics-telemetry: {in: factory/github-metrics/internal/telemetry}
+  metrics-version: {in: factory/github-metrics/internal/version}
+  metrics-worker: {in: factory/github-metrics/internal/worker}
+
+vendors:
+  bbolt: {in: [go.etcd.io/bbolt, go.etcd.io/bbolt/errors]}
+  otel: {in: go.opentelemetry.io/otel/**}
+  otlp: {in: go.opentelemetry.io/proto/otlp/**}
+  protobuf: {in: google.golang.org/protobuf/proto}
 
 deps:
   front:
     mayDependOn: [dispatch]
   dispatch:
     mayDependOn: [dispatch]
+  metrics-cmd:
+    mayDependOn:
+      - metrics-appauth
+      - metrics-budget
+      - metrics-ghclient
+      - metrics-receiver
+      - metrics-reconcile
+      - metrics-recorder
+      - metrics-store
+      - metrics-telemetry
+      - metrics-worker
+    canUse: [otel]
+  metrics-appauth:
+    mayDependOn: [metrics-appauth, metrics-ghclient]
+  metrics-backfill:
+    mayDependOn: [metrics-backfill, metrics-budget, metrics-ghclient]
+  metrics-budget:
+    mayDependOn: [metrics-budget]
+  metrics-ghclient:
+    mayDependOn: [metrics-budget, metrics-ghclient]
+  metrics-receiver:
+    mayDependOn: [metrics-receiver, metrics-store]
+  metrics-reconcile:
+    mayDependOn: [metrics-budget, metrics-ghclient, metrics-reconcile, metrics-recorder]
+    canUse: [otel]
+  metrics-recorder:
+    mayDependOn: [metrics-recorder]
+    canUse: [otel]
+  metrics-store:
+    mayDependOn: [metrics-store]
+    canUse: [bbolt]
+  metrics-telemetry:
+    mayDependOn: [metrics-telemetry]
+    canUse: [otel, otlp, protobuf]
+  metrics-version:
+    mayDependOn: [metrics-version]
+  metrics-worker:
+    mayDependOn: [metrics-store, metrics-worker]
