@@ -7,14 +7,11 @@ import shutil
 import stat
 import subprocess
 import sys
-from datetime import UTC, datetime, timedelta, timezone, tzinfo
 from pathlib import Path
-from typing import Self, override
 lazy from collections.abc import Collection
 
 import pytest
-from tbhbops_cli import tokens
-from tbhbops_cli.common import CliError
+from tbhbops_cli import token_policy, tokens
 
 AGENTS = ("ex-ctl1", "ex-ctl2", "ex-lab1", "ex-win1")
 CONTROLLERS = ("ex-ctl1", "ex-ctl2")
@@ -35,7 +32,7 @@ def script(
     runner_vms: tuple[str, ...] = (),
     dry_run: bool = False,
 ) -> str:
-    ops = tokens.select_ops(CONTROLLERS, hosts)
+    ops = token_policy.select_ops(CONTROLLERS, hosts)
     return tokens.commands(
         "srv",
         hosts,
@@ -75,28 +72,6 @@ def test_no_token_has_an_expiry() -> None:
     assert "expires" not in script(dry_run=True)
 
 
-def test_an_ordinary_host_reads_its_own_vault_and_host_all() -> None:
-    assert tokens.grants("ex-lab1", AGENTS, CONTROLLERS) == (
-        tokens.Grant("host-ex-lab1", "r"),
-        tokens.Grant("host-0-shared", "r"),
-    )
-
-
-def test_a_controller_writes_host_all_and_reads_every_agent_vault() -> None:
-    assert tokens.grants("ex-ctl2", AGENTS, CONTROLLERS) == (
-        tokens.Grant("host-0-shared", ""),
-        *(tokens.Grant(f"host-{h}", "r") for h in AGENTS),
-    )
-
-
-@pytest.mark.parametrize(
-    ("permission", "option"),
-    [("", "--vault v"), ("r", "--vault v,r"), ("w", "--vault v,w")],
-)
-def test_a_vault_option_adds_at_most_one_suffix(permission: str, option: str) -> None:
-    assert tokens.vault_option(tokens.Grant("v", permission)) == option
-
-
 @pytest.mark.parametrize("dry_run", [False, True])
 def test_no_vault_argument_has_more_than_one_suffix_and_a_suffix_is_r_or_w(
     *, dry_run: bool
@@ -133,22 +108,6 @@ def test_the_token_name_has_the_prefix_host_and_stamp() -> None:
         "'agent-host:ex-lab1:20261108T142100Z'"
         " --server srv --vault host-ex-lab1,r --vault host-0-shared,r"
     ) in script(("ex-lab1",))
-
-
-def test_a_token_name_of_the_limit_passes() -> None:
-    host = "h" * (tokens.NAME_LIMIT - len("agent-host::20261108T142100Z"))
-    name = tokens.token_name("agent-host", host, "20261108T142100Z")
-    assert len(name) == tokens.NAME_LIMIT == 64
-
-
-def test_a_token_name_over_the_limit_stops_the_script() -> None:
-    host = "h" * (tokens.NAME_LIMIT + 1 - len("agent-host::20261108T142100Z"))
-    with pytest.raises(CliError) as caught:
-        tokens.token_name("agent-host", host, "20261108T142100Z")
-    assert str(caught.value) == (
-        f"the token name agent-host:{host}:20261108T142100Z has 65 characters,"
-        " over the 64 Connect accepts"
-    )
 
 
 def blocks(text: str) -> list[str]:
@@ -210,25 +169,6 @@ def test_the_ops_controller_token_is_named_and_scoped_to_both_ops_vaults() -> No
         assert f"vault grant --account {ACCOUNT} --server srv --vault {vault}\n" in text
 
 
-def test_the_ops_controller_grants_are_read_only() -> None:
-    assert tokens.ops_grants() == (
-        tokens.Grant("host-storage-nas-a", "r"),
-        tokens.Grant("host-storage-nas-b", "r"),
-    )
-    assert tokens.ops_controller("ex-ctl1", CONTROLLERS) == tokens.ops_grants()
-
-
-def test_an_ops_controller_must_be_an_operator_mac() -> None:
-    with pytest.raises(CliError) as caught:
-        tokens.ops_controller("ex-lab1", CONTROLLERS)
-    assert str(caught.value) == "not an operator Mac in the inventory: ex-lab1"
-
-
-def test_the_ops_hosts_are_the_selected_operator_macs_in_name_order() -> None:
-    assert tokens.select_ops(("b", "a", "c"), ("c", "x", "a")) == ("a", "c")
-    assert tokens.select_ops(CONTROLLERS, ("ex-lab1",)) == ()
-
-
 def test_the_header_names_ssh_only_when_an_ops_token_is_made() -> None:
     plain, ops = script(("ex-lab1",)), script(("ex-ctl1",))
     assert "It needs op and jq.\n" in plain
@@ -239,16 +179,6 @@ def test_the_header_names_ssh_only_when_an_ops_token_is_made() -> None:
     )
     assert "# Dry run: each op command below is echoed, not run.\n" in dry_plain
     assert "# Dry run: each op and ssh command below is echoed, not run.\n" in dry_ops
-
-
-@pytest.mark.parametrize("host", ["storage-nas-a", "storage-nas-b"])
-def test_a_host_ops_vault_in_a_grant_is_refused(host: str) -> None:
-    with pytest.raises(CliError, match=rf"refusing to grant host-{host}: no token"):
-        tokens.grants(host, (*AGENTS, host), CONTROLLERS)
-    with pytest.raises(CliError, match="host-storage-"):
-        tokens.grants("ex-ctl1", (*AGENTS, host), CONTROLLERS)
-    with pytest.raises(CliError, match="host-storage-"):
-        script((host,), (*AGENTS, host))
 
 
 def test_quoting_keeps_a_single_quote_inside_a_quoted_name() -> None:
@@ -283,48 +213,6 @@ def test_an_account_name_with_a_space_is_quoted_on_every_op_command() -> None:
     )
     assert text.count("--account 'my acct'") == len(op_commands(text)) == 14
     assert "--account my acct" not in text
-
-
-def test_the_stamp_is_in_utc() -> None:
-    local = datetime(2026, 11, 8, 9, 21, 0, tzinfo=timezone(timedelta(hours=-5)))
-    assert tokens.stamp(local) == WHEN
-    assert tokens.stamp(datetime(2026, 11, 8, 14, 21, 0, tzinfo=UTC)) == WHEN
-
-
-class _AsUtcOnly(datetime):
-    @override
-    def astimezone(self, tz: tzinfo | None = None) -> Self:
-        assert tz is UTC
-        return super().astimezone(tz)
-
-
-def test_the_stamp_converts_to_utc_not_the_system_zone() -> None:
-    now = _AsUtcOnly(2026, 11, 8, 9, 21, 0, tzinfo=timezone(timedelta(hours=-5)))
-    assert tokens.stamp(now) == WHEN
-
-
-def test_select_takes_every_agent_host_unless_narrowed() -> None:
-    assert tokens.select(AGENTS, []) == AGENTS
-    assert tokens.select(AGENTS, ["ex-win1", "ex-lab1", "ex-win1"]) == (
-        "ex-lab1",
-        "ex-win1",
-    )
-
-
-def test_select_refuses_a_host_that_is_not_an_agent_host() -> None:
-    with pytest.raises(CliError) as caught:
-        tokens.select(AGENTS, ["ex-lab1", "zz", "aa"])
-    assert str(caught.value) == "not an agent host in the inventory: aa, zz"
-
-
-def test_reach_marks_each_vault_ok_missing_or_extra_in_name_order() -> None:
-    assert tokens.reach({"b", "c", "x"}, {"a", "b", "c"}) == [
-        ("missing", "a"),
-        ("ok", "b"),
-        ("ok", "c"),
-        ("extra", "x"),
-    ]
-    assert tokens.reach(set(), set()) == []
 
 
 def test_the_ops_session_script_matches_its_golden_text() -> None:
@@ -1054,30 +942,13 @@ SESSION_DELETE_ARGV = (
 SESSION_DELETED = f"deleted the ops-session token {SESSION_NAME} from srv\n"
 
 
-def test_the_ops_session_grants_are_an_operator_macs_and_never_a_host_ops_vault() -> (
-    None
-):
-    found = tokens.session_grants("ex-ctl2", AGENTS, CONTROLLERS)
-    assert found == (
-        *tokens.grants("ex-ctl2", AGENTS, CONTROLLERS),
-        tokens.Grant("overlay-oauth", tokens.READ),
-    )
-    assert found[0] == tokens.Grant("host-0-shared", tokens.READ_WRITE)
-    assert {g.vault for g in found[1:]} == {
-        *(f"host-{a}" for a in AGENTS),
-        "overlay-oauth",
-    }
-    assert all(g.permission == tokens.READ for g in found[1:])
-    assert not any(g.vault.startswith(tokens.FORBIDDEN) for g in found)
-
-
 def test_only_the_ops_session_token_reaches_the_tailnet_oauth_vault() -> None:
-    assert tokens.VAULT_OAUTH == "overlay-oauth"
+    assert token_policy.VAULT_OAUTH == "overlay-oauth"
     for host in AGENTS:
-        assert tokens.VAULT_OAUTH not in {
-            g.vault for g in tokens.grants(host, AGENTS, CONTROLLERS)
+        assert token_policy.VAULT_OAUTH not in {
+            g.vault for g in token_policy.grants(host, AGENTS, CONTROLLERS)
         }
-    assert tokens.VAULT_OAUTH not in {g.vault for g in tokens.ops_grants()}
+    assert token_policy.VAULT_OAUTH not in {g.vault for g in token_policy.ops_grants()}
     plain = script()
     assert "overlay-oauth" not in plain
     text = script(("ex-lab1",), session="ex-ctl1")
@@ -1089,14 +960,6 @@ def test_only_the_ops_session_token_reaches_the_tailnet_oauth_vault() -> None:
     assert " overlay-oauth; do" in text
 
 
-def test_the_ops_session_host_must_be_an_operator_mac() -> None:
-    with pytest.raises(CliError) as caught:
-        tokens.session_grants("ex-lab1", AGENTS, CONTROLLERS)
-    assert str(caught.value) == "not an operator Mac in the inventory: ex-lab1"
-    with pytest.raises(CliError):
-        script(("ex-lab1",), session="ex-lab1")
-
-
 def test_the_ops_session_token_is_named_and_scoped_like_an_operator_macs() -> None:
     text = script(("ex-lab1",), session="ex-ctl1")
     assert (
@@ -1105,7 +968,7 @@ def test_the_ops_session_token_is_named_and_scoped_like_an_operator_macs() -> No
         " --vault host-ex-ctl2,r --vault host-ex-lab1,r --vault host-ex-win1,r"
         " --vault overlay-oauth,r)"
     ) in text
-    assert tokens.SESSION_PREFIX == "ops-session"
+    assert token_policy.SESSION_PREFIX == "ops-session"
     assert "host-ops" not in text
 
 
@@ -1376,7 +1239,6 @@ def test_the_ops_session_dry_run_echoes_each_command_and_runs_none() -> None:
 
 
 RUNNER_VM = "ex-lab1-ci"
-CI_VMS = (RUNNER_VM, "ex-ctl1-ci")
 
 
 def runner_script(*, dry_run: bool = False) -> str:
@@ -1437,7 +1299,7 @@ def test_a_script_without_runner_vms_never_names_the_runner_item() -> None:
 
 
 def test_a_runner_vm_token_reads_only_github_runners_read_only() -> None:
-    assert tokens.runner_grants() == (tokens.Grant("runner-fixture", "r"),)
+    assert token_policy.runner_grants() == (token_policy.Grant("runner-fixture", "r"),)
     text = runner_script()
     create = [
         line
@@ -1480,36 +1342,6 @@ def test_the_runner_vm_header_says_what_the_token_reads_and_where_it_goes() -> N
     assert "# Each CI runner VM also gets a runner-vm token, which reads only\n" in text
     assert "# the vault runner-fixture, read-only." in text
     assert "item runner-access-token" in text
-
-
-def test_the_lab_node_of_a_runner_vm_is_its_name_without_the_suffix() -> None:
-    assert tokens.node_of("host-a-ci") == "host-a"
-    assert tokens.node_of("host-a") == "host-a"
-
-
-def test_select_runners_takes_the_named_vms_in_name_order() -> None:
-    assert tokens.select_runners(CI_VMS, AGENTS, ["ex-lab1-ci", "ex-ctl1-ci"]) == (
-        "ex-ctl1-ci",
-        "ex-lab1-ci",
-    )
-
-
-def test_select_runners_refuses_a_vm_that_is_not_in_the_ci_group() -> None:
-    with pytest.raises(CliError) as caught:
-        tokens.select_runners(CI_VMS, AGENTS, ["ex-lab1-ci", "ex-zzz-ci", "ex-aaa-ci"])
-    assert str(caught.value) == (
-        "not a CI runner VM in the inventory: ex-aaa-ci, ex-zzz-ci"
-    )
-
-
-@pytest.mark.parametrize("vm", ["ex-lab1", "ex-gone-ci"])
-def test_select_runners_refuses_a_vm_whose_node_is_no_agent_host(vm: str) -> None:
-    with pytest.raises(CliError) as caught:
-        tokens.select_runners((*CI_VMS, vm), AGENTS, [vm])
-    assert str(caught.value) == (
-        f"the lab node of {vm} is not an agent host in the inventory:"
-        " its token has no vault to go in"
-    )
 
 
 def test_a_runner_vm_token_goes_from_create_to_its_nodes_vault(tmp_path: Path) -> None:

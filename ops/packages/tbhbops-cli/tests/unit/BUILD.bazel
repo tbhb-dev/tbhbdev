@@ -1,0 +1,15 @@
+# SPDX-License-Identifier: Apache-2.0
+# Copyright Tony Burns
+
+load("//ops/packages:pytest.bzl", "ops_py_test")
+
+package(default_testonly = True)
+
+ops_py_test(
+    name = "unit_test",
+    srcs = ["test_token_policy.py"],
+    deps = [
+        "//ops/packages/tbhbops-cli/src",
+        "@cli_pip//pytest",
+    ],
+)
