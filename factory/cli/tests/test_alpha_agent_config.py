@@ -286,6 +286,34 @@ def test_host_tag_is_ignored() -> None:
     assert config.parse(edited("host_tag", value="example-tag")) == EXPECTED
 
 
+def test_removed_keys_are_ignored() -> None:
+    table = copy.deepcopy(GOOD)
+    table.update(
+        public_repos=[],
+        ssh_connect_timeout=10,
+        ssh_keepalive_seconds=15,
+        ssh_keepalive_count_max=3,
+    )
+    cast("Table", table["sandbox"]).update(
+        write_roots=[".local/state"],
+        denied_home_paths=[".ssh"],
+        agy={"review_read": [], "build_read": [], "build_write": []},
+        codex_network_proxy_opt_out=False,
+        agy_unsandboxed_opt_out=False,
+        codex_unsandboxed_opt_out=False,
+    )
+    cast("list[Table]", table["host"])[0].update(unsandboxed=True, proven_harnesses=[])
+    cast("dict[str, Table]", table["credentials"])["agent"]["reviews_app_id"] = 123
+    claude = cast("Table", table["claude"])
+    cast("dict[str, Table]", claude["profiles"])["primary"]["expires"] = "expired"
+    assert config.parse(table) == EXPECTED
+
+
+def test_unrecognized_sandbox_key_is_refused() -> None:
+    table = edited("sandbox", "write_root", value=[])
+    assert refused(table) == "[agent.sandbox] write_root not recognized"
+
+
 def test_settings_expose_every_value() -> None:
     parsed = config.parse(GOOD)
     sandbox = parsed.sandbox

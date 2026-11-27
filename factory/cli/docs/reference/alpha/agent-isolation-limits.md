@@ -87,4 +87,4 @@ Ref resolution runs outside the clone against the SSH URL from the repository ar
 
 The driver’s mirror receives agent-pushed objects.
 
-One successful, real `agent exec` run on a host proves that harness. `proven_harnesses` records this fact without refusing unproven harnesses. An empty list never refuses a run. Remove the recorded fact when upgrading that harness. Codex runs from the PATH of the account.
+Codex runs from the PATH of the account.

@@ -257,7 +257,19 @@ def _worker_path(root: _Table) -> str | None:
 
 
 def _sandbox(table: _Table) -> Sandbox:
-    table.only("audit_dir", "path", "host_path", "network_domains")
+    table.only(
+        "audit_dir",
+        "path",
+        "host_path",
+        "network_domains",
+        # Accepted for compatibility with existing configs.
+        "write_roots",
+        "denied_home_paths",
+        "agy",
+        "codex_network_proxy_opt_out",
+        "agy_unsandboxed_opt_out",
+        "codex_unsandboxed_opt_out",
+    )
     path = table.table("path")
     path.only("linux", "macos")
     return Sandbox(
@@ -329,6 +341,7 @@ def _credentials(table: _Table) -> tuple[Credentials, ...]:
             "pull_requests_app_client_id",
             "pull_requests_app_pem",
             "signing",
+            "reviews_app_id",
         )
         client_id, pem = _reviews_app(entry)
         pull_requests_client_id, pull_requests_pem = _pull_requests_app(entry)
@@ -363,7 +376,7 @@ def _claude(table: _Table) -> Claude:
         if earlier is not None:
             profiles.fail(name, f"differs from {earlier} only in case")
         entry = profiles.table(name)
-        entry.only("token")
+        entry.only("token", "expires")
         found.append(ClaudeProfile(name=name, token=entry.reference("token")))
     selected = find_profile(tuple(found), default)
     if selected is None:
@@ -429,6 +442,8 @@ def _host(table: _Table) -> Host:
         "build_shims",
         "max_concurrent_runs",
         "auto_select",
+        "unsandboxed",
+        "proven_harnesses",
     )
     name = _check_name(table, "name", table.text("name"), HOST_NAME)
     os = table.choice("os", Os)
@@ -512,8 +527,13 @@ def parse(agent: dict[str, object]) -> Settings:
         "credentials",
         "claude",
         "host",
-        "host_tag",  # Accepted for compatibility with existing configs.
         "worker",
+        # Accepted for compatibility with existing configs.
+        "host_tag",
+        "public_repos",
+        "ssh_connect_timeout",
+        "ssh_keepalive_seconds",
+        "ssh_keepalive_count_max",
     )
     sandbox = _sandbox(root.table("sandbox"))
     run_memory_mib = (
