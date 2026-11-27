@@ -31,12 +31,13 @@ from tbhbops_cli import (
     deploy,
     gitleaks,
     inventory,
-    o11y,
     s3,
     sources,
     tokens,
 )
 from tbhbops_cli.common import CliError, Http, Run, https_request
+from tbhbops_cli.o11y import command as o11y_command
+from tbhbops_cli.o11y import filesystem
 from tbhbops_cli.o11y.http import AdminHttp, LocalAdminHttp, LocalHttp
 from tbhbops_cli.o11y.http import Http as ReceiptHttp
 from tbhbops_cli.o11y.ports import LocalPorts, Ports
@@ -70,9 +71,11 @@ class System:
     hostname: str
     monotonic: Callable[[], float] = time.monotonic
     sleep: Callable[[float], None] = time.sleep
-    egid: int = field(default_factory=o11y.effective_gid)
-    euid: int = field(default_factory=o11y.effective_uid)
-    filesystem: o11y.Filesystem = field(default_factory=o11y.LocalFilesystem)
+    egid: int = field(default_factory=filesystem.effective_gid)
+    euid: int = field(default_factory=filesystem.effective_uid)
+    filesystem: filesystem.Filesystem = field(
+        default_factory=filesystem.LocalFilesystem
+    )
     choice: Callable[[str], str] = secrets.choice
     runner: Runner = field(default_factory=SubprocessRunner)
     receipt_http: ReceiptHttp = field(default_factory=LocalHttp)
@@ -214,7 +217,7 @@ def parser() -> argparse.ArgumentParser:
         default=Path("dns-smoke-artifacts"),
         help="the directory for failure logs; default dns-smoke-artifacts",
     )
-    o11y.add_parser(groups)
+    o11y_command.add_parser(groups)
     s3.add_parser(groups)
     return top
 
@@ -403,7 +406,7 @@ def run(argv: list[str] | None, system: System, out: TextIO, err: TextIO) -> int
         if args.group == "s3":
             return s3.dispatch(args, system)
         if args.group == "o11y":
-            return o11y.dispatch(args, system, out)
+            return o11y_command.dispatch(args, system, out)
         if args.group == "gitleaks":
             generate(system, out, dry_run=args.dry_run)
         elif args.command == "token-commands":
