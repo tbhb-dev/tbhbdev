@@ -21,7 +21,7 @@ from agent_driver_example import (
 )
 from agent_example import LINUX, settings, trusted_executables
 
-from tbhbdev.alpha import agent
+from tbhbdev.alpha.agent import arguments as agent_arguments
 from tbhbdev.alpha.agent import driver, transport
 from tbhbdev.alpha.agent.decisions import policy, remote
 
@@ -75,7 +75,9 @@ def inspect_output(
         return result.returncode, result.stdout
 
     monkeypatch.setattr(transport, "execute", run)
-    args = agent.parser("example").parse_args(execution_arguments("example.md"))
+    args = agent_arguments.parser("example").parse_args(
+        execution_arguments("example.md")
+    )
     run = driver.prepare(settings(), args)
     run.request = replace(run.request, unsandboxed=unsandboxed)
     run.owner = "example-owner"

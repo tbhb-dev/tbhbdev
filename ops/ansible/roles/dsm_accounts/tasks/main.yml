@@ -1,0 +1,79 @@
+---
+# Read-only. The reads run in check mode too, so --check shows the real state.
+- name: Read the account database
+  ansible.builtin.slurp:
+    src: "{{ item }}"
+  loop:
+    - /etc/passwd
+    - /etc/group
+  loop_control:
+    label: "{{ item }}"
+  register: dsm_accounts_files
+  check_mode: false
+
+# The share's path comes from synoshare, and synoacltool reads its ACL. Both
+# need root. A share that either can't read becomes a gap, not a failure.
+- name: Read the ACL of each backup share
+  ansible.builtin.command:
+    argv:
+      - sh
+      - -c
+      - synoacltool -get "$(synoshare --get "$1" | sed -n 's/^[[:space:]]*Path:[[:space:]]*\[\(.*\)\]$/\1/p')"
+      - dsm-acl
+      - "{{ item }}"
+  become: true
+  loop: "{{ dsm_accounts_backup_shares }}"
+  register: dsm_accounts_acls
+  changed_when: false
+  failed_when: false
+  check_mode: false
+
+- name: Find the gaps in the accounts
+  ansible.builtin.set_fact:
+    dsm_accounts_gaps: >-
+      {{ dsm_accounts_files.results[0].content | b64decode
+      | dsm_account_gaps(dsm_accounts_files.results[1].content | b64decode, dsm_accounts_accounts,
+      dsm_accounts_groups, dsm_accounts_shell) }}
+
+- name: Find the gaps in the ACLs
+  ansible.builtin.set_fact:
+    dsm_accounts_gaps: >-
+      {{ dsm_accounts_gaps + (
+      ['share ' ~ item.item ~ ': cannot read the ACL'] if item.rc != 0
+      else item.stdout | dsm_acl_gaps(dsm_accounts_accounts)
+      | map('regex_replace', '^', 'share ' ~ item.item ~ ': ') | list
+      ) }}
+  loop: "{{ dsm_accounts_acls.results }}"
+  loop_control:
+    label: "{{ item.item }}"
+
+- name: Fail on any gap
+  ansible.builtin.assert:
+    that: dsm_accounts_gaps | length == 0
+    fail_msg: |-
+      {{ inventory_hostname }} falls short of the access decisions in {{ dsm_accounts_gaps | length }} places:
+      {% for gap in dsm_accounts_gaps %}
+      - {{ gap }}
+      {% endfor %}
+      This role changes nothing. Fix each gap as root on the NAS.
+    quiet: true
+
+- name: Give agent read access through the DSM log group
+  ansible.builtin.import_tasks: agent_log_group.yml
+  tags: [never, dsm_accounts_agent_log_group]
+
+# Never runs by default: the tag never excludes it unless the command line
+# asks for dsm_accounts_set_password.
+- name: Set the DSM password of ops from the vault
+  ansible.builtin.import_tasks: set_password.yml
+  tags: [never, dsm_accounts_set_password]
+
+# Never runs by default: the tag never excludes it unless the command line
+# asks for dsm_accounts_ops_keys.
+- name: Authorize the controller session keys for ops
+  ansible.builtin.import_tasks: ops_keys.yml
+  tags: [never, dsm_accounts_ops_keys]
+
+- name: Retire the shared lab-ops key after proving controller access
+  ansible.builtin.import_tasks: ops_retire_lab_ops.yml
+  tags: [never, dsm_accounts_ops_retire_lab_ops]

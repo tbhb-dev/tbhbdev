@@ -1,0 +1,204 @@
+---
+groups:
+  - interval: 1m
+    name: agent-capacity
+    rules:
+      - alert: o11y-capacity-warn
+        expr: "(max by (agent_plan_vendor,\
+          \ agent_plan_window, agent_account)\
+          \ ((max by (agent_plan_vendor, agent_plan_window,\
+          \ agent_account, agent_plan_bucket)\
+          \ (last_over_time( agent_capacity_window_utilization_ratio{\
+          \ agent_capacity_source=~\"claude_statusline|claude_transcript|codex_rollout|codex_probe|agy_statusline\"\
+          , agent_capacity_freshness=\"fresh\"\
+          }[15m])) or max by (agent_plan_vendor,\
+          \ agent_plan_window, agent_account,\
+          \ agent_plan_bucket) (last_over_time(\
+          \ agent_capacity_window_utilization_ratio{\
+          \ agent_capacity_source=~\"claude_statusline|claude_transcript|codex_rollout|codex_probe|agy_statusline\"\
+          , agent_capacity_freshness=\"carried\"\
+          }[15m]))))) >= 0.7"
+        for: 10m
+        labels:
+          env: prd
+          service: agent-capacity
+          severity: info
+      - alert: o11y-capacity-shed
+        expr: "(max by (agent_plan_vendor,\
+          \ agent_plan_window, agent_account)\
+          \ ((max by (agent_plan_vendor, agent_plan_window,\
+          \ agent_account, agent_plan_bucket)\
+          \ (last_over_time( agent_capacity_window_utilization_ratio{\
+          \ agent_capacity_source=~\"claude_statusline|claude_transcript|codex_rollout|codex_probe|agy_statusline\"\
+          , agent_capacity_freshness=\"fresh\"\
+          }[15m])) or max by (agent_plan_vendor,\
+          \ agent_plan_window, agent_account,\
+          \ agent_plan_bucket) (last_over_time(\
+          \ agent_capacity_window_utilization_ratio{\
+          \ agent_capacity_source=~\"claude_statusline|claude_transcript|codex_rollout|codex_probe|agy_statusline\"\
+          , agent_capacity_freshness=\"carried\"\
+          }[15m]))))) >= 0.85"
+        for: 10m
+        labels:
+          env: prd
+          service: agent-capacity
+          severity: warning
+      - alert: o11y-capacity-stop
+        expr: "(max by (agent_plan_vendor,\
+          \ agent_plan_window, agent_account)\
+          \ ((max by (agent_plan_vendor, agent_plan_window,\
+          \ agent_account, agent_plan_bucket)\
+          \ (last_over_time( agent_capacity_window_utilization_ratio{\
+          \ agent_capacity_source=~\"claude_statusline|claude_transcript|codex_rollout|codex_probe|agy_statusline\"\
+          , agent_capacity_freshness=\"fresh\"\
+          }[15m])) or max by (agent_plan_vendor,\
+          \ agent_plan_window, agent_account,\
+          \ agent_plan_bucket) (last_over_time(\
+          \ agent_capacity_window_utilization_ratio{\
+          \ agent_capacity_source=~\"claude_statusline|claude_transcript|codex_rollout|codex_probe|agy_statusline\"\
+          , agent_capacity_freshness=\"carried\"\
+          }[15m]))))) >= 0.9"
+        for: 2m
+        labels:
+          env: prd
+          service: agent-capacity
+          severity: critical
+      - alert: o11y-capacity-exhaustion
+        expr: "((((deriv(max by (agent_plan_vendor,\
+          \ agent_plan_window, agent_account)\
+          \ ((max by (agent_plan_vendor, agent_plan_window,\
+          \ agent_account, agent_plan_bucket)\
+          \ (agent_capacity_window_utilization_ratio{agent_plan_window=\"\
+          7d\", agent_capacity_source=~\"\
+          claude_statusline|claude_transcript|codex_rollout|codex_probe|agy_statusline\"\
+          , agent_capacity_freshness=\"fresh\"\
+          }) or max by (agent_plan_vendor,\
+          \ agent_plan_window, agent_account,\
+          \ agent_plan_bucket) (agent_capacity_window_utilization_ratio{agent_plan_window=\"\
+          7d\", agent_capacity_source=~\"\
+          claude_statusline|claude_transcript|codex_rollout|codex_probe|agy_statusline\"\
+          , agent_capacity_freshness=\"carried\"\
+          })))[24h:5m]) > 0) and on (agent_plan_vendor,\
+          \ agent_plan_window, agent_account)\
+          \ ((1 - max by (agent_plan_vendor,\
+          \ agent_plan_window, agent_account)\
+          \ ((max by (agent_plan_vendor, agent_plan_window,\
+          \ agent_account, agent_plan_bucket)\
+          \ (last_over_time( agent_capacity_window_utilization_ratio{agent_plan_window=\"\
+          7d\", agent_capacity_source=~\"\
+          claude_statusline|claude_transcript|codex_rollout|codex_probe|agy_statusline\"\
+          , agent_capacity_freshness=\"fresh\"\
+          }[15m])) or max by (agent_plan_vendor,\
+          \ agent_plan_window, agent_account,\
+          \ agent_plan_bucket) (last_over_time(\
+          \ agent_capacity_window_utilization_ratio{agent_plan_window=\"\
+          7d\", agent_capacity_source=~\"\
+          claude_statusline|claude_transcript|codex_rollout|codex_probe|agy_statusline\"\
+          , agent_capacity_freshness=\"carried\"\
+          }[15m]))))) / on (agent_plan_vendor,\
+          \ agent_plan_window, agent_account)\
+          \ deriv(max by (agent_plan_vendor,\
+          \ agent_plan_window, agent_account)\
+          \ ((max by (agent_plan_vendor, agent_plan_window,\
+          \ agent_account, agent_plan_bucket)\
+          \ (agent_capacity_window_utilization_ratio{agent_plan_window=\"\
+          7d\", agent_capacity_source=~\"\
+          claude_statusline|claude_transcript|codex_rollout|codex_probe|agy_statusline\"\
+          , agent_capacity_freshness=\"fresh\"\
+          }) or max by (agent_plan_vendor,\
+          \ agent_plan_window, agent_account,\
+          \ agent_plan_bucket) (agent_capacity_window_utilization_ratio{agent_plan_window=\"\
+          7d\", agent_capacity_source=~\"\
+          claude_statusline|claude_transcript|codex_rollout|codex_probe|agy_statusline\"\
+          , agent_capacity_freshness=\"carried\"\
+          })))[24h:5m]) < on (agent_plan_vendor,\
+          \ agent_plan_window, agent_account)\
+          \ (max by (agent_plan_vendor, agent_plan_window,\
+          \ agent_account) (max by (agent_plan_vendor,\
+          \ agent_plan_window, agent_account,\
+          \ agent_plan_bucket) (last_over_time(agent_capacity_window_reset_time_seconds{\
+          \ agent_capacity_source=~\"claude_statusline|claude_transcript|codex_rollout|codex_probe|agy_statusline\"\
+          , agent_capacity_freshness=~\"fresh|carried\"\
+          ,agent_plan_window=\"7d\"}[15m]))\
+          \ and on (agent_plan_vendor, agent_plan_window,\
+          \ agent_account, agent_plan_bucket)\
+          \ (max by (agent_plan_vendor, agent_plan_window,\
+          \ agent_account, agent_plan_bucket)\
+          \ ((max by (agent_plan_vendor, agent_plan_window,\
+          \ agent_account, agent_plan_bucket)\
+          \ (last_over_time(agent_capacity_window_utilization_ratio{\
+          \ agent_capacity_source=~\"claude_statusline|claude_transcript|codex_rollout|codex_probe|agy_statusline\"\
+          , agent_capacity_freshness=\"fresh\"\
+          ,agent_plan_window=\"7d\"}[15m]))\
+          \ or max by (agent_plan_vendor,\
+          \ agent_plan_window, agent_account,\
+          \ agent_plan_bucket) (last_over_time(agent_capacity_window_utilization_ratio{\
+          \ agent_capacity_source=~\"claude_statusline|claude_transcript|codex_rollout|codex_probe|agy_statusline\"\
+          , agent_capacity_freshness=\"carried\"\
+          ,agent_plan_window=\"7d\"}[15m]))))\
+          \ == on (agent_plan_vendor, agent_plan_window,\
+          \ agent_account) group_left () max\
+          \ by (agent_plan_vendor, agent_plan_window,\
+          \ agent_account) (max by (agent_plan_vendor,\
+          \ agent_plan_window, agent_account,\
+          \ agent_plan_bucket) ((max by (agent_plan_vendor,\
+          \ agent_plan_window, agent_account,\
+          \ agent_plan_bucket) (last_over_time(agent_capacity_window_utilization_ratio{\
+          \ agent_capacity_source=~\"claude_statusline|claude_transcript|codex_rollout|codex_probe|agy_statusline\"\
+          , agent_capacity_freshness=\"fresh\"\
+          ,agent_plan_window=\"7d\"}[15m]))\
+          \ or max by (agent_plan_vendor,\
+          \ agent_plan_window, agent_account,\
+          \ agent_plan_bucket) (last_over_time(agent_capacity_window_utilization_ratio{\
+          \ agent_capacity_source=~\"claude_statusline|claude_transcript|codex_rollout|codex_probe|agy_statusline\"\
+          , agent_capacity_freshness=\"carried\"\
+          ,agent_plan_window=\"7d\"}[15m])))))))\
+          \ - time()) - 43200)) and on (agent_plan_vendor,\
+          \ agent_plan_window, agent_account)\
+          \ (count_over_time(max by (agent_plan_vendor,\
+          \ agent_plan_window, agent_account)\
+          \ ((max by (agent_plan_vendor, agent_plan_window,\
+          \ agent_account, agent_plan_bucket)\
+          \ (agent_capacity_window_utilization_ratio{\
+          \ agent_capacity_source=~\"claude_statusline|claude_transcript|codex_rollout|codex_probe|agy_statusline\"\
+          , agent_capacity_freshness=\"fresh\"\
+          ,agent_plan_window=\"7d\"}) or max\
+          \ by (agent_plan_vendor, agent_plan_window,\
+          \ agent_account, agent_plan_bucket)\
+          \ (agent_capacity_window_utilization_ratio{\
+          \ agent_capacity_source=~\"claude_statusline|claude_transcript|codex_rollout|codex_probe|agy_statusline\"\
+          , agent_capacity_freshness=\"carried\"\
+          ,agent_plan_window=\"7d\"})))[24h:5m])\
+          \ >= 144)) * 0 + 1) > 0"
+        for: 30m
+        labels:
+          env: prd
+          service: agent-capacity
+          severity: high
+      - alert: o11y-capacity-stale
+        expr: "(max by (agent_plan_vendor,\
+          \ agent_account) ((max by (agent_plan_vendor,\
+          \ agent_plan_window, agent_account,\
+          \ agent_plan_bucket) (last_over_time(\
+          \ agent_capacity_window_utilization_ratio{\
+          \ agent_capacity_source=~\"claude_statusline|claude_transcript|codex_rollout|codex_probe|agy_statusline\"\
+          , agent_capacity_freshness=\"fresh\"\
+          }[6h])) or max by (agent_plan_vendor,\
+          \ agent_plan_window, agent_account,\
+          \ agent_plan_bucket) (last_over_time(\
+          \ agent_capacity_window_utilization_ratio{\
+          \ agent_capacity_source=~\"claude_statusline|claude_transcript|codex_rollout|codex_probe|agy_statusline\"\
+          , agent_capacity_freshness=\"carried\"\
+          }[6h])))) unless on (agent_plan_vendor,\
+          \ agent_account) max by (agent_plan_vendor,\
+          \ agent_account) (last_over_time(\
+          \ agent_capacity_window_utilization_ratio{\
+          \ agent_capacity_source=~\"claude_statusline|claude_transcript|codex_rollout|codex_probe|agy_statusline\"\
+          , agent_capacity_freshness=\"fresh\"\
+          }[30m]))) >= 0"
+        for: 5m
+        labels:
+          agent_plan_window: other
+          env: prd
+          service: agent-capacity
+          severity: warning

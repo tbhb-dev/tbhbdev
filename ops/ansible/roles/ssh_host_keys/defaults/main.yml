@@ -1,0 +1,10 @@
+---
+ssh_host_keys_users:
+  - agent
+  - ops
+# The companion inventory locates the trust file. Molecule supplies a fixture.
+ssh_host_keys_known_hosts_src: "{{ inventory_dir }}/../known_hosts"
+# Every agent host but this one. Windows hosts take no part: their sshd and shell differ.
+ssh_host_keys_peers: >-
+  {{ groups['agent_hosts'] | difference(groups['windows'] | default([]))
+  | difference([inventory_hostname]) | sort }}

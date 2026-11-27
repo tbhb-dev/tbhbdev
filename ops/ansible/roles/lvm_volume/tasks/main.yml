@@ -1,0 +1,40 @@
+---
+# Put lvm_volume_path on an ext4 file system on its own logical volume. A
+# caller runs this before anything writes to the path, so nothing lands on
+# the root file system underneath the mount.
+
+- name: Check the settings
+  ansible.builtin.assert:
+    that:
+      - lvm_volume_path is match('^/[^ ]+$')
+      - lvm_volume_size | human_to_bytes > 0
+      - lvm_volume_vg is match('^[A-Za-z0-9+_.][A-Za-z0-9+_.-]*$')
+      - lvm_volume_lv is match('^[A-Za-z0-9+_.][A-Za-z0-9+_.-]*$')
+      - lvm_volume_opts is match('^[^ ]+$')
+      - lvm_volume_passno | int in [0, 1, 2]
+    fail_msg: >-
+      lvm_volume_path must be an absolute path without spaces, lvm_volume_size a size, the volume
+      group and logical volume names valid LVM names, lvm_volume_opts mount options without spaces,
+      and lvm_volume_passno 0, 1 or 2
+    quiet: true
+
+# The volume's tools come first. A check run on a host without them can't
+# tell what the volume tasks would do, so it stops after this.
+- name: Install the volume's tools
+  ansible.builtin.apt:
+    name:
+      - e2fsprogs
+      - lvm2
+    state: present
+    install_recommends: false
+  register: lvm_volume_packages
+
+- name: Work out the volume's size and device
+  ansible.builtin.set_fact:
+    lvm_volume_bytes: "{{ lvm_volume_size | human_to_bytes }}"
+    lvm_volume_device: /dev/{{ lvm_volume_vg }}/{{ lvm_volume_lv }}
+  when: not (ansible_check_mode and lvm_volume_packages is changed)
+
+- name: Put the path on the volume
+  ansible.builtin.include_tasks: volume.yml
+  when: not (ansible_check_mode and lvm_volume_packages is changed)

@@ -1,0 +1,11 @@
+---
+groups:
+  - name: ca-backup
+    interval: 1m
+    rules:
+      - alert: CaBackupUnhealthy
+        expr: >-
+          (((max(last_over_time(ca_backup_last_run_failed{host="nas-a"}[26h])) or vector(0)) > bool 0)
+          + (time() - (max(last_over_time(ca_backup_last_success_or_start_timestamp_seconds{
+          host="nas-a"}[26h])) or vector(0)) >= bool 93600)) > 0
+        labels: {service: ca-backup, severity: high, env: prd, host: nas-a}

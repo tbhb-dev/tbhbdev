@@ -1,0 +1,14 @@
+---
+agent_mesh_purge_users:
+  - agent
+  - ops
+agent_mesh_purge_require_proof: true
+# Every agent host but this one. Windows hosts take no part: their sshd and shell differ.
+# The same peers as playbooks/ssh-keys-proof.yml: the operator Macs only from each
+# other, and a lab node only the other lab nodes.
+agent_mesh_purge_peers: >-
+  {{ groups['agent_hosts'] | difference(groups['windows'] | default([]))
+  | difference([inventory_hostname])
+  | difference([] if inventory_hostname in groups['operator_macs'] else groups['operator_macs'])
+  | intersect(groups['lab'] if inventory_hostname in groups['lab'] else groups['agent_hosts'])
+  | sort }}

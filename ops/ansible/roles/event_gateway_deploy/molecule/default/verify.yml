@@ -1,0 +1,11 @@
+---
+- name: Verify the event gateway fixtures
+  hosts: all
+  gather_facts: false
+  tasks:
+    - name: Count builds and starts
+      ansible.builtin.command:
+        argv: [wc, -l, /var/tmp/event-gateway-state/builds, /var/tmp/event-gateway-state/starts]
+      register: event_gateway_deploy_fixture_counts
+      changed_when: false
+      failed_when: event_gateway_deploy_fixture_counts.stdout_lines[-1].split() != ['2', 'total']

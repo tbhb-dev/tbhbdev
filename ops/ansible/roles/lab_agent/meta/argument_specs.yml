@@ -1,0 +1,25 @@
+---
+# cspell:ignore slirp netns
+argument_specs:
+  main:
+    short_description: Give the lab agent rootless Docker under gVisor
+    description:
+      - >-
+          agent_account creates the account before this role sets its supplementary
+          groups, removes any sudoers drop-in, and configures rootless Docker.
+          docker_engine supplies the Docker repository and runsc.
+    options:
+      lab_agent_groups:
+        type: list
+        elements: str
+        default: [kvm, adm]
+        description: Exact supplementary groups for the agent. Each must already exist.
+      lab_agent_manage_user_service:
+        type: bool
+        default: true
+        description: Enable linger and manage the user service. Disable in containers without user systemd.
+      lab_agent_rootless_packages:
+        type: list
+        elements: str
+        default: [docker-ce-rootless-extras, uidmap, slirp4netns, passt]
+        description: Packages for the rootless daemon. docker_engine supplies the Docker repository.

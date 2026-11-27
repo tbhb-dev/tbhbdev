@@ -1,0 +1,46 @@
+---
+- name: Verify configured memory with a stub only
+  hosts: all
+  gather_facts: false
+  vars:
+    memory_normal_cases:
+      - {maximum: 12582912, current: 12582912, operations: [], state: running}
+      - {maximum: 8388608, current: 8388608, operations: [setmaxmem, setmem], state: running}
+      - {maximum: 18874368, current: 18874368, operations: [setmem, setmaxmem], state: running}
+      - {maximum: 12582912, current: 8388608, operations: [setmaxmem, setmem], state: 'shut off'}
+      - {maximum: 18874368, current: 12582912, operations: [setmem, setmaxmem], state: 'shut off'}
+      - {maximum: 8388608, current: 8388608, operations: [], state: running, hardware: false}
+    memory_check_cases:
+      - {maximum: 12582912, current: 12582912, operations: [], state: running}
+      - {maximum: 8388608, current: 8388608, operations: [], state: running}
+      - {maximum: 8388608, current: 8388608, operations: [], state: running, absent: true}
+  tasks:
+    - name: Create a private stub directory
+      check_mode: false
+      ansible.builtin.tempfile:
+        state: directory
+        # Docker mounts /tmp without execute permission; the virsh stub must run.
+        path: /var/tmp
+        prefix: ci-vm-memory-
+      register: ci_vm_memory_stub
+
+    - name: Exercise reconciliation
+      block:
+        - name: Install the virsh stub
+          check_mode: false
+          ansible.builtin.copy:
+            src: files/virsh
+            dest: "{{ ci_vm_memory_stub.path }}/virsh"
+            mode: "0700"
+
+        - name: Test equal, growing, shrinking and partially matching memory
+          ansible.builtin.include_tasks: tasks/memory-case.yml
+          loop: "{{ memory_check_cases if ansible_check_mode else memory_normal_cases }}"
+          loop_control:
+            loop_var: memory_case
+      always:
+        - name: Remove the stub directory
+          check_mode: false
+          ansible.builtin.file:
+            path: "{{ ci_vm_memory_stub.path }}"
+            state: absent

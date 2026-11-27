@@ -1,0 +1,63 @@
+---
+tests:
+  - input_series:
+      - series: "agent_capacity_window_utilization_ratio{agent_plan_vendor=\"\
+          anthropic\",agent_plan_window=\"\
+          7d\",agent_account=\"primary\",host_name=\"\
+          fixture-a\",agent_capacity_source=\"\
+          claude_statusline\",agent_capacity_freshness=\"\
+          fresh\"}"
+        values: _ 0.25 0.30
+    interval: 1m
+    name: history starts empty then returns
+      numeric utilization
+    promql_expr_test:
+      - eval_time: 0m
+        exp_samples: []
+        expr: "max by (agent_plan_vendor,\
+          \ agent_account, agent_plan_window,\
+          \ agent_plan_bucket) ((max by (agent_plan_vendor,\
+          \ agent_plan_window, agent_account,\
+          \ agent_plan_bucket) (agent_capacity_window_utilization_ratio{agent_capacity_source=~\"\
+          claude_statusline|claude_transcript|codex_rollout|codex_probe|agy_statusline\"\
+          ,agent_capacity_freshness=\"fresh\"\
+          }) or max by (agent_plan_vendor,\
+          \ agent_plan_window, agent_account,\
+          \ agent_plan_bucket) (agent_capacity_window_utilization_ratio{agent_capacity_source=~\"\
+          claude_statusline|claude_transcript|codex_rollout|codex_probe|agy_statusline\"\
+          ,agent_capacity_freshness=\"carried\"\
+          })))"
+      - eval_time: 1m
+        exp_samples:
+          - labels: '{agent_plan_vendor="anthropic",agent_account="primary",agent_plan_window="7d"}'
+            value: 0.25
+        expr: "max by (agent_plan_vendor,\
+          \ agent_account, agent_plan_window,\
+          \ agent_plan_bucket) ((max by (agent_plan_vendor,\
+          \ agent_plan_window, agent_account,\
+          \ agent_plan_bucket) (agent_capacity_window_utilization_ratio{agent_capacity_source=~\"\
+          claude_statusline|claude_transcript|codex_rollout|codex_probe|agy_statusline\"\
+          ,agent_capacity_freshness=\"fresh\"\
+          }) or max by (agent_plan_vendor,\
+          \ agent_plan_window, agent_account,\
+          \ agent_plan_bucket) (agent_capacity_window_utilization_ratio{agent_capacity_source=~\"\
+          claude_statusline|claude_transcript|codex_rollout|codex_probe|agy_statusline\"\
+          ,agent_capacity_freshness=\"carried\"\
+          })))"
+      - eval_time: 2m
+        exp_samples:
+          - labels: '{agent_plan_vendor="anthropic",agent_account="primary",agent_plan_window="7d"}'
+            value: 0.3
+        expr: "max by (agent_plan_vendor,\
+          \ agent_account, agent_plan_window,\
+          \ agent_plan_bucket) ((max by (agent_plan_vendor,\
+          \ agent_plan_window, agent_account,\
+          \ agent_plan_bucket) (agent_capacity_window_utilization_ratio{agent_capacity_source=~\"\
+          claude_statusline|claude_transcript|codex_rollout|codex_probe|agy_statusline\"\
+          ,agent_capacity_freshness=\"fresh\"\
+          }) or max by (agent_plan_vendor,\
+          \ agent_plan_window, agent_account,\
+          \ agent_plan_bucket) (agent_capacity_window_utilization_ratio{agent_capacity_source=~\"\
+          claude_statusline|claude_transcript|codex_rollout|codex_probe|agy_statusline\"\
+          ,agent_capacity_freshness=\"carried\"\
+          })))"

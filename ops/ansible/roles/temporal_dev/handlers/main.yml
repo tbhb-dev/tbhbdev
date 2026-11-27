@@ -1,0 +1,7 @@
+---
+- name: Restart Temporal dev
+  ansible.builtin.systemd_service:
+    name: temporal-dev.service
+    daemon_reload: true
+    state: restarted
+  when: not ansible_check_mode

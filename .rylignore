@@ -1,0 +1,11 @@
+# SPDX-License-Identifier: Apache-2.0
+# Copyright Tony Burns
+
+tmp/
+.venv/
+.mise/
+
+# Generated lockfiles and test and baseline inputs.
+pnpm-lock.yaml
+**/testdata/
+lib/rules/repo/baseline/

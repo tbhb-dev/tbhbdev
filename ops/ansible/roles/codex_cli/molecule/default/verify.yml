@@ -1,0 +1,49 @@
+---
+- name: Verify
+  hosts: all
+  become: true
+  vars_files:
+    - ../../defaults/main.yml
+  tasks:
+    - name: Read the agent account home
+      ansible.builtin.getent:
+        database: passwd
+        key: agent
+
+    - name: Run Codex as the agent
+      ansible.builtin.command:
+        argv: ["{{ ansible_facts.getent_passwd['agent'][4] }}/.local/bin/codex", --version]
+      become: true
+      become_user: agent
+      register: codex_cli_verified_version
+      changed_when: false
+
+    - name: Require the pinned version
+      ansible.builtin.assert:
+        that: codex_cli_verified_version.stdout is search(codex_cli_version | regex_escape ~ '$')
+        quiet: true
+
+    - name: Read the active binary mode
+      ansible.builtin.stat:
+        path: "{{ ansible_facts.getent_passwd['agent'][4] }}/.local/bin/codex"
+        follow: true
+      register: codex_cli_verified_binary
+
+    - name: Require an executable owned by the agent
+      ansible.builtin.assert:
+        that:
+          - codex_cli_verified_binary.stat.mode == '0755'
+          - codex_cli_verified_binary.stat.pw_name == 'agent'
+        quiet: true
+
+    - name: Find files in the home that root owns
+      ansible.builtin.command:
+        argv: [find, "{{ ansible_facts.getent_passwd['agent'][4] }}", -user, root]
+      register: codex_cli_verified_root_owned
+      changed_when: false
+
+    - name: Require nothing root-owned in the home
+      ansible.builtin.assert:
+        that: codex_cli_verified_root_owned.stdout == ''
+        fail_msg: "Root owns: {{ codex_cli_verified_root_owned.stdout_lines | join(', ') }}"
+        quiet: true

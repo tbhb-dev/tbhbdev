@@ -1,0 +1,11 @@
+---
+dsm_accounts_accounts: [agent, ops]
+dsm_accounts_groups: [administrators, docker]
+dsm_accounts_shell: /bin/sh
+# group_vars/nas.yml sets both: the vault item that holds ops' DSM password,
+# and the controller command that reads an op:// reference.
+dsm_accounts_password_ref: "{{ nas_ops_password_ref }}"
+dsm_accounts_lookup_command: "{{ nas_secret_command }}"
+# Each line carries a from= option with that controller's tailnet addresses;
+# see plugins/filter/authorized_lines.py.
+dsm_accounts_ops_keys: "{{ ssh_controller_keys | authorized_lines }}"

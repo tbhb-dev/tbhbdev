@@ -1,0 +1,95 @@
+---
+- name: Verify the keys
+  hosts: all
+  become: true
+  tasks:
+    - name: Stat the agent key files
+      ansible.builtin.stat:
+        path: "/home/example-user/.ssh/{{ item }}"
+      loop: [id_ed25519, id_ed25519.pub]
+      register: ssh_host_keys_test_agent
+
+    - name: Check the agent key's owner and modes
+      ansible.builtin.assert:
+        that:
+          - ssh_host_keys_test_agent.results | map(attribute='stat.exists') | min
+          - ssh_host_keys_test_agent.results[0].stat.mode == '0600'
+          - ssh_host_keys_test_agent.results[0].stat.pw_name == 'agent'
+          - ssh_host_keys_test_agent.results[1].stat.mode == '0644'
+
+    - name: Stat the agent ssh directory
+      ansible.builtin.stat:
+        path: /home/example-user/.ssh
+      register: ssh_host_keys_test_dir
+
+    - name: Check the directory
+      ansible.builtin.assert:
+        that:
+          - ssh_host_keys_test_dir.stat.mode == '0700'
+          - ssh_host_keys_test_dir.stat.pw_name == 'agent'
+
+    - name: Read the agent public key
+      ansible.builtin.slurp:
+        src: /home/example-user/.ssh/id_ed25519.pub
+      register: ssh_host_keys_test_pub
+
+    - name: Check the comment
+      ansible.builtin.assert:
+        that:
+          - >-
+              ssh_host_keys_test_pub.content | b64decode | trim is
+              search('^ssh-ed25519 \S+ agent@' + inventory_hostname + '$')
+
+    - name: Check the public key matches the private key without printing either
+      become: true
+      become_user: agent
+      ansible.builtin.shell: |
+        set -euo pipefail
+        cd /home/example-user/.ssh
+        test "$(ssh-keygen -y -f id_ed25519 | cut -d' ' -f1,2)" = "$(cut -d' ' -f1,2 id_ed25519.pub)"
+      args:
+        executable: /bin/bash
+      changed_when: false
+
+    - name: Read the ops public key
+      ansible.builtin.slurp:
+        src: /home/ops/.ssh/id_ed25519.pub
+      register: ssh_host_keys_test_ops
+
+    - name: Check ops kept its key
+      ansible.builtin.assert:
+        that: ssh_host_keys_test_ops.content | b64decode == 'ssh-ed25519 AAAAfixture ops@fixture\n'
+
+    - name: Look for the missing account
+      ansible.builtin.stat:
+        path: /home/absent
+      register: ssh_host_keys_test_absent
+
+    - name: Check the missing account got nothing
+      ansible.builtin.assert:
+        that: not ssh_host_keys_test_absent.stat.exists
+
+    - name: Read the agent ssh files
+      ansible.builtin.slurp:
+        src: "/home/example-user/.ssh/{{ item }}"
+      loop: [config, known_hosts_tbhb, agent-mesh.conf]
+      register: ssh_host_keys_test_files
+
+    - name: Stat the agent ssh files
+      ansible.builtin.stat:
+        path: "/home/example-user/.ssh/{{ item }}"
+      loop: [config, known_hosts_tbhb]
+      register: ssh_host_keys_test_modes
+
+    - name: Check the config, known hosts and mesh config
+      ansible.builtin.assert:
+        that:
+          - ssh_host_keys_test_modes.results | map(attribute='stat.mode') | list == ['0600', '0644']
+          - "'Host peer-a peer-b' in (ssh_host_keys_test_files.results[0].content | b64decode)"
+          - "'UserKnownHostsFile ~/.ssh/known_hosts_tbhb' in (ssh_host_keys_test_files.results[0].content | b64decode)"
+          - "'peer-a ssh-ed25519' in (ssh_host_keys_test_files.results[1].content | b64decode)"
+          - "'IdentityFile ~/.ssh/id_ed25519' in (ssh_host_keys_test_files.results[2].content | b64decode)"
+          - "'agent-mesh/agent_ed25519' not in (ssh_host_keys_test_files.results[2].content | b64decode)"
+          - >-
+              'IdentityFile ~/.ssh/agent-mesh/operator_ed25519' in
+              (ssh_host_keys_test_files.results[2].content | b64decode)

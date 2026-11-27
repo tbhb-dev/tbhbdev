@@ -1,0 +1,63 @@
+---
+# Root installs what bootstrap needs and gives the agent's home and /tmp
+# their own volumes, nodev and nosuid, so the agent can't fill the root
+# file system.
+#
+# Both are nofail with a 30s device timeout, so a volume that doesn't
+# come up leaves the node booting and reachable instead of in emergency
+# mode. A missed /tmp falls back to the root file system's directory,
+# which tmpfiles still sets to 1777. A missed home falls back to the
+# root-owned mount point, where the agent can't write.
+
+- name: Check the settings
+  ansible.builtin.assert:
+    that:
+      - agent_host_uid | int > 0
+      - agent_host_gid | int > 0
+      - agent_host_home is match('^/[^ ]+$')
+    fail_msg: agent_host_uid and agent_host_gid must be nonzero ids, and agent_host_home an absolute path
+    quiet: true
+
+# Bootstrap grants the devel group its access with setfacl on Linux. On
+# macOS it uses chmod and ls, which every install has.
+- name: Install the ACL tools
+  ansible.builtin.apt:
+    name: acl
+    state: present
+    install_recommends: false
+  when: ansible_facts['os_family'] == 'Debian'
+
+- name: Prepare bubblewrap for the Linux agent sandbox
+  ansible.builtin.include_tasks: bubblewrap.yml
+  when: ansible_facts['system'] == 'Linux'
+
+- name: Put the agent's home on its own volume
+  ansible.builtin.include_role:
+    name: lvm_volume
+  vars:
+    lvm_volume_vg: "{{ agent_host_vg }}"
+    lvm_volume_lv: agent-home
+    lvm_volume_size: "{{ agent_host_home_size }}"
+    lvm_volume_path: "{{ agent_host_home }}"
+    lvm_volume_opts: nodev,nosuid,nofail,x-systemd.device-timeout=30s
+    lvm_volume_owner: "{{ agent_host_uid | string }}"
+    lvm_volume_group: "{{ agent_host_gid | string }}"
+    lvm_volume_mode: "0700"
+  when: agent_host_home_size | length > 0
+
+# /tmp is the stock tmpfs until the next boot, when the fstab entry mounts
+# the volume over it instead. A mask on tmp.mount would stop that entry
+# too, since it makes a unit of the same name. systemd-tmpfiles sets the
+# volume's root to 1777 at every boot, from the q line for /tmp in
+# /usr/lib/tmpfiles.d/tmp.conf.
+- name: Put /tmp on its own volume from the next boot
+  ansible.builtin.include_role:
+    name: lvm_volume
+  vars:
+    lvm_volume_vg: "{{ agent_host_vg }}"
+    lvm_volume_lv: tmp
+    lvm_volume_size: "{{ agent_host_tmp_size }}"
+    lvm_volume_path: /tmp
+    lvm_volume_opts: nodev,nosuid,nofail,x-systemd.device-timeout=30s
+    lvm_volume_mount_now: false
+  when: agent_host_tmp_size | length > 0

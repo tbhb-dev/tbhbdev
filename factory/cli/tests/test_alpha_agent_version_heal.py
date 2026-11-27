@@ -13,13 +13,15 @@ from pwd import getpwuid
 from unittest.mock import Mock
 
 import pytest
+from agent_cli_example import run_agent
 from agent_driver_example import execution_arguments
 from agent_example import settings
 from agent_host_example import commit, git
 
 from tbhbdev import version
-from tbhbdev.alpha import agent, version_check
+from tbhbdev.alpha import version_check
 from tbhbdev.alpha.agent import driver, transport, version_heal
+from tbhbdev.alpha.agent import settings as agent_settings
 from tbhbdev.alpha.agent.decisions import remote
 from tbhbdev.alpha.agent.model import Invalid
 
@@ -187,11 +189,11 @@ def test_host_sync_retries_review_preflight(
     monkeypatch.setattr(transport, "stream", stream)
     monkeypatch.setattr(transport, "call", Mock())
     monkeypatch.setattr(driver, "poll_launch", Mock(return_value=0))
-    monkeypatch.setattr(agent.settings, "load", lambda: CONFIG)
+    monkeypatch.setattr(agent_settings, "load", lambda: CONFIG)
     prompt = tmp_path / "brief.md"
     prompt.write_text("Review the example.\n")
     argv = execution_arguments(prompt, "--profile", "review", "--ref", "topic")
-    assert agent.main(argv, "example agent") == (0 if host_after == NEW_LINE else 1)
+    assert run_agent(argv) == (0 if host_after == NEW_LINE else 1)
     run.assert_called_once()
     assert run.call_args.args == (GIT,)
     assert run.call_args.kwargs["env"]["GIT_TERMINAL_PROMPT"] == "0"

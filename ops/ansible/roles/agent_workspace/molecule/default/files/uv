@@ -1,0 +1,29 @@
+#!/usr/bin/env bash
+# Execute the actual validation code with system Python, using a fixture
+# tbhbdev package. No project sync or secret backend is reachable here.
+# Both the token check and the config validation pass --project.
+set -euo pipefail
+if [[ $1 == --version ]]; then
+	echo 'uv 0.13.8'
+	exit
+fi
+if [[ $1 == tool ]]; then
+	[[ $2 == install && $3 == --reinstall && $4 == git+file://* ]]
+	[[ $UV_TOOL_DIR == "$HOME/.local/share/uv/tools" && $UV_TOOL_BIN_DIR == "$HOME/.local/bin" ]]
+	source=${4#git+file://}
+	commit=${source##*@}
+	tools=${source%@*}
+	resolved=$(git -C "$tools" rev-parse "$commit")
+	[[ $resolved == "$commit" ]]
+	version=$(git -C "$tools" show "$commit:pyproject.toml" | sed -n 's/^version = "\([^"]*\)"$/\1/p')
+	printf '#!/usr/bin/env bash\nprintf "tbhbdev %s (%s)\\n"\n' "$version" "$commit" >"$UV_TOOL_BIN_DIR/tbhbdev"
+	chmod 0700 "$UV_TOOL_BIN_DIR/tbhbdev"
+	exit
+fi
+[[ $1 == run ]]
+shift
+[[ $1 == --project ]]
+shift 2
+[[ $1 == python && $2 == -c ]]
+export PYTHONPATH=$HOME/fixture
+exec python3 -c "$3"

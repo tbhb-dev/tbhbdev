@@ -1,0 +1,12 @@
+---
+- name: Restart journald
+  ansible.builtin.systemd_service:
+    name: systemd-journald
+    state: restarted
+  when: host_telemetry_run
+
+- name: Restart Alloy
+  ansible.builtin.systemd_service:
+    name: alloy
+    state: restarted
+  when: host_telemetry_run

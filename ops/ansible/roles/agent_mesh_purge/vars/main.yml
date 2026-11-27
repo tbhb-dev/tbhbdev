@@ -1,0 +1,6 @@
+---
+# These derive from the account being handled, so the argument specs can't validate them.
+agent_mesh_purge_home: "{{ ('/Users' if ansible_facts.system == 'Darwin' else '/home') + '/' + agent_mesh_purge_user }}"
+agent_mesh_purge_directory: "{{ agent_mesh_purge_home }}/.ssh"
+agent_mesh_purge_private_key: "{{ agent_mesh_purge_directory }}/id_ed25519"
+agent_mesh_purge_config: "{{ agent_mesh_purge_directory }}/config"
