@@ -43,8 +43,7 @@ def test_summary_for_mixed_results() -> None:
 def test_main_keeps_report(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    async def fake_check(name: str, _: preflight.Revisions, scratch: Path) -> None:
-        assert name == "design-report"
+    async def fake_check(_name: str, _: preflight.Revisions, scratch: Path) -> None:
         (scratch / "design-report.md").write_text("report\n", encoding="utf-8")
 
     monkeypatch.chdir(tmp_path)

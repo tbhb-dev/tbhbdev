@@ -9,7 +9,7 @@ Write the simplest code that serves the actual callers. The operator and the age
 
 Leave out code for cases outside that scope. Skip options, layers, and abstractions with one user. Record any doubt about whether a case can occur under Decisions in the PR body.
 
-Before every push, run `bazelisk run //:preflight` at the branch head. Every check must pass. If every other check passes and the temporary filesystem reaches its file count limit during `cli-coverage`, you may push after recording the cause under Decisions in the PR body. Repeat `bazelisk run //:preflight -- --check cli-coverage` where the filesystem has room. Fix the code when a check fails for any other reason. Never change the check to make it pass.
+Before every push, run `bazelisk run //:preflight` at the branch head. Every check must pass. If every other check passes and the temporary filesystem's file count limit stops `cli-coverage`, you may push after recording the cause under Decisions in the PR body. Repeat `bazelisk run //:preflight -- --check cli-coverage` where the filesystem has room. Fix the code when a check fails for any other reason. Never change the check to make it pass.
 
 ## Layout and dependency rule
 

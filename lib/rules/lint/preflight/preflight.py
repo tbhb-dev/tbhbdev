@@ -86,6 +86,9 @@ async def run(
     stdin: bytes | None = None,
     capture: bool = False,
 ) -> bytes:
+    if not (hasattr(os, "killpg") and hasattr(signal, "SIGKILL")):
+        message = "Preflight requires POSIX process groups."
+        raise RuntimeError(message)
     process = await asyncio.create_subprocess_exec(
         *command,
         cwd=cwd,
@@ -217,8 +220,7 @@ async def main() -> int:
         "rev-parse", "--verify", "--symbolic-full-name", "--end-of-options", args.base
     )
     ref = ref.removeprefix("refs/remotes/").removeprefix("refs/heads/")
-    if not ref or args.base == "HEAD" or ref == "main":
-        ref = DEFAULT_BASE
+    ref = DEFAULT_BASE if args.base == "HEAD" or ref in {"", "main"} else ref
     paths = await git("diff", "--name-only", "-z", "--no-renames", merge_base, head)
     if args.check:
         checks = (args.check,)

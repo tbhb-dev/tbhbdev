@@ -154,7 +154,7 @@ pytest_test(
     srcs = ["//:repo_files"],
     args = [
         "lint/tests/test_check_lint_baselines.py",
-        "tests/unit/lint/preflight/test_preflight.py",
+        "lint/tests/unit/preflight/test_preflight.py",
     ],
     coverage = None,
     path_tools = ["@tbhb_rules_git//:git"],
