@@ -6,12 +6,12 @@ title: Review severity and finding ids
 type: Reference
 generated:
   - role: generated
-    harness: codex:0.167.2
-    model: openai:gpt-6.1-sol
-    effort: medium
+    harness: codex:0.171.0
+    model: openai:gpt-6.2-sol
+    effort: high
     surface: exec
-    session: sha-256-64:5a62a6ed2fabf767
-    at: "2026-11-14T21:54:33Z"
+    session: sha-256-64:21ed95b52a1eaffe
+    at: "2026-11-27T04:18:41Z"
 ---
 
 # Review severity and finding ids
