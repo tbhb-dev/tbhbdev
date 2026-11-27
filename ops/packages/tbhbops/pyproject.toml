@@ -6,8 +6,7 @@ requires-python = ">=3.15"
 dependencies = []
 
 # The launchers install only `dependencies`, offline in test_launchers, so
-# the library stays free of them. The Docker-route check in the tests reads
-# YAML.
+# the library stays free of them.
 [project.optional-dependencies]
 yaml = ["pyyaml>=6.0.3"]
 
