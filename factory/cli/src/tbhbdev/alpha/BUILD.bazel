@@ -36,19 +36,6 @@ cli_py_library(
 )
 
 cli_py_library(
-    name = "content_issues",
-    srcs = ["content_issues.py"],
-    imports = ["../.."],
-    visibility = ["//factory/cli:__subpackages__"],
-    deps = [
-        ":pull_request",
-        ":secret_scan",
-        "//factory/cli/src/tbhbdev:content_model",
-        "//factory/cli/src/tbhbdev:content_vet",
-    ],
-)
-
-cli_py_library(
     name = "gh_app",
     srcs = ["gh_app.py"],
     imports = ["../.."],
@@ -304,6 +291,7 @@ cli_py_library(
     deps = [
         ":pull_request",
         ":pull_request_frontmatter",
+        ":review_inline",
         "//factory/cli/src/tbhbdev:content_review",
         "//factory/cli/src/tbhbdev/alpha/identity:dispatcher",
     ],
@@ -532,5 +520,26 @@ cli_py_library(
     deps = [
         ":guard_gh_pr",
         ":repo",
+    ],
+)
+
+cli_py_library(
+    name = "review_inline",
+    srcs = ["review_inline.py"],
+    imports = ["../.."],
+    visibility = ["//factory/cli:__subpackages__"],
+    deps = ["@cli_pip//markdown_it_py"],
+)
+
+cli_py_library(
+    name = "content_issues",
+    srcs = ["content_issues.py"],
+    imports = ["../.."],
+    visibility = ["//factory/cli:__subpackages__"],
+    deps = [
+        ":pull_request",
+        ":secret_scan",
+        "//factory/cli/src/tbhbdev:content_model",
+        "//factory/cli/src/tbhbdev:content_vet",
     ],
 )
