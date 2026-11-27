@@ -1,0 +1,268 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright Tony Burns
+
+// Command agent-capacity exports plan capacity metrics.
+package main
+
+import (
+	"context"
+	"errors"
+	"flag"
+	"fmt"
+	"io"
+	"log/slog"
+	"os"
+	"os/signal"
+	"syscall"
+	"time"
+
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/metric"
+
+	"github.com/tbhb-dev/tbhbdev/factory/agent-capacity/internal/capacity"
+	"github.com/tbhb-dev/tbhbdev/factory/agent-capacity/internal/export"
+	"github.com/tbhb-dev/tbhbdev/factory/agent-capacity/internal/source/agy"
+	"github.com/tbhb-dev/tbhbdev/factory/agent-capacity/internal/source/claude"
+	"github.com/tbhb-dev/tbhbdev/factory/agent-capacity/internal/source/codex"
+	"github.com/tbhb-dev/tbhbdev/factory/agent-capacity/internal/spool"
+)
+
+// Provider supplies a meter and flushes on shutdown.
+type Provider interface {
+	metric.MeterProvider
+	Shutdown(ctx context.Context) error
+}
+
+// Runtime keeps source registration and SDK creation at the command boundary.
+type Runtime struct {
+	NewRegistry func(string, string) (capacity.Registry, error)
+	NewProvider func(context.Context) (Provider, error)
+	Registry    func(string) capacity.Registry
+	Usage       func(context.Context) ([]byte, error)
+	ClaudeUsage func(context.Context) ([]byte, error)
+}
+
+func main() {
+	os.Exit(run())
+}
+
+func run() int {
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+
+	logger := slog.New(slog.NewJSONHandler(os.Stderr, nil))
+	runtime := newRuntime(ctx, logger)
+
+	return runtime.Run(ctx, os.Args[1:], os.Stdout, logger)
+}
+
+func newRuntime(ctx context.Context, logger *slog.Logger) Runtime {
+	otel.SetErrorHandler(otel.ErrorHandlerFunc(func(err error) {
+		logger.ErrorContext(ctx, "export failed", "class", capacity.ErrorClass(err))
+	}))
+
+	return Runtime{
+		NewRegistry: func(home, account string) (capacity.Registry, error) {
+			return codex.Register(home, account, logger)
+		},
+		Registry: func(dir string) capacity.Registry {
+			return capacity.Registry{
+				{Name: capacity.ClaudeStatusline, Source: claude.Source{Dir: dir, Logger: logger}},
+				{Name: capacity.AGYStatusline, Source: agy.Source{Dir: dir, Logger: logger}},
+				{Name: capacity.CodexProbe, Source: codex.SpoolSource{Dir: dir, Logger: logger}},
+			}
+		},
+		NewProvider: func(ctx context.Context) (Provider, error) { return export.NewProvider(ctx) },
+		Usage:       runUsage,
+		ClaudeUsage: runClaudeUsage,
+	}
+}
+
+const shutdownTimeout = 5 * time.Second
+
+var errArguments = errors.New("invalid arguments")
+
+// Run executes serve or another subcommand. Errors log fixed messages and safe classes.
+func (r Runtime) Run(ctx context.Context, args []string, out io.Writer, logger *slog.Logger) int {
+	if code, handled := runSessionCommand(ctx, args, out, logger); handled {
+		return code
+	}
+
+	command := r.subcommand(ctx, args, out, logger)
+	if command != nil {
+		return command()
+	}
+
+	options, err := parseServe(args)
+	if err != nil {
+		logger.ErrorContext(ctx, "invalid command", "class", "arguments")
+
+		return 1
+	}
+
+	if options.spoolDir == "" {
+		logger.ErrorContext(ctx, spool.ErrDirectory.Error(), "class", "arguments")
+
+		return 1
+	}
+
+	registry := r.Registry(options.spoolDir)
+	if r.NewRegistry != nil {
+		codexRegistry, registryErr := r.NewRegistry(options.codexHome, options.codexAccount)
+		if registryErr != nil {
+			logger.ErrorContext(ctx, "invalid command", "class", "arguments")
+
+			return 1
+		}
+
+		registry = append(registry, codexRegistry...)
+	}
+
+	transcripts, transcriptErr := claude.RegisterTranscripts(options.claudeTranscripts, options.claudeAccount)
+	if transcriptErr != nil {
+		logger.ErrorContext(ctx, "invalid command", "class", "arguments")
+
+		return 1
+	}
+
+	registry = append(registry, transcripts...)
+
+	provider, err := r.NewProvider(ctx)
+	if err != nil {
+		logger.ErrorContext(ctx, "setup failed", "class", capacity.ErrorClass(err))
+
+		return 1
+	}
+
+	collector, err := export.New(provider.Meter("github.com/tbhb-dev/tbhbdev/factory/agent-capacity"), time.Now)
+	if err == nil {
+		ticker := time.NewTicker(options.interval)
+		defer ticker.Stop()
+
+		Serve(ctx, registry, collector, logger, ticker.C, time.Now)
+	} else {
+		logger.ErrorContext(ctx, "setup failed", "class", capacity.ErrorClass(err))
+	}
+
+	shutdownCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), shutdownTimeout)
+	defer cancel()
+
+	shutdownErr := provider.Shutdown(shutdownCtx)
+	if shutdownErr != nil {
+		logger.ErrorContext(ctx, "shutdown failed", "class", capacity.ErrorClass(shutdownErr))
+	}
+
+	if errors.Join(err, shutdownErr) != nil {
+		return 1
+	}
+
+	return 0
+}
+
+// runSessionCommand runs the login and session commands. The second result is false for any other arguments.
+func runSessionCommand(ctx context.Context, args []string, out io.Writer, _ *slog.Logger) (int, bool) {
+	if len(args) == 0 {
+		return 0, false
+	}
+
+	switch args[0] {
+	case "login":
+		// gomutants:disable-next-line INTEGER_INCREMENT,INTEGER_DECREMENT reason="Any other slice ends in the same refusal."
+		return loginCommand(ctx, args[1:], os.Stdin, out, os.Stderr), true
+	case "session":
+		return sessionCommand(ctx, args[1:], out), true
+	default:
+		return 0, false
+	}
+}
+
+// subcommand returns the command other than serve that the arguments name, or nil for serve.
+func (r Runtime) subcommand(ctx context.Context, args []string, out io.Writer, logger *slog.Logger) func() int {
+	if len(args) == 1 && args[0] == "version" {
+		return func() int {
+			fmt.Fprintln(out, "agent-capacity 0.0.0-dev")
+
+			return 0
+		}
+	}
+
+	if len(args) == 0 {
+		return nil
+	}
+
+	switch args[0] {
+	case "statusline":
+		return func() int { return statusline(ctx, args[1:], os.Stdin, logger) }
+	case "probe":
+		return func() int { return r.probe(ctx, args[1:], logger) }
+	default:
+		return nil
+	}
+}
+
+type serveOptions struct {
+	claudeTranscripts string
+	claudeAccount     string
+	spoolDir          string
+	codexHome         string
+	codexAccount      string
+	interval          time.Duration
+}
+
+func parseServe(args []string) (serveOptions, error) {
+	if len(args) == 0 || args[0] != "serve" {
+		return serveOptions{}, errArguments
+	}
+
+	flags := flag.NewFlagSet("serve", flag.ContinueOnError)
+	flags.SetOutput(io.Discard)
+	codexHome := flags.String("codex-home", os.Getenv("CODEX_HOME"), "Codex rollout home")
+	codexAccount := flags.String("codex-account", "primary", "Codex account alias")
+	transcripts := flags.String(
+		"claude-transcripts",
+		os.Getenv("AGENT_CAPACITY_CLAUDE_TRANSCRIPTS"),
+		"transcript files or directories, separated by commas",
+	)
+	claudeAccount := flags.String("claude-account", "primary", "Claude transcript account alias")
+	dir := flags.String("spool-dir", os.Getenv("AGENT_CAPACITY_SPOOL_DIR"), "snapshot directory")
+	interval := flags.Duration("interval", time.Minute, "source read interval")
+
+	err := flags.Parse(args[1:])
+	if err != nil {
+		return serveOptions{}, errArguments
+	}
+
+	if flags.NArg() != 0 || *interval <= 0 {
+		return serveOptions{}, errArguments
+	}
+
+	return serveOptions{
+		interval:          *interval,
+		spoolDir:          *dir,
+		codexHome:         *codexHome,
+		codexAccount:      *codexAccount,
+		claudeTranscripts: *transcripts,
+		claudeAccount:     *claudeAccount,
+	}, nil
+}
+
+// Serve collects immediately and after each tick until the context is canceled.
+// Failed sources contribute no readings. Other sources continue to be read.
+func Serve(ctx context.Context, registry capacity.Registry, collector *export.Collector,
+	logger *slog.Logger, ticks <-chan time.Time, now func() time.Time,
+) {
+	for {
+		readings, failures := registry.Read(ctx, now())
+		for _, failure := range failures {
+			logger.ErrorContext(ctx, "source read failed", "source", failure.Source, "class", failure.Class)
+		}
+		// Registry validates each batch. Replace also guards direct callers.
+		_ = collector.Replace(readings) //nolint:errcheck // Registry validates every reading before Replace.
+
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticks:
+		}
+	}
+}

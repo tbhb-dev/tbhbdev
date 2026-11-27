@@ -1,0 +1,37 @@
+# SPDX-License-Identifier: Apache-2.0
+# Copyright Tony Burns
+
+load("//factory:go.bzl", "go_library", "go_test")
+load("@tbhb_rules//repo:defs.bzl", "repo_files")
+
+repo_files()
+
+exports_files(
+    ["testdata/usage-data.json"],
+    visibility = ["//factory/agent-capacity:__pkg__"],
+)
+
+go_library(
+    name = "agy",
+    srcs = ["agy.go"],
+    importpath = "github.com/tbhb-dev/tbhbdev/factory/agent-capacity/internal/source/agy",
+    visibility = ["//factory/agent-capacity:__subpackages__"],
+    deps = [
+        "//factory/agent-capacity/internal/capacity",
+        "//factory/agent-capacity/internal/spool",
+    ],
+)
+
+go_test(
+    name = "agy_test",
+    srcs = ["agy_test.go"],
+    data = glob(["testdata/**"]),
+    embed = [":agy"],
+    visibility = ["//factory/agent-capacity:__pkg__"],
+    deps = [
+        "//factory/agent-capacity/internal/capacity",
+        "//factory/agent-capacity/internal/spool",
+        "@com_github_stretchr_testify//assert",
+        "@com_github_stretchr_testify//require",
+    ],
+)
