@@ -67,6 +67,15 @@ jobs:
           TARGETS: ${{ steps.affected.outputs.file }}
         run: bazel test --config=ci --build_tests_only --target_pattern_file="$TARGETS"
 
+      - name: Scan event gateway Go dependencies
+        env:
+          ALL_TARGETS: ${{ steps.affected.outputs.all }}
+          TARGETS: ${{ steps.affected.outputs.file }}
+        run: |
+          if [[ "$ALL_TARGETS" == true ]] || grep -qE '^(@@?)?//factory/event-gateway[:/]' "$TARGETS"; then
+            bazel run --config=ci //factory/event-gateway:govulncheck
+          fi
+
   gazelle-current:
     name: gazelle-current
     runs-on: ubuntu-26.04

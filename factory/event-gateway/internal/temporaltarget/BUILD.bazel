@@ -1,0 +1,93 @@
+# SPDX-License-Identifier: Apache-2.0
+# Copyright Tony Burns
+# cspell:words devserver eventfields rlocationpath temporaltarget
+
+load("@rules_go//go:def.bzl", "go_library")
+load("@tbhb_rules//repo:defs.bzl", "repo_files")
+load("@tbhb_rules_go//:defs.bzl", "gobco_test")
+load("//factory:go.bzl", "go_test")
+
+# gazelle:exclude devserver_internal_test.go
+
+repo_files(visibility = ["//factory/event-gateway:__subpackages__"])
+
+gobco_test(
+    name = "temporaltarget_gobco_test",
+    go_mod = "//:go.mod",
+    go_sum = "//:go.sum",
+    proxy = "@go_mod_proxy//:proxy",
+    tests = [":temporaltarget_test"],
+)
+
+go_library(
+    name = "temporaltarget",
+    srcs = [
+        "connection.go",
+        "sdk.go",
+        "target.go",
+    ],
+    importpath = "github.com/tbhb-dev/tbhbdev/factory/event-gateway/internal/temporaltarget",
+    visibility = ["//factory/event-gateway:__subpackages__"],
+    deps = [
+        "//factory/event-gateway/internal/eventfields",
+        "//factory/event-gateway/internal/routing",
+        "@io_temporal_go_api//common/v1:common",
+        "@io_temporal_go_api//enums/v1:enums",
+        "@io_temporal_go_api//serviceerror",
+        "@io_temporal_go_sdk//client",
+        "@io_temporal_go_sdk//converter",
+        "@io_temporal_go_sdk//temporal",
+    ],
+)
+
+go_test(
+    name = "temporaltarget_test",
+    srcs = [
+        "connection_internal_test.go",
+        "sdk_internal_test.go",
+        "target_internal_test.go",
+    ],
+    embed = [":temporaltarget"],
+    visibility = ["//factory/event-gateway:__pkg__"],
+    deps = [
+        "//factory/event-gateway/internal/eventfields",
+        "//factory/event-gateway/internal/routing",
+        "@io_temporal_go_api//common/v1:common",
+        "@io_temporal_go_api//enums/v1:enums",
+        "@io_temporal_go_api//serviceerror",
+        "@io_temporal_go_sdk//client",
+        "@io_temporal_go_sdk//converter",
+        "@io_temporal_go_sdk//temporal",
+    ],
+)
+
+alias(
+    name = "temporal_cli",
+    actual = select({
+        "@bazel_tools//src/conditions:darwin_arm64": "@temporal_darwin_arm64//:temporal",
+        "@bazel_tools//src/conditions:darwin_x86_64": "@temporal_darwin_amd64//:temporal",
+        "@bazel_tools//src/conditions:linux_aarch64": "@temporal_linux_arm64//:temporal",
+        "@bazel_tools//src/conditions:linux_x86_64": "@temporal_linux_amd64//:temporal",
+        "@bazel_tools//src/conditions:windows_x64": "@temporal_windows_amd64//:temporal.exe",
+    }),
+)
+
+go_test(
+    name = "temporaltarget_devserver_test",
+    size = "large",
+    timeout = "long",
+    srcs = ["devserver_internal_test.go"],
+    data = [":temporal_cli"],
+    embed = [":temporaltarget"],
+    env = {"TEMPORAL_CLI": "$(rlocationpath :temporal_cli)"},
+    visibility = ["//factory/event-gateway:__pkg__"],
+    deps = [
+        "//factory/event-gateway/internal/eventfields",
+        "//factory/event-gateway/internal/routing",
+        "@io_temporal_go_api//serviceerror",
+        "@io_temporal_go_sdk//client",
+        "@io_temporal_go_sdk//temporal",
+        "@io_temporal_go_sdk//worker",
+        "@io_temporal_go_sdk//workflow",
+    ],
+)

@@ -28,12 +28,17 @@ var bundleVersion = "dev"
 var commands = map[string]func([]string) int{}
 
 func main() {
-	executable, _ := os.Executable()
+	executable, err := os.Executable()
+	if err != nil {
+		executable = ""
+	}
+
 	os.Exit(run(os.Args[1:], executable))
 }
 
 func run(args []string, executable string) int {
 	if output := dispatch.BuiltinText(args, bundleVersion); output != "" {
+		//nolint:errcheck // Built-in commands keep their exit status if stdout is closed.
 		_, _ = fmt.Fprint(os.Stdout, output)
 
 		return 0

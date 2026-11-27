@@ -83,6 +83,7 @@ func checkFront(t *testing.T, link string, args []string, status int, wantOut, w
 
 func TestFront(t *testing.T) {
 	if os.Getenv("TBHBDEV_TEST_FRONT") == "1" {
+		//nolint:reassign // This subprocess replaces the test arguments before calling main.
 		os.Args = append(os.Args[:1], os.Args[3:]...)
 
 		main()

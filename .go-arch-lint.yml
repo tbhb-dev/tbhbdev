@@ -15,8 +15,51 @@ components:
   front: {in: factory/cli/cmd/tbhbdev}
   dispatch: {in: factory/cli/internal/dispatch}
 
+  buildloop: {in: factory/event-gateway/internal/buildloop}
+  gateway: {in: factory/event-gateway/cmd/*}
+  eventfields: {in: factory/event-gateway/internal/eventfields}
+  filter: {in: factory/event-gateway/internal/filter}
+  redelivery: {in: factory/event-gateway/internal/redelivery}
+  routing: {in: factory/event-gateway/internal/routing}
+  temporaltarget: {in: factory/event-gateway/internal/temporaltarget}
+
+vendors:
+  mcp:
+    in: [github.com/modelcontextprotocol/go-sdk/jsonrpc, github.com/modelcontextprotocol/go-sdk/mcp]
+  temporal:
+    in: [go.temporal.io/api/**, go.temporal.io/sdk/**]
+  websocket:
+    in: [github.com/coder/websocket, github.com/coder/websocket/**]
+  nats:
+    in: [github.com/nats-io/nats-server/v2/**, github.com/nats-io/nats.go, github.com/nats-io/nats.go/**]
+  telemetry:
+    in:
+      - github.com/go-logr/logr
+      - github.com/go-logr/logr/funcr
+      - go.opentelemetry.io/contrib/bridges/otelslog
+      - go.opentelemetry.io/otel
+      - go.opentelemetry.io/otel/**
+      - go.opentelemetry.io/proto/otlp/**
+      - google.golang.org/protobuf/proto
+
 deps:
   front:
     mayDependOn: [dispatch]
   dispatch:
     mayDependOn: [dispatch]
+  buildloop:
+    mayDependOn: [buildloop]
+  gateway:
+    mayDependOn: [gateway, eventfields, filter, routing, temporaltarget]
+    canUse: [mcp, nats, telemetry, websocket]
+  eventfields:
+    mayDependOn: [eventfields, filter]
+  filter:
+    mayDependOn: [filter]
+  redelivery:
+    mayDependOn: [redelivery]
+  routing:
+    mayDependOn: [routing, filter]
+  temporaltarget:
+    mayDependOn: [temporaltarget, eventfields, routing]
+    canUse: [temporal]

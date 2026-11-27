@@ -31,6 +31,7 @@ exports_files([
     ".vale/project/HeadingTitleCase.yml",
     ".vale/project/WordList.yml",
     "go.mod",
+    "go.sum",
     "tombi.toml",
 ])
 
@@ -39,6 +40,7 @@ exports_files(
     visibility = ["//factory/cli:__pkg__"],
 )
 
+# gazelle:prefix github.com/tbhb-dev/tbhbdev
 # gazelle:python_extension disabled
 
 gazelle_binary(
@@ -72,6 +74,17 @@ nogo(
     name = "nogo",
     vet = True,
     visibility = ["//visibility:public"],
+)
+
+# Keep the tidy gate's inputs aligned with the packages in the root Go module.
+filegroup(
+    name = "go_module_sources",
+    srcs = [
+        "//factory/cli/cmd/tbhbdev:go_sources",
+        "//factory/cli/internal/dispatch:go_sources",
+        "//factory/event-gateway:repo_files",
+    ],
+    visibility = ["//factory/event-gateway:__pkg__"],
 )
 
 # Installs the Vale packages pinned in .vale.ini; uses `vale` from PATH.

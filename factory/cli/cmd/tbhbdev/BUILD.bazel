@@ -3,10 +3,15 @@
 
 load("@rules_go//go:def.bzl", "go_binary", "go_library")
 load("@tbhb_rules_go//:defs.bzl", "go_arch_lint_test")
-load("//factory:go.bzl", "go_test")
-load(":linters.bzl", "golangci_lint_test")
+load("//factory:go.bzl", "go_test", "golangci_lint_test")
 
 # gazelle:map_kind go_test go_test //factory:go.bzl
+
+filegroup(
+    name = "go_sources",
+    srcs = glob(["*.go"]),
+    visibility = ["//:__pkg__"],
+)
 
 go_library(
     name = "tbhbdev_lib",

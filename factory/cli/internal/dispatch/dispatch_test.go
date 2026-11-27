@@ -19,17 +19,17 @@ func TestBuiltinText(t *testing.T) {
 
 	for _, test := range []struct {
 		name string
-		args []string
 		want string
+		args []string
 	}{
-		{"no arguments", nil, help},
-		{"help", []string{"--help"}, help},
-		{"short help", []string{"-h"}, help},
-		{"version", []string{"--version"}, version},
-		{"short version", []string{"-V"}, version},
-		{"unknown command", []string{"other", "--help"}, ""},
-		{"empty argument", []string{""}, ""},
-		{"unknown flag", []string{"--repo"}, ""},
+		{"no arguments", help, nil},
+		{"help", help, []string{"--help"}},
+		{"short help", help, []string{"-h"}},
+		{"version", version, []string{"--version"}},
+		{"short version", version, []string{"-V"}},
+		{"unknown command", "", []string{"other", "--help"}},
+		{"empty argument", "", []string{""}},
+		{"unknown flag", "", []string{"--repo"}},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			t.Parallel()

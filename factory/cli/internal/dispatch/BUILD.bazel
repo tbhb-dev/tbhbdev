@@ -6,6 +6,12 @@ load("//factory:go.bzl", "go_test")
 
 # gazelle:map_kind go_test go_test //factory:go.bzl
 
+filegroup(
+    name = "go_sources",
+    srcs = glob(["*.go"]),
+    visibility = ["//:__pkg__"],
+)
+
 go_library(
     name = "dispatch",
     srcs = ["dispatch.go"],
