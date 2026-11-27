@@ -20,10 +20,10 @@ from agent_host_example import constant, git, host_settings, repository, run_req
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric import rsa
 
-from tbhbdev import secrets
 from tbhbdev.alpha import gh_app
 from tbhbdev.alpha.agent import credentials, process_group, runfiles
 from tbhbdev.alpha.agent.model import Credentials, Harness, Invalid, Profile
+from tbhbdev.secrets import connect, store
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Generator
@@ -62,7 +62,7 @@ def fake_reader(monkeypatch: pytest.MonkeyPatch) -> list[str]:
         calls.append(reference)
         return VALUES[reference]
 
-    monkeypatch.setattr(secrets, "read", read)
+    monkeypatch.setattr(store, "read", read)
     return calls
 
 
@@ -184,10 +184,10 @@ def test_claude_empty_or_failed_read_names_profile_and_reference(
             return VALUES[reference]
         if value is None:
             message = "marker-value-that-must-not-escape"
-            raise secrets.SecretsError(message)
+            raise connect.SecretsError(message)
         return value
 
-    monkeypatch.setattr(secrets, "read", read)
+    monkeypatch.setattr(store, "read", read)
     with pytest.raises(Invalid) as caught:
         credentials.deliver(
             run_request(harness="claude", claude_profile="primary", reason="example"),
@@ -293,7 +293,7 @@ def test_review_token_request_is_read_only_for_only_run_repository(
     env = gh_app.Env(
         tmp_path,
         lambda: 1000,
-        secrets.Store,
+        store.Store,
         gh_app.run_openssl,
         httpx2.MockTransport(respond),
     )
@@ -605,7 +605,7 @@ def test_missing_credentials_report_only_label_and_reference(
         message = "unprinted-marker"
         raise gh_app.GhAppError(message)
 
-    monkeypatch.setattr(secrets, "read", read)
+    monkeypatch.setattr(store, "read", read)
     if profile != "app":
         monkeypatch.setattr(credentials, "installation_token", installation)
 
@@ -734,7 +734,7 @@ def test_app_token_scope_ignores_planted_origin(
         "remote.origin.url",
         "https://github.com/example-other/other.git",
     )
-    env = gh_app.Env(tmp_path, lambda: 1000, secrets.Store, gh_app.run_openssl)
+    env = gh_app.Env(tmp_path, lambda: 1000, store.Store, gh_app.run_openssl)
     monkeypatch.setattr(gh_app, "default_env", lambda: env)
     monkeypatch.setitem(VALUES, "example/app/pem", "fake pem")
     scopes: list[object] = []
@@ -1057,7 +1057,7 @@ def test_build_token_request_names_one_repository_and_write_permissions(
     env = gh_app.Env(
         tmp_path / "state",
         lambda: 1000,
-        secrets.Store,
+        store.Store,
         gh_app.run_openssl,
         httpx2.MockTransport(respond),
     )
@@ -1187,7 +1187,7 @@ def test_pull_requests_token_names_the_unreadable_reference(
     def read(actual: str) -> str:
         return "" if actual == reference else VALUES[actual]
 
-    monkeypatch.setattr(secrets, "read", read)
+    monkeypatch.setattr(store, "read", read)
     monkeypatch.setitem(VALUES, "example/app/pem", "example-pem")
     monkeypatch.setitem(VALUES, "example/app/client", "example-client")
     with pytest.raises(Invalid) as caught:

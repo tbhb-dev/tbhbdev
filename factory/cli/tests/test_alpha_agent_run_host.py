@@ -47,7 +47,6 @@ from test_alpha_agent_codex_install import release
 from test_alpha_agent_credentials import VALUES
 from test_alpha_agent_settings import EXAMPLE
 
-from tbhbdev import secrets
 from tbhbdev.alpha import run_stop_hook
 from tbhbdev.alpha.agent import (
     admission,
@@ -72,6 +71,7 @@ from tbhbdev.alpha.agent.model import (
     RunKind,
 )
 from tbhbdev.alpha.install.hooks import stop_hooks as stop
+from tbhbdev.secrets import store as secret_store
 
 RESOLVE = host_tools.resolve
 PUSH_RUN = run_host.push.run
@@ -131,7 +131,7 @@ def fake_secrets(
     monkeypatch.setenv("GIT_CONFIG_GLOBAL", "/dev/null")
     isolate_host_git(tmp_path, monkeypatch)
     monkeypatch.setattr(admission, "ROOT", tmp_path / "admission")
-    monkeypatch.setattr(secrets, "read", read)
+    monkeypatch.setattr(secret_store, "read", read)
     monkeypatch.setattr(credentials, "installation_token", installation)
 
     real_resolve = host_tools.resolve
@@ -1251,7 +1251,7 @@ def test_startup_deadline_stops_the_recorded_setup_group(
         monkeypatch.setattr(
             run_host.worktree, "create", constant(Path(prepared.paths.worktree))
         )
-        monkeypatch.setattr(secrets, "read", read)
+        monkeypatch.setattr(secret_store, "read", read)
     ready_read, ready_write = os.pipe()
     with os.fdopen(ready_read, "rb") as ready, os.fdopen(ready_write, "wb"):
         monkeypatch.setattr(

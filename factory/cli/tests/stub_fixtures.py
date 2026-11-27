@@ -14,8 +14,8 @@ from typing import cast
 
 import pytest
 
-from tbhbdev import secrets
 from tbhbdev.alpha.agent import host_tools
+from tbhbdev.secrets.config import TEST_TOKEN_ENV
 
 type Json = dict[str, object]
 
@@ -130,5 +130,5 @@ def stubs(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Stubs:
     monkeypatch.setattr(host_tools, "search", lambda: str(bin_dir))
     monkeypatch.setenv("HOME", str(home))
     monkeypatch.setenv("STUB_DIR", str(stub_dir))
-    monkeypatch.delenv(secrets.TEST_TOKEN_ENV, raising=False)
+    monkeypatch.delenv(TEST_TOKEN_ENV, raising=False)
     return Stubs(stub_dir, bin_dir)

@@ -14,7 +14,6 @@ import shlex
 from dataclasses import replace
 from pathlib import PurePosixPath
 
-from tbhbdev import secrets
 from tbhbdev.alpha.agent import host_tools
 from tbhbdev.alpha.agent.model import (
     AgyPolicy,
@@ -31,6 +30,7 @@ from tbhbdev.alpha.agent.model import (
     RunPaths,
     Settings,
 )
+from tbhbdev.secrets.config import LINUX_TOKEN_FILE, MACOS_KEYCHAIN_FILE
 
 # Codex's name for the whole filesystem, which a profile makes read-only.
 READ_ROOT = ":root"
@@ -95,12 +95,12 @@ def denied_paths(
     paths: list[str] = []
     if host.os is Os.LINUX:
         # The directory, so a sibling file or a renamed token stays hidden too.
-        paths.append(resolve(home, str(secrets.LINUX_TOKEN_FILE.parent)))
+        paths.append(resolve(home, str(LINUX_TOKEN_FILE.parent)))
         paths.extend(
             ("/run/WSL", "/var/run/docker.sock", "/run/docker.sock", f"/run/user/{uid}")
         )
     else:
-        keychain = secrets.MACOS_KEYCHAIN_FILE
+        keychain = MACOS_KEYCHAIN_FILE
         paths.extend(
             resolve(home, str(p)) for p in (keychain, keychain.with_suffix(".keychain"))
         )

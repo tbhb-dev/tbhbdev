@@ -7,7 +7,7 @@
 `mint_token` returns a repository and permission restricted token signed in memory.
 
 A mint reads the App's `app_id` and `private_key` from the `github-app-APP` item
-through one `secrets.Store`, checks that the key is an RSA key, signs a JWT
+through one `secrets.store.Store`, checks that the key is an RSA key, signs a JWT
 with `openssl`, and exchanges it for an installation token. It writes a
 `hosts.yml` in gh's layout under
 `$XDG_STATE_HOME/gh-app/VAULT/APP/OWNER/REPO`, or `.../OWNER/+all` with
@@ -46,7 +46,9 @@ from cryptography.exceptions import UnsupportedAlgorithm
 from cryptography.hazmat.primitives import hashes, serialization
 from cryptography.hazmat.primitives.asymmetric import padding, rsa
 
-from tbhbdev import github_tls, secrets
+from tbhbdev import github_tls
+from tbhbdev.secrets.connect import SecretsError
+from tbhbdev.secrets.store import Store
 lazy from tbhbdev.alpha.agent import host_tools
 lazy from tbhbdev.alpha.agent.model import Invalid
 
@@ -491,12 +493,7 @@ def clock() -> int:
 
 
 def default_env() -> Env:
-    return Env(
-        state_root(dict(os.environ), Path.home()),
-        clock,
-        secrets.Store,
-        run_openssl,
-    )
+    return Env(state_root(dict(os.environ), Path.home()), clock, Store, run_openssl)
 
 
 def read_text(path: Path) -> str | None:
@@ -547,7 +544,7 @@ def unreadable(args: Args, name: str) -> GhAppError:
 def read_field(store: Reader, args: Args, name: str) -> str:
     try:
         value = store.read(f"op://{args.vault}/github-app-{args.app}/{name}")
-    except secrets.SecretsError:
+    except SecretsError:
         value = ""
     if not value.strip():
         raise unreadable(args, name)
@@ -558,7 +555,7 @@ def read_fields(env: Env, args: Args) -> tuple[str, str]:
     """The App's id and its PEM key, both read through one store."""
     try:
         store = env.store()
-    except secrets.SecretsError:
+    except SecretsError:
         raise unreadable(args, "app_id") from None
     app_id = read_field(store, args, "app_id").strip()
     return app_id, rebuild_pem(read_field(store, args, "private_key"))

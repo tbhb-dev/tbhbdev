@@ -1,31 +1,8 @@
-"""Secrets for tbhb-dev tools, from 1Password Connect.
-
-Every tool reaches secrets through this module, and nothing else calls
-Connect or `op` for secrets at runtime. `read("vault/item/field")` returns one
-value; `Store` gets, lists, creates, edits, deletes and moves items.
-
-The Connect token comes from the current user's own store: on macOS the
-dedicated agent keychain, on Linux the file `.config/tbhbdev/secrets/
-connect-token` (LINUX_TOKEN_FILE, under `Path.home()`, never XDG_CONFIG_HOME,
-because configuration management writes to that fixed path). The
-file is mode 0600 in a mode 0700 directory, both owned by the user, and a
-token that fails any of those checks is refused. Configuration management
-is the only writer of the Linux token file. The endpoints come from the user
-config's `[connect] endpoints` and are tried in order. The operator's host
-tooling sets up the config on each agent host.
-
-Nothing here logs, prints or puts a secret value or a token into an exception
-message.
-"""
+"""Read secret references and manage items by vault and item name or ID."""
 
 from __future__ import annotations
 
-import os
-import platform
-import stat
-import subprocess  # nosec B404
 from dataclasses import dataclass, field
-from pathlib import Path
 from typing import TYPE_CHECKING, Protocol, override
 
 import httpx
@@ -33,43 +10,15 @@ import httpx2
 from cryptography.exceptions import UnsupportedAlgorithm
 from cryptography.hazmat.primitives import serialization
 from onepasswordconnectsdk import client as connect_client
-from onepasswordconnectsdk.config import ClientConfig
-from onepasswordconnectsdk.utils import PathBuilder
 
-from tbhbdev import userconfig
-lazy from tbhbdev.alpha.agent import host_tools
-lazy from tbhbdev.alpha.agent.model import Invalid
+from tbhbdev.secrets import config
+from tbhbdev.secrets.connect import NOT_FOUND, TIMEOUT, Connect, SecretsError, objects
 
 if TYPE_CHECKING:
     from collections.abc import Mapping, Sequence
 
-type Json = dict[str, object]
+    from tbhbdev.secrets.connect import Json
 
-# Where the token lives in the agent account. On macOS, security(1) resolves
-# the keychain name inside ~/Library/Keychains; the service and account are
-# the item's attributes. They name the tool, not a deployment: a host needs
-# them before it reads any config.
-KEYCHAIN = "tbhbdev.keychain"
-MACOS_KEYCHAIN_FILE = Path("Library/Keychains/tbhbdev.keychain-db")
-SERVICE = "tbhbdev-connect"
-ACCOUNT = "agent"
-# On Linux the token is this file, relative to the home directory.
-LINUX_TOKEN_FILE = Path(".config/tbhbdev/secrets/connect-token")
-MAX_TOKEN_FILE = 1 << 16
-
-# Tests only: the name of a variable holding a token to use instead of the
-# keychain's. Nothing in production sets it.
-TEST_TOKEN_ENV = "TBHBDEV_TEST_TOKEN"  # noqa: S105  # nosec B105
-
-# The Connect SDK creates httpx sessions and raises httpx exceptions.
-TIMEOUT = httpx.Timeout(10.0, connect=5.0)
-KEYCHAIN_TIMEOUT = 10.0
-CLIENT_ERROR = 400
-NOT_FOUND = 404
-SERVER_ERROR = 500
-# The methods a second endpoint may repeat after the first may have received
-# them. Any other, such as POST, could make a second item.
-IDEMPOTENT = frozenset({"GET", "PUT", "DELETE"})
 REF_PARTS = 3
 
 # Connect assigns these when it stores an item; a copy for another vault
@@ -77,140 +26,6 @@ REF_PARTS = 3
 _ASSIGNED = frozenset(
     {"id", "vault", "version", "createdAt", "updatedAt", "lastEditedBy"}
 )
-
-
-class SecretsError(Exception):
-    """A secrets operation failed. The message never holds a value or token."""
-
-
-def _unsafe(found: os.stat_result) -> str | None:
-    """What is wrong with the open token file FOUND, or None."""
-    uid = os.geteuid()
-    checks = (
-        (not stat.S_ISREG(found.st_mode), "isn't a regular file"),
-        (found.st_uid != uid, "isn't owned by this user"),
-        (bool(found.st_mode & 0o077), "is accessible to its group or others"),
-    )
-    return next((problem for bad, problem in checks if bad), None)
-
-
-def _linux_token() -> str:
-    """The Connect token in the current user's 0600 file.
-
-    The final directory and file components cannot be symlinks. Ancestor
-    directories and later permission changes are outside these checks.
-    """
-    path = Path.home() / LINUX_TOKEN_FILE
-    fix = "have configuration management install it"
-    try:
-        directory = os.open(
-            path.parent, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC
-        )
-        try:
-            found = os.fstat(directory)
-            if found.st_uid != os.geteuid() or found.st_mode & 0o077:
-                message = f"the Connect token directory {path.parent} is unsafe; {fix}"
-                raise SecretsError(message)
-            fd = os.open(
-                path.name,
-                os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK | os.O_CLOEXEC,
-                dir_fd=directory,
-            )
-            try:
-                problem = _unsafe(os.fstat(fd))
-                if problem:
-                    message = f"the Connect token file {path} {problem}; {fix}"
-                    raise SecretsError(message)
-                data = os.read(fd, MAX_TOKEN_FILE + 1)
-            finally:
-                os.close(fd)
-        finally:
-            os.close(directory)
-    except OSError as exc:
-        message = (
-            f"the Connect token file {path} can't be opened: {exc.strerror}; {fix}"
-        )
-        raise SecretsError(message) from None
-    if len(data) > MAX_TOKEN_FILE:
-        message = f"the Connect token file {path} exceeds {MAX_TOKEN_FILE} bytes; {fix}"
-        raise SecretsError(message)
-    value = data.decode(errors="replace").strip()
-    if not value:
-        message = f"the Connect token file {path} is empty; {fix}"
-        raise SecretsError(message)
-    return value
-
-
-def token() -> str:
-    """The Connect token in the current user's keychain or token file.
-
-    Raises:
-        SecretsError: There is no usable token, or the keychain tool isn't
-            installed.
-    """
-    override = os.environ.get(TEST_TOKEN_ENV)
-    if override:
-        return override
-    if platform.system() != "Darwin":
-        return _linux_token()
-    try:
-        security = host_tools.resolve("security")
-        # The keychain has no password, so unlocking it is idempotent and
-        # holds no secret. It is locked again after every restart.
-        subprocess.run(  # nosec B603 B607
-            [security, "unlock-keychain", "-p", "", KEYCHAIN],
-            capture_output=True,
-            timeout=KEYCHAIN_TIMEOUT,
-            # False is the default, written out for ruff. The pragma hides the
-            # equivalent check=None and dropped-check mutants, not check=True.
-            check=(  # pragma: no mutate
-                False
-            ),
-        )
-        argv = [security, "find-generic-password", "-s", SERVICE, "-a", ACCOUNT]
-        argv += ["-w", KEYCHAIN]
-        done = subprocess.run(  # nosec B603
-            argv,
-            capture_output=True,
-            text=True,
-            timeout=KEYCHAIN_TIMEOUT,
-            # False is the default, written out for ruff. The pragma hides the
-            # equivalent check=None and dropped-check mutants, not check=True.
-            check=(  # pragma: no mutate
-                False
-            ),
-        )
-    except subprocess.TimeoutExpired:
-        message = f"the keychain read timed out after {KEYCHAIN_TIMEOUT} seconds"
-        raise SecretsError(message) from None
-    except FileNotFoundError, Invalid:
-        message = "can't read the Connect token: security isn't installed"
-        raise SecretsError(message) from None
-    value = done.stdout.rstrip("\n")
-    if done.returncode != 0 or not value:
-        message = (
-            "no Connect token in this user's keychain. "
-            "Use the operator's host tooling to install it."
-        )
-        raise SecretsError(message)
-    return value
-
-
-def endpoints() -> list[str]:
-    """The user config's `[connect] endpoints`, in failover order.
-
-    The operator's host tooling sets them on each agent host.
-
-    Raises:
-        SecretsError: The config doesn't list any.
-    """
-    try:
-        return userconfig.strings("connect", "endpoints")
-    except userconfig.ConfigError as exc:
-        message = (
-            f"{exc}. Use the operator's host tooling to set up this host's config."
-        )
-        raise SecretsError(message) from exc
 
 
 class Backend(Protocol):
@@ -228,148 +43,9 @@ class Backend(Protocol):
     def delete(self, vault_id: str, item_id: str) -> None: ...
 
 
-def _object(value: object) -> Json:
-    if not isinstance(value, dict):
-        message = "Connect sent an unexpected response"
-        raise SecretsError(message)
-    return value
-
-
-def _objects(value: object) -> list[Json]:
-    if not isinstance(value, list):
-        message = "Connect sent an unexpected response"
-        raise SecretsError(message)
-    entries: list[object] = value
-    return [_object(entry) for entry in entries]
-
-
-def _text(value: Json, key: str) -> str:
-    entry = value.get(key)
-    return entry if isinstance(entry, str) else ""
-
-
-class Connect:
-    """The Connect API at each endpoint in turn, through 1Password's SDK.
-
-    A failure to connect moves on to the next endpoint. So does any other
-    connection error or a 5xx answer to a GET, PUT or DELETE, but not to a
-    POST, which the endpoint may have done already. A 4xx answer is final,
-    except that a DELETE that finds nothing once an endpoint may have done it
-    has succeeded. The endpoint that last answered is tried first. Neither
-    its repr nor its errors show a URL, which holds the tailnet's suffix.
-    """
-
-    def __init__(self, token: str, urls: Sequence[str]) -> None:
-        self._token = token
-        self._urls = list(urls)
-        self._clients: dict[str, connect_client.Client] = {}
-
-    def __repr__(self) -> str:
-        return f"Connect(endpoints={len(self._urls)})"
-
-    def _client(self, url: str) -> connect_client.Client:
-        if url not in self._clients:
-            # An SDK client whose constructor fails raises again as it's deleted,
-            # so a URL httpx refuses never reaches one.
-            httpx.URL(url)
-            self._clients[url] = self._new_client(url)
-        return self._clients[url]
-
-    def _new_client(self, url: str) -> connect_client.Client:
-        config = ClientConfig(timeout=TIMEOUT, verify=httpx2.create_ssl_context())
-        return connect_client.Client(url, self._token, config)
-
-    def _send(
-        self, url: str, method: str, path: str, body: Json | None
-    ) -> tuple[httpx.Response | None, bool]:
-        """The endpoint's answer, or None to move on to the next one.
-
-        The flag says whether the endpoint may have done the request already.
-        """
-        try:
-            response = self._client(url).build_request(method, path, body)
-        except httpx.ConnectError, httpx.ConnectTimeout:
-            return None, False
-        except httpx.TransportError as exc:
-            if method in IDEMPOTENT:
-                return None, True
-            kind = type(exc).__name__
-            message = f"Connect may have done {method} {path}: {kind}"
-            raise SecretsError(message) from None
-        # Any other failure to build or send the request is final. Its
-        # message can hold the URL, so neither it nor its traceback shows.
-        except (
-            httpx.HTTPError,
-            httpx.InvalidURL,
-            httpx.StreamError,
-            UnicodeError,
-        ) as exc:
-            message = f"Connect can't send {method} {path}: {type(exc).__name__}"
-            raise SecretsError(message) from None
-        status = response.status_code
-        if status < SERVER_ERROR:
-            return response, False
-        if method in IDEMPOTENT:
-            return None, True
-        message = f"Connect failed {method} {path}: HTTP {status}"
-        raise SecretsError(message)
-
-    def _call(self, method: str, path: str, body: Json | None = None) -> object:
-        # Whether an endpoint passed over may have done the request already.
-        # None is false as well, so the pragma hides an equivalent mutant.
-        repeated = False  # pragma: no mutate
-        for url in list(self._urls):
-            response, done = self._send(url, method, path, body)
-            repeated = repeated or done
-            if response is None:
-                continue
-            status = response.status_code
-            # A DELETE an endpoint passed over may have done finds nothing.
-            if repeated and method == "DELETE" and status == NOT_FOUND:
-                return None
-            if status >= CLIENT_ERROR:
-                message = f"Connect refused {method} {path}: HTTP {status}"
-                raise SecretsError(message)
-            self._urls.remove(url)
-            self._urls.insert(0, url)
-            if not response.content:
-                return None
-            try:
-                data: object = response.json()
-            except ValueError as exc:
-                message = f"Connect sent an unexpected response to {method} {path}"
-                raise SecretsError(message) from exc
-            return data
-        message = f"no Connect endpoint answered {method} {path}"
-        raise SecretsError(message)
-
-    def vaults(self) -> list[Json]:
-        return _objects(self._call("GET", PathBuilder().vaults().build()))
-
-    def items(self, vault_id: str) -> list[Json]:
-        path = PathBuilder().vaults(vault_id).items().build()
-        return _objects(self._call("GET", path))
-
-    def item(self, vault_id: str, item_id: str) -> Json:
-        path = PathBuilder().vaults(vault_id).items(item_id).build()
-        return _object(self._call("GET", path))
-
-    def create(self, vault_id: str, item: Json) -> Json:
-        path = PathBuilder().vaults(vault_id).items().build()
-        return _object(self._call("POST", path, item))
-
-    def update(self, vault_id: str, item_id: str, item: Json) -> Json:
-        path = PathBuilder().vaults(vault_id).items(item_id).build()
-        return _object(self._call("PUT", path, item))
-
-    def delete(self, vault_id: str, item_id: str) -> None:
-        path = PathBuilder().vaults(vault_id).items(item_id).build()
-        self._call("DELETE", path)
-
-
 def connect() -> Connect:
     """Connect with this user's token, at the configured endpoints."""
-    return Connect(token(), endpoints())
+    return Connect(config.token(), config.endpoints())
 
 
 @dataclass(frozen=True)
@@ -435,9 +111,14 @@ def _openssh(value: str, label: str) -> str:
         raise SecretsError(message) from None
 
 
+def _text(value: Json, key: str) -> str:
+    entry = value.get(key)
+    return entry if isinstance(entry, str) else ""
+
+
 def _fields(raw: Json) -> list[Json]:
     entries = raw.get("fields")
-    return _objects(entries) if entries is not None else []
+    return objects(entries) if entries is not None else []
 
 
 def _one(matches: list[Json], what: str) -> Json:

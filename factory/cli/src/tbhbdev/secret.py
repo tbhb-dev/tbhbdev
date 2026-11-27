@@ -15,7 +15,9 @@ import sys
 from pathlib import Path
 from typing import cast
 
-from tbhbdev import runner, secrets
+from tbhbdev import runner
+from tbhbdev.secrets.connect import SecretsError
+from tbhbdev.secrets.store import Item, Store
 
 
 def _fields(source: str) -> dict[str, str]:
@@ -29,7 +31,7 @@ def _fields(source: str) -> dict[str, str]:
         text = sys.stdin.read() if source == "-" else Path(source).read_text()
     except OSError as exc:
         message = f"cannot read {source}: {exc.strerror}"
-        raise secrets.SecretsError(message) from exc
+        raise SecretsError(message) from exc
     try:
         data: object = json.loads(text)
     except ValueError:
@@ -37,11 +39,11 @@ def _fields(source: str) -> dict[str, str]:
         data = None  # pragma: no mutate
     if not isinstance(data, dict) or not data:
         message = "fields must be a non-empty JSON object of label to string value"
-        raise secrets.SecretsError(message)
+        raise SecretsError(message)
     fields: dict[object, object] = data
     if not all(isinstance(value, str) for value in fields.values()):
         message = "fields must be a non-empty JSON object of label to string value"
-        raise secrets.SecretsError(message)
+        raise SecretsError(message)
     return cast(
         # Equivalent mutants: cast ignores its type at runtime, so a changed
         # or None type string returns fields alike. The pragma also hides
@@ -51,7 +53,7 @@ def _fields(source: str) -> dict[str, str]:
     )
 
 
-def _show(item: secrets.Item, *, reveal: bool) -> None:
+def _show(item: Item, *, reveal: bool) -> None:
     print(f"title: {item.title}")
     print(f"id: {item.id}")
     print(f"vault: {item.vault}")
@@ -63,31 +65,31 @@ def _show(item: secrets.Item, *, reveal: bool) -> None:
 
 
 def _read(args: argparse.Namespace) -> int:
-    sys.stdout.write(secrets.Store().read(args.ref))
+    sys.stdout.write(Store().read(args.ref))
     return 0
 
 
 def _get(args: argparse.Namespace) -> int:
-    _show(secrets.Store().get(args.vault, args.item), reveal=args.reveal)
+    _show(Store().get(args.vault, args.item), reveal=args.reveal)
     return 0
 
 
 def _list(args: argparse.Namespace) -> int:
-    for entry in secrets.Store().list_items(args.vault):
+    for entry in Store().list_items(args.vault):
         print(f"{entry.vault}\t{entry.title}\t{entry.category}\t{entry.id}")
     return 0
 
 
 def _create(args: argparse.Namespace) -> int:
     fields = _fields(args.file)
-    item = secrets.Store().create(args.vault, args.title, fields)
+    item = Store().create(args.vault, args.title, fields)
     print(f"created {item.vault}/{item.title} ({item.id})")
     return 0
 
 
 def _edit(args: argparse.Namespace) -> int:
     fields = _fields(args.file)
-    item = secrets.Store().edit(args.vault, args.item, fields)
+    item = Store().edit(args.vault, args.item, fields)
     print(f"edited {item.vault}/{item.title} ({item.id})")
     return 0
 
@@ -96,13 +98,13 @@ def _delete(args: argparse.Namespace) -> int:
     if not args.yes:
         print(f"{args.prog}: delete needs --yes", file=sys.stderr)
         return 2
-    secrets.Store().delete(args.vault, args.item)
+    Store().delete(args.vault, args.item)
     print(f"deleted {args.vault}/{args.item}")
     return 0
 
 
 def _move(args: argparse.Namespace) -> int:
-    item = secrets.Store().move(args.vault, args.item, args.destination)
+    item = Store().move(args.vault, args.item, args.destination)
     print(f"moved {args.item} from {args.vault} to {item.vault} ({item.id})")
     return 0
 
@@ -157,4 +159,4 @@ def _parser(prog: str) -> argparse.ArgumentParser:
 
 
 def main(argv: list[str], prog: str) -> int:
-    return runner.main(_parser(prog), argv, secrets.SecretsError)
+    return runner.main(_parser(prog), argv, SecretsError)

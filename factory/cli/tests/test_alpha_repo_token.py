@@ -21,9 +21,11 @@ import pytest
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric import rsa
 
-from tbhbdev import secrets
 from tbhbdev.alpha import gh_app
 from tbhbdev.alpha import repo_token as rt
+from tbhbdev.secrets import config as secret_config
+from tbhbdev.secrets import connect as transport
+from tbhbdev.secrets import store as secret_store
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -189,7 +191,7 @@ def connect_transport(monkeypatch: pytest.MonkeyPatch) -> list[httpx.Request]:
         verify: SSLContext,
     ) -> httpx.Client:
         assert trust_env is False
-        assert timeout == secrets.TIMEOUT
+        assert timeout == transport.TIMEOUT
         return real(
             base_url=base_url,
             headers=headers,
@@ -219,9 +221,9 @@ def test_explicit_connect_never_uses_user_state(
 
     ambient = no_environment()
     with monkeypatch.context() as patch:
-        patch.setattr(secrets, "token", forbidden)
-        patch.setattr(secrets, "endpoints", forbidden)
-        patch.setattr(secrets.userconfig, "strings", forbidden)
+        patch.setattr(secret_config, "token", forbidden)
+        patch.setattr(secret_config, "endpoints", forbidden)
+        patch.setattr(secret_config.userconfig, "strings", forbidden)
         patch.setattr(Path, "home", forbidden)
         patch.setattr(httpx2, "create_ssl_context", system_context)
         patch.setattr(os, "environ", ambient)
@@ -271,12 +273,12 @@ def test_read_app_rejects_invalid_fields(
     label: str,
     value: object,
 ) -> None:
-    def get(_self: secrets.Connect, _vault: str, _item: str) -> secrets.Json:
+    def get(_self: transport.Connect, _vault: str, _item: str) -> transport.Json:
         fields: dict[str, object] = {"app_id": "123", "private_key": "key"}
         fields[label] = value
         return {"fields": [{"label": k, "value": v} for k, v in fields.items()]}
 
-    monkeypatch.setattr(secrets.Connect, "item", get)
+    monkeypatch.setattr(transport.Connect, "item", get)
     assert_kind("item", lambda: rt.read_app(token_file, ITEM, endpoints=URLS))
     assert connect_transport
 
@@ -315,14 +317,14 @@ def test_missing_item(
 )
 def test_missing_fields(
     token_file: Path,
-    fields: list[secrets.Json],
+    fields: list[transport.Json],
     connect_transport: list[httpx.Request],
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    def get(_self: secrets.Connect, _vault: str, _item: str) -> secrets.Json:
+    def get(_self: transport.Connect, _vault: str, _item: str) -> transport.Json:
         return {"fields": fields}
 
-    monkeypatch.setattr(secrets.Connect, "item", get)
+    monkeypatch.setattr(transport.Connect, "item", get)
     assert_kind("item", lambda: rt.read_app(token_file, ITEM, endpoints=URLS))
     assert connect_transport
 
@@ -332,14 +334,14 @@ def test_explicit_protocol_errors(status: int, monkeypatch: pytest.MonkeyPatch) 
     def send(*_args: object) -> tuple[httpx.Response, bool]:
         return httpx.Response(status), False
 
-    monkeypatch.setattr(secrets.Connect, "_send", send)
+    monkeypatch.setattr(transport.Connect, "_send", send)
     error = (
-        secrets.ExplicitItemMissingError
+        secret_store.ExplicitItemMissingError
         if status == 404
-        else secrets.ConnectUnavailableError
+        else secret_store.ConnectUnavailableError
     )
     with pytest.raises(error):
-        secrets.explicit_item(CONNECT_TOKEN, "vault", "app", urls=URLS)
+        secret_store.explicit_item(CONNECT_TOKEN, "vault", "app", urls=URLS)
 
 
 @pytest.fixture
@@ -824,20 +826,20 @@ def test_cache_accepts_first_installation(token_file: Path) -> None:
 def test_explicit_backend_preserves_request_body(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    body: secrets.Json = {"title": "example"}
+    body: transport.Json = {"title": "example"}
 
     def send(
-        _self: secrets.Connect,
+        _self: transport.Connect,
         url: str,
         method: str,
         path: str,
-        received: secrets.Json | None,
+        received: transport.Json | None,
     ) -> tuple[httpx.Response, bool]:
         assert (url, method, path, received) == (URLS[0], "POST", "/v1/example", body)
         return httpx.Response(201, json={"created": True}), False
 
-    monkeypatch.setattr(secrets.Connect, "_send", send)
-    backend = secrets._ExplicitConnect(CONNECT_TOKEN, [URLS[0]])
+    monkeypatch.setattr(transport.Connect, "_send", send)
+    backend = secret_store._ExplicitConnect(CONNECT_TOKEN, [URLS[0]])
     assert backend._call("POST", "/v1/example", body) == {"created": True}
     response, done = backend._send(URLS[0], "POST", "/v1/example", body)
     assert response is not None

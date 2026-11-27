@@ -12,11 +12,12 @@ from typing import TYPE_CHECKING
 
 import yaml
 
-from tbhbdev import secrets
 from tbhbdev.alpha import gh_app
 from tbhbdev.alpha.agent import host_tools, process_group, runfiles
 from tbhbdev.alpha.agent.decisions import auth, config, repo, run_state
 from tbhbdev.alpha.agent.model import Harness, Invalid, Profile
+from tbhbdev.secrets import store as secret_store
+from tbhbdev.secrets.connect import SecretsError
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -56,8 +57,8 @@ class Delivery:
 
 def read(reference: str, *, label: str) -> str:
     try:
-        value = secrets.read(reference)
-    except secrets.SecretsError, OSError, ValueError:
+        value = secret_store.read(reference)
+    except SecretsError, OSError, ValueError:
         value = ""
     if not value.strip():
         message = f"{label} cannot read credential reference {reference}"

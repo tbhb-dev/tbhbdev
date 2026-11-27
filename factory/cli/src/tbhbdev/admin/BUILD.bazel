@@ -42,8 +42,8 @@ cli_py_library(
         ":audit",
         ":policy",
         "//factory/cli/src/tbhbdev:github_tls",
-        "//factory/cli/src/tbhbdev:secrets",
         "//factory/cli/src/tbhbdev/alpha:gh_app",
+        "//factory/cli/src/tbhbdev/secrets:connect",
         "@cli_pip//httpx2",
     ],
 )

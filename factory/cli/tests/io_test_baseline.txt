@@ -45,5 +45,4 @@ test_cue_runtime
 test_gitleaks_check
 test_host
 test_secret
-test_secrets
 test_telemetry

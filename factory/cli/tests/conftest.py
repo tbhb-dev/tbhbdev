@@ -59,10 +59,12 @@ type FilePath = str | bytes | os.PathLike[str] | os.PathLike[bytes]
 def account_auth_write() -> bool:
     frame = inspect.currentframe()
     while frame is not None:
-        if (
-            frame.f_globals.get("__name__") == "tbhbdev.alpha.agent.credentials"
-            and frame.f_code.co_name in {"auth_copy", "auth_write_back"}
-        ):
+        if frame.f_globals.get(
+            "__name__"
+        ) == "tbhbdev.alpha.agent.credentials" and frame.f_code.co_name in {
+            "auth_copy",
+            "auth_write_back",
+        }:
             return True
         frame = frame.f_back
     return False
@@ -334,6 +336,19 @@ def connect() -> Iterator[Callable[[], FakeConnect]]:
     for server in servers:
         server.shutdown()
         server.server_close()
+
+
+SECRETS_FIXTURE_VALUE = "plain-value-never-shown"
+
+
+@pytest.fixture
+def secrets_server(connect: Callable[[], FakeConnect]) -> FakeConnect:
+    """One Connect API with an `ops` vault holding a `db` item."""
+    server = connect()
+    ops = server.vault("ops")
+    server.vault("spare")
+    server.item(ops, "db", password=SECRETS_FIXTURE_VALUE, user="admin")
+    return server
 
 
 @pytest.fixture

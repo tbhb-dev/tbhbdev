@@ -24,8 +24,9 @@ from typing import TYPE_CHECKING, Literal
 
 import httpx2
 
-from tbhbdev import secrets
 from tbhbdev.alpha import gh_app
+from tbhbdev.secrets.connect import SecretsError
+from tbhbdev.secrets.store import ConnectUnavailableError, Store, explicit_item
 lazy from tbhbdev.alpha.gh_app import Minted
 
 if TYPE_CHECKING:
@@ -51,7 +52,7 @@ TWO_PARTS = 2
 DIRECTORY_FLAGS = os.O_RDONLY | os.O_DIRECTORY | os.O_CLOEXEC
 FILE_FLAGS = os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK | os.O_CLOEXEC
 # mint_token uses only the clock and transport; its other Env slots are inert.
-_MINT_ENV = gh_app.Env(Path(), gh_app.clock, secrets.Store, gh_app.run_openssl)
+_MINT_ENV = gh_app.Env(Path(), gh_app.clock, Store, gh_app.run_openssl)
 # Isolated interpreters need no installed package to read the credential pipe.
 HELPER_CODE = """\
 import os
@@ -130,10 +131,10 @@ def read_app(token_file: Path, item: str, *, endpoints: Sequence[str]) -> AppKey
     except httpx2.InvalidURL, ValueError, TypeError:
         raise RepoTokenError(kind="connect") from None
     try:
-        found = secrets.explicit_item(token, *parts, urls=endpoints)
-    except secrets.ConnectUnavailableError:
+        found = explicit_item(token, *parts, urls=endpoints)
+    except ConnectUnavailableError:
         raise RepoTokenError(kind="connect") from None
-    except secrets.SecretsError:
+    except SecretsError:
         raise RepoTokenError(kind="item") from None
     values = {entry.label: entry.value for entry in found.fields}
     if (

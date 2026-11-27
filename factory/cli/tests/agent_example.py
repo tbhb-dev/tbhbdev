@@ -6,17 +6,17 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from tbhbdev import secrets
 from tbhbdev.alpha.agent import model
 from tbhbdev.alpha.agent.decisions import argv
+from tbhbdev.secrets.config import LINUX_TOKEN_FILE
 
 if TYPE_CHECKING:
     import pytest
 
 MARKER = "marker-secret-reference-0451"
-# The Connect token store's directory and its first part, as secrets.py has them.
-TOKEN_DIR = str(secrets.LINUX_TOKEN_FILE.parent)
-TOKEN_TOP = secrets.LINUX_TOKEN_FILE.parts[0]
+# The Connect token store's directory and its first part, relative to the user home.
+TOKEN_DIR = str(LINUX_TOKEN_FILE.parent)
+TOKEN_TOP = LINUX_TOKEN_FILE.parts[0]
 # The fixture's one denied home path.
 DENIED = ".example-denied"
 LINUX_SOCKET_DENIES = (

@@ -95,6 +95,7 @@ filegroup(
         "//factory/cli/src/tbhbdev/alpha/monorepo:package_files",
         "//factory/cli/src/tbhbdev/analytics:package_files",
         "//factory/cli/src/tbhbdev/analytics/decisions:package_files",
+        "//factory/cli/src/tbhbdev/secrets:package_files",
     ],
     visibility = ["//factory/cli/tests:__pkg__"],
 )

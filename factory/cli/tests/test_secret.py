@@ -8,7 +8,8 @@ from typing import TYPE_CHECKING, cast
 
 import pytest
 
-from tbhbdev import cli, secret, secrets
+from tbhbdev import cli, secret
+from tbhbdev.secrets.config import TEST_TOKEN_ENV
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -32,7 +33,7 @@ def fake(
     server.vault("spare")
     server.item(ops, "db", password=VALUE, user="admin")
     config([server.url])
-    monkeypatch.setenv(secrets.TEST_TOKEN_ENV, server.token)
+    monkeypatch.setenv(TEST_TOKEN_ENV, server.token)
     return server
 
 

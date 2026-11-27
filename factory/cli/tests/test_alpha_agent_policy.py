@@ -28,7 +28,6 @@ from agent_example import (
     settings,
 )
 
-from tbhbdev import secrets
 from tbhbdev.alpha.agent import host_tools, model
 from tbhbdev.alpha.agent.decisions import policy
 from tbhbdev.alpha.agent.model import (
@@ -38,6 +37,7 @@ from tbhbdev.alpha.agent.model import (
     Profile,
     WebSearch,
 )
+from tbhbdev.secrets.config import LINUX_TOKEN_FILE, MACOS_KEYCHAIN_FILE
 
 HOSTS = {Os.LINUX: LINUX, Os.MACOS: MACOS}
 ACCOUNTS = ["agent", "ops"]
@@ -733,7 +733,7 @@ def test_a_grant_beside_a_denied_path_is_allowed(sibling: str) -> None:
 
 
 def test_the_token_store_is_the_directory_secrets_names() -> None:
-    assert not secrets.LINUX_TOKEN_FILE.parent.is_absolute()
+    assert not LINUX_TOKEN_FILE.parent.is_absolute()
     result = made(Os.LINUX, Profile.BUILD, Harness.CODEX, "agent")
     assert f"/example/home/agent/{TOKEN_DIR}" in result.deny
 
@@ -744,10 +744,8 @@ def test_the_token_store_is_the_directory_secrets_names() -> None:
 def test_macos_denies_the_keychain_file_and_alias(
     harness: Harness, profile: Profile, account: str
 ) -> None:
-    assert secrets.MACOS_KEYCHAIN_FILE.as_posix() == (
-        "Library/Keychains/tbhbdev.keychain-db"
-    )
-    assert not secrets.MACOS_KEYCHAIN_FILE.is_absolute()
+    assert MACOS_KEYCHAIN_FILE.as_posix() == ("Library/Keychains/tbhbdev.keychain-db")
+    assert not MACOS_KEYCHAIN_FILE.is_absolute()
     result = made(Os.MACOS, profile, harness, account)
     assert result.deny[:2] == (
         f"/example/home/{account}/Library/Keychains/tbhbdev.keychain-db",

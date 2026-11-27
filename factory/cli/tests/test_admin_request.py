@@ -16,11 +16,11 @@ from conftest import SAFE_ENVIRONMENT
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric import rsa
 
-from tbhbdev import secrets
 from tbhbdev.admin import command as admin
 from tbhbdev.admin import policy, request
 from tbhbdev.admin.audit import Audit, RefusedError
 from tbhbdev.alpha import gh_app
+from tbhbdev.secrets.connect import SecretsError
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -65,7 +65,7 @@ def fake(tmp_path: Path, config_file: Path) -> Fake:
         def read(self, ref: str, /) -> str:
             reads.append(ref)
             if result.failure == "store":
-                raise secrets.SecretsError(TOKEN)
+                raise SecretsError(TOKEN)
             return "" if result.failure == "empty" else key
 
     def transport(req: httpx2.Request) -> httpx2.Response:

@@ -71,7 +71,6 @@ _IO_TESTS = [
     "test_gitleaks_check",
     "test_host",
     "test_secret",
-    "test_secrets",
     "test_telemetry",
 ]
 

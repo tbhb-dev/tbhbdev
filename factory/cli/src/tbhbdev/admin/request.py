@@ -10,10 +10,11 @@ from typing import NamedTuple, cast
 
 import httpx2
 
-from tbhbdev import github_tls, secrets
+from tbhbdev import github_tls
 from tbhbdev.admin import policy
 from tbhbdev.admin.audit import Audit, RefusedError, record
 from tbhbdev.alpha import gh_app
+from tbhbdev.secrets.connect import SecretsError
 
 MAX_RESPONSE = 1024 * 1024
 HTTP_OK = 200
@@ -85,7 +86,7 @@ def private_key(runtime: Runtime) -> str:
     try:
         reader: gh_app.Reader = runtime.env.store()
         key = reader.read(f"op://{settings.vault}/{settings.item}/private_key")
-    except secrets.SecretsError:
+    except SecretsError:
         msg = "credential_unavailable"
         raise RefusedError(msg) from None
     if not key.strip():

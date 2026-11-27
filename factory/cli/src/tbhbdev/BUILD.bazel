@@ -190,23 +190,8 @@ cli_py_library(
     visibility = ["//factory/cli:__subpackages__"],
     deps = [
         ":runner",
-        ":secrets",
-    ],
-)
-
-cli_py_library(
-    name = "secrets",
-    srcs = ["secrets.py"],
-    imports = [".."],
-    visibility = ["//factory/cli:__subpackages__"],
-    deps = [
-        ":userconfig",
-        "//factory/cli/src/tbhbdev/alpha/agent:host_tools",
-        "//factory/cli/src/tbhbdev/alpha/agent:model",
-        "@cli_pip//cryptography",
-        "@cli_pip//httpx",
-        "@cli_pip//httpx2",
-        "@cli_pip//onepasswordconnectsdk",
+        "//factory/cli/src/tbhbdev/secrets:connect",
+        "//factory/cli/src/tbhbdev/secrets:store",
     ],
 )
 

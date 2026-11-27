@@ -26,8 +26,8 @@ from cryptography.hazmat.primitives import hashes, serialization
 from cryptography.hazmat.primitives.asymmetric import padding
 from cryptography.hazmat.primitives.asymmetric import rsa as rsa_keys
 
-from tbhbdev import secrets
 from tbhbdev.alpha import gh_app
+from tbhbdev.secrets import connect, store
 
 NOW = 1_800_000_000
 # The token a fake GitHub mints lives an hour past the fake clock.
@@ -113,7 +113,7 @@ class Store:
         self.reads.append(ref)
         if ref not in self.values:
             message = f"{ref!r} is missing"
-            raise secrets.SecretsError(message)
+            raise connect.SecretsError(message)
         return self.values[ref]
 
 
@@ -632,7 +632,7 @@ def test_default_env(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     monkeypatch.delenv("XDG_STATE_HOME")
     monkeypatch.setenv("HOME", str(tmp_path / "home"))
     assert gh_app.default_env().state == tmp_path / "home/.local/state/gh-app"
-    assert env.store is secrets.Store
+    assert env.store is store.Store
     assert env.openssl is gh_app.run_openssl
     assert env.transport is None
     assert abs(env.now() - time.time()) < 5
@@ -940,7 +940,7 @@ def test_a_store_that_cannot_be_built_is_an_unreadable_field(
 ) -> None:
     def broken() -> Store:
         message = "no token"
-        raise secrets.SecretsError(message)
+        raise connect.SecretsError(message)
 
     env = replace(env_for(tmp_path, app_store("k"), Github()), store=broken)
     code, out, err = run(capsys, env, "bot", REPO)

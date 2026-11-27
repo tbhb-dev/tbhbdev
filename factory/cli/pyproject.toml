@@ -87,8 +87,8 @@ ignore_imports = [
   "tbhbdev.alpha.close -> tbhbdev.content",
   "tbhbdev.alpha.review -> tbhbdev.content",
   "tbhbdev.alpha.review_doc -> tbhbdev.content",
-  "tbhbdev.secrets -> tbhbdev.alpha.agent.host_tools",
-  "tbhbdev.secrets -> tbhbdev.alpha.agent.model",
+  "tbhbdev.secrets.config -> tbhbdev.alpha.agent.host_tools",
+  "tbhbdev.secrets.config -> tbhbdev.alpha.agent.model",
 ]
 
 [[tool.importlinter.contracts]]
@@ -141,7 +141,7 @@ ignore_imports = [
   "tbhbdev.alpha.agent.decisions.argv -> shutil",
   "tbhbdev.alpha.agent.decisions.argv -> socket",
   "tbhbdev.alpha.agent.decisions.policy -> tbhbdev.alpha.agent.host_tools",
-  "tbhbdev.alpha.agent.decisions.policy -> tbhbdev.secrets",
+  "tbhbdev.alpha.agent.decisions.policy -> tbhbdev.secrets.config",
 ]
 
 [tool.pylint.main]
