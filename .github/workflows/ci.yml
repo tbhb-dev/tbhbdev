@@ -168,6 +168,95 @@ jobs:
             printf '%s\n\n%s\n' "$PR_TITLE" "$PR_BODY" | bazel run --config=ci @tbhb_rules//lint:gitleaks_text
           fi
 
+  pr-size:
+    name: pr-size
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-26.04
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Use the base commit's counter and rules
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: git checkout --detach "$BASE_SHA"
+
+      - name: Set up Bazel
+        uses: bazel-contrib/setup-bazel@104e3eea9447cdaa4b00d0fb46191a3985d26ab3  # 0.19.1
+        with:
+          bazelisk-version: 1.30.0
+          bazelisk-cache: true
+
+      - name: Count added lines
+        env:
+          BASE_REF: ${{ github.event.pull_request.base.ref }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+          PR_SIZE_HEAD_BRANCH: ${{ github.event.pull_request.head.ref }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        shell: bash
+        run: |
+          base=$BASE_SHA head=$HEAD_SHA
+          if [[ -n $DEFAULT_BRANCH && $BASE_REF != "$DEFAULT_BRANCH" ]]; then
+            shared_base=$(git merge-base "$base" "$head")
+            shared_default=$(git merge-base "refs/remotes/origin/$DEFAULT_BRANCH" "$head")
+            if shared_tree=$(git merge-tree --write-tree --no-messages "$shared_base" "$shared_default"); then
+              # Give the base revision's three-dot counter a pair of commits with the desired trees.
+              commit_tree=(git -c user.name='GitHub Actions' -c user.email=actions@github.com commit-tree)
+              base=$("${commit_tree[@]}" "$shared_tree" -m 'Shared base and default branch changes')
+              head=$("${commit_tree[@]}" "$head^{tree}" -p "$base" -m 'Pull request head tree')
+            else
+              [[ $? == 1 ]] || exit 1
+              base=$shared_default
+            fi
+          fi
+          # A stacked diff can use a synthetic base tree. Read policy from the actual base.
+          PR_SIZE_POLICY_BASE="$BASE_SHA" bazel run --config=ci @tbhb_rules//lint:pr_size -- "$base" "$head"
+
+  design-report:
+    name: design-report
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-26.04
+    timeout-minutes: 5
+    steps:
+      - name: Checkout head
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          persist-credentials: false
+
+      - name: Checkout base
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.base.sha }}
+          path: design-base
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1  # v6.3.0
+        with:
+          python-version-file: .python-version
+
+      - name: Compare design metrics
+        run: |
+          tool=lib.rules.lint.private.design_report
+          python -m unittest "$tool.test_design_report"
+          python -m "$tool.design_report" design-base/factory/cli factory/cli > design-report.md
+          cat design-report.md >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload design report
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9  # v7.0.2
+        with:
+          name: design-report
+          path: |
+            design-report.md
+            base.json
+            head.json
+
   prose:
     name: prose
     runs-on: ubuntu-26.04
@@ -188,15 +277,30 @@ jobs:
         with:
           version: 2026.11.9
 
-      # Lint every tracked Markdown file except the paths in
-      # .github/prose-lint-debt.txt, which still fail and are tracked as debt.
       - name: Lint prose
+        shell: bash
         run: |
+          skip_paths=()
+          exclusions=()
+          while IFS= read -r path || [[ -n $path ]]; do
+            [[ -z $path || $path == \#* ]] && continue
+            if [[ $path != *.md || ! -f $path ]]; then
+              printf 'Prose skip list entry must name an existing Markdown file: %s\n' "$path" >&2
+              exit 1
+            fi
+            skip_paths+=("$path")
+            exclusions+=(":(exclude,literal)$path")
+          done < .github/prose-lint-debt.txt
+          if (( ${#skip_paths[@]} )); then
+            git --literal-pathspecs ls-files --error-unmatch -- "${skip_paths[@]}" >/dev/null
+          fi
+
+          files="$RUNNER_TEMP/prose-files"
+          git ls-files -z -- '*.md' "${exclusions[@]}" >"$files"
           vale sync
-          git ls-files -z -- '*.md' | grep -zvxFf .github/prose-lint-debt.txt > "$RUNNER_TEMP/prose-files" || true
-          xargs -0 -a "$RUNNER_TEMP/prose-files" vale
-          xargs -0 -a "$RUNNER_TEMP/prose-files" cspell --no-progress
-          xargs -0 -a "$RUNNER_TEMP/prose-files" rumdl check
+          xargs -0 -r -a "$files" vale
+          xargs -0 -r -a "$files" cspell --no-progress
+          xargs -0 -r -a "$files" rumdl check
 
   agent-capacity:
     name: agent-capacity image and vulnerability scans
@@ -272,7 +376,7 @@ jobs:
   conclusion:
     name: conclusion
     if: always()
-    needs: [bazel, gazelle-current, gitleaks, prose, agent-capacity]
+    needs: [bazel, gazelle-current, gitleaks, prose, pr-size, agent-capacity]
     runs-on: ubuntu-26.04
     timeout-minutes: 5
     steps:
@@ -283,10 +387,14 @@ jobs:
 
       - name: Fail if any needed job did not succeed
         env:
+          EVENT: ${{ github.event_name }}
           NEEDS: ${{ toJSON(needs) }}
         run: |
           echo "$NEEDS"
-          if ! jq -e 'all(.[]; .result == "success")' <<<"$NEEDS" >/dev/null; then
+          if ! jq -e --arg event "$EVENT" 'all(to_entries[];
+            .value.result == "success" or
+            (.key == "pr-size" and $event != "pull_request" and .value.result == "skipped")
+          )' <<<"$NEEDS" >/dev/null; then
             echo "A required job did not succeed." >&2
             exit 1
           fi

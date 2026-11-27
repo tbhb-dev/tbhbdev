@@ -1243,6 +1243,11 @@ def test_host_builds_shims_by_default() -> None:
     assert limits_host().build_shims is True
 
 
+def test_hosts_opt_in_to_automatic_selection() -> None:
+    assert not limits_host().auto_select
+    assert limits_host(auto_select=True).auto_select
+
+
 @pytest.mark.parametrize("value", [True, False])
 def test_host_shim_setting(value: bool) -> None:
     assert limits_host(build_shims=value).build_shims is value
@@ -1259,6 +1264,7 @@ def test_host_shim_setting(value: bool) -> None:
         ("max_memory_pressure_level", 3, "must be 1 \\(normal\\)"),
         ("max_memory_pressure_level", "x", "must be a positive integer"),
         ("limits_warn_only", "yes", "must be true or false"),
+        ("auto_select", "yes", "must be true or false"),
         ("build_shims", "yes", "must be true or false"),
         ("max_concurrent_runs", -1, "must be a non-negative integer"),
         ("max_concurrent_runs", False, "must be a non-negative integer"),

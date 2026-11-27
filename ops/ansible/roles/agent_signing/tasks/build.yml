@@ -1,0 +1,100 @@
+---
+# Everything here runs on the controller, once for the play, and also in check mode:
+# it only writes a temporary directory there, so it never reports a change, and the
+# host's copy then reports truly.
+- name: build | Build ssh-sign from the pinned devtools tag
+  delegate_to: localhost
+  run_once: true
+  check_mode: false
+  become: false
+  block:
+    - name: build | Find the devtools clone
+      ansible.builtin.command:
+        argv: [git, -C, "{{ agent_signing_devtools_src }}", rev-parse, --git-dir]
+      register: agent_signing_clone
+      changed_when: false
+      failed_when: false
+
+    - name: build | Require the clone
+      ansible.builtin.assert:
+        that: agent_signing_clone.rc == 0
+        fail_msg: >-
+          {{ agent_signing_devtools_src }} is not a git clone on the controller. Clone
+          example-org/devtools-example there, or set agent_signing_devtools_src. The role never fetches.
+        quiet: true
+      changed_when: false
+
+    - name: build | Find the pinned tag
+      ansible.builtin.command:
+        argv:
+          - git
+          - -C
+          - "{{ agent_signing_devtools_src }}"
+          - rev-parse
+          - --verify
+          - --quiet
+          - "refs/tags/{{ agent_signing_devtools_version }}^{commit}"
+      register: agent_signing_tag
+      changed_when: false
+      failed_when: false
+
+    - name: build | Require the tag
+      ansible.builtin.assert:
+        that: agent_signing_tag.rc == 0
+        fail_msg: >-
+          The clone at {{ agent_signing_devtools_src }} has no tag {{ agent_signing_devtools_version }}.
+          Fetch it there by hand. The role never fetches.
+        quiet: true
+      changed_when: false
+
+    - name: build | Make a temporary directory
+      ansible.builtin.tempfile:
+        state: directory
+        prefix: agent-signing-
+      register: agent_signing_workdir
+      changed_when: false
+
+    # An archive exports the tag's tree and leaves the operator's checkout alone.
+    - name: build | Export the tagged tree
+      ansible.builtin.command:
+        argv:
+          - git
+          - -C
+          - "{{ agent_signing_devtools_src }}"
+          - archive
+          - --format=tar
+          - --output
+          - "{{ agent_signing_workdir.path }}/src.tar"
+          - "{{ agent_signing_devtools_version }}"
+      changed_when: false
+
+    - name: build | Make a directory for the tagged tree
+      ansible.builtin.file:
+        path: "{{ agent_signing_workdir.path }}/src"
+        state: directory
+        mode: "0700"
+      changed_when: false
+
+    - name: build | Unpack the tagged tree
+      ansible.builtin.unarchive:
+        src: "{{ agent_signing_workdir.path }}/src.tar"
+        dest: "{{ agent_signing_workdir.path }}/src"
+        remote_src: true
+      changed_when: false
+
+    - name: build | Build a static ssh-sign for each target
+      ansible.builtin.command:
+        argv:
+          - go
+          - build
+          - -trimpath
+          - -o
+          - "{{ agent_signing_workdir.path }}/ssh-sign-{{ item }}"
+          - ./cmd/ssh-sign
+        chdir: "{{ agent_signing_workdir.path }}/src"
+      environment:
+        CGO_ENABLED: "0"
+        GOOS: "{{ item.split('-')[0] }}"
+        GOARCH: "{{ item.split('-')[1] }}"
+      loop: "{{ agent_signing_targets }}"
+      changed_when: false

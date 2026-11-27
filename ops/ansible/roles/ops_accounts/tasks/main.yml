@@ -1,0 +1,127 @@
+---
+# Root's keys stay in place; SSH hardening owns sshd.
+
+# argument_specs rejects an unset list but accepts an empty one, and an
+# exclusive empty key list would lock the account out.
+- name: Require at least one ops key
+  ansible.builtin.assert:
+    that:
+      - ops_accounts_admin_keys | length > 0
+      - ansible_facts.os_family in ['Debian', 'Darwin']
+    fail_msg: ops_accounts needs Ubuntu or macOS and at least one key in ops_accounts_admin_keys
+    quiet: true
+
+# macOS has no getent, so Python's pwd and grp modules read the account
+# database on both systems. Nothing changes before the checks below pass.
+- name: Look up ops and its fixed ids
+  ansible.builtin.command:
+    argv:
+      - "{{ ansible_facts.python.executable }}"
+      - -c
+      - |
+          import grp, json, pwd, sys
+          def look(fn, key, field):
+              try:
+                  return getattr(fn(key), field)
+              except KeyError:
+                  return None
+          uid = gid = int(sys.argv[1])
+          print(json.dumps({
+              "user_uid": look(pwd.getpwnam, "ops", "pw_uid"),
+              "uid_name": look(pwd.getpwuid, uid, "pw_name"),
+              "group_gid": look(grp.getgrnam, "ops", "gr_gid"),
+              "gid_name": look(grp.getgrgid, gid, "gr_name"),
+              "ssh_group": look(grp.getgrnam, "com.apple.access_ssh", "gr_name"),
+          }))
+      - "{{ ops_accounts_id }}"
+  register: ops_accounts_lookup
+  changed_when: false
+  check_mode: false
+
+# An ops account with another id needs a renumber, which also has to chown
+# what it owns. The role leaves that to the operator and stops here.
+- name: Check the ops ids
+  vars:
+    ops_accounts_found: "{{ ops_accounts_lookup.stdout | from_json }}"
+  ansible.builtin.assert:
+    that:
+      - ops_accounts_found.user_uid in [none, ops_accounts_id]
+      - ops_accounts_found.uid_name in [none, 'ops']
+      - ops_accounts_found.group_gid in [none, ops_accounts_id]
+      - ops_accounts_found.gid_name in [none, 'ops']
+    fail_msg: >-
+      ops must have uid and gid {{ ops_accounts_id }}: found ops with uid {{ ops_accounts_found.user_uid }} and
+      group ops with gid {{ ops_accounts_found.group_gid }}, while uid {{ ops_accounts_id }} belongs to
+      {{ ops_accounts_found.uid_name }} and gid {{ ops_accounts_id }} to {{ ops_accounts_found.gid_name }}.
+      Renumber ops before applying this role.
+    quiet: true
+
+- name: Install sudo
+  ansible.builtin.apt:
+    name: sudo
+    state: present
+  when: ansible_facts.os_family == 'Debian'
+
+# The agent account reads the logs instead, so no node keeps ops-ro.
+# remove also deletes its home, which held only its authorized_keys.
+- name: Remove ops-ro
+  ansible.builtin.user:
+    name: ops-ro
+    state: absent
+    remove: true
+  when: ansible_facts.os_family == 'Debian'
+
+- name: Create the ops group
+  ansible.builtin.group:
+    name: ops
+    gid: "{{ ops_accounts_id }}"
+  register: ops_accounts_group
+
+# On macOS a new account has no password, so nothing can log in with one.
+# Remote Login there admits only com.apple.access_ssh when that group
+# exists, so ops joins it.
+- name: Create ops
+  ansible.builtin.user:
+    name: ops
+    uid: "{{ ops_accounts_id }}"
+    group: ops
+    groups: "{{ ['com.apple.access_ssh'] if (ops_accounts_lookup.stdout | from_json).ssh_group else omit }}"
+    # append needs groups, which is omitted when the ssh group doesn't exist.
+    append: "{{ (ops_accounts_lookup.stdout | from_json).ssh_group is not none }}"
+    shell: "{{ '/bin/zsh' if ansible_facts.os_family == 'Darwin' else '/bin/bash' }}"
+    password_lock: "{{ true if ansible_facts.os_family == 'Debian' else omit }}"
+  register: ops_accounts_admin_user
+  # In check mode the user module can't resolve a group the run would create.
+  when: not (ansible_check_mode and ops_accounts_group is changed)
+
+# In check mode an account the run would create doesn't exist yet, and
+# authorized_key can't resolve its home, so the key tasks wait for it.
+- name: Authorize the ops keys
+  ansible.posix.authorized_key:
+    user: ops
+    key: "{{ ops_accounts_admin_keys | join('\n') }}"
+    exclusive: "{{ ops_accounts_admin_keys_exclusive }}"
+  when:
+    - not (ansible_check_mode and ops_accounts_group is changed)
+    - not (ansible_check_mode and ops_accounts_admin_user is changed)
+
+- name: Create the sudoers directory on macOS
+  ansible.builtin.file:
+    path: /etc/sudoers.d
+    state: directory
+    owner: root
+    group: wheel
+    mode: "0755"
+  when: ansible_facts.os_family == 'Darwin'
+
+# The password is locked, so sudo can't prompt for one. Whoever holds the
+# ops private key has root, so access to that key is the barrier instead:
+# the exported key file on the operator's Macs.
+- name: Grant ops full sudo
+  ansible.builtin.copy:
+    dest: /etc/sudoers.d/ops
+    content: "{{ ops_accounts_sudoers_line }}\n"
+    owner: root
+    group: "{{ 'wheel' if ansible_facts.os_family == 'Darwin' else 'root' }}"
+    mode: "0440"
+    validate: visudo -cf %s

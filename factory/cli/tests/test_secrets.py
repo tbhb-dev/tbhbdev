@@ -118,16 +118,18 @@ def test_endpoints_rejects_a_bad_config(
         secrets.endpoints()
     assert str(config_file) in str(caught.value)
     assert error in str(caught.value)
-    assert str(caught.value).endswith("; run `tbhbdev host bootstrap` for this host")
+    assert str(caught.value).endswith(
+        ". Use the operator's host tooling to set up this host's config."
+    )
 
 
-def test_the_missing_endpoints_point_at_bootstrap(config_file: Path) -> None:
+def test_the_missing_endpoints_point_at_host_tooling(config_file: Path) -> None:
     config_file.write_text('[connect]\nserver_hosts = ["nas-a"]\n')
     with pytest.raises(secrets.SecretsError) as caught:
         secrets.endpoints()
     assert str(caught.value) == (
-        f"{config_file} sets no [connect] endpoints; "
-        "run `tbhbdev host bootstrap` for this host"
+        f"{config_file} sets no [connect] endpoints. "
+        "Use the operator's host tooling to set up this host's config."
     )
 
 
@@ -193,8 +195,8 @@ def test_token_on_macos_without_an_entry_fails(
     with pytest.raises(secrets.SecretsError) as caught:
         secrets.token()
     assert str(caught.value) == (
-        "no Connect token in this user's keychain; "
-        "run `tbhbdev host bootstrap` for this host"
+        "no Connect token in this user's keychain. "
+        "Use the operator's host tooling to install it."
     )
     # Not even security's own complaint about a missing keychain.
     assert capfd.readouterr() == ("", "")
@@ -541,7 +543,7 @@ def fail_at(monkeypatch: pytest.MonkeyPatch, error: type[Exception]) -> None:
                 raise error(message)
             return super().build_request(method, path, body)
 
-    monkeypatch.setattr(secrets, "Client", Failing)
+    monkeypatch.setattr(secrets.connect_client, "Client", Failing)
 
 
 @pytest.mark.parametrize("error", [httpx.ConnectError, httpx.ConnectTimeout])
@@ -753,7 +755,7 @@ def test_each_client_has_the_timeout(
             super().__init__(url, token, config)
             made.append(self)
 
-    monkeypatch.setattr(secrets, "Client", Recording)
+    monkeypatch.setattr(secrets.connect_client, "Client", Recording)
     secrets.Connect(fake.token, [fake.url]).vaults()
     assert [client.session.timeout for client in made] == [secrets.TIMEOUT]
 
@@ -816,7 +818,7 @@ def test_any_other_httpx_error_is_final_and_hides_the_url(
             message = f"cannot reach {self.url}"
             raise error(message)
 
-    monkeypatch.setattr(secrets, "Client", Failing)
+    monkeypatch.setattr(secrets.connect_client, "Client", Failing)
     backend = secrets.Connect("a-token", [f"https://nas-a.{SUFFIX}"])
     with pytest.raises(secrets.SecretsError) as caught:
         backend.item("v1", "i1")
@@ -1120,8 +1122,8 @@ def test_macos_rejects_empty_or_failed_keychain_reads(
     with pytest.raises(secrets.SecretsError) as caught:
         secrets.token()
     assert str(caught.value) == (
-        "no Connect token in this user's keychain; "
-        "run `tbhbdev host bootstrap` for this host"
+        "no Connect token in this user's keychain. "
+        "Use the operator's host tooling to install it."
     )
 
 

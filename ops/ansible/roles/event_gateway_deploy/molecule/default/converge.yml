@@ -1,0 +1,19 @@
+---
+- name: Converge the event gateway fixtures
+  hosts: all
+  gather_facts: false
+  tasks:
+    - name: Read the fixture commit
+      become: true
+      become_user: ops
+      ansible.builtin.command:
+        argv: [git, -C, /home/ops/source, rev-parse, HEAD]
+      register: event_gateway_deploy_fixture_commit
+      changed_when: false
+
+    - name: Deploy the fixture commit
+      ansible.builtin.include_role:
+        name: event_gateway_deploy
+      vars:
+        event_gateway_deploy_repo_url: /home/ops/source
+        event_gateway_deploy_commit: "{{ event_gateway_deploy_fixture_commit.stdout }}"

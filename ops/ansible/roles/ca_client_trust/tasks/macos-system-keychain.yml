@@ -1,0 +1,39 @@
+---
+- name: macos-system-keychain | Ensure the pinned root has System trust
+  ansible.builtin.command:
+    argv:
+      - "{{ ansible_facts.python.executable }}"
+      - -c
+      - |
+          import subprocess
+          import sys
+          import tempfile
+          from pathlib import Path
+
+          security = '/usr/bin/security'
+          keychain = '/Library/Keychains/System.keychain'
+          expected_hash = 'SHA-256 hash: ' + sys.argv[1].replace(':', '').upper()
+          preview = sys.argv[2] == 'preview'
+          certs = subprocess.check_output([security, 'find-certificate', '-a', '-Z', keychain], text=True)
+
+          with tempfile.TemporaryDirectory() as directory:
+              root = Path(directory) / 'root.crt'
+              root.write_bytes(sys.stdin.buffer.read())
+              verify = [security, 'verify-cert', '-L', '-l', '-p', 'basic', '-k', keychain, '-c', str(root)]
+              if expected_hash in certs.splitlines() and subprocess.run(verify, capture_output=True).returncode == 0:
+                  print('already trusted')
+              elif preview:
+                  print('would install')
+              else:
+                  add = [security, 'add-trusted-cert', '-d', '-r', 'trustRoot', '-k', keychain, str(root)]
+                  if subprocess.run(add).returncode:
+                      sys.exit('Admin trust may require local authorization. See tools/install-step-ca-root.')
+                  subprocess.run(verify, check=True, capture_output=True)
+                  print('installed')
+      - "{{ ca_client_trust_root_sha256 }}"
+      - "{{ 'preview' if ansible_check_mode else 'apply' }}"
+    stdin: "{{ ca_client_trust_root_pem }}"
+    stdin_add_newline: false
+  register: ca_client_trust_system_result
+  check_mode: false
+  changed_when: ca_client_trust_system_result.stdout in ['would install', 'installed']

@@ -1,0 +1,29 @@
+{
+  "collections": {
+    "ansible.posix": {
+      "sha256": "00a58c5d804c9adc99c3c3dc1b9f2246f4bb5f7337941440e0956f0e31c3b82b",
+      "url": "https://galaxy.ansible.com/api/v3/plugin/ansible/content/published/collections/artifacts/ansible-posix-2.2.2.tar.gz",
+      "version": "2.2.2"
+    },
+    "ansible.windows": {
+      "sha256": "d1452eb1fa6b55ec75a81be32daa08e9ab0d5086dc3ad5ec8687e3a80b366422",
+      "url": "https://galaxy.ansible.com/api/v3/plugin/ansible/content/published/collections/artifacts/ansible-windows-3.9.2.tar.gz",
+      "version": "3.9.2"
+    },
+    "community.docker": {
+      "sha256": "098e671822180a4170af061eca281df431e0747c7d66450bc75e9adb727abe19",
+      "url": "https://galaxy.ansible.com/api/v3/plugin/ansible/content/published/collections/artifacts/community-docker-5.4.0.tar.gz",
+      "version": "5.4.0"
+    },
+    "community.general": {
+      "sha256": "816291784a3369a888119a6a5d00593beec44d919605ac6553b0a54274470beb",
+      "url": "https://galaxy.ansible.com/api/v3/plugin/ansible/content/published/collections/artifacts/community-general-14.0.1.tar.gz",
+      "version": "14.0.1"
+    },
+    "community.library_inventory_filtering_v1": {
+      "sha256": "cbb9e86c5b1720df21e940cedcd2f3e1226c38262623e090a883712610733851",
+      "url": "https://galaxy.ansible.com/api/v3/plugin/ansible/content/published/collections/artifacts/community-library_inventory_filtering_v1-1.1.5.tar.gz",
+      "version": "1.1.5"
+    }
+  }
+}

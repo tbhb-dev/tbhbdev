@@ -508,6 +508,7 @@ def _host(table: _Table) -> Host:
         "limits_warn_only",
         "build_shims",
         "max_concurrent_runs",
+        "auto_select",
     )
     name = _check_name(table, "name", table.text("name"), HOST_NAME)
     os = table.choice("os", Os)
@@ -553,6 +554,9 @@ def _host(table: _Table) -> Host:
         max_concurrent_runs=table.nonnegative(
             "max_concurrent_runs", DEFAULT_MAX_CONCURRENT_RUNS
         ),
+        auto_select=table.flag("auto_select")
+        if "auto_select" in table.values
+        else False,
     )
 
 
@@ -595,7 +599,7 @@ def parse(agent: dict[str, object]) -> Settings:
         "ssh_connect_timeout",
         "ssh_keepalive_seconds",
         "ssh_keepalive_count_max",
-        "host_tag",  # Another command reads this key.
+        "host_tag",  # Accepted for compatibility with existing configs.
         "worker",
     )
     sandbox = _sandbox(root.table("sandbox"))

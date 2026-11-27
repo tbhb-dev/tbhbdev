@@ -147,6 +147,8 @@ def run(
     reference = f"refs/heads/{branch}"
     before, _ = local_refs(workspace)
     base = before.get(reference)
+    if base is not None:
+        run.files.write("base", base)
     start = start_ref_target(run, base)
     rc = harness(run, prepared, stack)
     if run.files.uncertain:

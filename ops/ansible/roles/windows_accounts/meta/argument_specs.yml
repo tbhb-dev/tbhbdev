@@ -1,0 +1,46 @@
+---
+argument_specs:
+  main:
+    short_description: Create the agent and ops local accounts on Windows, key-only over ssh
+    description:
+      - >-
+          Checks the host and every key before changing anything. The ops account joins Administrators,
+          and agent joins no administrative group.
+    options:
+      windows_accounts_ops_admin_keys:
+        type: list
+        elements: dict
+        required: true
+        description: >-
+          Public keys for ops. The role adds each line to C:\ProgramData\ssh\administrators_authorized_keys,
+          which Windows OpenSSH reads for every member of Administrators, and changes no other line.
+          The file has to exist. An empty list is refused.
+        options:
+          key:
+            type: str
+            required: true
+            description: One ed25519 public key on one line, in authorized_keys form without options.
+          from:
+            type: list
+            elements: str
+            default: []
+            description: >-
+              Tailnet host names the key may log in from, resolved by tailnet_addresses on the
+              controller at apply time, just as for agent's keys. Empty means anywhere.
+      windows_accounts_agent_keys:
+        type: list
+        elements: dict
+        required: true
+        description: Keys for agent's own .ssh\authorized_keys, installed exclusively. An empty list is refused.
+        options:
+          key:
+            type: str
+            required: true
+            description: One public key on one line, in authorized_keys form without options.
+          from:
+            type: list
+            elements: str
+            default: []
+            description: >-
+              Tailnet host names the key may log in from. The role resolves each one to an address
+              at apply time on the controller, so git never holds an address. Empty means anywhere.

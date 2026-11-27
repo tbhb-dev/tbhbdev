@@ -1,0 +1,18 @@
+---
+- name: Converge
+  hosts: all
+  become: true
+  roles:
+    - ca_client_trust
+  post_tasks:
+    - name: Check whether preview wrote the root
+      ansible.builtin.stat:
+        path: /usr/local/share/ca-certificates/tbhb-dev-step-ca-root.crt
+      register: ca_client_trust_preview
+      when: ansible_check_mode
+
+    - name: Confirm the root is absent after preview
+      ansible.builtin.assert:
+        that: not ca_client_trust_preview.stat.exists
+        quiet: true
+      when: ansible_check_mode

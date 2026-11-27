@@ -1,0 +1,145 @@
+---
+- name: Verify
+  hosts: all
+  gather_facts: true
+  become: true
+  tasks:
+    - name: Read the packages
+      ansible.builtin.package_facts:
+
+    - name: Read the files the role wrote
+      ansible.builtin.slurp:
+        src: "{{ item }}"
+      loop:
+        - /etc/netplan/60-br-lab.yaml
+        - /etc/netplan/00-installer-config.yaml
+        - /etc/netplan/00-installer-config.yaml.orig
+        - /etc/modprobe.d/kvm-amd.conf
+      register: kvm_host_files
+
+    - name: Look at the netplan files' modes
+      ansible.builtin.stat:
+        path: "{{ item }}"
+      loop:
+        - /etc/netplan/60-br-lab.yaml
+        - /etc/netplan/00-installer-config.yaml
+        - /etc/netplan/00-installer-config.yaml.orig
+      register: kvm_host_stats
+
+    - name: Check the packages, the files and the netplan content
+      vars:
+        kvm_host_packages:
+          - cpu-checker
+          - libvirt-clients
+          - libvirt-daemon-system
+          - ovmf
+          - qemu-system-x86
+          - qemu-utils
+          - virtinst
+        kvm_host_bridge_config: "{{ (kvm_host_files.results[0].content | b64decode | from_yaml).network }}"
+        kvm_host_installer_config: "{{ (kvm_host_files.results[1].content | b64decode | from_yaml).network }}"
+        kvm_host_backup_config: "{{ (kvm_host_files.results[2].content | b64decode | from_yaml).network }}"
+        kvm_host_bridge_entry: "{{ kvm_host_bridge_config.bridges['br-lab'] }}"
+      ansible.builtin.assert:
+        that:
+          - kvm_host_packages is subset(ansible_facts.packages.keys())
+          - kvm_host_files.results[3].content | b64decode == 'options kvm_amd nested=1\n'
+          - kvm_host_stats.results | map(attribute='stat.mode') | unique | list == ['0600']
+          - kvm_host_bridge_config.version == 2
+          - kvm_host_bridge_config.ethernets.eth0['link-local'] == []
+          - "'dhcp4' not in kvm_host_bridge_config.ethernets.eth0"
+          - not kvm_host_bridge_config.ethernets.lan0.dhcp4
+          - not kvm_host_bridge_config.ethernets.lan0.dhcp6
+          - not kvm_host_bridge_config.ethernets.lan0['accept-ra']
+          - kvm_host_bridge_config.ethernets.lan0['link-local'] == []
+          - kvm_host_bridge_config.ethernets.lan0.optional
+          - kvm_host_bridge_entry.interfaces == ['eth0']
+          - kvm_host_bridge_entry.macaddress == ansible_facts.eth0.macaddress
+          - kvm_host_bridge_entry.dhcp4
+          - kvm_host_bridge_entry.dhcp6
+          - "'dhcp4-overrides' not in kvm_host_bridge_entry"
+          - "'dhcp6-overrides' not in kvm_host_bridge_entry"
+          - kvm_host_bridge_entry['accept-ra']
+          - "'ra-overrides' not in kvm_host_bridge_entry"
+          - kvm_host_bridge_entry.optional
+          - not kvm_host_bridge_entry.parameters.stp
+          - kvm_host_bridge_entry.parameters['forward-delay'] == 0
+          - "'routes' not in kvm_host_bridge_entry"
+          - "'routing-policy' not in kvm_host_bridge_entry"
+          - kvm_host_installer_config.ethernets.keys() | list == ['lan2']
+          - kvm_host_installer_config.version == 2
+          - "'eth0' in kvm_host_backup_config.ethernets"
+          - "'lan0' in kvm_host_backup_config.ethernets"
+        quiet: true
+
+    - name: Check that the role refuses another file that configures the port
+      block:
+        - name: Write another file that configures the port
+          ansible.builtin.copy:
+            dest: /etc/netplan/4h.yaml
+            content: |
+              network:
+                version: 2
+                ethernets:
+                  eth0:
+                    dhcp4: true
+            mode: "0600"
+
+        - name: Run the network tasks
+          ansible.builtin.include_role:
+            name: kvm_host
+            tasks_from: network.yml
+
+        - name: Fail, because the network tasks didn't refuse
+          ansible.builtin.fail:
+            msg: the network tasks ran with /etc/netplan/4h.yaml configuring eth0
+      rescue:
+        - name: Check the refusal names the file
+          ansible.builtin.assert:
+            that:
+              - >-
+                  ansible_failed_result.results | default([]) | selectattr('failed') | map(attribute='msg')
+                  | select('search', '/etc/netplan/4h.yaml configures eth0') | list | length == 1
+            quiet: true
+      always:
+        - name: Remove the file that configures the port
+          ansible.builtin.file:
+            path: /etc/netplan/4h.yaml
+            state: absent
+
+    # The lab nodes' installer files already lost the lab port's stanza to an
+    # earlier version of the role, and still configure the management port.
+    - name: Write an installer file that configures only the management port
+      ansible.builtin.copy:
+        dest: /etc/netplan/00-installer-config.yaml
+        content: |
+          network:
+            version: 2
+            ethernets:
+              lan0:
+                dhcp4: true
+              lan2:
+                optional: true
+        mode: "0600"
+
+    - name: Run the network tasks on it
+      ansible.builtin.include_role:
+        name: kvm_host
+        tasks_from: network.yml
+
+    - name: Read the installer file the role rewrote
+      ansible.builtin.slurp:
+        src: /etc/netplan/00-installer-config.yaml
+      register: kvm_host_stripped
+
+    - name: Check that the role took the management port out
+      ansible.builtin.assert:
+        that:
+          - (kvm_host_stripped.content | b64decode | from_yaml).network.ethernets.keys() | list == ['lan2']
+        quiet: true
+
+    - name: Check that the role left the other file alone
+      ansible.builtin.stat:
+        path: /etc/netplan/50-other.yaml
+      register: kvm_host_other_stat
+      failed_when: not kvm_host_other_stat.stat.exists

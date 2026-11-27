@@ -4,7 +4,7 @@ import json
 from pathlib import Path
 from typing import cast
 
-import httpx
+import httpx2
 import pytest
 
 from tbhbdev import agy, cli
@@ -146,14 +146,14 @@ def test_export(
     monkeypatch.delenv("OTEL_EXPORTER_OTLP_ENDPOINT", raising=False)
     assert agy.main(["export", str(tmp_path)], "agy") == 2
     assert "is unset" in capsys.readouterr().err
-    sent: list[httpx.Request] = []
+    sent: list[httpx2.Request] = []
 
-    def handler(request: httpx.Request) -> httpx.Response:
+    def handler(request: httpx2.Request) -> httpx2.Response:
         sent.append(request)
-        return httpx.Response(200 if len(sent) < 3 else 503)
+        return httpx2.Response(200 if len(sent) < 3 else 503)
 
-    client = httpx.Client(transport=httpx.MockTransport(handler))
-    monkeypatch.setattr(agy.httpx, "post", client.post)
+    client = httpx2.Client(transport=httpx2.MockTransport(handler))
+    monkeypatch.setattr(agy.httpx2, "post", client.post)
     monkeypatch.setenv("OTEL_EXPORTER_OTLP_ENDPOINT", "http://collector:4318/")
     assert agy.export(tmp_path) == 0
     assert agy.export(tmp_path) == 1

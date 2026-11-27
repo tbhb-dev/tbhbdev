@@ -1,0 +1,11 @@
+---
+# Installs ssh-sign and creates each agent account's signing key where none
+# exists, on the Linux agent hosts. Run it once per host before
+# agent-harness.yml. It prints each new public key; the operator registers it
+# with GitHub before that account signs anything. See the agent_signing README.
+#   mise run playbook -- playbooks/agent-signing.yml --limit lab --check --diff
+- name: Prepare agent commit signing
+  hosts: linux_agent_hosts
+  gather_facts: true
+  roles:
+    - agent_signing

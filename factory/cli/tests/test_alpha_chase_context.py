@@ -10,8 +10,8 @@ from typing import TYPE_CHECKING
 
 import pytest
 
-from tbhbdev import alpha
 from tbhbdev.alpha import chase_context
+from tbhbdev.alpha import command as alpha
 
 if TYPE_CHECKING:
     from pathlib import Path

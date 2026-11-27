@@ -1,0 +1,10 @@
+---
+# Run with --limit one node at a time, after previewing with --check --diff.
+- name: Install Codex for the agent account
+  hosts: agent_hosts:!windows
+  gather_facts: true
+  become: true
+  roles:
+    - role: codex_cli
+      vars:
+        codex_cli_activate: true

@@ -1,0 +1,464 @@
+{
+  "uid": "o11y-agents-codex",
+  "title": "Codex",
+  "description": "Coding-agent telemetry from Claude Code and Codex, sent over OTLP: metrics in Mimir, logs in Loki, and traces in Tempo. Host and namespace filters narrow only logs and traces, including the Sessions table.",
+  "tags": ["o11y", "agents"],
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "1m",
+  "time": {
+    "from": "now-24h",
+    "to": "now"
+  },
+  "templating": {
+    "list": [
+      {
+        "name": "namespace",
+        "label": "Namespace",
+        "description": "The service.namespace the agents send. Filters logs and traces.",
+        "type": "query",
+        "datasource": {
+          "type": "loki",
+          "uid": "loki"
+        },
+        "query": "label_values(service_namespace)",
+        "definition": "label_values(service_namespace)",
+        "regex": "",
+        "refresh": 2,
+        "sort": 1,
+        "multi": true,
+        "includeAll": true,
+        "allValue": ".*",
+        "current": {
+          "selected": true,
+          "text": ["All"],
+          "value": ["$__all"]
+        }
+      },
+      {
+        "name": "service",
+        "label": "Tool",
+        "type": "constant",
+        "query": "codex.*",
+        "hide": 2,
+        "current": {
+          "text": "codex.*",
+          "value": "codex.*",
+          "selected": true
+        }
+      },
+      {
+        "name": "host",
+        "label": "Host",
+        "description": "The host.name the agents send. Filters logs and traces, including the Sessions table.",
+        "type": "query",
+        "datasource": {
+          "type": "prometheus",
+          "uid": "mimir"
+        },
+        "query": "label_values(target_info{job=~\"(.+/)?(${service:pipe})\"}, host_name)",
+        "definition": "label_values(target_info{job=~\"(.+/)?(${service:pipe})\"}, host_name)",
+        "regex": "",
+        "refresh": 2,
+        "sort": 1,
+        "multi": true,
+        "includeAll": true,
+        "allValue": ".*",
+        "current": {
+          "selected": true,
+          "text": ["All"],
+          "value": ["$__all"]
+        }
+      },
+      {
+        "name": "model",
+        "label": "Model",
+        "description": "The model. Filters the token, cost, Codex and Sessions panels.",
+        "type": "query",
+        "datasource": {
+          "type": "prometheus",
+          "uid": "mimir"
+        },
+        "query": "label_values({__name__=~\"claude_code_token_usage_tokens_total|codex_turn_token_usage_count\"}, model)",
+        "definition": "label_values({__name__=~\"claude_code_token_usage_tokens_total|codex_turn_token_usage_count\"}, model)",
+        "regex": "",
+        "refresh": 2,
+        "sort": 1,
+        "multi": true,
+        "includeAll": true,
+        "allValue": ".*",
+        "current": {
+          "selected": true,
+          "text": ["All"],
+          "value": ["$__all"]
+        }
+      }
+    ]
+  },
+  "panels": [
+    {
+      "title": "Codex turns",
+      "description": "Conversation turns per minute, by model.",
+      "type": "timeseries",
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "axisLabel": "",
+            "drawStyle": "line",
+            "fillOpacity": 10,
+            "spanNulls": false
+          },
+          "unit": "opm",
+          "min": 0
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum by (tool, model) (label_replace(rate(codex_conversation_turn_count_total{job=~\"(.+/)?(${service:pipe})\", model=~\"${model:pipe}\"}[$__rate_interval]), \"tool\", \"$1\", \"job\", \"(?:.+/)?(.+)\")) * 60",
+          "legendFormat": "{{tool}} {{model}}",
+          "range": true,
+          "instant": false,
+          "interval": "1m"
+        }
+      ],
+      "datasource": {
+        "type": "prometheus",
+        "uid": "mimir"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 0
+      },
+      "id": 10
+    },
+    {
+      "title": "Codex tool calls",
+      "description": "Tool calls per minute, by the tool called.",
+      "type": "timeseries",
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "axisLabel": "",
+            "drawStyle": "line",
+            "fillOpacity": 10,
+            "spanNulls": false
+          },
+          "unit": "opm",
+          "min": 0
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum by (tool) (rate(codex_tool_call_total{job=~\"(.+/)?(${service:pipe})\", model=~\"${model:pipe}\"}[$__rate_interval])) * 60",
+          "legendFormat": "{{tool}}",
+          "range": true,
+          "instant": false,
+          "interval": "1m"
+        }
+      ],
+      "datasource": {
+        "type": "prometheus",
+        "uid": "mimir"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 0
+      },
+      "id": 11
+    },
+    {
+      "title": "Codex tool-call latency p95",
+      "description": "95th percentile tool-call duration, by the tool called, from the call histogram.",
+      "type": "timeseries",
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "axisLabel": "",
+            "drawStyle": "line",
+            "fillOpacity": 10,
+            "spanNulls": false
+          },
+          "unit": "ms",
+          "min": 0
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "histogram_quantile(0.95, sum by (le, tool) (rate(codex_tool_call_duration_ms_milliseconds_bucket{job=~\"(.+/)?(${service:pipe})\", model=~\"${model:pipe}\"}[$__rate_interval])))",
+          "legendFormat": "{{tool}}",
+          "range": true,
+          "instant": false,
+          "interval": "1m"
+        }
+      ],
+      "datasource": {
+        "type": "prometheus",
+        "uid": "mimir"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 8
+      },
+      "id": 12
+    },
+    {
+      "title": "Codex turn latency",
+      "description": "Turn duration end to end at the median and 95th percentile, and time to first token at the 95th percentile.",
+      "type": "timeseries",
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "axisLabel": "",
+            "drawStyle": "line",
+            "fillOpacity": 10,
+            "spanNulls": false
+          },
+          "unit": "ms",
+          "min": 0
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "histogram_quantile(0.5, sum by (le) (rate(codex_turn_e2e_duration_ms_milliseconds_bucket{job=~\"(.+/)?(${service:pipe})\", model=~\"${model:pipe}\"}[$__rate_interval])))",
+          "legendFormat": "turn p50",
+          "range": true,
+          "instant": false,
+          "interval": "1m"
+        },
+        {
+          "refId": "B",
+          "expr": "histogram_quantile(0.95, sum by (le) (rate(codex_turn_e2e_duration_ms_milliseconds_bucket{job=~\"(.+/)?(${service:pipe})\", model=~\"${model:pipe}\"}[$__rate_interval])))",
+          "legendFormat": "turn p95",
+          "range": true,
+          "instant": false,
+          "interval": "1m"
+        },
+        {
+          "refId": "C",
+          "expr": "histogram_quantile(0.95, sum by (le) (rate(codex_turn_ttft_duration_ms_milliseconds_bucket{job=~\"(.+/)?(${service:pipe})\", model=~\"${model:pipe}\"}[$__rate_interval])))",
+          "legendFormat": "first token p95",
+          "range": true,
+          "instant": false,
+          "interval": "1m"
+        }
+      ],
+      "datasource": {
+        "type": "prometheus",
+        "uid": "mimir"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 8
+      },
+      "id": 13
+    },
+    {
+      "title": "Codex failures",
+      "description": "Share of tool calls and websocket requests that failed. Zero while calls succeed, and empty when there were no calls at all, so an idle Codex never reads as error free.",
+      "type": "timeseries",
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "axisLabel": "",
+            "drawStyle": "line",
+            "fillOpacity": 10,
+            "spanNulls": false
+          },
+          "unit": "percentunit",
+          "min": 0
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "(sum(rate(codex_tool_call_total{job=~\"(.+/)?(${service:pipe})\", model=~\"${model:pipe}\", success!=\"true\"}[$__rate_interval])) or vector(0)) / sum(rate(codex_tool_call_total{job=~\"(.+/)?(${service:pipe})\", model=~\"${model:pipe}\"}[$__rate_interval]))",
+          "legendFormat": "tool calls",
+          "range": true,
+          "instant": false,
+          "interval": "1m"
+        },
+        {
+          "refId": "B",
+          "expr": "(sum(rate(codex_websocket_request_total{job=~\"(.+/)?(${service:pipe})\", model=~\"${model:pipe}\", success!=\"true\"}[$__rate_interval])) or vector(0)) / sum(rate(codex_websocket_request_total{job=~\"(.+/)?(${service:pipe})\", model=~\"${model:pipe}\"}[$__rate_interval]))",
+          "legendFormat": "websocket requests",
+          "range": true,
+          "instant": false,
+          "interval": "1m"
+        }
+      ],
+      "datasource": {
+        "type": "prometheus",
+        "uid": "mimir"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 16
+      },
+      "id": 14
+    },
+    {
+      "title": "Tokens by type and model",
+      "description": "Tokens per second by token type. The types overlap for Codex: input includes cached_input and output includes reasoning_output, so its lines don't add up. Claude Code's four types are disjoint.",
+      "type": "timeseries",
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "axisLabel": "tokens/s",
+            "drawStyle": "line",
+            "fillOpacity": 10,
+            "spanNulls": false
+          },
+          "unit": "suffix:tokens/s",
+          "min": 0
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "refId": "B",
+          "expr": "sum by (token_type, model) (label_replace(rate(codex_turn_token_usage_sum{job=~\"(.+/)?(codex.*)\", model=~\"${model:pipe}\", token_type!=\"total\"}[$__rate_interval]), \"tool\", \"$1\", \"job\", \"(?:.+/)?(.+)\"))",
+          "legendFormat": "{{token_type}} {{model}}",
+          "range": true,
+          "instant": false,
+          "interval": "1m"
+        }
+      ],
+      "datasource": {
+        "type": "prometheus",
+        "uid": "mimir"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 16
+      },
+      "id": 21
+    },
+    {
+      "title": "Recent errors",
+      "description": "Claude Code api_error events and failed tool results, and any agent log line at error or warn level or marked unsuccessful. Each line shows the event and its error fields, never the prompt.",
+      "type": "logs",
+      "options": {
+        "showTime": true,
+        "wrapLogMessage": true,
+        "sortOrder": "Descending",
+        "enableLogDetails": true,
+        "dedupStrategy": "none"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "{service_namespace=~\"${namespace:pipe}\", service_name=~\"codex.*\"} | host_name=~\"${host:pipe}\" | event_name=\"api_error\" or success=\"false\" or detected_level=~\"error|warn|warning\" | label_format detected_level=`{{if or (eq .event_name \"api_error\") (eq .success \"false\")}}error{{else}}{{.detected_level}}{{end}}` | line_format `{{.service_name}} {{.event_name}}{{with .model}} model={{.}}{{end}}{{with .tool_name}} tool={{.}}{{end}}{{with .status_code}} status={{.}}{{end}}{{with .http_response_status_code}} status={{.}}{{end}}{{with .error_type}} error_type={{.}}{{end}}{{with .error}} error={{.}}{{end}}`",
+          "queryType": "range"
+        }
+      ],
+      "datasource": {
+        "type": "loki",
+        "uid": "loki"
+      },
+      "gridPos": {
+        "h": 10,
+        "w": 24,
+        "x": 0,
+        "y": 24
+      },
+      "id": 22
+    }
+  ],
+  "links": [
+    {
+      "title": "Agents",
+      "type": "dashboards",
+      "tags": ["agents"],
+      "keepTime": true,
+      "includeVars": true
+    }
+  ]
+}

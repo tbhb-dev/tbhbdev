@@ -230,7 +230,7 @@ def test_render_needs_the_file(config_file: Path) -> None:
 
 
 @pytest.mark.parametrize(
-    "argv", [["--help"], ["host", "--help"], ["host", "status", "--help"]]
+    "argv", [["--help"], ["secret", "--help"], ["secret", "read", "--help"]]
 )
 def test_help_works_without_the_file(
     config_file: Path, argv: list[str], capsys: pytest.CaptureFixture[str]

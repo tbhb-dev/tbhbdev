@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import base64
 import contextlib
 import dataclasses
@@ -11,13 +12,15 @@ import io
 import json
 import os
 import shlex
+import sys
 import tarfile
-from pathlib import PurePosixPath
+from pathlib import Path, PurePosixPath
 from types import SimpleNamespace
 from typing import TYPE_CHECKING, NoReturn
-from unittest.mock import Mock
+from unittest.mock import AsyncMock, Mock
 
 import pytest
+from agent_cli_example import run_agent
 from agent_driver_example import (
     BODY,
     Remote,
@@ -30,15 +33,23 @@ from agent_driver_example import (
 from agent_example import MARKER, settings
 
 from tbhbdev import version
-from tbhbdev.alpha import agent
-from tbhbdev.alpha.agent import driver, model, render, transport, version_heal
+from tbhbdev.alpha.agent import (
+    app_server,
+    driver,
+    model,
+    render,
+    transport,
+    version_heal,
+)
+from tbhbdev.alpha.agent import arguments as agent_arguments
+from tbhbdev.alpha.agent import settings as agent_settings
 from tbhbdev.alpha.agent.decisions import remote as remote_commands
 from tbhbdev.alpha.agent.decisions import repo, request, runfiles_names
 from tbhbdev.alpha.agent.model import Invalid, Profile, RunKind, RunRequest
 
 if TYPE_CHECKING:
+    import argparse
     from collections.abc import Generator
-    from pathlib import Path
 
 pytestmark = pytest.mark.usefixtures("isolated_home")  # noqa: V107
 
@@ -50,12 +61,10 @@ PREPARE = driver.prepare
 @pytest.fixture
 def remote(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Remote:
     result = setup(tmp_path, monkeypatch)
-    monkeypatch.setattr(agent.settings, "load", lambda: CONFIG)
+    monkeypatch.setattr(agent_settings, "load", lambda: CONFIG)
 
     # Keep coverage of management for recorded runs from before the new default.
-    def legacy_prepare(
-        config: model.Settings, args: agent.argparse.Namespace
-    ) -> driver.Run:
+    def legacy_prepare(config: model.Settings, args: argparse.Namespace) -> driver.Run:
         run = PREPARE(config, args)
         run.request = dataclasses.replace(
             run.request,
@@ -96,13 +105,13 @@ def arguments(remote: Remote, *options: str) -> list[str]:
 
 
 def launch(remote: Remote, *options: str) -> int:
-    return agent.main(arguments(remote, *options), "example agent")
+    return run_agent(arguments(remote, *options))
 
 
 def test_exec_help_describes_expected_commits(
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    assert agent.main(["exec", "--help"], "example agent") == 0
+    assert run_agent(["exec", "--help"]) == 0
     help_text = " ".join(capsys.readouterr().out.split())
     assert (
         "--expect-commit, --no-expect-commit require a new commit and a push"
@@ -114,7 +123,7 @@ def test_exec_help_lists_model_examples(
     capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
 ) -> None:
     monkeypatch.setenv("COLUMNS", "200")
-    assert agent.main(["exec", "--help"], "example agent") == 0
+    assert run_agent(["exec", "--help"]) == 0
     help_text = " ".join(capsys.readouterr().out.split())
     assert "--harness {codex,claude,agy} harness to launch: Codex, Claude or agy" in (
         help_text
@@ -125,18 +134,176 @@ def test_exec_help_lists_model_examples(
 
 
 def command(verb: str, *options: str) -> int:
-    return agent.main([verb, "sample", *options], "example agent")
+    return run_agent([verb, "sample", *options])
 
 
 def test_default_launch_sends_unsandboxed_request(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     remote = setup(tmp_path, monkeypatch)
-    monkeypatch.setattr(agent.settings, "load", lambda: CONFIG)
+    monkeypatch.setattr(agent_settings, "load", lambda: CONFIG)
     assert launch(remote) == 0
     wire = json.loads((remote.state / "sample.request.json").read_text())
     assert wire["unsandboxed"] is True
     assert wire["authorized_by"] is None
+
+
+@pytest.mark.parametrize(
+    ("text", "reply", "error"),
+    [
+        ("one\ntwo", {}, ""),
+        ("hello", {"out": app_server.UNLOADED}, "unknown or unloaded"),
+        ("hello", {"rc": 73}, "not owner"),
+        ("op://example/item/field", None, "1Password reference"),
+    ],
+)
+def test_send_routes_message_over_owned_ssh(
+    remote: Remote,
+    capsys: pytest.CaptureFixture[str],
+    text: str,
+    reply: dict[str, object] | None,
+    error: str,
+) -> None:
+    remote.configure(steer=True)
+    assert launch(remote, "--steer") == 0
+    owner = driver.load(CONFIG, "sample").owner
+    calls = remote.records("ssh", limits=True)
+    if reply is not None:
+        remote.configure(ssh=[reply])
+    assert command("send", text) == int(bool(error))
+    assert error in capsys.readouterr().err
+    if reply is None:
+        assert remote.records("ssh", limits=True) == calls
+    else:
+        call = remote.records("ssh")[-1]
+        assert "send-host sample" in str(call["args"])
+        assert text not in str(call["args"])
+        assert base64.b64decode(str(call["stdin"])) == f"{owner}\n{text}".encode()
+
+
+def test_send_refuses_unknown_run(
+    remote: Remote, capsys: pytest.CaptureFixture[str]
+) -> None:
+    assert command("send", "hello") == 1
+    assert "sample: unknown run" in capsys.readouterr().err
+    assert remote.records("ssh") == []
+
+
+def test_send_explicit_claude_needs_no_config(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    assert command("send", "--harness", "claude", "hello") == 1
+    assert capsys.readouterr().err == "Claude delivery is not built\n"
+
+
+THREAD = '{"type":"thread.started","thread_id":"thread"}\n'
+INACTIVE = "Codex thread has no active turn"
+MESSAGE = "next\u00a0line\nthen this"
+
+
+def test_socket_path_fits_macos_with_long_run_name() -> None:
+    root = Path("/Users/agent/.local/state/tbhbdev/agent-runs")
+    assert len(os.fsencode(app_server.socket_path(root, "a" * 51))) < 104
+
+
+@pytest.fixture
+def live_log(isolated_home: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
+    log = isolated_home / ".xdg-state/tbhbdev/agent-runs/sample.out"
+    log.parent.mkdir(parents=True)
+    log.write_text(THREAD)
+    monkeypatch.setattr(sys, "stdin", io.StringIO(MESSAGE))
+    return log
+
+
+def reply(payload: dict[str, object], size: int = 0) -> bytes:
+    body = json.dumps(payload).encode().ljust(size)
+    if len(body) < 126:
+        return bytes((129, len(body))) + body
+    width = 2 if len(body) < 65536 else 8
+    kind = 126 if width == 2 else 127
+    return bytes((129, kind)) + len(body).to_bytes(width, "big") + body
+
+
+def turn_reply(*turns: dict[str, str], size: int = 0) -> bytes:
+    return reply({"id": 2, "result": {"data": turns}}, size)
+
+
+def stream(response: bytes) -> bytes:
+    upgrade = b"HTTP/1.1 101 Switching Protocols\r\n\r\n"
+    ready = reply({"id": 1, "result": {}}) + reply({"method": "turn/started"})
+    return upgrade + ready + response + reply({"id": 3, "result": {}})
+
+
+@pytest.mark.usefixtures("live_log")
+@pytest.mark.parametrize(
+    ("wire", "error"),
+    [
+        (stream(turn_reply({"status": "inProgress", "id": "active"}, size=66000)), ""),
+        (stream(turn_reply({"status": "completed"}, size=128)), INACTIVE),
+        (stream(turn_reply()), INACTIVE),
+        (
+            stream(reply({"id": 2, "error": {"message": "thread not loaded"}})),
+            "thread not loaded",
+        ),
+        (stream(b"\x88\x00"), app_server.UNLOADED),
+        (b"HTTP/1.1 403 Forbidden\r\n\r\n", app_server.UNLOADED),
+    ],
+)
+def test_send_host_proxy(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    wire: bytes,
+    error: str,
+    isolated_home: Path,
+) -> None:
+    codex = isolated_home / ".npm-global" / "bin" / "codex"
+    codex.parent.mkdir(parents=True)
+    codex.touch(mode=0o700)
+    monkeypatch.setenv("PATH", str(isolated_home))
+    writer = SimpleNamespace(write=Mock(), drain=AsyncMock())
+    frame = Mock(wraps=app_server.frame)
+    monkeypatch.setattr(app_server, "frame", frame)
+
+    async def connect(
+        *command: str, env: dict[str, str], **_options: int
+    ) -> SimpleNamespace:
+        assert command[:4] == (str(codex), "app-server", "proxy", "--sock")
+        assert env["PATH"].startswith(f"{isolated_home}:")
+        assert "/usr/local/bin" in env["PATH"].split(":")
+        reader = asyncio.StreamReader()
+        reader.feed_data(wire)
+        reader.feed_eof()
+        return SimpleNamespace(
+            stdin=writer, stdout=reader, kill=Mock(), communicate=AsyncMock()
+        )
+
+    monkeypatch.setattr(asyncio, "create_subprocess_exec", connect)
+    assert run_agent(["send-host", "sample"]) == 0
+    assert capsys.readouterr().out.strip() == error
+    if not error:
+        assert json.loads(frame.call_args.args[0]) == {
+            "id": 3,
+            "method": "turn/steer",
+            "params": {
+                "threadId": "thread",
+                "expectedTurnId": "active",
+                "input": [{"type": "text", "text": MESSAGE, "text_elements": []}],
+            },
+        }
+
+
+def test_send_host_without_log_reports_unloaded(
+    live_log: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    live_log.unlink()
+    assert app_server.main(["sample"], "send-host") == 0
+    assert capsys.readouterr().out.strip() == app_server.UNLOADED
+
+
+def test_frame_supports_long_messages() -> None:
+    assert app_server.frame(b"x" * 65536)[:10] == b"\x81\xff" + (65536).to_bytes(
+        8, "big"
+    )
 
 
 def test_unsandboxed_clean_refuses_a_run_without_a_result(
@@ -164,6 +331,24 @@ def test_unsandboxed_inspection_reads_the_host_output(
     capsys.readouterr()
     assert command(verb) == 0
     assert "verdict text" in capsys.readouterr().out
+    if verb == "diff":
+        assert command("diff", "--patch") == 1
+        assert "diff --patch requires a finished build run" in capsys.readouterr().err
+
+
+@pytest.mark.parametrize("unsandboxed", [False, True])
+def test_timed_out_log_reads_the_run_log_without_git(
+    remote: Remote, capsys: pytest.CaptureFixture[str], unsandboxed: bool
+) -> None:
+    options = ["--unsandboxed", "o/r#1"] if unsandboxed else []
+    assert launch(remote, *options) == 0
+    remote.file(".rc", "124\n")
+    remote.file(".log", "harness exited 124\n")
+    remote.file(".out.final", "partial answer\n")
+    capsys.readouterr()
+    assert command("log") == 0
+    assert capsys.readouterr() == ("harness exited 124\n", "")
+    assert remote.records("git") == []
 
 
 @pytest.mark.parametrize("ops", [False, True])
@@ -217,7 +402,7 @@ def test_clean_refuses_unpushed_build_worktree(
     capsys.readouterr()
     assert command("clean") == 1
     assert capsys.readouterr().err == (
-        "example agent: full-access run may have unpublished commits or unread "
+        "tbhbdev alpha agent: full-access run may have unpublished commits or unread "
         "output; pass --force to clean anyway\n"
     )
     assert metadata.read_bytes() == before
@@ -368,6 +553,9 @@ def test_launch_stream_and_metadata(
     )
 
 
+STEER_ERROR = "exec --steer requires a Codex build without --schema"
+
+
 @pytest.mark.parametrize(
     ("options", "message"),
     [
@@ -392,6 +580,9 @@ def test_launch_stream_and_metadata(
         (("--harness", "agy"), "agy requires a gemini-*"),
         (("--model", "bad model"), "model must match"),
         (("--effort", "bad effort"), "effort must match"),
+        (("--steer", "--harness", "claude"), STEER_ERROR),
+        (("--steer", "--profile", "review"), STEER_ERROR),
+        (("--steer", "--schema", "schema.json"), STEER_ERROR),
     ],
 )
 def test_checks_before_ssh(
@@ -459,7 +650,7 @@ def test_bad_name(
 ) -> None:
     args = arguments(remote)
     args[-2] = name
-    assert agent.main(args, "example agent") in (1, 2)
+    assert run_agent(args) in (1, 2)
     assert remote.records("ssh") == []
     assert capsys.readouterr().err
 
@@ -723,7 +914,7 @@ def test_a_fifth_live_review_of_the_same_commit_is_refused(
         remote, "--profile", "review", "--ref", COMMIT, "--variant", "five"
     )
     argv[-2] = "review-five"
-    assert agent.main(argv, "example agent") == 1
+    assert run_agent(argv) == 1
     assert "already has 4 live reviews" in capsys.readouterr().err
     assert not driver.metadata_path("review-five").exists()
     stream.assert_not_called()
@@ -814,7 +1005,9 @@ def test_review_ref(remote: Remote, ref: str) -> None:
 
 
 @pytest.mark.parametrize("profile", [None, "Primary", "PRIMARY"])
-def test_claude_case(remote: Remote, profile: str | None) -> None:
+def test_claude_case(
+    remote: Remote, profile: str | None, capsys: pytest.CaptureFixture[str]
+) -> None:
     options = () if profile is None else ("--claude-profile", profile)
     assert (
         launch(remote, "--harness", "claude", "--reason", "example-gap", *options) == 0
@@ -823,6 +1016,8 @@ def test_claude_case(remote: Remote, profile: str | None) -> None:
         json.loads((remote.state / "sample.request.json").read_text())["claude_profile"]
         == "primary"
     )
+    assert command("send", "hello") == 1
+    assert "Claude delivery is not built" in capsys.readouterr().err
 
 
 def test_agy_review_uses_the_review_timeout(remote: Remote) -> None:
@@ -1102,7 +1297,7 @@ def test_clean_origin_failure_requires_force(
     output = capsys.readouterr()
     if failure == "absent":
         assert output.err == (
-            "example agent: branch agent/sample does not exist on origin; "
+            "tbhbdev alpha agent: branch agent/sample does not exist on origin; "
             "pass --force to clean anyway\n"
         )
     assert driver.metadata_path("sample").exists()
@@ -1217,14 +1412,12 @@ def test_kill_waits_for_host_rc(
     )
 
 
-@pytest.mark.parametrize(
-    "flag", ["--host", "--repo", "--model", "--effort", "--profile"]
-)
+@pytest.mark.parametrize("flag", ["--repo", "--model", "--effort", "--profile"])
 def test_required_flags(remote: Remote, flag: str) -> None:
     args = arguments(remote)
     index = args.index(flag)
     del args[index : index + 2]
-    assert agent.main(args, "example agent") == 2
+    assert run_agent(args) == 2
     assert not remote.records("ssh")
 
 
@@ -1257,7 +1450,7 @@ def test_prompt_with_secret_is_refused_before_ssh(
 ) -> None:
     remote.prompt.write_text(f"Use this value: {secret}\n")
     assert launch(remote) == 1
-    assert capsys.readouterr() == ("", f"example agent: brief refused: {kind}\n")
+    assert capsys.readouterr() == ("", f"tbhbdev alpha agent: brief refused: {kind}\n")
     assert remote.records("ssh", limits=True) == []
     assert not driver.metadata_path("sample").exists()
 
@@ -1270,7 +1463,7 @@ def test_schema_with_secret_is_refused_before_ssh(
     assert launch(remote, "--schema", str(schema)) == 1
     assert capsys.readouterr() == (
         "",
-        "example agent: schema refused: 1Password reference\n",
+        "tbhbdev alpha agent: schema refused: 1Password reference\n",
     )
     assert remote.records("ssh", limits=True) == []
 
@@ -1285,7 +1478,7 @@ def test_prompt_hook_conflicts_refuse_launch_before_ssh(
     remote.prompt.write_text("Run `prek install`. Run `git push origin main`.\n")
     args = arguments(remote, "--ignore-limits")
     args[-2] = "sample-run"
-    assert agent.main(args, "example agent") == 1
+    assert run_agent(args) == 1
     assert attributes == {
         "tbhb.agent.host": "example-linux",
         "tbhb.agent.harness": "codex",
@@ -1297,7 +1490,7 @@ def test_prompt_hook_conflicts_refuse_launch_before_ssh(
     assert capsys.readouterr() == (
         "",
         (
-            f"example agent: {remote.prompt}: "
+            f"tbhbdev alpha agent: {remote.prompt}: "
             "hook conflict: push to main or master is forbidden\n"
             f"{remote.prompt}: hook conflict: hook install is forbidden\n"
         ),
@@ -1326,7 +1519,7 @@ def test_prompt_with_foreign_branch_warns_and_launches(
     remote.prompt.write_text(prompt)
     args = arguments(remote)
     args[-2] = "sample-run"
-    assert agent.main(args, "example agent") == 0
+    assert run_agent(args) == 0
     assert capsys.readouterr().err == (
         f"warning: {remote.prompt}: use the launcher branch agent/sample-run "
         "instead of agent/other\n"
@@ -1427,7 +1620,7 @@ def test_prompt_refuses_unfetched_exact_refs_before_ssh(
     remote.prompt.write_text(prompt)
     assert launch(remote, *options) == 1
     assert capsys.readouterr().err == (
-        f"example agent: {remote.prompt}: the brief names {ref}. "
+        f"tbhbdev alpha agent: {remote.prompt}: the brief names {ref}. "
         f"Add `--fetch-ref {ref}`\n"
     )
     assert remote.records("ssh") == []
@@ -1449,7 +1642,7 @@ def test_build_prompt_that_updates_a_pr_branch_needs_start_ref(
     assert launch(remote, "--fetch-ref", "refs/heads/agent/topic") == 1
     ref = f"refs/heads/{target}"
     assert capsys.readouterr().err == (
-        f"example agent: {remote.prompt}: the brief asks to update a PR branch. "
+        f"tbhbdev alpha agent: {remote.prompt}: the brief asks to update a PR branch. "
         f"Use `--fetch-ref {ref} --start-ref {ref}`\n"
     )
     assert remote.records("ssh") == []
@@ -1603,7 +1796,7 @@ def test_wait_invalid_environment(
     assert command("wait") == 1
     assert capsys.readouterr() == (
         "",
-        f"example agent: {name} must be positive seconds\n",
+        f"tbhbdev alpha agent: {name} must be positive seconds\n",
     )
     assert remote.records("ssh") == before
 
@@ -1736,7 +1929,7 @@ def test_shims_extend_launch_poll_budget(
 
 
 def test_metadata_permissions_under_an_open_mask(remote: Remote) -> None:
-    args = agent.parser("example agent").parse_args(arguments(remote))
+    args = agent_arguments.parser("example agent").parse_args(arguments(remote))
     run = driver.prepare(CONFIG, args)
     previous = os.umask(0)
     try:
@@ -2037,7 +2230,7 @@ def test_load_hardens_existing_metadata_directory(remote: Remote) -> None:
 
 
 def test_load_accepts_legacy_tainted_host(remote: Remote) -> None:
-    args = agent.parser("example agent").parse_args(arguments(remote))
+    args = agent_arguments.parser("example agent").parse_args(arguments(remote))
     run = driver.prepare(CONFIG, args)
     driver.save(run)
     path = driver.metadata_path(run.name)
@@ -2051,7 +2244,7 @@ def test_load_accepts_legacy_tainted_host(remote: Remote) -> None:
 def test_metadata_directory_is_private_before_chmod(
     remote: Remote, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    args = agent.parser("example agent").parse_args(arguments(remote))
+    args = agent_arguments.parser("example agent").parse_args(arguments(remote))
     run = driver.prepare(CONFIG, args)
     directory = driver.metadata_path("sample").parent
     original = type(directory).chmod
@@ -2489,7 +2682,7 @@ def test_inspection_fetch_failure_stops_before_read(remote: Remote, verb: str) -
     ],
 )
 def test_inspection_rejects_extra_options(args: list[str]) -> None:
-    assert agent.main(args, "example agent") == 2
+    assert run_agent(args) == 2
 
 
 def test_unsandboxed_force_clean_refuses_live_session(
@@ -2519,7 +2712,7 @@ def test_unsandboxed_verbs_after_host_setting_disabled(
             dataclasses.replace(host, unsandboxed=False) for host in CONFIG.hosts
         ),
     )
-    monkeypatch.setattr(agent.settings, "load", lambda: disabled)
+    monkeypatch.setattr(agent_settings, "load", lambda: disabled)
     capsys.readouterr()
     if verb in {"kill", "clean"}:
         remote.configure(session=False)
@@ -2547,7 +2740,7 @@ def test_unsandboxed_new_launch_ignores_host_setting(
             dataclasses.replace(host, unsandboxed=False) for host in CONFIG.hosts
         ),
     )
-    monkeypatch.setattr(agent.settings, "load", lambda: disabled)
+    monkeypatch.setattr(agent_settings, "load", lambda: disabled)
     assert launch(remote, "--ops", "--unsandboxed", "o/r#1") == 0
     assert capsys.readouterr().err == ""
     assert remote.records("ssh")

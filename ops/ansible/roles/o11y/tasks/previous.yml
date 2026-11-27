@@ -1,0 +1,21 @@
+---
+- name: previous | Read the previous link
+  ansible.builtin.stat:
+    path: "{{ o11y_root }}/previous"
+    follow: false
+  register: o11y_previous
+
+- name: previous | Require a previous release
+  ansible.builtin.assert:
+    that:
+      - o11y_previous.stat.islnk | default(false)
+      - (o11y_previous.stat.lnk_source | default('') | dirname) == o11y_root + '/releases'
+    fail_msg: No previous release exists under {{ o11y_root }}/releases.
+    quiet: true
+
+- name: previous | Select the previous release
+  ansible.builtin.set_fact:
+    o11y_target: "{{ o11y_previous.stat.lnk_source }}"
+
+- name: previous | Switch and check readiness
+  ansible.builtin.include_tasks: switch.yml

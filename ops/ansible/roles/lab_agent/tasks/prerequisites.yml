@@ -1,0 +1,21 @@
+---
+- name: prerequisites | Install the rootless Docker tools
+  ansible.builtin.apt:
+    name: "{{ lab_agent_rootless_packages }}"
+    state: present
+    install_recommends: false
+
+# Assume the distribution supplies this profile at this path. Never relax
+# kernel.apparmor_restrict_unprivileged_userns or replace the profile.
+- name: prerequisites | Look for the rootlesskit AppArmor profile
+  ansible.builtin.stat:
+    path: /etc/apparmor.d/rootlesskit
+  register: lab_agent_apparmor_profile
+
+- name: prerequisites | Check the rootlesskit AppArmor profile
+  ansible.builtin.assert:
+    that:
+      - lab_agent_apparmor_profile.stat.exists
+      - lab_agent_apparmor_profile.stat.isreg | default(false)
+    fail_msg: The distribution must supply /etc/apparmor.d/rootlesskit for restricted user namespaces
+    quiet: true

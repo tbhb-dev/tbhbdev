@@ -20,6 +20,7 @@ from fake_tool import (
     pythonpath,
     write_fake,
     write_private_config,
+    write_test_hooks,
 )
 from hypothesis import example, given
 from hypothesis import strategies as st
@@ -27,6 +28,7 @@ from hypothesis import strategies as st
 from tbhbdev.alpha import identity as agent_identity
 from tbhbdev.alpha import pull_request as pr
 from tbhbdev.alpha import squash_merge as sm
+from tbhbdev.alpha import tool_pins
 from tbhbdev.alpha.secret_scan import REPO_RULES, without_name_rules
 
 SRC = Path(sm.__file__).parents[2]
@@ -42,6 +44,30 @@ GEN = (
 TARGET = "tbhb-dev/public-target"
 ASSIST = "Assisted-by: LLM harness=codex;model=openai:gpt-6.1-sol"
 
+APPROVED_HEAD = "a" * 40
+OTHER_HEAD = "b" * 40
+REVIEWS_APP = "tbhb-dev-agent-reviews"
+REVIEWS = [
+    {
+        "id": f"review-{harness}",
+        "author": {"login": REVIEWS_APP, "__typename": "Bot"},
+        "body": f"Reviewed.\n\nGenerated-by: LLM harness={harness};model=m\n",
+        "state": "APPROVED",
+        "commit": {"oid": APPROVED_HEAD},
+    }
+    for harness in ("claude", "gemini")
+]
+
+
+def commit(head: object = APPROVED_HEAD, *emails: str) -> dict[str, object]:
+    return {
+        "oid": head,
+        "messageHeadline": "fix: tidy",
+        "messageBody": "",
+        "authors": [{"email": email} for email in emails],
+    }
+
+
 GH = """import json, os, sys
 here = os.path.dirname(os.path.abspath(__file__))
 spec = json.load(open(os.path.join(here, "gh.spec")))
@@ -52,6 +78,8 @@ if methods:
     kind = "methods"
 elif repo:
     kind = "cwd" if sys.argv[2].startswith("-") else "repo"
+elif sys.argv[1:3] == ["api", "graphql"] and "reviews(first:" in " ".join(sys.argv):
+    kind = "reviews"
 elif sys.argv[1] == "api":
     kind = "rules" if sys.argv[2] != "graphql" else (
         "preview" if "preview=true" in sys.argv else "queue"
@@ -59,7 +87,7 @@ elif sys.argv[1] == "api":
 else:
     kind = sys.argv[2] if sys.argv[1] == "pr" else "?"
 # The rules and repo reads have their own logs.
-logname = f"gh.{{kind}}.log" if kind in ("methods", "repo", "rules") else (
+logname = f"gh.{{kind}}.log" if kind in ("methods", "repo", "rules", "reviews") else (
     "gh.repo.log" if repo else "gh.log"
 )
 log_path = os.path.join(here, logname)
@@ -76,6 +104,9 @@ sys.stderr.write(spec["merge_refused"] if refused else spec[kind + "_err"])
 sys.exit(1 if refused else spec[kind + "_rc"])
 """
 GITLEAKS = """import json, os, sys
+if sys.argv[1:] == ["--version"]:
+    print({version!r})
+    sys.exit(0)
 here = os.path.dirname(os.path.abspath(__file__))
 spec = os.path.join(here, "gitleaks.spec")
 rc, out = json.load(open(spec)) if os.path.exists(spec) else (0, "[]")
@@ -122,6 +153,9 @@ class Tools:
             "rules_rc": 0,
             "rules_out": '[[{"type": "pull_request"}]]',
             "rules_err": "",
+            "reviews_rc": 0,
+            "reviews_out": "",
+            "reviews_err": "",
             "preview_rc": 0,
             "preview_out": "",
             "preview_err": "",
@@ -135,19 +169,36 @@ class Tools:
         (self.bin / "gh.spec").write_text(json.dumps(full | spec))
 
     def view(self, **fields: object) -> None:
+        head = fields.get("headRefOid", APPROVED_HEAD)
         data: dict[str, object] = {
             "title": "feat(cli): add the stamp subcommand",
             "body": FIXTURE.read_text().split("\n# ", 1)[1].split("\n", 1)[1],
-            "headRefOid": "abc123",
+            "headRefOid": APPROVED_HEAD,
             "baseRefName": "main",
             "state": "OPEN",
             "isDraft": False,
             "mergeable": "MERGEABLE",
             "mergeStateStatus": "CLEAN",
-            "statusCheckRollup": [],
+            "statusCheckRollup": [
+                {"name": "conclusion", "status": "COMPLETED", "conclusion": "SUCCESS"}
+            ],
+            "reviewDecision": "APPROVED",
+            "commits": [commit(head)],
             "url": f"https://github.com/{TARGET}/pull/12",
         }
-        self.gh(view_out=json.dumps(data | fields))
+        data.update(fields)
+        pull = {
+            "headRefOid": head,
+            "reviewDecision": data["reviewDecision"],
+            "reviews": {
+                "pageInfo": {"hasNextPage": False},
+                "nodes": data.pop("reviews", REVIEWS),
+            },
+        }
+        self.gh(
+            view_out=json.dumps(data),
+            reviews_out=json.dumps({"data": {"repository": {"pullRequest": pull}}}),
+        )
 
     def scanned(self) -> list[dict[str, object]]:
         log = self.bin / "gitleaks.log"
@@ -166,8 +217,9 @@ def tools(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Tools:
     bin_dir.mkdir()
     git_dir = tmp_path / "git"
     link_git(git_dir)
+    version = tool_pins.pinned_version("gitleaks")
     for name, body in (("gh", GH), ("cog", COG), ("gitleaks", GITLEAKS)):
-        write_fake(bin_dir / name, body.format())
+        write_fake(bin_dir / name, body.format(version=version))
     # One statement, not a loop: under Bazel's clean environment there is
     # nothing to remove, and a loop body that never runs is a missed branch.
     prefixes = ("CLAUDE", "CODEX", "ANTIGRAVITY", "GIT_")
@@ -175,12 +227,13 @@ def tools(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Tools:
     monkeypatch.setenv("HOME", str(tmp_path))
     monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "xdg"))
     monkeypatch.setenv("PATH", f"{bin_dir}{os.pathsep}{git_dir}")
-    # The scan runs from the repository root, which outside a git worktree is
-    # the current directory, and needs the committed and private configs.
+    # The scan runs from the repository root and needs both configs.
     repo = tmp_path / "repo"
     repo.mkdir()
     (repo / ".gitleaks.toml").write_text("")
     monkeypatch.chdir(repo)
+    subprocess.run(["git", "init", "-q", "--template="], check=True)
+    write_test_hooks(repo / ".git/hooks")
     write_private_config(tmp_path, PRIVATE_CONFIG + RULES_BEYOND_ONE)
     made = Tools(bin_dir)
     made.view()
@@ -509,15 +562,17 @@ def test_the_passing_draft_becomes_a_clean_message(tools: Tools) -> None:
     assert message == (
         "feat(cli): add the stamp subcommand (#12)\n\n"
         "Why\n"
-        "Running `tool stamp` on a tree with a read-only file stops partway. The\n"
-        "command leaves some files stamped and others not, and prints nothing\n"
-        "that says which. See the issue [1].\n\n"
+        "Running `tool stamp` on a tree with a write-protected file stops\n"
+        "partway. The command leaves some files stamped and others not, and\n"
+        "prints nothing that says which. See the issue [1].\n\n"
         "Behavior change\n"
-        "The command now checks every target before it writes one. A read-only\n"
-        "file fails the whole run with an exit code of 1 and a list of the\n"
-        "blocked paths. A run that passes the check stamps every file.\n\n"
+        "The command now checks every target before it writes one. A\n"
+        "write-protected file fails the whole run with an exit code of 1 and a\n"
+        "list of the blocked paths. A run that passes the check stamps every\n"
+        "file.\n\n"
         "Verification\n"
-        "Ran the new unit tests, then stamped a tree with one read-only file:\n\n"
+        "Ran the new unit tests, then stamped a tree with one write-protected\n"
+        "file:\n\n"
         "    $ go test ./internal/stamp/...\n"
         "    ok  \tgithub.com/tbhb-dev/tbhbdev/internal/stamp\t0.412s\n"
         "    $ tool stamp ./fixture\n"
@@ -530,9 +585,6 @@ def test_the_passing_draft_becomes_a_clean_message(tools: Tools) -> None:
 # ------------------------------------------------------------------- the CLI
 
 
-APPROVED_HEAD = "a" * 40
-
-
 def run_main(*argv: str) -> tuple[int | str | None, str]:
     try:
         return sm.main(list(argv)), ""
@@ -541,44 +593,109 @@ def run_main(*argv: str) -> tuple[int | str | None, str]:
 
 
 @pytest.mark.parametrize(
-    ("flags", "head"),
-    [((), "abc123"), (("--expect-head", APPROVED_HEAD.upper()), APPROVED_HEAD)],
+    ("fields", "reason"),
+    [
+        ({"mergeStateStatus": "UNSTABLE"}, "mergeStateStatus=UNSTABLE"),
+        ({"reviewDecision": "REVIEW_REQUIRED"}, "reviewDecision=REVIEW_REQUIRED"),
+        ({"reviewDecision": None}, "no reviewDecision"),
+        ({"headRefOid": "short"}, "no full headRefOid"),
+        ({"reviews": []}, "0 approvals at the head, need 1"),
+        (
+            {"reviews": [{"state": "COMMENTED"}]},
+            "0 approvals at the head, need 1",
+        ),
+        (
+            {"reviews": [REVIEWS[0] | {"author": None}]},
+            "review with invalid verdict, author or commit",
+        ),
+        (
+            {"reviews": [item | {"commit": {"oid": OTHER_HEAD}} for item in REVIEWS]},
+            "0 approvals at the head, need 1",
+        ),
+        (
+            {
+                "reviews": [
+                    item | {"author": {"login": REVIEWS_APP, "__typename": "User"}}
+                    for item in REVIEWS
+                ]
+            },
+            "0 approvals at the head, need 1",
+        ),
+        ({"statusCheckRollup": []}, "no checks to verify"),
+        ({"statusCheckRollup": None}, "no usable statusCheckRollup"),
+        ({"statusCheckRollup": [None]}, "invalid statusCheckRollup entry"),
+        ({"commits": []}, "no commits for the current head"),
+        ({"commits": [commit("short")]}, "commit with invalid SHA, message or authors"),
+        ({"commits": [commit(OTHER_HEAD)]}, "commits do not end at the current head"),
+        *[
+            (
+                {
+                    "statusCheckRollup": [
+                        {
+                            "name": "conclusion",
+                            "status": "COMPLETED",
+                            "conclusion": outcome,
+                        }
+                    ]
+                },
+                f"check conclusion is {outcome.lower() or 'completed'}",
+            )
+            for outcome in ("SKIPPED", "NEUTRAL", "FAILURE", "")
+        ],
+    ],
 )
-def test_dry_run_prints_the_command_and_message_and_merges_nothing(
-    tools: Tools, capsys: pytest.CaptureFixture[str], flags: tuple[str, ...], head: str
+def test_merge_refuses_unjudged_or_non_green_head(
+    tools: Tools, fields: dict[str, object], reason: str
 ) -> None:
-    tools.view(headRefOid=head)
+    tools.view(**fields)
+    code, _ = run_main("12")
+    assert reason in str(code)
+    assert len(tools.calls()) == 1
+
+
+@pytest.mark.parametrize("flags", [(), ("--expect-head", APPROVED_HEAD.upper())])
+def test_dry_run_prints_the_command_and_message_and_merges_nothing(
+    tools: Tools, capsys: pytest.CaptureFixture[str], flags: tuple[str, ...]
+) -> None:
     code, _ = run_main("12", "--dry-run", *flags)
     out = capsys.readouterr().out
     assert code == 0
     assert out.startswith(
         "gh pr merge 12 --merge --subject 'feat(cli): add the stamp subcommand (#12)' "
-        f"--body-file - --match-head-commit {head}\n\n"
+        f"--body-file - --match-head-commit {APPROVED_HEAD}\n\n"
         "feat(cli): add the stamp subcommand (#12)\n\nWhy\n"
     )
     assert [call["argv"][1] for call in tools.calls()] == ["view"]  # type: ignore[index]
 
 
-@pytest.mark.parametrize(
-    ("flags", "head"),
-    [((), "abc123"), (("--expect-head", APPROVED_HEAD), APPROVED_HEAD)],
-)
+@pytest.mark.parametrize("flags", [(), ("--expect-head", APPROVED_HEAD)])
 def test_merge_passes_subject_body_and_head(
-    tools: Tools, flags: tuple[str, ...], head: str
+    tools: Tools, flags: tuple[str, ...]
 ) -> None:
-    tools.view(headRefOid=head)
     assert run_main("12", *flags)[0] == 0
     view, merge = tools.calls()
     assert view["argv"] == ["pr", "view", "12", "--json", sm.VIEW_FIELDS]
     assert merge["argv"] == [
         "pr", "merge", "12", "--merge",
         "--subject", "feat(cli): add the stamp subcommand (#12)",
-        "--body-file", "-", "--match-head-commit", head,
+        "--body-file", "-", "--match-head-commit", APPROVED_HEAD,
     ]  # fmt: skip
     assert str(merge["stdin"]).startswith("Why\nRunning `tool stamp`")
     assert str(merge["stdin"]).endswith(
         "[1]: https://github.com/tbhb-dev/tbhbdev/issues/12\n"
     )
+
+
+def test_agent_merge_refuses_a_missing_pre_push_hook(
+    tools: Tools, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    (Path.cwd() / ".git/hooks/pre-push").unlink()
+    monkeypatch.setenv("CODEX_SESSION_ID", "test-session")
+    assert run_main("12")[0] == 1
+    assert not (tools.bin / "gh.log").exists()
+    err = capsys.readouterr().err
+    assert "pre-push" in err
+    assert "tbhbdev alpha install --hooks-only" in err
 
 
 def test_merge_refuses_a_head_that_moved_since_approval(tools: Tools) -> None:
@@ -635,7 +752,7 @@ def test_a_finding_in_the_current_body_stops_the_merge(
 def test_a_missing_gitleaks_stops_the_merge(tools: Tools) -> None:
     (tools.bin / "gitleaks").unlink()
     code, _ = run_main("12")
-    assert str(code).startswith("gitleaks not found on PATH")
+    assert str(code).startswith("gitleaks not found in .bazel_env")
     assert [call["argv"][1] for call in tools.calls()] == ["view"]  # type: ignore[index]
 
 
@@ -718,6 +835,16 @@ def test_gh_view_garbage_is_reported(tools: Tools) -> None:
     code = run_main("3")[0]
     assert isinstance(code, str)
     assert code.startswith("gh pr view returned something that is not JSON")
+
+
+def test_gh_view_requires_a_pull_request_object(tools: Tools) -> None:
+    tools.gh(view_out="[]")
+    assert run_main("12")[0] == "gh pr view returned no usable pull request"
+
+
+def test_gh_view_rejects_an_invalid_commit_author(tools: Tools) -> None:
+    tools.view(commits=[commit() | {"authors": [{}]}])
+    assert run_main("12")[0] == "gh pr view returned invalid commit authors"
 
 
 def test_missing_fields_default_to_empty_and_refuse(tools: Tools) -> None:
@@ -1091,8 +1218,8 @@ def test_the_view_reads_the_url() -> None:
 
 AGENT_EMAIL = agent_identity.AGENT_IDENT.partition("<")[2].removesuffix(">")
 AGENT_COMMITS = [
-    {"authors": [{"email": "human@example.com"}]},
-    {"authors": [{"email": "other@example.com"}, {"email": AGENT_EMAIL}]},
+    commit(OTHER_HEAD, "human@example.com"),
+    commit(APPROVED_HEAD, "other@example.com", AGENT_EMAIL),
 ]
 
 
@@ -1107,7 +1234,7 @@ AGENT_COMMITS = [
             "Generated-by must come before Assisted-by",
         ),
         (
-            [],
+            [commit()],
             f"## Why\n\nw\n\n{ASSIST}\n{GEN}\n",
             "Generated-by must come before Assisted-by",
         ),
@@ -1116,7 +1243,7 @@ AGENT_COMMITS = [
 def test_invalid_pr_trailers_refuse_before_preview_or_merge(
     tools: Tools,
     capsys: pytest.CaptureFixture[str],
-    case: tuple[list[dict[str, list[dict[str, str]]]], str, str],
+    case: tuple[list[dict[str, object]], str, str],
     dry_run: bool,
 ) -> None:
     commits, body, reason = case
@@ -1151,10 +1278,10 @@ def test_an_agent_pr_merges_with_its_body_trailers(tools: Tools, block: str) -> 
 
 @pytest.mark.parametrize(
     "commits",
-    [[], [{"authors": []}], [{"authors": [{"email": "human@example.com"}]}]],
+    [[commit()], [commit(APPROVED_HEAD, "human@example.com")]],
 )
 def test_a_non_agent_pr_needs_no_trailer_block(
-    tools: Tools, commits: list[dict[str, list[dict[str, str]]]]
+    tools: Tools, commits: list[dict[str, object]]
 ) -> None:
     tools.view(commits=commits, body="## Why\n\nw\n")
     assert sm.main(["12"]) == 0
@@ -1198,7 +1325,9 @@ def test_fetch_records_the_pr_from_one_read(tools: Tools, agent: bool) -> None:
         draft=True,
         mergeable="CONFLICTING",
         merge_state="BLOCKED",
-        failing=["lint"],
+        decision="APPROVED",
+        rollup=[{"name": "lint", "conclusion": "FAILURE"}],
+        commits=commits,
         renovate=True,
         url=f"https://github.com/{TARGET}/pull/12",
         agent=agent,
@@ -1260,7 +1389,6 @@ def test_fetch_defaults_are_exact(tools: Tools) -> None:
         draft=False,
         mergeable="",
         merge_state="",
-        failing=[],
         renovate=False,
         url=None,
         agent=False,
@@ -1274,7 +1402,7 @@ def test_dry_run_preview_is_exact(
     assert sm.main(["12", "--dry-run"]) == 0
     assert capsys.readouterr().out == (
         "gh pr merge 12 --merge --subject 'fix: x (#12)' "
-        "--body-file - --match-head-commit abc123\n\n"
+        f"--body-file - --match-head-commit {APPROVED_HEAD}\n\n"
         "fix: x (#12)\n\nWhy\nw\n"
     )
 
@@ -1436,6 +1564,86 @@ def amend(tools: Tools, **spec: object) -> None:
     path.write_text(json.dumps(json.loads(path.read_text()) | spec))
 
 
+def test_merge_requires_success_for_a_named_required_check(tools: Tools) -> None:
+    contexts = [{"context": "lint"}]
+    required = {
+        "type": "required_status_checks",
+        "parameters": {"required_status_checks": contexts},
+    }
+    amend(tools, rules_out=json.dumps([[required]]))
+    code, _ = run_main("12")
+    assert "required check lint has no success at the head" in str(code)
+    assert len(tools.calls()) == 1
+    tools.view(
+        statusCheckRollup=[
+            {"context": "conclusion", "state": "SUCCESS"},
+            {"context": "lint", "state": "SUCCESS"},
+        ]
+    )
+    amend(tools, rules_out=json.dumps([[required]]))
+    assert run_main("12")[0] == 0
+
+
+@pytest.mark.parametrize(
+    ("checks", "reason"),
+    [
+        ([], "no usable required status checks"),
+        ([{"context": ""}], "invalid required status check"),
+    ],
+)
+def test_merge_refuses_invalid_required_checks(
+    tools: Tools, checks: list[dict[str, str]], reason: str
+) -> None:
+    rule = {
+        "type": "required_status_checks",
+        "parameters": {"required_status_checks": checks},
+    }
+    amend(tools, rules_out=json.dumps([[rule]]))
+    assert reason in str(run_main("12")[0])
+    assert len(tools.calls()) == 1
+
+
+@pytest.mark.parametrize(
+    ("spec", "reason"),
+    [
+        (
+            {"reviews_rc": 1, "reviews_err": "forbidden"},
+            "gh review lookup failed: forbidden",
+        ),
+        ({"reviews_out": "<html>"}, "gh review lookup returned invalid JSON"),
+        ({"reviews_out": "{}"}, "no usable pull request review data"),
+    ],
+)
+def test_merge_refuses_when_reviews_cannot_be_read(
+    tools: Tools, spec: dict[str, object], reason: str
+) -> None:
+    amend(tools, **spec)
+    assert reason in str(run_main("12")[0])
+    assert len(tools.calls()) == 1
+
+
+@pytest.mark.parametrize(
+    ("fields", "reason"),
+    [
+        ({"headRefOid": OTHER_HEAD}, "PR head changed"),
+        ({"reviewDecision": "CHANGES_REQUESTED"}, "no longer reports reviewDecision"),
+        (
+            {"reviews": {"pageInfo": {"hasNextPage": True}, "nodes": REVIEWS}},
+            "missing or incomplete review list",
+        ),
+    ],
+)
+def test_merge_refuses_when_review_evidence_changes(
+    tools: Tools, fields: dict[str, object], reason: str
+) -> None:
+    path = tools.bin / "gh.spec"
+    review = json.loads(json.loads(path.read_text())["reviews_out"])
+    review["data"]["repository"]["pullRequest"].update(fields)
+    amend(tools, reviews_out=json.dumps(review))
+    assert reason in str(run_main("12")[0])
+    assert len(tools.calls()) == 1
+
+
 @pytest.mark.parametrize(
     ("merge", "squash", "flag"),
     [(True, True, "--merge"), (True, False, "--merge"), (False, True, "--squash")],
@@ -1590,7 +1798,7 @@ def test_squash_queue_enqueues_with_the_matched_head_and_reads_once(
             "--body-file",
             "-",
             "--match-head-commit",
-            "abc123",
+            APPROVED_HEAD,
         ],
         "stdin": "A plain body.\n",
     }
@@ -1603,7 +1811,8 @@ def test_queue_dry_run_previews_without_enqueuing(
     assert run_main("12", "--dry-run")[0] == 0
     assert capsys.readouterr().out == (
         "gh pr merge 12 --squash --subject 'fix: tidy (#12)' "
-        "--body-file - --match-head-commit abc123\n\nfix: tidy (#12)\n\nA plain body.\n"
+        f"--body-file - --match-head-commit {APPROVED_HEAD}\n\n"
+        "fix: tidy (#12)\n\nA plain body.\n"
     )
     assert len(queued_tools.calls()) == 2
 
@@ -1630,7 +1839,8 @@ def test_merge_queue_dry_run_prints_the_cleaned_message(
     # A MERGE queue keeps the subject and body passed to gh pr merge.
     assert capsys.readouterr().out == (
         "gh pr merge 12 --merge --subject 'fix: tidy (#12)' "
-        "--body-file - --match-head-commit abc123\n\nfix: tidy (#12)\n\nA plain body.\n"
+        f"--body-file - --match-head-commit {APPROVED_HEAD}\n\n"
+        "fix: tidy (#12)\n\nA plain body.\n"
     )
     _, before = tools.calls()
     assert cast("list[str]", before["argv"])[-1] == "preview=false"

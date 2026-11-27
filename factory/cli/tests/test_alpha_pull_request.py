@@ -27,14 +27,16 @@ from fake_tool import (
     pythonpath,
     write_fake,
     write_private_config,
+    write_test_hooks,
 )
 from hypothesis import given
 from hypothesis import strategies as st
 from jsonschema import Draft202012Validator
 
 from tbhbdev.alpha import identity as agent_identity
-from tbhbdev.alpha import opened, size_gate
+from tbhbdev.alpha import opened, size_gate, tool_pins
 from tbhbdev.alpha import pull_request as pr
+from tbhbdev.alpha import pull_request_frontmatter as frontmatter
 from tbhbdev.alpha.secret_scan import REPO_RULES, without_name_rules
 
 # Tests can run from the project or a copy made by mutmut.
@@ -66,6 +68,9 @@ here = os.path.dirname(os.path.abspath(__file__))
 name = os.path.basename(__file__).removesuffix(".py")
 spec = json.load(open(os.path.join(here, name + ".spec")))
 called = " ".join(sys.argv[1:])
+if called == "--version" and spec["version"] is not None:
+    print(f"{{name}} version {{spec['version']}}")
+    sys.exit(0)
 cases = spec.get("cases", {{}})
 if called == "pr view --json number,state,url":
     missing = {{"rc": 1, "stdout": "", "stderr": "No Pull Requests Found"}}
@@ -99,6 +104,7 @@ sys.stderr.write(spec["stderr"])
 sys.exit(spec["rc"])
 """
 
+TOOL_VERSIONS = {name: tool_pins.pinned_version(name) for name in tool_pins.PINNED}
 
 TARGET = "tbhb-dev/public-target"
 PR_COMMITS_CALL = ["api", "--hostname", "github.com", "--paginate", "--slurp"]
@@ -147,7 +153,13 @@ class World:
     ) -> None:
         """A fake tool; ``cases`` answers the calls whose words start with a key."""
         write_fake(self.bin / name, FAKE.format())
-        spec = {"rc": rc, "stdout": stdout, "stderr": stderr, "cases": cases or {}}
+        spec = {
+            "rc": rc,
+            "stdout": stdout,
+            "stderr": stderr,
+            "cases": cases or {},
+            "version": TOOL_VERSIONS.get(name),
+        }
         (self.bin / f"{name}.spec").write_text(json.dumps(spec))
 
     def calls(self, name: str) -> list[dict[str, object]]:
@@ -169,6 +181,8 @@ class World:
 # The world fixture replaces these checks; tests can put them back.
 REAL_SIZE_COUNTS = size_gate.size_counts
 REAL_TARGET_IS_ORIGIN = pr.target_is_origin
+REAL_GIT = pr.git
+REAL_SCC = shutil.which("scc")
 
 
 @pytest.fixture(autouse=True)
@@ -245,14 +259,18 @@ def world(
     link_git(git_dir)
     monkeypatch.setenv("PATH", f"{made.bin}{os.pathsep}{git_dir}")
     shutil.copytree(pr_git_baseline, made.root / ".git")
+    write_test_hooks(made.root / ".git/hooks")
     monkeypatch.chdir(made.root)
-    real_git = pr.git
 
     def offline_git(*argv: str, cwd: Path | None = None) -> tuple[int, str]:
         # Preserve the seeded tracking refs without contacting the fake origin.
         if argv[:1] == ("fetch",):
             return 0, ""
-        return real_git(*argv, cwd=cwd)
+        if argv[:1] == ("ls-remote",) and REAL_GIT(
+            "remote", "get-url", "origin", cwd=cwd
+        ) == (0, ORIGIN):
+            return 1, ""
+        return REAL_GIT(*argv, cwd=cwd)
 
     monkeypatch.setattr(pr, "git", offline_git)
     return made
@@ -274,6 +292,7 @@ def draft_world(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> World:
         ("symbolic-ref", "--quiet", "refs/remotes/origin/HEAD"): (0, base),
         ("fetch", *fetch_options, "origin", f"+refs/heads/main:{base}"): (0, ""),
         ("rev-parse", "--verify", "--quiet", f"{base}^{{commit}}"): (0, ""),
+        ("branch", "--show-current"): (0, "agent/topic"),
     }
 
     def answer_git(*argv: str, **_kwargs: Path | None) -> tuple[int, str]:
@@ -343,7 +362,7 @@ def test_schema_is_valid_and_closed() -> None:
     schema = pr.load_schema()
     Draft202012Validator.check_schema(schema)
     assert schema["additionalProperties"] is False
-    assert pr.schema_default(schema, "draft") is False
+    assert frontmatter.schema_default(schema, "draft") is False
     properties = cast("dict[str, dict[str, str]]", schema["properties"])
     assert all(prop.get("description") for prop in properties.values())
 
@@ -715,49 +734,10 @@ def test_human_trailers_are_rejected_for_everyone(
 # ------------------------------------------------------------- frontmatter
 
 
-def test_frontmatter_errors_point_at_the_key() -> None:
-    text = "---\nbase: main\ndraft: maybe\nlabels: [a]\n---\n" + BASE
-    found = structure(text)
-    assert [line for line, _ in found] == [3]
-    assert found[0][1].startswith("frontmatter $.draft: ")
-
-
-def test_frontmatter_unknown_key_is_line_one() -> None:
-    found = structure("---\ndraft: true\ntitle: x\n---\n" + BASE)
-    assert [line for line, _ in found] == [1]
-    assert "title" in found[0][1]
-
-
-def test_frontmatter_errors_are_reported_per_key() -> None:
-    found = structure("---\nlabels: [a, a]\ndraft: 1\n---\n" + BASE)
-    assert sorted((line, text.split(":")[0]) for line, text in found) == [
-        (2, "frontmatter $.labels"),
-        (3, "frontmatter $.draft"),
+def test_check_reports_frontmatter_syntax_errors() -> None:
+    assert pr.check_text("---\nbase: main\n").problems == [
+        (1, "frontmatter: unterminated frontmatter"),
     ]
-
-
-def test_frontmatter_invalid_yaml() -> None:
-    found = structure("---\nlabels: [a\n---\n" + BASE)
-    assert [line for line, _ in found] == [1]
-    assert found[0][1].startswith("frontmatter: invalid YAML")
-    assert (
-        structure("---\nbase: main\n")[0][1] == "frontmatter: unterminated frontmatter"
-    )
-
-
-def test_frontmatter_refuses_a_repeated_key() -> None:
-    found = structure("---\nbase: main\nbase: dev\n---\n" + BASE)
-    assert [line for line, _ in found] == [1]
-    assert "duplicate key 'base'" in found[0][1]
-
-
-def test_frontmatter_must_be_a_mapping() -> None:
-    found = structure("---\n- a\n---\n" + BASE)
-    assert [line for line, _ in found] == [1]
-
-
-def test_empty_frontmatter_block_is_fine() -> None:
-    assert structure("---\n---\n" + BASE) == []
 
 
 def test_line_numbers_follow_the_frontmatter() -> None:
@@ -766,6 +746,26 @@ def test_line_numbers_follow_the_frontmatter() -> None:
 
 
 # -------------------------------------------------------------- tool lookup
+
+
+def test_cli_versions_match_the_rules_pins() -> None:
+    manifest = Path(__file__).with_name("rules-tool-pins.json")
+    if not manifest.exists():
+        manifest = WORKSPACE / "lib/rules/pins/tools.json"
+    rules = cast("dict[str, dict[str, object]]", json.loads(manifest.read_text()))
+    assert {name: rules[name]["version"] for name in TOOL_VERSIONS} == TOOL_VERSIONS
+
+
+@pytest.mark.parametrize("pin", [None, '{"vale": ""}', '{"vale": 123}', "{}", "{"])
+def test_tool_version_pin_must_be_readable(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, pin: str | None
+) -> None:
+    path = tmp_path / "pins.json"
+    monkeypatch.setattr(tool_pins, "VERSIONS", path)
+    if pin is not None:
+        path.write_text(pin)
+    with pytest.raises(SystemExit, match=r"vale version pin.*pins.json"):
+        tool_pins.pinned_version("vale")
 
 
 def worktree_tool(
@@ -779,13 +779,53 @@ def worktree_tool(
     return shim
 
 
-def test_find_tool_prefers_path(draft_world: World) -> None:
-    shim = worktree_tool(draft_world, "vale")
-    draft_world.fake("mise", stdout="/mise/vale\n")
-    assert pr.find_tool("vale") == str(draft_world.bin / "vale")
-    (draft_world.bin / "vale").unlink()
+def test_find_tool_prefers_the_pinned_shim_to_path(draft_world: World) -> None:
+    shim = worktree_tool(draft_world, "vale", f"print({TOOL_VERSIONS['vale']!r})")
+    write_fake(draft_world.bin / "vale", "print('0.0.0')")
     assert pr.find_tool("vale") == str(shim)
-    assert draft_world.calls("mise") == []
+
+
+def test_find_tool_prefers_the_raw_gitleaks_shim(draft_world: World) -> None:
+    worktree_tool(draft_world, "gitleaks")
+    shim = worktree_tool(
+        draft_world, "gitleaks-raw", f"print({TOOL_VERSIONS['gitleaks']!r})"
+    )
+    assert pr.find_tool("gitleaks", unwrapped=True) == str(shim)
+
+
+def test_find_tool_refuses_the_wrong_version(draft_world: World) -> None:
+    version = TOOL_VERSIONS["vale"]
+    write_fake(draft_world.bin / "vale", f"print('vale version {version}0')")
+    with pytest.raises(
+        SystemExit, match=rf"vale.*{re.escape(version)}0.*{re.escape(version)}"
+    ):
+        pr.find_tool("vale")
+
+
+def test_find_tool_refuses_a_wrong_shim_even_with_the_right_path_version(
+    draft_world: World,
+) -> None:
+    shim = worktree_tool(draft_world, "scc", "print('0.0.0')")
+    with pytest.raises(SystemExit, match=rf"{re.escape(str(shim))} reports 0\.0\.0"):
+        pr.find_tool("scc")
+
+
+@pytest.mark.parametrize(
+    "body", ["pass", "print('missing version info')", "print('4.1.0'); sys.exit(2)"]
+)
+def test_find_tool_requires_a_successful_version_report(
+    draft_world: World, body: str
+) -> None:
+    worktree_tool(draft_world, "scc", f"import sys\n{body}")
+    with pytest.raises(SystemExit, match=r"scc.*no version"):
+        pr.find_tool("scc")
+
+
+def test_find_tool_refuses_an_unusable_mise_tool(draft_world: World) -> None:
+    (draft_world.bin / "vale").unlink()
+    draft_world.fake("mise", stdout="/missing/vale\n")
+    with pytest.raises(SystemExit, match=r"cannot check vale version at /missing/vale"):
+        pr.find_tool("vale")
 
 
 def test_find_tool_prefers_the_worktree_shim_to_mise(
@@ -800,18 +840,20 @@ def test_find_tool_prefers_the_worktree_shim_to_mise(
 
 
 def test_find_tool_can_skip_the_bazel_shims(
-    draft_world: World, monkeypatch: pytest.MonkeyPatch
+    draft_world: World, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    shim = worktree_tool(draft_world, "vale")
+    shim = worktree_tool(draft_world, "vale", f"print({TOOL_VERSIONS['vale']!r})")
     path = os.environ["PATH"]
     monkeypatch.setenv("PATH", f"{shim.parent}{os.pathsep}{path}")
     assert pr.find_tool("vale") == str(shim)
     assert pr.find_tool("vale", unwrapped=True) == str(draft_world.bin / "vale")
     (draft_world.bin / "vale").unlink()
-    draft_world.fake("mise", stdout="/mise/vale\n")
+    installed = tmp_path / "mise-vale"
+    write_fake(installed, f"print('vale version ' + {TOOL_VERSIONS['vale']!r})")
+    draft_world.fake("mise", stdout=f"{installed}\n")
     monkeypatch.setenv("PATH", path)
     assert pr.find_tool("vale") == str(shim)
-    assert pr.find_tool("vale", unwrapped=True) == "/mise/vale"
+    assert pr.find_tool("vale", unwrapped=True) == str(installed)
 
 
 def test_find_tool_falls_back_to_mise(draft_world: World, tmp_path: Path) -> None:
@@ -828,9 +870,7 @@ def test_find_tool_falls_back_to_mise(draft_world: World, tmp_path: Path) -> Non
 
 
 def test_find_tool_missing(draft_world: World) -> None:
-    with pytest.raises(
-        SystemExit, match=r"absent_tool not found on PATH or through `mise which`"
-    ):
+    with pytest.raises(SystemExit, match=r"absent_tool not found in \.bazel_env"):
         pr.find_tool("absent_tool")
     draft_world.fake("mise", rc=1, stderr="not installed")
     with pytest.raises(SystemExit, match="absent_tool not found"):
@@ -843,13 +883,12 @@ def test_find_tool_missing(draft_world: World) -> None:
 def test_find_tools_returns_each_path(world: World) -> None:
     shim = worktree_tool(world, "cog")
     (world.bin / "cog").unlink()
-    worktree_tool(world, "gitleaks")
+    leak = worktree_tool(world, "gitleaks-raw", f"print({TOOL_VERSIONS['gitleaks']!r})")
     (world.bin / "gitleaks").unlink()
-    world.fake("mise", stdout="/mise/gitleaks\n")
     assert pr.find_tools(["cog", "vale", "gitleaks"], unwrapped={"gitleaks"}) == {
         "cog": str(shim),
         "vale": str(world.bin / "vale"),
-        "gitleaks": "/mise/gitleaks",
+        "gitleaks": str(leak),
     }
 
 
@@ -1020,7 +1059,7 @@ def test_cspell_and_rumdl_lines_ignore_other_output() -> None:
     ("rc", "stdout", "stderr"),
     [
         (2, "", "Configuration Error: bad"),
-        (1, "not json", ""),
+        (1, "{}", ""),
         (3, "", "killed"),
     ],
 )
@@ -1038,6 +1077,14 @@ def test_lint_failure_message_prefers_stderr(draft_world: World) -> None:
     assert lint_checked(draft_world, BASE) == [(1, "cspell failed (exit 2): err text")]
 
 
+@pytest.mark.parametrize("rc", [0, 1])
+def test_lint_refuses_invalid_vale_json_on_success(draft_world: World, rc: int) -> None:
+    draft_world.fake("vale", rc=rc, stdout="{")
+    assert lint_checked(draft_world, BASE) == [
+        (1, f"vale failed (exit {rc}): invalid JSON")
+    ]
+
+
 def test_lint_failure_with_findings_reports_the_failure_only(
     draft_world: World,
 ) -> None:
@@ -1045,8 +1092,15 @@ def test_lint_failure_with_findings_reports_the_failure_only(
     assert lint_checked(draft_world, BASE) == [(1, "rumdl failed (exit 2): boom")]
 
 
-def test_vale_parse_handles_bad_json() -> None:
-    assert pr.parse_vale("{") == []
+@pytest.mark.parametrize(
+    "output", ["{", "[]", '{"draft.md": {}}', '{"draft.md": [{}]}']
+)
+def test_vale_parse_raises_on_bad_json(output: str) -> None:
+    with pytest.raises(ValueError, match=r"Expecting|expected Vale alerts"):
+        pr.parse_vale(output)
+
+
+def test_vale_parse_accepts_an_empty_result() -> None:
     assert pr.parse_vale("{}") == []
 
 
@@ -1700,6 +1754,23 @@ def test_create_defaults(world: World) -> None:
     ]
 
 
+@pytest.mark.parametrize("context", ["session", "account"])
+def test_agent_create_refuses_when_hooks_are_disabled(
+    world: World,
+    agent: dict[str, str],
+    capsys: pytest.CaptureFixture[str],
+    context: str,
+) -> None:
+    write_draft(world)
+    world.git("config", "core.hooksPath", "/dev/null")
+    env = agent if context == "session" else {}
+    if context == "account":
+        world.git("config", "user.email", agent_identity.AGENT_EMAIL)
+    assert run_main("create", env=env) == 1
+    assert world.calls("gh") == []
+    assert "/dev/null/" in capsys.readouterr().err
+
+
 @pytest.mark.parametrize("ending", ["", "\n", "\n\n"])
 def test_create_passes_gh_errors_through(
     world: World, capsys: pytest.CaptureFixture[str], ending: str
@@ -1722,6 +1793,49 @@ def remote_default(world: World, tmp_path: Path, branch: str) -> None:
     world.git("remote", "set-url", "origin", str(remote))
 
 
+@pytest.mark.parametrize(
+    ("base", "merge_parent"), [("parent", False), ("parent", True), ("main", False)]
+)
+def test_size_counts_only_the_drafts_own_lines(
+    world: World,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    base: str,
+    merge_parent: bool,
+) -> None:
+    assert REAL_SCC is not None
+    (world.bin / "scc").unlink()
+    path = (os.environ["PATH"], str(Path(REAL_SCC).absolute().parent), os.defpath)
+    monkeypatch.setenv("PATH", os.pathsep.join(path))
+    monkeypatch.setattr(pr, "git", REAL_GIT)
+    monkeypatch.setattr(size_gate, "size_counts", REAL_SIZE_COUNTS)
+
+    world.git("switch", "-qc", "parent")
+    (world.root / "parent.py").write_text("parent = 1\n")
+    world.git("add", "parent.py")
+    world.commit("parent work")
+    world.git("switch", "-q", "main")
+    for name in ("first", "second"):
+        (world.root / f"{name}.py").write_text(f"{name} = 1\n")
+        world.git("add", f"{name}.py")
+        world.commit(f"{name} main change")
+    remote_default(world, world.root.parent, "main")
+    world.git("push", "-q", world.git("remote", "get-url", "origin"), "parent")
+
+    world.git("switch", "-qc", "child")
+    if merge_parent:
+        world.git("merge", "-q", "--no-edit", "parent")
+    (world.root / "child.py").write_text("child = 1\n")
+    world.git("add", "child.py")
+    world.commit("child work")
+    write_draft(world, f"---\nbase: {base}\n---\n" + BASE)
+    assert run_main("check") == 0
+    assert capsys.readouterr() == (
+        "1 code lines, limit 400\n1 raw lines, limit 1500\nOK: the draft conforms\n",
+        "",
+    )
+
+
 def test_a_draft_without_a_base_takes_the_default_branch(
     world: World, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -1736,6 +1850,8 @@ def test_a_draft_without_a_base_takes_the_default_branch(
     counted.assert_called_once_with(
         "refs/remotes/origin/trunk",
         "HEAD",
+        default_ref=None,
+        head_branch=world.git("branch", "--show-current"),
         scc=str(world.bin / "scc"),
         git=str(world.root.parent / "git_dir" / "git"),
     )
@@ -1756,7 +1872,7 @@ def test_the_default_branch_ignores_a_tag_of_the_same_name(
 
 def test_an_older_reader_still_loads_the_schema_default() -> None:
     """Installs that predate the default-branch change read `base`'s default."""
-    assert pr.schema_default(pr.load_schema(), "base") == "main"
+    assert frontmatter.schema_default(pr.load_schema(), "base") == "main"
 
 
 def test_the_remote_default_beats_a_stale_origin_head(
@@ -1783,6 +1899,27 @@ def test_gh_repo_refuses_a_guessed_default_branch(
     monkeypatch.setenv("GH_REPO", "other/repo")
     with pytest.raises(SystemExit, match="default branch of GH_REPO"):
         pr.default_base()
+
+
+def test_check_counts_an_explicit_base_with_gh_repo(
+    world: World, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    remote_default(world, tmp_path, "trunk")
+    monkeypatch.setenv("GH_REPO", "tbhb-dev/example")
+    monkeypatch.setattr(pr, "git", REAL_GIT)
+    counter = Mock(return_value=size_gate.SizeCounts(401, 400, 401, 1500, "code"))
+    monkeypatch.setattr(size_gate, "size_counts", counter)
+    write_draft(world, "---\nbase: trunk\n---\n" + BASE)
+
+    assert run_main("check") == 1
+    counter.assert_called_once_with(
+        "refs/remotes/origin/trunk",
+        "HEAD",
+        default_ref=None,
+        head_branch=world.git("branch", "--show-current"),
+        scc=str(world.bin / "scc"),
+        git=str(world.root.parent / "git_dir" / "git"),
+    )
 
 
 def unset_origin_head(world: World, url: str) -> None:
@@ -1876,21 +2013,12 @@ def test_pr_reports_all_missing_tools_before_reading_the_draft(
 
 
 @pytest.mark.parametrize("verb", ["check", "create"])
-def test_pr_runs_without_scc_and_warns_about_the_size_count(
-    world: World,
-    monkeypatch: pytest.MonkeyPatch,
-    capsys: pytest.CaptureFixture[str],
-    verb: str,
-) -> None:
-    # The world fixture stubs the counter; this test needs the real one.
-    monkeypatch.setattr(size_gate, "size_counts", REAL_SIZE_COUNTS)
+def test_pr_refuses_to_run_without_scc(world: World, verb: str) -> None:
     (world.bin / "scc").unlink()
     write_draft(world)
     args = ("create", "--dry-run") if verb == "create" else ("check",)
-    assert run_main(*args) == 0
-    captured = capsys.readouterr()
-    assert "missing tools" not in captured.err
-    assert "size count unavailable: " in captured.err
+    with pytest.raises(SystemExit, match="missing tools: scc"):
+        run_main(*args)
 
 
 def test_create_reuses_the_tools_resolved_at_startup(world: World) -> None:
@@ -1898,7 +2026,8 @@ def test_create_reuses_the_tools_resolved_at_startup(world: World) -> None:
     installed_gh = gh.with_name("installed-gh")
     gh.rename(installed_gh)
     git = world.root.parent / "git_dir" / "git"
-    installed_git = git.with_name("installed-git")
+    installed_git = world.root.parent / "installed" / git.name
+    installed_git.parent.mkdir()
     git.rename(installed_git)
     world.fake(
         "mise",
@@ -2089,7 +2218,7 @@ def test_a_missing_gitleaks_stops_before_gh(
     (world.bin / "gitleaks").unlink()
     write_draft(world)
     with pytest.raises(
-        SystemExit, match=r"missing tools: gitleaks|gitleaks not found on PATH"
+        SystemExit, match=r"missing tools: gitleaks|gitleaks not found in \.bazel_env"
     ):
         run_main(*argv)
     assert [call["argv"][:2] for call in world.calls("gh")] in (  # type: ignore[index]
@@ -2486,7 +2615,7 @@ def test_runs_as_tbhbdev_alpha_pr(world: World) -> None:
         env=env,
     )
     assert (done.returncode, done.stderr) == (
-        0,
+        1,
         "size count unavailable: missing counter\n",
     )
 
@@ -2537,14 +2666,6 @@ def test_a_non_title_first_line_is_reported_where_it_is() -> None:
         2,
         "the first line after the frontmatter must be the H1 title",
     ) in structure("\nplain\n")
-
-
-def test_quoted_frontmatter_key_points_at_line_one() -> None:
-    # The key is not found by a plain prefix, so the error falls back to line 1,
-    # even though the same key appears as plain text further down.
-    text = '---\n"base": 3\n---\n' + BASE + "\nbase: x\n"
-    found = [line for line, why in structure(text) if why.startswith("frontmatter")]
-    assert found == [1]
 
 
 def test_body_of_keeps_spaces_and_edge_letters() -> None:
@@ -2969,37 +3090,6 @@ def test_hook_ignores_trailers_and_the_branch(
     assert run_hook(monkeypatch, harness, payload) == 0
 
 
-# ------------------------------------------------------------ frontmatter parse
-
-
-def test_parse_frontmatter_splits_block_and_body() -> None:
-    assert pr.parse_frontmatter("---\nbase: dev\n---\nbody\n") == (
-        {"base": "dev"},
-        "body\n",
-    )
-    assert pr.parse_frontmatter("---\nbase: dev\n---  \nbody") == (
-        {"base": "dev"},
-        "body",
-    )
-    assert pr.parse_frontmatter("---\n---\nbody") == (None, "body")
-    assert pr.parse_frontmatter("plain\n") == (None, "plain\n")
-
-
-def test_parse_frontmatter_keeps_dates_as_text() -> None:
-    data, _ = pr.parse_frontmatter("---\nmilestone: 2024-01-02\n---\n")
-    assert data == {"milestone": "2024-01-02"}
-
-
-def test_parse_frontmatter_errors() -> None:
-    with pytest.raises(pr.FrontmatterError, match=r"^unterminated frontmatter$"):
-        pr.parse_frontmatter("---\nbase: x\n")
-    with pytest.raises(pr.FrontmatterError) as info:
-        pr.parse_frontmatter("---\nbase: [\n---\n")
-    message = str(info.value)
-    assert message.startswith("invalid YAML: ")
-    assert "\n" not in message
-
-
 def test_cog_runs_in_the_worktree_top_from_a_subdirectory(
     world: World, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -3121,7 +3211,7 @@ def test_a_bare_reference_fails_the_check_in_the_title_and_body() -> None:
 
 
 def test_the_passing_draft_has_no_bare_references() -> None:
-    _, body = pr.parse_frontmatter(FIXTURE.read_text())
+    _, body = frontmatter.parse_frontmatter(FIXTURE.read_text())
     scanned, _ = pr.scan(body.splitlines(), 1)
     assert pr.ref_problems(scanned) == []
 
@@ -3132,7 +3222,7 @@ def test_a_wrapped_draft_fails_the_check() -> None:
 
 
 def test_the_passing_draft_has_no_wrapped_paragraphs() -> None:
-    _, body = pr.parse_frontmatter(FIXTURE.read_text())
+    _, body = frontmatter.parse_frontmatter(FIXTURE.read_text())
     scanned, _ = pr.scan(body.splitlines(), 1)
     assert pr.wrap_problems(scanned) == []
 

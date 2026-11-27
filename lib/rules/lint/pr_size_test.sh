@@ -24,21 +24,27 @@ commit() {
 }
 lines() { awk -v n="$1" -v text="$2" 'BEGIN {for (i=0; i<n; i++) print text}'; }
 check() {
-  local expected=$1 code=$2 raw=$3 status=0 output
+  local expected=$1 code=$2 raw=$3 imported=${4:-0} status=0 output
+  local head_branch=${5:-} policy_base=${6:-}
   local repo=$PWD
-  output=$(cd "$runfiles" && BUILD_WORKSPACE_DIRECTORY="$repo" "$checker" "$base" HEAD 2>&1) || status=$?
+  output=$(cd "$runfiles" && PR_SIZE_HEAD_BRANCH="$head_branch" PR_SIZE_POLICY_BASE="$policy_base" \
+    BUILD_WORKSPACE_DIRECTORY="$repo" "$checker" "$base" HEAD 2>&1) || status=$?
   echo "$output"
-  [[ $status == "$expected" && $output == *"code=$code/400 raw=$raw/1500"* ]] || exit 1
-  if ((expected)); then [[ $output == *'split into stacked PRs'* ]]; fi
-  if ((code > 400)); then [[ $output == *'400 added Code lines'* ]]; fi
-  if ((raw > 1500)); then [[ $output == *'1500 raw added lines'* ]]; fi
+  [[ $status == "$expected" && $output == *"code=$code/400 raw=$raw/1500 imported=$imported"* ]] || exit 1
+  if ((expected)); then
+    [[ $output == *'split into stacked PRs'* && $output != *'is exempt'* ]]
+    if ((code > 400)); then [[ $output == *'400 added Code lines'* ]]; fi
+    if ((raw > 1500)); then [[ $output == *'1500 raw added lines'* ]]; fi
+  elif [[ -n $head_branch ]]; then
+    [[ $output == *"branch $head_branch is exempt from the size limit by .github/pr-size-exempt-branches.txt"* ]]
+  fi
 }
 count_json() {
   local code=$1 raw=$2 failed=$3 output
   local repo=$PWD
   output=$(cd "$runfiles" && BUILD_WORKSPACE_DIRECTORY="$repo" "$counter" "$base" HEAD)
   echo "$output"
-  [[ $output == "{\"code_lines\": $code, \"code_limit\": 400, \"raw_lines\": $raw, \"raw_limit\": 1500, \"failed\": $failed}" ]]
+  [[ $output == "{\"code_lines\": $code, \"code_limit\": 400, \"raw_lines\": $raw, \"raw_limit\": 1500, \"imported_lines\": null, \"failed\": $failed, \"branch_exempt\": false}" ]]
 }
 new_repo code_limit
 lines 400 'x = 1' >source.py
@@ -49,6 +55,30 @@ lines 401 'x = 1' >source.py
 commit
 check 1 401 401
 count_json 401 401 '"code"'
+new_repo branch_policy
+mkdir .github
+printf '# Cleanup exemption\n\nagent/cleanup-*' >.github/pr-size-exempt-branches.txt
+commit
+policy_base=$("$git" rev-parse HEAD)
+lines 401 'x = 1' >source.py
+printf '\nagent/self-exempt\n' >>.github/pr-size-exempt-branches.txt
+commit
+check 0 401 401 0 agent/cleanup-module "$policy_base"
+check 1 401 401 0 agent/other "$policy_base"
+check 1 401 401 0 agent/self-exempt "$policy_base"
+new_repo frozen_source
+lines 600 'x = 1' >source.py
+commit
+frozen=$("$git" rev-parse HEAD)
+clone=$PWD
+new_repo import
+mkdir project
+cp "$clone/source.py" project/
+printf 'repo = "example/source"\ncommit = "%s"\ndest = "project"\n[copy]\n"source.py" = "project/source.py"\n' \
+  "$frozen" >project/IMPORT-MAP.toml
+commit
+GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0="url.file://$clone.insteadOf" \
+  GIT_CONFIG_VALUE_0=https://github.com/example/source.git check 0 0 5 600
 new_repo raw_limit
 lines 1500 'key: value' >config.yaml
 commit

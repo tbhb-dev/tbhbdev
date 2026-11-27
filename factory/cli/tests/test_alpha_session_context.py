@@ -10,7 +10,8 @@ lazy from pathlib import Path
 
 import pytest
 
-from tbhbdev.alpha import agent, close, pull_request, session_context, squash_merge
+from tbhbdev.alpha import close, pull_request, session_context, squash_merge
+from tbhbdev.alpha.agent import arguments as agent_arguments
 
 NOW = datetime(2026, 1, 2, 3, 4, tzinfo=UTC)
 
@@ -164,7 +165,7 @@ def test_the_reminder_lists_the_top_commands_with_real_argument_shapes() -> None
     pull_request.build_parser("x").parse_args(["ready", "7"])
     close.build_parser("x").parse_args(["pr", "close", "7", "--reason", "why"])
     squash_merge.build_parser("x").parse_args(["7"])
-    agent.parser("x").parse_args(
+    agent_arguments.parser("x").parse_args(
         [
             "exec",
             "--host",

@@ -1,0 +1,15 @@
+---
+- name: prepare-connect | Install the isolated Tailscale command
+  ansible.builtin.copy:
+    dest: /usr/local/bin/tailscale
+    content: |
+      #!/bin/sh
+      [ "$*" = "status --json" ] || exit 1
+      cat /var/tmp/tailscale-status.json
+    mode: '0755'
+
+- name: prepare-connect | Supply a running Tailscale fixture with a placeholder suffix
+  ansible.builtin.copy:
+    dest: /var/tmp/tailscale-status.json
+    content: '{"BackendState": "Running", "MagicDNSSuffix": "example.example.invalid"}'
+    mode: '0644'

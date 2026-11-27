@@ -1,0 +1,82 @@
+---
+# id works on Linux and macOS alike, where getent is Linux only.
+- name: user | Look up the account
+  ansible.builtin.command:
+    argv: [id, -u, "{{ ssh_host_keys_user }}"]
+  register: ssh_host_keys_id
+  changed_when: false
+  failed_when: false
+  check_mode: false
+
+- name: user | Say when the account is missing
+  ansible.builtin.debug:
+    msg: "{{ ssh_host_keys_user }} does not exist on {{ inventory_hostname }}, so it gets no key."
+  when: ssh_host_keys_id.rc != 0
+
+- name: user | Add a key as the account
+  become: true
+  become_user: "{{ ssh_host_keys_user }}"
+  when: ssh_host_keys_id.rc == 0
+  block:
+    - name: user | Create the ssh directory
+      ansible.builtin.file:
+        path: "{{ ssh_host_keys_directory }}"
+        state: directory
+        mode: "0700"
+
+    # stat reads metadata only. Nothing here opens the private key.
+    - name: user | Inspect the key files
+      ansible.builtin.stat:
+        path: "{{ item }}"
+      loop:
+        - "{{ ssh_host_keys_private_key }}"
+        - "{{ ssh_host_keys_public_key }}"
+      register: ssh_host_keys_stats
+
+    - name: user | Record which files exist
+      ansible.builtin.set_fact:
+        ssh_host_keys_private_exists: "{{ ssh_host_keys_stats.results[0].stat.exists }}"
+        ssh_host_keys_public_exists: "{{ ssh_host_keys_stats.results[1].stat.exists }}"
+
+    # ssh-keygen would replace a lone public half, so it runs only when neither half exists.
+    # creates also keeps a rerun from regenerating the key. In check mode it reports changed
+    # and doesn't run.
+    - name: user | Create the ed25519 key where none exists
+      ansible.builtin.command:
+        argv:
+          - ssh-keygen
+          - -q
+          - -t
+          - ed25519
+          - -N
+          - ""
+          - -C
+          - "{{ ssh_host_keys_user }}@{{ inventory_hostname }}"
+          - -f
+          - "{{ ssh_host_keys_private_key }}"
+        creates: "{{ ssh_host_keys_private_key }}"
+      when: not (ssh_host_keys_private_exists or ssh_host_keys_public_exists)
+      no_log: true
+
+    # Read only the .pub file. In check mode a new key doesn't exist yet, so the read is
+    # skipped and the report says so.
+    - name: user | Look for the public key again
+      ansible.builtin.stat:
+        path: "{{ ssh_host_keys_public_key }}"
+      register: ssh_host_keys_public_stat
+
+    - name: user | Read the public key
+      ansible.builtin.slurp:
+        src: "{{ ssh_host_keys_public_key }}"
+      register: ssh_host_keys_public
+      when: ssh_host_keys_public_stat.stat.exists
+
+    - name: user | Show the public key
+      ansible.builtin.debug:
+        msg: >-
+          {{ ssh_host_keys_user }}@{{ inventory_hostname }}:
+          {{ ssh_host_keys_public.content | b64decode | trim
+          if ssh_host_keys_public_stat.stat.exists else 'no public key yet' }}
+
+    - name: user | Configure ssh to the other agent hosts
+      ansible.builtin.include_tasks: ssh_config.yml

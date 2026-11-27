@@ -1,0 +1,47 @@
+---
+- name: refuse | Prepare the checkout refusal
+  ansible.builtin.command:
+    argv: "{{ item }}"
+    chdir: "{{ agent_workspace_tools }}"
+  loop: "{{ agent_workspace_refusal.setup }}"
+  changed_when: true
+
+- name: refuse | Inspect the installed command before refusal
+  ansible.builtin.stat:
+    path: /home/example-user/.local/bin/tbhbdev
+  register: agent_workspace_fixture_before
+
+- name: refuse | Expect the installer to refuse this checkout
+  block:
+    - name: refuse | Try installing from the refused checkout
+      ansible.builtin.include_role:
+        name: agent_workspace
+        tasks_from: tbhbdev
+    - name: refuse | Fail if installation was allowed
+      ansible.builtin.fail:
+        msg: The installer unexpectedly accepted the checkout.
+  rescue:
+    - name: refuse | Check the installer named the expected refusal reason
+      ansible.builtin.assert:
+        that:
+          - ansible_failed_result.msg is search('Refusing to install tbhbdev')
+          - agent_workspace_refusal.reason in ansible_failed_result.msg
+
+- name: refuse | Inspect the installed command after refusal
+  ansible.builtin.stat:
+    path: /home/example-user/.local/bin/tbhbdev
+  register: agent_workspace_fixture_after
+
+- name: refuse | Check refusal did not reinstall or change the installed command
+  ansible.builtin.assert:
+    that:
+      - agent_workspace_fixture_before.stat.checksum == agent_workspace_fixture_after.stat.checksum
+      - agent_workspace_fixture_before.stat.mtime == agent_workspace_fixture_after.stat.mtime
+      - agent_workspace_fixture_before.stat.ctime == agent_workspace_fixture_after.stat.ctime
+
+- name: refuse | Restore the checkout after refusal
+  ansible.builtin.command:
+    argv: "{{ item }}"
+    chdir: "{{ agent_workspace_tools }}"
+  loop: "{{ agent_workspace_refusal.cleanup }}"
+  changed_when: true

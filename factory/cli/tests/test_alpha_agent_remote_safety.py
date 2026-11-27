@@ -10,8 +10,10 @@ from dataclasses import replace
 from pathlib import Path
 from shutil import which
 from tempfile import mkdtemp
+from typing import TYPE_CHECKING
 
 import pytest
+from agent_cli_example import run_agent
 from agent_driver_example import (
     commit_in,
     execution_arguments,
@@ -21,9 +23,13 @@ from agent_driver_example import (
 )
 from agent_example import LINUX, settings, trusted_executables
 
-from tbhbdev.alpha import agent
+from tbhbdev.alpha.agent import arguments as agent_arguments
 from tbhbdev.alpha.agent import driver, transport
+from tbhbdev.alpha.agent import settings as agent_settings
 from tbhbdev.alpha.agent.decisions import policy, remote
+
+if TYPE_CHECKING:
+    from tbhbdev.alpha.agent.model import Settings
 
 
 @pytest.fixture(autouse=True)
@@ -75,7 +81,9 @@ def inspect_output(
         return result.returncode, result.stdout
 
     monkeypatch.setattr(transport, "execute", run)
-    args = agent.parser("example").parse_args(execution_arguments("example.md"))
+    args = agent_arguments.parser("example").parse_args(
+        execution_arguments("example.md")
+    )
     run = driver.prepare(settings(), args)
     run.request = replace(run.request, unsandboxed=unsandboxed)
     run.owner = "example-owner"
@@ -1147,11 +1155,13 @@ def test_unpublished_diff_bounds_output_and_preserves_failure(
     unpublished_run(host)
     write_standalone_fake(
         host / "bin/git",
-        "import sys\n"
+        "import sys\nfrom pathlib import Path\n"
         "if '--symref' in sys.argv:\n"
         "    print('ref: refs/heads/main\\tHEAD'); sys.exit(0)\n"
         "if 'ls-remote' in sys.argv: sys.exit(0)\n"
-        "if 'init' in sys.argv: sys.exit(0)\n"
+        "if 'init' in sys.argv:\n"
+        "    (Path(sys.argv[-1]) / 'objects/info').mkdir(parents=True); sys.exit(0)\n"
+        "if 'rev-list' in sys.argv or 'merge-base' in sys.argv: sys.exit(0)\n"
         "assert 'format-patch' in sys.argv\n"
         "assert 'diff.external=' in sys.argv\n"
         "assert '--no-ext-diff' in sys.argv and '--no-textconv' in sys.argv\n"
@@ -1298,15 +1308,14 @@ def test_unpublished_diff_refuses_symlinked_git_internals(
 
 def test_unpublished_diff_refuses_missing_base(host: Path) -> None:
     tree = unpublished_run(host)
-    git_in(tree, "update-ref", "-d", "refs/remotes/origin/main")
+    (tree / ".git/logs/refs/heads/agent/sample").unlink()
     result = fallback_diff()
     assert result.returncode != 0
     assert result.stdout == b""
 
 
-def test_unpublished_diff_uses_named_default_branch(host: Path) -> None:
+def test_unpublished_diff_ignores_default_branch_rename(host: Path) -> None:
     tree = unpublished_run(host)
-    git_in(tree, "update-ref", "refs/remotes/origin/trunk", "origin/main")
     git_in(tree, "update-ref", "-d", "refs/remotes/origin/main")
     origin = host / "origin.git"
     git_in(origin, "update-ref", "refs/heads/trunk", "main")
@@ -1319,31 +1328,144 @@ def test_unpublished_diff_uses_named_default_branch(host: Path) -> None:
     assert b"+local trunk change" in result.stdout
 
 
-@pytest.mark.parametrize("listing", [None, "", "abc\\tHEAD"])
-def test_unpublished_diff_requires_default_branch(
-    host: Path, listing: str | None
+@pytest.mark.parametrize("rc", [0, 124])
+def test_diff_falls_back_when_origin_is_unavailable(host: Path, rc: int) -> None:
+    tree = unpublished_run(host)
+    (tree / "example").write_text("offline change\n")
+    git_in(tree, "add", "example")
+    commit_in(tree, "offline change")
+    mirror = (
+        host / "state/tbhbdev/agent-mirrors/github.com/example-org/example-repo.git"
+    )
+    git_in(mirror, "config", "remote.origin.url", str(host / "missing.git"))
+    (host / "state/tbhbdev/agent-runs/sample.rc").write_text(f"{rc}\n")
+    result = fallback_diff()
+    assert result.returncode == 0, result.stderr
+    assert b"+offline change\n" in result.stdout
+    assert bool(result.stderr) is (rc == 0)
+
+
+def merge_run_changes(tree: Path, resolution: bytes) -> None:
+    example = tree / "example"
+    git_in(tree, "switch", "-c", "topic")
+    example.write_text("side change\n")
+    git_in(tree, "add", "example")
+    commit_in(tree, "side change")
+    git_in(tree, "switch", "agent/sample")
+    example.write_text("run change\n")
+    git_in(tree, "add", "example")
+    commit_in(tree, "unpublished change")
+    with pytest.raises(subprocess.CalledProcessError):
+        git_in(tree, "merge", "--no-edit", "topic")
+    assert git_in(tree, "status", "--porcelain") == "UU example"
+    example.write_bytes(resolution)
+    git_in(tree, "add", "example")
+    commit_in(tree, "resolve merge")
+
+
+def reset_then_add(tree: Path, content: bytes) -> str:
+    (tree / "base-only").write_text("present on the recorded base\n")
+    git_in(tree, "add", "base-only")
+    commit_in(tree, "add base-only file")
+    base = git_in(tree, "rev-parse", "HEAD")
+    git_in(tree, "reset", "--hard", "HEAD^")
+    (tree / "added").write_bytes(content)
+    git_in(tree, "add", "added")
+    commit_in(tree, "add unrelated file")
+    return base
+
+
+def mock_agent_run_for_diff(monkeypatch: pytest.MonkeyPatch) -> None:
+    async def run_ssh(args: tuple[str, ...], _data: bytes) -> tuple[int, bytes]:
+        command = shlex.split(shlex.split(args[-1])[2])
+        result = execute(command[2])
+        return result.returncode, result.stdout
+
+    monkeypatch.setattr(transport, "execute", run_ssh)
+    config = settings()
+    request_args = agent_arguments.parser("example").parse_args(
+        execution_arguments("example.md")
+    )
+    run = driver.prepare(config, request_args)
+    run.owner = "example-owner"
+
+    def load(_settings: Settings, _name: str) -> driver.Run:
+        return run
+
+    monkeypatch.setattr(agent_settings, "load", lambda: config)
+    monkeypatch.setattr(driver, "load", load)
+
+
+def test_patch_export_refuses_unconfirmed_shutdown(host: Path) -> None:
+    tree = unpublished_run(host)
+    (tree / "example").write_text("unpublished change\n")
+    git_in(tree, "add", "example")
+    commit_in(tree, "unpublished change")
+    state = host / "state/tbhbdev/agent-runs"
+    (state / "sample.rc").write_text("124\n")
+    (state / "sample.phase").write_text("unknown")
+
+    result = execute(remote.export_patch("example-org/example-repo", "sample"))
+
+    assert result.returncode == 65
+    assert result.stdout == b""
+
+
+@pytest.mark.parametrize(
+    "history", ["linear", "merge", "empty merge", "reset then add"]
+)
+def test_finished_build_exports_complete_patch_offline(
+    host: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsysbinary: pytest.CaptureFixture[bytes],
+    history: str,
 ) -> None:
-    unpublished_run(host)
-    write_standalone_fake(
-        host / "bin/git",
-        "import sys\nassert 'ls-remote' in sys.argv\n"
-        "if '--symref' in sys.argv:\n"
-        f"    print({listing!r}); sys.exit({74 if listing is None else 0})\n",
-    )
-    result = fallback_diff()
-    assert result.returncode == (74 if listing is None else 65)
-    assert result.stdout == b""
+    tree = unpublished_run(host)
+    base = git_in(tree, "rev-parse", "HEAD")
+    git_in(tree, "config", "user.name", "Example")
+    git_in(tree, "config", "user.email", "example@example.com")
+    example = tree / "example"
+    content = b"unpublished \x80\x1b\n" * 5000
+    if history == "linear":
+        example.write_bytes(content)
+        git_in(tree, "add", "example")
+        commit_in(tree, "unpublished change")
+    elif history == "reset then add":
+        base = reset_then_add(tree, content)
+    else:
+        merge_run_changes(
+            tree, example.read_bytes() if history == "empty merge" else content
+        )
+    tip = git_in(tree, "rev-parse", "HEAD")
+    tip_tree = git_in(tree, "rev-parse", "HEAD^{tree}")
+    git_in(tree, "checkout", "--detach", base)
+    state = host / "state/tbhbdev/agent-runs"
+    (state / "sample.base").write_text(base)
+    (state / "sample.head").write_text(tip)
+    (state.parent / "agent-mirrors").rename(host / "offline")
 
+    mock_agent_run_for_diff(monkeypatch)
+    args = ["diff", "sample", "--patch"]
+    (state / "sample.phase").write_text("ended")
+    assert run_agent(args) == 1
+    assert not capsysbinary.readouterr().out
 
-def test_diff_refuses_failed_branch_query(host: Path) -> None:
-    unpublished_run(host)
-    write_standalone_fake(
-        host / "bin/git",
-        "import sys\nassert 'ls-remote' in sys.argv\nsys.exit(74)\n",
-    )
-    result = fallback_diff()
-    assert result.returncode == 74
-    assert result.stdout == b""
+    (state / "sample.rc").write_text("0\n")
+    assert run_agent(args) == 0
+    output = capsysbinary.readouterr().out
+    if history == "empty merge":
+        assert output == b""
+    else:
+        if history == "linear":
+            assert output.startswith(f"From {tip} ".encode())
+        assert len(output) > 65536
+        patch = host / "run.patch"
+        patch.write_bytes(output)
+        git_in(tree, "am", str(patch))
+    if history == "reset then add":
+        assert (tree / "added").read_bytes() == content
+        assert not (tree / "base-only").exists()
+    assert git_in(tree, "rev-parse", "HEAD^{tree}") == tip_tree
 
 
 @pytest.mark.parametrize("limit", [None, 10])

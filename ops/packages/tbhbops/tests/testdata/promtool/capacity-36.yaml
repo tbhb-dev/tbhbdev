@@ -1,0 +1,130 @@
+---
+evaluation_interval: 1m
+rule_files:
+  - rules.yaml
+tests:
+  - alert_rule_test:
+      - alertname: o11y-capacity-warn
+        eval_time: 0m
+        exp_alerts: []
+      - alertname: o11y-capacity-shed
+        eval_time: 0m
+        exp_alerts: []
+      - alertname: o11y-capacity-stop
+        eval_time: 0m
+        exp_alerts: []
+      - alertname: o11y-capacity-exhaustion
+        eval_time: 0m
+        exp_alerts: []
+      - alertname: o11y-capacity-stale
+        eval_time: 0m
+        exp_alerts: []
+      - alertname: o11y-capacity-warn
+        eval_time: 2m
+        exp_alerts: []
+      - alertname: o11y-capacity-shed
+        eval_time: 2m
+        exp_alerts: []
+      - alertname: o11y-capacity-stop
+        eval_time: 2m
+        exp_alerts: []
+      - alertname: o11y-capacity-exhaustion
+        eval_time: 2m
+        exp_alerts: []
+      - alertname: o11y-capacity-stale
+        eval_time: 2m
+        exp_alerts: []
+      - alertname: o11y-capacity-warn
+        eval_time: 10m
+        exp_alerts: []
+      - alertname: o11y-capacity-shed
+        eval_time: 10m
+        exp_alerts: []
+      - alertname: o11y-capacity-stop
+        eval_time: 10m
+        exp_alerts: []
+      - alertname: o11y-capacity-exhaustion
+        eval_time: 10m
+        exp_alerts: []
+      - alertname: o11y-capacity-stale
+        eval_time: 10m
+        exp_alerts: []
+      - alertname: o11y-capacity-warn
+        eval_time: 30m
+        exp_alerts: []
+      - alertname: o11y-capacity-shed
+        eval_time: 30m
+        exp_alerts: []
+      - alertname: o11y-capacity-stop
+        eval_time: 30m
+        exp_alerts: []
+      - alertname: o11y-capacity-exhaustion
+        eval_time: 30m
+        exp_alerts: []
+      - alertname: o11y-capacity-stale
+        eval_time: 30m
+        exp_alerts: []
+      - alertname: o11y-capacity-warn
+        eval_time: 35m
+        exp_alerts: []
+      - alertname: o11y-capacity-shed
+        eval_time: 35m
+        exp_alerts: []
+      - alertname: o11y-capacity-stop
+        eval_time: 35m
+        exp_alerts: []
+      - alertname: o11y-capacity-exhaustion
+        eval_time: 35m
+        exp_alerts: []
+      - alertname: o11y-capacity-stale
+        eval_time: 35m
+        exp_alerts: []
+      - alertname: o11y-capacity-warn
+        eval_time: 40m
+        exp_alerts: []
+      - alertname: o11y-capacity-shed
+        eval_time: 40m
+        exp_alerts: []
+      - alertname: o11y-capacity-stop
+        eval_time: 40m
+        exp_alerts: []
+      - alertname: o11y-capacity-exhaustion
+        eval_time: 40m
+        exp_alerts: []
+      - alertname: o11y-capacity-stale
+        eval_time: 40m
+        exp_alerts: []
+      - alertname: o11y-capacity-warn
+        eval_time: 2h
+        exp_alerts: []
+      - alertname: o11y-capacity-shed
+        eval_time: 2h
+        exp_alerts: []
+      - alertname: o11y-capacity-stop
+        eval_time: 2h
+        exp_alerts: []
+      - alertname: o11y-capacity-exhaustion
+        eval_time: 2h
+        exp_alerts: []
+      - alertname: o11y-capacity-stale
+        eval_time: 2h
+        exp_alerts: []
+      - alertname: o11y-capacity-warn
+        eval_time: 7d1m
+        exp_alerts: []
+      - alertname: o11y-capacity-shed
+        eval_time: 7d1m
+        exp_alerts: []
+      - alertname: o11y-capacity-stop
+        eval_time: 7d1m
+        exp_alerts: []
+      - alertname: o11y-capacity-exhaustion
+        eval_time: 7d1m
+        exp_alerts: []
+      - alertname: o11y-capacity-stale
+        eval_time: 7d1m
+        exp_alerts: []
+    input_series: []
+    interval: 1m
+    name: no capacity series at all, nothing
+      fires
