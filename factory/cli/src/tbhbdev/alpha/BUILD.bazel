@@ -267,6 +267,15 @@ cli_py_library(
 )
 
 cli_py_library(
+    name = "pull_request_frontmatter",
+    srcs = ["pull_request_frontmatter.py"],
+    imports = ["../.."],
+    pyi_deps = ["@cli_pip//jsonschema"],
+    visibility = ["//factory/cli:__subpackages__"],
+    deps = ["@cli_pip//pyyaml"],
+)
+
+cli_py_library(
     name = "repo",
     srcs = ["repo.py"],
     imports = ["../.."],
@@ -495,13 +504,4 @@ filegroup(
     name = "size_gate_data",
     srcs = glob(["size_gate_data/**"]),
     visibility = ["//factory/cli:__subpackages__"],
-)
-
-cli_py_library(
-    name = "pull_request_frontmatter",
-    srcs = ["pull_request_frontmatter.py"],
-    imports = ["../.."],
-    pyi_deps = ["@cli_pip//jsonschema"],
-    visibility = ["//factory/cli:__subpackages__"],
-    deps = ["@cli_pip//pyyaml"],
 )
