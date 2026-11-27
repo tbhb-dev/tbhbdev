@@ -274,6 +274,7 @@ def draft_world(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> World:
         ("symbolic-ref", "--quiet", "refs/remotes/origin/HEAD"): (0, base),
         ("fetch", *fetch_options, "origin", f"+refs/heads/main:{base}"): (0, ""),
         ("rev-parse", "--verify", "--quiet", f"{base}^{{commit}}"): (0, ""),
+        ("rev-parse", "--verify", "HEAD"): (0, ""),
     }
 
     def answer_git(*argv: str, **_kwargs: Path | None) -> tuple[int, str]:
@@ -1685,9 +1686,14 @@ def test_create_runs_gh_with_the_frontmatter(
 
 
 def test_create_defaults(world: World) -> None:
+    early = value(harness="codex", model="openai:m", started_at="2026-11-14T00:02:41Z")
+    late = early.replace("00:02:41", "00:09:00")
+    world.commit(f"one\n\nGenerated-by: {late}")
+    world.commit(f"two\n\nAssisted-by: {early}")
     write_draft(world)
     assert run_main("create") == 0
     _, call = world.calls("gh")
+    assert str(call["stdin"]).endswith(f"Generated-by: {early}\n")
     assert call["argv"] == [
         "pr",
         "create",
@@ -1739,6 +1745,64 @@ def test_a_draft_without_a_base_takes_the_default_branch(
         scc=str(world.bin / "scc"),
         git=str(world.root.parent / "git_dir" / "git"),
     )
+
+
+@pytest.mark.parametrize(
+    ("verb", "env"),
+    [
+        ("check", {"TBHBDEV_AGENT_RUN": "1"}),
+        ("create", {"TBHBDEV_SIZE_REVIEW_HOST": "override"}),
+    ],
+)
+def test_oversized_stacked_pr_launches_a_review_outside_tmux(
+    world: World,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    verb: str,
+    env: dict[str, str],
+) -> None:
+    counts = size_gate.SizeCounts(401, 400, 401, 1500, "code")
+    monkeypatch.setattr(size_gate, "size_counts", Mock(return_value=counts))
+    monkeypatch.setattr(size_gate, "size_review_state", Mock(return_value="missing"))
+    monkeypatch.setattr(pr, "origin_repository", Mock(return_value=TARGET))
+    remote_default(world, world.root.parent, "fetched/heads/agent/base")
+    monkeypatch.setattr(pr, "git", pr.repo_git)
+    base = world.git("rev-parse", "HEAD")
+    world.commit("stacked change")
+    head = world.git("rev-parse", "HEAD")
+    name = f"size-review-{head[:12]}"
+    world.fake("tbhbdev")
+    world.fake("tmux")
+    write_draft(world, "---\nbase: agent/base\n---\n" + BASE)
+    host = Mock(proven_harnesses=("agy",))
+    host.name = "review"
+    expected_host = env.get("TBHBDEV_SIZE_REVIEW_HOST", "review")
+    monkeypatch.setattr(
+        pr.agent_settings, "load", Mock(return_value=Mock(hosts=(host,)))
+    )
+    actual_run = pr.run
+
+    def run(
+        argv: list[str], *, cwd: Path | None = None, stdin: str = ""
+    ) -> subprocess.CompletedProcess[str]:
+        if argv[0] != str(world.bin / "tmux"):
+            return actual_run(argv, cwd=cwd, stdin=stdin)
+        directory = Path(argv[2]).parent
+        if argv[-1] != "kill-server":
+            assert argv[argv.index("-s", argv.index("new-session")) + 1] == name
+            script = argv[argv.index("-c") + 1]
+            assert f"select-pane -T {name}" in script
+            assert "tbhbdev alpha agent exec" in script
+            assert f"--host {expected_host} " in script
+            assert f"--ref {head} --fetch-ref refs/heads/agent/base" in script
+            assert f"git diff {base}...{head}" in (directory / "sizing.md").read_text()
+            (directory / "stdout").write_text("launched\n")
+            (directory / "stderr").write_text("launcher output\n")
+        return subprocess.CompletedProcess(argv, 0, "", "")
+
+    monkeypatch.setattr(pr, "run", run)
+    assert run_main(verb, env=env) == 1
+    assert capsys.readouterr().err == "launcher output\n"
 
 
 def test_the_default_branch_ignores_a_tag_of_the_same_name(
@@ -1976,12 +2040,14 @@ def test_edit_pr_40_uses_github_commit_trailers(
         "session=sha-256-64:7ff1a5b545107a55;surface=cli"
     )
     merged = attrs.replace("7ff1a5b545107a55", "1234567890abcdef")
+    early = attrs.replace(";surface=", ";started_at=2026-11-14T00:02:41Z;surface=")
+    late = attrs.replace(";surface=", ";started_at=2026-11-14T00:09:00Z;surface=")
     world.git("switch", "-q", "-c", "other-branch")
     world.commit(f"other PR\n\nGenerated-by: {local}")
     pages = [
-        [{"commit": {"message": f"one\n\nGenerated-by: LLM {attrs}"}}],
+        [{"commit": {"message": f"one\n\nGenerated-by: LLM {late}"}}],
         [
-            {"commit": {"message": f"two\n\nGenerated-by: LLM {attrs}"}},
+            {"commit": {"message": f"two\n\nAssisted-by: LLM {early}"}},
             {
                 "parents": [{"sha": "a" * 40}, {"sha": "b" * 40}],
                 "commit": {"message": f"merge\n\n---\n\nGenerated-by: LLM\n {merged}"},
@@ -1995,7 +2061,7 @@ def test_edit_pr_40_uses_github_commit_trailers(
     _, commits, edit = world.calls("gh")
     assert commits["argv"] == argv
     assert str(edit["stdin"]).split("\n\n")[-1] == (
-        f"Generated-by: LLM {attrs}\nGenerated-by: LLM {merged}\n"
+        f"Generated-by: LLM {early}\nGenerated-by: LLM {merged}\n"
         f"Assisted-by: {POSTING}\n"
     )
     (scan,) = world.calls("gitleaks")

@@ -7,6 +7,8 @@ set -euo pipefail
 # Counting logic and policy from tbhb-dev/rules at 0b12df1dd60e1f35a45695974d6a074ad47d86e7.
 # Keep both in sync with lint/private/pr_size.sh.tpl and pr-size-exempt.txt.
 base=$1 head=$2 scc=$3 git=$4 policy=$5
+top=$("$git" rev-parse --show-toplevel)
+cd "$top"
 if [[ ${PR_AUTHOR:-} == 'tbhb-dev-renovate[bot]' ]]; then
   echo '{"code_lines": 0, "code_limit": 400, "raw_lines": 0, "raw_limit": 1500, "failed": null}'
   exit 0

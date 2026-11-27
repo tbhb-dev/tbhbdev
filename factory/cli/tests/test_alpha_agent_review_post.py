@@ -5,6 +5,7 @@ from __future__ import annotations
 from dataclasses import replace
 from types import SimpleNamespace
 from typing import TYPE_CHECKING, cast
+from unittest.mock import Mock
 
 import httpx
 import pytest
@@ -443,6 +444,34 @@ def test_a_missing_token_blocks_the_post(
     monkeypatch.setattr(httpx, "request", forbidden)
     assert not review_post.posted(run, prepared)
     assert "token unavailable" in run.files.path("log").read_text()
+
+
+@pytest.mark.parametrize(
+    ("verdict", "head", "state"),
+    [
+        ("OVERRIDE", HEAD, "success"),
+        ("SPLIT", HEAD, "failure"),
+        ("OVERRIDE", "b" * 40, ""),
+    ],
+)
+def test_sizing_review_posts_only_a_status_for_its_exact_head(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, verdict: str, head: str, state: str
+) -> None:
+    run, prepared = make(tmp_path, None)
+    run.request = replace(run.request, variant="size-review")
+    run.files.write("out.final", f"VERDICT: {verdict} {head}\n")
+    monkeypatch.setattr(credentials, "review_post_token", Mock(return_value=MINTED))
+    api = Api(monkeypatch)
+    assert review_post.posted(run, prepared) == bool(state)
+    if state:
+        ((method, url, payload),) = api.calls
+        assert (method, url) == (
+            "POST",
+            f"https://api.github.com/repos/o/r/statuses/{HEAD}",
+        )
+        assert (payload or {}).get("state") == state
+    else:
+        assert api.calls == []
 
 
 @pytest.mark.parametrize(

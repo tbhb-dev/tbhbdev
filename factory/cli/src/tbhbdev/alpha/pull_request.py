@@ -71,7 +71,8 @@ The ``op-*`` rules, the address, MAC, endpoint and keychain rules, the canary
 and .gitleaks.toml still apply. Any visibility but ``PRIVATE`` or a failed
 read scans under the full private config, so the read alone never refuses a
 command.
-``check`` makes no gh calls and doesn't scan.
+``check`` doesn't scan the draft. For an oversized head, both commands
+check GitHub for a sizing verdict and launch a review when none exists.
 
 ``create`` also writes ``Opened-by: LLM ...`` as the first line of that
 paragraph: the posting agent's root identity, with no ``subagent=``. Once gh
@@ -142,10 +143,13 @@ from urllib.parse import quote
 import yaml
 from jsonschema import Draft202012Validator
 
+from tbhbdev import userconfig
 from tbhbdev.alpha import identity as agent_identity
 from tbhbdev.alpha import opened, secret_scan, size_gate
+from tbhbdev.alpha.agent import settings as agent_settings
 from tbhbdev.alpha.repo import git as repo_git
 from tbhbdev.alpha.repo import hook_cwd, in_tbhb_dev, read_hook_stdin
+from tbhbdev.alpha.repo_bootstrap import GhError, NotFoundError
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Collection, Mapping, Sequence
@@ -944,16 +948,25 @@ def merge_trailers(
 
     The posting agent's value is added as Assisted-by when its identity is
     absent. Generated-by lines come first, as the commit-msg check requires.
+    Each identity keeps its oldest commit trailer timestamp.
     """
     roles: dict[tuple[str, ...], tuple[str, str]] = {}
+    starts: dict[tuple[str, ...], str] = {}
     for key, value in found:
         ident = identity_key(value)
+        if start := agent_identity.trailer_start(value):
+            starts[ident] = min(start, starts.get(ident, start))
         if ident not in roles or (
             key == agent_identity.KEY_GEN and roles[ident][0] != key
         ):
             roles[ident] = (key, value)
     if posting is not None and identity_key(posting) not in roles:
         roles[identity_key(posting)] = (agent_identity.KEY_ASSIST, posting)
+    for ident, start in starts.items():
+        key, value = roles[ident]
+        if agent_identity.trailer_start(value) != start:
+            value = agent_identity.replace_trailer_fields(value, {"started_at": start})
+            roles[ident] = key, value
     return sorted(roles.values(), key=lambda pair: pair[0] != agent_identity.KEY_GEN)
 
 
@@ -2113,27 +2126,108 @@ def opened_by(env: Mapping[str, str]) -> tuple[str | None, str | None]:
     return ident.root, f"{OPENED_KEY}: {value}"
 
 
-def check_size(args: argparse.Namespace, checked: Checked) -> None:
-    """Count the branch's added lines against the draft's base and flag an excess.
-
-    The base tracking ref is refreshed once, without tags, except in a dry run,
-    which writes no refs. A failed refresh or a count that stays unavailable
-    only warns, for ``pr create`` too, so a broken counter never blocks a valid
-    PR. A dry run reports an excess as a warning and still previews.
-    """
-    branch = base_of(checked.meta)
-    dry_run = getattr(
-        args,
-        "dry_run",
-        False,  # pragma: no mutate -- None is also false.
+def run_size_review_in_pane(
+    argv: Sequence[str], name: str, directory: Path
+) -> tuple[str, str]:
+    """Give a caller outside tmux a named pane for the launcher to identify."""
+    tmux = find_tool("tmux")
+    server = [tmux, "-S", str(directory / "tmux.sock"), "-f", os.devnull]
+    stdout, stderr = directory / "stdout", directory / "stderr"
+    signal = shlex.join([tmux, "wait-for", "-S", "finished"])
+    select = shlex.join([tmux, "select-pane", "-T", name])
+    # Keep the shell's pane open while the launcher uses noninteractive stdin.
+    script = (
+        f"trap {shlex.quote(signal)} EXIT\n"
+        f"{{ {select} && {shlex.join(argv)} </dev/null; }} "
+        f">{shlex.quote(str(stdout))} 2>{shlex.quote(str(stderr))}\n"
     )
-    base = f"refs/remotes/origin/{branch}"
-    verify = ("rev-parse", "--verify", "--quiet", f"{base}^{{commit}}")
-    if args.command == "create" and not target_is_origin():
-        # gh may open the PR against a repository whose base origin doesn't track.
-        message = "size count unavailable: gh may target a repository other than origin"
-        print(message, file=sys.stderr)
-        return
+    try:
+        done = run([
+            *server, "start-server", ";", "set-option", "-s", "exit-empty", "off",
+            ";", "new-session", "-d", "-s", name, "/bin/sh", "-c", script,
+            ";", "wait-for", "finished",
+        ])  # fmt: skip
+        if done.returncode:
+            return done.stdout, done.stderr
+        return stdout.read_text(), stderr.read_text()
+    finally:
+        run([*server, "kill-server"])
+
+
+def start_size_review(
+    repo: str,
+    base: tuple[str, str],
+    head: str,
+    counts: size_gate.SizeCounts,
+    env: Mapping[str, str],
+) -> None:
+    """Start the sizing review with the base branch and the commit counted."""
+    host = env.get("TBHBDEV_SIZE_REVIEW_HOST")
+    detected = agent_identity.detect(env)
+    harness, model = (
+        ("codex", "gpt-6.1-sol")
+        if detected and detected[0] == agent_identity.ANTIGRAVITY
+        else ("agy", "gemini-4-argon-high")
+    )
+    if not host:
+        hosts = agent_settings.load().hosts
+        host = next(
+            (h.name for h in hosts if harness in h.proven_harnesses), hosts[0].name
+        )
+    branch, base_commit = base
+    argv = [
+        find_tool("tbhbdev"), "alpha", "agent", "exec",
+        "--host", host, "--repo", repo, "--ref", head,
+        "--fetch-ref", f"refs/heads/{branch}",
+        "--harness", harness, "--model", model, "--effort", "high",
+        "--profile", "review", "--class", "review", "--role", "reviewer",
+        "--variant", size_gate.SIZE_REVIEW,
+    ]  # fmt: skip
+    name = f"{size_gate.SIZE_REVIEW}-{head[:12]}"
+    with tempfile.TemporaryDirectory() as directory:
+        prompt = Path(directory) / "sizing.md"
+        prompt.write_text(
+            (size_gate.DATA / "review.md").read_text().format(
+                base=base_commit, head=head,
+                code=counts.code_lines, raw=counts.raw_lines,
+            )
+        )  # fmt: skip
+        argv.extend((name, str(prompt)))
+        if not env.get("TMUX_PANE"):
+            stdout, stderr = run_size_review_in_pane(argv, name, prompt.parent)
+        else:
+            done = run(argv)
+            stdout, stderr = done.stdout, done.stderr
+    print(stdout, end="")
+    print(stderr, end="", file=sys.stderr)
+
+
+def size_review_allows(
+    base: tuple[str, str],
+    head: str,
+    counts: size_gate.SizeCounts,
+    env: Mapping[str, str],
+) -> bool:
+    """Read the verdict for this head or start the review that supplies it."""
+    try:
+        repo = origin_repository(allow_push_fallback=True)
+        state = size_gate.size_review_state(repo, head)
+        if state == "success":
+            return True
+        if state not in {"pending", "failure"}:
+            start_size_review(repo, base, head, counts, env)
+    except NotFoundError:
+        print(
+            "push this head to origin before starting its sizing review",
+            file=sys.stderr,
+        )
+    except (GhError, OSError, SystemExit, userconfig.ConfigError) as exc:
+        print(f"cannot start sizing review: {exc}", file=sys.stderr)
+    return False
+
+
+def size_commits(branch: str, base: str, *, dry_run: bool) -> tuple[str, str] | None:
+    """Resolve the base and head, refreshing the tracking ref outside dry runs."""
     if not dry_run:
         fetch = (
             "fetch",
@@ -2142,15 +2236,50 @@ def check_size(args: argparse.Namespace, checked: Checked) -> None:
             "--no-write-fetch-head",
             "--refmap=",
             "origin",
-            f"+refs/heads/{branch}:{base}",
         )
-        if git(*fetch)[0] != 0:
+        for prefix in ("refs/heads", "refs/heads/fetched/heads"):
+            if git(*fetch, f"+{prefix}/{branch}:{base}")[0] == 0:
+                break
+        else:
             # A stale tracking ref would count the wrong range, so stop here.
             print(f"size count unavailable: cannot fetch {branch}", file=sys.stderr)
-            return
-    if git(*verify)[0] != 0:
-        print(f"size count unavailable: base branch {base} not found", file=sys.stderr)
+            return None
+    verify = ("rev-parse", "--verify", "--quiet", f"{base}^{{commit}}")
+    base_code, base_commit = git(*verify)
+    head_code, head = git("rev-parse", "--verify", "HEAD")
+    if base_code or head_code:
+        missing = f"base branch {base}" if base_code else "HEAD"
+        print(f"size count unavailable: {missing} not found", file=sys.stderr)
+        return None
+    return base_commit, head
+
+
+def check_size(
+    args: argparse.Namespace, checked: Checked, env: Mapping[str, str]
+) -> None:
+    """Count the branch's added lines against the draft's base and flag an excess.
+
+    The base tracking ref is refreshed once, without tags, except in a dry run,
+    which writes no refs. A failed refresh or a count that stays unavailable
+    only warns, for ``pr create`` too, so a broken counter never blocks a valid
+    PR. A dry run reports an excess as a warning and still previews.
+    """
+    branch = base_of(checked.meta)
+    base = f"refs/remotes/origin/{branch}"
+    dry_run = getattr(
+        args,
+        "dry_run",
+        False,  # pragma: no mutate -- None is also false.
+    )
+    if args.command == "create" and not target_is_origin():
+        # gh may open the PR against a repository whose base origin doesn't track.
+        message = "size count unavailable: gh may target a repository other than origin"
+        print(message, file=sys.stderr)
         return
+    commits = size_commits(branch, base, dry_run=dry_run)
+    if commits is None:
+        return
+    base_commit, head = commits
     try:
         counts = size_gate.size_counts(
             base,
@@ -2173,6 +2302,8 @@ def check_size(args: argparse.Namespace, checked: Checked) -> None:
         why = f"{count} lines, limit {limit}: split into stacked PRs"
         if dry_run:
             print(f"warning: {args.draft}:1: {why}", file=sys.stderr)
+            return
+        if size_review_allows((branch, base_commit), head, counts, env):
             return
         checked.problems.append((1, why))
         print(f"{args.draft}:1: {why}")
@@ -2204,7 +2335,7 @@ def _run_command(args: argparse.Namespace, env: Mapping[str, str]) -> int:
         # One read of the default branch feeds the size count, the trailers, and
         # `gh --base`, so a remote change mid-run can't split them.
         checked.meta.setdefault("base", base_of(checked.meta))
-        check_size(args, checked)
+        check_size(args, checked, env)
     if checked.problems:
         return 1
     if args.command == "check":

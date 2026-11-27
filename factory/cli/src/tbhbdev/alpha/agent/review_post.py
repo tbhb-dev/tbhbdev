@@ -19,6 +19,7 @@ from tbhbdev.alpha.agent import credentials, runfiles
 from tbhbdev.alpha.agent.decisions import repo
 from tbhbdev.alpha.agent.decisions import request as requests
 from tbhbdev.alpha.agent.model import Harness, Invalid, RunKind
+from tbhbdev.alpha.size_gate import SIZE_REVIEW, SIZE_VERDICTS
 
 if TYPE_CHECKING:
     from tbhbdev.alpha.agent.run_host import Prepared, Run
@@ -204,8 +205,8 @@ def stamp(run: Run) -> str:
     return f"{identity.KEY_GEN}: {value}"
 
 
-def check_verdict(run: Run) -> None:
-    """Require a final `VERDICT: GO|BLOCK|NO-GO` line, with the run's sha if any."""
+def check_verdict(run: Run, verdicts: frozenset[str] = VERDICTS) -> str:
+    """Return the final verdict for the pinned head."""
     for suffix in ("out.final", "out"):
         try:
             answer = runfiles.read_owned(
@@ -217,13 +218,37 @@ def check_verdict(run: Run) -> None:
         verdict, _, sha = rest.partition(" ")
         if (
             label == "VERDICT:"
-            and verdict in VERDICTS
-            and (not sha or sha == run.request.commit)
+            and verdict in verdicts
+            and (sha == run.request.commit or (not sha and verdicts == VERDICTS))
         ):
-            return
+            return verdict
         break
     message = "no verdict line at the end of the final answer, or it names another head"
     raise PostRefusedError(message)
+
+
+def post_size_review(run: Run) -> None:
+    """Post a sizing verdict as a commit status, including before a PR exists."""
+    verdict = check_verdict(run, SIZE_VERDICTS)
+    token = credentials.review_post_token(
+        run.request, run.settings, {"statuses": "write"}
+    )
+    if token is None:
+        message = "reviews App token with commit-status write access unavailable"
+        raise PostRefusedError(message)
+    _, owner, name = repo.parts(run.request.repo)
+    head = run.request.commit
+    api(
+        "POST",
+        f"https://api.github.com/repos/{owner}/{name}/statuses/{head}",
+        token,
+        {
+            "context": SIZE_REVIEW,
+            "state": "success" if verdict == "OVERRIDE" else "failure",
+            "description": f"Sizing review verdict: {verdict}",
+        },
+    )
+    run.files.write("review", f"{owner}/{name}@{head} {verdict}")
 
 
 def posted(run: Run, prepared: Prepared) -> bool:
@@ -232,6 +257,9 @@ def posted(run: Run, prepared: Prepared) -> bool:
         return True
     workspace = Path(prepared.paths.worktree)
     try:
+        if run.request.variant == SIZE_REVIEW:
+            post_size_review(run)
+            return True
         # A supplied output schema defines the final answer's format.
         if (
             run.request.kind is RunKind.EXEC

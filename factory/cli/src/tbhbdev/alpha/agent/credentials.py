@@ -184,13 +184,17 @@ def push_token(
         return PushTokenFailure(type(exc).__name__)
 
 
-def review_post_token(request: RunRequest, settings: Settings) -> str | None:
+def review_post_token(
+    request: RunRequest,
+    settings: Settings,
+    permissions: dict[str, str] = REVIEW_POST_PERMISSIONS,
+) -> str | None:
     """The run-scoped token that posts a review run's verdict, or None."""
     if request.profile is not Profile.REVIEW:
         return None
     references = next(c for c in settings.credentials if c.account == request.account)
     try:
-        return installation_token(references, request.repo, REVIEW_POST_PERMISSIONS)
+        return installation_token(references, request.repo, permissions)
     except TOKEN_ERRORS:
         return None
 
