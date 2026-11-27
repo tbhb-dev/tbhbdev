@@ -732,19 +732,6 @@ def test_path_refusal_reasons(
 
 
 @pytest.mark.parametrize(
-    ("path", "directory", "expected"),
-    [
-        ("/a/b", "/a", True),
-        ("/a", "/a", True),
-        ("/a", "/a/b", False),
-        ("/ab", "/a", False),
-    ],
-)
-def test_beneath_boundaries(path: str, directory: str, expected: bool) -> None:
-    assert policy.beneath(Path(path), Path(directory)) is expected
-
-
-@pytest.mark.parametrize(
     "key",
     [
         "healthcheck",
@@ -805,15 +792,6 @@ def test_bind_without_read_only_is_writable(deploy_service: Service) -> None:
     assert policy.model(candidate, deploy_service) == (
         policy.Source(Path("/srv/o11y/data/web"), writable=True),
     )
-
-
-def test_network_validator_checks_its_own_field_boundary(
-    deploy_service: Service,
-) -> None:
-    with pytest.raises(RefusalError, match=r"^unknown object key$"):
-        policy._network(  # Test the nested validator independently.
-            "default", {"name": "o11y_default", "unknown": True}, deploy_service
-        )
 
 
 def test_network_entries_after_an_empty_entry_are_checked(

@@ -125,14 +125,6 @@ def test_preflight_failure_withholds_exception_output(
     assert engine(receiver).events == []
 
 
-def test_contents_can_read_an_unstaged_release(receiver: receive.Receiver) -> None:
-    receiver.prepare()
-    assert receiver.contents(manual=False) == {"token": b"fixture"}
-    assert (
-        receiver.service.root / "releases" / RELEASE / "compose.yaml"
-    ).read_bytes() == b"model"
-
-
 def test_refuses_release_when_daemon_cannot_enforce_memory_limit(
     capability_receiver: receive.Receiver,
 ) -> None:
@@ -555,7 +547,7 @@ def test_bounded_input(monkeypatch: pytest.MonkeyPatch) -> None:
 def test_request_identity_and_version(
     deploy_service: Service, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    monkeypatch.setattr(receive, "effective_uid", lambda: 0)
+    monkeypatch.setattr(os, "geteuid", lambda: 0)
     monkeypatch.setenv("SUDO_USER", "deploy")
     monkeypatch.setenv("SSH_ORIGINAL_COMMAND", "o11y " + RELEASE)
 
@@ -606,7 +598,7 @@ def test_request_identity_and_version(
     output = io.StringIO()
     assert receive.receive(output) == 2
     assert json.loads(output.getvalue())["reason"] == "Compose version mismatch"
-    monkeypatch.setattr(receive, "effective_uid", lambda: 1)
+    monkeypatch.setattr(os, "geteuid", lambda: 1)
     output = io.StringIO()
     assert receive.receive(output) == 2
     assert json.loads(output.getvalue())["release"] is None
@@ -648,11 +640,6 @@ def test_recover_then_continue_deploy(receiver: receive.Receiver) -> None:
     assert isinstance(receiver.out, io.StringIO)
     assert '"outcome": "recovered"' in receiver.out.getvalue()
     assert result(receiver)["outcome"] == "ok"
-
-
-def test_effective_uid_unix(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(os, "geteuid", lambda: 123)
-    assert receive.effective_uid() == 123
 
 
 @pytest.mark.parametrize("reason", [None, "safe refusal"])
@@ -784,7 +771,7 @@ def test_receive_entry_exact_construction(
     config_doc: Json = {"compose_binary": "/compose", "compose_version": "5.7.1"}
     output = io.StringIO()
     with (
-        patch.object(receive, "effective_uid", return_value=0),
+        patch.object(os, "geteuid", return_value=0),
         patch.object(receive.time, "monotonic", return_value=123),
         patch.object(receive, "load", side_effect=[service_doc, config_doc]) as load,
         patch.object(receive, "service", return_value=deploy_service) as service,
@@ -929,6 +916,8 @@ def test_free_space_boundary(receiver: receive.Receiver, free: int) -> None:
         assert receiver.run() == (2 if free < 1024**3 else 0)
     disk.assert_called_once_with(receiver.service.root)
     assert result(receiver)["step"] == ("space" if free < 1024**3 else "done")
+    if free < 1024**3:
+        assert result(receiver)["reason"] == "free space"
 
 
 @pytest.mark.parametrize(
@@ -964,7 +953,7 @@ def test_entry_refusal_record_exact(
     output = io.StringIO()
     with (
         patch.object(receive.time, "monotonic", side_effect=[100, 102.36]),
-        patch.object(receive, "effective_uid", return_value=0 if known else 1),
+        patch.object(os, "geteuid", return_value=0 if known else 1),
         patch.object(receive, "load", side_effect=RefusalError("safe refusal")),
     ):
         assert receive.receive(output) == 2
@@ -1082,7 +1071,7 @@ def test_missing_original_command_is_refused(monkeypatch: pytest.MonkeyPatch) ->
     monkeypatch.setenv("SUDO_USER", "deploy")
     monkeypatch.delenv("SSH_ORIGINAL_COMMAND", raising=False)
     output = io.StringIO()
-    with patch.object(receive, "effective_uid", return_value=0):
+    with patch.object(os, "geteuid", return_value=0):
         assert receive.receive(output) == 2
     assert json.loads(output.getvalue())["stack"] is None
     assert json.loads(output.getvalue())["reason"] == "invalid request"
@@ -1099,7 +1088,7 @@ def test_entry_rejects_unknown_receiver_configuration(
         "unknown": True,
     }
     with (
-        patch.object(receive, "effective_uid", return_value=0),
+        patch.object(os, "geteuid", return_value=0),
         patch.object(receive, "load", side_effect=[{}, config_doc]),
         patch.object(receive, "service", return_value=deploy_service),
         patch.object(receive, "Command") as command,
@@ -1122,7 +1111,7 @@ def test_entry_rejects_binary_and_configured_version_before_command(
     monkeypatch.setenv("SUDO_USER", "deploy")
     monkeypatch.setenv("SSH_ORIGINAL_COMMAND", "o11y " + RELEASE)
     configuration: Json = {"compose_binary": binary, "compose_version": version}
-    monkeypatch.setattr(receive, "effective_uid", lambda: 0)
+    monkeypatch.setattr(os, "geteuid", lambda: 0)
     monkeypatch.setattr(receive, "load", Mock(side_effect=[{}, configuration]))
     monkeypatch.setattr(receive, "service", Mock(return_value=deploy_service))
     output = io.StringIO()
@@ -1223,7 +1212,7 @@ def test_manual_entry_run_schema_failure_reports_failed_recovery(
 ) -> None:
     monkeypatch.setenv("SUDO_USER", "operator")
     with (
-        patch.object(receive, "effective_uid", return_value=0),
+        patch.object(os, "geteuid", return_value=0),
         patch.object(
             receive,
             "load",
@@ -1262,7 +1251,7 @@ def test_identity_refusal_reasons(
     reason: str,
 ) -> None:
     monkeypatch.setenv("SUDO_USER", sudo_user)
-    monkeypatch.setattr(receive, "effective_uid", lambda: uid)
+    monkeypatch.setattr(os, "geteuid", lambda: uid)
     with pytest.raises(RefusalError, match="^" + reason + "$"):
         receive.identity(rollback)
 
@@ -1272,7 +1261,7 @@ def test_manual_contents_refuses_missing_previous_with_a_distinct_reason(
 ) -> None:
     receiver.prepare()
     with pytest.raises(RefusalError, match=r"^no previous release$"):
-        receiver.contents(manual=True)
+        receiver.contents(None)
 
 
 def test_existing_digest_requires_regular_control_file(
@@ -1284,15 +1273,6 @@ def test_existing_digest_requires_regular_control_file(
     (destination / ".sha256").mkdir()
     with pytest.raises(RefusalError, match=r"^path type$"):
         receiver.stage(receive.Release({}, {}, "digest"))
-
-
-def test_contents_reports_free_space_refusal(receiver: receive.Receiver) -> None:
-    receiver.service = replace(receiver.service, min_free_gib=1)
-    with (
-        patch.object(receive.shutil, "disk_usage", return_value=Mock(free=0)),
-        pytest.raises(RefusalError, match=r"^free space$"),
-    ):
-        receiver.contents(manual=False)
 
 
 def test_rollback_without_prior_release_returns_failed_status(
@@ -1315,7 +1295,7 @@ def test_entry_redacts_non_protocol_errors(
     monkeypatch.setenv("SSH_ORIGINAL_COMMAND", "o11y " + RELEASE)
     output = io.StringIO()
     with (
-        patch.object(receive, "effective_uid", return_value=0),
+        patch.object(os, "geteuid", return_value=0),
         patch.object(receive, "load", side_effect=failure("private output")),
     ):
         assert receive.receive(output) == 2

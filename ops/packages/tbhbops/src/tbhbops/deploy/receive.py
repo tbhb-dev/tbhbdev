@@ -46,7 +46,6 @@ from tbhbops.deploy.transaction import (
 
 ROOT_MODE = 0o700
 CONFIG = Path("/etc/tbhb/deploy")
-EMPTY_REQUEST = ""
 
 
 def stream(limit: int) -> bytes:
@@ -294,10 +293,8 @@ class Receiver:
             self.service.max_stream_mib * 1024**2,
         )
 
-    def contents(
-        self, *, manual: bool, release: Release | None = None
-    ) -> dict[str, bytes]:
-        if manual:
+    def contents(self, release: Release | None) -> dict[str, bytes]:
+        if release is None:
             previous = fs.target(self.service.root / "previous")
             require(
                 previous is not None,
@@ -314,8 +311,6 @@ class Receiver:
                 >= self.service.min_free_gib * 1024**3,
                 "free space",
             )
-            if release is None:
-                release = self.read_release()
             self.progress("release")
             self.stage(release)
             self.progress("policy")
@@ -372,7 +367,7 @@ class Receiver:
                     self.line("ok")
                     return 0
             transaction.prune()
-            contents = self.contents(manual=manual, release=release)
+            contents = self.contents(release)
             secrets_started = True
             code, outcome = self.apply(transaction, contents, manual=manual)
             if code != 0:
@@ -410,7 +405,7 @@ class Receiver:
 
 def identity(rollback: str | None) -> Request:
     require(
-        effective_uid() == 0,
+        os.geteuid() == 0,
         "receive requires root",
     )
     if rollback is None:
@@ -418,7 +413,7 @@ def identity(rollback: str | None) -> Request:
             os.environ.get("SUDO_USER") == "deploy",
             "receive requires deploy sudo user",
         )
-        wanted = request(os.environ.get("SSH_ORIGINAL_COMMAND", EMPTY_REQUEST))
+        wanted = request(os.environ.get("SSH_ORIGINAL_COMMAND", ""))
     else:
         require(
             os.environ.get("SUDO_USER") != "deploy",
@@ -503,7 +498,3 @@ def receive(out: TextIO, *, rollback: str | None = None) -> int:
         }
         out.write(json.dumps(record) + "\n")
         return 3 if recovery_failed else 2
-
-
-def effective_uid() -> int:
-    return os.geteuid()

@@ -275,7 +275,7 @@ def _positive_size(value: Json, ceiling: int) -> None:
     )
 
     multiplier = {"k": 1024, "m": 1024**2, "g": 1024**3}.get(size[-1].lower(), 1)
-    require(int(size.rstrip("bkmgBKMG")) * multiplier <= ceiling, "size ceiling")  # pragma: no mutate -- tech debt: surviving mutant x__positive_size__mutmut_47, decision no-mutation-on-prs  # noqa: E501  # fmt: skip
+    require(int(size.rstrip("bkmgBKMG")) * multiplier <= ceiling, "size ceiling")  # pragma: no mutate -- tech debt: surviving mutant x__positive_size__mutmut_47, decision no-mutation-on-prs  # fmt: skip
 
 
 def _logging(value: Json) -> None:
@@ -372,8 +372,7 @@ def _service(
     return paths
 
 
-def _network(key: str, value: Json, allowed: Service) -> None:
-    network = mapping(value, {"name", "labels", "driver", "internal", "ipam"})
+def _network(key: str, network: dict[str, Json], allowed: Service) -> None:
     require(network.get("driver") in (None, "bridge"), "network driver")
     if "internal" in network:
         typed(network["internal"], bool)
@@ -449,10 +448,6 @@ def retained(value: Json) -> tuple[Source, ...]:
     return tuple(paths)
 
 
-def beneath(path: Path, directory: Path) -> bool:
-    return path == directory or directory in path.parents
-
-
 def paths(
     sources: tuple[Source, ...],
     retained: tuple[Source, ...],
@@ -490,7 +485,7 @@ def paths(
         )
         require(
             not any(
-                beneath(path, entry) and not (source.writable and path == entry)
+                path.is_relative_to(entry) and not (source.writable and path == entry)
                 for entry in writable
             ),
             "path under writable bind",
@@ -498,32 +493,35 @@ def paths(
         if source.writable:
             require(
                 not any(
-                    beneath(path, control) or beneath(control, path)
+                    path.is_relative_to(control) or control.is_relative_to(path)
                     for control in controls
                 ),
                 "writable control path",
             )
             require(
                 not any(
-                    beneath(old.path, path) and not (old.writable and old.path == path)
+                    old.path.is_relative_to(path)
+                    and not (old.writable and old.path == path)
                     for old in retained
                 ),
                 "writable retained path",
             )
         else:
             if source.env:
-                require(path in secrets or beneath(path, own), "unlisted env file")
+                require(
+                    path in secrets or path.is_relative_to(own), "unlisted env file"
+                )
             require(
-                not beneath(path, root / "deploy")
-                and not beneath(path, root / "incoming"),
+                not path.is_relative_to(root / "deploy")
+                and not path.is_relative_to(root / "incoming"),
                 "read-only control path",
             )
             require(
-                not beneath(path, root / "releases") or beneath(path, own),
+                not path.is_relative_to(root / "releases") or path.is_relative_to(own),
                 "foreign release path",
             )
             require(
-                beneath(path, own) or path in secrets or path in allowed.ro_binds,
+                path.is_relative_to(own) or path in secrets or path in allowed.ro_binds,
                 "unlisted read-only source",
             )
     require(candidate_writes <= writable, "incomplete writable set")

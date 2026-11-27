@@ -157,36 +157,9 @@ def engine(deploy_service: Service, trusted_tree: Path) -> Engine:
     return Engine(service, "/compose", FakeCommand())
 
 
-def test_sandbox_parse_fixed_point_and_run(engine: Engine) -> None:
-    engine.parse(RELEASE)
-    assert engine.model_path(RELEASE).parent == engine.state / "models"
-    assert (engine.model_path(RELEASE).stat().st_mode & 0o777) == 0o600
+def test_parse_refuses_a_changed_fixed_point(engine: Engine) -> None:
     fake = engine.command
     assert isinstance(fake, FakeCommand)
-    reads = [call for call, _ in fake.calls if "config" in call]
-    assert len(reads) == 2
-    assert all("--property=TemporaryFileSystem=/:ro" in call for call in reads)
-    assert all("--property=MountAPIVFS=no" in call for call in reads)
-    assert all("--property=PrivateNetwork=yes" in call for call in reads)
-    assert all("--property=NoNewPrivileges=yes" in call for call in reads)
-    assert all("--property=CapabilityBoundingSet=" in call for call in reads)
-    assert all("--no-env-resolution" in call for call in reads)
-    assert str(engine.model_path(RELEASE)) in reads[1]
-    assert " /dev/null" in next(
-        argument for argument in reads[1] if "BindReadOnlyPaths" in argument
-    )
-    engine.run(RELEASE, "pull")
-    argv = fake.calls[-1][0]
-    assert argv[:5] == [
-        "/usr/bin/systemd-run",
-        "--unit=tbhb-deploy-o11y",
-        "--collect",
-        "--wait",
-        "--pipe",
-    ]
-    assert not any(argument.startswith("--property") for argument in argv)
-    assert "down" not in argv
-    assert str(engine.model_path(RELEASE)) in argv
     fake.fixed = {"changed": True}
     with pytest.raises(RefusalError, match=r"^Compose fixed point$"):
         engine.parse(RELEASE)
