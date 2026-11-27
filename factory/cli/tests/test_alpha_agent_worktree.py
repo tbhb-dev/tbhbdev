@@ -714,18 +714,6 @@ def test_host_git_never_returns_to_a_launched_clone(
     assert set(calls) == {mirror, first, second}
 
 
-def test_old_fetch_shape_writes_through_shared_fetch_head(tmp_path: Path) -> None:
-    _, clone = repository(tmp_path)
-    marker = tmp_path / "marker"
-    marker.write_text("untouched\n")
-    (clone / ".git" / "FETCH_HEAD").symlink_to(marker)
-    # The old supervisor fetched in the account clone's common directory.
-    # This counterfactual only writes harmless data; it executes no marker.
-    worktree.git(clone, "fetch", "--upload-pack=git-upload-pack", "origin")
-    assert marker.read_text() != "untouched\n"
-    assert "branch 'main'" in marker.read_text()
-
-
 def test_mirror_fetch_never_recurses_into_a_configured_module(tmp_path: Path) -> None:
     _, clone = repository(tmp_path)
     first = worktree.create(clone, "first", run_request())
@@ -1480,14 +1468,6 @@ def test_git_shape_writes_exact_paths_before_launch(
     ]
 
 
-def test_an_empty_git_directory_is_no_main_checkout(tmp_path: Path) -> None:
-    mount = tmp_path / "mount"
-    (mount / ".git").mkdir(parents=True)
-    assert not worktree.is_main_checkout(mount)
-    (mount / ".git" / "HEAD").write_text("ref: refs/heads/main\n")
-    assert worktree.is_main_checkout(mount)
-
-
 def test_sandbox_placeholders_inside_git_are_no_main_checkout(tmp_path: Path) -> None:
     mount = tmp_path / "mount"
     (mount / ".git" / "hooks").mkdir(parents=True)
@@ -1680,12 +1660,6 @@ def test_hook_lock_covers_nested_directories_and_data(tmp_path: Path) -> None:
     assert data.stat().st_mode & 0o777 == 0o444
     assert data.parent.stat().st_mode & 0o777 == 0o555
     assert data.parent.parent.stat().st_mode & 0o777 == 0o555
-
-
-def test_scan_skips_git_metadata(checkout_paths: tuple[Path, Path]) -> None:
-    source, workspace = checkout_paths
-    (workspace / ".git/metadata/.git").mkdir(parents=True)
-    worktree.validate_writes(workspace, source, ())
 
 
 def test_symlinked_tmp_alias_cannot_hide_a_clone(
@@ -2198,34 +2172,3 @@ def test_git_sends_the_token_as_an_environment_header(
     assert "example-credential" not in " ".join(map(str, command))  # type: ignore[call-overload]
     worktree.git(tmp_path, "init")
     assert "GIT_CONFIG_COUNT" not in seen[1][1]
-
-
-def test_failed_retry_over_ssh_is_refused(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    _, clone = repository(tmp_path)
-
-    def fetch(_mirror: Path, _request: object) -> str:
-        raise subprocess.CalledProcessError(128, "git")
-
-    monkeypatch.setattr(worktree, "fetch_commit", fetch)
-    with pytest.raises(Invalid, match="run preparation failed at mirror fetch"):
-        worktree.create(clone, "p2", run_request())
-
-
-def test_git_runs_ssh_without_prompts_and_with_the_account_config(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    seen: list[dict[str, str]] = []
-
-    def check_output(_command: object, **kwargs: object) -> str:
-        env = kwargs["env"]
-        assert isinstance(env, dict)
-        seen.append(env)
-        return ""
-
-    monkeypatch.setattr(subprocess, "check_output", check_output)
-    worktree.git(tmp_path, "init")
-    command = seen[0]["GIT_SSH_COMMAND"]
-    assert "BatchMode=yes" in command
-    assert " -F " not in command

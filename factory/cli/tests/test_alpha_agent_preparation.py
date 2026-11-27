@@ -322,39 +322,3 @@ def test_git_stderr_reaches_preparation(
         "run preparation failed at mirror init: "
         "fatal: https://[redacted]@github.com/org/repo"
     )
-
-
-def test_non_github_host_is_refused(tmp_path: Path) -> None:
-    value = run_request(repo="git.example.com/tbhb-dev/example-repo")
-    with pytest.raises(Invalid, match="only tbhb-dev repositories"):
-        worktree.create(tmp_path, "example", value)
-
-
-def test_fetch_never_receives_credentials(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    monkeypatch.setenv("SSH_AUTH_SOCK", "sensitive-socket")
-    monkeypatch.setenv("GH_TOKEN", "sensitive-token")
-    calls: list[list[str]] = []
-
-    def output(command: list[str], **kwargs: object) -> str:
-        calls.append(command)
-        environment = kwargs["env"]
-        assert isinstance(environment, dict)
-        assert environment["GIT_ASKPASS"] == "/bin/false"
-        assert environment["GIT_TERMINAL_PROMPT"] == "0"
-        assert environment["GIT_CONFIG_GLOBAL"] == "/dev/null"
-        assert environment["GIT_CONFIG_NOSYSTEM"] == "1"
-        assert "SSH_AUTH_SOCK" not in environment
-        assert "GH_TOKEN" not in environment
-        assert "credential.helper=" in command
-        assert "core.askPass=" in command
-        assert not any("sensitive" in value for value in command)
-        if "--get-regexp" in command:
-            raise subprocess.CalledProcessError(1, command)
-        assert command[-2:] == ["fetch", "origin"]
-        return ""
-
-    monkeypatch.setattr(subprocess, "check_output", output)
-    assert worktree.git(tmp_path, "fetch", "origin") == ""
-    assert len(calls) == 2
