@@ -11,6 +11,7 @@ import re
 import sys
 import tokenize
 import tomllib
+from codecs import BOM_UTF8
 from collections import Counter
 from io import BytesIO
 from pathlib import Path
@@ -75,7 +76,7 @@ def remove_docstrings(tree: ast.Module, lines: list[str]) -> None:
 def source_metrics(content: bytes) -> tuple[int, Counter[str]]:
     content = content.replace(b"\r\n", b"\n").replace(b"\r", b"\n")
     tokens = tokenize.tokenize(BytesIO(content).readline)
-    lines = content.decode(next(tokens).string).removeprefix("\ufeff").split("\n")
+    lines = content.removeprefix(BOM_UTF8).decode(next(tokens).string).split("\n")
     counts: Counter[str] = Counter()
     for token in tokens:
         if token.type != tokenize.COMMENT:

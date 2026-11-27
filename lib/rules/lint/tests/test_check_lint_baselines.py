@@ -143,7 +143,7 @@ def test_count_strings_with_code() -> None:
     content = '''# coding: latin-1
 """Module docstring
 """; pass
-def été(): ("première" " phrase"); pass
+def été(): ("First" " sentence."); pass
 def other():
     ("docstring"
      " continuation")
