@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING
 from tbhbdev import telemetry, userconfig
 from tbhbdev.alpha.agent import (
     admission,
+    app_server,
     arguments,
     driver,
     precheck,
@@ -16,6 +17,7 @@ from tbhbdev.alpha.agent import (
     signing_parity,
     ssh_serve,
 )
+from tbhbdev.alpha.agent.decisions import host_names
 
 if TYPE_CHECKING:
     import argparse
@@ -24,6 +26,7 @@ if TYPE_CHECKING:
 def main(argv: list[str], prog: str) -> int:
     host_commands = {
         "run-host": run_host.main,
+        "send-host": app_server.main,
         "ssh-serve": ssh_serve.main,
         "precheck": precheck.main,
         "check-slot": admission.main,
@@ -41,12 +44,20 @@ def main(argv: list[str], prog: str) -> int:
 
 
 def dispatch(args: argparse.Namespace | None, prog: str) -> int:
+    if args is not None and args.verb == "send" and args.harness == "claude":
+        print(driver.CLAUDE_UNAVAILABLE, file=sys.stderr)
+        return 1
     try:
         loaded = settings.load()
         if args is None:
             run_host.check_config(loaded)
             print(f"{prog}: configuration valid")
             return 0
+        if args.verb == "exec" and host_names.contains_host_name(
+            args.name, settings.known_host_names(loaded)
+        ):
+            print(f"{prog}: run name contains a host name", file=sys.stderr)
+            return 1
         return driver.dispatch(loaded, args)
     except (userconfig.ConfigError, OSError, ValueError) as exc:
         print(f"{prog}: {exc}", file=sys.stderr)

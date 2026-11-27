@@ -7,7 +7,7 @@ from pathlib import Path
 def test_read_back_defaults_only_the_omitted_schema_values() -> None:
     role = next(
         path / "ansible" / "roles" / "windows_update_policy"
-        for path in Path(__file__).resolve().parents
+        for path in Path(__file__).parents
         if (path / "ansible" / "roles").is_dir()
     )
     script = (role / "files" / "read-back.ps1").read_text(encoding="utf-8")

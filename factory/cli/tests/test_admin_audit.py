@@ -12,7 +12,7 @@ import threading
 from datetime import datetime
 lazy from pathlib import Path
 
-import httpx
+import httpx2
 import pytest
 
 from tbhbdev.admin import policy, request
@@ -419,7 +419,7 @@ def test_fail_closed_before_any_io(
     def no_store() -> gh_app.Reader:
         pytest.fail("refusal reached the secret reader")
 
-    def no_network(_req: httpx.Request) -> httpx.Response:
+    def no_network(_req: httpx2.Request) -> httpx2.Response:
         pytest.fail("refusal reached HTTP")
 
     env = gh_app.Env(
@@ -427,7 +427,7 @@ def test_fail_closed_before_any_io(
         lambda: 0,
         no_store,
         gh_app.run_openssl,
-        httpx.MockTransport(no_network),
+        httpx2.MockTransport(no_network),
     )
     runtime = request.Runtime(Audit(tmp_path / "admin"), env, tmp_path / "enabled")
 

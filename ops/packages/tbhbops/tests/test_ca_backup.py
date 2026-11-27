@@ -13,7 +13,7 @@ import pytest
 
 SCRIPT = next(
     root / "apps/ca/backup/backup.py"
-    for root in Path(__file__).resolve().parents
+    for root in Path(__file__).parents
     if (root / "apps/ca/backup/backup.py").is_file()
 )
 

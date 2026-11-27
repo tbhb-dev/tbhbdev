@@ -21,17 +21,37 @@ class SizeCounts:
     raw_limit: int
     failed: str | None
     imported_lines: int | None = None
+    branch_exempt: bool = False
 
 
 class SizeCountError(Exception):
     """The counter could not run or returned an invalid result."""
 
 
-def size_counts(
+def print_counts(command: str, counts: SizeCounts, branch: str) -> None:
+    """Print size totals for check, imports and exempt branches."""
+    output = sys.stdout if command == "check" else sys.stderr
+    if counts.imported_lines is not None:
+        print(
+            f"{counts.imported_lines} added lines verified by import maps", file=output
+        )
+    if command == "check" or counts.imported_lines is not None or counts.branch_exempt:
+        print(f"{counts.code_lines} code lines, limit {counts.code_limit}", file=output)
+        print(f"{counts.raw_lines} raw lines, limit {counts.raw_limit}", file=output)
+    if counts.branch_exempt:
+        print(
+            f"Branch {branch} is exempt from the size limit by "
+            ".github/pr-size-exempt-branches.txt",
+            file=output,
+        )
+
+
+def size_counts(  # noqa: PLR0913 -- refs, branch name and counter tools are independent inputs.
     base: str,
     head: str,
     *,
     default_ref: str | None = None,
+    head_branch: str = "",
     scc: str = "scc",
     git: str = "git",
 ) -> SizeCounts:
@@ -52,6 +72,7 @@ def size_counts(
                 str(DATA / "pr-size-exempt.txt"),
                 default_ref or "",
                 sys.executable,
+                head_branch,
             ],
             capture_output=True,
             text=True,
@@ -70,6 +91,7 @@ def size_counts(
     if (
         not isinstance(data, dict)
         or any(type(data.get(key)) is not int for key in COUNT_KEYS)
+        or type(data.get("branch_exempt")) is not bool
         or "imported_lines" not in data
         or (
             data["imported_lines"] is not None
@@ -97,6 +119,7 @@ def size_counts(
             data["failed"],
         ),
         imported_lines=data["imported_lines"],
+        branch_exempt=data["branch_exempt"],
     )
 
 

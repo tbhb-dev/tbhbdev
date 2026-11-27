@@ -25,7 +25,7 @@ ROLE = next(
     role
     for role in (
         parent / "ansible" / "roles" / "deploy_runner"
-        for parent in Path(__file__).resolve().parents
+        for parent in Path(__file__).parents
     )
     if role.is_dir()
 )

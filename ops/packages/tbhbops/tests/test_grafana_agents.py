@@ -2,6 +2,7 @@
 
 import json
 import os
+import shlex
 import subprocess
 import sys
 from pathlib import Path
@@ -20,8 +21,7 @@ def test_agents_creation_and_password_rotation(tmp_path: Path, exists: bool) -> 
     (tmp_path / "grafana_admin_password").write_text(admin)
     (tmp_path / "grafana_agents_password").write_text(password)
     curl = tmp_path / "curl"
-    curl.write_text(
-        f"#!{sys.executable}\n"
+    curl.with_suffix(".py").write_text(
         """import json, os, pathlib, sys
 args = sys.argv[1:]
 config = sys.stdin.read()
@@ -42,6 +42,7 @@ pathlib.Path(args[args.index('-o') + 1]).write_text(reply)
 print('412' if method == 'POST' and os.environ['EXISTS'] == 'yes' else '200', end='')
 """
     )
+    curl.write_text(f'#!/bin/sh\nexec {shlex.quote(sys.executable)} "$0.py" "$@"\n')
     curl.chmod(0o700)
     script = (
         (ROOT / "o11y/config/grafana/owner.sh")

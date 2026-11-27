@@ -8,8 +8,10 @@ from typing import TYPE_CHECKING
 from tbhbops.o11y import smoke, validate
 from tbhbops.o11y import smoke_access as access
 from tbhbops.o11y import smoke_query as query
+
 from tbhbops_cli.o11y import render, smoke_checks, smoke_stages
-from tbhbops_cli.o11y.smoke import poll, require, scan_path
+from tbhbops_cli.o11y.polling import poll
+from tbhbops_cli.o11y.smoke import require, scan_path
 
 if TYPE_CHECKING:
     from pathlib import Path

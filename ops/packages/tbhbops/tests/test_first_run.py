@@ -23,11 +23,15 @@ from jinja2 import Environment, StrictUndefined
 
 ROOT = next(
     path
-    for path in Path(__file__).resolve().parents
+    for path in Path(__file__).parents
     if (path / "ansible").is_dir() and (path / "packages" / "tbhbops").is_dir()
 )
 ROLE = ROOT / "ansible" / "roles" / "ops_accounts"
 SCRIPT = ROOT / "ansible" / "scripts" / "first-run-macos.sh"
+needs_inventory = pytest.mark.skipif(
+    not (ROOT / "ansible/inventory/group_vars/agent_hosts.yml").is_file(),
+    reason="requires the private agent_hosts.yml inventory",
+)
 KEY = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIMBxMcLBO2dNsuwi0clAzEHghsyOUtwtQU2PXYShQKQa"
 LABEL = "Command Line Tools for Xcode 27.2-27.2"
 MARKER = "tmp/.com.apple.dt.CommandLineTools.installondemand.in-progress"
@@ -120,6 +124,7 @@ def task(name: str) -> object:
     return next(item for item in items if at(item, "name") == name)
 
 
+@needs_inventory
 def test_autoinstall_matches_the_role() -> None:
     text = render()
     assert text.startswith("#cloud-config\n")
@@ -157,6 +162,7 @@ def test_autoinstall_matches_the_role() -> None:
     ]
 
 
+@needs_inventory
 def test_autoinstall_keeps_the_install_closed() -> None:
     autoinstall = at(yaml.safe_load(render()), "autoinstall")
     assert at(autoinstall, "ssh") == {"install-server": True, "allow-pw": False}

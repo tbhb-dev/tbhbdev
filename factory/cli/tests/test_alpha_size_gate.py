@@ -19,6 +19,7 @@ GOOD = {
     "raw_limit": 1500,
     "imported_lines": None,
     "failed": None,
+    "branch_exempt": False,
 }
 
 
@@ -99,21 +100,79 @@ def test_size_count_matches_rules_counting(
     assert sg.size_counts(base, "HEAD") == expected
 
 
+@pytest.mark.parametrize("command", ["check", "create"])
 @pytest.mark.parametrize(
-    ("change", "imported", "counted"),
+    "head_branch", ["agent/cleanup-module", "agent/other", "agent/self-exempt"]
+)
+def test_branch_exemption_uses_the_base_policy(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    command: str,
+    head_branch: str,
+) -> None:
+    monkeypatch.chdir(tmp_path)
+
+    def git(*args: str) -> str:
+        return subprocess.check_output(
+            [
+                "git",
+                "-c",
+                "user.name=test",
+                "-c",
+                "user.email=test@example.invalid",
+                *args,
+            ],
+            text=True,
+        ).strip()
+
+    git("init", "-q")
+    policy = tmp_path / ".github/pr-size-exempt-branches.txt"
+    policy.parent.mkdir()
+    policy.write_text("# Cleanup exemption\n\nagent/cleanup-*")
+    git("add", ".")
+    git("commit", "-qm", "base")
+    base = git("rev-parse", "HEAD")
+    (tmp_path / "source.py").write_text("x = 1\n" * 401)
+    policy.write_text(policy.read_text() + "\nagent/self-exempt\n")
+    git("add", ".")
+    git("commit", "-qm", "change")
+
+    monkeypatch.setattr(pr, "git", Mock(return_value=(0, head_branch)))
+    monkeypatch.setattr(pr, "_size_base", Mock(return_value=(base, None)))
+    monkeypatch.setattr(pr, "find_tool", Mock(return_value="scc"))
+    checked = pr.Checked([], meta={"base": "main"})
+    pr.check_size(argparse.Namespace(command=command, draft="d.md"), checked)
+
+    captured = capsys.readouterr()
+    if head_branch == "agent/cleanup-module":
+        assert checked.problems == []
+        output = (
+            "401 code lines, limit 400\n401 raw lines, limit 1500\n"
+            f"Branch {head_branch} is exempt from the size limit by "
+            ".github/pr-size-exempt-branches.txt\n"
+        )
+        assert captured == ((output, "") if command == "check" else ("", output))
+    else:
+        assert checked.problems == [(1, "401 lines, limit 400: split into stacked PRs")]
+        assert "is exempt" not in captured.out + captured.err
+
+
+@pytest.mark.parametrize(
+    ("change", "expected"),
     [
-        ("clean", 600, 0),
-        ("handwritten", 600, 500),
-        ("mismatch", 0, 600),
-        ("missing", 0, 600),
+        ("clean", (605, 0, 0)),
+        ("handwritten", (605, 500, 500)),
+        ("mismatch", (5, 600, 600)),
+        ("missing", (0, 600, 605)),
+        ("invalid", (0, 600, 606)),
     ],
 )
 def test_only_verified_imports_are_exempt(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     change: str,
-    imported: int,
-    counted: int,
+    expected: tuple[int, int, int],
 ) -> None:
     def commit(repo: Path, *, base: bool = False) -> str:
         def git(*args: str) -> str:
@@ -150,10 +209,13 @@ def test_only_verified_imports_are_exempt(
     )
     if change == "handwritten":
         (repo / "project/extra.py").write_text("handwritten = 1\n" * 500)
-    (repo / "project/IMPORT-MAP.toml").write_text(
+    import_map = (
         f'repo = "example/source"\ncommit = "{frozen}"\ndest = "project"\n'
         '[copy]\n"module.py" = "project/module.py"\n'
     )
+    if change == "invalid":
+        import_map += "[rewrite\n"
+    (repo / "project/IMPORT-MAP.toml").write_text(import_map)
     head = commit(repo)
     clone = source if change != "missing" else tmp_path / "absent"
     monkeypatch.setenv("GIT_CONFIG_COUNT", "1")
@@ -161,8 +223,8 @@ def test_only_verified_imports_are_exempt(
     monkeypatch.setenv("GIT_CONFIG_VALUE_0", "https://github.com/example/source.git")
     monkeypatch.chdir(repo)
     counts = sg.size_counts(base, head)
-    assert (counts.imported_lines, counts.code_lines) == (imported, counted)
-    assert counts.failed == ("code" if counted > 400 else None)
+    assert (counts.imported_lines, counts.code_lines, counts.raw_lines) == expected
+    assert counts.failed == ("code" if expected[1] > 400 else None)
 
 
 @pytest.mark.parametrize(
@@ -262,6 +324,7 @@ def test_counts(
             str(sg.DATA / "pr-size-exempt.txt"),
             default_ref or "",
             sys.executable,
+            "",
         ],
     )
     assert runner.call_args.kwargs == {
@@ -398,6 +461,7 @@ def test_pr_check(
         "refs/remotes/origin/main",
         "HEAD",
         default_ref=None,
+        head_branch="",
         scc="/tools/scc",
         git="/tools/git",
     )
@@ -469,8 +533,8 @@ def test_pr_create_size(
         monkeypatch.setattr(sg, "size_counts", counter)
 
     def inspect_git(verb: str, *_args: str) -> tuple[int, str]:
-        if verb == "symbolic-ref":
-            return 0, "refs/heads/topic"
+        if verb == "branch":
+            return 0, "topic"
         return int(failure == "base"), ""
 
     git = Mock(side_effect=inspect_git)
@@ -506,6 +570,7 @@ def test_pr_create_size(
             "refs/remotes/origin/main",
             "HEAD",
             default_ref=None,
+            head_branch="topic",
             scc="/tools/scc",
             git="/tools/git",
         )
@@ -558,6 +623,7 @@ def test_both_stacked_refs_are_refreshed_without_tags_then_counted(
         "refs/remotes/origin/topic",
         "HEAD",
         default_ref="refs/remotes/origin/main",
+        head_branch="",
         scc="/tools/scc",
         git="git",
     )

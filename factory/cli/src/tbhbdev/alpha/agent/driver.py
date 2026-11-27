@@ -27,12 +27,9 @@ from tbhbdev.alpha.agent import (
     transport,
     version_heal,
 )
-from tbhbdev.alpha.agent import (
-    settings as agent_settings,
-)
 from tbhbdev.alpha.agent.decisions import driver as rules
-from tbhbdev.alpha.agent.decisions import host_names, limits, remote, repo, request
 from tbhbdev.alpha.agent.decisions import launcher as launch_rules
+from tbhbdev.alpha.agent.decisions import limits, remote, repo, request
 from tbhbdev.alpha.agent.decisions import runfiles_names as files
 from tbhbdev.alpha.agent.model import Harness, Invalid, Profile, RunKind, RunRequest
 
@@ -44,6 +41,7 @@ if TYPE_CHECKING:
 
 
 MAX_LIVE_REVIEWS = 4
+CLAUDE_UNAVAILABLE = "Claude delivery is not built"
 
 
 class Run:
@@ -556,10 +554,12 @@ def launch_attributes(run: Run) -> None:
 
 
 def execute(settings: Settings, args: argparse.Namespace) -> int:
-    if host_names.contains_host_name(
-        args.name, agent_settings.known_host_names(settings)
+    if args.steer and (args.harness, args.profile, args.schema) != (
+        Harness.CODEX,
+        Profile.BUILD,
+        None,
     ):
-        message = "run name contains a host name"
+        message = "exec --steer requires a Codex build without --schema"
         raise Invalid(message)
     run = prepare(settings, args) if args.host is not None else None
     if run is not None:
@@ -612,7 +612,7 @@ def execute(settings: Settings, args: argparse.Namespace) -> int:
         transport.call(
             settings,
             run.host,
-            remote.start(run.name, settings.sockets_dir, run.host),
+            remote.start(run.name, settings.sockets_dir, run.host, steer=args.steer),
             transport.Stdin(run.owner),
             timeout=deadline - time.monotonic(),
         )
@@ -1012,6 +1012,28 @@ def keep(settings: Settings, run: Run) -> int:
     return 0
 
 
+def send(settings: Settings, run: Run, text: str) -> int:
+    name = run.name
+    if run.request.harness is Harness.CLAUDE:
+        raise Invalid(CLAUDE_UNAVAILABLE)
+    if run.request.harness is not Harness.CODEX:
+        message = f"{name}: send requires a Codex run"
+        raise Invalid(message)
+    if kind := secret_kind(text):
+        message = f"steering message refused: {kind}"
+        raise Invalid(message)
+    script = remote.owned(name) + (
+        f"exec {remote.program(run.host)} alpha agent send-host {name}\n"
+    )
+    error = transport.shell(
+        settings, run.host, script, transport.Stdin(run.owner, text.encode())
+    ).strip()
+    if error:
+        message = f"{name}: {transport.terminal_text(error)}"
+        raise Invalid(message)
+    return 0
+
+
 def dispatch(settings: Settings, args: argparse.Namespace) -> int:
     if args.verb == "signing-parity":
         return signing_parity.main(settings)
@@ -1024,8 +1046,12 @@ def dispatch(settings: Settings, args: argparse.Namespace) -> int:
     try:
         run = load(settings, args.name)
     except FileNotFoundError:
-        if args.verb == "clean":
-            return clean_archived(settings, args.name, force=args.force)
+        match args.verb:
+            case "clean":
+                return clean_archived(settings, args.name, force=args.force)
+            case "send":
+                message = f"{args.name}: unknown run"
+                raise Invalid(message) from None
         raise
     verbs = {"wait": wait, "status": status, "kill": kill, "keep": keep}
     try:
@@ -1036,6 +1062,8 @@ def dispatch(settings: Settings, args: argparse.Namespace) -> int:
             result = inspect(settings, run, limit=limit)
         elif args.verb == "clean":
             result = clean(settings, run, force=args.force)
+        elif args.verb == "send":
+            result = send(settings, run, args.message)
         else:
             result = verbs[args.verb](settings, run)
     except transport.CollisionError:

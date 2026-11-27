@@ -14,7 +14,7 @@ import yaml
 
 ANSIBLE = next(
     path / "ansible"
-    for path in Path(__file__).resolve().parents
+    for path in Path(__file__).parents
     if (path / "ansible" / "roles").is_dir()
 )
 ROLE = ANSIBLE / "roles" / "o11y"

@@ -10,7 +10,7 @@ import sys
 from pathlib import Path
 from unittest.mock import Mock
 
-import httpx
+import httpx2
 import pytest
 from fake_tool import pythonpath, write_fake
 
@@ -91,29 +91,6 @@ def guard(
         io.StringIO(f"refs/heads/topic {local} {ref} {remote}\n"),
     )
     return pg.main(["origin", origin_url()], "tbhbdev alpha pre-push-guard")
-
-
-def test_refuses_a_host_name_only_when_creating_a_branch(
-    repo: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
-) -> None:
-    config = Path(os.environ["XDG_CONFIG_HOME"]) / "tbhbdev" / "config.toml"
-    config.parent.mkdir(parents=True)
-    config.write_text(
-        '[[agent.host]]\nname = "examplehost01"\nos = "linux"\nshell = "bash"\n'
-        'account = "agent"\naccounts = ["agent"]\nproven_harnesses = ["codex"]\n'
-    )
-    base = git(repo, "rev-parse", "HEAD")
-    head = commit(repo)
-    ref = "refs/heads/agent/prepare-EXAMPLEHOST01"
-
-    assert guard(monkeypatch, head, ref=ref) == 1
-    assert (
-        capsys.readouterr().err
-        == "push refused because the branch name contains a host name\n"
-    )
-    assert guard(monkeypatch, head, base, ref=ref) == 0
-    assert guard(monkeypatch, ZERO, base, ref=ref) == 0
-    assert guard(monkeypatch, head, ref="refs/tags/prepare-examplehost01") == 0
 
 
 @pytest.mark.parametrize("kind", ["diverged", "forward", "new", "delete", "missing"])
@@ -512,8 +489,8 @@ def signing_key_request(monkeypatch: pytest.MonkeyPatch) -> Mock:
     real = pg.public_keys
 
     def public_keys(*, timeout: int) -> list[str]:
-        transport = httpx.MockTransport(
-            lambda sent: httpx.Response(200, content=request(sent))
+        transport = httpx2.MockTransport(
+            lambda sent: httpx2.Response(200, content=request(sent))
         )
         return real(timeout=timeout, transport=transport)
 
@@ -620,6 +597,16 @@ def test_an_org_agent_can_retry_a_push_with_no_ref_updates(
     monkeypatch.setattr(sys, "stdin", io.StringIO(""))
     assert pg.main(["origin", "https://github.com/tbhb-dev/example.git"], "p") == 0
     assert capsys.readouterr().err == ""
+
+
+def test_push_refuses_a_blank_destination(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    monkeypatch.setattr(sys, "stdin", io.StringIO(""))
+    assert pg.main(["origin", " "], "p") == 1
+    assert capsys.readouterr().err == (
+        "pre-push-guard: cannot determine the push destination; push refused\n"
+    )
 
 
 @pytest.mark.parametrize("query", ["for-each-ref", "batch", "commit"])

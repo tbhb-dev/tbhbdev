@@ -9,11 +9,10 @@ lazy from collections.abc import Mapping, Sequence
 
 import pytest
 import yaml
-
 from tbhbops import dns_smoke as smoke
 
 ROOT = next(
-    p for p in Path(__file__).resolve().parents if (p / "apps/dns/compose.yaml").is_file()
+    p for p in Path(__file__).parents if (p / "apps/dns/compose.yaml").is_file()
 )
 SOURCE = ROOT / "apps/dns"
 COMPOSE = (SOURCE / "compose.yaml").read_text(encoding="utf-8")
@@ -76,7 +75,7 @@ class Runner:
     retry: bool = False
     refuse_lan: bool = False
 
-    def run(  # noqa: PLR0911  # one result for each simulated Docker operation
+    def run(  # one result for each simulated Docker operation
         self, argv: Sequence[str], env: Mapping[str, str], timeout: int
     ) -> Result:
         self.calls.append((list(argv), dict(env), timeout))
@@ -162,7 +161,12 @@ class Files:
 
 @dataclass
 class System:
-    env: dict[str, str] = field(default_factory=lambda: {"PATH": "/bin"})
+    env: dict[str, str] = field(
+        default_factory=lambda: {
+            "PATH": "/bin",
+            "DOCKER_HOST": "unix:///run/dind/docker.sock",
+        }
+    )
     filesystem: Files = field(default_factory=Files)
     runner: Runner = field(default_factory=Runner)
     clock: float = 0
@@ -180,7 +184,6 @@ def args() -> argparse.Namespace:
     return argparse.Namespace(
         source=SOURCE,
         artifacts=Path("/artifacts"),
-        dedicated_engine="unix:///run/dind/docker.sock",
     )
 
 
@@ -198,11 +201,8 @@ def test_environment() -> None:
             )
         )
     }
-    assert smoke.docker_environment(keep | {"UNRELATED": "omit"}, None) == keep
-    assert smoke.docker_environment({}, None) == {}
-    assert smoke.docker_environment(keep, "unix:///dedicated") == keep | {
-        "DOCKER_HOST": "unix:///dedicated"
-    }
+    assert smoke.docker_environment(keep | {"UNRELATED": "omit"}) == keep
+    assert smoke.docker_environment({}) == {}
 
 
 def test_compose_settings_and_no_image_version_coupling() -> None:
@@ -447,7 +447,9 @@ def test_prepare_and_start() -> None:
     fs = system.filesystem
     original = COREFILE
     assert fs.data[STAGE / "config/Corefile"].replace(" 203.0.113.2", "") == original
-    assert fs.data[STAGE / "config/Corefile"].count(" 203.0.113.2") == COREFILE.count("bind ")
+    assert fs.data[STAGE / "config/Corefile"].count(" 203.0.113.2") == COREFILE.count(
+        "bind "
+    )
     assert fs.directories == [STAGE / "config", STAGE / "zones"]
     assert fs.modes == {
         STAGE: 0o755,
@@ -461,9 +463,7 @@ def test_prepare_and_start() -> None:
         *[
             (
                 STAGE / f"zones/{name}.zone",
-                smoke.render_tailnet_zone(
-                    ZONE_TEMPLATES[f"{name}.zone{suffix}"]
-                ),
+                smoke.render_tailnet_zone(ZONE_TEMPLATES[f"{name}.zone{suffix}"]),
                 0o644,
             )
             for name, suffix in (

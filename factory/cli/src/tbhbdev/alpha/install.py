@@ -129,7 +129,7 @@ from typing import TYPE_CHECKING, cast
 from tbhbdev import plugins
 from tbhbdev.alpha import install_statusline_decisions as statusline
 from tbhbdev.alpha.gh_shim import AGENT_MARKERS, agent_operation, bin_dir, wrapper_text
-from tbhbdev.alpha.identity import AGENT_EMAIL, codex_home
+from tbhbdev.alpha.identity.dispatcher import AGENT_EMAIL, codex_home
 from tbhbdev.alpha.repo import (
     TBHB_DEV_ORIGIN,
     TBHB_DEV_ORIGIN_ERE,

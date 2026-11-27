@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: Apache-2.0
 # Copyright Tony Burns
 
-"""Find unchanged copies from the public source commit named by an import map."""
+"""Find verified copies and rewrites of the source pinned by an import map."""
 
 # ruff: noqa: INP001 -- This is a standalone script in the counter's runfiles.
 
@@ -13,6 +13,9 @@ import tomllib
 from pathlib import Path, PurePosixPath
 from tempfile import TemporaryDirectory
 from typing import TypeGuard, cast
+
+Replacements = list[tuple[bytes, bytes]]
+PAIR_SIZE = 2
 
 
 def clean_path(value: object) -> TypeGuard[str]:
@@ -27,10 +30,25 @@ def clean_path(value: object) -> TypeGuard[str]:
     )
 
 
-def read_map(data: bytes) -> tuple[str, str, dict[str, str]]:
+def replacement_pairs(value: object) -> Replacements:
+    if not isinstance(value, list) or not all(
+        isinstance(pair, list)
+        and len(pair) == PAIR_SIZE
+        and all(isinstance(item, str) for item in cast("list[object]", pair))
+        for pair in cast("list[object]", value)
+    ):
+        message = "rewrite replacements must be a list of [old, new] strings"
+        raise ValueError(message)
+    return [(old.encode(), new.encode()) for old, new in cast("list[list[str]]", value)]
+
+
+def read_map(
+    data: bytes, map_path: str
+) -> tuple[str, str, dict[str, tuple[str, Replacements]]]:
     made = tomllib.loads(data.decode())
     repo, commit, dest = (made.get(key) for key in ("repo", "commit", "dest"))
     copies = made.get("copy", {})
+    rewrites = made.get("rewrite", {})
     if (
         not isinstance(repo, str)
         or not re.fullmatch(r"[a-zA-Z0-9_-]+/[a-zA-Z0-9_.-]+", repo)
@@ -38,27 +56,36 @@ def read_map(data: bytes) -> tuple[str, str, dict[str, str]]:
         or not isinstance(commit, str)
         or not re.fullmatch(r"[0-9a-f]{40}", commit)
         or not clean_path(dest)
+        or map_path != f"{dest}/IMPORT-MAP.toml"
         or not isinstance(copies, dict)
+        or not isinstance(rewrites, dict)
     ):
         return "", "", {}
-    writes = {
-        path: src
+    writes: dict[str, tuple[str, Replacements]] = {
+        path: (src, [])
         for src, path in cast("dict[object, object]", copies).items()
         if clean_path(src) and clean_path(path) and path.startswith(f"{dest}/")
     }
     if len(writes) != len(copies):
         return "", "", {}
+    for src, entry in cast("dict[object, object]", rewrites).items():
+        if not clean_path(src) or src in copies or not isinstance(entry, dict):
+            return "", "", {}
+        body = cast("dict[str, object]", entry)
+        path = body.get("dest")
+        if not clean_path(path) or not path.startswith(f"{dest}/") or path in writes:
+            return "", "", {}
+        writes[path] = src, replacement_pairs(body.get("replace", []))
     return repo, commit, writes
 
 
-def copied_paths(
-    writes: dict[str, str], source: dict[str, bytes], candidate: dict[str, bytes]
-) -> set[str]:
-    return {
-        path
-        for path, src in writes.items()
-        if path in candidate and candidate[path] == source.get(src)
-    }
+def rewrite_bytes(data: bytes, pairs: Replacements) -> bytes | None:
+    # Match monorepo verify: apply each replacement to the result of the last.
+    for old, new in pairs:
+        if old not in data:
+            return None
+        data = data.replace(old, new)
+    return data
 
 
 def git(executable: str, *args: str, cwd: str | None = None) -> bytes:
@@ -82,7 +109,14 @@ def tree(executable: str, commit: str, cwd: str | None = None) -> dict[str, byte
     return found
 
 
-def source_tree(executable: str, repo: str, commit: str) -> dict[str, bytes]:
+def copied_paths(
+    executable: str,
+    repo: str,
+    commit: str,
+    writes: dict[str, tuple[str, Replacements]],
+    candidate: dict[str, bytes],
+) -> set[str]:
+    found: set[str] = set()
     with TemporaryDirectory() as scratch:
         git(executable, "init", "--bare", "--object-format=sha1", cwd=scratch)
         git(
@@ -95,7 +129,25 @@ def source_tree(executable: str, repo: str, commit: str) -> dict[str, bytes]:
             commit,
             cwd=scratch,
         )
-        return tree(executable, commit, scratch)
+        source = tree(executable, commit, scratch)
+        for path, (src, pairs) in writes.items():
+            if path not in candidate or src not in source:
+                continue
+            if not pairs:
+                if candidate[path] == source[src]:
+                    found.add(path)
+                continue
+            src_mode, _, src_oid = source[src].split()
+            dst_mode, _, dst_oid = candidate[path].split()
+            if src_mode != dst_mode:
+                continue
+            data = git(executable, "cat-file", "blob", src_oid.decode(), cwd=scratch)
+            wanted = rewrite_bytes(data, pairs)
+            if wanted is not None and wanted == git(
+                executable, "cat-file", "blob", dst_oid.decode()
+            ):
+                found.add(path)
+    return found
 
 
 def main(executable: str, head: str, changed_file: str) -> None:
@@ -107,13 +159,12 @@ def main(executable: str, head: str, changed_file: str) -> None:
             continue
         data = git(executable, "cat-file", "blob", f"{head}:{path}")
         try:
-            repo, commit, writes = read_map(data)
+            repo, commit, writes = read_map(data, path)
             if writes:
-                verified |= copied_paths(
-                    writes, source_tree(executable, repo, commit), candidate
-                )
+                verified |= copied_paths(executable, repo, commit, writes, candidate)
+                verified.add(path)
         except subprocess.SubprocessError, ValueError, OSError:
-            # A malformed map or unavailable frozen source proves no copies.
+            # A malformed map or unavailable frozen source proves no imports.
             continue
     changed = Path(changed_file)
     paths = changed.read_bytes().split(b"\0")[:-1]

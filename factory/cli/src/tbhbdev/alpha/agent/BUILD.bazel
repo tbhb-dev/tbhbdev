@@ -61,7 +61,6 @@ cli_py_library(
         "//factory/cli/src/tbhbdev/alpha/agent/decisions:config",
         "//factory/cli/src/tbhbdev/alpha/agent/decisions:repo",
         "//factory/cli/src/tbhbdev/alpha/agent/decisions:run_state",
-        "@cli_pip//httpx",
         "@cli_pip//pyyaml",
     ],
 )
@@ -77,7 +76,6 @@ cli_py_library(
         ":model",
         ":render",
         ":runfiles",
-        ":settings",
         ":shims",
         ":signing_parity",
         ":transport",
@@ -86,7 +84,6 @@ cli_py_library(
         "//factory/cli/src/tbhbdev:version",
         "//factory/cli/src/tbhbdev/alpha:brief",
         "//factory/cli/src/tbhbdev/alpha/agent/decisions:driver",
-        "//factory/cli/src/tbhbdev/alpha/agent/decisions:host_names",
         "//factory/cli/src/tbhbdev/alpha/agent/decisions:launcher",
         "//factory/cli/src/tbhbdev/alpha/agent/decisions:limits",
         "//factory/cli/src/tbhbdev/alpha/agent/decisions:remote",
@@ -191,13 +188,14 @@ cli_py_library(
         ":model",
         ":runfiles",
         "//factory/cli/src/tbhbdev:content",
-        "//factory/cli/src/tbhbdev/alpha:identity",
+        "//factory/cli/src/tbhbdev:github_tls",
         "//factory/cli/src/tbhbdev/alpha:pull_request_frontmatter",
         "//factory/cli/src/tbhbdev/alpha:review",
         "//factory/cli/src/tbhbdev/alpha:review_doc",
         "//factory/cli/src/tbhbdev/alpha/agent/decisions:repo",
         "//factory/cli/src/tbhbdev/alpha/agent/decisions:request",
-        "@cli_pip//httpx",
+        "//factory/cli/src/tbhbdev/alpha/identity:dispatcher",
+        "@cli_pip//httpx2",
     ],
 )
 
@@ -208,6 +206,7 @@ cli_py_library(
     visibility = ["//factory/cli:__subpackages__"],
     deps = [
         ":admission",
+        ":app_server",
         ":bazel_servers",
         ":build_info",
         ":codex_install",
@@ -224,9 +223,9 @@ cli_py_library(
         ":settings",
         ":shims",
         ":worktree",
+        "//factory/cli/src/tbhbdev:github_tls",
         "//factory/cli/src/tbhbdev:userconfig",
         "//factory/cli/src/tbhbdev/alpha:codex_trust",
-        "//factory/cli/src/tbhbdev/alpha:identity",
         "//factory/cli/src/tbhbdev/alpha:install",
         "//factory/cli/src/tbhbdev/alpha:run_stop_hook",
         "//factory/cli/src/tbhbdev/alpha/agent/decisions:argv",
@@ -235,7 +234,8 @@ cli_py_library(
         "//factory/cli/src/tbhbdev/alpha/agent/decisions:repo",
         "//factory/cli/src/tbhbdev/alpha/agent/decisions:request",
         "//factory/cli/src/tbhbdev/alpha/agent/decisions:run_state",
-        "@cli_pip//httpx",
+        "//factory/cli/src/tbhbdev/alpha/identity:dispatcher",
+        "@cli_pip//httpx2",
     ],
 )
 
@@ -284,8 +284,9 @@ cli_py_library(
         ":model",
         ":settings",
         ":transport",
+        "//factory/cli/src/tbhbdev:github_tls",
         "//factory/cli/src/tbhbdev/alpha/agent/decisions:remote",
-        "@cli_pip//httpx",
+        "@cli_pip//httpx2",
     ],
 )
 
@@ -343,12 +344,12 @@ cli_py_library(
         ":host_tools",
         ":model",
         ":runfiles",
-        "//factory/cli/src/tbhbdev/alpha:identity",
         "//factory/cli/src/tbhbdev/alpha:install",
         "//factory/cli/src/tbhbdev/alpha:pre_push_guard",
         "//factory/cli/src/tbhbdev/alpha:repo",
         "//factory/cli/src/tbhbdev/alpha/agent/decisions:repo",
         "//factory/cli/src/tbhbdev/alpha/agent/decisions:request",
+        "//factory/cli/src/tbhbdev/alpha/identity:dispatcher",
     ],
 )
 
@@ -365,12 +366,26 @@ filegroup(
 )
 
 cli_py_library(
+    name = "app_server",
+    srcs = ["app_server.py"],
+    imports = ["../../.."],
+    visibility = ["//factory/cli:__subpackages__"],
+    deps = [
+        ":host_tools",
+        ":model",
+        ":runfiles",
+        "//factory/cli/src/tbhbdev/alpha/agent/decisions:runfiles_names",
+    ],
+)
+
+cli_py_library(
     name = "command",
     srcs = ["command.py"],
     imports = ["../../.."],
     visibility = ["//factory/cli:__subpackages__"],
     deps = [
         ":admission",
+        ":app_server",
         ":arguments",
         ":driver",
         ":precheck",
@@ -380,6 +395,7 @@ cli_py_library(
         ":ssh_serve",
         "//factory/cli/src/tbhbdev:telemetry",
         "//factory/cli/src/tbhbdev:userconfig",
+        "//factory/cli/src/tbhbdev/alpha/agent/decisions:host_names",
     ],
 )
 

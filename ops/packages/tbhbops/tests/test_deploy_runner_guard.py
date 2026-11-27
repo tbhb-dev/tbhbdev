@@ -31,7 +31,7 @@ POSIX_OS = importlib.import_module("os")
 
 ROLE = next(
     path / "ansible" / "roles" / "deploy_runner"
-    for path in Path(__file__).resolve().parents
+    for path in Path(__file__).parents
     if (path / "ansible" / "roles").is_dir()
 )
 GUARD_PATH = ROLE / "files" / "deploy-runner-job-guard"

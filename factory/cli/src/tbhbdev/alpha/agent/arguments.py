@@ -90,6 +90,9 @@ def parser(prog: str) -> argparse.ArgumentParser:
     )
     execute.add_argument("--timeout", type=duration)
     execute.add_argument("--schema")
+    execute.add_argument(
+        "--steer", action="store_true", help="enable steering for a Codex build"
+    )
     execute.add_argument("--class", dest="class_")
     execute.add_argument("--variant")
     execute.add_argument("--role")
@@ -113,6 +116,10 @@ def parser(prog: str) -> argparse.ArgumentParser:
             )
         if verb == "clean":
             sub.add_argument("--force", action="store_true")
+    send = verbs.add_parser("send", help="steer an active Codex run")
+    send.add_argument("--harness", choices=("codex", "claude"))
+    send.add_argument("name", metavar="RUN")
+    send.add_argument("message", metavar="MESSAGE")
     verbs.add_parser(
         "signing-parity", help="check each host's signing key is registered"
     )

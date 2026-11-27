@@ -13,7 +13,7 @@ import pytest
 import yaml
 
 ROOT = next(
-    path for path in Path(__file__).resolve().parents if (path / "ansible").is_dir()
+    path for path in Path(__file__).parents if (path / "ansible").is_dir()
 )
 TASKS = ROOT / "ansible/roles/dsm_accounts/tasks"
 TAG = "dsm_accounts_agent_log_group"

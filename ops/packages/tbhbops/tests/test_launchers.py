@@ -18,19 +18,19 @@ from pathlib import Path
 from unittest.mock import Mock
 
 import pytest
-from uv import find_uv_bin
-
+import uv
 from tbhbops import op_connect
 
 ROOT = next(
     path
-    for path in Path(__file__).resolve().parents
+    for path in Path(__file__).parents
     if (path / "tools").is_dir() and (path / "packages" / "tbhbops").is_dir()
 )
 LAUNCHERS = sorted(path.name for path in (ROOT / "tools").iterdir() if path.is_file())
 # The end of the inline metadata block.
 METADATA_END = "# ///\n"
 EDITABLE = '# tbhbops = { path = "../packages/tbhbops", editable = true }\n'
+CA_ROOT = "apps/ca/roots/root_ca.crt"
 
 
 @pytest.fixture
@@ -48,6 +48,12 @@ def repo(tmp_path: Path) -> Path:
 
 def uv_run(repo: Path, script: str, *args: str) -> subprocess.CompletedProcess[str]:
     """Run tools/<script> through uv, offline, with the repo's own uv cache."""
+    if "TEST_SRCDIR" in os.environ:
+        # rules_python places wheel scripts beside site-packages.
+        name = "uv.exe" if sys.platform == "win32" else "uv"
+        executable = str(Path(uv.__file__).parents[2] / "bin" / name)
+    else:
+        executable = uv.find_uv_bin()
     # Nothing from the test's own environment that picks a Python, a package
     # or a uv setting: mutmut's PYTHONPATH would import its mutated tbhbops
     # ahead of the copy.
@@ -64,7 +70,7 @@ def uv_run(repo: Path, script: str, *args: str) -> subprocess.CompletedProcess[s
     }
     return subprocess.run(
         [
-            find_uv_bin(),
+            executable,
             "run",
             "--quiet",
             "--python",
@@ -99,7 +105,9 @@ def test_the_launcher_sees_a_module_added_after_its_first_run(
     if launcher == "install-step-ca-root":
         # This launcher has no help option. Stop at validation on macOS so
         # the first run can populate the uv cache without using the keychain.
-        (repo / "apps/ca/roots/root_ca.crt").write_bytes(b"")
+        root = repo / CA_ROOT
+        root.parent.mkdir(parents=True, exist_ok=True)
+        root.write_bytes(b"")
         first = uv_run(repo, launcher)
         message = (
             "The root file must contain exactly one PEM certificate."
@@ -148,6 +156,9 @@ def test_the_launcher_sees_a_module_added_after_its_first_run(
 def test_step_ca_root_pin(
     repo: Path, monkeypatch: pytest.MonkeyPatch, defaults_text: str, message: str
 ) -> None:
+    root = repo / CA_ROOT
+    root.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copyfile(Path(__file__).parent / "testdata" / "root_ca.crt", root)
     fingerprint = ":".join(["AB"] * 32)
     defaults = repo / "ansible/roles/ca_client_trust/defaults/main.yml"
     defaults.parent.mkdir(parents=True)

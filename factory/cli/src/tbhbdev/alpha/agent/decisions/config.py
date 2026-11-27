@@ -13,7 +13,7 @@ import re
 from dataclasses import dataclass
 from enum import StrEnum
 from pathlib import PurePosixPath
-from typing import NoReturn
+from typing import NoReturn, cast
 
 from tbhbdev.alpha.agent.decisions import repo
 from tbhbdev.alpha.agent.model import (
@@ -442,11 +442,10 @@ def hosts(agent: dict[str, object]) -> tuple[Host, ...]:
     """Validate the host entries in the agent configuration."""
     root = _Table("[agent]", agent)
     value = root.value("host")
-    entries: list[object] = value if isinstance(value, list) else []
-    if not entries:
+    if not isinstance(value, list) or not value:
         root.fail("host", "must be a non-empty array of tables")
     found: list[Host] = []
-    for entry in entries:
+    for entry in cast("list[object]", value):
         if not isinstance(entry, dict):
             root.fail("host", "must be a non-empty array of tables")
         values: dict[str, object] = entry

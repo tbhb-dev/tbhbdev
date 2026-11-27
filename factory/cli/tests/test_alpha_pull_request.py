@@ -33,10 +33,10 @@ from hypothesis import given
 from hypothesis import strategies as st
 from jsonschema import Draft202012Validator
 
-from tbhbdev.alpha import identity as agent_identity
 from tbhbdev.alpha import opened, size_gate, tool_pins
 from tbhbdev.alpha import pull_request as pr
 from tbhbdev.alpha import pull_request_frontmatter as frontmatter
+from tbhbdev.alpha.identity import dispatcher as agent_identity
 from tbhbdev.alpha.secret_scan import REPO_RULES, without_name_rules
 
 # Tests can run from the project or a copy made by mutmut.
@@ -290,9 +290,9 @@ def draft_world(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> World:
         ("rev-parse", "--show-toplevel"): (0, str(made.root.resolve())),
         ("ls-remote", "--symref", "origin", "HEAD"): (128, ""),
         ("symbolic-ref", "--quiet", "refs/remotes/origin/HEAD"): (0, base),
-        ("symbolic-ref", "--quiet", "HEAD"): (0, "refs/heads/topic"),
         ("fetch", *fetch_options, "origin", f"+refs/heads/main:{base}"): (0, ""),
         ("rev-parse", "--verify", "--quiet", f"{base}^{{commit}}"): (0, ""),
+        ("branch", "--show-current"): (0, "agent/topic"),
     }
 
     def answer_git(*argv: str, **_kwargs: Path | None) -> tuple[int, str]:
@@ -1754,35 +1754,6 @@ def test_create_defaults(world: World) -> None:
     ]
 
 
-@pytest.mark.parametrize(
-    ("case", "message"),
-    [
-        ("host name", "branch name contains a host name"),
-        ("detached", "cannot read the current branch"),
-        ("config error", "cannot read known host names"),
-    ],
-)
-def test_create_checks_the_branch_for_host_names(
-    world: World,
-    monkeypatch: pytest.MonkeyPatch,
-    capsys: pytest.CaptureFixture[str],
-    case: str,
-    message: str,
-) -> None:
-    monkeypatch.setattr("socket.gethostname", lambda: "examplehost01.example.test")
-    if case == "detached":
-        world.git("update-ref", "--no-deref", "HEAD", "HEAD")
-    else:
-        world.git("symbolic-ref", "HEAD", "refs/heads/agent/prepare-EXAMPLEHOST01")
-    if case == "config error":
-        path = Path(os.environ["XDG_CONFIG_HOME"]) / "tbhbdev" / "config.toml"
-        path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text('[agent]\nhost = "examplehost01"\n')
-    assert run_main("create") == 1
-    assert capsys.readouterr().err == f"tbhbdev alpha pr: {message}\n"
-    assert world.calls("gh") == []
-
-
 @pytest.mark.parametrize("context", ["session", "account"])
 def test_agent_create_refuses_when_hooks_are_disabled(
     world: World,
@@ -1880,6 +1851,7 @@ def test_a_draft_without_a_base_takes_the_default_branch(
         "refs/remotes/origin/trunk",
         "HEAD",
         default_ref=None,
+        head_branch=world.git("branch", "--show-current"),
         scc=str(world.bin / "scc"),
         git=str(world.root.parent / "git_dir" / "git"),
     )
@@ -1944,6 +1916,7 @@ def test_check_counts_an_explicit_base_with_gh_repo(
         "refs/remotes/origin/trunk",
         "HEAD",
         default_ref=None,
+        head_branch=world.git("branch", "--show-current"),
         scc=str(world.bin / "scc"),
         git=str(world.root.parent / "git_dir" / "git"),
     )

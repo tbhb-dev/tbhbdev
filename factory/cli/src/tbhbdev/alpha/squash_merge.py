@@ -86,9 +86,9 @@ from itertools import takewhile
 from typing import TYPE_CHECKING, NoReturn, cast
 from urllib.parse import quote
 
-from tbhbdev.alpha import identity as agent_identity
 from tbhbdev.alpha import pull_request as pr
 from tbhbdev.alpha import review_gate
+from tbhbdev.alpha.identity import dispatcher as agent_identity
 from tbhbdev.alpha.install import require_git_hooks
 
 if TYPE_CHECKING:
@@ -763,8 +763,6 @@ def merge_methods(target: str) -> list[str]:
     Raises:
         SystemExit: The read fails or is malformed, or neither is allowed.
     """
-    if not pr.NAME_WITH_OWNER.fullmatch(target):
-        stop("not merging: can't tell which repository the PR is in")
     done = pr.run([pr.find_tool(GH), "repo", "view", target, "--json", METHOD_FIELDS])
     if done.returncode != 0:
         stop(f"gh repo view failed: {' '.join(done.stderr.split())}")

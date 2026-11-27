@@ -8,7 +8,7 @@ from jinja2 import Template
 TEMPLATE_PATH = Path("ansible/roles/host_telemetry/templates/config.alloy.j2")
 TEMPLATE = next(
     path / TEMPLATE_PATH
-    for path in Path(__file__).resolve().parents
+    for path in Path(__file__).parents
     if (path / TEMPLATE_PATH).is_file()
 )
 

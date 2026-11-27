@@ -1,6 +1,6 @@
 """Run the disposable ops smoke stack through replaceable system seams."""
 
-# pylint: disable=duplicate-code  # independent protocol and polling contracts
+# pylint: disable=duplicate-code  # independent protocol contracts
 
 import argparse
 import errno
@@ -17,12 +17,14 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from tbhbops.o11y import init, rustfs_probe, smoke, validate
+lazy from tbhbops.o11y.validate import Document
+
 from tbhbops_cli.common import CliError
 from tbhbops_cli.o11y import init as initialization
 from tbhbops_cli.o11y import render
 from tbhbops_cli.o11y import validate as validation
+from tbhbops_cli.o11y.polling import poll
 from tbhbops_cli.o11y.runner import Result
-lazy from tbhbops.o11y.validate import Document
 lazy from tbhbops_cli.o11y import (
     smoke_capacity,
     smoke_checks,
@@ -40,7 +42,6 @@ if TYPE_CHECKING:
 READY_TIMEOUT = 180
 HEALTH_TIMEOUT = 120
 FIXTURE_TIMEOUT = 30
-POLL_INTERVAL = 2
 CONTROL_TIMEOUT = 120
 WAIT_MARGIN = 30
 READY_COMPOSE_TIMEOUT = READY_TIMEOUT + WAIT_MARGIN
@@ -60,7 +61,7 @@ class SmokeError(Exception):
         self.status = status
 
 
-def require(passed: bool, rule: str) -> None:  # noqa: FBT001  # assert a classified result
+def require(passed: bool, rule: str) -> None:  # assert a classified result
     if not passed:
         raise SmokeError(rule)
 
@@ -69,16 +70,6 @@ def present[T](value: T | None, rule: str) -> T:
     if value is None:
         raise SmokeError(rule)
     return value
-
-
-def poll(system: System, timeout: int, check: Callable[[], bool]) -> bool:
-    deadline = system.monotonic() + timeout
-    while True:
-        if check():
-            return True
-        if system.monotonic() >= deadline:
-            return False
-        system.sleep(POLL_INTERVAL)
 
 
 def environment(
@@ -166,7 +157,6 @@ class Smoke:
     finalized: bool = False
     output_ready: bool = False
     current_values: dict[str, bytes] = field(default_factory=dict)
-    stop_after: int | None = None
     release: Path | None = None
     dedicated: str | None = None
     group: str = "before group 1"
@@ -221,7 +211,7 @@ class Smoke:
         self.step += 1
         return result
 
-    def compose(  # noqa: PLR0913  # explicit Compose modes and execution budgets
+    def compose(  # explicit Compose modes and execution budgets
         self,
         args: list[str],
         *,
@@ -1156,7 +1146,7 @@ def _dispatch(
     status = 1
     try:
         target, artifacts, source = (
-            Path(os.path.abspath(system.cwd / p))  # noqa: PTH100  # refuse links first
+            Path(os.path.abspath(system.cwd / p))  # refuse links first
             for p in (args.out, args.artifacts, args.source)
         )  # resolve would follow links before refusing them
         for path in (target, artifacts):
@@ -1165,7 +1155,9 @@ def _dispatch(
             a == b or a in b.parents or b in a.parents
             for a, b in ((target, artifacts), (target, source), (artifacts, source))
         ):
-            raise SmokeError(smoke.FAILURES["usage_overlapping_paths"], 2)  # noqa: TRY301  # usage status is handled with the other safe failures
+            raise SmokeError(
+                smoke.FAILURES["usage_overlapping_paths"], 2
+            )  # usage status is handled with the other safe failures
         temporary = fs.temporary_directory()
         safe_path(fs, temporary)
         project = "o11y-smoke-" + system.random_bytes(4).hex()
@@ -1183,7 +1175,6 @@ def _dispatch(
             )
         )
         run = Smoke(system, target, artifacts, temporary, data, project, sentinels, env)
-        run.stop_after = args.stop_after
         run.dedicated = args.dedicated_engine
         _execute(run, source)
         status = 0
@@ -1219,20 +1210,17 @@ def _execute(run: Smoke, source: Path) -> None:
     run.stage("group 3a", run.group3a)
     run.stage("group 4", smoke_stages.group4, run)
     run.stage("group 5", smoke_stages.group5, run)
-    if run.stop_after is None:
-        run.stage("export persistence", smoke_stages.export_persistence, run)
-        run.stage("capacity", smoke_capacity.smoke, run, source)
-        run.stage("group 6", smoke_stages.group6, run)
-        run.stage("group 7", smoke_checks.group7, run, source)
-        run.stage("group 8", smoke_lifecycle.group8, run, source)
-        run.stage("group 9", smoke_lifecycle.group9, run)
-        run.stage("group 10", smoke_lifecycle.group10, run)
-        run.stage("group 11", smoke_checks.group11, run)
-        run.stage("group 12", smoke_checks.group12, run, source)
-        run.stage("group 13", smoke_lifecycle.group13, run, source)
-        run.stage("capacity cleanup", smoke_capacity.cleanup, run)
-    else:
-        run.emit("smoke: stopped after group 5")
+    run.stage("export persistence", smoke_stages.export_persistence, run)
+    run.stage("capacity", smoke_capacity.smoke, run, source)
+    run.stage("group 6", smoke_stages.group6, run)
+    run.stage("group 7", smoke_checks.group7, run, source)
+    run.stage("group 8", smoke_lifecycle.group8, run, source)
+    run.stage("group 9", smoke_lifecycle.group9, run)
+    run.stage("group 10", smoke_lifecycle.group10, run)
+    run.stage("group 11", smoke_checks.group11, run)
+    run.stage("group 12", smoke_checks.group12, run, source)
+    run.stage("group 13", smoke_lifecycle.group13, run, source)
+    run.stage("capacity cleanup", smoke_capacity.cleanup, run)
     run.finalize_transcript()
     run.scans()
 

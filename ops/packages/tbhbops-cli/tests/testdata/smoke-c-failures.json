@@ -84,7 +84,7 @@
   "commands|group13|docker run --rm --log-driver none --user 0:0 --network none -v /temporary:/d --entrypoint chmod rustfs:pinned -R a+rX /d/config": "release: config-permissions",
   "commands|group13|docker run --rm --log-driver none --user 0:0 --network none -v /temporary:/d -v /output/email-disabled/config:/src:ro --entrypoint cp rustfs:pinned -a /src/. /d/config/": "release: config-copy",
   "commands|cleanup|docker run --rm --log-driver none --user 0:0 --network none -v /temporary:/d --entrypoint chmod rustfs:pinned -R a+rX /d/config": "capacity cleanup: config-permissions",
-  "commands|cleanup|docker run --rm --log-driver none --user 0:0 --network none -v /temporary:/d --entrypoint rm rustfs:pinned -f /d/config/grafana-7f1f2617c4d6/dashboards/agents/capacity.json": "capacity cleanup: dashboard-remove",
+  "commands|cleanup|docker run --rm --log-driver none --user 0:0 --network none -v /temporary:/d --entrypoint rm rustfs:pinned -f /d/config/grafana-0713b3e627a7/dashboards/agents/capacity.json": "capacity cleanup: dashboard-remove",
   "commands|cleanup|docker run --rm --log-driver none --user 0:0 --network none -v /temporary:/d -v /output/email-disabled/config:/src:ro --entrypoint cp rustfs:pinned -a /src/. /d/config/": "capacity cleanup: config-copy",
   "http|smoke|http://127.0.0.1:13000/api/dashboards/uid/o11y-agents-capacity": "capacity: missing-reset-columns",
   "http|smoke|http://127.0.0.1:13000/api/datasources/proxy/uid/mimir/api/v1/query?query=%7B__name__%3D~%22agent_capacity_.%2A%22%7D": "capacity: exact-metrics-labels",

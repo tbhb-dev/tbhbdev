@@ -6,7 +6,7 @@ import yaml
 
 ROOT = next(
     path
-    for path in Path(__file__).resolve().parents
+    for path in Path(__file__).parents
     if (path / "apps/s3/compose.yaml").is_file()
 )
 

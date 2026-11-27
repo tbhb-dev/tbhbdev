@@ -13,7 +13,6 @@ from datetime import date
 from enum import StrEnum
 from typing import NoReturn
 
-from tbhbdev.alpha import identity
 from tbhbdev.alpha.agent.decisions import repo
 from tbhbdev.alpha.agent.model import (
     NAME,
@@ -24,6 +23,7 @@ from tbhbdev.alpha.agent.model import (
     RunKind,
     RunRequest,
 )
+from tbhbdev.alpha.identity import models as identity
 
 _COMMIT = re.compile(r"[0-9a-f]{40}|[0-9a-f]{64}")
 _MODEL = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]{0,127}")
