@@ -1,0 +1,13 @@
+---
+argument_specs:
+  main:
+    short_description: Stage the certificate authority backup programs
+    options:
+      ca_backup_python:
+        type: path
+        default: /usr/local/bin/python3.11
+        description: Trusted host Python executable, version 3.11 or newer.
+      ca_backup_staging:
+        type: path
+        required: true
+        description: Private staging directory owned by the connecting account.

@@ -1,0 +1,25 @@
+---
+- name: clone | Check the repository name and host
+  ansible.builtin.assert:
+    that:
+      - agent_workspace_repo.name is match('^[A-Za-z0-9_-][A-Za-z0-9_.-]*/[A-Za-z0-9_-][A-Za-z0-9_.-]*$')
+      - agent_workspace_repo_host is match('^[A-Za-z0-9][A-Za-z0-9.-]*$')
+    quiet: true
+  vars:
+    agent_workspace_repo_host: "{{ agent_workspace_repo.host | default('github.com') }}"
+
+- name: clone | Clone or fast-forward a clean default branch
+  ansible.builtin.command:
+    argv:
+      - /bin/bash
+      - -c
+      - "{{ lookup('ansible.builtin.file', role_path + '/files/clone.sh') }}"
+      - workspace-clone
+      - "{{ agent_workspace_repo_host }}"
+      - "{{ agent_workspace_repo.name }}"
+      - "{{ agent_workspace_root }}/{{ agent_workspace_repo_host }}/{{ agent_workspace_repo.name }}"
+      - "{{ (agent_workspace_repo.public | default(false) | bool) | ternary('true', 'false') }}"
+  vars:
+    agent_workspace_repo_host: "{{ agent_workspace_repo.host | default('github.com') }}"
+  register: agent_workspace_clone
+  changed_when: agent_workspace_clone.stdout == 'changed'

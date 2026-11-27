@@ -1,0 +1,181 @@
+---
+# Every assertion precedes mutations, so a bad key list leaves the host alone.
+# The Linux roles' fixed uid and gid 24368, 24369 and 33835 mean nothing here:
+# Windows identifies an account by its SID, which the host assigns.
+- name: Require a Windows host
+  ansible.builtin.assert:
+    that: ansible_facts.os_family == 'Windows'
+    fail_msg: windows_accounts needs a Windows host, reached over ssh with ansible_shell_type powershell
+    quiet: true
+
+# argument_specs rejects an unset list but accepts an empty one, and an
+# exclusive empty key list would lock the agent out. A key line carries no
+# options, which the template adds itself from the from list. It writes
+# addresses, which the tailnet_addresses filter resolves on the controller at
+# apply time: sshd matches a host name in from= only with UseDNS, which Windows
+# OpenSSH leaves off, so a name would lock every key out.
+- name: Require a clean key list
+  ansible.builtin.assert:
+    that:
+      - windows_accounts_agent_keys | length > 0
+      - >-
+          windows_accounts_agent_keys | map(attribute='key') | select('match',
+          '^(ssh-ed25519|ecdsa-sha2-nistp256|ssh-rsa|sk-ssh-ed25519@openssh\.com) [A-Za-z0-9+/=]+( [^\r\n]*)?$')
+          | list | length == windows_accounts_agent_keys | length
+      - >-
+          windows_accounts_agent_keys | map(attribute='from', default=[]) | flatten
+          | reject('match', '^[a-z0-9]([a-z0-9-]*[a-z0-9])?$') | list | length == 0
+    fail_msg: >-
+      The key list needs at least one key, each key is one line of type, base64 and optional comment with no options,
+      and each from entry is a plain tailnet host name
+    quiet: true
+
+# One ed25519 key per entry, no options, so a key can't smuggle a second line
+# or a from= restriction into the shared administrators' file. The template
+# adds restrictions from the validated host names, just as it does for agent.
+- name: Require a clean ops key list
+  ansible.builtin.assert:
+    that:
+      - windows_accounts_ops_admin_keys | length > 0
+      - >-
+          windows_accounts_ops_admin_keys | map(attribute='key') | select('match',
+          '^ssh-ed25519 [A-Za-z0-9+/=]+( [^\r\n]*)?\Z')
+          | list | length == windows_accounts_ops_admin_keys | length
+      - >-
+          windows_accounts_ops_admin_keys | map(attribute='from', default=[]) | flatten
+          | reject('match', '^[a-z0-9]([a-z0-9-]*[a-z0-9])?\Z') | list | length == 0
+    fail_msg: >-
+      The ops key list needs at least one key, each key is one ed25519 public key line without options,
+      and each from entry is a plain tailnet host name
+    quiet: true
+
+# In check mode a user the run would create doesn't exist, and the tasks that
+# need it can't resolve it, so they wait for a real run. win_user reports a
+# change for an existing account too, so ask the host instead.
+- name: Find which accounts exist
+  ansible.windows.win_powershell:
+    script: |
+      Get-LocalUser | Where-Object Name -in 'agent', 'ops' | ForEach-Object Name
+  register: windows_accounts_found
+  check_mode: false
+  changed_when: false
+
+# The passwords exist only to satisfy Windows. Nobody reads them, and
+# update_password leaves an existing account's alone. The prefix guarantees
+# the complexity classes a generated string could miss.
+- name: Create the accounts
+  ansible.windows.win_user:
+    name: "{{ item }}"
+    password: "{{ 'Aa1-' ~ lookup('ansible.builtin.password', '/dev/null', length=32, chars='ascii_letters,digits') }}"
+    update_password: on_create
+    password_never_expires: true
+    account_disabled: false
+    state: present
+  loop: [agent, ops]
+  no_log: true
+
+# ops is the Windows counterpart of passwordless sudo. agent leaves
+# Administrators if something put it there; other groups it holds, such as
+# docker-users, are the host's own business.
+- name: Put ops in Administrators
+  ansible.windows.win_group_membership:
+    name: Administrators
+    members: [ops]
+    state: present
+  when: "'ops' in windows_accounts_found.output or not ansible_check_mode"
+
+- name: Keep agent out of Administrators
+  ansible.windows.win_group_membership:
+    name: Administrators
+    members: [agent]
+    state: absent
+  when: "'agent' in windows_accounts_found.output or not ansible_check_mode"
+
+- name: Put agent in Users
+  ansible.windows.win_group_membership:
+    name: Users
+    members: [agent]
+    state: present
+  when: "'agent' in windows_accounts_found.output or not ansible_check_mode"
+
+# sshd reads every administrator's keys from one file. It holds other
+# people's keys and Ansible doesn't own it, so the role adds each ops key as one
+# line and touches nothing else: no exclusive write, no regexp that could match
+# or replace another line, and no ACL change. create is false because a file
+# made here would get the wrong ACL, so a missing file fails the run with the
+# module's "does not exist" message. The module rewrites the file, so
+# newline: windows (CRLF, the style the role wrote before) keeps CRLF lines as
+# they are and turns any LF-only line into CRLF.
+- name: Add the ops keys to the administrators' keys
+  ansible.windows.win_lineinfile:
+    path: C:\ProgramData\ssh\administrators_authorized_keys
+    line: "{{ lookup('ansible.builtin.template', 'authorized_keys.j2') | trim }}"
+    state: present
+    create: false
+    newline: windows
+  vars:
+    windows_accounts_keys: "{{ [item] }}"
+  loop: "{{ windows_accounts_ops_admin_keys }}"
+  loop_control:
+    label: "{{ item.key }}"
+
+# Key login is the only way in. Windows may still allow a password at the
+# console or Remote Desktop, so deny both logons. A key logon over ssh is
+# neither.
+- name: Deny password logon at the console and over Remote Desktop
+  ansible.windows.win_user_right:
+    name: "{{ item }}"
+    users: [agent, ops]
+    action: add
+  loop: [SeDenyInteractiveLogonRight, SeDenyRemoteInteractiveLogonRight]
+  when: "windows_accounts_found.output | length == 2 or not ansible_check_mode"
+
+# A new account has no profile until its first logon, and sshd needs the
+# profile's .ssh to find the key before then. Windows can suffix the folder
+# (agent.000), so read it from the registry by the account's SID.
+- name: Create agent's profile
+  ansible.windows.win_user_profile:
+    username: agent
+    state: present
+  when: "'agent' in windows_accounts_found.output or not ansible_check_mode"
+
+- name: Find agent's profile folder
+  ansible.windows.win_powershell:
+    script: |
+      $sid = (Get-LocalUser -Name agent).SID.Value
+      $key = "HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\ProfileList\$sid"
+      $path = (Get-ItemProperty -Path $key -ErrorAction SilentlyContinue).ProfileImagePath
+      if (-not $path) { throw "no profile registered for agent ($sid)" }
+      [Environment]::ExpandEnvironmentVariables($path)
+  register: windows_accounts_profile
+  check_mode: false
+  changed_when: false
+  when: "'agent' in windows_accounts_found.output or not ansible_check_mode"
+
+- name: Remember agent's profile folder
+  ansible.builtin.set_fact:
+    windows_accounts_agent_home: "{{ windows_accounts_profile.output[0] }}"
+  when: "'agent' in windows_accounts_found.output or not ansible_check_mode"
+
+- name: Create agent's .ssh directory
+  ansible.windows.win_file:
+    path: "{{ windows_accounts_agent_home }}\\.ssh"
+    state: directory
+  when: "'agent' in windows_accounts_found.output or not ansible_check_mode"
+
+- name: Authorize agent's keys
+  ansible.windows.win_template:
+    src: authorized_keys.j2
+    dest: "{{ windows_accounts_agent_home }}\\.ssh\\authorized_keys"
+    newline_sequence: "\r\n"
+  vars:
+    windows_accounts_keys: "{{ windows_accounts_agent_keys }}"
+  when: "'agent' in windows_accounts_found.output or not ansible_check_mode"
+
+- name: Restrict agent's key file to agent, Administrators and SYSTEM
+  ansible.windows.win_powershell:
+    script: "{{ lookup('ansible.builtin.file', 'restrict-acl.ps1') }}"
+    parameters:
+      Path: "{{ windows_accounts_agent_home }}\\.ssh\\authorized_keys"
+      Accounts: [agent, S-1-5-32-544, S-1-5-18]
+  when: "'agent' in windows_accounts_found.output or not ansible_check_mode"

@@ -1,0 +1,64 @@
+---
+# The audit trail for the lab nodes. The threat model assumes an agent
+# can reach root, so these rules matter only once the records leave the
+# node, which host_telemetry does. They stay unlocked (no -e 2) until the
+# operator decides on locking them.
+
+- name: Install auditd
+  ansible.builtin.apt:
+    name: auditd
+    state: present
+  register: host_audit_package
+
+- name: Look up the audited accounts
+  ansible.builtin.getent:
+    database: passwd
+    fail_key: false
+
+# getent's passwd fields: password, uid, gid, gecos, home, shell.
+- name: Find each listed account's ssh directory
+  ansible.builtin.stat:
+    path: "{{ ansible_facts.getent_passwd[item][4] }}/.ssh"
+  loop: "{{ host_audit_ssh_users | select('in', ansible_facts.getent_passwd) | list }}"
+  register: host_audit_ssh_dirs
+
+- name: Write the audit rules
+  ansible.builtin.template:
+    src: host-audit.rules.j2
+    dest: /etc/audit/rules.d/50-host-audit.rules
+    owner: root
+    group: root
+    mode: "0640"
+  vars:
+    host_audit_command_present: "{{ host_audit_command_users | select('in', ansible_facts.getent_passwd) | list }}"
+    host_audit_ssh_present: >-
+      {{ host_audit_ssh_dirs.results | selectattr('stat.isdir', 'defined') | selectattr('stat.isdir')
+      | map(attribute='stat.path') | list }}
+  notify: Load audit rules
+
+# Eight 50M logs on the node; disk_full_action SUSPEND keeps auditd from
+# halting a node that runs agents. log_group adm lets host_telemetry's
+# Alloy read the log.
+- name: Set auditd's log rotation and disk limits
+  ansible.builtin.lineinfile:
+    path: /etc/audit/auditd.conf
+    regexp: "^{{ item.key }}\\s*="
+    line: "{{ item.key }} = {{ item.value }}"
+  loop: "{{ host_audit_conf | dict2items }}"
+  vars:
+    host_audit_conf:
+      num_logs: 8
+      max_log_file: 50
+      max_log_file_action: ROTATE
+      disk_full_action: SUSPEND
+      log_group: adm
+  notify: Reload auditd
+  # A check run before the first install has no auditd.conf to compare.
+  when: not (ansible_check_mode and host_audit_package is changed)
+
+- name: Run auditd
+  ansible.builtin.systemd_service:
+    name: auditd
+    enabled: true
+    state: started
+  when: host_audit_load

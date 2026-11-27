@@ -1,0 +1,37 @@
+---
+- name: Verify
+  hosts: all
+  become: true
+  become_user: agent
+  tasks:
+    - name: Inspect the token file
+      ansible.builtin.stat:
+        path: "{{ ['/home/example-user/.config', 'tbhbdev', 'secrets/connect-token'] | join('/') }}"
+        follow: false
+      register: connect_token_fixture_file
+    - name: Inspect the private directory
+      ansible.builtin.stat:
+        path: "{{ ['/home/example-user/.config', 'tbhbdev', 'secrets'] | join('/') }}"
+        follow: false
+      register: connect_token_fixture_dir
+    - name: Check the file and directory match the tools reader's contract
+      ansible.builtin.assert:
+        that:
+          - connect_token_fixture_file.stat.isreg
+          - not connect_token_fixture_file.stat.islnk
+          - connect_token_fixture_file.stat.mode == '0600'
+          - connect_token_fixture_file.stat.size == 16
+          - connect_token_fixture_file.stat.pw_name == 'agent'
+          - connect_token_fixture_dir.stat.isdir
+          - connect_token_fixture_dir.stat.mode == '0700'
+          - connect_token_fixture_dir.stat.pw_name == 'agent'
+    - name: Check the agent reads the fixture from the file
+      ansible.builtin.command:
+        argv: [cat, "{{ ['/home/example-user/.config', 'tbhbdev', 'secrets/connect-token'] | join('/') }}"]
+      register: connect_token_fixture_read
+      changed_when: false
+      no_log: true
+    - name: Check the fixture value is the token alone
+      ansible.builtin.assert:
+        that: connect_token_fixture_read.stdout == 'molecule-fixture'
+        quiet: true

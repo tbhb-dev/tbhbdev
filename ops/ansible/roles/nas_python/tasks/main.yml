@@ -1,0 +1,33 @@
+---
+# Raw tasks only. Nothing here may need Python on the NAS.
+- name: Check the pins
+  ansible.builtin.assert:
+    that:
+      - nas_python_uv_version is match('^[0-9]+[.][0-9]+[.][0-9]+$')
+      - nas_python_version is match('^3[.][0-9]+$')
+      - nas_python_uv_sha256.values() | select('match', '^[0-9a-f]{64}$') | list | length == 2
+    quiet: true
+
+# Check mode still reads the NAS, so the task runs and reports whether a
+# real run would change anything. The script changes nothing in that mode.
+- name: Install uv and the managed Python
+  ansible.builtin.raw: >-
+    sh -c {{ lookup('ansible.builtin.file', role_path + '/files/install.sh') | quote }}
+    nas-python
+    {{ ('check' if ansible_check_mode else 'apply') | quote }}
+    {{ nas_python_uv_version | quote }}
+    {{ nas_python_version | quote }}
+    {{ nas_python_uv_sha256.x86_64 | quote }}
+    {{ nas_python_uv_sha256.aarch64 | quote }}
+  register: nas_python_install
+  changed_when: "'nas_python: changed' in nas_python_install.stdout_lines"
+  failed_when: nas_python_install.rc != 0
+  check_mode: false
+
+- name: Check where uv linked the Python
+  ansible.builtin.assert:
+    that: "('nas_python: interpreter=' ~ nas_python_interpreter) in nas_python_install.stdout_lines"
+    fail_msg: >-
+      uv links the Python somewhere other than {{ nas_python_interpreter }}, so
+      ansible_python_interpreter would not find it. Output: {{ nas_python_install.stdout_lines }}
+    quiet: true

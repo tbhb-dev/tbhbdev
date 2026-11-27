@@ -1,0 +1,10 @@
+---
+# The Lab network (VLAN 128). The inventory has no variable for it, so it is
+# here; override it in group_vars/lab.yml if the network changes. Only this
+# source may ssh to a node over the lab bridge.
+host_hardening_lab_bridge: br-lab
+host_hardening_libvirt_bridges: [virbr0]
+
+# Load the table and apply the mount options. Molecule turns this off,
+# because a container shares its host's kernel and network namespace rules.
+host_hardening_load: true

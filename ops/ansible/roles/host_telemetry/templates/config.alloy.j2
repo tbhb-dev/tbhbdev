@@ -1,0 +1,129 @@
+// {{ ansible_managed }}
+// Ships the journal and the audit log to {{ host_telemetry_otlp_endpoint }}.
+
+// Keep the journal entries of the units that matter here, named by service.
+loki.relabel "journal" {
+  forward_to = []
+
+  rule {
+    source_labels = ["__journal__transport"]
+    regex         = "kernel"
+    target_label  = "service_name"
+    replacement   = "kernel"
+  }
+
+  rule {
+    source_labels = ["__journal_syslog_identifier"]
+    regex         = "(sudo|bazel-reaper|tbhb-dotfiles-drift)"
+    target_label  = "service_name"
+    replacement   = "$1"
+  }
+
+  rule {
+    source_labels = ["__journal__systemd_unit"]
+    regex         = "(ssh|sshd)\\.service"
+    target_label  = "service_name"
+    replacement   = "sshd"
+  }
+
+  rule {
+    source_labels = ["__journal__systemd_unit"]
+    regex         = "(docker|libvirtd|tailscaled)\\.service"
+    target_label  = "service_name"
+    replacement   = "$1"
+  }
+
+  rule {
+    source_labels = ["__journal__systemd_unit"]
+    regex         = "(temporal-dev)\\.service"
+    target_label  = "service_name"
+    replacement   = "$1"
+  }
+
+  // Container entries can also carry docker.service. Use the tag.
+  rule {
+    source_labels = ["__journal_syslog_identifier"]
+    regex         = "(event-gateway-gateway|event-gateway-tunnel)"
+    target_label  = "service_name"
+    replacement   = "$1"
+  }
+
+  rule {
+    action        = "keep"
+    source_labels = ["service_name"]
+    regex         = ".+"
+  }
+}
+
+// Alloy keeps the journal cursor under its data directory.
+loki.source.journal "journal" {
+  max_age       = "12h"
+  labels        = {host = constants.hostname}
+  relabel_rules = loki.relabel.journal.rules
+  forward_to    = [otelcol.receiver.loki.default.receiver]
+}
+
+loki.source.file "audit" {
+  targets = [{
+    __path__     = "/var/log/audit/audit.log",
+    host         = constants.hostname,
+    service_name = "auditd",
+    stream       = "audit",
+  }]
+  forward_to = [otelcol.receiver.loki.default.receiver]
+}
+
+otelcol.receiver.loki "default" {
+  output {
+    logs = [otelcol.processor.transform.default.input]
+  }
+}
+
+// The receiver turns every label into a log attribute, and Loki names the
+// stream after the resource's service.name, so move service_name there.
+// The receiver builds one resource per entry, so the move never mixes streams.
+otelcol.processor.transform "default" {
+  log_statements {
+    context    = "log"
+    statements = [
+      `set(resource.attributes["service.name"], attributes["service_name"]) where attributes["service_name"] != nil`,
+      `delete_key(attributes, "service_name")`,
+    ]
+  }
+
+  output {
+    logs = [otelcol.processor.batch.default.input]
+  }
+}
+
+otelcol.processor.batch "default" {
+  output {
+    logs = [otelcol.exporter.otlphttp.default.input]
+  }
+}
+
+// The queue lives on disk, so a restart or an outage loses nothing the
+// disk can hold. A send that fails retries with growing waits, forever.
+otelcol.storage.file "queue" {
+  directory        = "/var/lib/alloy/data/queue"
+  create_directory = true
+}
+
+otelcol.exporter.otlphttp "default" {
+  client {
+    endpoint = "{{ host_telemetry_otlp_endpoint }}"
+  }
+
+  retry_on_failure {
+    enabled          = true
+    initial_interval = "5s"
+    max_interval     = "5m"
+    max_elapsed_time = "0s"
+  }
+
+  sending_queue {
+    enabled    = true
+    storage    = otelcol.storage.file.queue.handler
+    queue_size = 10000
+  }
+}

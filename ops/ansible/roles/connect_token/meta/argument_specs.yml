@@ -1,0 +1,21 @@
+---
+argument_specs:
+  main:
+    short_description: Install an operator-created Connect token
+    options:
+      connect_token_storage:
+        type: str
+        choices: [native, file]
+        description: Defaults to native on macOS and file on Linux, where native is refused; never falls back silently.
+      connect_token_ref:
+        type: str
+        description: Controller-readable op reference to this host's token.
+      connect_token_home:
+        type: path
+        description: Existing agent home.
+      connect_token_file:
+        type: path
+        description: Absolute fallback path beneath the agent home.
+      connect_token_lookup_command:
+        type: str
+        description: Controller Connect reader; overridden by a fixture in Molecule.

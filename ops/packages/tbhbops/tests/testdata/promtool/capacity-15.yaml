@@ -1,0 +1,73 @@
+---
+evaluation_interval: 1m
+rule_files:
+  - rules.yaml
+tests:
+  - alert_rule_test:
+      - alertname: o11y-capacity-warn
+        eval_time: 9m
+        exp_alerts: []
+      - alertname: o11y-capacity-warn
+        eval_time: 10m
+        exp_alerts:
+          - exp_annotations: {}
+            exp_labels:
+              agent_account: primary
+              agent_plan_vendor: anthropic
+              agent_plan_window: 7d
+              env: prd
+              service: agent-capacity
+              severity: info
+      - alertname: o11y-capacity-shed
+        eval_time: 9m
+        exp_alerts: []
+      - alertname: o11y-capacity-shed
+        eval_time: 10m
+        exp_alerts:
+          - exp_annotations: {}
+            exp_labels:
+              agent_account: primary
+              agent_plan_vendor: anthropic
+              agent_plan_window: 7d
+              env: prd
+              service: agent-capacity
+              severity: warning
+      - alertname: o11y-capacity-stop
+        eval_time: 9m
+        exp_alerts:
+          - exp_annotations: {}
+            exp_labels:
+              agent_account: primary
+              agent_plan_vendor: anthropic
+              agent_plan_window: 7d
+              env: prd
+              service: agent-capacity
+              severity: critical
+      - alertname: o11y-capacity-stop
+        eval_time: 10m
+        exp_alerts:
+          - exp_annotations: {}
+            exp_labels:
+              agent_account: primary
+              agent_plan_vendor: anthropic
+              agent_plan_window: 7d
+              env: prd
+              service: agent-capacity
+              severity: critical
+    input_series:
+      - series: "agent_capacity_window_utilization_ratio{agent_plan_vendor=\"\
+          anthropic\",agent_plan_window=\"\
+          7d\",agent_account=\"primary\",host_name=\"\
+          fixture-a\",agent_capacity_source=\"\
+          claude_statusline\",agent_capacity_freshness=\"\
+          fresh\"}"
+        values: 0.9+0x4 stale
+      - series: "agent_capacity_window_utilization_ratio{agent_plan_vendor=\"\
+          anthropic\",agent_plan_window=\"\
+          7d\",agent_account=\"primary\",host_name=\"\
+          fixture-a\",agent_capacity_source=\"\
+          agy_statusline\",agent_capacity_freshness=\"\
+          carried\"}"
+        values: _ _ _ _ _ 0.9+0x10
+    interval: 1m
+    name: source changes during pending period

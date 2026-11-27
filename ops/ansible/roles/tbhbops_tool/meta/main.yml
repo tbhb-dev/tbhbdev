@@ -1,0 +1,11 @@
+---
+galaxy_info:
+  author: tbhb
+  description: Install tbhbops from controller-built wheels at a pinned ops commit
+  license: LicenseRef-Proprietary
+  min_ansible_version: "2.22"
+  platforms:
+    - name: Ubuntu
+      versions:
+        - noble
+dependencies: []

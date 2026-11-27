@@ -1,0 +1,46 @@
+---
+- name: Check the chrony configuration directory
+  ansible.builtin.stat:
+    path: /etc/chrony/conf.d
+  register: chrony_nts_confdir
+
+- name: Require the existing chrony configuration directory
+  ansible.builtin.assert:
+    that:
+      - chrony_nts_confdir.stat.isdir | default(false)
+    fail_msg: chrony must already provide /etc/chrony/conf.d
+    quiet: true
+
+- name: Read the existing chrony configuration
+  ansible.builtin.slurp:
+    src: /etc/chrony/chrony.conf
+  register: chrony_nts_config
+
+- name: Require chrony to read the configuration directory
+  ansible.builtin.assert:
+    that:
+      - >-
+          (chrony_nts_config.content | b64decode) is search(
+            '(?m)^[ \t]*(?:confdir[ \t]+/etc/chrony/conf[.]d/?'
+            ~ '|include[ \t]+/etc/chrony/conf[.]d/[*][.]conf)[ \t]*(?:[#!].*)?$'
+          )
+    fail_msg: chrony must already use confdir /etc/chrony/conf.d or include /etc/chrony/conf.d/*.conf
+    quiet: true
+
+- name: Write the Cloudflare NTS configuration
+  ansible.builtin.template:
+    src: 10-cloudflare-nts.conf.j2
+    dest: /etc/chrony/conf.d/10-cloudflare-nts.conf
+    owner: root
+    group: root
+    mode: "0644"
+  notify: Restart chrony
+
+- name: Run the chrony restart handler
+  ansible.builtin.meta: flush_handlers
+
+- name: Ensure chrony is running
+  ansible.builtin.systemd_service:
+    name: chrony
+    state: started
+  when: chrony_nts_run
