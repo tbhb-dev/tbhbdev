@@ -260,12 +260,21 @@ cli_py_library(
     deps = [
         ":identity",
         ":opened",
+        ":pull_request_frontmatter",
         ":repo",
         ":secret_scan",
         ":size_gate",
         "@cli_pip//jsonschema",
-        "@cli_pip//pyyaml",
     ],
+)
+
+cli_py_library(
+    name = "pull_request_frontmatter",
+    srcs = ["pull_request_frontmatter.py"],
+    imports = ["../.."],
+    pyi_deps = ["@cli_pip//jsonschema"],
+    visibility = ["//factory/cli:__subpackages__"],
+    deps = ["@cli_pip//pyyaml"],
 )
 
 cli_py_library(
@@ -314,6 +323,7 @@ cli_py_library(
     visibility = ["//factory/cli:__subpackages__"],
     deps = [
         ":pull_request",
+        ":pull_request_frontmatter",
         ":review_doc",
         ":review_policy",
         ":review_threads",
@@ -332,6 +342,7 @@ cli_py_library(
     deps = [
         ":identity",
         ":pull_request",
+        ":pull_request_frontmatter",
         "//factory/cli/src/tbhbdev:content",
     ],
 )
@@ -351,7 +362,7 @@ cli_py_library(
     imports = ["../.."],
     visibility = ["//factory/cli:__subpackages__"],
     deps = [
-        ":pull_request",
+        ":pull_request_frontmatter",
         "@cli_pip//jsonschema",
     ],
 )
@@ -363,7 +374,7 @@ cli_py_library(
     imports = ["../.."],
     visibility = ["//factory/cli:__subpackages__"],
     deps = [
-        ":pull_request",
+        ":pull_request_frontmatter",
         ":review",
         ":review_doc",
         ":review_policy",

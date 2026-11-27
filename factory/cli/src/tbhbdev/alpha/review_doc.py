@@ -11,6 +11,7 @@ from typing import Literal, Protocol, cast
 from tbhbdev import content
 from tbhbdev.alpha import identity
 from tbhbdev.alpha import pull_request as pr
+from tbhbdev.alpha import pull_request_frontmatter as frontmatter
 
 type Tier = Literal[0, 1, 2]
 type Verdict = Literal["GO", "NO-GO"]
@@ -97,7 +98,7 @@ def lint_post(body: str) -> list[str]:
 def parse(text: str) -> ReviewDoc:
     """Read a review document with run details in YAML frontmatter."""
     try:
-        fields, body = pr.parse_frontmatter(text.replace("\r\n", "\n"))
+        fields, body = frontmatter.parse_frontmatter(text.replace("\r\n", "\n"))
     except LookupError, OverflowError, RecursionError, ValueError:
         message = "invalid review frontmatter"
         raise ReviewError(message) from None
