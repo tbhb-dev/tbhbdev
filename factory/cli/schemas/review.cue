@@ -15,12 +15,12 @@ import (
 #Word:          #"[\p{L}\p{N}_]+"#
 #VerdictLine:   #"(?m)^[\t\p{Z}]*VERDICT:[\t ]+(?:GO|BLOCK|NO-GO)(?:[\t ]+\#(#ReviewSHA))?[\t\p{Z}]*\r?$"#
 
-// Match a punctuated opener or a line containing only a verdict.
-#VerdictStart:   #"^[\t\p{Z}]*(?:(?:Decision|Verdict)[\t\p{Z}]*:[\t\p{Z}]*)?(?:GO|NO-GO|APPROVE|BLOCK|HOLD|REQUEST_CHANGES)"#
-#SummaryVerdict: #"(?i)(?:\#(#VerdictStart)[.!?:;][\s\p{Z}]|(?m:\#(#VerdictStart)[.!?:;]?[\t\p{Z}]*\r?$))"#
+// Match an uppercase verdict at the start or a verdict alone on any line.
+#VerdictStart:   #"^[\t\p{Z}]*(?:(?i:Decision|Verdict)[\t\p{Z}]*:[\t\p{Z}]*)?(?:GO|NO-GO|APPROVE|BLOCK|HOLD|REQUEST_CHANGES)"#
+#SummaryVerdict: #"\#(#VerdictStart)(?:$|[.!?:;\s\p{Z}])|(?im:\#(#VerdictStart)[.!?:;]?[\t\p{Z}]*\r?$)"#
 
 #Abbreviation: #"(?i:\b(?:mr|mrs|ms|dr|prof|vs)\.)|\b(?:\p{L}\.){2,}"#
-#QuotedString: #""[^"]*""#
+#QuotedString: #""[^"]*"|“[^”]*”|‘[^’]*’"#
 
 // After a closing quote or bracket, lowercase prose continues the sentence.
 #SentenceBoundary: #"[.!?][\s\p{Z}]+[\p{L}\p{N}"'“‘`(\[{]|[.!?]["'”’`)\]}]+[\s\p{Z}]+[\p{Lu}\p{Lt}\p{N}"'“‘`(\[{]"#

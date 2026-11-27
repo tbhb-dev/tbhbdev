@@ -76,10 +76,11 @@ def test_summary_refuses_excess_words_sentences_or_size(summary: str) -> None:
         "Go-based fixtures cover the parser",
         "Go, Python, and Rust use the same fixture.",
         "Block the build when the request is invalid.",
-        "NO-GO because the cache returns a stale value.",
         'The parser accepts "Retry?" as a label. Tests cover it.',
         "The parser accepts `Retry?` as a label. Tests cover it.",
         "The parser preserves `Retry? yes` as a single string. Tests cover it.",
+        "The parser preserves “Retry? yes” as a single string. Tests cover it.",
+        "The parser preserves ‘Retry? yes’ as a single string. Tests cover it.",
         "The handler returns the `APPROVE` enum.",
         "The handler checks each result, e.g. a stale value. Retries preserve it.",
         "The handler checks labels, e.g. Ready or Saved. Retries preserve them.",
@@ -89,6 +90,7 @@ def test_summary_refuses_excess_words_sentences_or_size(summary: str) -> None:
         "Dr. Lee tested warm vs. cold caches. `pytest` passed.",
         "The handler recognizes `VERDICT: GO`.",
         "Decision: approve the change after the cache check.",
+        "Verdict: Hold. The driver skips validation.",
         "The handler returns HOLD while the cache warms.",
         "The cache is warm. HOLD applies to stale requests.",
     ],
@@ -128,8 +130,9 @@ def test_summary_rejects_bare_and_prefixed_verdicts(
     [
         "GO. The driver validates the request.",
         "NO-GO: The cache returns a stale value.",
+        "NO-GO because the cache returns a stale value.",
         "Decision: APPROVE. The driver validates the request.",
-        "Verdict: Hold. The driver skips validation.",
+        "vErDiCt: HOLD until the cache is warm.",
     ],
 )
 def test_summary_rejects_leading_verdict_with_reasons(summary: str) -> None:
