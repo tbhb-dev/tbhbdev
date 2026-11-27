@@ -5,8 +5,8 @@ lazy from pathlib import Path
 
 import pytest
 
-from lint.check_lint_baselines import REGISTRY, check
-from lint.private.check_trailing_newline import git_output
+from lint.check_lint_baselines import check
+from lint.private.git_read import git_output
 
 CLI = "factory/cli"
 CONFIG = f"{CLI}/pyproject.toml"
@@ -34,7 +34,6 @@ def commit(repo: Path) -> str:
 
 
 def configure(repo: Path, edge: str, limit: int = 300) -> None:
-    write(repo, REGISTRY, f'"{CONFIG}" = "python-project"\n')
     write(
         repo,
         CONFIG,

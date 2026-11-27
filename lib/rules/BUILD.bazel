@@ -35,7 +35,10 @@ exports_files([
 ])
 
 exports_files(
-    ["check_lint_baselines.py"],
+    [
+        "check_lint_baselines.py",
+        "check_trailing_newline.py",
+    ],
     visibility = ["//lint:__pkg__"],
 )
 

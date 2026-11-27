@@ -7,9 +7,10 @@
 import argparse
 import os
 import re
-import subprocess  # nosec B404
 import sys
 from pathlib import Path
+
+from lint.private.git_read import GitError, git_output
 
 # The top-level exclude and the end-of-file-fixer exclude in .pre-commit-config.yaml.
 HOOK_EXCLUDE = re.compile(
@@ -27,14 +28,6 @@ HOOK_EXCLUDE = re.compile(
 # The remaining path expression in the Bedrock allowlist in .gitleaks.toml.
 BEDROCK_EXCLUDE = re.compile(rb"(^|/)\.gitleaks-rules\.toml$")
 TEXT_SAMPLE_SIZE = 8192
-GitError = subprocess.CalledProcessError
-
-
-def git_output(root: Path, *args: str) -> bytes:
-    return subprocess.check_output(  # noqa: S603  # nosec B603, B607
-        ["git", *args],  # noqa: S607
-        cwd=root,
-    )
 
 
 def check(root: Path, base: str, head: str) -> int:
@@ -80,7 +73,3 @@ def main() -> int:
         return check(root, args.base, args.head)
     except GitError:
         return 2
-
-
-if __name__ == "__main__":
-    sys.exit(main())

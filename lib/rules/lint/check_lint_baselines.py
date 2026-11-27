@@ -15,13 +15,14 @@ from io import BytesIO
 from pathlib import Path
 from typing import cast
 
-from lint.private.check_trailing_newline import GitError, git_output
+from lint.private.git_read import GitError, git_output
 
 type Ceilings = dict[tuple[str, str], int]
 type TomlDocument = dict[str, object]
 
 
-REGISTRY = ".github/lint-baselines.toml"
+CLI = "factory/cli"
+CLI_CONFIG = f"{CLI}/pyproject.toml"
 NOQA = re.compile(r"#\s*(?:(?:ruff|flake8):\s*)?noqa\b(?::\s*(.*))?", re.IGNORECASE)
 CODES = re.compile(r"[A-Z]+\d+(?:[\s,]+[A-Z]+\d+)*", re.IGNORECASE)
 
@@ -60,9 +61,7 @@ def suppressions(content: bytes) -> Counter[str]:
     return counts
 
 
-def project_metrics(
-    root: Path, revision: str, project: str
-) -> tuple[dict[str, int], Counter[str]]:
+def project_metrics(root: Path, revision: str) -> tuple[dict[str, int], Counter[str]]:
     entries = git_output(
         root,
         "ls-tree",
@@ -70,8 +69,8 @@ def project_metrics(
         "--full-tree",
         revision,
         "--",
-        f"{project}/src",
-        f"{project}/tests",
+        f"{CLI}/src",
+        f"{CLI}/tests",
     )
     lengths: dict[str, int] = {}
     counts: Counter[str] = Counter()
@@ -86,11 +85,9 @@ def project_metrics(
     return lengths, counts
 
 
-def file_growth(
-    root: Path, base: str, head: str, project: str, limit: int
-) -> list[str]:
-    old_lengths, old_counts = project_metrics(root, base, project)
-    lengths, counts = project_metrics(root, head, project)
+def file_growth(root: Path, base: str, head: str, limit: int) -> list[str]:
+    old_lengths, old_counts = project_metrics(root, base)
+    lengths, counts = project_metrics(root, head)
     errors = []
     for path, lines in lengths.items():
         ceiling = max(limit, old_lengths.get(path, 0))
@@ -100,7 +97,7 @@ def file_growth(
         ceiling = old_counts[rule]
         if count > ceiling:
             errors.append(
-                f"{project}: {rule} has {count} noqa suppressions (ceiling {ceiling})"
+                f"{CLI}: {rule} has {count} noqa suppressions (ceiling {ceiling})"
             )
     return errors
 
@@ -113,48 +110,27 @@ def growth(before: Ceilings, after: Ceilings) -> list[str]:
     ]
 
 
-def read_at(root: Path, revision: str, path: str) -> TomlDocument | None:
+def read_config(root: Path, revision: str) -> TomlDocument | None:
     tree = git_output(
-        root, "ls-tree", "--full-tree", "--name-only", revision, "--", path
+        root, "ls-tree", "--full-tree", "--name-only", revision, "--", CLI_CONFIG
     )
     if not tree:
         return None
-    return tomllib.loads(git_output(root, "show", f"{revision}:{path}").decode())
+    return tomllib.loads(git_output(root, "show", f"{revision}:{CLI_CONFIG}").decode())
 
 
-def check_project(root: Path, base: str, head: str, path: str) -> list[str]:
-    old_doc = read_at(root, base, path)
-    doc = read_at(root, head, path)
+def check(root: Path, base: str, head: str) -> list[str]:
+    old_doc = read_config(root, base)
+    doc = read_config(root, head)
     after = project_ceilings(doc) if doc is not None else None
     if doc is None or after is None:
-        return [f"{path}: missing from {head}"]
+        return [f"{CLI_CONFIG}: missing from {head}"]
 
     before = project_ceilings(old_doc) if old_doc is not None else None
     errors = []
     if before is not None:
-        errors.extend(f"{path}: {error}" for error in growth(before, after))
-    errors.extend(
-        file_growth(root, base, head, Path(path).parent.as_posix(), module_limit(doc))
-    )
-    return errors
-
-
-def check(root: Path, base: str, head: str) -> list[str]:
-    old_registry = cast("dict[str, str]", read_at(root, base, REGISTRY) or {})
-    registry = cast("dict[str, str]", read_at(root, head, REGISTRY) or {})
-    removed = old_registry.items() - registry.items()
-    if removed:
-        return [
-            f"{REGISTRY}: {path} lost its {kind} baseline"
-            for path, kind in sorted(removed)
-        ]
-
-    errors = []
-    for path, kind in registry.items():
-        if kind != "python-project":
-            msg = f"{path}: unknown baseline kind {kind!r}"
-            raise ValueError(msg)
-        errors.extend(check_project(root, base, head, path))
+        errors.extend(f"{CLI_CONFIG}: {error}" for error in growth(before, after))
+    errors.extend(file_growth(root, base, head, module_limit(doc)))
     return errors
 
 

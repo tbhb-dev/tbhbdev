@@ -81,7 +81,11 @@ gitleaks_text(
 # Checks new and changed text blobs with `bazel run //lint:trailing_newline -- BASE HEAD`.
 python_tool(
     name = "trailing_newline",
-    main = "//lint/private:check_trailing_newline.py",
+    data = [
+        "//lint/private:check_trailing_newline.py",
+        "//lint/private:git_read.py",
+    ],
+    main = "//:check_trailing_newline.py",
     python_env = "@tbhb_rules_python_runtime//:env",
     visibility = ["//visibility:public"],
 )
@@ -140,7 +144,7 @@ python_tool(
     name = "lint_baselines",
     data = [
         "check_lint_baselines.py",
-        "//lint/private:check_trailing_newline.py",
+        "//lint/private:git_read.py",
     ],
     main = "//:check_lint_baselines.py",
     python_env = "@tbhb_rules_python_runtime//:env",
