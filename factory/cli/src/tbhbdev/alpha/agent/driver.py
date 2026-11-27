@@ -1046,11 +1046,12 @@ def dispatch(settings: Settings, args: argparse.Namespace) -> int:
     try:
         run = load(settings, args.name)
     except FileNotFoundError:
-        if args.verb == "clean":
-            return clean_archived(settings, args.name, force=args.force)
-        if args.verb == "send":
-            message = f"{args.name}: unknown run"
-            raise Invalid(message) from None
+        match args.verb:
+            case "clean":
+                return clean_archived(settings, args.name, force=args.force)
+            case "send":
+                message = f"{args.name}: unknown run"
+                raise Invalid(message) from None
         raise
     verbs = {"wait": wait, "status": status, "kill": kill, "keep": keep}
     try:

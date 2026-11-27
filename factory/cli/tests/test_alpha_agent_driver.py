@@ -203,14 +203,12 @@ MESSAGE = "next\u00a0line\nthen this"
 
 def test_socket_path_fits_macos_with_long_run_name() -> None:
     root = Path("/Users/agent/.local/state/tbhbdev/agent-runs")
-    name = "a" * 51
-    assert len(os.fsencode(app_server.socket_path(root, name))) < 104
+    assert len(os.fsencode(app_server.socket_path(root, "a" * 51))) < 104
 
 
 @pytest.fixture
-def live_log(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
-    monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path))
-    log = tmp_path / "tbhbdev/agent-runs/sample.out"
+def live_log(isolated_home: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
+    log = isolated_home / ".xdg-state/tbhbdev/agent-runs/sample.out"
     log.parent.mkdir(parents=True)
     log.write_text(THREAD)
     monkeypatch.setattr(sys, "stdin", io.StringIO(MESSAGE))
