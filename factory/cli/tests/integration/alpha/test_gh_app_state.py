@@ -21,6 +21,7 @@ from integration.alpha.gh_app_fakes import (
     Github,
     Key,
     app_store,
+    block_network,
     env_for,
     mode,
     out_path,
@@ -33,7 +34,7 @@ from tbhbdev.alpha import (
     gh_app_state,
 )
 
-pytestmark = pytest.mark.usefixtures("no_network")
+_disable_network = pytest.fixture(autouse=True)(block_network)
 
 
 def test_layout() -> None:

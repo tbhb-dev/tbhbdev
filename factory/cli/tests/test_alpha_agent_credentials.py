@@ -24,6 +24,7 @@ from tbhbdev import secrets
 from tbhbdev.alpha import gh_app_api, gh_app_runtime, gh_app_signing
 from tbhbdev.alpha.agent import credentials, process_group, runfiles
 from tbhbdev.alpha.agent.model import Credentials, Harness, Invalid, Profile
+from tbhbdev.alpha.gh_app_runtime import run_openssl
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Generator
@@ -294,7 +295,7 @@ def test_review_token_request_is_read_only_for_only_run_repository(
         tmp_path,
         lambda: 1000,
         secrets.Store,
-        gh_app_runtime.run_openssl,
+        run_openssl,
         httpx2.MockTransport(respond),
     )
     monkeypatch.setattr(gh_app_runtime, "default_env", lambda: env)
@@ -733,9 +734,7 @@ def test_app_token_scope_ignores_planted_origin(
         "remote.origin.url",
         "https://github.com/example-other/other.git",
     )
-    env = gh_app_runtime.Env(
-        tmp_path, lambda: 1000, secrets.Store, gh_app_runtime.run_openssl
-    )
+    env = gh_app_runtime.Env(tmp_path, lambda: 1000, secrets.Store, run_openssl)
     monkeypatch.setattr(gh_app_runtime, "default_env", lambda: env)
     monkeypatch.setitem(VALUES, "example/app/pem", "fake pem")
     scopes: list[object] = []
@@ -1059,7 +1058,7 @@ def test_build_token_request_names_one_repository_and_write_permissions(
         tmp_path / "state",
         lambda: 1000,
         secrets.Store,
-        gh_app_runtime.run_openssl,
+        run_openssl,
         httpx2.MockTransport(respond),
     )
     monkeypatch.setattr(gh_app_runtime, "default_env", lambda: env)

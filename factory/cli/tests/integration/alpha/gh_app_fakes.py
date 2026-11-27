@@ -2,6 +2,8 @@
 # Copyright Tony Burns
 """Shared GitHub App test fixtures and fakes."""
 
+# cspell:words getproxies
+
 import stat
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
@@ -135,3 +137,17 @@ def seed(tmp_path: Path, expires: bytes | None, *, hosts: bool = True) -> Path:
     if expires is not None:
         (out_dir / "expires-at").write_bytes(expires)
     return out_dir
+
+
+def block_network(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Fail at once on any request that no MockTransport answers."""
+    monkeypatch.delenv(gh_app_runtime.RUN_ENV, raising=False)
+
+    def refuse(*_args: object, **_kwargs: object) -> httpx2.Response:
+        message = "a test reached the real network"
+        raise AssertionError(message)
+
+    monkeypatch.setattr(httpx2.HTTPTransport, "handle_request", refuse)
+    # A client with no transport of its own looks up the host's proxies first,
+    # which crashes a forked mutmut worker on macOS before it can send anything.
+    monkeypatch.setattr("httpx2._utils.getproxies", refuse)

@@ -20,6 +20,7 @@ from integration.alpha.gh_app_fakes import (
     Key,
     Store,
     app_store,
+    block_network,
     env_for,
     mode,
     ok_routes,
@@ -38,7 +39,7 @@ from tbhbdev.alpha import (
     gh_app_state,
 )
 
-pytestmark = pytest.mark.usefixtures("no_network")
+_disable_network = pytest.fixture(autouse=True)(block_network)
 
 # The names of the 1Password service account's variable, command and token
 # file, split for gitleaks.

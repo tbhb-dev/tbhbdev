@@ -20,6 +20,7 @@ from integration.alpha.gh_app_fakes import (
     Key,
     Store,
     app_store,
+    block_network,
     env_for,
     mode,
     out_path,
@@ -32,7 +33,7 @@ from tbhbdev.alpha import (
 )
 from tbhbdev.alpha.agent import host_tools
 
-pytestmark = pytest.mark.usefixtures("no_network")
+_disable_network = pytest.fixture(autouse=True)(block_network)
 
 
 def test_rebuild_pem_refolds_a_flattened_key() -> None:

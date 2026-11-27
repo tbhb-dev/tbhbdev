@@ -128,8 +128,6 @@ cli_py_library(
     visibility = ["//factory/cli/tests:__subpackages__"],
     deps = [
         ":gh_app_fakes",
-        "//factory/cli/src/tbhbdev/alpha:gh_app_runtime",
-        "@cli_pip//httpx2",
         "@cli_pip//pytest",
     ],
 )
