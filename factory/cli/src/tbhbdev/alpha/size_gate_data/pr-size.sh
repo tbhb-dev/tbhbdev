@@ -6,7 +6,7 @@
 set -euo pipefail
 # Counting logic and policy from tbhb-dev/rules at 0b12df1dd60e1f35a45695974d6a074ad47d86e7.
 # Keep both in sync with lint/private/pr_size.sh.tpl and pr-size-exempt.txt.
-base=$1 head=$2 scc=$3 git=$4 policy=$5 default_ref=${6:-} python=${7:-python3}
+base=$1 head=$2 scc=$3 git=$4 policy=$5 default_ref=${6:-} python=$7
 helper=${BASH_SOURCE[0]%/*}/pr-size-import
 for tool in "$scc" "$git"; do
   if ! type -P -- "$tool" >/dev/null; then

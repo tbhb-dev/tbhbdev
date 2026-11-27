@@ -193,9 +193,27 @@ jobs:
 
       - name: Count added lines
         env:
+          BASE_REF: ${{ github.event.pull_request.base.ref }}
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
-        run: bazel run --config=ci @tbhb_rules//lint:pr_size -- "$BASE_SHA" "$HEAD_SHA"
+        shell: bash
+        run: |
+          base=$BASE_SHA head=$HEAD_SHA
+          if [[ -n $DEFAULT_BRANCH && $BASE_REF != "$DEFAULT_BRANCH" ]]; then
+            shared_base=$(git merge-base "$base" "$head")
+            shared_default=$(git merge-base "refs/remotes/origin/$DEFAULT_BRANCH" "$head")
+            if shared_tree=$(git merge-tree --write-tree --no-messages "$shared_base" "$shared_default"); then
+              # Give the base revision's three-dot counter a pair of commits with the desired trees.
+              commit_tree=(git -c user.name='GitHub Actions' -c user.email=actions@github.com commit-tree)
+              base=$("${commit_tree[@]}" "$shared_tree" -m 'Shared base and default branch changes')
+              head=$("${commit_tree[@]}" "$head^{tree}" -p "$base" -m 'Pull request head tree')
+            else
+              [[ $? == 1 ]] || exit 1
+              base=$shared_default
+            fi
+          fi
+          bazel run --config=ci @tbhb_rules//lint:pr_size -- "$base" "$head"
 
   design-report:
     name: design-report
