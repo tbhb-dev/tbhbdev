@@ -461,6 +461,7 @@ cli_py_test(
     srcs = ["test_publication_io.py"],
     data = ["//:cli_check_inputs"],
     imports = ["../../.."],
+    shard_count = 3,
     deps = [
         ":pr_test_support",
         "//factory/cli/tests:conftest",
