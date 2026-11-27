@@ -245,7 +245,7 @@ def test_worktree_git_contract_under_one_stable_lock(
         calls.append((path, args))
         return original(path, *args)
 
-    monkeypatch.setattr((worktree_git, "git"), checked)
+    monkeypatch.setattr(worktree_git, "git", checked)
     request = run_request(
         profile=profile, commit=commit_id if profile == "review" else None
     )
@@ -308,7 +308,7 @@ def test_host_git_never_returns_to_a_launched_clone(
         calls.append(path)
         return original(path, *args)
 
-    monkeypatch.setattr((worktree_git, "git"), checked)
+    monkeypatch.setattr(worktree_git, "git", checked)
     first = worktree_checkout.create(clone, "first", run_request())
     launched.add(first)
     marker = tmp_path / "fetch-marker"
@@ -365,7 +365,7 @@ def test_prelaunch_git_protocol(
             return "ref: refs/heads/main\tHEAD"
         return full_sha if args[0] == "rev-parse" else ""
 
-    monkeypatch.setattr((worktree_git, "git"), checked)
+    monkeypatch.setattr(worktree_git, "git", checked)
 
     assert worktree_checkout.create(clone, "protocol", request) == workspace
     options = ("--no-recurse-submodules", "--no-write-fetch-head", "--no-tags")
@@ -454,7 +454,7 @@ def test_run_clone_parent_cannot_redirect_git_into_a_shared_cache(
     def unexpected(*_args: object) -> str:
         pytest.fail("host git must not enter a run container in a shared cache")
 
-    monkeypatch.setattr((worktree_git, "git"), unexpected)
+    monkeypatch.setattr(worktree_git, "git", unexpected)
     with pytest.raises(
         Invalid, match=r"^run clone parent must not be a symbolic link$"
     ):
@@ -480,8 +480,8 @@ def test_private_fetch_without_a_token_source_fails(
     def fetch(_mirror: Path, _request: object) -> str:
         raise subprocess.CalledProcessError(128, "git")
 
-    monkeypatch.setattr((worktree_mirror, "configure_mirror"), configure)
-    monkeypatch.setattr((worktree_mirror, "fetch_commit"), fetch)
+    monkeypatch.setattr(worktree_mirror, "configure_mirror", configure)
+    monkeypatch.setattr(worktree_mirror, "fetch_commit", fetch)
     with pytest.raises(Invalid, match="mirror fetch"):
         worktree_checkout.create(clone, "p1", run_request())
     assert urls == ["https://github.com/tbhb-dev/example-repo.git"]
@@ -508,8 +508,8 @@ def test_private_fetch_retries_over_https_with_the_token(
             raise subprocess.CalledProcessError(128, "git")
         raise Stop
 
-    monkeypatch.setattr((worktree_mirror, "configure_mirror"), configure)
-    monkeypatch.setattr((worktree_mirror, "fetch_commit"), fetch)
+    monkeypatch.setattr(worktree_mirror, "configure_mirror", configure)
+    monkeypatch.setattr(worktree_mirror, "fetch_commit", fetch)
     with pytest.raises(Stop):
         worktree_checkout.create(
             clone,
@@ -536,8 +536,8 @@ def test_private_fetch_with_no_token_fails_without_an_ssh_retry(
         assert token is None
         raise subprocess.CalledProcessError(128, "git")
 
-    monkeypatch.setattr((worktree_mirror, "configure_mirror"), configure)
-    monkeypatch.setattr((worktree_mirror, "fetch_commit"), fetch)
+    monkeypatch.setattr(worktree_mirror, "configure_mirror", configure)
+    monkeypatch.setattr(worktree_mirror, "fetch_commit", fetch)
     with pytest.raises(Invalid, match="mirror fetch"):
         worktree_checkout.create(clone, "p4", run_request(), lambda: None)
     assert urls == ["https://github.com/tbhb-dev/example-repo.git"]
@@ -551,7 +551,7 @@ def test_outside_repository_has_no_side_effects(
     def unexpected(*_args: object) -> str:
         pytest.fail("unlisted repository must never invoke git")
 
-    monkeypatch.setattr((worktree_git, "git"), unexpected)
+    monkeypatch.setattr(worktree_git, "git", unexpected)
     before = list(tmp_path.rglob("*"))
     with pytest.raises(Invalid) as caught:
         worktree_checkout.create(
@@ -624,12 +624,12 @@ def test_worktree_failure_names_its_step_and_safe_cause(
     monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path / "state"))
     monkeypatch.setenv("EXAMPLE_CREDENTIAL", "sensitive-exception")
     monkeypatch.setenv("EXAMPLE_STDERR", "sensitive-stderr")
-    monkeypatch.setattr((worktree_git, "git"), constant(""))
-    monkeypatch.setattr((worktree_mirror, "configure_mirror"), constant(None))
-    monkeypatch.setattr((worktree_mirror, "fetch_commit"), constant("a" * 40))
-    monkeypatch.setattr((worktree_clone, "clone_run"), constant(None))
-    monkeypatch.setattr((worktree_hooks, "install_hooks"), constant(None))
-    monkeypatch.setattr((worktree_clone, "prepare_git"), constant(None))
+    monkeypatch.setattr(worktree_git, "git", constant(""))
+    monkeypatch.setattr(worktree_mirror, "configure_mirror", constant(None))
+    monkeypatch.setattr(worktree_mirror, "fetch_commit", constant("a" * 40))
+    monkeypatch.setattr(worktree_clone, "clone_run", constant(None))
+    monkeypatch.setattr(worktree_hooks, "install_hooks", constant(None))
+    monkeypatch.setattr(worktree_clone, "prepare_git", constant(None))
 
     fail = partial(preparation_failure, error)
 
