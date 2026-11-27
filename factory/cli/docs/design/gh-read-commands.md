@@ -18,7 +18,7 @@ generated:
 
 | Status | Owner | Updated | Needs from tbhb |
 | --- | --- | --- | --- |
-| Draft | Tool maintainer | 2026-11-27 | 2 decisions on credentials and agent rules |
+| Draft | Tool maintainer | 2026-11-27 | None |
 
 ## Summary
 
@@ -26,28 +26,18 @@ Agents read the same pull request (PR) to learn its head commit, status, and che
 
 Add `tbhbdev alpha read`. Give it compact output, a combined PR view, and a bounded `wait` that uses webhook events where available.
 
-Deploy the commands before enforcing one rule for agent use of `gh`. Keep `gh query` for one-off reads and preserve the operator's write controls.
+Deploy the commands before enforcing one rule for agent use of `gh`. Keep `gh query` for one-off reads that the poll guard permits and preserve the operator's write controls.
 
 ## Decisions for tbhb
 
-### D1. Approve a repository-scoped read credential for queries?
-
-- **Recommendation.** Use a repository-scoped installation token with the existing review permissions.
-- **Why.** Review runs already use this permission set. Build and interactive sessions need a way to read without borrowing write authority.
-- **If yes.** Deliver a separate read credential where a run lacks one, and use the existing App token command for interactive setup.
-- **If no.** Limit the commands to sessions with a suitable read credential and defer enforcement elsewhere.
-- **Reversible.** Remove the handoff. Revoke any installation grant made for this group alone.
-
-### D2. Require the new commands for supported agent reads?
-
-- **Recommendation.** After deployment, record verdicts before enforcing the allow list.
-- **Why.** A replacement message gives agents a direct way to complete each supported task. One rule covers both typed commands and commands launched by scripts.
-- **If yes.** Enable the rule on each host after its replacements pass smoke checks.
-- **If no.** Leave the current hooks in force and keep the new commands voluntary.
-- **Reversible.** Restore the previous hook and shim policy together.
+The operator has settled every decision.
 
 ## Already decided
 
+The operator's decision record of 2026-11-27 (GitHub read commands: credential and enforcement) settles two questions.
+
+- **Credential.** Read commands use a repository-scoped token with the review run's read permissions. Build runs get a separate read token from the existing App. This uses existing accounts, Apps, and capabilities. If the operator reverses the decision, limit the commands to sessions with an existing read credential.
+- **Enforcement.** After deployment, agents must use the commands for reads they cover. The rule first records what it would refuse on each host. Then enable enforcement on that host. If the operator reverses the decision, keep the three existing `gh` hooks and make the commands voluntary.
 - The tool maintainer puts all reads under `read` and keeps the existing write commands. They maintain the output and cache defaults. [Alpha command reference](../reference/alpha/commands.md)
 - Use the [event-first rule](../reference/alpha/github-polling.md) and the blocking interface of [agent wait](../reference/alpha/commands/agent.md) as precedents for the tool maintainer.
 - Use REST and share budget accounting with the shim. The tool maintainer follows the precedent for conditional requests in the [GitHub metrics decision](../../../github-metrics/docs/architecture/decisions/0008-the-service-reads-github-through-rest-with-condi.md).
@@ -68,7 +58,7 @@ Without an argument in a clone, pick the unique open PR for the current branch a
 
 Move `alpha pr checks` to `alpha read pr checks`. Keep a temporary alias with the old output until callers migrate. Drafts still use `alpha pr check`.
 
-Use the escape hatch for run list, comments, releases, search, GraphQL reads, auth inspection, and raw REST.
+Use the [escape hatch](#guard) for comments, releases, search, GraphQL reads, auth inspection, and raw REST when the poll guard allows those reads.
 
 ### Agent output
 
@@ -112,6 +102,8 @@ Events can arrive late or go missing. Reserve time and request slots for one fin
 
 If the relay is unavailable or disconnects, start at 5 seconds and double the delay up to 60 seconds, with random variation. Cap the wait at 20 GitHub requests, including pages and the final read. Save the remaining slots for that read if another attempt would exceed the cap.
 
+Fallback requests require the poll rule change in [Guard](#guard). They stay within the selected PR or commit and use the same read credential and request budget.
+
 Honor `Retry-After` and quota resets within the deadline. Return 5 if the condition remains unresolved at the deadline, or 6 with the retry time for an ordinary query blocked by the rate limit. Each request counts locally, including a `304 Not Modified` with valid authorization, which GitHub exempts from the primary REST quota.
 
 One bounded call replaces a shell loop or `gh run watch`.
@@ -130,11 +122,11 @@ Cache hits are free. Count each shim invocation once because it has no view of t
 
 ### Auth
 
-Review runs already have a read token. Reuse it from the private `GH_CONFIG_DIR` handoff, and give build runs a separate handoff so reads never borrow a write token.
+Use a repository-scoped token with `REVIEW_PERMISSIONS` from `agent/credentials.py`. That set gives read access to contents, pull requests, checks, statuses, and actions.
 
-For interactive use, request a repository-scoped token with `alpha gh-app` and `--permissions`.
+Review runs reuse their read token from the private `GH_CONFIG_DIR` handoff. Build runs use a separate token with the same read permissions.
 
-Request read access for contents, pull requests, checks, statuses, and actions. Check the credential scope and require explicit setup for a session without a suitable token. What interactive sessions use today is **unverified**.
+For interactive use, request a repository-scoped token from the existing App with `alpha gh-app --permissions`. Check the credential scope. A session without a suitable read credential gets exit 6 with a setup message.
 
 Use direct REST for pagination, cache validation, and request accounting. The existing credential provider handles token exchange outside the read transport. Enforce GET, forbid request bodies, and test method rejection before any network request.
 
@@ -147,9 +139,21 @@ Replace the three hooks with `guard-gh`. Share its GitHub rules with the shim in
 Agents may use these forms.
 
 - `gh auth status` for inspection. Turn token display off.
-- `gh query` for one-off reads beyond the supported views, including run list, comments, releases, search, and raw REST. For GraphQL, require one validated read operation and reject mutations and opaque input.
+- `gh query` for one-off reads beyond the supported views, including comments, releases, search, and raw REST. Apply the [existing poll restrictions](../reference/alpha/github-polling.md) and accept read operations. Reject GraphQL mutations, opaque input, and requests with more than one GraphQL operation.
 - `gh release download` for a named release and asset.
 - `gh pr review --comment` for direct feedback where no alpha command exists. Route approving reviews through review runs and require explicit entries for any further writes.
+
+Deny agents multi-run listings except for the existing operator-granted measurement listing.
+
+Keep denying `--paginate` on `gh api` and `gh query` and bulk reads of `actions/runs`, `actions/workflows/W/runs`, `actions/jobs`, `check-runs`, and `check-suites`.
+
+For run state, use the single-run reads the poll guard already passes.
+
+- `actions/runs/ID` for a known run.
+- `actions/runs?head_sha=SHA` for one full commit hash.
+- `gh run list --limit 1` or `per_page=1` for one result.
+
+Use `read run jobs` for a run's jobs and `read wait checks` to wait for checks.
 
 Give refused reads the [replacement command and flags](#command-fields-and-refusal-hints), and give writes their existing alpha command. Allow projections the replacement lacks.
 
@@ -157,7 +161,11 @@ Scan commands in pipes, loops, and shell groups in parentheses, including those 
 
 Refuse changes to the assigned `GH_CONFIG_DIR`. Alpha write commands use the internal invocation path after validation. Human terminal calls outside agent sessions pass through.
 
-Keep the 1Password token-unset check, `guard_git_hooks.verdict`, the self-matching `pgrep -f` loop check, and protection and accounting for the grant, count, and lock files used by measurement allowances. Put shell scanning, GitHub argument rules, and the other checks in separate modules under 400 code lines each.
+Keep the 1Password token-unset check, `guard_git_hooks.verdict`, and the self-matching `pgrep -f` loop check. Keep the operator's measurement grant, its accounting, and protection for its grant, count, and lock files unchanged. Put shell scanning, GitHub argument rules, and the other checks in separate modules under 400 code lines each.
+
+The owner of the poll guard defines the change to the standing polling rule for fallback requests inside one bounded wait.
+
+Limit fallback to repeated reads of the selected PR or commit within the request cap and deadline. Keep existing credential scopes and denials for bulk reads and shell loops.
 
 Deploy replacements and the escape hatch first. Record verdicts before enforcing them on each host. Restore the old policy if a replacement fails.
 
@@ -174,7 +182,7 @@ Use `telemetry.py` for the commands, hook, and shim. Record the command family, 
 | Refusals per day | About 907 in the interactive sample. The number of observed days and headless refusals are unknown. | 75% fewer refusals per observed day at comparable agent volume. Count command policy refusals across instrumented hosts, with separate reason counts. |
 | Estimated read tokens | 43,209 audit reads, with payload sizes unknown. | 50% fewer estimated tokens per merge. Estimate from read bytes returned to the agent, including any saved command output the agent retrieves and the instrumentation can count. |
 
-Compare a week before enforcement with a week after adoption. Deduplicate merge events and report gaps in telemetry and event coverage. Use the same bytes-per-token method in both windows and sample filtered legacy output to avoid inflating the baseline.
+Replace the table's baselines with measurements from the week before enforcement. Compare that week with a week after adoption. Deduplicate merge events and report gaps in telemetry and event coverage. Use the same bytes-per-token method in both windows and sample filtered legacy output to avoid inflating the baseline.
 
 Raw invocation counts miss part of the cost. A combined command can replace paired shell calls and still make the same number of REST requests.
 
@@ -183,8 +191,8 @@ Raw invocation counts miss part of the cost. A combined command can replace pair
 | Risk or unknown | Effect | What handles it | Evidence |
 | --- | --- | --- | --- |
 | Existing CI status semantics differ across API surfaces | A check could appear green before it finishes | Compare checks and status contexts with the old rollup, including missing checks and mixed outcomes | Existing `pull_request.py` |
-| Relay loses events | The wait might detect completion at the deadline | Subscribe before reading and re-read after signals and at the deadline | Existing relay use. Delivery guarantees unverified. |
-| Interactive auth and rules access vary | Some reads may require setup or the escape hatch | Prove the review permission set against each endpoint and deploy D1 before relying on it | Existing review credentials. Interactive scopes unverified. |
+| Relay loses events | The wait might detect completion at the deadline | Subscribe before reading and re-read after signals and at the deadline | [Existing relay use](../reference/alpha/github-polling.md) |
+| Interactive auth and rules access vary | Some reads may require setup or the escape hatch | Test the review permission set against each endpoint and deploy the repository-scoped read credential before enforcement | Existing review credentials |
 | A script skips the shim or runs remotely with a different PATH | Its direct `gh` command may escape local argument checks | Install the shim on agent hosts and check the remote entry points. Keep GitHub credential controls in force. | Existing shim docs |
 | GitHub caps file lists, trees, and patches | A result can omit data even after local pagination | Report upstream caps and give the applicable Git or narrow REST retrieval path | Existing REST API |
 
@@ -203,10 +211,12 @@ Each step is a PR under 400 code lines and 1,500 raw lines. The tool maintainer 
 | 7 | `run jobs` and `run log` | Query a fixture with two jobs and fetch a failed job's log in chunks. Reassemble it and compare it byte for byte. |
 | 8 | Cache revalidation and query telemetry | Run two clients against a fixture that returns 304 and a rate-limit response. Confirm cache hits leave the request counter unchanged. Both clients draw from a shared budget. |
 | 9 | `wait checks` and `wait pr` | Replay a close event, head change, missing event, and relay outage. Verify fresh reads, exit codes, call cap, and the deadline. |
-| 10 | Shared argument rules and sanitized fixtures, in record mode | Replay the corpus through the table matcher and check the verdicts and hints. Existing hooks still enforce the old rules. |
-| 11 | Unified shell hook and shim enforcement | Replay the corpus at both entry points and run every replacement on each host before enabling its refusal. Verify human passthrough and legacy controls. |
+| 10 | Shared argument rules and sanitized fixtures in record mode. Record the fallback rule that the owner of the poll guard defines. | Replay the corpus through the table matcher and check the verdicts and hints. Check that recorded verdicts restrict fallback to the selected PR or commit within one bounded wait. Existing hooks still enforce the old rules. |
+| 11 | Unified shell hook and shim enforcement, including the fallback rule after approval from the owner of the poll guard | Replay the corpus at both entry points and run every replacement on each host before enabling its refusal. Verify that fallback respects the request cap and deadline, shell polling and bulk reads still draw refusals, and the measurement grant and human passthrough still work. |
 
 ## Appendix `A`: evidence
+
+The call figures come from an analysis of recorded agent sessions. The repository lacks the session records needed to reproduce it. The [Measurement](#measurement) section replaces these baselines with measured ones in the week before enforcement.
 
 ### Sources and current behavior
 
@@ -214,14 +224,14 @@ Each step is a PR under 400 code lines and 1,500 raw lines. The tool maintainer 
 - **Existing.** PR tooling calls `gh` via `find_tool("gh")`. `pr checks N` prints the head commit ID and check names with outcomes. Its paginated `gh api graphql` read targets that commit. It returns 0 for green, 1 for failed or unknown, 3 for pending or absent, and 2 on argument errors from the parser. `pr check` checks a draft.
 - **Existing.** `agent wait` blocks, reading the remote run about every 30 seconds. It returns the run result and uses exit 75 after 240 seconds of continuous transport failure. It has no caller-supplied deadline for the entire wait. See `factory/cli/src/tbhbdev/alpha/agent/driver/lifecycle.py`.
 - **Existing.** Main still registers three separate guards. The poll and PR modules have 816 and 727 raw lines. The config guard also rejects overrides of the assigned directory. See [poll guard](../reference/alpha/commands/guard-gh-poll.md), [PR guard](../reference/alpha/commands/guard-gh-pr.md), and [config guard](../reference/alpha/commands/guard-gh-config-dir.md).
-- **Existing.** `gh query` appears in the polling guard, docs, and tests. The wrapper lives outside the repository. Its use as an operator-side read wrapper over `gh api` is **unverified** here.
+- **Existing.** The [polling reference](../reference/alpha/github-polling.md) documents how the guard handles `gh query`. In the review environment, `gh query --help` exited 1 with `unknown command "query" for "gh"`. Both `gh alias list` and `gh extension list` exited 0 with no output. These checks established neither the command's definition nor its handling of non-GET methods.
 - **Existing.** `alpha gh-app` can narrow installation tokens with `--permissions NAME:read`. The review set and private config handoff are in `agent/credentials.py`. The [shim](../reference/alpha/commands/gh-shim.md) keeps a count for the past hour and a core quota floor for agents and passes through outside agent sessions.
 - **Existing.** `factory/cli/src/tbhbdev/telemetry.py` preserves command behavior when telemetry export fails. [GitHub's REST guidance](https://docs.github.com/en/rest/using-the-rest-api/best-practices-for-using-the-rest-api#make-requests-that-can-be-cached) documents the authorized 304 quota exemption.
-- **New.** Command interfaces, policy, budgets, and measurement targets in the main text are design choices. The exception for fallback requests inside one bounded wait is part of the proposed standing rule in D2.
+- **New.** Command interfaces, policy, budgets, and measurement targets in the main text are design choices. See [Guard](#guard) for the proposed change to the poll guard's standing rule for bounded wait fallback.
 
 ### Call analysis
 
-**Unverified.** The operator's private call analysis of 2026-11-27 audited calls and grouped them by command pattern. Clustering counted 43,389 calls, with 35,712 interactive (82%) and 7,677 headless (18%). Of the 43,446 audit calls, 43,209 were reads and 237 were writes.
+The operator's call analysis of 2026-11-27 audited calls and grouped them by command pattern. Clustering counted 43,389 calls, with 35,712 interactive (82%) and 7,677 headless (18%). Of the 43,446 audit calls, 43,209 were reads and 237 were writes.
 
 A simpler interactive count differed by about 40% but ranked the commands in the same order. Of the observed calls, 78% went through `gh query` and 89% read PRs. Clusters one through eleven cover 95.5% of calls, and defaults plus flags fit an estimated 87% after weighting by cluster size.
 
@@ -242,11 +252,11 @@ A simpler interactive count differed by about 40% but ranked the commands in the
 
 In interactive sessions, 5,051 of 27,353 shell commands contained more than one call. They account for 37% of interactive calls. State appeared with checks in 1,993 commands, commits in 1,127, files in 1,034, and reviews in 808. Commits and files appeared together in 752, checks and commits in 721, at least three of the five in 1,068, and a repeated group in 803.
 
-The long tail has 1,953 calls (4.5%) across 13 groups. Among them are writes and downloads, plus auth status (152), release reads (139), comments (112), GraphQL (106), and search (99). Within the top eleven groups, some 3,600 calls (9%) request one-off formats and need field selection or the escape hatch.
+Across 13 groups, the long tail has 1,953 calls (4.5%). Among them are writes and downloads, plus auth status (152), release reads (139), comments (112), GraphQL (106), and search (99). Within the top eleven groups, some 3,600 calls (9%) request one-off formats and need field selection or the escape hatch.
 
-The interactive audit summary reports about 907 refusals, of which 802 name the poll guard. Its table gives 835 for that guard and sums to 975 in total. The cause is unverified, and the audit notes that each GitHub call in a shell command can inherit the same outcome.
+For interactive sessions, the audit summary reports about 907 refusals, of which 802 name the poll guard. Its table gives 835 for that guard and sums to 975 in total. The audit left the cause unexplored. It notes that each GitHub call in a shell command can inherit the same outcome.
 
-The denial text for polling matches the source and directs callers to awrel. Other reported refusals came from auto-mode classification (70), an exit-status echo (31), a preceding sleep (26), and the config guard (4). Common refused shapes were single PR reads (232), commit check runs (116), run list (45 of 118), and paginated PR files (22 of 114).
+Polling denial text matches the source and directs callers to awrel. Other reported refusals came from auto-mode classification (70), an exit-status echo (31), a preceding sleep (26), and the config guard (4). Common refused shapes were single PR reads (232), commit check runs (116), run list (45 of 118), and paginated PR files (22 of 114).
 
 ### Command fields and refusal hints
 
@@ -290,6 +300,8 @@ Divide bytes by four and round up. Count each `\t` as one tab and include the ne
 The checks sample shows one check run and no commit statuses. Real commit IDs and patches take more space, and existing `--jq` calls trim much of the raw output.
 
 ### Sanitized examples
+
+These examples show recorded command forms, including forms that the poll guard refuses.
 
 ```bash
 gh query repos/<owner>/<repo>/pulls/<n> --jq '[.head.sha,.state,.draft,.mergeable_state,.user.login,.title]|@tsv'
