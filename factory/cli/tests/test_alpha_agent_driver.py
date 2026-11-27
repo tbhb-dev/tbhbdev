@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import base64
 import contextlib
 import dataclasses
@@ -11,11 +12,12 @@ import io
 import json
 import os
 import shlex
+import sys
 import tarfile
-from pathlib import PurePosixPath
+from pathlib import Path, PurePosixPath
 from types import SimpleNamespace
 from typing import TYPE_CHECKING, NoReturn
-from unittest.mock import Mock
+from unittest.mock import AsyncMock, Mock
 
 import pytest
 from agent_cli_example import run_agent
@@ -31,8 +33,15 @@ from agent_driver_example import (
 from agent_example import MARKER, settings
 
 from tbhbdev import version
+from tbhbdev.alpha.agent import (
+    app_server,
+    driver,
+    model,
+    render,
+    transport,
+    version_heal,
+)
 from tbhbdev.alpha.agent import arguments as agent_arguments
-from tbhbdev.alpha.agent import driver, model, render, transport, version_heal
 from tbhbdev.alpha.agent import settings as agent_settings
 from tbhbdev.alpha.agent.decisions import remote as remote_commands
 from tbhbdev.alpha.agent.decisions import repo, request, runfiles_names
@@ -41,7 +50,6 @@ from tbhbdev.alpha.agent.model import Invalid, Profile, RunKind, RunRequest
 if TYPE_CHECKING:
     import argparse
     from collections.abc import Generator
-    from pathlib import Path
 
 pytestmark = pytest.mark.usefixtures("isolated_home")  # noqa: V107
 
@@ -141,58 +149,36 @@ def test_default_launch_sends_unsandboxed_request(
 
 
 @pytest.mark.parametrize(
-    "options",
-    [("--harness", "claude"), ("--profile", "review"), ("--schema", "schema.json")],
-)
-def test_exec_steer_refuses_unsupported_launch(
-    remote: Remote, capsys: pytest.CaptureFixture[str], options: tuple[str, ...]
-) -> None:
-    assert launch(remote, "--steer", *options) == 1
-    assert (
-        "exec --steer requires a Codex build without --schema"
-        in capsys.readouterr().err
-    )
-
-
-@pytest.mark.parametrize(
-    ("reply", "error"),
+    ("text", "reply", "error"),
     [
-        ({}, ""),
-        ({"out": "Codex thread is unknown or unloaded\n"}, "unknown or unloaded"),
-        ({"rc": 73}, "not owner"),
+        ("one\ntwo", {}, ""),
+        ("hello", {"out": app_server.UNLOADED}, "unknown or unloaded"),
+        ("hello", {"rc": 73}, "not owner"),
+        ("op://example/item/field", None, "1Password reference"),
     ],
 )
 def test_send_routes_message_over_owned_ssh(
     remote: Remote,
     capsys: pytest.CaptureFixture[str],
-    reply: dict[str, object],
+    text: str,
+    reply: dict[str, object] | None,
     error: str,
 ) -> None:
     remote.configure(steer=True)
     assert launch(remote, "--steer") == 0
     owner = driver.load(CONFIG, "sample").owner
-    remote.configure(ssh=[reply])
-    assert command("send", "one\ntwo") == int(bool(error))
-    assert error in capsys.readouterr().err
-    call = remote.records("ssh")[-1]
-    assert "send-host sample" in str(call["args"])
-    assert "one\ntwo" not in str(call["args"])
-    assert base64.b64decode(str(call["stdin"])) == f"{owner}\none\ntwo".encode()
-
-
-def test_send_with_secret_is_refused_before_ssh(
-    remote: Remote, capsys: pytest.CaptureFixture[str]
-) -> None:
-    remote.configure(steer=True)
-    assert launch(remote, "--steer") == 0
     calls = remote.records("ssh", limits=True)
-    capsys.readouterr()
-    assert command("send", "Use op://example/item/field") == 1
-    assert capsys.readouterr() == (
-        "",
-        "tbhbdev alpha agent: steering message refused: 1Password reference\n",
-    )
-    assert remote.records("ssh", limits=True) == calls
+    if reply is not None:
+        remote.configure(ssh=[reply])
+    assert command("send", text) == int(bool(error))
+    assert error in capsys.readouterr().err
+    if reply is None:
+        assert remote.records("ssh", limits=True) == calls
+    else:
+        call = remote.records("ssh")[-1]
+        assert "send-host sample" in str(call["args"])
+        assert text not in str(call["args"])
+        assert base64.b64decode(str(call["stdin"])) == f"{owner}\n{text}".encode()
 
 
 def test_send_refuses_unknown_run(
@@ -203,22 +189,123 @@ def test_send_refuses_unknown_run(
     assert remote.records("ssh") == []
 
 
-def test_send_refuses_recorded_claude(
-    remote: Remote, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
-) -> None:
-    assert launch(remote) == 0
-    run = driver.load(CONFIG, "sample")
-    run.request = dataclasses.replace(run.request, harness=model.Harness.CLAUDE)
-    monkeypatch.setattr(driver, "load", Mock(return_value=run))
-    assert command("send", "hello") == 1
-    assert "Claude delivery is not built" in capsys.readouterr().err
-
-
 def test_send_explicit_claude_needs_no_config(
     capsys: pytest.CaptureFixture[str],
 ) -> None:
     assert command("send", "--harness", "claude", "hello") == 1
     assert capsys.readouterr().err == "Claude delivery is not built\n"
+
+
+THREAD = '{"type":"thread.started","thread_id":"thread"}\n'
+INACTIVE = "Codex thread has no active turn"
+MESSAGE = "next\u00a0line\nthen this"
+
+
+def test_socket_path_fits_macos_with_long_run_name() -> None:
+    root = Path("/Users/agent/.local/state/tbhbdev/agent-runs")
+    name = "a" * 51
+    assert len(os.fsencode(app_server.socket_path(root, name))) < 104
+
+
+@pytest.fixture
+def live_log(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
+    monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path))
+    log = tmp_path / "tbhbdev/agent-runs/sample.out"
+    log.parent.mkdir(parents=True)
+    log.write_text(THREAD)
+    monkeypatch.setattr(sys, "stdin", io.StringIO(MESSAGE))
+    return log
+
+
+def reply(payload: dict[str, object], size: int = 0) -> bytes:
+    body = json.dumps(payload).encode().ljust(size)
+    if len(body) < 126:
+        return bytes((129, len(body))) + body
+    width = 2 if len(body) < 65536 else 8
+    kind = 126 if width == 2 else 127
+    return bytes((129, kind)) + len(body).to_bytes(width, "big") + body
+
+
+def turn_reply(*turns: dict[str, str], size: int = 0) -> bytes:
+    return reply({"id": 2, "result": {"data": turns}}, size)
+
+
+def stream(response: bytes) -> bytes:
+    upgrade = b"HTTP/1.1 101 Switching Protocols\r\n\r\n"
+    ready = reply({"id": 1, "result": {}}) + reply({"method": "turn/started"})
+    return upgrade + ready + response + reply({"id": 3, "result": {}})
+
+
+@pytest.mark.usefixtures("live_log")
+@pytest.mark.parametrize(
+    ("wire", "error"),
+    [
+        (stream(turn_reply({"status": "inProgress", "id": "active"}, size=66000)), ""),
+        (stream(turn_reply({"status": "completed"}, size=128)), INACTIVE),
+        (stream(turn_reply()), INACTIVE),
+        (
+            stream(reply({"id": 2, "error": {"message": "thread not loaded"}})),
+            "thread not loaded",
+        ),
+        (stream(b"\x88\x00"), app_server.UNLOADED),
+        (b"HTTP/1.1 403 Forbidden\r\n\r\n", app_server.UNLOADED),
+    ],
+)
+def test_send_host_proxy(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    wire: bytes,
+    error: str,
+    isolated_home: Path,
+) -> None:
+    codex = isolated_home / ".npm-global" / "bin" / "codex"
+    codex.parent.mkdir(parents=True)
+    codex.touch(mode=0o700)
+    monkeypatch.setenv("PATH", str(isolated_home))
+    writer = SimpleNamespace(write=Mock(), drain=AsyncMock())
+    frame = Mock(wraps=app_server.frame)
+    monkeypatch.setattr(app_server, "frame", frame)
+
+    async def connect(
+        *command: str, env: dict[str, str], **_options: int
+    ) -> SimpleNamespace:
+        assert command[:4] == (str(codex), "app-server", "proxy", "--sock")
+        assert env["PATH"].startswith(f"{isolated_home}:")
+        assert "/usr/local/bin" in env["PATH"].split(":")
+        reader = asyncio.StreamReader()
+        reader.feed_data(wire)
+        reader.feed_eof()
+        return SimpleNamespace(
+            stdin=writer, stdout=reader, kill=Mock(), communicate=AsyncMock()
+        )
+
+    monkeypatch.setattr(asyncio, "create_subprocess_exec", connect)
+    assert run_agent(["send-host", "sample"]) == 0
+    assert capsys.readouterr().out.strip() == error
+    if not error:
+        assert json.loads(frame.call_args.args[0]) == {
+            "id": 3,
+            "method": "turn/steer",
+            "params": {
+                "threadId": "thread",
+                "expectedTurnId": "active",
+                "input": [{"type": "text", "text": MESSAGE, "text_elements": []}],
+            },
+        }
+
+
+def test_send_host_without_log_reports_unloaded(
+    live_log: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    live_log.unlink()
+    assert app_server.main(["sample"], "send-host") == 0
+    assert capsys.readouterr().out.strip() == app_server.UNLOADED
+
+
+def test_frame_supports_long_messages() -> None:
+    assert app_server.frame(b"x" * 65536)[:10] == b"\x81\xff" + (65536).to_bytes(
+        8, "big"
+    )
 
 
 def test_unsandboxed_clean_refuses_a_run_without_a_result(
@@ -468,6 +555,9 @@ def test_launch_stream_and_metadata(
     )
 
 
+STEER_ERROR = "exec --steer requires a Codex build without --schema"
+
+
 @pytest.mark.parametrize(
     ("options", "message"),
     [
@@ -492,6 +582,9 @@ def test_launch_stream_and_metadata(
         (("--harness", "agy"), "agy requires a gemini-*"),
         (("--model", "bad model"), "model must match"),
         (("--effort", "bad effort"), "effort must match"),
+        (("--steer", "--harness", "claude"), STEER_ERROR),
+        (("--steer", "--profile", "review"), STEER_ERROR),
+        (("--steer", "--schema", "schema.json"), STEER_ERROR),
     ],
 )
 def test_checks_before_ssh(
@@ -914,7 +1007,9 @@ def test_review_ref(remote: Remote, ref: str) -> None:
 
 
 @pytest.mark.parametrize("profile", [None, "Primary", "PRIMARY"])
-def test_claude_case(remote: Remote, profile: str | None) -> None:
+def test_claude_case(
+    remote: Remote, profile: str | None, capsys: pytest.CaptureFixture[str]
+) -> None:
     options = () if profile is None else ("--claude-profile", profile)
     assert (
         launch(remote, "--harness", "claude", "--reason", "example-gap", *options) == 0
@@ -923,6 +1018,8 @@ def test_claude_case(remote: Remote, profile: str | None) -> None:
         json.loads((remote.state / "sample.request.json").read_text())["claude_profile"]
         == "primary"
     )
+    assert command("send", "hello") == 1
+    assert "Claude delivery is not built" in capsys.readouterr().err
 
 
 def test_agy_review_uses_the_review_timeout(remote: Remote) -> None:

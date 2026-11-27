@@ -416,6 +416,7 @@ cli_py_test(
         ":agent_example",
         ":conftest",
         "//factory/cli/src/tbhbdev:version",
+        "//factory/cli/src/tbhbdev/alpha/agent:app_server",
         "//factory/cli/src/tbhbdev/alpha/agent:arguments",
         "//factory/cli/src/tbhbdev/alpha/agent:driver",
         "//factory/cli/src/tbhbdev/alpha/agent:model",
@@ -2185,18 +2186,6 @@ cli_py_library(
     visibility = ["//factory/cli/tests:__subpackages__"],
     deps = [
         "//factory/cli/src/tbhbdev/alpha/agent:runfiles",
-        "@cli_pip//pytest",
-    ],
-)
-
-cli_py_test(
-    name = "test_alpha_agent_send",
-    srcs = ["test_alpha_agent_send.py"],
-    deps = [
-        ":agent_cli_example",
-        ":conftest",
-        "//factory/cli/src/tbhbdev/alpha/agent:app_server",
-        "//factory/cli/src/tbhbdev/alpha/agent:host_tools",
         "@cli_pip//pytest",
     ],
 )

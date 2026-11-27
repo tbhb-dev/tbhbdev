@@ -13,16 +13,11 @@ import sys
 from contextlib import suppress
 from itertools import batched
 from pathlib import Path
-from typing import TYPE_CHECKING, cast
+from typing import cast
 
 from tbhbdev.alpha.agent import host_tools, runfiles
 from tbhbdev.alpha.agent.decisions import runfiles_names
 from tbhbdev.alpha.agent.model import Invalid
-
-if TYPE_CHECKING:
-    from collections.abc import Awaitable, Callable
-
-type Rpc = Callable[[str, dict[str, object]], Awaitable[dict[str, object]]]
 
 UNLOADED = "Codex thread is unknown or unloaded"
 TEXT_FRAME = 0x81
@@ -47,9 +42,8 @@ def launch_command(command: tuple[str, ...], socket: Path) -> tuple[str, ...]:
         setting = value if option == "-c" else f"{keys[option]}={json.dumps(value)}"
         server.extend(("-c", setting))
     client = (command[0], "exec", "--remote", endpoint, "--json", *command[output:])
-    path = shlex.quote(str(socket))
     script = f"""\
-socket={path}
+socket={shlex.quote(str(socket))}
 {shlex.join(server)} </dev/null >&2 &
 server=$!
 trap 'kill "$server" 2>/dev/null; wait "$server" 2>/dev/null; rm -f "$socket"' EXIT
@@ -65,34 +59,19 @@ test -S "$socket" || exit 1
     return ("/bin/sh", "-c", script)
 
 
-async def steer(rpc: Rpc, thread: str, message: str) -> None:
-    result = await rpc(
-        "thread/turns/list", {"threadId": thread, "limit": 1, "itemsView": "notLoaded"}
-    )
-    turns = cast("list[dict[str, str]]", result["data"])
-    if not turns or turns[0]["status"] != "inProgress":
-        detail = "Codex thread has no active turn"
-        raise Invalid(detail)
-    await rpc(
-        "turn/steer",
-        {
-            "threadId": thread,
-            "expectedTurnId": turns[0]["id"],
-            "input": [{"type": "text", "text": message, "text_elements": []}],
-        },
-    )
-
-
-async def proxy(command: tuple[str, ...], thread: str, message: str) -> None:
+async def proxy(socket: Path, thread: str, message: str) -> None:
     inherited_path = os.environ.get("PATH", os.defpath)
     path = ":".join((inherited_path, *host_tools.account_path(str(Path.home()))))
     try:
-        executable = host_tools.resolve(command[0], path, follow_symlinks=False)
+        executable = host_tools.resolve("codex", path, follow_symlinks=False)
     except Invalid as exc:
         raise Invalid(UNLOADED) from exc
     process = await asyncio.create_subprocess_exec(
         executable,
-        *command[1:],
+        "app-server",
+        "proxy",
+        "--sock",
+        str(socket),
         stdin=asyncio.subprocess.PIPE,
         stdout=asyncio.subprocess.PIPE,
         stderr=asyncio.subprocess.DEVNULL,
@@ -132,7 +111,22 @@ async def proxy(command: tuple[str, ...], thread: str, message: str) -> None:
                 raise Invalid(UNLOADED)
             await rpc("initialize", {"clientInfo": {"name": "tbhbdev", "version": "0"}})
             await write({"method": "initialized"})
-            await steer(rpc, thread, message)
+            result = await rpc(
+                "thread/turns/list",
+                {"threadId": thread, "limit": 1, "itemsView": "notLoaded"},
+            )
+            turns = cast("list[dict[str, str]]", result["data"])
+            if not turns or turns[0]["status"] != "inProgress":
+                detail = "Codex thread has no active turn"
+                raise Invalid(detail)
+            await rpc(
+                "turn/steer",
+                {
+                    "threadId": thread,
+                    "expectedTurnId": turns[0]["id"],
+                    "input": [{"type": "text", "text": message, "text_elements": []}],
+                },
+            )
     finally:
         with suppress(ProcessLookupError):
             process.kill()
@@ -163,24 +157,18 @@ async def read_frame(reader: asyncio.StreamReader) -> bytes:
     return await reader.readexactly(length)
 
 
-def thread_id(files: runfiles.RunFiles) -> str:
-    with files.path("out").open() as events:
-        event: dict[str, str] = json.loads(events.readline())
-    if event.get("type") != "thread.started":
-        raise Invalid(UNLOADED)
-    return event["thread_id"]
-
-
 def main(arguments: list[str], _prog: str) -> int:
     (name,) = arguments
     state = runfiles.state_home(Path.home())
     try:
         files = runfiles.RunFiles(state / runfiles_names.DIRECTORY, name)
         socket = socket_path(files.root, files.name)
-        thread = thread_id(files)
-        message = sys.stdin.read()
-        command = ("codex", "app-server", "proxy", "--sock", str(socket))
-        asyncio.run(proxy(command, thread, message))
+        with files.path("out").open() as events:
+            event: dict[str, str] = json.loads(events.readline())
+        if event.get("type") == "thread.started":
+            asyncio.run(proxy(socket, event["thread_id"], sys.stdin.read()))
+        else:
+            print(UNLOADED)
     except Invalid as exc:
         print(exc)
     except TimeoutError:

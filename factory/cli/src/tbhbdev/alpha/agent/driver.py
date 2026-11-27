@@ -529,16 +529,6 @@ def checked_prompt(args: argparse.Namespace) -> str:
     return prompt
 
 
-def check_steer(args: argparse.Namespace) -> None:
-    if args.steer and (
-        args.harness != Harness.CODEX
-        or args.profile != Profile.BUILD
-        or args.schema is not None
-    ):
-        message = "exec --steer requires a Codex build without --schema"
-        raise Invalid(message)
-
-
 def checked_schema(args: argparse.Namespace) -> str | None:
     if args.schema is None:
         return None
@@ -564,7 +554,13 @@ def launch_attributes(run: Run) -> None:
 
 
 def execute(settings: Settings, args: argparse.Namespace) -> int:
-    check_steer(args)
+    if args.steer and (args.harness, args.profile, args.schema) != (
+        Harness.CODEX,
+        Profile.BUILD,
+        None,
+    ):
+        message = "exec --steer requires a Codex build without --schema"
+        raise Invalid(message)
     run = prepare(settings, args) if args.host is not None else None
     if run is not None:
         launch_attributes(run)
@@ -1016,52 +1012,26 @@ def keep(settings: Settings, run: Run) -> int:
     return 0
 
 
-def send(settings: Settings, name: str, text: str) -> int:
-    try:
-        run = load(settings, name)
-    except FileNotFoundError:
-        message = f"{name}: unknown run"
-        raise Invalid(message) from None
+def send(settings: Settings, run: Run, text: str) -> int:
+    name = run.name
+    if run.request.harness is Harness.CLAUDE:
+        raise Invalid(CLAUDE_UNAVAILABLE)
     if run.request.harness is not Harness.CODEX:
-        errors = {
-            Harness.CLAUDE: CLAUDE_UNAVAILABLE,
-            Harness.AGY: f"{name}: send requires a Codex run",
-        }
-        raise Invalid(errors[run.request.harness])
+        message = f"{name}: send requires a Codex run"
+        raise Invalid(message)
     if kind := secret_kind(text):
         message = f"steering message refused: {kind}"
         raise Invalid(message)
     script = remote.owned(name) + (
         f"exec {remote.program(run.host)} alpha agent send-host {name}\n"
     )
-    try:
-        error = transport.shell(
-            settings, run.host, script, transport.Stdin(run.owner, text.encode())
-        ).strip()
-    except transport.CollisionError:
-        not_owner(run)
+    error = transport.shell(
+        settings, run.host, script, transport.Stdin(run.owner, text.encode())
+    ).strip()
     if error:
         message = f"{name}: {transport.terminal_text(error)}"
         raise Invalid(message)
     return 0
-
-
-def _dispatch_run(settings: Settings, args: argparse.Namespace, run: Run) -> int:
-    verbs = {"wait": wait, "status": status, "kill": kill, "keep": keep}
-    try:
-        if args.verb == "diff" and args.patch:
-            result = export_patch(settings, run)
-        elif args.verb in {"log", "diff"}:
-            limit = args.n if args.verb == "log" else None
-            result = inspect(settings, run, limit=limit)
-        elif args.verb == "clean":
-            result = clean(settings, run, force=args.force)
-        else:
-            result = verbs[args.verb](settings, run)
-    except transport.CollisionError:
-        not_owner(run)
-    else:
-        return result
 
 
 def dispatch(settings: Settings, args: argparse.Namespace) -> int:
@@ -1073,12 +1043,29 @@ def dispatch(settings: Settings, args: argparse.Namespace) -> int:
             **{"tbhb.agent.outcome": "ok" if result == 0 else "failed"}
         )
         return result
-    if args.verb == "send":
-        return send(settings, args.name, args.message)
     try:
         run = load(settings, args.name)
     except FileNotFoundError:
         if args.verb == "clean":
             return clean_archived(settings, args.name, force=args.force)
+        if args.verb == "send":
+            message = f"{args.name}: unknown run"
+            raise Invalid(message) from None
         raise
-    return _dispatch_run(settings, args, run)
+    verbs = {"wait": wait, "status": status, "kill": kill, "keep": keep}
+    try:
+        if args.verb == "diff" and args.patch:
+            result = export_patch(settings, run)
+        elif args.verb in {"log", "diff"}:
+            limit = args.n if args.verb == "log" else None
+            result = inspect(settings, run, limit=limit)
+        elif args.verb == "clean":
+            result = clean(settings, run, force=args.force)
+        elif args.verb == "send":
+            result = send(settings, run, args.message)
+        else:
+            result = verbs[args.verb](settings, run)
+    except transport.CollisionError:
+        not_owner(run)
+    else:
+        return result

@@ -630,13 +630,6 @@ def log_argv(run: Run, command: tuple[str, ...]) -> None:
             run.files.write("log", run_host_telemetry.argv_log_line(command) + "\n")
 
 
-def launch_command(run: Run, command: tuple[str, ...]) -> tuple[str, ...]:
-    if run.steer:
-        socket_path = app_server.socket_path(run.files.root, run.files.name)
-        return app_server.launch_command(command, socket_path)
-    return command
-
-
 def wait_harness(run: Run, child: subprocess.Popen[str]) -> int:
     limit = run_state.time_limit(
         run.request.kind, run.request.timeout, run.settings.max_run_minutes
@@ -673,6 +666,9 @@ def run_harness(
         run.files.write("log", f"preflight ok: {executable}\n")
         return 0
     log_argv(run, command)
+    if run.steer:
+        socket = app_server.socket_path(run.files.root, run.files.name)
+        command = app_server.launch_command(command, socket)
     headless = run.request.kind is RunKind.EXEC
     terminal = None if headless else sys.stdin.fileno()
     streams = (None, None, None)
@@ -704,13 +700,7 @@ def run_harness(
     try:
         with process_group.defer_signals():
             child = process_group.launch_owned(
-                process_group.Launch(
-                    launch_command(run, command),
-                    env,
-                    paths.worktree,
-                    streams,
-                    terminal,
-                ),
+                process_group.Launch(command, env, paths.worktree, streams, terminal),
                 started=started,
             )
         if run.files.path("request.json").exists():
