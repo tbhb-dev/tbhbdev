@@ -1332,6 +1332,14 @@ def test_xargs_rm_on_a_state_directory_glob_is_denied(wrapper: str) -> None:
     assert guard.inspect(command)[0] == guard.PROTECT_REASON
 
 
+@pytest.mark.parametrize("target", ["file", "/dev/null"])
+def test_xargs_rm_with_attached_redirect_on_a_state_directory_glob_is_denied(
+    target: str,
+) -> None:
+    command = f"echo ~/.local/state/tbhb/* | xargs rm&>{target}"
+    assert guard.inspect(command)[0] == guard.PROTECT_REASON
+
+
 @pytest.mark.parametrize(
     "command",
     [
