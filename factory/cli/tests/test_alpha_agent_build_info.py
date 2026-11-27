@@ -52,9 +52,13 @@ def test_tools_commit(
     assert build_info.tools_commit() == expected["tools_commit"]
 
 
-@pytest.mark.parametrize("error", [OSError, subprocess.SubprocessError])
+@pytest.mark.parametrize(
+    "error",
+    [OSError(), subprocess.SubprocessError(), subprocess.TimeoutExpired("git", 5)],
+    ids=["os-error", "subprocess-error", "timeout"],
+)
 def test_git_unavailable(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, error: type[Exception]
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, error: Exception
 ) -> None:
     build_provenance(tmp_path, monkeypatch, present=True)
     missing = Mock(side_effect=error)

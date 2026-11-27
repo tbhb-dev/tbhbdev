@@ -84,8 +84,10 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from tbhbdev import userconfig
+from tbhbdev.alpha.gh_app import RUN_ENV
 from tbhbdev.alpha.guard_gh_poll import POLL_REASON
-from tbhbdev.alpha.identity import locked, write_private_json
+from tbhbdev.alpha.identity import AGENT_EMAIL, locked, write_private_json
+from tbhbdev.alpha.repo import git
 
 if TYPE_CHECKING:
     from collections.abc import Generator, Mapping
@@ -106,6 +108,8 @@ ROOT_IDS = (
 )
 # Variables that mark an agent session without naming its root.
 MARKERS = ("CLAUDECODE", "CODEX_HOME", AGENT_ENV)
+RUN_NAME_ENV = "TBHBDEV_RUN_NAME"
+AGENT_MARKERS = (*ROOT_IDS, *MARKERS, RUN_ENV, RUN_NAME_ENV)
 UNKNOWN_ROOT = "unknown"
 TABLE = "gh_budget"
 DEFAULT_LIMIT = 300
@@ -206,6 +210,16 @@ def session_root(env: Mapping[str, str]) -> str | None:
     if any(env.get(name) for name in MARKERS):
         return UNKNOWN_ROOT
     return None
+
+
+def agent_operation(env: Mapping[str, str]) -> bool:
+    """Whether a session, run, or configured Git account identifies an agent."""
+    if any(env.get(name) for name in AGENT_MARKERS):
+        return True
+    if env.get("GIT_COMMITTER_EMAIL") == AGENT_EMAIL:
+        return True
+    code, email = git("config", "--get", "user.email")
+    return code == 0 and email == AGENT_EMAIL
 
 
 def whole(section: Json, key: str, default: int) -> int:

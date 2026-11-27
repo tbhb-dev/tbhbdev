@@ -6,8 +6,8 @@ generated:
     model: openai:gpt-6.2-sol
     effort: high
     surface: exec
-    session: sha-256-64:55f421bd5e9df8e7
-    at: "2026-11-27T03:22:14Z"
+    session: sha-256-64:b083225d0bf109b1
+    at: "2026-11-27T05:11:27Z"
 status: stable
 tags: [alpha]
 title: Pull request commands
@@ -33,7 +33,7 @@ It refuses fork heads, `main`, protected branches, and unreadable metadata.
 It ticks the rebase checkbox only for pull requests from the Renovate bot and preserves the rest of each body.
 It skips checked boxes and stops at the first failure.
 
-`tbhbdev alpha pr check` and `pr create` count lines added by `HEAD` after linting the draft. They run a bundled copy of the rules size counter through Bash and `scc` 4.1.0, without starting Bazel. The commands refresh the required remote-tracking refs on `origin` together and use local refs during a dry run. They report added code and raw line counts against limits of 400 code lines and 1,500 raw lines. If either count exceeds its limit, the check fails with a message to split the change into stacked pull requests. When both counts exceed their limits, the problem reports the code count. If the counter is unavailable or returns an error or invalid JSON, the command prints `size count unavailable: <reason>` as a warning and continues, and `pr create` still opens the pull request.
+`tbhbdev alpha pr check` and `pr create` count lines added by `HEAD` after linting the draft. They run a bundled copy of the rules size counter through Bash and `scc` 4.1.0, without starting Bazel. The commands refresh the required remote-tracking refs on `origin` together and use local refs during a dry run. They report added code and raw line counts against limits of 400 code lines and 1,500 raw lines. If either count exceeds its limit, the check fails with a message to split the change into stacked pull requests. When both counts exceed their limits, the problem reports the code count. If the counter is unavailable or returns an error or invalid JSON, the check fails with `size count unavailable: <reason>`, and `pr create` refuses to open the pull request.
 
 The counter compares `HEAD` with the merge base of `HEAD` and the draft's base branch. For a draft based on a different branch from the default, the counter finds each branch's merge base with `HEAD` and merges those two commits. It compares the resulting tree with `HEAD`. If the merge conflicts, the counter uses the common ancestor of `HEAD` and the default branch. If `origin`'s default branch is unknown, the counter uses the draft's explicit base alone.
 

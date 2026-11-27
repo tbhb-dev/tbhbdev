@@ -62,8 +62,10 @@ cli_py_library(
     imports = ["../.."],
     visibility = ["//factory/cli:__subpackages__"],
     deps = [
+        ":gh_app",
         ":guard_gh_poll",
         ":identity",
+        ":repo",
         "//factory/cli/src/tbhbdev:userconfig",
     ],
 )
@@ -244,6 +246,7 @@ cli_py_library(
     visibility = ["//factory/cli:__subpackages__"],
     deps = [
         ":identity",
+        ":install",
         ":opened",
         ":pull_request_frontmatter",
         ":repo",
@@ -419,6 +422,7 @@ cli_py_library(
     visibility = ["//factory/cli:__subpackages__"],
     deps = [
         ":identity",
+        ":install",
         ":pull_request",
         ":review_gate",
     ],
@@ -516,7 +520,9 @@ cli_py_library(
         ":guard_gh_poll",
         ":guard_gh_pr",
         ":guard_op",
+        ":guard_ops_no_lazy_stop",
         ":guard_scripts",
+        ":guard_sendmessage_clock",
         ":guard_ssh_agent",
         ":identity",
         ":install",
@@ -562,4 +568,23 @@ cli_py_library(
     srcs = ["worktree_sweep.py"],
     imports = ["../.."],
     visibility = ["//factory/cli:__subpackages__"],
+)
+
+cli_py_library(
+    name = "guard_ops_no_lazy_stop",
+    srcs = ["guard_ops_no_lazy_stop.py"],
+    imports = ["../.."],
+    visibility = ["//factory/cli:__subpackages__"],
+    deps = [":repo"],
+)
+
+cli_py_library(
+    name = "guard_sendmessage_clock",
+    srcs = ["guard_sendmessage_clock.py"],
+    imports = ["../.."],
+    visibility = ["//factory/cli:__subpackages__"],
+    deps = [
+        ":guard_gh_pr",
+        ":repo",
+    ],
 )

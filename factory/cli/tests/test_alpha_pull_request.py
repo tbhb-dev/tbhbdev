@@ -27,6 +27,7 @@ from fake_tool import (
     pythonpath,
     write_fake,
     write_private_config,
+    write_test_hooks,
 )
 from hypothesis import given
 from hypothesis import strategies as st
@@ -258,6 +259,7 @@ def world(
     link_git(git_dir)
     monkeypatch.setenv("PATH", f"{made.bin}{os.pathsep}{git_dir}")
     shutil.copytree(pr_git_baseline, made.root / ".git")
+    write_test_hooks(made.root / ".git/hooks")
     monkeypatch.chdir(made.root)
 
     def offline_git(*argv: str, cwd: Path | None = None) -> tuple[int, str]:
@@ -1751,6 +1753,23 @@ def test_create_defaults(world: World) -> None:
     ]
 
 
+@pytest.mark.parametrize("context", ["session", "account"])
+def test_agent_create_refuses_when_hooks_are_disabled(
+    world: World,
+    agent: dict[str, str],
+    capsys: pytest.CaptureFixture[str],
+    context: str,
+) -> None:
+    write_draft(world)
+    world.git("config", "core.hooksPath", "/dev/null")
+    env = agent if context == "session" else {}
+    if context == "account":
+        world.git("config", "user.email", agent_identity.AGENT_EMAIL)
+    assert run_main("create", env=env) == 1
+    assert world.calls("gh") == []
+    assert "/dev/null/" in capsys.readouterr().err
+
+
 @pytest.mark.parametrize("ending", ["", "\n", "\n\n"])
 def test_create_passes_gh_errors_through(
     world: World, capsys: pytest.CaptureFixture[str], ending: str
@@ -2593,7 +2612,7 @@ def test_runs_as_tbhbdev_alpha_pr(world: World) -> None:
         env=env,
     )
     assert (done.returncode, done.stderr) == (
-        0,
+        1,
         "size count unavailable: missing counter\n",
     )
 

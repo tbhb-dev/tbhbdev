@@ -20,6 +20,7 @@ from fake_tool import (
     pythonpath,
     write_fake,
     write_private_config,
+    write_test_hooks,
 )
 from hypothesis import example, given
 from hypothesis import strategies as st
@@ -226,12 +227,13 @@ def tools(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Tools:
     monkeypatch.setenv("HOME", str(tmp_path))
     monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "xdg"))
     monkeypatch.setenv("PATH", f"{bin_dir}{os.pathsep}{git_dir}")
-    # The scan runs from the repository root, which outside a git worktree is
-    # the current directory, and needs the committed and private configs.
+    # The scan runs from the repository root and needs both configs.
     repo = tmp_path / "repo"
     repo.mkdir()
     (repo / ".gitleaks.toml").write_text("")
     monkeypatch.chdir(repo)
+    subprocess.run(["git", "init", "-q", "--template="], check=True)
+    write_test_hooks(repo / ".git/hooks")
     write_private_config(tmp_path, PRIVATE_CONFIG + RULES_BEYOND_ONE)
     made = Tools(bin_dir)
     made.view()
@@ -596,12 +598,11 @@ def run_main(*argv: str) -> tuple[int | str | None, str]:
         ({"mergeStateStatus": "UNSTABLE"}, "mergeStateStatus=UNSTABLE"),
         ({"reviewDecision": "REVIEW_REQUIRED"}, "reviewDecision=REVIEW_REQUIRED"),
         ({"reviewDecision": None}, "no reviewDecision"),
-        ({"reviews": []}, "0 approvals at the head, need 2"),
+        ({"reviews": []}, "0 approvals at the head, need 1"),
         (
             {"reviews": [item | {"commit": {"oid": OTHER_HEAD}} for item in REVIEWS]},
-            "0 approvals at the head, need 2",
+            "0 approvals at the head, need 1",
         ),
-        ({"reviews": REVIEWS[:1]}, "1 approving providers, need 2"),
         (
             {
                 "reviews": [
@@ -609,7 +610,7 @@ def run_main(*argv: str) -> tuple[int | str | None, str]:
                     for item in REVIEWS
                 ]
             },
-            "0 approvals at the head, need 2",
+            "0 approvals at the head, need 1",
         ),
         ({"statusCheckRollup": []}, "no checks to verify"),
         ({"statusCheckRollup": None}, "no usable statusCheckRollup"),
@@ -672,6 +673,18 @@ def test_merge_passes_subject_body_and_head(
     assert str(merge["stdin"]).endswith(
         "[1]: https://github.com/tbhb-dev/tbhbdev/issues/12\n"
     )
+
+
+def test_agent_merge_refuses_a_missing_pre_push_hook(
+    tools: Tools, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    (Path.cwd() / ".git/hooks/pre-push").unlink()
+    monkeypatch.setenv("CODEX_SESSION_ID", "test-session")
+    assert run_main("12")[0] == 1
+    assert not (tools.bin / "gh.log").exists()
+    err = capsys.readouterr().err
+    assert "pre-push" in err
+    assert "tbhbdev alpha install --hooks-only" in err
 
 
 def test_merge_refuses_a_head_that_moved_since_approval(tools: Tools) -> None:

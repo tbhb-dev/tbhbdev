@@ -168,6 +168,53 @@ jobs:
             printf '%s\n\n%s\n' "$PR_TITLE" "$PR_BODY" | bazel run --config=ci @tbhb_rules//lint:gitleaks_text
           fi
 
+  pr-size:
+    name: pr-size
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-26.04
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Use the base commit's counter and rules
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: git checkout --detach "$BASE_SHA"
+
+      - name: Set up Bazel
+        uses: bazel-contrib/setup-bazel@104e3eea9447cdaa4b00d0fb46191a3985d26ab3  # 0.19.1
+        with:
+          bazelisk-version: 1.30.0
+          bazelisk-cache: true
+
+      - name: Count added lines
+        env:
+          BASE_REF: ${{ github.event.pull_request.base.ref }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        shell: bash
+        run: |
+          base=$BASE_SHA head=$HEAD_SHA
+          if [[ -n $DEFAULT_BRANCH && $BASE_REF != "$DEFAULT_BRANCH" ]]; then
+            shared_base=$(git merge-base "$base" "$head")
+            shared_default=$(git merge-base "refs/remotes/origin/$DEFAULT_BRANCH" "$head")
+            if shared_tree=$(git merge-tree --write-tree --no-messages "$shared_base" "$shared_default"); then
+              # Give the base revision's three-dot counter a pair of commits with the desired trees.
+              commit_tree=(git -c user.name='GitHub Actions' -c user.email=actions@github.com commit-tree)
+              base=$("${commit_tree[@]}" "$shared_tree" -m 'Shared base and default branch changes')
+              head=$("${commit_tree[@]}" "$head^{tree}" -p "$base" -m 'Pull request head tree')
+            else
+              [[ $? == 1 ]] || exit 1
+              base=$shared_default
+            fi
+          fi
+          bazel run --config=ci @tbhb_rules//lint:pr_size -- "$base" "$head"
+
   design-report:
     name: design-report
     if: github.event_name == 'pull_request'
@@ -241,7 +288,7 @@ jobs:
   conclusion:
     name: conclusion
     if: always()
-    needs: [bazel, gazelle-current, gitleaks, prose]
+    needs: [bazel, gazelle-current, gitleaks, prose, pr-size]
     runs-on: ubuntu-26.04
     timeout-minutes: 5
     steps:
@@ -252,10 +299,14 @@ jobs:
 
       - name: Fail if any needed job did not succeed
         env:
+          EVENT: ${{ github.event_name }}
           NEEDS: ${{ toJSON(needs) }}
         run: |
           echo "$NEEDS"
-          if ! jq -e 'all(.[]; .result == "success")' <<<"$NEEDS" >/dev/null; then
+          if ! jq -e --arg event "$EVENT" 'all(to_entries[];
+            .value.result == "success" or
+            (.key == "pr-size" and $event != "pull_request" and .value.result == "skipped")
+          )' <<<"$NEEDS" >/dev/null; then
             echo "A required job did not succeed." >&2
             exit 1
           fi

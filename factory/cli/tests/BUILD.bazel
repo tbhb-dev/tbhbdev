@@ -697,12 +697,15 @@ cli_py_test(
 cli_py_test(
     name = "test_alpha_agent_remote_safety",
     srcs = ["test_alpha_agent_remote_safety.py"],
+    pyi_deps = ["//factory/cli/src/tbhbdev/alpha/agent:model"],
     deps = [
+        ":agent_cli_example",
         ":agent_driver_example",
         ":agent_example",
         ":conftest",
         "//factory/cli/src/tbhbdev/alpha/agent:arguments",
         "//factory/cli/src/tbhbdev/alpha/agent:driver",
+        "//factory/cli/src/tbhbdev/alpha/agent:settings",
         "//factory/cli/src/tbhbdev/alpha/agent:transport",
         "//factory/cli/src/tbhbdev/alpha/agent/decisions:policy",
         "//factory/cli/src/tbhbdev/alpha/agent/decisions:remote",
@@ -2222,4 +2225,24 @@ cli_py_library(
     srcs = ["agent_cli_example.py"],
     visibility = ["//factory/cli/tests:__subpackages__"],
     deps = ["//factory/cli/src/tbhbdev:cli"],
+)
+
+cli_py_test(
+    name = "test_alpha_guard_ops_no_lazy_stop",
+    srcs = ["test_alpha_guard_ops_no_lazy_stop.py"],
+    deps = [
+        ":conftest",
+        "//factory/cli/src/tbhbdev/alpha:guard_ops_no_lazy_stop",
+        "@cli_pip//pytest",
+    ],
+)
+
+cli_py_test(
+    name = "test_alpha_guard_sendmessage_clock",
+    srcs = ["test_alpha_guard_sendmessage_clock.py"],
+    deps = [
+        ":conftest",
+        "//factory/cli/src/tbhbdev/alpha:guard_sendmessage_clock",
+        "@cli_pip//pytest",
+    ],
 )
