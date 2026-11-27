@@ -367,6 +367,7 @@ cli_py_library(
     imports = ["../../.."],
     visibility = ["//factory/cli:__subpackages__"],
     deps = [
+        ":arguments",
         ":driver",
         ":precheck",
         ":run_host",
@@ -375,6 +376,15 @@ cli_py_library(
         ":ssh_serve",
         "//factory/cli/src/tbhbdev:telemetry",
         "//factory/cli/src/tbhbdev:userconfig",
+    ],
+)
+
+cli_py_library(
+    name = "arguments",
+    srcs = ["arguments.py"],
+    imports = ["../../.."],
+    visibility = ["//factory/cli:__subpackages__"],
+    deps = [
         "//factory/cli/src/tbhbdev/alpha:worker_identity",
         "//factory/cli/src/tbhbdev/alpha/agent/decisions:config",
     ],

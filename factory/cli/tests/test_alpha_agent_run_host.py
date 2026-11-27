@@ -61,7 +61,6 @@ from tbhbdev.alpha.agent import (
     runfiles,
     shims,
 )
-from tbhbdev.alpha.agent import command as agent
 from tbhbdev.alpha.agent.decisions import policy, request
 from tbhbdev.alpha.agent.decisions.run_state import Group
 from tbhbdev.alpha.agent.model import (
@@ -1007,7 +1006,7 @@ def test_hidden_dispatch_reads_request_and_restores_handlers(
         return 9
 
     monkeypatch.setattr(run_host, "execute", execute)
-    assert agent.main(arguments, "example agent") == 9
+    assert run_host.main(arguments[1:], "example agent run-host") == 9
     assert {s: signal.getsignal(s) for s in before} == before
     assert files.path("json").read_text() == "driver metadata"
 
