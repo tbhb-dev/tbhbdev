@@ -284,7 +284,7 @@ def failed_log(name: str) -> str:
     log = f'"$d/{name}{files.LOG}"'
     return (
         run_rc(name)
-        + f"""case "$rc" in ''|0|00|000) ;; *)
+        + f"""case "$rc" in ''|0) ;; *)
     safe_file {log}
     if test -f {log}; then tail -c 65536 {log}; fi
     exit "$?"
@@ -384,16 +384,11 @@ INSPECTION_OUTPUT = (
 )
 
 
-def mirror_command(
-    repository: str, name: str, command: str, *, before: str = ""
-) -> str:
+def mirror_command(repository: str, command: str) -> str:
     git_host, organization, project = repo.parts(repository)
     git_host = git_host.lower()
     return (
-        owned(name)
-        + HELPERS
-        + before
-        + f'mirror="$state/tbhbdev/agent-mirrors/{git_host}/{organization}/'
+        f'mirror="$state/tbhbdev/agent-mirrors/{git_host}/{organization}/'
         f"""{project}.git"
 for p in "$state/tbhbdev/agent-mirrors" \
     "$state/tbhbdev/agent-mirrors/{git_host}" \
@@ -413,10 +408,13 @@ perl -MFcntl=:flock -e {shlex.quote(MIRROR_LOCK)} \
 
 
 def origin_branch(repository: str, name: str) -> str:
-    return mirror_command(
-        repository,
-        name,
-        f"{MIRROR_GIT} ls-remote --end-of-options origin refs/heads/agent/{name}",
+    return (
+        owned(name)
+        + FILE_HELPERS
+        + mirror_command(
+            repository,
+            f"{MIRROR_GIT} ls-remote --end-of-options origin refs/heads/agent/{name}",
+        )
     )
 
 
@@ -530,11 +528,13 @@ fi
 
 
 def export_patch(repository: str, name: str) -> str:
+    phase = f'"$d/{name}{files.PHASE}"'
     return (
         owned(name)
         + FILE_HELPERS
         + run_rc(name)
         + 'test -n "$rc" || exit 65\n'
+        + f'safe_file {phase}\ntest "$(head -c 7 {phase})" = ended || exit 65\n'
         + worktree_patch(repository, name, export=True)
     )
 
@@ -560,17 +560,15 @@ def inspect(repository: str, name: str, *, limit: int | None) -> str:
             f'{patch}    exit "$?"\n'
             "fi\n"
         )
-    return mirror_command(
-        repository,
-        name,
+    script = (
         fallback
         + f"{MIRROR_GIT} -c transfer.fsckObjects=true -c core.logAllRefUpdates=false "
         "fetch --no-write-fetch-head --no-tags --no-prune --no-prune-tags "
         f"--end-of-options origin +HEAD:{base} +{branch}:{branch} "
         '|| exit "$?"\n'
-        f"perl -e {shlex.quote(INSPECTION_OUTPUT)} /bin/sh -c {shlex.quote(read)}",
-        before=before,
+        f"perl -e {shlex.quote(INSPECTION_OUTPUT)} /bin/sh -c {shlex.quote(read)}"
     )
+    return owned(name) + FILE_HELPERS + before + mirror_command(repository, script)
 
 
 # A supervisor may hold the lock outside tmux, or leave a detached group.

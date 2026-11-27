@@ -1396,6 +1396,21 @@ def mock_agent_run_for_diff(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(driver, "load", load)
 
 
+def test_patch_export_refuses_unconfirmed_shutdown(host: Path) -> None:
+    tree = unpublished_run(host)
+    (tree / "example").write_text("unpublished change\n")
+    git_in(tree, "add", "example")
+    commit_in(tree, "unpublished change")
+    state = host / "state/tbhbdev/agent-runs"
+    (state / "sample.rc").write_text("124\n")
+    (state / "sample.phase").write_text("unknown")
+
+    result = execute(remote.export_patch("example-org/example-repo", "sample"))
+
+    assert result.returncode == 65
+    assert result.stdout == b""
+
+
 @pytest.mark.parametrize(
     "history", ["linear", "merge", "empty merge", "reset then add"]
 )
@@ -1431,6 +1446,7 @@ def test_finished_build_exports_complete_patch_offline(
 
     mock_agent_run_for_diff(monkeypatch)
     args = ["diff", "sample", "--patch"]
+    (state / "sample.phase").write_text("ended")
     assert run_agent(args) == 1
     assert not capsysbinary.readouterr().out
 
