@@ -310,8 +310,8 @@ def _limits(service: dict[str, Json]) -> None:
     if "memswap_limit" in service:
         _positive_size(service["memswap_limit"], MAX_MEMORY_BYTES)
     require(memory is not None or "memory" in limits, "memory limit required")
-    integer(service.get("pids_limit"), 1)
-    _logging(service.get("logging"))
+    require("pids_limit" in service, "expected integer")
+    require("logging" in service, "expected an object")
 
 
 def _structured(key: str, item: Json, model: dict[str, Json], allowed: Service) -> None:

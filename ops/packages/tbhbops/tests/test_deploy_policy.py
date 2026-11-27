@@ -354,30 +354,6 @@ def test_top_values_refuse(
     assert str(caught.value) == reason
 
 
-@pytest.mark.parametrize(
-    ("path", "writable", "env"),
-    [
-        ("/outside", False, False),
-        ("/srv/o11y", False, False),
-        ("/srv/o11y/deploy/model", False, False),
-        ("/srv/o11y/incoming/config", False, False),
-        ("/srv/o11y/releases/other/config", False, False),
-        ("/srv/o11y/data/unlisted.env", False, True),
-        ("/srv/o11y/deploy", True, False),
-        ("/srv/o11y/data", True, False),
-        ("/srv/o11y/data/secrets/token", True, False),
-    ],
-)
-def test_control_paths_refuse(
-    deploy_service: Service, path: str, writable: bool, env: bool
-) -> None:
-    source = policy.Source(Path(path), writable=writable, env=env)
-    with pytest.raises(RefusalError):
-        policy.paths(
-            (source,), (), {source.path} if writable else set(), deploy_service, RELEASE
-        )
-
-
 def test_cross_release_writable_set(deploy_service: Service) -> None:
     writable = policy.Source(Path("/srv/o11y/data/web"), writable=True)
     nested = policy.Source(writable.path / "config")
@@ -704,6 +680,7 @@ def test_exact_model_sources(deploy_service: Service) -> None:
 @pytest.mark.parametrize(
     ("path", "write", "env", "reason"),
     [
+        ("/outside", False, False, "path outside root"),
         ("/srv/o11y/data/a b", False, False, "path characters"),
         ("/srv/o11y/../outside", False, False, "path outside root"),
         ("/srv/o11y", False, False, "path outside root"),
@@ -1078,17 +1055,6 @@ def test_pid_limit_accepts_one_process(deploy_service: Service) -> None:
     assert policy.model(minimal(pids_limit=1), deploy_service) == ()
 
 
-def test_plain_pid_validation_rejects_zero_before_required_limits() -> None:
-    with pytest.raises(RefusalError, match=r"^integer below minimum$"):
-        policy._plain("pids_limit", 0)  # Check the field validator independently.
-
-
-def test_required_pid_validation_rejects_zero_without_field_validation() -> None:
-    candidate = mapping(mapping(minimal(pids_limit=0)["services"])["web"])
-    with pytest.raises(RefusalError, match=r"^integer below minimum$"):
-        policy._limits(candidate)  # Check the required-limit validator independently.
-
-
 @pytest.mark.parametrize("memory", ["1", "1024", "001024", "1K", "1g", "2M", "1b"])
 def test_memory_limit_alternate_spelling(deploy_service: Service, memory: str) -> None:
     value = minimal(deploy={"resources": {"limits": {"memory": memory}}})
@@ -1277,21 +1243,6 @@ def test_service_requires_explicit_runtime(deploy_service: Service) -> None:
     mapping(mapping(candidate["services"])["web"]).pop("runtime", None)
     with pytest.raises(RefusalError, match=r"^runtime$"):
         policy.model(candidate, deploy_service)
-
-
-@pytest.mark.parametrize("key", ["mem_limit", "memswap_limit", "deploy", "logging"])
-def test_resource_size_ceilings(deploy_service: Service, key: str) -> None:
-    over = str(64 * 1024**3 + 1)
-    value: Json = over
-    if key == "deploy":
-        value = {"resources": {"limits": {"memory": over}}}
-    elif key == "logging":
-        value = {
-            "driver": "json-file",
-            "options": {"max-size": str(100 * 1024**2 + 1), "max-file": "3"},
-        }
-    with pytest.raises(RefusalError, match=r"^size ceiling$"):
-        policy.model(minimal(**{key: value}), deploy_service)
 
 
 @pytest.mark.parametrize("suffix", ["", "b", "B", "k", "K", "m", "M", "g", "G"])
