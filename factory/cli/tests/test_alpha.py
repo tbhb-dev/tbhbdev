@@ -12,7 +12,6 @@ import pytest
 import tbhbdev.alpha.monorepo.command as monorepo
 from tbhbdev import cli
 from tbhbdev.alpha import (
-    agent,
     brief,
     close,
     gh_app,
@@ -37,6 +36,8 @@ from tbhbdev.alpha import (
     version_check,
 )
 from tbhbdev.alpha import command as alpha
+from tbhbdev.alpha.agent import command as agent
+from tbhbdev.alpha.agent import precheck, run_host, settings, signing_parity, ssh_serve
 
 if TYPE_CHECKING:
     from types import ModuleType
@@ -193,3 +194,36 @@ def test_harness_hooks_run_from_the_top_without_config(
     monkeypatch.setattr(sys, "stdin", io.StringIO(json.dumps({})))
     assert cli.main(["alpha", command]) == 0
     assert capsys.readouterr() == ("", "")
+
+
+@pytest.mark.parametrize(
+    ("verb", "module", "function", "args"),
+    [
+        ("precheck", precheck, "main", ["a", "--reference", "b"]),
+        ("run-host", run_host, "main", ["example", "--host", "example-linux"]),
+        ("ssh-serve", ssh_serve, "main", ["extra"]),
+        ("signing-fingerprint", signing_parity, "host_main", ["agent"]),
+    ],
+)
+def test_agent_host_command_wiring(
+    verb: str,
+    module: ModuleType,
+    function: str,
+    args: list[str],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    run = Mock(return_value=37)
+    monkeypatch.setattr(module, function, run)
+    assert agent.main([verb, *args], "example agent") == 37
+    run.assert_called_once_with(args, f"example agent {verb}")
+
+
+def test_agent_signing_parity_uses_coordinator_settings(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    loaded = Mock()
+    run = Mock(return_value=7)
+    monkeypatch.setattr(settings, "load", lambda: loaded)
+    monkeypatch.setattr(signing_parity, "main", run)
+    assert agent.main(["signing-parity"], "example agent") == 7
+    run.assert_called_once_with(loaded)

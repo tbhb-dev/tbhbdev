@@ -6,10 +6,10 @@ import argparse
 from typing import TYPE_CHECKING
 
 import pytest
+from agent_cli_example import run_agent
 
 from tbhbdev import userconfig
-from tbhbdev.alpha import agent
-from tbhbdev.alpha.agent import model, settings
+from tbhbdev.alpha.agent import arguments, model, settings
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -172,8 +172,8 @@ def test_loading_reads_only_the_config(config_file: Path, tmp_path: Path) -> Non
 @pytest.mark.parametrize(
     "run",
     [
-        lambda: agent.main([], "example agent"),
-        lambda: agent.main(["status", "sample"], "example agent"),
+        lambda: run_agent([]),
+        lambda: run_agent(["status", "sample"]),
     ],
 )
 def test_command_refuses_missing_configuration(
@@ -190,10 +190,10 @@ def test_command_reports_a_config_error(
     config_file: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
     config_file.write_text('[agent]\nsockets_dir = "/x"\nzeta = 1\n')
-    assert agent.main(["status", "sample"], "example agent") == 1
+    assert run_agent(["status", "sample"]) == 1
     assert capsys.readouterr() == (
         "",
-        f"example agent: {config_file}: [agent] zeta not recognized\n",
+        f"tbhbdev alpha agent: {config_file}: [agent] zeta not recognized\n",
     )
 
 
@@ -230,11 +230,11 @@ def test_config_check_refuses_write_paths_under_socket_parents(
     )
     config_file.write_text(text)
 
-    assert agent.main([], "example agent") == 1
+    assert run_agent([]) == 1
     assert capsys.readouterr() == (
         "",
         (
-            f"example agent: protected host path {home}/.local/state/tbhbdev "
+            f"tbhbdev alpha agent: protected host path {home}/.local/state/tbhbdev "
             f"overlaps write root {home / write}; narrow that write root\n"
         ),
     )
@@ -249,8 +249,8 @@ def test_config_check_accepts_unrelated_write_paths(
 ) -> None:
     monkeypatch.setenv("HOME", str(config_file.parent.parent / "agent"))
     config_file.write_text(EXAMPLE.replace("/example/sockets", sockets))
-    assert agent.main([], "example agent") == 0
-    assert capsys.readouterr() == ("example agent: configuration valid\n", "")
+    assert run_agent([]) == 0
+    assert capsys.readouterr() == ("tbhbdev alpha agent: configuration valid\n", "")
 
 
 def test_config_check_refuses_write_paths_under_the_shell_config_directory(
@@ -268,11 +268,11 @@ def test_config_check_refuses_write_paths_under_the_shell_config_directory(
         )
     )
 
-    assert agent.main([], "example agent") == 1
+    assert run_agent([]) == 1
     assert capsys.readouterr() == (
         "",
         (
-            f"example agent: protected host path {home}/.shell-config "
+            f"tbhbdev alpha agent: protected host path {home}/.shell-config "
             f"overlaps write root {home}/.shell-config/audit; narrow that write root\n"
         ),
     )
@@ -284,17 +284,17 @@ def test_config_check_refuses_write_paths_under_the_shell_config_directory(
 def test_command_options(
     argv: list[str], capsys: pytest.CaptureFixture[str], rc: int
 ) -> None:
-    assert agent.main(argv, "example agent") == rc
+    assert run_agent(argv) == rc
     out = capsys.readouterr()
-    assert "usage: example agent" in out.out + out.err
+    assert "usage: tbhbdev alpha agent" in out.out + out.err
     assert "run-host" not in out.out
 
 
 def test_duration() -> None:
-    assert agent.duration("1h") == 3600
+    assert arguments.duration("1h") == 3600
 
     with pytest.raises(argparse.ArgumentTypeError) as caught:
-        agent.duration("bad")
+        arguments.duration("bad")
     assert (
         str(caught.value)
         == "must be bare seconds or a number ending in s, m or h, up to 7 days"
@@ -302,7 +302,7 @@ def test_duration() -> None:
 
 
 def test_command_help_contract() -> None:
-    assert agent.parser("example agent").format_help() == (
+    assert arguments.parser("example agent").format_help() == (
         "usage: example agent [-h]\n"
         "                     "
         "{exec,wait,status,kill,clean,keep,log,diff,signing-parity} ...\n\n"
@@ -313,18 +313,6 @@ def test_command_help_contract() -> None:
         "options:\n"
         "  -h, --help            show this help message and exit\n"
     )
-
-
-def test_command_dispatches_the_host_runner(monkeypatch: pytest.MonkeyPatch) -> None:
-    calls: list[tuple[list[str], str]] = []
-
-    def run_host(arguments: list[str], prog: str) -> int:
-        calls.append((arguments, prog))
-        return 37
-
-    monkeypatch.setattr(agent.run_host, "main", run_host)
-    assert agent.main(["run-host", "example", "--host", "example-linux"], "agent") == 37
-    assert calls == [(["example", "--host", "example-linux"], "agent run-host")]
 
 
 def test_a_relative_worker_path_names_the_config(config_file: Path) -> None:

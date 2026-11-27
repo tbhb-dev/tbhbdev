@@ -13,7 +13,7 @@ import os
 import sys
 from typing import TYPE_CHECKING
 
-import tbhbdev.alpha.agent
+import tbhbdev.alpha.agent.command
 import tbhbdev.alpha.brief
 import tbhbdev.alpha.gh_shim
 import tbhbdev.alpha.guard_agent_model
@@ -222,7 +222,7 @@ COMMANDS: dict[str, Callable[[list[str], str], int]] = {
     "install": install_command,
     "pre-push-guard": tbhbdev.alpha.pre_push_guard.main,
     "loop": tbhbdev.alpha.loop.main,
-    "agent": tbhbdev.alpha.agent.main,
+    "agent": tbhbdev.alpha.agent.command.main,
     "run-stop-hook": tbhbdev.alpha.run_stop_hook.main,
     "brief": tbhbdev.alpha.brief.main,
 }
