@@ -165,6 +165,24 @@ def test_unsandboxed_inspection_reads_the_host_output(
     capsys.readouterr()
     assert command(verb) == 0
     assert "verdict text" in capsys.readouterr().out
+    if verb == "diff":
+        assert command("diff", "--patch") == 1
+        assert "diff --patch requires a finished build run" in capsys.readouterr().err
+
+
+@pytest.mark.parametrize("unsandboxed", [False, True])
+def test_timed_out_log_reads_the_run_log_without_git(
+    remote: Remote, capsys: pytest.CaptureFixture[str], unsandboxed: bool
+) -> None:
+    options = ["--unsandboxed", "o/r#1"] if unsandboxed else []
+    assert launch(remote, *options) == 0
+    remote.file(".rc", "124\n")
+    remote.file(".log", "harness exited 124\n")
+    remote.file(".out.final", "partial answer\n")
+    capsys.readouterr()
+    assert command("log") == 0
+    assert capsys.readouterr() == ("harness exited 124\n", "")
+    assert remote.records("git") == []
 
 
 @pytest.mark.parametrize("ops", [False, True])

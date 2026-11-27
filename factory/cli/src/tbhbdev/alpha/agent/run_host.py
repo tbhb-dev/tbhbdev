@@ -628,6 +628,20 @@ def log_argv(run: Run, command: tuple[str, ...]) -> None:
             run.files.write("log", run_host_telemetry.argv_log_line(command) + "\n")
 
 
+def wait_harness(run: Run, child: subprocess.Popen[str]) -> int:
+    limit = run_state.time_limit(
+        run.request.kind, run.request.timeout, run.settings.max_run_minutes
+    )
+    try:
+        rc = run_state.exit_status(child.wait(timeout=limit))
+    except subprocess.TimeoutExpired:
+        rc = 124
+    if rc:
+        with suppress(OSError):
+            run.files.write("log", f"harness exited {rc}\n")
+    return rc
+
+
 def run_harness(
     run: Run, prepared: Prepared, stack: ExitStack, *, preflight_only: bool = False
 ) -> int:
@@ -687,13 +701,7 @@ def run_harness(
         if run.files.path("request.json").exists():
             run.files.path("request.json").read_text()
         run.files.write("phase", "running")
-        limit = run_state.time_limit(
-            run.request.kind, run.request.timeout, run.settings.max_run_minutes
-        )
-        try:
-            return run_state.exit_status(child.wait(timeout=limit))
-        except subprocess.TimeoutExpired:
-            return 124
+        return wait_harness(run, child)
     finally:
         stack.enter_context(process_group.ignore_signals())
         if child is not None:
