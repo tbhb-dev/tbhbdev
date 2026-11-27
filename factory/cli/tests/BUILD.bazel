@@ -1923,6 +1923,15 @@ cli_py_test(
 )
 
 cli_py_test(
+    name = "test_host_gitleaks",
+    srcs = ["test_host_gitleaks.py"],
+    deps = [
+        "//factory/cli/src/tbhbdev:host_gitleaks",
+        "@cli_pip//pytest",
+    ],
+)
+
+cli_py_test(
     name = "test_issue",
     srcs = ["test_issue.py"],
     deps = [
@@ -2109,15 +2118,6 @@ cli_py_library(
     visibility = ["//factory/cli/tests:__subpackages__"],
     deps = [
         "//factory/cli/src/tbhbdev/alpha/agent:runfiles",
-        "@cli_pip//pytest",
-    ],
-)
-
-cli_py_test(
-    name = "test_host_gitleaks",
-    srcs = ["test_host_gitleaks.py"],
-    deps = [
-        "//factory/cli/src/tbhbdev:host_gitleaks",
         "@cli_pip//pytest",
     ],
 )
