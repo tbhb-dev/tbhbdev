@@ -274,6 +274,32 @@ func TestRunnerGap(t *testing.T) {
 	checkEqual(t, run.possibleGap.Load(), uint64(1))
 }
 
+func TestRunnerGapUsesCachedInfo(t *testing.T) {
+	t.Parallel()
+
+	store := testStore(t, retention)
+	for range 3 {
+		publishRunner(t, store, pullSubject)
+	}
+
+	checkError(t, store.stream.Purge(t.Context(), jetstream.WithPurgeKeep(1)))
+	info, err := store.stream.Info(t.Context())
+	checkError(t, err)
+	checkEqual(t, info.State.FirstSeq, uint64(3))
+
+	ctx, cancel := context.WithCancel(t.Context())
+	cancel()
+
+	_, err = store.stream.Info(ctx)
+	checkEqual(t, errors.Is(err, context.Canceled), true)
+
+	var run runner
+
+	run.stream = store.stream
+	checkEqual(t, run.checkGap(ctx, "gap", 1, 0), uint64(3))
+	checkEqual(t, run.possibleGap.Load(), uint64(1))
+}
+
 func waitRunner(t *testing.T, ready func() bool) {
 	t.Helper()
 
