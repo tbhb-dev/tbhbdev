@@ -1,160 +1,22 @@
-"""The engine parses in empty units and starts only stored, rechecked models."""
+"""Test isolated Compose parsing and stored release operations."""
 
 import hashlib
 import json
-import os
-import signal
-import subprocess
 import sys
-import time
 from dataclasses import replace
 from pathlib import Path
-from typing import BinaryIO, TypedDict, Unpack, override
 from unittest.mock import Mock, call, patch
 
 import pytest
-from tbhbops.deploy import engine as engine_module
+from tbhbops.deploy import compose, daemon, policy
 from tbhbops.deploy import filesystem as fs
-from tbhbops.deploy import policy
-from tbhbops.deploy.engine import COMPOSE_SHA256, Command, CommandError, Engine
+from tbhbops.deploy.command import OUTPUT_LIMIT, Command, CommandError
+from tbhbops.deploy.compose import COMPOSE_SHA256, Engine
 from tbhbops.deploy.protocol import Json, RefusalError, array, mapping
 from tbhbops.deploy.transaction import Transaction
-lazy from tbhbops.deploy.config import Service
 
-from .deploy_model import minimal
-from .test_deploy_config import deploy_service as deploy_service  # noqa: PLC0414  # pytest fixture registration
-from .test_deploy_filesystem import trusted_tree as trusted_tree  # noqa: PLC0414  # pytest fixture registration
-
-RELEASE = "a" * 40
-
-
-class FakeCommand(Command):
-    def __init__(self) -> None:
-        super().__init__()
-        self.calls: list[tuple[list[str], bytes | None]] = []
-        self.budgets: list[dict[str, object]] = []
-        self.model: Json = minimal()
-        self.fixed: Json = None
-        self.inspected: Json = []
-        self.names = b""
-        self.resources: Json = []
-        self.active = False
-        self.stopped_units: set[str] = set()
-        self.failed = False
-        self.fail_argv: list[str] = []
-        self.info = json.dumps(
-            {
-                "Driver": "overlayfs",
-                "ServerVersion": "29.9.3",
-                "PidsLimit": True,
-                "MemoryLimit": True,
-                "SwapLimit": True,
-            }
-        ).encode()
-        self.info_error: Exception | None = None
-
-    @override
-    def __call__(
-        self, argv: list[str], data: bytes | None = None, **kwargs: object
-    ) -> bytes:
-        self.calls.append((argv, data))
-        self.budgets.append(kwargs)
-        if self.failed or argv == self.fail_argv:
-            raise CommandError
-        if argv[:2] == ["/usr/bin/docker", "info"]:
-            return self.daemon_info()
-        if argv[0] == "/usr/bin/systemctl":
-            return self.systemctl(argv)
-        if "config" in argv:
-            value = (
-                self.fixed
-                if self.fixed is not None
-                and "--env-file" in argv
-                and argv[argv.index("--env-file") + 1] == "/dev/null"
-                else self.model
-            )
-            return json.dumps(value).encode()
-        if argv[:2] == ["/usr/bin/docker", "inspect"]:
-            return json.dumps(self.inspected).encode()
-        if "ls" in argv or "inspect" in argv:
-            return self.names if "ls" in argv else json.dumps(self.resources).encode()
-        return (
-            b"abc"
-            if argv[:3] == ["/usr/bin/docker", "ps", "-aq"] and self.inspected
-            else b""
-        )
-
-    def daemon_info(self) -> bytes:
-        if self.info_error is not None:
-            raise self.info_error
-        return self.info
-
-    def systemctl(self, argv: list[str]) -> bytes:
-        if argv[1] == "stop":
-            self.stopped_units.add(argv[-1])
-        return (
-            b"active\n"
-            if self.active and argv[-1] not in self.stopped_units
-            else b"inactive\n"
-        )
-
-
-class ChildOptions(TypedDict, total=False, closed=True):
-    stdin: BinaryIO
-    stdout: int
-    stderr: int
-    env: dict[str, str]
-    start_new_session: bool
-
-
-@pytest.fixture(autouse=True)
-def real_command_children_have_private_groups(monkeypatch: pytest.MonkeyPatch) -> None:
-    original = subprocess.Popen
-
-    def spawn(
-        argv: list[str], **options: Unpack[ChildOptions]
-    ) -> subprocess.Popen[bytes]:
-        child = original(argv, **options)
-        if sys.platform != "win32":
-            try:
-                group = os.getpgid(child.pid)
-            except ProcessLookupError:
-                # A short-lived child may exit before the parent checks it.
-                assert child.poll() is not None
-            else:
-                if group != child.pid:
-                    # Kill the individual child before a bad group can hang a cap
-                    # or timeout test. The test verifies the real kernel group.
-                    child.kill()
-                    child.communicate()
-                    pytest.fail("command child has no private process group")
-        return child
-
-    monkeypatch.setattr(subprocess, "Popen", spawn)
-
-
-@pytest.fixture
-def engine(deploy_service: Service, trusted_tree: Path) -> Engine:
-    secret = replace(
-        deploy_service.secrets[0], target=trusted_tree / "data" / "secrets" / "token"
-    )
-    service = replace(
-        deploy_service,
-        root=trusted_tree,
-        secrets=(secret,),
-        ro_binds=(
-            trusted_tree / "data" / "web" / "config",
-            trusted_tree / "data" / "secrets" / "generated",
-        ),
-    )
-    for path in (
-        trusted_tree / "deploy",
-        trusted_tree / "deploy" / "models",
-        trusted_tree / "releases",
-        trusted_tree / "releases" / RELEASE,
-    ):
-        path.mkdir(mode=0o700)
-    return Engine(service, "/compose", FakeCommand())
+from ...deploy_fakes import RELEASE, FakeCommand
+from ...deploy_model import minimal
 
 
 def test_parse_refuses_a_changed_fixed_point(engine: Engine) -> None:
@@ -229,82 +91,11 @@ def test_preflight_model_refusal_does_not_read_daemon(engine: Engine) -> None:
     assert not engine.model_path(RELEASE).exists()
 
 
-def test_capabilities_names_the_service_requiring_the_limit(engine: Engine) -> None:
-    fake = engine.command
-    assert isinstance(fake, FakeCommand)
-    info = json.loads(fake.info)
-    info["SwapLimit"] = False
-    fake.info = json.dumps(info).encode()
-    candidate: Json = {
-        "services": {
-            "web": {"pids_limit": 10, "mem_limit": 1024},
-            "worker": {"memswap_limit": 2048},
-        }
-    }
-    with pytest.raises(
-        RefusalError, match=r"^daemon cannot enforce SwapLimit for service worker$"
-    ):
-        engine.capabilities(candidate)
-
-
-def test_capabilities_requires_only_limits_present_in_services(engine: Engine) -> None:
-    fake = engine.command
-    assert isinstance(fake, FakeCommand)
-    fake.info = (
-        b'{"Driver":"overlayfs","ServerVersion":"29.9.3",'
-        b'"PidsLimit":false,"MemoryLimit":false,"SwapLimit":false}'
-    )
-    engine.capabilities({"services": {"web": {}}})
-
-
-def test_stop_uses_ids_and_stops_active_unit(engine: Engine) -> None:
+def test_stop_without_project_containers(engine: Engine) -> None:
     fake = engine.command
     assert isinstance(fake, FakeCommand)
     engine.stop()
-    engine.stop_unit()
-    fake.active = True
-    engine.stop_unit()
-    assert fake.calls[-1][0] == [
-        "/usr/bin/systemctl",
-        "show",
-        "--property=ActiveState",
-        "--value",
-        "tbhb-deploy-parse-o11y",
-    ]
-    fake.inspected = [{"Id": "abc", "Mounts": []}]
-    engine.stop()
-    assert fake.calls[-1][0] == [
-        "/usr/bin/docker",
-        "ps",
-        "-q",
-        "--filter",
-        "label=com.docker.compose.project=o11y",
-    ]
-    assert any(
-        "label=com.docker.compose.project=o11y" in argv for argv, _ in fake.calls
-    )
-    fake.inspected = ["invalid"]
-    with pytest.raises(RefusalError):
-        engine.containers()
-
-
-def test_resource_ownership(engine: Engine) -> None:
-    candidate: Json = {
-        "networks": {"default": {"name": "o11y_default"}},
-        "volumes": {"cache": {"name": "o11y_cache"}},
-    }
-    fake = engine.command
-    assert isinstance(fake, FakeCommand)
-    engine.ownership(candidate)
-    fake.names = b"o11y_default\no11y_cache\n"
-    fake.resources = [{"Labels": {"com.docker.compose.project": "o11y"}}]
-    engine.ownership(candidate)
-    fake.resources = [{"Labels": {"com.docker.compose.project": "foreign"}}]
-    with pytest.raises(RefusalError, match=r"^foreign resource ownership$"):
-        engine.ownership(candidate)
-    fake.resources = []
-    with pytest.raises(RefusalError, match=r"^resource inspect type$"):
-        engine.ownership(candidate)
+    assert [argv[1:3] for argv, _ in fake.calls] == [["ps", "-aq"]]
 
 
 def test_stored_and_container_writable_set(engine: Engine) -> None:
@@ -400,7 +191,7 @@ def test_health_states(engine: Engine, monkeypatch: pytest.MonkeyPatch) -> None:
     engine.health(RELEASE)
     fake.inspected = []
     now = 0.0
-    monkeypatch.setattr("tbhbops.deploy.engine.time.monotonic", lambda: now)
+    monkeypatch.setattr("tbhbops.deploy.compose.time.monotonic", lambda: now)
     calls = 0
 
     def eventually_healthy(seconds: float) -> None:
@@ -409,7 +200,7 @@ def test_health_states(engine: Engine, monkeypatch: pytest.MonkeyPatch) -> None:
         now += seconds
         fake.inspected = healthy()
 
-    monkeypatch.setattr("tbhbops.deploy.engine.time.sleep", eventually_healthy)
+    monkeypatch.setattr("tbhbops.deploy.compose.time.sleep", eventually_healthy)
     engine.health(RELEASE)
     assert calls == 1
     assert now == 1
@@ -429,20 +220,6 @@ def test_health_states(engine: Engine, monkeypatch: pytest.MonkeyPatch) -> None:
     ]
     with pytest.raises(CommandError, match=r"^container is not healthy$"):
         engine.check_health(RELEASE)
-
-
-def test_command_empty_environment() -> None:
-    script = "import os,sys; sys.stdout.buffer.write(sys.stdin.buffer.read())"
-    with patch.object(subprocess, "Popen", wraps=subprocess.Popen) as popen:
-        assert (
-            Command()([sys.executable, "-S", "-c", script], b"input", timeout_s=1)
-            == b"input"
-        )
-    assert popen.call_args.kwargs["env"] == {}
-    assert popen.call_args.kwargs["start_new_session"] is True
-    assert Command()(["/usr/bin/env"], timeout_s=1) == b""
-    with pytest.raises(CommandError, match=r"^child command failed$"):
-        Command()([sys.executable, "-c", "import sys; sys.exit(1)"], timeout_s=1)
 
 
 def test_exact_run_command(engine: Engine) -> None:
@@ -538,10 +315,10 @@ def test_generated_source_missing_rules(
 def test_health_deadline_and_retry_interval(engine: Engine, elapsed: float) -> None:
     with (
         patch(
-            "tbhbops.deploy.engine.time.monotonic",
+            "tbhbops.deploy.compose.time.monotonic",
             side_effect=[100, 100 + elapsed, 100 + elapsed],
         ),
-        patch("tbhbops.deploy.engine.time.sleep") as sleep,
+        patch("tbhbops.deploy.compose.time.sleep") as sleep,
         patch.object(
             engine, "check_health", side_effect=[CommandError("pending"), None]
         ) as check,
@@ -562,30 +339,6 @@ def test_health_deadline_and_retry_interval(engine: Engine, elapsed: float) -> N
             ]
 
 
-def test_resource_ownership_exact_queries(engine: Engine) -> None:
-    candidate: Json = {
-        "networks": {"a": {"name": "o11y_a"}},
-        "volumes": {"b": {"name": "o11y_b"}},
-    }
-    with patch.object(
-        engine,
-        "command",
-        side_effect=[
-            b"o11y_a\n",
-            b'[{"Labels":{"com.docker.compose.project":"o11y"}}]',
-            b"o11y_b\n",
-            b'[{"Labels":{"com.docker.compose.project":"o11y"}}]',
-        ],
-    ) as command:
-        engine.ownership(candidate)
-    assert command.call_args_list == [
-        call(["/usr/bin/docker", "network", "ls", "--format", "{{.Name}}"]),
-        call(["/usr/bin/docker", "network", "inspect", "o11y_a"]),
-        call(["/usr/bin/docker", "volume", "ls", "--format", "{{.Name}}"]),
-        call(["/usr/bin/docker", "volume", "inspect", "o11y_b"]),
-    ]
-
-
 def test_parse_checks_and_persists_the_fixed_model_in_order(engine: Engine) -> None:
     candidate: Json = {"z": 1, "a": 2}
     with (
@@ -593,7 +346,7 @@ def test_parse_checks_and_persists_the_fixed_model_in_order(engine: Engine) -> N
         patch.object(policy, "model") as model,
         patch.object(engine, "check_paths") as paths,
         patch.object(fs, "write") as write,
-        patch.object(engine, "ownership") as ownership,
+        patch.object(daemon, "ownership") as ownership,
     ):
         manager = Mock()
         for name, method in (
@@ -619,7 +372,7 @@ def test_parse_checks_and_persists_the_fixed_model_in_order(engine: Engine) -> N
         call.sandbox(
             RELEASE, engine.model_path(RELEASE), Path("/dev/null"), fixed=True
         ),
-        call.ownership(candidate),
+        call.ownership(engine.command, engine.service.name, candidate),
     ]
 
 
@@ -717,38 +470,6 @@ def test_retained_models_and_live_binds_reach_path_policy(engine: Engine) -> Non
     inspect.assert_called_once_with(sources, missing=True)
 
 
-def test_resource_listing_continues_after_an_absent_resource(engine: Engine) -> None:
-    candidate: Json = {
-        "networks": {
-            "absent": {"name": "o11y_absent"},
-            "present": {"name": "o11y_present"},
-        }
-    }
-    with patch.object(
-        engine,
-        "command",
-        side_effect=[
-            b"o11y_present\n",
-            b"o11y_present\n",
-            b'[{"Labels":{"com.docker.compose.project":"o11y"}}]',
-        ],
-    ) as command:
-        engine.ownership(candidate)
-    assert command.call_args_list == [
-        call(["/usr/bin/docker", "network", "ls", "--format", "{{.Name}}"]),
-        call(["/usr/bin/docker", "network", "ls", "--format", "{{.Name}}"]),
-        call(["/usr/bin/docker", "network", "inspect", "o11y_present"]),
-    ]
-
-
-def test_resource_without_labels_is_foreign(engine: Engine) -> None:
-    with (
-        patch.object(engine, "command", side_effect=[b"o11y_a", b"[{}]"]),
-        pytest.raises(RefusalError, match=r"^foreign resource ownership$"),
-    ):
-        engine.ownership({"networks": {"a": {"name": "o11y_a"}}})
-
-
 def test_health_requires_exactly_one_matching_container(engine: Engine) -> None:
     with (
         patch.object(engine, "containers", return_value=[]),
@@ -770,116 +491,18 @@ def test_compose_binary_digest_is_checked_after_descriptor_read(
     binary = trusted_tree / "compose"
     binary.write_bytes(b"pinned fixture")
     digest = hashlib.sha256(binary.read_bytes()).hexdigest()
-    with patch.object(engine_module, "COMPOSE_SHA256", {"amd64": digest}):
-        engine_module.verify_binary(binary)
+    with patch.object(compose, "COMPOSE_SHA256", {"amd64": digest}):
+        compose.verify_binary(binary)
         binary.write_bytes(b"changed fixture")
         with pytest.raises(RefusalError, match=r"^Compose binary digest mismatch$"):
-            engine_module.verify_binary(binary)
+            compose.verify_binary(binary)
     link = trusted_tree / "link"
     link.symlink_to(binary)
     with pytest.raises(RefusalError, match=r"^symlink path$"):
-        engine_module.verify_binary(link)
+        compose.verify_binary(link)
     binary.chmod(0o662)
     with pytest.raises(RefusalError, match=r"^writable control file$"):
-        engine_module.verify_binary(binary)
-
-
-@pytest.mark.parametrize("descriptor", [1, 2])
-def test_command_caps_each_stream(descriptor: int) -> None:
-    script = f"import os;\nwhile True: os.write({descriptor}, b'x' * 4096)"
-    reason = "child stdout limit" if descriptor == 1 else "child stderr limit"
-    started = time.monotonic()
-    with pytest.raises(CommandError, match="^" + reason + "$"):
-        Command()(
-            [sys.executable, "-c", script],
-            timeout_s=1,
-            stdout_limit=1024,
-            stderr_limit=2048,
-        )
-    assert time.monotonic() - started < 3
-
-
-@pytest.mark.parametrize("closed", [False, True])
-def test_command_deadline_also_applies_after_output_closes(closed: bool) -> None:
-    script = (
-        "import os; os.close(1); os.close(2); " if closed else ""
-    ) + "import time; time.sleep(10)"
-    started = time.monotonic()
-    with pytest.raises(CommandError, match=r"^child command timeout$"):
-        Command()([sys.executable, "-c", script], timeout_s=0.1)
-    assert time.monotonic() - started < 3
-
-
-@pytest.mark.parametrize("budget", ["cap", "timeout"])
-def test_command_budget_stops_transient_unit(budget: str) -> None:
-    stops: list[tuple[list[str], dict[str, object]]] = []
-
-    class RecordingCommand(Command):
-        @override
-        def __call__(
-            self,
-            argv: list[str],
-            data: bytes | None = None,
-            *,
-            timeout_s: float = 60,
-            stdout_limit: int = 1024**2,
-            stderr_limit: int = 1024**2,
-            unit: str | None = None,
-        ) -> bytes:
-            if argv[0] == "/usr/bin/systemctl":
-                stops.append(
-                    (
-                        argv,
-                        {
-                            "timeout_s": timeout_s,
-                            "stdout_limit": stdout_limit,
-                            "stderr_limit": stderr_limit,
-                        },
-                    )
-                )
-                return b"active\n" if len(stops) == 1 else b"inactive\n"
-            return super().__call__(
-                argv,
-                data,
-                timeout_s=timeout_s,
-                stdout_limit=stdout_limit,
-                stderr_limit=stderr_limit,
-                unit=unit,
-            )
-
-    reason = "child stdout limit" if budget == "cap" else "child command timeout"
-    script = (
-        "print('too much')"
-        if budget == "cap"
-        else "import os,time; os.close(1); os.close(2); time.sleep(10)"
-    )
-    with pytest.raises(CommandError, match="^" + reason + "$"):
-        RecordingCommand()(
-            [sys.executable, "-c", script],
-            stdout_limit=1,
-            timeout_s=1 if budget == "cap" else 0.1,
-            unit="tbhb-deploy-o11y",
-        )
-    assert stops == [
-        (argv, {"timeout_s": 10, "stdout_limit": 1024**2, "stderr_limit": 1024**2})
-        for argv in [
-            [
-                "/usr/bin/systemctl",
-                "show",
-                "--property=ActiveState",
-                "--value",
-                "tbhb-deploy-o11y",
-            ],
-            ["/usr/bin/systemctl", "stop", "tbhb-deploy-o11y"],
-            [
-                "/usr/bin/systemctl",
-                "show",
-                "--property=ActiveState",
-                "--value",
-                "tbhb-deploy-o11y",
-            ],
-        ]
-    ]
+        compose.verify_binary(binary)
 
 
 def test_compose_and_probe_budgets_are_explicit(engine: Engine) -> None:
@@ -893,7 +516,7 @@ def test_compose_and_probe_budgets_are_explicit(engine: Engine) -> None:
         "unit": "tbhb-deploy-o11y",
     }
     fake.inspected = healthy()
-    with patch.object(engine_module.time, "monotonic", return_value=100):
+    with patch.object(compose.time, "monotonic", return_value=100):
         engine.check_health(RELEASE)
     assert fake.budgets[-1] == {
         "timeout_s": engine.service.timeout_s,
@@ -950,169 +573,6 @@ def test_exact_sandbox_argv(engine: Engine, fixed: bool) -> None:
             None,
         )
     ]
-
-
-def test_command_default_budgets_and_remaining_wait() -> None:
-    with (
-        patch.object(engine_module.time, "monotonic", return_value=100),
-        patch.object(engine_module, "capture", return_value=b"result") as capture,
-        patch.object(subprocess, "Popen") as popen,
-    ):
-        child = popen.return_value.__enter__.return_value
-        child.returncode = 0
-        assert Command()(["/command"]) == b"result"
-    assert capture.call_args.args == (child.stdout, child.stderr, 160, 1024**2, 1024**2)
-    child.wait.assert_called_once_with(timeout=60)
-    assert popen.call_args.kwargs["stdout"] == subprocess.PIPE
-    assert popen.call_args.kwargs["stderr"] == subprocess.PIPE
-    assert popen.call_args.kwargs["start_new_session"] is True
-
-
-def test_command_empty_stdin_and_independent_stream_boundaries() -> None:
-    echo = [
-        sys.executable,
-        "-c",
-        "import sys; sys.stdout.buffer.write(sys.stdin.buffer.read())",
-    ]
-    assert Command()(echo, timeout_s=1) == b""
-    assert Command()(echo, b"", timeout_s=1) == b""
-    script = "import os; os.write(1,b'ab'); os.write(2,b'data')"
-    assert (
-        Command()(
-            [sys.executable, "-c", script], stdout_limit=2, stderr_limit=4, timeout_s=1
-        )
-        == b"ab"
-    )
-    for stdout_limit, stderr_limit, reason in [
-        (1, 4, "child stdout limit"),
-        (2, 3, "child stderr limit"),
-    ]:
-        with pytest.raises(CommandError, match="^" + reason + "$"):
-            Command()(
-                [sys.executable, "-c", script],
-                stdout_limit=stdout_limit,
-                stderr_limit=stderr_limit,
-                timeout_s=1,
-            )
-
-
-def test_read_output_never_requests_more_than_remaining_cap_and_one_byte() -> None:
-    output = bytearray(b"ab")
-    with patch.object(engine_module.os, "read", side_effect=[b"cd", b"e"]) as read:
-        assert engine_module.read_output(11, output, 4, stdout=True)
-        assert output == b"abcd"
-        with pytest.raises(CommandError, match=r"^child stdout limit$"):
-            engine_module.read_output(11, output, 4, stdout=True)
-    assert read.call_args_list == [call(11, 3), call(11, 1)]
-    assert output == b"abcd"
-
-
-def test_capture_refuses_at_deadline_even_if_output_is_ready() -> None:
-    stdout, stderr = Mock(), Mock()
-    stdout.fileno.return_value, stderr.fileno.return_value = 11, 12
-    with (
-        patch.object(engine_module.time, "monotonic", return_value=100),
-        patch.object(engine_module.selectors, "DefaultSelector") as selector,
-    ):
-        selected = selector.return_value.__enter__.return_value
-        closed: dict[int, object] = {}
-        selected.get_map = Mock(side_effect=[{11: object()}, closed])
-        selected.select = Mock(
-            side_effect=AssertionError("expired deadline polled output")
-        )
-        with pytest.raises(CommandError, match=r"^child command timeout$"):
-            engine_module.capture(stdout, stderr, 100, 10, 10)
-    selected.select.assert_not_called()
-
-
-@pytest.mark.parametrize("failure", [CommandError, OSError])
-def test_unit_stop_failure_blocks_compensation(
-    failure: type[Exception],
-) -> None:
-    child = Mock(pid=123)
-    command = Command()
-    with (
-        patch.object(engine_module.os, "killpg") as kill,
-        patch.object(Command, "__call__", side_effect=failure) as stop,
-        pytest.raises(
-            RefusalError,
-            match=r"^transient unit stop unconfirmed; compensation withheld$",
-        ),
-    ):
-        command.terminate(child, "tbhb-deploy-o11y")
-    if sys.platform != "win32":
-        kill.assert_called_once_with(123, signal.SIGKILL)
-    child.wait.assert_called_once_with()
-    stop.assert_called_once_with(
-        [
-            "/usr/bin/systemctl",
-            "show",
-            "--property=ActiveState",
-            "--value",
-            "tbhb-deploy-o11y",
-        ],
-        timeout_s=10,
-    )
-
-
-def test_read_output_reports_eof_without_extending_output() -> None:
-    output = bytearray(b"before")
-    with patch.object(engine_module.os, "read", return_value=b""):
-        assert engine_module.read_output(11, output, 10, stdout=True) is False
-    assert output == b"before"
-
-
-def test_command_wait_never_extends_an_expired_budget() -> None:
-    with (
-        patch.object(engine_module.time, "monotonic", side_effect=[100, 161]),
-        patch.object(engine_module, "capture", return_value=b"result"),
-        patch.object(subprocess, "Popen") as popen,
-    ):
-        child = popen.return_value.__enter__.return_value
-        child.returncode = 0
-        assert Command()(["/command"]) == b"result"
-    child.wait.assert_called_once_with(timeout=0)
-
-
-def test_terminate_still_stops_unit_when_the_child_has_exited() -> None:
-    child = Mock(pid=123)
-    with (
-        patch.object(engine_module.os, "killpg", side_effect=ProcessLookupError),
-        patch.object(Command, "__call__", return_value=b"inactive\n") as stop,
-    ):
-        Command().terminate(child, "tbhb-deploy-o11y")
-    child.wait.assert_called_once_with()
-    stop.assert_called_once_with(
-        [
-            "/usr/bin/systemctl",
-            "show",
-            "--property=ActiveState",
-            "--value",
-            "tbhb-deploy-o11y",
-        ],
-        timeout_s=10,
-    )
-
-
-@pytest.mark.parametrize("open_stream", [False, True])
-def test_capture_unregisters_only_streams_that_reached_eof(open_stream: bool) -> None:
-    stdout, stderr = Mock(), Mock()
-    stdout.fileno.return_value, stderr.fileno.return_value = 11, 12
-    key = Mock(fd=11)
-    with (
-        patch.object(engine_module.time, "monotonic", return_value=100),
-        patch.object(engine_module.selectors, "DefaultSelector") as selector,
-        patch.object(engine_module, "read_output", return_value=open_stream),
-    ):
-        selected = selector.return_value.__enter__.return_value
-        closed: dict[int, object] = {}
-        selected.get_map = Mock(side_effect=[{11: object()}, closed])
-        selected.select.return_value = [(key, 1)]
-        assert engine_module.capture(stdout, stderr, 101, 10, 10) == b""
-    if open_stream:
-        selected.unregister.assert_not_called()
-    else:
-        selected.unregister.assert_called_once_with(11)
 
 
 @pytest.mark.parametrize("running", [b"", b"abc\n", b"invalid/id"])
@@ -1200,68 +660,9 @@ def test_oversized_inspect_cannot_block_stop(engine: Engine) -> None:
     ]
 
 
-@pytest.mark.parametrize(
-    ("outputs", "reason"),
-    [
-        ([CommandError], "transient unit stop unconfirmed; compensation withheld"),
-        ([OSError], "transient unit stop unconfirmed; compensation withheld"),
-        (
-            [b"active\n", CommandError],
-            "transient unit stop unconfirmed; compensation withheld",
-        ),
-        (
-            [b"active\n", b"", OSError],
-            "transient unit stop unconfirmed; compensation withheld",
-        ),
-        (
-            [b"active\n", b"", b"active\n"],
-            "transient unit is not inactive; compensation withheld",
-        ),
-        (
-            [b"active\n", b"", b"deactivating\n"],
-            "transient unit is not inactive; compensation withheld",
-        ),
-        (
-            [b"active\n", b"", b""],
-            "transient unit is not inactive; compensation withheld",
-        ),
-    ],
-)
-def test_unit_stop_requires_confirmed_inactivity(
-    outputs: list[bytes | type[Exception]], reason: str
-) -> None:
-    with (
-        patch.object(Command, "__call__", side_effect=outputs),
-        pytest.raises(RefusalError) as caught,
-    ):
-        Command().stop_unit("tbhb-deploy-o11y")
-    assert str(caught.value) == reason
-
-
-@pytest.mark.parametrize("active", [False, True])
-def test_unit_stop_waits_with_bounded_commands(active: bool) -> None:
-    unit = "tbhb-deploy-o11y"
-    query = call(
-        ["/usr/bin/systemctl", "show", "--property=ActiveState", "--value", unit],
-        timeout_s=10,
-    )
-    outputs = [b"active\n", b"", b"inactive\n"] if active else [b"inactive\n"]
-    with patch.object(Command, "__call__", side_effect=outputs) as command:
-        Command().stop_unit(unit)
-    expected = [query]
-    if active:
-        expected.extend(
-            [
-                call(["/usr/bin/systemctl", "stop", unit], timeout_s=10),
-                query,
-            ]
-        )
-    assert command.call_args_list == expected
-
-
 def test_restart_ignores_oversized_failed_candidate_environment(engine: Engine) -> None:
-    failed: Json = [{"Config": {"Env": ["TOKEN=" + "x" * engine_module.OUTPUT_LIMIT]}}]
-    assert len(json.dumps(failed).encode()) > engine_module.OUTPUT_LIMIT
+    failed: Json = [{"Config": {"Env": ["TOKEN=" + "x" * OUTPUT_LIMIT]}}]
+    assert len(json.dumps(failed).encode()) > OUTPUT_LIMIT
     fs.write(engine.model_path(RELEASE), json.dumps(minimal()).encode())
     inspections: list[Json] = []
 
@@ -1368,9 +769,9 @@ def test_health_deadline_limits_every_daemon_read_and_probe(
 
     with (
         patch.object(engine, "command", side_effect=command),
-        patch.object(engine_module.time, "monotonic", side_effect=lambda: now),
+        patch.object(compose.time, "monotonic", side_effect=lambda: now),
         patch.object(
-            engine_module.time,
+            compose.time,
             "sleep",
             side_effect=AssertionError("expired health gate retried"),
         ) as sleep,
@@ -1394,10 +795,10 @@ def test_health_cannot_accept_a_check_finishing_at_or_after_deadline(
         now += elapsed
 
     with (
-        patch.object(engine_module.time, "monotonic", side_effect=lambda: now),
+        patch.object(compose.time, "monotonic", side_effect=lambda: now),
         patch.object(engine, "check_health", side_effect=late_check),
         patch.object(
-            engine_module.time,
+            compose.time,
             "sleep",
             side_effect=AssertionError("expired health gate retried"),
         ) as sleep,
@@ -1412,7 +813,7 @@ def test_expired_health_budget_refuses_before_querying_daemon(
     engine: Engine, deadline: float
 ) -> None:
     with (
-        patch.object(engine_module.time, "monotonic", return_value=100),
+        patch.object(compose.time, "monotonic", return_value=100),
         patch.object(engine, "command") as command,
         pytest.raises(CommandError, match=r"^health gate failed$"),
     ):
@@ -1426,10 +827,10 @@ def test_health_propagates_unconfirmed_unit_stop(engine: Engine) -> None:
         Command().stop_unit("tbhb-deploy-o11y")
 
     with (
-        patch.object(engine_module.time, "monotonic", side_effect=[100, 110]),
+        patch.object(compose.time, "monotonic", side_effect=[100, 110]),
         patch.object(engine, "check_health", side_effect=failed_probe),
         patch.object(Command, "__call__", side_effect=CommandError),
-        patch.object(engine_module.time, "sleep") as sleep,
+        patch.object(compose.time, "sleep") as sleep,
         pytest.raises(RefusalError, match="compensation withheld"),
     ):
         engine.health(RELEASE)

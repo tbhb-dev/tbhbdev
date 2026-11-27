@@ -11,17 +11,17 @@ from unittest.mock import Mock, call, patch
 lazy from pathlib import Path
 
 import pytest
-from tbhbops.deploy import engine as engine_module
+from tbhbops.deploy import compose, receive
 from tbhbops.deploy import filesystem as fs
-from tbhbops.deploy import receive
-from tbhbops.deploy.engine import CommandError, Engine
+from tbhbops.deploy.command import CommandError
+from tbhbops.deploy.compose import Engine
 from tbhbops.deploy.protocol import Json, RefusalError, Request, decode, mapping, pack
 from tbhbops.deploy.transaction import Lock, Transaction
 lazy from tbhbops.deploy.config import Service
 
+from .deploy_fakes import FakeCommand
 from .deploy_model import minimal
 from .test_deploy_config import deploy_service as deploy_service  # noqa: PLC0414  # pytest fixture registration
-from .test_deploy_engine import FakeCommand
 from .test_deploy_filesystem import trusted_tree as trusted_tree  # noqa: PLC0414  # pytest fixture registration
 from .test_deploy_protocol import chained_pax
 
@@ -1590,8 +1590,8 @@ def use_health_clock(daemon: Engine, monkeypatch: pytest.MonkeyPatch) -> None:
             now += seconds
 
         with (
-            patch.object(engine_module.time, "monotonic", side_effect=lambda: now),
-            patch.object(engine_module.time, "sleep", side_effect=advance),
+            patch.object(compose.time, "monotonic", side_effect=lambda: now),
+            patch.object(compose.time, "sleep", side_effect=advance),
         ):
             original(release)
 

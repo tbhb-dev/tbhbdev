@@ -9,7 +9,6 @@ import tarfile
 from unittest.mock import patch
 
 import pytest
-
 from tbhbops.deploy import filesystem as fs
 from tbhbops.deploy import receive
 from tbhbops.deploy.protocol import Json, RefusalError, Request, pack, sha256

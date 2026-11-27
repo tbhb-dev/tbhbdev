@@ -11,15 +11,14 @@ from typing import override
 from unittest.mock import patch
 
 import pytest
-
 from tbhbops.deploy import filesystem as fs
 from tbhbops.deploy import receive
-from tbhbops.deploy.engine import Engine
+from tbhbops.deploy.compose import Engine
 from tbhbops.deploy.protocol import RefusalError, Request, pack
 from tbhbops.deploy.transaction import Transaction
 
+from .deploy_fakes import FakeCommand
 from .test_deploy_config import deploy_service as deploy_service  # noqa: PLC0414  # pytest fixture registration
-from .test_deploy_engine import FakeCommand
 from .test_deploy_filesystem import trusted_tree as trusted_tree  # noqa: PLC0414  # pytest fixture registration
 from .test_deploy_receive import (
     PREVIOUS,

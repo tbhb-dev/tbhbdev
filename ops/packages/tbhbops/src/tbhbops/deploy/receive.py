@@ -20,14 +20,9 @@ from pathlib import Path
 from typing import TextIO
 
 from tbhbops.deploy import filesystem as fs
+from tbhbops.deploy.command import Command, CommandError
+from tbhbops.deploy.compose import VERSION, Engine, verify_binary
 from tbhbops.deploy.config import Service, load, service, text
-from tbhbops.deploy.engine import (
-    VERSION,
-    Command,
-    CommandError,
-    Engine,
-    verify_binary,
-)
 from tbhbops.deploy.protocol import (
     RefusalError,
     Release,
