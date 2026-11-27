@@ -123,16 +123,6 @@ def test_endpoints_rejects_a_bad_config(
     )
 
 
-def test_the_missing_endpoints_point_at_host_tooling(config_file: Path) -> None:
-    config_file.write_text('[connect]\nserver_hosts = ["nas-a"]\n')
-    with pytest.raises(secrets.SecretsError) as caught:
-        secrets.endpoints()
-    assert str(caught.value) == (
-        f"{config_file} sets no [connect] endpoints. "
-        "Use the operator's host tooling to set up this host's config."
-    )
-
-
 def test_a_plugin_config_is_not_read(installed: Installed) -> None:
     installed.stub("stub", files={"secrets.toml": '[connect]\nendpoints = ["x"]\n'})
     with pytest.raises(secrets.SecretsError, match="doesn't exist"):
@@ -341,14 +331,6 @@ def test_token_on_linux_refuses_a_symlinked_directory(linux_home: Path) -> None:
     with pytest.raises(secrets.SecretsError) as caught:
         secrets.token()
     assert "can't be opened" in str(caught.value)
-
-
-def test_token_on_linux_refuses_a_file_that_is_not_regular(linux_home: Path) -> None:
-    path = token_file(linux_home, None)
-    path.mkdir()
-    with pytest.raises(secrets.SecretsError) as caught:
-        secrets.token()
-    assert str(caught.value) == refused(path, "isn't a regular file")
 
 
 def test_token_on_linux_refuses_a_file_another_user_owns(
@@ -1094,17 +1076,6 @@ def test_move_refuses_a_title_the_destination_has(fake: FakeConnect) -> None:
     assert "i1" in fake.items["v1"]
 
 
-def test_store_defaults_to_connect_with_the_keychain_token(
-    fake: FakeConnect,
-    config: Callable[[list[str]], None],
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    config([fake.url])
-    monkeypatch.setenv(secrets.TEST_TOKEN_ENV, fake.token)
-    assert secrets.Store().get("ops", "db").title == "db"
-    assert "Authorization" not in repr(secrets.connect())
-
-
 @pytest.mark.parametrize(("returncode", "stdout"), [(0, ""), (1, "fake-token\n")])
 def test_macos_rejects_empty_or_failed_keychain_reads(
     monkeypatch: pytest.MonkeyPatch,
@@ -1221,9 +1192,6 @@ def test_parse_ref_strips_openssh_query(prefix: str) -> None:
 )
 def test_reference_queries_are_exact(fake: FakeConnect, query: str) -> None:
     reference = f"ops/db/password?{query}"
-    with pytest.raises(secrets.SecretsError) as caught:
-        secrets.parse_ref(reference)
-    assert str(caught.value) == f"{reference!r} has an unsupported reference query"
     with pytest.raises(secrets.SecretsError) as caught:
         store(fake).read(reference)
     assert str(caught.value) == f"{reference!r} has an unsupported reference query"

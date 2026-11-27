@@ -272,9 +272,12 @@ class Connect:
             # An SDK client whose constructor fails raises again as it's deleted,
             # so a URL httpx refuses never reaches one.
             httpx.URL(url)
-            config = ClientConfig(timeout=TIMEOUT, verify=httpx2.create_ssl_context())
-            self._clients[url] = connect_client.Client(url, self._token, config)
+            self._clients[url] = self._new_client(url)
         return self._clients[url]
+
+    def _new_client(self, url: str) -> connect_client.Client:
+        config = ClientConfig(timeout=TIMEOUT, verify=httpx2.create_ssl_context())
+        return connect_client.Client(url, self._token, config)
 
     def _send(
         self, url: str, method: str, path: str, body: Json | None
@@ -667,11 +670,8 @@ class _ExplicitClient(connect_client.Client):
 
 class _ExplicitConnect(Connect):
     @override
-    def _client(self, url: str) -> connect_client.Client:
-        if url not in self._clients:
-            httpx.URL(url)
-            self._clients[url] = _ExplicitClient(url, self._token)
-        return self._clients[url]
+    def _new_client(self, url: str) -> connect_client.Client:
+        return _ExplicitClient(url, self._token)
 
     @override
     def _send(
