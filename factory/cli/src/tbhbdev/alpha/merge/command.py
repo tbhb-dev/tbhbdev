@@ -14,7 +14,9 @@ from tbhbdev.alpha.merge.options import build_parser, merge_args, preview
 from tbhbdev.alpha.merge.queue import queue_removal, queue_result
 from tbhbdev.alpha.merge.renovate import renovate_body
 from tbhbdev.alpha.merge.rules import requires_queue
-from tbhbdev.alpha.pull_request import GH, find_tool, repo_visibility, run, scan_secrets
+from tbhbdev.alpha.pull_request.publish import scan_secrets
+from tbhbdev.alpha.pull_request.repository import repo_visibility
+from tbhbdev.alpha.pull_request.tools import GH, find_tool, run
 
 if TYPE_CHECKING:
     from collections.abc import Sequence

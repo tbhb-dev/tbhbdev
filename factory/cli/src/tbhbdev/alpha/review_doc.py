@@ -10,11 +10,12 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Literal, Protocol, cast
 
 from tbhbdev import content
-from tbhbdev.alpha import pull_request as pr
-from tbhbdev.alpha import pull_request_frontmatter as frontmatter
 from tbhbdev.alpha import review_inline
 from tbhbdev.alpha.identity import trailers as identity_trailers
 from tbhbdev.alpha.identity.commit import grammar as identity_commit_grammar
+from tbhbdev.alpha.pull_request import frontmatter
+from tbhbdev.alpha.pull_request import prose as pr_prose
+from tbhbdev.alpha.pull_request import tools as pr_tools
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -86,9 +87,9 @@ LINT_PATH = Path(".github") / "PULL_REQUEST_REVIEW_DRAFT.md"
 def lint_post(body: str) -> list[str]:
     """Run the repository's Vale rules before posting if configured."""
     try:
-        if not (pr.root() / pr.VALE_INI).exists():
+        if not (pr_tools.root() / pr_prose.VALE_INI).exists():
             return []
-        problems = pr.lint(
+        problems = pr_prose.lint(
             body.splitlines(),
             1,
             path=LINT_PATH,

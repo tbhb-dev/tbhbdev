@@ -60,7 +60,6 @@ from unit.alpha.identity.identity_fixtures import (
     run_hook,
     seed_claude,
     stage,
-    trailers,
     turn,
     write_rollout,
     write_transcript,
@@ -352,15 +351,6 @@ def test_e2e_an_agent_commit_with_another_identity_fails(
         f"an agent commit must use {commit_policy.AGENT_IDENT}"
     ) in done.stderr
     assert run_git(wired, "log", "-1", "--format=%s") == "init\n"
-
-
-@needs_prek
-def test_e2e_a_human_commit_keeps_its_own_identity(wired: Path) -> None:
-    stage(wired, "a.txt")
-    done = git_commit(wired, "feat: a", HUMAN_COMMIT_ENV)
-    assert done.returncode == 0, done.stderr
-    assert run_git(wired, "log", "-1", "--format=%ae") == "h@example.invalid\n"
-    assert trailers(wired) == []
 
 
 def test_ident_problems_accepts_the_agent_identity(

@@ -8,6 +8,7 @@ load("//ops/packages:pytest.bzl", "ops_py_test")
 # gazelle:python_generation_mode_per_package_require_test_entry_point false
 # gazelle:map_kind py_test ops_py_test //ops/packages:pytest.bzl
 # gazelle:exclude testdata
+# gazelle:exclude unit
 
 package(default_testonly = True)
 
@@ -18,6 +19,7 @@ ops_py_test(
         [
             "*_test.py",
             "test_*.py",
+            "unit/**/*.py",
         ],
         allow_empty = True,
     ),  # keep
@@ -31,4 +33,10 @@ ops_py_test(
         "@cli_pip//pytest",
         "@cli_pip//pyyaml",
     ],
+)
+
+filegroup(
+    name = "token_golden",
+    srcs = glob(["golden_token_commands*.txt"]),
+    visibility = ["//ops/packages/tbhbops-cli/tests/unit:__pkg__"],
 )

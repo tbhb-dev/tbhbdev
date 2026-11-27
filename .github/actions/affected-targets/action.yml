@@ -76,22 +76,9 @@ runs:
       if: runner.os == 'Linux' && (runner.arch == 'X64' || runner.arch == 'ARM64')
       continue-on-error: true
       shell: bash
-      env:
-        VERSION: v0.34.1
-        SHA256_AMD64: 7f3360cf38d43d4d106440e8ce9d394d4b16bde52af11cd010e897394cec439b
-        SHA256_ARM64: 55d362d87b1c8d946b50ccc483d32ef48620ad1dd95eebd14e2ad41baf1baa2c
       run: |
-        if [[ $RUNNER_ARCH == ARM64 ]]; then
-          arch=arm64 sha=$SHA256_ARM64
-        else
-          arch=amd64 sha=$SHA256_AMD64
-        fi
         bin="${RUNNER_TEMP}/target-determinator/target-determinator"
-        mkdir -p "${bin%/*}"
-        curl -fsSL --retry 3 -o "${bin}" \
-          "https://github.com/bazel-contrib/target-determinator/releases/download/${VERSION}/target-determinator.linux.${arch}"
-        echo "${sha}  ${bin}" | sha256sum -c --quiet -
-        chmod +x "${bin}"
+        bash "${GITHUB_ACTION_PATH}/download.sh" "$bin"
         echo "path=${bin}" >>"$GITHUB_OUTPUT"
 
     - name: Select the affected targets
