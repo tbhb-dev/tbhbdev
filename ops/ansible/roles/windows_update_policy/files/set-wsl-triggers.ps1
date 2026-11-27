@@ -1,11 +1,5 @@
 [CmdletBinding(SupportsShouldProcess)]
-param(
-    [Parameter(Mandatory)][string]$Subscription,
-    [Parameter(Mandatory)][string]$Interval,
-    [Parameter(Mandatory)][string]$BootDelay,
-    [Parameter(Mandatory)][string]$EventDelay,
-    [Parameter(Mandatory)][string]$StartBoundary
-)
+param()
 
 $ErrorActionPreference = 'Stop'
 $Ansible.Changed = $false
@@ -33,17 +27,20 @@ if ($actions.Count -ne 1 -or $actions[0].CimClass.CimClassName -ne 'MSFT_TaskExe
 }
 
 $boot = New-ScheduledTaskTrigger -AtStartup
-$boot.Delay = $BootDelay
+$boot.Delay = 'PT30S'
 $boot.Enabled = $true
-$time = New-ScheduledTaskTrigger -Once -At ([datetime]$StartBoundary) -RepetitionInterval ([System.Xml.XmlConvert]::ToTimeSpan($Interval))
+$startBoundary = '2026-01-01T00:00:00'
+$time = New-ScheduledTaskTrigger -Once -At ([datetime]$startBoundary) -RepetitionInterval (New-TimeSpan -Minutes 5)
 # Keep a fixed past boundary and no repetition duration or end boundary.
-$time.StartBoundary = $StartBoundary
+$time.StartBoundary = $startBoundary
 $time.Repetition.Duration = ''
 $time.Repetition.StopAtDurationEnd = $false
 $time.Enabled = $true
 $event = New-CimInstance -CimClass (Get-CimClass -Namespace Root/Microsoft/Windows/TaskScheduler -ClassName MSFT_TaskEventTrigger) -ClientOnly -Property @{
-    Subscription = $Subscription
-    Delay = $EventDelay
+    Subscription = @'
+<QueryList><Query Id="0" Path="System"><Select Path="System">*[System[ Provider[@Name='Microsoft-Windows-WindowsUpdateClient'] and EventID=19]]</Select></Query></QueryList>
+'@
+    Delay = 'PT1M'
     Enabled = $true
 }
 $wanted = @($boot, $time, $event)

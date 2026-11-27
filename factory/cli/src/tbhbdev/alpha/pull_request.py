@@ -141,8 +141,11 @@ from urllib.parse import quote
 
 from jsonschema import Draft202012Validator
 
+from tbhbdev import userconfig
 from tbhbdev.alpha import opened, secret_scan, size_gate, tool_pins
 from tbhbdev.alpha import pull_request_frontmatter as frontmatter
+from tbhbdev.alpha.agent import settings
+from tbhbdev.alpha.agent.decisions import host_names
 from tbhbdev.alpha.identity import dispatcher as agent_identity
 from tbhbdev.alpha.identity.trailers import merge_pr_trailers
 from tbhbdev.alpha.install import require_git_hooks
@@ -2053,30 +2056,6 @@ def _size_base(
     return base, default_ref
 
 
-def _print_size_counts(
-    command_name: str, counts: size_gate.SizeCounts, head_branch: str
-) -> None:
-    """Print size totals for check, imports and exempt branches."""
-    output = sys.stdout if command_name == "check" else sys.stderr
-    if counts.imported_lines is not None:
-        print(
-            f"{counts.imported_lines} added lines verified by import maps", file=output
-        )
-    if (
-        command_name == "check"
-        or counts.imported_lines is not None
-        or counts.branch_exempt
-    ):
-        print(f"{counts.code_lines} code lines, limit {counts.code_limit}", file=output)
-        print(f"{counts.raw_lines} raw lines, limit {counts.raw_limit}", file=output)
-    if counts.branch_exempt:
-        print(
-            f"Branch {head_branch} is exempt from the size limit by "
-            ".github/pr-size-exempt-branches.txt",
-            file=output,
-        )
-
-
 def _report_size_excess(
     draft: str, checked: Checked, counts: size_gate.SizeCounts, *, dry_run: bool
 ) -> None:
@@ -2125,7 +2104,7 @@ def check_size(args: argparse.Namespace, checked: Checked) -> None:
     except size_gate.SizeCountError as exc:
         size_unavailable(checked, str(exc))
         return
-    _print_size_counts(args.command, counts, head_branch)
+    size_gate.print_counts(args.command, counts, head_branch)
     if counts.failed is not None:
         _report_size_excess(args.draft, checked, counts, dry_run=dry_run)
 
@@ -2150,6 +2129,14 @@ def command(args: argparse.Namespace, env: Mapping[str, str]) -> int:
 
 def _run_command(args: argparse.Namespace, env: Mapping[str, str]) -> int:
     """Check the draft and carry out the requested action."""
+    if args.command == "create":
+        code, branch = git("branch", "--show-current")
+        if code or not branch:
+            print("tbhbdev alpha pr: cannot read the current branch", file=sys.stderr)
+            return 1
+        if host_names.contains_host_name(branch, settings.known_host_names()):
+            print("tbhbdev alpha pr: branch name contains a host name", file=sys.stderr)
+            return 1
     checked = read_checked(args.draft)
     if args.command in ("check", "create"):
         check_size(args, checked)
@@ -2284,6 +2271,8 @@ def main(
         return by_pr[args.command](args.pr)
     try:
         return command(args, env)
+    except userconfig.ConfigError as exc:
+        print(f"tbhbdev alpha pr: {exc}", file=sys.stderr)
     except agent_identity.AttributionError:
         print(
             "tbhbdev alpha pr: Attribution couldn't be resolved. Retry the pull "
@@ -2291,4 +2280,4 @@ def main(
             "finishes and its session record is available.",
             file=sys.stderr,
         )
-        return 1
+    return 1

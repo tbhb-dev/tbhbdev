@@ -1,7 +1,4 @@
 ---
-# Extra arguments for runsc, such as --network=host. The daemon passes them
-# to every container that runs under gVisor.
-docker_engine_runsc_args: []
 # The data root is an ext4 file system on a logical volume of this size in
 # this volume group, mounted at docker_engine_data_root. The role creates
 # the volume once and never resizes it. An empty size means no logical

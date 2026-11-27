@@ -10,8 +10,6 @@ import sys
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
-from fake_tool import write_fake
-
 from tbhbdev import version
 from tbhbdev.alpha.agent.decisions import argv
 
@@ -236,9 +234,11 @@ def setup(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Remote:
 
 def write_standalone_fake(script: Path, body: str) -> None:
     """A standard-library-only fake, without site hooks that replay side effects."""
-    write_fake(script, body)
-    interpreter = shlex.quote(sys.executable)
-    script.write_text(script.read_text().replace(interpreter, interpreter + " -S"))
+    source = script.with_name(script.name + ".py")
+    source.write_text(body)
+    command = shlex.join((sys.executable, "-S", str(source)))
+    script.write_text(f'#!/bin/sh\nexec {command} "$@"\n')
+    script.chmod(0o755)
 
 
 def git_in(clone: Path, *args: str) -> str:

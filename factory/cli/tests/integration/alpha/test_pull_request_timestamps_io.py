@@ -24,7 +24,11 @@ if TYPE_CHECKING:
 def test_pr_keeps_earliest_start(verb: str, monkeypatch: pytest.MonkeyPatch) -> None:
     early = "LLM harness=codex;model=openai:m;started_at=2026-11-14T00:02:41Z"
     late = early.replace("00:02:41", "00:09:00")
-    messages = [f"one\n\nGenerated-by: {late}", f"two\n\nAssisted-by: {early}"]
+    other = late.replace("openai:m", "openai:other")
+    messages = [
+        f"one\n\nGenerated-by: {late}\nAssisted-by: {other}",
+        f"two\n\nAssisted-by: {early}",
+    ]
     if verb == "create":
         for message in messages:
             assert git("commit", "--allow-empty", "-qm", message)[0] == 0
@@ -63,4 +67,6 @@ def test_pr_keeps_earliest_start(verb: str, monkeypatch: pytest.MonkeyPatch) -> 
     monkeypatch.setattr(pr, "run", run)
     args = ["create"] if verb == "create" else ["edit", str(pr.DRAFT), "--pr", "40"]
     assert pr.main(args, env={}) == 0
-    posted.assert_called_once_with(verb, f"Example.\n\nGenerated-by: {early}\n")
+    posted.assert_called_once_with(
+        verb, f"Example.\n\nGenerated-by: {early}\nAssisted-by: {other}\n"
+    )

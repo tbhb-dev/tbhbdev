@@ -14,9 +14,4 @@ if [[ ${2:-} == uv@0.13.8 ]]; then
 	fi
 	exit
 fi
-[[ $1 == install ]]
-if [[ ${2:-} == --dry-run-code ]]; then
-	[[ -e .tools-installed ]]
-else
-	touch .tools-installed
-fi
+exit 1

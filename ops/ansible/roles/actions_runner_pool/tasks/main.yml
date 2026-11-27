@@ -15,7 +15,6 @@
       - actions_runner_pool_api_url is match('^https?://\S+[^/]$')
       # No hyphen, so a runner's name yields exactly one prefix, host and slot.
       - actions_runner_pool_name_prefix is match('^[A-Za-z0-9]+$')
-      - actions_runner_pool_op_auth in ['service_account', 'connect']
       - actions_runner_pool_op_token_file is not match('^/')
       - "'..' not in actions_runner_pool_op_token_file.split('/')"
       - actions_runner_pool_job_dir is not match('^/')
@@ -34,8 +33,8 @@
     fail_msg: >-
       The pool needs at least one slot, one label and one resolver, an image pinned by
       digest, an API URL without a trailing slash, a name prefix of letters and digits,
-      a token path inside the home, and an op auth of service_account or connect. A job
-      directory and a job-started hook, a .sh, .ps1 or .js file name, are set together or not at all, and a
+      and a token path inside the home. A job directory and a job-started hook, a .sh, .ps1 or .js
+      file name, are set together or not at all, and a
       secrets directory needs them and must not overlap the job directory.
       work_on_disk requires actions_runner_pool_dind_image; otherwise work_size is required
     quiet: true
@@ -47,23 +46,19 @@
   register: actions_runner_pool_ts_status
   changed_when: false
   check_mode: false
-  when:
-    - actions_runner_pool_op_auth == 'connect'
-    - actions_runner_pool_op_connect_host | length == 0
+  when: actions_runner_pool_op_connect_host | length == 0
 
 - name: Settle the Connect host
   ansible.builtin.set_fact:
     actions_runner_pool_connect_url: >-
       {{ actions_runner_pool_op_connect_host if actions_runner_pool_op_connect_host | length > 0
       else 'https://op-connect.' ~ (actions_runner_pool_ts_status.stdout | from_json).MagicDNSSuffix }}
-  when: actions_runner_pool_op_auth == 'connect'
 
 - name: Check the Connect host
   ansible.builtin.assert:
     that: actions_runner_pool_connect_url is match('^https://[^/\s]+$')
     fail_msg: The Connect host must be an https URL without a path
     quiet: true
-  when: actions_runner_pool_op_auth == 'connect'
 
 # The egress table blocks every tailnet address, and the Connect host is a
 # tailnet address, so the table needs an accept rule for it. The host's own
@@ -74,7 +69,6 @@
   changed_when: false
   failed_when: false
   check_mode: false
-  when: actions_runner_pool_op_auth == 'connect'
 
 - name: Record the Connect host's addresses
   ansible.builtin.set_fact:
@@ -84,7 +78,6 @@
     actions_runner_pool_connect_v6: >-
       {{ actions_runner_pool_connect_ahosts.stdout_lines | map('split') | map('first')
       | select('match', '^[0-9a-fA-F:]+:[0-9a-fA-F:]*$') | unique | list }}
-  when: actions_runner_pool_op_auth == 'connect'
 
 - name: Check the Connect host resolved
   ansible.builtin.assert:
@@ -93,7 +86,6 @@
       {{ actions_runner_pool_connect_url }} resolves to no address on this host, so the
       egress table can't let the slots reach Connect
     quiet: true
-  when: actions_runner_pool_op_auth == 'connect'
 
 - name: Create the apt keyring directory
   ansible.builtin.file:
@@ -267,9 +259,7 @@
         get_mime: false
       register: actions_runner_pool_token_in_place
       check_mode: false
-      when:
-        - actions_runner_pool_op_auth == 'connect'
-        - actions_runner_pool_op_token_ref | length > 0
+      when: actions_runner_pool_op_token_ref | length > 0
 
     - name: Install the Connect token from the controller lookup
       ansible.builtin.copy:
@@ -281,7 +271,6 @@
       no_log: true
       diff: false
       when:
-        - actions_runner_pool_op_auth == 'connect'
         - actions_runner_pool_op_token_ref | length > 0
         - not ansible_check_mode
         - not (actions_runner_pool_token_in_place.stat.exists and actions_runner_pool_token_in_place.stat.size > 0)
@@ -291,16 +280,6 @@
         path: "{{ actions_runner_pool_home }}/{{ actions_runner_pool_op_token_file }}"
       register: actions_runner_pool_token
 
-    - name: Report a missing service-account token
-      ansible.builtin.debug:
-        msg: >-
-          The 1Password service-account token is not in place, so every slot fails until the
-          operator installs it, owned by {{ actions_runner_pool_user }} with mode 0400, at
-          actions_runner_pool_op_token_file under the home.
-      when:
-        - actions_runner_pool_op_auth == 'service_account'
-        - not actions_runner_pool_token.stat.exists
-
     # Fails before the slots are enabled or started. Only the reference above makes the role write it.
     - name: Fail without the Connect token
       ansible.builtin.fail:
@@ -308,9 +287,7 @@
           The 1Password Connect token is not in place: the operator must install
           {{ actions_runner_pool_home }}/{{ actions_runner_pool_op_token_file }}, owned by
           {{ actions_runner_pool_user }} with mode 0600, or set actions_runner_pool_op_token_ref.
-      when:
-        - actions_runner_pool_op_auth == 'connect'
-        - not actions_runner_pool_token.stat.exists
+      when: not actions_runner_pool_token.stat.exists
 
     # The slot unit's stop timeout derives from the stop budget.
     - name: Install the slot unit

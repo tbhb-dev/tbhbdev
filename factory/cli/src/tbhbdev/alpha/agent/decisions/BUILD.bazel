@@ -140,3 +140,10 @@ filegroup(
         "//factory/cli/tests:__pkg__",
     ],
 )
+
+cli_py_library(
+    name = "host_names",
+    srcs = ["host_names.py"],
+    imports = ["../../../.."],
+    visibility = ["//factory/cli:__subpackages__"],
+)

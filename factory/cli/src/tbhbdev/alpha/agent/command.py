@@ -17,6 +17,7 @@ from tbhbdev.alpha.agent import (
     signing_parity,
     ssh_serve,
 )
+from tbhbdev.alpha.agent.decisions import host_names
 
 if TYPE_CHECKING:
     import argparse
@@ -52,6 +53,11 @@ def dispatch(args: argparse.Namespace | None, prog: str) -> int:
             run_host.check_config(loaded)
             print(f"{prog}: configuration valid")
             return 0
+        if args.verb == "exec" and host_names.contains_host_name(
+            args.name, settings.known_host_names(loaded)
+        ):
+            print(f"{prog}: run name contains a host name", file=sys.stderr)
+            return 1
         return driver.dispatch(loaded, args)
     except (userconfig.ConfigError, OSError, ValueError) as exc:
         print(f"{prog}: {exc}", file=sys.stderr)

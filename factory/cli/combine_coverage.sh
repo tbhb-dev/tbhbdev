@@ -10,7 +10,7 @@ cd "${BUILD_WORKSPACE_DIRECTORY:?Run this target with bazel run}"
 temp=$(mktemp -d)
 trap 'rm -rf "$temp"' EXIT
 
-bazelisk query 'kind("^py_test rule$", //factory/cli/tests:all)' >"$temp/targets"
+bazelisk query 'kind("^py_test rule$", //factory/cli/tests/...)' >"$temp/targets"
 test -s "$temp/targets"
 
 # The checked-in coverage config follows Python subprocesses. Keep raw

@@ -67,7 +67,10 @@
           class Connect:
               def __init__(self, value, endpoints):
                   assert value == 'molecule-fixture'
-                  assert endpoints == ['https://op-connect.example.example.invalid', 'https://connect.other.example.invalid']
+                  assert endpoints == [
+                      'https://op-connect.example.example.invalid',
+                      'https://connect.other.example.invalid',
+                  ]
 
               def vaults(self):
                   return [{'name': 'host-0-shared'}, {'name': 'host-fixture'}]
@@ -77,12 +80,6 @@
       ansible.builtin.copy:
         dest: "{{ ['/home/example-user/.config', 'tbhbdev', 'secrets/connect-token'] | join('/') }}"
         content: molecule-fixture
-        owner: agent
-        mode: '0600'
-    - name: Install workspace mise config
-      ansible.builtin.copy:
-        dest: /home/example-user/Code/mise.toml
-        content: "[tools]\n"
         owner: agent
         mode: '0600'
     - name: Prepare local remotes, and one clone that is behind
@@ -108,10 +105,11 @@
           done
           git config --global url./home/example-user/repo.git.insteadOf https://github.com/fixture/repo.git
           git config --global url./home/example-user/fresh.git.insteadOf https://github.com/fixture/fresh.git
-          git config --global url./home/example-user/other.git.insteadOf https://git.example.invalid/fixture/other.git
+          git config --global url./home/example-user/other.git.insteadOf https://github.com/fixture/other.git
           mkdir -p /home/example-user/Code/github.com/fixture
           git clone --quiet /home/example-user/repo.git /home/example-user/Code/github.com/fixture/repo
-          git -C /home/example-user/Code/github.com/fixture/repo remote set-url origin https://unused.example.invalid/repo.git
+          git -C /home/example-user/Code/github.com/fixture/repo remote set-url origin \
+            https://unused.example.invalid/repo.git
           git clone --quiet /home/example-user/other.git /home/example-user/Code/github.com/fixture/kept
           cd /home/example-user/seed-repo
           echo second > tracked

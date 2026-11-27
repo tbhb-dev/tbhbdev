@@ -81,18 +81,6 @@
             GIT_TERMINAL_PROMPT: "0"
       when: not ansible_check_mode
 
-    - name: Install workspace tools when a mise config exists
-      ansible.builtin.command:
-        argv:
-          - /bin/bash
-          - -c
-          - "{{ lookup('ansible.builtin.file', role_path + '/files/tools.sh') }}"
-        chdir: "{{ agent_workspace_root }}"
-      register: agent_workspace_install
-      changed_when: agent_workspace_install.stdout == 'changed'
-      # A check run doesn't create the root on a fresh host, so chdir fails.
-      when: not ansible_check_mode
-
     - name: Resolve Connect endpoints for the account
       ansible.builtin.include_tasks: "{{ role_path }}/../../tasks/connect-endpoints.yml"
       vars:

@@ -223,7 +223,10 @@ cli_py_library(
     deps = [
         ":gh_shim",
         ":repo",
+        "//factory/cli/src/tbhbdev:userconfig",
+        "//factory/cli/src/tbhbdev/alpha/agent:settings",
         "//factory/cli/src/tbhbdev/alpha/agent:signing_parity",
+        "//factory/cli/src/tbhbdev/alpha/agent/decisions:host_names",
         "//factory/cli/src/tbhbdev/alpha/identity:dispatcher",
     ],
 )
@@ -248,6 +251,9 @@ cli_py_library(
         ":secret_scan",
         ":size_gate",
         ":tool_pins",
+        "//factory/cli/src/tbhbdev:userconfig",
+        "//factory/cli/src/tbhbdev/alpha/agent:settings",
+        "//factory/cli/src/tbhbdev/alpha/agent/decisions:host_names",
         "//factory/cli/src/tbhbdev/alpha/identity:dispatcher",
         "//factory/cli/src/tbhbdev/alpha/identity:trailers",
         "@cli_pip//jsonschema",

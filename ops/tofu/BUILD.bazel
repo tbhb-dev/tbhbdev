@@ -69,14 +69,12 @@ sh_test(
         for platform, condition in PLATFORMS.items()
     }) + [
         "$(rlocationpath awrel/versions.tf)",
-        "$(rlocationpath bazel-r2-cache/versions.tf)",
         "$(rlocationpath bootstrap/versions.tf)",
         "$(rlocationpath dns/versions.tf)",
         "$(rlocationpath go-tbhb-dev/versions.tf)",
     ],
     data = [
         "awrel/versions.tf",
-        "bazel-r2-cache/versions.tf",
         "bootstrap/versions.tf",
         "dns/versions.tf",
         "go-tbhb-dev/versions.tf",

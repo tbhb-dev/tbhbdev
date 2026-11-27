@@ -395,6 +395,7 @@ cli_py_library(
         ":ssh_serve",
         "//factory/cli/src/tbhbdev:telemetry",
         "//factory/cli/src/tbhbdev:userconfig",
+        "//factory/cli/src/tbhbdev/alpha/agent/decisions:host_names",
     ],
 )
 

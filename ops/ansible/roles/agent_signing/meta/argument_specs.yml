@@ -1,22 +1,8 @@
 ---
 argument_specs:
   main:
-    short_description: Build and install ssh-sign and create a missing signing key for each account
+    short_description: Build and install ssh-sign and create a missing signing key for the agent account
     options:
-      agent_signing_accounts:
-        type: list
-        elements: dict
-        default:
-          - name: agent
-        description: Existing accounts that need a signing key, each handled as itself through become_user.
-        options:
-          name:
-            type: str
-            required: true
-            description: Account name.
-          home:
-            type: path
-            description: Absolute home, defaulting to /Users/name on macOS and /home/name elsewhere.
       agent_signing_devtools_version:
         type: str
         default: v0.23.0

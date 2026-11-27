@@ -1,14 +1,4 @@
 ---
-windows_update_policy_wsl_subscription: >-
-  <QueryList><Query Id="0" Path="System"><Select Path="System">*[System[
-  Provider[@Name='Microsoft-Windows-WindowsUpdateClient']
-  and EventID=19]]</Select></Query></QueryList>
-windows_update_policy_wsl_interval: PT5M
-windows_update_policy_wsl_boot_delay: PT30S
-windows_update_policy_wsl_event_delay: PT1M
-# A fixed past boundary keeps indefinite repetition idempotent.
-windows_update_policy_wsl_start_boundary: '2026-01-01T00:00:00'
-
 windows_update_policy_updates:
   # Enable the quality update deferral policy.
   DeferQualityUpdates: 1

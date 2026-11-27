@@ -10,12 +10,15 @@ import pytest
 ROOT = Path(__file__).resolve().parents[3]
 
 
-@pytest.mark.skipif(sys.platform == "win32", reason="Ansible needs a POSIX controller")
 def test_backup_playbook_stages_private_programs_and_checksums(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     ansible = ROOT / "ansible"
     staging = tmp_path / "staging"
+    inventory = tmp_path / "hosts.yml"
+    inventory.write_text(
+        "ca_backup_hosts:\n  hosts:\n    localhost:\n", encoding="utf-8"
+    )
     monkeypatch.setenv("ANSIBLE_CONFIG", str(ansible / "ansible.cfg"))
     monkeypatch.setenv("ANSIBLE_LOCAL_TEMP", str(tmp_path / "ansible"))
     overrides = {
@@ -31,7 +34,7 @@ def test_backup_playbook_stages_private_programs_and_checksums(
             "-m",
             "ansible.cli.playbook",
             "-i",
-            str(ansible / "inventory/hosts.yml"),
+            str(inventory),
             str(ansible / "playbooks/ca-backup.yml"),
             "-e",
             json.dumps(overrides),
