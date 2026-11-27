@@ -19,7 +19,10 @@ from tbhbdev.alpha.agent import credentials, runfiles
 from tbhbdev.alpha.agent.decisions import repo
 from tbhbdev.alpha.agent.decisions import request as requests
 from tbhbdev.alpha.agent.model import Harness, Invalid
-from tbhbdev.alpha.identity import dispatcher as identity
+from tbhbdev.alpha.identity import models as identity_models
+from tbhbdev.alpha.identity import records as identity_records
+from tbhbdev.alpha.identity import trailers as identity_trailers
+from tbhbdev.alpha.identity.commit import grammar as identity_commit_grammar
 from tbhbdev.alpha.pull_request_frontmatter import parse_frontmatter
 from tbhbdev.alpha.size_gate import SIZE_REVIEW, size_verdict
 
@@ -32,7 +35,7 @@ DRAFT_LIMIT = 64 * 1024
 TIMEOUT = httpx2.Timeout(20.0, connect=5.0)
 
 
-class PostRefusedError(ValueError):
+class PostRefusedError(review_doc.ReviewError):
     """The draft or the API refused; the message is safe to log."""
 
 
@@ -118,7 +121,7 @@ def validate(sub: Submission) -> tuple[dict[str, object], str]:
 
 
 def api(
-    method: str, url: str, token: str, payload: dict[str, str] | None = None
+    method: str, url: str, token: str, payload: dict[str, object] | None = None
 ) -> object:
     """One GitHub API call; any 2xx is success.
 
@@ -156,7 +159,19 @@ def pull_head(data: object) -> str | None:
     return sha if isinstance(sha, str) else None
 
 
-def create(sub: Submission, token: str) -> int | None:
+def compare(run: Run, path: str) -> object:
+    """Read the diff with the review run's read-only App permissions."""
+    try:
+        token = credentials.fetch_token(run.request, run.settings)
+    except Invalid:
+        token = None
+    if token is None:
+        message = "read-only reviews App token unavailable"
+        raise PostRefusedError(message)
+    return api("GET", path, token)
+
+
+def create(sub: Submission, token: str, run: Run) -> int | None:
     """Validate, then post once; return the review id, or None if GitHub sent none.
 
     Raises:
@@ -169,21 +184,19 @@ def create(sub: Submission, token: str) -> int | None:
     if event == "APPROVE" and pull_head(api("GET", base, token)) != sub.commit:
         message = "the pull request head moved since the run judged it"
         raise PostRefusedError(message)
-    payload = {
-        "commit_id": sub.commit,
-        "body": body,
-        "event": event,
-    }
-    data = api("POST", f"{base}/reviews", token, payload)
-    created = data.get("id") if isinstance(data, dict) else None
-    return created if isinstance(created, int) else None
+    return review_doc.submit_review(
+        lambda method, path, payload: api(method, path, token, payload),
+        review_doc.ReviewSubmission(base, sub.commit, body, event),
+        compare=lambda path: compare(run, path),
+        warn=lambda message: run.files.write("log", f"{message}\n"),
+    )
 
 
 def stamp(run: Run) -> str:
     """Build the host-written attribution for the review."""
     request = run.request
     key = (
-        identity.ANTIGRAVITY
+        identity_models.ANTIGRAVITY
         if request.harness is Harness.AGY
         else request.harness.value
     )
@@ -191,21 +204,21 @@ def stamp(run: Run) -> str:
         raw_effort = requests.review_effort(request)
     except Invalid as exc:
         raise PostRefusedError(str(exc)) from exc
-    model, effort = identity.model_effort(key, request.model, raw_effort)
-    value = identity.format_value(
+    model, effort = identity_models.model_effort(key, request.model, raw_effort)
+    value = identity_trailers.format_value(
         {
             "effort": effort or "",
-            "harness": identity.SLUGS[key],
-            "launch": identity.sha256_64(run.files.name),
+            "harness": identity_models.SLUGS[key],
+            "launch": identity_records.sha256_64(run.files.name),
             "model": model or "",
             "surface": request.kind.value,
             "variant": request.variant or "",
         }
     )
-    if why := identity.check_value(value):
+    if why := identity_commit_grammar.check_value(value):
         message = f"invalid LLM trailer: {why}"
         raise PostRefusedError(message)
-    return f"{identity.KEY_GEN}: {value}"
+    return f"{identity_trailers.KEY_GEN}: {value}"
 
 
 def final_verdict_line(run: Run) -> str:
@@ -287,7 +300,7 @@ def posted(run: Run, prepared: Prepared) -> bool:
             stamp(run),
             document,
         )
-        identifier = create(sub, token)
+        identifier = create(sub, token, run)
     except PostRefusedError as refusal:
         run.files.write("log", f"review not posted: {refusal}\n")
         return False

@@ -18,7 +18,7 @@ from driver_scenarios import (
 )
 
 from tbhbdev.alpha.agent import model, transport
-from tbhbdev.alpha.agent.decisions import remote as remote_commands
+from tbhbdev.alpha.agent.decisions import remote_run
 from tbhbdev.alpha.agent.driver import (
     lifecycle,
     metadata,
@@ -401,8 +401,8 @@ def test_kill_grace_and_poll_bounds(
     assert timeouts == [min(30, grace + 2), 1]
     assert sleeps == [0.5]
     assert scripts == [
-        remote_commands.session("sample", "kill-session", CONFIG.sockets_dir),
-        remote_commands.fallback("sample", CONFIG.sockets_dir),
+        remote_run.session("sample", "kill-session", CONFIG.sockets_dir),
+        remote_run.fallback("sample", CONFIG.sockets_dir),
     ]
 
 

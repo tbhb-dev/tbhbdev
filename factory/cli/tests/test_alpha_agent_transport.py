@@ -14,7 +14,7 @@ from agent_driver_example import write_standalone_fake
 from agent_example import LINUX, settings, trusted_executables
 
 from tbhbdev.alpha.agent import model, transport
-from tbhbdev.alpha.agent.decisions import remote
+from tbhbdev.alpha.agent.decisions import remote_run
 
 if TYPE_CHECKING:
     from collections.abc import Awaitable
@@ -157,7 +157,7 @@ def test_stream_modes_and_budget(
     ) -> str:
         assert config == settings()
         assert host == LINUX
-        assert script == remote.transfer("example", settings().sockets_dir)
+        assert script == remote_run.transfer("example", settings().sockets_dir)
         assert timeout == 4.5
         assert stdin is not None
         assert stdin.owner == "example-owner"
@@ -202,7 +202,9 @@ def test_read_budget(
     ) -> str:
         assert config == settings()
         assert host == LINUX
-        assert script == remote.read("example", settings().sockets_dir, answer=answer)
+        assert script == remote_run.read(
+            "example", settings().sockets_dir, answer=answer
+        )
         assert stdin == transport.Stdin("example-owner")
         assert timeout == (7.5 if custom else 30)
         return "66696e6973686564\n30\n1\n0\nanswer\n"
@@ -350,7 +352,7 @@ def test_read_absent_rc_and_default_view(
         *,
         timeout: float,
     ) -> str:
-        assert script == remote.read("sample", settings().sockets_dir, answer=False)
+        assert script == remote_run.read("sample", settings().sockets_dir, answer=False)
         assert stdin == transport.Stdin("example-owner")
         assert timeout == 30
         return f"72756e6e696e67\n-\n0\n{session}\n"

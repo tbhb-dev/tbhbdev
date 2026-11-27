@@ -211,7 +211,7 @@ cli_py_test(
         "//factory/cli/src/tbhbdev/alpha/agent/run_host:harness",
         "//factory/cli/src/tbhbdev/alpha/agent/run_host:preflight",
         "//factory/cli/src/tbhbdev/alpha/agent/run_host:state",
-        "//factory/cli/src/tbhbdev/alpha/identity:dispatcher",
+        "//factory/cli/src/tbhbdev/alpha/identity/commit:policy",
         "//factory/cli/tests:agent_host_example",
         "//factory/cli/tests:conftest",
         "//factory/cli/tests:run_host_fixtures",

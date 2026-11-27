@@ -100,7 +100,7 @@ from tbhbdev.alpha.guard_gh_pr import (
     skip_prefix,
     split_args,
 )
-from tbhbdev.alpha.identity import dispatcher as identity
+from tbhbdev.alpha.identity.antigravity import payload as agy_payload
 from tbhbdev.alpha.repo import hook_cwd, read_hook_stdin
 
 if TYPE_CHECKING:
@@ -283,7 +283,7 @@ def first_str(fields: Json, keys: tuple[str, ...]) -> str:
 def tool_call(data: Json) -> tuple[object, Json]:
     """(tool name, input fields) from Claude, Codex or Antigravity hook stdin."""
     if isinstance(data.get("toolCall"), dict):
-        name, inputs = identity.agy_tool(data)
+        name, inputs = agy_payload.agy_tool(data)
         if isinstance(inputs, str):  # Antigravity may send the arguments as JSON text
             try:
                 inputs = json.loads(inputs)
@@ -423,7 +423,7 @@ def patch_writes(patch: str, place: Place) -> list[Write]:
 
 def file_writes(inputs: Json, place: Place) -> list[Write]:
     """The file a Write, Edit, MultiEdit, NotebookEdit or write_file call names."""
-    raw = first_str(inputs, ("notebook_path",)) or identity.agy_edit_path(inputs)
+    raw = first_str(inputs, ("notebook_path",)) or agy_payload.agy_edit_path(inputs)
     if not raw:
         return []
     text = next(

@@ -13,7 +13,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from tbhbdev.alpha.agent.decisions import argv, remote
+from tbhbdev.alpha.agent.decisions import argv, remote_run
 from tbhbdev.alpha.agent.decisions import runfiles_names as files
 from tbhbdev.alpha.agent.model import Invalid
 
@@ -215,7 +215,7 @@ def stream(
     shell(
         settings,
         host,
-        remote.transfer(name, settings.sockets_dir),
+        remote_run.transfer(name, settings.sockets_dir),
         Stdin(inputs.owner, buffer.getvalue()),
         timeout=timeout,
     )
@@ -234,7 +234,7 @@ def read(  # noqa: PLR0913 -- keep the log, answer, and reason views explicit
     text = shell(
         settings,
         host,
-        remote.read(name, settings.sockets_dir, answer=answer, reason=reason),
+        remote_run.read(name, settings.sockets_dir, answer=answer, reason=reason),
         Stdin(owner),
         timeout=timeout,
     )

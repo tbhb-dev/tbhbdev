@@ -1,0 +1,138 @@
+# SPDX-License-Identifier: Apache-2.0
+# Copyright Tony Burns
+
+load("//factory/cli/tests:pytest.bzl", "cli_py_test")
+
+filegroup(
+    name = "package_files",
+    srcs = glob(["*.py"]),
+    visibility = ["//factory/cli/tests/unit/alpha/identity:__pkg__"],
+)
+
+cli_py_test(
+    name = "test_ancestry_io",
+    srcs = ["test_ancestry_io.py"],
+    imports = ["../../../.."],
+    deps = [
+        "//factory/cli/src/tbhbdev/alpha/identity/claude:ancestry",
+        "//factory/cli/tests:conftest",
+        "//factory/cli/tests/unit/alpha/identity:conftest",
+        "@cli_pip//pytest",
+    ],
+)
+
+cli_py_test(
+    name = "test_attribution_io",
+    srcs = ["test_attribution_io.py"],
+    imports = ["../../../.."],
+    deps = [
+        "//factory/cli/src/tbhbdev/alpha/identity:attribution",
+        "//factory/cli/src/tbhbdev/alpha/identity:models",
+        "//factory/cli/src/tbhbdev/alpha/identity:records",
+        "//factory/cli/src/tbhbdev/alpha/identity:sessions",
+        "//factory/cli/src/tbhbdev/alpha/identity:storage",
+        "//factory/cli/src/tbhbdev/alpha/identity/claude:ancestry",
+        "//factory/cli/src/tbhbdev/alpha/identity/claude:commands",
+        "//factory/cli/src/tbhbdev/alpha/identity/claude:hooks",
+        "//factory/cli/src/tbhbdev/alpha/identity/claude:logs",
+        "//factory/cli/src/tbhbdev/alpha/identity/claude:matching",
+        "//factory/cli/src/tbhbdev/alpha/identity/commit:grammar",
+        "//factory/cli/tests:conftest",
+        "//factory/cli/tests/unit/alpha/identity:conftest",
+        "//factory/cli/tests/unit/alpha/identity:identity_examples",
+        "//factory/cli/tests/unit/alpha/identity:identity_fixtures",
+        "@cli_pip//pytest",
+    ],
+)
+
+cli_py_test(
+    name = "test_commands_io",
+    srcs = ["test_commands_io.py"],
+    imports = ["../../../.."],
+    deps = [
+        "//factory/cli/src/tbhbdev/alpha/identity:attribution",
+        "//factory/cli/src/tbhbdev/alpha/identity:commands",
+        "//factory/cli/src/tbhbdev/alpha/identity:dispatcher",
+        "//factory/cli/src/tbhbdev/alpha/identity:receipts",
+        "//factory/cli/src/tbhbdev/alpha/identity:records",
+        "//factory/cli/src/tbhbdev/alpha/identity:sessions",
+        "//factory/cli/src/tbhbdev/alpha/identity:storage",
+        "//factory/cli/src/tbhbdev/alpha/identity/claude:ancestry",
+        "//factory/cli/src/tbhbdev/alpha/identity/claude:commands",
+        "//factory/cli/src/tbhbdev/alpha/identity/claude:matching",
+        "//factory/cli/src/tbhbdev/alpha/identity/codex:rollout",
+        "//factory/cli/tests:conftest",
+        "//factory/cli/tests/unit/alpha/identity:conftest",
+        "//factory/cli/tests/unit/alpha/identity:identity_examples",
+        "//factory/cli/tests/unit/alpha/identity:identity_fixtures",
+        "@cli_pip//pytest",
+    ],
+)
+
+cli_py_test(
+    name = "test_hooks_io",
+    srcs = ["test_hooks_io.py"],
+    imports = ["../../../.."],
+    deps = [
+        "//factory/cli/src/tbhbdev/alpha/identity:commands",
+        "//factory/cli/src/tbhbdev/alpha/identity:models",
+        "//factory/cli/src/tbhbdev/alpha/identity:records",
+        "//factory/cli/src/tbhbdev/alpha/identity:sessions",
+        "//factory/cli/src/tbhbdev/alpha/identity:trailers",
+        "//factory/cli/src/tbhbdev/alpha/identity/claude:commands",
+        "//factory/cli/src/tbhbdev/alpha/identity/claude:hooks",
+        "//factory/cli/tests:conftest",
+        "//factory/cli/tests/unit/alpha/identity:conftest",
+        "//factory/cli/tests/unit/alpha/identity:identity_examples",
+        "//factory/cli/tests/unit/alpha/identity:identity_fixtures",
+        "@cli_pip//pytest",
+    ],
+)
+
+cli_py_test(
+    name = "test_logs_io",
+    srcs = ["test_logs_io.py"],
+    imports = ["../../../.."],
+    deps = [
+        "//factory/cli/src/tbhbdev/alpha/identity:attribution",
+        "//factory/cli/src/tbhbdev/alpha/identity:records",
+        "//factory/cli/src/tbhbdev/alpha/identity:sessions",
+        "//factory/cli/src/tbhbdev/alpha/identity/claude:logs",
+        "//factory/cli/src/tbhbdev/alpha/identity/claude:matching",
+        "//factory/cli/tests:conftest",
+        "//factory/cli/tests/unit/alpha/identity:conftest",
+        "//factory/cli/tests/unit/alpha/identity:identity_examples",
+        "//factory/cli/tests/unit/alpha/identity:identity_fixtures",
+        "@cli_pip//pytest",
+    ],
+)
+
+cli_py_test(
+    name = "test_matching",
+    srcs = ["test_matching.py"],
+    imports = ["../../../.."],
+    deps = [
+        "//factory/cli/src/tbhbdev/alpha/identity:commands",
+        "//factory/cli/src/tbhbdev/alpha/identity:records",
+        "//factory/cli/src/tbhbdev/alpha/identity/claude:matching",
+        "@cli_pip//pytest",
+    ],
+)
+
+cli_py_test(
+    name = "test_payload",
+    srcs = ["test_payload.py"],
+    imports = ["../../../.."],
+    deps = ["//factory/cli/src/tbhbdev/alpha/identity/claude:payload"],
+)
+
+cli_py_test(
+    name = "test_transcript",
+    srcs = ["test_transcript.py"],
+    imports = ["../../../.."],
+    deps = [
+        "//factory/cli/src/tbhbdev/alpha/identity:records",
+        "//factory/cli/src/tbhbdev/alpha/identity/claude:transcript",
+        "//factory/cli/tests/unit/alpha/identity:identity_examples",
+    ],
+)

@@ -7,7 +7,7 @@ import json
 from dataclasses import replace
 from types import SimpleNamespace
 from typing import TYPE_CHECKING, cast
-from unittest.mock import Mock
+from unittest.mock import Mock, call
 from urllib.parse import urlsplit
 
 import httpx2
@@ -19,7 +19,7 @@ from tbhbdev.alpha import review, review_doc, run_stop_hook
 from tbhbdev.alpha.agent import credentials, review_post, runfiles
 from tbhbdev.alpha.agent.decisions import request as requests
 from tbhbdev.alpha.agent.model import Harness, Invalid, Profile, RunKind, RunRequest
-from tbhbdev.alpha.identity import dispatcher as identity
+from tbhbdev.alpha.identity.commit import grammar as identity_commit_grammar
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -107,6 +107,8 @@ def forbidden(*_args: object, **_options: object) -> httpx2.Response:
 
 
 BASE = "https://api.github.com/repos/o/r/pulls/7"
+BASE_SHA = "b" * 40
+COMPARE = f"{BASE.rpartition('/pulls/')[0]}/compare/{BASE_SHA}...{HEAD}?per_page=1"
 STAMP = "Generated-by: LLM harness=codex;model=m1"
 
 
@@ -115,7 +117,14 @@ class Api:
 
     def __init__(self, monkeypatch: pytest.MonkeyPatch) -> None:
         self.calls: list[tuple[str, str, dict[str, str] | None]] = []
-        self.pull: httpx2.Response | Exception = reply(200, {"head": {"sha": HEAD}})
+        self.tokens: list[str] = []
+        self.pull: httpx2.Response | Exception = reply(
+            200, {"head": {"sha": HEAD}, "base": {"sha": BASE_SHA}}
+        )
+        self.comparison = reply(
+            200,
+            {"files": [{"filename": "cache.py", "patch": "@@ -1 +1 @@\n-old\n+new"}]},
+        )
         self.later = reply(200, {"head": {"sha": HEAD}})
         self.created: httpx2.Response | Exception = reply(201, {"id": 99})
         monkeypatch.setattr(httpx2, "request", self.request)
@@ -123,6 +132,10 @@ class Api:
     def request(self, method: str, url: str, **options: object) -> httpx2.Response:
         payload = cast("dict[str, str] | None", options.get("json"))
         self.calls.append((method, url, payload))
+        headers = cast("dict[str, str]", options["headers"])
+        self.tokens.append(headers["Authorization"])
+        if url == COMPARE:
+            return self.comparison
         gets = [c for c in self.calls if c[0] == "GET"]
         outcome = self.created if method == "POST" else self.pull
         if method == "PUT" or len(gets) > 1:
@@ -130,6 +143,87 @@ class Api:
         if isinstance(outcome, Exception):
             raise outcome
         return outcome
+
+
+def cited_draft() -> str:
+    return draft("REQUEST_CHANGES", findings=True).replace(
+        "The saved record disappears.", "The saved record disappears in `cache.py:1`."
+    )
+
+
+def test_a_failed_comparison_still_posts_the_verdict(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    run, prepared = make(tmp_path, cited_draft())
+    monkeypatch.setattr(credentials, "review_post_token", mint_token)
+    monkeypatch.setattr(credentials, "fetch_token", Mock(return_value="reader"))
+    api = Api(monkeypatch)
+    api.comparison = reply(503, {})
+    assert review_post.posted(run, prepared)
+    assert [(method, url) for method, url, _ in api.calls] == [
+        ("GET", BASE),
+        ("GET", COMPARE),
+        ("POST", f"{BASE}/reviews"),
+    ]
+    payload = api.calls[-1][2]
+    assert payload is not None
+    assert payload["event"] == "REQUEST_CHANGES"
+    assert "The saved record disappears" in payload["body"]
+    assert "comments" not in payload
+    notice = run.files.path("log").read_text()
+    assert "inline comments skipped" in notice
+    assert "status 503" in notice
+
+
+@pytest.mark.parametrize("cited", [False, True])
+def test_review_mints_only_the_permissions_needed_to_post(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, *, cited: bool
+) -> None:
+    text = cited_draft() if cited else draft("REQUEST_CHANGES", findings=True)
+    run, prepared = make(tmp_path, text)
+    run.settings = settings_for_account()
+    mint = Mock(side_effect=[MINTED, "reader"])
+    monkeypatch.setattr(credentials, "installation_token", mint)
+    api = Api(monkeypatch)
+    assert review_post.posted(run, prepared)
+    references = run.settings.credentials[0]
+    expected = [call(references, run.request.repo, {"pull_requests": "write"})]
+    if cited:
+        expected.append(call(references, run.request.repo))
+    assert mint.call_args_list == expected
+    assert api.tokens == (
+        [f"Bearer {MINTED}", "Bearer reader", f"Bearer {MINTED}"]
+        if cited
+        else [f"Bearer {MINTED}"]
+    )
+    payload = api.calls[-1][2]
+    assert payload is not None
+    assert ("comments" in payload) == cited
+
+
+def test_an_unavailable_read_token_still_posts_the_verdict(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    run, prepared = make(tmp_path, cited_draft())
+    run.settings = settings_for_account()
+    monkeypatch.setattr(
+        credentials,
+        "installation_token",
+        Mock(side_effect=[MINTED, Invalid("refused")]),
+    )
+    api = Api(monkeypatch)
+    assert review_post.posted(run, prepared)
+    assert [(method, url) for method, url, _ in api.calls] == [
+        ("GET", BASE),
+        ("POST", f"{BASE}/reviews"),
+    ]
+    payload = api.calls[-1][2]
+    assert payload is not None
+    assert "comments" not in payload
+    assert (
+        "inline comments skipped: read-only reviews App token unavailable"
+        in run.files.path("log").read_text()
+    )
 
 
 @pytest.mark.parametrize(
@@ -421,6 +515,7 @@ def test_host_refuses_invalid_schema_two_drafts(
 
 
 def test_host_refuses_an_invalid_rendered_review(
+    tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     text = document()
@@ -429,8 +524,9 @@ def test_host_refuses_an_invalid_rendered_review(
         "github.com/o/r", 7, text, HEAD, f"{STAMP} text", document=True
     )
     api = Api(monkeypatch)
+    run, _ = make(tmp_path, None)
     with pytest.raises(review_post.PostRefusedError, match="Write Verification"):
-        review_post.create(sub, MINTED)
+        review_post.create(sub, MINTED, run)
     assert api.calls == []
 
 
@@ -589,22 +685,16 @@ def settings_for_account() -> Settings:
     return cast("Settings", SimpleNamespace(credentials=[SimpleNamespace(account="a")]))
 
 
-def test_the_post_token_is_scoped_to_pull_request_writes(
+def test_a_build_cannot_mint_a_review_post_token(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    seen: list[dict[str, str]] = []
-
-    def mint(_references: object, repository: str, permissions: dict[str, str]) -> str:
-        assert repository == "github.com/o/r"
-        seen.append(permissions)
-        return MINTED
-
-    monkeypatch.setattr(credentials, "installation_token", mint)
-    settings = settings_for_account()
-    assert credentials.review_post_token(request_for(Profile.BUILD), settings) is None
-    token = credentials.review_post_token(request_for(Profile.REVIEW), settings)
-    assert token == MINTED
-    assert seen == [{"pull_requests": "write"}]
+    monkeypatch.setattr(credentials, "installation_token", forbidden)
+    assert (
+        credentials.review_post_token(
+            request_for(Profile.BUILD), settings_for_account()
+        )
+        is None
+    )
 
 
 def test_a_failed_token_request_gives_none(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -624,7 +714,7 @@ def test_review_attribution(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> 
     trailer = review_post.stamp(run)
     assert "harness=antigravity;" in trailer
     assert trailer.endswith(";variant=a")
-    assert identity.check_message(trailer) == []
+    assert identity_commit_grammar.check_message(trailer) == []
     monkeypatch.setattr(run, "request", replace(request, variant="a;b"))
     with pytest.raises(review_post.PostRefusedError, match="invalid LLM trailer"):
         review_post.stamp(run)

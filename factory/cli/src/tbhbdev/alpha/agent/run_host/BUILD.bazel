@@ -170,7 +170,7 @@ cli_py_library(
         "//factory/cli/src/tbhbdev/alpha/agent:process_group",
         "//factory/cli/src/tbhbdev/alpha/agent:runfiles",
         "//factory/cli/src/tbhbdev/alpha/agent/decisions:run_state",
-        "//factory/cli/src/tbhbdev/alpha/identity:dispatcher",
+        "//factory/cli/src/tbhbdev/alpha/identity/commit:policy",
         "//factory/cli/src/tbhbdev/alpha/install:hooks",
     ],
 )

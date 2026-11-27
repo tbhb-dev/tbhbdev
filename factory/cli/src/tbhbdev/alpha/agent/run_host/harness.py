@@ -19,7 +19,7 @@ from tbhbdev.alpha.agent.run_host import (
     preflight,
     telemetry,
 )
-from tbhbdev.alpha.identity.dispatcher import RUN_MODEL_ENV
+from tbhbdev.alpha.identity.commit.policy import RUN_MODEL_ENV
 from tbhbdev.alpha.install.hooks import stop_hooks
 
 if TYPE_CHECKING:

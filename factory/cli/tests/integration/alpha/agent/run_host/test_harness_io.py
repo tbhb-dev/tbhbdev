@@ -49,7 +49,7 @@ from tbhbdev.alpha.agent.run_host import execution as host_execution
 from tbhbdev.alpha.agent.run_host import harness as host_harness
 from tbhbdev.alpha.agent.run_host import preflight as host_preflight
 from tbhbdev.alpha.agent.run_host import state
-from tbhbdev.alpha.identity.dispatcher import RUN_MODEL_ENV
+from tbhbdev.alpha.identity.commit.policy import RUN_MODEL_ENV
 
 __all__ = ["pytestmark"]
 

@@ -35,7 +35,7 @@ def test_file_names() -> None:
 
 
 def test_source_and_fixtures_are_independent() -> None:
-    root = Path(__file__).resolve().parents[1]
+    root = Path(__file__).resolve().parents[5]
     source = root / "src/tbhbdev/alpha/agent"
     paths = [
         *source.rglob("*.py"),

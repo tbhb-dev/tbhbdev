@@ -18,7 +18,7 @@ from pathlib import Path
 
 from tbhbdev.alpha.agent import credentials, host_tools, signing_keys, transport
 from tbhbdev.alpha.agent import settings as agent_settings
-from tbhbdev.alpha.agent.decisions import remote
+from tbhbdev.alpha.agent.decisions import remote_host, remote_shell
 from tbhbdev.alpha.agent.model import Host, Invalid, Settings
 
 
@@ -83,7 +83,8 @@ def registered() -> set[str]:
 
 def remote_fingerprint(settings: Settings, host: Host) -> str:
     script = (
-        remote.PREFIX + f"{remote.program(host)} alpha agent signing-fingerprint "
+        remote_shell.PREFIX
+        + f"{remote_host.program(host)} alpha agent signing-fingerprint "
         f"{host.account}\n"
     )
     return transport.shell(settings, host, script).strip()
