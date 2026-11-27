@@ -9,14 +9,19 @@ from tbhbops.o11y import smoke, validate
 from tbhbops.o11y import smoke_access as access
 from tbhbops.o11y import smoke_query as query
 
-from tbhbops_cli.o11y import render, smoke_checks, smoke_stages
+from tbhbops_cli.o11y import render
 from tbhbops_cli.o11y.polling import poll
-from tbhbops_cli.o11y.smoke import require, scan_path
+from tbhbops_cli.o11y.smoke import queries, readiness
+from tbhbops_cli.o11y.smoke.safety import (
+    require,
+    scan_path,
+)
+from tbhbops_cli.o11y.smoke.transport import request
 
 if TYPE_CHECKING:
     from pathlib import Path
 
-    from tbhbops_cli.o11y.smoke import Smoke
+    from tbhbops_cli.o11y.smoke.runtime import Smoke
 
 HTTP_OK = 200
 HEALTH_TIMEOUT = 180
@@ -63,7 +68,7 @@ def health(run: Smoke, group: int) -> None:
 
 def owner(run: Smoke, group: int) -> None:
     for login, role in ((access.OWNER, "Admin"), (access.VIEWER, "Editor")):
-        code, body = smoke_stages.request(run, "/api/user/orgs", login=login)
+        code, body = request(run, "/api/user/orgs", login=login)
         require(
             code == HTTP_OK and access.orgs(body, role), f"{group}: stored-org-role"
         )
@@ -102,7 +107,7 @@ def group8(run: Smoke, source: Path) -> None:
         "8: changed-container-states",
     )
     for service in ("loki", "alloy", "grafana"):
-        run.wait_ready(service, 8)
+        readiness.wait_ready(run, service, 8)
     health(run, 8)
     run.emit(
         "ok 8: identical releases preserve containers; changed Loki "
@@ -113,7 +118,7 @@ def group8(run: Smoke, source: Path) -> None:
 def group9(run: Smoke) -> None:
     require(run.compose(["restart"]).code == 0, "9: compose-restart")
     for service in smoke.SERVICES:
-        run.wait_ready(service, 9)
+        readiness.wait_ready(run, service, 9)
     owner(run, 9)
     health(run, 9)
 
@@ -137,10 +142,10 @@ def group9(run: Smoke) -> None:
     require(run.run(["docker", "stop", *containers]).code == 0, "9: direct-stop")
     require(run.run(["docker", "start", *containers]).code == 0, "9: direct-start")
     for service in smoke.SERVICES:
-        run.wait_ready(service, 9)
+        readiness.wait_ready(run, service, 9)
     owner(run, 9)
     health(run, 9)
-    smoke_checks.helper_receipt(run, "9")
+    queries.helper_receipt(run, "9")
     run.emit(
         "ok 9: Compose restart and direct container starts recover "
         "readiness, health, owner role and receipts"
@@ -275,10 +280,10 @@ def group13(run: Smoke, source: Path) -> None:
         == 0,
         "13: email-disabled-up",
     )
-    run.wait_ready("grafana", 13)
+    readiness.wait_ready(run, "grafana", 13)
     require(
         query.email_disabled(
-            smoke_checks.get(run, "/api/v1/provisioning/contact-points", "13")
+            queries.get(run, "/api/v1/provisioning/contact-points", "13")
         ),
         "13: email-receiver-deleted",
     )

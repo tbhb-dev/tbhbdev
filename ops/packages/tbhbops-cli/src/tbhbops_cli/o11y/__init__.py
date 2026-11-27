@@ -4,7 +4,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, TextIO
 lazy import argparse
 
-from tbhbops_cli.o11y import init, receipt, render, smoke, validate
+from tbhbops_cli.o11y import init, receipt, render, validate
 from tbhbops_cli.o11y.filesystem import (
     Filesystem,
     LocalFilesystem,
@@ -12,6 +12,7 @@ from tbhbops_cli.o11y.filesystem import (
     effective_uid,
 )
 from tbhbops_cli.o11y.init import execute, gather, generate
+from tbhbops_cli.o11y.smoke import command as smoke_command
 
 if TYPE_CHECKING:
     from tbhbops_cli.cli import System
@@ -27,7 +28,6 @@ __all__ = [
     "init",
     "receipt",
     "render",
-    "smoke",
     "validate",
 ]
 
@@ -68,7 +68,7 @@ def dispatch(args: argparse.Namespace, system: System, out: TextIO) -> int:
     if args.command == "receipt":
         return receipt.dispatch(args, system, out)
     if args.command == "smoke":
-        return smoke.dispatch(args, system, out)
+        return smoke_command.dispatch(args, system, out)
     if args.command == "render":
         render.dispatch(args, system)
     elif args.command == "validate":

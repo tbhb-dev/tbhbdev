@@ -15,15 +15,20 @@ from tbhbops.o11y import smoke_export as export
 from tbhbops.o11y import smoke_query as query
 from tbhbops.o11y.receipt import decode
 
-from tbhbops_cli.o11y import smoke_checks as checks
 from tbhbops_cli.o11y.http import BodyTooLargeError, TransportError
 from tbhbops_cli.o11y.polling import poll
-from tbhbops_cli.o11y.smoke import SmokeError, present, require
+from tbhbops_cli.o11y.smoke import queries
+from tbhbops_cli.o11y.smoke.safety import (
+    SmokeError,
+    present,
+    require,
+)
+from tbhbops_cli.o11y.smoke.transport import GRAFANA, request
 
 if TYPE_CHECKING:
     from tbhbops.o11y.validate import Document
 
-    from tbhbops_cli.o11y.smoke import Smoke
+    from tbhbops_cli.o11y.smoke.runtime import Smoke
 
 CAPACITY_TIMEOUT = 120
 HTTP_OK = 200
@@ -35,15 +40,15 @@ RELOAD_TIMEOUT = 30
 
 
 def panel(run: Smoke, title: str, now: int) -> list[Document] | None:
-    code, body = checks.request(run, "/api/dashboards/uid/o11y-agents-capacity")
+    code, body = request(run, "/api/dashboards/uid/o11y-agents-capacity")
     if code != HTTP_OK:
         return None
     prepared = capacity.panel_request(body, title, now)
     if prepared is None:
         return None
     definition, data = prepared
-    code, body = checks.request(
-        run, "/api/ds/query", data=data, timeout=checks.EVAL_TIMEOUT
+    code, body = request(
+        run, "/api/ds/query", method="POST", data=data, timeout=queries.EVAL_TIMEOUT
     )
     if code != HTTP_OK:
         return None
@@ -79,14 +84,16 @@ def upload(run: Smoke, fixture: bytes, name: str) -> None:
 def smoke(run: Smoke, source: Path) -> None:
     require(
         query.healthy_rules(
-            checks.get(run, checks.RULES_PATH, "capacity"),
-            checks.rule_titles(run, source, capacity=True),
+            queries.get(run, queries.RULES_PATH, "capacity"),
+            queries.rule_titles(run, source, capacity=True),
             capacity=True,
         ),
         "capacity: empty-rules-normal",
     )
     for kind in capacity.KINDS:
-        require(checks.quiet(run, "o11y-capacity-" + kind), "capacity: empty-condition")
+        require(
+            queries.quiet(run, "o11y-capacity-" + kind), "capacity: empty-condition"
+        )
     now = int(run.system.epoch())
     history = capacity.histories(now)
     run.fs.write_atomic(run.out / "capacity.json", json.dumps(history), 0o600)
@@ -105,7 +112,7 @@ def smoke(run: Smoke, source: Path) -> None:
             run.system,
             CAPACITY_TIMEOUT,
             lambda: capacity.ingested(
-                checks.mimir(run, '{__name__=~"agent_capacity_.*"}')
+                queries.mimir(run, '{__name__=~"agent_capacity_.*"}')
             ),
         ),
         "capacity: exact-metrics-labels",
@@ -120,7 +127,7 @@ def smoke(run: Smoke, source: Path) -> None:
             poll(
                 run.system,
                 CAPACITY_TIMEOUT,
-                lambda kind=kind, label=label, expected=expected: checks.fires(
+                lambda kind=kind, label=label, expected=expected: queries.fires(
                     run, "o11y-capacity-" + kind, label, expected
                 ),
             ),
@@ -212,7 +219,7 @@ def panel_ok(title: str, rows: list[Document] | None) -> bool:
 def reload(run: Smoke, kind: str) -> None:
     try:
         code, _ = run.system.admin_http.request(
-            checks.smoke_stages.GRAFANA + "/api/admin/provisioning/" + kind + "/reload",
+            GRAFANA + "/api/admin/provisioning/" + kind + "/reload",
             dict(run.sentinels.values)["grafana_admin_password"],
             RELOAD_TIMEOUT,
             method="POST",
@@ -287,7 +294,7 @@ def cleanup(run: Smoke) -> None:
         )
         reload(run, "dashboards")
         require(
-            checks.request(run, "/api/dashboards/uid/o11y-agents-capacity")[0]
+            request(run, "/api/dashboards/uid/o11y-agents-capacity")[0]
             == HTTP_NOT_FOUND,
             "capacity cleanup: dashboard-deleted",
         )
@@ -323,7 +330,7 @@ def cleanup(run: Smoke) -> None:
 
 
 def preserved(run: Smoke, removed: tuple[str, ...], remaining: tuple[str, ...]) -> None:
-    body = checks.get(run, "/api/v1/provisioning/alert-rules", "capacity cleanup")
+    body = queries.get(run, "/api/v1/provisioning/alert-rules", "capacity cleanup")
     provisioned: list[Document] = json.loads(body)
     require(
         access.identifiers(body, remaining)
@@ -332,12 +339,12 @@ def preserved(run: Smoke, removed: tuple[str, ...], remaining: tuple[str, ...]) 
     )
     for uid in removed:
         require(
-            checks.request(run, "/api/v1/provisioning/alert-rules/" + uid)[0]
+            request(run, "/api/v1/provisioning/alert-rules/" + uid)[0]
             == HTTP_NOT_FOUND,
             "capacity cleanup: rule-deleted",
         )
     dashboards: list[Document] = json.loads(
-        checks.get(run, "/api/search?type=dash-db", "capacity cleanup")
+        queries.get(run, "/api/search?type=dash-db", "capacity cleanup")
     )
     keep = tuple(uid for uid in access.AGENTS if uid != "o11y-agents-capacity")
     require(
@@ -347,7 +354,7 @@ def preserved(run: Smoke, removed: tuple[str, ...], remaining: tuple[str, ...]) 
     )
     for uid in keep:
         meta: Document = decode(
-            checks.get(run, "/api/dashboards/uid/" + uid, "capacity cleanup")
+            queries.get(run, "/api/dashboards/uid/" + uid, "capacity cleanup")
         ).get("meta", {})
         require(
             meta.get("provisionedExternalId") == access.DASHBOARD_FILES[uid]
