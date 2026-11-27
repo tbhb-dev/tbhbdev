@@ -11,6 +11,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"path/filepath"
 
 	"github.com/tbhb-dev/tbhbdev/factory/event-gateway/internal/eventfields"
 	"github.com/tbhb-dev/tbhbdev/factory/event-gateway/internal/filter"
@@ -171,7 +172,7 @@ func readTargetsConfig(path string) (routing.Config, error) {
 		return routing.Config{Targets: nil}, nil
 	}
 
-	data, err := os.ReadFile(path)
+	data, err := os.ReadFile(filepath.Clean(path))
 	if err != nil {
 		return routing.Config{}, fmt.Errorf("read targets file: %w", err)
 	}

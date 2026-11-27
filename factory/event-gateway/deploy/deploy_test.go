@@ -103,8 +103,9 @@ func runUp(t *testing.T, mutate func(dir string), env []string, args ...string) 
 		mutate(dir)
 	}
 
-	argv := append([]string{filepath.Join(dir, "up.sh")}, args...)
-	cmd := exec.CommandContext(t.Context(), "/bin/sh", argv...)
+	cmd := exec.CommandContext(t.Context(), "/bin/sh", "up.sh")
+	cmd.Dir = dir
+	cmd.Args = append(cmd.Args, args...)
 
 	cmd.Env = append([]string{"PATH=" + dir}, env...)
 
@@ -116,8 +117,17 @@ func runUp(t *testing.T, mutate func(dir string), env []string, args ...string) 
 	}
 
 	// The record is absent when up.sh never reached docker.
-	got, _ := os.ReadFile(filepath.Join(dir, "record")) //nolint:errcheck // see above
-	res.record = string(got)
+	root, openErr := os.OpenRoot(dir)
+
+	must(t, openErr)
+	defer func() { must(t, root.Close()) }()
+
+	got, err := root.ReadFile("record")
+	if !errors.Is(err, os.ErrNotExist) {
+		must(t, err)
+
+		res.record = string(got)
+	}
 
 	return res
 }

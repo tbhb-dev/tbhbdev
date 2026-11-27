@@ -972,6 +972,11 @@ replace = [
 dest = "factory/event-gateway/cmd/event-gateway/mcp_state_internal_test.go"
 replace = [
   ["go.tbhb.dev/event-gateway", "github.com/tbhb-dev/tbhbdev/factory/event-gateway"],
+  ["\n\tdata, err := os.ReadFile(own)\n", "\n\tdata, err := os.ReadFile(filepath.Clean(own))\n"],
+  ["\n\tdata, err = os.ReadFile(legacy)\n", "\n\tdata, err = os.ReadFile(filepath.Clean(legacy))\n"],
+  ["\n\t\tdata, readErr := os.ReadFile(own)\n", "\n\t\tdata, readErr := os.ReadFile(filepath.Clean(own))\n"],
+  ["\n\t\t\tdata, err := os.ReadFile(own)\n", "\n\t\t\tdata, err := os.ReadFile(filepath.Clean(own))\n"],
+  ["\n\t\tdata, err := os.ReadFile(path)\n", "\n\t\tdata, err := os.ReadFile(filepath.Clean(path))\n"],
 ]
 
 [rewrite."cmd/event-gateway/session.go"]
@@ -990,6 +995,8 @@ replace = [
 dest = "factory/event-gateway/cmd/event-gateway/targets.go"
 replace = [
   ["go.tbhb.dev/event-gateway", "github.com/tbhb-dev/tbhbdev/factory/event-gateway"],
+  ["\t\"os\"\n", "\t\"os\"\n\t\"path/filepath\"\n"],
+  ["\tdata, err := os.ReadFile(path)\n", "\tdata, err := os.ReadFile(filepath.Clean(path))\n"],
 ]
 
 [rewrite."cmd/event-gateway/targets_internal_test.go"]
@@ -1105,6 +1112,30 @@ const (
 \trepo          = \"registry.example/event-gateway\"
 \tpull          = \"--pull\"
 \tnever         = \"never\"
+"""
+  ],
+  [
+    "\targv := append([]string{filepath.Join(dir, \"up.sh\")}, args...)\n\tcmd := exec.CommandContext(t.Context(), \"/bin/sh\", argv...)\n",
+    """
+\tcmd := exec.CommandContext(t.Context(), \"/bin/sh\", \"up.sh\")
+\tcmd.Dir = dir
+\tcmd.Args = append(cmd.Args, args...)
+"""
+  ],
+  [
+    "\tgot, _ := os.ReadFile(filepath.Join(dir, \"record\")) //nolint:errcheck // see above\n\tres.record = string(got)\n",
+    """
+\troot, openErr := os.OpenRoot(dir)
+
+\tmust(t, openErr)
+\tdefer func() { must(t, root.Close()) }()
+
+\tgot, err := root.ReadFile(\"record\")
+\tif !errors.Is(err, os.ErrNotExist) {
+\t\tmust(t, err)
+
+\t\tres.record = string(got)
+\t}
 """
   ],
 ]
