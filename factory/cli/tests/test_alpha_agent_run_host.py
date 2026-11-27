@@ -60,6 +60,11 @@ from tbhbdev.alpha.agent import (
     run_host,
     runfiles,
     shims,
+    worktree_checkout,
+    worktree_git,
+    worktree_hooks,
+    worktree_mirror,
+    worktree_writes,
 )
 from tbhbdev.alpha.agent.decisions import policy, request
 from tbhbdev.alpha.agent.decisions.run_state import Group
@@ -360,7 +365,7 @@ def test_workspace_failure_names_its_step_and_safe_cause(
     monkeypatch.setenv("EXAMPLE_STDERR", "sensitive-stderr")
     run = make_run(tmp_path)
     monkeypatch.setattr(credentials, "deliver", constant(preparation(run).delivery))
-    monkeypatch.setattr(run_host.worktree, "create", constant(run.home / "workspace"))
+    monkeypatch.setattr(worktree_checkout, "create", constant(run.home / "workspace"))
 
     fail = partial(preparation_failure, error)
 
@@ -400,7 +405,7 @@ def test_hook_probe_refuses_before_credentials(
     def forbidden(*_args: object) -> str:
         pytest.fail("hook failure must precede fetch and credential delivery")
 
-    monkeypatch.setattr(run_host.worktree, "fetch_commit", forbidden)
+    monkeypatch.setattr(worktree_mirror, "fetch_commit", forbidden)
     monkeypatch.setattr(credentials, "deliver", forbidden)
     with pytest.raises(Invalid) as caught:
         run_host.prepare_workspace(run)
@@ -507,7 +512,7 @@ def otel_run(
     run = dataclasses.replace(run, settings=settings)
     runfiles.private_dir(run.home / ".codex")
     monkeypatch.setattr(credentials, "deliver", constant(preparation(run).delivery))
-    monkeypatch.setattr(run_host.worktree, "create", constant(run.home / "workspace"))
+    monkeypatch.setattr(worktree_checkout, "create", constant(run.home / "workspace"))
     monkeypatch.setattr(run_host.push, "head", constant("a" * 40))
     monkeypatch.setattr(credentials, "auth_copy", constant(None))
     return run
@@ -614,7 +619,7 @@ def test_build_preparation_has_the_run_socket(
         assert token_source() == "example-credential"
         return runfiles.private_dir(run.home / "worktree")
 
-    monkeypatch.setattr(run_host.worktree, "create", create)
+    monkeypatch.setattr(worktree_checkout, "create", create)
     baseline = Mock(return_value=start)
     monkeypatch.setattr(run_host.push, "head", baseline)
     monkeypatch.setattr(run_host, "hook_environment", hook_environment)
@@ -1206,7 +1211,7 @@ def test_startup_deadline_stops_the_recorded_setup_group(
     _, clone = repository(run.home / "Code" / "github.com" / "tbhb-dev")
     clone.rename(clone.parent / "example-repo")
     local_mirror_fetches(monkeypatch, clone.parent / "origin")
-    original = run_host.worktree.git
+    original = worktree_git.git
 
     def hang() -> str:
         code = (
@@ -1237,20 +1242,12 @@ def test_startup_deadline_stops_the_recorded_setup_group(
     def read(_reference: str) -> str:
         return hang()
 
-    def boot() -> str:
-        return "example-boot"
-
-    def skip_verification(_workspace: Path, _env: Mapping[str, str]) -> None:
-        return None
-
-    monkeypatch.setattr(process_group, "boot_id", boot)
-    monkeypatch.setattr(run_host.worktree, "git", git)
-    monkeypatch.setattr(run_host.worktree, "verify_run_hooks", skip_verification)
+    monkeypatch.setattr(process_group, "boot_id", constant("example-boot"))
+    monkeypatch.setattr(worktree_git, "git", git)
+    monkeypatch.setattr(worktree_hooks, "verify_run_hooks", constant(None))
     if phase == "secret":
-        prepared = preparation(run)
-        monkeypatch.setattr(
-            run_host.worktree, "create", constant(Path(prepared.paths.worktree))
-        )
+        workspace = Path(preparation(run).paths.worktree)
+        monkeypatch.setattr(worktree_checkout, "create", constant(workspace))
         monkeypatch.setattr(secrets, "read", read)
     ready_read, ready_write = os.pipe()
     with os.fdopen(ready_read, "rb") as ready, os.fdopen(ready_write, "wb"):
@@ -2628,7 +2625,7 @@ def test_preparation_checks_paths_before_creation(
     def create(*_args: object) -> None:
         pytest.fail("the discovered common directory must be checked first")
 
-    monkeypatch.setattr(run_host.worktree, "create", create)
+    monkeypatch.setattr(worktree_checkout, "create", create)
     with pytest.raises(Invalid, match=r"protected host path.*overlaps write root"):
         run_host.prepare_workspace(run)
 
@@ -2938,7 +2935,7 @@ def test_protected_home_lists_startup_files_and_socket_ancestors(
         ".control",
     )
     clone = Path(run_host.repo.clone_path(run.home, run.request.repo))
-    mirror = run_host.worktree.mirror_path(run.home, run.request.repo)
+    mirror = worktree_mirror.mirror_path(run.home, run.request.repo)
     assert run_host.protected_home(run) == (
         *(str(run.home / p) for p in expected),
         str(clone / ".git"),
@@ -3061,7 +3058,7 @@ def test_host_state_cannot_be_a_configured_write_root(
 ) -> None:
     run = make_run(tmp_path)
     clone = Path(run_host.repo.clone_path(run.home, run.request.repo))
-    mirror = run_host.worktree.mirror_path(run.home, run.request.repo)
+    mirror = worktree_mirror.mirror_path(run.home, run.request.repo)
     roots = {
         "clone": clone / "other",
         "mirror": mirror,
@@ -3396,7 +3393,7 @@ def test_checkout_validation_receives_aliases_and_all_write_roots(
     target.mkdir()
     clone.symlink_to(target, target_is_directory=True)
     calls: list[tuple[Path, Path, tuple[str, ...]]] = []
-    original = run_host.worktree.validate_writes
+    original = worktree_writes.validate_writes
 
     def validate(
         workspace: Path, source: Path, writes: tuple[str, ...]
@@ -3404,7 +3401,7 @@ def test_checkout_validation_receives_aliases_and_all_write_roots(
         calls.append((workspace, source, writes))
         return original(workspace, source, writes)
 
-    monkeypatch.setattr(run_host.worktree, "validate_writes", validate)
+    monkeypatch.setattr(worktree_writes, "validate_writes", validate)
     paths = preparation(run).paths
     run_host.checked_policy(run, paths)
     sandbox = run.settings.sandbox
@@ -3432,7 +3429,7 @@ def test_checked_policy_codex_table_has_unique_keys(
         tmp_path, profile=profile, commit="0" * 40 if profile == "review" else None
     )
     run = dataclasses.replace(run, host=dataclasses.replace(run.host, os=os_name))
-    mirror = run_host.worktree.mirror_path(run.home, run.request.repo)
+    mirror = worktree_mirror.mirror_path(run.home, run.request.repo)
     mirror.mkdir(parents=True)
     monkeypatch.setattr(
         host_tools, "resolve", constant(str(tmp_path / "host-bin" / "true"))
@@ -3809,7 +3806,7 @@ def test_finish_removes_private_state_codex_home(
 ) -> None:
     run = make_run(tmp_path)
     workspace = runfiles.private_dir(run.home / "worktree")
-    monkeypatch.setattr(run_host.worktree, "create", constant(workspace))
+    monkeypatch.setattr(worktree_checkout, "create", constant(workspace))
     monkeypatch.setattr(run_host.push, "head", constant("a" * 40))
     prepared = run_host.prepare_workspace(run)
     directory = Path(prepared.paths.codex_home)
@@ -4785,7 +4782,7 @@ def test_policy_audit_merges_findings_across_calls(
         (("B", "A", "B"), '"A"\n"B"\n'),
         (("A", "B"), '"A"\n"B"\n'),
     ]:
-        monkeypatch.setattr(run_host.worktree, "validate_writes", constant(findings))
+        monkeypatch.setattr(worktree_writes, "validate_writes", constant(findings))
         run_host.checked_policy(run, paths)
         assert run.files.path("would_refuse").read_text() == expected
         assert run.files.path("log").read_text() == "".join(
@@ -4820,7 +4817,7 @@ def test_audit_findings_round_trip_losslessly(
         f"finding{value}path"
         for value in ("\r", "\n", "\u2028", "\u2029", "\\", r"\n", "\0")
     ]
-    monkeypatch.setattr(run_host.worktree, "validate_writes", constant(tuple(findings)))
+    monkeypatch.setattr(worktree_writes, "validate_writes", constant(tuple(findings)))
     paths = run_host.planned_paths(run)
     workspace = Path(paths.worktree)
     run_host.audit_writes(run, workspace, workspace.parent.parent, ())
