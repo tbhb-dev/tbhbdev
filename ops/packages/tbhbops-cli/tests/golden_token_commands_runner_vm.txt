@@ -15,7 +15,7 @@ vaults=$(op vault list --account acct.example.com --format json) || {
   echo 'could not list the vaults in the 1Password account' >&2
   exit 1
 }
-for name in runner-fixture host-ex-lab1; do
+for name in host-ex-lab1 runner-fixture; do
   found=$(printf '%s' "$vaults" | jq -r --arg name "$name" 'any(.[]; .name == $name)') || {
     echo 'could not read the vault list' >&2
     exit 1
@@ -27,8 +27,8 @@ for name in runner-fixture host-ex-lab1; do
 done
 unset vaults
 
-op connect vault grant --account acct.example.com --server srv --vault runner-fixture
 op connect vault grant --account acct.example.com --server srv --vault host-ex-lab1
+op connect vault grant --account acct.example.com --server srv --vault runner-fixture
 
 # runner-vm ex-lab1-ci
 if op item get --account acct.example.com runner-access-token --vault host-ex-lab1 >/dev/null 2>&1; then

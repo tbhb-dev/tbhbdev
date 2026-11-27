@@ -1,0 +1,46 @@
+# SPDX-License-Identifier: Apache-2.0
+# Copyright Tony Burns
+
+load("@rules_python//python:defs.bzl", "py_binary", "py_library")
+
+# gazelle:python_root
+# gazelle:python_generation_mode project
+# gazelle:python_default_visibility //ops/packages:__subpackages__
+
+genrule(
+    name = "console_files",
+    srcs = ["//ops/packages:tbhbops-mcp/pyproject.toml"],
+    outs = [
+        "tbhbops_mcp-0.dist-info/METADATA",
+        "tbhbops_mcp_main.py",
+    ],
+    cmd = r"""
+        version=$$(awk -F '"' '/^version = / {print $$2}' $(SRCS))
+        entry=$$(awk -F '"' '/^tbhbops-mcp = / {print $$2}' $(SRCS))
+        test -n "$$version" && test -n "$$entry" || exit 1
+        printf '%s\n' 'Metadata-Version: 2.1' 'Name: tbhbops-mcp' "Version: $$version" '' > "$(RULEDIR)/tbhbops_mcp-0.dist-info/METADATA"
+        printf 'from %s import %s\n\nraise SystemExit(%s())\n' "$${entry%:*}" "$${entry#*:}" "$${entry#*:}" > "$(RULEDIR)/tbhbops_mcp_main.py"
+    """,
+)
+
+py_library(
+    name = "src",
+    srcs = [
+        "tbhbops_mcp/__init__.py",
+        "tbhbops_mcp/cli.py",
+        "tbhbops_mcp/server.py",
+    ],
+    data = [":tbhbops_mcp-0.dist-info/METADATA"],
+    imports = ["."],  # keep
+    visibility = ["//ops/packages:__subpackages__"],
+    deps = ["@cli_pip//mcp"],
+)
+
+py_binary(
+    name = "tbhbops-mcp",
+    srcs = [":tbhbops_mcp_main.py"],
+    legacy_create_init = False,
+    main = ":tbhbops_mcp_main.py",
+    visibility = ["//ops/packages/tbhbops-mcp/tests:__pkg__"],
+    deps = [":src"],
+)

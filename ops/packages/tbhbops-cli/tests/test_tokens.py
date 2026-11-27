@@ -164,10 +164,12 @@ def test_a_host_ops_vault_appears_only_in_the_grants_and_ops_controller_blocks(
     found = [b for b in blocks(text) if "host-storage-" in b]
     assert len(found) == 2 + len(CONTROLLERS)
     created, grants, *ops = found
+    dry_run_creates = {
+        f"echo 'op vault create --account {ACCOUNT} {vault}'" for vault in OPS_VAULTS
+    }
     for line in created.splitlines():
         assert "host-storage-" not in line or (
-            "op vault create --account acct.example.com controller-" in line
-            or line.startswith("for name in ")
+            line in dry_run_creates or line.startswith("for name in ")
         )
     for line in grants.splitlines():
         assert (
@@ -251,9 +253,9 @@ def test_the_header_names_ssh_only_when_an_ops_token_is_made() -> None:
     assert "# Dry run: each op and ssh command below is echoed, not run.\n" in dry_ops
 
 
-@pytest.mark.parametrize("host", ["lab-fixture", "ops-1"])
+@pytest.mark.parametrize("host", ["storage-nas-a", "storage-nas-b"])
 def test_a_host_ops_vault_in_a_grant_is_refused(host: str) -> None:
-    with pytest.raises(CliError, match=r"refusing to grant controller-.*: no token"):
+    with pytest.raises(CliError, match=rf"refusing to grant host-{host}: no token"):
         tokens.grants(host, (*AGENTS, host), CONTROLLERS)
     with pytest.raises(CliError, match="host-storage-"):
         tokens.grants("ex-ctl1", (*AGENTS, host), CONTROLLERS)
@@ -266,8 +268,8 @@ def test_the_token_never_appears_in_a_dry_run_script() -> None:
 
 
 def test_quoting_keeps_a_single_quote_inside_a_quoted_name() -> None:
-    assert tokens._quote("a'b") == "'a'\\''b'"  # noqa: SLF001
-    assert tokens._quote("ab") == "'ab'"  # noqa: SLF001
+    assert tokens._quote("a'b") == "'a'\\''b'"
+    assert tokens._quote("ab") == "'ab'"
 
 
 def test_a_server_name_with_a_space_is_quoted() -> None:
@@ -506,7 +508,7 @@ esac
     return bin_dir
 
 
-def run_live(  # noqa: PLR0913  # the fake's knobs, each one a fact
+def run_live(  # the fake's knobs, each one a fact
     root: Path,
     *,
     held: Collection[str] = (),
@@ -734,7 +736,7 @@ def test_the_operator_shell_expands_the_session_key_at_run_time(
     fake_ssh = bin_dir / "ssh"
     fake_ssh.write_text('#!/bin/sh\nprintf "%s\\n" "$@"\n', encoding="utf-8")
     fake_ssh.chmod(stat.S_IRWXU)
-    command = tokens._ssh("ex-ctl1", "true")  # noqa: SLF001
+    command = tokens._ssh("ex-ctl1", "true")
     done = subprocess.run(
         [SH], input=command, capture_output=True, text=True, check=True, env=env
     )
@@ -1059,7 +1061,7 @@ def test_with_some_vaults_missing_only_those_are_created(tmp_path: Path) -> None
 
 
 def test_a_vault_name_must_match_exactly(tmp_path: Path) -> None:
-    near = ("host-0-shared-2", "host-0-shared", "host-ex-lab1 ")
+    near = ("host-0-shared-2", "prefix-host-0-shared", "host-ex-lab1 ")
     done = run_live(tmp_path, vaults=near)
     assert (done.returncode, done.stderr) == (0, "")
     assert creates(tmp_path) == ["host-0-shared", "host-ex-lab1"]
@@ -1523,7 +1525,7 @@ def test_the_server_grants_github_runners_and_the_lab_nodes_vault() -> None:
     assert "op connect vault grant --account acct.example.com --server srv" in only
     assert "--vault runner-fixture\n" in only
     assert "--vault host-ex-lab1\n" in only
-    assert "for name in runner-fixture host-ex-lab1; do" in only
+    assert "for name in host-ex-lab1 runner-fixture; do" in only
 
 
 def test_a_runner_vm_token_is_stored_in_its_lab_nodes_vault() -> None:

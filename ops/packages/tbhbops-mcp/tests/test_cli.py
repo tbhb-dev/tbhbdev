@@ -46,9 +46,8 @@ def test_main_serves_stdio(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 def test_console_script_speaks_mcp_over_stdio(tmp_path: Path) -> None:
-    # Installed console scripts are on PATH: a virtualenv's bin under
-    # `uv run`, or the install prefix tbhb_rules_python adds under Bazel.
-    script = shutil.which("tbhbops-mcp")
+    # Bazel supplies its console script as a runfile. uv adds its script to PATH.
+    script = os.environ.get("TBHBOPS_MCP_TEST_BIN") or shutil.which("tbhbops-mcp")
     assert script is not None
 
     async def probe() -> str | None:
