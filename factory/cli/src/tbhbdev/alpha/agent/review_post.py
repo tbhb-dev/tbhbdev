@@ -14,11 +14,12 @@ from typing import TYPE_CHECKING, cast
 import httpx
 
 from tbhbdev import content
-from tbhbdev.alpha import identity, pull_request, review, review_doc
+from tbhbdev.alpha import identity, review, review_doc
 from tbhbdev.alpha.agent import credentials, runfiles
 from tbhbdev.alpha.agent.decisions import repo
 from tbhbdev.alpha.agent.decisions import request as requests
 from tbhbdev.alpha.agent.model import Harness, Invalid, RunKind
+from tbhbdev.alpha.pull_request_frontmatter import parse_frontmatter
 from tbhbdev.alpha.size_gate import SIZE_REVIEW, SIZE_VERDICTS
 
 if TYPE_CHECKING:
@@ -83,6 +84,8 @@ def validate_document(sub: Submission) -> tuple[dict[str, object], str]:
         raise PostRefusedError(problems[0])
     event = "APPROVE" if doc.verdict == "GO" else "REQUEST_CHANGES"
     body = f"{review_doc.render(doc)}\n{sub.stamp}\n"
+    if problems := content.check_review(body, metadata=doc.metadata, posted=True):
+        raise PostRefusedError(problems[0])
     return {**doc.metadata, "event": event}, body
 
 
@@ -104,7 +107,7 @@ def validate(sub: Submission) -> tuple[dict[str, object], str]:
         line, why = problems[0]
         message = f"the draft fails its checks: line {line}: {why}"
         raise PostRefusedError(message)
-    meta, body = pull_request.parse_frontmatter(sub.text)
+    meta, body = parse_frontmatter(sub.text)
     fields = cast("dict[str, object]", meta)
     if str(fields["commit_id"]).lower() != sub.commit.lower():
         message = "the draft's commit_id isn't the commit the run reviewed"

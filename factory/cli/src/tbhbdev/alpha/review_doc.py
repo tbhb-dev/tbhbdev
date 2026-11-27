@@ -11,6 +11,7 @@ from typing import Literal, Protocol, cast
 from tbhbdev import content
 from tbhbdev.alpha import identity
 from tbhbdev.alpha import pull_request as pr
+from tbhbdev.alpha import pull_request_frontmatter as frontmatter
 
 type Tier = Literal[0, 1, 2]
 type Verdict = Literal["GO", "NO-GO"]
@@ -74,8 +75,10 @@ LINT_PATH = Path(".github") / "PULL_REQUEST_REVIEW_DRAFT.md"
 
 
 def lint_post(body: str) -> list[str]:
-    """Run the repository's Vale rules on the review prose before posting."""
+    """Run the repository's Vale rules before posting if configured."""
     try:
+        if not (pr.root() / pr.VALE_INI).exists():
+            return []
         problems = pr.lint(
             body.splitlines(),
             1,
@@ -95,7 +98,7 @@ def lint_post(body: str) -> list[str]:
 def parse(text: str) -> ReviewDoc:
     """Read a review document with run details in YAML frontmatter."""
     try:
-        fields, body = pr.parse_frontmatter(text.replace("\r\n", "\n"))
+        fields, body = frontmatter.parse_frontmatter(text.replace("\r\n", "\n"))
     except LookupError, OverflowError, RecursionError, ValueError:
         message = "invalid review frontmatter"
         raise ReviewError(message) from None
@@ -262,8 +265,10 @@ def post(
     if existing is not None:
         return "exists", existing
     trailer = attribution(identity_value)
-    body = render(doc)
-    return "posted", send_review(api, path, doc.head_sha, f"{body}\n{trailer}\n", event)
+    body = f"{render(doc)}\n{trailer}\n"
+    if problems := content.check_review(body, metadata=doc.metadata, posted=True):
+        raise ReviewError("\n".join(problems))
+    return "posted", send_review(api, path, doc.head_sha, body, event)
 
 
 def dismiss(
@@ -273,7 +278,7 @@ def dismiss(
     review_id: int,
     reason: str,
 ) -> None:
-    """Edit a COMMENT review to prefix its body with `SUPERSEDED: <reason>`.
+    """Edit a marked review to prefix its body with `SUPERSEDED: <reason>`.
 
     Require a plain-text reason of at most 200 characters with no markers.
     Preserve the original marker.
@@ -285,7 +290,12 @@ def dismiss(
     path = f"repos/{repo}/pulls/{pr}/reviews/{review_id}"
     response = api.request("GET", path)
     match cast("dict[str, object] | None", response):  # pragma: no mutate -- cast
-        case {"body": str(body), "state": ("COMMENTED" | "DISMISSED") as state}:
+        case {
+            "body": str(body),
+            "state": (
+                "COMMENTED" | "APPROVED" | "CHANGES_REQUESTED" | "DISMISSED"
+            ) as state,
+        }:
             key = parse_marker(body)
             if isinstance(key, str) or (
                 isinstance(key, Marker) and (key.repo, key.pr) == (repo, pr)
@@ -296,7 +306,7 @@ def dismiss(
                 return
         case _:  # pragma: no mutate -- falls through to the same refusal
             pass
-    message = "expected a COMMENT review marked for this pull request"
+    message = "expected a submitted review marked for this pull request"
     raise ReviewError(message)
 
 

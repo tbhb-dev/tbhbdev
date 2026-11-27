@@ -1,0 +1,7 @@
+---
+# ops has the same uid and gid on every host, next to the agent account's
+# 24368, so files and ACLs mean the same thing everywhere.
+ops_accounts_id: 24369
+
+# The line in /etc/sudoers.d/ops. The first-run artifacts write the same one.
+ops_accounts_sudoers_line: "ops ALL=(ALL:ALL) NOPASSWD: ALL"

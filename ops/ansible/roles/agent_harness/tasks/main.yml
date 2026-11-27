@@ -1,0 +1,15 @@
+---
+# Host-level checks run once. Everything that touches an account's home runs
+# in account.yml, as that account, never as root.
+- name: Require a supported agent host
+  ansible.builtin.assert:
+    that:
+      - ansible_facts.system == 'Darwin' or ansible_facts.distribution == 'Ubuntu'
+      - agent_harness_accounts | length > 0
+
+- name: Harness each account
+  ansible.builtin.include_tasks: account.yml
+  loop: "{{ agent_harness_accounts }}"
+  loop_control:
+    loop_var: agent_harness_account
+    label: "{{ agent_harness_account.name }}"

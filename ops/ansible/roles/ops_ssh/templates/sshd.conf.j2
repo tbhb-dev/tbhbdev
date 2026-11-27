@@ -1,0 +1,7 @@
+# {{ ansible_managed }}
+PermitRootLogin no
+PasswordAuthentication no
+KbdInteractiveAuthentication no
+X11Forwarding no
+LogLevel VERBOSE
+AllowUsers {{ ops_ssh_allow_users | join(' ') }}

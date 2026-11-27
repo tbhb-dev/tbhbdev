@@ -15,8 +15,7 @@ from typing import TYPE_CHECKING
 
 import pytest
 
-from tbhbdev import alpha
-from tbhbdev.alpha import guard_scripts as guard
+import tbhbdev.alpha.guard_scripts as guard
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Mapping
@@ -1603,7 +1602,7 @@ def run_hook(
     else:
         monkeypatch.setenv("TMPDIR", tmpdir)
     monkeypatch.setattr(sys, "stdin", io.StringIO(json.dumps(payload)))
-    return alpha.main(["guard-scripts"], "tbhbdev alpha")
+    return guard.main()
 
 
 @pytest.mark.parametrize("agy", [False, True])
@@ -1675,7 +1674,7 @@ def test_hook_allows_unreadable_or_allowed_input(
 ) -> None:
     monkeypatch.setenv("HOME", str(home))
     monkeypatch.setattr(sys, "stdin", io.StringIO(payload))
-    status = alpha.main(["guard-scripts"], "tbhbdev alpha")
+    status = guard.main()
     assert (status, capsys.readouterr().out) == (0, "")
 
 
@@ -1687,7 +1686,7 @@ def test_hook_crashes_fail_open(
 
     monkeypatch.setattr(guard, "first_refusal", crash)
     monkeypatch.setattr(sys, "stdin", io.StringIO('{"tool_input": {}}'))
-    status = alpha.main(["guard-scripts"], "tbhbdev alpha")
+    status = guard.main()
     assert (status, capsys.readouterr().out) == (0, "")
 
 
@@ -1697,11 +1696,6 @@ def test_deep_nesting_fails_open(
     command = "eval " * 1000 + "echo > ~/.cache/a.sh"
     assert run_hook(monkeypatch, home, bash(home, command)) == 0
     assert capsys.readouterr().out == ""
-
-
-def test_the_command_is_registered() -> None:
-    assert alpha.COMMANDS["guard-scripts"] is alpha.scripts_command
-    assert "guard-scripts" in alpha.USAGE
 
 
 PYTHON_FIRST_LINE = "#!/usr/bin/env -S python3 -I"

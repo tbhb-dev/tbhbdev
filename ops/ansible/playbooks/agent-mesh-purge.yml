@@ -1,0 +1,11 @@
+---
+# Removes the agent mesh keys, config and known hosts from the agent and ops
+# accounts. Each account first logs in to every other agent host with its own
+# key, and a failed login leaves the host untouched. The NAS hosts aren't in
+# this play.
+#   mise run playbook -- playbooks/agent-mesh-purge.yml --check
+- name: Purge the agent mesh
+  hosts: agent_hosts:!windows
+  become: true
+  roles:
+    - agent_mesh_purge

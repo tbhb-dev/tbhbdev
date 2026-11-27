@@ -1,0 +1,36 @@
+---
+# Runs as the account, inside user.yml's become block. None of it reads or
+# changes a private key.
+- name: ssh_config | Install the pinned host keys
+  ansible.builtin.copy:
+    src: "{{ ssh_host_keys_known_hosts_src }}"
+    dest: "{{ ssh_host_keys_known_hosts }}"
+    mode: "0644"
+
+# The block module creates the file when it is missing, at the mode given here.
+- name: ssh_config | Point ssh at the per-host key for the other agent hosts
+  ansible.builtin.blockinfile:  # cspell:disable-line:
+    path: "{{ ssh_host_keys_config }}"
+    create: true
+    mode: "0600"
+    marker: "# {mark} ANSIBLE MANAGED BLOCK ssh_host_keys"
+    block: |
+      Host {{ ssh_host_keys_peers | join(' ') }}
+        IdentityFile ~/.ssh/id_ed25519
+        IdentitiesOnly yes
+        UserKnownHostsFile ~/.ssh/known_hosts_tbhb
+
+- name: ssh_config | Look for the agent mesh config
+  ansible.builtin.stat:
+    path: "{{ ssh_host_keys_mesh_config }}"
+  register: ssh_host_keys_mesh_stat
+
+# Only the one IdentityFile line moves to the per-host key. Every other line,
+# the operator_ed25519 ones included, stays.
+- name: ssh_config | Move the agent mesh config to the per-host key
+  ansible.builtin.replace:
+    path: "{{ ssh_host_keys_mesh_config }}"
+    regexp: '^(\s*)IdentityFile ~/\.ssh/agent-mesh/agent_ed25519\s*$'
+    replace: '\1IdentityFile ~/.ssh/id_ed25519'
+    backup: true
+  when: ssh_host_keys_mesh_stat.stat.exists

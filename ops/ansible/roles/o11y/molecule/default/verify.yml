@@ -1,0 +1,78 @@
+---
+- name: Verify deployment and recovery
+  hosts: all
+  become: true
+  pre_tasks:
+    - name: Gather the overlay root space for preflight
+      ansible.builtin.include_tasks: tasks/mounts.yml
+  tasks:
+    - name: Verify stage safety
+      ansible.builtin.include_tasks: tasks/verify-stage.yml
+
+    - name: Require the first release to be active
+      ansible.builtin.include_tasks: tasks/check-current.yml
+      vars:
+        o11y_test_expected: "{{ o11y_root }}/releases/{{ o11y_release_id }}"
+
+    - name: Prove that the container health gate rejects an unhealthy second release
+      ansible.builtin.include_tasks: tasks/verify-health.yml
+
+    - name: Reject a second release at the readiness gate
+      block:
+        - name: Deploy the second release with failing Grafana readiness
+          ansible.builtin.include_role:
+            name: o11y
+          vars:
+            o11y_release_id: 84485435b4670f1771d535c943d5f87c74af93a8
+            o11y_grafana_root_url: https://grafana.example.invalid/health-failure/
+            # The old release has no TLS, even if today's inventory enables it.
+            o11y_grafana_tls_cert_dir: /missing-grafana-tls
+
+        - name: Fail when the broken release unexpectedly succeeds
+          ansible.builtin.fail:
+            msg: The failing release unexpectedly passed.
+      rescue:
+        - name: Require the health gate failure after successful recovery
+          ansible.builtin.assert:
+            that:
+              - "'Health gate failed.' in ansible_failed_result.msg"
+              - "'The previous release is up and current was restored.' in ansible_failed_result.msg"
+            quiet: true
+
+    - name: Require current to point at the first healthy running release
+      ansible.builtin.include_tasks: tasks/check-current.yml
+      vars:
+        o11y_test_expected: "{{ o11y_root }}/releases/{{ o11y_release_id }}"
+
+    - name: Deploy another healthy release
+      ansible.builtin.include_role:
+        name: o11y
+      vars:
+        o11y_release_id: f889e68973004a85d36018548e10231b075c2cbd
+        o11y_grafana_root_url: https://grafana.example.invalid/probe/
+
+    - name: Require the new release to be active before rollback
+      ansible.builtin.include_tasks: tasks/check-current.yml
+      vars:
+        o11y_test_expected: "{{ o11y_root }}/releases/f889e68973004a85d36018548e10231b075c2cbd"
+        o11y_test_without_healthcheck: true
+
+- name: Run the operator rollback playbook
+  ansible.builtin.import_playbook: ../../../../playbooks/o11y-rollback.yml
+  vars:
+    o11y_grafana_tls_cert_dir: /missing-grafana-tls
+
+- name: Verify explicit rollback and a failed first deployment
+  hosts: all
+  become: true
+  tasks:
+    - name: Require the rollback playbook to restore the first healthy release
+      ansible.builtin.include_tasks: tasks/check-current.yml
+      vars:
+        o11y_test_expected: "{{ o11y_root }}/releases/{{ o11y_release_id }}"
+
+    - name: Verify failure without a previous release
+      ansible.builtin.include_tasks: tasks/verify-empty.yml
+
+    - name: Check secret suppression after all transactions
+      ansible.builtin.include_tasks: tasks/check-secrets.yml

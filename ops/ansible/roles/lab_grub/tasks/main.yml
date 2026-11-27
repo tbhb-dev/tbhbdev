@@ -1,0 +1,11 @@
+---
+# The menu lets the KVM console boot another entry or add
+# systemd.unit=emergency.target for the root break-glass login.
+- name: Show the GRUB menu at boot
+  ansible.builtin.template:
+    src: 90-lab-menu.cfg.j2
+    dest: /etc/default/grub.d/90-lab-menu.cfg
+    owner: root
+    group: root
+    mode: "0644"
+  notify: Regenerate the GRUB config

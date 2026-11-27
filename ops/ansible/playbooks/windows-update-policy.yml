@@ -1,0 +1,11 @@
+---
+# The WSL watchdog and update timing on the Windows agent hosts. There is no
+# Molecule scenario for Windows, so check a run before applying it:
+#   mise run playbook -- playbooks/windows-update-policy.yml --check --diff
+# Ansible reaches the host as the operator over ssh into PowerShell; an
+# administrator's session is already elevated, so no sudo or -K applies.
+- name: Keep WSL running and schedule Windows updates
+  hosts: windows
+  gather_facts: true
+  roles:
+    - windows_update_policy

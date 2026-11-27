@@ -1,0 +1,68 @@
+---
+- name: Verify
+  hosts: all
+  gather_facts: false
+  become: true
+  tasks:
+    - name: Read the Docker service's state
+      ansible.builtin.command:  # noqa: command-instead-of-module
+        cmd: systemctl is-active docker.service
+      register: docker_engine_active
+      changed_when: false
+      failed_when: false
+
+    - name: Read the daemon's runtimes
+      ansible.builtin.command:
+        cmd: docker info --format '{{ '{{json .Runtimes}}' }}'
+      register: docker_engine_runtimes
+      changed_when: false
+
+    - name: Read the daemon's default runtime
+      ansible.builtin.command:
+        cmd: docker info --format '{{ '{{.DefaultRuntime}}' }}'
+      register: docker_engine_default
+      changed_when: false
+
+    - name: Read the daemon's storage driver and root
+      ansible.builtin.command:
+        cmd: docker info --format '{{ '{{.Driver}} {{.DockerRootDir}}' }}'
+      register: docker_engine_storage
+      changed_when: false
+
+    - name: Read the FORWARD chain's policy
+      ansible.builtin.command:
+        cmd: iptables -S FORWARD
+      register: docker_engine_forward
+      changed_when: false
+
+    - name: Read the daemon configuration
+      ansible.builtin.slurp:
+        src: /etc/docker/daemon.json
+      register: docker_engine_daemon_json
+
+    - name: Run a container under runc
+      ansible.builtin.command:
+        cmd: docker run --rm --runtime runc busybox true
+      changed_when: false
+
+    - name: Run a container under the default runtime
+      ansible.builtin.command:
+        cmd: docker run --rm busybox true
+      changed_when: false
+
+    - name: Check Docker and the runtimes
+      vars:
+        docker_engine_config: "{{ docker_engine_daemon_json.content | b64decode | from_json }}"
+      ansible.builtin.assert:
+        that:
+          - docker_engine_active.stdout == 'active'
+          - "'runsc' in docker_engine_runtimes.stdout | from_json"
+          - "'runc' in docker_engine_runtimes.stdout | from_json"
+          - docker_engine_default.stdout == 'runsc'
+          - docker_engine_storage.stdout == 'overlay2 /var/lib/docker'
+          - "'-P FORWARD ACCEPT' in docker_engine_forward.stdout_lines"
+          - docker_engine_config['default-runtime'] == 'runsc'
+          - docker_engine_config.ip == '127.0.0.1'
+          - docker_engine_config.runtimes.runsc.path == '/usr/bin/runsc'
+          - "'runc' not in docker_engine_config.runtimes"
+        quiet: true

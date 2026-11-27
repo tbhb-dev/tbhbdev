@@ -137,15 +137,15 @@ from contextvars import ContextVar
 from dataclasses import dataclass, field
 from pathlib import Path
 from types import MappingProxyType
-from typing import TYPE_CHECKING, cast, override
+from typing import TYPE_CHECKING, cast
 from urllib.parse import quote
 
-import yaml
 from jsonschema import Draft202012Validator
 
 from tbhbdev import userconfig
 from tbhbdev.alpha import identity as agent_identity
 from tbhbdev.alpha import opened, secret_scan, size_gate
+from tbhbdev.alpha import pull_request_frontmatter as frontmatter
 from tbhbdev.alpha.agent import settings as agent_settings
 from tbhbdev.alpha.repo import git as repo_git
 from tbhbdev.alpha.repo import hook_cwd, in_tbhb_dev, read_hook_stdin
@@ -153,8 +153,6 @@ from tbhbdev.alpha.repo_bootstrap import GhError, NotFoundError
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Collection, Mapping, Sequence
-
-    from jsonschema.exceptions import ValidationError
 
 # Each `cast` below carries `pragma: no mutate`: it is a runtime no-op, so no test
 # could tell a mutated type string from the original.
@@ -204,7 +202,6 @@ _TOOL_PATHS: ContextVar[Mapping[tuple[str, bool], str]] = ContextVar(
 # to line 1: a finding on it reads (1, "vale project.HeadingTitleCase: ...").
 TITLE_ALERT = (1, "vale project.HeadingTitleCase")
 HEADING = re.compile(r" {0,3}(#{1,6}) +(\S.*?) *")
-FRONTMATTER = re.compile(r"---\n(?P<yaml>.*?)^---[ \t]*$\n?", re.DOTALL | re.MULTILINE)
 FENCE = re.compile(r" {0,3}(`{3,}|~{3,})")
 COMMENT = re.compile(r"<!--.*?(?:-->|\Z)", re.DOTALL)
 INLINE_CODE = re.compile(r"(`+).+?\1")
@@ -287,59 +284,6 @@ class Block:
     lines: list[Line]
 
 
-class FrontmatterError(ValueError):
-    """The frontmatter block cannot be read."""
-
-
-def keep_text(loader: yaml.SafeLoader, node: yaml.Node) -> str:
-    """Construct a timestamp as the text the author wrote."""
-    return loader.construct_scalar(node)  # pyrefly: ignore[bad-argument-type]
-
-
-class Loader(yaml.SafeLoader):
-    """SafeLoader that keeps timestamps as text and refuses duplicate keys."""
-
-    @override
-    def construct_mapping(
-        self,
-        node: yaml.MappingNode,
-        deep: bool = False,
-    ) -> dict[object, object]:
-        """Refuse a key that appears twice, which plain YAML resolves silently."""
-        keys = [self.construct_object(key, deep=True) for key, _ in node.value]
-        for key in keys:
-            if keys.count(key) > 1:
-                message = f"duplicate key {key!r}"
-                raise yaml.constructor.ConstructorError(
-                    None, None, message, node.start_mark
-                )
-        return super().construct_mapping(node, deep)
-
-
-Loader.add_constructor("tag:yaml.org,2002:timestamp", keep_text)
-
-
-def parse_frontmatter(text: str) -> tuple[object, str]:
-    """Split a draft into its parsed frontmatter (None when absent) and body.
-
-    Raises:
-        FrontmatterError: The block is unterminated or is not valid YAML.
-    """
-    match = FRONTMATTER.match(text)
-    if match is None:
-        if text.startswith("---\n"):
-            message = "unterminated frontmatter"
-            raise FrontmatterError(message)
-        return None, text
-    try:
-        # Loader is a SafeLoader.
-        data: object = yaml.load(match["yaml"], Loader=Loader)  # noqa: S506  # nosec B506
-    except yaml.YAMLError as exc:
-        message = f"invalid YAML: {' '.join(str(exc).split())}"
-        raise FrontmatterError(message) from exc
-    return data, text[match.end() :]
-
-
 @dataclass(frozen=True)
 class Checked:
     """Everything ``check`` learned. ``rendered`` runs from the title line on."""
@@ -398,14 +342,6 @@ def load_schema() -> dict[str, object]:
     """Read the frontmatter schema."""
     text = read_baseline(SCHEMA)
     return cast("dict[str, object]", json.loads(text))  # pragma: no mutate
-
-
-def schema_default(schema: Mapping[str, object], name: str) -> object:
-    """The default the schema declares for a property."""
-    props = cast(
-        "dict[str, dict[str, object]]", schema["properties"]
-    )  # pragma: no mutate
-    return props[name]["default"]
 
 
 def count_words(text: str) -> int:
@@ -612,34 +548,6 @@ def ref_problems(lines: Sequence[Line]) -> list[Problem]:
             for number in BARE_REF.findall(text)
         ]
     return problems
-
-
-def meta_problems(
-    data: object, offset: int, text: str, validator: Draft202012Validator
-) -> list[Problem]:
-    """Validate the frontmatter, pointing each error at its key's line."""
-    if data is None:
-        return []
-    frontmatter = text.splitlines()[:offset]
-    return [
-        (
-            key_line(error, frontmatter),
-            f"frontmatter {error.json_path}: {error.message}",
-        )
-        for error in sorted(
-            validator.iter_errors(data), key=lambda found: found.json_path
-        )
-    ]
-
-
-def key_line(error: ValidationError, frontmatter: Sequence[str]) -> int:
-    """The line of the top-level key an error is about; 1 when it has none."""
-    if not error.absolute_path:
-        return 1
-    key = f"{error.absolute_path[0]}:"
-    return next(
-        (index for index, line in enumerate(frontmatter, 1) if line.startswith(key)), 1
-    )
 
 
 def find_tool(name: str, *, unwrapped: bool = False) -> str:
@@ -895,11 +803,13 @@ def body_problems(
 def check_text(text: str) -> Checked:
     """Validate and lint a draft. The linters run only once there is a title."""
     try:
-        data, body = parse_frontmatter(text)
-    except FrontmatterError as exc:
+        data, body = frontmatter.parse_frontmatter(text)
+    except frontmatter.FrontmatterError as exc:
         return Checked([(1, f"frontmatter: {exc}")])
     offset = text.count("\n") - body.count("\n")
-    problems = meta_problems(data, offset, text, Draft202012Validator(load_schema()))
+    problems = frontmatter.meta_problems(
+        data, offset, text, Draft202012Validator(load_schema())
+    )
     meta = data if isinstance(data, dict) and not problems else {}
     lines, scanned = scan(body.splitlines(), offset + 1)
     problems += scanned
@@ -1050,19 +960,18 @@ def posting_value(env: Mapping[str, str]) -> str | None:
     return agent_identity.format_value(committer.ident.attrs())
 
 
-def default_base() -> str:
+def default_base(*, origin_only: bool = False) -> str:
     """The repository's default branch: the remote's own HEAD, else origin/HEAD.
 
     The remote answers first because origin/HEAD goes stale when the default
     branch moves and a plain fetch leaves it, and a fresh mirror may have none.
 
     Raises:
-        SystemExit: ``GH_REPO`` names a repository that origin does not describe,
-            or neither read answers. No guess stands in, so a draft never
-            targets a wrong base.
+        SystemExit: ``GH_REPO`` overrides origin and ``origin_only`` is false,
+            or neither read answers.
     """
     hint = "; name the base in the draft's frontmatter"
-    if os.environ.get("GH_REPO"):
+    if not origin_only and os.environ.get("GH_REPO"):
         message = f"cannot find the default branch of GH_REPO{hint}"
         raise SystemExit(message)
     code, out = git("ls-remote", "--symref", "origin", "HEAD")
@@ -2226,8 +2135,10 @@ def size_review_allows(
     return False
 
 
-def size_commits(branch: str, base: str, *, dry_run: bool) -> tuple[str, str] | None:
-    """Resolve the base and head, refreshing the tracking ref outside dry runs."""
+def size_commits(
+    branch: str, base: str, *, default_ref: str | None, dry_run: bool
+) -> tuple[str, str] | None:
+    """Resolve the base and head, refreshing the tracking refs outside dry runs."""
     if not dry_run:
         fetch = (
             "fetch",
@@ -2237,8 +2148,12 @@ def size_commits(branch: str, base: str, *, dry_run: bool) -> tuple[str, str] | 
             "--refmap=",
             "origin",
         )
+        default_fetch = ()
+        if default_ref is not None:
+            default = default_ref.removeprefix("refs/remotes/origin/")
+            default_fetch = (f"+refs/heads/{default}:{default_ref}",)
         for prefix in ("refs/heads", "refs/heads/fetched/heads"):
-            if git(*fetch, f"+{prefix}/{branch}:{base}")[0] == 0:
+            if git(*fetch, f"+{prefix}/{branch}:{base}", *default_fetch)[0] == 0:
                 break
         else:
             # A stale tracking ref would count the wrong range, so stop here.
@@ -2259,24 +2174,30 @@ def check_size(
 ) -> None:
     """Count the branch's added lines against the draft's base and flag an excess.
 
-    The base tracking ref is refreshed once, without tags, except in a dry run,
-    which writes no refs. A failed refresh or a count that stays unavailable
-    only warns, for ``pr create`` too, so a broken counter never blocks a valid
-    PR. A dry run reports an excess as a warning and still previews.
+    Refresh the base and, for a stacked draft, the default branch in one fetch
+    without tags. Dry runs write no refs. A failed refresh or count only warns,
+    and a dry run reports an excess as a warning and still previews.
     """
+    explicit_base = "base" in checked.meta
     branch = base_of(checked.meta)
-    base = f"refs/remotes/origin/{branch}"
+    checked.meta.setdefault("base", branch)
     dry_run = getattr(
         args,
         "dry_run",
         False,  # pragma: no mutate -- None is also false.
     )
+    base = f"refs/remotes/origin/{branch}"
     if args.command == "create" and not target_is_origin():
         # gh may open the PR against a repository whose base origin doesn't track.
         message = "size count unavailable: gh may target a repository other than origin"
         print(message, file=sys.stderr)
         return
-    commits = size_commits(branch, base, dry_run=dry_run)
+    default = branch
+    if explicit_base:
+        with contextlib.suppress(SystemExit):
+            default = default_base(origin_only=True)
+    default_ref = f"refs/remotes/origin/{default}" if default != branch else None
+    commits = size_commits(branch, base, default_ref=default_ref, dry_run=dry_run)
     if commits is None:
         return
     base_commit, head = commits
@@ -2284,6 +2205,7 @@ def check_size(
         counts = size_gate.size_counts(
             base,
             "HEAD",
+            default_ref=default_ref,
             scc=_TOOL_PATHS.get().get((SCC, False), SCC),
             git=_TOOL_PATHS.get().get((GIT, False), GIT),
         )
@@ -2332,9 +2254,6 @@ def _run_command(args: argparse.Namespace, env: Mapping[str, str]) -> int:
     """Check the draft and carry out the requested action."""
     checked = read_checked(args.draft)
     if args.command in ("check", "create"):
-        # One read of the default branch feeds the size count, the trailers, and
-        # `gh --base`, so a remote change mid-run can't split them.
-        checked.meta.setdefault("base", base_of(checked.meta))
         check_size(args, checked, env)
     if checked.problems:
         return 1

@@ -1,0 +1,6 @@
+---
+temporal_dev_version: "1.10.1"
+temporal_dev_archive: temporal_cli_{{ temporal_dev_version }}_linux_amd64.tar.gz
+temporal_dev_sha256: 4c1500e2ce2d4de136e5fe8852d9b7f82eb62f19b6b383b3e0c040519a9d20b1
+temporal_dev_install: /usr/local/lib/temporal-{{ temporal_dev_version }}
+temporal_dev_data: /var/lib/temporal-dev
