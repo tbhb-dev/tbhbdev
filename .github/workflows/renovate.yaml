@@ -1,0 +1,345 @@
+# SPDX-License-Identifier: Apache-2.0
+# Copyright Tony Burns
+
+---
+# Self-hosted Renovate for this repository, written inline. It runs Renovate
+# once for the whole repository, and it calls no workflow of another
+# repository. The root renovate.json5 loads the presets from
+# lib/renovate-config in this repository.
+#
+# Credentials: RENOVATE_CLIENT_ID and RENOVATE_PRIVATE_KEY are org secrets of
+# tbhb-dev, the same ones the old per-repository runs used. They reach this
+# job directly, because no reusable workflow sits between them and it.
+#
+# Global-only settings sit in `env:` below. Renovate ignores global-only
+# options in a repository config, so a pull request cannot widen the
+# execution allowlists from the repository's own renovate.json5.
+name: Renovate
+
+on:
+  # A merge to main is when open PRs fall behind, so it runs Renovate at once.
+  # GitHub drops scheduled runs for hours, and this trigger doesn't depend on
+  # the schedule. The concurrency group below queues one pending run.
+  push:
+    branches: [main]
+  schedule:
+    - cron: "7 * * * 1-5"
+    - cron: "7 */2 * * 6,0"
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        type: boolean
+        description: "Log what Renovate would do, change nothing"
+        default: true
+      log_level:
+        type: choice
+        description: "Renovate log level"
+        options: [DEBUG, INFO]
+        default: DEBUG
+      repo_cache:
+        type: choice
+        description: "Repository cache: enabled, disabled or reset (ignore the stored cache, then save a fresh one)"
+        options: [enabled, disabled, reset]
+        default: enabled
+
+permissions:
+  contents: read
+
+jobs:
+  renovate:
+    name: Run self-hosted Renovate
+    runs-on: ubuntu-26.04
+    timeout-minutes: 60
+    # One run at a time. Never cancel: killing Renovate mid-run can leave a
+    # half-pushed branch.
+    concurrency:
+      group: renovate-${{ github.repository }}
+      cancel-in-progress: false
+    permissions:
+      contents: read
+    env:
+      # Renovate's base directory, named for the repository.
+      base_dir: /tmp/renovate/${{ github.event.repository.name }}
+      cache_dir: /tmp/renovate/${{ github.event.repository.name }}/cache/renovate/repository
+      cache_key: renovate-cache
+      # Outside the cached subtree, inside the base directory, which the cache
+      # step opens to the container uid; unique for every run and retry.
+      LOG_FILE: /tmp/renovate/${{ github.event.repository.name }}/${{ github.run_id }}-${{ github.run_attempt }}.ndjson
+      # Tag plus digest pins the Renovate container by content.
+      # renovate: datasource=docker depName=ghcr.io/renovatebot/renovate
+      RENOVATE_IMAGE:
+        ghcr.io/renovatebot/renovate:44.206.2@sha256:d515a99f5d14d1c62b792ee61339d165dd9d20ee82ca9d5379daf639050bab51
+    steps:
+      - name: Harden the runner
+        uses: step-security/harden-runner@1d88384fd173af6ecb012dfd0264a306b711241a  # v2.22.4
+        with:
+          egress-policy: audit
+
+      # GITHUB_TOKEN cannot satisfy Renovate's scope and cannot push workflow
+      # files, so mint a short-lived installation token from the
+      # tbhb-dev-renovate App. The token is scoped to this repository (the
+      # default) and downscoped to the permissions Renovate needs: no
+      # administration, no secrets, no environments.
+      - name: Get token
+        id: token
+        uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
+        with:
+          client-id: ${{ secrets.RENOVATE_CLIENT_ID }}
+          private-key: ${{ secrets.RENOVATE_PRIVATE_KEY }}
+          repositories: ${{ github.event.repository.name }}
+          permission-contents: write
+          permission-pull-requests: write
+          permission-issues: write
+          permission-workflows: write
+          permission-statuses: write
+          permission-checks: write
+          permission-vulnerability-alerts: read
+
+      # Shared presets enable automerge. GitHub must merge only behind an
+      # approval and status-check ruleset, so a repo without one must not run.
+      - name: Audit automerge rulesets
+        env:
+          GH_TOKEN: ${{ steps.token.outputs.token }}
+          REPO: ${{ github.repository }}
+        run: |
+          python3 - <<'PYCODE'
+          import json
+          import os
+          from pathlib import Path
+          import re
+          import subprocess
+          import sys
+          import tempfile
+          from urllib.parse import urlparse
+
+          def fail(message):
+              print(f"::error::{message}")
+              sys.exit(1)
+
+          def api(endpoint):
+              # curl takes the token on stdin, accepts only https, and follows no redirects.
+              root = os.environ.get("GITHUB_API_URL", "https://api.github.com")
+              parts = urlparse(root)
+              # The allowlist keeps quotes, whitespace, control characters, and "@" out of the curl config line.
+              if (not re.fullmatch(r"[A-Za-z0-9:/._~-]+", root) or parts.scheme != "https" or not parts.hostname
+                      or parts.username is not None or parts.password is not None):
+                  fail("Automerge audit refuses a GitHub API URL that is not plain https")
+              token = os.environ["GH_TOKEN"]
+              if not re.fullmatch(r"[A-Za-z0-9_.-]+", token):
+                  fail("Automerge audit: the job token has unexpected characters")
+              limit = 8 * 1024 * 1024
+              config = "\n".join([
+                  f'url = "{root}/{endpoint}"',
+                  f'header = "Authorization: Bearer {token}"',
+                  'header = "Accept: application/vnd.github+json"',
+                  'header = "X-GitHub-Api-Version: 2022-11-28"',
+              ]) + "\n"
+              with tempfile.TemporaryDirectory() as directory:
+                  output = Path(directory) / "reply"
+                  try:
+                      run = subprocess.run(
+                          [
+                              "curl", "--proto", "=https", "--max-time", "60", "--max-filesize", str(limit),
+                              "--fail", "--silent", "--show-error", "--config", "-", "--output", str(output),
+                              "--write-out", "%{http_code}",
+                          ],
+                          input=config, capture_output=True, text=True, timeout=70, check=False,
+                      )
+                  except subprocess.TimeoutExpired:
+                      fail("Could not verify automerge ruleset protection (the GitHub API answered too slowly)")
+                  except OSError:
+                      fail("Automerge audit could not run curl")
+                  # Only the status or exit code: remote text must not reach workflow commands.
+                  code = run.stdout.strip()
+                  if run.returncode != 0 or code != "200" or (output.exists() and output.stat().st_size > limit):
+                      if run.returncode in (0, 22) and re.fullmatch(r"[0-9]{3}", code) and code != "000":
+                          detail = f"HTTP {code}"
+                      else:
+                          detail = f"curl exit {run.returncode}" if run.returncode != 0 else "unexpected status"
+                      fail(f"Could not verify automerge ruleset protection ({detail})")
+                  try:
+                      return json.loads(output.read_bytes())
+                  except (ValueError, RecursionError):
+                      fail("Could not verify automerge ruleset protection (unreadable data)")
+
+          try:
+              repo = os.environ["REPO"]
+              # Only active rules are returned, including inherited rulesets.
+              pages = []
+              for number in range(1, 11):
+                  page = api(f"repos/{repo}/rules/branches/main?per_page=100&page={number}")
+                  if not isinstance(page, list):
+                      fail("Could not verify default branch rules")
+                  pages.append(page)
+                  if len(page) < 100:
+                      break
+              else:
+                  fail("Could not verify default branch rules")
+              rules = [rule for page in pages for rule in page]
+              approvals = [
+                  (rule.get("parameters") or {}).get("required_approving_review_count", 0)
+                  for rule in rules if rule.get("type") == "pull_request"
+              ]
+              if not any(type(count) is int and count >= 1 for count in approvals):
+                  fail("Default branch has no approval rule requiring at least one review")
+              if not any(rule.get("type") == "required_status_checks" for rule in rules):
+                  fail("Default branch has no status-check rule")
+              ids = set()
+              for rule in rules:
+                  ruleset_id = rule.get("ruleset_id")
+                  if type(ruleset_id) is not int or ruleset_id < 1:
+                      fail("Could not verify ruleset bypass protection")
+                  ids.add(ruleset_id)
+              for ruleset_id in sorted(ids):
+                  ruleset = api(f"repos/{repo}/rulesets/{ruleset_id}")
+                  if ruleset.get("current_user_can_bypass") != "never":
+                      fail(f"the Renovate App can bypass ruleset {ruleset_id}")
+              print(
+                  "Automerge ruleset audit: approval and status checks required, "
+                  f"{len(ids)} rulesets cannot be bypassed"
+              )
+          except (ValueError, KeyError, TypeError, AttributeError, RecursionError):
+              fail("Could not verify automerge ruleset protection")
+          PYCODE
+
+      - name: Restore repository cache
+        if: inputs.repo_cache != 'disabled' && inputs.repo_cache != 'reset'
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ env.cache_dir }}
+          key: ${{ env.cache_key }}-${{ github.event.repository.name }}+${{ github.run_id }}-${{ github.run_attempt }}
+          restore-keys: ${{ env.cache_key }}-${{ github.event.repository.name }}+
+
+      # The Renovate container runs as uid 12021 and writes the cache. The
+      # runner user owns the directory and any restored cache, so it opens
+      # them to every uid instead of a chown: the tbhb-dev private runners
+      # block sudo. A pool runner's /tmp can also hold files left by an earlier
+      # run under uid 12021. The runner user can't chmod those, and that uid
+      # can already write them, so only the runner's own files are opened.
+      - name: Prepare cache directory
+        run: |
+          mkdir -p "${cache_dir}"
+          rm -f "${LOG_FILE}"
+          runner_uid=$(id -u)
+          find "${base_dir}" -user "${runner_uid}" -exec chmod a+rwX {} +
+
+      # GITHUB_COM_TOKEN is deliberately not set. The platform token already
+      # authenticates github.com reads (presets, changelogs) and the presets
+      # are public. Add it only if a run reports github.com rate limiting.
+      - name: Self-hosted Renovate
+        id: renovate
+        uses: renovatebot/github-action@acdd6bda8b035c99ce59d5675816af2aa65a1774 # v46.3.14
+        env:
+          LOG_LEVEL: ${{ inputs.log_level || 'DEBUG' }}
+          # Info includes the completion marker even on a clean run.
+          LOG_FILE_LEVEL: info
+          RENOVATE_REPOSITORIES: ${{ github.repository }}
+          RENOVATE_BASE_DIR: ${{ env.base_dir }}
+          RENOVATE_DRY_RUN: ${{ inputs.dry_run && 'full' || '' }}
+          RENOVATE_ONBOARDING: "false"
+          RENOVATE_REQUIRE_CONFIG: required
+          RENOVATE_USERNAME: tbhb-dev-renovate[bot]
+          RENOVATE_GIT_AUTHOR: "tbhb-dev-renovate[bot] <289255489+tbhb-dev-renovate[bot]@users.noreply.github.com>"
+          RENOVATE_PR_CONCURRENT_LIMIT: "0"
+          RENOVATE_PR_HOURLY_LIMIT: "0"
+          RENOVATE_REPOSITORY_CACHE: ${{ inputs.repo_cache == 'disabled' && 'disabled' || 'enabled' }}
+          # The only unsafe execution: `bazel mod deps` refreshes
+          # MODULE.bazel.lock after a bazel_dep, git_override or
+          # .bazelversion bump. `mise` is NOT listed: allowlisting it turns
+          # mise's safe mode off.
+          RENOVATE_ALLOWED_UNSAFE_EXECUTIONS: '["bazelModDeps"]'
+          # The only post-upgrade commands, anchored so nothing else matches.
+          # rules-cloudflare.json5 attaches both commands to Wrangler updates
+          # and its group and runs them in the Cloudflare smoke workspace.
+          RENOVATE_ALLOWED_COMMANDS: '["^bazelisk run //:worker_types_test\\.update$",
+            "^bazelisk run //nested:worker_types_test\\.update$"]'
+          # The custom.dugite datasource calls api.github.com with hostType
+          # "custom", which the platform token does not cover. Registered
+          # host-rule tokens are sanitized from Renovate's logs. Keep this
+          # value out of `run:` scripts.
+          RENOVATE_HOST_RULES: >-
+            [{"matchHost":"api.github.com","hostType":"custom",
+            "token":"${{ steps.token.outputs.token }}"}]
+        with:
+          renovate-image: ${{ env.RENOVATE_IMAGE }}
+          token: ${{ steps.token.outputs.token }}
+          additional-env-list: |
+            LOG_FILE
+            LOG_FILE_LEVEL
+
+      - name: Check Renovate log
+        id: check-renovate-log
+        if: always() && steps.renovate.outcome != 'skipped'
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ ! -f "${LOG_FILE}" ]]; then
+            echo '::error::Renovate log file is missing'
+            exit 1
+          fi
+          if [[ ! -s "${LOG_FILE}" ]]; then
+            echo '::error::Renovate log file is empty'
+            exit 1
+          fi
+
+          # Suppress parser diagnostics: they can quote private log contents.
+          if ! report=$(jq -s '
+            [
+              # Branch updates failed when the runner ran out of disk.
+              "Error updating branch",
+              # Lockfile updates failed in bazel mod deps or install-tool bazelisk.
+              "artifactErrors",
+              # The same failed Bazel lockfile updates.
+              "Failed to update MODULE.bazel.lock"
+            ] as $failures
+            | if length == 0 or any(.[];
+                type != "object" or
+                (.level | type) != "number" or (.msg | type) != "string")
+              then error("Invalid log records") else . end
+            | {
+                entries: length,
+                completed: any(.[]; .msg == "Repository finished"),
+                failures: [
+                  .[] | . as $entry
+                  | ($failures | map(select(. == $entry.msg)) | .[0]) as $failure
+                  | select($failure != null or .level >= 50)
+                  | {
+                      label: (if .level >= 50 then "error-level entry" else $failure end),
+                      branch: (if (.branch | type) == "string" then
+                        if (.branch | test("^[A-Za-z0-9._/-]{1,200}$"))
+                          and (.branch | contains("\n") | not)
+                        then .branch else "(no branch)" end
+                        else "(no branch)" end)
+                    }
+                ]
+              }
+          ' "${LOG_FILE}" 2>/dev/null); then
+            echo '::error::Renovate log file is unparseable'
+            exit 1
+          fi
+
+          # Only fixed labels and validated branches can reach annotations.
+          jq -r '.failures[] | "::error::\(.label) (branch: \(.branch))"' <<< "${report}"
+          completed=$(jq -r '.completed' <<< "${report}")
+          failure_count=$(jq '.failures | length' <<< "${report}")
+          if [[ ${completed} != true ]]; then
+            echo '::error::Renovate log is missing the end-of-run marker'
+            exit 1
+          fi
+          if [[ ${failure_count} -gt 0 ]]; then
+            exit 1
+          fi
+          jq -r '"Renovate log check: \(.entries) entries, \(.failures | length) failures"' <<< "${report}"
+
+      - name: Save repository cache
+        if: always() && inputs.repo_cache != 'disabled'
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ env.cache_dir }}
+          key: ${{ env.cache_key }}-${{ github.event.repository.name }}+${{ github.run_id }}-${{ github.run_attempt }}
+
+      # The runners are shared self-hosted pools, so the log must not outlive
+      # the job.
+      - name: Remove Renovate log
+        if: always()
+        run: rm -f "${LOG_FILE}"

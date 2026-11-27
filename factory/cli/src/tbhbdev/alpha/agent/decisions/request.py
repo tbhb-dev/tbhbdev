@@ -62,10 +62,8 @@ _FIELDS = frozenset(
 
 # Older requests can omit fields with defaults.
 _REQUIRED_FIELDS = _FIELDS - {
-    "fetch_refs",
     "start_ref",
     "max_concurrent_runs",
-    "expect_commit",
     "no_commit",
 }
 
@@ -108,11 +106,7 @@ def _check_harness(request: RunRequest) -> None:
         _fail("claude_profile", "is required for a claude run")
     if not claude and request.claude_profile is not None:
         _fail("claude_profile", "applies only to a claude run")
-    if (
-        request.harness is Harness.AGY
-        and request.kind is RunKind.EXEC
-        and request.timeout is None
-    ):
+    if request.harness is Harness.AGY and request.timeout is None:
         _fail("timeout", "is required for an agy exec run")
 
 
@@ -170,14 +164,8 @@ def check_start_ref(request: RunRequest) -> None:
         _fail("--start-ref", "must also appear in --fetch-ref")
 
 
-def validate(
-    request: RunRequest,
-    *,
-    host_allows_unsandboxed: bool,  # noqa: ARG001 -- accepted for older callers
-) -> None:
+def validate(request: RunRequest) -> None:
     """Refuse REQUEST unless every field and every rule holds.
-
-    HOST_ALLOWS_UNSANDBOXED remains accepted for older callers and has no effect.
 
     Raises:
         Invalid: The message names the field.
@@ -294,7 +282,7 @@ def _fetch_refs(value: object) -> tuple[str, ...]:
     return tuple(refs)
 
 
-def parse(data: dict[str, object], *, host_allows_unsandboxed: bool) -> RunRequest:
+def parse(data: dict[str, object]) -> RunRequest:
     """The request DATA holds, the JSON object that `to_dict` writes.
 
     DATA must hold `v` and every field, and no other. `validate` then checks
@@ -339,11 +327,11 @@ def parse(data: dict[str, object], *, host_allows_unsandboxed: bool) -> RunReque
         unsandboxed=_flag(data, "unsandboxed"),
         authorized_by=_maybe_text(data, "authorized_by"),
         startup_deadline_seconds=_number(data, "startup_deadline_seconds"),
-        fetch_refs=_fetch_refs(data.get("fetch_refs", [])),
+        fetch_refs=_fetch_refs(data["fetch_refs"]),
         start_ref=_maybe_text(data, "start_ref"),
         max_concurrent_runs=_maybe_number(data, "max_concurrent_runs"),
         expect_commit=_flag(data, "expect_commit"),
         no_commit=_flag(data, "no_commit"),
     )
-    validate(request, host_allows_unsandboxed=host_allows_unsandboxed)
+    validate(request)
     return request

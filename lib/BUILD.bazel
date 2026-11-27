@@ -18,7 +18,10 @@ package_group(
 
 filegroup(
     name = "repo_files",
-    srcs = glob(["**"]) + ["//lib/telemetry:repo_files"],
+    srcs = glob(["**"]) + [
+        "//lib/renovate-config:repo_files",
+        "//lib/telemetry:repo_files",
+    ],
     visibility = ["//:__pkg__"],
 )
 

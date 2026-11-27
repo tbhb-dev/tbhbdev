@@ -11,19 +11,6 @@ filegroup(
 )
 
 cli_py_test(
-    name = "test_policy_environment_io",
-    srcs = ["test_policy_environment_io.py"],
-    imports = ["../../../.."],
-    deps = [
-        ":conftest",
-        "//factory/cli/src/tbhbdev/alpha/agent:model",
-        "//factory/cli/tests:conftest",
-        "//factory/cli/tests:policy_example",
-        "//factory/cli/tests/integration/alpha/agent:conftest",
-    ],
-)
-
-cli_py_test(
     name = "test_remote_cleanup",
     srcs = ["test_remote_cleanup.py"],
     imports = ["../../../.."],
@@ -106,12 +93,12 @@ cli_py_test(
     imports = ["../../../.."],
     deps = [
         ":conftest",
-        "//factory/cli/src/tbhbdev/alpha/agent/decisions:policy",
         "//factory/cli/src/tbhbdev/alpha/agent/decisions:remote_cleanup",
         "//factory/cli/src/tbhbdev/alpha/agent/decisions:remote_host",
         "//factory/cli/src/tbhbdev/alpha/agent/decisions:remote_inspection",
         "//factory/cli/src/tbhbdev/alpha/agent/decisions:remote_run",
         "//factory/cli/src/tbhbdev/alpha/agent/decisions:remote_shell",
+        "//factory/cli/src/tbhbdev/alpha/agent/run_host:environment",
         "//factory/cli/tests:agent_driver_example",
         "//factory/cli/tests:agent_example",
         "//factory/cli/tests:conftest",

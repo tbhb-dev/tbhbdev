@@ -1,0 +1,40 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright Tony Burns
+
+{
+  $schema: "https://docs.renovatebot.com/renovate-schema.json",
+
+  // The monorepo extends this preset after bazel.json5.
+  packageRules: [
+    // A wrangler bump that moves workerd changes the generated types for both
+    // smoke Workers. Both targets run from the smoke workspace. A human
+    // merges these PRs until the reviews App can approve the generated files.
+    // A grouped branch takes its tasks from the first-sorted member, so
+    // every package in the group carries the tasks even outside cloudflare/.
+    {
+      description: "bumps in the wrangler group regenerate the smoke Workers' types in-branch",
+      automerge: false,
+      matchPackageNames: [
+        "vitest",
+        "@vitest/**",
+        "@cloudflare/vitest-plugin",
+        "wrangler",
+        "playwright",
+        "playwright-core",
+      ],
+      postUpgradeTasks: {
+        commands: [
+          "bazelisk run //:worker_types_test.update",
+          "bazelisk run //nested:worker_types_test.update",
+        ],
+        workingDirTemplate: "lib/rules/cloudflare/e2e/smoke",
+        fileFilters: [
+          "lib/rules/cloudflare/e2e/smoke/worker-configuration.d.ts",
+          "lib/rules/cloudflare/e2e/smoke/nested/worker-configuration.d.ts",
+        ],
+        executionMode: "branch",
+        installTools: { bazelisk: {} },
+      },
+    },
+  ],
+}

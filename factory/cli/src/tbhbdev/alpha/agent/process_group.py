@@ -14,7 +14,7 @@ import time
 from contextlib import contextmanager, suppress
 from dataclasses import asdict, dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
 from tbhbdev.alpha.agent import host_tools
 from tbhbdev.alpha.agent.decisions.run_state import Group
@@ -214,7 +214,6 @@ class Launch:
     env: dict[str, str]
     cwd: str
     streams: tuple[IO[str] | int | None, IO[str] | int | None, IO[str] | int | None]
-    terminal: int | None
 
 
 def launch(
@@ -223,16 +222,15 @@ def launch(
     env: dict[str, str],
     cwd: str,
     streams: tuple[IO[str] | int | None, IO[str] | int | None, IO[str] | int | None],
-    terminal: int | None,
 ) -> subprocess.Popen[str]:
     """Pass the exact policy environment and give the harness its own group."""
-    return launch_owned(Launch(command, env, cwd, streams, terminal))
+    return launch_owned(Launch(command, env, cwd, streams))
 
 
 def launch_owned(
     spec: Launch, *, started: Callable[[subprocess.Popen[str]], None] | None = None
 ) -> subprocess.Popen[str]:
-    """Transfer cleanup ownership before terminal setup can fail."""
+    """Transfer cleanup ownership as soon as a child starts."""
     stdin, stdout, stderr = spec.streams
     child = None
     try:
@@ -245,14 +243,10 @@ def launch_owned(
                 stdout=stdout,
                 stderr=stderr,
                 text=True,
-                start_new_session=spec.terminal is None,
-                process_group=0 if spec.terminal is not None else None,
+                start_new_session=True,
             )
             if started is not None:
                 started(child)
-            if spec.terminal is not None:
-                foreground(spec.terminal, child.pid)
-                _signal(child.pid, signal.SIGCONT)
     except BaseException:
         if child is not None and started is None:
             with ignore_signals():
@@ -261,14 +255,6 @@ def launch_owned(
         raise
     else:
         return child
-
-
-def foreground(terminal: int, pgid: int) -> None:
-    previous = signal.signal(signal.SIGTTOU, signal.SIG_IGN)
-    try:
-        os.tcsetpgrp(terminal, pgid)
-    finally:
-        signal.signal(signal.SIGTTOU, previous)
 
 
 def prepare_child(connection: Connection, operation: Callable[[], object]) -> None:
@@ -297,14 +283,14 @@ def worker_pid(worker: BaseProcess) -> int:
     return pid
 
 
-def prepare(
-    operation: Callable[[], object],
+def prepare[Result](
+    operation: Callable[[], Result],
     files: RunFiles,
     deadline: float,
     grace: float,
     *,
     clock: Callable[[], float] = time.monotonic,
-) -> object:
+) -> Result:
     """Bound all setup, including blocking library reads, by one deadline.
 
     A setup worker leads the recorded group so stopping a hung library read
@@ -333,7 +319,7 @@ def prepare(
                 or "run preparation failed; check the clone and credential references"
             )
             raise Invalid(message)
-        return result
+        return cast("Result", result)
     finally:
         with ignore_signals():
             parent.close()

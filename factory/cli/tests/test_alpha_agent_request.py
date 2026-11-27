@@ -52,7 +52,7 @@ CLAUDE: Data = {
 AGY: Data = {**BUILD, "harness": "agy", "timeout": 900}
 FULL: Data = {
     **REVIEW,
-    "kind": "start",
+    "kind": "exec",
     "repo": "git.example.com/example-org/example-repo",
     "harness": "claude",
     "claude_profile": "Primary",
@@ -79,9 +79,9 @@ def made(base: Data, **changes: object) -> Data:
     return data
 
 
-def refused(data: Data, *, host: bool = True) -> str:
+def refused(data: Data) -> str:
     with pytest.raises(Invalid) as caught:
-        request.parse(data, host_allows_unsandboxed=host)
+        request.parse(data)
     return str(caught.value)
 
 
@@ -91,15 +91,15 @@ def refused(data: Data, *, host: bool = True) -> str:
     ids=lambda d: str(d["kind"]),
 )
 def test_round_trips_through_json(data: Data) -> None:
-    parsed = request.parse(data, host_allows_unsandboxed=True)
+    parsed = request.parse(data)
     wire = json.loads(json.dumps(request.to_dict(parsed)))
     assert wire == data
-    assert request.parse(wire, host_allows_unsandboxed=True) == parsed
+    assert request.parse(wire) == parsed
 
 
 def test_parse_builds_every_field() -> None:
-    assert request.parse(FULL, host_allows_unsandboxed=False) == model.RunRequest(
-        kind=model.RunKind.START,
+    assert request.parse(FULL) == model.RunRequest(
+        kind=model.RunKind.EXEC,
         repo="git.example.com/example-org/example-repo",
         commit=COMMIT,
         harness=model.Harness.CLAUDE,
@@ -120,15 +120,13 @@ def test_parse_builds_every_field() -> None:
 
 
 def test_to_dict_holds_the_version_and_every_field() -> None:
-    parsed = request.parse(BUILD, host_allows_unsandboxed=False)
+    parsed = request.parse(BUILD)
     assert request.to_dict(parsed) == BUILD
     assert model.REQUEST_VERSION == 2
 
 
 def test_to_dict_does_not_validate() -> None:
-    parsed = dataclasses.replace(
-        request.parse(BUILD, host_allows_unsandboxed=False), repo="../x"
-    )
+    parsed = dataclasses.replace(request.parse(BUILD), repo="../x")
     assert request.to_dict(parsed)["repo"] == "../x"
 
 
@@ -159,26 +157,11 @@ def test_missing_fields_are_named() -> None:
     [
         k
         for k in BUILD
-        if k not in {"v", "fetch_refs", "max_concurrent_runs", "expect_commit"}
+        if k not in {"v", "start_ref", "max_concurrent_runs", "no_commit"}
     ],
 )
 def test_each_field_is_required(key: str) -> None:
     assert refused(made(BUILD, **{key: MISSING})) == f"request is missing fields: {key}"
-
-
-def test_a_request_saved_before_fetch_refs_still_loads() -> None:
-    parsed = request.parse(
-        made(BUILD, fetch_refs=MISSING), host_allows_unsandboxed=False
-    )
-    assert parsed.fetch_refs == ()
-    assert request.to_dict(parsed)["fetch_refs"] == []
-
-
-def test_a_request_saved_before_expect_commit_still_loads() -> None:
-    parsed = request.parse(
-        made(BUILD, expect_commit=MISSING), host_allows_unsandboxed=False
-    )
-    assert parsed.expect_commit is False
 
 
 def test_expect_commit_requires_a_build() -> None:
@@ -241,7 +224,7 @@ def test_flags_must_be_booleans(key: str, bad: object) -> None:
 @pytest.mark.parametrize(
     ("key", "names"),
     [
-        ("kind", "exec, start"),
+        ("kind", "exec"),
         ("harness", "codex, claude, agy"),
         ("profile", "build, review"),
     ],
@@ -254,7 +237,7 @@ def test_choices_are_refused(key: str, names: str, bad: object) -> None:
 @pytest.mark.parametrize("repo", ["../x", "/o/r", "r", "o/r/x/y", "o/r s"])
 def test_repo_uses_the_repo_rules(repo: str) -> None:
     with pytest.raises(Invalid) as caught:
-        request.parse(made(BUILD, repo=repo), host_allows_unsandboxed=False)
+        request.parse(made(BUILD, repo=repo))
     assert str(caught.value).startswith(f"repo {repo!r} ")
 
 
@@ -262,18 +245,12 @@ def test_repo_uses_the_repo_rules(repo: str) -> None:
     "repo", ["example-org/example-repo", "git.example.com/o/r", "o/.github"]
 )
 def test_repo_may_use_either_form(repo: str) -> None:
-    assert (
-        request.parse(made(BUILD, repo=repo), host_allows_unsandboxed=False).repo
-        == repo
-    )
+    assert request.parse(made(BUILD, repo=repo)).repo == repo
 
 
 @pytest.mark.parametrize("commit", [COMMIT, COMMIT_256])
 def test_commit_may_be_sha1_or_sha256(commit: str) -> None:
-    assert (
-        request.parse(made(REVIEW, commit=commit), host_allows_unsandboxed=False).commit
-        == commit
-    )
+    assert request.parse(made(REVIEW, commit=commit)).commit == commit
 
 
 @pytest.mark.parametrize(
@@ -337,7 +314,7 @@ def test_a_review_run_needs_a_commit_and_a_build_run_has_none() -> None:
 )
 def test_field_formats(key: str, good: str, bad: str, rule: str) -> None:
     key_name = key
-    parsed = request.parse(made(BUILD, **{key: good}), host_allows_unsandboxed=False)
+    parsed = request.parse(made(BUILD, **{key: good}))
     assert request.to_dict(parsed)[key_name] == good
     assert refused(made(BUILD, **{key: bad})) == f"request {key} must match {rule}"
 
@@ -349,18 +326,13 @@ def test_claude_profile_format() -> None:
     assert refused(made(CLAUDE, claude_profile="")) == (
         f"request claude_profile must match {NAME_RULE}"
     )
-    parsed = request.parse(
-        made(CLAUDE, claude_profile="a" * 64), host_allows_unsandboxed=False
-    )
+    parsed = request.parse(made(CLAUDE, claude_profile="a" * 64))
     assert parsed.claude_profile == "a" * 64
 
 
 @pytest.mark.parametrize("reason", ["x", "swift-macos", "a b, c.", "é", "a" * 200])
 def test_reason_is_one_printable_line(reason: str) -> None:
-    assert (
-        request.parse(made(CLAUDE, reason=reason), host_allows_unsandboxed=False).reason
-        == reason
-    )
+    assert request.parse(made(CLAUDE, reason=reason)).reason == reason
 
 
 @pytest.mark.parametrize("reason", ["", " ", "\t", "a\nb", "a\x00", "a" * 201, "a\x7f"])
@@ -378,9 +350,7 @@ def test_durations_must_be_positive(key: str, bad: int) -> None:
 
 
 def test_one_second_is_a_valid_duration() -> None:
-    parsed = request.parse(
-        made(AGY, timeout=1, startup_deadline_seconds=1), host_allows_unsandboxed=False
-    )
+    parsed = request.parse(made(AGY, timeout=1, startup_deadline_seconds=1))
     assert (parsed.timeout, parsed.startup_deadline_seconds) == (1, 1)
 
 
@@ -392,7 +362,6 @@ def test_a_claude_run_needs_a_reason_and_a_profile() -> None:
     assert refused(made(CLAUDE, claude_profile=None)) == (
         "request claude_profile is required for a claude run"
     )
-    assert request.parse(made(CLAUDE, kind="start"), host_allows_unsandboxed=False)
 
 
 @pytest.mark.parametrize("harness", ["codex", "agy"])
@@ -402,11 +371,8 @@ def test_only_a_claude_run_has_a_claude_profile(harness: str) -> None:
 
 
 def test_other_harnesses_need_no_reason() -> None:
-    assert request.parse(BUILD, host_allows_unsandboxed=False).reason is None
-    assert (
-        request.parse(made(AGY, reason="why"), host_allows_unsandboxed=False).reason
-        == "why"
-    )
+    assert request.parse(BUILD).reason is None
+    assert request.parse(made(AGY, reason="why")).reason == "why"
 
 
 def test_an_agy_exec_run_needs_a_timeout() -> None:
@@ -414,11 +380,8 @@ def test_an_agy_exec_run_needs_a_timeout() -> None:
         refused(made(AGY, timeout=None))
         == "request timeout is required for an agy exec run"
     )
-    assert request.parse(
-        made(AGY, kind="start", timeout=None), host_allows_unsandboxed=False
-    )
-    assert request.parse(made(BUILD, timeout=None), host_allows_unsandboxed=False)
-    assert request.parse(made(CLAUDE, timeout=None), host_allows_unsandboxed=False)
+    assert request.parse(made(BUILD, timeout=None))
+    assert request.parse(made(CLAUDE, timeout=None))
 
 
 @pytest.mark.parametrize(
@@ -434,9 +397,7 @@ def test_an_agy_exec_run_needs_a_timeout() -> None:
     ],
 )
 def test_unsandboxed_authorization_forms(authorization: str) -> None:
-    parsed = request.parse(
-        made(UNSANDBOXED, authorized_by=authorization), host_allows_unsandboxed=True
-    )
+    parsed = request.parse(made(UNSANDBOXED, authorized_by=authorization))
     assert parsed.unsandboxed
     assert parsed.authorized_by == authorization
 
@@ -475,20 +436,6 @@ def test_unsandboxed_refuses_other_authorizations(authorization: str) -> None:
     )
 
 
-@pytest.mark.parametrize("host", [False, True])
-@pytest.mark.parametrize("full", [False, True])
-@pytest.mark.parametrize("authorization", [None, "o/r#1"])
-def test_unsandboxed_needs_no_host_flag_or_authorization(
-    host: bool, full: bool, authorization: str | None
-) -> None:
-    parsed = request.parse(
-        made(BUILD, unsandboxed=full, authorized_by=authorization),
-        host_allows_unsandboxed=host,
-    )
-    assert parsed.unsandboxed is full
-    assert parsed.authorized_by == authorization
-
-
 @pytest.mark.parametrize("base", [BUILD, CLAUDE, AGY], ids=["codex", "claude", "agy"])
 @pytest.mark.parametrize("profile", ["build", "review"])
 def test_unsandboxed_accepts_every_harness_and_profile(
@@ -501,35 +448,26 @@ def test_unsandboxed_accepts_every_harness_and_profile(
         unsandboxed=True,
         authorized_by="o/r#1",
     )
-    assert request.parse(data, host_allows_unsandboxed=True).unsandboxed
-
-
-def test_the_host_flag_does_not_matter_without_unsandboxed() -> None:
-    assert request.parse(BUILD, host_allows_unsandboxed=True)
-    assert request.parse(BUILD, host_allows_unsandboxed=False)
+    assert request.parse(data).unsandboxed
 
 
 def test_validate_checks_a_built_request() -> None:
-    built = request.parse(BUILD, host_allows_unsandboxed=False)
-    request.validate(built, host_allows_unsandboxed=False)
+    built = request.parse(BUILD)
+    request.validate(built)
     with pytest.raises(Invalid, match="request model must match"):
-        request.validate(
-            dataclasses.replace(built, model="a b"), host_allows_unsandboxed=False
-        )
+        request.validate(dataclasses.replace(built, model="a b"))
     unsandboxed = dataclasses.replace(built, unsandboxed=True)
-    request.validate(unsandboxed, host_allows_unsandboxed=False)
+    request.validate(unsandboxed)
 
 
 def test_the_request_holds_no_credential_field() -> None:
     names = {field.name for field in dataclasses.fields(model.RunRequest)}
     assert not {n for n in names if "token" in n or "secret" in n or "key" in n}
-    assert set(
-        request.to_dict(request.parse(BUILD, host_allows_unsandboxed=False))
-    ) == (set(BUILD))
+    assert set(request.to_dict(request.parse(BUILD))) == (set(BUILD))
 
 
 def test_request_v2_contract() -> None:
-    parsed = request.parse(BUILD, host_allows_unsandboxed=False)
+    parsed = request.parse(BUILD)
     assert request.to_dict(parsed) == BUILD
     assert refused({**BUILD, "v": 1}).startswith("request v 1 is not a supported")
 

@@ -12,7 +12,6 @@ from typing import cast
 import yaml
 from jsonschema import Draft202012Validator
 
-from tbhbdev import content
 from tbhbdev.alpha import review_doc, review_policy, review_threads
 from tbhbdev.alpha.pull_request import attribution as pr_attribution
 from tbhbdev.alpha.pull_request import body as pr_body
@@ -21,6 +20,7 @@ from tbhbdev.alpha.pull_request import github as pr_github
 from tbhbdev.alpha.pull_request import prose as pr_prose
 from tbhbdev.alpha.pull_request import repository as pr_repository
 from tbhbdev.alpha.pull_request import tools as pr_tools
+from tbhbdev.content_review import check_review
 
 SCHEMA = {
     "$schema": "https://json-schema.org/draft/2020-12/schema",
@@ -164,9 +164,7 @@ def check_text(text: str, number: int, *, lint: bool = True) -> list[pr_body.Pro
         return problems
     fields = cast("dict[str, object]", data)
     first = offset + 1
-    problems = [
-        (first, why) for why in content.check_review(body, event=str(fields["event"]))
-    ]
+    problems = [(first, why) for why in check_review(body, event=str(fields["event"]))]
     return lint_body(body, first) if lint and not problems else problems
 
 
@@ -252,9 +250,7 @@ def check_document(text: str, number: int, *, lint: bool) -> list[pr_body.Proble
     except review_doc.ReviewError as exc:
         return [(1, str(exc))]
     first = text.count("\n") - doc.body.count("\n") + 1
-    problems = [
-        (first, why) for why in content.check_review(doc.body, metadata=doc.metadata)
-    ]
+    problems = [(first, why) for why in check_review(doc.body, metadata=doc.metadata)]
     return lint_body(doc.body, first) if lint and not problems else problems
 
 

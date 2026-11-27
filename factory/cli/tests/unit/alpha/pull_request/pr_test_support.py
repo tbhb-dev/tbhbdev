@@ -46,9 +46,6 @@ here = os.path.dirname(os.path.abspath(__file__))
 name = os.path.basename(__file__).removesuffix(".py")
 spec = json.load(open(os.path.join(here, name + ".spec")))
 called = " ".join(sys.argv[1:])
-if called == "--version" and spec["version"] is not None:
-    print(f"{{name}} version {{spec['version']}}")
-    sys.exit(0)
 cases = spec.get("cases", {{}})
 if called == "pr view --json number,state,url":
     missing = {{"rc": 1, "stdout": "", "stderr": "No Pull Requests Found"}}
@@ -130,13 +127,12 @@ class World:
         cases: dict[str, dict[str, object]] | None = None,
     ) -> None:
         """A fake tool; ``cases`` answers the calls whose words start with a key."""
-        write_fake(self.bin / name, FAKE.format())
+        write_fake(self.bin / name, FAKE.format(), version=TOOL_VERSIONS.get(name))
         spec = {
             "rc": rc,
             "stdout": stdout,
             "stderr": stderr,
             "cases": cases or {},
-            "version": TOOL_VERSIONS.get(name),
         }
         (self.bin / f"{name}.spec").write_text(json.dumps(spec))
 

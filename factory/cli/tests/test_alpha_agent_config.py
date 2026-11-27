@@ -35,12 +35,6 @@ OTEL_HOST = "otlp.example.net"
 DURATION = "must be bare seconds or a number ending in s, m or h, up to 7 days"
 
 
-@pytest.mark.parametrize("entries", [[], ["tbhb-dev/tbhbdev", "github.com/TBHB-Dev/b"]])
-def test_public_repositories(entries: list[str]) -> None:
-    assert config.parse(GOOD | {"public_repos": entries}).public_repos == tuple(entries)
-    assert config.parse(GOOD).public_repos == ()
-
-
 def with_otel(table: Table) -> Table:
     sandbox = GOOD["sandbox"]
     assert isinstance(sandbox, dict)
@@ -139,25 +133,6 @@ def test_otel_refuses_other_keys() -> None:
     assert str(caught.value) == "[agent.otel] x not recognized"
 
 
-@pytest.mark.parametrize("entries", [None, "a/b", [1], [""], ["../b"]])
-def test_public_repositories_refuse_invalid_entries(entries: object) -> None:
-    with pytest.raises(Invalid) as caught:
-        config.parse(GOOD | {"public_repos": entries})
-    reason = (
-        "must contain valid repository arguments" if entries == ["../b"] else STRINGS
-    )
-    assert str(caught.value) == f"[agent] public_repos {reason}"
-
-
-@pytest.mark.parametrize("entry", ["a/b", "github.com/other-org/b", "tbhb-dev-x/b"])
-def test_public_repositories_refuse_other_owners(entry: str) -> None:
-    with pytest.raises(Invalid) as caught:
-        config.parse(GOOD | {"public_repos": [entry]})
-    assert str(caught.value) == (
-        "[agent] public_repos must contain only tbhb-dev repositories"
-    )
-
-
 UNSAFE_REFERENCES = [
     "a b/c/d",
     "a/b c/d",
@@ -188,24 +163,16 @@ GOOD: Table = {
     "max_run_minutes": 120,
     "sockets_dir": "/example/sockets",
     "sandbox": {
-        "write_roots": [".cache", ".local/share/mise", ".local/state"],
         "audit_dir": ".local/state/example-audit",
-        "denied_home_paths": [".claude"],
         "path": {
             "linux": [".local/bin", "/usr/local/bin", "/usr/bin"],
             "macos": [".local/bin", "/opt/homebrew/bin", "/usr/bin"],
-        },
-        "agy": {
-            "review_read": [".config/example-gh", ".config/mise"],
-            "build_read": [".config/example-tools"],
-            "build_write": [".local/state/mise", ".local/share/mise"],
         },
     },
     "codex": {"web_search": {"build": "cached", "review": "disabled"}},
     "credentials": {
         "agent": {
             "docker": "example-vault/example-docker/config",
-            "reviews_app_id": "example-vault/example-app/app_id",
             "reviews_app_client_id": "example-vault/example-app/client_id",
             "reviews_app_pem": "example-vault/example-app/private_key",
             "pull_requests_app_client_id": "example-vault/example-pr/client_id",
@@ -219,7 +186,6 @@ GOOD: Table = {
             "primary": {"token": "example/primary/token"},
             "secondary": {
                 "token": "example/secondary/token",
-                "expires": "example/secondary/expires",
             },
         },
     },
@@ -229,9 +195,7 @@ GOOD: Table = {
             "os": "linux",
             "shell": "bash",
             "account": "agent",
-            "unsandboxed": False,
             "accounts": ["agent"],
-            "proven_harnesses": ["codex"],
         }
     ],
 }
@@ -243,17 +207,10 @@ EXPECTED = model.Settings(
     max_run_minutes=120,
     sockets_dir="/example/sockets",
     sandbox=model.Sandbox(
-        write_roots=(".cache", ".local/share/mise", ".local/state"),
         audit_dir=".local/state/example-audit",
-        denied_home_paths=(".claude",),
         path=model.SandboxPath(
             linux=(".local/bin", "/usr/local/bin", "/usr/bin"),
             macos=(".local/bin", "/opt/homebrew/bin", "/usr/bin"),
-        ),
-        agy=model.AgySandbox(
-            review_read=(".config/example-gh", ".config/mise"),
-            build_read=(".config/example-tools",),
-            build_write=(".local/state/mise", ".local/share/mise"),
         ),
     ),
     codex=model.Codex(model.WebSearch.CACHED, model.WebSearch.DISABLED),
@@ -262,7 +219,6 @@ EXPECTED = model.Settings(
             account="agent",
             gh=None,
             docker="example-vault/example-docker/config",
-            reviews_app_id="example-vault/example-app/app_id",
             reviews_app_client_id="example-vault/example-app/client_id",
             reviews_app_pem="example-vault/example-app/private_key",
             pull_requests_app_client_id="example-vault/example-pr/client_id",
@@ -273,10 +229,8 @@ EXPECTED = model.Settings(
     claude=model.Claude(
         default_profile="primary",
         profiles=(
-            model.ClaudeProfile("primary", "example/primary/token", None),
-            model.ClaudeProfile(
-                "secondary", "example/secondary/token", "example/secondary/expires"
-            ),
+            model.ClaudeProfile("primary", "example/primary/token"),
+            model.ClaudeProfile("secondary", "example/secondary/token"),
         ),
     ),
     hosts=(
@@ -285,9 +239,7 @@ EXPECTED = model.Settings(
             os=model.Os.LINUX,
             shell="bash",
             account="agent",
-            unsandboxed=False,
             accounts=("agent",),
-            proven_harnesses=(model.Harness.CODEX,),
         ),
     ),
 )
@@ -334,19 +286,41 @@ def test_host_tag_is_ignored() -> None:
     assert config.parse(edited("host_tag", value="example-tag")) == EXPECTED
 
 
+def test_removed_keys_are_ignored() -> None:
+    table = copy.deepcopy(GOOD)
+    table.update(
+        public_repos=[],
+        ssh_connect_timeout=10,
+        ssh_keepalive_seconds=15,
+        ssh_keepalive_count_max=3,
+    )
+    cast("Table", table["sandbox"]).update(
+        write_roots=[".local/state"],
+        denied_home_paths=[".ssh"],
+        agy={"review_read": [], "build_read": [], "build_write": []},
+        codex_network_proxy_opt_out=False,
+        agy_unsandboxed_opt_out=False,
+        codex_unsandboxed_opt_out=False,
+    )
+    cast("list[Table]", table["host"])[0].update(unsandboxed=True, proven_harnesses=[])
+    cast("dict[str, Table]", table["credentials"])["agent"]["reviews_app_id"] = 123
+    claude = cast("Table", table["claude"])
+    cast("dict[str, Table]", claude["profiles"])["primary"]["expires"] = "expired"
+    assert config.parse(table) == EXPECTED
+
+
+def test_unrecognized_sandbox_key_is_refused() -> None:
+    table = edited("sandbox", "write_root", value=[])
+    assert refused(table) == "[agent.sandbox] write_root not recognized"
+
+
 def test_settings_expose_every_value() -> None:
     parsed = config.parse(GOOD)
     sandbox = parsed.sandbox
-    assert sandbox.write_roots == (".cache", ".local/share/mise", ".local/state")
     assert sandbox.audit_dir == ".local/state/example-audit"
-    assert sandbox.denied_home_paths == (".claude",)
-    assert sandbox.agy.review_read == (".config/example-gh", ".config/mise")
-    assert sandbox.agy.build_read == (".config/example-tools",)
-    assert sandbox.agy.build_write == (".local/state/mise", ".local/share/mise")
     assert parsed.codex.web_search_build is model.WebSearch.CACHED
     assert parsed.codex.web_search_review is model.WebSearch.DISABLED
     account = parsed.credentials[0]
-    assert account.reviews_app_id == "example-vault/example-app/app_id"
     assert account.reviews_app_client_id == "example-vault/example-app/client_id"
     assert account.signing == "example-vault/example-signing/private_key"
     assert parsed.sockets_dir == "/example/sockets"
@@ -356,47 +330,6 @@ def test_input_is_not_modified() -> None:
     table = copy.deepcopy(GOOD)
     config.parse(table)
     assert table == GOOD
-
-
-@pytest.mark.parametrize(
-    "path", ["/", "/etc", ".", "./", "././", "~", "~/x", "~user/x"]
-)
-def test_sandbox_denied_paths_stay_below_home(path: str) -> None:
-    table = edited("sandbox", "denied_home_paths", value=["safe", path])
-    assert refused(table) == (
-        "[agent.sandbox] denied_home_paths must be paths below home "
-        "without a leading '/' or '~'"
-    )
-
-
-@pytest.mark.parametrize("path", ["/example/host/temp", "/example/host/cache"])
-def test_sandbox_write_roots_accept_absolute_entries(path: str) -> None:
-    parsed = config.parse(edited("sandbox", "write_roots", value=["safe", path]))
-    assert parsed.sandbox.write_roots == ("safe", path)
-
-
-@pytest.mark.parametrize(
-    "path", ["/", "//", "///", "/./", ".", "./", "././", "~", "~/x", "~user/x"]
-)
-def test_sandbox_write_roots_reject_roots_empty_and_tilde_paths(path: str) -> None:
-    table = edited("sandbox", "write_roots", value=["safe", path])
-    assert refused(table) == (
-        "[agent.sandbox] write_roots must be paths without a leading '~', "
-        "an empty path or a root"
-    )
-
-
-@pytest.mark.parametrize("path", ["/example/../temp", "/example/\x00temp"])
-def test_sandbox_write_roots_reject_unsafe_absolute_entries(path: str) -> None:
-    table = edited("sandbox", "write_roots", value=["safe", path])
-    assert refused(table) == f"[agent.sandbox] write_roots {PATHS}"
-
-
-@pytest.mark.parametrize("key", ["write_roots", "denied_home_paths"])
-@pytest.mark.parametrize("path", ["x", "./x", ".hidden", "x~", "x/y"])
-def test_sandbox_home_paths_keep_relative_entries(key: str, path: str) -> None:
-    parsed = config.parse(edited("sandbox", key, value=[path]))
-    assert getattr(parsed.sandbox, key) == (path,)
 
 
 @pytest.mark.parametrize("os", ["linux", "macos"])
@@ -412,14 +345,10 @@ def test_result_is_frozen() -> None:
 def test_optional_keys_may_be_absent() -> None:
     table = edited("max_run_minutes")
     del table["codex"]
-    del cast(
-        "Table", cast("Table", cast("Table", table["claude"])["profiles"])["secondary"]
-    )["expires"]
     del cast("Table", cast("Table", table["credentials"])["agent"])["docker"]
     parsed = config.parse(table)
     assert parsed.max_run_minutes is None
     assert parsed.codex == model.Codex(model.WebSearch.LIVE, model.WebSearch.LIVE)
-    assert parsed.claude.profiles[1].expires is None
     assert parsed.credentials[0].docker is None
 
 
@@ -518,7 +447,7 @@ def test_find_profile_ignores_case(name: str, found: str | None) -> None:
 
 
 def test_find_profile_ignores_the_case_config_spells() -> None:
-    profiles = (model.ClaudeProfile("Primary", "a/b/c", None),)
+    profiles = (model.ClaudeProfile("Primary", "a/b/c"),)
     found = config.find_profile(profiles, "primary")
     assert found is not None
     assert found.name == "Primary"
@@ -574,7 +503,7 @@ def _root_errors() -> list[Case]:
 def _sandbox_errors() -> list[Case]:
     cases: list[Case] = []
     sandbox = "[agent.sandbox]"
-    for key in ("path", "agy"):
+    for key in ("path",):
         _add(cases, ("sandbox", key), MISSING, "is required", sandbox)
         _add(cases, ("sandbox", key), [], "must be a table", sandbox)
     _add(cases, ("sandbox", "audit_dir"), MISSING, "is required", sandbox)
@@ -583,13 +512,8 @@ def _sandbox_errors() -> list[Case]:
     for bad in ("../x", "a/../b", "a\x00"):
         _add(cases, ("sandbox", "audit_dir"), bad, PATHS, sandbox)
     lists = (
-        ("sandbox", "write_roots", sandbox),
-        ("sandbox", "denied_home_paths", sandbox),
         ("sandbox", "path", "linux", "[agent.sandbox.path]"),
         ("sandbox", "path", "macos", "[agent.sandbox.path]"),
-        ("sandbox", "agy", "review_read", "[agent.sandbox.agy]"),
-        ("sandbox", "agy", "build_read", "[agent.sandbox.agy]"),
-        ("sandbox", "agy", "build_write", "[agent.sandbox.agy]"),
     )
     for *path, label in lists:
         where = tuple(path)
@@ -659,7 +583,7 @@ def _claude_errors() -> list[Case]:
             "is required",
             "[agent.claude.profiles.primary]",
         )
-    for key in ("token", "expires"):
+    for key in ("token",):
         for bad in ("a/b", "", 5, "a/b/c/d", *UNSAFE_REFERENCES):
             _add(
                 cases,
@@ -711,8 +635,6 @@ def _host_errors() -> list[Case]:
         _add(cases, ("host", 0, "shell"), bad, "must be one of bash, zsh", host)
     for bad in ("-x", "a b", "a" * 65, "a.b"):
         _add(cases, ("host", 0, "account"), bad, f"must match {NAME_RULE}", host)
-    for bad in ("yes", 1, 0, None, "true"):
-        _add(cases, ("host", 0, "unsandboxed"), bad, "must be true or false", host)
     for bad in (EMPTY, [""], [5], "agent", None):
         _add(cases, ("host", 0, "accounts"), bad, STRINGS, host)
     for bad in (["a b"], ["agent", "-x"], ["a" * 65]):
@@ -824,7 +746,6 @@ def test_default_profile_must_name_a_profile() -> None:
         ((), "[agent]"),
         (("sandbox",), "[agent.sandbox]"),
         (("sandbox", "path"), "[agent.sandbox.path]"),
-        (("sandbox", "agy"), "[agent.sandbox.agy]"),
         (("codex",), "[agent.codex]"),
         (("codex", "web_search"), "[agent.codex.web_search]"),
         (("credentials", "agent"), "[agent.credentials.agent]"),
@@ -847,25 +768,6 @@ def test_unknown_keys_name_the_full_table_and_each_key(
 def test_credentials_is_not_a_host_key() -> None:
     table = edited("host", 0, "credentials", value="connect")
     assert refused(table) == "[[agent.host]] credentials not recognized"
-
-
-@pytest.mark.parametrize(
-    "names", [[], ["codex"], ["claude"], ["agy"], ["codex", "claude", "agy"]]
-)
-def test_host_records_proven_harnesses(names: list[str]) -> None:
-    table = edited("host", 0, "proven_harnesses", value=names)
-    assert config.parse(table).hosts[0].proven_harnesses == tuple(
-        model.Harness(name) for name in names
-    )
-
-
-@pytest.mark.parametrize(
-    "value", [None, "codex", [1], ["unknown"], ["Codex"], ["codex", "codex"]]
-)
-def test_host_refuses_invalid_proven_harnesses(value: object) -> None:
-    assert refused(edited("host", 0, "proven_harnesses", value=value)) == (
-        "[[agent.host]] proven_harnesses must list distinct codex, claude or agy names"
-    )
 
 
 @pytest.mark.parametrize("value", [[], 5, "x", [5], ["x"], [None]])
@@ -896,7 +798,6 @@ def test_a_host_may_run_on_macos_with_a_dotted_name() -> None:
         model.Os.MACOS,
         "zsh",
     )
-    assert host.unsandboxed is False
 
 
 def test_name_limits() -> None:
@@ -977,13 +878,6 @@ def test_reference_parts_may_hold_dots_underscores_and_hyphens() -> None:
         ("network_domains", ["github.com:443"], False),
         ("network_domains", [""], False),
         ("network_domains", "github.com", False),
-        ("codex_network_proxy_opt_out", "named reason", True),
-        ("codex_network_proxy_opt_out", "", False),
-        ("agy_unsandboxed_opt_out", "named reason", True),
-        ("codex_unsandboxed_opt_out", "isolated host", True),
-        ("codex_unsandboxed_opt_out", "", False),
-        ("codex_unsandboxed_opt_out", False, False),
-        ("agy_unsandboxed_opt_out", False, False),
     ],
 )
 def test_host_and_network_options(key: str, value: object, valid: bool) -> None:
@@ -1021,10 +915,8 @@ def test_execution_options_name_the_invalid_path(
     assert str(caught.value) == f"[agent.sandbox] {key} {why}"
 
 
-def test_unsandboxed_host_with_reviews_app_is_allowed() -> None:
-    parsed = config.parse(edited("host", 0, "unsandboxed", value=True))
-    assert parsed.hosts[0].unsandboxed is True
-    assert parsed.credentials[0].reviews_app_id == GOOD_ACCOUNT["reviews_app_id"]
+def test_reviews_app_references_are_parsed() -> None:
+    parsed = config.parse(GOOD)
     assert (
         parsed.credentials[0].reviews_app_client_id
         == GOOD_ACCOUNT["reviews_app_client_id"]
@@ -1032,31 +924,29 @@ def test_unsandboxed_host_with_reviews_app_is_allowed() -> None:
     assert parsed.credentials[0].reviews_app_pem == GOOD_ACCOUNT["reviews_app_pem"]
 
 
-def test_unsandboxed_host_without_reviews_app_is_allowed() -> None:
-    table = edited("host", 0, "unsandboxed", value=True)
+def test_reviews_app_references_are_optional() -> None:
+    table = copy.deepcopy(GOOD)
     accounts = cast("Table", table["credentials"])
     account = cast("Table", accounts["agent"])
-    for key in ("reviews_app_id", "reviews_app_client_id", "reviews_app_pem"):
+    for key in ("reviews_app_client_id", "reviews_app_pem"):
         del account[key]
     parsed = config.parse(table)
-    assert parsed.hosts[0].unsandboxed is True
-    assert parsed.credentials[0].reviews_app_id is None
     assert parsed.credentials[0].reviews_app_client_id is None
     assert parsed.credentials[0].reviews_app_pem is None
 
 
-@pytest.mark.parametrize(
-    "present", ["reviews_app_id", "reviews_app_client_id", "reviews_app_pem"]
-)
+@pytest.mark.parametrize("present", ["reviews_app_client_id", "reviews_app_pem"])
 def test_partial_reviews_app_configuration_is_refused(present: str) -> None:
-    table = edited("host", 0, "unsandboxed", value=True)
+    table = copy.deepcopy(GOOD)
     accounts = cast("Table", table["credentials"])
     account = cast("Table", accounts["agent"])
-    for key in ("reviews_app_id", "reviews_app_client_id", "reviews_app_pem"):
+    for key in ("reviews_app_client_id", "reviews_app_pem"):
         if key != present:
             del account[key]
     missing = (
-        "reviews_app_client_id" if present == "reviews_app_id" else "reviews_app_id"
+        "reviews_app_pem"
+        if present == "reviews_app_client_id"
+        else "reviews_app_client_id"
     )
     assert refused(table) == f"[agent.credentials.agent] {missing} is required"
 
@@ -1102,7 +992,7 @@ def test_other_credentials_refuse_openssh_query(key: str, field: str) -> None:
     assert REFERENCE in refused(table)
 
 
-@pytest.mark.parametrize("key", ["token", "expires"])
+@pytest.mark.parametrize("key", ["token"])
 def test_claude_references_refuse_openssh_query(key: str) -> None:
     table = edited(
         "claude",
@@ -1129,24 +1019,6 @@ def test_signing_accepts_absolute_key_path(value: str) -> None:
 def test_signing_refuses_unsafe_key_path(value: str) -> None:
     table = edited("credentials", "agent", "signing", value=value)
     assert (PATHS if value.startswith("/") else REFERENCE) in refused(table)
-
-
-@pytest.mark.parametrize(
-    ("key", "default"),
-    [
-        ("ssh_connect_timeout", 15),
-        ("ssh_keepalive_seconds", 30),
-        ("ssh_keepalive_count_max", 3),
-    ],
-)
-def test_ssh_settings(key: str, default: int) -> None:
-    assert getattr(config.parse(GOOD), key) == default
-    assert getattr(config.parse(edited(key, value=9)), key) == 9
-    for value in (0, -1, True, "9"):
-        assert (
-            refused(edited(key, value=value))
-            == f"[agent] {key} must be a positive integer"
-        )
 
 
 @pytest.mark.parametrize(
@@ -1201,11 +1073,6 @@ def test_gh_with_the_pull_requests_app_is_refused() -> None:
     assert config.parse(gh_only()).credentials[0].pull_requests_app_pem is None
 
 
-def test_host_unsandboxed_key_is_optional() -> None:
-    parsed = config.parse(edited("host", 0, "unsandboxed", value=MISSING))
-    assert parsed.hosts[0].unsandboxed is True
-
-
 def limits_host(**changes: object) -> model.Host:
     table = {
         "name": "example-linux",
@@ -1213,7 +1080,6 @@ def limits_host(**changes: object) -> model.Host:
         "shell": "bash",
         "account": "agent",
         "accounts": ["agent"],
-        "proven_harnesses": ["codex"],
         **changes,
     }
     return config._host(config._Table("[[agent.host]]", table))  # noqa: SLF001

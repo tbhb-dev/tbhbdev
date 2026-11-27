@@ -5,7 +5,7 @@ from unittest.mock import Mock
 
 import pytest
 
-from tbhbdev import content, content_vet, cue_runtime
+from tbhbdev import content_vet, cue_runtime
 from tbhbdev.content_model import normalize
 
 SCHEMAS = Path(__file__).resolve().parents[1] / "schemas"
@@ -95,7 +95,7 @@ def test_ci_restatement(criterion: str, refused: bool, variant_schema: Path) -> 
             f"# {TITLE}\n\n## Acceptance criteria\n- [ ] {acceptance}\n\n"
             f"## Verification\n- {verification}\n"
         )
-        result = content.check(
+        result = content_vet.check(
             issue(markdown, "Feature"),
             SCHEMAS,
             variant_schema=variant_schema,
@@ -108,8 +108,8 @@ def test_ci_restatement(criterion: str, refused: bool, variant_schema: Path) -> 
             (finding,) = (
                 item for item in result.refusals if item.code == "ci-restatement"
             )
-            assert content.guide(finding) == CI_HINT
-            assert content.format_refusal(finding).endswith(CI_HINT)
+            assert content_vet.guide(finding) == CI_HINT
+            assert content_vet.format_refusal(finding).endswith(CI_HINT)
         else:
             assert not result.refusals
 
@@ -140,7 +140,7 @@ def test_issue_checks(
         "- [ ] The preview opens and the log updates\n- [x] Show the name and email\n",
         variant,
     )
-    result = content.check(draft, SCHEMAS, parent_type=parent)
+    result = content_vet.check(draft, SCHEMAS, parent_type=parent)
     assert tuple(item.code for item in result.refusals) == refusals
     assert tuple(item.code for item in result.warnings) == (*warnings, "joined-checks")
     joined_check = result.warnings[-1]
@@ -166,7 +166,7 @@ def test_issue_checks(
 def test_title_definitions(kind: str, title: str, refused: bool) -> None:
     draft = issue(f"# {title}\n", "Fixture")
     definition = f"{{blocks: {{title: #{kind}Title, ...}}, ...}}"
-    result = content.check(draft, SCHEMAS, definition=definition)
+    result = content_vet.check(draft, SCHEMAS, definition=definition)
     assert bool(result.refusals) == refused
     assert all(item.path.startswith("blocks.title.") for item in result.refusals)
 
@@ -186,7 +186,7 @@ def test_area_label(area: str, refused: bool) -> None:
     draft = normalize(
         f"# {TITLE}\n", object="issue", variant="Fixture", metadata={"area": area}
     )
-    result = content.check(
+    result = content_vet.check(
         draft, SCHEMAS, definition="{metadata: {area: #AreaLabel, ...}, ...}"
     )
     assert tuple(item.path for item in result.refusals) == (
@@ -195,34 +195,34 @@ def test_area_label(area: str, refused: bool) -> None:
 
 
 def test_vet_reports_multiple_fields() -> None:
-    result = content.check({"schemaVersion": 1}, SCHEMAS)
+    result = content_vet.check({"schemaVersion": 1}, SCHEMAS)
     fields = "blockOrder blocks inline metadata metrics object variant"
     assert {item.path for item in result.refusals} == set(fields.split())
-    assert content.format_refusal(result.refusals[0]) == (
+    assert content_vet.format_refusal(result.refusals[0]) == (
         "blockOrder: field is required but not present\n"
         "Revise the value to meet the schema constraint."
     )
 
 
 def test_vet_reports_invalid_schema(tmp_path: Path) -> None:
-    (finding,) = content.check({}, SCHEMAS, definition="#Unknown").refusals
-    assert finding == content.Finding("cue", "", 'reference "#Unknown" not found')
-    assert "no such file" in content.check({}, tmp_path).refusals[0].message
+    (finding,) = content_vet.check({}, SCHEMAS, definition="#Unknown").refusals
+    assert finding == content_vet.Finding("cue", "", 'reference "#Unknown" not found')
+    assert "no such file" in content_vet.check({}, tmp_path).refusals[0].message
 
 
 def test_non_issue() -> None:
     draft = normalize(
         "A comment", object="issue-comment", variant="Feature", metadata={}
     )
-    assert content.check(draft, SCHEMAS) == content.CheckResult()
+    assert content_vet.check(draft, SCHEMAS) == content_vet.CheckResult()
 
 
 def test_vet_fails_without_a_diagnostic(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(cue_runtime, "resolve", lambda: Path("/unused"))
     result = Mock(returncode=1, stdout="", stderr="")
     monkeypatch.setattr(content_vet, "_cue", Mock(return_value=result))
-    (finding,) = content.check({}, SCHEMAS).refusals
-    assert content.format_refusal(finding).startswith("CUE validation failed.\n")
+    (finding,) = content_vet.check({}, SCHEMAS).refusals
+    assert content_vet.format_refusal(finding).startswith("CUE validation failed.\n")
 
 
 def test_vet_requires_pinned_binary(
@@ -230,4 +230,4 @@ def test_vet_requires_pinned_binary(
 ) -> None:
     monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path / "missing"))
     with pytest.raises(cue_runtime.CueError, match="run tbhbdev cue install"):
-        content.check({}, SCHEMAS)
+        content_vet.check({}, SCHEMAS)

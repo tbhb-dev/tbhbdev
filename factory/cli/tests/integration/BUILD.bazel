@@ -1,0 +1,19 @@
+# SPDX-License-Identifier: Apache-2.0
+# Copyright Tony Burns
+
+load("//factory/cli/tests:pytest.bzl", "cli_py_test")
+
+exports_files(["test_content_review.py"])
+
+cli_py_test(
+    name = "test_content_review",
+    srcs = ["test_content_review.py"],
+    imports = [".."],
+    deps = [
+        "//factory/cli/src/tbhbdev:content_review",
+        "//factory/cli/src/tbhbdev:cue_runtime",
+        "//factory/cli/tests:conftest",
+        "//factory/cli/tests:cue_fixtures",
+        "@cli_pip//pytest",
+    ],
+)

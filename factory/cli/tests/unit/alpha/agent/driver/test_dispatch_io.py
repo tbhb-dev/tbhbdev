@@ -3,21 +3,28 @@
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
+from unittest.mock import Mock
 
 import pytest
-from driver_scenarios import (
-    command,
-    disable_host_sandbox_setting,
-    launch,
-)
+from agent_cli_example import run_agent
+from driver_scenarios import CONFIG, command, launch
 
-from tbhbdev.alpha.agent import transport
-from tbhbdev.alpha.agent.driver import (
-    metadata,
-)
+from tbhbdev.alpha.agent import settings as agent_settings
+from tbhbdev.alpha.agent import signing_parity, transport
+from tbhbdev.alpha.agent.driver import metadata
 
 if TYPE_CHECKING:
     from agent_driver_example import Remote
+
+
+def test_signing_parity_dispatches_with_loaded_settings(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    parity = Mock(return_value=1)
+    monkeypatch.setattr(agent_settings, "load", lambda: CONFIG)
+    monkeypatch.setattr(signing_parity, "main", parity)
+    assert run_agent(["signing-parity"]) == 1
+    parity.assert_called_once_with(CONFIG)
 
 
 def test_send_refuses_unknown_run(
@@ -92,14 +99,12 @@ def test_failed_transfer_cannot_control_other_owner(
 
 
 @pytest.mark.parametrize("verb", ["status", "kill", "clean", "log", "diff"])
-def test_unsandboxed_verbs_after_host_setting_disabled(
+def test_unsandboxed_run_verbs(
     remote: Remote,
-    monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
     verb: str,
 ) -> None:
-    assert launch(remote, "--ops", "--unsandboxed", "o/r#1") == 0
-    disable_host_sandbox_setting(monkeypatch)
+    assert launch(remote, "--account", "ops", "--unsandboxed", "o/r#1") == 0
     capsys.readouterr()
     if verb in {"kill", "clean"}:
         remote.configure(session=False)
