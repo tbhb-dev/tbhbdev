@@ -28,7 +28,7 @@ from tbhbdev.alpha.agent import transport
 from tbhbdev.alpha.agent.driver import dispatch as coordinator
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Iterator
+    from collections.abc import Callable, Generator
     from typing import BinaryIO
 
     from opentelemetry.sdk.trace import ReadableSpan
@@ -449,7 +449,7 @@ def configure_export_fault(
 
 
 @contextmanager
-def stalled_export(monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
+def stalled_export(monkeypatch: pytest.MonkeyPatch) -> Generator[None]:
     release = threading.Event()
     finished = threading.Event()
     completion = Mock(wraps=finished)
