@@ -54,16 +54,15 @@ dest = "factory/github-metrics"
 "internal/version/version.go" = "factory/github-metrics/internal/version/version.go"
 
 [rewrite]
-
 [rewrite."BUILD.bazel"]
 dest = "factory/github-metrics/BUILD.bazel"
 replace = [
-    [
-        "github.com/tbhb-dev/github-metrics",
-        "github.com/tbhb-dev/tbhbdev/factory/github-metrics",
-    ],
-    [
-        """
+  [
+    "github.com/tbhb-dev/github-metrics",
+    "github.com/tbhb-dev/tbhbdev/factory/github-metrics",
+  ],
+  [
+    """
     tags = [\"manual\"],
     tests = [
         \"//internal/store:store_test\",
@@ -269,7 +268,7 @@ bazel_env(
     },
 )
 """,
-        """
+    """
     tags = [\"manual\"],
     tests = [
         \"//factory/github-metrics/internal/store:store_test\",
@@ -277,9 +276,9 @@ bazel_env(
     ],
 )
 """,
-    ],
-    [
-        """
+  ],
+  [
+    """
     advisory = True,
     cpus = 4,
     go_mod = \"go.mod\",
@@ -287,7 +286,7 @@ bazel_env(
     mutation_oses = [\"linux\"],
     proxy = \"@go_mod_proxy//:proxy\",
 """,
-        """
+    """
     advisory = True,
     cpus = 4,
     go_mod = \"//:go.mod\",
@@ -295,9 +294,9 @@ bazel_env(
     mutation_oses = [\"linux\"],
     proxy = \"@go_mod_proxy//:proxy\",
 """,
-    ],
-    [
-        """
+  ],
+  [
+    """
     advisory = True,
     cpus = 4,
     go_mod = \"go.mod\",
@@ -310,7 +309,7 @@ bazel_env(
     ],
 )
 """,
-        """
+    """
     advisory = True,
     cpus = 4,
     go_mod = \"//:go.mod\",
@@ -323,9 +322,9 @@ bazel_env(
     ],
 )
 """,
-    ],
-    [
-        """
+  ],
+  [
+    """
 )
 
 go_mod_tidy_test(
@@ -336,16 +335,13 @@ go_mod_tidy_test(
     proxy = \"@go_mod_proxy//:proxy\",
 )
 """,
-        """
+    """
 )
 
 go_arch_lint_test(
     name = \"go_arch_lint_test\",
     size = \"small\",
-    srcs = GO_TARGETS + [
-        \"//factory/cli/cmd/tbhbdev:tbhbdev_test\",
-        \"//factory/cli/internal/dispatch:dispatch_test\",
-    ],
+    srcs = GO_TARGETS,
     config = \"//:.go-arch-lint.yml\",
     go_mod = \"//:go.mod\",
 )
@@ -357,11 +353,7 @@ go_deadcode_test(
 
 go_mod_tidy_test(
     name = \"go_mod_tidy_test\",
-    srcs = [
-        \":repo_files\",
-        \"//factory/cli/cmd/tbhbdev:go_module_sources\",
-        \"//factory/cli/internal/dispatch:go_module_sources\",
-    ],
+    srcs = [\":repo_files\"],
     go_mod = \"//:go.mod\",
     go_sum = \"//:go.sum\",
     proxy = \"@go_mod_proxy//:proxy\",
@@ -385,9 +377,9 @@ govulncheck_test(
     proxy = \"@go_mod_proxy//:proxy\",
 )
 """,
-    ],
-    [
-        """
+  ],
+  [
+    """
 # Copyright Tony Burns
 
 load(\"@bazel_env.bzl\", \"bazel_env\")
@@ -517,7 +509,7 @@ GO_TARGETS = [
 ]
 
 """,
-        """
+    """
 # Copyright Tony Burns
 
 load(\"@tbhb_rules//repo:defs.bzl\", \"repo_files\")
@@ -549,25 +541,25 @@ GO_TARGETS = [
 ]
 
 """,
-    ],
-    [
-        """
+  ],
+  [
+    """
 govulncheck_test(
     name = \"govulncheck_test\",
 """,
-        """
+    """
 # The shared rule tags this test manual. CI runs both targets explicitly.
 govulncheck_test(
     name = \"govulncheck_test\",
 """,
-    ],
+  ],
 ]
 
 [rewrite."README.md"]
 dest = "factory/github-metrics/README.md"
 replace = [
-    [
-        """
+  [
+    """
 # github-metrics
 
 A planned containerized Go service that turns GitHub pull request activity into OpenTelemetry traces and metrics, served at github-metrics.tbhb.dev.
@@ -580,7 +572,7 @@ Licensed under Apache-2.0.
 
 Bazel builds and tests the project. See `AGENTS.md` for the commands.
 """,
-        """
+    """
 # github-metrics
 
 A Go service that turns GitHub pull request activity into OpenTelemetry
@@ -599,42 +591,42 @@ bazelisk test --config=ci //factory/github-metrics/...
 
 Licensed under Apache-2.0.
 """,
-    ],
+  ],
 ]
 
 [rewrite."cmd/github-metrics/BUILD.bazel"]
 dest = "factory/github-metrics/cmd/github-metrics/BUILD.bazel"
 replace = [
-    [
-        "github.com/tbhb-dev/github-metrics",
-        "github.com/tbhb-dev/tbhbdev/factory/github-metrics",
-    ],
-    [
-        "\"//internal/",
-        "\"//factory/github-metrics/internal/",
-    ],
-    [
-        "\"//:__pkg__\"",
-        "\"//factory/github-metrics:__pkg__\"",
-    ],
-    [
-        """
+  [
+    "github.com/tbhb-dev/github-metrics",
+    "github.com/tbhb-dev/tbhbdev/factory/github-metrics",
+  ],
+  [
+    "\"//internal/",
+    "\"//factory/github-metrics/internal/",
+  ],
+  [
+    "\"//:__pkg__\"",
+    "\"//factory/github-metrics:__pkg__\"",
+  ],
+  [
+    """
     name = \"github-metrics\",
     embed = [\":github-metrics_lib\"],
     visibility = [\"//visibility:public\"],
 )
 
 """,
-        """
+    """
     name = \"github-metrics\",
     embed = [\":github-metrics_lib\"],
     visibility = [\"//factory/github-metrics:__subpackages__\"],
 )
 
 """,
-    ],
-    [
-        """
+  ],
+  [
+    """
 # Copyright Tony Burns
 
 load(\"@rules_go//go:def.bzl\", \"go_binary\", \"go_library\", \"go_test\")
@@ -644,7 +636,7 @@ repo_files()
 
 go_library(
 """,
-        """
+    """
 # Copyright Tony Burns
 
 load(\"@rules_go//go:def.bzl\", \"go_binary\", \"go_library\")
@@ -655,25 +647,25 @@ repo_files(visibility = [\"//factory/github-metrics:__subpackages__\"])
 
 go_library(
 """,
-    ],
+  ],
 ]
 
 [rewrite."cmd/github-metrics/main.go"]
 dest = "factory/github-metrics/cmd/github-metrics/main.go"
 replace = [
-    [
-        "github.com/tbhb-dev/github-metrics",
-        "github.com/tbhb-dev/tbhbdev/factory/github-metrics",
-    ],
-    [
-        """
+  [
+    "github.com/tbhb-dev/github-metrics",
+    "github.com/tbhb-dev/tbhbdev/factory/github-metrics",
+  ],
+  [
+    """
 \tdefer cancel()
 
 \treq, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil) //nolint:gosec // own address
 \tif err != nil {
 \t\treturn 1
 """,
-        """
+    """
 \tdefer cancel()
 
 \treq, err := http.NewRequestWithContext( //nolint:gosec // The probe uses the operator-configured listener.
@@ -685,9 +677,9 @@ replace = [
 \tif err != nil {
 \t\treturn 1
 """,
-    ],
-    [
-        """
+  ],
+  [
+    """
 
 \treturn errors.Join(
 \t\terr, srv.Shutdown(shutdownCtx), <-workerErr, <-reconcileErr, shutdownTelemetry(shutdownCtx), repo.Close(),
@@ -695,7 +687,7 @@ replace = [
 }
 
 """,
-        """
+    """
 
 \treturn errors.Join(
 \t\terr,
@@ -764,9 +756,9 @@ func openStore() (*store.Bolt, error) {
 }
 
 """,
-    ],
-    [
-        """
+  ],
+  [
+    """
 \tlog.InfoContext(ctx, \"listening\", \"addr\", addr)
 
 \tbackfillDone := make(chan struct{})
@@ -783,16 +775,16 @@ func openStore() (*store.Bolt, error) {
 
 \tselect {
 """,
-        """
+    """
 \tlog.InfoContext(ctx, \"listening\", \"addr\", addr)
 
 \tbackfillDone := startBackfill(ctx, client, repo, log, backfillCfg)
 
 \tselect {
 """,
-    ],
-    [
-        """
+  ],
+  [
+    """
 \t}
 
 \tfile := os.Getenv(\"WEBHOOK_SECRET_FILE\")
@@ -821,7 +813,7 @@ func openStore() (*store.Bolt, error) {
 \t}
 
 """,
-        """
+    """
 \t}
 
 \tsecret, err := webhookSecret()
@@ -835,33 +827,33 @@ func openStore() (*store.Bolt, error) {
 \t}
 
 """,
-    ],
-    [
-        """
+  ],
+  [
+    """
 \t\"go.opentelemetry.io/otel/metric\"
 
 \t\"github.com/tbhb-dev/tbhbdev/factory/github-metrics/internal/receiver\"
 \t\"github.com/tbhb-dev/tbhbdev/factory/github-metrics/internal/reconcile\"
 """,
-        """
+    """
 \t\"go.opentelemetry.io/otel/metric\"
 
 \t\"github.com/tbhb-dev/tbhbdev/factory/github-metrics/internal/ghclient\"
 \t\"github.com/tbhb-dev/tbhbdev/factory/github-metrics/internal/receiver\"
 \t\"github.com/tbhb-dev/tbhbdev/factory/github-metrics/internal/reconcile\"
 """,
-    ],
+  ],
 ]
 
 [rewrite."cmd/github-metrics/main_test.go"]
 dest = "factory/github-metrics/cmd/github-metrics/main_test.go"
 replace = [
-    [
-        "github.com/tbhb-dev/github-metrics",
-        "github.com/tbhb-dev/tbhbdev/factory/github-metrics",
-    ],
-    [
-        """
+  [
+    "github.com/tbhb-dev/github-metrics",
+    "github.com/tbhb-dev/tbhbdev/factory/github-metrics",
+  ],
+  [
+    """
 \tt.Parallel()
 
 \tfor _, value := range []string{
@@ -879,7 +871,7 @@ replace = [
 \t\t\tt.Fatalf(\"expected redacted variable error, got %v\", err)
 \t\t}
 """,
-        """
+    """
 \tt.Parallel()
 
 \tfor value, days := range map[string]int{\"\": 0, \"o/r:7\": 7, \"o/r:1\": 1} {
@@ -904,16 +896,16 @@ replace = [
 \t\t\tt.Fatalf(\"expected redacted variable error, got %v\", err)
 \t\t}
 """,
-    ],
-    [
-        """
+  ],
+  [
+    """
 
 \tfor _, apiURL := range []string{\"\", defaultGitHubAPI + \"/api/v3\"} {
 \t\tenv := map[string]string{appIDEnv: \"1\", installationIDEnv: \"2\", appKeyFileEnv: keyFile, apiURLEnv: apiURL}
 
 \t\tcfg, err := reconcilerConfig(func(name string) string { return env[name] })
 """,
-        """
+    """
 
 \tfor _, apiURL := range []string{\"\", defaultGitHubAPI + \"/api/v3\"} {
 \t\tenv := map[string]string{
@@ -925,16 +917,16 @@ replace = [
 
 \t\tcfg, err := reconcilerConfig(func(name string) string { return env[name] })
 """,
-    ],
-    [
-        """
+  ],
+  [
+    """
 
 \tfor name, want := range map[string]error{appIDEnv: errInvalidAppID, installationIDEnv: errInvalidInstallationID} {
 \t\tenv := map[string]string{appIDEnv: \"1\", installationIDEnv: \"2\", appKeyFileEnv: \"test-key.pem\"}
 \t\tenv[name] = invalid
 
 """,
-        """
+    """
 
 \tfor name, want := range map[string]error{appIDEnv: errInvalidAppID, installationIDEnv: errInvalidInstallationID} {
 \t\tenv := map[string]string{
@@ -945,16 +937,16 @@ replace = [
 \t\tenv[name] = invalid
 
 """,
-    ],
-    [
-        """
+  ],
+  [
+    """
 \tsum, ok := measurement.Data.(metricdata.Sum[int64])
 
 \tif measurement.Name != \"github.events\" || !ok || len(sum.DataPoints) != 1 || sum.DataPoints[0].Value != 1 {
 \t\tt.Fatalf(\"metric = %v, want one github.events observation\", measurement)
 \t}
 """,
-        """
+    """
 \tsum, ok := measurement.Data.(metricdata.Sum[int64])
 
 \tif measurement.Name != \"github.events\" || !ok || len(sum.DataPoints) != 1 ||
@@ -962,9 +954,9 @@ replace = [
 \t\tt.Fatalf(\"metric = %v, want one github.events observation\", measurement)
 \t}
 """,
-    ],
-    [
-        """
+  ],
+  [
+    """
 \t}
 
 \tvar data metricdata.ResourceMetrics
@@ -973,7 +965,7 @@ replace = [
 \tif err != nil {
 \t\tt.Fatal(err)
 """,
-        """
+    """
 \t}
 
 \tcheckEventCounter(t, reader)
@@ -988,16 +980,16 @@ func checkEventCounter(t *testing.T, reader *sdkmetric.ManualReader) {
 \tif err != nil {
 \t\tt.Fatal(err)
 """,
-    ],
-    [
-        """
+  ],
+  [
+    """
 \tvar ledger stubLedger
 
 \tconsumer, err := newRecorder(\"configured\", provider.Meter(\"test\"), ledger, slog.New(slog.DiscardHandler))
 \tif err != nil {
 \t\tt.Fatal(err)
 """,
-        """
+    """
 \tvar ledger stubLedger
 
 \tconsumer, err := newRecorder(
@@ -1009,16 +1001,16 @@ func checkEventCounter(t *testing.T, reader *sdkmetric.ManualReader) {
 \tif err != nil {
 \t\tt.Fatal(err)
 """,
-    ],
-    [
-        """
+  ],
+  [
+    """
 \terr := logRepairFloor(log, stubLedger{floor: time.Time{}, floorErr: errFloorRead})
 \tif !errors.Is(err, errFloorRead) || logs.Len() != 0 {
 \t\tt.Fatalf(\"logRepairFloor error = %v, log = %q; want %v and no log\", err, logs.String(), errFloorRead)
 \t}
 }
 """,
-        """
+    """
 \terr := logRepairFloor(log, stubLedger{floor: time.Time{}, floorErr: errFloorRead})
 \tif !errors.Is(err, errFloorRead) || logs.Len() != 0 {
 \t\tt.Fatalf(
@@ -1030,16 +1022,16 @@ func checkEventCounter(t *testing.T, reader *sdkmetric.ManualReader) {
 \t}
 }
 """,
-    ],
-    [
-        """
+  ],
+  [
+    """
 \t}
 
 \tif entry[\"level\"] != \"INFO\" || entry[\"repair_floor\"] != floor.Format(time.RFC3339) || len(entry) != 4 {
 \t\tt.Fatalf(\"log entry = %v, want one info line with only the floor as an attribute\", entry)
 \t}
 """,
-        """
+    """
 \t}
 
 \tif entry[\"level\"] != \"INFO\" || entry[\"repair_floor\"] != floor.Format(time.RFC3339) ||
@@ -1047,25 +1039,25 @@ func checkEventCounter(t *testing.T, reader *sdkmetric.ManualReader) {
 \t\tt.Fatalf(\"log entry = %v, want one info line with only the floor as an attribute\", entry)
 \t}
 """,
-    ],
+  ],
 ]
 
 [rewrite."cmd/github-metrics/reconciler.go"]
 dest = "factory/github-metrics/cmd/github-metrics/reconciler.go"
 replace = [
-    [
-        "github.com/tbhb-dev/github-metrics",
-        "github.com/tbhb-dev/tbhbdev/factory/github-metrics",
-    ],
-    [
-        """
+  [
+    "github.com/tbhb-dev/github-metrics",
+    "github.com/tbhb-dev/tbhbdev/factory/github-metrics",
+  ],
+  [
+    """
 }
 
 func startReconciler(ctx context.Context, loop *reconcile.Loop, stop context.CancelFunc) <-chan error {
 \tdone := make(chan error, 1)
 \tif loop == nil {
 """,
-        """
+    """
 }
 
 func startReconciler(
@@ -1076,16 +1068,16 @@ func startReconciler(
 \tdone := make(chan error, 1)
 \tif loop == nil {
 """,
-    ],
-    [
-        """
+  ],
+  [
+    """
 
 func newReconciler(
 \tcfg reconcileConfig, meter metric.Meter, record *recorder.Recorder, repo reconcile.Watermarks, log *slog.Logger,
 ) (*reconcile.Loop, *ghclient.Client, error) {
 \t// Relative request paths must resolve inside the API base path.
 """,
-        """
+    """
 
 func newReconciler(
 \tcfg reconcileConfig,
@@ -1096,9 +1088,9 @@ func newReconciler(
 ) (*reconcile.Loop, *ghclient.Client, error) {
 \t// Relative request paths must resolve inside the API base path.
 """,
-    ],
-    [
-        """
+  ],
+  [
+    """
 //nolint:ireturn // The worker accepts either recorder through its interface.
 func newConsumers(
 \tctx context.Context, endpoint string, cfg reconcileConfig, meter metric.Meter, repo *store.Bolt, log *slog.Logger,
@@ -1108,7 +1100,7 @@ func newConsumers(
 \tif err != nil {
 \t\treturn nil, nil, nil, err
 """,
-        """
+    """
 //nolint:ireturn // The worker accepts either recorder through its interface.
 func newConsumers(
 \tctx context.Context,
@@ -1128,16 +1120,16 @@ func newConsumers(
 \tif err != nil {
 \t\treturn nil, nil, nil, err
 """,
-    ],
-    [
-        """
+  ],
+  [
+    """
 \t}
 
 \tmatch := regexp.MustCompile(`^([A-Za-z0-9]+(?:-[A-Za-z0-9]+)*/[A-Za-z0-9_.-]+):([1-7])$`).FindStringSubmatch(value)
 \tif match == nil || strings.HasSuffix(match[1], \"/.\") || strings.HasSuffix(match[1], \"/..\") {
 \t\treturn cfg, errInvalidCIBackfill
 """,
-        """
+    """
 \t}
 
 \tmatch := regexp.MustCompile(`^([A-Za-z0-9]+(?:-[A-Za-z0-9]+)*/[A-Za-z0-9_.-]+):([1-7])$`).
@@ -1145,16 +1137,16 @@ func newConsumers(
 \tif match == nil || strings.HasSuffix(match[1], \"/.\") || strings.HasSuffix(match[1], \"/..\") {
 \t\treturn cfg, errInvalidCIBackfill
 """,
-    ],
-    [
-        """
+  ],
+  [
+    """
 
 \tif len(missing) != 0 {
 \t\treturn reconcileConfig{}, fmt.Errorf(\"%w: %s\", errMissingReconcilerConfig, strings.Join(missing, \", \"))
 \t}
 
 """,
-        """
+    """
 
 \tif len(missing) != 0 {
 \t\treturn reconcileConfig{}, fmt.Errorf(
@@ -1165,9 +1157,9 @@ func newConsumers(
 \t}
 
 """,
-    ],
-    [
-        """
+  ],
+  [
+    """
 \terrInvalidInstallationID   = errors.New(installationIDEnv + \" must be a positive integer\")
 \terrInvalidBaseURL          = errors.New(apiURLEnv + \" must be a valid HTTPS API base URL\")
 \terrInvalidCIBackfill       = errors.New(\"GITHUB_CI_BACKFILL must name a repository and days from 1 to 7\")
@@ -1175,7 +1167,7 @@ func newConsumers(
 )
 
 """,
-        """
+    """
 \terrInvalidInstallationID   = errors.New(installationIDEnv + \" must be a positive integer\")
 \terrInvalidBaseURL          = errors.New(apiURLEnv + \" must be a valid HTTPS API base URL\")
 \terrInvalidCIBackfill       = errors.New(
@@ -1185,23 +1177,23 @@ func newConsumers(
 )
 
 """,
-    ],
+  ],
 ]
 
 [rewrite."docs/architecture/02-constraints.md"]
 dest = "factory/github-metrics/docs/architecture/02-constraints.md"
 replace = [
-    [
-        "| Container image | A distroless static non-root image with one Go binary, a read-only root filesystem, and, in the design, one writable volume that `deploy/compose.yaml` doesn't have yet |",
-        "| Container image | The deployment design calls for a distroless static non-root image with one Go binary, a read-only root filesystem, and one writable volume for the store. See the [deployment view](07-deployment-view.md) for the binary and its configuration |",
-    ],
+  [
+    "| Container image | A distroless static non-root image with one Go binary, a read-only root filesystem, and, in the design, one writable volume that `deploy/compose.yaml` doesn't have yet |",
+    "| Container image | The deployment design calls for a distroless static non-root image with one Go binary, a read-only root filesystem, and one writable volume for the store. See the [deployment view](07-deployment-view.md) for the binary and its configuration |",
+  ],
 ]
 
 [rewrite."docs/architecture/07-deployment-view.md"]
 dest = "factory/github-metrics/docs/architecture/07-deployment-view.md"
 replace = [
-    [
-        """
+  [
+    """
 # 7. Deployment view
 
 The target deployment runs two containers on the production container host: the service and the tunnel connector. Today `deploy/compose.yaml` mounts the webhook secret, the App private key, and the tunnel token. A volume stores the queue, while the receiver doesn't read `GITHUB_APP_KEY_FILE` yet. The table describes the target.
@@ -1237,7 +1229,7 @@ Mounting this file in the receiver replaces Docker's embedded DNS for that conta
 
 With `GITHUB_METRICS_IMAGE` and `METRICS_NETWORK` also set, run `docker compose -f deploy/compose.yaml config` to review the mount and environment settings without reading the key. Check that only the receiver mounts `github_app_key`, that its source ends in `secrets/runtime/github_app_key`, and that `GITHUB_APP_KEY_FILE` names `/run/secrets/github_app_key`. This command checks configuration, not file access. Run the helper on the deployment host before starting the containers.
 """,
-        """
+    """
 # 7. Deployment view
 
 Build the service binary from the monorepo root. The host operator manages
@@ -1284,23 +1276,23 @@ set `RECONCILE_FLOOR_RESET=1` for the first start after reinstalling a version
 that uses claims. Clear it for subsequent starts so they retain the stored
 repair floor.
 """,
-    ],
+  ],
 ]
 
 [rewrite."docs/architecture/11-risks-and-technical-debt.md"]
 dest = "factory/github-metrics/docs/architecture/11-risks-and-technical-debt.md"
 replace = [
-    [
-        "| 7 | The App from its manifest, the secrets in 1Password, the published image and Compose file, and the host operator's deployment with the tunnel | Step 6 has merged, a test delivery from the App's settings page returns `202`, and a `GET` on any path returns `404` | Platform engineering and the host operator |",
-        "| 7 | The App from its manifest, the secrets in 1Password, and the host operator's [deployment of the service binary](07-deployment-view.md) with the tunnel | Step 6 has merged, a test delivery from the App's settings page returns `202`, and a public `GET` on any path returns `404` | Platform engineering and the host operator |",
-    ],
+  [
+    "| 7 | The App from its manifest, the secrets in 1Password, the published image and Compose file, and the host operator's deployment with the tunnel | Step 6 has merged, a test delivery from the App's settings page returns `202`, and a `GET` on any path returns `404` | Platform engineering and the host operator |",
+    "| 7 | The App from its manifest, the secrets in 1Password, and the host operator's [deployment of the service binary](07-deployment-view.md) with the tunnel | Step 6 has merged, a test delivery from the App's settings page returns `202`, and a public `GET` on any path returns `404` | Platform engineering and the host operator |",
+  ],
 ]
 
 [rewrite."docs/architecture/README.md"]
 dest = "factory/github-metrics/docs/architecture/README.md"
 replace = [
-    [
-        """
+  [
+    """
 structurizr export -workspace workspace.dsl -format plantuml -output ./out
 plantuml -tsvg ./out/structurizr-{SystemContext,Containers,Components}.puml
 plantuml -tpng ./out/structurizr-{SystemContext,Containers,Components}.puml
@@ -1320,7 +1312,7 @@ The pages link the SVG files. Each Portable Network Graphics (PNG) file shows th
 
 No Bazel target lints the workspace file or checks these files for staleness yet, and the change that added the PNG and JSON files left that out on purpose. That work belongs to the shared rules targets requested from tbhb-dev/rules. The request covers `structurizr validate` as a test and a generate step with a staleness test. CI runs none of these exports until those targets exist. Until then, rerun the commands after each edit to `workspace.dsl` and commit the results.
 """,
-        """
+    """
 structurizr export -workspace workspace.dsl -format plantuml -output ./out
 plantuml -tsvg ./out/structurizr-{SystemContext,Containers,Components}.puml
 mv ./out/*.svg diagrams/
@@ -1329,72 +1321,72 @@ mv ./out/*.svg diagrams/
 The architecture pages display the SVG diagrams. Rerun the commands and
 commit the updated SVGs after editing `workspace.dsl`.
 """,
-    ],
+  ],
 ]
 
 [rewrite."docs/architecture/appendix-c-github-limit-evidence.md"]
 dest = "factory/github-metrics/docs/architecture/appendix-c-github-limit-evidence.md"
 replace = [
-    [
-        "| This repository can't render D2 diagrams | Existing | `MODULE.bazel` on `main` has no D2 module |",
-        "| The architecture diagrams use Structurizr | Existing | The [architecture index](README.md#diagrams) documents how to render the SVGs |",
-    ],
+  [
+    "| This repository can't render D2 diagrams | Existing | `MODULE.bazel` on `main` has no D2 module |",
+    "| The architecture diagrams use Structurizr | Existing | The [architecture index](README.md#diagrams) documents how to render the SVGs |",
+  ],
 ]
 
 [rewrite."docs/design/reconciler-backfill.md"]
 dest = "factory/github-metrics/docs/design/reconciler-backfill.md"
 replace = [
-    [
-        "though Compose mounts it (`deploy/compose.yaml:56`)",
-        "even when the host supplies that variable",
-    ],
-    [
-        "deploy runbook says to set it for the first start after any rollback below B",
-        "[deployment view](../architecture/07-deployment-view.md#health-and-restarts) describes when to set it",
-    ],
-    [
-        "following page 7's list (`docs/architecture/07-deployment-view.md:11`)",
-        "listed in the [deployment view](../architecture/07-deployment-view.md#service-configuration)",
-    ],
-    [
-        "The restart policy brings it back (`deploy/compose.yaml:51`)",
-        "The host supervisor restarts the service as described in the [deployment view](../architecture/07-deployment-view.md)",
-    ],
-    [
-        "`/readyz` (`docs/architecture/07-deployment-view.md:12`)",
-        "[readiness endpoint](../architecture/07-deployment-view.md#health-and-restarts)",
-    ],
-    [
-        "disabled cases; Compose environment; pages 5 and 6 status; the `repair_floor` stamp, the `RECONCILE_FLOOR_RESET` flag and the rollback rule in the deploy notes | `cmd/github-metrics/main.go`, `cmd/github-metrics/main_test.go`, `deploy/compose.yaml`, `deploy/deploy_test.go`, `docs/architecture/05-building-block-view.md`, `docs/architecture/06-runtime-view.md`",
-        "set the host environment, handle disabled cases, update pages 5 and 6, and document the `repair_floor` stamp, the `RECONCILE_FLOOR_RESET` flag and the rollback procedure | `cmd/github-metrics/main.go`, `cmd/github-metrics/main_test.go`, `docs/architecture/05-building-block-view.md`, `docs/architecture/06-runtime-view.md`, `docs/architecture/07-deployment-view.md`",
-    ],
-    [
-        "`AGENTS.md:23`",
-        "see the [monorepo instructions](../../../../AGENTS.md)",
-    ],
+  [
+    "though Compose mounts it (`deploy/compose.yaml:56`)",
+    "even when the host supplies that variable",
+  ],
+  [
+    "deploy runbook says to set it for the first start after any rollback below B",
+    "[deployment view](../architecture/07-deployment-view.md#health-and-restarts) describes when to set it",
+  ],
+  [
+    "following page 7's list (`docs/architecture/07-deployment-view.md:11`)",
+    "listed in the [deployment view](../architecture/07-deployment-view.md#service-configuration)",
+  ],
+  [
+    "The restart policy brings it back (`deploy/compose.yaml:51`)",
+    "The host supervisor restarts the service as described in the [deployment view](../architecture/07-deployment-view.md)",
+  ],
+  [
+    "`/readyz` (`docs/architecture/07-deployment-view.md:12`)",
+    "[readiness endpoint](../architecture/07-deployment-view.md#health-and-restarts)",
+  ],
+  [
+    "disabled cases; Compose environment; pages 5 and 6 status; the `repair_floor` stamp, the `RECONCILE_FLOOR_RESET` flag and the rollback rule in the deploy notes | `cmd/github-metrics/main.go`, `cmd/github-metrics/main_test.go`, `deploy/compose.yaml`, `deploy/deploy_test.go`, `docs/architecture/05-building-block-view.md`, `docs/architecture/06-runtime-view.md`",
+    "set the host environment, handle disabled cases, update pages 5 and 6, and document the `repair_floor` stamp, the `RECONCILE_FLOOR_RESET` flag and the rollback procedure | `cmd/github-metrics/main.go`, `cmd/github-metrics/main_test.go`, `docs/architecture/05-building-block-view.md`, `docs/architecture/06-runtime-view.md`, `docs/architecture/07-deployment-view.md`",
+  ],
+  [
+    "`AGENTS.md:23`",
+    "see the [monorepo instructions](../../../../AGENTS.md)",
+  ],
 ]
 
 [rewrite."internal/appauth/BUILD.bazel"]
 dest = "factory/github-metrics/internal/appauth/BUILD.bazel"
 replace = [
-    [
-        "github.com/tbhb-dev/github-metrics",
-        "github.com/tbhb-dev/tbhbdev/factory/github-metrics",
-    ],
-    [
-        "\"//internal/",
-        "\"//factory/github-metrics/internal/",
-    ],
-    [
-        "\"//:__pkg__\"",
-        "\"//factory/github-metrics:__pkg__\"",
-    ],
-    [
-        "\"//:__subpackages__\"",
-        "\"//factory/github-metrics:__subpackages__\"",
-    ],
-    [
-        """
+  [
+    "github.com/tbhb-dev/github-metrics",
+    "github.com/tbhb-dev/tbhbdev/factory/github-metrics",
+  ],
+  [
+    "\"//internal/",
+    "\"//factory/github-metrics/internal/",
+  ],
+  [
+    "\"//:__pkg__\"",
+    "\"//factory/github-metrics:__pkg__\"",
+  ],
+  [
+    "\"//:__subpackages__\"",
+    "\"//factory/github-metrics:__subpackages__\"",
+  ],
+  [
+    """
 # Copyright Tony Burns
 
 load(\"@rules_go//go:def.bzl\", \"go_library\", \"go_test\")
@@ -1404,7 +1396,7 @@ repo_files()
 
 go_library(
 """,
-        """
+    """
 # Copyright Tony Burns
 
 load(\"@rules_go//go:def.bzl\", \"go_library\")
@@ -1415,18 +1407,18 @@ repo_files(visibility = [\"//factory/github-metrics:__subpackages__\"])
 
 go_library(
 """,
-    ],
+  ],
 ]
 
 [rewrite."internal/appauth/appauth.go"]
 dest = "factory/github-metrics/internal/appauth/appauth.go"
 replace = [
-    [
-        """
+  [
+    """
 \treturn s.token, nil
 }
 """,
-        """
+    """
 \treturn s.token, nil
 }
 
@@ -1434,9 +1426,9 @@ func validExpiry(now, expiry time.Time) bool {
 \treturn expiry.After(now) && !expiry.After(now.Add(maxTokenLifetime))
 }
 """,
-    ],
-    [
-        """
+  ],
+  [
+    """
 
 \tnow := s.now()
 \tif json.Unmarshal(body, &reply) != nil || reply.Token == \"\" || !reply.ExpiresAt.After(now) ||
@@ -1444,7 +1436,7 @@ func validExpiry(now, expiry time.Time) bool {
 \t\treturn s.failure(ctx, \"decode\", res.StatusCode)
 \t}
 """,
-        """
+    """
 
 \tnow := s.now()
 \tif json.Unmarshal(body, &reply) != nil || reply.Token == \"\" ||
@@ -1452,31 +1444,31 @@ func validExpiry(now, expiry time.Time) bool {
 \t\treturn s.failure(ctx, \"decode\", res.StatusCode)
 \t}
 """,
-    ],
-    [
-        """
+  ],
+  [
+    """
 
 \tif res.StatusCode != http.StatusCreated {
 \t\t//nolint:errcheck // The response status determines the error.
 \t\t_, _ = io.Copy(io.Discard, io.LimitReader(res.Body, maxBody))
 
 """,
-        """
+    """
 
 \tif res.StatusCode != http.StatusCreated {
 \t\t_, _ = io.Copy(io.Discard, io.LimitReader(res.Body, maxBody))
 
 """,
-    ],
-    [
-        """
+  ],
+  [
+    """
 \tconst requestBody = `{\"permissions\":{\"metadata\":\"read\",\"pull_requests\":\"read\"}}`
 
 \treq, err := http.NewRequestWithContext(ctx, http.MethodPost, s.endpoint, strings.NewReader(requestBody))
 \tif err != nil {
 \t\treturn s.failure(ctx, \"request\", 0)
 """,
-        """
+    """
 \tconst requestBody = `{\"permissions\":{\"metadata\":\"read\",\"pull_requests\":\"read\"}}`
 
 \treq, err := http.NewRequestWithContext(
@@ -1488,15 +1480,15 @@ func validExpiry(now, expiry time.Time) bool {
 \tif err != nil {
 \t\treturn s.failure(ctx, \"request\", 0)
 """,
-    ],
-    [
-        """
+  ],
+  [
+    """
 \t\tmu:         sync.Mutex{},
 \t}, nil
 }
 
 """,
-        """
+    """
 \t\tmu:         sync.Mutex{},
 \t}, nil
 }
@@ -1507,9 +1499,9 @@ func validBaseURL(base *url.URL) bool {
 }
 
 """,
-    ],
-    [
-        """
+  ],
+  [
+    """
 
 \tbase, err := url.Parse(cfg.BaseURL)
 \tif err != nil || base.Host == \"\" || !allowsScheme(base) ||
@@ -1518,31 +1510,31 @@ func validBaseURL(base *url.URL) bool {
 \t\tcfg.Logger.Error(\"github app authentication failed\", \"stage\", \"config\", \"status\", 0)
 
 """,
-        """
+    """
 
 \tbase, err := url.Parse(cfg.BaseURL)
 \tif err != nil || !validBaseURL(base) || cfg.AppID <= 0 || cfg.InstallationID <= 0 {
 \t\tcfg.Logger.Error(\"github app authentication failed\", \"stage\", \"config\", \"status\", 0)
 
 """,
-    ],
+  ],
 ]
 
 [rewrite."internal/appauth/appauth_test.go"]
 dest = "factory/github-metrics/internal/appauth/appauth_test.go"
 replace = [
-    [
-        "github.com/tbhb-dev/github-metrics",
-        "github.com/tbhb-dev/tbhbdev/factory/github-metrics",
-    ],
-    [
-        """
+  [
+    "github.com/tbhb-dev/github-metrics",
+    "github.com/tbhb-dev/tbhbdev/factory/github-metrics",
+  ],
+  [
+    """
 }
 
 func checkToken(t *testing.T, token func(context.Context) (string, error), want string) {
 \tt.Helper()
 """,
-        """
+    """
 }
 
 func installationServer(
@@ -1577,9 +1569,9 @@ func installationServer(
 func checkToken(t *testing.T, token func(context.Context) (string, error), want string) {
 \tt.Helper()
 """,
-    ],
-    [
-        """
+  ],
+  [
+    """
 \t\t\tvar calls atomic.Int64
 
 \t\t\tserver := httptest.NewServer(http.HandlerFunc(func(resp http.ResponseWriter, req *http.Request) {
@@ -1603,16 +1595,16 @@ func checkToken(t *testing.T, token func(context.Context) (string, error), want 
 
 \t\t\tcfg := config(t, server, func() time.Time { return now })
 """,
-        """
+    """
 \t\t\tvar calls atomic.Int64
 
 \t\t\tserver := installationServer(t, &calls, requests, func() time.Time { return now })
 
 \t\t\tcfg := config(t, server, func() time.Time { return now })
 """,
-    ],
-    [
-        """
+  ],
+  [
+    """
 \t}
 
 \tif json.Unmarshal(decodePart(t, parts[0]), &header) != nil || header.Algorithm != \"RS256\" || header.Type != \"JWT\" {
@@ -1630,7 +1622,7 @@ func checkToken(t *testing.T, token func(context.Context) (string, error), want 
 \t\tt.Fatal(\"invalid assertion claims\")
 \t}
 """,
-        """
+    """
 \t}
 
 \tif json.Unmarshal(decodePart(t, parts[0]), &header) != nil || header.Algorithm != \"RS256\" ||
@@ -1660,16 +1652,16 @@ func verifyClaims(t *testing.T, part string, now time.Time) {
 \t\tt.Fatal(\"invalid assertion claims\")
 \t}
 """,
-    ],
-    [
-        """
+  ],
+  [
+    """
 \tt.Helper()
 
 \tif req.Method != http.MethodPost || req.URL.Path != \"/api/v3/app/installations/456/access_tokens\" {
 \t\tt.Error(\"unexpected method or installation path\")
 \t}
 """,
-        """
+    """
 \tt.Helper()
 
 \tif req.Method != http.MethodPost ||
@@ -1677,16 +1669,16 @@ func verifyClaims(t *testing.T, part string, now time.Time) {
 \t\tt.Error(\"unexpected method or installation path\")
 \t}
 """,
-    ],
-    [
-        """
+  ],
+  [
+    """
 \tt.Helper()
 
 \tblock := &pem.Block{Type: \"RSA PRIVATE KEY\", Headers: nil, Bytes: x509.MarshalPKCS1PrivateKey(key)}
 \tif pkcs8 {
 \t\tdata, err := x509.MarshalPKCS8PrivateKey(key)
 """,
-        """
+    """
 \tt.Helper()
 
 \tblock := &pem.Block{
@@ -1697,18 +1689,18 @@ func verifyClaims(t *testing.T, part string, now time.Time) {
 \tif pkcs8 {
 \t\tdata, err := x509.MarshalPKCS8PrivateKey(key)
 """,
-    ],
+  ],
 ]
 
 [rewrite."internal/appauth/failure_test.go"]
 dest = "factory/github-metrics/internal/appauth/failure_test.go"
 replace = [
-    [
-        "github.com/tbhb-dev/github-metrics",
-        "github.com/tbhb-dev/tbhbdev/factory/github-metrics",
-    ],
-    [
-        """
+  [
+    "github.com/tbhb-dev/github-metrics",
+    "github.com/tbhb-dev/tbhbdev/factory/github-metrics",
+  ],
+  [
+    """
 \t\t\t&pem.Block{Type: privateKeyType, Headers: nil, Bytes: []byte(\"invalid-key-marker\")},
 \t\t),
 \t\t\"other type\":      pem.EncodeToMemory(&pem.Block{Type: \"PUBLIC KEY\", Headers: nil, Bytes: otherDER}),
@@ -1716,7 +1708,7 @@ replace = [
 \t}
 
 """,
-        """
+    """
 \t\t\t&pem.Block{Type: privateKeyType, Headers: nil, Bytes: []byte(\"invalid-key-marker\")},
 \t\t),
 \t\t\"other type\": pem.EncodeToMemory(
@@ -1728,9 +1720,9 @@ replace = [
 \t}
 
 """,
-    ],
-    [
-        """
+  ],
+  [
+    """
 \tt.Cleanup(target.Close)
 
 \tserver := httptest.NewServer(http.HandlerFunc(func(resp http.ResponseWriter, req *http.Request) {
@@ -1739,7 +1731,7 @@ replace = [
 \tt.Cleanup(server.Close)
 
 """,
-        """
+    """
 \tt.Cleanup(target.Close)
 
 \tserver := httptest.NewServer(
@@ -1750,16 +1742,16 @@ replace = [
 \tt.Cleanup(server.Close)
 
 """,
-    ],
-    [
-        """
+  ],
+  [
+    """
 \t\tresp.WriteHeader(http.StatusCreated)
 
 \t\t_, _ = fmt.Fprintf(resp, `{\"token\":\"fresh-token\",\"expires_at\":%q}`, now.Add(time.Hour).Format(time.RFC3339))
 \t}))
 \tt.Cleanup(server.Close)
 """,
-        """
+    """
 \t\tresp.WriteHeader(http.StatusCreated)
 
 \t\t_, _ = fmt.Fprintf(
@@ -1770,16 +1762,16 @@ replace = [
 \t}))
 \tt.Cleanup(server.Close)
 """,
-    ],
-    [
-        """
+  ],
+  [
+    """
 \t\t\tresp.WriteHeader(http.StatusCreated)
 
 \t\t\t_, _ = fmt.Fprintf(resp, `{\"token\":\"cached-token\",\"expires_at\":%q}`, expires.Format(time.RFC3339))
 
 \t\t\treturn
 """,
-        """
+    """
 \t\t\tresp.WriteHeader(http.StatusCreated)
 
 \t\t\t_, _ = fmt.Fprintf(
@@ -1790,9 +1782,9 @@ replace = [
 
 \t\t\treturn
 """,
-    ],
-    [
-        """
+  ],
+  [
+    """
 \tvar connections atomic.Int64
 
 \tserver := httptest.NewUnstartedServer(http.HandlerFunc(func(resp http.ResponseWriter, _ *http.Request) {
@@ -1806,7 +1798,7 @@ replace = [
 \tserver.Config.ConnState = func(_ net.Conn, state http.ConnState) {
 \t\tif state == http.StateNew {
 """,
-        """
+    """
 \tvar connections atomic.Int64
 
 \tserver := httptest.NewUnstartedServer(
@@ -1822,9 +1814,9 @@ replace = [
 \tserver.Config.ConnState = func(_ net.Conn, state http.ConnState) {
 \t\tif state == http.StateNew {
 """,
-    ],
-    [
-        """
+  ],
+  [
+    """
 \t\t},
 \t}
 
@@ -1843,7 +1835,7 @@ replace = [
 \t\t\tt.Cleanup(server.Close)
 
 """,
-        """
+    """
 \t\t},
 \t}
 }
@@ -1871,9 +1863,9 @@ func TestResponseFailures(t *testing.T) {
 \t\t\tt.Cleanup(server.Close)
 
 """,
-    ],
-    [
-        """
+  ],
+  [
+    """
 }
 
 func TestResponseFailures(t *testing.T) {
@@ -1895,7 +1887,7 @@ func TestResponseFailures(t *testing.T) {
 \t\t\"expired\": {
 \t\t\t`{\"token\":\"response-marker\",\"expires_at\":\"2026-01-01T00:00:00Z\"}`,
 """,
-        """
+    """
 }
 
 type responseFailure struct {
@@ -1923,16 +1915,16 @@ func responseFailures() map[string]responseFailure {
 \t\t\"expired\": {
 \t\t\t`{\"token\":\"response-marker\",\"expires_at\":\"2026-01-01T00:00:00Z\"}`,
 """,
-    ],
-    [
-        """
+  ],
+  [
+    """
 }
 
 func checkFailure(t *testing.T, source *appauth.Source, logs *bytes.Buffer, stage string, status int) {
 \tt.Helper()
 
 """,
-        """
+    """
 }
 
 func checkFailure(
@@ -1945,18 +1937,18 @@ func checkFailure(
 \tt.Helper()
 
 """,
-    ],
+  ],
 ]
 
 [rewrite."internal/appauth/transport_test.go"]
 dest = "factory/github-metrics/internal/appauth/transport_test.go"
 replace = [
-    [
-        "github.com/tbhb-dev/github-metrics",
-        "github.com/tbhb-dev/tbhbdev/factory/github-metrics",
-    ],
-    [
-        """
+  [
+    "github.com/tbhb-dev/github-metrics",
+    "github.com/tbhb-dev/tbhbdev/factory/github-metrics",
+  ],
+  [
+    """
 \t\t\t}
 
 \t\t\tif own.HTTPClient != nil && (client == own.HTTPClient || client.Transport != own.HTTPClient.Transport ||
@@ -1964,7 +1956,7 @@ replace = [
 \t\t\t\tt.Error(\"supplied client settings weren't preserved\")
 \t\t\t}
 """,
-        """
+    """
 \t\t\t}
 
 \t\t\tif own.HTTPClient != nil &&
@@ -1973,16 +1965,16 @@ replace = [
 \t\t\t\tt.Error(\"supplied client settings weren't preserved\")
 \t\t\t}
 """,
-    ],
-    [
-        """
+  ],
+  [
+    """
 \t}
 
 \treturn &http.Response{StatusCode: http.StatusCreated, Body: brokenBody{}}, nil
 }
 
 """,
-        """
+    """
 \t}
 
 \trec := httptest.NewRecorder()
@@ -1995,30 +1987,30 @@ replace = [
 }
 
 """,
-    ],
+  ],
 ]
 
 [rewrite."internal/backfill/BUILD.bazel"]
 dest = "factory/github-metrics/internal/backfill/BUILD.bazel"
 replace = [
-    [
-        "github.com/tbhb-dev/github-metrics",
-        "github.com/tbhb-dev/tbhbdev/factory/github-metrics",
-    ],
-    [
-        "\"//internal/",
-        "\"//factory/github-metrics/internal/",
-    ],
-    [
-        "\"//:__pkg__\"",
-        "\"//factory/github-metrics:__pkg__\"",
-    ],
-    [
-        "\"//:__subpackages__\"",
-        "\"//factory/github-metrics:__subpackages__\"",
-    ],
-    [
-        """
+  [
+    "github.com/tbhb-dev/github-metrics",
+    "github.com/tbhb-dev/tbhbdev/factory/github-metrics",
+  ],
+  [
+    "\"//internal/",
+    "\"//factory/github-metrics/internal/",
+  ],
+  [
+    "\"//:__pkg__\"",
+    "\"//factory/github-metrics:__pkg__\"",
+  ],
+  [
+    "\"//:__subpackages__\"",
+    "\"//factory/github-metrics:__subpackages__\"",
+  ],
+  [
+    """
 # Copyright Tony Burns
 
 load(\"@rules_go//go:def.bzl\", \"go_library\", \"go_test\")
@@ -2028,7 +2020,7 @@ repo_files()
 
 go_library(
 """,
-        """
+    """
 # Copyright Tony Burns
 
 load(\"@rules_go//go:def.bzl\", \"go_library\")
@@ -2039,18 +2031,18 @@ repo_files(visibility = [\"//factory/github-metrics:__subpackages__\"])
 
 go_library(
 """,
-    ],
+  ],
 ]
 
 [rewrite."internal/backfill/backfill.go"]
 dest = "factory/github-metrics/internal/backfill/backfill.go"
 replace = [
-    [
-        "github.com/tbhb-dev/github-metrics",
-        "github.com/tbhb-dev/tbhbdev/factory/github-metrics",
-    ],
-    [
-        """
+  [
+    "github.com/tbhb-dev/github-metrics",
+    "github.com/tbhb-dev/tbhbdev/factory/github-metrics",
+  ],
+  [
+    """
 
 \t\tfor _, item := range page {
 \t\t\titem.Record.HeadSHA = item.Head.SHA
@@ -2058,7 +2050,7 @@ replace = [
 \t\t\tresult.Records = append(result.Records, item.Record)
 \t\t}
 """,
-        """
+    """
 
 \t\tfor _, item := range page {
 \t\t\titem.HeadSHA = item.Head.SHA
@@ -2066,25 +2058,25 @@ replace = [
 \t\t\tresult.Records = append(result.Records, item.Record)
 \t\t}
 """,
-    ],
+  ],
 ]
 
 [rewrite."internal/backfill/backfill_test.go"]
 dest = "factory/github-metrics/internal/backfill/backfill_test.go"
 replace = [
-    [
-        "github.com/tbhb-dev/github-metrics",
-        "github.com/tbhb-dev/tbhbdev/factory/github-metrics",
-    ],
-    [
-        """
+  [
+    "github.com/tbhb-dev/github-metrics",
+    "github.com/tbhb-dev/tbhbdev/factory/github-metrics",
+  ],
+  [
+    """
 \t\t\t})
 
 \t\t\tresult, err := backfill.List(t.Context(), client, \"o/r\", backfill.Options{MaxRequests: 1})
 \t\t\twantResume := \"\"
 
 """,
-        """
+    """
 \t\t\t})
 
 \t\t\tresult, err := backfill.List(
@@ -2096,16 +2088,16 @@ replace = [
 \t\t\twantResume := \"\"
 
 """,
-    ],
-    [
-        """
+  ],
+  [
+    """
 \tt.Cleanup(server.Close)
 
 \tclient, err := ghclient.New(server.URL, server.Client(), budget.New(), fakeTokens{}, ghclient.NewETags())
 \tif err != nil {
 \t\tt.Fatal(err)
 """,
-        """
+    """
 \tt.Cleanup(server.Close)
 
 \tclient, err := ghclient.New(
@@ -2118,26 +2110,26 @@ replace = [
 \tif err != nil {
 \t\tt.Fatal(err)
 """,
-    ],
+  ],
 ]
 
 [rewrite."internal/budget/BUILD.bazel"]
 dest = "factory/github-metrics/internal/budget/BUILD.bazel"
 replace = [
-    [
-        "github.com/tbhb-dev/github-metrics",
-        "github.com/tbhb-dev/tbhbdev/factory/github-metrics",
-    ],
-    [
-        "\"//:__pkg__\"",
-        "\"//factory/github-metrics:__pkg__\"",
-    ],
-    [
-        "\"//:__subpackages__\"",
-        "\"//factory/github-metrics:__subpackages__\"",
-    ],
-    [
-        """
+  [
+    "github.com/tbhb-dev/github-metrics",
+    "github.com/tbhb-dev/tbhbdev/factory/github-metrics",
+  ],
+  [
+    "\"//:__pkg__\"",
+    "\"//factory/github-metrics:__pkg__\"",
+  ],
+  [
+    "\"//:__subpackages__\"",
+    "\"//factory/github-metrics:__subpackages__\"",
+  ],
+  [
+    """
 # Copyright Tony Burns
 
 load(\"@rules_go//go:def.bzl\", \"go_library\", \"go_test\")
@@ -2147,7 +2139,7 @@ repo_files()
 
 go_library(
 """,
-        """
+    """
 # Copyright Tony Burns
 
 load(\"@rules_go//go:def.bzl\", \"go_library\")
@@ -2158,21 +2150,21 @@ repo_files(visibility = [\"//factory/github-metrics:__subpackages__\"])
 
 go_library(
 """,
-    ],
+  ],
 ]
 
 [rewrite."internal/budget/budget.go"]
 dest = "factory/github-metrics/internal/budget/budget.go"
 replace = [
-    [
-        """
+  [
+    """
 
 \tfor _, w := range l.queue {
 \t\tif best == nil || w.priority < best.priority || (w.priority == best.priority && w.seq < best.seq) {
 \t\t\tbest = w
 \t\t}
 """,
-        """
+    """
 
 \tfor _, w := range l.queue {
 \t\tif best == nil || w.priority < best.priority ||
@@ -2180,25 +2172,25 @@ replace = [
 \t\t\tbest = w
 \t\t}
 """,
-    ],
+  ],
 ]
 
 [rewrite."internal/budget/budget_test.go"]
 dest = "factory/github-metrics/internal/budget/budget_test.go"
 replace = [
-    [
-        "github.com/tbhb-dev/github-metrics",
-        "github.com/tbhb-dev/tbhbdev/factory/github-metrics",
-    ],
-    [
-        """
+  [
+    "github.com/tbhb-dev/github-metrics",
+    "github.com/tbhb-dev/tbhbdev/factory/github-metrics",
+  ],
+  [
+    """
 
 \t\tdoubling := []time.Duration{
 \t\t\ttime.Minute, 2 * time.Minute, 4 * time.Minute, 8 * time.Minute, 15 * time.Minute, 15 * time.Minute,
 \t\t}
 
 """,
-        """
+    """
 
 \t\tdoubling := []time.Duration{
 \t\t\ttime.Minute,
@@ -2210,9 +2202,9 @@ replace = [
 \t\t}
 
 """,
-    ],
-    [
-        """
+  ],
+  [
+    """
 \t\t}
 
 \t\tfor i, from := range times {
@@ -2224,7 +2216,7 @@ replace = [
 \t\t\t}
 \t\t}
 """,
-        """
+    """
 \t\t}
 
 \t\tfor start, from := range times {
@@ -2240,30 +2232,30 @@ replace = [
 \t\t\t}
 \t\t}
 """,
-    ],
+  ],
 ]
 
 [rewrite."internal/ghclient/BUILD.bazel"]
 dest = "factory/github-metrics/internal/ghclient/BUILD.bazel"
 replace = [
-    [
-        "github.com/tbhb-dev/github-metrics",
-        "github.com/tbhb-dev/tbhbdev/factory/github-metrics",
-    ],
-    [
-        "\"//internal/",
-        "\"//factory/github-metrics/internal/",
-    ],
-    [
-        "\"//:__pkg__\"",
-        "\"//factory/github-metrics:__pkg__\"",
-    ],
-    [
-        "\"//:__subpackages__\"",
-        "\"//factory/github-metrics:__subpackages__\"",
-    ],
-    [
-        """
+  [
+    "github.com/tbhb-dev/github-metrics",
+    "github.com/tbhb-dev/tbhbdev/factory/github-metrics",
+  ],
+  [
+    "\"//internal/",
+    "\"//factory/github-metrics/internal/",
+  ],
+  [
+    "\"//:__pkg__\"",
+    "\"//factory/github-metrics:__pkg__\"",
+  ],
+  [
+    "\"//:__subpackages__\"",
+    "\"//factory/github-metrics:__subpackages__\"",
+  ],
+  [
+    """
 # Copyright Tony Burns
 
 load(\"@rules_go//go:def.bzl\", \"go_library\", \"go_test\")
@@ -2273,7 +2265,7 @@ repo_files()
 
 go_library(
 """,
-        """
+    """
 # Copyright Tony Burns
 
 load(\"@rules_go//go:def.bzl\", \"go_library\")
@@ -2284,18 +2276,18 @@ repo_files(visibility = [\"//factory/github-metrics:__subpackages__\"])
 
 go_library(
 """,
-    ],
+  ],
 ]
 
 [rewrite."internal/ghclient/ghclient.go"]
 dest = "factory/github-metrics/internal/ghclient/ghclient.go"
 replace = [
-    [
-        "github.com/tbhb-dev/github-metrics",
-        "github.com/tbhb-dev/tbhbdev/factory/github-metrics",
-    ],
-    [
-        """
+  [
+    "github.com/tbhb-dev/github-metrics",
+    "github.com/tbhb-dev/tbhbdev/factory/github-metrics",
+  ],
+  [
+    """
 }
 
 // ready waits for a budget slot and returns the token for one send.
@@ -2303,7 +2295,7 @@ func (c *Client) ready(ctx context.Context, priority budget.Priority, path strin
 \twaitErr := c.budget.Wait(ctx, priority)
 \tif waitErr != nil {
 """,
-        """
+    """
 }
 
 // handleReply reports whether a response can be retried.
@@ -2339,9 +2331,9 @@ func (c *Client) ready(
 \twaitErr := c.budget.Wait(ctx, priority)
 \tif waitErr != nil {
 """,
-    ],
-    [
-        """
+  ],
+  [
+    """
 \t\tc.observe(got.header)
 
 \t\tswitch {
@@ -2363,7 +2355,7 @@ func (c *Client) ready(
 \t\t}
 \t}
 """,
-        """
+    """
 \t\tc.observe(got.header)
 
 \t\tif got.status == http.StatusUnauthorized && !renewed {
@@ -2378,16 +2370,16 @@ func (c *Client) ready(
 \t\t}
 \t}
 """,
-    ],
-    [
-        """
+  ],
+  [
+    """
 // a 403 or 429 with no primary budget left, backs the budget off and retries, up to
 // four sends in all.
 func (c *Client) Get(ctx context.Context, priority budget.Priority, target string) (*Response, error) {
 \tfull, err := c.resolve(target)
 \tif err != nil {
 """,
-        """
+    """
 // a 403 or 429 with no primary budget left, backs the budget off and retries, up to
 // four sends in all.
 func (c *Client) Get(
@@ -2398,25 +2390,25 @@ func (c *Client) Get(
 \tfull, err := c.resolve(target)
 \tif err != nil {
 """,
-    ],
+  ],
 ]
 
 [rewrite."internal/ghclient/ghclient_test.go"]
 dest = "factory/github-metrics/internal/ghclient/ghclient_test.go"
 replace = [
-    [
-        "github.com/tbhb-dev/github-metrics",
-        "github.com/tbhb-dev/tbhbdev/factory/github-metrics",
-    ],
-    [
-        """
+  [
+    "github.com/tbhb-dev/github-metrics",
+    "github.com/tbhb-dev/tbhbdev/factory/github-metrics",
+  ],
+  [
+    """
 \tt.Helper()
 
 \tclient, _ := newClient(t, func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(status) }, newTokens())
 
 \treturn client
 """,
-        """
+    """
 \tt.Helper()
 
 \tclient, _ := newClient(
@@ -2427,16 +2419,16 @@ replace = [
 
 \treturn client
 """,
-    ],
-    [
-        """
+  ],
+  [
+    """
 \tclient, _ := newClient(t, func(w http.ResponseWriter, _ *http.Request) {
 \t\tw.Header().Add(\"Link\", `<https://x/y?labels=a,b&page=1>; rel=\"prev\"`)
 \t\tw.Header().Add(\"Link\", `<https://x/y?labels=a,b&page=3>; rel=\"next\", <https://x/y?page=9>; rel=\"last\"`)
 \t}, newTokens())
 
 """,
-        """
+    """
 \tclient, _ := newClient(t, func(w http.ResponseWriter, _ *http.Request) {
 \t\tw.Header().Add(\"Link\", `<https://x/y?labels=a,b&page=1>; rel=\"prev\"`)
 \t\tw.Header().
@@ -2444,16 +2436,16 @@ replace = [
 \t}, newTokens())
 
 """,
-    ],
-    [
-        """
+  ],
+  [
+    """
 \tt.Parallel()
 
 \t_, err := ghclient.New(\"http://api.github.com\", http.DefaultClient, budget.New(), newTokens(), ghclient.NewETags())
 \tif !errors.Is(err, ghclient.ErrInsecureBase) {
 \t\tt.Fatalf(\"err = %v\", err)
 """,
-        """
+    """
 \tt.Parallel()
 
 \t_, err := ghclient.New(
@@ -2466,16 +2458,16 @@ replace = [
 \tif !errors.Is(err, ghclient.ErrInsecureBase) {
 \t\tt.Fatalf(\"err = %v\", err)
 """,
-    ],
-    [
-        """
+  ],
+  [
+    """
 
 \t_, err := client.Get(t.Context(), budget.Webhook, \"/x\")
 \tif !errors.Is(err, ghclient.ErrTokenSource) || strings.Contains(err.Error(), \"leaked-installation-credential\") {
 \t\tt.Fatalf(\"err = %v\", err)
 \t}
 """,
-        """
+    """
 
 \t_, err := client.Get(t.Context(), budget.Webhook, \"/x\")
 \tif !errors.Is(err, ghclient.ErrTokenSource) ||
@@ -2483,16 +2475,16 @@ replace = [
 \t\tt.Fatalf(\"err = %v\", err)
 \t}
 """,
-    ],
-    [
-        """
+  ],
+  [
+    """
 \tvar hits atomic.Int32
 
 \tother := httptest.NewTLSServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) { hits.Add(1) }))
 \tt.Cleanup(other.Close)
 
 """,
-        """
+    """
 \tvar hits atomic.Int32
 
 \tother := httptest.NewTLSServer(
@@ -2501,16 +2493,16 @@ replace = [
 \tt.Cleanup(other.Close)
 
 """,
-    ],
-    [
-        """
+  ],
+  [
+    """
 
 func reply(status int, header http.Header) *http.Response {
 \treturn &http.Response{StatusCode: status, Header: header, Body: http.NoBody}
 }
 
 """,
-        """
+    """
 
 func reply(status int, header http.Header) *http.Response {
 \trec := httptest.NewRecorder()
@@ -2524,16 +2516,16 @@ func reply(status int, header http.Header) *http.Response {
 }
 
 """,
-    ],
-    [
-        """
+  ],
+  [
+    """
 
 \tvar status *ghclient.StatusError
 \tif !errors.As(err, &status) || status.Status != http.StatusUnauthorized || tokens.renewals.Load() != 1 {
 \t\tt.Fatalf(\"err = %v, renewals = %d\", err, tokens.renewals.Load())
 \t}
 """,
-        """
+    """
 
 \tvar status *ghclient.StatusError
 \tif !errors.As(err, &status) || status.Status != http.StatusUnauthorized ||
@@ -2541,16 +2533,16 @@ func reply(status int, header http.Header) *http.Response {
 \t\tt.Fatalf(\"err = %v, renewals = %d\", err, tokens.renewals.Load())
 \t}
 """,
-    ],
-    [
-        """
+  ],
+  [
+    """
 \tvar calls atomic.Int32
 
 \tclient, _ := newClient(t, func(http.ResponseWriter, *http.Request) { calls.Add(1) }, newTokens())
 
 \t_, err := client.Get(t.Context(), budget.Webhook, \"http://127.0.0.1:1/steal\")
 """,
-        """
+    """
 \tvar calls atomic.Int32
 
 \tclient, _ := newClient(
@@ -2561,16 +2553,16 @@ func reply(status int, header http.Header) *http.Response {
 
 \t_, err := client.Get(t.Context(), budget.Webhook, \"http://127.0.0.1:1/steal\")
 """,
-    ],
-    [
-        """
+  ],
+  [
+    """
 \tclient, srv := newClient(t, func(w http.ResponseWriter, req *http.Request) {
 \t\tif req.URL.Query().Get(\"page\") == \"\" {
 \t\t\tw.Header().Set(\"Link\", `<`+base+`/x?page=2>; rel=\"next\", <`+base+`/x?page=9>; rel=\"last\"`)
 \t\t}
 \t}, newTokens())
 """,
-        """
+    """
 \tclient, srv := newClient(t, func(w http.ResponseWriter, req *http.Request) {
 \t\tif req.URL.Query().Get(\"page\") == \"\" {
 \t\t\tw.Header().
@@ -2578,25 +2570,25 @@ func reply(status int, header http.Header) *http.Response {
 \t\t}
 \t}, newTokens())
 """,
-    ],
+  ],
 ]
 
 [rewrite."internal/ghclient/limit_test.go"]
 dest = "factory/github-metrics/internal/ghclient/limit_test.go"
 replace = [
-    [
-        "github.com/tbhb-dev/github-metrics",
-        "github.com/tbhb-dev/tbhbdev/factory/github-metrics",
-    ],
-    [
-        """
+  [
+    "github.com/tbhb-dev/github-metrics",
+    "github.com/tbhb-dev/tbhbdev/factory/github-metrics",
+  ],
+  [
+    """
 \t\t\tcalls.Add(1)
 
 \t\t\treturn reply(http.StatusForbidden, spentHeader(\"search\", time.Now().Add(30*time.Minute).Unix()))
 \t\t})
 
 """,
-        """
+    """
 \t\t\tcalls.Add(1)
 
 \t\t\treturn reply(
@@ -2606,16 +2598,16 @@ replace = [
 \t\t})
 
 """,
-    ],
-    [
-        """
+  ],
+  [
+    """
 \t\t\tif req.URL.Path == searchPath && calls.Add(1) == 1 {
 \t\t\t\tres := reply(http.StatusForbidden, spentHeader(\"search\", reset))
 \t\t\t\tres.Body = io.NopCloser(strings.NewReader(`{\"message\":\"You have exceeded a secondary rate limit.\"}`))
 
 \t\t\t\treturn res
 """,
-        """
+    """
 \t\t\tif req.URL.Path == searchPath && calls.Add(1) == 1 {
 \t\t\t\tres := reply(http.StatusForbidden, spentHeader(\"search\", reset))
 \t\t\t\tres.Body = io.NopCloser(
@@ -2624,16 +2616,16 @@ replace = [
 
 \t\t\t\treturn res
 """,
-    ],
-    [
-        """
+  ],
+  [
+    """
 \t\t\t\twaited, err := getWaited(ctx, t, client)
 \t\t\t\tif err != nil || calls.Load() != 2 || waited < 9*time.Minute {
 \t\t\t\t\tt.Fatalf(\"%s %d: err = %v, calls = %d, waited %v\", resource, status, err, calls.Load(), waited)
 \t\t\t\t}
 \t\t\t})
 """,
-        """
+    """
 \t\t\t\twaited, err := getWaited(ctx, t, client)
 \t\t\t\tif err != nil || calls.Load() != 2 || waited < 9*time.Minute {
 \t\t\t\t\tt.Fatalf(
@@ -2647,16 +2639,16 @@ replace = [
 \t\t\t\t}
 \t\t\t})
 """,
-    ],
-    [
-        """
+  ],
+  [
+    """
 
 \t\treset := time.Now().Add(30 * time.Minute).Unix()
 \t\tclient := fakeClient(t, limitedOnce(http.StatusForbidden, spentHeader(\"search\", reset), &calls))
 
 \t\tcancelled, cancel := context.WithTimeout(ctx, time.Minute)
 """,
-        """
+    """
 
 \t\treset := time.Now().Add(30 * time.Minute).Unix()
 \t\tclient := fakeClient(
@@ -2666,16 +2658,16 @@ replace = [
 
 \t\tcancelled, cancel := context.WithTimeout(ctx, time.Minute)
 """,
-    ],
-    [
-        """
+  ],
+  [
+    """
 
 \t\treset := time.Now().Add(budget.MaxReset).Unix()
 \t\tclient := fakeClient(t, limitedOnce(http.StatusForbidden, spentHeader(budget.CoreResource, reset), &calls))
 
 \t\twaited, err := getWaited(ctx, t, client)
 """,
-        """
+    """
 
 \t\treset := time.Now().Add(budget.MaxReset).Unix()
 \t\tclient := fakeClient(
@@ -2685,16 +2677,16 @@ replace = [
 
 \t\twaited, err := getWaited(ctx, t, client)
 """,
-    ],
-    [
-        """
+  ],
+  [
+    """
 \t\t\twaited, err := getWaited(ctx, t, client)
 \t\t\tif !errors.Is(err, ghclient.ErrGaveUp) || calls.Load() != 1 || waited != 0 {
 \t\t\t\tt.Fatalf(\"reset %q: err = %v, calls = %d, waited %v\", reset, err, calls.Load(), waited)
 \t\t\t}
 \t\t})
 """,
-        """
+    """
 \t\t\twaited, err := getWaited(ctx, t, client)
 \t\t\tif !errors.Is(err, ghclient.ErrGaveUp) || calls.Load() != 1 || waited != 0 {
 \t\t\t\tt.Fatalf(
@@ -2707,16 +2699,16 @@ replace = [
 \t\t\t}
 \t\t})
 """,
-    ],
-    [
-        """
+  ],
+  [
+    """
 \t\t\twaited, err := getWaited(ctx, t, client)
 \t\t\tif err != nil || calls.Load() != 2 || waited < time.Minute || waited > 2*time.Minute {
 \t\t\t\tt.Fatalf(\"reset %q: err = %v, calls = %d, waited %v\", reset, err, calls.Load(), waited)
 \t\t\t}
 \t\t})
 """,
-        """
+    """
 \t\t\twaited, err := getWaited(ctx, t, client)
 \t\t\tif err != nil || calls.Load() != 2 || waited < time.Minute || waited > 2*time.Minute {
 \t\t\t\tt.Fatalf(
@@ -2729,16 +2721,16 @@ replace = [
 \t\t\t}
 \t\t})
 """,
-    ],
-    [
-        """
+  ],
+  [
+    """
 \t\t\twaited, err := getWaited(ctx, t, client)
 \t\t\tif err != nil || calls.Load() != 2 || waited < test.atLeast || waited > test.atMost {
 \t\t\t\tt.Fatalf(\"reset %q: err = %v, calls = %d, waited %v\", test.reset, err, calls.Load(), waited)
 \t\t\t}
 \t\t})
 """,
-        """
+    """
 \t\t\twaited, err := getWaited(ctx, t, client)
 \t\t\tif err != nil || calls.Load() != 2 || waited < test.atLeast || waited > test.atMost {
 \t\t\t\tt.Fatalf(
@@ -2751,16 +2743,16 @@ replace = [
 \t\t\t}
 \t\t})
 """,
-    ],
-    [
-        """
+  ],
+  [
+    """
 
 \t\t\tvalue := test.reset(time.Now())
 \t\t\tclient := fakeClient(t, limitedOnce(http.StatusForbidden, spentHeader(budget.CoreResource, value), &calls))
 
 \t\t\twaited, err := getWaited(ctx, t, client)
 """,
-        """
+    """
 
 \t\t\tvalue := test.reset(time.Now())
 \t\t\tclient := fakeClient(
@@ -2770,16 +2762,16 @@ replace = [
 
 \t\t\twaited, err := getWaited(ctx, t, client)
 """,
-    ],
-    [
-        """
+  ],
+  [
+    """
 \t\t// A local clock ahead of GitHub's makes a fresh reset look past.
 \t\treset := time.Now().Add(-5 * time.Second).Unix()
 \t\tclient := fakeClient(t, limitedOnce(http.StatusForbidden, spentHeader(\"search\", reset), &calls))
 
 \t\twaited, err := getWaited(ctx, t, client)
 """,
-        """
+    """
 \t\t// A local clock ahead of GitHub's makes a fresh reset look past.
 \t\treset := time.Now().Add(-5 * time.Second).Unix()
 \t\tclient := fakeClient(
@@ -2789,16 +2781,16 @@ replace = [
 
 \t\twaited, err := getWaited(ctx, t, client)
 """,
-    ],
-    [
-        """
+  ],
+  [
+    """
 \t\t\tif calls.Add(1) == 1 {
 \t\t\t\tres := reply(http.StatusForbidden, spentHeader(\"search\", 0))
 \t\t\t\tres.Body = io.NopCloser(strings.NewReader(`{\"message\":\"You have exceeded a secondary rate limit.\"}`))
 
 \t\t\t\treturn res
 """,
-        """
+    """
 \t\t\tif calls.Add(1) == 1 {
 \t\t\t\tres := reply(http.StatusForbidden, spentHeader(\"search\", 0))
 \t\t\t\tres.Body = io.NopCloser(
@@ -2807,16 +2799,16 @@ replace = [
 
 \t\t\t\treturn res
 """,
-    ],
-    [
-        """
+  ],
+  [
+    """
 \t\tvar calls atomic.Int32
 
 \t\tclient := fakeClient(t, limitedOnce(http.StatusTooManyRequests, spentHeader(\"graphql\", 0), &calls))
 
 \t\t_, err := getWaited(ctx, t, client)
 """,
-        """
+    """
 \t\tvar calls atomic.Int32
 
 \t\tclient := fakeClient(
@@ -2826,16 +2818,16 @@ replace = [
 
 \t\t_, err := getWaited(ctx, t, client)
 """,
-    ],
-    [
-        """
+  ],
+  [
+    """
 \t\t\twaited, err := getWaited(ctx, t, client)
 \t\t\tif err != nil || calls.Load() != 2 || waited < 4*time.Minute || waited > 6*time.Minute {
 \t\t\t\tt.Fatalf(\"status %d: err = %v, calls = %d, waited %v\", status, err, calls.Load(), waited)
 \t\t\t}
 \t\t})
 """,
-        """
+    """
 \t\t\twaited, err := getWaited(ctx, t, client)
 \t\t\tif err != nil || calls.Load() != 2 || waited < 4*time.Minute || waited > 6*time.Minute {
 \t\t\t\tt.Fatalf(
@@ -2848,30 +2840,30 @@ replace = [
 \t\t\t}
 \t\t})
 """,
-    ],
+  ],
 ]
 
 [rewrite."internal/receiver/BUILD.bazel"]
 dest = "factory/github-metrics/internal/receiver/BUILD.bazel"
 replace = [
-    [
-        "github.com/tbhb-dev/github-metrics",
-        "github.com/tbhb-dev/tbhbdev/factory/github-metrics",
-    ],
-    [
-        "\"//internal/",
-        "\"//factory/github-metrics/internal/",
-    ],
-    [
-        "\"//:__pkg__\"",
-        "\"//factory/github-metrics:__pkg__\"",
-    ],
-    [
-        "\"//:__subpackages__\"",
-        "\"//factory/github-metrics:__subpackages__\"",
-    ],
-    [
-        """
+  [
+    "github.com/tbhb-dev/github-metrics",
+    "github.com/tbhb-dev/tbhbdev/factory/github-metrics",
+  ],
+  [
+    "\"//internal/",
+    "\"//factory/github-metrics/internal/",
+  ],
+  [
+    "\"//:__pkg__\"",
+    "\"//factory/github-metrics:__pkg__\"",
+  ],
+  [
+    "\"//:__subpackages__\"",
+    "\"//factory/github-metrics:__subpackages__\"",
+  ],
+  [
+    """
 # Copyright Tony Burns
 
 load(\"@rules_go//go:def.bzl\", \"go_library\", \"go_test\")
@@ -2881,7 +2873,7 @@ repo_files()
 
 go_library(
 """,
-        """
+    """
 # Copyright Tony Burns
 
 load(\"@rules_go//go:def.bzl\", \"go_library\")
@@ -2892,18 +2884,18 @@ repo_files(visibility = [\"//factory/github-metrics:__subpackages__\"])
 
 go_library(
 """,
-    ],
+  ],
 ]
 
 [rewrite."internal/receiver/receiver.go"]
 dest = "factory/github-metrics/internal/receiver/receiver.go"
 replace = [
-    [
-        "github.com/tbhb-dev/github-metrics",
-        "github.com/tbhb-dev/tbhbdev/factory/github-metrics",
-    ],
-    [
-        """
+  [
+    "github.com/tbhb-dev/github-metrics",
+    "github.com/tbhb-dev/tbhbdev/factory/github-metrics",
+  ],
+  [
+    """
 \t\tdeliveryKey, oneLine(delivery),
 \t\teventKey, oneLine(event),
 \t\t\"repository\", repositoryName(body.Bytes()),
@@ -2913,7 +2905,7 @@ replace = [
 }
 
 """,
-        """
+    """
 \t\tdeliveryKey, oneLine(delivery),
 \t\teventKey, oneLine(event),
 \t\t\"repository\", repositoryName(body),
@@ -2977,9 +2969,9 @@ func readWebhookBody(
 }
 
 """,
-    ],
-    [
-        """
+  ],
+  [
+    """
 \t}
 
 \tvar body bytes.Buffer
@@ -3010,7 +3002,7 @@ func readWebhookBody(
 \tif err != nil {
 \t\tlog.ErrorContext(ctx, \"enqueue delivery\",
 """,
-        """
+    """
 \t}
 
 \tbody, size, ok := readWebhookBody(resp, req, secret, want, log)
@@ -3029,9 +3021,9 @@ func enqueueWebhook(
 \tif err != nil {
 \t\tlog.ErrorContext(ctx, \"enqueue delivery\",
 """,
-    ],
-    [
-        """
+  ],
+  [
+    """
 \t}
 
 \ttimer := time.NewTimer(slotWait)
@@ -3054,7 +3046,7 @@ func enqueueWebhook(
 
 \t// A slot can open as the request is canceled.
 """,
-        """
+    """
 \t}
 
 \tif !waitForSlot(ctx, resp, log, slots, delivery, event) {
@@ -3064,9 +3056,9 @@ func enqueueWebhook(
 
 \t// A slot can open as the request is canceled.
 """,
-    ],
-    [
-        """
+  ],
+  [
+    """
 \tslots chan struct{},
 ) {
 \twant, ok := parseSignature(secret, req.Header.Get(\"X-Hub-Signature-256\"))
@@ -3074,7 +3066,7 @@ func enqueueWebhook(
 \t\treject(resp, req, log)
 
 """,
-        """
+    """
 \tslots chan struct{},
 ) {
 \twant, validSignature := parseSignature(secret, req.Header.Get(\"X-Hub-Signature-256\"))
@@ -3082,44 +3074,44 @@ func enqueueWebhook(
 \t\treject(resp, req, log)
 
 """,
-    ],
-    [
-        """
+  ],
+  [
+    """
 import (
 \t\"bytes\"
 \t\"crypto/hmac\"
 \t\"crypto/sha256\"
 """,
-        """
+    """
 import (
 \t\"bytes\"
 \t\"context\"
 \t\"crypto/hmac\"
 \t\"crypto/sha256\"
 """,
-    ],
+  ],
 ]
 
 [rewrite."internal/receiver/receiver_test.go"]
 dest = "factory/github-metrics/internal/receiver/receiver_test.go"
 replace = [
-    [
-        "github.com/tbhb-dev/github-metrics",
-        "github.com/tbhb-dev/tbhbdev/factory/github-metrics",
-    ],
-    [
-        "tbhb-dev/github-metrics",
-        "example/widgets",
-    ],
-    [
-        """
+  [
+    "github.com/tbhb-dev/github-metrics",
+    "github.com/tbhb-dev/tbhbdev/factory/github-metrics",
+  ],
+  [
+    "tbhb-dev/github-metrics",
+    "example/widgets",
+  ],
+  [
+    """
 \tconst slack = 64 << 10
 \tif got := read.Load(); got > receiver.MaxBody+slack {
 \t\tt.Errorf(\"server read %d bytes of an endless chunked body, want at most %d\", got, receiver.MaxBody+slack)
 \t}
 }
 """,
-        """
+    """
 \tconst slack = 64 << 10
 \tif got := read.Load(); got > receiver.MaxBody+slack {
 \t\tt.Errorf(
@@ -3130,16 +3122,16 @@ replace = [
 \t}
 }
 """,
-    ],
-    [
-        """
+  ],
+  [
+    """
 \tvar read atomic.Int64
 
 \treq := httptest.NewRequestWithContext(t.Context(), http.MethodPost, \"/webhook\", countReader{read: &read})
 \treq.ContentLength = -1
 \treq.Header.Set(sigHeader, sign(testSecret, openedBody))
 """,
-        """
+    """
 \tvar read atomic.Int64
 
 \treq := httptest.NewRequestWithContext(
@@ -3151,16 +3143,16 @@ replace = [
 \treq.ContentLength = -1
 \treq.Header.Set(sigHeader, sign(testSecret, openedBody))
 """,
-    ],
-    [
-        """
+  ],
+  [
+    """
 
 func (w *hijackWriter) Hijack() (net.Conn, *bufio.ReadWriter, error) {
 \treturn w.conn, bufio.NewReadWriter(bufio.NewReader(strings.NewReader(\"\")), bufio.NewWriter(w.conn)), nil
 }
 
 """,
-        """
+    """
 
 func (w *hijackWriter) Hijack() (net.Conn, *bufio.ReadWriter, error) {
 \treturn w.conn, bufio.NewReadWriter(
@@ -3170,16 +3162,16 @@ func (w *hijackWriter) Hijack() (net.Conn, *bufio.ReadWriter, error) {
 }
 
 """,
-    ],
-    [
-        """
+  ],
+  [
+    """
 
 func (c *spyConn) Write(data []byte) (int, error) {
 \treturn c.written.Write(data) //nolint:wrapcheck // a test double passes the buffer's result through
 }
 
 """,
-        """
+    """
 
 func (c *spyConn) Write(data []byte) (int, error) {
 \tsize, err := c.written.Write(data)
@@ -3191,16 +3183,16 @@ func (c *spyConn) Write(data []byte) (int, error) {
 }
 
 """,
-    ],
-    [
-        """
+  ],
+  [
+    """
 
 \t\tif rec.Code != http.StatusServiceUnavailable || rec.Header().Get(\"Retry-After\") == \"\" {
 \t\t\tt.Errorf(\"status %d, Retry-After %q, want 503 with Retry-After\", rec.Code, rec.Header().Get(\"Retry-After\"))
 \t\t}
 
 """,
-        """
+    """
 
 \t\tif rec.Code != http.StatusServiceUnavailable || rec.Header().Get(\"Retry-After\") == \"\" {
 \t\t\tt.Errorf(
@@ -3211,16 +3203,16 @@ func (c *spyConn) Write(data []byte) (int, error) {
 \t\t}
 
 """,
-    ],
-    [
-        """
+  ],
+  [
+    """
 \t\tvar logs bytes.Buffer
 
 \t\thandler := receiver.Handler([]byte(testSecret), openStore(t), slog.New(slog.NewJSONHandler(&logs, nil)))
 \t\tfree := holdSlots(t, handler)
 
 """,
-        """
+    """
 \t\tvar logs bytes.Buffer
 
 \t\thandler := receiver.Handler(
@@ -3231,16 +3223,16 @@ func (c *spyConn) Write(data []byte) (int, error) {
 \t\tfree := holdSlots(t, handler)
 
 """,
-    ],
-    [
-        """
+  ],
+  [
+    """
 \t}
 
 \tassertLogContains(t, logs.String(), errorLevel, `\"msg\":\"enqueue delivery\"`, loggedDelivery, loggedEvent)
 }
 
 """,
-        """
+    """
 \t}
 
 \tassertLogContains(
@@ -3254,16 +3246,16 @@ func (c *spyConn) Write(data []byte) (int, error) {
 }
 
 """,
-    ],
-    [
-        """
+  ],
+  [
+    """
 \t}
 
 \tassertLogContains(t, logs.String(), `\"msg\":\"accepted delivery\"`, `\"repository\":\"example/widgets\"`)
 }
 
 """,
-        """
+    """
 \t}
 
 \tassertLogContains(
@@ -3275,9 +3267,9 @@ func (c *spyConn) Write(data []byte) (int, error) {
 }
 
 """,
-    ],
-    [
-        """
+  ],
+  [
+    """
 \tt.Parallel()
 
 \tconst body = `{\"repository\":{\"full_name\":\"tbhb-dev/\\r\\ngithub-metrics\"},\"action\":\"opened\"}`
@@ -3288,7 +3280,7 @@ func (c *spyConn) Write(data []byte) (int, error) {
 \treq := newDeliveryRequest(t.Context(), strings.NewReader(body))
 \treq.Header.Set(sigHeader, sign(testSecret, body))
 """,
-        """
+    """
 \tt.Parallel()
 
 \tconst body = `{\"repository\":{\"full_name\":\"example/\\r\\nwidgets\"},\"action\":\"opened\"}`
@@ -3303,16 +3295,16 @@ func (c *spyConn) Write(data []byte) (int, error) {
 \treq := newDeliveryRequest(t.Context(), strings.NewReader(body))
 \treq.Header.Set(sigHeader, sign(testSecret, body))
 """,
-    ],
-    [
-        """
+  ],
+  [
+    """
 }
 
 func runEarlyReject(t *testing.T, header map[string]string, body string, contentLength int64, want int) {
 \tt.Helper()
 
 """,
-        """
+    """
 }
 
 func runEarlyReject(
@@ -3325,9 +3317,9 @@ func runEarlyReject(
 \tt.Helper()
 
 """,
-    ],
-    [
-        """
+  ],
+  [
+    """
 
 \tvalidSig := sign(testSecret, openedBody)
 
@@ -3412,7 +3404,7 @@ func runEarlyReject(
 \t\t\trunEarlyReject(t, spec.header, spec.body, spec.contentLength, spec.want)
 \t\t})
 """,
-        """
+    """
 
 \tvalidSig := sign(testSecret, openedBody)
 \tnoSignature := webhookHeaders(validSig)
@@ -3452,16 +3444,16 @@ func runEarlyReject(
 \t\t\trunEarlyReject(t, spec.header, spec.body, spec.contentLength, spec.want)
 \t\t})
 """,
-    ],
-    [
-        """
+  ],
+  [
+    """
 \t\t{\"event with a space\", deliveryID, \"pull request\", http.StatusBadRequest},
 \t\t{\"event over 64 characters\", deliveryID, strings.Repeat(\"a\", 65), http.StatusBadRequest},
 \t\t{\"delivery id over 64 characters\", strings.Repeat(\"a\", 65), pingEvent, http.StatusBadRequest},
 \t\t{\"delivery id with a space and text\", \"d-1 secret=x\", pingEvent, http.StatusBadRequest},
 \t\t{\"delivery id with an underscore\", \"d_1\", pingEvent, http.StatusBadRequest},
 """,
-        """
+    """
 \t\t{\"event with a space\", deliveryID, \"pull request\", http.StatusBadRequest},
 \t\t{\"event over 64 characters\", deliveryID, strings.Repeat(\"a\", 65), http.StatusBadRequest},
 \t\t{
@@ -3473,9 +3465,9 @@ func runEarlyReject(
 \t\t{\"delivery id with a space and text\", \"d-1 secret=x\", pingEvent, http.StatusBadRequest},
 \t\t{\"delivery id with an underscore\", \"d_1\", pingEvent, http.StatusBadRequest},
 """,
-    ],
-    [
-        """
+  ],
+  [
+    """
 \tconst body = `{\"action\":\"opened\"}`
 
 \ttests := []struct {
@@ -3539,7 +3531,7 @@ func runEarlyReject(
 \t\t},
 \t}
 """,
-        """
+    """
 \tconst body = `{\"action\":\"opened\"}`
 
 \tbadPrefix := map[string]string{
@@ -3583,15 +3575,15 @@ func runEarlyReject(
 \t\t},
 \t}
 """,
-    ],
-    [
-        """
+  ],
+  [
+    """
 }
 
 func TestWebhook(t *testing.T) {
 \tt.Parallel()
 """,
-        """
+    """
 }
 
 func webhookHeaders(signature string) map[string]string {
@@ -3605,16 +3597,16 @@ func webhookHeaders(signature string) map[string]string {
 func TestWebhook(t *testing.T) {
 \tt.Parallel()
 """,
-    ],
-    [
-        """
+  ],
+  [
+    """
 \t}
 
 \tif len(entries) != 1 || entries[0].Delivery != deliveryID || entries[0].Event != pullRequestEvent ||
 \t\tstring(entries[0].Body) != openedBody {
 \t\tt.Fatalf(\"pending = %+v\", entries)
 """,
-        """
+    """
 \t}
 
 \tif len(entries) != 1 || entries[0].Delivery != deliveryID ||
@@ -3622,40 +3614,40 @@ func TestWebhook(t *testing.T) {
 \t\tstring(entries[0].Body) != openedBody {
 \t\tt.Fatalf(\"pending = %+v\", entries)
 """,
-    ],
-    [
-        """
+  ],
+  [
+    """
 \t\"encoding/hex\"
 \t\"errors\"
 \t\"io\"
 \t\"log/slog\"
 """,
-        """
+    """
 \t\"encoding/hex\"
 \t\"errors\"
 \t\"fmt\"
 \t\"io\"
 \t\"log/slog\"
 """,
-    ],
+  ],
 ]
 
 [rewrite."internal/receiver/server_test.go"]
 dest = "factory/github-metrics/internal/receiver/server_test.go"
 replace = [
-    [
-        "github.com/tbhb-dev/github-metrics",
-        "github.com/tbhb-dev/tbhbdev/factory/github-metrics",
-    ],
-    [
-        """
+  [
+    "github.com/tbhb-dev/github-metrics",
+    "github.com/tbhb-dev/tbhbdev/factory/github-metrics",
+  ],
+  [
+    """
 \t\t\tdefer func() { _ = resp.Body.Close() }()
 
 \t\t\tif resp.StatusCode != http.StatusOK || strings.Contains(url, \"::\") != (spec.network == \"tcp6\") {
 \t\t\t\tt.Errorf(\"status = %d for %s\", resp.StatusCode, url)
 \t\t\t}
 """,
-        """
+    """
 \t\t\tdefer func() { _ = resp.Body.Close() }()
 
 \t\t\tif resp.StatusCode != http.StatusOK ||
@@ -3663,16 +3655,16 @@ replace = [
 \t\t\t\tt.Errorf(\"status = %d for %s\", resp.StatusCode, url)
 \t\t\t}
 """,
-    ],
-    [
-        """
+  ],
+  [
+    """
 \t}
 
 \tsrv := receiver.NewServer(addr, receiver.Handler([]byte(testSecret), openStore(t), slog.New(slog.DiscardHandler)))
 
 \tgo func() {
 """,
-        """
+    """
 \t}
 
 \tsrv := receiver.NewServer(
@@ -3682,35 +3674,35 @@ replace = [
 
 \tgo func() {
 """,
-    ],
+  ],
 ]
 
 [rewrite."internal/reconcile/BUILD.bazel"]
 dest = "factory/github-metrics/internal/reconcile/BUILD.bazel"
 replace = [
-    [
-        "github.com/tbhb-dev/github-metrics",
-        "github.com/tbhb-dev/tbhbdev/factory/github-metrics",
-    ],
-    [
-        "\"//internal/",
-        "\"//factory/github-metrics/internal/",
-    ],
-    [
-        "\"//:__pkg__\"",
-        "\"//factory/github-metrics:__pkg__\"",
-    ],
-    [
-        "\"//:__subpackages__\"",
-        "\"//factory/github-metrics:__subpackages__\"",
-    ],
-    [
-        """
+  [
+    "github.com/tbhb-dev/github-metrics",
+    "github.com/tbhb-dev/tbhbdev/factory/github-metrics",
+  ],
+  [
+    "\"//internal/",
+    "\"//factory/github-metrics/internal/",
+  ],
+  [
+    "\"//:__pkg__\"",
+    "\"//factory/github-metrics:__pkg__\"",
+  ],
+  [
+    "\"//:__subpackages__\"",
+    "\"//factory/github-metrics:__subpackages__\"",
+  ],
+  [
+    """
         \"@io_opentelemetry_go_otel_sdk_metric//metricdata\",
     ],
 )
 """,
-        """
+    """
         \"@io_opentelemetry_go_otel_sdk_metric//metricdata\",
     ],
 )
@@ -3720,9 +3712,9 @@ exports_files(
     visibility = [\"//factory/github-metrics:__pkg__\"],
 )
 """,
-    ],
-    [
-        """
+  ],
+  [
+    """
 # Copyright Tony Burns
 
 load(\"@rules_go//go:def.bzl\", \"go_library\", \"go_test\")
@@ -3732,7 +3724,7 @@ repo_files()
 
 go_library(
 """,
-        """
+    """
 # Copyright Tony Burns
 
 load(\"@rules_go//go:def.bzl\", \"go_library\")
@@ -3743,25 +3735,25 @@ repo_files(visibility = [\"//factory/github-metrics:__subpackages__\"])
 
 go_library(
 """,
-    ],
+  ],
 ]
 
 [rewrite."internal/reconcile/cibackfill.go"]
 dest = "factory/github-metrics/internal/reconcile/cibackfill.go"
 replace = [
-    [
-        "github.com/tbhb-dev/github-metrics",
-        "github.com/tbhb-dev/tbhbdev/factory/github-metrics",
-    ],
-    [
-        """
+  [
+    "github.com/tbhb-dev/github-metrics",
+    "github.com/tbhb-dev/tbhbdev/factory/github-metrics",
+  ],
+  [
+    """
 \t\tp.logged++
 \t}
 
 \treturn nil
 }
 """,
-        """
+    """
 \t\tp.logged++
 \t}
 
@@ -3822,9 +3814,9 @@ func (p *ciPass) inWindow(end time.Time) bool {
 \treturn !end.IsZero() && !end.Before(p.start) && !end.After(p.end)
 }
 """,
-    ],
-    [
-        """
+  ],
+  [
+    """
 \t\t}
 
 \t\trecord := slog.NewRecord(end, slog.LevelInfo, \"ci job finished\", 0)
@@ -3852,54 +3844,54 @@ func (p *ciPass) inWindow(end time.Time) bool {
 
 \t\terr = p.log.Handler().Handle(ctx, record)
 """,
-        """
+    """
 \t\t}
 
 \t\trecord := p.jobRecord(end, job, event)
 
 \t\terr = p.log.Handler().Handle(ctx, record)
 """,
-    ],
-    [
-        """
+  ],
+  [
+    """
 \t\tend, parseErr := time.Parse(time.RFC3339, job.CompletedAt)
 
 \t\tif parseErr != nil || end.IsZero() || end.Before(p.start) || end.After(p.end) {
 \t\t\tp.skipped++
 
 """,
-        """
+    """
 \t\tend, parseErr := time.Parse(time.RFC3339, job.CompletedAt)
 
 \t\tif parseErr != nil || !p.inWindow(end) {
 \t\t\tp.skipped++
 
 """,
-    ],
-    [
-        """
+  ],
+  [
+    """
 }
 
 //nolint:gocognit,cyclop // Keep filtering, claiming and logging in order.
 func (p *ciPass) recordJobs(ctx context.Context, body []byte, event string) error {
 \tvar page struct {
 """,
-        """
+    """
 }
 
 func (p *ciPass) recordJobs(ctx context.Context, body []byte, event string) error {
 \tvar page struct {
 """,
-    ],
-    [
-        """
+  ],
+  [
+    """
 }
 
 func (p *ciPass) walk(ctx context.Context, target string, limit int, visit func(context.Context, []byte) error) error {
 \tfor range limit {
 \t\tresponse, err := p.client.Get(ctx, budget.Backfill, target)
 """,
-        """
+    """
 }
 
 func (p *ciPass) walk(
@@ -3911,16 +3903,16 @@ func (p *ciPass) walk(
 \tfor range limit {
 \t\tresponse, err := p.client.Get(ctx, budget.Backfill, target)
 """,
-    ],
-    [
-        """
+  ],
+  [
+    """
 
 \t\t// Error text from dependencies may contain operator configuration; keep only status.
 \t\tlog.ErrorContext(ctx, \"ci backfill failed\", append(fields, \"status\", status, \"errors\", 1)...)
 
 \t\treturn
 """,
-        """
+    """
 
 \t\t// Error text from dependencies may contain operator configuration; keep only status.
 \t\tlog.ErrorContext(
@@ -3931,16 +3923,16 @@ func (p *ciPass) walk(
 
 \t\treturn
 """,
-    ],
-    [
-        """
+  ],
+  [
+    """
 // BackfillCI logs exactly one terminal summary, including on cancellation or a claim error.
 func BackfillCI(
 \tctx context.Context, client *ghclient.Client, ledger Ledger, log *slog.Logger, cfg CIConfig, now time.Time,
 ) {
 \tstate := ciPass{
 """,
-        """
+    """
 // BackfillCI logs exactly one terminal summary, including on cancellation or a claim error.
 func BackfillCI(
 \tctx context.Context,
@@ -3952,23 +3944,23 @@ func BackfillCI(
 ) {
 \tstate := ciPass{
 """,
-    ],
+  ],
 ]
 
 [rewrite."internal/reconcile/cibackfill_test.go"]
 dest = "factory/github-metrics/internal/reconcile/cibackfill_test.go"
 replace = [
-    [
-        "github.com/tbhb-dev/github-metrics",
-        "github.com/tbhb-dev/tbhbdev/factory/github-metrics",
-    ],
-    [
-        """
+  [
+    "github.com/tbhb-dev/github-metrics",
+    "github.com/tbhb-dev/tbhbdev/factory/github-metrics",
+  ],
+  [
+    """
 \t\tt.Fatalf(\"summary: %s\", logs)
 \t}
 }
 """,
-        """
+    """
 \t\tt.Fatalf(\"summary: %s\", logs)
 \t}
 }
@@ -3994,9 +3986,9 @@ func parseCILogs(t *testing.T, logs string) map[string][]map[string]any {
 \treturn entries
 }
 """,
-    ],
-    [
-        """
+  ],
+  [
+    """
 \tt.Helper()
 
 \tentries := map[string][]map[string]any{}
@@ -4016,16 +4008,16 @@ func parseCILogs(t *testing.T, logs string) map[string][]map[string]any {
 
 \tfinished, failed := entries[\"ci backfill finished\"], entries[\"ci backfill failed\"]
 """,
-        """
+    """
 \tt.Helper()
 
 \tentries := parseCILogs(t, logs)
 
 \tfinished, failed := entries[\"ci backfill finished\"], entries[\"ci backfill failed\"]
 """,
-    ],
-    [
-        """
+  ],
+  [
+    """
 \t\t\t}
 
 \t\t\tci.BackfillCI(ctx, client, claims, slog.New(slog.NewJSONHandler(&logs, nil)),
@@ -4033,7 +4025,7 @@ func parseCILogs(t *testing.T, logs string) map[string][]map[string]any {
 \t\t\tcheckLogs(t, mode, calls.Load(), claims, logs.String())
 \t\t})
 """,
-        """
+    """
 \t\t\t}
 
 \t\t\tci.BackfillCI(
@@ -4050,16 +4042,16 @@ func parseCILogs(t *testing.T, logs string) map[string][]map[string]any {
 \t\t\tcheckLogs(t, mode, calls.Load(), claims, logs.String())
 \t\t})
 """,
-    ],
-    [
-        """
+  ],
+  [
+    """
 \t\t\tdefer server.Close()
 
 \t\t\tclient, err := ghclient.New(server.URL, server.Client(), budget.New(), fakeTokens{}, ghclient.NewETags())
 \t\t\tif err != nil {
 \t\t\t\tt.Fatal(err)
 """,
-        """
+    """
 \t\t\tdefer server.Close()
 
 \t\t\tclient, err := ghclient.New(
@@ -4072,25 +4064,25 @@ func parseCILogs(t *testing.T, logs string) map[string][]map[string]any {
 \t\t\tif err != nil {
 \t\t\t\tt.Fatal(err)
 """,
-    ],
+  ],
 ]
 
 [rewrite."internal/reconcile/events.go"]
 dest = "factory/github-metrics/internal/reconcile/events.go"
 replace = [
-    [
-        "github.com/tbhb-dev/github-metrics",
-        "github.com/tbhb-dev/tbhbdev/factory/github-metrics",
-    ],
-    [
-        """
+  [
+    "github.com/tbhb-dev/github-metrics",
+    "github.com/tbhb-dev/tbhbdev/factory/github-metrics",
+  ],
+  [
+    """
 // Each page clears its tag first, because the client
 // would answer 304 with an empty body for a URL it saw before.
 func (l *Lister) FirstEnd(ctx context.Context, repo string, number int, priority budget.Priority) (End, error) {
 \tevents, pages, complete, err := l.events(ctx, repo, number, priority)
 \tend := End{At: time.Time{}, State: \"\", Pages: pages}
 """,
-        """
+    """
 // Each page clears its tag first, because the client
 // would answer 304 with an empty body for a URL it saw before.
 func (l *Lister) FirstEnd(
@@ -4102,18 +4094,18 @@ func (l *Lister) FirstEnd(
 \tevents, pages, complete, err := l.events(ctx, repo, number, priority)
 \tend := End{At: time.Time{}, State: \"\", Pages: pages}
 """,
-    ],
+  ],
 ]
 
 [rewrite."internal/reconcile/events_test.go"]
 dest = "factory/github-metrics/internal/reconcile/events_test.go"
 replace = [
-    [
-        "github.com/tbhb-dev/github-metrics",
-        "github.com/tbhb-dev/tbhbdev/factory/github-metrics",
-    ],
-    [
-        """
+  [
+    "github.com/tbhb-dev/github-metrics",
+    "github.com/tbhb-dev/tbhbdev/factory/github-metrics",
+  ],
+  [
+    """
 \t\t\t_, decodeErr := errors.AsType[*json.SyntaxError](err)
 
 \t\t\tif decodeErr == test.interrupted || errors.Is(err, io.ErrUnexpectedEOF) != test.interrupted ||
@@ -4121,7 +4113,7 @@ replace = [
 \t\t\t\t!slices.Equal(fake.requests, []string{eventsPath, secondPage}) {
 \t\t\t\tt.Errorf(\"got = %+v, err = %v, requests = %v\", got, err, fake.requests)
 """,
-        """
+    """
 \t\t\t_, decodeErr := errors.AsType[*json.SyntaxError](err)
 
 \t\t\tinterrupted := errors.Is(err, io.ErrUnexpectedEOF)
@@ -4132,16 +4124,16 @@ replace = [
 \t\t\t\t!slices.Equal(fake.requests, []string{eventsPath, secondPage}) {
 \t\t\t\tt.Errorf(\"got = %+v, err = %v, requests = %v\", got, err, fake.requests)
 """,
-    ],
-    [
-        """
+  ],
+  [
+    """
 
 \tgot, err := fake.lister.FirstEnd(t.Context(), \"o/r\", 7, budget.Incremental)
 \tif err != nil || got.At.IsZero() || !slices.Equal(fake.requests, []string{\"/api/v3\" + eventsPath}) {
 \t\tt.Errorf(\"got = %+v, err = %v, requests = %v\", got, err, fake.requests)
 \t}
 """,
-        """
+    """
 
 \tgot, err := fake.lister.FirstEnd(t.Context(), \"o/r\", 7, budget.Incremental)
 \tif err != nil || got.At.IsZero() ||
@@ -4149,16 +4141,16 @@ replace = [
 \t\tt.Errorf(\"got = %+v, err = %v, requests = %v\", got, err, fake.requests)
 \t}
 """,
-    ],
-    [
-        """
+  ],
+  [
+    """
 \t}
 
 \tif want := []string{eventsPath, eventsPath}; !slices.Equal(fake.requests, want) || fake.tags[eventsPath] != \"\" {
 \t\tt.Errorf(
 \t\t\t\"requests = %v, last sent tag = %q, want two requests and no tag\",
 """,
-        """
+    """
 \t}
 
 \tif want := []string{
@@ -4169,18 +4161,18 @@ replace = [
 \t\tt.Errorf(
 \t\t\t\"requests = %v, last sent tag = %q, want two requests and no tag\",
 """,
-    ],
+  ],
 ]
 
 [rewrite."internal/reconcile/list.go"]
 dest = "factory/github-metrics/internal/reconcile/list.go"
 replace = [
-    [
-        "github.com/tbhb-dev/github-metrics",
-        "github.com/tbhb-dev/tbhbdev/factory/github-metrics",
-    ],
-    [
-        """
+  [
+    "github.com/tbhb-dev/github-metrics",
+    "github.com/tbhb-dev/tbhbdev/factory/github-metrics",
+  ],
+  [
+    """
 \t\terr = json.Unmarshal(resp.Body, &decoded)
 \t\tif err != nil {
 \t\t\treturn Walked{Newest: time.Time{}, Items: nil, Pages: walked.Pages, Truncated: false, Unchanged: false},
@@ -4188,7 +4180,7 @@ replace = [
 \t\t}
 
 """,
-        """
+    """
 \t\terr = json.Unmarshal(resp.Body, &decoded)
 \t\tif err != nil {
 \t\t\treturn Walked{
@@ -4205,16 +4197,16 @@ replace = [
 \t\t}
 
 """,
-    ],
-    [
-        """
+  ],
+  [
+    """
 \t\tresp, err := l.fetch(ctx, opts.Priority, target, page)
 \t\tif err != nil {
 \t\t\treturn Walked{Newest: time.Time{}, Items: nil, Pages: walked.Pages, Truncated: false, Unchanged: false}, err
 \t\t}
 
 """,
-        """
+    """
 \t\tresp, err := l.fetch(ctx, opts.Priority, target, page)
 \t\tif err != nil {
 \t\t\treturn Walked{
@@ -4227,16 +4219,16 @@ replace = [
 \t\t}
 
 """,
-    ],
-    [
-        """
+  ],
+  [
+    """
 // one reads one page.
 func NewLister(client Getter, tags Tags, base *url.URL) *Lister {
 \treturn &Lister{client: client, tags: tags, base: base, cached: nil, valid: false, stops: map[string]time.Time{}}
 }
 
 """,
-        """
+    """
 // one reads one page.
 func NewLister(client Getter, tags Tags, base *url.URL) *Lister {
 \treturn &Lister{
@@ -4250,25 +4242,25 @@ func NewLister(client Getter, tags Tags, base *url.URL) *Lister {
 }
 
 """,
-    ],
+  ],
 ]
 
 [rewrite."internal/reconcile/list_test.go"]
 dest = "factory/github-metrics/internal/reconcile/list_test.go"
 replace = [
-    [
-        "github.com/tbhb-dev/github-metrics",
-        "github.com/tbhb-dev/tbhbdev/factory/github-metrics",
-    ],
-    [
-        """
+  [
+    "github.com/tbhb-dev/github-metrics",
+    "github.com/tbhb-dev/tbhbdev/factory/github-metrics",
+  ],
+  [
+    """
 \tgot, err := walk()
 \tif err != nil || got.Unchanged || fake.tags[firstPage] != \"\" {
 \t\tt.Errorf(\"got = %+v, err = %v, sent tag = %q, want a full read\", got, err, fake.tags[firstPage])
 \t}
 }
 """,
-        """
+    """
 \tgot, err := walk()
 \tif err != nil || got.Unchanged || fake.tags[firstPage] != \"\" {
 \t\tt.Errorf(
@@ -4280,16 +4272,16 @@ replace = [
 \t}
 }
 """,
-    ],
-    [
-        """
+  ],
+  [
+    """
 
 \tif err != nil || fake.tags[firstPage] != `\"v1\"` {
 \t\tt.Fatalf(\"err = %v, second walk sent tag %q, want the stored one\", err, fake.tags[firstPage])
 \t}
 
 """,
-        """
+    """
 
 \tif err != nil || fake.tags[firstPage] != `\"v1\"` {
 \t\tt.Fatalf(
@@ -4300,9 +4292,9 @@ replace = [
 \t}
 
 """,
-    ],
-    [
-        """
+  ],
+  [
+    """
 \t}
 
 \tif want := []string{\"/api/v3/installation/repositories?per_page=100\", \"/api/v3/repos/o/r/pulls?\" +
@@ -4310,7 +4302,7 @@ replace = [
 \t\tt.Errorf(\"requests = %v, err = %v\", fake.requests, err)
 \t}
 """,
-        """
+    """
 \t}
 
 \tif want := []string{
@@ -4322,9 +4314,9 @@ replace = [
 \t\tt.Errorf(\"requests = %v, err = %v\", fake.requests, err)
 \t}
 """,
-    ],
-    [
-        """
+  ],
+  [
+    """
 }
 
 func TestRepositoriesSinglePageUsesTag(t *testing.T) {
@@ -4338,7 +4330,7 @@ func TestRepositoriesSinglePageUsesTag(t *testing.T) {
 \t\t\tt.Fatalf(\"repos = %+v, truncated = %v, err = %v\", repos, truncated, err)
 \t\t}
 """,
-        """
+    """
 }
 
 func taggedWalk(t *testing.T, same *atomic.Bool) *rig {
@@ -4380,9 +4372,9 @@ func TestRepositoriesSinglePageUsesTag(t *testing.T) {
 \t\t\tt.Fatalf(\"repos = %+v, truncated = %v, err = %v\", repos, truncated, err)
 \t\t}
 """,
-    ],
-    [
-        """
+  ],
+  [
+    """
 \tvar same atomic.Bool
 
 \tfake := newRig(t, func(resp http.ResponseWriter, req *http.Request, host string) {
@@ -4403,16 +4395,16 @@ func TestRepositoriesSinglePageUsesTag(t *testing.T) {
 
 \tfor range 2 {
 """,
-        """
+    """
 \tvar same atomic.Bool
 
 \tfake := taggedWalk(t, &same)
 
 \tfor range 2 {
 """,
-    ],
-    [
-        """
+  ],
+  [
+    """
 
 \t\t\t\tresp.Header().Set(\"ETag\", `\"tag\"`)
 \t\t\t\tresp.Header().Set(\"Link\", \"<\"+host+firstPage+\"&page=\"+strconv.Itoa(int(page)+1)+`>; rel=\"next\"`)
@@ -4425,7 +4417,7 @@ func TestRepositoriesSinglePageUsesTag(t *testing.T) {
 \t\t\t\tt.Fatalf(\"got = %+v, err = %v\", got, err)
 \t\t\t}
 """,
-        """
+    """
 
 \t\t\t\tresp.Header().Set(\"ETag\", `\"tag\"`)
 \t\t\t\tresp.Header().
@@ -4445,9 +4437,9 @@ func TestRepositoriesSinglePageUsesTag(t *testing.T) {
 \t\t\t\tt.Fatalf(\"got = %+v, err = %v\", got, err)
 \t\t\t}
 """,
-    ],
-    [
-        """
+  ],
+  [
+    """
 \t// The open item has no close time, so it is skipped, but it moves Newest.
 \tnewest := time.Date(2026, time.January, 2, 4, 0, 0, 0, time.UTC)
 \tif len(got.Items) != 2 || got.Items[0].NodeID != \"N3\" || got.Items[1].NodeID != \"N2\" ||
@@ -4456,7 +4448,7 @@ func TestRepositoriesSinglePageUsesTag(t *testing.T) {
 \t}
 }
 """,
-        """
+    """
 \t// The open item has no close time, so it is skipped, but it moves Newest.
 \tnewest := time.Date(2026, time.January, 2, 4, 0, 0, 0, time.UTC)
 \tif !got.Newest.Equal(newest) {
@@ -4475,9 +4467,9 @@ func checkStoppedItems(t *testing.T, items []reconcile.ClosedPR) {
 \t}
 }
 """,
-    ],
-    [
-        """
+  ],
+  [
+    """
 \t}
 
 \treturn fmt.Sprintf(`{\"node_id\":%q,\"body\":\"b\",\"created_at\":\"2026-01-01T00:00:00Z\",\"updated_at\":%s,`+
@@ -4485,7 +4477,7 @@ func checkStoppedItems(t *testing.T, items []reconcile.ClosedPR) {
 }
 
 """,
-        """
+    """
 \t}
 
 \treturn fmt.Sprintf(
@@ -4499,9 +4491,9 @@ func checkStoppedItems(t *testing.T, items []reconcile.ClosedPR) {
 }
 
 """,
-    ],
-    [
-        """
+  ],
+  [
+    """
 \t\tmu:       sync.Mutex{},
 \t}
 \tserver := httptest.NewTLSServer(http.HandlerFunc(func(resp http.ResponseWriter, req *http.Request) {
@@ -4517,7 +4509,7 @@ func checkStoppedItems(t *testing.T, items []reconcile.ClosedPR) {
 \tif err != nil {
 \t\tt.Fatal(err)
 """,
-        """
+    """
 \t\tmu:       sync.Mutex{},
 \t}
 \tserver := httptest.NewTLSServer(
@@ -4541,16 +4533,16 @@ func checkStoppedItems(t *testing.T, items []reconcile.ClosedPR) {
 \tif err != nil {
 \t\tt.Fatal(err)
 """,
-    ],
-    [
-        """
+  ],
+  [
+    """
 
 // newRigAt serves the handler with the client's base URL ending in prefix.
 func newRigAt(t *testing.T, prefix string, handler func(http.ResponseWriter, *http.Request, string)) *rig {
 \tt.Helper()
 
 """,
-        """
+    """
 
 // newRigAt serves the handler with the client's base URL ending in prefix.
 func newRigAt(
@@ -4561,14 +4553,14 @@ func newRigAt(
 \tt.Helper()
 
 """,
-    ],
+  ],
 ]
 
 [rewrite."internal/reconcile/loop.go"]
 dest = "factory/github-metrics/internal/reconcile/loop.go"
 replace = [
-    [
-        """
+  [
+    """
 \tkindOnly := metric.WithAttributes(kindAttr)
 
 \tl.runs.Add(ctx, 1, metric.WithAttributes(kindAttr, attribute.String(\"result\", string(result.Result))))
@@ -4579,7 +4571,7 @@ replace = [
 
 \tif result.Result == RunOK {
 """,
-        """
+    """
 \tkindOnly := metric.WithAttributes(kindAttr)
 
 \tl.runs.Add(
@@ -4598,18 +4590,18 @@ replace = [
 
 \tif result.Result == RunOK {
 """,
-    ],
+  ],
 ]
 
 [rewrite."internal/reconcile/loop_test.go"]
 dest = "factory/github-metrics/internal/reconcile/loop_test.go"
 replace = [
-    [
-        "github.com/tbhb-dev/github-metrics",
-        "github.com/tbhb-dev/tbhbdev/factory/github-metrics",
-    ],
-    [
-        """
+  [
+    "github.com/tbhb-dev/github-metrics",
+    "github.com/tbhb-dev/tbhbdev/factory/github-metrics",
+  ],
+  [
+    """
 \t}
 
 \twant := map[string]float64{
@@ -4672,7 +4664,7 @@ func checkLoopLogs(t *testing.T, logs io.Reader, statuses []reconcile.RunStatus,
 \t}
 }
 """,
-        """
+    """
 \t}
 
 \treturn got
@@ -4687,15 +4679,15 @@ func approachSweep(index int) (time.Time, time.Time) {
 \treturn start, start.Add(delay)
 }
 """,
-    ],
-    [
-        """
+  ],
+  [
+    """
 \t\truns   = prefix + \"runs//counter/\" + kind
 \t)
 
 \tvar data metricdata.ResourceMetrics
 """,
-        """
+    """
 \t\truns   = prefix + \"runs//counter/\" + kind
 \t)
 
@@ -4784,16 +4776,16 @@ func collectLoopMetrics(t *testing.T, reader *sdkmetric.ManualReader) map[string
 
 \tvar data metricdata.ResourceMetrics
 """,
-    ],
-    [
-        """
+  ],
+  [
+    """
 }
 
 func checkLoopMetrics(t *testing.T, reader *sdkmetric.ManualReader, incrementalSuccess, sweepSuccess time.Time) {
 \tt.Helper()
 
 """,
-        """
+    """
 }
 
 func checkLoopMetrics(
@@ -4804,9 +4796,9 @@ func checkLoopMetrics(
 \tt.Helper()
 
 """,
-    ],
-    [
-        """
+  ],
+  [
+    """
 \t\t}
 
 \t\tloop, err := reconcile.NewLoop(pass, noop.NewMeterProvider().Meter(\"test\"), slog.New(slog.DiscardHandler), nil)
@@ -4816,7 +4808,7 @@ func checkLoopMetrics(
 
 \t\terr = loop.Start(t.Context())
 """,
-        """
+    """
 \t\t}
 
 \t\tloop, err := reconcile.NewLoop(
@@ -4831,16 +4823,16 @@ func checkLoopMetrics(
 
 \t\terr = loop.Start(t.Context())
 """,
-    ],
-    [
-        """
+  ],
+  [
+    """
 \t\tdue := started.Add(time.Hour)
 \t\tpassErrors := []error{
 \t\t\tio.ErrClosedPipe, io.ErrClosedPipe, nil, io.ErrClosedPipe, io.ErrClosedPipe, io.ErrUnexpectedEOF,
 \t\t}
 \t\tcalls := 0
 """,
-        """
+    """
 \t\tdue := started.Add(time.Hour)
 \t\tpassErrors := []error{
 \t\t\tio.ErrClosedPipe,
@@ -4852,9 +4844,9 @@ func checkLoopMetrics(
 \t\t}
 \t\tcalls := 0
 """,
-    ],
-    [
-        """
+  ],
+  [
+    """
 \t\terr = loop.Start(ctx)
 \t\tif err != nil || !time.Now().Equal(due) || calls != 96 {
 \t\t\tt.Fatalf(\"loop returned %v at %v after %d passes, want %v after 96 passes\", err, time.Now(), calls, due)
@@ -4863,7 +4855,7 @@ func checkLoopMetrics(
 }
 
 """,
-        """
+    """
 \t\terr = loop.Start(ctx)
 \t\tif err != nil || !time.Now().Equal(due) || calls != 96 {
 \t\t\tt.Fatalf(
@@ -4898,9 +4890,9 @@ func loopResult(status reconcile.RunStatus) reconcile.RunResult {
 }
 
 """,
-    ],
-    [
-        """
+  ],
+  [
+    """
 \t\t}
 
 \t\tloop, err := reconcile.NewLoop(pass, noop.NewMeterProvider().Meter(\"test\"), slog.New(slog.DiscardHandler), nil)
@@ -4910,7 +4902,7 @@ func loopResult(status reconcile.RunStatus) reconcile.RunResult {
 
 \t\terr = loop.Start(ctx)
 """,
-        """
+    """
 \t\t}
 
 \t\tloop, err := reconcile.NewLoop(
@@ -4925,16 +4917,16 @@ func loopResult(status reconcile.RunStatus) reconcile.RunResult {
 
 \t\terr = loop.Start(ctx)
 """,
-    ],
-    [
-        """
+  ],
+  [
+    """
 \t\t}
 
 \t\tloop, err := reconcile.NewLoop(pass, provider.Meter(\"test\"), slog.New(slog.NewJSONHandler(&logs, nil)), nil)
 \t\tif err != nil {
 \t\t\tt.Fatal(err)
 """,
-        """
+    """
 \t\t}
 
 \t\tloop, err := reconcile.NewLoop(
@@ -4946,9 +4938,9 @@ func loopResult(status reconcile.RunStatus) reconcile.RunResult {
 \t\tif err != nil {
 \t\t\tt.Fatal(err)
 """,
-    ],
-    [
-        """
+  ],
+  [
+    """
 \t\t\ttime.Sleep(2 * time.Second)
 
 \t\t\tresult := reconcile.RunResult{
@@ -4959,16 +4951,16 @@ func loopResult(status reconcile.RunStatus) reconcile.RunResult {
 \t\t\tcalls++
 
 """,
-        """
+    """
 \t\t\ttime.Sleep(2 * time.Second)
 
 \t\t\tresult := loopResult(statuses[calls])
 \t\t\tcalls++
 
 """,
-    ],
-    [
-        """
+  ],
+  [
+    """
 \t\tconst sweepIndex = 3
 
 \t\ttime.Sleep(sweepStart - sweepIndex*15*time.Minute)
@@ -4978,16 +4970,16 @@ func loopResult(status reconcile.RunStatus) reconcile.RunResult {
 \t\treader := sdkmetric.NewManualReader()
 \t\tprovider := sdkmetric.NewMeterProvider(sdkmetric.WithReader(reader))
 """,
-        """
+    """
 \t\tconst sweepIndex = 3
 
 \t\tstarted, due := approachSweep(sweepIndex)
 \t\treader := sdkmetric.NewManualReader()
 \t\tprovider := sdkmetric.NewMeterProvider(sdkmetric.WithReader(reader))
 """,
-    ],
-    [
-        """
+  ],
+  [
+    """
 \t\t}
 
 \t\tcancel()
@@ -5012,7 +5004,7 @@ func waitForPass(ctx context.Context, t *testing.T, call int, release <-chan str
 \tt.Helper()
 
 """,
-        """
+    """
 \t\t}
 
 \t\tcheckLoopShutdown(t, cancel, release, done)
@@ -5053,16 +5045,16 @@ func waitForPass(
 \tt.Helper()
 
 """,
-    ],
-    [
-        """
+  ],
+  [
+    """
 \t\t}
 
 \t\tloop, err := reconcile.NewLoop(pass, noop.NewMeterProvider().Meter(\"test\"), slog.New(slog.DiscardHandler), nil)
 \t\tif err != nil {
 \t\t\tt.Fatal(err)
 """,
-        """
+    """
 \t\t}
 
 \t\tloop, err := reconcile.NewLoop(
@@ -5074,18 +5066,18 @@ func waitForPass(
 \t\tif err != nil {
 \t\t\tt.Fatal(err)
 """,
-    ],
+  ],
 ]
 
 [rewrite."internal/reconcile/run.go"]
 dest = "factory/github-metrics/internal/reconcile/run.go"
 replace = [
-    [
-        "github.com/tbhb-dev/github-metrics",
-        "github.com/tbhb-dev/tbhbdev/factory/github-metrics",
-    ],
-    [
-        """
+  [
+    "github.com/tbhb-dev/github-metrics",
+    "github.com/tbhb-dev/tbhbdev/factory/github-metrics",
+  ],
+  [
+    """
 \t\t}
 
 \t\ttally(outcome.Merged, &result.Recorded, &result.AlreadyCounted, &result.TooOld, &result.PreFloor)
@@ -5095,7 +5087,7 @@ replace = [
 \t\t)
 \t}
 """,
-        """
+    """
 \t\t}
 
 \t\ttally(
@@ -5114,9 +5106,9 @@ replace = [
 \t\t)
 \t}
 """,
-    ],
-    [
-        """
+  ],
+  [
+    """
 
 \t\toutcome, err := record.RecordClosed(ctx, recorder.ClosedPR{
 \t\t\tCreatedAt: item.CreatedAt, MergedAt: item.MergedAt, EndedAt: end.At,
@@ -5125,7 +5117,7 @@ replace = [
 \t\t})
 \t\tif err != nil {
 """,
-        """
+    """
 
 \t\toutcome, err := record.RecordClosed(ctx, recorder.ClosedPR{
 \t\t\tCreatedAt:  item.CreatedAt,
@@ -5140,16 +5132,16 @@ replace = [
 \t\t})
 \t\tif err != nil {
 """,
-    ],
-    [
-        """
+  ],
+  [
+    """
 // reports whether to skip the repository or stop the pass.
 func recordItems(
 \tctx context.Context, events EndReader, record ClosedRecorder, items []ClosedPR, priority budget.Priority,
 \tresult *RunResult,
 ) (readOutcome, error) {
 """,
-        """
+    """
 // reports whether to skip the repository or stop the pass.
 func recordItems(
 \tctx context.Context,
@@ -5160,9 +5152,9 @@ func recordItems(
 \tresult *RunResult,
 ) (readOutcome, error) {
 """,
-    ],
-    [
-        """
+  ],
+  [
+    """
 \t}
 
 \tif !walked.Truncated && walked.Newest.After(watermark) {
@@ -5178,7 +5170,7 @@ func recordItems(
 }
 
 """,
-        """
+    """
 \t}
 
 \treturn false, advanceWatermark(lister, store, repo, walked, watermark)
@@ -5202,9 +5194,9 @@ func advanceWatermark(
 }
 
 """,
-    ],
-    [
-        """
+  ],
+  [
+    """
 
 func repairRepository(
 \tctx context.Context, lister RepositoryLister, events EndReader, record ClosedRecorder, store Watermarks,
@@ -5212,7 +5204,7 @@ func repairRepository(
 ) (bool, error) {
 \twatermark, err := store.Watermark(repo)
 """,
-        """
+    """
 
 func repairRepository(
 \tctx context.Context,
@@ -5226,16 +5218,16 @@ func repairRepository(
 ) (bool, error) {
 \twatermark, err := store.Watermark(repo)
 """,
-    ],
-    [
-        """
+  ],
+  [
+    """
 \t\t}
 
 \t\tstop, repairErr := repairRepository(ctx, lister, events, record, store, repository.FullName, opts, &result)
 \t\tif repairErr != nil {
 \t\t\tresult.Result = RunPartial
 """,
-        """
+    """
 \t\t}
 
 \t\tstop, repairErr := repairRepository(
@@ -5251,9 +5243,9 @@ func repairRepository(
 \t\tif repairErr != nil {
 \t\t\tresult.Result = RunPartial
 """,
-    ],
-    [
-        """
+  ],
+  [
+    """
 // the walk reaches the stop time and processes every item.
 func Run(
 \tctx context.Context, lister RepositoryLister, events EndReader, record ClosedRecorder, store Watermarks,
@@ -5265,7 +5257,7 @@ func Run(
 \tif ctx.Value(sweepPassKey{}) != nil {
 \t\topts.MaxPages, opts.Priority = SweepMaxPages, budget.Sweep
 """,
-        """
+    """
 // the walk reaches the stop time and processes every item.
 func Run(
 \tctx context.Context,
@@ -5285,25 +5277,25 @@ func Run(
 \tif ctx.Value(sweepPassKey{}) != nil {
 \t\topts.MaxPages, opts.Priority = SweepMaxPages, budget.Sweep
 """,
-    ],
+  ],
 ]
 
 [rewrite."internal/reconcile/run_test.go"]
 dest = "factory/github-metrics/internal/reconcile/run_test.go"
 replace = [
-    [
-        "github.com/tbhb-dev/github-metrics",
-        "github.com/tbhb-dev/tbhbdev/factory/github-metrics",
-    ],
-    [
-        """
+  [
+    "github.com/tbhb-dev/github-metrics",
+    "github.com/tbhb-dev/tbhbdev/factory/github-metrics",
+  ],
+  [
+    """
 
 \t\t\tgot, err := reconcile.Run(t.Context(), &fake, &fake, &fake, &fake, runClock(time.Now()))
 \t\t\tif err != nil || got.Result != test.result || got.Repositories != test.walks || got.Pages != test.walks ||
 \t\t\t\tlen(fake.walked) != test.walks {
 \t\t\t\tt.Errorf(\"result = %+v, err = %v, walked = %v\", got, err, fake.walked)
 """,
-        """
+    """
 
 \t\t\tgot, err := reconcile.Run(t.Context(), &fake, &fake, &fake, &fake, runClock(time.Now()))
 \t\t\tif err != nil || got.Result != test.result || got.Repositories != test.walks ||
@@ -5311,9 +5303,9 @@ replace = [
 \t\t\t\tlen(fake.walked) != test.walks {
 \t\t\t\tt.Errorf(\"result = %+v, err = %v, walked = %v\", got, err, fake.walked)
 """,
-    ],
-    [
-        """
+  ],
+  [
+    """
 \t\t\t\t}
 
 \t\t\t\treturn reconcile.End{At: time.Time{}, State: \"\", Pages: 1}, fmt.Errorf(\"read events: %w\", test.err)
@@ -5339,7 +5331,7 @@ replace = [
 \t\t})
 \t}
 """,
-        """
+    """
 \t\t\t\t}
 
 \t\t\t\treturn reconcile.End{
@@ -5364,9 +5356,9 @@ replace = [
 \t\t})
 \t}
 """,
-    ],
-    [
-        """
+  ],
+  [
+    """
 
 \tgot, err := reconcile.Run(t.Context(), &fake, &fake, &fake, &fake, runClock(now))
 \tif err != nil || got.Ambiguous != 1 || got.Recorded != 1 || got.EndedRecorded != 0 || got.Pages != 4 ||
@@ -5375,7 +5367,7 @@ replace = [
 \t}
 }
 """,
-        """
+    """
 
 \tgot, err := reconcile.Run(t.Context(), &fake, &fake, &fake, &fake, runClock(now))
 \tcheckAmbiguousResult(t, got, err, fake.wrote)
@@ -5390,16 +5382,16 @@ func checkAmbiguousResult(t *testing.T, got reconcile.RunResult, err error, wrot
 \t}
 }
 """,
-    ],
-    [
-        """
+  ],
+  [
+    """
 \tfake.walk = walkOf(now, item)
 \tfake.record = func(got recorder.ClosedPR) (recorder.Outcome, error) {
 \t\tif !got.EndedAt.IsZero() || got.EndedState != \"\" || !got.Merged || !got.MergedAt.Equal(now) {
 \t\t\tt.Errorf(\"record = %+v, want the merge only\", got)
 \t\t}
 """,
-        """
+    """
 \tfake.walk = walkOf(now, item)
 \tfake.record = func(got recorder.ClosedPR) (recorder.Outcome, error) {
 \t\tif !got.EndedAt.IsZero() || got.EndedState != \"\" || !got.Merged ||
@@ -5407,16 +5399,16 @@ func checkAmbiguousResult(t *testing.T, got reconcile.RunResult, err error, wrot
 \t\t\tt.Errorf(\"record = %+v, want the merge only\", got)
 \t\t}
 """,
-    ],
-    [
-        """
+  ],
+  [
+    """
 
 \tgot, err := reconcile.Run(t.Context(), &fake, &fake, &fake, &fake, runClock(now))
 \tif err != nil || got.EndedRecorded != 1 || got.Recorded != 0 || got.Pages != 2 || got.Result != reconcile.RunOK ||
 \t\t!slices.Equal(fake.wrote, []string{firstRepo}) {
 \t\tt.Errorf(\"result = %+v, err = %v, wrote = %v\", got, err, fake.wrote)
 """,
-        """
+    """
 
 \tgot, err := reconcile.Run(t.Context(), &fake, &fake, &fake, &fake, runClock(now))
 \tif err != nil || got.EndedRecorded != 1 || got.Recorded != 0 || got.Pages != 2 ||
@@ -5424,9 +5416,9 @@ func checkAmbiguousResult(t *testing.T, got reconcile.RunResult, err error, wrot
 \t\t!slices.Equal(fake.wrote, []string{firstRepo}) {
 \t\tt.Errorf(\"result = %+v, err = %v, wrote = %v\", got, err, fake.wrote)
 """,
-    ],
-    [
-        """
+  ],
+  [
+    """
 \tfake.record = func(got recorder.ClosedPR) (recorder.Outcome, error) {
 \t\twant := recorder.ClosedPR{
 \t\t\tCreatedAt: item.CreatedAt, MergedAt: time.Time{}, EndedAt: ended(item).At, Repository: firstRepo,
@@ -5434,7 +5426,7 @@ func checkAmbiguousResult(t *testing.T, got reconcile.RunResult, err error, wrot
 \t\t}
 \t\tif got != want {
 """,
-        """
+    """
 \tfake.record = func(got recorder.ClosedPR) (recorder.Outcome, error) {
 \t\twant := recorder.ClosedPR{
 \t\t\tCreatedAt:  item.CreatedAt,
@@ -5449,9 +5441,9 @@ func checkAmbiguousResult(t *testing.T, got reconcile.RunResult, err error, wrot
 \t\t}
 \t\tif got != want {
 """,
-    ],
-    [
-        """
+  ],
+  [
+    """
 
 // walkOf returns a walk that always finds the items, with the newest update at now.
 func walkOf(now time.Time, items ...reconcile.ClosedPR) func(string, reconcile.WalkOptions) (reconcile.Walked, error) {
@@ -5460,7 +5452,7 @@ func walkOf(now time.Time, items ...reconcile.ClosedPR) func(string, reconcile.W
 \t}
 }
 """,
-        """
+    """
 
 // walkOf returns a walk that always finds the items, with the newest update at now.
 func walkOf(
@@ -5478,16 +5470,16 @@ func walkOf(
 \t}
 }
 """,
-    ],
-    [
-        """
+  ],
+  [
+    """
 
 \tgot, err = reconcile.Run(t.Context(), rig.lister, &fake, &fake, &fake, runClock(now))
 \tif err != nil || got.Result != reconcile.RunOK || got.NotModified != 0 || !fake.watermarks[listedRepo].Equal(now) {
 \t\tt.Errorf(\"retry = %+v, err = %v, watermarks = %v\", got, err, fake.watermarks)
 \t}
 """,
-        """
+    """
 
 \tgot, err = reconcile.Run(t.Context(), rig.lister, &fake, &fake, &fake, runClock(now))
 \tif err != nil || got.Result != reconcile.RunOK || got.NotModified != 0 ||
@@ -5495,9 +5487,9 @@ func walkOf(
 \t\tt.Errorf(\"retry = %+v, err = %v, watermarks = %v\", got, err, fake.watermarks)
 \t}
 """,
-    ],
-    [
-        """
+  ],
+  [
+    """
 
 \t\t\tgot, err := reconcile.Run(t.Context(), &fake, &fake, &fake, &fake, runClock(now))
 \t\t\tif !errors.Is(err, io.ErrClosedPipe) || got.Result != reconcile.RunPartial || len(fake.walked) > 1 ||
@@ -5507,7 +5499,7 @@ func walkOf(
 \t\t\t}
 \t\t})
 """,
-        """
+    """
 
 \t\t\tgot, err := reconcile.Run(t.Context(), &fake, &fake, &fake, &fake, runClock(now))
 \t\t\tif !errors.Is(err, io.ErrClosedPipe) || got.Result != reconcile.RunPartial ||
@@ -5525,9 +5517,9 @@ func walkOf(
 \t\t\t}
 \t\t})
 """,
-    ],
-    [
-        """
+  ],
+  [
+    """
 \t\t\tgot, err := reconcile.Run(t.Context(), &fake, &fake, &fake, &fake, runClock(now))
 
 \t\t\twalked, wrote := fake.repos, []string{firstRepo, lastRepo}
@@ -5545,7 +5537,7 @@ func walkOf(
 \t}
 }
 """,
-        """
+    """
 \t\t\tgot, err := reconcile.Run(t.Context(), &fake, &fake, &fake, &fake, runClock(now))
 
 \t\t\tcheckRunReadFailure(t, &fake, test, previous, got, err, false)
@@ -5596,16 +5588,16 @@ func checkReadPaths(t *testing.T, fake *runFake, walked, wrote []string, previou
 \t}
 }
 """,
-    ],
-    [
-        """
+  ],
+  [
+    """
 \t\t\tfake.watermarks = map[string]time.Time{nextRepo: previous}
 \t\t\tfake.walk = func(repo string, _ reconcile.WalkOptions) (reconcile.Walked, error) {
 \t\t\t\twalked := reconcile.Walked{Newest: now, Items: nil, Pages: 1, Truncated: false, Unchanged: false}
 \t\t\t\tif repo == nextRepo {
 \t\t\t\t\treturn walked, fmt.Errorf(\"walk: %w\", test.err)
 """,
-        """
+    """
 \t\t\tfake.watermarks = map[string]time.Time{nextRepo: previous}
 \t\t\tfake.walk = func(repo string, _ reconcile.WalkOptions) (reconcile.Walked, error) {
 \t\t\t\twalked := reconcile.Walked{
@@ -5618,9 +5610,9 @@ func checkReadPaths(t *testing.T, fake *runFake, walked, wrote []string, previou
 \t\t\t\tif repo == nextRepo {
 \t\t\t\t\treturn walked, fmt.Errorf(\"walk: %w\", test.err)
 """,
-    ],
-    [
-        """
+  ],
+  [
+    """
 \treturn []failure{
 \t\t{ghclient.ErrTokenSource, reconcile.RunAuthFailed, true},
 \t\t{&ghclient.StatusError{Path: \"\", Status: http.StatusUnauthorized}, reconcile.RunAuthFailed, true},
@@ -5628,7 +5620,7 @@ func checkReadPaths(t *testing.T, fake *runFake, walked, wrote []string, previou
 \t\t{&ghclient.StatusError{Path: \"\", Status: http.StatusNotFound}, reconcile.RunPartial, false},
 \t\t{ghclient.ErrGaveUp, reconcile.RunPartial, true},
 """,
-        """
+    """
 \treturn []failure{
 \t\t{ghclient.ErrTokenSource, reconcile.RunAuthFailed, true},
 \t\t{
@@ -5644,15 +5636,15 @@ func checkReadPaths(t *testing.T, fake *runFake, walked, wrote []string, previou
 \t\t{&ghclient.StatusError{Path: \"\", Status: http.StatusNotFound}, reconcile.RunPartial, false},
 \t\t{ghclient.ErrGaveUp, reconcile.RunPartial, true},
 """,
-    ],
-    [
-        """
+  ],
+  [
+    """
 }
 
 type failure struct {
 \terr    error
 """,
-        """
+    """
 }
 
 func sweepGetter(
@@ -5702,9 +5694,9 @@ func sweepGetter(
 type failure struct {
 \terr    error
 """,
-    ],
-    [
-        """
+  ],
+  [
+    """
 \ttags := ghclient.NewETags()
 \tready := false
 \tget := getFunc(func(_ context.Context, priority budget.Priority, target string) (*ghclient.Response, error) {
@@ -5735,23 +5727,23 @@ type failure struct {
 
 \tvar base url.URL
 """,
-        """
+    """
 \ttags := ghclient.NewETags()
 \tready := false
 \tget := sweepGetter(t, tags, &ready, pulls, missed.ClosedAt)
 
 \tvar base url.URL
 """,
-    ],
-    [
-        """
+  ],
+  [
+    """
 \t\t}
 \t})
 }
 
 func newSweepLister(t *testing.T, floor time.Time, missed reconcile.ClosedPR) *reconcile.Lister {
 """,
-        """
+    """
 \t\t}
 \t})
 }
@@ -5767,9 +5759,9 @@ func checkSweepResult(t *testing.T, got reconcile.RunResult, err error, wrote []
 
 func newSweepLister(t *testing.T, floor time.Time, missed reconcile.ClosedPR) *reconcile.Lister {
 """,
-    ],
-    [
-        """
+  ],
+  [
+    """
 
 \t\t\tgot, runErr := reconcile.Run(ctx, lister, lister, &fake, &fake, runClock(now))
 \t\t\tif runErr != nil || got.Result != reconcile.RunOK || got.Pages != 2 || got.Recorded != 1 ||
@@ -5784,7 +5776,7 @@ func newSweepLister(t *testing.T, floor time.Time, missed reconcile.ClosedPR) *r
 \t\tif err != nil {
 \t\t\tt.Fatal(err)
 """,
-        """
+    """
 
 \t\t\tgot, runErr := reconcile.Run(ctx, lister, lister, &fake, &fake, runClock(now))
 \t\t\tcheckSweepResult(t, got, runErr, fake.wrote)
@@ -5801,16 +5793,16 @@ func newSweepLister(t *testing.T, floor time.Time, missed reconcile.ClosedPR) *r
 \t\tif err != nil {
 \t\t\tt.Fatal(err)
 """,
-    ],
-    [
-        """
+  ],
+  [
+    """
 \t\t\t}
 
 \t\t\treturn recorder.Outcome{Merged: recorder.ResultRecorded, Ended: recorder.ResultRecorded}, nil
 \t\t}
 
 """,
-        """
+    """
 \t\t\t}
 
 \t\t\treturn recorder.Outcome{
@@ -5820,16 +5812,16 @@ func newSweepLister(t *testing.T, floor time.Time, missed reconcile.ClosedPR) *r
 \t\t}
 
 """,
-    ],
-    [
-        """
+  ],
+  [
+    """
 type getFunc func(ctx context.Context, priority budget.Priority, target string) (*ghclient.Response, error)
 
 func (get getFunc) Get(ctx context.Context, priority budget.Priority, target string) (*ghclient.Response, error) {
 \treturn get(ctx, priority, target)
 }
 """,
-        """
+    """
 type getFunc func(ctx context.Context, priority budget.Priority, target string) (*ghclient.Response, error)
 
 func (get getFunc) Get(
@@ -5840,9 +5832,9 @@ func (get getFunc) Get(
 \treturn get(ctx, priority, target)
 }
 """,
-    ],
-    [
-        """
+  ],
+  [
+    """
 \t\t}
 
 \t\toutcome := recorder.Outcome{Merged: results[calls], Ended: results[(calls+1)%len(results)]}
@@ -5866,7 +5858,7 @@ func (get getFunc) Get(
 \t\tt.Errorf(\"writes = %v, watermarks = %v\", fake.wrote, fake.watermarks)
 \t}
 """,
-        """
+    """
 \t\t}
 
 \t\toutcome := recorder.Outcome{
@@ -5928,9 +5920,9 @@ func checkWatermark(t *testing.T, fake *runFake, repo string, now time.Time) {
 \t\tt.Errorf(\"writes = %v, watermarks = %v\", fake.wrote, fake.watermarks)
 \t}
 """,
-    ],
-    [
-        """
+  ],
+  [
+    """
 \tfake.repos = []string{firstRepo, nextRepo, lastRepo}
 \tfake.watermarks = map[string]time.Time{firstRepo: merged, lastRepo: old}
 \tfake.walk = func(repo string, got reconcile.WalkOptions) (reconcile.Walked, error) {
@@ -5961,7 +5953,7 @@ func checkWatermark(t *testing.T, fake *runFake, repo string, now time.Time) {
 \t\t\tBody:       \"\",
 \t\t\tEndedState: closedState,
 """,
-        """
+    """
 \tfake.repos = []string{firstRepo, nextRepo, lastRepo}
 \tfake.watermarks = map[string]time.Time{firstRepo: merged, lastRepo: old}
 \tfake.walk = repairWalk(t, walks, now, merged)
@@ -6013,9 +6005,9 @@ func repairRecord(
 \t\t\tBody:       \"\",
 \t\t\tEndedState: closedState,
 """,
-    ],
-    [
-        """
+  ],
+  [
+    """
 \tcreated, merged, old := now.Add(-6*time.Hour), now.Add(-time.Hour), now.Add(-48*time.Hour)
 \tresults := []recorder.Result{
 \t\trecorder.ResultRecorded, recorder.ResultAlreadyCounted, recorder.ResultTooOld, recorder.ResultPreFloor,
@@ -6034,7 +6026,7 @@ func repairRecord(
 \twalks := map[string]reconcile.Walked{
 \t\tfirstRepo: {Newest: now, Items: items, Pages: 2, Truncated: false, Unchanged: false},
 """,
-        """
+    """
 \tcreated, merged, old := now.Add(-6*time.Hour), now.Add(-time.Hour), now.Add(-48*time.Hour)
 \tresults := []recorder.Result{
 \t\trecorder.ResultRecorded,
@@ -6048,16 +6040,16 @@ func repairRecord(
 \twalks := map[string]reconcile.Walked{
 \t\tfirstRepo: {Newest: now, Items: items, Pages: 2, Truncated: false, Unchanged: false},
 """,
-    ],
-    [
-        """
+  ],
+  [
+    """
 }
 
 func (fake *runFake) RecordClosed(_ context.Context, closed recorder.ClosedPR) (recorder.Outcome, error) {
 \treturn fake.record(closed)
 }
 """,
-        """
+    """
 }
 
 func (fake *runFake) RecordClosed(
@@ -6067,16 +6059,16 @@ func (fake *runFake) RecordClosed(
 \treturn fake.record(closed)
 }
 """,
-    ],
-    [
-        """
+  ],
+  [
+    """
 }
 
 func (fake *runFake) Updated(_ context.Context, repo string, opts reconcile.WalkOptions) (reconcile.Walked, error) {
 \tfake.walked = append(fake.walked, repo)
 
 """,
-        """
+    """
 }
 
 func (fake *runFake) Updated(
@@ -6087,9 +6079,9 @@ func (fake *runFake) Updated(
 \tfake.walked = append(fake.walked, repo)
 
 """,
-    ],
-    [
-        """
+  ],
+  [
+    """
 // ended is the first end the fake events reads give: a plain close.
 func ended(reconcile.ClosedPR) reconcile.End {
 \treturn reconcile.End{At: time.Date(2026, time.January, 2, 8, 0, 0, 0, time.UTC), State: closedState, Pages: 1}
@@ -6104,7 +6096,7 @@ func (fake *runFake) FirstEnd(_ context.Context, repo string, number int, _ budg
 \t}
 \tif fake.end == nil {
 """,
-        """
+    """
 // ended is the first end the fake events reads give: a plain close.
 func ended(reconcile.ClosedPR) reconcile.End {
 \treturn reconcile.End{
@@ -6135,26 +6127,26 @@ func (fake *runFake) FirstEnd(
 \t}
 \tif fake.end == nil {
 """,
-    ],
+  ],
 ]
 
 [rewrite."internal/recorder/BUILD.bazel"]
 dest = "factory/github-metrics/internal/recorder/BUILD.bazel"
 replace = [
-    [
-        "github.com/tbhb-dev/github-metrics",
-        "github.com/tbhb-dev/tbhbdev/factory/github-metrics",
-    ],
-    [
-        "\"//:__pkg__\"",
-        "\"//factory/github-metrics:__pkg__\"",
-    ],
-    [
-        "\"//:__subpackages__\"",
-        "\"//factory/github-metrics:__subpackages__\"",
-    ],
-    [
-        """
+  [
+    "github.com/tbhb-dev/github-metrics",
+    "github.com/tbhb-dev/tbhbdev/factory/github-metrics",
+  ],
+  [
+    "\"//:__pkg__\"",
+    "\"//factory/github-metrics:__pkg__\"",
+  ],
+  [
+    "\"//:__subpackages__\"",
+    "\"//factory/github-metrics:__subpackages__\"",
+  ],
+  [
+    """
 # Copyright Tony Burns
 
 load(\"@rules_go//go:def.bzl\", \"go_library\", \"go_test\")
@@ -6164,7 +6156,7 @@ repo_files()
 
 go_library(
 """,
-        """
+    """
 # Copyright Tony Burns
 
 load(\"@rules_go//go:def.bzl\", \"go_library\")
@@ -6175,29 +6167,29 @@ repo_files(visibility = [\"//factory/github-metrics:__subpackages__\"])
 
 go_library(
 """,
-    ],
+  ],
 ]
 
 [rewrite."internal/recorder/closed_test.go"]
 dest = "factory/github-metrics/internal/recorder/closed_test.go"
 replace = [
-    [
-        "github.com/tbhb-dev/github-metrics",
-        "github.com/tbhb-dev/tbhbdev/factory/github-metrics",
-    ],
-    [
-        "tbhb-dev/github-metrics",
-        "example/widgets",
-    ],
-    [
-        """
+  [
+    "github.com/tbhb-dev/github-metrics",
+    "github.com/tbhb-dev/tbhbdev/factory/github-metrics",
+  ],
+  [
+    "tbhb-dev/github-metrics",
+    "example/widgets",
+  ],
+  [
+    """
 \tt.Parallel()
 
 \t_, err := recorder.New(sdkmetric.NewMeterProvider().Meter(\"test\"), nil, slog.New(slog.DiscardHandler))
 \tif !errors.Is(err, recorder.ErrNoLedger) {
 \t\tt.Fatalf(\"New error = %v, want %v\", err, recorder.ErrNoLedger)
 """,
-        """
+    """
 \tt.Parallel()
 
 \t_, err := recorder.New(
@@ -6208,9 +6200,9 @@ replace = [
 \tif !errors.Is(err, recorder.ErrNoLedger) {
 \t\tt.Fatalf(\"New error = %v, want %v\", err, recorder.ErrNoLedger)
 """,
-    ],
-    [
-        """
+  ],
+  [
+    """
 \t}
 
 \tif counters := collectCounters(t, reader); counters[\"github.events\"][\"action=closed,event=pull_request,\"+
@@ -6219,7 +6211,7 @@ replace = [
 \t}
 }
 """,
-        """
+    """
 \t}
 
 \tif counters := collectCounters(
@@ -6250,16 +6242,16 @@ func checkCountersBeforeClaim(t *testing.T, reader *sdkmetric.ManualReader) func
 \t}
 }
 """,
-    ],
-    [
-        """
+  ],
+  [
+    """
 \tmerges, cycles := observations(t, reader)
 \tif merges != 1 || len(cycles) != 1 || cycles[0] != mergedState {
 \t\tt.Fatalf(\"webhook before the floor recorded %d merges and cycle states %v; want 1 and [merged]\", merges, cycles)
 \t}
 
 """,
-        """
+    """
 \tmerges, cycles := observations(t, reader)
 \tif merges != 1 || len(cycles) != 1 || cycles[0] != mergedState {
 \t\tt.Fatalf(
@@ -6270,9 +6262,9 @@ func checkCountersBeforeClaim(t *testing.T, reader *sdkmetric.ManualReader) func
 \t}
 
 """,
-    ],
-    [
-        """
+  ],
+  [
+    """
 \tconsumer, reader := newRecorderWith(t, ledger)
 
 \tfirst := true
@@ -6292,23 +6284,23 @@ func checkCountersBeforeClaim(t *testing.T, reader *sdkmetric.ManualReader) func
 
 \tbody := `{\"repository\":{\"full_name\":\"example/widgets\"},\"action\":\"closed\",\"pull_request\":{` +
 """,
-        """
+    """
 \tconsumer, reader := newRecorderWith(t, ledger)
 
 \tledger.onClaim = checkCountersBeforeClaim(t, reader)
 
 \tbody := `{\"repository\":{\"full_name\":\"example/widgets\"},\"action\":\"closed\",\"pull_request\":{` +
 """,
-    ],
-    [
-        """
+  ],
+  [
+    """
 }
 
 func deliverTestPullRequest(t *testing.T, consumer *recorder.Recorder, created, action, extra string) {
 \tt.Helper()
 
 """,
-        """
+    """
 }
 
 func deliverTestPullRequest(
@@ -6319,16 +6311,16 @@ func deliverTestPullRequest(
 \tt.Helper()
 
 """,
-    ],
-    [
-        """
+  ],
+  [
+    """
 \t\t\tmerges, cycles := observations(t, reader)
 \t\t\tif merges != 1 || !slices.Equal(cycles, test.wantCycles) {
 \t\t\t\tt.Fatalf(\"merges = %d, cycle states = %v, want 1 merge and %v\", merges, cycles, test.wantCycles)
 \t\t\t}
 \t\t})
 """,
-        """
+    """
 \t\t\tmerges, cycles := observations(t, reader)
 \t\t\tif merges != 1 || !slices.Equal(cycles, test.wantCycles) {
 \t\t\t\tt.Fatalf(
@@ -6340,9 +6332,9 @@ func deliverTestPullRequest(
 \t\t\t}
 \t\t})
 """,
-    ],
-    [
-        """
+  ],
+  [
+    """
 
 \t// The merge delivery after a reopen carries the merge time and its own end.
 \tsecond, err := consumer.RecordClosed(t.Context(), closedPR(func(pr *recorder.ClosedPR) { pr.EndedAt = mergedAt }))
@@ -6350,7 +6342,7 @@ func deliverTestPullRequest(
 \t\tt.Fatalf(\"merge after reopen = %v, %v\", second, err)
 \t}
 """,
-        """
+    """
 
 \t// The merge delivery after a reopen carries the merge time and its own end.
 \tsecond, err := consumer.RecordClosed(
@@ -6362,9 +6354,9 @@ func deliverTestPullRequest(
 \t\tt.Fatalf(\"merge after reopen = %v, %v\", second, err)
 \t}
 """,
-    ],
-    [
-        """
+  ],
+  [
+    """
 \t}
 
 \tif counters := collectCounters(t, reader); len(ledger.claims) != 0 || len(counters[\"github.events\"]) != 0 {
@@ -6372,7 +6364,7 @@ func deliverTestPullRequest(
 \t}
 }
 """,
-        """
+    """
 \t}
 
 \tif counters := collectCounters(
@@ -6388,9 +6380,9 @@ func deliverTestPullRequest(
 \t}
 }
 """,
-    ],
-    [
-        """
+  ],
+  [
+    """
 \tconsumer, reader := newRecorderWith(t, ledger)
 
 \t_, err := consumer.RecordClosed(t.Context(), closedPR(func(pr *recorder.ClosedPR) { pr.Repair = true }))
@@ -6402,7 +6394,7 @@ func deliverTestPullRequest(
 
 \terr = consumer.Record(t.Context(), pullRequestEvent, body)
 """,
-        """
+    """
 \tconsumer, reader := newRecorderWith(t, ledger)
 
 \t_, err := consumer.RecordClosed(
@@ -6419,16 +6411,16 @@ func deliverTestPullRequest(
 
 \terr = consumer.Record(t.Context(), pullRequestEvent, body)
 """,
-    ],
-    [
-        """
+  ],
+  [
+    """
 \t\t\t}
 
 \t\t\tif !ledger.claimed[nodeID+\"\\x00ended\"] || ledger.claimed[nodeID+\"\\x00merged\"] != (test.wantMerges == 1) {
 \t\t\t\tt.Fatalf(\"claims %q, want ended and a claim for each recorded merge\", ledger.claims)
 \t\t\t}
 """,
-        """
+    """
 \t\t\t}
 
 \t\t\tif !ledger.claimed[nodeID+\"\\x00ended\"] ||
@@ -6436,9 +6428,9 @@ func deliverTestPullRequest(
 \t\t\t\tt.Fatalf(\"claims %q, want ended and a claim for each recorded merge\", ledger.claims)
 \t\t\t}
 """,
-    ],
-    [
-        """
+  ],
+  [
+    """
 \t\t\tif got != test.want || len(ledger.claims) != 2 || merges != test.wantMerges ||
 \t\t\t\tlen(cycles) != test.wantCycles {
 \t\t\t\tt.Fatalf(\"outcome %v, claims %d, merges %d, cycles %d; want %v, 2, %d, %d\",
@@ -6446,7 +6438,7 @@ func deliverTestPullRequest(
 \t\t\t}
 \t\t})
 """,
-        """
+    """
 \t\t\tif got != test.want || len(ledger.claims) != 2 || merges != test.wantMerges ||
 \t\t\t\tlen(cycles) != test.wantCycles {
 \t\t\t\tt.Fatalf(
@@ -6462,16 +6454,16 @@ func deliverTestPullRequest(
 \t\t\t}
 \t\t})
 """,
-    ],
-    [
-        """
+  ],
+  [
+    """
 \tfor _, scope := range data.ScopeMetrics {
 \t\tfor _, measurement := range scope.Metrics {
 \t\t\tif sum, ok := measurement.Data.(metricdata.Sum[int64]); ok && measurement.Name == \"github.pr.merges\" {
 \t\t\t\tfor _, point := range sum.DataPoints {
 \t\t\t\t\tmerges += point.Value
 """,
-        """
+    """
 \tfor _, scope := range data.ScopeMetrics {
 \t\tfor _, measurement := range scope.Metrics {
 \t\t\tif sum, ok := measurement.Data.(metricdata.Sum[int64]); ok &&
@@ -6479,21 +6471,21 @@ func deliverTestPullRequest(
 \t\t\t\tfor _, point := range sum.DataPoints {
 \t\t\t\t\tmerges += point.Value
 """,
-    ],
+  ],
 ]
 
 [rewrite."internal/recorder/recorder.go"]
 dest = "factory/github-metrics/internal/recorder/recorder.go"
 replace = [
-    [
-        """
+  [
+    """
 // milestone applies the eligibility rule to one milestone time, claims it, and
 // calls record only after a true claim.
 func (r *Recorder) milestone(closed ClosedPR, name string, when time.Time, record func()) (Result, error) {
 \tvar skip Result
 
 """,
-        """
+    """
 // milestone applies the eligibility rule to one milestone time, claims it, and
 // calls record only after a true claim.
 func (r *Recorder) milestone(
@@ -6505,16 +6497,16 @@ func (r *Recorder) milestone(
 \tvar skip Result
 
 """,
-    ],
-    [
-        """
+  ],
+  [
+    """
 \tclosed.Repository, closed.NodeID, closed.Body = repository, request.NodeID, request.Body
 \tclosed.CreatedAt, closed.MergedAt = parseTime(request.CreatedAt), parseTime(request.MergedAt)
 \tclosed.EndedAt, closed.EndedState, closed.Merged = parseTime(request.ClosedAt), actionClosed, request.Merged
 
 \tif request.Merged {
 """,
-        """
+    """
 \tclosed.Repository, closed.NodeID, closed.Body = repository, request.NodeID, request.Body
 \tclosed.CreatedAt, closed.MergedAt = parseTime(request.CreatedAt), parseTime(request.MergedAt)
 \tclosed.EndedAt, closed.EndedState, closed.Merged = parseTime(
@@ -6523,16 +6515,16 @@ func (r *Recorder) milestone(
 
 \tif request.Merged {
 """,
-    ],
-    [
-        """
+  ],
+  [
+    """
 }
 
 func (r *Recorder) recordJobTiming(ctx context.Context, repository, defaultBranch string, job workflowJob) {
 \teventClass, runner := jobEventClass(job.HeadBranch, defaultBranch), \"none\"
 \tif len(job.Labels) > 0 {
 """,
-        """
+    """
 }
 
 func (r *Recorder) recordJobTiming(
@@ -6543,16 +6535,16 @@ func (r *Recorder) recordJobTiming(
 \teventClass, runner := jobEventClass(job.HeadBranch, defaultBranch), \"none\"
 \tif len(job.Labels) > 0 {
 """,
-    ],
-    [
-        """
+  ],
+  [
+    """
 // at or before the repair floor, a reopen claims ended to guard against
 // counting a first close the old recorder may already have counted.
 func (r *Recorder) recordPullRequest(ctx context.Context, repository, action string, request pullRequest) error {
 \tif action == actionClosed {
 \t\t_, err := r.RecordClosed(ctx, closedFromWebhook(repository, request))
 """,
-        """
+    """
 // at or before the repair floor, a reopen claims ended to guard against
 // counting a first close the old recorder may already have counted.
 func (r *Recorder) recordPullRequest(
@@ -6563,15 +6555,15 @@ func (r *Recorder) recordPullRequest(
 \tif action == actionClosed {
 \t\t_, err := r.RecordClosed(ctx, closedFromWebhook(repository, request))
 """,
-    ],
-    [
-        """
+  ],
+  [
+    """
 }
 
 func (r *Recorder) recordEvent(ctx context.Context, repository, event, action string) {
 \trepo := attribute.String(\"repository\", repository)
 """,
-        """
+    """
 }
 
 //nolint:mnd // The histograms have fixed duration buckets in seconds.
@@ -6627,16 +6619,16 @@ func (r *Recorder) setupDurations(meter metric.Meter) error {
 func (r *Recorder) recordEvent(ctx context.Context, repository, event, action string) {
 \trepo := attribute.String(\"repository\", repository)
 """,
-    ],
-    [
-        """
+  ],
+  [
+    """
 
 \treturn nil
 }
 
 // RecordClosed counts the merge and the first end of a closed PR once each.
 """,
-        """
+    """
 
 \treturn nil
 }
@@ -6647,25 +6639,25 @@ func tracksPullRequest(event, action string) bool {
 
 // RecordClosed counts the merge and the first end of a closed PR once each.
 """,
-    ],
-    [
-        """
+  ],
+  [
+    """
 
 \t// Claim before any Add, so a claim error leaves the retried entry uncounted.
 \tif event == \"pull_request\" && (delivery.Action == actionClosed || delivery.Action == \"reopened\") {
 \t\tif delivery.PullRequest.NodeID == \"\" {
 \t\t\tr.dropped.Add(ctx, 1, metric.WithAttributes(attribute.String(\"reason\", \"no_node_id\")))
 """,
-        """
+    """
 
 \t// Claim before any Add, so a claim error leaves the retried entry uncounted.
 \tif tracksPullRequest(event, delivery.Action) {
 \t\tif delivery.PullRequest.NodeID == \"\" {
 \t\t\tr.dropped.Add(ctx, 1, metric.WithAttributes(attribute.String(\"reason\", \"no_node_id\")))
 """,
-    ],
-    [
-        """
+  ],
+  [
+    """
 \t}
 
 \tvar err error
@@ -6696,7 +6688,7 @@ func tracksPullRequest(event, action string) bool {
 \t}
 
 """,
-        """
+    """
 \t}
 
 \terr := recorder.setupDurations(meter)
@@ -6705,9 +6697,9 @@ func tracksPullRequest(event, action string) bool {
 \t}
 
 """,
-    ],
-    [
-        """
+  ],
+  [
+    """
 // New creates the instruments used to record deliveries. The ledger claims
 // each milestone before it counts.
 //
@@ -6715,22 +6707,22 @@ func tracksPullRequest(event, action string) bool {
 func New(meter metric.Meter, ledger Ledger, log *slog.Logger) (*Recorder, error) {
 \tif ledger == nil {
 """,
-        """
+    """
 // New creates the instruments used to record deliveries. The ledger claims
 // each milestone before it counts.
 func New(meter metric.Meter, ledger Ledger, log *slog.Logger) (*Recorder, error) {
 \tif ledger == nil {
 """,
-    ],
-    [
-        """
+  ],
+  [
+    """
 
 // JobEventClass uses the live recorder's branch classification.
 func JobEventClass(branch, defaultBranch string) string { return jobEventClass(branch, defaultBranch) }
 
 type pullRequest struct {
 """,
-        """
+    """
 
 // JobEventClass uses the live recorder's branch classification.
 func JobEventClass(
@@ -6741,29 +6733,29 @@ func JobEventClass(
 
 type pullRequest struct {
 """,
-    ],
+  ],
 ]
 
 [rewrite."internal/recorder/recorder_test.go"]
 dest = "factory/github-metrics/internal/recorder/recorder_test.go"
 replace = [
-    [
-        "github.com/tbhb-dev/github-metrics",
-        "github.com/tbhb-dev/tbhbdev/factory/github-metrics",
-    ],
-    [
-        "tbhb-dev/github-metrics",
-        "example/widgets",
-    ],
-    [
-        """
+  [
+    "github.com/tbhb-dev/github-metrics",
+    "github.com/tbhb-dev/tbhbdev/factory/github-metrics",
+  ],
+  [
+    "tbhb-dev/github-metrics",
+    "example/widgets",
+  ],
+  [
+    """
 }
 
 func checkMainRedGauge(t *testing.T, reader *sdkmetric.ManualReader, wantRecorded bool, wantValue int64) {
 \tt.Helper()
 
 """,
-        """
+    """
 }
 
 func recordMainRedStep(t *testing.T, consumer *recorder.Recorder, step mainRedStep) {
@@ -6800,9 +6792,9 @@ func checkMainRedGauge(
 \tt.Helper()
 
 """,
-    ],
-    [
-        """
+  ],
+  [
+    """
 
 \t\t\tfor _, step := range test.steps {
 \t\t\t\tbody, err := json.Marshal(map[string]any{
@@ -6828,22 +6820,22 @@ func checkMainRedGauge(
 
 \t\t\t\tcheckMainRedGauge(t, reader, step.wantRecorded, step.wantValue)
 """,
-        """
+    """
 
 \t\t\tfor _, step := range test.steps {
 \t\t\t\trecordMainRedStep(t, consumer, step)
 
 \t\t\t\tcheckMainRedGauge(t, reader, step.wantRecorded, step.wantValue)
 """,
-    ],
-    [
-        """
+  ],
+  [
+    """
 \t\t}
 \t}
 
 \tafter := collectCounters(t, reader)
 """,
-        """
+    """
 \t\t}
 \t}
 
@@ -6873,9 +6865,9 @@ func checkFirstObservations(t *testing.T, reader *sdkmetric.ManualReader) {
 
 \tafter := collectCounters(t, reader)
 """,
-    ],
-    [
-        """
+  ],
+  [
+    """
 \t}
 
 \tbefore := collectCounters(t, reader)
@@ -6894,23 +6886,23 @@ func checkFirstObservations(t *testing.T, reader *sdkmetric.ManualReader) {
 
 \tfor _, step := range []struct{ event, body string }{
 """,
-        """
+    """
 \t}
 
 \tcheckSeededCounters(t, reader)
 
 \tfor _, step := range []struct{ event, body string }{
 """,
-    ],
-    [
-        """
+  ],
+  [
+    """
 
 \t\tif point.Value != 1 || got[measurement.Name] != nil {
 \t\t\tt.Fatalf(\"%s: expected at most one counter observation of 1, got %v\", measurement.Name, sum.DataPoints)
 \t\t}
 
 """,
-        """
+    """
 
 \t\tif point.Value != 1 || got[measurement.Name] != nil {
 \t\t\tt.Fatalf(
@@ -6921,9 +6913,9 @@ func checkFirstObservations(t *testing.T, reader *sdkmetric.ManualReader) {
 \t\t}
 
 """,
-    ],
-    [
-        """
+  ],
+  [
+    """
 \t\t\t\"bad JSON\", pullRequestEvent, `{\"action\":`,
 \t\t},
 \t} {
@@ -6942,15 +6934,15 @@ func checkFirstObservations(t *testing.T, reader *sdkmetric.ManualReader) {
 \t}
 }
 """,
-        """
+    """
 \t\t\t\"bad JSON\", pullRequestEvent, `{\"action\":`,
 \t\t},
 \t}
 }
 """,
-    ],
-    [
-        """
+  ],
+  [
+    """
 \t\t{
 \t\t\tmap[string]map[string]string{
 \t\t\t\teventsName: {repositoryKey: unknownRepository, eventKey: pullRequestEvent, actionKey: closedState},
@@ -6979,7 +6971,7 @@ func checkFirstObservations(t *testing.T, reader *sdkmetric.ManualReader) {
 \t\t},
 \t\t{
 """,
-        """
+    """
 \t\t{
 \t\t\tmap[string]map[string]string{
 \t\t\t\teventsName: {
@@ -7034,9 +7026,9 @@ func otherDeliveryCases() []deliveryCase {
 \t\t},
 \t\t{
 """,
-    ],
-    [
-        """
+  ],
+  [
+    """
 \tt.Parallel()
 
 \tfor _, test := range []struct {
@@ -7052,7 +7044,7 @@ func otherDeliveryCases() []deliveryCase {
 \t\t\t`{\"repository\":{\"full_name\":\"example/widgets\"},\"action\":\"closed\",` +
 \t\t\t\t`\"pull_request\":{\"node_id\":\"PR_1\",\"merged\":true,\"merged_at\":\"2026-11-15T13:00:00Z\",` +
 """,
-        """
+    """
 \tt.Parallel()
 
 \tfor _, test := range append(pullDeliveryCases(), otherDeliveryCases()...) {
@@ -7092,9 +7084,9 @@ func pullDeliveryCases() []deliveryCase {
 \t\t\t`{\"repository\":{\"full_name\":\"example/widgets\"},\"action\":\"closed\",` +
 \t\t\t\t`\"pull_request\":{\"node_id\":\"PR_1\",\"merged\":true,\"merged_at\":\"2026-11-15T13:00:00Z\",` +
 """,
-    ],
-    [
-        """
+  ],
+  [
+    """
 \t\t!reflect.DeepEqual(point.BucketCounts, counts) {
 \t\tt.Fatalf(\"unexpected cycle time histogram: %v\", point)
 \t}
@@ -7110,21 +7102,21 @@ func pullDeliveryCases() []deliveryCase {
 \t}
 }
 """,
-        """
+    """
 \t\t!reflect.DeepEqual(point.BucketCounts, counts) {
 \t\tt.Fatalf(\"unexpected cycle time histogram: %v\", point)
 \t}
 }
 """,
-    ],
-    [
-        """
+  ],
+  [
+    """
 
 \tpoint := histogram.DataPoints[0]
 \tbounds := []float64{
 \t\t60, 300, 600, 900, 1800, 3600, 7200, 14400, 28800,
 """,
-        """
+    """
 
 \tpoint := histogram.DataPoints[0]
 \tcheckCycleBuckets(t, point, seconds)
@@ -7150,16 +7142,16 @@ func checkCycleBuckets(
 \tbounds := []float64{
 \t\t60, 300, 600, 900, 1800, 3600, 7200, 14400, 28800,
 """,
-    ],
-    [
-        """
+  ],
+  [
+    """
 }
 
 func checkCycleHistogram(t *testing.T, measurement metricdata.Metrics, state, source string, seconds float64) {
 \tt.Helper()
 
 """,
-        """
+    """
 }
 
 func checkCycleHistogram(
@@ -7171,16 +7163,16 @@ func checkCycleHistogram(
 \tt.Helper()
 
 """,
-    ],
-    [
-        """
+  ],
+  [
+    """
 }
 
 func checkCycleMetrics(t *testing.T, reader *sdkmetric.ManualReader, state, source string, seconds float64) {
 \tt.Helper()
 
 """,
-        """
+    """
 }
 
 func checkCycleMetrics(
@@ -7192,16 +7184,16 @@ func checkCycleMetrics(
 \tt.Helper()
 
 """,
-    ],
-    [
-        """
+  ],
+  [
+    """
 }
 
 func newRecorderWith(t *testing.T, ledger recorder.Ledger) (*recorder.Recorder, *sdkmetric.ManualReader) {
 \tt.Helper()
 
 """,
-        """
+    """
 }
 
 func newRecorderWith(
@@ -7211,25 +7203,25 @@ func newRecorderWith(
 \tt.Helper()
 
 """,
-    ],
+  ],
 ]
 
 [rewrite."internal/recorder/workflow_job_test.go"]
 dest = "factory/github-metrics/internal/recorder/workflow_job_test.go"
 replace = [
-    [
-        "tbhb-dev/github-metrics",
-        "example/widgets",
-    ],
-    [
-        """
+  [
+    "tbhb-dev/github-metrics",
+    "example/widgets",
+  ],
+  [
+    """
 
 \t\t\tledger := newLedger(func(l *fakeLedger) { l.claimErr = test.claimErr })
 \t\t\tconsumer, reader := newRecorderWithLogger(t, ledger, slog.New(slog.NewJSONHandler(&logs, nil)))
 \t\t\tbody := `{\"action\":\"completed\",\"workflow_job\":{` + test.id + `\"conclusion\":\"failure\",` +
 \t\t\t\t`\"created_at\":\"2026-11-15T11:59:45Z\",\"started_at\":\"2026-11-15T12:00:00Z\",\"completed_at\":\"2026-11-15T12:01:00Z\"}}`
 """,
-        """
+    """
 
 \t\t\tledger := newLedger(func(l *fakeLedger) { l.claimErr = test.claimErr })
 \t\t\tconsumer, reader := newRecorderWithLogger(
@@ -7240,16 +7232,16 @@ replace = [
 \t\t\tbody := `{\"action\":\"completed\",\"workflow_job\":{` + test.id + `\"conclusion\":\"failure\",` +
 \t\t\t\t`\"created_at\":\"2026-11-15T11:59:45Z\",\"started_at\":\"2026-11-15T12:00:00Z\",\"completed_at\":\"2026-11-15T12:01:00Z\"}}`
 """,
-    ],
-    [
-        """
+  ],
+  [
+    """
 \tbounds := []float64{5, 15, 30, 60, 120, 300, 600, 900, 1200, 1800, 2700, 3600, 5400, 7200}
 
 \tif point.Count != 1 || !reflect.DeepEqual(attrs, wantAttrs) || !reflect.DeepEqual(point.Bounds, bounds) {
 \t\tt.Fatalf(\"unexpected histogram point: %v\", point)
 \t}
 """,
-        """
+    """
 \tbounds := []float64{5, 15, 30, 60, 120, 300, 600, 900, 1200, 1800, 2700, 3600, 5400, 7200}
 
 \tif point.Count != 1 || !reflect.DeepEqual(attrs, wantAttrs) ||
@@ -7257,16 +7249,16 @@ replace = [
 \t\tt.Fatalf(\"unexpected histogram point: %v\", point)
 \t}
 """,
-    ],
-    [
-        """
+  ],
+  [
+    """
 }
 
 func checkJobHistogramPoint(t *testing.T, measurement metricdata.Metrics, class, runner, conclusion string) float64 {
 \tt.Helper()
 
 """,
-        """
+    """
 }
 
 func checkJobHistogramPoint(
@@ -7277,16 +7269,16 @@ func checkJobHistogramPoint(
 \tt.Helper()
 
 """,
-    ],
-    [
-        """
+  ],
+  [
+    """
 \t\t\t}
 
 \t\t\tgot[measurement.Name] = checkJobHistogramPoint(t, measurement, class, runner, conclusion)
 \t\t}
 \t}
 """,
-        """
+    """
 \t\t\t}
 
 \t\t\tgot[measurement.Name] = checkJobHistogramPoint(
@@ -7299,16 +7291,16 @@ func checkJobHistogramPoint(
 \t\t}
 \t}
 """,
-    ],
-    [
-        """
+  ],
+  [
+    """
 \t\t\tassertJobLog(t, logs, finishedMessage, wantLog)
 
 \t\t\tif !ledger.claimed[\"42\\x00ci_job\"] || len(strings.Split(strings.TrimSpace(logs.String()), \"\\n\")) != 1 {
 \t\t\t\tt.Fatal(\"expected job claim and one finished log\")
 \t\t\t}
 """,
-        """
+    """
 \t\t\tassertJobLog(t, logs, finishedMessage, wantLog)
 
 \t\t\tif !ledger.claimed[\"42\\x00ci_job\"] ||
@@ -7316,9 +7308,9 @@ func checkJobHistogramPoint(
 \t\t\t\tt.Fatal(\"expected job claim and one finished log\")
 \t\t\t}
 """,
-    ],
-    [
-        """
+  ],
+  [
+    """
 \t\t\tcheckJobHistograms(t, reader, test.class, test.runner, successResult, test.want)
 \t\t\twantLog := map[string]any{
 \t\t\t\trepositoryKey: repositoryName, workflowKey: \"CI\", jobKey: buildName, conclusionKey: successResult,
@@ -7327,7 +7319,7 @@ func checkJobHistogramPoint(
 \t\t\t}
 
 """,
-        """
+    """
 \t\t\tcheckJobHistograms(t, reader, test.class, test.runner, successResult, test.want)
 \t\t\twantLog := map[string]any{
 \t\t\t\trepositoryKey: repositoryName,
@@ -7343,9 +7335,9 @@ func checkJobHistogramPoint(
 \t\t\t}
 
 """,
-    ],
-    [
-        """
+  ],
+  [
+    """
 
 \tassertFailedJobLog(t, &logs, map[string]any{
 \t\trepositoryKey: unknownRepository, workflowKey: logText, jobKey: logText, \"failed_steps\": logText,
@@ -7358,7 +7350,7 @@ func checkJobHistogramPoint(
 \t})
 }
 """,
-        """
+    """
 
 \tassertFailedJobLog(t, &logs, map[string]any{
 \t\trepositoryKey:  unknownRepository,
@@ -7385,16 +7377,16 @@ func checkJobHistogramPoint(
 \t})
 }
 """,
-    ],
-    [
-        """
+  ],
+  [
+    """
 \tvar logs bytes.Buffer
 
 \tconsumer, reader := newRecorderWithLogger(t, newLedger(nil), slog.New(slog.NewJSONHandler(&logs, nil)))
 
 \terr = consumer.Record(t.Context(), workflowJobEvent, body)
 """,
-        """
+    """
 \tvar logs bytes.Buffer
 
 \tconsumer, reader := newRecorderWithLogger(
@@ -7405,9 +7397,9 @@ func checkJobHistogramPoint(
 
 \terr = consumer.Record(t.Context(), workflowJobEvent, body)
 """,
-    ],
-    [
-        """
+  ],
+  [
+    """
 \t\tactionKey: completedAction,
 \t\tworkflowJobEvent: map[string]any{
 \t\t\t\"id\": 42, \"workflow_name\": longText, nameKey: longText, conclusionKey: failureResult,
@@ -7416,7 +7408,7 @@ func checkJobHistogramPoint(
 \t\t},
 \t})
 """,
-        """
+    """
 \t\tactionKey: completedAction,
 \t\tworkflowJobEvent: map[string]any{
 \t\t\t\"id\":            42,
@@ -7431,16 +7423,16 @@ func checkJobHistogramPoint(
 \t\t},
 \t})
 """,
-    ],
-    [
-        """
+  ],
+  [
+    """
 
 \t\t\tcheckMetrics(t, reader, map[string]map[string]string{
 \t\t\t\teventsName: {repositoryKey: unknownRepository, eventKey: test.event, actionKey: test.action},
 \t\t\t})
 \t\t})
 """,
-        """
+    """
 
 \t\t\tcheckMetrics(t, reader, map[string]map[string]string{
 \t\t\t\teventsName: {
@@ -7451,9 +7443,9 @@ func checkJobHistogramPoint(
 \t\t\t})
 \t\t})
 """,
-    ],
-    [
-        """
+  ],
+  [
+    """
 \t\t\tif test.event == workflowJobEvent && test.action == completedAction {
 \t\t\t\tassertJobLog(t, &logs, finishedMessage, map[string]any{
 \t\t\t\t\trepositoryKey: unknownRepository, workflowKey: \"\", jobKey: \"\", conclusionKey: test.conclusion,
@@ -7462,7 +7454,7 @@ func checkJobHistogramPoint(
 \t\t\t\t})
 \t\t\t} else if logs.Len() != 0 {
 """,
-        """
+    """
 \t\t\tif test.event == workflowJobEvent && test.action == completedAction {
 \t\t\t\tassertJobLog(t, &logs, finishedMessage, map[string]any{
 \t\t\t\t\trepositoryKey: unknownRepository,
@@ -7478,16 +7470,16 @@ func checkJobHistogramPoint(
 \t\t\t\t})
 \t\t\t} else if logs.Len() != 0 {
 """,
-    ],
-    [
-        """
+  ],
+  [
+    """
 \t\t\tvar logs bytes.Buffer
 
 \t\t\tconsumer, reader := newRecorderWithLogger(t, newLedger(nil), slog.New(slog.NewJSONHandler(&logs, nil)))
 \t\t\tbody := `{\"action\":\"` + test.action + `\",\"workflow_job\":{\"id\":42,\"conclusion\":\"` + test.conclusion + `\"}}`
 
 """,
-        """
+    """
 \t\t\tvar logs bytes.Buffer
 
 \t\t\tconsumer, reader := newRecorderWithLogger(
@@ -7498,15 +7490,15 @@ func checkJobHistogramPoint(
 \t\t\tbody := `{\"action\":\"` + test.action + `\",\"workflow_job\":{\"id\":42,\"conclusion\":\"` + test.conclusion + `\"}}`
 
 """,
-    ],
-    [
-        """
+  ],
+  [
+    """
 }
 
 func TestNonFailureWorkflowJobs(t *testing.T) {
 \tt.Parallel()
 """,
-        """
+    """
 }
 
 func checkFailedJobObservations(t *testing.T, logs *bytes.Buffer, reader *sdkmetric.ManualReader) {
@@ -7554,9 +7546,9 @@ func checkFailedJobObservations(t *testing.T, logs *bytes.Buffer, reader *sdkmet
 func TestNonFailureWorkflowJobs(t *testing.T) {
 \tt.Parallel()
 """,
-    ],
-    [
-        """
+  ],
+  [
+    """
 \t}
 
 \tassertFailedJobLog(t, &logs, map[string]any{
@@ -7588,23 +7580,23 @@ func TestNonFailureWorkflowJobs(t *testing.T) {
 
 \tbefore, counters := logs.String(), collectCounters(t, reader)
 """,
-        """
+    """
 \t}
 
 \tcheckFailedJobObservations(t, &logs, reader)
 
 \tbefore, counters := logs.String(), collectCounters(t, reader)
 """,
-    ],
-    [
-        """
+  ],
+  [
+    """
 \tvar logs bytes.Buffer
 
 \tconsumer, reader := newRecorderWithLogger(t, newLedger(nil), slog.New(slog.NewJSONHandler(&logs, nil)))
 
 \terr := consumer.Record(t.Context(), workflowJobEvent, []byte(body))
 """,
-        """
+    """
 \tvar logs bytes.Buffer
 
 \tconsumer, reader := newRecorderWithLogger(
@@ -7615,26 +7607,26 @@ func TestNonFailureWorkflowJobs(t *testing.T) {
 
 \terr := consumer.Record(t.Context(), workflowJobEvent, []byte(body))
 """,
-    ],
+  ],
 ]
 
 [rewrite."internal/store/BUILD.bazel"]
 dest = "factory/github-metrics/internal/store/BUILD.bazel"
 replace = [
-    [
-        "github.com/tbhb-dev/github-metrics",
-        "github.com/tbhb-dev/tbhbdev/factory/github-metrics",
-    ],
-    [
-        "\"//:__pkg__\"",
-        "\"//factory/github-metrics:__pkg__\"",
-    ],
-    [
-        "\"//:__subpackages__\"",
-        "\"//factory/github-metrics:__subpackages__\"",
-    ],
-    [
-        """
+  [
+    "github.com/tbhb-dev/github-metrics",
+    "github.com/tbhb-dev/tbhbdev/factory/github-metrics",
+  ],
+  [
+    "\"//:__pkg__\"",
+    "\"//factory/github-metrics:__pkg__\"",
+  ],
+  [
+    "\"//:__subpackages__\"",
+    "\"//factory/github-metrics:__subpackages__\"",
+  ],
+  [
+    """
 # Copyright Tony Burns
 
 load(\"@rules_go//go:def.bzl\", \"go_library\", \"go_test\")
@@ -7644,7 +7636,7 @@ repo_files()
 
 go_library(
 """,
-        """
+    """
 # Copyright Tony Burns
 
 load(\"@rules_go//go:def.bzl\", \"go_library\")
@@ -7655,25 +7647,25 @@ repo_files(visibility = [\"//factory/github-metrics:__subpackages__\"])
 
 go_library(
 """,
-    ],
+  ],
 ]
 
 [rewrite."internal/store/fault_test.go"]
 dest = "factory/github-metrics/internal/store/fault_test.go"
 replace = [
-    [
-        "github.com/tbhb-dev/github-metrics",
-        "github.com/tbhb-dev/tbhbdev/factory/github-metrics",
-    ],
-    [
-        """
+  [
+    "github.com/tbhb-dev/github-metrics",
+    "github.com/tbhb-dev/tbhbdev/factory/github-metrics",
+  ],
+  [
+    """
 \t\tvar openErr error
 
 \t\tfile, openErr = os.OpenFile(path, flags, mode)
 
 \t\treturn file, setupError(openErr)
 """,
-        """
+    """
 \t\tvar openErr error
 
 \t\t//nolint:gosec // The test opens its temporary database.
@@ -7685,16 +7677,16 @@ replace = [
 
 \t\treturn file, setupError(openErr)
 """,
-    ],
-    [
-        """
+  ],
+  [
+    """
 
 \tupdate(t, repo.Database(), func(txn *bolt.Tx) error {
 \t\treturn setupError(txn.Bucket([]byte(queueIDsName)).Delete(binary.BigEndian.AppendUint64(nil, 1)))
 \t})
 \tentries, err := repo.Pending(1)
 """,
-        """
+    """
 
 \tupdate(t, repo.Database(), func(txn *bolt.Tx) error {
 \t\treturn setupError(
@@ -7703,16 +7695,16 @@ replace = [
 \t})
 \tentries, err := repo.Pending(1)
 """,
-    ],
-    [
-        """
+  ],
+  [
+    """
 \tfirst := time.Date(2026, time.November, 15, 12, 0, 0, 123, time.FixedZone(\"offset\", 3600))
 
 \trepo, err := store.OpenAt(filepath.Join(t.TempDir(), \"store.db\"), func() time.Time { return first })
 \tif err != nil {
 \t\tt.Fatal(err)
 """,
-        """
+    """
 \tfirst := time.Date(2026, time.November, 15, 12, 0, 0, 123, time.FixedZone(\"offset\", 3600))
 
 \trepo, err := store.OpenAt(
@@ -7722,21 +7714,21 @@ replace = [
 \tif err != nil {
 \t\tt.Fatal(err)
 """,
-    ],
+  ],
 ]
 
 [rewrite."internal/store/store.go"]
 dest = "factory/github-metrics/internal/store/store.go"
 replace = [
-    [
-        """
+  [
+    """
 func (b *Bolt) SetWatermark(repository string, updated time.Time) error {
 \terr := b.db.Update(func(txn *bolt.Tx) error {
 \t\treturn txn.Bucket([]byte(watermarksBucket)).Put([]byte(repository), []byte(updated.UTC().Format(stampLayout)))
 \t})
 \tif err != nil {
 """,
-        """
+    """
 func (b *Bolt) SetWatermark(repository string, updated time.Time) error {
 \terr := b.db.Update(func(txn *bolt.Tx) error {
 \t\treturn txn.Bucket([]byte(watermarksBucket)).
@@ -7744,25 +7736,25 @@ func (b *Bolt) SetWatermark(repository string, updated time.Time) error {
 \t})
 \tif err != nil {
 """,
-    ],
+  ],
 ]
 
 [rewrite."internal/store/store_test.go"]
 dest = "factory/github-metrics/internal/store/store_test.go"
 replace = [
-    [
-        "github.com/tbhb-dev/github-metrics",
-        "github.com/tbhb-dev/tbhbdev/factory/github-metrics",
-    ],
-    [
-        """
+  [
+    "github.com/tbhb-dev/github-metrics",
+    "github.com/tbhb-dev/tbhbdev/factory/github-metrics",
+  ],
+  [
+    """
 
 \tentries := pending(t, repo)
 \tif len(entries) != 2 || entries[0].Delivery != \"review-delivery\" || entries[1].Delivery != \"opened-delivery\" {
 \t\tt.Fatalf(\"pending = %+v, want arrival order\", entries)
 \t}
 """,
-        """
+    """
 
 \tentries := pending(t, repo)
 \tif len(entries) != 2 || entries[0].Delivery != \"review-delivery\" ||
@@ -7770,26 +7762,26 @@ replace = [
 \t\tt.Fatalf(\"pending = %+v, want arrival order\", entries)
 \t}
 """,
-    ],
+  ],
 ]
 
 [rewrite."internal/telemetry/BUILD.bazel"]
 dest = "factory/github-metrics/internal/telemetry/BUILD.bazel"
 replace = [
-    [
-        "github.com/tbhb-dev/github-metrics",
-        "github.com/tbhb-dev/tbhbdev/factory/github-metrics",
-    ],
-    [
-        "\"//:__pkg__\"",
-        "\"//factory/github-metrics:__pkg__\"",
-    ],
-    [
-        "\"//:__subpackages__\"",
-        "\"//factory/github-metrics:__subpackages__\"",
-    ],
-    [
-        """
+  [
+    "github.com/tbhb-dev/github-metrics",
+    "github.com/tbhb-dev/tbhbdev/factory/github-metrics",
+  ],
+  [
+    "\"//:__pkg__\"",
+    "\"//factory/github-metrics:__pkg__\"",
+  ],
+  [
+    "\"//:__subpackages__\"",
+    "\"//factory/github-metrics:__subpackages__\"",
+  ],
+  [
+    """
 # Copyright Tony Burns
 
 load(\"@rules_go//go:def.bzl\", \"go_library\", \"go_test\")
@@ -7799,7 +7791,7 @@ repo_files()
 
 go_library(
 """,
-        """
+    """
 # Copyright Tony Burns
 
 load(\"@rules_go//go:def.bzl\", \"go_library\")
@@ -7810,21 +7802,21 @@ repo_files(visibility = [\"//factory/github-metrics:__subpackages__\"])
 
 go_library(
 """,
-    ],
+  ],
 ]
 
 [rewrite."internal/telemetry/telemetry.go"]
 dest = "factory/github-metrics/internal/telemetry/telemetry.go"
 replace = [
-    [
-        """
+  [
+    """
 \t}
 
 \tretryable := errors.Is(err, syscall.ECONNRESET) || errors.Is(err, io.EOF) || errors.Is(err, io.ErrUnexpectedEOF)
 \tif !retryable || ctx.Err() != nil {
 \t\treturn fmt.Errorf(\"export metrics: %w\", err)
 """,
-        """
+    """
 \t}
 
 \tretryable := errors.Is(err, syscall.ECONNRESET) || errors.Is(err, io.EOF) ||
@@ -7832,16 +7824,16 @@ replace = [
 \tif !retryable || ctx.Err() != nil {
 \t\treturn fmt.Errorf(\"export metrics: %w\", err)
 """,
-    ],
-    [
-        """
+  ],
+  [
+    """
 }
 
 func (exporter retryExporter) Export(ctx context.Context, metrics *metricdata.ResourceMetrics) error {
 \terr := exporter.Exporter.Export(ctx, metrics)
 \tif err == nil {
 """,
-        """
+    """
 }
 
 func (exporter retryExporter) Export(
@@ -7851,16 +7843,16 @@ func (exporter retryExporter) Export(
 \terr := exporter.Exporter.Export(ctx, metrics)
 \tif err == nil {
 """,
-    ],
-    [
-        """
+  ],
+  [
+    """
 
 \tprovider := sdkmetric.NewMeterProvider(
 \t\tsdkmetric.WithReader(sdkmetric.NewPeriodicReader(retryExporter{exporter}, sdkmetric.WithInterval(time.Minute))),
 \t\tsdkmetric.WithResource(resource.NewSchemaless(
 \t\t\tattribute.String(\"service.name\", serviceName),
 """,
-        """
+    """
 
 \tprovider := sdkmetric.NewMeterProvider(
 \t\tsdkmetric.WithReader(
@@ -7872,9 +7864,9 @@ func (exporter retryExporter) Export(
 \t\tsdkmetric.WithResource(resource.NewSchemaless(
 \t\t\tattribute.String(\"service.name\", serviceName),
 """,
-    ],
-    [
-        """
+  ],
+  [
+    """
 //
 //nolint:ireturn // Setup returns the standard meter interface.
 func Setup(ctx context.Context, serviceName, version string) (func(context.Context) error, metric.Meter, error) {
@@ -7883,7 +7875,7 @@ func Setup(ctx context.Context, serviceName, version string) (func(context.Conte
 \t}
 
 """,
-        """
+    """
 //
 //nolint:ireturn // Setup returns the standard meter interface.
 func Setup(
@@ -7897,23 +7889,23 @@ func Setup(
 \t}
 
 """,
-    ],
+  ],
 ]
 
 [rewrite."internal/telemetry/telemetry_test.go"]
 dest = "factory/github-metrics/internal/telemetry/telemetry_test.go"
 replace = [
-    [
-        "github.com/tbhb-dev/github-metrics",
-        "github.com/tbhb-dev/tbhbdev/factory/github-metrics",
-    ],
-    [
-        """
+  [
+    "github.com/tbhb-dev/github-metrics",
+    "github.com/tbhb-dev/tbhbdev/factory/github-metrics",
+  ],
+  [
+    """
 \t\tt.Errorf(\"data points = %v, want one observation of 1\", points)
 \t}
 }
 """,
-        """
+    """
 \t\tt.Errorf(\"data points = %v, want one observation of 1\", points)
 \t}
 }
@@ -7931,9 +7923,9 @@ func checkResourceAttributes(t *testing.T, resource *metricspb.ResourceMetrics) 
 \t}
 }
 """,
-    ],
-    [
-        """
+  ],
+  [
+    """
 \t}
 
 \tattrs := make(map[string]string)
@@ -7947,16 +7939,16 @@ func checkResourceAttributes(t *testing.T, resource *metricspb.ResourceMetrics) 
 
 \tscopes := metrics[0].GetScopeMetrics()
 """,
-        """
+    """
 \t}
 
 \tcheckResourceAttributes(t, metrics[0])
 
 \tscopes := metrics[0].GetScopeMetrics()
 """,
-    ],
-    [
-        """
+  ],
+  [
+    """
 \tt.Helper()
 
 \treturn httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
@@ -7980,7 +7972,7 @@ func checkResourceAttributes(t *testing.T, resource *metricspb.ResourceMetrics) 
 }
 
 """,
-        """
+    """
 \tt.Helper()
 
 \treturn httptest.NewServer(
@@ -8006,9 +7998,9 @@ func checkResourceAttributes(t *testing.T, resource *metricspb.ResourceMetrics) 
 }
 
 """,
-    ],
-    [
-        """
+  ],
+  [
+    """
 \tt.Helper()
 
 \treturn httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
@@ -8026,7 +8018,7 @@ func checkResourceAttributes(t *testing.T, resource *metricspb.ResourceMetrics) 
 }
 
 """,
-        """
+    """
 \tt.Helper()
 
 \treturn httptest.NewServer(
@@ -8046,26 +8038,26 @@ func checkResourceAttributes(t *testing.T, resource *metricspb.ResourceMetrics) 
 }
 
 """,
-    ],
+  ],
 ]
 
 [rewrite."internal/version/BUILD.bazel"]
 dest = "factory/github-metrics/internal/version/BUILD.bazel"
 replace = [
-    [
-        "github.com/tbhb-dev/github-metrics",
-        "github.com/tbhb-dev/tbhbdev/factory/github-metrics",
-    ],
-    [
-        "\"//:__pkg__\"",
-        "\"//factory/github-metrics:__pkg__\"",
-    ],
-    [
-        "\"//:__subpackages__\"",
-        "\"//factory/github-metrics:__subpackages__\"",
-    ],
-    [
-        """
+  [
+    "github.com/tbhb-dev/github-metrics",
+    "github.com/tbhb-dev/tbhbdev/factory/github-metrics",
+  ],
+  [
+    "\"//:__pkg__\"",
+    "\"//factory/github-metrics:__pkg__\"",
+  ],
+  [
+    "\"//:__subpackages__\"",
+    "\"//factory/github-metrics:__subpackages__\"",
+  ],
+  [
+    """
 # Copyright Tony Burns
 
 load(\"@rules_go//go:def.bzl\", \"go_library\", \"go_test\")
@@ -8075,7 +8067,7 @@ repo_files()
 
 go_library(
 """,
-        """
+    """
 # Copyright Tony Burns
 
 load(\"@rules_go//go:def.bzl\", \"go_library\")
@@ -8086,39 +8078,39 @@ repo_files(visibility = [\"//factory/github-metrics:__subpackages__\"])
 
 go_library(
 """,
-    ],
+  ],
 ]
 
 [rewrite."internal/version/version_test.go"]
 dest = "factory/github-metrics/internal/version/version_test.go"
 replace = [
-    [
-        "github.com/tbhb-dev/github-metrics",
-        "github.com/tbhb-dev/tbhbdev/factory/github-metrics",
-    ],
+  [
+    "github.com/tbhb-dev/github-metrics",
+    "github.com/tbhb-dev/tbhbdev/factory/github-metrics",
+  ],
 ]
 
 [rewrite."internal/worker/BUILD.bazel"]
 dest = "factory/github-metrics/internal/worker/BUILD.bazel"
 replace = [
-    [
-        "github.com/tbhb-dev/github-metrics",
-        "github.com/tbhb-dev/tbhbdev/factory/github-metrics",
-    ],
-    [
-        "\"//internal/",
-        "\"//factory/github-metrics/internal/",
-    ],
-    [
-        "\"//:__pkg__\"",
-        "\"//factory/github-metrics:__pkg__\"",
-    ],
-    [
-        "\"//:__subpackages__\"",
-        "\"//factory/github-metrics:__subpackages__\"",
-    ],
-    [
-        """
+  [
+    "github.com/tbhb-dev/github-metrics",
+    "github.com/tbhb-dev/tbhbdev/factory/github-metrics",
+  ],
+  [
+    "\"//internal/",
+    "\"//factory/github-metrics/internal/",
+  ],
+  [
+    "\"//:__pkg__\"",
+    "\"//factory/github-metrics:__pkg__\"",
+  ],
+  [
+    "\"//:__subpackages__\"",
+    "\"//factory/github-metrics:__subpackages__\"",
+  ],
+  [
+    """
 # Copyright Tony Burns
 
 load(\"@rules_go//go:def.bzl\", \"go_library\", \"go_test\")
@@ -8128,7 +8120,7 @@ repo_files()
 
 go_library(
 """,
-        """
+    """
 # Copyright Tony Burns
 
 load(\"@rules_go//go:def.bzl\", \"go_library\")
@@ -8139,23 +8131,23 @@ repo_files(visibility = [\"//factory/github-metrics:__subpackages__\"])
 
 go_library(
 """,
-    ],
+  ],
 ]
 
 [rewrite."internal/worker/worker.go"]
 dest = "factory/github-metrics/internal/worker/worker.go"
 replace = [
-    [
-        "github.com/tbhb-dev/github-metrics",
-        "github.com/tbhb-dev/tbhbdev/factory/github-metrics",
-    ],
-    [
-        """
+  [
+    "github.com/tbhb-dev/github-metrics",
+    "github.com/tbhb-dev/tbhbdev/factory/github-metrics",
+  ],
+  [
+    """
 }
 
 func oneLine(s string) string { return strings.ReplaceAll(strings.ReplaceAll(s, \"\\n\", \"\"), \"\\r\", \"\") }
 """,
-        """
+    """
 }
 
 func oneLine(
@@ -8164,27 +8156,27 @@ func oneLine(
 \treturn strings.ReplaceAll(strings.ReplaceAll(s, \"\\n\", \"\"), \"\\r\", \"\")
 }
 """,
-    ],
+  ],
 ]
 
 [rewrite."internal/worker/worker_test.go"]
 dest = "factory/github-metrics/internal/worker/worker_test.go"
 replace = [
-    [
-        "github.com/tbhb-dev/github-metrics",
-        "github.com/tbhb-dev/tbhbdev/factory/github-metrics",
-    ],
-    [
-        "tbhb-dev/github-metrics",
-        "example/widgets",
-    ],
-    [
-        """
+  [
+    "github.com/tbhb-dev/github-metrics",
+    "github.com/tbhb-dev/tbhbdev/factory/github-metrics",
+  ],
+  [
+    "tbhb-dev/github-metrics",
+    "example/widgets",
+  ],
+  [
+    """
 \t\treturn nil
 \t}
 }
 """,
-        """
+    """
 \t\treturn nil
 \t}
 }
@@ -8233,16 +8225,16 @@ func checkPass(t *testing.T, test passCase) {
 \t}
 }
 """,
-    ],
-    [
-        """
+  ],
+  [
+    """
 
 \t\t\tif !errors.Is(err, errStore) || reads != 1 || records != want || removes != want {
 \t\t\t\tt.Fatalf(\"Run: %v, reads = %d, records = %d, removes = %d\", err, reads, records, removes)
 \t\t\t}
 \t\t})
 """,
-        """
+    """
 
 \t\t\tif !errors.Is(err, errStore) || reads != 1 || records != want || removes != want {
 \t\t\t\tt.Fatalf(
@@ -8255,16 +8247,16 @@ func checkPass(t *testing.T, test passCase) {
 \t\t\t}
 \t\t})
 """,
-    ],
-    [
-        """
+  ],
+  [
+    """
 \terr := consumer.Pass(t.Context())
 \tif err != nil || recorded != total || removed != total || queue.reads != 3 {
 \t\tt.Fatalf(\"Pass: %v, recorded = %d, removed = %d, reads = %d\", err, recorded, removed, queue.reads)
 \t}
 }
 """,
-        """
+    """
 \terr := consumer.Pass(t.Context())
 \tif err != nil || recorded != total || removed != total || queue.reads != 3 {
 \t\tt.Fatalf(
@@ -8277,9 +8269,9 @@ func checkPass(t *testing.T, test passCase) {
 \t}
 }
 """,
-    ],
-    [
-        """
+  ],
+  [
+    """
 \t\t\tt.Parallel()
 
 \t\t\tvar calls []string
@@ -8320,16 +8312,16 @@ func checkPass(t *testing.T, test passCase) {
 \t\t})
 \t}
 """,
-        """
+    """
 \t\t\tt.Parallel()
 
 \t\t\tcheckPass(t, test)
 \t\t})
 \t}
 """,
-    ],
-    [
-        """
+  ],
+  [
+    """
 }
 
 func TestPass(t *testing.T) {
@@ -8344,7 +8336,7 @@ func TestPass(t *testing.T) {
 \t\t{
 \t\t\t\"record before remove\", pullRequestEvent, openedBody, \"\", nil,
 """,
-        """
+    """
 }
 
 type passCase struct {
@@ -8361,7 +8353,7 @@ func TestPass(t *testing.T) {
 \t\t{
 \t\t\t\"record before remove\", pullRequestEvent, openedBody, \"\", nil,
 """,
-    ],
+  ],
 ]
 
 [drop]

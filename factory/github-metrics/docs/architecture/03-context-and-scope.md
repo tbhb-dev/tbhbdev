@@ -9,14 +9,14 @@
 | Partner | Direction | Content |
 | --- | --- | --- |
 | GitHub | Inbound and outbound | Webhooks for PR and PR review events in. REST reads out remain design, since `main` builds no client |
-| Engineers | Outbound to the backends | In the design they read traces, metrics, and logs in the backends. They never call the service |
+| Engineers | Outbound only | In the design they read traces, metrics, and logs in the backends. They never call the service |
 
 ## Technical context
 
 | Interface | Protocol | Notes |
 | --- | --- | --- |
 | `POST /webhook` | HTTPS through the tunnel | Signed with `X-Hub-Signature-256`, at most 2 MiB |
-| [Liveness probe](../../internal/receiver/receiver.go#L67) (`GET`) | HTTP on the host | Liveness |
+| `GET /healthz` | HTTP on the host | Liveness |
 | GitHub REST | HTTPS | Planned: bearer installation token, `ETag` conditional requests |
 | OpenTelemetry export | HTTP with protobuf | Planned: traces, metrics, and logs to the host collector on port 4318. The code exports nothing yet |
 

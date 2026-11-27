@@ -1,6 +1,6 @@
 # Appendix D: alternatives considered and rejected
 
-Today the implemented pieces are the webhook receiver, the request budget, and the GitHub client. Everything else is design or planned. Still to build are the worker, the reconciler, the store, and the OTel export. Treat every statement about them as a plan.
+Today the code has only the webhook receiver, the request budget, and the GitHub client. Everything else is design or planned. Still to build are the worker, the reconciler, the store, and the OTel export. Treat every statement about them as a plan.
 
 Each section below covers one option the design didn't take, and why. A section links the decision record that an option would undo. Appendix B of the original design, in the `drafts/github-metrics` folder of `tbhb-dev/wiki` at commit `8e06fb1`, is the source.
 
@@ -20,11 +20,11 @@ Each section below covers one option the design didn't take, and why. A section 
 
 ## A stateless service
 
-The design could have the service re-derive everything from GitHub on each pass and not store anything between passes. The design can't rely on OpenTelemetry (OTel) backends to drop a span exported twice, and a histogram counts every observation. Each pass would double the metrics. A mounted volume with one `bbolt` file needs a small number of megabytes and keeps the root filesystem mounted without write access. [D4](decisions/0004-the-service-stores-its-state-in-a-small-bbolt-fi.md) records the stored-state choice.
+The design could have the service re-derive everything from GitHub on each pass and not store anything between passes. The design can't rely on OpenTelemetry (OTel) backends to drop a span exported twice, and a histogram counts every observation. Each pass would double the metrics. A mounted volume with one `bbolt` file needs a few megabytes and keeps the root filesystem read-only. [D4](decisions/0004-the-service-stores-its-state-in-a-small-bbolt-fi.md) records the stored-state choice.
 
 ## SQLite instead of `bbolt`
 
-SQLite gives queries and a familiar format. A static binary with `CGO_ENABLED=0` needs a pure Go SQLite port, which adds a large dependency for what amounts to a small number of key-value buckets. `bbolt` is pure Go, small, and transactional, and an interface in front of the store allows a swap later. That swap is the undo path in [D4](decisions/0004-the-service-stores-its-state-in-a-small-bbolt-fi.md).
+SQLite gives queries and a familiar format. A static binary with cgo turned off needs a pure Go SQLite port, which adds a large dependency for what amounts to a few key-value buckets. `bbolt` is pure Go, small, and transactional, and an interface in front of the store allows a swap later. That swap is the undo path in [D4](decisions/0004-the-service-stores-its-state-in-a-small-bbolt-fi.md).
 
 ## One complete trace at merge or close
 
@@ -32,7 +32,7 @@ The design could wait until the pull request (PR) ends before it exports any spa
 
 ## Random IDs with a lookup table
 
-Random trace and span IDs stored per PR would also give one trace per PR. The service then relies entirely on the store for IDs. Losing the file splits every open PR’s trace in two. Derived IDs come out the same after a lost store, and webhook and reconciliation runs agree without coordination. [D3](decisions/0003-trace-and-span-ids-derive-from-the-pr-s-graphql.md) records the derived-ID rule.
+Random trace and span IDs stored per PR would also give one trace per PR. They make the store the only source of the IDs, and losing the file splits every open PR's trace in two. Derived IDs come out the same after a lost store, and webhook and reconciliation runs agree without coordination. [D3](decisions/0003-trace-and-span-ids-derive-from-the-pr-s-graphql.md) records the derived-ID rule.
 
 ## One query per pull request
 
@@ -40,7 +40,7 @@ One GraphQL query can fetch a PR with its reviews, commits, and timeline, which 
 
 ## A streaming export protocol
 
-The OpenTelemetry Protocol (OTLP) over gRPC streams well and is the collector's other default. At a rate in the low hundreds of spans per hour, streaming buys nothing, and gRPC adds a large dependency tree to the binary. Debugging HTTP with protobuf takes less tooling, and switching later is a configuration change. Switching to gRPC is the undo path in [D9](decisions/0009-export-over-http-with-protobuf-to-the-host-s-col.md).
+The OpenTelemetry Protocol (OTLP) over gRPC streams well and is the collector's other default. At a few hundred spans an hour, streaming buys nothing, and gRPC adds a large dependency tree to the binary. Debugging HTTP with protobuf takes less tooling, and switching later is a configuration change. Switching to gRPC is the undo path in [D9](decisions/0009-export-over-http-with-protobuf-to-the-host-s-col.md).
 
 ## The collector's own GitHub receiver
 
@@ -48,7 +48,7 @@ The OTel Collector has a contributed GitHub receiver that scrapes repository met
 
 ## The redelivery API as a healer
 
-The service could list failed deliveries and redeliver them with an App-level JSON Web Token (JWT). Reconciliation recovers what the REST API exposes. It can’t recover facts exclusive to webhook payloads, such as whether someone resolved a review thread. The design doesn't record such a fact. Reconciliation restores everything the design does record, which suffices. Redelivery would add lower latency and nothing more, at the cost of more code and a second credential use. Adding a redelivery client is the undo path in [D7](decisions/0007-reconciliation-is-the-only-healer.md).
+The service could list failed deliveries and redeliver them with an App-level JSON Web Token (JWT). Reconciliation recovers only what the REST API shows. A fact that exists only in a webhook, such as a review thread's resolution, can't come back through reconciliation. The design doesn't record such a fact. Reconciliation restores everything the design does record, which suffices. Redelivery would add lower latency and nothing more, at the cost of more code and a second credential use. Adding a redelivery client is the undo path in [D7](decisions/0007-reconciliation-is-the-only-healer.md).
 
 ## Author login as a metric attribute
 
@@ -60,4 +60,4 @@ The root could go out again with the same IDs and a later end time each time a r
 
 ## Webhook payloads as a telemetry source
 
-The worker could read facts such as review thread resolution straight from webhook bodies. A missed delivery would then lose those facts permanently, because reconciliation can't fetch them. Some changes also have no GitHub timestamp in the payload. Using REST for all telemetry content keeps one source of truth and lets the queue drop each body once the worker marks the PR.
+The worker could read facts such as review thread resolution straight from webhook bodies. A missed delivery would then lose those facts permanently, because reconciliation can't fetch them. Some changes also have no GitHub timestamp in the payload. Taking content only from REST keeps one source of truth and lets the queue drop each body once the worker marks the PR.
