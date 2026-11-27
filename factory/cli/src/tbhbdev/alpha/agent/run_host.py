@@ -9,7 +9,6 @@ import hashlib
 import json
 import os
 import re
-import shlex
 import shutil
 import signal
 import socket
@@ -39,6 +38,7 @@ from tbhbdev.alpha.agent import (
     push,
     render,
     review_post,
+    run_host_telemetry,
     runfiles,
     settings,
     shims,
@@ -440,29 +440,6 @@ def preflight(run: Run) -> None:
         raise Invalid(message)
 
 
-def otel_config(endpoint: str) -> str:
-    """A Codex config with an `[otel]` table that exports traces and metrics.
-
-    ENDPOINT is a base URL, and each signal gets its own OTLP/HTTP path. The
-    table leaves out the log exporter on purpose: Codex logs tool arguments and
-    an output preview, so `log_user_prompt = false`, which guards only the
-    prompt text, wouldn't keep a credential or a file out of the export.
-    The table has no headers, so it holds no secret.
-    """
-    base = endpoint.removesuffix("/")
-
-    def exporter(signal_path: str) -> str:
-        url = json.dumps(f"{base}/v1/{signal_path}")
-        return f'{{ otlp-http = {{ endpoint = {url}, protocol = "binary" }} }}'
-
-    return (
-        "[otel]\n"
-        f"trace_exporter = {exporter('traces')}\n"
-        f"metrics_exporter = {exporter('metrics')}\n"
-        "log_user_prompt = false\n"
-    )
-
-
 def hook_environment(value: Policy, *, unsandboxed: bool) -> dict[str, str]:
     """Reflect the shell overrides each harness applies to its launch environment."""
     if value.harness is Harness.CODEX:
@@ -476,7 +453,7 @@ def hook_environment(value: Policy, *, unsandboxed: bool) -> dict[str, str]:
 
 
 def prepare_codex_config(home: Path, endpoint: str | None, *, headless: bool) -> None:
-    text = otel_config(endpoint) if endpoint is not None else ""
+    text = run_host_telemetry.otel_config(endpoint) if endpoint is not None else ""
     if headless:
         path = home / "hooks.json"
         config = {"hooks": install.stop_hooks("codex")}
@@ -644,47 +621,11 @@ def log_hook_tools(run: Run, paths: RunPaths) -> None:
     run.files.write("log", f"preflight: .bazel_env {status}\n")
 
 
-ENV_OVERRIDE = "shell_environment_policy.set."
-
-
-def argv_log_line(command: tuple[str, ...]) -> str:
-    """COMMAND as one log line, without the environment values it sets.
-
-    A Codex run's argv carries the permissions table, which is what a sandbox
-    failure needs, and the brief by path or on stdin. The `-c` overrides that set
-    the run's environment hold credential-adjacent values, so they stay out.
-    """
-    shown: list[str] = []
-    previous = ""
-    for word in command:
-        if previous == "-c" and word.startswith(ENV_OVERRIDE):
-            shown.pop()
-        else:
-            shown.append(word)
-        previous = word
-    return "argv: " + shlex.join(shown)
-
-
 def log_argv(run: Run, command: tuple[str, ...]) -> None:
     if run.request.harness is Harness.CODEX:
         # A failed log write must not stop the run, as with the cleanup notices.
         with suppress(OSError):
-            run.files.write("log", argv_log_line(command) + "\n")
-
-
-def resource_attributes(run: Run) -> dict[str, str]:
-    """OpenTelemetry resource attributes that name the host and the account.
-
-    A run without a configured endpoint gets none, so it stays as it was.
-    """
-    if run.settings.otel_endpoint is None:
-        return {}
-    return {
-        "OTEL_RESOURCE_ATTRIBUTES": (
-            f"host.name={run.host.name},tbhb.account={run.request.account}"
-            f",tbhb.run.id={run.files.name}"
-        )
-    }
+            run.files.write("log", run_host_telemetry.argv_log_line(command) + "\n")
 
 
 def run_harness(
@@ -695,7 +636,12 @@ def run_harness(
     env = (
         value.env
         | prepared.delivery.env
-        | resource_attributes(run)
+        | run_host_telemetry.resource_attributes(
+            run.settings.otel_endpoint,
+            host=run.host.name,
+            account=run.request.account,
+            run_name=run.files.name,
+        )
         | {RUN_MODEL_ENV: run.request.model}
     )
     command = checked_harness_command(run, prepared, value, executable)

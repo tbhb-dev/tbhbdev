@@ -1,0 +1,164 @@
+---
+# Root installs the data volume, Docker and gVisor, and the daemon's
+# settings. The data volume comes first, so the daemon never writes to the
+# directory the volume goes on.
+
+- name: Check the settings
+  ansible.builtin.assert:
+    that:
+      - docker_engine_data_root is match('^/[^ ]+$')
+      - docker_engine_data_size | length == 0 or docker_engine_data_size | human_to_bytes > 0
+      - docker_engine_data_vg is match('^[A-Za-z0-9+_.][A-Za-z0-9+_.-]*$')
+      - docker_engine_data_lv is match('^[A-Za-z0-9+_.][A-Za-z0-9+_.-]*$')
+    fail_msg: >-
+      docker_engine_data_root must be an absolute path without spaces, docker_engine_data_size a size
+      or empty, and the volume group and logical volume names valid LVM names
+    quiet: true
+
+- name: Create the apt keyring directory
+  ansible.builtin.file:
+    path: /etc/apt/keyrings
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+# Pinned by checksum. The key's fingerprint is
+# 9DC8 5822 9FC7 DD38 854A E2D8 8D81 803C 0EBF CD88.
+- name: Install Docker's apt signing key
+  ansible.builtin.get_url:
+    url: https://download.docker.com/linux/ubuntu/gpg
+    dest: /etc/apt/keyrings/docker.asc
+    checksum: sha256:1500c1f56fa9e26b9b8f42452a553675796ade0807cdce11975eb98170b3a570
+    owner: root
+    group: root
+    mode: "0644"
+  register: docker_engine_docker_key
+
+- name: Add Docker's apt repository
+  ansible.builtin.copy:
+    dest: /etc/apt/sources.list.d/docker.sources
+    content: |
+      Types: deb
+      URIs: https://download.docker.com/linux/ubuntu
+      Suites: {{ ansible_facts.distribution_release }}
+      Components: stable
+      Signed-By: /etc/apt/keyrings/docker.asc
+    owner: root
+    group: root
+    mode: "0644"
+  register: docker_engine_docker_source
+
+# Pinned by checksum. The key's fingerprint is
+# 6F1D F85E 3A71 C249 18E7 27D5 6FC6 D554 E32B D943.
+- name: Install gVisor's apt signing key
+  ansible.builtin.get_url:
+    url: https://gvisor.dev/archive.key
+    dest: /etc/apt/keyrings/gvisor.asc
+    checksum: sha256:757d2ebdf00cdc5661f88443e2bea848d3e2ded0780cbcd2d811be05e0c1d5dd
+    owner: root
+    group: root
+    mode: "0644"
+  register: docker_engine_gvisor_key
+
+- name: Add gVisor's apt repository
+  ansible.builtin.copy:
+    dest: /etc/apt/sources.list.d/gvisor.sources
+    content: |
+      Types: deb
+      URIs: https://storage.googleapis.com/gvisor/releases
+      Suites: release
+      Components: main
+      Signed-By: /etc/apt/keyrings/gvisor.asc
+    owner: root
+    group: root
+    mode: "0644"
+  register: docker_engine_gvisor_source
+
+# A check run hasn't written the repositories, so it skips their packages too.
+- name: Note whether a check run would add a repository first
+  ansible.builtin.set_fact:
+    docker_engine_repos_pending: >-
+      {{ ansible_check_mode and (docker_engine_docker_key is changed or docker_engine_docker_source is changed
+          or docker_engine_gvisor_key is changed or docker_engine_gvisor_source is changed) }}
+
+- name: Refresh the package index for the new repositories
+  ansible.builtin.apt:
+    update_cache: true
+  when:
+    - docker_engine_docker_key is changed or docker_engine_docker_source is changed
+      or docker_engine_gvisor_key is changed or docker_engine_gvisor_source is changed
+    - not ansible_check_mode
+
+- name: Put the Docker data root on its own volume
+  ansible.builtin.include_role:
+    name: lvm_volume
+  vars:
+    lvm_volume_vg: "{{ docker_engine_data_vg }}"
+    lvm_volume_lv: "{{ docker_engine_data_lv }}"
+    lvm_volume_size: "{{ docker_engine_data_size }}"
+    lvm_volume_path: "{{ docker_engine_data_root }}"
+  when: docker_engine_data_size | length > 0
+
+# The packages must not start the daemon on install, because the daemon
+# configuration comes after them.
+- name: Install Docker and gVisor
+  ansible.builtin.apt:
+    name:
+      - containerd.io
+      - docker-buildx-plugin
+      - docker-ce
+      - docker-ce-cli
+      - docker-compose-plugin
+      - runsc
+    state: present
+    install_recommends: false
+    policy_rc_d: 101
+  when: not docker_engine_repos_pending
+
+- name: Create the Docker configuration directory
+  ansible.builtin.file:
+    path: /etc/docker
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+# runc is built in and the daemon rejects a runtime entry named runc, so only
+# runsc is registered. The daemon keeps runc for runtime runc.
+- name: Configure the Docker daemon
+  vars:
+    docker_engine_runsc: >-
+      {{ {'path': '/usr/bin/runsc'}
+          | combine({'runtimeArgs': docker_engine_runsc_args} if docker_engine_runsc_args | length > 0 else {}) }}
+    # The classic overlay2 store keeps image layers under the data root, on
+    # its logical volume. Docker 29's containerd image store would keep them
+    # under /var/lib/containerd on the root file system instead.
+    # ip-forward-no-drop stops the daemon from setting the FORWARD policy to
+    # DROP when it turns on forwarding, which would drop the guests' traffic
+    # on the KVM bridge once br_netfilter is loaded.
+    # ip publishes ports on loopback unless a container asks for another
+    # address. Changing it restarts the daemon, which stops running containers.
+    docker_engine_daemon:
+      data-root: "{{ docker_engine_data_root }}"
+      default-runtime: runsc
+      features:
+        containerd-snapshotter: false
+      ip: 127.0.0.1
+      ip-forward-no-drop: true
+      runtimes:
+        runsc: "{{ docker_engine_runsc }}"
+  ansible.builtin.copy:
+    dest: /etc/docker/daemon.json
+    content: "{{ docker_engine_daemon | to_nice_json(indent=2) }}\n"
+    owner: root
+    group: root
+    mode: "0644"
+  notify: Restart Docker
+
+- name: Enable and start Docker
+  ansible.builtin.systemd_service:
+    name: docker.service
+    enabled: true
+    state: started
+  when: not docker_engine_repos_pending

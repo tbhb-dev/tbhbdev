@@ -1,0 +1,940 @@
+---
+# The stack's own alert rules, few and quiet, over the self-metrics in
+# Mimir and, for the log rate, the stack's own lines in Loki. Each query
+# returns one series per thing that can fail, and the threshold after it
+# decides. The two @...@ tokens require the configured disk reserve,
+# O11Y_DISK_RESERVE_GB. Configuration preparation arrives as a tbhbops
+# subcommand.
+#
+# Several counters exist only from their first increment, and increase()
+# can't count that first value. Those read as
+#   (c unless c offset 10m) or increase(c[10m])
+# which takes a series born in the last 10 minutes whole.
+#
+# The service-down query backs every job with a row of 0, so a job whose
+# series vanished still fires. The o11y/rustfs row is the exception: it
+# exists only while rustfs_start_total has a sample in the last 7 days, so
+# a stack that never ran a RustFS release which pushes its metrics stays
+# quiet, and a RustFS that reported and then stopped fires as any other job
+# does. The limit: once the series has been absent for 7 days (well inside
+# Mimir's 365 day retention) the row is gone and the rule goes quiet again.
+#
+# A failed query fires the service-down rule's error alert and leaves the
+# others as they were, so a Mimir outage sends one message, not five.
+apiVersion: 1
+
+groups:
+  - orgId: 1
+    name: o11y
+    folder: o11y
+    interval: 1m
+    rules:
+      - uid: o11y-service-down
+        title: Stack service down
+        condition: C
+        for: 5m
+        noDataState: Alerting
+        execErrState: Error
+        labels: {}
+        annotations:
+          summary: "{{ $labels.job }} has been down for 5 minutes."
+          description: >-
+            Its scrape fails, or it has sent nothing for 90 seconds. Every
+            job down at once points at Alloy, which scrapes them all.
+        data:
+          - refId: A
+            datasourceUid: mimir
+            relativeTimeRange: {from: 600, to: 0}
+            model:
+              refId: A
+              instant: true
+              expr: >-
+                min by (job) (up{namespace="o11y"} and time() - timestamp(up{namespace="o11y"}) < 90)
+                or max by (job) (rustfs_start_total{job="o11y/rustfs"}
+                  and time() - timestamp(rustfs_start_total{job="o11y/rustfs"}) < 90) * 0 + 1
+                or label_replace(vector(0), "job", "o11y/alloy", "", "")
+                or label_replace(vector(0), "job", "o11y/grafana", "", "")
+                or label_replace(vector(0), "job", "o11y/loki", "", "")
+                or label_replace(vector(0), "job", "o11y/mimir", "", "")
+                or (label_replace(vector(0), "job", "o11y/rustfs", "", "")
+                  and on() count(count_over_time(rustfs_start_total{job="o11y/rustfs"}[7d])))
+                or label_replace(vector(0), "job", "o11y/tempo", "", "")
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: A
+              conditions:
+                - evaluator: {type: lt, params: [1]}
+
+      - uid: o11y-disk-low
+        title: Disk free below the reserve
+        condition: C
+        for: 5m
+        noDataState: OK
+        execErrState: KeepLast
+        labels: {}
+        annotations:
+          summary: >-
+            The filesystem under the stack's data has less than
+            @O11Y_DISK_RESERVE_GB@ GiB or 10 percent free.
+          description: >-
+            Deploy refuses to start below this reserve. RustFS reports the
+            free space of the filesystem it stores on.
+        data:
+          - refId: A
+            datasourceUid: mimir
+            relativeTimeRange: {from: 600, to: 0}
+            model:
+              refId: A
+              instant: true
+              expr: >-
+                (min by (job) (rustfs_cluster_capacity_free_bytes{job="o11y/rustfs"}) < bool @O11Y_DISK_RESERVE_BYTES@)
+                + (min by (job) (rustfs_cluster_capacity_free_bytes{job="o11y/rustfs"})
+                  < bool 0.1 * max by (job) (rustfs_cluster_capacity_usable_total_bytes{job="o11y/rustfs"}))
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: A
+              conditions:
+                - evaluator: {type: gt, params: [0]}
+
+      - uid: o11y-ingest-dropped
+        title: Ingest dropped
+        condition: C
+        for: 2m
+        noDataState: OK
+        execErrState: KeepLast
+        labels: {}
+        annotations:
+          summary: "{{ $labels.job }} dropped data in the last 10 minutes: {{ $labels.reason }}."
+          description: >-
+            A backend discarded samples, spans or log lines it received, or
+            Alloy refused them at its receivers, usually under memory
+            pressure.
+        data:
+          - refId: A
+            datasourceUid: mimir
+            relativeTimeRange: {from: 1200, to: 0}
+            model:
+              refId: A
+              instant: true
+              expr: >-
+                sum by (job, reason) ((loki_discarded_samples_total{job="o11y/loki"}
+                  unless loki_discarded_samples_total{job="o11y/loki"} offset 10m)
+                  or increase(loki_discarded_samples_total{job="o11y/loki"}[10m])) > 0
+                or sum by (job, reason) ((cortex_discarded_samples_total{job="o11y/mimir"}
+                  unless cortex_discarded_samples_total{job="o11y/mimir"} offset 10m)
+                  or increase(cortex_discarded_samples_total{job="o11y/mimir"}[10m])) > 0
+                or sum by (job, reason) ((tempo_discarded_spans_total{job="o11y/tempo"}
+                  unless tempo_discarded_spans_total{job="o11y/tempo"} offset 10m)
+                  or increase(tempo_discarded_spans_total{job="o11y/tempo"}[10m])) > 0
+                or label_replace(sum by (job) ((otelcol_receiver_refused_spans_total{job="o11y/alloy"}
+                  unless otelcol_receiver_refused_spans_total{job="o11y/alloy"} offset 10m)
+                  or increase(otelcol_receiver_refused_spans_total{job="o11y/alloy"}[10m])) > 0,
+                  "reason", "refused spans", "", "")
+                or label_replace(sum by (job) ((otelcol_receiver_refused_metric_points_total{job="o11y/alloy"}
+                  unless otelcol_receiver_refused_metric_points_total{job="o11y/alloy"} offset 10m)
+                  or increase(otelcol_receiver_refused_metric_points_total{job="o11y/alloy"}[10m])) > 0,
+                  "reason", "refused metric points", "", "")
+                or label_replace(sum by (job) ((otelcol_receiver_refused_log_records_total{job="o11y/alloy"}
+                  unless otelcol_receiver_refused_log_records_total{job="o11y/alloy"} offset 10m)
+                  or increase(otelcol_receiver_refused_log_records_total{job="o11y/alloy"}[10m])) > 0,
+                  "reason", "refused log records", "", "")
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: A
+              conditions:
+                - evaluator: {type: gt, params: [0]}
+
+      - uid: o11y-rustfs-memory
+        title: RustFS memory high
+        condition: C
+        for: 10m
+        noDataState: OK
+        execErrState: KeepLast
+        labels: {}
+        annotations:
+          summary: RustFS has used more than 85 percent of its memory limit for 10 minutes.
+          description: >-
+            Past its mem_limit in compose.yaml the kernel kills RustFS, and
+            every backend loses its object store.
+        data:
+          - refId: A
+            datasourceUid: mimir
+            relativeTimeRange: {from: 600, to: 0}
+            model:
+              refId: A
+              instant: true
+              # Keep 805306368 aligned with the rustfs mem_limit, 768m.
+              expr: >-
+                max by (job) (rustfs_system_process_resident_memory_bytes{job="o11y/rustfs"}) / 805306368
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: A
+              conditions:
+                - evaluator: {type: gt, params: [0.85]}
+
+      # Shutdown can count aborted exports as failures. Both export and
+      # refusal counters must increase in each of three adjacent 5-minute
+      # windows, then stay pending for 2 minutes: a shutdown burst cannot
+      # satisfy all three. Short losses that heal are intentionally quiet.
+      # Queue saturation is a gauge and keeps its 2-minute pending period.
+      - uid: o11y-alloy-export
+        title: Alloy queue full or export failing
+        condition: C
+        for: 2m
+        noDataState: OK
+        execErrState: KeepLast
+        labels: {}
+        annotations:
+          summary: "{{ $labels.component_id }}: {{ $labels.problem }}."
+          description: >-
+            Alloy lost data it had accepted, or is close to it: an exporter
+            keeps giving up on batches, a queue keeps refusing them, or a
+            queue is nearly full.
+        data:
+          - refId: A
+            datasourceUid: mimir
+            relativeTimeRange: {from: 1200, to: 0}
+            model:
+              refId: A
+              instant: true
+              expr: >-
+                label_replace(max by (component_id) (otelcol_exporter_queue_size{job="o11y/alloy"}
+                  / otelcol_exporter_queue_capacity{job="o11y/alloy"}) > 0.9,
+                  "problem", "queue over 90 percent full", "", "")
+                or label_replace(
+                  sum by (component_id) (increase({job="o11y/alloy",
+                    __name__=~"otelcol_exporter_send_failed_.*_total|prometheus_remote_storage_samples_failed_total"
+                  }[5m])) > 0
+                  and sum by (component_id) (increase({job="o11y/alloy",
+                    __name__=~"otelcol_exporter_send_failed_.*_total|prometheus_remote_storage_samples_failed_total"
+                  }[5m] offset 5m)) > 0
+                  and sum by (component_id) (increase({job="o11y/alloy",
+                    __name__=~"otelcol_exporter_send_failed_.*_total|prometheus_remote_storage_samples_failed_total"
+                  }[5m] offset 10m)) > 0,
+                  "problem", "export failed", "", "")
+                or label_replace(
+                  sum by (component_id) (increase({job="o11y/alloy",
+                    __name__=~"otelcol_exporter_enqueue_failed_(spans|metric_points|log_records)_total"
+                  }[5m])) > 0
+                  and sum by (component_id) (increase({job="o11y/alloy",
+                    __name__=~"otelcol_exporter_enqueue_failed_(spans|metric_points|log_records)_total"
+                  }[5m] offset 5m)) > 0
+                  and sum by (component_id) (increase({job="o11y/alloy",
+                    __name__=~"otelcol_exporter_enqueue_failed_(spans|metric_points|log_records)_total"
+                  }[5m] offset 10m)) > 0,
+                  "problem", "queue full", "", "")
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: A
+              conditions:
+                - evaluator: {type: gt, params: [0]}
+
+      # The stack's own log volume in Loki, which shipping container logs
+      # can multiply. Sustained, 50 lines a second is about 4 million lines
+      # a day. `or vector(0)` answers 0 when the stack logged nothing, so
+      # no data and a failed query both mean Loki didn't answer, and both
+      # alert after the same hour. Loki's own scrape going down trips the
+      # service-down rule sooner.
+      - uid: o11y-log-rate
+        title: Stack log rate high
+        condition: C
+        for: 1h
+        noDataState: Alerting
+        execErrState: Alerting
+        labels: {}
+        annotations:
+          summary: >-
+            The stack has logged more than 50 lines a second to Loki for an
+            hour, or Loki has not answered the query for an hour.
+          description: >-
+            A service that logs in a loop fills the disk under Loki faster
+            than retention frees it.
+        data:
+          - refId: A
+            datasourceUid: loki
+            relativeTimeRange: {from: 600, to: 0}
+            model:
+              refId: A
+              queryType: instant
+              expr: sum(rate({service_namespace="o11y"}[5m])) or vector(0)
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: A
+              conditions:
+                - evaluator: {type: gt, params: [50]}
+
+  - orgId: 1
+    name: agent-capacity
+    folder: o11y
+    interval: 1m
+    rules:
+      # Fresh samples from any window or host suppress the account's stale
+      # alert for 30m. Six-hour history retains stopped collectors.
+      # The title supplies alertname; query labels retain account identity.
+      # U, R and S supply numeric annotations without adding relay labels.
+      # A missing reset or snapshot age is -1; no timestamp gauge is exported.
+      - uid: o11y-capacity-warn
+        title: AgentPlanWindowWarn
+        condition: C
+        for: 10m
+        noDataState: OK
+        execErrState: OK
+        labels: {service: agent-capacity, severity: info, env: prd}
+        annotations:
+          used_share: '{{ $values.U.Value }}'
+          reset_time_seconds: '{{ $values.R.Value }}'
+          snapshot_age_seconds: '{{ $values.S.Value }}'
+        data:
+          - refId: A
+            datasourceUid: mimir
+            relativeTimeRange: {from: 900, to: 0}
+            model:
+              refId: A
+              instant: true
+              expr: >-
+                max by (agent_plan_vendor, agent_plan_window, agent_account) ((max by (agent_plan_vendor,
+                agent_plan_window, agent_account, agent_plan_bucket) (last_over_time(
+                agent_capacity_window_utilization_ratio{
+                agent_capacity_source=~"claude_statusline|claude_transcript|codex_rollout|codex_probe|agy_statusline",
+                agent_capacity_freshness="fresh"}[15m])) or max by (agent_plan_vendor, agent_plan_window,
+                agent_account, agent_plan_bucket) (last_over_time( agent_capacity_window_utilization_ratio{
+                agent_capacity_source=~"claude_statusline|claude_transcript|codex_rollout|codex_probe|agy_statusline",
+                agent_capacity_freshness="carried"}[15m]))))
+          - refId: U
+            datasourceUid: mimir
+            relativeTimeRange: {from: 900, to: 0}
+            model:
+              refId: U
+              instant: true
+              expr: >-
+                max by (agent_plan_vendor, agent_plan_window, agent_account) ((max by (agent_plan_vendor,
+                agent_plan_window, agent_account, agent_plan_bucket) (last_over_time(
+                agent_capacity_window_utilization_ratio{
+                agent_capacity_source=~"claude_statusline|claude_transcript|codex_rollout|codex_probe|agy_statusline",
+                agent_capacity_freshness="fresh"}[15m])) or max by (agent_plan_vendor, agent_plan_window,
+                agent_account, agent_plan_bucket) (last_over_time( agent_capacity_window_utilization_ratio{
+                agent_capacity_source=~"claude_statusline|claude_transcript|codex_rollout|codex_probe|agy_statusline",
+                agent_capacity_freshness="carried"}[15m]))))
+          - refId: R
+            datasourceUid: mimir
+            relativeTimeRange: {from: 900, to: 0}
+            model:
+              refId: R
+              instant: true
+              expr: >-
+                (max by (agent_plan_vendor, agent_plan_window, agent_account) (max by (agent_plan_vendor,
+                agent_plan_window, agent_account, agent_plan_bucket)
+                (last_over_time(agent_capacity_window_reset_time_seconds{
+                agent_capacity_source=~"claude_statusline|claude_transcript|codex_rollout|codex_probe|agy_statusline",
+                agent_capacity_freshness=~"fresh|carried"}[15m])) and on (agent_plan_vendor, agent_plan_window,
+                agent_account, agent_plan_bucket) (max by (agent_plan_vendor, agent_plan_window, agent_account,
+                agent_plan_bucket) ((max by (agent_plan_vendor, agent_plan_window, agent_account, agent_plan_bucket)
+                (last_over_time( agent_capacity_window_utilization_ratio{
+                agent_capacity_source=~"claude_statusline|claude_transcript|codex_rollout|codex_probe|agy_statusline",
+                agent_capacity_freshness="fresh"}[15m])) or max by (agent_plan_vendor, agent_plan_window,
+                agent_account, agent_plan_bucket) (last_over_time( agent_capacity_window_utilization_ratio{
+                agent_capacity_source=~"claude_statusline|claude_transcript|codex_rollout|codex_probe|agy_statusline",
+                agent_capacity_freshness="carried"}[15m])))) == on (agent_plan_vendor, agent_plan_window,
+                agent_account) group_left () max by (agent_plan_vendor, agent_plan_window, agent_account) (max by
+                (agent_plan_vendor, agent_plan_window, agent_account, agent_plan_bucket) ((max by
+                (agent_plan_vendor, agent_plan_window, agent_account, agent_plan_bucket) (last_over_time(
+                agent_capacity_window_utilization_ratio{
+                agent_capacity_source=~"claude_statusline|claude_transcript|codex_rollout|codex_probe|agy_statusline",
+                agent_capacity_freshness="fresh"}[15m])) or max by (agent_plan_vendor, agent_plan_window,
+                agent_account, agent_plan_bucket) (last_over_time( agent_capacity_window_utilization_ratio{
+                agent_capacity_source=~"claude_statusline|claude_transcript|codex_rollout|codex_probe|agy_statusline",
+                agent_capacity_freshness="carried"}[15m])))))))) or on (agent_plan_vendor, agent_plan_window,
+                agent_account) (max by (agent_plan_vendor, agent_plan_window, agent_account) ((max by
+                (agent_plan_vendor, agent_plan_window, agent_account, agent_plan_bucket) (last_over_time(
+                agent_capacity_window_utilization_ratio{
+                agent_capacity_source=~"claude_statusline|claude_transcript|codex_rollout|codex_probe|agy_statusline",
+                agent_capacity_freshness="fresh"}[15m])) or max by (agent_plan_vendor, agent_plan_window,
+                agent_account, agent_plan_bucket) (last_over_time( agent_capacity_window_utilization_ratio{
+                agent_capacity_source=~"claude_statusline|claude_transcript|codex_rollout|codex_probe|agy_statusline",
+                agent_capacity_freshness="carried"}[15m])))) * 0 - 1)
+          - refId: S
+            datasourceUid: mimir
+            relativeTimeRange: {from: 604800, to: 0}
+            model:
+              refId: S
+              instant: true
+              expr: >-
+                ((max by (agent_plan_vendor, agent_plan_window, agent_account) ((max by (agent_plan_vendor,
+                agent_plan_window, agent_account, agent_plan_bucket) (last_over_time(
+                agent_capacity_window_utilization_ratio{
+                agent_capacity_source=~"claude_statusline|claude_transcript|codex_rollout|codex_probe|agy_statusline",
+                agent_capacity_freshness="fresh"}[15m])) or max by (agent_plan_vendor, agent_plan_window,
+                agent_account, agent_plan_bucket) (last_over_time( agent_capacity_window_utilization_ratio{
+                agent_capacity_source=~"claude_statusline|claude_transcript|codex_rollout|codex_probe|agy_statusline",
+                agent_capacity_freshness="carried"}[15m])))) * 0) + on (agent_plan_vendor, agent_account)
+                group_left() (time() - max by (agent_plan_vendor, agent_account) (max_over_time(timestamp(
+                agent_capacity_window_utilization_ratio{
+                agent_capacity_source=~"claude_statusline|claude_transcript|codex_rollout|codex_probe|agy_statusline",
+                agent_capacity_freshness="fresh"})[7d:1m])))) or on (agent_plan_vendor, agent_plan_window,
+                agent_account) (max by (agent_plan_vendor, agent_plan_window, agent_account) ((max by
+                (agent_plan_vendor, agent_plan_window, agent_account, agent_plan_bucket) (last_over_time(
+                agent_capacity_window_utilization_ratio{
+                agent_capacity_source=~"claude_statusline|claude_transcript|codex_rollout|codex_probe|agy_statusline",
+                agent_capacity_freshness="fresh"}[15m])) or max by (agent_plan_vendor, agent_plan_window,
+                agent_account, agent_plan_bucket) (last_over_time( agent_capacity_window_utilization_ratio{
+                agent_capacity_source=~"claude_statusline|claude_transcript|codex_rollout|codex_probe|agy_statusline",
+                agent_capacity_freshness="carried"}[15m])))) * 0 - 1)
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: A
+              conditions:
+                - evaluator: {type: gte, params: [0.7]}
+      - uid: o11y-capacity-shed
+        title: AgentPlanWindowShed
+        condition: C
+        for: 10m
+        noDataState: OK
+        execErrState: OK
+        labels: {service: agent-capacity, severity: warning, env: prd}
+        annotations:
+          used_share: '{{ $values.U.Value }}'
+          reset_time_seconds: '{{ $values.R.Value }}'
+          snapshot_age_seconds: '{{ $values.S.Value }}'
+        data:
+          - refId: A
+            datasourceUid: mimir
+            relativeTimeRange: {from: 900, to: 0}
+            model:
+              refId: A
+              instant: true
+              expr: >-
+                max by (agent_plan_vendor, agent_plan_window, agent_account) ((max by (agent_plan_vendor,
+                agent_plan_window, agent_account, agent_plan_bucket) (last_over_time(
+                agent_capacity_window_utilization_ratio{
+                agent_capacity_source=~"claude_statusline|claude_transcript|codex_rollout|codex_probe|agy_statusline",
+                agent_capacity_freshness="fresh"}[15m])) or max by (agent_plan_vendor, agent_plan_window,
+                agent_account, agent_plan_bucket) (last_over_time( agent_capacity_window_utilization_ratio{
+                agent_capacity_source=~"claude_statusline|claude_transcript|codex_rollout|codex_probe|agy_statusline",
+                agent_capacity_freshness="carried"}[15m]))))
+          - refId: U
+            datasourceUid: mimir
+            relativeTimeRange: {from: 900, to: 0}
+            model:
+              refId: U
+              instant: true
+              expr: >-
+                max by (agent_plan_vendor, agent_plan_window, agent_account) ((max by (agent_plan_vendor,
+                agent_plan_window, agent_account, agent_plan_bucket) (last_over_time(
+                agent_capacity_window_utilization_ratio{
+                agent_capacity_source=~"claude_statusline|claude_transcript|codex_rollout|codex_probe|agy_statusline",
+                agent_capacity_freshness="fresh"}[15m])) or max by (agent_plan_vendor, agent_plan_window,
+                agent_account, agent_plan_bucket) (last_over_time( agent_capacity_window_utilization_ratio{
+                agent_capacity_source=~"claude_statusline|claude_transcript|codex_rollout|codex_probe|agy_statusline",
+                agent_capacity_freshness="carried"}[15m]))))
+          - refId: R
+            datasourceUid: mimir
+            relativeTimeRange: {from: 900, to: 0}
+            model:
+              refId: R
+              instant: true
+              expr: >-
+                (max by (agent_plan_vendor, agent_plan_window, agent_account) (max by (agent_plan_vendor,
+                agent_plan_window, agent_account, agent_plan_bucket)
+                (last_over_time(agent_capacity_window_reset_time_seconds{
+                agent_capacity_source=~"claude_statusline|claude_transcript|codex_rollout|codex_probe|agy_statusline",
+                agent_capacity_freshness=~"fresh|carried"}[15m])) and on (agent_plan_vendor, agent_plan_window,
+                agent_account, agent_plan_bucket) (max by (agent_plan_vendor, agent_plan_window, agent_account,
+                agent_plan_bucket) ((max by (agent_plan_vendor, agent_plan_window, agent_account, agent_plan_bucket)
+                (last_over_time( agent_capacity_window_utilization_ratio{
+                agent_capacity_source=~"claude_statusline|claude_transcript|codex_rollout|codex_probe|agy_statusline",
+                agent_capacity_freshness="fresh"}[15m])) or max by (agent_plan_vendor, agent_plan_window,
+                agent_account, agent_plan_bucket) (last_over_time( agent_capacity_window_utilization_ratio{
+                agent_capacity_source=~"claude_statusline|claude_transcript|codex_rollout|codex_probe|agy_statusline",
+                agent_capacity_freshness="carried"}[15m])))) == on (agent_plan_vendor, agent_plan_window,
+                agent_account) group_left () max by (agent_plan_vendor, agent_plan_window, agent_account) (max by
+                (agent_plan_vendor, agent_plan_window, agent_account, agent_plan_bucket) ((max by
+                (agent_plan_vendor, agent_plan_window, agent_account, agent_plan_bucket) (last_over_time(
+                agent_capacity_window_utilization_ratio{
+                agent_capacity_source=~"claude_statusline|claude_transcript|codex_rollout|codex_probe|agy_statusline",
+                agent_capacity_freshness="fresh"}[15m])) or max by (agent_plan_vendor, agent_plan_window,
+                agent_account, agent_plan_bucket) (last_over_time( agent_capacity_window_utilization_ratio{
+                agent_capacity_source=~"claude_statusline|claude_transcript|codex_rollout|codex_probe|agy_statusline",
+                agent_capacity_freshness="carried"}[15m])))))))) or on (agent_plan_vendor, agent_plan_window,
+                agent_account) (max by (agent_plan_vendor, agent_plan_window, agent_account) ((max by
+                (agent_plan_vendor, agent_plan_window, agent_account, agent_plan_bucket) (last_over_time(
+                agent_capacity_window_utilization_ratio{
+                agent_capacity_source=~"claude_statusline|claude_transcript|codex_rollout|codex_probe|agy_statusline",
+                agent_capacity_freshness="fresh"}[15m])) or max by (agent_plan_vendor, agent_plan_window,
+                agent_account, agent_plan_bucket) (last_over_time( agent_capacity_window_utilization_ratio{
+                agent_capacity_source=~"claude_statusline|claude_transcript|codex_rollout|codex_probe|agy_statusline",
+                agent_capacity_freshness="carried"}[15m])))) * 0 - 1)
+          - refId: S
+            datasourceUid: mimir
+            relativeTimeRange: {from: 604800, to: 0}
+            model:
+              refId: S
+              instant: true
+              expr: >-
+                ((max by (agent_plan_vendor, agent_plan_window, agent_account) ((max by (agent_plan_vendor,
+                agent_plan_window, agent_account, agent_plan_bucket) (last_over_time(
+                agent_capacity_window_utilization_ratio{
+                agent_capacity_source=~"claude_statusline|claude_transcript|codex_rollout|codex_probe|agy_statusline",
+                agent_capacity_freshness="fresh"}[15m])) or max by (agent_plan_vendor, agent_plan_window,
+                agent_account, agent_plan_bucket) (last_over_time( agent_capacity_window_utilization_ratio{
+                agent_capacity_source=~"claude_statusline|claude_transcript|codex_rollout|codex_probe|agy_statusline",
+                agent_capacity_freshness="carried"}[15m])))) * 0) + on (agent_plan_vendor, agent_account)
+                group_left() (time() - max by (agent_plan_vendor, agent_account) (max_over_time(timestamp(
+                agent_capacity_window_utilization_ratio{
+                agent_capacity_source=~"claude_statusline|claude_transcript|codex_rollout|codex_probe|agy_statusline",
+                agent_capacity_freshness="fresh"})[7d:1m])))) or on (agent_plan_vendor, agent_plan_window,
+                agent_account) (max by (agent_plan_vendor, agent_plan_window, agent_account) ((max by
+                (agent_plan_vendor, agent_plan_window, agent_account, agent_plan_bucket) (last_over_time(
+                agent_capacity_window_utilization_ratio{
+                agent_capacity_source=~"claude_statusline|claude_transcript|codex_rollout|codex_probe|agy_statusline",
+                agent_capacity_freshness="fresh"}[15m])) or max by (agent_plan_vendor, agent_plan_window,
+                agent_account, agent_plan_bucket) (last_over_time( agent_capacity_window_utilization_ratio{
+                agent_capacity_source=~"claude_statusline|claude_transcript|codex_rollout|codex_probe|agy_statusline",
+                agent_capacity_freshness="carried"}[15m])))) * 0 - 1)
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: A
+              conditions:
+                - evaluator: {type: gte, params: [0.85]}
+      - uid: o11y-capacity-stop
+        title: AgentPlanWindowStop
+        condition: C
+        for: 2m
+        noDataState: OK
+        execErrState: OK
+        labels: {service: agent-capacity, severity: critical, env: prd}
+        annotations:
+          used_share: '{{ $values.U.Value }}'
+          reset_time_seconds: '{{ $values.R.Value }}'
+          snapshot_age_seconds: '{{ $values.S.Value }}'
+        data:
+          - refId: A
+            datasourceUid: mimir
+            relativeTimeRange: {from: 900, to: 0}
+            model:
+              refId: A
+              instant: true
+              expr: >-
+                max by (agent_plan_vendor, agent_plan_window, agent_account) ((max by (agent_plan_vendor,
+                agent_plan_window, agent_account, agent_plan_bucket) (last_over_time(
+                agent_capacity_window_utilization_ratio{
+                agent_capacity_source=~"claude_statusline|claude_transcript|codex_rollout|codex_probe|agy_statusline",
+                agent_capacity_freshness="fresh"}[15m])) or max by (agent_plan_vendor, agent_plan_window,
+                agent_account, agent_plan_bucket) (last_over_time( agent_capacity_window_utilization_ratio{
+                agent_capacity_source=~"claude_statusline|claude_transcript|codex_rollout|codex_probe|agy_statusline",
+                agent_capacity_freshness="carried"}[15m]))))
+          - refId: U
+            datasourceUid: mimir
+            relativeTimeRange: {from: 900, to: 0}
+            model:
+              refId: U
+              instant: true
+              expr: >-
+                max by (agent_plan_vendor, agent_plan_window, agent_account) ((max by (agent_plan_vendor,
+                agent_plan_window, agent_account, agent_plan_bucket) (last_over_time(
+                agent_capacity_window_utilization_ratio{
+                agent_capacity_source=~"claude_statusline|claude_transcript|codex_rollout|codex_probe|agy_statusline",
+                agent_capacity_freshness="fresh"}[15m])) or max by (agent_plan_vendor, agent_plan_window,
+                agent_account, agent_plan_bucket) (last_over_time( agent_capacity_window_utilization_ratio{
+                agent_capacity_source=~"claude_statusline|claude_transcript|codex_rollout|codex_probe|agy_statusline",
+                agent_capacity_freshness="carried"}[15m]))))
+          - refId: R
+            datasourceUid: mimir
+            relativeTimeRange: {from: 900, to: 0}
+            model:
+              refId: R
+              instant: true
+              expr: >-
+                (max by (agent_plan_vendor, agent_plan_window, agent_account) (max by (agent_plan_vendor,
+                agent_plan_window, agent_account, agent_plan_bucket)
+                (last_over_time(agent_capacity_window_reset_time_seconds{
+                agent_capacity_source=~"claude_statusline|claude_transcript|codex_rollout|codex_probe|agy_statusline",
+                agent_capacity_freshness=~"fresh|carried"}[15m])) and on (agent_plan_vendor, agent_plan_window,
+                agent_account, agent_plan_bucket) (max by (agent_plan_vendor, agent_plan_window, agent_account,
+                agent_plan_bucket) ((max by (agent_plan_vendor, agent_plan_window, agent_account, agent_plan_bucket)
+                (last_over_time( agent_capacity_window_utilization_ratio{
+                agent_capacity_source=~"claude_statusline|claude_transcript|codex_rollout|codex_probe|agy_statusline",
+                agent_capacity_freshness="fresh"}[15m])) or max by (agent_plan_vendor, agent_plan_window,
+                agent_account, agent_plan_bucket) (last_over_time( agent_capacity_window_utilization_ratio{
+                agent_capacity_source=~"claude_statusline|claude_transcript|codex_rollout|codex_probe|agy_statusline",
+                agent_capacity_freshness="carried"}[15m])))) == on (agent_plan_vendor, agent_plan_window,
+                agent_account) group_left () max by (agent_plan_vendor, agent_plan_window, agent_account) (max by
+                (agent_plan_vendor, agent_plan_window, agent_account, agent_plan_bucket) ((max by
+                (agent_plan_vendor, agent_plan_window, agent_account, agent_plan_bucket) (last_over_time(
+                agent_capacity_window_utilization_ratio{
+                agent_capacity_source=~"claude_statusline|claude_transcript|codex_rollout|codex_probe|agy_statusline",
+                agent_capacity_freshness="fresh"}[15m])) or max by (agent_plan_vendor, agent_plan_window,
+                agent_account, agent_plan_bucket) (last_over_time( agent_capacity_window_utilization_ratio{
+                agent_capacity_source=~"claude_statusline|claude_transcript|codex_rollout|codex_probe|agy_statusline",
+                agent_capacity_freshness="carried"}[15m])))))))) or on (agent_plan_vendor, agent_plan_window,
+                agent_account) (max by (agent_plan_vendor, agent_plan_window, agent_account) ((max by
+                (agent_plan_vendor, agent_plan_window, agent_account, agent_plan_bucket) (last_over_time(
+                agent_capacity_window_utilization_ratio{
+                agent_capacity_source=~"claude_statusline|claude_transcript|codex_rollout|codex_probe|agy_statusline",
+                agent_capacity_freshness="fresh"}[15m])) or max by (agent_plan_vendor, agent_plan_window,
+                agent_account, agent_plan_bucket) (last_over_time( agent_capacity_window_utilization_ratio{
+                agent_capacity_source=~"claude_statusline|claude_transcript|codex_rollout|codex_probe|agy_statusline",
+                agent_capacity_freshness="carried"}[15m])))) * 0 - 1)
+          - refId: S
+            datasourceUid: mimir
+            relativeTimeRange: {from: 604800, to: 0}
+            model:
+              refId: S
+              instant: true
+              expr: >-
+                ((max by (agent_plan_vendor, agent_plan_window, agent_account) ((max by (agent_plan_vendor,
+                agent_plan_window, agent_account, agent_plan_bucket) (last_over_time(
+                agent_capacity_window_utilization_ratio{
+                agent_capacity_source=~"claude_statusline|claude_transcript|codex_rollout|codex_probe|agy_statusline",
+                agent_capacity_freshness="fresh"}[15m])) or max by (agent_plan_vendor, agent_plan_window,
+                agent_account, agent_plan_bucket) (last_over_time( agent_capacity_window_utilization_ratio{
+                agent_capacity_source=~"claude_statusline|claude_transcript|codex_rollout|codex_probe|agy_statusline",
+                agent_capacity_freshness="carried"}[15m])))) * 0) + on (agent_plan_vendor, agent_account)
+                group_left() (time() - max by (agent_plan_vendor, agent_account) (max_over_time(timestamp(
+                agent_capacity_window_utilization_ratio{
+                agent_capacity_source=~"claude_statusline|claude_transcript|codex_rollout|codex_probe|agy_statusline",
+                agent_capacity_freshness="fresh"})[7d:1m])))) or on (agent_plan_vendor, agent_plan_window,
+                agent_account) (max by (agent_plan_vendor, agent_plan_window, agent_account) ((max by
+                (agent_plan_vendor, agent_plan_window, agent_account, agent_plan_bucket) (last_over_time(
+                agent_capacity_window_utilization_ratio{
+                agent_capacity_source=~"claude_statusline|claude_transcript|codex_rollout|codex_probe|agy_statusline",
+                agent_capacity_freshness="fresh"}[15m])) or max by (agent_plan_vendor, agent_plan_window,
+                agent_account, agent_plan_bucket) (last_over_time( agent_capacity_window_utilization_ratio{
+                agent_capacity_source=~"claude_statusline|claude_transcript|codex_rollout|codex_probe|agy_statusline",
+                agent_capacity_freshness="carried"}[15m])))) * 0 - 1)
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: A
+              conditions:
+                - evaluator: {type: gte, params: [0.9]}
+      - uid: o11y-capacity-exhaustion
+        title: Weekly capacity exhaustion
+        condition: C
+        for: 30m
+        noDataState: OK
+        execErrState: OK
+        labels: {service: agent-capacity, severity: high, env: prd}
+        annotations:
+          used_share: '{{ $values.U.Value }}'
+          reset_time_seconds: '{{ $values.R.Value }}'
+          snapshot_age_seconds: '{{ $values.S.Value }}'
+        data:
+          - refId: A
+            datasourceUid: mimir
+            relativeTimeRange: {from: 21600, to: 0}
+            model:
+              refId: A
+              instant: true
+              expr: >-
+                (((deriv(max by (agent_plan_vendor, agent_plan_window, agent_account) ((max by (agent_plan_vendor,
+                agent_plan_window, agent_account, agent_plan_bucket)
+                (agent_capacity_window_utilization_ratio{agent_plan_window="7d",
+                agent_capacity_source=~"claude_statusline|claude_transcript|codex_rollout|codex_probe|agy_statusline",
+                agent_capacity_freshness="fresh"}) or max by (agent_plan_vendor, agent_plan_window, agent_account,
+                agent_plan_bucket) (agent_capacity_window_utilization_ratio{agent_plan_window="7d",
+                agent_capacity_source=~"claude_statusline|claude_transcript|codex_rollout|codex_probe|agy_statusline",
+                agent_capacity_freshness="carried"})))[24h:5m]) > 0) and on (agent_plan_vendor, agent_plan_window,
+                agent_account) ((1 - max by (agent_plan_vendor, agent_plan_window, agent_account) ((max by
+                (agent_plan_vendor, agent_plan_window, agent_account, agent_plan_bucket) (last_over_time(
+                agent_capacity_window_utilization_ratio{agent_plan_window="7d",
+                agent_capacity_source=~"claude_statusline|claude_transcript|codex_rollout|codex_probe|agy_statusline",
+                agent_capacity_freshness="fresh"}[15m])) or max by (agent_plan_vendor, agent_plan_window,
+                agent_account, agent_plan_bucket) (last_over_time(
+                agent_capacity_window_utilization_ratio{agent_plan_window="7d",
+                agent_capacity_source=~"claude_statusline|claude_transcript|codex_rollout|codex_probe|agy_statusline",
+                agent_capacity_freshness="carried"}[15m]))))) / on (agent_plan_vendor, agent_plan_window,
+                agent_account) deriv(max by (agent_plan_vendor, agent_plan_window, agent_account) ((max by
+                (agent_plan_vendor, agent_plan_window, agent_account, agent_plan_bucket)
+                (agent_capacity_window_utilization_ratio{agent_plan_window="7d",
+                agent_capacity_source=~"claude_statusline|claude_transcript|codex_rollout|codex_probe|agy_statusline",
+                agent_capacity_freshness="fresh"}) or max by (agent_plan_vendor, agent_plan_window, agent_account,
+                agent_plan_bucket) (agent_capacity_window_utilization_ratio{agent_plan_window="7d",
+                agent_capacity_source=~"claude_statusline|claude_transcript|codex_rollout|codex_probe|agy_statusline",
+                agent_capacity_freshness="carried"})))[24h:5m]) < on (agent_plan_vendor, agent_plan_window,
+                agent_account) (max by (agent_plan_vendor, agent_plan_window, agent_account) (max by
+                (agent_plan_vendor, agent_plan_window, agent_account, agent_plan_bucket)
+                (last_over_time(agent_capacity_window_reset_time_seconds{
+                agent_capacity_source=~"claude_statusline|claude_transcript|codex_rollout|codex_probe|agy_statusline",
+                agent_capacity_freshness=~"fresh|carried",agent_plan_window="7d"}[15m])) and on (agent_plan_vendor,
+                agent_plan_window, agent_account, agent_plan_bucket) (max by (agent_plan_vendor, agent_plan_window,
+                agent_account, agent_plan_bucket) ((max by (agent_plan_vendor, agent_plan_window, agent_account,
+                agent_plan_bucket) (last_over_time(agent_capacity_window_utilization_ratio{
+                agent_capacity_source=~"claude_statusline|claude_transcript|codex_rollout|codex_probe|agy_statusline",
+                agent_capacity_freshness="fresh",agent_plan_window="7d"}[15m])) or max by (agent_plan_vendor,
+                agent_plan_window, agent_account, agent_plan_bucket)
+                (last_over_time(agent_capacity_window_utilization_ratio{
+                agent_capacity_source=~"claude_statusline|claude_transcript|codex_rollout|codex_probe|agy_statusline",
+                agent_capacity_freshness="carried",agent_plan_window="7d"}[15m])))) == on (agent_plan_vendor,
+                agent_plan_window, agent_account) group_left () max by (agent_plan_vendor, agent_plan_window,
+                agent_account) (max by (agent_plan_vendor, agent_plan_window, agent_account, agent_plan_bucket)
+                ((max by (agent_plan_vendor, agent_plan_window, agent_account, agent_plan_bucket)
+                (last_over_time(agent_capacity_window_utilization_ratio{
+                agent_capacity_source=~"claude_statusline|claude_transcript|codex_rollout|codex_probe|agy_statusline",
+                agent_capacity_freshness="fresh",agent_plan_window="7d"}[15m])) or max by (agent_plan_vendor,
+                agent_plan_window, agent_account, agent_plan_bucket)
+                (last_over_time(agent_capacity_window_utilization_ratio{
+                agent_capacity_source=~"claude_statusline|claude_transcript|codex_rollout|codex_probe|agy_statusline",
+                agent_capacity_freshness="carried",agent_plan_window="7d"}[15m]))))))) - time()) - 43200)) and on
+                (agent_plan_vendor, agent_plan_window, agent_account) (count_over_time(max by (agent_plan_vendor,
+                agent_plan_window, agent_account) ((max by (agent_plan_vendor, agent_plan_window, agent_account,
+                agent_plan_bucket) (agent_capacity_window_utilization_ratio{
+                agent_capacity_source=~"claude_statusline|claude_transcript|codex_rollout|codex_probe|agy_statusline",
+                agent_capacity_freshness="fresh",agent_plan_window="7d"}) or max by (agent_plan_vendor,
+                agent_plan_window, agent_account, agent_plan_bucket) (agent_capacity_window_utilization_ratio{
+                agent_capacity_source=~"claude_statusline|claude_transcript|codex_rollout|codex_probe|agy_statusline",
+                agent_capacity_freshness="carried",agent_plan_window="7d"})))[24h:5m]) >= 144)) * 0 + 1
+          - refId: U
+            datasourceUid: mimir
+            relativeTimeRange: {from: 900, to: 0}
+            model:
+              refId: U
+              instant: true
+              expr: >-
+                max by (agent_plan_vendor, agent_plan_window, agent_account) ((max by (agent_plan_vendor,
+                agent_plan_window, agent_account, agent_plan_bucket) (last_over_time(
+                agent_capacity_window_utilization_ratio{
+                agent_capacity_source=~"claude_statusline|claude_transcript|codex_rollout|codex_probe|agy_statusline",
+                agent_capacity_freshness="fresh"}[15m])) or max by (agent_plan_vendor, agent_plan_window,
+                agent_account, agent_plan_bucket) (last_over_time( agent_capacity_window_utilization_ratio{
+                agent_capacity_source=~"claude_statusline|claude_transcript|codex_rollout|codex_probe|agy_statusline",
+                agent_capacity_freshness="carried"}[15m]))))
+          - refId: R
+            datasourceUid: mimir
+            relativeTimeRange: {from: 900, to: 0}
+            model:
+              refId: R
+              instant: true
+              expr: >-
+                (max by (agent_plan_vendor, agent_plan_window, agent_account) (max by (agent_plan_vendor,
+                agent_plan_window, agent_account, agent_plan_bucket)
+                (last_over_time(agent_capacity_window_reset_time_seconds{
+                agent_capacity_source=~"claude_statusline|claude_transcript|codex_rollout|codex_probe|agy_statusline",
+                agent_capacity_freshness=~"fresh|carried"}[15m])) and on (agent_plan_vendor, agent_plan_window,
+                agent_account, agent_plan_bucket) (max by (agent_plan_vendor, agent_plan_window, agent_account,
+                agent_plan_bucket) ((max by (agent_plan_vendor, agent_plan_window, agent_account, agent_plan_bucket)
+                (last_over_time( agent_capacity_window_utilization_ratio{
+                agent_capacity_source=~"claude_statusline|claude_transcript|codex_rollout|codex_probe|agy_statusline",
+                agent_capacity_freshness="fresh"}[15m])) or max by (agent_plan_vendor, agent_plan_window,
+                agent_account, agent_plan_bucket) (last_over_time( agent_capacity_window_utilization_ratio{
+                agent_capacity_source=~"claude_statusline|claude_transcript|codex_rollout|codex_probe|agy_statusline",
+                agent_capacity_freshness="carried"}[15m])))) == on (agent_plan_vendor, agent_plan_window,
+                agent_account) group_left () max by (agent_plan_vendor, agent_plan_window, agent_account) (max by
+                (agent_plan_vendor, agent_plan_window, agent_account, agent_plan_bucket) ((max by
+                (agent_plan_vendor, agent_plan_window, agent_account, agent_plan_bucket) (last_over_time(
+                agent_capacity_window_utilization_ratio{
+                agent_capacity_source=~"claude_statusline|claude_transcript|codex_rollout|codex_probe|agy_statusline",
+                agent_capacity_freshness="fresh"}[15m])) or max by (agent_plan_vendor, agent_plan_window,
+                agent_account, agent_plan_bucket) (last_over_time( agent_capacity_window_utilization_ratio{
+                agent_capacity_source=~"claude_statusline|claude_transcript|codex_rollout|codex_probe|agy_statusline",
+                agent_capacity_freshness="carried"}[15m])))))))) or on (agent_plan_vendor, agent_plan_window,
+                agent_account) (max by (agent_plan_vendor, agent_plan_window, agent_account) ((max by
+                (agent_plan_vendor, agent_plan_window, agent_account, agent_plan_bucket) (last_over_time(
+                agent_capacity_window_utilization_ratio{
+                agent_capacity_source=~"claude_statusline|claude_transcript|codex_rollout|codex_probe|agy_statusline",
+                agent_capacity_freshness="fresh"}[15m])) or max by (agent_plan_vendor, agent_plan_window,
+                agent_account, agent_plan_bucket) (last_over_time( agent_capacity_window_utilization_ratio{
+                agent_capacity_source=~"claude_statusline|claude_transcript|codex_rollout|codex_probe|agy_statusline",
+                agent_capacity_freshness="carried"}[15m])))) * 0 - 1)
+          - refId: S
+            datasourceUid: mimir
+            relativeTimeRange: {from: 604800, to: 0}
+            model:
+              refId: S
+              instant: true
+              expr: >-
+                ((max by (agent_plan_vendor, agent_plan_window, agent_account) ((max by (agent_plan_vendor,
+                agent_plan_window, agent_account, agent_plan_bucket) (last_over_time(
+                agent_capacity_window_utilization_ratio{
+                agent_capacity_source=~"claude_statusline|claude_transcript|codex_rollout|codex_probe|agy_statusline",
+                agent_capacity_freshness="fresh"}[15m])) or max by (agent_plan_vendor, agent_plan_window,
+                agent_account, agent_plan_bucket) (last_over_time( agent_capacity_window_utilization_ratio{
+                agent_capacity_source=~"claude_statusline|claude_transcript|codex_rollout|codex_probe|agy_statusline",
+                agent_capacity_freshness="carried"}[15m])))) * 0) + on (agent_plan_vendor, agent_account)
+                group_left() (time() - max by (agent_plan_vendor, agent_account) (max_over_time(timestamp(
+                agent_capacity_window_utilization_ratio{
+                agent_capacity_source=~"claude_statusline|claude_transcript|codex_rollout|codex_probe|agy_statusline",
+                agent_capacity_freshness="fresh"})[7d:1m])))) or on (agent_plan_vendor, agent_plan_window,
+                agent_account) (max by (agent_plan_vendor, agent_plan_window, agent_account) ((max by
+                (agent_plan_vendor, agent_plan_window, agent_account, agent_plan_bucket) (last_over_time(
+                agent_capacity_window_utilization_ratio{
+                agent_capacity_source=~"claude_statusline|claude_transcript|codex_rollout|codex_probe|agy_statusline",
+                agent_capacity_freshness="fresh"}[15m])) or max by (agent_plan_vendor, agent_plan_window,
+                agent_account, agent_plan_bucket) (last_over_time( agent_capacity_window_utilization_ratio{
+                agent_capacity_source=~"claude_statusline|claude_transcript|codex_rollout|codex_probe|agy_statusline",
+                agent_capacity_freshness="carried"}[15m])))) * 0 - 1)
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: A
+              conditions:
+                - evaluator: {type: gt, params: [0]}
+      - uid: o11y-capacity-stale
+        title: AgentPlanCaptureStale
+        condition: C
+        for: 5m
+        noDataState: OK
+        execErrState: OK
+        labels: {service: agent-capacity, severity: warning, env: prd, agent_plan_window: other}
+        annotations:
+          used_share: '{{ $values.U.Value }}'
+          reset_time_seconds: '{{ $values.R.Value }}'
+          snapshot_age_seconds: '{{ $values.S.Value }}'
+        data:
+          - refId: A
+            datasourceUid: mimir
+            relativeTimeRange: {from: 21600, to: 0}
+            model:
+              refId: A
+              instant: true
+              expr: >-
+                max by (agent_plan_vendor, agent_account) ((max by (agent_plan_vendor, agent_plan_window,
+                agent_account, agent_plan_bucket) (last_over_time( agent_capacity_window_utilization_ratio{
+                agent_capacity_source=~"claude_statusline|claude_transcript|codex_rollout|codex_probe|agy_statusline",
+                agent_capacity_freshness="fresh"}[6h])) or max by (agent_plan_vendor, agent_plan_window,
+                agent_account, agent_plan_bucket) (last_over_time( agent_capacity_window_utilization_ratio{
+                agent_capacity_source=~"claude_statusline|claude_transcript|codex_rollout|codex_probe|agy_statusline",
+                agent_capacity_freshness="carried"}[6h])))) unless on (agent_plan_vendor, agent_account) max by
+                (agent_plan_vendor, agent_account) (last_over_time( agent_capacity_window_utilization_ratio{
+                agent_capacity_source=~"claude_statusline|claude_transcript|codex_rollout|codex_probe|agy_statusline",
+                agent_capacity_freshness="fresh"}[30m]))
+          - refId: U
+            datasourceUid: mimir
+            relativeTimeRange: {from: 21600, to: 0}
+            model:
+              refId: U
+              instant: true
+              expr: >-
+                max by (agent_plan_vendor, agent_account) ((max by (agent_plan_vendor, agent_plan_window,
+                agent_account, agent_plan_bucket) (last_over_time( agent_capacity_window_utilization_ratio{
+                agent_capacity_source=~"claude_statusline|claude_transcript|codex_rollout|codex_probe|agy_statusline",
+                agent_capacity_freshness="fresh"}[6h])) or max by (agent_plan_vendor, agent_plan_window,
+                agent_account, agent_plan_bucket) (last_over_time( agent_capacity_window_utilization_ratio{
+                agent_capacity_source=~"claude_statusline|claude_transcript|codex_rollout|codex_probe|agy_statusline",
+                agent_capacity_freshness="carried"}[6h]))))
+          - refId: R
+            datasourceUid: mimir
+            relativeTimeRange: {from: 21600, to: 0}
+            model:
+              refId: R
+              instant: true
+              expr: >-
+                max by (agent_plan_vendor, agent_account) (max by (agent_plan_vendor, agent_plan_window,
+                agent_account, agent_plan_bucket)
+                (last_over_time(agent_capacity_window_reset_time_seconds{agent_capacity_source=~"claude_statusline|claude_transcript|codex_rollout|codex_probe|agy_statusline",agent_capacity_freshness=~"fresh|carried"}[6h]))
+                and on (agent_plan_vendor, agent_plan_window, agent_account, agent_plan_bucket) (max by
+                (agent_plan_vendor, agent_plan_window, agent_account, agent_plan_bucket) ((max by
+                (agent_plan_vendor, agent_plan_window, agent_account, agent_plan_bucket)
+                (last_over_time(agent_capacity_window_utilization_ratio{agent_capacity_source=~"claude_statusline|claude_transcript|codex_rollout|codex_probe|agy_statusline",agent_capacity_freshness="fresh"}[6h]))
+                or max by (agent_plan_vendor, agent_plan_window, agent_account, agent_plan_bucket)
+                (last_over_time(agent_capacity_window_utilization_ratio{agent_capacity_source=~"claude_statusline|claude_transcript|codex_rollout|codex_probe|agy_statusline",agent_capacity_freshness="carried"}[6h]))))
+                == on (agent_plan_vendor, agent_account) group_left () max by (agent_plan_vendor, agent_account)
+                (max by (agent_plan_vendor, agent_plan_window, agent_account, agent_plan_bucket) ((max by
+                (agent_plan_vendor, agent_plan_window, agent_account, agent_plan_bucket)
+                (last_over_time(agent_capacity_window_utilization_ratio{agent_capacity_source=~"claude_statusline|claude_transcript|codex_rollout|codex_probe|agy_statusline",agent_capacity_freshness="fresh"}[6h]))
+                or max by (agent_plan_vendor, agent_plan_window, agent_account, agent_plan_bucket)
+                (last_over_time(agent_capacity_window_utilization_ratio{agent_capacity_source=~"claude_statusline|claude_transcript|codex_rollout|codex_probe|agy_statusline",agent_capacity_freshness="carried"}[6h])))))))
+                or on (agent_plan_vendor, agent_account) (max by (agent_plan_vendor, agent_account) ((max by
+                (agent_plan_vendor, agent_plan_window, agent_account, agent_plan_bucket)
+                (last_over_time(agent_capacity_window_utilization_ratio{agent_capacity_source=~"claude_statusline|claude_transcript|codex_rollout|codex_probe|agy_statusline",agent_capacity_freshness="fresh"}[6h]))
+                or max by (agent_plan_vendor, agent_plan_window, agent_account, agent_plan_bucket)
+                (last_over_time(agent_capacity_window_utilization_ratio{agent_capacity_source=~"claude_statusline|claude_transcript|codex_rollout|codex_probe|agy_statusline",agent_capacity_freshness="carried"}[6h]))))
+                * 0 - 1)
+          - refId: S
+            datasourceUid: mimir
+            relativeTimeRange: {from: 21600, to: 0}
+            model:
+              refId: S
+              instant: true
+              expr: >-
+                ((max by (agent_plan_vendor, agent_account) ((max by (agent_plan_vendor, agent_plan_window,
+                agent_account, agent_plan_bucket) (last_over_time( agent_capacity_window_utilization_ratio{
+                agent_capacity_source=~"claude_statusline|claude_transcript|codex_rollout|codex_probe|agy_statusline",
+                agent_capacity_freshness="fresh"}[6h])) or max by (agent_plan_vendor, agent_plan_window,
+                agent_account, agent_plan_bucket) (last_over_time( agent_capacity_window_utilization_ratio{
+                agent_capacity_source=~"claude_statusline|claude_transcript|codex_rollout|codex_probe|agy_statusline",
+                agent_capacity_freshness="carried"}[6h])))) * 0) + on (agent_plan_vendor, agent_account)
+                group_left() (time() - max by (agent_plan_vendor, agent_account) (max_over_time(timestamp(
+                agent_capacity_window_utilization_ratio{
+                agent_capacity_source=~"claude_statusline|claude_transcript|codex_rollout|codex_probe|agy_statusline",
+                agent_capacity_freshness="fresh"})[7d:1m])))) or on (agent_plan_vendor, agent_account) (max by
+                (agent_plan_vendor, agent_account) ((max by (agent_plan_vendor, agent_plan_window, agent_account,
+                agent_plan_bucket) (last_over_time( agent_capacity_window_utilization_ratio{
+                agent_capacity_source=~"claude_statusline|claude_transcript|codex_rollout|codex_probe|agy_statusline",
+                agent_capacity_freshness="fresh"}[6h])) or max by (agent_plan_vendor, agent_plan_window,
+                agent_account, agent_plan_bucket) (last_over_time( agent_capacity_window_utilization_ratio{
+                agent_capacity_source=~"claude_statusline|claude_transcript|codex_rollout|codex_probe|agy_statusline",
+                agent_capacity_freshness="carried"}[6h])))) * 0 - 1)
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: A
+              conditions:
+                - evaluator: {type: gte, params: [0]}
+
+  - orgId: 1
+    name: ca-backup
+    folder: o11y
+    interval: 1m
+    rules:
+      - uid: ca-backup-unhealthy
+        title: CA backup failed or overdue
+        condition: C
+        for: 0s
+        noDataState: Alerting
+        execErrState: KeepLast
+        labels: {service: ca-backup, severity: high, env: prd, host: nas-a}
+        annotations:
+          summary: The CA backup on nas-a failed or has gone 26 hours without a success.
+          description: >-
+            On nas-a, check the 03:15 root cron entry in /etc/crontab.
+            Review the last backup result, verify step-ca health, and check that
+            the job can reach the metrics collector.
+        data:
+          - refId: A
+            datasourceUid: mimir
+            relativeTimeRange: {from: 600, to: 0}
+            model:
+              refId: A
+              instant: true
+              expr: >-
+                ((max(last_over_time(ca_backup_last_run_failed{host="nas-a"}[26h])) or vector(0)) > bool 0)
+                + (time() - (max(last_over_time(ca_backup_last_success_or_start_timestamp_seconds{
+                host="nas-a"}[26h])) or vector(0)) >= bool 93600)
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: A
+              conditions:
+                - evaluator: {type: gt, params: [0]}

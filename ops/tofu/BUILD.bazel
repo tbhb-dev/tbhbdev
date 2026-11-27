@@ -1,0 +1,92 @@
+load("@rules_shell//shell:sh_test.bzl", "sh_test")
+load("@tbhb_rules//pins:binary.bzl", "pinned_binary")
+load("@tbhb_rules//repo:defs.bzl", "repo_files")
+
+repo_files()
+
+PLATFORMS = {
+    "darwin_amd64": "@bazel_tools//src/conditions:darwin_x86_64",
+    "darwin_arm64": "@bazel_tools//src/conditions:darwin_arm64",
+    "linux_amd64": "@bazel_tools//src/conditions:linux_x86_64",
+    "linux_arm64": "@bazel_tools//src/conditions:linux_aarch64",
+}
+
+# Provider address and the mirror file name's type, for each pinned provider.
+PROVIDERS = {
+    "cloudflare": "cloudflare/cloudflare",
+    "onepassword": "1password/onepassword",
+    "random": "hashicorp/random",
+}
+
+# The OpenTofu binary pinned in MODULE.bazel for the host platform.
+pinned_binary(
+    name = "tofu",
+    binary = select({
+        condition: "@tofu_%s//:tofu" % platform
+        for platform, condition in PLATFORMS.items()
+    }),
+    tool = "tofu",
+    visibility = ["//visibility:public"],
+)
+
+filegroup(
+    name = "sources",
+    srcs = glob(
+        ["**/*"],
+        exclude = [
+            "BUILD.bazel",
+            "*.sh",
+            "**/.terraform/**",
+            "**/*.tfstate*",
+        ],
+    ),
+)
+
+sh_test(
+    name = "fmt_test",
+    srcs = ["fmt_test.sh"],
+    args = [
+        "$(rlocationpath :tofu)",
+        "$(rlocationpath bootstrap/versions.tf)",
+    ],
+    data = [
+        "bootstrap/versions.tf",
+        ":sources",
+        ":tofu",
+    ],
+)
+
+sh_test(
+    name = "validate_test",
+    srcs = ["validate_test.sh"],
+    args = [
+        "$(rlocationpath :tofu)",
+    ] + select({
+        condition: [
+            "%s=$(rlocationpath @provider_%s_%s//file)" % (address, name, platform)
+            for name, address in PROVIDERS.items()
+        ]
+        for platform, condition in PLATFORMS.items()
+    }) + [
+        "$(rlocationpath awrel/versions.tf)",
+        "$(rlocationpath bazel-r2-cache/versions.tf)",
+        "$(rlocationpath bootstrap/versions.tf)",
+        "$(rlocationpath dns/versions.tf)",
+        "$(rlocationpath go-tbhb-dev/versions.tf)",
+    ],
+    data = [
+        "awrel/versions.tf",
+        "bazel-r2-cache/versions.tf",
+        "bootstrap/versions.tf",
+        "dns/versions.tf",
+        "go-tbhb-dev/versions.tf",
+        ":sources",
+        ":tofu",
+    ] + select({
+        condition: [
+            "@provider_%s_%s//file" % (name, platform)
+            for name in PROVIDERS
+        ]
+        for platform, condition in PLATFORMS.items()
+    }),
+)

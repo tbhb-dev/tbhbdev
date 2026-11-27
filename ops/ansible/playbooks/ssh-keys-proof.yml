@@ -1,0 +1,121 @@
+---
+# Proves the per-host keys work: each account tries a login to every other
+# non-Windows agent host and runs `true` there. It changes nothing. The ssh
+# task is read-only, so it runs in check mode too.
+#   mise run playbook -- playbooks/ssh-keys-proof.yml --check
+- name: Prove the per-host ssh keys
+  hosts: agent_hosts:!windows
+  gather_facts: false
+  vars:
+    ssh_keys_proof_accounts: [agent, ops]
+    # The tailnet policy closes port 22 on the operator Macs (tag:agent-host) to the
+    # lab nodes (tag:lab-node), so only the operator Macs try each other. A lab
+    # node tries only the other lab nodes, since ssh_host_keys_refused in
+    # group_vars/agent_hosts.yml keeps its keys off every other host.
+    ssh_keys_proof_peers: >-
+      {{ groups['agent_hosts'] | difference(groups['windows'] | default([]))
+      | difference([inventory_hostname])
+      | difference([] if inventory_hostname in groups['operator_macs'] else groups['operator_macs'])
+      | intersect(groups['lab'] if inventory_hostname in groups['lab'] else groups['agent_hosts'])
+      | sort }}
+  tasks:
+    - name: Log in as each account to each other host
+      become: true
+      become_user: "{{ item.0 }}"
+      ansible.builtin.command:
+        argv:
+          - ssh
+          - -F
+          - /dev/null
+          - -o
+          - BatchMode=yes
+          - -o
+          - IdentitiesOnly=yes
+          - -o
+          - IdentityAgent=none
+          - -o
+          - ConnectTimeout=10
+          - -i
+          - ~/.ssh/id_ed25519
+          - -o
+          - UserKnownHostsFile=~/.ssh/known_hosts_tbhb
+          - "{{ item.0 }}@{{ item.1 }}"
+          - "true"
+      loop: "{{ ssh_keys_proof_accounts | product(ssh_keys_proof_peers) | list }}"
+      register: ssh_keys_proof
+      changed_when: false
+      failed_when: false
+      check_mode: false
+
+    - name: Report each pair
+      ansible.builtin.debug:
+        msg: >-
+          {{ item.item.0 }} {{ inventory_hostname }} -> {{ item.item.1 }}:
+          {{ 'ok' if item.rc == 0 else 'rc=' ~ item.rc }}
+      loop: "{{ ssh_keys_proof.results }}"
+      loop_control:
+        label: "{{ item.item.0 }} -> {{ item.item.1 }}"
+
+    - name: Require every pair to pass
+      ansible.builtin.assert:
+        that: ssh_keys_proof.results | map(attribute='rc') | select('ne', 0) | list | length == 0
+        fail_msg: At least one account could not log in to another agent host.
+        quiet: true
+
+# Proves the lab nodes' keys stay in the lab: from each lab node, each account
+# tries every agent host outside the lab, Windows included, and must fail.
+# A refusal by the tailnet policy also fails the login, so a pass here shows
+# no login, not which layer stopped it.
+- name: Prove the lab nodes' keys are refused outside the lab
+  hosts: lab
+  gather_facts: false
+  vars:
+    ssh_keys_proof_accounts: [agent, ops]
+    ssh_keys_proof_refused: "{{ groups['agent_hosts'] | difference(groups['lab']) | sort }}"
+  tasks:
+    - name: Try each account at each host outside the lab
+      become: true
+      become_user: "{{ item.0 }}"
+      ansible.builtin.command:
+        argv:
+          - ssh
+          - -F
+          - /dev/null
+          - -o
+          - BatchMode=yes
+          - -o
+          - IdentitiesOnly=yes
+          - -o
+          - IdentityAgent=none
+          - -o
+          - ConnectTimeout=10
+          - -o
+          - StrictHostKeyChecking=no
+          - -o
+          - UserKnownHostsFile=/dev/null
+          - -i
+          - ~/.ssh/id_ed25519
+          - "{{ item.0 }}@{{ item.1 }}"
+          # exit 0 succeeds in sh, PowerShell and cmd alike, so a login to
+          # Windows that worked reports rc 0 too.
+          - exit 0
+      loop: "{{ ssh_keys_proof_accounts | product(ssh_keys_proof_refused) | list }}"
+      register: ssh_keys_proof_refusals
+      changed_when: false
+      failed_when: false
+      check_mode: false
+
+    - name: Report each refused pair
+      ansible.builtin.debug:
+        msg: >-
+          {{ item.item.0 }} {{ inventory_hostname }} -> {{ item.item.1 }}:
+          {{ 'LOGGED IN' if item.rc == 0 else 'refused rc=' ~ item.rc }}
+      loop: "{{ ssh_keys_proof_refusals.results }}"
+      loop_control:
+        label: "{{ item.item.0 }} -> {{ item.item.1 }}"
+
+    - name: Require every pair to be refused
+      ansible.builtin.assert:
+        that: ssh_keys_proof_refusals.results | map(attribute='rc') | select('eq', 0) | list | length == 0
+        fail_msg: A lab node's account logged in to a host outside the lab.
+        quiet: true

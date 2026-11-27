@@ -1,0 +1,46 @@
+---
+name: ca
+
+services:
+  step-ca:
+    image: smallstep/step-ca:0.30.2@sha256:a2b17872915c193259b75a5474c398326f41bd199f0842093e52cf4182bc8270
+    user: "1000:1000"
+    restart: unless-stopped
+    extra_hosts:
+      - "${CA_DNS_NAME:?Set the CA DNS name}:127.0.0.1"
+    healthcheck:
+      # yamllint disable-line rule:line-length
+      test: ["CMD-SHELL", "step ca health --ca-url https://${CA_DNS_NAME:?Set the CA DNS name}:9000 --root /home/step/roots/root_ca.crt | grep -q '^ok'"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+    cap_drop: [ALL]
+    cap_add: [NET_BIND_SERVICE]
+    security_opt: [no-new-privileges:true]
+    entrypoint: [step-ca]
+    command:
+      - /home/step/config/ca.json
+      - --password-file
+      - /home/step/secrets/intermediate-password
+    volumes:
+      - ${CA_CONFIG_DIR:?Set the companion CA config directory}:/home/step/config:ro
+      - ./templates:/home/step/templates:ro
+      - ${CA_ROOTS_DIR:?Set the companion CA roots directory}:/home/step/roots:ro
+      - ${CA_SECRETS_DIR:?Set the CA secrets directory}/intermediate_ca_key:/home/step/secrets/intermediate_ca_key:ro
+      - ${CA_SECRETS_DIR:?Set the CA secrets directory}/intermediate-password:/home/step/secrets/intermediate-password:ro
+      - ${CA_SECRETS_DIR:?Set the CA secrets directory}/deploy-password:/home/step/secrets/deploy-password:ro
+      - ${CA_DATA_DIR:-./db}:/home/step/db
+
+  ts:
+    image: tailscale/tailscale:v1.104.7@sha256:72c1e19e0aedca96b8533bbb0b4368564410ff20b17e53b804eb6c1f04a31be4
+    restart: unless-stopped
+    environment:
+      TS_AUTH_ONCE: "true"
+      TS_EXTRA_ARGS: --advertise-tags=tag:ca
+      TS_HOSTNAME: ${CA_OVERLAY_HOST:?Set the CA overlay host}
+      TS_STATE_DIR: /var/lib/tailscale
+      TS_USERSPACE: "true"
+      TS_SERVE_CONFIG: /config/serve.json
+    volumes:
+      - ${CA_OVERLAY_STATE_DIR:-./ts-state}:/var/lib/tailscale
+      - ${CA_CONFIG_DIR:?Set the companion CA config directory}/serve.json:/config/serve.json:ro

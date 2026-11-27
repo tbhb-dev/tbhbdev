@@ -1,0 +1,37 @@
+---
+argument_specs:
+  main:
+    short_description: Harness each agent account and isolate its signing
+    options:
+      agent_harness_accounts:
+        type: list
+        elements: dict
+        default:
+          - name: agent
+        description: Existing accounts that run agent work, each harnessed as itself through become_user.
+        options:
+          name:
+            type: str
+            required: true
+            description: Account name.
+          home:
+            type: path
+            description: Absolute home, defaulting to /Users/name on macOS and /home/name elsewhere.
+          workspace:
+            type: path
+            description: >-
+              Optional existing workspace root to require before installing hooks.
+              Lab inventory sets this to Code in the home.
+          repository:
+            type: path
+            description: >-
+              Existing clone for the installer's git hooks, defaulting to
+              Code/github.com/tbhb-dev/tbhbdev in the home. Lab inventory selects the public tools clone.
+      agent_harness_name:
+        type: str
+        default: tbhb.dev Agent
+        description: Agent author and committer name.
+      agent_harness_email:
+        type: str
+        default: agent@example.invalid
+        description: Agent author and committer email.

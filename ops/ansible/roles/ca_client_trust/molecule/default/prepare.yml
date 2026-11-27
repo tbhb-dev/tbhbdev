@@ -1,0 +1,10 @@
+---
+- name: Prepare
+  hosts: all
+  become: true
+  tasks:
+    - name: Install Debian certificate tools
+      ansible.builtin.apt:
+        name: [ca-certificates, openssl]
+        state: present
+        update_cache: true

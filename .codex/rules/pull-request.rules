@@ -1,6 +1,10 @@
 # SPDX-License-Identifier: Apache-2.0
 # Copyright Tony Burns
 
+# Build for actual callers. Omit handling for cases that cannot occur here
+# and options, layers, or abstractions with one user. Record doubt about
+# whether a case can occur under Decisions in the pull request body.
+
 # Agents open, edit and merge pull requests through `tbhbdev alpha pr` and
 # `tbhbdev alpha merge`, never with gh directly. The commands call gh
 # themselves; these rules only see commands the agent types. They back up

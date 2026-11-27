@@ -1,0 +1,7 @@
+# Synthetic config used instead of a 1Password field.
+[extend]
+path = ".gitleaks.toml"
+
+[[rules]]
+id = "tbhb-private-canary"
+regex = "molecule-private-canary"

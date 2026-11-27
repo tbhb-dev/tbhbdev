@@ -1,0 +1,32 @@
+{
+  "resourceLogs": [
+    {
+      "resource": {
+        "attributes": [
+          {
+            "key": "service.name",
+            "value": {
+              "stringValue": "o11y-check-0123456789abcdef"
+            }
+          }
+        ]
+      },
+      "scopeLogs": [
+        {
+          "scope": {
+            "name": "o11y-check"
+          },
+          "logRecords": [
+            {
+              "timeUnixNano": "100000000000",
+              "severityText": "INFO",
+              "body": {
+                "stringValue": "o11y-check 0123456789abcdef"
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

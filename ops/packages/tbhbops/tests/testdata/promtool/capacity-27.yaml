@@ -1,0 +1,48 @@
+---
+evaluation_interval: 1m
+rule_files:
+  - rules.yaml
+tests:
+  - alert_rule_test:
+      - alertname: o11y-capacity-exhaustion
+        eval_time: 12h24m
+        exp_alerts: []
+      - alertname: o11y-capacity-exhaustion
+        eval_time: 12h25m
+        exp_alerts:
+          - exp_annotations: {}
+            exp_labels:
+              agent_account: primary
+              agent_plan_vendor: anthropic
+              agent_plan_window: 7d
+              env: prd
+              service: agent-capacity
+              severity: high
+      - alertname: o11y-capacity-exhaustion
+        eval_time: 12h26m
+        exp_alerts:
+          - exp_annotations: {}
+            exp_labels:
+              agent_account: primary
+              agent_plan_vendor: anthropic
+              agent_plan_window: 7d
+              env: prd
+              service: agent-capacity
+              severity: high
+    input_series:
+      - series: "agent_capacity_window_utilization_ratio{agent_plan_vendor=\"\
+          anthropic\",agent_plan_window=\"\
+          7d\",agent_account=\"primary\",host_name=\"\
+          fixture-a\",agent_capacity_source=\"\
+          claude_statusline\",agent_capacity_freshness=\"\
+          fresh\"}"
+        values: 0+0.003x288
+      - series: "agent_capacity_window_reset_time_seconds{agent_plan_vendor=\"\
+          anthropic\",agent_plan_window=\"\
+          7d\",agent_account=\"primary\",host_name=\"\
+          fixture-a\",agent_capacity_source=\"\
+          claude_statusline\",agent_capacity_freshness=\"\
+          fresh\"}"
+        values: 604800+0x288
+    interval: 5m
+    name: exhaustion pending boundary

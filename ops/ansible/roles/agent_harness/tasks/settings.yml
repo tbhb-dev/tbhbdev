@@ -1,0 +1,129 @@
+---
+- name: settings | Merge settings without logging existing values
+  block:
+    - name: settings | Inspect the settings file
+      ansible.builtin.stat:
+        path: "{{ agent_harness_settings.path }}"
+        follow: true
+      register: agent_harness_settings_stat
+
+    - name: settings | Read existing settings without exposing their contents
+      ansible.builtin.slurp:
+        src: "{{ agent_harness_settings.path }}"
+      register: agent_harness_settings_content
+      when: agent_harness_settings_stat.stat.exists
+      no_log: true
+
+    - name: settings | Decode JSON settings
+      ansible.builtin.set_fact:
+        agent_harness_current: >-
+          {{ (agent_harness_settings_content.content | b64decode | from_json)
+          if agent_harness_settings_stat.stat.exists else {} }}
+      when: agent_harness_settings.format == 'json'
+      no_log: true
+
+    # chezmoi supplies its TOML parser on Python 3.9 Macs too. A null config
+    # avoids user hooks; stdin holds data, never executable template text.
+    - name: settings | Decode TOML settings with chezmoi's parser
+      ansible.builtin.command:
+        argv:
+          - chezmoi
+          - --config=/dev/null
+          - --config-format=toml
+          - --dry-run
+          - --no-tty
+          - execute-template
+          - --with-stdin
+          - "{{ '{{ .chezmoi.stdin | fromToml | toJson }}' }}"
+        stdin: >-
+          {{ (agent_harness_settings_content.content | b64decode) if agent_harness_settings_stat.stat.exists else '' }}
+        stdin_add_newline: false
+      register: agent_harness_toml_json
+      when: agent_harness_settings.format == 'toml'
+      changed_when: false
+      check_mode: false
+      no_log: true
+
+    - name: settings | Store parsed TOML settings
+      ansible.builtin.set_fact:
+        agent_harness_current: "{{ agent_harness_toml_json.stdout | from_json }}"
+      when: agent_harness_settings.format == 'toml'
+      no_log: true
+
+    - name: settings | Preserve unrelated settings while merging the agent environment
+      ansible.builtin.set_fact:
+        agent_harness_merged: >-
+          {{ agent_harness_current | combine(agent_harness_settings.overlay, recursive=true) }}
+      no_log: true
+
+    - name: settings | Require mappings for settings and the environment containers
+      ansible.builtin.assert:
+        that:
+          - agent_harness_current is mapping
+          - agent_harness_current.get('env', {}) is mapping
+          - agent_harness_current.get('shell_environment_policy', {}) is mapping
+          - agent_harness_current.get('shell_environment_policy', {}).get('set', {}) is mapping
+      no_log: true
+
+    - name: settings | Encode merged TOML settings
+      ansible.builtin.command:
+        argv:
+          - chezmoi
+          - --config=/dev/null
+          - --config-format=toml
+          - --dry-run
+          - --no-tty
+          - execute-template
+          - --with-stdin
+          - "{{ '{{ .chezmoi.stdin | fromJson | toToml }}' }}"
+        stdin: "{{ agent_harness_merged | to_json }}"
+        stdin_add_newline: false
+      register: agent_harness_encoded_toml
+      when: agent_harness_settings.format == 'toml'
+      changed_when: false
+      check_mode: false
+      no_log: true
+
+    - name: settings | Create the settings directory when needed
+      ansible.builtin.file:
+        path: "{{ agent_harness_settings.path | dirname }}"
+        state: directory
+        mode: '0700'
+      when: not agent_harness_settings_stat.stat.exists
+
+    - name: settings | Inspect the settings directory without creating it in check mode
+      ansible.builtin.stat:
+        path: "{{ agent_harness_settings.path | dirname }}"
+      register: agent_harness_settings_directory
+
+    - name: settings | Report settings creation under a missing directory in check mode
+      ansible.builtin.debug:
+        msg: "Would create {{ agent_harness_settings.path }} with the agent environment."
+      changed_when: true
+      when:
+        - ansible_check_mode
+        - not agent_harness_settings_directory.stat.exists
+
+    - name: settings | Write merged settings with secret contents and diffs withheld
+      ansible.builtin.copy:
+        dest: "{{ agent_harness_settings.path }}"
+        # The YAML escape supplies the newline; a '\n' inside the template stays literal.
+        content: "{{ (agent_harness_merged | to_nice_json)
+          if agent_harness_settings.format == 'json'
+          else agent_harness_encoded_toml.stdout }}\n"
+        owner: "{{ agent_harness_account.name }}"
+        mode: "{{ agent_harness_settings.mode | default(agent_harness_settings_stat.stat.mode | default('0600')) }}"
+        follow: true
+      when:
+        - >-
+            agent_harness_merged != agent_harness_current or not agent_harness_settings_stat.stat.exists or
+            (agent_harness_settings.mode is defined and
+            agent_harness_settings_stat.stat.mode | default('') != agent_harness_settings.mode) or
+            agent_harness_settings_stat.stat.pw_name | default('') != agent_harness_account.name
+        - not ansible_check_mode or agent_harness_settings_directory.stat.exists
+      diff: false
+      no_log: true
+  rescue:
+    - name: settings | Stop and name settings that could not be merged
+      ansible.builtin.fail:
+        msg: "Cannot apply {{ agent_harness_settings.path }}: cannot safely parse, merge or write it. No fallback."

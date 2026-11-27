@@ -1,0 +1,699 @@
+{
+  "uid": "o11y-agents",
+  "title": "Agents overview",
+  "description": "Coding-agent telemetry from Claude Code, Codex and Antigravity, sent over OTLP: metrics in Mimir, logs in Loki, and traces in Tempo. Host and namespace filters narrow only logs and traces, including the Sessions table. Antigravity uses an attribute-based trace search and a token query for the reported input and output token types, grouped by host and model. Its trace panels apply no filter, and its token panel applies only the host and Tool filters. The Antigravity panels use #009E73.",
+  "tags": [
+    "o11y",
+    "agents"
+  ],
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "1m",
+  "time": {
+    "from": "now-24h",
+    "to": "now"
+  },
+  "templating": {
+    "list": [
+      {
+        "name": "namespace",
+        "label": "Namespace",
+        "description": "The service.namespace the agents send. Filters logs and traces.",
+        "type": "query",
+        "datasource": {
+          "type": "loki",
+          "uid": "loki"
+        },
+        "query": "label_values(service_namespace)",
+        "definition": "label_values(service_namespace)",
+        "regex": "",
+        "refresh": 2,
+        "sort": 1,
+        "multi": true,
+        "includeAll": true,
+        "allValue": ".*",
+        "current": {
+          "selected": true,
+          "text": [
+            "All"
+          ],
+          "value": [
+            "$__all"
+          ]
+        }
+      },
+      {
+        "name": "service",
+        "label": "Tool",
+        "description": "The agent, as its service.name. Metric jobs are matched with or without a namespace prefix.",
+        "type": "query",
+        "datasource": {
+          "type": "prometheus",
+          "uid": "mimir"
+        },
+        "query": "label_values({__name__=~\"claude_code_session_count_total|codex_process_start_total|codex_conversation_turn_count_total|gen_ai_client_token_usage_sum\"}, job)",
+        "definition": "label_values({__name__=~\"claude_code_session_count_total|codex_process_start_total|codex_conversation_turn_count_total|gen_ai_client_token_usage_sum\"}, job)",
+        "regex": "/^(?:[^/]+\\/)?(.+)$/",
+        "refresh": 2,
+        "sort": 1,
+        "multi": true,
+        "includeAll": true,
+        "allValue": ".+",
+        "current": {
+          "selected": true,
+          "text": [
+            "All"
+          ],
+          "value": [
+            "$__all"
+          ]
+        }
+      },
+      {
+        "name": "host",
+        "label": "Host",
+        "description": "The host.name the agents send. Filters logs and traces, including the Sessions table.",
+        "type": "query",
+        "datasource": {
+          "type": "prometheus",
+          "uid": "mimir"
+        },
+        "query": "label_values(target_info{job=~\"(.+/)?(${service:pipe})\"}, host_name)",
+        "definition": "label_values(target_info{job=~\"(.+/)?(${service:pipe})\"}, host_name)",
+        "regex": "",
+        "refresh": 2,
+        "sort": 1,
+        "multi": true,
+        "includeAll": true,
+        "allValue": ".*",
+        "current": {
+          "selected": true,
+          "text": [
+            "All"
+          ],
+          "value": [
+            "$__all"
+          ]
+        }
+      },
+      {
+        "name": "model",
+        "label": "Model",
+        "description": "The model. Filters the token, cost, Codex and Sessions panels.",
+        "type": "query",
+        "datasource": {
+          "type": "prometheus",
+          "uid": "mimir"
+        },
+        "query": "label_values({__name__=~\"claude_code_token_usage_tokens_total|codex_turn_token_usage_count\"}, model)",
+        "definition": "label_values({__name__=~\"claude_code_token_usage_tokens_total|codex_turn_token_usage_count\"}, model)",
+        "regex": "",
+        "refresh": 2,
+        "sort": 1,
+        "multi": true,
+        "includeAll": true,
+        "allValue": ".*",
+        "current": {
+          "selected": true,
+          "text": [
+            "All"
+          ],
+          "value": [
+            "$__all"
+          ]
+        }
+      }
+    ]
+  },
+  "panels": [
+    {
+      "title": "Tokens by tool and model",
+      "description": "Tokens per second for each tool and model. For Claude Code the sum of input, output, cache read and cache creation tokens, for Codex its per-turn total, which counts cached input inside input. Codex reports tokens when a turn ends.",
+      "type": "timeseries",
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "axisLabel": "tokens/s",
+            "drawStyle": "line",
+            "fillOpacity": 10,
+            "spanNulls": false
+          },
+          "unit": "suffix:tokens/s",
+          "min": 0,
+          "links": [
+            {
+              "title": "Claude Code",
+              "url": "/d/o11y-agents-claude-code?${__url_time_range}&${namespace:queryparam}&${host:queryparam}&${model:queryparam}"
+            },
+            {
+              "title": "Codex",
+              "url": "/d/o11y-agents-codex?${__url_time_range}&${namespace:queryparam}&${host:queryparam}&${model:queryparam}"
+            }
+          ]
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum by (tool, model) (label_replace(rate(claude_code_token_usage_tokens_total{job=~\"(.+/)?(${service:pipe})\", model=~\"${model:pipe}\"}[$__rate_interval]), \"tool\", \"$1\", \"job\", \"(?:.+/)?(.+)\"))",
+          "legendFormat": "{{tool}} {{model}}",
+          "range": true,
+          "instant": false,
+          "interval": "1m"
+        },
+        {
+          "refId": "B",
+          "expr": "sum by (tool, model) (label_replace(rate(codex_turn_token_usage_sum{job=~\"(.+/)?(${service:pipe})\", model=~\"${model:pipe}\", token_type=\"total\"}[$__rate_interval]), \"tool\", \"$1\", \"job\", \"(?:.+/)?(.+)\"))",
+          "legendFormat": "{{tool}} {{model}}",
+          "range": true,
+          "instant": false,
+          "interval": "1m"
+        }
+      ],
+      "datasource": {
+        "type": "prometheus",
+        "uid": "mimir"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 0
+      },
+      "id": 1
+    },
+    {
+      "title": "Tokens by type",
+      "description": "Tokens per second by token type. The types overlap for Codex: input includes cached_input and output includes reasoning_output, so its lines don't add up. Claude Code's four types are disjoint.",
+      "type": "timeseries",
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "axisLabel": "tokens/s",
+            "drawStyle": "line",
+            "fillOpacity": 10,
+            "spanNulls": false
+          },
+          "unit": "suffix:tokens/s",
+          "min": 0,
+          "links": [
+            {
+              "title": "Claude Code",
+              "url": "/d/o11y-agents-claude-code?${__url_time_range}&${namespace:queryparam}&${host:queryparam}&${model:queryparam}"
+            },
+            {
+              "title": "Codex",
+              "url": "/d/o11y-agents-codex?${__url_time_range}&${namespace:queryparam}&${host:queryparam}&${model:queryparam}"
+            }
+          ]
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum by (tool, type) (label_replace(rate(claude_code_token_usage_tokens_total{job=~\"(.+/)?(${service:pipe})\", model=~\"${model:pipe}\"}[$__rate_interval]), \"tool\", \"$1\", \"job\", \"(?:.+/)?(.+)\"))",
+          "legendFormat": "{{tool}} {{type}}",
+          "range": true,
+          "instant": false,
+          "interval": "1m"
+        },
+        {
+          "refId": "B",
+          "expr": "sum by (tool, token_type) (label_replace(rate(codex_turn_token_usage_sum{job=~\"(.+/)?(${service:pipe})\", model=~\"${model:pipe}\", token_type!=\"total\"}[$__rate_interval]), \"tool\", \"$1\", \"job\", \"(?:.+/)?(.+)\"))",
+          "legendFormat": "{{tool}} {{token_type}}",
+          "range": true,
+          "instant": false,
+          "interval": "1m"
+        }
+      ],
+      "datasource": {
+        "type": "prometheus",
+        "uid": "mimir"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 0
+      },
+      "id": 2
+    },
+    {
+      "title": "Cost per hour (Claude Code)",
+      "description": "Estimated cost in US dollars per hour, by tool and model. Only Claude Code reports a cost. Codex sends no cost metric, so it never appears here.",
+      "type": "timeseries",
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "axisLabel": "",
+            "drawStyle": "bars",
+            "fillOpacity": 80,
+            "spanNulls": false,
+            "stacking": {
+              "mode": "normal",
+              "group": "A"
+            }
+          },
+          "unit": "currencyUSD",
+          "min": 0,
+          "decimals": 2
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum by (tool, model) (label_replace(increase(claude_code_cost_usage_USD_total{job=~\"(.+/)?(${service:pipe})\", model=~\"${model:pipe}\"}[$__interval]), \"tool\", \"$1\", \"job\", \"(?:.+/)?(.+)\"))",
+          "legendFormat": "{{tool}} {{model}}",
+          "range": true,
+          "instant": false,
+          "interval": "1h"
+        }
+      ],
+      "datasource": {
+        "type": "prometheus",
+        "uid": "mimir"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 8
+      },
+      "id": 3
+    },
+    {
+      "title": "Sessions started per hour",
+      "description": "Claude Code sessions, fresh or resumed, and Codex process starts and threads, which include subagent threads.",
+      "type": "timeseries",
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "axisLabel": "",
+            "drawStyle": "bars",
+            "fillOpacity": 80,
+            "spanNulls": false,
+            "stacking": {
+              "mode": "normal",
+              "group": "A"
+            }
+          },
+          "unit": "short",
+          "min": 0,
+          "decimals": 0,
+          "links": [
+            {
+              "title": "Claude Code",
+              "url": "/d/o11y-agents-claude-code?${__url_time_range}&${namespace:queryparam}&${host:queryparam}&${model:queryparam}"
+            },
+            {
+              "title": "Codex",
+              "url": "/d/o11y-agents-codex?${__url_time_range}&${namespace:queryparam}&${host:queryparam}&${model:queryparam}"
+            }
+          ]
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum by (tool, start_type) (label_replace(increase(claude_code_session_count_total{job=~\"(.+/)?(${service:pipe})\"}[$__interval]), \"tool\", \"$1\", \"job\", \"(?:.+/)?(.+)\"))",
+          "legendFormat": "{{tool}} {{start_type}}",
+          "range": true,
+          "instant": false,
+          "interval": "1h"
+        },
+        {
+          "refId": "B",
+          "expr": "sum by (tool) (label_replace(increase(codex_process_start_total{job=~\"(.+/)?(${service:pipe})\"}[$__interval]), \"tool\", \"$1\", \"job\", \"(?:.+/)?(.+)\"))",
+          "legendFormat": "{{tool}} process starts",
+          "range": true,
+          "instant": false,
+          "interval": "1h"
+        },
+        {
+          "refId": "C",
+          "expr": "sum by (tool) (label_replace(increase(codex_thread_started_total{job=~\"(.+/)?(${service:pipe})\", model=~\"${model:pipe}\"}[$__interval]), \"tool\", \"$1\", \"job\", \"(?:.+/)?(.+)\"))",
+          "legendFormat": "{{tool}} threads",
+          "range": true,
+          "instant": false,
+          "interval": "1h"
+        }
+      ],
+      "datasource": {
+        "type": "prometheus",
+        "uid": "mimir"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 8
+      },
+      "id": 4
+    },
+    {
+      "title": "Agent errors",
+      "description": "Claude Code api_error events and failed tool results, and any agent log line at error or warn level or marked unsuccessful. Each line shows the event and its error fields, never the prompt.",
+      "type": "logs",
+      "options": {
+        "showTime": true,
+        "wrapLogMessage": true,
+        "sortOrder": "Descending",
+        "enableLogDetails": true,
+        "dedupStrategy": "none"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "{service_namespace=~\"${namespace:pipe}\", service_name=~\"${service:pipe}\"} | host_name=~\"${host:pipe}\" | event_name=\"api_error\" or success=\"false\" or detected_level=~\"error|warn|warning\" | label_format detected_level=`{{if or (eq .event_name \"api_error\") (eq .success \"false\")}}error{{else}}{{.detected_level}}{{end}}` | line_format `{{.service_name}} {{.event_name}}{{with .model}} model={{.}}{{end}}{{with .tool_name}} tool={{.}}{{end}}{{with .status_code}} status={{.}}{{end}}{{with .http_response_status_code}} status={{.}}{{end}}{{with .error_type}} error_type={{.}}{{end}}{{with .error}} error={{.}}{{end}}`",
+          "queryType": "range"
+        }
+      ],
+      "datasource": {
+        "type": "loki",
+        "uid": "loki"
+      },
+      "gridPos": {
+        "h": 10,
+        "w": 24,
+        "x": 0,
+        "y": 16
+      },
+      "id": 15
+    },
+    {
+      "title": "Recent Claude Code traces",
+      "description": "The newest claude-code traces. Select a trace ID to open it in the trace view.",
+      "type": "table",
+      "options": {
+        "showHeader": true
+      },
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "queryType": "traceql",
+          "query": "{resource.service.name=\"claude-code\" && (resource.service.namespace=~\"${namespace:pipe}\" || (resource.service.namespace=nil && \"${namespace:pipe}\"=\".*\")) && (resource.host.name=~\"${host:pipe}\" || (resource.host.name=nil && \"${host:pipe}\"=\".*\"))} with (most_recent=true)",
+          "limit": 20,
+          "tableType": "traces"
+        }
+      ],
+      "datasource": {
+        "type": "tempo",
+        "uid": "tempo"
+      },
+      "gridPos": {
+        "h": 10,
+        "w": 12,
+        "x": 0,
+        "y": 26
+      },
+      "id": 16
+    },
+    {
+      "title": "Recent Codex traces",
+      "description": "The newest codex_exec traces. Select a trace ID to open it in the trace view.",
+      "type": "table",
+      "options": {
+        "showHeader": true
+      },
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "queryType": "traceql",
+          "query": "{resource.service.name=\"codex_exec\" && (resource.service.namespace=~\"${namespace:pipe}\" || (resource.service.namespace=nil && \"${namespace:pipe}\"=\".*\")) && (resource.host.name=~\"${host:pipe}\" || (resource.host.name=nil && \"${host:pipe}\"=\".*\"))} with (most_recent=true)",
+          "limit": 20,
+          "tableType": "traces"
+        }
+      ],
+      "datasource": {
+        "type": "tempo",
+        "uid": "tempo"
+      },
+      "gridPos": {
+        "h": 10,
+        "w": 12,
+        "x": 12,
+        "y": 26
+      },
+      "id": 17
+    },
+    {
+      "id": 18,
+      "title": "Recent Antigravity traces",
+      "description": "Antigravity traces found by service attribute, not a verified run-start or finish counter; namespace, host, and model filters do not apply.",
+      "type": "table",
+      "gridPos": {
+        "x": 0,
+        "y": 36,
+        "w": 12,
+        "h": 10
+      },
+      "datasource": {
+        "type": "tempo",
+        "uid": "tempo"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "tempo",
+            "uid": "tempo"
+          },
+          "queryType": "traceql",
+          "query": "{ resource.service.name = \"antigravity\" } with (most_recent=true)",
+          "limit": 20,
+          "tableType": "traces"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "#009E73"
+          },
+          "custom": {
+            "cellOptions": {
+              "type": "color-text"
+            }
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "traceID"
+            },
+            "properties": [
+              {
+                "id": "links",
+                "value": [
+                  {
+                    "title": "Open trace",
+                    "url": "/d/o11y-agents-traces?var-traceId=${__value.raw}&${__url_time_range}"
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "showHeader": true
+      }
+    },
+    {
+      "id": 19,
+      "title": "Recent Antigravity steps",
+      "description": "Antigravity spans found by service attribute, not verified run boundaries or a step-name classification; namespace, host and model filters do not apply.",
+      "type": "table",
+      "gridPos": {
+        "x": 12,
+        "y": 36,
+        "w": 12,
+        "h": 10
+      },
+      "datasource": {
+        "type": "tempo",
+        "uid": "tempo"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "tempo",
+            "uid": "tempo"
+          },
+          "queryType": "traceql",
+          "query": "{ resource.service.name = \"antigravity\" } with (most_recent=true)",
+          "limit": 20,
+          "tableType": "spans"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "#009E73"
+          },
+          "custom": {
+            "cellOptions": {
+              "type": "color-text"
+            }
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "traceID"
+            },
+            "properties": [
+              {
+                "id": "links",
+                "value": [
+                  {
+                    "title": "Open trace",
+                    "url": "/d/o11y-agents-traces?var-traceId=${__value.raw}&${__url_time_range}"
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "showHeader": true
+      }
+    },
+    {
+      "id": 20,
+      "title": "Antigravity tokens by host and model",
+      "description": "Antigravity input and output tokens per second, summed by host and model (gen_ai_client_token_usage_sum, gen_ai_token_type input and output, probe model delta-probe excluded). The panel has no data until Antigravity runs report. The host and Tool filters apply. The model filter queries `model`, not `gen_ai_request_model`, so it does not apply, and this is not generation speed.",
+      "type": "timeseries",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "mimir"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 46,
+        "w": 24,
+        "h": 8
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "mimir"
+          },
+          "expr": "sum by (host_name, gen_ai_request_model) (rate(gen_ai_client_token_usage_sum{job=~\"(.+/)?(antigravity)\", job=~\"(.+/)?(${service:pipe})\", gen_ai_token_type=~\"input|output\", gen_ai_request_model!=\"delta-probe\", host_name=~\"${host:pipe}\"}[$__rate_interval]))",
+          "legendFormat": "agy {{host_name}} {{gen_ai_request_model}}",
+          "range": true,
+          "instant": false,
+          "interval": "1m"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "suffix:tokens/s",
+          "min": 0,
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "#009E73"
+          },
+          "custom": {
+            "axisPlacement": "left",
+            "drawStyle": "line",
+            "lineWidth": 1,
+            "fillOpacity": 5,
+            "showPoints": "never",
+            "stacking": {
+              "mode": "none",
+              "group": "A"
+            }
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      }
+    }
+  ],
+  "links": [
+    {
+      "title": "Agents",
+      "type": "dashboards",
+      "tags": [
+        "agents"
+      ],
+      "keepTime": true,
+      "includeVars": true
+    }
+  ]
+}

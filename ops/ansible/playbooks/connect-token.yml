@@ -1,0 +1,15 @@
+---
+# Connect as agent with the controller's session key.
+# Set connect_token_ssh_key_file to override it.
+# The controller's own Connect token reads the per-host op reference.
+- name: Install existing agent Connect tokens
+  hosts: agent_hosts:!windows
+  gather_facts: true
+  become: false
+  vars:
+    ansible_user: agent
+    ansible_ssh_extra_args: >-
+      -o IdentitiesOnly=yes -o IdentityAgent=none -i
+      {{ (connect_token_ssh_key_file | default(ssh_controller_key_path)) | expanduser | quote }}
+  roles:
+    - connect_token

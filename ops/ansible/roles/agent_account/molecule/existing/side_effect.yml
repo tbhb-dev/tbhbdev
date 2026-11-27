@@ -1,0 +1,31 @@
+---
+# Runs immediately after Molecule's check step, before the real converge.
+- name: Verify check mode left the legacy fixture unchanged
+  hosts: all
+  become: true
+  tasks:
+    - name: Check original accounts and file groups
+      ansible.builtin.command:
+        argv:
+          - python3
+          - -c
+          - |
+              import grp, os, pathlib, pwd
+              agent = pwd.getpwnam('agent')
+              assert agent.pw_uid == 24368 and agent.pw_gid == 33835
+              assert agent.pw_dir == '/srv/agent'
+              assert grp.getgrnam('devel').gr_gid == 33835
+              assert 'agent' not in [group.gr_name for group in grp.getgrall()]
+              for path in ['/srv/agent', '/srv/agent/.ssh',
+                          '/srv/agent/.ssh/authorized_keys', '/srv/agent/legacy',
+                          '/srv/agent/outside-file', '/srv/agent/outside-dir',
+                          '/srv/agent-workspace', '/srv/agent-workspace/legacy',
+                          '/srv/legacy-outside', '/srv/legacy-outside/legacy']:
+                  assert os.lstat(path).st_gid == 33835, path
+              for path in ['/srv/agent/legacy', '/srv/agent-workspace/legacy',
+                          '/srv/legacy-outside/legacy']:
+                  assert pathlib.Path(path).read_text() == 'legacy fixture\n'
+              assert os.lstat('/srv/agent/keep-group').st_gid == grp.getgrnam('agent_extra').gr_gid
+              assert os.readlink('/srv/agent/outside-file') == '/srv/legacy-outside/legacy'
+              assert os.readlink('/srv/agent/outside-dir') == '/srv/legacy-outside'
+      changed_when: false

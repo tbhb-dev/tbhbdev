@@ -1,0 +1,19 @@
+---
+# The deploy runner is a layer on the CI runner pool. The pool installs,
+# registers and updates the runner from its own settings, which the inventory
+# supplies as actions_runner_pool_*, and this role adds only the job guard and
+# the keys. The service user, the job and secrets directories and the hook name
+# come from the pool's settings, and this role has no copy of them.
+#
+# The job guard refuses a job unless it runs a commit on this branch of this
+# repository, from one of these events. It checks the commit against the
+# branch through a read-only deploy key on the repository.
+deploy_runner_guard_repository: tbhb-dev/tbhbdev
+deploy_runner_guard_ref: refs/heads/main
+deploy_runner_guard_events: [push, workflow_dispatch]
+deploy_runner_guard_url: git@github.com:tbhb-dev/tbhbdev.git
+# GitHub's published ssh host key for github.com, from its SSH key fingerprints
+# page. A rotation by GitHub makes the guard refuse every job until this changes.
+deploy_runner_guard_host_key: >-
+  github.com ssh-ed25519
+  AAAAC3NzaC1lZDI1NTE5AAAAIOMqqnkVzrm0SdG6UOoqKLsabgH5C9okWi0dh2l9GKJl

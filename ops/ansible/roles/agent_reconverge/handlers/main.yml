@@ -1,0 +1,28 @@
+---
+- name: Reload the agent reconverge timer
+  become: true
+  become_user: "{{ agent_reconverge_account }}"
+  environment:
+    XDG_RUNTIME_DIR: /run/user/{{ agent_reconverge_identity.uid }}
+  ansible.builtin.systemd_service:
+    name: reconverge-agent.timer
+    scope: user
+    daemon_reload: true
+    state: restarted
+  when: not ansible_check_mode
+
+- name: Unload the changed agent reconverge daemon
+  ansible.builtin.command:
+    argv: [launchctl, bootout, system/dev.tbhb.reconverge.agent]
+  changed_when: true
+  when:
+    - not ansible_check_mode
+    - agent_reconverge_launchd.rc == 0
+  listen: Reload the agent reconverge daemon
+
+- name: Bootstrap the changed agent reconverge daemon
+  ansible.builtin.command:
+    argv: [launchctl, bootstrap, system, /Library/LaunchDaemons/dev.tbhb.reconverge.agent.plist]
+  changed_when: true
+  when: not ansible_check_mode
+  listen: Reload the agent reconverge daemon

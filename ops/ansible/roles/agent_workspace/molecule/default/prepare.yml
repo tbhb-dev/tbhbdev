@@ -1,0 +1,130 @@
+---
+- name: Prepare
+  hosts: all
+  become: true
+  tasks:
+    - name: Prepare the isolated Connect endpoint lookup
+      ansible.builtin.include_tasks: "{{ playbook_dir }}/../../../../molecule/tasks/prepare-connect.yml"
+    - name: Create the group the agent has as its primary group
+      ansible.builtin.group:
+        name: devel
+    - name: Create the agent
+      ansible.builtin.user:
+        name: agent
+        group: devel
+        create_home: true
+        shell: /bin/bash
+    - name: Create a second user with files of its own
+      ansible.builtin.user:
+        name: labop
+        create_home: true
+    - name: Give the second user's home known content
+      ansible.builtin.shell:
+        cmd: |
+          set -euo pipefail
+          chmod 0755 /home/labop
+          mkdir -p /home/labop/Code/github.com/fixture /home/labop/.config
+          echo kept > /home/labop/Code/github.com/fixture/note
+          echo kept > /home/labop/.config/setting
+          chown -R labop:labop /home/labop
+          find /home/labop -printf '%p %y %m %U:%G %s %T@\n' | sort > /var/tmp/labop-home.listing
+          find /home/labop -type f -exec sha256sum {} + | sort > /var/tmp/labop-home.sums
+        executable: /bin/bash
+        creates: /var/tmp/labop-home.listing
+    - name: Create fixture directories
+      ansible.builtin.file:
+        path: "{{ item.path }}"
+        state: directory
+        owner: agent
+        group: devel
+        mode: "{{ item.mode }}"
+      loop:
+        - {path: /home/example-user/.local/bin, mode: '0700'}
+        - {path: /home/example-user/fixture/tbhbdev, mode: '0700'}
+        - {path: "{{ ['/home/example-user/.config', 'tbhbdev'] | join('/') }}", mode: '0700'}
+        - {path: "{{ ['/home/example-user/.config', 'tbhbdev', 'secrets'] | join('/') }}", mode: '0700'}
+        # An existing root that is too open: the role tightens it.
+        - {path: /home/example-user/Code, mode: '0755'}
+    - name: Install mise, leaving uv absent until the role provisions it
+      ansible.builtin.copy:
+        src: mise
+        dest: /home/example-user/.local/bin/mise
+        owner: agent
+        mode: '0700'
+    - name: Stage uv for the mise fixture
+      ansible.builtin.copy:
+        src: uv
+        dest: /home/example-user/fixture/uv
+        owner: agent
+        mode: '0700'
+    - name: Install the isolated secrets fixture
+      ansible.builtin.copy:
+        dest: /home/example-user/fixture/tbhbdev/secrets.py
+        content: |
+          def token():
+              return 'molecule-fixture'
+
+          class Connect:
+              def __init__(self, value, endpoints):
+                  assert value == 'molecule-fixture'
+                  assert endpoints == ['https://op-connect.example.example.invalid', 'https://connect.other.example.invalid']
+
+              def vaults(self):
+                  return [{'name': 'host-0-shared'}, {'name': 'host-fixture'}]
+        owner: agent
+        mode: '0600'
+    - name: Install a fallback token fixture
+      ansible.builtin.copy:
+        dest: "{{ ['/home/example-user/.config', 'tbhbdev', 'secrets/connect-token'] | join('/') }}"
+        content: molecule-fixture
+        owner: agent
+        mode: '0600'
+    - name: Install workspace mise config
+      ansible.builtin.copy:
+        dest: /home/example-user/Code/mise.toml
+        content: "[tools]\n"
+        owner: agent
+        mode: '0600'
+    - name: Prepare local remotes, and one clone that is behind
+      become: true
+      become_user: agent
+      ansible.builtin.shell:
+        cmd: |
+          set -eu
+          for name in repo fresh other; do
+            git init --quiet --bare --initial-branch=main /home/example-user/$name.git
+            git clone --quiet /home/example-user/$name.git /home/example-user/seed-$name 2>/dev/null
+            (
+              cd /home/example-user/seed-$name
+              git config user.name Molecule
+              git config user.email molecule@example.invalid
+              echo first > tracked
+              printf '[project]\nname = "tbhbdev"\nversion = "0"\n' > pyproject.toml
+              git add tracked
+              git add pyproject.toml
+              git commit --quiet -m first
+              git push --quiet origin main
+            )
+          done
+          git config --global url./home/example-user/repo.git.insteadOf https://github.com/fixture/repo.git
+          git config --global url./home/example-user/fresh.git.insteadOf https://github.com/fixture/fresh.git
+          git config --global url./home/example-user/other.git.insteadOf https://git.example.invalid/fixture/other.git
+          mkdir -p /home/example-user/Code/github.com/fixture
+          git clone --quiet /home/example-user/repo.git /home/example-user/Code/github.com/fixture/repo
+          git -C /home/example-user/Code/github.com/fixture/repo remote set-url origin https://unused.example.invalid/repo.git
+          git clone --quiet /home/example-user/other.git /home/example-user/Code/github.com/fixture/kept
+          cd /home/example-user/seed-repo
+          echo second > tracked
+          git add tracked
+          git commit --quiet -m second
+          git push --quiet origin main
+        creates: /home/example-user/repo.git
+      environment:
+        HOME: /home/example-user
+        SSH_AUTH_SOCK: ""
+    - name: Reject authenticated clone and fetch commands in this public-only workspace
+      ansible.builtin.copy:
+        src: git
+        dest: /home/example-user/.local/bin/git
+        owner: agent
+        mode: '0700'

@@ -1,0 +1,59 @@
+---
+dependency:
+  name: galaxy
+  enabled: false
+driver:
+  name: docker
+platforms:
+  - name: o11y-${MOLECULE_RUN_ID:-local}
+    groups: [o11y]
+    image: o11y-ubuntu:24.04
+    dockerfile: Dockerfile.j2
+    pre_build_image: false
+    privileged: true
+    command: /usr/bin/dockerd --storage-driver=vfs --iptables=false
+prerun: false
+provisioner:
+  name: ansible
+  connection_options:
+    ansible_connection: community.docker.docker_api
+  env:
+    ANSIBLE_LOG_PATH: ${MOLECULE_EPHEMERAL_DIRECTORY}/converge.log
+    ANSIBLE_DIFF_ALWAYS: "True"
+    PATH: ${MOLECULE_EPHEMERAL_DIRECTORY}/bin:${PATH}
+  inventory:
+    group_vars:
+      all:
+        o11y_root: /srv/o11y
+        o11y_data_dir: /srv/o11y-data
+        o11y_host_name: molecule
+        o11y_grafana_root_url: https://grafana.example.invalid/
+        o11y_grafana_owner_login: owner@example.invalid
+        o11y_alert_email_to: to@example.invalid
+        o11y_alert_smtp_from: from@example.invalid
+        o11y_alert_smtp_host: smtp.example.invalid
+        o11y_alert_smtp_port: 587
+        o11y_alert_smtp_user: user@example.invalid
+        o11y_alert_discord_webhook_ref: "{{ 'op://' ~ 'molecule/alerts/discord' }}"
+        o11y_alert_smtp_password_ref: "{{ 'op://' ~ 'molecule/alerts/smtp' }}"
+        o11y_secrets_vault: molecule
+        o11y_op_account: account.example.invalid
+        o11y_grafana_agents_password_ref: "{{ 'op://' ~ 'molecule/collector/password' }}"
+        o11y_lookup_command: >-
+          {{ lookup('env', 'MOLECULE_PROJECT_DIRECTORY') }}/molecule/default/fixtures/secret-lookup
+        o11y_release_id: 1aaf90589f2c3c2f025f9762ced21b6191b3924b
+        o11y_min_free_gib: 0
+        o11y_health_retries: 2
+        o11y_health_delay: 1
+verifier:
+  name: ansible
+scenario:
+  test_sequence:
+    - destroy
+    - syntax
+    - create
+    - prepare
+    - converge
+    - idempotence
+    - verify
+    - destroy

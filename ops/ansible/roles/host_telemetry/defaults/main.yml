@@ -1,0 +1,18 @@
+---
+# Grafana's apt package version for Alloy. Bump it deliberately: the
+# package restarts the service.
+host_telemetry_alloy_version: 1.21.3-1
+
+# Empty means the role builds http://<service>.<MagicDNS suffix>:4318,
+# reading the suffix from `tailscale status --json` on the node, so the
+# tailnet domain is never written down. svc:otlp answers plain HTTP, and
+# the traffic rides the tailnet's WireGuard tunnel. The tailnet policy
+# allows tag:agent-host to reach it on 4318.
+host_telemetry_otlp_endpoint: ""
+
+# svc:otlp's short name, the first label of the endpoint built above.
+host_telemetry_otlp_service: otlp
+
+# Start Alloy and restart journald. Molecule turns this off, because its
+# container has no systemd running.
+host_telemetry_run: true

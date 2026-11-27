@@ -1,0 +1,10 @@
+---
+# A throwaway test key with no private half.
+- name: Converge
+  hosts: all
+  become: true
+  vars:
+    ops_accounts_admin_keys:
+      - ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIMBxMcLBO2dNsuwi0clAzEHghsyOUtwtQU2PXYShQKQa molecule-admin
+  roles:
+    - ops_accounts

@@ -1,0 +1,53 @@
+#!/bin/sh
+set -eu
+
+gateway_id=sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+tunnel_id=sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+state=/var/tmp/event-gateway-state
+
+case "$1 ${2:-}" in
+'image inspect')
+	case "$5" in
+	event-gateway:*)
+		if [ ! -f "$state/builds" ]; then
+			echo 'No such image' >&2
+			exit 1
+		fi
+		printf '%s\n' "$gateway_id"
+		;;
+	fixture-tunnel) printf '%s\n' "$tunnel_id" ;;
+	*) exit 2 ;;
+	esac
+	;;
+'build --tag')
+	short_commit=$(git -c safe.directory="$PWD" rev-parse --short=8 HEAD)
+	[ "$3" = "event-gateway:$short_commit" ]
+	mkdir -p "$state"
+	echo built >>"$state/builds"
+	;;
+'compose --env-file')
+	[ "$EVENT_GATEWAY_IMAGE" = "$gateway_id" ]
+	printf '%s\n' '{"services":{"tunnel":{"image":"fixture-tunnel"}}}'
+	;;
+'container inspect')
+	if [ ! -f "$state/starts" ]; then
+		echo 'No such container' >&2
+		exit 1
+	fi
+	case "$4" in
+	*State.Health*) echo 'true healthy' ;;
+	*)
+		case "$5" in
+		event-gateway-gateway-1) printf '%s true\n' "$gateway_id" ;;
+		event-gateway-tunnel-1) printf '%s true\n' "$tunnel_id" ;;
+		*) exit 2 ;;
+		esac
+		;;
+	esac
+	;;
+start-fixture\ *)
+	[ "$2" = "$gateway_id" ]
+	echo started >>"$state/starts"
+	;;
+*) exit 2 ;;
+esac

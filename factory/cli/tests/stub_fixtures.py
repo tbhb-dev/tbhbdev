@@ -14,7 +14,7 @@ from typing import cast
 
 import pytest
 
-from tbhbdev import host, secrets
+from tbhbdev import secrets
 from tbhbdev.alpha.agent import host_tools
 
 type Json = dict[str, object]
@@ -128,8 +128,6 @@ def stubs(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Stubs:
     home.mkdir()
     monkeypatch.setenv("PATH", str(bin_dir))
     monkeypatch.setattr(host_tools, "search", lambda: str(bin_dir))
-    # Without a tailscale on PATH, host falls back to the app bundle.
-    monkeypatch.setattr(host, "TAILSCALE_APP", str(stub_dir / "no-tailscale-app"))
     monkeypatch.setenv("HOME", str(home))
     monkeypatch.setenv("STUB_DIR", str(stub_dir))
     monkeypatch.delenv(secrets.TEST_TOKEN_ENV, raising=False)

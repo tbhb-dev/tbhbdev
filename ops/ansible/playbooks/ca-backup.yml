@@ -1,0 +1,9 @@
+---
+- name: Stage the certificate authority backup programs
+  hosts: ca_backup_hosts
+  gather_facts: false
+  vars:
+    # Suppress the NAS inventory's password lookup on each task.
+    ansible_become_password: ""
+  roles:
+    - ca_backup
