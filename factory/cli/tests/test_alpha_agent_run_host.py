@@ -4241,17 +4241,18 @@ def test_run_builds_required_shims_before_harness(
     enabled: bool,
     expected: int,
 ) -> None:
-    run = make_run(tmp_path)
+    run, prepared = bazel_run(tmp_path)
     run.host = dataclasses.replace(run.host, build_shims=enabled)
-    prepared = dataclasses.replace(preparation(run), auth_before="example-before")
+    prepared = dataclasses.replace(prepared, auth_before="example-before")
+    base = make_base(prepared)
     workspace = Path(prepared.paths.worktree)
     if hook_reference:
         (workspace / "prek.toml").write_text(".bazel_env/bin/cog")
     runtime = HostRuntime(run, prepared, None)
     runtime.patch(monkeypatch)
     monkeypatch.setattr(run_host, "preflight", Mock())
-    tool = Mock(return_value="/tools/bazelisk")
-    monkeypatch.setattr(run_host, "_bazel_tool", tool)
+    which = Mock(return_value="/tools/bazelisk")
+    monkeypatch.setattr(shutil, "which", which)
     deadline = run.deadline
     ticks = iter([100, 130])
     monkeypatch.setattr(
@@ -4270,16 +4271,22 @@ def test_run_builds_required_shims_before_harness(
     monkeypatch.setattr(shims.subprocess, "run", call)
     assert run_host.execute(run, "example") == expected
     assert run.files.path("rc").read_text() == f"{expected}\n"
+    assert not base.exists()
     if enabled:
         assert runtime.events == ["group-stopped", "auth"]
         assert runtime.phases == ["check", "workspace", "shims", "ended"]
         assert run.deadline == deadline + 30
-        assert tool.call_count == 2  # Shim build and Bazel shutdown.
-        assert tool.call_args_list[0].args == (run,)
-        call.assert_called_once()
+        which.assert_called_once()
+        call.assert_called_once_with(
+            ["/tools/bazelisk", "run", "//:bazel_env"],
+            cwd=workspace,
+            capture_output=True,
+            timeout=shims.SHIM_SECONDS,
+            check=False,
+        )
     else:
         assert run.deadline == deadline
-        tool.assert_called_once_with(run)  # Cleanup still looks for Bazel.
+        which.assert_not_called()
         call.assert_not_called()
         if hook_reference:
             assert runtime.events == ["auth"]

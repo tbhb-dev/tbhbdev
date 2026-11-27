@@ -1049,17 +1049,6 @@ def _server_alive(base: Path) -> bool:
         return False
 
 
-def _bazel_tool(run: Run) -> str | None:
-    # The harness ran with the configured tool path, so search it as well.
-    search = ":".join(
-        (
-            os.environ.get("PATH", os.defpath),
-            policy.tool_path(run.settings, run.host, str(run.home)),
-        )
-    )
-    return shutil.which("bazelisk", path=search) or shutil.which("bazel", path=search)
-
-
 def build_shims(run: Run, workspace: Path) -> None:
     if not run.host.build_shims:
         message = (
@@ -1070,7 +1059,14 @@ def build_shims(run: Run, workspace: Path) -> None:
     # Keep this phase until launch so polling uses the extra time through startup.
     run.files.write("phase", "shims")
     started = time.monotonic()
-    shims.build(workspace, _bazel_tool(run))
+    search = ":".join(
+        (
+            os.environ.get("PATH", os.defpath),
+            policy.tool_path(run.settings, run.host, str(run.home)),
+        )
+    )
+    tool = shutil.which("bazelisk", path=search) or shutil.which("bazel", path=search)
+    shims.build(workspace, tool)
     run.deadline += time.monotonic() - started
 
 
