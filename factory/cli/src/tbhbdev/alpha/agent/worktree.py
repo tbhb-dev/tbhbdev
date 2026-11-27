@@ -18,12 +18,13 @@ from functools import partial
 from pathlib import Path
 lazy from collections.abc import Callable, Generator, Mapping
 
-from tbhbdev.alpha import install, pre_push_guard
+from tbhbdev.alpha import pre_push_guard
 from tbhbdev.alpha.agent import host_tools, runfiles
 from tbhbdev.alpha.agent.decisions import repo
 from tbhbdev.alpha.agent.decisions.request import check_fetch_refs, check_start_ref
 from tbhbdev.alpha.agent.model import Invalid, Profile, RunRequest
 from tbhbdev.alpha.identity.dispatcher import RUN_HOOK_ENV
+from tbhbdev.alpha.install.scripts import IDENTITY_HOOKS, SHIM_MARK, pre_push_shim
 from tbhbdev.alpha.repo import TBHB_DEV_ORIGIN
 
 GIT_OVERRIDES = (
@@ -109,7 +110,7 @@ while read -r _old new ref; do
   esac
 done
 """
-PREK_STAGES = ("pre-commit", "pre-push", *(name for name, _ in install.IDENTITY_HOOKS))
+PREK_STAGES = ("pre-commit", "pre-push", *(name for name, _ in IDENTITY_HOOKS))
 REQUIRED_HOOKS = (
     "reference-transaction",
     *PREK_STAGES,
@@ -277,15 +278,14 @@ def install_hooks(
     for name in PREK_STAGES:
         hook = hooks / (name if name == "pre-commit" else f"{name}.prek")
         scripts[hook] = RUN_PREK_SHIM.format(prek=prek, stage=name)
-    for name, verb in install.IDENTITY_HOOKS:
+    for name, verb in IDENTITY_HOOKS:
         scripts[hooks / name] = RUN_IDENTITY_SHIM.format(
-            mark=install.SHIM_MARK, verb=verb, hook=name, run_env=RUN_HOOK_ENV
+            mark=SHIM_MARK, verb=verb, hook=name, run_env=RUN_HOOK_ENV
         )
-    scripts[hooks / "pre-push"] = install.PRE_PUSH_SHIM.format(
-        python=Path(sys.base_prefix, "bin", "python3"),
-        mark=install.SHIM_MARK,
-        pattern=TBHB_DEV_ORIGIN.pattern,
-        run_env={
+    scripts[hooks / "pre-push"] = pre_push_shim(
+        Path(sys.base_prefix, "bin", "python3"),
+        TBHB_DEV_ORIGIN.pattern,
+        {
             pre_push_guard.RUN_NAME_ENV: run_name,
             pre_push_guard.RUN_START_REF_ENV: start_ref or "",
             pre_push_guard.RUN_START_TIP_ENV: start,

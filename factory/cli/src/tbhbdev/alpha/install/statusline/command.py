@@ -2,8 +2,10 @@
 
 import shlex
 from pathlib import PurePath
+from typing import TYPE_CHECKING
 
-type Json = dict[str, object]
+if TYPE_CHECKING:
+    from tbhbdev.alpha.install.model import Json
 
 COLUMNS_PREFIX = (
     "COLUMNS=${COLUMNS:-$(tmux display-message -p '#{pane_width}' 2>/dev/null"
@@ -72,3 +74,20 @@ def replaceable_line(config: Json, install_dir: PurePath) -> Json | None:
         return None
     known = command in OLD_STATUSLINES or is_ours(command, install_dir)
     return line if known else None
+
+
+def missing_tool(node: str | None, bun: str | None, *, installed: bool) -> str | None:
+    """Name the runtime or installer needed for a usable status line."""
+    if not node:
+        return "node"
+    if not installed and not bun:
+        return "bun"
+    return None
+
+
+def pinned_settings(config: Json, install_dir: PurePath, command: str) -> Json | None:
+    """Set the command if the current status line is still one we can replace."""
+    line = replaceable_line(config, install_dir)
+    if line is None:
+        return None
+    return {**config, "statusLine": {**line, "command": command}}
