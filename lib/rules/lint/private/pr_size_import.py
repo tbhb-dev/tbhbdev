@@ -42,7 +42,9 @@ def replacement_pairs(value: object) -> Replacements:
     return [(old.encode(), new.encode()) for old, new in cast("list[list[str]]", value)]
 
 
-def read_map(data: bytes) -> tuple[str, str, dict[str, tuple[str, Replacements]]]:
+def read_map(
+    data: bytes, map_path: str
+) -> tuple[str, str, dict[str, tuple[str, Replacements]]]:
     made = tomllib.loads(data.decode())
     repo, commit, dest = (made.get(key) for key in ("repo", "commit", "dest"))
     copies = made.get("copy", {})
@@ -54,6 +56,7 @@ def read_map(data: bytes) -> tuple[str, str, dict[str, tuple[str, Replacements]]
         or not isinstance(commit, str)
         or not re.fullmatch(r"[0-9a-f]{40}", commit)
         or not clean_path(dest)
+        or map_path != f"{dest}/IMPORT-MAP.toml"
         or not isinstance(copies, dict)
         or not isinstance(rewrites, dict)
     ):
@@ -156,11 +159,12 @@ def main(executable: str, head: str, changed_file: str) -> None:
             continue
         data = git(executable, "cat-file", "blob", f"{head}:{path}")
         try:
-            repo, commit, writes = read_map(data)
+            repo, commit, writes = read_map(data, path)
             if writes:
                 verified |= copied_paths(executable, repo, commit, writes, candidate)
+                verified.add(path)
         except subprocess.SubprocessError, ValueError, OSError:
-            # A malformed map or unavailable frozen source proves no copies.
+            # A malformed map or unavailable frozen source proves no imports.
             continue
     changed = Path(changed_file)
     paths = changed.read_bytes().split(b"\0")[:-1]

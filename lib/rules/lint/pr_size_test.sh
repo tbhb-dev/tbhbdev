@@ -82,7 +82,7 @@ cp "$clone/source.py" project/
 printf 'repo = "example/source"\ncommit = "%s"\ndest = "project"\n[copy]\n"source.py" = "project/source.py"\n' \
   "$frozen" >project/IMPORT-MAP.toml
 commit
-check_import 0 0 5 600
+check_import 0 0 0 605
 cat >>project/IMPORT-MAP.toml <<'EOF'
 [rewrite."rewrite.py"]
 dest = "project/rewrite.py"
@@ -90,21 +90,27 @@ replace = [["x", "y"], ["y", "z"], ["1", "2"]]
 EOF
 lines 600 'z = 2 + 2' >project/rewrite.py
 commit
-check_import 0 0 8 1200
+check_import 0 0 0 1208
 printf 'extra = 3\n' >>project/rewrite.py
 commit
-check_import 1 601 609 600
+check_import 1 601 601 608
 lines 600 'z = 2 + 2' >project/rewrite.py
 cp project/rewrite.py outside.py
 commit
-check_import 1 600 608 1200
+check_import 1 600 600 1208
 cp project/IMPORT-MAP.toml "$scratch/valid-map"
 sed 's|dest = "project/rewrite.py"|dest = "outside.py"|' "$scratch/valid-map" >project/IMPORT-MAP.toml
 rm project/rewrite.py
 commit
 check_import 1 1200 1208 0
-mv "$scratch/valid-map" project/IMPORT-MAP.toml
 mv outside.py project/rewrite.py
+mkdir project/nested
+cp "$scratch/valid-map" project/nested/IMPORT-MAP.toml
+rm project/IMPORT-MAP.toml
+commit
+check_import 1 1200 1208 0
+rm project/nested/IMPORT-MAP.toml
+mv "$scratch/valid-map" project/IMPORT-MAP.toml
 printf '\n[rewrite."missing.py"]\ndest = "project/missing.py"\nreplace = [["old", 42]]\n' >>project/IMPORT-MAP.toml
 commit
 check_import 1 1200 1212 0
