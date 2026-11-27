@@ -1,8 +1,10 @@
 """Tests for install command."""
 
 import hashlib
+import io
 import json
 import shutil
+import sys
 import tomllib
 from typing import TYPE_CHECKING
 
@@ -64,6 +66,26 @@ def test_main_installs_the_git_hooks_and_every_harness(
         assert f"wrote {path}\n" in out
         assert path.is_file()
     assert (world.hooks / "commit-msg").is_file()
+
+
+def test_main_hook_installs_only_the_payloads_git_hooks(
+    world: World,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    elsewhere = tmp_path / "elsewhere"
+    elsewhere.mkdir()
+    monkeypatch.chdir(elsewhere)
+    payload = io.StringIO(json.dumps({"cwd": str(world.repo)}))
+    monkeypatch.setattr(sys, "stdin", payload)
+    assert command.main(["--hook"], "tbhbdev alpha install") == 0
+    out, err = capsys.readouterr()
+    assert out == ""
+    assert err.startswith("prek installed pre-commit\nprek installed pre-push\n")
+    assert err.endswith(f"git hooks in {world.hooks}\n")
+    assert (world.hooks / "commit-msg").is_file()
+    assert list(world.home.iterdir()) == []
 
 
 def test_main_honors_the_harness_config_variables(

@@ -24,25 +24,6 @@ def feed(monkeypatch: pytest.MonkeyPatch, data: Json) -> None:
     monkeypatch.setattr(sys, "stdin", io.StringIO(json.dumps(data)))
 
 
-def test_session_start_installs_only_the_payloads_git_hooks(
-    world: World,
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-    capsys: pytest.CaptureFixture[str],
-) -> None:
-    elsewhere = tmp_path / "elsewhere"
-    elsewhere.mkdir()
-    monkeypatch.chdir(elsewhere)
-    feed(monkeypatch, {"cwd": str(world.repo)})
-    assert session.session_start(os.environ) == 0
-    out, err = capsys.readouterr()
-    assert out == ""
-    assert err.startswith("prek installed pre-commit\nprek installed pre-push\n")
-    assert err.endswith(f"git hooks in {world.hooks}\n")
-    assert (world.hooks / "commit-msg").is_file()
-    assert list(world.home.iterdir()) == []
-
-
 def test_session_start_reports_a_failure_on_stderr_and_exits_0(
     world: World, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:

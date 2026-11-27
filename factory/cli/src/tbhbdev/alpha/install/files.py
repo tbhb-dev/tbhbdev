@@ -47,15 +47,6 @@ def free_name(path: Path) -> Path:
     return found
 
 
-def copy_backup(target: Path, backup: Path, mode: int | None) -> None:
-    """Copy TARGET to BACKUP with its mode, or with MODE from the first byte."""
-    if mode is None:
-        shutil.copy2(target, backup)
-        return
-    backup.touch(mode=mode)
-    shutil.copyfile(target, backup)
-
-
 def open_tmp(tmp: Path, mode: int | None) -> IO[str]:
     """Open the temporary file for writing, created with MODE when given."""
     if mode is None:
@@ -78,16 +69,17 @@ def check_unchanged(target: Path, old: str | None) -> None:
 
 
 def write_config(
-    path: Path, old: str | None, new: str, mode: int | None = None
+    path: Path, old: str | None, new: str, *, new_file_mode: int | None = None
 ) -> Path | None:
     """Replace a config atomically, backing up the old one; return the backup.
 
     The new text is synced to disk before it replaces the old. On any failure
-    the temporary file goes, and the OSError becomes an InstallError. A MODE
-    sets the permissions of the new file and the backup from creation on;
-    without one, both keep the old file's. The file is read again just before
-    the replace, and an edit since OLD was read aborts the write. An edit in the
-    gap between that read and the replace is still lost; the backup keeps it.
+    the temporary file goes, and the OSError becomes an InstallError.
+    NEW_FILE_MODE sets the permissions at creation when there is no old file.
+    For an existing file, the replacement and backup keep its permissions.
+    The file is read again just before the replace, and an edit since OLD was
+    read aborts the write. An edit in the gap between that read and the replace
+    is still lost; the backup keeps it.
     """
     target = path.resolve()
     tmp = target.with_name(f".{target.name}.{os.getpid()}.tmp")
@@ -97,12 +89,12 @@ def write_config(
         if old is not None:
             name = f"{target.name}.tbhbdev-backup.{stamp()}"
             backup = free_name(target.with_name(name))
-            copy_backup(target, backup, mode)
-        with open_tmp(tmp, mode) as out:
+            shutil.copy2(target, backup)
+        with open_tmp(tmp, new_file_mode if old is None else None) as out:
             out.write(new)
             out.flush()
             os.fsync(out.fileno())
-        if old is not None and mode is None:
+        if old is not None:
             shutil.copymode(target, tmp)
         check_unchanged(target, old)
         tmp.replace(target)

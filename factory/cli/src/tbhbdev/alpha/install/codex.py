@@ -45,7 +45,7 @@ def trust_codex_hooks(
         if dry_run:
             print(config_diff(path, old, new), end="")
             return status
-        backup = write_config(path, old, new, 0o600 if old is None else None)
+        backup = write_config(path, old, new, new_file_mode=0o600)
     except (InstallError, ValueError) as exc:
         print(f"{PROG}: codex: cannot trust hooks in {path}: {exc}", file=sys.stderr)
         return 1
