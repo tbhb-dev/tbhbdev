@@ -2071,16 +2071,28 @@ def _size_base(
     return base, default_ref
 
 
-def _print_size_counts(command_name: str, counts: size_gate.SizeCounts) -> None:
-    """Print size totals for check and when create evaluates import maps."""
+def _print_size_counts(
+    command_name: str, counts: size_gate.SizeCounts, head_branch: str
+) -> None:
+    """Print size totals for check, imports and exempt branches."""
     output = sys.stdout if command_name == "check" else sys.stderr
     if counts.imported_lines is not None:
         print(
             f"{counts.imported_lines} added lines verified by import maps", file=output
         )
-    if command_name == "check" or counts.imported_lines is not None:
+    if (
+        command_name == "check"
+        or counts.imported_lines is not None
+        or counts.branch_exempt
+    ):
         print(f"{counts.code_lines} code lines, limit {counts.code_limit}", file=output)
         print(f"{counts.raw_lines} raw lines, limit {counts.raw_limit}", file=output)
+    if counts.branch_exempt:
+        print(
+            f"Branch {head_branch} is exempt from the size limit by "
+            ".github/pr-size-exempt-branches.txt",
+            file=output,
+        )
 
 
 def _report_size_excess(
@@ -2118,18 +2130,20 @@ def check_size(args: argparse.Namespace, checked: Checked) -> None:
         base, default_ref = _size_base(
             branch, explicit_base=explicit_base, dry_run=dry_run
         )
+        _, head_branch = git("branch", "--show-current")
         tools = _TOOL_PATHS.get()
         counts = size_gate.size_counts(
             base,
             "HEAD",
             default_ref=default_ref,
+            head_branch=head_branch,
             scc=find_tool(SCC),
             git=tools.get((GIT, False), GIT),
         )
     except size_gate.SizeCountError as exc:
         size_unavailable(checked, str(exc))
         return
-    _print_size_counts(args.command, counts)
+    _print_size_counts(args.command, counts, head_branch)
     if counts.failed is not None:
         _report_size_excess(args.draft, checked, counts, dry_run=dry_run)
 

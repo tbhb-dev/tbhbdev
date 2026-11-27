@@ -14,8 +14,6 @@ _IMPORTED_TESTS = [
     "test_alpha_agent_run_host",
     "test_alpha_agent_sandbox_live",
     "test_alpha_agent_settings",
-    "test_alpha_loop_rules",
-    "test_alpha_loop_store",
     "test_alpha_pull_request",
     "test_alpha_review_doc",
 ]
@@ -54,7 +52,6 @@ _IO_TESTS = [
     "test_alpha_guard_ssh_agent",
     "test_alpha_identity",
     "test_alpha_install",
-    "test_alpha_loop_store_recovery",
     "test_alpha_monorepo",
     "test_alpha_opened",
     "test_alpha_pre_push_guard",

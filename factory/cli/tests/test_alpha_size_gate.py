@@ -19,6 +19,7 @@ GOOD = {
     "raw_limit": 1500,
     "imported_lines": None,
     "failed": None,
+    "branch_exempt": False,
 }
 
 
@@ -97,6 +98,64 @@ def test_size_count_matches_rules_counting(
 
     monkeypatch.setattr(sg.subprocess, "run", without_bazel)
     assert sg.size_counts(base, "HEAD") == expected
+
+
+@pytest.mark.parametrize("command", ["check", "create"])
+@pytest.mark.parametrize(
+    "head_branch", ["agent/cleanup-module", "agent/other", "agent/self-exempt"]
+)
+def test_branch_exemption_uses_the_base_policy(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    command: str,
+    head_branch: str,
+) -> None:
+    monkeypatch.chdir(tmp_path)
+
+    def git(*args: str) -> str:
+        return subprocess.check_output(
+            [
+                "git",
+                "-c",
+                "user.name=test",
+                "-c",
+                "user.email=test@example.invalid",
+                *args,
+            ],
+            text=True,
+        ).strip()
+
+    git("init", "-q")
+    policy = tmp_path / ".github/pr-size-exempt-branches.txt"
+    policy.parent.mkdir()
+    policy.write_text("# Cleanup exemption\n\nagent/cleanup-*")
+    git("add", ".")
+    git("commit", "-qm", "base")
+    base = git("rev-parse", "HEAD")
+    (tmp_path / "source.py").write_text("x = 1\n" * 401)
+    policy.write_text(policy.read_text() + "\nagent/self-exempt\n")
+    git("add", ".")
+    git("commit", "-qm", "change")
+
+    monkeypatch.setattr(pr, "git", Mock(return_value=(0, head_branch)))
+    monkeypatch.setattr(pr, "_size_base", Mock(return_value=(base, None)))
+    monkeypatch.setattr(pr, "find_tool", Mock(return_value="scc"))
+    checked = pr.Checked([], meta={"base": "main"})
+    pr.check_size(argparse.Namespace(command=command, draft="d.md"), checked)
+
+    captured = capsys.readouterr()
+    if head_branch == "agent/cleanup-module":
+        assert checked.problems == []
+        output = (
+            "401 code lines, limit 400\n401 raw lines, limit 1500\n"
+            f"Branch {head_branch} is exempt from the size limit by "
+            ".github/pr-size-exempt-branches.txt\n"
+        )
+        assert captured == ((output, "") if command == "check" else ("", output))
+    else:
+        assert checked.problems == [(1, "401 lines, limit 400: split into stacked PRs")]
+        assert "is exempt" not in captured.out + captured.err
 
 
 @pytest.mark.parametrize(
@@ -262,6 +321,7 @@ def test_counts(
             str(sg.DATA / "pr-size-exempt.txt"),
             default_ref or "",
             sys.executable,
+            "",
         ],
     )
     assert runner.call_args.kwargs == {
@@ -398,6 +458,7 @@ def test_pr_check(
         "refs/remotes/origin/main",
         "HEAD",
         default_ref=None,
+        head_branch="",
         scc="/tools/scc",
         git="/tools/git",
     )
@@ -500,6 +561,7 @@ def test_pr_create_size(
             "refs/remotes/origin/main",
             "HEAD",
             default_ref=None,
+            head_branch="",
             scc="/tools/scc",
             git="/tools/git",
         )
@@ -552,6 +614,7 @@ def test_both_stacked_refs_are_refreshed_without_tags_then_counted(
         "refs/remotes/origin/topic",
         "HEAD",
         default_ref="refs/remotes/origin/main",
+        head_branch="",
         scc="/tools/scc",
         git="git",
     )

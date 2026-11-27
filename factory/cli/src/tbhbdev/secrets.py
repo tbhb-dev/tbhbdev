@@ -29,9 +29,10 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Protocol, override
 
 import httpx
+import httpx2
 from cryptography.exceptions import UnsupportedAlgorithm
 from cryptography.hazmat.primitives import serialization
-from onepasswordconnectsdk.client import Client
+from onepasswordconnectsdk import client as connect_client
 from onepasswordconnectsdk.config import ClientConfig
 from onepasswordconnectsdk.utils import PathBuilder
 
@@ -60,6 +61,7 @@ MAX_TOKEN_FILE = 1 << 16
 # keychain's. Nothing in production sets it.
 TEST_TOKEN_ENV = "TBHBDEV_TEST_TOKEN"  # noqa: S105  # nosec B105
 
+# The Connect SDK creates httpx sessions and raises httpx exceptions.
 TIMEOUT = httpx.Timeout(10.0, connect=5.0)
 KEYCHAIN_TIMEOUT = 10.0
 CLIENT_ERROR = 400
@@ -260,18 +262,18 @@ class Connect:
     def __init__(self, token: str, urls: Sequence[str]) -> None:
         self._token = token
         self._urls = list(urls)
-        self._clients: dict[str, Client] = {}
+        self._clients: dict[str, connect_client.Client] = {}
 
     def __repr__(self) -> str:
         return f"Connect(endpoints={len(self._urls)})"
 
-    def _client(self, url: str) -> Client:
+    def _client(self, url: str) -> connect_client.Client:
         if url not in self._clients:
-            # A Client whose constructor fails raises again as it's deleted,
+            # An SDK client whose constructor fails raises again as it's deleted,
             # so a URL httpx refuses never reaches one.
             httpx.URL(url)
-            config = ClientConfig(timeout=TIMEOUT)
-            self._clients[url] = Client(url, self._token, config)
+            config = ClientConfig(timeout=TIMEOUT, verify=httpx2.create_ssl_context())
+            self._clients[url] = connect_client.Client(url, self._token, config)
         return self._clients[url]
 
     def _send(
@@ -649,7 +651,7 @@ class ExplicitItemMissingError(SecretsError):
     """Connect could not find the requested item."""
 
 
-class _ExplicitClient(Client):
+class _ExplicitClient(connect_client.Client):
     @override  # noqa: V105  # The SDK calls this session factory.
     def create_session(self, url: str, token: str) -> httpx.Client:
         # The SDK's default session reads a timeout from the environment even
@@ -659,12 +661,13 @@ class _ExplicitClient(Client):
             headers=self.build_headers(token),
             timeout=TIMEOUT,
             trust_env=False,
+            verify=httpx2.create_ssl_context(trust_env=False),
         )
 
 
 class _ExplicitConnect(Connect):
     @override
-    def _client(self, url: str) -> Client:
+    def _client(self, url: str) -> connect_client.Client:
         if url not in self._clients:
             httpx.URL(url)
             self._clients[url] = _ExplicitClient(url, self._token)

@@ -200,6 +200,7 @@ jobs:
           BASE_REF: ${{ github.event.pull_request.base.ref }}
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
           DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+          PR_SIZE_HEAD_BRANCH: ${{ github.event.pull_request.head.ref }}
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         shell: bash
         run: |
@@ -217,7 +218,8 @@ jobs:
               base=$shared_default
             fi
           fi
-          bazel run --config=ci @tbhb_rules//lint:pr_size -- "$base" "$head"
+          # A stacked diff can use a synthetic base tree. Read policy from the actual base.
+          PR_SIZE_POLICY_BASE="$BASE_SHA" bazel run --config=ci @tbhb_rules//lint:pr_size -- "$base" "$head"
 
   design-report:
     name: design-report
@@ -279,15 +281,30 @@ jobs:
         with:
           version: 2026.11.9
 
-      # Lint every tracked Markdown file except the paths in
-      # .github/prose-lint-debt.txt, which still fail and are tracked as debt.
       - name: Lint prose
+        shell: bash
         run: |
+          skip_paths=()
+          exclusions=()
+          while IFS= read -r path || [[ -n $path ]]; do
+            [[ -z $path || $path == \#* ]] && continue
+            if [[ $path != *.md || ! -f $path ]]; then
+              printf 'Prose skip list entry must name an existing Markdown file: %s\n' "$path" >&2
+              exit 1
+            fi
+            skip_paths+=("$path")
+            exclusions+=(":(exclude,literal)$path")
+          done < .github/prose-lint-debt.txt
+          if (( ${#skip_paths[@]} )); then
+            git --literal-pathspecs ls-files --error-unmatch -- "${skip_paths[@]}" >/dev/null
+          fi
+
+          files="$RUNNER_TEMP/prose-files"
+          git ls-files -z -- '*.md' "${exclusions[@]}" >"$files"
           vale sync
-          git ls-files -z -- '*.md' | grep -zvxFf .github/prose-lint-debt.txt > "$RUNNER_TEMP/prose-files" || true
-          xargs -0 -a "$RUNNER_TEMP/prose-files" vale
-          xargs -0 -a "$RUNNER_TEMP/prose-files" cspell --no-progress
-          xargs -0 -a "$RUNNER_TEMP/prose-files" rumdl check
+          xargs -0 -r -a "$files" vale
+          xargs -0 -r -a "$files" cspell --no-progress
+          xargs -0 -r -a "$files" rumdl check
 
   conclusion:
     name: conclusion

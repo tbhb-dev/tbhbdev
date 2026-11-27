@@ -5,8 +5,10 @@
 
 set -euo pipefail
 # Counting logic and policy from tbhb-dev/rules at 0b12df1dd60e1f35a45695974d6a074ad47d86e7.
-# Keep both in sync with lint/private/pr_size.sh.tpl and pr-size-exempt.txt.
+# Keep counting and branch exemptions in sync with lint/private/pr_size.sh.tpl.
+# Keep pr-size-exempt.txt in sync with the rules copy too.
 base=$1 head=$2 scc=$3 git=$4 policy=$5 default_ref=${6:-} python=$7
+head_branch=${8:-} policy_base=$base
 helper=${BASH_SOURCE[0]%/*}/pr-size-import
 for tool in "$scc" "$git"; do
   if ! type -P -- "$tool" >/dev/null; then
@@ -16,8 +18,19 @@ for tool in "$scc" "$git"; do
 done
 top=$("$git" rev-parse --show-toplevel)
 cd "$top"
-if [[ ${PR_AUTHOR:-} == 'tbhb-dev-renovate[bot]' ]]; then
-  echo '{"code_lines": 0, "code_limit": 400, "raw_lines": 0, "raw_limit": 1500, "imported_lines": null, "failed": null}'
+branch_exempt=false
+if [[ -n $head_branch ]]; then
+  while IFS= read -r pattern || [[ -n $pattern ]]; do
+    [[ -z $pattern || $pattern == \#* ]] && continue
+    # shellcheck disable=SC2053 # The policy contains globs.
+    if [[ $head_branch == $pattern ]]; then
+      branch_exempt=true
+      break
+    fi
+  done < <("$git" show "$policy_base:.github/pr-size-exempt-branches.txt" 2>/dev/null || true)
+fi
+if [[ $branch_exempt == false && ${PR_AUTHOR:-} == 'tbhb-dev-renovate[bot]' ]]; then
+  echo '{"code_lines": 0, "code_limit": 400, "raw_lines": 0, "raw_limit": 1500, "imported_lines": null, "failed": null, "branch_exempt": false}'
   exit 0
 fi
 # A repository's baseline PR is exempt while main's live tip is its single root
@@ -33,9 +46,9 @@ root_count=0
 if [[ -n $base_commit ]]; then
   root_count=$("$git" rev-list --count "$base_commit") || root_count=0
 fi
-if [[ -n $base_commit && $shallow == false && $root_count == 1 &&
+if [[ $branch_exempt == false && -n $base_commit && $shallow == false && $root_count == 1 &&
   ${MAIN_TIP:-} == "$base_commit" ]]; then
-  echo '{"code_lines": 0, "code_limit": 400, "raw_lines": 0, "raw_limit": 1500, "imported_lines": null, "failed": null}'
+  echo '{"code_lines": 0, "code_limit": 400, "raw_lines": 0, "raw_limit": 1500, "imported_lines": null, "failed": null, "branch_exempt": false}'
   exit 0
 fi
 range="$base...$head"
@@ -136,9 +149,11 @@ while IFS= read -r -d '' path; do
   code=$((code + ${amount:-0}))
 done <"$work/files"
 failed=null
-if ((code > 400)); then
-  failed='"code"'
-elif ((raw > 1500)); then
-  failed='"raw"'
+if [[ $branch_exempt == false ]]; then
+  if ((code > 400)); then
+    failed='"code"'
+  elif ((raw > 1500)); then
+    failed='"raw"'
+  fi
 fi
-printf '{"code_lines": %d, "code_limit": 400, "raw_lines": %d, "raw_limit": 1500, "imported_lines": %s, "failed": %s}\n' "$code" "$raw" "$imported_lines" "$failed"
+printf '{"code_lines": %d, "code_limit": 400, "raw_lines": %d, "raw_limit": 1500, "imported_lines": %s, "failed": %s, "branch_exempt": %s}\n' "$code" "$raw" "$imported_lines" "$failed" "$branch_exempt"

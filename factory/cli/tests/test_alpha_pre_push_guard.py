@@ -10,7 +10,7 @@ import sys
 from pathlib import Path
 from unittest.mock import Mock
 
-import httpx
+import httpx2
 import pytest
 from fake_tool import pythonpath, write_fake
 
@@ -489,8 +489,8 @@ def signing_key_request(monkeypatch: pytest.MonkeyPatch) -> Mock:
     real = pg.public_keys
 
     def public_keys(*, timeout: int) -> list[str]:
-        transport = httpx.MockTransport(
-            lambda sent: httpx.Response(200, content=request(sent))
+        transport = httpx2.MockTransport(
+            lambda sent: httpx2.Response(200, content=request(sent))
         )
         return real(timeout=timeout, transport=transport)
 
@@ -597,6 +597,16 @@ def test_an_org_agent_can_retry_a_push_with_no_ref_updates(
     monkeypatch.setattr(sys, "stdin", io.StringIO(""))
     assert pg.main(["origin", "https://github.com/tbhb-dev/example.git"], "p") == 0
     assert capsys.readouterr().err == ""
+
+
+def test_push_refuses_a_blank_destination(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    monkeypatch.setattr(sys, "stdin", io.StringIO(""))
+    assert pg.main(["origin", " "], "p") == 1
+    assert capsys.readouterr().err == (
+        "pre-push-guard: cannot determine the push destination; push refused\n"
+    )
 
 
 @pytest.mark.parametrize("query", ["for-each-ref", "batch", "commit"])

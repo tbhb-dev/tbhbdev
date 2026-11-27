@@ -41,9 +41,10 @@ cli_py_library(
     deps = [
         ":audit",
         ":policy",
+        "//factory/cli/src/tbhbdev:github_tls",
         "//factory/cli/src/tbhbdev:secrets",
         "//factory/cli/src/tbhbdev/alpha:gh_app",
-        "@cli_pip//httpx",
+        "@cli_pip//httpx2",
     ],
 )
 

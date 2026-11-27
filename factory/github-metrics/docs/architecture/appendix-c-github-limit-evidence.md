@@ -6,7 +6,7 @@ This page moves the evidence tables out of the original design, appendix A of th
 
 ## GitHub documentation pages
 
-Each page resolved on 2026-11-13. A resolving page proves only that the page exists, and the claims tables show which claims the author checked against it.
+Each page resolved on 2026-11-13. A successful request confirms the page exists. The claims tables identify what the author checked against it.
 
 | Short name | URL |
 | --- | --- |
@@ -35,13 +35,13 @@ The design sizes its request budget from these figures. The budget in `internal/
 | An installation gets at least 5,000 requests an hour, 50 more per repository once it has more than 20, and at most 12,500 | Existing | Rate limits for the REST API |
 | Secondary limits include 100 concurrent requests and 900 points a minute for REST, and a client waits for `retry-after` or at least one minute | Existing, 900 points re-read 2026-11-13 | Rate limits for the REST API |
 | Most REST `GET`, `HEAD`, and `OPTIONS` requests cost 1 secondary-limit point | Existing, re-read 2026-11-13 | Rate limits for the REST API |
-| A `304` answer costs no secondary-limit point | Unverified | The design's pacer counts it anyway |
+| A `304` answer costs no secondary-limit point | Unverified | The pacer in the design counts it anyway |
 | A conditional request that returns `304` doesn't count against the primary limit when it includes an `Authorization` header | Existing | Best practices for using the REST API |
 | GitHub advises serial requests to avoid secondary limits | Existing | Best practices for using the REST API |
 | List endpoints return at most 100 items a page | Existing, re-read 2026-11-13 | Pull request endpoints, `per_page` |
 | The PR commits endpoint returns at most 250 commits | Existing, re-read 2026-11-13 | Pull request endpoints |
 | About a third of per-PR lists need a second page | Unverified | An assumption for the budget, and the design's first run would measure it |
-| `ETag` values remain valid across the hourly token rotation | Unverified | The first live run after plan step 7 on [page 11](11-risks-and-technical-debt.md) would measure the `304` rate |
+| `ETag` values remain valid when tokens rotate each hour | Unverified | The first live run after plan step 7 on [page 11](11-risks-and-technical-debt.md) would measure the `304` rate |
 
 ## Webhook delivery and payload limits
 
@@ -50,7 +50,7 @@ The receiver exists today. The design plans the rest of its delivery handling.
 | Claim | Label | Source |
 | --- | --- | --- |
 | GitHub caps webhook payloads at 25 MB | Existing, re-read 2026-11-13 | Webhook events and payloads |
-| The webhook signature is a Hash-based Message Authentication Code (HMAC) over the payload contents only, so headers such as `X-GitHub-Delivery` aren't covered | Existing, re-read 2026-11-13 | Validating webhook deliveries |
+| The webhook signature is a Hash-based Message Authentication Code (HMAC) over the payload contents. It excludes headers such as `X-GitHub-Delivery` | Existing, re-read 2026-11-13 | Validating webhook deliveries |
 | GitHub doesn't redeliver failed deliveries automatically | Existing | Handling failed webhook deliveries |
 | Listing and redelivering App webhook deliveries needs a JSON Web Token (JWT) | Existing | GitHub App webhook endpoints |
 | A redelivery keeps its original `X-GitHub-Delivery` value | Unverified | The docs read for the design don't say |
@@ -64,7 +64,7 @@ The receiver exists today. The design plans the rest of its delivery handling.
 | `issue_comment` needs Issues read, `check_run` and `check_suite` need Checks read, and `push` needs Contents read | Existing | Webhook events and payloads |
 | Listing pull requests (PRs), a PR's commits, its reviews, and its requested reviewers needs Pull requests read | Existing | Permissions required for GitHub Apps |
 | The PR files endpoint is under Pull requests read | Existing, re-read 2026-11-13 | Permissions required for GitHub Apps |
-| The issue timeline endpoint accepts either Issues read or Pull requests read | Existing | Permissions required for GitHub Apps |
+| To read the timeline of an issue, the caller needs read access to either Issues or Pull requests | Existing | Permissions required for GitHub Apps |
 | The manifest keys are `default_permissions` and `default_events` | Existing | Registering an App from a manifest |
 | The permission keys are `pull_requests` and `metadata` | New | GitHub App endpoints, "Create an installation access token for an app." Its `permissions` body uses these names. The manifest flow in plan step 7 on [page 11](11-risks-and-technical-debt.md) hasn't run yet, so it doesn't confirm them |
 
@@ -89,7 +89,7 @@ The receiver exists today. The design plans the rest of its delivery handling.
 
 | Claim | Label | Source |
 | --- | --- | --- |
-| `bbolt` doesn't zero freed pages, so logically deleted bodies can remain in the file | Unverified | Plan step 6 on [page 11](11-risks-and-technical-debt.md) covers file modes and backups |
+| The embedded database doesn't zero freed pages. Deleted bodies can remain in its file | Unverified | Plan step 6 on [page 11](11-risks-and-technical-debt.md) covers file modes and backups |
 
 ## Telemetry libraries and backends
 

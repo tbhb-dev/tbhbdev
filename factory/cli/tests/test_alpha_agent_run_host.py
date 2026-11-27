@@ -25,9 +25,9 @@ from functools import partial
 from pathlib import Path
 from types import SimpleNamespace
 from typing import TYPE_CHECKING, cast
-from unittest.mock import Mock
+from unittest.mock import ANY, Mock
 
-import httpx
+import httpx2
 import pytest
 from agent_host_example import (
     build_provenance,
@@ -2268,10 +2268,12 @@ def test_host_paths_refuse_before_any_host_execution(
         run_host.checked_policy(run, paths)
 
 
+@pytest.mark.parametrize("steer", [False, True])
 def test_final_answer_is_copied_only_after_child_stops(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, steer: bool
 ) -> None:
     run = make_run(tmp_path)
+    run.steer = steer
     run.files.write("prompt", "task")
     run.files.receive(run.request)
     prepared = preparation(run)
@@ -2295,7 +2297,12 @@ def test_final_answer_is_copied_only_after_child_stops(
     def launch(
         spec: process_group.Launch, *, started: Callable[[Child], None]
     ) -> Child:
-        assert spec.command[-2] == str(run.tmpdir / "out.final")
+        if steer:
+            assert "app-server --listen unix://" in spec.command[-1]
+            assert "--remote unix://" in spec.command[-1]
+            assert "model=" in spec.command[-1]
+        else:
+            assert spec.command[-2] == str(run.tmpdir / "out.final")
         assert not run.files.path("out.final").exists()
         (run.tmpdir / "out.final").write_text("answer")
         run.files.path("request.json").write_text(
@@ -4429,7 +4436,7 @@ BRANCH_REF = "refs/heads/agent/example"
         ((200, []), None, None),
         ((404, {}), None, ""),
         ((403, {}), None, None),
-        (httpx.ConnectError("offline"), None, None),
+        (httpx2.ConnectError("offline"), None, None),
     ],
 )
 def test_origin_tip_reads_the_run_branch_over_https(
@@ -4446,15 +4453,17 @@ def test_origin_tip_reads_the_run_branch_over_https(
         lookup = Mock(side_effect=result)
     else:
         status, body = result
-        response = httpx.Response(status, json=body, request=httpx.Request("GET", url))
+        response = httpx2.Response(
+            status, json=body, request=httpx2.Request("GET", url)
+        )
         lookup = Mock(return_value=response)
-    monkeypatch.setattr(httpx, "get", lookup)
+    monkeypatch.setattr(httpx2, "get", lookup)
     monkeypatch.setattr(credentials, "fetch_token", Mock(return_value=token))
     assert run_host.origin_tip(run) == tip
     headers = {"Accept": "application/vnd.github+json"}
     if token is not None:
         headers["Authorization"] = f"Bearer {token}"
-    lookup.assert_called_once_with(url, headers=headers, timeout=20)
+    lookup.assert_called_once_with(url, headers=headers, timeout=20, verify=ANY)
 
 
 def test_execute_rejects_a_stale_head_when_requiring_a_commit(

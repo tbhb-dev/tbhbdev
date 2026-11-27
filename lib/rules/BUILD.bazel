@@ -96,7 +96,6 @@ repo_files(
     exclude = [
         ".DS_Store",
         "**/.DS_Store",
-        "IMPORT-MAP.toml",
         ".bazelrc.user",
         ".coverage*",
         ".env*",

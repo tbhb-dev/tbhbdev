@@ -23,7 +23,6 @@
 * [Repository commands](repo.md) - Repository bootstrap.
 * [Merge](merge.md) - Merging an approved pull request.
 * [Monorepo commands](monorepo.md) - Writing the path map and making the import commit for a public repository.
-* [Loop](loop.md) - Configuration validation, the shadow runner, and the store.
 * [Agent](agent.md) - Run coordination, host checks, signing parity, fetch refs, and build run expectations.
 * [Verify range](verify-range.md) - Per-commit attribution and signature checks over a range.
 * [Brief](brief.md) - Peer-run brief skeletons and checks.

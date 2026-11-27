@@ -28,7 +28,6 @@ bazelisk
 bazeliskrc
 bazelrc
 bazelversion
-bbolt
 bged
 BINDIR
 boottime

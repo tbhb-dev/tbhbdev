@@ -8,9 +8,9 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import NamedTuple, cast
 
-import httpx
+import httpx2
 
-from tbhbdev import secrets
+from tbhbdev import github_tls, secrets
 from tbhbdev.admin import policy
 from tbhbdev.admin.audit import Audit, RefusedError, record
 from tbhbdev.alpha import gh_app
@@ -114,12 +114,13 @@ def send(
             permissions=permissions,
         )
         with (
-            httpx.Client(
+            httpx2.Client(
                 base_url=gh_app.API,
                 transport=runtime.env.transport,
                 timeout=gh_app.TIMEOUT,
                 follow_redirects=False,
                 trust_env=False,
+                verify=github_tls.public_roots(),
                 headers={
                     AUTHORIZATION: f"Bearer {minted.token}",
                     **HEADERS,
@@ -139,7 +140,7 @@ def send(
             return response.status_code, redact(
                 data.decode(errors="replace"), minted.token, key
             )
-    except gh_app.GhAppError, httpx.HTTPError:
+    except gh_app.GhAppError, httpx2.HTTPError:
         msg = "request_failed"
         raise RefusedError(msg) from None
 

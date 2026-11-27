@@ -237,6 +237,11 @@ def test_session_root_none_outside_an_agent() -> None:
     assert gh_shim.session_root({"PATH": "/bin"}) is None
 
 
+@pytest.mark.usefixtures("world")
+def test_committer_email_identifies_agent_operation() -> None:
+    assert gh_shim.agent_operation({"GIT_COMMITTER_EMAIL": gh_shim.AGENT_EMAIL})
+
+
 def test_markers_are_the_harness_variables() -> None:
     assert gh_shim.ROOT_IDS == (
         "TBHB_GH_ROOT_SESSION",
