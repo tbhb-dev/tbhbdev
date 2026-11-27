@@ -238,6 +238,7 @@ cli_py_library(
         "//factory/cli/src/tbhbdev/alpha:identity",
         "//factory/cli/src/tbhbdev/alpha:install",
         "//factory/cli/src/tbhbdev/alpha:run_stop_hook",
+        "//factory/cli/src/tbhbdev/alpha:size_gate",
         "//factory/cli/src/tbhbdev/alpha/agent/decisions:argv",
         "//factory/cli/src/tbhbdev/alpha/agent/decisions:config",
         "//factory/cli/src/tbhbdev/alpha/agent/decisions:policy",

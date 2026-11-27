@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import io
+import json
 from dataclasses import replace
 from types import SimpleNamespace
 from typing import TYPE_CHECKING, cast
@@ -12,15 +14,14 @@ import pytest
 from cue_fixtures import review_cue as review_cue  # noqa: PLC0414
 
 from tbhbdev import content
-from tbhbdev.alpha import identity, review, review_doc
-from tbhbdev.alpha.agent import credentials, review_post, runfiles
+from tbhbdev.alpha import identity, review, review_doc, run_stop_hook
+from tbhbdev.alpha.agent import credentials, review_post, run_host, runfiles
 from tbhbdev.alpha.agent.decisions import request as requests
 from tbhbdev.alpha.agent.model import Harness, Invalid, Profile, RunKind, RunRequest
 
 if TYPE_CHECKING:
     from pathlib import Path
 
-    from tbhbdev.alpha.agent import run_host
     from tbhbdev.alpha.agent.model import Settings
 
 pytestmark = pytest.mark.usefixtures("review_cue")  # noqa: V107
@@ -69,8 +70,12 @@ def make(
         authorized_by=None,
         startup_deadline_seconds=60,
     )
-    run = SimpleNamespace(files=files, request=request, settings=object())
-    prepared = SimpleNamespace(paths=SimpleNamespace(worktree=str(workspace)))
+    run = SimpleNamespace(
+        files=files, request=request, settings=object(), tmpdir=tmp_path
+    )
+    prepared = SimpleNamespace(
+        paths=SimpleNamespace(worktree=str(workspace)), start=None
+    )
     return (
         cast("run_host.Run", run),
         cast("run_host.Prepared", prepared),
@@ -447,30 +452,52 @@ def test_a_missing_token_blocks_the_post(
 
 
 @pytest.mark.parametrize(
-    ("verdict", "head", "state"),
+    ("line", "state"),
     [
-        ("OVERRIDE", HEAD, "success"),
-        ("SPLIT", HEAD, "failure"),
-        ("OVERRIDE", "b" * 40, ""),
+        (f"VERDICT: OVERRIDE {HEAD}", "success"),
+        (f"VERDICT: SPLIT {HEAD}", "failure"),
+        (f"VERDICT: OVERRIDE {'b' * 40}", ""),
+        ("VERDICT: OVERRIDE", ""),
+        (f"VERDICT: GO {HEAD}", ""),
     ],
 )
 def test_sizing_review_posts_only_a_status_for_its_exact_head(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, verdict: str, head: str, state: str
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    line: str,
+    state: str,
 ) -> None:
     run, prepared = make(tmp_path, None)
     run.request = replace(run.request, variant="size-review")
-    run.files.write("out.final", f"VERDICT: {verdict} {head}\n")
+    answer = f"Review complete.\n{line}\n"
+    monkeypatch.setenv(
+        run_stop_hook.ENV, json.dumps(run_host.stop_context(run, prepared))
+    )
+    monkeypatch.setattr(
+        "sys.stdin", io.StringIO(json.dumps({"last_assistant_message": answer}))
+    )
+    assert run_stop_hook.main(["codex"], "tbhbdev alpha run-stop-hook") == 0
+    hook_output = capsys.readouterr().out
+    run.files.write("out.final", answer)
     monkeypatch.setattr(credentials, "review_post_token", Mock(return_value=MINTED))
     api = Api(monkeypatch)
     assert review_post.posted(run, prepared) == bool(state)
     if state:
+        assert hook_output == ""
         ((method, url, payload),) = api.calls
         assert (method, url) == (
             "POST",
             f"https://api.github.com/repos/o/r/statuses/{HEAD}",
         )
-        assert (payload or {}).get("state") == state
+        assert payload is not None
+        assert payload["context"] == "size-review"
+        assert payload["state"] == state
     else:
+        retry = json.loads(hook_output)
+        assert retry["decision"] == "block"
+        assert f"VERDICT: SPLIT {HEAD}" in retry["reason"]
+        assert f"VERDICT: OVERRIDE {HEAD}" in retry["reason"]
         assert api.calls == []
 
 

@@ -8,11 +8,12 @@ import os
 import re
 import sys
 from pathlib import Path
-from typing import TypedDict, cast
+from typing import NotRequired, TypedDict, cast
 
 from tbhbdev.alpha.agent import runfiles
 from tbhbdev.alpha.identity import as_str, parse_line, read_tail
 from tbhbdev.alpha.repo import git, read_hook_stdin
+from tbhbdev.alpha.size_gate import SIZE_VERDICTS
 
 ENV = "TBHBDEV_RUN_STOP"
 MAX_BLOCKS = 3
@@ -28,6 +29,7 @@ class StopRun(TypedDict):
     start: str | None
     counter: str
     log: str
+    size_head: NotRequired[str | None]  # noqa: V107 -- JSON key read with dict.get.
 
 
 def final_output(harness: str, data: dict[str, object]) -> str:
@@ -81,6 +83,24 @@ def build_reason(run: StopRun) -> str | None:
     return None
 
 
+def review_reason(run: StopRun, answer: str) -> str | None:
+    """Check the verdict format for this review."""
+    if head := run.get("size_head"):
+        final_line = answer.rstrip().rpartition("\n")[2]
+        if final_line in {f"VERDICT: {verdict} {head}" for verdict in SIZE_VERDICTS}:
+            return None
+        return (
+            f"Finish the sizing review with VERDICT: SPLIT {head} "
+            f"or VERDICT: OVERRIDE {head} as the final line."
+        )
+    if any(VERDICT.fullmatch(line) for line in answer.splitlines()):
+        return None
+    return (
+        "Finish the review and include a VERDICT: GO, VERDICT: BLOCK or "
+        "VERDICT: NO-GO line."
+    )
+
+
 def retry(run: StopRun, reason: str) -> bool:
     """Record at most three blocks, even with concurrent Stop callbacks."""
     count = Path(run["counter"])
@@ -116,15 +136,8 @@ def main(argv: list[str], prog: str) -> int:
     run = cast("StopRun", json.loads(context))
     if run["profile"] == "build":
         reason = build_reason(run)
-    elif any(
-        VERDICT.fullmatch(line) for line in final_output(harness, data).splitlines()
-    ):
-        reason = None
     else:
-        reason = (
-            "Finish the review and include a VERDICT: GO, VERDICT: BLOCK or "
-            "VERDICT: NO-GO line."
-        )
+        reason = review_reason(run, final_output(harness, data))
     try:
         if reason and retry(run, reason):
             decision = "continue" if harness == "antigravity" else "block"

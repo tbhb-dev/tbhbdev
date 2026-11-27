@@ -390,6 +390,7 @@ cli_py_library(
     deps = [
         ":identity",
         ":repo",
+        ":size_gate",
         "//factory/cli/src/tbhbdev/alpha/agent:runfiles",
     ],
 )

@@ -62,6 +62,7 @@ from tbhbdev.alpha.agent.model import (
 )
 from tbhbdev.alpha.agent.ownership import RunExistsError
 from tbhbdev.alpha.identity import RUN_MODEL_ENV
+from tbhbdev.alpha.size_gate import SIZE_REVIEW
 
 type BazelShutdown = dict[Path, tuple[str, tuple[int, int] | None]]
 
@@ -687,6 +688,19 @@ def resource_attributes(run: Run) -> dict[str, str]:
     }
 
 
+def stop_context(run: Run, prepared: Prepared) -> run_stop_hook.StopRun:
+    """Pass the run's completion conditions to its Stop hook."""
+    return run_stop_hook.StopRun(
+        profile=run.request.profile.value,
+        workspace=prepared.paths.worktree,
+        reference=f"refs/heads/agent/{run.files.name}",
+        start=prepared.start,
+        counter=str(run.tmpdir / "stop-count"),
+        log=str(run.files.path("log")),
+        size_head=run.request.commit if run.request.variant == SIZE_REVIEW else None,
+    )
+
+
 def run_harness(
     run: Run, prepared: Prepared, stack: ExitStack, *, preflight_only: bool = False
 ) -> int:
@@ -708,15 +722,7 @@ def run_harness(
     terminal = None if headless else sys.stdin.fileno()
     streams = (None, None, None)
     if headless:
-        context = run_stop_hook.StopRun(
-            profile=run.request.profile.value,
-            workspace=paths.worktree,
-            reference=f"refs/heads/agent/{run.files.name}",
-            start=prepared.start,
-            counter=str(run.tmpdir / "stop-count"),
-            log=str(run.files.path("log")),
-        )
-        env[run_stop_hook.ENV] = json.dumps(context)
+        env[run_stop_hook.ENV] = json.dumps(stop_context(run, prepared))
         streams = (
             stack.enter_context(run.files.path("prompt").open()),
             stack.enter_context(run.files.path("out").open("w")),
