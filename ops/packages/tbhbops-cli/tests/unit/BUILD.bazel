@@ -15,6 +15,7 @@ ops_py_test(
         "test_token_vaults.py",
     ],
     data = ["//ops/packages/tbhbops-cli/tests:token_golden"],
+    imports = [".."],
     deps = [
         "//ops/packages/tbhbops-cli/src",
         "@cli_pip//pytest",
