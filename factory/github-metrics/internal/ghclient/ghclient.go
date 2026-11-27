@@ -324,9 +324,9 @@ func (c *Client) send(ctx context.Context, full *url.URL, token string) (*reply,
 		return nil, fmt.Errorf("get %s: %w", full.Path, err)
 	}
 
-	defer func() { _ = res.Body.Close() }()
-
 	body, err := io.ReadAll(io.LimitReader(res.Body, maxBody+1))
+
+	err = errors.Join(err, res.Body.Close())
 	if err != nil {
 		return nil, fmt.Errorf("read %s: %w", full.Path, err)
 	}

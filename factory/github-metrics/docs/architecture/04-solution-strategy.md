@@ -1,6 +1,6 @@
 # 4. Solution strategy
 
-> Today versus design: the table states targets. The code has only the receiver, the request budget, and the GitHub client.
+> Today versus design: the table states targets. The code stops at the receiver, the request budget, and the GitHub client.
 
 | Goal | Approach |
 | --- | --- |
@@ -11,4 +11,4 @@
 | Metrics count once | Design: the worker commits each milestone to the store before it records the observation |
 | Bounded request volume | One shared token bucket serves every caller in priority order, and conditional requests make unchanged answers free |
 | Bounded memory | The receiver streams each body into the signature hash and never buffers it |
-| Logs follow the standard path | The design exports logs to the same collector endpoint as traces and metrics, and also writes JSON to standard output. Today only the JSON output exists |
+| Logs follow the standard path | The design exports logs to the same collector endpoint as traces and metrics, and also writes JSON to standard output. Today the service writes JSON to standard output and leaves collector export to the design |

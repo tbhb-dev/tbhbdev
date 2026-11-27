@@ -4,7 +4,7 @@ generated:
   - role: generated
     harness: codex
     model: openai:gpt-6
-    at: "2026-11-27T09:06:58Z"
+    at: "2026-11-27T14:44:32Z"
 status: stable
 tags: [alpha]
 title: Agent isolation limits
@@ -15,7 +15,7 @@ type: Reference
 
 Run-host runs git in a run clone only during `clone_run` and `create`, before launch. After the harness starts, run-host never runs git in that clone. The controller's `diff` command can read committed work there through the run account's SSH connection. An operator who runs `git add -A` or `git stash` in a run clone can run a nested repository's clean filter. The port never runs those commands in a run clone.
 
-Run-host checks out `agent/NAME` for a build and leaves upstream tracking unset. Each run clone gets a `reference-transaction` hook pinned to the run branch and starting commit. In prepared transactions, it refuses updates to other local branches and requires each new run-branch tip to descend from the start. Git's files backend can rename a branch without reporting a prepared transaction. The reference-transaction hook permits deletion of the run branch. It also permits updates to tags, remote-tracking refs, the stash, and detached `HEAD`. The pre-push hook allows the run branch as the branch destination, or the branch that `--start-ref` specifies. Run-host turns off hooks for its own Git commands. The legacy sandbox probes prevent writes to `.git/config`. In those probes, use `git switch --no-track -c x origin/main` and push with an explicit destination branch, such as `git push origin HEAD:refs/heads/x`.
+Run-host checks out `agent/NAME` for a build and leaves upstream tracking unset. Each run clone gets a `reference-transaction` hook pinned to the run branch and starting commit. In prepared transactions, it refuses updates to other local branches. Each new run branch tip must descend from the start unless the build uses `--start-ref`. Git's files backend can rename a branch without reporting a prepared transaction. The reference-transaction hook permits deletion of the run branch. It also permits updates to tags, remote-tracking refs, the stash, and detached `HEAD`. The pre-push hook allows the run branch as the branch destination, or the branch that `--start-ref` specifies. Run-host turns off hooks for its own Git commands. The legacy sandbox probes prevent writes to `.git/config`. In those probes, use `git switch --no-track -c x origin/main` and push with an explicit destination branch, such as `git push origin HEAD:refs/heads/x`.
 
 Every `agent exec` run has the account’s full access. It can read the account’s 1Password Connect token and every secret the account can read, and write anything the account can write. Codex, Claude and agy use this behavior for both build and review profiles. The agent account supplies the boundary. A child can leave the process group and keep running after the run ends.
 Runs skip sandbox policy checks, executable trust checks and write-root audits. They still refuse mise shims.
@@ -60,7 +60,7 @@ The build pushes its branch and opens any new pull request from the harness. A b
 | 9 | The destination branch lacks the build commit on origin, or the host couldn't verify it. The log starts the reason line with `push failed:`. |
 | 10 | The harness succeeded but the host did not post a review. The log starts the reason line with `review not posted:`. |
 
-The commit check compares local branch tips and detached `HEAD` with the refs recorded before the harness started, including refs fetched during preparation. It refuses new history outside the starting commit's ancestry and records the count and short commit IDs in the log. If the harness leaves the run branch checked out and other branches contain new commits, the check requires new history on the run branch. When a build requires a commit, run-host verifies that the destination branch on origin contains the recorded commit.
+The commit check compares local branch tips and detached `HEAD` with the refs recorded before the harness started, including refs fetched during preparation. It requires new history to descend from the starting commit, with an exception for the run branch in a `--start-ref` build. On an ancestry failure, it records the count and short commit IDs in the log. If the harness leaves the run branch checked out and other branches contain new commits, the check requires new history on the run branch. When a build requires a commit, run-host verifies that the destination branch on origin contains the recorded commit.
 
 If a build harness fails, run-host keeps its exit status, log, and worktree. Committed work remains available for patch export, including work at the current checkout when the run branch has no new commit. `tbhbdev alpha agent status NAME` shows the last recorded reason next to a nonzero return code when the log contains a reason.
 

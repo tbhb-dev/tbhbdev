@@ -5,6 +5,7 @@ package store_test
 
 import (
 	"errors"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -25,7 +26,7 @@ func open(t *testing.T, path string) *store.Bolt {
 		t.Fatalf("Open: %v", err)
 	}
 
-	t.Cleanup(func() { _ = repo.Close() })
+	t.Cleanup(func() { closeStore(t, repo) })
 
 	return repo
 }
@@ -300,7 +301,7 @@ func storedCreated(t *testing.T, path string) string {
 		t.Fatalf("open the file directly: %v", err)
 	}
 
-	defer func() { _ = file.Close() }()
+	defer closeStore(t, file)
 
 	var text string
 
@@ -328,7 +329,7 @@ func TestOpenWhileLockedTimesOut(t *testing.T) {
 	go func() {
 		other, err := store.Open(path)
 		if other != nil {
-			_ = other.Close()
+			err = errors.Join(err, other.Close())
 		}
 
 		result <- err
@@ -341,10 +342,10 @@ func TestOpenWhileLockedTimesOut(t *testing.T) {
 		}
 	case <-time.After(10 * time.Second):
 		// Release the waiter before the temporary directory is removed.
-		_ = held.Close()
+		closeErr := held.Close()
 		waitErr := <-result
 
-		t.Fatalf("second Open exceeded the ten-second bound: %v", waitErr)
+		t.Fatalf("second Open exceeded the ten-second bound: %v", errors.Join(waitErr, closeErr))
 	}
 
 	err := held.Close()
@@ -568,12 +569,12 @@ func openAt(t *testing.T, path string, now func() time.Time) *store.Bolt {
 		t.Fatalf("OpenAt: %v", err)
 	}
 
-	t.Cleanup(func() { _ = repo.Close() })
+	t.Cleanup(func() { closeStore(t, repo) })
 
 	return repo
 }
 
-func closeStore(t *testing.T, repo *store.Bolt) {
+func closeStore(t *testing.T, repo io.Closer) {
 	t.Helper()
 
 	err := repo.Close()

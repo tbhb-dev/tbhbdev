@@ -1,0 +1,202 @@
+load("//factory/cli:python.bzl", "cli_py_library")
+load("//factory/cli/tests:pytest.bzl", "cli_py_test")
+
+# SPDX-License-Identifier: Apache-2.0
+# Copyright Tony Burns
+
+filegroup(
+    name = "package_files",
+    srcs = glob(["*.py"]) + [
+        "//factory/cli/tests/unit/alpha/install/git:package_files",
+        "//factory/cli/tests/unit/alpha/install/statusline:package_files",
+    ],
+    visibility = ["//factory/cli/tests:__pkg__"],
+)
+
+cli_py_library(
+    name = "expectations",
+    srcs = ["expectations.py"],
+    imports = ["../../.."],
+    visibility = ["//factory/cli/tests:__subpackages__"],
+    deps = [
+        "//factory/cli/src/tbhbdev/alpha:gh_shim",
+        "//factory/cli/src/tbhbdev/alpha/install:hooks",
+        "//factory/cli/src/tbhbdev/alpha/install:trust",
+    ],
+)
+
+cli_py_library(
+    name = "conftest",
+    testonly = True,
+    srcs = ["conftest.py"],
+    imports = ["../../.."],
+    visibility = ["//factory/cli/tests:__subpackages__"],
+    deps = [
+        "//factory/cli/tests:fake_tool",
+        "@cli_pip//pytest",
+    ],
+)
+
+cli_py_test(
+    name = "test_arguments",
+    srcs = ["test_arguments.py"],
+    imports = ["../../.."],
+    deps = [
+        ":conftest",
+        "//factory/cli/src/tbhbdev/alpha/install:arguments",
+        "//factory/cli/tests:conftest",
+    ],
+)
+
+cli_py_test(
+    name = "test_codex",
+    srcs = ["test_codex.py"],
+    imports = ["../../.."],
+    deps = [
+        ":conftest",
+        ":expectations",
+        "//factory/cli/src/tbhbdev/alpha/install:config",
+        "//factory/cli/src/tbhbdev/alpha/install:files",
+        "//factory/cli/tests:conftest",
+        "@cli_pip//pytest",
+    ],
+)
+
+cli_py_test(
+    name = "test_command_io",
+    srcs = ["test_command_io.py"],
+    imports = ["../../.."],
+    deps = [
+        ":conftest",
+        ":expectations",
+        "//factory/cli/src/tbhbdev/alpha:gh_shim",
+        "//factory/cli/src/tbhbdev/alpha/install:command",
+        "//factory/cli/src/tbhbdev/alpha/install:hooks",
+        "//factory/cli/tests:conftest",
+        "@cli_pip//pytest",
+    ],
+)
+
+cli_py_test(
+    name = "test_config",
+    srcs = ["test_config.py"],
+    imports = ["../../.."],
+    pyi_deps = [
+        "//factory/cli/src/tbhbdev/alpha/install:model",
+        "@cli_pip//pytest",
+    ],
+    deps = [
+        ":conftest",
+        ":expectations",
+        "//factory/cli/src/tbhbdev/alpha/install:config",
+        "//factory/cli/src/tbhbdev/alpha/install:files",
+        "//factory/cli/src/tbhbdev/alpha/install:hooks",
+        "//factory/cli/tests:conftest",
+    ],
+)
+
+cli_py_test(
+    name = "test_environment",
+    srcs = ["test_environment.py"],
+    imports = ["../../.."],
+    deps = [
+        ":conftest",
+        "//factory/cli/src/tbhbdev/alpha/install:environment",
+        "//factory/cli/src/tbhbdev/alpha/install:model",
+        "//factory/cli/tests:conftest",
+        "@cli_pip//pytest",
+    ],
+)
+
+cli_py_test(
+    name = "test_files",
+    srcs = ["test_files.py"],
+    imports = ["../../.."],
+    deps = [
+        ":conftest",
+        "//factory/cli/src/tbhbdev/alpha/install:files",
+        "//factory/cli/src/tbhbdev/alpha/install:model",
+        "//factory/cli/tests:conftest",
+        "@cli_pip//pytest",
+    ],
+)
+
+cli_py_test(
+    name = "test_hooks",
+    srcs = ["test_hooks.py"],
+    imports = ["../../.."],
+    pyi_deps = ["//factory/cli/src/tbhbdev/alpha/install:model"],
+    deps = [
+        ":conftest",
+        "//factory/cli/src/tbhbdev/alpha/install:hooks",
+        "//factory/cli/src/tbhbdev/alpha/install:settings",
+        "//factory/cli/tests:conftest",
+        "@cli_pip//pytest",
+    ],
+)
+
+cli_py_test(
+    name = "test_scripts",
+    srcs = ["test_scripts.py"],
+    imports = ["../../.."],
+    deps = [
+        ":conftest",
+        "//factory/cli/src/tbhbdev/alpha/install:scripts",
+        "//factory/cli/tests:conftest",
+    ],
+)
+
+cli_py_test(
+    name = "test_session_io",
+    srcs = ["test_session_io.py"],
+    imports = ["../../.."],
+    pyi_deps = ["//factory/cli/src/tbhbdev/alpha/install:model"],
+    deps = [
+        ":conftest",
+        "//factory/cli/src/tbhbdev/alpha:gh_shim",
+        "//factory/cli/src/tbhbdev/alpha/install:session",
+        "//factory/cli/tests:conftest",
+        "@cli_pip//pytest",
+    ],
+)
+
+cli_py_test(
+    name = "test_settings",
+    srcs = ["test_settings.py"],
+    imports = ["../../.."],
+    deps = [
+        ":conftest",
+        "//factory/cli/src/tbhbdev/alpha/install:hooks",
+        "//factory/cli/src/tbhbdev/alpha/install:model",
+        "//factory/cli/src/tbhbdev/alpha/install:settings",
+        "//factory/cli/tests:conftest",
+        "@cli_pip//pytest",
+    ],
+)
+
+cli_py_test(
+    name = "test_shims_io",
+    srcs = ["test_shims_io.py"],
+    imports = ["../../.."],
+    deps = [
+        ":conftest",
+        ":expectations",
+        "//factory/cli/src/tbhbdev/alpha:gh_shim",
+        "//factory/cli/src/tbhbdev/alpha/install:scripts",
+        "//factory/cli/src/tbhbdev/alpha/install:shims",
+        "//factory/cli/tests:conftest",
+        "@cli_pip//pytest",
+    ],
+)
+
+cli_py_test(
+    name = "test_trust",
+    srcs = ["test_trust.py"],
+    imports = ["../../.."],
+    deps = [
+        ":conftest",
+        "//factory/cli/src/tbhbdev/alpha/install:trust",
+        "//factory/cli/tests:conftest",
+        "@cli_pip//pytest",
+    ],
+)

@@ -9,7 +9,7 @@
 | Partner | Direction | Content |
 | --- | --- | --- |
 | GitHub | Inbound and outbound | Webhooks for PR and PR review events in. REST reads out remain design, since `main` builds no client |
-| Engineers | Outbound only | In the design they read traces, metrics, and logs in the backends. They never call the service |
+| Engineers | Outbound | In the design they read traces, metrics, and logs in the backends. They never call the service |
 
 ## Technical context
 

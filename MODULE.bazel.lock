@@ -480,13 +480,13 @@
     "@@tbhb_rules_go+//:extensions.bzl%go_mod_proxy": {
       "general": {
         "bzlTransitiveDigest": "d+aJfWyHtvw15XRr3GCXF8ABJb7tZ9TtQRIX66t8F8g=",
-        "usagesDigest": "DvuB3dapEeQwsUBC8a5VV2BoOlvulsmi69A3JEHhRaA=",
+        "usagesDigest": "cDr6ZHJA1NagXOwhvry4JgvHR2pYyNY21hnTrYr6JSM=",
         "recordedInputs": [],
         "generatedRepoSpecs": {
-          "go_mod_proxy": {
+          "github_metrics_go_mod_proxy": {
             "repoRuleId": "@@tbhb_rules_go+//private:go_mod_proxy.bzl%go_mod_proxy_repo",
             "attributes": {
-              "go_sum": "@@//:go.sum",
+              "go_sum": "@@//factory/github-metrics:go.sum",
               "proxy_url": "https://proxy.golang.org"
             }
           },

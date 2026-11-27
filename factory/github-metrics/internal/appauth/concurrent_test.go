@@ -5,7 +5,6 @@ package appauth_test
 
 import (
 	"context"
-	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"sync"
@@ -36,8 +35,8 @@ func TestConcurrentTokens(t *testing.T) {
 
 		resp.WriteHeader(http.StatusCreated)
 
-		_, _ = fmt.Fprintf(
-			resp,
+		writeResponsef(
+			t, resp,
 			`{"token":"installation-%d","expires_at":%q}`,
 			count,
 			now.Add(time.Hour).Format(time.RFC3339),

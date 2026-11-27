@@ -12,6 +12,7 @@ import (
 	"path/filepath"
 	"reflect"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"testing/synctest"
 	"time"
@@ -162,7 +163,12 @@ func testRecorderRetry(t *testing.T, passes int) {
 		t.Fatal(err)
 	}
 
-	t.Cleanup(func() { _ = queue.Close() })
+	t.Cleanup(func() {
+		closeErr := queue.Close()
+		if closeErr != nil {
+			t.Error(closeErr)
+		}
+	})
 
 	for _, body := range []string{openedBody, openedBody + " "} {
 		_, err = queue.Enqueue(body, pullRequestEvent, []byte(body))
@@ -253,13 +259,13 @@ func TestRunPollsAndCancelStops(t *testing.T) {
 		ctx, cancel := context.WithCancel(t.Context())
 		defer cancel()
 
-		var reads int
+		var reads atomic.Int32
 
 		queue := queueStub{
 			t:     t,
 			reads: 0,
 			pending: func(int) ([]store.Entry, error) {
-				reads++
+				reads.Add(1)
 
 				return nil, nil
 			},
@@ -284,22 +290,22 @@ func TestRunPollsAndCancelStops(t *testing.T) {
 
 		synctest.Wait()
 
-		if reads != 1 {
-			t.Fatalf("startup reads = %d, want 1", reads)
+		if got := reads.Load(); got != 1 {
+			t.Fatalf("startup reads = %d, want 1", got)
 		}
 
 		time.Sleep(time.Second)
 		synctest.Wait()
 
-		if reads != 2 {
-			t.Fatalf("reads after poll = %d, want 2", reads)
+		if got := reads.Load(); got != 2 {
+			t.Fatalf("reads after poll = %d, want 2", got)
 		}
 
 		cancel()
 
 		err := <-done
-		if err != nil || reads != 2 {
-			t.Fatalf("cancel: %v, reads = %d", err, reads)
+		if got := reads.Load(); err != nil || got != 2 {
+			t.Fatalf("cancel: %v, reads = %d", err, got)
 		}
 	})
 }

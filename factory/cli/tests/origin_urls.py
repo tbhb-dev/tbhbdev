@@ -1,7 +1,7 @@
 """Origin URLs for the tbhb-dev origin check, shared by its tests.
 
 test_alpha_repo checks repo.is_tbhb_dev_url against these, and the identity
-shim's parity test in test_alpha_install runs the shim's shell pattern over
+installer's parity test runs the shim's shell pattern over
 the same rows, so the two checks must agree on every one.
 """
 

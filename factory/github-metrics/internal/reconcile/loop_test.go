@@ -12,6 +12,7 @@ import (
 	"io"
 	"log/slog"
 	"maps"
+	"sync/atomic"
 	"testing"
 	"testing/synctest"
 	"time"
@@ -38,12 +39,11 @@ func TestLoopSchedule(t *testing.T) {
 		ctx, cancel := context.WithCancel(t.Context())
 		defer cancel()
 
-		calls := 0
+		var calls atomic.Int32
+
 		release := make(chan struct{})
 		pass := func(ctx context.Context) (reconcile.RunResult, error) {
-			calls++
-
-			return waitForPass(ctx, t, calls, release), nil
+			return waitForPass(ctx, t, calls.Add(1), release), nil
 		}
 
 		loop, err := reconcile.NewLoop(
@@ -61,22 +61,22 @@ func TestLoopSchedule(t *testing.T) {
 
 		synctest.Wait()
 
-		if calls != 1 {
-			t.Errorf("startup calls = %d, want 1", calls)
+		if got := calls.Load(); got != 1 {
+			t.Errorf("startup calls = %d, want 1", got)
 		}
 
 		time.Sleep(17 * time.Minute)
 		synctest.Wait()
 
-		if calls != 1 {
-			t.Errorf("calls after the busy tick = %d, want 1", calls)
+		if got := calls.Load(); got != 1 {
+			t.Errorf("calls after the busy tick = %d, want 1", got)
 		}
 
 		time.Sleep(13 * time.Minute)
 		synctest.Wait()
 
-		if calls != 2 {
-			t.Errorf("calls at the second tick = %d, want 2", calls)
+		if got := calls.Load(); got != 2 {
+			t.Errorf("calls at the second tick = %d, want 2", got)
 		}
 
 		checkLoopShutdown(t, cancel, release, done)
@@ -111,7 +111,7 @@ func checkLoopShutdown(
 func waitForPass(
 	ctx context.Context,
 	t *testing.T,
-	call int,
+	call int32,
 	release <-chan struct{},
 ) reconcile.RunResult {
 	t.Helper()
