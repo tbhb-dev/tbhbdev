@@ -41,10 +41,7 @@ ops_py_test(
         ],
         allow_empty = True,
     ),  # keep
-    data = glob(
-        ["testdata/**"],
-        exclude = ["testdata/deploy/compose_golden.py"],
-    ) + [
+    data = glob(["testdata/**"]) + [
         "invalid_dashboard.json",
         "//ops:deployment_fixtures",
         "//ops:o11y_fixtures",

@@ -11,7 +11,6 @@ import time
 from dataclasses import dataclass
 from typing import Protocol
 lazy from collections.abc import Mapping, Sequence
-lazy from pathlib import Path
 
 
 @dataclass(frozen=True)
@@ -21,16 +20,7 @@ class Result:
     stderr: str = ""
 
 
-class Handle(Protocol):
-    def wait(self, timeout: int) -> int | None: ...
-    def kill(self) -> None: ...
-
-
 class Runner(Protocol):
-    def start(
-        self, argv: Sequence[str], env: Mapping[str, str], stdout_path: Path
-    ) -> Handle: ...
-
     def run(
         self,
         argv: Sequence[str],
@@ -54,12 +44,6 @@ class ProcessHandle:
     def __init__(self, process: subprocess.Popen[bytes]) -> None:
         self.process = process
 
-    def wait(self, timeout: int) -> int | None:
-        try:
-            return self.process.wait(timeout=timeout)
-        except subprocess.TimeoutExpired:
-            return None
-
     def kill(self) -> None:
         with contextlib.suppress(ProcessLookupError):
             if sys.platform != "win32":
@@ -69,20 +53,6 @@ class ProcessHandle:
 
 
 class SubprocessRunner:
-    def start(
-        self, argv: Sequence[str], env: Mapping[str, str], stdout_path: Path
-    ) -> Handle:
-        # The caller creates the output file inside its private directory.
-        with stdout_path.open("wb") as stream:
-            process = subprocess.Popen(  # noqa: S603  # nosec B603
-                argv,
-                env=env,
-                stdout=stream,
-                stderr=subprocess.STDOUT,
-                start_new_session=True,
-            )
-        return ProcessHandle(process)
-
     def run(
         self,
         argv: Sequence[str],
@@ -93,7 +63,7 @@ class SubprocessRunner:
     ) -> Result:
         try:
             # Arguments and environment are supplied explicitly through the seam.
-            result = subprocess.run(  # noqa: S603  # nosec B603
+            result = subprocess.run(  # nosec B603
                 argv,
                 env=env,
                 timeout=timeout,
@@ -120,7 +90,7 @@ class SubprocessRunner:
     ) -> Result:
         """Capture a bounded prefix, merging diagnostics, then reap the process."""
         try:
-            with subprocess.Popen(  # noqa: S603  # nosec B603
+            with subprocess.Popen(  # nosec B603
                 argv,
                 env=env,
                 stdout=subprocess.PIPE,
