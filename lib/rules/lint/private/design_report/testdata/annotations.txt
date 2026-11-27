@@ -1,0 +1,13 @@
+1 0 value: t.Any
+1 1 value: dict[str, t.Any]
+0 1 value: M[str, object]
+0 1 value: dict[str, object] | None
+1 1 value: "dict[str, t.Any] | None"
+1 1 def f(a: list["t.Any"]) -> "M[str, object]": pass
+1 1 type Payload = dict["str", "t.Any"]
+1 1 Payload: t.TypeAlias = "dict[str, t.Any]"
+1 1 if t.TYPE_CHECKING:\n    from typing import Any as Dynamic\nvalue: dict[str, Dynamic]
+1 1 value: t.Annotated["M[str, t.Any]", "dict[str, object]"]
+0 0 value: t.Literal["t.Any", "dict[str, object]"]
+0 0 value: dict[int, str]
+0 0 value = "dict[str, t.Any]"
