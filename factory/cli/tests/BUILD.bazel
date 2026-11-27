@@ -2034,6 +2034,7 @@ filegroup(
         "//factory/cli/tests/integration/alpha:test_pull_request_timestamps_io.py",
         "//factory/cli/tests/integration/alpha/agent:package_files",
         "//factory/cli/tests/integration/alpha/identity:test_dispatcher_timestamps_io.py",
+        "//factory/cli/tests/unit/admin:test_approvals.py",
         "//factory/cli/tests/unit/alpha:package_files",
         "//factory/cli/tests/unit/alpha/agent:test_run_host_publication.py",
         "//factory/cli/tests/unit/alpha/agent/decisions:package_files",
