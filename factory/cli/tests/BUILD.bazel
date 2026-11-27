@@ -670,7 +670,6 @@ cli_py_test(
         ":conftest",
         ":runfile_fixtures",
         "//factory/cli/src/tbhbdev/alpha/agent:credentials",
-        "//factory/cli/src/tbhbdev/alpha/agent:host_tools",
         "//factory/cli/src/tbhbdev/alpha/agent:model",
         "//factory/cli/src/tbhbdev/alpha/agent:push",
         "//factory/cli/src/tbhbdev/alpha/agent:run_host",
@@ -2023,7 +2022,11 @@ filegroup(
     srcs = glob(
         ["**"],
         exclude = ["BUILD.bazel"],
-    ),
+    ) + [
+        "//factory/cli/tests/integration/alpha/agent:test_worktree_credentials_io.py",
+        "//factory/cli/tests/unit/alpha:test_pre_push_guard.py",
+        "//factory/cli/tests/unit/alpha/agent:test_run_host_publication.py",
+    ],
     visibility = ["//factory/cli:__pkg__"],
 )
 

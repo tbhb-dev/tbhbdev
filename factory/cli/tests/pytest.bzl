@@ -107,6 +107,7 @@ def cli_py_test(name, srcs, deps = [], data = [], extra_deps = [], pyi_deps = []
             tags = tags,
         )
 
+    root = "//factory/cli/tests"
     tools = ["@cue_test_tool//:cue"] + path_tools
     env = {
         "CLI_TEST_TOOLS": " ".join(["$(rootpath %s)" % tool for tool in tools]),
@@ -122,12 +123,12 @@ def cli_py_test(name, srcs, deps = [], data = [], extra_deps = [], pyi_deps = []
             "-p",
             "bazel_test_setup",
         ] + ([] if io_test else ["-p", "bazel_test_io"]) + [
-            "factory/cli/tests/" + filename,
+            native.package_name() + "/" + filename,
         ],
         data = data + tools + ["//factory/cli:pyproject.toml"],
-        deps = deps + [":bazel_test_setup", ":sitecustomize", "@cli_pip//pytest_cov"] + ([] if io_test else [":bazel_test_io"]),
+        deps = deps + [root + ":bazel_test_setup", root + ":sitecustomize", "@cli_pip//pytest_cov"] + ([] if io_test else [root + ":bazel_test_io"]),
         env = env,
-        imports = ["."],
+        imports = kwargs.pop("imports", ["."]),
         legacy_create_init = False,
         main_module = "pytest",
         tags = tags,

@@ -45,7 +45,7 @@ def test_preflight_envelope(
     def main(arguments: list[str], prog: str, **kwargs: object) -> int:
         calls.append(arguments)
         assert prog == "ssh-serve preflight"
-        assert kwargs == {"push_token": None, "claimed": True}
+        assert kwargs == {"claimed": True}
         return 0
 
     monkeypatch.setattr(run_host, "main", main)
@@ -147,14 +147,12 @@ def test_run_dispatch(
         arguments: list[str],
         prog: str,
         *,
-        push_token: str | None = None,
         claimed: bool = False,
     ) -> int:
         assert claimed is True
         assert files_for("Example_1").path("owner").read_text() == "host\n"
         assert arguments == ["Example_1"]
         assert prog == "ssh-serve run-host"
-        assert push_token == document["push_token"]
         files = files_for("Example_1")
         assert (
             files.path("request.json").read_text()
@@ -307,7 +305,7 @@ def test_token_values(token: str | None, monkeypatch: pytest.MonkeyPatch) -> Non
 
 
 def test_input_boundary(monkeypatch: pytest.MonkeyPatch) -> None:
-    body = b'{"v":1,"request":{},"push_token":null}'
+    body = b'{"v":1,"request":{}}'
     incoming(monkeypatch, body + b" " * (1024 * 1024 - len(body)))
     assert ssh_serve.envelope() == ({}, None)
 
@@ -387,7 +385,7 @@ def test_command_refusal_reason(
 @pytest.mark.parametrize(
     ("data", "reason"),
     [
-        ({}, "expected v, request and push_token"),
+        ({}, "expected v and request"),
         ({"v": 2, "request": {}, "push_token": None}, "unsupported envelope version"),
         ({"v": 1, "request": [], "push_token": None}, "request must be an object"),
         (

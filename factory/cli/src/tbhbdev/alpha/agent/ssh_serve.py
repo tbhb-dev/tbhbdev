@@ -82,15 +82,15 @@ def envelope() -> tuple[dict[str, object], str | None]:
         data: object = json.loads(text)
     except UnicodeDecodeError, RecursionError:
         raise Invalid(message) from None
-    if not isinstance(data, dict) or data.keys() != {"v", "request", "push_token"}:
-        message = "expected v, request and push_token"
+    if not isinstance(data, dict) or data.keys() - {"push_token"} != {"v", "request"}:
+        message = "expected v and request"
         raise Invalid(message)
     if type(data["v"]) is not int or data["v"] != 1:
         message = "unsupported envelope version"
         raise Invalid(message)
     fields: dict[str, object] = data
     request = fields["request"]
-    token = fields["push_token"]
+    token = fields.get("push_token")
     if not isinstance(request, dict):
         message = "request must be an object"
         raise Invalid(message)
@@ -121,7 +121,7 @@ def start(files: runfiles.RunFiles, prog: str, *, preflight_only: bool) -> int:
         os.fsync(stream.fileno())
     arguments = [files.name, "--preflight"] if preflight_only else [files.name]
     verb = "preflight" if preflight_only else "run-host"
-    return run_host.main(arguments, f"{prog} {verb}", push_token=token, claimed=True)
+    return run_host.main(arguments, f"{prog} {verb}", claimed=True)
 
 
 def optional(path: Path) -> str | None:

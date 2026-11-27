@@ -4,7 +4,7 @@ generated:
   - role: generated
     harness: codex
     model: openai:gpt-6
-    at: "2026-11-27T04:19:40Z"
+    at: "2026-11-27T09:06:58Z"
 status: stable
 tags: [alpha]
 title: Agent configuration
@@ -59,7 +59,7 @@ The supervisor calls `bazelisk shutdown` or `bazel shutdown` with each output ba
 
 Every `tbhb-dev` repository on GitHub runs on any host with no list entry, and any other repository is refused before run-host creates a mirror. `public_repos` accepts only `tbhb-dev` entries (`owner/name` or `github.com/owner/name`) and the config refuses any other owner. Git never follows a redirect, so a repository that moved out of the organization fails the fetch. Mirrors fetch from `https://github.com/<owner>/<name>.git` without credentials, prompts, SSH, or token fallback. Existing mirror configs switch to HTTPS on the next run.
 
-The ssh verb `preflight NAME` requires a null `push_token` and refuses a request with a token. The local `--preflight` flag ignores any `push_token`. It prepares the workspace and credentials and loads the signing agent. It logs whether the run worktree has `.bazel_env/bin` and warns that commit hooks fail when the directory is missing, without changing the exit status. After checking the policy and harness command, it writes `preflight ok: <executable path>` to the log. It stops the signing agent and records the exit status, phase, and index entry without launching the harness. Use a fresh name for the next run. Preparation errors use `run preparation failed at <step>: <cause>`. The cause keeps the validation message, the operating system error with only the filename's basename, or the first line of git's standard error. It removes control characters, redacts environment values, credentials and URL user information, and limits the cause to 200 characters. Other value errors and git failures without standard error use a generic cause.
+The ssh verb `preflight NAME` and the local `--preflight` flag prepare the workspace and credentials and load the signing agent. It logs whether the run worktree has `.bazel_env/bin` and warns that commit hooks fail when the directory is missing, without changing the exit status. After checking the policy and harness command, it writes `preflight ok: <executable path>` to the log. It stops the signing agent and records the exit status, phase, and index entry without launching the harness. Use a fresh name for the next run. Preparation errors use `run preparation failed at <step>: <cause>`. The cause reports the validation message or the first line Git writes to standard error. For an operating system error, it reports the message and the filename without the directory path. Run-host removes control characters and redacts environment values, credentials, and URL user information. The cause has a 200-character limit. Other value errors and git failures without standard error use a generic cause.
 
 Preparation redacts the search path it reports when a hook executable is missing. Check the run log for the failing step and `host_tools.search_path` for the search directories. Install `prek` in a fixed directory on the host tools' search path, or add its directory to `host_path`.
 
