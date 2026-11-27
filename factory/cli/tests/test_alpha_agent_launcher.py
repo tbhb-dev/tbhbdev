@@ -291,7 +291,7 @@ def test_the_worker_launcher_shows_in_the_status(
 ) -> None:
     matched(monkeypatch, found=True)
     monkeypatch.setattr(launcher, "session", REAL_SESSION)
-    assert run_agent(worker_arguments(remote, "--worker-workflow", "w1"), "x") == 0
+    assert run_agent(worker_arguments(remote, "--worker-workflow", "w1")) == 0
     assert run_agent(["status", "sample"]) == 0
     assert "launcher=worker/w1" in capsys.readouterr().out
 

@@ -177,7 +177,8 @@ cli_py_test(
     srcs = ["test_admin.py"],
     deps = [
         ":conftest",
-        "//factory/cli/src/tbhbdev/admin:__init__",
+        "//factory/cli/src/tbhbdev/admin:audit",
+        "//factory/cli/src/tbhbdev/admin:command",
         "//factory/cli/src/tbhbdev/admin:request",
         "//factory/cli/tests:test_admin_request_support",
         "@cli_pip//httpx",
@@ -228,8 +229,8 @@ cli_py_test(
     deps = [
         ":conftest",
         "//factory/cli/src/tbhbdev:secrets",
-        "//factory/cli/src/tbhbdev/admin:__init__",
         "//factory/cli/src/tbhbdev/admin:audit",
+        "//factory/cli/src/tbhbdev/admin:command",
         "//factory/cli/src/tbhbdev/admin:policy",
         "//factory/cli/src/tbhbdev/admin:request",
         "//factory/cli/src/tbhbdev/alpha:gh_app",
@@ -300,8 +301,9 @@ cli_py_test(
         "//factory/cli/src/tbhbdev/alpha/agent:settings",
         "//factory/cli/src/tbhbdev/alpha/agent:signing_parity",
         "//factory/cli/src/tbhbdev/alpha/agent:ssh_serve",
-        "//factory/cli/src/tbhbdev/alpha/loop:__init__",
+        "//factory/cli/src/tbhbdev/alpha/loop:command",
         "//factory/cli/src/tbhbdev/alpha/monorepo:command",
+        "//factory/cli/tests:test_alpha_agent_settings_support",
         "@cli_pip//pytest",
     ],
 )
@@ -860,7 +862,6 @@ cli_py_test(
     name = "test_alpha_agent_settings",
     srcs = ["test_alpha_agent_settings.py"],
     deps = [
-        ":agent_cli_example",
         ":conftest",
         "//factory/cli/src/tbhbdev:userconfig",
         "//factory/cli/src/tbhbdev/alpha/agent:arguments",
@@ -1197,7 +1198,7 @@ cli_py_test(
     deps = [
         ":conftest",
         "//factory/cli/src/tbhbdev:userconfig",
-        "//factory/cli/src/tbhbdev/alpha/loop:__init__",
+        "//factory/cli/src/tbhbdev/alpha/loop:command",
         "//factory/cli/src/tbhbdev/alpha/loop:config",
         "@cli_pip//pytest",
     ],
@@ -1641,8 +1642,8 @@ cli_py_test(
     deps = [
         ":analytics_fakes",
         ":conftest",
-        "//factory/cli/src/tbhbdev/analytics:__init__",
         "//factory/cli/src/tbhbdev/analytics:catalog",
+        "//factory/cli/src/tbhbdev/analytics:command",
         "//factory/cli/src/tbhbdev/analytics:database",
         "//factory/cli/src/tbhbdev/analytics:model",
         "//factory/cli/src/tbhbdev/analytics:settings",
@@ -2111,6 +2112,28 @@ cli_py_library(
     visibility = ["//factory/cli/tests:__subpackages__"],
     deps = [
         "//factory/cli/src/tbhbdev/alpha/agent:runfiles",
+        "@cli_pip//pytest",
+    ],
+)
+
+cli_py_test(
+    name = "test_alpha_chase_context",
+    srcs = ["test_alpha_chase_context.py"],
+    deps = [
+        ":conftest",
+        "//factory/cli/src/tbhbdev/alpha:chase_context",
+        "//factory/cli/src/tbhbdev/alpha:command",
+        "@cli_pip//pytest",
+    ],
+)
+
+cli_py_test(
+    name = "test_alpha_worktree_sweep",
+    srcs = ["test_alpha_worktree_sweep.py"],
+    deps = [
+        ":conftest",
+        "//factory/cli/src/tbhbdev/alpha:command",
+        "//factory/cli/src/tbhbdev/alpha:worktree_sweep",
         "@cli_pip//pytest",
     ],
 )

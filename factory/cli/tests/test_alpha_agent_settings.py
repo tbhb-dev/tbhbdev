@@ -6,13 +6,11 @@ import argparse
 from typing import TYPE_CHECKING
 
 import pytest
-from agent_cli_example import run_agent
 
 from tbhbdev import userconfig
 from tbhbdev.alpha.agent import arguments, model, settings
 
 if TYPE_CHECKING:
-    from collections.abc import Callable
     from pathlib import Path
 
 EXAMPLE = """\
@@ -167,127 +165,6 @@ def test_loading_reads_only_the_config(config_file: Path, tmp_path: Path) -> Non
     before = sorted(p.name for p in tmp_path.iterdir())
     settings.load()
     assert sorted(p.name for p in tmp_path.iterdir()) == before
-
-
-@pytest.mark.parametrize(
-    "run",
-    [
-        lambda: run_agent([]),
-        lambda: run_agent(["status", "sample"]),
-    ],
-)
-def test_command_refuses_missing_configuration(
-    config_file: Path, capsys: pytest.CaptureFixture[str], run: Callable[[], int]
-) -> None:
-    assert run() == 1
-    out = capsys.readouterr()
-    assert out.out == ""
-    assert str(config_file) in out.err
-    assert "config cannot be read" in out.err
-
-
-def test_command_reports_a_config_error(
-    config_file: Path, capsys: pytest.CaptureFixture[str]
-) -> None:
-    config_file.write_text('[agent]\nsockets_dir = "/x"\nzeta = 1\n')
-    assert run_agent(["status", "sample"]) == 1
-    assert capsys.readouterr() == (
-        "",
-        f"tbhbdev alpha agent: {config_file}: [agent] zeta not recognized\n",
-    )
-
-
-@pytest.mark.parametrize("field", ["audit_dir", "write_roots", "build_write"])
-@pytest.mark.parametrize("absolute", [False, True])
-def test_config_check_refuses_write_paths_under_socket_parents(
-    config_file: Path,
-    monkeypatch: pytest.MonkeyPatch,
-    capsys: pytest.CaptureFixture[str],
-    field: str,
-    absolute: bool,
-) -> None:
-    home = config_file.parent.parent / "agent"
-    monkeypatch.setenv("HOME", str(home))
-    write = ".local/state/tbhbdev/agent-audit"
-    configured = str(home / write) if absolute else write
-    text = (
-        EXAMPLE.replace(
-            'sockets_dir = "/example/sockets"',
-            'sockets_dir = ".local/state/tbhbdev/sockets"',
-        )
-        .replace(
-            'write_roots = [".cache", ".local/share/mise", ".local/state"]',
-            f'write_roots = ["{configured if field == "write_roots" else ".cache"}"]',
-        )
-        .replace(
-            'audit_dir = ".local/state/example-audit"',
-            f'audit_dir = "{configured if field == "audit_dir" else "audit"}"',
-        )
-        .replace(
-            'build_write = [".local/state/mise", ".local/share/mise"]',
-            f'build_write = ["{configured if field == "build_write" else ".cache"}"]',
-        )
-    )
-    config_file.write_text(text)
-
-    assert run_agent([]) == 1
-    assert capsys.readouterr() == (
-        "",
-        (
-            f"tbhbdev alpha agent: protected host path {home}/.local/state/tbhbdev "
-            f"overlaps write root {home / write}; narrow that write root\n"
-        ),
-    )
-
-
-@pytest.mark.parametrize("sockets", [".control/sockets", "/example/sockets"])
-def test_config_check_accepts_unrelated_write_paths(
-    config_file: Path,
-    monkeypatch: pytest.MonkeyPatch,
-    capsys: pytest.CaptureFixture[str],
-    sockets: str,
-) -> None:
-    monkeypatch.setenv("HOME", str(config_file.parent.parent / "agent"))
-    config_file.write_text(EXAMPLE.replace("/example/sockets", sockets))
-    assert run_agent([]) == 0
-    assert capsys.readouterr() == ("tbhbdev alpha agent: configuration valid\n", "")
-
-
-def test_config_check_refuses_write_paths_under_the_shell_config_directory(
-    config_file: Path,
-    monkeypatch: pytest.MonkeyPatch,
-    capsys: pytest.CaptureFixture[str],
-) -> None:
-    home = config_file.parent.parent / "agent"
-    monkeypatch.setenv("HOME", str(home))
-    monkeypatch.setenv("ZDOTDIR", ".shell-config")
-    config_file.write_text(
-        EXAMPLE.replace(
-            'audit_dir = ".local/state/example-audit"',
-            'audit_dir = ".shell-config/audit"',
-        )
-    )
-
-    assert run_agent([]) == 1
-    assert capsys.readouterr() == (
-        "",
-        (
-            f"tbhbdev alpha agent: protected host path {home}/.shell-config "
-            f"overlaps write root {home}/.shell-config/audit; narrow that write root\n"
-        ),
-    )
-
-
-@pytest.mark.parametrize(
-    ("argv", "rc"), [(["--help"], 0), (["exec", "x"], 2), (["-x"], 2)]
-)
-def test_command_options(
-    argv: list[str], capsys: pytest.CaptureFixture[str], rc: int
-) -> None:
-    assert run_agent(argv) == rc
-    out = capsys.readouterr()
-    assert "usage: tbhbdev alpha agent" in out.out + out.err
-    assert "run-host" not in out.out
 
 
 def test_duration() -> None:
