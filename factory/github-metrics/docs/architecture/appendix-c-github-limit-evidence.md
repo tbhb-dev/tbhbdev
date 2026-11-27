@@ -113,4 +113,4 @@ This section concerns the planned export path. The code has no OpenTelemetry (OT
 | tbhb-dev has tens of repositories, about 40 | Unverified | An assumption for the budget, and the first run would count them |
 | About 30 PRs change an hour at peak | Unverified | An assumption for the budget |
 | An earlier organization collector design covered continuous integration (CI), Actions, and organization-level counters | Superseded | On 2026-11-14 the operator decided that this design replaces it, so this design doesn't assume that another service emits these metrics |
-| This repository can't render D2 diagrams | Existing | `MODULE.bazel` on `main` has no D2 module |
+| The architecture diagrams use Structurizr | Existing | The [architecture index](README.md#diagrams) documents how to render the SVGs |

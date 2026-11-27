@@ -1,38 +1,45 @@
 # 7. Deployment view
 
-The following notes describe the deployment at the frozen source commit.
-The monorepo builds the service binary. The container build and deployment
-tools documented here stayed with the source repository.
+Build the service binary from the monorepo root. The host operator manages
+the process and the tunnel connector.
 
-The target deployment runs two containers on the production container host: the service and the tunnel connector. Today `deploy/compose.yaml` mounts the webhook secret, the App private key, and the tunnel token. A volume stores the queue, while the receiver doesn't read `GITHUB_APP_KEY_FILE` yet. The table describes the target.
+```sh
+bazelisk build //factory/github-metrics/cmd/github-metrics
+```
 
-| Element | Setting |
+Install the binary reported by Bazel on the deployment host. Run it under a
+non-root account with a persistent, writable directory for its store.
+Configure the host's process supervisor to restart the service on failure
+and collect its JSON logs from standard output.
+
+## Service configuration
+
+| Variable | Setting |
 | --- | --- |
-| Image | Distroless static, non-root, one Go binary, referenced by digest |
-| Filesystem | Read-only root, one writable volume at `/var/lib/github-metrics` |
-| Network | Off the host network. The tunnel connector makes only outbound connections |
-| Secrets | Read-only files. The service gets the webhook secret and the App private key. The connector gets the tunnel token |
-| Configuration | Environment variables set the App ID, the installation ID, the listen addresses, the schedule, and the collector endpoint |
-| Health | `/healthz` for liveness. `/readyz` is a design item that reports an open store and one finished reconciliation |
-| Shutdown | On `SIGTERM`, within 20 seconds the receiver stops accepting requests and the worker finishes its current PR. Then the meter provider flushes and the store closes |
-| Delivery | The repository publishes the image and a Compose file. The host operator deploys them |
+| `WEBHOOK_SECRET_FILE` | Path to a non-empty file containing the GitHub App webhook secret |
+| `STORE_FILE` | Path to the persistent store for the webhook queue and reconciliation state |
+| `LISTEN_ADDR` | Listen address, defaulting to `:8080`. Bind to an address reachable by the tunnel connector |
+| `OTEL_EXPORTER_OTLP_ENDPOINT` | The host collector's HTTP endpoint for metric export. Required for reconciliation |
+| `GITHUB_APP_ID`, `GITHUB_INSTALLATION_ID`, `GITHUB_APP_KEY_FILE` | Set all three for reconciliation. Use positive integer IDs and a path to the App private key file |
+| `GITHUB_API_URL` | HTTPS base URL for the GitHub API, defaulting to `https://api.github.com` |
 
-The host log collector reads Docker's `json-file` logs and labels them by Compose project and service. The receiver and tunnel use this driver and rotate their logs at 10 MB, keeping up to three files per container.
+Give the service account read access to the webhook secret and App key
+files. Keep the file contents out of environment variables and logs.
+Configure the tunnel connector separately and expose only `POST /webhook`
+over the tunnel.
 
-## Secret files
+## Health and restarts
 
-Keep secret contents out of images, environment variables, and logs. Git ignores `deploy/secrets/`.
+Run the installed binary with `-healthcheck` and the same `LISTEN_ADDR` to
+probe the local `GET /healthz` endpoint. The probe exits with status 0 on
+success and 1 on failure. The planned `/readyz` endpoint would report
+readiness after the store opens and reconciliation finishes.
 
-The webhook secret and tunnel token need user 65532 and mode 400. A separate process writes `github_app_key` with the deploy account as owner and mode 600. Start deployments with `deploy/up.sh`. The script rejects a missing key, a symlink source, and source modes other than 400 or 600. A pinned BusyBox helper uses Docker access to create `secrets/runtime/` with root ownership and mode 700. The copy gets mode 400 and owner 65532:65532 before a rename publishes it. Host users can't traverse that directory, including user 65532. The Docker daemon mounts the file at `/run/secrets/github_app_key`, where the receiver's user can read it. Compose sets `GITHUB_APP_KEY_FILE` to that path.
+Send `SIGTERM` for an orderly shutdown. The service stops accepting
+requests, waits for the worker and reconciler, flushes metrics, and closes
+the store.
 
-The helper doesn't use the network or write container logs. It never prints the key.
-
-A failed check or copy stops deployment before Compose can start the services. Each launch recreates the containers to replace the receiver's old file mount after key rotation. Keep the runtime copy for container restarts and remove it through Docker when retiring the deployment. Use a local Docker daemon without user namespace remapping to preserve numeric host ownership.
-
-For an account with only `sudo docker` access, run `DEPLOY_DOCKER_SUDO=1 deploy/up.sh` with the image argument. It doesn't need sudo for file tools. Put `METRICS_NETWORK` and optional Compose settings in `.env` beside `compose.yaml` when sudo filters the environment. The script supplies the image reference and resolver path through a temporary Compose environment file and removes it on exit.
-
-`RECEIVER_RESOLV_CONF` is required. Set it to the path of an existing, non-empty regular file on the deployment host that lists the upstream resolvers. Export the variable or set it to a literal path in `.env` beside `compose.yaml`. Relative paths start from that directory. `deploy/up.sh` checks the file before it calls Docker.
-
-Mounting this file in the receiver replaces Docker's embedded DNS for that container. Set the receiver's collector endpoint to an IP address so the receiver can reach the collector.
-
-With `GITHUB_METRICS_IMAGE` and `METRICS_NETWORK` also set, run `docker compose -f deploy/compose.yaml config` to review the mount and environment settings without reading the key. Check that only the receiver mounts `github_app_key`, that its source ends in `secrets/runtime/github_app_key`, and that `GITHUB_APP_KEY_FILE` names `/run/secrets/github_app_key`. This command checks configuration, not file access. Run the helper on the deployment host before starting the containers.
+If you roll back to a version that records metrics without durable claims,
+set `RECONCILE_FLOOR_RESET=1` for the first start after reinstalling a version
+that uses claims. Clear it for subsequent starts so they retain the stored
+repair floor.

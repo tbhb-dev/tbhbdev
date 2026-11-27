@@ -72,6 +72,7 @@ govulncheck(
     proxy = "@go_mod_proxy//:proxy",
 )
 
+# The shared rule tags this test manual. CI runs both targets explicitly.
 govulncheck_test(
     name = "govulncheck_test",
     srcs = GO_TARGETS,
