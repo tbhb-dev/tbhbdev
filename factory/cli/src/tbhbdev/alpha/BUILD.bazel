@@ -24,9 +24,9 @@ cli_py_library(
     imports = ["../.."],
     visibility = ["//factory/cli:__subpackages__"],
     deps = [
+        ":content_issues",
         ":opened",
         ":worker_identity",
-        "//factory/cli/src/tbhbdev:content",
         "//factory/cli/src/tbhbdev:issue_import",
         "//factory/cli/src/tbhbdev:userconfig",
         "//factory/cli/src/tbhbdev/alpha/agent:settings",
@@ -245,7 +245,7 @@ cli_py_library(
         ":review_doc",
         ":review_policy",
         ":review_threads",
-        "//factory/cli/src/tbhbdev:content",
+        "//factory/cli/src/tbhbdev:content_review",
         "//factory/cli/src/tbhbdev/alpha/pull_request:attribution",
         "//factory/cli/src/tbhbdev/alpha/pull_request:body",
         "//factory/cli/src/tbhbdev/alpha/pull_request:frontmatter",
@@ -266,7 +266,7 @@ cli_py_library(
     visibility = ["//factory/cli:__subpackages__"],
     deps = [
         ":review_inline",
-        "//factory/cli/src/tbhbdev:content",
+        "//factory/cli/src/tbhbdev:content_review",
         "//factory/cli/src/tbhbdev/alpha/identity:trailers",
         "//factory/cli/src/tbhbdev/alpha/identity/commit:grammar",
         "//factory/cli/src/tbhbdev/alpha/pull_request:frontmatter",
@@ -511,4 +511,17 @@ cli_py_library(
     imports = ["../.."],
     visibility = ["//factory/cli:__subpackages__"],
     deps = ["@cli_pip//markdown_it_py"],
+)
+
+cli_py_library(
+    name = "content_issues",
+    srcs = ["content_issues.py"],
+    imports = ["../.."],
+    visibility = ["//factory/cli:__subpackages__"],
+    deps = [
+        ":secret_scan",
+        "//factory/cli/src/tbhbdev:content_model",
+        "//factory/cli/src/tbhbdev:content_vet",
+        "//factory/cli/src/tbhbdev/alpha/pull_request:tools",
+    ],
 )

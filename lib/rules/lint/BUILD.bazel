@@ -150,6 +150,8 @@ python_tool(
     visibility = ["//visibility:public"],
 )
 
+exports_files(["preflight/preflight.py"])
+
 bzl_library(
     name = "defs",
     srcs = ["defs.bzl"],
