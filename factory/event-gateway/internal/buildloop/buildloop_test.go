@@ -36,9 +36,7 @@ func TestMain(m *testing.M) {
 func helper(mode string, args []string) int {
 	switch mode {
 	case modeExit:
-		//nolint:errcheck // The parent test checks the output from the helper process.
 		_, _ = os.Stdout.WriteString("to stdout\n")
-		//nolint:errcheck // The parent test checks the output from the helper process.
 		_, _ = os.Stderr.WriteString("to stderr\n")
 
 		return number(args)
@@ -50,7 +48,6 @@ func helper(mode string, args []string) int {
 			return 1
 		}
 
-		//nolint:errcheck // The parent test checks the output from the helper process.
 		_, _ = os.Stdout.WriteString(dir)
 	}
 

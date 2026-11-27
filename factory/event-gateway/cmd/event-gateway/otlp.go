@@ -228,7 +228,6 @@ func (w *otlpWriter) send(ctx context.Context, signal string, message proto.Mess
 	if err != nil {
 		return errOTLPExport
 	}
-	//nolint:errcheck // Closing the body is cleanup after receiving the response.
 	defer response.Body.Close()
 
 	if response.StatusCode != http.StatusOK {

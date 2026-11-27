@@ -13,9 +13,9 @@ repo_files(visibility = ["//factory/event-gateway:__subpackages__"])
 
 gobco_test(
     name = "temporaltarget_gobco_test",
-    go_mod = "//:go.mod",
-    go_sum = "//:go.sum",
-    proxy = "@go_mod_proxy//:proxy",
+    go_mod = "//factory/event-gateway:go.mod",
+    go_sum = "//factory/event-gateway:go.sum",
+    proxy = "@event_gateway_go_mod_proxy//:proxy",
     tests = [":temporaltarget_test"],
 )
 

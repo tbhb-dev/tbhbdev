@@ -33,7 +33,6 @@ func (cfg *serveConfig) withParked(ctx context.Context, targets []runnerTarget, 
 	}
 
 	// Serve closes and unlinks the listener. This also covers startup failures.
-	//nolint:errcheck // The listener is closing during server shutdown.
 	defer func() { _ = listener.Close() }()
 
 	return run(func(store eventStore) []httpService {
@@ -80,7 +79,6 @@ func clearStaleSocket(ctx context.Context, path string) {
 		return
 	}
 
-	//nolint:errcheck // The directory handle only holds the lock for stale socket cleanup.
 	defer func() { _ = dir.Close() }()
 
 	lockErr := syscall.Flock(int(dir.Fd()), syscall.LOCK_EX|syscall.LOCK_NB)
@@ -92,12 +90,10 @@ func clearStaleSocket(ctx context.Context, path string) {
 
 	conn, err := new(net.Dialer).DialContext(ctx, "unix", path)
 	if err == nil {
-		//nolint:errcheck // The successful dial already proved that the socket is active.
 		_ = conn.Close()
 	}
 
 	if errors.Is(err, syscall.ECONNREFUSED) {
-		//nolint:errcheck // The subsequent listen reports a stale socket that could not be removed.
 		_ = os.Remove(path)
 	}
 }

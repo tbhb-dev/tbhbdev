@@ -170,11 +170,9 @@ func TestMCPStateAwrelImport(t *testing.T) {
 	checkEqual(t, len(subs.list()), 1)
 	checkMCPStateLog(t, &logs, "")
 
-	//nolint:gosec // The test reads its own temporary file.
 	data, err := os.ReadFile(own)
 	checkError(t, err)
 	checkEqual(t, string(data), mcpStateDocument(mcpStateTestSubscription))
-	//nolint:gosec // The test reads its own temporary file.
 	data, err = os.ReadFile(legacy)
 	checkError(t, err)
 	checkEqual(t, string(data), document)
@@ -223,7 +221,6 @@ func TestMCPStateAwrelSkip(t *testing.T) {
 		checkEqual(t, subs.imported, false)
 		checkMCPStateLog(t, &logs, test[1])
 
-		//nolint:gosec // The test reads its own temporary file.
 		data, readErr := os.ReadFile(own)
 		checkError(t, readErr)
 		checkEqual(t, string(data), test[0])
@@ -262,7 +259,6 @@ func TestMCPStateAwrelInvalid(t *testing.T) {
 			checkEqual(t, subs.imported, test.count > 0)
 			checkMCPStateLog(t, &logs, awrelStateWarning)
 
-			//nolint:gosec // The test reads its own temporary file.
 			data, err := os.ReadFile(own)
 
 			switch test.count {
@@ -321,7 +317,6 @@ func TestMCPStateTools(t *testing.T) {
 	} {
 		checkEqual(t, callMCPTool(t, session, test[0], mcpStateTestSubscription).IsError, false)
 
-		//nolint:gosec // The test reads its own temporary file.
 		data, err := os.ReadFile(path)
 		checkError(t, err)
 		checkEqual(t, string(data), mcpStateDocument(test[1]))

@@ -179,7 +179,6 @@ func (c *Client) Token(ctx context.Context) (string, error) {
 		return "", fmt.Errorf("POST %s: send token request", c.path)
 	}
 
-	//nolint:errcheck // Closing the body is cleanup after receiving the response.
 	defer res.Body.Close()
 
 	if res.StatusCode != http.StatusCreated {

@@ -1,0 +1,19 @@
+#!/bin/sh
+# SPDX-License-Identifier: Apache-2.0
+# Copyright Tony Burns
+
+set -eu
+
+user=$(id -un)
+[ "$user" = ops ]
+archive=/var/tmp/event-gateway-archive
+case "$1" in
+build)
+	mkdir -p "$archive/factory/event-gateway/container/image_load"
+	touch "$archive/factory/event-gateway/container/image_load/tarball.tar"
+	;;
+info)
+	printf '%s\n' "$archive"
+	;;
+*) exit 2 ;;
+esac

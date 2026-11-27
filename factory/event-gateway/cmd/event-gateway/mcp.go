@@ -61,7 +61,6 @@ func runMCP(ctx context.Context, logHandler slog.Handler, args []string) error {
 }
 
 func serveMCP(ctx context.Context, logHandler slog.Handler, stdin io.ReadCloser, stdout io.Writer) error {
-	//nolint:errcheck // Closing the input is cleanup after the MCP session exits.
 	defer stdin.Close()
 
 	logger := slog.New(logHandler)
