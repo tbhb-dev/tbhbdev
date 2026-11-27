@@ -652,7 +652,7 @@ def app_reviews(rows: list[object]) -> list[review_gate.Review]:
         ):
             message = "GitHub returned a review with invalid verdict, author or commit"
             raise EvidenceError(message)
-        if kind == "Bot" and login.casefold() == REVIEWS_APP:
+        if kind == "Bot":
             reviews.append(
                 {
                     "id": key,

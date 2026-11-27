@@ -175,7 +175,7 @@ class Tools:
             "mergeable": "MERGEABLE",
             "mergeStateStatus": "CLEAN",
             "statusCheckRollup": [
-                {"name": "ci", "status": "COMPLETED", "conclusion": "SUCCESS"}
+                {"name": "conclusion", "status": "COMPLETED", "conclusion": "SUCCESS"}
             ],
             "reviewDecision": "APPROVED",
             "commits": [commit(head)],
@@ -612,10 +612,14 @@ def run_main(*argv: str) -> tuple[int | str | None, str]:
             (
                 {
                     "statusCheckRollup": [
-                        {"name": "ci", "status": "COMPLETED", "conclusion": outcome}
+                        {
+                            "name": "conclusion",
+                            "status": "COMPLETED",
+                            "conclusion": outcome,
+                        }
                     ]
                 },
-                f"check ci is {outcome.lower() or 'completed'}",
+                f"check conclusion is {outcome.lower() or 'completed'}",
             )
             for outcome in ("SKIPPED", "NEUTRAL", "FAILURE", "")
         ],
@@ -1520,16 +1524,21 @@ def amend(tools: Tools, **spec: object) -> None:
 
 
 def test_merge_requires_success_for_a_named_required_check(tools: Tools) -> None:
-    contexts = [{"context": "conclusion"}]
+    contexts = [{"context": "lint"}]
     required = {
         "type": "required_status_checks",
         "parameters": {"required_status_checks": contexts},
     }
     amend(tools, rules_out=json.dumps([[required]]))
     code, _ = run_main("12")
-    assert "required check conclusion has no success at the head" in str(code)
+    assert "required check lint has no success at the head" in str(code)
     assert len(tools.calls()) == 1
-    tools.view(statusCheckRollup=[{"context": "conclusion", "state": "SUCCESS"}])
+    tools.view(
+        statusCheckRollup=[
+            {"context": "conclusion", "state": "SUCCESS"},
+            {"context": "lint", "state": "SUCCESS"},
+        ]
+    )
     amend(tools, rules_out=json.dumps([[required]]))
     assert run_main("12")[0] == 0
 
