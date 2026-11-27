@@ -28,7 +28,7 @@ type: Reference
 
 ## Review validation
 
-`tbhbdev.content.check_review(markdown, *, metadata=None, event="", posted=False)` validates a pull request review with `CUE`. It returns an empty list on success and a diagnostic on refusal. Install the pinned executable with `tbhbdev cue install`. Set `event` to check the findings against the GitHub review event. Pass `metadata` for a schema 2 review document, whose verdict maps to a GitHub event. Set `posted=True` when checking a body with its generated footer.
+`tbhbdev.content_review.check_review(markdown, *, metadata=None, event="", posted=False)` validates a pull request review with `CUE`. It returns an empty list on success and a diagnostic on refusal. Install the pinned executable with `tbhbdev cue install`. Set `event` to check the findings against the GitHub review event. Pass `metadata` for a schema 2 review document, whose verdict maps to a GitHub event. Set `posted=True` when checking a body with its generated footer.
 
 The body starts with Summary and ends with Verification. Findings and Suggestions are optional, in that order. GitHub records the reviewed commit in `commit_id`. Keep the commit and run details out of the review prose.
 

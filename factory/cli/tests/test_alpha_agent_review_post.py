@@ -14,7 +14,7 @@ import httpx2
 import pytest
 from cue_fixtures import review_cue as review_cue  # noqa: PLC0414
 
-from tbhbdev import content
+from tbhbdev import content_review
 from tbhbdev.alpha import review, review_doc, run_stop_hook
 from tbhbdev.alpha.agent import credentials, review_post, runfiles
 from tbhbdev.alpha.agent.decisions import request as requests
@@ -394,7 +394,7 @@ def test_host_and_cli_prefer_the_same_draft(
     assert payload is not None
     assert payload["event"] == ("APPROVE" if verdict == "GO" else "REQUEST_CHANGES")
     assert payload["commit_id"] == HEAD
-    assert not content.check_review(
+    assert not content_review.check_review(
         payload["body"], metadata=review_doc.parse(text).metadata, posted=True
     )
     assert review_doc.parse_marker(payload["body"]) == review_doc.marker_id(

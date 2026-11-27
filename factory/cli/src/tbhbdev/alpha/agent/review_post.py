@@ -13,7 +13,7 @@ from typing import TYPE_CHECKING, cast
 
 import httpx2
 
-from tbhbdev import content, github_tls
+from tbhbdev import github_tls
 from tbhbdev.alpha import gh_app, review, review_doc
 from tbhbdev.alpha.agent import credentials, runfiles
 from tbhbdev.alpha.agent.decisions import repo
@@ -22,6 +22,7 @@ from tbhbdev.alpha.agent.model import Harness, Invalid, RunKind
 from tbhbdev.alpha.identity import dispatcher as identity
 from tbhbdev.alpha.pull_request_frontmatter import parse_frontmatter
 from tbhbdev.alpha.size_gate import SIZE_REVIEW, size_verdict
+from tbhbdev.content_review import check_review
 
 if TYPE_CHECKING:
     from tbhbdev.alpha.agent.run_host import Prepared, Run
@@ -81,11 +82,11 @@ def validate_document(sub: Submission) -> tuple[dict[str, object], str]:
     if doc.head_sha != sub.commit:
         message = "the draft's head_sha isn't the commit the run reviewed"
         raise PostRefusedError(message)
-    if problems := content.check_review(doc.body, metadata=doc.metadata):
+    if problems := check_review(doc.body, metadata=doc.metadata):
         raise PostRefusedError(problems[0])
     event = "APPROVE" if doc.verdict == "GO" else "REQUEST_CHANGES"
     body = f"{review_doc.render(doc)}\n{sub.stamp}\n"
-    if problems := content.check_review(body, metadata=doc.metadata, posted=True):
+    if problems := check_review(body, metadata=doc.metadata, posted=True):
         raise PostRefusedError(problems[0])
     return {**doc.metadata, "event": event}, body
 

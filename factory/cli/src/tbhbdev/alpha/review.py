@@ -12,10 +12,10 @@ from typing import cast
 import yaml
 from jsonschema import Draft202012Validator
 
-from tbhbdev import content
 from tbhbdev.alpha import pull_request as pr
 from tbhbdev.alpha import pull_request_frontmatter as frontmatter
 from tbhbdev.alpha import review_doc, review_policy, review_threads
+from tbhbdev.content_review import check_review
 
 SCHEMA = {
     "$schema": "https://json-schema.org/draft/2020-12/schema",
@@ -152,9 +152,7 @@ def check_text(text: str, number: int, *, lint: bool = True) -> list[pr.Problem]
         return problems
     fields = cast("dict[str, object]", data)
     first = offset + 1
-    problems = [
-        (first, why) for why in content.check_review(body, event=str(fields["event"]))
-    ]
+    problems = [(first, why) for why in check_review(body, event=str(fields["event"]))]
     return lint_body(body, first) if lint and not problems else problems
 
 
@@ -240,9 +238,7 @@ def check_document(text: str, number: int, *, lint: bool) -> list[pr.Problem]:
     except review_doc.ReviewError as exc:
         return [(1, str(exc))]
     first = text.count("\n") - doc.body.count("\n") + 1
-    problems = [
-        (first, why) for why in content.check_review(doc.body, metadata=doc.metadata)
-    ]
+    problems = [(first, why) for why in check_review(doc.body, metadata=doc.metadata)]
     return lint_body(doc.body, first) if lint and not problems else problems
 
 

@@ -4,7 +4,8 @@ from pathlib import Path
 import pytest
 from cue_fixtures import review_cue as review_cue  # noqa: PLC0414
 
-from tbhbdev import content, cue_runtime
+from tbhbdev import cue_runtime
+from tbhbdev.content_review import check_review
 
 pytestmark = pytest.mark.usefixtures("review_cue")  # noqa: V107
 
@@ -38,9 +39,9 @@ def test_review_limits(heading: str, item: str, words: int, count: int) -> None:
             heading, "\n".join(item.format(n) + prose for n in range(1, items + 1))
         )
 
-    assert not content.check_review(body(words, count))
-    assert content.check_review(body(words + 1, 1))
-    assert content.check_review(body(1, count + 1))
+    assert not check_review(body(words, count))
+    assert check_review(body(words + 1, 1))
+    assert check_review(body(1, count + 1))
 
 
 def test_summary_counts_words_instead_of_characters() -> None:
@@ -52,8 +53,8 @@ def test_summary_counts_words_instead_of_characters() -> None:
     )
     assert len(long_sentence.split()) == 26
     assert len(long_sentence) > 250
-    assert not content.check_review(body_with("Summary", long_sentence))
-    assert not content.check_review(body_with("Summary", "A " + "a " * 38 + "day."))
+    assert not check_review(body_with("Summary", long_sentence))
+    assert not check_review(body_with("Summary", "A " + "a " * 38 + "day."))
 
 
 @pytest.mark.parametrize(
@@ -68,7 +69,7 @@ def test_summary_counts_words_instead_of_characters() -> None:
     ],
 )
 def test_summary_refuses_excess_words_sentences_or_size(summary: str) -> None:
-    assert content.check_review(body_with("Summary", summary)) == [
+    assert check_review(body_with("Summary", summary)) == [
         "Write one Summary paragraph of one or two sentences and at most 40 words"
     ]
 
@@ -106,7 +107,7 @@ def test_summary_refuses_excess_words_sentences_or_size(summary: str) -> None:
     ],
 )
 def test_summary_accepts_prose_without_interpreting_it(summary: str) -> None:
-    assert not content.check_review(body_with("Summary", summary))
+    assert not check_review(body_with("Summary", summary))
 
 
 @pytest.mark.parametrize(
@@ -130,7 +131,7 @@ def test_summary_accepts_prose_without_interpreting_it(summary: str) -> None:
 def test_summary_rejects_bare_and_prefixed_verdicts(
     verdict: str, surrounding: str
 ) -> None:
-    assert content.check_review(body_with("Summary", surrounding.format(verdict))) == [
+    assert check_review(body_with("Summary", surrounding.format(verdict))) == [
         "Remove the standalone verdict line from Summary"
     ]
 
@@ -146,7 +147,7 @@ def test_summary_rejects_bare_and_prefixed_verdicts(
     ],
 )
 def test_summary_rejects_leading_verdict_with_reasons(summary: str) -> None:
-    assert content.check_review(body_with("Summary", summary)) == [
+    assert check_review(body_with("Summary", summary)) == [
         "Remove the standalone verdict line from Summary"
     ]
 
@@ -162,12 +163,12 @@ def test_summary_rejects_leading_verdict_with_reasons(summary: str) -> None:
     ],
 )
 def test_summary_rejects_review_stamps(summary: str) -> None:
-    assert content.check_review(body_with("Summary", summary))
+    assert check_review(body_with("Summary", summary))
 
 
 @pytest.mark.parametrize("verdict", ["GO", "BLOCK"])
 def test_verification_refuses_standalone_verdict_line(verdict: str) -> None:
-    assert content.check_review(
+    assert check_review(
         (SUMMARY + VERIFICATION + f"\nVERDICT: {verdict}\n").replace("\n", "\r\n")
     ) == ["Remove the standalone verdict line from Verification"]
 
@@ -179,13 +180,13 @@ def test_review_accepts_path_line_evidence(evidence: str) -> None:
         f"- F1: P1 correctness {evidence} returns stale values. "
         "Occurs when: a caller saves a record.",
     )
-    assert not content.check_review(body, event="REQUEST_CHANGES")
+    assert not check_review(body, event="REQUEST_CHANGES")
 
 
 @pytest.mark.parametrize("clause", ["", " Occurs when:", " Occurs when: ."])
 def test_p1_requires_a_nonempty_occurs_when_clause(clause: str) -> None:
     body = body_with("Findings", f"- F1: P1 correctness The cache is stale.{clause}")
-    assert "Occurs when:" in content.check_review(body, event="REQUEST_CHANGES")[0]
+    assert "Occurs when:" in check_review(body, event="REQUEST_CHANGES")[0]
 
 
 @pytest.mark.parametrize(
@@ -200,12 +201,14 @@ def test_p1_requires_a_nonempty_occurs_when_clause(clause: str) -> None:
     ],
 )
 def test_review_reports_section_order(body: str, message: str) -> None:
-    assert content.check_review(body) == [message]
+    assert check_review(body) == [message]
 
 
 @pytest.mark.parametrize("metadata", [{}, {"verdict": "GO", "repo": "invalid"}])
-def test_review_reports_invalid_schema_two_metadata(metadata: content.Json) -> None:
-    assert content.check_review(SUMMARY + VERIFICATION, metadata=metadata) == [
+def test_review_reports_invalid_schema_two_metadata(
+    metadata: dict[str, object],
+) -> None:
+    assert check_review(SUMMARY + VERIFICATION, metadata=metadata) == [
         "Correct the schema 2 review frontmatter"
     ]
 
@@ -228,7 +231,7 @@ def test_review_reports_invalid_schema_two_metadata(metadata: content.Json) -> N
     ],
 )
 def test_review_rejects_invalid_items(heading: str, items: str) -> None:
-    assert content.check_review(body_with(heading, items))
+    assert check_review(body_with(heading, items))
 
 
 @pytest.mark.parametrize(
@@ -245,12 +248,12 @@ def test_review_rejects_invalid_items(heading: str, items: str) -> None:
 )
 def test_review_event_matches_severity(event: str, item: str, *, refused: bool) -> None:
     findings = f"\n## Findings\n\n{item}" if item else ""
-    problems = content.check_review(SUMMARY + findings + VERIFICATION, event=event)
+    problems = check_review(SUMMARY + findings + VERIFICATION, event=event)
     assert bool(problems) == refused
 
 
 def test_check_review_reports_normalization_refusal() -> None:
-    assert content.check_review("## <!-- invisible -->\n") == [
+    assert check_review("## <!-- invisible -->\n") == [
         "Section headings must have visible text"
     ]
 
@@ -261,7 +264,7 @@ def test_check_review_reports_missing_cue(monkeypatch: pytest.MonkeyPatch) -> No
         raise cue_runtime.CueError(message)
 
     monkeypatch.setattr(cue_runtime, "resolve", missing)
-    assert content.check_review(SUMMARY + VERIFICATION) == [
+    assert check_review(SUMMARY + VERIFICATION) == [
         "Review validation could not run: run tbhbdev cue install"
     ]
 
@@ -274,5 +277,5 @@ def test_check_review_reports_silent_failure(monkeypatch: pytest.MonkeyPatch) ->
         return subprocess.CompletedProcess(["cue"], 1, stderr="\n")
 
     monkeypatch.setattr(cue_runtime, "resolve", lambda: Path("cue"))
-    monkeypatch.setattr(content.subprocess, "run", quiet)
-    assert content.check_review(SUMMARY + VERIFICATION) == ["Review validation failed"]
+    monkeypatch.setattr(subprocess, "run", quiet)
+    assert check_review(SUMMARY + VERIFICATION) == ["Review validation failed"]

@@ -77,18 +77,11 @@ cli_py_library(
 cli_py_library(
     name = "content",
     srcs = ["content.py"],
-    data = [
-        ":schemas/core.cue",
-        ":schemas/issue.cue",
-        ":schemas/review.cue",
-        "//factory/cli:schemas",
-    ],
     imports = [".."],
     visibility = ["//factory/cli:__subpackages__"],
     deps = [
         ":content_model",
         ":content_vet",
-        ":cue_runtime",
         "//factory/cli/src/tbhbdev/alpha:pull_request",
         "//factory/cli/src/tbhbdev/alpha:secret_scan",
     ],
@@ -111,6 +104,23 @@ cli_py_library(
     deps = [
         "@cli_pip//markdown_it_py",
         "@cli_pip//mdit_py_plugins",
+    ],
+)
+
+cli_py_library(
+    name = "content_review",
+    srcs = ["content_review.py"],
+    data = [
+        ":schemas/core.cue",
+        ":schemas/issue.cue",
+        ":schemas/review.cue",
+        "//factory/cli:schemas",
+    ],
+    imports = [".."],
+    visibility = ["//factory/cli:__subpackages__"],
+    deps = [
+        ":content_model",
+        ":cue_runtime",
     ],
 )
 

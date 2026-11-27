@@ -691,7 +691,7 @@ cli_py_test(
     deps = [
         ":conftest",
         ":cue_fixtures",
-        "//factory/cli/src/tbhbdev:content",
+        "//factory/cli/src/tbhbdev:content_review",
         "//factory/cli/src/tbhbdev/alpha:review",
         "//factory/cli/src/tbhbdev/alpha:review_doc",
         "//factory/cli/src/tbhbdev/alpha:run_stop_hook",
@@ -1294,7 +1294,7 @@ cli_py_test(
     deps = [
         ":conftest",
         ":cue_fixtures",
-        "//factory/cli/src/tbhbdev:content",
+        "//factory/cli/src/tbhbdev:content_review",
         "//factory/cli/src/tbhbdev/alpha:review_doc",
         "//factory/cli/src/tbhbdev/alpha:review_prompt",
         "@cli_pip//pytest",
@@ -1656,18 +1656,6 @@ cli_py_test(
 )
 
 cli_py_test(
-    name = "test_content_review",
-    srcs = ["test_content_review.py"],
-    deps = [
-        ":conftest",
-        ":cue_fixtures",
-        "//factory/cli/src/tbhbdev:content",
-        "//factory/cli/src/tbhbdev:cue_runtime",
-        "@cli_pip//pytest",
-    ],
-)
-
-cli_py_test(
     name = "test_content_vet",
     srcs = ["test_content_vet.py"],
     data = ["//factory/cli:schemas"],
@@ -1840,6 +1828,7 @@ filegroup(
         ["**"],
         exclude = ["BUILD.bazel"],
     ) + [
+        "//factory/cli/tests/integration:test_content_review.py",
         "//factory/cli/tests/integration/alpha:test_pull_request_timestamps_io.py",
         "//factory/cli/tests/integration/alpha/agent:package_files",
         "//factory/cli/tests/integration/alpha/identity:test_dispatcher_timestamps_io.py",
