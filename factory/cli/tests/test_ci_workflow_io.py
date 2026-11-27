@@ -3,6 +3,7 @@
 import hashlib
 import json
 import os
+import re
 import shlex
 import subprocess
 import sys
@@ -268,12 +269,28 @@ def test_ci_prose_skip_list(
         )
 
 
-def _prose_hook(name: str) -> dict[object, object]:
+def _pre_commit_config() -> dict[object, object]:
     path = WORKSPACE / ".pre-commit-config.yaml"
     config = _mapping(yaml.safe_load(path.read_text()))
     assert config.get("files", "") == ""
-    assert config.get("exclude", "^$") == "^$"
-    for repo in _list(config["repos"]):
+    return config
+
+
+@pytest.mark.parametrize(
+    "path",
+    [
+        "lib/rules/e2e/smoke/testdata/proofs/cspell_bad/notes.md",
+        "lib/rules/e2e/smoke/testdata/proofs/rumdl_bad/bad.md",
+    ],
+)
+def test_prose_hooks_exclude_smoke_fixtures(path: str) -> None:
+    exclude = _pre_commit_config()["exclude"]
+    assert isinstance(exclude, str)
+    assert re.search(exclude, path)
+
+
+def _prose_hook(name: str) -> dict[object, object]:
+    for repo in _list(_pre_commit_config()["repos"]):
         for entry in _list(_mapping(repo)["hooks"]):
             hook = _mapping(entry)
             if hook["id"] == name:

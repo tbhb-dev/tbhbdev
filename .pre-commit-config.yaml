@@ -7,41 +7,35 @@
 default_stages: [pre-commit]
 default_install_hook_types: [pre-commit, commit-msg, pre-push]
 
+# Never touch Vale's synced style packages, build output, or test fixtures,
+# which are deliberately malformed and must stay that way.
+exclude: |
+  (?x)^(
+    \.vale/(Google|write-good|proselint|ai-tells.*)/|
+    \.bazel-.*/|
+    bazel-.*/|
+    tmp/|
+    \.mise/|
+    lib/rules/repo/baseline/(files|kinds|visibility|seed)/|
+    \.worktrees/|
+    (.*/)?(mutants|testdata)/
+  )
+
 repos:
   - repo: builtin
     hooks:
       - id: check-added-large-files
         args: [--maxkb=19531, --enforce-all]
-        # Keep the general checks away from build output and test fixtures.
-        files: &general_files |
-          (?x)^(?!
-            \.vale/(Google|write-good|proselint|ai-tells.*)/|
-            \.bazel-.*/|
-            bazel-.*/|
-            tmp/|
-            \.mise/|
-            lib/rules/repo/baseline/(files|kinds|visibility|seed)/|
-            \.worktrees/|
-            (.*/)?(mutants|testdata)/
-          )
       - id: check-case-conflict
-        files: *general_files
       - id: check-executables-have-shebangs
-        files: *general_files
       - id: check-merge-conflict
-        files: *general_files
       - id: check-symlinks
-        files: *general_files
       - id: end-of-file-fixer
-        files: *general_files
         exclude: >-
           ^(\.vale/config/vocabularies/project/reject\.txt|lib/rules/lint/gitleaks/(base|upstream)\.toml)$
       - id: fix-byte-order-marker
-        files: *general_files
       - id: mixed-line-ending
-        files: *general_files
       - id: trailing-whitespace
-        files: *general_files
         exclude: ^lib/rules/cloudflare/e2e/smoke/(nested/)?worker-configuration\.d\.ts$
 
   - repo: local
@@ -68,34 +62,29 @@ repos:
         stages: [commit-msg]
         always_run: true
       - id: ruff-format
-        files: *general_files
         name: ruff format
         language: system
         entry: mise exec -- ruff format --check --force-exclude
         exclude: ^factory/cli/tests/conftest\.py$
         types_or: [python]
       - id: ruff-check
-        files: *general_files
         name: ruff check
         language: system
         entry: mise exec -- ruff check --force-exclude
         types_or: [python]
       - id: shfmt
-        files: *general_files
         name: shfmt
         language: system
         entry: mise exec -- shfmt -d
         exclude: ^(\.github/actions/affected-targets/select|factory/cli/combine_coverage)\.sh$
         types_or: [shell, bats]
       - id: shellcheck
-        files: *general_files
         name: shellcheck
         language: system
         entry: mise exec -- shellcheck -o check-extra-masked-returns
         exclude: ^\.github/actions/affected-targets/select\.sh$
         types_or: [shell, bats]
       - id: buildifier
-        files: *general_files
         name: buildifier
         language: system
         entry: mise exec -- buildifier -mode=check -lint=warn -warnings=all
@@ -112,14 +101,12 @@ repos:
           )$
         types: [bazel]
       - id: tombi-format
-        files: *general_files
         name: tombi format
         language: system
         entry: mise exec -- tombi format --check --offline
         exclude: ^lib/rules/lint/gitleaks/(base|upstream)\.toml$
         types: [toml]
       - id: ryl
-        files: *general_files
         name: ryl
         language: system
         entry: mise exec -- ryl check --strict -c .ryl.toml
@@ -139,7 +126,6 @@ repos:
         args: [-shellcheck, shellcheck]
         files: ^\.github/workflows/
       - id: editorconfig-checker
-        files: *general_files
         name: editorconfig-checker
         language: system
         entry: mise exec -- editorconfig-checker -config .editorconfig-checker.json
