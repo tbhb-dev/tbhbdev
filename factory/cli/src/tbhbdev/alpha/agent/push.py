@@ -184,12 +184,15 @@ def remote_git(directory: Path, *args: str, token: str | None) -> str:
         "-c",
         "transfer.fsckObjects=true",
         *args,
-        token=token,
+        extra_env=host_tools.git_token_env(token),
     ).strip()
 
 
 def history_git(
-    directory: Path, *args: str, revisions: str | None = None, token: str | None = None
+    directory: Path,
+    *args: str,
+    revisions: str | None = None,
+    extra_env: dict[str, str] | None = None,
 ) -> str:
     """Run a Git history query with the protected repository metadata."""
     env = dict.fromkeys(
@@ -208,7 +211,7 @@ def history_git(
         GIT_TERMINAL_PROMPT="0",
         PATH=host_tools.search(),
     )
-    env.update(host_tools.git_token_env(token))
+    env.update(extra_env or {})
     return subprocess.run(  # nosec B603
         [
             host_tools.resolve("git"),

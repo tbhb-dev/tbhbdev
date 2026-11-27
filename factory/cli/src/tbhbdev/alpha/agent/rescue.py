@@ -3,9 +3,8 @@
 from __future__ import annotations
 
 import re
-import shutil
 import subprocess  # nosec B404
-from contextlib import contextmanager, suppress
+from functools import partial
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -16,8 +15,6 @@ from tbhbdev.alpha.agent.model import Profile
 from tbhbdev.alpha.gh_app import GhAppError
 
 if TYPE_CHECKING:
-    from collections.abc import Generator
-
     from tbhbdev.alpha.agent.run_host import Prepared, Run
 
 FAILURES = (OSError, ValueError, subprocess.SubprocessError)
@@ -48,105 +45,61 @@ def publish(run: Run, workspace: Path) -> str:
     """Pin the exact commit to scan and publish on the run's own branch."""
     branch = f"agent/{run.files.name}"
     ref = f"refs/heads/{branch}"
+    failure = "could not save the run checkout"
     try:
         base = run.files.path("base").read_text().strip()
         refs, checkout = push.local_refs(workspace)
-        parent = refs.get("HEAD", refs.get("detached HEAD"))
-        if parent is None:
-            return "kept local: could not save the run checkout"
+        parent = refs.get("HEAD", refs.get("detached HEAD", ""))
         on_branch = checkout == f"ref: {ref}"
         with push.publication(run.files.root, workspace, parent) as directory:
             saved = save_checkout(directory, workspace, ref if on_branch else "HEAD")
-        if not on_branch:
-            if saved is not None:
-                run.files.write("head", saved)
-            return "kept local: checkout left the run branch"
-        tip = saved or parent
-    except FAILURES:
-        return "kept local: could not save the run checkout"
-    if tip == base:
-        return "nothing to publish"
-    run.files.write("head", tip)
-    try:
-        with push.publication(run.files.root, workspace, tip) as directory:
+            tip = saved or parent
+            if saved or (on_branch and tip != base):
+                run.files.write("head", tip)
+            if not on_branch:
+                return "kept local: checkout left the run branch"
+            if tip == base:
+                return "nothing to publish"
+            failure = "could not publish the run branch"
             return publish_commit(run, directory, branch, base, tip)
     except (*FAILURES, GhAppError):
-        return "kept local: could not publish the run branch"
+        return f"kept local: {failure}"
 
 
 def save_checkout(directory: Path, checkout: Path, ref: str) -> str | None:
     """Stage with private Git metadata and save the snapshot under a ref lock."""
-    metadata = checkout / ".git"
-    index = metadata / "index"
-    pack = metadata / "objects" / "pack"
-    destination = metadata / ref
-    if any(path.resolve() != path for path in (index, pack, destination.parent)):
+    index = checkout / ".git/index"
+    objects = checkout / ".git/objects"
+    destination = checkout / ".git" / ref
+    paths = (index, objects, destination.parent, *objects.iterdir())
+    if any(path.resolve() != path for path in paths):
         message = "unexpected symlink in run Git metadata"
         raise OSError(message)
-    private_index = directory / "index"
-    with suppress(FileNotFoundError):
-        # Git uses the index timestamp to detect same-tick worktree edits.
-        shutil.copy2(index, private_index)
-    git = ("-c", "core.fsmonitor=false", "--work-tree", str(checkout))
-    status = push.history_git(
-        directory,
-        "--no-optional-locks",
-        *git,
-        "status",
-        "--porcelain",
-        "--untracked-files=all",
-        "--ignore-submodules=dirty",
-    )
-    if not status:
+    with (directory / "config").open("a") as config:
+        config.write(
+            "[core]\nfsmonitor = false\n"
+            "[user]\nname = Run launcher\nemail = run-launcher\n"
+        )
+    location = ("--git-dir", str(directory), "--work-tree", str(checkout))
+    env = {"GIT_INDEX_FILE": str(index), "GIT_OBJECT_DIRECTORY": str(objects)}
+    git = partial(push.history_git, directory, *location, extra_env=env)
+    status = ("status", "--porcelain", "-uall", "--ignore-submodules=dirty")
+    if not git("--no-optional-locks", *status):
         return None
     destination.parent.mkdir(parents=True, exist_ok=True)
-    with replace_locked(destination) as ref_lock, replace_locked(index) as index_lock:
-        private_index.unlink(missing_ok=True)
-        with suppress(FileNotFoundError):
-            shutil.copy2(index, private_index)
-        tip = commit_checkout(directory, git, pack)
-        shutil.copy2(private_index, index_lock)
-        ref_lock.write_text(tip + "\n")
-    return tip
-
-
-@contextmanager
-def replace_locked(target: Path) -> Generator[Path]:
-    """Install a file through the same exclusive lock used by Git."""
-    lock = target.with_name(target.name + ".lock")
-    lock.touch(exist_ok=False)
+    lock = destination.with_name(destination.name + ".lock")
+    stream = lock.open("x")
     try:
-        yield lock
-        lock.replace(target)
+        with stream:
+            git("add", "-A")
+            git("commit", "--no-gpg-sign", "-m", "rescue: save failed run work")
+            tip = git("rev-parse", "HEAD").strip()
+            stream.write(tip + "\n")
+        lock.replace(destination)
     except BaseException:
         lock.unlink(missing_ok=True)
         raise
-
-
-def commit_checkout(directory: Path, git: tuple[str, ...], pack: Path) -> str:
-    """Create the commit privately, then install its objects in the run clone."""
-    push.history_git(directory, *git, "add", "-A")
-    push.history_git(
-        directory,
-        "-c",
-        "user.name=Run launcher",
-        "-c",
-        "user.email=run-launcher",
-        *git,
-        "commit",
-        "--no-gpg-sign",
-        "-m",
-        "rescue: save failed run work",
-    )
-    commit = push.history_git(directory, "rev-parse", "HEAD").strip()
-    push.history_git(
-        directory,
-        "pack-objects",
-        "--revs",
-        str(pack / "pack"),
-        revisions=f"{commit}\n^{commit}^\n",
-    )
-    return commit
+    return tip
 
 
 def publish_commit(run: Run, directory: Path, branch: str, base: str, tip: str) -> str:
@@ -179,19 +132,11 @@ def scan(directory: Path, base: str, tip: str) -> str | None:
         additions = push.history_git(
             directory, "log", "--format=", "--numstat", *options
         )
+        git_log = f"--log-opts={' '.join(options)}"
+        flags = ("git", "--no-banner", "--no-color", "--redact")
+        args = (*flags, f"--exit-code={FINDING}", "--config", str(config), git_log)
         done = subprocess.run(  # nosec B603 -- resolved tool and pinned history
-            [
-                host_tools.resolve("gitleaks"),
-                "git",
-                "--no-banner",
-                "--no-color",
-                "--redact",
-                f"--exit-code={FINDING}",
-                "--config",
-                str(config),
-                f"--log-opts={' '.join(options)}",
-                str(directory),
-            ],
+            [host_tools.resolve("gitleaks"), *args, str(directory)],
             cwd=directory,
             env={
                 "PATH": host_tools.search(),
