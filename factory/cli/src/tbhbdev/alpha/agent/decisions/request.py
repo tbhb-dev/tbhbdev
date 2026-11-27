@@ -13,7 +13,6 @@ from datetime import date
 from enum import StrEnum
 from typing import NoReturn
 
-from tbhbdev.alpha import identity
 from tbhbdev.alpha.agent.decisions import repo
 from tbhbdev.alpha.agent.model import (
     NAME,
@@ -24,6 +23,7 @@ from tbhbdev.alpha.agent.model import (
     RunKind,
     RunRequest,
 )
+from tbhbdev.alpha.identity import models as identity
 
 _COMMIT = re.compile(r"[0-9a-f]{40}|[0-9a-f]{64}")
 _MODEL = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]{0,127}")
@@ -119,14 +119,12 @@ def _check_harness(request: RunRequest) -> None:
 def review_effort(request: RunRequest) -> str | None:
     """Check the review effort and return the value for identity normalization.
 
-    Antigravity encodes effort in its model. Accept auto and the existing
-    named levels on the request, then let identity read effort from the model.
+    Antigravity encodes effort in its model, which identity reads separately.
     """
-    agy = request.harness is Harness.AGY
     effort = request.effort
-    if effort not in identity.EFFORTS and not (agy and effort == "auto"):
+    if effort not in identity.EFFORTS:
         _fail("effort", f"{effort!r} is unsupported for {request.harness.value}")
-    return None if agy else effort
+    return None if request.harness is Harness.AGY else effort
 
 
 def _check_commit(request: RunRequest) -> None:
@@ -141,17 +139,22 @@ def _check_commit(request: RunRequest) -> None:
         _fail("commit", "applies only to a review run")
 
 
+def valid_fetch_ref(ref: str) -> bool:
+    """Return whether --fetch-ref accepts this ref name."""
+    return (
+        _FETCH_REF.fullmatch(ref) is not None
+        and ".." not in ref
+        and "//" not in ref
+        and not ref.endswith(("/", ".lock"))
+        and not ref.startswith("refs/heads/-")
+    )
+
+
 def check_fetch_refs(refs: tuple[str, ...]) -> None:
     if len(refs) > _FETCH_REF_LIMIT:
         _fail("fetch_refs", f"allows at most {_FETCH_REF_LIMIT} refs")
     for ref in refs:
-        if (
-            _FETCH_REF.fullmatch(ref) is None
-            or ".." in ref
-            or "//" in ref
-            or ref.endswith(("/", ".lock"))
-            or ref.startswith("refs/heads/-")
-        ):
+        if not valid_fetch_ref(ref):
             _fail("fetch_refs", f"contains invalid ref {ref!r}")
 
 

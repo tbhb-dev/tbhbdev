@@ -3,8 +3,8 @@ description: Policy-controlled GitHub administration and audit records.
 generated:
   - role: generated
     harness: codex
-    model: openai:gpt-6
-    at: "2026-11-13T14:19:54Z"
+    model: openai:gpt-6.2-sol
+    at: "2026-11-26T23:46:49Z"
 status: stable
 tags: [administration]
 title: GitHub administration
@@ -23,7 +23,7 @@ tbhbdev admin secret-repos add --org tbhb-dev --secret BUILD widget tbhb-dev/oth
 
 `call` requires `--reason`. Use `--json -` for standard input. `--dry-run` checks policy and writes an audit record without reading secrets or making requests. With `secret-repos add`, the command first checks for `selected` visibility. It then looks up repository IDs and adds them through the same call path. Repositories must belong to the specified organization. This subcommand defaults its reason to `add repositories to selected secret`. Use `--reason` to override it.
 
-Both commands accept `--app` (default `tbhb-dev-admin`), `--app-id` (default `5733271`), `--vault` (default `tbhb-dev-admin`), and `--item` (default `github-app-tbhb-dev-admin`). Verify the item name before deployment. Only the item's `private_key` field comes from Connect. The App ID controls authentication, while the app name identifies the configuration.
+Set `[admin] vault` and `[admin] item` in [user config](config.md) on the host that runs the command. The `--vault` and `--item` flags override those settings. The command reads one field from Connect, the item's `private_key`. The `--app-id` flag sets the App ID for authentication and defaults to `5733271`. The `--app` flag names the App configuration.
 
 ## Key host
 

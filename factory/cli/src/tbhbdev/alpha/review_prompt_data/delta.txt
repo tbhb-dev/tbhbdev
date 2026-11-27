@@ -1,3 +1,4 @@
 Base-reviewed: ${base_reviewed}
 Re-review the new Head relative to Base-reviewed. Judge only the delta between those heads and state what changed in Verification.
+From round 2, raise new findings only on lines the fix changed.
 Keep earlier unresolved findings by reference to the prior review and its finding number. Record those references in Verification. Carry forward an unresolved P0 or P1 finding with that reference so the event accounts for it.

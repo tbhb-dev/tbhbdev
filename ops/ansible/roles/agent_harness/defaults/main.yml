@@ -1,0 +1,5 @@
+---
+agent_harness_accounts:
+  - name: agent
+agent_harness_name: tbhb.dev Agent
+agent_harness_email: agent@example.invalid

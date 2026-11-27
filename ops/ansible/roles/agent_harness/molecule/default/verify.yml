@@ -1,0 +1,426 @@
+---
+- name: Verify isolated account fixtures
+  hosts: all
+  become: true
+  vars:
+    agent_harness_accounts: >-
+      {{ (lookup('ansible.builtin.file', playbook_dir + '/../../../../inventory/group_vars/lab.yml')
+      | from_yaml).agent_harness_accounts }}
+    agent_harness_test_accounts: [agent]
+    agent_harness_test_watched:
+      - /home/example-user/.claude/settings.json
+      - /home/example-user/.codex/config.toml
+      - /home/example-user/.fixture-installed
+  tasks:
+    - name: Read merged Claude settings
+      ansible.builtin.slurp:
+        src: /home/{{ item }}/.claude/settings.json
+      loop: "{{ agent_harness_test_accounts }}"
+      register: agent_harness_test_claude
+
+    - name: Read merged Codex settings with the Ubuntu Python parser
+      ansible.builtin.command:
+        argv:
+          - python3
+          - -c
+          - >-
+              import json, pathlib, tomllib;
+              path = pathlib.Path('/home/{{ item }}/.codex/config.toml');
+              print(json.dumps(tomllib.loads(path.read_text())))
+      loop: "{{ agent_harness_test_accounts }}"
+      register: agent_harness_test_codex
+      changed_when: false
+
+    - name: Check isolation, signing and preservation of unrelated settings for each account
+      vars:
+        agent_harness_c: "{{ agent_harness_test_claude.results[idx].content | b64decode | from_json }}"
+        agent_harness_x: "{{ agent_harness_test_codex.results[idx].stdout | from_json }}"
+        agent_harness_h: /home/{{ item }}
+      loop: "{{ agent_harness_test_accounts }}"
+      loop_control:
+        index_var: idx
+      ansible.builtin.assert:
+        that:
+          - agent_harness_c.model == 'fixture'
+          - agent_harness_c.hooks == {'SessionStart':[]}
+          - agent_harness_c.env.KEEP == 'claude'
+          - agent_harness_c.env.DISABLE_AUTOUPDATER == '1'
+          - "'DISABLE_AUTOUPDATER' not in agent_harness_x.shell_environment_policy.set"
+          - agent_harness_x.model == 'fixture'
+          - agent_harness_x.projects['/fixture'].trust_level == 'trusted'
+          - agent_harness_x.shell_environment_policy.inherit == 'core'
+          - agent_harness_x.shell_environment_policy.set.KEEP == 'codex'
+          - agent_harness_c.env.SSH_AUTH_SOCK == ''
+          - agent_harness_x.shell_environment_policy.set.SSH_AUTH_SOCK == ''
+          - agent_harness_c.env.GIT_CONFIG_COUNT == '2'
+          - agent_harness_c.env.GIT_CONFIG_KEY_0 == 'user.signingkey'
+          - agent_harness_c.env.GIT_CONFIG_VALUE_0 == agent_harness_h + '/.config/devtools/agent-signing-key.pub'
+          - agent_harness_c.env.GIT_CONFIG_KEY_1 == 'gpg.ssh.program'
+          - agent_harness_c.env.GIT_CONFIG_VALUE_1 == agent_harness_h + '/.local/bin/ssh-sign'
+          - agent_harness_c.env.GIT_AUTHOR_NAME == 'tbhb.dev Agent'
+          - agent_harness_c.env.GIT_AUTHOR_EMAIL == 'agent@example.invalid'
+          - agent_harness_c.env.GIT_COMMITTER_NAME == agent_harness_c.env.GIT_AUTHOR_NAME
+          - agent_harness_c.env.GIT_COMMITTER_EMAIL == agent_harness_c.env.GIT_AUTHOR_EMAIL
+          - >-
+              agent_harness_c.env | dict2items | rejectattr('key', 'in', ['KEEP', 'DISABLE_AUTOUPDATER']) |
+              sort(attribute='key') ==
+              agent_harness_x.shell_environment_policy.set | dict2items |
+              rejectattr('key', 'equalto', 'KEEP') | sort(attribute='key')
+
+    - name: Inspect Codex settings ownership and permissions
+      ansible.builtin.stat:
+        path: /home/example-user/.codex/config.toml
+      register: agent_harness_test_codex_stat
+
+    - name: Require private account-owned Codex settings
+      ansible.builtin.assert:
+        that:
+          - agent_harness_test_codex_stat.stat.mode == '0600'
+          - agent_harness_test_codex_stat.stat.pw_name == 'agent'
+
+    - name: Require no private clone in the lab fixture
+      ansible.builtin.stat:
+        path: /home/example-user/Code/github.com/tbhb-dev/tbhbdev
+      register: agent_harness_test_ops
+
+    - name: Check that the public tools clone suffices
+      ansible.builtin.assert:
+        that: not agent_harness_test_ops.stat.exists
+
+    - name: Check each installer ran as its account
+      ansible.builtin.stat:
+        path: /home/{{ item }}/.fixture-installed
+      loop: "{{ agent_harness_test_accounts }}"
+      register: agent_harness_test_installed
+
+    - name: Require the installer markers
+      ansible.builtin.assert:
+        that:
+          - item.stat.exists
+          - item.stat.pw_name == item.item
+      loop: "{{ agent_harness_test_installed.results }}"
+      loop_control:
+        label: "{{ item.item }}"
+
+    # The check, converge and idempotence runs all went through uv, so one call
+    # means check mode and the second run installed nothing.
+    - name: Run the installed prek as its account
+      ansible.builtin.command:
+        argv: [/home/example-user/.local/bin/prek, --version]
+      become: true
+      become_user: agent
+      register: agent_harness_test_prek
+      changed_when: false
+
+    - name: Read the uv call log
+      ansible.builtin.slurp:
+        src: /home/example-user/.local/.fixture-uv-calls
+      register: agent_harness_test_uv_calls
+
+    - name: Require prek at the pin in the clone's mise.lock, installed once
+      ansible.builtin.assert:
+        that:
+          - agent_harness_test_prek.stdout == 'prek 0.5.10'
+          - (agent_harness_test_uv_calls.content | b64decode).splitlines() == ['prek==0.5.10']
+
+    - name: Find files in the home that root owns after converge
+      ansible.builtin.command:
+        argv: [find, "/home/{{ item }}", -user, root]
+      loop: "{{ agent_harness_test_accounts }}"
+      register: agent_harness_test_root_owned_a
+      changed_when: false
+
+    - name: Require nothing root-owned in the home
+      ansible.builtin.assert:
+        that: item.stdout == ''
+        fail_msg: "Root owns: {{ item.stdout_lines | join(', ') }}"
+      loop: "{{ agent_harness_test_root_owned_a.results }}"
+      loop_control:
+        label: "{{ item.item }}"
+
+    - name: Record settings checksums before check mode
+      ansible.builtin.stat:
+        path: "{{ item }}"
+      loop: "{{ agent_harness_test_watched }}"
+      register: agent_harness_test_before
+
+    - name: Preview an environment change without writing it
+      ansible.builtin.include_role:
+        name: agent_harness
+        apply:
+          check_mode: true
+      vars:
+        agent_harness_name: Changed only in check mode
+
+    - name: Record settings checksums after check mode
+      ansible.builtin.stat:
+        path: "{{ item.item }}"
+      loop: "{{ agent_harness_test_before.results }}"
+      loop_control:
+        label: "{{ item.item }}"
+      register: agent_harness_test_after
+
+    - name: Check that check mode did not write files
+      ansible.builtin.assert:
+        that: >-
+          agent_harness_test_before.results | map(attribute='stat.checksum') | list ==
+          agent_harness_test_after.results | map(attribute='stat.checksum') | list
+
+    - name: Find files in the home that root owns after the check-mode preview
+      ansible.builtin.command:
+        argv: [find, "/home/{{ item }}", -user, root]
+      loop: "{{ agent_harness_test_accounts }}"
+      register: agent_harness_test_root_owned_b
+      changed_when: false
+
+    - name: Require nothing root-owned in the home after the check-mode preview
+      ansible.builtin.assert:
+        that: item.stdout == ''
+        fail_msg: "Root owns: {{ item.stdout_lines | join(', ') }}"
+      loop: "{{ agent_harness_test_root_owned_b.results }}"
+      loop_control:
+        label: "{{ item.item }}"
+
+    - name: Move the tools clone aside for a missing prerequisite preview
+      ansible.builtin.command:
+        argv:
+          - mv
+          - /home/example-user/Code/github.com/tbhb-dev/tools
+          - /home/example-user/Code/github.com/tbhb-dev/tools.saved
+      changed_when: true
+
+    - name: Verify missing tools refuse interactive bootstrap
+      block:
+        - name: Preview the lab harness with a missing tools clone
+          ansible.builtin.include_role:
+            name: agent_harness
+            apply:
+              check_mode: true
+
+        - name: Reject an unexpected success without tools
+          ansible.builtin.fail:
+            msg: Harness accepted a missing tools clone
+      rescue:
+        - name: Require the original prerequisite refusal
+          ansible.builtin.assert:
+            that:
+              - >-
+                  'no interactive bootstrap is attempted' in
+                  (ansible_failed_result.results | selectattr('failed', 'equalto', true) |
+                  map(attribute='msg') | join(' '))
+              - >-
+                  ansible_failed_result.results | selectattr('failed', 'equalto', true) |
+                  map(attribute='item.item') | list == ['/home/example-user/Code/github.com/tbhb-dev/tools/.git']
+      always:
+        - name: Restore the tools fixture
+          ansible.builtin.command:
+            argv:
+              - mv
+              - /home/example-user/Code/github.com/tbhb-dev/tools.saved
+              - /home/example-user/Code/github.com/tbhb-dev/tools
+          changed_when: true
+
+    - name: Verify the default repository still requires its clone
+      block:
+        - name: Preview a non-lab account with the default repository
+          ansible.builtin.include_role:
+            name: agent_harness
+            apply:
+              check_mode: true
+          vars:
+            agent_harness_accounts:
+              - name: agent
+
+        - name: Reject an unexpected success without the default clone
+          ansible.builtin.fail:
+            msg: Harness accepted a missing default clone
+      rescue:
+        - name: Require the default repository prerequisite refusal
+          ansible.builtin.assert:
+            that:
+              - >-
+                  'no interactive bootstrap is attempted' in
+                  (ansible_failed_result.results | selectattr('failed', 'equalto', true) |
+                  map(attribute='msg') | join(' '))
+              - >-
+                  ansible_failed_result.results | selectattr('failed', 'equalto', true) |
+                  map(attribute='item.item') | list == ['/home/example-user/Code/github.com/tbhb-dev/tbhbdev/.git']
+
+    - name: Move the workspace aside for a missing root preview
+      ansible.builtin.command:
+        argv: [mv, /home/example-user/Code, /home/example-user/Code.saved]
+      changed_when: true
+
+    - name: Verify a missing workspace refuses interactive bootstrap
+      block:
+        - name: Preview the lab harness with a missing workspace
+          ansible.builtin.include_role:
+            name: agent_harness
+            apply:
+              check_mode: true
+
+        - name: Reject an unexpected success without the workspace
+          ansible.builtin.fail:
+            msg: Harness accepted a missing workspace
+      rescue:
+        - name: Require the workspace prerequisite refusal
+          ansible.builtin.assert:
+            that:
+              - >-
+                  'no interactive bootstrap is attempted' in
+                  (ansible_failed_result.results | selectattr('failed', 'equalto', true) |
+                  map(attribute='msg') | join(' '))
+              - >-
+                  ansible_failed_result.results | selectattr('failed', 'equalto', true) |
+                  map(attribute='item.item') | list ==
+                  ['/home/example-user/Code', '/home/example-user/Code/github.com/tbhb-dev/tools/.git']
+      always:
+        - name: Restore the workspace fixture
+          ansible.builtin.command:
+            argv: [mv, /home/example-user/Code.saved, /home/example-user/Code]
+          changed_when: true
+
+    - name: Make matching Codex settings too readable
+      ansible.builtin.file:
+        path: /home/example-user/.codex/config.toml
+        mode: '0644'
+
+    - name: Repair permissions without changing settings
+      ansible.builtin.include_role:
+        name: agent_harness
+
+    - name: Inspect repaired Codex settings
+      ansible.builtin.stat:
+        path: /home/example-user/.codex/config.toml
+      register: agent_harness_test_repaired
+
+    - name: Require a permissions-only repair
+      ansible.builtin.assert:
+        that:
+          - agent_harness_test_repaired.stat.mode == '0600'
+          - agent_harness_test_repaired.stat.checksum == agent_harness_test_before.results[1].stat.checksum
+
+    - name: Remove Codex settings to check first-run creation
+      ansible.builtin.file:
+        path: /home/example-user/.codex/config.toml
+        state: absent
+
+    - name: Create Codex settings from scratch
+      ansible.builtin.include_role:
+        name: agent_harness
+
+    - name: Inspect newly created Codex settings
+      ansible.builtin.stat:
+        path: /home/example-user/.codex/config.toml
+      register: agent_harness_test_created
+
+    - name: Read newly created Codex settings
+      ansible.builtin.command:
+        argv:
+          - python3
+          - -c
+          - >-
+              import json, pathlib, tomllib;
+              print(json.dumps(tomllib.loads(pathlib.Path('/home/example-user/.codex/config.toml').read_text())))
+      register: agent_harness_test_created_content
+      changed_when: false
+
+    - name: Require private account-owned settings on first run
+      vars:
+        agent_harness_test_created_config: "{{ agent_harness_test_created_content.stdout | from_json }}"
+      ansible.builtin.assert:
+        that:
+          - agent_harness_test_created.stat.mode == '0600'
+          - agent_harness_test_created.stat.pw_name == 'agent'
+          - agent_harness_test_created_config.shell_environment_policy.set.SSH_AUTH_SOCK == ''
+
+    - name: Move the clone's mise.lock aside to drop the prek pin
+      ansible.builtin.command:
+        argv:
+          - mv
+          - /home/example-user/Code/github.com/tbhb-dev/tools/mise.lock
+          - /home/example-user/Code/github.com/tbhb-dev/tools/mise.lock.saved
+      changed_when: true
+
+    - name: Verify a present prek needs no pin
+      block:
+        - name: Apply the harness with prek present and no pin
+          ansible.builtin.include_role:
+            name: agent_harness
+
+        - name: Read the uv call log again
+          ansible.builtin.slurp:
+            src: /home/example-user/.local/.fixture-uv-calls
+          register: agent_harness_test_uv_calls_again
+
+        - name: Require that prek stayed untouched
+          ansible.builtin.assert:
+            that: (agent_harness_test_uv_calls_again.content | b64decode).splitlines() == ['prek==0.5.10']
+
+        - name: Move prek aside to check the missing-pin refusal
+          ansible.builtin.command:
+            argv: [mv, /home/example-user/.local/bin/prek, /home/example-user/.local/bin/prek.saved]
+          changed_when: true
+
+        - name: Put a mise stand-in on the account's PATH
+          ansible.builtin.copy:
+            dest: /home/example-user/.local/bin/mise
+            content: |
+              #!/usr/bin/python3
+              import sys
+
+              # Answers --version for the role, and exec -- prek for the installer.
+              assert sys.argv[1:] == ['--version'] or sys.argv[1:3] == ['exec', '--']
+              print('mise fixture')
+            owner: agent
+            group: agent
+            mode: '0700'
+
+        - name: Apply the harness with mise, no prek and no pin
+          ansible.builtin.include_role:
+            name: agent_harness
+
+        - name: Read the uv call log after the mise-only apply
+          ansible.builtin.slurp:
+            src: /home/example-user/.local/.fixture-uv-calls
+          register: agent_harness_test_uv_calls_mise
+
+        - name: Require that mise-only accounts installed nothing
+          ansible.builtin.assert:
+            that: (agent_harness_test_uv_calls_mise.content | b64decode).splitlines() == ['prek==0.5.10']
+
+        - name: Remove the mise stand-in
+          ansible.builtin.file:
+            path: /home/example-user/.local/bin/mise
+            state: absent
+
+        - name: Apply the harness with no prek, no mise and no pin
+          ansible.builtin.include_role:
+            name: agent_harness
+
+        - name: Reject an unexpected success without prek, mise or a pin
+          ansible.builtin.fail:
+            msg: Harness accepted missing prek and mise with no pin
+      rescue:
+        - name: Require the missing-pin refusal
+          ansible.builtin.assert:
+            that: "'has no [[tools.prek]] version pin' in ansible_failed_result.msg | default('')"
+            fail_msg: "Unexpected failure: {{ ansible_failed_result | default('') }}"
+      always:
+        - name: Remove any mise stand-in
+          ansible.builtin.file:
+            path: /home/example-user/.local/bin/mise
+            state: absent
+
+        - name: Restore prek
+          ansible.builtin.command:
+            argv: [mv, /home/example-user/.local/bin/prek.saved, /home/example-user/.local/bin/prek]
+            removes: /home/example-user/.local/bin/prek.saved
+
+        - name: Restore the clone's mise.lock
+          ansible.builtin.command:
+            argv:
+              - mv
+              - /home/example-user/Code/github.com/tbhb-dev/tools/mise.lock.saved
+              - /home/example-user/Code/github.com/tbhb-dev/tools/mise.lock
+          changed_when: true

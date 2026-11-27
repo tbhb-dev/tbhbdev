@@ -9,7 +9,6 @@ import hashlib
 import json
 import os
 import re
-import shlex
 import shutil
 import signal
 import socket
@@ -23,12 +22,13 @@ from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
-import httpx
+import httpx2
 
 from tbhbdev import userconfig
 from tbhbdev.alpha import codex_trust, install, run_stop_hook
 from tbhbdev.alpha.agent import (
     admission,
+    app_server,
     bazel_servers,
     build_info,
     codex_install,
@@ -39,6 +39,7 @@ from tbhbdev.alpha.agent import (
     push,
     render,
     review_post,
+    run_host_telemetry,
     runfiles,
     settings,
     shims,
@@ -61,7 +62,7 @@ from tbhbdev.alpha.agent.model import (
     Settings,
 )
 from tbhbdev.alpha.agent.ownership import RunExistsError
-from tbhbdev.alpha.identity import RUN_MODEL_ENV
+from tbhbdev.alpha.identity.dispatcher import RUN_MODEL_ENV
 
 type BazelShutdown = dict[Path, tuple[str, tuple[int, int] | None]]
 
@@ -77,6 +78,7 @@ class Run:
     started: float
     deadline: float
     bazel_shutdown: BazelShutdown | None = None
+    steer: bool = False
 
 
 @dataclass(frozen=True)
@@ -440,29 +442,6 @@ def preflight(run: Run) -> None:
         raise Invalid(message)
 
 
-def otel_config(endpoint: str) -> str:
-    """A Codex config with an `[otel]` table that exports traces and metrics.
-
-    ENDPOINT is a base URL, and each signal gets its own OTLP/HTTP path. The
-    table leaves out the log exporter on purpose: Codex logs tool arguments and
-    an output preview, so `log_user_prompt = false`, which guards only the
-    prompt text, wouldn't keep a credential or a file out of the export.
-    The table has no headers, so it holds no secret.
-    """
-    base = endpoint.removesuffix("/")
-
-    def exporter(signal_path: str) -> str:
-        url = json.dumps(f"{base}/v1/{signal_path}")
-        return f'{{ otlp-http = {{ endpoint = {url}, protocol = "binary" }} }}'
-
-    return (
-        "[otel]\n"
-        f"trace_exporter = {exporter('traces')}\n"
-        f"metrics_exporter = {exporter('metrics')}\n"
-        "log_user_prompt = false\n"
-    )
-
-
 def hook_environment(value: Policy, *, unsandboxed: bool) -> dict[str, str]:
     """Reflect the shell overrides each harness applies to its launch environment."""
     if value.harness is Harness.CODEX:
@@ -476,7 +455,7 @@ def hook_environment(value: Policy, *, unsandboxed: bool) -> dict[str, str]:
 
 
 def prepare_codex_config(home: Path, endpoint: str | None, *, headless: bool) -> None:
-    text = otel_config(endpoint) if endpoint is not None else ""
+    text = run_host_telemetry.otel_config(endpoint) if endpoint is not None else ""
     if headless:
         path = home / "hooks.json"
         config = {"hooks": install.stop_hooks("codex")}
@@ -644,47 +623,11 @@ def log_hook_tools(run: Run, paths: RunPaths) -> None:
     run.files.write("log", f"preflight: .bazel_env {status}\n")
 
 
-ENV_OVERRIDE = "shell_environment_policy.set."
-
-
-def argv_log_line(command: tuple[str, ...]) -> str:
-    """COMMAND as one log line, without the environment values it sets.
-
-    A Codex run's argv carries the permissions table, which is what a sandbox
-    failure needs, and the brief by path or on stdin. The `-c` overrides that set
-    the run's environment hold credential-adjacent values, so they stay out.
-    """
-    shown: list[str] = []
-    previous = ""
-    for word in command:
-        if previous == "-c" and word.startswith(ENV_OVERRIDE):
-            shown.pop()
-        else:
-            shown.append(word)
-        previous = word
-    return "argv: " + shlex.join(shown)
-
-
 def log_argv(run: Run, command: tuple[str, ...]) -> None:
     if run.request.harness is Harness.CODEX:
         # A failed log write must not stop the run, as with the cleanup notices.
         with suppress(OSError):
-            run.files.write("log", argv_log_line(command) + "\n")
-
-
-def resource_attributes(run: Run) -> dict[str, str]:
-    """OpenTelemetry resource attributes that name the host and the account.
-
-    A run without a configured endpoint gets none, so it stays as it was.
-    """
-    if run.settings.otel_endpoint is None:
-        return {}
-    return {
-        "OTEL_RESOURCE_ATTRIBUTES": (
-            f"host.name={run.host.name},tbhb.account={run.request.account}"
-            f",tbhb.run.id={run.files.name}"
-        )
-    }
+            run.files.write("log", run_host_telemetry.argv_log_line(command) + "\n")
 
 
 def wait_harness(run: Run, child: subprocess.Popen[str]) -> int:
@@ -709,7 +652,12 @@ def run_harness(
     env = (
         value.env
         | prepared.delivery.env
-        | resource_attributes(run)
+        | run_host_telemetry.resource_attributes(
+            run.settings.otel_endpoint,
+            host=run.host.name,
+            account=run.request.account,
+            run_name=run.files.name,
+        )
         | {RUN_MODEL_ENV: run.request.model}
     )
     command = checked_harness_command(run, prepared, value, executable)
@@ -718,6 +666,9 @@ def run_harness(
         run.files.write("log", f"preflight ok: {executable}\n")
         return 0
     log_argv(run, command)
+    if run.steer:
+        socket = app_server.socket_path(run.files.root, run.files.name)
+        command = app_server.launch_command(command, socket)
     headless = run.request.kind is RunKind.EXEC
     terminal = None if headless else sys.stdin.fileno()
     streams = (None, None, None)
@@ -906,26 +857,16 @@ def publication_branch(run: Run) -> str:
     return f"agent/{run.files.name}"
 
 
-def _github_get(run: Run, endpoint: str) -> httpx.Response:
-    _, owner, repository = repo.parts(run.request.repo)
-    url = f"https://api.github.com/repos/{owner}/{repository}/{endpoint}"
-    headers = {"Accept": "application/vnd.github+json"}
-    token = credentials.fetch_token(run.request, run.settings)
-    if token is not None:
-        headers["Authorization"] = f"Bearer {token}"
-    return httpx.get(url, headers=headers, timeout=20)
-
-
 def origin_tip(run: Run) -> str | None:
     """Read the exact branch from origin. Empty means absent, None unreadable."""
     branch = f"heads/{publication_branch(run)}"
     try:
-        response = _github_get(run, f"git/ref/{branch}")
-        if response.status_code == httpx.codes.NOT_FOUND:
+        response = push.github_get(run, f"git/ref/{branch}")
+        if response.status_code == httpx2.codes.NOT_FOUND:
             return ""
         response.raise_for_status()
         record = response.json()
-    except OSError, ValueError, httpx.HTTPError:
+    except OSError, ValueError, httpx2.HTTPError:
         return None
     if not isinstance(record, dict) or record.get("ref") != f"refs/{branch}":
         return None
@@ -936,22 +877,18 @@ def origin_tip(run: Run) -> str | None:
 
 def origin_contains(run: Run, commit: str) -> bool | None:
     tip = origin_tip(run)
-    if not tip:
-        return None if tip is None else False
-    if tip == commit:
-        return True
+    if tip is None or not tip or tip == commit:
+        return None if tip is None else bool(tip)
     # Compare pinned commits so that a concurrent push cannot change the answer.
     try:
-        response = _github_get(run, f"compare/{commit}...{tip}?per_page=1")
-        if response.status_code == httpx.codes.NOT_FOUND:
+        response = push.github_get(run, f"compare/{commit}...{tip}?per_page=1")
+        if response.status_code == httpx2.codes.NOT_FOUND:
             return False
         response.raise_for_status()
         record = response.json()
-    except OSError, ValueError, httpx.HTTPError:
+    except OSError, ValueError, httpx2.HTTPError:
         return None
-    if not isinstance(record, dict):
-        return None
-    return record.get("status") == "ahead"
+    return record.get("status") == "ahead" if isinstance(record, dict) else None
 
 
 def require_commit(run: Run, rc: int) -> int:
@@ -965,15 +902,11 @@ def require_commit(run: Run, rc: int) -> int:
         return NO_COMMIT
     published = origin_contains(run, head.read_text().strip())
     branch = publication_branch(run)
-    if published is None:
-        run.files.write("log", f"push failed: cannot verify {branch} on origin\n")
-    elif not published:
-        run.files.write(
-            "log", f"push failed: build commit missing from {branch} on origin\n"
-        )
-    else:
+    if published:
         run.files.write("branch", branch)
         return 0
+    reason = "cannot verify" if published is None else "build commit missing from"
+    run.files.write("log", f"push failed: {reason} {branch} on origin\n")
     return NO_PUSH
 
 
@@ -1455,6 +1388,7 @@ def main(
     parser.add_argument("--prompt")
     parser.add_argument("--preflight", action="store_true")
     parser.add_argument("--owned", action="store_true")
+    parser.add_argument("--steer", action="store_true")
     args = parser.parse_args(arguments)
     if args.name is None:
         print(f"{prog}: run name is required", file=sys.stderr)
@@ -1596,5 +1530,6 @@ def _load(args: argparse.Namespace, tmpdir: Path) -> tuple[Run, str]:
         tmpdir,
         started,
         clock + parsed.startup_deadline_seconds,
+        steer=args.steer,
     )
     return run, text

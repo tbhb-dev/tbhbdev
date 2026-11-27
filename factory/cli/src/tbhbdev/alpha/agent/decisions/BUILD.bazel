@@ -50,6 +50,7 @@ cli_py_library(
         ":request",
         "//factory/cli/src/tbhbdev/alpha:brief",
         "//factory/cli/src/tbhbdev/alpha/agent:model",
+        "//factory/cli/src/tbhbdev/alpha/identity:models",
     ],
 )
 
@@ -108,8 +109,8 @@ cli_py_library(
     visibility = ["//factory/cli:__subpackages__"],
     deps = [
         ":repo",
-        "//factory/cli/src/tbhbdev/alpha:identity",
         "//factory/cli/src/tbhbdev/alpha/agent:model",
+        "//factory/cli/src/tbhbdev/alpha/identity:models",
     ],
 )
 

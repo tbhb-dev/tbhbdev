@@ -27,7 +27,8 @@ file only when the file is itself the interface. -->
 
 <!-- Optional, at most 120 words. Only choices worth recording, each as "chose
 X over Y because Z". Leave the section out when nothing was decided beyond the
-obvious. -->
+obvious. If you cannot tell whether a case occurs here, record the uncertainty
+in this section and leave the case out of the code. -->
 
 ## Deviations from the task
 

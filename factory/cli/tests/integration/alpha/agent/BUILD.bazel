@@ -1,0 +1,26 @@
+# SPDX-License-Identifier: Apache-2.0
+# Copyright Tony Burns
+
+load("//factory/cli/tests:pytest.bzl", "cli_py_test")
+
+# gazelle:resolve py agent_host_example //factory/cli/tests:agent_host_example
+
+package(default_testonly = True)
+
+exports_files(
+    ["test_worktree_credentials_io.py"],
+    visibility = ["//factory/cli/tests:__pkg__"],
+)
+
+cli_py_test(
+    name = "test_worktree_credentials_io",
+    srcs = ["test_worktree_credentials_io.py"],
+    imports = ["../../.."],
+    deps = [
+        "//factory/cli/src/tbhbdev/alpha/agent:model",
+        "//factory/cli/src/tbhbdev/alpha/agent:worktree",
+        "//factory/cli/tests:agent_host_example",
+        "//factory/cli/tests:conftest",
+        "@cli_pip//pytest",
+    ],
+)

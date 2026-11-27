@@ -6,15 +6,16 @@ from dataclasses import replace
 from types import SimpleNamespace
 from typing import TYPE_CHECKING, cast
 
-import httpx
+import httpx2
 import pytest
 from cue_fixtures import review_cue as review_cue  # noqa: PLC0414
 
 from tbhbdev import content
-from tbhbdev.alpha import identity, review, review_doc
+from tbhbdev.alpha import review, review_doc
 from tbhbdev.alpha.agent import credentials, review_post, runfiles
 from tbhbdev.alpha.agent.decisions import request as requests
 from tbhbdev.alpha.agent.model import Harness, Invalid, Profile, RunKind, RunRequest
+from tbhbdev.alpha.identity import dispatcher as identity
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -30,7 +31,10 @@ MINTED = "minted"
 
 def draft(event: str = "COMMENT", head: str = HEAD, *, findings: bool = False) -> str:
     extra = (
-        "## Findings\n\n- F1: P1 correctness Fix the data loss.\n\n" if findings else ""
+        "## Findings\n\n- F1: P1 correctness The saved record disappears. "
+        "Occurs when: a caller retries a write.\n\n"
+        if findings
+        else ""
     )
     return (
         f"---\npr: 7\ncommit_id: '{head}'\nevent: {event}\n---\n\n"
@@ -76,8 +80,10 @@ def make(
     )
 
 
-def reply(status: int, data: object) -> httpx.Response:
-    return httpx.Response(status, json=data, request=httpx.Request("GET", "https://x"))
+def reply(status: int, data: object) -> httpx2.Response:
+    return httpx2.Response(
+        status, json=data, request=httpx2.Request("GET", "https://x")
+    )
 
 
 def mint_token(_request: object, _settings: object) -> str | None:
@@ -88,7 +94,7 @@ def no_token(_request: object, _settings: object) -> str | None:
     return None
 
 
-def forbidden(*_args: object, **_options: object) -> httpx.Response:
+def forbidden(*_args: object, **_options: object) -> httpx2.Response:
     raise AssertionError
 
 
@@ -101,12 +107,12 @@ class Api:
 
     def __init__(self, monkeypatch: pytest.MonkeyPatch) -> None:
         self.calls: list[tuple[str, str, dict[str, str] | None]] = []
-        self.pull: httpx.Response | Exception = reply(200, {"head": {"sha": HEAD}})
+        self.pull: httpx2.Response | Exception = reply(200, {"head": {"sha": HEAD}})
         self.later = reply(200, {"head": {"sha": HEAD}})
-        self.created: httpx.Response | Exception = reply(201, {"id": 99})
-        monkeypatch.setattr(httpx, "request", self.request)
+        self.created: httpx2.Response | Exception = reply(201, {"id": 99})
+        monkeypatch.setattr(httpx2, "request", self.request)
 
-    def request(self, method: str, url: str, **options: object) -> httpx.Response:
+    def request(self, method: str, url: str, **options: object) -> httpx2.Response:
         payload = cast("dict[str, str] | None", options.get("json"))
         self.calls.append((method, url, payload))
         gets = [c for c in self.calls if c[0] == "GET"]
@@ -292,7 +298,7 @@ def test_a_bad_draft_posts_nothing(
 ) -> None:
     run, prepared = make(tmp_path, text, name)
     monkeypatch.setattr(credentials, "review_post_token", mint_token)
-    monkeypatch.setattr(httpx, "request", forbidden)
+    monkeypatch.setattr(httpx2, "request", forbidden)
     assert not review_post.posted(run, prepared)
     assert message in run.files.path("log").read_text()
 
@@ -365,7 +371,8 @@ def test_host_and_cli_prefer_the_same_draft(
     if verdict == "NO-GO":
         text = text.replace("verdict: GO", "verdict: NO-GO").replace(
             "## Verification",
-            "## Findings\n\n- F1: P1 correctness Fix the cache.\n\n## Verification",
+            "## Findings\n\n- F1: P1 correctness The cache returns a stale record. "
+            "Occurs when: a caller retries a write.\n\n## Verification",
         )
     run, prepared = make(tmp_path, text, "review-7.doc.md")
     directory = tmp_path / "ws" / ".git" / "tbhb-alpha"
@@ -405,12 +412,26 @@ def test_host_refuses_invalid_schema_two_drafts(
         review_post.validate(sub)
 
 
+def test_host_refuses_an_invalid_rendered_review(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    text = document()
+    assert review.check_document(text, 7, lint=False) == []
+    sub = review_post.Submission(
+        "github.com/o/r", 7, text, HEAD, f"{STAMP} text", document=True
+    )
+    api = Api(monkeypatch)
+    with pytest.raises(review_post.PostRefusedError, match="Write Verification"):
+        review_post.create(sub, MINTED)
+    assert api.calls == []
+
+
 @pytest.mark.parametrize(
     "pull",
     [reply(200, {"head": {"sha": "b" * 40}}), reply(200, {}), reply(200, [])],
 )
 def test_an_approval_requires_one_read_of_the_pinned_head(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, pull: httpx.Response
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, pull: httpx2.Response
 ) -> None:
     run, prepared = make(tmp_path, draft("APPROVE"))
     monkeypatch.setattr(credentials, "review_post_token", mint_token)
@@ -426,7 +447,7 @@ def test_a_missing_token_blocks_the_post(
 ) -> None:
     run, prepared = make(tmp_path, draft())
     monkeypatch.setattr(credentials, "review_post_token", no_token)
-    monkeypatch.setattr(httpx, "request", forbidden)
+    monkeypatch.setattr(httpx2, "request", forbidden)
     assert not review_post.posted(run, prepared)
     assert "token unavailable" in run.files.path("log").read_text()
 
@@ -435,13 +456,13 @@ def test_a_missing_token_blocks_the_post(
     ("outcome", "message"),
     [
         (reply(403, {"message": "no"}), "status 403"),
-        (httpx.ConnectError("x"), "ConnectError"),
+        (httpx2.ConnectError("x"), "ConnectError"),
     ],
 )
 def test_post_failures_are_logged(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
-    outcome: httpx.Response | Exception,
+    outcome: httpx2.Response | Exception,
     message: str,
 ) -> None:
     run, prepared = make(tmp_path, draft())
@@ -466,17 +487,17 @@ def test_any_2xx_post_is_a_success(
 @pytest.mark.parametrize(
     "outcome",
     [
-        httpx.Response(204),
+        httpx2.Response(204),
         reply(201, {}),
         reply(202, {}),
         reply(200, []),
         reply(201, {"id": "x"}),
-        httpx.Response(200, text="OK"),
-        httpx.Response(200, text="not json"),
+        httpx2.Response(200, text="OK"),
+        httpx2.Response(200, text="not json"),
     ],
 )
 def test_a_2xx_post_without_an_integer_id_counts_as_posted(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, outcome: httpx.Response
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, outcome: httpx2.Response
 ) -> None:
     run, prepared = make(tmp_path, draft())
     monkeypatch.setattr(credentials, "review_post_token", mint_token)
@@ -543,19 +564,14 @@ def test_review_attribution(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> 
     [
         (Harness.CODEX, "gpt-6.2-sol", "xhigh", "effort=xhigh;harness=codex;"),
         (Harness.CLAUDE, "claude-opus-5-5", "high", "effort=high;harness=claude-code;"),
-        (
-            Harness.AGY,
-            "gemini-3.8-flash-low",
-            "auto",
-            "effort=low;harness=antigravity;",
-        ),
+        (Harness.AGY, "gemini-3.8-flash-low", "auto", None),
         (
             Harness.AGY,
             "gemini-3.8-flash-low",
             "high",
             "effort=low;harness=antigravity;",
         ),
-        (Harness.AGY, "gemini-unknown", "auto", "LLM harness=antigravity;"),
+        (Harness.AGY, "gemini-unknown", "high", "LLM harness=antigravity;"),
         (Harness.CODEX, "gpt-6.2-sol", "auto", None),
         (Harness.CLAUDE, "claude-opus-5-5", "auto", None),
         (Harness.AGY, "gemini-3.8-flash-low", "typo", None),
@@ -569,7 +585,7 @@ def test_review_launch_and_post_share_the_effort_rule(  # noqa: PLR0913, PLR0917
     effort: str,
     expected: str | None,
 ) -> None:
-    run, _ = make(tmp_path, draft())
+    run, prepared = make(tmp_path, draft())
     request = replace(
         run.request,
         harness=harness,
@@ -584,8 +600,11 @@ def test_review_launch_and_post_share_the_effort_rule(  # noqa: PLR0913, PLR0917
         message = f"request effort {effort!r} is unsupported for {harness.value}"
         with pytest.raises(Invalid, match=message):
             requests.validate(run.request, host_allows_unsandboxed=False)
-        with pytest.raises(review_post.PostRefusedError, match=message):
-            review_post.stamp(run)
+        monkeypatch.setattr(credentials, "review_post_token", mint_token)
+        api = Api(monkeypatch)
+        assert not review_post.posted(run, prepared)
+        assert run.files.path("log").read_text() == f"review not posted: {message}\n"
+        assert api.calls == []
     else:
         requests.validate(run.request, host_allows_unsandboxed=False)
         assert expected in review_post.stamp(run)

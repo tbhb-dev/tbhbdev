@@ -1,0 +1,26 @@
+---
+argument_specs:
+  main:
+    short_description: Record identity, persistence, kernel and operator events with auditd
+    description:
+      - >-
+          Installs auditd and writes one rules file. It watches the account, sudo, sshd, PAM,
+          systemd, cron, netplan, nftables, Docker and libvirt configuration, and each listed
+          account's ~/.ssh. It records setuid and setgid escalation, kernel module and kexec
+          calls, mounts and clock changes by logged-in users, and every command the listed
+          operator accounts run. The rules stay unlocked, so a rerun can replace them.
+    options:
+      host_audit_command_users:
+        type: list
+        elements: str
+        default: [ops, tony]
+        description: Accounts whose every command auditd records. Missing accounts are skipped.
+      host_audit_ssh_users:
+        type: list
+        elements: str
+        default: [root, ops, ops-ro, tony, agent]
+        description: Accounts whose ~/.ssh auditd watches. Missing accounts and directories are skipped.
+      host_audit_load:
+        type: bool
+        default: true
+        description: Load the rules into the kernel and run auditd. False only where the kernel is shared.

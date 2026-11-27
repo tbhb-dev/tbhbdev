@@ -11,14 +11,16 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, cast
 
-import httpx
+import httpx2
 
-from tbhbdev import content
-from tbhbdev.alpha import identity, pull_request, review, review_doc
+from tbhbdev import content, github_tls
+from tbhbdev.alpha import review, review_doc
 from tbhbdev.alpha.agent import credentials, runfiles
 from tbhbdev.alpha.agent.decisions import repo
 from tbhbdev.alpha.agent.decisions import request as requests
 from tbhbdev.alpha.agent.model import Harness, Invalid, RunKind
+from tbhbdev.alpha.identity import dispatcher as identity
+from tbhbdev.alpha.pull_request_frontmatter import parse_frontmatter
 
 if TYPE_CHECKING:
     from tbhbdev.alpha.agent.run_host import Prepared, Run
@@ -26,7 +28,7 @@ if TYPE_CHECKING:
 VERDICTS = frozenset({"GO", "BLOCK", "NO-GO"})
 DRAFT_NAME = re.compile(r"review-([1-9][0-9]*)(?:\.doc)?\.md")
 DRAFT_LIMIT = 64 * 1024
-TIMEOUT = httpx.Timeout(20.0, connect=5.0)
+TIMEOUT = httpx2.Timeout(20.0, connect=5.0)
 
 
 class PostRefusedError(ValueError):
@@ -82,6 +84,8 @@ def validate_document(sub: Submission) -> tuple[dict[str, object], str]:
         raise PostRefusedError(problems[0])
     event = "APPROVE" if doc.verdict == "GO" else "REQUEST_CHANGES"
     body = f"{review_doc.render(doc)}\n{sub.stamp}\n"
+    if problems := content.check_review(body, metadata=doc.metadata, posted=True):
+        raise PostRefusedError(problems[0])
     return {**doc.metadata, "event": event}, body
 
 
@@ -103,7 +107,7 @@ def validate(sub: Submission) -> tuple[dict[str, object], str]:
         line, why = problems[0]
         message = f"the draft fails its checks: line {line}: {why}"
         raise PostRefusedError(message)
-    meta, body = pull_request.parse_frontmatter(sub.text)
+    meta, body = parse_frontmatter(sub.text)
     fields = cast("dict[str, object]", meta)
     if str(fields["commit_id"]).lower() != sub.commit.lower():
         message = "the draft's commit_id isn't the commit the run reviewed"
@@ -121,7 +125,7 @@ def api(
         PostRefusedError: GitHub refuses or can't be reached.
     """
     try:
-        response = httpx.request(
+        response = httpx2.request(
             method,
             url,
             headers={
@@ -130,8 +134,9 @@ def api(
             },
             json=payload,
             timeout=TIMEOUT,
+            verify=github_tls.public_roots(),
         )
-    except httpx.HTTPError as exc:
+    except httpx2.HTTPError as exc:
         message = f"the {method} request failed: {type(exc).__name__}"
         raise PostRefusedError(message) from exc
     if not response.is_success:

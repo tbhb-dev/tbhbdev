@@ -1,0 +1,24 @@
+---
+# The companion inventory supplies the hypervisor group and VM settings.
+- name: Build the deploy runner VM
+  hosts: deploy_runner_hosts
+  gather_facts: false
+  become: true
+  roles:
+    - role: ci_vm
+
+# The roles of runner-pool.yml, with deploy_runner between them. It writes the
+# job directory before the pool's slots start, and a slot refuses to start until
+# the hook in that directory exists.
+- name: Apply the deploy runner
+  hosts: ci_deploy
+  gather_facts: true
+  # The min subset carries the release and architecture the apt sources need.
+  gather_subset: [min]
+  become: true
+  vars:
+    actions_runner_pool_user: "{{ docker_rootless_user | default('ghrunner') }}"
+  roles:
+    - docker_rootless
+    - deploy_runner
+    - actions_runner_pool

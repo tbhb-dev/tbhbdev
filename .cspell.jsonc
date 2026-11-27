@@ -1,7 +1,6 @@
 {
   "language": "en",
   "ignorePaths": [
-    "**/IMPORT-MAP.toml",
     "**/repo/baseline/{files,kinds,visibility,seed}/**/*",
     "**/lint/gitleaks/{base,upstream}.toml",
     "**/preset.bazelrc",
@@ -30,5 +29,6 @@
       "addWords": true
     }
   ],
-  "dictionaries": ["project", "golang", "python"]
+  "dictionaries": ["project", "golang", "python"],
+  "ignoreRegExpList": ["/\"(?:h1:[A-Za-z0-9+\\/]{43}=|zh:[0-9a-f]{64})\"/g"]
 }

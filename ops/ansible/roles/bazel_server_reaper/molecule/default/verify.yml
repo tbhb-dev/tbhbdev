@@ -1,0 +1,68 @@
+---
+- name: Verify
+  hosts: all
+  become: true
+  tasks:
+    - name: Read the timer settings
+      ansible.builtin.systemd_service:
+        name: bazel-server-reaper.timer
+      register: bazel_server_reaper_timer
+
+    - name: Verify the timer
+      ansible.builtin.assert:
+        that:
+          - bazel_server_reaper_timer.status.UnitFileState == 'enabled'
+          - bazel_server_reaper_timer.status.ActiveState == 'active'
+          - "'OnCalendar=*-*-* *:*:00' in bazel_server_reaper_timer.status.TimersCalendar"
+
+    - name: Read the service command
+      ansible.builtin.systemd_service:
+        name: bazel-server-reaper.service
+      register: bazel_server_reaper_command
+
+    - name: Verify the service starts in dry-run mode for the agent user
+      ansible.builtin.assert:
+        that:
+          - "'--user agent' in bazel_server_reaper_command.status.ExecStart"
+          - "'--live' not in bazel_server_reaper_command.status.ExecStart"
+
+    - name: Run the installed service
+      ansible.builtin.systemd_service:
+        name: bazel-server-reaper.service
+        state: started
+
+    - name: Read the service result
+      ansible.builtin.systemd_service:
+        name: bazel-server-reaper.service
+      register: bazel_server_reaper_service
+
+    - name: Read the state file permissions
+      ansible.builtin.stat:
+        path: /var/lib/bazel-server-reaper/state.json
+      register: bazel_server_reaper_state
+
+    - name: Verify the service and state
+      ansible.builtin.assert:
+        that:
+          - bazel_server_reaper_service.status.Result == 'success'
+          - bazel_server_reaper_service.status.User == 'root'
+          - bazel_server_reaper_service.status.SyslogIdentifier == 'bazel-reaper'
+          - bazel_server_reaper_state.stat.pw_name == 'root'
+          - bazel_server_reaper_state.stat.mode == '0600'
+
+    - name: Disable the timer through the role
+      ansible.builtin.include_role:
+        name: bazel_server_reaper
+      vars:
+        bazel_server_reaper_enabled: false
+
+    - name: Read the disabled timer
+      ansible.builtin.systemd_service:
+        name: bazel-server-reaper.timer
+      register: bazel_server_reaper_disabled
+
+    - name: Verify disabling also stops the timer
+      ansible.builtin.assert:
+        that:
+          - bazel_server_reaper_disabled.status.UnitFileState == 'disabled'
+          - bazel_server_reaper_disabled.status.ActiveState == 'inactive'

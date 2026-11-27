@@ -49,7 +49,13 @@ from typing import cast
 
 import tomlkit
 
-from tbhbdev.host import CANARY, GITLEAKS_CANARY, GITLEAKS_EXTENDS, GITLEAKS_FILE
+GITLEAKS_EXTENDS = ".gitleaks.toml"
+GITLEAKS_CANARY = "tbhb-private-canary"
+CANARY = re.compile(
+    rf"""^[ \t]*id[ \t]*=[ \t]*["']{GITLEAKS_CANARY}["'][ \t]*(?:#.*)?$""",
+    re.MULTILINE,
+)
+GITLEAKS_FILE = ".config/gitleaks/private.toml"
 
 # What the scan says when the repository has no .gitleaks.toml.
 NO_COMMITTED_CONFIG = (

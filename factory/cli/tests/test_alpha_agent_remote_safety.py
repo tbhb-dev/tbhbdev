@@ -13,6 +13,7 @@ from tempfile import mkdtemp
 from typing import TYPE_CHECKING
 
 import pytest
+from agent_cli_example import run_agent
 from agent_driver_example import (
     commit_in,
     execution_arguments,
@@ -22,8 +23,9 @@ from agent_driver_example import (
 )
 from agent_example import LINUX, settings, trusted_executables
 
-from tbhbdev.alpha import agent
+from tbhbdev.alpha.agent import arguments as agent_arguments
 from tbhbdev.alpha.agent import driver, transport
+from tbhbdev.alpha.agent import settings as agent_settings
 from tbhbdev.alpha.agent.decisions import policy, remote
 
 if TYPE_CHECKING:
@@ -79,7 +81,9 @@ def inspect_output(
         return result.returncode, result.stdout
 
     monkeypatch.setattr(transport, "execute", run)
-    args = agent.parser("example").parse_args(execution_arguments("example.md"))
+    args = agent_arguments.parser("example").parse_args(
+        execution_arguments("example.md")
+    )
     run = driver.prepare(settings(), args)
     run.request = replace(run.request, unsandboxed=unsandboxed)
     run.owner = "example-owner"
@@ -243,7 +247,7 @@ def test_scripts_have_fixed_path_socket_and_git_environment() -> None:
         assert "tmux -L" not in script
         assert f"s={config.sockets_dir}\n" in script
     assert " git " not in scripts[-1]
-    assert "perl" not in scripts[-1]
+    assert "agent-mirror.lock" not in scripts[-1]
     assert remote.installed(LINUX).endswith('"$HOME/.local/bin/tbhbdev" --version')
     assert "-lc" not in remote.start("sample", config.sockets_dir, LINUX)[2]
     for script in [
@@ -529,6 +533,8 @@ def test_real_ssh_shell_quoting(host: Path) -> None:
 def test_owner_check_precedes_every_effect(
     host: Path, script: str, owner_kind: str
 ) -> None:
+    if script == "clean" and owner_kind == "missing":
+        no_session(host)
     owner = host / "state/tbhbdev/agent-runs/sample.owner"
     owner.rename(host / "saved-owner")
     if owner_kind == "other":
@@ -547,9 +553,31 @@ def test_owner_check_precedes_every_effect(
         "start": remote.start("sample", settings().sockets_dir, LINUX)[2],
     }
     result = execute(scripts[script])
+    if script == "clean" and owner_kind == "missing":
+        assert result.returncode == 0
+        assert execute(scripts[script]).returncode == 0
+        return
     assert result.returncode == 73
     assert not (host / "sockets").exists()
     assert not (host / "state/tbhbdev/agent-runs/trash").exists()
+
+
+def test_clean_preserves_an_ownerless_detached_group(host: Path) -> None:
+    no_session(host)
+    state = host / "state/tbhbdev/agent-runs"
+    (state / "sample.owner").unlink()
+    group = state / "sample.pgid"
+    (state / "sample.rc").write_text("137\n")
+    with subprocess.Popen(["sleep", "30"], start_new_session=True) as process:
+        try:
+            group.write_text(json.dumps({"pgid": process.pid}))
+            assert execute(cleanup()).returncode == 1
+            assert group.exists()
+            assert not (state / "sample.owner").exists()
+        finally:
+            process.terminate()
+    assert execute(cleanup()).returncode == 0
+    assert not group.exists()
 
 
 def test_locale_precedes_tmux_and_git(host: Path) -> None:
@@ -1148,6 +1176,26 @@ def test_unpublished_diff_bounds_output_and_preserves_failure(
     assert result.stdout == b"x" * 65536 + b"\n[output truncated at 65536 bytes]\n"
 
 
+@pytest.mark.parametrize("entry", [".git", ".git/objects/pack"])
+def test_unpublished_diff_withholds_patch_if_a_symlink_appears(
+    host: Path, entry: str
+) -> None:
+    path = unpublished_run(host) / entry
+    write_standalone_fake(
+        host / "bin/git",
+        "import os, sys\n"
+        "from pathlib import Path\n"
+        "if 'format-patch' not in sys.argv:\n"
+        "    os.execv('/usr/bin/git', ['/usr/bin/git', *sys.argv[1:]])\n"
+        f"path = Path({str(path)!r})\n"
+        f"path.rename({str(host / 'saved')!r})\n"
+        f"path.symlink_to({str(host / 'missing')!r}, target_is_directory=True)\n"
+        "print('generated patch')\n",
+    )
+    assert_refused()
+    assert path.is_symlink()
+
+
 @pytest.mark.parametrize(
     "component",
     [
@@ -1327,6 +1375,42 @@ def reset_then_add(tree: Path, content: bytes) -> str:
     return base
 
 
+def mock_agent_run_for_diff(monkeypatch: pytest.MonkeyPatch) -> None:
+    async def run_ssh(args: tuple[str, ...], _data: bytes) -> tuple[int, bytes]:
+        command = shlex.split(shlex.split(args[-1])[2])
+        result = execute(command[2])
+        return result.returncode, result.stdout
+
+    monkeypatch.setattr(transport, "execute", run_ssh)
+    config = settings()
+    request_args = agent_arguments.parser("example").parse_args(
+        execution_arguments("example.md")
+    )
+    run = driver.prepare(config, request_args)
+    run.owner = "example-owner"
+
+    def load(_settings: Settings, _name: str) -> driver.Run:
+        return run
+
+    monkeypatch.setattr(agent_settings, "load", lambda: config)
+    monkeypatch.setattr(driver, "load", load)
+
+
+def test_patch_export_refuses_unconfirmed_shutdown(host: Path) -> None:
+    tree = unpublished_run(host)
+    (tree / "example").write_text("unpublished change\n")
+    git_in(tree, "add", "example")
+    commit_in(tree, "unpublished change")
+    state = host / "state/tbhbdev/agent-runs"
+    (state / "sample.rc").write_text("124\n")
+    (state / "sample.phase").write_text("unknown")
+
+    result = execute(remote.export_patch("example-org/example-repo", "sample"))
+
+    assert result.returncode == 65
+    assert result.stdout == b""
+
+
 @pytest.mark.parametrize(
     "history", ["linear", "merge", "empty merge", "reset then add"]
 )
@@ -1360,29 +1444,14 @@ def test_finished_build_exports_complete_patch_offline(
     (state / "sample.head").write_text(tip)
     (state.parent / "agent-mirrors").rename(host / "offline")
 
-    async def run_ssh(args: tuple[str, ...], _data: bytes) -> tuple[int, bytes]:
-        command = shlex.split(shlex.split(args[-1])[2])
-        result = execute(command[2])
-        return result.returncode, result.stdout
-
-    monkeypatch.setattr(transport, "execute", run_ssh)
-    config = settings()
-    run = driver.prepare(
-        config, agent.parser("example").parse_args(execution_arguments("example.md"))
-    )
-    run.owner = "example-owner"
-
-    def load(_settings: Settings, _name: str) -> driver.Run:
-        return run
-
-    monkeypatch.setattr(agent.settings, "load", lambda: config)
-    monkeypatch.setattr(driver, "load", load)
+    mock_agent_run_for_diff(monkeypatch)
     args = ["diff", "sample", "--patch"]
-    assert agent.main(args, "example") == 1
+    (state / "sample.phase").write_text("ended")
+    assert run_agent(args) == 1
     assert not capsysbinary.readouterr().out
 
     (state / "sample.rc").write_text("0\n")
-    assert agent.main(args, "example") == 0
+    assert run_agent(args) == 0
     output = capsysbinary.readouterr().out
     if history == "empty merge":
         assert output == b""

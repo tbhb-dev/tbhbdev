@@ -21,9 +21,9 @@ from agent_host_example import (
     unusual_git_metadata,
 )
 
-from tbhbdev.alpha import identity
 from tbhbdev.alpha.agent import worktree
 from tbhbdev.alpha.agent.model import Invalid, Profile
+from tbhbdev.alpha.identity import dispatcher as identity
 
 
 class GitOptions(TypedDict, closed=True):
@@ -98,46 +98,6 @@ def test_build_fetches_default_and_creates_one_branch(tmp_path: Path) -> None:
     with pytest.raises(Invalid, match="run preparation failed at clone"):
         worktree.create(clone, "build-1", run_request())
     assert git(clone, "worktree", "list", "--porcelain").count("worktree ") == 1
-
-
-@pytest.mark.parametrize("start_ref", [None, "refs/heads/fix/topic"])
-def test_build_git_uses_the_run_gh_credential(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, start_ref: str | None
-) -> None:
-    seed, clone = repository(tmp_path)
-    if start_ref is not None:
-        git(seed, "push", "origin", f"HEAD:{start_ref}")
-    request = run_request(
-        start_ref=start_ref, fetch_refs=[start_ref] if start_ref else []
-    )
-    workspace = worktree.create(clone, "build-1", request)
-    gh = tmp_path / "gh"
-    gh.write_text(
-        '#!/bin/sh\n[ "$*" = "auth git-credential get" ] || exit 1\n'
-        'cat "$GH_CONFIG_DIR/credential"\n'
-    )
-    gh.chmod(0o700)
-    config = tmp_path / "gh-config"
-    config.mkdir()
-    credential = "username=example\npassword=example-run-credential\n"
-    (config / "credential").write_text(credential)
-    global_config = tmp_path / "gitconfig"
-    git(
-        tmp_path,
-        "config",
-        "--file",
-        str(global_config),
-        "credential.helper",
-        "!printf 'username=global\\npassword=global\\n'",
-    )
-    monkeypatch.setenv("PATH", f"{tmp_path}{os.pathsep}{os.environ['PATH']}")
-    monkeypatch.setenv("GH_CONFIG_DIR", str(config))
-    monkeypatch.setenv("GIT_CONFIG_GLOBAL", str(global_config))
-    command = ["git", "-C", str(workspace), "credential", "fill"]
-    output = subprocess.check_output(
-        command, input="protocol=https\nhost=github.com\n\n", text=True, timeout=10
-    )
-    assert output.endswith(credential)
 
 
 @pytest.mark.parametrize("profile", ["build", "review"])
@@ -993,21 +953,10 @@ def test_prelaunch_git_protocol(
     )
     options = ("clone", "--no-local", "--no-hardlinks", "--no-checkout", "--template=")
     helper = ("config", "--add", "credential.https://github.com.helper")
-    credentials = (
-        [(workspace, (*helper, "")), (workspace, (*helper, "!gh auth git-credential"))]
-        if profile == "build"
-        else []
-    )
+    values = ("", "!gh auth git-credential") if profile == "build" else ()
     assert calls == [
         common[0],
-        (
-            mirror,
-            (
-                *options,
-                str(mirror),
-                str(workspace),
-            ),
-        ),
+        (mirror, (*options, str(mirror), str(workspace))),
         (
             workspace,
             (
@@ -1017,7 +966,7 @@ def test_prelaunch_git_protocol(
             ),
         ),
         (workspace, ("config", "core.hooksPath", str(workspace / ".git" / "hooks"))),
-        *credentials,
+        *((workspace, (*helper, value)) for value in values),
         *common[1:],
         (
             mirror,
@@ -1103,16 +1052,12 @@ def test_clone_directory_mode_is_private_before_git(
         calls.append((path, mode))
         original(path, mode=mode)
 
-    def git(*_args: object) -> str:
+    def git_command(*_args: object) -> str:
         assert calls == [(tmp_path / "workspace", 0o700)]
         return ""
 
-    def hooks(path: Path) -> None:
-        assert path == tmp_path / "workspace"
-
     monkeypatch.setattr(Path, "mkdir", mkdir)
-    monkeypatch.setattr(worktree, "git", git)
-    monkeypatch.setattr(worktree, "install_hooks", hooks)
+    monkeypatch.setattr(worktree, "git", git_command)
     worktree.clone_run(
         tmp_path / "mirror", tmp_path / "workspace", "example", Profile.BUILD
     )

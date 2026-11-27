@@ -45,4 +45,4 @@ exclude-newer = "5 days"
 package = false
 
 [tool.uv.workspace]
-members = ["factory/cli"]
+members = ["factory/cli", "ops/packages/*"]

@@ -1,0 +1,41 @@
+---
+# The same persistence as table inet host: a file in /etc/nftables.d and a
+# unit that loads only that file, because nftables.service flushes the ruleset.
+
+- name: egress | Create the firewall configuration directory
+  ansible.builtin.file:
+    path: /etc/nftables.d
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: egress | Install the egress table
+  ansible.builtin.template:
+    src: ci-vm-egress.nft.j2
+    dest: /etc/nftables.d/ci-vm-egress.nft
+    owner: root
+    group: root
+    mode: "0644"
+    validate: /usr/sbin/nft -c -f %s
+  notify: Reload the CI VM egress table
+
+- name: egress | Install the egress unit
+  ansible.builtin.template:
+    src: ci-vm-egress.service.j2
+    dest: /etc/systemd/system/ci-vm-egress.service
+    owner: root
+    group: root
+    mode: "0644"
+  register: ci_vm_egress_unit
+  notify: Reload the CI VM egress table
+
+# Without hardware the unit is enabled and never started, since a container
+# shares the host's kernel and the table is validated, not loaded.
+- name: egress | Enable the egress table
+  ansible.builtin.systemd_service:
+    name: ci-vm-egress.service
+    daemon_reload: true
+    enabled: true
+    state: "{{ 'started' if ci_vm_hardware else omit }}"
+  when: not (ansible_check_mode and ci_vm_egress_unit is changed)

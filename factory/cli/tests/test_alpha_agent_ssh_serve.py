@@ -14,7 +14,6 @@ import pytest
 from agent_host_example import build_provenance
 from runfile_fixtures import agent_suffix_case as agent_suffix_case  # noqa: PLC0414
 
-from tbhbdev.alpha import agent
 from tbhbdev.alpha.agent import build_info, process_group, run_host, runfiles, ssh_serve
 from tbhbdev.alpha.agent.decisions.run_state import Group
 
@@ -109,7 +108,7 @@ def test_wrong_account(
 ) -> None:
     monkeypatch.setenv("SSH_ORIGINAL_COMMAND", command)
     monkeypatch.setattr(pwd, "getpwuid", other_account)
-    assert agent.main(["ssh-serve"], "agent") == 2
+    assert ssh_serve.main([], "agent ssh-serve") == 2
     assert capsys.readouterr().err == "ssh-serve: refused: requires agent account\n"
 
 
@@ -137,15 +136,11 @@ def test_bad_envelope(
     assert capsys.readouterr().err.startswith("ssh-serve: refused: ")
 
 
-@pytest.mark.parametrize("legacy", [False, True])
 def test_run_dispatch(
-    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], *, legacy: bool
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
     monkeypatch.setenv("SSH_ORIGINAL_COMMAND", "run-host Example_1")
-    document: dict[str, object] = {"v": 1, "request": {"v": 2}}
-    supplied = "synthetic-push-secret"
-    if legacy:
-        document["push_token"] = supplied
+    document = {"v": 1, "request": {"v": 2}, "push_token": "synthetic-push-secret"}
     incoming(monkeypatch, json.dumps(document).encode())
 
     def run(
@@ -172,7 +167,7 @@ def test_run_dispatch(
     assert capsys.readouterr().out == "normal run output\n"
     for path in Path.cwd().rglob("*"):
         if path.is_file():
-            assert supplied not in path.read_text()
+            assert "synthetic-push-secret" not in path.read_text()
 
 
 @pytest.mark.parametrize("command", ["result", "kill"])
@@ -303,16 +298,16 @@ def test_token_values(token: str | None, monkeypatch: pytest.MonkeyPatch) -> Non
         monkeypatch, json.dumps({"v": 1, "request": {}, "push_token": token}).encode()
     )
     if token is None:
-        assert ssh_serve.envelope(preflight_only=False) == {}
+        assert ssh_serve.envelope() == ({}, None)
     else:
         with pytest.raises(ValueError, match="single line"):
-            ssh_serve.envelope(preflight_only=False)
+            ssh_serve.envelope()
 
 
 def test_input_boundary(monkeypatch: pytest.MonkeyPatch) -> None:
-    body = b'{"v":1,"request":{},"push_token":null}'
+    body = b'{"v":1,"request":{}}'
     incoming(monkeypatch, body + b" " * (1024 * 1024 - len(body)))
-    assert ssh_serve.envelope(preflight_only=False) == {}
+    assert ssh_serve.envelope() == ({}, None)
 
 
 def test_os_error_is_generic(
@@ -420,16 +415,6 @@ def test_oversized_refusal_reason(
     assert capsys.readouterr().err == "ssh-serve: refused: stdin exceeds 1 MiB\n"
 
 
-def test_agent_dispatch_forwards_arguments(monkeypatch: pytest.MonkeyPatch) -> None:
-    def serve(arguments: list[str], prog: str) -> int:
-        assert arguments == ["extra"]
-        assert prog == "alpha agent ssh-serve"
-        return 9
-
-    monkeypatch.setattr(ssh_serve, "main", serve)
-    assert agent.main(["ssh-serve", "extra"], "alpha agent") == 9
-
-
 def test_missing_account_is_refused(
     monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
@@ -489,7 +474,7 @@ def test_oversized_input_reads_only_one_lookahead_byte(
     source = io.BytesIO(b" " * (2 * ssh_serve.INPUT_LIMIT))
     monkeypatch.setattr(sys, "stdin", io.TextIOWrapper(source))
     with pytest.raises(ValueError, match=r"^stdin exceeds 1 MiB$"):
-        ssh_serve.envelope(preflight_only=False)
+        ssh_serve.envelope()
     assert source.tell() == ssh_serve.INPUT_LIMIT + 1
 
 
@@ -498,7 +483,7 @@ def test_token_with_uppercase_character(monkeypatch: pytest.MonkeyPatch) -> None
     incoming(
         monkeypatch, json.dumps({"v": 1, "request": {}, "push_token": value}).encode()
     )
-    assert ssh_serve.envelope(preflight_only=False) == {}
+    assert ssh_serve.envelope() == ({}, value)
 
 
 def test_private_run_files_ignore_permissive_umask(

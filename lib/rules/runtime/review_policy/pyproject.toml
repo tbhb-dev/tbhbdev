@@ -15,7 +15,7 @@ description = "Dependencies of the pinned tbhbdev review policy check"
 requires-python = ">=3.15"
 dependencies = [
   "cryptography==50.0.2",
-  "httpx==0.28.1",
+  "httpx2==2.16.2",
   "jsonschema[format]==4.26.0",
   "onepasswordconnectsdk==2.1.1",
   "psycopg[binary]==3.3.9",

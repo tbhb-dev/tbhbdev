@@ -23,7 +23,7 @@ from tbhbdev.alpha.agent import host_tools, runfiles
 from tbhbdev.alpha.agent.decisions import repo
 from tbhbdev.alpha.agent.decisions.request import check_fetch_refs, check_start_ref
 from tbhbdev.alpha.agent.model import Invalid, Profile, RunRequest
-from tbhbdev.alpha.identity import RUN_HOOK_ENV
+from tbhbdev.alpha.identity.dispatcher import RUN_HOOK_ENV
 from tbhbdev.alpha.repo import TBHB_DEV_ORIGIN
 
 GIT_OVERRIDES = (
@@ -148,9 +148,9 @@ def git(clone: Path, *args: str, token: str | None = None) -> str:
         if directory.is_dir()
         else ["--git-dir", str(clone)]
     )
-    offline = ["-c", "protocol.allow=never"]
     # A moved repository answers with a redirect, and the owner gate checks only
     # the requested name, so an online command never follows one.
+    offline = ["-c", "protocol.allow=never"]
     online_only = ["-c", "http.followRedirects=false"]
     online = args[0] in ("fetch", "ls-remote")
     invocation = [*command, *(online_only if online else offline), *args]
@@ -165,18 +165,9 @@ def git(clone: Path, *args: str, token: str | None = None) -> str:
     timeout = 300 if args[0] in ("fetch", "clone") else 30
     if args[0] == "init":
         return output(invocation).strip()
+    query = ("config", "--null", "--name-only", "--get-regexp", r"^(filter|merge)\.")
     try:
-        keys = output(
-            [
-                *command,
-                *offline,
-                "config",
-                "--null",
-                "--name-only",
-                "--get-regexp",
-                r"^(filter|merge)\.",
-            ]
-        )
+        keys = output([*command, *offline, *query])
     except subprocess.CalledProcessError as exc:
         if exc.returncode != 1:
             raise
@@ -209,26 +200,21 @@ def configure_mirror(mirror: Path, url: str) -> None:
     if not (mirror / "config").exists():
         git(mirror, "init", "--bare", "--template=")
     # All values come from validated repository names, never a checkout.
-    runfiles.atomic(
-        mirror / "config",
-        MIRROR_CONFIG.format(url=url),
-    )
+    runfiles.atomic(mirror / "config", MIRROR_CONFIG.format(url=url))
 
 
 def default_branch(mirror: Path, token: str | None = None) -> str:
     query = ("ls-remote", "--symref", "--end-of-options", "origin", "HEAD")
     listing = git(mirror, *query) if token is None else git(mirror, *query, token=token)
     for line in listing.splitlines():
-        match = re.fullmatch(r"ref: (refs/heads/[^\s]+)\tHEAD", line)
-        if match is not None:
-            branch = match[1]
+        if match := re.fullmatch(r"ref: (refs/heads/[^\s]+)\tHEAD", line):
             git(
                 mirror,
                 "check-ref-format",
                 "--branch",
-                branch.removeprefix("refs/heads/"),
+                match[1].removeprefix("refs/heads/"),
             )
-            return branch
+            return match[1]
     message = "origin HEAD does not name a branch"
     raise Invalid(message)
 
@@ -363,7 +349,6 @@ def prepare_hooks(
     name: str,
     start: str,
     env: Mapping[str, str] | None,
-    *,
     start_ref: str | None,
 ) -> None:
     with preparation_step("hook install"):
@@ -679,7 +664,7 @@ def create(
                 if token is None:
                     raise
                 commit = fetch_commit(mirror, request, token)
-        prepare_hooks(worktree, name, commit, hook_env, start_ref=request.start_ref)
+        prepare_hooks(worktree, name, commit, hook_env, request.start_ref)
         with preparation_step("checkout"):
             git(
                 worktree, "fetch", "--no-tags", "--no-write-fetch-head",

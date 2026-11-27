@@ -67,7 +67,7 @@ def command(arguments: list[str]) -> tuple[str, str]:
     return words[0], words[1]
 
 
-def envelope(*, preflight_only: bool) -> dict[str, object]:
+def envelope() -> tuple[dict[str, object], str | None]:
     raw = sys.stdin.buffer.read(INPUT_LIMIT + 1)
     if len(raw) > INPUT_LIMIT:
         message = "stdin exceeds 1 MiB"
@@ -90,7 +90,6 @@ def envelope(*, preflight_only: bool) -> dict[str, object]:
         raise Invalid(message)
     fields: dict[str, object] = data
     request = fields["request"]
-    # Accept envelopes from controllers that still send the legacy field.
     token = fields.get("push_token")
     if not isinstance(request, dict):
         message = "request must be an object"
@@ -100,15 +99,15 @@ def envelope(*, preflight_only: bool) -> dict[str, object]:
     ):
         message = "push_token must be a nonempty single line or null"
         raise Invalid(message)
-    if preflight_only and token is not None:
-        message = "preflight requires a null push_token"
-        raise Invalid(message)
     request_fields: dict[str, object] = request
-    return request_fields
+    return request_fields, token
 
 
 def start(files: runfiles.RunFiles, prog: str, *, preflight_only: bool) -> int:
-    request = envelope(preflight_only=preflight_only)
+    request, token = envelope()
+    if preflight_only and token is not None:
+        message = "preflight requires a null push_token"
+        raise Invalid(message)
     body = json.dumps(request) + "\n"
     run_host.refuse_started(files)
     ownership.claim(files)

@@ -1,0 +1,10 @@
+# {{ ansible_managed }}
+# ip_forward stays on for Docker and the bridge, and
+# kernel.apparmor_restrict_unprivileged_userns is left as shipped.
+net.ipv4.conf.all.send_redirects = 0
+net.ipv4.conf.default.send_redirects = 0
+kernel.kexec_load_disabled = 1
+fs.suid_dumpable = 0
+fs.protected_fifos = 2
+fs.protected_regular = 2
+kernel.sysrq = 0

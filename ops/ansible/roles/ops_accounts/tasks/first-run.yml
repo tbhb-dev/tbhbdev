@@ -1,0 +1,41 @@
+---
+# Renders the first-run files for one host into first_run_dir, on the
+# controller, from the role's own ids and the host's ops keys. Run it
+# through playbooks/first-run.yml.
+- name: first-run | Require an output directory and at least one ops key
+  ansible.builtin.assert:
+    that:
+      - first_run_dir is defined
+      - ops_accounts_admin_keys | default([]) | length > 0
+    fail_msg: >-
+      first-run needs -e first_run_dir=DIR and at least one key in
+      ops_accounts_admin_keys for {{ inventory_hostname }}
+    quiet: true
+
+- name: first-run | Create the host's directory
+  ansible.builtin.file:
+    path: "{{ first_run_dir }}/{{ inventory_hostname }}"
+    state: directory
+    mode: "0755"
+  delegate_to: localhost
+  become: false
+
+# Ubuntu hosts install from this file; macOS hosts have no autoinstall, so
+# their keys go to the first-run script as an authorized_keys file instead.
+- name: first-run | Render the autoinstall user-data
+  ansible.builtin.template:
+    src: autoinstall-user-data.yml.j2
+    dest: "{{ first_run_dir }}/{{ inventory_hostname }}/user-data"
+    mode: "0644"
+  delegate_to: localhost
+  become: false
+  when: "'lab' in group_names"
+
+- name: first-run | Render the ops authorized_keys file
+  ansible.builtin.copy:
+    content: "{{ ops_accounts_admin_keys | join('\n') }}\n"
+    dest: "{{ first_run_dir }}/{{ inventory_hostname }}/ops-authorized-keys"
+    mode: "0644"
+  delegate_to: localhost
+  become: false
+  when: "'lab' not in group_names"

@@ -1,0 +1,121 @@
+load("@tbhb_rules//repo:defs.bzl", "repo_files")
+load(
+    "@tbhb_rules_ansible//:defs.bzl",
+    "ansible_collections_lock_test",
+    "ansible_lint_test",
+    "ansible_syntax_check_test",
+)
+
+repo_files()
+
+filegroup(
+    name = "deployment_fixtures",
+    srcs = glob([
+        "playbooks/**",
+        "plugins/filter/**",
+        "roles/**",
+        "tasks/**",
+    ]) + [
+        "ansible.cfg",
+        "scripts/first-run-macos.sh",
+    ],
+    visibility = ["//ops:__pkg__"],
+)
+
+exports_files([
+    "pyproject.toml",
+    "requirements.lock.json",
+    "requirements.yml",
+    "uv.lock",
+])
+
+# The deploy command passes the companion inventory separately.
+genrule(
+    name = "syntax_inventory",
+    outs = ["molecule/syntax_inventory.yml"],
+    cmd = "printf 'all:\n  hosts:\n    host-a:\n' > $@",
+)
+
+# The Ansible tree, checked as if this package were the repository root,
+# where ansible.cfg sits. collections/ is Molecule's gitignored install.
+SRCS = glob(
+    ["**"],
+    exclude = [
+        "collections/**",
+        "molecule/syntax_inventory.yml",
+        "BUILD.bazel",
+    ],
+) + [":syntax_inventory"]
+
+# A new playbook under playbooks/ goes in this list, or no test checks it.
+ansible_syntax_check_test(
+    name = "syntax_test",
+    srcs = SRCS,
+    inventory = "molecule/syntax_inventory.yml",
+    playbooks = [
+        "playbooks/agent-accounts.yml",
+        "playbooks/agent-mesh-purge.yml",
+        "playbooks/agent-workspace.yml",
+        "playbooks/ca-backup.yml",
+        "playbooks/ca-client-trust.yml",
+        "playbooks/ci-vm-admin-keys.yml",
+        "playbooks/codex-cli.yml",
+        "playbooks/connect-token.yml",
+        "playbooks/deploy-runner-vm.yml",
+        "playbooks/event-gateway.yml",
+        "playbooks/first-run.yml",
+        "playbooks/agent-harness.yml",
+        "playbooks/agent-signing.yml",
+        "playbooks/lab-accounts.yml",
+        "playbooks/lab-audit.yml",
+        "playbooks/lab-chrony-nts.yml",
+        "playbooks/lab-ci-vms.yml",
+        "playbooks/lab-hardening.yml",
+        "playbooks/lab-hosts.yml",
+        "playbooks/lab-macos.yml",
+        "playbooks/lab-root-password.yml",
+        "playbooks/lab-tbhbops.yml",
+        "playbooks/lab-telemetry.yml",
+        "playbooks/lab-temporal-dev.yml",
+        "playbooks/mac-snapshot-thin.yml",
+        "playbooks/nas-accounts.yml",
+        "playbooks/o11y-rollback.yml",
+        "playbooks/o11y.yml",
+        "playbooks/ops-tbhbdev.yml",
+        "playbooks/runner-pool.yml",
+        "playbooks/ssh-keys.yml",
+        "playbooks/ssh-keys-proof.yml",
+        "playbooks/windows-accounts.yml",
+        "playbooks/windows-update-policy.yml",
+    ],
+    strip_prefix = "ops/ansible",
+)
+
+# ansible-lint syntax-checks each playbook, which needs an inventory that ansible.cfg doesn't name.
+# Its watchdog stops ansible-lint at 80% of the test timeout. On a CI runner
+# beside the mutmut tests it needs more than the 240 s that the default
+# moderate timeout gives, so the long timeout sets 720 s.
+ansible_lint_test(
+    name = "lint_test",
+    timeout = "long",
+    srcs = SRCS,
+    env = {"ANSIBLE_INVENTORY": "molecule/syntax_inventory.yml"},
+    strip_prefix = "ops/ansible",
+)
+
+# requirements.lock.json pins each collection's tarball by sha256, and
+# `bazelisk run @tbhb_rules_ansible//:lock` rewrites it after a pin changes.
+ansible_collections_lock_test(
+    name = "collections_lock_test",
+    lock = "requirements.lock.json",
+    requirements = "requirements.yml",
+    strip_prefix = "ops/ansible",
+)
+
+ansible_lint_test(
+    name = "o11y_lint_test",
+    srcs = SRCS,
+    args = ["roles/o11y"],
+    env = {"ANSIBLE_INVENTORY": "molecule/syntax_inventory.yml"},
+    strip_prefix = "ops/ansible",
+)

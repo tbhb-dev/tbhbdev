@@ -39,7 +39,7 @@ def _checklist() -> str:
 
 def test_checklist_has_every_floor_item() -> None:
     ids = re.findall(r"^- \*\*(R\d+)\*\*", _checklist(), flags=re.MULTILINE)
-    assert ids == [f"R{n}" for n in range(1, 14)]
+    assert ids == [f"R{n}" for n in range(1, 16)]
 
 
 def test_checklist_escalation_ids_are_unique_and_floor_prefixed() -> None:
