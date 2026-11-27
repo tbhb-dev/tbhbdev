@@ -8,6 +8,7 @@ load("//ops/packages:pytest.bzl", "ops_py_test")
 # gazelle:python_generation_mode package
 # gazelle:python_generation_mode_per_package_require_test_entry_point false
 # gazelle:map_kind py_test ops_py_test //ops/packages:pytest.bzl
+# gazelle:exclude integration
 # gazelle:exclude testdata
 # gazelle:exclude unit
 
@@ -19,6 +20,7 @@ py_library(
         "__init__.py",
         "deploy_fakes.py",
         "deploy_model.py",
+        "deploy_receiver.py",
         "ssh_argv.py",
     ],
     visibility = ["//ops/packages/tbhbops/tests:__subpackages__"],
@@ -42,6 +44,7 @@ ops_py_test(
     srcs = glob(
         [
             "*_test.py",
+            "integration/**/*.py",
             "test_*.py",
             "unit/**/*.py",
         ],

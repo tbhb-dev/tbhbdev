@@ -286,15 +286,18 @@ class Engine:
                 return False
         return True
 
+    def start(self, release: str, *, recreate: bool) -> None:
+        flags = ["up", "-d", "--wait", "--remove-orphans"]
+        if recreate:
+            flags.append("--force-recreate")
+        self.run(release, *flags)
+
     def up(self, release: str, *, recreate: bool) -> None:
         # Rollback deliberately keeps the stored model's original policy approval
         # after policy tightening. Host path checks still apply.
         # Recovery has stopped the candidate. Its inspection must not block restart.
         self.check_paths(self.stored(release), release, live=False)
-        flags = ["up", "-d", "--wait", "--remove-orphans"]
-        if recreate:
-            flags.append("--force-recreate")
-        self.run(release, *flags)
+        self.start(release, recreate=recreate)
         self.health(release)
 
     def health(self, release: str) -> None:
