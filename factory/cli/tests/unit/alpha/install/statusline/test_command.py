@@ -5,7 +5,7 @@ from pathlib import PurePath
 
 import pytest
 
-from tbhbdev.alpha import install_statusline_decisions as decisions
+from tbhbdev.alpha.install.statusline import command as decisions
 
 INSTALL_DIR = PurePath("/data/tbhbdev/ccstatusline")
 ROOT = INSTALL_DIR / "2.2.33"
@@ -113,3 +113,19 @@ def test_the_command_quotes_its_paths_and_keeps_the_width_fallback() -> None:
     assert decisions.statusline_script(PurePath("/r")) == PurePath(
         "/r/node_modules/ccstatusline/dist/ccstatusline.js"
     )
+
+
+@pytest.mark.parametrize(
+    ("node", "bun", "installed", "missing"),
+    [
+        (None, None, False, "node"),
+        (None, "/x/bun", True, "node"),
+        ("/x/node", None, True, None),
+        ("/x/node", None, False, "bun"),
+        ("/x/node", "/x/bun", False, None),
+    ],
+)
+def test_missing_tool(
+    node: str | None, bun: str | None, installed: bool, missing: str | None
+) -> None:
+    assert decisions.missing_tool(node, bun, installed=installed) == missing

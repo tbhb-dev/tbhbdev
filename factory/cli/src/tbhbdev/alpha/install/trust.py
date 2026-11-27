@@ -36,9 +36,11 @@ from tomlkit.container import OutOfOrderTableProxy
 from tomlkit.exceptions import TOMLKitError
 from tomlkit.items import Table
 
+from tbhbdev.alpha.install.hooks import ours
+
 if TYPE_CHECKING:
     from collections.abc import Callable, Iterator, Mapping
-    from pathlib import Path
+    from pathlib import PurePath
 
 type Json = dict[str, object]
 
@@ -53,7 +55,7 @@ def event_label(event: str) -> str:
     return CAMEL_BOUNDARY.sub("_", event).lower()
 
 
-def hook_key(path: Path, label: str, group: int, handler: int) -> str:
+def hook_key(path: PurePath, label: str, group: int, handler: int) -> str:
     """The `hooks.state` key of one handler."""
     return f"{path}:{label}:{group}:{handler}"
 
@@ -104,7 +106,9 @@ def groups_of(config: Mapping[str, object]) -> Iterator[tuple[str, int, Json]]:
 
 
 def our_hashes(
-    path: Path, config: Mapping[str, object], is_ours: Callable[[object], bool]
+    path: PurePath,
+    config: Mapping[str, object],
+    is_ours: Callable[[object], bool] = ours,
 ) -> dict[str, str]:
     """Each of our handlers' `hooks.state` key, with its hash.
 
@@ -143,7 +147,7 @@ def sub_table(
     return child
 
 
-def holds_old_position(key: str, path: Path) -> bool:
+def holds_old_position(key: str, path: PurePath) -> bool:
     """Whether KEY is a `hooks.state` key for a handler of the `hooks.json` at PATH."""
     parts = key.rsplit(":", KEY_COLONS)
     return len(parts) == KEY_COLONS + 1 and parts[0] == str(path)
@@ -159,7 +163,7 @@ def trailing_newlines(text: str) -> int:
     return len(text) - len(text.rstrip("\n"))
 
 
-def trusted_text(old: str | None, path: Path, wanted: Mapping[str, str]) -> str:
+def trusted_text(old: str | None, path: PurePath, wanted: Mapping[str, str]) -> str:
     """The `config.toml` text with WANTED trusted and our old entries gone.
 
     OLD is None for a missing file. WANTED maps each key to its hash, as
@@ -173,13 +177,13 @@ def trusted_text(old: str | None, path: Path, wanted: Mapping[str, str]) -> str:
         message = f"it is not valid TOML ({exc})"
         raise ValueError(message) from exc
     state = sub_table(sub_table(doc, "hooks", "hooks"), "state", "hooks.state")
-    ours = set(wanted.values())
+    hashes = set(wanted.values())
     stale = [
         key
         for key in list[str](state)
         if key not in wanted
         and holds_old_position(key, path)
-        and trusted_hash(state[key]) in ours
+        and trusted_hash(state[key]) in hashes
     ]
     for key in stale:
         del state[key]

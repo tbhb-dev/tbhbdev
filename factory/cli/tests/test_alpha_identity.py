@@ -28,10 +28,10 @@ from fake_tool import pythonpath
 from hypothesis import given, settings
 from hypothesis import strategies as st
 
-from tbhbdev.alpha import install
 from tbhbdev.alpha.identity import dispatcher as ai
 from tbhbdev.alpha.identity.commands import cmd_hashes
 from tbhbdev.alpha.identity.models import EFFORTS
+from tbhbdev.alpha.install import hooks as install
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -3785,7 +3785,7 @@ def wired(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     run_git(path, "commit", "-q", "-m", "init")
     monkeypatch.chdir(path)
     done = subprocess.run(
-        ["tbhbdev", "alpha", "install", "--harness", "claude"],
+        ["tbhbdev", "alpha", "install"],
         capture_output=True,
         text=True,
         check=False,
@@ -4487,7 +4487,7 @@ def with_msg_linter(wired: Path) -> Path:
     )
     config.write_text(yaml.safe_dump(loaded_config), encoding="utf-8")
     subprocess.run(
-        ["tbhbdev", "alpha", "install", "--harness", "claude"],
+        ["tbhbdev", "alpha", "install"],
         check=True,
         capture_output=True,
         env=hook_env(),

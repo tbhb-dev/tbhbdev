@@ -346,7 +346,7 @@ def inspect_push(remote: str, target: str, lines: Sequence[str]) -> list[str]:
         message = (
             f"{RUN_NAME_ENV} is missing; push from a managed agent run "
             "with its hooks installed (install clone hooks with "
-            "`tbhbdev alpha install --hooks-only`)"
+            "`tbhbdev alpha install`)"
         )
         raise InspectionError(message)
     agent_push = agent_org_push or session_root(os.environ) is not None

@@ -89,7 +89,7 @@ from urllib.parse import quote
 from tbhbdev.alpha import pull_request as pr
 from tbhbdev.alpha import review_gate
 from tbhbdev.alpha.identity import dispatcher as agent_identity
-from tbhbdev.alpha.install import require_git_hooks
+from tbhbdev.alpha.install.git.hooks import require_git_hooks
 
 if TYPE_CHECKING:
     from collections.abc import Sequence

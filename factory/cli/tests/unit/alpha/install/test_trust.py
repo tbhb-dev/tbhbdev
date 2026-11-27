@@ -1,15 +1,15 @@
-"""Tests for tbhbdev.alpha.codex_trust: Codex's trusted-hook keys and hashes."""
+"""Tests for tbhbdev.alpha.install.trust: Codex's trusted-hook keys and hashes."""
 
 import hashlib
 import tomllib
-from pathlib import Path
+from pathlib import PurePath
 from typing import cast
 
 import pytest
 
-from tbhbdev.alpha import codex_trust
+from tbhbdev.alpha.install import trust
 
-HOOKS = Path("/home/agent/.codex/hooks.json")
+HOOKS = PurePath("/example/codex/hooks.json")
 KEY = f"{HOOKS}:pre_tool_use:0:0"
 
 
@@ -38,7 +38,7 @@ def hooks_of(text: str) -> dict[str, object]:
 
 
 def test_the_golden_vector() -> None:
-    assert codex_trust.hook_hash("pre_tool_use", "Bash", "example-hook run", 10) == (
+    assert trust.hook_hash("pre_tool_use", "Bash", "example-hook run", 10) == (
         "sha256:650e0f6b5aba6ef9c77fe9cc1874666d7f0be18194a90f58c4e4106c8a50d37d"
     )
 
@@ -65,7 +65,7 @@ def test_the_golden_vector() -> None:
 def test_hook_hash_is_sha256_of_compact_sorted_json(
     matcher: str | None, compact: str
 ) -> None:
-    assert codex_trust.hook_hash("stop", matcher, "c", 600) == sha(compact)
+    assert trust.hook_hash("stop", matcher, "c", 600) == sha(compact)
 
 
 @pytest.mark.parametrize(
@@ -79,7 +79,7 @@ def test_hook_hash_is_sha256_of_compact_sorted_json(
     ],
 )
 def test_event_label(event: str, label: str) -> None:
-    assert codex_trust.event_label(event) == label
+    assert trust.event_label(event) == label
 
 
 @pytest.mark.parametrize(
@@ -91,7 +91,7 @@ def test_event_label(event: str, label: str) -> None:
     ],
 )
 def test_hook_key(label: str, group: int, handler: int, key: str) -> None:
-    assert codex_trust.hook_key(HOOKS, label, group, handler) == key
+    assert trust.hook_key(HOOKS, label, group, handler) == key
 
 
 # --------------------------------------------------------------- our_hashes
@@ -108,18 +108,18 @@ def test_our_hashes_trusts_only_our_handlers_among_foreign_groups() -> None:
         "SessionStart": [{"hooks": [mine("four")]}],
         "Stop": [{"hooks": [THEIRS]}],
     }
-    found = codex_trust.our_hashes(HOOKS, {"hooks": events}, is_mine)
+    found = trust.our_hashes(HOOKS, {"hooks": events}, is_mine)
     assert found == {
-        f"{HOOKS}:pre_tool_use:1:0": codex_trust.hook_hash(
+        f"{HOOKS}:pre_tool_use:1:0": trust.hook_hash(
             "pre_tool_use", "Bash", "one # mine", 600
         ),
-        f"{HOOKS}:pre_tool_use:2:1": codex_trust.hook_hash(
+        f"{HOOKS}:pre_tool_use:2:1": trust.hook_hash(
             "pre_tool_use", "Edit", "two # mine", 600
         ),
-        f"{HOOKS}:pre_tool_use:2:3": codex_trust.hook_hash(
+        f"{HOOKS}:pre_tool_use:2:3": trust.hook_hash(
             "pre_tool_use", "Edit", "three # mine", 600
         ),
-        f"{HOOKS}:session_start:0:0": codex_trust.hook_hash(
+        f"{HOOKS}:session_start:0:0": trust.hook_hash(
             "session_start", None, "four # mine", 600
         ),
     }
@@ -135,8 +135,8 @@ def test_our_hashes_counts_odd_groups_and_skips_them() -> None:
             {"matcher": "Bash", "hooks": ["not a handler", mine("one")]},
         ],
     }
-    assert codex_trust.our_hashes(HOOKS, {"hooks": events}, is_mine) == {
-        f"{HOOKS}:pre_tool_use:3:1": codex_trust.hook_hash(
+    assert trust.our_hashes(HOOKS, {"hooks": events}, is_mine) == {
+        f"{HOOKS}:pre_tool_use:3:1": trust.hook_hash(
             "pre_tool_use", "Bash", "one # mine", 600
         )
     }
@@ -152,17 +152,17 @@ def test_our_hashes_counts_odd_groups_and_skips_them() -> None:
     ],
 )
 def test_our_hashes_of_nothing_is_empty(config: dict[str, object]) -> None:
-    assert codex_trust.our_hashes(HOOKS, config, is_mine) == {}
+    assert trust.our_hashes(HOOKS, config, is_mine) == {}
 
 
 # ------------------------------------------------------------- trusted_text
 
 
 def test_trusted_text_makes_the_file() -> None:
-    assert codex_trust.trusted_text(None, HOOKS, {KEY: "sha256:aa"}) == (
+    assert trust.trusted_text(None, HOOKS, {KEY: "sha256:aa"}) == (
         f'[hooks.state."{KEY}"]\ntrusted_hash = "sha256:aa"\n'
     )
-    assert codex_trust.trusted_text("", HOOKS, {KEY: "sha256:aa"}) == (
+    assert trust.trusted_text("", HOOKS, {KEY: "sha256:aa"}) == (
         f'[hooks.state."{KEY}"]\ntrusted_hash = "sha256:aa"\n'
     )
 
@@ -182,7 +182,7 @@ enabled = false
 [profiles.y]
 a = [1, 2]
 """
-    new = codex_trust.trusted_text(old, HOOKS, {KEY: "sha256:aa"})
+    new = trust.trusted_text(old, HOOKS, {KEY: "sha256:aa"})
     for line in old.splitlines():
         assert line in new.splitlines()
     parsed = tomllib.loads(new)
@@ -194,35 +194,35 @@ a = [1, 2]
 def test_trusted_text_is_idempotent() -> None:
     wanted = {KEY: "sha256:aa", f"{HOOKS}:stop:0:0": "sha256:bb"}
     old = '# c\nx = 1\n\n[hooks.state."/other:a:0:0"]\ntrusted_hash = "sha256:f"\n'
-    once = codex_trust.trusted_text(old, HOOKS, wanted)
-    assert codex_trust.trusted_text(once, HOOKS, wanted) == once
+    once = trust.trusted_text(old, HOOKS, wanted)
+    assert trust.trusted_text(once, HOOKS, wanted) == once
     assert once != old
 
 
 def test_trusted_text_updates_a_changed_hash_in_place() -> None:
     old = f'[hooks.state."{KEY}"]\ntrusted_hash = "sha256:old"\nenabled = false\n'
-    new = codex_trust.trusted_text(old, HOOKS, {KEY: "sha256:aa"})
+    new = trust.trusted_text(old, HOOKS, {KEY: "sha256:aa"})
     assert hooks_of(new) == {KEY: {"trusted_hash": "sha256:aa", "enabled": False}}
 
 
 def test_trusted_text_leaves_a_matching_entry_as_written() -> None:
     old = f"[hooks.state.\"{KEY}\"]\ntrusted_hash = 'sha256:aa' # mine\n"
-    assert codex_trust.trusted_text(old, HOOKS, {KEY: "sha256:aa"}) == old
+    assert trust.trusted_text(old, HOOKS, {KEY: "sha256:aa"}) == old
 
 
 def test_trusted_text_updates_an_inline_entry() -> None:
     old = f'[hooks.state]\n"{KEY}" = {{ trusted_hash = "sha256:old" }}\n'
-    new = codex_trust.trusted_text(old, HOOKS, {KEY: "sha256:aa"})
+    new = trust.trusted_text(old, HOOKS, {KEY: "sha256:aa"})
     assert hooks_of(new) == {KEY: {"trusted_hash": "sha256:aa"}}
 
 
 def test_trusted_text_replaces_an_entry_that_is_not_a_table() -> None:
-    new = codex_trust.trusted_text(f'[hooks.state]\n"{KEY}" = 5\n', HOOKS, {KEY: "x"})
+    new = trust.trusted_text(f'[hooks.state]\n"{KEY}" = 5\n', HOOKS, {KEY: "x"})
     assert hooks_of(new) == {KEY: {"trusted_hash": "x"}}
 
 
 def test_trusted_text_works_in_an_existing_hooks_table() -> None:
-    new = codex_trust.trusted_text("[hooks]\nfoo = 1\n", HOOKS, {KEY: "sha256:aa"})
+    new = trust.trusted_text("[hooks]\nfoo = 1\n", HOOKS, {KEY: "sha256:aa"})
     assert tomllib.loads(new) == {
         "hooks": {"foo": 1, "state": {KEY: {"trusted_hash": "sha256:aa"}}}
     }
@@ -241,7 +241,7 @@ A = "1"
 [hooks.state."/elsewhere/hooks.json:stop:0:0"]
 trusted_hash = "sha256:theirs"
 """
-    new = codex_trust.trusted_text(old, HOOKS, {KEY: "sha256:aa", other: "sha256:bb"})
+    new = trust.trusted_text(old, HOOKS, {KEY: "sha256:aa", other: "sha256:bb"})
     assert tomllib.loads(new) == {
         "hooks": {
             "state": {
@@ -252,10 +252,7 @@ trusted_hash = "sha256:theirs"
         },
         "shell_environment_policy": {"set": {"A": "1"}},
     }
-    assert (
-        codex_trust.trusted_text(new, HOOKS, {KEY: "sha256:aa", other: "sha256:bb"})
-        == new
-    )
+    assert trust.trusted_text(new, HOOKS, {KEY: "sha256:aa", other: "sha256:bb"}) == new
 
 
 def test_trusted_text_keeps_a_blank_line_before_the_table_after_a_new_entry() -> None:
@@ -270,7 +267,7 @@ trusted_hash = "sha256:theirs"
 """
     other = f"{HOOKS}:stop:0:0"
     wanted = {KEY: "sha256:aa", other: "sha256:bb"}
-    new = codex_trust.trusted_text(old, HOOKS, wanted)
+    new = trust.trusted_text(old, HOOKS, wanted)
     assert (
         new
         == f"""[hooks.state."{KEY}"]
@@ -286,7 +283,7 @@ A = "1"
 trusted_hash = "sha256:theirs"
 """
     )
-    assert codex_trust.trusted_text(new, HOOKS, wanted) == new
+    assert trust.trusted_text(new, HOOKS, wanted) == new
 
 
 @pytest.mark.parametrize(
@@ -301,9 +298,9 @@ trusted_hash = "sha256:theirs"
 def test_trusted_text_ends_the_file_with_the_newlines_it_had_or_one(
     old: str | None, tail: str
 ) -> None:
-    new = codex_trust.trusted_text(old, HOOKS, {KEY: "sha256:aa"})
+    new = trust.trusted_text(old, HOOKS, {KEY: "sha256:aa"})
     assert new.endswith(f'"]\n{tail}')
-    assert codex_trust.trusted_text(new, HOOKS, {KEY: "sha256:aa"}) == new
+    assert trust.trusted_text(new, HOOKS, {KEY: "sha256:aa"}) == new
 
 
 def test_trusted_text_removes_our_hash_from_an_old_position() -> None:
@@ -315,7 +312,7 @@ trusted_hash = "sha256:aa"
 [hooks.state."{HOOKS}:stop:0:0"]
 trusted_hash = "sha256:aa"
 """
-    new = codex_trust.trusted_text(
+    new = trust.trusted_text(
         old, HOOKS, {new_key: "sha256:aa", f"{HOOKS}:stop:0:0": "sha256:aa"}
     )
     assert hooks_of(new) == {
@@ -326,7 +323,7 @@ trusted_hash = "sha256:aa"
 
 def test_trusted_text_removes_an_inline_entry_at_an_old_position() -> None:
     old = f'[hooks.state]\n"{KEY}" = {{ trusted_hash = "sha256:aa" }}\n'
-    new = codex_trust.trusted_text(old, HOOKS, {f"{HOOKS}:stop:0:0": "sha256:aa"})
+    new = trust.trusted_text(old, HOOKS, {f"{HOOKS}:stop:0:0": "sha256:aa"})
     assert hooks_of(new) == {f"{HOOKS}:stop:0:0": {"trusted_hash": "sha256:aa"}}
 
 
@@ -348,22 +345,22 @@ def test_trusted_text_removes_an_inline_entry_at_an_old_position() -> None:
 def test_trusted_text_keeps_every_other_entry(stays: tuple[str, str]) -> None:
     key, digest = stays
     old = f'[hooks.state."{key}"]\ntrusted_hash = "{digest}"\n'
-    new = codex_trust.trusted_text(old, HOOKS, {f"{HOOKS}:stop:0:0": "sha256:aa"})
+    new = trust.trusted_text(old, HOOKS, {f"{HOOKS}:stop:0:0": "sha256:aa"})
     assert hooks_of(new)[key] == {"trusted_hash": digest}
 
 
 @pytest.mark.parametrize("value", ['"not a table"', "{ enabled = false }", "{}"])
 def test_trusted_text_keeps_a_stale_looking_entry_without_a_hash(value: str) -> None:
     old = f'[hooks.state]\n"{KEY}" = {value}\n'
-    new = codex_trust.trusted_text(old, HOOKS, {f"{HOOKS}:stop:0:0": "sha256:aa"})
+    new = trust.trusted_text(old, HOOKS, {f"{HOOKS}:stop:0:0": "sha256:aa"})
     assert hooks_of(new)[KEY] == tomllib.loads(old)["hooks"]["state"][KEY]
 
 
 def test_trusted_text_matches_a_path_with_a_colon() -> None:
-    path = Path("/a:b/hooks.json")
+    path = PurePath("/a:b/hooks.json")
     key = f"{path}:pre_tool_use:0:0"
     old = f'[hooks.state."{key}"]\ntrusted_hash = "sha256:aa"\n'
-    new = codex_trust.trusted_text(old, path, {f"{path}:stop:0:0": "sha256:aa"})
+    new = trust.trusted_text(old, path, {f"{path}:stop:0:0": "sha256:aa"})
     assert list(hooks_of(new)) == [f"{path}:stop:0:0"]
 
 
@@ -374,7 +371,7 @@ trusted_hash = "sha256:aa"
 [hooks.state."/z"]
 trusted_hash = "sha256:z"
 """
-    assert codex_trust.trusted_text(old, HOOKS, {KEY: "sha256:aa"}) == old
+    assert trust.trusted_text(old, HOOKS, {KEY: "sha256:aa"}) == old
 
 
 @pytest.mark.parametrize(
@@ -389,6 +386,6 @@ trusted_hash = "sha256:z"
 )
 def test_trusted_text_refuses_a_file_it_cannot_edit(old: str, message: str) -> None:
     with pytest.raises(ValueError, match=r"^it") as caught:
-        codex_trust.trusted_text(old, HOOKS, {KEY: "sha256:aa"})
+        trust.trusted_text(old, HOOKS, {KEY: "sha256:aa"})
     assert str(caught.value).startswith(message)
     assert "\n" not in str(caught.value)

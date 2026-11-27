@@ -14,8 +14,9 @@ from typing import TYPE_CHECKING, override
 
 import pytest
 
-from tbhbdev.alpha import install
-from tbhbdev.alpha import install_statusline_decisions as statusline
+from tbhbdev.alpha.install import files, model, settings
+from tbhbdev.alpha.install.statusline import command as statusline
+from tbhbdev.alpha.install.statusline import pin as installer
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Mapping
@@ -73,7 +74,7 @@ class Setup:
         return text
 
     def go(self, *, dry_run: bool = False) -> int:
-        return install.install_statusline(
+        return installer.install_statusline(
             self.env, dry_run=dry_run, run=self.tools.run, which=self.tools.which
         )
 
@@ -86,7 +87,6 @@ def preinstall(root: Path) -> Path:
     script = statusline.statusline_script(root)
     script.parent.mkdir(parents=True)
     script.write_text(PACKAGE_FILE)
-    (root / install.STATUSLINE_MARKER).write_text(install.STATUSLINE_VERSION)
     return script
 
 
@@ -96,13 +96,13 @@ def setup(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Setup:
     statusline.statusline_script(reference).parent.mkdir(parents=True)
     statusline.statusline_script(reference).write_text(PACKAGE_FILE)
     monkeypatch.setattr(
-        install,
+        installer,
         "STATUSLINE_DIGEST",
-        install.package_digest(statusline.statusline_package(reference)),
+        installer.package_digest(statusline.statusline_package(reference)),
     )
     monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path / "data"))
     config = tmp_path / "claude"
-    root = install.statusline_root()
+    root = installer.statusline_root()
     return Setup(
         {"CLAUDE_CONFIG_DIR": str(config)}, config / "settings.json", Tools(root)
     )
@@ -132,7 +132,7 @@ def test_pins_the_known_command_and_keeps_every_other_key(
                 "cwd": setup.tools.cwd,
                 "check": True,
                 "capture_output": True,
-                "timeout": install.STATUSLINE_TIMEOUT,
+                "timeout": installer.STATUSLINE_TIMEOUT,
             },
         )
     ]
@@ -363,24 +363,11 @@ def test_a_bun_that_wrote_the_script_then_failed_leaves_no_install(
     assert setup.go() == 0
     assert len(setup.tools.calls) == 2
     assert command(setup) == wanted(setup)
-    assert install.statusline_installed(setup.tools.root)
+    assert installer.statusline_installed(setup.tools.root)
 
 
 def statusline_installed(setup: Setup) -> bool:
-    return install.statusline_installed(setup.tools.root)
-
-
-def test_a_script_without_the_marker_is_not_a_complete_install(
-    setup: Setup,
-) -> None:
-    script = statusline.statusline_script(setup.tools.root)
-    script.parent.mkdir(parents=True)
-    script.write_text("")
-    setup.write({"statusLine": {"type": "command", "command": wanted(setup)}})
-    assert not statusline_installed(setup)
-    assert setup.go() == 0
-    assert len(setup.tools.calls) == 1
-    assert statusline_installed(setup)
+    return installer.statusline_installed(setup.tools.root)
 
 
 def test_a_symlinked_script_or_root_is_not_trusted(
@@ -467,15 +454,11 @@ def test_another_installers_staging_directory_is_left_alone(setup: Setup) -> Non
     assert setup.tools.cwd != other
 
 
-def test_a_wrong_marker_or_altered_file_is_not_a_complete_install(
+def test_an_altered_file_is_not_a_complete_install(
     setup: Setup,
 ) -> None:
     script = preinstall(setup.tools.root)
     assert statusline_installed(setup)
-    marker = setup.tools.root / install.STATUSLINE_MARKER
-    marker.write_text("2.2.0")
-    assert not statusline_installed(setup)
-    marker.write_text(install.STATUSLINE_VERSION)
     script.write_text("evil()\n")
     assert not statusline_installed(setup)
     script.write_text(PACKAGE_FILE)
@@ -492,14 +475,13 @@ def test_an_altered_install_is_replaced_not_reused(setup: Setup) -> None:
     assert script.read_text() == PACKAGE_FILE
 
 
-@pytest.mark.parametrize("name", [".complete", "node_modules", "ccstatusline", "dist"])
+@pytest.mark.parametrize("name", ["node_modules", "ccstatusline", "dist"])
 def test_a_symlink_anywhere_in_the_install_is_not_trusted(
     setup: Setup, tmp_path: Path, name: str
 ) -> None:
     preinstall(setup.tools.root)
     root = setup.tools.root
     entry = {
-        ".complete": root / ".complete",
         "node_modules": root / "node_modules",
         "ccstatusline": root / "node_modules" / "ccstatusline",
         "dist": root / "node_modules" / "ccstatusline" / "dist",
@@ -510,18 +492,9 @@ def test_a_symlink_anywhere_in_the_install_is_not_trusted(
     assert not statusline_installed(setup)
 
 
-@pytest.mark.parametrize("damage", ["marker_bytes", "marker_mode", "script_mode"])
-def test_an_unreadable_or_non_text_file_is_no_install_and_a_rerun_repairs_it(
-    setup: Setup, damage: str
-) -> None:
+def test_an_unreadable_file_is_no_install_and_a_rerun_repairs_it(setup: Setup) -> None:
     script = preinstall(setup.tools.root)
-    marker = setup.tools.root / ".complete"
-    if damage == "marker_bytes":
-        marker.write_bytes(b"\xff\xfe")
-    elif damage == "marker_mode":
-        marker.chmod(0)
-    else:
-        script.chmod(0)
+    script.chmod(0)
     assert not statusline_installed(setup)
     setup.write({"statusLine": {"type": "command", "command": wanted(setup)}})
     assert setup.go() == 0
@@ -536,7 +509,7 @@ def test_the_digest_covers_each_name_and_content_with_separators(
     (tmp_path / "a.js").write_bytes(b"x")
     (tmp_path / "sub" / "b.js").write_bytes(b"y")
     expected = hashlib.sha256(b"a.js\0x\0" + b"sub/b.js\0y\0").hexdigest()
-    assert install.package_digest(tmp_path) == expected
+    assert installer.package_digest(tmp_path) == expected
 
 
 def test_the_digest_hashes_a_name_with_undecodable_bytes(
@@ -550,25 +523,25 @@ def test_the_digest_hashes_a_name_with_undecodable_bytes(
 
     monkeypatch.setattr(Path, "relative_to", odd_name)
     expected = hashlib.sha256(odd + b"\0x\0").hexdigest()
-    assert install.package_digest(tmp_path) == expected
+    assert installer.package_digest(tmp_path) == expected
 
 
 def test_the_digest_reads_in_chunks_and_refuses_a_package_over_the_cap(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     (tmp_path / "a.js").write_bytes(b"x" * 10)
-    monkeypatch.setattr(install, "STATUSLINE_CHUNK", 3)
-    monkeypatch.setattr(install, "STATUSLINE_MAX_BYTES", 10)
-    assert install.package_digest(tmp_path) is not None
-    monkeypatch.setattr(install, "STATUSLINE_MAX_BYTES", 9)
-    assert install.package_digest(tmp_path) is None
+    monkeypatch.setattr(installer, "STATUSLINE_CHUNK", 3)
+    monkeypatch.setattr(installer, "STATUSLINE_MAX_BYTES", 10)
+    assert installer.package_digest(tmp_path) is not None
+    monkeypatch.setattr(installer, "STATUSLINE_MAX_BYTES", 9)
+    assert installer.package_digest(tmp_path) is None
 
 
 def test_the_digest_asks_for_one_chunk_at_a_time(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     (tmp_path / "a.js").write_bytes(b"x" * 10)
-    monkeypatch.setattr(install, "STATUSLINE_CHUNK", 4)
+    monkeypatch.setattr(installer, "STATUSLINE_CHUNK", 4)
     sizes: list[int | None] = []
 
     class Counted(io.BytesIO):
@@ -583,18 +556,8 @@ def test_the_digest_asks_for_one_chunk_at_a_time(
             return Counted(handle.read())
 
     monkeypatch.setattr(Path, "open", spy)
-    assert install.package_digest(tmp_path) is not None
+    assert installer.package_digest(tmp_path) is not None
     assert sizes == [4, 4, 4, 4]
-
-
-def test_a_huge_marker_is_read_only_as_far_as_the_version(
-    setup: Setup,
-) -> None:
-    preinstall(setup.tools.root)
-    marker = setup.tools.root / install.STATUSLINE_MARKER
-    marker.write_text(install.STATUSLINE_VERSION + "x" * 10_000_000)
-    assert not statusline_installed(setup)
-    assert install.marker_text(marker) == (install.STATUSLINE_VERSION + "x").encode()
 
 
 def test_the_symlink_check_covers_the_node_modules_directory(
@@ -624,17 +587,17 @@ def test_a_settings_edit_between_the_read_and_the_replace_aborts(
 ) -> None:
     setup.write({"statusLine": {"type": "command", "command": OLD}})
     edited = {"model": "sonnet", "statusLine": {"type": "command", "command": OLD}}
-    real = install.check_unchanged
+    real = files.check_unchanged
 
     def edit_then_check(target: Path, old: str | None) -> None:
         setup.write(edited)
         real(target, old)
 
-    install.check_unchanged, saved = edit_then_check, real
+    files.check_unchanged, saved = edit_then_check, real
     try:
         assert setup.go() == 1
     finally:
-        install.check_unchanged = saved
+        files.check_unchanged = saved
     assert json.loads(setup.path.read_text()) == edited
     assert "changed while it was being written" in capsys.readouterr().err
     assert not list(setup.path.parent.glob("*.tmp"))
@@ -644,17 +607,17 @@ def test_a_settings_file_swapped_for_non_text_aborts_and_removes_the_temp_file(
     setup: Setup, capsys: pytest.CaptureFixture[str]
 ) -> None:
     setup.write({"statusLine": {"type": "command", "command": OLD}})
-    real = install.check_unchanged
+    real = files.check_unchanged
 
     def swap_then_check(target: Path, old: str | None) -> None:
         target.write_bytes(b"\xff\xfe")
         real(target, old)
 
-    install.check_unchanged, saved = swap_then_check, real
+    files.check_unchanged, saved = swap_then_check, real
     try:
         assert setup.go() == 1
     finally:
-        install.check_unchanged = saved
+        files.check_unchanged = saved
     assert setup.path.read_bytes() == b"\xff\xfe"
     assert "changed while it was being written" in capsys.readouterr().err
     assert not list(setup.path.parent.glob("*.tmp"))
@@ -668,25 +631,6 @@ def test_an_install_that_leaves_no_script_fails(
     assert setup.go() == 1
     assert setup.path.read_text() == before
     assert "failed its check" in capsys.readouterr().err
-
-
-def test_a_written_value_that_reads_back_differently_fails_loudly(
-    setup: Setup,
-    monkeypatch: pytest.MonkeyPatch,
-    capsys: pytest.CaptureFixture[str],
-) -> None:
-    setup.write({"statusLine": {"type": "command", "command": OLD}})
-    real = install.write_config
-
-    def lying(path: Path, old: str | None, new: str) -> Path | None:
-        return real(path, old, new.replace("2.2.33", "9.9.9"))
-
-    monkeypatch.setattr(install, "write_config", lying)
-    assert setup.go() == 1
-    (backup,) = setup.backups()
-    assert (
-        f"the written file differs; the old one is {backup}" in capsys.readouterr().err
-    )
 
 
 def test_an_unreadable_config_is_reported(
@@ -705,9 +649,9 @@ def test_a_failed_write_is_reported(
 
     def refuse(*_a: object) -> None:
         message = "disk full"
-        raise install.InstallError(message)
+        raise model.InstallError(message)
 
-    monkeypatch.setattr(install, "write_config", refuse)
+    monkeypatch.setattr(installer, "write_config", refuse)
     assert setup.go() == 1
     assert setup.path.read_text() == before
     assert "cannot pin ccstatusline: disk full" in capsys.readouterr().err
@@ -718,12 +662,12 @@ def test_the_root_follows_xdg_data_home_then_home(
 ) -> None:
     monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path / "d"))
     assert (
-        install.statusline_root()
+        installer.statusline_root()
         == tmp_path / "d" / "tbhbdev" / "ccstatusline" / "2.2.33"
     )
     monkeypatch.delenv("XDG_DATA_HOME")
     monkeypatch.setenv("HOME", str(tmp_path))
-    assert install.statusline_root() == (
+    assert installer.statusline_root() == (
         tmp_path / ".local" / "share" / "tbhbdev" / "ccstatusline" / "2.2.33"
     )
 
@@ -734,7 +678,7 @@ def test_home_derived_paths_stay_inside_the_temporary_directory(
 
     paths = (
         Path.home(),
-        install.config_path(install.CLAUDE, os.environ),
-        install.statusline_root(),
+        settings.config_path(model.CLAUDE, os.environ, Path.home()),
+        installer.statusline_root(),
     )
     assert all(path.is_relative_to(tmp_path_factory.getbasetemp()) for path in paths)

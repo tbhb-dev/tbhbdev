@@ -29,7 +29,7 @@ from tbhbdev.alpha.agent.model import (
     RunKind,
     RunRequest,
 )
-from tbhbdev.alpha.install import stop_hooks
+from tbhbdev.alpha.install.hooks import stop_hooks
 
 # The tmux socket's file name, under the sockets directory.
 SOCKET = "agents"
