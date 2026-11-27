@@ -4,6 +4,7 @@ Every test runs with HOME, the harness config directories and the git config
 in tmp_path, in temporary repositories, with a fake prek on PATH.
 """
 
+import errno
 import hashlib
 import io
 import json
@@ -1984,6 +1985,32 @@ def test_pre_push_shebang_names_the_base_interpreter_not_the_venv(
     assert install.install_git_hooks(None, {}, dry_run=False) == 0
     first = (world.hooks / "pre-push").read_text().splitlines()[0]
     assert first == "#!/base/bin/python3"
+
+
+def test_git_hooks_problem_outside_a_repository(
+    world: World, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.chdir(world.home)
+    assert install.git_hooks_problem() == "cannot locate Git's hooks directory"
+
+
+def test_git_hooks_problem_rejects_an_executable_foreign_shim(world: World) -> None:
+    hook = world.hooks / "pre-push"
+    hook.write_text("#!/bin/sh\n")
+    hook.chmod(0o755)
+    assert install.git_hooks_problem() == f"{hook} is missing the tbhbdev hook"
+
+
+def test_git_hooks_problem_reports_a_read_error(
+    world: World, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    hook = world.hooks / "pre-push"
+    hook.write_text(install.SHIM_MARK)
+    hook.chmod(0o755)
+    error = PermissionError(errno.EACCES, os.strerror(errno.EACCES))
+    with monkeypatch.context() as patch:
+        patch.setattr(Path, "read_text", Mock(side_effect=error))
+        assert install.git_hooks_problem() == f"cannot read {hook}: {error.strerror}"
 
 
 def test_install_git_hooks_from_a_worktree_uses_the_shared_hooks(

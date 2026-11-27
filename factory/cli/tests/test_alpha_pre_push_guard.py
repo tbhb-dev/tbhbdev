@@ -687,6 +687,16 @@ def test_an_org_agent_can_retry_a_push_with_no_ref_updates(
     assert capsys.readouterr().err == ""
 
 
+def test_push_refuses_a_blank_destination(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    monkeypatch.setattr(sys, "stdin", io.StringIO(""))
+    assert pg.main(["origin", " "], "p") == 1
+    assert capsys.readouterr().err == (
+        "pre-push-guard: cannot determine the push destination; push refused\n"
+    )
+
+
 @pytest.mark.parametrize("query", ["for-each-ref", "batch", "commit"])
 def test_an_unreadable_object_query_refuses_the_push(
     repo: Path,

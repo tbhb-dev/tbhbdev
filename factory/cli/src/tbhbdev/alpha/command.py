@@ -28,7 +28,6 @@ import tbhbdev.alpha.guard_sendmessage_clock
 import tbhbdev.alpha.guard_ssh_agent
 import tbhbdev.alpha.identity
 import tbhbdev.alpha.install
-import tbhbdev.alpha.loop.command
 import tbhbdev.alpha.pre_push_guard
 import tbhbdev.alpha.run_stop_hook
 import tbhbdev.alpha.session_context
@@ -98,7 +97,6 @@ commands:
   verify-range BASE TIP [-C PATH]: check every agent commit in a range
   version-check [--host NAME ...] [--expect SHA|latest] [--json]: compare the
                installed build on each host
-  loop         validate loop configuration (runner not yet available)
   agent        exec | wait | status | kill | clean | keep: headless runs
   run-stop-hook <claude|codex|antigravity>: check whether an exec run can stop
   pre-push-guard REMOTE URL: refuse protected-branch and unfetched-rewrite pushes
@@ -241,7 +239,6 @@ COMMANDS: dict[str, Callable[[list[str], str], int]] = {
     "version-check": tbhbdev.alpha.version_check.main,
     "install": install_command,
     "pre-push-guard": tbhbdev.alpha.pre_push_guard.main,
-    "loop": tbhbdev.alpha.loop.command.main,
     "agent": tbhbdev.alpha.agent.command.main,
     "run-stop-hook": tbhbdev.alpha.run_stop_hook.main,
     "brief": tbhbdev.alpha.brief.main,

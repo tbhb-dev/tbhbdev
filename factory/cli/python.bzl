@@ -12,7 +12,6 @@ _SOURCE_ROOT = "factory/cli/src/tbhbdev"
 _PACKAGE_INITIALIZERS = [
     _SOURCE_ROOT + "/admin",
     _SOURCE_ROOT + "/alpha/agent/decisions",
-    _SOURCE_ROOT + "/alpha/loop",
     _SOURCE_ROOT + "/analytics",
     _SOURCE_ROOT + "/analytics/decisions",
 ]
