@@ -9,6 +9,3 @@ agent/tbhbdev-cleanup-*
 
 # Operator, 2026-11-27: cleanup exempt from the size limit. Remove this file when the cleanup tracker closes.
 agent/tbhbdev-ops-packages-*
-
-# Operator, 2026-11-27: Go imports are exempt from the size limit because module path rewrites count as new code.
-agent/tbhbdev-import-*

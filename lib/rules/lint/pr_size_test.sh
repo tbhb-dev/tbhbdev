@@ -68,17 +68,46 @@ check 1 401 401 0 agent/other "$policy_base"
 check 1 401 401 0 agent/self-exempt "$policy_base"
 new_repo frozen_source
 lines 600 'x = 1' >source.py
+lines 600 'x = 1 + 1' >rewrite.py
 commit
 frozen=$("$git" rev-parse HEAD)
 clone=$PWD
+check_import() {
+  GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0="url.file://$clone.insteadOf" \
+    GIT_CONFIG_VALUE_0=https://github.com/example/source.git check "$@"
+}
 new_repo import
 mkdir project
 cp "$clone/source.py" project/
 printf 'repo = "example/source"\ncommit = "%s"\ndest = "project"\n[copy]\n"source.py" = "project/source.py"\n' \
   "$frozen" >project/IMPORT-MAP.toml
 commit
-GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0="url.file://$clone.insteadOf" \
-  GIT_CONFIG_VALUE_0=https://github.com/example/source.git check 0 0 5 600
+check_import 0 0 5 600
+cat >>project/IMPORT-MAP.toml <<'EOF'
+[rewrite."rewrite.py"]
+dest = "project/rewrite.py"
+replace = [["x", "y"], ["y", "z"], ["1", "2"]]
+EOF
+lines 600 'z = 2 + 2' >project/rewrite.py
+commit
+check_import 0 0 8 1200
+printf 'extra = 3\n' >>project/rewrite.py
+commit
+check_import 1 601 609 600
+lines 600 'z = 2 + 2' >project/rewrite.py
+cp project/rewrite.py outside.py
+commit
+check_import 1 600 608 1200
+cp project/IMPORT-MAP.toml "$scratch/valid-map"
+sed 's|dest = "project/rewrite.py"|dest = "outside.py"|' "$scratch/valid-map" >project/IMPORT-MAP.toml
+rm project/rewrite.py
+commit
+check_import 1 1200 1208 0
+mv "$scratch/valid-map" project/IMPORT-MAP.toml
+mv outside.py project/rewrite.py
+printf '\n[rewrite."missing.py"]\ndest = "project/missing.py"\nreplace = [["old", 42]]\n' >>project/IMPORT-MAP.toml
+commit
+check_import 1 1200 1212 0
 new_repo raw_limit
 lines 1500 'key: value' >config.yaml
 commit
