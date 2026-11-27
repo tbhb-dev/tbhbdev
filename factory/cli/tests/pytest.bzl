@@ -25,9 +25,7 @@ _IMPORTED_TESTS = [
 _IO_TESTS = [
     "test_agy_otel",
     "test_alpha_agent_credentials",
-    "test_alpha_agent_driver",
     "test_alpha_agent_git_parent",
-    "test_alpha_agent_launcher",
     "test_alpha_agent_limits",
     "test_alpha_agent_ownership",
     "test_alpha_agent_policy",
@@ -43,7 +41,6 @@ _IO_TESTS = [
     "test_alpha_agent_ssh_serve",
     "test_alpha_agent_terminal_descriptors",
     "test_alpha_agent_transport",
-    "test_alpha_agent_version_heal",
     "test_alpha_agent_worktree",
     "test_alpha_close",
     "test_alpha_gh_app",

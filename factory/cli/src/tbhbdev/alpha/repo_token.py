@@ -10,7 +10,6 @@ Connect endpoints must be HTTPS URLs with a host.
 
 from __future__ import annotations
 
-import base64
 import json
 import os
 import shlex
@@ -46,9 +45,6 @@ MESSAGES: dict[Kind, str] = {
     "mint": "Cannot mint the repository token",
     "git": "Cannot run Git with the repository token",
 }
-# Both platforms start on the pipe path; real Git probes verify inheritance.
-PIPE_BY_PLATFORM = {"linux": True, "darwin": True}
-USE_PIPE = PIPE_BY_PLATFORM.get(sys.platform, True)
 NO_CHECK = False
 PRIVATE_MODE = 0o600
 TWO_PARTS = 2
@@ -225,18 +221,6 @@ def mint(
     return result
 
 
-def _extraheader(env: Mapping[str, str], token: str) -> dict[str, str]:
-    result = dict(env)
-    count = int(result.get("GIT_CONFIG_COUNT", "0"))
-    if count < 0:
-        raise ValueError
-    value = base64.b64encode(f"x-access-token:{token}".encode()).decode()
-    result["GIT_CONFIG_COUNT"] = str(count + 1)
-    result[f"GIT_CONFIG_KEY_{count}"] = "http.https://github.com/.extraheader"
-    result[f"GIT_CONFIG_VALUE_{count}"] = f"AUTHORIZATION: basic {value}"
-    return result
-
-
 def _git(  # noqa: PLR0913  # Private input seam for the real Git probe.
     token: Minted,
     args: Sequence[str],
@@ -255,26 +239,21 @@ def _git(  # noqa: PLR0913  # Private input seam for the real Git probe.
         if executable is None:
             raise RepoTokenError(kind="git")
         child_env = dict(env)
-        helper = ""
-        descriptors: tuple[int, ...] = ()
-        if USE_PIPE:
-            descriptor, writer = os.pipe()
-            try:
-                os.write(writer, token.token.encode())
-            finally:
-                os.close(writer)
-            descriptors = (descriptor,)
-            helper = "!" + shlex.join(
-                [
-                    sys.executable,
-                    "-I",
-                    "-c",
-                    HELPER_CODE,
-                    str(descriptor),
-                ]
-            )
-        else:
-            child_env = _extraheader(env, token.token)
+        descriptor, writer = os.pipe()
+        try:
+            os.write(writer, token.token.encode())
+        finally:
+            os.close(writer)
+        descriptors = (descriptor,)
+        helper = "!" + shlex.join(
+            [
+                sys.executable,
+                "-I",
+                "-c",
+                HELPER_CODE,
+                str(descriptor),
+            ]
+        )
         child_env["GIT_TERMINAL_PROMPT"] = "0"
         return subprocess.run(  # nosec B603
             [

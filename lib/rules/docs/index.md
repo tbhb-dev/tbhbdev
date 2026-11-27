@@ -21,7 +21,6 @@ Hand-written documentation for tbhb_rules, as an OKF v0.2 bundle. The rules for 
 * [Review severity and finding ids](reference/review-severity.md) - Severity ratings, evidence requirements, and finding ids for review reports.
 * [Swift module reference](reference/swift.md) - Swift and Apple build macros, pinned tools, quality checks, and the smoke consumer.
 * [Temporary files](reference/temporary-files.md) - Temporary file paths and the shell source check.
-* [Workflow lint](reference/workflow-lint.md) - What the workflow lint check rejects in workflow and action YAML, and what it skips.
 
 ## Architecture content rules
 

@@ -16,7 +16,7 @@ from tbhbdev.alpha.pull_request import prose as pr_prose
 from tbhbdev.alpha.pull_request import repository as pr_repository
 from tbhbdev.alpha.pull_request import tools as pr_tools
 from tbhbdev.alpha.pull_request.prose import lint as lint_review_prose
-from tbhbdev.alpha.review_doc import Existing, Marker, ReviewDoc
+from tbhbdev.alpha.review_doc import Existing, ReviewDoc
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -52,10 +52,10 @@ run:
 """
 DOC = review.parse(PREAMBLE + BODY)
 GO = review.parse(PREAMBLE.replace("NO-GO", "GO") + BODY.replace("P1", "P2"))
-MARKER = f"<!-- tbhb-review v1 repo={REPO} pr=384 head={HEAD} run=review-build -->"
+KEY = review.marker_id(REPO, 384, DOC.run)
+MARKER = f"<!-- tbhb-review v2 {KEY} -->"
 IDENTITY = "LLM harness=codex;model=openai:gpt-6;session=sha-256-64:0123456789abcdef"
 TRAILER = f"Generated-by: {IDENTITY}"
-KEY = Marker(REPO, 384, HEAD, "review-build")
 EXISTING = Existing(942, "reviews[bot]", KEY, "COMMENTED", f"{BODY}\n{MARKER}\n")
 PULL = f"repos/{REPO}/pulls/384"
 REVIEWS = f"{PULL}/reviews"
@@ -79,43 +79,11 @@ def test_parse_refuses_malformed_drafts(front: str) -> None:
         review.parse(front + BODY)
 
 
-def test_marker_uses_last_matching_line() -> None:
+def test_render_uses_the_current_marker() -> None:
     assert HEAD not in review.render(DOC)
     assert review.parse_marker(review.render(DOC)) == review.marker_id(
         REPO, 384, DOC.run
     )
-    wrong = MARKER.replace("pr=384", "pr=12")
-    older = MARKER.replace("run=review-build", "run=other")
-    invalid = MARKER.replace(HEAD, HEAD.upper())
-    assert review.parse_marker(f"{wrong}\n{MARKER}\n{invalid}") == KEY
-    assert review.parse_marker(f"{wrong}\n{older}\n{MARKER}") == KEY
-
-
-def test_parse_marker_accepts_crlf_and_maximum_pr_length() -> None:
-    number = 999_999_999_999
-    marker = MARKER.replace("pr=384", f"pr={number}")
-    assert review.parse_marker(f"{MARKER}\r\n{marker}\r\n") == replace(KEY, pr=number)
-
-
-@pytest.mark.parametrize(
-    "body",
-    [
-        f"Review {MARKER}",
-        f"{MARKER} review",
-        f" {MARKER}",
-        f"{MARKER} ",
-        MARKER.replace(HEAD, HEAD.upper()),
-        MARKER.replace("pr=384", f"pr={'9' * 5000}"),
-        MARKER.replace("pr=384", "pr=1000000000000"),
-        MARKER.replace("pr=384", "pr=\u066384"),
-        MARKER.replace("pr=384", "pr=00384"),
-        MARKER.replace("pr=384", "pr=0"),
-        MARKER.replace("review-build", "review\xa0build"),
-        MARKER.replace(REPO, "tbhb-dev/\xa0tools"),
-    ],
-)
-def test_parse_marker_refuses_spoofs(body: str) -> None:
-    assert review.parse_marker(body) is None
 
 
 def test_is_dismissed() -> None:
@@ -145,7 +113,8 @@ def test_find_existing_uses_latest_active_match_across_pages() -> None:
         DECISION_ROW | {"user": {"login": "other"}},
         DECISION_ROW | {"body": ""},
         DECISION_ROW | {"body": f"quoted {MARKER}"},
-        DECISION_ROW | {"body": MARKER.replace("pr=384", "pr=385")},
+        DECISION_ROW
+        | {"body": MARKER.replace(KEY, review.marker_id(REPO, 385, DOC.run))},
         ROW | {"state": "DISMISSED"},
         DECISION_ROW | {"body": review.render(DOC), "commit_id": "b" * 40},
         ROW,
@@ -163,7 +132,7 @@ def test_find_existing_uses_latest_active_match_across_pages() -> None:
     )
     assert (
         review.find_existing(
-            api, REPO, 384, HEAD, KEY.run, "Reviews[bot]", state="CHANGES_REQUESTED"
+            api, REPO, 384, HEAD, DOC.run, "Reviews[bot]", state="CHANGES_REQUESTED"
         )
         == 23
     )
@@ -173,7 +142,7 @@ def test_find_existing_uses_latest_active_match_across_pages() -> None:
 def test_find_existing_refuses_non_list() -> None:
     with pytest.raises(review.ReviewError, match=r"^expected a list of reviews$"):
         review.find_existing(
-            FakeApi({}), REPO, 384, HEAD, KEY.run, EXISTING.author, state="APPROVED"
+            FakeApi({}), REPO, 384, HEAD, DOC.run, EXISTING.author, state="APPROVED"
         )
 
 
@@ -534,11 +503,7 @@ def test_dismiss_refuses_invalid_reason(reason: str) -> None:
 
 @pytest.mark.parametrize(
     "changes",
-    [
-        {"body": ""},
-        {"state": "PENDING"},
-        {"body": MARKER.replace("pr=384", "pr=383")},
-    ],
+    [{"body": ""}, {"state": "PENDING"}],
 )
 def test_dismiss_refuses_wrong_review(changes: dict[str, str]) -> None:
     api = FakeApi(ROW | changes)

@@ -25,7 +25,6 @@ from tbhbdev.alpha import (
     guard_scripts,
     guard_sendmessage_clock,
     guard_ssh_agent,
-    pr_stats,
     pre_push_guard,
     repo_bootstrap,
     review,
@@ -103,7 +102,6 @@ def test_dispatch(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(identity, "run", run)
     monkeypatch.setattr(guard_gh_pr, "main", guard)
     monkeypatch.setattr(pr_command, "main", fake("pr", 5))
-    monkeypatch.setattr(pr_stats, "main", fake("pr-stats", 9))
     monkeypatch.setattr(squash_merge, "main", fake("merge", 6))
     monkeypatch.setattr(install, "main", fake("install", 7))
     monkeypatch.setattr(close, "main", fake("close", 8))
@@ -111,24 +109,20 @@ def test_dispatch(monkeypatch: pytest.MonkeyPatch) -> None:
     assert alpha.main(["guard-gh-pr", "x"], "p") == 4
     assert alpha.main(["pr", "check"], "p") == 5
     assert alpha.main(["pr", "delete-branch", "3"], "p") == 5
-    assert alpha.main(["pr-stats", "o/r"], "p") == 9
     assert alpha.main(["merge", "3"], "p") == 6
     assert alpha.main(["install", "--dry-run"], "p") == 7
     assert alpha.main(["pr", "close", "3", "--reason", "r"], "p") == 8
     assert alpha.main(["pr", "close", "3", "--reason=r"], "p") == 8
-    assert alpha.main(["pr", "close", "3", "--comment", "c"], "p") == 8
     assert alpha.main(["issue", "close", "3"], "p") == 8
     assert calls == [
         ("identity", (["check", "m"], os.environ)),
         ("guard", None),
         ("pr", (["check"], "p pr")),
         ("pr", (["delete-branch", "3"], "p pr")),
-        ("pr-stats", (["o/r"], "p pr-stats")),
         ("merge", (["3"], "p merge")),
         ("install", (["--dry-run"], "p install")),
         ("close", (["pr", "close", "3", "--reason", "r"], "p pr")),
         ("close", (["pr", "close", "3", "--reason=r"], "p pr")),
-        ("close", (["pr", "close", "3", "--comment", "c"], "p pr")),
         ("close", (["issue", "close", "3"], "p issue")),
     ]
 

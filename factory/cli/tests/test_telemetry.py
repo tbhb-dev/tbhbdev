@@ -22,8 +22,8 @@ from agent_driver_example import execution_arguments, setup
 from agent_example import settings
 
 from tbhbdev import telemetry
-from tbhbdev.alpha.agent import driver
 from tbhbdev.alpha.agent import settings as agent_settings
+from tbhbdev.alpha.agent.driver import dispatch as coordinator
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -532,7 +532,7 @@ def test_resolver_failure_preserves_launch(
 
     monkeypatch.setattr(telemetry, "_resolve_environment", broken)
     monkeypatch.setattr(agent_settings, "load", settings)
-    monkeypatch.setattr(driver, "dispatch", launch)
+    monkeypatch.setattr(coordinator, "dispatch", launch)
     assert run_agent(execution_arguments(tmp_path / "prompt")) == outcome
     assert capsys.readouterr() == ("launch\n", "")
     assert local_export == {ENDPOINT: None, ALLOW_HOSTS: None}

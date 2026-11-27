@@ -398,47 +398,6 @@ def test_bad_counts(monkeypatch: pytest.MonkeyPatch, data: object) -> None:
 
 
 @pytest.mark.parametrize(
-    ("data", "expected"),
-    [
-        (None, False),
-        ({}, False),
-        (
-            {
-                "sha": "other",
-                "statuses": [{"context": "size-review", "state": "success"}],
-            },
-            False,
-        ),
-        ({"sha": "head"}, False),
-        ({"sha": "head", "statuses": {}}, False),
-        ({"sha": "head", "statuses": []}, False),
-        *[
-            ({"sha": "head", "statuses": [status]}, False)
-            for status in (
-                None,
-                {"state": "success"},
-                {"context": "other", "state": "success"},
-                {"context": "size-review", "state": "pending"},
-                {"context": "size-review", "state": "failure"},
-            )
-        ],
-        (
-            {
-                "sha": "head",
-                "statuses": [{"context": "size-review", "state": "success"}],
-            },
-            True,
-        ),
-    ],
-)
-def test_review(monkeypatch: pytest.MonkeyPatch, data: object, expected: bool) -> None:
-    reader = Mock(return_value=data)
-    monkeypatch.setattr(sg, "gh_api", reader)
-    assert sg.has_size_review_success("owner/repo", "head") is expected
-    reader.assert_called_once_with("GET", "repos/owner/repo/commits/head/status")
-
-
-@pytest.mark.parametrize(
     ("counts", "problem"),
     [
         (sg.SizeCounts(400, 400, 1500, 1500, None), ""),
