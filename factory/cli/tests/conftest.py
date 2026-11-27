@@ -29,8 +29,6 @@ from tbhbdev import plugins
 if TYPE_CHECKING:
     from collections.abc import Callable, Iterator
 
-    from tbhbdev.cli import Tool
-
 type Json = dict[str, object]
 
 
@@ -348,9 +346,8 @@ def plain(monkeypatch: pytest.MonkeyPatch) -> None:
 
 @dataclass
 class StubPlugin:
-    """A plugin object: extra tools, and config files by name."""
+    """A plugin object that supplies config files by name."""
 
-    TOOLS: dict[str, Tool] = field(default_factory=dict)
     files: dict[str, str] = field(default_factory=dict)
 
     def config(self, name: str) -> str | None:
@@ -384,11 +381,10 @@ class Installed:
         self,
         name: str,
         *,
-        tools: dict[str, Tool] | None = None,
         files: dict[str, str] | None = None,
     ) -> None:
-        """Add a plugin with TOOLS and the config FILES, by name."""
-        self.add(name, StubPlugin(tools or {}, files or {}))
+        """Add a plugin with the config FILES, by name."""
+        self.add(name, StubPlugin(files or {}))
 
 
 @pytest.fixture(autouse=True)

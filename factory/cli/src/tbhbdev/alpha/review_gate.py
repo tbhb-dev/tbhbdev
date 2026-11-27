@@ -20,7 +20,6 @@ MIN_APPROVALS = 1
 
 KNOWN_HARNESSES = frozenset({*identity.SLUGS.values(), "claude", "agy", "gemini"})
 HEAD_SHA = re.compile(r"[0-9a-f]{40}")
-LEGACY_FOOTER = re.compile(r"Run \S+, (\S+) \S+, judged head ([0-9a-f]{40})\.")
 
 
 class Review(TypedDict):
@@ -51,15 +50,12 @@ def known_harness(harness: str) -> bool:
     return harness.lower().partition(":")[0] in KNOWN_HARNESSES
 
 
-def review_attribution(body: str, head: str) -> dict[str, str]:
-    """Read the approving run's attribution from either host-written footer."""
+def review_attribution(body: str) -> dict[str, str]:
+    """Read the approving run's attribution from the trailer."""
     footer = body.rstrip().rpartition("\n")[2]
     trailers = identity.llm_trailers(footer)
     if trailers and trailers[0][0] == identity.KEY_GEN:
         return dict(identity.ATTR_PAIR.findall(trailers[0][1]))
-    legacy = LEGACY_FOOTER.fullmatch(footer)
-    if legacy and legacy[2] == head:
-        return {"harness": legacy[1]}
     return {}
 
 
@@ -93,7 +89,7 @@ def review_reasons(app: str, pull: Pull, launches: set[str]) -> list[str]:
         if review["state"] == "CHANGES_REQUESTED":
             reasons.append(f"review {review['id']} requests changes at the head")
         elif review["state"] == "APPROVED":
-            attrs = review_attribution(review["body"], pull.head)
+            attrs = review_attribution(review["body"])
             if not known_harness(attrs.get("harness", "")):
                 reasons.append(f"review {review['id']} names no known harness")
             elif identity.hash_ok(attrs.get("launch")) in launches:

@@ -407,7 +407,7 @@ def build_parser(prog: str | None = None) -> argparse.ArgumentParser:
         closing.add_argument("number", type=int)
         closing.add_argument("--dry-run", action="store_true")
         if kind == "pr":
-            closing.add_argument("--reason", "--comment", required=True, type=non_blank)
+            closing.add_argument("--reason", required=True, type=non_blank)
             closing.add_argument("--delete-branch", action="store_true")
         else:
             closing.add_argument("--reason", required=True, choices=sorted(REASONS))

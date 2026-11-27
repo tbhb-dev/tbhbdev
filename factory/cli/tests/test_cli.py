@@ -13,8 +13,6 @@ from tbhbdev import cli
 if TYPE_CHECKING:
     from pathlib import Path
 
-    from conftest import Installed
-
 USAGE = cli.usage(cli.TOOLS)
 
 
@@ -81,43 +79,3 @@ def test_module_entry_point_runs_the_command(tmp_path: Path) -> None:
     )
     assert result.returncode == 0
     assert result.stdout == USAGE
-
-
-def plugin_tool(argv: list[str], prog: str) -> int:
-    sys.stdout.write(f"{prog} {' '.join(argv)}\n")
-    return 5
-
-
-def test_a_plugin_tool_is_listed_and_runs(
-    installed: Installed, capsys: pytest.CaptureFixture[str]
-) -> None:
-    installed.stub("extra", tools={"zz-extra": plugin_tool})
-    assert cli.main(["--help"]) == 0
-    assert capsys.readouterr().out == cli.usage({**cli.TOOLS, "zz-extra": plugin_tool})
-    assert cli.main(["zz-extra", "a"]) == 5
-    assert capsys.readouterr().out == "tbhbdev zz-extra a\n"
-
-
-def test_a_plugin_tool_that_shadows_a_built_in_fails(
-    installed: Installed, capsys: pytest.CaptureFixture[str]
-) -> None:
-    installed.stub("extra", tools={"secret": plugin_tool})
-    assert cli.main(["secret", "read", "a/b/c"]) == 2
-    captured = capsys.readouterr()
-    assert captured.out == ""
-    assert captured.err == (
-        "tbhbdev: plugin 'extra' defines the command 'secret', "
-        "which the built-in commands already define\n"
-    )
-
-
-def test_a_plugin_that_fails_to_load_leaves_the_built_ins_working(
-    installed: Installed, capsys: pytest.CaptureFixture[str]
-) -> None:
-    installed.add("broken", ImportError("no module named 'nowhere'"))
-    assert cli.main(["--help"]) == 0
-    captured = capsys.readouterr()
-    assert captured.out == USAGE
-    assert captured.err == (
-        "tbhbdev: cannot load plugin 'broken': ImportError: no module named 'nowhere'\n"
-    )

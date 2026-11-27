@@ -28,7 +28,6 @@ exports_files([
     "tree_check.sh.tpl",
     "vale.sh",
     "vale_sync.sh.tpl",
-    "workflow_lint.sh",
 ])
 
 bzl_library(
@@ -200,13 +199,6 @@ bzl_library(
         ":tree_check",
         "//runtime:defs",
     ],
-)
-
-bzl_library(
-    name = "workflow_lint",
-    srcs = ["workflow_lint.bzl"],
-    visibility = ["//lint:__subpackages__"],
-    deps = [":tree_check"],
 )
 
 exports_files([
