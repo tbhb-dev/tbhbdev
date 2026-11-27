@@ -15,7 +15,7 @@ from ansible.template import Templar, trust_as_template
 
 ANSIBLE = next(
     path / "ansible"
-    for path in Path(__file__).resolve().parents
+    for path in Path(__file__).parents
     if (path / "ansible" / "roles").is_dir()
 )
 SUFFIX = "example-tailnet.example.invalid"

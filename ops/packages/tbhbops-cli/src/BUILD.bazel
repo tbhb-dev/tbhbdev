@@ -1,0 +1,51 @@
+# SPDX-License-Identifier: Apache-2.0
+# Copyright Tony Burns
+
+load("@rules_python//python:defs.bzl", "py_library")
+
+# gazelle:python_root
+# gazelle:python_generation_mode project
+# gazelle:python_default_visibility //ops/packages:__subpackages__
+
+py_library(
+    name = "src",
+    srcs = [
+        "tbhbops_cli/__init__.py",
+        "tbhbops_cli/cli.py",
+        "tbhbops_cli/common.py",
+        "tbhbops_cli/config.py",
+        "tbhbops_cli/connect.py",
+        "tbhbops_cli/deploy.py",
+        "tbhbops_cli/gitleaks.py",
+        "tbhbops_cli/inventory.py",
+        "tbhbops_cli/o11y/__init__.py",
+        "tbhbops_cli/o11y/filesystem.py",
+        "tbhbops_cli/o11y/http.py",
+        "tbhbops_cli/o11y/init.py",
+        "tbhbops_cli/o11y/invalid/__init__.py",
+        "tbhbops_cli/o11y/ports.py",
+        "tbhbops_cli/o11y/receipt.py",
+        "tbhbops_cli/o11y/render.py",
+        "tbhbops_cli/o11y/runner.py",
+        "tbhbops_cli/o11y/rustfs_probe.py",
+        "tbhbops_cli/o11y/smoke.py",
+        "tbhbops_cli/o11y/smoke_capacity.py",
+        "tbhbops_cli/o11y/smoke_checks.py",
+        "tbhbops_cli/o11y/smoke_lifecycle.py",
+        "tbhbops_cli/o11y/smoke_stages.py",
+        "tbhbops_cli/o11y/validate.py",
+        "tbhbops_cli/s3.py",
+        "tbhbops_cli/sources.py",
+        "tbhbops_cli/tokens.py",
+    ],
+    data = glob(
+        ["tbhbops_cli/o11y/invalid/*"],
+        exclude = ["**/*.py"],
+    ),
+    imports = ["."],  # keep
+    visibility = ["//ops/packages:__subpackages__"],
+    deps = [
+        "//ops/packages/tbhbops/src",
+        "@cli_pip//pyyaml",
+    ],
+)

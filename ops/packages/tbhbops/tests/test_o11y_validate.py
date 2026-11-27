@@ -271,7 +271,7 @@ def test_dashboards() -> None:
 def repo_tree() -> Path:
     return next(
         parent / "o11y"
-        for parent in Path(__file__).resolve().parents
+        for parent in Path(__file__).parents
         if (parent / "o11y/compose.yaml").is_file()
     )
 

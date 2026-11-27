@@ -55,7 +55,7 @@ def parse_state(text: str) -> tuple[str, str, int, int]:
     return fields[0], fields[1], int(fields[2]), int(fields[3])
 
 
-def payload(  # noqa: PLR0913, PLR0917  # OTLP receipt fields
+def payload(  # OTLP receipt fields
     signal: str, run: str, trace: str, span: str, value: int, sent: int
 ) -> bytes:
     resource = {
@@ -152,12 +152,12 @@ def _invalid_constant(_value: str) -> Never:
 def decode(body: bytes) -> Document:
     try:
         value: Document = json.loads(body, parse_constant=_invalid_constant)
-    except ValueError, UnicodeError, RecursionError:
+    except ValueError, UnicodeError:
         return {}
     return value
 
 
-def log_classify(  # noqa: PLR0911  # fixed diagnostic cases
+def log_classify(  # fixed diagnostic cases
     status: int, body: bytes, run: str, floor: int, transport: str = ""
 ) -> str:
     if transport:
@@ -166,7 +166,7 @@ def log_classify(  # noqa: PLR0911  # fixed diagnostic cases
         return "case=http-error"
     try:
         data: Document = json.loads(body, parse_constant=_invalid_constant)
-    except ValueError, UnicodeError, RecursionError:
+    except ValueError, UnicodeError:
         return "case=invalid-json"
     if not isinstance(data, dict):
         return "case=invalid-response-shape"

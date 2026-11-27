@@ -19,16 +19,15 @@ from typing import IO, TYPE_CHECKING, override
 import pytest
 import tbhbops_cli.o11y.init as init_command
 import yaml
+from tbhbops.o11y import init
+from tbhbops.o11y import render as model
+from tbhbops.o11y import validate as model_validate
 from tbhbops_cli import cli, o11y
 from tbhbops_cli.common import CliError
 from tbhbops_cli.o11y import filesystem, rustfs_probe
 from tbhbops_cli.o11y import render as command
 from tbhbops_cli.o11y import validate as validation
 from tbhbops_cli.o11y.runner import ProcessHandle, Result, SubprocessRunner
-
-from tbhbops.o11y import init
-from tbhbops.o11y import render as model
-from tbhbops.o11y import validate as model_validate
 
 if TYPE_CHECKING:
     from collections.abc import Mapping, Sequence
@@ -1028,12 +1027,33 @@ def rendered_fake() -> Fake:
     return fs
 
 
-def test_render_grafana_resolver_and_exclusive_mount(tmp_path: Path) -> None:
+def o11y_source(tmp_path: Path) -> Path:
     source = next(
         parent / "o11y"
-        for parent in Path(__file__).resolve().parents
+        for parent in Path(__file__).parents
         if (parent / "o11y/compose.yaml").is_file()
     )
+    # Copy Bazel's runfile symlinks as files for the renderer. Supply fixed
+    # resolver fixtures so rendering also works without private ops files.
+    copy = shutil.copytree(source, tmp_path / "source")
+    (copy / "config/ts").mkdir(exist_ok=True)
+    (copy / "config/ts/resolv.conf").write_text(
+        "nameserver 198.51.100.41\nnameserver 198.51.100.106\n", encoding="utf-8"
+    )
+    (copy / "config/grafana/resolv.conf").write_text(
+        "nameserver 127.0.0.11\n"
+        "nameserver 198.51.100.41\n"
+        "nameserver 198.51.100.106\n"
+        "nameserver 198.51.100.129\n"
+        "search tailnet.example.invalid us.example.invalid example.invalid\n"
+        "options edns0 trust-ad ndots:0\n",
+        encoding="utf-8",
+    )
+    return copy
+
+
+def test_render_grafana_resolver_and_exclusive_mount(tmp_path: Path) -> None:
+    source = o11y_source(tmp_path)
     output = tmp_path / "rendered"
     assert render_run(o11y.LocalFilesystem(), source=source, output=output) == (
         0,
@@ -1387,7 +1407,7 @@ def test_render_disappearing_file(operation: str) -> None:
         checked = model.check(RENDER_ENV)
         assert isinstance(checked, model.Settings)
         with pytest.raises(FileNotFoundError):
-            command._copy_tree(fs, Path("/tree"), Path("/target"), checked, ([], []))  # noqa: SLF001
+            command._copy_tree(fs, Path("/tree"), Path("/target"), checked, ([], []))
     else:
         with pytest.raises(FileNotFoundError):
             command.tree_files(fs, Path("/tree"))
@@ -1902,7 +1922,7 @@ class ValidationRunner(SubprocessRunner):
     calls: list[tuple[list[str], dict[str, str], int]] = field(default_factory=list)
 
     @override
-    def run(  # noqa: PLR0911  # one canned response per Docker operation
+    def run(  # one canned response per Docker operation
         self,
         argv: Sequence[str],
         env: Mapping[str, str],
@@ -2523,7 +2543,7 @@ def test_checks_return_boolean_failure() -> None:
         name: Path("/config") / name for name in ("alloy", "loki", "mimir", "tempo")
     }
     assert (
-        validation._checks(  # noqa: SLF001  # boolean contract used by dispatch
+        validation._checks(  # boolean contract used by dispatch
             system, {}, Path("/release"), configs, Path("/invalid"), io.StringIO()
         )
         is False
@@ -2679,7 +2699,7 @@ def test_validate_real_filesystem(
     source = root / "source"
     repo = next(
         parent
-        for parent in Path(__file__).resolve().parents
+        for parent in Path(__file__).parents
         if (parent / "o11y/compose.yaml").is_file()
     )
     shutil.copytree(repo / "o11y", source)
@@ -3315,7 +3335,7 @@ def test_probe_init_refusal_and_error(monkeypatch: pytest.MonkeyPatch) -> None:
 
     monkeypatch.setattr(init, "plan", refuse)
     with pytest.raises(rustfs_probe.ProbeError, match=r"^init failed$"):
-        rustfs_probe._initialize(system, Path("/data"))  # noqa: SLF001
+        rustfs_probe._initialize(system, Path("/data"))
 
     def fail(_probe: rustfs_probe.Probe, _source: Path) -> None:
         msg = "private"
@@ -3539,7 +3559,7 @@ def test_probe_init_gathers_with_the_process_uid() -> None:
     fs = validation_fixture()
     fs.denied_calls.add(("lstat", Path("/data")))
     with pytest.raises(PermissionError):
-        rustfs_probe._initialize(world(fs, 0), Path("/data"))  # noqa: SLF001
+        rustfs_probe._initialize(world(fs, 0), Path("/data"))
 
 
 @pytest.mark.parametrize("linux", [False, True])
@@ -3920,11 +3940,7 @@ def test_dedicated_engine_help(name: str, capsys: pytest.CaptureFixture[str]) ->
 @pytest.mark.parametrize("hostname", ["", "host-c-o11y"])
 @pytest.mark.parametrize("fixed", ["", "false", "true"])
 def test_render_opt_in_network(tmp_path: Path, hostname: str, fixed: str) -> None:
-    source = next(
-        p / "o11y"
-        for p in Path(__file__).resolve().parents
-        if (p / "o11y/compose.yaml").is_file()
-    )
+    source = o11y_source(tmp_path)
     output = tmp_path / "rendered"
     inputs = RENDER_ENV | {"O11Y_TS_HOSTNAME": hostname, "O11Y_FIXED_ADDRESSES": fixed}
     assert render_run(o11y.LocalFilesystem(), inputs, source=source, output=output) == (
@@ -3949,10 +3965,10 @@ def test_render_opt_in_network(tmp_path: Path, hostname: str, fixed: str) -> Non
         assert ("networks" in service) == (fixed == "true")
         if fixed == "true":
             assert service["networks"] == {
-                "default": {"ipv4_address": f"172.28.40.{number}"}
+                "default": {"ipv4_address": f"203.0.113.{number}"}
             }
             assert service["extra_hosts"] == [
-                f"{n}:172.28.40.{i}"
+                f"{n}:203.0.113.{i}"
                 for i, n in enumerate(
                     ("ts", "loki", "tempo", "mimir", "alloy", "grafana"), 2
                 )
@@ -4023,11 +4039,7 @@ def test_disabled_sidecar_keeps_later_config_directories() -> None:
 
 
 def test_default_release_bytes(tmp_path: Path) -> None:
-    source = next(
-        p / "o11y"
-        for p in Path(__file__).resolve().parents
-        if (p / "o11y/compose.yaml").is_file()
-    )
+    source = o11y_source(tmp_path)
     output = tmp_path / "rendered"
     assert render_run(
         o11y.LocalFilesystem(),
@@ -4044,18 +4056,14 @@ def test_default_release_bytes(tmp_path: Path) -> None:
     }
     # Snapshot of all rendered bytes and filenames after the image updates.
     assert hashlib.sha256(model.manifest(files).encode()).hexdigest() == (
-        "6fd4ceb2d82c6f1ad683d565bd09f315c0b2fff8292818adbfe62c07a15f161d"
+        "cdc1fb383bf82e6cd83043baabddc8e88f4d4c09b154ee6b26c9646870dc046c"
     )
 
 
 @pytest.mark.parametrize("fixed", ["false", "true"])
 @pytest.mark.parametrize("hostname", ["", "host-c-o11y"])
 def test_render_tls_proxy(tmp_path: Path, fixed: str, hostname: str) -> None:
-    source = next(
-        p / "o11y"
-        for p in Path(__file__).resolve().parents
-        if (p / "o11y/compose.yaml").is_file()
-    )
+    source = o11y_source(tmp_path)
     output = tmp_path / "rendered"
     inputs = RENDER_ENV | {
         "O11Y_TS_HOSTNAME": hostname,
