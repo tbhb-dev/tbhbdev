@@ -1145,14 +1145,6 @@ cli_py_test(
     ],
 )
 
-genrule(
-    name = "rules_tool_pins",
-    testonly = True,
-    srcs = ["@tbhb_rules//pins:tools.json"],
-    outs = ["rules-tool-pins.json"],
-    cmd = "cp $< $@",
-)
-
 cli_py_test(
     name = "test_alpha_repo",
     srcs = ["test_alpha_repo.py"],

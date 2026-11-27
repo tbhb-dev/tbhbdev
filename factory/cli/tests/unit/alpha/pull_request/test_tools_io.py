@@ -32,7 +32,7 @@ world = pr_test_support.world
 
 
 def test_cli_versions_match_the_rules_pins() -> None:
-    manifest = Path(__file__).parents[3] / "rules-tool-pins.json"
+    manifest = Path(__file__).with_name("rules-tool-pins.json")
     if not manifest.exists():
         manifest = WORKSPACE / "lib/rules/pins/tools.json"
     rules = cast("dict[str, dict[str, object]]", json.loads(manifest.read_text()))
