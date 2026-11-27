@@ -52,6 +52,9 @@ provisioner:
         actions_runner_pool_runner_group_id: 3
         actions_runner_pool_app_id: 123456
         actions_runner_pool_installation_id: 12345678
+        actions_runner_pool_op_connect_host: https://127.0.0.1
+        actions_runner_pool_op_token_ref: "{{ 'op://' ~ 'example-vault/connect/token' }}"
+        actions_runner_pool_op_token_lookup_command: "bash -c 'printf %s example-connect-token' --"
         actions_runner_pool_op_key_vault: example-vault
         actions_runner_pool_op_key_item: example-item
         actions_runner_pool_op_key_field: example-field

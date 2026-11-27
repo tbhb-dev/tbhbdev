@@ -121,7 +121,7 @@
   ansible.posix.authorized_key:
     user: agent
     key: "{{ agent_account_keys | join('\n') }}"
-    exclusive: "{{ agent_account_keys_exclusive }}"
+    exclusive: true
   when:
     - agent_account_keys | length > 0
     - not (ansible_check_mode and agent_account_user is changed)

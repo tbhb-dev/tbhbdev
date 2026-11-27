@@ -45,6 +45,6 @@
 - name: Set the reaper timer state
   ansible.builtin.systemd_service:
     name: bazel-server-reaper.timer
-    enabled: "{{ bazel_server_reaper_enabled }}"
-    state: "{{ 'started' if bazel_server_reaper_enabled else 'stopped' }}"
+    enabled: true
+    state: started
   when: not ansible_check_mode

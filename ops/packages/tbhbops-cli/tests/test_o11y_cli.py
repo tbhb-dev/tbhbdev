@@ -14,7 +14,7 @@ import sys
 import tempfile
 from dataclasses import dataclass, field, replace
 from pathlib import Path
-from typing import IO, TYPE_CHECKING, override
+from typing import IO, TYPE_CHECKING, cast, override
 
 import pytest
 import tbhbops_cli.o11y.init as init_command
@@ -24,7 +24,7 @@ from tbhbops.o11y import render as model
 from tbhbops.o11y import validate as model_validate
 from tbhbops_cli import cli, o11y
 from tbhbops_cli.common import CliError
-from tbhbops_cli.o11y import filesystem, rustfs_probe
+from tbhbops_cli.o11y import filesystem
 from tbhbops_cli.o11y import render as command
 from tbhbops_cli.o11y import validate as validation
 from tbhbops_cli.o11y.runner import ProcessHandle, Result, SubprocessRunner
@@ -149,7 +149,7 @@ def run(fs: Fake, *args: str, uid: int = 0) -> tuple[int, str, str]:
 
 def test_fresh_and_rerun() -> None:
     fs = Fake()
-    code, out, err = run(fs, "--secrets-owner", "123:456")
+    code, out, err = run(fs)
     assert (code, err) == (0, "")
     assert out == "".join(f"init: generated {s.name}\n" for s in init.SECRETS) + (
         "init: wrote a placeholder alert_discord_webhook_url\n"
@@ -169,7 +169,7 @@ def test_fresh_and_rerun() -> None:
         + "a" * 40
         + "\n"
     )
-    assert fs.owners[DATA / "secrets/s3.env"] == (123, 456)
+    assert fs.owners[DATA / "secrets/s3.env"] == (0, 0)
     assert fs.modes[DATA / "secrets/s3.env"] == stat.S_IFREG | 0o600
     assert fs.files[DATA / "secrets" / init.WEBHOOK] == init.PLACEHOLDER
     assert fs.files[DATA / "secrets" / init.SMTP] == ""
@@ -211,12 +211,7 @@ def test_refusal_changes_nothing(status: str) -> None:
     fs.modes[DATA / "grafana/grafana.db"] = stat.S_IFREG
     fs.unlink(DATA / "secrets/rustfs.access_key")
     before = fs.files.copy(), fs.modes.copy(), fs.calls.copy()
-    code, out, err = run(
-        fs,
-        "--dry-run" if status == "unreadable" else "--secrets-owner",
-        *([] if status == "unreadable" else ["0:0"]),
-        uid=1 if status == "unreadable" else 0,
-    )
+    code, out, err = run(fs, "--dry-run", uid=1) if status == "unreadable" else run(fs)
     assert code == (3 if status == "unreadable" else 1)
     assert name in out + err
     assert (fs.files, fs.modes, fs.calls) == before
@@ -353,20 +348,6 @@ def test_io_errors_do_not_quote_exception_text(error: type[Exception]) -> None:
         "",
         f"tbhbops o11y init: init: Gather . failed: {error.__name__}\n",
     )
-
-
-@pytest.mark.parametrize("value", ["", "1", "1:2:3", "a:0", "0:-1", "\uff10:0", "0:"])
-def test_invalid_owner_is_usage(value: str) -> None:
-    with pytest.raises(SystemExit) as exc:
-        cli.parser().parse_args(
-            ["o11y", "init", "--data-dir", "/data", "--secrets-owner", value]
-        )
-    assert exc.value.code == 2
-
-
-def test_owner_diagnostic() -> None:
-    with pytest.raises(argparse.ArgumentTypeError, match=r"^expected UID:GID$"):
-        o11y.owner("bad")
 
 
 @pytest.mark.parametrize("argv", [["o11y"], ["o11y", "init"]])
@@ -612,15 +593,8 @@ def test_real_filesystem_refuses_symlinks_and_files_in_place_of_directories(
     assert stat.S_IMODE(target.stat().st_mode) == 0o600
 
 
-def test_effective_uid_and_unix_requirement(monkeypatch: pytest.MonkeyPatch) -> None:
-    if sys.platform != "win32":
-        assert o11y.effective_uid() == os.geteuid()
-    monkeypatch.setattr(sys, "platform", "win32")
-    assert o11y.effective_uid() == -1
-    with pytest.raises(CliError, match=r"^init filesystem operations require Unix$"):
-        o11y.LocalFilesystem().lstat(DATA)
-    with pytest.raises(CliError, match=r"^init filesystem operations require Unix$"):
-        o11y.LocalFilesystem().chown(DATA, 0, 0)
+def test_effective_uid() -> None:
+    assert o11y.effective_uid() == os.geteuid()
 
 
 @pytest.mark.parametrize("value", ["broken", "X" * 20 + " \n"])
@@ -1318,9 +1292,6 @@ def test_render_real_filesystem_and_new_seam_methods(tmp_path: Path) -> None:
     source, output = root / "source", root / "nested/output"
     render_fixture(fs, source)
     fs.write_atomic(source / "config/loki/raw-text", "\udc80", 0o644)
-    fs.write_atomic(
-        source / "config/loki/token-bytes", b"\xff @O11Y_DISK_RESERVE_GB@\n", 0o644
-    )
     fs.write_atomic(source / "config/loki/MANIFEST.sha256", b"stale", 0o644)
     assert render_run(fs, source=source, output=output) == (0, "", "")
     files = {
@@ -1332,6 +1303,9 @@ def test_render_real_filesystem_and_new_seam_methods(tmp_path: Path) -> None:
     } == files
     assert stat.S_IMODE((output / "release").stat().st_mode) == 0o700
     assert fs.read_bytes(output / "release/compose.yaml") == b"compose\r\n"
+    assert [data for path, data in files.items() if path.name == "raw-text"] == [
+        b"\x80"
+    ]
     binary = root / "binary"
     fs.write_atomic(binary, b"\x00\xff\r\n", 0o640)
     assert fs.read_bytes(binary) == b"\x00\xff\r\n"
@@ -1524,20 +1498,6 @@ def test_render_missing_compose_before_writing(name: str, directory: bool) -> No
         1,
         "",
         f"tbhbops o11y render: render: source is missing {name}\n",
-    )
-    assert fs.calls == []
-
-
-@pytest.mark.parametrize("value", ["", "sensitive-port"])
-def test_render_postgres_before_writing(value: str) -> None:
-    fs = Fake()
-    assert render_run(fs, RENDER_ENV | {"O11Y_POSTGRES_PORT": value}) == (
-        1,
-        "",
-        (
-            "tbhbops o11y render: O11Y_POSTGRES_PORT is no longer supported; "
-            "PostgreSQL moved out of the stack\n"
-        ),
     )
     assert fs.calls == []
 
@@ -2453,6 +2413,7 @@ def test_validate_preserves_explicit_placeholders(
         env = system.filesystem.read_text(Path("/temporary/release/.env.validate"))
         assert "O11Y_S3_ENV_FILE=dummy-s3.env\n" in env
         assert "O11Y_DATA_DIR=/temporary/data\n" in env
+        assert "O11Y_HOST_NAME=validate\n" in env
 
     monkeypatch.setattr(command, "dispatch", render_capture)
     assert validate_run(validation_fixture(), ValidationRunner())[0] == 0
@@ -2463,6 +2424,7 @@ def test_validate_preserves_explicit_placeholders(
                 "O11Y_DATA_DIR": "/temporary/data",
                 "O11Y_GRAFANA_ROOT_URL": "https://grafana.example.example.invalid/",
                 "O11Y_GRAFANA_OWNER_LOGIN": "owner@example.invalid",
+                "O11Y_HOST_NAME": "validate",
             },
         )
     ]
@@ -2692,6 +2654,26 @@ def test_validate_failed_steps(
     assert Path("/temporary") not in fs.modes
 
 
+def test_validate_release_loads_in_compose(tmp_path: Path) -> None:
+    system = cli.real_system()
+    env = model_validate.docker_environment(system.env)
+    if system.runner.run(["docker", "compose", "version"], env, 10).code != 0:
+        pytest.skip("Docker Compose is unavailable")
+    source = next(
+        parent / "o11y"
+        for parent in Path(__file__).parents
+        if (parent / "o11y/compose.yaml").is_file()
+    )
+    tree = shutil.copytree(source, tmp_path / "source")
+    release = validation.prepare(system, tree, tmp_path, "https://example.invalid/")
+    argv = ["docker", "compose", "--env-file", str(release / ".env.validate"), "-f"]
+    for name in ("compose.yaml", "compose.tools.yaml"):
+        result = system.runner.run(
+            [*argv, str(release / name), "config", "-q"], env, 30
+        )
+        assert result.code == 0, result.stderr
+
+
 def test_validate_real_filesystem(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -2826,963 +2808,30 @@ def test_local_socket_symlinked_parent(
             assert validation.local_engine(system, {"HOME": str(home)}) is None
 
 
-# RustFS probe host orchestration; all engine calls below are fakes.
-
-
-@dataclass
-class ProbeHandle:
-    events: list[object]
-    code: int | None = 0
-    killed: bool = False
-    failure: bool = False
-
-    def wait(self, timeout: int) -> int | None:
-        self.events.append(("wait", timeout))
-        return -9 if self.killed else self.code
-
-    def kill(self) -> None:
-        self.events.append("kill-writer")
-        self.killed = True
-        if self.failure:
-            raise RuntimeError
-
-
-@dataclass
-class ProbeRunner(ValidationRunner):
-    fs: o11y.Filesystem = field(default_factory=Fake)
-    identity: str = "native|Ubuntu"
-    failure: str = ""
-    result: Result = field(default_factory=lambda: Result(1, "private", "private"))
-    events: list[object] = field(default_factory=list)
-    handle: ProbeHandle = field(init=False)
-    writing: str = "probe: writing\nprobe: 5 acknowledged writes survived\nprivate"
-
-    def __post_init__(self) -> None:
-        self.handle = ProbeHandle(self.events)
-
-    @override
-    def run(
-        self,
-        argv: Sequence[str],
-        env: Mapping[str, str],
-        timeout: int,
-        *,
-        input_data: str | None = None,
-    ) -> Result:
-        assert input_data is None
-        self.events.append(list(argv))
-        text = " ".join(argv)
-        if self.failure and self.failure in text:
-            self.calls.append((list(argv), dict(env), timeout))
-            return self.result
-        if argv[-2:] == ["--format", "json"]:
-            self.calls.append((list(argv), dict(env), timeout))
-            return Result(0, '{"services":{"rustfs":{"image":"rustfs:pinned"}}}')
-        if argv[1] == "info":
-            self.calls.append((list(argv), dict(env), timeout))
-            return Result(0, self.identity)
-        if "logs" in argv:
-            self.calls.append((list(argv), dict(env), timeout))
-            return Result(0, '{"console_enabled":false}')
-        if "exec" in argv:
-            self.calls.append((list(argv), dict(env), timeout))
-            return Result(0, "200\n") if "9000" in text else Result(7)
-        return super().run(argv, env, timeout)
-
-    @override
-    def start(
-        self, argv: Sequence[str], env: Mapping[str, str], stdout_path: Path
-    ) -> ProbeHandle:
-        assert stdout_path == Path("/temporary/crash.log")
-        assert self.fs.read_text(stdout_path) == ""
-        info = self.fs.lstat(stdout_path)
-        assert info is not None
-        assert info.st_mode & 0o777 == 0o600
-        self.events.append(list(argv))
-        self.calls.append((list(argv), dict(env), -1))
-        self.fs.write_atomic(stdout_path, self.writing, 0o600)
-        return self.handle
-
-
-@dataclass
-class ProbeClock:
-    now: float = 0
-    sleeps: list[float] = field(default_factory=list)
-
-    def monotonic(self) -> float:
-        return self.now
-
-    def sleep(self, seconds: float) -> None:
-        self.sleeps.append(seconds)
-        self.now += seconds
-
-
-def probe_world(fs: Fake, runner: ProbeRunner, clock: ProbeClock) -> cli.System:
-    return replace(
-        world(fs, 123),
-        egid=456,
-        engine_hostname="native",
-        runner=runner,
-        platform="linux",
-        env={
-            "HOME": "/operator",
-            "PATH": "/bin",
-            "DOCKER_HOST": "private",
-            "AWS_SECRET_ACCESS_KEY": "private",
-            "O11Y_DATA_DIR": "private",
-        },
-        monotonic=clock.monotonic,
-        sleep=clock.sleep,
-    )
-
-
-def probe_run(system: cli.System) -> tuple[int, str, str]:
-    out, err = io.StringIO(), io.StringIO()
-    result = cli.run(
-        ["o11y", "rustfs-probe", "--source", str(SOURCE)], system, out, err
-    )
-    return result, out.getvalue(), err.getvalue()
-
-
-def test_probe_success_and_contract() -> None:
-    fs = validation_fixture()
-    runner, clock = ProbeRunner(fs=fs), ProbeClock()
-    code, out, err = probe_run(probe_world(fs, runner, clock))
-    assert (code, err) == (0, "")
-    assert out == (
-        "engine mode: local\n"
-        "ok 1: start log is clean and reports the console off\n"
-        "ok 2: ready on 9000 and nothing listens on 9001\n"
-        "ok 3: a request signed with the default login is refused\n"
-        "ok 4: 1 KiB, 10 MiB and multipart 100 MiB round trips match, "
-        "1,100 keys list across pages, delete empties the bucket\n"
-        "ok 5: 5 acknowledged writes survived a kill and restart, "
-        "and every listed key is readable\n"
-        "ok 6: probe bucket removed\n"
-    )
-    assert clock.sleeps == [2]
-    prefix = [
-        "docker",
-        "compose",
-        "-p",
-        "o11y-probe",
-        "--env-file",
-        "/temporary/release/.env",
-        "-f",
-        "/temporary/release/compose.yaml",
-        "-f",
-        "/temporary/release/compose.tools.yaml",
-    ]
-    utility = [
-        "docker",
-        "run",
-        "--rm",
-        "--user",
-        "0:0",
-        "--network",
-        "none",
-        "-v",
-        "/temporary:/d",
-        "--entrypoint",
-    ]
-    expected = [
-        (["docker", "context", "show"], 60),
-        (
-            [
-                "docker",
-                "context",
-                "inspect",
-                "--format",
-                "{{.Endpoints.docker.Host}}",
-                "default",
-            ],
-            60,
-        ),
-        (["docker", "info", "--format", "{{.Name}}|{{.OperatingSystem}}"], 60),
-        (["docker", "version", "--format", "{{.Server.MinAPIVersion}}"], 60),
-        (
-            [
-                "docker",
-                "compose",
-                "--env-file",
-                "/temporary/release/.env.validate",
-                "-f",
-                "/temporary/release/compose.yaml",
-                "config",
-                "--format",
-                "json",
-            ],
-            120,
-        ),
-        ([*prefix, "down", "-v", "--remove-orphans"], 120),
-        (
-            [*utility, "chown", "rustfs:pinned", "-R", "10001:10001", "/d/data/rustfs"],
-            120,
-        ),
-        *[
-            (
-                [
-                    *utility,
-                    "chown",
-                    "rustfs:pinned",
-                    f"{secret.uid}:{secret.gid}",
-                    f"/d/data/secrets/{secret.name}",
-                ],
-                120,
-            )
-            for secret in init.SECRETS
-            if secret.guard is not None and secret.guard.startswith("rustfs/")
-        ],
-        ([*prefix, "up", "-d", "rustfs"], 120),
-        (
-            [
-                *prefix,
-                "exec",
-                "-T",
-                "rustfs",
-                "curl",
-                "-s",
-                "-o",
-                "/dev/null",
-                "-w",
-                "%{http_code}",
-                "-m",
-                "10",
-                "http://127.0.0.1:9000/health/ready",
-            ],
-            15,
-        ),
-        ([*prefix, "logs", "--no-color", "rustfs"], 120),
-        (
-            [
-                *prefix,
-                "exec",
-                "-T",
-                "rustfs",
-                "curl",
-                "-s",
-                "-o",
-                "/dev/null",
-                "-m",
-                "5",
-                "http://127.0.0.1:9001/",
-            ],
-            15,
-        ),
-        ([*prefix, "run", "--rm", "-T", "s3probe", "default-credentials"], 900),
-        ([*prefix, "run", "--rm", "-T", "s3probe", "objects"], 900),
-        (
-            [
-                *prefix,
-                "run",
-                "--rm",
-                "-T",
-                "--name",
-                "o11y-probe-writer",
-                "s3probe",
-                "crash",
-            ],
-            -1,
-        ),
-        ([*prefix, "kill", "rustfs"], 120),
-        ([*prefix, "start", "rustfs"], 120),
-        ([*prefix, "run", "--rm", "-T", "s3probe", "cleanup"], 900),
-        (["docker", "rm", "-f", "o11y-probe-writer"], 120),
-        ([*prefix, "down", "-v", "--remove-orphans"], 120),
-        ([*utility, "rm", "rustfs:pinned", "-rf", "/d/data"], 120),
-    ]
-    assert [(a, t) for a, _, t in runner.calls] == expected
-    for index, (_, env, _) in enumerate(runner.calls):
-        allowed = {"HOME": "/operator", "PATH": "/bin"}
-        if index >= 4:
-            allowed["DOCKER_API_VERSION"] = "1.44"
-        if index >= 5:
-            allowed["O11Y_S3_ENV_FILE"] = "/temporary/data/secrets/s3.env"
-        assert env == allowed
-    assert runner.events[-5:] == [
-        "kill-writer",
-        ("wait", 120),
-        expected[-3][0],
-        expected[-2][0],
-        expected[-1][0],
-    ]
-    assert ("wait", 600) in runner.events
-    assert Path("/temporary") not in fs.modes
-    assert {
-        fs.owners[p] for p in fs.owners if Path("/temporary/data") in p.parents
-    } == {(123, 456)}
-
-
-@pytest.mark.parametrize(
-    ("operation", "step", "rule"),
-    [
-        ("up -d", 1, "rustfs did not start"),
-        (
-            "logs",
-            1,
-            "start log unavailable",
-        ),
-        ("9000/health/ready", 2, "rustfs did not become ready"),
-        ("9001/", 2, "something answers on the console port"),
-        ("default-credentials", 3, "the default login was not refused"),
-        ("s3probe objects", 4, "object round trips failed"),
-        ("kill rustfs", 5, "rustfs could not be killed"),
-        ("start rustfs", 5, "rustfs did not restart"),
-        ("s3probe cleanup", 6, "the probe bucket could not be removed"),
-    ],
-)
-@pytest.mark.parametrize("status", [1, None])
-def test_probe_early_exit_cleans_every_resource(
-    operation: str, step: int, rule: str, status: int | None
-) -> None:
-    fs = validation_fixture()
-    runner = ProbeRunner(
-        fs=fs, failure=operation, result=Result(status, "private", "private")
-    )
-    code, out, err = probe_run(probe_world(fs, runner, ProbeClock()))
-    assert (code, err) == (1, "")
-    assert out.endswith(f"FAIL {step}: {rule}\n")
-    assert "private" not in out
-    assert f"ok {step}:" not in out
-    assert Path("/temporary") not in fs.modes
-    calls = [a for a, _, _ in runner.calls]
-    assert calls[-3] == ["docker", "rm", "-f", "o11y-probe-writer"]
-    assert calls[-2][-3:] == ["down", "-v", "--remove-orphans"]
-    assert calls[-1][-4:] == ["rm", "rustfs:pinned", "-rf", "/d/data"]
-    if step >= 5:
-        assert runner.events[-5:-3] == ["kill-writer", ("wait", 120)]
-
-
-@pytest.mark.parametrize("writing", ["", "probe: writing\nprivate"])
-@pytest.mark.parametrize("exit_code", [0, 1, None])
-def test_probe_writer_rules(writing: str, exit_code: int | None) -> None:
-    fs = validation_fixture()
-    runner = ProbeRunner(fs=fs, writing=writing)
-    runner.handle.code = exit_code
-    clock = ProbeClock()
-    code, out, err = probe_run(probe_world(fs, runner, clock))
-    assert (code, err) == (1, "")
-    rule = (
-        "an acknowledged write was lost or a listed key is unreadable after a kill"
-        if writing
-        else "the writer never started"
-    )
-    assert out.endswith(f"FAIL 5: {rule}\n")
-    assert "private" not in out
-    assert runner.handle.killed
-    assert Path("/temporary") not in fs.modes
-    if not writing:
-        assert clock.sleeps == [2] * 60
-
-
-@pytest.mark.parametrize("output", ["", "201", "200\nprivate", "200 ", "200X"])
-def test_probe_readiness_requires_exact_200(output: str) -> None:
-    fs = validation_fixture()
-    runner = ProbeRunner(fs=fs, failure="9000/health/ready", result=Result(0, output))
-    code, out, err = probe_run(probe_world(fs, runner, ProbeClock()))
-    assert (code, err) == (1, "")
-    assert out.endswith("FAIL 2: rustfs did not become ready\n")
-
-
-@pytest.mark.parametrize(
-    "result",
-    [
-        Result(0, ""),
-        Result(0, "private"),
-        Result(0, "{}"),
-        Result(0, '{"services":{"rustfs":{"image":0}}}'),
-        Result(0, '{"services":{"rustfs":{"image":""}}}'),
-        Result(1),
-        Result(None),
-    ],
-)
-def test_probe_model_failures(result: Result) -> None:
-    fs = validation_fixture()
-    runner = ProbeRunner(fs=fs, failure="config --format json", result=result)
-    code, out, err = probe_run(probe_world(fs, runner, ProbeClock()))
-    assert (code, err) == (1, "")
-    rule = "could not read RustFS image" if result.code == 0 else "could not read model"
-    assert out.startswith(f"engine mode: local\nFAIL {rule}\n")
-    assert not any("chown" in a or "/d/data" in a for a, _, _ in runner.calls)
-    assert Path("/temporary") not in fs.modes
-
-
-@pytest.mark.parametrize("operation", ["chown", "down -v"])
-def test_probe_preparation_failure(operation: str) -> None:
-    fs = validation_fixture()
-    runner = ProbeRunner(fs=fs, failure=operation)
-    code, out, err = probe_run(probe_world(fs, runner, ProbeClock()))
-    assert (code, err) == (1, "")
-    rule = (
-        "init failed"
-        if operation == "chown"
-        else "leftover project could not be removed"
-    )
-    assert out.startswith(f"engine mode: local\nFAIL {rule}\n")
-    assert "ok 1:" not in out
-    assert Path("/temporary") not in fs.modes
-
-
-def test_probe_local_guard_precedes_all_work() -> None:
-    fs = validation_fixture()
-    before = dict(fs.files)
-    runner = ProbeRunner(fs=fs, failure="context show")
-    code, out, err = probe_run(probe_world(fs, runner, ProbeClock()))
-    assert (code, err) == (1, "")
-    assert (
-        out == "engine mode: local\n"
-        "FAIL local engine: the Docker context could not be read\n"
-    )
-    assert fs.files == before
-    assert len(runner.calls) == 1
-
-
-@pytest.mark.parametrize("operation", ["docker rm -f", "down -v", "--entrypoint rm"])
-@pytest.mark.parametrize("raises", [False, True])
-def test_probe_cleanup_attempts_every_call(
-    operation: str, raises: bool, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    fs = validation_fixture()
-    runner = ProbeRunner(fs=fs)
-    original = runner.run
-
-    def run_call(argv: Sequence[str], env: Mapping[str, str], timeout: int) -> Result:
-        if operation in " ".join(argv):
-            runner.events.append(list(argv))
-            if raises:
-                msg = "private"
-                raise RuntimeError(msg)
-            return Result(None, "private")
-        return original(argv, env, timeout)
-
-    probe = rustfs_probe.Probe(
-        probe_world(fs, runner, ProbeClock()),
-        {},
-        Path("/temporary"),
-        linux=True,
-        image="rustfs:pinned",
-    )
-    fs.mkdir(Path("/temporary"))
-    probe.writer = runner.handle
-    monkeypatch.setattr(runner, "run", run_call)
-    assert probe.cleanup() is False
-    assert runner.events[:2] == ["kill-writer", ("wait", 120)]
-    assert len(runner.events) == 5
-    assert Path("/temporary") not in fs.modes
-
-
-@pytest.mark.parametrize("kill_failure", [False, True])
-def test_probe_cleanup_reaps_after_kill_failure(kill_failure: bool) -> None:
-    fs = validation_fixture()
-    fs.mkdir(Path("/temporary"))
-    runner = ProbeRunner(fs=fs)
-    runner.handle.failure = kill_failure
-    probe = rustfs_probe.Probe(
-        probe_world(fs, runner, ProbeClock()), {}, Path("/temporary"), linux=True
-    )
-    probe.writer = runner.handle
-    assert probe.cleanup() is (not kill_failure)
-    assert runner.events[:2] == ["kill-writer", ("wait", 120)]
-    assert Path("/temporary") not in fs.modes
-
-
-def test_probe_cleanup_failure_changes_exit(monkeypatch: pytest.MonkeyPatch) -> None:
-    fs = validation_fixture()
-    runner = ProbeRunner(fs=fs, failure="docker rm -f")
-    code, out, err = probe_run(probe_world(fs, runner, ProbeClock()))
-    assert (code, err) == (1, "")
-    assert out.endswith(
-        "ok 6: probe bucket removed\n"
-        "FAIL cleanup: probe resources could not be removed\n"
-    )
-    assert out.count("FAIL cleanup:") == 1
-
-    def fail_remove(_fs: o11y.Filesystem, _path: Path) -> None:
-        msg = "private"
-        raise RuntimeError(msg)
-
-    fs.mkdir(Path("/temporary"))
-    probe = rustfs_probe.Probe(
-        probe_world(fs, runner, ProbeClock()), {}, Path("/temporary"), linux=True
-    )
-    monkeypatch.setattr(command, "remove_tree", fail_remove)
-    assert probe.cleanup() is False
-
-
-def test_probe_temporary_failure(monkeypatch: pytest.MonkeyPatch) -> None:
-    fs = validation_fixture()
-    runner = ProbeRunner(fs=fs)
-
-    def fail() -> Path:
-        msg = "private"
-        raise OSError(msg)
-
-    monkeypatch.setattr(fs, "temporary_directory", fail)
-    assert probe_run(probe_world(fs, runner, ProbeClock())) == (
-        1,
-        "engine mode: local\nFAIL probe: temporary directory could not be created\n",
-        "",
-    )
-    assert len(runner.calls) == 4
-
-
-def test_probe_init_refusal_and_error(monkeypatch: pytest.MonkeyPatch) -> None:
-    fs = validation_fixture()
-    system = world(fs, 123)
-
-    def refuse(_facts: init.Facts, _owner: tuple[int, int]) -> init.Refusal:
-        return init.Refusal("private")
-
-    monkeypatch.setattr(init, "plan", refuse)
-    with pytest.raises(rustfs_probe.ProbeError, match=r"^init failed$"):
-        rustfs_probe._initialize(system, Path("/data"))
-
-    def fail(_probe: rustfs_probe.Probe, _source: Path) -> None:
-        msg = "private"
-        raise ValueError(msg)
-
-    runner = ProbeRunner(fs=fs)
-    monkeypatch.setattr(rustfs_probe.Probe, "prepare", fail)
-    assert probe_run(probe_world(fs, runner, ProbeClock())) == (
-        1,
-        "engine mode: local\nFAIL probe: ValueError\n",
-        "",
-    )
-
-
-def test_probe_usage(capsys: pytest.CaptureFixture[str]) -> None:
-    options: list[list[str]] = [
-        [],
-        ["--release", "/x"],
-        ["--project", "custom"],
-        ["--", "up"],
-    ]
-    for extra in options:
-        with pytest.raises(SystemExit) as caught:
-            cli.parser().parse_args(["o11y", "rustfs-probe", *extra])
-        assert caught.value.code == 2
-        assert "usage:" in capsys.readouterr().err
-    args = cli.parser().parse_args(["o11y", "rustfs-probe", "--source", "/src"])
-    assert args.source == Path("/src")
-    with pytest.raises(SystemExit) as caught:
-        cli.parser().parse_args(["o11y", "rustfs-probe", "--help"])
-    assert caught.value.code == 0
-    assert "--source" in capsys.readouterr().out
-    with pytest.raises(SystemExit):
-        cli.parser().parse_args(["o11y", "--help"])
-    help_text = capsys.readouterr().out
-    assert "exercise RustFS locally" in help_text
-    assert "XX" not in help_text
-
-
 def test_effective_gid(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(sys, "platform", "linux")
     monkeypatch.setattr(os, "getegid", lambda: 456)
     assert filesystem.effective_gid() == 456
-    monkeypatch.setattr(sys, "platform", "win32")
-    assert filesystem.effective_gid() == -1
 
 
-@pytest.mark.parametrize("linux", [False, True])
-def test_probe_real_filesystem_symlink_tmpdir(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, linux: bool
-) -> None:
-    root = tmp_path.resolve()
-    target = root / "target"
-    target.mkdir()
-    link = root / "link"
-    link.symlink_to(target, target_is_directory=True)
-    monkeypatch.setenv("TMPDIR", str(link))
-    monkeypatch.setattr(tempfile, "tempdir", None)
-    fs = o11y.LocalFilesystem()
-    temporary = fs.temporary_directory()
-    assert temporary.parent == target
-    assert temporary == temporary.resolve()
-    assert temporary.stat().st_mode & 0o777 == 0o700
-    source = root / "source"
-    render_fixture(fs, source)
-    runner = ProbeRunner(fs=fs)
-    system = replace(
-        cli.real_system(),
-        filesystem=fs,
-        runner=runner,
-        env={"TMPDIR": str(link)},
-        choice=lambda charset: charset[0],
-    )
-    probe = rustfs_probe.Probe(system, {"TMPDIR": str(link)}, temporary, linux=linux)
-    probe.prepare(source)
-    data = temporary / "data"
-    assert all(path.stat().st_mode & 0o002 == 0 for path in data.rglob("*"))
-    for secret in init.SECRETS[:2]:
-        assert (data / "secrets" / secret.name).stat().st_mode & 0o777 == 0o400
-    expected_data = str(data) if linux else "/var/lib/o11y-test/probe"
-    assert (
-        f"O11Y_DATA_DIR={expected_data}\n" in (temporary / "release/.env").read_text()
-    )
-    assert (data / "secrets/s3.env").is_file()
-    assert (data / "secrets/s3.env").stat().st_uid == system.euid
-    assert (data / "secrets/s3.env").stat().st_gid == system.egid
-    assert (data / "secrets/s3.env").stat().st_mode & 0o777 == 0o600
-    assert (
-        "O11Y_GRAFANA_ROOT_URL=http://127.0.0.1:13000/\n"
-        in (temporary / "release/.env").read_text()
-    )
-    assert probe.env["O11Y_S3_ENV_FILE"] == str(data / "secrets/s3.env")
-    original = command.remove_tree
-    events = runner.events
-
-    def remove(filesystem: o11y.Filesystem, path: Path) -> None:
-        if path == temporary:
-            events.append("remove-temp")
-        original(filesystem, path)
-
-    monkeypatch.setattr(command, "remove_tree", remove)
-    probe.writer = runner.handle
-    assert probe.cleanup()
-    assert events[-6:-4] == ["kill-writer", ("wait", 120)]
-    assert events[-4] == ["docker", "rm", "-f", "o11y-probe-writer"]
-    assert isinstance(events[-3], list)
-    assert events[-3][-3:] == ["down", "-v", "--remove-orphans"]
-    assert isinstance(events[-2], list)
-    assert events[-2][-4:] == [
-        "rm",
-        "rustfs:pinned",
-        "-rf",
-        "/d/data" if linux else "/d/probe",
-    ]
-    assert events[-1] == "remove-temp"
-    assert list(target.iterdir()) == []
-
-
-def test_background_runner_process_contract(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_process_handle_kill(monkeypatch: pytest.MonkeyPatch) -> None:
     calls: list[object] = []
-    launches: list[tuple[list[str], dict[str, object]]] = []
 
     class Process:
         pid = 123
-        running = True
-        timed_out = False
-
-        def wait(self, *, timeout: int) -> int:
-            calls.append(("wait", timeout))
-            if self.timed_out:
-                msg = "private"
-                raise subprocess.TimeoutExpired(msg, timeout)
-            return 17
-
-        def poll(self) -> int | None:
-            return None if self.running else 17
-
-        def kill(self) -> None:
-            calls.append("windows-kill")
-
-    process = Process()
-
-    def start(argv: Sequence[str], **kwargs: object) -> Process:
-        launches.append((list(argv), kwargs))
-        return process
 
     def killpg(pid: int, sig: int) -> None:
         calls.append(("killpg", pid, sig))
 
-    monkeypatch.setattr(subprocess, "Popen", start)
     monkeypatch.setattr(os, "killpg", killpg)
-    output = tmp_path / "writer"
-    handle = SubprocessRunner().start(["compose", "crash"], {"PATH": "/bin"}, output)
-    assert isinstance(handle, ProcessHandle)
-    argv, kwargs = launches[0]
-    assert argv == ["compose", "crash"]
-    assert kwargs["env"] == {"PATH": "/bin"}
-    assert kwargs["stderr"] == subprocess.STDOUT
-    assert kwargs["start_new_session"] is True
-    stream = kwargs["stdout"]
-    assert isinstance(stream, io.BufferedWriter)
-    assert stream.name == str(output)
-    assert stream.closed
-    assert handle.wait(600) == 17
-    assert calls[-1] == ("wait", 600)
-    process.timed_out = True
-    assert handle.wait(120) is None
-    assert calls[-1] == ("wait", 120)
-    monkeypatch.setattr(sys, "platform", "linux")
+    handle = ProcessHandle(cast("subprocess.Popen[bytes]", Process()))
     handle.kill()
-    assert calls[-1] == ("killpg", 123, 9)
-    monkeypatch.setattr(sys, "platform", "win32")
-    handle.kill()
-    assert calls[-1] == "windows-kill"
-    monkeypatch.setattr(sys, "platform", "linux")
-    process.running = False
-    assert process.poll() == 17
-    previous = list(calls)
-    handle.kill()
-    assert calls == [*previous, ("killpg", 123, 9)]
+    assert calls == [("killpg", 123, 9)]
 
     def vanished(_pid: int, _sig: int) -> None:
         raise ProcessLookupError
 
     monkeypatch.setattr(os, "killpg", vanished)
     handle.kill()
-
-
-@pytest.mark.parametrize(
-    ("stdout", "stderr", "passed"),
-    [
-        ("private", "", False),
-        ('{"console_enabled":false}', "private Unsupported FILESYSTEM", False),
-        ('{"console_enabled":false} private rustfsadmin', "", False),
-        ("", '{"console_enabled":false}', True),
-    ],
-)
-def test_probe_classifies_both_log_streams(
-    stdout: str, stderr: str, passed: bool
-) -> None:
-    fs = validation_fixture()
-    runner = ProbeRunner(fs=fs, failure="logs", result=Result(0, stdout, stderr))
-    code, out, err = probe_run(probe_world(fs, runner, ProbeClock()))
-    assert err == ""
-    assert code == (0 if passed else 1)
-    assert "private" not in out
-    if not passed:
-        rule = (
-            "unsupported filesystem"
-            if stderr
-            else "default login"
-            if "rustfsadmin" in stdout
-            else "console line missing"
-        )
-        assert out == f"engine mode: local\nFAIL 1: {rule}\n"
-
-
-def test_probe_init_gathers_with_the_process_uid() -> None:
-    fs = validation_fixture()
-    fs.denied_calls.add(("lstat", Path("/data")))
-    with pytest.raises(PermissionError):
-        rustfs_probe._initialize(world(fs, 0), Path("/data"))
-
-
-@pytest.mark.parametrize("linux", [False, True])
-def test_probe_platform_data_and_secret_owners(linux: bool) -> None:
-    fs = validation_fixture()
-    runner = ProbeRunner(fs=fs)
-    system = probe_world(fs, runner, ProbeClock())
-    fs.mkdir(Path("/temporary"))
-    probe = rustfs_probe.Probe(system, {}, Path("/temporary"), linux=linux)
-    probe.prepare(SOURCE)
-    down = next((a, env) for a, env, _ in runner.calls if "down" in a)
-    assert down[1]["O11Y_S3_ENV_FILE"] == "/temporary/data/secrets/s3.env"
-    data_dir = "/temporary/data" if linux else "/var/lib/o11y-test/probe"
-    assert fs.modes[Path("/temporary/release/.env")] & 0o777 == 0o600
-    assert f"O11Y_DATA_DIR={data_dir}\n" in fs.read_text(
-        Path("/temporary/release/.env")
-    )
-    assert probe.env == {"O11Y_S3_ENV_FILE": "/temporary/data/secrets/s3.env"}
-    utility = [
-        "docker",
-        "run",
-        "--rm",
-        "--user",
-        "0:0",
-        "--network",
-        "none",
-        "-v",
-        "/temporary:/d" if linux else "/var/lib/o11y-test:/d",
-    ]
-    destination = "/d/data" if linux else "/d/probe"
-    expected = []
-    if not linux:
-        expected += [
-            [*utility, "--entrypoint", "rm", "rustfs:pinned", "-rf", "/d/probe"],
-            [
-                *utility,
-                "-v",
-                "/temporary/data:/src:ro",
-                "--entrypoint",
-                "cp",
-                "rustfs:pinned",
-                "-a",
-                "/src/.",
-                "/d/probe/",
-            ],
-        ]
-    expected.append(
-        [
-            *utility,
-            "--entrypoint",
-            "chown",
-            "rustfs:pinned",
-            "-R",
-            "10001:10001",
-            f"{destination}/rustfs",
-        ]
-    )
-    for secret in init.SECRETS[:2]:
-        expected.append(
-            [
-                *utility,
-                "--entrypoint",
-                "chown",
-                "rustfs:pinned",
-                f"{secret.uid}:{secret.gid}",
-                f"{destination}/secrets/{secret.name}",
-            ]
-        )
-        path = Path("/temporary/data/secrets") / secret.name
-        assert fs.modes[path] & 0o777 == secret.mode == 0o400
-        assert fs.owners[path] == (123, 456)
-    assert [a for a, _, _ in runner.calls if a[:2] == ["docker", "run"]] == expected
-    assert probe.cleanup()
-    calls = [a for a, _, _ in runner.calls]
-    assert calls[-1] == [
-        *utility,
-        "--entrypoint",
-        "rm",
-        "rustfs:pinned",
-        "-rf",
-        destination,
-    ]
-    assert all("sh" not in a and "-c" not in a for a in calls)
-    assert Path("/temporary") not in fs.modes
-
-
-def test_probe_secret_owners_come_from_init(monkeypatch: pytest.MonkeyPatch) -> None:
-    secrets = tuple(replace(s, uid=s.uid + 1, gid=s.gid + 2) for s in init.SECRETS)
-    monkeypatch.setattr(init, "SECRETS", secrets)
-    fs = validation_fixture()
-    runner = ProbeRunner(fs=fs)
-    fs.mkdir(Path("/temporary"))
-    probe = rustfs_probe.Probe(
-        probe_world(fs, runner, ProbeClock()), {}, Path("/temporary"), linux=True
-    )
-    probe.prepare(SOURCE)
-    for secret in secrets[:2]:
-        assert any(
-            a[-4:]
-            == [
-                "chown",
-                "rustfs:pinned",
-                f"{secret.uid}:{secret.gid}",
-                f"/d/data/secrets/{secret.name}",
-            ]
-            for a, _, _ in runner.calls
-        )
-
-
-@pytest.mark.parametrize(
-    "setting",
-    [
-        'O11Y_DATA_DIR="/temporary/data"\n',
-        "O11Y_DATA_DIR=/unresolved/data\n",
-        "O11Y_DATA_DIR=/temporary/data\n" * 2,
-    ],
-)
-def test_probe_data_redirect_requires_one_match(
-    setting: str, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    fs = validation_fixture()
-    read_text = fs.read_text
-    env_file = Path("/temporary/release/.env")
-
-    def read(path: Path) -> str:
-        return setting if path == env_file else read_text(path)
-
-    monkeypatch.setattr(fs, "read_text", read)
-    runner = ProbeRunner(fs=fs, identity="docker-desktop|Docker Desktop")
-    system = replace(probe_world(fs, runner, ProbeClock()), platform="darwin")
-    assert probe_run(system) == (
-        1,
-        "engine mode: local\nFAIL data dir could not be redirected\n",
-        "",
-    )
-    assert not any("cp" in a or "chown" in a for a, _, _ in runner.calls)
-    assert runner.calls[-2][0][-3:] == ["down", "-v", "--remove-orphans"]
-    assert runner.calls[-1][0][-4:] == ["rm", "rustfs:pinned", "-rf", "/d/probe"]
-    assert env_file not in fs.files
-    assert Path("/temporary") not in fs.modes
-
-
-def test_probe_requires_rustfs_secrets(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(
-        init, "SECRETS", tuple(replace(s, guard="renamed/guard") for s in init.SECRETS)
-    )
-    fs = validation_fixture()
-    runner = ProbeRunner(fs=fs)
-    system = probe_world(fs, runner, ProbeClock())
-    assert probe_run(system) == (
-        1,
-        "engine mode: local\nFAIL rustfs secrets could not be found\n",
-        "",
-    )
-    assert not any("up" in a for a, _, _ in runner.calls)
-    assert runner.calls[-2][0][-3:] == ["down", "-v", "--remove-orphans"]
-    assert runner.calls[-1][0][-4:] == ["rm", "rustfs:pinned", "-rf", "/d/data"]
-    assert Path("/temporary") not in fs.modes
-
-
-@pytest.mark.parametrize(
-    ("log", "rule"),
-    [
-        ("private Unsupported filesystem", "unsupported filesystem"),
-        ('{"console_enabled":false}', None),
-        ("private", "console line missing"),
-    ],
-)
-def test_probe_crash_loop_readiness_and_cleanup(
-    log: str, rule: str | None, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    fs = validation_fixture()
-    runner = ProbeRunner(fs=fs, failure="9000/health/ready")
-    original = runner.run
-
-    def run_call(argv: Sequence[str], env: Mapping[str, str], timeout: int) -> Result:
-        if "logs" in argv:
-            runner.calls.append((list(argv), dict(env), timeout))
-            return Result(0, log)
-        return original(argv, env, timeout)
-
-    monkeypatch.setattr(runner, "run", run_call)
-    clock = ProbeClock()
-    code, out, err = probe_run(probe_world(fs, runner, clock))
-    suffix = f" ({rule})" if rule is not None else ""
-    assert (code, out, err) == (
-        1,
-        f"engine mode: local\nFAIL 2: rustfs did not become ready{suffix}\n",
-        "",
-    )
-    assert clock.sleeps == [2] * 60
-    calls = [a for a, _, _ in runner.calls]
-    log_index = next(i for i, a in enumerate(calls) if "logs" in a)
-    assert all("logs" not in a for a in calls[:log_index])
-    assert sum("9000/health/ready" in " ".join(a) for a in calls[:log_index]) == 61
-    assert calls[-3] == ["docker", "rm", "-f", "o11y-probe-writer"]
-    assert calls[-2][-3:] == ["down", "-v", "--remove-orphans"]
-    assert calls[-1][-4:] == ["rm", "rustfs:pinned", "-rf", "/d/data"]
-    assert Path("/temporary") not in fs.modes
-
-
-@pytest.mark.parametrize(
-    ("operation", "rule"),
-    [
-        ("--entrypoint rm", "leftover data could not be removed"),
-        ("--entrypoint cp", "data copy failed"),
-        ("secrets/rustfs.access_key", "init failed"),
-        ("secrets/rustfs.secret_key", "init failed"),
-    ],
-)
-def test_probe_vm_preparation_failures(operation: str, rule: str) -> None:
-    fs = validation_fixture()
-    runner = ProbeRunner(
-        fs=fs,
-        identity="docker-desktop|Docker Desktop",
-        failure=operation,
-    )
-    system = replace(probe_world(fs, runner, ProbeClock()), platform="darwin")
-    code, out, err = probe_run(system)
-    assert (code, err) == (1, "")
-    assert out.startswith(f"engine mode: local\nFAIL {rule}\n")
-    assert Path("/temporary") not in fs.modes
-    assert runner.calls[-1][0][-4:] == ["rm", "rustfs:pinned", "-rf", "/d/probe"]
 
 
 DEDICATED = "unix:///run/dind/docker.sock"
@@ -3889,38 +2938,6 @@ def test_dedicated_metadata_failure(index: int, code: int | None) -> None:
     assert len(runner.calls) == index
 
 
-@pytest.mark.parametrize("dedicated", [None, DEDICATED])
-def test_dedicated_command_dispatch(dedicated: str | None) -> None:
-    fs = validation_fixture()
-    fs.modes[Path("/run/dind/docker.sock")] = stat.S_IFSOCK | 0o600
-    runner = ProbeRunner(
-        fs=fs,
-        replacements={2: Result(0, DEDICATED), 5: Result(0, "bridge\nhost\nnone")},
-    )
-    args = ["o11y", "rustfs-probe", "--source", str(SOURCE)]
-    if dedicated is not None:
-        args.extend(["--dedicated-engine", dedicated])
-    system = probe_world(fs, runner, ProbeClock())
-    system = replace(
-        system,
-        env=dict(system.env)
-        | {"O11Y_DEDICATED_ENGINE": DEDICATED, "DEDICATED_ENGINE": DEDICATED},
-    )
-    out, err = io.StringIO(), io.StringIO()
-    code = cli.run(args, system, out, err)
-    mode = "local" if dedicated is None else f"dedicated {dedicated}"
-    assert out.getvalue().startswith(f"engine mode: {mode}\n")
-    assert out.getvalue().count("engine mode:") == 1
-    assert err.getvalue() == ""
-    if dedicated is None:
-        assert code == 1
-        assert "this machine's own daemon socket" in out.getvalue()
-        assert all("DOCKER_HOST" not in env for _, env, _ in runner.calls)
-    else:
-        assert code == 0, out.getvalue()
-        assert all(env["DOCKER_HOST"] == DEDICATED for _, env, _ in runner.calls)
-
-
 def test_validate_refuses_dedicated_flag() -> None:
     with pytest.raises(SystemExit) as exc:
         cli.parser().parse_args(
@@ -3929,10 +2946,9 @@ def test_validate_refuses_dedicated_flag() -> None:
     assert exc.value.code == 2
 
 
-@pytest.mark.parametrize("name", ["rustfs-probe", "smoke"])
-def test_dedicated_engine_help(name: str, capsys: pytest.CaptureFixture[str]) -> None:
+def test_dedicated_engine_help(capsys: pytest.CaptureFixture[str]) -> None:
     with pytest.raises(SystemExit) as exc:
-        cli.parser().parse_args(["o11y", name, "--help"])
+        cli.parser().parse_args(["o11y", "smoke", "--help"])
     assert exc.value.code == 0
     assert "--dedicated-engine ENDPOINT" in capsys.readouterr().out
 
@@ -4054,9 +3070,9 @@ def test_default_release_bytes(tmp_path: Path) -> None:
         for p in output.rglob("*")
         if p.is_file()
     }
-    # Snapshot of all rendered bytes and filenames after the image updates.
+    # Snapshot of all rendered bytes and filenames.
     assert hashlib.sha256(model.manifest(files).encode()).hexdigest() == (
-        "cdc1fb383bf82e6cd83043baabddc8e88f4d4c09b154ee6b26c9646870dc046c"
+        "1f0063483d6221a648daee914bd68aa5b6d6827b23022bdd92e8fc8de7a38028"
     )
 
 

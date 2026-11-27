@@ -32,7 +32,7 @@ services:
       DNS_BIND_TAILNET: ${DNS_BIND_TAILNET:?Set the NAS tailnet address to listen on}
       # Quoted, comma-separated tailnet addresses of the LAN servers, such as
       # 'a.b.c.d'. Empty when there are none.
-      DNS_LAN_TAILNET_ADDRS: ${DNS_LAN_TAILNET_ADDRS:-}
+      DNS_LAN_TAILNET_ADDRS: ${DNS_LAN_TAILNET_ADDRS?Set DNS_LAN_TAILNET_ADDRS, which may be empty}
     volumes:
       # The directory, not the file: a single-file bind mount keeps the old inode
       # after a copy replaces the file, so the container would miss the change.

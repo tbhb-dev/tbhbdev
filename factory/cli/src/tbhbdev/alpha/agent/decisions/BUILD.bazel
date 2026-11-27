@@ -49,8 +49,8 @@ cli_py_library(
         ":config",
         ":request",
         "//factory/cli/src/tbhbdev/alpha:brief",
-        "//factory/cli/src/tbhbdev/alpha:identity",
         "//factory/cli/src/tbhbdev/alpha/agent:model",
+        "//factory/cli/src/tbhbdev/alpha/identity:models",
     ],
 )
 
@@ -109,8 +109,8 @@ cli_py_library(
     visibility = ["//factory/cli:__subpackages__"],
     deps = [
         ":repo",
-        "//factory/cli/src/tbhbdev/alpha:identity",
         "//factory/cli/src/tbhbdev/alpha/agent:model",
+        "//factory/cli/src/tbhbdev/alpha/identity:models",
     ],
 )
 
@@ -139,4 +139,11 @@ filegroup(
         "//factory/cli:__pkg__",
         "//factory/cli/tests:__pkg__",
     ],
+)
+
+cli_py_library(
+    name = "host_names",
+    srcs = ["host_names.py"],
+    imports = ["../../../.."],
+    visibility = ["//factory/cli:__subpackages__"],
 )

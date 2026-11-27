@@ -2,12 +2,9 @@
 description: Agent isolation constraints, coordination, and cleanup.
 generated:
   - role: generated
-    harness: codex:0.171.0
-    model: openai:gpt-6.2-sol
-    effort: high
-    surface: exec
-    session: sha-256-64:538313a7c1a2beca
-    at: "2026-11-26T23:39:03Z"
+    harness: codex
+    model: openai:gpt-6
+    at: "2026-11-27T09:06:58Z"
 status: stable
 tags: [alpha]
 title: Agent isolation limits
@@ -18,7 +15,7 @@ type: Reference
 
 Run-host runs git in a run clone only during `clone_run` and `create`, before launch. After the harness starts, run-host never runs git in that clone. The controller's `diff` command can read committed work there through the run account's SSH connection. An operator who runs `git add -A` or `git stash` in a run clone can run a nested repository's clean filter. The port never runs those commands in a run clone.
 
-Run-host checks out `agent/NAME` for a build and leaves upstream tracking unset. Each run clone gets a `reference-transaction` hook pinned to the run branch and starting commit. In prepared transactions, it refuses updates to other local branches and requires each new run-branch tip to descend from the start. Git's files backend can rename a branch without reporting a prepared transaction. Deleting the run branch and updating tags, remote-tracking refs, the stash, and detached `HEAD` are allowed. The pre-push hook accepts only `refs/heads/agent/NAME` as a branch destination. Run-host's own Git commands run with hooks disabled. The legacy sandbox probes keep `.git/config` read-only. In those probes, use `git switch --no-track -c x origin/main` and push with an explicit destination branch, such as `git push origin HEAD:refs/heads/x`.
+Run-host checks out `agent/NAME` for a build and leaves upstream tracking unset. Each run clone gets a `reference-transaction` hook pinned to the run branch and starting commit. In prepared transactions, it refuses updates to other local branches and requires each new run-branch tip to descend from the start. Git's files backend can rename a branch without reporting a prepared transaction. The reference-transaction hook permits deletion of the run branch. It also permits updates to tags, remote-tracking refs, the stash, and detached `HEAD`. The pre-push hook allows the run branch as the branch destination, or the branch that `--start-ref` specifies. Run-host turns off hooks for its own Git commands. The legacy sandbox probes prevent writes to `.git/config`. In those probes, use `git switch --no-track -c x origin/main` and push with an explicit destination branch, such as `git push origin HEAD:refs/heads/x`.
 
 Every `agent exec` run has the account’s full access. It can read the account’s 1Password Connect token and every secret the account can read, and write anything the account can write. Codex, Claude and agy use this behavior for both build and review profiles. The agent account supplies the boundary. A child can leave the process group and keep running after the run ends.
 Runs skip sandbox policy checks, executable trust checks and write-root audits. They still refuse mise shims.
@@ -53,21 +50,19 @@ The tmux socket is `-S <sockets_dir>/agents`. The driver creates the configured 
 
 `wait` prefers the final answer and returns the run's exit status. Its poll interval defaults to 30 seconds (`TBHB_AGENT_WAIT_POLL`). Consecutive connection failures stop after 240 seconds (`TBHB_AGENT_WAIT_UNREACHABLE`) with exit status 75. Exit codes 1 and 75 overlap with harness exit codes. Read the first result line to distinguish an unknown or unreachable run from a harness result. Agent text follows that line.
 
-The build harness pushes its branch and opens any new pull request. With `--start-ref`, run-host fast-forwards the selected remote branch after the harness succeeds.
-
-For a build using its own branch, run-host checks for new commits after the harness succeeds. It compares local branch tips and detached `HEAD` with the history recorded before launch, including refs fetched during preparation. Remote-tracking refs added or changed during the harness run do not affect that history. Run-host records the new tip for the checked-out run branch when available. When the run branch is not checked out, it can record a new tip from another local branch or detached `HEAD`.
+The build pushes its branch and opens any new pull request from the harness. A build with `--start-ref` pushes to the remote branch from that option.
 
 | Exit status | Result |
 | --- | --- |
 | 0 | The build meets its commit and push requirements, or the host posts the review. |
-| 4 | The commit check or the `--start-ref` push fails. The log starts the reason line with `commit check failed:`, `push skipped:`, or `push failed:`. |
+| 4 | The commit check fails. The log starts the reason line with `commit check failed:`. |
 | 6 | The build produced no new commit with `--expect-commit` enabled by default. The log starts the reason line with `no new commit:`. |
-| 9 | The build's own branch did not get a new tip on origin or the host could not verify it. The log starts the reason line with `push failed:`. |
+| 9 | The destination branch lacks the build commit on origin, or the host couldn't verify it. The log starts the reason line with `push failed:`. |
 | 10 | The harness succeeded but the host did not post a review. The log starts the reason line with `review not posted:`. |
 
-The commit check refuses new tips outside the starting commit's ancestry and lists their count and short commit IDs in the log. It also refuses a checked-out run branch when new commits exist only on other branches.
+The commit check compares local branch tips and detached `HEAD` with the refs recorded before the harness started, including refs fetched during preparation. It refuses new history outside the starting commit's ancestry and records the count and short commit IDs in the log. If the harness leaves the run branch checked out and other branches contain new commits, the check requires new history on the run branch. When a build requires a commit, run-host verifies that the destination branch on origin contains the recorded commit.
 
-If the harness fails, run-host keeps its exit status. `tbhbdev alpha agent status NAME` shows the last publication reason next to the return code when the run ends with a nonzero status and the log contains a reason.
+If a build harness fails, run-host keeps its exit status, log, and worktree. Committed work remains available for patch export, including work at the current checkout when the run branch has no new commit. `tbhbdev alpha agent status NAME` shows the last recorded reason next to a nonzero return code when the log contains a reason.
 
 Each claim writes a random run ID to the local metadata and the remote `<name>.owner` file before extracting inputs. Every remote command reads the ID from the first line of its stdin and compares it with `<name>.owner`, so the ID never appears in an ssh argument list or a host audit log. The tmux start passes run-host `--owned`, and run-host checks `<name>.owner` first. The file must be a regular file, never a symlink. Its mode must be 0600 and its owner the running user. Its content must be the ID followed by a newline. An empty ID, a missing file, a directory, a named pipe or any other content refuses the start with exit status 1 and leaves the earlier run's files untouched. Run-host writes its log and return code for a failed start only while it holds `<name>.run.lock`. A refusal before that point leaves every record unchanged. Later commands check that ID before they act. A mismatch or missing owner archives local metadata and reports `not owner`. After a transfer error, the driver retains metadata only when a remote owner check succeeds. The driver sends the raw brief and starts run-host with the configured `--host`. Every tmux call uses `-f /dev/null`, and session creation passes an absolute executable with separate arguments.
 

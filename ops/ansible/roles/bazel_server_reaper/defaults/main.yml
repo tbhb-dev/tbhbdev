@@ -1,4 +1,3 @@
 ---
-bazel_server_reaper_enabled: true
 bazel_server_reaper_dry_run: true
 bazel_server_reaper_user: agent

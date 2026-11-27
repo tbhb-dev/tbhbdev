@@ -10,10 +10,6 @@ argument_specs:
           The active command <home>/.local/bin/claude links to the pinned native binary.
           A host without the account skips the install until the next run. Old versions stay in place.
     options:
-      claude_code_install:
-        type: bool
-        default: true
-        description: Whether to install the pinned Claude Code for the account.
       claude_code_account:
         type: str
         default: agent

@@ -4,10 +4,9 @@
     tbhbops connect token-commands [--host H ...] [--ops-session H]
                                   [--runner-vm H ...] [--dry-run]
     tbhbops connect check [--host H] [--ops-controller] [--inventory PATH]
-    tbhbops o11y init --data-dir PATH [--secrets-owner UID:GID] [--dry-run]
+    tbhbops o11y init --data-dir PATH [--dry-run]
     tbhbops o11y render --source PATH --out PATH [--config-root ABSOLUTE_PATH]
     tbhbops o11y validate --source PATH
-    tbhbops o11y rustfs-probe --source PATH
 
 Run `tbhbops gitleaks generate --help` for the settings it reads.
 """
@@ -25,6 +24,7 @@ from typing import TextIO
 lazy from collections.abc import Callable, Mapping
 
 from tbhbops import dns_smoke
+
 from tbhbops_cli import (
     config,
     connect,
@@ -214,11 +214,6 @@ def parser() -> argparse.ArgumentParser:
         default=Path("dns-smoke-artifacts"),
         help="the directory for failure logs; default dns-smoke-artifacts",
     )
-    smoke.add_argument(
-        "--dedicated-engine",
-        metavar="DOCKER_HOST",
-        help=("the dedicated Docker engine URI, such as unix:///run/dind/docker.sock"),
-    )
     o11y.add_parser(groups)
     s3.add_parser(groups)
     return top
@@ -306,7 +301,7 @@ def generate(system: System, out: TextIO, *, dry_run: bool) -> None:
         out.write(f"{status}: {gitleaks.REF}\n")
 
 
-def token_commands(  # noqa: PLR0913  # the command's options, each one a fact
+def token_commands(  # the command's options, each one a fact
     system: System,
     out: TextIO,
     *,

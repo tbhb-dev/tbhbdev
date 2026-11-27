@@ -2,7 +2,6 @@
 """RustFS classifiers never disclose diagnostic text."""
 
 import pytest
-
 from tbhbops.o11y import rustfs_probe as probe
 
 
@@ -40,44 +39,5 @@ def test_compose_data_dir() -> None:
     assert probe.VM_DATA_NAME == "probe"
 
 
-def test_clean_log_and_wording() -> None:
+def test_clean_log() -> None:
     assert probe.start_log('noise\n{"console_enabled":false}\n') is None
-    assert probe.CRASH_FAILURE == (
-        "an acknowledged write was lost or a listed key is unreadable after a kill"
-    )
-
-
-@pytest.mark.parametrize(
-    "text",
-    [
-        "",
-        "probe: 0 acknowledged writes survived",
-        "probe: -1 acknowledged writes survived",
-        "secret probe: 5 acknowledged writes survived",
-        "probe: 5 acknowledged writes survived secret",
-        "probe: 5 acknowledged writes survived\nprobe: 6 acknowledged writes survived",
-    ],
-)
-def test_invalid_survivors(text: str) -> None:
-    assert probe.survivors(text) is None
-
-
-def test_survivors_only_returns_count() -> None:
-    assert (
-        probe.survivors("private\nprobe: 005 acknowledged writes survived\nprivate")
-        == "5 acknowledged writes survived"
-    )
-    assert probe.survivors("probe: 1 acknowledged writes survived") == (
-        "1 acknowledged writes survived"
-    )
-
-
-@pytest.mark.parametrize("name", ["", "..", "a..b", "../a", "/a", "a/b"])
-def test_unsafe_names(name: str) -> None:
-    with pytest.raises(ValueError, match=r"^unsafe probe basename$"):
-        probe.basename(name)
-
-
-def test_safe_names() -> None:
-    assert probe.basename("data") == "data"
-    assert probe.basename("rustfs") == "rustfs"

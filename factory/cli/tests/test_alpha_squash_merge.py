@@ -18,17 +18,17 @@ from fake_tool import (
     RULES_BEYOND_ONE,
     link_git,
     pythonpath,
-    write_fake,
     write_private_config,
     write_test_hooks,
 )
 from hypothesis import example, given
 from hypothesis import strategies as st
+from squash_merge_fixtures import write_isolated_tool
 
-from tbhbdev.alpha import identity as agent_identity
 from tbhbdev.alpha import pull_request as pr
 from tbhbdev.alpha import squash_merge as sm
 from tbhbdev.alpha import tool_pins
+from tbhbdev.alpha.identity import dispatcher as agent_identity
 from tbhbdev.alpha.secret_scan import REPO_RULES, without_name_rules
 
 SRC = Path(sm.__file__).parents[2]
@@ -219,7 +219,7 @@ def tools(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Tools:
     link_git(git_dir)
     version = tool_pins.pinned_version("gitleaks")
     for name, body in (("gh", GH), ("cog", COG), ("gitleaks", GITLEAKS)):
-        write_fake(bin_dir / name, body.format(version=version))
+        write_isolated_tool(bin_dir / name, body.format(version=version))
     # One statement, not a loop: under Bazel's clean environment there is
     # nothing to remove, and a loop body that never runs is a missed branch.
     prefixes = ("CLAUDE", "CODEX", "ANTIGRAVITY", "GIT_")

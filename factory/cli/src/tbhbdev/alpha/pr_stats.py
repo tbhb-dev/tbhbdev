@@ -16,8 +16,8 @@ import sys
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, cast
 
-from tbhbdev.alpha import identity
 from tbhbdev.alpha import pull_request as pr
+from tbhbdev.alpha.identity import dispatcher as identity
 
 if TYPE_CHECKING:
     from collections.abc import Mapping, Sequence

@@ -94,6 +94,10 @@ jobs:
         if: matrix.workspace == '.'
         run: bazelisk test --config=ci //factory/cli:mutmut_test
 
+      - name: Run factory/github-metrics mutation report
+        if: matrix.workspace == '.'
+        run: bazelisk test --config=ci //factory/github-metrics:store_mutation_nightly_test
+
       - name: Prove incremental mutation
         if: matrix.workspace == 'lib/rules/python/e2e/workspace'
         working-directory: .

@@ -198,7 +198,11 @@ linters:
       # Every imported Go file still goes through the linter.
       - path: ^factory/agent-capacity/
         linters: [errcheck]
-        text: '(?i)Error return value of .((os\.)?std(out|err)\..*|.*Close|.*Flush|os\.Remove(All)?|.*print(f|ln)?|os\.(Un)?Setenv). is not checked'
+        text: >-
+          (?i)Error return value of
+          .((os\.)?std(out|err)\..*|.*Close|.*Flush|os\.Remove(All)?|.*print(f|ln)?|os\.(Un)?Setenv). is not checked
       - path: ^factory/agent-capacity/
         linters: [gosec]
-        text: 'G(103: Use of unsafe calls should be audited|204: Subprocess launched with variable|304: Potential file inclusion via variable)'
+        text: >-
+          G(103: Use of unsafe calls should be audited|204: Subprocess launched with variable|304: Potential file
+          inclusion via variable)

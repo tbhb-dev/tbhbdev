@@ -16,10 +16,7 @@
 
 - name: preflight | Check Docker and Compose
   ansible.builtin.command:
-    argv: "{{ item }}"
-  loop:
-    - [docker, --version]
-    - [docker, compose, version]
+    argv: [docker, compose, version]
   changed_when: false
   check_mode: false
 

@@ -10,7 +10,7 @@ from test_alpha_agent_request import BUILD, CLAUDE
 
 from tbhbdev.alpha.agent.decisions import driver, request
 from tbhbdev.alpha.agent.model import Harness, Invalid, Profile, RunKind
-from tbhbdev.alpha.identity import AGY_MODELS
+from tbhbdev.alpha.identity.models import AGY_MODELS
 
 CONFIG = settings()
 RUN = request.parse(BUILD, host_allows_unsandboxed=True)
