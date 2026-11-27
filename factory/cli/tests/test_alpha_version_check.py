@@ -8,7 +8,6 @@ from pathlib import Path
 
 import pytest
 
-from tbhbdev import alpha
 from tbhbdev.alpha import version_check
 
 A = "a" * 40
@@ -375,22 +374,3 @@ def test_exit_status(states: list[str], status: int) -> None:
 def test_reference_without_stamps_is_none() -> None:
     assert version_check.reference([None, None]) is None
     assert version_check.reference([]) is None
-
-
-def test_the_alpha_dispatcher_runs_version_check(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    seen: list[tuple[list[str], str]] = []
-
-    def main(argv: list[str], prog: str) -> int:
-        seen.append((argv, prog))
-        return 7
-
-    monkeypatch.setitem(alpha.COMMANDS, "version-check", main)
-    assert alpha.main(["version-check", "--json"], "tbhbdev alpha") == 7
-    assert seen == [(["--json"], "tbhbdev alpha version-check")]
-
-
-def test_the_alpha_usage_lists_version_check() -> None:
-    assert "version-check [--host NAME ...]" in alpha.USAGE
-    assert alpha.COMMANDS["version-check"] is version_check.main

@@ -21,7 +21,7 @@ from agent_driver_example import execution_arguments, setup
 from agent_example import settings
 
 from tbhbdev import telemetry
-from tbhbdev.alpha import agent
+from tbhbdev.alpha.agent import command as agent
 
 if TYPE_CHECKING:
     from collections.abc import Callable

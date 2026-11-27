@@ -13,7 +13,7 @@ import httpx
 import pytest
 from agent_example import LINUX, MACOS, settings
 
-from tbhbdev.alpha import agent
+from tbhbdev.alpha.agent import command as agent
 from tbhbdev.alpha.agent import driver, signing_parity, transport
 from tbhbdev.alpha.agent import settings as agent_settings
 from tbhbdev.alpha.agent.model import Invalid
