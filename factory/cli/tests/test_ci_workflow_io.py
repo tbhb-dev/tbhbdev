@@ -1,5 +1,7 @@
 """Exercise the shell steps in the root CI workflow."""
 
+import hashlib
+import json
 import os
 import subprocess
 from pathlib import Path
@@ -94,6 +96,79 @@ def test_ci_shards_affected_targets(tmp_path: Path) -> None:
                 else [f"No targets in shard {shard}."]
             )
             assert run.stdout.splitlines() == expected_output
+
+
+def test_ci_runs_cli_coverage_in_parallel() -> None:
+    jobs = _workflow_jobs()
+    bazel = _mapping(jobs["bazel"])
+    coverage = _mapping(jobs["cli-coverage"])
+    assert "needs" not in coverage
+    assert coverage["if"] == (
+        "github.event_name == 'pull_request' || github.event_name == 'merge_group'"
+    )
+    assert coverage["runs-on"] == bazel["runs-on"]
+    assert coverage["environment"] == bazel["environment"]
+
+    checkout, setup, cache, selector, check = _workflow_steps(coverage)
+    bazel_checkout, bazel_setup, bazel_cache, bazel_selector, _, test, _ = (
+        _workflow_steps(bazel)
+    )
+    assert checkout == bazel_checkout
+    assert setup == {
+        **bazel_setup,
+        "with": {
+            **_mapping(bazel_setup["with"]),
+            "disk-cache": "${{ github.workflow }}-${{ github.job }}-ubuntu-26.04",
+        },
+    }
+    assert cache == bazel_cache
+    assert selector == bazel_selector
+    assert check["if"] == test["if"] == "steps.affected.outputs.count != '0'"
+    assert check["run"] == "bazelisk run --config=ci //factory/cli:coverage"
+    assert check["id"] == "coverage"
+    assert coverage["outputs"] == {"coverage": "${{ steps.coverage.outcome }}"}
+
+
+@pytest.mark.parametrize(
+    ("event", "targets", "job_result", "step_outcome", "accepted"),
+    [
+        ("pull_request", b"//:tests\n", "success", "success", True),
+        ("merge_group", b"//:tests\n", "success", "success", True),
+        ("pull_request", b"", "success", "skipped", True),
+        ("merge_group", b"//:tests\n", "success", "skipped", False),
+        ("pull_request", b"//:tests\n", "failure", "failure", False),
+        ("merge_group", b"//:tests\n", "cancelled", "cancelled", False),
+        ("merge_group", b"", "skipped", "", False),
+        ("workflow_dispatch", b"//:tests\n", "skipped", "", True),
+    ],
+)
+def test_ci_conclusion_requires_cli_coverage(
+    event: str, targets: bytes, job_result: str, step_outcome: str, accepted: bool
+) -> None:
+    conclusion = _mapping(_workflow_jobs()["conclusion"])
+    required = _list(conclusion["needs"])
+    assert "cli-coverage" in required
+    needs: dict[object, dict[str, object]] = {
+        job: {"result": "success"} for job in required
+    }
+    if event != "pull_request":
+        needs["pr-size"]["result"] = "skipped"
+    digest = hashlib.sha256(targets).hexdigest()
+    needs["bazel"]["outputs"] = {f"shard-{shard}": digest for shard in range(1, 5)}
+    needs["cli-coverage"] = {
+        "result": job_result,
+        "outputs": {"coverage": step_outcome},
+    }
+
+    step = next(step for step in _workflow_steps(conclusion) if "run" in step)
+    run = subprocess.run(
+        _shell_command(step),
+        env={**os.environ, "EVENT": event, "NEEDS": json.dumps(needs)},
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    assert (run.returncode == 0) == accepted, run.stderr
 
 
 @pytest.mark.parametrize("case", ["listed", "unlisted", "missing"])
