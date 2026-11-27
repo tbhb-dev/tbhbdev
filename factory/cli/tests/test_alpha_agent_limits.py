@@ -8,7 +8,7 @@ import sys
 from typing import TYPE_CHECKING
 
 import pytest
-from agent_example import LINUX, MARKER, settings
+from agent_example import LINUX
 
 from tbhbdev.alpha.agent.decisions import limits, remote
 from tbhbdev.alpha.agent.model import Os
@@ -18,7 +18,6 @@ if TYPE_CHECKING:
 
 pytestmark = pytest.mark.usefixtures("isolated_home")  # noqa: V107
 
-CONFIG = settings(reference=f"{MARKER}/{MARKER}/{MARKER}")
 FINE = limits.Reading(1.0, 8, 1000, 500, 100, 10, None)
 
 

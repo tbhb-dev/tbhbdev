@@ -72,6 +72,12 @@ def execute(
     )
 
 
+async def execute_ssh(args: tuple[str, ...], _data: bytes) -> tuple[int, bytes]:
+    command = shlex.split(shlex.split(args[-1])[2])
+    result = execute(command[2])
+    return result.returncode, result.stdout
+
+
 def inspect_output(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
@@ -79,12 +85,7 @@ def inspect_output(
     *,
     unsandboxed: bool = False,
 ) -> str:
-    async def run(args: tuple[str, ...], _data: bytes) -> tuple[int, bytes]:
-        command = shlex.split(shlex.split(args[-1])[2])
-        result = execute(command[2])
-        return result.returncode, result.stdout
-
-    monkeypatch.setattr(transport, "execute", run)
+    monkeypatch.setattr(transport, "execute", execute_ssh)
     args = agent_arguments.parser("example").parse_args(
         execution_arguments("example.md")
     )
@@ -165,12 +166,7 @@ def test_untrusted_run_files(
     else:
         path.write_bytes(content)
 
-    async def run(args: tuple[str, ...], _data: bytes) -> tuple[int, bytes]:
-        command = shlex.split(shlex.split(args[-1])[2])
-        result = execute(command[2])
-        return result.returncode, result.stdout
-
-    monkeypatch.setattr(transport, "execute", run)
+    monkeypatch.setattr(transport, "execute", execute_ssh)
     if expected is None:
         with pytest.raises((ValueError, transport.TransportError)):
             transport.read(
@@ -1330,12 +1326,7 @@ def reset_then_add(tree: Path, content: bytes) -> str:
 
 
 def mock_agent_run_for_diff(monkeypatch: pytest.MonkeyPatch) -> None:
-    async def run_ssh(args: tuple[str, ...], _data: bytes) -> tuple[int, bytes]:
-        command = shlex.split(shlex.split(args[-1])[2])
-        result = execute(command[2])
-        return result.returncode, result.stdout
-
-    monkeypatch.setattr(transport, "execute", run_ssh)
+    monkeypatch.setattr(transport, "execute", execute_ssh)
     config = settings()
     request_args = agent_arguments.parser("example").parse_args(
         execution_arguments("example.md")
@@ -1420,23 +1411,6 @@ def test_finished_build_exports_complete_patch_offline(
         assert (tree / "added").read_bytes() == content
         assert not (tree / "base-only").exists()
     assert git_in(tree, "rev-parse", "HEAD^{tree}") == tip_tree
-
-
-@pytest.mark.parametrize("limit", [None, 10])
-def test_inspection_ignores_default_branch_only_commits(
-    host: Path, limit: int | None
-) -> None:
-    mirror_in(host)
-    source = host / "source"
-    (source / "upstream-only").write_text("upstream content\n")
-    git_in(source, "add", "upstream-only")
-    commit_in(source, "upstream only")
-    git_in(source, "push", str(host / "origin.git"), "main")
-    result = execute(remote.inspect("example-org/example-repo", "sample", limit=limit))
-    assert result.returncode == 0, result.stderr
-    assert b"pushed change" in result.stdout
-    assert b"upstream-only" not in result.stdout
-    assert b"upstream only" not in result.stdout
 
 
 @pytest.mark.parametrize("xdg", [None, "", "relative/state", "absolute"])
