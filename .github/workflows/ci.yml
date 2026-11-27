@@ -168,10 +168,8 @@ jobs:
             printf '%s\n\n%s\n' "$PR_TITLE" "$PR_BODY" | bazel run --config=ci @tbhb_rules//lint:gitleaks_text
           fi
 
-      # Both entry points query the live Go vulnerability database.
       - name: Scan github-metrics for Go vulnerabilities
         run: |
-          bazel run --config=ci //factory/github-metrics:govulncheck
           bazel test --config=ci //factory/github-metrics:govulncheck_test
 
   pr-size:
