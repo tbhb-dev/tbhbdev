@@ -48,7 +48,9 @@ ops_py_test(
         "invalid_dashboard.json",
         "//ops:deployment_fixtures",
         "//ops:o11y_fixtures",
+        "@promtool_test_tool//:promtool",
     ],
+    env = {"TBHB_PROMTOOL": "$(rlocationpath @promtool_test_tool//:promtool)"},
     deps = [
         ":conftest",
         ":tests",
