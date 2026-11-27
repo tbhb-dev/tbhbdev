@@ -2124,14 +2124,42 @@ def opened_by(env: Mapping[str, str]) -> tuple[str | None, str | None]:
     return ident.root, f"{OPENED_KEY}: {value}"
 
 
+def run_size_review_in_pane(
+    argv: Sequence[str], name: str, directory: Path
+) -> tuple[str, str]:
+    """Give a headless run its own named pane for the launcher to identify."""
+    tmux = find_tool("tmux")
+    server = [tmux, "-S", str(directory / "tmux.sock"), "-f", os.devnull]
+    stdout, stderr = directory / "stdout", directory / "stderr"
+    signal = shlex.join([tmux, "wait-for", "-S", "finished"])
+    select = shlex.join([tmux, "select-pane", "-T", name])
+    # Keep the shell's pane open while the launcher uses noninteractive stdin.
+    script = (
+        f"trap {shlex.quote(signal)} EXIT\n"
+        f"{{ {select} && {shlex.join(argv)} </dev/null; }} "
+        f">{shlex.quote(str(stdout))} 2>{shlex.quote(str(stderr))}\n"
+    )
+    try:
+        done = run([
+            *server, "start-server", ";", "set-option", "-s", "exit-empty", "off",
+            ";", "new-session", "-d", "-s", name, "/bin/sh", "-c", script,
+            ";", "wait-for", "finished",
+        ])  # fmt: skip
+        if done.returncode:
+            return done.stdout, done.stderr
+        return stdout.read_text(), stderr.read_text()
+    finally:
+        run([*server, "kill-server"])
+
+
 def start_size_review(
     repo: str,
-    base: str,
+    base: tuple[str, str],
     head: str,
     counts: size_gate.SizeCounts,
     env: Mapping[str, str],
 ) -> None:
-    """Start the standard review launcher on the oversized commit."""
+    """Start the sizing review with the base branch and the commit counted."""
     host = env.get("TBHBDEV_SIZE_REVIEW_HOST")
     if not host:
         message = "set TBHBDEV_SIZE_REVIEW_HOST to a configured review host"
@@ -2142,10 +2170,12 @@ def start_size_review(
         if detected and detected[0] == agent_identity.ANTIGRAVITY
         else ("agy", "gemini-4-argon-high")
     )
+    branch, base_commit = base
     options = {
         "--host": host,
         "--repo": repo,
         "--ref": head,
+        "--fetch-ref": f"refs/heads/{branch}",
         "--harness": harness,
         "--model": model,
         "--effort": "high",
@@ -2157,20 +2187,32 @@ def start_size_review(
     argv = [find_tool("tbhbdev"), "alpha", "agent", "exec"]
     argv.extend(word for option in options.items() for word in option)
     template = (size_gate.DATA / "review.md").read_text()
+    name = f"{size_gate.SIZE_REVIEW}-{head[:12]}"
     with tempfile.TemporaryDirectory() as directory:
         prompt = Path(directory) / "sizing.md"
         prompt.write_text(
             template.format(
-                base=base, head=head, code=counts.code_lines, raw=counts.raw_lines
+                base=base_commit,
+                head=head,
+                code=counts.code_lines,
+                raw=counts.raw_lines,
             )
         )
-        done = run([*argv, f"{size_gate.SIZE_REVIEW}-{head[:12]}", str(prompt)])
-    print(done.stdout, end="")
-    print(done.stderr, end="", file=sys.stderr)
+        argv.extend((name, str(prompt)))
+        if env.get("TBHBDEV_AGENT_RUN") == "1" and not env.get("TMUX_PANE"):
+            stdout, stderr = run_size_review_in_pane(argv, name, prompt.parent)
+        else:
+            done = run(argv)
+            stdout, stderr = done.stdout, done.stderr
+    print(stdout, end="")
+    print(stderr, end="", file=sys.stderr)
 
 
 def size_review_allows(
-    base: str, head: str, counts: size_gate.SizeCounts, env: Mapping[str, str]
+    base: tuple[str, str],
+    head: str,
+    counts: size_gate.SizeCounts,
+    env: Mapping[str, str],
 ) -> bool:
     """Read the verdict for this head or start the review that supplies it."""
     try:
@@ -2265,7 +2307,7 @@ def check_size(
         if dry_run:
             print(f"warning: {args.draft}:1: {why}", file=sys.stderr)
             return
-        if size_review_allows(base_commit, head, counts, env):
+        if size_review_allows((branch, base_commit), head, counts, env):
             return
         checked.problems.append((1, why))
         print(f"{args.draft}:1: {why}")

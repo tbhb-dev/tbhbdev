@@ -274,7 +274,7 @@ def test_pr_check(
     )
     if problem:
         size_launcher.assert_called_once_with(
-            "owner/repo", BASE_COMMIT, HEAD_COMMIT, counts, {}
+            "owner/repo", ("main", BASE_COMMIT), HEAD_COMMIT, counts, {}
         )
         assert checked.problems == [(1, f"{problem}: split into stacked PRs")]
         assert captured.out.endswith(f"draft.md:1: {problem}: split into stacked PRs\n")
@@ -367,7 +367,7 @@ def test_pr_create_size(
     assert post.called is (failure != "over")
     if failure == "over":
         size_launcher.assert_called_once_with(
-            "owner/repo", BASE_COMMIT, HEAD_COMMIT, counts, {}
+            "owner/repo", ("main", BASE_COMMIT), HEAD_COMMIT, counts, {}
         )
         assert captured.out == "d.md:1: 401 lines, limit 400: split into stacked PRs\n"
     elif failure != "override":
