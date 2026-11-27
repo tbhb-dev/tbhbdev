@@ -13,7 +13,6 @@ from unittest.mock import Mock, call, patch
 lazy from pathlib import Path
 
 import pytest
-
 from tbhbops.deploy import filesystem as fs
 from tbhbops.deploy.engine import Command, CommandError, Engine
 from tbhbops.deploy.protocol import Json, RefusalError
@@ -596,16 +595,6 @@ def test_prune_removes_release_digests(transaction: Transaction) -> None:
     assert {path.name for path in (transaction.state / "models").iterdir()} == {
         f"{number:040x}.json" for number in range(2, 7)
     }
-
-
-def test_lock_refuses_windows_before_opening_any_path(transaction: Transaction) -> None:
-    with (
-        patch.object(sys, "platform", "win32"),
-        patch.object(fs, "parent") as parent,
-        pytest.raises(OSError, match=r"^receive requires Unix$"),
-    ):
-        Lock(transaction.state).acquire()
-    parent.assert_not_called()
 
 
 def test_windows_import_does_not_load_unix_only_locking() -> None:

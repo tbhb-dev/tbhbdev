@@ -26,7 +26,7 @@ import tbhbdev.alpha.guard_ops_no_lazy_stop
 import tbhbdev.alpha.guard_scripts
 import tbhbdev.alpha.guard_sendmessage_clock
 import tbhbdev.alpha.guard_ssh_agent
-import tbhbdev.alpha.identity
+import tbhbdev.alpha.identity.dispatcher
 import tbhbdev.alpha.install
 import tbhbdev.alpha.pre_push_guard
 import tbhbdev.alpha.run_stop_hook
@@ -106,7 +106,7 @@ commands:
 
 
 def identity_command(argv: list[str], _prog: str) -> int:
-    return tbhbdev.alpha.identity.run(argv, os.environ)
+    return tbhbdev.alpha.identity.dispatcher.run(argv, os.environ)
 
 
 def guard_command(_argv: list[str], _prog: str) -> int:

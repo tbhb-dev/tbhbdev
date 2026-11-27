@@ -99,9 +99,7 @@ class SmokeSystem(Protocol):
     def sleep(self) -> Callable[[float], None]: ...
 
 
-def docker_environment(
-    env: Mapping[str, str], dedicated_engine: str | None
-) -> dict[str, str]:
+def docker_environment(env: Mapping[str, str]) -> dict[str, str]:
     keys = (
         "PATH",
         "HOME",
@@ -110,10 +108,7 @@ def docker_environment(
         "DOCKER_CERT_PATH",
         "DOCKER_TLS_VERIFY",
     )
-    result = {key: env[key] for key in keys if key in env}
-    if dedicated_engine is not None:
-        result["DOCKER_HOST"] = dedicated_engine
-    return result
+    return {key: env[key] for key in keys if key in env}
 
 
 class Service(TypedDict):
@@ -412,7 +407,7 @@ class SmokeProbe:
 
 
 def dispatch(args: argparse.Namespace, system: SmokeSystem, out: TextIO) -> int:
-    probe = SmokeProbe(system, docker_environment(system.env, args.dedicated_engine))
+    probe = SmokeProbe(system, docker_environment(system.env))
     status = 1
     try:
         staging = system.filesystem.temporary_directory()

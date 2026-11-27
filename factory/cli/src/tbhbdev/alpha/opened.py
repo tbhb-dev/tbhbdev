@@ -20,7 +20,7 @@ import json
 from pathlib import Path
 from typing import TYPE_CHECKING, cast
 
-from tbhbdev.alpha.identity import (
+from tbhbdev.alpha.identity.dispatcher import (
     ANTIGRAVITY,
     Json,
     agy_brain_root,
@@ -40,7 +40,7 @@ from tbhbdev.alpha.repo import hook_cwd
 if TYPE_CHECKING:
     from collections.abc import Iterable, Mapping
 
-    from tbhbdev.alpha.identity import Ident
+    from tbhbdev.alpha.identity.dispatcher import Ident
 
 LEDGER = "opened"
 AGY_ENV = "ANTIGRAVITY_CONVERSATION_ID"

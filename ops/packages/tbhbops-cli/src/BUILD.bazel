@@ -23,6 +23,7 @@ py_library(
         "tbhbops_cli/o11y/http.py",
         "tbhbops_cli/o11y/init.py",
         "tbhbops_cli/o11y/invalid/__init__.py",
+        "tbhbops_cli/o11y/polling.py",
         "tbhbops_cli/o11y/ports.py",
         "tbhbops_cli/o11y/receipt.py",
         "tbhbops_cli/o11y/render.py",

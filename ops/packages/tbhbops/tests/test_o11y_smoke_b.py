@@ -8,7 +8,6 @@ from pathlib import Path
 
 import pytest
 import yaml
-
 from tbhbops.o11y import smoke_access as a
 from tbhbops.o11y import smoke_export as e
 from tbhbops.o11y import smoke_filter as f

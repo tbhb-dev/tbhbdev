@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING, TextIO, assert_never
 lazy from pathlib import Path
 
 from tbhbops.o11y import init
+
 from tbhbops_cli.common import CliError
 lazy from tbhbops_cli.o11y.filesystem import Filesystem
 
@@ -13,15 +14,6 @@ if TYPE_CHECKING:
     from collections.abc import Callable
 
     from tbhbops_cli.cli import System
-
-
-def owner(value: str) -> tuple[int, int]:
-    """Parse a numeric uid:gid pair as a usage argument."""
-    parts = value.split(":")
-    if len(parts) != 2 or not all(p.isascii() and p.isdecimal() for p in parts):  # noqa: PLR2004  # uid and gid
-        msg = "expected UID:GID"
-        raise argparse.ArgumentTypeError(msg)
-    return int(parts[0]), int(parts[1])
 
 
 class PlanIncompleteError(Exception):
@@ -211,7 +203,7 @@ def dispatch(args: argparse.Namespace, system: System, out: TextIO) -> int:
             msg = "init: data dir must already exist and be a directory"
             raise CliError(msg)
         result = init.plan(
-            gather(system.filesystem, args.data_dir, system.euid), args.secrets_owner
+            gather(system.filesystem, args.data_dir, system.euid), (0, 0)
         )
         if isinstance(result, init.Incomplete):
             out.write(f"{result.message}\n")

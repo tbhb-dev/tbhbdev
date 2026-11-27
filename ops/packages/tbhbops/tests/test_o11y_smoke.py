@@ -5,7 +5,6 @@ from pathlib import Path
 
 import pytest
 import yaml
-
 from tbhbops.o11y import init, smoke
 lazy from tbhbops.o11y.validate import Document
 
@@ -205,9 +204,13 @@ def test_wal_fails_closed(code: int | None, status: str, wal: str) -> None:
         "body\n200",
         "wal:\n    disk_full_threshold: 0.99\n200",
         "ingester:\n  wal:\n  other:\n    disk_full_threshold: 0.99\n200",
+        response(status="200 "),
+        response(status="200X"),
+        "    disk_full_threshold: 0.99\n200",
+        "ingester:\n    disk_full_threshold: 0.99\n200",
     ],
 )
-def test_wal_missing_structure(text: str) -> None:
+def test_wal_rejects_invalid_response(text: str) -> None:
     assert smoke.wal_threshold(0, text) is not None
 
 
@@ -226,7 +229,7 @@ def services() -> Document:
 
 
 def test_ops_tables() -> None:
-    from tbhbops.o11y import render  # noqa: PLC0415 - default rendered service set
+    from tbhbops.o11y import render
 
     root = next(p for p in Path(__file__).parents if (p / "o11y/compose.yaml").exists())
     model = yaml.safe_load(
@@ -357,19 +360,6 @@ def test_sentinel_boundaries_and_short_draws() -> None:
         smoke.s3_env({init.SECRETS[0].name: b" X\n", init.SECRETS[1].name: b"X \n"})
         == b"AWS_ACCESS_KEY_ID= X\nAWS_SECRET_ACCESS_KEY=X \n"
     )
-
-
-@pytest.mark.parametrize(
-    "text",
-    [
-        response(status="200 "),
-        response(status="200X"),
-        "    disk_full_threshold: 0.99\n200",
-        "ingester:\n    disk_full_threshold: 0.99\n200",
-    ],
-)
-def test_wal_ignores_no_other_structure(text: str) -> None:
-    assert smoke.wal_threshold(0, text) is not None
 
 
 @pytest.mark.parametrize(

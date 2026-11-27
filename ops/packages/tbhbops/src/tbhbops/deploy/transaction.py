@@ -5,7 +5,6 @@ import os
 import re
 import shutil
 import stat
-import sys
 import tempfile
 from dataclasses import dataclass
 lazy import fcntl
@@ -35,22 +34,18 @@ class Lock:
         return self.descriptor is not None
 
     def acquire(self) -> None:
-        if sys.platform != "win32":
-            require(not self.held, "lock already held")
-            with fs.parent(self.state / "lock") as (parent, name):
-                descriptor = fs.open_entry(name, os.O_RDWR | os.O_CREAT, dir_fd=parent)
-            try:
-                fcntl.flock(descriptor, fcntl.LOCK_EX | fcntl.LOCK_NB)
-            except OSError as error:
-                os.close(descriptor)
-                if isinstance(error, BlockingIOError):
-                    message = "live deploy lock"
-                    raise BusyError(message) from None
-                raise
-            self.descriptor = descriptor
-        else:
-            message = "receive requires Unix"
-            raise OSError(message)
+        require(not self.held, "lock already held")
+        with fs.parent(self.state / "lock") as (parent, name):
+            descriptor = fs.open_entry(name, os.O_RDWR | os.O_CREAT, dir_fd=parent)
+        try:
+            fcntl.flock(descriptor, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except OSError as error:
+            os.close(descriptor)
+            if isinstance(error, BlockingIOError):
+                message = "live deploy lock"
+                raise BusyError(message) from None
+            raise
+        self.descriptor = descriptor
 
     def release(self) -> None:
         if self.descriptor is not None:
