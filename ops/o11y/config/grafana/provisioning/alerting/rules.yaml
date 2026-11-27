@@ -75,7 +75,7 @@ groups:
         execErrState: Alerting
         labels: {}
         annotations:
-          summary: Mimir queries have failed or returned no metrics for 10 minutes.
+          summary: Long-range metric queries are failing. The object store is probably unreachable.
           description: Check Mimir and its connection to the object store.
         data:
           - refId: A
@@ -84,7 +84,8 @@ groups:
             model:
               refId: A
               instant: true
-              expr: count(up{namespace="o11y"})
+              # The offset puts this query beyond Mimir's 13h ingester window.
+              expr: count(up{namespace="o11y"} offset 26h)
           - refId: C
             datasourceUid: __expr__
             model:

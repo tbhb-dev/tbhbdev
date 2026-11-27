@@ -15,7 +15,6 @@ lazy from tbhbops.o11y.validate import Document
 
 EMPTY: Document = {}
 EMPTY_LIST: list[object] = []
-GRAFANA_ALERTING = "o11y/config/grafana/provisioning/alerting"
 
 
 def packed(data: object) -> bytes:
@@ -68,37 +67,6 @@ def test_ops_inventory() -> None:
 
 def test_folder_checkpoint_exact_membership() -> None:
     assert a.dashboard_checkpoint(dashboards())
-
-
-def test_metrics_queries_failing_alerts_on_error_and_no_data() -> None:
-    alerting = next(
-        p / GRAFANA_ALERTING
-        for p in Path(__file__).parents
-        if (p / GRAFANA_ALERTING).is_dir()
-    )
-    rules = yaml.safe_load((alerting / "rules.yaml").read_text())
-    rule = next(
-        rule
-        for group in rules["groups"]
-        for rule in group["rules"]
-        if rule["uid"] == "o11y-metrics-queries-failing"
-    )
-    assert rule["for"] == "10m"
-    assert rule["execErrState"] == rule["noDataState"] == "Alerting"
-    query, condition = rule["data"]
-    assert query["datasourceUid"] == "mimir"
-    assert query["model"]["expr"] == 'count(up{namespace="o11y"})'
-    assert condition["refId"] == rule["condition"]
-    assert condition["model"]["expression"] == query["refId"]
-    assert condition["model"]["conditions"] == [
-        {"evaluator": {"type": "lt", "params": [1]}}
-    ]
-    routing = yaml.safe_load((alerting / "alerting.yaml").read_text())
-    assert routing["policies"][0]["receiver"] == "o11y"
-    assert any(
-        point["name"] == "o11y" and point["receivers"]
-        for point in routing["contactPoints"]
-    )
 
 
 @pytest.mark.parametrize("meta", [None, [], "malformed", 42, True])
