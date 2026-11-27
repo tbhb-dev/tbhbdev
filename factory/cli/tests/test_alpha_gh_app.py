@@ -35,6 +35,7 @@ TOKEN = "ghs" + "_FakeInstallationToken0123456789"
 BEGIN = "-----BEGIN " + "RSA PRIVATE KEY-----"
 END = "-----END " + "RSA PRIVATE KEY-----"
 APP_ID = "424242"
+APP_VAULT = "vault-app"
 REPO = "acme/widget"
 SOURCE = Path(gh_app.__file__)
 # The names of the 1Password service account's variable, command and token
@@ -722,9 +723,11 @@ def test_default_main_builds_its_own_env(
 def test_a_mint_writes_hosts_yml_and_prints_only_the_dir(
     capsys: pytest.CaptureFixture[str], tmp_path: Path, rsa: Key
 ) -> None:
-    store, github = app_store(rsa.pem), Github()
-    code, out, err = run(capsys, env_for(tmp_path, store, github), "bot", REPO)
-    out_dir = out_path(tmp_path, "widget")
+    store, github = app_store(rsa.pem, vault=APP_VAULT), Github()
+    code, out, err = run(
+        capsys, env_for(tmp_path, store, github), "bot", REPO, "--vault", APP_VAULT
+    )
+    out_dir = out_path(tmp_path, "widget", vault=APP_VAULT)
     assert (code, out, err) == (0, f"{out_dir}\n", "")
     assert (out_dir / "hosts.yml").read_text() == gh_app.render_hosts("bot", TOKEN)
     assert (out_dir / "app-slug").read_text() == "bot\n"
@@ -738,8 +741,8 @@ def test_a_mint_writes_hosts_yml_and_prints_only_the_dir(
         "hosts.yml",
     ]
     assert store.reads == [
-        "op://tbhb-dev/github-app-bot/app_id",
-        "op://tbhb-dev/github-app-bot/private_key",
+        f"op://{APP_VAULT}/github-app-bot/app_id",
+        f"op://{APP_VAULT}/github-app-bot/private_key",
     ]
 
 
@@ -800,11 +803,11 @@ def test_the_jwt_is_a_real_rs256_signature(
     github = Github()
     store = Store(
         {
-            "op://tbhb-dev/github-app-bot/app_id": f" {APP_ID}\n",
-            "op://tbhb-dev/github-app-bot/private_key": rsa.pem,
+            f"op://{APP_VAULT}/github-app-bot/app_id": f" {APP_ID}\n",
+            f"op://{APP_VAULT}/github-app-bot/private_key": rsa.pem,
         }
     )
-    run(capsys, env_for(tmp_path, store, github), "bot", REPO)
+    run(capsys, env_for(tmp_path, store, github), "bot", REPO, "--vault", APP_VAULT)
     head, payload, _ = github.jwt.split(".")
     assert decode(head) == {"alg": "RS256", "typ": "JWT"}
     assert decode(payload) == {"iat": NOW - 60, "exp": NOW + 540, "iss": APP_ID}
@@ -958,18 +961,20 @@ def test_an_unreadable_field_is_an_error_that_names_no_value(
     missing: str,
     how: str,
 ) -> None:
-    store = app_store(rsa.pem)
-    ref = f"op://tbhb-dev/github-app-bot/{missing}"
+    store = app_store(rsa.pem, vault=APP_VAULT)
+    ref = f"op://{APP_VAULT}/github-app-bot/{missing}"
     if how == "absent":
         del store.values[ref]
     else:
         store.values[ref] = "" if how == "empty" else " \n"
     github = Github()
-    code, out, err = run(capsys, env_for(tmp_path, store, github), "bot", REPO)
+    code, out, err = run(
+        capsys, env_for(tmp_path, store, github), "bot", REPO, "--vault", APP_VAULT
+    )
     assert (code, out) == (1, "")
-    assert err == f"cannot read {missing} from tbhb-dev/github-app-bot\n"
+    assert err == f"cannot read {missing} from {APP_VAULT}/github-app-bot\n"
     assert github.requests == []
-    assert not out_path(tmp_path).exists()
+    assert not out_path(tmp_path, vault=APP_VAULT).exists()
 
 
 def test_the_vault_can_be_overridden(
