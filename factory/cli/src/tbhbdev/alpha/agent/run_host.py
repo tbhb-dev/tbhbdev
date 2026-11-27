@@ -1258,14 +1258,17 @@ def cleanup_bazel(
 def finish(
     run: Run, prepared: Prepared | None, agent: subprocess.Popen[str] | None, rc: int
 ) -> int:
-    bazel, cleanup = "", {}
+    bazel = ""
+    cleanup: dict[str, int] = {}
     try:
-        if (reason := finish_auth(run, prepared)) is not None:
+        try:
+            reason = finish_auth(run, prepared)
+            if reason is not None:
+                rc = 1
+                run.files.write("log", reason)
+        except OSError, ValueError:
             rc = 1
-            run.files.write("log", reason)
-    except OSError, ValueError:
-        rc = 1
-        run.files.write("log", "codex auth write-back failed\n")
+            run.files.write("log", "codex auth write-back failed\n")
     finally:
         try:
             if agent is not None and stop_agent(agent) is False:
@@ -1274,7 +1277,8 @@ def finish(
             process_group.unknown(run.files)
         finally:
             try:
-                if (stopped := run.bazel_shutdown) is None:
+                stopped = run.bazel_shutdown
+                if stopped is None:
                     stopped = shutdown_bazel(run, prepared)
                 bazel = ",".join(sorted({result for result, _ in stopped.values()}))
                 cleanup = cleanup_bazel(run, prepared, stopped)

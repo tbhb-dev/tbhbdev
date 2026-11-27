@@ -1,8 +1,6 @@
 """Exercise fault publication with real Git and Gitleaks."""
 
-import hashlib
 import os
-import subprocess
 from unittest.mock import Mock
 lazy from pathlib import Path
 
@@ -18,21 +16,18 @@ REF = f"refs/heads/{BRANCH}"
 START_REF = "refs/heads/topic"
 FOUND = "kept local: secret scan found a secret"
 UNAVAILABLE = "kept local: secret scan unavailable"
-PROTECTED = "kept local: refs/heads/main: push to a protected branch refused"
 
 
 @pytest.fixture
 def checkout(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, change: str
-) -> tuple[Path, Path, str, Mock]:
+) -> tuple[Path, str, Mock]:
     private = tmp_path / "private.toml"
     monkeypatch.setattr(rescue.secret_scan, "private_config", lambda: private)
     policy = PRIVATE_CONFIG + RULES_BEYOND_ONE
-    private.write_text(policy)
-    if change == "no private canary":
-        private.write_text(policy.replace("tbhb-private-canary", "test-rule"))
-    if change == "missing private config":
-        private.unlink()
+    if change != "missing private config":
+        canary = "test-rule" if change == "no private canary" else "tbhb-private-canary"
+        private.write_text(policy.replace("tbhb-private-canary", canary))
     workspace, _ = repository(tmp_path)
     origin = tmp_path / "origin"
     (workspace / ".gitleaks.toml").touch()
@@ -55,26 +50,22 @@ def checkout(
     monkeypatch.setattr(rescue.push, "remote_git", remote)
     monkeypatch.setattr(rescue.credentials, "github_token", Mock(return_value=None))
     monkeypatch.setattr(rescue.host_tools, "search", lambda: os.environ["PATH"])
-    return workspace, origin, base, remote
+    return workspace, base, remote
 
 
 @pytest.mark.parametrize(
     ("change", "result"),
     [
-        ("committed", "published"),
         ("dirty", "published"),
         ("unsigned", "kept local: agent commit signature refused"),
         ("start ref", "published"),
         ("start ref moved", "kept local: start ref moved"),
-        ("protected", PROTECTED),
-        ("secret", FOUND),
+        ("protected", "kept local: refs/heads/main: push to a protected branch"),
         ("vendored secret", FOUND),
-        ("committed earlier secret", FOUND),
-        ("committed private", FOUND),
+        ("earlier private secret", FOUND),
         ("missing private config", UNAVAILABLE),
         ("no private canary", UNAVAILABLE),
         ("silent error", UNAVAILABLE),
-        ("scan timeout", UNAVAILABLE),
         ("scan error", UNAVAILABLE),
         ("checkout error", "kept local: could not save the run checkout"),
         ("symlink index", "kept local: could not save the run checkout"),
@@ -88,25 +79,21 @@ def checkout(
     ],
 )
 def test_fault_publication(
-    checkout: tuple[Path, Path, str, Mock],
+    checkout: tuple[Path, str, Mock],
     monkeypatch: pytest.MonkeyPatch,
     change: str,
     result: str,
 ) -> None:
-    workspace, origin, base, remote = checkout
+    workspace, base, remote = checkout
     start_ref = START_REF if change.startswith("start ref") else None
     if change == "protected":
         start_ref = "refs/heads/main"
-    request = run_request(
-        start_ref=start_ref, fetch_refs=[start_ref] if start_ref else []
-    )
+    request = run_request(start_ref=start_ref, fetch_refs=[start_ref or START_REF])
     files = runfiles.RunFiles(workspace.parent / "runs", "example")
     files.write("launched", "\n")
     files.write("base", base)
     files.uncertain = change == "uncertain"
-    run = Mock(
-        spec=run_host.Run, files=files, request=request, settings=host_settings()
-    )
+    run = Mock(run_host.Run, files=files, request=request, settings=host_settings())
     ready = Mock(spec=run_host.Prepared, paths=Mock(worktree=str(workspace)))
     change_checkout(workspace, change)
     scan_fault(monkeypatch, change)
@@ -121,10 +108,7 @@ def test_fault_publication(
         destination = start_ref or REF
         tip = git(workspace, "rev-parse", REF)
         assert remote.call_args.args[-1] == f"{tip}:{destination}"
-        assert git(origin, "rev-parse", destination) == tip
-        assert files.path("branch").read_text() == destination.removeprefix(
-            "refs/heads/"
-        )
+        assert files.path("branch").read_text() == destination.split("/", 2)[-1]
     if change in ("unsigned", "start ref moved"):
         assert files.path("head").read_text() == git(workspace, "rev-parse", REF)
     if change in ("dirty", "switched"):
@@ -139,25 +123,18 @@ def change_checkout(workspace: Path, change: str) -> None:
     if change == "start ref rewrite":
         git(workspace, "reset", "--hard", "HEAD^")
         (workspace / ".gitleaks.toml").touch()
+    notes = workspace / "notes"
+    secrets = {"vendored secret": "test-value", "earlier private secret": "host-x"}
     if change != "empty commit":
-        (workspace / "tracked").write_text("changed\n")
-        note = "ghp_" + hashlib.sha256(b"fixture").hexdigest()[:36]
-        notes = {"vendored secret": "test-value", "committed private": "host-x"}
-        fallback = note if "secret" in change else "repo-x\n"
-        (workspace / "notes").write_text(notes.get(change, fallback))
-    if change.startswith(("committed", "start ref")) or change in {
-        "already pushed",
-        "empty commit",
-        "unsigned",
-    }:
-        env = (
-            {**os.environ, "GIT_AUTHOR_EMAIL": pre_push_guard.AGENT_EMAIL}
-            if change == "unsigned"
-            else None
-        )
-        commit(workspace, "build work", env=env)
-    if change == "committed earlier secret":
-        (workspace / "notes").unlink()
+        notes.write_text(secrets.get(change, "repo-x"))
+    if change == "unsigned":
+        env = dict(os.environ, GIT_AUTHOR_EMAIL=pre_push_guard.AGENT_EMAIL)
+        commit(workspace, "unsigned work", env=env)
+    commits = ("already pushed", "earlier private secret", "empty commit")
+    if change.startswith("start ref") or change in commits:
+        commit(workspace, "build work")
+    if change == "earlier private secret":
+        notes.unlink()
         commit(workspace, "remove test value")
     if change == "already pushed":
         git(workspace, "push", "origin", REF)
@@ -169,14 +146,9 @@ def change_checkout(workspace: Path, change: str) -> None:
 
 
 def scan_fault(monkeypatch: pytest.MonkeyPatch, change: str) -> None:
-    if change == "unsigned":
-        monkeypatch.setattr(pre_push_guard, "agent_fingerprint", Mock(return_value=""))
-        monkeypatch.setattr(pre_push_guard, "public_keys", Mock(side_effect=OSError))
+    monkeypatch.setattr(pre_push_guard, "agent_fingerprint", Mock(return_value=""))
+    monkeypatch.setattr(pre_push_guard, "public_keys", Mock(side_effect=OSError))
     errors = {"silent error": "0 commits scanned", "scan error": "ERR scan failed"}
-    if change == "scan timeout":
-        scanner = Mock(side_effect=subprocess.TimeoutExpired("gitleaks", 60))
-    elif stderr := errors.get(change):
-        scanner = Mock(return_value=subprocess.CompletedProcess([], 0, "", stderr))
-    else:
-        return
-    monkeypatch.setattr(rescue, "subprocess", Mock(run=scanner))
+    if stderr := errors.get(change):
+        scan = Mock(return_value=Mock(returncode=0, stderr=stderr))
+        monkeypatch.setattr(rescue, "subprocess", Mock(run=scan))

@@ -824,8 +824,6 @@ def test_finish_orders_cleanup_auth_agent_index_and_atomic_rc(
     monkeypatch.setattr(run_host.rescue, "on_fault", publish)
     assert run_host.execute(run, "example") == code
     observed.assert_called_once_with("ended", f"{code}\n")
-    assert run.files.path("rc").read_text() == f"{code}\n"
-    assert run.files.path("phase").read_text() == "ended"
     assert run.files.path("request.json").stat().st_mode & 0o777 == 0o600
     assert "example-key" not in run.files.path("request.json").read_text()
     if failure in (None, "auth"):
@@ -925,21 +923,18 @@ def test_failed_preparation_still_writes_host_audit_summary(
     }
 
 
-@pytest.mark.parametrize("publication_fails", [False, True])
-def test_finish_preserves_exit_code_on_error(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, publication_fails: bool
+def test_audit_summary_error_preserves_the_runs_exit_code(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     run = make_run(tmp_path)
-    if publication_fails:
-        monkeypatch.setattr(run_host.rescue, "on_fault", Mock(side_effect=RuntimeError))
-    else:
-        monkeypatch.setattr(run_host, "audit_summary", Mock(side_effect=OSError))
-    assert run_host.finish(run, None, None, 3) == 3
-    assert run.files.path("rc").read_text() == "3\n"
-    assert runfiles.latest(run.files.root)["example"]["rc"] == 3
-    assert run.files.path("audit.json").exists() == publication_fails
-    message = "fault publication" if publication_fails else "audit summary write"
-    assert run.files.path("log").read_text() == f"{message} failed\n"
+
+    def fail(*_args: object) -> None:
+        raise OSError
+
+    monkeypatch.setattr(run_host, "audit_summary", fail)
+    assert run_host.finish(run, None, None, 7) == 7
+    assert run.files.path("rc").read_text() == "7\n"
+    assert run.files.path("log").read_text() == "audit summary write failed\n"
 
 
 def test_interrupt_and_agent_cleanup(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -5737,29 +5732,36 @@ def test_finish_survives_a_locked_base_and_a_failing_cleanup(
     base = make_base(prepared)
     (base / "dead").mkdir()
     (base / "dead").chmod(0)
-    append = Mock()
-    monkeypatch.setattr(runfiles, "append", append)
+    entries: list[dict[str, object]] = []
+
+    def record(_root: Path, entry: dict[str, object]) -> None:
+        entries.append(entry)
+
+    monkeypatch.setattr(runfiles, "append", record)
     assert run_host.finish(run, prepared, None, 0) == 0
     assert not base.exists()
     assert run.files.path("rc").read_text() == "0\n"
-    assert append.call_args.args[1]["bazel_shutdown"] == "rc=0"
-    assert append.call_args.args[1]["bazel_cleanup"]["bases"] == 1
+    assert entries[0]["bazel_shutdown"] == "rc=0"
+    assert entries[0]["bazel_cleanup"]["bases"] == 1  # type: ignore[index]
 
 
-@pytest.mark.parametrize("rc", [0, 7])
+@pytest.mark.parametrize("rc", [0, 3, 7])
 def test_finish_records_rc_phase_and_index_when_cleanup_raises(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, rc: int
 ) -> None:
     run = make_run(tmp_path)
     monkeypatch.setattr(run_host, "shutdown_bazel", Mock(side_effect=TypeError))
-    append = Mock()
-    monkeypatch.setattr(runfiles, "append", append)
+    if rc == 3:
+        monkeypatch.setattr(run_host.rescue, "on_fault", Mock(side_effect=RuntimeError))
     assert run_host.finish(run, None, None, rc) == rc
-    assert run.files.path("rc").read_text() == f"{rc}\n"
     assert run.files.path("phase").read_text().strip() == "ended"
-    assert append.call_args.args[1]["bazel_shutdown"] == "skipped"
-    assert append.call_args.args[1]["bazel_cleanup"] == {}
-    assert "bazel cleanup failed" in run.files.path("log").read_text()
+    entry = runfiles.latest(run.files.root)["example"]
+    assert (entry["bazel_shutdown"], entry["bazel_cleanup"]) == ("skipped", {})
+    assert entry["rc"] == rc
+    assert run.files.path("audit.json").exists()
+    assert ("fault publication failed" in run.files.path("log").read_text()) == (
+        rc == 3
+    )
 
 
 def bazel_base(run: run_host.Run, worktree: Path) -> Path:

@@ -25,19 +25,13 @@ VENDORED_RULES = "lib/rules/lint/gitleaks/base.toml"
 
 def on_fault(run: Run, prepared: Prepared | None, rc: int) -> None:
     """Save failed build work and log the publication result."""
-    if (
-        rc == 0
-        or prepared is None
-        or run.request.profile is not Profile.BUILD
-        or not run.files.path("launched").exists()
-        or not run.files.path("base").exists()
-    ):
+    if rc == 0 or prepared is None or run.request.profile is not Profile.BUILD:
         return
-    result = (
-        "kept local: harness shutdown unconfirmed"
-        if run.files.uncertain
-        else publish(run, Path(prepared.paths.worktree))
-    )
+    if not all(run.files.path(name).exists() for name in ("launched", "base")):
+        return
+    result = "kept local: harness shutdown unconfirmed"
+    if not run.files.uncertain:
+        result = publish(run, Path(prepared.paths.worktree))
     run.files.write("log", f"fault publication: {result}\n")
 
 
@@ -75,10 +69,8 @@ def save_checkout(directory: Path, checkout: Path, ref: str) -> str | None:
         message = "unexpected symlink in run Git metadata"
         raise OSError(message)
     with (directory / "config").open("a") as config:
-        config.write(
-            "[core]\nfsmonitor = false\n"
-            "[user]\nname = Run launcher\nemail = run-launcher\n"
-        )
+        config.write("[core]\nfsmonitor = false\n[user]\n")
+        config.write("name = Run launcher\nemail = run-launcher\n")
     location = ("--git-dir", str(directory), "--work-tree", str(checkout))
     env = {"GIT_INDEX_FILE": str(index), "GIT_OBJECT_DIRECTORY": str(objects)}
     git = partial(push.history_git, directory, *location, extra_env=env)
@@ -103,7 +95,8 @@ def save_checkout(directory: Path, checkout: Path, ref: str) -> str | None:
 
 def publish_commit(run: Run, directory: Path, ref: str, base: str, tip: str) -> str:
     """Send the scanned object with a single, unforced refspec."""
-    start_ref = run.request.start_ref
+    request = run.request
+    start_ref = request.start_ref
     remote_ref = start_ref or ref
     if problem := pre_push_guard.destination_problem(
         remote_ref,
@@ -113,15 +106,12 @@ def publish_commit(run: Run, directory: Path, ref: str, base: str, tip: str) -> 
         start_ref=start_ref,
     ):
         return f"kept local: {problem}"
-    host, owner, name = repo.parts(run.request.repo)
+    host, owner, name = repo.parts(request.repo)
     url = f"https://{host}/{owner}/{name}.git"
-    account = next(
-        c for c in run.settings.credentials if c.account == run.request.account
-    )
-    token = credentials.github_token(run.request, account)
-    current = push.remote_git(
-        directory, "ls-remote", "--refs", url, remote_ref, token=token
-    )
+    account = next(c for c in run.settings.credentials if c.account == request.account)
+    token = credentials.github_token(request, account)
+    git = partial(push.remote_git, directory, token=token)
+    current = git("ls-remote", "--refs", url, remote_ref)
     if start_ref and current != f"{base}\t{start_ref}":
         return "kept local: start ref moved"
     if current == f"{tip}\t{remote_ref}":
@@ -132,10 +122,8 @@ def publish_commit(run: Run, directory: Path, ref: str, base: str, tip: str) -> 
         remote_ref, tip, [base], pre_push_guard.SigningKeys(), directory=directory
     ):
         return "kept local: agent commit signature refused"
-    push.remote_git(
-        directory, "push", "--no-follow-tags", "--recurse-submodules=no", "--",
-        url, f"{tip}:{remote_ref}", token=token,
-    )  # fmt: skip
+    refspec = f"{tip}:{remote_ref}"
+    git("push", "--no-follow-tags", "--recurse-submodules=no", "--", url, refspec)
     run.files.write("branch", remote_ref.removeprefix("refs/heads/"))
     return "published"
 
@@ -144,15 +132,12 @@ def scan(directory: Path, base: str, tip: str) -> str | None:
     """Scan the outgoing range with the host policy and the committed rules."""
     try:
         config = write_policy(directory, base)
-        options = ("--text", "--diff-merges=separate", f"{base}..{tip}")
-        additions = push.history_git(
-            directory, "log", "--format=", "--numstat", *options
-        )
-        git_log = f"--log-opts={' '.join(options)}"
-        flags = ("git", "--no-banner", "--no-color", "--redact")
-        args = (*flags, f"--exit-code={FINDING}", "--config", str(config), git_log)
+        diff = ("--text", "--diff-merges=separate", f"{base}..{tip}")
+        stats = push.history_git(directory, "log", "--format=", "--numstat", *diff)
+        flags = ("--no-banner", "--no-color", "--redact", f"--exit-code={FINDING}")
+        args = (*flags, "--config", str(config), f"--log-opts={' '.join(diff)}")
         done = subprocess.run(  # nosec B603 -- resolved tool and pinned history
-            [host_tools.resolve("gitleaks"), *args, str(directory)],
+            [host_tools.resolve("gitleaks"), "git", *args, str(directory)],
             cwd=directory,
             env={
                 "PATH": host_tools.search(),
@@ -172,11 +157,9 @@ def scan(directory: Path, base: str, tip: str) -> str | None:
     # Gitleaks can exit zero when its Git subprocess fails.
     if done.returncode or re.search(r"\bERR\b", done.stderr):
         return "secret scan unavailable"
-    if re.search(r"^[1-9][0-9]*\t", additions, re.MULTILINE) and not re.search(
-        r"\b[1-9][0-9]* commits scanned\b", done.stderr
-    ):
-        return "secret scan unavailable"
-    return None
+    added_lines = re.search(r"(?m)^[1-9][0-9]*\t", stats)
+    scanned = re.search(r"\b[1-9][0-9]* commits scanned\b", done.stderr)
+    return "secret scan unavailable" if added_lines and not scanned else None
 
 
 def write_policy(directory: Path, base: str) -> Path:
