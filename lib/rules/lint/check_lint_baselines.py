@@ -122,6 +122,23 @@ def read_at(root: Path, revision: str, path: str) -> TomlDocument | None:
     return tomllib.loads(git_output(root, "show", f"{revision}:{path}").decode())
 
 
+def check_project(root: Path, base: str, head: str, path: str) -> list[str]:
+    old_doc = read_at(root, base, path)
+    doc = read_at(root, head, path)
+    after = project_ceilings(doc) if doc is not None else None
+    if doc is None or after is None:
+        return [f"{path}: missing from {head}"]
+
+    before = project_ceilings(old_doc) if old_doc is not None else None
+    errors = []
+    if before is not None:
+        errors.extend(f"{path}: {error}" for error in growth(before, after))
+    errors.extend(
+        file_growth(root, base, head, Path(path).parent.as_posix(), module_limit(doc))
+    )
+    return errors
+
+
 def check(root: Path, base: str, head: str) -> list[str]:
     old_registry = cast("dict[str, str]", read_at(root, base, REGISTRY) or {})
     registry = cast("dict[str, str]", read_at(root, head, REGISTRY) or {})
@@ -137,20 +154,7 @@ def check(root: Path, base: str, head: str) -> list[str]:
         if kind != "python-project":
             msg = f"{path}: unknown baseline kind {kind!r}"
             raise ValueError(msg)
-        old_doc = read_at(root, base, path)
-        doc = read_at(root, head, path)
-        after = project_ceilings(doc) if doc is not None else None
-        if doc is None or after is None:
-            errors.append(f"{path}: missing from {head}")
-            continue
-        before = project_ceilings(old_doc) if old_doc is not None else None
-        if before is not None:
-            errors.extend(f"{path}: {error}" for error in growth(before, after))
-        errors.extend(
-            file_growth(
-                root, base, head, Path(path).parent.as_posix(), module_limit(doc)
-            )
-        )
+        errors.extend(check_project(root, base, head, path))
     return errors
 
 
