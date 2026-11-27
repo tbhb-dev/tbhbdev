@@ -268,6 +268,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         with:
+          fetch-depth: 0
           persist-credentials: false
 
       - name: Set up the prose tools
@@ -275,15 +276,27 @@ jobs:
         with:
           version: 2026.11.9
 
-      # Lint every tracked Markdown file except the paths in
-      # .github/prose-lint-debt.txt, which still fail and are tracked as debt.
+      # Exclude known prose debt and faithful copies from changed import maps.
       - name: Lint prose
+        shell: bash
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha }}
         run: |
           vale sync
-          git ls-files -z -- '*.md' | grep -zvxFf .github/prose-lint-debt.txt > "$RUNNER_TEMP/prose-files" || true
-          xargs -0 -a "$RUNNER_TEMP/prose-files" vale
-          xargs -0 -a "$RUNNER_TEMP/prose-files" cspell --no-progress
-          xargs -0 -a "$RUNNER_TEMP/prose-files" rumdl check
+          files="$RUNNER_TEMP/prose-files"
+          git ls-files -z -- '*.md' | grep -zvxFf .github/prose-lint-debt.txt >"$files" || true
+          if [[ -n $BASE_SHA ]]; then
+            maps="$RUNNER_TEMP/prose-import-maps"
+            git diff --no-renames --diff-filter=AMT --name-only -z "$BASE_SHA" HEAD \
+              -- ':(glob)**/IMPORT-MAP.toml' >"$maps"
+            if [[ -s $maps ]]; then
+              # The size counter's helper removes verified copies from the input file.
+              python -I lib/rules/lint/private/pr_size_import.py git HEAD "$files" <"$maps" >/dev/null
+            fi
+          fi
+          xargs -0 -r -a "$files" vale
+          xargs -0 -r -a "$files" cspell --no-progress
+          xargs -0 -r -a "$files" rumdl check
 
   conclusion:
     name: conclusion
