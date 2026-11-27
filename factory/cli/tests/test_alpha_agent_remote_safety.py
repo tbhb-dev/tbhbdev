@@ -1375,6 +1375,27 @@ def reset_then_add(tree: Path, content: bytes) -> str:
     return base
 
 
+def mock_agent_run_for_diff(monkeypatch: pytest.MonkeyPatch) -> None:
+    async def run_ssh(args: tuple[str, ...], _data: bytes) -> tuple[int, bytes]:
+        command = shlex.split(shlex.split(args[-1])[2])
+        result = execute(command[2])
+        return result.returncode, result.stdout
+
+    monkeypatch.setattr(transport, "execute", run_ssh)
+    config = settings()
+    request_args = agent_arguments.parser("example").parse_args(
+        execution_arguments("example.md")
+    )
+    run = driver.prepare(config, request_args)
+    run.owner = "example-owner"
+
+    def load(_settings: Settings, _name: str) -> driver.Run:
+        return run
+
+    monkeypatch.setattr(agent_settings, "load", lambda: config)
+    monkeypatch.setattr(driver, "load", load)
+
+
 @pytest.mark.parametrize(
     "history", ["linear", "merge", "empty merge", "reset then add"]
 )
@@ -1408,24 +1429,7 @@ def test_finished_build_exports_complete_patch_offline(
     (state / "sample.head").write_text(tip)
     (state.parent / "agent-mirrors").rename(host / "offline")
 
-    async def run_ssh(args: tuple[str, ...], _data: bytes) -> tuple[int, bytes]:
-        command = shlex.split(shlex.split(args[-1])[2])
-        result = execute(command[2])
-        return result.returncode, result.stdout
-
-    monkeypatch.setattr(transport, "execute", run_ssh)
-    config = settings()
-    request_args = agent_arguments.parser("example").parse_args(
-        execution_arguments("example.md")
-    )
-    run = driver.prepare(config, request_args)
-    run.owner = "example-owner"
-
-    def load(_settings: Settings, _name: str) -> driver.Run:
-        return run
-
-    monkeypatch.setattr(agent_settings, "load", lambda: config)
-    monkeypatch.setattr(driver, "load", load)
+    mock_agent_run_for_diff(monkeypatch)
     args = ["diff", "sample", "--patch"]
     assert run_agent(args) == 1
     assert not capsysbinary.readouterr().out
