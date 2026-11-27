@@ -4,7 +4,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, TextIO
 lazy import argparse
 
-from tbhbops_cli.o11y import init, receipt, render, rustfs_probe, smoke, validate
+from tbhbops_cli.o11y import init, receipt, render, smoke, validate
 from tbhbops_cli.o11y.filesystem import (
     Filesystem,
     LocalFilesystem,
@@ -28,7 +28,6 @@ __all__ = [
     "owner",
     "receipt",
     "render",
-    "rustfs_probe",
     "smoke",
     "validate",
 ]
@@ -51,9 +50,6 @@ def add_parser(groups: argparse._SubParsersAction[argparse.ArgumentParser]) -> N
     command.add_argument("--out", type=Path, required=True)
     command.add_argument("--config-root", type=render.absolute_path)
     command = commands.add_parser("validate", help="check an observability release")
-    command.add_argument("--source", type=Path, required=True)
-    command = commands.add_parser("rustfs-probe", help="exercise RustFS locally")
-    command.add_argument("--dedicated-engine", metavar="ENDPOINT")
     command.add_argument("--source", type=Path, required=True)
     command = commands.add_parser("receipt", help="send and query an exact receipt")
     command.add_argument("--otlp-url")
@@ -80,8 +76,6 @@ def dispatch(args: argparse.Namespace, system: System, out: TextIO) -> int:
         return smoke.dispatch(args, system, out)
     if args.command == "render":
         render.dispatch(args, system)
-    elif args.command == "rustfs-probe":
-        return rustfs_probe.dispatch(args, system, out)
     elif args.command == "validate":
         return validate.dispatch(args, system, out)
     else:

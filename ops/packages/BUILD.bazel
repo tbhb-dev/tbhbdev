@@ -3,10 +3,8 @@
 
 # gazelle:python_extension enabled
 # gazelle:resolve py ansible @cli_pip//ansible_core
-# gazelle:resolve py anyio @cli_pip//anyio
 # gazelle:resolve py hypothesis @cli_pip//hypothesis
 # gazelle:resolve py jinja2 @cli_pip//jinja2
-# gazelle:resolve py mcp @cli_pip//mcp
 # gazelle:resolve py pytest @cli_pip//pytest
 # gazelle:resolve py uv @cli_pip//uv
 # gazelle:resolve py yaml @cli_pip//pyyaml
