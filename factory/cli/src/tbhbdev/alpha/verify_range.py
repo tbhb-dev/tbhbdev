@@ -40,7 +40,7 @@ def problems(
     return reasons
 
 
-def inspect_commit(text: str) -> tuple[list[str], str]:
+def inspect_commit(text: str, *, identity_only: bool = False) -> tuple[list[str], str]:
     """Parse a commit object, keeping continuation lines out of its headers."""
     headers, _, message = text.partition("\n\n")
     # A continuation starts with a space, so its key is empty and cannot add
@@ -49,13 +49,21 @@ def inspect_commit(text: str) -> tuple[list[str], str]:
     values = {}
     for key, _, value in fields:
         values.setdefault(key, value)
-    reasons = problems(
-        identity.ident_email(values.get("author", "")),
-        identity.ident_email(values.get("committer", "")),
-        sum(key == "parent" for key, _, _ in fields),
-        signed="gpgsig" in values or "gpgsig-sha256" in values,
-        message=message,
-    )
+    committer = values.get("committer", "")
+    if identity_only:
+        reasons = identity.check_identity_trailers(
+            message,
+            identity.IDENT_DATE.sub("", committer),
+            require_identity=True,
+        )
+    else:
+        reasons = problems(
+            identity.ident_email(values.get("author", "")),
+            identity.ident_email(committer),
+            sum(key == "parent" for key, _, _ in fields),
+            signed="gpgsig" in values or "gpgsig-sha256" in values,
+            message=message,
+        )
     subject = " ".join(message.lstrip("\n").partition("\n\n")[0].splitlines())
     return reasons, subject
 
@@ -86,6 +94,11 @@ def main(argv: list[str], prog: str) -> int:
     parser.add_argument("base", metavar="BASE")
     parser.add_argument("tip", metavar="TIP")
     parser.add_argument("-C", dest="path", default=".")
+    parser.add_argument(
+        "--identity-only",
+        action="store_true",
+        help="require valid identity trailers on non-merge commits",
+    )
     try:
         args = parser.parse_args(argv)
     except SystemExit as exc:
@@ -101,13 +114,21 @@ def main(argv: list[str], prog: str) -> int:
             ).strip()
             for ref in (args.base, args.tip)
         )
+        flags = ["--no-merges"] if args.identity_only else []
         commits = git_output(
-            args.path, "rev-list", "--reverse", "--topo-order", f"{base}..{tip}", "--"
+            args.path,
+            "rev-list",
+            "--reverse",
+            "--topo-order",
+            *flags,
+            f"{base}..{tip}",
+            "--",
         ).splitlines()
         failed = 0
         for sha in commits:
             reasons, subject = inspect_commit(
-                git_output(args.path, "cat-file", "commit", sha)
+                git_output(args.path, "cat-file", "commit", sha),
+                identity_only=args.identity_only,
             )
             if reasons:
                 failed += 1
@@ -116,7 +137,8 @@ def main(argv: list[str], prog: str) -> int:
                 )
             else:
                 result = "ok"
-            print(f"{sha[:7]} {result} {terminal_text(subject)}")
+            display_sha = sha if args.identity_only else sha[:7]
+            print(f"{display_sha} {result} {terminal_text(subject)}")
         print(f"verify-range: {len(commits)} commits, {failed} failed")
     except (OSError, subprocess.CalledProcessError) as exc:
         print(f"{prog}: {terminal_text(str(exc))}", file=sys.stderr)

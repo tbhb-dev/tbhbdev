@@ -3745,6 +3745,28 @@ def test_cmd_check(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
     assert capsys.readouterr().err == ""
 
 
+@pytest.mark.parametrize(
+    ("trailer", "status"),
+    [("Human <h@example.invalid>", 0), ("Other <h@example.invalid>", 1), ("", 1)],
+)
+def test_cmd_check_committed_by(
+    repo: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    trailer: str,
+    status: int,
+) -> None:
+    for name, value in HUMAN_COMMIT_ENV.items():
+        monkeypatch.setenv(name, value)
+    path = msg_file(repo, f"subject\n\nCommitted-by: {trailer}\n")
+    assert ai.cmd_check(str(path), {}) == status
+    error = (
+        "tbhbdev alpha identity: Committed-by must match "
+        "the Git committer's name and email\n"
+    )
+    assert capsys.readouterr().err == (error if status else "")
+
+
 # -------------------------------------------------------------------- main
 
 
