@@ -5,9 +5,8 @@ from tbhbdev.alpha import review_gate as gate
 HEAD = "a" * 40
 OLD = "b" * 40
 APP = "reviews-app[bot]"
-SESSION = "sha-256-64:" + "0" * 16
-OTHER_SESSION = "sha-256-64:" + "1" * 16
 LAUNCH = "sha-256-64:" + "2" * 16
+OTHER_LAUNCH = "sha-256-64:" + "3" * 16
 
 
 def stamp(harness: str, **attrs: str) -> str:
@@ -43,10 +42,10 @@ def check(
 
 
 def trailer(key: str = "Generated-by", harness: str = "codex") -> str:
-    return f"fix: x\n\n{key}: LLM harness={harness};model=m;session={SESSION}\n"
+    return f"fix: x\n\n{key}: LLM harness={harness};model=m;launch={LAUNCH}\n"
 
 
-GOOD = review(body=stamp("claude-code", session=OTHER_SESSION))
+GOOD = review(body=stamp("claude-code", launch=OTHER_LAUNCH))
 
 
 def evaluate(
@@ -155,14 +154,9 @@ def test_conclusion_success_with_a_skipped_wheel_check() -> None:
     assert evaluate(checks=[check(), check("wheel", "skipped")]) == []
 
 
-@pytest.mark.parametrize(
-    "attrs", [{"session": SESSION}, {"launch": LAUNCH, "session": OTHER_SESSION}]
-)
-def test_an_approval_from_a_run_that_wrote_any_commit_does_not_count(
-    attrs: dict[str, str],
-) -> None:
-    same_run = review(number=2, body=stamp("Codex:0.171.0", **attrs))
-    messages = [stamp("codex", session=SESSION, launch=LAUNCH), "fix: by hand\n"]
+def test_an_approval_from_a_run_that_wrote_any_commit_does_not_count() -> None:
+    same_run = review(number=2, body=stamp("Codex:0.171.0", launch=LAUNCH))
+    messages = [trailer(), "fix: by hand\n"]
     assert evaluate([same_run], messages=messages) == [
         "review 2 came from a run that wrote a commit",
         "0 approvals at the head, need 1",
@@ -170,13 +164,8 @@ def test_an_approval_from_a_run_that_wrote_any_commit_does_not_count(
     assert evaluate([same_run, GOOD], messages=messages) == []
 
 
-def test_a_session_hash_is_distinct_from_a_launch_hash() -> None:
-    reviewer = review(body=stamp("codex", session=SESSION))
-    assert evaluate([reviewer], messages=[stamp("codex", launch=SESSION)]) == []
-
-
 def test_an_assisting_run_may_approve() -> None:
-    reviewer = review(body=stamp("codex", session=SESSION))
+    reviewer = review(body=stamp("codex", launch=LAUNCH))
     assert evaluate([reviewer], messages=[trailer("Assisted-by", "codex")]) == []
 
 

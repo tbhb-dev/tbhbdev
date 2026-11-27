@@ -22,8 +22,6 @@ KNOWN_HARNESSES = frozenset({*identity.SLUGS.values(), "claude", "agy", "gemini"
 HEAD_SHA = re.compile(r"[0-9a-f]{40}")
 LEGACY_FOOTER = re.compile(r"Run \S+, (\S+) \S+, judged head ([0-9a-f]{40})\.")
 
-type RunHash = tuple[str, str]
-
 
 class Review(TypedDict):
     id: int | str
@@ -65,33 +63,25 @@ def review_attribution(body: str, head: str) -> dict[str, str]:
     return {}
 
 
-def run_hashes(attrs: dict[str, str]) -> set[RunHash]:
-    """Read comparable run hashes, keeping sessions and launches distinct."""
-    return {
-        (key, value)
-        for key in ("session", "launch")
-        if (value := identity.hash_ok(attrs.get(key))) is not None
-    }
-
-
-def author_runs(messages: Sequence[str]) -> tuple[set[RunHash], list[str]]:
-    """The run hashes of the Generated-by trailers and any attribution errors."""
-    runs: set[RunHash] = set()
+def author_launches(messages: Sequence[str]) -> tuple[set[str], list[str]]:
+    """The launch hashes of the Generated-by trailers and any attribution errors."""
+    launches: set[str] = set()
     reasons: list[str] = []
     for message in messages:
         for key, value in identity.llm_trailers(message):
             if key != identity.KEY_GEN:
                 continue
             attrs = dict(identity.ATTR_PAIR.findall(value))
-            runs.update(run_hashes(attrs))
+            if (launch := identity.hash_ok(attrs.get("launch"))) is not None:
+                launches.add(launch)
             harness = attrs.get("harness", "")
             if not known_harness(harness):
                 name = harness or "(none)"
                 reasons.append(f"a Generated-by trailer names unknown harness {name}")
-    return runs, reasons
+    return launches, reasons
 
 
-def review_reasons(app: str, pull: Pull, authors: set[RunHash]) -> list[str]:
+def review_reasons(app: str, pull: Pull, launches: set[str]) -> list[str]:
     """The reasons the App's reviews do not approve the current head."""
     reasons: list[str] = []
     same_run: list[str] = []
@@ -106,7 +96,7 @@ def review_reasons(app: str, pull: Pull, authors: set[RunHash]) -> list[str]:
             attrs = review_attribution(review["body"], pull.head)
             if not known_harness(attrs.get("harness", "")):
                 reasons.append(f"review {review['id']} names no known harness")
-            elif authors & run_hashes(attrs):
+            elif identity.hash_ok(attrs.get("launch")) in launches:
                 same_run.append(
                     f"review {review['id']} came from a run that wrote a commit"
                 )
@@ -141,8 +131,8 @@ def evaluate(app: str, pull: Pull) -> list[str]:
     """The reasons a pull request fails at its head; none means it passes."""
     if not HEAD_SHA.fullmatch(pull.head):
         return [f"the pull request head {pull.head!r} is not a full commit SHA"]
-    authors, attribution_reasons = author_runs(pull.messages)
-    reasons = review_reasons(app, pull, authors)
+    launches, attribution_reasons = author_launches(pull.messages)
+    reasons = review_reasons(app, pull, launches)
     reasons.extend(check_reasons(pull))
     reasons.extend(attribution_reasons)
     return reasons
