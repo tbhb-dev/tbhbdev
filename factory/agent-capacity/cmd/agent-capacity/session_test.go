@@ -196,9 +196,7 @@ func TestAccountFlagsSetEveryOption(t *testing.T) {
 	t.Parallel()
 
 	flags, options := accountFlags("sample")
-	args := []string{
-		"--vendor=v", "--account=a", "--alias-file=f", "--alias-root=r", "--binary=b", "--exporter=e", "--spool-dir=s",
-	}
+	args := []string{"--vendor=v", "--account=a", "--alias-file=f", "--alias-root=r", "--binary=b"}
 
 	err := flags.Parse(args)
 	if err != nil {
@@ -206,7 +204,7 @@ func TestAccountFlagsSetEveryOption(t *testing.T) {
 	}
 
 	want := session.Options{
-		Vendor: "v", Account: "a", AliasFile: "f", Root: "r", Binary: "b", Exporter: "e", SpoolDir: "s", Prompt: "",
+		Vendor: "v", Account: "a", AliasFile: "f", Root: "r", Binary: "b", Exporter: "", SpoolDir: "", Prompt: "",
 	}
 	if *options != want {
 		t.Fatalf("options %+v", *options)
@@ -274,6 +272,8 @@ func TestLoginCommandDiagnostics(t *testing.T) {
 	}{
 		{"valid arguments", "login requires a terminal\n", valid},
 		{"unknown flag", loginRefused, append(slices.Clone(valid), unknownFlag)},
+		{"exporter flag", loginRefused, append(slices.Clone(valid), "--exporter=/exporter")},
+		{"spool directory flag", loginRefused, append(slices.Clone(valid), "--spool-dir=/spool")},
 		{"positional argument", loginRefused, append(slices.Clone(valid), extraArgument)},
 	} {
 		var out, diagnostic bytes.Buffer
