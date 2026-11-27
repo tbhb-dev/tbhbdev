@@ -6,7 +6,7 @@ from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
 from tbhbdev.alpha.agent import transport
-from tbhbdev.alpha.agent.decisions import remote
+from tbhbdev.alpha.agent.decisions import remote_cleanup
 from tbhbdev.alpha.agent.driver.decisions.lifecycle import clean as check_clean
 from tbhbdev.alpha.agent.driver.metadata import (
     archive_metadata,
@@ -41,7 +41,7 @@ def clean(
     transport.shell(
         settings,
         run.host,
-        remote.clean(
+        remote_cleanup.clean(
             run.request.repo,
             run.name,
             stamp,
@@ -71,6 +71,6 @@ def clean_archived(settings: Settings, name: str, *, force: bool) -> int:
 
 def keep(settings: Settings, run: Run) -> int:
     transport.shell(
-        settings, run.host, remote.keep(run.name), transport.Stdin(run.owner)
+        settings, run.host, remote_cleanup.keep(run.name), transport.Stdin(run.owner)
     )
     return 0
