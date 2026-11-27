@@ -340,18 +340,13 @@ def repo_info(cwd: Path | None = None) -> Repo | None:
     return Repo(Path(top).resolve(), Path(own) / STORE, Path(common) / STORE)
 
 
-def read_json(path: Path, default: Json | None = None) -> Json | None:
-    """Parse a JSON file; return ``default`` when it is missing or invalid."""
+def read_record(path: Path) -> Json:
+    """Parse a JSON object file; an empty dict when missing or invalid."""
     try:
         loaded = json.loads(path.read_text())
     except OSError, ValueError:
-        return default
-    return loaded if isinstance(loaded, dict) else default
-
-
-def read_record(path: Path) -> Json:
-    """Parse a JSON object file; an empty dict when missing or invalid."""
-    return read_json(path) or {}
+        return {}
+    return loaded if isinstance(loaded, dict) else {}
 
 
 def write_json(path: Path, obj: Json) -> None:
@@ -2593,29 +2588,17 @@ def all_edits(repo: Repo) -> list[Json]:
     return [rec for rec in receipts if rec and not rec.get("consumed")]
 
 
-def git_bytes(*args: str, cwd: Path, data: bytes | None = None) -> bytes:
-    """Run git on raw bytes; return stdout. Content must not pass through text mode."""
-    return subprocess.run(  # nosec B603 B607
+def git_bytes(*args: str, cwd: Path, data: bytes | None = None) -> tuple[int, bytes]:
+    """Run git; return its exit code and raw stdout without text conversion."""
+    done = subprocess.run(  # nosec B603 B607
         ["git", *args], capture_output=True, cwd=cwd, input=data, check=False
-    ).stdout
-
-
-def git_status_bytes(*args: str, cwd: Path) -> tuple[int, bytes]:
-    """Run git; return its exit code and raw stdout, so a path needn't be UTF-8."""
-    # No mutant of the call itself matters: `check` defaults to False and macOS
-    # finds `GIT`.
-    done = subprocess.run(  # nosec B603 B607  # pragma: no mutate
-        ["git", *args],  # pragma: no mutate
-        capture_output=True,
-        cwd=cwd,
-        check=False,  # pragma: no mutate
     )
     return done.returncode, done.stdout
 
 
 def staged_docs(top: Path) -> list[tuple[str, str, str]]:
     """(path, mode, blob) of each staged added or modified stampable document."""
-    _, raw = git_status_bytes(
+    _, raw = git_bytes(
         "diff", "--cached", "--raw", "-z", "--no-abbrev", "--no-renames",
         "--diff-filter=AM", cwd=top,
     )  # fmt: skip
@@ -2658,7 +2641,7 @@ def not_from_merge(
     """
     changed = []
     for head in heads:
-        code, raw = git_status_bytes(
+        code, raw = git_bytes(
             "diff", "--cached", "--raw", "-z", "--no-renames", head, cwd=top
         )
         if code != 0:
@@ -2682,21 +2665,19 @@ def stamp_document(top: Path, doc: tuple[str, str, str], entries: list[Entry]) -
     Both change together so prek sees the index and work tree still agree.
     """
     rel, mode, blob = doc
-    text = decode(git_bytes("cat-file", "blob", blob, cwd=top))
+    _, raw = git_bytes("cat-file", "blob", blob, cwd=top)
+    text = decode(raw)
     stamped = stamp_text(text, entries)
     if stamped == text:
         return
-    new_blob = (
-        git_bytes(
-            "hash-object",
-            "-w",
-            "--stdin",
-            cwd=top,
-            data=stamped.encode(errors="surrogateescape"),
-        )
-        .decode()
-        .strip()
+    _, raw_blob = git_bytes(
+        "hash-object",
+        "-w",
+        "--stdin",
+        cwd=top,
+        data=stamped.encode(errors="surrogateescape"),
     )
+    new_blob = raw_blob.decode().strip()
     git("update-index", "--cacheinfo", f"{mode},{new_blob},{rel}", cwd=top)
     path = top / rel
     if path.is_file():

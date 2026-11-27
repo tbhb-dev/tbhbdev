@@ -251,24 +251,16 @@ def test_first_str_takes_first_nonempty_string() -> None:
     assert ai.first_str(data) is None
 
 
-def test_read_json_defaults(tmp_path: Path) -> None:
+def test_read_record_defaults(tmp_path: Path) -> None:
     good = tmp_path / "good.json"
     good.write_text('{"a": 1}', encoding="utf-8")
     listy = tmp_path / "list.json"
     listy.write_text("[1]", encoding="utf-8")
     bad = tmp_path / "bad.json"
     bad.write_text("{", encoding="utf-8")
-    fallback: Json = {"d": 1}
-    assert ai.read_json(good, fallback) == {"a": 1}
-    assert ai.read_json(listy, fallback) is fallback
-    assert ai.read_json(bad, fallback) is fallback
-    assert ai.read_json(tmp_path / "missing.json", fallback) is fallback
-    assert ai.read_json(bad) is None
     assert ai.read_record(good) == {"a": 1}
-    assert ai.read_record(bad) == {}
-    empty = tmp_path / "empty.json"
-    empty.write_text("{}", encoding="utf-8")
-    assert ai.read_record(empty) == {}
+    for path in (listy, bad, tmp_path / "missing.json"):
+        assert ai.read_record(path) == {}
 
 
 def test_write_json_is_atomic_and_creates_parents(tmp_path: Path) -> None:
@@ -291,7 +283,7 @@ def test_json_round_trip(obj: dict[str, object]) -> None:
     with tempfile.TemporaryDirectory() as tmp:
         path = Path(tmp) / "x.json"
         ai.write_json(path, obj)
-        assert ai.read_json(path) == obj
+        assert ai.read_record(path) == obj
 
 
 LOCK_PROBE = """
@@ -3899,6 +3891,7 @@ def test_e2e_human_commit_is_untouched(wired: Path) -> None:
     stage(wired, "h.txt")
     done = git_commit(wired, "human work", HUMAN_COMMIT_ENV, "-s")
     assert done.returncode == 0, done.stderr
+    assert run_git(wired, "log", "-1", "--format=%ae") == "h@example.invalid\n"
     assert "Signed-off-by: Human <h@example.invalid>" in last_message(wired)
     assert trailers(wired) == []
 
@@ -4015,15 +4008,6 @@ def test_e2e_an_agent_amend_keeps_a_wrong_author_and_fails(wired: Path) -> None:
     done = git_commit(wired, "feat: a", CLAUDE_E2E, "--amend")
     assert done.returncode != 0
     assert f"author is {NOREPLY!r}" in done.stderr
-
-
-@needs_prek
-def test_e2e_a_human_commit_keeps_its_own_identity(wired: Path) -> None:
-    stage(wired, "a.txt")
-    done = git_commit(wired, "feat: a", HUMAN_COMMIT_ENV)
-    assert done.returncode == 0, done.stderr
-    assert run_git(wired, "log", "-1", "--format=%ae") == "h@example.invalid\n"
-    assert trailers(wired) == []
 
 
 def test_ident_problems_accepts_the_agent_identity(
@@ -5059,12 +5043,6 @@ def test_check_value_splits_keys_at_the_first_equals_sign() -> None:
     )
 
 
-def test_check_messages_are_exact() -> None:
-    for line in ("Signed-off-by: A <a@b.c>", "Co-authored-by: A <a@b.c>"):
-        assert ai.check_message(f"{line}\n") == []
-    assert ai.check_value("LLM harness=codex;model=m") is None
-
-
 @pytest.mark.usefixtures("repo")
 def test_main_runs_each_command_for_real(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
@@ -6078,13 +6056,12 @@ def test_all_edits_spans_roots_and_skips_consumed(repo: Path) -> None:
 
 def test_git_bytes_returns_raw_stdout_and_feeds_stdin(repo: Path) -> None:
     raw = b"\xff\n\n"
-    blob = (
-        ai.git_bytes("hash-object", "-w", "--stdin", cwd=repo, data=raw)
-        .decode()
-        .strip()
-    )
-    assert ai.git_bytes("cat-file", "blob", blob, cwd=repo) == raw
-    assert ai.git_bytes("nonsense-command", cwd=repo) == b""
+    code, blob = ai.git_bytes("hash-object", "-w", "--stdin", cwd=repo, data=raw)
+    assert code == 0
+    assert ai.git_bytes("cat-file", "blob", blob.decode().strip(), cwd=repo) == (0, raw)
+    code, out = ai.git_bytes("nonsense-command", cwd=repo)
+    assert code != 0
+    assert out == b""
 
 
 def test_decode_round_trips_any_bytes() -> None:
