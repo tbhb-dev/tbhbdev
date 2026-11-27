@@ -595,7 +595,7 @@ def parse(agent: dict[str, object]) -> Settings:
         "ssh_connect_timeout",
         "ssh_keepalive_seconds",
         "ssh_keepalive_count_max",
-        "host_tag",  # Another command reads this key.
+        "host_tag",  # Accepted for compatibility with existing configs.
         "worker",
     )
     sandbox = _sandbox(root.table("sandbox"))
