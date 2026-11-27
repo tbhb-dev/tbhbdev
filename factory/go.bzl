@@ -16,5 +16,5 @@ go_binary = _go_binary
 go_library = _go_library
 
 def go_test(name, size = "small", timeout = "short", **kwargs):
-    """Wraps rules_go's go_test with a per-package small/short (60s) time cap."""
-    _go_test(name = name, size = size, timeout = timeout, **kwargs)
+    """Runs rules_go tests with race detection and a default 60s time cap."""
+    _go_test(name = name, size = size, timeout = timeout, race = "on", **kwargs)
