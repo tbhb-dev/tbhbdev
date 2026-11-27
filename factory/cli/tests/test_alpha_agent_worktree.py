@@ -23,7 +23,7 @@ from agent_host_example import (
 
 from tbhbdev.alpha.agent import worktree
 from tbhbdev.alpha.agent.model import Invalid, Profile
-from tbhbdev.alpha.identity import dispatcher as identity
+from tbhbdev.alpha.identity.commit import policy as identity_commit_policy
 from tbhbdev.alpha.install import scripts as git_templates
 
 
@@ -816,7 +816,7 @@ def test_hook_installation_is_repeatable_private_and_read_only(
             mark=git_templates.SHIM_MARK,
             verb=verb,
             hook=name,
-            run_env=identity.RUN_HOOK_ENV,
+            run_env=identity_commit_policy.RUN_HOOK_ENV,
         )
     for name in (
         "pre-commit",

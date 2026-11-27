@@ -47,7 +47,6 @@ _IO_TESTS = [
     "test_alpha_guard_gh_poll",
     "test_alpha_guard_gh_pr",
     "test_alpha_guard_ssh_agent",
-    "test_alpha_identity",
     "test_alpha_monorepo",
     "test_alpha_opened",
     "test_alpha_pre_push_guard",

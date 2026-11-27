@@ -34,7 +34,7 @@ from unit.alpha.merge.fake_github import (
     run_main,
 )
 
-from tbhbdev.alpha.identity.dispatcher import AGENT_EMAIL
+from tbhbdev.alpha.identity.commit.policy import AGENT_EMAIL
 from tbhbdev.alpha.merge import command
 from tbhbdev.alpha.merge.command import main
 from tbhbdev.alpha.merge.github import QUEUE_QUERY, VIEW_FIELDS
