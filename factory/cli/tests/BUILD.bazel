@@ -1243,7 +1243,6 @@ cli_py_test(
         "//factory/cli/src/tbhbdev/alpha:repo_token",
         "//factory/cli/src/tbhbdev/secrets:config",
         "//factory/cli/src/tbhbdev/secrets:connect",
-        "//factory/cli/src/tbhbdev/secrets:store",
         "@cli_pip//cryptography",
         "@cli_pip//httpx",
         "@cli_pip//httpx2",
@@ -1849,6 +1848,7 @@ filegroup(
         "//factory/cli/tests/unit/alpha/identity:test_trailers.py",
         "//factory/cli/tests/unit/alpha/install:package_files",
         "//factory/cli/tests/unit/alpha/merge:package_files",
+        "//factory/cli/tests/unit/secrets:test_explicit.py",
     ],
     visibility = ["//factory/cli:__pkg__"],
 )

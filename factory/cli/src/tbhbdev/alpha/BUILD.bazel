@@ -261,6 +261,7 @@ cli_py_library(
     deps = [
         ":gh_app",
         "//factory/cli/src/tbhbdev/secrets:connect",
+        "//factory/cli/src/tbhbdev/secrets:explicit",
         "//factory/cli/src/tbhbdev/secrets:store",
         "@cli_pip//httpx2",
     ],

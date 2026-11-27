@@ -25,7 +25,6 @@ from tbhbdev.alpha import gh_app
 from tbhbdev.alpha import repo_token as rt
 from tbhbdev.secrets import config as secret_config
 from tbhbdev.secrets import connect as transport
-from tbhbdev.secrets import store as secret_store
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -327,21 +326,6 @@ def test_missing_fields(
     monkeypatch.setattr(transport.Connect, "item", get)
     assert_kind("item", lambda: rt.read_app(token_file, ITEM, endpoints=URLS))
     assert connect_transport
-
-
-@pytest.mark.parametrize("status", [404, 403])
-def test_explicit_protocol_errors(status: int, monkeypatch: pytest.MonkeyPatch) -> None:
-    def send(*_args: object) -> tuple[httpx.Response, bool]:
-        return httpx.Response(status), False
-
-    monkeypatch.setattr(transport.Connect, "_send", send)
-    error = (
-        secret_store.ExplicitItemMissingError
-        if status == 404
-        else secret_store.ConnectUnavailableError
-    )
-    with pytest.raises(error):
-        secret_store.explicit_item(CONNECT_TOKEN, "vault", "app", urls=URLS)
 
 
 @pytest.fixture
@@ -821,27 +805,3 @@ def test_default_git_timeout(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) ->
 def test_cache_accepts_first_installation(token_file: Path) -> None:
     token_file.write_text('{"example/widget": 1}')
     assert rt._cache(token_file) == {REPO: 1}
-
-
-def test_explicit_backend_preserves_request_body(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    body: transport.Json = {"title": "example"}
-
-    def send(
-        _self: transport.Connect,
-        url: str,
-        method: str,
-        path: str,
-        received: transport.Json | None,
-    ) -> tuple[httpx.Response, bool]:
-        assert (url, method, path, received) == (URLS[0], "POST", "/v1/example", body)
-        return httpx.Response(201, json={"created": True}), False
-
-    monkeypatch.setattr(transport.Connect, "_send", send)
-    backend = secret_store._ExplicitConnect(CONNECT_TOKEN, [URLS[0]])
-    assert backend._call("POST", "/v1/example", body) == {"created": True}
-    response, done = backend._send(URLS[0], "POST", "/v1/example", body)
-    assert response is not None
-    assert response.status_code == 201
-    assert done is False

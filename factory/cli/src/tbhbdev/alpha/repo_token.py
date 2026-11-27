@@ -26,7 +26,8 @@ import httpx2
 
 from tbhbdev.alpha import gh_app
 from tbhbdev.secrets.connect import SecretsError
-from tbhbdev.secrets.store import ConnectUnavailableError, Store, explicit_item
+from tbhbdev.secrets.explicit import ConnectUnavailableError, explicit_item
+from tbhbdev.secrets.store import Store
 lazy from tbhbdev.alpha.gh_app import Minted
 
 if TYPE_CHECKING:
