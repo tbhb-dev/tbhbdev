@@ -6,7 +6,7 @@ This appendix moves the App permissions, the manifest keys, and the excluded eve
 
 ## Permissions (design)
 
-Planned: the operator's App has every read-only permission GitHub offers for repositories and the organization. The design never grants write.
+Planned: the operator's App has every read permission GitHub offers for repositories and the organization. The design never grants write.
 
 | Permission | Access | Why |
 | --- | --- | --- |
@@ -16,7 +16,7 @@ Planned: the operator's App has every read-only permission GitHub offers for rep
 
 GitHub's permission tables put the list endpoints for pull requests (PRs), commits, reviews, and requested reviewers under Pull requests read. They list the issue timeline endpoint under either Issues read or Pull requests read. That means the timeline works without the Issues permission.
 
-Today only the first two rows matter to the design. Each installation token request narrows to Metadata and Pull requests, and a later release may use the rest. Read access is broad, and it includes source code through Contents read and PR diffs through the PR and PR files endpoints. The design never calls those endpoints, as decision 0011 records. Decision 0012 covers what the service persists.
+The current design uses the first two permissions. Each installation token request narrows to Metadata and Pull requests, and a later release may use the rest. Read access is broad, and it includes source code through Contents read and PR diffs through the PR and PR files endpoints. The design never calls those endpoints, as decision 0011 records. Decision 0012 covers what the service persists.
 
 ## Webhook events (design)
 
@@ -27,11 +27,11 @@ Today only the first two rows matter to the design. Each installation token requ
 
 The planned worker ignores every other action of these events, such as `edited` or `labeled`. Each App also receives `installation` and `installation_repositories` by default without subscribing (unverified: the original design states it without a GitHub citation). The design uses an `installation_repositories` body that lists `repositories_added` to start a backfill of each newly added repository, as section 6 shows.
 
-## Deliberately excluded events (design)
+## Excluded events (design)
 
 | Event | Reason |
 | --- | --- |
-| `pull_request_review_thread` | REST doesn't expose a thread's resolved state, so reconciliation couldn't heal a missed delivery. The design takes telemetry content only from REST, never from webhook bodies. Its payloads would also bring review comment text and diff hunks into the queue |
+| `pull_request_review_thread` | REST doesn't expose a thread's resolved state, so reconciliation couldn't heal a missed delivery. All telemetry content comes from REST in the design. This webhook would also bring review comment text and diff hunks into the queue |
 | `pull_request_review_comment` | Each review comment belongs to a review, and the `pull_request_review` event already reports the submission |
 | `issue_comment` | Conversation comments don't affect the timing metrics, and the service has no use for it |
 | `check_run` and `check_suite` | This design doesn't cover continuous integration (CI) today. These events also need Checks read, and they arrive once per job |
@@ -42,7 +42,7 @@ A later subscription to an excluded event doesn't need a permission change, beca
 
 ## Manifest keys (design)
 
-The App manifest sets two keys. `default_permissions` lists every read-only permission for repositories and the organization, and `default_events` lists the two subscribed events. The original design gives these 47 key names but no source page, and nobody has checked them against GitHub's "Permissions required for GitHub Apps" reference yet, so treat them as unverified. The manifest also sets `public` to `false` and puts the webhook URL of the planned public tunnel route under `hook_attributes`.
+The App manifest sets two keys. `default_permissions` lists every read permission for repositories and the organization, and `default_events` lists the two subscribed events. The original design gives these 47 key names but no source page, and nobody has checked them against GitHub's “Permissions required for GitHub Apps” reference yet, so treat them as unverified. The manifest also sets `public` to `false` and puts the webhook URL of the planned public tunnel route under `hook_attributes`.
 
 ```json
 {
@@ -106,9 +106,9 @@ The App manifest sets two keys. `default_permissions` lists every read-only perm
 
 To authenticate, the service signs a JSON Web Token (JWT) with the App's private key. Signing uses RS256, with the App's client ID as `iss`, `iat` 60 seconds in the past, and `exp` 9 minutes ahead, inside GitHub's 10-minute limit.
 
-Next, the service exchanges the JWT for an installation token that expires after one hour, and asks for read access to metadata and pull requests only.
+Next, the service exchanges the JWT for an installation token that expires after one hour, and limits the request to read access for metadata and pull requests.
 
-In memory only, the service keeps the token until less than 5 minutes remain, and then renews it. Neither disk nor a log ever receives the token.
+In memory, the service keeps the token until less than 5 minutes remain, and then renews it. Neither disk nor a log ever receives the token.
 
 Plan step 6 on [page 11](11-risks-and-technical-debt.md), a threat-model follow-up, covers retiring a previous webhook secret. It also covers rotating the App's private key.
 

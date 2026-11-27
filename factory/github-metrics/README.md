@@ -1,4 +1,4 @@
-# github-metrics
+# GitHub pull request metrics
 
 A Go service that turns GitHub pull request activity into OpenTelemetry
 traces and metrics.

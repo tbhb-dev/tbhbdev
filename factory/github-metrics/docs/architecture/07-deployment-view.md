@@ -25,21 +25,12 @@ and collect its JSON logs from standard output.
 
 Give the service account read access to the webhook secret and App key
 files. Keep the file contents out of environment variables and logs.
-Configure the tunnel connector separately and expose only `POST /webhook`
-over the tunnel.
+Configure the tunnel connector separately. Expose `POST /webhook` and leave the other routes private.
 
 ## Health and restarts
 
-Run the installed binary with `-healthcheck` and the same `LISTEN_ADDR` to
-probe the local `GET /healthz` endpoint. The probe exits with status 0 on
-success and 1 on failure. The planned `/readyz` endpoint would report
-readiness after the store opens and reconciliation finishes.
+Run the installed binary with `-healthcheck` and the same `LISTEN_ADDR` to probe liveness. With the default address, the probe sends a `GET` request to <http://127.0.0.1:8080/healthz>. It exits with status 0 on success or 1 on failure. The planned readiness endpoint at <http://127.0.0.1:8080/readyz> (using the default listen address) would report readiness after the store opens and reconciliation finishes.
 
-Send `SIGTERM` for an orderly shutdown. The service stops accepting
-requests, waits for the worker and reconciler, flushes metrics, and closes
-the store.
+On `SIGTERM`, the service stops accepting requests and waits for the worker and reconciler. It then flushes metrics and closes the store.
 
-If you roll back to a version that records metrics without durable claims,
-set `RECONCILE_FLOOR_RESET=1` for the first start after reinstalling a version
-that uses claims. Clear it for subsequent starts so they retain the stored
-repair floor.
+After a rollback to a version that records metrics without durable claims, set `RECONCILE_FLOOR_RESET=1` for the first start after reinstalling a version that uses claims. Clear the flag to keep the stored repair floor on later starts.

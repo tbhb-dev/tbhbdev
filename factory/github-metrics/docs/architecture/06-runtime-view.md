@@ -9,9 +9,9 @@
 3. After the signature passes, one store transaction checks the dedupe table and records the delivery. In the same transaction, the receiver adds the body to the queue. A file sync follows, then the answer `202`. A delivery ID that repeats with a different body hash gets `400`. It logs the ID and both hashes.
 4. Using the signed body, the worker finds the repository and PR number and marks the PR. It deletes the body in the same transaction. A body that lists `repositories_added` schedules a backfill of those repositories instead.
 5. Next, the worker fetches the current PR state with conditional requests and compares it with what the service already exported.
-6. Last, the worker exports spans that just completed. The store records their IDs only after the collector accepts them.
+6. Last, the worker exports newly completed spans. The store waits for the collector to accept them before recording their IDs.
 
-Today the receiver answers `404` to every request except `GET /healthz` and `POST /webhook`. After a valid signature it answers `202`, or `400` when `X-GitHub-Delivery` or `X-GitHub-Event` is missing or malformed, and it answers `413` over the cap. It then stops. Steps 3 to 6 remain to build, along with the `405` and `415` checks and the `400` for a repeated delivery ID.
+Today the receiver answers `404` to every request except a [liveness probe](../../internal/receiver/receiver.go#L67) via `GET` and `POST /webhook`. After a valid signature it answers `202`, or `400` when `X-GitHub-Delivery` or `X-GitHub-Event` is missing or malformed, and it answers `413` over the cap. It then stops. Steps 3 to 6 remain to build, along with the `405` and `415` checks and the `400` for a repeated delivery ID.
 
 ## Scenario: scheduled reconciliation
 

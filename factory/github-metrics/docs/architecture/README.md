@@ -1,4 +1,4 @@
-# Architecture of github-metrics
+# Architecture of the GitHub metrics service
 
 This directory follows the arc42 template. Each numbered page is one arc42 section. The diagrams come from one Structurizr file named `workspace.dsl`.
 
@@ -26,13 +26,16 @@ The service is under construction. Each page says what exists on main and what t
 
 ## Diagrams
 
-`workspace.dsl` is the source. The files in `diagrams/` come from it with the Structurizr command-line tool and PlantUML, using these commands in this directory:
+`workspace.dsl` is the source. The files in `diagrams/` come from it with the Structurizr command-line tool and PlantUML. Export the PlantUML sources from this directory:
 
 ```sh
 structurizr export -workspace workspace.dsl -format plantuml -output ./out
-plantuml -tsvg ./out/structurizr-{SystemContext,Containers,Components}.puml
+```
+
+Render `./out/structurizr-{SystemContext,Containers,Components}.puml` as SVG with the [PlantUML command](../../IMPORT-MAP.toml#L1325). Then move the generated diagrams into place.
+
+```sh
 mv ./out/*.svg diagrams/
 ```
 
-The architecture pages display the SVG diagrams. Rerun the commands and
-commit the updated SVGs after editing `workspace.dsl`.
+The architecture pages display the SVG diagrams. Regenerate and commit the updated SVGs after editing `workspace.dsl`.
