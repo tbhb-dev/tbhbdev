@@ -8,7 +8,8 @@ from typing import TYPE_CHECKING
 import pytest
 
 from tbhbdev import prose_check
-from tbhbdev.alpha import pull_request
+from tbhbdev.alpha.pull_request import prose as pr_prose
+from tbhbdev.alpha.pull_request.draft import DRAFT
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
@@ -28,7 +29,7 @@ def fake_lint(
             raise SystemExit(message)
         return result
 
-    monkeypatch.setattr(pull_request, "lint", lint)
+    monkeypatch.setattr(pr_prose, "lint", lint)
     return calls
 
 
@@ -37,7 +38,7 @@ def test_clean_text_returns_none_and_forwards_arguments(
 ) -> None:
     calls = fake_lint(monkeypatch, [])
     assert prose_check.check_prose("one\ntwo", "the body", root=tmp_path) is None
-    assert calls == [(["one", "two"], 1, pull_request.DRAFT, tmp_path.resolve())]
+    assert calls == [(["one", "two"], 1, DRAFT, tmp_path.resolve())]
 
 
 def test_the_working_directory_is_restored(
@@ -79,7 +80,7 @@ def test_a_linter_that_cannot_run_is_refused_without_the_text(
     def broken(*_args: object, **_kwargs: object) -> list[tuple[int, str]]:
         raise FileNotFoundError(2, "No such file or directory")
 
-    monkeypatch.setattr(pull_request, "lint", broken)
+    monkeypatch.setattr(pr_prose, "lint", broken)
     with pytest.raises(prose_check.ProseRefused) as caught:
         prose_check.check_prose("the-checked-text", "the body", root=tmp_path)
     assert str(caught.value) == (

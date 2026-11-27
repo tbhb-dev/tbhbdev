@@ -32,9 +32,9 @@ cli_py_library(
         ":content_model",
         ":runner",
         "//factory/cli/src/tbhbdev/alpha:content_issues",
-        "//factory/cli/src/tbhbdev/alpha:pull_request",
-        "//factory/cli/src/tbhbdev/alpha:pull_request_frontmatter",
         "//factory/cli/src/tbhbdev/alpha:repo_bootstrap",
+        "//factory/cli/src/tbhbdev/alpha/pull_request:frontmatter",
+        "//factory/cli/src/tbhbdev/alpha/pull_request:repository",
     ],
 )
 
@@ -76,14 +76,6 @@ cli_py_library(
 )
 
 cli_py_library(
-    name = "content_decision_record",
-    srcs = ["content_decision_record.py"],
-    imports = [".."],
-    visibility = ["//factory/cli:__subpackages__"],
-    deps = [":content_model"],
-)
-
-cli_py_library(
     name = "content_model",
     srcs = ["content_model.py"],
     imports = [".."],
@@ -91,23 +83,6 @@ cli_py_library(
     deps = [
         "@cli_pip//markdown_it_py",
         "@cli_pip//mdit_py_plugins",
-    ],
-)
-
-cli_py_library(
-    name = "content_review",
-    srcs = ["content_review.py"],
-    data = [
-        ":schemas/core.cue",
-        ":schemas/issue.cue",
-        ":schemas/review.cue",
-        "//factory/cli:schemas",
-    ],
-    imports = [".."],
-    visibility = ["//factory/cli:__subpackages__"],
-    deps = [
-        ":content_model",
-        ":cue_runtime",
     ],
 )
 
@@ -180,7 +155,10 @@ cli_py_library(
     srcs = ["prose_check.py"],
     imports = [".."],
     visibility = ["//factory/cli:__subpackages__"],
-    deps = ["//factory/cli/src/tbhbdev/alpha:pull_request"],
+    deps = [
+        "//factory/cli/src/tbhbdev/alpha/pull_request:draft",
+        "//factory/cli/src/tbhbdev/alpha/pull_request:prose",
+    ],
 )
 
 cli_py_library(
@@ -258,4 +236,29 @@ cli_py_library(
     imports = [".."],
     visibility = ["//factory/cli:__subpackages__"],
     deps = ["@cli_pip//certifi"],
+)
+
+cli_py_library(
+    name = "content_decision_record",
+    srcs = ["content_decision_record.py"],
+    imports = [".."],
+    visibility = ["//factory/cli:__subpackages__"],
+    deps = [":content_model"],
+)
+
+cli_py_library(
+    name = "content_review",
+    srcs = ["content_review.py"],
+    data = [
+        ":schemas/core.cue",
+        ":schemas/issue.cue",
+        ":schemas/review.cue",
+        "//factory/cli:schemas",
+    ],
+    imports = [".."],
+    visibility = ["//factory/cli:__subpackages__"],
+    deps = [
+        ":content_model",
+        ":cue_runtime",
+    ],
 )

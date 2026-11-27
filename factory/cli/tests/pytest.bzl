@@ -16,7 +16,6 @@ _IMPORTED_TESTS = [
     "test_alpha_agent_run_host",
     "test_alpha_agent_sandbox_live",
     "test_alpha_agent_settings",
-    "test_alpha_pull_request",
     "test_alpha_review_doc",
 ]
 
@@ -30,7 +29,6 @@ _IO_TESTS = [
     "test_alpha_agent_ownership",
     "test_alpha_agent_policy",
     "test_alpha_agent_precheck",
-    "test_alpha_agent_preparation",
     "test_alpha_agent_process_group",
     "test_alpha_agent_push",
     "test_alpha_agent_review_post",
@@ -40,7 +38,6 @@ _IO_TESTS = [
     "test_alpha_agent_ssh_serve",
     "test_alpha_agent_terminal_descriptors",
     "test_alpha_agent_transport",
-    "test_alpha_agent_worktree",
     "test_alpha_close",
     "test_alpha_gh_app",
     "test_alpha_gh_shim",
@@ -50,7 +47,6 @@ _IO_TESTS = [
     "test_alpha_monorepo",
     "test_alpha_opened",
     "test_alpha_pre_push_guard",
-    "test_alpha_pull_request",
     "test_alpha_repo",
     "test_alpha_repo_token",
     "test_alpha_review",

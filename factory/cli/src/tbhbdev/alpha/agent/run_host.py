@@ -43,7 +43,11 @@ from tbhbdev.alpha.agent import (
     runfiles,
     settings,
     shims,
-    worktree,
+    worktree_checkout,
+    worktree_errors,
+    worktree_hooks,
+    worktree_mirror,
+    worktree_writes,
 )
 from tbhbdev.alpha.agent.decisions import argv, config, policy, repo, request, run_state
 from tbhbdev.alpha.agent.model import (
@@ -106,9 +110,6 @@ def planned_paths(run: Run) -> RunPaths:
 
 
 # These files can alter the next trusted shell or tool invocation.
-_BAZEL_SHUTDOWN_SECONDS = 60
-_BAZEL_SHUTDOWN_RETRIES = 3
-_BAZEL_RETRY_SECONDS = 2
 NO_COMMIT = 6
 NO_PUSH = 9
 NO_REVIEW = 10
@@ -162,19 +163,16 @@ def check_config(configured: Settings) -> None:
 
 
 def protected_home(run: Run) -> tuple[str, ...]:
-    clone = Path(repo.clone_path(run.home, run.request.repo))
-    account_git = clone / ".git"
+    account_git = Path(repo.clone_path(run.home, run.request.repo)) / ".git"
     if account_git.is_file():
         message = "account clone must have its own git directory"
         raise Invalid(message)
-    mirror = worktree.mirror_path(run.home, run.request.repo)
+    mirror = worktree_mirror.mirror_path(run.home, run.request.repo)
     paths = (
         *protected_home_paths(run.home, run.settings.sockets_dir),
         account_git,
         mirror,
-        mirror.parent,
-        mirror.parent.parent,
-        mirror.parent.parent.parent,
+        *mirror.parents[:3],
         userconfig.path(),
     )
     if os.environ.get("ZDOTDIR"):
@@ -184,12 +182,11 @@ def protected_home(run: Run) -> tuple[str, ...]:
 
 def full_denies(run: Run, paths: RunPaths) -> tuple[str, ...]:
     candidates = policy.denied_paths(run.settings, run.host, paths.home, paths.uid)
-    mirror = str(worktree.mirror_path(run.home, run.request.repo))
-    recovery = str(run.home / ".codex-recovery")
+    mirror = str(worktree_mirror.mirror_path(run.home, run.request.repo))
     return tuple(
         dict.fromkeys(
             alias
-            for p in (*candidates, mirror, recovery)
+            for p in (*candidates, mirror, str(run.home / ".codex-recovery"))
             for alias in (p, os.path.realpath(p))
         )
     )
@@ -253,7 +250,7 @@ def audit_writes(
 ) -> None:
     """Record the write roots a stricter policy would refuse, and refuse none."""
     findings = dict.fromkeys(_audit_findings(run))
-    for finding in worktree.validate_writes(workspace, clone, write_roots):
+    for finding in worktree_writes.validate_writes(workspace, clone, write_roots):
         if finding not in findings:
             findings[finding] = None
             run.files.write("log", f"audit: would refuse: {json.dumps(finding)}\n")
@@ -326,7 +323,7 @@ def checked_policy(run: Run, paths: RunPaths) -> tuple[Policy, str]:
         *check_settings.sandbox.agy.build_write,
     )
     audit_writes(run, Path(resolved.worktree), clone, write_roots)
-    worktree.validate_hooks(Path(resolved.worktree), write_roots)
+    worktree_hooks.validate_hooks(Path(resolved.worktree), write_roots)
     name = (
         "agy-agent"
         if run.request.harness is Harness.AGY and run.request.profile is Profile.BUILD
@@ -470,14 +467,14 @@ def prepare_workspace(run: Run) -> Prepared:
     clone = Path(repo.clone_path(run.home, run.request.repo))
     paths = planned_paths(run)
     value, _ = checked_policy(run, paths)
-    workspace = worktree.create(
+    workspace = worktree_checkout.create(
         clone,
         run.files.name,
         run.request,
         lambda: credentials.fetch_token(run.request, run.settings),
         hook_env=hook_environment(value, unsandboxed=run.request.unsandboxed),
     )
-    with worktree.preparation_step("credential delivery"):
+    with worktree_errors.preparation_step("credential delivery"):
         delivery = credentials.deliver(run.request, run.settings, run.tmpdir)
     paths = RunPaths(
         home=str(run.home),
@@ -491,22 +488,22 @@ def prepare_workspace(run: Run) -> Prepared:
         if delivery.signing is not None
         else None,
     )
-    with worktree.preparation_step("audit directory"):
+    with worktree_errors.preparation_step("audit directory"):
         runfiles.private_dir(Path(paths.audit_dir))
     before = None
     headless = run.request.kind is RunKind.EXEC
     if run.request.harness is Harness.CODEX:
-        with worktree.preparation_step("codex auth copy"):
+        with worktree_errors.preparation_step("codex auth copy"):
             runfiles.private_dir(Path(paths.codex_home))
             source = runfiles.private_dir(run.home / ".codex") / "auth.json"
             before = credentials.auth_copy(source, Path(paths.codex_home) / "auth.json")
-        with worktree.preparation_step("codex config"):
+        with worktree_errors.preparation_step("codex config"):
             prepare_codex_config(
                 Path(paths.codex_home), run.settings.otel_endpoint, headless=headless
             )
     start = None
     if headless and run.request.profile is Profile.BUILD and not run.request.no_commit:
-        with worktree.preparation_step("stop hook baseline"):
+        with worktree_errors.preparation_step("stop hook baseline"):
             start = push.head(workspace, f"agent/{run.files.name}")
     return Prepared(
         paths, delivery, before, bazel_bases(run.home, str(workspace)), start
@@ -1003,6 +1000,8 @@ def _open_owned(home: Path, base: Path) -> tuple[int, os.stat_result] | None:
     chain even if a path is replaced later. The caller closes the fd.
     """
     anchor = next((a for a, root in _bazel_roots(home) if base.parent == root), None)
+    if anchor is None and base.parent.is_relative_to(bazel_servers.MEMORY_DISK):
+        anchor = bazel_servers.MEMORY_DISK
     if anchor is None or ".." in base.parts:
         return None
     names = base.relative_to(anchor).parts
@@ -1037,28 +1036,17 @@ def _owned_base(home: Path, base: Path) -> os.stat_result | None:
 
 def _server_alive(base: Path) -> bool:
     try:
-        pid = int((base / "server/server.pid.txt").read_text())
+        pid = int(bazel_servers.pid_text(base))
         if pid <= 0:
             return False
         os.kill(pid, 0)
+        return process_group.leader_start(pid) is not None
     except PermissionError:
         # A live process of another uid, or an unreadable pid file: keep the base.
         return True
     except OSError, ValueError, OverflowError:
         # No readable pid file, or no such process, means no server we can see.
         return False
-    return True
-
-
-def _bazel_tool(run: Run) -> str | None:
-    # The harness ran with the configured tool path, so search it as well.
-    search = ":".join(
-        (
-            os.environ.get("PATH", os.defpath),
-            policy.tool_path(run.settings, run.host, str(run.home)),
-        )
-    )
-    return shutil.which("bazelisk", path=search) or shutil.which("bazel", path=search)
 
 
 def build_shims(run: Run, workspace: Path) -> None:
@@ -1071,39 +1059,15 @@ def build_shims(run: Run, workspace: Path) -> None:
     # Keep this phase until launch so polling uses the extra time through startup.
     run.files.write("phase", "shims")
     started = time.monotonic()
-    shims.build(workspace, _bazel_tool(run))
-    run.deadline += time.monotonic() - started
-
-
-def _shutdown_once(tool: str, base: Path, worktree: str) -> str:
-    try:
-        done = subprocess.run(  # nosec B603
-            [tool, f"--output_base={base}", "shutdown"],
-            cwd=worktree,
-            capture_output=True,
-            timeout=_BAZEL_SHUTDOWN_SECONDS,
-            check=False,
+    search = ":".join(
+        (
+            os.environ.get("PATH", os.defpath),
+            policy.tool_path(run.settings, run.host, str(run.home)),
         )
-        result = f"rc={done.returncode}"
-    except subprocess.TimeoutExpired:
-        result = "timed out"
-    except OSError:
-        result = "failed to run"
-    if result == "rc=0" and _server_alive(base):
-        result = "server alive"
-    return result
-
-
-def _shutdown_base(tool: str, base: Path, worktree: str) -> str:
-    # A server still starting can answer shutdown with rc 0 before it accepts
-    # commands, so a live server after a clean shutdown gets another attempt.
-    result = _shutdown_once(tool, base, worktree)
-    for _ in range(_BAZEL_SHUTDOWN_RETRIES):
-        if result != "server alive":
-            break
-        time.sleep(_BAZEL_RETRY_SECONDS)
-        result = _shutdown_once(tool, base, worktree)
-    return result
+    )
+    tool = shutil.which("bazelisk", path=search) or shutil.which("bazel", path=search)
+    shims.build(workspace, tool)
+    run.deadline += time.monotonic() - started
 
 
 def _recorded_bases(
@@ -1120,44 +1084,34 @@ def _recorded_bases(
     return recorded
 
 
-def _shutdown_target(
-    tool: str | None, base: Path, worktree: Path, server: bazel_servers.Server | None
-) -> str:
-    if tool is None:
-        return "tool unavailable"
-    if server is not None:
-        if not bazel_servers.matches_pid(base, server.pid):
-            return "server changed"
-        if server.workspace.is_dir():
-            worktree = server.workspace
-    return _shutdown_base(tool, base, str(worktree))
-
-
 def shutdown_bazel(
     run: Run,
     prepared: Prepared | None,
     *,
-    group: int | None = None,
     servers: dict[Path, bazel_servers.Server] | None = None,
 ) -> BazelShutdown:
     """Stop the run's Bazel servers and mark recorded bases for deletion."""
     if prepared is None:
         return {}
-    tool = _bazel_tool(run)
     worktree = Path(prepared.paths.worktree)
     recorded = _recorded_bases(run, prepared)
     targets: dict[Path, bazel_servers.Server | None] = dict.fromkeys(recorded)
-    if servers is None and group is not None:
-        servers = bazel_servers.find(worktree, group)
-    targets.update(servers or {})
+    previous = servers or {}
+    targets.update(previous)
+    # Rescan after stopping the harness to catch servers launched during teardown.
+    targets.update(
+        (base, server)
+        for base, server in bazel_servers.find(worktree).items()
+        if base not in previous or server.belongs
+    )
     stopped: BazelShutdown = {}
     for base, server in targets.items():
-        if server is None and tool is None:
-            continue
         if server is not None and not server.belongs:
             continue
         path, identity = recorded.get(base, (base, None))
-        result = _shutdown_target(tool, path, worktree, server)
+        if identity is None and (status := _owned_base(run.home, path)) is not None:
+            identity = (status.st_dev, status.st_ino)
+        result = bazel_servers.stop(path, server) if server is not None else "rc=0"
         run.files.write("log", f"bazel shutdown: {str(path)!r} ({result})\n")
         stopped[path] = (result, identity)
     return stopped
@@ -1166,11 +1120,9 @@ def shutdown_bazel(
 def _stop_harness(run: Run, prepared: Prepared, child: subprocess.Popen[str]) -> bool:
     with suppress(OSError):
         run.files.write("phase", "exited")
-    # Snapshot ancestry before the harness group stops, but shut the servers
-    # down after it: a shutdown issued while the harness is mid-build waits
-    # for that build. Finish retries the recorded bases if an unexpected error
-    # prevents the second pass from completing.
-    servers: dict[Path, bazel_servers.Server] = {}
+    # Capture ancestry before stopping the harness. Stop Bazel afterwards so
+    # the harness cannot restart its server during cleanup.
+    servers = None
     with suppress(Exception):
         servers = bazel_servers.find(Path(prepared.paths.worktree), child.pid)
     stopped = process_group.stop_owned(
@@ -1276,12 +1228,9 @@ def cleanup_bazel(
 ) -> dict[str, int]:
     """Delete the recorded output bases whose server is gone, and the links into them.
 
-    A base is deleted only when its shutdown returned 0 and its server pid is
-    dead at that moment, it is still the same directory (st_dev, st_ino) as at
-    shutdown, and it is owned by the agent with no symlinked ancestor. The
-    deletion runs relative to an fd that pins the validated ancestors. The freed
-    counts are the statvfs delta on the base's filesystem across the deletion, so
-    they include any other writer on that host, and a failed deletion adds nothing.
+    Deletion requires a dead server PID and an unchanged, owned directory.
+    The parent descriptor pins the validated ancestors. The freed counts use
+    the filesystem delta across the deletion and can include concurrent writes.
     """
     freed = {"bytes": 0, "inodes": 0, "bases": 0}
     if prepared is None:

@@ -12,7 +12,7 @@ from agent_example import settings
 from agent_host_example import run_request
 from test_alpha_agent_request import BUILD
 
-from tbhbdev.alpha.agent import worktree
+from tbhbdev.alpha.agent import worktree_checkout, worktree_mirror
 from tbhbdev.alpha.agent.decisions import request
 from tbhbdev.alpha.agent.driver import arguments as agent_arguments
 from tbhbdev.alpha.agent.driver.launch import prepare
@@ -85,10 +85,10 @@ def test_invalid_ref_is_refused_by_controller_and_host(
     assert str(caught.value) == expected
     forged = dataclasses.replace(run_request(), fetch_refs=(ref,))
     with pytest.raises(Invalid) as caught:
-        worktree.fetch_commit(tmp_path, forged)
+        worktree_mirror.fetch_commit(tmp_path, forged)
     assert str(caught.value) == expected
     with pytest.raises(Invalid) as caught:
-        worktree.create(tmp_path, "sample", forged)
+        worktree_checkout.create(tmp_path, "sample", forged)
     assert str(caught.value) == expected
     assert list(tmp_path.rglob("*")) == before
 
@@ -127,9 +127,9 @@ def test_ninth_ref_is_refused_by_controller_and_host(
         request.parse(BUILD | {"fetch_refs": refs}, host_allows_unsandboxed=True)
     forged = dataclasses.replace(run_request(), fetch_refs=tuple(refs))
     with pytest.raises(Invalid, match=r"^request fetch_refs allows at most 8 refs$"):
-        worktree.fetch_commit(tmp_path, forged)
+        worktree_mirror.fetch_commit(tmp_path, forged)
     with pytest.raises(Invalid, match=r"^request fetch_refs allows at most 8 refs$"):
-        worktree.create(tmp_path, "sample", forged)
+        worktree_checkout.create(tmp_path, "sample", forged)
     assert list(tmp_path.rglob("*")) == before
 
 

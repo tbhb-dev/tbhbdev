@@ -26,7 +26,7 @@ from agent_live_host_probe import checked_live_policy, codex_sandbox_command
 from test_alpha_agent_run_host import make_run
 from test_alpha_agent_sandbox_live import report
 
-from tbhbdev.alpha.agent import credentials, host_tools, run_host, worktree
+from tbhbdev.alpha.agent import credentials, host_tools, run_host, worktree_checkout
 from tbhbdev.alpha.agent.decisions import argv, policy
 from tbhbdev.alpha.agent.model import Harness, Os, Policy
 
@@ -64,7 +64,7 @@ def real_clone(
         run, settings=dataclasses.replace(run.settings, sandbox=sandbox)
     )
     with host_tools.configured(run.settings, run.host.os):
-        workspace = worktree.create(clone, run.files.name, run.request)
+        workspace = worktree_checkout.create(clone, run.files.name, run.request)
     return run, dataclasses.replace(
         run_host.planned_paths(run), worktree=str(workspace)
     )
