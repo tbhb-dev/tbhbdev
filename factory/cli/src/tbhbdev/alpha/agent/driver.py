@@ -365,26 +365,32 @@ def usable_hosts(
         ):
             continue
         host = rules.select_host(settings, candidate.name, account)
+        now = time.monotonic()
+        if now >= deadline:
+            break
+        probe_deadline = min(deadline, now + 30)
         found, refuse, message = read_limits(
             settings,
             host,
             profile,
             ignore=False,
-            timeout=min(30, deadline - time.monotonic()),
+            timeout=probe_deadline - now,
         )
         if refuse or not isinstance(found, limits.Reading):
             continue
         # An older host may lack the probe until version synchronization.
         # The launch still checks capacity when it claims a slot.
-        with suppress(transport.TransportError, transport.CollisionError):
-            slot = transport.shell(
-                settings,
-                host,
-                remote.check_slot(host, profile),
-                timeout=min(30, deadline - time.monotonic()),
-            )
-            if slot.strip() == admission.SLOT_FULL:
-                continue
+        slot_timeout = probe_deadline - time.monotonic()
+        if slot_timeout > 0:
+            with suppress(transport.TransportError, transport.CollisionError):
+                slot = transport.shell(
+                    settings,
+                    host,
+                    remote.check_slot(host, profile),
+                    timeout=slot_timeout,
+                )
+                if slot.strip() == admission.SLOT_FULL:
+                    continue
         usable.append((found.load, host, message))
     return sorted(usable, key=lambda entry: entry[0])
 
@@ -395,7 +401,10 @@ def select_exec_host(
     if args.ignore_limits:
         message = "--ignore-limits requires --host"
         raise Invalid(message)
-    usable = usable_hosts(settings, args.os, args, deadline)
+    # Reserve half the launch wait for preflight and startup on the selected host.
+    usable = usable_hosts(
+        settings, args.os, args, deadline - settings.launch_wait_seconds / 2
+    )
     if not usable:
         message = (
             f"no usable {args.os} hosts for automatic selection; "

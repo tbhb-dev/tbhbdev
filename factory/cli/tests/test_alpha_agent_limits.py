@@ -7,6 +7,7 @@ import dataclasses
 import json
 import subprocess
 import sys
+from types import SimpleNamespace
 from typing import TYPE_CHECKING
 
 import pytest
@@ -16,7 +17,7 @@ from agent_example import LINUX, MARKER, settings
 from tbhbdev.alpha import agent
 from tbhbdev.alpha.agent import driver
 from tbhbdev.alpha.agent.decisions import limits, remote
-from tbhbdev.alpha.agent.model import Invalid, Os, Profile, Settings
+from tbhbdev.alpha.agent.model import Host, Invalid, Os, Profile, Settings
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -425,6 +426,65 @@ def test_exec_without_host_uses_the_idle_linux_host(
     error = capsys.readouterr().err
     assert ("warning: example-idle: swap used 90% > 80%" in error) is swap_warning
     assert_pool_probes(host_pool)
+
+
+@pytest.mark.parametrize(
+    ("launch_wait", "delayed_probe", "probe_timeouts"),
+    [
+        (120, "slot", [30, 29]),
+        (20, "slot", [10, 9]),
+        (20, "limits at deadline", [10]),
+    ],
+)
+def test_exec_preserves_preflight_time_after_a_slow_probe(
+    host: Remote,
+    monkeypatch: pytest.MonkeyPatch,
+    launch_wait: int,
+    delayed_probe: str,
+    probe_timeouts: list[float],
+) -> None:
+    first = dataclasses.replace(LINUX, auto_select=True)
+    slow = dataclasses.replace(first, name="example-slow")
+    last = dataclasses.replace(first, name="example-last")
+    config = dataclasses.replace(
+        CONFIG, hosts=(first, slow, last), launch_wait_seconds=launch_wait
+    )
+    monkeypatch.setattr(agent.settings, "load", lambda: config)
+    host.configure(
+        limits="1 4 12582912 6291456 100 0 -",
+        limits_by_host={first.name: "0.5 4 12582912 6291456 100 0 -"},
+    )
+    elapsed = 0.0
+    monkeypatch.setattr(driver, "time", SimpleNamespace(monotonic=lambda: elapsed))
+    real_shell = driver.transport.shell
+    slow_timeouts: list[float] = []
+
+    def shell(
+        settings: Settings,
+        target: Host,
+        script: str,
+        stdin: driver.transport.Stdin | None = None,
+        *,
+        timeout: float = 30,
+    ) -> str:
+        nonlocal elapsed
+        assert timeout > 0
+        if target == slow:
+            slow_timeouts.append(timeout)
+            if script == remote.check_slot(slow, Profile.BUILD):
+                elapsed += timeout
+                message = "probe timed out"
+                raise driver.transport.TransportError(message)
+            elapsed += timeout if delayed_probe == "limits at deadline" else 1
+        if script == remote.installed(first):
+            assert target == first
+            assert timeout == launch_wait - probe_timeouts[0]
+        return real_shell(settings, target, script, stdin, timeout=timeout)
+
+    monkeypatch.setattr(driver.transport, "shell", shell)
+    assert launch(host, target=None) == 0
+    assert slow_timeouts == probe_timeouts
+    assert driver.load(config, "sample").host == first
 
 
 @pytest.mark.parametrize("probe_rc", [1, 2, 73])
