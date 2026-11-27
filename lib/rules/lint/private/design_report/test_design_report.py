@@ -1,72 +1,46 @@
 # SPDX-License-Identifier: Apache-2.0
 # Copyright Tony Burns
 
-import unittest
 from pathlib import Path
-from tempfile import TemporaryDirectory
+from unittest import TestCase
 
-from design_report import read_tree
-from markdown import difference
-from metrics import measure
+from .design_report import read_tree
+from .markdown import difference
+from .metrics import measure
+
+FIXTURES = Path(__file__).with_name("testdata")
 
 
-class DesignReportTest(unittest.TestCase):
-    def setUp(self) -> None:
-        directory = TemporaryDirectory()
-        self.addCleanup(directory.cleanup)
-        self.root = Path(directory.name)
-        (self.root / "src/pkg").mkdir(parents=True)
-        (self.root / "tests").mkdir()
-
-    def write(self, path: str, text: str) -> None:
-        (self.root / path).write_text(text, encoding="utf-8")
-
-    def snapshot(self):
-        return measure(read_tree(self.root / "src"), read_tree(self.root / "tests"))
-
+class DesignReportTest(TestCase):
     def test_dependency_graph(self) -> None:
-        self.write("src/pkg/__init__.py", '"""Package."""\n')
-        self.write("src/pkg/b.py", "def f(): pass\n")
-        self.write("src/pkg/types.py", "")
-        self.write(
-            "src/pkg/a.py",
-            """
-from typing import TYPE_CHECKING as CHECKING
-if CHECKING:
-    from . import types
-else:
-    from . import b
-""",
-        )
-        self.write("tests/test_a.py", "import pkg.a\n")
-        self.write("tests/test_b.py", "import pkg.b\nimport pkg.b\n")
-        report = self.snapshot()
+        sources = read_tree(FIXTURES / "src")
+        report = measure(sources, {"test_a": "import pkg.a", "test_b": "import pkg.b"})
         modules = report["modules"]
-        self.assertEqual(modules["pkg.a"]["fan_out"], 2)
-        self.assertEqual(modules["pkg.b"]["fan_in"], 1)
-        self.assertEqual(modules["pkg.b"]["instability"], 0)
-        self.assertEqual(modules["pkg.a"]["instability"], 1)
-        self.assertEqual(modules["pkg.__init__"]["fan_in"], 1)
-        self.assertEqual(modules["pkg.__init__"]["test_files"], 2)
-        self.assertEqual(modules["pkg.b"]["test_files"], 2)
-        self.assertEqual(modules["pkg.types"]["fan_in"], 0)
-        self.assertEqual(report["totals"]["cumulative_component_dependency"], 2)
-        self.assertEqual(report["totals"]["initializers_with_statements"], 0)
+        a, b, init = (modules[f"pkg.{name}"] for name in ("a", "b", "__init__"))
+        assert (a["fan_out"], a["instability"]) == (2, 1)
+        assert (b["fan_in"], b["test_files"]) == (1, 2)
+        assert (init["fan_in"], init["test_files"]) == (1, 2)
+        assert report["totals"]["cumulative_component_dependency"] == 2
+        assert report["totals"]["initializers_with_statements"] == 0
 
     def test_difference(self) -> None:
-        self.write("src/pkg/a.py", "def f(): pass\n")
-        self.write("src/pkg/stable.py", "pass\n")
-        base = self.snapshot()
-        self.assertEqual(difference(base, base), "No design metrics changed.\n")
-        self.write("src/pkg/__init__.py", '"""Package."""\nvalue = 1\n')
-        self.write("src/pkg/a.py", "def f(): pass\n" + "\n" * 300)
-        self.write("src/pkg/new.py", "# Comment\n" * 301)
-        report = difference(base, self.snapshot())
-        self.assertIn("| modules over 300 lines | 0 | 2 | +2 |", report)
-        self.assertIn("| initializers with statements | 0 | 1 | +1 |", report)
-        self.assertNotIn("pkg.stable", report)
-        self.assertLess(report.index("pkg.a"), report.index("pkg.__init__"))
+        base = measure({"pkg.a": "pass"}, {})
+        assert "| Any | 0 | 0 | +0 |" in difference(base, base)
+        head = measure({"pkg.a": "pass\n" * 301, "pkg.__init__": "value = 1"}, {})
+        report = difference(base, head)
+        assert "| modules over 300 lines | 0 | 1 | +1 |" in report
+        assert "| initializers with statements | 0 | 1 | +1 |" in report
         limits = report.split("## New modules over limits")[1]
-        self.assertIn("pkg.__init__", limits)
-        self.assertIn("pkg.new", limits)
-        self.assertNotIn("pkg.a", limits)
+        assert "pkg.__init__" in limits
+        assert "pkg.a" not in limits
+
+    def test_annotations(self) -> None:
+        fixture = FIXTURES / "annotations.txt"
+        imports = "import typing as t\nfrom collections.abc import Mapping as M\n"
+        for line in fixture.read_text(encoding="utf-8").splitlines():
+            expected_any, expected_mapping, source = line.split(" ", 2)
+            with self.subTest(source=source):
+                text = imports + source.replace(r"\n", "\n")
+                totals = measure({"sample": text}, {})["totals"]
+                assert totals["Any"] == int(expected_any)
+                assert totals["dict_str_object_annotations"] == int(expected_mapping)

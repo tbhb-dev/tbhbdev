@@ -163,11 +163,9 @@ jobs:
 
       - name: Compare design metrics
         run: |
-          tool=lib/rules/lint/private/design_report
-          python -m unittest discover -s "$tool"
-          python "$tool/design_report.py" measure design-base/factory/cli/src design-base/factory/cli/tests > base.json
-          python "$tool/design_report.py" measure factory/cli/src factory/cli/tests > head.json
-          python "$tool/design_report.py" diff base.json head.json > design-report.md
+          tool=lib.rules.lint.private.design_report
+          python -m unittest "$tool.test_design_report"
+          python -m "$tool.design_report" design-base/factory/cli factory/cli > design-report.md
           cat design-report.md >> "$GITHUB_STEP_SUMMARY"
 
       - name: Upload design report

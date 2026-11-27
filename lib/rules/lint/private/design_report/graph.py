@@ -1,29 +1,36 @@
 # SPDX-License-Identifier: Apache-2.0
 # Copyright Tony Burns
+# cspell:words orelse
 
 import ast
 from collections import Counter
-from collections.abc import Iterator
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from collections.abc import Iterable, Iterator
 
 LINE_LIMIT = 300
 INIT = ".__init__"
-TYPE_GUARDS = {"TYPE_CHECKING", "typing.TYPE_CHECKING", "typing_extensions.TYPE_CHECKING"}
+TYPE_GUARDS = {
+    f"{prefix}TYPE_CHECKING" for prefix in ("", "typing.", "typing_extensions.")
+}
 
-type Counts = dict[str, int]
 type ModuleMetrics = dict[str, int | float]
 type Graph = dict[str, set[str]]
 
 
-def aliases(tree: ast.Module) -> dict[str, str]:
-    names = {}
-    for node in tree.body:
-        if isinstance(node, ast.Import):
-            for item in node.names:
-                root = item.name.split(".")[0]
-                names[item.asname or root] = item.name if item.asname else root
-        elif isinstance(node, ast.ImportFrom) and node.level == 0:
-            for item in node.names:
-                names[item.asname or item.name] = f"{node.module}.{item.name}"
+def aliases(nodes: Iterable[ast.AST]) -> dict[str, str]:
+    names: dict[str, str] = {}
+    for node in nodes:
+        match node:
+            case ast.Import(names=items):
+                for item in items:
+                    root = item.name.partition(".")[0]
+                    names[item.asname or root] = item.name if item.asname else root
+            case ast.ImportFrom(level=0, module=module, names=items):
+                names.update((i.asname or i.name, f"{module}.{i.name}") for i in items)
+            case _:
+                continue
     return names
 
 
@@ -48,51 +55,48 @@ def type_only(test: ast.expr, names: dict[str, str]) -> bool:
 
 
 def runtime_imports(tree: ast.Module) -> Iterator[ast.Import | ast.ImportFrom]:
-    names = aliases(tree)
+    names = aliases(tree.body)
     pending: list[ast.AST] = [tree]
     while pending:
-        node = pending.pop()
-        if isinstance(node, (ast.Import, ast.ImportFrom)):
-            yield node
-        elif isinstance(node, ast.If) and type_only(node.test, names):
-            pending.extend(node.orelse)
-        elif (
-            isinstance(node, ast.If)
-            and isinstance(node.test, ast.UnaryOp)
-            and isinstance(node.test.op, ast.Not)
-            and type_only(node.test.operand, names)
-        ):
-            pending.extend(node.body)
-        else:
-            pending.extend(ast.iter_child_nodes(node))
+        match pending.pop():
+            case ast.Import() | ast.ImportFrom() as node:
+                yield node
+            case ast.If(test=test, orelse=body) if type_only(test, names):
+                pending.extend(body)
+            case ast.If(test=ast.UnaryOp(op=ast.Not(), operand=test), body=body) if (
+                type_only(test, names)
+            ):
+                pending.extend(body)
+            case node:
+                pending.extend(ast.iter_child_nodes(node))
+
+
+def import_targets(name: str, node: ast.Import | ast.ImportFrom) -> set[str]:
+    if isinstance(node, ast.Import):
+        return {item.name for item in node.names}
+    package = name.split(".")
+    if node.level >= len(package):
+        return set()
+    parent = package[: -node.level] if node.level else []
+    base = ".".join([*parent, node.module or ""]).rstrip(".")
+    return {base, *(f"{base}.{item.name}" for item in node.names if item.name != "*")}
 
 
 def dependencies(name: str, tree: ast.Module, modules: dict[str, str]) -> set[str]:
-    targets = set()
-    for node in runtime_imports(tree):
-        if isinstance(node, ast.Import):
-            targets.update(item.name for item in node.names)
-        else:
-            package = name.split(".")[:-1]
-            if node.level > len(package):
-                continue
-            parent = package[: len(package) - node.level + 1] if node.level else []
-            base = ".".join([*parent, node.module or ""]).rstrip(".")
-            targets.add(base)
-            targets.update(f"{base}.{item.name}" for item in node.names if item.name != "*")
     return {
-        modules[prefix] for target in targets for prefix in prefixes(target) if prefix in modules
+        modules[prefix]
+        for node in runtime_imports(tree)
+        for target in import_targets(name, node)
+        for prefix in prefixes(target)
+        if prefix in modules
     } - {name}
 
 
 def reachable(graph: Graph, starts: set[str]) -> set[str]:
-    seen: set[str] = set()
-    pending = list(starts)
-    while pending:
-        name = pending.pop()
-        if name not in seen:
-            seen.add(name)
-            pending.extend(graph[name] - seen)
+    seen = starts.copy()
+    while starts:
+        starts = set().union(*(graph[name] for name in starts)) - seen
+        seen.update(starts)
     return seen
 
 
@@ -102,25 +106,21 @@ def structure(
     modules = {name.removesuffix(INIT): name for name in sources}
     graph = {name: dependencies(name, tree, modules) for name, tree in sources.items()}
     importers = Counter(target for targets in graph.values() for target in targets)
-    cumulative = sum(len(reachable(graph, targets) - {name}) for name, targets in graph.items())
-
-    # Test helpers can pass along dependencies without contributing source fan-in.
-    test_modules = {name.removesuffix(INIT): f"test:{name}" for name in tests}
-    combined = graph | {
-        f"test:{name}": dependencies(name, tree, test_modules | modules)
-        for name, tree in tests.items()
-    }
+    cumulative = sum(len(reachable(graph, {name})) - 1 for name in graph)
+    helpers = {name.removesuffix(INIT): f"test:{name}" for name in tests}
+    known = helpers | modules
+    test_graph = {f"test:{n}": dependencies(n, t, known) for n, t in tests.items()}
+    combined = graph | test_graph
     test_reach: Counter[str] = Counter()
-    for root in test_modules.values():
+    for root in helpers.values():
         test_reach.update(reachable(combined, combined[root]) & sources.keys())
-
     metrics = {}
-    for name, targets in graph.items():
-        incoming, outgoing = importers[name], len(targets)
+    for name, edges in graph.items():
+        incoming, outgoing = importers[name], len(edges)
         metrics[name] = {
             "fan_in": incoming,
             "fan_out": outgoing,
-            "instability": outgoing / (incoming + outgoing) if incoming + outgoing else 0,
+            "instability": outgoing / max(1, incoming + outgoing),
             "test_files": test_reach[name],
         }
     return metrics, cumulative
