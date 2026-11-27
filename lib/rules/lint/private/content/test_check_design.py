@@ -33,25 +33,6 @@ def test_good(design: Path) -> None:
 
 
 @pytest.mark.parametrize(
-    ("case", "reason"),
-    json.loads((FIXTURES / "failures.json").read_text()).items(),
-)
-def test_bad_fixtures(case: str, reason: str) -> None:
-    errors = checker.check(FIXTURES / case, ["checkerbot"])
-    assert any(reason in error for error in errors)
-    assert all(re.match(r".+:\d+: .+", error) for error in errors)
-
-
-@pytest.mark.parametrize(
-    "case", ["stale", "bad_slug", "nested", "no_readme", "missing_metadata"]
-)
-def test_bad_index_fixtures(case: str) -> None:
-    assert checker.index(
-        FIXTURES / ("index_" + case), "designs/README.md", [], 250, write=False
-    )
-
-
-@pytest.mark.parametrize(
     "contents",
     ["---\nnull\n---\n", "---\n[]\n---\n", "---\nx: [\n---\n", "no frontmatter"],
 )

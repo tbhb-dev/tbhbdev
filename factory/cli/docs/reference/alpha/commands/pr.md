@@ -4,10 +4,8 @@ generated:
   - role: generated
     harness: codex:0.171.0
     model: openai:gpt-6.2-sol
-    effort: high
-    surface: exec
-    session: sha-256-64:b083225d0bf109b1
-    at: "2026-11-27T05:11:27Z"
+    session: sha-256-64:b92e3fe7d3cd5f25
+    at: "2026-11-27T15:32:52Z"
 status: stable
 tags: [alpha]
 title: Pull request commands
@@ -25,7 +23,7 @@ It reads the LLM trailers from the pull request's commits on GitHub and refuses 
 Passing and unfinished runs are skipped.
 It reports an error when no failed run exists.
 It attempts every rerun even if one fails, and returns the first failure's exit code.
-`pr close N --reason TEXT` (or `--comment TEXT`) closes it after the agent-session, open-state and opened-ledger checks, in origin's repository.
+`pr close N --reason TEXT` closes it after the agent-session, open-state and opened-ledger checks, in origin's repository.
 `pr delete-branch N` deletes only the head branch of a closed or merged pull request in origin's GitHub repository.
 It refuses fork heads, `main`, protected branches, and unreadable metadata.
 

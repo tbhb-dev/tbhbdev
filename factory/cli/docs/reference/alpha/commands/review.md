@@ -4,10 +4,8 @@ generated:
   - role: generated
     harness: codex:0.171.0
     model: openai:gpt-6.2-sol
-    effort: high
-    surface: exec
-    session: sha-256-64:0e394517628b7795
-    at: "2026-11-26T17:32:53Z"
+    session: sha-256-64:b92e3fe7d3cd5f25
+    at: "2026-11-27T15:32:52Z"
 status: stable
 tags: [alpha]
 title: Review commands
@@ -41,4 +39,4 @@ The host selects a draft for one pull request under `.git/tbhb-alpha/`. It check
 
 The host posts `APPROVE`, `REQUEST_CHANGES`, or `COMMENT` against the pinned commit. Before an approval it reads the pull request head once and refuses if the head differs. P0 and P1 findings require `REQUEST_CHANGES`. For headless runs without an output schema, the host reads the final verdict line separately. Any 2xx response counts as posted.
 
-The review ends with the host's `Generated-by: LLM` trailer, which includes the run's `variant` when supplied. Antigravity reviews accept `--effort auto`, and the trailer uses the effort from a known model name. The review gate reads the commit from GitHub's `commit_id` and the provider from the trailer or the legacy run footer. For legacy reviews, the gate checks that the footer refers to the same commit.
+The review ends with the host's `Generated-by: LLM` trailer, which includes the run's `variant` when supplied. Antigravity reviews accept `--effort auto`, and the trailer uses the effort from a known model name. The review gate reads the commit from GitHub's `commit_id` and the provider from the trailer.
