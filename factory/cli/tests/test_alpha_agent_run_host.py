@@ -61,7 +61,7 @@ from tbhbdev.alpha.agent import (
     runfiles,
     shims,
 )
-from tbhbdev.alpha.agent.decisions import request
+from tbhbdev.alpha.agent.decisions import policy, request
 from tbhbdev.alpha.agent.decisions.run_state import Group
 from tbhbdev.alpha.agent.model import (
     CodexPolicy,
@@ -5205,9 +5205,11 @@ def test_shutdown_bazel_discovers_and_stops_only_the_runs_servers(
     monkeypatch.setattr(bazel_servers, "listing", constant("\n".join(rows)))
     monkeypatch.setattr(bazel_servers, "sys", SimpleNamespace(platform="darwin"))
     killed: list[int] = []
-    monkeypatch.setattr(
-        process_group, "leader_start", lambda pid: None if pid in killed else "start"
-    )
+
+    def leader_start(pid: int) -> str | None:
+        return None if pid in killed else "start"
+
+    monkeypatch.setattr(process_group, "leader_start", leader_start)
 
     def kill(pid: int, number: int) -> None:
         if number == signal.SIGKILL:
@@ -5336,7 +5338,7 @@ def test_bazel_shims_use_the_configured_tool_path(
     run_host.build_shims(run, Path(prepared.paths.worktree))
     build.assert_called_once_with(Path(prepared.paths.worktree), "/bin/bazel")
     assert which.call_args.kwargs["path"].endswith(
-        ":" + run_host.policy.tool_path(run.settings, run.host, str(run.home))
+        ":" + policy.tool_path(run.settings, run.host, str(run.home))
     )
 
 
