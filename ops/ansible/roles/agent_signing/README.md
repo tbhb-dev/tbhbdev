@@ -32,4 +32,4 @@ Sign in to GitHub as `tbhb-agent` and add the public key printed by the play as 
 
 ## Verification scope
 
-The scenario uses `ssh-keygen` on Ubuntu and Go and Git on the controller. Its test repository contains the pinned tag, a later commit that builds a program which fails, and an untracked file. The installed program must run. Molecule checks that the agent owns the files, the modes are correct, and `signing.env` points to a matching pair of keys. It also checks preview and repeat runs, then replaces the program to confirm that the role restores the build.
+The scenario uses `ssh-keygen` on Ubuntu and Go and Git on the controller. Its test repository contains the pinned tag, a later commit that builds a program which fails, and an untracked file. The installed program must run. Molecule checks file ownership and modes, then verifies that `signing.env` points to a matching key pair. It also checks preview and repeat runs, then replaces the program to confirm that the role restores the build.
