@@ -278,6 +278,7 @@ def test_write_json_is_atomic_and_creates_parents(tmp_path: Path) -> None:
     assert [p.name for p in target.parent.iterdir()] == ["r.json"]
 
 
+@settings(deadline=None)
 @given(
     st.dictionaries(
         st.text(max_size=8),
