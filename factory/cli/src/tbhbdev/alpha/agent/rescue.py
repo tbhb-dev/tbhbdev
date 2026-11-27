@@ -43,8 +43,7 @@ def on_fault(run: Run, prepared: Prepared | None, rc: int) -> None:
 
 def publish(run: Run, workspace: Path) -> str:
     """Pin the exact commit to scan and publish on the run's own branch."""
-    branch = f"agent/{run.files.name}"
-    ref = f"refs/heads/{branch}"
+    ref = f"refs/heads/agent/{run.files.name}"
     failure = "could not save the run checkout"
     try:
         base = run.files.path("base").read_text().strip()
@@ -61,7 +60,7 @@ def publish(run: Run, workspace: Path) -> str:
             if tip == base:
                 return "nothing to publish"
             failure = "could not publish the run branch"
-            return publish_commit(run, directory, branch, base, tip)
+            return publish_commit(run, directory, ref, base, tip)
     except (*FAILURES, GhAppError):
         return f"kept local: {failure}"
 
@@ -102,9 +101,8 @@ def save_checkout(directory: Path, checkout: Path, ref: str) -> str | None:
     return tip
 
 
-def publish_commit(run: Run, directory: Path, branch: str, base: str, tip: str) -> str:
+def publish_commit(run: Run, directory: Path, ref: str, base: str, tip: str) -> str:
     """Send the scanned object with a single, unforced refspec."""
-    ref = f"refs/heads/{branch}"
     host, owner, name = repo.parts(run.request.repo)
     url = f"https://{host}/{owner}/{name}.git"
     account = next(
@@ -120,7 +118,7 @@ def publish_commit(run: Run, directory: Path, branch: str, base: str, tip: str) 
         directory, "push", "--no-follow-tags", "--recurse-submodules=no", "--",
         url, f"{tip}:{ref}", token=token,
     )  # fmt: skip
-    run.files.write("branch", branch)
+    run.files.write("branch", ref.removeprefix("refs/heads/"))
     return "published"
 
 
