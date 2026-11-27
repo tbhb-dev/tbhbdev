@@ -22,8 +22,6 @@ repo_files(visibility = ["//factory:__pkg__"])
 GO_TARGETS = [
     "//factory/agent-capacity/internal/session",
     "//factory/agent-capacity/internal/session:session_test",
-    "//factory/agent-capacity/internal/keepalive",
-    "//factory/agent-capacity/internal/keepalive:keepalive_test",
     "//factory/agent-capacity/internal/source/agy",
     "//factory/agent-capacity/internal/source/agy:agy_test",
     "//factory/agent-capacity/cmd/agent-capacity",
@@ -86,7 +84,6 @@ gomutants_test(
     cpus = 2,
     data = [
         "//factory/agent-capacity/cmd/agent-capacity:testdata/agy-usage.json",
-        "//factory/agent-capacity/internal/keepalive:testdata/stops.json",
         "//factory/agent-capacity/internal/source/agy:testdata/usage-data.json",
     ],
     flags = [
@@ -123,15 +120,6 @@ gobco_test(
     go_sum = ":go.sum",
     proxy = "@agent_capacity_go_mod_proxy//:proxy",
     tests = ["//factory/agent-capacity/internal/capacity:capacity_test"],
-)
-
-gobco_test(
-    name = "keepalive_gobco_test",
-    data = ["//factory/agent-capacity/internal/keepalive:testdata/stops.json"],
-    go_mod = ":go.mod",
-    go_sum = ":go.sum",
-    proxy = "@agent_capacity_go_mod_proxy//:proxy",
-    tests = ["//factory/agent-capacity/internal/keepalive:keepalive_test"],
 )
 
 gobco_test(

@@ -9,4 +9,4 @@
 | Container image | The deployment design calls for a non-root image with one static Go binary, no Linux distribution tools, a root filesystem mounted without write access, and one writable volume for the store. See the [deployment view](07-deployment-view.md) for the binary and its configuration |
 | Existing observability stack | The design sends OpenTelemetry data over HTTP to the host collector, which forwards traces, metrics, and logs to the backends. The code exports nothing yet |
 | No tail sampling | A PR's trace remains incomplete for weeks, and the collector pipeline for this service must not tail-sample |
-| Secrets as files | The webhook secret, the tunnel token, and the App private key use file mounts without write access. None is ever an environment variable or image content |
+| Secrets as files | File mounts hold the webhook secret, the tunnel token, and the App private key without allowing writes. None is ever an environment variable or image content |

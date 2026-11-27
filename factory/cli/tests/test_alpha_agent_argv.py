@@ -27,10 +27,10 @@ from agent_example import (
     trusted_executables,
 )
 
-from tbhbdev.alpha import install
 from tbhbdev.alpha.agent import model
 from tbhbdev.alpha.agent.decisions import argv, policy
 from tbhbdev.alpha.agent.model import Harness, Invalid, Os, Profile, RunKind
+from tbhbdev.alpha.install import hooks as install
 
 pytestmark = pytest.mark.usefixtures("isolated_home")  # noqa: V107
 

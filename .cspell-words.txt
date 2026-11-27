@@ -28,6 +28,7 @@ bazelisk
 bazeliskrc
 bazelrc
 bazelversion
+bbolt
 bged
 BINDIR
 boottime
@@ -149,6 +150,7 @@ getppid
 getproxies
 getsid
 getuid
+ghclient
 gitdir
 gitdirs
 gitlink
@@ -174,6 +176,7 @@ hardbreak
 hardlinks
 hardwrap
 headscale
+healthz
 heapdump
 heredocs
 hermeticity
@@ -403,6 +406,7 @@ swapusage
 swiftc
 swiftlint
 symref
+synctest
 syslimits
 tailnet
 takewhile

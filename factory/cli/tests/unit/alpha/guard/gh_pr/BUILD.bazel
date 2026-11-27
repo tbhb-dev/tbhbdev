@@ -11,11 +11,10 @@ cli_py_test(
     deps = [
         "//factory/cli/src/tbhbdev/alpha:close",
         "//factory/cli/src/tbhbdev/alpha:command",
-        "//factory/cli/src/tbhbdev/alpha:install",
         "//factory/cli/src/tbhbdev/alpha:pull_request",
-        "//factory/cli/src/tbhbdev/alpha:squash_merge",
         "//factory/cli/src/tbhbdev/alpha/guard/gh_pr:command",
         "//factory/cli/src/tbhbdev/alpha/guard/gh_pr:decision",
+        "//factory/cli/src/tbhbdev/alpha/merge:options",
         "//factory/cli/tests:conftest",
         "@cli_pip//hypothesis",
         "@cli_pip//pytest",
