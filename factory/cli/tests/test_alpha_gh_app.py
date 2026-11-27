@@ -27,7 +27,7 @@ from cryptography.hazmat.primitives.asymmetric import padding
 from cryptography.hazmat.primitives.asymmetric import rsa as rsa_keys
 
 from tbhbdev import secrets
-from tbhbdev.alpha import gh_app
+from tbhbdev.alpha import gh_app, gh_app_args
 
 NOW = 1_800_000_000
 # The token a fake GitHub mints lives an hour past the fake clock.
@@ -188,7 +188,7 @@ def mode(path: Path) -> int:
 # --- pure functions ---------------------------------------------------------
 
 
-BASE = gh_app.Args(
+BASE = gh_app_args.Args(
     app="bot",
     repo=REPO,
     fresh=False,
@@ -201,26 +201,26 @@ BASE = gh_app.Args(
 
 
 def test_parse_args_fills_every_field() -> None:
-    assert gh_app.parse_args(["bot", REPO]) == BASE
-    full = gh_app.parse_args(
+    assert gh_app_args.parse_args(["bot", REPO]) == BASE
+    full = gh_app_args.parse_args(
         ["bot", REPO, "--fresh", "--dry-run", "--all-repos", "--vault", "v"]
     )
     assert full == replace(BASE, fresh=True, dry_run=True, all_repos=True, vault="v")
-    until = gh_app.parse_args(["bot", "--cooldown-until", "5"])
+    until = gh_app_args.parse_args(["bot", "--cooldown-until", "5"])
     assert until == replace(BASE, repo="", cooldown_until=5)
-    status = gh_app.parse_args(["bot", "--cooldown-status"])
+    status = gh_app_args.parse_args(["bot", "--cooldown-status"])
     assert status == replace(BASE, repo="", cooldown_status=True)
 
 
 @pytest.mark.parametrize("app", ["a", "ab-", "Ab", "a_b", "a.b", "a b", ""])
 def test_a_bad_app_is_a_usage_error(app: str) -> None:
-    with pytest.raises(gh_app.UsageError, match="must match"):
-        gh_app.parse_args([app, REPO])
+    with pytest.raises(gh_app_args.UsageError, match="must match"):
+        gh_app_args.parse_args([app, REPO])
 
 
 @pytest.mark.parametrize("app", ["ab", "a1", "my-app-2"])
 def test_a_good_app_parses(app: str) -> None:
-    assert gh_app.parse_args([app, REPO]).app == app
+    assert gh_app_args.parse_args([app, REPO]).app == app
 
 
 @pytest.mark.parametrize(
@@ -228,30 +228,30 @@ def test_a_good_app_parses(app: str) -> None:
     ["acme", "a/b/c", "../r", "o/..", "./r", "o/.", "o/r r", "o/r;x", "/r", "o/", ""],
 )
 def test_a_bad_repo_is_a_usage_error(repo: str) -> None:
-    with pytest.raises(gh_app.UsageError, match="OWNER/REPO"):
-        gh_app.parse_args(["bot", repo])
+    with pytest.raises(gh_app_args.UsageError, match="OWNER/REPO"):
+        gh_app_args.parse_args(["bot", repo])
 
 
 def test_dots_are_fine_inside_a_repo_name() -> None:
-    assert gh_app.parse_args(["bot", "a.b/c..d"]).repo == "a.b/c..d"
-    assert gh_app.parse_args(["bot", ".a/b."]).repo == ".a/b."
+    assert gh_app_args.parse_args(["bot", "a.b/c..d"]).repo == "a.b/c..d"
+    assert gh_app_args.parse_args(["bot", ".a/b."]).repo == ".a/b."
 
 
 @pytest.mark.parametrize("vault", ["", ".", "..", "a/b", "../x", "/", "a\0b"])
 def test_a_vault_that_cannot_be_one_path_component_is_a_usage_error(
     vault: str,
 ) -> None:
-    assert not gh_app.valid_vault(vault)
-    with pytest.raises(gh_app.UsageError, match="cannot be a directory name"):
-        gh_app.parse_args(["bot", REPO, "--vault", vault])
-    with pytest.raises(gh_app.UsageError, match="cannot be a directory name"):
-        gh_app.parse_args(["bot", "--cooldown-status", "--vault", vault])
+    assert not gh_app_args.valid_vault(vault)
+    with pytest.raises(gh_app_args.UsageError, match="cannot be a directory name"):
+        gh_app_args.parse_args(["bot", REPO, "--vault", vault])
+    with pytest.raises(gh_app_args.UsageError, match="cannot be a directory name"):
+        gh_app_args.parse_args(["bot", "--cooldown-status", "--vault", vault])
 
 
 @pytest.mark.parametrize("vault", ["tbhb-dev", "My Vault", "a.b", "..a", "a..", "+"])
 def test_any_other_vault_is_one_path_component(vault: str) -> None:
-    assert gh_app.valid_vault(vault)
-    assert gh_app.parse_args(["bot", REPO, "--vault", vault]).vault == vault
+    assert gh_app_args.valid_vault(vault)
+    assert gh_app_args.parse_args(["bot", REPO, "--vault", vault]).vault == vault
 
 
 @pytest.mark.parametrize(
@@ -273,8 +273,8 @@ def test_any_other_vault_is_one_path_component(vault: str) -> None:
     ],
 )
 def test_other_bad_command_lines_are_usage_errors(argv: list[str]) -> None:
-    with pytest.raises(gh_app.UsageError):
-        gh_app.parse_args(argv)
+    with pytest.raises(gh_app_args.UsageError):
+        gh_app_args.parse_args(argv)
 
 
 @pytest.mark.parametrize(
@@ -297,7 +297,7 @@ def test_other_bad_command_lines_are_usage_errors(argv: list[str]) -> None:
     ],
 )
 def test_parse_epoch(text: str | None, epoch: int | None) -> None:
-    assert gh_app.parse_epoch(text) == epoch
+    assert gh_app_args.parse_epoch(text) == epoch
 
 
 def test_state_root() -> None:
@@ -310,11 +310,11 @@ def test_state_root() -> None:
 
 
 def test_permissions_parse_sort_and_split_the_cache_directory() -> None:
-    args = gh_app.parse_args(
+    args = gh_app_args.parse_args(
         ["bot", REPO, "--permissions", "pull_requests:write,contents:read"]
     )
     assert args.permissions == (("contents", "read"), ("pull_requests", "write"))
-    assert gh_app.parse_args(["bot", REPO]).permissions == ()
+    assert gh_app_args.parse_args(["bot", REPO]).permissions == ()
     state = Path("/s")
     assert gh_app.out_dir(state, replace(args, repo="o/r")) == Path(
         "/s/tbhb-dev/bot/o/r+contents-read+pull-requests-write"
@@ -337,20 +337,20 @@ def test_permissions_parse_sort_and_split_the_cache_directory() -> None:
     ],
 )
 def test_bad_permissions_are_refused(value: str) -> None:
-    with pytest.raises(gh_app.UsageError, match="--permissions entry"):
-        gh_app.parse_args(["bot", REPO, "--permissions", value])
+    with pytest.raises(gh_app_args.UsageError, match="--permissions entry"):
+        gh_app_args.parse_args(["bot", REPO, "--permissions", value])
 
 
 def test_a_repeated_permissions_option_is_refused() -> None:
-    with pytest.raises(gh_app.UsageError, match="given once"):
-        gh_app.parse_args(
+    with pytest.raises(gh_app_args.UsageError, match="given once"):
+        gh_app_args.parse_args(
             ["bot", REPO, "--permissions", "contents:read", "--permissions", "bad"]
         )
 
 
 def test_a_cooldown_option_refuses_permissions() -> None:
-    with pytest.raises(gh_app.UsageError, match="takes only the app"):
-        gh_app.parse_args(["bot", "--cooldown-status", "--permissions", "a:read"])
+    with pytest.raises(gh_app_args.UsageError, match="takes only the app"):
+        gh_app_args.parse_args(["bot", "--cooldown-status", "--permissions", "a:read"])
 
 
 def test_layout() -> None:
@@ -363,7 +363,7 @@ def test_layout() -> None:
     assert gh_app.out_dir(state, replace(args, vault="v")) == Path("/s/v/bot/o/r")
     assert gh_app.cooldown_path(state, "bot") == Path("/s/cooldown/bot")
     # GitHub can't name a repository `+all`, so it never shares a directory.
-    assert not gh_app.REPO_PATTERN.fullmatch("o/+all")
+    assert not gh_app_args.REPO_PATTERN.fullmatch("o/+all")
 
 
 @pytest.mark.parametrize(
@@ -451,8 +451,8 @@ def test_b64url_drops_padding_and_uses_the_url_alphabet() -> None:
 
 
 def test_the_owner_is_what_precedes_the_first_slash() -> None:
-    assert gh_app.split_repo("o/r") == ("o", "r")
-    assert gh_app.split_repo("a/b/c") == ("a", "b/c")
+    assert gh_app_args.split_repo("o/r") == ("o", "r")
+    assert gh_app_args.split_repo("a/b/c") == ("a", "b/c")
     assert gh_app.lookup_paths("a/b/c")[1] == "/orgs/a/installation"
     assert gh_app.token_body("a/b/c", all_repos=False) == {"repositories": ["b/c"]}
     assert gh_app.out_dir(Path("/s"), replace(BASE, repo="a/b")) == Path(
@@ -486,8 +486,8 @@ def test_the_owner_is_what_precedes_the_first_slash() -> None:
     ],
 )
 def test_usage_errors_say_what_is_wrong(argv: list[str], message: str) -> None:
-    with pytest.raises(gh_app.UsageError) as caught:
-        gh_app.parse_args(argv)
+    with pytest.raises(gh_app_args.UsageError) as caught:
+        gh_app_args.parse_args(argv)
     assert str(caught.value) == message
 
 
@@ -669,8 +669,8 @@ def test_run_openssl_runs_openssl_with_its_input_and_captures_its_output(
 
 
 def test_the_parser_raises_where_argparse_would_print_help() -> None:
-    with pytest.raises(gh_app.HelpRequestedError):
-        gh_app.Parser().print_help()
+    with pytest.raises(gh_app_args.HelpRequestedError):
+        gh_app_args.Parser().print_help()
 
 
 @pytest.mark.parametrize(
@@ -678,9 +678,9 @@ def test_the_parser_raises_where_argparse_would_print_help() -> None:
 )
 def test_help(capsys: pytest.CaptureFixture[str], argv: list[str]) -> None:
     assert gh_app.main(argv, "p") == 0
-    assert capsys.readouterr() == (gh_app.USAGE.format(prog="p"), "")
-    with pytest.raises(gh_app.HelpRequestedError):
-        gh_app.parse_args(argv)
+    assert capsys.readouterr() == (gh_app_args.USAGE.format(prog="p"), "")
+    with pytest.raises(gh_app_args.HelpRequestedError):
+        gh_app_args.parse_args(argv)
 
 
 def test_a_usage_error_prints_usage_and_exits_2(
@@ -691,7 +691,7 @@ def test_a_usage_error_prints_usage_and_exits_2(
     code, out, err = run(capsys, env, "Bad_App", REPO)
     assert (code, out) == (2, "")
     assert err.startswith("gh-app: app 'Bad_App' must match ")
-    assert err.endswith(gh_app.USAGE.format(prog="gh-app"))
+    assert err.endswith(gh_app_args.USAGE.format(prog="gh-app"))
     assert (store.created, github.requests) == (0, [])
     assert run(capsys, env, "bot")[0] == 2
     assert run(capsys, env, "bot", "nope")[0] == 2

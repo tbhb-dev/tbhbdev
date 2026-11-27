@@ -66,6 +66,6 @@ cli_py_library(
         ":audit",
         ":request",
         "//factory/cli/src/tbhbdev:userconfig",
-        "//factory/cli/src/tbhbdev/alpha:gh_app",
+        "//factory/cli/src/tbhbdev/alpha:gh_app_args",
     ],
 )
