@@ -57,7 +57,6 @@ _IO_TESTS = [
     "test_alpha_verify_range",
     "test_cli",
     "test_conftest",
-    "test_content_review",
     "test_content_vet",
     "test_cue_runtime",
     "test_gitleaks_check",

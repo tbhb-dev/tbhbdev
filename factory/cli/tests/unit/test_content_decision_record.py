@@ -1,6 +1,6 @@
 import pytest
 
-from tbhbdev.content import check_decision_record
+from tbhbdev.content_decision_record import check_decision_record
 
 RECORD = """\
 # Use a shared decision log
