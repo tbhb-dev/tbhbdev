@@ -10,7 +10,7 @@ from tbhbdev.alpha.agent.decisions import repo
 from tbhbdev.alpha.agent.decisions import runfiles_names as files
 
 if TYPE_CHECKING:
-    from tbhbdev.alpha.agent.model import Host
+    from tbhbdev.alpha.agent.model import Host, Profile
 
 PREFIX = """PATH=/usr/bin:/bin:/usr/sbin:/sbin
 export PATH
@@ -128,6 +128,22 @@ def program(host: Host) -> str:
 
 def installed(host: Host) -> str:
     return PREFIX + f"{program(host)} --version"
+
+
+def check_slot(host: Host, profile: Profile) -> str:
+    command = shlex.join(
+        (
+            "alpha",
+            "agent",
+            "check-slot",
+            host.name,
+            profile,
+            str(host.max_concurrent_runs),
+            "--",
+            *host.accounts,
+        )
+    )
+    return "# tbhbdev-check-slot\n" + PREFIX + f"exec {program(host)} {command}\n"
 
 
 PRESSURE_CHECK = "case \"$q\" in ''|*[!0-9.]*) q=-;; esac\n"
