@@ -25,10 +25,10 @@ from hypothesis import example, given
 from hypothesis import strategies as st
 from squash_merge_fixtures import write_isolated_tool
 
-from tbhbdev.alpha import pull_request as pr
 from tbhbdev.alpha import squash_merge as sm
 from tbhbdev.alpha import tool_pins
 from tbhbdev.alpha.identity import dispatcher as agent_identity
+from tbhbdev.alpha.pull_request import body, publish
 from tbhbdev.alpha.secret_scan import REPO_RULES, without_name_rules
 
 SRC = Path(sm.__file__).parents[2]
@@ -218,8 +218,8 @@ def tools(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Tools:
     git_dir = tmp_path / "git"
     link_git(git_dir)
     version = tool_pins.pinned_version("gitleaks")
-    for name, body in (("gh", GH), ("cog", COG), ("gitleaks", GITLEAKS)):
-        write_isolated_tool(bin_dir / name, body.format(version=version))
+    for name, script in (("gh", GH), ("cog", COG), ("gitleaks", GITLEAKS)):
+        write_isolated_tool(bin_dir / name, script.format(version=version))
     # One statement, not a loop: under Bazel's clean environment there is
     # nothing to remove, and a loop body that never runs is a missed branch.
     prefixes = ("CLAUDE", "CODEX", "ANTIGRAVITY", "GIT_")
@@ -403,8 +403,8 @@ def test_a_delimiter_row_needs_no_outer_bars() -> None:
 
 def test_a_table_may_end_on_its_delimiter_row() -> None:
     lines = [
-        pr.Line(1, "| a |", "| a |", code=False),
-        pr.Line(2, "|-|", "|-|", code=False),
+        body.Line(1, "| a |", "| a |", code=False),
+        body.Line(2, "|-|", "|-|", code=False),
     ]
     assert sm.render(lines, {}) == ["| a |\n|-|"]
 
@@ -455,7 +455,7 @@ def test_an_empty_body_is_a_subject_only() -> None:
 )
 def test_rendered_prose_is_within_the_limit(text: str) -> None:
     text = text.replace("\\", "").replace("*", "").replace("_", "").replace("[", "")
-    out = sm.render([pr.Line(1, text, text, code=False)], {})
+    out = sm.render([body.Line(1, text, text, code=False)], {})
     for line in "\n".join(out).splitlines():
         assert len(line) <= sm.WIDTH or len(sm.TOKEN.findall(line)) == 1
 
@@ -510,8 +510,8 @@ def test_a_trailer_git_cannot_read_back_fails(monkeypatch: pytest.MonkeyPatch) -
     def same(name: str) -> str:
         return name
 
-    monkeypatch.setattr(pr, "run", fake_run)
-    monkeypatch.setattr(pr, "find_tool", same)
+    monkeypatch.setattr(sm, "run", fake_run)
+    monkeypatch.setattr(sm, "find_tool", same)
     with pytest.raises(SystemExit, match="did not survive"):
         sm.check_round_trip("m", [GEN])
 
@@ -1357,7 +1357,7 @@ def test_an_agent_pr_requires_a_final_trailer_paragraph() -> None:
 
 @pytest.mark.parametrize("agent", [False, True])
 def test_valid_final_trailers_do_not_excuse_a_stray_trailer(agent: bool) -> None:
-    lines = [pr.Line(1, GEN, GEN, code=False)]
+    lines = [body.Line(1, GEN, GEN, code=False)]
     with pytest.raises(SystemExit) as info:
         sm.check_trailers([GEN], lines, agent=agent)
     assert str(info.value) == (
@@ -1472,7 +1472,7 @@ def test_fetch_reports_every_nonzero_exit_with_normalized_stderr(
     def fake_run(*_args: object, **_kwargs: object) -> subprocess.CompletedProcess[str]:
         return done
 
-    monkeypatch.setattr(pr, "run", fake_run)
+    monkeypatch.setattr(sm, "run", fake_run)
     with pytest.raises(SystemExit) as info:
         sm.fetch(12)
     assert info.value.code == "gh pr view failed: no such pr"
@@ -1538,7 +1538,7 @@ def test_main_passes_the_full_message_and_target_visibility_to_the_scan(
     def scan(text: str, what: str, visibility: str) -> None:
         scans.append((text, what, visibility))
 
-    monkeypatch.setattr(pr, "scan_secrets", scan)
+    monkeypatch.setattr(publish, "scan_secrets", scan)
     args = ["37", "--dry-run"] if dry_run else ["37"]
     assert sm.main(args) == 0
     assert scans == [

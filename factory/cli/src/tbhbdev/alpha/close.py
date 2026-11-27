@@ -34,9 +34,14 @@ from typing import TYPE_CHECKING
 
 from tbhbdev import content, issue_import, userconfig
 from tbhbdev.alpha import opened, worker_identity
-from tbhbdev.alpha import pull_request as pr
 from tbhbdev.alpha.agent import settings as agent_settings
 from tbhbdev.alpha.identity import dispatcher as agent_identity
+from tbhbdev.alpha.pull_request import attribution as pr_attribution
+from tbhbdev.alpha.pull_request import description as pr_description
+from tbhbdev.alpha.pull_request import github as pr_github
+from tbhbdev.alpha.pull_request import metadata as pr_metadata
+from tbhbdev.alpha.pull_request import repository as pr_repository
+from tbhbdev.alpha.pull_request import tools as pr_tools
 
 if TYPE_CHECKING:
     from collections.abc import Mapping, Sequence
@@ -53,7 +58,7 @@ RELATIONSHIP_WRITES = {
 
 def gh(argv: Sequence[str]) -> subprocess.CompletedProcess[str]:
     """Run gh with the arguments."""
-    return pr.run([pr.find_tool(pr.GH), *argv])
+    return pr_tools.run([pr_tools.find_tool(pr_tools.GH), *argv])
 
 
 def view(kind: str, number: int, repo: str | None = None) -> dict[str, object]:
@@ -70,7 +75,7 @@ def view(kind: str, number: int, repo: str | None = None) -> dict[str, object]:
         fields += ",author,headRefName,isCrossRepository"
     pin = [] if repo is None else ["--repo", f"github.com/{repo}"]
     done = gh([kind, "view", str(number), *pin, "--json", fields])
-    data = pr.gh_data(done)
+    data = pr_github.gh_data(done)
     if not isinstance(data, dict):
         why = " ".join((done.stderr or done.stdout).split())
         message = f"cannot read {kind} {number}: {why}"
@@ -87,7 +92,7 @@ def trailer(env: Mapping[str, str]) -> str:
     Raises:
         SystemExit: The invoker isn't an agent session, or its value is invalid.
     """
-    value = pr.posting_value(env)
+    value = pr_attribution.posting_value(env)
     if value is None:
         message = "not closing: the caller isn't a recognized agent session"
         raise SystemExit(message)
@@ -106,7 +111,7 @@ def closer(env: Mapping[str, str], workflow: str | None) -> str:
     Raises:
         SystemExit: Neither applies, or the config can't register a worker.
     """
-    if workflow is None or pr.posting_value(env) is not None:
+    if workflow is None or pr_attribution.posting_value(env) is not None:
         return trailer(env)
     try:
         registered = agent_settings.load().worker_path
@@ -120,7 +125,7 @@ def closer(env: Mapping[str, str], workflow: str | None) -> str:
 
 def ref_of(url: str) -> str:
     """``owner/repo#N`` for a pull request URL."""
-    found = pr.PR_URL.search(url)
+    found = pr_metadata.PR_URL.search(url)
     if found is None:
         message = f"cannot read a pull request from {url}"
         raise SystemExit(message)
@@ -155,7 +160,9 @@ def opener_note(data: Mapping[str, object], env: Mapping[str, str]) -> str:
         SystemExit: The pull request has no ``Opened-by`` line and isn't the
             agent account's, or the ledger can't be read.
     """
-    if pr.opened_line(str(data.get("body") or "")) is None:  # pragma: no mutate
+    if (
+        pr_description.opened_line(str(data.get("body") or "")) is None
+    ):  # pragma: no mutate
         login = agent_author(data)
         if login is not None:
             return (
@@ -230,7 +237,7 @@ def check_dependents(data: Mapping[str, object]) -> None:
     repo = ref_of(str(data["url"])).split("#")[0]
     words = ["pr", "list", "--repo", repo, "--base", branch, "--state", "open"]
     done = gh([*words, "--json", "number"])
-    found = pr.gh_data(done)
+    found = pr_github.gh_data(done)
     numbers: list[int] = []
     if isinstance(found, list):
         items: list[object] = found
@@ -267,7 +274,7 @@ def issue_reference(text: str) -> tuple[str, int]:
     """Parse a qualified or local issue reference."""
     repo, _, number = text.partition("#")
     if not re.fullmatch(r"[1-9][0-9]*", number) or (
-        repo and not pr.NAME_WITH_OWNER.fullmatch(repo)
+        repo and not pr_metadata.NAME_WITH_OWNER.fullmatch(repo)
     ):
         message = "expected owner/repo#N or #N"
         raise argparse.ArgumentTypeError(message)
@@ -275,7 +282,7 @@ def issue_reference(text: str) -> tuple[str, int]:
 
 
 def issue_repository(text: str) -> str:
-    if not pr.NAME_WITH_OWNER.fullmatch(text):
+    if not pr_metadata.NAME_WITH_OWNER.fullmatch(text):
         message = "expected owner/repo"
         raise argparse.ArgumentTypeError(message)
     return text
@@ -372,7 +379,7 @@ def write_relationship(args: argparse.Namespace) -> int:
     first_repo, first_number = first
     second_repo, second_number = second
     if not first_repo or not second_repo:
-        repo = pr.origin_repository()
+        repo = pr_repository.origin_repository()
         first_repo = first_repo or repo
         second_repo = second_repo or repo
     first_owner, first_name = first_repo.split("/")
@@ -463,7 +470,7 @@ def main(
         return write_relationship(args)
     env = os.environ if env is None else env
     line = closer(env, getattr(args, "worker_workflow", None))
-    repo = pr.origin_repository()
+    repo = pr_repository.origin_repository()
     if args.kind == "pr":
         data = view("pr", args.number, repo)
         text = close_comment(args.reason, opener_note(data, env), line)

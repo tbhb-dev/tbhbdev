@@ -86,20 +86,23 @@ from itertools import takewhile
 from typing import TYPE_CHECKING, NoReturn, cast
 from urllib.parse import quote
 
-from tbhbdev.alpha import pull_request as pr
 from tbhbdev.alpha import review_gate
 from tbhbdev.alpha.identity import dispatcher as agent_identity
+from tbhbdev.alpha.identity.dispatcher import LINE
 from tbhbdev.alpha.install import require_git_hooks
+from tbhbdev.alpha.pull_request import body as md
+from tbhbdev.alpha.pull_request import metadata, publish, repository
+from tbhbdev.alpha.pull_request.description import OPENED_LINE
+from tbhbdev.alpha.pull_request.prose import title_problems
+from tbhbdev.alpha.pull_request.tools import GH, GIT, find_tool, run
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
 
 WIDTH = 72
 CODE_INDENT = "    "
-GH = "gh"
 METHOD_FIELDS = "mergeCommitAllowed,squashMergeAllowed"
 DEFAULT_MERGE_TITLES = ("Merge pull request", "Merge branch")
-GIT = "git"
 VIEW_FIELDS = (
     "title,body,headRefOid,baseRefName,state,isDraft,mergeable,"
     "mergeStateStatus,statusCheckRollup,author,url,commits,reviewDecision"
@@ -249,7 +252,7 @@ def inline(text: str, refs: dict[str, int]) -> str:
         spans.append(match[0])
         return f"\x00{len(spans) - 1}\x00"
 
-    held = pr.INLINE_CODE.sub(hold, text)
+    held = md.INLINE_CODE.sub(hold, text)
     return PLACEHOLDER.sub(lambda m: spans[int(m[1])], prose(held, refs))
 
 
@@ -264,7 +267,7 @@ class Pending:
 
 def close_fence(raw: str, marker: str) -> bool:
     """True when ``raw`` closes a fence opened with ``marker``."""
-    match = pr.FENCE.match(raw)
+    match = md.FENCE.match(raw)
     return bool(
         match
         and raw.strip() == match[1]
@@ -301,7 +304,7 @@ class Renderer:
             self.in_list = item
         self.pending = None
 
-    def feed_code(self, line: pr.Line, code: list[str]) -> None:
+    def feed_code(self, line: md.Line, code: list[str]) -> None:
         """Take a line inside a fence: indent it, or close the block."""
         if close_fence(line.raw, self.marker):
             self.blocks.append("\n".join(code))
@@ -318,7 +321,7 @@ class Renderer:
         else:
             self.blocks.append(row)
 
-    def feed(self, line: pr.Line, row: bool) -> None:  # noqa: FBT001
+    def feed(self, line: md.Line, row: bool) -> None:  # noqa: FBT001
         """Take the next line of the section; ``row`` marks a table row."""
         if row:
             self.feed_row(line.text.strip())
@@ -326,16 +329,16 @@ class Renderer:
             self.feed_other(line)
         self.in_table = row
 
-    def feed_other(self, line: pr.Line) -> None:
+    def feed_other(self, line: md.Line) -> None:
         """Take a line that is not a table row."""
         if self.code is not None:
             self.feed_code(line, self.code)
         elif line.code:
             self.flush()
             self.in_list = False  # pragma: no mutate -- None is as falsy
-            self.marker = pr.FENCE.findall(line.raw)[0]  # line.code opens a fence
+            self.marker = md.FENCE.findall(line.raw)[0]  # line.code opens a fence
             self.code = []
-        elif pr.is_blank(line):
+        elif md.is_blank(line):
             self.flush()
             self.in_list = False  # pragma: no mutate -- None is as falsy
         elif item := ITEM.fullmatch(line.text):
@@ -343,14 +346,14 @@ class Renderer:
             prefix = f"{item[1]}{item[2]} "
             self.pending = Pending(prefix, " " * len(prefix), [item[3]])
         elif self.pending is None:
-            heading = pr.heading_of(line)
+            heading = md.heading_of(line)
             text = heading[1] if heading else line.text.strip()
             self.pending = Pending("", "", [text])
         else:
             self.pending.parts.append(line.text.strip())
 
 
-def table_rows(lines: Sequence[pr.Line]) -> list[bool]:
+def table_rows(lines: Sequence[md.Line]) -> list[bool]:
     """Flag each line that is a row of a Markdown table.
 
     A table is a ``|`` header row, then a delimiter row such as ``|---|``,
@@ -371,7 +374,7 @@ def table_rows(lines: Sequence[pr.Line]) -> list[bool]:
     return rows
 
 
-def render(lines: Sequence[pr.Line], refs: dict[str, int]) -> list[str]:
+def render(lines: Sequence[md.Line], refs: dict[str, int]) -> list[str]:
     """Render section lines as blocks of plain text, one string per block."""
     renderer = Renderer(refs, [])
     rows = table_rows(lines)
@@ -381,7 +384,7 @@ def render(lines: Sequence[pr.Line], refs: dict[str, int]) -> list[str]:
     return renderer.blocks
 
 
-def drop_opened(lines: Sequence[pr.Line]) -> list[pr.Line]:
+def drop_opened(lines: Sequence[md.Line]) -> list[md.Line]:
     """The lines without the ``Opened-by`` line of the final trailer paragraph.
 
     The paragraph is the trailing run of LLM trailer and ``Opened-by`` lines
@@ -389,47 +392,41 @@ def drop_opened(lines: Sequence[pr.Line]) -> list[pr.Line]:
     ``check_trailers`` to refuse.
     """
     end = len(lines)
-    while end and pr.is_blank(lines[end - 1]):
+    while end and md.is_blank(lines[end - 1]):
         end -= 1
-    run = takewhile(
-        lambda line: (
-            agent_identity.LINE.match(line.text) or pr.OPENED_LINE.match(line.text)
-        ),
+    trailer_lines = takewhile(
+        lambda line: LINE.match(line.text) or OPENED_LINE.match(line.text),
         reversed(lines[:end]),
     )
-    start = end - len(list(run))
-    if start and not pr.is_blank(lines[start - 1]):
+    start = end - len(list(trailer_lines))
+    if start and not md.is_blank(lines[start - 1]):
         return list(lines)
     return [
         line
         for index, line in enumerate(lines)
-        if not (start <= index and pr.OPENED_LINE.match(line.text))
+        if not (start <= index and OPENED_LINE.match(line.text))
     ]
 
 
-def split_trailers(lines: Sequence[pr.Line]) -> tuple[list[pr.Line], list[str]]:
+def split_trailers(lines: Sequence[md.Line]) -> tuple[list[md.Line], list[str]]:
     """Split off the body's final paragraph when it is all LLM trailers."""
     end = len(lines)
-    while end and pr.is_blank(lines[end - 1]):
+    while end and md.is_blank(lines[end - 1]):
         end -= 1
     start = end
-    while (
-        start
-        and not lines[start - 1].code
-        and agent_identity.LINE.match(lines[start - 1].text)
-    ):
+    while start and not lines[start - 1].code and LINE.match(lines[start - 1].text):
         start -= 1
-    if start == end or (start and not pr.is_blank(lines[start - 1])):
+    if start == end or (start and not md.is_blank(lines[start - 1])):
         return list(lines), []
     return list(lines[:start]), [line.raw.rstrip() for line in lines[start:end]]
 
 
-def body_blocks(lines: Sequence[pr.Line], refs: dict[str, int]) -> list[str]:
+def body_blocks(lines: Sequence[md.Line], refs: dict[str, int]) -> list[str]:
     """The sections of a PR body as plain-text parts, empty sections dropped.
 
     A section is its heading line, then its blocks with a blank line between.
     """
-    preamble, sections, _ = pr.split_blocks(lines)
+    preamble, sections, _ = md.split_blocks(lines)
     parts = ["\n\n".join(render(preamble, refs))]
     for section in sections:
         content = render(section.lines, refs)
@@ -439,10 +436,10 @@ def body_blocks(lines: Sequence[pr.Line], refs: dict[str, int]) -> list[str]:
 
 
 def check_trailers(
-    trailers: Sequence[str], text_lines: Sequence[pr.Line], *, agent: bool = False
+    trailers: Sequence[str], text_lines: Sequence[md.Line], *, agent: bool = False
 ) -> None:
     """Refuse stray or invalid trailers and an agent PR's missing final block."""
-    problems = [why for _, why in pr.trailer_problems(text_lines)]
+    problems = [why for _, why in md.trailer_problems(text_lines, LINE)]
     problems.extend(
         f"invalid trailer block: {why}"
         for why in agent_identity.check_message("\n".join(trailers))
@@ -456,7 +453,7 @@ def check_trailers(
 
 def check_round_trip(message: str, trailers: Sequence[str]) -> None:
     """Fail unless git reads back exactly the trailer block that was written."""
-    done = pr.run([pr.find_tool(GIT), "interpret-trailers", "--parse"], stdin=message)
+    done = run([find_tool(GIT), "interpret-trailers", "--parse"], stdin=message)
     if done.stdout != "\n".join(trailers) + "\n":
         reason = f"git interpret-trailers --parse read back: {done.stdout!r}"
         stop(f"the trailer block did not survive the message: {reason}")
@@ -516,10 +513,10 @@ def build_message(
             or the trailer block does not survive git.
     """
     subject = f"{title} (#{number})"
-    if problems := pr.title_problems(subject, WIDTH):
+    if problems := title_problems(subject, WIDTH):
         stop(f"the commit subject {subject!r} fails: {'; '.join(problems)}")
-    lines, _ = pr.scan(body.splitlines(), 1)  # pragma: no mutate -- numbers unused
-    _, unclosed = pr.fence_flags(body.splitlines())
+    lines, _ = md.scan(body.splitlines(), 1)  # pragma: no mutate -- numbers unused
+    _, unclosed = md.fence_flags(body.splitlines())
     if unclosed is not None:
         stop(
             f"the PR body is malformed: line {unclosed + 1}: code fence is never closed"
@@ -691,11 +688,11 @@ def review_snapshot(data: object, head: str) -> list[review_gate.Review]:
 
 def fetch_reviews(target: str, number: int, head: str) -> list[review_gate.Review]:
     """Read review authors with their GitHub account type."""
-    if not pr.NAME_WITH_OWNER.fullmatch(target):
+    if not metadata.NAME_WITH_OWNER.fullmatch(target):
         stop("not merging: can't tell which repository the PR is in")
     owner, repo = target.split("/", 1)
-    done = pr.run([
-        pr.find_tool(GH), "api", "graphql", "-f", f"query={REVIEWS_QUERY}",
+    done = run([
+        find_tool(GH), "api", "graphql", "-f", f"query={REVIEWS_QUERY}",
         "-f", f"owner={owner}", "-f", f"repo={repo}", "-F", f"number={number}",
     ])  # fmt: skip
     if done.returncode != 0:
@@ -713,8 +710,8 @@ def fetch(number: int) -> PullRequest:
     Raises:
         SystemExit: gh fails or does not return JSON.
     """
-    argv = [pr.find_tool(GH), "pr", "view", str(number), "--json", VIEW_FIELDS]
-    done = pr.run(argv)
+    argv = [find_tool(GH), "pr", "view", str(number), "--json", VIEW_FIELDS]
+    done = run(argv)
     if done.returncode != 0:
         stop(f"gh pr view failed: {' '.join(done.stderr.split())}")
     try:
@@ -763,7 +760,7 @@ def merge_methods(target: str) -> list[str]:
     Raises:
         SystemExit: The read fails or is malformed, or neither is allowed.
     """
-    done = pr.run([pr.find_tool(GH), "repo", "view", target, "--json", METHOD_FIELDS])
+    done = run([find_tool(GH), "repo", "view", target, "--json", METHOD_FIELDS])
     if done.returncode != 0:
         stop(f"gh repo view failed: {' '.join(done.stderr.split())}")
     try:
@@ -791,7 +788,7 @@ def branch_rules(target: str, base: str) -> list[object]:
     if not base:
         stop("not merging: gh pr view returned no base branch")
     endpoint = f"repos/{target}/rules/branches/{quote(base, safe='')}"
-    done = pr.run([pr.find_tool(GH), "api", "--paginate", "--slurp", endpoint])
+    done = run([find_tool(GH), "api", "--paginate", "--slurp", endpoint])
     if done.returncode != 0:
         stop(f"gh branch rules lookup failed: {' '.join(done.stderr.split())}")
     try:
@@ -869,8 +866,8 @@ def queue_flag(method: str, allowed: Sequence[str], number: int) -> str:
 def queue_state(target: str, number: int, *, preview: bool) -> dict[str, object]:
     """Read the PR's queue status and optionally its default squash message."""
     owner, repo = target.split("/", 1)
-    done = pr.run([
-        pr.find_tool(GH), "api", "graphql", "-f", f"query={QUEUE_QUERY}",
+    done = run([
+        find_tool(GH), "api", "graphql", "-f", f"query={QUEUE_QUERY}",
         "-f", f"owner={owner}", "-f", f"repo={repo}", "-F", f"number={number}",
         "-F", f"preview={str(preview).lower()}",
     ])  # fmt: skip
@@ -966,7 +963,7 @@ def verify_head(
     prefix = f"not merging PR #{number}: "
     if reasons := refusals(request) or approval_reasons(request, expected):
         stop(prefix + "; ".join(reasons))
-    target = pr.target_of_pr(request.url)
+    target = metadata.target_of_pr(request.url)
     try:
         checks = [
             check_entry(entry)
@@ -1033,10 +1030,10 @@ def main(argv: Sequence[str] | None = None, prog: str | None = None) -> int:
         previous_removal = queue_removal(
             queue_state(target, args.number, preview=False)
         )[0]
-    pr.scan_secrets(
+    publish.scan_secrets(
         message.text(),
         f"the commit message for PR #{args.number}",
-        pr.repo_visibility(target),
+        repository.repo_visibility(target),
     )
     argv_gh = [
         GH, "pr", "merge", str(args.number), methods[0], "--subject", message.subject,
@@ -1047,13 +1044,13 @@ def main(argv: Sequence[str] | None = None, prog: str | None = None) -> int:
         print()
         print(message.text(), end="")
         return 0
-    argv_gh[0] = pr.find_tool(GH)
-    done = pr.run(argv_gh, stdin=message.body)
+    argv_gh[0] = find_tool(GH)
+    done = run(argv_gh, stdin=message.body)
     if done.returncode != 0 and len(methods) > 1:
         print(done.stderr, end="", file=sys.stderr)
         print(f"{methods[0]} failed; retrying with {methods[1]}", file=sys.stderr)
         argv_gh[argv_gh.index(methods[0])] = methods[1]
-        done = pr.run(argv_gh, stdin=message.body)
+        done = run(argv_gh, stdin=message.body)
     if previous_removal is not None and done.returncode == 0:
         print(done.stderr, end="", file=sys.stderr)
         return report_queue(target, args.number, previous_removal)

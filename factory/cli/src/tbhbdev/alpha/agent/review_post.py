@@ -20,7 +20,7 @@ from tbhbdev.alpha.agent.decisions import repo
 from tbhbdev.alpha.agent.decisions import request as requests
 from tbhbdev.alpha.agent.model import Harness, Invalid, RunKind
 from tbhbdev.alpha.identity import dispatcher as identity
-from tbhbdev.alpha.pull_request_frontmatter import parse_frontmatter
+from tbhbdev.alpha.pull_request.frontmatter import parse_frontmatter
 from tbhbdev.alpha.size_gate import SIZE_REVIEW, size_verdict
 
 if TYPE_CHECKING:

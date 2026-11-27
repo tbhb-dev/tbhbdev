@@ -28,7 +28,6 @@ from tbhbdev.alpha import (
     install,
     pr_stats,
     pre_push_guard,
-    pull_request,
     repo_bootstrap,
     review,
     run_stop_hook,
@@ -40,6 +39,7 @@ from tbhbdev.alpha import command as alpha
 from tbhbdev.alpha.agent import command as agent
 from tbhbdev.alpha.agent import precheck, run_host, settings, signing_parity, ssh_serve
 from tbhbdev.alpha.identity import dispatcher as identity
+from tbhbdev.alpha.pull_request import command as pr_command
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -102,7 +102,7 @@ def test_dispatch(monkeypatch: pytest.MonkeyPatch) -> None:
 
     monkeypatch.setattr(identity, "run", run)
     monkeypatch.setattr(guard_gh_pr, "main", guard)
-    monkeypatch.setattr(pull_request, "main", fake("pr", 5))
+    monkeypatch.setattr(pr_command, "main", fake("pr", 5))
     monkeypatch.setattr(pr_stats, "main", fake("pr-stats", 9))
     monkeypatch.setattr(squash_merge, "main", fake("merge", 6))
     monkeypatch.setattr(install, "main", fake("install", 7))

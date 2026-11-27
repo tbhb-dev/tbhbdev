@@ -16,8 +16,8 @@ import sys
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, cast
 
-from tbhbdev.alpha import pull_request as pr
 from tbhbdev.alpha.identity import dispatcher as identity
+from tbhbdev.alpha.pull_request import github as pr_github
 
 if TYPE_CHECKING:
     from collections.abc import Mapping, Sequence
@@ -101,7 +101,7 @@ def main(argv: Sequence[str] | None = None, prog: str | None = None) -> int:
     parser.add_argument("repo", help="OWNER/REPO")
     parser.add_argument("--limit", type=int, default=200, help="pull requests to read")
     args = parser.parse_args(argv)
-    listed = pr.gh_json(
+    listed = pr_github.gh_json(
         [
             "pr",
             "list",

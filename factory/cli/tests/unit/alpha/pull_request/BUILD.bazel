@@ -1,0 +1,454 @@
+# SPDX-License-Identifier: Apache-2.0
+# Copyright Tony Burns
+
+load("//factory/cli:python.bzl", "cli_py_library")
+load("//factory/cli/tests:pytest.bzl", "cli_py_test")
+
+package(default_testonly = True)
+
+filegroup(
+    name = "package_files",
+    testonly = False,
+    srcs = glob(["*.py"]),
+    visibility = ["//factory/cli/tests:__pkg__"],
+)
+
+cli_py_library(
+    name = "pr_test_support",
+    srcs = ["pr_test_support.py"],
+    imports = ["../../.."],
+    visibility = ["//factory/cli/tests:__subpackages__"],
+    deps = [
+        ":pr_draft_samples",
+        "//factory/cli/src/tbhbdev/alpha:size_gate",
+        "//factory/cli/src/tbhbdev/alpha:tool_pins",
+        "//factory/cli/src/tbhbdev/alpha/identity:dispatcher",
+        "//factory/cli/src/tbhbdev/alpha/pull_request:baseline",
+        "//factory/cli/src/tbhbdev/alpha/pull_request:command",
+        "//factory/cli/src/tbhbdev/alpha/pull_request:prose",
+        "//factory/cli/src/tbhbdev/alpha/pull_request:repository",
+        "//factory/cli/src/tbhbdev/alpha/pull_request:tools",
+        "//factory/cli/tests:fake_tool",
+        "@cli_pip//pytest",
+    ],
+)
+
+cli_py_library(
+    name = "pr_draft_samples",
+    srcs = ["pr_draft_samples.py"],
+    imports = ["../../.."],
+    visibility = ["//factory/cli/tests:__subpackages__"],
+    deps = [
+        "//factory/cli/src/tbhbdev/alpha/identity:dispatcher",
+        "//factory/cli/src/tbhbdev/alpha/pull_request:body",
+        "//factory/cli/src/tbhbdev/alpha/pull_request:draft",
+        "//factory/cli/src/tbhbdev/alpha/pull_request:frontmatter",
+    ],
+)
+
+cli_py_test(
+    name = "test_attribution_io",
+    srcs = ["test_attribution_io.py"],
+    data = ["//:cli_check_inputs"],
+    imports = ["../../.."],
+    deps = [
+        ":pr_draft_samples",
+        ":pr_test_support",
+        "//factory/cli/src/tbhbdev/alpha/identity:dispatcher",
+        "//factory/cli/src/tbhbdev/alpha/identity:trailers",
+        "//factory/cli/src/tbhbdev/alpha/pull_request:attribution",
+        "//factory/cli/src/tbhbdev/alpha/pull_request:draft",
+        "//factory/cli/src/tbhbdev/alpha/pull_request:draft_io",
+        "//factory/cli/src/tbhbdev/alpha/pull_request:tools",
+        "//factory/cli/tests:conftest",
+        "@cli_pip//pytest",
+    ],
+)
+
+cli_py_test(
+    name = "test_baseline_io",
+    srcs = ["test_baseline_io.py"],
+    data = [
+        "//:cli_check_inputs",
+        "//factory/cli/src/tbhbdev:tbhbdev_bin",
+    ],
+    extra_deps = ["//factory/cli/src/tbhbdev:cli"],
+    imports = ["../../.."],
+    deps = [
+        ":pr_test_support",
+        "//factory/cli/src/tbhbdev/alpha/pull_request:baseline",
+        "//factory/cli/src/tbhbdev/alpha/pull_request:body",
+        "//factory/cli/src/tbhbdev/alpha/pull_request:draft",
+        "//factory/cli/tests:conftest",
+        "//factory/cli/tests:fake_tool",
+        "@cli_pip//jsonschema",
+        "@cli_pip//pytest",
+    ],
+)
+
+cli_py_test(
+    name = "test_body",
+    srcs = ["test_body.py"],
+    imports = ["../../.."],
+    deps = [
+        ":pr_draft_samples",
+        "//factory/cli/src/tbhbdev/alpha/identity:dispatcher",
+        "//factory/cli/src/tbhbdev/alpha/pull_request:body",
+        "//factory/cli/tests:conftest",
+        "@cli_pip//hypothesis",
+        "@cli_pip//pytest",
+    ],
+)
+
+cli_py_test(
+    name = "test_branch_rules",
+    srcs = ["test_branch_rules.py"],
+    imports = ["../../.."],
+    deps = [
+        ":pr_draft_samples",
+        "//factory/cli/src/tbhbdev/alpha/pull_request:branch_rules",
+        "//factory/cli/tests:conftest",
+        "@cli_pip//pytest",
+    ],
+)
+
+cli_py_test(
+    name = "test_check_results",
+    srcs = ["test_check_results.py"],
+    imports = ["../../.."],
+    deps = [
+        "//factory/cli/src/tbhbdev/alpha/pull_request:check_results",
+        "//factory/cli/tests:conftest",
+        "@cli_pip//pytest",
+    ],
+)
+
+cli_py_test(
+    name = "test_checks_io",
+    srcs = ["test_checks_io.py"],
+    data = ["//:cli_check_inputs"],
+    imports = ["../../.."],
+    deps = [
+        ":pr_test_support",
+        "//factory/cli/src/tbhbdev/alpha/pull_request:checks",
+        "//factory/cli/tests:conftest",
+        "@cli_pip//pytest",
+    ],
+)
+
+cli_py_test(
+    name = "test_command_io",
+    srcs = ["test_command_io.py"],
+    data = [
+        "//:cli_check_inputs",
+        "//factory/cli/src/tbhbdev:tbhbdev_bin",
+    ],
+    extra_deps = ["//factory/cli/src/tbhbdev:cli"],
+    imports = ["../../.."],
+    deps = [
+        ":pr_draft_samples",
+        ":pr_test_support",
+        "//factory/cli/src/tbhbdev:userconfig",
+        "//factory/cli/src/tbhbdev/alpha:repo",
+        "//factory/cli/src/tbhbdev/alpha/identity:dispatcher",
+        "//factory/cli/src/tbhbdev/alpha/pull_request:command",
+        "//factory/cli/src/tbhbdev/alpha/pull_request:draft",
+        "//factory/cli/src/tbhbdev/alpha/pull_request:draft_io",
+        "//factory/cli/src/tbhbdev/alpha/pull_request:publish",
+        "//factory/cli/src/tbhbdev/alpha/pull_request:sizing",
+        "//factory/cli/src/tbhbdev/alpha/pull_request:tools",
+        "//factory/cli/tests:conftest",
+        "//factory/cli/tests:fake_tool",
+        "@cli_pip//pytest",
+    ],
+)
+
+cli_py_test(
+    name = "test_delete_branch_io",
+    srcs = ["test_delete_branch_io.py"],
+    data = ["//:cli_check_inputs"],
+    imports = ["../../.."],
+    deps = [
+        ":pr_test_support",
+        "//factory/cli/tests:conftest",
+        "//factory/cli/tests:fake_tool",
+        "@cli_pip//pytest",
+    ],
+)
+
+cli_py_test(
+    name = "test_description",
+    srcs = ["test_description.py"],
+    imports = ["../../.."],
+    deps = [
+        ":pr_draft_samples",
+        "//factory/cli/src/tbhbdev/alpha/identity:dispatcher",
+        "//factory/cli/src/tbhbdev/alpha/identity:trailers",
+        "//factory/cli/src/tbhbdev/alpha/pull_request:body",
+        "//factory/cli/src/tbhbdev/alpha/pull_request:description",
+        "//factory/cli/tests:conftest",
+        "@cli_pip//hypothesis",
+    ],
+)
+
+cli_py_test(
+    name = "test_draft",
+    srcs = ["test_draft.py"],
+    imports = ["../../.."],
+    deps = [
+        ":pr_draft_samples",
+        "//factory/cli/src/tbhbdev/alpha/identity:dispatcher",
+        "//factory/cli/src/tbhbdev/alpha/pull_request:body",
+        "//factory/cli/tests:conftest",
+        "@cli_pip//pytest",
+    ],
+)
+
+cli_py_test(
+    name = "test_draft_io",
+    srcs = ["test_draft_io.py"],
+    data = [
+        "//:cli_check_inputs",
+        "//factory/cli/tests:alpha_testdata",
+    ],
+    imports = ["../../.."],
+    pyi_deps = ["@cli_pip//pytest"],
+    deps = [
+        ":pr_draft_samples",
+        ":pr_test_support",
+        "//factory/cli/src/tbhbdev/alpha/identity:dispatcher",
+        "//factory/cli/src/tbhbdev/alpha/pull_request:body",
+        "//factory/cli/src/tbhbdev/alpha/pull_request:draft_io",
+        "//factory/cli/src/tbhbdev/alpha/pull_request:frontmatter",
+        "//factory/cli/tests:conftest",
+    ],
+)
+
+cli_py_test(
+    name = "test_frontmatter",
+    srcs = ["test_frontmatter.py"],
+    imports = ["../../.."],
+    deps = [
+        "//factory/cli/src/tbhbdev/alpha/pull_request:frontmatter",
+        "//factory/cli/tests:conftest",
+        "@cli_pip//jsonschema",
+        "@cli_pip//pytest",
+    ],
+)
+
+cli_py_test(
+    name = "test_hook_io",
+    srcs = ["test_hook_io.py"],
+    data = ["//:cli_check_inputs"],
+    imports = ["../../.."],
+    deps = [
+        ":pr_draft_samples",
+        ":pr_test_support",
+        "//factory/cli/src/tbhbdev/alpha/pull_request:command",
+        "//factory/cli/src/tbhbdev/alpha/pull_request:draft",
+        "//factory/cli/src/tbhbdev/alpha/pull_request:draft_io",
+        "//factory/cli/tests:conftest",
+        "@cli_pip//pytest",
+    ],
+)
+
+cli_py_test(
+    name = "test_metadata",
+    srcs = ["test_metadata.py"],
+    imports = ["../../.."],
+    deps = [
+        "//factory/cli/src/tbhbdev/alpha/pull_request:metadata",
+        "//factory/cli/tests:conftest",
+        "@cli_pip//pytest",
+    ],
+)
+
+cli_py_test(
+    name = "test_prose_io",
+    srcs = ["test_prose_io.py"],
+    data = [
+        "//:cli_check_inputs",
+        "//factory/cli/tests:alpha_testdata",
+    ],
+    imports = ["../../.."],
+    path_tools = ["@tbhb_rules_cog//:cog"],
+    deps = [
+        ":pr_draft_samples",
+        ":pr_test_support",
+        "//factory/cli/src/tbhbdev/alpha/pull_request:body",
+        "//factory/cli/src/tbhbdev/alpha/pull_request:draft_io",
+        "//factory/cli/src/tbhbdev/alpha/pull_request:prose",
+        "//factory/cli/tests:conftest",
+        "//factory/cli/tests:fake_tool",
+        "@cli_pip//pytest",
+    ],
+)
+
+cli_py_test(
+    name = "test_prose_output",
+    srcs = ["test_prose_output.py"],
+    imports = ["../../.."],
+    deps = [
+        "//factory/cli/src/tbhbdev/alpha/pull_request:prose_output",
+        "//factory/cli/tests:conftest",
+        "@cli_pip//pytest",
+    ],
+)
+
+cli_py_test(
+    name = "test_publish_io",
+    srcs = ["test_publish_io.py"],
+    data = ["//:cli_check_inputs"],
+    imports = ["../../.."],
+    deps = [
+        ":pr_draft_samples",
+        ":pr_test_support",
+        "//factory/cli/src/tbhbdev/alpha:opened",
+        "//factory/cli/src/tbhbdev/alpha:secret_scan",
+        "//factory/cli/src/tbhbdev/alpha/identity:dispatcher",
+        "//factory/cli/src/tbhbdev/alpha/pull_request:attribution",
+        "//factory/cli/src/tbhbdev/alpha/pull_request:draft",
+        "//factory/cli/tests:conftest",
+        "@cli_pip//pytest",
+    ],
+)
+
+cli_py_test(
+    name = "test_ready_io",
+    srcs = ["test_ready_io.py"],
+    data = ["//:cli_check_inputs"],
+    imports = ["../../.."],
+    deps = [
+        ":pr_test_support",
+        "//factory/cli/tests:conftest",
+        "//factory/cli/tests:fake_tool",
+        "@cli_pip//pytest",
+    ],
+)
+
+cli_py_test(
+    name = "test_rebase_io",
+    srcs = ["test_rebase_io.py"],
+    data = ["//:cli_check_inputs"],
+    imports = ["../../.."],
+    deps = [
+        ":pr_draft_samples",
+        ":pr_test_support",
+        "//factory/cli/src/tbhbdev/alpha/pull_request:github",
+        "//factory/cli/src/tbhbdev/alpha/pull_request:repository",
+        "//factory/cli/src/tbhbdev/alpha/pull_request:tools",
+        "//factory/cli/tests:conftest",
+        "@cli_pip//pytest",
+    ],
+)
+
+cli_py_test(
+    name = "test_repository_io",
+    srcs = ["test_repository_io.py"],
+    data = ["//:cli_check_inputs"],
+    imports = ["../../.."],
+    deps = [
+        ":pr_draft_samples",
+        ":pr_test_support",
+        "//factory/cli/src/tbhbdev/alpha:size_gate",
+        "//factory/cli/src/tbhbdev/alpha/pull_request:attribution",
+        "//factory/cli/src/tbhbdev/alpha/pull_request:repository",
+        "//factory/cli/tests:conftest",
+        "//factory/cli/tests:fake_tool",
+        "@cli_pip//pytest",
+    ],
+)
+
+cli_py_test(
+    name = "test_rerun_io",
+    srcs = ["test_rerun_io.py"],
+    data = ["//:cli_check_inputs"],
+    imports = ["../../.."],
+    deps = [
+        ":pr_test_support",
+        "//factory/cli/src/tbhbdev/alpha/pull_request:github",
+        "//factory/cli/src/tbhbdev/alpha/pull_request:rerun",
+        "//factory/cli/tests:conftest",
+        "@cli_pip//pytest",
+    ],
+)
+
+cli_py_test(
+    name = "test_sizing_io",
+    srcs = ["test_sizing_io.py"],
+    data = ["//:cli_check_inputs"],
+    imports = ["../../.."],
+    path_tools = ["@tbhb_rules_scc//:scc"],
+    deps = [
+        ":pr_draft_samples",
+        ":pr_test_support",
+        "//factory/cli/src/tbhbdev/alpha:size_gate",
+        "//factory/cli/src/tbhbdev/alpha/pull_request:repository",
+        "//factory/cli/src/tbhbdev/alpha/pull_request:tools",
+        "//factory/cli/tests:conftest",
+        "//factory/cli/tests:fake_tool",
+        "@cli_pip//pytest",
+    ],
+)
+
+cli_py_test(
+    name = "test_tools_io",
+    srcs = ["test_tools_io.py"],
+    data = [
+        "//:cli_check_inputs",
+        "//factory/cli/tests:rules_tool_pins",
+    ],
+    imports = ["../../.."],
+    deps = [
+        ":pr_test_support",
+        "//factory/cli/src/tbhbdev/alpha:tool_pins",
+        "//factory/cli/src/tbhbdev/alpha/pull_request:tools",
+        "//factory/cli/tests:conftest",
+        "//factory/cli/tests:fake_tool",
+        "@cli_pip//pytest",
+    ],
+)
+
+cli_py_test(
+    name = "test_arguments",
+    srcs = ["test_arguments.py"],
+    imports = ["../../.."],
+    deps = [
+        "//factory/cli/src/tbhbdev/alpha/pull_request:arguments",
+        "//factory/cli/src/tbhbdev/alpha/pull_request:draft",
+        "//factory/cli/tests:conftest",
+    ],
+)
+
+cli_py_test(
+    name = "test_github_io",
+    srcs = ["test_github_io.py"],
+    imports = ["../../.."],
+    pyi_deps = ["@cli_pip//pytest"],
+    deps = [
+        "//factory/cli/src/tbhbdev/alpha/pull_request:github",
+        "//factory/cli/tests:conftest",
+    ],
+)
+
+cli_py_test(
+    name = "test_publication",
+    srcs = ["test_publication.py"],
+    imports = ["../../.."],
+    deps = [
+        "//factory/cli/src/tbhbdev/alpha/pull_request:publication",
+        "//factory/cli/tests:conftest",
+        "@cli_pip//pytest",
+    ],
+)
+
+cli_py_test(
+    name = "test_run_results",
+    srcs = ["test_run_results.py"],
+    imports = ["../../.."],
+    deps = [
+        "//factory/cli/src/tbhbdev/alpha/pull_request:run_results",
+        "//factory/cli/tests:conftest",
+        "@cli_pip//pytest",
+    ],
+)

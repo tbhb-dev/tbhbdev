@@ -30,9 +30,9 @@ cli_py_library(
         ":adr_decision",
         ":content",
         ":runner",
-        "//factory/cli/src/tbhbdev/alpha:pull_request",
-        "//factory/cli/src/tbhbdev/alpha:pull_request_frontmatter",
         "//factory/cli/src/tbhbdev/alpha:repo_bootstrap",
+        "//factory/cli/src/tbhbdev/alpha/pull_request:frontmatter",
+        "//factory/cli/src/tbhbdev/alpha/pull_request:repository",
     ],
 )
 
@@ -89,8 +89,8 @@ cli_py_library(
         ":content_model",
         ":content_vet",
         ":cue_runtime",
-        "//factory/cli/src/tbhbdev/alpha:pull_request",
         "//factory/cli/src/tbhbdev/alpha:secret_scan",
+        "//factory/cli/src/tbhbdev/alpha/pull_request:tools",
     ],
 )
 
@@ -175,7 +175,10 @@ cli_py_library(
     srcs = ["prose_check.py"],
     imports = [".."],
     visibility = ["//factory/cli:__subpackages__"],
-    deps = ["//factory/cli/src/tbhbdev/alpha:pull_request"],
+    deps = [
+        "//factory/cli/src/tbhbdev/alpha/pull_request:draft",
+        "//factory/cli/src/tbhbdev/alpha/pull_request:prose",
+    ],
 )
 
 cli_py_library(

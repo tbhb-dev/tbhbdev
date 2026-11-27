@@ -4,7 +4,7 @@ from datetime import UTC, datetime
 import pytest
 
 from tbhbdev.alpha import pr_stats
-from tbhbdev.alpha import pull_request as pr
+from tbhbdev.alpha.pull_request import github as pr_github
 
 H = "sha-256-64:"
 EARLY, MID, LATE = (
@@ -170,7 +170,7 @@ def test_main_prints_a_row_per_pull_request(
             pull(number=9, commits=[]),
         ]
 
-    monkeypatch.setattr(pr, "gh_json", listed)
+    monkeypatch.setattr(pr_github, "gh_json", listed)
     assert pr_stats.main(["o/r", "--limit", "5"], "prog") == 0
     out = capsys.readouterr()
     (printed,) = [json.loads(x) for x in out.out.splitlines()]
@@ -213,7 +213,7 @@ def test_limit_requires_an_integer(
     def listed(_argv: list[str]) -> list[dict[str, object]]:
         pytest.fail("invalid limits must not query pull requests")
 
-    monkeypatch.setattr(pr, "gh_json", listed)
+    monkeypatch.setattr(pr_github, "gh_json", listed)
     with pytest.raises(SystemExit) as stopped:
         pr_stats.main(["o/r", "--limit", "many"], "stats")
     assert stopped.value.code == 2

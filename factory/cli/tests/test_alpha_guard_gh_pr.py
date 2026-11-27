@@ -19,9 +19,10 @@ from fake_tool import pythonpath
 from hypothesis import given
 from hypothesis import strategies as st
 
-from tbhbdev.alpha import close, install, opened, pull_request, squash_merge
+from tbhbdev.alpha import close, install, opened, squash_merge
 from tbhbdev.alpha import guard_gh_pr as guard
 from tbhbdev.alpha.identity import dispatcher as ai
+from tbhbdev.alpha.pull_request.arguments import build_parser as pr_parser
 
 DATA = Path(__file__).parent / "testdata" / "alpha"
 SRC = Path(guard.__file__).parents[2]
@@ -1255,6 +1256,4 @@ def test_every_hinted_command_line_parses_with_the_real_cli(command: str) -> Non
         elif words[:2] in (["pr", "close"], ["issue", "close"]):
             close.build_parser("x").parse_args(words)
         else:
-            pull_request.build_parser("x").parse_args(
-                words[1:] if words[0] == "pr" else words
-            )
+            pr_parser("x").parse_args(words[1:] if words[0] == "pr" else words)

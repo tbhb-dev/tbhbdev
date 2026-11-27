@@ -12,8 +12,7 @@ links in its brain directory.
 ``tbhbdev alpha pr create`` adds each pull request it opens to the posting
 root's ledger, ``<user store>/opened/<root hex>.json``, as ``{"prs": [...]}``:
 sorted, deduplicated ``owner/repo#N`` entries, written whole under a lock.
-``tbhbdev alpha pr backfill-opened`` adds the pull requests opened before
-the ledger existed. The guard reads the ledger with no network call.
+The guard reads the ledger with no network call.
 """
 
 import json

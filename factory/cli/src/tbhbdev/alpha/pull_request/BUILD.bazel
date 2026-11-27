@@ -1,0 +1,327 @@
+# SPDX-License-Identifier: Apache-2.0
+# Copyright Tony Burns
+
+load("//factory/cli:python.bzl", "cli_py_library")
+
+filegroup(
+    name = "package_files",
+    srcs = glob(["*.py"]),
+    visibility = ["//factory/cli:__pkg__"],
+)
+
+cli_py_library(
+    name = "__init__",
+    srcs = ["__init__.py"],
+    imports = ["../../.."],
+    visibility = ["//factory/cli:__subpackages__"],
+)
+
+cli_py_library(
+    name = "attribution",
+    srcs = ["attribution.py"],
+    imports = ["../../.."],
+    pyi_deps = [":draft"],
+    visibility = ["//factory/cli:__subpackages__"],
+    deps = [
+        ":description",
+        ":github",
+        ":tools",
+        "//factory/cli/src/tbhbdev/alpha:opened",
+        "//factory/cli/src/tbhbdev/alpha/identity:dispatcher",
+    ],
+)
+
+cli_py_library(
+    name = "baseline",
+    srcs = ["baseline.py"],
+    imports = ["../../.."],
+    visibility = ["//factory/cli:__subpackages__"],
+    deps = [
+        ":body",
+        ":tools",
+    ],
+)
+
+cli_py_library(
+    name = "body",
+    srcs = ["body.py"],
+    imports = ["../../.."],
+    visibility = ["//factory/cli:__subpackages__"],
+)
+
+cli_py_library(
+    name = "branch_rules",
+    srcs = ["branch_rules.py"],
+    imports = ["../../.."],
+    visibility = ["//factory/cli:__subpackages__"],
+)
+
+cli_py_library(
+    name = "check_results",
+    srcs = ["check_results.py"],
+    imports = ["../../.."],
+    visibility = ["//factory/cli:__subpackages__"],
+)
+
+cli_py_library(
+    name = "checks",
+    srcs = ["checks.py"],
+    imports = ["../../.."],
+    visibility = ["//factory/cli:__subpackages__"],
+    deps = [
+        ":check_results",
+        ":github",
+    ],
+)
+
+cli_py_library(
+    name = "command",
+    srcs = ["command.py"],
+    imports = ["../../.."],
+    visibility = ["//factory/cli:__subpackages__"],
+    deps = [
+        ":arguments",
+        ":attribution",
+        ":checks",
+        ":delete_branch",
+        ":draft_io",
+        ":github",
+        ":hook",
+        ":metadata",
+        ":prose",
+        ":publish",
+        ":ready",
+        ":rebase",
+        ":repository",
+        ":rerun",
+        ":sizing",
+        ":tools",
+        "//factory/cli/src/tbhbdev:userconfig",
+        "//factory/cli/src/tbhbdev/alpha:install",
+        "//factory/cli/src/tbhbdev/alpha/agent:settings",
+        "//factory/cli/src/tbhbdev/alpha/agent/decisions:host_names",
+        "//factory/cli/src/tbhbdev/alpha/identity:dispatcher",
+    ],
+)
+
+cli_py_library(
+    name = "delete_branch",
+    srcs = ["delete_branch.py"],
+    imports = ["../../.."],
+    visibility = ["//factory/cli:__subpackages__"],
+    deps = [
+        ":branch_rules",
+        ":github",
+        ":metadata",
+        ":repository",
+        ":tools",
+    ],
+)
+
+cli_py_library(
+    name = "description",
+    srcs = ["description.py"],
+    imports = ["../../.."],
+    pyi_deps = [":draft"],
+    visibility = ["//factory/cli:__subpackages__"],
+    deps = ["//factory/cli/src/tbhbdev/alpha/identity:trailers"],
+)
+
+cli_py_library(
+    name = "draft",
+    srcs = ["draft.py"],
+    imports = ["../../.."],
+    visibility = ["//factory/cli:__subpackages__"],
+    deps = [
+        ":body",
+        ":frontmatter",
+        "@cli_pip//jsonschema",
+    ],
+)
+
+cli_py_library(
+    name = "draft_io",
+    srcs = ["draft_io.py"],
+    imports = ["../../.."],
+    visibility = ["//factory/cli:__subpackages__"],
+    deps = [
+        ":baseline",
+        ":draft",
+        ":frontmatter",
+        ":prose",
+        "//factory/cli/src/tbhbdev/alpha/identity:dispatcher",
+    ],
+)
+
+cli_py_library(
+    name = "frontmatter",
+    srcs = ["frontmatter.py"],
+    imports = ["../../.."],
+    pyi_deps = ["@cli_pip//jsonschema"],
+    visibility = ["//factory/cli:__subpackages__"],
+    deps = ["@cli_pip//pyyaml"],
+)
+
+cli_py_library(
+    name = "github",
+    srcs = ["github.py"],
+    imports = ["../../.."],
+    visibility = ["//factory/cli:__subpackages__"],
+    deps = [":tools"],
+)
+
+cli_py_library(
+    name = "hook",
+    srcs = ["hook.py"],
+    imports = ["../../.."],
+    visibility = ["//factory/cli:__subpackages__"],
+    deps = [
+        ":arguments",
+        ":draft",
+        ":draft_io",
+        ":tools",
+        "//factory/cli/src/tbhbdev/alpha:repo",
+        "//factory/cli/src/tbhbdev/alpha/identity:dispatcher",
+    ],
+)
+
+cli_py_library(
+    name = "metadata",
+    srcs = ["metadata.py"],
+    imports = ["../../.."],
+    visibility = ["//factory/cli:__subpackages__"],
+)
+
+cli_py_library(
+    name = "prose",
+    srcs = ["prose.py"],
+    imports = ["../../.."],
+    pyi_deps = [":body"],
+    visibility = ["//factory/cli:__subpackages__"],
+    deps = [
+        ":draft",
+        ":prose_output",
+        ":tools",
+    ],
+)
+
+cli_py_library(
+    name = "prose_output",
+    srcs = ["prose_output.py"],
+    imports = ["../../.."],
+    pyi_deps = [":body"],
+    visibility = ["//factory/cli:__subpackages__"],
+)
+
+cli_py_library(
+    name = "publish",
+    srcs = ["publish.py"],
+    imports = ["../../.."],
+    visibility = ["//factory/cli:__subpackages__"],
+    deps = [
+        ":github",
+        ":publication",
+        ":tools",
+        "//factory/cli/src/tbhbdev/alpha:opened",
+        "//factory/cli/src/tbhbdev/alpha:secret_scan",
+    ],
+)
+
+cli_py_library(
+    name = "ready",
+    srcs = ["ready.py"],
+    imports = ["../../.."],
+    visibility = ["//factory/cli:__subpackages__"],
+    deps = [
+        ":branch_rules",
+        ":github",
+        ":metadata",
+        ":repository",
+        ":tools",
+    ],
+)
+
+cli_py_library(
+    name = "rebase",
+    srcs = ["rebase.py"],
+    imports = ["../../.."],
+    visibility = ["//factory/cli:__subpackages__"],
+    deps = [
+        ":branch_rules",
+        ":github",
+        ":repository",
+        ":tools",
+    ],
+)
+
+cli_py_library(
+    name = "repository",
+    srcs = ["repository.py"],
+    imports = ["../../.."],
+    visibility = ["//factory/cli:__subpackages__"],
+    deps = [
+        ":github",
+        ":metadata",
+        ":tools",
+    ],
+)
+
+cli_py_library(
+    name = "rerun",
+    srcs = ["rerun.py"],
+    imports = ["../../.."],
+    visibility = ["//factory/cli:__subpackages__"],
+    deps = [
+        ":github",
+        ":metadata",
+        ":run_results",
+        ":tools",
+    ],
+)
+
+cli_py_library(
+    name = "sizing",
+    srcs = ["sizing.py"],
+    imports = ["../../.."],
+    pyi_deps = [":draft"],
+    visibility = ["//factory/cli:__subpackages__"],
+    deps = [
+        ":repository",
+        ":tools",
+        "//factory/cli/src/tbhbdev/alpha:size_gate",
+    ],
+)
+
+cli_py_library(
+    name = "tools",
+    srcs = ["tools.py"],
+    imports = ["../../.."],
+    visibility = ["//factory/cli:__subpackages__"],
+    deps = [
+        "//factory/cli/src/tbhbdev/alpha:repo",
+        "//factory/cli/src/tbhbdev/alpha:tool_pins",
+    ],
+)
+
+cli_py_library(
+    name = "arguments",
+    srcs = ["arguments.py"],
+    imports = ["../../.."],
+    visibility = ["//factory/cli:__subpackages__"],
+    deps = [":draft"],
+)
+
+cli_py_library(
+    name = "publication",
+    srcs = ["publication.py"],
+    imports = ["../../.."],
+    visibility = ["//factory/cli:__subpackages__"],
+    deps = [":metadata"],
+)
+
+cli_py_library(
+    name = "run_results",
+    srcs = ["run_results.py"],
+    imports = ["../../.."],
+    visibility = ["//factory/cli:__subpackages__"],
+)

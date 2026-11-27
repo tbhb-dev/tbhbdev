@@ -5,7 +5,7 @@
 import pytest
 from jsonschema import Draft202012Validator
 
-from tbhbdev.alpha import pull_request_frontmatter as frontmatter
+from tbhbdev.alpha.pull_request import frontmatter
 
 SCHEMA: dict[str, object] = {
     "type": "object",
@@ -52,11 +52,6 @@ def test_parse_frontmatter_errors() -> None:
 def test_frontmatter_refuses_a_repeated_key() -> None:
     with pytest.raises(frontmatter.FrontmatterError, match="duplicate key 'base'"):
         frontmatter.parse_frontmatter("---\nbase: main\nbase: dev\n---\n")
-
-
-def test_schema_default() -> None:
-    assert frontmatter.schema_default(SCHEMA, "base") == "main"
-    assert frontmatter.schema_default(SCHEMA, "draft") is False
 
 
 def test_frontmatter_unknown_key_is_line_one() -> None:

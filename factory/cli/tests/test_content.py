@@ -8,8 +8,8 @@ lazy from pathlib import Path
 import pytest
 
 from tbhbdev import content as cw
-from tbhbdev.alpha import pull_request as pr
 from tbhbdev.alpha.close import main as close_main
+from tbhbdev.alpha.pull_request import repository as pr_repository
 
 type Call = tuple[str, str, cw.Json | None]
 REF = cw.IssueRef("example", "demo", 7)
@@ -448,7 +448,7 @@ def test_alpha_issue_relationship(
     def client_factory() -> RecordingClient:
         return client
 
-    monkeypatch.setattr(pr, "origin_repository", origin)
+    monkeypatch.setattr(pr_repository, "origin_repository", origin)
     monkeypatch.setattr(cw, "GhClient", client_factory)
     cmd = ["issue", *argv]
     if dry_run:

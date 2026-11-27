@@ -12,7 +12,7 @@ from typing import TYPE_CHECKING, Protocol, cast
 
 from tbhbdev import content_vet, cue_runtime
 from tbhbdev.alpha import secret_scan
-from tbhbdev.alpha.pull_request import find_tool, root
+from tbhbdev.alpha.pull_request.tools import find_tool, root
 from tbhbdev.content_model import normalize
 
 if TYPE_CHECKING:
