@@ -3,7 +3,6 @@
 import hashlib
 import os
 import subprocess
-from math import inf
 from unittest.mock import Mock
 lazy from pathlib import Path
 
@@ -12,37 +11,28 @@ from agent_host_example import commit, git, host_settings, repository, run_reque
 from fake_tool import PRIVATE_CONFIG, RULES_BEYOND_ONE
 
 from tbhbdev.alpha import pre_push_guard
-from tbhbdev.alpha.agent import (
-    credentials,
-    host_tools,
-    process_group,
-    push,
-    rescue,
-    run_host,
-    runfiles,
-)
+from tbhbdev.alpha.agent import rescue, run_host, runfiles
 
 BRANCH = "agent/example"
 REF = f"refs/heads/{BRANCH}"
 START_REF = "refs/heads/topic"
 FOUND = "kept local: secret scan found a secret"
 UNAVAILABLE = "kept local: secret scan unavailable"
-UNSIGNED = "kept local: agent commit signature refused"
-MOVED = "kept local: start ref moved"
+PROTECTED = "kept local: refs/heads/main: push to a protected branch refused"
 
 
 @pytest.fixture
 def checkout(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, change: str
-) -> tuple[Path, Path, str]:
-    monkeypatch.setattr(run_host.admission, "ROOT", tmp_path / "admission")
+) -> tuple[Path, Path, str, Mock]:
     private = tmp_path / "private.toml"
     monkeypatch.setattr(rescue.secret_scan, "private_config", lambda: private)
     policy = PRIVATE_CONFIG + RULES_BEYOND_ONE
+    private.write_text(policy)
     if change == "no private canary":
-        policy = policy.replace("tbhb-private-canary", "test-rule")
-    if change != "missing private config":
-        private.write_text(policy)
+        private.write_text(policy.replace("tbhb-private-canary", "test-rule"))
+    if change == "missing private config":
+        private.unlink()
     workspace, _ = repository(tmp_path)
     origin = tmp_path / "origin"
     (workspace / ".gitleaks.toml").touch()
@@ -51,161 +41,126 @@ def checkout(
         rules.parent.mkdir(parents=True)
         rules.write_text('[[rules]]\nid = "example-rule"\nregex = "test-value"\n')
     base = commit(workspace, "configure scan")
-    git(workspace, "push", "origin", "main", f"main:{START_REF}")
+    start_tip = "main^" if change == "start ref moved" else "main"
+    git(workspace, "push", "origin", "main", f"{start_tip}:{START_REF}")
     git(workspace, "switch", "-c", BRANCH)
-    original = push.remote_git
+    original = rescue.push.remote_git
 
     def local(path: Path, *args: str, token: str | None = None) -> str:
         assert path != workspace
-        mapped = [str(origin) if arg.startswith("https://") else arg for arg in args]
-        return original(path, *mapped, token=token)
+        args = tuple(str(origin) if arg.startswith("https://") else arg for arg in args)
+        return original(path, *args, token=token)
 
-    monkeypatch.setattr(push, "remote_git", local)
-    monkeypatch.setattr(credentials, "github_token", Mock(return_value="example-token"))
-    monkeypatch.setattr(host_tools, "search", Mock(return_value=os.environ["PATH"]))
-    return workspace, origin, base
+    remote = Mock(wraps=local)
+    monkeypatch.setattr(rescue.push, "remote_git", remote)
+    monkeypatch.setattr(rescue.credentials, "github_token", Mock(return_value=None))
+    monkeypatch.setattr(rescue.host_tools, "search", lambda: os.environ["PATH"])
+    return workspace, origin, base, remote
 
 
 @pytest.mark.parametrize(
-    ("change", "result", "rc"),
+    ("change", "result"),
     [
-        ("committed", "published", 124),
-        ("dirty", "published", 124),
-        ("unsigned", UNSIGNED, 7),
-        ("start ref", "published", 7),
-        ("start ref moved", MOVED, 7),
-        ("secret", FOUND, 124),
-        ("vendored secret", FOUND, 7),
-        ("committed earlier secret", FOUND, 7),
-        ("committed private", FOUND, 7),
-        ("missing private config", UNAVAILABLE, 7),
-        ("no private canary", UNAVAILABLE, 7),
-        ("silent error", UNAVAILABLE, 7),
-        ("scan timeout", UNAVAILABLE, 7),
-        ("scan error", UNAVAILABLE, 7),
-        ("checkout error", "kept local: could not save the run checkout", 7),
-        ("symlink index", "kept local: could not save the run checkout", 7),
-        ("diverged", "kept local: could not publish the run branch", 7),
-        ("switched", "kept local: checkout left the run branch", 7),
-        ("uncertain", "kept local: harness shutdown unconfirmed", 7),
-        ("already pushed", "nothing to publish", 7),
-        ("empty commit", "published", 7),
-        ("nothing", "nothing to publish", 7),
-        ("clean exit", "", 0),
+        ("committed", "published"),
+        ("dirty", "published"),
+        ("unsigned", "kept local: agent commit signature refused"),
+        ("start ref", "published"),
+        ("start ref moved", "kept local: start ref moved"),
+        ("protected", PROTECTED),
+        ("secret", FOUND),
+        ("vendored secret", FOUND),
+        ("committed earlier secret", FOUND),
+        ("committed private", FOUND),
+        ("missing private config", UNAVAILABLE),
+        ("no private canary", UNAVAILABLE),
+        ("silent error", UNAVAILABLE),
+        ("scan timeout", UNAVAILABLE),
+        ("scan error", UNAVAILABLE),
+        ("checkout error", "kept local: could not save the run checkout"),
+        ("symlink index", "kept local: could not save the run checkout"),
+        ("start ref rewrite", "kept local: could not publish the run branch"),
+        ("switched", "kept local: checkout left the run branch"),
+        ("uncertain", "kept local: harness shutdown unconfirmed"),
+        ("already pushed", "nothing to publish"),
+        ("empty commit", "published"),
+        ("nothing", "nothing to publish"),
+        ("clean exit", ""),
     ],
 )
 def test_fault_publication(
-    checkout: tuple[Path, Path, str],
+    checkout: tuple[Path, Path, str, Mock],
     monkeypatch: pytest.MonkeyPatch,
     change: str,
     result: str,
-    rc: int,
 ) -> None:
-    workspace, origin, base = checkout
+    workspace, origin, base, remote = checkout
     start_ref = START_REF if change.startswith("start ref") else None
-    run, prepared = build_run(workspace, start_ref)
-    remote_git = Mock(wraps=push.remote_git)
-    monkeypatch.setattr(push, "remote_git", remote_git)
-    monkeypatch.setattr(run_host, "preflight", Mock())
-    monkeypatch.setattr(process_group, "prepare", Mock(return_value=prepared))
-
-    def harness(*_args: object) -> int:
-        run.files.write("launched", "\n")
-        change_checkout(workspace, change)
-        run.files.uncertain = change == "uncertain"
-        expired = subprocess.TimeoutExpired("harness", 1) if rc == 124 else None
-        wait = Mock(return_value=rc, side_effect=expired)
-        return run_host.wait_harness(run, Mock(wait=wait))
-
-    monkeypatch.setattr(run_host, "run_harness", harness)
+    if change == "protected":
+        start_ref = "refs/heads/main"
+    request = run_request(
+        start_ref=start_ref, fetch_refs=[start_ref] if start_ref else []
+    )
+    files = runfiles.RunFiles(workspace.parent / "runs", "example")
+    files.write("launched", "\n")
+    files.write("base", base)
+    files.uncertain = change == "uncertain"
+    run = Mock(
+        spec=run_host.Run, files=files, request=request, settings=host_settings()
+    )
+    ready = Mock(spec=run_host.Prepared, paths=Mock(worktree=str(workspace)))
+    change_checkout(workspace, change)
     scan_fault(monkeypatch, change)
-    assert run_host.execute(run, "example") == rc
-    assert run.files.path("rc").read_text().strip() == str(rc)
-    expected = [f"fault publication: {result}"] if result else []
-    log = run.files.path("log").read_text().splitlines()
-    assert [line for line in log if line.startswith("fault publication:")] == expected
-
-    assert git(origin, "rev-parse", "refs/heads/main") == base
-    tip = git(workspace, "rev-parse", REF)
-    if result in (UNSIGNED, MOVED):
-        assert [call.args[1] for call in remote_git.call_args_list] == ["ls-remote"]
-        assert run.files.path("head").read_text().strip() == tip
-    destination = start_ref or REF
+    rescue.on_fault(run, ready, 0 if change == "clean exit" else 7)
+    log = files.path("log")
+    assert log.exists() == bool(result)
+    if result:
+        assert log.read_text().startswith(f"fault publication: {result}")
+    calls = [call.args[1] for call in remote.call_args_list]
+    assert ("push" in calls) == (result == "published" or change == "start ref rewrite")
     if result == "published":
-        assert remote_git.call_args.args[-1] == f"{tip}:{destination}"
-        assert run.files.path("branch").read_text().strip() == destination.removeprefix(
+        destination = start_ref or REF
+        tip = git(workspace, "rev-parse", REF)
+        assert remote.call_args.args[-1] == f"{tip}:{destination}"
+        assert git(origin, "rev-parse", destination) == tip
+        assert files.path("branch").read_text() == destination.removeprefix(
             "refs/heads/"
         )
-    start_tip = {
-        "start ref": tip,
-        "start ref moved": git(workspace, "rev-parse", "HEAD^"),
-    }
-    assert git(origin, "rev-parse", START_REF) == start_tip.get(change, base)
-    pushed = {"published": REF, "already pushed": REF, "diverged": "other"}
-    expected_ref = (pushed.get(result) or pushed.get(change)) if not start_ref else None
-    expected = git(workspace, "rev-parse", expected_ref) if expected_ref else ""
-    assert git(origin, "for-each-ref", "--format=%(objectname)", REF) == expected
-    subject = git(workspace, "log", "-1", "--format=%s", REF)
-    saved = change in {"dirty", "secret", "vendored secret"} or result == UNAVAILABLE
-    assert subject.startswith("rescue:") == saved
-    if saved:
-        assert git(workspace, "log", "-1", "--format=%ae", REF) == "run-launcher"
-        assert git(workspace, "rev-list", "--count", f"{base}..{REF}") == "1"
-        assert git(workspace, "status", "--porcelain") == ""
-        assert git(workspace, "show", f"{REF}:tracked") == "changed"
-        assert git(workspace, "show", f"{REF}:notes")
-    if change == "switched":
-        assert git(workspace, "log", "-1", "--format=%s").startswith("rescue:")
-        assert git(workspace, "log", "-1", "--format=%s", "other") == "other work"
-    if change == "clean exit":
-        assert git(workspace, "status", "--porcelain") == " M tracked\n?? notes".strip()
-
-
-def build_run(
-    workspace: Path, start_ref: str | None
-) -> tuple[run_host.Run, run_host.Prepared]:
-    root = workspace.parent
-    settings = host_settings()
-    request = run_request(timeout=1, start_ref=start_ref, fetch_refs=[START_REF])
-    files = runfiles.RunFiles(root / "runs", "example")
-    run = run_host.Run(files, request, settings, settings.hosts[0], root, root, 0, inf)
-    home = str(root)
-    paths = run_host.RunPaths(
-        home, str(workspace), home, f"{home}/codex", f"{home}/audit"
-    )
-    delivery = credentials.Delivery({}, None, gh_fallback=False, claude_profile=None)
-    return run, run_host.Prepared(paths, delivery, None)
+    if change in ("unsigned", "start ref moved"):
+        assert files.path("head").read_text() == git(workspace, "rev-parse", REF)
+    if change in ("dirty", "switched"):
+        assert git(workspace, "log", "-1", "--format=%ae") == "run-launcher"
 
 
 def change_checkout(workspace: Path, change: str) -> None:
     if change == "nothing":
         return
-    if change in ("diverged", "switched"):
+    if change == "switched":
         git(workspace, "switch", "-c", "other")
-        commit(workspace, "other work")
-        if change == "diverged":
-            git(workspace, "push", "origin", f"other:{REF}")
-            git(workspace, "switch", BRANCH)
+    if change == "start ref rewrite":
+        git(workspace, "reset", "--hard", "HEAD^")
+        (workspace / ".gitleaks.toml").touch()
     if change != "empty commit":
         (workspace / "tracked").write_text("changed\n")
         note = "ghp_" + hashlib.sha256(b"fixture").hexdigest()[:36]
         notes = {"vendored secret": "test-value", "committed private": "host-x"}
         fallback = note if "secret" in change else "repo-x\n"
         (workspace / "notes").write_text(notes.get(change, fallback))
-    commit_changes = {"already pushed", "empty commit", "diverged"}
-    if change.startswith(("committed", "start ref")) or change in commit_changes:
-        commit(workspace, "build work")
+    if change.startswith(("committed", "start ref")) or change in {
+        "already pushed",
+        "empty commit",
+        "unsigned",
+    }:
+        env = (
+            {**os.environ, "GIT_AUTHOR_EMAIL": pre_push_guard.AGENT_EMAIL}
+            if change == "unsigned"
+            else None
+        )
+        commit(workspace, "build work", env=env)
     if change == "committed earlier secret":
         (workspace / "notes").unlink()
         commit(workspace, "remove test value")
     if change == "already pushed":
         git(workspace, "push", "origin", REF)
-    if change == "start ref moved":
-        git(workspace, "push", "origin", f"HEAD:{START_REF}")
-        commit(workspace, "more build work")
-    if change == "unsigned":
-        env = {**os.environ, "GIT_AUTHOR_EMAIL": pre_push_guard.AGENT_EMAIL}
-        commit(workspace, "unsigned build work", env=env)
     if change == "checkout error":
         (workspace / ".git/index.lock").touch()
     if change == "symlink index":

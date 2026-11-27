@@ -8,7 +8,7 @@ from functools import partial
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from tbhbdev.alpha import secret_scan
+from tbhbdev.alpha import pre_push_guard, secret_scan
 from tbhbdev.alpha.agent import credentials, host_tools, push
 from tbhbdev.alpha.agent.decisions import repo
 from tbhbdev.alpha.agent.model import Profile
@@ -24,7 +24,7 @@ VENDORED_RULES = "lib/rules/lint/gitleaks/base.toml"
 
 
 def on_fault(run: Run, prepared: Prepared | None, rc: int) -> None:
-    """Record the publication result before the launcher records completion."""
+    """Save failed build work and log the publication result."""
     if (
         rc == 0
         or prepared is None
@@ -103,22 +103,40 @@ def save_checkout(directory: Path, checkout: Path, ref: str) -> str | None:
 
 def publish_commit(run: Run, directory: Path, ref: str, base: str, tip: str) -> str:
     """Send the scanned object with a single, unforced refspec."""
+    start_ref = run.request.start_ref
+    remote_ref = start_ref or ref
+    if problem := pre_push_guard.destination_problem(
+        remote_ref,
+        deleting=False,
+        agent_push=True,
+        run_name=run.files.name,
+        start_ref=start_ref,
+    ):
+        return f"kept local: {problem}"
     host, owner, name = repo.parts(run.request.repo)
     url = f"https://{host}/{owner}/{name}.git"
     account = next(
         c for c in run.settings.credentials if c.account == run.request.account
     )
     token = credentials.github_token(run.request, account)
-    current = push.remote_git(directory, "ls-remote", "--refs", url, ref, token=token)
-    if current == f"{tip}\t{ref}":
+    current = push.remote_git(
+        directory, "ls-remote", "--refs", url, remote_ref, token=token
+    )
+    if start_ref and current != f"{base}\t{start_ref}":
+        return "kept local: start ref moved"
+    if current == f"{tip}\t{remote_ref}":
         return "nothing to publish"
     if problem := scan(directory, base, tip):
         return f"kept local: {problem}"
+    if pre_push_guard.agent_commit_problems(
+        remote_ref, tip, [base], pre_push_guard.SigningKeys(), directory=directory
+    ):
+        return "kept local: agent commit signature refused"
     push.remote_git(
         directory, "push", "--no-follow-tags", "--recurse-submodules=no", "--",
-        url, f"{tip}:{ref}", token=token,
+        url, f"{tip}:{remote_ref}", token=token,
     )  # fmt: skip
-    run.files.write("branch", ref.removeprefix("refs/heads/"))
+    run.files.write("branch", remote_ref.removeprefix("refs/heads/"))
     return "published"
 
 

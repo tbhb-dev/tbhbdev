@@ -1258,17 +1258,14 @@ def cleanup_bazel(
 def finish(
     run: Run, prepared: Prepared | None, agent: subprocess.Popen[str] | None, rc: int
 ) -> int:
-    bazel = ""
-    cleanup: dict[str, int] = {}
+    bazel, cleanup = "", {}
     try:
-        try:
-            reason = finish_auth(run, prepared)
-            if reason is not None:
-                rc = 1
-                run.files.write("log", reason)
-        except OSError, ValueError:
+        if (reason := finish_auth(run, prepared)) is not None:
             rc = 1
-            run.files.write("log", "codex auth write-back failed\n")
+            run.files.write("log", reason)
+    except OSError, ValueError:
+        rc = 1
+        run.files.write("log", "codex auth write-back failed\n")
     finally:
         try:
             if agent is not None and stop_agent(agent) is False:
@@ -1277,8 +1274,7 @@ def finish(
             process_group.unknown(run.files)
         finally:
             try:
-                stopped = run.bazel_shutdown
-                if stopped is None:
+                if (stopped := run.bazel_shutdown) is None:
                     stopped = shutdown_bazel(run, prepared)
                 bazel = ",".join(sorted({result for result, _ in stopped.values()}))
                 cleanup = cleanup_bazel(run, prepared, stopped)
@@ -1287,22 +1283,22 @@ def finish(
                 with suppress(Exception):
                     run.files.write("log", "bazel cleanup failed\n")
             try:
-                rescue.on_fault(run, prepared, rc)
                 run.files.write("phase", "unknown" if run.files.uncertain else "ended")
             except OSError:
                 process_group.unknown(run.files)
             finally:
                 run.files.write("rc", f"{rc}\n")
+    with suppress(Exception), ExitStack() as publication:
+        publication.callback(run.files.write, "log", "fault publication failed\n")
+        rescue.on_fault(run, prepared, rc)
+        publication.pop_all()
     try:
         audit_summary(run, prepared, rc)
     except OSError, ValueError:
         run.files.write("log", "audit summary write failed\n")
     try:
-        entry = index_entry(run, prepared, rc) | {
-            "bazel_shutdown": bazel or "skipped",
-            "bazel_cleanup": cleanup,
-        }
-        runfiles.append(run.files.root, entry)
+        outcome = {"bazel_shutdown": bazel or "skipped", "bazel_cleanup": cleanup}
+        runfiles.append(run.files.root, index_entry(run, prepared, rc) | outcome)
     except OSError, ValueError:
         run.files.write("log", "completion index append failed\n")
     return rc
