@@ -23,9 +23,8 @@ from tbhbdev.alpha.agent.model import Invalid
 if TYPE_CHECKING:
     from pathlib import Path
 
-pytestmark = pytest.mark.usefixtures("isolated_home")
 
-
+@pytest.mark.usefixtures("isolated_home")
 def test_send_refuses_a_saved_run_from_another_harness(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
