@@ -1,0 +1,122 @@
+# SPDX-License-Identifier: Apache-2.0
+# Copyright Tony Burns
+# cspell:words eventfields temporaltarget
+
+load("@tbhb_rules//repo:defs.bzl", "repo_files")
+load(
+    "@tbhb_rules_go//:defs.bzl",
+    "go_arch_lint_test",
+    "go_deadcode_test",
+    "go_mod_tidy_test",
+    "gobco_test",
+    "govulncheck",
+)
+load("//factory:go.bzl", "golangci_lint_test")
+
+# gazelle:go_visibility //factory/event-gateway:__subpackages__
+# gazelle:map_kind go_test go_test //factory:go.bzl
+
+package(default_visibility = ["//factory:__subpackages__"])
+
+repo_files(visibility = [
+    "//:__pkg__",
+    "//factory:__pkg__",
+])
+
+GO_TARGETS = [
+    "//factory/event-gateway/cmd/event-gateway",
+    "//factory/event-gateway/cmd/event-gateway:event-gateway_test",
+    "//factory/event-gateway/internal/buildloop:buildloop_test",
+    "//factory/event-gateway/internal/eventfields:eventfields_test",
+    "//factory/event-gateway/internal/filter:filter_test",
+    "//factory/event-gateway/internal/redelivery:redelivery_test",
+    "//factory/event-gateway/internal/routing:routing_test",
+    "//factory/event-gateway/internal/temporaltarget:temporaltarget_devserver_test",
+    "//factory/event-gateway/internal/temporaltarget:temporaltarget_test",
+]
+
+golangci_lint_test(
+    name = "golangci_lint_test",
+    srcs = GO_TARGETS,
+    expect_linted = [":repo_files"],
+)
+
+go_deadcode_test(
+    name = "go_deadcode_test",
+    srcs = GO_TARGETS,
+)
+
+go_arch_lint_test(
+    name = "go_arch_lint_test",
+    srcs = GO_TARGETS,
+    config = "//:.go-arch-lint.yml",
+    go_mod = "//:go.mod",
+)
+
+go_mod_tidy_test(
+    name = "go_mod_tidy_test",
+    srcs = ["//:go_module_sources"],
+    go_mod = "//:go.mod",
+    go_sum = "//:go.sum",
+    proxy = "@go_mod_proxy//:proxy",
+)
+
+# CI runs this separately because it reads the online vulnerability database.
+govulncheck(
+    name = "govulncheck",
+    srcs = GO_TARGETS,
+    go_mod = "//:go.mod",
+    go_sum = "//:go.sum",
+    proxy = "@go_mod_proxy//:proxy",
+)
+
+# Condition coverage: every condition of a package reaches both outcomes, as
+# gobco measures it. One target per package, because gobco instruments one
+# package per run. The requirement is fixed at 100%.
+gobco_test(
+    name = "event-gateway_gobco_test",
+    go_mod = "//:go.mod",
+    go_sum = "//:go.sum",
+    proxy = "@go_mod_proxy//:proxy",
+    tests = ["//factory/event-gateway/cmd/event-gateway:event-gateway_test"],
+)
+
+gobco_test(
+    name = "buildloop_gobco_test",
+    go_mod = "//:go.mod",
+    go_sum = "//:go.sum",
+    proxy = "@go_mod_proxy//:proxy",
+    tests = ["//factory/event-gateway/internal/buildloop:buildloop_test"],
+)
+
+gobco_test(
+    name = "eventfields_gobco_test",
+    go_mod = "//:go.mod",
+    go_sum = "//:go.sum",
+    proxy = "@go_mod_proxy//:proxy",
+    tests = ["//factory/event-gateway/internal/eventfields:eventfields_test"],
+)
+
+gobco_test(
+    name = "filter_gobco_test",
+    go_mod = "//:go.mod",
+    go_sum = "//:go.sum",
+    proxy = "@go_mod_proxy//:proxy",
+    tests = ["//factory/event-gateway/internal/filter:filter_test"],
+)
+
+gobco_test(
+    name = "redelivery_gobco_test",
+    go_mod = "//:go.mod",
+    go_sum = "//:go.sum",
+    proxy = "@go_mod_proxy//:proxy",
+    tests = ["//factory/event-gateway/internal/redelivery:redelivery_test"],
+)
+
+gobco_test(
+    name = "routing_gobco_test",
+    go_mod = "//:go.mod",
+    go_sum = "//:go.sum",
+    proxy = "@go_mod_proxy//:proxy",
+    tests = ["//factory/event-gateway/internal/routing:routing_test"],
+)
