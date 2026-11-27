@@ -4,6 +4,7 @@ import hashlib
 import shutil
 import subprocess
 import time
+from dataclasses import replace
 from types import SimpleNamespace
 from unittest.mock import Mock
 lazy from pathlib import Path
@@ -13,7 +14,6 @@ from agent_host_example import (
     commit,
     git,
     host_settings,
-    isolate_host_git,
     repository,
     run_request,
 )
@@ -22,10 +22,10 @@ from tbhbdev.alpha.agent import (
     credentials,
     host_tools,
     process_group,
+    push,
     rescue,
     run_host,
     runfiles,
-    worktree,
 )
 
 BRANCH = "agent/example"
@@ -42,19 +42,17 @@ def checkout(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> tuple[Path, Pat
     commit(workspace, "configure scan")
     git(workspace, "push", "origin", "main", "main:refs/heads/topic")
     git(workspace, "switch", "-c", BRANCH)
-    isolate_host_git(tmp_path, monkeypatch)
-    original = worktree.git
+    original = push.remote_git
 
     def local(path: Path, *args: str, token: str | None = None) -> str:
-        if args[0] in ("ls-remote", "push"):
-            assert path != workspace
-            args = tuple(
-                str(origin) if part.startswith("https://") else part for part in args
-            )
+        assert path != workspace
+        args = tuple(
+            str(origin) if part.startswith("https://") else part for part in args
+        )
         return original(path, *args, token=token)
 
-    monkeypatch.setattr(worktree, "git", local)
-    monkeypatch.setattr(credentials, "github_token", Mock(return_value=None))
+    monkeypatch.setattr(push, "remote_git", local)
+    monkeypatch.setattr(credentials, "github_token", Mock(return_value="example-token"))
     gitleaks = shutil.which("gitleaks")
     assert gitleaks is not None
     original_resolve = host_tools.resolve
@@ -79,8 +77,11 @@ def checkout(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> tuple[Path, Pat
         ("scan timeout", "kept local: secret scan unavailable", 7),
         ("scan error", "kept local: secret scan unavailable", 7),
         ("checkout error", "kept local: could not save the run checkout", 7),
+        ("missing ref", "kept local: could not save the run checkout", 7),
+        ("symlink index", "kept local: could not save the run checkout", 7),
         ("diverged", "kept local: could not publish the run branch", 7),
         ("switched", "kept local: checkout left the run branch", 7),
+        ("switched clean", "kept local: checkout left the run branch", 7),
         ("uncertain", "kept local: harness shutdown unconfirmed", 7),
         ("already pushed", "nothing to publish", 7),
         ("empty commit", "published", 7),
@@ -107,10 +108,12 @@ def test_fault_publication(
         run.files.write("launched", "\n")
         change_checkout(workspace, change)
         run.files.uncertain = change == "uncertain"
-        child = Mock()
-        child.wait.return_value = rc
-        if rc == 124:
-            child.wait.side_effect = subprocess.TimeoutExpired("harness", 1)
+        wait = (
+            Mock(side_effect=subprocess.TimeoutExpired("harness", 1))
+            if rc == 124
+            else Mock(return_value=rc)
+        )
+        child = Mock(wait=wait)
         return run_host.wait_harness(run, child)
 
     monkeypatch.setattr(run_host, "run_harness", harness)
@@ -150,6 +153,42 @@ def test_fault_publication(
         assert git(workspace, "status", "--porcelain") == " M tracked\n?? notes".strip()
 
 
+@pytest.mark.parametrize("missing", ["prepared", "build", "launched", "base"])
+def test_fault_publication_requires_launched_build(
+    tmp_path: Path, missing: str
+) -> None:
+    run, prepared = build_run(tmp_path / "checkout")
+    if missing == "build":
+        run.request = replace(run.request, profile=run_host.Profile.REVIEW)
+    for name in ("launched", "base"):
+        if missing != name:
+            run.files.write(name, "present")
+
+    rescue.on_fault(run, None if missing == "prepared" else prepared, 7)
+
+    assert not run.files.path("log").exists()
+
+
+def test_fault_publication_uses_private_git_config(checkout: tuple[Path, Path]) -> None:
+    workspace, origin = checkout
+    run, _ = build_run(workspace)
+    base = git(workspace, "rev-parse", "HEAD")
+    run.files.write("base", base)
+    config = workspace / ".git" / "config"
+    original = config.read_text()
+    (workspace / "notes").write_text("notes\n")
+    config.write_text("[malformed\n")
+    try:
+        assert rescue.publish(run, workspace) == "published"
+    finally:
+        config.write_text(original)
+
+    local = git(workspace, "rev-parse", REF)
+    assert git(origin, "rev-parse", REF) == local
+    assert git(workspace, "show", f"{local}:notes") == "notes"
+    assert git(workspace, "status", "--porcelain") == ""
+
+
 def build_run(workspace: Path) -> tuple[run_host.Run, run_host.Prepared]:
     root = workspace.parent
     settings = host_settings()
@@ -186,6 +225,9 @@ def install_vendored_policy(workspace: Path) -> None:
 def change_checkout(workspace: Path, change: str) -> None:
     if change == "nothing":
         return
+    if change == "switched clean":
+        git(workspace, "switch", "-c", "other")
+        return
     if change in ("diverged", "switched"):
         git(workspace, "switch", "-c", "other")
         commit(workspace, "other work")
@@ -213,6 +255,11 @@ def change_checkout(workspace: Path, change: str) -> None:
         git(workspace, "push", "origin", REF)
     if change == "checkout error":
         (workspace / ".git" / "index.lock").touch()
+    if change == "missing ref":
+        (workspace / ".git" / "HEAD").write_text("ref: refs/heads/missing\n")
+    if change == "symlink index":
+        index = workspace / ".git" / "index"
+        index.symlink_to(index.rename(index.with_name("original-index")))
 
 
 def scan_fault(monkeypatch: pytest.MonkeyPatch, change: str) -> None:

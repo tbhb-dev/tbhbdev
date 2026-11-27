@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import base64
 import re
 import subprocess  # nosec B404
 import tempfile
@@ -174,7 +175,22 @@ def outside_history(
     return history_git(directory, *arguments, revisions=revisions).strip()
 
 
-def history_git(directory: Path, *args: str, revisions: str | None = None) -> str:
+def remote_git(directory: Path, *args: str, token: str | None) -> str:
+    """Use the same protected metadata for authenticated remote Git operations."""
+    return history_git(
+        directory,
+        "-c",
+        "http.followRedirects=false",
+        "-c",
+        "transfer.fsckObjects=true",
+        *args,
+        token=token,
+    ).strip()
+
+
+def history_git(
+    directory: Path, *args: str, revisions: str | None = None, token: str | None = None
+) -> str:
     """Run a Git history query with the protected repository metadata."""
     env = dict.fromkeys(
         (
@@ -190,13 +206,24 @@ def history_git(directory: Path, *args: str, revisions: str | None = None) -> st
         GIT_CONFIG_GLOBAL="/dev/null",
         GIT_CONFIG_NOSYSTEM="1",
         GIT_TERMINAL_PROMPT="0",
+        GIT_NO_REPLACE_OBJECTS="1",
+        GIT_NO_LAZY_FETCH="1",
         PATH=host_tools.search(),
     )
+    if token is not None:
+        basic = base64.b64encode(f"x-access-token:{token}".encode()).decode()
+        env.update(
+            GIT_CONFIG_COUNT="1",
+            GIT_CONFIG_KEY_0="http.extraheader",
+            GIT_CONFIG_VALUE_0=f"Authorization: Basic {basic}",
+        )
     return subprocess.run(  # nosec B603
         [
             host_tools.resolve("git"),
             "-c",
             "core.hooksPath=/dev/null",
+            "-c",
+            "core.fsmonitor=false",
             "-C",
             str(directory),
             *args,

@@ -3,17 +3,21 @@
 from __future__ import annotations
 
 import re
+import shutil
 import subprocess  # nosec B404
+from contextlib import contextmanager, suppress
 from pathlib import Path
 from typing import TYPE_CHECKING
 
 from tbhbdev.alpha import secret_scan
-from tbhbdev.alpha.agent import credentials, host_tools, push, worktree
+from tbhbdev.alpha.agent import credentials, host_tools, push
 from tbhbdev.alpha.agent.decisions import repo
 from tbhbdev.alpha.agent.model import Profile
 from tbhbdev.alpha.gh_app import GhAppError
 
 if TYPE_CHECKING:
+    from collections.abc import Generator
+
     from tbhbdev.alpha.agent.run_host import Prepared, Run
 
 FAILURES = (OSError, ValueError, subprocess.SubprocessError)
@@ -43,23 +47,21 @@ def on_fault(run: Run, prepared: Prepared | None, rc: int) -> None:
 def publish(run: Run, workspace: Path) -> str:
     """Pin the exact commit to scan and publish on the run's own branch."""
     branch = f"agent/{run.files.name}"
+    ref = f"refs/heads/{branch}"
     try:
-        on_branch = worktree.git(workspace, "branch", "--show-current") == branch
         base = run.files.path("base").read_text().strip()
-        if worktree.git(workspace, "status", "--porcelain", "--untracked-files=all"):
-            if not on_branch:
-                worktree.git(workspace, "switch", "--detach")
-            worktree.git(workspace, "add", "-A")
-            worktree.git(
-                workspace,
-                "-c", "user.name=Run launcher", "-c", "user.email=run-launcher",
-                "commit", "--no-gpg-sign", "-m", "rescue: save failed run work",
-            )  # fmt: skip
-            if not on_branch:
-                run.files.write("head", worktree.git(workspace, "rev-parse", "HEAD"))
+        refs, checkout = push.local_refs(workspace)
+        parent = refs.get("HEAD", refs.get("detached HEAD"))
+        if parent is None:
+            return "kept local: could not save the run checkout"
+        on_branch = checkout == f"ref: {ref}"
+        with push.publication(run.files.root, workspace, parent) as directory:
+            saved = save_checkout(directory, workspace, ref if on_branch else "HEAD")
         if not on_branch:
+            if saved is not None:
+                run.files.write("head", saved)
             return "kept local: checkout left the run branch"
-        tip = push.head(workspace, branch)
+        tip = saved or parent
     except FAILURES:
         return "kept local: could not save the run checkout"
     if tip == base:
@@ -72,6 +74,81 @@ def publish(run: Run, workspace: Path) -> str:
         return "kept local: could not publish the run branch"
 
 
+def save_checkout(directory: Path, checkout: Path, ref: str) -> str | None:
+    """Stage with private Git metadata and save the snapshot under a ref lock."""
+    metadata = checkout / ".git"
+    index = metadata / "index"
+    pack = metadata / "objects" / "pack"
+    destination = metadata / ref
+    if any(path.resolve() != path for path in (index, pack, destination.parent)):
+        message = "unexpected symlink in run Git metadata"
+        raise OSError(message)
+    private_index = directory / "index"
+    with suppress(FileNotFoundError):
+        # Git uses the index timestamp to detect same-tick worktree edits.
+        shutil.copy2(index, private_index)
+    git = ("--work-tree", str(checkout))
+    status = push.history_git(
+        directory,
+        "--no-optional-locks",
+        *git,
+        "status",
+        "--porcelain",
+        "--untracked-files=all",
+        "--ignore-submodules=dirty",
+    )
+    if not status:
+        return None
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    with replace_locked(destination) as ref_lock, replace_locked(index) as index_lock:
+        private_index.unlink(missing_ok=True)
+        with suppress(FileNotFoundError):
+            shutil.copy2(index, private_index)
+        tip = commit_checkout(directory, git, pack)
+        shutil.copy2(private_index, index_lock)
+        ref_lock.write_text(tip + "\n")
+    return tip
+
+
+@contextmanager
+def replace_locked(target: Path) -> Generator[Path]:
+    """Install a file through the same exclusive lock used by Git."""
+    lock = target.with_name(target.name + ".lock")
+    lock.touch(exist_ok=False)
+    try:
+        yield lock
+        lock.replace(target)
+    except BaseException:
+        lock.unlink(missing_ok=True)
+        raise
+
+
+def commit_checkout(directory: Path, git: tuple[str, ...], pack: Path) -> str:
+    """Create the commit privately, then install its objects in the run clone."""
+    push.history_git(directory, *git, "add", "-A")
+    push.history_git(
+        directory,
+        "-c",
+        "user.name=Run launcher",
+        "-c",
+        "user.email=run-launcher",
+        *git,
+        "commit",
+        "--no-gpg-sign",
+        "-m",
+        "rescue: save failed run work",
+    )
+    commit = push.history_git(directory, "rev-parse", "HEAD").strip()
+    push.history_git(
+        directory,
+        "pack-objects",
+        "--revs",
+        str(pack / "pack"),
+        revisions=f"{commit}\n^{commit}^\n",
+    )
+    return commit
+
+
 def publish_commit(run: Run, directory: Path, branch: str, base: str, tip: str) -> str:
     """Send the scanned object with a single, unforced refspec."""
     ref = f"refs/heads/{branch}"
@@ -81,12 +158,12 @@ def publish_commit(run: Run, directory: Path, branch: str, base: str, tip: str) 
         c for c in run.settings.credentials if c.account == run.request.account
     )
     token = credentials.github_token(run.request, account)
-    current = worktree.git(directory, "ls-remote", "--refs", url, ref, token=token)
+    current = push.remote_git(directory, "ls-remote", "--refs", url, ref, token=token)
     if current == f"{tip}\t{ref}":
         return "nothing to publish"
     if problem := scan(directory, base, tip):
         return f"kept local: {problem}"
-    worktree.git(
+    push.remote_git(
         directory, "push", "--no-follow-tags", "--recurse-submodules=no", "--",
         url, f"{tip}:{ref}", token=token,
     )  # fmt: skip
