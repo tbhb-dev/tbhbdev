@@ -101,7 +101,6 @@ jobs:
         env:
           GH_TOKEN: ${{ steps.token.outputs.token }}
           REPO: ${{ github.repository }}
-          REQUIRE_APPROVAL: "true"
         run: |
           python3 - <<'PYCODE'
           import json
@@ -181,9 +180,7 @@ jobs:
                   (rule.get("parameters") or {}).get("required_approving_review_count", 0)
                   for rule in rules if rule.get("type") == "pull_request"
               ]
-              # Only "false" turns the approval check off. Anything else keeps it.
-              require_approval = os.environ.get("REQUIRE_APPROVAL") != "false"
-              if require_approval and not any(type(count) is int and count >= 1 for count in approvals):
+              if not any(type(count) is int and count >= 1 for count in approvals):
                   fail("Default branch has no approval rule requiring at least one review")
               if not any(rule.get("type") == "required_status_checks" for rule in rules):
                   fail("Default branch has no status-check rule")
@@ -197,12 +194,10 @@ jobs:
                   ruleset = api(f"repos/{repo}/rulesets/{ruleset_id}")
                   if ruleset.get("current_user_can_bypass") != "never":
                       fail(f"the Renovate App can bypass ruleset {ruleset_id}")
-              required = (
-                  "approval and status checks required"
-                  if require_approval
-                  else "status checks required, approval check off"
+              print(
+                  "Automerge ruleset audit: approval and status checks required, "
+                  f"{len(ids)} rulesets cannot be bypassed"
               )
-              print(f"Automerge ruleset audit: {required}, {len(ids)} rulesets cannot be bypassed")
           except (ValueError, KeyError, TypeError, AttributeError, RecursionError):
               fail("Could not verify automerge ruleset protection")
           PYCODE
@@ -254,15 +249,9 @@ jobs:
           # mise's safe mode off.
           RENOVATE_ALLOWED_UNSAFE_EXECUTIONS: '["bazelModDeps"]'
           # The only post-upgrade commands, anchored so nothing else matches.
-          # bazelrc.json5 enables preset.update for projects with a generated
-          # Bazel RC file. ansible.json5 attaches the collection lock to
-          # ansible-galaxy bumps alone. cloudflare-worker.json5 attaches
-          # worker_types_test.update to tbhb_rules bumps in Worker repos.
-          # rules-cloudflare.json5 attaches that command and its nested twin
-          # to bumps of wrangler and its group in the rules project.
-          RENOVATE_ALLOWED_COMMANDS: '["^bazelisk run //:preset\\.update$",
-            "^bazelisk run @tbhb_rules_ansible//:lock$",
-            "^bazelisk run //:worker_types_test\\.update$",
+          # rules-cloudflare.json5 attaches both commands to Wrangler updates
+          # and its group and runs them in the Cloudflare smoke workspace.
+          RENOVATE_ALLOWED_COMMANDS: '["^bazelisk run //:worker_types_test\\.update$",
             "^bazelisk run //nested:worker_types_test\\.update$"]'
           # The custom.dugite datasource calls api.github.com with hostType
           # "custom", which the platform token does not cover. Registered

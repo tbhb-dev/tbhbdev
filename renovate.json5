@@ -9,6 +9,7 @@
     "github>tbhb-dev/tbhbdev//lib/renovate-config/bazel.json5",
     "github>tbhb-dev/tbhbdev//lib/renovate-config/go.json5",
     "github>tbhb-dev/tbhbdev//lib/renovate-config/python.json5",
+    "github>tbhb-dev/tbhbdev//lib/renovate-config/rules-cloudflare.json5",
     "github>tbhb-dev/tbhbdev//lib/renovate-config/workflow.json5",
   ],
 }

@@ -39,7 +39,10 @@ exports_files(
 )
 
 exports_files(
-    [".github/workflows/renovate.yaml"],
+    [
+        ".github/workflows/renovate.yaml",
+        "renovate.json5",
+    ],
     visibility = ["//lib/renovate-config:__pkg__"],
 )
 

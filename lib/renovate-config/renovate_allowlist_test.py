@@ -1,28 +1,18 @@
 # SPDX-License-Identifier: Apache-2.0
 # Copyright Tony Burns
 
-"""Check every preset command against the root Renovate workflow's allowlist."""
+"""Check commands in the selected presets against the workflow's allowlist."""
 
 import json
-from pathlib import Path
 import re
 import unittest
+from pathlib import Path
 
+from renovate_test_helpers import parse_preset
 
-ROOT = Path(__file__).parent
-# Match strings first, preserving comment markers and commas inside strings.
-TOKENS = re.compile(r'"(?:\\.|[^"\\])*"|//[^\n]*|/\*.*?\*/', re.DOTALL)
-
-
-def parse_preset(source):
-    """Read the JSON5 subset used by presets without changing string values."""
-    source = TOKENS.sub(lambda m: m[0] if m[0].startswith('"') else "", source)
-    # Transform only the gaps between strings, where keys and commas occur.
-    parts = re.split(r'("(?:\\.|[^"\\])*")', source)
-    for index in range(0, len(parts), 2):
-        parts[index] = re.sub(r'([A-Za-z_$][\w$]*)\s*:', r'"\1":', parts[index])
-        parts[index] = re.sub(r',\s*([}\]])', r'\1', parts[index])
-    return json.loads("".join(parts))
+PRESETS = Path(__file__).parent
+ROOT = PRESETS.parents[1]
+PRESET_PREFIX = "github>tbhb-dev/tbhbdev//lib/renovate-config/"
 
 
 def allowed_patterns(source):
@@ -56,13 +46,18 @@ def check_allowlist(commands, patterns):
 
 class RenovateAllowlistTest(unittest.TestCase):
     def test_repository(self):
+        root_config = parse_preset((ROOT / "renovate.json5").read_text())
         commands = []
-        for preset in sorted(ROOT.glob("*.json5")):
-            config = parse_preset(preset.read_text())
+        for preset in root_config["extends"]:
+            if not preset.startswith(PRESET_PREFIX):
+                continue
+            preset_path = PRESETS / preset.removeprefix(PRESET_PREFIX)
+            config = parse_preset(preset_path.read_text())
             for rule in config.get("packageRules", []):
                 commands.extend(rule.get("postUpgradeTasks", {}).get("commands", []))
-        # The workflow sits at the monorepo root, two levels above this project.
-        patterns = allowed_patterns((ROOT.parents[1] / ".github/workflows/renovate.yaml").read_text())
+        patterns = allowed_patterns(
+            (ROOT / ".github/workflows/renovate.yaml").read_text()
+        )
         self.assertTrue(commands, "No post-upgrade commands found")
         self.assertEqual(check_allowlist(commands, patterns), [])
 
@@ -76,15 +71,19 @@ class RenovateAllowlistTest(unittest.TestCase):
                 errors = check_allowlist(commands, patterns)
                 self.assertTrue(errors)
                 if "matches no command" in detail:
-                    self.assertIn("Regular expression '^unused$' matches no command", errors)
+                    self.assertIn(
+                        "Regular expression '^unused$' matches no command", errors
+                    )
                 else:
                     self.assertTrue(any(detail in error for error in errors), errors)
 
     def test_json5_strings_survive(self):
-        config = parse_preset('''// comment
+        config = parse_preset("""// comment
         {url: "https://example.test/a,]", commands: ["run //:target",],}
-        ''')
-        self.assertEqual(config, {"url": "https://example.test/a,]", "commands": ["run //:target"]})
+        """)
+        self.assertEqual(
+            config, {"url": "https://example.test/a,]", "commands": ["run //:target"]}
+        )
 
 
 if __name__ == "__main__":

@@ -2,7 +2,7 @@
 # Copyright Tony Burns
 
 # Provenance for the presets and tests under lib/renovate-config.
-# OWNERS and this map are monorepo additions. The root renovate.json5
+# OWNERS, this map, and the test helper are monorepo additions. The root renovate.json5
 # selects presets, and the root workflow runs Renovate in the monorepo.
 
 repo = "tbhb-dev/renovate-config"
@@ -15,10 +15,8 @@ dest = "lib/renovate-config"
 "go.json5" = "lib/renovate-config/go.json5"
 "python.json5" = "lib/renovate-config/python.json5"
 "renovate_allowlist_test.sh" = "lib/renovate-config/renovate_allowlist_test.sh"
-"renovate_awrel_pin_test.py" = "lib/renovate-config/renovate_awrel_pin_test.py"
 "renovate_log_check_test.sh" = "lib/renovate-config/renovate_log_check_test.sh"
 "renovate_ruleset_audit_test.sh" = "lib/renovate-config/renovate_ruleset_audit_test.sh"
-"rules-cloudflare.json5" = "lib/renovate-config/rules-cloudflare.json5"
 
 # The root build file of the old repository held the test targets with its lint
 # gates. Only the sh_test targets for the kept tests move here. The test targets
@@ -394,6 +392,61 @@ sh_test(
     ],
 ''',
   ],
+  [
+    '''
+
+# Keep post-upgrade commands and the workflow allowlist in exact agreement.
+sh_test(
+''',
+    '''
+
+# Keep commands from root presets and the workflow allowlist in exact agreement.
+sh_test(
+''',
+  ],
+  [
+    '''
+        "renovate_allowlist_test.py",
+        "//:.github/workflows/renovate.yaml",
+    ],
+''',
+    '''
+        "renovate_allowlist_test.py",
+        "renovate_test_helpers.py",
+        "//:.github/workflows/renovate.yaml",
+        "//:renovate.json5",
+    ],
+''',
+  ],
+  [
+    '''
+    data = glob(["*.json5"]) + [
+        "renovate_allowlist_test.py",
+        "renovate_grouping_test.py",
+    ],
+''',
+    '''
+    data = glob(["*.json5"]) + [
+        "renovate_grouping_test.py",
+        "renovate_test_helpers.py",
+        "//:renovate.json5",
+    ],
+''',
+  ],
+  [
+    '''
+        "default.json5",
+        "renovate_allowlist_test.py",
+        "renovate_awrel_pin_test.py",
+    ],
+''',
+    '''
+        "default.json5",
+        "renovate_awrel_pin_test.py",
+        "renovate_test_helpers.py",
+    ],
+''',
+  ],
 ]
 
 # Described consumers pinning the reusable workflows and presets of the old
@@ -652,6 +705,30 @@ Each run uses an App token scoped to this repository. GitHub signs commits made 
 ## Import history
 
 The presets came from `tbhb-dev/renovate-config` at commit `6fc408cfec75871cd01b04bf1396e4f82c7fc792`. [IMPORT-MAP.toml](IMPORT-MAP.toml) records which files the import copied, rewrote, or dropped.
+''',
+  ],
+  [
+    '''
+
+The monorepo uses `default.json5`, `bazel.json5`, `go.json5`, `python.json5`, and `workflow.json5`.
+
+''',
+    '''
+
+The root `renovate.json5` lists the presets the monorepo uses. The `rules-cloudflare.json5` preset regenerates types for both smoke Workers when Wrangler or a package in its group updates.
+
+''',
+  ],
+  [
+    '''
+- Set `rebaseWhen: "conflicted"` when a rule overrides the pins group with another group. `renovate_grouping_test.py` checks that these rules reset the rebase policy.
+- Match each post-upgrade command to one anchored expression in the workflow's `RENOVATE_ALLOWED_COMMANDS`. `renovate_allowlist_test.py` checks the presets and allowlist against each other.
+
+''',
+    '''
+- Set `rebaseWhen: "conflicted"` when a rule overrides the pins group with another group. `renovate_grouping_test.py` checks that these rules reset the rebase policy.
+- Match each post-upgrade command in the root's presets to one anchored expression in the workflow's `RENOVATE_ALLOWED_COMMANDS`. `renovate_allowlist_test.py` checks that each expression matches a command and each command matches one expression.
+
 ''',
   ],
 ]
@@ -1204,6 +1281,58 @@ CONFIG = "https://github.com/tbhb-dev/tbhbdev"
     def test_no_post_upgrade_task_in_pins(self):
 ''',
   ],
+  [
+    '''
+
+from renovate_allowlist_test import parse_preset
+
+''',
+    '''
+
+from renovate_test_helpers import parse_preset
+
+''',
+  ],
+  [
+    '''
+    def test_rules_cloudflare(self):
+        commands = [
+''',
+    '''
+    def test_rules_cloudflare(self):
+        root_config = parse_preset((ROOT.parents[1] / "renovate.json5").read_text())
+        self.assertIn(
+            "github>tbhb-dev/tbhbdev//lib/renovate-config/rules-cloudflare.json5",
+            root_config["extends"],
+        )
+        workspace = "lib/rules/cloudflare/e2e/smoke"
+        commands = [
+''',
+  ],
+  [
+    '''
+            self.assertIs(resolved.get("automerge"), False, update)
+            self.assertIn("postUpgradeTasks", resolved, update)
+            self.assertEqual(
+                resolved["postUpgradeTasks"].get("commands"), commands, update
+            )
+''',
+    '''
+            self.assertIs(resolved.get("automerge"), False, update)
+            tasks = resolved["postUpgradeTasks"]
+            self.assertEqual(tasks["commands"], commands, update)
+            self.assertEqual(tasks["workingDirTemplate"], workspace, update)
+            self.assertEqual(tasks["executionMode"], "branch", update)
+            self.assertEqual(
+                tasks["fileFilters"],
+                [
+                    f"{workspace}/worker-configuration.d.ts",
+                    f"{workspace}/nested/worker-configuration.d.ts",
+                ],
+                update,
+            )
+''',
+  ],
 ]
 
 [rewrite."renovate_grouping_test.sh"]
@@ -1251,6 +1380,106 @@ replace = [
         self.assertTrue(commands, "No post-upgrade commands found")
 ''',
   ],
+  [
+    '''
+
+"""Check every preset command against the root Renovate workflow's allowlist."""
+
+import json
+from pathlib import Path
+import re
+import unittest
+
+
+ROOT = Path(__file__).parent
+# Match strings first, preserving comment markers and commas inside strings.
+TOKENS = re.compile(r'"(?:\\.|[^"\\])*"|//[^\n]*|/\*.*?\*/', re.DOTALL)
+
+
+def parse_preset(source):
+    """Read the JSON5 subset used by presets without changing string values."""
+    source = TOKENS.sub(lambda m: m[0] if m[0].startswith('"') else "", source)
+    # Transform only the gaps between strings, where keys and commas occur.
+    parts = re.split(r'("(?:\\.|[^"\\])*")', source)
+    for index in range(0, len(parts), 2):
+        parts[index] = re.sub(r'([A-Za-z_$][\w$]*)\s*:', r'"\1":', parts[index])
+        parts[index] = re.sub(r',\s*([}\]])', r'\1', parts[index])
+    return json.loads("".join(parts))
+
+''',
+    '''
+
+"""Check commands in the selected presets against the workflow's allowlist."""
+
+import json
+import re
+import unittest
+from pathlib import Path
+
+from renovate_test_helpers import parse_preset
+
+PRESETS = Path(__file__).parent
+ROOT = PRESETS.parents[1]
+PRESET_PREFIX = "github>tbhb-dev/tbhbdev//lib/renovate-config/"
+
+''',
+  ],
+  [
+    '''
+    def test_repository(self):
+        commands = []
+        for preset in sorted(ROOT.glob("*.json5")):
+            config = parse_preset(preset.read_text())
+            for rule in config.get("packageRules", []):
+                commands.extend(rule.get("postUpgradeTasks", {}).get("commands", []))
+        # The workflow sits at the monorepo root, two levels above this project.
+        patterns = allowed_patterns((ROOT.parents[1] / ".github/workflows/renovate.yaml").read_text())
+        self.assertTrue(commands, "No post-upgrade commands found")
+''',
+    '''
+    def test_repository(self):
+        root_config = parse_preset((ROOT / "renovate.json5").read_text())
+        commands = []
+        for preset in root_config["extends"]:
+            if not preset.startswith(PRESET_PREFIX):
+                continue
+            preset_path = PRESETS / preset.removeprefix(PRESET_PREFIX)
+            config = parse_preset(preset_path.read_text())
+            for rule in config.get("packageRules", []):
+                commands.extend(rule.get("postUpgradeTasks", {}).get("commands", []))
+        patterns = allowed_patterns(
+            (ROOT / ".github/workflows/renovate.yaml").read_text()
+        )
+        self.assertTrue(commands, "No post-upgrade commands found")
+''',
+  ],
+  [
+    '''
+                if "matches no command" in detail:
+                    self.assertIn("Regular expression '^unused$' matches no command", errors)
+                else:
+''',
+    '''
+                if "matches no command" in detail:
+                    self.assertIn(
+                        "Regular expression '^unused$' matches no command", errors
+                    )
+                else:
+''',
+  ],
+  [
+    "    def test_json5_strings_survive(self):\n        config = parse_preset('''// comment\n        {url: \"https://example.test/a,]\", commands: [\"run //:target\",],}\n        ''')\n        self.assertEqual(config, {\"url\": \"https://example.test/a,]\", \"commands\": [\"run //:target\"]})\n\n",
+    '''
+    def test_json5_strings_survive(self):
+        config = parse_preset("""// comment
+        {url: "https://example.test/a,]", commands: ["run //:target",],}
+        """)
+        self.assertEqual(
+            config, {"url": "https://example.test/a,]", "commands": ["run //:target"]}
+        )
+
+''',
+  ],
 ]
 
 # Reads the workflow from the monorepo root, two levels above the project,
@@ -1288,7 +1517,7 @@ FINISHED = '{"level":30,"msg":"Repository finished"}\n'
 
 # Reads the workflow from the monorepo root, two levels above the project,
 # because the workflow is no longer reusable and no longer sits beside the
-# tests. The only change besides the docstring is the path.
+# tests. The fixtures cover the approval policy of the root workflow.
 [rewrite."renovate_ruleset_audit_test.py"]
 dest = "lib/renovate-config/renovate_ruleset_audit_test.py"
 replace = [
@@ -1303,6 +1532,565 @@ APPROVAL = {"type": "pull_request", "ruleset_id": 42,
 # The workflow sits at the monorepo root, two levels above this project.
 WORKFLOW = Path(__file__).parents[2] / ".github/workflows/renovate.yaml"
 APPROVAL = {"type": "pull_request", "ruleset_id": 42,
+''',
+  ],
+  [
+    '''
+import os
+from http.server import BaseHTTPRequestHandler, HTTPServer
+from pathlib import Path
+import re
+''',
+    '''
+import os
+import re
+''',
+  ],
+  [
+    '''
+import unittest
+
+
+''',
+    '''
+import unittest
+from http.server import BaseHTTPRequestHandler, HTTPServer
+from pathlib import Path
+
+''',
+  ],
+  [
+    '''
+WORKFLOW = Path(__file__).parents[2] / ".github/workflows/renovate.yaml"
+APPROVAL = {"type": "pull_request", "ruleset_id": 42,
+            "parameters": {"required_approving_review_count": 1}}
+STATUS = {"type": "required_status_checks", "ruleset_id": 73,
+          "parameters": {"required_status_checks": [{"context": "conclusion"}]}}
+
+''',
+    '''
+WORKFLOW = Path(__file__).parents[2] / ".github/workflows/renovate.yaml"
+APPROVAL = {
+    "type": "pull_request",
+    "ruleset_id": 42,
+    "parameters": {"required_approving_review_count": 1},
+}
+STATUS = {
+    "type": "required_status_checks",
+    "ruleset_id": 73,
+    "parameters": {"required_status_checks": [{"context": "conclusion"}]},
+}
+
+''',
+  ],
+  [
+    '''
+        r"^      - name: Audit automerge rulesets\n(?P<step>.*?)(?=^      - name:|\Z)",
+        source, re.MULTILINE | re.DOTALL,
+    )
+''',
+    '''
+        r"^      - name: Audit automerge rulesets\n(?P<step>.*?)(?=^      - name:|\Z)",
+        source,
+        re.MULTILINE | re.DOTALL,
+    )
+''',
+  ],
+  [
+    '''
+        raise AssertionError("Missing automerge audit step")
+    if not source.index("- name: Get token") < step.start() < source.index("- name: Self-hosted Renovate"):
+        raise AssertionError("Audit must run after token creation and before Renovate")
+''',
+    '''
+        raise AssertionError("Missing automerge audit step")
+    if (
+        not source.index("- name: Get token")
+        < step.start()
+        < source.index("- name: Self-hosted Renovate")
+    ):
+        raise AssertionError("Audit must run after token creation and before Renovate")
+''',
+  ],
+  [
+    '''
+        raise AssertionError("Audit must use the Renovate App token")
+    script = re.search(r"^        run: \|\n(?P<script>(?:^          .*\n|^\n)+)", step["step"], re.MULTILINE)
+    if script is None or "${{" in script["script"]:
+''',
+    '''
+        raise AssertionError("Audit must use the Renovate App token")
+    script = re.search(
+        r"^        run: \|\n(?P<script>(?:^          .*\n|^\n)+)",
+        step["step"],
+        re.MULTILINE,
+    )
+    if script is None or "${{" in script["script"]:
+''',
+  ],
+  [
+    '''
+class RulesetAuditTest(unittest.TestCase):
+    def run_fixture(self, pages=None, bypass="never", status=200, extra_rules=(), missing_field=False,
+                    require_approval=None, mode="", api_url=None, token="fixture-app-token", path=None):
+        pages = [[APPROVAL, STATUS, *extra_rules]] if pages is None else pages
+''',
+    '''
+class RulesetAuditTest(unittest.TestCase):
+    def run_fixture(
+        self,
+        pages=None,
+        bypass="never",
+        status=200,
+        extra_rules=(),
+        missing_field=False,
+        mode="",
+        api_url=None,
+        token="fixture-app-token",
+    ):
+        pages = [[APPROVAL, STATUS, *extra_rules]] if pages is None else pages
+''',
+  ],
+  [
+    '''
+                    number = int(re.search(r"[&?]page=([0-9]+)", self.path)[1])
+                    body = json.dumps(pages[number - 1] if number <= len(pages) else []).encode()
+                else:
+                    body = json.dumps({} if missing_field else {"current_user_can_bypass": bypass}).encode()
+                self.send_response(200)
+''',
+    '''
+                    number = int(re.search(r"[&?]page=([0-9]+)", self.path)[1])
+                    body = json.dumps(
+                        pages[number - 1] if number <= len(pages) else []
+                    ).encode()
+                else:
+                    body = json.dumps(
+                        {} if missing_field else {"current_user_can_bypass": bypass}
+                    ).encode()
+                self.send_response(200)
+''',
+  ],
+  [
+    "            subprocess.run(\n                [\"openssl\", \"req\", \"-x509\", \"-newkey\", \"ec\", \"-pkeyopt\", \"ec_paramgen_curve:prime256v1\", \"-nodes\",\n                 \"-keyout\", str(key), \"-out\", str(certificate), \"-days\", \"1\", \"-subj\", \"/CN=localhost\",\n                 \"-addext\", \"subjectAltName=DNS:localhost\"],\n                check=True, capture_output=True,\n            )\n",
+    '''
+            subprocess.run(
+                [
+                    "openssl",
+                    "req",
+                    "-x509",
+                    "-newkey",
+                    "ec",
+                    "-pkeyopt",
+                    "ec_paramgen_curve:prime256v1",
+                    "-nodes",
+                    "-keyout",
+                    str(key),
+                    "-out",
+                    str(certificate),
+                    "-days",
+                    "1",
+                    "-subj",
+                    "/CN=localhost",
+                    "-addext",
+                    "subjectAltName=DNS:localhost",
+                ],
+                check=True,
+                capture_output=True,
+            )
+''',
+  ],
+  [
+    '''
+                for name in ("bash", "python3"):
+                    (tools / name).symlink_to((shutil.which(name) if name == "bash" else os.path.realpath(sys.executable)))
+                search_path = str(tools)
+''',
+    '''
+                for name in ("bash", "python3"):
+                    (tools / name).symlink_to(
+                        shutil.which(name)
+                        if name == "bash"
+                        else os.path.realpath(sys.executable)
+                    )
+                search_path = str(tools)
+''',
+  ],
+  [
+    "                result = subprocess.run(\n                    [\"bash\", \"--noprofile\", \"--norc\", \"-e\", \"-o\", \"pipefail\", \"-c\", workflow_script()], cwd=root,\n                    env={**os.environ, \"PATH\": search_path,\n                         \"GH_TOKEN\": token, \"REPO\": \"fixture/repo\",\n                         \"GITHUB_API_URL\": (api_url or \"https://localhost:{port}\").format(port=server.server_port),\n                         \"SSL_CERT_FILE\": str(certificate), \"CURL_CA_BUNDLE\": str(certificate),\n                         **({} if require_approval is None else {\"REQUIRE_APPROVAL\": require_approval})},\n                    text=True, capture_output=True, check=False, timeout=120,\n                )\n",
+    '''
+                result = subprocess.run(
+                    [
+                        "bash",
+                        "--noprofile",
+                        "--norc",
+                        "-e",
+                        "-o",
+                        "pipefail",
+                        "-c",
+                        workflow_script(),
+                    ],
+                    cwd=root,
+                    env={
+                        **os.environ,
+                        "PATH": search_path,
+                        "GH_TOKEN": token,
+                        "REPO": "fixture/repo",
+                        "GITHUB_API_URL": (
+                            api_url or "https://localhost:{port}"
+                        ).format(port=server.server_port),
+                        "SSL_CERT_FILE": str(certificate),
+                        "CURL_CA_BUNDLE": str(certificate),
+                    },
+                    text=True,
+                    capture_output=True,
+                    check=False,
+                    timeout=120,
+                )
+''',
+  ],
+  [
+    "        self.assertEqual(result.returncode, 0, result.stdout)\n        self.assertEqual(result.stdout, \"Automerge ruleset audit: approval and status checks required, 3 rulesets cannot be bypassed\\n\")\n        self.assertEqual(calls, [\"/repos/fixture/repo/rules/branches/main?per_page=100&page=1\",\n                                 \"/repos/fixture/repo/rulesets/42\", \"/repos/fixture/repo/rulesets/73\",\n                                 \"/repos/fixture/repo/rulesets/99\"])\n\n",
+    '''
+        self.assertEqual(result.returncode, 0, result.stdout)
+        self.assertEqual(
+            result.stdout,
+            "Automerge ruleset audit: approval and status checks required, 3 rulesets cannot be bypassed\n",
+        )
+        self.assertEqual(
+            calls,
+            [
+                "/repos/fixture/repo/rules/branches/main?per_page=100&page=1",
+                "/repos/fixture/repo/rulesets/42",
+                "/repos/fixture/repo/rulesets/73",
+                "/repos/fixture/repo/rulesets/99",
+            ],
+        )
+
+''',
+  ],
+  [
+    "        self.assertEqual(result.returncode, 0, result.stdout)\n        self.assertEqual(calls[:2], [\"/repos/fixture/repo/rules/branches/main?per_page=100&page=1\",\n                                     \"/repos/fixture/repo/rules/branches/main?per_page=100&page=2\"])\n\n",
+    '''
+        self.assertEqual(result.returncode, 0, result.stdout)
+        self.assertEqual(
+            calls[:2],
+            [
+                "/repos/fixture/repo/rules/branches/main?per_page=100&page=1",
+                "/repos/fixture/repo/rules/branches/main?per_page=100&page=2",
+            ],
+        )
+
+''',
+  ],
+  [
+    '''
+        filler = [{"type": "deletion", "ruleset_id": 99}] * 100
+        calls = self.assert_failure("Could not verify default branch rules", pages=[filler] * 10)
+        self.assertEqual(len(calls), 10)
+''',
+    '''
+        filler = [{"type": "deletion", "ruleset_id": 99}] * 100
+        calls = self.assert_failure(
+            "Could not verify default branch rules", pages=[filler] * 10
+        )
+        self.assertEqual(len(calls), 10)
+''',
+  ],
+  [
+    '''
+    def test_no_rules(self):
+        self.assert_failure("Default branch has no approval rule requiring at least one review", pages=[[]])
+
+''',
+    '''
+    def test_no_rules(self):
+        self.assert_failure(
+            "Default branch has no approval rule requiring at least one review",
+            pages=[[]],
+        )
+
+''',
+  ],
+  [
+    '''
+        zero = {**APPROVAL, "parameters": {"required_approving_review_count": 0}}
+        self.assert_failure("Default branch has no approval rule requiring at least one review", pages=[[zero, STATUS]])
+
+    def test_approval_kept_unless_input_is_false(self):
+        zero = {**APPROVAL, "parameters": {"required_approving_review_count": 0}}
+        for value in ("true", "", "False"):
+            with self.subTest(value=value):
+                self.assert_failure("Default branch has no approval rule requiring at least one review",
+                                    pages=[[zero, STATUS]], require_approval=value)
+
+    def test_approval_not_required(self):
+        zero = {**APPROVAL, "parameters": {"required_approving_review_count": 0}}
+        result, _ = self.run_fixture(pages=[[zero, STATUS]], require_approval="false")
+        self.assertEqual(result.returncode, 0, result.stdout)
+        self.assertEqual(result.stdout, "Automerge ruleset audit: status checks required, approval check off, 2 rulesets cannot be bypassed\n")
+
+    def test_status_checks_still_required_without_approval(self):
+        self.assert_failure("Default branch has no status-check rule", pages=[[]], require_approval="false")
+
+    def test_bypass_still_refused_without_approval(self):
+        self.assert_failure("the Renovate App can bypass ruleset 42", bypass="always", require_approval="false")
+
+    def test_no_status_checks(self):
+        self.assert_failure("Default branch has no status-check rule", pages=[[APPROVAL]])
+
+''',
+    '''
+        zero = {**APPROVAL, "parameters": {"required_approving_review_count": 0}}
+        self.assert_failure(
+            "Default branch has no approval rule requiring at least one review",
+            pages=[[zero, STATUS]],
+        )
+
+    def test_no_status_checks(self):
+        self.assert_failure(
+            "Default branch has no status-check rule", pages=[[APPROVAL]]
+        )
+
+''',
+  ],
+  [
+    '''
+            with self.subTest(bypass=bypass):
+                self.assert_failure("the Renovate App can bypass ruleset 42", bypass=bypass)
+
+    def test_missing_bypass_field_fails_closed(self):
+        self.assert_failure("the Renovate App can bypass ruleset 42", missing_field=True)
+
+''',
+    '''
+            with self.subTest(bypass=bypass):
+                self.assert_failure(
+                    "the Renovate App can bypass ruleset 42", bypass=bypass
+                )
+
+    def test_missing_bypass_field_fails_closed(self):
+        self.assert_failure(
+            "the Renovate App can bypass ruleset 42", missing_field=True
+        )
+
+''',
+  ],
+  [
+    '''
+            with self.subTest(status=status):
+                calls = self.assert_failure(f"Could not verify automerge ruleset protection (HTTP {status})", status=status)
+                self.assertEqual(len(calls), 1)
+''',
+    '''
+            with self.subTest(status=status):
+                calls = self.assert_failure(
+                    f"Could not verify automerge ruleset protection (HTTP {status})",
+                    status=status,
+                )
+                self.assertEqual(len(calls), 1)
+''',
+  ],
+  [
+    '''
+    def test_redirects_are_refused(self):
+        self.assert_failure("Could not verify automerge ruleset protection (HTTP 302)", mode="redirect")
+
+''',
+    '''
+    def test_redirects_are_refused(self):
+        self.assert_failure(
+            "Could not verify automerge ruleset protection (HTTP 302)", mode="redirect"
+        )
+
+''',
+  ],
+  [
+    '''
+            with self.subTest(mode=mode):
+                self.assert_failure("Could not verify automerge ruleset protection (unreadable data)", mode=mode)
+
+    def test_api_url_must_be_plain_https(self):
+        for url in ("http://localhost:{port}", "https://user:secret@localhost:{port}",
+                    "https://localhost:{port}\nheader = \"X-Injected: yes\"", "https://localhost:{port}/\"",
+                    "https://localhost:{port} "):
+            with self.subTest(url=url):
+                calls = self.assert_failure("Automerge audit refuses a GitHub API URL that is not plain https", api_url=url)
+                self.assertEqual(calls, [])
+''',
+    '''
+            with self.subTest(mode=mode):
+                self.assert_failure(
+                    "Could not verify automerge ruleset protection (unreadable data)",
+                    mode=mode,
+                )
+
+    def test_api_url_must_be_plain_https(self):
+        for url in (
+            "http://localhost:{port}",
+            "https://user:secret@localhost:{port}",
+            'https://localhost:{port}\nheader = "X-Injected: yes"',
+            'https://localhost:{port}/"',
+            "https://localhost:{port} ",
+        ):
+            with self.subTest(url=url):
+                calls = self.assert_failure(
+                    "Automerge audit refuses a GitHub API URL that is not plain https",
+                    api_url=url,
+                )
+                self.assertEqual(calls, [])
+''',
+  ],
+  [
+    '''
+    def test_odd_token_is_refused(self):
+        calls = self.assert_failure("Automerge audit: the job token has unexpected characters", token="a\"b")
+        self.assertEqual(calls, [])
+''',
+    '''
+    def test_odd_token_is_refused(self):
+        calls = self.assert_failure(
+            "Automerge audit: the job token has unexpected characters", token='a"b'
+        )
+        self.assertEqual(calls, [])
+''',
+  ],
+  [
+    '''
+    def test_invalid_ruleset_id_fails_closed(self):
+        self.assert_failure("Could not verify ruleset bypass protection", extra_rules=[
+            {"type": "deletion", "ruleset_id": "::warning::injected"},
+        ])
+
+''',
+    '''
+    def test_invalid_ruleset_id_fails_closed(self):
+        self.assert_failure(
+            "Could not verify ruleset bypass protection",
+            extra_rules=[
+                {"type": "deletion", "ruleset_id": "::warning::injected"},
+            ],
+        )
+
+''',
+  ],
+]
+
+[rewrite."renovate_awrel_pin_test.py"]
+dest = "lib/renovate-config/renovate_awrel_pin_test.py"
+replace = [
+  [
+    '''
+
+from pathlib import Path
+import re
+import unittest
+
+from renovate_allowlist_test import parse_preset
+
+''',
+    '''
+
+import re
+import unittest
+from pathlib import Path
+
+from renovate_test_helpers import parse_preset
+
+''',
+  ],
+  [
+    "        config = parse_preset((Path(__file__).parent / \"default.json5\").read_text())\n        cls.manager = next(manager for manager in config[\"customManagers\"]\n                           if manager.get(\"depNameTemplate\") == \"tbhb-dev/awrel\")\n        # Python spells the named capture differently from Renovate's RE2.\n",
+    '''
+        config = parse_preset((Path(__file__).parent / "default.json5").read_text())
+        cls.manager = next(
+            manager
+            for manager in config["customManagers"]
+            if manager.get("depNameTemplate") == "tbhb-dev/awrel"
+        )
+        # Python spells the named capture differently from Renovate's RE2.
+''',
+  ],
+  [
+    '''
+                matches = list(self.pattern.finditer(source))
+                self.assertEqual([match["currentValue"] for match in matches], ["v0.5.0"])
+
+''',
+    '''
+                matches = list(self.pattern.finditer(source))
+                self.assertEqual(
+                    [match["currentValue"] for match in matches], ["v0.5.0"]
+                )
+
+''',
+  ],
+  [
+    '''
+            '"args": ["run", "example.com/other/cmd/other@v0.5.0", "mcp"],',
+            '# go run go.tbhb.dev/awrel/cmd/awrel@v0.5.0 mcp',
+        ):
+''',
+    '''
+            '"args": ["run", "example.com/other/cmd/other@v0.5.0", "mcp"],',
+            "# go run go.tbhb.dev/awrel/cmd/awrel@v0.5.0 mcp",
+        ):
+''',
+  ],
+]
+
+[rewrite."rules-cloudflare.json5"]
+dest = "lib/renovate-config/rules-cloudflare.json5"
+replace = [
+  [
+    '''
+
+  // Only tbhb-dev/rules extends this preset, after bazel.json5. That is a
+  // convention. The command allowlist is global, not per repo.
+  packageRules: [
+    // A wrangler bump that moves workerd changes every Worker's generated
+    // types, and worker_types_test fails until they are regenerated. The two
+    // smoke Workers (the root one and the nested one) sit in one Bazel
+    // workspace, cloudflare/e2e/smoke. The commands are allowlisted by
+    // anchored regexes in the workflow env (RENOVATE_ALLOWED_COMMANDS), not
+    // here. fileFilters limits the commit to worker-configuration.d.ts.
+    // automerge is off: no one has confirmed that the reviews App's path
+    // limit accepts cloudflare/e2e/smoke/**/worker-configuration.d.ts, so a
+    // human merges these PRs. Delete the line once the App is confirmed to
+    // approve that diff, as it does for cloudflare-worker.json5.
+    // The rule has no file match: a grouped branch takes its tasks from the
+    // first-sorted member, which may live outside cloudflare/ (storybook/,
+    // playwright/), so every listed package carries them. A live run on the
+    // first such bump is the check.
+    {
+''',
+    '''
+
+  // The monorepo extends this preset after bazel.json5.
+  packageRules: [
+    // A wrangler bump that moves workerd changes the generated types for both
+    // smoke Workers. Both targets run from the smoke workspace. A human
+    // merges these PRs until the reviews App can approve the generated files.
+    // A grouped branch takes its tasks from the first-sorted member, so
+    // every package in the group carries the tasks even outside cloudflare/.
+    {
+''',
+  ],
+  [
+    '''
+        ],
+        workingDirTemplate: "cloudflare/e2e/smoke",
+        fileFilters: ["cloudflare/e2e/smoke/**/worker-configuration.d.ts"],
+        executionMode: "branch",
+''',
+    '''
+        ],
+        workingDirTemplate: "lib/rules/cloudflare/e2e/smoke",
+        fileFilters: [
+          "lib/rules/cloudflare/e2e/smoke/worker-configuration.d.ts",
+          "lib/rules/cloudflare/e2e/smoke/nested/worker-configuration.d.ts",
+        ],
+        executionMode: "branch",
 ''',
   ],
 ]

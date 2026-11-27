@@ -28,14 +28,16 @@ sh_test(
     ],
 )
 
-# Keep post-upgrade commands and the workflow allowlist in exact agreement.
+# Keep commands from root presets and the workflow allowlist in exact agreement.
 sh_test(
     name = "renovate_allowlist_test",
     size = "small",
     srcs = ["renovate_allowlist_test.sh"],
     data = glob(["*.json5"]) + [
         "renovate_allowlist_test.py",
+        "renovate_test_helpers.py",
         "//:.github/workflows/renovate.yaml",
+        "//:renovate.json5",
     ],
 )
 
@@ -45,8 +47,9 @@ sh_test(
     size = "small",
     srcs = ["renovate_grouping_test.sh"],
     data = glob(["*.json5"]) + [
-        "renovate_allowlist_test.py",
         "renovate_grouping_test.py",
+        "renovate_test_helpers.py",
+        "//:renovate.json5",
     ],
 )
 
@@ -68,7 +71,7 @@ sh_test(
     srcs = ["renovate_awrel_pin_test.sh"],
     data = [
         "default.json5",
-        "renovate_allowlist_test.py",
         "renovate_awrel_pin_test.py",
+        "renovate_test_helpers.py",
     ],
 )

@@ -9,7 +9,7 @@ import unittest
 from fnmatch import fnmatchcase
 from pathlib import Path
 
-from renovate_allowlist_test import parse_preset
+from renovate_test_helpers import parse_preset
 
 ROOT = Path(__file__).parent
 DAILY = ["* 5-7 * * *"]
@@ -158,6 +158,12 @@ class GroupingTest(unittest.TestCase):
         self.assertEqual(resolved["rebaseWhen"], "conflicted")
 
     def test_rules_cloudflare(self):
+        root_config = parse_preset((ROOT.parents[1] / "renovate.json5").read_text())
+        self.assertIn(
+            "github>tbhb-dev/tbhbdev//lib/renovate-config/rules-cloudflare.json5",
+            root_config["extends"],
+        )
+        workspace = "lib/rules/cloudflare/e2e/smoke"
         commands = [
             "bazelisk run //:worker_types_test.update",
             "bazelisk run //nested:worker_types_test.update",
@@ -179,9 +185,17 @@ class GroupingTest(unittest.TestCase):
             }
             resolved = self.check(RULES_CLOUDFLARE, update, None, schedule=None)
             self.assertIs(resolved.get("automerge"), False, update)
-            self.assertIn("postUpgradeTasks", resolved, update)
+            tasks = resolved["postUpgradeTasks"]
+            self.assertEqual(tasks["commands"], commands, update)
+            self.assertEqual(tasks["workingDirTemplate"], workspace, update)
+            self.assertEqual(tasks["executionMode"], "branch", update)
             self.assertEqual(
-                resolved["postUpgradeTasks"].get("commands"), commands, update
+                tasks["fileFilters"],
+                [
+                    f"{workspace}/worker-configuration.d.ts",
+                    f"{workspace}/nested/worker-configuration.d.ts",
+                ],
+                update,
             )
         other = {
             "manager": "npm",

@@ -3,19 +3,22 @@
 
 """Check extraction of the awrel MCP client version from JSON arguments."""
 
-from pathlib import Path
 import re
 import unittest
+from pathlib import Path
 
-from renovate_allowlist_test import parse_preset
+from renovate_test_helpers import parse_preset
 
 
 class AwrelPinTest(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         config = parse_preset((Path(__file__).parent / "default.json5").read_text())
-        cls.manager = next(manager for manager in config["customManagers"]
-                           if manager.get("depNameTemplate") == "tbhb-dev/awrel")
+        cls.manager = next(
+            manager
+            for manager in config["customManagers"]
+            if manager.get("depNameTemplate") == "tbhb-dev/awrel"
+        )
         # Python spells the named capture differently from Renovate's RE2.
         cls.pattern = re.compile(cls.manager["matchStrings"][0].replace("(?<", "(?P<"))
 
@@ -35,12 +38,14 @@ class AwrelPinTest(unittest.TestCase):
         ):
             with self.subTest(source=source):
                 matches = list(self.pattern.finditer(source))
-                self.assertEqual([match["currentValue"] for match in matches], ["v0.5.0"])
+                self.assertEqual(
+                    [match["currentValue"] for match in matches], ["v0.5.0"]
+                )
 
     def test_unrelated_and_comment_lines(self):
         for source in (
             '"args": ["run", "example.com/other/cmd/other@v0.5.0", "mcp"],',
-            '# go run go.tbhb.dev/awrel/cmd/awrel@v0.5.0 mcp',
+            "# go run go.tbhb.dev/awrel/cmd/awrel@v0.5.0 mcp",
         ):
             with self.subTest(source=source):
                 self.assertIsNone(self.pattern.search(source))

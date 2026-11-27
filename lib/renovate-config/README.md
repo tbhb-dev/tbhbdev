@@ -28,14 +28,14 @@ In your repository's `renovate.json5`, extend `default.json5` first and add the 
 | `rules-cloudflare.json5` | Regenerate types for both Workers in the rules project's smoke tests. |
 | `workflow.json5` | Manage image and tool pins in Renovate workflows. |
 
-The monorepo uses `default.json5`, `bazel.json5`, `go.json5`, `python.json5`, and `workflow.json5`.
+The root `renovate.json5` lists the presets the monorepo uses. The `rules-cloudflare.json5` preset regenerates types for both smoke Workers when Wrangler or a package in its group updates.
 
 ## Maintain the presets
 
 - Put global settings such as credentials and allowed commands in the Renovate runner configuration.
 - Keep the `.json5` suffix in each preset reference.
 - Set `rebaseWhen: "conflicted"` when a rule overrides the pins group with another group. `renovate_grouping_test.py` checks that these rules reset the rebase policy.
-- Match each post-upgrade command to one anchored expression in the workflow's `RENOVATE_ALLOWED_COMMANDS`. `renovate_allowlist_test.py` checks the presets and allowlist against each other.
+- Match each post-upgrade command in the root's presets to one anchored expression in the workflow's `RENOVATE_ALLOWED_COMMANDS`. `renovate_allowlist_test.py` checks that each expression matches a command and each command matches one expression.
 
 ## Root workflow
 
