@@ -9,6 +9,8 @@ Write the simplest code that serves the actual callers. The operator and the age
 
 Leave out code for cases outside that scope. Skip options, layers, and abstractions with one user. Record any doubt about whether a case can occur under Decisions in the PR body.
 
+Before every push, run `bazelisk run //:preflight` at the branch head. Every check must pass. If every other check passes and `cli-coverage` stops because the temporary filesystem reached its file count limit, you may push after recording the cause under Decisions in the PR body. Repeat `bazelisk run //:preflight -- --check cli-coverage` where the filesystem has room. Fix the code when a check fails for any other reason. Never change the check to make it pass.
+
 ## Layout and dependency rule
 
 - `factory/` holds internal factory projects, one folder directly under `factory/` per project (`factory/<project>/`, such as `factory/tbhbdev/`) with no grouping folders. Each project's `README.md` and `OWNERS` describe what the project is, what it depends on, and list its owners.
@@ -21,8 +23,8 @@ Leave out code for cases outside that scope. Skip options, layers, and abstracti
 
 ## Python
 
-- An `__init__.py` holds only a short docstring that says what the package contains. Leave out imports, re-exports, and code. In reviews, don't ask for the docstring to be removed or for an empty initializer.
-- Mirror the module structure of `src` in `tests/unit` and `tests/integration`, omitting the top-level package folder. For example, `tests/unit/alpha/agent/test_run_host.py` tests `src/tbhbdev/alpha/agent/run_host.py`. When you move or split a module, move its tests to the matching path in the same pull request. Don't block a pull request because untouched tests are still in their old locations.
+- Use a short docstring in `__init__.py` to describe the package. Leave out imports, re-exports, and code. In reviews, keep the docstring and avoid asking for an empty initializer.
+- Mirror the module structure of `src` in `tests/unit` and `tests/integration`, omitting the top-level package folder. A test at `tests/unit/alpha/agent/test_run_host.py` covers `src/tbhbdev/alpha/agent/run_host.py`. When you move or split a module, move its tests to the matching path in the same pull request. Don't block a pull request because untouched tests are still in their old locations.
 
 ## Commands
 
