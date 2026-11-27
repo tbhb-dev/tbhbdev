@@ -1691,7 +1691,10 @@ cli_py_test(
 cli_py_test(
     name = "test_ci_workflow_io",
     srcs = ["test_ci_workflow_io.py"],
-    data = ["//:.github/workflows/ci.yml"],
+    data = [
+        "//:.github/workflows/ci.yml",
+        "@tbhb_rules//lint:ci_checks.sh",
+    ],
     deps = [
         ":conftest",
         "@cli_pip//pytest",

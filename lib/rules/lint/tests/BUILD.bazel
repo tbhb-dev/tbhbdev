@@ -165,6 +165,7 @@ pytest_test(
     srcs = ["//:repo_files"],
     args = [
         "lint/tests/test_check_lint_baselines.py",
+        "lint/tests/test_preflight.py",
         "lint/tests/test_repo_checks.py::test_runner",
     ],
     coverage = None,

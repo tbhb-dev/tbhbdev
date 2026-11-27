@@ -187,6 +187,11 @@ print(hashlib.sha256(sys.stdin.buffer.read()).hexdigest(), " -")
 def test_ci_prose_skip_list(tmp_path: Path, case: str) -> None:
     steps = _workflow_steps(_workflow_jobs()["prose"])
     lint = next(step for step in steps if step["name"] == "Lint prose")
+    script_ref = "lib/rules/lint/ci_checks.sh"
+    assert lint["run"] == f'mise exec -- bash {script_ref} prose "$RUNNER_TEMP"'
+    script = Path(__file__).resolve().parents[3] / script_ref
+    if runfiles := os.getenv("TEST_SRCDIR"):
+        script = next(Path(runfiles).glob("*/lint/ci_checks.sh"))
 
     imported_copy = "imported [guide].md"
     (tmp_path / imported_copy).write_text("A prose finding.\n")
@@ -220,12 +225,11 @@ done
         tool.chmod(0o755)
 
     run = subprocess.run(
-        _shell_command(lint),
+        ["bash", str(script), "prose", str(tmp_path)],
         cwd=tmp_path,
         env={
             **os.environ,
             "PATH": f"{bin_dir}:{os.environ['PATH']}",
-            "RUNNER_TEMP": str(tmp_path),
         },
         check=False,
         capture_output=True,

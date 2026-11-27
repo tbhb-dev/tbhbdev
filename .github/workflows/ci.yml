@@ -176,9 +176,7 @@ jobs:
         run: bazel run //:gazelle -- -mode=diff
 
       - name: Check that the Bazel module is tidy
-        run: |
-          bazel mod tidy
-          git diff --exit-code -- MODULE.bazel MODULE.bazel.lock
+        run: bash lib/rules/lint/ci_checks.sh module-tidy
 
       - name: Lint GitHub Actions workflows
         run: bazel test --config=ci //:actionlint_test
@@ -235,7 +233,9 @@ jobs:
       - name: Use the base commit's counter and rules
         env:
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
-        run: git checkout --detach "$BASE_SHA"
+        run: |
+          cp lib/rules/lint/ci_checks.sh "$RUNNER_TEMP/ci_checks.sh"
+          git checkout --detach "$BASE_SHA"
 
       - name: Set up Bazel
         uses: bazel-contrib/setup-bazel@104e3eea9447cdaa4b00d0fb46191a3985d26ab3  # 0.19.1
@@ -251,23 +251,9 @@ jobs:
           PR_SIZE_HEAD_BRANCH: ${{ github.event.pull_request.head.ref }}
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         shell: bash
-        run: |
-          base=$BASE_SHA head=$HEAD_SHA
-          if [[ -n $DEFAULT_BRANCH && $BASE_REF != "$DEFAULT_BRANCH" ]]; then
-            shared_base=$(git merge-base "$base" "$head")
-            shared_default=$(git merge-base "refs/remotes/origin/$DEFAULT_BRANCH" "$head")
-            if shared_tree=$(git merge-tree --write-tree --no-messages "$shared_base" "$shared_default"); then
-              # Give the base revision's three-dot counter a pair of commits with the desired trees.
-              commit_tree=(git -c user.name='GitHub Actions' -c user.email=actions@github.com commit-tree)
-              base=$("${commit_tree[@]}" "$shared_tree" -m 'Shared base and default branch changes')
-              head=$("${commit_tree[@]}" "$head^{tree}" -p "$base" -m 'Pull request head tree')
-            else
-              [[ $? == 1 ]] || exit 1
-              base=$shared_default
-            fi
-          fi
-          # A stacked diff can use a synthetic base tree. Read policy from the actual base.
-          PR_SIZE_POLICY_BASE="$BASE_SHA" bazel run --config=ci @tbhb_rules//lint:pr_size -- "$base" "$head"
+        run: >-
+          bash "$RUNNER_TEMP/ci_checks.sh" pr-size "$BASE_SHA" "$HEAD_SHA"
+          "refs/remotes/origin/$BASE_REF" "refs/remotes/origin/$DEFAULT_BRANCH" "$PR_SIZE_HEAD_BRANCH"
 
   design-report:
     name: design-report
@@ -295,9 +281,7 @@ jobs:
 
       - name: Compare design metrics
         run: |
-          tool=lib.rules.lint.private.design_report
-          python -m unittest "$tool.test_design_report"
-          python -m "$tool.design_report" design-base/factory/cli factory/cli > design-report.md
+          bash lib/rules/lint/ci_checks.sh design-report "$PWD/design-base" "$PWD"
           cat design-report.md >> "$GITHUB_STEP_SUMMARY"
 
       - name: Upload design report
@@ -331,28 +315,7 @@ jobs:
 
       - name: Lint prose
         shell: bash
-        run: |
-          skip_paths=()
-          exclusions=()
-          while IFS= read -r path || [[ -n $path ]]; do
-            [[ -z $path || $path == \#* ]] && continue
-            if [[ $path != *.md || ! -f $path ]]; then
-              printf 'Prose skip list entry must name an existing Markdown file: %s\n' "$path" >&2
-              exit 1
-            fi
-            skip_paths+=("$path")
-            exclusions+=(":(exclude,literal)$path")
-          done < .github/prose-lint-debt.txt
-          if (( ${#skip_paths[@]} )); then
-            git --literal-pathspecs ls-files --error-unmatch -- "${skip_paths[@]}" >/dev/null
-          fi
-
-          files="$RUNNER_TEMP/prose-files"
-          git ls-files -z -- '*.md' "${exclusions[@]}" >"$files"
-          vale sync
-          xargs -0 -r vale <"$files"
-          xargs -0 -r cspell --no-progress <"$files"
-          xargs -0 -r rumdl check <"$files"
+        run: mise exec -- bash lib/rules/lint/ci_checks.sh prose "$RUNNER_TEMP"
 
   agent-capacity:
     name: agent-capacity image and vulnerability scans
@@ -396,29 +359,15 @@ jobs:
           if-no-files-found: ignore
 
       - name: Checkout the dependency scanner
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
-        with:
-          repository: tbhb-dev/gomodscan
-          ref: 1d7083e6ee351b0b4d7705c9c2346ad45d43127c
-          path: tmp/gomodscan
-          persist-credentials: false
+        run: bash lib/rules/lint/ci_checks.sh scanner-checkout "$PWD/tmp/gomodscan"
 
       - name: Vendor dependencies for the module scan
-        run: |
-          scratch="$RUNNER_TEMP/vendored"
-          mkdir "$scratch"
-          cp factory/agent-capacity/go.{mod,sum} "$scratch/"
-          GOWORK=off bazel run --config=ci @rules_go//go -- \
-            -C "$GITHUB_WORKSPACE/factory/agent-capacity" mod vendor -o "$scratch/vendor"
+        run: bash lib/rules/lint/ci_checks.sh vendor "$RUNNER_TEMP/vendored"
 
       - name: Scan Go module dependencies
-        working-directory: tmp/gomodscan
-        run: |
-          status=0
-          bazel run --config=ci //cmd/gomodscan -- \
-            -modroot "$RUNNER_TEMP/vendored" \
-            -format sarif -o "$RUNNER_TEMP/gomodscan.sarif" || status=$?
-          if ((status > 1)); then exit "$status"; fi
+        run: >-
+          bash lib/rules/lint/ci_checks.sh modules "$PWD/tmp/gomodscan"
+          "$RUNNER_TEMP/vendored" "$RUNNER_TEMP/gomodscan.sarif"
 
       - name: Upload the Go module scan
         uses: github/codeql-action/upload-sarif@33d7b85da1a04171e211befe2c739303b9a4c066  # v4.39.3
