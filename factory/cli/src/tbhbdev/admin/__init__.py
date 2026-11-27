@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 lazy import argparse
 
+from tbhbdev import userconfig
 from tbhbdev.admin.audit import RefusedError
 from tbhbdev.admin.policy import check as check
 from tbhbdev.admin.request import Runtime, Settings, call, default_runtime
@@ -41,8 +42,8 @@ def parser() -> argparse.ArgumentParser:
     repositories.add_argument("--reason", default="add repositories to selected secret")
     for command in (direct, repositories):
         command.add_argument("--app", default=Settings.app)
-        command.add_argument("--item", default=Settings.item)
-        command.add_argument("--vault", default=Settings.vault)
+        command.add_argument("--item")
+        command.add_argument("--vault")
         command.add_argument("--app-id", default=Settings.app_id)
     return result
 
@@ -103,18 +104,28 @@ def secret_repos(runtime: Runtime, args: argparse.Namespace) -> int:
     return 0
 
 
+def credential_setting(key: str, flag: str | None) -> str:
+    if flag is not None:
+        return flag
+    try:
+        return userconfig.string("admin", key)
+    except userconfig.ConfigError, OSError, UnicodeError:
+        msg = f"Set --{key} or [admin] {key} in {userconfig.path()}."
+        raise RefusedError(msg) from None
+
+
 def dispatch(runtime: Runtime, args: argparse.Namespace) -> int:
     if not args.reason.strip():
         msg = "reason_required"
         raise RefusedError(msg)
-    settings = Settings(args.app, args.item, args.vault, args.app_id)
+    vault = credential_setting("vault", args.vault)
+    item = credential_setting("item", args.item)
     if not all(
-        COMPONENT.fullmatch(value)
-        for value in (settings.app, settings.item, settings.vault, settings.app_id)
+        COMPONENT.fullmatch(value) for value in (args.app, item, vault, args.app_id)
     ):
         msg = "invalid_setting"
         raise RefusedError(msg)
-    runtime = replace(runtime, settings=settings)
+    runtime = replace(runtime, settings=Settings(args.app, item, vault, args.app_id))
     if args.command == "secret-repos":
         return secret_repos(runtime, args)
     status, text = call(

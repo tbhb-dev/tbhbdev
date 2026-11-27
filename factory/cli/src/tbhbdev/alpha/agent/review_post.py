@@ -82,6 +82,8 @@ def validate_document(sub: Submission) -> tuple[dict[str, object], str]:
         raise PostRefusedError(problems[0])
     event = "APPROVE" if doc.verdict == "GO" else "REQUEST_CHANGES"
     body = f"{review_doc.render(doc)}\n{sub.stamp}\n"
+    if problems := content.check_review(body, metadata=doc.metadata, posted=True):
+        raise PostRefusedError(problems[0])
     return {**doc.metadata, "event": event}, body
 
 
