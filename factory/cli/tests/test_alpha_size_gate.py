@@ -595,11 +595,19 @@ def test_size_reports_verified_imports(
 
 
 def test_both_stacked_refs_are_refreshed_without_tags_then_counted(
-    monkeypatch: pytest.MonkeyPatch,
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     counter = Mock(return_value=sg.SizeCounts(5, 400, 9, 1500, None))
     monkeypatch.setattr(sg, "size_counts", counter)
-    git = git_exits()
+    git = Mock(
+        side_effect=[
+            (0, str(tmp_path / "mirror.git")),
+            (0, "abc\trefs/heads/topic\ndef\trefs/heads/fetched/heads/topic"),
+            (0, ""),
+            (0, ""),
+            (0, ""),
+        ]
+    )
     monkeypatch.setattr(pr, "git", git)
     monkeypatch.setattr(pr, "default_base", Mock(return_value="main"))
     find = Mock(return_value="/tools/scc")
@@ -607,7 +615,11 @@ def test_both_stacked_refs_are_refreshed_without_tags_then_counted(
     checked = pr.Checked([], meta={"base": "topic"})
     pr.check_size(argparse.Namespace(command="create", draft="d.md"), checked)
     assert checked.problems == []
-    assert git.call_args_list[0] == call(
+    assert git.call_args_list[0] == call("remote", "get-url", "origin")
+    assert git.call_args_list[1] == call(
+        "ls-remote", "origin", "refs/heads/topic", "refs/heads/fetched/heads/topic"
+    )
+    assert git.call_args_list[2] == call(
         *FETCH,
         "origin",
         "+refs/heads/topic:refs/remotes/origin/topic",
@@ -640,6 +652,30 @@ def test_a_failed_fetch_refuses_and_never_counts_a_stale_ref(
     counter.assert_not_called()
     assert [c.args[0] for c in git.call_args_list] == ["fetch"]
     assert "--refmap=" in git.call_args_list[0].args
+
+
+def test_a_failed_stacked_fetch_from_github_refuses_without_retrying(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    counter = Mock()
+    monkeypatch.setattr(sg, "size_counts", counter)
+    git = Mock(side_effect=[(0, "https://github.com/o/r.git"), (1, "")])
+    monkeypatch.setattr(pr, "git", git)
+    monkeypatch.setattr(pr, "default_base", Mock(return_value="main"))
+    checked = pr.Checked([], meta={"base": "topic"})
+    pr.check_size(argparse.Namespace(command="create", draft="d.md"), checked)
+
+    assert checked.problems == [(1, "size count unavailable: cannot fetch topic")]
+    assert git.call_args_list == [
+        call("remote", "get-url", "origin"),
+        call(
+            *FETCH,
+            "origin",
+            "+refs/heads/topic:refs/remotes/origin/topic",
+            "+refs/heads/main:refs/remotes/origin/main",
+        ),
+    ]
+    counter.assert_not_called()
 
 
 def test_create_refuses_when_gh_targets_another_repository(

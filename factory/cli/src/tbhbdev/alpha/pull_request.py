@@ -2007,6 +2007,20 @@ def size_unavailable(checked: Checked, reason: str) -> None:
     print(message, file=sys.stderr)
 
 
+def _stacked_base_source(branch: str) -> str:
+    """Use the build mirror's fetched ref when it has no ordinary branch ref."""
+    source = f"refs/heads/{branch}"
+    code, origin = git("remote", "get-url", "origin")
+    if code != 0 or not Path(origin).is_absolute():
+        return source
+    mirror_source = f"refs/heads/fetched/heads/{branch}"
+    code, advertised = git("ls-remote", "origin", source, mirror_source)
+    refs = {line.partition("\t")[2] for line in advertised.splitlines()}
+    if code == 0 and source not in refs and mirror_source in refs:
+        return mirror_source
+    return source
+
+
 def _size_base(
     branch: str, *, explicit_base: bool, dry_run: bool
 ) -> tuple[str, str | None]:
@@ -2018,6 +2032,7 @@ def _size_base(
             default = default_base(origin_only=True)
     default_ref = f"refs/remotes/origin/{default}" if default != branch else None
     if not dry_run:
+        source = _stacked_base_source(branch) if default_ref else f"refs/heads/{branch}"
         fetch = (
             "fetch",
             "--quiet",
@@ -2025,12 +2040,11 @@ def _size_base(
             "--no-write-fetch-head",
             "--refmap=",
             "origin",
+            f"+{source}:{base}",
         )
-        default_fetch = (f"+refs/heads/{default}:{default_ref}",) if default_ref else ()
-        for prefix in ("refs/heads", "refs/heads/fetched/heads"):
-            if git(*fetch, f"+{prefix}/{branch}:{base}", *default_fetch)[0] == 0:
-                break
-        else:
+        if default_ref is not None:
+            fetch += (f"+refs/heads/{default}:{default_ref}",)
+        if git(*fetch)[0] != 0:
             message = f"cannot fetch {branch}"
             raise size_gate.SizeCountError(message)
     if git("rev-parse", "--verify", "--quiet", f"{base}^{{commit}}")[0] != 0:
