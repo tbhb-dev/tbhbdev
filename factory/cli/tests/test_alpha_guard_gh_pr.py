@@ -19,9 +19,10 @@ from fake_tool import pythonpath
 from hypothesis import given
 from hypothesis import strategies as st
 
-from tbhbdev.alpha import close, opened, pull_request, squash_merge
+from tbhbdev.alpha import close, opened, pull_request
 from tbhbdev.alpha import guard_gh_pr as guard
 from tbhbdev.alpha.identity import dispatcher as ai
+from tbhbdev.alpha.merge import options as squash_merge
 
 DATA = Path(__file__).parent / "testdata" / "alpha"
 SRC = Path(guard.__file__).parents[2]
@@ -1212,9 +1213,8 @@ def test_every_hinted_command_line_parses_with_the_real_cli(command: str) -> Non
     spans = re.findall(r"`tbhbdev alpha ([^`]+)`", guard.hint(found))
     assert spans
     for span in spans:
-        words = [
-            PLACEHOLDERS.get(w, w) for w in re.sub(r"\s*\[[^\]]*\]", "", span).split()
-        ]
+        tokens = re.sub(r"\s*\[[^\]]*\]", "", span).split()
+        words = [PLACEHOLDERS.get(token, token) for token in tokens]
         if words[0] == "merge":
             squash_merge.build_parser("x").parse_args(words[1:])
         elif words[:2] in (["pr", "close"], ["issue", "close"]):

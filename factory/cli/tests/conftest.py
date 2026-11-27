@@ -29,8 +29,6 @@ from tbhbdev import plugins
 if TYPE_CHECKING:
     from collections.abc import Callable, Iterator
 
-    from tbhbdev.cli import Tool
-
 type Json = dict[str, object]
 
 
@@ -96,7 +94,7 @@ def launching_session(monkeypatch: pytest.MonkeyPatch) -> None:
         return "tools", "session-1"
 
     # The driver imports launcher when the test module loads.
-    launcher = sys.modules.get("tbhbdev.alpha.agent.launcher")
+    launcher = sys.modules.get("tbhbdev.alpha.agent.driver.launcher")
     if launcher is not None:
         monkeypatch.setattr(launcher, "session", session)
 
@@ -348,9 +346,8 @@ def plain(monkeypatch: pytest.MonkeyPatch) -> None:
 
 @dataclass
 class StubPlugin:
-    """A plugin object: extra tools, and config files by name."""
+    """A plugin object that supplies config files by name."""
 
-    TOOLS: dict[str, Tool] = field(default_factory=dict)
     files: dict[str, str] = field(default_factory=dict)
 
     def config(self, name: str) -> str | None:
@@ -384,11 +381,10 @@ class Installed:
         self,
         name: str,
         *,
-        tools: dict[str, Tool] | None = None,
         files: dict[str, str] | None = None,
     ) -> None:
-        """Add a plugin with TOOLS and the config FILES, by name."""
-        self.add(name, StubPlugin(tools or {}, files or {}))
+        """Add a plugin with the config FILES, by name."""
+        self.add(name, StubPlugin(files or {}))
 
 
 @pytest.fixture(autouse=True)

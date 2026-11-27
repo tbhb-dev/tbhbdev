@@ -41,11 +41,7 @@ its own git invocation fails), and, under
 `GITLEAKS_CONFIG_TOML`. A shallow clone scans only the commits it
 has, so CI should fetch the full history. It scans every ref unless given
 `--log-opts`: `bazel run <target> -- --log-opts=HEAD` scans only the
-checked-out branch. A leading `--merge-range` scans `HEAD^1..HEAD` when
-HEAD matches the full commit SHA in `EXPECTED_HEAD` and has exactly two
-readable parents, unless the merge changes `.gitleaks.toml`, `lint/gitleaks/base.toml`, a legacy `.gitleaks-rules.toml`, or `.gitleaksignore`.
-Unset or different `EXPECTED_HEAD`, config or ignore changes, and unexpected
-Git state fall back to `--log-opts=HEAD`. The private config
+checked-out branch. The private config
 (`GITLEAKS_CONFIG_TOML`) changes out of band; its changes surface on the next
 full scan (push to main), the same accepted limit as a rules version bump.
 The working tree is `gitleaks_test`'s job.""",

@@ -9,8 +9,6 @@ from tbhbdev import telemetry, userconfig
 from tbhbdev.alpha.agent import (
     admission,
     app_server,
-    arguments,
-    driver,
     precheck,
     run_host,
     settings,
@@ -18,6 +16,9 @@ from tbhbdev.alpha.agent import (
     ssh_serve,
 )
 from tbhbdev.alpha.agent.decisions import host_names
+from tbhbdev.alpha.agent.driver import arguments
+from tbhbdev.alpha.agent.driver import dispatch as coordinator
+from tbhbdev.alpha.agent.driver.decisions.steering import CLAUDE_UNAVAILABLE
 
 if TYPE_CHECKING:
     import argparse
@@ -45,7 +46,7 @@ def main(argv: list[str], prog: str) -> int:
 
 def dispatch(args: argparse.Namespace | None, prog: str) -> int:
     if args is not None and args.verb == "send" and args.harness == "claude":
-        print(driver.CLAUDE_UNAVAILABLE, file=sys.stderr)
+        print(CLAUDE_UNAVAILABLE, file=sys.stderr)
         return 1
     try:
         loaded = settings.load()
@@ -58,7 +59,7 @@ def dispatch(args: argparse.Namespace | None, prog: str) -> int:
         ):
             print(f"{prog}: run name contains a host name", file=sys.stderr)
             return 1
-        return driver.dispatch(loaded, args)
+        return coordinator.dispatch(loaded, args)
     except (userconfig.ConfigError, OSError, ValueError) as exc:
         print(f"{prog}: {exc}", file=sys.stderr)
         return 1
