@@ -213,8 +213,7 @@ def build_provenance(
     checkout = tmp_path / "tools"
     checkout.mkdir()
     source = checkout / "factory/cli/src/tbhbdev/alpha/agent/build_info.py"
-    # Coverage uses the module's __file__ to identify code in each worker.
-    monkeypatch.setattr(build_info, "Path", constant(source))
+    monkeypatch.setattr(build_info, "SOURCE", source)
     if present:
         (checkout / ".git").write_text("gitdir: metadata\n")
         (tmp_path / ".git").mkdir()

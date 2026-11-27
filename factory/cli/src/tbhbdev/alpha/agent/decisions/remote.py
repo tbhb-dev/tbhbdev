@@ -424,15 +424,28 @@ def worktree_patch(repository: str, name: str, *, export: bool) -> str:
     internals = " ".join(f'"$run/{entry}"' for entry in GIT_INTERNALS)
     base, tip = (f'"$d/{name}{suffix}"' for suffix in (files.BASE, files.HEAD))
     reflog = f'"$run/logs/refs/heads/agent/{name}"'
+    git = (
+        f'{GIT} GIT_CONFIG_GLOBAL=/dev/null GIT_DIR="$scratch" {GIT_FLAGS} '
+        "-c protocol.allow=never -c diff.external= -c core.multiPackIndex=false "
+        "--no-optional-locks"
+    )
     # Read refs as data and give Git only the object directory, never the
     # run's Git configuration. Older runs get their base from branch creation.
     script = f"""run={run}
-for p in {paths}; do
-    test ! -L "$p" && test -d "$p" || exit 65
-done
-for p in {internals}; do
-    test ! -L "$p" || exit 65
-done
+check_paths() {{
+    for p in {paths}; do
+        test ! -L "$p" && test -d "$p" || exit 65
+    done
+    for p in {internals}; do
+        test ! -L "$p" || exit 65
+    done
+    links=$(find "$run/objects" "$run/refs" -type l -print -quit) || exit 65
+    test -z "$links" || exit 65
+    pack_index=$(find "$run/objects/pack" -name "multi-pack-index*" -print -quit) || exit 65
+    test -z "$pack_index" || exit 65
+    test ! -e "$run/objects/info/alternates" || exit 65
+}}
+check_paths
 resolve() {{
     case "$1" in *[!A-Za-z0-9._/-]*|*..*|*//*) return 65 ;; esac
     if test -f "$run/$1" && test ! -L "$run/$1"; then
@@ -446,11 +459,6 @@ valid_sha() {{
     case "$1" in ""|*[!0-9a-f]*) return 65 ;; esac
     test "${{#1}}" -eq 40
 }}
-links=$(find "$run/objects" "$run/refs" -type l -print -quit) || exit 65
-test -z "$links" || exit 65
-pack_index=$(find "$run/objects/pack" -name "multi-pack-index*" -print -quit) || exit 65
-test -z "$pack_index" || exit 65
-test ! -e "$run/objects/info/alternates" || exit 65
 safe_file {tip}
 if test -f {tip}; then
     tip=$(head -c 41 {tip}) || exit 65
@@ -478,9 +486,7 @@ trap 'rm -rf "$scratch"' EXIT
 ln -s "$run/objects" "$scratch/source" || exit 65
 printf '%s\\n' ../source > "$scratch/objects/info/alternates" || exit 65
 patch_git() {{
-    {GIT} GIT_CONFIG_GLOBAL=/dev/null GIT_DIR="$scratch" {GIT_FLAGS} \
-        -c protocol.allow=never -c diff.external= -c core.multiPackIndex=false \
-        --no-optional-locks "$@"
+    {git} "$@"
 }}
 # Export the final tree as one commit atop the recorded base when the range
 # contains merges or the tip no longer descends from the base.
@@ -492,15 +498,23 @@ if test -n "$merges" || ! patch_git merge-base --is-ancestor "$base" "$tip"; the
     tip=$(patch_git -c user.name=tbhbdev -c user.email=tbhbdev@localhost \
         commit-tree "$tree" -p "$base" -m "Run {name} ($tip)") || exit 65
 fi
-patch_git format-patch --stdout --no-ext-diff --no-textconv --no-color \
-    --no-signature --no-attach --no-add-header --no-notes "$base..$tip" --
 """
-    if export:
-        return script
-    return (
-        f"perl -e {shlex.quote(INSPECTION_OUTPUT)} "
-        f"/bin/sh -c {shlex.quote(FILE_HELPERS + script)}\n"
+    format_patch = (
+        "format-patch --stdout --no-ext-diff --no-textconv --no-color "
+        '--no-signature --no-attach --no-add-header --no-notes "$base..$tip" --'
     )
+    if export:
+        return script + f"patch_git {format_patch}\n"
+    # Hold the capped output until the same path checks pass again.
+    script += (
+        f"perl -e {shlex.quote(INSPECTION_OUTPUT)} {git} {format_patch} "
+        '> "$scratch/patch"\n'
+        "status=$?\n"
+        "check_paths\n"
+        'cat "$scratch/patch" || exit "$?"\n'
+        'exit "$status"\n'
+    )
+    return f"/bin/sh -c {shlex.quote(FILE_HELPERS + script)}\n"
 
 
 def export_patch(repository: str, name: str) -> str:

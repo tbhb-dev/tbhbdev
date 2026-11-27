@@ -723,6 +723,30 @@ def test_two_declared_variants_may_review_one_commit(remote: Remote) -> None:
     driver.refuse_live_duplicate(CONFIG, second)
 
 
+def test_a_fifth_live_review_of_the_same_commit_is_refused(
+    remote: Remote, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    review = recorded_review(remote, "--variant", "one")
+    live = transport.Reading("running", None, launched=True, session=True, text="")
+    monkeypatch.setattr(transport, "read", Mock(return_value=live))
+    for variant in ("two", "three", "four"):
+        review.name = f"review-{variant}"
+        review.request = dataclasses.replace(review.request, variant=variant)
+        driver.refuse_live_duplicate(CONFIG, review)
+        driver.save(review)
+
+    stream = Mock(side_effect=AssertionError("started a fifth review"))
+    monkeypatch.setattr(transport, "stream", stream)
+    argv = arguments(
+        remote, "--profile", "review", "--ref", COMMIT, "--variant", "five"
+    )
+    argv[-2] = "review-five"
+    assert agent.main(argv, "example agent") == 1
+    assert "already has 4 live reviews" in capsys.readouterr().err
+    assert not driver.metadata_path("review-five").exists()
+    stream.assert_not_called()
+
+
 @pytest.mark.parametrize(
     ("first", "later"),
     [
@@ -1230,6 +1254,43 @@ def test_schema_and_prompt_refused_locally(remote: Remote) -> None:
     remote.prompt.rename(remote.prompt.with_suffix(".saved"))
     assert launch(remote) == 1
     assert remote.records("ssh") == []
+
+
+@pytest.mark.parametrize(
+    ("secret", "kind"),
+    [
+        ("op://example/item/field", "1Password reference"),
+        ("-----BEGIN " + "PRIVATE KEY-----", "private key header"),
+        ("-----BEGIN OPENSSH " + "PRIVATE KEY-----", "private key header"),
+        ("-----BEGIN PGP " + "PRIVATE KEY BLOCK-----", "private key header"),
+        ("ghp_" + "sample", "token prefix"),
+        ("github_pat_" + "sample", "token prefix"),
+        ("sk-ant-" + "sample", "token prefix"),
+        ("AKIA" + "SAMPLE", "token prefix"),
+        ("xoxb-" + "sample", "token prefix"),
+    ],
+)
+def test_prompt_with_secret_is_refused_before_ssh(
+    remote: Remote, capsys: pytest.CaptureFixture[str], secret: str, kind: str
+) -> None:
+    remote.prompt.write_text(f"Use this value: {secret}\n")
+    assert launch(remote) == 1
+    assert capsys.readouterr() == ("", f"example agent: brief refused: {kind}\n")
+    assert remote.records("ssh", limits=True) == []
+    assert not driver.metadata_path("sample").exists()
+
+
+def test_schema_with_secret_is_refused_before_ssh(
+    remote: Remote, capsys: pytest.CaptureFixture[str]
+) -> None:
+    schema = remote.root / "schema.json"
+    schema.write_text('{"description":"op://example/item/field"}')
+    assert launch(remote, "--schema", str(schema)) == 1
+    assert capsys.readouterr() == (
+        "",
+        "example agent: schema refused: 1Password reference\n",
+    )
+    assert remote.records("ssh", limits=True) == []
 
 
 def test_prompt_hook_conflicts_refuse_launch_before_ssh(

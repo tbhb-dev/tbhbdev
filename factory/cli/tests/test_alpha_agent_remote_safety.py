@@ -1148,6 +1148,26 @@ def test_unpublished_diff_bounds_output_and_preserves_failure(
     assert result.stdout == b"x" * 65536 + b"\n[output truncated at 65536 bytes]\n"
 
 
+@pytest.mark.parametrize("entry", [".git", ".git/objects/pack"])
+def test_unpublished_diff_withholds_patch_if_a_symlink_appears(
+    host: Path, entry: str
+) -> None:
+    path = unpublished_run(host) / entry
+    write_standalone_fake(
+        host / "bin/git",
+        "import os, sys\n"
+        "from pathlib import Path\n"
+        "if 'format-patch' not in sys.argv:\n"
+        "    os.execv('/usr/bin/git', ['/usr/bin/git', *sys.argv[1:]])\n"
+        f"path = Path({str(path)!r})\n"
+        f"path.rename({str(host / 'saved')!r})\n"
+        f"path.symlink_to({str(host / 'missing')!r}, target_is_directory=True)\n"
+        "print('generated patch')\n",
+    )
+    assert_refused()
+    assert path.is_symlink()
+
+
 @pytest.mark.parametrize(
     "component",
     [

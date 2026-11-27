@@ -30,7 +30,7 @@ class Fake:
 
     def __call__(self, argv: list[str]) -> tuple[int, str]:
         self.calls.append(argv)
-        if argv[0] == "git":
+        if Path(argv[0]).name == "git":
             return self.answers["git"]
         return self.answers[argv[-2]]
 
@@ -103,13 +103,28 @@ def test_expect_latest_reads_main_once(capsys: pytest.CaptureFixture[str]) -> No
     fake = Fake({"git": (0, f"{B}\trefs/heads/main\n"), "h1": (0, line(B))})
     status, out, _ = run_main(["--host", "h1", "--expect", "latest"], fake, capsys)
     assert (status, out) == (0, f"h1 {B} ok\n")
-    assert fake.calls[0] == [
-        "git",
+    git, *args = fake.calls[0]
+    assert Path(git).is_absolute()
+    assert Path(git).name == "git"
+    assert args == [
         "ls-remote",
         "https://github.com/tbhb-dev/tbhbdev",
         "refs/heads/main",
     ]
     assert len(fake.calls) == 2
+
+
+def test_expect_latest_without_git_exits_three(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    monkeypatch.setattr(version_check, "TOOL_PATH", "/nonexistent")
+    fake = Fake({})
+    assert run_main(["--host", "h1", "--expect", "latest"], fake, capsys) == (
+        3,
+        "",
+        f"{PROG}: cannot read main of https://github.com/tbhb-dev/tbhbdev\n",
+    )
+    assert fake.calls == []
 
 
 @pytest.mark.parametrize(
