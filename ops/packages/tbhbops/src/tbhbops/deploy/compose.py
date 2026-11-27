@@ -9,7 +9,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import TypedDict
 
-from tbhbops.deploy import daemon, policy
+from tbhbops.deploy import daemon, model, mounts
 from tbhbops.deploy import filesystem as fs
 from tbhbops.deploy.command import OUTPUT_LIMIT, Command, CommandError
 from tbhbops.deploy.config import Service, text
@@ -141,7 +141,7 @@ class Engine:
             directory / self.service.compose_env_file,
             fixed=False,
         )
-        policy.model(candidate, self.service)
+        model.validate(candidate, self.service)
         self.check_paths(candidate, release, missing=True)
         destination = self.model_path(release)
         fs.write(destination, json.dumps(candidate, sort_keys=True).encode())
@@ -164,7 +164,7 @@ class Engine:
                 fixed=False,
                 staging=directory,
             )
-            policy.model(candidate, self.service)
+            model.validate(candidate, self.service)
             daemon.capabilities(self.command, candidate)
 
     def stored(self, release: str) -> Json:
@@ -226,23 +226,23 @@ class Engine:
     def check_paths(
         self, candidate: Json, release: str, *, missing: bool = False, live: bool = True
     ) -> None:
-        sources = policy.retained(candidate)
-        retained: list[policy.Source] = []
+        sources = mounts.retained(candidate)
+        retained: list[mounts.Source] = []
         for path in sorted((self.state / "models").glob("*.json")):
-            retained.extend(policy.retained(decode(fs.read(path))))
+            retained.extend(mounts.retained(decode(fs.read(path))))
         writable = {source.path for source in (*sources, *retained) if source.writable}
         for container in self.containers() if live else []:
-            mounts = container.get("Mounts")
-            require(isinstance(mounts, list), "container mounts type")
-            for item in array(mounts):
+            container_mounts = container.get("Mounts")
+            require(isinstance(container_mounts, list), "container mounts type")
+            for item in array(container_mounts):
                 mount = mapping(item)
                 if mount.get("Type") == "bind" and mount.get("RW") is True:
                     writable.add(fs.spelling(text(mount.get("Source"))))
-        policy.paths(sources, tuple(retained), writable, self.service, release)
+        mounts.paths(sources, tuple(retained), writable, self.service, release)
         self.inspect_sources(sources, missing=missing)
 
     def inspect_sources(
-        self, sources: tuple[policy.Source, ...], *, missing: bool
+        self, sources: tuple[mounts.Source, ...], *, missing: bool
     ) -> None:
         secret_targets = {secret.target for secret in self.service.secrets}
         for source in sources:

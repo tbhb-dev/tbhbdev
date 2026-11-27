@@ -8,7 +8,7 @@ from pathlib import Path
 from unittest.mock import Mock, call, patch
 
 import pytest
-from tbhbops.deploy import compose, daemon, policy
+from tbhbops.deploy import compose, daemon, model, mounts
 from tbhbops.deploy import filesystem as fs
 from tbhbops.deploy.command import OUTPUT_LIMIT, Command, CommandError
 from tbhbops.deploy.compose import COMPOSE_SHA256, Engine
@@ -281,13 +281,13 @@ def test_up_call_order_and_arguments(engine: Engine, recreate: bool) -> None:
 @pytest.mark.parametrize(
     ("missing", "source", "expected"),
     [
-        (False, policy.Source(Path("/data/file"), file=True), False),
-        (True, policy.Source(Path("/data/file"), file=True), False),
-        (True, policy.Source(Path("/data"), writable=True), False),
+        (False, mounts.Source(Path("/data/file"), file=True), False),
+        (True, mounts.Source(Path("/data/file"), file=True), False),
+        (True, mounts.Source(Path("/data"), writable=True), False),
     ],
 )
 def test_inspect_sources_keeps_external_missing_strict(
-    engine: Engine, missing: bool, source: policy.Source, expected: bool
+    engine: Engine, missing: bool, source: mounts.Source, expected: bool
 ) -> None:
     with patch.object(fs, "inspect") as inspect:
         engine.inspect_sources((source,), missing=missing)
@@ -304,7 +304,7 @@ def test_generated_source_missing_rules(
     path = engine.service.root / "data" / "secrets" / "generated"
     with patch.object(fs, "inspect") as inspect:
         engine.inspect_sources(
-            (policy.Source(path, writable=writable, file=file),), missing=missing
+            (mounts.Source(path, writable=writable, file=file),), missing=missing
         )
     inspect.assert_called_once_with(
         path, file=file, missing=missing and (file or not writable)
@@ -343,7 +343,7 @@ def test_parse_checks_and_persists_the_fixed_model_in_order(engine: Engine) -> N
     candidate: Json = {"z": 1, "a": 2}
     with (
         patch.object(engine, "sandbox", return_value=candidate) as sandbox,
-        patch.object(policy, "model") as model,
+        patch.object(model, "validate") as validate,
         patch.object(engine, "check_paths") as paths,
         patch.object(fs, "write") as write,
         patch.object(daemon, "ownership") as ownership,
@@ -351,7 +351,7 @@ def test_parse_checks_and_persists_the_fixed_model_in_order(engine: Engine) -> N
         manager = Mock()
         for name, method in (
             ("sandbox", sandbox),
-            ("model", model),
+            ("validate", validate),
             ("paths", paths),
             ("write", write),
             ("ownership", ownership),
@@ -366,7 +366,7 @@ def test_parse_checks_and_persists_the_fixed_model_in_order(engine: Engine) -> N
             directory / "compose.env",
             fixed=False,
         ),
-        call.model(candidate, engine.service),
+        call.validate(candidate, engine.service),
         call.paths(candidate, RELEASE, missing=True),
         call.write(engine.model_path(RELEASE), b'{"a": 2, "z": 1}'),
         call.sandbox(
@@ -427,10 +427,10 @@ def test_retained_models_and_live_binds_reach_path_policy(engine: Engine) -> Non
     for name in ("b.json", "a.json", "ignored.txt"):
         (directory / name).write_text(name)
     candidate: Json = {"candidate": True}
-    sources = (policy.Source(Path("/candidate"), writable=True),)
+    sources = (mounts.Source(Path("/candidate"), writable=True),)
     retained = (
-        policy.Source(Path("/retained/a")),
-        policy.Source(Path("/retained/b"), writable=True),
+        mounts.Source(Path("/retained/a")),
+        mounts.Source(Path("/retained/b"), writable=True),
     )
     containers: list[dict[str, Json]] = [
         {
@@ -443,11 +443,11 @@ def test_retained_models_and_live_binds_reach_path_policy(engine: Engine) -> Non
     ]
     with (
         patch.object(
-            policy, "retained", side_effect=[sources, retained[:1], retained[1:]]
+            mounts, "retained", side_effect=[sources, retained[:1], retained[1:]]
         ) as model,
         patch.object(fs, "read", side_effect=[b'"first"', b'"second"']) as read,
         patch.object(engine, "containers", return_value=containers),
-        patch.object(policy, "paths") as paths,
+        patch.object(mounts, "paths") as paths,
         patch.object(engine, "inspect_sources") as inspect,
     ):
         engine.check_paths(candidate, RELEASE, missing=True)
@@ -690,9 +690,9 @@ def test_tightened_policy_keeps_retained_release_usable(
     before = replace(
         engine.service, images=(*engine.service.images, "registry.example/retired")
     )
-    assert policy.model(old, before) == ()
+    assert model.validate(old, before) == ()
     with pytest.raises(RefusalError, match="unlisted image"):
-        policy.model(old, engine.service)
+        model.validate(old, engine.service)
     prior = "b" * 40
     (engine.service.root / "releases" / prior).mkdir()
     fs.write(engine.model_path(prior), json.dumps(old).encode())
