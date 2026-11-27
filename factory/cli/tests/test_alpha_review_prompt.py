@@ -8,6 +8,7 @@ from importlib.resources import files
 from typing import TYPE_CHECKING, cast
 
 import pytest
+from cue_fixtures import review_cue as review_cue  # noqa: PLC0414
 
 from tbhbdev import content
 from tbhbdev.alpha import review_doc, review_prompt

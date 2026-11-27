@@ -14,6 +14,7 @@ from unittest.mock import Mock
 
 import pytest
 from agent_host_example import constant, host_settings, run_request
+from runfile_fixtures import agent_suffix_case as agent_suffix_case  # noqa: PLC0414
 
 from tbhbdev.alpha.agent import (
     credentials,
@@ -199,7 +200,13 @@ def test_start_ref_push_fast_forwards_the_existing_branch_without_a_pr(
             assert args[-3:] == (target.as_uri(), "HEAD", START_REF)
             operations.append("ls-remote")
         else:
-            assert args == ("push", "--", target.as_uri(), f"HEAD:{START_REF}")
+            assert args == (
+                "push",
+                f"--force-with-lease={START_REF}:{base}",
+                "--",
+                target.as_uri(),
+                f"HEAD:{START_REF}",
+            )
             operations.append("push")
         return original(directory, token, *args, capture_output=capture_output)
 
@@ -220,6 +227,23 @@ def test_start_ref_push_fast_forwards_the_existing_branch_without_a_pr(
         DEFAULT_REF,
     }
     assert not run.files.path("pr").exists()
+
+
+def test_deleted_remote_branch_is_not_recreated_after_tip_check(
+    fix_run: LocalRun, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    run, prepared, target = fix_run
+    original = push.check_not_moved
+
+    def check(directory: Path, url: str, ref: str, base: str, token: str) -> None:
+        original(directory, url, ref, base, token)
+        git(target, "update-ref", "-d", ref)
+
+    monkeypatch.setattr(push, "check_not_moved", check)
+    with ExitStack() as stack:
+        assert push.run(run, prepared, stack, harness, SYNTHETIC) == 4
+    assert git(target, "for-each-ref", "--format=%(refname)") == DEFAULT_REF
+    assert not run.files.path("branch").exists()
 
 
 @pytest.mark.parametrize("remote_change", ["rewound", "deleted", "default", "missing"])
@@ -922,7 +946,9 @@ def test_spawn_failure_closes_pipe(
     monkeypatch.setattr(os, "pipe", pipe)
     monkeypatch.setattr(subprocess, "Popen", fail)
     with pytest.raises(OSError, match="spawn failed"):
-        push.send(Path(prepared.paths.worktree), "unused", "agent/example", SYNTHETIC)
+        push.send(
+            Path(prepared.paths.worktree), "unused", START_REF, "a" * 40, SYNTHETIC
+        )
     for descriptor in created:
         with pytest.raises(OSError, match="Bad file descriptor"):
             os.fstat(descriptor)
@@ -1103,7 +1129,7 @@ def test_send_limits_child_capabilities(
 
     monkeypatch.setattr(subprocess, "Popen", child)
     assert push.send(
-        tmp_path, "https://github.com/example/repo.git", "agent/example", SYNTHETIC
+        tmp_path, "https://github.com/example/repo.git", START_REF, "a" * 40, SYNTHETIC
     ) == (4, "one error\n")
     assert len(captured) == 1
     spec = captured[0]
@@ -1111,15 +1137,16 @@ def test_send_limits_child_capabilities(
     assert len(descriptors) == 1
     command = cast("list[str]", spec.pop("command"))
     assert command[0] == host_tools.resolve("git")
-    assert command[-6:] == [
+    assert command[-7:] == [
         "-C",
         str(tmp_path),
         "push",
+        f"--force-with-lease={START_REF}:{'a' * 40}",
         "--",
         "https://github.com/example/repo.git",
-        "HEAD:refs/heads/agent/example",
+        f"HEAD:{START_REF}",
     ]
-    options = command[1:-6]
+    options = command[1:-7]
     assert options[::2] == ["-c"] * 6
     assert options[1::2][:2] == [
         "credential.helper=",

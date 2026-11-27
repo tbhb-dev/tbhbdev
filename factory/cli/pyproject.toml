@@ -236,6 +236,10 @@ relative_files = true
 # coverage follows Python subprocesses too.
 patch = ["subprocess"]
 
+[tool.coverage.paths]
+# A subprocess can start outside the CLI directory and record absolute paths.
+source = ["src/tbhbdev", "**/factory/cli/src/tbhbdev"]
+
 [tool.coverage.report]
 # Anything genuinely unreachable belongs in exclude_also with a reason, not
 # behind a lowered threshold.
