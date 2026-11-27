@@ -18,7 +18,8 @@ from agent_example import settings
 from agent_host_example import commit, git
 
 from tbhbdev import version
-from tbhbdev.alpha import agent, version_check
+from tbhbdev.alpha import version_check
+from tbhbdev.alpha.agent import command as agent
 from tbhbdev.alpha.agent import driver, transport, version_heal
 from tbhbdev.alpha.agent.decisions import remote
 from tbhbdev.alpha.agent.model import Invalid

@@ -12,7 +12,7 @@ from agent_example import settings
 from agent_host_example import run_request
 from test_alpha_agent_request import BUILD
 
-from tbhbdev.alpha import agent
+from tbhbdev.alpha.agent import command as agent
 from tbhbdev.alpha.agent import driver, worktree
 from tbhbdev.alpha.agent.decisions import request
 from tbhbdev.alpha.agent.model import Invalid

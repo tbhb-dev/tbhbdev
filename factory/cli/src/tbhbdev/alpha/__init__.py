@@ -14,7 +14,6 @@ import sys
 from typing import TYPE_CHECKING
 
 from tbhbdev.alpha import (
-    agent,
     brief,
     gh_shim,
     guard_agent_model,
@@ -34,12 +33,12 @@ from tbhbdev.alpha import (
     verify_range,
     version_check,
 )
+from tbhbdev.alpha.agent import command as agent_command
 
 if TYPE_CHECKING:
     from collections.abc import Callable
 
 __all__ = [
-    "agent",
     "brief",
     "gh_shim",
     "guard_agent_model",
@@ -245,7 +244,7 @@ COMMANDS: dict[str, Callable[[list[str], str], int]] = {
     "install": install_command,
     "pre-push-guard": pre_push_guard.main,
     "loop": loop.main,
-    "agent": agent.main,
+    "agent": agent_command.main,
     "run-stop-hook": run_stop_hook.main,
     "brief": brief.main,
 }

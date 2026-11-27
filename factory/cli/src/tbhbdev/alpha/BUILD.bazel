@@ -33,7 +33,7 @@ cli_py_library(
         ":state_guard",
         ":verify_range",
         ":version_check",
-        "//factory/cli/src/tbhbdev/alpha/agent:__init__",
+        "//factory/cli/src/tbhbdev/alpha/agent:command",
         "//factory/cli/src/tbhbdev/alpha/loop:__init__",
         "//factory/cli/src/tbhbdev/alpha/monorepo:__init__",
     ],
