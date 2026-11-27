@@ -75,10 +75,12 @@ nogo(
     visibility = ["//visibility:public"],
 )
 
-# Installs the Vale packages pinned in .vale.ini; uses `vale` from PATH.
+# Installs the Vale packages pinned in .vale.ini.
 sh_binary(
     name = "vale_sync",
     srcs = ["vale_sync.sh"],
+    args = ["$(rootpath @tbhb_rules_vale//:vale)"],
+    data = ["@tbhb_rules_vale//:vale"],
 )
 
 BUILDIFIER_EXCLUDES = [
@@ -195,6 +197,7 @@ bazel_env(
         "cog": "@tbhb_rules_cog//:cog",
         "editorconfig-checker": "@tbhb_rules_editorconfig_checker//:editorconfig-checker",
         "gitleaks": "@tbhb_rules//lint:gitleaks",
+        "gitleaks-raw": "@tbhb_rules_gitleaks//:gitleaks",
         "rumdl": "@tbhb_rules_rumdl//:rumdl",
         "ryl": "@tbhb_rules_ryl//:ryl",
         "scc": "@tbhb_rules_scc//:scc",

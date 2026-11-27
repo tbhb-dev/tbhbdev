@@ -15,6 +15,7 @@ import pytest
 from agent_example import LINUX
 
 from tbhbdev.alpha.agent import admission
+from tbhbdev.alpha.agent import command as agent
 from tbhbdev.alpha.agent.model import Invalid, Profile
 
 if TYPE_CHECKING:
@@ -162,6 +163,16 @@ def test_admission_file_ownership(
         admission.reserve(tmp_path, LINUX, Profile.REVIEW, LINUX.max_concurrent_runs),
     ):
         assert (tmp_path / "review-0").is_file()
+    monkeypatch.setattr(admission, "ROOT", tmp_path)
+    probe = [
+        "check-slot",
+        LINUX.name,
+        "review",
+        str(LINUX.max_concurrent_runs),
+        "--",
+        *LINUX.accounts,
+    ]
+    assert agent.main(probe, "example agent") == (1 if owner == "unrelated" else 0)
 
 
 @pytest.mark.parametrize("mode", [0o664, 0o646])
@@ -193,3 +204,41 @@ def test_the_request_cap_overrides_the_host_default(tmp_path: Path) -> None:
         admission.reserve(root, host, Profile.REVIEW, 1),
     ):
         pytest.fail("the second slot must be refused")
+
+
+def test_check_slot_respects_the_review_reservation(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    root = tmp_path / "admission"
+    monkeypatch.setattr(admission, "ROOT", root)
+    build = ["check-slot", LINUX.name, "build", "2"]
+    review = ["check-slot", LINUX.name, "review", "2"]
+    assert agent.main(build, "example agent") == 0
+    assert capsys.readouterr().out == ""
+    assert not (root / "build-0").exists()
+    with admission.reserve(root, LINUX, Profile.BUILD, 2):
+        assert agent.main(build, "example agent") == 0
+        assert capsys.readouterr().out == "full\n"
+        assert agent.main(review, "example agent") == 0
+        assert capsys.readouterr().out == ""
+        assert not (root / "review-0").exists()
+        with admission.reserve(root, LINUX, Profile.REVIEW, 2):
+            assert agent.main(review, "example agent") == 0
+            assert capsys.readouterr().out == "full\n"
+
+
+def test_check_slot_reports_a_probe_error(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    root = tmp_path / "admission"
+    root.touch()
+    monkeypatch.setattr(admission, "ROOT", root)
+    assert agent.main(["check-slot", LINUX.name, "build", "2"], "example agent") == 1
+    output = capsys.readouterr()
+    assert output.out == ""
+    assert "example agent check-slot:" in output.err
+
+
+@pytest.mark.parametrize(("args", "rc"), [(["--help"], 0), ([], 2)])
+def test_check_slot_validates_arguments(args: list[str], rc: int) -> None:
+    assert agent.main(["check-slot", *args], "example agent") == rc

@@ -30,7 +30,10 @@ MINTED = "minted"
 
 def draft(event: str = "COMMENT", head: str = HEAD, *, findings: bool = False) -> str:
     extra = (
-        "## Findings\n\n- F1: P1 correctness Fix the data loss.\n\n" if findings else ""
+        "## Findings\n\n- F1: P1 correctness The saved record disappears. "
+        "Occurs when: a caller retries a write.\n\n"
+        if findings
+        else ""
     )
     return (
         f"---\npr: 7\ncommit_id: '{head}'\nevent: {event}\n---\n\n"
@@ -365,7 +368,8 @@ def test_host_and_cli_prefer_the_same_draft(
     if verdict == "NO-GO":
         text = text.replace("verdict: GO", "verdict: NO-GO").replace(
             "## Verification",
-            "## Findings\n\n- F1: P1 correctness Fix the cache.\n\n## Verification",
+            "## Findings\n\n- F1: P1 correctness The cache returns a stale record. "
+            "Occurs when: a caller retries a write.\n\n## Verification",
         )
     run, prepared = make(tmp_path, text, "review-7.doc.md")
     directory = tmp_path / "ws" / ".git" / "tbhb-alpha"
