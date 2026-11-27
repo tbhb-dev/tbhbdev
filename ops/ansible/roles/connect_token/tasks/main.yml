@@ -1,0 +1,46 @@
+---
+- name: Check token storage settings
+  ansible.builtin.assert:
+    that:
+      - ansible_facts.system in ['Linux', 'Darwin']
+      - connect_token_storage in ['native', 'file']
+      - ansible_facts.system == 'Darwin' or connect_token_storage == 'file'
+      - connect_token_ref is match(('^op://' ~ '[^/]+/[^/]+/[^/]+$'))
+      - connect_token_home is match('^/[^\n]+$')
+      - connect_token_file.startswith(connect_token_home + '/')
+      - "'..' not in connect_token_file.split('/')"
+    quiet: true
+
+# Connect as agent for this role. The dedicated playbook uses its exported
+# key, with IdentityAgent none; no sudo or operator keychain is involved.
+- name: Check the remote identity
+  ansible.builtin.command: id -un
+  register: connect_token_identity
+  changed_when: false
+  check_mode: false
+
+- name: Require an agent connection
+  ansible.builtin.assert:
+    that: connect_token_identity.stdout == 'agent'
+    quiet: true
+
+- name: Install the token from the controller lookup on stdin
+  ansible.builtin.command:
+    argv:
+      - /bin/bash
+      - -c
+      - "{{ lookup('ansible.builtin.file', role_path + '/files/install.sh') }}"
+      - connect-token-install
+      - "{{ connect_token_storage }}"
+      - "{{ ansible_facts.system }}"
+      - "{{ connect_token_file }}"
+    stdin: "{{ lookup('ansible.builtin.pipe', connect_token_lookup_command + ' ' + (connect_token_ref | quote)) }}"
+    stdin_add_newline: false
+  environment:
+    HOME: "{{ connect_token_home }}"
+    SSH_AUTH_SOCK: ""
+  register: connect_token_install
+  changed_when: connect_token_install.stdout == 'changed'
+  no_log: true
+  diff: false
+  when: not ansible_check_mode

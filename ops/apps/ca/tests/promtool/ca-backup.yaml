@@ -1,0 +1,50 @@
+---
+rule_files: [rules.yaml]
+evaluation_interval: 1m
+tests:
+  - name: A recent success recovers a failure
+    interval: 1m
+    input_series:
+      - series: 'ca_backup_last_run_failed{host="nas-a"}'
+        values: '0 1 0'
+      - series: 'ca_backup_last_success_or_start_timestamp_seconds{host="nas-a"}'
+        values: '0 0 120'
+    alert_rule_test:
+      - eval_time: 0m
+        alertname: CaBackupUnhealthy
+      - eval_time: 1m
+        alertname: CaBackupUnhealthy
+        exp_alerts:
+          - exp_labels: {service: ca-backup, severity: high, env: prd, host: nas-a}
+      - eval_time: 2m
+        alertname: CaBackupUnhealthy
+
+  - name: The first backup becomes overdue 26 hours after monitoring starts
+    interval: 1m
+    input_series:
+      - series: 'ca_backup_last_run_failed{host="nas-a"}'
+        values: '0+0x1560'
+      - series: 'ca_backup_last_success_or_start_timestamp_seconds{host="nas-a"}'
+        values: '0+0x1560'
+    alert_rule_test:
+      - eval_time: 25h59m
+        alertname: CaBackupUnhealthy
+      - eval_time: 26h
+        alertname: CaBackupUnhealthy
+        exp_alerts:
+          - exp_labels: {service: ca-backup, severity: high, env: prd, host: nas-a}
+
+  - name: A stopped reporter cannot hide missing backups
+    interval: 1m
+    input_series:
+      - series: 'ca_backup_last_success_or_start_timestamp_seconds{host="nas-a"}'
+        values: '0 60'
+      - series: 'ca_backup_last_success_or_start_timestamp_seconds{host="other"}'
+        values: '0+60x1562'
+    alert_rule_test:
+      - eval_time: 26h
+        alertname: CaBackupUnhealthy
+      - eval_time: 26h1m
+        alertname: CaBackupUnhealthy
+        exp_alerts:
+          - exp_labels: {service: ca-backup, severity: high, env: prd, host: nas-a}

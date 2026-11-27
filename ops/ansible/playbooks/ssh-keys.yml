@@ -1,0 +1,11 @@
+---
+# Step 1 of per-host ssh keys: gives the agent and ops accounts each an
+# ed25519 key where none exists, and prints the public halves to commit later.
+# It only adds keys. It never edits authorized_keys or replaces a key file.
+#   mise run playbook -- playbooks/ssh-keys.yml --check --diff
+- name: Create per-host ssh keys
+  hosts: agent_hosts:!windows
+  gather_facts: true
+  become: true
+  roles:
+    - ssh_host_keys

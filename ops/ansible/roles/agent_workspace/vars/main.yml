@@ -1,0 +1,3 @@
+---
+# Not a default: nothing may point the clones outside the run account's home.
+agent_workspace_root: "{{ agent_workspace_home }}/Code"

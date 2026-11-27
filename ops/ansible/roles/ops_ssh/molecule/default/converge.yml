@@ -1,0 +1,3 @@
+---
+- name: Run the lab SSH playbook
+  ansible.builtin.import_playbook: ../../../../playbooks/lab-ssh.yml

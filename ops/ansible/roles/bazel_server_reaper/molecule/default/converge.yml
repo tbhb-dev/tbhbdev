@@ -1,0 +1,11 @@
+---
+- name: Converge
+  hosts: all
+  become: true
+  pre_tasks:
+    - name: Create the agent account
+      ansible.builtin.user:
+        name: agent
+        create_home: false
+  roles:
+    - bazel_server_reaper

@@ -1,0 +1,8 @@
+---
+- name: prepare | Install the firewall's revert helper
+  ansible.builtin.copy:
+    src: host-hardening-revert.sh
+    dest: /usr/local/sbin/host-hardening-revert
+    owner: root
+    group: root
+    mode: "0755"

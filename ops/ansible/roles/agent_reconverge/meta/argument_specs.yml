@@ -1,0 +1,27 @@
+---
+argument_specs:
+  main:
+    short_description: Schedule agent account settings reconverge on Linux and macOS
+    options:
+      agent_reconverge_account:
+        type: str
+        default: agent
+        description: Existing account that runs the reconverge job.
+      agent_reconverge_clone:
+        type: str
+        required: true
+        description: Existing agent-config clone path relative to the account home.
+      agent_reconverge_interval_seconds:
+        type: int
+        default: 900
+        description: Positive interval between reconverge runs in seconds.
+      agent_reconverge_macos_python_version:
+        type: str
+        default: "3.13.18"
+        description: Full CPython version of the pinned macOS archive.
+      agent_reconverge_macos_python_url:
+        type: str
+        description: URL of the pinned arm64 macOS install_only archive.
+      agent_reconverge_macos_python_sha256:
+        type: str
+        description: SHA-256 of the archive from the release's SHA256SUMS file.

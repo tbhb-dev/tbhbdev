@@ -1,0 +1,250 @@
+{
+  "uid": "o11y-agents-traces",
+  "title": "Agent traces",
+  "tags": [
+    "o11y",
+    "agents"
+  ],
+  "description": "Search, filter and follow Claude Code and Codex traces in Tempo. Click a trace ID to open it below, then read its logs.",
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "5m",
+  "time": {
+    "from": "now-6h",
+    "to": "now"
+  },
+  "links": [
+    {
+      "title": "Agents",
+      "type": "dashboards",
+      "tags": [
+        "agents"
+      ],
+      "keepTime": true,
+      "includeVars": true
+    }
+  ],
+  "templating": {
+    "list": [
+      {
+        "name": "service",
+        "label": "Tool (service.name)",
+        "type": "custom",
+        "multi": true,
+        "includeAll": false,
+        "query": "claude-code,codex_exec",
+        "options": [
+          {
+            "selected": true,
+            "text": "claude-code",
+            "value": "claude-code"
+          },
+          {
+            "selected": true,
+            "text": "codex_exec",
+            "value": "codex_exec"
+          }
+        ],
+        "current": {
+          "selected": true,
+          "text": [
+            "claude-code",
+            "codex_exec"
+          ],
+          "value": [
+            "claude-code",
+            "codex_exec"
+          ]
+        }
+      },
+      {
+        "name": "host",
+        "label": "Host (host.name)",
+        "type": "query",
+        "datasource": {
+          "type": "tempo",
+          "uid": "tempo"
+        },
+        "query": {
+          "type": 1,
+          "label": "host.name",
+          "refId": "TempoDatasourceVariableQueryEditor-VariableQuery"
+        },
+        "refresh": 2,
+        "multi": true,
+        "includeAll": true,
+        "allValue": ".*",
+        "current": {
+          "selected": true,
+          "text": [
+            "All"
+          ],
+          "value": [
+            "$__all"
+          ]
+        }
+      },
+      {
+        "name": "account",
+        "label": "Account (tbhb.account)",
+        "type": "query",
+        "datasource": {
+          "type": "tempo",
+          "uid": "tempo"
+        },
+        "query": {
+          "type": 1,
+          "label": "tbhb.account",
+          "refId": "TempoDatasourceVariableQueryEditor-VariableQuery"
+        },
+        "refresh": 2,
+        "multi": true,
+        "includeAll": true,
+        "allValue": ".*",
+        "current": {
+          "selected": true,
+          "text": [
+            "All"
+          ],
+          "value": [
+            "$__all"
+          ]
+        }
+      },
+      {
+        "name": "extra",
+        "label": "Extra TraceQL (account, host, model)",
+        "type": "textbox",
+        "query": "",
+        "description": "Optional TraceQL, for example: && resource.tbhb.account = \"agent\" (Codex traces carry no account)"
+      },
+      {
+        "name": "traceId",
+        "label": "Trace ID",
+        "type": "textbox",
+        "query": "01f9bed87b10271dea4b337304790ae4",
+        "description": "Click a trace ID in the table, or paste one."
+      }
+    ]
+  },
+  "panels": [
+    {
+      "id": 1,
+      "type": "table",
+      "title": "Traces",
+      "datasource": {
+        "type": "tempo",
+        "uid": "tempo"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 0,
+        "w": 24,
+        "h": 11
+      },
+      "description": "TraceQL search over the selected time range. Click a trace ID to open it below.",
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "tempo",
+            "uid": "tempo"
+          },
+          "queryType": "traceql",
+          "query": "{ resource.service.name =~ \"${service:pipe}\" && name =~ \"codex.exec|claude.*\" && (resource.host.name =~ \"${host:pipe}\" || resource.host.name = nil) && (resource.tbhb.account =~ \"${account:pipe}\" || resource.tbhb.account = nil) ${extra} }",
+          "limit": 50,
+          "tableType": "traces"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "traceID"
+            },
+            "properties": [
+              {
+                "id": "links",
+                "value": [
+                  {
+                    "title": "Open trace",
+                    "url": "/d/o11y-agents-traces/agent-traces?${__url_time_range}&${service:queryparam}&${host:queryparam}&${account:queryparam}&${extra:queryparam}&var-traceId=${__value.raw}"
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "showHeader": true
+      }
+    },
+    {
+      "id": 2,
+      "type": "traces",
+      "title": "Trace $traceId",
+      "datasource": {
+        "type": "tempo",
+        "uid": "tempo"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 11,
+        "w": 24,
+        "h": 14
+      },
+      "description": "The trace picked in the table. Starts on a sample trace until you pick one.",
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "tempo",
+            "uid": "tempo"
+          },
+          "queryType": "traceql",
+          "query": "$traceId",
+          "limit": 20,
+          "tableType": "traces"
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "type": "logs",
+      "title": "Logs for trace $traceId",
+      "datasource": {
+        "type": "loki",
+        "uid": "loki"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 25,
+        "w": 24,
+        "h": 9
+      },
+      "description": "Loki lines that mention the picked trace ID.",
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "loki",
+            "uid": "loki"
+          },
+          "expr": "{service_name=~\".+\"} |= \"$traceId\"",
+          "queryType": "range",
+          "maxLines": 200
+        }
+      ],
+      "options": {
+        "showTime": true,
+        "wrapLogMessage": true,
+        "sortOrder": "Ascending",
+        "enableLogDetails": true
+      }
+    }
+  ]
+}

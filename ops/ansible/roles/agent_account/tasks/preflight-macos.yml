@@ -1,0 +1,73 @@
+---
+# Read only identity attributes; no directory records or password hashes.
+# Listing all holders catches duplicate ids even when the expected name exists.
+- name: preflight-macos | Look up group ids
+  ansible.builtin.command:
+    argv: [dscl, '.', -list, /Groups, PrimaryGroupID]
+  register: agent_account_macos_groups
+  check_mode: false
+  changed_when: false
+
+- name: preflight-macos | Look up user ids
+  ansible.builtin.command:
+    argv: [dscl, '.', -list, /Users, UniqueID]
+  register: agent_account_macos_users
+  check_mode: false
+  changed_when: false
+
+- name: preflight-macos | Check devel's gid
+  ansible.builtin.assert:
+    that:
+      - >-
+          agent_account_macos_groups.stdout_lines | select('match', '^devel\s') | list == [] or
+          agent_account_macos_groups.stdout_lines | select('match', '^devel\s+33835\s*$') | list | length == 1
+    fail_msg: the group devel should have gid 33835
+    quiet: true
+
+- name: preflight-macos | Check ownership of the fixed gid
+  ansible.builtin.assert:
+    that:
+      - >-
+          agent_account_macos_groups.stdout_lines | select('search', '\s33835\s*$') |
+          reject('match', '^devel\s') | list | length == 0
+    fail_msg: gid 33835 belongs to another group, not devel
+    quiet: true
+
+- name: preflight-macos | Check agent's uid
+  ansible.builtin.assert:
+    that:
+      - >-
+          agent_account_macos_users.stdout_lines | select('match', '^agent\s') | list == [] or
+          agent_account_macos_users.stdout_lines | select('match', '^agent\s+24368\s*$') | list | length == 1
+    fail_msg: the user agent should have uid 24368
+    quiet: true
+
+- name: preflight-macos | Check ownership of the fixed uid
+  ansible.builtin.assert:
+    that:
+      - >-
+          agent_account_macos_users.stdout_lines | select('search', '\s24368\s*$') |
+          reject('match', '^agent\s') | list | length == 0
+    fail_msg: uid 24368 belongs to another user, not agent
+    quiet: true
+
+- name: preflight-macos | Remember whether agent exists
+  ansible.builtin.set_fact:
+    agent_account_new_user: >-
+      {{ agent_account_macos_users.stdout_lines | select('match', '^agent\s') | list | length == 0 }}
+    agent_account_home: /Users/example-user
+
+- name: preflight-macos | Look up agent's primary gid
+  ansible.builtin.command:
+    argv: [id, -g, agent]
+  register: agent_account_macos_agent_gid
+  when: not agent_account_new_user
+  check_mode: false
+  changed_when: false
+
+- name: preflight-macos | Check agent's primary gid
+  ansible.builtin.assert:
+    that:
+      - agent_account_new_user or agent_account_macos_agent_gid.stdout | trim == '33835'
+    fail_msg: the user agent should have primary gid 33835
+    quiet: true

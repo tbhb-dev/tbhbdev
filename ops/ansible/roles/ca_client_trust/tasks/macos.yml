@@ -1,0 +1,25 @@
+---
+- name: macos | Read the Apple root certificates
+  ansible.builtin.command:
+    argv: [/usr/bin/security, find-certificate, -a, -p, /System/Library/Keychains/SystemRootCertificates.keychain]
+  register: ca_client_trust_apple_roots
+  check_mode: false
+  changed_when: false
+  when: ca_client_trust_macos_accounts | length > 0
+
+- name: macos | Require an Apple root certificate bundle
+  ansible.builtin.assert:
+    that: "'-----END CERTIFICATE-----' in ca_client_trust_apple_roots.stdout"
+    quiet: true
+  when: ca_client_trust_macos_accounts | length > 0
+
+- name: macos | Configure each managed account
+  ansible.builtin.include_tasks: macos-account.yml
+  loop: "{{ ca_client_trust_macos_accounts }}"
+  loop_control:
+    loop_var: ca_client_trust_account
+  vars:
+    ca_client_trust_account_home: "{{ ca_client_trust_macos_homes[ca_client_trust_account] }}"
+    ca_client_trust_account_dir: "{{ ca_client_trust_account_home }}/.config/tbhb"
+    ca_client_trust_account_bundle: "{{ ca_client_trust_account_dir }}/ca-bundle.pem"
+    ca_client_trust_account_root: "{{ ca_client_trust_account_dir }}/step-ca-root.pem"

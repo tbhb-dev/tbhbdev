@@ -23,8 +23,9 @@ inputs:
     default: .
   query:
     description: >-
-      An optional one-line Bazel query that narrows the candidate tests.
+      An optional one-line Bazel query that narrows the graph-based candidates.
       By default the candidates come from the root and shared rules modules.
+      Workspace checks can also be selected directly from changed paths.
       When an affected test is tagged `manual`, the action falls back to
       test patterns that can run it through a test_suite.
     required: false

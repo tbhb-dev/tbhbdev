@@ -1,0 +1,69 @@
+---
+# cspell:words synogroup memberadd
+argument_specs:
+  main:
+    short_description: Check NAS accounts, and set the ops password or authorize controller keys on request
+    description:
+      - >-
+          Asserts that each account exists, is in the required groups, has the required shell, and
+          has an explicit No access entry ahead of every allow entry in the ACL of each backup
+          share. It reads /etc/passwd and /etc/group, and each share through synoshare and
+          synoacltool with become. The run fails and lists every gap, and changes nothing.
+          Run it after nas_python, since it needs the Python that role installs.
+      - >-
+          The tag dsm_accounts_set_password also carries the tag never, so nothing runs it unless
+          the command line names it. It sets the DSM password of ops from the vault with synouser
+          --setpw. That needs a working become, so the first password on a NAS is set as root by
+          another route.
+      - >-
+          The tag dsm_accounts_ops_keys also carries the tag never. It adds controller session
+          keys for ops without become and never removes an existing key line.
+      - >-
+          The tag dsm_accounts_ops_retire_lab_ops also carries the tag never. It proves the
+          controller session key login, removes only the retired shared lab-ops key, requires
+          its public key refusal, and proves a fresh session key login. It needs no become;
+          pass -e ansible_become_password= to avoid the inventory's password lookup.
+      - >-
+          The tag dsm_accounts_agent_log_group also carries never. It adds only agent to the
+          existing DSM log group through synogroup --memberadd with become, reads back the
+          membership, and proves read access to /var/log/auth.log as agent without become.
+    options:
+      dsm_accounts_agent_log_private_key_file:
+        type: str
+        description: >-
+          Path on the controller to an existing private key authorized for agent on the NAS.
+          Required by the dsm_accounts_agent_log_group tag for its separate unprivileged
+          login proof. No key is installed or read into Ansible output.
+      dsm_accounts_ops_keys:
+        type: list
+        elements: str
+        description: >-
+          The authorized key lines for ops. Defaults to ssh_controller_keys passed through
+          authorized_lines, limiting each key to its controller's tailnet addresses.
+      dsm_accounts_accounts:
+        type: list
+        elements: str
+        default: [agent, ops]
+        description: The accounts to check.
+      dsm_accounts_groups:
+        type: list
+        elements: str
+        default: [administrators, docker]
+        description: The groups each account must be in.
+      dsm_accounts_shell:
+        type: str
+        default: /bin/sh
+        description: The shell each account must have.
+      dsm_accounts_backup_shares:
+        type: list
+        elements: str
+        required: true
+        description: The backup shares, by name, where each account needs a No access entry.
+      dsm_accounts_password_ref:
+        type: str
+        description: The op reference of ops' DSM password. Defaults to nas_ops_password_ref from group_vars/nas.yml.
+      dsm_accounts_lookup_command:
+        type: str
+        description: >-
+          The controller command that reads a reference. Defaults to
+          nas_secret_command from group_vars/nas.yml.

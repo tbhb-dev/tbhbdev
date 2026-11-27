@@ -1,0 +1,42 @@
+---
+- name: Prepare
+  hosts: all
+  gather_facts: false
+  tasks:
+    - name: Create the ops account
+      ansible.builtin.user:
+        name: ops
+        create_home: true
+        shell: /bin/bash
+
+    - name: Wait for the nested Docker daemon
+      ansible.builtin.command: docker info
+      register: o11y_test_docker
+      changed_when: false
+      until: o11y_test_docker.rc == 0
+      retries: 30
+      delay: 2
+
+    - name: Create the controller fixture bin directory
+      ansible.builtin.file:
+        path: "{{ lookup('env', 'MOLECULE_EPHEMERAL_DIRECTORY') }}/bin"
+        state: directory
+        mode: '0700'
+      delegate_to: localhost
+      when: inventory_hostname == ansible_play_hosts_all[0]
+
+    - name: Install the controller render wrapper
+      ansible.builtin.template:
+        src: fixtures/tbhbops.j2
+        dest: "{{ lookup('env', 'MOLECULE_EPHEMERAL_DIRECTORY') }}/bin/tbhbops"
+        mode: '0700'
+      delegate_to: localhost
+      when: inventory_hostname == ansible_play_hosts_all[0]
+
+    - name: Install the controller 1Password fixture
+      ansible.builtin.copy:
+        src: fixtures/op
+        dest: "{{ lookup('env', 'MOLECULE_EPHEMERAL_DIRECTORY') }}/bin/op"
+        mode: '0700'
+      delegate_to: localhost
+      when: inventory_hostname == ansible_play_hosts_all[0]

@@ -1,0 +1,71 @@
+---
+- name: health | Read the services defined by the selected release
+  ansible.builtin.command:
+    argv: [docker, compose, config, --services]
+    chdir: "{{ o11y_target }}"
+  register: o11y_release_services
+  changed_when: false
+
+# Compose emits one JSON object per line; older versions emit a JSON array.
+- name: health | Wait for every expected container to be running and healthy
+  vars:
+    o11y_expected_services: >-
+      {{ ['grafana', 'rustfs', 'loki', 'tempo', 'mimir', 'alloy', 'grafana-tls']
+        | intersect(o11y_release_services.stdout_lines) }}
+    o11y_containers: >-
+      {{ o11y_health.stdout | from_json
+        if o11y_health.stdout.strip().startswith('[')
+        else o11y_health.stdout_lines | map('from_json') | list }}
+    o11y_long_running: >-
+      {{ o11y_containers | selectattr('Service', 'in', o11y_expected_services) | list }}
+  ansible.builtin.command:
+    argv: [docker, compose, ps, --all, --format, json]
+    chdir: "{{ o11y_target }}"
+  register: o11y_health
+  changed_when: false
+  until:
+    - o11y_expected_services | difference(o11y_long_running | map(attribute='Service')) | length == 0
+    - o11y_long_running | length == o11y_expected_services | length
+    - o11y_long_running | map(attribute='State') | unique | list == ['running']
+    - o11y_long_running | map(attribute='Health') | difference(['', 'healthy']) | length == 0
+  retries: "{{ o11y_health_retries }}"
+  delay: "{{ o11y_health_delay }}"
+
+- name: health | Probe services without a Compose healthcheck inside their containers
+  vars:
+    o11y_containers: >-
+      {{ o11y_health.stdout | from_json
+        if o11y_health.stdout.strip().startswith('[')
+        else o11y_health.stdout_lines | map('from_json') | list }}
+  ansible.builtin.command:
+    argv: "{{ ['docker', 'compose', 'exec', '-T', item.service] + item.probe }}"
+    chdir: "{{ o11y_target }}"
+  loop:
+    - service: grafana
+      probe: [wget, -q, --spider, 'http://127.0.0.1:3000/api/health']
+    - service: rustfs
+      probe: [curl, -fsS, 'http://127.0.0.1:9000/health/ready']
+    - service: loki
+      probe: [/usr/bin/loki, -health, '-health.url=http://127.0.0.1:3100/ready']
+    - service: tempo
+      probe: [/tempo, -health, '-health.url=http://127.0.0.1:3200/ready']
+    - service: mimir
+      probe: [/o11y-health/busybox, wget, -q, -O, /dev/null, 'http://127.0.0.1:8080/ready']
+    - service: alloy
+      probe:
+        - /bin/bash
+        - -c
+        - >-
+            exec 3<>/dev/tcp/127.0.0.1/12345 &&
+            printf 'GET /-/ready HTTP/1.0\r\n\r\n' >&3 &&
+            read -r status <&3 &&
+            [[ $status == *" 200 "* ]]
+  loop_control:
+    label: "{{ item.service }}"
+  when: >-
+    (o11y_containers | selectattr('Service', 'equalto', item.service) | first).Health | length == 0
+  register: o11y_probe
+  changed_when: false
+  until: o11y_probe.rc == 0
+  retries: "{{ o11y_health_retries }}"
+  delay: "{{ o11y_health_delay }}"

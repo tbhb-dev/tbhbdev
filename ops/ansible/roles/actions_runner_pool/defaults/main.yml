@@ -1,0 +1,49 @@
+---
+# The organization, the App, the runner group, the 1Password references
+# and the per-slot limits have no default: the private inventory sets them.
+actions_runner_pool_user: ghrunner
+actions_runner_pool_slots: 1
+actions_runner_pool_labels: [self-hosted, tbhb-dev-private]
+# Public resolvers, because the egress table blocks the host's private or tailnet ones.
+# ghcr.io/actions/actions-runner:2.338.0, the image index digest.
+# yamllint disable-line rule:line-length
+actions_runner_pool_image: ghcr.io/actions/actions-runner@sha256:4ffadc0002b2581327e06101fc8c06cd189232baf79fe561fac9caeb76f5e807
+# No slot daemon by default. Set to a docker:dind image digest to give each
+# slot its own Docker daemon, which a job reaches through DOCKER_HOST.
+actions_runner_pool_dind_image: ""
+# Keep work and shared /tmp in tmpfs unless the host opts into disk volumes.
+actions_runner_pool_work_on_disk: false
+# A slot whose Docker data root has less free than this registers no runner
+# and retries after its restart delay, so a job never starts on a full disk.
+actions_runner_pool_min_free: 20G
+actions_runner_pool_dind_cpus: "2"
+actions_runner_pool_dind_memory: 3g
+# service_account reads the App's key with a 1Password service-account token.
+# connect reads it through 1Password Connect, with a Connect token.
+actions_runner_pool_op_auth: service_account
+actions_runner_pool_op_token_file: .config/actions-runner/op-service-account-token
+# With connect, a non-empty reference makes the role write the token file from
+# the controller lookup. Empty leaves the file to the operator.
+actions_runner_pool_op_token_ref: ""
+# The lookup always runs on the controller, as its current account.
+actions_runner_pool_op_token_lookup_command: env -u SSH_AUTH_SOCK tbhbdev secret read
+# Empty derives it, as svc:op-connect under the tailnet's MagicDNS suffix.
+actions_runner_pool_op_connect_host: ""
+actions_runner_pool_api_url: https://api.github.com
+actions_runner_pool_name_prefix: pool
+# A job-started hook for every job, off by default. The job directory is a path
+# under the service user's home that something else fills, and it goes into each
+# job container read-only at /etc/actions-runner/job. The hook is a file in it
+# whose name ends in .sh, .ps1 or .js, the only extensions the runner runs. A
+# slot refuses to start while the named file is missing.
+actions_runner_pool_job_dir: ""
+actions_runner_pool_job_started_hook: ""
+# Secret files for the hook, off by default: a directory under the service user's
+# home that no container mounts, at most 16 KiB of files, apart from the job
+# directory, and used only with a hook. Each start sends its files, as base64 of
+# a tar stream, into a FIFO that the job container mounts, and the hook reads it
+# once before any step runs. Whatever the hook doesn't write somewhere is gone
+# with the stream.
+actions_runner_pool_job_secrets_dir: ""
+actions_runner_pool_start: true
+actions_runner_pool_enabled: true

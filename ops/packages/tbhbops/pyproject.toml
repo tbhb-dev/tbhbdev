@@ -1,0 +1,29 @@
+[project]
+name = "tbhbops"
+version = "0"
+description = "Shared Python library for the tbhb-dev/tbhbdev tools"
+requires-python = ">=3.15"
+dependencies = []
+
+# The launchers install only `dependencies`, offline in test_launchers, so
+# the library stays free of them. The Docker-route check in the tests reads
+# YAML.
+[project.optional-dependencies]
+yaml = ["pyyaml>=6.0.3"]
+
+[dependency-groups]
+test = ["ansible-core==2.22.0", "pyyaml>=6.0.3"]
+
+[tool.pytest]
+addopts = ["-ra", "--strict-markers", "--strict-config", "--import-mode=importlib"]
+
+# mutmut runs from this directory, because it maps a mutated file to its
+# module name only under src/.
+[tool.mutmut]
+source_paths = ["src"]
+also_copy = ["src"]
+pytest_add_cli_args_test_selection = ["tests"]
+
+[build-system]
+requires = ["uv_build>=0.13.0,<0.14"]
+build-backend = "uv_build"

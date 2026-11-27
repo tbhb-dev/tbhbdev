@@ -8,37 +8,6 @@ cli_py_library(
     srcs = ["__init__.py"],
     imports = ["../.."],
     visibility = ["//factory/cli:__subpackages__"],
-    deps = [
-        ":brief",
-        ":chase_context",
-        ":close",
-        ":gh_app",
-        ":gh_shim",
-        ":guard_agent_model",
-        ":guard_gh_config_dir",
-        ":guard_gh_poll",
-        ":guard_gh_pr",
-        ":guard_op",
-        ":guard_scripts",
-        ":guard_ssh_agent",
-        ":identity",
-        ":install",
-        ":pr_stats",
-        ":pre_push_guard",
-        ":pull_request",
-        ":repo_bootstrap",
-        ":review",
-        ":run_stop_hook",
-        ":session_context",
-        ":squash_merge",
-        ":state_guard",
-        ":verify_range",
-        ":version_check",
-        ":worktree_sweep",
-        "//factory/cli/src/tbhbdev/alpha/agent:__init__",
-        "//factory/cli/src/tbhbdev/alpha/loop:__init__",
-        "//factory/cli/src/tbhbdev/alpha/monorepo:__init__",
-    ],
 )
 
 cli_py_library(
@@ -192,9 +161,17 @@ cli_py_library(
     imports = ["../.."],
     visibility = ["//factory/cli:__subpackages__"],
     deps = [
+        ":identity_commands",
         ":process",
         ":repo",
     ],
+)
+
+cli_py_library(
+    name = "identity_commands",
+    srcs = ["identity_commands.py"],
+    imports = ["../.."],
+    visibility = ["//factory/cli:__subpackages__"],
 )
 
 cli_py_library(
@@ -263,12 +240,21 @@ cli_py_library(
         ":identity",
         ":install",
         ":opened",
+        ":pull_request_frontmatter",
         ":repo",
         ":secret_scan",
         ":size_gate",
         "@cli_pip//jsonschema",
-        "@cli_pip//pyyaml",
     ],
+)
+
+cli_py_library(
+    name = "pull_request_frontmatter",
+    srcs = ["pull_request_frontmatter.py"],
+    imports = ["../.."],
+    pyi_deps = ["@cli_pip//jsonschema"],
+    visibility = ["//factory/cli:__subpackages__"],
+    deps = ["@cli_pip//pyyaml"],
 )
 
 cli_py_library(
@@ -317,6 +303,7 @@ cli_py_library(
     visibility = ["//factory/cli:__subpackages__"],
     deps = [
         ":pull_request",
+        ":pull_request_frontmatter",
         ":review_doc",
         ":review_policy",
         ":review_threads",
@@ -335,6 +322,7 @@ cli_py_library(
     deps = [
         ":identity",
         ":pull_request",
+        ":pull_request_frontmatter",
         "//factory/cli/src/tbhbdev:content",
     ],
 )
@@ -354,7 +342,7 @@ cli_py_library(
     imports = ["../.."],
     visibility = ["//factory/cli:__subpackages__"],
     deps = [
-        ":pull_request",
+        ":pull_request_frontmatter",
         "@cli_pip//jsonschema",
     ],
 )
@@ -366,7 +354,7 @@ cli_py_library(
     imports = ["../.."],
     visibility = ["//factory/cli:__subpackages__"],
     deps = [
-        ":pull_request",
+        ":pull_request_frontmatter",
         ":review",
         ":review_doc",
         ":review_policy",
@@ -451,7 +439,7 @@ cli_py_library(
     visibility = ["//factory/cli:__subpackages__"],
     deps = [
         ":identity",
-        "//factory/cli/src/tbhbdev/alpha/agent:transport",
+        ":terminal",
     ],
 )
 
@@ -498,6 +486,51 @@ filegroup(
 filegroup(
     name = "size_gate_data",
     srcs = glob(["size_gate_data/**"]),
+    visibility = ["//factory/cli:__subpackages__"],
+)
+
+cli_py_library(
+    name = "command",
+    srcs = ["command.py"],
+    imports = ["../.."],
+    visibility = ["//factory/cli:__subpackages__"],
+    deps = [
+        ":brief",
+        ":chase_context",
+        ":close",
+        ":gh_app",
+        ":gh_shim",
+        ":guard_agent_model",
+        ":guard_gh_config_dir",
+        ":guard_gh_poll",
+        ":guard_gh_pr",
+        ":guard_op",
+        ":guard_scripts",
+        ":guard_ssh_agent",
+        ":identity",
+        ":install",
+        ":pr_stats",
+        ":pre_push_guard",
+        ":pull_request",
+        ":repo_bootstrap",
+        ":review",
+        ":run_stop_hook",
+        ":session_context",
+        ":squash_merge",
+        ":state_guard",
+        ":verify_range",
+        ":version_check",
+        ":worktree_sweep",
+        "//factory/cli/src/tbhbdev/alpha/agent:command",
+        "//factory/cli/src/tbhbdev/alpha/loop:command",
+        "//factory/cli/src/tbhbdev/alpha/monorepo:command",
+    ],
+)
+
+cli_py_library(
+    name = "terminal",
+    srcs = ["terminal.py"],
+    imports = ["../.."],
     visibility = ["//factory/cli:__subpackages__"],
 )
 

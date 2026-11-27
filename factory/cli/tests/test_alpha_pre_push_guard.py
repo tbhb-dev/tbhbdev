@@ -14,9 +14,8 @@ import httpx
 import pytest
 from fake_tool import pythonpath, write_fake
 
-from tbhbdev import alpha
+import tbhbdev.alpha.pre_push_guard as pg
 from tbhbdev.alpha import gh_shim, install
-from tbhbdev.alpha import pre_push_guard as pg
 from tbhbdev.alpha.agent import worktree
 
 ZERO = "0" * 40
@@ -91,7 +90,7 @@ def guard(
         "stdin",
         io.StringIO(f"refs/heads/topic {local} {ref} {remote}\n"),
     )
-    return alpha.main(["pre-push-guard", "origin", origin_url()], "tbhbdev alpha")
+    return pg.main(["origin", origin_url()], "tbhbdev alpha pre-push-guard")
 
 
 @pytest.mark.parametrize("kind", ["diverged", "forward", "new", "delete", "missing"])
@@ -167,7 +166,7 @@ def test_rewrite_outside_branches_is_refused(
     head = commit(repo)
     git(repo, "update-ref", "refs/remotes/origin/topic", head)
     monkeypatch.setattr(sys, "stdin", io.StringIO(f"HEAD {base} {ref} {head}\n"))
-    assert alpha.main(["pre-push-guard", "origin", origin_url()], "tbhbdev alpha") == 1
+    assert pg.main(["origin", origin_url()], "tbhbdev alpha pre-push-guard") == 1
     assert "non-fast-forward push refused" in capsys.readouterr().err
 
 
@@ -184,7 +183,14 @@ def install_hook(repo: Path, monkeypatch: pytest.MonkeyPatch) -> dict[str, str]:
     binary = repo.parent / "bin"
     binary.mkdir()
     tool = binary / "guard-cli"
-    write_fake(tool, "import sys\nfrom tbhbdev.cli import main\nsys.exit(main())\n")
+    write_fake(
+        tool,
+        "import sys\n"
+        "from tbhbdev.alpha.pre_push_guard import main\n"
+        "if sys.argv[1:3] != ['alpha', 'pre-push-guard']:\n"
+        "    sys.exit(f'unexpected command: {sys.argv[1:]}')\n"
+        "sys.exit(main(sys.argv[3:], 'tbhbdev alpha pre-push-guard'))\n",
+    )
     (binary / "tbhbdev").symlink_to(tool)
     monkeypatch.setenv("PATH", f"{binary}:{os.environ['PATH']}")
     monkeypatch.setenv("PYTHONPATH", pythonpath(Path(pg.__file__).parents[2]))
@@ -336,7 +342,7 @@ def test_protected_branch_refused(
         "delete": (ZERO, base),
     }[kind]
     monkeypatch.setattr(sys, "stdin", io.StringIO(f"HEAD {local} {ref} {remote}\n"))
-    assert alpha.main(["pre-push-guard", "origin", origin_url()], "tbhbdev alpha") == 1
+    assert pg.main(["origin", origin_url()], "tbhbdev alpha pre-push-guard") == 1
     out, err = capsys.readouterr()
     assert out == ""
     assert err == (
@@ -360,7 +366,7 @@ def test_protected_branch_refused_beside_other_refs(
             f"refs/heads/topic {head} refs/heads/main {base}\n"
         ),
     )
-    assert alpha.main(["pre-push-guard", "origin", origin_url()], "tbhbdev alpha") == 1
+    assert pg.main(["origin", origin_url()], "tbhbdev alpha pre-push-guard") == 1
     assert capsys.readouterr().err.startswith("refs/heads/main: push to a protected")
 
 
@@ -379,7 +385,7 @@ def test_protected_branch_does_not_hide_later_refs(
             f"refs/heads/topic {base} refs/heads/topic {head}\n"
         ),
     )
-    assert alpha.main(["pre-push-guard", "origin", origin_url()], "tbhbdev alpha") == 1
+    assert pg.main(["origin", origin_url()], "tbhbdev alpha pre-push-guard") == 1
     err = capsys.readouterr().err
     assert "refs/heads/main: push to a protected" in err
     assert "refs/heads/topic: non-fast-forward push refused" in err
@@ -399,7 +405,7 @@ def test_similar_names_are_not_protected(
 ) -> None:
     head = commit(repo)
     monkeypatch.setattr(sys, "stdin", io.StringIO(f"HEAD {head} {ref} {ZERO}\n"))
-    assert alpha.main(["pre-push-guard", "origin", origin_url()], "tbhbdev alpha") == 0
+    assert pg.main(["origin", origin_url()], "tbhbdev alpha pre-push-guard") == 0
 
 
 @pytest.mark.parametrize("default", ["upstream", "simple", "current"])
@@ -419,7 +425,7 @@ def test_tracking_main_is_refused_for_any_push_default(
         "stdin",
         io.StringIO(f"refs/heads/topic {head} refs/heads/main {base}\n"),
     )
-    assert alpha.main(["pre-push-guard", "origin", origin_url()], "tbhbdev alpha") == 1
+    assert pg.main(["origin", origin_url()], "tbhbdev alpha pre-push-guard") == 1
     assert "refs/heads/main: push to a protected" in capsys.readouterr().err
 
 
@@ -437,7 +443,7 @@ def test_bad_input_is_refused(
     monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
     monkeypatch.setattr(sys, "stdin", io.StringIO("broken\n"))
-    assert alpha.main(["pre-push-guard", "origin", origin_url()], "p") == 1
+    assert pg.main(["origin", origin_url()], "p pre-push-guard") == 1
     assert capsys.readouterr() == (
         "",
         "pre-push-guard: cannot inspect push; push refused\n",
@@ -450,9 +456,9 @@ def test_duplicate_and_empty_input(
     head = commit(repo)
     row = f"refs/heads/topic {head} refs/heads/topic {ZERO}\n"
     monkeypatch.setattr(sys, "stdin", io.StringIO(row + row))
-    assert alpha.main(["pre-push-guard", "origin", origin_url()], "p") == 0
+    assert pg.main(["origin", origin_url()], "p pre-push-guard") == 0
     monkeypatch.setattr(sys, "stdin", io.StringIO(""))
-    assert alpha.main(["pre-push-guard", "origin", origin_url()], "p") == 0
+    assert pg.main(["origin", origin_url()], "p pre-push-guard") == 0
     assert capsys.readouterr() == ("", "")
 
 
@@ -725,7 +731,7 @@ def test_an_agent_push_checks_every_destination_branch(
         f"HEAD {head} refs/heads/agent/x {ZERO}\nHEAD {head} refs/heads/feat/x {ZERO}\n"
     )
     monkeypatch.setattr(sys, "stdin", io.StringIO(rows))
-    assert alpha.main(["pre-push-guard", "origin", origin_url()], "p") == 1
+    assert pg.main(["origin", origin_url()], "p pre-push-guard") == 1
     assert capsys.readouterr().err == (
         "refs/heads/feat/x: push refused; push to an agent/<name> branch instead\n"
     )
@@ -777,7 +783,7 @@ def test_registered_signers_are_accepted_across_refs(
     body.insert(0, {"key": "invalid public key"})
     signing_key_request.configure_mock(return_value=json.dumps(body).encode())
 
-    assert alpha.main(["pre-push-guard", "origin", origin_url()], "p") == 0
+    assert pg.main(["origin", origin_url()], "p pre-push-guard") == 0
     signing_key_request.assert_called_once()
     request = signing_key_request.call_args.args[0]
     assert str(request.url) == (
@@ -826,7 +832,7 @@ def test_failed_key_lookup_falls_back_to_local_key(
     )
     monkeypatch.setattr(sys, "stdin", io.StringIO(rows))
 
-    assert alpha.main(["pre-push-guard", "origin", origin_url()], "p") == 1
+    assert pg.main(["origin", origin_url()], "p pre-push-guard") == 1
     signing_key_request.assert_called_once()
     err = capsys.readouterr().err
     for ref in ("one", "two"):
