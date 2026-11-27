@@ -1,26 +1,90 @@
-load("@python_deps//:requirements.bzl", "requirement")
-load("@rules_python//python:defs.bzl", "py_library", "py_test")
+# SPDX-License-Identifier: Apache-2.0
+# Copyright Tony Burns
+
+load("@tbhb_rules//lint:defs.bzl", "tombi_test")
 load("@tbhb_rules//repo:defs.bzl", "repo_files")
+load(
+    "@tbhb_rules_python//:defs.bzl",
+    "bandit_test",
+    "complexipy_test",
+    "deptry_test",
+    "pyrefly_test",
+    "ruff_test",
+    "vulture_test",
+)
+
+# gazelle:python_extension enabled
+# gazelle:resolve py opentelemetry @cli_pip//opentelemetry_api
+# gazelle:resolve py opentelemetry.trace @cli_pip//opentelemetry_api
+# gazelle:resolve py opentelemetry.trace.propagation.tracecontext @cli_pip//opentelemetry_api
+# gazelle:resolve py opentelemetry.util._decorator @cli_pip//opentelemetry_api
+# gazelle:resolve py opentelemetry.sdk.resources @cli_pip//opentelemetry_sdk
+# gazelle:resolve py opentelemetry.sdk.trace @cli_pip//opentelemetry_sdk
+# gazelle:resolve py opentelemetry.sdk.trace.sampling @cli_pip//opentelemetry_sdk
+# gazelle:resolve py opentelemetry.exporter.otlp.proto.http.trace_exporter @cli_pip//opentelemetry_exporter_otlp_proto_http
+# gazelle:resolve py opentelemetry.proto.collector.trace.v1.trace_service_pb2 @cli_pip//opentelemetry_proto
 
 repo_files()
 
-py_library(
-    name = "tbhb_telemetry",
-    srcs = ["tbhb_telemetry/__init__.py"],
-    imports = ["."],
-    visibility = ["//visibility:public"],
-    deps = [
-        requirement("opentelemetry-sdk"),
-        requirement("opentelemetry-exporter-otlp-proto-http"),
+filegroup(
+    name = "agents_live_dashboard",
+    srcs = ["dashboards/agents-live.json"],
+    visibility = ["//lib/telemetry:__subpackages__"],
+)
+
+ruff_test(
+    name = "ruff_test",
+    srcs = [":repo_files"],
+)
+
+pyrefly_test(
+    name = "pyrefly_test",
+    srcs = [":repo_files"],
+    args = [
+        "--config",
+        "lib/telemetry/pyproject.toml",
+        "--python-platform",
+        "linux",
     ],
 )
 
-py_test(
-    name = "telemetry_test",
-    srcs = [
-        "tbhb_telemetry/receiver.py",
-        "tbhb_telemetry/telemetry_test.py",
+vulture_test(
+    name = "vulture_test",
+    srcs = [":repo_files"],
+    args = [
+        "--config",
+        "lib/telemetry/pyproject.toml",
     ],
-    main = "tbhb_telemetry/telemetry_test.py",
-    deps = [":tbhb_telemetry"],
+)
+
+complexipy_test(
+    name = "complexipy_test",
+    srcs = [":repo_files"],
+    args = [
+        "--config",
+        "lib/telemetry/pyproject.toml",
+    ],
+)
+
+bandit_test(
+    name = "bandit_test",
+    srcs = [":repo_files"],
+    exclude = ["lib/telemetry/tests/*"],
+)
+
+deptry_test(
+    name = "deptry_test",
+    srcs = [":repo_files"],
+    chdir = "lib/telemetry",
+    roots = ["src"],
+)
+
+tombi_test(
+    name = "tombi_test",
+    srcs = [
+        ":IMPORT-MAP.toml",
+        ":pyproject.toml",
+    ],
+    config = "//:tombi.toml",
+    schemas = {"https://www.schemastore.org/ruff.json": "@schemastore_ruff//file"},
 )

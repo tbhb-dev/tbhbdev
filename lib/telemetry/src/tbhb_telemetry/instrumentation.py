@@ -1,8 +1,11 @@
+# SPDX-License-Identifier: Apache-2.0
+# Copyright Tony Burns
+
 """One bounded, best-effort trace for a synchronous CLI command."""
 
-import contextlib
+from __future__ import annotations
+
 import functools
-import http.client
 import ipaddress
 import json
 import os
@@ -10,9 +13,17 @@ import tempfile
 import threading
 import time
 from pathlib import Path
+from typing import TYPE_CHECKING, override
 from urllib.parse import urlsplit
 
-_state = None
+from tbhb_telemetry import exporter
+
+if TYPE_CHECKING:
+    from opentelemetry.sdk.trace import ReadableSpan
+    from opentelemetry.trace import Span
+
+
+_state: _Pending | None = None
 _installed = False
 _run_id = None
 _KEYS = {
@@ -32,17 +43,12 @@ def _quiet(function):
     return wrapped
 
 
-def _endpoint_port(url):
-    port = url.port
-    return port if port is not None else (443 if url.scheme == "https" else 80)
-
-
 def _drop_endpoint(url):
     host = url.hostname if url else None
     if not host:
         return None
     try:
-        port = str(_endpoint_port(url))
+        port = str(exporter.endpoint_port(url))
     except ValueError:
         return None
     host_limit = 128 - len(port) - 1
@@ -74,7 +80,7 @@ def _counter(delta=0, reason=None, url=None):
         file = directory / "drops.count"
         try:
             count = int(file.read_text())
-        except FileNotFoundError, ValueError:
+        except (FileNotFoundError, ValueError):
             count = 0
         if reason:
             with (directory / "drops.jsonl").open("a") as log:
@@ -104,6 +110,20 @@ def _counter(delta=0, reason=None, url=None):
         return count
 
 
+def _endpoint_allowed(host):
+    try:
+        allowed = host == "localhost" or ipaddress.ip_address(host).is_loopback
+    except ValueError:
+        allowed = False
+    raw_hosts = os.getenv("TBHB_TELEMETRY_ALLOW_HOSTS", "")
+    hosts = [
+        entry.strip().lower()
+        for entry in (raw_hosts if len(raw_hosts) <= 4096 else "").split(",")
+    ]
+    hosts = [entry for entry in hosts if 0 < len(entry) <= 253][:8]
+    return allowed or host in hosts
+
+
 class _Pending:
     def __init__(self, name, version):
         self.name, self.start = name, time.time_ns()
@@ -117,19 +137,28 @@ class _Pending:
         self.inbound = {
             key: os.getenv(key.upper(), "") for key in ("traceparent", "tracestate")
         }
-        self.root, self.spans, self.lost = None, [], 0
+        self.root: Span | None = None
+        self.spans: list[ReadableSpan] = []
+        self.lost = 0
 
-    def materialize(self):
+    def _ensure_root(self) -> Span:
         if self.root is None:
             from opentelemetry import context, trace
             from opentelemetry.sdk.resources import Resource
-            from opentelemetry.sdk.trace import TracerProvider
+            from opentelemetry.sdk.trace import SpanProcessor, TracerProvider
             from opentelemetry.sdk.trace.sampling import ALWAYS_ON
             from opentelemetry.trace.propagation.tracecontext import (
                 TraceContextTextMapPropagator,
             )
 
-            self.provider = TracerProvider(
+            pending = self
+
+            class Processor(SpanProcessor):
+                @override
+                def on_end(self, span: ReadableSpan) -> None:
+                    pending._record_span(span)
+
+            provider = TracerProvider(
                 resource=Resource(
                     {
                         "service.name": self.attributes["service.name"],
@@ -139,8 +168,8 @@ class _Pending:
                 sampler=ALWAYS_ON,
                 shutdown_on_exit=False,
             )
-            self.provider.add_span_processor(self)
-            self.tracer = self.provider.get_tracer("tbhb_telemetry")
+            provider.add_span_processor(Processor())
+            self.tracer = provider.get_tracer("tbhb_telemetry")
             self.root = self.tracer.start_span(
                 self.name,
                 attributes=self.attributes,
@@ -150,16 +179,15 @@ class _Pending:
                 set_status_on_exception=False,
             )
             self.token = context.attach(trace.set_span_in_context(self.root))
-        return self.root.get_span_context()
+        return self.root
 
-    def on_start(self, span, parent_context=None):
-        pass
+    def materialize(self):
+        return self._ensure_root().get_span_context()
 
-    def _on_ending(self, span):
-        pass
-
-    def on_end(self, span):
-        if len(self.spans) < 511 or span.context == self.root.get_span_context():
+    def _record_span(self, span: ReadableSpan) -> None:
+        if len(self.spans) < 511 or (
+            self.root is not None and span.context == self.root.get_span_context()
+        ):
             self.spans.append(span)
         else:
             self.lost += 1
@@ -167,14 +195,14 @@ class _Pending:
     def finish(self, code, error):
         from opentelemetry import context, trace
 
-        self.materialize()
-        self.root.set_attribute("process.exit.code", code)
+        root = self._ensure_root()
+        root.set_attribute("process.exit.code", code)
         if error or code:
-            self.root.set_attribute(
+            root.set_attribute(
                 "error.type", type(error).__name__ if error else "SystemExit"
             )
-            self.root.set_status(trace.StatusCode.ERROR)
-        self.root.end()
+            root.set_status(trace.StatusCode.ERROR)
+        root.end()
         context.detach(self.token)
         endpoint = os.getenv(
             "OTEL_EXPORTER_OTLP_ENDPOINT",
@@ -187,25 +215,14 @@ class _Pending:
             url, host = None, None
         if self.lost:
             _counter(self.lost, "capacity", url)
-        try:
-            allowed = host == "localhost" or ipaddress.ip_address(host).is_loopback
-        except ValueError:
-            allowed = False
-        raw_hosts = os.getenv("TBHB_TELEMETRY_ALLOW_HOSTS", "")
-        hosts = [
-            entry.strip().lower()
-            for entry in (raw_hosts if len(raw_hosts) <= 4096 else "").split(",")
-        ]
-        hosts = [entry for entry in hosts if 0 < len(entry) <= 253][:8]
-        allowed = allowed or host in hosts
-        if not allowed:
+        if not _endpoint_allowed(host):
             _counter(len(self.spans), "endpoint", url)
             return
         done, result = threading.Event(), []
 
         def send():
             try:
-                _export(self.spans, endpoint)
+                exporter.export(self.spans, endpoint)
                 result.append(True)
             except Exception:  # noqa: BLE001 -- Telemetry is best effort.
                 result.append(False)
@@ -225,55 +242,6 @@ class _Pending:
             _counter(-self.attributes["tbhb.export.dropped"])
 
 
-def _export(spans, endpoint):
-    from opentelemetry.exporter.otlp.proto.http.trace_exporter import encode_spans
-
-    url = urlsplit(endpoint)
-    connection = (
-        http.client.HTTPSConnection
-        if url.scheme == "https"
-        else http.client.HTTPConnection
-    )(url.hostname, _endpoint_port(url), timeout=0.25)
-    try:
-        connection.request(
-            "POST",
-            url.path.rstrip("/") + "/v1/traces",
-            encode_spans(spans).SerializeToString(),
-            {"Content-Type": "application/x-protobuf"},
-        )
-        if not 200 <= connection.getresponse().status < 300:
-            raise RuntimeError("collector rejected batch")
-    finally:
-        connection.close()
-
-
-class _Tracer:
-    def start_span(self, *args, **kwargs):
-        from opentelemetry import trace
-
-        try:
-            if _state:
-                _state.materialize()
-                kwargs.update(record_exception=False, set_status_on_exception=False)
-                return _state.tracer.start_span(*args, **kwargs)
-        except Exception:  # noqa: BLE001 -- Telemetry is best effort.
-            return trace.INVALID_SPAN
-        return trace.INVALID_SPAN
-
-    @contextlib.contextmanager
-    def start_as_current_span(self, *args, **kwargs):
-        from opentelemetry import trace
-
-        end = kwargs.pop("end_on_exit", True)
-        with trace.use_span(
-            self.start_span(*args, **kwargs),
-            end_on_exit=end,
-            record_exception=False,
-            set_status_on_exception=False,
-        ) as span:
-            yield span
-
-
 @_quiet
 def _setup(name, version):
     global _state, _installed
@@ -282,10 +250,35 @@ def _setup(name, version):
     from opentelemetry import trace
 
     if not _installed:
+        from opentelemetry.util._decorator import _agnosticcontextmanager
+
+        class Tracer(trace.Tracer):
+            def start_span(self, *args, **kwargs):
+                try:
+                    if _state:
+                        _state.materialize()
+                        kwargs.update(
+                            record_exception=False, set_status_on_exception=False
+                        )
+                        return _state.tracer.start_span(*args, **kwargs)
+                except Exception:  # noqa: BLE001 -- Telemetry is best effort.
+                    return trace.INVALID_SPAN
+                return trace.INVALID_SPAN
+
+            @_agnosticcontextmanager
+            def start_as_current_span(self, *args, **kwargs):
+                end = kwargs.pop("end_on_exit", True)
+                with trace.use_span(
+                    self.start_span(*args, **kwargs),
+                    end_on_exit=end,
+                    record_exception=False,
+                    set_status_on_exception=False,
+                ) as span:
+                    yield span
 
         class Provider(trace.TracerProvider):
             def get_tracer(self, *args, **kwargs):
-                return _Tracer()
+                return Tracer()
 
         if isinstance(trace.get_tracer_provider(), trace.ProxyTracerProvider):
             trace.set_tracer_provider(Provider())
@@ -316,18 +309,16 @@ def set_attributes(**kwargs):
     run_id = kwargs.get("tbhb.run.id")
     if isinstance(run_id, str) and len(run_id) <= 128:
         _run_id = run_id
-    if _state:
-        for key, value in kwargs.items():
-            if key in _KEYS and isinstance(value, str) and len(value) <= 128:
-                if key == "tbhb.agent.outcome" and value not in (
-                    "ok",
-                    "refused",
-                    "failed",
-                ):
-                    continue
-                _state.attributes[key] = value
-                if _state.root:
-                    _state.root.set_attribute(key, value)
+    if not _state:
+        return
+    for key, value in kwargs.items():
+        if key not in _KEYS or not isinstance(value, str) or len(value) > 128:
+            continue
+        if key == "tbhb.agent.outcome" and value not in ("ok", "refused", "failed"):
+            continue
+        _state.attributes[key] = value
+        if _state.root:
+            _state.root.set_attribute(key, value)
 
 
 def command(name, *, version, main):

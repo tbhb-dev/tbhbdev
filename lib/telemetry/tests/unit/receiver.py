@@ -1,7 +1,11 @@
+# SPDX-License-Identifier: Apache-2.0
+# Copyright Tony Burns
+
 """In-memory OTLP fixture, including a collector that never responds."""
 
 import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from typing import override
 
 from opentelemetry.proto.collector.trace.v1.trace_service_pb2 import (
     ExportTraceServiceRequest,
@@ -9,12 +13,12 @@ from opentelemetry.proto.collector.trace.v1.trace_service_pb2 import (
 
 
 class Receiver:
-    def __init__(self, stalled=False):
+    def __init__(self, stalled=False, *, status=200):
         self.batches, self.release = [], threading.Event()
         owner = self
 
         class Handler(BaseHTTPRequestHandler):
-            def do_POST(self):
+            def do_POST(self):  # noqa: V105 -- HTTP server dispatches by method name.
                 owner.batches.append(
                     ExportTraceServiceRequest.FromString(
                         self.rfile.read(int(self.headers["Content-Length"]))
@@ -23,11 +27,12 @@ class Receiver:
                 if stalled:
                     owner.release.wait(3)
                 else:
-                    self.send_response(200)
+                    self.send_response(status)
                     self.end_headers()
 
-            def log_message(self, *args):
-                pass
+            @override
+            def log_message(self, format, *args):
+                del format, args
 
         self.server = ThreadingHTTPServer(("localhost", 0), Handler)
         self.thread = threading.Thread(target=self.server.serve_forever, daemon=True)

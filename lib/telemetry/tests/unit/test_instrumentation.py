@@ -1,3 +1,6 @@
+# SPDX-License-Identifier: Apache-2.0
+# Copyright Tony Burns
+
 """Behavior and timing checks against real OTLP HTTP transport."""
 
 import contextlib
@@ -12,15 +15,17 @@ import tempfile
 import threading
 import time
 import unittest
-from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from ipaddress import IPv6Address
 from pathlib import Path
 from textwrap import dedent
 from unittest.mock import patch
 
-import tbhb_telemetry as telemetry
 from opentelemetry import trace
-from tbhb_telemetry.receiver import Receiver
+from opentelemetry.sdk.trace import Span
+from receiver import Receiver
+
+import tbhb_telemetry.instrumentation as telemetry
+from tbhb_telemetry import exporter
 
 
 class TelemetryTest(unittest.TestCase):
@@ -52,6 +57,7 @@ class TelemetryTest(unittest.TestCase):
 
     def test_trace(self):
         def main():
+            assert telemetry._state is not None
             self.assertIsNone(telemetry._state.root)
             telemetry.resolve("agent")
             telemetry.set_attributes(
@@ -65,6 +71,7 @@ class TelemetryTest(unittest.TestCase):
                 }
             )
             with trace.get_tracer("test").start_as_current_span("child") as child:
+                assert isinstance(child, Span)
                 self.assertEqual(child.parent, telemetry.materialize())
             return 7
 
@@ -117,7 +124,7 @@ class TelemetryTest(unittest.TestCase):
                         "main()"
                         if disabled is None
                         else (
-                            'from tbhb_telemetry import command\ncommand("sample", version="1", main=main)'
+                            'from tbhb_telemetry.instrumentation import command\ncommand("sample", version="1", main=main)'
                         )
                     )
                     result = subprocess.run(
@@ -212,7 +219,7 @@ class TelemetryTest(unittest.TestCase):
         for corrupt in ("", "corrupt"):
             with self.subTest(corrupt=corrupt):
                 file.write_text(corrupt)
-                with patch.object(telemetry, "_export", side_effect=RuntimeError):
+                with patch.object(exporter, "export", side_effect=RuntimeError):
                     self.assertEqual(self.run_command(), 0)
                 self.assertEqual(file.read_text(), "1")
                 self.run_command()
@@ -287,44 +294,44 @@ class TelemetryTest(unittest.TestCase):
 
     def test_failures_and_recovery(self):
         self.run_command()  # Warm SDK imports before measuring transport overhead.
-        with socket.socket() as reserved:
-            reserved.bind(("localhost", 0))
-            authority = f"localhost:{reserved.getsockname()[1]}"
-            os.environ["OTEL_EXPORTER_OTLP_ENDPOINT"] = "http://" + authority
+        rejected = Receiver(status=503)
+        self.addCleanup(rejected.close)
+        os.environ["OTEL_EXPORTER_OTLP_ENDPOINT"] = rejected.endpoint
+        authority = rejected.endpoint.removeprefix("http://")
 
-            def main():
-                telemetry.set_attributes(**{"tbhb.run.id": "closed-port"})
-                print("command")
-                return 3
+        def main():
+            telemetry.set_attributes(**{"tbhb.run.id": "rejected-batch"})
+            print("command")
+            return 3
 
-            output, errors = io.StringIO(), io.StringIO()
-            with contextlib.redirect_stdout(output), contextlib.redirect_stderr(errors):
-                start = time.monotonic()
-                self.assertEqual(self.run_command(main), 3)
-                elapsed = time.monotonic() - start
-            self.assertEqual((output.getvalue(), errors.getvalue()), ("command\n", ""))
-            (line,) = (self.drops() / "drops.jsonl").read_text().splitlines()
-            record = json.loads(line)
-            self.assertEqual(
-                (record["reason"], record["run_id"], record["endpoint"]),
-                ("export", "closed-port", authority),
-            )
-            print("closed-port overhead: %.2f ms" % (elapsed * 1000))
-            self.assertLess(elapsed, 0.1)
-            result = subprocess.run(
-                [
-                    sys.executable,
-                    "-c",
-                    'from tbhb_telemetry import command; raise SystemExit(command("sample", version="1", main=lambda: 0))',
-                ],
-                check=False,
-                capture_output=True,
-                timeout=3,
-            )
-            self.assertEqual(
-                (result.returncode, result.stdout, result.stderr), (0, b"", b"")
-            )
-            self.run_command()
+        output, errors = io.StringIO(), io.StringIO()
+        with contextlib.redirect_stdout(output), contextlib.redirect_stderr(errors):
+            start = time.monotonic()
+            self.assertEqual(self.run_command(main), 3)
+            elapsed = time.monotonic() - start
+        self.assertEqual((output.getvalue(), errors.getvalue()), ("command\n", ""))
+        (line,) = (self.drops() / "drops.jsonl").read_text().splitlines()
+        record = json.loads(line)
+        self.assertEqual(
+            (record["reason"], record["run_id"], record["endpoint"]),
+            ("export", "rejected-batch", authority),
+        )
+        print("rejected-batch overhead: %.2f ms" % (elapsed * 1000))
+        self.assertLess(elapsed, 0.1)
+        result = subprocess.run(
+            [
+                sys.executable,
+                "-c",
+                'from tbhb_telemetry.instrumentation import command; raise SystemExit(command("sample", version="1", main=lambda: 0))',
+            ],
+            check=False,
+            capture_output=True,
+            timeout=3,
+        )
+        self.assertEqual(
+            (result.returncode, result.stdout, result.stderr), (0, b"", b"")
+        )
+        self.run_command()
         os.environ["OTEL_EXPORTER_OTLP_ENDPOINT"] = self.receiver.endpoint
         self.run_command()
         self.run_command()
@@ -344,7 +351,7 @@ class TelemetryTest(unittest.TestCase):
             telemetry.set_attributes(**{"tbhb.run.id": "first-run"})
             raise SystemExit(1)
 
-        with patch.object(telemetry, "_export", side_effect=RuntimeError):
+        with patch.object(exporter, "export", side_effect=RuntimeError):
             with self.assertRaises(SystemExit):
                 self.run_command(main)
             self.assertEqual(self.run_command(), 0)
@@ -359,7 +366,7 @@ class TelemetryTest(unittest.TestCase):
             with self.subTest(size=size):
                 run_id = "a" * size
                 with patch.object(
-                    telemetry, "_export", side_effect=RuntimeError
+                    exporter, "export", side_effect=RuntimeError
                 ) as export:
                     self.run_command(
                         lambda run_id=run_id: telemetry.set_attributes(
@@ -388,7 +395,7 @@ class TelemetryTest(unittest.TestCase):
             telemetry.set_attributes(**{"tbhb.run.id": "previous"})
             telemetry.set_attributes(**{"tbhb.run.id": run_id})
 
-        with patch.object(telemetry, "_export") as export:
+        with patch.object(exporter, "export") as export:
             self.assertEqual(self.run_command(main), 0)
             host = ".".join(("a" * 60, "b" * 60, "c" * 20, "example.invalid"))
             os.environ["OTEL_EXPORTER_OTLP_ENDPOINT"] = f"http://{host}:4318"
@@ -454,7 +461,8 @@ class TelemetryTest(unittest.TestCase):
             import sys
             import threading
             from unittest.mock import patch
-            import tbhb_telemetry as telemetry
+            import tbhb_telemetry.instrumentation as telemetry
+            from tbhb_telemetry import exporter
 
             waiting, release = threading.Event(), threading.Event()
             wait = threading.Event.wait
@@ -475,7 +483,7 @@ class TelemetryTest(unittest.TestCase):
                 return 7
 
             with (
-                patch.object(telemetry, "_export", stalled_export),
+                patch.object(exporter, "export", stalled_export),
                 patch.object(threading.Event, "wait", wait_for_export),
             ):
                 sys.exit(telemetry.command("sample", version="1", main=main))
@@ -492,14 +500,14 @@ class TelemetryTest(unittest.TestCase):
 
     def test_endpoint_exporter_disabled_and_capacity(self):
         os.environ["OTEL_EXPORTER_OTLP_ENDPOINT"] = "http://collector.example:4318"
-        with patch.object(telemetry, "_export") as export:
+        with patch.object(exporter, "export") as export:
             self.assertEqual(self.run_command(), 0)
             export.assert_not_called()
         self.assertEqual(
             len((self.drops() / "drops.jsonl").read_text().splitlines()), 1
         )
         os.environ["OTEL_EXPORTER_OTLP_ENDPOINT"] = self.receiver.endpoint
-        with patch.object(telemetry, "_export", side_effect=RuntimeError):
+        with patch.object(exporter, "export", side_effect=RuntimeError):
             self.assertEqual(self.run_command(lambda: 6), 6)
         os.environ["OTEL_SDK_DISABLED"] = "true"
         with patch("opentelemetry.sdk.trace.TracerProvider") as provider:
@@ -609,58 +617,6 @@ class TelemetryTest(unittest.TestCase):
                             (record["reason"], record["count"]), ("endpoint", 1)
                         )
 
-    def export_to_loopback(self, host, family):
-        requests = []
-
-        class Handler(BaseHTTPRequestHandler):
-            def do_POST(self):
-                self.rfile.read(int(self.headers["Content-Length"]))
-                requests.append((self.command, self.path))
-                self.send_response(200)
-                self.end_headers()
-
-            def log_message(self, *args):
-                pass
-
-        class Server(ThreadingHTTPServer):
-            address_family = family
-
-        try:
-            server = Server((host, 0), Handler)
-        except OSError as error:
-            if family == socket.AF_INET6:
-                self.skipTest(f"IPv6 loopback ::1 cannot be bound: {error}")
-            raise
-        thread = threading.Thread(target=server.serve_forever, daemon=True)
-        thread.start()
-        try:
-            authority = f"[{host}]" if family == socket.AF_INET6 else host
-            telemetry._export([], f"http://{authority}:{server.server_port}/")
-            self.assertEqual(requests, [("POST", "/v1/traces")])
-        finally:
-            server.shutdown()
-            server.server_close()
-            thread.join()
-
-    def test_export_ipv6_loopback(self):
-        self.export_to_loopback("::1", socket.AF_INET6)
-
-    def test_export_ipv4_loopback(self):
-        self.export_to_loopback("127.0.0.1", socket.AF_INET)
-
-    def test_export_default_ports(self):
-        for scheme, host, port, constructor in (
-            ("http", "2001:db8::1", 80, "HTTPConnection"),
-            ("https", "fd00::1:10", 443, "HTTPSConnection"),
-        ):
-            with (
-                self.subTest(scheme=scheme),
-                patch.object(telemetry.http.client, constructor) as connection,
-            ):
-                connection.return_value.getresponse.return_value.status = 200
-                telemetry._export([], f"{scheme}://[{host}]/")
-                connection.assert_called_once_with(host, port, timeout=0.25)
-
     def test_endpoint_paths_preserve_process_output_and_exit(self):
         script = (
             'import sys\ndef main():\n    print("command output")\n'
@@ -683,7 +639,7 @@ class TelemetryTest(unittest.TestCase):
                         sys.executable,
                         "-c",
                         script
-                        + 'from tbhb_telemetry import command\nsys.exit(command("sample", version="1", main=main))',
+                        + 'from tbhb_telemetry.instrumentation import command\nsys.exit(command("sample", version="1", main=main))',
                     ],
                     env={**os.environ, "OTEL_EXPORTER_OTLP_ENDPOINT": endpoint},
                     check=False,
@@ -708,7 +664,7 @@ class TelemetryTest(unittest.TestCase):
         endpoint = "http://collector.example:4318"
         os.environ["OTEL_EXPORTER_OTLP_ENDPOINT"] = endpoint
         os.environ["TBHB_TELEMETRY_ALLOW_HOSTS"] = "collector.example"
-        with patch.object(telemetry, "_export", side_effect=RuntimeError) as export:
+        with patch.object(exporter, "export", side_effect=RuntimeError) as export:
             self.assertEqual(self.run_command(lambda: 6), 6)
             export.assert_called_once()
         self.assertEqual(
@@ -724,9 +680,7 @@ class TelemetryTest(unittest.TestCase):
             finished.set()
 
         try:
-            with patch.object(
-                telemetry, "_export", side_effect=stalled_export
-            ) as export:
+            with patch.object(exporter, "export", side_effect=stalled_export) as export:
                 start = time.monotonic()
                 self.assertEqual(self.run_command(lambda: 4), 4)
                 self.assertLess(time.monotonic() - start, 0.35)
@@ -742,7 +696,7 @@ class TelemetryTest(unittest.TestCase):
             release.set()
             self.assertTrue(finished.wait(1))
         os.environ["OTEL_SDK_DISABLED"] = "true"
-        with patch.object(telemetry, "_export") as export:
+        with patch.object(exporter, "export") as export:
             self.assertEqual(self.run_command(lambda: 5), 5)
             export.assert_not_called()
 
