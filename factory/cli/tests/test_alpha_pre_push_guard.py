@@ -189,16 +189,17 @@ def push(
     )
 
 
+def fake_prek(name: str) -> str:
+    assert name == "prek"
+    return "/unused/prek"
+
+
 def test_run_hook_confines_pushed_branches(
     repo: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    def resolve(name: str) -> str:
-        assert name == "prek"
-        return "/unused/prek"
-
     env = install_hook(repo, monkeypatch)
     env.pop(pg.RUN_NAME_ENV, None)
-    monkeypatch.setattr(worktree.host_tools, "resolve", resolve)
+    monkeypatch.setattr(worktree.host_tools, "resolve", fake_prek)
     worktree.install_hooks(repo, "example", git(repo, "rev-parse", "HEAD"))
     for destination, allowed in (
         ("refs/heads/agent/other", False),
@@ -214,6 +215,60 @@ def test_run_hook_confines_pushed_branches(
                 f"{destination}: this run may only push refs/heads/agent/example"
                 in result.stderr
             )
+
+
+@pytest.mark.parametrize("stale", [False, True], ids=["current", "stale"])
+def test_start_ref_rewrite(
+    repo: Path, monkeypatch: pytest.MonkeyPatch, *, stale: bool
+) -> None:
+    branch = "fix/topic"
+    ref = f"refs/heads/{branch}"
+    base = git(repo, "rev-parse", "HEAD")
+    old = commit(repo, "old topic")
+    git(repo, "push", "origin", f"HEAD:{ref}")
+    git(repo, "reset", "--hard", base)
+    new = commit(repo, "rewritten topic")
+    env = install_hook(repo, monkeypatch)
+    monkeypatch.setattr(worktree.host_tools, "resolve", fake_prek)
+    worktree.install_hooks(repo, "example", old, start_ref=ref)
+
+    lease = "--force-with-lease"
+    if stale:
+        git(repo, "update-ref", f"refs/remotes/origin/{branch}", base)
+        # Let Git send the update so the hook checks the stale tracking ref.
+        lease = f"{lease}={ref}:{old}"
+    result = push(repo, env, lease, "origin", f"HEAD:{branch}")
+    if stale:
+        assert result.returncode != 0
+        assert "the remote tip is not the fetched one" in result.stderr
+    else:
+        assert result.returncode == 0, result.stderr
+        assert f"{ref} rewritten {old} -> {new}" in result.stderr
+    assert git(repo.parent / "remote.git", "rev-parse", ref) == (old if stale else new)
+
+
+@pytest.mark.parametrize(
+    ("start_ref", "ref", "deleting", "reason"),
+    [
+        ("main", "main", False, "push to a protected branch refused"),
+        ("master", "master", False, "push to a protected branch refused"),
+        ("topic", "agent/example", False, "this run may only push refs/heads/topic"),
+        ("topic", "topic", True, "deletion refused"),
+    ],
+)
+def test_start_ref_push_refusals(
+    monkeypatch: pytest.MonkeyPatch,
+    start_ref: str,
+    ref: str,
+    *,
+    deleting: bool,
+    reason: str,
+) -> None:
+    monkeypatch.setenv(pg.RUN_NAME_ENV, "example")
+    monkeypatch.setenv(pg.RUN_START_REF_ENV, f"refs/heads/{start_ref}")
+    assert reason in pg.destination_problem(
+        f"refs/heads/{ref}", deleting=deleting, agent_push=True
+    )
 
 
 def test_real_pushes_through_the_installed_hook(
