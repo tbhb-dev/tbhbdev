@@ -20,8 +20,9 @@ _IMPORTED_TESTS = [
     "test_alpha_review_doc",
 ]
 
-# Existing tests that fail with the I/O guard on. Remove entries as tests
-# become isolated. Live and I/O test filenames are recognized separately.
+# Existing tests that fail with the I/O guard on. Remove entries here and in
+# io_test_baseline.txt as tests become isolated. Live and I/O filenames are
+# recognized separately.
 _IO_TESTS = [
     "test_agy_otel",
     "test_alpha_agent_credentials",
@@ -113,8 +114,6 @@ def cli_py_test(name, srcs, deps = [], data = [], extra_deps = [], pyi_deps = []
     env = {
         "CLI_TEST_TOOLS": " ".join(["$(rootpath %s)" % tool for tool in tools]),
     }
-    if io_test:
-        env["CLI_TEST_KIND"] = "io"
     py_test(
         name = name,
         srcs = srcs,
@@ -125,10 +124,11 @@ def cli_py_test(name, srcs, deps = [], data = [], extra_deps = [], pyi_deps = []
             "no:cacheprovider",
             "-p",
             "bazel_test_setup",
+        ] + ([] if io_test else ["-p", "bazel_test_io"]) + [
             "factory/cli/tests/" + filename,
         ],
         data = data + tools + ["//factory/cli:pyproject.toml"],
-        deps = deps + [":bazel_test_setup", ":sitecustomize", "@cli_pip//pytest_cov"],
+        deps = deps + [":bazel_test_setup", ":sitecustomize", "@cli_pip//pytest_cov"] + ([] if io_test else [":bazel_test_io"]),
         env = env,
         imports = ["."],
         legacy_create_init = False,

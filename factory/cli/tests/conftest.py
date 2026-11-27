@@ -36,8 +36,9 @@ type Json = dict[str, object]
 TOKEN = "fake-test-token"  # noqa: S105
 
 
-# Capture the account before any fixture redirects HOME to its scratch home.
-ACCOUNT_CODEX_HOME = Path.home() / ".codex"
+# Guarded Bazel targets redirect HOME before this module is imported.
+_account_home = os.environ.get("CLI_TEST_ACCOUNT_HOME")
+ACCOUNT_CODEX_HOME = (Path(_account_home) if _account_home else Path.home()) / ".codex"
 type FilePath = str | bytes | os.PathLike[str] | os.PathLike[bytes]
 
 

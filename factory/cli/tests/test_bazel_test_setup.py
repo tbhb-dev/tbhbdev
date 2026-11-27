@@ -1,5 +1,7 @@
 """The default CLI test target blocks I/O and keeps its home in tmp_path."""
 
+# gazelle:include_pytest_conftest false
+
 import ast
 import os
 import socket
@@ -9,6 +11,39 @@ import time
 from pathlib import Path
 
 import pytest
+
+if "TEST_TMPDIR" not in os.environ:
+    pytest.skip("requires the guarded Bazel target", allow_module_level=True)
+
+
+def assert_subprocess_blocked() -> None:
+    with pytest.raises(
+        RuntimeError, match=r"CLI unit tests.*subprocess\.Popen\.__init__"
+    ):
+        subprocess.run([sys.executable, "-c", "pass"], check=True)
+
+
+assert_subprocess_blocked()
+IMPORT_HOME = Path.home()
+
+
+@pytest.fixture(scope="session")
+def session_home() -> Path:
+    assert_subprocess_blocked()
+    return Path.home()
+
+
+@pytest.fixture(scope="module")
+def module_home() -> Path:
+    assert_subprocess_blocked()
+    return Path.home()
+
+
+def test_redirects_home_before_function_setup(
+    session_home: Path, module_home: Path
+) -> None:
+    assert IMPORT_HOME.is_relative_to(os.environ["TEST_TMPDIR"])
+    assert session_home == module_home == IMPORT_HOME
 
 
 def test_blocks_connect() -> None:
@@ -20,10 +55,7 @@ def test_blocks_connect() -> None:
 
 
 def test_blocks_subprocess() -> None:
-    with pytest.raises(
-        RuntimeError, match=r"CLI unit tests.*subprocess\.Popen\.__init__"
-    ):
-        subprocess.run([sys.executable, "-c", "pass"], check=True)
+    assert_subprocess_blocked()
 
 
 def test_blocks_sleep() -> None:
@@ -60,7 +92,7 @@ def test_redirects_home_and_xdg(tmp_path: Path) -> None:
         "XDG_RUNTIME_DIR",
     )
     for variable in variables:
-        assert Path(os.environ[variable]).is_relative_to(tmp_path), variable
+        assert Path(os.environ[variable]) == tmp_path / variable.lower(), variable
 
 
 def test_io_baseline_can_only_shrink() -> None:
@@ -74,8 +106,9 @@ def test_io_baseline_can_only_shrink() -> None:
             for target in node.targets
         )
     )
-    exceptions: list[str] = ast.literal_eval(assignment.value)
-    count = len(exceptions)
-    recorded_count = 55
-    assert count <= recorded_count, "The CLI test I/O baseline may only shrink"
-    assert count == recorded_count, "Lower the recorded count when removing exceptions"
+    names: list[str] = ast.literal_eval(assignment.value)
+    exceptions = set(names)
+    assert len(exceptions) == len(names), "Duplicate CLI test I/O exceptions"
+    baseline = Path(__file__).with_name("io_test_baseline.txt")
+    added = exceptions.difference(baseline.read_text(encoding="utf-8").splitlines())
+    assert not added, f"New CLI test I/O exceptions: {sorted(added)}"
