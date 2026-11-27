@@ -196,6 +196,7 @@ cli_py_library(
         "//factory/cli/src/tbhbdev/alpha/agent:host_tools",
         "//factory/cli/src/tbhbdev/alpha/agent:model",
         "@cli_pip//cryptography",
+        "@cli_pip//httpx",
         "@cli_pip//onepasswordconnectsdk",
     ],
 )

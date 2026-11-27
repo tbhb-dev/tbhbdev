@@ -153,4 +153,4 @@ manifest:
     yaml: pyyaml
   pip_repository:
     name: cli_pip
-integrity: b7087dd8189cd60e3c5b3f3b1535a6b3455bc1e855876cb7ce66f0102b50d93f
+integrity: cf00c9bd76567d57a62dbd56cd25d17894ba85cfe4f145137cd545aafe9a02a7

@@ -1538,6 +1538,7 @@ version = "0"
 source = { editable = "factory/cli" }
 dependencies = [
     { name = "cryptography" },
+    { name = "httpx" },
     { name = "httpx2" },
     { name = "jsonschema", extra = ["format"] },
     { name = "markdown-it-py" },
@@ -1577,6 +1578,7 @@ test = [
 [package.metadata]
 requires-dist = [
     { name = "cryptography", specifier = ">=50.0.2" },
+    { name = "httpx", specifier = ">=0.28.1" },
     { name = "httpx2", specifier = ">=2.16.2" },
     { name = "jsonschema", extras = ["format"], specifier = ">=4.26.0" },
     { name = "markdown-it-py", specifier = ">=4.0.0" },

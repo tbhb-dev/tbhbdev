@@ -61,7 +61,6 @@ cli_py_library(
         "//factory/cli/src/tbhbdev/alpha/agent/decisions:config",
         "//factory/cli/src/tbhbdev/alpha/agent/decisions:repo",
         "//factory/cli/src/tbhbdev/alpha/agent/decisions:run_state",
-        "@cli_pip//httpx2",
         "@cli_pip//pyyaml",
     ],
 )

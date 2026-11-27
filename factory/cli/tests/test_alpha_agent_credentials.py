@@ -136,7 +136,6 @@ def test_each_credential_only_reaches_its_destination(
         ValueError,
         KeyError,
         TypeError,
-        httpx2.HTTPError,
         gh_app.GhAppError,
     ],
 )
