@@ -16,6 +16,7 @@ from policy_example import (
     HOSTS,
     dig,
     env_of,
+    expected_git_paths,
     made,
     strings,
 )
@@ -50,20 +51,7 @@ def codex_expected(
         writes = (*writes, "/dev/fd")
     return model.CodexPolicy(
         mode=model.CodexMode.PROFILE,
-        read_roots=(
-            ":root",
-            *(
-                f"{home}/Code/example.com/example-org/example-repo/.git/{entry}"
-                for entry in (
-                    "config",
-                    "config.worktree",
-                    "commondir",
-                    "hooks",
-                    "info",
-                    "modules",
-                )
-            ),
-        )
+        read_roots=(":root", *expected_git_paths(paths(account).worktree)[1:])
         if profile is Profile.BUILD
         else (":root",),
         write_roots=writes,
@@ -194,12 +182,7 @@ def test_codex_full_access_needs_no_named_opt_out(reason: str | None) -> None:
     )
     assert configured.sandbox.codex_unsandboxed_opt_out == reason
     value = made(
-        Os.LINUX,
-        Profile.BUILD,
-        Harness.CODEX,
-        "agent",
-        unsandboxed=True,
-        config=configured,
+        Os.LINUX, Profile.BUILD, Harness.CODEX, unsandboxed=True, config=configured
     )
     assert isinstance(value.detail, model.CodexPolicy)
     assert value.detail.mode is model.CodexMode.FULL_ACCESS

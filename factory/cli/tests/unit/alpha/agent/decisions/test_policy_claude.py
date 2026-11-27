@@ -18,8 +18,10 @@ from policy_example import (
     PATH,
     claude_settings_of,
     dig,
+    expected_git_paths,
     guard_hooks,
     made,
+    sandbox_environment,
     strings,
 )
 
@@ -71,20 +73,7 @@ def claude_expected(os: Os, profile: Profile, account: str) -> dict[str, object]
             *denied_tools,
         ]
         deny_write = [worktree, *deny]
-    protected = [
-        f"{worktree}/.git",
-        *[
-            f"{worktree}/.git/{entry}"
-            for entry in (
-                "config",
-                "config.worktree",
-                "commondir",
-                "hooks",
-                "info",
-                "modules",
-            )
-        ],
-    ]
+    protected = list(expected_git_paths(worktree))
     rules += claude_file_tool_denies(profile, worktree, protected)
     deny_write = (
         [*protected, *deny_write]
@@ -94,14 +83,7 @@ def claude_expected(os: Os, profile: Profile, account: str) -> dict[str, object]
     return {
         "env": {
             "PATH": PATH[os].format(home=home),
-            "TMPDIR": tmp,
-            "CLAUDE_CODE_TMPDIR": tmp,
-            "TMPPREFIX": f"{tmp}/zsh",
-            "GH_CONFIG_DIR": f"{tmp}/gh",
-            "DOCKER_CONFIG": f"{tmp}/docker",
-            "PYTEST_DEBUG_TEMPROOT": tmp,
-            "PYTEST_XDIST_AUTO_NUM_WORKERS": "4",
-            "GIT_NO_LAZY_FETCH": "1",
+            **sandbox_environment(tmp),
             "CLAUDE_CODE_FORK_SUBAGENT": "0",
         },
         "hooks": guard_hooks(f"{home}/.local/bin/tbhbdev"),
@@ -184,18 +166,7 @@ def test_claude_review_denies_writes_to_the_git_common_directory(
     expected = []
     if profile is Profile.REVIEW:
         expected.append("/example/home/agent/Code/example.com/example-org/example-repo")
-    expected.append(f"{paths('agent').worktree}/.git")
-    expected.extend(
-        f"{paths('agent').worktree}/.git/{entry}"
-        for entry in (
-            "config",
-            "config.worktree",
-            "commondir",
-            "hooks",
-            "info",
-            "modules",
-        )
-    )
+    expected.extend(expected_git_paths(paths("agent").worktree))
     assert dig(claude_settings_of(result), "sandbox", "filesystem", "denyWrite") == [
         *expected,
         *denied(os, "/example/home/agent"),

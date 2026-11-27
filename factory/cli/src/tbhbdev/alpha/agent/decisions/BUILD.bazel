@@ -59,6 +59,7 @@ cli_py_library(
         ":policy_codex",
         ":policy_environment",
         ":policy_paths",
+        "//factory/cli/src/tbhbdev:secrets",
         "//factory/cli/src/tbhbdev/alpha/agent:host_tools",
         "//factory/cli/src/tbhbdev/alpha/agent:model",
     ],
@@ -111,10 +112,7 @@ cli_py_library(
     srcs = ["policy_paths.py"],
     imports = ["../../../.."],
     visibility = ["//factory/cli:__subpackages__"],
-    deps = [
-        "//factory/cli/src/tbhbdev:secrets",
-        "//factory/cli/src/tbhbdev/alpha/agent:model",
-    ],
+    deps = ["//factory/cli/src/tbhbdev/alpha/agent:model"],
 )
 
 cli_py_library(

@@ -5,11 +5,10 @@ from __future__ import annotations
 from pathlib import PurePosixPath
 from typing import TYPE_CHECKING
 
-from tbhbdev import secrets
 from tbhbdev.alpha.agent.model import Invalid, Os, Profile
 
 if TYPE_CHECKING:
-    from tbhbdev.alpha.agent.model import Host, RunPaths, Settings
+    from tbhbdev.alpha.agent.model import RunPaths, Settings
 
 # Process substitution and /dev/stderr need access to open descriptors on macOS.
 DEV_FD = "/dev/fd"
@@ -39,38 +38,23 @@ def _with_aliases(os: Os, path: str) -> tuple[str, ...]:
 
 
 def denied_paths(
-    settings: Settings, host: Host, home: str, uid: int
+    settings: Settings, os: Os, home: str, uid: int, token_paths: tuple[str, ...]
 ) -> tuple[str, ...]:
-    """The paths no harness may read, whatever the OS, profile and harness.
-
-    That's the Connect token store, the session socket directory and the
-    config's `denied_home_paths`, each with its `/private` twin on macOS.
-
-    A path under another denied path is dropped, because the sandbox can't
-    mount a denied child under a denied parent. The test compares path strings,
-    not resolved targets, so a symlink inside a denied directory that points
-    elsewhere isn't denied by this function.
-    """
-    paths: list[str] = []
-    if host.os is Os.LINUX:
-        # The directory, so a sibling file or a renamed token stays hidden too.
-        paths.append(resolve(home, str(secrets.LINUX_TOKEN_FILE.parent)))
+    """Collect denied paths, add macOS aliases and drop covered descendants."""
+    paths = [resolve(home, path) for path in token_paths]
+    if os is Os.LINUX:
         paths.extend(
             ("/run/WSL", "/var/run/docker.sock", "/run/docker.sock", f"/run/user/{uid}")
-        )
-    else:
-        keychain = secrets.MACOS_KEYCHAIN_FILE
-        paths.extend(
-            resolve(home, str(p)) for p in (keychain, keychain.with_suffix(".keychain"))
         )
     paths.append(resolve(home, settings.sockets_dir))
     paths.extend(resolve(home, p) for p in settings.sandbox.denied_home_paths)
     paths.extend(c.signing for c in settings.credentials if c.signing.startswith("/"))
     unique = tuple(
-        dict.fromkeys(alias for path in paths for alias in _with_aliases(host.os, path))
+        dict.fromkeys(alias for path in paths for alias in _with_aliases(os, path))
     )
     # A child under a denied parent is already hidden. Masking it as well makes
     # bwrap mkdir its mount point inside the parent's read-only mask and fail.
+    # This compares path strings without following symlinks.
     return tuple(
         path
         for path in unique

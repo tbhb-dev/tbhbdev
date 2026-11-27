@@ -13,8 +13,14 @@ from __future__ import annotations
 from dataclasses import replace
 from typing import TYPE_CHECKING
 
+from tbhbdev import secrets
 from tbhbdev.alpha.agent import host_tools
-from tbhbdev.alpha.agent.decisions import policy_agy, policy_claude, policy_codex
+from tbhbdev.alpha.agent.decisions import (
+    policy_agy,
+    policy_claude,
+    policy_codex,
+    policy_paths,
+)
 from tbhbdev.alpha.agent.decisions.policy_codex import (
     APPROVAL_POLICY,
     READ_ROOT,
@@ -33,7 +39,6 @@ from tbhbdev.alpha.agent.decisions.policy_environment import (
 from tbhbdev.alpha.agent.decisions.policy_paths import (
     DEV_FD,
     GIT_CONFIG_PATHS,
-    denied_paths,
     protect_host,
     protect_paths,
     protected_git,
@@ -72,6 +77,19 @@ __all__ = [
     "review_environment",
     "tool_path",
 ]
+
+
+def denied_paths(
+    settings: Settings, host: Host, home: str, uid: int
+) -> tuple[str, ...]:
+    """The Connect store and other paths no harness may read."""
+    if host.os is Os.LINUX:
+        # The directory also covers siblings and renamed token files.
+        token_paths = (str(secrets.LINUX_TOKEN_FILE.parent),)
+    else:
+        keychain = secrets.MACOS_KEYCHAIN_FILE
+        token_paths = (str(keychain), str(keychain.with_suffix(".keychain")))
+    return policy_paths.denied_paths(settings, host.os, home, uid, token_paths)
 
 
 def _check(host: Host, *, account: str) -> None:

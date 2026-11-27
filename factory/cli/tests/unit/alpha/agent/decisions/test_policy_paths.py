@@ -28,8 +28,10 @@ from policy_example import (
     COMBINATIONS,
     HOSTS,
     IDS,
+    assert_build_write_roots,
     claude_settings_of,
     dig,
+    expected_git_paths,
     made,
     strings,
 )
@@ -52,20 +54,11 @@ def assert_claude_denials(
     claude = claude_settings_of(result)
     fs = ("sandbox", "filesystem")
     assert dig(claude, *fs, "denyRead") == list(denied(os, home))
+    worktree = paths(account).worktree
+    git_paths = expected_git_paths(worktree)
     assert dig(claude, *fs, "denyWrite") == [
-        *(() if profile is Profile.BUILD else (paths(account).worktree,)),
-        f"{paths(account).worktree}/.git",
-        *(
-            f"{paths(account).worktree}/.git/{entry}"
-            for entry in (
-                "config",
-                "config.worktree",
-                "commondir",
-                "hooks",
-                "info",
-                "modules",
-            )
-        ),
+        *(() if profile is Profile.BUILD else (worktree,)),
+        *git_paths,
         *denied(os, home),
     ]
     rules = strings(dig(claude, "permissions", "deny"))
@@ -73,24 +66,9 @@ def assert_claude_denials(
     assert reads == [f"Read(/{p}/**)" for p in denied(os, home)]
     edits = [r for r in rules if r.startswith("Edit(")]
     expected_edits = [f"Edit(/{p}/**)" for p in denied(os, home)]
-    if profile is Profile.REVIEW:
-        expected_edits += [
-            f"Edit(/{paths(account).worktree}{suffix})" for suffix in ("", "/**")
-        ]
+    protected = (worktree, *git_paths) if profile is Profile.REVIEW else git_paths
     expected_edits += [
-        f"Edit(/{paths(account).worktree}/.git{suffix})" for suffix in ("", "/**")
-    ]
-    expected_edits += [
-        f"Edit(/{paths(account).worktree}/.git/{entry}{suffix})"
-        for entry in (
-            "config",
-            "config.worktree",
-            "commondir",
-            "hooks",
-            "info",
-            "modules",
-        )
-        for suffix in ("", "/**")
+        f"Edit(/{path}{suffix})" for path in protected for suffix in ("", "/**")
     ]
     assert edits == expected_edits
 
@@ -380,21 +358,15 @@ def test_absolute_write_roots_pass_through(
 ) -> None:
     sandbox = dataclasses.replace(SANDBOX, write_roots=(entry,))
     result = made(os, Profile.BUILD, harness, "agent", config=settings(sandbox=sandbox))
-    expected = [
-        "/example/home/agent/Code/example.com/example-org/example-repo",
-        "/example/home/agent/.local/state/example-runs/run1.tmp",
-        entry,
-    ]
-    if os is Os.MACOS:
-        expected.append("/dev/fd")
-    if isinstance(result.detail, model.CodexPolicy):
-        expected.insert(1, expected[0] + "/.git")
-        assert result.detail.write_roots == tuple(expected)
-    else:
-        assert (
-            dig(claude_settings_of(result), "sandbox", "filesystem", "allowWrite")
-            == expected
-        )
+    assert_build_write_roots(
+        result,
+        os,
+        [
+            "/example/home/agent/Code/example.com/example-org/example-repo",
+            "/example/home/agent/.local/state/example-runs/run1.tmp",
+            entry,
+        ],
+    )
 
 
 @pytest.mark.parametrize("harness", Harness)
@@ -632,19 +604,7 @@ def test_codex_protects_git_configuration_inside_build_write_root(
     assert isinstance(result.detail, model.CodexPolicy)
     expected = (":root",)
     if profile is Profile.BUILD:
-        expected += (
-            *tuple(
-                f"{paths('agent').worktree}/.git/{entry}"
-                for entry in (
-                    "config",
-                    "config.worktree",
-                    "commondir",
-                    "hooks",
-                    "info",
-                    "modules",
-                )
-            ),
-        )
+        expected += expected_git_paths(paths("agent").worktree)[1:]
     assert common not in result.detail.write_roots
     assert result.detail.read_roots == expected
 
@@ -686,15 +646,7 @@ def test_host_protected_paths_refuse_both_directions(field: str, relation: str) 
 @pytest.mark.parametrize("harness", Harness)
 def test_linux_socket_denies_use_the_run_uid(harness: Harness) -> None:
     run = dataclasses.replace(paths("agent"), uid=12345)
-    result = policy.build(
-        settings(),
-        LINUX,
-        harness=harness,
-        profile=Profile.BUILD,
-        account="agent",
-        unsandboxed=False,
-        paths=run,
-    )
+    result = made(Os.LINUX, Profile.BUILD, harness, run=run)
     assert "/run/user/12345" in result.deny
     assert "/run/user/0" not in result.deny
     for path in ("/run/WSL", "/var/run/docker.sock", "/run/docker.sock"):
@@ -707,18 +659,7 @@ def test_host_protection_handles_a_missing_common_directory() -> None:
 
 def test_git_entry_and_all_configuration_paths_are_protected() -> None:
     run = paths("agent")
-    assert policy.protected_git(run) == tuple(
-        run.worktree + "/.git" + suffix
-        for suffix in (
-            "",
-            "/config",
-            "/config.worktree",
-            "/commondir",
-            "/hooks",
-            "/info",
-            "/modules",
-        )
-    )
+    assert policy.protected_git(run) == expected_git_paths(run.worktree)
 
 
 @pytest.mark.parametrize("harness", Harness)

@@ -16,6 +16,7 @@ from agent_example import (
 from policy_example import (
     ACCOUNTS,
     HOSTS,
+    assert_build_write_roots,
     dig,
     env_of,
     guard_hooks,
@@ -204,15 +205,7 @@ def test_build_never_grants_another_git_directory(
         worktree="/example/clone/.worktrees/agent-example",
         git_common_dir=common,
     )
-    result = policy.build(
-        settings(),
-        HOSTS[os],
-        harness=harness,
-        profile=Profile.BUILD,
-        account="agent",
-        unsandboxed=False,
-        paths=run,
-    )
+    result = made(os, Profile.BUILD, harness, run=run)
     if isinstance(result.detail, model.AgyPolicy):
         assert result.detail.grants == (
             "read_file(/example/home/agent/.local/share/example-tools)",
@@ -224,23 +217,17 @@ def test_build_never_grants_another_git_directory(
             "write_file(/example/home/agent/.local/share/mise)",
         )
     else:
-        expected = ["/example/clone/.worktrees/agent-example"]
-        expected += [
-            "/example/home/agent/.local/state/example-runs/run1.tmp",
-            "/example/home/agent/.cache",
-            "/example/home/agent/.local/share/mise",
-            "/example/home/agent/.local/state",
-        ]
-        if os is Os.MACOS:
-            expected.append("/dev/fd")
-        if isinstance(result.detail, model.CodexPolicy):
-            expected.insert(1, expected[0] + "/.git")
-            assert result.detail.write_roots == tuple(expected)
-        else:
-            assert (
-                dig(result.detail.settings, "sandbox", "filesystem", "allowWrite")
-                == expected
-            )
+        assert_build_write_roots(
+            result,
+            os,
+            [
+                "/example/clone/.worktrees/agent-example",
+                "/example/home/agent/.local/state/example-runs/run1.tmp",
+                "/example/home/agent/.cache",
+                "/example/home/agent/.local/share/mise",
+                "/example/home/agent/.local/state",
+            ],
+        )
 
 
 @pytest.mark.parametrize("harness", Harness)
@@ -251,15 +238,7 @@ def test_build_gets_common_git_directory_and_only_its_signing_socket(
     common = "/example/clone/git-common"
     socket = original.tmpdir + "/ssh.sock"
     run = dataclasses.replace(original, git_common_dir=common, signing_socket=socket)
-    result = policy.build(
-        settings(),
-        LINUX,
-        harness=harness,
-        profile=Profile.BUILD,
-        account="agent",
-        unsandboxed=False,
-        paths=run,
-    )
+    result = made(Os.LINUX, Profile.BUILD, harness, run=run)
     assert result.env == env_of(Os.LINUX, harness, "agent") | {"SSH_AUTH_SOCK": socket}
     if isinstance(result.detail, model.CodexPolicy):
         assert result.detail.write_roots == (

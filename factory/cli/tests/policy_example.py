@@ -35,10 +35,11 @@ def made(  # noqa: PLR0913 -- one value per fact the policy depends on
     os: Os,
     profile: Profile,
     harness: Harness,
-    account: str,
+    account: str = "agent",
     *,
     unsandboxed: bool = False,
     config: model.Settings | None = None,
+    run: model.RunPaths | None = None,
 ) -> model.Policy:
     return policy.build(
         config or settings(),
@@ -47,7 +48,7 @@ def made(  # noqa: PLR0913 -- one value per fact the policy depends on
         profile=profile,
         account=account,
         unsandboxed=unsandboxed,
-        paths=paths(account),
+        paths=paths(account) if run is None else run,
     )
 
 
@@ -80,6 +81,47 @@ def dig(node: object, *keys: str) -> object:
     return node
 
 
+def expected_git_paths(worktree: str) -> tuple[str, ...]:
+    return tuple(
+        f"{worktree}/.git{suffix}"
+        for suffix in (
+            "",
+            "/config",
+            "/config.worktree",
+            "/commondir",
+            "/hooks",
+            "/info",
+            "/modules",
+        )
+    )
+
+
+def assert_build_write_roots(result: model.Policy, os: Os, expected: list[str]) -> None:
+    if os is Os.MACOS:
+        expected.append("/dev/fd")
+    if isinstance(result.detail, model.CodexPolicy):
+        expected.insert(1, expected[0] + "/.git")
+        assert result.detail.write_roots == tuple(expected)
+    else:
+        assert (
+            dig(claude_settings_of(result), "sandbox", "filesystem", "allowWrite")
+            == expected
+        )
+
+
+def sandbox_environment(tmp: str) -> dict[str, str]:
+    return {
+        "TMPDIR": tmp,
+        "CLAUDE_CODE_TMPDIR": tmp,
+        "TMPPREFIX": f"{tmp}/zsh",
+        "GH_CONFIG_DIR": f"{tmp}/gh",
+        "DOCKER_CONFIG": f"{tmp}/docker",
+        "PYTEST_DEBUG_TEMPROOT": tmp,
+        "PYTEST_XDIST_AUTO_NUM_WORKERS": "4",
+        "GIT_NO_LAZY_FETCH": "1",
+    }
+
+
 def env_of(os: Os, harness: Harness, account: str) -> dict[str, str]:
     home = f"/example/home/{account}"
     tmp = f"{home}/.local/state/example-runs/run1.tmp"
@@ -90,14 +132,7 @@ def env_of(os: Os, harness: Harness, account: str) -> dict[str, str]:
         "LOGNAME": account,
         "SHELL": "/bin/bash" if os is Os.LINUX else "/bin/zsh",
         "LANG": "C.UTF-8" if os is Os.LINUX else "en_US.UTF-8",
-        "TMPDIR": tmp,
-        "CLAUDE_CODE_TMPDIR": tmp,
-        "TMPPREFIX": f"{tmp}/zsh",
-        "GH_CONFIG_DIR": f"{tmp}/gh",
-        "DOCKER_CONFIG": f"{tmp}/docker",
-        "PYTEST_DEBUG_TEMPROOT": tmp,
-        "PYTEST_XDIST_AUTO_NUM_WORKERS": "4",
-        "GIT_NO_LAZY_FETCH": "1",
+        **sandbox_environment(tmp),
         "GIT_CONFIG_NOSYSTEM": "1",
         "GIT_CONFIG_COUNT": "7",
         "GIT_CONFIG_KEY_0": "core.fsmonitor",
