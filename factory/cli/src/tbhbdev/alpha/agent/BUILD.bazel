@@ -73,7 +73,6 @@ cli_py_library(
     visibility = ["//factory/cli:__subpackages__"],
     deps = [
         ":admission",
-        ":app_server",
         ":launcher",
         ":model",
         ":render",

@@ -24,7 +24,6 @@ if TYPE_CHECKING:
 
 type Rpc = Callable[[str, dict[str, object]], Awaitable[dict[str, object]]]
 
-CLAUDE_UNAVAILABLE = "Claude delivery is not built"
 UNLOADED = "Codex thread is unknown or unloaded"
 TEXT_FRAME = 0x81
 EXTENDED_LENGTH = 126
