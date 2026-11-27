@@ -272,6 +272,7 @@ def test_dry_run(fake: Fake) -> None:
     assert request.call(
         fake.runtime, "GET", "/repos/tbhb-dev/widget", None, "test", dry_run=True
     ) == (0, "")
+    assert fake.reads == fake.requests == []
 
 
 @pytest.mark.parametrize(
@@ -283,7 +284,6 @@ def test_missing_runtime_credentials(fake: Fake, settings: request.Settings) -> 
     with pytest.raises(RefusedError, match=r"^credential_unavailable$"):
         request.private_key(runtime)
     assert fake.stores == fake.reads == fake.requests == []
-    assert fake.reads == fake.requests == []
 
 
 @pytest.mark.parametrize(
