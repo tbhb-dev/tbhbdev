@@ -55,6 +55,8 @@ This is the organization's floor. It applies to every repository, and a reposito
 - **R11** The operator (constitution section 3). The change doesn't add, remove or widen anyone's authority, an agent's included. It touches none of tbhb's own data beyond the access given, and decides no reserved matter. The constitution reserves exactly these for tbhb: changing the Laws, irreversibly destroying anything tbhb-dev didn't create, and destroying the last working copy of anything. Widening authority escalates under `authority`, and a reserved matter under `reserved`.
 - **R12** Change (constitution section 5). The change doesn't weaken the control that reviews it, including review files, rulesets, CI gates, the broker's rules and this floor. A weakening escalates under `weakens-review`.
 - **R13** Evidence (constitution section 4). Every claim in the pull request says how its author knows it. The change cites authority for what it does, such as a task, a role, a decision or the silence of the rules. A gap is a finding. It escalates only when the authority would have to come from tbhb.
+- **R14** State when each finding occurs in this system. Exclude impossible cases at every severity. From round 2, restrict new findings to lines the fix changed.
+- **R15** Flag code in the diff that handles an impossible case or adds an option, layer, or abstraction with one user. Ask the author to delete it.
 
 ## Escalation
 

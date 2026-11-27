@@ -225,7 +225,8 @@ def test_events_and_uppercase_hex_pass(event: str) -> None:
     severity = "P1" if event == "REQUEST_CHANGES" else "P2"
     body = BODY.replace(
         "## Verification",
-        f"## Findings\n\n- F1: {severity} correctness Handle empty input.\n"
+        f"## Findings\n\n- F1: {severity} correctness The build fails. "
+        "Occurs when: the runner retries a job.\n"
         "\n## Verification",
     )
     assert structure((FRONT + body).replace("COMMENT", event).replace(HEAD, NEXT)) == []
