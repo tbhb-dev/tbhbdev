@@ -14,7 +14,7 @@ ops_py_test(
         "test_token_shell.py",
         "test_token_vaults.py",
     ],
-    data = glob(["testdata/*.txt"]),
+    data = ["//ops/packages/tbhbops-cli/tests:token_golden"],
     deps = [
         "//ops/packages/tbhbops-cli/src",
         "@cli_pip//pytest",
