@@ -537,7 +537,7 @@ def ensure_vaults(names: Iterable[str]) -> None:
         print(f"created the vault {name}")
 
 
-def _configured_token(name: str, token_id: str = "") -> host_tokens.Token | None:
+def _configured_token(name: str, token_id: str) -> host_tokens.Token | None:
     # Only names with all four parts need the configured prefix.
     if not host_tokens.has_token_name_shape(name):
         return None
@@ -1514,7 +1514,7 @@ def token_health(target: Target) -> Result:
     hint = _bootstrap_hint(host)
     if not value:
         return Result(FAILED, f"the agent keychain has no token; {hint}")
-    token = _configured_token(recorded)
+    token = _configured_token(recorded, "")
     if token is None:
         return Result(FAILED, f"the keychain's token has no recorded name; {hint}")
     expires = f"{token.expires:%Y-%m-%d}"
