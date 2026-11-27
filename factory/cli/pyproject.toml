@@ -132,9 +132,10 @@ recursive = true
 disable = ["all"]
 enable = ["duplicate-code"]
 
-[tool.pylint.format]
-# The Git range check applies this limit with allowances from the merge base.
-max-module-lines = 300
+[tool.lint-baselines]
+# The Git range check applies these code-line limits with merge-base allowances.
+max-module-lines = 400
+max-test-lines = 800
 
 [tool.pylint.similarities]
 min-similarity-lines = 4
