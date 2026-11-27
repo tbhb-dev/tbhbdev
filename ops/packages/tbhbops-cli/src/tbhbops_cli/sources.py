@@ -13,8 +13,6 @@ from tbhbops_cli.common import CliError, Http, Run
 from tbhbops_cli.gitleaks import TECH_WORDS, Tailnet
 
 GRAPHQL = "https://api.github.com/graphql"
-# gh lists at most this many, so a list that long may be cut short.
-REPO_LIMIT = 1000
 PAGE = 100
 QUERY = (
     "query($owner: String!, $after: String, $first: Int!) {"
@@ -54,7 +52,7 @@ def _page(
         "User-Agent": "tbhbops",
     }
     status, raw = http("POST", GRAPHQL, headers, body)
-    if status != 200:  # noqa: PLR2004  # HTTP OK
+    if status != 200:  # HTTP OK
         message = f"{source} failed: HTTP {status}"
         raise CliError(message)
     data = _object(_json(raw, source))
@@ -87,12 +85,6 @@ def private_repos(
         while True:
             page, cursor = _page(http, token, owner, cursor)
             names += page
-            if len(names) >= REPO_LIMIT:
-                message = (
-                    f"the GitHub repository list for {owner} reached its limit "
-                    f"of {REPO_LIMIT} and may miss some"
-                )
-                raise CliError(message)
             if cursor is None:
                 break
         if not names and owner == owners[0]:
@@ -107,7 +99,7 @@ def private_repos(
 def run_command(argv: list[str]) -> str:
     """Run ARGV and return its output. A failure's message holds no output."""
     try:
-        done = subprocess.run(  # noqa: S603  # nosec B603: an argv list, no shell
+        done = subprocess.run(  # nosec B603: an argv list, no shell
             argv,
             capture_output=True,
             text=True,

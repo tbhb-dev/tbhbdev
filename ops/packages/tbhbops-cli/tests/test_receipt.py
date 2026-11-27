@@ -14,7 +14,6 @@ from tbhbops_cli.o11y import receipt as command
 from tbhbops_cli.o11y.filesystem import LocalFilesystem
 from tbhbops_cli.o11y.http import BodyTooLargeError, TransportError
 from tbhbops_cli.o11y.runner import Result, SubprocessRunner
-
 lazy from tbhbops.o11y.validate import Document
 
 if TYPE_CHECKING:
@@ -495,36 +494,7 @@ def test_usage(system: cli.System, kwargs: dict[str, object]) -> None:
             0,
             [f"ok receipt: trace {TRACE} found in Tempo with service o11y-check-{RUN}"],
         ),
-        (
-            ["--signals", "traces", "--grpc", "--", "telemetrygen"],
-            0,
-            [
-                (
-                    f"ok receipt: trace {TRACE} found in Tempo "
-                    f"with service o11y-check-{RUN}"
-                ),
-                (
-                    f"ok receipt: gRPC trace found in Tempo by service "
-                    f"o11y-check-grpc-{RUN}"
-                ),
-            ],
-        ),
-        *[
-            (tail, 2, ["tbhbops o11y receipt: grpc requires -- ARGV"])
-            for tail in (
-                ["--grpc"],
-                ["--grpc", "telemetrygen"],
-                ["--grpc", "telemetrygen", "traces"],
-                ["--", "telemetrygen"],
-                ["--grpc", "--"],
-            )
-        ],
         (["--signals", "bad"], 2, ["tbhbops o11y receipt: invalid signals"]),
-        (
-            ["--recheck", str(STATE), "--grpc", "--", "telemetrygen"],
-            2,
-            ["tbhbops o11y receipt: grpc and recheck are mutually exclusive"],
-        ),
     ],
 )
 def test_cli(
@@ -667,15 +637,7 @@ def test_exact_usage(
     assert str(exc.value) == message
 
 
-def test_cli_state_grpc_environment(system: cli.System) -> None:
-    system = replace(
-        system,
-        env={
-            "PATH": "/bin",
-            "SECRET": "sensitive",
-            "DOCKER_HOST": "unix:///run/inherited/docker.sock",
-        },
-    )
+def test_cli_writes_state(system: cli.System) -> None:
     out = io.StringIO()
     assert (
         cli.run(
@@ -690,9 +652,6 @@ def test_cli_state_grpc_environment(system: cli.System) -> None:
                 str(STATE),
                 "--signals",
                 "traces",
-                "--grpc",
-                "--",
-                "telemetrygen",
             ],
             system,
             out,
@@ -700,33 +659,8 @@ def test_cli_state_grpc_environment(system: cli.System) -> None:
         )
         == 0
     )
-    assert out.getvalue().endswith(
-        f"ok receipt: gRPC trace found in Tempo by service o11y-check-grpc-{RUN}\n"
-    )
     assert isinstance(system.filesystem, Files)
     assert system.filesystem.writes == [(STATE, f"{RUN} {TRACE} {VALUE} 1000\n", 0o600)]
-    assert isinstance(system.runner, Runner)
-    assert system.runner.calls == [
-        (
-            ["telemetrygen", "--traces", "1", "--service", f"o11y-check-grpc-{RUN}"],
-            {"PATH": "/bin"},
-            120,
-        )
-    ]
-
-
-def test_cli_exact_usage(system: cli.System) -> None:
-    out = io.StringIO()
-    assert (
-        cli.run(
-            ["o11y", "receipt", "--otlp-url", URL, "--grafana-url", URL, "--grpc"],
-            system,
-            out,
-            io.StringIO(),
-        )
-        == 2
-    )
-    assert out.getvalue() == "tbhbops o11y receipt: grpc requires -- ARGV\n"
 
 
 def test_receipt_help(capsys: pytest.CaptureFixture[str]) -> None:

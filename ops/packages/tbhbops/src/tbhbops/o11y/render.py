@@ -103,15 +103,6 @@ def _values(env: Mapping[str, str], *, email: bool) -> tuple[tuple[str, str], ..
 
 def check(env: Mapping[str, str]) -> Settings | Errors:
     """Validate without including any supplied value in a diagnostic."""
-    if "O11Y_POSTGRES_PORT" in env:
-        return Errors(
-            (
-                (
-                    "O11Y_POSTGRES_PORT is no longer supported; "
-                    "PostgreSQL moved out of the stack"
-                ),
-            )
-        )
     errors = tuple(
         f"{name} is not set" for name in REQUIRED if not env.get(name)
     ) or tuple(

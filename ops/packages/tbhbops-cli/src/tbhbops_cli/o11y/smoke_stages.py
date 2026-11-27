@@ -8,9 +8,11 @@ from tbhbops.o11y import init
 from tbhbops.o11y import smoke_access as access
 from tbhbops.o11y import smoke_export as export
 from tbhbops.o11y import smoke_filter as spans
+
 from tbhbops_cli.o11y import receipt
 from tbhbops_cli.o11y.http import BodyTooLargeError, TransportError
-from tbhbops_cli.o11y.smoke import SmokeError, poll, present, require
+from tbhbops_cli.o11y.polling import poll
+from tbhbops_cli.o11y.smoke import SmokeError, present, require
 
 if TYPE_CHECKING:
     from tbhbops_cli.o11y.smoke import Smoke
@@ -292,7 +294,8 @@ def group5(run: Smoke) -> None:
         run.model.get("telemetrygen", {}).get("image"), "5: telemetrygen-image"
     )
     network = ["--network", "host"] if run.linux else []
-    endpoint = "127.0.0.1:14317" if run.linux else ".".join(("host", "docker", "internal:14317"))
+    desktop_domain = "docker.internal"
+    endpoint = "127.0.0.1:14317" if run.linux else f"host.{desktop_domain}:14317"
     argv = [
         "docker",
         "run",

@@ -5,7 +5,6 @@ from pathlib import Path
 
 import pytest
 import yaml
-
 from tbhbops.o11y import validate as v
 
 ALLOY = """prometheus.scrape "test" {
@@ -542,7 +541,6 @@ def test_environment() -> None:
             "O11Y_BIND_ADDR",
             "O11Y_S3_ENV_FILE",
             "O11Y_DATA_DIR",
-            "O11Y_POSTGRES_PORT",
             "O11Y_GRAFANA_PORT",
             "COMPOSE_PROFILES",
             "COMPOSE_FILE",
@@ -811,7 +809,7 @@ def test_compose_include_refused(filename: str, include: object) -> None:
         ),
     ],
 )
-def test_dedicated_engine(  # noqa: PLR0913, PLR0917  # decision table columns
+def test_dedicated_engine(  # decision table columns
     named: str,
     context: str,
     endpoint: str,
