@@ -55,8 +55,9 @@ posts, and in a dry run too, the final title and body, trailers included, go
 through gitleaks under the host's private config (see
 ``tbhbdev.alpha.secret_scan``), and a finding, a missing config or a missing
 gitleaks stops the command. ``create`` also scans the commits in ``BASE..HEAD``
-under that config. Nothing is pushed: when the branch is not on the
-remote, gh's own error is passed through.
+under that config after fetching the base from the destination repository.
+A failed repository lookup or base refresh stops creation. The branch must
+already be on the remote.
 
 In a private repository, read live with ``gh repo view`` once per command, that
 scan skips the private config's name rules (the ``NAME_RULES`` families). This
@@ -66,12 +67,11 @@ The visibility is that of the repository the text is posted to, not the
 working directory's. ``edit`` takes that repository from the pull request's
 own ``url`` and reads its visibility with ``gh repo view <owner/name>``.
 ``create`` has no pull request yet, so it reads ``gh repo view`` for the base
-repository, which is gh's own resolution and the one ``gh pr create`` uses. A
-create target that can't be resolved scans under the full private config.
+repository, using ``GH_REPO`` when it is set.
 The ``op-*`` rules, the address, MAC, endpoint and keychain rules, the canary
-and .gitleaks.toml still apply. Any visibility but ``PRIVATE`` or a failed
-read scans under the full private config, so the read alone never refuses a
-command.
+and .gitleaks.toml still apply. Any other visibility uses the full private
+config. For ``edit``, an unresolved repository or a failed visibility read
+also uses the full private config.
 ``check`` makes no gh calls and doesn't scan.
 
 ``create`` also writes ``Opened-by: LLM ...`` as the first line of that
@@ -953,27 +953,33 @@ def merge_trailers(
     return sorted(roles.values(), key=lambda pair: pair[0] != agent_identity.KEY_GEN)
 
 
-def fetch_base(branch: str, ref: str) -> int:
-    """Refresh the origin tracking ref for the PR base branch."""
+def fetch_base(remote: str, refspec: str) -> int:
+    """Fetch a PR base without fetching tags or updating FETCH_HEAD."""
     return git(
         "fetch",
         "--quiet",
         "--no-tags",
         "--no-write-fetch-head",
         "--refmap=",
-        "origin",
-        f"+refs/heads/{branch}:{ref}",
+        "--",
+        remote,
+        refspec,
     )[0]
 
 
-def branch_range(base: str) -> str:
-    """The PR commit range against the origin base branch."""
-    remote = f"refs/remotes/origin/{base}"
-    code, _ = git("rev-parse", "--verify", "--quiet", f"{remote}^{{commit}}")
-    if code and fetch_base(base, remote):
-        message = f"cannot fetch PR base branch {base} from origin"
+def branch_range(base: str, remote: str = "origin") -> str:
+    """The PR commit range against the destination's current base commit."""
+    ref = f"refs/heads/{base}"
+    code, out = git("ls-remote", "--exit-code", "--refs", "--", remote, ref)
+    tip = next(
+        (line.split("\t")[0] for line in out.splitlines() if line.endswith(f"\t{ref}")),
+        "",
+    )
+    # Fetch the resolved commit without leaving a mutable ref as the scan's base.
+    if code or not tip or fetch_base(remote, tip):
+        message = f"cannot fetch PR base branch {base} from the destination repository"
         raise SystemExit(message)
-    return f"{remote}..HEAD"
+    return f"{tip}..HEAD"
 
 
 def branch_trailers(base: str, *, span: str | None = None) -> list[tuple[str, str]]:
@@ -1198,23 +1204,19 @@ def read_visibility(target: str) -> str:
     return done.stdout.strip() if done.returncode == 0 else ""
 
 
-def base_visibility() -> str:
-    """The visibility of the repository ``gh pr create`` will post to, or "".
-
-    No pull request exists yet, so this is the base repository. gh resolves it
-    for ``gh repo view`` with no argument the same way it does for
-    ``gh pr create``, so one read of ``nameWithOwner`` and ``visibility`` gives
-    both. The visibility counts only if ``nameWithOwner`` parses as
-    ``owner/name``; a failed or malformed read returns "".
-    """
-    done = run([find_tool(GH), "repo", "view", "--json", "nameWithOwner,visibility"])
-    data = gh_data(done)
-    if not isinstance(data, dict):
-        return ""
-    name = data.get("nameWithOwner")
-    if not (isinstance(name, str) and NAME_WITH_OWNER.fullmatch(name)):
-        return ""
-    return str(data.get("visibility") or "")
+def base_repository() -> tuple[str, str]:
+    """The GitHub URL and visibility of the repository gh will open the PR in."""
+    argv = [find_tool(GH), "repo", "view", "--json", "url,visibility"]
+    if override := os.environ.get("GH_REPO"):
+        argv += ["--", override]
+    data = agent_identity.as_dict(gh_data(run(argv))) or {}
+    url = data.get("url")
+    if not isinstance(url, str) or not re.fullmatch(
+        rf"https://github\.com/{REPO}", url
+    ):
+        message = "cannot resolve the PR destination repository"
+        raise SystemExit(message)
+    return url, str(data.get("visibility") or "")
 
 
 def scan_secrets(text: str, what: str, visibility: str) -> None:
@@ -1222,7 +1224,7 @@ def scan_secrets(text: str, what: str, visibility: str) -> None:
 
     ``visibility`` is that of the repository the text is posted to, which the
     caller reads once per command, with ``repo_visibility`` or
-    ``base_visibility``.
+    ``base_repository``.
     """
     secret_scan.scan(
         text,
@@ -2144,7 +2146,7 @@ def check_size(args: argparse.Namespace, checked: Checked) -> None:
         message = "size count unavailable: gh may target a repository other than origin"
         print(message, file=sys.stderr)
         return
-    if not dry_run and fetch_base(branch, base):
+    if not dry_run and fetch_base("origin", f"+refs/heads/{branch}:{base}"):
         # A stale tracking ref would count the wrong range, so stop here.
         print(f"size count unavailable: cannot fetch {branch}", file=sys.stderr)
         return
@@ -2213,9 +2215,9 @@ def _run_command(args: argparse.Namespace, env: Mapping[str, str]) -> int:
     if args.command == "create":
         opener, line = opened_by(env)
         base = base_of(checked.meta)
-        span = branch_range(base)
+        url, visibility = base_repository()
+        span = branch_range(base, url)
         body = description(checked, env, branch_trailers(base, span=span), line)
-        visibility = base_visibility()
         post_text(checked.title, body, visibility)
         secret_scan.scan_commits(
             span,

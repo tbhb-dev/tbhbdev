@@ -301,7 +301,7 @@ def gh_targets_origin(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(pr, "target_is_origin", Mock(return_value=True))
 
 
-FETCH = ["fetch", "--quiet", "--no-tags", "--no-write-fetch-head", "--refmap="]
+FETCH = ["fetch", "--quiet", "--no-tags", "--no-write-fetch-head", "--refmap=", "--"]
 
 
 def git_exits(code: int = 0) -> Mock:
@@ -309,7 +309,7 @@ def git_exits(code: int = 0) -> Mock:
     return Mock(return_value=(code, ""))
 
 
-@pytest.mark.parametrize("failure", ["count", "over", "base"])
+@pytest.mark.parametrize("failure", ["count", "over"])
 @pytest.mark.usefixtures("pr_tools")
 def test_pr_create_size(
     monkeypatch: pytest.MonkeyPatch,
@@ -322,17 +322,15 @@ def test_pr_create_size(
         counter = Mock(side_effect=sg.SizeCountError("missing target"))
     monkeypatch.setattr(sg, "size_counts", counter)
 
-    def run_git(command: str, *_args: str, **_kwargs: object) -> tuple[int, str]:
-        # The size fetch can fail while the tracking ref still exists for the scan.
-        return int(failure == "base" and command == "fetch"), ""
-
-    git = Mock(side_effect=run_git)
+    git = git_exits()
     monkeypatch.setattr(pr, "git", git)
     monkeypatch.setattr(pr, "base_of", Mock(return_value="main"))
     monkeypatch.setattr(pr, "read_checked", Mock(return_value=pr.Checked([])))
     monkeypatch.setattr(pr, "branch_trailers", Mock(return_value=[]))
     monkeypatch.setattr(pr, "post_text", Mock())
-    monkeypatch.setattr(pr, "base_visibility", Mock(return_value="public"))
+    destination = ("https://github.com/owner/repo", "PUBLIC")
+    monkeypatch.setattr(pr, "base_repository", Mock(return_value=destination))
+    monkeypatch.setattr(pr, "branch_range", Mock(return_value="base..HEAD"))
     monkeypatch.setattr(pr.secret_scan, "scan_commits", Mock())
     post = Mock(return_value=0)
     monkeypatch.setattr(pr, "create_pr", post)
@@ -347,12 +345,9 @@ def test_pr_create_size(
         assert captured.err.startswith("size count unavailable: ")
     fetched = [*FETCH, "origin", "+refs/heads/main:refs/remotes/origin/main"]
     assert call(*fetched) in git.call_args_list
-    if failure == "base":
-        counter.assert_not_called()
-    else:
-        counter.assert_called_once_with(
-            "refs/remotes/origin/main", "HEAD", scc="/tools/scc", git="/tools/git"
-        )
+    counter.assert_called_once_with(
+        "refs/remotes/origin/main", "HEAD", scc="/tools/scc", git="/tools/git"
+    )
 
 
 def test_the_base_is_refreshed_without_tags_then_counted(

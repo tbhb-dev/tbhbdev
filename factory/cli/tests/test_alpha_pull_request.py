@@ -101,6 +101,9 @@ sys.exit(spec["rc"])
 
 
 TARGET = "tbhb-dev/public-target"
+TARGET_URL = f"https://github.com/{TARGET}"
+BASE_REPOSITORY_READ = ["repo", "view", "--json", "url,visibility"]
+FETCH_OPTIONS = ("--quiet", "--no-tags", "--no-write-fetch-head", "--refmap=", "--")
 PR_COMMITS_CALL = ["api", "--hostname", "github.com", "--paginate", "--slurp"]
 BRANCH_LOOKUP = (
     "api --hostname github.com repos/tbhb-dev/example/branches/agent%2Ftopic"
@@ -119,14 +122,10 @@ def view_case(url: object, body: object = "") -> dict[str, object]:
     return {"rc": 0, "stdout": json.dumps(data), "stderr": ""}
 
 
-def base_case(name: object, visibility: object, rc: int = 0) -> dict[str, object]:
-    """The fake gh answer to ``gh repo view --json nameWithOwner,visibility``."""
-    data = {"nameWithOwner": name, "visibility": visibility}
-    return {
-        "rc": rc,
-        "stdout": json.dumps(data) if rc == 0 else "",
-        "stderr": "boom" if rc else "",
-    }
+def base_case(name: str, visibility: str) -> dict[str, object]:
+    """The fake answer to gh's PR destination lookup."""
+    data = {"url": f"https://github.com/{name}", "visibility": visibility}
+    return {"rc": 0, "stdout": json.dumps(data), "stderr": ""}
 
 
 @dataclass
@@ -147,7 +146,12 @@ class World:
     ) -> None:
         """A fake tool; ``cases`` answers the calls whose words start with a key."""
         write_fake(self.bin / name, FAKE.format())
-        spec = {"rc": rc, "stdout": stdout, "stderr": stderr, "cases": cases or {}}
+        cases = dict(cases or {})
+        if name == "gh":
+            cases.setdefault(
+                " ".join(BASE_REPOSITORY_READ), base_case(TARGET, "PUBLIC")
+            )
+        spec = {"rc": rc, "stdout": stdout, "stderr": stderr, "cases": cases}
         (self.bin / f"{name}.spec").write_text(json.dumps(spec))
 
     def calls(self, name: str) -> list[dict[str, object]]:
@@ -226,7 +230,6 @@ def world_files(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> World:
         cases={
             "pr view": view_case(pr_page(TARGET)),
             f"repo view {TARGET}": {"rc": 0, "stdout": "PUBLIC\\n", "stderr": ""},
-            "repo view --json": base_case(TARGET, "PUBLIC"),
         },
     )
     return made
@@ -251,6 +254,11 @@ def world(
         # Preserve the seeded tracking refs without contacting the fake origin.
         if argv[:1] == ("fetch",):
             return 0, ""
+        if argv[:1] == ("ls-remote",) and argv[-1].startswith("refs/heads/"):
+            ref = argv[-1]
+            branch = ref.removeprefix("refs/heads/")
+            code, sha = real_git("rev-parse", f"refs/remotes/origin/{branch}", cwd=cwd)
+            return code, f"{sha}\t{ref}"
         return real_git(*argv, cwd=cwd)
 
     monkeypatch.setattr(pr, "git", offline_git)
@@ -266,12 +274,11 @@ def draft_world(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> World:
     monkeypatch.setenv("PATH", f"{made.bin}{os.pathsep}{git_dir}")
     monkeypatch.chdir(made.root)
     base = "refs/remotes/origin/main"
-    fetch_options = ("--quiet", "--no-tags", "--no-write-fetch-head", "--refmap=")
     answers: dict[tuple[str, ...], tuple[int, str]] = {
         ("rev-parse", "--show-toplevel"): (0, str(made.root.resolve())),
         ("ls-remote", "--symref", "origin", "HEAD"): (128, ""),
         ("symbolic-ref", "--quiet", "refs/remotes/origin/HEAD"): (0, base),
-        ("fetch", *fetch_options, "origin", f"+refs/heads/main:{base}"): (0, ""),
+        ("fetch", *FETCH_OPTIONS, "origin", f"+refs/heads/main:{base}"): (0, ""),
         ("rev-parse", "--verify", "--quiet", f"{base}^{{commit}}"): (0, ""),
     }
 
@@ -1443,11 +1450,7 @@ def test_branch_trailers_prefer_the_remote_base(world: World) -> None:
     world.git("switch", "-q", "-c", "topic")
     world.commit(f"mine\n\nGenerated-by: {GEN}")
     world.git("branch", "-f", "main", "HEAD~2")
-    with patch.object(pr, "git", wraps=pr.git) as git:
-        assert pr.branch_trailers("main") == [("Generated-by", GEN)]
-    git.assert_any_call(
-        "rev-parse", "--verify", "--quiet", "refs/remotes/origin/main^{commit}"
-    )
+    assert pr.branch_trailers("main") == [("Generated-by", GEN)]
 
 
 def test_branch_trailers_ignore_a_tag_named_like_the_remote_base(
@@ -1814,8 +1817,9 @@ def test_an_unset_origin_head_reads_the_remotes_own_default(
     assert pr.default_base() == "dev"
 
 
-def test_create_reads_the_default_branch_once(
-    world: World, monkeypatch: pytest.MonkeyPatch
+@pytest.mark.parametrize("override", [False, True])
+def test_create_fetches_the_destination_base_and_uses_it_consistently(
+    world: World, monkeypatch: pytest.MonkeyPatch, override: bool
 ) -> None:
     answers = iter(["trunk", "dev", "other"])
     read = Mock(side_effect=lambda: next(answers))
@@ -1826,10 +1830,20 @@ def test_create_reads_the_default_branch_once(
     monkeypatch.setattr(pr, "branch_trailers", trailers)
     world.git("update-ref", "refs/remotes/origin/trunk", "HEAD")
     write_draft(world)
-    assert run_main("create") == 0
+    if override:
+        monkeypatch.setenv("GH_REPO", TARGET)
+    with patch.object(pr, "git", wraps=pr.git) as git:
+        assert run_main("create") == 0
     assert read.call_count == 1
     assert counted.call_args.args[0] == "refs/remotes/origin/trunk"
-    trailers.assert_called_once_with("trunk", span="refs/remotes/origin/trunk..HEAD")
+    tip = world.git("rev-parse", "refs/remotes/origin/trunk")
+    git.assert_any_call(
+        "ls-remote", "--exit-code", "--refs", "--", TARGET_URL, "refs/heads/trunk"
+    )
+    git.assert_any_call("fetch", *FETCH_OPTIONS, TARGET_URL, tip)
+    (repo,) = world.calls("gh.repo")
+    assert repo["argv"] == BASE_REPOSITORY_READ + (["--", TARGET] if override else [])
+    trailers.assert_called_once_with("trunk", span=f"{tip}..HEAD")
     _, call = world.calls("gh")
     argv = call["argv"]
     assert isinstance(argv, list)
@@ -1912,8 +1926,8 @@ def test_create_reuses_the_tools_resolved_at_startup(world: World) -> None:
     installed_gh = gh.with_name("installed-gh")
     gh.rename(installed_gh)
     git = world.root.parent / "git_dir" / "git"
-    installed_git = git.with_name("installed-git")
-    git.rename(installed_git)
+    installed_git = git.resolve()
+    git.unlink()
     world.fake(
         "mise",
         cases={
@@ -2077,6 +2091,7 @@ FINDING = '[{"RuleID": "some-rule", "StartLine": 9}]'
 
 def test_create_refuses_a_finding_in_the_selected_commit_range(world: World) -> None:
     world.git("update-ref", "refs/remotes/origin/topic-base", "HEAD")
+    tip = world.git("rev-parse", "HEAD")
     world.commit("a commit")
     write_draft(world, "---\nbase: topic-base\n---\n" + BASE)
     world.fake(
@@ -2095,10 +2110,18 @@ def test_create_refuses_a_finding_in_the_selected_commit_range(world: World) -> 
         run_main("create")
     _, scan = world.calls("gitleaks")
     argv = cast("list[str]", scan["argv"])
-    assert (
-        "refs/remotes/origin/topic-base..HEAD"
-        in argv[argv.index("--log-opts") + 1].split()
-    )
+    assert f"{tip}..HEAD" in argv[argv.index("--log-opts") + 1].split()
+    assert world.calls("gh") == []
+
+
+def test_create_refuses_a_failed_refresh_with_a_cached_base(world: World) -> None:
+    write_draft(world)
+    with (
+        patch.object(pr, "fetch_base", return_value=1),
+        pytest.raises(SystemExit, match="cannot fetch PR base branch main"),
+    ):
+        run_main("create")
+    assert world.calls("gitleaks") == []
     assert world.calls("gh") == []
 
 
@@ -2289,35 +2312,6 @@ def test_a_url_that_is_not_a_github_pr_page_names_nothing(url: object) -> None:
     assert pr.target_of_pr(url) == ""
 
 
-@pytest.mark.parametrize(
-    ("answer", "want"),
-    [
-        (base_case(TARGET, "PRIVATE"), "PRIVATE"),
-        (base_case(TARGET, "PUBLIC"), "PUBLIC"),
-        (base_case(TARGET, ""), ""),
-        (base_case(TARGET, None), ""),
-        (base_case(TARGET, "PRIVATE", rc=1), ""),
-        (base_case("", "PRIVATE"), ""),
-        (base_case(None, "PRIVATE"), ""),
-        (base_case(7, "PRIVATE"), ""),
-        (base_case("a/b/c", "PRIVATE"), ""),
-        (base_case("not a name", "PRIVATE"), ""),
-        (base_case("o/..", "PRIVATE"), ""),
-        ({"rc": 0, "stdout": "[]", "stderr": ""}, ""),
-        ({"rc": 0, "stdout": "PRIVATE\n", "stderr": ""}, ""),
-        ({"rc": 0, "stdout": '{"visibility": "PRIVATE"}', "stderr": ""}, ""),
-        ({"rc": 0, "stdout": '{"nameWithOwner": "o/n"}', "stderr": ""}, ""),
-    ],
-)
-def test_the_base_visibility_counts_only_with_a_parsed_name(
-    world: World, answer: dict[str, object], want: str
-) -> None:
-    world.fake("gh", cases={"repo view": answer})
-    assert pr.base_visibility() == want
-    (read,) = world.calls("gh.repo")
-    assert read["argv"] == ["repo", "view", "--json", "nameWithOwner,visibility"]
-
-
 def without_path(config: str) -> str:
     """A config with its ``path`` lines dropped: the scan points them at a copy."""
     return re.sub(r"^\s*path\s*=.*$", "", config, flags=re.MULTILINE)
@@ -2351,40 +2345,41 @@ VISIBILITIES = [
 
 
 @pytest.mark.parametrize("argv", [("create",), ("create", "--dry-run")])
-@pytest.mark.parametrize(("stdout", "rc", "reduced"), VISIBILITIES)
+@pytest.mark.parametrize(
+    ("visibility", "reduced"),
+    [(out.strip(), reduced) for out, rc, reduced in VISIBILITIES if rc == 0],
+)
 def test_create_reads_the_base_repository_once_and_picks_the_config(
-    world: World, argv: tuple[str, ...], stdout: str, rc: int, reduced: bool
+    world: World, argv: tuple[str, ...], visibility: str, reduced: bool
 ) -> None:
-    cases = {"repo view": base_case(TARGET, stdout.strip(), rc)}
+    cases = {"repo view": base_case(TARGET, visibility)}
     world.fake("gh", stdout="u\n", cases=cases)
     write_draft(world)
     assert run_main(*argv) == 0
     (read,) = world.calls("gh.repo")
-    assert read["argv"] == ["repo", "view", "--json", "nameWithOwner,visibility"]
+    assert read["argv"] == BASE_REPOSITORY_READ
     assert (scan_config(world) != full_config()) is reduced
 
 
-@pytest.mark.parametrize("name", ["", None, "o/..", "a/b/c", 5, "not a name"])
-def test_create_without_a_parsed_base_repository_uses_the_full_config(
-    world: World, name: object
+@pytest.mark.parametrize(
+    "answer",
+    [
+        {"rc": 1, "stdout": "", "stderr": "boom"},
+        {"rc": 0, "stdout": "[]", "stderr": ""},
+        base_case("a/b/c", "PRIVATE"),
+    ],
+)
+def test_create_refuses_an_unresolved_destination(
+    world: World, answer: dict[str, object]
 ) -> None:
-    world.fake("gh", stdout="u\n", cases={"repo view": base_case(name, "PRIVATE")})
+    world.fake("gh", cases={"repo view": answer})
     write_draft(world)
-    assert run_main("create") == 0
-    assert len(world.calls("gh.repo")) == 1
-    assert scan_config(world) == full_config()
-
-
-@pytest.mark.parametrize("stdout", ["not json", "[]"])
-def test_create_with_an_unreadable_base_repository_uses_the_full_config(
-    world: World, stdout: str
-) -> None:
-    answer: dict[str, object] = {"rc": 0, "stdout": stdout, "stderr": ""}
-    world.fake("gh", stdout="u\n", cases={"repo view": answer})
-    write_draft(world)
-    assert run_main("create") == 0
-    assert len(world.calls("gh.repo")) == 1
-    assert scan_config(world) == full_config()
+    with pytest.raises(
+        SystemExit, match="cannot resolve the PR destination repository"
+    ):
+        run_main("create")
+    assert world.calls("gitleaks") == []
+    assert world.calls("gh") == []
 
 
 @pytest.mark.parametrize(("stdout", "rc", "reduced"), VISIBILITIES)
@@ -2697,7 +2692,7 @@ def test_branch_git_calls_run_in_the_current_directory(
 
     monkeypatch.setattr(pr, "git", spy)
     pr.branch_trailers("main")
-    assert seen == [None, None]
+    assert seen == [None, None, None]
 
 
 def test_help_describes_the_script(capsys: pytest.CaptureFixture[str]) -> None:
