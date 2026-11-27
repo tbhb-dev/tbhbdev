@@ -48,11 +48,12 @@ cli_py_library(
     imports = ["../.."],
     visibility = ["//factory/cli:__subpackages__"],
     deps = [
+        "//factory/cli/src/tbhbdev:github_tls",
         "//factory/cli/src/tbhbdev:secrets",
         "//factory/cli/src/tbhbdev/alpha/agent:host_tools",
         "//factory/cli/src/tbhbdev/alpha/agent:model",
         "@cli_pip//cryptography",
-        "@cli_pip//httpx",
+        "@cli_pip//httpx2",
     ],
 )
 
@@ -300,7 +301,7 @@ cli_py_library(
     deps = [
         ":gh_app",
         "//factory/cli/src/tbhbdev:secrets",
-        "@cli_pip//httpx",
+        "@cli_pip//httpx2",
     ],
 )
 

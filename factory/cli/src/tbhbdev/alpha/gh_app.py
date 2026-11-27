@@ -41,12 +41,12 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, NoReturn, Protocol, override
 
-import httpx
+import httpx2
 from cryptography.exceptions import UnsupportedAlgorithm
 from cryptography.hazmat.primitives import hashes, serialization
 from cryptography.hazmat.primitives.asymmetric import padding, rsa
 
-from tbhbdev import secrets
+from tbhbdev import github_tls, secrets
 lazy from tbhbdev.alpha.agent import host_tools
 lazy from tbhbdev.alpha.agent.model import Invalid
 
@@ -102,7 +102,7 @@ PEM_PATTERN = re.compile(
 )
 DEFAULT_VAULT = "tbhb-dev"
 API = "https://api.github.com"
-TIMEOUT = httpx.Timeout(10.0, connect=5.0)
+TIMEOUT = httpx2.Timeout(10.0, connect=5.0)
 REUSE_MARGIN = 600
 JWT_BACKDATE = 60
 JWT_LIFETIME = 540
@@ -400,7 +400,7 @@ def token_body(
     return body
 
 
-def json_object(response: httpx.Response) -> Json:
+def json_object(response: httpx2.Response) -> Json:
     try:
         payload = response.json()
     except ValueError:
@@ -416,9 +416,9 @@ def detail(payload: Json) -> str:
     return SECRET_LIKE.sub("[redacted]", reason)
 
 
-def installation_id(response: httpx.Response) -> int | None:
+def installation_id(response: httpx2.Response) -> int | None:
     found = json_object(response).get("id")
-    if response.status_code != httpx.codes.OK or not isinstance(found, int):
+    if response.status_code != httpx2.codes.OK or not isinstance(found, int):
         return None
     return found
 
@@ -468,7 +468,7 @@ class Env:
     now: Callable[[], int]
     store: Callable[[], Reader]
     openssl: OpenSsl
-    transport: httpx.BaseTransport | None = None
+    transport: httpx2.BaseTransport | None = None
 
 
 def run_openssl(
@@ -590,7 +590,7 @@ def sign(env: Env, app_id: str, key: str) -> str:
     return f"{data.decode()}.{b64url(done.stdout)}"
 
 
-def find_installation(client: httpx.Client, repo: str) -> int | None:
+def find_installation(client: httpx2.Client, repo: str) -> int | None:
     """The installation of the repository, or else of its owner.
 
     Only a 404 moves on to the owner.
@@ -600,7 +600,7 @@ def find_installation(client: httpx.Client, repo: str) -> int | None:
     """
     for path in lookup_paths(repo):
         response = client.get(path)
-        if response.status_code == httpx.codes.NOT_FOUND:
+        if response.status_code == httpx2.codes.NOT_FOUND:
             continue
         ident = installation_id(response)
         if ident is None:
@@ -628,12 +628,13 @@ def exchange_token(  # noqa: PLR0913  # Optional installation cache seams.
         "Authorization": f"Bearer {jwt}",
     }
     try:
-        with httpx.Client(
+        with httpx2.Client(
             base_url=API,
             headers=headers,
             timeout=TIMEOUT,
             transport=env.transport,
             trust_env=False,
+            verify=github_tls.public_roots(),
         ) as client:
             ident = known_installation
             if ident is None:
@@ -646,10 +647,10 @@ def exchange_token(  # noqa: PLR0913  # Optional installation cache seams.
                 f"/app/installations/{ident}/access_tokens",
                 json=body,
             )
-    except httpx.HTTPError as exc:
+    except httpx2.HTTPError as exc:
         message = f"the GitHub request failed: {type(exc).__name__}"
         raise GhAppError(message) from None
-    if known_installation is not None and reply.status_code == httpx.codes.NOT_FOUND:
+    if known_installation is not None and reply.status_code == httpx2.codes.NOT_FOUND:
         raise CachedInstallationMissingError
     return parse_token(json_object(reply))
 

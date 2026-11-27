@@ -4,7 +4,7 @@ import tarfile
 from typing import cast
 lazy from pathlib import Path
 
-import httpx
+import httpx2
 import pytest
 
 from tbhbdev import cue_runtime as cr
@@ -123,10 +123,10 @@ def test_install_refuses_a_platform_without_an_archive() -> None:
 
 
 def test_fetch_returns_the_response_body(monkeypatch: pytest.MonkeyPatch) -> None:
-    def get(url: str, **_: object) -> httpx.Response:
-        return httpx.Response(200, content=b"body", request=httpx.Request("GET", url))
+    def get(url: str, **_: object) -> httpx2.Response:
+        return httpx2.Response(200, content=b"body", request=httpx2.Request("GET", url))
 
-    monkeypatch.setattr(httpx, "get", get)
+    monkeypatch.setattr(httpx2, "get", get)
     assert cr._fetch(URL) == b"body"  # noqa: SLF001 -- The download seam.
 
 
@@ -142,10 +142,10 @@ def test_main_path_and_install(
 
     monkeypatch.setattr(cr, "platform_key", key)
 
-    def get(url: str, **_: object) -> httpx.Response:
-        return httpx.Response(200, content=data, request=httpx.Request("GET", url))
+    def get(url: str, **_: object) -> httpx2.Response:
+        return httpx2.Response(200, content=data, request=httpx2.Request("GET", url))
 
-    monkeypatch.setattr(httpx, "get", get)
+    monkeypatch.setattr(httpx2, "get", get)
     assert cr.main(["path"], "tbhbdev cue") == 1
     assert "run tbhbdev cue install" in capsys.readouterr().err
     assert cr.main(["install"], "tbhbdev cue") == 0

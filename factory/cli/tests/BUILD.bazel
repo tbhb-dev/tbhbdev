@@ -181,7 +181,7 @@ cli_py_test(
         "//factory/cli/src/tbhbdev/admin:command",
         "//factory/cli/src/tbhbdev/admin:request",
         "//factory/cli/tests:test_admin_request_support",
-        "@cli_pip//httpx",
+        "@cli_pip//httpx2",
         "@cli_pip//pytest",
     ],
 )
@@ -196,7 +196,7 @@ cli_py_test(
         "//factory/cli/src/tbhbdev/admin:policy",
         "//factory/cli/src/tbhbdev/admin:request",
         "//factory/cli/src/tbhbdev/alpha:gh_app",
-        "@cli_pip//httpx",
+        "@cli_pip//httpx2",
         "@cli_pip//pytest",
     ],
 )
@@ -235,7 +235,7 @@ cli_py_test(
         "//factory/cli/src/tbhbdev/admin:request",
         "//factory/cli/src/tbhbdev/alpha:gh_app",
         "@cli_pip//cryptography",
-        "@cli_pip//httpx",
+        "@cli_pip//httpx2",
         "@cli_pip//pytest",
     ],
 )
@@ -262,7 +262,7 @@ cli_py_test(
         ":conftest",
         "//factory/cli/src/tbhbdev:agy",
         "//factory/cli/src/tbhbdev:cli",
-        "@cli_pip//httpx",
+        "@cli_pip//httpx2",
         "@cli_pip//pytest",
     ],
 )
@@ -401,7 +401,7 @@ cli_py_test(
         "//factory/cli/src/tbhbdev/alpha/agent:process_group",
         "//factory/cli/src/tbhbdev/alpha/agent:runfiles",
         "@cli_pip//cryptography",
-        "@cli_pip//httpx",
+        "@cli_pip//httpx2",
         "@cli_pip//pytest",
         "@cli_pip//pyyaml",
     ],
@@ -416,6 +416,7 @@ cli_py_test(
         ":agent_example",
         ":conftest",
         "//factory/cli/src/tbhbdev:version",
+        "//factory/cli/src/tbhbdev/alpha/agent:app_server",
         "//factory/cli/src/tbhbdev/alpha/agent:arguments",
         "//factory/cli/src/tbhbdev/alpha/agent:driver",
         "//factory/cli/src/tbhbdev/alpha/agent:model",
@@ -761,7 +762,7 @@ cli_py_test(
         "//factory/cli/src/tbhbdev/alpha/agent:review_post",
         "//factory/cli/src/tbhbdev/alpha/agent:runfiles",
         "//factory/cli/src/tbhbdev/alpha/agent/decisions:request",
-        "@cli_pip//httpx",
+        "@cli_pip//httpx2",
         "@cli_pip//pytest",
     ],
 )
@@ -796,7 +797,7 @@ cli_py_test(
         "//factory/cli/tests:test_alpha_agent_codex_install_support",
         "//factory/cli/tests:test_alpha_agent_credentials_support",
         "//factory/cli/tests:test_alpha_agent_settings_support",
-        "@cli_pip//httpx",
+        "@cli_pip//httpx2",
         "@cli_pip//pytest",
     ],
 )
@@ -897,7 +898,7 @@ cli_py_test(
         "//factory/cli/src/tbhbdev/alpha/agent:settings",
         "//factory/cli/src/tbhbdev/alpha/agent:signing_parity",
         "//factory/cli/src/tbhbdev/alpha/agent:transport",
-        "@cli_pip//httpx",
+        "@cli_pip//httpx2",
         "@cli_pip//pytest",
     ],
 )
@@ -1033,8 +1034,9 @@ cli_py_test(
         ":conftest",
         "//factory/cli/src/tbhbdev:secrets",
         "//factory/cli/src/tbhbdev/alpha:gh_app",
+        "@cli_pip//certifi",
         "@cli_pip//cryptography",
-        "@cli_pip//httpx",
+        "@cli_pip//httpx2",
         "@cli_pip//pytest",
     ],
 )
@@ -1361,7 +1363,7 @@ cli_py_test(
         "//factory/cli/src/tbhbdev/alpha:install",
         "//factory/cli/src/tbhbdev/alpha:pre_push_guard",
         "//factory/cli/src/tbhbdev/alpha/agent:worktree",
-        "@cli_pip//httpx",
+        "@cli_pip//httpx2",
         "@cli_pip//pytest",
     ],
 )
@@ -1474,6 +1476,7 @@ cli_py_test(
         "//factory/cli/src/tbhbdev/alpha:repo_token",
         "@cli_pip//cryptography",
         "@cli_pip//httpx",
+        "@cli_pip//httpx2",
         "@cli_pip//pytest",
     ],
 )
@@ -1954,7 +1957,7 @@ cli_py_test(
     deps = [
         ":conftest",
         "//factory/cli/src/tbhbdev:cue_runtime",
-        "@cli_pip//httpx",
+        "@cli_pip//httpx2",
         "@cli_pip//pytest",
     ],
 )

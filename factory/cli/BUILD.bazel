@@ -44,8 +44,10 @@ sh_binary(
 modules_mapping(
     name = "modules_map",
     wheels = [
+        "@cli_pip//certifi:whl",
         "@cli_pip//cryptography:whl",
         "@cli_pip//httpx:whl",
+        "@cli_pip//httpx2:whl",
         "@cli_pip//hypothesis:whl",
         "@cli_pip//jsonschema:whl",
         "@cli_pip//markdown_it_py:whl",

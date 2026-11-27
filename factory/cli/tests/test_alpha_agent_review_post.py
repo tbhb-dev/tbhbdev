@@ -6,7 +6,7 @@ from dataclasses import replace
 from types import SimpleNamespace
 from typing import TYPE_CHECKING, cast
 
-import httpx
+import httpx2
 import pytest
 from cue_fixtures import review_cue as review_cue  # noqa: PLC0414
 
@@ -79,8 +79,10 @@ def make(
     )
 
 
-def reply(status: int, data: object) -> httpx.Response:
-    return httpx.Response(status, json=data, request=httpx.Request("GET", "https://x"))
+def reply(status: int, data: object) -> httpx2.Response:
+    return httpx2.Response(
+        status, json=data, request=httpx2.Request("GET", "https://x")
+    )
 
 
 def mint_token(_request: object, _settings: object) -> str | None:
@@ -91,7 +93,7 @@ def no_token(_request: object, _settings: object) -> str | None:
     return None
 
 
-def forbidden(*_args: object, **_options: object) -> httpx.Response:
+def forbidden(*_args: object, **_options: object) -> httpx2.Response:
     raise AssertionError
 
 
@@ -104,12 +106,12 @@ class Api:
 
     def __init__(self, monkeypatch: pytest.MonkeyPatch) -> None:
         self.calls: list[tuple[str, str, dict[str, str] | None]] = []
-        self.pull: httpx.Response | Exception = reply(200, {"head": {"sha": HEAD}})
+        self.pull: httpx2.Response | Exception = reply(200, {"head": {"sha": HEAD}})
         self.later = reply(200, {"head": {"sha": HEAD}})
-        self.created: httpx.Response | Exception = reply(201, {"id": 99})
-        monkeypatch.setattr(httpx, "request", self.request)
+        self.created: httpx2.Response | Exception = reply(201, {"id": 99})
+        monkeypatch.setattr(httpx2, "request", self.request)
 
-    def request(self, method: str, url: str, **options: object) -> httpx.Response:
+    def request(self, method: str, url: str, **options: object) -> httpx2.Response:
         payload = cast("dict[str, str] | None", options.get("json"))
         self.calls.append((method, url, payload))
         gets = [c for c in self.calls if c[0] == "GET"]
@@ -295,7 +297,7 @@ def test_a_bad_draft_posts_nothing(
 ) -> None:
     run, prepared = make(tmp_path, text, name)
     monkeypatch.setattr(credentials, "review_post_token", mint_token)
-    monkeypatch.setattr(httpx, "request", forbidden)
+    monkeypatch.setattr(httpx2, "request", forbidden)
     assert not review_post.posted(run, prepared)
     assert message in run.files.path("log").read_text()
 
@@ -428,7 +430,7 @@ def test_host_refuses_an_invalid_rendered_review(
     [reply(200, {"head": {"sha": "b" * 40}}), reply(200, {}), reply(200, [])],
 )
 def test_an_approval_requires_one_read_of_the_pinned_head(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, pull: httpx.Response
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, pull: httpx2.Response
 ) -> None:
     run, prepared = make(tmp_path, draft("APPROVE"))
     monkeypatch.setattr(credentials, "review_post_token", mint_token)
@@ -444,7 +446,7 @@ def test_a_missing_token_blocks_the_post(
 ) -> None:
     run, prepared = make(tmp_path, draft())
     monkeypatch.setattr(credentials, "review_post_token", no_token)
-    monkeypatch.setattr(httpx, "request", forbidden)
+    monkeypatch.setattr(httpx2, "request", forbidden)
     assert not review_post.posted(run, prepared)
     assert "token unavailable" in run.files.path("log").read_text()
 
@@ -453,13 +455,13 @@ def test_a_missing_token_blocks_the_post(
     ("outcome", "message"),
     [
         (reply(403, {"message": "no"}), "status 403"),
-        (httpx.ConnectError("x"), "ConnectError"),
+        (httpx2.ConnectError("x"), "ConnectError"),
     ],
 )
 def test_post_failures_are_logged(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
-    outcome: httpx.Response | Exception,
+    outcome: httpx2.Response | Exception,
     message: str,
 ) -> None:
     run, prepared = make(tmp_path, draft())
@@ -484,17 +486,17 @@ def test_any_2xx_post_is_a_success(
 @pytest.mark.parametrize(
     "outcome",
     [
-        httpx.Response(204),
+        httpx2.Response(204),
         reply(201, {}),
         reply(202, {}),
         reply(200, []),
         reply(201, {"id": "x"}),
-        httpx.Response(200, text="OK"),
-        httpx.Response(200, text="not json"),
+        httpx2.Response(200, text="OK"),
+        httpx2.Response(200, text="not json"),
     ],
 )
 def test_a_2xx_post_without_an_integer_id_counts_as_posted(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, outcome: httpx.Response
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, outcome: httpx2.Response
 ) -> None:
     run, prepared = make(tmp_path, draft())
     monkeypatch.setattr(credentials, "review_post_token", mint_token)

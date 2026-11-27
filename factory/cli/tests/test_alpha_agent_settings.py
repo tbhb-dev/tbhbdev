@@ -182,10 +182,11 @@ def test_command_help_contract() -> None:
     assert arguments.parser("example agent").format_help() == (
         "usage: example agent [-h]\n"
         "                     "
-        "{exec,wait,status,kill,clean,keep,log,diff,signing-parity} ...\n\n"
+        "{exec,wait,status,kill,clean,keep,log,diff,send,signing-parity} ...\n\n"
         "positional arguments:\n"
-        "  {exec,wait,status,kill,clean,keep,log,diff,signing-parity}\n"
+        "  {exec,wait,status,kill,clean,keep,log,diff,send,signing-parity}\n"
         "    exec                launch a headless run\n"
+        "    send                steer an active Codex run\n"
         "    signing-parity      check each host's signing key is registered\n\n"
         "options:\n"
         "  -h, --help            show this help message and exit\n"
