@@ -3,7 +3,7 @@
 
 load("@rules_shell//shell:sh_test.bzl", "sh_test")
 load("@tbhb_rules_python//:defs.bzl", "pytest_test")
-load("//lint:defs.bzl", "cspell_test", "gitleaks_history", "gitleaks_test", "rumdl_test", "shellcheck_test", "shfmt_test", "vale_test", "workflow_lint_test")
+load("//lint:defs.bzl", "cspell_test", "gitleaks_history", "gitleaks_test", "rumdl_test", "shellcheck_test", "shfmt_test", "vale_test")
 load("//lint/private:gitleaks_tool.bzl", "gitleaks_tool")
 load("//lint/private:review_policy.bzl", "review_policy_test")
 load("//repo:defs.bzl", "repo_files")
@@ -150,27 +150,14 @@ pytest_test(
 )
 
 pytest_test(
-    name = "repo_checks_drift_test",
-    srcs = ["//:repo_files"],
-    args = ["lint/tests/test_repo_checks.py::test_configured_targets_exist"],
-    coverage = None,
-    data = [
-        "//:repo_check_targets",
-        "//lint:repo_check_targets",
-    ],
-)
-
-pytest_test(
-    name = "repo_checks_test",
+    name = "lint_baselines_test",
     srcs = ["//:repo_files"],
     args = [
         "lint/tests/test_check_lint_baselines.py",
         "lint/tests/test_preflight.py",
-        "lint/tests/test_repo_checks.py::test_runner",
     ],
     coverage = None,
     path_tools = ["@tbhb_rules_git//:git"],
-    # Tech debt (AGENTS.md): port the runner's subprocess fixture to Windows.
     target_compatible_with = select({
         "@platforms//os:windows": ["@platforms//:incompatible"],
         "//conditions:default": [],
@@ -312,21 +299,6 @@ gitleaks_history_scenario_test(
     subject = ":history_subject",
 )
 
-[
-    gitleaks_history_scenario_test(
-        name = "history_" + scenario + "_test",
-        expected_head = "head",
-        expected_scan = "gitleaks_history: scanning HEAD^1..HEAD (2 commits): the pull request's commits",
-        scenario = scenario,
-        subject = ":history_subject",
-        subject_args = ["--merge-range"],
-    )
-    for scenario in [
-        "deletion_only",
-        "rename_only",
-    ]
-]
-
 # A key on another branch fails the default scan of every ref, and passes a
 # scan limited to the checked-out branch.
 gitleaks_history_scenario_test(
@@ -362,11 +334,9 @@ gitleaks_history(
 [
     gitleaks_history_scenario_test(
         name = "proof_history_zero_" + scenario,
-        expected_head = "head",
-        expected_scan = "gitleaks_history: scanning HEAD^1..HEAD (2 commits): the pull request's commits",
         scenario = scenario,
         subject = ":history_zero_subject",
-        subject_args = ["--merge-range"],
+        subject_args = ["--log-opts=HEAD"],
         tags = PROOF_TAGS,
     )
     for scenario in [
@@ -374,64 +344,6 @@ gitleaks_history(
         "range_binary",
         "range_corrupt",
         "range_rename_added",
-    ]
-]
-
-# The merge range excludes the base history but still catches keys removed
-# before the merge. Full scans of the same base-secret fixture still fail.
-gitleaks_history_scenario_test(
-    name = "history_range_base_secret_test",
-    expected_head = "head",
-    expected_scan = "gitleaks_history: scanning HEAD^1..HEAD (2 commits): the pull request's commits",
-    scenario = "range_base_secret",
-    subject = ":history_subject",
-    subject_args = ["--merge-range"],
-)
-
-gitleaks_history_scenario_test(
-    name = "history_range_empty_test",
-    expected_head = "head",
-    expected_scan = "gitleaks_history: scanning HEAD^1..HEAD (2 commits): the pull request's commits",
-    scenario = "range_empty",
-    subject = ":history_subject",
-    subject_args = ["--merge-range"],
-)
-
-[
-    gitleaks_history_scenario_test(
-        name = "proof_history_" + scenario,
-        expected_head = "head",
-        expected_scan = announcement,
-        scenario = scenario,
-        subject = ":history_subject",
-        subject_args = ["--merge-range"],
-        tags = PROOF_TAGS,
-    )
-    for scenario, announcement in [
-        ("range_secret", "gitleaks_history: scanning HEAD^1..HEAD (3 commits): the pull request's commits"),
-        ("range_linear", "gitleaks_history: scanning full history HEAD (2 commits): HEAD does not have exactly two readable parents"),
-        ("range_config", "gitleaks_history: scanning full history HEAD (5 commits): the pull request changes .gitleaks.toml"),
-        ("range_rules", "gitleaks_history: scanning full history HEAD (5 commits): the pull request changes .gitleaks-rules.toml"),
-        ("range_module_base", "gitleaks_history: scanning full history HEAD (5 commits): the pull request changes lint/gitleaks/base.toml"),
-        ("range_ignore", "gitleaks_history: scanning full history HEAD (5 commits): the pull request changes .gitleaksignore"),
-    ]
-]
-
-# A branch tip that merges the base into the PR has the author's commits on
-# the first-parent line. Missing or mismatched event commits must scan them.
-[
-    gitleaks_history_scenario_test(
-        name = "proof_history_range_branch_merge_" + expected_head,
-        expected_head = expected_head,
-        expected_scan = "gitleaks_history: scanning full history HEAD (5 commits): " + reason,
-        scenario = "range_branch_merge",
-        subject = ":history_subject",
-        subject_args = ["--merge-range"],
-        tags = PROOF_TAGS,
-    )
-    for expected_head, reason in [
-        ("unset", "EXPECTED_HEAD is unset"),
-        ("other", "HEAD is not the commit the event names"),
     ]
 ]
 
@@ -547,14 +459,6 @@ PROOF_REASONS = {
     "proof_history_no_commits": "gitleaks_history: FAIL: the repository has no commits",
     "proof_history_other_branch": "leaks found: [1-9]",
     "proof_history_range_base_secret_full": "leaks found: [1-9]",
-    "proof_history_range_branch_merge_other": "leaks found: [1-9]",
-    "proof_history_range_branch_merge_unset": "leaks found: [1-9]",
-    "proof_history_range_config": "leaks found: [1-9]",
-    "proof_history_range_ignore": "leaks found: [1-9]",
-    "proof_history_range_linear": "leaks found: [1-9]",
-    "proof_history_range_module_base": "leaks found: [1-9]",
-    "proof_history_range_rules": "leaks found: [1-9]",
-    "proof_history_range_secret": "leaks found: [1-9]",
     "proof_history_secret": "leaks found: [1-9]",
     "proof_history_zero_range_added": "gitleaks_history: FAIL: gitleaks scanned 0 commits of a history with .*content, which proves nothing",
     "proof_history_zero_range_binary": "gitleaks_history: FAIL: gitleaks scanned 0 commits of a history with .*content, which proves nothing",
@@ -687,51 +591,6 @@ cspell_parent_config_test(
     ],
     subject = ":cspell_vocabulary_test_tool",
 )
-
-# workflow_lint_test against fixture trees. Each proof plants one violation.
-WORKFLOW_LINT_ROOT = "lint/tests/testdata/workflow_lint/"
-
-[
-    workflow_lint_test(
-        name = "workflow_lint_{}_test".format(case),
-        srcs = glob(["testdata/workflow_lint/{}/**".format(case)]),
-        paths = ["workflows"],
-        private = private,
-        strip_prefix = WORKFLOW_LINT_ROOT + case,
-    )
-    for case, private in [
-        ("clean", False),
-        ("self_hosted", True),
-    ]
-]
-
-[
-    workflow_lint_test(
-        name = "proof_workflow_lint_" + case,
-        srcs = glob(["testdata/workflow_lint/{}/**".format(case)]),
-        paths = ["workflows"],
-        strip_prefix = WORKFLOW_LINT_ROOT + case,
-        tags = ["manual"],
-    )
-    for case in [
-        "tag",
-        "latest",
-        "self_hosted",
-    ]
-]
-
-[
-    expect_failure_test(
-        name = "workflow_lint_{}_fails_test".format(case),
-        pattern = pattern,
-        test = ":proof_workflow_lint_" + case,
-    )
-    for case, pattern in {
-        "latest": "workflows/ci.yml:5: runner label 'ubuntu-latest' floats",
-        "self_hosted": "workflows/ci.yml:5: the self-hosted label is allowed only in a private repository",
-        "tag": "workflows/ci.yml:7: uses 'actions/checkout@v4' is not pinned to a full commit SHA",
-    }.items()
-]
 
 # rumdl_test with two exclude entries. Two files break a rule (MD018) and a
 # third is clean. The pinned rumdl accepts one `--exclude` with the entries

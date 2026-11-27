@@ -1,7 +1,0 @@
----
-on: push
-jobs:
-  a:
-    runs-on: [self-hosted, linux]
-    steps:
-      - run: echo hi

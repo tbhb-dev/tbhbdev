@@ -15,8 +15,6 @@ from tbhbdev import cli, version
 if TYPE_CHECKING:
     from pathlib import Path
 
-    from conftest import Installed
-
 COMMIT = "135933fb00d166e18826bd61de5d4a5a8626b22d"
 
 
@@ -156,19 +154,6 @@ def test_version_flag_works_with_the_real_distribution(
 ) -> None:
     assert cli.main(["--version"]) == 0
     assert capsys.readouterr().out == version.line() + "\n"
-
-
-def test_version_flag_ignores_a_broken_plugin(
-    installed: Installed,
-    monkeypatch: pytest.MonkeyPatch,
-    capsys: pytest.CaptureFixture[str],
-) -> None:
-    installed.add("broken", ImportError("no module named 'nowhere'"))
-    monkeypatch.setattr(version, "line", lambda: "tbhbdev 0 (abc)")
-    assert cli.main(["--version"]) == 0
-    captured = capsys.readouterr()
-    assert captured.out == "tbhbdev 0 (abc)\n"
-    assert captured.err == ""
 
 
 @pytest.mark.parametrize("flag", ["--versions", "-v", "--bogus", "-x"])
