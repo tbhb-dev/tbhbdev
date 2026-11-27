@@ -5,9 +5,11 @@ package main
 
 import (
 	"bufio"
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"log/slog"
 	"maps"
@@ -41,11 +43,6 @@ func TestMCPCommand(t *testing.T) {
 		reader, writer, err := os.Pipe()
 		checkError(t, err)
 
-		stdin := os.Stdin
-		os.Stdin = reader
-
-		t.Cleanup(func() { os.Stdin = stdin })
-
 		ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
 		t.Cleanup(cancel)
 
@@ -60,7 +57,7 @@ func TestMCPCommand(t *testing.T) {
 			checkError(t, writer.Close())
 		}
 
-		err = run(ctx, io.Discard, slog.DiscardHandler, []string{mcpCommand})
+		err = runMCP(ctx, slog.DiscardHandler, reader, io.Discard, nil)
 		checkEqual(t, errors.Is(err, want), true)
 	}
 
@@ -69,8 +66,7 @@ func TestMCPCommand(t *testing.T) {
 }
 
 func TestMCPStdinErrors(t *testing.T) {
-	t.Setenv(gatewayURLEnv, "")
-	t.Setenv(gatewayTokenEnv, "")
+	t.Parallel()
 
 	for _, test := range []struct {
 		want        error
@@ -82,6 +78,8 @@ func TestMCPStdinErrors(t *testing.T) {
 		{os.ErrClosed, "closed stdin", ""},
 	} {
 		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+
 			input, client := mcpTestPipe(t)
 			_, err := io.WriteString(client, test.input)
 			checkError(t, err)
@@ -94,7 +92,7 @@ func TestMCPStdinErrors(t *testing.T) {
 			ctx, cancel := context.WithTimeout(t.Context(), mcpTestTimeout)
 			defer cancel()
 
-			err = serveMCP(ctx, slog.DiscardHandler, input, io.Discard)
+			err = serveMCPWithEnv(ctx, slog.DiscardHandler, input, io.Discard, func(string) string { return "" })
 			checkMCPServeError(t, err)
 
 			if test.want != nil {
@@ -130,17 +128,19 @@ func TestMCPStdoutAfterCancel(t *testing.T) {
 	done := make(chan struct{})
 	close(done)
 
-	out := mcpStdout{writer: failingMCPWriter{}, done: done}
+	out := mcpStdout{writer: failingMCPWriter{}, done: done, mu: sync.Mutex{}}
 	n, err := out.Write([]byte("notification"))
 	checkEqual(t, n, 0)
 	checkEqual(t, err, io.ErrClosedPipe)
 }
 
 func TestMCPStdinCloseStopsGateway(t *testing.T) {
+	t.Parallel()
 	checkMCPBlockedStdout(t, false)
 }
 
 func TestMCPMalformedInputWithBlockedStdout(t *testing.T) {
+	t.Parallel()
 	checkMCPBlockedStdout(t, true)
 }
 
@@ -157,10 +157,7 @@ func checkMCPBlockedStdout(t *testing.T, malformed bool) {
 		_, _, err := conn.Read(ctx)
 		checkEqual(t, err != nil, true)
 	})
-	t.Setenv(gatewayURLEnv, gateway.URL+sessionPath)
-	t.Setenv(gatewayTokenEnv, mcpFixture)
-
-	setMCPStateKeys(t, [3]string{})
+	env := map[string]string{gatewayURLEnv: gateway.URL + sessionPath, gatewayTokenEnv: mcpFixture}
 
 	input, clientInput := mcpTestPipe(t)
 	clientOutput, output := io.Pipe()
@@ -169,7 +166,9 @@ func checkMCPBlockedStdout(t *testing.T, malformed bool) {
 	t.Cleanup(func() { checkError(t, output.Close()) })
 
 	stopped := make(chan error, 1)
-	go func() { stopped <- serveMCP(ctx, slog.DiscardHandler, input, output) }()
+	go func() {
+		stopped <- serveMCPWithEnv(ctx, slog.DiscardHandler, input, output, func(key string) string { return env[key] })
+	}()
 
 	started := make(chan error, 1)
 	go func() { started <- startMCPPipeClient(clientInput, clientOutput) }()
@@ -212,25 +211,28 @@ func checkMCPBlockedStdout(t *testing.T, malformed bool) {
 func startMCPPipeClient(input io.Writer, output io.Reader) error {
 	_, err := io.WriteString(input, mcpTestInit)
 	if err != nil {
-		return err
+		return fmt.Errorf("write initialize: %w", err)
 	}
 
 	_, err = bufio.NewReader(output).ReadBytes('\n')
 	if err != nil {
-		return err
+		return fmt.Errorf("read initialize response: %w", err)
 	}
 
 	_, err = io.WriteString(input, `{"jsonrpc":"2.0","method":"notifications/initialized"}`+"\n")
 	if err != nil {
-		return err
+		return fmt.Errorf("write initialized notification: %w", err)
 	}
 
 	// Read only the first byte so the notification stays blocked in the pipe write.
 	var firstByte [1]byte
 
 	_, err = io.ReadFull(output, firstByte[:])
+	if err != nil {
+		return fmt.Errorf("read notification: %w", err)
+	}
 
-	return err
+	return nil
 }
 
 func mcpTestPipe(t *testing.T) (*os.File, *os.File) {
@@ -269,7 +271,7 @@ func connectMCP(t *testing.T) *mcp.ClientSession {
 
 func connectMCPClient(
 	t *testing.T, name string, notifications chan<- *jsonrpc.Request,
-) (*mcp.ClientSession, *mcp.ServerSession, *notifyingTransport) {
+) (*mcp.ClientSession, *mcp.ServerSession, *mcpNotifier) {
 	t.Helper()
 
 	return connectMCPWithSubscriptions(t, new(mcpSubscriptions), name, notifications)
@@ -277,7 +279,7 @@ func connectMCPClient(
 
 func connectMCPWithSubscriptions(
 	t *testing.T, subs *mcpSubscriptions, name string, notifications chan<- *jsonrpc.Request,
-) (*mcp.ClientSession, *mcp.ServerSession, *notifyingTransport) {
+) (*mcp.ClientSession, *mcp.ServerSession, *mcpNotifier) {
 	t.Helper()
 
 	ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
@@ -285,65 +287,43 @@ func connectMCPWithSubscriptions(
 
 	logger := slog.New(slog.DiscardHandler)
 	in, out := mcp.NewInMemoryTransports()
-	notifier := &notifyingTransport{inner: in, conn: nil, mu: sync.Mutex{}}
+	notifier := &mcpNotifier{output: captureMCPNotifications{notifications: notifications}}
 	server := newMCPServer(logger, subs, notifier, nil)
-	peer, err := server.Connect(ctx, notifier, nil)
+	peer, err := server.Connect(ctx, in, nil)
 	checkError(t, err)
 	t.Cleanup(func() { checkError(t, peer.Close()) })
 
-	client := mcp.NewClient(
-		&mcp.Implementation{Title: "", Description: "", WebsiteURL: "", Icons: nil, Name: name, Version: version},
-		&mcp.ClientOptions{Logger: logger},
-	)
-	session, err := client.Connect(ctx, captureMCPTransport{transport: out, notifications: notifications}, nil)
+	var options mcp.ClientOptions
+
+	options.Logger = logger
+	client := mcp.NewClient(mcpImplementation(name), &options)
+	session, err := client.Connect(ctx, out, nil)
 	checkError(t, err)
 	t.Cleanup(func() { checkError(t, session.Close()) })
 
 	return session, peer, notifier
 }
 
-type captureMCPTransport struct {
-	transport     mcp.Transport
-	notifications chan<- *jsonrpc.Request
-}
+type captureMCPNotifications struct{ notifications chan<- *jsonrpc.Request }
 
-func (t captureMCPTransport) Connect(ctx context.Context) (mcp.Connection, error) {
-	conn, err := t.transport.Connect(ctx)
-
-	return captureMCPConnection{
-		Connection:    conn,
-		notifications: t.notifications,
-	}, err
-}
-
-type captureMCPConnection struct {
-	mcp.Connection
-
-	notifications chan<- *jsonrpc.Request
-}
-
-func (c captureMCPConnection) Read(ctx context.Context) (jsonrpc.Message, error) {
-	msg, err := c.Connection.Read(ctx)
-	if request, ok := msg.(*jsonrpc.Request); ok && c.notifications != nil &&
-		request.Method == "notifications/claude/channel" {
-		c.notifications <- request
+func (capture captureMCPNotifications) Write(data []byte) (int, error) {
+	msg, err := jsonrpc.DecodeMessage(data)
+	if err != nil {
+		return 0, fmt.Errorf("decode notification: %w", err)
 	}
 
-	return msg, err
+	if request, ok := msg.(*jsonrpc.Request); ok && capture.notifications != nil {
+		capture.notifications <- request
+	}
+
+	return len(data), nil
 }
 
 func TestMCPTools(t *testing.T) {
 	t.Parallel()
 	session := connectMCP(t)
 
-	init := session.InitializeResult()
-	checkEqual(t, init.ServerInfo.Name, "event-gateway")
-	checkEqual(t, init.ProtocolVersion, "2025-11-25")
-	checkEqual(t, init.Capabilities.Logging != nil, true)
-	checkEqual(t, init.Capabilities.Tools.ListChanged, false)
-	capabilities, err := json.Marshal(init.Capabilities.Experimental)
-	checkError(t, err)
-	checkEqual(t, string(capabilities), `{"claude/channel":{}}`)
+	checkMCPCapabilities(t, session.InitializeResult())
 
 	result, err := session.ListTools(t.Context(), nil)
 	checkError(t, err)
@@ -400,6 +380,20 @@ func TestMCPTools(t *testing.T) {
 	)
 }
 
+func checkMCPCapabilities(t *testing.T, init *mcp.InitializeResult) {
+	t.Helper()
+
+	checkEqual(t, init.ServerInfo.Name, "event-gateway")
+	checkEqual(t, init.ProtocolVersion, "2025-11-25")
+	capabilitiesJSON, err := json.Marshal(init.Capabilities)
+	checkError(t, err)
+	checkEqual(t, bytes.Contains(capabilitiesJSON, []byte(`"logging":{}`)), true)
+	checkEqual(t, init.Capabilities.Tools.ListChanged, false)
+	capabilities, err := json.Marshal(init.Capabilities.Experimental)
+	checkError(t, err)
+	checkEqual(t, string(capabilities), `{"claude/channel":{}}`)
+}
+
 func TestMCPCheckDelivery(t *testing.T) {
 	t.Parallel()
 
@@ -441,20 +435,11 @@ func readChannelNotification(t *testing.T, req *jsonrpc.Request) channelParamete
 	return params
 }
 
-type failingMCPTransport struct{}
-
-func (failingMCPTransport) Connect(context.Context) (mcp.Connection, error) {
-	return nil, io.ErrClosedPipe
-}
-
 func TestMCPNotifyWithoutConnection(t *testing.T) {
 	t.Parallel()
 
-	notifier := &notifyingTransport{inner: failingMCPTransport{}, conn: nil, mu: sync.Mutex{}}
-	checkEqual(t, notifier.Notify(t.Context(), channelMethod, nil), errNoConnection)
-	_, err := notifier.Connect(t.Context())
-	checkEqual(t, errors.Is(err, io.ErrClosedPipe), true)
-	checkEqual(t, notifier.Notify(t.Context(), channelMethod, nil), errNoConnection)
+	notifier := new(mcpNotifier)
+	checkEqual(t, notifier.notify(t.Context(), nil), errNoConnection)
 }
 
 func TestMCPChannelBeforeClientName(t *testing.T) {
@@ -463,8 +448,8 @@ func TestMCPChannelBeforeClientName(t *testing.T) {
 	var event channelEvent
 
 	for _, init := range []*mcp.InitializeParams{nil, new(mcp.InitializeParams)} {
-		in, _ := mcp.NewInMemoryTransports()
-		notifier := &notifyingTransport{inner: in, conn: nil, mu: sync.Mutex{}}
+		serverSide, _ := mcp.NewInMemoryTransports()
+		notifier := new(mcpNotifier)
 		server := newMCPServer(slog.New(slog.DiscardHandler), new(mcpSubscriptions), notifier, nil)
 
 		opts := &mcp.ServerSessionOptions{
@@ -475,7 +460,7 @@ func TestMCPChannelBeforeClientName(t *testing.T) {
 				InitializeParams:          init,
 			},
 		}
-		peer, err := server.Connect(t.Context(), notifier, opts)
+		peer, err := server.Connect(t.Context(), serverSide, opts)
 		checkError(t, err)
 		checkEqual(t, notifier.deliverChannel(t.Context(), peer, event), errChannelClient)
 		checkError(t, peer.Close())

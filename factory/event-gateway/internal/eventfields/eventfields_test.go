@@ -29,12 +29,35 @@ const (
 func TestFromEnvelope(t *testing.T) {
 	t.Parallel()
 
-	for _, test := range []struct {
-		name, event, payload, pattern, want string
-		absent                              []string
-	}{
+	for _, test := range append(pullRequestFields(), eventFieldEdgeCases()...) {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+
+			envelope := `{"provider":"github","delivery":"example","repository":"org/repo","event":"` + test.event +
+				`","payload":` + test.payload + `}`
+			fields := extract(t, envelope)
+			assertRender(t, fields, test.pattern, test.want)
+
+			for _, name := range test.absent {
+				if fields.Has(name) {
+					t.Errorf("unexpected field %s", name)
+				}
+			}
+		})
+	}
+}
+
+type envelopeCase struct {
+	name, event, payload, pattern, want string
+	absent                              []string
+}
+
+func pullRequestFields() []envelopeCase {
+	return []envelopeCase{
 		{
-			"opened", pullRequest, `{"action":"opened","pull_request":{"number":42,"head":{"sha":"abc"}},` +
+			"opened",
+			pullRequest,
+			`{"action":"opened","pull_request":{"number":42,"head":{"sha":"abc"}},` +
 				`"sender":{"login":"alice"}}`,
 			`{{.provider}}/{{.event}}/{{.delivery}}/{{.seq}}:{{.repository}}#{{.number}}@{{.head_sha}}:{{.action}}:{{.sender}}`,
 			"github/pull_request/example/7:org/repo#42@abc:opened:alice",
@@ -79,6 +102,11 @@ func TestFromEnvelope(t *testing.T) {
 			[]string{numberField},
 		},
 		{push, push, `{"after":"tip"}`, headPattern, "tip", nil},
+	}
+}
+
+func eventFieldEdgeCases() []envelopeCase {
+	return []envelopeCase{
 		{"check run", "check_run", `{"check_run":{"head_sha":"run"}}`, headPattern, "run", nil},
 		{"check suite", "check_suite", `{"check_suite":{"head_sha":"suite"}}`, headPattern, "suite", nil},
 		{"workflow run", "workflow_run", `{"workflow_run":{"head_sha":"run"}}`, headPattern, "run", nil},
@@ -104,21 +132,6 @@ func TestFromEnvelope(t *testing.T) {
 				`"pull_request":{"number":0,"head":{"sha":""}}}`, `{{.action}}/{{.sender}}/{{.head_sha}}/{{.number}}`,
 			"///0", nil,
 		},
-	} {
-		t.Run(test.name, func(t *testing.T) {
-			t.Parallel()
-
-			envelope := `{"provider":"github","delivery":"example","repository":"org/repo","event":"` + test.event +
-				`","payload":` + test.payload + `}`
-			fields := extract(t, envelope)
-			assertRender(t, fields, test.pattern, test.want)
-
-			for _, name := range test.absent {
-				if fields.Has(name) {
-					t.Errorf("unexpected field %s", name)
-				}
-			}
-		})
 	}
 }
 

@@ -37,7 +37,7 @@ func TestParkedSocket(t *testing.T) {
 	checkEqual(t, run(ctx, io.Discard, slog.DiscardHandler, args).Error(), notRunning)
 
 	targets := []runnerTarget{
-		{Start: startPosition{at: nil, all: false}, Subjects: nil, Target: fakeTarget{name: "replay"}},
+		{Start: startPosition{at: nil, all: false}, Subjects: nil, Target: fakeTarget{name: "replay", deliver: nil}},
 	}
 
 	var cfg serveConfig

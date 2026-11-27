@@ -35,13 +35,17 @@ var (
 	errBodyConflict = errors.New("delivery ID already has a different body")
 )
 
+type openOrderedConsumer func(context.Context, jetstream.OrderedConsumerConfig) (jetstream.Consumer, error)
+
 type eventStore struct {
-	jet    jetstream.JetStream
-	stream jetstream.Stream
+	openOrdered openOrderedConsumer
+	jet         jetstream.JetStream
+	stream      jetstream.Stream
 }
 
 func storeOptions(storeDir string) *server.Options {
 	var options server.Options
+
 	options.JetStream = true
 	options.StoreDir = storeDir
 	options.DontListen = true
@@ -129,9 +133,15 @@ func openStream(
 		embedded.Shutdown()
 	}
 
-	jet, _ := jetstream.New(conn)
+	jet, err := jetstream.New(conn)
+	if err != nil {
+		closeStore()
+
+		return eventStore{}, nil, fmt.Errorf("initialize JetStream: %w", err)
+	}
 
 	var config jetstream.StreamConfig
+
 	config.Name = streamName
 	config.Subjects = []string{"events.>"}
 	config.Storage = jetstream.FileStorage
@@ -146,7 +156,15 @@ func openStream(
 		return eventStore{}, nil, fmt.Errorf("configure EVENTS stream: %w", err)
 	}
 
-	return eventStore{jet: jet, stream: stream}, closeStore, nil
+	return eventStore{jet: jet, stream: stream, openOrdered: nil}, closeStore, nil
+}
+
+func (s eventStore) orderedConsumer() openOrderedConsumer {
+	if s.openOrdered != nil {
+		return s.openOrdered
+	}
+
+	return s.stream.OrderedConsumer
 }
 
 func validateEvent(name string, payload []byte) error {

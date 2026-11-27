@@ -12,7 +12,6 @@ import (
 	"net"
 	"net/http"
 	"net/url"
-	"os"
 	"strconv"
 	"sync"
 	"time"
@@ -38,9 +37,13 @@ var (
 )
 
 func startMCPGateway(
-	ctx context.Context, subscriptions *mcpSubscriptions, notifier *notifyingTransport, logger *slog.Logger,
+	ctx context.Context,
+	subscriptions *mcpSubscriptions,
+	notifier *mcpNotifier,
+	logger *slog.Logger,
+	getenv func(string) string,
 ) (func(context.Context, *mcp.InitializedRequest), func()) {
-	endpoint, token := os.Getenv(gatewayURLEnv), os.Getenv(gatewayTokenEnv)
+	endpoint, token := getenv(gatewayURLEnv), getenv(gatewayTokenEnv)
 	if endpoint == "" || token == "" {
 		return nil, func() {}
 	}
@@ -77,36 +80,15 @@ func runMCPGateway(
 ) error {
 	warnInsecureGateway(ctx, logger, endpoint)
 
-	options := new(websocket.DialOptions)
-	options.HTTPHeader = http.Header{"Authorization": {"Bearer " + token}}
-	options.Subprotocols = []string{sessionProtocol}
-
-	options.HTTPClient = &http.Client{
-		Transport: nil,
-		Jar:       nil,
-		Timeout:   0,
-
-		CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse },
-	}
+	options := gatewayDialOptions(token)
 
 	delay := gatewayRetryMin
-	ready, recovering := false, false
 
-	var deliveries gatewayDeliveries
+	var state gatewayConnectionState
 
-	deliveries.ids = make(map[string]struct{}, gatewayDeliveryLimit)
+	state.deliveries.ids = make(map[string]struct{}, gatewayDeliveryLimit)
 	receive := func(kind websocket.MessageType, data []byte) {
-		ready = true
-
-		if recovering {
-			notify(gatewayReconnected().channelEvent())
-
-			recovering = false
-		}
-
-		if kind == websocket.MessageText {
-			forwardGatewayFrame(sessionJSON[sessionObject](data), subscriptions, &deliveries, notify)
-		}
+		state.receive(kind, data, subscriptions, notify)
 	}
 
 	for ctx.Err() == nil {
@@ -125,11 +107,11 @@ func runMCPGateway(
 			return err
 		}
 
-		if ready {
+		if state.ready {
 			notify(gatewayConnectionLost().channelEvent())
 
 			delay = gatewayRetryMin
-			ready, recovering = false, true
+			state.ready, state.recovering = false, true
 		}
 
 		logger.DebugContext(ctx, "gateway retry scheduled", "delay_seconds", int(delay/time.Second))
@@ -142,6 +124,38 @@ func runMCPGateway(
 	}
 
 	return nil
+}
+
+type gatewayConnectionState struct {
+	deliveries        gatewayDeliveries
+	ready, recovering bool
+}
+
+func (state *gatewayConnectionState) receive(
+	kind websocket.MessageType, data []byte, subscriptions *mcpSubscriptions, notify func(channelEvent) bool,
+) {
+	state.ready = true
+	if state.recovering {
+		notify(gatewayReconnected().channelEvent())
+
+		state.recovering = false
+	}
+
+	if kind == websocket.MessageText {
+		forwardGatewayFrame(*sessionJSON[sessionObject](data), subscriptions, &state.deliveries, notify)
+	}
+}
+
+func gatewayDialOptions(token string) *websocket.DialOptions {
+	var options websocket.DialOptions
+
+	options.HTTPHeader = http.Header{"Authorization": {"Bearer " + token}}
+	options.Subprotocols = []string{sessionProtocol}
+	options.HTTPClient = &http.Client{
+		Transport: nil, Jar: nil, Timeout: 0, CheckRedirect: rejectRedirect,
+	}
+
+	return &options
 }
 
 func warnInsecureGateway(ctx context.Context, logger *slog.Logger, endpoint string) {
@@ -295,13 +309,13 @@ func (d *gatewayDeliveries) remember(id string) {
 func forwardGatewayFrame(
 	frame sessionObject, subscriptions *mcpSubscriptions, deliveries *gatewayDeliveries, notify func(channelEvent) bool,
 ) {
-	switch sessionJSON[string](frame[typeKey]) {
+	switch *sessionJSON[string](frame[typeKey]) {
 	case channelEventKey:
 		event := channelEvent{
-			provider:   sessionJSON[string](frame[channelProviderKey]),
-			event:      sessionJSON[string](frame[channelEventKey]),
-			delivery:   sessionJSON[string](frame["delivery"]),
-			repository: sessionJSON[*string](frame[channelRepositoryKey]),
+			provider:   *sessionJSON[string](frame[channelProviderKey]),
+			event:      *sessionJSON[string](frame[channelEventKey]),
+			delivery:   *sessionJSON[string](frame["delivery"]),
+			repository: *sessionJSON[*string](frame[channelRepositoryKey]),
 			payload:    frame["payload"],
 		}
 		// Delivery IDs are scoped to their provider, as in the event store.
@@ -317,7 +331,7 @@ func forwardGatewayFrame(
 		}
 	case "caught_up":
 	case "gap":
-		notify(gatewayGap(sessionJSON[uint64](frame["from"]), sessionJSON[uint64](frame["to"])).channelEvent())
+		notify(gatewayGap(*sessionJSON[uint64](frame["from"]), *sessionJSON[uint64](frame["to"])).channelEvent())
 
 		return
 	default:

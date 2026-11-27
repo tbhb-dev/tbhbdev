@@ -42,18 +42,24 @@ func newTelemetry(handler slog.Handler, tracer trace.TracerProvider, meter metri
 
 	signals := meter.Meter(serviceName)
 
-	ingest, _ := signals.Int64Counter("event_gateway_ingest_total")
+	logger := slog.New(handler)
+	counter := func(name string) metric.Int64Counter {
+		value, err := signals.Int64Counter(name)
+		if err != nil {
+			logger.Error("initialize event counter", "name", name)
 
-	parked, _ := signals.Int64Counter("event_gateway_parked_total")
+			return metricnoop.Int64Counter{Int64Counter: nil}
+		}
 
-	parkFailed, _ := signals.Int64Counter("event_gateway_park_publish_failed_total")
+		return value
+	}
 
 	return telemetry{
-		logger:     slog.New(handler),
+		logger:     logger,
 		tracer:     tracer.Tracer(serviceName),
-		ingest:     ingest,
-		parked:     parked,
-		parkFailed: parkFailed,
+		ingest:     counter("event_gateway_ingest_total"),
+		parked:     counter("event_gateway_parked_total"),
+		parkFailed: counter("event_gateway_park_publish_failed_total"),
 	}
 }
 

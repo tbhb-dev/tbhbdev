@@ -55,10 +55,13 @@ func fixture(t *testing.T) string {
 	t.Helper()
 
 	dir := t.TempDir()
+	root, err := os.OpenRoot(dir)
+	must(t, err)
+	t.Cleanup(func() { must(t, root.Close()) })
+
 	write := func(name, content string, mode os.FileMode) {
-		path := filepath.Join(dir, name)
-		must(t, os.MkdirAll(filepath.Dir(path), 0o700))
-		must(t, os.WriteFile(path, []byte(content), mode))
+		must(t, root.MkdirAll(filepath.Dir(name), 0o700))
+		must(t, root.WriteFile(name, []byte(content), mode))
 	}
 
 	script, err := os.ReadFile("up.sh")
@@ -103,8 +106,9 @@ func runUp(t *testing.T, mutate func(dir string), env []string, args ...string) 
 		mutate(dir)
 	}
 
-	argv := append([]string{filepath.Join(dir, "up.sh")}, args...)
-	cmd := exec.CommandContext(t.Context(), "/bin/sh", argv...)
+	cmd := exec.CommandContext(t.Context(), "/bin/sh", "up.sh")
+	cmd.Dir = dir
+	cmd.Args = append(cmd.Args, args...)
 
 	cmd.Env = append([]string{"PATH=" + dir}, env...)
 
@@ -116,8 +120,17 @@ func runUp(t *testing.T, mutate func(dir string), env []string, args ...string) 
 	}
 
 	// The record is absent when up.sh never reached docker.
-	got, _ := os.ReadFile(filepath.Join(dir, "record"))
-	res.record = string(got)
+	root, openErr := os.OpenRoot(dir)
+
+	must(t, openErr)
+	defer func() { must(t, root.Close()) }()
+
+	got, err := root.ReadFile("record")
+	if !errors.Is(err, os.ErrNotExist) {
+		must(t, err)
+
+		res.record = string(got)
+	}
 
 	return res
 }
@@ -196,6 +209,12 @@ func TestUpRefusesOtherReferences(t *testing.T) {
 	}
 }
 
+func fileMode(t *testing.T, path func(string) string, mode os.FileMode) func(string) {
+	t.Helper()
+
+	return func(dir string) { must(t, os.Chmod(path(dir), mode)) }
+}
+
 func TestUpRequiresSecrets(t *testing.T) {
 	t.Parallel()
 
@@ -203,8 +222,8 @@ func TestUpRequiresSecrets(t *testing.T) {
 		path := func(dir string) string { return filepath.Join(dir, "secrets", name) }
 
 		for kind, mutate := range map[string]func(string){
-			"mode 440": func(dir string) { must(t, os.Chmod(path(dir), 0o440)) },
-			"mode 600": func(dir string) { must(t, os.Chmod(path(dir), 0o600)) },
+			"mode 440": fileMode(t, path, 0o440),
+			"mode 600": fileMode(t, path, 0o600),
 			"symlink": func(dir string) {
 				must(t, os.Remove(path(dir)))
 				must(t, os.Symlink(filepath.Join(dir, "up.sh"), path(dir)))
@@ -350,6 +369,12 @@ func TestComposeSettings(t *testing.T) {
 			}
 		}
 	}
+
+	checkComposeIsolation(t, whole, tunnel)
+}
+
+func checkComposeIsolation(t *testing.T, whole, tunnel string) {
+	t.Helper()
 
 	image := regexp.MustCompile(`(?m)^    image: cloudflare/cloudflared:[0-9][0-9.]*@sha256:[0-9a-f]{64}$`)
 	if !image.MatchString(tunnel) {

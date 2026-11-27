@@ -55,15 +55,16 @@ const (
 type fakeTemporalClient struct {
 	temporaltarget.Client
 
-	onClose func()
-	starts  []temporaltarget.StartRequest
-	closed  int
+	startErr error
+	onClose  func()
+	starts   []temporaltarget.StartRequest
+	closed   int
 }
 
 func (client *fakeTemporalClient) Start(_ context.Context, req temporaltarget.StartRequest) error {
 	client.starts = append(client.starts, req)
 
-	return nil
+	return client.startErr
 }
 
 func (client *fakeTemporalClient) Close() {
@@ -72,15 +73,6 @@ func (client *fakeTemporalClient) Close() {
 	if client.onClose != nil {
 		client.onClose()
 	}
-}
-
-func useTemporalDial(t *testing.T, dial func(temporaltarget.Connection) (temporalClient, error)) {
-	t.Helper()
-
-	original := dialTemporal
-	dialTemporal = dial
-
-	t.Cleanup(func() { dialTemporal = original })
 }
 
 type actorFunc func(routing.Rule, eventfields.Fields, []byte) error
@@ -137,11 +129,13 @@ func TestServeTargets(t *testing.T) {
 }
 
 func TestServeStartsConfiguredRunner(t *testing.T) {
-	targetTypes[fakeType] = func(routing.Target) (actor, func(), error) { return actorFunc(nil), nil, nil }
+	t.Parallel()
 
-	t.Cleanup(func() { delete(targetTypes, fakeType) })
+	checkConfiguredRunners(t)
+}
 
-	t.Chdir(shortSocketDir(t))
+func checkConfiguredRunners(t *testing.T) {
+	t.Helper()
 
 	for _, test := range []struct {
 		name, data, consumer string
@@ -152,12 +146,15 @@ func TestServeStartsConfiguredRunner(t *testing.T) {
 		{name: "temporal", data: temporalTargets, consumer: "workflow", dials: 1},
 	} {
 		t.Run(test.name, func(t *testing.T) {
-			const socket = "s"
+			t.Parallel()
+
+			socket := filepath.Join(shortSocketDir(t), "s")
 
 			client := &fakeTemporalClient{
-				Client: nil,
-				starts: nil,
-				closed: 0,
+				Client:   nil,
+				startErr: nil,
+				starts:   nil,
+				closed:   0,
 				onClose: func() {
 					_, err := os.Lstat(socket)
 					checkEqual(t, errors.Is(err, os.ErrNotExist), true)
@@ -165,45 +162,54 @@ func TestServeStartsConfiguredRunner(t *testing.T) {
 			}
 			dials := 0
 
-			useTemporalDial(t, func(temporaltarget.Connection) (temporalClient, error) {
+			registry := temporalRegistry(func(temporaltarget.Connection) (*fakeTemporalClient, error) {
 				dials++
 
 				return client, nil
 			})
+			registry[fakeType] = func(routing.Target) (actor, func(), error) { return actorFunc(nil), nil, nil }
 
 			dir := t.TempDir()
 			args := []string{
 				"-targets=" + writeTargets(t, test.data), "-listen=127.0.0.1",
 				storeDirFlag + dir, "-github-secret=" + fixtureKey, "-parked-socket=" + socket,
 			}
-			err := serve(t.Context(), io.Discard, slog.DiscardHandler, args)
+			err := serveWithRegistry(t.Context(), io.Discard, slog.DiscardHandler, args, registry)
 			_, listenErr := errors.AsType[*net.AddrError](err)
 			checkEqual(t, listenErr, true)
 			checkEqual(t, dials, test.dials)
 			checkEqual(t, client.closed, test.dials)
 
-			store, stop, err := openStore(t.Context(), storeOptions(dir), retention)
-			checkError(t, err)
-			t.Cleanup(stop)
-
-			_, parkedErr := store.jet.Stream(t.Context(), parkedStream)
-			_, consumerErr := store.stream.Consumer(t.Context(), test.consumer)
-
-			if test.name == "empty" {
-				checkEqual(t, errors.Is(parkedErr, jetstream.ErrStreamNotFound), true)
-				checkEqual(t, errors.Is(consumerErr, jetstream.ErrConsumerNotFound), true)
-			} else {
-				checkError(t, parkedErr)
-				checkError(t, consumerErr)
-			}
+			checkRunnerStorage(t, dir, test.consumer, test.name == "empty")
 		})
 	}
 }
 
+func checkRunnerStorage(t *testing.T, dir, consumer string, empty bool) {
+	t.Helper()
+
+	store, stop, err := openStore(t.Context(), storeOptions(dir), retention)
+	checkError(t, err)
+	t.Cleanup(stop)
+
+	_, parkedErr := store.jet.Stream(t.Context(), parkedStream)
+	_, consumerErr := store.stream.Consumer(t.Context(), consumer)
+
+	if empty {
+		checkEqual(t, errors.Is(parkedErr, jetstream.ErrStreamNotFound), true)
+		checkEqual(t, errors.Is(consumerErr, jetstream.ErrConsumerNotFound), true)
+	} else {
+		checkError(t, parkedErr)
+		checkError(t, consumerErr)
+	}
+}
+
 func TestTemporalTargetDelivery(t *testing.T) {
+	t.Parallel()
+
 	client := new(fakeTemporalClient)
 
-	useTemporalDial(t, func(connection temporaltarget.Connection) (temporalClient, error) {
+	registry := temporalRegistry(func(connection temporaltarget.Connection) (*fakeTemporalClient, error) {
 		checkEqual(
 			t,
 			connection,
@@ -213,7 +219,7 @@ func TestTemporalTargetDelivery(t *testing.T) {
 		return client, nil
 	})
 
-	targets, closeTargets, err := loadTargets(writeTargets(t, temporalTargets), targetTypes)
+	targets, closeTargets, err := loadTargets(writeTargets(t, temporalTargets), registry)
 	checkError(t, err)
 
 	defer closeTargets()
@@ -222,6 +228,10 @@ func TestTemporalTargetDelivery(t *testing.T) {
 	checkEqual(t, client.closed, 0)
 	checkError(t, targets[0].Deliver(t.Context(), Event{Seq: 42, Envelope: []byte(ruleEnvelope)}))
 	checkEqual(t, len(client.starts), 1)
+
+	client.startErr = temporaltarget.ErrTransient
+
+	checkEqual(t, targets[0].Deliver(t.Context(), Event{Seq: 43, Envelope: []byte(ruleEnvelope)}) != nil, true)
 
 	start := client.starts[0]
 	checkEqual(t, start.WorkflowID, "event-42")
@@ -235,14 +245,46 @@ func TestTemporalTargetDelivery(t *testing.T) {
 }
 
 func TestTemporalTargetErrors(t *testing.T) {
-	badAction := strings.Replace(temporalTargets, temporalAction, `{"kind":"private-fixture"}`, 1)
-	later := strings.Replace(temporalEntry, `"name":"workflow"`, `"name":"later"`, 1)
+	t.Parallel()
 
-	for _, test := range []struct {
-		name, data, want string
-		failDial         bool
-		closes           int
-	}{
+	for _, test := range append(invalidTemporalConfigs(), temporalStartupFailures()...) {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+
+			var clients []*fakeTemporalClient
+
+			registry := temporalRegistry(func(temporaltarget.Connection) (*fakeTemporalClient, error) {
+				if test.failDial {
+					return nil, &os.PathError{Op: "dial", Path: "private-fixture", Err: errRetryDelivery}
+				}
+
+				client := new(fakeTemporalClient)
+				clients = append(clients, client)
+
+				return client, nil
+			})
+
+			args := []string{targetsFlag, writeTargets(t, test.data)}
+			err := serveWithRegistry(t.Context(), io.Discard, slog.DiscardHandler, args, registry)
+			checkEqual(t, err != nil, true)
+			checkEqual(t, err.Error(), test.want)
+			checkEqual(t, len(clients), test.closes)
+
+			for _, client := range clients {
+				checkEqual(t, client.closed, 1)
+			}
+		})
+	}
+}
+
+type temporalErrorCase struct {
+	name, data, want string
+	failDial         bool
+	closes           int
+}
+
+func invalidTemporalConfigs() []temporalErrorCase {
+	return []temporalErrorCase{
 		{
 			failDial: false,
 			closes:   0,
@@ -267,6 +309,14 @@ func TestTemporalTargetErrors(t *testing.T) {
 			data: strings.Replace(temporalTargets, temporalAction, `"private-fixture"`, 1),
 			want: `configure target "workflow": invalid targets file`,
 		},
+	}
+}
+
+func temporalStartupFailures() []temporalErrorCase {
+	badAction := strings.Replace(temporalTargets, temporalAction, `{"kind":"private-fixture"}`, 1)
+	later := strings.Replace(temporalEntry, `"name":"workflow"`, `"name":"later"`, 1)
+
+	return []temporalErrorCase{
 		{
 			failDial: false,
 
@@ -293,31 +343,6 @@ func TestTemporalTargetErrors(t *testing.T) {
 			data: `{"targets":[` + temporalEntry + `,` + strings.Replace(later, temporalAction, `{}`, 1) + `]}`,
 			want: `configure target "later": invalid Temporal rule action`,
 		},
-	} {
-		t.Run(test.name, func(t *testing.T) {
-			var clients []*fakeTemporalClient
-
-			useTemporalDial(t, func(temporaltarget.Connection) (temporalClient, error) {
-				if test.failDial {
-					return nil, &os.PathError{Op: "dial", Path: "private-fixture", Err: errRetryDelivery}
-				}
-
-				client := new(fakeTemporalClient)
-				clients = append(clients, client)
-
-				return client, nil
-			})
-
-			args := []string{targetsFlag, writeTargets(t, test.data)}
-			err := serve(t.Context(), io.Discard, slog.DiscardHandler, args)
-			checkEqual(t, err != nil, true)
-			checkEqual(t, err.Error(), test.want)
-			checkEqual(t, len(clients), test.closes)
-
-			for _, client := range clients {
-				checkEqual(t, client.closed, 1)
-			}
-		})
 	}
 }
 
@@ -329,7 +354,9 @@ func TestTargetStartPositions(t *testing.T) {
 	since, parseErr := time.Parse(time.RFC3339, timestamp)
 	checkError(t, parseErr)
 
-	for start, want := range map[string]startPosition{"new": {at: nil, all: false}, "all": {all: true}, timestamp: {at: &since}} {
+	for start, want := range map[string]startPosition{
+		"new": {at: nil, all: false}, "all": {at: nil, all: true}, timestamp: {at: &since, all: false},
+	} {
 		path := writeTargets(t, strings.Replace(fixtureTargets, `"all"`, `"`+start+`"`, 1))
 
 		var cfg serveConfig
@@ -364,7 +391,10 @@ func TestRuleTargetDelivery(t *testing.T) {
 		permanent      bool
 	}{
 		{failure: nil, permanent: false, name: "match", envelope: ruleEnvelope, calls: []string{firstRule, "second"}},
-		{failure: nil, calls: nil, permanent: false, name: "no match", envelope: strings.Replace(ruleEnvelope, "opened", "closed", 1)},
+		{
+			failure: nil, calls: nil, permanent: false, name: "no match",
+			envelope: strings.Replace(ruleEnvelope, "opened", "closed", 1),
+		},
 		{permanent: false, name: "retry", envelope: ruleEnvelope, failure: errRetryDelivery, calls: []string{firstRule}},
 		{name: "permanent", envelope: ruleEnvelope, failure: actorError(true), calls: []string{firstRule}, permanent: true},
 		{permanent: false, name: "temporary", envelope: ruleEnvelope, failure: actorError(false), calls: []string{firstRule}},
@@ -442,10 +472,10 @@ func TestRunWithTargets(t *testing.T) {
 		})
 	}()
 
-	checkEqual(t, receiveRunner(t, calls), uint64(2))
+	checkEqual(t, *receiveRunner(t, calls), uint64(2))
 	cancel()
 
-	checkError(t, receiveRunner(t, done))
+	checkError(t, *receiveRunner(t, done))
 	checkEqual(t, len(calls), 0)
 
 	stream, err := store.jet.Stream(t.Context(), parkedStream)
@@ -504,7 +534,9 @@ func TestRunWithTargetsErrors(t *testing.T) {
 
 	store := testStore(t, retention)
 	signals := newTelemetry(slog.DiscardHandler, nil, nil)
-	targets := []runnerTarget{{Start: startPosition{}, Subjects: nil, Target: fakeTarget{name: "."}}}
+	targets := []runnerTarget{
+		{Start: startPosition{at: nil, all: false}, Subjects: nil, Target: fakeTarget{name: ".", deliver: nil}},
+	}
 	called := false
 	http := func(context.Context) error {
 		called = true
@@ -548,9 +580,9 @@ func TestRunWithTargetsStartupCancellation(t *testing.T) {
 	signals := newTelemetry(slog.DiscardHandler, nil, nil)
 	targets := []runnerTarget{
 		{
-			Start:    startPosition{},
+			Start:    startPosition{at: nil, all: false},
 			Subjects: nil,
-			Target:   cancelTarget{Target: fakeTarget{name: receiverName}, cancel: cancel},
+			Target:   cancelTarget{Target: fakeTarget{name: receiverName, deliver: nil}, cancel: cancel},
 		},
 	}
 	called := false

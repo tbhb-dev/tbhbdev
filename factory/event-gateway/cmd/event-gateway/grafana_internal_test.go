@@ -44,7 +44,7 @@ func grafanaSigned(ctx context.Context, body string) *http.Request {
 	req := httptest.NewRequestWithContext(ctx, http.MethodPost, grafanaPath, strings.NewReader(body))
 	mac := hmac.New(sha256.New, []byte(fixtureKey))
 
-	_, _ = io.WriteString(mac, body)
+	_, _ = mac.Write([]byte(body))
 	req.Header.Set(grafanaSignature, hex.EncodeToString(mac.Sum(nil)))
 
 	return req

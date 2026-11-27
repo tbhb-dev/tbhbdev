@@ -62,7 +62,7 @@ func (e *NotAllowedError) Error() string {
 
 // Runner runs commands whose executable is on a fixed allow-list.
 type Runner struct {
-	allowed map[string]struct{}
+	allowed map[string]string
 }
 
 // NewRunner returns a Runner that runs only the named executables. Each name
@@ -72,14 +72,14 @@ type Runner struct {
 // Command.Executable exactly: the Runner does not clean paths, fold case, or
 // take the base name.
 func NewRunner(allowed ...string) (*Runner, error) {
-	set := make(map[string]struct{}, len(allowed))
+	set := make(map[string]string, len(allowed))
 
 	for _, name := range allowed {
 		if !fixedPath(name) {
 			return nil, &NotAllowedError{Executable: name}
 		}
 
-		set[name] = struct{}{}
+		set[name] = name
 	}
 
 	return &Runner{allowed: set}, nil
@@ -95,7 +95,8 @@ func fixedPath(name string) bool {
 // *NotAllowedError or *TimeoutError for those failures, and the Result of a
 // timeout holds the output captured so far.
 func (r *Runner) Run(ctx context.Context, command Command) (Result, error) {
-	if _, ok := r.allowed[command.Executable]; !ok {
+	executable, ok := r.allowed[command.Executable]
+	if !ok {
 		return Result{}, &NotAllowedError{Executable: command.Executable}
 	}
 
@@ -106,7 +107,7 @@ func (r *Runner) Run(ctx context.Context, command Command) (Result, error) {
 
 	var out bytes.Buffer
 
-	cmd := exec.CommandContext(ctx, command.Executable, command.Args...)
+	cmd := approvedCommand(ctx, executable, command.Args)
 	cmd.Dir = command.Dir
 	cmd.Stdout = &out
 	cmd.Stderr = &out
@@ -132,4 +133,11 @@ func (r *Runner) Run(ctx context.Context, command Command) (Result, error) {
 	default:
 		return result, nil
 	}
+}
+
+func approvedCommand(ctx context.Context, executable string, args []string) *exec.Cmd {
+	cmd := exec.CommandContext(ctx, executable)
+	cmd.Args = append(cmd.Args, args...)
+
+	return cmd
 }

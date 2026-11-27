@@ -52,8 +52,8 @@ type SignalRequest struct {
 
 // SignalWithStartRequest starts a workflow if needed and signals it with the same input.
 type SignalWithStartRequest struct {
-	SignalName string
-	StartRequest
+	SignalName   string
+	StartRequest StartRequest
 }
 
 // Client is the Temporal adapter. Start uses the use-existing conflict policy.
@@ -96,8 +96,8 @@ func (t *Target) Act(ctx context.Context, rule routing.Rule, fields eventfields.
 		return deliveryError{"workflow ID render", permanent}
 	}
 
-	input := reference(&fields, envelope, rule.Name, t.name)
-	if len(input) > maxReferenceBytes {
+	input, err := reference(&fields, envelope, rule.Name, t.name)
+	if err != nil || len(input) > maxReferenceBytes {
 		return deliveryError{"event reference", permanent}
 	}
 
@@ -127,12 +127,13 @@ func (t *Target) Act(ctx context.Context, rule routing.Rule, fields eventfields.
 	}
 }
 
-func reference(fields *eventfields.Fields, envelope []byte, rule, target string) []byte {
-	var metadata struct {
-		ReceivedAt string `json:"received_at"`
+func reference(fields *eventfields.Fields, envelope []byte, rule, target string) ([]byte, error) {
+	var metadata map[string]json.RawMessage
+	if json.Unmarshal(envelope, &metadata) != nil {
+		metadata = nil
 	}
 
-	_ = json.Unmarshal(envelope, &metadata)
+	receivedAt := readString(metadata["received_at"])
 	value := func(name string, field any) any {
 		if fields.Has(name) {
 			return field
@@ -142,17 +143,20 @@ func reference(fields *eventfields.Fields, envelope []byte, rule, target string)
 	}
 	repository := value("repository", fields.Repository)
 
-	input, _ := json.Marshal(map[string]any{
+	input, err := json.Marshal(map[string]any{
 		"seq": fields.Seq, "provider": fields.Provider, "event": fields.Event, "delivery": fields.Delivery,
-		"repository": repository, "received_at": metadata.ReceivedAt, "rule": rule, "target": target,
+		"repository": repository, "received_at": receivedAt, "rule": rule, "target": target,
 		"fields": map[string]any{
 			"action": value("action", fields.Action), "number": value("number", fields.Number),
 			"head_sha": value("head_sha", fields.HeadSHA), "label": value("label", fields.Label),
 			"sender": value("sender", fields.Sender),
 		},
 	})
+	if err != nil {
+		return nil, fmt.Errorf("encode Temporal event reference: %w", err)
+	}
 
-	return input
+	return input, nil
 }
 
 type configError string
@@ -179,7 +183,9 @@ func readObject(raw json.RawMessage, keys ...string) map[string]json.RawMessage 
 func readString(raw json.RawMessage) string {
 	var value string
 
-	_ = json.Unmarshal(raw, &value)
+	if json.Unmarshal(raw, &value) != nil {
+		return ""
+	}
 
 	return value
 }

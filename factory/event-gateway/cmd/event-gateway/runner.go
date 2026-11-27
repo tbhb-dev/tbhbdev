@@ -68,7 +68,7 @@ func (r *runner) run(ctx context.Context) error {
 	for index, target := range r.targets {
 		consumer, err := r.stream.CreateOrUpdateConsumer(ctx, target.consumerConfig())
 		if ctx.Err() != nil {
-			return nil
+			break
 		}
 
 		if err != nil {
@@ -76,6 +76,12 @@ func (r *runner) run(ctx context.Context) error {
 		}
 
 		consumers[index] = consumer
+	}
+
+	select {
+	case <-ctx.Done():
+		return nil
+	default:
 	}
 
 	if r.ready != nil {
@@ -104,6 +110,7 @@ func (target runnerTarget) consumerConfig() jetstream.ConsumerConfig {
 	}
 
 	var config jetstream.ConsumerConfig
+
 	config.Durable = target.Name()
 	config.DeliverPolicy = policy
 	config.OptStartTime = target.Start.at
@@ -139,9 +146,12 @@ func (r *runner) runTarget(ctx context.Context, target runnerTarget, consumer je
 
 func (r *runner) checkGap(ctx context.Context, name string, lastAck, lastGap uint64) uint64 {
 	// On an info error the last known first sequence still provides a lower bound.
-	_, _ = r.stream.Info(ctx)
+	info, err := r.stream.Info(ctx)
+	if err != nil {
+		info = r.stream.CachedInfo()
+	}
 
-	first := r.stream.CachedInfo().State.FirstSeq
+	first := info.State.FirstSeq
 	if lastAck != 0 && first > lastAck+1 && first != lastGap {
 		slog.Default().WarnContext(ctx, "possible gap", "target", name, "last_ack", lastAck, "first_seq", first)
 		r.possibleGap.Add(1)
@@ -153,14 +163,20 @@ func (r *runner) checkGap(ctx context.Context, name string, lastAck, lastGap uin
 }
 
 func (r *runner) deliver(ctx context.Context, target runnerTarget, message jetstream.Msg, lastAck uint64) uint64 {
-	meta, _ := message.Metadata()
+	meta, err := message.Metadata()
+	if err != nil {
+		return lastAck
+	}
+
 	event := Event{Seq: meta.Sequence.Stream, Envelope: message.Data()}
-	err := deliverEvent(ctx, target, event)
+	err = deliverEvent(ctx, target, event)
 
 	if err != nil && !errors.Is(err, ErrPermanent) {
 		delay := retryDelay(cmp.Or(r.retryBase, time.Second), meta.NumDelivered)
 
-		_ = message.NakWithDelay(delay)
+		if message.NakWithDelay(delay) != nil {
+			slog.Default().WarnContext(ctx, "could not reschedule event", "target", target.Name(), "seq", event.Seq)
+		}
 
 		return lastAck
 	}
@@ -188,6 +204,11 @@ func (r *runner) deliver(ctx context.Context, target runnerTarget, message jetst
 	return event.Seq
 }
 
+// Keep the target's message unchanged because the parked stream persists it.
+type targetDeliveryError struct{ error }
+
+func (failure targetDeliveryError) Unwrap() error { return failure.error }
+
 func deliverEvent(ctx context.Context, target Target, event Event) (err error) {
 	defer func() {
 		if recover() != nil {
@@ -195,7 +216,12 @@ func deliverEvent(ctx context.Context, target Target, event Event) (err error) {
 		}
 	}()
 
-	return target.Deliver(ctx, event)
+	err = target.Deliver(ctx, event)
+	if err != nil {
+		return targetDeliveryError{err}
+	}
+
+	return nil
 }
 
 func logPermanent(ctx context.Context, name string, event Event, err error) {
