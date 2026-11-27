@@ -4,6 +4,10 @@ okf_version: "0.2"
 
 # Tools docs
 
+## Designs
+
+* [GitHub read commands](design/gh-read-commands.md) - GitHub queries, compact output, event waits, and one rule for agent use of the command-line tool.
+
 ## Reference
 
 * [GitHub administration](reference/admin.md) - Administrative REST calls, refusal codes, token scope, and audit records.
@@ -12,8 +16,8 @@ okf_version: "0.2"
 * [Config](reference/config.md) - The user configuration file and deployment settings.
 * [Analytics](reference/analytics.md) - Database migrations, catalog checks, connection settings, and server tests.
 * [Secrets](reference/secrets.md) - Secret storage, access, and item management through 1Password.
-* [Gitleaks check](reference/gitleaks-check.md) - The fail-closed gitleaks scan of text before it is posted.
-* [Prose check](reference/prose-check.md) - The vale, cspell and rumdl check of prose before it is posted.
+* [`Gitleaks` check](reference/gitleaks-check.md) - Checks for secrets before posting text.
+* [Prose check](reference/prose-check.md) - Runs Vale, cspell, and rumdl before posting prose.
 * [Agent hosts](reference/agent-hosts.md) - Config and credentials for agent hosts.
 * [Content writes](reference/content.md) - Shared GitHub content validation and writes for plugins.
 * [Content model](reference/content-model.md) - Markdown normalization, source spans, and content metrics.
