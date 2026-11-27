@@ -1,0 +1,38 @@
+---
+argument_specs:
+  main:
+    short_description: Build and install ssh-sign and create a missing signing key for each account
+    options:
+      agent_signing_accounts:
+        type: list
+        elements: dict
+        default:
+          - name: agent
+        description: Existing accounts that need a signing key, each handled as itself through become_user.
+        options:
+          name:
+            type: str
+            required: true
+            description: Account name.
+          home:
+            type: path
+            description: Absolute home, defaulting to /Users/name on macOS and /home/name elsewhere.
+      agent_signing_devtools_version:
+        type: str
+        default: v0.23.0
+        description: The devtools tag the controller builds ssh-sign from. A new tag upgrades the installed program.
+      agent_signing_devtools_src:
+        type: path
+        default: "$HOME/Code/github.com/example-org/devtools-example"
+        description: >-
+          A clone of example-org/devtools-example on the controller, with the tag already fetched. The role
+          exports the tag from it with git archive and never fetches or changes the checkout.
+          The default is the controller's HOME plus that path.
+      agent_signing_git_name:
+        type: str
+        default: tbhb.dev Agent
+        description: The git user.name written to each file-key account's .gitconfig.
+      agent_signing_git_email:
+        type: str
+        default: agent@example.invalid
+        description: The git user.email written to each file-key account's .gitconfig.

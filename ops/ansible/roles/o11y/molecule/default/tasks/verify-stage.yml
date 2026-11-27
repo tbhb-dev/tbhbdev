@@ -1,0 +1,60 @@
+---
+- name: verify-stage | Create a leftover lock
+  ansible.builtin.file:
+    path: /srv/o11y/deploy.lock
+    state: directory
+    mode: '0755'
+
+- name: verify-stage | Check the leftover lock refusal
+  block:
+    - name: verify-stage | Attempt a locked deployment
+      ansible.builtin.include_role:
+        name: o11y
+
+    - name: verify-stage | Fail when the lock unexpectedly permits a deployment
+      ansible.builtin.fail:
+        msg: The leftover lock unexpectedly permitted a deployment.
+  rescue:
+    - name: verify-stage | Require the full lock path in the refusal
+      ansible.builtin.assert:
+        that: "'/srv/o11y/deploy.lock' in ansible_failed_result.msg"
+        quiet: true
+
+    - name: verify-stage | Read the unclaimed lock
+      ansible.builtin.stat:
+        path: /srv/o11y/deploy.lock
+      register: o11y_test_lock
+
+    - name: verify-stage | Require that the failed contender left the lock intact
+      ansible.builtin.assert:
+        that: o11y_test_lock.stat.isdir
+        quiet: true
+  always:
+    - name: verify-stage | Clear the test lock by hand
+      ansible.builtin.file:
+        path: /srv/o11y/deploy.lock
+        state: absent
+
+- name: verify-stage | Verify secret delivery and file permissions
+  ansible.builtin.command:
+    argv:
+      - python3
+      - -c
+      - |
+          from pathlib import Path
+          for name, expected in {
+              'alert_discord_webhook_url': 'molecule-discord-canary-42',
+              'alert_smtp_password': 'molecule-smtp-canary-84',
+              'grafana_agents_password': 'MoleculeAgentsCanary42\n',
+          }.items():
+              path = Path('/srv/o11y-data/secrets') / name
+              assert path.read_text() == expected
+              info = path.stat()
+              assert info.st_uid == info.st_gid == 472
+              assert info.st_mode & 0o777 == 0o400
+  changed_when: false
+  no_log: true
+  diff: false
+
+- name: verify-stage | Check secret suppression after verification
+  ansible.builtin.include_tasks: check-secrets.yml

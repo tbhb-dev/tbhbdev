@@ -1,0 +1,43 @@
+---
+- name: Verify
+  hosts: all
+  become: true
+  tasks:
+    - name: Read the rules file
+      ansible.builtin.slurp:
+        src: /etc/audit/rules.d/50-host-audit.rules
+      register: host_audit_rules_raw
+
+    - name: Read auditd.conf
+      ansible.builtin.slurp:
+        src: /etc/audit/auditd.conf
+      register: host_audit_conf_raw
+
+    - name: Check the rules and the auditd settings
+      vars:
+        rules: "{{ host_audit_rules_raw.content | b64decode | split('\n') }}"
+        conf: "{{ host_audit_conf_raw.content | b64decode | split('\n') }}"
+        watched_ssh: "{{ rules | select('search', '-k ssh_keys$') | list }}"
+        ops_cmd: "{{ rules | select('search', '-k ops_cmd$') | list }}"
+      ansible.builtin.assert:
+        that:
+          - watched_ssh | length == 3
+          - "'-w /root/.ssh/ -p wa -k ssh_keys' in watched_ssh"
+          - "'-w /home/ops/.ssh/ -p wa -k ssh_keys' in watched_ssh"
+          - "'-w /home/example-operator/.ssh/ -p wa -k ssh_keys' in watched_ssh"
+          - ops_cmd | select('search', 'auid=2001 ') | list | length == 2
+          - ops_cmd | select('search', 'auid=1001 ') | list | length == 2
+          - ops_cmd | length == 4
+          - "'-w /etc/sudoers.d/ -p wa -k sudoers' in rules"
+          - "'-w /etc/audit/ -p wa -k audit_config' in rules"
+          - "'-w /usr/lib/systemd/system/ -p wa -k persistence' in rules"
+          - rules | select('search', 'auid!=0') | list | length == 0
+          - rules | select('search', '-k agent_tools$') | list | length == 5
+          - rules | select('search', '/usr/bin/docker') | list | length == 0
+          - rules | select('search', '-k priv_esc$') | list | length == 4
+          - rules | select('match', '-e ') | list | length == 0
+          - "'num_logs = 8' in conf"
+          - "'max_log_file = 50' in conf"
+          - "'max_log_file_action = ROTATE' in conf"
+          - "'disk_full_action = SUSPEND' in conf"
+          - "'log_group = adm' in conf"

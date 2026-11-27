@@ -1,0 +1,10 @@
+---
+# The lab nodes' audit rules, kept apart from lab-hosts.yml so they go
+# out only when this playbook runs:
+#   mise run playbook -- playbooks/lab-audit.yml --limit NODE --check --diff
+- name: Audit the lab nodes
+  hosts: lab
+  gather_facts: false
+  become: true
+  roles:
+    - host_audit

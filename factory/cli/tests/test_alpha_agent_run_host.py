@@ -48,7 +48,7 @@ from test_alpha_agent_credentials import VALUES
 from test_alpha_agent_settings import EXAMPLE
 
 from tbhbdev import secrets
-from tbhbdev.alpha import agent, install, run_stop_hook
+from tbhbdev.alpha import install, run_stop_hook
 from tbhbdev.alpha.agent import (
     admission,
     bazel_servers,
@@ -1019,7 +1019,7 @@ def test_hidden_dispatch_reads_request_and_restores_handlers(
         return 9
 
     monkeypatch.setattr(run_host, "execute", execute)
-    assert agent.main(arguments, "example agent") == 9
+    assert run_host.main(arguments[1:], "example agent run-host") == 9
     assert {s: signal.getsignal(s) for s in before} == before
     assert files.path("json").read_text() == "driver metadata"
 

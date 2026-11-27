@@ -1,0 +1,44 @@
+{
+  "resourceMetrics": [
+    {
+      "resource": {
+        "attributes": [
+          {
+            "key": "service.name",
+            "value": {
+              "stringValue": "o11y-check-0123456789abcdef"
+            }
+          }
+        ]
+      },
+      "scopeMetrics": [
+        {
+          "scope": {
+            "name": "o11y-check"
+          },
+          "metrics": [
+            {
+              "name": "o11y_check_value",
+              "gauge": {
+                "dataPoints": [
+                  {
+                    "asInt": "123",
+                    "timeUnixNano": "100000000000",
+                    "attributes": [
+                      {
+                        "key": "run_id",
+                        "value": {
+                          "stringValue": "0123456789abcdef"
+                        }
+                      }
+                    ]
+                  }
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

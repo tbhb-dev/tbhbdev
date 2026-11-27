@@ -1,0 +1,8 @@
+---
+- name: Converge
+  hosts: all
+  become: true
+  vars:
+    lab_agent_manage_user_service: false
+  roles:
+    - lab_agent

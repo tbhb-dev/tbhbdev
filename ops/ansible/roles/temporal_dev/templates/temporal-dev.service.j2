@@ -1,0 +1,21 @@
+# {{ ansible_managed }}
+[Unit]
+Description=Temporal development server
+Requires=host-hardening-nft.service tailscaled.service
+After=host-hardening-nft.service tailscaled.service
+RequiresMountsFor={{ temporal_dev_data }}
+
+[Service]
+User=temporal-dev
+Group=temporal-dev
+WorkingDirectory={{ temporal_dev_data }}
+ExecStart={{ temporal_dev_install }}/temporal server start-dev --ip {{ temporal_dev_address.stdout }} --port 7233 --ui-port 8233 --db-filename {{ temporal_dev_data }}/temporal.sqlite --ui-disable-news-fetch
+Restart=on-failure
+RestartSec=5s
+# Serve dials the node's own address locally. Reject direct peer traffic to
+# every Temporal socket, including the auxiliary ports chosen by start-dev.
+IPAddressDeny=any
+IPAddressAllow=localhost {{ temporal_dev_address.stdout }}/32
+
+[Install]
+WantedBy=multi-user.target

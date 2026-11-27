@@ -1,0 +1,15 @@
+---
+- name: Converge
+  hosts: all
+  become: true
+  vars:
+    ci_vm_address: 203.0.113.130
+    ci_vm_network_gateway: 203.0.113.129
+    ci_vm_egress_blocked_v4:
+      - 198.51.100.144/28
+      - 198.51.100.208/28
+      - 203.0.113.128/25
+      - 192.0.2.0/24
+      - 169.254.0.0/16
+  roles:
+    - ci_vm

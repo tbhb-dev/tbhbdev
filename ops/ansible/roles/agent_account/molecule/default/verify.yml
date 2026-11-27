@@ -1,0 +1,388 @@
+---
+# cspell:ignore wdwbwl
+- name: Verify
+  hosts: all
+  become: true
+  tasks:
+    - name: Inspect the deployment config
+      ansible.builtin.stat:
+        path: "{{ ['/'.join(('/home', 'agent', '.config')), 'tbhbdev', 'config.toml'] | join('/') }}"
+      register: agent_account_config_stat
+    - name: Parse the deployment config
+      ansible.builtin.command:
+        argv:
+          - python3
+          - -c
+          - |
+              import pathlib, sys, tomllib
+              path = pathlib.Path('/'.join(('/'.join(('/home', 'agent', '.config')), 'tbhbdev', 'config.toml')))
+              config = tomllib.loads(path.read_text())
+              assert config['connect']['endpoints'] == [
+                  'https://op-connect.example.example.invalid', 'https://connect.other.example.invalid']
+              assert config['workspace']['repos'] == ['fixture/repo']
+              profiles = config['agent']['claude']['profiles']
+              assert profiles == {
+                  'primary': {'token': 'host-0-shared/primary/token'},
+                  'secondary': {'token': 'host-host-a/secondary/token'},
+              }
+              expected = tomllib.loads(sys.argv[1])['agent']
+              expected['claude']['profiles'] = profiles
+              assert config['agent'] == expected
+          - "{{ lookup('ansible.builtin.file', 'agent.toml') }}"
+      changed_when: false
+    - name: Check config ownership and permissions
+      ansible.builtin.assert:
+        that:
+          - agent_account_config_stat.stat.pw_name == 'agent'
+          - agent_account_config_stat.stat.gr_name == 'agent'
+          - agent_account_config_stat.stat.mode == '0600'
+    - name: Read agent
+      ansible.builtin.getent:
+        database: passwd
+        key: agent
+    - name: Inspect the home
+      ansible.builtin.stat:
+        path: /home/example-user
+      register: agent_account_home
+    - name: Inspect the mounted home marker
+      ansible.builtin.stat:
+        path: /home/example-user/mount-marker
+      register: agent_account_marker
+    - name: Read the password status
+      ansible.builtin.command:
+        cmd: passwd -S agent
+      changed_when: false
+      register: agent_account_password
+    - name: Read keys
+      ansible.builtin.slurp:
+        src: /home/example-user/.ssh/authorized_keys
+      register: agent_account_authorized_keys
+    - name: Check the account
+      ansible.builtin.assert:
+        that:
+          - ansible_facts.getent_passwd.agent[1:3] == ['24368', '24368']
+          - ansible_facts.getent_passwd.agent[4:] == ['/home/example-user', '/bin/bash']
+          - agent_account_home.stat.mode == '0700'
+          - agent_account_home.stat.uid == 24368
+          - agent_account_home.stat.gid == 24368
+          - agent_account_marker.stat.exists
+          - agent_account_password.stdout.split()[1] == 'L'
+          - >-
+              (agent_account_authorized_keys.content | b64decode | trim) == 'ssh-ed25519
+              AAAAC3NzaC1lZDI1NTE5AAAAIMBxMcLBO2dNsuwi0clAzEHghsyOUtwtQU2PXYShQKQa molecule-test'
+    - name: Inspect the launch key directory
+      ansible.builtin.stat:
+        path: /etc/tbhbdev/agent-launch
+      register: agent_account_launch_dir_stat
+    - name: Inspect the launch key
+      ansible.builtin.stat:
+        path: /etc/tbhbdev/agent-launch/id_ed25519
+      register: agent_account_launch_key_stat
+    - name: Inspect the launch public key
+      ansible.builtin.stat:
+        path: /etc/tbhbdev/agent-launch/id_ed25519.pub
+      register: agent_account_launch_pub_stat
+    # The fixture operator is root: this proves modes, but operator crossing
+    # still needs a real operator account on Linux and macOS.
+    - name: Check the launch key
+      ansible.builtin.assert:
+        that:
+          - agent_account_launch_dir_stat.stat.pw_name == 'root'
+          - agent_account_launch_dir_stat.stat.mode == '0755'
+          - agent_account_launch_key_stat.stat.pw_name == 'root'
+          - agent_account_launch_key_stat.stat.mode == '0600'
+          - agent_account_launch_pub_stat.stat.exists
+    - name: Read the chezmoi binary
+      ansible.builtin.stat:
+        path: /usr/local/bin/chezmoi
+      register: agent_account_chezmoi_stat
+    - name: Run chezmoi
+      ansible.builtin.command:
+        cmd: /usr/local/bin/chezmoi --version
+      changed_when: false
+      register: agent_account_chezmoi_version
+    - name: Check chezmoi
+      ansible.builtin.assert:
+        that:
+          - agent_account_chezmoi_stat.stat.pw_name == 'root'
+          - agent_account_chezmoi_stat.stat.mode == '0755'
+          - "'v2.73.3' in agent_account_chezmoi_version.stdout"
+
+# Exercise config rendering with the macOS preflight's home in the container.
+# The directory service and account creation still require a real Mac.
+- name: Verify macOS config rendering
+  hosts: all
+  gather_facts: false
+  become: true
+  vars_files:
+    - ../../../../inventory/group_vars/unix_agent_hosts.yml
+    - ../../../../inventory/host_vars/host-d.yml
+  vars:
+    agent_account_primary_group: devel
+    agent_account_user:
+      changed: false
+    agent_account_claude_profiles:
+      primary: host-0-shared/primary/token
+      secondary: host-0-shared/secondary/token
+  tasks:
+    - name: Create the unchanged macOS group fixture
+      ansible.builtin.group:
+        name: devel
+        gid: 33835
+    - name: Check Linux account lookup is absent
+      ansible.builtin.assert:
+        that:
+          - agent_account_user_name is undefined
+    - name: Set the macOS preflight home
+      ansible.builtin.set_fact:
+        agent_account_home: /Users/example-user
+    - name: Use the macOS inventory agent tree with fixture endpoints and workspace
+      ansible.builtin.set_fact:
+        agent_account_tbhbdev_config:
+          connect:
+            endpoints: [https://op-connect.example.example.invalid, https://connect.other.example.invalid]
+          workspace:
+            root: Code/ws
+            repos: [fixture/repo]
+          agent: "{{ agent_account_agent_config }}"
+    - name: Render config with the macOS home
+      ansible.builtin.include_role:
+        name: agent_account
+        tasks_from: config
+    - name: Inspect the macOS config directory
+      ansible.builtin.stat:
+        path: "{{ ['/Users/example-user/.config', 'tbhbdev'] | join('/') }}"
+      register: agent_account_macos_config_dir
+    - name: Inspect the macOS config
+      ansible.builtin.stat:
+        path: "{{ ['/Users/example-user/.config', 'tbhbdev', 'config.toml'] | join('/') }}"
+      register: agent_account_macos_config
+    - name: Compare the parsed macOS agent config
+      ansible.builtin.command:
+        argv:
+          - python3
+          - -c
+          - |
+              import pathlib, sys, tomllib
+              config = tomllib.loads(pathlib.Path(
+                  '/'.join(('/Users/example-user/.config', 'tbhbdev', 'config.toml'))).read_text())
+              expected = tomllib.loads(sys.argv[1])['agent']
+              sandbox = expected['sandbox']
+              temp = sys.argv[2]
+              sandbox['write_roots'] = [
+                  'agent-cache', '.cache/bazel', '.cache', temp + '/T', temp + '/C']
+              sandbox['host_path'] = [
+                  '/'.join(('/Users/example-user/.local/share', 'tbhbdev', 'bazelisk-1.30.0/bin')),
+                  '/Users/example-user/.local/share/codex-standalone/releases/'
+                  '0.166.0-aarch64-apple-darwin/bin',
+                  '/Users/example-user/.local/share/uv/tools/prek/bin',
+              ]
+              expected['credentials']['agent']['signing'] = (
+                  '/Users/example-user/.config/devtools/agent-signing-key')
+              expected['claude']['profiles'] = {
+                  'primary': {'token': 'host-0-shared/primary/token'},
+                  'secondary': {'token': 'host-0-shared/secondary/token'},
+              }
+              assert config['agent'] == expected
+              linux = tomllib.loads(pathlib.Path(
+                  '"{{ ['/'.join(('/home', 'agent', '.config')), 'tbhbdev', 'config.toml'] | join('/') }}"').read_text())
+              for table in ('connect', 'workspace'):
+                  assert config[table] == linux[table]
+              assert config['agent']['claude']['profiles']['primary'] == linux['agent']['claude']['profiles']['primary']
+          - "{{ lookup('ansible.builtin.file', 'agent.toml') }}"
+          - "{{ agent_account_config_macos_temp }}"
+      changed_when: false
+    - name: Check config content and permissions
+      ansible.builtin.assert:
+        that:
+          - agent_account_macos_config_dir.stat.pw_name == 'agent'
+          - agent_account_macos_config_dir.stat.gr_name == 'devel'
+          - agent_account_macos_config_dir.stat.mode == '0700'
+          - agent_account_macos_config.stat.pw_name == 'agent'
+          - agent_account_macos_config.stat.gr_name == 'devel'
+          - agent_account_macos_config.stat.mode == '0600'
+
+# These checks run only inside Molecule's disposable container.
+- name: Verify launch key adoption and mismatch refusal
+  hosts: all
+  become: true
+  vars:
+    agent_account_operator: launchoperator
+  tasks:
+    - name: Create the fixture operator group
+      ansible.builtin.group:
+        name: launchoperator
+    - name: Create the fixture operator
+      ansible.builtin.user:
+        name: launchoperator
+        group: launchoperator
+        create_home: false
+    - name: Remember the fresh delivery files
+      ansible.builtin.stat:
+        path: "/etc/tbhbdev/agent-launch/{{ item }}"
+        checksum_algorithm: sha256
+      loop: [id_ed25519, id_ed25519.pub]
+      register: agent_account_fresh_delivery
+    - name: Give the fixture operator the delivery files
+      ansible.builtin.file:
+        path: "/etc/tbhbdev/agent-launch/{{ item }}"
+        owner: launchoperator
+        group: launchoperator
+      loop: [id_ed25519, id_ed25519.pub]
+    - name: Remember the operator-owned delivery files
+      ansible.builtin.stat:
+        path: "/etc/tbhbdev/agent-launch/{{ item }}"
+        checksum_algorithm: sha256
+      loop: [id_ed25519, id_ed25519.pub]
+      register: agent_account_operator_delivery
+    - name: Remove the root-only work copy
+      ansible.builtin.file:
+        path: /etc/tbhbdev/agent-launch-root
+        state: absent
+    - name: Adopt the existing matching delivery pair
+      ansible.builtin.include_role:
+        name: agent_account
+        tasks_from: launch-key
+    - name: Inspect the adopted delivery files
+      ansible.builtin.stat:
+        path: "/etc/tbhbdev/agent-launch/{{ item }}"
+        checksum_algorithm: sha256
+      loop: [id_ed25519, id_ed25519.pub]
+      register: agent_account_adopted_delivery
+    - name: Require unchanged delivery files after adoption
+      ansible.builtin.assert:
+        that:
+          - >-
+              agent_account_operator_delivery.results[item].stat.pw_name ==
+              agent_account_adopted_delivery.results[item].stat.pw_name
+          - >-
+              agent_account_operator_delivery.results[item].stat.gr_name ==
+              agent_account_adopted_delivery.results[item].stat.gr_name
+          - >-
+              agent_account_operator_delivery.results[item].stat.mode ==
+              agent_account_adopted_delivery.results[item].stat.mode
+          - >-
+              agent_account_operator_delivery.results[item].stat.checksum ==
+              agent_account_adopted_delivery.results[item].stat.checksum
+      loop: [0, 1]
+    - name: Drift the work private key mode
+      ansible.builtin.file:
+        path: /etc/tbhbdev/agent-launch-root/id_ed25519
+        mode: '0644'
+    - name: Remove the work public key
+      ansible.builtin.file:
+        path: /etc/tbhbdev/agent-launch-root/id_ed25519.pub
+        state: absent
+    - name: Repair the private mode and missing public half
+      ansible.builtin.include_role:
+        name: agent_account
+        tasks_from: launch-key
+    - name: Inspect the repaired private key
+      ansible.builtin.stat:
+        path: /etc/tbhbdev/agent-launch-root/id_ed25519
+      register: agent_account_repaired_private
+    - name: Read the repaired public half
+      ansible.builtin.slurp:
+        src: /etc/tbhbdev/agent-launch-root/id_ed25519.pub
+      register: agent_account_repaired_public
+      no_log: true
+    - name: Require the repaired mode and public line
+      ansible.builtin.assert:
+        that:
+          - agent_account_repaired_private.stat.mode == '0600'
+          - >-
+              (agent_account_repaired_public.content | b64decode | trim).split()[2] ==
+              'agent-launch@' ~ inventory_hostname
+    - name: Remove the work pair to build a mismatch
+      ansible.builtin.file:
+        path: "/etc/tbhbdev/agent-launch-root/{{ item }}"
+        state: absent
+      loop: [id_ed25519, id_ed25519.pub]
+    - name: Generate a different work pair
+      ansible.builtin.command:
+        argv:
+          - ssh-keygen
+          - -t
+          - ed25519
+          - -N
+          - ''
+          - -C
+          - "agent-launch@{{ inventory_hostname }}"
+          - -f
+          - /etc/tbhbdev/agent-launch-root/id_ed25519
+        creates: /etc/tbhbdev/agent-launch-root/id_ed25519
+    - name: Reject the mismatching work key
+      block:
+        - name: Try the mismatching work key
+          ansible.builtin.include_role:
+            name: agent_account
+            tasks_from: launch-key
+        - name: Fail if the mismatch was accepted
+          ansible.builtin.fail:
+            msg: Mismatching keys were accepted.
+      rescue:
+        - name: Require the specific mismatch failure
+          ansible.builtin.assert:
+            that:
+              - ansible_failed_task.name == 'launch-key | Require matching delivery keys'
+    - name: Inspect delivery files after refusal
+      ansible.builtin.stat:
+        path: "/etc/tbhbdev/agent-launch/{{ item }}"
+        checksum_algorithm: sha256
+      loop: [id_ed25519, id_ed25519.pub]
+      register: agent_account_rejected_delivery
+    - name: Require unchanged delivery content after refusal
+      ansible.builtin.assert:
+        that:
+          - >-
+              agent_account_fresh_delivery.results[0].stat.checksum ==
+              agent_account_rejected_delivery.results[0].stat.checksum
+          - >-
+              agent_account_fresh_delivery.results[1].stat.checksum ==
+              agent_account_rejected_delivery.results[1].stat.checksum
+    - name: Require delivery permissions after refusal
+      ansible.builtin.assert:
+        that:
+          - item.stat.pw_name == 'launchoperator'
+          - item.stat.mode == ('0600' if item.item == 'id_ed25519' else '0644')
+      loop: "{{ agent_account_rejected_delivery.results }}"
+      loop_control:
+        label: "{{ item.item }}"
+    - name: Remove the work copy before a refused adoption
+      ansible.builtin.file:
+        path: /etc/tbhbdev/agent-launch-root
+        state: absent
+    - name: Replace the delivery public half with a mismatch
+      ansible.builtin.copy:
+        content: "ssh-ed25519 AAAA mismatch\n"
+        dest: /etc/tbhbdev/agent-launch/id_ed25519.pub
+        owner: launchoperator
+        group: launchoperator
+        mode: '0644'
+    - name: Reject adoption of a mismatching public half
+      block:
+        - name: Try adoption of the mismatching public half
+          ansible.builtin.include_role:
+            name: agent_account
+            tasks_from: launch-key
+        - name: Fail if adoption accepted the mismatch
+          ansible.builtin.fail:
+            msg: Mismatching public half was accepted.
+      rescue:
+        - name: Require the public half mismatch failure
+          ansible.builtin.assert:
+            that:
+              - ansible_failed_task.name == 'launch-key | Require a matching delivery public half'
+    - name: Inspect delivery permissions after refused adoption
+      ansible.builtin.stat:
+        path: "/etc/tbhbdev/agent-launch/{{ item }}"
+      loop: [id_ed25519, id_ed25519.pub]
+      register: agent_account_refused_adoption
+    - name: Require unchanged delivery permissions after refused adoption
+      ansible.builtin.assert:
+        that:
+          - item.stat.pw_name == 'launchoperator'
+          - item.stat.mode == ('0600' if item.item == 'id_ed25519' else '0644')
+      loop: "{{ agent_account_refused_adoption.results }}"
+      loop_control:
+        label: "{{ item.item }}"

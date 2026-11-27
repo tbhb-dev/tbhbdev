@@ -1,0 +1,27 @@
+#cloud-config
+# Ubuntu autoinstall for {{ inventory_hostname }}, rendered by playbooks/first-run.yml. It
+# erases the disk it installs to and creates ops the way the ops_accounts role does.
+autoinstall:
+  version: 1
+  ssh:
+    install-server: true
+    allow-pw: false
+  # Subiquity creates no user of its own when this section has one, so ops is
+  # the only account that can log in. cloud-init creates it on first boot.
+  user-data:
+    hostname: {{ inventory_hostname | tojson }}
+    # cloud-init can't set a gid, so the group exists before users_groups runs.
+    bootcmd:
+      - [cloud-init-per, once, ops-group, groupadd, --gid, {{ ops_accounts_id | string | tojson }}, ops]
+    users:
+      - name: ops
+        uid: {{ ops_accounts_id }}
+        primary_group: ops
+        shell: /bin/bash
+        lock_passwd: true
+        ssh_authorized_keys: {{ ops_accounts_admin_keys | tojson }}
+    write_files:
+      - path: /etc/sudoers.d/ops
+        owner: root:root
+        permissions: "0440"
+        content: {{ (ops_accounts_sudoers_line ~ '\n') | tojson }}

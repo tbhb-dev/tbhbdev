@@ -1,0 +1,9 @@
+---
+# A container shares the host's kernel, so the rules are written but never loaded.
+- name: Converge
+  hosts: all
+  become: true
+  roles:
+    - role: host_audit
+      vars:
+        host_audit_load: false

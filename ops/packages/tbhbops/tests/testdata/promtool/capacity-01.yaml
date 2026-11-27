@@ -1,0 +1,25 @@
+---
+evaluation_interval: 1m
+rule_files:
+  - rules.yaml
+tests:
+  - alert_rule_test:
+      - alertname: o11y-capacity-warn
+        eval_time: 9m
+        exp_alerts: []
+      - alertname: o11y-capacity-warn
+        eval_time: 10m
+        exp_alerts: []
+      - alertname: o11y-capacity-warn
+        eval_time: 11m
+        exp_alerts: []
+    input_series:
+      - series: "agent_capacity_window_utilization_ratio{agent_plan_vendor=\"\
+          anthropic\",agent_plan_window=\"\
+          7d\",agent_account=\"primary\",host_name=\"\
+          fixture-a\",agent_capacity_source=\"\
+          claude_statusline\",agent_capacity_freshness=\"\
+          fresh\"}"
+        values: 0.699+0x15
+    interval: 1m
+    name: o11y-capacity-warn edge 0.699

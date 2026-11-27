@@ -6,13 +6,15 @@ import asyncio
 import io
 import re
 import tarfile
-import unicodedata
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 from tbhbdev.alpha.agent.decisions import argv, remote
 from tbhbdev.alpha.agent.decisions import runfiles_names as files
 from tbhbdev.alpha.agent.model import Invalid
+
+# Keep the transport's existing terminal_text export.
+from tbhbdev.alpha.terminal import terminal_text as terminal_text  # noqa: PLC0414
 
 if TYPE_CHECKING:
     from tbhbdev.alpha.agent.model import Host, Settings
@@ -37,14 +39,6 @@ class CollisionError(OSError):
 
 class TransportError(OSError):
     """A failed or timed-out ssh call, whose output contains no input bytes."""
-
-
-def terminal_text(text: str) -> str:
-    return "".join(
-        c
-        for c in text
-        if c in {"\n", "\t"} or not unicodedata.category(c).startswith("C")
-    )
 
 
 @dataclass(frozen=True)

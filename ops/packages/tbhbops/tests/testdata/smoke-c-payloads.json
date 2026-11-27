@@ -1,0 +1,1468 @@
+{
+  "delta": {
+    "resourceMetrics": [
+      {
+        "resource": {
+          "attributes": [
+            {
+              "key": "service.name",
+              "value": {
+                "stringValue": "o11y-smoke-delta"
+              }
+            }
+          ]
+        },
+        "scopeMetrics": [
+          {
+            "scope": {
+              "name": "o11y-smoke"
+            },
+            "metrics": [
+              {
+                "name": "test_delta",
+                "sum": {
+                  "aggregationTemporality": 1,
+                  "isMonotonic": true,
+                  "dataPoints": [
+                    {
+                      "asInt": "3",
+                      "startTimeUnixNano": "10000000000",
+                      "timeUnixNano": "20000000000",
+                      "attributes": [
+                        {
+                          "key": "run_id",
+                          "value": {
+                            "stringValue": "fixture"
+                          }
+                        }
+                      ]
+                    }
+                  ]
+                }
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "old": {
+    "resourceLogs": [
+      {
+        "resource": {
+          "attributes": [
+            {
+              "key": "service.name",
+              "value": {
+                "stringValue": "o11y-smoke-old"
+              }
+            }
+          ]
+        },
+        "scopeLogs": [
+          {
+            "scope": {
+              "name": "o11y-smoke"
+            },
+            "logRecords": [
+              {
+                "timeUnixNano": "1000000000000",
+                "body": {
+                  "stringValue": "too old"
+                }
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "rate": {
+    "resourceLogs": [
+      {
+        "resource": {
+          "attributes": [
+            {
+              "key": "service.name",
+              "value": {
+                "stringValue": "o11y-smoke-rate"
+              }
+            },
+            {
+              "key": "service.namespace",
+              "value": {
+                "stringValue": "o11y"
+              }
+            }
+          ]
+        },
+        "scopeLogs": [
+          {
+            "scope": {
+              "name": "o11y-smoke"
+            },
+            "logRecords": [
+              {
+                "timeUnixNano": "2000000000000",
+                "body": {
+                  "stringValue": "rate one"
+                }
+              },
+              {
+                "timeUnixNano": "2000000000001",
+                "body": {
+                  "stringValue": "rate two"
+                }
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "capacity": {
+    "resourceMetrics": [
+      {
+        "resource": {
+          "attributes": [
+            {
+              "key": "service.name",
+              "value": {
+                "stringValue": "agent-capacity"
+              }
+            },
+            {
+              "key": "host.name",
+              "value": {
+                "stringValue": "capacity-fixture-a"
+              }
+            }
+          ]
+        },
+        "scopeMetrics": [
+          {
+            "scope": {
+              "name": "capacity-smoke"
+            },
+            "metrics": [
+              {
+                "name": "agent_capacity_window_utilization_ratio",
+                "gauge": {
+                  "dataPoints": [
+                    {
+                      "attributes": [
+                        {
+                          "key": "agent_account",
+                          "value": {
+                            "stringValue": "primary"
+                          }
+                        },
+                        {
+                          "key": "agent_plan_vendor",
+                          "value": {
+                            "stringValue": "anthropic"
+                          }
+                        },
+                        {
+                          "key": "agent_plan_window",
+                          "value": {
+                            "stringValue": "7d"
+                          }
+                        },
+                        {
+                          "key": "agent_capacity_source",
+                          "value": {
+                            "stringValue": "claude_statusline"
+                          }
+                        },
+                        {
+                          "key": "agent_capacity_freshness",
+                          "value": {
+                            "stringValue": "fresh"
+                          }
+                        }
+                      ],
+                      "timeUnixNano": "-800000000000",
+                      "asDouble": 0.864
+                    },
+                    {
+                      "attributes": [
+                        {
+                          "key": "agent_account",
+                          "value": {
+                            "stringValue": "primary"
+                          }
+                        },
+                        {
+                          "key": "agent_plan_vendor",
+                          "value": {
+                            "stringValue": "anthropic"
+                          }
+                        },
+                        {
+                          "key": "agent_plan_window",
+                          "value": {
+                            "stringValue": "7d"
+                          }
+                        },
+                        {
+                          "key": "agent_capacity_source",
+                          "value": {
+                            "stringValue": "claude_statusline"
+                          }
+                        },
+                        {
+                          "key": "agent_capacity_freshness",
+                          "value": {
+                            "stringValue": "fresh"
+                          }
+                        }
+                      ],
+                      "timeUnixNano": "-500000000000",
+                      "asDouble": 0.868
+                    },
+                    {
+                      "attributes": [
+                        {
+                          "key": "agent_account",
+                          "value": {
+                            "stringValue": "primary"
+                          }
+                        },
+                        {
+                          "key": "agent_plan_vendor",
+                          "value": {
+                            "stringValue": "anthropic"
+                          }
+                        },
+                        {
+                          "key": "agent_plan_window",
+                          "value": {
+                            "stringValue": "7d"
+                          }
+                        },
+                        {
+                          "key": "agent_capacity_source",
+                          "value": {
+                            "stringValue": "claude_statusline"
+                          }
+                        },
+                        {
+                          "key": "agent_capacity_freshness",
+                          "value": {
+                            "stringValue": "fresh"
+                          }
+                        }
+                      ],
+                      "timeUnixNano": "-200000000000",
+                      "asDouble": 0.872
+                    },
+                    {
+                      "attributes": [
+                        {
+                          "key": "agent_account",
+                          "value": {
+                            "stringValue": "primary"
+                          }
+                        },
+                        {
+                          "key": "agent_plan_vendor",
+                          "value": {
+                            "stringValue": "anthropic"
+                          }
+                        },
+                        {
+                          "key": "agent_plan_window",
+                          "value": {
+                            "stringValue": "7d"
+                          }
+                        },
+                        {
+                          "key": "agent_capacity_source",
+                          "value": {
+                            "stringValue": "claude_statusline"
+                          }
+                        },
+                        {
+                          "key": "agent_capacity_freshness",
+                          "value": {
+                            "stringValue": "fresh"
+                          }
+                        }
+                      ],
+                      "timeUnixNano": "100000000000",
+                      "asDouble": 0.876
+                    },
+                    {
+                      "attributes": [
+                        {
+                          "key": "agent_account",
+                          "value": {
+                            "stringValue": "primary"
+                          }
+                        },
+                        {
+                          "key": "agent_plan_vendor",
+                          "value": {
+                            "stringValue": "anthropic"
+                          }
+                        },
+                        {
+                          "key": "agent_plan_window",
+                          "value": {
+                            "stringValue": "7d"
+                          }
+                        },
+                        {
+                          "key": "agent_capacity_source",
+                          "value": {
+                            "stringValue": "claude_statusline"
+                          }
+                        },
+                        {
+                          "key": "agent_capacity_freshness",
+                          "value": {
+                            "stringValue": "fresh"
+                          }
+                        }
+                      ],
+                      "timeUnixNano": "400000000000",
+                      "asDouble": 0.88
+                    },
+                    {
+                      "attributes": [
+                        {
+                          "key": "agent_account",
+                          "value": {
+                            "stringValue": "primary"
+                          }
+                        },
+                        {
+                          "key": "agent_plan_vendor",
+                          "value": {
+                            "stringValue": "anthropic"
+                          }
+                        },
+                        {
+                          "key": "agent_plan_window",
+                          "value": {
+                            "stringValue": "7d"
+                          }
+                        },
+                        {
+                          "key": "agent_capacity_source",
+                          "value": {
+                            "stringValue": "claude_statusline"
+                          }
+                        },
+                        {
+                          "key": "agent_capacity_freshness",
+                          "value": {
+                            "stringValue": "fresh"
+                          }
+                        }
+                      ],
+                      "timeUnixNano": "700000000000",
+                      "asDouble": 0.884
+                    },
+                    {
+                      "attributes": [
+                        {
+                          "key": "agent_account",
+                          "value": {
+                            "stringValue": "primary"
+                          }
+                        },
+                        {
+                          "key": "agent_plan_vendor",
+                          "value": {
+                            "stringValue": "anthropic"
+                          }
+                        },
+                        {
+                          "key": "agent_plan_window",
+                          "value": {
+                            "stringValue": "7d"
+                          }
+                        },
+                        {
+                          "key": "agent_capacity_source",
+                          "value": {
+                            "stringValue": "claude_statusline"
+                          }
+                        },
+                        {
+                          "key": "agent_capacity_freshness",
+                          "value": {
+                            "stringValue": "fresh"
+                          }
+                        }
+                      ],
+                      "timeUnixNano": "1000000000000",
+                      "asDouble": 0.888
+                    },
+                    {
+                      "attributes": [
+                        {
+                          "key": "agent_account",
+                          "value": {
+                            "stringValue": "primary"
+                          }
+                        },
+                        {
+                          "key": "agent_plan_vendor",
+                          "value": {
+                            "stringValue": "anthropic"
+                          }
+                        },
+                        {
+                          "key": "agent_plan_window",
+                          "value": {
+                            "stringValue": "5h"
+                          }
+                        },
+                        {
+                          "key": "agent_capacity_source",
+                          "value": {
+                            "stringValue": "claude_statusline"
+                          }
+                        },
+                        {
+                          "key": "agent_capacity_freshness",
+                          "value": {
+                            "stringValue": "fresh"
+                          }
+                        }
+                      ],
+                      "timeUnixNano": "1000000000000",
+                      "asDouble": 0.7
+                    },
+                    {
+                      "attributes": [
+                        {
+                          "key": "agent_account",
+                          "value": {
+                            "stringValue": "primary"
+                          }
+                        },
+                        {
+                          "key": "agent_plan_vendor",
+                          "value": {
+                            "stringValue": "anthropic"
+                          }
+                        },
+                        {
+                          "key": "agent_plan_window",
+                          "value": {
+                            "stringValue": "7d_sonnet"
+                          }
+                        },
+                        {
+                          "key": "agent_capacity_source",
+                          "value": {
+                            "stringValue": "claude_statusline"
+                          }
+                        },
+                        {
+                          "key": "agent_capacity_freshness",
+                          "value": {
+                            "stringValue": "carried"
+                          }
+                        }
+                      ],
+                      "timeUnixNano": "1000000000000",
+                      "asDouble": 0
+                    },
+                    {
+                      "attributes": [
+                        {
+                          "key": "agent_account",
+                          "value": {
+                            "stringValue": "primary"
+                          }
+                        },
+                        {
+                          "key": "agent_plan_vendor",
+                          "value": {
+                            "stringValue": "google"
+                          }
+                        },
+                        {
+                          "key": "agent_plan_window",
+                          "value": {
+                            "stringValue": "other"
+                          }
+                        },
+                        {
+                          "key": "agent_capacity_source",
+                          "value": {
+                            "stringValue": "agy_statusline"
+                          }
+                        },
+                        {
+                          "key": "agent_capacity_freshness",
+                          "value": {
+                            "stringValue": "carried"
+                          }
+                        }
+                      ],
+                      "timeUnixNano": "-200000000000",
+                      "asDouble": 0
+                    },
+                    {
+                      "attributes": [
+                        {
+                          "key": "agent_account",
+                          "value": {
+                            "stringValue": "primary"
+                          }
+                        },
+                        {
+                          "key": "agent_plan_vendor",
+                          "value": {
+                            "stringValue": "openai"
+                          }
+                        },
+                        {
+                          "key": "agent_plan_window",
+                          "value": {
+                            "stringValue": "5h"
+                          }
+                        },
+                        {
+                          "key": "agent_capacity_source",
+                          "value": {
+                            "stringValue": "codex_rollout"
+                          }
+                        },
+                        {
+                          "key": "agent_capacity_freshness",
+                          "value": {
+                            "stringValue": "fresh"
+                          }
+                        }
+                      ],
+                      "timeUnixNano": "1000000000000",
+                      "asDouble": 0.25
+                    }
+                  ]
+                }
+              },
+              {
+                "name": "agent_capacity_snapshot_age_seconds",
+                "gauge": {
+                  "dataPoints": [
+                    {
+                      "attributes": [
+                        {
+                          "key": "agent_account",
+                          "value": {
+                            "stringValue": "primary"
+                          }
+                        },
+                        {
+                          "key": "agent_plan_vendor",
+                          "value": {
+                            "stringValue": "anthropic"
+                          }
+                        },
+                        {
+                          "key": "agent_plan_window",
+                          "value": {
+                            "stringValue": "7d"
+                          }
+                        },
+                        {
+                          "key": "agent_capacity_source",
+                          "value": {
+                            "stringValue": "claude_statusline"
+                          }
+                        },
+                        {
+                          "key": "agent_capacity_freshness",
+                          "value": {
+                            "stringValue": "fresh"
+                          }
+                        }
+                      ],
+                      "timeUnixNano": "1000000000000",
+                      "asDouble": 0
+                    },
+                    {
+                      "attributes": [
+                        {
+                          "key": "agent_account",
+                          "value": {
+                            "stringValue": "primary"
+                          }
+                        },
+                        {
+                          "key": "agent_plan_vendor",
+                          "value": {
+                            "stringValue": "anthropic"
+                          }
+                        },
+                        {
+                          "key": "agent_plan_window",
+                          "value": {
+                            "stringValue": "5h"
+                          }
+                        },
+                        {
+                          "key": "agent_capacity_source",
+                          "value": {
+                            "stringValue": "claude_statusline"
+                          }
+                        },
+                        {
+                          "key": "agent_capacity_freshness",
+                          "value": {
+                            "stringValue": "fresh"
+                          }
+                        }
+                      ],
+                      "timeUnixNano": "1000000000000",
+                      "asDouble": 0
+                    },
+                    {
+                      "attributes": [
+                        {
+                          "key": "agent_account",
+                          "value": {
+                            "stringValue": "primary"
+                          }
+                        },
+                        {
+                          "key": "agent_plan_vendor",
+                          "value": {
+                            "stringValue": "anthropic"
+                          }
+                        },
+                        {
+                          "key": "agent_plan_window",
+                          "value": {
+                            "stringValue": "7d_sonnet"
+                          }
+                        },
+                        {
+                          "key": "agent_capacity_source",
+                          "value": {
+                            "stringValue": "claude_statusline"
+                          }
+                        },
+                        {
+                          "key": "agent_capacity_freshness",
+                          "value": {
+                            "stringValue": "carried"
+                          }
+                        }
+                      ],
+                      "timeUnixNano": "1000000000000",
+                      "asDouble": 0
+                    },
+                    {
+                      "attributes": [
+                        {
+                          "key": "agent_account",
+                          "value": {
+                            "stringValue": "primary"
+                          }
+                        },
+                        {
+                          "key": "agent_plan_vendor",
+                          "value": {
+                            "stringValue": "google"
+                          }
+                        },
+                        {
+                          "key": "agent_plan_window",
+                          "value": {
+                            "stringValue": "other"
+                          }
+                        },
+                        {
+                          "key": "agent_capacity_source",
+                          "value": {
+                            "stringValue": "agy_statusline"
+                          }
+                        },
+                        {
+                          "key": "agent_capacity_freshness",
+                          "value": {
+                            "stringValue": "carried"
+                          }
+                        }
+                      ],
+                      "timeUnixNano": "-200000000000",
+                      "asDouble": 1200
+                    },
+                    {
+                      "attributes": [
+                        {
+                          "key": "agent_account",
+                          "value": {
+                            "stringValue": "primary"
+                          }
+                        },
+                        {
+                          "key": "agent_plan_vendor",
+                          "value": {
+                            "stringValue": "openai"
+                          }
+                        },
+                        {
+                          "key": "agent_plan_window",
+                          "value": {
+                            "stringValue": "5h"
+                          }
+                        },
+                        {
+                          "key": "agent_capacity_source",
+                          "value": {
+                            "stringValue": "codex_rollout"
+                          }
+                        },
+                        {
+                          "key": "agent_capacity_freshness",
+                          "value": {
+                            "stringValue": "fresh"
+                          }
+                        }
+                      ],
+                      "timeUnixNano": "1000000000000",
+                      "asDouble": 0
+                    }
+                  ]
+                }
+              },
+              {
+                "name": "agent_capacity_window_reset_time_seconds",
+                "gauge": {
+                  "dataPoints": [
+                    {
+                      "attributes": [
+                        {
+                          "key": "agent_account",
+                          "value": {
+                            "stringValue": "primary"
+                          }
+                        },
+                        {
+                          "key": "agent_plan_vendor",
+                          "value": {
+                            "stringValue": "anthropic"
+                          }
+                        },
+                        {
+                          "key": "agent_plan_window",
+                          "value": {
+                            "stringValue": "7d"
+                          }
+                        },
+                        {
+                          "key": "agent_capacity_source",
+                          "value": {
+                            "stringValue": "claude_statusline"
+                          }
+                        },
+                        {
+                          "key": "agent_capacity_freshness",
+                          "value": {
+                            "stringValue": "fresh"
+                          }
+                        }
+                      ],
+                      "timeUnixNano": "1000000000000",
+                      "asDouble": 173800
+                    },
+                    {
+                      "attributes": [
+                        {
+                          "key": "agent_account",
+                          "value": {
+                            "stringValue": "primary"
+                          }
+                        },
+                        {
+                          "key": "agent_plan_vendor",
+                          "value": {
+                            "stringValue": "anthropic"
+                          }
+                        },
+                        {
+                          "key": "agent_plan_window",
+                          "value": {
+                            "stringValue": "5h"
+                          }
+                        },
+                        {
+                          "key": "agent_capacity_source",
+                          "value": {
+                            "stringValue": "claude_statusline"
+                          }
+                        },
+                        {
+                          "key": "agent_capacity_freshness",
+                          "value": {
+                            "stringValue": "fresh"
+                          }
+                        }
+                      ],
+                      "timeUnixNano": "1000000000000",
+                      "asDouble": 4600
+                    },
+                    {
+                      "attributes": [
+                        {
+                          "key": "agent_account",
+                          "value": {
+                            "stringValue": "primary"
+                          }
+                        },
+                        {
+                          "key": "agent_plan_vendor",
+                          "value": {
+                            "stringValue": "anthropic"
+                          }
+                        },
+                        {
+                          "key": "agent_plan_window",
+                          "value": {
+                            "stringValue": "7d_sonnet"
+                          }
+                        },
+                        {
+                          "key": "agent_capacity_source",
+                          "value": {
+                            "stringValue": "claude_statusline"
+                          }
+                        },
+                        {
+                          "key": "agent_capacity_freshness",
+                          "value": {
+                            "stringValue": "carried"
+                          }
+                        }
+                      ],
+                      "timeUnixNano": "1000000000000",
+                      "asDouble": 87400
+                    },
+                    {
+                      "attributes": [
+                        {
+                          "key": "agent_account",
+                          "value": {
+                            "stringValue": "primary"
+                          }
+                        },
+                        {
+                          "key": "agent_plan_vendor",
+                          "value": {
+                            "stringValue": "google"
+                          }
+                        },
+                        {
+                          "key": "agent_plan_window",
+                          "value": {
+                            "stringValue": "other"
+                          }
+                        },
+                        {
+                          "key": "agent_capacity_source",
+                          "value": {
+                            "stringValue": "agy_statusline"
+                          }
+                        },
+                        {
+                          "key": "agent_capacity_freshness",
+                          "value": {
+                            "stringValue": "carried"
+                          }
+                        }
+                      ],
+                      "timeUnixNano": "-200000000000",
+                      "asDouble": 4600
+                    },
+                    {
+                      "attributes": [
+                        {
+                          "key": "agent_account",
+                          "value": {
+                            "stringValue": "primary"
+                          }
+                        },
+                        {
+                          "key": "agent_plan_vendor",
+                          "value": {
+                            "stringValue": "openai"
+                          }
+                        },
+                        {
+                          "key": "agent_plan_window",
+                          "value": {
+                            "stringValue": "5h"
+                          }
+                        },
+                        {
+                          "key": "agent_capacity_source",
+                          "value": {
+                            "stringValue": "codex_rollout"
+                          }
+                        },
+                        {
+                          "key": "agent_capacity_freshness",
+                          "value": {
+                            "stringValue": "fresh"
+                          }
+                        }
+                      ],
+                      "timeUnixNano": "1000000000000",
+                      "asDouble": 8200
+                    }
+                  ]
+                }
+              },
+              {
+                "name": "claude_code_token_usage_tokens_total",
+                "gauge": {
+                  "dataPoints": [
+                    {
+                      "attributes": [
+                        {
+                          "key": "agent_account",
+                          "value": {
+                            "stringValue": "primary"
+                          }
+                        }
+                      ],
+                      "timeUnixNano": "700000000000",
+                      "asDouble": 60
+                    },
+                    {
+                      "attributes": [
+                        {
+                          "key": "agent_account",
+                          "value": {
+                            "stringValue": "primary"
+                          }
+                        }
+                      ],
+                      "timeUnixNano": "760000000000",
+                      "asDouble": 120
+                    },
+                    {
+                      "attributes": [
+                        {
+                          "key": "agent_account",
+                          "value": {
+                            "stringValue": "primary"
+                          }
+                        }
+                      ],
+                      "timeUnixNano": "820000000000",
+                      "asDouble": 180
+                    },
+                    {
+                      "attributes": [
+                        {
+                          "key": "agent_account",
+                          "value": {
+                            "stringValue": "primary"
+                          }
+                        }
+                      ],
+                      "timeUnixNano": "880000000000",
+                      "asDouble": 240
+                    },
+                    {
+                      "attributes": [
+                        {
+                          "key": "agent_account",
+                          "value": {
+                            "stringValue": "primary"
+                          }
+                        }
+                      ],
+                      "timeUnixNano": "940000000000",
+                      "asDouble": 300
+                    },
+                    {
+                      "attributes": [
+                        {
+                          "key": "agent_account",
+                          "value": {
+                            "stringValue": "primary"
+                          }
+                        }
+                      ],
+                      "timeUnixNano": "1000000000000",
+                      "asDouble": 360
+                    }
+                  ]
+                }
+              },
+              {
+                "name": "claude_code_cost_usage_USD_total",
+                "gauge": {
+                  "dataPoints": [
+                    {
+                      "attributes": [
+                        {
+                          "key": "agent_account",
+                          "value": {
+                            "stringValue": "primary"
+                          }
+                        }
+                      ],
+                      "timeUnixNano": "700000000000",
+                      "asDouble": 60
+                    },
+                    {
+                      "attributes": [
+                        {
+                          "key": "agent_account",
+                          "value": {
+                            "stringValue": "primary"
+                          }
+                        }
+                      ],
+                      "timeUnixNano": "760000000000",
+                      "asDouble": 120
+                    },
+                    {
+                      "attributes": [
+                        {
+                          "key": "agent_account",
+                          "value": {
+                            "stringValue": "primary"
+                          }
+                        }
+                      ],
+                      "timeUnixNano": "820000000000",
+                      "asDouble": 180
+                    },
+                    {
+                      "attributes": [
+                        {
+                          "key": "agent_account",
+                          "value": {
+                            "stringValue": "primary"
+                          }
+                        }
+                      ],
+                      "timeUnixNano": "880000000000",
+                      "asDouble": 240
+                    },
+                    {
+                      "attributes": [
+                        {
+                          "key": "agent_account",
+                          "value": {
+                            "stringValue": "primary"
+                          }
+                        }
+                      ],
+                      "timeUnixNano": "940000000000",
+                      "asDouble": 300
+                    },
+                    {
+                      "attributes": [
+                        {
+                          "key": "agent_account",
+                          "value": {
+                            "stringValue": "primary"
+                          }
+                        }
+                      ],
+                      "timeUnixNano": "1000000000000",
+                      "asDouble": 360
+                    }
+                  ]
+                }
+              },
+              {
+                "name": "codex_turn_token_usage_sum",
+                "gauge": {
+                  "dataPoints": [
+                    {
+                      "attributes": [
+                        {
+                          "key": "token_type",
+                          "value": {
+                            "stringValue": "total"
+                          }
+                        },
+                        {
+                          "key": "agent_account",
+                          "value": {
+                            "stringValue": "primary"
+                          }
+                        }
+                      ],
+                      "timeUnixNano": "700000000000",
+                      "asDouble": 60
+                    },
+                    {
+                      "attributes": [
+                        {
+                          "key": "token_type",
+                          "value": {
+                            "stringValue": "total"
+                          }
+                        },
+                        {
+                          "key": "agent_account",
+                          "value": {
+                            "stringValue": "primary"
+                          }
+                        }
+                      ],
+                      "timeUnixNano": "760000000000",
+                      "asDouble": 120
+                    },
+                    {
+                      "attributes": [
+                        {
+                          "key": "token_type",
+                          "value": {
+                            "stringValue": "total"
+                          }
+                        },
+                        {
+                          "key": "agent_account",
+                          "value": {
+                            "stringValue": "primary"
+                          }
+                        }
+                      ],
+                      "timeUnixNano": "820000000000",
+                      "asDouble": 180
+                    },
+                    {
+                      "attributes": [
+                        {
+                          "key": "token_type",
+                          "value": {
+                            "stringValue": "total"
+                          }
+                        },
+                        {
+                          "key": "agent_account",
+                          "value": {
+                            "stringValue": "primary"
+                          }
+                        }
+                      ],
+                      "timeUnixNano": "880000000000",
+                      "asDouble": 240
+                    },
+                    {
+                      "attributes": [
+                        {
+                          "key": "token_type",
+                          "value": {
+                            "stringValue": "total"
+                          }
+                        },
+                        {
+                          "key": "agent_account",
+                          "value": {
+                            "stringValue": "primary"
+                          }
+                        }
+                      ],
+                      "timeUnixNano": "940000000000",
+                      "asDouble": 300
+                    },
+                    {
+                      "attributes": [
+                        {
+                          "key": "token_type",
+                          "value": {
+                            "stringValue": "total"
+                          }
+                        },
+                        {
+                          "key": "agent_account",
+                          "value": {
+                            "stringValue": "primary"
+                          }
+                        }
+                      ],
+                      "timeUnixNano": "1000000000000",
+                      "asDouble": 360
+                    },
+                    {
+                      "attributes": [
+                        {
+                          "key": "token_type",
+                          "value": {
+                            "stringValue": "input"
+                          }
+                        },
+                        {
+                          "key": "agent_account",
+                          "value": {
+                            "stringValue": "primary"
+                          }
+                        }
+                      ],
+                      "timeUnixNano": "700000000000",
+                      "asDouble": 30
+                    },
+                    {
+                      "attributes": [
+                        {
+                          "key": "token_type",
+                          "value": {
+                            "stringValue": "input"
+                          }
+                        },
+                        {
+                          "key": "agent_account",
+                          "value": {
+                            "stringValue": "primary"
+                          }
+                        }
+                      ],
+                      "timeUnixNano": "760000000000",
+                      "asDouble": 60
+                    },
+                    {
+                      "attributes": [
+                        {
+                          "key": "token_type",
+                          "value": {
+                            "stringValue": "input"
+                          }
+                        },
+                        {
+                          "key": "agent_account",
+                          "value": {
+                            "stringValue": "primary"
+                          }
+                        }
+                      ],
+                      "timeUnixNano": "820000000000",
+                      "asDouble": 90
+                    },
+                    {
+                      "attributes": [
+                        {
+                          "key": "token_type",
+                          "value": {
+                            "stringValue": "input"
+                          }
+                        },
+                        {
+                          "key": "agent_account",
+                          "value": {
+                            "stringValue": "primary"
+                          }
+                        }
+                      ],
+                      "timeUnixNano": "880000000000",
+                      "asDouble": 120
+                    },
+                    {
+                      "attributes": [
+                        {
+                          "key": "token_type",
+                          "value": {
+                            "stringValue": "input"
+                          }
+                        },
+                        {
+                          "key": "agent_account",
+                          "value": {
+                            "stringValue": "primary"
+                          }
+                        }
+                      ],
+                      "timeUnixNano": "940000000000",
+                      "asDouble": 150
+                    },
+                    {
+                      "attributes": [
+                        {
+                          "key": "token_type",
+                          "value": {
+                            "stringValue": "input"
+                          }
+                        },
+                        {
+                          "key": "agent_account",
+                          "value": {
+                            "stringValue": "primary"
+                          }
+                        }
+                      ],
+                      "timeUnixNano": "1000000000000",
+                      "asDouble": 180
+                    }
+                  ]
+                }
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "resource": {
+          "attributes": [
+            {
+              "key": "service.name",
+              "value": {
+                "stringValue": "agent-capacity"
+              }
+            },
+            {
+              "key": "host.name",
+              "value": {
+                "stringValue": "capacity-fixture-b"
+              }
+            }
+          ]
+        },
+        "scopeMetrics": [
+          {
+            "scope": {
+              "name": "capacity-smoke"
+            },
+            "metrics": [
+              {
+                "name": "agent_capacity_window_utilization_ratio",
+                "gauge": {
+                  "dataPoints": [
+                    {
+                      "attributes": [
+                        {
+                          "key": "agent_account",
+                          "value": {
+                            "stringValue": "primary"
+                          }
+                        },
+                        {
+                          "key": "agent_plan_vendor",
+                          "value": {
+                            "stringValue": "anthropic"
+                          }
+                        },
+                        {
+                          "key": "agent_plan_window",
+                          "value": {
+                            "stringValue": "5h"
+                          }
+                        },
+                        {
+                          "key": "agent_capacity_source",
+                          "value": {
+                            "stringValue": "claude_statusline"
+                          }
+                        },
+                        {
+                          "key": "agent_capacity_freshness",
+                          "value": {
+                            "stringValue": "carried"
+                          }
+                        }
+                      ],
+                      "timeUnixNano": "1000000000000",
+                      "asDouble": 1
+                    }
+                  ]
+                }
+              },
+              {
+                "name": "agent_capacity_snapshot_age_seconds",
+                "gauge": {
+                  "dataPoints": [
+                    {
+                      "attributes": [
+                        {
+                          "key": "agent_account",
+                          "value": {
+                            "stringValue": "primary"
+                          }
+                        },
+                        {
+                          "key": "agent_plan_vendor",
+                          "value": {
+                            "stringValue": "anthropic"
+                          }
+                        },
+                        {
+                          "key": "agent_plan_window",
+                          "value": {
+                            "stringValue": "5h"
+                          }
+                        },
+                        {
+                          "key": "agent_capacity_source",
+                          "value": {
+                            "stringValue": "claude_statusline"
+                          }
+                        },
+                        {
+                          "key": "agent_capacity_freshness",
+                          "value": {
+                            "stringValue": "carried"
+                          }
+                        }
+                      ],
+                      "timeUnixNano": "1000000000000",
+                      "asDouble": 60
+                    }
+                  ]
+                }
+              },
+              {
+                "name": "agent_capacity_window_reset_time_seconds",
+                "gauge": {
+                  "dataPoints": [
+                    {
+                      "attributes": [
+                        {
+                          "key": "agent_account",
+                          "value": {
+                            "stringValue": "primary"
+                          }
+                        },
+                        {
+                          "key": "agent_plan_vendor",
+                          "value": {
+                            "stringValue": "anthropic"
+                          }
+                        },
+                        {
+                          "key": "agent_plan_window",
+                          "value": {
+                            "stringValue": "5h"
+                          }
+                        },
+                        {
+                          "key": "agent_capacity_source",
+                          "value": {
+                            "stringValue": "claude_statusline"
+                          }
+                        },
+                        {
+                          "key": "agent_capacity_freshness",
+                          "value": {
+                            "stringValue": "carried"
+                          }
+                        }
+                      ],
+                      "timeUnixNano": "1000000000000",
+                      "asDouble": 4600
+                    }
+                  ]
+                }
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  }
+}

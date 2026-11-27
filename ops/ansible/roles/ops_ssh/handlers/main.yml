@@ -1,0 +1,7 @@
+---
+# ssh.socket may be listening before ssh.service has ever run. Reload
+# only the running daemon; an idle socket starts it with the validated file.
+- name: Reload SSH
+  ansible.builtin.command:
+    cmd: /usr/local/sbin/ops-ssh-revert reload
+  changed_when: true

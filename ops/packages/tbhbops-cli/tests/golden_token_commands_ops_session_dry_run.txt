@@ -1,0 +1,56 @@
+set -eu
+
+# Dry run: each op and security command below is echoed, not run.
+# It first creates each vault it needs that the account lacks.
+# It grants the Connect server srv its vaults, then creates one token with no expiry for each host
+# and stores it in the host's vault as the item connect-token, field token.
+# A host whose vault already holds connect-token is skipped, so the script is safe
+# to run again.
+# ex-ctl1 also gets an ops-session token, which reads every
+# agent host's vault, writes host-0-shared and reads the vault overlay-oauth,
+# which holds the Tailscale OAuth client that mints runner-VM auth keys.
+# It goes into the keychain of the user who runs the script, with no
+# ssh, and into no vault. It is skipped if that keychain already holds
+# it.
+
+# Live, it lists the vaults once and stops with exit 1 if that fails:
+echo 'op vault list --account acct.example.com --format json'
+# Live, it creates each of these vaults that the list lacks, and prints
+# created vault <name> for each one:
+echo 'op vault create --account acct.example.com host-0-shared'
+echo 'op vault create --account acct.example.com host-ex-ctl1'
+echo 'op vault create --account acct.example.com host-ex-ctl2'
+echo 'op vault create --account acct.example.com host-ex-lab1'
+echo 'op vault create --account acct.example.com host-ex-win1'
+echo 'op vault create --account acct.example.com overlay-oauth'
+
+echo 'op connect vault grant --account acct.example.com --server srv --vault host-0-shared'
+echo 'op connect vault grant --account acct.example.com --server srv --vault host-ex-ctl1'
+echo 'op connect vault grant --account acct.example.com --server srv --vault host-ex-ctl2'
+echo 'op connect vault grant --account acct.example.com --server srv --vault host-ex-lab1'
+echo 'op connect vault grant --account acct.example.com --server srv --vault host-ex-win1'
+echo 'op connect vault grant --account acct.example.com --server srv --vault overlay-oauth'
+
+# ex-lab1
+# Live, it skips this host if this succeeds:
+echo 'op item get --account acct.example.com connect-token --vault host-ex-lab1'
+echo 'tok=$(op connect token create --account acct.example.com '"'"'agent-host:ex-lab1:20261108T142100Z'"'"' --server srv --vault host-ex-lab1,r --vault host-0-shared,r)'
+# Live, it stops with exit 1 if the token is empty:
+echo 'printf '"'"'%s'"'"' "$tok" | jq -R '"'"'{title: "connect-token", category: "API_CREDENTIAL", fields: [{label: "token", type: "CONCEALED", value: .}]}'"'"' | op item create --account acct.example.com --vault host-ex-lab1 -'
+echo 'unset tok'
+
+# ops-session ex-ctl1
+# Live, it prepares your keychain ops-connect.keychain on ex-ctl1:
+echo 'sh -c '"'"'mkdir -p ~/Library/Keychains && { [ -e ~/Library/Keychains/ops-connect.keychain-db ] || security create-keychain -p "" ops-connect.keychain; } && security unlock-keychain -p "" ops-connect.keychain && security set-keychain-settings ops-connect.keychain'"'"''
+# Live, it skips this Mac if your keychain holds ops-connect:
+echo 'security find-generic-password -s ops-connect -a agent ops-connect.keychain'
+echo 'tok=$(op connect token create --account acct.example.com '"'"'ops-session:ex-ctl1:20261108T142100Z'"'"' --server srv --vault host-0-shared --vault host-ex-ctl1,r --vault host-ex-ctl2,r --vault host-ex-lab1,r --vault host-ex-win1,r --vault overlay-oauth,r)'
+# Live, it stops with exit 1 if the token is empty, odd or too long:
+# Live, it stores the token in one command that unlocks the keychain:
+echo 'echo "add-generic-password -U -s ops-connect -a agent -T /usr/bin/security -w $tok ops-connect.keychain" | { security unlock-keychain -p "" ops-connect.keychain && security -i; }'
+# Live, if the token is over-length or not stored, it deletes the token
+# and stops with exit 1:
+echo 'op connect token delete --account acct.example.com '"'"'ops-session:ex-ctl1:20261108T142100Z'"'"' --server srv'
+echo 'unset tok'
+# Live, it stops with exit 1 unless the item is there:
+echo 'security find-generic-password -s ops-connect -a agent ops-connect.keychain'

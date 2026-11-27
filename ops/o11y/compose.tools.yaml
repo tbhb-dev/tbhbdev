@@ -1,0 +1,67 @@
+---
+# Test-only services. All sit behind the "tools" profile, so `up` never
+# starts them. They can run with `run --rm`, or start by name, on the
+# stack's network. Automated checks arrive as tbhbops subcommands.
+name: o11y
+
+x-logging: &logging
+  driver: json-file
+  options: {max-size: 10m, max-file: "3"}
+
+services:
+  telemetrygen:
+    # yamllint disable-line rule:line-length
+    image: ghcr.io/open-telemetry/opentelemetry-collector-contrib/telemetrygen:v0.162.0@sha256:5350f77dbc914034321dc7629058e141996c8dc2cdde076d281e573efee1a67e
+    profiles: ["tools"]
+    restart: "no"
+    logging: *logging
+
+  s3probe:
+    image: amazon/aws-cli:2.37.13@sha256:d32864c20087d486f5988c3e70817d67a73f584a47535cada9ad97e0ea1e5196
+    profiles: ["tools"]
+    restart: "no"
+    logging: *logging
+    env_file: ${O11Y_S3_ENV_FILE:?}
+    environment:
+      AWS_ENDPOINT_URL: http://rustfs:9000
+      AWS_DEFAULT_REGION: us-east-1
+    entrypoint: ["/bin/sh", "/probe/probe.sh"]
+    volumes:
+      - ${O11Y_CONFIG_PROBE:?}:/probe:ro
+
+  # A stand-in for Discord's webhook endpoint, for the boot test: busybox
+  # httpd runs a CGI script that appends each request's path and body to
+  # /tmp/posts and answers 204, as Discord does.
+  alert-stub:
+    image: busybox:1.38.0@sha256:a46257e06c82ad85242d0d38077d0a52d9896389ca60a1a59d3463db586e5fa4
+    profiles: ["tools"]
+    restart: "no"
+    logging: *logging
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - >-
+          mkdir -p /www/cgi-bin &&
+          printf '%s\n' '#!/bin/sh'
+          '{ echo "path=$$PATH_INFO"; head -c "$${CONTENT_LENGTH:-0}"; echo; } >>/tmp/posts'
+          "printf 'Status: 204 No Content\\r\\n\\r\\n'" >/www/cgi-bin/hook &&
+          chmod 755 /www/cgi-bin/hook &&
+          exec httpd -f -p 8080 -h /www
+
+  # A stand-in for the SMTP server, for the boot test: Mailpit, requiring
+  # STARTTLS on a certificate it makes for itself, with one login whose
+  # password comes from the same per-run secret file Grafana reads.
+  # Its API on 8025 lists what arrived.
+  alert-mail:
+    image: axllent/mailpit:v1.34.0@sha256:23a2ef85bc50853ab3093645d1d64679afd8887e89da5e48a88940c172591a4e
+    profiles: ["tools"]
+    restart: "no"
+    logging: *logging
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - >-
+          umask 077 &&
+          { printf '%s' 'smoke-user:' && cat /run/o11y/alert_smtp_password && printf '\n'; } >/tmp/smtp-auth &&
+          exec /mailpit --smtp-auth-file /tmp/smtp-auth --smtp-require-starttls
+          --smtp-tls-cert sans:alert-mail --smtp-tls-key sans:alert-mail
+    volumes:
+      - ${O11Y_DATA_DIR:?}/secrets/alert_smtp_password:/run/o11y/alert_smtp_password:ro

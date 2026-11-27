@@ -1,0 +1,33 @@
+{
+  "resourceSpans": [
+    {
+      "resource": {
+        "attributes": [
+          {
+            "key": "service.name",
+            "value": {
+              "stringValue": "o11y-check-0123456789abcdef"
+            }
+          }
+        ]
+      },
+      "scopeSpans": [
+        {
+          "scope": {
+            "name": "o11y-check"
+          },
+          "spans": [
+            {
+              "traceId": "1234567890abcdef1234567890abcdef",
+              "spanId": "span",
+              "name": "o11y-check",
+              "kind": 1,
+              "startTimeUnixNano": "100000000000",
+              "endTimeUnixNano": "100500000000"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

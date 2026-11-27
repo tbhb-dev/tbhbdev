@@ -1,0 +1,133 @@
+---
+- name: containers | Inspect the local gateway tag
+  become: true
+  ansible.builtin.command:
+    argv:
+      - docker
+      - image
+      - inspect
+      - --format
+      - "{{ '{{.Id}}' }}"
+      - "{{ event_gateway_deploy_image_tag }}"
+  changed_when: false
+  failed_when:
+    - event_gateway_deploy_tag.rc != 0
+    - "'No such image' not in event_gateway_deploy_tag.stderr"
+  register: event_gateway_deploy_tag
+
+- name: containers | Build the missing local gateway image
+  become: true
+  ansible.builtin.command:
+    argv:
+      - docker
+      - build
+      - --tag
+      - "{{ event_gateway_deploy_image_tag }}"
+      - .
+    chdir: "{{ event_gateway_deploy_checkout }}"
+  when: event_gateway_deploy_tag.rc != 0
+  changed_when: true
+
+- name: containers | Resolve the gateway image ID
+  become: true
+  ansible.builtin.command:
+    argv:
+      - docker
+      - image
+      - inspect
+      - --format
+      - "{{ '{{.Id}}' }}"
+      - "{{ event_gateway_deploy_image_tag }}"
+  changed_when: false
+  register: event_gateway_deploy_gateway_image
+
+- name: containers | Read the expected tunnel image from the pinned Compose file
+  ansible.builtin.command:
+    argv:
+      - docker
+      - compose
+      - --env-file
+      - /dev/null
+      - -f
+      - deploy/compose.yaml
+      - config
+      - --no-env-resolution
+      - --format
+      - json
+    chdir: "{{ event_gateway_deploy_checkout }}"
+  environment:
+    EVENT_GATEWAY_IMAGE: "{{ event_gateway_deploy_gateway_image.stdout }}"
+  changed_when: false
+  no_log: true
+  register: event_gateway_deploy_compose
+
+- name: containers | Resolve the cached tunnel image ID
+  become: true
+  ansible.builtin.command:
+    argv:
+      - docker
+      - image
+      - inspect
+      - --format
+      - "{{ '{{.Id}}' }}"
+      - "{{ (event_gateway_deploy_compose.stdout | from_json).services.tunnel.image }}"
+  changed_when: false
+  register: event_gateway_deploy_tunnel_image
+
+- name: containers | Inspect the two Compose containers
+  become: true
+  ansible.builtin.command:
+    argv:
+      - docker
+      - container
+      - inspect
+      - --format
+      - "{{ '{{.Image}} {{.State.Running}}' }}"
+      - "event-gateway-{{ item }}-1"
+  loop:
+    - gateway
+    - tunnel
+  changed_when: false
+  failed_when:
+    - event_gateway_deploy_running.rc != 0
+    - "'No such container' not in event_gateway_deploy_running.stderr"
+  register: event_gateway_deploy_running
+
+- name: containers | Start the gateway and tunnel when a running image differs
+  become: true
+  become_user: ops
+  ansible.builtin.command:
+    argv:
+      - deploy/up.sh
+      - "{{ event_gateway_deploy_gateway_image.stdout }}"
+      - --pull
+      - never
+    chdir: "{{ event_gateway_deploy_checkout }}"
+  environment:
+    DEPLOY_DOCKER_SUDO: "1"
+  no_log: true
+  vars:
+    event_gateway_deploy_expected:
+      - "{{ event_gateway_deploy_gateway_image.stdout }} true"
+      - "{{ event_gateway_deploy_tunnel_image.stdout }} true"
+  when: event_gateway_deploy_running.results | map(attribute='stdout') | list != event_gateway_deploy_expected
+  changed_when: true
+
+- name: containers | Require both Compose containers to be healthy
+  become: true
+  ansible.builtin.command:
+    argv:
+      - docker
+      - container
+      - inspect
+      - --format
+      - "{{ '{{.State.Running}} {{with .State.Health}}{{.Status}}{{end}}' }}"
+      - "event-gateway-{{ item }}-1"
+  loop:
+    - gateway
+    - tunnel
+  register: event_gateway_deploy_health
+  until: event_gateway_deploy_health.rc == 0 and event_gateway_deploy_health.stdout == 'true healthy'
+  retries: 30
+  delay: 5
+  changed_when: false

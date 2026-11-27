@@ -13,6 +13,7 @@ from tempfile import mkdtemp
 from typing import TYPE_CHECKING
 
 import pytest
+from agent_cli_example import run_agent
 from agent_driver_example import (
     commit_in,
     execution_arguments,
@@ -22,8 +23,9 @@ from agent_driver_example import (
 )
 from agent_example import LINUX, settings, trusted_executables
 
-from tbhbdev.alpha import agent
+from tbhbdev.alpha.agent import arguments as agent_arguments
 from tbhbdev.alpha.agent import driver, transport
+from tbhbdev.alpha.agent import settings as agent_settings
 from tbhbdev.alpha.agent.decisions import policy, remote
 
 if TYPE_CHECKING:
@@ -79,7 +81,9 @@ def inspect_output(
         return result.returncode, result.stdout
 
     monkeypatch.setattr(transport, "execute", run)
-    args = agent.parser("example").parse_args(execution_arguments("example.md"))
+    args = agent_arguments.parser("example").parse_args(
+        execution_arguments("example.md")
+    )
     run = driver.prepare(settings(), args)
     run.request = replace(run.request, unsandboxed=unsandboxed)
     run.owner = "example-owner"
@@ -1411,22 +1415,23 @@ def test_finished_build_exports_complete_patch_offline(
 
     monkeypatch.setattr(transport, "execute", run_ssh)
     config = settings()
-    run = driver.prepare(
-        config, agent.parser("example").parse_args(execution_arguments("example.md"))
+    request_args = agent_arguments.parser("example").parse_args(
+        execution_arguments("example.md")
     )
+    run = driver.prepare(config, request_args)
     run.owner = "example-owner"
 
     def load(_settings: Settings, _name: str) -> driver.Run:
         return run
 
-    monkeypatch.setattr(agent.settings, "load", lambda: config)
+    monkeypatch.setattr(agent_settings, "load", lambda: config)
     monkeypatch.setattr(driver, "load", load)
     args = ["diff", "sample", "--patch"]
-    assert agent.main(args, "example") == 1
+    assert run_agent(args) == 1
     assert not capsysbinary.readouterr().out
 
     (state / "sample.rc").write_text("0\n")
-    assert agent.main(args, "example") == 0
+    assert run_agent(args) == 0
     output = capsysbinary.readouterr().out
     if history == "empty merge":
         assert output == b""
