@@ -19,6 +19,7 @@ py_library(
         "tbhbops_cli/gitleaks.py",
         "tbhbops_cli/inventory.py",
         "tbhbops_cli/o11y/__init__.py",
+        "tbhbops_cli/o11y/command.py",
         "tbhbops_cli/o11y/filesystem.py",
         "tbhbops_cli/o11y/http.py",
         "tbhbops_cli/o11y/init.py",
