@@ -20,8 +20,8 @@ See the [Ansible role](../../ops/ansible/roles/event_gateway_deploy/README.md) f
 ## Health check
 
 Run `event-gateway healthcheck` to check whether the gateway is serving requests.
-It sends an HTTP GET request to the health endpoint and waits up to four seconds.
-HTTP 200 yields exit status 0.
+It sends `GET /healthz` and waits up to four seconds.
+HTTP 200 yields exit status 0 with no output.
 For other responses or request failures, it exits with status 1.
 Use `-addr HOST:PORT` to override `127.0.0.1:8080`.
 
