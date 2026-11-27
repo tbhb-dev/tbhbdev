@@ -174,11 +174,19 @@ cli_py_library(
     deps = [
         ":codex_trust",
         ":gh_shim",
+        ":install_statusline_decisions",
         ":repo",
         "//factory/cli/src/tbhbdev:plugins",
         "//factory/cli/src/tbhbdev/alpha/identity:dispatcher",
         "@cli_pip//tomlkit",
     ],
+)
+
+cli_py_library(
+    name = "install_statusline_decisions",
+    srcs = ["install_statusline_decisions.py"],
+    imports = ["../.."],
+    visibility = ["//factory/cli:__subpackages__"],
 )
 
 cli_py_library(
@@ -234,6 +242,7 @@ cli_py_library(
         ":repo",
         ":secret_scan",
         ":size_gate",
+        ":tool_pins",
         "//factory/cli/src/tbhbdev/alpha/identity:dispatcher",
         "@cli_pip//jsonschema",
     ],
@@ -377,10 +386,7 @@ cli_py_library(
     srcs = ["secret_scan.py"],
     imports = ["../.."],
     visibility = ["//factory/cli:__subpackages__"],
-    deps = [
-        "//factory/cli/src/tbhbdev:host",
-        "@cli_pip//tomlkit",
-    ],
+    deps = ["@cli_pip//tomlkit"],
 )
 
 cli_py_library(
@@ -407,6 +413,7 @@ cli_py_library(
     visibility = ["//factory/cli:__subpackages__"],
     deps = [
         ":pull_request",
+        ":review_gate",
         "//factory/cli/src/tbhbdev/alpha/identity:dispatcher",
     ],
 )
@@ -431,6 +438,14 @@ cli_py_library(
         ":terminal",
         "//factory/cli/src/tbhbdev/alpha/identity:dispatcher",
     ],
+)
+
+cli_py_library(
+    name = "tool_pins",
+    srcs = ["tool_pins.py"],
+    data = ["pr-tool-versions.json"],
+    imports = ["../.."],
+    visibility = ["//factory/cli:__subpackages__"],
 )
 
 cli_py_library(

@@ -11,7 +11,6 @@ _SOURCE_ROOT = "factory/cli/src/tbhbdev"
 # contain only docstrings and have no runtime dependencies.
 _PACKAGE_INITIALIZERS = [
     _SOURCE_ROOT + "/admin",
-    _SOURCE_ROOT + "/alpha/agent",
     _SOURCE_ROOT + "/alpha/agent/decisions",
     _SOURCE_ROOT + "/alpha/loop",
     _SOURCE_ROOT + "/analytics",

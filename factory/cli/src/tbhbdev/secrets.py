@@ -11,8 +11,8 @@ because configuration management writes to that fixed path). The
 file is mode 0600 in a mode 0700 directory, both owned by the user, and a
 token that fails any of those checks is refused. Configuration management
 is the only writer of the Linux token file. The endpoints come from the user
-config's `[connect] endpoints` (see userconfig.py), which bootstrap writes on
-each agent host, and are tried in order.
+config's `[connect] endpoints` and are tried in order. The operator's host
+tooling sets up the config on each agent host.
 
 Nothing here logs, prints or puts a secret value or a token into an exception
 message.
@@ -187,8 +187,8 @@ def token() -> str:
     value = done.stdout.rstrip("\n")
     if done.returncode != 0 or not value:
         message = (
-            "no Connect token in this user's keychain; "
-            "run `tbhbdev host bootstrap` for this host"
+            "no Connect token in this user's keychain. "
+            "Use the operator's host tooling to install it."
         )
         raise SecretsError(message)
     return value
@@ -197,7 +197,7 @@ def token() -> str:
 def endpoints() -> list[str]:
     """The user config's `[connect] endpoints`, in failover order.
 
-    On an agent host, `tbhbdev host bootstrap` writes them into the config.
+    The operator's host tooling sets them on each agent host.
 
     Raises:
         SecretsError: The config doesn't list any.
@@ -205,7 +205,9 @@ def endpoints() -> list[str]:
     try:
         return userconfig.strings("connect", "endpoints")
     except userconfig.ConfigError as exc:
-        message = f"{exc}; run `tbhbdev host bootstrap` for this host"
+        message = (
+            f"{exc}. Use the operator's host tooling to set up this host's config."
+        )
         raise SecretsError(message) from exc
 
 

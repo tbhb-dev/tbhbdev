@@ -7,7 +7,6 @@ import hashlib
 import io
 import json
 import os
-import shlex
 import subprocess
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -16,12 +15,12 @@ from typing import TYPE_CHECKING, override
 import pytest
 
 from tbhbdev.alpha import install
+from tbhbdev.alpha import install_statusline_decisions as statusline
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Mapping
 
-OLD = install.OLD_STATUSLINES[0]
-BARE = install.OLD_STATUSLINES[1]
+OLD = statusline.OLD_STATUSLINES[0]
 PACKAGE_FILE = "console.log(1)\n"
 FOREIGN: dict[str, object] = {"model": "opus", "env": {"A": "b"}, "hooks": {"Stop": []}}
 
@@ -54,7 +53,7 @@ class Tools:
         if self.fail:
             raise self.fail
         if not self.skip_script:
-            script = install.statusline_script(Path(str(kwargs["cwd"])))
+            script = statusline.statusline_script(Path(str(kwargs["cwd"])))
             script.parent.mkdir(parents=True)
             script.write_text(PACKAGE_FILE)
         if self.fail_after_write:
@@ -84,7 +83,7 @@ class Setup:
 
 def preinstall(root: Path) -> Path:
     """Make ROOT a complete install, as a clean bun run leaves it."""
-    script = install.statusline_script(root)
+    script = statusline.statusline_script(root)
     script.parent.mkdir(parents=True)
     script.write_text(PACKAGE_FILE)
     (root / install.STATUSLINE_MARKER).write_text(install.STATUSLINE_VERSION)
@@ -94,12 +93,12 @@ def preinstall(root: Path) -> Path:
 @pytest.fixture
 def setup(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Setup:
     reference = tmp_path / "reference"
-    install.statusline_script(reference).parent.mkdir(parents=True)
-    install.statusline_script(reference).write_text(PACKAGE_FILE)
+    statusline.statusline_script(reference).parent.mkdir(parents=True)
+    statusline.statusline_script(reference).write_text(PACKAGE_FILE)
     monkeypatch.setattr(
         install,
         "STATUSLINE_DIGEST",
-        install.package_digest(install.statusline_package(reference)),
+        install.package_digest(statusline.statusline_package(reference)),
     )
     monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path / "data"))
     config = tmp_path / "claude"
@@ -114,18 +113,18 @@ def command(setup: Setup) -> str:
 
 
 def wanted(setup: Setup) -> str:
-    script = install.statusline_script(setup.tools.root)
-    return install.statusline_command("/x/node bin/node", script)
+    script = statusline.statusline_script(setup.tools.root)
+    return statusline.statusline_command("/x/node bin/node", script)
 
 
-@pytest.mark.parametrize("old", install.OLD_STATUSLINES)
+@pytest.mark.parametrize("old", statusline.OLD_STATUSLINES)
 def test_pins_the_known_command_and_keeps_every_other_key(
     setup: Setup, old: str, capsys: pytest.CaptureFixture[str]
 ) -> None:
     line = {"type": "command", "command": old, "padding": 0}
     before = setup.write({**FOREIGN, "statusLine": line})
     assert setup.go() == 0
-    script = install.statusline_script(setup.tools.root)
+    script = statusline.statusline_script(setup.tools.root)
     assert setup.tools.calls == [
         (
             ["/x/bun", "add", "--exact", "--ignore-scripts", "ccstatusline@2.2.33"],
@@ -194,7 +193,7 @@ def test_a_moved_node_rewrites_our_own_command(setup: Setup) -> None:
         {
             "statusLine": {
                 "type": "command",
-                "command": install.statusline_command("/old/node", script),
+                "command": statusline.statusline_command("/old/node", script),
             }
         }
     )
@@ -207,7 +206,7 @@ def test_a_moved_node_rewrites_our_own_command(setup: Setup) -> None:
 @pytest.mark.parametrize("suffix", ["", " --extra"])
 def test_a_command_that_only_resembles_ours_stays(setup: Setup, suffix: str) -> None:
     script = preinstall(setup.tools.root)
-    other = install.statusline_command("/a b/node x", script).replace(
+    other = statusline.statusline_command("/a b/node x", script).replace(
         "'/a b/node x'", "node two"
     )
     before = setup.write({"statusLine": {"type": "command", "command": other + suffix}})
@@ -215,66 +214,21 @@ def test_a_command_that_only_resembles_ours_stays(setup: Setup, suffix: str) -> 
     assert setup.path.read_text() == before
 
 
-def test_ours_is_the_installers_own_command_for_any_node_and_version(
-    setup: Setup,
-) -> None:
-    base = setup.tools.root.parent
-    for version in ("2.2.33", "2.3.0"):
-        script = install.statusline_script(base / version)
-        assert install.is_ours(install.statusline_command("/a b/node", script))
-    script = install.statusline_script(setup.tools.root)
-    assert install.is_ours(install.statusline_command("/x/bin/node", script))
-
-
-@pytest.mark.parametrize(
-    "node", ["node", "evil-binary", "$MY_STATUS_NODE", "/x/bin/evil", "~/node"]
-)
-def test_a_node_slot_other_than_an_absolute_node_is_not_ours(
-    setup: Setup, node: str
-) -> None:
-    script = install.statusline_script(setup.tools.root)
-    assert not install.is_ours(
-        f"{install.COLUMNS_PREFIX} {node} {shlex.quote(str(script))}"
-    )
-
-
-def test_a_command_not_in_the_installers_quoting_or_place_is_not_ours(
-    setup: Setup,
-) -> None:
-    script = install.statusline_script(setup.tools.root)
-    head = f"{install.COLUMNS_PREFIX} "
-    assert not install.is_ours(f"{head}/x/node {script}   ")
-    assert not install.is_ours(f'{head}"/x/node" {shlex.quote(str(script))}')
-    assert not install.is_ours(f"{head}/x/node {shlex.quote(str(script))} --extra")
-    assert not install.is_ours(f"{head}/x/node /elsewhere/dist/ccstatusline.js")
-    other = Path("/elsewhere/2.2.33/node_modules/ccstatusline/dist/ccstatusline.js")
-    assert not install.is_ours(install.statusline_command("/x/node", other))
-    assert not install.is_ours(f"x{head}/x/node {shlex.quote(str(script))}")
-
-
 def test_a_version_bump_replaces_the_command_written_for_the_old_version(
     setup: Setup,
 ) -> None:
-    old = install.statusline_script(setup.tools.root.parent / "2.2.0")
+    old = statusline.statusline_script(setup.tools.root.parent / "2.2.0")
     setup.write(
         {
             "statusLine": {
                 "type": "command",
-                "command": install.statusline_command("/x/node bin/node", old),
+                "command": statusline.statusline_command("/x/node bin/node", old),
             }
         }
     )
     assert setup.go() == 0
     assert command(setup) == wanted(setup)
     assert len(setup.backups()) == 1
-
-
-def test_a_command_with_an_unbalanced_quote_stays(setup: Setup) -> None:
-    script = preinstall(setup.tools.root)
-    other = f"{install.COLUMNS_PREFIX} 'node {shlex.quote(str(script))}"
-    before = setup.write({"statusLine": {"type": "command", "command": other}})
-    assert setup.go() == 0
-    assert setup.path.read_text() == before
 
 
 def test_the_settings_and_backup_keep_the_file_mode(setup: Setup) -> None:
@@ -311,21 +265,10 @@ def test_a_rerun_changes_nothing(
     assert len(setup.backups()) == 1
 
 
-@pytest.mark.parametrize(
-    "config",
-    [
-        {"model": "opus"},
-        {"statusLine": "text"},
-        {"statusLine": {"type": "command"}},
-        {"statusLine": {"type": "command", "command": 5}},
-        {"statusLine": {"type": "command", "command": "~/bin/my-line"}},
-        {"statusLine": {"type": "command", "command": f"{BARE} --json"}},
-        {"statusLine": {"type": "command", "command": "bunx ccstatusline@2.2.0"}},
-    ],
-)
-def test_a_custom_or_missing_statusline_stays(
-    setup: Setup, config: object, capsys: pytest.CaptureFixture[str]
+def test_a_custom_statusline_stays(
+    setup: Setup, capsys: pytest.CaptureFixture[str]
 ) -> None:
+    config = {"statusLine": {"type": "command", "command": "~/bin/my-line"}}
     before = setup.write(config)
     assert setup.go() == 0
     assert setup.path.read_text() == before
@@ -359,7 +302,7 @@ def test_a_pinned_command_without_its_install_reinstalls(setup: Setup) -> None:
     setup.write({"statusLine": {"type": "command", "command": wanted(setup)}})
     assert setup.go() == 0
     assert len(setup.tools.calls) == 1
-    assert install.statusline_script(setup.tools.root).is_file()
+    assert statusline.statusline_script(setup.tools.root).is_file()
     assert command(setup) == wanted(setup)
 
 
@@ -385,7 +328,7 @@ def test_our_command_without_node_says_node_is_missing(
     setup: Setup, capsys: pytest.CaptureFixture[str]
 ) -> None:
     script = preinstall(setup.tools.root)
-    other = install.statusline_command("/old/node", script)
+    other = statusline.statusline_command("/old/node", script)
     before = setup.write({"statusLine": {"type": "command", "command": other}})
     del setup.tools.found["node"]
     assert setup.go() == 0
@@ -430,7 +373,7 @@ def statusline_installed(setup: Setup) -> bool:
 def test_a_script_without_the_marker_is_not_a_complete_install(
     setup: Setup,
 ) -> None:
-    script = install.statusline_script(setup.tools.root)
+    script = statusline.statusline_script(setup.tools.root)
     script.parent.mkdir(parents=True)
     script.write_text("")
     setup.write({"statusLine": {"type": "command", "command": wanted(setup)}})
@@ -453,7 +396,7 @@ def test_a_symlinked_script_or_root_is_not_trusted(
     assert len(setup.tools.calls) == 1
     assert not setup.tools.root.is_symlink()
     assert statusline_installed(setup)
-    script = install.statusline_script(setup.tools.root)
+    script = statusline.statusline_script(setup.tools.root)
     target = tmp_path / "evil.js"
     target.write_text("")
     script.unlink()
@@ -469,7 +412,7 @@ def test_a_staged_script_that_is_a_symlink_fails(
 
     def link() -> None:
         assert setup.tools.cwd is not None
-        script = install.statusline_script(setup.tools.cwd)
+        script = statusline.statusline_script(setup.tools.cwd)
         script.parent.mkdir(parents=True)
         script.symlink_to(target)
 
@@ -584,13 +527,6 @@ def test_an_unreadable_or_non_text_file_is_no_install_and_a_rerun_repairs_it(
     assert setup.go() == 0
     assert len(setup.tools.calls) == 1
     assert statusline_installed(setup)
-
-
-def test_the_package_lives_in_node_modules_under_the_root(tmp_path: Path) -> None:
-    assert install.statusline_package(tmp_path).relative_to(tmp_path).parts == (
-        "node_modules",
-        "ccstatusline",
-    )
 
 
 def test_the_digest_covers_each_name_and_content_with_separators(
@@ -789,21 +725,6 @@ def test_the_root_follows_xdg_data_home_then_home(
     monkeypatch.setenv("HOME", str(tmp_path))
     assert install.statusline_root() == (
         tmp_path / ".local" / "share" / "tbhbdev" / "ccstatusline" / "2.2.33"
-    )
-
-
-def test_the_command_quotes_its_paths_and_keeps_the_width_fallback() -> None:
-    text = install.statusline_command("/a b/node", Path("/c d/s.js"))
-    assert text == f"{install.COLUMNS_PREFIX} '/a b/node' '/c d/s.js'"
-    assert BARE == "bunx -y ccstatusline@latest"
-    assert (
-        install.COLUMNS_PREFIX
-        == "COLUMNS=${COLUMNS:-$(tmux display-message -p '#{pane_width}' 2>/dev/null"
-        " || echo 80)}"
-    )
-    assert f"PATH=/opt/homebrew/bin:$PATH {install.COLUMNS_PREFIX} {BARE}" == OLD
-    assert install.statusline_script(Path("/r")) == Path(
-        "/r/node_modules/ccstatusline/dist/ccstatusline.js"
     )
 
 

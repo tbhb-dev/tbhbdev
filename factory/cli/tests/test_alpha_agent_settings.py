@@ -8,11 +8,9 @@ from typing import TYPE_CHECKING
 import pytest
 
 from tbhbdev import userconfig
-from tbhbdev.alpha.agent import command as agent
-from tbhbdev.alpha.agent import model, settings
+from tbhbdev.alpha.agent import arguments, model, settings
 
 if TYPE_CHECKING:
-    from collections.abc import Callable
     from pathlib import Path
 
 EXAMPLE = """\
@@ -169,132 +167,11 @@ def test_loading_reads_only_the_config(config_file: Path, tmp_path: Path) -> Non
     assert sorted(p.name for p in tmp_path.iterdir()) == before
 
 
-@pytest.mark.parametrize(
-    "run",
-    [
-        lambda: agent.main([], "example agent"),
-        lambda: agent.main(["status", "sample"], "example agent"),
-    ],
-)
-def test_command_refuses_missing_configuration(
-    config_file: Path, capsys: pytest.CaptureFixture[str], run: Callable[[], int]
-) -> None:
-    assert run() == 1
-    out = capsys.readouterr()
-    assert out.out == ""
-    assert str(config_file) in out.err
-    assert "config cannot be read" in out.err
-
-
-def test_command_reports_a_config_error(
-    config_file: Path, capsys: pytest.CaptureFixture[str]
-) -> None:
-    config_file.write_text('[agent]\nsockets_dir = "/x"\nzeta = 1\n')
-    assert agent.main(["status", "sample"], "example agent") == 1
-    assert capsys.readouterr() == (
-        "",
-        f"example agent: {config_file}: [agent] zeta not recognized\n",
-    )
-
-
-@pytest.mark.parametrize("field", ["audit_dir", "write_roots", "build_write"])
-@pytest.mark.parametrize("absolute", [False, True])
-def test_config_check_refuses_write_paths_under_socket_parents(
-    config_file: Path,
-    monkeypatch: pytest.MonkeyPatch,
-    capsys: pytest.CaptureFixture[str],
-    field: str,
-    absolute: bool,
-) -> None:
-    home = config_file.parent.parent / "agent"
-    monkeypatch.setenv("HOME", str(home))
-    write = ".local/state/tbhbdev/agent-audit"
-    configured = str(home / write) if absolute else write
-    text = (
-        EXAMPLE.replace(
-            'sockets_dir = "/example/sockets"',
-            'sockets_dir = ".local/state/tbhbdev/sockets"',
-        )
-        .replace(
-            'write_roots = [".cache", ".local/share/mise", ".local/state"]',
-            f'write_roots = ["{configured if field == "write_roots" else ".cache"}"]',
-        )
-        .replace(
-            'audit_dir = ".local/state/example-audit"',
-            f'audit_dir = "{configured if field == "audit_dir" else "audit"}"',
-        )
-        .replace(
-            'build_write = [".local/state/mise", ".local/share/mise"]',
-            f'build_write = ["{configured if field == "build_write" else ".cache"}"]',
-        )
-    )
-    config_file.write_text(text)
-
-    assert agent.main([], "example agent") == 1
-    assert capsys.readouterr() == (
-        "",
-        (
-            f"example agent: protected host path {home}/.local/state/tbhbdev "
-            f"overlaps write root {home / write}; narrow that write root\n"
-        ),
-    )
-
-
-@pytest.mark.parametrize("sockets", [".control/sockets", "/example/sockets"])
-def test_config_check_accepts_unrelated_write_paths(
-    config_file: Path,
-    monkeypatch: pytest.MonkeyPatch,
-    capsys: pytest.CaptureFixture[str],
-    sockets: str,
-) -> None:
-    monkeypatch.setenv("HOME", str(config_file.parent.parent / "agent"))
-    config_file.write_text(EXAMPLE.replace("/example/sockets", sockets))
-    assert agent.main([], "example agent") == 0
-    assert capsys.readouterr() == ("example agent: configuration valid\n", "")
-
-
-def test_config_check_refuses_write_paths_under_the_shell_config_directory(
-    config_file: Path,
-    monkeypatch: pytest.MonkeyPatch,
-    capsys: pytest.CaptureFixture[str],
-) -> None:
-    home = config_file.parent.parent / "agent"
-    monkeypatch.setenv("HOME", str(home))
-    monkeypatch.setenv("ZDOTDIR", ".shell-config")
-    config_file.write_text(
-        EXAMPLE.replace(
-            'audit_dir = ".local/state/example-audit"',
-            'audit_dir = ".shell-config/audit"',
-        )
-    )
-
-    assert agent.main([], "example agent") == 1
-    assert capsys.readouterr() == (
-        "",
-        (
-            f"example agent: protected host path {home}/.shell-config "
-            f"overlaps write root {home}/.shell-config/audit; narrow that write root\n"
-        ),
-    )
-
-
-@pytest.mark.parametrize(
-    ("argv", "rc"), [(["--help"], 0), (["exec", "x"], 2), (["-x"], 2)]
-)
-def test_command_options(
-    argv: list[str], capsys: pytest.CaptureFixture[str], rc: int
-) -> None:
-    assert agent.main(argv, "example agent") == rc
-    out = capsys.readouterr()
-    assert "usage: example agent" in out.out + out.err
-    assert "run-host" not in out.out
-
-
 def test_duration() -> None:
-    assert agent.duration("1h") == 3600
+    assert arguments.duration("1h") == 3600
 
     with pytest.raises(argparse.ArgumentTypeError) as caught:
-        agent.duration("bad")
+        arguments.duration("bad")
     assert (
         str(caught.value)
         == "must be bare seconds or a number ending in s, m or h, up to 7 days"
@@ -302,7 +179,7 @@ def test_duration() -> None:
 
 
 def test_command_help_contract() -> None:
-    assert agent.parser("example agent").format_help() == (
+    assert arguments.parser("example agent").format_help() == (
         "usage: example agent [-h]\n"
         "                     "
         "{exec,wait,status,kill,clean,keep,log,diff,signing-parity} ...\n\n"
@@ -313,18 +190,6 @@ def test_command_help_contract() -> None:
         "options:\n"
         "  -h, --help            show this help message and exit\n"
     )
-
-
-def test_command_dispatches_the_host_runner(monkeypatch: pytest.MonkeyPatch) -> None:
-    calls: list[tuple[list[str], str]] = []
-
-    def run_host(arguments: list[str], prog: str) -> int:
-        calls.append((arguments, prog))
-        return 37
-
-    monkeypatch.setattr(agent.run_host, "main", run_host)
-    assert agent.main(["run-host", "example", "--host", "example-linux"], "agent") == 37
-    assert calls == [(["example", "--host", "example-linux"], "agent run-host")]
 
 
 def test_a_relative_worker_path_names_the_config(config_file: Path) -> None:

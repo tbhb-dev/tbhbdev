@@ -7,16 +7,18 @@ import dataclasses
 import json
 import subprocess
 import sys
+from types import SimpleNamespace
 from typing import TYPE_CHECKING
 
 import pytest
+from agent_cli_example import run_agent
 from agent_driver_example import Remote, setup
 from agent_example import LINUX, MARKER, settings
 
-from tbhbdev.alpha.agent import command as agent
 from tbhbdev.alpha.agent import driver
+from tbhbdev.alpha.agent import settings as agent_settings
 from tbhbdev.alpha.agent.decisions import limits, remote
-from tbhbdev.alpha.agent.model import Invalid, Os, Profile, Settings
+from tbhbdev.alpha.agent.model import Host, Invalid, Os, Profile, Settings
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -367,17 +369,18 @@ def host(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Remote:
     def load() -> Settings:
         return CONFIG
 
-    monkeypatch.setattr(agent.settings, "load", load)
+    monkeypatch.setattr(agent_settings, "load", load)
     return result
 
 
-def launch(host: Remote, *options: str) -> int:
+def launch(host: Remote, *options: str, target: str | None = "example-linux") -> int:
+    named = [] if target is None else ["--host", target]
     args = [
-        "exec", "--host", "example-linux", "--repo", "example-org/example-repo",
+        "exec", *named, "--repo", "example-org/example-repo",
         "--model", "m", "--effort", "high", "--profile", "build", *options,
         "sample", str(host.prompt),
     ]  # fmt: skip
-    return agent.main(args, "example agent")
+    return run_agent(args)
 
 
 def test_a_busy_host_refuses_before_any_transfer(
@@ -389,6 +392,187 @@ def test_a_busy_host_refuses_before_any_transfer(
     assert len(host.records("ssh", limits=True)) == 1
     assert host.records("ssh") == []
     assert not driver.metadata_path("sample").exists()
+
+
+@pytest.fixture
+def host_pool(host: Remote, monkeypatch: pytest.MonkeyPatch) -> Remote:
+    busy = dataclasses.replace(LINUX, auto_select=True, load_limit=24)
+    active = dataclasses.replace(busy, name="example-active")
+    idle = dataclasses.replace(busy, name="example-idle")
+    laptop = dataclasses.replace(LINUX, name="example-laptop")
+    mac = dataclasses.replace(CONFIG.hosts[1], auto_select=True)
+    config = dataclasses.replace(CONFIG, hosts=(busy, active, idle, laptop, mac))
+    monkeypatch.setattr(agent_settings, "load", lambda: config)
+    host.configure(
+        limits="1.5 32 33554432 16777216 100 0 -",
+        limits_by_host={
+            busy.name: "24 32 33554432 16777216 100 0 -",
+            active.name: "4 32 33554432 16777216 100 0 -",
+            laptop.name: "0.1 8 33554432 16777216 100 0 -",
+            mac.name: "0.2 8 33554432 16777216 100 0 -",
+        },
+    )
+    return host
+
+
+@pytest.mark.parametrize("swap_warning", [False, True])
+def test_exec_without_host_uses_the_idle_linux_host(
+    host_pool: Remote, capsys: pytest.CaptureFixture[str], swap_warning: bool
+) -> None:
+    if swap_warning:
+        host_pool.configure(limits="1.5 32 33554432 16777216 100 90 0.4")
+    assert launch(host_pool, target=None) == 0
+    metadata = json.loads(driver.metadata_path("sample").read_text())
+    assert metadata["host"] == "example-idle"
+    error = capsys.readouterr().err
+    assert ("warning: example-idle: swap used 90% > 80%" in error) is swap_warning
+    assert_pool_probes(host_pool)
+
+
+@pytest.mark.parametrize(
+    ("launch_wait", "delayed_probe", "probe_timeouts"),
+    [
+        (120, "slot", [30, 29]),
+        (20, "slot", [5, 4]),
+        (20, "limits at deadline", [5]),
+        (20, "limits timeout", [5]),
+    ],
+)
+def test_exec_preserves_preflight_time_after_a_slow_probe(
+    host: Remote,
+    monkeypatch: pytest.MonkeyPatch,
+    launch_wait: int,
+    delayed_probe: str,
+    probe_timeouts: list[float],
+) -> None:
+    preferred = dataclasses.replace(LINUX, auto_select=True)
+    slow = dataclasses.replace(preferred, name="example-slow")
+    last = dataclasses.replace(preferred, name="example-last")
+    limits_timeout = delayed_probe == "limits timeout"
+    candidates = (slow, preferred) if limits_timeout else (preferred, slow, last)
+    config = dataclasses.replace(
+        CONFIG, hosts=candidates, launch_wait_seconds=launch_wait
+    )
+    monkeypatch.setattr(agent_settings, "load", lambda: config)
+    host.configure(
+        limits="1 4 12582912 6291456 100 0 -",
+        limits_by_host={preferred.name: "0.5 4 12582912 6291456 100 0 -"},
+    )
+    elapsed = 0.0
+    monkeypatch.setattr(driver, "time", SimpleNamespace(monotonic=lambda: elapsed))
+    real_shell = driver.transport.shell
+    slow_timeouts: list[float] = []
+
+    def shell(
+        settings: Settings,
+        target: Host,
+        script: str,
+        stdin: driver.transport.Stdin | None = None,
+        *,
+        timeout: float = 30,
+    ) -> str:
+        nonlocal elapsed
+        assert timeout > 0
+        if target == slow:
+            slow_timeouts.append(timeout)
+            if limits_timeout or script == remote.check_slot(slow, Profile.BUILD):
+                elapsed += timeout
+                message = "probe timed out"
+                raise driver.transport.TransportError(message)
+            elapsed += launch_wait / 2 if delayed_probe == "limits at deadline" else 1
+        if script == remote.installed(preferred):
+            assert target == preferred
+            assert timeout == launch_wait - elapsed
+            assert timeout >= launch_wait / 2
+        return real_shell(settings, target, script, stdin, timeout=timeout)
+
+    monkeypatch.setattr(driver.transport, "shell", shell)
+    assert launch(host, target=None) == 0
+    assert slow_timeouts == probe_timeouts
+    assert driver.load(config, "sample").host == preferred
+
+
+@pytest.mark.parametrize("probe_rc", [1, 2, 73])
+def test_exec_without_host_keeps_the_idle_host_when_its_slot_probe_fails(
+    host_pool: Remote, probe_rc: int
+) -> None:
+    host_pool.configure(slot_rc_by_host={"example-idle": probe_rc})
+    assert launch(host_pool, target=None) == 0
+    metadata = json.loads(driver.metadata_path("sample").read_text())
+    assert metadata["host"] == "example-idle"
+    assert_pool_probes(host_pool)
+
+
+@pytest.mark.parametrize("active_full", [False, True])
+def test_exec_without_host_skips_hosts_without_a_slot(
+    host_pool: Remote, capsys: pytest.CaptureFixture[str], active_full: bool
+) -> None:
+    full = ["example-linux", "example-idle"]
+    if active_full:
+        full.append("example-active")
+    host_pool.configure(
+        limits_by_host={
+            "example-linux": "22 32 33554432 16777216 100 0 -",
+            "example-active": "4 32 33554432 16777216 100 0 -",
+        },
+        full_slot_hosts=full,
+    )
+    if active_full:
+        assert launch(host_pool, target=None) == 1
+        error = capsys.readouterr().err
+        assert "no usable linux hosts for automatic selection" in error
+        assert host_pool.records("ssh") == []
+        assert not driver.metadata_path("sample").exists()
+    else:
+        assert launch(host_pool, target=None) == 0
+        metadata = json.loads(driver.metadata_path("sample").read_text())
+        assert metadata["host"] == "example-active"
+    assert_pool_probes(host_pool)
+
+
+def test_exec_refuses_a_busy_named_host_and_lists_alternatives(
+    host_pool: Remote, capsys: pytest.CaptureFixture[str]
+) -> None:
+    assert launch(host_pool) == 1
+    error = capsys.readouterr().err
+    assert "example-linux: load 24 >= limit 24" in error
+    assert "available alternatives: example-idle, example-active\n" in error
+    assert_pool_probes(host_pool)
+    assert host_pool.records("ssh") == []
+    assert not driver.metadata_path("sample").exists()
+
+
+def assert_pool_probes(host: Remote) -> None:
+    probes: list[str] = []
+    for record in host.records("ssh", limits=True):
+        args = record["args"]
+        assert isinstance(args, list)
+        command: list[object] = args
+        script = command[-1]
+        assert isinstance(script, str)
+        if "# tbhbdev-limits" in script:
+            name = command[-2]
+            assert isinstance(name, str)
+            probes.append(name)
+    assert probes == ["example-linux", "example-active", "example-idle"]
+
+
+@pytest.mark.parametrize(
+    ("options", "error"),
+    [
+        ((), "no usable linux hosts for automatic selection"),
+        (("--ignore-limits",), "--ignore-limits requires --host"),
+    ],
+)
+def test_exec_without_host_refuses_before_ssh(
+    host: Remote,
+    capsys: pytest.CaptureFixture[str],
+    options: tuple[str, ...],
+    error: str,
+) -> None:
+    assert launch(host, *options, target=None) == 1
+    assert error in capsys.readouterr().err
+    assert host.records("ssh", limits=True) == []
 
 
 def test_full_swap_with_low_pressure_launches_with_a_warning_end_to_end(
@@ -443,7 +627,7 @@ def test_a_disabled_host_refuses_even_with_limit_overrides(
     def load() -> Settings:
         return dataclasses.replace(CONFIG, hosts=(disabled, *CONFIG.hosts[1:]))
 
-    monkeypatch.setattr(agent.settings, "load", load)
+    monkeypatch.setattr(agent_settings, "load", load)
     assert launch(host, "--ignore-limits") == 1
     assert "max_concurrent_runs is 0" in capsys.readouterr().err
     assert host.records("ssh", limits=True) == []
@@ -472,7 +656,7 @@ def test_review_uses_its_own_reservation_at_the_boundary(
     def session(*_: object) -> tuple[str, None]:
         return "tools", None
 
-    monkeypatch.setattr(agent.settings, "load", load)
+    monkeypatch.setattr(agent_settings, "load", load)
     monkeypatch.setattr(driver.launcher, "session", session)
     host.configure(limits="0.5 4 4194304 1048575 0 0 -")
     with pytest.raises(Invalid, match="reservation 1024 MiB"):

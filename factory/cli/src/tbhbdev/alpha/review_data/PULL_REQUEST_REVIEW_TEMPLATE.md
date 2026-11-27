@@ -15,6 +15,11 @@ breach, P1 means broken basic use or correctness, P2 means debt worth fixing
 soon, and P3 means minor. Cite a path:line in the diff or cite a check and its
 result. P0 and P1 require REQUEST_CHANGES. -->
 
+<!-- Name the real situation for each finding. End P1 findings with an
+Occurs when: clause. Skip impossible cases at every severity. Flag code that
+handles an impossible case or adds an option, layer, or abstraction with one
+user. Ask for deletion. From round 2, limit new findings to lines the fix changed. -->
+
 ## Suggestions
 
 <!-- Optional. Use up to five bullets starting with S1:, S2:, and so on.
