@@ -57,6 +57,11 @@ path = [
 SPDX-FileCopyrightText = "Tony Burns"
 SPDX-License-Identifier = "Apache-2.0"
 
+[[annotations]]
+path = "lib/rules/diagrams/structurizr/fonts/**"
+SPDX-FileCopyrightText = '2017 IBM Corp. with Reserved Font Name "Plex"'
+SPDX-License-Identifier = "OFL-1.1-RFN"
+
 # The baseline bundles license specimens and templates as reference content.
 [[annotations]]
 path = "lib/rules/repo/baseline/**"
