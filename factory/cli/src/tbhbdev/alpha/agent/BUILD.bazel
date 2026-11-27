@@ -26,6 +26,8 @@ cli_py_library(
     deps = [
         ":host_tools",
         ":model",
+        ":process_group",
+        ":runfiles",
     ],
 )
 

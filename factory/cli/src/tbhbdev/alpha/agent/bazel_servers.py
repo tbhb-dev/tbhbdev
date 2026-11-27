@@ -4,15 +4,19 @@ from __future__ import annotations
 
 import os
 import re
+import signal
 import stat
 import subprocess  # nosec B404
+import sys
+import time
 from collections import defaultdict
 from dataclasses import dataclass
 from pathlib import Path
 
-from tbhbdev.alpha.agent import host_tools
+from tbhbdev.alpha.agent import host_tools, process_group, runfiles
 from tbhbdev.alpha.agent.model import Invalid
 
+MEMORY_DISK = Path("/dev") / "shm"
 _OUTPUT_BASE = re.compile(r" --output_base=(/.*?) --workspace_directory=")
 
 
@@ -28,6 +32,7 @@ class Server:
     pid: int
     workspace: Path
     belongs: bool
+    started: str
 
 
 def listing(uid: int) -> str:
@@ -63,7 +68,7 @@ def _processes(uid: int) -> dict[int, Process]:
     return processes
 
 
-def _run_pids(processes: dict[int, Process], group: int) -> set[int]:
+def _run_pids(processes: dict[int, Process], group: int | None) -> set[int]:
     children: defaultdict[int, list[int]] = defaultdict(list)
     pending = [os.getpid()]
     for pid, process in processes.items():
@@ -79,25 +84,29 @@ def _run_pids(processes: dict[int, Process], group: int) -> set[int]:
     return owned
 
 
+def pid_text(base: Path) -> str:
+    return runfiles.read_owned(base / "server/server.pid.txt", 64, "Bazel PID").strip()
+
+
 def matches_pid(base: Path, pid: int) -> bool:
     try:
         status = base.lstat()
         return (
             stat.S_ISDIR(status.st_mode)
             and status.st_uid == os.getuid()
-            and (base / "server/server.pid.txt").read_text().strip() == str(pid)
+            and pid_text(base) == str(pid)
         )
     except OSError, ValueError:
         return False
 
 
-def _server_workspace(base: Path, pid: int) -> Path | None:
-    if not matches_pid(base, pid):
-        return None
+def _server_workspace(base: Path) -> Path | None:
     try:
         # Bazel writes NUL-separated argv here, preserving spaces in paths.
-        args = os.fsdecode((base / "server/cmdline").read_bytes()).split("\0")
-    except OSError:
+        args = runfiles.read_owned(base / "server/cmdline", 65536, "Bazel argv").split(
+            "\0"
+        )
+    except OSError, ValueError:
         return None
     for arg in args:
         if arg.startswith("--workspace_directory=/"):
@@ -106,7 +115,7 @@ def _server_workspace(base: Path, pid: int) -> Path | None:
     return None
 
 
-def find(worktree: Path, group: int) -> dict[Path, Server]:
+def find(worktree: Path, group: int | None) -> dict[Path, Server]:
     processes = _processes(os.getuid())
     owned = _run_pids(processes, group)
     servers: dict[Path, Server] = {}
@@ -119,9 +128,43 @@ def find(worktree: Path, group: int) -> dict[Path, Server]:
         base = Path(match[1])
         if ".." in base.parts:
             continue
-        workspace = _server_workspace(base, pid)
-        if workspace is not None:
-            servers[Path(os.path.realpath(base))] = Server(
-                pid, workspace, pid in owned or workspace.is_relative_to(worktree)
-            )
+        if not matches_pid(base, pid):
+            continue
+        workspace = _server_workspace(base)
+        started = process_group.leader_start(pid)
+        if workspace is not None and started is not None:
+            belongs = pid in owned or workspace.is_relative_to(worktree)
+            servers[base.resolve()] = Server(pid, workspace, belongs, started)
     return servers
+
+
+def stop(base: Path, server: Server) -> str:
+    """Stop the identified process even when the server cannot handle RPCs."""
+    if not matches_pid(base, server.pid):
+        return "server changed"
+    started = process_group.leader_start(server.pid)
+    if started != server.started:
+        return "rc=0" if started is None else "server changed"
+    try:
+        _kill(server)
+    except ProcessLookupError:
+        return "rc=0"
+    except PermissionError:
+        return "permission denied"
+    for _ in range(10):
+        if process_group.leader_start(server.pid) != server.started:
+            return "rc=0"
+        time.sleep(0.02)
+    return "server alive"
+
+
+def _kill(server: Server) -> None:
+    if sys.platform != "linux":
+        os.kill(server.pid, signal.SIGKILL)
+        return
+    fd = os.pidfd_open(server.pid)
+    try:
+        if process_group.leader_start(server.pid) == server.started:
+            signal.pidfd_send_signal(fd, signal.SIGKILL)
+    finally:
+        os.close(fd)

@@ -106,9 +106,6 @@ def planned_paths(run: Run) -> RunPaths:
 
 
 # These files can alter the next trusted shell or tool invocation.
-_BAZEL_SHUTDOWN_SECONDS = 60
-_BAZEL_SHUTDOWN_RETRIES = 3
-_BAZEL_RETRY_SECONDS = 2
 NO_COMMIT = 6
 NO_PUSH = 9
 NO_REVIEW = 10
@@ -1003,6 +1000,8 @@ def _open_owned(home: Path, base: Path) -> tuple[int, os.stat_result] | None:
     chain even if a path is replaced later. The caller closes the fd.
     """
     anchor = next((a for a, root in _bazel_roots(home) if base.parent == root), None)
+    if anchor is None and base.parent.is_relative_to(bazel_servers.MEMORY_DISK):
+        anchor = bazel_servers.MEMORY_DISK
     if anchor is None or ".." in base.parts:
         return None
     names = base.relative_to(anchor).parts
@@ -1037,17 +1036,17 @@ def _owned_base(home: Path, base: Path) -> os.stat_result | None:
 
 def _server_alive(base: Path) -> bool:
     try:
-        pid = int((base / "server/server.pid.txt").read_text())
+        pid = int(bazel_servers.pid_text(base))
         if pid <= 0:
             return False
         os.kill(pid, 0)
+        return process_group.leader_start(pid) is not None
     except PermissionError:
         # A live process of another uid, or an unreadable pid file: keep the base.
         return True
     except OSError, ValueError, OverflowError:
         # No readable pid file, or no such process, means no server we can see.
         return False
-    return True
 
 
 def _bazel_tool(run: Run) -> str | None:
@@ -1075,37 +1074,6 @@ def build_shims(run: Run, workspace: Path) -> None:
     run.deadline += time.monotonic() - started
 
 
-def _shutdown_once(tool: str, base: Path, worktree: str) -> str:
-    try:
-        done = subprocess.run(  # nosec B603
-            [tool, f"--output_base={base}", "shutdown"],
-            cwd=worktree,
-            capture_output=True,
-            timeout=_BAZEL_SHUTDOWN_SECONDS,
-            check=False,
-        )
-        result = f"rc={done.returncode}"
-    except subprocess.TimeoutExpired:
-        result = "timed out"
-    except OSError:
-        result = "failed to run"
-    if result == "rc=0" and _server_alive(base):
-        result = "server alive"
-    return result
-
-
-def _shutdown_base(tool: str, base: Path, worktree: str) -> str:
-    # A server still starting can answer shutdown with rc 0 before it accepts
-    # commands, so a live server after a clean shutdown gets another attempt.
-    result = _shutdown_once(tool, base, worktree)
-    for _ in range(_BAZEL_SHUTDOWN_RETRIES):
-        if result != "server alive":
-            break
-        time.sleep(_BAZEL_RETRY_SECONDS)
-        result = _shutdown_once(tool, base, worktree)
-    return result
-
-
 def _recorded_bases(
     run: Run, prepared: Prepared
 ) -> dict[Path, tuple[Path, tuple[int, int]]]:
@@ -1120,19 +1088,6 @@ def _recorded_bases(
     return recorded
 
 
-def _shutdown_target(
-    tool: str | None, base: Path, worktree: Path, server: bazel_servers.Server | None
-) -> str:
-    if tool is None:
-        return "tool unavailable"
-    if server is not None:
-        if not bazel_servers.matches_pid(base, server.pid):
-            return "server changed"
-        if server.workspace.is_dir():
-            worktree = server.workspace
-    return _shutdown_base(tool, base, str(worktree))
-
-
 def shutdown_bazel(
     run: Run,
     prepared: Prepared | None,
@@ -1143,21 +1098,25 @@ def shutdown_bazel(
     """Stop the run's Bazel servers and mark recorded bases for deletion."""
     if prepared is None:
         return {}
-    tool = _bazel_tool(run)
     worktree = Path(prepared.paths.worktree)
     recorded = _recorded_bases(run, prepared)
     targets: dict[Path, bazel_servers.Server | None] = dict.fromkeys(recorded)
-    if servers is None and group is not None:
-        servers = bazel_servers.find(worktree, group)
-    targets.update(servers or {})
+    previous = servers or {}
+    targets.update(previous)
+    # Rescan after stopping the harness to catch servers launched during teardown.
+    targets.update(
+        (base, server)
+        for base, server in bazel_servers.find(worktree, group).items()
+        if base not in previous or server.belongs
+    )
     stopped: BazelShutdown = {}
     for base, server in targets.items():
-        if server is None and tool is None:
-            continue
         if server is not None and not server.belongs:
             continue
         path, identity = recorded.get(base, (base, None))
-        result = _shutdown_target(tool, path, worktree, server)
+        if identity is None and (status := _owned_base(run.home, path)) is not None:
+            identity = (status.st_dev, status.st_ino)
+        result = bazel_servers.stop(path, server) if server is not None else "rc=0"
         run.files.write("log", f"bazel shutdown: {str(path)!r} ({result})\n")
         stopped[path] = (result, identity)
     return stopped
@@ -1166,11 +1125,9 @@ def shutdown_bazel(
 def _stop_harness(run: Run, prepared: Prepared, child: subprocess.Popen[str]) -> bool:
     with suppress(OSError):
         run.files.write("phase", "exited")
-    # Snapshot ancestry before the harness group stops, but shut the servers
-    # down after it: a shutdown issued while the harness is mid-build waits
-    # for that build. Finish retries the recorded bases if an unexpected error
-    # prevents the second pass from completing.
-    servers: dict[Path, bazel_servers.Server] = {}
+    # Capture ancestry before stopping the harness. Stop Bazel afterwards so
+    # the harness cannot restart its server during cleanup.
+    servers = None
     with suppress(Exception):
         servers = bazel_servers.find(Path(prepared.paths.worktree), child.pid)
     stopped = process_group.stop_owned(
@@ -1276,12 +1233,9 @@ def cleanup_bazel(
 ) -> dict[str, int]:
     """Delete the recorded output bases whose server is gone, and the links into them.
 
-    A base is deleted only when its shutdown returned 0 and its server pid is
-    dead at that moment, it is still the same directory (st_dev, st_ino) as at
-    shutdown, and it is owned by the agent with no symlinked ancestor. The
-    deletion runs relative to an fd that pins the validated ancestors. The freed
-    counts are the statvfs delta on the base's filesystem across the deletion, so
-    they include any other writer on that host, and a failed deletion adds nothing.
+    Deletion requires a dead server PID and an unchanged, owned directory.
+    The parent descriptor pins the validated ancestors. The freed counts use
+    the filesystem delta across the deletion and can include concurrent writes.
     """
     freed = {"bytes": 0, "inodes": 0, "bases": 0}
     if prepared is None:
