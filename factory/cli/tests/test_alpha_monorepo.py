@@ -10,7 +10,8 @@ from typing import TYPE_CHECKING, cast
 
 import pytest
 
-from tbhbdev.alpha.monorepo import main, source
+from tbhbdev.alpha.monorepo import source
+from tbhbdev.alpha.monorepo.command import main
 from tbhbdev.alpha.monorepo.pathmap import Rewrite, dump, load
 
 if TYPE_CHECKING:

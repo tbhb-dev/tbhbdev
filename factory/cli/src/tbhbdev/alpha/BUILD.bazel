@@ -501,7 +501,7 @@ cli_py_library(
         ":version_check",
         "//factory/cli/src/tbhbdev/alpha/agent:__init__",
         "//factory/cli/src/tbhbdev/alpha/loop:__init__",
-        "//factory/cli/src/tbhbdev/alpha/monorepo:__init__",
+        "//factory/cli/src/tbhbdev/alpha/monorepo:command",
     ],
 )
 

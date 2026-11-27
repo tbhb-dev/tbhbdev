@@ -13,53 +13,30 @@ import os
 import sys
 from typing import TYPE_CHECKING
 
-from tbhbdev.alpha import (
-    agent,
-    brief,
-    gh_shim,
-    guard_agent_model,
-    guard_gh_config_dir,
-    guard_gh_poll,
-    guard_gh_pr,
-    guard_op,
-    guard_scripts,
-    guard_ssh_agent,
-    identity,
-    install,
-    loop,
-    pre_push_guard,
-    run_stop_hook,
-    session_context,
-    state_guard,
-    verify_range,
-    version_check,
-)
+import tbhbdev.alpha.agent
+import tbhbdev.alpha.brief
+import tbhbdev.alpha.gh_shim
+import tbhbdev.alpha.guard_agent_model
+import tbhbdev.alpha.guard_gh_config_dir
+import tbhbdev.alpha.guard_gh_poll
+import tbhbdev.alpha.guard_gh_pr
+import tbhbdev.alpha.guard_op
+import tbhbdev.alpha.guard_scripts
+import tbhbdev.alpha.guard_ssh_agent
+import tbhbdev.alpha.identity
+import tbhbdev.alpha.install
+import tbhbdev.alpha.loop
+import tbhbdev.alpha.pre_push_guard
+import tbhbdev.alpha.run_stop_hook
+import tbhbdev.alpha.session_context
+import tbhbdev.alpha.state_guard
+import tbhbdev.alpha.verify_range
+import tbhbdev.alpha.version_check
 
 if TYPE_CHECKING:
     from collections.abc import Callable
 
-__all__ = [
-    "agent",
-    "brief",
-    "gh_shim",
-    "guard_agent_model",
-    "guard_gh_config_dir",
-    "guard_gh_poll",
-    "guard_gh_pr",
-    "guard_op",
-    "guard_scripts",
-    "guard_ssh_agent",
-    "identity",
-    "install",
-    "loop",
-    "main",
-    "pre_push_guard",
-    "run_stop_hook",
-    "session_context",
-    "state_guard",
-    "verify_range",
-    "version_check",
-]
+__all__ = ["main"]
 
 USAGE = """usage: {prog} <command> [args...]
 
@@ -123,100 +100,100 @@ commands:
 
 
 def identity_command(argv: list[str], _prog: str) -> int:
-    return identity.run(argv, os.environ)
+    return tbhbdev.alpha.identity.run(argv, os.environ)
 
 
 def guard_command(_argv: list[str], _prog: str) -> int:
-    return guard_gh_pr.main()
+    return tbhbdev.alpha.guard_gh_pr.main()
 
 
 def guard_op_command(_argv: list[str], _prog: str) -> int:
-    return guard_op.main()
+    return tbhbdev.alpha.guard_op.main()
 
 
 def state_guard_command(_argv: list[str], _prog: str) -> int:
-    return state_guard.main()
+    return tbhbdev.alpha.state_guard.main()
 
 
 def session_context_command(_argv: list[str], _prog: str) -> int:
-    return session_context.main()
+    return tbhbdev.alpha.session_context.main()
 
 
 def poll_command(_argv: list[str], _prog: str) -> int:
-    return guard_gh_poll.main()
+    return tbhbdev.alpha.guard_gh_poll.main()
 
 
 def ssh_agent_command(_argv: list[str], _prog: str) -> int:
-    return guard_ssh_agent.main()
+    return tbhbdev.alpha.guard_ssh_agent.main()
 
 
 def gh_config_dir_command(_argv: list[str], _prog: str) -> int:
-    return guard_gh_config_dir.main()
+    return tbhbdev.alpha.guard_gh_config_dir.main()
 
 
 def agent_model_command(_argv: list[str], _prog: str) -> int:
-    return guard_agent_model.main()
+    return tbhbdev.alpha.guard_agent_model.main()
 
 
 def scripts_command(_argv: list[str], _prog: str) -> int:
-    return guard_scripts.main()
+    return tbhbdev.alpha.guard_scripts.main()
 
 
 def pr(argv: list[str], prog: str) -> int:
     # Every close goes through close.py's checks: agent session, open PR, ledger.
     if argv[:1] == ["close"]:
-        from tbhbdev.alpha import close  # noqa: PLC0415 -- see the docstring
+        from tbhbdev.alpha.close import main as close_main  # noqa: PLC0415 -- see the docstring
 
-        return close.main(["pr", *argv], prog=prog)
-    from tbhbdev.alpha import pull_request  # noqa: PLC0415 -- see the docstring
+        return close_main(["pr", *argv], prog=prog)
+    from tbhbdev.alpha.pull_request import main as pull_request_main  # noqa: PLC0415 -- see the docstring
 
-    return pull_request.main(argv, prog=prog)
+    return pull_request_main(argv, prog=prog)
 
 
 def pr_stats_command(argv: list[str], prog: str) -> int:
-    from tbhbdev.alpha import pr_stats  # noqa: PLC0415 -- see the docstring
+    from tbhbdev.alpha.pr_stats import main as pr_stats_main  # noqa: PLC0415 -- see the docstring
 
-    return pr_stats.main(argv, prog=prog)
+    return pr_stats_main(argv, prog=prog)
 
 
 def review_command(argv: list[str], prog: str) -> int:
-    from tbhbdev.alpha import review  # noqa: PLC0415 -- see the docstring
+    from tbhbdev.alpha.review import main as review_main  # noqa: PLC0415 -- see the docstring
 
-    return review.main(argv, prog=prog)
+    return review_main(argv, prog=prog)
 
 
 def issue(argv: list[str], prog: str) -> int:
-    from tbhbdev.alpha import close  # noqa: PLC0415 -- see the docstring
+    from tbhbdev.alpha.close import main as close_main  # noqa: PLC0415 -- see the docstring
 
-    return close.main(["issue", *argv], prog=prog)
+    return close_main(["issue", *argv], prog=prog)
 
 
 def gh_app_command(argv: list[str], prog: str) -> int:
-    from tbhbdev.alpha import gh_app  # noqa: PLC0415 -- see the docstring
+    from tbhbdev.alpha.gh_app import main as gh_app_main  # noqa: PLC0415 -- see the docstring
 
-    return gh_app.main(argv, prog)
+    return gh_app_main(argv, prog)
 
 
 def repo_command(argv: list[str], prog: str) -> int:
-    from tbhbdev.alpha import repo_bootstrap  # noqa: PLC0415 -- see the docstring
+    from tbhbdev.alpha.repo_bootstrap import main as repo_main  # noqa: PLC0415 -- see the docstring
 
-    return repo_bootstrap.main(argv, prog=prog)
+    return repo_main(argv, prog=prog)
 
 
 def merge(argv: list[str], prog: str) -> int:
-    from tbhbdev.alpha import squash_merge  # noqa: PLC0415 -- see the docstring
+    from tbhbdev.alpha.squash_merge import main as merge_main  # noqa: PLC0415 -- see the docstring
 
-    return squash_merge.main(argv, prog=prog)
+    return merge_main(argv, prog=prog)
 
 
 def monorepo_command(argv: list[str], prog: str) -> int:
-    from tbhbdev.alpha import monorepo  # noqa: PLC0415 -- see the docstring
+    from tbhbdev.alpha.monorepo.command import main as monorepo_main  # noqa: PLC0415 -- see the docstring
 
-    return monorepo.main(argv, prog)
+    return monorepo_main(argv, prog)
 
 
 def install_command(argv: list[str], prog: str) -> int:
-    return install.main(argv, prog)
+    return tbhbdev.alpha.install.main(argv, prog)
 
 
 COMMANDS: dict[str, Callable[[list[str], str], int]] = {
@@ -230,8 +207,8 @@ COMMANDS: dict[str, Callable[[list[str], str], int]] = {
     "guard-ssh-agent": ssh_agent_command,
     "guard-scripts": scripts_command,
     "guard-agent-model": agent_model_command,
-    "gh-shim": gh_shim.main,
-    "agent-env": gh_shim.agent_env,
+    "gh-shim": tbhbdev.alpha.gh_shim.main,
+    "agent-env": tbhbdev.alpha.gh_shim.agent_env,
     "pr": pr,
     "pr-stats": pr_stats_command,
     "review": review_command,
@@ -240,14 +217,14 @@ COMMANDS: dict[str, Callable[[list[str], str], int]] = {
     "repo": repo_command,
     "merge": merge,
     "monorepo": monorepo_command,
-    "verify-range": verify_range.main,
-    "version-check": version_check.main,
+    "verify-range": tbhbdev.alpha.verify_range.main,
+    "version-check": tbhbdev.alpha.version_check.main,
     "install": install_command,
-    "pre-push-guard": pre_push_guard.main,
-    "loop": loop.main,
-    "agent": agent.main,
-    "run-stop-hook": run_stop_hook.main,
-    "brief": brief.main,
+    "pre-push-guard": tbhbdev.alpha.pre_push_guard.main,
+    "loop": tbhbdev.alpha.loop.main,
+    "agent": tbhbdev.alpha.agent.main,
+    "run-stop-hook": tbhbdev.alpha.run_stop_hook.main,
+    "brief": tbhbdev.alpha.brief.main,
 }
 
 

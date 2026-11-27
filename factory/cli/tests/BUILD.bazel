@@ -278,6 +278,7 @@ cli_py_test(
         "//factory/cli/src/tbhbdev/alpha:gh_app",
         "//factory/cli/src/tbhbdev/alpha:guard_agent_model",
         "//factory/cli/src/tbhbdev/alpha:guard_gh_config_dir",
+        "//factory/cli/src/tbhbdev/alpha:guard_gh_poll",
         "//factory/cli/src/tbhbdev/alpha:guard_gh_pr",
         "//factory/cli/src/tbhbdev/alpha:guard_op",
         "//factory/cli/src/tbhbdev/alpha:guard_scripts",
@@ -285,6 +286,7 @@ cli_py_test(
         "//factory/cli/src/tbhbdev/alpha:identity",
         "//factory/cli/src/tbhbdev/alpha:install",
         "//factory/cli/src/tbhbdev/alpha:pr_stats",
+        "//factory/cli/src/tbhbdev/alpha:pre_push_guard",
         "//factory/cli/src/tbhbdev/alpha:pull_request",
         "//factory/cli/src/tbhbdev/alpha:repo_bootstrap",
         "//factory/cli/src/tbhbdev/alpha:review",
@@ -294,7 +296,7 @@ cli_py_test(
         "//factory/cli/src/tbhbdev/alpha:version_check",
         "//factory/cli/src/tbhbdev/alpha/agent:__init__",
         "//factory/cli/src/tbhbdev/alpha/loop:__init__",
-        "//factory/cli/src/tbhbdev/alpha/monorepo:__init__",
+        "//factory/cli/src/tbhbdev/alpha/monorepo:command",
         "@cli_pip//pytest",
     ],
 )
@@ -1286,7 +1288,7 @@ cli_py_test(
     srcs = ["test_alpha_monorepo.py"],
     deps = [
         ":conftest",
-        "//factory/cli/src/tbhbdev/alpha/monorepo:__init__",
+        "//factory/cli/src/tbhbdev/alpha/monorepo:command",
         "//factory/cli/src/tbhbdev/alpha/monorepo:pathmap",
         "//factory/cli/src/tbhbdev/alpha/monorepo:source",
         "@cli_pip//pytest",
@@ -1318,11 +1320,9 @@ cli_py_test(
 cli_py_test(
     name = "test_alpha_pre_push_guard",
     srcs = ["test_alpha_pre_push_guard.py"],
-    extra_deps = ["//factory/cli/src/tbhbdev:cli"],
     deps = [
         ":conftest",
         ":fake_tool",
-        "//factory/cli/src/tbhbdev/alpha:command",
         "//factory/cli/src/tbhbdev/alpha:gh_shim",
         "//factory/cli/src/tbhbdev/alpha:install",
         "//factory/cli/src/tbhbdev/alpha:pre_push_guard",

@@ -9,6 +9,7 @@ from unittest.mock import Mock
 
 import pytest
 
+import tbhbdev.alpha.monorepo.command as monorepo
 from tbhbdev import cli
 from tbhbdev.alpha import (
     agent,
@@ -17,6 +18,7 @@ from tbhbdev.alpha import (
     gh_app,
     guard_agent_model,
     guard_gh_config_dir,
+    guard_gh_poll,
     guard_gh_pr,
     guard_op,
     guard_scripts,
@@ -24,8 +26,8 @@ from tbhbdev.alpha import (
     identity,
     install,
     loop,
-    monorepo,
     pr_stats,
+    pre_push_guard,
     pull_request,
     repo_bootstrap,
     review,
@@ -134,11 +136,13 @@ def test_dispatch(monkeypatch: pytest.MonkeyPatch) -> None:
         ("gh-app", gh_app, ["--help"], "positional"),
         ("guard-agent-model", guard_agent_model, [], "hook"),
         ("guard-gh-config-dir", guard_gh_config_dir, [], "hook"),
+        ("guard-gh-poll", guard_gh_poll, [], "hook"),
         ("guard-op", guard_op, [], "hook"),
         ("guard-scripts", guard_scripts, [], "hook"),
         ("guard-ssh-agent", guard_ssh_agent, [], "hook"),
         ("loop", loop, [], "direct"),
         ("monorepo", monorepo, ["-h"], "positional"),
+        ("pre-push-guard", pre_push_guard, ["origin", "url"], "direct"),
         ("repo", repo_bootstrap, ["bootstrap", "o/r"], "keyword"),
         ("review", review, ["check", "7"], "keyword"),
         ("run-stop-hook", run_stop_hook, ["claude"], "direct"),
