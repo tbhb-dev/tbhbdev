@@ -22,7 +22,7 @@ refusal is an error. Nothing here reads a service account or runs `op`. The
 token, the key and the JWT never reach stdout, stderr, an exception message or
 a repr.
 
-The functions down to `Env` are pure. `Env` holds the seams the rest uses: the
+`Env` holds the seams the command uses: the
 clock, the state root, the secret store, the openssl runner and the HTTP
 transport.
 """
@@ -31,14 +31,12 @@ import base64
 import json
 import os
 import re
-import subprocess  # nosec B404
 import sys
 import tempfile
-import time
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import TYPE_CHECKING, Protocol
+from typing import TYPE_CHECKING
 
 import httpx2
 from cryptography.exceptions import UnsupportedAlgorithm
@@ -46,6 +44,7 @@ from cryptography.hazmat.primitives import hashes, serialization
 from cryptography.hazmat.primitives.asymmetric import padding, rsa
 
 from tbhbdev import github_tls, secrets
+from tbhbdev.alpha import gh_app_runtime
 from tbhbdev.alpha.gh_app_args import (
     USAGE,
     Args,
@@ -55,8 +54,13 @@ from tbhbdev.alpha.gh_app_args import (
     parse_epoch,
     split_repo,
 )
-lazy from tbhbdev.alpha.agent import host_tools
-lazy from tbhbdev.alpha.agent.model import Invalid
+from tbhbdev.alpha.gh_app_runtime import (
+    RUN_ENV,
+    Env,
+    GhAppError,
+    Reader,
+    fill,
+)
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Mapping
@@ -64,7 +68,6 @@ if TYPE_CHECKING:
 type Json = dict[str, object]
 
 EXIT_FAILURE = 1
-RUN_ENV = "TBHBDEV_AGENT_RUN"  # Set by exec in every run's environment.
 EXIT_USAGE = 2
 EXIT_COOLDOWN = 75
 # A run this long of token characters in a failure message may be a credential.
@@ -90,14 +93,8 @@ ALL_REPOS_DIR = "+all"
 HOSTS_FILE = "hosts.yml"
 SLUG_FILE = "app-slug"
 EXPIRES_FILE = "expires-at"
-# ruff wants `check` written out; False is subprocess.run's default.
-NO_CHECK = False
 HEADER = {"alg": "RS256", "typ": "JWT"}
 MINT_FAILURE = "GitHub App token mint failed"
-
-
-class GhAppError(Exception):
-    """A mint failed. The message never holds a token, a key or a JWT."""
 
 
 class InstallationMissingError(GhAppError):
@@ -108,25 +105,10 @@ class CachedInstallationMissingError(GhAppError):
     """A supplied installation id returned 404."""
 
 
-class Reader(Protocol):
-    def read(self, ref: str, /) -> str: ...
-
-
-class OpenSsl(Protocol):
-    def __call__(
-        self, argv: list[str], data: bytes | None = None, /
-    ) -> subprocess.CompletedProcess[bytes]: ...
-
-
 @dataclass(frozen=True)
 class Minted:
     token: str = field(repr=False)
     expires_at: int
-
-
-def state_root(environ: dict[str, str], home: Path) -> Path:
-    base = environ.get("XDG_STATE_HOME") or str(home / ".local" / "state")
-    return Path(base) / "gh-app"
 
 
 def out_dir(state: Path, args: Args) -> Path:
@@ -281,43 +263,6 @@ def render_hosts(app: str, token: str) -> str:
     )
 
 
-@dataclass(frozen=True)
-class Env:
-    state: Path
-    now: Callable[[], int]
-    store: Callable[[], Reader]
-    openssl: OpenSsl
-    transport: httpx2.BaseTransport | None = None
-
-
-def run_openssl(
-    argv: list[str], data: bytes | None = None
-) -> subprocess.CompletedProcess[bytes]:
-    try:
-        return subprocess.run(  # nosec B603 B607
-            [host_tools.resolve("openssl"), *argv],
-            input=data,
-            capture_output=True,
-            check=NO_CHECK,
-        )
-    except FileNotFoundError, Invalid:
-        message = "openssl isn't installed"
-        raise GhAppError(message) from None
-
-
-def clock() -> int:
-    return int(time.time())
-
-
-def default_env() -> Env:
-    return Env(
-        state_root(dict(os.environ), Path.home()),
-        clock,
-        secrets.Store,
-        run_openssl,
-    )
-
-
 def read_text(path: Path) -> str | None:
     try:
         return path.read_bytes().decode()
@@ -337,13 +282,6 @@ def write_file(path: Path, text: str) -> None:
         # hide the error that brought us here.
         Path(temp).unlink(missing_ok=True)
         raise
-
-
-def fill(handle: int, text: str) -> None:
-    with os.fdopen(handle, "wb") as stream:
-        stream.write(text.encode())
-        stream.flush()
-        os.fsync(stream.fileno())
 
 
 def sync_dir(directory: Path) -> None:
@@ -623,7 +561,7 @@ def main(argv: list[str], prog: str, *, env: Env | None = None) -> int:
         )
         return EXIT_FAILURE
     try:
-        return dispatch(args, env or default_env())
+        return dispatch(args, env or gh_app_runtime.default_env())
     except GhAppError as exc:
         sys.stderr.write(f"{exc}\n")
         return EXIT_FAILURE

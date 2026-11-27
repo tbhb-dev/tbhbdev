@@ -13,7 +13,7 @@ import httpx2
 from tbhbdev import github_tls, secrets
 from tbhbdev.admin import policy
 from tbhbdev.admin.audit import Audit, RefusedError, record
-from tbhbdev.alpha import gh_app
+from tbhbdev.alpha import gh_app, gh_app_runtime
 
 MAX_RESPONSE = 1024 * 1024
 HTTP_OK = 200
@@ -42,7 +42,7 @@ class Settings:
 @dataclass(frozen=True)
 class Runtime:
     audit: Audit
-    env: gh_app.Env = field(repr=False)
+    env: gh_app_runtime.Env = field(repr=False)
     marker: Path
     settings: Settings = Settings()
 
@@ -50,7 +50,9 @@ class Runtime:
 def default_runtime() -> Runtime:
     root = Path(os.environ.get("XDG_STATE_HOME") or Path.home() / ".local/state")
     directory = root / "tbhb/admin-app"
-    return Runtime(Audit(directory), gh_app.default_env(), marker=directory / "enabled")
+    return Runtime(
+        Audit(directory), gh_app_runtime.default_env(), marker=directory / "enabled"
+    )
 
 
 def scope(decision: policy.Decision, method: str) -> tuple[str, dict[str, str]]:
@@ -83,7 +85,7 @@ def private_key(runtime: Runtime) -> str:
         msg = "credential_unavailable"
         raise RefusedError(msg)
     try:
-        reader: gh_app.Reader = runtime.env.store()
+        reader: gh_app_runtime.Reader = runtime.env.store()
         key = reader.read(f"op://{settings.vault}/{settings.item}/private_key")
     except secrets.SecretsError:
         msg = "credential_unavailable"
@@ -140,7 +142,7 @@ def send(
             return response.status_code, redact(
                 data.decode(errors="replace"), minted.token, key
             )
-    except gh_app.GhAppError, httpx2.HTTPError:
+    except gh_app_runtime.GhAppError, httpx2.HTTPError:
         msg = "request_failed"
         raise RefusedError(msg) from None
 

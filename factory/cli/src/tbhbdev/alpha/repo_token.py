@@ -25,7 +25,7 @@ from typing import TYPE_CHECKING, Literal
 import httpx2
 
 from tbhbdev import secrets
-from tbhbdev.alpha import gh_app
+from tbhbdev.alpha import gh_app, gh_app_runtime
 lazy from tbhbdev.alpha.gh_app import Minted
 
 if TYPE_CHECKING:
@@ -51,7 +51,9 @@ TWO_PARTS = 2
 DIRECTORY_FLAGS = os.O_RDONLY | os.O_DIRECTORY | os.O_CLOEXEC
 FILE_FLAGS = os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK | os.O_CLOEXEC
 # mint_token uses only the clock and transport; its other Env slots are inert.
-_MINT_ENV = gh_app.Env(Path(), gh_app.clock, secrets.Store, gh_app.run_openssl)
+_MINT_ENV = gh_app_runtime.Env(
+    Path(), gh_app_runtime.clock, secrets.Store, gh_app_runtime.run_openssl
+)
 # Isolated interpreters need no installed package to read the credential pipe.
 HELPER_CODE = """\
 import os
@@ -196,7 +198,7 @@ def _mint(
         raise RepoTokenError(kind="installation") from None
     except gh_app.CachedInstallationMissingError:
         raise
-    except gh_app.GhAppError:
+    except gh_app_runtime.GhAppError:
         raise RepoTokenError(kind="mint") from None
 
 

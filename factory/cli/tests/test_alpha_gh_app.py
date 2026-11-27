@@ -27,7 +27,7 @@ from cryptography.hazmat.primitives.asymmetric import padding
 from cryptography.hazmat.primitives.asymmetric import rsa as rsa_keys
 
 from tbhbdev import secrets
-from tbhbdev.alpha import gh_app, gh_app_args
+from tbhbdev.alpha import gh_app, gh_app_args, gh_app_runtime
 
 NOW = 1_800_000_000
 # The token a fake GitHub mints lives an hour past the fake clock.
@@ -87,7 +87,7 @@ def ec_key(tmp_path_factory: pytest.TempPathFactory) -> Key:
 @pytest.fixture(autouse=True)
 def no_network(monkeypatch: pytest.MonkeyPatch) -> None:
     """Fail at once on any request that no MockTransport answers."""
-    monkeypatch.delenv(gh_app.RUN_ENV, raising=False)
+    monkeypatch.delenv(gh_app_runtime.RUN_ENV, raising=False)
 
     def refuse(*_args: object, **_kwargs: object) -> httpx2.Response:
         message = "a test reached the real network"
@@ -162,15 +162,15 @@ def env_for(
     github: Github,
     *,
     now: int = NOW,
-    openssl: gh_app.OpenSsl = gh_app.run_openssl,
-) -> gh_app.Env:
-    return gh_app.Env(
+    openssl: gh_app_runtime.OpenSsl = gh_app_runtime.run_openssl,
+) -> gh_app_runtime.Env:
+    return gh_app_runtime.Env(
         tmp_path / "state", lambda: now, store.factory, openssl, github.transport
     )
 
 
 def run(
-    capsys: pytest.CaptureFixture[str], env: gh_app.Env, *argv: str
+    capsys: pytest.CaptureFixture[str], env: gh_app_runtime.Env, *argv: str
 ) -> tuple[int, str, str]:
     code = gh_app.main(list(argv), "gh-app", env=env)
     out, err = capsys.readouterr()
@@ -302,9 +302,11 @@ def test_parse_epoch(text: str | None, epoch: int | None) -> None:
 
 def test_state_root() -> None:
     home = Path("/home/u")
-    assert gh_app.state_root({"XDG_STATE_HOME": "/x"}, home) == Path("/x/gh-app")
-    assert gh_app.state_root({}, home) == Path("/home/u/.local/state/gh-app")
-    assert gh_app.state_root({"XDG_STATE_HOME": ""}, home) == Path(
+    assert gh_app_runtime.state_root({"XDG_STATE_HOME": "/x"}, home) == Path(
+        "/x/gh-app"
+    )
+    assert gh_app_runtime.state_root({}, home) == Path("/home/u/.local/state/gh-app")
+    assert gh_app_runtime.state_root({"XDG_STATE_HOME": ""}, home) == Path(
         "/home/u/.local/state/gh-app"
     )
 
@@ -554,7 +556,7 @@ def test_a_minted_token_stays_out_of_its_repr() -> None:
 def test_parse_token_quotes_only_the_message_from_github(
     payload: gh_app.Json, detail: str
 ) -> None:
-    with pytest.raises(gh_app.GhAppError) as caught:
+    with pytest.raises(gh_app_runtime.GhAppError) as caught:
         gh_app.parse_token(payload)
     assert str(caught.value) == f"GitHub did not return a token: {detail}"
 
@@ -616,30 +618,33 @@ def test_render_hosts() -> None:
 
 def test_default_env(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path))
-    env = gh_app.default_env()
+    env = gh_app_runtime.default_env()
     assert env.state == tmp_path / "gh-app"
     monkeypatch.delenv("XDG_STATE_HOME")
     monkeypatch.setenv("HOME", str(tmp_path / "home"))
-    assert gh_app.default_env().state == tmp_path / "home/.local/state/gh-app"
+    assert gh_app_runtime.default_env().state == tmp_path / "home/.local/state/gh-app"
     assert env.store is secrets.Store
-    assert env.openssl is gh_app.run_openssl
+    assert env.openssl is gh_app_runtime.run_openssl
     assert env.transport is None
     assert abs(env.now() - time.time()) < 5
 
 
 def test_run_openssl(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
-    done = gh_app.run_openssl(["dgst", "-sha256"], b"abc")
+    done = gh_app_runtime.run_openssl(["dgst", "-sha256"], b"abc")
     assert done.returncode == 0
     assert (
         b"ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
         in done.stdout
     )
     assert (
-        gh_app.run_openssl(["pkey", "-in", str(tmp_path / "none")], b"").returncode != 0
+        gh_app_runtime.run_openssl(
+            ["pkey", "-in", str(tmp_path / "none")], b""
+        ).returncode
+        != 0
     )
-    monkeypatch.setattr(gh_app.host_tools, "search", lambda: str(tmp_path))
-    with pytest.raises(gh_app.GhAppError, match=r"^openssl isn't installed$"):
-        gh_app.run_openssl(["version"], b"")
+    monkeypatch.setattr(gh_app_runtime.host_tools, "search", lambda: str(tmp_path))
+    with pytest.raises(gh_app_runtime.GhAppError, match=r"^openssl isn't installed$"):
+        gh_app_runtime.run_openssl(["version"], b"")
 
 
 def test_run_openssl_runs_openssl_with_its_input_and_captures_its_output(
@@ -654,15 +659,15 @@ def test_run_openssl_runs_openssl_with_its_input_and_captures_its_output(
         return subprocess.CompletedProcess(argv, 0, b"", b"")
 
     monkeypatch.setattr(subprocess, "run", fake_run)
-    gh_app.run_openssl(["version"], b"in")
-    gh_app.run_openssl(["version"])
+    gh_app_runtime.run_openssl(["version"], b"in")
+    gh_app_runtime.run_openssl(["version"])
     assert calls == [
         (
-            [gh_app.host_tools.resolve("openssl"), "version"],
+            [gh_app_runtime.host_tools.resolve("openssl"), "version"],
             {"input": b"in", "capture_output": True, "check": False},
         ),
         (
-            [gh_app.host_tools.resolve("openssl"), "version"],
+            [gh_app_runtime.host_tools.resolve("openssl"), "version"],
             {"input": None, "capture_output": True, "check": False},
         ),
     ]
@@ -828,7 +833,7 @@ def test_the_key_never_reaches_argv_and_its_file_is_private_and_gone(
         assert rsa.body[:30] not in " ".join(argv)
         assert rsa.body[:30].encode() not in (data or b"")
         calls.append((argv, None))
-        return gh_app.run_openssl(argv, data)
+        return gh_app_runtime.run_openssl(argv, data)
 
     env = env_for(tmp_path, app_store(rsa.pem), Github(), openssl=spy)
     assert run(capsys, env, "bot", REPO)[0] == 0
@@ -848,7 +853,7 @@ def test_the_key_file_is_gone_after_a_parse_failure(
         argv: list[str], data: bytes | None = None
     ) -> subprocess.CompletedProcess[bytes]:
         seen.append(Path(argv[2]))
-        return gh_app.run_openssl(argv, data)
+        return gh_app_runtime.run_openssl(argv, data)
 
     github = Github()
     env = env_for(tmp_path, app_store("not a key"), github, openssl=spy)
@@ -886,7 +891,7 @@ def test_openssl_missing_is_an_error(
     tmp_path: Path,
     rsa: Key,
 ) -> None:
-    monkeypatch.setattr(gh_app.host_tools, "search", lambda: str(tmp_path))
+    monkeypatch.setattr(gh_app_runtime.host_tools, "search", lambda: str(tmp_path))
     env = env_for(tmp_path, app_store(rsa.pem), Github())
     assert run(capsys, env, "bot", REPO) == (1, "", "openssl isn't installed\n")
 
@@ -901,7 +906,7 @@ def test_an_ec_key_is_refused_before_any_signature_or_request(
         argv: list[str], data: bytes | None = None
     ) -> subprocess.CompletedProcess[bytes]:
         calls.append(argv[0])
-        return gh_app.run_openssl(argv, data)
+        return gh_app_runtime.run_openssl(argv, data)
 
     github = Github()
     env = env_for(tmp_path, app_store(ec_key.pem), github, openssl=spy)
@@ -1152,11 +1157,11 @@ def test_a_network_failure_names_only_its_type(
         message = f"refused {request.headers['Authorization']}"
         raise httpx2.ConnectError(message)
 
-    env = gh_app.Env(
+    env = gh_app_runtime.Env(
         tmp_path / "state",
         lambda: NOW,
         app_store(rsa.pem).factory,
-        gh_app.run_openssl,
+        gh_app_runtime.run_openssl,
         httpx2.MockTransport(boom),
     )
     code, out, err = run(capsys, env, "bot", REPO)
@@ -1677,7 +1682,7 @@ def test_mint_token_lookup_falls_back_only_on_404(
             "/app/installations/7/access_tokens",
         ]
     else:
-        with pytest.raises(gh_app.GhAppError) as caught:
+        with pytest.raises(gh_app_runtime.GhAppError) as caught:
             gh_app.mint_token(
                 env,
                 app_id=APP_ID,
@@ -1695,7 +1700,7 @@ def test_mint_token_refuses_permissions_before_request(
     permissions: dict[str, str],
 ) -> None:
     github = Github()
-    with pytest.raises(gh_app.GhAppError, match="permissions") as caught:
+    with pytest.raises(gh_app_runtime.GhAppError, match="permissions") as caught:
         gh_app.mint_token(
             env_for(tmp_path, Store({}), github),
             app_id=APP_ID,
@@ -1717,7 +1722,7 @@ def test_mint_token_refuses_keys_without_disclosing_them(
 ) -> None:
     pem = ec_key.pem if kind == "ec" else "invalid secret key"
     github = Github()
-    with pytest.raises(gh_app.GhAppError) as caught:
+    with pytest.raises(gh_app_runtime.GhAppError) as caught:
         gh_app.mint_token(
             env_for(tmp_path, Store({}), github),
             app_id=APP_ID,
@@ -1758,7 +1763,7 @@ def test_mint_token_errors_never_disclose_tokens(
         env_for(tmp_path, Store({}), github),
         transport=httpx2.MockTransport(transport),
     )
-    with pytest.raises(gh_app.GhAppError) as caught:
+    with pytest.raises(gh_app_runtime.GhAppError) as caught:
         gh_app.mint_token(
             env,
             app_id=APP_ID,

@@ -84,7 +84,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from tbhbdev import userconfig
-from tbhbdev.alpha.gh_app import RUN_ENV
+from tbhbdev.alpha.gh_app_runtime import RUN_ENV
 from tbhbdev.alpha.guard_gh_poll import POLL_REASON
 from tbhbdev.alpha.identity.dispatcher import AGENT_EMAIL, locked, write_private_json
 from tbhbdev.alpha.repo import git

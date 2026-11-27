@@ -20,7 +20,7 @@ from tbhbdev import secrets
 from tbhbdev.admin import command as admin
 from tbhbdev.admin import policy, request
 from tbhbdev.admin.audit import Audit, RefusedError
-from tbhbdev.alpha import gh_app
+from tbhbdev.alpha import gh_app, gh_app_runtime
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -95,11 +95,11 @@ def fake(tmp_path: Path, config_file: Path) -> Fake:
         return result.by_method.get(req.method, result.reply)
 
     (tmp_path / "enabled").touch()
-    env = gh_app.Env(
+    env = gh_app_runtime.Env(
         tmp_path,
         lambda: 1800000000,
         lambda: (stores.append(1), Reader())[1],
-        gh_app.run_openssl,
+        gh_app_runtime.run_openssl,
         httpx2.MockTransport(transport),
     )
     result = Fake(
@@ -362,7 +362,7 @@ def test_response_cap_boundary(fake: Fake) -> None:
 def test_default_runtime(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path))
     runtime = request.default_runtime()
-    assert isinstance(runtime.env, gh_app.Env)
+    assert isinstance(runtime.env, gh_app_runtime.Env)
     assert runtime.audit.directory == tmp_path / "tbhb/admin-app"
     assert runtime.marker == tmp_path / "tbhb/admin-app/enabled"
     monkeypatch.delenv("XDG_STATE_HOME")
