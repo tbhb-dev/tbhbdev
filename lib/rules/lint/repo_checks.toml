@@ -71,6 +71,12 @@ args = "base-head"
 runs_locally = true
 
 [[checks]]
+name = "lint_baselines"
+target = "@tbhb_rules//lint:lint_baselines"
+args = "base-head"
+runs_locally = true
+
+[[checks]]
 name = "zizmor"
 target = "@tbhb_rules//lint:zizmor"
 args = "workflow-path"

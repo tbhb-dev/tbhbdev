@@ -169,6 +169,13 @@ cue_test_tool(
     dev_dependency = True,
 )
 
+promtool_test_tool = use_repo_rule("//ops/packages/tbhbops/tests:promtool_test_tool.bzl", "promtool_test_tool")
+
+promtool_test_tool(
+    name = "promtool_test_tool",
+    dev_dependency = True,
+)
+
 _SCHEMASTORE = "https://raw.githubusercontent.com/SchemaStore/schemastore/f0e072bb85076fcae82bebf058cf86520d4ea450/src/schemas/json/"
 
 http_file(
