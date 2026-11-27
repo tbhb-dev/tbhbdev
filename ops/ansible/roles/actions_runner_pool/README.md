@@ -86,7 +86,7 @@ Before the exec, the start phase makes a named pipe in the state directory, mode
 
 ### How it works
 
-With `actions_runner_pool_dind_image` set, each slot runs its own Docker daemon beside the job. At step 1, the start phase removes and inspects the three slot volumes. If a volume still exists, it removes containers that reference it and retries the volume removal once. If the volume remains, a helper in the image for that daemon empties it as root with networking off. After creating the volumes, the helper checks that all three are empty. The start exits 75 before runner registration if it fails to prepare empty volumes.
+With `actions_runner_pool_dind_image` set, each slot runs its own Docker daemon beside the job. At step 1 the start phase removes and inspects the three slot volumes. If a volume still exists, it removes containers that reference it and retries the volume removal once. If the volume remains, a helper in the image for that daemon empties it as root with networking off. After creating the volumes, the helper checks that all three are empty. The start exits 75 before runner registration if it fails to prepare empty volumes.
 
 Next the start phase launches the daemon, a `docker:dind` container named `actions-runner-dind-N`, on the slot's network and waits until it answers. Rootless Docker confines `--privileged` to the service user's isolated environment. Traffic from the slot's daemon leaves as the service user, and the egress table applies to the containers a job starts through it.
 

@@ -18,7 +18,7 @@ generated:
 
 `agent_reconverge` schedules the existing `tony/reconverge.sh --account agent` job from the account configuration repository on the agent hosts. Run it after `agent_account` with an existing Linux or macOS account. It never clones, fetches, pushes, or creates that checkout. A missing script logs a debug message. Scheduling still proceeds.
 
-On failure, the job logs its error and leaves settings unchanged.
+On failure the job logs its error and leaves settings unchanged.
 
 | Input | Default | Meaning |
 | --- | --- | --- |
