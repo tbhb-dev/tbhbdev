@@ -19,6 +19,7 @@ cli_py_test(
         "//factory/cli/tests:agent_driver_example",
         "//factory/cli/tests:agent_example",
         "//factory/cli/tests:conftest",
+        "//factory/cli/tests/integration/alpha:conftest",
         "@cli_pip//pytest",
     ],
 )
@@ -31,6 +32,7 @@ cli_py_test(
         "//factory/cli/src/tbhbdev/alpha/agent:model",
         "//factory/cli/src/tbhbdev/alpha/agent:worktree",
         "//factory/cli/tests:conftest",
+        "//factory/cli/tests/integration/alpha:conftest",
         "@cli_pip//pytest",
     ],
 )
@@ -48,6 +50,7 @@ cli_py_test(
         "//factory/cli/tests:agent_host_example",
         "//factory/cli/tests:conftest",
         "//factory/cli/tests:fake_tool",
+        "//factory/cli/tests/integration/alpha:conftest",
         "@cli_pip//pytest",
     ],
 )
