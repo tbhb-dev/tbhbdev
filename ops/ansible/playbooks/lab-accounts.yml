@@ -1,0 +1,17 @@
+---
+# The ops account on every agent host, at uid and gid 24369, and the removal
+# of ops-ro. A lab node's first run goes as the operator's own account and
+# asks for its sudo password at the prompt:
+#   mise run playbook -- playbooks/lab-accounts.yml \
+#     -e ansible_user=tony -e ansible_ssh_extra_args= -K --limit NODE
+# Extra vars, unlike -u, override the ops login in group_vars/lab.yml. Every
+# later run goes as ops, whose sudo needs no password. The operator's Macs
+# and host-f are still reached as the operator; the Macs need -K.
+# A host with no ops key fails the role's key assert before it changes
+# anything. That is intended until each host has its own key in its host vars.
+- name: Create the agent hosts' ops accounts
+  hosts: agent_hosts:!windows
+  gather_facts: true
+  become: true
+  roles:
+    - ops_accounts

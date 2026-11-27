@@ -1,0 +1,68 @@
+---
+# cspell:words synogroup
+# acme.sh's Synology deploy hook uses --get and the bracketed member list:
+# https://github.com/acmesh-official/acme.sh/blob/master/deploy/synology_dsm.sh
+- name: agent_log_group_read | Read the existing DSM log group
+  ansible.builtin.command:
+    argv: [synogroup, --get, log]
+  become: true
+  register: dsm_accounts_agent_log_group_read
+  changed_when: false
+  failed_when: false
+  check_mode: false
+
+- name: agent_log_group_read | Require a recognized log group response
+  ansible.builtin.assert:
+    that:
+      - dsm_accounts_agent_log_group_read.rc == 0
+      - dsm_accounts_agent_log_group_read.stdout is search('(?m)^Group Name:\s*\[log\]\s*$')
+      - dsm_accounts_agent_log_group_read.stdout | regex_findall('(?m)^Group ID:\s*\[([0-9]+)\]\s*$') | length == 1
+      - dsm_accounts_agent_log_group_read.stdout.split('Group Members:') | length == 2
+    fail_msg: Cannot read the existing DSM log group with synogroup --get; refusing to change membership.
+    quiet: true
+
+- name: agent_log_group_read | Require a recognized member list
+  ansible.builtin.assert:
+    that:
+      - >-
+          dsm_accounts_agent_log_group_read.stdout.split('Group Members:')[1].splitlines()
+          | reject('match', '^\s*$') | reject('match', '^\s*[0-9]+:\[[^\]\r\n]+\]\s*$') | list | length == 0
+    fail_msg: Unrecognized DSM log member list; refusing to guess membership.
+    quiet: true
+
+- name: agent_log_group_read | Record the current log membership
+  ansible.builtin.set_fact:
+    dsm_accounts_agent_log_members: >-
+      {{ dsm_accounts_agent_log_group_read.stdout.split('Group Members:')[1]
+      | regex_findall('(?m)^\s*[0-9]+:\[([^\]\r\n]+)\]\s*$') }}
+    dsm_accounts_agent_log_gid: >-
+      {{ dsm_accounts_agent_log_group_read.stdout
+      | regex_findall('(?m)^Group ID:\s*\[([0-9]+)\]\s*$') | first | int }}
+
+# CrowdSec's Synology acquisition uses this path. Read metadata only.
+# https://github.com/crowdsecurity/hub/blob/master/parsers/s01-parse/crowdsecurity/synology-dsm-logs.md
+- name: agent_log_group_read | Read auth log ownership and mode without content
+  ansible.builtin.stat:
+    path: /var/log/auth.log
+    follow: false
+    get_checksum: false
+    get_mime: false
+    get_attributes: false
+  become: true
+  register: dsm_accounts_agent_log_stat
+  check_mode: false
+
+- name: agent_log_group_read | Require the expected read-only log access
+  ansible.builtin.assert:
+    that:
+      - dsm_accounts_agent_log_stat.stat.exists
+      - dsm_accounts_agent_log_stat.stat.isreg | default(false)
+      - not (dsm_accounts_agent_log_stat.stat.islnk | default(true))
+      - dsm_accounts_agent_log_stat.stat.uid | default(-1) == 0
+      - dsm_accounts_agent_log_stat.stat.gr_name | default('') == 'log'
+      - dsm_accounts_agent_log_stat.stat.gid | default(-1) == dsm_accounts_agent_log_gid
+      - dsm_accounts_agent_log_stat.stat.mode | default('') == '0640'
+    fail_msg: >-
+      /var/log/auth.log must be a regular root:log 0640 file with the DSM log group's ID;
+      refusing to change membership.
+    quiet: true

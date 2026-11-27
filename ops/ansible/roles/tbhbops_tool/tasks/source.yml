@@ -1,0 +1,78 @@
+---
+- name: source | Export the pinned lock without changing the controller checkout
+  run_once: true
+  delegate_to: localhost
+  become: false
+  check_mode: false
+  block:
+    - name: source | Check that the controller has the pinned commit
+      ansible.builtin.command:
+        argv: [env, -u, SSH_AUTH_SOCK, git, -C, "{{ tbhbops_tool_repo }}", cat-file, -t, "{{ tbhbops_tool_commit }}"]
+      register: tbhbops_tool_object
+      changed_when: false
+      failed_when: false
+
+    - name: source | Require the pinned commit on the controller
+      ansible.builtin.assert:
+        that:
+          - tbhbops_tool_object.rc == 0
+          - tbhbops_tool_object.stdout == 'commit'
+        fail_msg: >-
+          The controller lacks ops commit {{ tbhbops_tool_commit }}.
+          Fetch it with git -C {{ tbhbops_tool_repo }} fetch origin before running this role.
+        quiet: true
+
+    - name: source | Create the controller scratch directory
+      ansible.builtin.tempfile:
+        state: directory
+        prefix: tbhbops-tool-
+      register: tbhbops_tool_source
+      changed_when: false
+
+    - name: source | Archive the whole pinned tree
+      ansible.builtin.command:
+        argv:
+          - env
+          - -u
+          - SSH_AUTH_SOCK
+          - git
+          - -C
+          - "{{ tbhbops_tool_repo }}"
+          - archive
+          - --format=tar
+          - "--output={{ tbhbops_tool_source.path }}/source.tar"
+          - "{{ tbhbops_tool_commit }}"
+      changed_when: false
+
+    - name: source | Unpack the pinned tree on the controller
+      ansible.builtin.unarchive:
+        src: "{{ tbhbops_tool_source.path }}/source.tar"
+        dest: "{{ tbhbops_tool_source.path }}"
+        remote_src: true
+      changed_when: false
+
+    - name: source | Create the controller distribution directory
+      ansible.builtin.file:
+        path: "{{ tbhbops_tool_source.path }}/dist"
+        state: directory
+        mode: '0700'
+      changed_when: false
+
+    - name: source | Export the exact third-party dependencies with hashes
+      ansible.builtin.command:
+        argv:
+          - uv
+          - export
+          - --package
+          - tbhbops-cli
+          - --frozen
+          - --no-dev
+          - --no-emit-workspace
+          - --no-editable
+          - --format
+          - requirements-txt
+          - --no-header
+          - --output-file
+          - "{{ tbhbops_tool_source.path }}/dist/requirements.txt"
+        chdir: "{{ tbhbops_tool_source.path }}"
+      changed_when: false

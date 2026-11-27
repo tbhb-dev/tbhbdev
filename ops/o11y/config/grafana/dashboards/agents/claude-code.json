@@ -1,0 +1,659 @@
+{
+  "uid": "o11y-agents-claude-code",
+  "title": "Claude Code",
+  "description": "Coding-agent telemetry from Claude Code and Codex, sent over OTLP: metrics in Mimir, logs in Loki, and traces in Tempo. Host and namespace filters narrow only logs and traces, including the Sessions table.",
+  "tags": ["o11y", "agents"],
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "1m",
+  "time": {
+    "from": "now-24h",
+    "to": "now"
+  },
+  "templating": {
+    "list": [
+      {
+        "name": "namespace",
+        "label": "Namespace",
+        "description": "The service.namespace the agents send. Filters logs and traces.",
+        "type": "query",
+        "datasource": {
+          "type": "loki",
+          "uid": "loki"
+        },
+        "query": "label_values(service_namespace)",
+        "definition": "label_values(service_namespace)",
+        "regex": "",
+        "refresh": 2,
+        "sort": 1,
+        "multi": true,
+        "includeAll": true,
+        "allValue": ".*",
+        "current": {
+          "selected": true,
+          "text": ["All"],
+          "value": ["$__all"]
+        }
+      },
+      {
+        "name": "service",
+        "label": "Tool",
+        "type": "constant",
+        "query": "claude-code",
+        "hide": 2,
+        "current": {
+          "text": "claude-code",
+          "value": "claude-code",
+          "selected": true
+        }
+      },
+      {
+        "name": "host",
+        "label": "Host",
+        "description": "The host.name the agents send. Filters logs and traces, including the Sessions table.",
+        "type": "query",
+        "datasource": {
+          "type": "prometheus",
+          "uid": "mimir"
+        },
+        "query": "label_values(target_info{job=~\"(.+/)?(${service:pipe})\"}, host_name)",
+        "definition": "label_values(target_info{job=~\"(.+/)?(${service:pipe})\"}, host_name)",
+        "regex": "",
+        "refresh": 2,
+        "sort": 1,
+        "multi": true,
+        "includeAll": true,
+        "allValue": ".*",
+        "current": {
+          "selected": true,
+          "text": ["All"],
+          "value": ["$__all"]
+        }
+      },
+      {
+        "name": "model",
+        "label": "Model",
+        "description": "The model. Filters the token, cost, Codex and Sessions panels.",
+        "type": "query",
+        "datasource": {
+          "type": "prometheus",
+          "uid": "mimir"
+        },
+        "query": "label_values({__name__=~\"claude_code_token_usage_tokens_total|codex_turn_token_usage_count\"}, model)",
+        "definition": "label_values({__name__=~\"claude_code_token_usage_tokens_total|codex_turn_token_usage_count\"}, model)",
+        "regex": "",
+        "refresh": 2,
+        "sort": 1,
+        "multi": true,
+        "includeAll": true,
+        "allValue": ".*",
+        "current": {
+          "selected": true,
+          "text": ["All"],
+          "value": ["$__all"]
+        }
+      }
+    ]
+  },
+  "panels": [
+    {
+      "title": "Claude Code active time per hour",
+      "description": "Seconds of active time per hour. user is time spent interacting, cli is time the tool spent working.",
+      "type": "timeseries",
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "axisLabel": "",
+            "drawStyle": "bars",
+            "fillOpacity": 80,
+            "spanNulls": false,
+            "stacking": {
+              "mode": "normal",
+              "group": "A"
+            }
+          },
+          "unit": "s",
+          "min": 0
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum by (type) (increase(claude_code_active_time_seconds_total{job=~\"(.+/)?(${service:pipe})\"}[$__interval]))",
+          "legendFormat": "{{type}}",
+          "range": true,
+          "instant": false,
+          "interval": "1h"
+        }
+      ],
+      "datasource": {
+        "type": "prometheus",
+        "uid": "mimir"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 0
+      },
+      "id": 5
+    },
+    {
+      "title": "Tokens by type and model",
+      "description": "Tokens per second by token type. The types overlap for Codex: input includes cached_input and output includes reasoning_output, so its lines don't add up. Claude Code's four types are disjoint.",
+      "type": "timeseries",
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "axisLabel": "tokens/s",
+            "drawStyle": "line",
+            "fillOpacity": 10,
+            "spanNulls": false
+          },
+          "unit": "suffix:tokens/s",
+          "min": 0
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum by (type, model) (label_replace(rate(claude_code_token_usage_tokens_total{job=~\"(.+/)?(claude-code)\", model=~\"${model:pipe}\"}[$__rate_interval]), \"tool\", \"$1\", \"job\", \"(?:.+/)?(.+)\"))",
+          "legendFormat": "{{type}} {{model}}",
+          "range": true,
+          "instant": false,
+          "interval": "1m"
+        }
+      ],
+      "datasource": {
+        "type": "prometheus",
+        "uid": "mimir"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 0
+      },
+      "id": 18
+    },
+    {
+      "title": "Cost per hour by model",
+      "description": "Estimated cost in US dollars per hour, by tool and model. Only Claude Code reports a cost. Codex sends no cost metric, so it never appears here.",
+      "type": "timeseries",
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "axisLabel": "",
+            "drawStyle": "bars",
+            "fillOpacity": 80,
+            "spanNulls": false,
+            "stacking": {
+              "mode": "normal",
+              "group": "A"
+            }
+          },
+          "unit": "currencyUSD",
+          "min": 0,
+          "decimals": 2
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum by (model) (label_replace(increase(claude_code_cost_usage_USD_total{job=~\"(.+/)?(claude-code)\", model=~\"${model:pipe}\"}[$__interval]), \"tool\", \"$1\", \"job\", \"(?:.+/)?(.+)\"))",
+          "legendFormat": "{{model}}",
+          "range": true,
+          "instant": false,
+          "interval": "1h"
+        }
+      ],
+      "datasource": {
+        "type": "prometheus",
+        "uid": "mimir"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 8
+      },
+      "id": 19
+    },
+    {
+      "title": "Sessions by start type",
+      "description": "Claude Code sessions, fresh or resumed, and Codex process starts and threads, which include subagent threads.",
+      "type": "timeseries",
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "axisLabel": "",
+            "drawStyle": "bars",
+            "fillOpacity": 80,
+            "spanNulls": false,
+            "stacking": {
+              "mode": "normal",
+              "group": "A"
+            }
+          },
+          "unit": "short",
+          "min": 0,
+          "decimals": 0
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum by (start_type) (label_replace(increase(claude_code_session_count_total{job=~\"(.+/)?(claude-code)\"}[$__interval]), \"tool\", \"$1\", \"job\", \"(?:.+/)?(.+)\"))",
+          "legendFormat": "{{start_type}}",
+          "range": true,
+          "instant": false,
+          "interval": "1h"
+        }
+      ],
+      "datasource": {
+        "type": "prometheus",
+        "uid": "mimir"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 8
+      },
+      "id": 20
+    },
+    {
+      "title": "Commits",
+      "description": "Commits Claude Code created in the time range. No data yet until the first one, because the counter only appears then.",
+      "type": "stat",
+      "fieldConfig": {
+        "defaults": {
+          "noValue": "No data yet",
+          "decimals": 0,
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "text"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "text",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": ["lastNotNull"],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "none",
+        "graphMode": "none",
+        "textMode": "auto",
+        "justifyMode": "auto",
+        "orientation": "auto"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum(increase(claude_code_commit_count_total{job=~\"(.+/)?(${service:pipe})\"}[$__range]))",
+          "legendFormat": "Commits",
+          "instant": true,
+          "range": false
+        }
+      ],
+      "datasource": {
+        "type": "prometheus",
+        "uid": "mimir"
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 12,
+        "x": 0,
+        "y": 16
+      },
+      "id": 6
+    },
+    {
+      "title": "Pull requests",
+      "description": "Pull requests Claude Code created in the time range. No data yet until the first one, because the counter only appears then.",
+      "type": "stat",
+      "fieldConfig": {
+        "defaults": {
+          "noValue": "No data yet",
+          "decimals": 0,
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "text"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "text",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": ["lastNotNull"],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "none",
+        "graphMode": "none",
+        "textMode": "auto",
+        "justifyMode": "auto",
+        "orientation": "auto"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum(increase(claude_code_pull_request_count_total{job=~\"(.+/)?(${service:pipe})\"}[$__range]))",
+          "legendFormat": "Pull requests",
+          "instant": true,
+          "range": false
+        }
+      ],
+      "datasource": {
+        "type": "prometheus",
+        "uid": "mimir"
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 12,
+        "x": 12,
+        "y": 16
+      },
+      "id": 7
+    },
+    {
+      "title": "Lines added",
+      "description": "Lines of code Claude Code added in the time range. No data yet until the first one, because the counter only appears then.",
+      "type": "stat",
+      "fieldConfig": {
+        "defaults": {
+          "noValue": "No data yet",
+          "decimals": 0,
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "text"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "text",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": ["lastNotNull"],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "none",
+        "graphMode": "none",
+        "textMode": "auto",
+        "justifyMode": "auto",
+        "orientation": "auto"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum(increase(claude_code_lines_of_code_count_total{job=~\"(.+/)?(${service:pipe})\", type=\"added\"}[$__range]))",
+          "legendFormat": "Lines added",
+          "instant": true,
+          "range": false
+        }
+      ],
+      "datasource": {
+        "type": "prometheus",
+        "uid": "mimir"
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 12,
+        "x": 0,
+        "y": 20
+      },
+      "id": 8
+    },
+    {
+      "title": "Lines removed",
+      "description": "Lines of code Claude Code removed in the time range. No data yet until the first one, because the counter only appears then.",
+      "type": "stat",
+      "fieldConfig": {
+        "defaults": {
+          "noValue": "No data yet",
+          "decimals": 0,
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "text"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "text",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": ["lastNotNull"],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "none",
+        "graphMode": "none",
+        "textMode": "auto",
+        "justifyMode": "auto",
+        "orientation": "auto"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum(increase(claude_code_lines_of_code_count_total{job=~\"(.+/)?(${service:pipe})\", type=\"removed\"}[$__range]))",
+          "legendFormat": "Lines removed",
+          "instant": true,
+          "range": false
+        }
+      ],
+      "datasource": {
+        "type": "prometheus",
+        "uid": "mimir"
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 12,
+        "x": 12,
+        "y": 20
+      },
+      "id": 9
+    },
+    {
+      "title": "Sessions",
+      "description": "Claude Code api_request events over the selected range, grouped by session ID and model. Sessions that use multiple models have one row per model. Token and cost columns sum the values reported on those events.",
+      "type": "table",
+      "options": {
+        "showHeader": true,
+        "sortBy": [
+          {
+            "displayName": "Cost (USD)",
+            "desc": true
+          }
+        ]
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "decimals": 0
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Cost (USD)"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "currencyUSD"
+              },
+              {
+                "id": "decimals",
+                "value": 4
+              }
+            ]
+          }
+        ]
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum by (session_id, model, column) (count_over_time({service_name=\"claude-code\", service_namespace=~\"${namespace:pipe}\"} | service_name=~\"${service:pipe}\" | host_name=~\"${host:pipe}\" | event_name=\"api_request\" | session_id!=\"\" | model=~\"${model:pipe}\" | label_format column=\"Requests\" [$__range]))",
+          "queryType": "instant"
+        },
+        {
+          "refId": "B",
+          "expr": "sum by (session_id, model, column) (sum_over_time({service_name=\"claude-code\", service_namespace=~\"${namespace:pipe}\"} | service_name=~\"${service:pipe}\" | host_name=~\"${host:pipe}\" | event_name=\"api_request\" | session_id!=\"\" | model=~\"${model:pipe}\" | label_format column=\"Input tokens\" | unwrap input_tokens | __error__=\"\" [$__range]))",
+          "queryType": "instant"
+        },
+        {
+          "refId": "C",
+          "expr": "sum by (session_id, model, column) (sum_over_time({service_name=\"claude-code\", service_namespace=~\"${namespace:pipe}\"} | service_name=~\"${service:pipe}\" | host_name=~\"${host:pipe}\" | event_name=\"api_request\" | session_id!=\"\" | model=~\"${model:pipe}\" | label_format column=\"Output tokens\" | unwrap output_tokens | __error__=\"\" [$__range]))",
+          "queryType": "instant"
+        },
+        {
+          "refId": "D",
+          "expr": "sum by (session_id, model, column) (sum_over_time({service_name=\"claude-code\", service_namespace=~\"${namespace:pipe}\"} | service_name=~\"${service:pipe}\" | host_name=~\"${host:pipe}\" | event_name=\"api_request\" | session_id!=\"\" | model=~\"${model:pipe}\" | label_format column=\"Cache-read tokens\" | unwrap cache_read_tokens | __error__=\"\" [$__range]))",
+          "queryType": "instant"
+        },
+        {
+          "refId": "E",
+          "expr": "sum by (session_id, model, column) (sum_over_time({service_name=\"claude-code\", service_namespace=~\"${namespace:pipe}\"} | service_name=~\"${service:pipe}\" | host_name=~\"${host:pipe}\" | event_name=\"api_request\" | session_id!=\"\" | model=~\"${model:pipe}\" | label_format column=\"Cost (USD)\" | unwrap cost_usd | __error__=\"\" [$__range]))",
+          "queryType": "instant"
+        }
+      ],
+      "transformations": [
+        {
+          "id": "labelsToFields",
+          "options": {
+            "mode": "columns",
+            "valueLabel": "column"
+          }
+        },
+        {
+          "id": "organize",
+          "options": {
+            "excludeByName": {
+              "Time": true
+            },
+            "indexByName": {
+              "Time": 0,
+              "session_id": 1,
+              "model": 2,
+              "Requests": 3,
+              "Input tokens": 4,
+              "Output tokens": 5,
+              "Cache-read tokens": 6,
+              "Cost (USD)": 7
+            },
+            "renameByName": {
+              "session_id": "Session ID",
+              "model": "Model"
+            }
+          }
+        }
+      ],
+      "datasource": {
+        "type": "loki",
+        "uid": "loki"
+      },
+      "gridPos": {
+        "h": 10,
+        "w": 24,
+        "x": 0,
+        "y": 24
+      },
+      "id": 17
+    }
+  ],
+  "links": [
+    {
+      "title": "Agents",
+      "type": "dashboards",
+      "tags": ["agents"],
+      "keepTime": true,
+      "includeVars": true
+    }
+  ]
+}

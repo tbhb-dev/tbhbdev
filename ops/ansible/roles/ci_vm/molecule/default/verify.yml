@@ -1,0 +1,85 @@
+---
+- name: Verify memory reconciliation
+  ansible.builtin.import_playbook: memory.yml
+
+- name: Verify
+  hosts: all
+  gather_facts: false
+  become: true
+  vars:
+    # The role's default, which a verify play doesn't load.
+    ci_vm_name: "{{ inventory_hostname }}-ci"
+    ci_vm_network_gateway: 203.0.113.129
+  tasks:
+    - name: Check the table with nft
+      ansible.builtin.command:
+        cmd: /usr/sbin/nft -c -f /etc/nftables.d/ci-vm-egress.nft
+      changed_when: false
+
+    - name: Read the table, the unit and the seed
+      ansible.builtin.slurp:
+        src: "{{ item }}"
+      loop:
+        - /etc/nftables.d/ci-vm-egress.nft
+        - /etc/systemd/system/ci-vm-egress.service
+        - /var/lib/libvirt/images/{{ ci_vm_name }}-seed/user-data
+        - /var/lib/libvirt/images/{{ ci_vm_name }}-seed/meta-data
+      register: ci_vm_files
+
+    - name: Look at the seed image
+      ansible.builtin.stat:
+        path: /var/lib/libvirt/images/{{ ci_vm_name }}-seed.iso
+      register: ci_vm_iso
+
+    - name: Look at the unit
+      ansible.builtin.systemd_service:
+        name: ci-vm-egress.service
+      register: ci_vm_unit
+
+    - name: Check the contents
+      vars:
+        table: "{{ ci_vm_files.results[0].content | b64decode }}"
+        unit: "{{ ci_vm_files.results[1].content | b64decode }}"
+        user_data: "{{ ci_vm_files.results[2].content | b64decode }}"
+        seed: "{{ user_data | from_yaml }}"
+        meta_data: "{{ ci_vm_files.results[3].content | b64decode | from_yaml }}"
+      ansible.builtin.assert:
+        that:
+          - "'hook forward priority filter - 1; policy accept;' in table"
+          - "'delete table inet ci_vm_egress' in table"
+          - "'flush ruleset' not in table"
+          - "'hook input' not in table"
+          - "'elements = { 198.51.100.144/28, 198.51.100.208/28, 203.0.113.128/25, 192.0.2.0/24, 169.254.0.0/16 }' in table"
+          - "'elements = { fc00::/7, fe80::/10 }' in table"
+          - "'iifname \"virbr0\" ip daddr @blocked_v4 counter drop' in table"
+          - "'iifname \"virbr0\" ip6 daddr @blocked_v6 counter drop' in table"
+          - "'br-lab' not in table"
+          - "'ExecStart=/usr/sbin/nft -f /etc/nftables.d/ci-vm-egress.nft' in unit"
+          - "'After=nftables.service' in unit"
+          - "'Before=libvirtd.service' in unit"
+          - ci_vm_unit.status.UnitFileState == 'enabled'
+          - ci_vm_unit.status.ActiveState != 'active'
+          - ci_vm_iso.stat.exists
+          - ci_vm_iso.stat.size > 0
+          - user_data.startswith('#cloud-config')
+          - seed.hostname == ci_vm_name
+          - seed.users | map(attribute='name') | list == ['ops']
+          - seed.users[0].sudo == 'ALL=(ALL) NOPASSWD:ALL'
+          - seed.users[0].lock_passwd
+          - seed.users[0].ssh_authorized_keys == ci_vm_admin_keys
+          - seed.users[0].ssh_authorized_keys | length == 3
+          - seed.users[0].ssh_authorized_keys | reject('match', '^from=') | list | length == 0
+          - not seed.ssh_pwauth
+          - seed.disable_root
+          - seed.packages == ['tailscale']
+          - "'tailscale up' not in user_data"
+          - "'authkey' not in user_data"
+          - seed.runcmd is not defined
+          - ci_vm_iso.stat.mode == '0600'
+          - >-
+              (seed.write_files | map(attribute='path') | list)
+              == ['/etc/apt/keyrings/tailscale.asc', '/etc/apt/sources.list.d/tailscale.sources']
+          - seed.write_files[0].content.startswith('-----BEGIN PGP PUBLIC KEY BLOCK-----')
+          - "'Suites: resolute' in seed.write_files[1].content"
+          - meta_data['instance-id'] == ci_vm_name
+        quiet: true

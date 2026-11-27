@@ -1,0 +1,45 @@
+---
+- name: check-current | Read current without following it
+  ansible.builtin.stat:
+    path: "{{ o11y_root }}/current"
+    follow: false
+  register: o11y_test_current
+
+- name: check-current | Require the expected current release
+  ansible.builtin.assert:
+    that:
+      - o11y_test_current.stat.islnk
+      - o11y_test_current.stat.lnk_source == o11y_test_expected
+    quiet: true
+
+- name: check-current | Require the selected release to be healthy
+  ansible.builtin.include_role:
+    name: o11y
+    tasks_from: health
+  vars:
+    o11y_target: "{{ o11y_test_expected }}"
+
+- name: check-current | Inspect services without their environment
+  ansible.builtin.command:
+    argv: [docker, compose, ps, --format, json]
+    chdir: "{{ o11y_root }}/current"
+  register: o11y_test_services
+  changed_when: false
+
+- name: check-current | Require all six services to be running and healthy
+  ansible.builtin.assert:
+    that:
+      - o11y_test_services.stdout_lines | length == 6
+      - >-
+          o11y_test_services.stdout_lines | map('from_json') |
+          map(attribute='State') | unique | list == ['running']
+      - >-
+          o11y_test_services.stdout_lines | map('from_json') |
+          map(attribute='Health') | unique | sort ==
+          (['', 'healthy'] if o11y_test_without_healthcheck | default(false) else ['healthy'])
+    quiet: true
+
+- name: check-current | Verify only the original ports publish on loopback
+  ansible.builtin.include_tasks: check-ports.yml
+  vars:
+    o11y_test_release: "{{ o11y_test_expected }}"

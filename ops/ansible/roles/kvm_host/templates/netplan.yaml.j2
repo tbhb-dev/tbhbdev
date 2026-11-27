@@ -1,0 +1,3 @@
+# Managed by Ansible. The bridge takes over {{ kvm_host_bridge_port }}'s DHCP and is the
+# only uplink. {{ kvm_host_management_port }} stays up with no address.
+{{ kvm_host_netplan | to_nice_yaml(indent=2) }}

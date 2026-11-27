@@ -1,0 +1,52 @@
+---
+# Runs only for a VM whose domain doesn't exist yet. Every task that touches
+# the OAuth secret, the access token or the key is no_log, and the key goes
+# only into the seed, which is root-only. The API calls run on the controller,
+# as the controller's own account, and never from the lab node.
+
+- name: join | Get an access token for the OAuth client
+  ansible.builtin.uri:
+    url: "{{ ci_vm_tailscale_api }}/oauth/token"
+    method: POST
+    body_format: form-urlencoded
+    body:
+      client_id: "{{ lookup('ansible.builtin.pipe', read ~ (ci_vm_tailscale_oauth_ref_id | quote)) }}"
+      client_secret: "{{ lookup('ansible.builtin.pipe', read ~ (ci_vm_tailscale_oauth_ref_secret | quote)) }}"
+    return_content: true
+    status_code: 200
+  vars:
+    read: "{{ ci_vm_tailscale_lookup_command }} "
+  delegate_to: localhost
+  become: false
+  register: ci_vm_tailscale_token
+  no_log: true
+
+- name: join | Mint a single-use key for the VM
+  ansible.builtin.uri:
+    url: "{{ ci_vm_tailscale_api }}/tailnet/-/keys"
+    method: POST
+    headers:
+      Authorization: "Bearer {{ ci_vm_tailscale_token.json.access_token }}"
+    body_format: json
+    body:
+      capabilities:
+        devices:
+          create:
+            reusable: false
+            ephemeral: false
+            preauthorized: true
+            tags: ["{{ ci_vm_tailscale_tag }}"]
+      expirySeconds: "{{ ci_vm_tailscale_key_seconds | int }}"
+      description: "{{ ci_vm_name }}"
+    return_content: true
+    status_code: 200
+  delegate_to: localhost
+  become: false
+  register: ci_vm_tailscale_key_result
+  no_log: true
+
+# The only fact is a flag. The key stays in the registered result, which no
+# task prints.
+- name: join | Note that the seed carries a key
+  ansible.builtin.set_fact:
+    ci_vm_key_minted: true

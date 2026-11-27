@@ -1,0 +1,26 @@
+---
+# Acquire outside the block: a competing run must never remove this lock.
+- name: locked | Acquire the deployment lock atomically
+  ansible.builtin.command:
+    argv: [mkdir, "{{ o11y_root }}/deploy.lock"]
+  register: o11y_lock
+  changed_when: false
+  failed_when: false
+
+- name: locked | Refuse an existing lock
+  ansible.builtin.assert:
+    that: o11y_lock.rc == 0
+    fail_msg: >-
+      Cannot acquire {{ o11y_root }}/deploy.lock. Remove it by hand after checking that no run is active.
+    quiet: true
+
+- name: locked | Run the transaction
+  block:
+    - name: locked | Perform the requested action
+      ansible.builtin.include_tasks: "{{ o11y_action }}"
+  always:
+    - name: locked | Release the deployment lock
+      ansible.builtin.file:
+        path: "{{ o11y_root }}/deploy.lock"
+        state: absent
+      changed_when: false

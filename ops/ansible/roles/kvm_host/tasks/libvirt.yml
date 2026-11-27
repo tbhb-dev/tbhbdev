@@ -1,0 +1,79 @@
+---
+# Ubuntu's libvirt-daemon-system ships either the monolithic libvirtd or the
+# modular daemons behind sockets. This starts whichever the package carries.
+
+- name: libvirt | Look for the KVM device
+  ansible.builtin.stat:
+    path: /dev/kvm
+    get_checksum: false
+  register: kvm_host_kvm_device
+
+- name: libvirt | Check that the host has KVM
+  ansible.builtin.assert:
+    that: kvm_host_kvm_device.stat.exists
+    fail_msg: /dev/kvm is missing, so the host has no usable KVM. Check that virtualization is on in the firmware.
+    quiet: true
+
+- name: libvirt | Look for the monolithic libvirt daemon
+  ansible.builtin.stat:
+    path: /usr/lib/systemd/system/libvirtd.service
+    get_checksum: false
+  register: kvm_host_libvirtd
+
+- name: libvirt | Enable and start libvirtd
+  ansible.builtin.systemd_service:
+    name: libvirtd.service
+    enabled: true
+    state: started
+  when: kvm_host_libvirtd.stat.exists
+
+- name: libvirt | Enable and start the modular libvirt daemons' sockets
+  ansible.builtin.systemd_service:
+    name: "{{ item }}"
+    enabled: true
+    state: started
+  loop: [virtqemud.socket, virtnetworkd.socket, virtstoraged.socket, virtnodedevd.socket]
+  when: not kvm_host_libvirtd.stat.exists
+
+- name: libvirt | Define the libvirt network's file
+  ansible.builtin.template:
+    src: libvirt-network.xml.j2
+    dest: /etc/libvirt/ansible-{{ kvm_host_libvirt_network }}-network.xml
+    owner: root
+    group: root
+    mode: "0644"
+  register: kvm_host_network_xml
+
+- name: libvirt | Read the libvirt network
+  ansible.builtin.command:
+    argv: [virsh, --connect=qemu:///system, net-info, "{{ kvm_host_libvirt_network }}"]
+  register: kvm_host_network_info
+  changed_when: false
+  failed_when: false
+  check_mode: false
+
+# The default NAT network is not touched. Defining again updates a network
+# that exists, and takes effect the next time it starts.
+- name: libvirt | Define the libvirt network
+  ansible.builtin.command:
+    argv:
+      - virsh
+      - --connect=qemu:///system
+      - net-define
+      - /etc/libvirt/ansible-{{ kvm_host_libvirt_network }}-network.xml
+  changed_when: true
+  when: kvm_host_network_xml is changed or kvm_host_network_info.rc != 0
+
+- name: libvirt | Start the libvirt network at boot
+  ansible.builtin.command:
+    argv: [virsh, --connect=qemu:///system, net-autostart, "{{ kvm_host_libvirt_network }}"]
+  changed_when: true
+  when: >-
+    kvm_host_network_info.rc != 0 or kvm_host_network_info.stdout is not search('Autostart: +yes')
+
+- name: libvirt | Start the libvirt network
+  ansible.builtin.command:
+    argv: [virsh, --connect=qemu:///system, net-start, "{{ kvm_host_libvirt_network }}"]
+  changed_when: true
+  when: >-
+    kvm_host_network_info.rc != 0 or kvm_host_network_info.stdout is not search('Active: +yes')

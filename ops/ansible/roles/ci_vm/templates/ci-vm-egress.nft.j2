@@ -1,0 +1,28 @@
+# {{ ansible_managed }}
+# Only the forward chain of this table. Docker's and libvirt's tables, and
+# table inet host, stay as they are. A drop in any table's forward chain
+# ends the packet, whatever the others accept.
+table inet ci_vm_egress
+delete table inet ci_vm_egress
+table inet ci_vm_egress {
+    set blocked_v4 {
+        type ipv4_addr
+        flags interval
+        elements = { {{ ci_vm_egress_blocked_v4 | join(', ') }} }
+    }
+
+    set blocked_v6 {
+        type ipv6_addr
+        flags interval
+        elements = { {{ ci_vm_egress_blocked_v6 | join(', ') }} }
+    }
+
+    chain forward {
+        # Matched on the NAT network's bridge, not its subnet, so no address
+        # is written here. The VM's DNS and DHCP go to the host, which is
+        # input traffic, not forwarded.
+        type filter hook forward priority filter - 1; policy accept;
+        iifname "{{ ci_vm_network_bridge }}" ip daddr @blocked_v4 counter drop
+        iifname "{{ ci_vm_network_bridge }}" ip6 daddr @blocked_v6 counter drop
+    }
+}

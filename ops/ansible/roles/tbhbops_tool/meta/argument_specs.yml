@@ -1,0 +1,34 @@
+---
+argument_specs:
+  main:
+    short_description: Install tbhbops on Linux from controller-built wheels at a pinned ops commit
+    options:
+      tbhbops_tool_commit:
+        type: str
+        default: 86922cc7b48e2adf9e89ebac6d30014d38cf04d0
+        description: Full 40 character ops commit. The controller must already have this commit.
+      tbhbops_tool_user:
+        type: str
+        required: true
+        description: Existing Linux account that owns and runs the tool.
+      tbhbops_tool_uv_version:
+        type: str
+        default: "0.13.8"
+        description: The uv release to install, matching mise.lock.
+      tbhbops_tool_uv_sha256:
+        type: dict
+        default:
+          x86_64: 5acfd9177cfecf0bf87578f059728215ccc884388988f55f7a65041b57387d91
+          aarch64: 74f2f5c6024d397481db228db8fc25eed420db192243f88438c118e7e013e585
+        description: Published sha256 of each Linux GNU release archive.
+        options:
+          x86_64:
+            type: str
+            required: true
+          aarch64:
+            type: str
+            required: true
+      tbhbops_tool_repo:
+        type: path
+        default: "{{ playbook_dir }}/../.."
+        description: Controller ops checkout; defaults to the root relative to ansible/playbooks.

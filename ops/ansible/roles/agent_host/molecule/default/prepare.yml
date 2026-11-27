@@ -1,0 +1,24 @@
+---
+- name: Prepare
+  hosts: all
+  become: true
+  tasks:
+    - name: Create the agent account
+      ansible.builtin.user:
+        name: agent
+        create_home: true
+        shell: /bin/bash
+
+    - name: Read the original namespace restriction
+      ansible.builtin.slurp:
+        src: /proc/sys/kernel/apparmor_restrict_unprivileged_userns
+      register: agent_host_original_restriction
+      failed_when: false
+
+    - name: Save the original namespace restriction for verification
+      ansible.builtin.copy:
+        content: "{{ agent_host_original_restriction.content | default('') | b64decode }}"
+        dest: /var/tmp/agent-host-userns-before
+        owner: root
+        group: root
+        mode: "0644"

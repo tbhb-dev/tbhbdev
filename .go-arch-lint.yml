@@ -3,8 +3,9 @@
 
 ---
 # Import contracts for Go packages in this repository.
-# The stdlib-only-front contract allows the front to import pure dispatch.
-# The dispatch standard library allowlist lives in .golangci.yml.
+# Stub for the Go CLI port (stdlib-only-front): when factory/tbhbdev lands,
+# attach its front-end packages to `front` below with no `canUse` vendor
+# entries so `depOnAnyVendor: false` keeps the front layer stdlib-only.
 version: 3
 
 allow:
@@ -12,11 +13,11 @@ allow:
   deepScan: false
 
 components:
-  front: {in: factory/cli/cmd/tbhbdev}
-  dispatch: {in: factory/cli/internal/dispatch}
+  front: {in: "**/front/**"}
+  lib: {in: lib/**}
 
 deps:
   front:
-    mayDependOn: [dispatch]
-  dispatch:
-    mayDependOn: [dispatch]
+    mayDependOn: [lib]
+  lib:
+    mayDependOn: [lib]

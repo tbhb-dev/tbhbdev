@@ -1,0 +1,184 @@
+---
+# The read-only commands run in check mode, so a check run sees the real
+# volume and domain. The commands that change anything are skipped there.
+
+- name: vm | Download the cloud image
+  ansible.builtin.get_url:
+    url: "{{ ci_vm_image_url }}"
+    dest: "{{ ci_vm_image_dir }}/{{ ci_vm_image_url | basename }}"
+    checksum: "sha256:{{ ci_vm_image_sha256 }}"
+    owner: root
+    group: root
+    mode: "0644"
+
+- name: vm | Read the libvirt network
+  ansible.builtin.command:
+    argv: [virsh, --connect=qemu:///system, net-info, "{{ ci_vm_network }}"]
+  register: ci_vm_net
+  changed_when: false
+  failed_when: false
+  check_mode: false
+
+- name: vm | Check the libvirt network and its bridge
+  ansible.builtin.assert:
+    that:
+      - ci_vm_net.rc == 0
+      - >-
+          ci_vm_net.stdout is search('Bridge: +' ~ ci_vm_network_bridge ~ '$', multiline=True)
+    fail_msg: >-
+      The libvirt network {{ ci_vm_network }} is missing, or its bridge isn't {{ ci_vm_network_bridge }},
+      which the egress table matches. Apply kvm_host first, or set ci_vm_network_bridge to the network's bridge.
+    quiet: true
+
+- name: vm | Read the logical volume
+  ansible.builtin.command:
+    argv:
+      - lvs
+      - --noheadings
+      - --options=lv_tags
+      - "{{ ci_vm_vg }}/{{ ci_vm_name }}"
+  register: ci_vm_lv
+  changed_when: false
+  failed_when: false
+  check_mode: false
+
+# A volume group holds only its own physical volumes, so this reaches no disk
+# outside ci_vm_vg. The tag marks the volume as created here and not yet
+# written, which is the only state the image is ever written to.
+- name: vm | Create the logical volume
+  community.general.lvol:
+    vg: "{{ ci_vm_vg }}"
+    lv: "{{ ci_vm_name }}"
+    size: "{{ ci_vm_disk_size }}"
+    opts: --addtag ci_vm_blank
+    state: present
+  when: ci_vm_lv.rc != 0
+
+- name: vm | Read the logical volume again
+  ansible.builtin.command:
+    argv:
+      - lvs
+      - --noheadings
+      - --options=lv_tags
+      - "{{ ci_vm_vg }}/{{ ci_vm_name }}"
+  register: ci_vm_lv_tags
+  changed_when: false
+  failed_when: false
+  check_mode: false
+
+# ci_vm_dom comes from tasks/main.yml. Only a blank volume with no domain on it takes the image. The tag comes off
+# once the write ends, so a rerun never writes over a disk in use.
+- name: vm | Write the image to the volume
+  ansible.builtin.command:
+    argv:
+      - qemu-img
+      - convert
+      - -n
+      - -f
+      - qcow2
+      - -O
+      - raw
+      - "{{ ci_vm_image_dir }}/{{ ci_vm_image_url | basename }}"
+      - /dev/{{ ci_vm_vg }}/{{ ci_vm_name }}
+  changed_when: true
+  when:
+    - ci_vm_dom.rc != 0
+    - ci_vm_lv_tags.rc == 0
+    - ci_vm_lv_tags.stdout is search('(^|[ ,])ci_vm_blank($|[ ,])')
+
+- name: vm | Mark the volume as written
+  ansible.builtin.command:
+    argv: [lvchange, --deltag, ci_vm_blank, "{{ ci_vm_vg }}/{{ ci_vm_name }}"]
+  changed_when: true
+  when:
+    - ci_vm_dom.rc != 0
+    - ci_vm_lv_tags.rc == 0
+    - ci_vm_lv_tags.stdout is search('(^|[ ,])ci_vm_blank($|[ ,])')
+
+# Creates the domain and starts it. The domain is defined once and the role
+# reconciles its configured memory afterward. Only the NAT network, never br-lab.
+- name: vm | Define and start the domain
+  ansible.builtin.command:
+    argv:
+      - virt-install
+      - --connect=qemu:///system
+      - --name={{ ci_vm_name }}
+      - --vcpus={{ ci_vm_vcpus }}
+      - --memory={{ ci_vm_memory_mib }}
+      - --cpu=host-passthrough
+      # ubuntu24.04 stays: virt-install rejects a variant the lab nodes' database lacks.
+      - --os-variant=ubuntu24.04
+      - --import
+      - --boot=uefi
+      - --disk=path=/dev/{{ ci_vm_vg }}/{{ ci_vm_name }},format=raw,bus=virtio,cache=none,io=native
+      - --disk=path={{ ci_vm_image_dir }}/{{ ci_vm_name }}-seed.iso,device=cdrom
+      - --network=network={{ ci_vm_network }},model=virtio
+      - --graphics=none
+      - --noautoconsole
+  changed_when: true
+  when: ci_vm_dom.rc != 0
+
+- name: vm | Reconcile configured memory
+  ansible.builtin.include_tasks: memory.yml
+
+- name: vm | Start the domain at boot
+  ansible.builtin.command:
+    argv: [virsh, --connect=qemu:///system, autostart, "{{ ci_vm_name }}"]
+  changed_when: true
+  when: >-
+    ci_vm_dom.rc != 0 or ci_vm_dom.stdout is not search('Autostart: +enable')
+
+# The fixed address. A host entry on the network's DHCP keys the address to the
+# domain's MAC. The reads run in check mode. A domain that doesn't exist yet has
+# no MAC, so a check run plans nothing for it. The guest's lease is untouched:
+# the VM takes the address at its next renewal or reboot.
+- name: vm | Read the domain's interfaces
+  ansible.builtin.command:
+    argv: [virsh, --connect=qemu:///system, domiflist, "{{ ci_vm_name }}"]
+  register: ci_vm_interfaces
+  changed_when: false
+  failed_when: false
+  check_mode: false
+
+- name: vm | Read the network's DHCP host entries
+  ansible.builtin.command:
+    argv: [virsh, --connect=qemu:///system, net-dumpxml, "{{ ci_vm_network }}"]
+  register: ci_vm_network_xml
+  changed_when: false
+  check_mode: false
+
+- name: vm | Find the VM's MAC
+  vars:
+    ci_vm_interface_re: '(?m)^\s*\S+\s+network\s+{{ ci_vm_network | regex_escape }}\s+\S+\s+([0-9A-Fa-f:]{17})\s*$'
+  ansible.builtin.set_fact:
+    ci_vm_mac: >-
+      {{ ((ci_vm_interfaces.stdout | regex_findall(ci_vm_interface_re)) or ['']) | first | lower }}
+  when: ci_vm_interfaces.rc == 0
+
+# Every host entry for that MAC. A modify replaces the one entry that matches.
+- name: vm | Find the VM's DHCP host entries
+  ansible.builtin.set_fact:
+    ci_vm_dhcp_hosts: >-
+      {{ ci_vm_network_xml.stdout | regex_findall('<host [^>]*>')
+      | select('search', "mac='" ~ ci_vm_mac ~ "'") | list }}
+  when:
+    - ci_vm_interfaces.rc == 0
+    - ci_vm_mac | length > 0
+
+- name: vm | Give the VM its fixed address
+  ansible.builtin.command:
+    argv:
+      - virsh
+      - --connect=qemu:///system
+      - net-update
+      - "{{ ci_vm_network }}"
+      - "{{ 'modify' if ci_vm_dhcp_hosts | length > 0 else 'add-last' }}"
+      - ip-dhcp-host
+      - "<host mac='{{ ci_vm_mac }}' name='{{ ci_vm_name }}' ip='{{ ci_vm_address }}'/>"
+      - --live
+      - --config
+  changed_when: true
+  when:
+    - ci_vm_interfaces.rc == 0
+    - ci_vm_mac | length > 0
+    - ci_vm_dhcp_hosts | select('search', "ip='" ~ ci_vm_address ~ "'") | list | length == 0
