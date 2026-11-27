@@ -543,7 +543,7 @@ def fail_at(monkeypatch: pytest.MonkeyPatch, error: type[Exception]) -> None:
                 raise error(message)
             return super().build_request(method, path, body)
 
-    monkeypatch.setattr(secrets, "Client", Failing)
+    monkeypatch.setattr(secrets.connect_client, "Client", Failing)
 
 
 @pytest.mark.parametrize("error", [httpx.ConnectError, httpx.ConnectTimeout])
@@ -755,7 +755,7 @@ def test_each_client_has_the_timeout(
             super().__init__(url, token, config)
             made.append(self)
 
-    monkeypatch.setattr(secrets, "Client", Recording)
+    monkeypatch.setattr(secrets.connect_client, "Client", Recording)
     secrets.Connect(fake.token, [fake.url]).vaults()
     assert [client.session.timeout for client in made] == [secrets.TIMEOUT]
 
@@ -818,7 +818,7 @@ def test_any_other_httpx_error_is_final_and_hides_the_url(
             message = f"cannot reach {self.url}"
             raise error(message)
 
-    monkeypatch.setattr(secrets, "Client", Failing)
+    monkeypatch.setattr(secrets.connect_client, "Client", Failing)
     backend = secrets.Connect("a-token", [f"https://nas-a.{SUFFIX}"])
     with pytest.raises(secrets.SecretsError) as caught:
         backend.item("v1", "i1")

@@ -25,9 +25,9 @@ from functools import partial
 from pathlib import Path
 from types import SimpleNamespace
 from typing import TYPE_CHECKING, cast
-from unittest.mock import Mock
+from unittest.mock import ANY, Mock
 
-import httpx
+import httpx2
 import pytest
 from agent_host_example import (
     build_provenance,
@@ -4429,7 +4429,7 @@ BRANCH_REF = "refs/heads/agent/example"
         ((200, []), None, None),
         ((404, {}), None, ""),
         ((403, {}), None, None),
-        (httpx.ConnectError("offline"), None, None),
+        (httpx2.ConnectError("offline"), None, None),
     ],
 )
 def test_origin_tip_reads_the_run_branch_over_https(
@@ -4446,15 +4446,17 @@ def test_origin_tip_reads_the_run_branch_over_https(
         lookup = Mock(side_effect=result)
     else:
         status, body = result
-        response = httpx.Response(status, json=body, request=httpx.Request("GET", url))
+        response = httpx2.Response(
+            status, json=body, request=httpx2.Request("GET", url)
+        )
         lookup = Mock(return_value=response)
-    monkeypatch.setattr(httpx, "get", lookup)
+    monkeypatch.setattr(httpx2, "get", lookup)
     monkeypatch.setattr(credentials, "fetch_token", Mock(return_value=token))
     assert run_host.origin_tip(run) == tip
     headers = {"Accept": "application/vnd.github+json"}
     if token is not None:
         headers["Authorization"] = f"Bearer {token}"
-    lookup.assert_called_once_with(url, headers=headers, timeout=20)
+    lookup.assert_called_once_with(url, headers=headers, timeout=20, verify=ANY)
 
 
 def test_execute_rejects_a_stale_head_when_requiring_a_commit(
