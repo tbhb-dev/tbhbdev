@@ -277,7 +277,7 @@ def test_timeout_reaps_only_its_ssh_child(
     def executable(_name: str) -> str:
         return str(program)
 
-    monkeypatch.setattr(transport.argv, "executable", executable)
+    monkeypatch.setattr(transport, "executable", executable)
     with pytest.raises(transport.TransportError, match="transport failed"):
         transport.call(settings(), LINUX, ("true",), timeout=0.5)
     pid = int(pid_file.read_text())
