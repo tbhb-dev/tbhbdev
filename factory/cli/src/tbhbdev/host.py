@@ -71,7 +71,6 @@ import socket
 import subprocess  # nosec B404
 import sys
 import tempfile
-import tomllib
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
@@ -79,7 +78,7 @@ from pathlib import Path, PurePosixPath
 from typing import TYPE_CHECKING, NoReturn
 from urllib.parse import urlsplit
 
-from tbhbdev import gh_agent, runner, secrets, userconfig
+from tbhbdev import gh_agent, host_gitleaks, runner, secrets, userconfig
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Iterable, Sequence
@@ -134,18 +133,9 @@ MISE_CONFIGS = (
     ".config/mise/config.toml",
     ".tool-versions",
 )
-# The private gitleaks config: the field it comes from, which the bootstrap
-# generator writes, and what it must hold. CANARY matches the line
-# tbhb_rules' gitleaks_tool.sh.tpl looks for.
+# The 1Password item and field bootstrap writes for the private gitleaks config.
 GITLEAKS_ITEM = "gitleaks-private"
 GITLEAKS_FIELD = "config"
-GITLEAKS_EXTENDS = ".gitleaks.toml"
-GITLEAKS_CANARY = "tbhb-private-canary"
-CANARY = re.compile(
-    rf"""^[ \t]*id[ \t]*=[ \t]*["']{GITLEAKS_CANARY}["'][ \t]*(?:#.*)?$""",
-    re.MULTILINE,
-)
-GITLEAKS_FILE = ".config/gitleaks/private.toml"
 # Run as the account that gets the file, with the config on stdin. It prints
 # `ok` when the file is already the config, owned by the account at 0600 in a
 # 0700 directory, and otherwise puts the config in place and prints `changed`.
@@ -153,7 +143,7 @@ GITLEAKS_INSTALL = f"""\
 set -eu
 umask 077
 cd
-file={GITLEAKS_FILE}
+file={host_gitleaks.GITLEAKS_FILE}
 dir=${{file%/*}}
 mkdir -p "$dir"
 fixed=
@@ -192,33 +182,6 @@ SHORT_TECH_WORDS = frozenset(
 STEM_MIN = 4
 # The directories the tools write under .config, .cache and .local.
 TOOL_DIRS = ("awrel", "gh-agent", "gitleaks", "tbhbdev")
-# The rule categories, in the config's order, and each one's description. The
-# rule ids are the category and a number, so no id holds a value.
-GITLEAKS_RULES = {
-    "private-repo": "A private repository's name",
-    "tailnet-suffix": "The tailnet's MagicDNS suffix",
-    "tailnet-name": "The tailnet's name",
-    "tailnet-host": "A tailnet host name",
-    "tailnet-stem": "The stem a family of tailnet host names shares",
-    "tailnet-short": "A short form of a tailnet host name",
-    "tailnet-ipv4": "A tailnet IPv4 address",
-    "tailnet-ipv6": "A tailnet IPv6 address",
-    "home-path": "A path into the operator's or the agent's home",
-    "checkout-path": "A path into the workspace checkouts",
-    "tool-dir": "A path into a directory the tools write",
-    "private-ipv4": "A private IPv4 address",
-    "local-name": "A .local or .lan host name",
-    "mac-address": "A MAC address",
-    "op-reference": "A 1Password secret reference",
-    "session-socket": "A session socket path",
-    "account-name": "An operator's account name",
-    "op-account": "The 1Password account",
-    "op-vault": "A 1Password vault name",
-    "op-item": "The name of a 1Password item the tools read",
-    "endpoint": "A Connect endpoint's host name",
-    "keychain": "A keychain, keyring or Connect server name",
-}
-CANARY_REGEX = rf"\b{GITLEAKS_CANARY}-[0-9a-f]{{8}}\b"
 # An IPv4 octet, and an address bounded as the committed public-ipv4 rule
 # bounds one.
 _OCTET = r"(?:25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9]?[0-9])"
@@ -1577,20 +1540,6 @@ def token_health(target: Target) -> Result:
     )
 
 
-def gitleaks_problem(text: str) -> str | None:
-    """Why TEXT isn't the private gitleaks config, or None. It never quotes TEXT."""
-    try:
-        data = tomllib.loads(text)
-    except tomllib.TOMLDecodeError:
-        return f"{gitleaks_ref()} isn't valid TOML"
-    extend = data.get("extend")
-    if not isinstance(extend, dict) or extend.get("path") != GITLEAKS_EXTENDS:
-        return f'{gitleaks_ref()} has no [extend] path = "{GITLEAKS_EXTENDS}"'
-    if not CANARY.search(text):
-        return f"{gitleaks_ref()} has no rule with the id {GITLEAKS_CANARY}"
-    return None
-
-
 def private_gitleaks(host: Host, urls: list[str]) -> str:
     """The private gitleaks config, read with HOST's own token and checked."""
     _, value = _keychain_token(host)
@@ -1603,9 +1552,10 @@ def private_gitleaks(host: Host, urls: list[str]) -> str:
     except secrets.SecretsError as exc:
         message = f"cannot read {gitleaks_ref()}: {exc}"
         raise HostError(message) from exc
-    problem = gitleaks_problem(text)
+    problem = host_gitleaks.gitleaks_problem(text)
     if problem is not None:
-        raise HostError(problem)
+        message = f"{gitleaks_ref()} {problem}"
+        raise HostError(message)
     return text
 
 
@@ -1618,12 +1568,13 @@ def gitleaks_config(run: Callable[[Host, str, str], Done], target: Target) -> Re
         text = private_gitleaks(target.host, target.urls)
     except HostError as exc:
         return Result(FAILED, f"{exc}; wrote nothing")
+    path = host_gitleaks.GITLEAKS_FILE
     done = run(target.host, GITLEAKS_INSTALL, text)
     if done.returncode != 0:
-        return Result(FAILED, f"cannot install {GITLEAKS_FILE}: {_why(done)}")
+        return Result(FAILED, f"cannot install {path}: {_why(done)}")
     if done.stdout.strip() == OK:
-        return Result(OK, f"{GITLEAKS_FILE} is current")
-    return Result(CHANGED, f"wrote {GITLEAKS_FILE}")
+        return Result(OK, f"{path} is current")
+    return Result(CHANGED, f"wrote {path}")
 
 
 def upgrade_steps(ws: Workspace | None) -> list[tuple[str, Step]]:
@@ -1710,13 +1661,6 @@ class Facts:
     items: tuple[str, ...]
     endpoints: tuple[str, ...]
     names: tuple[str, ...]
-
-
-@dataclass(frozen=True)
-class Rule:
-    category: str
-    regex: str
-    allow: tuple[str, ...] = ()
 
 
 def private_repos() -> list[tuple[str, str]]:
@@ -1866,16 +1810,17 @@ def _named(
     values: Iterable[str],
     words: frozenset[str],
     minimum: int = NAME_MIN,
-) -> tuple[list[Rule], int]:
+) -> tuple[list[host_gitleaks.Rule], int]:
     """A rule for each of VALUES that isn't common, and how many were."""
     every = sorted(set(values))
     kept = [v for v in every if not _common(v, words, minimum)]
-    return [Rule(category, _literal(v)) for v in kept], len(every) - len(kept)
+    rules = [host_gitleaks.Rule(category, _literal(v)) for v in kept]
+    return rules, len(every) - len(kept)
 
 
-def _repos(facts: Facts) -> tuple[list[Rule], int]:
+def _repos(facts: Facts) -> tuple[list[host_gitleaks.Rule], int]:
     """A rule for each repository, which a common name matches only scoped."""
-    rules: list[Rule] = []
+    rules: list[host_gitleaks.Rule] = []
     scoped_only = 0
     for owner, name in sorted(set(facts.repos)):
         scoped = rf"\b{re.escape(owner)}/"
@@ -1884,7 +1829,9 @@ def _repos(facts: Facts) -> tuple[list[Rule], int]:
         else:
             scoped = f"(?:{scoped}|{_bound(name, 0)})"
         rules.append(
-            Rule("private-repo", f"(?i){scoped}{re.escape(name)}{_bound(name, -1)}")
+            host_gitleaks.Rule(
+                "private-repo", f"(?i){scoped}{re.escape(name)}{_bound(name, -1)}"
+            )
         )
     return rules, scoped_only
 
@@ -1934,11 +1881,11 @@ def _shorts(hosts: Sequence[str]) -> set[str]:
     return found.difference(hosts, {""})
 
 
-def _ipv4(category: str, *addresses: str) -> list[Rule]:
-    return [Rule(category, _IPV4.format(a)) for a in addresses]
+def _ipv4(category: str, *addresses: str) -> list[host_gitleaks.Rule]:
+    return [host_gitleaks.Rule(category, _IPV4.format(a)) for a in addresses]
 
 
-def gitleaks_rules(facts: Facts) -> tuple[list[Rule], dict[str, int]]:
+def gitleaks_rules(facts: Facts) -> tuple[list[host_gitleaks.Rule], dict[str, int]]:
     """The rules for FACTS, and how many values each category left out.
 
     A repository's name that is too common still matches as owner/name, and
@@ -1947,14 +1894,17 @@ def gitleaks_rules(facts: Facts) -> tuple[list[Rule], dict[str, int]]:
     net = facts.tailnet
     rules, left = _repos(facts)
     omitted = {"private-repo": left}
-    rules += [Rule("tailnet-suffix", _literal(net.suffix))]
-    rules += [Rule("tailnet-name", _literal(net.name))]
+    rules += [host_gitleaks.Rule("tailnet-suffix", _literal(net.suffix))]
+    rules += [host_gitleaks.Rule("tailnet-name", _literal(net.name))]
     found, omitted["tailnet-host"] = _named("tailnet-host", net.hosts, facts.words)
     rules += found
     every = stems(net.hosts)
     kept = [s for s in every if not _common(s, facts.words)]
     omitted["tailnet-stem"] = len(every) - len(kept)
-    rules += [Rule("tailnet-stem", f"(?i){_bound(s, 0)}{re.escape(s)}") for s in kept]
+    rules += [
+        host_gitleaks.Rule("tailnet-stem", f"(?i){_bound(s, 0)}{re.escape(s)}")
+        for s in kept
+    ]
     short_at = len(rules)
     short_rules, omitted["tailnet-short"] = _named(
         "tailnet-short",
@@ -1966,21 +1916,23 @@ def gitleaks_rules(facts: Facts) -> tuple[list[Rule], dict[str, int]]:
         "tailnet-ipv4",
         rf"100\.(?:6[4-9]|[7-9][0-9]|1[01][0-9]|12[0-7])(?:\.{_OCTET}){{2}}",
     )
-    rules += [Rule("tailnet-ipv6", r"(?i)\bfd7a:115c:a1e0:[0-9a-f:]*")]
+    rules += [host_gitleaks.Rule("tailnet-ipv6", r"(?i)\bfd7a:115c:a1e0:[0-9a-f:]*")]
     rules += [
-        Rule("home-path", f"/(?:Users|home)/{re.escape(name)}{_bound(name, -1)}")
+        host_gitleaks.Rule(
+            "home-path", f"/(?:Users|home)/{re.escape(name)}{_bound(name, -1)}"
+        )
         for name in sorted({*facts.operators, AGENT})
     ]
     if facts.checkout is not None:
         root = str(facts.checkout)
         regex = f"{_PATH}/{re.escape(root)}{_bound(root, -1)}"
-        rules += [Rule("checkout-path", regex, (GENERIC_HOME,))]
+        rules += [host_gitleaks.Rule("checkout-path", regex, (GENERIC_HOME,))]
     tools = "|".join(map(re.escape, TOOL_DIRS))
     # A regex naming directories, not a path to a credential, which gitleaks
     # flags for its .config.
     dirs = r"/(?:\.config|\.cache|\.local/(?:share|state))/"  # gitleaks:allow
     regex = rf"{_PATH}{dirs}(?:{tools})\b"
-    rules += [Rule("tool-dir", regex, (GENERIC_HOME,))]
+    rules += [host_gitleaks.Rule("tool-dir", regex, (GENERIC_HOME,))]
     rules += _ipv4(
         "private-ipv4",
         rf"10(?:\.{_OCTET}){{3}}",
@@ -1988,20 +1940,27 @@ def gitleaks_rules(facts: Facts) -> tuple[list[Rule], dict[str, int]]:
         rf"192\.168(?:\.{_OCTET}){{2}}",
     )
     rules += [
-        Rule("local-name", r"(?i)\b[a-z0-9][a-z0-9-]*\.(?:local|lan)(?:[^\w(.-]|$)"),
-        Rule(
+        host_gitleaks.Rule(
+            "local-name", r"(?i)\b[a-z0-9][a-z0-9-]*\.(?:local|lan)(?:[^\w(.-]|$)"
+        ),
+        host_gitleaks.Rule(
             "mac-address",
             r"(?i)\b[0-9a-f]{2}(?:(?::[0-9a-f]{2}){5}|(?:-[0-9a-f]{2}){5})\b",
         ),
-        Rule("op-reference", r"""op://[^\s"'`<>]+"""),
+        host_gitleaks.Rule("op-reference", r"""op://[^\s"'`<>]+"""),
     ]
     if "session_sockets" in (userconfig.table("gitleaks") or {}):
         sockets = userconfig.strings("gitleaks", "session_sockets")
-        rules += [Rule("session-socket", re.escape(path)) for path in sockets]
+        rules += [
+            host_gitleaks.Rule("session-socket", re.escape(path)) for path in sockets
+        ]
     found, omitted["account-name"] = _named(
         "account-name", facts.operators, facts.words
     )
-    rules += [*found, Rule("op-account", _literal(setting("op", "account")))]
+    rules += [
+        *found,
+        host_gitleaks.Rule("op-account", _literal(setting("op", "account"))),
+    ]
     for category, values in (
         ("op-vault", facts.vaults),
         ("op-item", facts.items),
@@ -2012,42 +1971,10 @@ def gitleaks_rules(facts: Facts) -> tuple[list[Rule], dict[str, int]]:
         rules += found
     covered = {rule.regex for rule in rules}
     rules[short_at:short_at] = [r for r in short_rules if r.regex not in covered]
-    unique: dict[str, Rule] = {}
+    unique: dict[str, host_gitleaks.Rule] = {}
     for rule in rules:
         unique.setdefault(rule.regex, rule)
     return list(unique.values()), omitted
-
-
-def _rule_lines(rule_id: str, description: str, regex: str) -> list[str]:
-    return [
-        "[[rules]]",
-        f"id = {json.dumps(rule_id)}",
-        f"description = {json.dumps(description)}",
-        f"regex = {json.dumps(regex)}",
-        "",
-    ]
-
-
-def render_gitleaks(rules: Iterable[Rule]) -> str:
-    """The config: the committed one, extended by the canary and RULES."""
-    lines = [
-        "# Generated by `tbhbdev host bootstrap`, which replaces any edit.",
-        "",
-        "[extend]",
-        f"path = {json.dumps(GITLEAKS_EXTENDS)}",
-        "",
-        *_rule_lines(
-            GITLEAKS_CANARY, "The canary: the private config is in use", CANARY_REGEX
-        ),
-    ]
-    counts: dict[str, int] = {}
-    for rule in rules:
-        counts[rule.category] = counts.get(rule.category, 0) + 1
-        rule_id = f"{rule.category}-{counts[rule.category]}"
-        lines += _rule_lines(rule_id, GITLEAKS_RULES[rule.category], rule.regex)
-        if rule.allow:
-            lines += ["[[rules.allowlists]]", f"regexes = {json.dumps(rule.allow)}", ""]
-    return "\n".join(lines)
 
 
 def op_stdin(stdin: str, *args: str) -> None:
@@ -2087,12 +2014,13 @@ def publish_gitleaks(text: str) -> Result:
 
 def _generated(
     operators: Iterable[str], ws: Workspace | None, urls: list[str]
-) -> tuple[str, list[Rule], dict[str, int]]:
+) -> tuple[str, list[host_gitleaks.Rule], dict[str, int]]:
     rules, omitted = gitleaks_rules(gitleaks_facts(operators, ws, urls))
-    text = render_gitleaks(rules)
-    problem = gitleaks_problem(text)
+    text = host_gitleaks.render_gitleaks(rules)
+    problem = host_gitleaks.gitleaks_problem(text)
     if problem is not None:
-        raise HostError(problem)
+        message = f"{gitleaks_ref()} {problem}"
+        raise HostError(message)
     return text, rules, omitted
 
 
@@ -2106,7 +2034,7 @@ def gitleaks_generate(
     except HostError as exc:
         message = f"the private gitleaks config: {exc}; wrote nothing"
         raise HostError(message) from exc
-    for category in GITLEAKS_RULES:
+    for category in host_gitleaks.GITLEAKS_RULES:
         count = sum(r.category == category for r in rules)
         left = omitted.get(category)
         tail = f", {left} too common or short to match alone" if left else ""

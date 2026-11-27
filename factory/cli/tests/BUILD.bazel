@@ -1913,6 +1913,7 @@ cli_py_test(
         ":stubtool",
         "//factory/cli/src/tbhbdev:cli",
         "//factory/cli/src/tbhbdev:host",
+        "//factory/cli/src/tbhbdev:host_gitleaks",
         "//factory/cli/src/tbhbdev:secrets",
         "//factory/cli/src/tbhbdev:userconfig",
         "@cli_pip//httpx",
@@ -2108,6 +2109,15 @@ cli_py_library(
     visibility = ["//factory/cli/tests:__subpackages__"],
     deps = [
         "//factory/cli/src/tbhbdev/alpha/agent:runfiles",
+        "@cli_pip//pytest",
+    ],
+)
+
+cli_py_test(
+    name = "test_host_gitleaks",
+    srcs = ["test_host_gitleaks.py"],
+    deps = [
+        "//factory/cli/src/tbhbdev:host_gitleaks",
         "@cli_pip//pytest",
     ],
 )

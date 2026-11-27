@@ -49,7 +49,12 @@ from typing import cast
 
 import tomlkit
 
-from tbhbdev.host import CANARY, GITLEAKS_CANARY, GITLEAKS_EXTENDS, GITLEAKS_FILE
+from tbhbdev.host_gitleaks import (
+    CANARY,
+    GITLEAKS_CANARY,
+    GITLEAKS_EXTENDS,
+    GITLEAKS_FILE,
+)
 
 # What the scan says when the repository has no .gitleaks.toml.
 NO_COMMITTED_CONFIG = (

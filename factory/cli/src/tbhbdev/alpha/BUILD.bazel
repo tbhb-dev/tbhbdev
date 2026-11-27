@@ -394,7 +394,7 @@ cli_py_library(
     imports = ["../.."],
     visibility = ["//factory/cli:__subpackages__"],
     deps = [
-        "//factory/cli/src/tbhbdev:host",
+        "//factory/cli/src/tbhbdev:host_gitleaks",
         "@cli_pip//tomlkit",
     ],
 )
