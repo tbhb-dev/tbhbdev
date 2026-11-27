@@ -1,0 +1,145 @@
+# SPDX-License-Identifier: Apache-2.0
+# Copyright Tony Burns
+
+load("//factory/cli/tests:pytest.bzl", "cli_py_test")
+
+cli_py_test(
+    name = "test_agent_model",
+    srcs = ["test_agent_model.py"],
+    imports = ["../../.."],
+    deps = [
+        "//factory/cli/src/tbhbdev/alpha/guard:agent_model",
+        "//factory/cli/tests:conftest",
+        "@cli_pip//pytest",
+    ],
+)
+
+cli_py_test(
+    name = "test_gh_config_dir",
+    srcs = ["test_gh_config_dir.py"],
+    imports = ["../../.."],
+    deps = [
+        "//factory/cli/src/tbhbdev/alpha/guard:gh_config_dir",
+        "//factory/cli/tests:conftest",
+        "//factory/cli/tests:stub_fixtures",
+        "@cli_pip//pytest",
+    ],
+)
+
+cli_py_test(
+    name = "test_git_command",
+    srcs = ["test_git_command.py"],
+    imports = ["../../.."],
+    deps = [
+        "//factory/cli/src/tbhbdev/alpha/guard:git_command",
+        "//factory/cli/tests:conftest",
+    ],
+)
+
+cli_py_test(
+    name = "test_git_hooks",
+    srcs = ["test_git_hooks.py"],
+    imports = ["../../.."],
+    deps = [
+        "//factory/cli/src/tbhbdev/alpha/guard:git_hooks",
+        "//factory/cli/tests:conftest",
+        "@cli_pip//pytest",
+    ],
+)
+
+cli_py_test(
+    name = "test_ops_no_lazy_stop",
+    srcs = ["test_ops_no_lazy_stop.py"],
+    imports = ["../../.."],
+    deps = [
+        "//factory/cli/src/tbhbdev/alpha/guard:ops_no_lazy_stop",
+        "//factory/cli/tests:conftest",
+        "@cli_pip//pytest",
+    ],
+)
+
+cli_py_test(
+    name = "test_sendmessage_clock",
+    srcs = ["test_sendmessage_clock.py"],
+    imports = ["../../.."],
+    deps = [
+        "//factory/cli/src/tbhbdev/alpha/guard:sendmessage_clock",
+        "//factory/cli/tests:conftest",
+        "@cli_pip//pytest",
+    ],
+)
+
+cli_py_test(
+    name = "test_shell_commands",
+    srcs = ["test_shell_commands.py"],
+    imports = ["../../.."],
+    deps = [
+        "//factory/cli/src/tbhbdev/alpha/guard:shell_commands",
+        "//factory/cli/tests:conftest",
+        "@cli_pip//pytest",
+    ],
+)
+
+cli_py_test(
+    name = "test_state",
+    srcs = ["test_state.py"],
+    imports = ["../../.."],
+    deps = [
+        "//factory/cli/src/tbhbdev/alpha/guard:state",
+        "//factory/cli/tests:conftest",
+        "@cli_pip//pytest",
+    ],
+)
+
+cli_py_test(
+    name = "test_trailers",
+    srcs = ["test_trailers.py"],
+    imports = ["../../.."],
+    deps = [
+        "//factory/cli/src/tbhbdev/alpha/guard:trailers",
+        "//factory/cli/tests:conftest",
+        "@cli_pip//pytest",
+    ],
+)
+
+cli_py_test(
+    name = "test_gh_options",
+    srcs = ["test_gh_options.py"],
+    imports = ["../../.."],
+    deps = [
+        "//factory/cli/src/tbhbdev/alpha/guard:gh_options",
+        "//factory/cli/tests:conftest",
+    ],
+)
+
+cli_py_test(
+    name = "test_options",
+    srcs = ["test_options.py"],
+    imports = ["../../.."],
+    deps = [
+        "//factory/cli/src/tbhbdev/alpha/guard:options",
+        "//factory/cli/tests:conftest",
+        "@cli_pip//pytest",
+    ],
+)
+
+cli_py_test(
+    name = "test_payload",
+    srcs = ["test_payload.py"],
+    imports = ["../../.."],
+    deps = [
+        "//factory/cli/src/tbhbdev/alpha/guard:payload",
+        "//factory/cli/tests:conftest",
+    ],
+)
+
+filegroup(
+    name = "package_files",
+    srcs = glob(["*.py"]) + [
+        "//factory/cli/tests/unit/alpha/guard/gh_poll:package_files",
+        "//factory/cli/tests/unit/alpha/guard/gh_pr:package_files",
+        "//factory/cli/tests/unit/alpha/guard/op:package_files",
+        "//factory/cli/tests/unit/alpha/guard/scripts:package_files",
+    ],
+    visibility = ["//factory/cli:__subpackages__"],
+)

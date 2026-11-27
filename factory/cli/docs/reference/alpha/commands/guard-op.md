@@ -18,7 +18,7 @@ type: Reference
 
 `guard-op` requires the configured `[op] account` flag on shell calls and proposed writes in every directory.
 `PreToolUse` covers Claude `Bash` and `Write|Edit|MultiEdit|NotebookEdit`, Codex `Bash`/`shell`/`apply_patch` and Antigravity `run_command`/edit tools.
-The guard scans shell files, Markdown shell fences, Python command expressions, notebook code cells, and YAML command fields.
+The guard scans shell files, Markdown shell fences, Python command expressions, and YAML command fields.
 It allows unrelated edits to existing offenders.
 `OP_ACCOUNT` alone doesn't pass the guard.
 The module docstring lists the allowed command forms that the scanner misses.

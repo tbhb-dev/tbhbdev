@@ -1,0 +1,72 @@
+# SPDX-License-Identifier: Apache-2.0
+# Copyright Tony Burns
+
+load("//factory/cli:python.bzl", "cli_py_library")
+
+cli_py_library(
+    name = "__init__",
+    srcs = ["__init__.py"],
+    imports = ["../../../.."],
+    visibility = ["//factory/cli:__subpackages__"],
+)
+
+cli_py_library(
+    name = "command",
+    srcs = ["command.py"],
+    imports = ["../../../.."],
+    visibility = ["//factory/cli:__subpackages__"],
+    deps = [
+        ":filesystem",
+        "//factory/cli/src/tbhbdev/alpha:repo",
+        "//factory/cli/src/tbhbdev/alpha/guard:payload",
+    ],
+)
+
+cli_py_library(
+    name = "decision",
+    srcs = ["decision.py"],
+    imports = ["../../../.."],
+    visibility = ["//factory/cli:__subpackages__"],
+    deps = [":paths"],
+)
+
+cli_py_library(
+    name = "filesystem",
+    srcs = ["filesystem.py"],
+    imports = ["../../../.."],
+    visibility = ["//factory/cli:__subpackages__"],
+    deps = [
+        ":decision",
+        ":paths",
+        ":writes",
+        "//factory/cli/src/tbhbdev/alpha:repo",
+    ],
+)
+
+cli_py_library(
+    name = "paths",
+    srcs = ["paths.py"],
+    imports = ["../../../.."],
+    visibility = ["//factory/cli:__subpackages__"],
+)
+
+cli_py_library(
+    name = "writes",
+    srcs = ["writes.py"],
+    imports = ["../../../.."],
+    pyi_deps = ["//factory/cli/src/tbhbdev/alpha:repo"],
+    visibility = ["//factory/cli:__subpackages__"],
+    deps = [
+        ":paths",
+        "//factory/cli/src/tbhbdev/alpha/guard:options",
+        "//factory/cli/src/tbhbdev/alpha/guard:payload",
+        "//factory/cli/src/tbhbdev/alpha/guard:shell_commands",
+        "//factory/cli/src/tbhbdev/alpha/identity:dispatcher",
+    ],
+)
+
+filegroup(
+    name = "package_files",
+    srcs = glob(["*.py"]),
+    visibility = ["//factory/cli:__subpackages__"],
+)

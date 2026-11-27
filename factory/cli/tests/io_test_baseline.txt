@@ -23,9 +23,6 @@ test_alpha_agent_worktree
 test_alpha_close
 test_alpha_gh_app
 test_alpha_gh_shim
-test_alpha_guard_gh_poll
-test_alpha_guard_gh_pr
-test_alpha_guard_ssh_agent
 test_alpha_identity
 test_alpha_install
 test_alpha_monorepo

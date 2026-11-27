@@ -1,0 +1,75 @@
+# SPDX-License-Identifier: Apache-2.0
+# Copyright Tony Burns
+
+load("//factory/cli:python.bzl", "cli_py_library")
+
+cli_py_library(
+    name = "__init__",
+    srcs = ["__init__.py"],
+    imports = ["../../../.."],
+    visibility = ["//factory/cli:__subpackages__"],
+)
+
+cli_py_library(
+    name = "command",
+    srcs = ["command.py"],
+    imports = ["../../../.."],
+    visibility = ["//factory/cli:__subpackages__"],
+    deps = [
+        ":decision",
+        ":edits",
+        ":file_calls",
+        ":shell_calls",
+        "//factory/cli/src/tbhbdev:userconfig",
+        "//factory/cli/src/tbhbdev/alpha:repo",
+        "//factory/cli/src/tbhbdev/alpha/guard:payload",
+        "//factory/cli/src/tbhbdev/alpha/identity:dispatcher",
+    ],
+)
+
+cli_py_library(
+    name = "decision",
+    srcs = ["decision.py"],
+    imports = ["../../../.."],
+    visibility = ["//factory/cli:__subpackages__"],
+    deps = [":file_calls"],
+)
+
+cli_py_library(
+    name = "edits",
+    srcs = ["edits.py"],
+    imports = ["../../../.."],
+    visibility = ["//factory/cli:__subpackages__"],
+    deps = [
+        "//factory/cli/src/tbhbdev/alpha:repo",
+        "//factory/cli/src/tbhbdev/alpha/identity:dispatcher",
+    ],
+)
+
+cli_py_library(
+    name = "file_calls",
+    srcs = ["file_calls.py"],
+    imports = ["../../../.."],
+    visibility = ["//factory/cli:__subpackages__"],
+    deps = [
+        ":shell_calls",
+        "@cli_pip//pyyaml",
+    ],
+)
+
+cli_py_library(
+    name = "shell_calls",
+    srcs = ["shell_calls.py"],
+    imports = ["../../../.."],
+    visibility = ["//factory/cli:__subpackages__"],
+    deps = [
+        "//factory/cli/src/tbhbdev/alpha/guard:options",
+        "//factory/cli/src/tbhbdev/alpha/guard:shell_commands",
+    ],
+)
+
+filegroup(
+    name = "package_files",
+    srcs = glob(["*.py"]),
+    visibility = ["//factory/cli:__subpackages__"],
+)

@@ -508,21 +508,21 @@ def entry_time(value: object) -> float:
         return 0.0
 
 
-def transcript_entry(path: object) -> tuple[str, float] | None:
+def transcript_entry(path: object, size: int | None = None) -> tuple[str, float] | None:
     """Claude: the last real assistant model in a transcript tail, and its time."""
-    lines = read_tail(Path(path), CLAUDE_TAIL) if isinstance(path, str) else None
-    for line in reversed(lines or []):
+    if not isinstance(path, str):
+        return None
+    for line in reversed(read_tail(Path(path), size or CLAUDE_TAIL) or []):
         entry = parse_line(line) or {}
-        message = as_dict(entry.get("message"))
-        model = real_model(message.get("model")) if message else None
-        if model:
+        message = as_dict(entry.get("message")) or {}
+        if model := real_model(message.get("model")):
             return model, entry_time(entry.get("timestamp"))
     return None
 
 
-def transcript_model(path: object) -> str | None:
+def transcript_model(path: object, size: int | None = None) -> str | None:
     """Claude: the last real assistant ``message.model`` in a transcript tail."""
-    found = transcript_entry(path)
+    found = transcript_entry(path, size)
     return found[0] if found else None
 
 

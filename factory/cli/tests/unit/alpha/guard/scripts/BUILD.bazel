@@ -1,0 +1,87 @@
+load("//factory/cli:python.bzl", "cli_py_library")
+
+# SPDX-License-Identifier: Apache-2.0
+# Copyright Tony Burns
+
+load("//factory/cli/tests:pytest.bzl", "cli_py_test")
+
+cli_py_test(
+    name = "test_command",
+    srcs = ["test_command.py"],
+    imports = ["../../../.."],
+    deps = [
+        ":fixtures",
+        "//factory/cli/src/tbhbdev/alpha/guard/scripts:command",
+        "//factory/cli/src/tbhbdev/alpha/guard/scripts:paths",
+        "//factory/cli/tests:conftest",
+        "@cli_pip//pytest",
+    ],
+)
+
+cli_py_test(
+    name = "test_decision",
+    srcs = ["test_decision.py"],
+    imports = ["../../../.."],
+    deps = [
+        "//factory/cli/src/tbhbdev/alpha/guard/scripts:decision",
+        "//factory/cli/src/tbhbdev/alpha/guard/scripts:paths",
+        "//factory/cli/tests:conftest",
+    ],
+)
+
+cli_py_test(
+    name = "test_filesystem",
+    srcs = ["test_filesystem.py"],
+    imports = ["../../../.."],
+    deps = [
+        ":fixtures",
+        "//factory/cli/src/tbhbdev/alpha/guard/scripts:filesystem",
+        "//factory/cli/src/tbhbdev/alpha/guard/scripts:paths",
+        "//factory/cli/src/tbhbdev/alpha/guard/scripts:writes",
+        "//factory/cli/tests:conftest",
+        "@cli_pip//pytest",
+    ],
+)
+
+cli_py_test(
+    name = "test_paths",
+    srcs = ["test_paths.py"],
+    imports = ["../../../.."],
+    deps = [
+        "//factory/cli/src/tbhbdev/alpha/guard/scripts:paths",
+        "//factory/cli/tests:conftest",
+        "@cli_pip//pytest",
+    ],
+)
+
+cli_py_test(
+    name = "test_writes",
+    srcs = ["test_writes.py"],
+    imports = ["../../../.."],
+    deps = [
+        ":fixtures",
+        "//factory/cli/src/tbhbdev/alpha/guard/scripts:filesystem",
+        "//factory/cli/src/tbhbdev/alpha/guard/scripts:paths",
+        "//factory/cli/src/tbhbdev/alpha/guard/scripts:writes",
+        "//factory/cli/tests:conftest",
+        "@cli_pip//pytest",
+    ],
+)
+
+filegroup(
+    name = "package_files",
+    srcs = glob(["*.py"]),
+    visibility = ["//factory/cli:__subpackages__"],
+)
+
+cli_py_library(
+    name = "fixtures",
+    srcs = ["fixtures.py"],
+    imports = ["../../../.."],
+    pyi_deps = ["//factory/cli/src/tbhbdev/alpha:repo"],
+    visibility = ["//factory/cli/tests:__subpackages__"],
+    deps = [
+        "//factory/cli/src/tbhbdev/alpha/guard/scripts:paths",
+        "@cli_pip//pytest",
+    ],
+)
