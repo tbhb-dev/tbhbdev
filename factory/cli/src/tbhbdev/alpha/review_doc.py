@@ -244,6 +244,8 @@ def submit_review(
                 diff = request("GET", comparison, None)
                 if comments := review_inline.comments(findings, diff):
                     payload["comments"] = comments
+            case _:
+                pass
     result = request("POST", f"{path}/reviews", payload)
     match cast("dict[str, object] | None", result):  # pragma: no mutate -- cast
         case {"id": int(review_id)}:

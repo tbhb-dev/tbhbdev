@@ -22,10 +22,10 @@ class Finding:
 def findings(body: str) -> list[Finding]:
     """Read the first backticked path and line from each Findings bullet."""
     tokens = iter(MarkdownIt().parse(body))
-    for token in tokens:
-        if token.type == "heading_open" and next(tokens).content == "Findings":
-            break
-    else:
+    if not any(
+        token.type == "heading_open" and next(tokens).content == "Findings"
+        for token in tokens
+    ):
         return []
 
     found = []
@@ -66,6 +66,10 @@ def comments(found: list[Finding], diff: object) -> list[dict[str, str | int]]:
                 match cast("dict[str, object] | None", file):
                     case {"filename": str(path), "patch": str(patch)}:
                         lines[path] = _right_lines(patch)
+                    case _:
+                        continue
+        case _:
+            return []
     return [
         {
             "path": finding.path,
