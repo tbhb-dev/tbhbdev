@@ -2,11 +2,12 @@
 description: Agent isolation constraints, coordination, and cleanup.
 generated:
   - role: generated
-    harness: codex:0.166.0
-    model: openai:gpt-6.1-sol
+    harness: codex:0.171.0
+    model: openai:gpt-6.2-sol
+    effort: high
     surface: exec
-    session: sha-256-64:bb854b7878737d0a
-    at: "2026-11-26T07:14:41Z"
+    session: sha-256-64:538313a7c1a2beca
+    at: "2026-11-26T23:39:03Z"
 status: stable
 tags: [alpha]
 title: Agent isolation limits
@@ -78,9 +79,15 @@ The host keeps a bare mirror at `$XDG_STATE_HOME/tbhbdev/agent-mirrors/<git host
 Don't run git inside a run clone: it is agent-written. Use `tbhbdev alpha agent log|diff NAME`.
 ```
 
-`log NAME` shows up to ten pushed commits by default. `log -n 5 NAME` changes that count. When `agent/<name>` exists on origin, `diff NAME` shows changes from the default branch's merge base to that pushed branch. These reads fetch the origin's default branch and `agent/<name>` into the mirror, then inspect those refs. If the branch is absent on origin, `diff NAME` reads the run's own clone through the recorded run account's SSH connection and prints `git format-patch --stdout refs/remotes/origin/<default>..HEAD`. It resolves the default branch name on origin and uses that branch’s ref saved in the run clone at startup. This includes local commits and omits uncommitted changes; no commits produces empty output. The fallback never lets Git read the run's own configuration. It reads `HEAD`, the loose ref files, and `packed-refs` as plain text and checks each value is a 40-digit hash. It then runs `format-patch` in a new empty bare repository in a temporary directory that borrows only the run's object directory, so settings such as `include.path`, `format.from`, `format.signatureFile`, and `commondir` in the run clone have no effect. The fallback refuses a symlink in the clone path, in the git files it reads, and anywhere under `objects` and `refs`, and it refuses an unreadable `objects` or `refs` directory, an `objects/info/alternates` file, and a multi-pack index. The new repository also skips the user's global Git configuration. It passes `--no-signature`, `--no-attach`, `--no-add-header`, and `--no-notes`. The symlink scan and the read aren't atomic, so a run that's still writing can swap a path between them. Both paths disable external diff, text conversion, and color, cap output at 65536 bytes, and filter terminal controls. Neither `wait` nor `status` needs the mirror. The mirror never prunes, so disk use grows with history until a pruning follow-up.
+For a run with a nonzero return code, `log NAME` shows the last 65536 bytes of its host log. Otherwise, `log NAME` shows the final output or output stream for a full-access run. For older sandboxed runs, it shows up to ten pushed commits by default. Use `log -n 5 NAME` to change the count.
 
-Cleanup refuses an open session. Every full-access run requires `clean --force`, even after it ends, because cleanup cannot verify that all commits reached origin or that the output was read. Read the output and verify pushed commits before forcing cleanup. The command moves the run clone and per-run files into dated trash without reading agent-written git state. Cleanup refuses a symlink in place of the run clone. Retries skip completed moves, and removing all files for the run permits name reuse. `keep` succeeds when the marker already exists. `log` prints a full-access run's final output (or its stream) from the host, the same as `wait` does. `diff` does the same for full-access review runs; full-access build runs inspect commits.
+When `agent/NAME` exists on origin, `diff NAME` shows changes from the default branch's merge base to that pushed branch. For a failed build, an unpublished branch, or an unavailable origin, build inspection reads the run clone. This uses the recorded starting commit and tip when available. Older runs can resolve the starting commit from the first entry in Git's reference log for the run branch and the tip from `HEAD`.
+
+For a finished build, `tbhbdev alpha agent diff NAME --patch > run.mbox` exports the committed changes as a complete `mbox` file without contacting origin. Apply the series with `git am --keep-cr run.mbox`. The export skips uncommitted changes. A build with no new commits produces empty output.
+
+Local inspection and export use a temporary bare repository that borrows only the run's object directory. They read commit IDs as data and skip the run's Git configuration. They refuse symlinks along the clone path and in the Git metadata they read. The reads also fail when Git uses object alternates or a multi-pack index, or when Git can't read the object or ref directories. The symlink scan and read can race with a running harness. Both paths turn off external diff, text conversion, and color. The command caps display output at 65536 bytes and filters terminal controls. Patch export preserves the file bytes. `wait` and `status` use the run's state files. The mirror never prunes, so disk use grows with history until a pruning follow-up.
+
+Cleanup refuses an open session. Every full-access run requires `clean --force`, even after it ends, because cleanup cannot verify that all commits reached origin or that the output was read. Read the output and verify pushed commits before forcing cleanup. The command moves the run clone and per-run files into dated trash without reading agent-written git state. Cleanup refuses a symlink in place of the run clone. Retries skip completed moves, and removing all files for the run permits name reuse. `keep` succeeds when the marker already exists. For full-access review runs, `diff` prints the final output or output stream from the host.
 
 Ref resolution runs outside the clone against the SSH URL from the repository argument. Remote Git uses an empty environment and explicit overrides for hooks, file monitoring, SSH, credentials, prompts, external protocols, paging, submodules, and automatic maintenance. It disables lazy fetching. Remote scripts use the C locale. Run file reads refuse symlinks, bound byte counts, check status fields, replace invalid UTF-8, and remove terminal control characters. Polls wait at least half a second between connections.
 

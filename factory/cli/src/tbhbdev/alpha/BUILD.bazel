@@ -62,8 +62,10 @@ cli_py_library(
     imports = ["../.."],
     visibility = ["//factory/cli:__subpackages__"],
     deps = [
+        ":gh_app",
         ":guard_gh_poll",
         ":identity",
+        ":repo",
         "//factory/cli/src/tbhbdev:userconfig",
     ],
 )
@@ -244,6 +246,7 @@ cli_py_library(
     visibility = ["//factory/cli:__subpackages__"],
     deps = [
         ":identity",
+        ":install",
         ":opened",
         ":pull_request_frontmatter",
         ":repo",
@@ -419,6 +422,7 @@ cli_py_library(
     visibility = ["//factory/cli:__subpackages__"],
     deps = [
         ":identity",
+        ":install",
         ":pull_request",
         ":review_gate",
     ],
