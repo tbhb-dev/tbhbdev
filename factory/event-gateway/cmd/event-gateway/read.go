@@ -28,7 +28,6 @@ type readAPI struct {
 	telemetry telemetry
 }
 
-//nolint:tagliatelle // Use the same wire naming as received_at in the envelope.
 type eventPage struct {
 	Gap     map[string]uint64 `json:"gap,omitempty"`
 	Events  []json.RawMessage `json:"events"`
@@ -134,14 +133,18 @@ func (api readAPI) getSequence(ctx context.Context, response http.ResponseWriter
 
 func writeReadJSON(response http.ResponseWriter, body any) {
 	response.Header().Set("Content-Type", "application/json")
-	//nolint:errcheck,errchkjson // Both response types contain only JSON and fixed fields.
+
 	_ = json.NewEncoder(response).Encode(body)
 }
 
-//nolint:wrapcheck // The handler only needs to know whether the store returned a page.
 func (page *eventPage) fetch(ctx context.Context, stream jetstream.Stream, subject string) error {
-	//nolint:exhaustruct_v5 // The ordered consumer starts after the page cursor.
 	consumer, err := stream.OrderedConsumer(ctx, jetstream.OrderedConsumerConfig{
+		OptStartTime: nil,
+		ReplayPolicy: 0,
+		HeadersOnly:  false,
+		Metadata:     nil,
+		NamePrefix:   "",
+
 		DeliverPolicy:     jetstream.DeliverByStartSequencePolicy,
 		OptStartSeq:       page.LastSeq + 1,
 		FilterSubjects:    []string{subject},
@@ -153,7 +156,6 @@ func (page *eventPage) fetch(ctx context.Context, stream jetstream.Stream, subje
 	}
 
 	defer func() {
-		//nolint:errcheck // JetStream expires the consumer if deletion fails.
 		_ = stream.DeleteConsumer(ctx, consumer.CachedInfo().Name)
 	}()
 
@@ -163,7 +165,6 @@ func (page *eventPage) fetch(ctx context.Context, stream jetstream.Stream, subje
 	}
 
 	for message := range batch.Messages() {
-		//nolint:errcheck // Fetch validates message metadata before accepting delivery.
 		meta, _ := message.Metadata()
 		page.LastSeq = meta.Sequence.Stream
 		page.Events = append(page.Events, sequenceEnvelope(page.LastSeq, message.Data()))

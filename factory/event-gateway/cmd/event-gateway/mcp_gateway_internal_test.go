@@ -279,7 +279,6 @@ func TestMCPGatewayReconnect(t *testing.T) {
 	checkEqual(t, strings.Contains(logs.String(), mcpFixture), false)
 }
 
-//nolint:paralleltest // The awrel state fixture sets process-wide environment variables.
 func TestMCPGatewayImport(t *testing.T) {
 	ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
 	defer cancel()

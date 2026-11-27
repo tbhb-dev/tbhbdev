@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright Tony Burns
 
-//nolint:exhaustruct_v5 // Fixtures use zero defaults for fields unrelated to the case.
 package main
 
 import (
@@ -64,7 +63,6 @@ func startRunner(t *testing.T, run *runner) func() {
 	return stop
 }
 
-//nolint:ireturn // Receive the concrete result type of the supplied channel.
 func receiveRunner[T any](t *testing.T, results <-chan T) T {
 	t.Helper()
 
@@ -104,7 +102,7 @@ func TestRunnerDelivery(t *testing.T) {
 		park string
 		want []uint64
 	}{
-		{name: "transient", fail: func() error { return errRetryDelivery }, want: []uint64{1, 1, 2}},
+		{park: "", name: "transient", fail: func() error { return errRetryDelivery }, want: []uint64{1, 1, 2}},
 		{
 			name: "permanent", fail: func() error { return fmt.Errorf("delivery: %w", ErrPermanent) },
 			want: []uint64{1, 2}, park: "delivery: permanent",
@@ -138,7 +136,7 @@ func TestRunnerDelivery(t *testing.T) {
 				return nil
 			}}
 			run := &runner{stream: store.stream, retryBase: time.Millisecond, targets: []runnerTarget{{
-				Target: target, Subjects: nil, Start: startPosition{all: true},
+				Target: target, Subjects: nil, Start: startPosition{at: nil, all: true},
 			}}}
 			park := parkHook(store.jet, newTelemetry(slog.DiscardHandler, nil, nil), 0)
 			run.onPermanent = func(ctx context.Context, name string, event Event, err error) {
@@ -177,9 +175,16 @@ func TestRunnerRestart(t *testing.T) {
 	publishRunner(t, store, pullSubject)
 
 	events := make(chan Event, 8)
-	run := &runner{stream: store.stream, targets: []runnerTarget{{
-		Target: recordingTarget("restart", events), Subjects: []string{pullSubject}, Start: startPosition{all: true},
-	}}}
+	run := &runner{stream: store.stream, targets: []runnerTarget{
+		{
+			Target: recordingTarget(
+				"restart",
+				events,
+			),
+			Subjects: []string{pullSubject},
+			Start:    startPosition{at: nil, all: true},
+		},
+	}}
 	stop := startRunner(t, run)
 	expectRunner(t, events, 2)
 	stop()
@@ -205,7 +210,7 @@ func TestRunnerGap(t *testing.T) {
 
 	events := make(chan Event, 4)
 	run := &runner{stream: store.stream, targets: []runnerTarget{{
-		Target: recordingTarget("gap", events), Start: startPosition{all: true},
+		Target: recordingTarget("gap", events), Start: startPosition{at: nil, all: true},
 	}}}
 	stop := startRunner(t, run)
 
@@ -271,9 +276,9 @@ func TestRunnerStarts(t *testing.T) {
 	}}
 
 	run := &runner{stream: store.stream, targets: []runnerTarget{
-		{Target: all, Start: startPosition{all: true}},
-		{Target: recordingTarget("time", timedEvents), Start: startPosition{at: &since}},
-		{Target: recordingTarget("new", newEvents)},
+		{Subjects: nil, Target: all, Start: startPosition{all: true}},
+		{Subjects: nil, Target: recordingTarget("time", timedEvents), Start: startPosition{at: &since}},
+		{Start: startPosition{}, Subjects: nil, Target: recordingTarget("new", newEvents)},
 	}}
 
 	startRunner(t, run)
@@ -334,12 +339,16 @@ func (message runnerMessage) DoubleAck(context.Context) error { return message.a
 func TestRunnerAcknowledgment(t *testing.T) {
 	t.Parallel()
 
-	target := runnerTarget{Target: fakeTarget{name: "ack", deliver: func(_ context.Context, event Event) error {
-		return fmt.Errorf("%w: %s", ErrPermanent, event.Envelope)
-	}}}
+	target := runnerTarget{
+		Start:    startPosition{},
+		Subjects: nil,
+		Target: fakeTarget{name: "ack", deliver: func(_ context.Context, event Event) error {
+			return fmt.Errorf("%w: %s", ErrPermanent, event.Envelope)
+		}},
+	}
 
 	var run runner
 
-	checkEqual(t, run.deliver(t.Context(), target, runnerMessage{ackError: errRetryDelivery}, 1), uint64(1))
-	checkEqual(t, run.deliver(t.Context(), target, runnerMessage{}, 1), uint64(0))
+	checkEqual(t, run.deliver(t.Context(), target, runnerMessage{Msg: nil, ackError: errRetryDelivery}, 1), uint64(1))
+	checkEqual(t, run.deliver(t.Context(), target, runnerMessage{Msg: nil, ackError: nil}, 1), uint64(0))
 }

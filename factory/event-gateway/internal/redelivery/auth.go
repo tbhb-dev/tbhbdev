@@ -47,8 +47,6 @@ type Options struct {
 }
 
 // Client exchanges GitHub App credentials for installation tokens.
-//
-//nolint:recvcheck // Value receivers redact copies, and authentication methods operate on the shared client.
 type Client struct {
 	key     *rsa.PrivateKey
 	cache   *tokenCache
@@ -62,7 +60,7 @@ type tokenCache struct {
 }
 
 type installationToken struct {
-	ExpiresAt time.Time `json:"expires_at"` //nolint:tagliatelle // GitHub names this field expires_at.
+	ExpiresAt time.Time `json:"expires_at"`
 	Token     string    `json:"token"`
 }
 
@@ -71,8 +69,6 @@ func (installationToken) GoString() string     { return redacted }
 func (installationToken) LogValue() slog.Value { return slog.StringValue(redacted) }
 
 // NewClient loads the RSA private key from disk once.
-//
-//nolint:err113 // Key diagnostics report the configured path and discard parser and system details.
 func NewClient(options Options) (*Client, error) {
 	data, err := os.ReadFile(options.KeyFile)
 	if errors.Is(err, fs.ErrNotExist) {
@@ -122,14 +118,12 @@ func parseKey(data []byte) *rsa.PrivateKey {
 
 	switch block.Type {
 	case "RSA PRIVATE KEY":
-		//nolint:errcheck // The parser returns a nil key on failure, and the error may include key details.
 		key, _ := x509.ParsePKCS1PrivateKey(block.Bytes)
 
 		return key
 	case "PRIVATE KEY":
-		//nolint:errcheck // A failed parse or a non-RSA key produces a nil RSA key below.
 		key, _ := x509.ParsePKCS8PrivateKey(block.Bytes)
-		//nolint:errcheck // A non-RSA key is rejected by returning nil.
+
 		rsaKey, _ := key.(*rsa.PrivateKey)
 
 		return rsaKey
@@ -147,8 +141,6 @@ func (c *Client) Invalidate() {
 }
 
 // Token returns an installation token, refreshing it two minutes before expiry.
-//
-//nolint:err113 // Exchange diagnostics retain the method, path and status and discard secret-bearing errors.
 func (c *Client) Token(ctx context.Context) (string, error) {
 	cache := c.cache
 	cache.mu.Lock()
@@ -201,7 +193,6 @@ func (c *Client) Token(ctx context.Context) (string, error) {
 func (c *Client) sign(now time.Time) (string, bool) {
 	const header = `{"alg":"RS256","typ":"JWT"}`
 
-	//nolint:errcheck,errchkjson // JSON marshaling a string cannot fail.
 	issuer, _ := json.Marshal(c.options.AppID)
 	claims := fmt.Sprintf(
 		`{"iss":%s,"iat":%d,"exp":%d}`, issuer, now.Add(-time.Minute).Unix(), now.Add(jwtLifetime).Unix(),

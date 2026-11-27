@@ -3,7 +3,6 @@
 
 //go:build unix && !aix && (!solaris || illumos)
 
-//nolint:exhaustruct_v5 // The fixtures use only their socket and target fields.
 package main
 
 import (
@@ -35,7 +34,7 @@ func TestParkedSocket(t *testing.T) {
 	checkError(t, stale.Close())
 	checkEqual(t, run(ctx, io.Discard, slog.DiscardHandler, args).Error(), notRunning)
 
-	targets := []runnerTarget{{Target: fakeTarget{name: "replay"}}}
+	targets := []runnerTarget{{Start: startPosition{}, Subjects: nil, Target: fakeTarget{name: "replay"}}}
 	cfg := serveConfig{storeDir: dir, parkedPath: path}
 	checkError(t, cfg.withParked(ctx, targets, func(parkedService) error {
 		info, statErr := os.Stat(path)
@@ -67,7 +66,7 @@ func TestParkedSocket(t *testing.T) {
 func TestParkedSocketPathLimit(t *testing.T) {
 	t.Parallel()
 
-	const limit = len(syscall.RawSockaddrUnix{}.Path) - 1
+	const limit = len(syscall.RawSockaddrUnix{Family: 0, Path: [108]int8{}}.Path) - 1
 	// The listener adds "./" to the relative name before checking its length.
 	_, err := listenParked(t.Context(), strings.Repeat("s", limit-1))
 	checkEqual(t, errors.Is(err, syscall.ENAMETOOLONG), true)

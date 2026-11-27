@@ -68,7 +68,7 @@ func (r *runner) run(ctx context.Context) error {
 	for index, target := range r.targets {
 		consumer, err := r.stream.CreateOrUpdateConsumer(ctx, target.consumerConfig())
 		if ctx.Err() != nil {
-			return nil //nolint:nilerr // Cancellation stops the runner successfully.
+			return nil
 		}
 
 		if err != nil {
@@ -103,15 +103,15 @@ func (target runnerTarget) consumerConfig() jetstream.ConsumerConfig {
 		policy = jetstream.DeliverAllPolicy
 	}
 
-	//nolint:exhaustruct_v5 // JetStream defaults to unlimited delivery attempts.
-	return jetstream.ConsumerConfig{
-		Durable:        target.Name(),
-		DeliverPolicy:  policy,
-		OptStartTime:   target.Start.at,
-		AckPolicy:      jetstream.AckExplicitPolicy,
-		MaxAckPending:  1,
-		FilterSubjects: target.Subjects,
-	}
+	var config jetstream.ConsumerConfig
+	config.Durable = target.Name()
+	config.DeliverPolicy = policy
+	config.OptStartTime = target.Start.at
+	config.AckPolicy = jetstream.AckExplicitPolicy
+	config.MaxAckPending = 1
+	config.FilterSubjects = target.Subjects
+
+	return config
 }
 
 func (r *runner) runTarget(ctx context.Context, target runnerTarget, consumer jetstream.Consumer) {
@@ -139,7 +139,6 @@ func (r *runner) runTarget(ctx context.Context, target runnerTarget, consumer je
 
 func (r *runner) checkGap(ctx context.Context, name string, lastAck, lastGap uint64) uint64 {
 	// On an info error the last known first sequence still provides a lower bound.
-	//nolint:errcheck // CachedInfo retains the last successful response.
 	_, _ = r.stream.Info(ctx)
 
 	first := r.stream.CachedInfo().State.FirstSeq
@@ -154,14 +153,13 @@ func (r *runner) checkGap(ctx context.Context, name string, lastAck, lastGap uin
 }
 
 func (r *runner) deliver(ctx context.Context, target runnerTarget, message jetstream.Msg, lastAck uint64) uint64 {
-	//nolint:errcheck // Embedded JetStream supplies the acknowledgment metadata.
 	meta, _ := message.Metadata()
 	event := Event{Seq: meta.Sequence.Stream, Envelope: message.Data()}
 	err := deliverEvent(ctx, target, event)
 
 	if err != nil && !errors.Is(err, ErrPermanent) {
 		delay := retryDelay(cmp.Or(r.retryBase, time.Second), meta.NumDelivered)
-		//nolint:errcheck // JetStream redelivers at AckWait if the negative ack is lost.
+
 		_ = message.NakWithDelay(delay)
 
 		return lastAck
@@ -190,7 +188,6 @@ func (r *runner) deliver(ctx context.Context, target runnerTarget, message jetst
 	return event.Seq
 }
 
-//nolint:wrapcheck // The hook receives the target's original delivery error.
 func deliverEvent(ctx context.Context, target Target, event Event) (err error) {
 	defer func() {
 		if recover() != nil {

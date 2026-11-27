@@ -41,15 +41,15 @@ type eventStore struct {
 }
 
 func storeOptions(storeDir string) *server.Options {
-	//nolint:exhaustruct_v5 // The embedded server uses NATS defaults for the other options.
-	return &server.Options{
-		JetStream:  true,
-		StoreDir:   storeDir,
-		DontListen: true,
-		NoSigs:     true,
-		SyncAlways: true,
-		MaxPayload: maxPayload,
-	}
+	var options server.Options
+	options.JetStream = true
+	options.StoreDir = storeDir
+	options.DontListen = true
+	options.NoSigs = true
+	options.SyncAlways = true
+	options.MaxPayload = maxPayload
+
+	return &options
 }
 
 func openStore(ctx context.Context, options *server.Options, maxAge time.Duration) (eventStore, func(), error) {
@@ -129,18 +129,17 @@ func openStream(
 		embedded.Shutdown()
 	}
 
-	//nolint:errcheck // JetStream New only returns errors from options.
 	jet, _ := jetstream.New(conn)
 
-	//nolint:exhaustruct_v5 // The stream uses JetStream defaults for the other options.
-	stream, err := jet.CreateOrUpdateStream(ctx, jetstream.StreamConfig{
-		Name:       streamName,
-		Subjects:   []string{"events.>"},
-		Storage:    jetstream.FileStorage,
-		Replicas:   1,
-		MaxAge:     maxAge,
-		Duplicates: maxAge,
-	})
+	var config jetstream.StreamConfig
+	config.Name = streamName
+	config.Subjects = []string{"events.>"}
+	config.Storage = jetstream.FileStorage
+	config.Replicas = 1
+	config.MaxAge = maxAge
+	config.Duplicates = maxAge
+
+	stream, err := jet.CreateOrUpdateStream(ctx, config)
 	if err != nil {
 		closeStore()
 

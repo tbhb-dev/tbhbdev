@@ -41,11 +41,11 @@ func newTelemetry(handler slog.Handler, tracer trace.TracerProvider, meter metri
 	}
 
 	signals := meter.Meter(serviceName)
-	//nolint:errcheck // The counter names are valid, fixed instrument names.
+
 	ingest, _ := signals.Int64Counter("event_gateway_ingest_total")
-	//nolint:errcheck // The counter name is a valid, fixed instrument name.
+
 	parked, _ := signals.Int64Counter("event_gateway_parked_total")
-	//nolint:errcheck // The counter name is a valid, fixed instrument name.
+
 	parkFailed, _ := signals.Int64Counter("event_gateway_park_publish_failed_total")
 
 	return telemetry{

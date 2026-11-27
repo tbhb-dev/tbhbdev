@@ -26,7 +26,6 @@ type readTokens struct {
 	path string
 }
 
-//nolint:wrapcheck // Callers can report the token file read error directly.
 func (tokens *readTokens) load() error {
 	data, err := os.ReadFile(tokens.path)
 	if err != nil {
@@ -46,7 +45,6 @@ func (tokens *readTokens) load() error {
 			return errTokenFormat
 		}
 
-		//nolint:errcheck // The pattern guarantees exactly 32 encoded bytes.
 		hash, _ := hex.DecodeString(entry[2])
 		set[[sha256.Size]byte(hash)] = entry[1]
 	}

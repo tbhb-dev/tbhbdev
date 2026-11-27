@@ -221,10 +221,9 @@ func (state mcpState) write(subs []filter.Subscription, cursor *uint64) bool {
 		Subscriptions []filter.Subscription `json:"subscriptions"`
 		Version       int                   `json:"version"`
 	}{Version: mcpStateVersion, Subscriptions: subs, Cursor: cursor}
-	//nolint:errcheck,errchkjson // The state contains only integers, strings and slices of those types.
+
 	data, _ := json.Marshal(saved)
 
-	//nolint:errcheck // Opening the root checks whether directory creation succeeded.
 	_ = os.MkdirAll(state.dir, mcpStateDirMode)
 
 	root, err := os.OpenRoot(state.dir)
@@ -234,7 +233,7 @@ func (state mcpState) write(subs []filter.Subscription, cursor *uint64) bool {
 	defer root.Close()
 
 	dir := filepath.Dir(state.file)
-	//nolint:errcheck // Creating the temp file checks whether directory creation succeeded.
+
 	_ = root.MkdirAll(dir, mcpStateDirMode)
 	temp := filepath.Join(dir, "subscriptions-"+rand.Text())
 
@@ -260,7 +259,6 @@ func replaceMCPState(
 		return true
 	}
 
-	//nolint:errcheck // Cleanup is best effort after a failed write.
 	_ = root.Remove(temp)
 
 	return false

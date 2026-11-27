@@ -96,19 +96,13 @@ linters:
         - switch
         - mapliteral
 
-    # Match duplicate blocks of 30 tokens.
+    # Strict threshold: 30, while the default of 150 tokens only catches blatant copies.
     dupl:
       threshold: 30
 
-    # Third-party option structs are built with a few fields by design, and
-    # the pattern matches the full path, so each one used is listed here.
-    exhaustruct_v5:
-      ignore-patterns:
-        - 'github\.com/spf13/cobra\.Command$'
-
     funlen:
-      lines: 100
-      statements: 50
+      lines: 60
+      statements: 40
 
     gochecksumtype:
       default-signifies-exhaustive: false
@@ -191,7 +185,11 @@ linters:
       os-temp-dir: true
 
   exclusions:
-    warn-unused: true
-    presets:
-      - std-error-handling
-      - common-false-positives
+    rules:
+      # Preserve the standalone policy for known errcheck false positives.
+      # Every imported Go file still goes through the linter.
+      - path: ^(cmd|internal)/
+        linters: [errcheck]
+        text: >-
+          (?i)Error return value of
+          .((os\.)?std(out|err)\..*|.*Close|.*Flush|os\.Remove(All)?|.*print(f|ln)?|os\.(Un)?Setenv). is not checked

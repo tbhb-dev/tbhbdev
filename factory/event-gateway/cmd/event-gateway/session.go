@@ -50,8 +50,7 @@ type sessionAPI struct {
 }
 
 func newSessionAPI(api readAPI, wait time.Duration) *sessionAPI {
-	//nolint:exhaustruct_v5 // The connection wait group starts empty.
-	return &sessionAPI{readAPI: api, stop: make(chan struct{}), helloWait: wait}
+	return &sessionAPI{active: sync.WaitGroup{}, readAPI: api, stop: make(chan struct{}), helloWait: wait}
 }
 
 func (api *sessionAPI) connect(writer http.ResponseWriter, req *http.Request) {
@@ -75,8 +74,20 @@ func (api *sessionAPI) connect(writer http.ResponseWriter, req *http.Request) {
 	default:
 		api.active.Add(1)
 		defer api.active.Done()
-		//nolint:exhaustruct_v5 // Keep the default origin checks.
-		conn, err := websocket.Accept(writer, req, &websocket.AcceptOptions{Subprotocols: []string{sessionProtocol}})
+
+		conn, err := websocket.Accept(
+			writer,
+			req,
+			&websocket.AcceptOptions{
+				InsecureSkipVerify:   false,
+				OriginPatterns:       nil,
+				CompressionMode:      0,
+				CompressionThreshold: 0,
+				OnPingReceived:       nil,
+				OnPongReceived:       nil,
+				Subprotocols:         []string{sessionProtocol},
+			},
+		)
 		if err != nil {
 			return
 		}
@@ -130,7 +141,6 @@ func readSession(ctx context.Context, conn *websocket.Conn, frames chan<- sessio
 	}
 }
 
-//nolint:gocognit // The select serializes commands, lifecycle signals and event writes.
 func (api *sessionAPI) run(ctx context.Context, peer *session, hash [sha256.Size]byte) (websocket.StatusCode, string) {
 	ctx, cancel := context.WithCancel(context.WithoutCancel(ctx))
 	defer cancel()
@@ -214,10 +224,9 @@ func (s *session) command(ctx context.Context, frame sessionFrame, waiting bool)
 	return reply
 }
 
-//nolint:ireturn // The caller chooses the concrete JSON type.
 func sessionJSON[T any](raw json.RawMessage) T {
 	var value T
-	//nolint:errcheck // The command's scalar and raw JSON fields decode to zero on invalid input.
+
 	_ = json.Unmarshal(raw, &value)
 
 	return value
@@ -258,8 +267,11 @@ func (s *session) hello(ctx context.Context, object sessionObject) sessionReply 
 	for _, item := range raw {
 		sub, err := filter.Parse(item)
 		if err != nil {
-			//nolint:errcheck,errorlint,forcetypeassert // filter.Parse returns only unwrapped protocol errors.
-			failure := err.(*filter.Error)
+			failure := func() *filter.Error {
+				target := &filter.Error{Code: "", Message: ""}
+				_ = errors.As(err, &target)
+				return target
+			}()
 
 			return errorReply(failure.Code, failure.Message)
 		}
@@ -298,7 +310,6 @@ func (s *session) importError(object sessionObject) sessionReply {
 }
 
 func (s *session) consume(ctx context.Context, resume *uint64, importing bool) bool {
-	//nolint:exhaustruct_v5 // Use the default ordered consumer configuration.
 	config := jetstream.OrderedConsumerConfig{
 		DeliverPolicy: jetstream.DeliverNewPolicy, InactiveThreshold: shutdownTimeout, MaxResetAttempts: 1,
 	}
@@ -378,7 +389,7 @@ func (s *session) deliver(ctx context.Context, message jetstream.Msg) error {
 
 	meta, err := message.Metadata()
 	if err != nil {
-		return err //nolint:wrapcheck // The run loop converts delivery errors into the protocol close status.
+		return err
 	}
 
 	var replies []any
@@ -440,13 +451,11 @@ func (s *session) caughtUp() sessionReply {
 	return sessionReply{typeKey: "caught_up", "seq": last}
 }
 
-//nolint:wrapcheck // The run loop converts write errors into the protocol close status.
 func (s *session) write(ctx context.Context, replies ...any) error {
 	ctx, cancel := context.WithTimeout(ctx, time.Second)
 	defer cancel()
 
 	for _, reply := range replies {
-		//nolint:errcheck,errchkjson // Replies and stored envelopes contain only JSON values.
 		data, _ := json.Marshal(reply)
 
 		err := s.conn.Write(ctx, websocket.MessageText, data)

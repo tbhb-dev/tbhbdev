@@ -25,7 +25,6 @@ import (
 // SDKClient delivers event references through the Temporal SDK.
 type SDKClient struct{ client sdk.Client }
 
-//nolint:gochecknoglobals // Tests replace the SDK dialer with a fake.
 var dialSDK = sdk.Dial
 
 // Dial connects to Temporal using the parsed connection settings.
@@ -53,7 +52,7 @@ func (a *SDKClient) Close() { a.client.Close() }
 
 func (files *TLSFiles) config() (*tls.Config, error) {
 	if files == nil {
-		return nil, nil //nolint:nilnil // The SDK uses a nil configuration for plaintext.
+		return nil, nil
 	}
 
 	config := new(tls.Config)

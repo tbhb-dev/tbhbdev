@@ -221,7 +221,7 @@ func compileMatch(rule *Rule, raw json.RawMessage) error {
 
 	for _, event := range events {
 		object["event"] = json.RawMessage(`"` + event + `"`)
-		//nolint:errcheck,errchkjson // Every value is valid raw JSON.
+
 		data, _ := json.Marshal(object)
 
 		subscription, parseErr := filter.Parse(data)
@@ -265,7 +265,6 @@ func readObject(raw []byte, keys ...string) (map[string]json.RawMessage, error) 
 	return object, nil
 }
 
-//nolint:ireturn // Callers select the concrete JSON type.
 func decode[T any](raw json.RawMessage) T {
 	var value, zero T
 

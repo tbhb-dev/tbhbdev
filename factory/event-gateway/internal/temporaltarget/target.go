@@ -51,12 +51,9 @@ type SignalRequest struct {
 }
 
 // SignalWithStartRequest starts a workflow if needed and signals it with the same input.
-//
-//nolint:govet // Keep the embedded request before ordinary fields.
 type SignalWithStartRequest struct {
-	StartRequest
-
 	SignalName string
+	StartRequest
 }
 
 // Client is the Temporal adapter. Start uses the use-existing conflict policy.
@@ -132,10 +129,9 @@ func (t *Target) Act(ctx context.Context, rule routing.Rule, fields eventfields.
 
 func reference(fields *eventfields.Fields, envelope []byte, rule, target string) []byte {
 	var metadata struct {
-		//nolint:tagliatelle // Match the envelope's wire key.
 		ReceivedAt string `json:"received_at"`
 	}
-	//nolint:errcheck // Missing or invalid timestamps leave the string empty.
+
 	_ = json.Unmarshal(envelope, &metadata)
 	value := func(name string, field any) any {
 		if fields.Has(name) {
@@ -145,7 +141,7 @@ func reference(fields *eventfields.Fields, envelope []byte, rule, target string)
 		return nil
 	}
 	repository := value("repository", fields.Repository)
-	//nolint:errcheck,errchkjson // Every value is a JSON scalar or a map of scalars.
+
 	input, _ := json.Marshal(map[string]any{
 		"seq": fields.Seq, "provider": fields.Provider, "event": fields.Event, "delivery": fields.Delivery,
 		"repository": repository, "received_at": metadata.ReceivedAt, "rule": rule, "target": target,
@@ -182,7 +178,7 @@ func readObject(raw json.RawMessage, keys ...string) map[string]json.RawMessage 
 
 func readString(raw json.RawMessage) string {
 	var value string
-	//nolint:errcheck // Missing or invalid strings become empty and fail validation.
+
 	_ = json.Unmarshal(raw, &value)
 
 	return value

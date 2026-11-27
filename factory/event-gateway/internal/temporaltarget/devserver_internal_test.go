@@ -3,7 +3,6 @@
 
 // cspell:words devserver eventfields runfile runfiles serviceerror temporaltarget
 
-//nolint:exhaustruct_v5 // Fixtures use SDK defaults for unrelated options.
 package temporaltarget
 
 import (
@@ -58,7 +57,6 @@ func temporalCLI(t *testing.T) string {
 		return filepath.Join(dir, filepath.FromSlash(key))
 	}
 
-	//nolint:gosec // Bazel supplies the path to its runfiles manifest.
 	data, err := os.ReadFile(manifest)
 	devCheck(t, err)
 
@@ -101,7 +99,7 @@ func startDevServer(t *testing.T) (*SDKClient, func()) {
 
 	// Cleanup stops the worker before killing the server.
 	processCtx := context.WithoutCancel(t.Context())
-	//nolint:gosec // The executable is the pinned Bazel runfile.
+
 	cmd := exec.CommandContext(processCtx, temporalCLI(t), "server", "start-dev",
 		"--ip", host, "--port", port, "--headless", "--log-level", "error", "--namespace", devNamespace)
 
@@ -194,7 +192,16 @@ func actOnDevServer(ctx context.Context, t *testing.T, adapter *SDKClient, deliv
 	t.Helper()
 
 	rule := routing.Rule{Name: "dev-rule", Action: json.RawMessage(action)}
-	target, err := New(routing.Target{Name: "dev-target", Type: "temporal", Rules: []routing.Rule{rule}}, adapter)
+	target, err := New(
+		routing.Target{
+			Start:      routing.Start{},
+			Connection: nil,
+			Name:       "dev-target",
+			Type:       "temporal",
+			Rules:      []routing.Rule{rule},
+		},
+		adapter,
+	)
 	devCheck(t, err)
 
 	const event = `{"provider":"github","event":"issues","delivery":%q,"payload":{"secret":"omit-me"}}`
@@ -221,7 +228,10 @@ func TestTemporalDevServer(t *testing.T) {
 
 	adapter, _ := startDevServer(t)
 	poller := worker.New(adapter.client, devQueue, worker.Options{})
-	poller.RegisterWorkflowWithOptions(waitForEvent, workflow.RegisterOptions{Name: devWorkflow})
+	poller.RegisterWorkflowWithOptions(
+		waitForEvent,
+		workflow.RegisterOptions{DisableAlreadyRegisteredCheck: false, VersioningBehavior: 0, Name: devWorkflow},
+	)
 	devCheck(t, poller.Start())
 	t.Cleanup(poller.Stop)
 
@@ -280,7 +290,6 @@ type startObserver struct {
 	flag bool
 }
 
-//nolint:ireturn // Match the SDK client interface.
 func (o *startObserver) ExecuteWorkflow(
 	ctx context.Context, options sdk.StartWorkflowOptions, name any, args ...any,
 ) (sdk.WorkflowRun, error) {
@@ -334,7 +343,7 @@ func checkDevRepeat(t *testing.T, rpc sdk.Client, workflowID string, testCase re
 	ctx, cancel := context.WithTimeout(t.Context(), 20*time.Second)
 	defer cancel()
 
-	observer := &startObserver{Client: rpc, flag: testCase.flag}
+	observer := &startObserver{run: nil, err: nil, Client: rpc, flag: testCase.flag}
 	adapter := &SDKClient{client: observer}
 	action := devStart + strconv.Quote(testCase.policy) + "}"
 	devCheck(t, actOnDevServer(ctx, t, adapter, workflowID, action, 1))

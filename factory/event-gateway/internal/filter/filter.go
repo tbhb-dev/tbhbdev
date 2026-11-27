@@ -20,7 +20,7 @@ type Subscription struct {
 	Action     []string `json:"action,omitempty"`
 	Conclusion []string `json:"conclusion,omitempty"`
 	Name       string   `json:"name,omitempty"`
-	//nolint:tagliatelle // The protocol uses workflow_path on the wire.
+
 	WorkflowPath string   `json:"workflow_path,omitempty"`
 	Number       []int64  `json:"number,omitempty"`
 	Label        []string `json:"label,omitempty"`
@@ -187,7 +187,6 @@ func listReader[T cmp.Ordered](target *[]T, valid func(T) bool) func(json.RawMes
 	}
 }
 
-//nolint:ireturn // Callers choose the concrete JSON value type.
 func decode[T any](raw json.RawMessage) T {
 	var value, zero T
 
