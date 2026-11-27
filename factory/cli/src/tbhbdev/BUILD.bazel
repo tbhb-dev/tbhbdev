@@ -64,7 +64,6 @@ cli_py_library(
         ":adr",
         ":agy",
         ":cue_runtime",
-        ":host",
         ":issue",
         ":plugins",
         ":secret",
@@ -136,19 +135,6 @@ cli_py_library(
     imports = [".."],
     visibility = ["//factory/cli:__subpackages__"],
     deps = ["//factory/cli/src/tbhbdev/alpha:secret_scan"],
-)
-
-cli_py_library(
-    name = "host",
-    srcs = ["host.py"],
-    imports = [".."],
-    visibility = ["//factory/cli:__subpackages__"],
-    deps = [
-        ":gh_agent",
-        ":runner",
-        ":secrets",
-        ":userconfig",
-    ],
 )
 
 cli_py_library(
