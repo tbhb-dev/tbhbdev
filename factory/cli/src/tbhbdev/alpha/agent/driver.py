@@ -496,16 +496,14 @@ def checked_prompt(args: argparse.Namespace) -> str:
         raise Invalid(message)
     pinned_refs = (args.ref,) if args.ref and args.ref.startswith("refs/") else ()
     available_refs = [*args.fetch_ref, *pinned_refs]
-    problems = brief.check_hooks(prompt)
-    problems.extend(
-        rules.prompt_launch_problems(
-            prompt,
-            Profile(args.profile),
-            available_refs,
-            args.start_ref,
-            run=args.name,
-            is_file=lambda target: Path(target).is_file(),
-        )
+    profile = Profile(args.profile)
+    build_branch = f"agent/{args.name}" if profile is Profile.BUILD else None
+    problems = brief.check_hooks(prompt) + rules.prompt_launch_problems(
+        prompt,
+        available_refs,
+        args.start_ref,
+        build_branch=build_branch,
+        is_file=lambda target: Path(target).is_file(),
     )
     if problems:
         telemetry.attributes(**{"tbhb.agent.outcome": "refused"})
@@ -519,18 +517,8 @@ def checked_prompt(args: argparse.Namespace) -> str:
         ignored_refs=(*pinned_refs, *malformed_refs),
     ):
         print(f"warning: {args.prompt_file}: {warning}", file=sys.stderr)
-    for ref in malformed_refs:
-        print(
-            f"warning: {args.prompt_file}: malformed ref {ref!r} in the prompt",
-            file=sys.stderr,
-        )
-    for ref in rules.unfetched_prompt_refs(prompt, available_refs):
-        print(
-            f"warning: {args.prompt_file}: the prompt names {ref} but this launch "
-            f"has no --fetch-ref {ref}; "
-            "a run whose mirror lacks it may end with no work",
-            file=sys.stderr,
-        )
+    for warning in rules.prompt_ref_warnings(prompt, available_refs, malformed_refs):
+        print(f"warning: {args.prompt_file}: {warning}", file=sys.stderr)
     return prompt
 
 

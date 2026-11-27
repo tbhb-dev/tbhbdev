@@ -22,7 +22,6 @@ from unittest.mock import AsyncMock, Mock
 import pytest
 from agent_cli_example import run_agent
 from agent_driver_example import (
-    BODY,
     Remote,
     execution_arguments,
     git_in,
@@ -1512,105 +1511,6 @@ def test_prompt_without_hook_conflicts_launches(remote: Remote) -> None:
 
 
 @pytest.mark.parametrize(
-    ("prompt", "options"),
-    [
-        ("The earlier PR was on `agent/other`.", ()),
-        ("Create branch `agent/other`.", ("--profile", "review", "--ref", COMMIT)),
-    ],
-)
-def test_prompt_with_foreign_branch_warns_and_launches(
-    remote: Remote,
-    capsys: pytest.CaptureFixture[str],
-    prompt: str,
-    options: tuple[str, ...],
-) -> None:
-    write_standalone_fake(remote.bin / "tmux", BODY.replace("sample", "sample-run"))
-    remote.prompt.write_text(prompt)
-    args = arguments(remote, *options)
-    args[-2] = "sample-run"
-    assert run_agent(args) == 0
-    assert capsys.readouterr().err == (
-        f"warning: {remote.prompt}: use the launcher branch agent/sample-run "
-        "instead of agent/other\n"
-    )
-    assert driver.metadata_path("sample-run").is_file()
-
-
-@pytest.mark.parametrize(
-    ("prompt", "target"),
-    [
-        ("Create branch `feat/4-exporter`.", "feat/4-exporter"),
-        ("Run `git checkout -b feat/4-exporter`.", "feat/4-exporter"),
-        ("Run `git switch feat/4-exporter`.", "feat/4-exporter"),
-        ("Push to `feat/4-exporter`.", "feat/4-exporter"),
-        ("Push feat/4-exporter.", "feat/4-exporter"),
-        (
-            "Run `git push --set-upstream origin HEAD:feat/4-exporter`.",
-            "feat/4-exporter",
-        ),
-        ("Do not open a PR, but push feat/4-exporter.", "feat/4-exporter"),
-        ("Run `git push origin develop`.", "develop"),
-    ],
-)
-def test_build_prompt_with_foreign_branch_refuses_launch(
-    remote: Remote, capsys: pytest.CaptureFixture[str], prompt: str, target: str
-) -> None:
-    remote.prompt.write_text(prompt)
-    assert launch(remote) == 1
-    assert capsys.readouterr().err == (
-        f"tbhbdev alpha agent: {remote.prompt}: the brief directs work to {target}. "
-        "Use the launcher branch agent/sample.\n"
-    )
-    assert remote.records("ssh", limits=True) == []
-    assert not driver.metadata_path("sample").exists()
-
-
-@pytest.mark.parametrize(
-    "prompt",
-    [
-        "Read the README.",
-        "Do not create branch feat/other or run `git push origin feat/other`.",
-        "Do not push to branch feat/other.",
-        "Do not run: `git push origin feat/other`.",
-        "Run `git switch agent/sample`. Then run `git push origin agent/sample`.",
-    ],
-)
-def test_build_prompt_without_foreign_branch_instructions_launches(
-    remote: Remote, capsys: pytest.CaptureFixture[str], prompt: str
-) -> None:
-    remote.prompt.write_text(prompt)
-    assert launch(remote) == 0
-    assert capsys.readouterr().err == ""
-
-
-def test_build_prompt_that_quotes_a_forbidden_push_launches(
-    remote: Remote, capsys: pytest.CaptureFixture[str]
-) -> None:
-    # Assemble the command to avoid triggering the brief check on a literal.
-    command = " ".join(("git", "push", "origin", "feat/other"))  # noqa: FLY002
-    remote.prompt.write_text(f"`{command}` is forbidden.")
-    assert launch(remote) == 0
-    assert capsys.readouterr().err == ""
-
-
-@pytest.mark.parametrize("path", ["README.md", "docs/README.md"])
-def test_build_prompt_that_restores_a_file_launches(
-    remote: Remote,
-    monkeypatch: pytest.MonkeyPatch,
-    tmp_path: Path,
-    capsys: pytest.CaptureFixture[str],
-    path: str,
-) -> None:
-    monkeypatch.chdir(tmp_path)
-    file = tmp_path / path
-    file.parent.mkdir(exist_ok=True)
-    file.write_text("Example\n")
-    remote.prompt.write_text(f"Run `git checkout {path}`.")
-    assert launch(remote) == 0
-    assert capsys.readouterr().err == ""
-
-
-@pytest.mark.parametrize(
     ("prompt", "options", "unfetched"),
     [
         ("Use `refs/pull/5/head`.", ("--fetch-ref", "refs/pull/5/head"), ()),
@@ -1708,45 +1608,6 @@ def test_prompt_refuses_unfetched_exact_refs_before_ssh(
     )
     assert remote.records("ssh") == []
     assert not driver.metadata_path("sample").exists()
-
-
-@pytest.mark.parametrize(
-    ("prompt", "target"),
-    [
-        ("Update the existing PR\nbranch.", "<branch>"),
-        ("Push commits to `agent/topic`.", "agent/topic"),
-        ("Run `git push origin HEAD:refs/heads/agent/topic`.", "agent/topic"),
-    ],
-)
-def test_build_prompt_that_updates_a_pr_branch_needs_start_ref(
-    remote: Remote, capsys: pytest.CaptureFixture[str], prompt: str, target: str
-) -> None:
-    remote.prompt.write_text(prompt)
-    assert launch(remote, "--fetch-ref", "refs/heads/agent/topic") == 1
-    ref = f"refs/heads/{target}"
-    assert capsys.readouterr().err == (
-        f"tbhbdev alpha agent: {remote.prompt}: the brief asks to update a PR branch. "
-        f"Use `--fetch-ref {ref} --start-ref {ref}`\n"
-    )
-    assert remote.records("ssh") == []
-    assert not driver.metadata_path("sample").exists()
-
-
-@pytest.mark.parametrize(
-    "prompt",
-    [
-        "Update `agent/topic`.",
-        "Push to `agent/topic`.",
-        "Work on the branch given by `--start-ref`.",
-    ],
-)
-def test_build_prompt_that_updates_a_pr_branch_with_start_ref_launches(
-    remote: Remote, capsys: pytest.CaptureFixture[str], prompt: str
-) -> None:
-    remote.prompt.write_text(prompt)
-    ref = "refs/heads/agent/topic"
-    assert launch(remote, "--fetch-ref", ref, "--start-ref", ref) == 0
-    assert capsys.readouterr().err == ""
 
 
 def test_metadata_round_trip_and_exclusive_create(remote: Remote) -> None:

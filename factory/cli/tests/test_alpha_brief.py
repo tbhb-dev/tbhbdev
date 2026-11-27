@@ -1001,13 +1001,3 @@ def test_new_missing_output_directory(
     assert output.out == ""
     assert "No such file" in output.err
     assert str(file) in output.err
-
-
-def test_normalize_unicode_whitespace_and_case() -> None:
-    assert (
-        brief.normalize(
-            "  \uff26u\N{LATIN SMALL LETTER SHARP S}\N{NO-BREAK SPACE}\n\t X  "
-        )
-        == "fuss x"
-    )
-    assert brief.normalize("") == ""

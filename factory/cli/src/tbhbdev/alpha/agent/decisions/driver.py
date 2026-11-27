@@ -10,6 +10,7 @@ from typing import TYPE_CHECKING
 from tbhbdev.alpha import brief
 from tbhbdev.alpha.agent.decisions import config, request
 from tbhbdev.alpha.agent.model import NAME, Harness, Invalid, Profile, RunKind
+from tbhbdev.alpha.brief_text import PROSE_BREAK, prohibiting
 from tbhbdev.alpha.identity import models as identity
 
 if TYPE_CHECKING:
@@ -47,13 +48,18 @@ _PUSH_PROSE = re.compile(
 )
 
 
-def unfetched_prompt_refs(prompt: str, fetch_refs: list[str]) -> list[str]:
-    """Return valid refs missing from the fetch list in order of first mention."""
-    return [
-        ref
+def prompt_ref_warnings(
+    prompt: str, fetch_refs: list[str], malformed_refs: tuple[str, ...]
+) -> list[str]:
+    """Report malformed refs and valid refs missing from the fetch list."""
+    warnings = [f"malformed ref {ref!r} in the prompt" for ref in malformed_refs]
+    warnings.extend(
+        f"the prompt names {ref} but this launch has no --fetch-ref {ref}; "
+        "a run whose mirror lacks it may end with no work"
         for ref in dict.fromkeys(_PROMPT_REF.findall(prompt))
         if ref not in fetch_refs and request.valid_fetch_ref(ref)
-    ]
+    )
+    return warnings
 
 
 def malformed_prompt_refs(prompt: str) -> tuple[str, ...]:
@@ -69,14 +75,14 @@ def _instructions(pattern: re.Pattern[str], prose: str) -> list[str | None]:
     return [
         match[1]
         for match in pattern.finditer(prose)
-        if not brief.prohibiting(prose, *match.span())
+        if not prohibiting(prose, *match.span())
     ]
 
 
 def _prose_push_targets(prompt: str) -> list[str]:
     return [
         target
-        for block in brief.PROSE_BREAK.split(prompt)
+        for block in PROSE_BREAK.split(prompt)
         for target in _instructions(_PUSH_PROSE, block)
         if target and brief.looks_like_branch(target)
     ]
@@ -133,20 +139,17 @@ def _wrong_build_branches(
     ]
 
 
-def prompt_launch_problems(  # noqa: PLR0913 -- Keep the file lookup explicit.
+def prompt_launch_problems(
     prompt: str,
-    profile: Profile,
     fetch_refs: list[str],
     start_ref: str | None,
     *,
-    run: str,
+    build_branch: str | None,
     is_file: Callable[[str], bool],
 ) -> list[str]:
     """Check explicit ref uses and branch update instructions in a launch brief."""
     # Fold line wraps within a paragraph without changing ref case.
-    prose = "\n".join(
-        " ".join(block.split()) for block in brief.PROSE_BREAK.split(prompt)
-    )
+    prose = "\n".join(" ".join(block.split()) for block in PROSE_BREAK.split(prompt))
     updates = [
         target
         for target in _instructions(_UPDATE, prose)
@@ -154,19 +157,18 @@ def prompt_launch_problems(  # noqa: PLR0913 -- Keep the file lookup explicit.
         or request.valid_fetch_ref(f"refs/heads/{target.removeprefix('refs/heads/')}")
     ]
     named_refs = _instructions(_REF_USE, prose) + updates
-    branch = f"agent/{run}"
-    if profile is Profile.BUILD:
-        own_refs = (branch, f"refs/heads/{branch}")
+    if build_branch is not None:
+        own_refs = (build_branch, f"refs/heads/{build_branch}")
         updates = [ref for ref in updates if ref not in own_refs]
         fetch_refs = [*fetch_refs, own_refs[1]]
     problems = [
         f"the brief names {ref}. Add `--fetch-ref {ref}`"
         for ref in _unfetched_explicit_refs(prompt, named_refs, fetch_refs)
     ]
-    if profile is not Profile.BUILD:
+    if build_branch is None:
         return problems
     problems.extend(
-        _wrong_build_branches(prompt, branch, start_ref, updates, is_file=is_file)
+        _wrong_build_branches(prompt, build_branch, start_ref, updates, is_file=is_file)
     )
     if start_ref is None and updates:
         target = updates[0] or "<branch>"

@@ -49,6 +49,7 @@ cli_py_library(
         ":config",
         ":request",
         "//factory/cli/src/tbhbdev/alpha:brief",
+        "//factory/cli/src/tbhbdev/alpha:brief_text",
         "//factory/cli/src/tbhbdev/alpha/agent:model",
         "//factory/cli/src/tbhbdev/alpha/identity:models",
     ],

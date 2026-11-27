@@ -11,6 +11,8 @@ import unicodedata
 from collections import defaultdict
 from pathlib import Path
 
+from tbhbdev.alpha.brief_text import PROSE_BREAK, normalize, prohibiting
+
 HOOK_RULE = (
     "Never run `prek install`, `pre-commit install`, `tbhbdev alpha install`, "
     "or any other hook installer."
@@ -86,19 +88,6 @@ FORBIDDEN_REGEX = (
 COMMAND_ARGS = r"[^`\n;&|]*"
 ARG_END = r"(?=$|[ \n`;&|\"'(),]|\.(?=$|[ \n]))"
 TRAILER = r"(?:generated-by|assisted-by)"
-NEGATION = re.compile(
-    r"(?<![\w-])(?:never|no|not|don['\u2019]t|without|avoid|forbidden)\b"
-)
-TRAILING_PROHIBITION = re.compile(
-    r"[ \t`\"')]*(?:(?:is|are) (?:forbidden|prohibited|not allowed)"
-    r"|(?:must|should) (?:not|never))\b",
-    re.IGNORECASE,
-)
-CLAUSE_END = re.compile(r"\bbut\b|[.;\n]", re.IGNORECASE)
-PROSE_BREAK = re.compile(r"\n(?=\n|[#>]|```|~~~|[-*+] |\d+[.)] )")
-OTHER_TRAILER_OMISSION = re.compile(
-    r"\b(?:no|without) (?:an? |the )?[`\"']?(?:signed-off-by|co-authored-by)[`\"']?,"
-)
 COMMAND_CONFLICTS = (
     (
         (
@@ -166,20 +155,6 @@ BUILD_HEADING = "## Build"
 FIX_HEADING = "## Fix"
 EXPECTED_SIZE = "Expected size (code lines)"
 FAILING_LINE = "Failing file and line"
-
-
-def normalize(text: str) -> str:
-    """Fold Unicode, whitespace and case for every textual comparison."""
-    return " ".join(unicodedata.normalize("NFKC", text).split()).casefold()
-
-
-def prohibiting(text: str, start: int, end: int | None = None) -> bool:
-    """Look for a prohibition before the instruction or immediately after it."""
-    clause = CLAUSE_END.split(text[:start])[-1]
-    clause = OTHER_TRAILER_OMISSION.sub("", normalize(clause))
-    return NEGATION.search(clause) is not None or (
-        end is not None and TRAILING_PROHIBITION.match(text, end) is not None
-    )
 
 
 def check_hooks(text: str) -> list[str]:

@@ -15,6 +15,7 @@ cli_py_library(
     srcs = ["brief.py"],
     imports = ["../.."],
     visibility = ["//factory/cli:__subpackages__"],
+    deps = [":brief_text"],
 )
 
 cli_py_library(
@@ -596,4 +597,11 @@ cli_py_library(
         ":guard_gh_pr",
         ":repo",
     ],
+)
+
+cli_py_library(
+    name = "brief_text",
+    srcs = ["brief_text.py"],
+    imports = ["../.."],
+    visibility = ["//factory/cli:__subpackages__"],
 )
