@@ -184,6 +184,16 @@ fetch_count=$(wc -l <"$LOG" | tr -d ' ')
 [[ $fetch_count == 2 ]]
 sleep_delays=$(cat "$SLEEP_LOG")
 [[ $sleep_delays == 1 ]]
+# A TLS handshake timeout from a Go repository fetch is also transient.
+: >"$LOG"
+: >"$SLEEP_LOG"
+now=$(date +%s)
+FETCH_FAILURE=download-once BUDGET=1 DEADLINE=$((now + 60)) \
+  DOWNLOAD_ERROR='Error in fail: fetch_repo: Get "https://...": net/http: TLS handshake timeout' \
+  bash "$script"
+fetch_count=$(wc -l <"$LOG" | tr -d ' ')
+sleep_delays=$(cat "$SLEEP_LOG")
+[[ $fetch_count == 2 && $sleep_delays == 1 ]]
 # Bazelisk can fail to download Bazel before the fetch command starts.
 : >"$LOG"
 : >"$SLEEP_LOG"

@@ -15,10 +15,11 @@ import pytest
 from hypothesis import given
 from hypothesis import strategies as st
 
-from tbhbdev.alpha import close, command, pull_request
+from tbhbdev.alpha import close, command
 from tbhbdev.alpha.guard.gh_pr import command as hook
 from tbhbdev.alpha.guard.gh_pr import decision as guard
 from tbhbdev.alpha.merge import options as squash_merge
+from tbhbdev.alpha.pull_request.arguments import build_parser as pr_parser
 
 DATA = Path(__file__).parents[4] / "testdata" / "alpha"
 
@@ -338,9 +339,7 @@ def test_every_hinted_command_line_parses_with_the_real_cli(command: str) -> Non
         elif words[:2] in (["pr", "close"], ["issue", "close"]):
             close.build_parser("x").parse_args(words)
         else:
-            pull_request.build_parser("x").parse_args(
-                words[1:] if words[0] == "pr" else words
-            )
+            pr_parser("x").parse_args(words[1:] if words[0] == "pr" else words)
 
 
 def test_cli_dispatches_guard_gh_pr(

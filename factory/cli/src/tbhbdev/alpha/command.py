@@ -65,7 +65,6 @@ commands:
   gh-shim      budget gh calls made by agent sessions and their scripts
   agent-env    launch a harness with the gh shim first on PATH
   pr           check | create | edit | hook: the pull request draft
-               | backfill-opened OWNER: the opened ledgers
                | rerun N [--stuck]: rerun failed jobs of the head; --stuck reruns
                a run of only this PR with a job in progress over an hour,
                cancelled first and rerun in full
@@ -150,7 +149,7 @@ def pr(argv: list[str], prog: str) -> int:
         from tbhbdev.alpha.close import main as close_main  # noqa: PLC0415 -- see the docstring
 
         return close_main(["pr", *argv], prog=prog)
-    from tbhbdev.alpha.pull_request import main as pull_request_main  # noqa: PLC0415 -- see the docstring
+    from tbhbdev.alpha.pull_request.command import main as pull_request_main  # noqa: PLC0415 -- see the docstring
 
     return pull_request_main(argv, prog=prog)
 

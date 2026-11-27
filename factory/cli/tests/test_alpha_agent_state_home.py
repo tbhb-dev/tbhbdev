@@ -6,7 +6,7 @@ import pytest
 from agent_host_example import constant
 from test_alpha_agent_run_host import make_run
 
-from tbhbdev.alpha.agent import run_host, worktree
+from tbhbdev.alpha.agent import run_host, worktree_mirror
 
 
 @pytest.mark.parametrize("value", [None, "", "relative/state", "absolute"])
@@ -24,7 +24,7 @@ def test_run_host_state_requires_an_absolute_override(
     state = (
         Path(value) if value and value.startswith("/") else run.home / ".local/state"
     )
-    assert worktree.mirror_path(run.home, run.request.repo) == (
+    assert worktree_mirror.mirror_path(run.home, run.request.repo) == (
         state / "tbhbdev/agent-mirrors/github.com/tbhb-dev/example-repo.git"
     )
     created: list[str] = []

@@ -19,9 +19,11 @@ exports_files([
     ".github/actions/setup-bazel-ci/cpu_quota.sh",
     ".github/actions/setup-bazel-ci/fetch-targets.txt",
     ".github/actions/setup-bazel-ci/fetch.sh",
+    ".github/prose-lint.sh",
     ".github/schemas/pull-request-draft.schema.json",
     ".github/workflows/ci.yml",
     ".github/workflows/mutation-nightly.yml",
+    ".pre-commit-config.yaml",
     ".vale.ini",
     ".vale/config/vocabularies/project/accept.txt",
     ".vale/config/vocabularies/project/reject.txt",
@@ -30,6 +32,7 @@ exports_files([
     ".vale/project/Colons.yml",
     ".vale/project/HeadingTitleCase.yml",
     ".vale/project/WordList.yml",
+    "mise.toml",
     "tombi.toml",
 ])
 

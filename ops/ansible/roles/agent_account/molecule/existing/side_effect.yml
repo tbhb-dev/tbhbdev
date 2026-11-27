@@ -28,4 +28,6 @@
               assert os.lstat('/srv/agent/keep-group').st_gid == grp.getgrnam('agent_extra').gr_gid
               assert os.readlink('/srv/agent/outside-file') == '/srv/legacy-outside/legacy'
               assert os.readlink('/srv/agent/outside-dir') == '/srv/legacy-outside'
+              assert pathlib.Path('/srv/agent/.bazelrc').read_text() == 'build --jobs=2\n'
+              assert not pathlib.Path('/srv/agent/.cache/bazel-disk').exists()
       changed_when: false

@@ -16,7 +16,7 @@ from tbhbdev.alpha.merge.body import (
     render_body,
     wrap,
 )
-from tbhbdev.alpha.pull_request import (
+from tbhbdev.alpha.pull_request.body import (
     FENCE,
     INLINE_CODE,
     heading_of,

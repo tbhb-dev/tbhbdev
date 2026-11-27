@@ -4,6 +4,7 @@ import pytest
 from test_alpha_review_doc import FakeApi
 
 from tbhbdev.alpha import review, review_threads
+from tbhbdev.alpha.pull_request import repository as pr_repository
 
 REPO = "tbhb-dev/tbhbdev"
 NUMBER = 7
@@ -56,7 +57,7 @@ def reply(**data: object) -> dict[str, object]:
 def setup_api(monkeypatch: pytest.MonkeyPatch, *responses: object) -> FakeApi:
     api = FakeApi(*responses)
     monkeypatch.setattr(review, "GhApi", lambda: api)
-    monkeypatch.setattr(review.pr, "origin_repository", lambda: REPO)
+    monkeypatch.setattr(pr_repository, "origin_repository", lambda: REPO)
     return api
 
 

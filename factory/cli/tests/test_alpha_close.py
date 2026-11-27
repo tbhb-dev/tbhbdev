@@ -14,8 +14,8 @@ from agent_example import settings
 
 from tbhbdev import userconfig
 from tbhbdev.alpha import close, opened
-from tbhbdev.alpha import pull_request as pr
 from tbhbdev.alpha.identity import trailers as identity_trailers
+from tbhbdev.alpha.pull_request import attribution, repository, tools
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
@@ -81,12 +81,12 @@ class Gh:
 def gh(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> Gh:
     stub = Gh()
     monkeypatch.setattr(close, "gh", stub)
-    monkeypatch.setattr(pr, "origin_repository", lambda: "tbhb-dev/tbhbdev")
+    monkeypatch.setattr(repository, "origin_repository", lambda: "tbhb-dev/tbhbdev")
 
     def posting_value(env: Mapping[str, str]) -> str | None:
         return POSTING if env else None
 
-    monkeypatch.setattr(pr, "posting_value", posting_value)
+    monkeypatch.setattr(attribution, "posting_value", posting_value)
     monkeypatch.setenv("HOME", str(tmp_path))
     monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path / "state"))
     return stub
@@ -99,7 +99,7 @@ def root() -> str:
 
 
 def trailer_line() -> str:
-    value = pr.posting_value(ENV)
+    value = attribution.posting_value(ENV)
     assert value is not None
     return f"{identity_trailers.KEY_GEN}: {value}"
 
@@ -224,7 +224,7 @@ def test_an_invalid_trailer_value_is_refused(monkeypatch: pytest.MonkeyPatch) ->
     def posting_value(_env: Mapping[str, str]) -> str | None:
         return "not llm"
 
-    monkeypatch.setattr(pr, "posting_value", posting_value)
+    monkeypatch.setattr(attribution, "posting_value", posting_value)
     with pytest.raises(SystemExit, match="invalid LLM trailer: not llm: "):
         close.main(["pr", "close", "7", "--reason", "x"], env=ENV)
 
@@ -352,8 +352,8 @@ def test_the_real_gh_runs_through_pr_run(monkeypatch: pytest.MonkeyPatch) -> Non
     def find_tool(name: str) -> str:
         return f"/bin/{name}"
 
-    monkeypatch.setattr(pr, "find_tool", find_tool)
-    monkeypatch.setattr(pr, "run", fake_run)
+    monkeypatch.setattr(tools, "find_tool", find_tool)
+    monkeypatch.setattr(tools, "run", fake_run)
     assert close.gh(["pr", "view"]).returncode == 0
     assert seen == [["/bin/gh", "pr", "view"]]
 
