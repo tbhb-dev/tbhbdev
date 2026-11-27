@@ -551,6 +551,24 @@ def clone_run(mirror: Path, workspace: Path, url: str) -> None:
     git(workspace, "config", "core.hooksPath", str(workspace / ".git" / "hooks"))
 
 
+def checkout_run(
+    mirror: Path, workspace: Path, name: str, request: RunRequest, commit: str
+) -> None:
+    git(
+        workspace, "fetch", "--no-tags", "--no-write-fetch-head",
+        "--no-recurse-submodules", str(mirror),
+        "+refs/heads/*:refs/remotes/origin/*",
+    )  # fmt: skip
+    if (start_ref := request.start_ref) is not None:
+        # Git's implicit push lease uses the branch's tracking ref.
+        branch = start_ref.removeprefix("refs/heads/")
+        git(workspace, "update-ref", f"refs/remotes/origin/{branch}", commit)
+    if request.profile is Profile.BUILD:
+        git(workspace, "checkout", "-b", f"agent/{name}", commit, "--")
+    else:
+        git(workspace, "checkout", "--detach", commit, "--")
+
+
 def prepare_git(workspace: Path) -> None:
     directory = workspace / ".git"
     for name, content in (
@@ -679,15 +697,7 @@ def create(
                 commit = fetch_commit(mirror, request, token)
         prepare_hooks(worktree, name, commit, hook_env, start_ref=request.start_ref)
         with preparation_step("checkout"):
-            git(
-                worktree, "fetch", "--no-tags", "--no-write-fetch-head",
-                "--no-recurse-submodules", str(mirror),
-                "+refs/heads/*:refs/remotes/origin/*",
-            )  # fmt: skip
-            if request.profile is Profile.BUILD:
-                git(worktree, "checkout", "-b", f"agent/{name}", commit, "--")
-            else:
-                git(worktree, "checkout", "--detach", commit, "--")
+            checkout_run(mirror, worktree, name, request, commit)
         with preparation_step("git metadata"):
             prepare_git(worktree)
         discard.pop_all()

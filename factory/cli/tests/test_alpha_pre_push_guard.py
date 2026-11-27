@@ -12,6 +12,7 @@ from unittest.mock import Mock
 
 import httpx
 import pytest
+from agent_host_example import isolate_host_git, local_mirror_fetches, run_request
 from fake_tool import pythonpath, write_fake
 
 from tbhbdev import alpha
@@ -168,7 +169,12 @@ def install_hook(repo: Path, monkeypatch: pytest.MonkeyPatch) -> dict[str, str]:
     binary = repo.parent / "bin"
     binary.mkdir()
     tool = binary / "tbhbdev"
-    write_fake(tool, "import sys\nfrom tbhbdev.cli import main\nsys.exit(main())\n")
+    # The hook tests use the real push guard and have no agent identity session.
+    write_fake(
+        tool,
+        "import sys\nfrom tbhbdev.cli import main\n"
+        "sys.exit(0 if sys.argv[1:3] == ['alpha', 'identity'] else main())\n",
+    )
     monkeypatch.setenv("PATH", f"{binary}:{os.environ['PATH']}")
     monkeypatch.setenv("PYTHONPATH", pythonpath(Path(pg.__file__).parents[2]))
     env = dict(os.environ)
@@ -221,30 +227,53 @@ def test_run_hook_confines_pushed_branches(
 def test_start_ref_rewrite(
     repo: Path, monkeypatch: pytest.MonkeyPatch, *, stale: bool
 ) -> None:
+    remote = repo.parent / "remote.git"
     branch = "fix/topic"
     ref = f"refs/heads/{branch}"
+    git(remote, "symbolic-ref", "HEAD", "refs/heads/main")
     base = git(repo, "rev-parse", "HEAD")
-    old = commit(repo, "old topic")
-    git(repo, "push", "origin", f"HEAD:{ref}")
+    old = commit(repo, "old topic", topic="topic\n")
+    git(repo, "push", str(remote), f"HEAD:{ref}")
     git(repo, "reset", "--hard", base)
-    new = commit(repo, "rewritten topic")
+    upstream = commit(repo, "upstream", upstream="upstream\n")
+    git(repo, "push", str(remote), "HEAD:refs/heads/main")
     env = install_hook(repo, monkeypatch)
-    monkeypatch.setattr(worktree.host_tools, "resolve", fake_prek)
-    worktree.install_hooks(repo, "example", old, start_ref=ref)
+    resolve = worktree.host_tools.resolve
 
-    lease = "--force-with-lease"
+    def executable(name: str, path: str | None = None) -> str:
+        return fake_prek(name) if name == "prek" else resolve(name, path)
+
+    monkeypatch.setattr(worktree.host_tools, "resolve", executable)
+    isolate_host_git(repo.parent, monkeypatch)
+    local_mirror_fetches(monkeypatch, remote)
+    request = run_request(start_ref=ref, fetch_refs=[ref])
+    run = worktree.create(repo.parent / "checkout", "example", request)
+    assert git(run, "rev-parse", f"origin/fetched/heads/{branch}") == old
+    git(run, "config", "remote.origin.pushurl", str(remote))
+    subprocess.run(["git", "rebase", "origin/main"], cwd=run, env=env, check=True)
+    assert git(run, "rev-parse", "HEAD^") == upstream
+    new = git(run, "rev-parse", "HEAD")
+
+    destination = f"HEAD:{ref}"
+    remote_tip = new
     if stale:
-        git(repo, "update-ref", f"refs/remotes/origin/{branch}", base)
-        # Let Git send the update so the hook checks the stale tracking ref.
-        lease = f"{lease}={ref}:{old}"
-    result = push(repo, env, lease, "origin", f"HEAD:{branch}")
+        git(repo, "reset", "--hard", old)
+        remote_tip = commit(repo, "concurrent topic change")
+        git(repo, "push", str(remote), destination)
+    result = push(run, env, "--force-with-lease", "origin", destination)
     if stale:
+        assert result.returncode != 0
+        assert "stale info" in result.stderr
+        # Give Git the live tip so the hook can check the stale tracking ref.
+        result = push(
+            run, env, f"--force-with-lease={ref}:{remote_tip}", "origin", destination
+        )
         assert result.returncode != 0
         assert "the remote tip is not the fetched one" in result.stderr
     else:
         assert result.returncode == 0, result.stderr
         assert f"{ref} rewritten {old} -> {new}" in result.stderr
-    assert git(repo.parent / "remote.git", "rev-parse", ref) == (old if stale else new)
+    assert git(remote, "rev-parse", ref) == remote_tip
 
 
 @pytest.mark.parametrize(
