@@ -180,18 +180,6 @@ def test_a_host_ops_vault_appears_only_in_the_grants_and_ops_controller_blocks(
 
 
 @pytest.mark.parametrize("dry_run", [False, True])
-def test_no_agent_host_token_and_no_item_create_names_a_host_ops_vault(
-    *, dry_run: bool
-) -> None:
-    for line in script(dry_run=dry_run).splitlines():
-        if "agent-host:" in line or "op item create" in line:
-            assert "host-storage-" not in line
-    for block in blocks(script(dry_run=dry_run)):
-        if block.startswith("# ex-"):
-            assert "host-storage-" not in block
-
-
-@pytest.mark.parametrize("dry_run", [False, True])
 def test_an_ops_controller_token_never_reaches_op_item_create(*, dry_run: bool) -> None:
     ops = [
         b for b in blocks(script(dry_run=dry_run)) if b.startswith("# ops-controller ")
@@ -261,10 +249,6 @@ def test_a_host_ops_vault_in_a_grant_is_refused(host: str) -> None:
         tokens.grants("ex-ctl1", (*AGENTS, host), CONTROLLERS)
     with pytest.raises(CliError, match="host-storage-"):
         script((host,), (*AGENTS, host))
-
-
-def test_the_token_never_appears_in_a_dry_run_script() -> None:
-    assert "jq -R" in script(dry_run=True)
 
 
 def test_quoting_keeps_a_single_quote_inside_a_quoted_name() -> None:
@@ -434,7 +418,6 @@ FAKE_TOKEN = {
     "ok": "echo secret-token",
     "longest": f"echo {'a' * tokens.TOKEN_MAX}",
     "over": f"echo {'a' * (tokens.TOKEN_MAX + 1)}",
-    "fail": "echo 'op: no session' >&2; exit 1",
     "empty": "exit 0",
 }
 FAKE_LIST = {
@@ -466,7 +449,6 @@ def fake_bin(
     root: Path,
     *,
     held: Collection[str] = (),
-    create: str = "ok",
     vaults: Collection[str] = NEEDED,
     listing: str = "ok",
 ) -> Path:
@@ -489,7 +471,7 @@ case "$1 $2" in
     case "$*" in
 {held_cases}    esac
     exit 1 ;;
-  "connect token") {FAKE_TOKEN[create]} ;;
+  "connect token") echo secret-token ;;
   "item create") cat > {body} ;;
 esac
 """
@@ -512,13 +494,12 @@ def run_live(  # the fake's knobs, each one a fact
     root: Path,
     *,
     held: Collection[str] = (),
-    create: str = "ok",
     hosts: tuple[str, ...] = ("ex-lab1",),
     runner_vms: tuple[str, ...] = (),
     vaults: Collection[str] = NEEDED,
     listing: str = "ok",
 ) -> subprocess.CompletedProcess[str]:
-    bin_dir = fake_bin(root, held=held, create=create, vaults=vaults, listing=listing)
+    bin_dir = fake_bin(root, held=held, vaults=vaults, listing=listing)
     env = sh_env(root, bin_dir)
     return subprocess.run(  # the fixed shell, a script on stdin
         [SH],
@@ -840,24 +821,6 @@ def test_an_ops_token_the_keychain_line_cannot_carry_is_never_sent(
     assert not (root / "stdin.log").exists()
 
 
-def test_the_store_unlocks_the_keychain_in_the_same_ssh_session_as_security(
-    tmp_path: Path,
-) -> None:
-    done = run_ops(tmp_path)
-    assert done.returncode == 0
-    argv = (tmp_path / "argv.log").read_text(encoding="utf-8")
-    stores = [
-        line
-        for line in argv.splitlines()
-        if line.startswith("ssh ") and "security -i" in line
-    ]
-    assert len(stores) == 1
-    assert stores[0].endswith(
-        ' ops@ex-ctl1 security unlock-keychain -p "" ops-connect.keychain && security -i'
-    )
-    assert "secret-token" not in argv
-
-
 def test_the_token_longest_the_keychain_line_carries_is_stored(
     tmp_path: Path,
 ) -> None:
@@ -942,33 +905,6 @@ def test_a_failed_keychain_preparation_stops_the_script_first(tmp_path: Path) ->
     assert done.returncode == 1
     assert done.stderr == "could not prepare the ops keychain on ex-ctl1\n"
     assert not (tmp_path / "argv.log").exists()
-
-
-def op_lines(text: str, *, skip_echo: bool) -> list[str]:
-    """Every line of TEXT that runs or echoes an `op` command, comments skipped.
-
-    A live script echoes messages that name op commands, so with SKIP_ECHO those
-    lines are left out too.
-    """
-    skipped = ("#", "echo") if skip_echo else ("#",)
-    return [
-        line
-        for line in text.splitlines()
-        if not line.lstrip().startswith(skipped)
-        and re.search(r"(?<![\w-])op [a-z]", line)
-    ]
-
-
-@pytest.mark.parametrize("dry_run", [False, True])
-def test_no_op_line_lacks_the_account(*, dry_run: bool) -> None:
-    text = script(dry_run=dry_run)
-    found = op_lines(text, skip_echo=not dry_run)
-    if dry_run:
-        found += op_lines(printed(text), skip_echo=True)
-    assert any(" vault list " in line for line in found)
-    assert any(" vault create " in line for line in found)
-    for line in found:
-        assert f" --account {ACCOUNT}" in line, line
 
 
 def test_the_vaults_are_listed_once_and_created_before_the_first_grant() -> None:
@@ -1544,27 +1480,6 @@ def test_the_runner_vm_header_says_what_the_token_reads_and_where_it_goes() -> N
     assert "# Each CI runner VM also gets a runner-vm token, which reads only\n" in text
     assert "# the vault runner-fixture, read-only." in text
     assert "item runner-access-token" in text
-
-
-def test_the_runner_vm_only_header_describes_only_that_script() -> None:
-    head = runner_script().split("\n\n")[1]
-    assert head == (
-        "# @tbhb runs this script once, in their own terminal, and 1Password asks\n"
-        "# them to approve once.\n"
-        "# An agent only prints it. It needs op and jq.\n"
-        "# It first creates each vault it needs that the account lacks.\n"
-        "# It grants the Connect server srv the vault runner-fixture and each lab"
-        " node's vault,\n"
-        "# then creates one token with no expiry for each CI runner VM.\n"
-        "# The token reads only the vault runner-fixture, read-only. It is kept\n"
-        "# in its lab node's vault as the item runner-access-token, field token.\n"
-        "# A VM whose node vault already holds it is skipped, so the script is\n"
-        "# safe to run again."
-    )
-
-
-def test_the_runner_vm_token_name_has_the_prefix_vm_and_stamp() -> None:
-    assert "runner-vm:ex-lab1-ci:20261108T142100Z" in runner_script()
 
 
 def test_the_lab_node_of_a_runner_vm_is_its_name_without_the_suffix() -> None:

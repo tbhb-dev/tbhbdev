@@ -184,7 +184,9 @@ def grants(
         found = (Grant(vault_of(host), READ), Grant(VAULT_ALL, READ))
     for grant in found:
         if grant.vault.startswith(FORBIDDEN):
-            message = f"refusing to grant {grant.vault}: no token reaches host-storage-*"
+            message = (
+                f"refusing to grant {grant.vault}: no token reaches host-storage-*"
+            )
             raise CliError(message)
     return found
 
@@ -194,11 +196,15 @@ def ops_grants() -> tuple[Grant, ...]:
     return tuple(Grant(f"{FORBIDDEN}{n}", READ) for n in NAS)
 
 
-def ops_controller(host: str, controllers: Collection[str]) -> tuple[Grant, ...]:
-    """The ops-controller grants of HOST, which must be an operator Mac."""
+def _require_controller(host: str, controllers: Collection[str]) -> None:
     if host not in controllers:
         message = f"not an operator Mac in the inventory: {host}"
         raise CliError(message)
+
+
+def ops_controller(host: str, controllers: Collection[str]) -> tuple[Grant, ...]:
+    """The ops-controller grants of HOST, which must be an operator Mac."""
+    _require_controller(host, controllers)
     return ops_grants()
 
 
@@ -210,9 +216,7 @@ def session_grants(
     They are an operator Mac's own grants plus read on VAULT_OAUTH, so they
     never reach a host-storage-* vault.
     """
-    if host not in controllers:
-        message = f"not an operator Mac in the inventory: {host}"
-        raise CliError(message)
+    _require_controller(host, controllers)
     return (*grants(host, agents, controllers), Grant(VAULT_OAUTH, READ))
 
 
@@ -271,122 +275,7 @@ def _ssh(host: str, command: str, *, quiet: bool = False) -> str:
     return f"ssh {flag}{SSH_OPTIONS} {OPS_USER}@{host} {_quote(command)}"
 
 
-def _ops_block(  # noqa: PLR0913  # the block's inputs, each one a fact
-    host: str,
-    server: str,
-    acct: str,
-    when: str,
-    say: Callable[[str], str],
-    *,
-    dry_run: bool,
-) -> list[str]:
-    """The lines that make HOST's ops-controller token and keychain it as ops.
-
-    A token that can't be stored is deleted from SERVER again.
-    """
-    host = shlex.quote(host)
-    where = f"--server {shlex.quote(server)}"
-    grant = ops_grants()
-    token = token_name(OPS_PREFIX, host, when)
-    name = _quote(token)
-    options = " ".join(vault_option(g) for g in grant)
-    # The script goes in on stdin, so no quote nests inside another.
-    prepare = f"echo {_quote(PREPARE)} | {_ssh(host, 'sh -s')}"
-    look = _ssh(host, LOOK, quiet=True)
-    create = f"tok=$(op connect token create {acct} {name} {where} {options})"
-    store = f'echo "{STORE_LINE}" | {_ssh(host, STORE_COMMAND)}'
-    delete = f"op connect token delete {acct} {name} {where}"
-    deleted = _quote(f"deleted the {OPS_PREFIX} token {token} from {server}")
-    kept = _quote(
-        f"could not delete the {OPS_PREFIX} token {token};"
-        " delete it by hand with op connect token delete"
-    )
-    lines = ["", f"# {OPS_PREFIX} {host}"]
-    if dry_run:
-        return [
-            *lines,
-            f"# Live, it prepares the {OPS_USER} keychain {KEYCHAIN} on {host}:",
-            say(prepare),
-            f"# Live, it skips this Mac if {OPS_USER} holds {SERVICE}:",
-            say(look),
-            say(create),
-            "# Live, it stops with exit 1 if the token is empty, odd or too long:",
-            "# Live, it stores the token in one ssh session that unlocks the keychain:",
-            say(store),
-            "# Live, if the token is over-length or not stored, it deletes the token",
-            "# and stops with exit 1:",
-            say(delete),
-            say("unset tok"),
-            "# Live, it stops with exit 1 unless the item is there:",
-            say(look),
-        ]
-    made = [
-        create,
-        'if [ -z "$tok" ]; then',
-        (
-            "  echo 'op connect token create printed no token for"
-            f" {OPS_PREFIX} {host}' >&2"
-        ),
-        "  exit 1",
-        "fi",
-        "case $tok in",
-        f"  *[!{CHARSET}]*)",
-        (
-            f"    echo 'the {OPS_PREFIX} token for {host} has a character the"
-            " keychain line cannot carry' >&2"
-        ),
-        "    exit 1",
-        "    ;;",
-        "esac",
-        "stored=false",
-        f'if [ "${{#tok}}" -gt {TOKEN_MAX} ]; then',
-        (
-            f'  echo "the {OPS_PREFIX} token for {host} has ${{#tok}} characters,'
-            f' over the {TOKEN_MAX} the keychain line can carry" >&2'
-        ),
-        f"elif {store} >/dev/null 2>&1; then",
-        "  stored=true",
-        "else",
-        f"  echo 'the {OPS_PREFIX} token for {host} was made but not stored' >&2",
-        "fi",
-        'if [ "$stored" = false ]; then',
-        f"  if {delete} >/dev/null; then",
-        f"    echo {deleted} >&2",
-        "  else",
-        f"    echo {kept} >&2",
-        "  fi",
-        "  exit 1",
-        "fi",
-        "unset tok",
-        f"if ! {look} >/dev/null 2>&1; then",
-        f"  echo 'the {OPS_USER} keychain on {host} does not hold the token' >&2",
-        "  exit 1",
-        "fi",
-    ]
-    return [
-        *lines,
-        f"if ! {prepare}; then",
-        f"  echo 'could not prepare the {OPS_USER} keychain on {host}' >&2",
-        "  exit 1",
-        "fi",
-        "rc=0",
-        f"{look} >/dev/null 2>&1 || rc=$?",
-        "case $rc in",
-        "  0)",
-        f"    echo '{OPS_USER} on {host} already holds {SERVICE}; skipping' >&2",
-        "    ;;",
-        f"  {NOT_FOUND})",
-        *_indent(made, 4),
-        "    ;;",
-        "  *)",
-        f"    echo 'could not look in the {OPS_USER} keychain on {host}' >&2",
-        "    exit 1",
-        "    ;;",
-        "esac",
-    ]
-
-
-def _session_block(  # noqa: PLR0913  # the block's inputs, each one a fact
+def _keychain_block(  # the block's inputs, each one a fact
     host: str,
     server: str,
     acct: str,
@@ -395,39 +284,56 @@ def _session_block(  # noqa: PLR0913  # the block's inputs, each one a fact
     plan: Sequence[Grant],
     say: Callable[[str], str],
     dry_run: bool,
+    remote: bool,
 ) -> list[str]:
-    """The lines that make HOST's ops-session token and keychain it, with no ssh.
+    """Make HOST's token and store it in the local or remote keychain.
 
-    The keychain is the one of the user who runs the script. A token that
-    can't be stored is deleted from SERVER again.
+    Delete a token from SERVER if the keychain cannot store it.
     """
     host = shlex.quote(host)
     where = f"--server {shlex.quote(server)}"
-    token = token_name(SESSION_PREFIX, host, when)
+    prefix = OPS_PREFIX if remote else SESSION_PREFIX
+    token = token_name(prefix, host, when)
     name = _quote(token)
     options = " ".join(vault_option(g) for g in plan)
-    prepare = f"sh -c {_quote(PREPARE)}"
-    look = LOOK
+    if remote:
+        # Pass the preparation script on stdin to avoid nested shell quoting.
+        prepare = f"echo {_quote(PREPARE)} | {_ssh(host, 'sh -s')}"
+        look = _ssh(host, LOOK, quiet=True)
+        store = f'echo "{STORE_LINE}" | {_ssh(host, STORE_COMMAND)}'
+        keychain = f"the {OPS_USER} keychain"
+        holder = f"{OPS_USER} on {host}"
+        transport = "ssh session"
+    else:
+        prepare = f"sh -c {_quote(PREPARE)}"
+        look = LOOK
+        # The braces keep the pipe on security -i, after the unlock.
+        store = f'echo "{STORE_LINE}" | {{ {STORE_COMMAND}; }}'
+        keychain = "your keychain"
+        holder = f"{keychain} on {host}"
+        transport = "command"
     create = f"tok=$(op connect token create {acct} {name} {where} {options})"
-    # The braces keep the pipe on security -i, not on the unlock before it.
-    store = f'echo "{STORE_LINE}" | {{ {STORE_COMMAND}; }}'
     delete = f"op connect token delete {acct} {name} {where}"
-    deleted = _quote(f"deleted the {SESSION_PREFIX} token {token} from {server}")
+    deleted = _quote(f"deleted the {prefix} token {token} from {server}")
     kept = _quote(
-        f"could not delete the {SESSION_PREFIX} token {token};"
+        f"could not delete the {prefix} token {token};"
         " delete it by hand with op connect token delete"
     )
-    lines = ["", f"# {SESSION_PREFIX} {host}"]
+    lines = ["", f"# {prefix} {host}"]
     if dry_run:
         return [
             *lines,
-            f"# Live, it prepares your keychain {KEYCHAIN} on {host}:",
+            f"# Live, it prepares {keychain} {KEYCHAIN} on {host}:",
             say(prepare),
-            f"# Live, it skips this Mac if your keychain holds {SERVICE}:",
+            (
+                f"# Live, it skips this Mac if {OPS_USER} holds {SERVICE}:"
+                if remote
+                else f"# Live, it skips this Mac if {keychain} holds {SERVICE}:"
+            ),
             say(look),
             say(create),
             "# Live, it stops with exit 1 if the token is empty, odd or too long:",
-            "# Live, it stores the token in one command that unlocks the keychain:",
+            f"# Live, it stores the token in one {transport} that unlocks the keychain:",
             say(store),
             "# Live, if the token is over-length or not stored, it deletes the token",
             "# and stops with exit 1:",
@@ -439,16 +345,13 @@ def _session_block(  # noqa: PLR0913  # the block's inputs, each one a fact
     made = [
         create,
         'if [ -z "$tok" ]; then',
-        (
-            "  echo 'op connect token create printed no token for"
-            f" {SESSION_PREFIX} {host}' >&2"
-        ),
+        (f"  echo 'op connect token create printed no token for {prefix} {host}' >&2"),
         "  exit 1",
         "fi",
         "case $tok in",
         f"  *[!{CHARSET}]*)",
         (
-            f"    echo 'the {SESSION_PREFIX} token for {host} has a character the"
+            f"    echo 'the {prefix} token for {host} has a character the"
             " keychain line cannot carry' >&2"
         ),
         "    exit 1",
@@ -457,13 +360,13 @@ def _session_block(  # noqa: PLR0913  # the block's inputs, each one a fact
         "stored=false",
         f'if [ "${{#tok}}" -gt {TOKEN_MAX} ]; then',
         (
-            f'  echo "the {SESSION_PREFIX} token for {host} has ${{#tok}} characters,'
+            f'  echo "the {prefix} token for {host} has ${{#tok}} characters,'
             f' over the {TOKEN_MAX} the keychain line can carry" >&2'
         ),
         f"elif {store} >/dev/null 2>&1; then",
         "  stored=true",
         "else",
-        f"  echo 'the {SESSION_PREFIX} token for {host} was made but not stored' >&2",
+        f"  echo 'the {prefix} token for {host} was made but not stored' >&2",
         "fi",
         'if [ "$stored" = false ]; then',
         f"  if {delete} >/dev/null; then",
@@ -475,27 +378,27 @@ def _session_block(  # noqa: PLR0913  # the block's inputs, each one a fact
         "fi",
         "unset tok",
         f"if ! {look} >/dev/null 2>&1; then",
-        f"  echo 'your keychain on {host} does not hold the token' >&2",
+        f"  echo '{keychain} on {host} does not hold the token' >&2",
         "  exit 1",
         "fi",
     ]
     return [
         *lines,
         f"if ! {prepare}; then",
-        f"  echo 'could not prepare your keychain on {host}' >&2",
+        f"  echo 'could not prepare {keychain} on {host}' >&2",
         "  exit 1",
         "fi",
         "rc=0",
         f"{look} >/dev/null 2>&1 || rc=$?",
         "case $rc in",
         "  0)",
-        f"    echo 'your keychain on {host} already holds {SERVICE}; skipping' >&2",
+        f"    echo '{holder} already holds {SERVICE}; skipping' >&2",
         "    ;;",
         f"  {NOT_FOUND})",
         *_indent(made, 4),
         "    ;;",
         "  *)",
-        f"    echo 'could not look in your keychain on {host}' >&2",
+        f"    echo 'could not look in {keychain} on {host}' >&2",
         "    exit 1",
         "    ;;",
         "esac",
@@ -537,7 +440,7 @@ def _vault_block(
     ]
 
 
-def _stored_block(  # noqa: PLR0913  # the block's inputs, each one a fact
+def _stored_block(  # the block's inputs, each one a fact
     host: str,
     *,
     store: str,
@@ -594,7 +497,7 @@ def _stored_block(  # noqa: PLR0913  # the block's inputs, each one a fact
     ]
 
 
-def _header(  # noqa: PLR0913  # the header's inputs, each one a fact
+def _header(  # the header's inputs, each one a fact
     server: str,
     *,
     with_ops: bool,
@@ -691,7 +594,7 @@ def _granted(
     return sorted(wanted - {VAULT_ALL})
 
 
-def commands(  # noqa: PLR0913  # the script's inputs, each one a fact
+def commands(  # the script's inputs, each one a fact
     server: str,
     hosts: Sequence[str],
     agents: Sequence[str],
@@ -778,10 +681,26 @@ def commands(  # noqa: PLR0913  # the script's inputs, each one a fact
             label=f"{RUNNER_PREFIX} {vm}",
         )
     for host in ops_hosts:
-        lines += _ops_block(host, server, acct, when, say, dry_run=dry_run)
+        lines += _keychain_block(
+            host,
+            server,
+            acct,
+            when=when,
+            plan=ops_grants(),
+            say=say,
+            dry_run=dry_run,
+            remote=True,
+        )
     for host, plan in session:
-        lines += _session_block(
-            host, server, acct, when=when, plan=plan, say=say, dry_run=dry_run
+        lines += _keychain_block(
+            host,
+            server,
+            acct,
+            when=when,
+            plan=plan,
+            say=say,
+            dry_run=dry_run,
+            remote=False,
         )
     return "\n".join(lines) + "\n"
 
