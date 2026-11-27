@@ -70,8 +70,8 @@ def test_current_and_legacy_approvals_count_together() -> None:
     assert evaluate([legacy, GOOD[1]]) == []
 
 
-def test_pass_without_trailers_and_checks() -> None:
-    assert evaluate(checks=[], messages=["fix: by hand\n"]) == []
+def test_no_checks_fails() -> None:
+    assert evaluate(checks=[], messages=["fix: by hand\n"]) == ["no checks to verify"]
 
 
 def test_pass_with_a_third_approval() -> None:
@@ -184,6 +184,8 @@ def test_an_approval_without_a_known_harness(body: str) -> None:
         (None, "in_progress", "check ci is in_progress"),
         ("timed_out", "completed", "check ci is timed_out"),
         ("success", "in_progress", "check ci is in_progress"),
+        ("skipped", "completed", "check ci is skipped"),
+        ("neutral", "completed", "check ci is neutral"),
     ],
 )
 def test_a_check_that_did_not_finish_well(
@@ -193,13 +195,13 @@ def test_a_check_that_did_not_finish_well(
 
 
 def test_checks_that_finished_well() -> None:
-    done = [check("a", "success"), check("b", "skipped"), check("c", "neutral")]
+    done = [check("a"), check("b")]
     assert evaluate(checks=done) == []
 
 
 def test_the_gate_and_ignored_checks_are_left_out() -> None:
     running = [check("review-gate", None, "in_progress"), check("job", None, "queued")]
-    assert evaluate(checks=running, ignore=("job",)) == []
+    assert evaluate(checks=running, ignore=("job",)) == ["no checks to verify"]
     assert evaluate(checks=running) == ["check job is queued"]
 
 

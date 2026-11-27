@@ -19,7 +19,7 @@ if TYPE_CHECKING:
 CONTEXT = "review-gate"
 MIN_APPROVALS = 2
 MIN_PROVIDERS = 2
-GOOD_CONCLUSIONS = frozenset({"success", "skipped", "neutral"})
+GOOD_CONCLUSIONS = frozenset({"success"})
 
 # Map a trailer harness to its provider.
 PROVIDERS = {
@@ -35,7 +35,7 @@ LEGACY_FOOTER = re.compile(r"Run \S+, (\S+) \S+, judged head ([0-9a-f]{40})\.")
 
 
 class Review(TypedDict):
-    id: int
+    id: int | str
     state: str
     commit_id: str
     body: str
@@ -124,12 +124,14 @@ def _outcome(check: Check) -> str:
 
 def check_reasons(pull: Pull, ignore: Sequence[str]) -> list[str]:
     """The reasons for each check run, bar the gate and ignored ones, not done well."""
-    skipped = {CONTEXT, *ignore}
+    excluded = {CONTEXT, *ignore}
+    checks = [check for check in pull.checks if check["name"] not in excluded]
+    if not checks:
+        return ["no checks to verify"]
     return [
         f"check {check['name']} is {_outcome(check)}"
-        for check in pull.checks
-        if check["name"] not in skipped
-        and not (
+        for check in checks
+        if not (
             check["status"] == "completed" and check["conclusion"] in GOOD_CONCLUSIONS
         )
     ]
