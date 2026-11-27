@@ -1,0 +1,3 @@
+# Collects agent plan usage and exports OpenTelemetry metrics.
+# Depends on lib/rules/go and external Go modules.
+@tbhb

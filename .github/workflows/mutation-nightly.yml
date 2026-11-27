@@ -102,3 +102,22 @@ jobs:
         if: matrix.workspace == 'lib/rules/python/e2e/workspace'
         working-directory: .
         run: lib/rules/python/e2e/incremental.sh
+
+  agent-capacity-mutation:
+    name: factory/agent-capacity mutation gate
+    runs-on: ubuntu-26.04
+    timeout-minutes: 90
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up Bazel for CI
+        uses: ./.github/actions/setup-bazel-ci
+        with:
+          disk-cache: ${{ github.workflow }}-${{ github.job }}
+          targets: //factory/agent-capacity:gomutants_test
+
+      - name: Run the full mutation gate
+        run: bazelisk test --config=ci //factory/agent-capacity:gomutants_test

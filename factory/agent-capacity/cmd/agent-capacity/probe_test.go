@@ -1,0 +1,496 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright Tony Burns
+
+package main
+
+import (
+	"bytes"
+	"context"
+	"encoding/json"
+	"errors"
+	"io"
+	"io/fs"
+	"log/slog"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"strings"
+	"testing"
+	"time"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+
+	"github.com/tbhb-dev/tbhbdev/factory/agent-capacity/internal/capacity"
+	"github.com/tbhb-dev/tbhbdev/factory/agent-capacity/internal/source/claude"
+	"github.com/tbhb-dev/tbhbdev/factory/agent-capacity/internal/spool"
+)
+
+const (
+	usageFixture = "testdata/agy-usage.json"
+	probeCommand = "probe"
+	// The probe gives the usage command two minutes. Spelled out here so a changed constant fails the tests.
+	usageDeadline = 2 * time.Minute
+)
+
+func fixed(output []byte, err error) func(context.Context) ([]byte, error) {
+	return func(ctx context.Context) ([]byte, error) {
+		deadline, found := ctx.Deadline()
+		if left := time.Until(deadline); !found || left > usageDeadline || left < usageDeadline-time.Minute {
+			return nil, errors.ErrUnsupported
+		}
+
+		return output, err
+	}
+}
+
+func TestProbeUsage(t *testing.T) {
+	t.Parallel()
+
+	output, err := os.ReadFile(usageFixture)
+	require.NoError(t, err)
+
+	dir := t.TempDir()
+	observed := time.Unix(100000, 0).UTC()
+	runtime := Runtime{Registry: nil, NewRegistry: nil, NewProvider: nil, Usage: fixed(output, nil), ClaudeUsage: nil}
+	require.NoError(t, runtime.probeUsage(t.Context(), []string{"--spool-dir=" + dir, workFlag}, observed, nil))
+
+	stored, err := os.ReadFile(filepath.Join(dir, "agy-work.json"))
+	require.NoError(t, err)
+
+	for _, discarded := range []string{"conversation_id", "response", "num_turns", "SUCCESS"} {
+		assert.NotContains(t, string(stored), discarded)
+	}
+
+	snapshots, failures, err := spool.Read(dir, "agy")
+	require.NoError(t, err)
+	assert.Empty(t, failures)
+	require.Len(t, snapshots, 1)
+	assert.Equal(t, observed, snapshots[0].ObservedAt)
+	assert.Contains(t, string(snapshots[0].Data), `"gemini-5h"`)
+
+	readings, readFailures := newRuntime(t.Context(), slog.New(slog.DiscardHandler)).Registry(dir).Read(
+		t.Context(), observed,
+	)
+	assert.Empty(t, readFailures)
+	assert.Len(t, readings, 4)
+
+	padded := append(bytes.Clone(output), bytes.Repeat([]byte(" "), inputLimit-len(output))...)
+	runtime.Usage = fixed(padded, nil)
+	require.NoError(t, runtime.probeUsage(t.Context(), []string{"--spool-dir=" + dir, workFlag}, observed, nil))
+}
+
+func TestProbeUsageErrors(t *testing.T) {
+	t.Parallel()
+
+	valid, err := os.ReadFile(usageFixture)
+	require.NoError(t, err)
+
+	renamed := bytes.Replace(valid, []byte(`"name": "usage"`), []byte(`"name": "quota"`), 1)
+	blocked := filepath.Join(t.TempDir(), "file")
+	require.NoError(t, os.WriteFile(blocked, nil, 0o600))
+
+	for _, testCase := range []struct {
+		usage func(context.Context) ([]byte, error)
+		want  error
+		args  []string
+	}{
+		{fixed(valid, nil), capacity.ErrInvalidReading, []string{"--account=@"}},
+		{fixed(valid, nil), capacity.ErrInvalidReading, []string{unknownFlag}},
+		{fixed(valid, nil), capacity.ErrInvalidReading, []string{workFlag, "--vendor=claude"}},
+		{fixed(valid, nil), capacity.ErrInvalidReading, []string{workFlag, "extra"}},
+		{fixed(nil, os.ErrNotExist), spool.ErrDirectory, []string{workFlag, "--spool-dir="}},
+		{fixed(nil, os.ErrNotExist), os.ErrNotExist, nil},
+		{fixed([]byte(`{`), nil), capacity.ErrInvalidReading, nil},
+		{fixed(bytes.Replace(valid, []byte(`"SUCCESS"`), []byte(`"ERROR"`), 1), nil), capacity.ErrInvalidReading, nil},
+		{fixed(renamed, nil), capacity.ErrInvalidReading, nil},
+		{fixed([]byte(`{"status":"SUCCESS","command":{"name":"usage"}}`), nil), capacity.ErrInvalidReading, nil},
+		{fixed([]byte(`{"status":"SUCCESS","command":{"name":"usage","data":null}}`), nil), capacity.ErrInvalidReading, nil},
+		{fixed([]byte(`{"status":"SUCCESS","command":{"name":"usage","data":{}}}`), nil), capacity.ErrInvalidReading, nil},
+		{fixed(append(valid, bytes.Repeat([]byte(" "), inputLimit)...), nil), capacity.ErrInvalidReading, nil},
+		{fixed(valid, nil), os.ErrExist, []string{workFlag, "--spool-dir=" + blocked}},
+		{nil, capacity.ErrInvalidReading, nil},
+	} {
+		args := testCase.args
+		if args == nil {
+			args = []string{workFlag, "--spool-dir=" + t.TempDir()}
+		}
+
+		var runtime Runtime
+
+		runtime.Usage = testCase.usage
+
+		got := runtime.probeUsage(t.Context(), args, time.Now(), nil)
+
+		if errors.Is(testCase.want, os.ErrExist) {
+			var pathErr *fs.PathError
+			require.ErrorAs(t, got, &pathErr)
+			require.NotErrorIs(t, got, capacity.ErrInvalidReading)
+
+			continue
+		}
+
+		require.ErrorIs(t, got, testCase.want, args)
+	}
+}
+
+func TestProbeUsageKeepsSnapshot(t *testing.T) {
+	t.Parallel()
+
+	valid, err := os.ReadFile(usageFixture)
+	require.NoError(t, err)
+
+	dir := t.TempDir()
+	args := []string{"--spool-dir=" + dir, workFlag}
+	runtime := Runtime{Registry: nil, NewRegistry: nil, NewProvider: nil, Usage: fixed(valid, nil), ClaudeUsage: nil}
+	require.NoError(t, runtime.probeUsage(t.Context(), args, time.Now(), nil))
+
+	before, err := os.ReadFile(filepath.Join(dir, "agy-work.json"))
+	require.NoError(t, err)
+
+	empty := []byte(`{"status":"SUCCESS","command":{"name":"usage","data":null}}`)
+	runtime.Usage = fixed(empty, nil)
+	require.ErrorIs(t, runtime.probeUsage(t.Context(), args, time.Now(), nil), capacity.ErrInvalidReading)
+
+	after, err := os.ReadFile(filepath.Join(dir, "agy-work.json"))
+	require.NoError(t, err)
+	assert.Equal(t, before, after)
+}
+
+func TestProbe(t *testing.T) {
+	t.Setenv("AGENT_CAPACITY_SPOOL_DIR", "")
+
+	valid, err := os.ReadFile(usageFixture)
+	require.NoError(t, err)
+
+	runtime := Runtime{Registry: nil, NewRegistry: nil, NewProvider: nil, Usage: fixed(valid, nil), ClaudeUsage: nil}
+
+	for _, testCase := range []struct {
+		message string
+		args    []string
+		code    int
+	}{
+		{"", []string{workFlag, "--spool-dir=" + t.TempDir()}, 0},
+		{"spool directory is required", []string{workFlag}, 1},
+		{"probe failed", []string{unknownFlag}, 1},
+	} {
+		var logs bytes.Buffer
+
+		assert.Equal(t, testCase.code, runtime.probe(
+			t.Context(), testCase.args, slog.New(slog.NewJSONHandler(&logs, nil)),
+		))
+
+		if testCase.message == "" {
+			assert.Empty(t, logs.String())
+		} else {
+			assert.Contains(t, logs.String(), `"msg":"`+testCase.message+`"`)
+		}
+	}
+
+	var out, logs bytes.Buffer
+
+	dir := t.TempDir()
+	assert.Equal(t, 0, runtime.Run(
+		t.Context(), []string{probeCommand, workFlag, "--spool-dir=" + dir}, &out,
+		slog.New(slog.NewJSONHandler(&logs, nil)),
+	))
+	assert.Empty(t, out.String())
+	assert.FileExists(t, filepath.Join(dir, "agy-work.json"))
+}
+
+const (
+	claudeProbeVendor = "--vendor=claude"
+	eventsFileFlag    = "--events-file="
+	claudeEvent       = `{"type":"rate_limit_event","timestamp":100000,"rate_limit_info":{"unifiedWindows":` +
+		`{"five_hour":{"status":"allowed","utilization":0.25,"resetsAt":110000}}}}`
+)
+
+func TestProbeClaude(t *testing.T) {
+	t.Setenv("AGENT_CAPACITY_SPOOL_DIR", "")
+	dir := t.TempDir()
+	path := filepath.Join(dir, "events.jsonl")
+	require.NoError(t, os.WriteFile(path, []byte("previous\n"), 0o600))
+
+	otherEvent := `{"type":"rate_limit_event","rate_limit_info":{"status":"rejected"}}`
+	stream := strings.Join([]string{
+		`{"type":"system"}`, claudeEvent, `{"type":"rate_limit_event"`, `["rate_limit_event"]`,
+		`{"Type":"rate_limit_event"}`, `{"type":42}`, `{}`, otherEvent,
+	}, "\n")
+
+	var runtime Runtime
+
+	runtime.ClaudeUsage = fixed([]byte(stream), nil)
+
+	var out, logs bytes.Buffer
+
+	assert.Equal(t, 0, runtime.Run(
+		t.Context(), []string{probeCommand, claudeProbeVendor, workFlag, eventsFileFlag + path},
+		&out, slog.New(slog.NewJSONHandler(&logs, nil)),
+	))
+	assert.Empty(t, out.String())
+	assert.Empty(t, logs.String())
+
+	stored, err := os.ReadFile(path)
+	require.NoError(t, err)
+	assert.Equal(t, claudeEvent+"\n"+otherEvent+"\n", string(stored))
+
+	info, err := os.Stat(path)
+	require.NoError(t, err)
+	assert.Equal(t, fs.FileMode(0o600), info.Mode().Perm())
+
+	entries, err := os.ReadDir(dir)
+	require.NoError(t, err)
+	assert.Len(t, entries, 1)
+
+	registry, err := claude.RegisterTranscripts(path, "work")
+	require.NoError(t, err)
+	readings, failures := registry.Read(t.Context(), time.Unix(100000, 0).UTC())
+	assert.Empty(t, failures)
+	require.Len(t, readings, 1)
+	assert.Equal(t, "work", readings[0].Account)
+	assert.InDelta(t, 0.25, readings[0].UsedRatio, 0.0)
+}
+
+func TestProbeClaudeKeepsEvents(t *testing.T) {
+	t.Parallel()
+
+	const previous = "previous events\n"
+
+	path := filepath.Join(t.TempDir(), "events.jsonl")
+	require.NoError(t, os.WriteFile(path, []byte(previous), 0o600))
+
+	for _, testCase := range []struct {
+		name   string
+		output string
+		err    error
+		class  string
+	}{
+		{"no events", `{"type":"result"}`, nil, invalidClass},
+		{"oversize", claudeEvent + "\n" + strings.Repeat(" ", inputLimit), nil, invalidClass},
+		{"command fails", claudeEvent, errors.ErrUnsupported, "read"},
+	} {
+		t.Run(testCase.name, func(t *testing.T) {
+			t.Parallel()
+
+			var runtime Runtime
+
+			runtime.ClaudeUsage = fixed([]byte(testCase.output), testCase.err)
+
+			var logs bytes.Buffer
+
+			logger := slog.New(slog.NewJSONHandler(&logs, nil))
+			args := []string{claudeProbeVendor, workFlag, eventsFileFlag + path}
+			assert.Equal(t, 1, runtime.probe(t.Context(), args, logger))
+			assert.Contains(t, logs.String(), `"msg":"probe failed"`)
+			assert.Contains(t, logs.String(), `"class":"`+testCase.class+`"`)
+			assert.NotContains(t, logs.String(), "rate_limit_event")
+			assert.NotContains(t, logs.String(), errors.ErrUnsupported.Error())
+
+			stored, err := os.ReadFile(path)
+			require.NoError(t, err)
+			assert.Equal(t, []byte(previous), stored)
+		})
+	}
+}
+
+func TestProbeClaudeArguments(t *testing.T) {
+	t.Parallel()
+
+	path := filepath.Join(t.TempDir(), "events.jsonl")
+
+	var runtime Runtime
+
+	runtime.ClaudeUsage = func(context.Context) ([]byte, error) {
+		t.Fatal("command ran with invalid arguments")
+
+		return nil, nil
+	}
+
+	for _, args := range [][]string{
+		{claudeProbeVendor, workFlag},
+		{claudeProbeVendor, eventsFileFlag + path},
+		{claudeProbeVendor, "--account=bad/alias", eventsFileFlag + path},
+	} {
+		require.ErrorIs(t, runtime.probeUsage(t.Context(), args, time.Now(), nil), capacity.ErrInvalidReading)
+	}
+
+	runtime.ClaudeUsage = nil
+	args := []string{claudeProbeVendor, workFlag, eventsFileFlag + path}
+	require.ErrorIs(t, runtime.probeUsage(t.Context(), args, time.Now(), nil), capacity.ErrInvalidReading)
+}
+
+func TestWriteClaudeEventsFailure(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	path := filepath.Join(dir, "events.jsonl")
+	events := []byte(claudeEvent + "\n")
+	missing := filepath.Join(dir, "missing", "events.jsonl")
+	require.ErrorIs(t, writeClaudeEvents(missing, events, os.CreateTemp), fs.ErrNotExist)
+
+	require.NoError(t, os.WriteFile(path, events, 0o600))
+
+	writeClosed := func(dir, pattern string) (*os.File, error) {
+		file, err := os.CreateTemp(dir, pattern)
+		require.NoError(t, err)
+		require.NoError(t, file.Close())
+
+		return file, nil
+	}
+	require.ErrorIs(t, writeClaudeEvents(path, []byte("replacement"), writeClosed), fs.ErrClosed)
+
+	stored, err := os.ReadFile(path)
+	require.NoError(t, err)
+	assert.Equal(t, events, stored)
+
+	target := filepath.Join(dir, "directory")
+	require.NoError(t, os.Mkdir(target, 0o700))
+	require.Error(t, writeClaudeEvents(target, events, os.CreateTemp))
+
+	entries, err := os.ReadDir(dir)
+	require.NoError(t, err)
+	assert.Len(t, entries, 2)
+}
+
+// TestRunClaudeUsage runs a stand-in command on PATH.
+func TestRunClaudeUsage(t *testing.T) {
+	bin := t.TempDir()
+	stub := filepath.Join(bin, "claude")
+	script := "#!/bin/sh\nprintf '%s\\n' \"$CLAUDE_CONFIG_DIR\" \"$@\"\n"
+	//nolint:gosec // The stand-in must be executable.
+	require.NoError(t, os.WriteFile(stub, []byte(script), 0o700))
+	t.Setenv("PATH", bin)
+	t.Setenv("CLAUDE_CONFIG_DIR", "/path/to/config")
+
+	runtime := newRuntime(t.Context(), slog.New(slog.DiscardHandler))
+	output, err := runtime.ClaudeUsage(t.Context())
+	require.NoError(t, err)
+	assert.Equal(t, []string{
+		"/path/to/config", "-p", "Reply with the single word ok.", "--model", "haiku", "--max-turns", "1",
+		"--output-format", "stream-json", "--verbose",
+	}, strings.Split(strings.TrimSuffix(string(output), "\n"), "\n"))
+}
+
+// TestRunUsage runs a stand-in script on PATH, never the real Antigravity command.
+func TestRunUsage(t *testing.T) {
+	bin := t.TempDir()
+	script := "#!/bin/sh\nprintf '%s' \"$*\"\n"
+	stub := filepath.Join(bin, "agy")
+	//nolint:gosec // The stand-in must be executable.
+	require.NoError(t, os.WriteFile(stub, []byte(script), 0o700))
+	t.Setenv("PATH", bin)
+
+	output, err := runUsage(t.Context())
+	require.NoError(t, err)
+	assert.Equal(t, "-p /usage --output-format json --print-timeout 100s", strings.TrimSpace(string(output)))
+
+	//nolint:gosec // The stand-in must be executable.
+	require.NoError(t, os.WriteFile(stub, []byte("#!/bin/sh\nexit 3\n"), 0o700))
+
+	output, err = runUsage(t.Context())
+	require.ErrorContains(t, err, "run usage command")
+
+	var exitErr *exec.ExitError
+	require.ErrorAs(t, err, &exitErr)
+	assert.Equal(t, "read", capacity.ErrorClass(err))
+	assert.Nil(t, output)
+
+	//nolint:gosec // The stand-in must be executable.
+	require.NoError(t, os.WriteFile(stub, []byte("#!/bin/sh\nexec /bin/sleep 10\n"), 0o700))
+
+	ctx, cancel := context.WithTimeout(t.Context(), 50*time.Millisecond)
+	defer cancel()
+
+	_, err = runUsage(ctx)
+	require.ErrorIs(t, err, context.DeadlineExceeded)
+
+	t.Setenv("PATH", t.TempDir())
+
+	_, err = runUsage(t.Context())
+	require.ErrorIs(t, err, fs.ErrNotExist)
+	require.ErrorIs(t, err, exec.ErrNotFound)
+	assert.Equal(t, "missing", capacity.ErrorClass(err))
+}
+
+func TestUsageCommand(t *testing.T) {
+	t.Parallel()
+
+	command := usageCommand(t.Context())
+	assert.Equal(t, 5*time.Second, command.WaitDelay)
+	assert.Equal(t, []string{"agy", "-p", "/usage", "--output-format", "json", "--print-timeout", "100s"}, command.Args)
+}
+
+// TestRunCommandChild checks that a child process holding the output pipe open can't stretch the deadline. The shell
+// reads the stand-in as a file: running a file this test just wrote can fail with "text file busy" while a parallel
+// test's fork still holds the write descriptor.
+func TestRunCommandChild(t *testing.T) {
+	t.Parallel()
+
+	stub := filepath.Join(t.TempDir(), "agy")
+	require.NoError(t, os.WriteFile(stub, []byte("/bin/sleep 3 &\nwait\n"), 0o600))
+
+	ctx, cancel := context.WithTimeout(t.Context(), 100*time.Millisecond)
+	defer cancel()
+
+	command := exec.CommandContext(ctx, "/bin/sh", stub)
+	command.WaitDelay = 100 * time.Millisecond
+	start := time.Now()
+
+	_, err := runCommand(ctx, command)
+	require.ErrorIs(t, err, context.DeadlineExceeded)
+	assert.Less(t, time.Since(start), 2*time.Second)
+}
+
+func TestRunCommandLimit(t *testing.T) {
+	t.Parallel()
+
+	command := exec.CommandContext(t.Context(), "/usr/bin/head", "-c", "1048600", "/dev/zero")
+	output, err := runCommand(t.Context(), command)
+	require.NoError(t, err)
+	assert.Len(t, output, inputLimit+1)
+}
+
+func TestLimitedBuffer(t *testing.T) {
+	t.Parallel()
+
+	buffer := &limitedBuffer{data: nil, limit: 4}
+	for _, chunk := range []string{"abc", "def", "g"} {
+		written, err := buffer.Write([]byte(chunk))
+		require.NoError(t, err)
+		assert.Equal(t, len(chunk), written)
+	}
+
+	assert.Equal(t, "abcd", string(buffer.data))
+}
+
+// TestProbeProcess checks the exit code and that a bad flag logs one line and no usage text.
+func TestProbeProcess(t *testing.T) {
+	t.Parallel()
+
+	executable, err := os.Executable()
+	require.NoError(t, err)
+
+	command := exec.CommandContext(t.Context(), executable, probeCommand, unknownFlag)
+
+	command.Env = append(os.Environ(), processTest+"=1")
+
+	var out, logs bytes.Buffer
+
+	command.Stdout = &out
+	command.Stderr = &logs
+
+	var exitErr *exec.ExitError
+	require.ErrorAs(t, command.Run(), &exitErr)
+	assert.Equal(t, 1, exitErr.ExitCode())
+	assert.Empty(t, out.String())
+
+	decoder := json.NewDecoder(&logs)
+
+	var entry map[string]any
+	require.NoError(t, decoder.Decode(&entry))
+	assert.Equal(t, "probe failed", entry["msg"])
+	assert.Equal(t, invalidClass, entry["class"])
+
+	var trailing any
+	require.ErrorIs(t, decoder.Decode(&trailing), io.EOF)
+}
