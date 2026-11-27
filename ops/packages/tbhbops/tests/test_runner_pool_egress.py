@@ -1,7 +1,6 @@
 """Render the runner pool's egress table and check the Connect exception.
 
-With connect, the table accepts TCP port 443 to the Connect host's addresses
-ahead of its drops. With service_account, it has no such rule.
+The table accepts TCP port 443 to the Connect host's addresses ahead of its drops.
 """
 
 from pathlib import Path
@@ -22,7 +21,7 @@ V6 = "2001:db8::1"
 
 
 def _render(**extra: object) -> list[str]:
-    environment = jinja2.Environment(  # noqa: S701 - renders nftables text, not HTML
+    environment = jinja2.Environment(
         loader=jinja2.FileSystemLoader(ROLE / "templates"),
         undefined=jinja2.StrictUndefined,
     )
@@ -45,7 +44,6 @@ def _chain(lines: list[str]) -> list[str]:
 def test_connect_accepts_port_443_to_the_resolved_addresses_before_the_drops() -> None:
     chain = _chain(
         _render(
-            actions_runner_pool_op_auth="connect",
             actions_runner_pool_connect_v4=[V4, "192.0.2.1"],
             actions_runner_pool_connect_v6=[V6],
         )
@@ -67,7 +65,6 @@ def test_connect_emits_only_the_families_that_resolved(
 ) -> None:
     chain = _chain(
         _render(
-            actions_runner_pool_op_auth="connect",
             actions_runner_pool_connect_v4=v4,
             actions_runner_pool_connect_v6=v6,
         )
@@ -75,12 +72,6 @@ def test_connect_emits_only_the_families_that_resolved(
     rules = [line for line in chain if "dport 443" in line]
     assert len(rules) == 1
     assert rules[0].startswith(f"{family} {{")
-
-
-def test_service_account_has_no_port_443_rule() -> None:
-    chain = _chain(_render(actions_runner_pool_op_auth="service_account"))
-    assert not [line for line in chain if "dport 443" in line]
-    assert chain[-1].startswith("ip6 daddr @blocked_v6")
 
 
 def _block_tasks() -> list[dict[str, object]]:

@@ -51,7 +51,7 @@ def render(name: str, settings: dict[str, object]) -> str:
     def basename(path: str) -> str:
         return Path(path).name
 
-    environment = jinja2.Environment(  # noqa: S701 - Compose and environment text
+    environment = jinja2.Environment(
         loader=jinja2.FileSystemLoader(ROLE / "templates"),
         undefined=jinja2.StrictUndefined,
         trim_blocks=True,
@@ -178,7 +178,7 @@ def test_preflight_selects_the_containing_filesystem(
     root: str, mounts: list[str], expected: str
 ) -> None:
     condition = yaml.safe_load(source("tasks/preflight.yml"))[2]["when"]
-    environment = jinja2.Environment()  # noqa: S701 - boolean expressions only
+    environment = jinja2.Environment()
     evaluate = environment.compile_expression(condition)
     selected = [
         mount
@@ -209,7 +209,7 @@ def test_tls_off_redeploy_matches_main_environment_and_digest(
 ) -> None:
     # Snapshot of main at 4ee14465, before the TLS input was introduced.
     baseline = Path(__file__).parent / "testdata/o11y/environment-main.json.j2"
-    environment = jinja2.Environment(trim_blocks=True)  # noqa: S701 - JSON text
+    environment = jinja2.Environment(trim_blocks=True)
     environment.filters["to_json"] = json.dumps
     original = environment.from_string(baseline.read_text()).render(settings)
     settings.pop("o11y_grafana_tls_cert_dir")
@@ -299,9 +299,7 @@ def test_health_expected_services_come_from_target_release(
     inputs: dict[str, object] = {"o11y_release_services": {"stdout_lines": released}}
     if cert_dir is not None:
         inputs["o11y_grafana_tls_cert_dir"] = cert_dir
-    environment = jinja2.Environment(  # noqa: S701 - service names only
-        undefined=jinja2.StrictUndefined
-    )
+    environment = jinja2.Environment(undefined=jinja2.StrictUndefined)
     environment.filters["intersect"] = intersect
     expected = services + (["grafana-tls"] if release_tls else [])
     expression = gate["vars"]["o11y_expected_services"]
@@ -338,7 +336,7 @@ def test_container_gate_requires_every_expected_service(
         for task in yaml.safe_load(source("tasks/health.yml"))
         if task.get("register") == "o11y_health"
     )
-    environment = jinja2.Environment()  # noqa: S701 - boolean expressions only
+    environment = jinja2.Environment()
     environment.filters["intersect"] = intersect
     services = yaml.safe_load(
         environment.from_string(task["vars"]["o11y_expected_services"]).render(
@@ -449,7 +447,7 @@ def test_tls_validation_uses_target_on_rollback_and_recovery(
     recovery = next(task for task in switch["rescue"] if "block" in task)["block"]
     selection, start = previous[-2:] if path == "rollback" else recovery[:2]
     target = "/srv/o11y/releases/previous"
-    environment = jinja2.Environment()  # noqa: S701 - paths and boolean expressions
+    environment = jinja2.Environment()
     environment.filters["from_json"] = json.loads
     assert (
         environment.from_string(
@@ -519,7 +517,7 @@ def test_tls_preflight(cert_dir: str, filename: str, stat: dict[str, bool]) -> N
         "json",
         "--no-env-resolution",
     ]
-    environment = jinja2.Environment()  # noqa: S701 - paths and boolean expressions
+    environment = jinja2.Environment()
     environment.filters["from_json"] = json.loads
     assert environment.compile_expression(block["when"])(
         o11y_target_compose={
@@ -545,30 +543,3 @@ def test_tls_preflight(cert_dir: str, filename: str, stat: dict[str, bool]) -> N
         item=item, o11y_target_tls_cert_dir=cert_dir
     )
     assert f"{cert_dir}/{filename}" in message
-
-
-@pytest.mark.parametrize("stale", [False, True])
-def test_controller_renderer_rejects_unprocessed_tls_markers(stale: bool) -> None:
-    tasks = yaml.safe_load(source("tasks/render.yml"))[1]["block"]
-    render_index = next(
-        index for index, task in enumerate(tasks) if task.get("environment")
-    )
-    guard = tasks[render_index + 1]["ansible.builtin.assert"]
-    environment = jinja2.Environment()  # noqa: S701 - boolean expression only
-    compose = "services: {}\n"
-    if stale:
-        compose = (ANSIBLE.parent / "o11y/compose.yaml").read_text()
-
-    def lookup(_plugin: str, _path: str) -> str:
-        return compose
-
-    with patch.dict(environment.globals, lookup=lookup):
-        assert (
-            environment.compile_expression(guard["that"])(
-                o11y_render={"path": "/scratch"}
-            )
-            is not stale
-        )
-    assert "controller tbhbops renderer lacks Grafana TLS support" in guard["fail_msg"]
-    assert "Install tbhbops from this ops checkout" in guard["fail_msg"]
-    assert tasks[render_index + 1]["delegate_to"] == "localhost"

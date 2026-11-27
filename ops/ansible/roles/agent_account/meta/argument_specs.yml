@@ -34,12 +34,6 @@ argument_specs:
           Claude token profiles, profile name to a 1Password reference of the form vault/item/field.
           Each becomes an [agent.claude.profiles.<name>] table with a token key. The references are not secrets.
           Rendered only when agent_account_tbhbdev_config is not empty.
-      agent_account_keys_exclusive:
-        type: bool
-        default: true
-        description: >-
-          Whether the key task removes every authorized key that agent_account_keys doesn't list.
-          False only adds the listed keys and leaves the others.
       agent_account_launch_controller:
         type: bool
         default: false

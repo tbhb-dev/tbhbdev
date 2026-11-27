@@ -100,7 +100,7 @@
   ansible.posix.authorized_key:
     user: ops
     key: "{{ ops_accounts_admin_keys | join('\n') }}"
-    exclusive: "{{ ops_accounts_admin_keys_exclusive }}"
+    exclusive: true
   when:
     - not (ansible_check_mode and ops_accounts_group is changed)
     - not (ansible_check_mode and ops_accounts_admin_user is changed)

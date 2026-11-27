@@ -231,7 +231,7 @@ services:
       O11Y_CLUSTER: ${O11Y_CLUSTER:-o11y}
       # Stamped on the stack's own OTLP metrics in place of whatever a
       # container reports. Supply the private host name through the environment.
-      O11Y_HOST_NAME: ${O11Y_HOST_NAME:-unknown-host}
+      O11Y_HOST_NAME: ${O11Y_HOST_NAME:?Set O11Y_HOST_NAME}
       O11Y_ENVIRONMENT: ${O11Y_ENVIRONMENT:-production}
     stop_grace_period: 30s
     volumes:

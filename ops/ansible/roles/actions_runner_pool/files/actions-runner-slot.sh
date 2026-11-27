@@ -236,9 +236,9 @@ for server in "${dns[@]}"; do
   dns_args+=(--dns "$server")
 done
 
-check_op_auth
+check_connect_host
 check_token_file ||
-  die "$EX_CONFIG" "the 1Password token file $ACTIONS_RUNNER_POOL_OP_TOKEN_FILE must be a plain file owned by the service user, mode 0400 for a service account or 0600 for Connect"
+  die "$EX_CONFIG" "the 1Password token file $ACTIONS_RUNNER_POOL_OP_TOKEN_FILE must be a plain file owned by the service user, mode 0600"
 # systemd creates the directory, which outlives each start, a stop and a
 # reboot, so the slot's pending cleanup does too.
 [[ -n ${STATE_DIRECTORY:-} && -d $STATE_DIRECTORY ]] ||

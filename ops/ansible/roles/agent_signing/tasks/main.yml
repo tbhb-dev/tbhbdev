@@ -4,21 +4,16 @@
     that:
       - ansible_facts.system in ['Linux', 'Darwin']
       - ansible_facts.architecture in agent_signing_goarch
-      - agent_signing_accounts | length > 0
 
 # The controller's temporary build directory outlives the accounts' copies, so the
 # cleanup waits in always. The tasks inside build.yml run once for the whole play.
-- name: Build ssh-sign on the controller and install it for each account
+- name: Build ssh-sign on the controller and install it for agent
   block:
     - name: Build ssh-sign for each target
       ansible.builtin.include_tasks: build.yml
 
-    - name: Prepare each account
+    - name: Prepare the agent account
       ansible.builtin.include_tasks: account.yml
-      loop: "{{ agent_signing_accounts }}"
-      loop_control:
-        loop_var: agent_signing_account
-        label: "{{ agent_signing_account.name }}"
   always:
     - name: Remove the controller's build directory
       ansible.builtin.file:

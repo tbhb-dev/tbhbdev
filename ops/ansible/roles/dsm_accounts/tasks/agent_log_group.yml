@@ -17,29 +17,6 @@
     dsm_accounts_agent_log_members_before: "{{ dsm_accounts_agent_log_members }}"
     dsm_accounts_agent_log_needed: "{{ 'agent' not in dsm_accounts_agent_log_members }}"
 
-# Probe, don't assume the installed DSM version supports additive membership.
-# acme.sh checks help before --memberadd. Never fall back to --member, which
-# replaces the entire list and could lose a concurrent membership change.
-- name: agent_log_group | Read the installed Synology group tool capabilities
-  ansible.builtin.command:
-    argv: [synogroup, --help]
-  become: true
-  register: dsm_accounts_agent_log_help
-  changed_when: false
-  failed_when: false
-  check_mode: false
-
-- name: agent_log_group | Require additive membership support
-  ansible.builtin.assert:
-    that:
-      - >-
-          (dsm_accounts_agent_log_help.stdout ~ '\n' ~ dsm_accounts_agent_log_help.stderr)
-          is search('(?m)^\s*--memberadd\s')
-    fail_msg: >-
-      Installed synogroup help does not advertise --memberadd;
-      refusing to replace members or edit group files.
-    quiet: true
-
 - name: agent_log_group | Check the separate agent login before changing membership
   ansible.builtin.raw: |
     if [ "$(whoami)" = agent ]; then exit 0; else exit 2; fi

@@ -18,11 +18,8 @@ actions_runner_pool_work_on_disk: false
 actions_runner_pool_min_free: 20G
 actions_runner_pool_dind_cpus: "2"
 actions_runner_pool_dind_memory: 3g
-# service_account reads the App's key with a 1Password service-account token.
-# connect reads it through 1Password Connect, with a Connect token.
-actions_runner_pool_op_auth: service_account
-actions_runner_pool_op_token_file: .config/actions-runner/op-service-account-token
-# With connect, a non-empty reference makes the role write the token file from
+actions_runner_pool_op_token_file: .config/actions-runner/op-connect-token
+# A non-empty reference makes the role write the token file from
 # the controller lookup. Empty leaves the file to the operator.
 actions_runner_pool_op_token_ref: ""
 # The lookup always runs on the controller, as its current account.

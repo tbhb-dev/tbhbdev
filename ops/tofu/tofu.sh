@@ -18,12 +18,12 @@ if [[ $(dirname "$module_dir") != "$here" ]]; then
   exit 2
 fi
 settings="$companion/ops/tofu/${module_dir##*/}"
-env_file=${TBHB_TOFU_OP_ENV:-"$companion/ops/tofu/op.env"}
+env_file="$companion/ops/tofu/op.env"
 args=()
 if [[ ${1:-} == init ]] && grep -q 'backend "s3"' "$module_dir/versions.tf"; then
   args+=("-backend-config=${TBHB_TOFU_BACKEND_CONFIG:-"$settings/backend.tfbackend"}")
 elif [[ ${1:-} == plan || ${1:-} == apply ]]; then
-  for values in "$settings"/*.tfvars "$settings"/*.tfvars.json; do
+  for values in "$settings"/*.tfvars; do
     [[ ! -f $values ]] || args+=("-var-file=$values")
   done
 fi
@@ -34,4 +34,4 @@ if [[ -n ${OP_SERVICE_ACCOUNT_TOKEN:-} ]]; then
 fi
 command=${1:?Specify an OpenTofu command}
 shift
-exec op run --env-file "$env_file" -- "$root/.bazel_env/bin/tofu"   "-chdir=$module_dir" "$command" "${args[@]}" "$@"
+exec op run --env-file "$env_file" -- "$root/.bazel_env/bin/tofu" "-chdir=$module_dir" "$command" "${args[@]}" "$@"

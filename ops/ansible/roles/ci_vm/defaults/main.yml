@@ -29,10 +29,6 @@ ci_vm_admin_keys: "{{ ops_accounts_admin_keys }}"
 # Tailscale's stable apt repository for resolute, and the key in files/, whose
 # fingerprint is 2596 A99E AAB3 3821 893C 0A79 458C A832 957F 5868.
 ci_vm_tailscale_repo: https://pkgs.tailscale.com/stable/ubuntu
-# Whether a new VM joins the tailnet at its first boot. The role mints a
-# single-use auth key for it from the OAuth client below and seeds the key
-# through cloud-init. See tasks/join.yml.
-ci_vm_tailscale_join: true
 # The OAuth client, read on the controller through Connect. Same lookup as the
 # connect_token role.
 ci_vm_tailscale_lookup_command: env -u SSH_AUTH_SOCK tbhbdev secret read

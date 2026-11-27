@@ -5,7 +5,7 @@
   tasks:
     - name: Stat the agent files
       ansible.builtin.stat:
-        path: "/home/example-user/{{ item }}"
+        path: "/home/agent/{{ item }}"
       loop:
         - .config/devtools/agent-signing-key
         - .config/devtools/agent-signing-key.pub
@@ -31,12 +31,12 @@
       become: true
       become_user: agent
       ansible.builtin.command:
-        argv: [/home/example-user/.local/bin/ssh-sign]
+        argv: [/home/agent/.local/bin/ssh-sign]
       changed_when: false
 
     - name: Read the agent's signing settings
       ansible.builtin.slurp:
-        src: /home/example-user/.config/devtools/signing.env
+        src: /home/agent/.config/devtools/signing.env
       register: agent_signing_test_env
 
     - name: Check the settings
@@ -44,14 +44,14 @@
         that:
           - >-
               agent_signing_test_env.content | b64decode ==
-              'DEVTOOLS_SIGNING_PROVIDER=file\nDEVTOOLS_SIGNING_KEY_FILE=/home/example-user/.config/devtools/agent-signing-key\nDEVTOOLS_SIGNING_PUBLIC_KEY=/home/example-user/.config/devtools/agent-signing-key.pub\n'
+              'DEVTOOLS_SIGNING_PROVIDER=file\nDEVTOOLS_SIGNING_KEY_FILE=/home/agent/.config/devtools/agent-signing-key\nDEVTOOLS_SIGNING_PUBLIC_KEY=/home/agent/.config/devtools/agent-signing-key.pub\n'
 
     - name: Check the public key matches the private key without printing either
       become: true
       become_user: agent
       ansible.builtin.shell: |
         set -euo pipefail
-        cd /home/example-user/.config/devtools
+        cd /home/agent/.config/devtools
         test "$(ssh-keygen -y -f agent-signing-key | cut -d' ' -f1,2)" = "$(cut -d' ' -f1,2 agent-signing-key.pub)"
       args:
         executable: /bin/bash
@@ -68,7 +68,7 @@
       args:
         executable: /bin/bash
       environment:
-        HOME: /home/example-user
+        HOME: /home/agent
       register: agent_signing_test_git
       changed_when: false
 
@@ -77,45 +77,17 @@
         that:
           - >-
               agent_signing_test_git.stdout_lines ==
-              ['tbhb.dev Agent <agent@example.invalid>', 'true', '/home/example-user/.local/bin/ssh-sign']
-
-    - name: Check that external gained no git settings
-      ansible.builtin.stat:
-        path: /home/external/.gitconfig
-      register: agent_signing_test_external_git
-
-    - name: Assert external has no gitconfig
-      ansible.builtin.assert:
-        that:
-          - not agent_signing_test_external_git.stat.exists
-
-    - name: Stat the external files
-      ansible.builtin.stat:
-        path: "/home/external/.config/devtools/{{ item }}"
-      loop: [agent-signing-key, signing.env]
-      register: agent_signing_test_external
-
-    - name: Check that external kept its public key and gained no private key or settings
-      ansible.builtin.slurp:
-        src: /home/external/.config/devtools/agent-signing-key.pub
-      register: agent_signing_test_external_pub
-
-    - name: Assert the op-style account was left alone
-      ansible.builtin.assert:
-        that:
-          - not (agent_signing_test_external.results | map(attribute='stat.exists') | max)
-          - agent_signing_test_external_pub.content | b64decode == 'ssh-ed25519 AAAAfixture fixture\n'
-
+              ['tbhb.dev Agent <agent@example.invalid>', 'true', '/home/agent/.local/bin/ssh-sign']
     # A program that differs from the build is replaced, as a tag bump would do.
     - name: Record the installed program's checksum
       ansible.builtin.stat:
-        path: /home/example-user/.local/bin/ssh-sign
+        path: /home/agent/.local/bin/ssh-sign
         checksum_algorithm: sha256
       register: agent_signing_test_built
 
     - name: Replace the program with something else
       ansible.builtin.copy:
-        dest: /home/example-user/.local/bin/ssh-sign
+        dest: /home/agent/.local/bin/ssh-sign
         content: "old\n"
         owner: agent
         mode: "0755"
@@ -128,7 +100,7 @@
 
     - name: Stat the program again
       ansible.builtin.stat:
-        path: /home/example-user/.local/bin/ssh-sign
+        path: /home/agent/.local/bin/ssh-sign
         checksum_algorithm: sha256
       register: agent_signing_test_rebuilt
 

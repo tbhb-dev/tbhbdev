@@ -29,7 +29,7 @@ ANSIBLE = next(
 ROLE = ANSIBLE / "roles" / "windows_accounts"
 MODULE = "ansible.windows.win_lineinfile"
 KEY_VARIABLE = "windows_accounts_ops_admin_keys"
-CLEAN_KEY_TASK = "Require a clean ops key list"
+CLEAN_KEY_TASK = "Require clean authorized key lists"
 # The one task's arguments, exactly. A missing regexp, backrefs, insertbefore,
 # backup or validate is part of the pin, and so is create: false.
 ARGUMENTS: dict[object, object] = {
@@ -51,12 +51,6 @@ ITERATION = {
 # The file's name, and the directory it sits in, so a task that reaches the
 # file by another name for its folder is found too.
 KEY_FILE = re.compile(r"administrators_authorized_keys|programdata", re.IGNORECASE)
-# Jinja decodes the role's `\.` with a codec that warns about the escape. Ansible
-# uses the same lexer on the same text, and the warning says nothing about the
-# role, so the tests that compile its assertion ignore it.
-IGNORE_ESCAPE_WARNING = pytest.mark.filterwarnings(
-    "ignore:.*invalid escape sequence:DeprecationWarning"
-)
 OPS_KEY = (
     "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIGuQMbLm4j7XFGVUBIm8GcsuCEwjzrskD+sE55hQE9r6"
     " lab-ops"
@@ -204,6 +198,10 @@ def _clean_key_check(keys: list[dict[str, object]]) -> bool:
     conditions = task["ansible.builtin.assert"]
     assert isinstance(conditions, dict)
     that: list[object] = conditions["that"]
+    loop = cast("list[dict[str, object]]", task["loop"])
+    ops = next(item for item in loop if item["name"] == "ops")
+    assert ops["entries"] == "{{ " + KEY_VARIABLE + " }}"
+    loop_var = str(_mapping(task["loop_control"])["loop_var"])
 
     def match(value: object, pattern: str) -> bool:
         return isinstance(value, str) and re.match(pattern, value) is not None
@@ -215,12 +213,13 @@ def _clean_key_check(keys: list[dict[str, object]]) -> bool:
     cast("dict[str, object]", environment.tests)["match"] = match
     cast("dict[str, object]", environment.filters)["flatten"] = flatten
     return all(
-        environment.compile_expression(str(condition))(**{KEY_VARIABLE: keys})
+        environment.compile_expression(str(condition))(
+            **{loop_var: ops | {"entries": keys}}
+        )
         for condition in that
     )
 
 
-@IGNORE_ESCAPE_WARNING
 @pytest.mark.parametrize(
     "key",
     [
@@ -233,7 +232,6 @@ def test_a_clean_ops_key_passes_the_assertion(key: str) -> None:
     assert _clean_key_check([{"key": key}, {"key": key, "from": ["mac-a"]}])
 
 
-@IGNORE_ESCAPE_WARNING
 @pytest.mark.parametrize(
     "key",
     [
@@ -254,12 +252,10 @@ def test_a_key_with_options_or_a_second_line_fails_the_assertion(key: str) -> No
     assert not _clean_key_check([{"key": OPS_KEY}, {"key": key}])
 
 
-@IGNORE_ESCAPE_WARNING
 def test_an_empty_ops_list_fails_the_assertion() -> None:
     assert not _clean_key_check([])
 
 
-@IGNORE_ESCAPE_WARNING
 @pytest.mark.parametrize("host", ["", "A", "-a", "a-", "a b", 'a"', "a,b", "a\n"])
 def test_an_invalid_from_host_fails_the_assertion(host: str) -> None:
     assert not _clean_key_check([{"key": OPS_KEY, "from": [host]}])

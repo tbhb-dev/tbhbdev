@@ -62,26 +62,7 @@
         name: git
         update_cache: true
 
-    - name: Create the accounts
+    - name: Create the agent account
       ansible.builtin.user:
-        name: "{{ item }}"
+        name: agent
         create_home: true
-      loop: [agent, external]
-
-    # external stands for tony: the public half exists and the private half lives elsewhere.
-    - name: Give external a public key and no private key
-      ansible.builtin.file:
-        path: /home/external/.config/devtools
-        state: directory
-        owner: external
-        group: external
-        mode: "0700"
-        recurse: false
-
-    - name: Place the external public key
-      ansible.builtin.copy:
-        dest: /home/external/.config/devtools/agent-signing-key.pub
-        content: "ssh-ed25519 AAAAfixture fixture\n"
-        owner: external
-        group: external
-        mode: "0644"

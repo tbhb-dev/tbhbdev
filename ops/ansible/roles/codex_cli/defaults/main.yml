@@ -4,7 +4,6 @@
 # switches the active <home>/.local/bin/codex link only when
 # codex_cli_activate is true. Never delete an old version here; point
 # the link back at it to roll back.
-codex_cli_install: true
 codex_cli_account: agent
 codex_cli_version: 0.166.0
 codex_cli_activate: false

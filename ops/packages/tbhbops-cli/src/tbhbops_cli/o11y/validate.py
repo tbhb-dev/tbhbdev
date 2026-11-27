@@ -9,8 +9,8 @@ from pathlib import Path
 from typing import TYPE_CHECKING, TextIO
 
 import yaml
-
 from tbhbops.o11y import validate
+
 from tbhbops_cli.common import CliError
 from tbhbops_cli.o11y import render
 lazy from tbhbops_cli.o11y.filesystem import Filesystem
@@ -145,7 +145,7 @@ def _local_details(
     return None
 
 
-def _dedicated_details(  # noqa: PLR0913, PLR0917  # metadata from the same context inspection
+def _dedicated_details(  # metadata from the same context inspection
     system: System,
     env: dict[str, str],
     named: str,
@@ -279,7 +279,7 @@ def _real_problem(code: int | None, failure: str) -> str | None:
     return _problem(code, failure)
 
 
-def _checks(  # noqa: PLR0913, PLR0917  # release paths and process/output seams
+def _checks(  # release paths and process/output seams
     system: System,
     env: dict[str, str],
     release: Path,
@@ -361,6 +361,7 @@ def prepare(system: System, source: Path, temporary: Path, root_url: str) -> Pat
         "O11Y_DATA_DIR": str(temporary / "data"),
         "O11Y_GRAFANA_ROOT_URL": root_url,
         "O11Y_GRAFANA_OWNER_LOGIN": "owner@example.invalid",
+        "O11Y_HOST_NAME": "validate",
     }
     render.dispatch(
         argparse.Namespace(source=source, out=temporary, config_root=None),

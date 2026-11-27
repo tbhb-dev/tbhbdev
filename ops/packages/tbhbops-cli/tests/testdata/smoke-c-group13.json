@@ -122,7 +122,7 @@
   "writes": {
     "/output/email-disabled/release/compose.yaml": [
       384,
-      "34d83d3d1e4fdba4763f23f432335e446bb7fe2630441e560b3e71d7e1ac7694"
+      "5119601f3347add18e188aba785292091d51ce2b2ab5386e1c9c71c4c9aeb49c"
     ],
     "/output/email-disabled/release/compose.tools.yaml": [
       384,
@@ -142,7 +142,7 @@
     ],
     "/output/email-disabled/release/MANIFEST.sha256": [
       384,
-      "8874bbce1ab53424ae2b49db654e112cbd265d6998a85f8b53cb8e4f2a2fa991"
+      "6ba5de25f51f7701d9acaabaa279b7dab5f788aed2c5bfb9d518652bf3f2bf12"
     ],
     "/output/email-disabled.log": [
       384,
