@@ -50,6 +50,8 @@ def test_pr_keeps_earliest_start(verb: str, monkeypatch: pytest.MonkeyPatch) -> 
                 return CompletedProcess(argv, 0, json.dumps(pages), "")
             case ["pr", action]:
                 posted(action, stdin)
+            case _:
+                pass
         return CompletedProcess(argv, 0, "{}", "")
 
     draft = pr.Checked([], "fix: x", ["# fix: x", "", "Example."], {"base": "main"})
