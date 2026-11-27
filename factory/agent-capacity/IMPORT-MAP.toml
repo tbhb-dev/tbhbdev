@@ -1,0 +1,450 @@
+# Import provenance for agent-capacity.
+repo = "tbhb-dev/agent-capacity"
+commit = "36f580ea1a867675b9e7d6dafd238ae4a324c8a4"
+dest = "factory/agent-capacity"
+
+[copy]
+"cmd/agent-capacity/testdata/agy-usage.json" = "factory/agent-capacity/cmd/agent-capacity/testdata/agy-usage.json"
+"container/image_config_test.py" = "factory/agent-capacity/container/image_config_test.py"
+"internal/capacity/reading.go" = "factory/agent-capacity/internal/capacity/reading.go"
+"internal/capacity/source.go" = "factory/agent-capacity/internal/capacity/source.go"
+"internal/export/provider.go" = "factory/agent-capacity/internal/export/provider.go"
+"internal/keepalive/decision.go" = "factory/agent-capacity/internal/keepalive/decision.go"
+"internal/keepalive/decision_test.go" = "factory/agent-capacity/internal/keepalive/decision_test.go"
+"internal/keepalive/keepalive.go" = "factory/agent-capacity/internal/keepalive/keepalive.go"
+"internal/keepalive/keepalive_test.go" = "factory/agent-capacity/internal/keepalive/keepalive_test.go"
+"internal/keepalive/store.go" = "factory/agent-capacity/internal/keepalive/store.go"
+"internal/keepalive/store_test.go" = "factory/agent-capacity/internal/keepalive/store_test.go"
+"internal/keepalive/store_unix_test.go" = "factory/agent-capacity/internal/keepalive/store_unix_test.go"
+"internal/keepalive/testdata/stops.json" = "factory/agent-capacity/internal/keepalive/testdata/stops.json"
+"internal/session/process.go" = "factory/agent-capacity/internal/session/process.go"
+"internal/session/starttime_darwin.go" = "factory/agent-capacity/internal/session/starttime_darwin.go"
+"internal/session/starttime_darwin_test.go" = "factory/agent-capacity/internal/session/starttime_darwin_test.go"
+"internal/session/starttime_linux.go" = "factory/agent-capacity/internal/session/starttime_linux.go"
+"internal/session/starttime_linux_test.go" = "factory/agent-capacity/internal/session/starttime_linux_test.go"
+"internal/source/agy/testdata/usage-data.json" = "factory/agent-capacity/internal/source/agy/testdata/usage-data.json"
+"internal/spool/session.go" = "factory/agent-capacity/internal/spool/session.go"
+"internal/spool/session_hooks_test.go" = "factory/agent-capacity/internal/spool/session_hooks_test.go"
+"internal/spool/session_test.go" = "factory/agent-capacity/internal/spool/session_test.go"
+
+[rewrite]
+
+[rewrite."BUILD.bazel"]
+dest = "factory/agent-capacity/BUILD.bazel"
+replace = [
+  ["go.tbhb.dev/agent-capacity", "github.com/tbhb-dev/tbhbdev/factory/agent-capacity"],
+  ["# Copyright Tony Burns\n\nload(\"@bazel_env.bzl\", \"bazel_env\")\nload(\"@bazelrc-preset.bzl\", \"bazelrc_preset\")\nload(\"@buildifier_prebuilt//:rules.bzl\", \"buildifier\", \"buildifier_test\")\nload(\"@gazelle//:def.bzl\", \"gazelle\")\nload(\"@rules_go//go:def.bzl\", \"nogo\")\nload(\"@tbhb_rules//format:defs.bzl\", \"format\", \"format_test\")\nload(\n    \"@tbhb_rules//lint:defs.bzl\",\n    \"actionlint_test\",\n    \"bats_test\",\n    \"codeowners_test\",\n    \"cspell_test\",\n    \"editorconfig_checker_test\",\n    \"gitleaks_history\",\n    \"gitleaks_test\",\n    \"okf_docs_test\",\n    \"reuse_test\",\n    \"rumdl_test\",\n    \"ryl_test\",\n    \"shellcheck_test\",\n    \"shfmt_test\",\n    \"tombi_test\",\n    \"vale_sync\",\n    \"vale_test\",\n    \"zizmor_test\",\n)\nload(\"@tbhb_rules//repo:defs.bzl\", \"repo_files\")\nload(\"@tbhb_rules_go//:defs.bzl\", \"go_arch_lint_test\", \"go_deadcode_test\", \"go_mod_tidy_test\", \"gobco_test\", \"gomutants_test\", \"govulncheck\", \"govulncheck_test\")\nload(\"//:vale_packages.bzl\", \"VALE_PACKAGES\")\nload(\"//tools/lint:linters.bzl\", \"golangci_lint_test\")\n\n# gazelle:prefix github.com/tbhb-dev/tbhbdev/factory/agent-capacity\n\nexports_files([\n    \".golangci.yml\",\n    \"go.mod\",\n])\n\ngazelle(name = \"gazelle\")\n\n# Generates preset.bazelrc, which .bazelrc imports. The content depends on the\n# Bazel version that runs the generator; the committed copy matches\n# .bazelversion, and `preset.update_test` fails when it is stale.\nbazelrc_preset(\n    name = \"preset\",\n)\n\n# buildifier: `//:buildifier` formats and applies lint fixes in place,\n# `//:buildifier.check` fails on any formatting or lint difference, and the\n# test below makes `bazel test //...` fail on the same findings. Every\n# available warning is on. `bazel-*` convenience symlinks, the Python and\n# tool caches and scratch space hold no Starlark that this\n# repository owns.\nBUILDIFIER_EXCLUDES = [\n    \"./.git/*\",\n    \"./.venv/*\",\n    \"./.mise/*\",\n    \"./bazel-*\",\n    \"./.bazel-*\",\n    \"./node_modules/*\",\n    \"./tmp/*\",\n]\n\nbuildifier(\n    name = \"buildifier\",\n    exclude_patterns = BUILDIFIER_EXCLUDES,\n    lint_mode = \"fix\",\n    lint_warnings = [\"all\"],\n    mode = \"fix\",\n)\n\nbuildifier(\n    name = \"buildifier.check\",\n    exclude_patterns = BUILDIFIER_EXCLUDES,\n    lint_mode = \"warn\",\n    lint_warnings = [\"all\"],\n    mode = \"diff\",\n)\n\nbuildifier_test(\n    name = \"buildifier_test\",\n    exclude_patterns = BUILDIFIER_EXCLUDES,\n    lint_mode = \"warn\",\n    lint_warnings = [\"all\"],\n    no_sandbox = True,\n    workspace = \"//:MODULE.bazel\",\n)\n\n# The vet subset that is accurate enough to fail a build: atomic, bools,\n# buildtag, nilfunc, and printf.\nnogo(\n    name = \"nogo\",\n    vet = True,\n    visibility = [\"//visibility:public\"],\n)\n\n# The Go checks, over every binary, library and test of the module.\n", "# Copyright Tony Burns\n\nload(\"@tbhb_rules//repo:defs.bzl\", \"repo_files\")\nload(\"@tbhb_rules_go//:defs.bzl\", \"go_arch_lint_test\", \"go_deadcode_test\", \"go_mod_tidy_test\", \"gobco_test\", \"gomutants_test\", \"govulncheck\", \"govulncheck_test\")\nload(\"//factory:go_lint.bzl\", \"golangci_lint_test\")\n\n# gazelle:go_visibility //factory/agent-capacity:__subpackages__\n# gazelle:map_kind go_test go_test //factory:go.bzl\n\npackage(default_visibility = [\"//factory:__subpackages__\"])\n\nrepo_files(visibility = [\"//factory:__pkg__\"])\n\n# The Go checks, over every binary, library and test of the module.\n"],
+  ["# offline against the module proxy.\nGO_TARGETS = [\n    \"//internal/session\",\n    \"//internal/session:session_test\",\n    \"//internal/keepalive\",\n    \"//internal/keepalive:keepalive_test\",\n    \"//internal/source/agy\",\n    \"//internal/source/agy:agy_test\",\n    \"//cmd/agent-capacity\",\n    \"//cmd/agent-capacity:agent-capacity_test\",\n    \"//internal/capacity\",\n    \"//internal/capacity:capacity_test\",\n    \"//internal/export\",\n    \"//internal/export:export_test\",\n    \"//internal/source/codex\",\n    \"//internal/source/codex:codex_test\",\n    \"//internal/spool\",\n    \"//internal/spool:spool_test\",\n    \"//internal/source/claude\",\n    \"//internal/source/claude:claude_test\",\n]\n\n", "# offline against the module proxy.\nGO_TARGETS = [\n    \"//factory/agent-capacity/internal/session\",\n    \"//factory/agent-capacity/internal/session:session_test\",\n    \"//factory/agent-capacity/internal/keepalive\",\n    \"//factory/agent-capacity/internal/keepalive:keepalive_test\",\n    \"//factory/agent-capacity/internal/source/agy\",\n    \"//factory/agent-capacity/internal/source/agy:agy_test\",\n    \"//factory/agent-capacity/cmd/agent-capacity\",\n    \"//factory/agent-capacity/cmd/agent-capacity:agent-capacity_test\",\n    \"//factory/agent-capacity/internal/capacity\",\n    \"//factory/agent-capacity/internal/capacity:capacity_test\",\n    \"//factory/agent-capacity/internal/export\",\n    \"//factory/agent-capacity/internal/export:export_test\",\n    \"//factory/agent-capacity/internal/source/codex\",\n    \"//factory/agent-capacity/internal/source/codex:codex_test\",\n    \"//factory/agent-capacity/internal/spool\",\n    \"//factory/agent-capacity/internal/spool:spool_test\",\n    \"//factory/agent-capacity/internal/source/claude\",\n    \"//factory/agent-capacity/internal/source/claude:claude_test\",\n]\n\n"],
+  ["go_arch_lint_test(\n    name = \"go_arch_lint_test\",\n    srcs = GO_TARGETS,\n    config = \".go-arch-lint.yml\",\n    go_mod = \"go.mod\",\n)\n\n", "go_arch_lint_test(\n    name = \"go_arch_lint_test\",\n    size = \"small\",\n    srcs = GO_TARGETS,\n    config = \"//:.go-arch-lint.yml\",\n    go_mod = \"//:go.mod\",\n)\n\n"],
+  ["    name = \"go_mod_tidy_test\",\n    srcs = [\":repo_files\"],\n    go_mod = \"go.mod\",\n    go_sum = \"go.sum\",\n    proxy = \"@go_mod_proxy//:proxy\",\n)\n", "    name = \"go_mod_tidy_test\",\n    srcs = [\":repo_files\"],\n    go_mod = \"//:go.mod\",\n    go_sum = \"//:go.sum\",\n    proxy = \"@go_mod_proxy//:proxy\",\n)\n"],
+  ["    name = \"govulncheck_test\",\n    srcs = GO_TARGETS,\n    go_mod = \"go.mod\",\n    go_sum = \"go.sum\",\n    proxy = \"@go_mod_proxy//:proxy\",\n)\n\n# The same scan as a `bazel run` target, outside the test sandbox, which the\n# shared repository checks in CI run.\ngovulncheck(\n    name = \"govulncheck\",\n    srcs = GO_TARGETS,\n    go_mod = \"go.mod\",\n    go_sum = \"go.sum\",\n    proxy = \"@go_mod_proxy//:proxy\",\n)\n", "    name = \"govulncheck_test\",\n    srcs = GO_TARGETS,\n    go_mod = \"//:go.mod\",\n    go_sum = \"//:go.sum\",\n    proxy = \"@go_mod_proxy//:proxy\",\n)\n\n# CI runs this companion outside the test sandbox.\ngovulncheck(\n    name = \"govulncheck\",\n    srcs = GO_TARGETS,\n    go_mod = \"//:go.mod\",\n    go_sum = \"//:go.sum\",\n    proxy = \"@go_mod_proxy//:proxy\",\n)\n"],
+  ["    cpus = 2,\n    data = [\n        \"//cmd/agent-capacity:testdata/agy-usage.json\",\n        \"//internal/keepalive:testdata/stops.json\",\n        \"//internal/source/agy:testdata/usage-data.json\",\n    ],\n    flags = [\n", "    cpus = 2,\n    data = [\n        \"//factory/agent-capacity/cmd/agent-capacity:testdata/agy-usage.json\",\n        \"//factory/agent-capacity/internal/keepalive:testdata/stops.json\",\n        \"//factory/agent-capacity/internal/source/agy:testdata/usage-data.json\",\n    ],\n    flags = [\n"],
+  ["        \"--test-flags=-failfast\",\n    ],\n    go_mod = \"go.mod\",\n    go_sum = \"go.sum\",\n    proxy = \"@go_mod_proxy//:proxy\",\n    # Windows does not enforce Unix mode bits. Mutation testing runs only\n", "        \"--test-flags=-failfast\",\n    ],\n    go_mod = \"//:go.mod\",\n    go_sum = \"//:go.sum\",\n    proxy = \"@go_mod_proxy//:proxy\",\n    # Windows does not enforce Unix mode bits. Mutation testing runs only\n"],
+  ["        \"//conditions:default\": [],\n    }),\n    tests = GO_TESTS,\n)\n", "        \"//conditions:default\": [],\n    }),\n    tags = [\"manual\"],\n    tests = GO_TESTS,\n)\n"],
+  ["gobco_test(\n    name = \"agent_capacity_gobco_test\",\n    data = [\"//cmd/agent-capacity:testdata/agy-usage.json\"],\n    go_mod = \"go.mod\",\n    go_sum = \"go.sum\",\n    proxy = \"@go_mod_proxy//:proxy\",\n    tests = [\"//cmd/agent-capacity:agent-capacity_test\"],\n)\n\ngobco_test(\n    name = \"capacity_gobco_test\",\n    go_mod = \"go.mod\",\n    go_sum = \"go.sum\",\n    proxy = \"@go_mod_proxy//:proxy\",\n    tests = [\"//internal/capacity:capacity_test\"],\n)\n\ngobco_test(\n    name = \"keepalive_gobco_test\",\n    data = [\"//internal/keepalive:testdata/stops.json\"],\n    go_mod = \"go.mod\",\n    go_sum = \"go.sum\",\n    proxy = \"@go_mod_proxy//:proxy\",\n    tests = [\"//internal/keepalive:keepalive_test\"],\n)\n\ngobco_test(\n    name = \"export_gobco_test\",\n    go_mod = \"go.mod\",\n    go_sum = \"go.sum\",\n    proxy = \"@go_mod_proxy//:proxy\",\n    tests = [\"//internal/export:export_test\"],\n)\n\ngobco_test(\n    name = \"codex_gobco_test\",\n    go_mod = \"go.mod\",\n    go_sum = \"go.sum\",\n    proxy = \"@go_mod_proxy//:proxy\",\n    tests = [\"//internal/source/codex:codex_test\"],\n)\n\ngobco_test(\n    name = \"session_gobco_test\",\n    go_mod = \"go.mod\",\n    go_sum = \"go.sum\",\n    proxy = \"@go_mod_proxy//:proxy\",\n    tests = [\"//internal/session:session_test\"],\n)\n\ngobco_test(\n    name = \"spool_gobco_test\",\n    go_mod = \"go.mod\",\n    go_sum = \"go.sum\",\n    proxy = \"@go_mod_proxy//:proxy\",\n    tests = [\"//internal/spool:spool_test\"],\n)\n\ngobco_test(\n    name = \"claude_gobco_test\",\n    go_mod = \"go.mod\",\n    go_sum = \"go.sum\",\n    proxy = \"@go_mod_proxy//:proxy\",\n    tests = [\"//internal/source/claude:claude_test\"],\n)\n\ngobco_test(\n    name = \"agy_gobco_test\",\n    data = [\"//internal/source/agy:testdata/usage-data.json\"],\n    go_mod = \"go.mod\",\n    go_sum = \"go.sum\",\n    proxy = \"@go_mod_proxy//:proxy\",\n    tests = [\"//internal/source/agy:agy_test\"],\n)\n\n# Every file of the repository, for the whole-tree checks below. Each package\n# calls repo_files() too, so the chain covers the tree. Directories that hold\n# no source are ignored in REPO.bazel; these are the gitignored loose files\n# that can sit in a working checkout.\nrepo_files(\n    exclude = [\n        \"**/.DS_Store\",\n        \".bazelrc.user\",\n        \".coverage*\",\n        \".env*\",\n        \".mutation/**\",\n        \".claude/settings.local.json\",\n        \".github/PULL_REQUEST_DRAFT.md\",\n        \"coverage.*\",\n        \"mise.local.toml\",\n        # Synced Vale packages: only the project's own style is tracked.\n        \".vale/Google/**\",\n        \".vale/write-good/**\",\n        \".vale/proselint/**\",\n        \".vale/ai-tells/**\",\n        \".vale/ai-tells-experimental/**\",\n        \".vale/config/scripts/**\",\n        \".vale/config/templates/**\",\n    ],\n)\n\n# Whole-tree gates over //:repo_files, from tbhb_rules. Each test runs its\n# tool over a dereferenced copy of the tree, so it is hermetic and cached,\n# and fails when it scanned nothing.\ngitleaks_test(\n    name = \"gitleaks_test\",\n    srcs = [\":repo_files\"],\n    config = \".gitleaks.toml\",\n)\n\n# `bazel run //:gitleaks_history` scans every commit. History is not a\n# declared input, so it cannot be a cached test; CI runs it.\ngitleaks_history(\n    name = \"gitleaks_history\",\n    config = \".gitleaks.toml\",\n)\n\nryl_test(\n    name = \"ryl_test\",\n    srcs = [\":repo_files\"],\n    config = \".ryl.toml\",\n    data = [\".rylignore\"],\n)\n\n# pyproject.toml's embedded schema refers to these by URL; tombi runs\n# offline, so it reads the pinned copies from MODULE.bazel.\ntombi_test(\n    name = \"tombi_test\",\n    srcs = [\":repo_files\"],\n    config = \"tombi.toml\",\n    schemas = {\n        \"https://www.schemastore.org/uv.json\": \"@schemastore_uv//file\",\n    },\n)\n\nrumdl_test(\n    name = \"rumdl_test\",\n    srcs = [\":repo_files\"],\n    config = \".rumdl.toml\",\n)\n\neditorconfig_checker_test(\n    name = \"editorconfig_checker_test\",\n    srcs = [\":repo_files\"],\n    config = \".editorconfig-checker.json\",\n)\n\nactionlint_test(\n    name = \"actionlint_test\",\n    srcs = [\":repo_files\"],\n)\n\n# Offline audits. The online ones need a token and the network; CI runs\n# them outside the test graph.\nzizmor_test(\n    name = \"zizmor_test\",\n    srcs = [\":repo_files\"],\n    config = \".github/zizmor.yml\",\n)\n\n# Shell scripts, found by extension and shebang.\nshellcheck_test(\n    name = \"shellcheck_test\",\n    srcs = [\":repo_files\"],\n)\n\n# shfmt reads its style from .editorconfig.\nshfmt_test(\n    name = \"shfmt_test\",\n    srcs = [\":repo_files\"],\n)\n\nbats_test(\n    name = \"bats_test\",\n    srcs = [\":repo_files\"],\n    tests = [\"tools/get_workspace_status.bats\"],\n)\n\n# Every CODEOWNERS pattern still matches a file. GitHub's owner and syntax\n# validation needs its API, so CI runs that outside the test graph.\ncodeowners_test(\n    name = \"codeowners_test\",\n    srcs = [\":repo_files\"],\n)\n\n# docs/ as an OKF v0.2 bundle, and every Markdown file's frontmatter, against\n# the schemas in docs/schemas.\nokf_docs_test(\n    name = \"okf_docs_test\",\n    srcs = [\":repo_files\"],\n)\n\n# Copyright and licensing information on every file (REUSE.toml, LICENSES/).\nreuse_test(\n    name = \"reuse_test\",\n    srcs = [\":repo_files\"],\n)\n\ncspell_test(\n    name = \"cspell_test\",\n    srcs = [\":repo_files\"],\n    config = \".cspell.jsonc\",\n    data = [\".cspell-words.txt\"],\n)\n\n# Vale style packages, in .vale.ini's `Packages` order.\n# Markdown and Go comments, against the pinned packages, offline.\nvale_test(\n    name = \"vale_test\",\n    srcs = [\":repo_files\"],\n    include = [\n        \"*.md\",\n        \"*.go\",\n    ],\n    config = \".vale.ini\",\n    packages = VALE_PACKAGES,\n    # Concurrent runs flake on the shared style cache.\n    tags = [\"exclusive\"],\n)\n\n# `bazel run //:vale_sync` writes the same packages into .vale/, for editors\n# and for running vale by hand.\nvale_sync(\n    name = \"vale_sync\",\n    config = \".vale.ini\",\n    packages = VALE_PACKAGES,\n)\n\n# Formatters. `bazel run //:format` rewrites the workspace in place,\n# `bazel run //:format.check` only reports, and //:format_test makes\n# `bazel test //...` fail on any unformatted file.\nFORMATTERS = [\n    \"@tbhb_rules//format:buildifier\",\n    \"@tbhb_rules//format:rumdl\",\n    \"@tbhb_rules//format:ryl\",\n    \"@tbhb_rules//format:shfmt\",\n    \"@tbhb_rules//format:tombi\",\n    \"@tbhb_rules_go//:golangci_fmt\",\n]\n\nformat(\n    name = \"format\",\n    formatters = FORMATTERS,\n)\n\nformat_test(\n    name = \"format_test\",\n    srcs = [\":repo_files\"],\n    formatters = FORMATTERS,\n)\n\n# `bazel run //:bazel_env` puts shims for the Bazel-pinned tools in\n# .bazel_env/bin, which mise and direnv add to PATH. Git hooks call them\n# directly, so a commit never waits on the Bazel server. bazel_env.bzl builds\n# its bin directory with POSIX tools that fail under Windows' Bash, so the\n# shims are for macOS and Linux.\nbazel_env(\n    name = \"bazel_env\",\n    target_compatible_with = select({\n        \"@platforms//os:windows\": [\"@platforms//:incompatible\"],\n        \"//conditions:default\": [],\n    }),\n    toolchains = {\n        \"go\": \"@rules_go//go:toolchain\",\n    },\n    tools = {\n        \"actionlint\": \"@tbhb_rules_actionlint//:actionlint\",\n        \"buildifier\": \"@buildifier_prebuilt//:buildifier\",\n        \"cog\": \"@tbhb_rules_cog//:cog\",\n        \"cspell\": \"@tbhb_rules//lint/private/cspell\",\n        \"editorconfig-checker\": \"@tbhb_rules_editorconfig_checker//:editorconfig-checker\",\n        \"git\": \"@tbhb_rules_git//:git\",\n        \"gitleaks\": \"@tbhb_rules//lint:gitleaks\",\n        \"go\": \"@rules_go//go\",\n        \"python\": \"//tools:python\",\n        \"rumdl\": \"@tbhb_rules_rumdl//:rumdl\",\n        \"ryl\": \"@tbhb_rules_ryl//:ryl\",\n        \"shellcheck\": \"@tbhb_rules_shellcheck//:shellcheck\",\n        \"shfmt\": \"@tbhb_rules_shfmt//:shfmt\",\n        \"tombi\": \"@tbhb_rules_tombi//:tombi\",\n        \"uv\": \"//tools:uv\",\n        \"vale\": \"@tbhb_rules_vale//:vale\",\n        \"zizmor\": \"@tbhb_rules_zizmor//:zizmor\",\n    },\n)\n", "gobco_test(\n    name = \"agent_capacity_gobco_test\",\n    data = [\"//factory/agent-capacity/cmd/agent-capacity:testdata/agy-usage.json\"],\n    go_mod = \"//:go.mod\",\n    go_sum = \"//:go.sum\",\n    proxy = \"@go_mod_proxy//:proxy\",\n    tests = [\"//factory/agent-capacity/cmd/agent-capacity:agent-capacity_test\"],\n)\n\ngobco_test(\n    name = \"capacity_gobco_test\",\n    go_mod = \"//:go.mod\",\n    go_sum = \"//:go.sum\",\n    proxy = \"@go_mod_proxy//:proxy\",\n    tests = [\"//factory/agent-capacity/internal/capacity:capacity_test\"],\n)\n\ngobco_test(\n    name = \"keepalive_gobco_test\",\n    data = [\"//factory/agent-capacity/internal/keepalive:testdata/stops.json\"],\n    go_mod = \"//:go.mod\",\n    go_sum = \"//:go.sum\",\n    proxy = \"@go_mod_proxy//:proxy\",\n    tests = [\"//factory/agent-capacity/internal/keepalive:keepalive_test\"],\n)\n\ngobco_test(\n    name = \"export_gobco_test\",\n    go_mod = \"//:go.mod\",\n    go_sum = \"//:go.sum\",\n    proxy = \"@go_mod_proxy//:proxy\",\n    tests = [\"//factory/agent-capacity/internal/export:export_test\"],\n)\n\ngobco_test(\n    name = \"codex_gobco_test\",\n    go_mod = \"//:go.mod\",\n    go_sum = \"//:go.sum\",\n    proxy = \"@go_mod_proxy//:proxy\",\n    tests = [\"//factory/agent-capacity/internal/source/codex:codex_test\"],\n)\n\ngobco_test(\n    name = \"session_gobco_test\",\n    go_mod = \"//:go.mod\",\n    go_sum = \"//:go.sum\",\n    proxy = \"@go_mod_proxy//:proxy\",\n    tests = [\"//factory/agent-capacity/internal/session:session_test\"],\n)\n\ngobco_test(\n    name = \"spool_gobco_test\",\n    go_mod = \"//:go.mod\",\n    go_sum = \"//:go.sum\",\n    proxy = \"@go_mod_proxy//:proxy\",\n    tests = [\"//factory/agent-capacity/internal/spool:spool_test\"],\n)\n\ngobco_test(\n    name = \"claude_gobco_test\",\n    go_mod = \"//:go.mod\",\n    go_sum = \"//:go.sum\",\n    proxy = \"@go_mod_proxy//:proxy\",\n    tests = [\"//factory/agent-capacity/internal/source/claude:claude_test\"],\n)\n\ngobco_test(\n    name = \"agy_gobco_test\",\n    data = [\"//factory/agent-capacity/internal/source/agy:testdata/usage-data.json\"],\n    go_mod = \"//:go.mod\",\n    go_sum = \"//:go.sum\",\n    proxy = \"@go_mod_proxy//:proxy\",\n    tests = [\"//factory/agent-capacity/internal/source/agy:agy_test\"],\n)\n"],
+]
+
+[rewrite."README.md"]
+dest = "factory/agent-capacity/README.md"
+replace = [
+  ["`agent-capacity` reads plan usage windows for Claude Code, Codex, and Antigravity from passive local sources and exports them as OpenTelemetry metrics. At startup, the registry includes the Claude status-line source and the Antigravity and Codex probe sources and adds the Codex rollout source when `--codex-home` or `CODEX_HOME` supplies a home directory. `--claude-transcripts` or `AGENT_CAPACITY_CLAUDE_TRANSCRIPTS` adds the Claude transcript source.\n\nSupported platforms include Linux (amd64 and arm64) and macOS (arm64).\n\n```sh\nbazelisk build //cmd/agent-capacity\nbazelisk run //cmd/agent-capacity -- version\nbazelisk run //cmd/agent-capacity -- serve --interval=60s --spool-dir=/path/to/spool\n```\n\n", "`agent-capacity` reads plan usage windows for Claude Code, Codex, and Antigravity from passive local sources and exports them as OpenTelemetry metrics. At startup, the registry includes the Claude status-line source and the Antigravity and Codex probe sources and adds the Codex rollout source when `--codex-home` or `CODEX_HOME` supplies a home directory. `--claude-transcripts` or `AGENT_CAPACITY_CLAUDE_TRANSCRIPTS` adds the Claude transcript source.\n\nSupported platforms include Linux (amd64 and arm64) and macOS (arm64). The Go dependencies are managed in the [root module](../../go.mod).\n\n```sh\nbazelisk build //factory/agent-capacity/cmd/agent-capacity\nbazelisk run //factory/agent-capacity/cmd/agent-capacity -- version\nbazelisk run //factory/agent-capacity/cmd/agent-capacity -- serve --interval=60s --spool-dir=/path/to/spool\n```\n\n"],
+  ["## Container image\n\nThe `ci` workflow builds the image for Linux amd64 and arm64 on every pull request. It doesn't publish images. Build the Open Container Initiative (OCI) image layout locally with `bazelisk build --config=release //container:image_multiarch` without a container daemon.\n\nThe image contains one static Go binary with `cgo` off and uses a digest-pinned distroless static base with CA certificates for the exporter. Its entrypoint runs `agent-capacity serve`. It defaults to the non-root user `65532:65532`, `AGENT_CAPACITY_SPOOL_DIR=/spool`, and `CODEX_HOME=/codex`.\n", "## Container image\n\nThe `ci` workflow builds the image for Linux amd64 and arm64 on every pull request. Build the Open Container Initiative (OCI) image layout locally with `bazelisk build -c opt //factory/agent-capacity/container:image_multiarch` without a container daemon.\n\nThe image contains one static Go binary with `cgo` off and uses a digest-pinned distroless static base with CA certificates for the exporter. Its entrypoint runs `agent-capacity serve`. It defaults to the non-root user `65532:65532`, `AGENT_CAPACITY_SPOOL_DIR=/spool`, and `CODEX_HOME=/codex`.\n"],
+]
+
+[rewrite."cmd/agent-capacity/BUILD.bazel"]
+dest = "factory/agent-capacity/cmd/agent-capacity/BUILD.bazel"
+replace = [
+  ["go.tbhb.dev/agent-capacity", "github.com/tbhb-dev/tbhbdev/factory/agent-capacity"],
+  ["# Copyright Tony Burns\n\nload(\"@rules_go//go:def.bzl\", \"go_binary\", \"go_library\", \"go_test\")\nload(\"@tbhb_rules//repo:defs.bzl\", \"repo_files\")\n\n", "# Copyright Tony Burns\n\nload(\"//factory:go.bzl\", \"go_binary\", \"go_library\", \"go_test\")\nload(\"@tbhb_rules//repo:defs.bzl\", \"repo_files\")\n\n"],
+  ["exports_files(\n    [\"testdata/agy-usage.json\"],\n    visibility = [\"//:__pkg__\"],\n)\n\n", "exports_files(\n    [\"testdata/agy-usage.json\"],\n    visibility = [\"//factory/agent-capacity:__pkg__\"],\n)\n\n"],
+  ["    visibility = [\"//visibility:private\"],\n    deps = [\n        \"//internal/capacity\",\n        \"//internal/export\",\n        \"//internal/session\",\n        \"//internal/source/agy\",\n        \"//internal/source/claude\",\n        \"//internal/source/codex\",\n        \"//internal/spool\",\n        \"@io_opentelemetry_go_otel//:otel\",\n        \"@io_opentelemetry_go_otel_metric//:metric\",\n", "    visibility = [\"//visibility:private\"],\n    deps = [\n        \"//factory/agent-capacity/internal/capacity\",\n        \"//factory/agent-capacity/internal/export\",\n        \"//factory/agent-capacity/internal/session\",\n        \"//factory/agent-capacity/internal/source/agy\",\n        \"//factory/agent-capacity/internal/source/claude\",\n        \"//factory/agent-capacity/internal/source/codex\",\n        \"//factory/agent-capacity/internal/spool\",\n        \"@io_opentelemetry_go_otel//:otel\",\n        \"@io_opentelemetry_go_otel_metric//:metric\",\n"],
+  ["    embed = [\":agent-capacity_lib\"],\n    pure = \"on\",\n    visibility = [\"//visibility:public\"],\n)\n\n", "    embed = [\":agent-capacity_lib\"],\n    pure = \"on\",\n    visibility = [\"//factory:__subpackages__\"],\n)\n\n"],
+  ["    data = glob([\"testdata/**\"]),\n    embed = [\":agent-capacity_lib\"],\n    visibility = [\"//:__pkg__\"],\n    deps = [\n        \"//internal/capacity\",\n        \"//internal/export\",\n        \"//internal/session\",\n        \"//internal/source/claude\",\n        \"//internal/spool\",\n        \"@com_github_stretchr_testify//assert\",\n        \"@com_github_stretchr_testify//require\",\n", "    data = glob([\"testdata/**\"]),\n    embed = [\":agent-capacity_lib\"],\n    visibility = [\"//factory/agent-capacity:__pkg__\"],\n    deps = [\n        \"//factory/agent-capacity/internal/capacity\",\n        \"//factory/agent-capacity/internal/export\",\n        \"//factory/agent-capacity/internal/session\",\n        \"//factory/agent-capacity/internal/source/claude\",\n        \"//factory/agent-capacity/internal/spool\",\n        \"@com_github_stretchr_testify//assert\",\n        \"@com_github_stretchr_testify//require\",\n"],
+]
+
+[rewrite."cmd/agent-capacity/agy_test.go"]
+dest = "factory/agent-capacity/cmd/agent-capacity/agy_test.go"
+replace = [
+  ["go.tbhb.dev/agent-capacity", "github.com/tbhb-dev/tbhbdev/factory/agent-capacity"],
+]
+
+[rewrite."cmd/agent-capacity/codex_probe.go"]
+dest = "factory/agent-capacity/cmd/agent-capacity/codex_probe.go"
+replace = [
+  ["go.tbhb.dev/agent-capacity", "github.com/tbhb-dev/tbhbdev/factory/agent-capacity"],
+]
+
+[rewrite."cmd/agent-capacity/codex_probe_test.go"]
+dest = "factory/agent-capacity/cmd/agent-capacity/codex_probe_test.go"
+replace = [
+  ["go.tbhb.dev/agent-capacity", "github.com/tbhb-dev/tbhbdev/factory/agent-capacity"],
+]
+
+[rewrite."cmd/agent-capacity/main.go"]
+dest = "factory/agent-capacity/cmd/agent-capacity/main.go"
+replace = [
+  ["go.tbhb.dev/agent-capacity", "github.com/tbhb-dev/tbhbdev/factory/agent-capacity"],
+]
+
+[rewrite."cmd/agent-capacity/main_test.go"]
+dest = "factory/agent-capacity/cmd/agent-capacity/main_test.go"
+replace = [
+  ["go.tbhb.dev/agent-capacity", "github.com/tbhb-dev/tbhbdev/factory/agent-capacity"],
+]
+
+[rewrite."cmd/agent-capacity/probe.go"]
+dest = "factory/agent-capacity/cmd/agent-capacity/probe.go"
+replace = [
+  ["go.tbhb.dev/agent-capacity", "github.com/tbhb-dev/tbhbdev/factory/agent-capacity"],
+]
+
+[rewrite."cmd/agent-capacity/probe_test.go"]
+dest = "factory/agent-capacity/cmd/agent-capacity/probe_test.go"
+replace = [
+  ["go.tbhb.dev/agent-capacity", "github.com/tbhb-dev/tbhbdev/factory/agent-capacity"],
+]
+
+[rewrite."cmd/agent-capacity/session.go"]
+dest = "factory/agent-capacity/cmd/agent-capacity/session.go"
+replace = [
+  ["go.tbhb.dev/agent-capacity", "github.com/tbhb-dev/tbhbdev/factory/agent-capacity"],
+]
+
+[rewrite."cmd/agent-capacity/session_test.go"]
+dest = "factory/agent-capacity/cmd/agent-capacity/session_test.go"
+replace = [
+  ["go.tbhb.dev/agent-capacity", "github.com/tbhb-dev/tbhbdev/factory/agent-capacity"],
+]
+
+[rewrite."cmd/agent-capacity/statusline.go"]
+dest = "factory/agent-capacity/cmd/agent-capacity/statusline.go"
+replace = [
+  ["go.tbhb.dev/agent-capacity", "github.com/tbhb-dev/tbhbdev/factory/agent-capacity"],
+]
+
+[rewrite."cmd/agent-capacity/statusline_test.go"]
+dest = "factory/agent-capacity/cmd/agent-capacity/statusline_test.go"
+replace = [
+  ["go.tbhb.dev/agent-capacity", "github.com/tbhb-dev/tbhbdev/factory/agent-capacity"],
+]
+
+[rewrite."cmd/agent-capacity/transcript_test.go"]
+dest = "factory/agent-capacity/cmd/agent-capacity/transcript_test.go"
+replace = [
+  ["go.tbhb.dev/agent-capacity", "github.com/tbhb-dev/tbhbdev/factory/agent-capacity"],
+]
+
+[rewrite."container/BUILD.bazel"]
+dest = "factory/agent-capacity/container/BUILD.bazel"
+replace = [
+  ["pkg_tar(\n    name = \"binary\",\n    srcs = [\"//cmd/agent-capacity\"],\n    mode = \"0555\",\n    package_dir = \"/\",\n", "pkg_tar(\n    name = \"binary\",\n    srcs = [\"//factory/agent-capacity/cmd/agent-capacity\"],\n    mode = \"0555\",\n    package_dir = \"/\",\n"],
+]
+
+[rewrite."internal/capacity/BUILD.bazel"]
+dest = "factory/agent-capacity/internal/capacity/BUILD.bazel"
+replace = [
+  ["go.tbhb.dev/agent-capacity", "github.com/tbhb-dev/tbhbdev/factory/agent-capacity"],
+  ["# Copyright Tony Burns\n\nload(\"@rules_go//go:def.bzl\", \"go_library\", \"go_test\")\nload(\"@tbhb_rules//repo:defs.bzl\", \"repo_files\")\n\n", "# Copyright Tony Burns\n\nload(\"//factory:go.bzl\", \"go_library\", \"go_test\")\nload(\"@tbhb_rules//repo:defs.bzl\", \"repo_files\")\n\n"],
+  ["    ],\n    importpath = \"github.com/tbhb-dev/tbhbdev/factory/agent-capacity/internal/capacity\",\n    visibility = [\"//:__subpackages__\"],\n)\n\n", "    ],\n    importpath = \"github.com/tbhb-dev/tbhbdev/factory/agent-capacity/internal/capacity\",\n    visibility = [\"//factory/agent-capacity:__subpackages__\"],\n)\n\n"],
+  ["    name = \"capacity_test\",\n    srcs = [\"reading_test.go\"],\n    visibility = [\"//:__pkg__\"],\n    deps = [\n        \":capacity\",\n", "    name = \"capacity_test\",\n    srcs = [\"reading_test.go\"],\n    visibility = [\"//factory/agent-capacity:__pkg__\"],\n    deps = [\n        \":capacity\",\n"],
+]
+
+[rewrite."internal/capacity/reading_test.go"]
+dest = "factory/agent-capacity/internal/capacity/reading_test.go"
+replace = [
+  ["go.tbhb.dev/agent-capacity", "github.com/tbhb-dev/tbhbdev/factory/agent-capacity"],
+]
+
+[rewrite."internal/export/BUILD.bazel"]
+dest = "factory/agent-capacity/internal/export/BUILD.bazel"
+replace = [
+  ["go.tbhb.dev/agent-capacity", "github.com/tbhb-dev/tbhbdev/factory/agent-capacity"],
+  ["# Copyright Tony Burns\n\nload(\"@rules_go//go:def.bzl\", \"go_library\", \"go_test\")\nload(\"@tbhb_rules//repo:defs.bzl\", \"repo_files\")\n\n", "# Copyright Tony Burns\n\nload(\"//factory:go.bzl\", \"go_library\", \"go_test\")\nload(\"@tbhb_rules//repo:defs.bzl\", \"repo_files\")\n\n"],
+  ["    ],\n    importpath = \"github.com/tbhb-dev/tbhbdev/factory/agent-capacity/internal/export\",\n    visibility = [\"//:__subpackages__\"],\n    deps = [\n        \"//internal/capacity\",\n        \"@io_opentelemetry_go_otel//attribute\",\n        \"@io_opentelemetry_go_otel_exporters_otlp_otlpmetric_otlpmetricgrpc//:otlpmetricgrpc\",\n", "    ],\n    importpath = \"github.com/tbhb-dev/tbhbdev/factory/agent-capacity/internal/export\",\n    visibility = [\"//factory/agent-capacity:__subpackages__\"],\n    deps = [\n        \"//factory/agent-capacity/internal/capacity\",\n        \"@io_opentelemetry_go_otel//attribute\",\n        \"@io_opentelemetry_go_otel_exporters_otlp_otlpmetric_otlpmetricgrpc//:otlpmetricgrpc\",\n"],
+  ["        \"provider_test.go\",\n    ],\n    visibility = [\"//:__pkg__\"],\n    deps = [\n        \":export\",\n        \"//internal/capacity\",\n        \"@com_github_stretchr_testify//assert\",\n        \"@com_github_stretchr_testify//require\",\n", "        \"provider_test.go\",\n    ],\n    visibility = [\"//factory/agent-capacity:__pkg__\"],\n    deps = [\n        \":export\",\n        \"//factory/agent-capacity/internal/capacity\",\n        \"@com_github_stretchr_testify//assert\",\n        \"@com_github_stretchr_testify//require\",\n"],
+]
+
+[rewrite."internal/export/collector.go"]
+dest = "factory/agent-capacity/internal/export/collector.go"
+replace = [
+  ["go.tbhb.dev/agent-capacity", "github.com/tbhb-dev/tbhbdev/factory/agent-capacity"],
+]
+
+[rewrite."internal/export/collector_test.go"]
+dest = "factory/agent-capacity/internal/export/collector_test.go"
+replace = [
+  ["go.tbhb.dev/agent-capacity", "github.com/tbhb-dev/tbhbdev/factory/agent-capacity"],
+]
+
+[rewrite."internal/export/provider_test.go"]
+dest = "factory/agent-capacity/internal/export/provider_test.go"
+replace = [
+  ["go.tbhb.dev/agent-capacity", "github.com/tbhb-dev/tbhbdev/factory/agent-capacity"],
+]
+
+[rewrite."internal/keepalive/BUILD.bazel"]
+dest = "factory/agent-capacity/internal/keepalive/BUILD.bazel"
+replace = [
+  ["go.tbhb.dev/agent-capacity", "github.com/tbhb-dev/tbhbdev/factory/agent-capacity"],
+  ["# Copyright Tony Burns\n\nload(\"@rules_go//go:def.bzl\", \"go_library\", \"go_test\")\nload(\"@tbhb_rules//repo:defs.bzl\", \"repo_files\")\n\n", "# Copyright Tony Burns\n\nload(\"//factory:go.bzl\", \"go_library\", \"go_test\")\nload(\"@tbhb_rules//repo:defs.bzl\", \"repo_files\")\n\n"],
+  ["exports_files(\n    [\"testdata/stops.json\"],\n    visibility = [\"//:__pkg__\"],\n)\n\n", "exports_files(\n    [\"testdata/stops.json\"],\n    visibility = [\"//factory/agent-capacity:__pkg__\"],\n)\n\n"],
+  ["    ],\n    importpath = \"github.com/tbhb-dev/tbhbdev/factory/agent-capacity/internal/keepalive\",\n    visibility = [\"//:__subpackages__\"],\n)\n\n", "    ],\n    importpath = \"github.com/tbhb-dev/tbhbdev/factory/agent-capacity/internal/keepalive\",\n    visibility = [\"//factory/agent-capacity:__subpackages__\"],\n)\n\n"],
+  ["    data = glob([\"testdata/**\"]),\n    embed = [\":keepalive\"],\n    visibility = [\"//:__pkg__\"],\n    deps = [\n        \"@com_github_stretchr_testify//assert\",\n", "    data = glob([\"testdata/**\"]),\n    embed = [\":keepalive\"],\n    visibility = [\"//factory/agent-capacity:__pkg__\"],\n    deps = [\n        \"@com_github_stretchr_testify//assert\",\n"],
+]
+
+[rewrite."internal/session/BUILD.bazel"]
+dest = "factory/agent-capacity/internal/session/BUILD.bazel"
+replace = [
+  ["go.tbhb.dev/agent-capacity", "github.com/tbhb-dev/tbhbdev/factory/agent-capacity"],
+  ["# Copyright Tony Burns\n\nload(\"@rules_go//go:def.bzl\", \"go_library\", \"go_test\")\nload(\"@tbhb_rules//repo:defs.bzl\", \"repo_files\")\n\n", "# Copyright Tony Burns\n\nload(\"//factory:go.bzl\", \"go_library\", \"go_test\")\nload(\"@tbhb_rules//repo:defs.bzl\", \"repo_files\")\n\n"],
+  ["    ],\n    importpath = \"github.com/tbhb-dev/tbhbdev/factory/agent-capacity/internal/session\",\n    visibility = [\"//:__subpackages__\"],\n    deps = [\n        \"//internal/spool\",\n        \"@com_github_creack_pty//:pty\",\n    ] + select({\n", "    ],\n    importpath = \"github.com/tbhb-dev/tbhbdev/factory/agent-capacity/internal/session\",\n    visibility = [\"//factory/agent-capacity:__subpackages__\"],\n    deps = [\n        \"//factory/agent-capacity/internal/spool\",\n        \"@com_github_creack_pty//:pty\",\n    ] + select({\n"],
+  ["    ],\n    embed = [\":session\"],\n    visibility = [\"//:__pkg__\"],\n    deps = [\n        \"//internal/spool\",\n        \"@com_github_creack_pty//:pty\",\n    ],\n", "    ],\n    embed = [\":session\"],\n    visibility = [\"//factory/agent-capacity:__pkg__\"],\n    deps = [\n        \"//factory/agent-capacity/internal/spool\",\n        \"@com_github_creack_pty//:pty\",\n    ],\n"],
+]
+
+[rewrite."internal/session/account.go"]
+dest = "factory/agent-capacity/internal/session/account.go"
+replace = [
+  ["go.tbhb.dev/agent-capacity", "github.com/tbhb-dev/tbhbdev/factory/agent-capacity"],
+]
+
+[rewrite."internal/session/lifecycle_test.go"]
+dest = "factory/agent-capacity/internal/session/lifecycle_test.go"
+replace = [
+  ["go.tbhb.dev/agent-capacity", "github.com/tbhb-dev/tbhbdev/factory/agent-capacity"],
+]
+
+[rewrite."internal/session/runner.go"]
+dest = "factory/agent-capacity/internal/session/runner.go"
+replace = [
+  ["go.tbhb.dev/agent-capacity", "github.com/tbhb-dev/tbhbdev/factory/agent-capacity"],
+]
+
+[rewrite."internal/session/session_test.go"]
+dest = "factory/agent-capacity/internal/session/session_test.go"
+replace = [
+  ["go.tbhb.dev/agent-capacity", "github.com/tbhb-dev/tbhbdev/factory/agent-capacity"],
+]
+
+[rewrite."internal/session/settings.go"]
+dest = "factory/agent-capacity/internal/session/settings.go"
+replace = [
+  ["go.tbhb.dev/agent-capacity", "github.com/tbhb-dev/tbhbdev/factory/agent-capacity"],
+]
+
+[rewrite."internal/source/agy/BUILD.bazel"]
+dest = "factory/agent-capacity/internal/source/agy/BUILD.bazel"
+replace = [
+  ["go.tbhb.dev/agent-capacity", "github.com/tbhb-dev/tbhbdev/factory/agent-capacity"],
+  ["# Copyright Tony Burns\n\nload(\"@rules_go//go:def.bzl\", \"go_library\", \"go_test\")\nload(\"@tbhb_rules//repo:defs.bzl\", \"repo_files\")\n\n", "# Copyright Tony Burns\n\nload(\"//factory:go.bzl\", \"go_library\", \"go_test\")\nload(\"@tbhb_rules//repo:defs.bzl\", \"repo_files\")\n\n"],
+  ["exports_files(\n    [\"testdata/usage-data.json\"],\n    visibility = [\"//:__pkg__\"],\n)\n\n", "exports_files(\n    [\"testdata/usage-data.json\"],\n    visibility = [\"//factory/agent-capacity:__pkg__\"],\n)\n\n"],
+  ["    srcs = [\"agy.go\"],\n    importpath = \"github.com/tbhb-dev/tbhbdev/factory/agent-capacity/internal/source/agy\",\n    visibility = [\"//:__subpackages__\"],\n    deps = [\n        \"//internal/capacity\",\n        \"//internal/spool\",\n    ],\n)\n", "    srcs = [\"agy.go\"],\n    importpath = \"github.com/tbhb-dev/tbhbdev/factory/agent-capacity/internal/source/agy\",\n    visibility = [\"//factory/agent-capacity:__subpackages__\"],\n    deps = [\n        \"//factory/agent-capacity/internal/capacity\",\n        \"//factory/agent-capacity/internal/spool\",\n    ],\n)\n"],
+  ["    data = glob([\"testdata/**\"]),\n    embed = [\":agy\"],\n    visibility = [\"//:__pkg__\"],\n    deps = [\n        \"//internal/capacity\",\n        \"//internal/spool\",\n        \"@com_github_stretchr_testify//assert\",\n        \"@com_github_stretchr_testify//require\",\n", "    data = glob([\"testdata/**\"]),\n    embed = [\":agy\"],\n    visibility = [\"//factory/agent-capacity:__pkg__\"],\n    deps = [\n        \"//factory/agent-capacity/internal/capacity\",\n        \"//factory/agent-capacity/internal/spool\",\n        \"@com_github_stretchr_testify//assert\",\n        \"@com_github_stretchr_testify//require\",\n"],
+]
+
+[rewrite."internal/source/agy/agy.go"]
+dest = "factory/agent-capacity/internal/source/agy/agy.go"
+replace = [
+  ["go.tbhb.dev/agent-capacity", "github.com/tbhb-dev/tbhbdev/factory/agent-capacity"],
+]
+
+[rewrite."internal/source/agy/agy_test.go"]
+dest = "factory/agent-capacity/internal/source/agy/agy_test.go"
+replace = [
+  ["go.tbhb.dev/agent-capacity", "github.com/tbhb-dev/tbhbdev/factory/agent-capacity"],
+]
+
+[rewrite."internal/source/claude/BUILD.bazel"]
+dest = "factory/agent-capacity/internal/source/claude/BUILD.bazel"
+replace = [
+  ["go.tbhb.dev/agent-capacity", "github.com/tbhb-dev/tbhbdev/factory/agent-capacity"],
+  ["# Copyright Tony Burns\n\nload(\"@rules_go//go:def.bzl\", \"go_library\", \"go_test\")\nload(\"@tbhb_rules//repo:defs.bzl\", \"repo_files\")\n\n", "# Copyright Tony Burns\n\nload(\"//factory:go.bzl\", \"go_library\", \"go_test\")\nload(\"@tbhb_rules//repo:defs.bzl\", \"repo_files\")\n\n"],
+  ["    ],\n    importpath = \"github.com/tbhb-dev/tbhbdev/factory/agent-capacity/internal/source/claude\",\n    visibility = [\"//:__subpackages__\"],\n    deps = [\n        \"//internal/capacity\",\n        \"//internal/spool\",\n    ],\n)\n", "    ],\n    importpath = \"github.com/tbhb-dev/tbhbdev/factory/agent-capacity/internal/source/claude\",\n    visibility = [\"//factory/agent-capacity:__subpackages__\"],\n    deps = [\n        \"//factory/agent-capacity/internal/capacity\",\n        \"//factory/agent-capacity/internal/spool\",\n    ],\n)\n"],
+  ["    ],\n    embed = [\":claude\"],\n    visibility = [\"//:__pkg__\"],\n    deps = [\n        \"//internal/capacity\",\n        \"//internal/spool\",\n        \"@com_github_stretchr_testify//assert\",\n        \"@com_github_stretchr_testify//require\",\n", "    ],\n    embed = [\":claude\"],\n    visibility = [\"//factory/agent-capacity:__pkg__\"],\n    deps = [\n        \"//factory/agent-capacity/internal/capacity\",\n        \"//factory/agent-capacity/internal/spool\",\n        \"@com_github_stretchr_testify//assert\",\n        \"@com_github_stretchr_testify//require\",\n"],
+]
+
+[rewrite."internal/source/claude/claude.go"]
+dest = "factory/agent-capacity/internal/source/claude/claude.go"
+replace = [
+  ["go.tbhb.dev/agent-capacity", "github.com/tbhb-dev/tbhbdev/factory/agent-capacity"],
+]
+
+[rewrite."internal/source/claude/claude_test.go"]
+dest = "factory/agent-capacity/internal/source/claude/claude_test.go"
+replace = [
+  ["go.tbhb.dev/agent-capacity", "github.com/tbhb-dev/tbhbdev/factory/agent-capacity"],
+]
+
+[rewrite."internal/source/claude/tokens.go"]
+dest = "factory/agent-capacity/internal/source/claude/tokens.go"
+replace = [
+  ["go.tbhb.dev/agent-capacity", "github.com/tbhb-dev/tbhbdev/factory/agent-capacity"],
+]
+
+[rewrite."internal/source/claude/tokens_test.go"]
+dest = "factory/agent-capacity/internal/source/claude/tokens_test.go"
+replace = [
+  ["go.tbhb.dev/agent-capacity", "github.com/tbhb-dev/tbhbdev/factory/agent-capacity"],
+]
+
+[rewrite."internal/source/claude/transcript.go"]
+dest = "factory/agent-capacity/internal/source/claude/transcript.go"
+replace = [
+  ["go.tbhb.dev/agent-capacity", "github.com/tbhb-dev/tbhbdev/factory/agent-capacity"],
+]
+
+[rewrite."internal/source/claude/transcript_test.go"]
+dest = "factory/agent-capacity/internal/source/claude/transcript_test.go"
+replace = [
+  ["go.tbhb.dev/agent-capacity", "github.com/tbhb-dev/tbhbdev/factory/agent-capacity"],
+]
+
+[rewrite."internal/source/codex/BUILD.bazel"]
+dest = "factory/agent-capacity/internal/source/codex/BUILD.bazel"
+replace = [
+  ["go.tbhb.dev/agent-capacity", "github.com/tbhb-dev/tbhbdev/factory/agent-capacity"],
+  ["# Copyright Tony Burns\n\nload(\"@rules_go//go:def.bzl\", \"go_library\", \"go_test\")\nload(\"@tbhb_rules//repo:defs.bzl\", \"repo_files\")\n\n", "# Copyright Tony Burns\n\nload(\"//factory:go.bzl\", \"go_library\", \"go_test\")\nload(\"@tbhb_rules//repo:defs.bzl\", \"repo_files\")\n\n"],
+  ["    ],\n    importpath = \"github.com/tbhb-dev/tbhbdev/factory/agent-capacity/internal/source/codex\",\n    visibility = [\"//:__subpackages__\"],\n    deps = [\n        \"//internal/capacity\",\n        \"//internal/spool\",\n    ],\n)\n", "    ],\n    importpath = \"github.com/tbhb-dev/tbhbdev/factory/agent-capacity/internal/source/codex\",\n    visibility = [\"//factory/agent-capacity:__subpackages__\"],\n    deps = [\n        \"//factory/agent-capacity/internal/capacity\",\n        \"//factory/agent-capacity/internal/spool\",\n    ],\n)\n"],
+  ["    ],\n    embed = [\":codex\"],\n    visibility = [\"//:__pkg__\"],\n    deps = [\n        \"//internal/capacity\",\n        \"//internal/spool\",\n        \"@com_github_stretchr_testify//assert\",\n        \"@com_github_stretchr_testify//require\",\n", "    ],\n    embed = [\":codex\"],\n    visibility = [\"//factory/agent-capacity:__pkg__\"],\n    deps = [\n        \"//factory/agent-capacity/internal/capacity\",\n        \"//factory/agent-capacity/internal/spool\",\n        \"@com_github_stretchr_testify//assert\",\n        \"@com_github_stretchr_testify//require\",\n"],
+]
+
+[rewrite."internal/source/codex/source.go"]
+dest = "factory/agent-capacity/internal/source/codex/source.go"
+replace = [
+  ["go.tbhb.dev/agent-capacity", "github.com/tbhb-dev/tbhbdev/factory/agent-capacity"],
+]
+
+[rewrite."internal/source/codex/source_test.go"]
+dest = "factory/agent-capacity/internal/source/codex/source_test.go"
+replace = [
+  ["go.tbhb.dev/agent-capacity", "github.com/tbhb-dev/tbhbdev/factory/agent-capacity"],
+]
+
+[rewrite."internal/source/codex/spool.go"]
+dest = "factory/agent-capacity/internal/source/codex/spool.go"
+replace = [
+  ["go.tbhb.dev/agent-capacity", "github.com/tbhb-dev/tbhbdev/factory/agent-capacity"],
+]
+
+[rewrite."internal/source/codex/spool_test.go"]
+dest = "factory/agent-capacity/internal/source/codex/spool_test.go"
+replace = [
+  ["go.tbhb.dev/agent-capacity", "github.com/tbhb-dev/tbhbdev/factory/agent-capacity"],
+]
+
+[rewrite."internal/source/codex/tokens.go"]
+dest = "factory/agent-capacity/internal/source/codex/tokens.go"
+replace = [
+  ["go.tbhb.dev/agent-capacity", "github.com/tbhb-dev/tbhbdev/factory/agent-capacity"],
+]
+
+[rewrite."internal/source/codex/tokens_test.go"]
+dest = "factory/agent-capacity/internal/source/codex/tokens_test.go"
+replace = [
+  ["go.tbhb.dev/agent-capacity", "github.com/tbhb-dev/tbhbdev/factory/agent-capacity"],
+]
+
+[rewrite."internal/spool/BUILD.bazel"]
+dest = "factory/agent-capacity/internal/spool/BUILD.bazel"
+replace = [
+  ["go.tbhb.dev/agent-capacity", "github.com/tbhb-dev/tbhbdev/factory/agent-capacity"],
+  ["# Copyright Tony Burns\n\nload(\"@rules_go//go:def.bzl\", \"go_library\", \"go_test\")\nload(\"@tbhb_rules//repo:defs.bzl\", \"repo_files\")\n\n", "# Copyright Tony Burns\n\nload(\"//factory:go.bzl\", \"go_library\", \"go_test\")\nload(\"@tbhb_rules//repo:defs.bzl\", \"repo_files\")\n\n"],
+  ["    ],\n    importpath = \"github.com/tbhb-dev/tbhbdev/factory/agent-capacity/internal/spool\",\n    visibility = [\"//:__subpackages__\"],\n    deps = [\"//internal/capacity\"],\n)\n\n", "    ],\n    importpath = \"github.com/tbhb-dev/tbhbdev/factory/agent-capacity/internal/spool\",\n    visibility = [\"//factory/agent-capacity:__subpackages__\"],\n    deps = [\"//factory/agent-capacity/internal/capacity\"],\n)\n\n"],
+  ["    ],\n    embed = [\":spool\"],\n    visibility = [\"//:__pkg__\"],\n    deps = [\n        \"//internal/capacity\",\n        \"@com_github_stretchr_testify//assert\",\n        \"@com_github_stretchr_testify//require\",\n", "    ],\n    embed = [\":spool\"],\n    visibility = [\"//factory/agent-capacity:__pkg__\"],\n    deps = [\n        \"//factory/agent-capacity/internal/capacity\",\n        \"@com_github_stretchr_testify//assert\",\n        \"@com_github_stretchr_testify//require\",\n"],
+]
+
+[rewrite."internal/spool/spool.go"]
+dest = "factory/agent-capacity/internal/spool/spool.go"
+replace = [
+  ["go.tbhb.dev/agent-capacity", "github.com/tbhb-dev/tbhbdev/factory/agent-capacity"],
+]
+
+[rewrite."internal/spool/spool_test.go"]
+dest = "factory/agent-capacity/internal/spool/spool_test.go"
+replace = [
+  ["go.tbhb.dev/agent-capacity", "github.com/tbhb-dev/tbhbdev/factory/agent-capacity"],
+]
+
+[drop]
+".bazelignore" = "root configuration (.bazel*)"
+".bazelrc" = "root configuration (.bazel*)"
+".bazelversion" = "root configuration (.bazel*)"
+".claude/settings.json" = "Standalone repository configuration; the monorepo owns this tooling."
+".codex/rules/pull-request.rules" = "Standalone repository configuration; the monorepo owns this tooling."
+".cog/changelog.tera" = "Standalone repository configuration; the monorepo owns this tooling."
+".cspell-words.txt" = "root configuration (.cspell*)"
+".cspell.jsonc" = "root configuration (.cspell*)"
+".editorconfig" = "root configuration (.editorconfig*)"
+".editorconfig-checker.json" = "root configuration (.editorconfig*)"
+".gitattributes" = "root configuration (.gitattributes)"
+".github/CODEOWNERS" = "root configuration (.github/CODEOWNERS)"
+".github/PULL_REQUEST_TEMPLATE.md" = "Standalone repository configuration; the monorepo owns this tooling."
+".github/actionlint.yaml" = "root configuration (.github/actionlint.yaml)"
+".github/pull-request-sections.toml" = "Standalone repository configuration; the monorepo owns this tooling."
+".github/renovate.json5" = "root configuration (.github/renovate.json*)"
+".github/rulesets/main.json" = "root configuration (.github/rulesets/*)"
+".github/schemas/pull-request-draft.schema.json" = "Standalone repository configuration; the monorepo owns this tooling."
+".github/workflows/ci.yml" = "root configuration (.github/workflows/*)"
+".github/workflows/codeql.yml" = "root configuration (.github/workflows/*)"
+".github/workflows/mutation-nightly.yml" = "root configuration (.github/workflows/*)"
+".github/workflows/release.yml" = "root configuration (.github/workflows/*)"
+".github/workflows/renovate-config-validator.yaml" = "root configuration (.github/workflows/*)"
+".github/workflows/renovate.yaml" = "root configuration (.github/workflows/*)"
+".github/zizmor.yml" = "root configuration (.github/zizmor.yml)"
+".gitignore" = "root configuration (.gitignore)"
+".gitleaks.toml" = "root configuration (.gitleaks.toml)"
+".go-arch-lint.yml" = "Go lint configuration and import contracts are maintained at the monorepo root."
+".golangci.yml" = "Go lint configuration and import contracts are maintained at the monorepo root."
+".mcp.json" = "Standalone repository configuration; the monorepo owns this tooling."
+".pre-commit-config.yaml" = "root configuration (.pre-commit-config.yaml)"
+".python-version" = "root configuration (.python-version)"
+".rumdl.toml" = "root configuration (.rumdl.toml)"
+".ryl.toml" = "root configuration (.ryl*)"
+".rylignore" = "root configuration (.ryl*)"
+".vale.ini" = "root configuration (.vale*)"
+".vale/config/vocabularies/project/accept.txt" = "root configuration (.vale/**)"
+".vale/config/vocabularies/project/reject.txt" = "root configuration (.vale/**)"
+".vale/project/Acronyms.yml" = "root configuration (.vale/**)"
+".vale/project/Colons.yml" = "root configuration (.vale/**)"
+".vale/project/HeadingTitleCase.yml" = "root configuration (.vale/**)"
+".vale/project/WordList.yml" = "root configuration (.vale/**)"
+"AGENTS.md" = "Standalone repository configuration; the monorepo owns this tooling."
+"CHANGELOG.md" = "The standalone changelog is empty and has no reader in the monorepo."
+"CLAUDE.md" = "Standalone repository configuration; the monorepo owns this tooling."
+"LICENSE" = "root configuration (LICENSE)"
+"LICENSES/Apache-2.0.txt" = "root configuration (LICENSES/**)"
+"MODULE.bazel" = "root configuration (MODULE.bazel*)"
+"MODULE.bazel.lock" = "root configuration (MODULE.bazel*)"
+"REPO.bazel" = "root configuration (REPO.bazel)"
+"REUSE.toml" = "root configuration (REUSE.toml)"
+"cog.toml" = "Standalone repository configuration; the monorepo owns this tooling."
+"deploy/linux/README.md" = "No monorepo deployment target reads these host-specific units or installers."
+"deploy/linux/dev.tbhb.agent-capacity.serve@.service" = "No monorepo deployment target reads these host-specific units or installers."
+"deploy/macos/README.md" = "No monorepo deployment target reads these host-specific units or installers."
+"deploy/macos/dev.tbhb.agent-capacity.serve.claude-claude-primary.plist" = "No monorepo deployment target reads these host-specific units or installers."
+"deploy/macos/dev.tbhb.agent-capacity.serve.claude-claude-secondary.plist" = "No monorepo deployment target reads these host-specific units or installers."
+"deploy/macos/dev.tbhb.agent-capacity.serve.plist" = "No monorepo deployment target reads these host-specific units or installers."
+"deploy/macos/install.sh" = "No monorepo deployment target reads these host-specific units or installers."
+"deploy/macos/user/dev.tbhb.agent-capacity-serve.plist" = "No monorepo deployment target reads these host-specific units or installers."
+"deploy/macos/user/install.sh" = "No monorepo deployment target reads these host-specific units or installers."
+"docs/AGENTS.md" = "Standalone documentation tooling and its frontmatter reference; project usage lives in README.md."
+"docs/CLAUDE.md" = "Standalone documentation tooling and its frontmatter reference; project usage lives in README.md."
+"docs/index.md" = "Standalone documentation tooling and its frontmatter reference; project usage lives in README.md."
+"docs/reference/frontmatter.md" = "Standalone documentation tooling and its frontmatter reference; project usage lives in README.md."
+"docs/schemas/frontmatter.schema.json" = "Standalone documentation tooling and its frontmatter reference; project usage lives in README.md."
+"docs/schemas/index-frontmatter.schema.json" = "Standalone documentation tooling and its frontmatter reference; project usage lives in README.md."
+"go.mod" = "Dependencies and checksums are managed in the root Go module."
+"go.sum" = "Dependencies and checksums are managed in the root Go module."
+"mise.lock" = "root configuration (mise.*)"
+"mise.toml" = "root configuration (mise.*)"
+"preset.bazelrc" = "root configuration (preset.bazelrc)"
+"pyproject.toml" = "Standalone repository configuration; the monorepo owns this tooling."
+"tombi.toml" = "root configuration (tombi.toml)"
+"tools/BUILD.bazel" = "Standalone Bazel release and lint tooling; the monorepo owns its build and checks."
+"tools/get_workspace_status.bat" = "Standalone Bazel release and lint tooling; the monorepo owns its build and checks."
+"tools/get_workspace_status.bats" = "Standalone Bazel release and lint tooling; the monorepo owns its build and checks."
+"tools/get_workspace_status.sh" = "Standalone Bazel release and lint tooling; the monorepo owns its build and checks."
+"tools/get_workspace_status_test.bat" = "Standalone Bazel release and lint tooling; the monorepo owns its build and checks."
+"tools/lint/BUILD.bazel" = "Standalone Bazel release and lint tooling; the monorepo owns its build and checks."
+"tools/lint/linters.bzl" = "Standalone Bazel release and lint tooling; the monorepo owns its build and checks."
+"uv.lock" = "root configuration (uv.lock)"
+"vale_packages.bzl" = "Standalone repository configuration; the monorepo owns this tooling."
