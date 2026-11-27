@@ -4,8 +4,6 @@
     tbhbdev alpha gh-app APP --cooldown-until EPOCH
     tbhbdev alpha gh-app APP --cooldown-status
 
-`mint_token` returns a repository and permission restricted token signed in memory.
-
 A mint reads the App's `app_id` and `private_key` from the `github-app-APP` item
 through one `secrets.Store`, checks that the key is an RSA key, signs a JWT
 with `openssl`, and exchanges it for an installation token. It writes a
@@ -21,10 +19,6 @@ through from the repository to its owner on a 404 only, and any other
 refusal is an error. Nothing here reads a service account or runs `op`. The
 token, the key and the JWT never reach stdout, stderr, an exception message or
 a repr.
-
-`Env` holds the seams the command uses: the
-clock, the state root, the secret store, the openssl runner and the HTTP
-transport.
 """
 
 import os
@@ -52,7 +46,6 @@ from tbhbdev.alpha.gh_app_runtime import (
     GhAppError,
     Reader,
 )
-from tbhbdev.alpha.gh_app_signing import rebuild_pem
 from tbhbdev.alpha.gh_app_state import (
     EXPIRES_FILE,
     HOSTS_FILE,
@@ -93,7 +86,7 @@ def read_fields(env: Env, args: Args) -> tuple[str, str]:
     except secrets.SecretsError:
         raise unreadable(args, "app_id") from None
     app_id = read_field(store, args, "app_id").strip()
-    return app_id, rebuild_pem(read_field(store, args, "private_key"))
+    return app_id, gh_app_signing.rebuild_pem(read_field(store, args, "private_key"))
 
 
 def request_token(env: Env, args: Args, jwt: str) -> Minted:

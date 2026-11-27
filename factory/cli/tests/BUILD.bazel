@@ -274,7 +274,7 @@ cli_py_test(
         "//factory/cli/src/tbhbdev/alpha:brief",
         "//factory/cli/src/tbhbdev/alpha:close",
         "//factory/cli/src/tbhbdev/alpha:command",
-        "//factory/cli/src/tbhbdev/alpha:gh_app",
+        "//factory/cli/src/tbhbdev/alpha:gh_app_command",
         "//factory/cli/src/tbhbdev/alpha:guard_agent_model",
         "//factory/cli/src/tbhbdev/alpha:guard_gh_config_dir",
         "//factory/cli/src/tbhbdev/alpha:guard_gh_poll",
@@ -937,25 +937,6 @@ cli_py_test(
         "//factory/cli/src/tbhbdev/alpha:opened",
         "//factory/cli/src/tbhbdev/alpha:pull_request",
         "//factory/cli/src/tbhbdev/alpha/identity:dispatcher",
-        "@cli_pip//pytest",
-    ],
-)
-
-cli_py_test(
-    name = "test_alpha_gh_app",
-    srcs = ["test_alpha_gh_app.py"],
-    deps = [
-        ":conftest",
-        "//factory/cli/src/tbhbdev:secrets",
-        "//factory/cli/src/tbhbdev/alpha:gh_app",
-        "//factory/cli/src/tbhbdev/alpha:gh_app_api",
-        "//factory/cli/src/tbhbdev/alpha:gh_app_args",
-        "//factory/cli/src/tbhbdev/alpha:gh_app_runtime",
-        "//factory/cli/src/tbhbdev/alpha:gh_app_signing",
-        "//factory/cli/src/tbhbdev/alpha:gh_app_state",
-        "@cli_pip//certifi",
-        "@cli_pip//cryptography",
-        "@cli_pip//httpx2",
         "@cli_pip//pytest",
     ],
 )
@@ -1860,7 +1841,7 @@ filegroup(
         ["**"],
         exclude = ["BUILD.bazel"],
     ) + [
-        "//factory/cli/tests/integration/alpha:test_pull_request_timestamps_io.py",
+        "//factory/cli/tests/integration/alpha:package_files",
         "//factory/cli/tests/integration/alpha/agent:package_files",
         "//factory/cli/tests/integration/alpha/identity:test_dispatcher_timestamps_io.py",
         "//factory/cli/tests/unit/alpha:package_files",

@@ -44,7 +44,6 @@ _IO_TESTS = [
     "test_alpha_agent_transport",
     "test_alpha_agent_worktree",
     "test_alpha_close",
-    "test_alpha_gh_app",
     "test_alpha_gh_shim",
     "test_alpha_guard_gh_poll",
     "test_alpha_guard_gh_pr",

@@ -36,21 +36,6 @@ cli_py_library(
 )
 
 cli_py_library(
-    name = "gh_app",
-    srcs = ["gh_app.py"],
-    imports = ["../.."],
-    visibility = ["//factory/cli:__subpackages__"],
-    deps = [
-        ":gh_app_api",
-        ":gh_app_args",
-        ":gh_app_runtime",
-        ":gh_app_signing",
-        ":gh_app_state",
-        "//factory/cli/src/tbhbdev:secrets",
-    ],
-)
-
-cli_py_library(
     name = "gh_app_api",
     srcs = ["gh_app_api.py"],
     imports = ["../.."],
@@ -69,6 +54,21 @@ cli_py_library(
     srcs = ["gh_app_args.py"],
     imports = ["../.."],
     visibility = ["//factory/cli:__subpackages__"],
+)
+
+cli_py_library(
+    name = "gh_app_command",
+    srcs = ["gh_app_command.py"],
+    imports = ["../.."],
+    visibility = ["//factory/cli:__subpackages__"],
+    deps = [
+        ":gh_app_api",
+        ":gh_app_args",
+        ":gh_app_runtime",
+        ":gh_app_signing",
+        ":gh_app_state",
+        "//factory/cli/src/tbhbdev:secrets",
+    ],
 )
 
 cli_py_library(
@@ -517,7 +517,7 @@ cli_py_library(
     deps = [
         ":brief",
         ":close",
-        ":gh_app",
+        ":gh_app_command",
         ":gh_shim",
         ":guard_agent_model",
         ":guard_gh_config_dir",
