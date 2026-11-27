@@ -1,0 +1,11 @@
+---
+- name: Prepare
+  hosts: all
+  become: true
+  gather_facts: false
+  tasks:
+    - name: Create the agent account
+      ansible.builtin.user:
+        name: agent
+        create_home: true
+        shell: /bin/bash

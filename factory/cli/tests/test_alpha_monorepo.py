@@ -10,9 +10,8 @@ from typing import TYPE_CHECKING, cast
 
 import pytest
 
-from tbhbdev import alpha
-from tbhbdev.alpha import monorepo
 from tbhbdev.alpha.monorepo import source
+from tbhbdev.alpha.monorepo.command import main
 from tbhbdev.alpha.monorepo.pathmap import Rewrite, dump, load
 
 if TYPE_CHECKING:
@@ -92,7 +91,7 @@ type Capsys = pytest.CaptureFixture[str]
 
 
 def run(*argv: str) -> int:
-    return monorepo.main(list(argv), PROG)
+    return main(list(argv), PROG)
 
 
 def run_import(source: str, made: Path, mono: Path) -> int:
@@ -654,6 +653,3 @@ def test_the_command_line_parses_and_dispatches(
     assert "import a public repository" not in capsys.readouterr().err
     assert run() == 2
     assert run("verify") == 2
-    capsys.readouterr()
-    assert alpha.main(["monorepo", "-h"], "tbhbdev alpha") == 0
-    assert "monorepo" in alpha.USAGE

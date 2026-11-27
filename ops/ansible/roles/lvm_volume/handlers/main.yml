@@ -1,0 +1,6 @@
+---
+# systemd turns /etc/fstab into mount units, and until a reload it keeps
+# the ones from before the change.
+- name: Reload systemd's units from /etc/fstab
+  ansible.builtin.systemd_service:
+    daemon_reload: true

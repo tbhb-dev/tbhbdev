@@ -1,0 +1,10 @@
+# SPDX-License-Identifier: Apache-2.0
+# Copyright Tony Burns
+
+# The prose lint job installs these. Each version equals the pin in
+# lib/rules/pins/extensions.bzl (vale, rumdl) or lib/rules/lint/private/cspell/package.json.
+[tools]
+cspell = "10.5.2"
+node = "22.23.4"
+rumdl = "0.3.5"
+vale = "3.28.1"

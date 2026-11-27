@@ -5,16 +5,12 @@ from __future__ import annotations
 import json
 from dataclasses import FrozenInstanceError
 from pathlib import Path
-from typing import TYPE_CHECKING
 
 import pytest
 
-from tbhbdev import alpha, cli, userconfig
-from tbhbdev.alpha import loop
+from tbhbdev import userconfig
 from tbhbdev.alpha.loop import config
-
-if TYPE_CHECKING:
-    from collections.abc import Callable
+from tbhbdev.alpha.loop.command import main
 
 SETTINGS: dict[str, object] = {
     "repositories": ["example-org/example-repo", "example-org/another_repo.name"],
@@ -280,18 +276,10 @@ def test_store_path_rejects_relative_input(config_file: Path, value: str) -> Non
     )
 
 
-def test_loop_is_registered_in_usage_and_dispatch() -> None:
-    assert alpha.COMMANDS["loop"] is loop.main
-    assert "\n  loop " in alpha.USAGE
-
-
-@pytest.mark.parametrize(
-    "run", [lambda: loop.main([], "example loop"), lambda: cli.main(["alpha", "loop"])]
-)
 def test_command_refuses_missing_configuration(
-    config_file: Path, capsys: pytest.CaptureFixture[str], run: Callable[[], int]
+    config_file: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    assert run() == 1
+    assert main([], "example loop") == 1
     out = capsys.readouterr()
     assert out.out == ""
     assert str(config_file) in out.err
@@ -303,7 +291,7 @@ def test_command_only_loads_configuration(
 ) -> None:
     store = tmp_path / "example-state" / "loop.sqlite3"
     write_settings(config_file, {**SETTINGS, "store_path": str(store)})
-    assert loop.main([], "example loop") == 1
+    assert main([], "example loop") == 1
     assert capsys.readouterr() == (
         "",
         (
@@ -319,7 +307,7 @@ def test_command_help_needs_no_configuration(
     flag: str, config_file: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
     with pytest.raises(SystemExit) as caught:
-        loop.main([flag], "example loop")
+        main([flag], "example loop")
     assert caught.value.code == 0
     assert capsys.readouterr() == (
         (
@@ -337,7 +325,7 @@ def test_command_refuses_arguments_before_loading_config(
     config_file: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
     with pytest.raises(SystemExit) as caught:
-        loop.main(["start"], "example loop")
+        main(["start"], "example loop")
     assert caught.value.code == 2
     out = capsys.readouterr()
     assert out.out == ""

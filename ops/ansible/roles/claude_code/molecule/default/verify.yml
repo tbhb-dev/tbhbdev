@@ -1,0 +1,80 @@
+---
+- name: Verify
+  hosts: all
+  become: true
+  vars_files:
+    - ../../defaults/main.yml
+  tasks:
+    - name: Read the agent account home
+      ansible.builtin.getent:
+        database: passwd
+        key: agent
+
+    - name: Run Claude Code as the agent
+      ansible.builtin.command:
+        argv: ["{{ ansible_facts.getent_passwd['agent'][4] }}/.local/bin/claude", --version]
+      become: true
+      become_user: agent
+      register: claude_code_verified_version
+      changed_when: false
+
+    - name: Require the pinned version
+      ansible.builtin.assert:
+        that: claude_code_verified_version.stdout == claude_code_version ~ ' (Claude Code)'
+        quiet: true
+
+    - name: Read the active link
+      ansible.builtin.stat:
+        path: "{{ ansible_facts.getent_passwd['agent'][4] }}/.local/bin/claude"
+        follow: false
+      register: claude_code_verified_link
+
+    - name: Require a link to the pinned native binary
+      ansible.builtin.assert:
+        that:
+          - claude_code_verified_link.stat.islnk
+          - >-
+              claude_code_verified_link.stat.lnk_source ==
+              ansible_facts.getent_passwd['agent'][4] + '/.local/share/claude/' + claude_code_version + '/claude'
+          - claude_code_verified_link.stat.pw_name == 'agent'
+        quiet: true
+
+    - name: Read the active binary mode
+      ansible.builtin.stat:
+        path: "{{ ansible_facts.getent_passwd['agent'][4] }}/.local/bin/claude"
+        follow: true
+      register: claude_code_verified_binary
+
+    - name: Require an executable owned by the agent
+      ansible.builtin.assert:
+        that:
+          - claude_code_verified_binary.stat.mode == '0755'
+          - claude_code_verified_binary.stat.pw_name == 'agent'
+        quiet: true
+
+    - name: Hash the native binary
+      ansible.builtin.stat:
+        path: >-
+          {{ ansible_facts.getent_passwd['agent'][4] }}/.local/share/claude/{{ claude_code_version }}/claude
+        checksum_algorithm: sha256
+      register: claude_code_verified_native
+
+    - name: Require the pinned binary owned by the agent
+      ansible.builtin.assert:
+        that:
+          - claude_code_verified_native.stat.checksum == claude_code_sha256[claude_code_platform]
+          - claude_code_verified_native.stat.mode == '0755'
+          - claude_code_verified_native.stat.pw_name == 'agent'
+        quiet: true
+
+    - name: Find files in the home that root owns
+      ansible.builtin.command:
+        argv: [find, "{{ ansible_facts.getent_passwd['agent'][4] }}", -user, root]
+      register: claude_code_verified_root_owned
+      changed_when: false
+
+    - name: Require nothing root-owned in the home
+      ansible.builtin.assert:
+        that: claude_code_verified_root_owned.stdout == ''
+        fail_msg: "Root owns: {{ claude_code_verified_root_owned.stdout_lines | join(', ') }}"
+        quiet: true

@@ -11,11 +11,8 @@ _SOURCE_ROOT = "factory/cli/src/tbhbdev"
 # contain only docstrings and have no runtime dependencies.
 _PACKAGE_INITIALIZERS = [
     _SOURCE_ROOT + "/admin",
-    _SOURCE_ROOT + "/alpha",
-    _SOURCE_ROOT + "/alpha/agent",
     _SOURCE_ROOT + "/alpha/agent/decisions",
     _SOURCE_ROOT + "/alpha/loop",
-    _SOURCE_ROOT + "/alpha/monorepo",
     _SOURCE_ROOT + "/analytics",
     _SOURCE_ROOT + "/analytics/decisions",
 ]
@@ -70,8 +67,5 @@ def cli_py_library(name, deps = [], extra_deps = [], pyi_deps = [], **kwargs):
 
     package_deps = ["//" + parent + ":__init__" for parent in package_initializers if not initializer or parent != package]
     if initializer:
-        # admin imports alpha.gh_app, which also runs the alpha initializer.
-        if package == _SOURCE_ROOT + "/admin":
-            package_deps.append("//" + _SOURCE_ROOT + "/alpha:__init__")
         deps = []
     py_library(name = name, deps = deps + [":" + init_import] + package_deps, visibility = kwargs["visibility"])

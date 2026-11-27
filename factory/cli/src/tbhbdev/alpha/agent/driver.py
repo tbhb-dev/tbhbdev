@@ -96,9 +96,10 @@ def _maybe_text(value: object) -> str | None:
     return value if isinstance(value, str) else None
 
 
-def load(settings: Settings, name: str) -> Run:
-    path = metadata_path(name)
-    path.parent.chmod(0o700)
+def load(settings: Settings, name: str, *, archived: Path | None = None) -> Run:
+    path = metadata_path(name) if archived is None else archived
+    if archived is None:
+        path.parent.chmod(0o700)
     try:
         record: dict[str, object] = json.loads(path.read_text())
         host = rules.select_host(
@@ -483,7 +484,7 @@ def execute(settings: Settings, args: argparse.Namespace) -> int:
             timeout=deadline - time.monotonic(),
         )
     except transport.CollisionError:
-        archive_metadata(run.name, run.started)
+        archive_metadata(metadata_path(run.name), run.started)
         raise
     except transport.TransportError:
         recover_transfer(settings, run)
@@ -501,7 +502,7 @@ def execute(settings: Settings, args: argparse.Namespace) -> int:
 
 
 def not_owner(run: Run) -> NoReturn:
-    archive_metadata(run.name, datetime.now(UTC).isoformat())
+    archive_metadata(metadata_path(run.name), datetime.now(UTC).isoformat())
     message = f"{run.name}: not owner"
     raise Invalid(message)
 
@@ -744,18 +745,15 @@ def kill(settings: Settings, run: Run) -> int:
         time.sleep(0.5)
 
 
-def archive_metadata(name: str, stamp: str) -> None:
+def archive_metadata(path: Path, stamp: str) -> None:
     trash = directory() / "trash" / stamp
     trash.mkdir(mode=0o700, parents=True)
-    metadata_path(name).rename(trash / f"{name}.json")
+    path.rename(trash / path.name)
 
 
-def clean(settings: Settings, run: Run, *, force: bool) -> int:
-    reading = transport.read(
-        settings,
-        run.host,
-        (run.name, run.owner),
-    )
+def check_clean(
+    settings: Settings, run: Run, reading: transport.Reading, *, force: bool
+) -> None:
     rules.clean(reading.rc, session=reading.session, force=force or run.cleaning)
     if not force and run.request.unsandboxed:
         message = (
@@ -780,10 +778,27 @@ def clean(settings: Settings, run: Run, *, force: bool) -> int:
             )
             raise Invalid(message)
         print("branch exists on origin")
+
+
+def clean(
+    settings: Settings, run: Run, *, force: bool, archived: Path | None = None
+) -> int:
+    path = metadata_path(run.name) if archived is None else archived
+    # An archived record may only recover a missing claim. The host still
+    # refuses an existing owner or a live run.
+    ownerless_only = True
+    if archived is None:
+        try:
+            reading = transport.read(settings, run.host, (run.name, run.owner))
+        except transport.CollisionError:
+            pass
+        else:
+            check_clean(settings, run, reading, force=force)
+            ownerless_only = False
+        record = json.loads(path.read_text())
+        record["cleaning"] = True
+        path.write_text(json.dumps(record) + "\n")
     stamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%S%fZ")
-    record = json.loads(metadata_path(run.name).read_text())
-    record["cleaning"] = True
-    metadata_path(run.name).write_text(json.dumps(record) + "\n")
     transport.shell(
         settings,
         run.host,
@@ -793,11 +808,26 @@ def clean(settings: Settings, run: Run, *, force: bool) -> int:
             stamp,
             settings.sockets_dir,
             force=force,
+            ownerless_only=ownerless_only,
         ),
         transport.Stdin(run.owner),
     )
-    archive_metadata(run.name, stamp)
+    archive_metadata(path, stamp)
     return 0
+
+
+def clean_archived(settings: Settings, name: str, *, force: bool) -> int:
+    archived = max(
+        (directory() / "trash").glob(f"*/{name}.json"),
+        key=lambda path: path.parent.stat().st_mtime_ns,
+        default=None,
+    )
+    # Completed cleanups use a compact UTC stamp ending in Z. Ownership
+    # failures use an ISO stamp ending in +00:00 and may leave host files.
+    if archived is None or archived.parent.name.endswith("Z"):
+        return 0
+    run = load(settings, name, archived=archived)
+    return clean(settings, run, force=force, archived=archived)
 
 
 def inspect(settings: Settings, run: Run, *, limit: int | None) -> int:
@@ -839,7 +869,12 @@ def dispatch(settings: Settings, args: argparse.Namespace) -> int:
             **{"tbhb.agent.outcome": "ok" if result == 0 else "failed"}
         )
         return result
-    run = load(settings, args.name)
+    try:
+        run = load(settings, args.name)
+    except FileNotFoundError:
+        if args.verb == "clean":
+            return clean_archived(settings, args.name, force=args.force)
+        raise
     verbs = {"wait": wait, "status": status, "kill": kill, "keep": keep}
     try:
         if args.verb in {"log", "diff"}:

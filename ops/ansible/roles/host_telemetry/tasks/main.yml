@@ -1,0 +1,150 @@
+---
+# Ships the journal and the audit log off the node (§4.2 of the lab
+# hardening draft), so a root compromise can't rewrite what already left.
+# The host_audit role runs first: it sets auditd's log_group to adm.
+
+# svc:otlp answers plain HTTP on 4318, and the traffic rides the tailnet's
+# WireGuard tunnel. The endpoint needs the MagicDNS suffix, which the role
+# reads at run time.
+- name: Read the tailnet's MagicDNS suffix
+  ansible.builtin.command: tailscale status --json
+  register: host_telemetry_ts_status
+  changed_when: false
+  check_mode: false
+  when: host_telemetry_otlp_endpoint | length == 0
+
+- name: Build the OTLP endpoint from the service name and the suffix
+  ansible.builtin.set_fact:
+    host_telemetry_otlp_endpoint: >-
+      http://{{ host_telemetry_otlp_service }}.{{ (host_telemetry_ts_status.stdout | from_json).MagicDNSSuffix }}:4318
+  when: host_telemetry_otlp_endpoint | length == 0
+
+- name: Check the settings
+  ansible.builtin.assert:
+    that:
+      - host_telemetry_alloy_version is match('^[0-9][0-9A-Za-z.+~-]*$')
+      - host_telemetry_otlp_endpoint is match('^https?://[^/\s"]+$')
+    fail_msg: >-
+      host_telemetry_alloy_version must be an apt package version and host_telemetry_otlp_endpoint
+      an http or https URL without a path
+    quiet: true
+
+- name: Create the apt keyring directory
+  ansible.builtin.file:
+    path: /etc/apt/keyrings
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+# Pinned by checksum. The key's fingerprint is
+# B53A E77B ADB6 30A6 8304 6005 963F A277 1045 8545, and it expires
+# 2027-08-22, when Grafana rotates it and this checksum changes.
+- name: Install Grafana's apt signing key
+  ansible.builtin.get_url:
+    url: https://apt.grafana.com/gpg.key
+    dest: /etc/apt/keyrings/grafana.asc
+    checksum: sha256:3d4029689bc7e4444ec00abafa07f21e9c812b41f1123ab5bbe6f8c3e3f7ff8c
+    owner: root
+    group: root
+    mode: "0644"
+  register: host_telemetry_key
+
+- name: Add Grafana's apt repository
+  ansible.builtin.copy:
+    dest: /etc/apt/sources.list.d/grafana.sources
+    content: |
+      Types: deb
+      URIs: https://apt.grafana.com
+      Suites: stable
+      Components: main
+      Signed-By: /etc/apt/keyrings/grafana.asc
+    owner: root
+    group: root
+    mode: "0644"
+  register: host_telemetry_source
+
+# A check run hasn't written the repository, so it skips the package too.
+- name: Note whether a check run would add the repository first
+  ansible.builtin.set_fact:
+    host_telemetry_repo_pending: >-
+      {{ ansible_check_mode and (host_telemetry_key is changed or host_telemetry_source is changed) }}
+
+- name: Refresh the package index for the new repository
+  ansible.builtin.apt:
+    update_cache: true
+  when:
+    - host_telemetry_key is changed or host_telemetry_source is changed
+    - not ansible_check_mode
+
+# The package must not start Alloy on install, because its configuration
+# comes after it.
+- name: Install Alloy
+  ansible.builtin.apt:
+    name: "alloy={{ host_telemetry_alloy_version }}"
+    state: present
+    allow_downgrade: true
+    policy_rc_d: 101
+  when: not host_telemetry_repo_pending
+  notify: Restart Alloy
+
+# The packaged alloy user reads the journal as systemd-journal and
+# audit.log as adm (host_audit's log_group).
+- name: Let the alloy user read the journal and the audit log
+  ansible.builtin.user:
+    name: alloy
+    groups: [systemd-journal, adm]
+    append: true
+  when: not host_telemetry_repo_pending
+  notify: Restart Alloy
+
+# The package's default arguments leave usage reporting on. The queue's
+# otelcol.storage.file is public-preview, which Alloy refuses to load
+# below that stability level.
+- name: Set Alloy's arguments
+  ansible.builtin.lineinfile:
+    path: /etc/default/alloy
+    regexp: "^CUSTOM_ARGS="
+    line: CUSTOM_ARGS="--disable-reporting --stability.level=public-preview"
+  when: not host_telemetry_repo_pending
+  notify: Restart Alloy
+
+- name: Write Alloy's configuration
+  ansible.builtin.template:
+    src: config.alloy.j2
+    dest: /etc/alloy/config.alloy
+    owner: root
+    group: alloy
+    mode: "0640"
+  when: not host_telemetry_repo_pending
+  notify: Restart Alloy
+
+- name: Create journald's drop-in directory
+  ansible.builtin.file:
+    path: /etc/systemd/journald.conf.d
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+# Storage=persistent keeps the journal across reboots, which gives Alloy
+# a journal to catch up on after an outage.
+- name: Keep the journal on disk
+  ansible.builtin.copy:
+    dest: /etc/systemd/journald.conf.d/50-host-telemetry.conf
+    content: |
+      # Ansible managed (host_telemetry); ansible_managed is only defined in templates.
+      [Journal]
+      Storage=persistent
+      SystemMaxUse=4G
+    owner: root
+    group: root
+    mode: "0644"
+  notify: Restart journald
+
+- name: Run Alloy
+  ansible.builtin.systemd_service:
+    name: alloy
+    enabled: true
+    state: started
+  when: host_telemetry_run and not host_telemetry_repo_pending

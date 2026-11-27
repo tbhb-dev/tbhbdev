@@ -5,8 +5,8 @@
 
 set -euo pipefail
 # Counting logic and policy from tbhb-dev/rules at 0b12df1dd60e1f35a45695974d6a074ad47d86e7.
-# Keep both in sync with lint/private/pr_size.sh.tpl and pr-size-exempt.txt.
-base=$1 head=$2 scc=$3 git=$4 policy=$5
+# Keep the line counting and policy in sync with lint/private/pr_size.sh.tpl and pr-size-exempt.txt.
+base=$1 head=$2 scc=$3 git=$4 policy=$5 default_ref=${6:-}
 if [[ ${PR_AUTHOR:-} == 'tbhb-dev-renovate[bot]' ]]; then
   echo '{"code_lines": 0, "code_limit": 400, "raw_lines": 0, "raw_limit": 1500, "failed": null}'
   exit 0
@@ -28,6 +28,19 @@ if [[ -n $base_commit && $shallow == false && $root_count == 1 &&
   ${MAIN_TIP:-} == "$base_commit" ]]; then
   echo '{"code_lines": 0, "code_limit": 400, "raw_lines": 0, "raw_limit": 1500, "failed": null}'
   exit 0
+fi
+range="$base...$head"
+if [[ -n $default_ref ]]; then
+  # Use only changes from the base and default branch that HEAD already has.
+  shared_base=$("$git" merge-base "$base" "$head")
+  shared_default=$("$git" merge-base "$default_ref" "$head")
+  if shared_merge=$("$git" merge-tree --write-tree --no-messages "$shared_base" "$shared_default"); then
+    range="$shared_merge..$head"
+  else
+    [[ $? == 1 ]] || exit 1
+    # Conflict markers can match literal additions. Count from the shared default commit.
+    range="$shared_default..$head"
+  fi
 fi
 work=$(mktemp -d "${TMPDIR:-/tmp}/pr-size.XXXXXX")
 trap 'rm -rf "$work"' EXIT
@@ -59,7 +72,7 @@ scan() {
     --count-as-pattern '*.bazel:Bazel:Bazel' --gen --format csv "$1"
 }
 code=0 raw=0
-"$git" diff --no-renames --diff-filter=AM --name-only -z "$base...$head" >"$work/files"
+"$git" diff --no-renames --diff-filter=AM --name-only -z "$range" >"$work/files"
 while IFS= read -r -d '' path; do
   exempt=0
   for pattern in "${paths[@]}"; do
@@ -72,7 +85,7 @@ while IFS= read -r -d '' path; do
   ((exempt)) && continue
   attributes=$("$git" check-attr linguist-generated linguist-vendored -- "$path")
   if awk -F': ' '$NF == "set" || $NF == "true" {found=1} END {exit !found}' <<<"$attributes"; then continue; fi
-  stat=$("$git" diff --no-ext-diff --no-textconv --numstat "$base...$head" -- "$path")
+  stat=$("$git" diff --no-ext-diff --no-textconv --numstat "$range" -- "$path")
   [[ $stat == -* ]] && continue
   name=${path##*/}
   "$git" show "$head:$path" >"$work/full/$name"
@@ -87,7 +100,7 @@ while IFS= read -r -d '' path; do
     fi
   done
   ((exempt)) && continue
-  "$git" diff --no-ext-diff --no-textconv --no-renames --unified=0 "$base...$head" -- "$path" |
+  "$git" diff --no-ext-diff --no-textconv --no-renames --unified=0 "$range" -- "$path" |
     awk '/^@@/ {hunk=1; next} hunk && /^\+/ {print substr($0,2)}' >"$work/added/$name"
   count=$(wc -l <"$work/added/$name")
   raw=$((raw + count))

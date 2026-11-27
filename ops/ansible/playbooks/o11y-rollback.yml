@@ -1,0 +1,11 @@
+---
+- name: Roll back the observability stack
+  hosts: o11y
+  serial: 1
+  become: true
+  gather_facts: true
+  tasks:
+    - name: Roll back the stack
+      ansible.builtin.include_role:
+        name: o11y
+        tasks_from: rollback

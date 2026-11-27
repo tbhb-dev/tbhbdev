@@ -1,0 +1,10 @@
+---
+tbhbops_tool_commit: 86922cc7b48e2adf9e89ebac6d30014d38cf04d0
+tbhbops_tool_uv_version: "0.13.8"
+# Published release checksums, fetched from:
+# https://github.com/astral-sh/uv/releases/download/0.13.8/uv-<arch>-unknown-linux-gnu.tar.gz.sha256
+# The version matches mise.lock; these are the Linux GNU archives.
+tbhbops_tool_uv_sha256:
+  x86_64: 5acfd9177cfecf0bf87578f059728215ccc884388988f55f7a65041b57387d91
+  aarch64: 74f2f5c6024d397481db228db8fc25eed420db192243f88438c118e7e013e585
+tbhbops_tool_repo: "{{ playbook_dir }}/../.."

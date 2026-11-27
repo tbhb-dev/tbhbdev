@@ -1,0 +1,200 @@
+set -eu
+
+# @tbhb runs this script once, in their own terminal, and 1Password asks
+# them to approve once.
+# An agent only prints it. It needs op, jq and ssh.
+# It first creates each vault it needs that the account lacks.
+# It grants the Connect server srv its vaults, then creates one token with no expiry for each host
+# and stores it in the host's vault as the item connect-token, field token.
+# A host whose vault already holds connect-token is skipped, so the script is safe
+# to run again.
+# Each operator Mac also gets an ops-controller token, read-only on the
+# vaults of the ops accounts. It goes into the ops user's
+# keychain over ssh as that user, and into no vault. A Mac where that
+# user already holds it is skipped.
+
+vaults=$(op vault list --account acct.example.com --format json) || {
+  echo 'could not list the vaults in the 1Password account' >&2
+  exit 1
+}
+for name in host-0-shared host-ex-ctl1 host-ex-ctl2 host-ex-lab1 host-ex-win1 host-storage-nas-a host-storage-nas-b; do
+  found=$(printf '%s' "$vaults" | jq -r --arg name "$name" 'any(.[]; .name == $name)') || {
+    echo 'could not read the vault list' >&2
+    exit 1
+  }
+  if [ "$found" = false ]; then
+    op vault create --account acct.example.com "$name" >/dev/null
+    echo "created vault $name"
+  fi
+done
+unset vaults
+
+op connect vault grant --account acct.example.com --server srv --vault host-0-shared
+op connect vault grant --account acct.example.com --server srv --vault host-ex-ctl1
+op connect vault grant --account acct.example.com --server srv --vault host-ex-ctl2
+op connect vault grant --account acct.example.com --server srv --vault host-ex-lab1
+op connect vault grant --account acct.example.com --server srv --vault host-ex-win1
+op connect vault grant --account acct.example.com --server srv --vault host-storage-nas-a
+op connect vault grant --account acct.example.com --server srv --vault host-storage-nas-b
+
+# ex-ctl1
+if op item get --account acct.example.com connect-token --vault host-ex-ctl1 >/dev/null 2>&1; then
+  echo 'host-ex-ctl1 already holds connect-token; skipping' >&2
+else
+  tok=$(op connect token create --account acct.example.com 'agent-host:ex-ctl1:20261108T142100Z' --server srv --vault host-0-shared --vault host-ex-ctl1,r --vault host-ex-ctl2,r --vault host-ex-lab1,r --vault host-ex-win1,r)
+  if [ -z "$tok" ]; then
+    echo 'op connect token create printed no token for ex-ctl1' >&2
+    exit 1
+  fi
+  printf '%s' "$tok" \
+    | jq -R '{title: "connect-token", category: "API_CREDENTIAL", fields: [{label: "token", type: "CONCEALED", value: .}]}' \
+    | op item create --account acct.example.com --vault host-ex-ctl1 -
+  unset tok
+fi
+
+# ex-ctl2
+if op item get --account acct.example.com connect-token --vault host-ex-ctl2 >/dev/null 2>&1; then
+  echo 'host-ex-ctl2 already holds connect-token; skipping' >&2
+else
+  tok=$(op connect token create --account acct.example.com 'agent-host:ex-ctl2:20261108T142100Z' --server srv --vault host-0-shared --vault host-ex-ctl1,r --vault host-ex-ctl2,r --vault host-ex-lab1,r --vault host-ex-win1,r)
+  if [ -z "$tok" ]; then
+    echo 'op connect token create printed no token for ex-ctl2' >&2
+    exit 1
+  fi
+  printf '%s' "$tok" \
+    | jq -R '{title: "connect-token", category: "API_CREDENTIAL", fields: [{label: "token", type: "CONCEALED", value: .}]}' \
+    | op item create --account acct.example.com --vault host-ex-ctl2 -
+  unset tok
+fi
+
+# ex-lab1
+if op item get --account acct.example.com connect-token --vault host-ex-lab1 >/dev/null 2>&1; then
+  echo 'host-ex-lab1 already holds connect-token; skipping' >&2
+else
+  tok=$(op connect token create --account acct.example.com 'agent-host:ex-lab1:20261108T142100Z' --server srv --vault host-ex-lab1,r --vault host-0-shared,r)
+  if [ -z "$tok" ]; then
+    echo 'op connect token create printed no token for ex-lab1' >&2
+    exit 1
+  fi
+  printf '%s' "$tok" \
+    | jq -R '{title: "connect-token", category: "API_CREDENTIAL", fields: [{label: "token", type: "CONCEALED", value: .}]}' \
+    | op item create --account acct.example.com --vault host-ex-lab1 -
+  unset tok
+fi
+
+# ex-win1
+if op item get --account acct.example.com connect-token --vault host-ex-win1 >/dev/null 2>&1; then
+  echo 'host-ex-win1 already holds connect-token; skipping' >&2
+else
+  tok=$(op connect token create --account acct.example.com 'agent-host:ex-win1:20261108T142100Z' --server srv --vault host-ex-win1,r --vault host-0-shared,r)
+  if [ -z "$tok" ]; then
+    echo 'op connect token create printed no token for ex-win1' >&2
+    exit 1
+  fi
+  printf '%s' "$tok" \
+    | jq -R '{title: "connect-token", category: "API_CREDENTIAL", fields: [{label: "token", type: "CONCEALED", value: .}]}' \
+    | op item create --account acct.example.com --vault host-ex-win1 -
+  unset tok
+fi
+
+# ops-controller ex-ctl1
+if ! echo 'mkdir -p ~/Library/Keychains && { [ -e ~/Library/Keychains/ops-connect.keychain-db ] || security create-keychain -p "" ops-connect.keychain; } && security unlock-keychain -p "" ops-connect.keychain && security set-keychain-settings ops-connect.keychain' | ssh -o IdentityAgent=none -o IdentitiesOnly=yes -i "$HOME/.ssh/sessions/$(hostname -s)_ed25519" ops@ex-ctl1 'sh -s'; then
+  echo 'could not prepare the ops keychain on ex-ctl1' >&2
+  exit 1
+fi
+rc=0
+ssh -n -o IdentityAgent=none -o IdentitiesOnly=yes -i "$HOME/.ssh/sessions/$(hostname -s)_ed25519" ops@ex-ctl1 'security find-generic-password -s ops-connect -a agent ops-connect.keychain' >/dev/null 2>&1 || rc=$?
+case $rc in
+  0)
+    echo 'ops on ex-ctl1 already holds ops-connect; skipping' >&2
+    ;;
+  44)
+    tok=$(op connect token create --account acct.example.com 'ops-controller:ex-ctl1:20261108T142100Z' --server srv --vault host-storage-nas-a,r --vault host-storage-nas-b,r)
+    if [ -z "$tok" ]; then
+      echo 'op connect token create printed no token for ops-controller ex-ctl1' >&2
+      exit 1
+    fi
+    case $tok in
+      *[!A-Za-z0-9._-]*)
+        echo 'the ops-controller token for ex-ctl1 has a character the keychain line cannot carry' >&2
+        exit 1
+        ;;
+    esac
+    stored=false
+    if [ "${#tok}" -gt 4002 ]; then
+      echo "the ops-controller token for ex-ctl1 has ${#tok} characters, over the 4002 the keychain line can carry" >&2
+    elif echo "add-generic-password -U -s ops-connect -a agent -T /usr/bin/security -w $tok ops-connect.keychain" | ssh -o IdentityAgent=none -o IdentitiesOnly=yes -i "$HOME/.ssh/sessions/$(hostname -s)_ed25519" ops@ex-ctl1 'security unlock-keychain -p "" ops-connect.keychain && security -i' >/dev/null 2>&1; then
+      stored=true
+    else
+      echo 'the ops-controller token for ex-ctl1 was made but not stored' >&2
+    fi
+    if [ "$stored" = false ]; then
+      if op connect token delete --account acct.example.com 'ops-controller:ex-ctl1:20261108T142100Z' --server srv >/dev/null; then
+        echo 'deleted the ops-controller token ops-controller:ex-ctl1:20261108T142100Z from srv' >&2
+      else
+        echo 'could not delete the ops-controller token ops-controller:ex-ctl1:20261108T142100Z; delete it by hand with op connect token delete' >&2
+      fi
+      exit 1
+    fi
+    unset tok
+    if ! ssh -n -o IdentityAgent=none -o IdentitiesOnly=yes -i "$HOME/.ssh/sessions/$(hostname -s)_ed25519" ops@ex-ctl1 'security find-generic-password -s ops-connect -a agent ops-connect.keychain' >/dev/null 2>&1; then
+      echo 'the ops keychain on ex-ctl1 does not hold the token' >&2
+      exit 1
+    fi
+    ;;
+  *)
+    echo 'could not look in the ops keychain on ex-ctl1' >&2
+    exit 1
+    ;;
+esac
+
+# ops-controller ex-ctl2
+if ! echo 'mkdir -p ~/Library/Keychains && { [ -e ~/Library/Keychains/ops-connect.keychain-db ] || security create-keychain -p "" ops-connect.keychain; } && security unlock-keychain -p "" ops-connect.keychain && security set-keychain-settings ops-connect.keychain' | ssh -o IdentityAgent=none -o IdentitiesOnly=yes -i "$HOME/.ssh/sessions/$(hostname -s)_ed25519" ops@ex-ctl2 'sh -s'; then
+  echo 'could not prepare the ops keychain on ex-ctl2' >&2
+  exit 1
+fi
+rc=0
+ssh -n -o IdentityAgent=none -o IdentitiesOnly=yes -i "$HOME/.ssh/sessions/$(hostname -s)_ed25519" ops@ex-ctl2 'security find-generic-password -s ops-connect -a agent ops-connect.keychain' >/dev/null 2>&1 || rc=$?
+case $rc in
+  0)
+    echo 'ops on ex-ctl2 already holds ops-connect; skipping' >&2
+    ;;
+  44)
+    tok=$(op connect token create --account acct.example.com 'ops-controller:ex-ctl2:20261108T142100Z' --server srv --vault host-storage-nas-a,r --vault host-storage-nas-b,r)
+    if [ -z "$tok" ]; then
+      echo 'op connect token create printed no token for ops-controller ex-ctl2' >&2
+      exit 1
+    fi
+    case $tok in
+      *[!A-Za-z0-9._-]*)
+        echo 'the ops-controller token for ex-ctl2 has a character the keychain line cannot carry' >&2
+        exit 1
+        ;;
+    esac
+    stored=false
+    if [ "${#tok}" -gt 4002 ]; then
+      echo "the ops-controller token for ex-ctl2 has ${#tok} characters, over the 4002 the keychain line can carry" >&2
+    elif echo "add-generic-password -U -s ops-connect -a agent -T /usr/bin/security -w $tok ops-connect.keychain" | ssh -o IdentityAgent=none -o IdentitiesOnly=yes -i "$HOME/.ssh/sessions/$(hostname -s)_ed25519" ops@ex-ctl2 'security unlock-keychain -p "" ops-connect.keychain && security -i' >/dev/null 2>&1; then
+      stored=true
+    else
+      echo 'the ops-controller token for ex-ctl2 was made but not stored' >&2
+    fi
+    if [ "$stored" = false ]; then
+      if op connect token delete --account acct.example.com 'ops-controller:ex-ctl2:20261108T142100Z' --server srv >/dev/null; then
+        echo 'deleted the ops-controller token ops-controller:ex-ctl2:20261108T142100Z from srv' >&2
+      else
+        echo 'could not delete the ops-controller token ops-controller:ex-ctl2:20261108T142100Z; delete it by hand with op connect token delete' >&2
+      fi
+      exit 1
+    fi
+    unset tok
+    if ! ssh -n -o IdentityAgent=none -o IdentitiesOnly=yes -i "$HOME/.ssh/sessions/$(hostname -s)_ed25519" ops@ex-ctl2 'security find-generic-password -s ops-connect -a agent ops-connect.keychain' >/dev/null 2>&1; then
+      echo 'the ops keychain on ex-ctl2 does not hold the token' >&2
+      exit 1
+    fi
+    ;;
+  *)
+    echo 'could not look in the ops keychain on ex-ctl2' >&2
+    exit 1
+    ;;
+esac

@@ -1,0 +1,55 @@
+---
+- name: memory-case | Reset the stub's persistent config and call log
+  check_mode: false
+  ansible.builtin.copy:
+    content: "{{ item.value }}"
+    dest: "{{ ci_vm_memory_stub.path }}/{{ item.key }}"
+    mode: "0600"
+  loop:
+    - {key: maximum, value: "{{ memory_case.maximum }}"}
+    - {key: current, value: "{{ memory_case.current }}"}
+    - {key: status, value: "{{ memory_case.state }}"}
+    - {key: calls, value: ''}
+
+- name: memory-case | Run only the role's memory reconciliation
+  ansible.builtin.include_role:
+    name: ci_vm
+    tasks_from: memory
+    apply:
+      environment:
+        PATH: "{{ ci_vm_memory_stub.path }}:/usr/bin:/bin"
+  vars:
+    ci_vm_name: memory-test
+    ci_vm_memory_mib: 12288
+    ci_vm_hardware: "{{ memory_case.hardware | default(true) }}"
+    ci_vm_dom:
+      rc: "{{ 1 if memory_case.absent | default(false) else 0 }}"
+
+- name: memory-case | Read every stub call and the resulting config
+  ansible.builtin.slurp:
+    src: "{{ ci_vm_memory_stub.path }}/{{ item }}"
+  loop: [calls, maximum, current]
+  register: ci_vm_memory_result
+
+- name: memory-case | Check exact calls, ordering, changes and persistent config
+  vars:
+    calls: "{{ (ci_vm_memory_result.results[0].content | b64decode).splitlines() }}"
+    skipped: >-
+      {{ not (memory_case.hardware | default(true)) or
+      (ansible_check_mode and memory_case.absent | default(false)) }}
+    expected_reads: "{{ [] if skipped else ['--connect=qemu:///system dumpxml --inactive memory-test'] }}"
+    expected_writes: >-
+      {{ memory_case.operations | map('regex_replace', '^(.*)$',
+      '--connect=qemu:///system \1 memory-test 12582912KiB --config') | list }}
+    expected_state: "{{ ['--connect=qemu:///system domstate memory-test'] if memory_case.operations else [] }}"
+  ansible.builtin.assert:
+    that:
+      # Exact equality also forbids shutdown, start, destroy and undefine.
+      - calls == expected_reads + expected_writes + expected_state
+      - skipped or (ci_vm_memory_update is changed) == (memory_case.operations | length > 0)
+      - >-
+          ci_vm_memory_result.results[1].content | b64decode | trim | int ==
+          (12582912 if memory_case.operations else memory_case.maximum)
+      - >-
+          ci_vm_memory_result.results[2].content | b64decode | trim | int ==
+          (12582912 if memory_case.operations else memory_case.current)

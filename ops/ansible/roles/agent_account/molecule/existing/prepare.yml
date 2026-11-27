@@ -1,0 +1,65 @@
+---
+- name: Prepare
+  hosts: all
+  gather_facts: false
+  become: true
+  tasks:
+    - name: Create an extra group
+      ansible.builtin.group:
+        name: agent_extra
+
+    - name: Create devel
+      ansible.builtin.group:
+        name: devel
+        gid: 33835
+    - name: Create an existing agent with another home and extra group
+      ansible.builtin.user:
+        name: agent
+        uid: 24368
+        group: devel
+        groups: [agent_extra]
+        append: true
+        home: /srv/agent
+        shell: /bin/bash
+        password_lock: true
+    - name: Keep an existing authorized key
+      ansible.posix.authorized_key:
+        user: agent
+        key: ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIMBxMcLBO2dNsuwi0clAzEHghsyOUtwtQU2PXYShQKQa existing-test
+    - name: Create the separate workspace and outside fixture directories
+      ansible.builtin.file:
+        path: "{{ item }}"
+        state: directory
+        owner: agent
+        group: devel
+        mode: '0700'
+      loop: [/srv/agent-workspace, /srv/legacy-outside]
+    - name: Create legacy files inside and outside the migration roots
+      ansible.builtin.copy:
+        dest: "{{ item }}"
+        content: "legacy fixture\n"
+        owner: agent
+        group: devel
+        mode: '0600'
+      loop:
+        - /srv/agent/legacy
+        - /srv/agent-workspace/legacy
+        - /srv/legacy-outside/legacy
+    - name: Create a file with an unrelated group
+      ansible.builtin.copy:
+        dest: /srv/agent/keep-group
+        content: "other group\n"
+        owner: agent
+        group: agent_extra
+        mode: '0600'
+    - name: Create legacy symlinks to outside targets
+      ansible.builtin.file:
+        path: "/srv/agent/{{ item.name }}"
+        src: "{{ item.target }}"
+        state: link
+        owner: agent
+        group: devel
+        follow: false
+      loop:
+        - {name: outside-file, target: /srv/legacy-outside/legacy}
+        - {name: outside-dir, target: /srv/legacy-outside}

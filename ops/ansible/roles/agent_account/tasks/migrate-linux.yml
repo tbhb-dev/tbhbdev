@@ -1,0 +1,32 @@
+---
+# Paths and their prior gid are in the preflight task output. chgrp -h changes
+# symlinks themselves; find -P never traverses their targets.
+- name: migrate-linux | Re-group legacy paths under the home and workspace
+  ansible.builtin.command:
+    argv: [chgrp, -h, '24368', "{{ item }}"]
+  loop: "{{ agent_account_legacy.paths }}"
+  changed_when: true
+  when: not ansible_check_mode
+
+- name: migrate-linux | Report planned file group changes
+  ansible.builtin.debug:
+    msg:
+      old_gid: "{{ agent_account_legacy.gid }}"
+      new_gid: 24368
+      paths: "{{ agent_account_legacy.paths }}"
+  changed_when: agent_account_legacy.paths | length > 0
+  when: ansible_check_mode
+
+- name: migrate-linux | Log the group removal and its prior state
+  ansible.builtin.debug:
+    msg:
+      removing_group: "{{ agent_account_legacy.group }}"
+      old_gid: "{{ agent_account_legacy.gid }}"
+      old_members: "{{ agent_account_legacy.members }}"
+  when: agent_account_legacy.members | length == 0
+
+- name: migrate-linux | Remove devel only when no primary or supplementary member remains
+  ansible.builtin.group:
+    name: devel
+    state: absent
+  when: agent_account_legacy.members | length == 0

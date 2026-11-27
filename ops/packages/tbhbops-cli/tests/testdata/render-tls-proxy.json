@@ -1,0 +1,59 @@
+{
+  "proxy": {
+    "image": "nginx:1.31.7-alpine@sha256:892bb2152464f0c5d8972593a5f5afaf8054552580b699d95f8ff4af08c2d33d",
+    "command": [
+      "nginx",
+      "-c",
+      "/etc/nginx/grafana-tls.conf",
+      "-g",
+      "daemon off;"
+    ],
+    "volumes": [
+      "${O11Y_CONFIG_GRAFANA_TLS:?}/nginx.conf:/etc/nginx/grafana-tls.conf:ro",
+      {
+        "type": "bind",
+        "source": "${O11Y_GRAFANA_TLS_CERT_DIR:?}",
+        "target": "/tls",
+        "read_only": true,
+        "bind": {
+          "create_host_path": false
+        }
+      }
+    ],
+    "healthcheck": {
+      "interval": "30s",
+      "timeout": "10s",
+      "retries": 3,
+      "start_period": "40s",
+      "test": [
+        "CMD",
+        "nginx",
+        "-t",
+        "-c",
+        "/etc/nginx/grafana-tls.conf"
+      ]
+    },
+    "mem_limit": "128m"
+  },
+  "grafana_dependency": {
+    "condition": "service_healthy"
+  },
+  "directives": [
+    "server_name grafana.example.invalid;",
+    "ssl_certificate /tls/grafana.crt.pem;",
+    "ssl_certificate_key /tls/grafana.key.pem;",
+    "ssl_protocols TLSv1.2 TLSv1.3;",
+    "proxy_set_header Host $host;",
+    "proxy_set_header X-Forwarded-Proto https;",
+    "proxy_http_version 1.1;",
+    "proxy_set_header Upgrade $http_upgrade;",
+    "proxy_set_header Connection \"upgrade\";"
+  ],
+  "probe": [
+    "CMD",
+    "wget",
+    "-q",
+    "--spider",
+    "http://127.0.0.1:3000/api/health"
+  ]
+}

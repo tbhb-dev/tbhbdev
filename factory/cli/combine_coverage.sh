@@ -16,7 +16,9 @@ test -s "$temp/targets"
 # The checked-in coverage config follows Python subprocesses. Keep raw
 # branch arcs from each test until the single coverage.py report.
 test_status=0
-bazelisk test --config=ci --target_pattern_file="$temp/targets" \
+# Download the raw coverage files so they can be read from local paths.
+bazelisk test --config=ci --remote_download_regex='.*/test\.outputs/\.coverage$' \
+  --target_pattern_file="$temp/targets" \
   --build_event_json_file="$temp/events.json" \
   --nozip_undeclared_test_outputs \
   --nocache_test_results \

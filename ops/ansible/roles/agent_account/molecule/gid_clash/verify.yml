@@ -1,0 +1,20 @@
+---
+- name: Verify
+  hosts: all
+  become: true
+  tasks:
+    - name: Look for agent
+      ansible.builtin.getent:
+        database: passwd
+        key: agent
+        fail_key: false
+    - name: Look for devel
+      ansible.builtin.getent:
+        database: group
+        key: devel
+        fail_key: false
+    - name: Check no account changes
+      ansible.builtin.assert:
+        that:
+          - ansible_facts.getent_passwd.agent is none
+          - ansible_facts.getent_group.devel is none

@@ -1,0 +1,8 @@
+---
+- name: Schedule local Time Machine snapshot thinning
+  hosts: operator_macs
+  gather_facts: false
+  become: true
+  serial: 1
+  roles:
+    - mac_snapshot_thin

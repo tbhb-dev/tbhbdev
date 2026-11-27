@@ -9,15 +9,6 @@ cli_py_library(
     data = [":analytics_data"],
     imports = ["../.."],
     visibility = ["//factory/cli:__subpackages__"],
-    deps = [
-        ":catalog",
-        ":database",
-        ":model",
-        ":render",
-        ":settings",
-        "//factory/cli/src/tbhbdev/analytics/decisions:contract",
-        "//factory/cli/src/tbhbdev/analytics/decisions:roles",
-    ],
 )
 
 cli_py_library(
@@ -89,4 +80,20 @@ filegroup(
     name = "analytics_data",
     srcs = glob(["data/**"]),
     visibility = ["//factory/cli:__subpackages__"],
+)
+
+cli_py_library(
+    name = "command",
+    srcs = ["command.py"],
+    imports = ["../.."],
+    visibility = ["//factory/cli:__subpackages__"],
+    deps = [
+        ":catalog",
+        ":database",
+        ":model",
+        ":render",
+        ":settings",
+        "//factory/cli/src/tbhbdev/analytics/decisions:contract",
+        "//factory/cli/src/tbhbdev/analytics/decisions:roles",
+    ],
 )

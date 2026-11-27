@@ -1,0 +1,14 @@
+---
+argument_specs:
+  main:
+    short_description: Deploy the gateway and its outbound tunnel
+    options:
+      event_gateway_deploy_repo_url:
+        type: str
+        description: Git repository to clone as ops.
+      event_gateway_deploy_commit:
+        type: str
+        description: Full 40-hex commit to check out and build.
+      event_gateway_deploy_checkout:
+        type: path
+        description: Absolute path to the checkout owned by ops.

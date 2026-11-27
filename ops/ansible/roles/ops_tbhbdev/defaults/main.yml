@@ -1,0 +1,13 @@
+---
+ops_tbhbdev_uv_version: "0.13.6"
+# The full commit of tbhb-dev/tools that `uv tool install` builds. A different
+# value reinstalls tbhbdev at that commit.
+ops_tbhbdev_commit: 3bf88eef651da2b8a56b3c7fd82ffc9032828c84
+ops_tbhbdev_source: https://github.com/tbhb-dev/tools
+ops_tbhbdev_mise: /opt/homebrew/bin/mise
+ops_tbhbdev_home: "{{ ansible_facts.user_dir }}"
+ops_tbhbdev_bin_dir: "{{ ops_tbhbdev_home }}/.local/bin"
+ops_tbhbdev_tool_dir: "{{ ops_tbhbdev_home }}/.local/share/uv/tools/tbhbdev"
+# The non-interactive ssh PATH, which has git. mise adds uv for the install.
+ops_tbhbdev_path: /usr/bin:/bin:/usr/sbin:/sbin
+# ops_tbhbdev_connect_endpoints comes from inventory (group_vars/operator_macs.yml).
