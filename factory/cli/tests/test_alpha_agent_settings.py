@@ -8,7 +8,8 @@ from typing import TYPE_CHECKING
 import pytest
 
 from tbhbdev import userconfig
-from tbhbdev.alpha.agent import arguments, model, settings
+from tbhbdev.alpha.agent import model, settings
+from tbhbdev.alpha.agent.driver import arguments
 
 if TYPE_CHECKING:
     from pathlib import Path

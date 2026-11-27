@@ -6,12 +6,10 @@ title: gitleaks policy
 type: Reference
 generated:
   - role: generated
-    harness: codex:0.166.0
-    model: openai:gpt-6.1-sol
-    effort: high
-    surface: exec
-    session: sha-256-64:64dc76b579f502d6
-    at: "2026-11-15T14:58:40Z"
+    harness: codex:0.171.0
+    model: openai:gpt-6.2-sol
+    session: sha-256-64:b92e3fe7d3cd5f25
+    at: "2026-11-27T15:32:52Z"
 ---
 
 # gitleaks policy
@@ -97,7 +95,7 @@ Run `gitleaks dir --no-banner --redact --verbose --config CONFIG FILE` for each 
 
 A path beside an independently detected token doesn't by itself suppress that token. Suppression depends on the extracted secret and the matching allowlist entry.
 
-`//lint/tests:defaults_default_allowlist_test` runs both negative controls with the pinned binary. Tree, text, and history scenarios assert that the committed policy detects the first fixture. History scanning removes both fixtures before scanning and requires both rules, proving that it reads past commits. Private scanning adds a credential-path rule and verifies it alongside the default token rule. This exercises the private config extending effective local policy, which extends the base from the module. A merge-range scenario requires a full history scan when the generated base changes.
+`//lint/tests:defaults_default_allowlist_test` runs both negative controls with the pinned binary. Tree, text, and history scenarios assert that the committed policy detects the first fixture. History scanning removes both fixtures before scanning and requires both rules, proving that it reads past commits. Private scanning adds a credential-path rule and verifies it alongside the default token rule. This exercises the private config extending effective local policy, which extends the base from the module.
 
 ## Regeneration
 

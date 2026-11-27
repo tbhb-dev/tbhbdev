@@ -1,6 +1,5 @@
-"""The brief a harness receives, from literal text and run kind."""
+"""The brief a harness receives, from literal text."""
 
-from tbhbdev.alpha.agent import transport
 from tbhbdev.alpha.agent.model import Harness, Profile
 
 FINAL_ONLY = (
@@ -75,40 +74,3 @@ def brief(
     elif profile is Profile.REVIEW:
         text = f"{REVIEW_PUBLICATION}\n{text}"
     return f"{FINAL_ONLY}\n{text}"
-
-
-INSPECTION_WARNING = (
-    "Don't run git inside a run clone: it is agent-written. "
-    "Use `tbhbdev alpha agent log|diff NAME`."
-)
-
-
-def sandbox(authorized_by: str | None) -> str:
-    if authorized_by is None:
-        return ""
-    return f" sandbox=none authorized_by={transport.terminal_text(authorized_by)}"
-
-
-def launched(
-    name: str,
-    host: str,
-    account: str,
-    *,
-    authorized_by: str | None = None,
-) -> str:
-    return f"{name}: launched host={host} account={account}" + sandbox(authorized_by)
-
-
-def status(
-    name: str,
-    *,
-    phase: str,
-    rc: str,
-    target: tuple[str, str, str | None, str | None],
-    started: str,
-) -> str:
-    host, account, authorized_by, launcher = target
-    return (
-        f"{name}: phase={phase} rc={rc} host={host} account={account} started={started}"
-        f" launcher={launcher or 'unknown'}"
-    ) + sandbox(authorized_by)
