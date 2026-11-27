@@ -9,7 +9,7 @@ from tbhbops import docker_route as dr
 # copy under packages/tbhbops/mutants, deeper than the source tree.
 ANSIBLE = next(
     path / "ansible"
-    for path in Path(__file__).resolve().parents
+    for path in Path(__file__).parents
     if (path / "ansible" / "ansible.cfg").is_file()
 )
 

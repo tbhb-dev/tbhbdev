@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING
 from tbhbdev import telemetry, userconfig
 from tbhbdev.alpha.agent import (
     admission,
+    app_server,
     arguments,
     driver,
     precheck,
@@ -24,6 +25,7 @@ if TYPE_CHECKING:
 def main(argv: list[str], prog: str) -> int:
     host_commands = {
         "run-host": run_host.main,
+        "send-host": app_server.main,
         "ssh-serve": ssh_serve.main,
         "precheck": precheck.main,
         "check-slot": admission.main,
@@ -41,6 +43,9 @@ def main(argv: list[str], prog: str) -> int:
 
 
 def dispatch(args: argparse.Namespace | None, prog: str) -> int:
+    if args is not None and args.verb == "send" and args.harness == "claude":
+        print(driver.CLAUDE_UNAVAILABLE, file=sys.stderr)
+        return 1
     try:
         loaded = settings.load()
         if args is None:

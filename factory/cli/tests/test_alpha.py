@@ -21,7 +21,9 @@ from tbhbdev.alpha import (
     guard_gh_poll,
     guard_gh_pr,
     guard_op,
+    guard_ops_no_lazy_stop,
     guard_scripts,
+    guard_sendmessage_clock,
     guard_ssh_agent,
     identity,
     install,
@@ -38,7 +40,6 @@ from tbhbdev.alpha import (
 from tbhbdev.alpha import command as alpha
 from tbhbdev.alpha.agent import command as agent
 from tbhbdev.alpha.agent import precheck, run_host, settings, signing_parity, ssh_serve
-from tbhbdev.alpha.loop import command as loop
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -142,9 +143,10 @@ def test_dispatch(monkeypatch: pytest.MonkeyPatch) -> None:
         ("guard-gh-config-dir", guard_gh_config_dir, [], "hook"),
         ("guard-gh-poll", guard_gh_poll, [], "hook"),
         ("guard-op", guard_op, [], "hook"),
+        ("guard-ops-no-lazy-stop", guard_ops_no_lazy_stop, [], "hook"),
         ("guard-scripts", guard_scripts, [], "hook"),
+        ("guard-sendmessage-clock", guard_sendmessage_clock, [], "hook"),
         ("guard-ssh-agent", guard_ssh_agent, [], "hook"),
-        ("loop", loop, [], "direct"),
         ("monorepo", monorepo, ["-h"], "positional"),
         ("pre-push-guard", pre_push_guard, ["origin", "url"], "direct"),
         ("repo", repo_bootstrap, ["bootstrap", "o/r"], "keyword"),

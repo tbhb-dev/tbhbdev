@@ -48,8 +48,8 @@ fit 72 characters, or the script stops. The body comes from the PR body:
 The script never adds Signed-off-by or Co-authored-by, and it refuses a PR body
 that already holds one, whoever runs it.
 
-The PR must be open, mergeable and approved. The review gate requires
-independent Reviews App approvals of the current head and successful checks.
+The PR must be open, mergeable and approved. The review gate requires a
+Reviews App approval of the current head and successful checks.
 An optional ``--expect-head SHA`` must also match that head. The merge passes
 the verified head as ``--match-head-commit`` to guard against a later push.
 ``--dry-run`` applies the same checks before previewing the merge.
@@ -76,6 +76,7 @@ per update from Renovate's update table.
 
 import argparse
 import json
+import os
 import re
 import shlex
 import sys
@@ -88,6 +89,7 @@ from urllib.parse import quote
 from tbhbdev.alpha import identity as agent_identity
 from tbhbdev.alpha import pull_request as pr
 from tbhbdev.alpha import review_gate
+from tbhbdev.alpha.install import require_git_hooks
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
@@ -761,8 +763,6 @@ def merge_methods(target: str) -> list[str]:
     Raises:
         SystemExit: The read fails or is malformed, or neither is allowed.
     """
-    if not pr.NAME_WITH_OWNER.fullmatch(target):
-        stop("not merging: can't tell which repository the PR is in")
     done = pr.run([pr.find_tool(GH), "repo", "view", target, "--json", METHOD_FIELDS])
     if done.returncode != 0:
         stop(f"gh repo view failed: {' '.join(done.stderr.split())}")
@@ -1007,6 +1007,8 @@ def build_parser(prog: str | None = None) -> argparse.ArgumentParser:
 def main(argv: Sequence[str] | None = None, prog: str | None = None) -> int:
     """Preview or perform the merge."""
     args = build_parser(prog).parse_args(argv)
+    if not require_git_hooks(os.environ):
+        return 1
     request, target, rules = verify_head(args.number, args.expect_head)
     methods = merge_methods(target)
     queue_method = requires_queue(rules)

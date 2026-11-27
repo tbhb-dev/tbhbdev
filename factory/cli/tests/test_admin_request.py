@@ -10,7 +10,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, cast
 lazy from collections.abc import Callable
 
-import httpx
+import httpx2
 import pytest
 from conftest import SAFE_ENVIRONMENT
 from cryptography.hazmat.primitives import serialization
@@ -33,12 +33,12 @@ class Fake:
     runtime: request.Runtime
     key: str = field(repr=False)
     reads: list[str]
-    requests: list[httpx.Request]
-    reply: httpx.Response = field(
-        default_factory=lambda: httpx.Response(200, json={"ok": True})
+    requests: list[httpx2.Request]
+    reply: httpx2.Response = field(
+        default_factory=lambda: httpx2.Response(200, json={"ok": True})
     )
     failure: str = ""
-    by_method: dict[str, httpx.Response] = field(default_factory=dict)
+    by_method: dict[str, httpx2.Response] = field(default_factory=dict)
     stores: list[int] = field(default_factory=list)
 
 
@@ -58,7 +58,7 @@ def fake(tmp_path: Path, config_file: Path) -> Fake:
         .decode()
     )
     reads: list[str] = []
-    requests: list[httpx.Request] = []
+    requests: list[httpx2.Request] = []
     stores: list[int] = []
 
     class Reader:
@@ -68,7 +68,7 @@ def fake(tmp_path: Path, config_file: Path) -> Fake:
                 raise secrets.SecretsError(TOKEN)
             return "" if result.failure == "empty" else key
 
-    def transport(req: httpx.Request) -> httpx.Response:
+    def transport(req: httpx2.Request) -> httpx2.Response:
         requests.append(req)
         # The durable before record must exist before even installation lookup.
         entries = [
@@ -83,15 +83,15 @@ def fake(tmp_path: Path, config_file: Path) -> Fake:
             if not req.url.path.endswith(("/installation", "/access_tokens"))
         ) or req.url.path.endswith(("/installation", "/access_tokens"))
         if result.failure == "network":
-            raise httpx.ReadError(TOKEN)
+            raise httpx2.ReadError(TOKEN)
         if req.url.path.endswith("/installation"):
-            return httpx.Response(200, json={"id": 7})
+            return httpx2.Response(200, json={"id": 7})
         if req.url.path.endswith("/access_tokens"):
-            return httpx.Response(
+            return httpx2.Response(
                 201, json={"token": TOKEN, "expires_at": "2030-01-01T00:00:00Z"}
             )
         if result.failure == "call":
-            raise httpx.ReadError(TOKEN)
+            raise httpx2.ReadError(TOKEN)
         return result.by_method.get(req.method, result.reply)
 
     (tmp_path / "enabled").touch()
@@ -100,7 +100,7 @@ def fake(tmp_path: Path, config_file: Path) -> Fake:
         lambda: 1800000000,
         lambda: (stores.append(1), Reader())[1],
         gh_app.run_openssl,
-        httpx.MockTransport(transport),
+        httpx2.MockTransport(transport),
     )
     result = Fake(
         request.Runtime(Audit(tmp_path / "audit"), env, tmp_path / "enabled", settings),
@@ -291,16 +291,16 @@ def test_missing_runtime_credentials(fake: Fake, settings: request.Settings) -> 
     ("reply", "code"),
     [
         (
-            httpx.Response(302, headers={"Location": "https://example.com"}),
+            httpx2.Response(302, headers={"Location": "https://example.com"}),
             "redirect_refused",
         ),
         (
-            httpx.Response(200, content=b"x" * (request.MAX_RESPONSE + 1)),
+            httpx2.Response(200, content=b"x" * (request.MAX_RESPONSE + 1)),
             "response_too_large",
         ),
     ],
 )
-def test_response_limits(fake: Fake, reply: httpx.Response, code: str) -> None:
+def test_response_limits(fake: Fake, reply: httpx2.Response, code: str) -> None:
     fake.reply = reply
     with pytest.raises(RefusedError, match=f"^{code}$"):
         request.call(fake.runtime, "GET", "/repos/tbhb-dev/widget", None, "test")
@@ -310,7 +310,7 @@ def test_response_limits(fake: Fake, reply: httpx.Response, code: str) -> None:
 def test_redaction_and_json_body(
     fake: Fake, capsys: pytest.CaptureFixture[str], tmp_path: Path
 ) -> None:
-    fake.reply = httpx.Response(
+    fake.reply = httpx2.Response(
         200, text=f"{TOKEN} {fake.key} eyJheader.payload.signature"
     )
     source = tmp_path / "body.json"
@@ -350,7 +350,7 @@ def test_wire_path_keeps_case_and_drops_the_query(fake: Fake) -> None:
 
 
 def test_response_cap_boundary(fake: Fake) -> None:
-    fake.reply = httpx.Response(200, content=b"x" * request.MAX_RESPONSE)
+    fake.reply = httpx2.Response(200, content=b"x" * request.MAX_RESPONSE)
     assert (
         len(
             request.call(fake.runtime, "GET", "/repos/tbhb-dev/widget", None, "test")[1]
@@ -375,14 +375,14 @@ def test_default_runtime(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> Non
 
 def test_explicit_http_options(fake: Fake, monkeypatch: pytest.MonkeyPatch) -> None:
 
-    original: Callable[..., httpx.Client] = httpx.Client
+    original: Callable[..., httpx2.Client] = httpx2.Client
     options: list[dict[str, object]] = []
 
-    def client(**kwargs: object) -> httpx.Client:
+    def client(**kwargs: object) -> httpx2.Client:
         options.append(kwargs)
         return original(**kwargs)
 
-    monkeypatch.setattr(httpx, "Client", client)
+    monkeypatch.setattr(httpx2, "Client", client)
     request.call(fake.runtime, "GET", "/repos/tbhb-dev/widget", None, "test")
     last = options[-1]
     assert last["timeout"] == gh_app.TIMEOUT
@@ -406,7 +406,7 @@ def test_redaction_without_pem_structure() -> None:
 
 
 def test_invalid_utf8_response(fake: Fake) -> None:
-    fake.reply = httpx.Response(200, content=b"\xff")
+    fake.reply = httpx2.Response(200, content=b"\xff")
     assert request.call(
         fake.runtime, "GET", "/repos/tbhb-dev/widget", None, "test"
     ) == (
@@ -442,7 +442,7 @@ ENVIRONMENT_BODY = {
 
 def environment_with(
     *people: tuple[str, int], branches: object = None, timer: int = 0
-) -> httpx.Response:
+) -> httpx2.Response:
     rules = [
         {
             "type": "required_reviewers",
@@ -450,7 +450,7 @@ def environment_with(
         },
         {"type": "wait_timer", "wait_timer": timer},
     ]
-    return httpx.Response(
+    return httpx2.Response(
         200, json={"protection_rules": rules, "deployment_branch_policy": branches}
     )
 
@@ -489,7 +489,7 @@ def test_the_reviewer_lookup_carries_the_callers_reason(fake: Fake) -> None:
 
 
 def test_environment_put_may_set_reviewers_on_one_without(fake: Fake) -> None:
-    fake.by_method["GET"] = httpx.Response(
+    fake.by_method["GET"] = httpx2.Response(
         200, json={"protection_rules": [], "deployment_branch_policy": None}
     )
     assert put_environment(fake)[0] == 200
@@ -540,7 +540,7 @@ def test_environment_put_that_would_reset_a_wait_timer_is_refused(
 def test_environment_put_passes_with_a_zero_or_absent_wait_timer(fake: Fake) -> None:
     fake.by_method["GET"] = environment_with(("User", 1), ("Team", 5), timer=0)
     assert put_environment(fake)[0] == 200
-    fake.by_method["GET"] = httpx.Response(
+    fake.by_method["GET"] = httpx2.Response(
         200, json={"protection_rules": [], "deployment_branch_policy": None}
     )
     assert put_environment(fake)[0] == 200
@@ -551,7 +551,7 @@ def test_the_largest_wait_timer_rule_counts(fake: Fake) -> None:
         {"type": "wait_timer", "wait_timer": 0},
         {"type": "wait_timer", "wait_timer": 5},
     ]
-    fake.by_method["GET"] = httpx.Response(
+    fake.by_method["GET"] = httpx2.Response(
         200, json={"protection_rules": rules, "deployment_branch_policy": None}
     )
     with pytest.raises(RefusedError, match=r"^protection_weakening$"):
@@ -559,7 +559,7 @@ def test_the_largest_wait_timer_rule_counts(fake: Fake) -> None:
 
 
 def test_environment_put_on_a_new_environment_passes(fake: Fake) -> None:
-    fake.by_method["GET"] = httpx.Response(404, json={})
+    fake.by_method["GET"] = httpx2.Response(404, json={})
     assert put_environment(fake)[0] == 200
 
 
@@ -574,7 +574,7 @@ def test_environment_put_on_a_new_environment_passes(fake: Fake) -> None:
     ],
 )
 def test_environment_put_that_adds_drops_or_swaps_a_reviewer_is_refused(
-    fake: Fake, existing: httpx.Response
+    fake: Fake, existing: httpx2.Response
 ) -> None:
     fake.by_method["GET"] = existing
     with pytest.raises(RefusedError, match=r"^protection_weakening$"):
@@ -585,32 +585,32 @@ def test_environment_put_that_adds_drops_or_swaps_a_reviewer_is_refused(
 @pytest.mark.parametrize(
     "existing",
     [
-        httpx.Response(500, json={}),
-        httpx.Response(200, content=b"not json"),
-        httpx.Response(200, json={}),
-        httpx.Response(200, json={"protection_rules": 3}),
-        httpx.Response(200, json={"protection_rules": []}),
-        httpx.Response(
+        httpx2.Response(500, json={}),
+        httpx2.Response(200, content=b"not json"),
+        httpx2.Response(200, json={}),
+        httpx2.Response(200, json={"protection_rules": 3}),
+        httpx2.Response(200, json={"protection_rules": []}),
+        httpx2.Response(
             200, json={"protection_rules": {}, "deployment_branch_policy": None}
         ),
-        httpx.Response(
+        httpx2.Response(
             200, json={"protection_rules": "", "deployment_branch_policy": None}
         ),
-        httpx.Response(
+        httpx2.Response(
             200,
             json={
                 "protection_rules": [{"type": "required_reviewers", "reviewers": {}}],
                 "deployment_branch_policy": None,
             },
         ),
-        httpx.Response(
+        httpx2.Response(
             200,
             json={
                 "protection_rules": [{"type": "required_reviewers", "reviewers": ""}],
                 "deployment_branch_policy": None,
             },
         ),
-        httpx.Response(
+        httpx2.Response(
             200,
             json={
                 "protection_rules": [
@@ -622,7 +622,7 @@ def test_environment_put_that_adds_drops_or_swaps_a_reviewer_is_refused(
                 "deployment_branch_policy": None,
             },
         ),
-        httpx.Response(
+        httpx2.Response(
             200,
             json={
                 "protection_rules": [
@@ -634,7 +634,7 @@ def test_environment_put_that_adds_drops_or_swaps_a_reviewer_is_refused(
                 "deployment_branch_policy": None,
             },
         ),
-        httpx.Response(
+        httpx2.Response(
             200,
             json={
                 "protection_rules": [
@@ -646,7 +646,7 @@ def test_environment_put_that_adds_drops_or_swaps_a_reviewer_is_refused(
                 "deployment_branch_policy": None,
             },
         ),
-        httpx.Response(
+        httpx2.Response(
             200,
             json={
                 "protection_rules": [
@@ -658,55 +658,55 @@ def test_environment_put_that_adds_drops_or_swaps_a_reviewer_is_refused(
                 "deployment_branch_policy": None,
             },
         ),
-        httpx.Response(200, content=b"[" * 100000),
-        httpx.Response(
+        httpx2.Response(200, content=b"[" * 100000),
+        httpx2.Response(
             200,
             json={
                 "protection_rules": [{"type": "wait_timer", "wait_timer": "soon"}],
                 "deployment_branch_policy": None,
             },
         ),
-        httpx.Response(
+        httpx2.Response(
             200,
             json={
                 "protection_rules": [{"type": "wait_timer", "wait_timer": 0.5}],
                 "deployment_branch_policy": None,
             },
         ),
-        httpx.Response(
+        httpx2.Response(
             200,
             json={
                 "protection_rules": [{"type": "wait_timer", "wait_timer": True}],
                 "deployment_branch_policy": None,
             },
         ),
-        httpx.Response(
+        httpx2.Response(
             200,
             json={
                 "protection_rules": [{"type": "wait_timer", "wait_timer": "5"}],
                 "deployment_branch_policy": None,
             },
         ),
-        httpx.Response(
+        httpx2.Response(
             200,
             json={
                 "protection_rules": [{"type": "wait_timer", "wait_timer": None}],
                 "deployment_branch_policy": None,
             },
         ),
-        httpx.Response(
+        httpx2.Response(
             200,
             content=b'{"protection_rules": [{"type": "wait_timer",'
             b' "wait_timer": 1e309}], "deployment_branch_policy": null}',
         ),
-        httpx.Response(
+        httpx2.Response(
             200,
             json={
                 "protection_rules": [{"type": "wait_timer"}],
                 "deployment_branch_policy": None,
             },
         ),
-        httpx.Response(
+        httpx2.Response(
             200,
             json={
                 "protection_rules": [{"type": "required_reviewers", "reviewers": [{}]}]
@@ -715,7 +715,7 @@ def test_environment_put_that_adds_drops_or_swaps_a_reviewer_is_refused(
     ],
 )
 def test_environment_put_with_an_unreadable_environment_is_refused(
-    fake: Fake, existing: httpx.Response
+    fake: Fake, existing: httpx2.Response
 ) -> None:
     fake.by_method["GET"] = existing
     with pytest.raises(RefusedError, match=r"^environment_unreadable$"):

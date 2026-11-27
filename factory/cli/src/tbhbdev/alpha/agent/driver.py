@@ -41,6 +41,7 @@ if TYPE_CHECKING:
 
 
 MAX_LIVE_REVIEWS = 4
+CLAUDE_UNAVAILABLE = "Claude delivery is not built"
 
 
 class Run:
@@ -553,6 +554,13 @@ def launch_attributes(run: Run) -> None:
 
 
 def execute(settings: Settings, args: argparse.Namespace) -> int:
+    if args.steer and (args.harness, args.profile, args.schema) != (
+        Harness.CODEX,
+        Profile.BUILD,
+        None,
+    ):
+        message = "exec --steer requires a Codex build without --schema"
+        raise Invalid(message)
     run = prepare(settings, args) if args.host is not None else None
     if run is not None:
         launch_attributes(run)
@@ -604,7 +612,7 @@ def execute(settings: Settings, args: argparse.Namespace) -> int:
         transport.call(
             settings,
             run.host,
-            remote.start(run.name, settings.sockets_dir, run.host),
+            remote.start(run.name, settings.sockets_dir, run.host, steer=args.steer),
             transport.Stdin(run.owner),
             timeout=deadline - time.monotonic(),
         )
@@ -955,21 +963,40 @@ def clean_archived(settings: Settings, name: str, *, force: bool) -> int:
     return clean(settings, run, force=force, archived=archived)
 
 
+def export_patch(settings: Settings, run: Run) -> int:
+    if run.request.profile is not Profile.BUILD:
+        message = "diff --patch requires a finished build run"
+        raise Invalid(message)
+    script = remote.export_patch(run.request.repo, run.name)
+    output = transport.call_bytes(
+        settings, run.host, ("/bin/sh", "-c", script), transport.Stdin(run.owner)
+    )
+    sys.stdout.buffer.write(output)
+    return 0
+
+
 def inspect(settings: Settings, run: Run, *, limit: int | None) -> int:
-    if run.request.unsandboxed and (
-        limit is not None or run.request.profile is Profile.REVIEW
+    if (
+        run.request.unsandboxed
+        and limit is None
+        and run.request.profile is Profile.REVIEW
     ):
         reading = transport.read(
             settings, run.host, (run.name, run.owner), answer=True, timeout=30
         )
         print(transport.terminal_text(reading.text), end="")
         return 0
+    script = (
+        remote.run_log(run.name)
+        if run.request.unsandboxed and limit is not None
+        else remote.inspect(run.request.repo, run.name, limit=limit)
+    )
     print(
         transport.terminal_text(
             transport.shell(
                 settings,
                 run.host,
-                remote.inspect(run.request.repo, run.name, limit=limit),
+                script,
                 transport.Stdin(run.owner),
             )
         ),
@@ -985,6 +1012,28 @@ def keep(settings: Settings, run: Run) -> int:
     return 0
 
 
+def send(settings: Settings, run: Run, text: str) -> int:
+    name = run.name
+    if run.request.harness is Harness.CLAUDE:
+        raise Invalid(CLAUDE_UNAVAILABLE)
+    if run.request.harness is not Harness.CODEX:
+        message = f"{name}: send requires a Codex run"
+        raise Invalid(message)
+    if kind := secret_kind(text):
+        message = f"steering message refused: {kind}"
+        raise Invalid(message)
+    script = remote.owned(name) + (
+        f"exec {remote.program(run.host)} alpha agent send-host {name}\n"
+    )
+    error = transport.shell(
+        settings, run.host, script, transport.Stdin(run.owner, text.encode())
+    ).strip()
+    if error:
+        message = f"{name}: {transport.terminal_text(error)}"
+        raise Invalid(message)
+    return 0
+
+
 def dispatch(settings: Settings, args: argparse.Namespace) -> int:
     if args.verb == "signing-parity":
         return signing_parity.main(settings)
@@ -997,15 +1046,27 @@ def dispatch(settings: Settings, args: argparse.Namespace) -> int:
     try:
         run = load(settings, args.name)
     except FileNotFoundError:
-        if args.verb == "clean":
-            return clean_archived(settings, args.name, force=args.force)
+        match args.verb:
+            case "clean":
+                return clean_archived(settings, args.name, force=args.force)
+            case "send":
+                message = f"{args.name}: unknown run"
+                raise Invalid(message) from None
         raise
     verbs = {"wait": wait, "status": status, "kill": kill, "keep": keep}
     try:
-        if args.verb in {"log", "diff"}:
-            return inspect(settings, run, limit=args.n if args.verb == "log" else None)
-        if args.verb == "clean":
-            return clean(settings, run, force=args.force)
-        return verbs[args.verb](settings, run)
+        if args.verb == "diff" and args.patch:
+            result = export_patch(settings, run)
+        elif args.verb in {"log", "diff"}:
+            limit = args.n if args.verb == "log" else None
+            result = inspect(settings, run, limit=limit)
+        elif args.verb == "clean":
+            result = clean(settings, run, force=args.force)
+        elif args.verb == "send":
+            result = send(settings, run, args.message)
+        else:
+            result = verbs[args.verb](settings, run)
     except transport.CollisionError:
         not_owner(run)
+    else:
+        return result

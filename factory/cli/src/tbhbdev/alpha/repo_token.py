@@ -23,7 +23,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING, Literal
 
-import httpx
+import httpx2
 
 from tbhbdev import secrets
 from tbhbdev.alpha import gh_app
@@ -128,10 +128,10 @@ def read_app(token_file: Path, item: str, *, endpoints: Sequence[str]) -> AppKey
         raise RepoTokenError(kind="item")
     try:
         for endpoint in endpoints:
-            url = httpx.URL(endpoint)
+            url = httpx2.URL(endpoint)
             if url.scheme != "https" or not url.host:
                 raise RepoTokenError(kind="connect")
-    except httpx.InvalidURL, ValueError, TypeError:
+    except httpx2.InvalidURL, ValueError, TypeError:
         raise RepoTokenError(kind="connect") from None
     try:
         found = secrets.explicit_item(token, *parts, urls=endpoints)

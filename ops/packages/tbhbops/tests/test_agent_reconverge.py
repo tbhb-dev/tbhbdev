@@ -13,7 +13,7 @@ from ansible.parsing.dataloader import DataLoader
 from ansible.template import Templar, trust_as_template
 
 ROOT = next(
-    path for path in Path(__file__).resolve().parents if (path / "ansible").is_dir()
+    path for path in Path(__file__).parents if (path / "ansible").is_dir()
 )
 ROLE = ROOT / "ansible/roles/agent_reconverge"
 DEFAULTS = yaml.safe_load((ROLE / "defaults/main.yml").read_text(encoding="utf-8"))

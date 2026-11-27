@@ -3,6 +3,7 @@
 import json
 import os
 import subprocess  # nosec B404
+import sys
 from dataclasses import dataclass
 from pathlib import Path
 from typing import cast
@@ -24,17 +25,20 @@ class SizeCounts:
     failed: str | None
     diff_range: str = ""
     merge_tree_command: str = ""
+    imported_lines: int | None = None
+    branch_exempt: bool = False
 
 
 class SizeCountError(Exception):
     """The counter could not run or returned an invalid result."""
 
 
-def size_counts(
+def size_counts(  # noqa: PLR0913 -- refs, branch name and counter tools are independent inputs.
     base: str,
     head: str,
     *,
     default_ref: str | None = None,
+    head_branch: str = "",
     scc: str = "scc",
     git: str = "git",
 ) -> SizeCounts:
@@ -54,6 +58,8 @@ def size_counts(
                 git,
                 str(DATA / "pr-size-exempt.txt"),
                 default_ref or "",
+                sys.executable,
+                head_branch,
             ],
             capture_output=True,
             text=True,
@@ -74,6 +80,12 @@ def size_counts(
         or any(type(data.get(key)) is not int for key in COUNT_KEYS)
         or not isinstance(diff_range := data.get("diff_range"), str)
         or not isinstance(merge_tree_command := data.get("merge_tree_command"), str)
+        or type(data.get("branch_exempt")) is not bool
+        or "imported_lines" not in data
+        or (
+            data["imported_lines"] is not None
+            and type(data["imported_lines"]) is not int
+        )
         or "failed" not in data
         or cast(
             "object",  # pragma: no mutate -- Type-only argument.
@@ -97,6 +109,8 @@ def size_counts(
         ),
         diff_range=diff_range,
         merge_tree_command=merge_tree_command,
+        imported_lines=data["imported_lines"],
+        branch_exempt=data["branch_exempt"],
     )
 
 

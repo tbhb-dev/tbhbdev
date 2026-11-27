@@ -22,11 +22,12 @@ import tbhbdev.alpha.guard_gh_config_dir
 import tbhbdev.alpha.guard_gh_poll
 import tbhbdev.alpha.guard_gh_pr
 import tbhbdev.alpha.guard_op
+import tbhbdev.alpha.guard_ops_no_lazy_stop
 import tbhbdev.alpha.guard_scripts
+import tbhbdev.alpha.guard_sendmessage_clock
 import tbhbdev.alpha.guard_ssh_agent
 import tbhbdev.alpha.identity
 import tbhbdev.alpha.install
-import tbhbdev.alpha.loop.command
 import tbhbdev.alpha.pre_push_guard
 import tbhbdev.alpha.run_stop_hook
 import tbhbdev.alpha.session_context
@@ -52,6 +53,8 @@ commands:
                pull request approvals through gh
   guard-op     PreToolUse hook: require the configured 1Password account
   guard-ssh-agent PreToolUse hook: block ssh-add and paths in the ssh dir (not sessions)
+  guard-sendmessage-clock PreToolUse hook: block stale or future SendMessage stamps
+  guard-ops-no-lazy-stop Stop hook: ask the assistant to verify marked claims
   state-guard  Claude Code hook: block sign-off commits and unchecked open items
   session-context
                SessionStart hook: name the host, the other hosts and the time
@@ -94,7 +97,6 @@ commands:
   verify-range BASE TIP [-C PATH]: check every agent commit in a range
   version-check [--host NAME ...] [--expect SHA|latest] [--json]: compare the
                installed build on each host
-  loop         validate loop configuration (runner not yet available)
   agent        exec | wait | status | kill | clean | keep: headless runs
   run-stop-hook <claude|codex|antigravity>: check whether an exec run can stop
   pre-push-guard REMOTE URL: refuse protected-branch and unfetched-rewrite pushes
@@ -129,6 +131,14 @@ def poll_command(_argv: list[str], _prog: str) -> int:
 
 def ssh_agent_command(_argv: list[str], _prog: str) -> int:
     return tbhbdev.alpha.guard_ssh_agent.main()
+
+
+def sendmessage_clock_command(_argv: list[str], _prog: str) -> int:
+    return tbhbdev.alpha.guard_sendmessage_clock.main()
+
+
+def ops_no_lazy_stop_command(_argv: list[str], _prog: str) -> int:
+    return tbhbdev.alpha.guard_ops_no_lazy_stop.main()
 
 
 def gh_config_dir_command(_argv: list[str], _prog: str) -> int:
@@ -211,6 +221,8 @@ COMMANDS: dict[str, Callable[[list[str], str], int]] = {
     "guard-gh-poll": poll_command,
     "guard-gh-config-dir": gh_config_dir_command,
     "guard-ssh-agent": ssh_agent_command,
+    "guard-sendmessage-clock": sendmessage_clock_command,
+    "guard-ops-no-lazy-stop": ops_no_lazy_stop_command,
     "guard-scripts": scripts_command,
     "guard-agent-model": agent_model_command,
     "gh-shim": tbhbdev.alpha.gh_shim.main,
@@ -227,7 +239,6 @@ COMMANDS: dict[str, Callable[[list[str], str], int]] = {
     "version-check": tbhbdev.alpha.version_check.main,
     "install": install_command,
     "pre-push-guard": tbhbdev.alpha.pre_push_guard.main,
-    "loop": tbhbdev.alpha.loop.command.main,
     "agent": tbhbdev.alpha.agent.command.main,
     "run-stop-hook": tbhbdev.alpha.run_stop_hook.main,
     "brief": tbhbdev.alpha.brief.main,

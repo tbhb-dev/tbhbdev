@@ -2,6 +2,7 @@
 
 import json
 import os
+import shlex
 import subprocess
 import sys
 from pathlib import Path
@@ -73,7 +74,8 @@ def test_promotes_only_other_viewers_and_is_idempotent(
     state, calls = tmp_path / "users.json", tmp_path / "calls"
     state.write_text(json.dumps(users))
     curl = tmp_path / "curl"
-    curl.write_text(f"#!{sys.executable}\n{CURL}")
+    curl.with_suffix(".py").write_text(CURL)
+    curl.write_text(f'#!/bin/sh\nexec {shlex.quote(sys.executable)} "$0.py" "$@"\n')
     curl.chmod(0o700)
     password = tmp_path / "password"
     password.write_text("test-password\n")

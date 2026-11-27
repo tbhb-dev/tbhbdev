@@ -11,9 +11,9 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, cast
 
-import httpx
+import httpx2
 
-from tbhbdev import content
+from tbhbdev import content, github_tls
 from tbhbdev.alpha import identity, review, review_doc
 from tbhbdev.alpha.agent import credentials, runfiles
 from tbhbdev.alpha.agent.decisions import repo
@@ -28,7 +28,7 @@ if TYPE_CHECKING:
 VERDICTS = frozenset({"GO", "BLOCK", "NO-GO"})
 DRAFT_NAME = re.compile(r"review-([1-9][0-9]*)(?:\.doc)?\.md")
 DRAFT_LIMIT = 64 * 1024
-TIMEOUT = httpx.Timeout(20.0, connect=5.0)
+TIMEOUT = httpx2.Timeout(20.0, connect=5.0)
 
 
 class PostRefusedError(ValueError):
@@ -125,7 +125,7 @@ def api(
         PostRefusedError: GitHub refuses or can't be reached.
     """
     try:
-        response = httpx.request(
+        response = httpx2.request(
             method,
             url,
             headers={
@@ -134,8 +134,9 @@ def api(
             },
             json=payload,
             timeout=TIMEOUT,
+            verify=github_tls.public_roots(),
         )
-    except httpx.HTTPError as exc:
+    except httpx2.HTTPError as exc:
         message = f"the {method} request failed: {type(exc).__name__}"
         raise PostRefusedError(message) from exc
     if not response.is_success:

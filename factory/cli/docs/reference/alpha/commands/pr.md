@@ -2,12 +2,8 @@
 description: Checking, creating, editing, readying, rerunning, closing and rebasing pull requests, and reading their checks.
 generated:
   - role: generated
-    harness: codex:0.171.0
-    model: openai:gpt-6.2-sol
-    effort: high
     surface: exec
-    session: sha-256-64:55f421bd5e9df8e7
-    at: "2026-11-27T03:22:14Z"
+    at: "2026-11-27T06:41:23Z"
 status: stable
 tags: [alpha]
 title: Pull request commands
@@ -33,7 +29,7 @@ It refuses fork heads, `main`, protected branches, and unreadable metadata.
 For pull requests from the Renovate bot, it ticks the rebase checkbox and preserves the rest of each body. It refuses pull requests from other authors.
 It skips checked boxes and stops at the first failure.
 
-`tbhbdev alpha pr check` and `pr create` count lines added by `HEAD` after linting the draft. They run a bundled copy of the rules size counter through Bash and `scc` 4.1.0 from the worktree root, without starting Bazel. The commands refresh the required remote-tracking refs on `origin` together and use local refs during a dry run. The limits are 400 added code lines and 1,500 added raw lines. `pr check` prints both counts and their limits. If the counter is unavailable or returns an error or invalid JSON, the command prints `size count unavailable: <reason>` and continues.
+`tbhbdev alpha pr check` and `pr create` count lines added by `HEAD` after linting the draft. They run a bundled copy of the rules size counter through Bash and `scc` 4.1.0 from the worktree root, without starting Bazel. The commands refresh the required remote-tracking refs on `origin` together and use local refs during a dry run. The limits are 400 added code lines and 1,500 added raw lines. `pr check` prints both counts and their limits. If the counter is unavailable or returns an error or invalid JSON, both commands fail with `size count unavailable: <reason>`.
 
 If either count exceeds its limit, both commands request a sizing review through `agent exec`. Push the head to `origin` so the reviewer can fetch it. An `OVERRIDE` for that commit lets the commands proceed. If the verdict is `SPLIT`, divide the change into stacked pull requests. When both counts exceed their limits, the problem reports the code count. A dry run reports the excess without starting a review.
 
