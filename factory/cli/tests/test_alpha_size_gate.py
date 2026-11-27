@@ -415,7 +415,7 @@ def test_a_failed_fetch_warns_and_never_counts_a_stale_ref(
     assert checked.problems == []
     assert capsys.readouterr().err == "size count unavailable: cannot fetch main\n"
     counter.assert_not_called()
-    assert [c.args[0] for c in git.call_args_list] == ["fetch"]
+    assert [c.args[0] for c in git.call_args_list] == ["fetch", "fetch"]
     assert "--refmap=" in git.call_args_list[0].args
 
 

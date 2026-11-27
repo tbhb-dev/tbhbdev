@@ -1747,60 +1747,62 @@ def test_a_draft_without_a_base_takes_the_default_branch(
     )
 
 
-@pytest.mark.parametrize("verb", ["check", "create"])
-def test_oversized_stacked_pr_fetches_its_base_for_the_review(
-    world: World, monkeypatch: pytest.MonkeyPatch, verb: str
+@pytest.mark.parametrize(
+    ("verb", "env"),
+    [
+        ("check", {"TBHBDEV_AGENT_RUN": "1"}),
+        ("create", {"TBHBDEV_SIZE_REVIEW_HOST": "override"}),
+    ],
+)
+def test_oversized_stacked_pr_launches_a_review_outside_tmux(
+    world: World,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    verb: str,
+    env: dict[str, str],
 ) -> None:
     counts = size_gate.SizeCounts(401, 400, 401, 1500, "code")
     monkeypatch.setattr(size_gate, "size_counts", Mock(return_value=counts))
     monkeypatch.setattr(size_gate, "size_review_state", Mock(return_value="missing"))
     monkeypatch.setattr(pr, "origin_repository", Mock(return_value=TARGET))
-    world.git("update-ref", "refs/remotes/origin/agent/base", "HEAD")
+    remote_default(world, world.root.parent, "fetched/heads/agent/base")
+    monkeypatch.setattr(pr, "git", pr.repo_git)
+    base = world.git("rev-parse", "HEAD")
     world.commit("stacked change")
+    head = world.git("rev-parse", "HEAD")
+    name = f"size-review-{head[:12]}"
     world.fake("tbhbdev")
+    world.fake("tmux")
     write_draft(world, "---\nbase: agent/base\n---\n" + BASE)
+    host = Mock(proven_harnesses=("agy",))
+    host.name = "review"
+    expected_host = env.get("TBHBDEV_SIZE_REVIEW_HOST", "review")
+    monkeypatch.setattr(
+        pr.agent_settings, "load", Mock(return_value=Mock(hosts=(host,)))
+    )
+    actual_run = pr.run
 
-    assert run_main(verb, env={"TBHBDEV_SIZE_REVIEW_HOST": "review"}) == 1
-
-    (call,) = world.calls("tbhbdev")
-    argv = call["argv"]
-    assert isinstance(argv, list)
-    assert argv[:3] == ["alpha", "agent", "exec"]
-    assert argv[argv.index("--ref") + 1] == world.git("rev-parse", "HEAD")
-    assert argv[argv.index("--fetch-ref") + 1] == "refs/heads/agent/base"
-
-
-def test_headless_size_review_launches_exec_in_its_own_named_pane(
-    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
-) -> None:
-    name = "size-review-" + "a" * 12
-    monkeypatch.setattr(pr, "find_tool", Mock(side_effect=str))
-
-    def tmux(argv: list[str]) -> subprocess.CompletedProcess[str]:
-        assert argv[:2] == ["tmux", "-S"]
+    def run(
+        argv: list[str], *, cwd: Path | None = None, stdin: str = ""
+    ) -> subprocess.CompletedProcess[str]:
+        if argv[0] != str(world.bin / "tmux"):
+            return actual_run(argv, cwd=cwd, stdin=stdin)
         directory = Path(argv[2]).parent
         if argv[-1] != "kill-server":
             assert argv[argv.index("-s", argv.index("new-session")) + 1] == name
             script = argv[argv.index("-c") + 1]
-            assert f"tmux select-pane -T {name} && tbhbdev alpha agent exec " in script
-            assert "git diff " + "b" * 40 + "..." + "a" * 40 in (
-                directory / "sizing.md"
-            ).read_text()
+            assert f"select-pane -T {name}" in script
+            assert "tbhbdev alpha agent exec" in script
+            assert f"--host {expected_host} " in script
+            assert f"--ref {head} --fetch-ref refs/heads/agent/base" in script
+            assert f"git diff {base}...{head}" in (directory / "sizing.md").read_text()
             (directory / "stdout").write_text("launched\n")
             (directory / "stderr").write_text("launcher output\n")
         return subprocess.CompletedProcess(argv, 0, "", "")
 
-    called = Mock(side_effect=tmux)
-    monkeypatch.setattr(pr, "run", called)
-    pr.start_size_review(
-        TARGET, ("main", "b" * 40), "a" * 40,
-        size_gate.SizeCounts(401, 400, 401, 1500, "code"),
-        {"TBHBDEV_AGENT_RUN": "1", "TBHBDEV_SIZE_REVIEW_HOST": "review"},
-    )  # fmt: skip
-
-    assert called.call_count == 2
-    assert called.call_args.args[0][-1] == "kill-server"
-    assert capsys.readouterr() == ("launched\n", "launcher output\n")
+    monkeypatch.setattr(pr, "run", run)
+    assert run_main(verb, env=env) == 1
+    assert capsys.readouterr().err == "launcher output\n"
 
 
 def test_the_default_branch_ignores_a_tag_of_the_same_name(

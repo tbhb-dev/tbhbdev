@@ -143,8 +143,10 @@ from urllib.parse import quote
 import yaml
 from jsonschema import Draft202012Validator
 
+from tbhbdev import userconfig
 from tbhbdev.alpha import identity as agent_identity
 from tbhbdev.alpha import opened, secret_scan, size_gate
+from tbhbdev.alpha.agent import settings as agent_settings
 from tbhbdev.alpha.repo import git as repo_git
 from tbhbdev.alpha.repo import hook_cwd, in_tbhb_dev, read_hook_stdin
 from tbhbdev.alpha.repo_bootstrap import GhError, NotFoundError
@@ -2127,7 +2129,7 @@ def opened_by(env: Mapping[str, str]) -> tuple[str | None, str | None]:
 def run_size_review_in_pane(
     argv: Sequence[str], name: str, directory: Path
 ) -> tuple[str, str]:
-    """Give a headless run its own named pane for the launcher to identify."""
+    """Give a caller outside tmux a named pane for the launcher to identify."""
     tmux = find_tool("tmux")
     server = [tmux, "-S", str(directory / "tmux.sock"), "-f", os.devnull]
     stdout, stderr = directory / "stdout", directory / "stderr"
@@ -2161,45 +2163,37 @@ def start_size_review(
 ) -> None:
     """Start the sizing review with the base branch and the commit counted."""
     host = env.get("TBHBDEV_SIZE_REVIEW_HOST")
-    if not host:
-        message = "set TBHBDEV_SIZE_REVIEW_HOST to a configured review host"
-        raise SystemExit(message)
     detected = agent_identity.detect(env)
     harness, model = (
         ("codex", "gpt-6.1-sol")
         if detected and detected[0] == agent_identity.ANTIGRAVITY
         else ("agy", "gemini-4-argon-high")
     )
+    if not host:
+        hosts = agent_settings.load().hosts
+        host = next(
+            (h.name for h in hosts if harness in h.proven_harnesses), hosts[0].name
+        )
     branch, base_commit = base
-    options = {
-        "--host": host,
-        "--repo": repo,
-        "--ref": head,
-        "--fetch-ref": f"refs/heads/{branch}",
-        "--harness": harness,
-        "--model": model,
-        "--effort": "high",
-        "--profile": "review",
-        "--class": "review",
-        "--role": "reviewer",
-        "--variant": size_gate.SIZE_REVIEW,
-    }
-    argv = [find_tool("tbhbdev"), "alpha", "agent", "exec"]
-    argv.extend(word for option in options.items() for word in option)
-    template = (size_gate.DATA / "review.md").read_text()
+    argv = [
+        find_tool("tbhbdev"), "alpha", "agent", "exec",
+        "--host", host, "--repo", repo, "--ref", head,
+        "--fetch-ref", f"refs/heads/{branch}",
+        "--harness", harness, "--model", model, "--effort", "high",
+        "--profile", "review", "--class", "review", "--role", "reviewer",
+        "--variant", size_gate.SIZE_REVIEW,
+    ]  # fmt: skip
     name = f"{size_gate.SIZE_REVIEW}-{head[:12]}"
     with tempfile.TemporaryDirectory() as directory:
         prompt = Path(directory) / "sizing.md"
         prompt.write_text(
-            template.format(
-                base=base_commit,
-                head=head,
-                code=counts.code_lines,
-                raw=counts.raw_lines,
+            (size_gate.DATA / "review.md").read_text().format(
+                base=base_commit, head=head,
+                code=counts.code_lines, raw=counts.raw_lines,
             )
-        )
+        )  # fmt: skip
         argv.extend((name, str(prompt)))
-        if env.get("TBHBDEV_AGENT_RUN") == "1" and not env.get("TMUX_PANE"):
+        if not env.get("TMUX_PANE"):
             stdout, stderr = run_size_review_in_pane(argv, name, prompt.parent)
         else:
             done = run(argv)
@@ -2227,7 +2221,7 @@ def size_review_allows(
             "push this head to origin before starting its sizing review",
             file=sys.stderr,
         )
-    except (GhError, OSError, SystemExit) as exc:
+    except (GhError, OSError, SystemExit, userconfig.ConfigError) as exc:
         print(f"cannot start sizing review: {exc}", file=sys.stderr)
     return False
 
@@ -2242,9 +2236,11 @@ def size_commits(branch: str, base: str, *, dry_run: bool) -> tuple[str, str] | 
             "--no-write-fetch-head",
             "--refmap=",
             "origin",
-            f"+refs/heads/{branch}:{base}",
         )
-        if git(*fetch)[0] != 0:
+        for prefix in ("refs/heads", "refs/heads/fetched/heads"):
+            if git(*fetch, f"+{prefix}/{branch}:{base}")[0] == 0:
+                break
+        else:
             # A stale tracking ref would count the wrong range, so stop here.
             print(f"size count unavailable: cannot fetch {branch}", file=sys.stderr)
             return None

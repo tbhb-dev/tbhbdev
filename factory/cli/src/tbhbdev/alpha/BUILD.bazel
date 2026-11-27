@@ -265,6 +265,8 @@ cli_py_library(
         ":repo_bootstrap",
         ":secret_scan",
         ":size_gate",
+        "//factory/cli/src/tbhbdev:userconfig",
+        "//factory/cli/src/tbhbdev/alpha/agent:settings",
         "@cli_pip//jsonschema",
         "@cli_pip//pyyaml",
     ],
