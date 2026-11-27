@@ -13,7 +13,7 @@ from contextlib import contextmanager
 from pathlib import Path
 from typing import TYPE_CHECKING, cast
 
-import httpx
+import httpx2
 import pytest
 import yaml
 from agent_host_example import constant, git, host_settings, repository, run_request
@@ -136,7 +136,7 @@ def test_each_credential_only_reaches_its_destination(
         ValueError,
         KeyError,
         TypeError,
-        httpx.HTTPError,
+        httpx2.HTTPError,
         gh_app.GhAppError,
     ],
 )
@@ -273,12 +273,12 @@ def test_review_token_request_is_read_only_for_only_run_repository(
         encryption_algorithm=serialization.NoEncryption(),
     ).decode()
     monkeypatch.setitem(VALUES, "example/app/pem", pem)
-    requests: list[httpx.Request] = []
+    requests: list[httpx2.Request] = []
     replies = {
-        ("GET", "/repos/tbhb-dev/example-repo/installation"): httpx.Response(
+        ("GET", "/repos/tbhb-dev/example-repo/installation"): httpx2.Response(
             200, json={"id": 7}
         ),
-        ("POST", "/app/installations/7/access_tokens"): httpx.Response(
+        ("POST", "/app/installations/7/access_tokens"): httpx2.Response(
             201,
             json={
                 "token": "example-installation",
@@ -287,7 +287,7 @@ def test_review_token_request_is_read_only_for_only_run_repository(
         ),
     }
 
-    def respond(request: httpx.Request) -> httpx.Response:
+    def respond(request: httpx2.Request) -> httpx2.Response:
         requests.append(request)
         return replies[request.method, request.url.path]
 
@@ -296,7 +296,7 @@ def test_review_token_request_is_read_only_for_only_run_repository(
         lambda: 1000,
         secrets.Store,
         gh_app.run_openssl,
-        httpx.MockTransport(respond),
+        httpx2.MockTransport(respond),
     )
     monkeypatch.setattr(gh_app, "default_env", lambda: env)
     monkeypatch.setattr(gh_app, "sign", constant("example-jwt"))
@@ -1034,12 +1034,12 @@ def test_build_token_request_names_one_repository_and_write_permissions(
         encryption_algorithm=serialization.NoEncryption(),
     ).decode()
     monkeypatch.setitem(VALUES, "example/app/pem", pem)
-    requests: list[httpx.Request] = []
+    requests: list[httpx2.Request] = []
     replies = {
-        ("GET", "/repos/tbhb-dev/example-repo/installation"): httpx.Response(
+        ("GET", "/repos/tbhb-dev/example-repo/installation"): httpx2.Response(
             200, json={"id": 7}
         ),
-        ("POST", "/app/installations/7/access_tokens"): httpx.Response(
+        ("POST", "/app/installations/7/access_tokens"): httpx2.Response(
             201,
             json={
                 "token": BUILD_TOKEN,
@@ -1048,7 +1048,7 @@ def test_build_token_request_names_one_repository_and_write_permissions(
         ),
     }
 
-    def respond(request: httpx.Request) -> httpx.Response:
+    def respond(request: httpx2.Request) -> httpx2.Response:
         requests.append(request)
         return replies[request.method, request.url.path]
 
@@ -1060,7 +1060,7 @@ def test_build_token_request_names_one_repository_and_write_permissions(
         lambda: 1000,
         secrets.Store,
         gh_app.run_openssl,
-        httpx.MockTransport(respond),
+        httpx2.MockTransport(respond),
     )
     monkeypatch.setattr(gh_app, "default_env", lambda: env)
     # The build path signs in memory, never through the key-file signer.

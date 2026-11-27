@@ -87,7 +87,9 @@ manifest:
     google.type.timeofday_pb2: googleapis_common_protos
     h11: h11
     httpcore: httpcore
+    httpcore2: httpcore2
     httpx: httpx
+    httpx2: httpx2
     hypothesis: hypothesis
     idna: idna
     iniconfig: iniconfig
@@ -142,6 +144,7 @@ manifest:
     sortedcontainers: sortedcontainers
     tbhb_telemetry: tbhb_telemetry
     tomlkit: tomlkit
+    truststore: truststore
     typing_extensions: typing_extensions
     tzdata: tzdata
     uri_template: uri_template
@@ -150,4 +153,4 @@ manifest:
     yaml: pyyaml
   pip_repository:
     name: cli_pip
-integrity: 9d53f494b278bc45d4a09cb9a11fdbb1861953983857fb4c0694a737bd2d9b30
+integrity: b7087dd8189cd60e3c5b3f3b1535a6b3455bc1e855876cb7ce66f0102b50d93f

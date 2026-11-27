@@ -61,7 +61,7 @@ cli_py_library(
         "//factory/cli/src/tbhbdev/alpha/agent/decisions:config",
         "//factory/cli/src/tbhbdev/alpha/agent/decisions:repo",
         "//factory/cli/src/tbhbdev/alpha/agent/decisions:run_state",
-        "@cli_pip//httpx",
+        "@cli_pip//httpx2",
         "@cli_pip//pyyaml",
     ],
 )
@@ -194,7 +194,7 @@ cli_py_library(
         "//factory/cli/src/tbhbdev/alpha:review_doc",
         "//factory/cli/src/tbhbdev/alpha/agent/decisions:repo",
         "//factory/cli/src/tbhbdev/alpha/agent/decisions:request",
-        "@cli_pip//httpx",
+        "@cli_pip//httpx2",
     ],
 )
 
@@ -231,7 +231,7 @@ cli_py_library(
         "//factory/cli/src/tbhbdev/alpha/agent/decisions:repo",
         "//factory/cli/src/tbhbdev/alpha/agent/decisions:request",
         "//factory/cli/src/tbhbdev/alpha/agent/decisions:run_state",
-        "@cli_pip//httpx",
+        "@cli_pip//httpx2",
     ],
 )
 
@@ -281,7 +281,7 @@ cli_py_library(
         ":settings",
         ":transport",
         "//factory/cli/src/tbhbdev/alpha/agent/decisions:remote",
-        "@cli_pip//httpx",
+        "@cli_pip//httpx2",
     ],
 )
 

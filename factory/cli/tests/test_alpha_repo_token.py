@@ -16,6 +16,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, NoReturn, override
 
 import httpx
+import httpx2
 import pytest
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric import rsa
@@ -37,9 +38,10 @@ PERMISSIONS = {"contents": "read"}
 
 @pytest.fixture(autouse=True)
 def no_network(monkeypatch: pytest.MonkeyPatch) -> None:
-    def refuse(_self: httpx.HTTPTransport, _request: httpx.Request) -> NoReturn:
+    def refuse(_self: object, _request: object) -> NoReturn:
         pytest.fail("HTTP must use a fake transport")
 
+    monkeypatch.setattr(httpx2.HTTPTransport, "handle_request", refuse)
     monkeypatch.setattr(httpx.HTTPTransport, "handle_request", refuse)
 
 
@@ -333,16 +335,16 @@ def test_explicit_protocol_errors(status: int, monkeypatch: pytest.MonkeyPatch) 
 @pytest.fixture
 def github(
     monkeypatch: pytest.MonkeyPatch,
-) -> tuple[list[httpx.Request], dict[str, httpx.Response]]:
-    requests: list[httpx.Request] = []
+) -> tuple[list[httpx2.Request], dict[str, httpx2.Response]]:
+    requests: list[httpx2.Request] = []
     routes = {
-        f"/repos/{REPO}/installation": httpx.Response(200, json={"id": 7}),
-        "/app/installations/7/access_tokens": httpx.Response(
+        f"/repos/{REPO}/installation": httpx2.Response(200, json={"id": 7}),
+        "/app/installations/7/access_tokens": httpx2.Response(
             201, json={"token": TOKEN, "expires_at": "2030-01-01T00:00:00Z"}
         ),
     }
 
-    def respond(request: httpx.Request) -> httpx.Response:
+    def respond(request: httpx2.Request) -> httpx2.Response:
         requests.append(request)
         jwt = request.headers["Authorization"].removeprefix("Bearer ")
         claims = json.loads(base64.urlsafe_b64decode(jwt.split(".")[1] + "=="))
@@ -353,14 +355,14 @@ def github(
                 "permissions": PERMISSIONS,
             }
         return routes.get(
-            request.url.path, httpx.Response(404, json={"message": TOKEN})
+            request.url.path, httpx2.Response(404, json={"message": TOKEN})
         )
 
     monkeypatch.setattr(
         rt,
         "_MINT_ENV",
         dataclasses.replace(
-            rt._MINT_ENV, now=lambda: 1000, transport=httpx.MockTransport(respond)
+            rt._MINT_ENV, now=lambda: 1000, transport=httpx2.MockTransport(respond)
         ),
     )
     return requests, routes
@@ -370,7 +372,7 @@ def github(
 def test_mint_cache(
     app: rt.AppKey,
     tmp_path: Path,
-    github: tuple[list[httpx.Request], dict[str, httpx.Response]],
+    github: tuple[list[httpx2.Request], dict[str, httpx2.Response]],
     cached: bool,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -415,7 +417,7 @@ def test_mint_cache(
 def test_stale_installation_is_dropped_before_retry(
     app: rt.AppKey,
     tmp_path: Path,
-    github: tuple[list[httpx.Request], dict[str, httpx.Response]],
+    github: tuple[list[httpx2.Request], dict[str, httpx2.Response]],
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     requests, _ = github
@@ -424,7 +426,7 @@ def test_stale_installation_is_dropped_before_retry(
     cache.chmod(0o600)
     original = gh_app.find_installation
 
-    def find(client: httpx.Client, repository: str) -> int | None:
+    def find(client: httpx2.Client, repository: str) -> int | None:
         assert json.loads(cache.read_text()) == {}
         return original(client, repository)
 
@@ -461,14 +463,14 @@ def test_unsafe_cache(app: rt.AppKey, token_file: Path) -> None:
 def test_mint_failure_is_sanitized(
     app: rt.AppKey,
     tmp_path: Path,
-    github: tuple[list[httpx.Request], dict[str, httpx.Response]],
+    github: tuple[list[httpx2.Request], dict[str, httpx2.Response]],
     failure: str,
 ) -> None:
     _, routes = github
     if failure in {"missing", "cached_missing"}:
         routes.clear()
     else:
-        routes["/app/installations/7/access_tokens"] = httpx.Response(
+        routes["/app/installations/7/access_tokens"] = httpx2.Response(
             401, json={"message": TOKEN}
         )
     cache = None
@@ -740,7 +742,7 @@ def test_cache_read_failure(token_file: Path, data: bytes) -> None:
 
 
 def test_success_without_cache(
-    app: rt.AppKey, github: tuple[list[httpx.Request], dict[str, httpx.Response]]
+    app: rt.AppKey, github: tuple[list[httpx2.Request], dict[str, httpx2.Response]]
 ) -> None:
     requests, _ = github
     assert rt.mint(app, REPO, PERMISSIONS).token == TOKEN

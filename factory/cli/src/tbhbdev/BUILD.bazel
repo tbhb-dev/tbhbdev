@@ -51,7 +51,7 @@ cli_py_library(
     visibility = ["//factory/cli:__subpackages__"],
     deps = [
         "//factory/cli/src/tbhbdev/alpha:identity",
-        "@cli_pip//httpx",
+        "@cli_pip//httpx2",
     ],
 )
 
@@ -119,7 +119,7 @@ cli_py_library(
     data = [":cue-pin.json"],
     imports = [".."],
     visibility = ["//factory/cli:__subpackages__"],
-    deps = ["@cli_pip//httpx"],
+    deps = ["@cli_pip//httpx2"],
 )
 
 cli_py_library(
@@ -196,7 +196,6 @@ cli_py_library(
         "//factory/cli/src/tbhbdev/alpha/agent:host_tools",
         "//factory/cli/src/tbhbdev/alpha/agent:model",
         "@cli_pip//cryptography",
-        "@cli_pip//httpx",
         "@cli_pip//onepasswordconnectsdk",
     ],
 )

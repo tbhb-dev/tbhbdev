@@ -17,7 +17,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import NoReturn
 
-import httpx
+import httpx2
 import pytest
 from cryptography.hazmat.primitives import hashes, serialization
 from cryptography.hazmat.primitives.asymmetric import padding
@@ -86,14 +86,14 @@ def no_network(monkeypatch: pytest.MonkeyPatch) -> None:
     """Fail at once on any request that no MockTransport answers."""
     monkeypatch.delenv(gh_app.RUN_ENV, raising=False)
 
-    def refuse(*_args: object, **_kwargs: object) -> httpx.Response:
+    def refuse(*_args: object, **_kwargs: object) -> httpx2.Response:
         message = "a test reached the real network"
         raise AssertionError(message)
 
-    monkeypatch.setattr(httpx.HTTPTransport, "handle_request", refuse)
+    monkeypatch.setattr(httpx2.HTTPTransport, "handle_request", refuse)
     # A client with no transport of its own looks up the host's proxies first,
     # which crashes a forked mutmut worker on macOS before it can send anything.
-    monkeypatch.setattr("httpx._utils.getproxies", refuse)
+    monkeypatch.setattr("httpx2._utils.getproxies", refuse)
 
 
 @dataclass
@@ -119,12 +119,12 @@ def app_store(key: str, *, app: str = "bot", vault: str = "tbhb-dev") -> Store:
     return Store({f"{base}/app_id": APP_ID, f"{base}/private_key": key})
 
 
-def ok_routes(installation: int = 7) -> dict[tuple[str, str], httpx.Response]:
+def ok_routes(installation: int = 7) -> dict[tuple[str, str], httpx2.Response]:
     return {
-        ("GET", f"/repos/{REPO}/installation"): httpx.Response(
+        ("GET", f"/repos/{REPO}/installation"): httpx2.Response(
             200, json={"id": installation}
         ),
-        ("POST", f"/app/installations/{installation}/access_tokens"): httpx.Response(
+        ("POST", f"/app/installations/{installation}/access_tokens"): httpx2.Response(
             201, json={"token": TOKEN, "expires_at": EXPIRES}
         ),
     }
@@ -134,19 +134,19 @@ class Github:
     """The GitHub API: answers each route and 404s the rest."""
 
     def __init__(
-        self, routes: dict[tuple[str, str], httpx.Response] | None = None
+        self, routes: dict[tuple[str, str], httpx2.Response] | None = None
     ) -> None:
         self.routes = ok_routes() if routes is None else routes
-        self.requests: list[httpx.Request] = []
+        self.requests: list[httpx2.Request] = []
 
-    def __call__(self, request: httpx.Request) -> httpx.Response:
+    def __call__(self, request: httpx2.Request) -> httpx2.Response:
         self.requests.append(request)
         key = (request.method, request.url.path)
-        return self.routes.get(key, httpx.Response(404, json={"message": "Not Found"}))
+        return self.routes.get(key, httpx2.Response(404, json={"message": "Not Found"}))
 
     @property
-    def transport(self) -> httpx.MockTransport:
-        return httpx.MockTransport(self)
+    def transport(self) -> httpx2.MockTransport:
+        return httpx2.MockTransport(self)
 
     @property
     def jwt(self) -> str:
@@ -512,16 +512,16 @@ def test_request_paths_and_bodies() -> None:
 @pytest.mark.parametrize(
     ("response", "ident"),
     [
-        (httpx.Response(200, json={"id": 7}), 7),
-        (httpx.Response(200, json={"id": "7"}), None),
-        (httpx.Response(200, json={}), None),
-        (httpx.Response(200, json=[7]), None),
-        (httpx.Response(200, content=b"not json"), None),
-        (httpx.Response(404, json={"id": 7}), None),
-        (httpx.Response(201, json={"id": 7}), None),
+        (httpx2.Response(200, json={"id": 7}), 7),
+        (httpx2.Response(200, json={"id": "7"}), None),
+        (httpx2.Response(200, json={}), None),
+        (httpx2.Response(200, json=[7]), None),
+        (httpx2.Response(200, content=b"not json"), None),
+        (httpx2.Response(404, json={"id": 7}), None),
+        (httpx2.Response(201, json={"id": 7}), None),
     ],
 )
-def test_installation_id(response: httpx.Response, ident: int | None) -> None:
+def test_installation_id(response: httpx2.Response, ident: int | None) -> None:
     assert gh_app.installation_id(response) == ident
 
 
@@ -1005,7 +1005,7 @@ def test_the_installation_falls_back_from_the_repo_to_the_org(
 ) -> None:
     github = Github(
         {
-            ("GET", "/orgs/acme/installation"): httpx.Response(200, json={"id": 9}),
+            ("GET", "/orgs/acme/installation"): httpx2.Response(200, json={"id": 9}),
             **{k: v for k, v in ok_routes(9).items() if k[0] == "POST"},
         }
     )
@@ -1019,8 +1019,8 @@ def test_the_installation_falls_back_from_the_repo_to_the_org(
 
 
 def lookup_routes(
-    repo: httpx.Response, org: httpx.Response | None = None
-) -> dict[tuple[str, str], httpx.Response]:
+    repo: httpx2.Response, org: httpx2.Response | None = None
+) -> dict[tuple[str, str], httpx2.Response]:
     routes = {("GET", f"/repos/{REPO}/installation"): repo}
     if org is not None:
         routes[("GET", "/orgs/acme/installation")] = org
@@ -1031,18 +1031,18 @@ def lookup_routes(
     "case",
     [
         (
-            httpx.Response(401, json={"message": "Bad credentials", "x": TOKEN}),
+            httpx2.Response(401, json={"message": "Bad credentials", "x": TOKEN}),
             "401: Bad credentials",
         ),
-        (httpx.Response(403, json={"message": "Rate limited"}), "403: Rate limited"),
+        (httpx2.Response(403, json={"message": "Rate limited"}), "403: Rate limited"),
         (
-            httpx.Response(301, json={"message": "Moved Permanently"}),
+            httpx2.Response(301, json={"message": "Moved Permanently"}),
             "301: Moved Permanently",
         ),
-        (httpx.Response(500, content=b"<html>oops"), "500: no message"),
-        (httpx.Response(429, json={"message": ""}), "429: no message"),
-        (httpx.Response(200, json={"id": "7"}), "200: no message"),
-        (httpx.Response(200, content=b"junk"), "200: no message"),
+        (httpx2.Response(500, content=b"<html>oops"), "500: no message"),
+        (httpx2.Response(429, json={"message": ""}), "429: no message"),
+        (httpx2.Response(200, json={"id": "7"}), "200: no message"),
+        (httpx2.Response(200, content=b"junk"), "200: no message"),
     ],
 )
 @pytest.mark.parametrize("where", ["repo", "org"])
@@ -1050,14 +1050,14 @@ def test_any_lookup_failure_but_a_404_is_an_error(
     capsys: pytest.CaptureFixture[str],
     tmp_path: Path,
     rsa: Key,
-    case: tuple[httpx.Response, str],
+    case: tuple[httpx2.Response, str],
     where: str,
 ) -> None:
     reply, expected = case
     routes = (
         lookup_routes(reply)
         if where == "repo"
-        else lookup_routes(httpx.Response(404, json={"message": "Not Found"}), reply)
+        else lookup_routes(httpx2.Response(404, json={"message": "Not Found"}), reply)
     )
     github = Github(routes)
     code, out, err = run(
@@ -1076,8 +1076,8 @@ def test_a_404_on_the_repo_falls_through_to_the_org(
     capsys: pytest.CaptureFixture[str], tmp_path: Path, rsa: Key
 ) -> None:
     routes = lookup_routes(
-        httpx.Response(404, json={"message": "Not Found"}),
-        httpx.Response(200, json={"id": 9}),
+        httpx2.Response(404, json={"message": "Not Found"}),
+        httpx2.Response(200, json={"id": 9}),
     )
     routes.update({k: v for k, v in ok_routes(9).items() if k[0] == "POST"})
     code, _, _ = run(
@@ -1142,18 +1142,18 @@ def test_permissions_narrow_the_token_request_and_use_their_own_dir(
     ("reply", "detail"),
     [
         (
-            httpx.Response(401, json={"message": "Bad credentials", "token": "no"}),
+            httpx2.Response(401, json={"message": "Bad credentials", "token": "no"}),
             "Bad credentials",
         ),
-        (httpx.Response(201, json={"token": TOKEN}), "no message"),
-        (httpx.Response(500, content=b"<html>oops"), "no message"),
+        (httpx2.Response(201, json={"token": TOKEN}), "no message"),
+        (httpx2.Response(500, content=b"<html>oops"), "no message"),
     ],
 )
 def test_a_bad_token_reply_quotes_only_the_message(
     capsys: pytest.CaptureFixture[str],
     tmp_path: Path,
     rsa: Key,
-    reply: httpx.Response,
+    reply: httpx2.Response,
     detail: str,
 ) -> None:
     github = Github(
@@ -1170,16 +1170,16 @@ def test_a_bad_token_reply_quotes_only_the_message(
 def test_a_network_failure_names_only_its_type(
     capsys: pytest.CaptureFixture[str], tmp_path: Path, rsa: Key
 ) -> None:
-    def boom(request: httpx.Request) -> httpx.Response:
+    def boom(request: httpx2.Request) -> httpx2.Response:
         message = f"refused {request.headers['Authorization']}"
-        raise httpx.ConnectError(message)
+        raise httpx2.ConnectError(message)
 
     env = gh_app.Env(
         tmp_path / "state",
         lambda: NOW,
         app_store(rsa.pem).factory,
         gh_app.run_openssl,
-        httpx.MockTransport(boom),
+        httpx2.MockTransport(boom),
     )
     code, out, err = run(capsys, env, "bot", REPO)
     assert (code, out) == (1, "")
@@ -1202,7 +1202,7 @@ def test_nothing_secret_reaches_the_output(
     failing = Github(
         {
             **ok_routes(),
-            ("POST", "/app/installations/7/access_tokens"): httpx.Response(
+            ("POST", "/app/installations/7/access_tokens"): httpx2.Response(
                 401, json={"message": "no"}
             ),
         }
@@ -1563,13 +1563,13 @@ MINT_PERMISSIONS = {"contents": "write", "pull_requests": "write"}
 def test_mint_token_disables_client_environment(
     tmp_path: Path, rsa: Key, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    enter = httpx.Client.__enter__
+    enter = httpx2.Client.__enter__
 
-    def check_client(client: httpx.Client) -> httpx.Client:
+    def check_client(client: httpx2.Client) -> httpx2.Client:
         assert client.trust_env is False
         return enter(client)
 
-    monkeypatch.setattr(httpx.Client, "__enter__", check_client)
+    monkeypatch.setattr(httpx2.Client, "__enter__", check_client)
     github = Github()
     assert gh_app.mint_token(
         env_for(tmp_path, Store({}), github),
@@ -1586,16 +1586,16 @@ def test_mint_token_ignores_proxy_environment(
 ) -> None:
     monkeypatch.setenv("HTTPS_PROXY", "http://proxy.example:bad")
     monkeypatch.setattr(
-        "httpx._utils.getproxies", lambda: {"https": os.environ["HTTPS_PROXY"]}
+        "httpx2._utils.getproxies", lambda: {"https": os.environ["HTTPS_PROXY"]}
     )
     github = Github()
 
     def handle_request(
-        _self: httpx.HTTPTransport, request: httpx.Request
-    ) -> httpx.Response:
+        _self: httpx2.HTTPTransport, request: httpx2.Request
+    ) -> httpx2.Response:
         return github(request)
 
-    monkeypatch.setattr(httpx.HTTPTransport, "handle_request", handle_request)
+    monkeypatch.setattr(httpx2.HTTPTransport, "handle_request", handle_request)
     assert gh_app.mint_token(
         replace(env_for(tmp_path, Store({}), github), transport=None),
         app_id=APP_ID,
@@ -1673,11 +1673,11 @@ def test_mint_token_lookup_falls_back_only_on_404(
     status: int,
 ) -> None:
     routes = ok_routes()
-    routes[("GET", f"/repos/{REPO}/installation")] = httpx.Response(
+    routes[("GET", f"/repos/{REPO}/installation")] = httpx2.Response(
         status,
         json={"message": TOKEN},
     )
-    routes[("GET", "/orgs/acme/installation")] = httpx.Response(200, json={"id": 7})
+    routes[("GET", "/orgs/acme/installation")] = httpx2.Response(200, json={"id": 7})
     github = Github(routes)
     env = env_for(tmp_path, Store({}), github)
     if status == 404:
@@ -1760,20 +1760,20 @@ def test_mint_token_errors_never_disclose_tokens(
 ) -> None:
     before = list(tmp_path.rglob("*"))
     routes = {} if failure == "missing" else ok_routes()
-    routes[("POST", "/app/installations/7/access_tokens")] = httpx.Response(
+    routes[("POST", "/app/installations/7/access_tokens")] = httpx2.Response(
         403,
         json={"token": TOKEN, "message": TOKEN},
     )
     github = Github(routes)
 
-    def transport(request: httpx.Request) -> httpx.Response:
+    def transport(request: httpx2.Request) -> httpx2.Response:
         if failure == "transport":
-            raise httpx.ReadError(TOKEN)
+            raise httpx2.ReadError(TOKEN)
         return github(request)
 
     env = replace(
         env_for(tmp_path, Store({}), github),
-        transport=httpx.MockTransport(transport),
+        transport=httpx2.MockTransport(transport),
     )
     with pytest.raises(gh_app.GhAppError) as caught:
         gh_app.mint_token(

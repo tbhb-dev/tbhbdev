@@ -10,7 +10,7 @@ import time
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
-import httpx
+import httpx2
 import yaml
 
 from tbhbdev import secrets
@@ -140,7 +140,7 @@ TOKEN_ERRORS = (
     ValueError,
     KeyError,
     TypeError,
-    httpx.HTTPError,
+    httpx2.HTTPError,
     gh_app.GhAppError,
 )
 

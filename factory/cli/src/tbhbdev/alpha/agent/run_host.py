@@ -23,7 +23,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
-import httpx
+import httpx2
 
 from tbhbdev import userconfig
 from tbhbdev.alpha import codex_trust, install, run_stop_hook
@@ -915,12 +915,12 @@ def origin_tip(run: Run) -> str | None:
         token = credentials.fetch_token(run.request, run.settings)
         if token is not None:
             headers["Authorization"] = f"Bearer {token}"
-        response = httpx.get(url, headers=headers, timeout=20)
-        if response.status_code == httpx.codes.NOT_FOUND:
+        response = httpx2.get(url, headers=headers, timeout=20)
+        if response.status_code == httpx2.codes.NOT_FOUND:
             return ""
         response.raise_for_status()
         record = response.json()
-    except OSError, ValueError, httpx.HTTPError:
+    except OSError, ValueError, httpx2.HTTPError:
         return None
     if not isinstance(record, dict) or record.get("ref") != f"refs/{branch}":
         return None

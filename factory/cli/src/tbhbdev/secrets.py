@@ -28,10 +28,9 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING, Protocol, override
 
-import httpx
 from cryptography.exceptions import UnsupportedAlgorithm
 from cryptography.hazmat.primitives import serialization
-from onepasswordconnectsdk.client import Client
+from onepasswordconnectsdk import client as connect_client
 from onepasswordconnectsdk.config import ClientConfig
 from onepasswordconnectsdk.utils import PathBuilder
 
@@ -60,7 +59,8 @@ MAX_TOKEN_FILE = 1 << 16
 # keychain's. Nothing in production sets it.
 TEST_TOKEN_ENV = "TBHBDEV_TEST_TOKEN"  # noqa: S105  # nosec B105
 
-TIMEOUT = httpx.Timeout(10.0, connect=5.0)
+# The Connect SDK creates httpx sessions and raises httpx exceptions.
+TIMEOUT = connect_client.httpx.Timeout(10.0, connect=5.0)
 KEYCHAIN_TIMEOUT = 10.0
 CLIENT_ERROR = 400
 NOT_FOUND = 404
@@ -260,32 +260,32 @@ class Connect:
     def __init__(self, token: str, urls: Sequence[str]) -> None:
         self._token = token
         self._urls = list(urls)
-        self._clients: dict[str, Client] = {}
+        self._clients: dict[str, connect_client.Client] = {}
 
     def __repr__(self) -> str:
         return f"Connect(endpoints={len(self._urls)})"
 
-    def _client(self, url: str) -> Client:
+    def _client(self, url: str) -> connect_client.Client:
         if url not in self._clients:
-            # A Client whose constructor fails raises again as it's deleted,
+            # An SDK client whose constructor fails raises again as it's deleted,
             # so a URL httpx refuses never reaches one.
-            httpx.URL(url)
+            connect_client.httpx.URL(url)
             config = ClientConfig(timeout=TIMEOUT)
-            self._clients[url] = Client(url, self._token, config)
+            self._clients[url] = connect_client.Client(url, self._token, config)
         return self._clients[url]
 
     def _send(
         self, url: str, method: str, path: str, body: Json | None
-    ) -> tuple[httpx.Response | None, bool]:
+    ) -> tuple[connect_client.httpx.Response | None, bool]:
         """The endpoint's answer, or None to move on to the next one.
 
         The flag says whether the endpoint may have done the request already.
         """
         try:
             response = self._client(url).build_request(method, path, body)
-        except httpx.ConnectError, httpx.ConnectTimeout:
+        except connect_client.httpx.ConnectError, connect_client.httpx.ConnectTimeout:
             return None, False
-        except httpx.TransportError as exc:
+        except connect_client.httpx.TransportError as exc:
             if method in IDEMPOTENT:
                 return None, True
             kind = type(exc).__name__
@@ -294,9 +294,9 @@ class Connect:
         # Any other failure to build or send the request is final. Its
         # message can hold the URL, so neither it nor its traceback shows.
         except (
-            httpx.HTTPError,
-            httpx.InvalidURL,
-            httpx.StreamError,
+            connect_client.httpx.HTTPError,
+            connect_client.httpx.InvalidURL,
+            connect_client.httpx.StreamError,
             UnicodeError,
         ) as exc:
             message = f"Connect can't send {method} {path}: {type(exc).__name__}"
@@ -649,12 +649,12 @@ class ExplicitItemMissingError(SecretsError):
     """Connect could not find the requested item."""
 
 
-class _ExplicitClient(Client):
+class _ExplicitClient(connect_client.Client):
     @override  # noqa: V105  # The SDK calls this session factory.
-    def create_session(self, url: str, token: str) -> httpx.Client:
+    def create_session(self, url: str, token: str) -> connect_client.httpx.Client:
         # The SDK's default session reads a timeout from the environment even
         # with explicit config. Keep its protocol and headers, but no defaults.
-        return httpx.Client(
+        return connect_client.httpx.Client(
             base_url=url,
             headers=self.build_headers(token),
             timeout=TIMEOUT,
@@ -664,16 +664,16 @@ class _ExplicitClient(Client):
 
 class _ExplicitConnect(Connect):
     @override
-    def _client(self, url: str) -> Client:
+    def _client(self, url: str) -> connect_client.Client:
         if url not in self._clients:
-            httpx.URL(url)
+            connect_client.httpx.URL(url)
             self._clients[url] = _ExplicitClient(url, self._token)
         return self._clients[url]
 
     @override
     def _send(
         self, url: str, method: str, path: str, body: Json | None
-    ) -> tuple[httpx.Response | None, bool]:
+    ) -> tuple[connect_client.httpx.Response | None, bool]:
         response, done = super()._send(url, method, path, body)
         if response is not None and response.status_code == NOT_FOUND:
             raise ExplicitItemMissingError
