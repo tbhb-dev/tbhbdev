@@ -2,16 +2,20 @@
 
 from __future__ import annotations
 
+import io
+import json
 from dataclasses import replace
 from types import SimpleNamespace
 from typing import TYPE_CHECKING, cast
+from unittest.mock import Mock
+from urllib.parse import urlsplit
 
 import httpx2
 import pytest
 from cue_fixtures import review_cue as review_cue  # noqa: PLC0414
 
 from tbhbdev import content
-from tbhbdev.alpha import review, review_doc
+from tbhbdev.alpha import review, review_doc, run_stop_hook
 from tbhbdev.alpha.agent import credentials, review_post, runfiles
 from tbhbdev.alpha.agent.decisions import request as requests
 from tbhbdev.alpha.agent.model import Harness, Invalid, Profile, RunKind, RunRequest
@@ -72,8 +76,12 @@ def make(
         authorized_by=None,
         startup_deadline_seconds=60,
     )
-    run = SimpleNamespace(files=files, request=request, settings=object())
-    prepared = SimpleNamespace(paths=SimpleNamespace(worktree=str(workspace)))
+    run = SimpleNamespace(
+        files=files, request=request, settings=object(), tmpdir=tmp_path
+    )
+    prepared = SimpleNamespace(
+        paths=SimpleNamespace(worktree=str(workspace)), start=None
+    )
     return (
         cast("run_host.Run", run),
         cast("run_host.Prepared", prepared),
@@ -450,6 +458,72 @@ def test_a_missing_token_blocks_the_post(
     monkeypatch.setattr(httpx2, "request", forbidden)
     assert not review_post.posted(run, prepared)
     assert "token unavailable" in run.files.path("log").read_text()
+
+
+@pytest.mark.parametrize(
+    ("line", "state"),
+    [
+        (f"VERDICT: OVERRIDE {HEAD}", "success"),
+        (f"VERDICT: SPLIT {HEAD}", "failure"),
+        (f"VERDICT: OVERRIDE {'b' * 40}", ""),
+        ("VERDICT: OVERRIDE", ""),
+        (f"VERDICT: GO {HEAD}", ""),
+        (f"VERDICT: SPLIT {HEAD}\nMore text.", ""),
+    ],
+)
+def test_sizing_review_posts_only_a_status_for_its_exact_head(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    line: str,
+    state: str,
+) -> None:
+    run, prepared = make(tmp_path, None)
+    run.request = replace(run.request, variant="size-review")
+    answer = f"Review complete.\n{line}\n"
+    context = run_stop_hook.run_context(
+        run.request, prepared.paths.worktree, run.files, run.tmpdir, prepared.start
+    )
+    monkeypatch.setenv(run_stop_hook.ENV, json.dumps(context))
+    monkeypatch.setattr(
+        "sys.stdin", io.StringIO(json.dumps({"last_assistant_message": answer}))
+    )
+    assert run_stop_hook.main(["codex"], "tbhbdev alpha run-stop-hook") == 0
+    hook_output = capsys.readouterr().out
+    run.files.write("out.final", answer)
+    mint = Mock(return_value=MINTED)
+    monkeypatch.setattr(credentials, "review_post_token", mint)
+    api = Api(monkeypatch)
+    assert review_post.posted(run, prepared) == bool(state)
+    if state:
+        assert hook_output == ""
+        ((method, url, payload),) = api.calls
+        assert (method, urlsplit(url).path) == ("POST", f"/repos/o/r/statuses/{HEAD}")
+        mint.assert_called_once_with(
+            run.request, run.settings, permissions={"statuses": "write"}
+        )
+        assert payload is not None
+        assert payload["context"] == "size-review"
+        assert payload["state"] == state
+    else:
+        retry = json.loads(hook_output)
+        assert retry["decision"] == "block"
+        assert f"VERDICT: SPLIT {HEAD}" in retry["reason"]
+        assert f"VERDICT: OVERRIDE {HEAD}" in retry["reason"]
+        mint.assert_not_called()
+        assert api.calls == []
+
+
+def test_sizing_review_cannot_post_without_status_write_access(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    run, prepared = make(tmp_path, None)
+    run.request = replace(run.request, variant="size-review")
+    run.files.write("out.final", f"VERDICT: OVERRIDE {HEAD}\n")
+    monkeypatch.setattr(credentials, "review_post_token", Mock(return_value=None))
+    monkeypatch.setattr(httpx2, "request", forbidden)
+    assert not review_post.posted(run, prepared)
+    assert "commit-status write access unavailable" in run.files.path("log").read_text()
 
 
 @pytest.mark.parametrize(

@@ -386,9 +386,11 @@ cli_py_library(
     name = "run_stop_hook",
     srcs = ["run_stop_hook.py"],
     imports = ["../.."],
+    pyi_deps = ["//factory/cli/src/tbhbdev/alpha/agent:model"],
     visibility = ["//factory/cli:__subpackages__"],
     deps = [
         ":repo",
+        ":size_gate",
         "//factory/cli/src/tbhbdev/alpha/agent:runfiles",
         "//factory/cli/src/tbhbdev/alpha/identity:dispatcher",
     ],

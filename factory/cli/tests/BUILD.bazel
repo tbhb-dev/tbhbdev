@@ -759,6 +759,7 @@ cli_py_test(
         "//factory/cli/src/tbhbdev:content",
         "//factory/cli/src/tbhbdev/alpha:review",
         "//factory/cli/src/tbhbdev/alpha:review_doc",
+        "//factory/cli/src/tbhbdev/alpha:run_stop_hook",
         "//factory/cli/src/tbhbdev/alpha/agent:credentials",
         "//factory/cli/src/tbhbdev/alpha/agent:model",
         "//factory/cli/src/tbhbdev/alpha/agent:review_post",
