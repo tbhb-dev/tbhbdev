@@ -9,7 +9,7 @@ import re
 import secrets
 import sys
 import time
-from contextlib import contextmanager
+from contextlib import contextmanager, suppress
 from dataclasses import replace
 from datetime import UTC, datetime
 from pathlib import Path, PurePosixPath
@@ -18,6 +18,7 @@ from typing import TYPE_CHECKING, NoReturn
 from tbhbdev import telemetry, version
 from tbhbdev.alpha import brief
 from tbhbdev.alpha.agent import (
+    admission,
     app_server,
     launcher,
     render,
@@ -37,7 +38,7 @@ if TYPE_CHECKING:
     import argparse
     from collections.abc import Generator
 
-    from tbhbdev.alpha.agent.model import Host, Settings
+    from tbhbdev.alpha.agent.model import Host, Os, Settings
 
 
 MAX_LIVE_REVIEWS = 4
@@ -135,9 +136,12 @@ def agy_timeout(settings: Settings, harness: Harness, profile: Profile) -> int |
     return settings.agy_timeout_seconds
 
 
-def prepare(settings: Settings, args: argparse.Namespace) -> Run:
+def prepare(
+    settings: Settings, args: argparse.Namespace, *, host: Host | None = None
+) -> Run:
     rules.check_name(args.name)
-    host = rules.select_host(settings, args.host, args.account)
+    if host is None:
+        host = rules.select_host(settings, args.host, args.account)
     harness = Harness(args.harness)
     profile = Profile(args.profile)
     expect_commit = args.expect_commit
@@ -306,22 +310,15 @@ def refuse_live_duplicate(settings: Settings, run: Run) -> None:
         raise Invalid(message)
 
 
-def check_limits(
+def read_limits(
     settings: Settings,
     host: Host,
     profile: Profile,
     *,
     ignore: bool,
-    timeout: float = 30,
-) -> None:
-    """Read HOST's load, memory, pressure and swap in one ssh call, then refuse or warn.
-
-    Launch calls this first. A later step may call it again.
-
-    Raises:
-        Invalid: A limit is exceeded or the read failed, and neither the host
-            nor IGNORE allows the launch to continue.
-    """
+    timeout: float,
+) -> tuple[limits.Reading | str, bool, str]:
+    """Read and judge the host's load, memory, pressure and swap in one SSH call."""
     if host.max_concurrent_runs == 0:
         message = f"{host.name}: max_concurrent_runs is 0"
         raise Invalid(message)
@@ -337,10 +334,134 @@ def check_limits(
         else settings.run_memory_mib
     )
     refuse, message = limits.decide(host, found, memory_mib, ignore=ignore)
+    return found, refuse, message
+
+
+def check_limits(
+    settings: Settings,
+    host: Host,
+    profile: Profile,
+    *,
+    ignore: bool,
+    timeout: float = 30,
+) -> None:
+    """Refuse or warn based on one host reading."""
+    _, refuse, message = read_limits(
+        settings, host, profile, ignore=ignore, timeout=timeout
+    )
     if refuse:
         raise Invalid(message)
     if message:
         print(message, file=sys.stderr)
+
+
+def usable_hosts(
+    settings: Settings,
+    system: Os,
+    args: argparse.Namespace,
+    deadline: float,
+    *,
+    exclude: str | None = None,
+) -> list[tuple[float, Host, str]]:
+    """Return eligible hosts in increasing order of 1-minute load."""
+    usable: list[tuple[float, Host, str]] = []
+    profile = Profile(args.profile)
+    account = args.account
+    candidates = [
+        candidate
+        for candidate in settings.hosts
+        if candidate.auto_select
+        and candidate.os is system
+        and candidate.name != exclude
+        and candidate.max_concurrent_runs != 0
+        and (account is None or account in candidate.accounts)
+    ]
+    for index, candidate in enumerate(candidates):
+        host = rules.select_host(settings, candidate.name, account)
+        now = time.monotonic()
+        remaining = deadline - now
+        if remaining <= 0:
+            break
+        probe_deadline = now + min(30, remaining / (len(candidates) - index))
+        found, refuse, message = read_limits(
+            settings,
+            host,
+            profile,
+            ignore=False,
+            timeout=probe_deadline - now,
+        )
+        if refuse or not isinstance(found, limits.Reading):
+            continue
+        # An older host may lack the probe until version synchronization.
+        # The launch still checks capacity when it claims a slot.
+        slot_timeout = probe_deadline - time.monotonic()
+        if slot_timeout > 0:
+            with suppress(transport.TransportError, transport.CollisionError):
+                slot = transport.shell(
+                    settings,
+                    host,
+                    remote.check_slot(host, profile),
+                    timeout=slot_timeout,
+                )
+                if slot.strip() == admission.SLOT_FULL:
+                    continue
+        usable.append((found.load, host, message))
+    return sorted(usable, key=lambda entry: entry[0])
+
+
+def select_exec_host(
+    settings: Settings, args: argparse.Namespace, deadline: float
+) -> Host:
+    if args.ignore_limits:
+        message = "--ignore-limits requires --host"
+        raise Invalid(message)
+    # Reserve half the launch wait for preflight and startup on the selected host.
+    usable = usable_hosts(
+        settings, args.os, args, deadline - settings.launch_wait_seconds / 2
+    )
+    if not usable:
+        message = (
+            f"no usable {args.os} hosts for automatic selection; "
+            "check auto_select and host limits"
+        )
+        raise Invalid(message)
+    _, host, message = usable[0]
+    if message:
+        print(message, file=sys.stderr)
+    return host
+
+
+def check_named_host(
+    settings: Settings, args: argparse.Namespace, run: Run, deadline: float
+) -> None:
+    try:
+        check_limits(
+            settings,
+            run.host,
+            run.request.profile,
+            ignore=run.ignore_limits,
+            timeout=deadline - time.monotonic(),
+        )
+    except Invalid as exc:
+        usable = usable_hosts(
+            settings, run.host.os, args, deadline, exclude=run.host.name
+        )
+        names = ", ".join(host.name for _, host, _ in usable)
+        message = f"{exc}; available alternatives: {names or 'none'}"
+        raise Invalid(message) from exc
+
+
+def launch_host(
+    settings: Settings, args: argparse.Namespace, run: Run | None, deadline: float
+) -> Host:
+    try:
+        if run is None:
+            return select_exec_host(settings, args, deadline)
+        check_named_host(settings, args, run, deadline)
+    except Invalid:
+        telemetry.attributes(**{"tbhb.agent.outcome": "refused"})
+        raise
+    return run.host
 
 
 _SECRET_PATTERNS = (
@@ -418,9 +539,19 @@ def check_steer(args: argparse.Namespace) -> None:
         raise Invalid(message)
 
 
-def execute(settings: Settings, args: argparse.Namespace) -> int:
-    check_steer(args)
-    run = prepare(settings, args)
+def checked_schema(args: argparse.Namespace) -> str | None:
+    if args.schema is None:
+        return None
+    schema = Path(args.schema).read_text()
+    if kind := secret_kind(schema):
+        telemetry.attributes(**{"tbhb.agent.outcome": "refused"})
+        message = f"schema refused: {kind}"
+        raise Invalid(message)
+    json.loads(schema)
+    return schema
+
+
+def launch_attributes(run: Run) -> None:
     telemetry.attributes(
         **{
             "tbhb.agent.host": run.host.name,
@@ -430,26 +561,20 @@ def execute(settings: Settings, args: argparse.Namespace) -> int:
             "tbhb.run.id": run.name,
         }
     )
+
+
+def execute(settings: Settings, args: argparse.Namespace) -> int:
+    check_steer(args)
+    run = prepare(settings, args) if args.host is not None else None
+    if run is not None:
+        launch_attributes(run)
     prompt = checked_prompt(args)
-    schema = None if args.schema is None else Path(args.schema).read_text()
-    if schema is not None:
-        if kind := secret_kind(schema):
-            telemetry.attributes(**{"tbhb.agent.outcome": "refused"})
-            message = f"schema refused: {kind}"
-            raise Invalid(message)
-        json.loads(schema)
+    schema = checked_schema(args)
     deadline = time.monotonic() + settings.launch_wait_seconds
-    try:
-        check_limits(
-            settings,
-            run.host,
-            run.request.profile,
-            ignore=run.ignore_limits,
-            timeout=deadline - time.monotonic(),
-        )
-    except Invalid:
-        telemetry.attributes(**{"tbhb.agent.outcome": "refused"})
-        raise
+    host = launch_host(settings, args, run, deadline)
+    if run is None:
+        run = prepare(settings, args, host=host)
+        launch_attributes(run)
     ref = args.ref or "HEAD"
     resolve = (
         run.request.profile is Profile.REVIEW and rules.COMMIT.fullmatch(ref) is None

@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING
 
 from tbhbdev import telemetry, userconfig
 from tbhbdev.alpha.agent import (
+    admission,
     app_server,
     arguments,
     driver,
@@ -27,6 +28,7 @@ def main(argv: list[str], prog: str) -> int:
         "send-host": app_server.main,
         "ssh-serve": ssh_serve.main,
         "precheck": precheck.main,
+        "check-slot": admission.main,
         "signing-fingerprint": signing_parity.host_main,
     }
     if argv and argv[0] in host_commands:

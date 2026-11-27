@@ -61,6 +61,9 @@ import (
 	_parts:  regexp.FindSubmatch(#FindingPrefix, visible)
 	_text:   strings.TrimRight(strings.Join(strings.Fields(_parts[4]), " "), ".!?") & !~#CIRestatement
 	_words:  <=30
+	if _parts[2] == "1" {
+		_text: =~#"(?:^| )Occurs when: [\p{L}\p{N}]"#
+	}
 }
 
 #ReviewSuggestion: #ReviewItem & #ReviewProse & {
