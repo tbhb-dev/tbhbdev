@@ -345,19 +345,6 @@ fi
     )
 
 
-def keep(name: str) -> str:
-    path = f'"$d/{name}{files.KEEP}"'
-    return (
-        owned(name)
-        + HELPERS
-        + f"""umask 077
-safe_file {path}
-set -C
-if test ! -f {path}; then ( : > {path} ); fi
-"""
-    )
-
-
 # The mirror lock serializes host fetches and reads of the fetched refs.
 # Files and directories git reads inside a run's .git for a format-patch. The
 # fallback refuses when any of them is a symlink.
@@ -610,7 +597,7 @@ if (-f $group) {
 """
 
 
-def clean(  # noqa: PLR0913 -- separate the target from the two cleanup guards
+def clean(  # noqa: PLR0913 -- explicit remote cleanup inputs
     repository: str,
     name: str,
     stamp: str,

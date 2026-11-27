@@ -11,13 +11,11 @@ from tbhbdev.alpha.agent import (
     app_server,
     arguments,
     driver,
-    precheck,
-    run_host,
     settings,
-    signing_parity,
     ssh_serve,
 )
 from tbhbdev.alpha.agent.decisions import host_names
+from tbhbdev.alpha.agent.run_host import configuration, dispatcher
 
 if TYPE_CHECKING:
     import argparse
@@ -25,12 +23,10 @@ if TYPE_CHECKING:
 
 def main(argv: list[str], prog: str) -> int:
     host_commands = {
-        "run-host": run_host.main,
+        "run-host": dispatcher.main,
         "send-host": app_server.main,
         "ssh-serve": ssh_serve.main,
-        "precheck": precheck.main,
         "check-slot": admission.main,
-        "signing-fingerprint": signing_parity.host_main,
     }
     if argv and argv[0] in host_commands:
         return host_commands[argv[0]](argv[1:], f"{prog} {argv[0]}")
@@ -50,7 +46,7 @@ def dispatch(args: argparse.Namespace | None, prog: str) -> int:
     try:
         loaded = settings.load()
         if args is None:
-            run_host.check_config(loaded)
+            configuration.check_config(loaded)
             print(f"{prog}: configuration valid")
             return 0
         if args.verb == "exec" and host_names.contains_host_name(

@@ -3,10 +3,10 @@
 from pathlib import Path
 
 import pytest
-from agent_host_example import constant
-from test_alpha_agent_run_host import make_run
+from agent_host_example import constant, make_run
 
-from tbhbdev.alpha.agent import run_host, worktree
+from tbhbdev.alpha.agent import runfiles, settings, worktree
+from tbhbdev.alpha.agent.run_host import dispatcher, paths
 
 
 @pytest.mark.parametrize("value", [None, "", "relative/state", "absolute"])
@@ -28,16 +28,16 @@ def test_run_host_state_requires_an_absolute_override(
         state / "tbhbdev/agent-mirrors/github.com/tbhb-dev/example-repo.git"
     )
     created: list[str] = []
-    private_dir = run_host.runfiles.private_dir
+    private_dir = runfiles.private_dir
 
     def record(path: Path) -> Path:
         created.append(str(path))
         return private_dir(path)
 
-    monkeypatch.setattr(run_host.runfiles, "private_dir", record)
-    monkeypatch.setattr(run_host.settings, "load", constant(run.settings))
+    monkeypatch.setattr(runfiles, "private_dir", record)
+    monkeypatch.setattr(settings, "load", constant(run.settings))
     assert (
-        run_host.main(
+        dispatcher.main(
             ["example", str(tmp_path / "missing-request"), "--host", run.host.name],
             "agent",
         )
@@ -45,6 +45,6 @@ def test_run_host_state_requires_an_absolute_override(
     )
     assert (state / "tbhbdev/agent-runs/example.rc").read_text() == "1\n"
     assert str(state / "tbhbdev/agent-runs") in created
-    assert run_host.planned_paths(run).codex_home == str(
+    assert paths.planned_paths(run).codex_home == str(
         state / "tbhbdev/agent-codex/example"
     )

@@ -15,14 +15,11 @@ PR = ".pr"
 BASE = ".base"
 HEAD = ".head"
 RC = ".rc"
-KEEP = ".keep"
 RC_PENDING = ".rc.pending"
 RUN_LOCK = ".run.lock"
 FALLBACK = ".rc.fallback"
 OWNER = ".owner"
 AUDIT = ".audit.json"
-WOULD_REFUSE = ".would_refuse"
-INDEX = "index.jsonl"
 SUFFIXES = (
     REQUEST,
     PROMPT,
@@ -37,12 +34,10 @@ SUFFIXES = (
     PR,
     BASE,
     HEAD,
-    KEEP,
     RC_PENDING,
     RUN_LOCK,
     FALLBACK,
     RC,
     AUDIT,
-    WOULD_REFUSE,
     OWNER,  # Keep ownership until every other file is archived.
 )

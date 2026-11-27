@@ -9,12 +9,9 @@ _TEST_ROOT = "factory/cli/tests"
 
 _IMPORTED_TESTS = [
     "test_admin_request",
-    "test_alpha_agent_codex_install",
     "test_alpha_agent_credentials",
     "test_alpha_agent_git_parent",
     "test_alpha_agent_request",
-    "test_alpha_agent_run_host",
-    "test_alpha_agent_sandbox_live",
     "test_alpha_agent_settings",
     "test_alpha_pull_request",
     "test_alpha_review_doc",
@@ -31,18 +28,13 @@ _IO_TESTS = [
     "test_alpha_agent_launcher",
     "test_alpha_agent_limits",
     "test_alpha_agent_ownership",
-    "test_alpha_agent_policy",
-    "test_alpha_agent_precheck",
     "test_alpha_agent_preparation",
     "test_alpha_agent_process_group",
     "test_alpha_agent_push",
     "test_alpha_agent_remote_safety",
     "test_alpha_agent_review_post",
-    "test_alpha_agent_run_host",
     "test_alpha_agent_runfiles",
-    "test_alpha_agent_signing_parity",
     "test_alpha_agent_ssh_serve",
-    "test_alpha_agent_terminal_descriptors",
     "test_alpha_agent_transport",
     "test_alpha_agent_version_heal",
     "test_alpha_agent_worktree",
@@ -112,6 +104,7 @@ def cli_py_test(name, srcs, deps = [], data = [], extra_deps = [], pyi_deps = []
             data = data,
             deps = deps,
             tags = tags,
+            visibility = ["//factory/cli/tests:__subpackages__"],
         )
 
     tools = ["@cue_test_tool//:cue"] + path_tools

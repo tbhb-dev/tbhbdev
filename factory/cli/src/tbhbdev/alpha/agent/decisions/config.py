@@ -15,19 +15,16 @@ from enum import StrEnum
 from pathlib import PurePosixPath
 from typing import NoReturn, cast
 
-from tbhbdev.alpha.agent.decisions import repo
 from tbhbdev.alpha.agent.model import (
     DEFAULT_CODEX_SUBAGENT_MODEL,
     DEFAULT_MAX_CONCURRENT_RUNS,
     DEFAULT_RUN_MEMORY_MIB,
     HOST_NAME,
     NAME,
-    AgySandbox,
     Claude,
     ClaudeProfile,
     Codex,
     Credentials,
-    Harness,
     Host,
     Invalid,
     Os,
@@ -127,12 +124,6 @@ class _Table:
             self.fail(key, "must not contain a NUL or '..' part")
         return entries
 
-    def home_paths(self, key: str) -> tuple[str, ...]:
-        entries = self.paths(key)
-        if any(e.startswith(("/", "~")) or not PurePosixPath(e).parts for e in entries):
-            self.fail(key, "must be paths below home without a leading '/' or '~'")
-        return entries
-
     def integer(self, key: str) -> int:
         value = self.value(key)
         if type(value) is not int or value <= 0:
@@ -201,10 +192,6 @@ def _write_roots(table: _Table, key: str = "write_roots") -> tuple[str, ...]:
     return entries
 
 
-def _optional_reason(table: _Table, key: str) -> str | None:
-    return table.text(key) if key in table.values else None
-
-
 def _host_path(table: _Table) -> tuple[str, ...]:
     if "host_path" not in table.values:
         return ()
@@ -223,24 +210,6 @@ def _network_domains(table: _Table) -> tuple[str, ...]:
     if any(not HOST_NAME.fullmatch(e) for e in entries):
         table.fail("network_domains", "must contain exact host names without wildcards")
     return entries
-
-
-def _public_repos(table: _Table) -> tuple[str, ...]:
-    entries = table.values.get("public_repos", [])
-    if entries == []:
-        return ()
-    values = table.strings("public_repos")
-    for value in values:
-        try:
-            parts = repo.parts(value)
-        except Invalid:
-            table.fail("public_repos", "must contain valid repository arguments")
-        else:
-            if parts[1].lower() != repo.DEFAULT_ORG:
-                table.fail(
-                    "public_repos", f"must contain only {repo.DEFAULT_ORG} repositories"
-                )
-    return values
 
 
 _OTEL_SHAPE = (
@@ -288,39 +257,14 @@ def _worker_path(root: _Table) -> str | None:
 
 
 def _sandbox(table: _Table) -> Sandbox:
-    table.only(
-        "write_roots",
-        "audit_dir",
-        "denied_home_paths",
-        "path",
-        "agy",
-        "host_path",
-        "network_domains",
-        "codex_network_proxy_opt_out",
-        "agy_unsandboxed_opt_out",
-        "codex_unsandboxed_opt_out",
-    )
+    table.only("audit_dir", "path", "host_path", "network_domains")
     path = table.table("path")
     path.only("linux", "macos")
-    agy = table.table("agy")
-    agy.only("review_read", "build_read", "build_write")
     return Sandbox(
-        write_roots=_write_roots(table),
+        audit_dir=table.path("audit_dir"),
+        path=SandboxPath(linux=path.paths("linux"), macos=path.paths("macos")),
         host_path=_host_path(table),
         network_domains=_network_domains(table),
-        codex_network_proxy_opt_out=_optional_reason(
-            table, "codex_network_proxy_opt_out"
-        ),
-        agy_unsandboxed_opt_out=_optional_reason(table, "agy_unsandboxed_opt_out"),
-        codex_unsandboxed_opt_out=_optional_reason(table, "codex_unsandboxed_opt_out"),
-        audit_dir=table.path("audit_dir"),
-        denied_home_paths=table.home_paths("denied_home_paths"),
-        path=SandboxPath(linux=path.paths("linux"), macos=path.paths("macos")),
-        agy=AgySandbox(
-            review_read=agy.paths("review_read"),
-            build_read=agy.paths("build_read"),
-            build_write=agy.paths("build_write"),
-        ),
     )
 
 
@@ -354,12 +298,11 @@ def _check_name(table: _Table, key: str, text: str, pattern: re.Pattern[str]) ->
     return text
 
 
-def _reviews_app(table: _Table) -> tuple[str | None, str | None, str | None]:
-    keys = ("reviews_app_id", "reviews_app_client_id", "reviews_app_pem")
+def _reviews_app(table: _Table) -> tuple[str | None, str | None]:
+    keys = ("reviews_app_client_id", "reviews_app_pem")
     if not table.values.keys() & set(keys):
-        return None, None, None
+        return None, None
     return (
-        table.reference("reviews_app_id"),
         table.reference("reviews_app_client_id"),
         table.reference("reviews_app_pem"),
     )
@@ -381,14 +324,13 @@ def _credentials(table: _Table) -> tuple[Credentials, ...]:
         entry.only(
             "gh",
             "docker",
-            "reviews_app_id",
             "reviews_app_client_id",
             "reviews_app_pem",
             "pull_requests_app_client_id",
             "pull_requests_app_pem",
             "signing",
         )
-        app_id, client_id, pem = _reviews_app(entry)
+        client_id, pem = _reviews_app(entry)
         pull_requests_client_id, pull_requests_pem = _pull_requests_app(entry)
         gh = entry.reference("gh") if "gh" in entry.values else None
         if gh is not None and pull_requests_pem is not None:
@@ -398,7 +340,6 @@ def _credentials(table: _Table) -> tuple[Credentials, ...]:
                 account=account,
                 gh=gh,
                 docker=entry.reference("docker") if "docker" in entry.values else None,
-                reviews_app_id=app_id,
                 reviews_app_client_id=client_id,
                 reviews_app_pem=pem,
                 signing=entry.reference("signing"),
@@ -422,16 +363,8 @@ def _claude(table: _Table) -> Claude:
         if earlier is not None:
             profiles.fail(name, f"differs from {earlier} only in case")
         entry = profiles.table(name)
-        entry.only("token", "expires")
-        found.append(
-            ClaudeProfile(
-                name=name,
-                token=entry.reference("token"),
-                expires=entry.reference("expires")
-                if "expires" in entry.values
-                else None,
-            )
-        )
+        entry.only("token")
+        found.append(ClaudeProfile(name=name, token=entry.reference("token")))
     selected = find_profile(tuple(found), default)
     if selected is None:
         table.fail("default_profile", f"names no profile in {profiles.label}")
@@ -455,18 +388,6 @@ def hosts(agent: dict[str, object]) -> tuple[Host, ...]:
             table.fail("name", f"{host.name!r} is defined twice")
         found.append(host)
     return tuple(found)
-
-
-def _proven_harnesses(table: _Table) -> tuple[Harness, ...]:
-    value = table.value("proven_harnesses")
-    if not isinstance(value, list):
-        table.fail("proven_harnesses", "must list distinct codex, claude or agy names")
-    entries: list[object] = value
-    if any(name not in ("codex", "claude", "agy") for name in entries) or len(
-        entries
-    ) != len(set(entries)):
-        table.fail("proven_harnesses", "must list distinct codex, claude or agy names")
-    return tuple(Harness(str(name)) for name in entries)
 
 
 _PRESSURE_LEVELS = (1, 2, 4)
@@ -497,9 +418,7 @@ def _host(table: _Table) -> Host:
         "os",
         "shell",
         "account",
-        "unsandboxed",
         "accounts",
-        "proven_harnesses",
         "tbhbdev",
         "load_limit",
         "min_memory_available_percent",
@@ -517,7 +436,6 @@ def _host(table: _Table) -> Host:
     if shell not in _PROGRAMS:
         table.fail("shell", f"must be one of {', '.join(_PROGRAMS)}")
     account = _check_name(table, "account", table.text("account"), NAME)
-    unsandboxed = table.flag("unsandboxed") if "unsandboxed" in table.values else True
     accounts = table.strings("accounts")
     if not all(NAME.fullmatch(a) for a in accounts):
         table.fail("accounts", f"must list names matching {NAME.pattern}")
@@ -533,9 +451,7 @@ def _host(table: _Table) -> Host:
         os,
         shell,
         account,
-        unsandboxed,
         accounts,
-        _proven_harnesses(table),
         program,
         load_limit=table.integer("load_limit")
         if "load_limit" in table.values
@@ -590,16 +506,12 @@ def parse(agent: dict[str, object]) -> Settings:
         "run_memory_mib",
         "review_memory_mib",
         "sockets_dir",
-        "public_repos",
         "otel",
         "sandbox",
         "codex",
         "credentials",
         "claude",
         "host",
-        "ssh_connect_timeout",
-        "ssh_keepalive_seconds",
-        "ssh_keepalive_count_max",
         "host_tag",  # Accepted for compatibility with existing configs.
         "worker",
     )
@@ -625,16 +537,6 @@ def parse(agent: dict[str, object]) -> Settings:
         agy_build_timeout_seconds=root.duration("agy_build_timeout")
         if "agy_build_timeout" in agent
         else 3600,
-        ssh_connect_timeout=root.integer("ssh_connect_timeout")
-        if "ssh_connect_timeout" in agent
-        else 15,
-        ssh_keepalive_seconds=root.integer("ssh_keepalive_seconds")
-        if "ssh_keepalive_seconds" in agent
-        else 30,
-        ssh_keepalive_count_max=root.integer("ssh_keepalive_count_max")
-        if "ssh_keepalive_count_max" in agent
-        else 3,
-        public_repos=_public_repos(root),
         otel_endpoint=_otel_endpoint(root, sandbox.network_domains),
         run_memory_mib=run_memory_mib,
         review_memory_mib=root.integer("review_memory_mib")

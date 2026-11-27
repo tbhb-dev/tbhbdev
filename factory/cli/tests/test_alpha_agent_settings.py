@@ -22,18 +22,11 @@ max_run_minutes = 120
 sockets_dir = "/example/sockets"
 
 [agent.sandbox]
-write_roots = [".cache", ".local/share/mise", ".local/state"]
 audit_dir = ".local/state/example-audit"
-denied_home_paths = [".claude"]
 
 [agent.sandbox.path]
 linux = [".local/bin", "/usr/local/bin", "/usr/bin", "/bin"]
 macos = [".local/bin", "/opt/homebrew/bin", "/usr/bin", "/bin"]
-
-[agent.sandbox.agy]
-review_read = [".config/example-gh", ".config/mise"]
-build_read = [".config/example-tools", ".local/share/mise/installs"]
-build_write = [".local/state/mise", ".local/share/mise"]
 
 [agent.codex]
 web_search = { build = "live", review = "cached" }
@@ -41,7 +34,6 @@ web_search = { build = "live", review = "cached" }
 [agent.credentials.agent]
 gh = "example-vault/example-gh/token"
 docker = "example-vault/example-docker/config"
-reviews_app_id = "example-vault/example-app/app_id"
 reviews_app_client_id = "example-vault/example-app/client_id"
 reviews_app_pem = "example-vault/example-app/private_key"
 signing = "example-vault/example-signing/private_key"
@@ -54,25 +46,20 @@ token = "example/primary/token"
 
 [agent.claude.profiles.secondary]
 token = "example/secondary/token"
-expires = "example/secondary/expires"
 
 [[agent.host]]
 name = "example-linux"
 os = "linux"
 shell = "bash"
 account = "agent"
-unsandboxed = false
 accounts = ["agent"]
-proven_harnesses = ["codex"]
 
 [[agent.host]]
 name = "example-macos"
 os = "macos"
 shell = "zsh"
 account = "agent"
-unsandboxed = false
 accounts = ["agent"]
-proven_harnesses = ["codex"]
 """
 
 
@@ -89,14 +76,9 @@ def test_loads_the_example_from_the_home_config(
     assert loaded.agy_timeout_seconds == 900
     assert loaded.codex == model.Codex(model.WebSearch.LIVE, model.WebSearch.CACHED)
     assert [h.name for h in loaded.hosts] == ["example-linux", "example-macos"]
-    assert loaded.hosts[1].unsandboxed is False
     assert loaded.claude.default_profile == "primary"
     assert (
         loaded.credentials[0].reviews_app_pem == "example-vault/example-app/private_key"
-    )
-    assert loaded.sandbox.agy.build_read == (
-        ".config/example-tools",
-        ".local/share/mise/installs",
     )
 
 
@@ -179,18 +161,10 @@ def test_duration() -> None:
 
 
 def test_command_help_contract() -> None:
-    assert arguments.parser("example agent").format_help() == (
-        "usage: example agent [-h]\n"
-        "                     "
-        "{exec,wait,status,kill,clean,keep,log,diff,send,signing-parity} ...\n\n"
-        "positional arguments:\n"
-        "  {exec,wait,status,kill,clean,keep,log,diff,send,signing-parity}\n"
-        "    exec                launch a headless run\n"
-        "    send                steer an active Codex run\n"
-        "    signing-parity      check each host's signing key is registered\n\n"
-        "options:\n"
-        "  -h, --help            show this help message and exit\n"
-    )
+    help_text = arguments.parser("example agent").format_help()
+    assert "{exec,wait,status,kill,clean,log,diff,send}" in help_text
+    assert "launch a headless run" in help_text
+    assert "steer an active Codex run" in help_text
 
 
 def test_a_relative_worker_path_names_the_config(config_file: Path) -> None:

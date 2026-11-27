@@ -69,7 +69,7 @@ def call(
 
 
 def call_bytes(
-    settings: Settings,
+    _settings: Settings,
     host: Host,
     command: tuple[str, ...],
     stdin: Stdin | None = None,
@@ -80,9 +80,8 @@ def call_bytes(
     args = argv.ssh(
         host,
         command,
-        connect_timeout=settings.ssh_connect_timeout,
-        keepalive=settings.ssh_keepalive_seconds,
-        keepalive_count_max=settings.ssh_keepalive_count_max,
+        connect_timeout=15,
+        keepalive=30,
     )
     try:
         code, output = asyncio.run(

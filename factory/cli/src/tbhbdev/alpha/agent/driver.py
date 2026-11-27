@@ -23,7 +23,6 @@ from tbhbdev.alpha.agent import (
     render,
     runfiles,
     shims,
-    signing_parity,
     transport,
     version_heal,
 )
@@ -117,7 +116,7 @@ def load(settings: Settings, name: str, *, archived: Path | None = None) -> Run:
         # Records from before the limits check have no such field.
         ignore_limits = record.pop("ignore_limits", False)
         record.pop("tainted_host", None)
-        run = request.parse(record, host_allows_unsandboxed=True)
+        run = request.parse(record)
     except (ValueError, KeyError, TypeError, AttributeError) as exc:
         message = f"{path}: invalid run metadata"
         raise Invalid(message) from exc
@@ -717,7 +716,6 @@ def unconfirmed(settings: Settings, run: Run, phase: str) -> int:
 
 
 def wait(settings: Settings, run: Run) -> int:
-    rules.wait_kind(run.request.kind)
     poll = rules.wait_seconds(
         os.environ.get("TBHB_AGENT_WAIT_POLL", "30"), "TBHB_AGENT_WAIT_POLL"
     )
@@ -1005,13 +1003,6 @@ def inspect(settings: Settings, run: Run, *, limit: int | None) -> int:
     return 0
 
 
-def keep(settings: Settings, run: Run) -> int:
-    transport.shell(
-        settings, run.host, remote.keep(run.name), transport.Stdin(run.owner)
-    )
-    return 0
-
-
 def send(settings: Settings, run: Run, text: str) -> int:
     name = run.name
     if run.request.harness is Harness.CLAUDE:
@@ -1035,8 +1026,6 @@ def send(settings: Settings, run: Run, text: str) -> int:
 
 
 def dispatch(settings: Settings, args: argparse.Namespace) -> int:
-    if args.verb == "signing-parity":
-        return signing_parity.main(settings)
     if args.verb == "exec":
         result = execute(settings, args)
         telemetry.attributes(
@@ -1053,7 +1042,7 @@ def dispatch(settings: Settings, args: argparse.Namespace) -> int:
                 message = f"{args.name}: unknown run"
                 raise Invalid(message) from None
         raise
-    verbs = {"wait": wait, "status": status, "kill": kill, "keep": keep}
+    verbs = {"wait": wait, "status": status, "kill": kill}
     try:
         if args.verb == "diff" and args.patch:
             result = export_patch(settings, run)

@@ -10,16 +10,19 @@ from pathlib import Path
 from types import SimpleNamespace
 from typing import TYPE_CHECKING, Literal, TypedDict, Unpack
 
-import pytest
+lazy import pytest
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Generator
 
+import time
+
 from agent_example import settings
 from test_alpha_agent_request import BUILD
 
-from tbhbdev.alpha.agent import build_info, host_tools, model, worktree
+from tbhbdev.alpha.agent import build_info, model, runfiles, worktree
 from tbhbdev.alpha.agent.decisions import request
+from tbhbdev.alpha.agent.run_host import state
 
 
 class HostGitOptions(TypedDict, closed=True):
@@ -96,26 +99,15 @@ def repository(root: Path) -> tuple[Path, Path]:
     return seed, clone
 
 
-def unusual_git_metadata(tmp_path: Path, entry: str, kind: str) -> Path:
-    root = tmp_path / "writable\nforged"
-    metadata = root / ".git"
-    metadata.mkdir(parents=True)
-    if entry != "HEAD":
-        (metadata / "HEAD").write_text("ref: refs/heads/main\n")
-    target = metadata / entry
-    if kind == "directory":
-        target.mkdir()
-    else:
-        if not hasattr(os, "mkfifo"):
-            pytest.skip("platform has no mkfifo")
-        os.mkfifo(target)
-    return root
-
-
 def run_request(**changes: object) -> model.RunRequest:
     return request.parse(
-        BUILD | {"repo": "tbhb-dev/example-repo", "max_concurrent_runs": 3} | changes,
-        host_allows_unsandboxed=True,
+        BUILD
+        | {
+            "repo": "tbhb-dev/example-repo",
+            "max_concurrent_runs": 3,
+            "unsandboxed": True,
+        }
+        | changes,
     )
 
 
@@ -136,7 +128,6 @@ def host_settings() -> model.Settings:
         "agent",
         "example/gh/value",
         "example/docker/value",
-        "example/app/id",
         "example/app/client",
         "example/app/pem",
         "example/signing/key",
@@ -144,14 +135,9 @@ def host_settings() -> model.Settings:
     return dataclasses.replace(
         original,
         credentials=(references,),
-        public_repos=("tbhb-dev/example-repo",),
-        sandbox=dataclasses.replace(
-            original.sandbox,
-            write_roots=(".cache", ".local/share/mise", ".local/state/mise"),
-        ),
         kill_grace_seconds=0,
         claude=model.Claude(
-            "primary", (model.ClaudeProfile("primary", "example/primary/token", None),)
+            "primary", (model.ClaudeProfile("primary", "example/primary/token"),)
         ),
     )
 
@@ -172,41 +158,6 @@ def preparation_failure(
         )
     message = "sensitive-exception"
     raise error(message)
-
-
-def bounded_file_reads(monkeypatch: pytest.MonkeyPatch, size: int) -> None:
-    wrapped = os.fdopen
-
-    @contextmanager
-    def checked(fd: int, mode: str) -> Generator[SimpleNamespace]:
-        assert mode == "rb"
-        with wrapped(fd, mode) as stream:
-
-            def read(count: int) -> bytes:
-                assert count == size
-                return stream.read(count)
-
-            yield SimpleNamespace(fileno=stream.fileno, read=read)
-
-    monkeypatch.setattr(os, "fdopen", checked)
-
-
-def trusted_host_stat(
-    monkeypatch: pytest.MonkeyPatch,
-) -> dict[Path, tuple[int, int]]:
-    """Model host ownership and modes without changing the filesystem owner."""
-    overrides: dict[Path, tuple[int, int]] = {}
-    original = host_tools.lstat
-
-    def checked(path: Path) -> os.stat_result:
-        info = original(path)
-        uid, mode = overrides.get(path, (0, info.st_mode & ~0o022))
-        values = list(info)
-        values[0], values[4] = mode, uid
-        return os.stat_result(values)
-
-    monkeypatch.setattr(host_tools, "lstat", checked)
-    return overrides
 
 
 def build_provenance(
@@ -251,3 +202,37 @@ def build_provenance(
         "tools_commit": "a" * 40 if present else "unknown",
         "wheel_commit": "b" * 40 if present else "unknown",
     }
+
+
+def make_run(tmp_path: Path, **changes: object) -> state.Run:
+    files = runfiles.RunFiles(tmp_path / "runs", "example")
+    value = run_request(**changes)
+    home = runfiles.private_dir(tmp_path / "home")
+    tmpdir = runfiles.private_dir(tmp_path / "private-tmp")
+    return state.Run(
+        files,
+        value,
+        host_settings(),
+        host_settings().hosts[0],
+        home,
+        tmpdir,
+        1000,
+        time.monotonic() + 10,
+    )
+
+
+def bounded_file_reads(monkeypatch: pytest.MonkeyPatch, size: int) -> None:
+    wrapped = os.fdopen
+
+    @contextmanager
+    def checked(fd: int, mode: str) -> Generator[SimpleNamespace]:
+        assert mode == "rb"
+        with wrapped(fd, mode) as stream:
+
+            def read(count: int) -> bytes:
+                assert count == size
+                return stream.read(count)
+
+            yield SimpleNamespace(fileno=stream.fileno, read=read)
+
+    monkeypatch.setattr(os, "fdopen", checked)

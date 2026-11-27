@@ -26,7 +26,8 @@ from agent_example import LINUX, settings, trusted_executables
 from tbhbdev.alpha.agent import arguments as agent_arguments
 from tbhbdev.alpha.agent import driver, transport
 from tbhbdev.alpha.agent import settings as agent_settings
-from tbhbdev.alpha.agent.decisions import policy, remote
+from tbhbdev.alpha.agent.decisions import remote
+from tbhbdev.alpha.agent.run_host import environment
 
 if TYPE_CHECKING:
     from tbhbdev.alpha.agent.model import Settings
@@ -202,21 +203,16 @@ def test_socket_directory_refuses_unsafe_paths(host: Path, bad: str) -> None:
     assert execute(remote.read("sample", settings().sockets_dir)).returncode == 65
 
 
-@pytest.mark.parametrize("suffix", [".keep", ".rc.pending"])
-def test_exclusive_markers_refuse_symlinks(host: Path, suffix: str) -> None:
+def test_exclusive_markers_refuse_symlinks(host: Path) -> None:
     target = host / "other-file"
     target.write_text("preserve")
-    path = host / "state/tbhbdev/agent-runs" / ("sample" + suffix)
+    path = host / "state/tbhbdev/agent-runs" / "sample.rc.pending"
     path.symlink_to(target)
     write_standalone_fake(
         host / "bin/tmux",
         'import sys\nsys.stderr.write("no server running on example")\nsys.exit(1)\n',
     )
-    script = (
-        remote.keep("sample")
-        if suffix == ".keep"
-        else remote.fallback("sample", settings().sockets_dir)
-    )
+    script = remote.fallback("sample", settings().sockets_dir)
     assert execute(script).returncode != 0
     assert target.read_text() == "preserve"
     assert path.is_symlink()
@@ -276,7 +272,7 @@ def test_socket_home_relative_paths(host: Path, path: str) -> None:
     script = remote.socket_root(path) + 'printf "%s" "$s/agents"\n'
     result = execute(script)
     assert result.returncode == 0
-    assert result.stdout.decode() == policy.resolve(str(host), path) + "/agents"
+    assert result.stdout.decode() == environment.resolve(str(host), path) + "/agents"
 
 
 def test_start_command_and_absolute_program() -> None:
@@ -521,7 +517,6 @@ def test_real_ssh_shell_quoting(host: Path) -> None:
         "read",
         "fallback",
         "session",
-        "keep",
         "clean",
         "origin_branch",
         "log",
@@ -545,7 +540,6 @@ def test_owner_check_precedes_every_effect(
         "read": remote.read("sample", settings().sockets_dir),
         "fallback": remote.fallback("sample", settings().sockets_dir),
         "session": remote.session("sample", "kill-session", settings().sockets_dir),
-        "keep": remote.keep("sample"),
         "clean": cleanup(),
         "origin_branch": remote.origin_branch("example-org/example-repo", "sample"),
         "log": remote.inspect("example-org/example-repo", "sample", limit=10),
@@ -602,7 +596,7 @@ def test_locale_precedes_tmux_and_git(host: Path) -> None:
     )
 
 
-def test_start_and_keep_with_matching_owner(host: Path) -> None:
+def test_start_with_matching_owner(host: Path) -> None:
     marker = host / "started"
     write_standalone_fake(
         host / "bin/tmux",
@@ -618,9 +612,6 @@ def test_start_and_keep_with_matching_owner(host: Path) -> None:
         == 0
     )
     assert marker.read_text() == "started"
-    assert execute(remote.keep("sample")).returncode == 0
-    assert execute(remote.keep("sample")).returncode == 0
-    assert (host / "state/tbhbdev/agent-runs/sample.keep").read_text() == ""
 
 
 def test_preflight_ref_contract(host: Path) -> None:

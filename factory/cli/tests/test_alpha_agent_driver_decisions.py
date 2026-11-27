@@ -9,11 +9,11 @@ from agent_example import LINUX, settings
 from test_alpha_agent_request import BUILD, CLAUDE
 
 from tbhbdev.alpha.agent.decisions import driver, request
-from tbhbdev.alpha.agent.model import Harness, Invalid, Profile, RunKind
+from tbhbdev.alpha.agent.model import Harness, Invalid, Profile
 from tbhbdev.alpha.identity.models import AGY_MODELS
 
 CONFIG = settings()
-RUN = request.parse(BUILD, host_allows_unsandboxed=True)
+RUN = request.parse(BUILD)
 COMMIT = "0123456789abcdef0123456789abcdef01234567"
 
 
@@ -93,9 +93,7 @@ def test_check_refuses(
 
 @pytest.mark.parametrize("profile", [None, "Primary", "primary"])
 def test_profile(profile: str | None) -> None:
-    run = dataclasses.replace(
-        request.parse(CLAUDE, host_allows_unsandboxed=True), claude_profile=profile
-    )
+    run = dataclasses.replace(request.parse(CLAUDE), claude_profile=profile)
     assert driver.check(
         run, CONFIG, LINUX, existing_name=None, ref=None
     ) == dataclasses.replace(run, claude_profile="primary")
@@ -246,16 +244,6 @@ def test_clean(rc: int | None, session: bool, force: bool, message: str | None) 
         assert str(caught.value) == message
 
 
-@pytest.mark.parametrize("kind", RunKind)
-def test_wait_kind(kind: RunKind) -> None:
-    if kind is RunKind.EXEC:
-        assert driver.wait_kind(kind) is None
-    else:
-        with pytest.raises(Invalid) as caught:
-            driver.wait_kind(kind)
-        assert str(caught.value) == "wait applies only to an exec run"
-
-
 @pytest.mark.parametrize(
     ("value", "result"),
     [
@@ -298,21 +286,6 @@ def test_model(harness: Harness, model: str, allow: bool, valid: bool) -> None:
         assert rule == "agy requires a gemini-* model or --allow-non-gemini"
         assert heading == "Models reported by agy"
         assert [model.strip() for model in models] == list(AGY_MODELS)
-
-
-def test_unsandboxed_host_flag_does_not_gate_validation() -> None:
-    run = dataclasses.replace(RUN, unsandboxed=True, authorized_by=None)
-    assert driver.check(run, CONFIG, LINUX, existing_name=None, ref=None) == run
-    assert (
-        driver.check(
-            run,
-            CONFIG,
-            dataclasses.replace(LINUX, unsandboxed=False),
-            existing_name=None,
-            ref=None,
-        )
-        == run
-    )
 
 
 def test_peeled_tag_does_not_hide_an_ambiguous_branch() -> None:

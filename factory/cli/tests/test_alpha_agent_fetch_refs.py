@@ -80,7 +80,7 @@ def test_invalid_ref_is_refused_by_controller_and_host(
         driver.prepare(settings(), args)
     assert str(caught.value) == expected
     with pytest.raises(Invalid) as caught:
-        request.parse(BUILD | {"fetch_refs": [ref]}, host_allows_unsandboxed=True)
+        request.parse(BUILD | {"fetch_refs": [ref]})
     assert str(caught.value) == expected
     forged = dataclasses.replace(run_request(), fetch_refs=(ref,))
     with pytest.raises(Invalid) as caught:
@@ -107,7 +107,7 @@ def test_eight_refs_round_trip_for_any_profile(
     assert run.fetch_refs == tuple(GOOD_REFS)
     wire = json.loads(json.dumps(request.to_dict(run)))
     assert wire["fetch_refs"] == GOOD_REFS
-    assert request.parse(wire, host_allows_unsandboxed=False) == run
+    assert request.parse(wire) == run
 
 
 def test_ninth_ref_is_refused_by_controller_and_host(
@@ -123,7 +123,7 @@ def test_ninth_ref_is_refused_by_controller_and_host(
     with pytest.raises(Invalid, match=r"^request fetch_refs allows at most 8 refs$"):
         driver.prepare(settings(), args)
     with pytest.raises(Invalid, match=r"^request fetch_refs allows at most 8 refs$"):
-        request.parse(BUILD | {"fetch_refs": refs}, host_allows_unsandboxed=True)
+        request.parse(BUILD | {"fetch_refs": refs})
     forged = dataclasses.replace(run_request(), fetch_refs=tuple(refs))
     with pytest.raises(Invalid, match=r"^request fetch_refs allows at most 8 refs$"):
         worktree.fetch_commit(tmp_path, forged)
@@ -137,7 +137,7 @@ def test_wire_refs_must_be_a_list_of_strings(value: object) -> None:
     with pytest.raises(
         Invalid, match=r"^request fetch_refs must be a list of strings$"
     ):
-        request.parse(BUILD | {"fetch_refs": value}, host_allows_unsandboxed=True)
+        request.parse(BUILD | {"fetch_refs": value})
 
 
 def test_exec_help_describes_fetch_refs(capsys: pytest.CaptureFixture[str]) -> None:
@@ -178,7 +178,7 @@ def test_invalid_start_ref_is_refused_by_controller_and_host(
         driver.prepare(settings(), args)
     wire = BUILD | {"profile": profile, "start_ref": ref, "fetch_refs": refs}
     with pytest.raises(Invalid, match=f"request --start-ref {message}"):
-        request.parse(wire, host_allows_unsandboxed=False)
+        request.parse(wire)
 
 
 def test_start_ref_round_trips() -> None:
@@ -190,4 +190,4 @@ def test_start_ref_round_trips() -> None:
     assert run.start_ref == ref
     wire = json.loads(json.dumps(request.to_dict(run)))
     assert wire["start_ref"] == ref
-    assert request.parse(wire, host_allows_unsandboxed=False) == run
+    assert request.parse(wire) == run

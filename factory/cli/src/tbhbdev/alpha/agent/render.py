@@ -1,7 +1,7 @@
 """The brief a harness receives, from literal text and run kind."""
 
 from tbhbdev.alpha.agent import transport
-from tbhbdev.alpha.agent.model import Harness, Profile, RunKind
+from tbhbdev.alpha.agent.model import Harness, Profile
 
 FINAL_ONLY = (
     "Report results only in your final answer. "
@@ -47,7 +47,6 @@ REVIEW_PUBLICATION = (
 
 
 def brief(
-    kind: RunKind,
     text: str,
     *,
     profile: Profile | None = None,
@@ -75,7 +74,7 @@ def brief(
         text = f"Commit your changes locally. {BUILD_PUBLICATION}\n{text}"
     elif profile is Profile.REVIEW:
         text = f"{REVIEW_PUBLICATION}\n{text}"
-    return f"{FINAL_ONLY}\n{text}" if kind is RunKind.EXEC else text
+    return f"{FINAL_ONLY}\n{text}"
 
 
 INSPECTION_WARNING = (

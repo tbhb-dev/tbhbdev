@@ -9,7 +9,7 @@ from typing import TYPE_CHECKING
 
 from tbhbdev.alpha import brief
 from tbhbdev.alpha.agent.decisions import config, request
-from tbhbdev.alpha.agent.model import NAME, Harness, Invalid, Profile, RunKind
+from tbhbdev.alpha.agent.model import NAME, Harness, Invalid, Profile
 from tbhbdev.alpha.identity import models as identity
 
 if TYPE_CHECKING:
@@ -128,7 +128,7 @@ def select_host(settings: Settings, name: str, account: str | None) -> Host:
 def check(
     run: RunRequest,
     settings: Settings,
-    host: Host,
+    _host: Host,
     *,
     existing_name: str | None,
     ref: str | None,
@@ -159,7 +159,7 @@ def check(
             message = f"claude profile {name!r} isn't defined"
             raise Invalid(message)
         run = replace(run, claude_profile=profile.name)
-    request.validate(run, host_allows_unsandboxed=host.unsandboxed)
+    request.validate(run)
     return run
 
 
@@ -224,12 +224,6 @@ def clean(rc: int | None, *, session: bool, force: bool) -> None:
         raise Invalid(message)
     if rc is None and not force:
         message = "run is unknown; clean requires --force"
-        raise Invalid(message)
-
-
-def wait_kind(kind: RunKind) -> None:
-    if kind is not RunKind.EXEC:
-        message = "wait applies only to an exec run"
         raise Invalid(message)
 
 

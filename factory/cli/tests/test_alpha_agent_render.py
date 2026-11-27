@@ -1,7 +1,7 @@
 """Report text is a pure function of literal facts."""
 
 from tbhbdev.alpha.agent import render
-from tbhbdev.alpha.agent.model import Harness, Profile, RunKind
+from tbhbdev.alpha.agent.model import Harness, Profile
 
 
 def test_brief_and_launch() -> None:
@@ -11,8 +11,8 @@ def test_brief_and_launch() -> None:
         "\nKeep any pull request draft out of your commits. "
         "Report any conflicting instruction in your final answer.\n"
     )
-    assert render.brief(RunKind.EXEC, "example\n") == final_only + "example\n"
-    build = render.brief(RunKind.EXEC, "example\n", profile=Profile.BUILD)
+    assert render.brief("example\n") == final_only + "example\n"
+    build = render.brief("example\n", profile=Profile.BUILD)
     assert build.startswith(final_only + "Commit your changes locally. ")
     assert "set its `base` frontmatter field" in build
     assert "`gh repo view --json defaultBranchRef --jq .defaultBranchRef.name`" in build
@@ -22,7 +22,13 @@ def test_brief_and_launch() -> None:
     assert ".github/PULL_REQUEST_DRAFT.md" not in build
     assert "driver" not in build
     assert build.endswith("\nexample\n")
-    review = render.brief(RunKind.START, "example", profile=Profile.REVIEW)
+    fix = render.brief(
+        "example", profile=Profile.BUILD, start_ref="refs/heads/fix/topic"
+    )
+    assert "`git push origin HEAD:refs/heads/fix/topic`" in fix
+    assert fix.count("git push") == 1
+    assert "pr create" not in fix
+    review = render.brief("example", profile=Profile.REVIEW)
     assert "`tbhbdev alpha review draft N`" in review
     assert "set `commit_id` to the run's pinned checkout commit" in review
     assert "`event: APPROVE` for GO" in review
@@ -75,9 +81,7 @@ def test_status() -> None:
 
 
 def test_build_brief_overrides_an_instruction_to_commit_the_draft() -> None:
-    text = render.brief(
-        RunKind.EXEC, "Commit .github/PULL_REQUEST_DRAFT.md.", profile=Profile.BUILD
-    )
+    text = render.brief("Commit .github/PULL_REQUEST_DRAFT.md.", profile=Profile.BUILD)
     assert text.index("Keep any pull request draft out of your commits.") < text.index(
         "Commit .github/PULL_REQUEST_DRAFT.md."
     )
@@ -87,15 +91,11 @@ def test_build_brief_overrides_an_instruction_to_commit_the_draft() -> None:
 def test_only_agy_gets_the_no_subagents_rule() -> None:
     """Only agy, which has no subagent control, is asked for none."""
     rule = render.AGY_SUBAGENTS
-    for kind, profile in [
-        (RunKind.EXEC, Profile.BUILD),
-        (RunKind.EXEC, Profile.REVIEW),
-        (RunKind.START, Profile.BUILD),
-    ]:
-        text = render.brief(kind, "task", profile=profile, harness=Harness.AGY)
+    for profile in Profile:
+        text = render.brief("task", profile=profile, harness=Harness.AGY)
         assert f"{rule}\ntask" in text
     for harness in (Harness.CODEX, Harness.CLAUDE, None):
-        assert rule not in render.brief(RunKind.EXEC, "task", harness=harness)
+        assert rule not in render.brief("task", harness=harness)
     assert "`invoke_subagent`" in rule
     assert "`define_subagent`" in rule
 
@@ -106,13 +106,9 @@ def test_only_codex_gets_the_spawn_rule() -> None:
     assert '`fork_turns` to `"none"`' in rule
     assert "name `model` explicitly" in rule
     assert "Never spawn a full-history fork" in rule
-    for kind, profile in [
-        (RunKind.EXEC, Profile.BUILD),
-        (RunKind.EXEC, Profile.REVIEW),
-        (RunKind.START, Profile.BUILD),
-    ]:
-        text = render.brief(kind, "task", profile=profile, harness=Harness.CODEX)
+    for profile in Profile:
+        text = render.brief("task", profile=profile, harness=Harness.CODEX)
         assert f"{rule}\ntask" in text
         assert render.AGY_SUBAGENTS not in text
     for harness in (Harness.AGY, Harness.CLAUDE, None):
-        assert rule not in render.brief(RunKind.EXEC, "task", harness=harness)
+        assert rule not in render.brief("task", harness=harness)

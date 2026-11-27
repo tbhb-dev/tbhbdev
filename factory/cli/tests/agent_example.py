@@ -1,7 +1,5 @@
 """Example agent settings, hosts and run paths for the policy and argv tests."""
 
-# ruff: noqa: S108 -- the paths are test data under /tmp that no test creates
-
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
@@ -18,7 +16,6 @@ MARKER = "marker-secret-reference-0451"
 TOKEN_DIR = str(secrets.LINUX_TOKEN_FILE.parent)
 TOKEN_TOP = secrets.LINUX_TOKEN_FILE.parts[0]
 # The fixture's one denied home path.
-DENIED = ".example-denied"
 LINUX_SOCKET_DENIES = (
     "/run/WSL",
     "/var/run/docker.sock",
@@ -27,16 +24,7 @@ LINUX_SOCKET_DENIES = (
 )
 
 SANDBOX = model.Sandbox(
-    agy_unsandboxed_opt_out="test grants only",
-    codex_unsandboxed_opt_out="isolated test host",
-    denied_home_paths=(DENIED,),
-    agy=model.AgySandbox(
-        review_read=(".local/share/example-gh", ".local/share/example-mise"),
-        build_read=(".local/share/example-tools",),
-        build_write=(".local/state/mise", ".local/share/mise"),
-    ),
     audit_dir=".local/state/example-audit",
-    write_roots=(".cache", ".local/share/mise", ".local/state"),
     path=model.SandboxPath(
         linux=(".local/bin", "/usr/local/bin", "/usr/bin"),
         macos=(".local/bin", "/opt/example/bin", "/usr/bin"),
@@ -49,18 +37,14 @@ LINUX = model.Host(  # noqa: S604 -- a config key, not a subprocess flag
     os=model.Os.LINUX,
     shell="bash",
     account="agent",
-    unsandboxed=True,
     accounts=("agent", "ops"),
-    proven_harnesses=(model.Harness.CODEX, model.Harness.CLAUDE),
 )
 MACOS = model.Host(  # noqa: S604 -- a config key, not a subprocess flag
     name="example-macos",
     os=model.Os.MACOS,
     shell="zsh",
     account="agent",
-    unsandboxed=False,
     accounts=("agent", "ops"),
-    proven_harnesses=(model.Harness.CODEX, model.Harness.CLAUDE),
 )
 
 
@@ -77,7 +61,7 @@ def settings(
         agy_build_timeout_seconds=3600,
         kill_grace_seconds=10,
         max_run_minutes=None,
-        sockets_dir="/tmp/example-sockets",
+        sockets_dir="/tmp/example-sockets",  # noqa: S108 -- literal test path
         sandbox=sandbox,
         codex=codex,
         credentials=tuple(
@@ -85,7 +69,6 @@ def settings(
                 account=account,
                 gh=reference,
                 docker=reference,
-                reviews_app_id=reference,
                 reviews_app_client_id=reference,
                 reviews_app_pem=reference,
                 signing=reference,
@@ -94,7 +77,7 @@ def settings(
         ),
         claude=model.Claude(
             "primary",
-            (model.ClaudeProfile("primary", reference, reference),),
+            (model.ClaudeProfile("primary", reference),),
         ),
         hosts=(LINUX, MACOS),
     )

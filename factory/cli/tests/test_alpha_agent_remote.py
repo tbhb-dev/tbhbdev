@@ -10,7 +10,6 @@ from tbhbdev.alpha.agent.decisions import runfiles_names as files
 
 def test_file_names() -> None:
     assert files.DIRECTORY == "tbhbdev/agent-runs"
-    assert files.INDEX == "index.jsonl"
     assert files.SUFFIXES == (
         ".request.json",
         ".prompt",
@@ -25,13 +24,11 @@ def test_file_names() -> None:
         ".pr",
         ".base",
         ".head",
-        ".keep",
         ".rc.pending",
         ".run.lock",
         ".rc.fallback",
         ".rc",
         ".audit.json",
-        ".would_refuse",
         ".owner",
     )
 
@@ -65,6 +62,5 @@ def test_runfile_suffixes_cover_run_host_1a222fa() -> None:
         ".rc",
         ".run.lock",
         ".audit.json",
-        ".would_refuse",
     )
     assert set(written) <= set(files.SUFFIXES)

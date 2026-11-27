@@ -10,7 +10,6 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass
 from enum import StrEnum
-from typing import TypedDict
 
 # The run request's schema version. A reader refuses any other version.
 REQUEST_VERSION = 2
@@ -35,7 +34,6 @@ class Invalid(ValueError):  # noqa: N818 -- the message names the invalid value
 
 class RunKind(StrEnum):
     EXEC = "exec"
-    START = "start"
 
 
 class Harness(StrEnum):
@@ -45,7 +43,7 @@ class Harness(StrEnum):
 
 
 class Profile(StrEnum):
-    """The sandbox profile of a run."""
+    """The purpose of a run."""
 
     BUILD = "build"
     REVIEW = "review"
@@ -71,31 +69,16 @@ class SandboxPath:
 
 
 @dataclass(frozen=True)
-class AgySandbox:
-    """agy's project grants, relative to the run account's home."""
-
-    review_read: tuple[str, ...]
-    build_read: tuple[str, ...]
-    build_write: tuple[str, ...]
-
-
-@dataclass(frozen=True)
 class Sandbox:
-    write_roots: tuple[str, ...]
     audit_dir: str
-    denied_home_paths: tuple[str, ...]
     path: SandboxPath
-    agy: AgySandbox
     host_path: tuple[str, ...] = ()
     network_domains: tuple[str, ...] = ()
-    codex_network_proxy_opt_out: str | None = None
-    agy_unsandboxed_opt_out: str | None = None
-    codex_unsandboxed_opt_out: str | None = None
 
 
 @dataclass(frozen=True)
 class Codex:
-    """Codex's `web_search` setting for each sandbox profile.
+    """Codex's `web_search` setting for each run profile.
 
     `subagent_model` is the model Codex gives a spawned agent whose spawn names
     none. A spawn that names a model keeps it, so this is a default, not a pin.
@@ -113,7 +96,6 @@ class Credentials:
     account: str
     gh: str | None
     docker: str | None
-    reviews_app_id: str | None
     reviews_app_client_id: str | None
     reviews_app_pem: str | None
     signing: str
@@ -123,11 +105,10 @@ class Credentials:
 
 @dataclass(frozen=True)
 class ClaudeProfile:
-    """A Claude auth profile: `name` as config spells it, and two references."""
+    """A Claude auth profile: `name` as config spells it, and its token reference."""
 
     name: str
     token: str
-    expires: str | None
 
 
 @dataclass(frozen=True)
@@ -144,9 +125,7 @@ class Host:
     os: Os
     shell: str
     account: str
-    unsandboxed: bool
     accounts: tuple[str, ...]
-    proven_harnesses: tuple[Harness, ...]
     tbhbdev: str | None = None
     load_limit: int | None = None
     min_memory_available_percent: int = 20
@@ -174,10 +153,6 @@ class Settings:
     claude: Claude
     hosts: tuple[Host, ...]
     agy_build_timeout_seconds: int = 3600
-    ssh_connect_timeout: int = 15
-    ssh_keepalive_seconds: int = 30
-    ssh_keepalive_count_max: int = 3
-    public_repos: tuple[str, ...] = ()
     otel_endpoint: str | None = None
     run_memory_mib: int = DEFAULT_RUN_MEMORY_MIB
     review_memory_mib: int = DEFAULT_RUN_MEMORY_MIB
@@ -189,8 +164,8 @@ class RunPaths:
     """The paths of one run, as absolute strings the caller has resolved.
 
     `audit_dir` is the run's resolved audit directory, which a review run may
-    write. The private `tmpdir` holds tool handoffs. Its sibling `codex_home` stays
-    outside every write root.
+    write. The private `tmpdir` holds tool handoffs. Its sibling `codex_home` holds
+    the run's Codex configuration.
     """
 
     home: str
@@ -198,37 +173,15 @@ class RunPaths:
     tmpdir: str
     codex_home: str
     audit_dir: str
-    git_common_dir: str | None = None
     signing_socket: str | None = None
-    uid: int = 0
-
-
-class CodexMode(StrEnum):
-    """How Codex confines a run: through a permission profile, or not at all."""
-
-    PROFILE = "profile"
-    FULL_ACCESS = "danger-full-access"
-
-
-class NetworkProxy(TypedDict, extra_items=object):
-    domains: dict[str, str]
 
 
 @dataclass(frozen=True)
 class CodexPolicy:
-    """Codex's profile entries.
+    """Codex configuration for a full-access run."""
 
-    A full-access policy has no read or write roots, and keeps `deny` as the
-    record of what a sandboxed run would hide, because full access can't hide it.
-    """
-
-    mode: CodexMode
-    read_roots: tuple[str, ...]
-    write_roots: tuple[str, ...]
-    deny: tuple[str, ...]
     approval_policy: str
     web_search: WebSearch
-    network_proxy: NetworkProxy | None = None
     subagent_model: str = DEFAULT_CODEX_SUBAGENT_MODEL
 
 
@@ -248,16 +201,11 @@ class AgyPolicy:
 
 @dataclass(frozen=True)
 class Policy:
-    """What a run's harness may touch and the environment it starts with.
-
-    `env` is the whole child environment. `deny` is every path the run must not
-    read, whichever harness enforces it.
-    """
+    """The environment and settings a harness starts with."""
 
     harness: Harness
     profile: Profile
     env: dict[str, str]
-    deny: tuple[str, ...]
     detail: CodexPolicy | ClaudePolicy | AgyPolicy
     tool_path: str
 

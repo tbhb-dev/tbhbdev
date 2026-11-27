@@ -1,5 +1,5 @@
 ---
-description: Run coordination, host checks, signing parity, fetch refs, and build run expectations.
+description: Run coordination, host checks, fetch refs, and build run expectations.
 generated:
   - role: generated
     harness: codex
@@ -13,18 +13,7 @@ type: Reference
 
 # Agent
 
-`agent precheck CLONE --reference REF [--host HOST]` compares a clone's hooks with a local reference and checks its Git config for risky keys.
-Paths may be absolute or relative to the home directory.
-Collection uses one SSH call with `--host` and reads locally otherwise.
-It never runs Git.
-Exit codes are 0 for a match, 1 for mismatches, and 2 for usage or collection errors.
-The Python API `precheck(clone_data, reference)` returns the result for callers.
-
-`agent` coordinates runs with `exec`, `send`, `wait`, `status`, `log`, `diff`, `kill`, `clean` and `keep`.
-`signing-parity` checks that each configured host's signing key is a signing key of tbhb-agent.
-It runs the hidden host command `signing-fingerprint ACCOUNT` over SSH to get the SHA256 fingerprint of the run's signing key.
-It then reads tbhb-agent's public signing key list from GitHub and exits 1 when any host's fingerprint is missing or the host is unreachable.
-A host without the command counts as unreachable until `tbhbdev` syncs there.
+`agent` coordinates runs with `exec`, `send`, `wait`, `status`, `log`, `diff`, `kill` and `clean`.
 The package also defines the schema for run requests and the rules for the repo argument.
 
 `tbhbdev alpha agent exec` checks the brief and any `--schema` file before contacting the run host.

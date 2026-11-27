@@ -45,7 +45,7 @@ from tbhbdev.alpha.agent import arguments as agent_arguments
 from tbhbdev.alpha.agent import settings as agent_settings
 from tbhbdev.alpha.agent.decisions import remote as remote_commands
 from tbhbdev.alpha.agent.decisions import repo, request, runfiles_names
-from tbhbdev.alpha.agent.model import Invalid, Profile, RunKind, RunRequest
+from tbhbdev.alpha.agent.model import Invalid, Profile, RunRequest
 
 if TYPE_CHECKING:
     import argparse
@@ -309,7 +309,7 @@ def test_frame_supports_long_messages() -> None:
 def test_unsandboxed_clean_refuses_a_run_without_a_result(
     remote: Remote, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    assert launch(remote, "--ops", "--unsandboxed", "o/r#1") == 0
+    assert launch(remote, "--account", "ops", "--unsandboxed", "o/r#1") == 0
     capsys.readouterr()
     assert command("clean") == 1
     assert "clean refused" in capsys.readouterr().err
@@ -323,7 +323,14 @@ def test_unsandboxed_inspection_reads_the_host_output(
     options = ["--ref", COMMIT] if profile == "review" else []
     assert (
         launch(
-            remote, "--ops", "--unsandboxed", "o/r#1", "--profile", profile, *options
+            remote,
+            "--account",
+            "ops",
+            "--unsandboxed",
+            "o/r#1",
+            "--profile",
+            profile,
+            *options,
         )
         == 0
     )
@@ -355,7 +362,7 @@ def test_timed_out_log_reads_the_run_log_without_git(
 def test_unsandboxed_build_diff_inspects_commits(
     remote: Remote, capsys: pytest.CaptureFixture[str], ops: bool
 ) -> None:
-    options = ["--ops"] if ops else []
+    options = ["--account", "ops"] if ops else []
     assert launch(remote, "--unsandboxed", "o/r#1", *options) == 0
     remote.file(".out.final", "report without patches\n")
     capsys.readouterr()
@@ -422,7 +429,7 @@ def test_clean_refuses_unpushed_build_worktree(
 def test_unsandboxed_force_clean_of_an_ended_run_only_moves_to_trash(
     remote: Remote, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    assert launch(remote, "--ops", "--unsandboxed", "o/r#1") == 0
+    assert launch(remote, "--account", "ops", "--unsandboxed", "o/r#1") == 0
     remote.configure(session=False)
     remote.file(".rc", "0")
     before = {tool: remote.records(tool) for tool in ("ssh", "git", "tmux")}
@@ -453,7 +460,7 @@ def test_unsandboxed_run_is_visible(
 ) -> None:
     if verb == "finished":
         remote.configure(launch={"rc": "0"})
-    assert launch(remote, "--ops", "--unsandboxed", "o/r#1") == 0
+    assert launch(remote, "--account", "ops", "--unsandboxed", "o/r#1") == 0
     suffix = " sandbox=none authorized_by=o/r#1"
     assert suffix in capsys.readouterr().out
     if verb == "finished":
@@ -500,7 +507,7 @@ def test_launch_stream_and_metadata(
         "",
     )
     data = json.loads((remote.state / "sample.request.json").read_text())
-    parsed = request.parse(data, host_allows_unsandboxed=True)
+    parsed = request.parse(data)
     assert request.to_dict(parsed) == data
     assert (parsed.class_, parsed.variant, parsed.role) == ("test", "one", "worker")
     assert parsed.commit is None
@@ -1031,7 +1038,7 @@ def test_agy_review_uses_the_review_timeout(remote: Remote) -> None:
 @pytest.mark.parametrize(
     ("options", "timeout"),
     [
-        (("--ops", "--unsandboxed", "o/r#1"), None),
+        (("--account", "ops", "--unsandboxed", "o/r#1"), None),
         (("--harness", "agy", "--model", "gemini-example"), 3600),
         (("--harness", "agy", "--allow-non-gemini", "--timeout", "1h"), 3600),
         (
@@ -1049,7 +1056,7 @@ def test_request_options(
     assert launch(remote, *options) == 0
     record = json.loads((remote.state / "sample.request.json").read_text())
     assert record["timeout"] == timeout
-    if "--ops" in options:
+    if "--account" in options:
         assert record["account"] == "ops"
         assert record["unsandboxed"] is True
         assert record["authorized_by"] == "o/r#1"
@@ -1312,24 +1319,6 @@ def test_clean_unknown_needs_force(
     remote.configure(session=False)
     assert command("clean") == 1
     assert "unknown; clean requires --force" in capsys.readouterr().err
-
-
-def test_keep(remote: Remote) -> None:
-    assert launch(remote) == 0
-    assert command("keep") == 0
-    assert (remote.state / "sample.keep").read_text() == ""
-    assert (remote.state / "sample.keep").stat().st_mode & 0o777 == 0o600
-
-
-def test_wait_start_refused(remote: Remote, capsys: pytest.CaptureFixture[str]) -> None:
-    assert launch(remote) == 0
-    record = driver.load(CONFIG, "sample")
-    path = driver.metadata_path("sample")
-    path.rename(path.with_suffix(".saved"))
-    record.request = dataclasses.replace(record.request, kind=RunKind.START)
-    driver.save(record)
-    assert command("wait") == 1
-    assert "wait applies only to an exec run" in capsys.readouterr().err
 
 
 def test_launch_polls_then_acknowledges(remote: Remote) -> None:
@@ -1659,7 +1648,7 @@ def test_build_prompt_that_updates_a_pr_branch_with_start_ref_launches(
 
 
 def test_metadata_round_trip_and_exclusive_create(remote: Remote) -> None:
-    options = ("--ops", "--unsandboxed", "o/r#1")
+    options = ("--account", "ops", "--unsandboxed", "o/r#1")
     assert launch(remote, *options) == 0
     run = driver.load(CONFIG, "sample")
     assert run.host.account == "ops"
@@ -2124,7 +2113,7 @@ def test_successful_wait_resets_failure_for_a_short_window(
     assert command("wait") == 0
 
 
-@pytest.mark.parametrize("verb", ["status", "wait", "keep", "kill", "log", "diff"])
+@pytest.mark.parametrize("verb", ["status", "wait", "kill", "log", "diff"])
 def test_verbs_without_remote_run_directory(
     remote: Remote,
     capsys: pytest.CaptureFixture[str],
@@ -2310,12 +2299,6 @@ def test_clean_ownerless_run_with_a_live_session(remote: Remote) -> None:
     assert driver.metadata_path("sample").exists()
 
 
-def test_keep_twice(remote: Remote) -> None:
-    assert launch(remote) == 0
-    assert command("keep") == 0
-    assert command("keep") == 0
-
-
 def test_kill_ignores_stale_pending(
     remote: Remote, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -2337,9 +2320,7 @@ def test_clean_fallback_requires_force(
     assert command("clean", "--force") == 0
 
 
-@pytest.mark.parametrize(
-    "verb", ["kill", "wait", "clean", "status", "keep", "log", "diff"]
-)
+@pytest.mark.parametrize("verb", ["kill", "wait", "clean", "status", "log", "diff"])
 def test_failed_transfer_cannot_control_other_owner(
     remote: Remote,
     monkeypatch: pytest.MonkeyPatch,
@@ -2688,7 +2669,7 @@ def test_inspection_rejects_extra_options(args: list[str]) -> None:
 def test_unsandboxed_force_clean_refuses_live_session(
     remote: Remote, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    assert launch(remote, "--ops", "--unsandboxed", "o/r#1") == 0
+    assert launch(remote, "--account", "ops", "--unsandboxed", "o/r#1") == 0
     before = remote.records("git")
     assert command("clean", "--force") == 1
     assert "run is running; clean refused" in capsys.readouterr().err
@@ -2699,20 +2680,12 @@ def test_unsandboxed_force_clean_refuses_live_session(
 
 
 @pytest.mark.parametrize("verb", ["status", "kill", "clean", "log", "diff"])
-def test_unsandboxed_verbs_after_host_setting_disabled(
+def test_unsandboxed_run_verbs(
     remote: Remote,
-    monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
     verb: str,
 ) -> None:
-    assert launch(remote, "--ops", "--unsandboxed", "o/r#1") == 0
-    disabled = dataclasses.replace(
-        CONFIG,
-        hosts=tuple(
-            dataclasses.replace(host, unsandboxed=False) for host in CONFIG.hosts
-        ),
-    )
-    monkeypatch.setattr(agent_settings, "load", lambda: disabled)
+    assert launch(remote, "--account", "ops", "--unsandboxed", "o/r#1") == 0
     capsys.readouterr()
     if verb in {"kill", "clean"}:
         remote.configure(session=False)
@@ -2727,23 +2700,6 @@ def test_unsandboxed_verbs_after_host_setting_disabled(
         assert not driver.metadata_path("sample").exists()
     if verb == "kill":
         assert any("kill-session" in str(call) for call in remote.records("tmux"))
-
-
-def test_unsandboxed_new_launch_ignores_host_setting(
-    remote: Remote,
-    monkeypatch: pytest.MonkeyPatch,
-    capsys: pytest.CaptureFixture[str],
-) -> None:
-    disabled = dataclasses.replace(
-        CONFIG,
-        hosts=tuple(
-            dataclasses.replace(host, unsandboxed=False) for host in CONFIG.hosts
-        ),
-    )
-    monkeypatch.setattr(agent_settings, "load", lambda: disabled)
-    assert launch(remote, "--ops", "--unsandboxed", "o/r#1") == 0
-    assert capsys.readouterr().err == ""
-    assert remote.records("ssh")
 
 
 @pytest.mark.parametrize("failure", ["transfer", "deadline"])
@@ -2779,7 +2735,7 @@ def test_unsandboxed_unconfirmed_reports_sandbox(
             SimpleNamespace(monotonic=lambda: next(ticks), sleep=driver.time.sleep),
         )
         remote.configure(launch={"phase": "preparing"}, kill_rc="124\n")
-    assert launch(remote, "--ops", "--unsandboxed", "o/r#1") == (
+    assert launch(remote, "--account", "ops", "--unsandboxed", "o/r#1") == (
         75 if failure == "transfer" else 1
     )
     phase = "unreachable" if failure == "transfer" else "preparing"
@@ -2817,7 +2773,7 @@ def test_wait_cleans_a_successful_run_with_its_branch(
 def test_wait_keeps_an_unsandboxed_success(
     remote: Remote, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    assert launch(remote, "--ops", "--unsandboxed", "o/r#1") == 0
+    assert launch(remote, "--account", "ops", "--unsandboxed", "o/r#1") == 0
     capsys.readouterr()
     remote.configure(session=False)
     remote.file(".rc", "0\n")

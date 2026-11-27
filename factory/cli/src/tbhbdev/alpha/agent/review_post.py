@@ -18,13 +18,13 @@ from tbhbdev.alpha import gh_app, review, review_doc
 from tbhbdev.alpha.agent import credentials, runfiles
 from tbhbdev.alpha.agent.decisions import repo
 from tbhbdev.alpha.agent.decisions import request as requests
-from tbhbdev.alpha.agent.model import Harness, Invalid, RunKind
+from tbhbdev.alpha.agent.model import Harness, Invalid
 from tbhbdev.alpha.identity import dispatcher as identity
 from tbhbdev.alpha.pull_request_frontmatter import parse_frontmatter
 from tbhbdev.alpha.size_gate import SIZE_REVIEW, size_verdict
 
 if TYPE_CHECKING:
-    from tbhbdev.alpha.agent.run_host import Prepared, Run
+    from tbhbdev.alpha.agent.run_host.state import Prepared, Run
 
 VERDICTS = frozenset({"GO", "BLOCK", "NO-GO"})
 DRAFT_NAME = re.compile(r"review-([1-9][0-9]*)(?:\.doc)?\.md")
@@ -272,10 +272,7 @@ def posted(run: Run, prepared: Prepared) -> bool:
             post_size_review(run)
             return True
         # A supplied output schema defines the final answer's format.
-        if (
-            run.request.kind is RunKind.EXEC
-            and not run.files.path("schema.json").is_file()
-        ):
+        if not run.files.path("schema.json").is_file():
             check_verdict(run)
         number, text, document = find_draft(workspace)
         token = credentials.review_post_token(run.request, run.settings)
