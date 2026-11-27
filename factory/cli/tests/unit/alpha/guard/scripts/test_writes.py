@@ -6,24 +6,23 @@ import os
 from pathlib import Path
 
 import pytest
-from unit.alpha.guard.scripts import fixtures
-from unit.alpha.guard.scripts.fixtures import bash, env_of, outside, patch, places, tool
+from unit.alpha.guard.scripts.fixtures import (
+    SHEBANG,
+    bash,
+    env_of,
+    outside,
+    patch,
+    places,
+    tool,
+)
 
 from tbhbdev.alpha.guard.scripts import writes
 from tbhbdev.alpha.guard.scripts.filesystem import first_refusal
 from tbhbdev.alpha.guard.scripts.paths import TMP_ROOT, Write
 
-home = fixtures.home
-libexec = fixtures.libexec
-isolate_repository_markers = pytest.fixture(autouse=True)(
-    fixtures.isolate_repository_markers
-)
-
-
 type Json = dict[str, object]
 
 
-SHEBANG = "#!/bin/sh\n"
 PYTHON_FIRST_LINE = "#!/usr/bin/env -S python3 -I"
 PYTHON_NEW = "2026-11-11-coord-foo.py"
 

@@ -8,8 +8,15 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 import pytest
-from unit.alpha.guard.scripts import fixtures
-from unit.alpha.guard.scripts.fixtures import PLACE, bash, env_of, outside, patch, tool
+from unit.alpha.guard.scripts.fixtures import (
+    PLACE,
+    SHEBANG,
+    bash,
+    env_of,
+    outside,
+    patch,
+    tool,
+)
 
 from tbhbdev.alpha.guard.scripts import filesystem as guard
 from tbhbdev.alpha.guard.scripts import writes
@@ -19,17 +26,8 @@ from tbhbdev.alpha.guard.scripts.paths import TMP_ROOT, normalize
 if TYPE_CHECKING:
     from collections.abc import Callable
 
-home = fixtures.home
-libexec = fixtures.libexec
-isolate_repository_markers = pytest.fixture(autouse=True)(
-    fixtures.isolate_repository_markers
-)
-
 
 type Json = dict[str, object]
-
-
-SHEBANG = "#!/bin/sh\n"
 
 
 NEW = "2026-11-09-coord-foo.sh"

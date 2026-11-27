@@ -8,7 +8,6 @@ import sys
 from typing import TYPE_CHECKING
 
 import pytest
-from unit.alpha.guard.scripts import fixtures
 from unit.alpha.guard.scripts.fixtures import bash, outside, patch, tool
 
 from tbhbdev.alpha.guard.scripts.paths import TMP_ROOT
@@ -18,12 +17,6 @@ if TYPE_CHECKING:
     from pathlib import Path
 
 from tbhbdev.alpha.guard.scripts import command as guard
-
-home = fixtures.home
-isolate_repository_markers = pytest.fixture(autouse=True)(
-    fixtures.isolate_repository_markers
-)
-
 
 type Json = dict[str, object]
 

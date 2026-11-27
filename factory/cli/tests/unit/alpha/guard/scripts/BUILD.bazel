@@ -10,6 +10,7 @@ cli_py_test(
     srcs = ["test_command.py"],
     imports = ["../../../.."],
     deps = [
+        ":conftest",
         ":fixtures",
         "//factory/cli/src/tbhbdev/alpha/guard/scripts:command",
         "//factory/cli/src/tbhbdev/alpha/guard/scripts:paths",
@@ -23,6 +24,7 @@ cli_py_test(
     srcs = ["test_decision.py"],
     imports = ["../../../.."],
     deps = [
+        ":conftest",
         "//factory/cli/src/tbhbdev/alpha/guard/scripts:decision",
         "//factory/cli/src/tbhbdev/alpha/guard/scripts:paths",
         "//factory/cli/tests:conftest",
@@ -34,6 +36,7 @@ cli_py_test(
     srcs = ["test_filesystem.py"],
     imports = ["../../../.."],
     deps = [
+        ":conftest",
         ":fixtures",
         "//factory/cli/src/tbhbdev/alpha/guard/scripts:filesystem",
         "//factory/cli/src/tbhbdev/alpha/guard/scripts:paths",
@@ -48,6 +51,7 @@ cli_py_test(
     srcs = ["test_paths.py"],
     imports = ["../../../.."],
     deps = [
+        ":conftest",
         "//factory/cli/src/tbhbdev/alpha/guard/scripts:paths",
         "//factory/cli/tests:conftest",
         "@cli_pip//pytest",
@@ -59,6 +63,7 @@ cli_py_test(
     srcs = ["test_writes.py"],
     imports = ["../../../.."],
     deps = [
+        ":conftest",
         ":fixtures",
         "//factory/cli/src/tbhbdev/alpha/guard/scripts:filesystem",
         "//factory/cli/src/tbhbdev/alpha/guard/scripts:paths",
@@ -80,8 +85,14 @@ cli_py_library(
     imports = ["../../../.."],
     pyi_deps = ["//factory/cli/src/tbhbdev/alpha:repo"],
     visibility = ["//factory/cli/tests:__subpackages__"],
-    deps = [
-        "//factory/cli/src/tbhbdev/alpha/guard/scripts:paths",
-        "@cli_pip//pytest",
-    ],
+    deps = ["//factory/cli/src/tbhbdev/alpha/guard/scripts:paths"],
+)
+
+cli_py_library(
+    name = "conftest",
+    testonly = True,
+    srcs = ["conftest.py"],
+    imports = ["../../../.."],
+    visibility = ["//factory/cli/tests:__subpackages__"],
+    deps = ["@cli_pip//pytest"],
 )
