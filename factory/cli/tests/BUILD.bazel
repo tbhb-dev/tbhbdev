@@ -418,6 +418,7 @@ cli_py_test(
         "//factory/cli/src/tbhbdev/alpha/agent:app_server",
         "//factory/cli/src/tbhbdev/alpha/agent:arguments",
         "//factory/cli/src/tbhbdev/alpha/agent:driver",
+        "//factory/cli/src/tbhbdev/alpha/agent:host_tools",
         "//factory/cli/src/tbhbdev/alpha/agent:model",
         "//factory/cli/src/tbhbdev/alpha/agent:render",
         "//factory/cli/src/tbhbdev/alpha/agent:settings",
