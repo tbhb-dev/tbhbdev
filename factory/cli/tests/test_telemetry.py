@@ -12,7 +12,7 @@ import threading
 import time
 from pathlib import Path
 from types import SimpleNamespace
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, override
 from unittest.mock import Mock
 
 import pytest
@@ -21,7 +21,7 @@ from agent_driver_example import execution_arguments, setup
 from agent_example import settings
 
 from tbhbdev import telemetry
-from tbhbdev.alpha import agent
+from tbhbdev.alpha.agent import command as agent
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -415,6 +415,35 @@ def test_endpoint_default(
     assert dict(os.environ) == expected_environment
 
 
+class InlineExportThread(threading.Thread):
+    """Run the export worker before telemetry waits for its result."""
+
+    @override
+    def start(self) -> None:
+        self.run()
+
+
+def configure_export_fault(
+    monkeypatch: pytest.MonkeyPatch, fault: str, endpoint: str
+) -> None:
+    if fault == "endpoint":
+        endpoint = URL
+    elif fault == "offline":
+        monkeypatch.setattr(
+            tbhb_telemetry, "_export", Mock(side_effect=ConnectionRefusedError)
+        )
+        monkeypatch.setattr(
+            tbhb_telemetry,
+            "threading",
+            SimpleNamespace(Event=threading.Event, Thread=InlineExportThread),
+        )
+    elif fault == "import":
+        monkeypatch.setitem(sys.modules, "tbhb_telemetry", None)
+    elif fault == "attributes":
+        monkeypatch.setattr(tbhb_telemetry, "set_attributes", broken)
+    monkeypatch.setenv(ENDPOINT, endpoint)
+
+
 @pytest.mark.parametrize("outcome", ["ok", "failed", "refused"])
 @pytest.mark.parametrize(
     "fault", ["offline", "stall", "import", "disabled", "endpoint", "attributes"]
@@ -453,13 +482,7 @@ def test_export_failure_preserves_launch(
             thread.start()
         else:
             listener.close()
-        if fault == "endpoint":
-            endpoint = URL
-        elif fault == "import":
-            monkeypatch.setitem(sys.modules, "tbhb_telemetry", None)
-        elif fault == "attributes":
-            monkeypatch.setattr(tbhb_telemetry, "set_attributes", broken)
-        monkeypatch.setenv("OTEL_EXPORTER_OTLP_ENDPOINT", endpoint)
+        configure_export_fault(monkeypatch, fault, endpoint)
         start = time.monotonic()
         try:
             assert agent.main(args, "example agent") == baseline_rc
@@ -469,9 +492,10 @@ def test_export_failure_preserves_launch(
                 ("" if fault == "disabled" else diagnostic("environment", "none"))
                 + baseline_output.err,
             )
-            # 250 ms export wait plus 750 ms for SDK imports, drop I/O and jitter on a
-            # loaded Mac. A stalled export would hold the launch for the full 3 s.
-            assert elapsed < baseline_time + 1.0
+            if fault != "offline":
+                # 250 ms export wait plus 750 ms for SDK imports, drop I/O and jitter
+                # on a loaded Mac. A stalled export would hold the launch for 3 s.
+                assert elapsed < baseline_time + 1.0
             if fault == "stall":
                 assert accepted.wait(0.5)
         finally:

@@ -11,7 +11,8 @@ import pytest
 from test_admin_request import fake as admin_fake
 lazy from test_admin_request import Fake
 
-from tbhbdev import admin
+from tbhbdev.admin import command as admin
+from tbhbdev.admin.audit import RefusedError
 lazy from tbhbdev.admin import request
 
 fake = admin_fake
@@ -57,7 +58,8 @@ def test_invalid_options(
 
 
 def test_default_runtime_dispatch(fake: Fake, monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(admin, "default_runtime", lambda: fake.runtime)
+    runtime = replace(fake.runtime, settings=request.Settings())
+    monkeypatch.setattr(admin, "default_runtime", lambda: runtime)
     fake.reply = httpx.Response(404, text="missing")
     assert (
         admin.main(
@@ -65,6 +67,61 @@ def test_default_runtime_dispatch(fake: Fake, monkeypatch: pytest.MonkeyPatch) -
         )
         == 1
     )
+    assert fake.reads == ["op://vault-admin/item-admin/private_key"]
+
+
+@pytest.mark.parametrize(
+    ("config", "flags", "reference"),
+    [
+        (True, ["--vault", "vault-override"], "vault-override/item-admin"),
+        (True, ["--item", "item-override"], "vault-admin/item-override"),
+        (
+            False,
+            ["--vault", "vault-admin", "--item", "item-admin"],
+            "vault-admin/item-admin",
+        ),
+    ],
+)
+def test_credential_flags(
+    fake: Fake, config_file: Path, config: bool, flags: list[str], reference: str
+) -> None:
+    if not config:
+        config_file.unlink()
+    assert (
+        admin.main(
+            ["call", "GET", "/repos/tbhb-dev/widget", "--reason", "test", *flags],
+            "admin",
+            runtime=fake.runtime,
+        )
+        == 0
+    )
+    assert fake.reads == [f"op://{reference}/private_key"]
+
+
+@pytest.mark.parametrize(
+    ("flags", "missing"), [([], "vault"), (["--vault", "vault-admin"], "item")]
+)
+def test_missing_credential_settings(
+    fake: Fake,
+    config_file: Path,
+    flags: list[str],
+    missing: str,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    config_file.unlink()
+    assert (
+        admin.main(
+            ["call", "GET", "/repos/tbhb-dev/widget", "--reason", "test", *flags],
+            "admin",
+            runtime=fake.runtime,
+        )
+        == 3
+    )
+    assert capsys.readouterr() == (
+        "",
+        f"Set --{missing} or [admin] {missing} in {config_file}.\n",
+    )
+    assert fake.stores == fake.reads == fake.requests == []
 
 
 @pytest.mark.parametrize("source", ["-", "file", "missing", "invalid"])
@@ -81,7 +138,7 @@ def test_body_input(
     else:
         if source == "invalid":
             path.write_text("invalid")
-        with pytest.raises(admin.RefusedError, match=r"^invalid_body$"):
+        with pytest.raises(RefusedError, match=r"^invalid_body$"):
             admin.body_from(str(path))
 
 
@@ -260,9 +317,9 @@ def test_parser_contract() -> None:
         "json": None,
         "reason": "test",
         "dry_run": True,
-        "app": "tbhb-dev-admin",
-        "item": "github-app-tbhb-dev-admin",
-        "vault": "tbhb-dev-admin",
+        "app": request.Settings.app,
+        "item": None,
+        "vault": None,
         "app_id": "5733271",
     }
     selected = parser.parse_args(
@@ -275,9 +332,9 @@ def test_parser_contract() -> None:
         "secret": "build",
         "repos": ["widget"],
         "reason": "add repositories to selected secret",
-        "app": "tbhb-dev-admin",
-        "item": "github-app-tbhb-dev-admin",
-        "vault": "tbhb-dev-admin",
+        "app": request.Settings.app,
+        "item": None,
+        "vault": None,
         "app_id": "5733271",
     }
 

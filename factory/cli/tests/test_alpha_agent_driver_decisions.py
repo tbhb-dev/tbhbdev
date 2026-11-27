@@ -10,6 +10,7 @@ from test_alpha_agent_request import BUILD, CLAUDE
 
 from tbhbdev.alpha.agent.decisions import driver, request
 from tbhbdev.alpha.agent.model import Harness, Invalid, Profile, RunKind
+from tbhbdev.alpha.identity import AGY_MODELS
 
 CONFIG = settings()
 RUN = request.parse(BUILD, host_allows_unsandboxed=True)
@@ -293,9 +294,10 @@ def test_model(harness: Harness, model: str, allow: bool, valid: bool) -> None:
     else:
         with pytest.raises(Invalid) as caught:
             driver.check_model(harness, model, allow_non_gemini=allow)
-        assert (
-            str(caught.value) == "agy requires a gemini-* model or --allow-non-gemini"
-        )
+        rule, heading, *models = str(caught.value).splitlines()
+        assert rule == "agy requires a gemini-* model or --allow-non-gemini"
+        assert heading == "Models reported by agy"
+        assert [model.strip() for model in models] == list(AGY_MODELS)
 
 
 def test_unsandboxed_host_flag_does_not_gate_validation() -> None:

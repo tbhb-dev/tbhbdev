@@ -9,7 +9,7 @@ from typing import TYPE_CHECKING
 
 import pytest
 
-from tbhbdev.alpha import agent
+from tbhbdev.alpha.agent import command as agent
 lazy from tbhbdev.alpha.agent import precheck
 
 if TYPE_CHECKING:

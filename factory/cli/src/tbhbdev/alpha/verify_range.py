@@ -5,7 +5,7 @@ import subprocess  # nosec B404
 import sys
 
 from tbhbdev.alpha import identity
-from tbhbdev.alpha.agent.transport import terminal_text
+from tbhbdev.alpha.terminal import terminal_text
 
 
 def problems(
