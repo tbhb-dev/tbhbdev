@@ -14,6 +14,7 @@ import textwrap
 import time
 from pathlib import Path
 from typing import TYPE_CHECKING, cast
+from unittest.mock import Mock
 
 import pytest
 from agent_host_example import constant
@@ -548,6 +549,32 @@ def test_failed_spawn_has_no_group_to_stop(monkeypatch: pytest.MonkeyPatch) -> N
     monkeypatch.setattr(subprocess, "Popen", spawn)
     with pytest.raises(OSError, match=r"^$"):
         groups.launch(("example",), env={}, cwd="/", streams=(None, None, None))
+
+
+@pytest.mark.parametrize("stopped", [False, True])
+def test_interrupted_spawn_cleans_up_before_returning_the_child(
+    monkeypatch: pytest.MonkeyPatch, *, stopped: bool
+) -> None:
+    child = Mock(pid=23)
+    stop = Mock(return_value=stopped)
+
+    def spawn(*_args: object, **_kwargs: object) -> Mock:
+        os.kill(os.getpid(), signal.SIGTERM)
+        return child
+
+    def interrupt(_number: int, _frame: object) -> None:
+        raise KeyboardInterrupt
+
+    monkeypatch.setattr(subprocess, "Popen", spawn)
+    monkeypatch.setattr(groups, "stop_started", stop)
+    previous = signal.signal(signal.SIGTERM, interrupt)
+    try:
+        with pytest.raises(KeyboardInterrupt):
+            groups.launch(("example",), env={}, cwd="/", streams=(None, None, None))
+    finally:
+        signal.signal(signal.SIGTERM, previous)
+    stop.assert_called_once_with(child.pid, 0, child.poll)
+    assert child.wait.call_count == int(stopped)
 
 
 def test_cleanup_handler_installation_cannot_be_interrupted(

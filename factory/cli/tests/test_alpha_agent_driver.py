@@ -137,6 +137,16 @@ def command(verb: str, *options: str) -> int:
     return run_agent([verb, "sample", *options])
 
 
+def test_signing_parity_dispatches_with_loaded_settings(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    parity = Mock(return_value=1)
+    monkeypatch.setattr(agent_settings, "load", lambda: CONFIG)
+    monkeypatch.setattr(driver.signing_parity, "main", parity)
+    assert run_agent(["signing-parity"]) == 1
+    parity.assert_called_once_with(CONFIG)
+
+
 def test_default_launch_sends_unsandboxed_request(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
