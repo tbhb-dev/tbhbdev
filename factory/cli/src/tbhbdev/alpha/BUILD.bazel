@@ -263,6 +263,7 @@ cli_py_library(
         ":repo",
         ":secret_scan",
         ":size_gate",
+        ":tool_pins",
         "@cli_pip//jsonschema",
         "@cli_pip//pyyaml",
     ],
@@ -449,6 +450,14 @@ cli_py_library(
         ":identity",
         "//factory/cli/src/tbhbdev/alpha/agent:transport",
     ],
+)
+
+cli_py_library(
+    name = "tool_pins",
+    srcs = ["tool_pins.py"],
+    data = ["pr-tool-versions.json"],
+    imports = ["../.."],
+    visibility = ["//factory/cli:__subpackages__"],
 )
 
 cli_py_library(

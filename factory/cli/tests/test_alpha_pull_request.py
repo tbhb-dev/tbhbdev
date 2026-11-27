@@ -33,7 +33,7 @@ from hypothesis import strategies as st
 from jsonschema import Draft202012Validator
 
 from tbhbdev.alpha import identity as agent_identity
-from tbhbdev.alpha import opened, size_gate
+from tbhbdev.alpha import opened, size_gate, tool_pins
 from tbhbdev.alpha import pull_request as pr
 from tbhbdev.alpha.secret_scan import REPO_RULES, without_name_rules
 
@@ -66,6 +66,9 @@ here = os.path.dirname(os.path.abspath(__file__))
 name = os.path.basename(__file__).removesuffix(".py")
 spec = json.load(open(os.path.join(here, name + ".spec")))
 called = " ".join(sys.argv[1:])
+if called == "--version" and spec["version"] is not None:
+    print(f"{{name}} version {{spec['version']}}")
+    sys.exit(0)
 cases = spec.get("cases", {{}})
 if called == "pr view --json number,state,url":
     missing = {{"rc": 1, "stdout": "", "stderr": "No Pull Requests Found"}}
@@ -99,6 +102,7 @@ sys.stderr.write(spec["stderr"])
 sys.exit(spec["rc"])
 """
 
+TOOL_VERSIONS = {name: tool_pins.pinned_version(name) for name in tool_pins.PINNED}
 
 TARGET = "tbhb-dev/public-target"
 PR_COMMITS_CALL = ["api", "--hostname", "github.com", "--paginate", "--slurp"]
@@ -147,7 +151,13 @@ class World:
     ) -> None:
         """A fake tool; ``cases`` answers the calls whose words start with a key."""
         write_fake(self.bin / name, FAKE.format())
-        spec = {"rc": rc, "stdout": stdout, "stderr": stderr, "cases": cases or {}}
+        spec = {
+            "rc": rc,
+            "stdout": stdout,
+            "stderr": stderr,
+            "cases": cases or {},
+            "version": TOOL_VERSIONS.get(name),
+        }
         (self.bin / f"{name}.spec").write_text(json.dumps(spec))
 
     def calls(self, name: str) -> list[dict[str, object]]:
@@ -167,7 +177,6 @@ class World:
 
 
 # The world fixture replaces these checks; tests can put them back.
-REAL_SIZE_COUNTS = size_gate.size_counts
 REAL_TARGET_IS_ORIGIN = pr.target_is_origin
 
 
@@ -768,6 +777,26 @@ def test_line_numbers_follow_the_frontmatter() -> None:
 # -------------------------------------------------------------- tool lookup
 
 
+def test_cli_versions_match_the_rules_pins() -> None:
+    manifest = Path(__file__).with_name("rules-tool-pins.json")
+    if not manifest.exists():
+        manifest = WORKSPACE / "lib/rules/pins/tools.json"
+    rules = cast("dict[str, dict[str, object]]", json.loads(manifest.read_text()))
+    assert {name: rules[name]["version"] for name in TOOL_VERSIONS} == TOOL_VERSIONS
+
+
+@pytest.mark.parametrize("pin", [None, '{"vale": ""}', '{"vale": 123}', "{}", "{"])
+def test_tool_version_pin_must_be_readable(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, pin: str | None
+) -> None:
+    path = tmp_path / "pins.json"
+    monkeypatch.setattr(tool_pins, "VERSIONS", path)
+    if pin is not None:
+        path.write_text(pin)
+    with pytest.raises(SystemExit, match=r"vale version pin.*pins.json"):
+        tool_pins.pinned_version("vale")
+
+
 def worktree_tool(
     world: World,
     name: str,
@@ -779,13 +808,53 @@ def worktree_tool(
     return shim
 
 
-def test_find_tool_prefers_path(draft_world: World) -> None:
-    shim = worktree_tool(draft_world, "vale")
-    draft_world.fake("mise", stdout="/mise/vale\n")
-    assert pr.find_tool("vale") == str(draft_world.bin / "vale")
-    (draft_world.bin / "vale").unlink()
+def test_find_tool_prefers_the_pinned_shim_to_path(draft_world: World) -> None:
+    shim = worktree_tool(draft_world, "vale", f"print({TOOL_VERSIONS['vale']!r})")
+    write_fake(draft_world.bin / "vale", "print('0.0.0')")
     assert pr.find_tool("vale") == str(shim)
-    assert draft_world.calls("mise") == []
+
+
+def test_find_tool_prefers_the_raw_gitleaks_shim(draft_world: World) -> None:
+    worktree_tool(draft_world, "gitleaks")
+    shim = worktree_tool(
+        draft_world, "gitleaks-raw", f"print({TOOL_VERSIONS['gitleaks']!r})"
+    )
+    assert pr.find_tool("gitleaks", unwrapped=True) == str(shim)
+
+
+def test_find_tool_refuses_the_wrong_version(draft_world: World) -> None:
+    version = TOOL_VERSIONS["vale"]
+    write_fake(draft_world.bin / "vale", f"print('vale version {version}0')")
+    with pytest.raises(
+        SystemExit, match=rf"vale.*{re.escape(version)}0.*{re.escape(version)}"
+    ):
+        pr.find_tool("vale")
+
+
+def test_find_tool_refuses_a_wrong_shim_even_with_the_right_path_version(
+    draft_world: World,
+) -> None:
+    shim = worktree_tool(draft_world, "scc", "print('0.0.0')")
+    with pytest.raises(SystemExit, match=rf"{re.escape(str(shim))} reports 0\.0\.0"):
+        pr.find_tool("scc")
+
+
+@pytest.mark.parametrize(
+    "body", ["pass", "print('missing version info')", "print('4.1.0'); sys.exit(2)"]
+)
+def test_find_tool_requires_a_successful_version_report(
+    draft_world: World, body: str
+) -> None:
+    worktree_tool(draft_world, "scc", f"import sys\n{body}")
+    with pytest.raises(SystemExit, match=r"scc.*no version"):
+        pr.find_tool("scc")
+
+
+def test_find_tool_refuses_an_unusable_mise_tool(draft_world: World) -> None:
+    (draft_world.bin / "vale").unlink()
+    draft_world.fake("mise", stdout="/missing/vale\n")
+    with pytest.raises(SystemExit, match=r"cannot check vale version at /missing/vale"):
+        pr.find_tool("vale")
 
 
 def test_find_tool_prefers_the_worktree_shim_to_mise(
@@ -800,18 +869,20 @@ def test_find_tool_prefers_the_worktree_shim_to_mise(
 
 
 def test_find_tool_can_skip_the_bazel_shims(
-    draft_world: World, monkeypatch: pytest.MonkeyPatch
+    draft_world: World, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    shim = worktree_tool(draft_world, "vale")
+    shim = worktree_tool(draft_world, "vale", f"print({TOOL_VERSIONS['vale']!r})")
     path = os.environ["PATH"]
     monkeypatch.setenv("PATH", f"{shim.parent}{os.pathsep}{path}")
     assert pr.find_tool("vale") == str(shim)
     assert pr.find_tool("vale", unwrapped=True) == str(draft_world.bin / "vale")
     (draft_world.bin / "vale").unlink()
-    draft_world.fake("mise", stdout="/mise/vale\n")
+    installed = tmp_path / "mise-vale"
+    write_fake(installed, f"print('vale version ' + {TOOL_VERSIONS['vale']!r})")
+    draft_world.fake("mise", stdout=f"{installed}\n")
     monkeypatch.setenv("PATH", path)
     assert pr.find_tool("vale") == str(shim)
-    assert pr.find_tool("vale", unwrapped=True) == "/mise/vale"
+    assert pr.find_tool("vale", unwrapped=True) == str(installed)
 
 
 def test_find_tool_falls_back_to_mise(draft_world: World, tmp_path: Path) -> None:
@@ -828,9 +899,7 @@ def test_find_tool_falls_back_to_mise(draft_world: World, tmp_path: Path) -> Non
 
 
 def test_find_tool_missing(draft_world: World) -> None:
-    with pytest.raises(
-        SystemExit, match=r"absent_tool not found on PATH or through `mise which`"
-    ):
+    with pytest.raises(SystemExit, match=r"absent_tool not found in \.bazel_env"):
         pr.find_tool("absent_tool")
     draft_world.fake("mise", rc=1, stderr="not installed")
     with pytest.raises(SystemExit, match="absent_tool not found"):
@@ -843,13 +912,12 @@ def test_find_tool_missing(draft_world: World) -> None:
 def test_find_tools_returns_each_path(world: World) -> None:
     shim = worktree_tool(world, "cog")
     (world.bin / "cog").unlink()
-    worktree_tool(world, "gitleaks")
+    leak = worktree_tool(world, "gitleaks-raw", f"print({TOOL_VERSIONS['gitleaks']!r})")
     (world.bin / "gitleaks").unlink()
-    world.fake("mise", stdout="/mise/gitleaks\n")
     assert pr.find_tools(["cog", "vale", "gitleaks"], unwrapped={"gitleaks"}) == {
         "cog": str(shim),
         "vale": str(world.bin / "vale"),
-        "gitleaks": "/mise/gitleaks",
+        "gitleaks": str(leak),
     }
 
 
@@ -1020,7 +1088,7 @@ def test_cspell_and_rumdl_lines_ignore_other_output() -> None:
     ("rc", "stdout", "stderr"),
     [
         (2, "", "Configuration Error: bad"),
-        (1, "not json", ""),
+        (1, "{}", ""),
         (3, "", "killed"),
     ],
 )
@@ -1038,6 +1106,14 @@ def test_lint_failure_message_prefers_stderr(draft_world: World) -> None:
     assert lint_checked(draft_world, BASE) == [(1, "cspell failed (exit 2): err text")]
 
 
+@pytest.mark.parametrize("rc", [0, 1])
+def test_lint_refuses_invalid_vale_json_on_success(draft_world: World, rc: int) -> None:
+    draft_world.fake("vale", rc=rc, stdout="{")
+    assert lint_checked(draft_world, BASE) == [
+        (1, f"vale failed (exit {rc}): invalid JSON")
+    ]
+
+
 def test_lint_failure_with_findings_reports_the_failure_only(
     draft_world: World,
 ) -> None:
@@ -1045,8 +1121,15 @@ def test_lint_failure_with_findings_reports_the_failure_only(
     assert lint_checked(draft_world, BASE) == [(1, "rumdl failed (exit 2): boom")]
 
 
-def test_vale_parse_handles_bad_json() -> None:
-    assert pr.parse_vale("{") == []
+@pytest.mark.parametrize(
+    "output", ["{", "[]", '{"draft.md": {}}', '{"draft.md": [{}]}']
+)
+def test_vale_parse_raises_on_bad_json(output: str) -> None:
+    with pytest.raises(ValueError, match=r"Expecting|expected Vale alerts"):
+        pr.parse_vale(output)
+
+
+def test_vale_parse_accepts_an_empty_result() -> None:
     assert pr.parse_vale("{}") == []
 
 
@@ -1876,21 +1959,12 @@ def test_pr_reports_all_missing_tools_before_reading_the_draft(
 
 
 @pytest.mark.parametrize("verb", ["check", "create"])
-def test_pr_runs_without_scc_and_warns_about_the_size_count(
-    world: World,
-    monkeypatch: pytest.MonkeyPatch,
-    capsys: pytest.CaptureFixture[str],
-    verb: str,
-) -> None:
-    # The world fixture stubs the counter; this test needs the real one.
-    monkeypatch.setattr(size_gate, "size_counts", REAL_SIZE_COUNTS)
+def test_pr_refuses_to_run_without_scc(world: World, verb: str) -> None:
     (world.bin / "scc").unlink()
     write_draft(world)
     args = ("create", "--dry-run") if verb == "create" else ("check",)
-    assert run_main(*args) == 0
-    captured = capsys.readouterr()
-    assert "missing tools" not in captured.err
-    assert "size count unavailable: " in captured.err
+    with pytest.raises(SystemExit, match="missing tools: scc"):
+        run_main(*args)
 
 
 def test_create_reuses_the_tools_resolved_at_startup(world: World) -> None:
@@ -2089,7 +2163,7 @@ def test_a_missing_gitleaks_stops_before_gh(
     (world.bin / "gitleaks").unlink()
     write_draft(world)
     with pytest.raises(
-        SystemExit, match=r"missing tools: gitleaks|gitleaks not found on PATH"
+        SystemExit, match=r"missing tools: gitleaks|gitleaks not found in \.bazel_env"
     ):
         run_main(*argv)
     assert [call["argv"][:2] for call in world.calls("gh")] in (  # type: ignore[index]

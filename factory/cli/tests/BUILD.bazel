@@ -1343,6 +1343,14 @@ cli_py_test(
     ],
 )
 
+genrule(
+    name = "rules_tool_pins",
+    testonly = True,
+    srcs = ["@tbhb_rules//pins:tools.json"],
+    outs = ["rules-tool-pins.json"],
+    cmd = "cp $< $@",
+)
+
 cli_py_test(
     name = "test_alpha_pull_request",
     size = "large",
@@ -1350,6 +1358,7 @@ cli_py_test(
     srcs = ["test_alpha_pull_request.py"],
     data = [
         ":alpha_testdata",
+        ":rules_tool_pins",
         "//:cli_check_inputs",
         "//factory/cli/src/tbhbdev:tbhbdev_bin",
     ],
@@ -1368,6 +1377,7 @@ cli_py_test(
         "//factory/cli/src/tbhbdev/alpha:pull_request",
         "//factory/cli/src/tbhbdev/alpha:secret_scan",
         "//factory/cli/src/tbhbdev/alpha:size_gate",
+        "//factory/cli/src/tbhbdev/alpha:tool_pins",
         "@cli_pip//hypothesis",
         "@cli_pip//jsonschema",
         "@cli_pip//pytest",
@@ -1573,6 +1583,7 @@ cli_py_test(
         "//factory/cli/src/tbhbdev/alpha:pull_request",
         "//factory/cli/src/tbhbdev/alpha:secret_scan",
         "//factory/cli/src/tbhbdev/alpha:squash_merge",
+        "//factory/cli/src/tbhbdev/alpha:tool_pins",
         "@cli_pip//hypothesis",
         "@cli_pip//pytest",
     ],

@@ -355,6 +355,8 @@ def test_the_base_is_refreshed_without_tags_then_counted(
     git = git_exits()
     monkeypatch.setattr(pr, "git", git)
     monkeypatch.setattr(pr, "base_of", Mock(return_value="topic"))
+    find = Mock(return_value="/tools/scc")
+    monkeypatch.setattr(pr, "find_tool", find)
     checked = pr.Checked([])
     pr.check_size(argparse.Namespace(command="create", draft="d.md"), checked)
     assert checked.problems == []
@@ -362,8 +364,9 @@ def test_the_base_is_refreshed_without_tags_then_counted(
         *FETCH, "origin", "+refs/heads/topic:refs/remotes/origin/topic"
     )
     counter.assert_called_once_with(
-        "refs/remotes/origin/topic", "HEAD", scc="scc", git="git"
+        "refs/remotes/origin/topic", "HEAD", scc="/tools/scc", git="git"
     )
+    find.assert_called_once_with("scc")
 
 
 def test_a_failed_fetch_warns_and_never_counts_a_stale_ref(
@@ -445,6 +448,7 @@ def test_a_dry_run_fetches_nothing_and_warns_on_an_excess(
     git = git_exits()
     monkeypatch.setattr(pr, "git", git)
     monkeypatch.setattr(pr, "base_of", Mock(return_value="main"))
+    monkeypatch.setattr(pr, "find_tool", Mock(return_value="/tools/scc"))
     checked = pr.Checked([])
     args = argparse.Namespace(command="create", draft="d.md", dry_run=True)
     pr.check_size(args, checked)
