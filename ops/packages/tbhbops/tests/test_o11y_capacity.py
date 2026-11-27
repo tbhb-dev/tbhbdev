@@ -1,15 +1,15 @@
-"""Offline capacity-dashboard.bats and capacity-rules.bats against ops files."""
+"""Check capacity dashboards and alert rules against the live ops config."""
 
 import copy
 import json
 import math
-import typing
+import os
+import subprocess
 from pathlib import Path
 lazy from collections.abc import Callable
 
 import pytest
 import yaml
-
 from tbhbops.o11y import smoke_capacity
 lazy from tbhbops.o11y.validate import Document
 
@@ -54,7 +54,6 @@ def preferred_utilization(lookback: str = "", labels: str = CAPACITY_KEYS) -> st
     )
 
 
-DATA = Path(__file__).parent / "testdata/promtool"
 KEYS = {
     "agent_plan_vendor": "anthropic",
     "agent_plan_window": "7d",
@@ -312,31 +311,31 @@ def test_capacity_inventory_nan_unknown() -> None:
         } in override["properties"]
 
 
-class FixtureDumper(yaml.SafeDumper):
-    """Keep generated YAML within the repository's indentation and line limits."""
-
-    @typing.override
-    def increase_indent(self, flow: bool = False, indentless: bool = False) -> None:
-        super().increase_indent(flow, indentless=flow and indentless)
-
-
-def fixture_string(dumper: FixtureDumper, value: str) -> yaml.ScalarNode:
-    return dumper.represent_scalar(
-        "tag:yaml.org,2002:str", value, style='"' if len(value) > 80 else None
+def check_promtool(
+    directory: Path, document: Document, *, rules: list[Document] | None = None
+) -> None:
+    if rules is not None:
+        group = {key: GROUP[key] for key in ("name", "interval")}
+        (directory / "rules.yaml").write_text(
+            yaml.safe_dump({"groups": [{**group, "rules": rules}]}),
+            encoding="utf-8",
+        )
+        document = {
+            **document,
+            "rule_files": ["rules.yaml"],
+            "evaluation_interval": group["interval"],
+        }
+    test_file = directory / "tests.yaml"
+    test_file.write_text(yaml.safe_dump(document), encoding="utf-8")
+    binary = os.environ.get("TBHB_PROMTOOL")
+    promtool = Path(os.environ["TEST_SRCDIR"], binary) if binary else "promtool"
+    result = subprocess.run(  # nosec B603: pinned promtool, argv only
+        [promtool, "test", "rules", test_file],
+        check=False,
+        capture_output=True,
+        text=True,
     )
-
-
-FixtureDumper.add_representer(str, fixture_string)
-
-
-def fixture_bytes(document: Document) -> bytes:
-    return yaml.dump(
-        document, Dumper=FixtureDumper, explicit_start=True, width=40
-    ).encode()
-
-
-def assert_fixture(name: str, document: Document) -> None:
-    assert (DATA / name).read_bytes() == fixture_bytes(document)
+    assert result.returncode == 0, result.stdout + result.stderr
 
 
 def capacity_target_check(
@@ -357,7 +356,7 @@ def capacity_target_check(
     }
 
 
-def test_capacity_targets_nan_and_missing_reset() -> None:
+def test_capacity_targets_nan_and_missing_reset(tmp_path: Path) -> None:
     tests = []
     for case in (
         ("inventory only", "anthropic", "other", 0, "20m"),
@@ -649,7 +648,7 @@ def test_capacity_targets_nan_and_missing_reset() -> None:
                 ],
             }
         )
-    assert_fixture("dashboard.yaml", {"tests": tests})
+    check_promtool(tmp_path, {"tests": tests})
 
 
 def translate(rule: Document) -> Document:
@@ -1039,9 +1038,9 @@ def capacity_reset_path(rule: Document, freshness: str, *, reset: bool) -> Docum
     }
 
 
-def test_capacity_reset_paths_fixture() -> None:
-    assert_fixture(
-        "capacity-reset-paths.yaml",
+def test_capacity_reset_paths(tmp_path: Path) -> None:
+    check_promtool(
+        tmp_path,
         {
             "tests": [
                 capacity_reset_path(rule, freshness, reset=reset)
@@ -1053,9 +1052,9 @@ def test_capacity_reset_paths_fixture() -> None:
     )
 
 
-def test_capacity_leading_null_history_fixture() -> None:
-    assert_fixture(
-        "capacity-leading-null-history.yaml",
+def test_capacity_leading_null_history(tmp_path: Path) -> None:
+    check_promtool(
+        tmp_path,
         {
             "tests": [
                 {
@@ -1094,8 +1093,8 @@ def test_capacity_leading_null_history_fixture() -> None:
         ("tied-windows", "claude_statusline", "", "0.9", 604800),
     ],
 )
-def test_capacity_stale_reset_window_fixture(
-    name: str, source: str, bucket: str, weekly_use: str, expected: int
+def test_capacity_stale_reset_window(
+    tmp_path: Path, name: str, source: str, bucket: str, weekly_use: str, expected: int
 ) -> None:
     rule = GROUP["rules"][-1]
     inputs = []
@@ -1109,8 +1108,8 @@ def test_capacity_stale_reset_window_fixture(
                 series(RESET, reset + " stale", **labels),
             ]
         )
-    assert_fixture(
-        f"capacity-reset-{name}.yaml",
+    check_promtool(
+        tmp_path,
         {
             "tests": [
                 {
@@ -1139,15 +1138,13 @@ def test_capacity_stale_reset_window_fixture(
     )
 
 
-def test_capacity_empty_query_recovers_firing_alerts_fixture() -> None:
+def test_capacity_empty_query_recovers_firing_alerts(tmp_path: Path) -> None:
     rules = {r["uid"]: translate(r) for r in GROUP["rules"]}
     exhaustion = rules["o11y-capacity-exhaustion"]
     stale = rules["o11y-capacity-stale"]
-    assert_fixture(
-        "capacity-empty-recovery.yaml",
+    check_promtool(
+        tmp_path,
         {
-            "rule_files": ["rules.yaml"],
-            "evaluation_interval": "1m",
             "tests": [
                 {
                     "name": "firing exhaustion clears when query returns nothing",
@@ -1172,6 +1169,7 @@ def test_capacity_empty_query_recovers_firing_alerts_fixture() -> None:
                 },
             ],
         },
+        rules=list(rules.values()),
     )
 
 
@@ -1187,7 +1185,7 @@ def assertion(rule: Document, time: str, *, firing: bool | list[Document]) -> Do
     }
 
 
-def test_capacity_rules_fixtures() -> None:
+def test_capacity_rules(tmp_path: Path) -> None:
     """Promtool's alert: is the uid; Grafana's alertname is the title."""
     assert [GROUP[k] for k in ("orgId", "folder", "interval")] == [1, "o11y", "1m"]
     for rule in GROUP["rules"]:
@@ -1267,22 +1265,7 @@ def test_capacity_rules_fixtures() -> None:
         ],
     )
     assert len(tests) == 38
-    assert sorted(p.name for p in DATA.glob("capacity-[0-9][0-9].yaml")) == [
-        f"capacity-{index:02d}.yaml" for index in range(1, 39)
-    ]
-    for index, scenario in enumerate(tests, 1):
-        assert_fixture(
-            f"capacity-{index:02d}.yaml",
-            {
-                "rule_files": ["rules.yaml"],
-                "evaluation_interval": "1m",
-                "tests": [scenario],
-            },
-        )
-    assert_fixture(
-        "rules.yaml",
-        {"groups": [{"name": "agent-capacity", "interval": "1m", "rules": rules}]},
-    )
+    check_promtool(tmp_path, {"tests": tests}, rules=rules)
 
 
 def tier_edge_cases(tiers: list[Document], case: Callable[..., None]) -> None:
@@ -1620,7 +1603,7 @@ def smoke_sample(vendor: str, window: str | None) -> Document:
     return {"labels": "{" + rendered + "}", "value": 1}
 
 
-def test_capacity_smoke_conditions_fixture() -> None:
+def test_capacity_smoke_conditions(tmp_path: Path) -> None:
     """Evaluate the smoke's actual OTLP histories against the live rule queries."""
     expected: list[list[tuple[str, str | None]]] = [
         [("anthropic", "5h"), ("anthropic", "7d")],
@@ -1659,8 +1642,8 @@ def test_capacity_smoke_conditions_fixture() -> None:
     exhaustion = next(
         rule for rule in GROUP["rules"] if rule["uid"] == "o11y-capacity-exhaustion"
     )
-    assert_fixture(
-        "capacity-smoke.yaml",
+    check_promtool(
+        tmp_path,
         {
             "tests": [
                 {
@@ -1784,7 +1767,8 @@ def prefer_fresh_checks(bucket: str) -> list[Document]:
 
 
 @pytest.mark.parametrize("bucket", ["", "weekly"])
-def test_capacity_prefer_fresh_fixture(bucket: str) -> None:
+def test_capacity_prefer_fresh(tmp_path: Path, bucket: str) -> None:
+    rules = [translate(rule) for rule in GROUP["rules"]]
     tests = []
     for carried in (0.53, 0.95):
         labels = {
@@ -1818,7 +1802,7 @@ def test_capacity_prefer_fresh_fixture(bucket: str) -> None:
                 "promql_expr_test": prefer_fresh_checks(bucket),
                 "alert_rule_test": [
                     assertion(
-                        translate(rule),
+                        rule,
                         "24h",
                         firing=[
                             {
@@ -1827,14 +1811,11 @@ def test_capacity_prefer_fresh_fixture(bucket: str) -> None:
                                 if k != "agent_plan_bucket"
                             }
                         ]
-                        if rule["uid"].endswith("warn")
+                        if rule["alert"].endswith("warn")
                         else False,
                     )
-                    for rule in GROUP["rules"]
+                    for rule in rules
                 ],
             }
         )
-    assert_fixture(
-        "capacity-prefer-fresh-" + (bucket or "without-bucket") + ".yaml",
-        {"rule_files": ["rules.yaml"], "evaluation_interval": "1m", "tests": tests},
-    )
+    check_promtool(tmp_path, {"tests": tests}, rules=rules)

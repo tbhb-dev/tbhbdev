@@ -8,12 +8,6 @@ load("@rules_python//python:defs.bzl", "py_binary", "py_library")
 # gazelle:python_default_visibility //ops/packages:__subpackages__
 
 py_binary(
-    name = "agent_scratch_reaper",
-    srcs = ["tbhbops/agent_scratch_reaper.py"],
-    visibility = ["//ops/packages:__subpackages__"],
-)
-
-py_binary(
     name = "bazel_server_reaper",
     srcs = ["tbhbops/bazel_server_reaper.py"],
     visibility = ["//ops/packages:__subpackages__"],
@@ -29,7 +23,6 @@ py_library(
     name = "src",
     srcs = [
         "tbhbops/__init__.py",
-        "tbhbops/agent_scratch_reaper.py",
         "tbhbops/authorized_lines.py",
         "tbhbops/bazel_server_reaper.py",
         "tbhbops/deploy/__init__.py",
@@ -42,7 +35,6 @@ py_library(
         "tbhbops/deploy/transaction.py",
         "tbhbops/dns.py",
         "tbhbops/dns_smoke.py",
-        "tbhbops/docker_route.py",
         "tbhbops/dsm_accounts.py",
         "tbhbops/mac_snapshot_thin.py",
         "tbhbops/o11y/__init__.py",
