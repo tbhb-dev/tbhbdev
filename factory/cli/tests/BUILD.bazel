@@ -1146,11 +1146,22 @@ cli_py_test(
         ":conftest",
         ":fake_tool",
         "//factory/cli/src/tbhbdev/alpha:identity",
+        "//factory/cli/src/tbhbdev/alpha:identity_commands",
         "//factory/cli/src/tbhbdev/alpha:install",
         "@cli_pip//hypothesis",
         "@cli_pip//jsonschema",
         "@cli_pip//pytest",
         "@cli_pip//pyyaml",
+    ],
+)
+
+cli_py_test(
+    name = "test_alpha_identity_commands",
+    srcs = ["test_alpha_identity_commands.py"],
+    deps = [
+        "//factory/cli/src/tbhbdev/alpha:identity_commands",
+        "@cli_pip//hypothesis",
+        "@cli_pip//pytest",
     ],
 )
 
