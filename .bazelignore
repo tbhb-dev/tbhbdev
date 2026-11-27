@@ -1,2 +1,4 @@
 .worktrees/
 tmp/
+lib/rules/
+ops/tofu/

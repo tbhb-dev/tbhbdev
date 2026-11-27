@@ -1,0 +1,351 @@
+"""The argv of each command a run starts: ssh, tmux and the harness.
+
+Builders return tuples of strings; executable lookup uses a fixed system PATH.
+No argv holds a credential or a Connect reference. A harness's brief goes to it
+on stdin, or as the path of a file in a fixed instruction. agy's `--print` takes
+the brief as an argument because it has no stdin input for that option.
+"""
+
+from __future__ import annotations
+
+import json
+import shlex
+import shutil
+import socket
+import sys
+from pathlib import Path
+from typing import cast
+
+from tbhbdev.alpha.agent.decisions import policy as policy_module
+from tbhbdev.alpha.agent.model import (
+    NAME,
+    ClaudePolicy,
+    CodexMode,
+    CodexPolicy,
+    Host,
+    Invalid,
+    Policy,
+    Profile,
+    RunKind,
+    RunRequest,
+)
+from tbhbdev.alpha.install.hooks import stop_hooks
+
+# The tmux socket's file name, under the sockets directory.
+SOCKET = "agents"
+# The first prompt of an interactive run: a pointer, never the brief itself.
+POINTER = "Read the brief in {path} and carry it out."
+_AGY_BUILD_NOTE = (
+    "Run shell commands in {worktree} unless the task names another directory."
+)
+# The variables a harness gets through its own mechanism, in this order.
+_HANDOFF = (
+    "CODEX_HOME",
+    "DOCKER_CONFIG",
+    "GH_CONFIG_DIR",
+    "PYTEST_DEBUG_TEMPROOT",
+    "PYTEST_XDIST_AUTO_NUM_WORKERS",
+    "TMPDIR",
+    "TMPPREFIX",
+)
+
+
+def executable(name: str) -> str:
+    path = "/usr/bin:/bin:/usr/sbin:/sbin"
+    if sys.platform == "darwin":
+        path += ":/opt/homebrew/bin:/usr/local/bin"
+    found = shutil.which(name, path=path)
+    if found is None:
+        message = f"required executable {name!r} missing from fixed PATH"
+        raise Invalid(message)
+    return found
+
+
+def ssh(
+    host: Host,
+    remote: tuple[str, ...],
+    *,
+    connect_timeout: int,
+    keepalive: int,
+    keepalive_count_max: int = 3,
+) -> tuple[str, ...]:
+    """The driver's call to HOST, which runs REMOTE in the host's shell.
+
+    It never prompts, gives up connecting after CONNECT_TIMEOUT seconds and
+    probes the connection every KEEPALIVE seconds. When present, the local
+    machine's session key is the only identity offered, without an SSH agent.
+    """
+    command = shlex.join((f"/bin/{host.shell}", "-c", shlex.join(remote)))
+    key = (
+        Path.home()
+        / ".ssh"
+        / "sessions"
+        / f"{socket.gethostname().split('.')[0]}_ed25519"
+    )
+    identity = (
+        ("-i", str(key), "-o", "IdentityAgent=none", "-o", "IdentitiesOnly=yes")
+        if key.is_file()
+        else ()
+    )
+    return (
+        executable("ssh"),
+        "-o",
+        "BatchMode=yes",
+        "-o",
+        f"ConnectTimeout={connect_timeout}",
+        "-o",
+        f"ServerAliveInterval={keepalive}",
+        "-o",
+        f"ServerAliveCountMax={keepalive_count_max}",
+        *identity,
+        "-l",
+        host.account,
+        host.name,
+        command,
+    )
+
+
+def tmux(sockets_dir: str, name: str, command: tuple[str, ...]) -> tuple[str, ...]:
+    """A detached session `ag-NAME` that runs COMMAND, on the sockets dir's socket.
+
+    SOCKETS_DIR is absolute, as `policy.resolve` returns it.
+
+    Raises:
+        Invalid: NAME isn't a run name.
+    """
+    if not NAME.fullmatch(name):
+        message = f"tmux session name {name!r} must match {NAME.pattern}"
+        raise Invalid(message)
+    socket = policy_module.resolve(sockets_dir, SOCKET)
+    socket_options = ("-S", socket, "-f", "/dev/null")
+    return (
+        executable("tmux"),
+        *socket_options,
+        "new-session",
+        "-d",
+        "-s",
+        f"ag-{name}",
+        *command,
+    )
+
+
+def _toml(text: str) -> str:
+    """TEXT as a TOML basic string, which JSON's escapes also spell."""
+    return json.dumps(text)
+
+
+def _codex_sandbox(profile: Profile, detail: CodexPolicy, worktree: str) -> list[str]:
+    if detail.mode is CodexMode.FULL_ACCESS:
+        return ["-s", CodexMode.FULL_ACCESS.value]
+    conflicts = set(detail.write_roots) & {*detail.read_roots, *detail.deny}
+    if conflicts:
+        message = f"path {min(conflicts)} requires conflicting filesystem modes"
+        raise Invalid(message)
+    entries = dict.fromkeys(detail.read_roots, "read")
+    entries.update(dict.fromkeys(detail.write_roots, "write"))
+    entries.update(dict.fromkeys(detail.deny, "none"))
+    order = (
+        policy_module.READ_ROOT,
+        worktree,
+        *(policy_module.resolve(worktree, p) for p in policy_module.GIT_CONFIG_PATHS),
+        *entries,
+    )
+    filesystem = ", ".join(
+        f"{_toml(path)} = {_toml(entries[path])}"
+        for path in dict.fromkeys(order)
+        if path in entries
+    )
+    table = f"{{filesystem = {{{filesystem}}}, network = {{enabled = true}}}}"
+    return [
+        "-c",
+        f"default_permissions={_toml(profile.value)}",
+        "-c",
+        f"permissions.{profile.value}={table}",
+    ]
+
+
+def _codex(
+    request: RunRequest,
+    policy: Policy,
+    detail: CodexPolicy,
+    worktree: str,
+    brief_file: str,
+) -> tuple[str, ...]:
+    headless = request.kind is RunKind.EXEC
+    argv = ["codex"]
+    if headless:
+        argv += ["exec", "--skip-git-repo-check"]
+        # Builds keep their rollout, which the commit hook reads the model from.
+        if policy.profile is Profile.REVIEW:
+            argv.append("--ephemeral")
+    argv += [
+        "--strict-config",
+        "-C",
+        worktree,
+        *_codex_sandbox(policy.profile, detail, worktree),
+    ]
+    # Quoting a path inside a dotted override key loses dots in some CLIs.
+    # Override the table as TOML so project trust is decided before layer loading.
+    argv += ["-c", f'projects={{{_toml(worktree)}={{trust_level="untrusted"}}}}']
+    argv += [
+        "-c",
+        "sandbox_workspace_write.network_access=true",
+        "-c",
+        f"approval_policy={_toml(detail.approval_policy)}",
+        "-c",
+        f"web_search={_toml(detail.web_search.value)}",
+    ]
+    # A spawn that names a model keeps it. One that names none gets this model
+    # and not the run's.
+    argv += [
+        "-c",
+        f"agents.default_subagent_model={_toml(detail.subagent_model)}",
+    ]
+    if detail.network_proxy is not None:
+        domains = ",".join(
+            f'{_toml(d)}="allow"' for d in detail.network_proxy["domains"]
+        )
+        argv += [
+            "-c",
+            (
+                'features.network_proxy={enabled=true,mode="limited",'
+                f"domains={{{domains}}},unix_sockets={{}},"
+                "dangerously_allow_all_unix_sockets=false,allow_local_binding=false}"
+            ),
+        ]
+    else:
+        argv += ["-c", "features.network_proxy.enabled=false"]
+    # A codex policy's environment holds every handoff variable.
+    argv += [
+        "-c",
+        'shell_environment_policy.exclude=["GIT_*"]',
+        "-c",
+        'shell_environment_policy.set.GIT_CONFIG_COUNT="0"',
+        "-c",
+        f"shell_environment_policy.set.PATH={_toml(policy.tool_path)}",
+    ]
+    for name in _HANDOFF:
+        argv += ["-c", f"shell_environment_policy.set.{name}={_toml(policy.env[name])}"]
+    if "SSH_AUTH_SOCK" in policy.env:
+        argv += [
+            "-c",
+            f"shell_environment_policy.set.SSH_AUTH_SOCK={_toml(policy.env['SSH_AUTH_SOCK'])}",
+        ]
+    argv += [
+        "-m",
+        request.model,
+        "-c",
+        f"model_reasoning_effort={_toml(request.effort)}",
+    ]
+    argv.append("-" if headless else POINTER.format(path=brief_file))
+    return tuple(argv)
+
+
+def _claude(
+    request: RunRequest, policy: Policy, detail: ClaudePolicy, brief_file: str
+) -> tuple[str, ...]:
+    headless = request.kind is RunKind.EXEC
+    mode = (
+        "bypassPermissions"
+        if request.unsandboxed
+        else "auto"
+        if policy.profile is Profile.BUILD
+        else "dontAsk"
+    )
+    options = detail.settings
+    if headless:
+        # Keep the policy's own hooks (the agent-model guard) beside Stop.
+        own = cast("dict[str, object]", options.get("hooks", {}))
+        hooks = {**own, **stop_hooks("claude")}
+        options = options | {"disableAllHooks": False, "hooks": hooks}
+    settings = json.dumps(options, separators=(",", ":"), sort_keys=True)
+    argv = ["claude", *(["-p"] if headless else [])]
+    argv += ["--model", request.model, "--effort", request.effort]
+    argv += ["--permission-mode", mode, "--settings", settings]
+    argv += ["--setting-sources", "" if headless else "user", "--strict-mcp-config"]
+    if not headless:
+        argv.append(POINTER.format(path=brief_file))
+    return tuple(argv)
+
+
+def _agy(  # noqa: PLR0913, PLR0917 -- one value per fact agy's argv depends on
+    request: RunRequest,
+    policy: Policy,
+    worktree: str,
+    brief_file: str,
+    project: str | None,
+    brief: str | None,
+) -> tuple[str, ...]:
+    if project is None:
+        message = "argv agy run requires agy_project"
+        raise Invalid(message)
+    review = policy.profile is Profile.REVIEW
+    argv = [
+        "agy" if review or request.unsandboxed else "agy-agent",
+        "--project",
+        project,
+    ]
+    argv += ["--model", request.model]
+    if request.unsandboxed:
+        # Headless agy auto-denies any tool that needs a permission prompt.
+        argv.append("--dangerously-skip-permissions")
+    if review:
+        argv += ["--mode", "plan"]
+        if not request.unsandboxed:
+            argv.append("--sandbox")
+    if request.kind is RunKind.START:
+        return (*argv, "--prompt-interactive", POINTER.format(path=brief_file))
+    if brief is None:
+        message = "argv agy exec run requires agy_brief"
+        raise Invalid(message)
+    if request.timeout is None:
+        message = "argv agy exec run requires a timeout"
+        raise Invalid(message)
+    # agy's model once ran commands in a credential directory, so a build's
+    # brief starts by naming the worktree.
+    text = (
+        f"\n{brief}"
+        if review
+        else f"{_AGY_BUILD_NOTE.format(worktree=worktree)}\n\n{brief}"
+    )
+    return (*argv, "--print-timeout", f"{request.timeout}s", "--print", text)
+
+
+def harness(  # noqa: PLR0913 -- one value per fact the harness's argv depends on
+    request: RunRequest,
+    policy: Policy,
+    *,
+    worktree: str,
+    brief_file: str,
+    agy_project: str | None = None,
+    agy_brief: str | None = None,
+    schema_file: str | None = None,
+    schema_text: str | None = None,
+) -> tuple[str, ...]:
+    """The harness command of REQUEST, under POLICY, that runs in WORKTREE.
+
+    An `exec` run reads its brief on stdin, except agy, which takes AGY_BRIEF as
+    the argument of `--print`. A `start` run gets a pointer to BRIEF_FILE.
+    AGY_PROJECT is the id of agy's per-run project.
+
+    Raises:
+        Invalid: POLICY was built for another harness or profile than REQUEST's,
+            or an agy run lacks its project, its brief or its timeout.
+    """
+    if policy.harness is not request.harness or policy.profile is not request.profile:
+        message = (
+            "argv policy was built for another harness or profile than the request's"
+        )
+        raise Invalid(message)
+    detail = policy.detail
+    if isinstance(detail, CodexPolicy):
+        command = _codex(request, policy, detail, worktree, brief_file)
+        if request.kind is RunKind.EXEC and schema_file is not None:
+            return (*command[:-1], "--output-schema", schema_file, command[-1])
+        return command
+    if isinstance(detail, ClaudePolicy):
+        command = _claude(request, policy, detail, brief_file)
+        if request.kind is RunKind.EXEC and schema_text is not None:
+            return (*command, "--output-format", "json", "--json-schema", schema_text)
+        return command
+    return _agy(request, policy, worktree, brief_file, agy_project, agy_brief)

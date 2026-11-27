@@ -1,0 +1,13 @@
+# SPDX-License-Identifier: Apache-2.0
+# Copyright Tony Burns
+
+exports_files(
+    ["files/.github/actionlint.yaml"],
+    visibility = ["//lint:__pkg__"],
+)
+
+filegroup(
+    name = "repo_files",
+    srcs = glob(["**"]),
+    visibility = ["//visibility:public"],
+)

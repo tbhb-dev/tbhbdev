@@ -1,0 +1,4 @@
+---
+event_gateway_deploy_repo_url: https://github.com/tbhb-dev/event-gateway.git
+event_gateway_deploy_commit: f31b3ec2cd81d22211599ce82b1145fea993ca6d
+event_gateway_deploy_checkout: /home/ops/event-gateway-deploy/repo

@@ -1,0 +1,56 @@
+---
+argument_specs:
+  main:
+    short_description: Create the Linux or macOS agent account with fixed ids
+    description:
+      - Checks all account ids before changing the host. Existing supplementary groups survive.
+    options:
+      agent_account_chezmoi_version:
+        type: str
+        default: 2.73.3
+        description: >-
+          chezmoi release that Linux hosts get at /usr/local/bin/chezmoi, which agent_harness uses
+          as its TOML parser. macOS hosts install it themselves.
+      agent_account_chezmoi_sha256:
+        type: dict
+        default:
+          amd64: 6e5827598cbfc02d132b04f95b5ea10efb5b79230e2a4a0e52df4af144a8ee9f
+          arm64: c9e6a6e71eb5291018e161a8426d7c313cd2e8553c2ca4029511fec2a33bc28c
+        description: >-
+          sha256 of the release's linux tar.gz for each architecture, from its
+          chezmoi_<version>_checksums.txt. Change it with the version.
+      agent_account_tbhbdev_config:
+        type: dict
+        default: {}
+        description: >-
+          TOML tables of strings, integers, booleans, lists, nested tables and arrays of tables.
+          agent.codex.web_search is an inline table. Table names are bare keys in headers;
+          nested and inline keys are quoted strings.
+          Connect endpoints are tailnet HTTPS hostnames.
+      agent_account_claude_profiles:
+        type: dict
+        default: {}
+        description: >-
+          Claude token profiles, profile name to a 1Password reference of the form vault/item/field.
+          Each becomes an [agent.claude.profiles.<name>] table with a token key. The references are not secrets.
+          Rendered only when agent_account_tbhbdev_config is not empty.
+      agent_account_launch_controller:
+        type: bool
+        default: false
+        description: >-
+          Whether this host starts agent runs on others. True makes or adopts an ed25519 launch key
+          in the root-only agent-launch-root directory and copies it out to agent_account_operator
+          under /etc/tbhbdev/agent-launch on Linux or /Library/Application Support/tbhbdev/agent-launch
+          on macOS. Existing delivery keys keep their content. Prints only the public half.
+      agent_account_operator:
+        type: str
+        description: >-
+          The operator account that runs the controller. The launch key task needs it, and the
+          inventory sets it.
+      agent_account_keys:
+        type: list
+        elements: str
+        default: []
+        description: >-
+          Public keys authorized for agent, installed exclusively. An empty list skips the task
+          and leaves authorized_keys untouched, so an unset list cannot lock the agent out.

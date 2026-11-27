@@ -1,0 +1,4 @@
+# {{ ansible_managed }}
+# update-grub reads this after /etc/default/grub, so these settings win.
+GRUB_TIMEOUT_STYLE=menu
+GRUB_TIMEOUT={{ lab_grub_timeout }}

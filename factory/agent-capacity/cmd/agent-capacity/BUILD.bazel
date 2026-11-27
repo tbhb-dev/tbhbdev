@@ -1,0 +1,74 @@
+# SPDX-License-Identifier: Apache-2.0
+# Copyright Tony Burns
+
+load("@rules_go//go:def.bzl", "go_binary", "go_library")
+load("@tbhb_rules//repo:defs.bzl", "repo_files")
+load("//factory:go.bzl", "go_test")
+
+repo_files(visibility = ["//factory/agent-capacity:__pkg__"])
+
+exports_files(
+    ["testdata/agy-usage.json"],
+    visibility = ["//factory/agent-capacity:__pkg__"],
+)
+
+go_library(
+    name = "agent-capacity_lib",
+    srcs = [
+        "codex_probe.go",
+        "main.go",
+        "probe.go",
+        "session.go",
+        "statusline.go",
+    ],
+    importpath = "github.com/tbhb-dev/tbhbdev/factory/agent-capacity/cmd/agent-capacity",
+    visibility = ["//visibility:private"],
+    deps = [
+        "//factory/agent-capacity/internal/capacity",
+        "//factory/agent-capacity/internal/export",
+        "//factory/agent-capacity/internal/session",
+        "//factory/agent-capacity/internal/source/agy",
+        "//factory/agent-capacity/internal/source/claude",
+        "//factory/agent-capacity/internal/source/codex",
+        "//factory/agent-capacity/internal/spool",
+        "@io_opentelemetry_go_otel//:otel",
+        "@io_opentelemetry_go_otel_metric//:metric",
+    ],
+)
+
+go_binary(
+    name = "agent-capacity",
+    embed = [":agent-capacity_lib"],
+    pure = "on",
+    visibility = ["//factory:__subpackages__"],
+)
+
+go_test(
+    name = "agent-capacity_test",
+    srcs = [
+        "agy_test.go",
+        "codex_probe_test.go",
+        "main_test.go",
+        "probe_test.go",
+        "session_test.go",
+        "statusline_test.go",
+        "transcript_test.go",
+    ],
+    data = glob(["testdata/**"]),
+    embed = [":agent-capacity_lib"],
+    visibility = ["//factory/agent-capacity:__pkg__"],
+    deps = [
+        "//factory/agent-capacity/internal/capacity",
+        "//factory/agent-capacity/internal/export",
+        "//factory/agent-capacity/internal/session",
+        "//factory/agent-capacity/internal/source/claude",
+        "//factory/agent-capacity/internal/spool",
+        "@com_github_stretchr_testify//assert",
+        "@com_github_stretchr_testify//require",
+        "@io_opentelemetry_go_otel//:otel",
+        "@io_opentelemetry_go_otel//attribute",
+        "@io_opentelemetry_go_otel_metric//:metric",
+        "@io_opentelemetry_go_otel_sdk_metric//:metric",
+        "@io_opentelemetry_go_otel_sdk_metric//metricdata",
+    ],
+)

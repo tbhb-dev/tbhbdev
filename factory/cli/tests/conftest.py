@@ -1,0 +1,476 @@
+"""Fakes for the tests of plugins, secrets and agent hosts.
+
+`installed` hides every installed tbhbdev plugin from each test and registers
+stub plugins in their place. `config_file` is the user config in a temporary
+XDG_CONFIG_HOME, which no test has until it writes one, and `config` writes
+one of example values there. `connect` starts in-memory 1Password Connect APIs
+on 127.0.0.1. `plain` turns argparse color off for tests that compare help
+and usage exactly.
+"""
+
+from __future__ import annotations
+
+import inspect
+import json
+import os
+import shutil
+import sys
+import threading
+from dataclasses import dataclass, field
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from pathlib import Path
+from typing import TYPE_CHECKING, cast, override
+
+import pytest
+from fake_tool import pr_git_baseline as pr_git_baseline  # noqa: PLC0414
+
+from tbhbdev import plugins
+
+if TYPE_CHECKING:
+    from collections.abc import Callable, Iterator
+
+    from tbhbdev.cli import Tool
+
+type Json = dict[str, object]
+
+
+@pytest.fixture
+def pr_checkout(
+    pr_git_baseline: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> Path:
+    """A checkout seeded with a commit and the origin's tracking refs."""
+    root = tmp_path / "repo"
+    shutil.copytree(pr_git_baseline, root / ".git")
+    monkeypatch.chdir(root)
+    for role in ("AUTHOR", "COMMITTER"):
+        monkeypatch.setenv(f"GIT_{role}_NAME", "Example")
+        monkeypatch.setenv(f"GIT_{role}_EMAIL", "example@example.test")
+    return root
+
+
+# The fake Connect API's own token, which reaches every vault.
+TOKEN = "fake-test-token"  # noqa: S105
+
+
+# Guarded Bazel targets redirect HOME before this module is imported.
+_account_home = os.environ.get("CLI_TEST_ACCOUNT_HOME")
+ACCOUNT_CODEX_HOME = (Path(_account_home) if _account_home else Path.home()) / ".codex"
+type FilePath = str | bytes | os.PathLike[str] | os.PathLike[bytes]
+
+
+def account_auth_write() -> bool:
+    frame = inspect.currentframe()
+    while frame is not None:
+        if (
+            frame.f_globals.get("__name__") == "tbhbdev.alpha.agent.credentials"
+            and frame.f_code.co_name in {"auth_copy", "auth_write_back"}
+        ):
+            return True
+        frame = frame.f_back
+    return False
+
+
+def check_account_codex_write(path: FilePath) -> None:
+    absolute = Path(os.fsdecode(path)).absolute()
+    if absolute.is_relative_to(ACCOUNT_CODEX_HOME) and not account_auth_write():
+        message = "tests must not write account Codex state"
+        raise AssertionError(message)
+
+
+def checked_move(operation: Callable[..., None]) -> Callable[..., None]:
+    def move(
+        source: FilePath, destination: FilePath, *args: object, **kwargs: object
+    ) -> None:
+        check_account_codex_write(source)
+        check_account_codex_write(destination)
+        operation(source, destination, *args, **kwargs)
+
+    return move
+
+
+@pytest.fixture(autouse=True)
+def launching_session(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Tests run as a named session, whatever pane they run in."""
+
+    def session(*_: object) -> tuple[str, str]:
+        return "tools", "session-1"
+
+    # The driver imports launcher when the test module loads.
+    launcher = sys.modules.get("tbhbdev.alpha.agent.launcher")
+    if launcher is not None:
+        monkeypatch.setattr(launcher, "session", session)
+
+
+@pytest.fixture(autouse=True)
+def disable_telemetry(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Keep agent launch tests independent of the host's telemetry settings."""
+    monkeypatch.setenv("OTEL_SDK_DISABLED", "true")
+
+
+@pytest.fixture(autouse=True)
+def guard_account_codex_writes(
+    monkeypatch: pytest.MonkeyPatch,
+) -> Callable[[FilePath], None]:
+    open_file: Callable[..., object] = Path.open
+    make_directory: Callable[..., None] = Path.mkdir
+    open_descriptor: Callable[..., int] = os.open
+
+    def checked_open(
+        path: Path, mode: str = "r", *args: object, **kwargs: object
+    ) -> object:
+        if any(flag in mode for flag in "wax+"):
+            check_account_codex_write(path)
+        return open_file(path, mode, *args, **kwargs)
+
+    def checked_mkdir(path: Path, *args: object, **kwargs: object) -> None:
+        check_account_codex_write(path)
+        make_directory(path, *args, **kwargs)
+
+    def checked_descriptor(
+        path: FilePath, flags: int, *args: object, **kwargs: object
+    ) -> int:
+        if flags & (os.O_WRONLY | os.O_RDWR | os.O_CREAT | os.O_TRUNC | os.O_APPEND):
+            check_account_codex_write(path)
+        return open_descriptor(path, flags, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "open", checked_open)
+    monkeypatch.setattr(Path, "mkdir", checked_mkdir)
+    monkeypatch.setattr(os, "open", checked_descriptor)
+    for name in ("rename", "replace"):
+        monkeypatch.setattr(os, name, checked_move(getattr(os, name)))
+    return check_account_codex_write
+
+
+@pytest.fixture
+def isolated_home(
+    tmp_path_factory: pytest.TempPathFactory, monkeypatch: pytest.MonkeyPatch
+) -> Path:
+    """Point HOME, the XDG directories and CLAUDE_CONFIG_DIR into pytest's tmp.
+
+    The directory sits beside tmp_path, not inside it, because tests list that.
+    A module opts in with `pytestmark`.
+
+    A test that reaches the install code without its own fixture then reads and
+    writes a temporary home, never the operator's settings.
+    """
+    home = tmp_path_factory.mktemp("isolated-home")
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.setenv("CLAUDE_CONFIG_DIR", str(home / ".claude"))
+    for name in ("CONFIG", "DATA", "STATE", "CACHE"):
+        monkeypatch.setenv(f"XDG_{name}_HOME", str(home / f".xdg-{name.lower()}"))
+    return home
+
+
+@pytest.fixture(autouse=True)
+def no_operator_credentials(
+    tmp_path: Path,
+    tmp_path_factory: pytest.TempPathFactory,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Bare op calls fail without reaching the desktop app or an SSH agent.
+
+    The stub's directory is outside tmp_path, which tests list; the agent
+    socket path under tmp_path is never created.
+    """
+    directory = tmp_path_factory.mktemp("no-credentials")
+    stub = directory / "op"
+    stub.write_text(
+        '#!/bin/sh\necho "tests: real 1Password access is disabled" >&2\nexit 1\n'
+    )
+    stub.chmod(0o755)
+    monkeypatch.setenv("PATH", f"{directory}{os.pathsep}{os.environ.get('PATH', '')}")
+    monkeypatch.setenv("SSH_AUTH_SOCK", str(tmp_path / "no-ssh-agent"))
+
+
+@dataclass
+class FakeConnect:
+    """A Connect API: vaults, items, the tokens that reach them, and faults.
+
+    `tokens` maps a token to the vault names it reaches, or None for every
+    vault. `tokens_file` adds the tokens the op stub has created. `status`
+    makes every request answer with that HTTP status. `fail` makes a method,
+    or a "METHOD /path", answer with a status instead of doing its work, and
+    `fail_after` makes a method answer with one after doing it, and `raw`
+    answers every request with that body.
+    """
+
+    vaults: dict[str, str] = field(default_factory=dict)
+    items: dict[str, dict[str, Json]] = field(default_factory=dict)
+    tokens: dict[str, list[str] | None] = field(default_factory=lambda: {TOKEN: None})
+    tokens_file: Path | None = None
+    status: int | None = None
+    fail: dict[str, int] = field(default_factory=dict)
+    fail_after: dict[str, int] = field(default_factory=dict)
+    raw: bytes | None = None
+    requests: list[tuple[str, str]] = field(default_factory=list)
+    url: str = ""
+    count: int = 0
+    token: str = TOKEN
+
+    def vault(self, name: str) -> str:
+        vault_id = f"v{len(self.vaults) + 1}"
+        self.vaults[vault_id] = name
+        self.items[vault_id] = {}
+        return vault_id
+
+    def item(self, vault_id: str, title: str, **values: str) -> str:
+        self.count += 1
+        item_id = f"i{self.count}"
+        self.items[vault_id][item_id] = {
+            "id": item_id,
+            "title": title,
+            "category": "LOGIN",
+            "vault": {"id": vault_id},
+            "version": 1,
+            "fields": [
+                {"id": f"f{n}", "label": k, "type": "CONCEALED", "value": v}
+                for n, (k, v) in enumerate(values.items())
+            ],
+        }
+        return item_id
+
+    def reach(self, auth: str) -> list[str]:
+        tokens = dict(self.tokens)
+        if self.tokens_file is not None and self.tokens_file.exists():
+            tokens.update(json.loads(self.tokens_file.read_text()))
+        token = auth.removeprefix("Bearer ")
+        if token not in tokens:
+            raise KeyError(token)
+        names = tokens[token]
+        if names is None:
+            return list(self.vaults)
+        return [i for i, n in self.vaults.items() if n in names]
+
+    def handle(self, method: str, path: str, auth: str, body: Json | None) -> object:
+        """The answer to one request: a JSON value, or an int status."""
+        self.requests.append((method, path))
+        if self.status is not None:
+            return self.status
+        try:
+            reach = self.reach(auth)
+        except KeyError:
+            return 401
+        parts = path.strip("/").split("/")[1:]
+        if parts == ["vaults"]:
+            return [{"id": v, "name": self.vaults[v]} for v in reach]
+        if parts[1] not in reach:
+            return 403
+        before = self.fail.get(f"{method} {path}", self.fail.get(method))
+        if before is not None:
+            return before
+        answer = self.items_route(method, parts[1], parts[3:], body)
+        return self.fail_after.get(method, answer)
+
+    def items_route(
+        self, method: str, vault_id: str, rest: list[str], body: Json | None
+    ) -> object:
+        items = self.items[vault_id]
+        if not rest:
+            if method == "POST":
+                self.count += 1
+                item = dict(body or {})
+                item["id"] = f"i{self.count}"
+                items[item["id"]] = item
+                return item
+            return [
+                {k: v for k, v in item.items() if k != "fields"}
+                for item in items.values()
+            ]
+        if rest[0] not in items:
+            return 404
+        if method == "DELETE":
+            del items[rest[0]]
+            return None
+        if method == "PUT":
+            items[rest[0]] = dict(body or {})
+        return items[rest[0]]
+
+
+def _handler(fake: FakeConnect) -> type[BaseHTTPRequestHandler]:
+    class Handler(BaseHTTPRequestHandler):
+        def _serve(self) -> None:
+            length = int(self.headers.get("Content-Length") or 0)
+            raw = self.rfile.read(length) if length else b""
+            body = cast("Json", json.loads(raw)) if raw else None
+            auth = self.headers.get("Authorization") or ""
+            if fake.raw is not None:
+                self.send_response(200)
+                self.send_header("Content-Length", str(len(fake.raw)))
+                self.end_headers()
+                self.wfile.write(fake.raw)
+                return
+            answer = fake.handle(self.command, self.path, auth, body)
+            status = answer if isinstance(answer, int) else 200
+            data = b"" if answer is None else json.dumps(answer).encode()
+            if isinstance(answer, int):
+                data = json.dumps({"status": answer, "message": "fake"}).encode()
+            self.send_response(204 if answer is None else status)
+            self.send_header("Content-Length", str(len(data)))
+            self.end_headers()
+            self.wfile.write(data)
+
+        # http.server calls these by name, which vulture can't see.
+        do_GET = do_POST = do_PUT = do_DELETE = _serve  # noqa: N815, V107
+
+        @override  # noqa: V105
+        def log_message(self, format: str, *args: object) -> None:  # noqa: V107
+            """Keep the request log out of the tests' captured stderr."""
+
+    return Handler
+
+
+@pytest.fixture
+def connect() -> Iterator[Callable[[], FakeConnect]]:
+    """Start fake Connect APIs; each call starts one more."""
+    servers: list[ThreadingHTTPServer] = []
+
+    def start() -> FakeConnect:
+        fake = FakeConnect()
+        server = ThreadingHTTPServer(("127.0.0.1", 0), _handler(fake))
+        fake.url = f"http://127.0.0.1:{server.server_address[1]}"
+        threading.Thread(target=server.serve_forever, args=(0.02,), daemon=True).start()
+        servers.append(server)
+        return fake
+
+    yield start
+    for server in servers:
+        server.shutdown()
+        server.server_close()
+
+
+@pytest.fixture
+def plain(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Help and usage at 80 columns, without color, even under -E or FORCE_COLOR."""
+    monkeypatch.setenv("NO_COLOR", "1")
+    monkeypatch.delenv("FORCE_COLOR", raising=False)
+    monkeypatch.setenv("COLUMNS", "80")
+
+
+@dataclass
+class StubPlugin:
+    """A plugin object: extra tools, and config files by name."""
+
+    TOOLS: dict[str, Tool] = field(default_factory=dict)
+    files: dict[str, str] = field(default_factory=dict)
+
+    def config(self, name: str) -> str | None:
+        return self.files.get(name)
+
+
+@dataclass
+class StubEntryPoint:
+    """An entry point that loads TARGET, or raises it when it's an exception."""
+
+    name: str
+    target: object
+
+    def load(self) -> object:
+        if isinstance(self.target, BaseException):
+            raise self.target
+        return self.target
+
+
+@dataclass
+class Installed:
+    """The entry points the fake `entry_points` returns, in order."""
+
+    points: list[object] = field(default_factory=list)
+
+    def add(self, name: str, target: object) -> None:
+        self.points.append(StubEntryPoint(name, target))
+        plugins.load.cache_clear()
+
+    def stub(
+        self,
+        name: str,
+        *,
+        tools: dict[str, Tool] | None = None,
+        files: dict[str, str] | None = None,
+    ) -> None:
+        """Add a plugin with TOOLS and the config FILES, by name."""
+        self.add(name, StubPlugin(tools or {}, files or {}))
+
+
+@pytest.fixture(autouse=True)
+def installed(monkeypatch: pytest.MonkeyPatch) -> Iterator[Installed]:
+    """No installed plugin, only the stubs a test adds."""
+    found = Installed()
+
+    def entry_points(*, group: str) -> list[object]:
+        return found.points if group == plugins.GROUP else []
+
+    monkeypatch.setattr(plugins, "entry_points", entry_points)
+    plugins.load.cache_clear()
+    yield found
+    plugins.load.cache_clear()
+
+
+def example_config(urls: list[str] | None = None) -> str:
+    """A complete user config of example values that lists the endpoints URLS.
+
+    Without URLS it has no endpoints, as the operator's config doesn't.
+    """
+    lines = ",\n".join(f'  "{url}"' for url in urls or [])
+    listed = f"endpoints = [\n{lines},\n]\n" if urls else ""
+    head = (
+        '[op]\naccount = "example.1password.com"\n'
+        '[connect]\nserver = "example-connect"\n'
+    )
+    return (
+        head
+        + listed
+        + (
+            'server_hosts = ["nas-a", "nas-b"]\n'
+            'token_prefix = "example-host"\n'
+            '[agent]\nhost_tag = "tag:example-agents"\n'
+            '[vaults]\nall = "vault-all"\nhost_prefix = "vault-"\n'
+            '[gitleaks]\nowners = ["example-org", "example-user"]\n'
+            'session_sockets = ["/tmp/example-socks/"]\n'
+        )
+    )
+
+
+@pytest.fixture(autouse=True)
+def config_file(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
+    """The user config's path, in a temporary XDG_CONFIG_HOME, not yet written."""
+    xdg = tmp_path / "xdg"
+    (xdg / "tbhbdev").mkdir(parents=True)
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(xdg))
+    return xdg / "tbhbdev" / "config.toml"
+
+
+@pytest.fixture
+def config(config_file: Path) -> Callable[[list[str] | None], None]:
+    """Write a user config of example values that lists the endpoints URLS."""
+
+    def supply(urls: list[str] | None) -> None:
+        config_file.write_text(example_config(urls))
+
+    return supply
+
+
+@pytest.fixture
+def isolated_agent_home(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Keep host protocol tests inside one temporary account and repository."""
+    monkeypatch.chdir(tmp_path)
+    for key in (
+        "HOME",
+        "XDG_CONFIG_HOME",
+        "XDG_STATE_HOME",
+        "XDG_CACHE_HOME",
+        "XDG_DATA_HOME",
+    ):
+        monkeypatch.setenv(key, str(tmp_path / key.lower()))
+    for key in ("GIT_DIR", "GIT_WORK_TREE", "GIT_COMMON_DIR"):
+        monkeypatch.delenv(key, raising=False)
+
+
+SAFE_ENVIRONMENT: dict[str, object] = {
+    "reviewers": [{"type": "User", "id": 1}],
+    "can_admins_bypass": False,
+    "prevent_self_review": True,
+    "deployment_branch_policy": {
+        "protected_branches": True,
+        "custom_branch_policies": False,
+    },
+}

@@ -1,0 +1,2104 @@
+# SPDX-License-Identifier: Apache-2.0
+# Copyright Tony Burns
+
+load("@rules_python//python:defs.bzl", "py_binary")
+load("//factory/cli:python.bzl", "cli_py_library")
+load(":pytest.bzl", "cli_py_test")
+
+# gazelle:python_root
+# gazelle:python_resolve_sibling_imports true
+# gazelle:map_kind py_test cli_py_test //factory/cli/tests:pytest.bzl
+# gazelle:resolve py coverage @cli_pip//coverage
+# gazelle:resolve py test_admin_request :test_admin_request_support
+# gazelle:resolve py test_alpha_agent_codex_install :test_alpha_agent_codex_install_support
+# gazelle:resolve py test_alpha_agent_credentials //factory/cli/tests:test_alpha_agent_credentials_support
+# gazelle:resolve py test_alpha_agent_git_parent :test_alpha_agent_git_parent_support
+# gazelle:resolve py test_alpha_agent_request :test_alpha_agent_request_support
+# gazelle:resolve py test_alpha_agent_run_host :test_alpha_agent_run_host_support
+# gazelle:resolve py test_alpha_agent_sandbox_live :test_alpha_agent_sandbox_live_support
+# gazelle:resolve py test_alpha_agent_settings :test_alpha_agent_settings_support
+# gazelle:resolve py test_alpha_pull_request :test_alpha_pull_request_support
+# gazelle:resolve py test_alpha_review_doc :test_alpha_review_doc_support
+
+package(default_testonly = True)
+
+cli_py_library(
+    name = "agent_driver_example",
+    srcs = ["agent_driver_example.py"],
+    pyi_deps = ["@cli_pip//pytest"],
+    visibility = ["//factory/cli/tests:__subpackages__"],
+    deps = [
+        "//factory/cli/src/tbhbdev:version",
+        "//factory/cli/src/tbhbdev/alpha/agent/decisions:argv",
+    ],
+)
+
+cli_py_library(
+    name = "agent_example",
+    srcs = ["agent_example.py"],
+    pyi_deps = ["@cli_pip//pytest"],
+    visibility = ["//factory/cli/tests:__subpackages__"],
+    deps = [
+        "//factory/cli/src/tbhbdev:secrets",
+        "//factory/cli/src/tbhbdev/alpha/agent:model",
+        "//factory/cli/src/tbhbdev/alpha/agent/decisions:argv",
+    ],
+)
+
+cli_py_library(
+    name = "agent_git_plants",
+    srcs = ["agent_git_plants.py"],
+    visibility = ["//factory/cli/tests:__subpackages__"],
+    deps = [":agent_host_example"],
+)
+
+cli_py_library(
+    name = "agent_host_example",
+    srcs = ["agent_host_example.py"],
+    visibility = ["//factory/cli/tests:__subpackages__"],
+    deps = [
+        ":agent_example",
+        "//factory/cli/src/tbhbdev/alpha/agent:build_info",
+        "//factory/cli/src/tbhbdev/alpha/agent:host_tools",
+        "//factory/cli/src/tbhbdev/alpha/agent:model",
+        "//factory/cli/src/tbhbdev/alpha/agent:worktree",
+        "//factory/cli/src/tbhbdev/alpha/agent/decisions:request",
+        "//factory/cli/tests:test_alpha_agent_request_support",
+        "@cli_pip//pytest",
+    ],
+)
+
+cli_py_library(
+    name = "agent_live_evidence",
+    srcs = ["agent_live_evidence.py"],
+    visibility = ["//factory/cli/tests:__subpackages__"],
+    deps = [
+        ":agent_live_probe",
+        "//factory/cli/src/tbhbdev/alpha/agent:credentials",
+        "//factory/cli/src/tbhbdev/alpha/agent:model",
+        "//factory/cli/src/tbhbdev/alpha/agent:run_host",
+        "//factory/cli/src/tbhbdev/alpha/agent:runfiles",
+    ],
+)
+
+py_binary(
+    name = "agent_live_git_commit",
+    srcs = ["agent_live_git_commit.py"],
+    legacy_create_init = False,
+    visibility = ["//factory/cli/tests:__subpackages__"],
+    deps = ["//factory/cli/src/tbhbdev/alpha/agent/decisions:policy"],
+)
+
+py_binary(
+    name = "agent_live_host_probe",
+    srcs = ["agent_live_host_probe.py"],
+    legacy_create_init = False,
+    pyi_deps = ["@cli_pip//pytest"],
+    visibility = ["//factory/cli/tests:__subpackages__"],
+    deps = [
+        "//factory/cli/src/tbhbdev:userconfig",
+        "//factory/cli/src/tbhbdev/alpha/agent:credentials",
+        "//factory/cli/src/tbhbdev/alpha/agent:host_tools",
+        "//factory/cli/src/tbhbdev/alpha/agent:model",
+        "//factory/cli/src/tbhbdev/alpha/agent:run_host",
+        "//factory/cli/src/tbhbdev/alpha/agent:worktree",
+        "//factory/cli/tests:test_alpha_agent_sandbox_live_support",
+    ],
+)
+
+cli_py_library(
+    name = "agent_live_probe",
+    srcs = ["agent_live_probe.py"],
+    visibility = ["//factory/cli/tests:__subpackages__"],
+)
+
+cli_py_library(
+    name = "analytics_fakes",
+    srcs = ["analytics_fakes.py"],
+    visibility = ["//factory/cli/tests:__subpackages__"],
+)
+
+cli_py_library(
+    name = "analytics_server",
+    srcs = ["analytics_server.py"],
+    visibility = ["//factory/cli/tests:__subpackages__"],
+    deps = [
+        ":analytics_fakes",
+        "//factory/cli/src/tbhbdev/analytics:database",
+        "//factory/cli/src/tbhbdev/analytics:settings",
+        "@cli_pip//pytest",
+    ],
+)
+
+cli_py_library(
+    name = "fake_tool",
+    srcs = ["fake_tool.py"],
+    visibility = ["//factory/cli/tests:__subpackages__"],
+    deps = ["@cli_pip//pytest"],
+)
+
+cli_py_library(
+    name = "origin_urls",
+    srcs = ["origin_urls.py"],
+    visibility = ["//factory/cli/tests:__subpackages__"],
+)
+
+cli_py_library(
+    name = "repo_settings_example",
+    srcs = ["repo_settings_example.py"],
+    visibility = ["//factory/cli/tests:__subpackages__"],
+)
+
+cli_py_library(
+    name = "stubtool",
+    srcs = ["stubtool.py"],
+    visibility = ["//factory/cli/tests:__subpackages__"],
+)
+
+cli_py_library(
+    name = "conftest",
+    testonly = True,
+    srcs = ["conftest.py"],
+    extra_deps = ["//factory/cli/src/tbhbdev:__init__"],
+    pyi_deps = ["//factory/cli/src/tbhbdev:cli"],
+    visibility = ["//factory/cli/tests:__subpackages__"],
+    deps = [
+        ":fake_tool",
+        "//factory/cli/src/tbhbdev:plugins",
+        "@cli_pip//pytest",
+    ],
+)
+
+cli_py_test(
+    name = "test_admin",
+    srcs = ["test_admin.py"],
+    deps = [
+        ":conftest",
+        "//factory/cli/src/tbhbdev/admin:audit",
+        "//factory/cli/src/tbhbdev/admin:command",
+        "//factory/cli/src/tbhbdev/admin:request",
+        "//factory/cli/tests:test_admin_request_support",
+        "@cli_pip//httpx2",
+        "@cli_pip//pytest",
+    ],
+)
+
+cli_py_test(
+    name = "test_admin_audit",
+    srcs = ["test_admin_audit.py"],
+    extra_deps = ["//factory/cli/src/tbhbdev/admin:__init__"],
+    deps = [
+        ":conftest",
+        "//factory/cli/src/tbhbdev/admin:audit",
+        "//factory/cli/src/tbhbdev/admin:policy",
+        "//factory/cli/src/tbhbdev/admin:request",
+        "//factory/cli/src/tbhbdev/alpha:gh_app",
+        "@cli_pip//httpx2",
+        "@cli_pip//pytest",
+    ],
+)
+
+cli_py_test(
+    name = "test_admin_audit_receiver",
+    srcs = ["test_admin_audit_receiver.py"],
+    extra_deps = ["//factory/cli/src/tbhbdev/admin:__init__"],
+    deps = [
+        ":conftest",
+        "//factory/cli/src/tbhbdev/admin:audit_receiver",
+        "@cli_pip//pytest",
+    ],
+)
+
+cli_py_test(
+    name = "test_admin_policy",
+    srcs = ["test_admin_policy.py"],
+    extra_deps = ["//factory/cli/src/tbhbdev/admin:__init__"],
+    deps = [
+        ":conftest",
+        "//factory/cli/src/tbhbdev/admin:policy",
+        "@cli_pip//pytest",
+    ],
+)
+
+cli_py_test(
+    name = "test_admin_request",
+    srcs = ["test_admin_request.py"],
+    deps = [
+        ":conftest",
+        "//factory/cli/src/tbhbdev:secrets",
+        "//factory/cli/src/tbhbdev/admin:audit",
+        "//factory/cli/src/tbhbdev/admin:command",
+        "//factory/cli/src/tbhbdev/admin:policy",
+        "//factory/cli/src/tbhbdev/admin:request",
+        "//factory/cli/src/tbhbdev/alpha:gh_app",
+        "@cli_pip//cryptography",
+        "@cli_pip//httpx2",
+        "@cli_pip//pytest",
+    ],
+)
+
+cli_py_test(
+    name = "test_adr",
+    srcs = ["test_adr.py"],
+    deps = [
+        ":conftest",
+        "//factory/cli/src/tbhbdev:adr",
+        "//factory/cli/src/tbhbdev:adr_decision",
+        "//factory/cli/src/tbhbdev:cli",
+        "//factory/cli/src/tbhbdev:content",
+        "//factory/cli/src/tbhbdev/alpha:pull_request_frontmatter",
+        "@cli_pip//pytest",
+    ],
+)
+
+cli_py_test(
+    name = "test_agy_otel",
+    srcs = ["test_agy_otel.py"],
+    data = [":agy_testdata"],
+    deps = [
+        ":conftest",
+        "//factory/cli/src/tbhbdev:agy",
+        "//factory/cli/src/tbhbdev:cli",
+        "@cli_pip//httpx2",
+        "@cli_pip//pytest",
+    ],
+)
+
+cli_py_test(
+    name = "test_alpha",
+    srcs = ["test_alpha.py"],
+    deps = [
+        ":conftest",
+        "//factory/cli/src/tbhbdev:cli",
+        "//factory/cli/src/tbhbdev/alpha:brief",
+        "//factory/cli/src/tbhbdev/alpha:close",
+        "//factory/cli/src/tbhbdev/alpha:command",
+        "//factory/cli/src/tbhbdev/alpha:gh_app",
+        "//factory/cli/src/tbhbdev/alpha:guard_agent_model",
+        "//factory/cli/src/tbhbdev/alpha:guard_gh_config_dir",
+        "//factory/cli/src/tbhbdev/alpha:guard_gh_poll",
+        "//factory/cli/src/tbhbdev/alpha:guard_gh_pr",
+        "//factory/cli/src/tbhbdev/alpha:guard_op",
+        "//factory/cli/src/tbhbdev/alpha:guard_ops_no_lazy_stop",
+        "//factory/cli/src/tbhbdev/alpha:guard_scripts",
+        "//factory/cli/src/tbhbdev/alpha:guard_sendmessage_clock",
+        "//factory/cli/src/tbhbdev/alpha:guard_ssh_agent",
+        "//factory/cli/src/tbhbdev/alpha:pr_stats",
+        "//factory/cli/src/tbhbdev/alpha:pre_push_guard",
+        "//factory/cli/src/tbhbdev/alpha:pull_request",
+        "//factory/cli/src/tbhbdev/alpha:repo_bootstrap",
+        "//factory/cli/src/tbhbdev/alpha:review",
+        "//factory/cli/src/tbhbdev/alpha:run_stop_hook",
+        "//factory/cli/src/tbhbdev/alpha:verify_range",
+        "//factory/cli/src/tbhbdev/alpha:version_check",
+        "//factory/cli/src/tbhbdev/alpha/agent:command",
+        "//factory/cli/src/tbhbdev/alpha/agent:precheck",
+        "//factory/cli/src/tbhbdev/alpha/agent:run_host",
+        "//factory/cli/src/tbhbdev/alpha/agent:settings",
+        "//factory/cli/src/tbhbdev/alpha/agent:signing_parity",
+        "//factory/cli/src/tbhbdev/alpha/agent:ssh_serve",
+        "//factory/cli/src/tbhbdev/alpha/identity:dispatcher",
+        "//factory/cli/src/tbhbdev/alpha/install:command",
+        "//factory/cli/src/tbhbdev/alpha/merge:command",
+        "//factory/cli/src/tbhbdev/alpha/monorepo:command",
+        "//factory/cli/tests:test_alpha_agent_settings_support",
+        "@cli_pip//pytest",
+    ],
+)
+
+cli_py_test(
+    name = "test_alpha_agent_account_paths",
+    srcs = ["test_alpha_agent_account_paths.py"],
+    deps = [
+        ":conftest",
+        "//factory/cli/src/tbhbdev/alpha/agent:credentials",
+        "@cli_pip//pytest",
+    ],
+)
+
+cli_py_test(
+    name = "test_alpha_agent_admission",
+    srcs = ["test_alpha_agent_admission.py"],
+    deps = [
+        ":agent_example",
+        ":conftest",
+        "//factory/cli/src/tbhbdev/alpha/agent:admission",
+        "//factory/cli/src/tbhbdev/alpha/agent:command",
+        "//factory/cli/src/tbhbdev/alpha/agent:model",
+        "@cli_pip//pytest",
+    ],
+)
+
+cli_py_test(
+    name = "test_alpha_agent_argv",
+    srcs = ["test_alpha_agent_argv.py"],
+    deps = [
+        ":agent_example",
+        ":conftest",
+        "//factory/cli/src/tbhbdev/alpha/agent:model",
+        "//factory/cli/src/tbhbdev/alpha/agent/decisions:argv",
+        "//factory/cli/src/tbhbdev/alpha/agent/decisions:policy",
+        "//factory/cli/src/tbhbdev/alpha/install:hooks",
+        "@cli_pip//pytest",
+    ],
+)
+
+cli_py_test(
+    name = "test_alpha_agent_auth",
+    srcs = ["test_alpha_agent_auth.py"],
+    deps = [
+        ":conftest",
+        "//factory/cli/src/tbhbdev/alpha/agent/decisions:auth",
+        "@cli_pip//pytest",
+    ],
+)
+
+cli_py_test(
+    name = "test_alpha_agent_build_info",
+    srcs = ["test_alpha_agent_build_info.py"],
+    deps = [
+        ":agent_host_example",
+        ":conftest",
+        "//factory/cli/src/tbhbdev/alpha/agent:build_info",
+        "@cli_pip//pytest",
+    ],
+)
+
+cli_py_test(
+    name = "test_alpha_agent_codex_install",
+    srcs = ["test_alpha_agent_codex_install.py"],
+    deps = [
+        ":conftest",
+        "//factory/cli/src/tbhbdev/alpha/agent:codex_install",
+        "//factory/cli/src/tbhbdev/alpha/agent:model",
+        "@cli_pip//pytest",
+    ],
+)
+
+cli_py_test(
+    name = "test_alpha_agent_config",
+    srcs = ["test_alpha_agent_config.py"],
+    deps = [
+        ":conftest",
+        "//factory/cli/src/tbhbdev/alpha/agent:model",
+        "//factory/cli/src/tbhbdev/alpha/agent/decisions:config",
+        "@cli_pip//pytest",
+    ],
+)
+
+cli_py_test(
+    name = "test_alpha_agent_credentials",
+    srcs = ["test_alpha_agent_credentials.py"],
+    deps = [
+        ":agent_host_example",
+        ":conftest",
+        "//factory/cli/src/tbhbdev:secrets",
+        "//factory/cli/src/tbhbdev/alpha:gh_app",
+        "//factory/cli/src/tbhbdev/alpha/agent:credentials",
+        "//factory/cli/src/tbhbdev/alpha/agent:model",
+        "//factory/cli/src/tbhbdev/alpha/agent:process_group",
+        "//factory/cli/src/tbhbdev/alpha/agent:runfiles",
+        "@cli_pip//cryptography",
+        "@cli_pip//httpx2",
+        "@cli_pip//pytest",
+        "@cli_pip//pyyaml",
+    ],
+)
+
+cli_py_test(
+    name = "test_alpha_agent_driver",
+    srcs = ["test_alpha_agent_driver.py"],
+    shard_count = 4,
+    deps = [
+        ":agent_cli_example",
+        ":agent_driver_example",
+        ":agent_example",
+        ":conftest",
+        "//factory/cli/src/tbhbdev:version",
+        "//factory/cli/src/tbhbdev/alpha/agent:app_server",
+        "//factory/cli/src/tbhbdev/alpha/agent:arguments",
+        "//factory/cli/src/tbhbdev/alpha/agent:driver",
+        "//factory/cli/src/tbhbdev/alpha/agent:model",
+        "//factory/cli/src/tbhbdev/alpha/agent:render",
+        "//factory/cli/src/tbhbdev/alpha/agent:settings",
+        "//factory/cli/src/tbhbdev/alpha/agent:transport",
+        "//factory/cli/src/tbhbdev/alpha/agent:version_heal",
+        "//factory/cli/src/tbhbdev/alpha/agent/decisions:remote",
+        "//factory/cli/src/tbhbdev/alpha/agent/decisions:repo",
+        "//factory/cli/src/tbhbdev/alpha/agent/decisions:request",
+        "//factory/cli/src/tbhbdev/alpha/agent/decisions:runfiles_names",
+        "@cli_pip//pytest",
+    ],
+)
+
+cli_py_test(
+    name = "test_alpha_agent_driver_decisions",
+    srcs = ["test_alpha_agent_driver_decisions.py"],
+    deps = [
+        ":agent_example",
+        ":conftest",
+        "//factory/cli/src/tbhbdev/alpha/agent:model",
+        "//factory/cli/src/tbhbdev/alpha/agent/decisions:driver",
+        "//factory/cli/src/tbhbdev/alpha/agent/decisions:request",
+        "//factory/cli/src/tbhbdev/alpha/identity:models",
+        "//factory/cli/tests:test_alpha_agent_request_support",
+        "@cli_pip//pytest",
+    ],
+)
+
+cli_py_test(
+    name = "test_alpha_agent_fetch_refs",
+    srcs = ["test_alpha_agent_fetch_refs.py"],
+    deps = [
+        ":agent_driver_example",
+        ":agent_example",
+        ":agent_host_example",
+        ":conftest",
+        "//factory/cli/src/tbhbdev/alpha/agent:arguments",
+        "//factory/cli/src/tbhbdev/alpha/agent:driver",
+        "//factory/cli/src/tbhbdev/alpha/agent:model",
+        "//factory/cli/src/tbhbdev/alpha/agent:worktree",
+        "//factory/cli/src/tbhbdev/alpha/agent/decisions:request",
+        "//factory/cli/tests:test_alpha_agent_request_support",
+        "@cli_pip//pytest",
+    ],
+)
+
+cli_py_test(
+    name = "test_alpha_agent_git_commit_live",
+    srcs = ["test_alpha_agent_git_commit_live.py"],
+    deps = [
+        ":agent_host_example",
+        ":agent_live_evidence",
+        ":agent_live_git_commit",
+        ":conftest",
+        "//factory/cli/src/tbhbdev/alpha/agent:model",
+        "//factory/cli/src/tbhbdev/alpha/agent:worktree",
+        "//factory/cli/src/tbhbdev/alpha/agent/decisions:policy",
+        "//factory/cli/src/tbhbdev/alpha/identity:dispatcher",
+        "//factory/cli/src/tbhbdev/alpha/install:scripts",
+        "//factory/cli/tests:test_alpha_agent_git_parent_support",
+        "//factory/cli/tests:test_alpha_agent_sandbox_live_support",
+        "@cli_pip//pytest",
+    ],
+)
+
+cli_py_test(
+    name = "test_alpha_agent_git_parent",
+    srcs = ["test_alpha_agent_git_parent.py"],
+    deps = [
+        ":agent_git_plants",
+        ":agent_host_example",
+        ":agent_live_evidence",
+        ":agent_live_host_probe",
+        ":conftest",
+        "//factory/cli/src/tbhbdev/alpha/agent:credentials",
+        "//factory/cli/src/tbhbdev/alpha/agent:host_tools",
+        "//factory/cli/src/tbhbdev/alpha/agent:model",
+        "//factory/cli/src/tbhbdev/alpha/agent:run_host",
+        "//factory/cli/src/tbhbdev/alpha/agent:worktree",
+        "//factory/cli/src/tbhbdev/alpha/agent/decisions:argv",
+        "//factory/cli/src/tbhbdev/alpha/agent/decisions:policy",
+        "//factory/cli/tests:test_alpha_agent_run_host_support",
+        "//factory/cli/tests:test_alpha_agent_sandbox_live_support",
+        "@cli_pip//pytest",
+    ],
+)
+
+cli_py_test(
+    name = "test_alpha_agent_host_tools",
+    srcs = ["test_alpha_agent_host_tools.py"],
+    deps = [
+        ":agent_example",
+        ":agent_host_example",
+        ":conftest",
+        "//factory/cli/src/tbhbdev/alpha/agent:host_tools",
+        "//factory/cli/src/tbhbdev/alpha/agent:model",
+        "@cli_pip//pytest",
+    ],
+)
+
+cli_py_test(
+    name = "test_alpha_agent_invariants",
+    srcs = ["test_alpha_agent_invariants.py"],
+    data = ["//factory/cli:source_files"],
+    deps = [
+        ":conftest",
+        "@cli_pip//pytest",
+    ],
+)
+
+cli_py_test(
+    name = "test_alpha_agent_launcher",
+    srcs = ["test_alpha_agent_launcher.py"],
+    deps = [
+        ":agent_cli_example",
+        ":agent_driver_example",
+        ":agent_example",
+        ":conftest",
+        "//factory/cli/src/tbhbdev/alpha/agent:driver",
+        "//factory/cli/src/tbhbdev/alpha/agent:launcher",
+        "//factory/cli/src/tbhbdev/alpha/agent:model",
+        "//factory/cli/src/tbhbdev/alpha/agent:settings",
+        "//factory/cli/src/tbhbdev/alpha/agent/decisions:launcher",
+        "@cli_pip//pytest",
+    ],
+)
+
+cli_py_test(
+    name = "test_alpha_agent_limits",
+    srcs = ["test_alpha_agent_limits.py"],
+    deps = [
+        ":agent_cli_example",
+        ":agent_driver_example",
+        ":agent_example",
+        ":conftest",
+        "//factory/cli/src/tbhbdev/alpha/agent:driver",
+        "//factory/cli/src/tbhbdev/alpha/agent:model",
+        "//factory/cli/src/tbhbdev/alpha/agent:settings",
+        "//factory/cli/src/tbhbdev/alpha/agent/decisions:limits",
+        "//factory/cli/src/tbhbdev/alpha/agent/decisions:remote",
+        "@cli_pip//pytest",
+    ],
+)
+
+cli_py_test(
+    name = "test_alpha_agent_live_auth",
+    srcs = ["test_alpha_agent_live_auth.py"],
+    deps = [
+        ":agent_live_evidence",
+        ":conftest",
+        "//factory/cli/src/tbhbdev/alpha/agent:model",
+        "//factory/cli/src/tbhbdev/alpha/agent:run_host",
+        "//factory/cli/tests:test_alpha_agent_git_parent_support",
+        "//factory/cli/tests:test_alpha_agent_run_host_support",
+        "@cli_pip//pytest",
+    ],
+)
+
+cli_py_test(
+    name = "test_alpha_agent_live_command",
+    srcs = ["test_alpha_agent_live_command.py"],
+    data = glob(["test_*.py"]) + ["//factory/cli:agent_docs"],
+    deps = [":conftest"],
+)
+
+cli_py_test(
+    name = "test_alpha_agent_live_evidence",
+    srcs = ["test_alpha_agent_live_evidence.py"],
+    deps = [
+        ":agent_live_evidence",
+        ":agent_live_probe",
+        ":conftest",
+        "//factory/cli/src/tbhbdev/alpha/agent:credentials",
+        "//factory/cli/src/tbhbdev/alpha/agent:model",
+        "//factory/cli/src/tbhbdev/alpha/agent:run_host",
+        "//factory/cli/src/tbhbdev/alpha/agent/decisions:policy",
+        "//factory/cli/tests:test_alpha_agent_sandbox_live_support",
+        "@cli_pip//pytest",
+    ],
+)
+
+cli_py_test(
+    name = "test_alpha_agent_ownership",
+    srcs = ["test_alpha_agent_ownership.py"],
+    deps = [
+        ":conftest",
+        "//factory/cli/src/tbhbdev/alpha/agent:ownership",
+        "//factory/cli/src/tbhbdev/alpha/agent:runfiles",
+        "@cli_pip//pytest",
+    ],
+)
+
+cli_py_test(
+    name = "test_alpha_agent_policy",
+    srcs = ["test_alpha_agent_policy.py"],
+    deps = [
+        ":agent_example",
+        ":conftest",
+        "//factory/cli/src/tbhbdev:secrets",
+        "//factory/cli/src/tbhbdev/alpha/agent:host_tools",
+        "//factory/cli/src/tbhbdev/alpha/agent:model",
+        "//factory/cli/src/tbhbdev/alpha/agent/decisions:policy",
+        "@cli_pip//pytest",
+    ],
+)
+
+cli_py_test(
+    name = "test_alpha_agent_precheck",
+    srcs = ["test_alpha_agent_precheck.py"],
+    deps = [
+        ":conftest",
+        "//factory/cli/src/tbhbdev/alpha/agent:precheck",
+        "@cli_pip//pytest",
+    ],
+)
+
+cli_py_test(
+    name = "test_alpha_agent_preparation",
+    srcs = ["test_alpha_agent_preparation.py"],
+    deps = [
+        ":agent_host_example",
+        ":conftest",
+        "//factory/cli/src/tbhbdev/alpha/agent:model",
+        "//factory/cli/src/tbhbdev/alpha/agent:process_group",
+        "//factory/cli/src/tbhbdev/alpha/agent:runfiles",
+        "//factory/cli/src/tbhbdev/alpha/agent:worktree",
+        "@cli_pip//pytest",
+    ],
+)
+
+cli_py_test(
+    name = "test_alpha_agent_process_group",
+    srcs = ["test_alpha_agent_process_group.py"],
+    deps = [
+        ":agent_host_example",
+        ":conftest",
+        "//factory/cli/src/tbhbdev/alpha/agent:model",
+        "//factory/cli/src/tbhbdev/alpha/agent:process_group",
+        "//factory/cli/src/tbhbdev/alpha/agent:runfiles",
+        "//factory/cli/src/tbhbdev/alpha/agent/decisions:run_state",
+        "@cli_pip//pytest",
+    ],
+)
+
+cli_py_test(
+    name = "test_alpha_agent_push",
+    srcs = ["test_alpha_agent_push.py"],
+    deps = [
+        ":agent_host_example",
+        ":conftest",
+        ":runfile_fixtures",
+        "//factory/cli/src/tbhbdev/alpha/agent:credentials",
+        "//factory/cli/src/tbhbdev/alpha/agent:push",
+        "//factory/cli/src/tbhbdev/alpha/agent:run_host",
+        "//factory/cli/src/tbhbdev/alpha/agent:runfiles",
+        "@cli_pip//pytest",
+    ],
+)
+
+cli_py_test(
+    name = "test_alpha_agent_remote",
+    srcs = ["test_alpha_agent_remote.py"],
+    data = [
+        "agent_driver_example.py",
+        "agent_example.py",
+        "//factory/cli/src/tbhbdev/alpha/agent:package_files",
+        "//factory/cli/src/tbhbdev/alpha/agent/decisions:package_files",
+    ],
+    deps = [
+        ":conftest",
+        "//factory/cli/src/tbhbdev/alpha/agent/decisions:runfiles_names",
+    ],
+)
+
+cli_py_test(
+    name = "test_alpha_agent_remote_safety",
+    srcs = ["test_alpha_agent_remote_safety.py"],
+    pyi_deps = ["//factory/cli/src/tbhbdev/alpha/agent:model"],
+    deps = [
+        ":agent_cli_example",
+        ":agent_driver_example",
+        ":agent_example",
+        ":conftest",
+        "//factory/cli/src/tbhbdev/alpha/agent:arguments",
+        "//factory/cli/src/tbhbdev/alpha/agent:driver",
+        "//factory/cli/src/tbhbdev/alpha/agent:settings",
+        "//factory/cli/src/tbhbdev/alpha/agent:transport",
+        "//factory/cli/src/tbhbdev/alpha/agent/decisions:policy",
+        "//factory/cli/src/tbhbdev/alpha/agent/decisions:remote",
+        "@cli_pip//pytest",
+    ],
+)
+
+cli_py_test(
+    name = "test_alpha_agent_render",
+    srcs = ["test_alpha_agent_render.py"],
+    deps = [
+        ":conftest",
+        "//factory/cli/src/tbhbdev/alpha/agent:model",
+        "//factory/cli/src/tbhbdev/alpha/agent:render",
+    ],
+)
+
+cli_py_test(
+    name = "test_alpha_agent_repo",
+    srcs = ["test_alpha_agent_repo.py"],
+    deps = [
+        ":conftest",
+        "//factory/cli/src/tbhbdev/alpha/agent:model",
+        "//factory/cli/src/tbhbdev/alpha/agent/decisions:repo",
+        "@cli_pip//pytest",
+    ],
+)
+
+cli_py_test(
+    name = "test_alpha_agent_request",
+    srcs = ["test_alpha_agent_request.py"],
+    deps = [
+        ":conftest",
+        "//factory/cli/src/tbhbdev/alpha/agent:model",
+        "//factory/cli/src/tbhbdev/alpha/agent/decisions:request",
+        "@cli_pip//pytest",
+    ],
+)
+
+cli_py_test(
+    name = "test_alpha_agent_review_post",
+    srcs = ["test_alpha_agent_review_post.py"],
+    pyi_deps = ["//factory/cli/src/tbhbdev/alpha/agent:run_host"],
+    deps = [
+        ":conftest",
+        ":cue_fixtures",
+        "//factory/cli/src/tbhbdev:content",
+        "//factory/cli/src/tbhbdev/alpha:review",
+        "//factory/cli/src/tbhbdev/alpha:review_doc",
+        "//factory/cli/src/tbhbdev/alpha:run_stop_hook",
+        "//factory/cli/src/tbhbdev/alpha/agent:credentials",
+        "//factory/cli/src/tbhbdev/alpha/agent:model",
+        "//factory/cli/src/tbhbdev/alpha/agent:review_post",
+        "//factory/cli/src/tbhbdev/alpha/agent:runfiles",
+        "//factory/cli/src/tbhbdev/alpha/agent/decisions:request",
+        "//factory/cli/src/tbhbdev/alpha/identity:dispatcher",
+        "@cli_pip//httpx2",
+        "@cli_pip//pytest",
+    ],
+)
+
+cli_py_test(
+    name = "test_alpha_agent_run_host",
+    size = "large",
+    timeout = "long",
+    srcs = ["test_alpha_agent_run_host.py"],
+    shard_count = 3,
+    deps = [
+        ":agent_host_example",
+        ":conftest",
+        ":runfile_fixtures",
+        "//factory/cli/src/tbhbdev:secrets",
+        "//factory/cli/src/tbhbdev/alpha:run_stop_hook",
+        "//factory/cli/src/tbhbdev/alpha/agent:admission",
+        "//factory/cli/src/tbhbdev/alpha/agent:bazel_servers",
+        "//factory/cli/src/tbhbdev/alpha/agent:codex_install",
+        "//factory/cli/src/tbhbdev/alpha/agent:credentials",
+        "//factory/cli/src/tbhbdev/alpha/agent:host_tools",
+        "//factory/cli/src/tbhbdev/alpha/agent:model",
+        "//factory/cli/src/tbhbdev/alpha/agent:process_group",
+        "//factory/cli/src/tbhbdev/alpha/agent:render",
+        "//factory/cli/src/tbhbdev/alpha/agent:run_host",
+        "//factory/cli/src/tbhbdev/alpha/agent:runfiles",
+        "//factory/cli/src/tbhbdev/alpha/agent:shims",
+        "//factory/cli/src/tbhbdev/alpha/agent/decisions:policy",
+        "//factory/cli/src/tbhbdev/alpha/agent/decisions:request",
+        "//factory/cli/src/tbhbdev/alpha/agent/decisions:run_state",
+        "//factory/cli/src/tbhbdev/alpha/install:hooks",
+        "//factory/cli/tests:test_alpha_agent_codex_install_support",
+        "//factory/cli/tests:test_alpha_agent_credentials_support",
+        "//factory/cli/tests:test_alpha_agent_settings_support",
+        "@cli_pip//httpx2",
+        "@cli_pip//pytest",
+    ],
+)
+
+cli_py_test(
+    name = "test_alpha_agent_run_state",
+    srcs = ["test_alpha_agent_run_state.py"],
+    deps = [
+        ":conftest",
+        "//factory/cli/src/tbhbdev/alpha/agent:model",
+        "//factory/cli/src/tbhbdev/alpha/agent:render",
+        "//factory/cli/src/tbhbdev/alpha/agent/decisions:run_state",
+        "@cli_pip//pytest",
+    ],
+)
+
+cli_py_test(
+    name = "test_alpha_agent_runfiles",
+    srcs = ["test_alpha_agent_runfiles.py"],
+    deps = [
+        ":agent_host_example",
+        ":conftest",
+        "//factory/cli/src/tbhbdev/alpha/agent:model",
+        "//factory/cli/src/tbhbdev/alpha/agent:runfiles",
+        "//factory/cli/src/tbhbdev/alpha/agent/decisions:request",
+        "//factory/cli/tests:test_alpha_agent_request_support",
+        "@cli_pip//pytest",
+    ],
+)
+
+cli_py_test(
+    name = "test_alpha_agent_sandbox_live",
+    srcs = ["test_alpha_agent_sandbox_live.py"],
+    deps = [
+        ":agent_example",
+        ":agent_host_example",
+        ":agent_live_evidence",
+        ":agent_live_probe",
+        ":conftest",
+        "//factory/cli/src/tbhbdev/alpha/agent:credentials",
+        "//factory/cli/src/tbhbdev/alpha/agent:model",
+        "//factory/cli/src/tbhbdev/alpha/agent:run_host",
+        "//factory/cli/src/tbhbdev/alpha/agent:runfiles",
+        "//factory/cli/src/tbhbdev/alpha/agent/decisions:policy",
+        "@cli_pip//pytest",
+    ],
+)
+
+cli_py_test(
+    name = "test_alpha_agent_sandbox_live_host",
+    srcs = ["test_alpha_agent_sandbox_live_host.py"],
+    deps = [
+        ":agent_host_example",
+        ":agent_live_evidence",
+        ":agent_live_host_probe",
+        ":conftest",
+        "//factory/cli/src/tbhbdev/alpha/agent:credentials",
+        "//factory/cli/src/tbhbdev/alpha/agent:host_tools",
+        "//factory/cli/src/tbhbdev/alpha/agent:model",
+        "//factory/cli/src/tbhbdev/alpha/agent:run_host",
+        "//factory/cli/tests:test_alpha_agent_codex_install_support",
+        "//factory/cli/tests:test_alpha_agent_sandbox_live_support",
+        "@cli_pip//pytest",
+    ],
+)
+
+cli_py_test(
+    name = "test_alpha_agent_settings",
+    srcs = ["test_alpha_agent_settings.py"],
+    deps = [
+        ":conftest",
+        "//factory/cli/src/tbhbdev:userconfig",
+        "//factory/cli/src/tbhbdev/alpha/agent:arguments",
+        "//factory/cli/src/tbhbdev/alpha/agent:model",
+        "//factory/cli/src/tbhbdev/alpha/agent:settings",
+        "@cli_pip//pytest",
+    ],
+)
+
+cli_py_test(
+    name = "test_alpha_agent_shims",
+    srcs = ["test_alpha_agent_shims.py"],
+    deps = [
+        ":conftest",
+        "//factory/cli/src/tbhbdev/alpha/agent:model",
+        "//factory/cli/src/tbhbdev/alpha/agent:shims",
+        "@cli_pip//pytest",
+    ],
+)
+
+cli_py_test(
+    name = "test_alpha_agent_signing_parity",
+    srcs = ["test_alpha_agent_signing_parity.py"],
+    deps = [
+        ":agent_example",
+        ":conftest",
+        "//factory/cli/src/tbhbdev/alpha/agent:model",
+        "//factory/cli/src/tbhbdev/alpha/agent:settings",
+        "//factory/cli/src/tbhbdev/alpha/agent:signing_parity",
+        "//factory/cli/src/tbhbdev/alpha/agent:transport",
+        "@cli_pip//httpx2",
+        "@cli_pip//pytest",
+    ],
+)
+
+cli_py_test(
+    name = "test_alpha_agent_ssh_serve",
+    srcs = ["test_alpha_agent_ssh_serve.py"],
+    deps = [
+        ":agent_host_example",
+        ":conftest",
+        ":runfile_fixtures",
+        "//factory/cli/src/tbhbdev/alpha/agent:build_info",
+        "//factory/cli/src/tbhbdev/alpha/agent:process_group",
+        "//factory/cli/src/tbhbdev/alpha/agent:run_host",
+        "//factory/cli/src/tbhbdev/alpha/agent:runfiles",
+        "//factory/cli/src/tbhbdev/alpha/agent:ssh_serve",
+        "//factory/cli/src/tbhbdev/alpha/agent/decisions:run_state",
+        "@cli_pip//pytest",
+    ],
+)
+
+cli_py_test(
+    name = "test_alpha_agent_state_home",
+    srcs = ["test_alpha_agent_state_home.py"],
+    deps = [
+        ":agent_host_example",
+        ":conftest",
+        "//factory/cli/src/tbhbdev/alpha/agent:run_host",
+        "//factory/cli/src/tbhbdev/alpha/agent:worktree",
+        "//factory/cli/tests:test_alpha_agent_run_host_support",
+        "@cli_pip//pytest",
+    ],
+)
+
+cli_py_test(
+    name = "test_alpha_agent_terminal_descriptors",
+    srcs = ["test_alpha_agent_terminal_descriptors.py"],
+    deps = [
+        ":agent_live_host_probe",
+        ":conftest",
+        "@cli_pip//pytest",
+    ],
+)
+
+cli_py_test(
+    name = "test_alpha_agent_transport",
+    srcs = ["test_alpha_agent_transport.py"],
+    deps = [
+        ":agent_driver_example",
+        ":agent_example",
+        ":conftest",
+        "//factory/cli/src/tbhbdev/alpha/agent:model",
+        "//factory/cli/src/tbhbdev/alpha/agent:transport",
+        "//factory/cli/src/tbhbdev/alpha/agent/decisions:remote",
+        "@cli_pip//pytest",
+    ],
+)
+
+cli_py_test(
+    name = "test_alpha_agent_version_heal",
+    srcs = ["test_alpha_agent_version_heal.py"],
+    deps = [
+        ":agent_cli_example",
+        ":agent_driver_example",
+        ":agent_example",
+        ":agent_host_example",
+        ":conftest",
+        "//factory/cli/src/tbhbdev:version",
+        "//factory/cli/src/tbhbdev/alpha:version_check",
+        "//factory/cli/src/tbhbdev/alpha/agent:driver",
+        "//factory/cli/src/tbhbdev/alpha/agent:model",
+        "//factory/cli/src/tbhbdev/alpha/agent:settings",
+        "//factory/cli/src/tbhbdev/alpha/agent:transport",
+        "//factory/cli/src/tbhbdev/alpha/agent:version_heal",
+        "//factory/cli/src/tbhbdev/alpha/agent/decisions:remote",
+        "@cli_pip//pytest",
+    ],
+)
+
+cli_py_test(
+    name = "test_alpha_agent_worktree",
+    srcs = ["test_alpha_agent_worktree.py"],
+    deps = [
+        ":agent_host_example",
+        ":conftest",
+        "//factory/cli/src/tbhbdev/alpha/agent:model",
+        "//factory/cli/src/tbhbdev/alpha/agent:worktree",
+        "//factory/cli/src/tbhbdev/alpha/identity:dispatcher",
+        "//factory/cli/src/tbhbdev/alpha/install:scripts",
+        "@cli_pip//pytest",
+    ],
+)
+
+cli_py_test(
+    name = "test_alpha_brief",
+    srcs = ["test_alpha_brief.py"],
+    deps = [
+        ":conftest",
+        "//factory/cli/src/tbhbdev/alpha:brief",
+        "@cli_pip//pytest",
+    ],
+)
+
+cli_py_test(
+    name = "test_alpha_close",
+    srcs = ["test_alpha_close.py"],
+    pyi_deps = ["//factory/cli/src/tbhbdev/alpha/agent:model"],
+    deps = [
+        ":agent_example",
+        ":conftest",
+        "//factory/cli/src/tbhbdev:userconfig",
+        "//factory/cli/src/tbhbdev/alpha:close",
+        "//factory/cli/src/tbhbdev/alpha:opened",
+        "//factory/cli/src/tbhbdev/alpha:pull_request",
+        "//factory/cli/src/tbhbdev/alpha/identity:dispatcher",
+        "@cli_pip//pytest",
+    ],
+)
+
+cli_py_test(
+    name = "test_alpha_gh_app",
+    srcs = ["test_alpha_gh_app.py"],
+    deps = [
+        ":conftest",
+        "//factory/cli/src/tbhbdev:secrets",
+        "//factory/cli/src/tbhbdev/alpha:gh_app",
+        "@cli_pip//certifi",
+        "@cli_pip//cryptography",
+        "@cli_pip//httpx2",
+        "@cli_pip//pytest",
+    ],
+)
+
+cli_py_test(
+    name = "test_alpha_gh_shim",
+    srcs = ["test_alpha_gh_shim.py"],
+    data = ["//factory/cli/src/tbhbdev:tbhbdev_bin"],
+    extra_deps = ["//factory/cli/src/tbhbdev:cli"],
+    deps = [
+        ":conftest",
+        ":fake_tool",
+        "//factory/cli/src/tbhbdev:userconfig",
+        "//factory/cli/src/tbhbdev/alpha:gh_shim",
+        "@cli_pip//pytest",
+    ],
+)
+
+cli_py_test(
+    name = "test_alpha_guard_agent_model",
+    srcs = ["test_alpha_guard_agent_model.py"],
+    deps = [
+        ":conftest",
+        "//factory/cli/src/tbhbdev/alpha:guard_agent_model",
+        "@cli_pip//pytest",
+    ],
+)
+
+cli_py_test(
+    name = "test_alpha_guard_gh_config_dir",
+    srcs = ["test_alpha_guard_gh_config_dir.py"],
+    deps = [
+        ":conftest",
+        ":stub_fixtures",
+        "//factory/cli/src/tbhbdev/alpha:guard_gh_config_dir",
+        "@cli_pip//pytest",
+    ],
+)
+
+cli_py_test(
+    name = "test_alpha_guard_gh_poll",
+    srcs = ["test_alpha_guard_gh_poll.py"],
+    deps = [
+        ":conftest",
+        "//factory/cli/src/tbhbdev/alpha:guard_gh_poll",
+        "@cli_pip//pytest",
+    ],
+)
+
+cli_py_test(
+    name = "test_alpha_guard_gh_pr",
+    srcs = ["test_alpha_guard_gh_pr.py"],
+    data = [
+        ":alpha_testdata",
+        "//factory/cli/src/tbhbdev:tbhbdev_bin",
+    ],
+    extra_deps = ["//factory/cli/src/tbhbdev:cli"],
+    deps = [
+        ":conftest",
+        ":fake_tool",
+        "//factory/cli/src/tbhbdev/alpha:close",
+        "//factory/cli/src/tbhbdev/alpha:guard_gh_pr",
+        "//factory/cli/src/tbhbdev/alpha:opened",
+        "//factory/cli/src/tbhbdev/alpha:pull_request",
+        "//factory/cli/src/tbhbdev/alpha/identity:dispatcher",
+        "//factory/cli/src/tbhbdev/alpha/merge:options",
+        "@cli_pip//hypothesis",
+        "@cli_pip//pytest",
+    ],
+)
+
+cli_py_test(
+    name = "test_alpha_guard_git_hooks",
+    srcs = ["test_alpha_guard_git_hooks.py"],
+    deps = [
+        ":conftest",
+        "//factory/cli/src/tbhbdev/alpha:guard_gh_poll",
+        "//factory/cli/src/tbhbdev/alpha:guard_git_hooks",
+        "@cli_pip//pytest",
+    ],
+)
+
+cli_py_test(
+    name = "test_alpha_guard_op",
+    srcs = ["test_alpha_guard_op.py"],
+    deps = [
+        ":conftest",
+        "//factory/cli/src/tbhbdev:userconfig",
+        "//factory/cli/src/tbhbdev/alpha:guard_op",
+        "@cli_pip//pytest",
+    ],
+)
+
+cli_py_test(
+    name = "test_alpha_guard_scripts",
+    srcs = ["test_alpha_guard_scripts.py"],
+    deps = [
+        ":conftest",
+        "//factory/cli/src/tbhbdev/alpha:guard_scripts",
+        "@cli_pip//pytest",
+    ],
+)
+
+cli_py_test(
+    name = "test_alpha_guard_ssh_agent",
+    srcs = ["test_alpha_guard_ssh_agent.py"],
+    deps = [
+        ":conftest",
+        "//factory/cli/src/tbhbdev/alpha:guard_ssh_agent",
+        "@cli_pip//pytest",
+    ],
+)
+
+cli_py_test(
+    name = "test_alpha_identity",
+    size = "large",
+    timeout = "long",
+    srcs = ["test_alpha_identity.py"],
+    data = [
+        ":alpha_testdata",
+        "//factory/cli/src/tbhbdev:tbhbdev_bin",
+    ],
+    extra_deps = ["//factory/cli/src/tbhbdev:cli"],
+    shard_count = 4,
+    deps = [
+        ":conftest",
+        ":fake_tool",
+        "//factory/cli/src/tbhbdev/alpha/identity:commands",
+        "//factory/cli/src/tbhbdev/alpha/identity:dispatcher",
+        "//factory/cli/src/tbhbdev/alpha/identity:models",
+        "//factory/cli/src/tbhbdev/alpha/install:hooks",
+        "@cli_pip//hypothesis",
+        "@cli_pip//jsonschema",
+        "@cli_pip//pytest",
+        "@cli_pip//pyyaml",
+    ],
+)
+
+cli_py_test(
+    name = "test_alpha_identity_commands",
+    srcs = ["test_alpha_identity_commands.py"],
+    deps = [
+        "//factory/cli/src/tbhbdev/alpha/identity:commands",
+        "@cli_pip//hypothesis",
+        "@cli_pip//pytest",
+    ],
+)
+
+cli_py_test(
+    name = "test_alpha_monorepo",
+    srcs = ["test_alpha_monorepo.py"],
+    deps = [
+        ":conftest",
+        "//factory/cli/src/tbhbdev/alpha/monorepo:command",
+        "//factory/cli/src/tbhbdev/alpha/monorepo:pathmap",
+        "//factory/cli/src/tbhbdev/alpha/monorepo:source",
+        "@cli_pip//pytest",
+    ],
+)
+
+cli_py_test(
+    name = "test_alpha_opened",
+    srcs = ["test_alpha_opened.py"],
+    deps = [
+        ":conftest",
+        "//factory/cli/src/tbhbdev/alpha:opened",
+        "//factory/cli/src/tbhbdev/alpha/identity:dispatcher",
+        "@cli_pip//pytest",
+    ],
+)
+
+cli_py_test(
+    name = "test_alpha_pr_stats",
+    srcs = ["test_alpha_pr_stats.py"],
+    deps = [
+        ":conftest",
+        "//factory/cli/src/tbhbdev/alpha:pr_stats",
+        "//factory/cli/src/tbhbdev/alpha:pull_request",
+        "@cli_pip//pytest",
+    ],
+)
+
+cli_py_test(
+    name = "test_alpha_pre_push_guard",
+    srcs = ["test_alpha_pre_push_guard.py"],
+    deps = [
+        ":conftest",
+        ":fake_tool",
+        "//factory/cli/src/tbhbdev/alpha:gh_shim",
+        "//factory/cli/src/tbhbdev/alpha:pre_push_guard",
+        "//factory/cli/src/tbhbdev/alpha/agent:worktree",
+        "//factory/cli/src/tbhbdev/alpha/install/git:shims",
+        "@cli_pip//httpx2",
+        "@cli_pip//pytest",
+    ],
+)
+
+cli_py_test(
+    name = "test_alpha_process",
+    srcs = ["test_alpha_process.py"],
+    deps = [
+        ":conftest",
+        "//factory/cli/src/tbhbdev/alpha:process",
+        "//factory/cli/src/tbhbdev/alpha/identity:dispatcher",
+        "@cli_pip//pytest",
+    ],
+)
+
+genrule(
+    name = "rules_tool_pins",
+    testonly = True,
+    srcs = ["@tbhb_rules//pins:tools.json"],
+    outs = ["rules-tool-pins.json"],
+    cmd = "cp $< $@",
+)
+
+cli_py_test(
+    name = "test_alpha_pull_request",
+    size = "large",
+    timeout = "long",
+    srcs = ["test_alpha_pull_request.py"],
+    data = [
+        ":alpha_testdata",
+        ":rules_tool_pins",
+        "//:cli_check_inputs",
+        "//factory/cli/src/tbhbdev:tbhbdev_bin",
+    ],
+    extra_deps = ["//factory/cli/src/tbhbdev:cli"],
+    path_tools = [
+        "@tbhb_rules_cog//:cog",
+        "@tbhb_rules_gitleaks//:gitleaks",
+        "@tbhb_rules_scc//:scc",
+    ],
+    shard_count = 4,
+    deps = [
+        ":conftest",
+        ":fake_tool",
+        "//factory/cli/src/tbhbdev/alpha:opened",
+        "//factory/cli/src/tbhbdev/alpha:pull_request",
+        "//factory/cli/src/tbhbdev/alpha:pull_request_frontmatter",
+        "//factory/cli/src/tbhbdev/alpha:secret_scan",
+        "//factory/cli/src/tbhbdev/alpha:size_gate",
+        "//factory/cli/src/tbhbdev/alpha:tool_pins",
+        "//factory/cli/src/tbhbdev/alpha/identity:dispatcher",
+        "//factory/cli/src/tbhbdev/alpha/identity:trailers",
+        "@cli_pip//hypothesis",
+        "@cli_pip//jsonschema",
+        "@cli_pip//pytest",
+    ],
+)
+
+cli_py_test(
+    name = "test_alpha_pull_request_frontmatter",
+    srcs = ["test_alpha_pull_request_frontmatter.py"],
+    # keep: The shared conftest writes files for its autouse fixtures.
+    deps = [
+        "//factory/cli/src/tbhbdev/alpha:pull_request_frontmatter",
+        "@cli_pip//jsonschema",
+        "@cli_pip//pytest",
+    ],
+)
+
+cli_py_test(
+    name = "test_alpha_repo",
+    srcs = ["test_alpha_repo.py"],
+    deps = [
+        ":conftest",
+        ":origin_urls",
+        "//factory/cli/src/tbhbdev/alpha:repo",
+        "@cli_pip//pytest",
+    ],
+)
+
+cli_py_test(
+    name = "test_alpha_repo_bootstrap",
+    srcs = ["test_alpha_repo_bootstrap.py"],
+    deps = [
+        ":conftest",
+        ":repo_settings_example",
+        "//factory/cli/src/tbhbdev/alpha:repo_bootstrap",
+        "//factory/cli/src/tbhbdev/alpha:repo_settings",
+        "@cli_pip//pytest",
+    ],
+)
+
+cli_py_test(
+    name = "test_alpha_repo_settings",
+    srcs = ["test_alpha_repo_settings.py"],
+    deps = [
+        ":conftest",
+        ":repo_settings_example",
+        "//factory/cli/src/tbhbdev/alpha:repo_settings",
+        "@cli_pip//pytest",
+    ],
+)
+
+cli_py_test(
+    name = "test_alpha_repo_token",
+    srcs = ["test_alpha_repo_token.py"],
+    deps = [
+        ":conftest",
+        "//factory/cli/src/tbhbdev:secrets",
+        "//factory/cli/src/tbhbdev/alpha:gh_app",
+        "//factory/cli/src/tbhbdev/alpha:repo_token",
+        "@cli_pip//cryptography",
+        "@cli_pip//httpx",
+        "@cli_pip//httpx2",
+        "@cli_pip//pytest",
+    ],
+)
+
+cli_py_test(
+    name = "test_alpha_review",
+    srcs = ["test_alpha_review.py"],
+    data = ["//:cli_check_inputs"],
+    deps = [
+        ":conftest",
+        ":cue_fixtures",
+        "//factory/cli/src/tbhbdev/alpha:pull_request",
+        "//factory/cli/src/tbhbdev/alpha:pull_request_frontmatter",
+        "//factory/cli/src/tbhbdev/alpha:review",
+        "//factory/cli/src/tbhbdev/alpha:review_doc",
+        "//factory/cli/tests:test_alpha_pull_request_support",
+        "@cli_pip//jsonschema",
+        "@cli_pip//pytest",
+    ],
+)
+
+cli_py_test(
+    name = "test_alpha_review_doc",
+    srcs = ["test_alpha_review_doc.py"],
+    deps = [
+        ":conftest",
+        ":cue_fixtures",
+        "//factory/cli/src/tbhbdev/alpha:pull_request",
+        "//factory/cli/src/tbhbdev/alpha:review",
+        "//factory/cli/src/tbhbdev/alpha:review_doc",
+        "@cli_pip//pytest",
+    ],
+)
+
+cli_py_test(
+    name = "test_alpha_review_policy",
+    srcs = ["test_alpha_review_policy.py"],
+    deps = [
+        ":conftest",
+        "//factory/cli/src/tbhbdev/alpha:review",
+        "//factory/cli/src/tbhbdev/alpha:review_policy",
+        "@cli_pip//pytest",
+    ],
+)
+
+cli_py_test(
+    name = "test_alpha_review_prompt",
+    srcs = ["test_alpha_review_prompt.py"],
+    deps = [
+        ":conftest",
+        ":cue_fixtures",
+        "//factory/cli/src/tbhbdev:content",
+        "//factory/cli/src/tbhbdev/alpha:review_doc",
+        "//factory/cli/src/tbhbdev/alpha:review_prompt",
+        "@cli_pip//pytest",
+    ],
+)
+
+cli_py_test(
+    name = "test_alpha_review_threads",
+    srcs = ["test_alpha_review_threads.py"],
+    deps = [
+        ":conftest",
+        "//factory/cli/src/tbhbdev/alpha:review",
+        "//factory/cli/src/tbhbdev/alpha:review_threads",
+        "//factory/cli/tests:test_alpha_review_doc_support",
+        "@cli_pip//pytest",
+    ],
+)
+
+cli_py_test(
+    name = "test_alpha_run_stop_hook",
+    srcs = ["test_alpha_run_stop_hook.py"],
+    deps = [
+        ":agent_host_example",
+        ":conftest",
+        "//factory/cli/src/tbhbdev/alpha:run_stop_hook",
+        "@cli_pip//pytest",
+    ],
+)
+
+cli_py_test(
+    name = "test_alpha_secret_scan",
+    srcs = ["test_alpha_secret_scan.py"],
+    data = ["//:cli_check_inputs"],
+    path_tools = ["@tbhb_rules_gitleaks//:gitleaks"],
+    deps = [
+        ":conftest",
+        ":fake_tool",
+        "//factory/cli/src/tbhbdev/alpha:secret_scan",
+        "@cli_pip//pytest",
+    ],
+)
+
+cli_py_test(
+    name = "test_alpha_session_context",
+    srcs = ["test_alpha_session_context.py"],
+    deps = [
+        ":conftest",
+        "//factory/cli/src/tbhbdev/alpha:close",
+        "//factory/cli/src/tbhbdev/alpha:pull_request",
+        "//factory/cli/src/tbhbdev/alpha:session_context",
+        "//factory/cli/src/tbhbdev/alpha/agent:arguments",
+        "//factory/cli/src/tbhbdev/alpha/merge:options",
+        "@cli_pip//pytest",
+    ],
+)
+
+cli_py_test(
+    name = "test_alpha_size_gate",
+    srcs = ["test_alpha_size_gate.py"],
+    path_tools = ["@tbhb_rules_scc//:scc"],
+    deps = [
+        ":conftest",
+        "//factory/cli/src/tbhbdev/alpha:pull_request",
+        "//factory/cli/src/tbhbdev/alpha:size_gate",
+        "@cli_pip//pytest",
+    ],
+)
+
+cli_py_test(
+    name = "test_alpha_state_guard",
+    srcs = ["test_alpha_state_guard.py"],
+    deps = [
+        ":conftest",
+        "//factory/cli/src/tbhbdev/alpha:state_guard",
+        "@cli_pip//pytest",
+    ],
+)
+
+cli_py_test(
+    name = "test_alpha_verify_range",
+    srcs = ["test_alpha_verify_range.py"],
+    deps = [
+        ":conftest",
+        "//factory/cli/src/tbhbdev/alpha:verify_range",
+        "//factory/cli/src/tbhbdev/alpha/identity:dispatcher",
+        "@cli_pip//pytest",
+    ],
+)
+
+cli_py_test(
+    name = "test_alpha_version_check",
+    srcs = ["test_alpha_version_check.py"],
+    deps = [
+        ":conftest",
+        "//factory/cli/src/tbhbdev/alpha:version_check",
+        "@cli_pip//pytest",
+    ],
+)
+
+cli_py_test(
+    name = "test_alpha_worker_identity",
+    srcs = ["test_alpha_worker_identity.py"],
+    deps = [
+        ":conftest",
+        "//factory/cli/src/tbhbdev/alpha:worker_identity",
+        "@cli_pip//pytest",
+    ],
+)
+
+cli_py_test(
+    name = "test_alpha_worker_identity_io",
+    srcs = ["test_alpha_worker_identity_io.py"],
+    deps = [
+        ":conftest",
+        "//factory/cli/src/tbhbdev/alpha:worker_identity",
+        "@cli_pip//pytest",
+    ],
+)
+
+cli_py_test(
+    name = "test_analytics_catalog",
+    srcs = ["test_analytics_catalog.py"],
+    extra_deps = ["//factory/cli/src/tbhbdev/analytics:__init__"],
+    deps = [
+        ":analytics_fakes",
+        ":conftest",
+        "//factory/cli/src/tbhbdev/analytics:catalog",
+        "//factory/cli/src/tbhbdev/analytics:model",
+        "@cli_pip//pytest",
+    ],
+)
+
+cli_py_test(
+    name = "test_analytics_cli",
+    srcs = ["test_analytics_cli.py"],
+    deps = [
+        ":analytics_fakes",
+        ":conftest",
+        "//factory/cli/src/tbhbdev/analytics:catalog",
+        "//factory/cli/src/tbhbdev/analytics:command",
+        "//factory/cli/src/tbhbdev/analytics:database",
+        "//factory/cli/src/tbhbdev/analytics:model",
+        "//factory/cli/src/tbhbdev/analytics:settings",
+        "@cli_pip//pytest",
+    ],
+)
+
+cli_py_test(
+    name = "test_analytics_config",
+    srcs = ["test_analytics_config.py"],
+    extra_deps = ["//factory/cli/src/tbhbdev/analytics:__init__"],
+    deps = [
+        ":conftest",
+        "//factory/cli/src/tbhbdev/analytics:model",
+        "//factory/cli/src/tbhbdev/analytics/decisions:config",
+        "@cli_pip//pytest",
+    ],
+)
+
+cli_py_test(
+    name = "test_analytics_contract",
+    srcs = ["test_analytics_contract.py"],
+    extra_deps = ["//factory/cli/src/tbhbdev/analytics:__init__"],
+    deps = [
+        ":conftest",
+        "//factory/cli/src/tbhbdev/analytics:model",
+        "//factory/cli/src/tbhbdev/analytics/decisions:contract",
+        "@cli_pip//hypothesis",
+        "@cli_pip//pytest",
+    ],
+)
+
+cli_py_test(
+    name = "test_analytics_data",
+    srcs = ["test_analytics_data.py"],
+    extra_deps = ["//factory/cli/src/tbhbdev/analytics:__init__"],
+    deps = [
+        ":conftest",
+        "@cli_pip//pytest",
+    ],
+)
+
+cli_py_test(
+    name = "test_analytics_database",
+    srcs = ["test_analytics_database.py"],
+    extra_deps = ["//factory/cli/src/tbhbdev/analytics:__init__"],
+    deps = [
+        ":analytics_fakes",
+        ":conftest",
+        "//factory/cli/src/tbhbdev/analytics:database",
+        "//factory/cli/src/tbhbdev/analytics:model",
+        "//factory/cli/src/tbhbdev/analytics/decisions:roles",
+        "//factory/cli/src/tbhbdev/analytics/decisions:scram",
+        "@cli_pip//hypothesis",
+        "@cli_pip//pytest",
+    ],
+)
+
+cli_py_test(
+    name = "test_analytics_diagnostic",
+    srcs = ["test_analytics_diagnostic.py"],
+    extra_deps = ["//factory/cli/src/tbhbdev/analytics:__init__"],
+    deps = [
+        ":conftest",
+        "//factory/cli/src/tbhbdev/analytics/decisions:diagnostic",
+        "@cli_pip//pytest",
+    ],
+)
+
+cli_py_test(
+    name = "test_analytics_migrations",
+    srcs = ["test_analytics_migrations.py"],
+    extra_deps = ["//factory/cli/src/tbhbdev/analytics:__init__"],
+    deps = [
+        ":conftest",
+        "//factory/cli/src/tbhbdev/analytics:model",
+        "//factory/cli/src/tbhbdev/analytics/decisions:migrations",
+        "@cli_pip//hypothesis",
+        "@cli_pip//pytest",
+    ],
+)
+
+cli_py_test(
+    name = "test_analytics_model",
+    srcs = ["test_analytics_model.py"],
+    extra_deps = ["//factory/cli/src/tbhbdev/analytics:__init__"],
+    deps = [
+        ":conftest",
+        "//factory/cli/src/tbhbdev/analytics:model",
+        "@cli_pip//pytest",
+    ],
+)
+
+cli_py_test(
+    name = "test_analytics_render",
+    srcs = ["test_analytics_render.py"],
+    extra_deps = ["//factory/cli/src/tbhbdev/analytics:__init__"],
+    deps = [
+        ":conftest",
+        "//factory/cli/src/tbhbdev/analytics:model",
+        "//factory/cli/src/tbhbdev/analytics:render",
+        "@cli_pip//hypothesis",
+        "@cli_pip//pytest",
+    ],
+)
+
+cli_py_test(
+    name = "test_analytics_roles",
+    srcs = ["test_analytics_roles.py"],
+    extra_deps = ["//factory/cli/src/tbhbdev/analytics:__init__"],
+    deps = [
+        ":conftest",
+        "//factory/cli/src/tbhbdev/analytics:model",
+        "//factory/cli/src/tbhbdev/analytics/decisions:roles",
+        "@cli_pip//pytest",
+    ],
+)
+
+cli_py_test(
+    name = "test_analytics_scram",
+    srcs = ["test_analytics_scram.py"],
+    extra_deps = ["//factory/cli/src/tbhbdev/analytics:__init__"],
+    deps = [
+        ":conftest",
+        "//factory/cli/src/tbhbdev/analytics/decisions:scram",
+        "@cli_pip//pytest",
+    ],
+)
+
+cli_py_test(
+    name = "test_analytics_settings",
+    srcs = ["test_analytics_settings.py"],
+    extra_deps = ["//factory/cli/src/tbhbdev/analytics:__init__"],
+    deps = [
+        ":analytics_fakes",
+        ":conftest",
+        "//factory/cli/src/tbhbdev:userconfig",
+        "//factory/cli/src/tbhbdev/analytics:model",
+        "//factory/cli/src/tbhbdev/analytics:settings",
+        "@cli_pip//pytest",
+    ],
+)
+
+cli_py_test(
+    name = "test_bazel_test_setup",
+    srcs = ["test_bazel_test_setup.py"],
+    data = [
+        "io_test_baseline.txt",
+        "pytest.bzl",
+    ],
+    deps = ["@cli_pip//pytest"],
+)
+
+cli_py_test(
+    name = "test_bazel_test_setup_io",
+    srcs = ["test_bazel_test_setup_io.py"],
+    deps = [
+        ":bazel_test_io",
+        ":conftest",
+        "@cli_pip//pytest",
+    ],
+)
+
+cli_py_test(
+    name = "test_ci_workflow_io",
+    srcs = ["test_ci_workflow_io.py"],
+    data = ["//:.github/workflows/ci.yml"],
+    deps = [
+        ":conftest",
+        "@cli_pip//pytest",
+        "@cli_pip//pyyaml",
+    ],
+)
+
+cli_py_test(
+    name = "test_cli",
+    srcs = ["test_cli.py"],
+    data = ["//factory/cli/src/tbhbdev:tbhbdev_bin"],
+    deps = [
+        ":conftest",
+        "//factory/cli/src/tbhbdev:cli",
+        "@cli_pip//pytest",
+    ],
+)
+
+cli_py_test(
+    name = "test_conftest",
+    srcs = ["test_conftest.py"],
+    pyi_deps = ["@cli_pip//pytest"],
+    deps = [
+        ":conftest",
+        ":stub_fixtures",
+    ],
+)
+
+cli_py_test(
+    name = "test_content",
+    srcs = ["test_content.py"],
+    deps = [
+        ":conftest",
+        "//factory/cli/src/tbhbdev:content",
+        "//factory/cli/src/tbhbdev/alpha:close",
+        "//factory/cli/src/tbhbdev/alpha:pull_request",
+        "@cli_pip//pytest",
+    ],
+)
+
+cli_py_test(
+    name = "test_content_model",
+    srcs = ["test_content_model.py"],
+    data = ["//factory/cli:schemas"],
+    deps = [
+        ":conftest",
+        "//factory/cli/src/tbhbdev:content_model",
+        "@cli_pip//markdown_it_py",
+        "@cli_pip//mdit_py_plugins",
+        "@cli_pip//pytest",
+    ],
+)
+
+cli_py_test(
+    name = "test_content_review",
+    srcs = ["test_content_review.py"],
+    deps = [
+        ":conftest",
+        ":cue_fixtures",
+        "//factory/cli/src/tbhbdev:content",
+        "//factory/cli/src/tbhbdev:cue_runtime",
+        "@cli_pip//pytest",
+    ],
+)
+
+cli_py_test(
+    name = "test_content_vet",
+    srcs = ["test_content_vet.py"],
+    data = ["//factory/cli:schemas"],
+    deps = [
+        ":conftest",
+        "//factory/cli/src/tbhbdev:content",
+        "//factory/cli/src/tbhbdev:content_model",
+        "//factory/cli/src/tbhbdev:content_vet",
+        "//factory/cli/src/tbhbdev:cue_runtime",
+        "@cli_pip//pytest",
+    ],
+)
+
+cli_py_test(
+    name = "test_cue_runtime",
+    srcs = ["test_cue_runtime.py"],
+    deps = [
+        ":conftest",
+        "//factory/cli/src/tbhbdev:cue_runtime",
+        "@cli_pip//httpx2",
+        "@cli_pip//pytest",
+    ],
+)
+
+cli_py_test(
+    name = "test_decision_record",
+    srcs = ["test_decision_record.py"],
+    deps = [
+        ":conftest",
+        "//factory/cli/src/tbhbdev:content",
+        "@cli_pip//pytest",
+    ],
+)
+
+cli_py_test(
+    name = "test_gitleaks_check",
+    srcs = ["test_gitleaks_check.py"],
+    deps = [
+        ":conftest",
+        ":fake_tool",
+        "//factory/cli/src/tbhbdev:gitleaks_check",
+        "//factory/cli/src/tbhbdev/alpha:secret_scan",
+        "@cli_pip//pytest",
+    ],
+)
+
+cli_py_test(
+    name = "test_host_tokens",
+    srcs = ["test_host_tokens.py"],
+    deps = [
+        "//factory/cli/src/tbhbdev:host_tokens",
+        "@cli_pip//pytest",
+    ],
+)
+
+cli_py_test(
+    name = "test_issue",
+    srcs = ["test_issue.py"],
+    deps = [
+        ":conftest",
+        "//factory/cli/src/tbhbdev:cli",
+        "//factory/cli/src/tbhbdev:issue_import",
+        "@cli_pip//pytest",
+    ],
+)
+
+cli_py_test(
+    name = "test_plugins",
+    srcs = ["test_plugins.py"],
+    deps = [
+        ":conftest",
+        "//factory/cli/src/tbhbdev:plugins",
+        "@cli_pip//pytest",
+    ],
+)
+
+cli_py_test(
+    name = "test_prose_check",
+    srcs = ["test_prose_check.py"],
+    deps = [
+        ":conftest",
+        "//factory/cli/src/tbhbdev:prose_check",
+        "//factory/cli/src/tbhbdev/alpha:pull_request",
+        "@cli_pip//pytest",
+    ],
+)
+
+cli_py_test(
+    name = "test_review_data",
+    srcs = ["test_review_data.py"],
+    deps = [
+        ":conftest",
+        "//factory/cli/src/tbhbdev/alpha:review",
+        "@cli_pip//jsonschema",
+        "@cli_pip//pyyaml",
+    ],
+)
+
+cli_py_test(
+    name = "test_runner",
+    srcs = ["test_runner.py"],
+    deps = [
+        ":conftest",
+        "//factory/cli/src/tbhbdev:runner",
+        "@cli_pip//pytest",
+    ],
+)
+
+cli_py_test(
+    name = "test_secret",
+    srcs = ["test_secret.py"],
+    deps = [
+        ":conftest",
+        "//factory/cli/src/tbhbdev:cli",
+        "//factory/cli/src/tbhbdev:secret",
+        "//factory/cli/src/tbhbdev:secrets",
+        "@cli_pip//pytest",
+    ],
+)
+
+cli_py_test(
+    name = "test_secrets",
+    srcs = ["test_secrets.py"],
+    deps = [
+        ":agent_host_example",
+        ":conftest",
+        ":stub_fixtures",
+        "//factory/cli/src/tbhbdev:secrets",
+        "//factory/cli/src/tbhbdev/alpha/agent:credentials",
+        "@cli_pip//cryptography",
+        "@cli_pip//httpx",
+        "@cli_pip//onepasswordconnectsdk",
+        "@cli_pip//pytest",
+    ],
+)
+
+cli_py_test(
+    name = "test_telemetry",
+    srcs = ["test_telemetry.py"],
+    extra_deps = ["//factory/cli/src/tbhbdev:cli"],
+    pyi_deps = ["@cli_pip//opentelemetry_sdk"],
+    deps = [
+        ":agent_cli_example",
+        ":agent_driver_example",
+        ":agent_example",
+        ":conftest",
+        "//factory/cli/src/tbhbdev:telemetry",
+        "//factory/cli/src/tbhbdev/alpha/agent:driver",
+        "//factory/cli/src/tbhbdev/alpha/agent:settings",
+        "@cli_pip//pytest",
+        "@cli_pip//tbhb_telemetry",
+    ],
+)
+
+cli_py_test(
+    name = "test_userconfig",
+    srcs = ["test_userconfig.py"],
+    deps = [
+        ":conftest",
+        "//factory/cli/src/tbhbdev:cli",
+        "//factory/cli/src/tbhbdev:userconfig",
+        "@cli_pip//pytest",
+    ],
+)
+
+cli_py_test(
+    name = "test_version",
+    srcs = ["test_version.py"],
+    deps = [
+        ":conftest",
+        "//factory/cli/src/tbhbdev:cli",
+        "//factory/cli/src/tbhbdev:version",
+        "@cli_pip//pytest",
+    ],
+)
+
+filegroup(
+    name = "package_files",
+    testonly = False,
+    srcs = glob(
+        ["**"],
+        exclude = ["BUILD.bazel"],
+    ) + [
+        "//factory/cli/tests/integration/alpha:test_pull_request_timestamps_io.py",
+        "//factory/cli/tests/integration/alpha/agent:package_files",
+        "//factory/cli/tests/integration/alpha/identity:test_dispatcher_timestamps_io.py",
+        "//factory/cli/tests/unit/alpha:package_files",
+        "//factory/cli/tests/unit/alpha/agent:package_files",
+        "//factory/cli/tests/unit/alpha/agent/decisions:package_files",
+        "//factory/cli/tests/unit/alpha/identity:test_trailers.py",
+        "//factory/cli/tests/unit/alpha/install:package_files",
+        "//factory/cli/tests/unit/alpha/merge:package_files",
+    ],
+    visibility = ["//factory/cli:__pkg__"],
+)
+
+cli_py_library(
+    name = "bazel_test_io",
+    srcs = ["bazel_test_io.py"],
+    visibility = ["//factory/cli/tests:__subpackages__"],
+    deps = ["@cli_pip//pytest"],
+)
+
+cli_py_library(
+    name = "bazel_test_setup",
+    srcs = ["bazel_test_setup.py"],
+    visibility = ["//factory/cli/tests:__subpackages__"],
+    deps = ["@cli_pip//pytest"],
+)
+
+cli_py_library(
+    name = "sitecustomize",
+    srcs = ["sitecustomize.py"],
+    visibility = ["//factory/cli/tests:__subpackages__"],
+    deps = ["@cli_pip//coverage"],
+)
+
+cli_py_library(
+    name = "stub_fixtures",
+    srcs = ["stub_fixtures.py"],
+    extra_deps = [":stubtool"],
+    visibility = ["//factory/cli/tests:__subpackages__"],
+    deps = [
+        "//factory/cli/src/tbhbdev:secrets",
+        "//factory/cli/src/tbhbdev/alpha/agent:host_tools",
+        "@cli_pip//pytest",
+    ],
+)
+
+filegroup(
+    name = "alpha_testdata",
+    srcs = glob(["testdata/alpha/**"]),
+    visibility = ["//factory/cli/tests/unit/alpha/merge:__pkg__"],
+)
+
+filegroup(
+    name = "agy_testdata",
+    srcs = glob(["data/agy/**"]),
+)
+
+cli_py_library(
+    name = "cue_fixtures",
+    srcs = ["cue_fixtures.py"],
+    visibility = ["//factory/cli/tests:__subpackages__"],
+    deps = [
+        "//factory/cli/src/tbhbdev:cue_runtime",
+        "@cli_pip//pytest",
+    ],
+)
+
+cli_py_library(
+    name = "runfile_fixtures",
+    srcs = ["runfile_fixtures.py"],
+    visibility = ["//factory/cli/tests:__subpackages__"],
+    deps = [
+        "//factory/cli/src/tbhbdev/alpha/agent:runfiles",
+        "@cli_pip//pytest",
+    ],
+)
+
+cli_py_test(
+    name = "test_alpha_chase_context",
+    srcs = ["test_alpha_chase_context.py"],
+    deps = [
+        ":conftest",
+        "//factory/cli/src/tbhbdev/alpha:chase_context",
+        "//factory/cli/src/tbhbdev/alpha:command",
+        "@cli_pip//pytest",
+    ],
+)
+
+cli_py_test(
+    name = "test_alpha_worktree_sweep",
+    srcs = ["test_alpha_worktree_sweep.py"],
+    deps = [
+        ":conftest",
+        "//factory/cli/src/tbhbdev/alpha:command",
+        "//factory/cli/src/tbhbdev/alpha:worktree_sweep",
+        "@cli_pip//pytest",
+    ],
+)
+
+cli_py_test(
+    name = "test_alpha_agent_run_host_telemetry",
+    srcs = ["test_alpha_agent_run_host_telemetry.py"],
+    deps = [
+        "//factory/cli/src/tbhbdev/alpha/agent:run_host_telemetry",
+        "@cli_pip//pytest",
+    ],
+)
+
+cli_py_library(
+    name = "agent_cli_example",
+    srcs = ["agent_cli_example.py"],
+    visibility = ["//factory/cli/tests:__subpackages__"],
+    deps = ["//factory/cli/src/tbhbdev:cli"],
+)
+
+cli_py_test(
+    name = "test_alpha_guard_ops_no_lazy_stop",
+    srcs = ["test_alpha_guard_ops_no_lazy_stop.py"],
+    deps = [
+        ":conftest",
+        "//factory/cli/src/tbhbdev/alpha:guard_ops_no_lazy_stop",
+        "@cli_pip//pytest",
+    ],
+)
+
+cli_py_test(
+    name = "test_alpha_guard_sendmessage_clock",
+    srcs = ["test_alpha_guard_sendmessage_clock.py"],
+    deps = [
+        ":conftest",
+        "//factory/cli/src/tbhbdev/alpha:guard_sendmessage_clock",
+        "@cli_pip//pytest",
+    ],
+)
+
+cli_py_test(
+    name = "test_alpha_identity_models",
+    srcs = ["test_alpha_identity_models.py"],
+    deps = [
+        "//factory/cli/src/tbhbdev/alpha/identity:models",
+        "@cli_pip//pytest",
+    ],
+)
+
+cli_py_test(
+    name = "test_alpha_agent_send_failures",
+    srcs = ["test_alpha_agent_send_failures.py"],
+    deps = [
+        ":agent_cli_example",
+        ":agent_driver_example",
+        ":agent_example",
+        ":conftest",
+        "//factory/cli/src/tbhbdev/alpha/agent:app_server",
+        "//factory/cli/src/tbhbdev/alpha/agent:arguments",
+        "//factory/cli/src/tbhbdev/alpha/agent:driver",
+        "//factory/cli/src/tbhbdev/alpha/agent:host_tools",
+        "//factory/cli/src/tbhbdev/alpha/agent:settings",
+        "//factory/cli/src/tbhbdev/alpha/agent:transport",
+        "@cli_pip//pytest",
+    ],
+)

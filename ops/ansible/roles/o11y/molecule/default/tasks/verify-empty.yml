@@ -1,0 +1,50 @@
+---
+- name: verify-empty | Reject a failed first deployment without leaving current set
+  block:
+    - name: verify-empty | Deploy a failing candidate into a fresh root
+      ansible.builtin.include_role:
+        name: o11y
+      vars:
+        o11y_root: /srv/o11y-empty
+        o11y_grafana_root_url: https://grafana.example.invalid/fail/
+
+    - name: verify-empty | Fail when the fresh candidate unexpectedly succeeds
+      ansible.builtin.fail:
+        msg: The fresh candidate unexpectedly passed.
+  rescue:
+    - name: verify-empty | Require the no previous release message
+      ansible.builtin.assert:
+        that: "'No previous release exists' in ansible_failed_result.msg"
+        quiet: true
+
+    - name: verify-empty | Read the fresh root current link
+      ansible.builtin.stat:
+        path: /srv/o11y-empty/current
+        follow: false
+      register: o11y_test_empty
+
+    - name: verify-empty | Require no current link
+      ansible.builtin.assert:
+        that: not o11y_test_empty.stat.exists
+        quiet: true
+
+    - name: verify-empty | Check that the failed stack is down
+      ansible.builtin.command:
+        argv: [docker, compose, ps, -q]
+        chdir: /srv/o11y-empty/releases/{{ o11y_release_id }}
+      register: o11y_test_down
+      changed_when: false
+
+    - name: verify-empty | Require no running services
+      ansible.builtin.assert:
+        that: o11y_test_down.stdout | length == 0
+        quiet: true
+  always:
+    - name: verify-empty | Restart the original test stack after the fresh root case
+      ansible.builtin.include_role:
+        name: o11y
+
+- name: verify-empty | Require the original stack to be up again
+  ansible.builtin.include_tasks: check-current.yml
+  vars:
+    o11y_test_expected: "{{ o11y_root }}/releases/{{ o11y_release_id }}"

@@ -1,0 +1,239 @@
+# SPDX-License-Identifier: Apache-2.0
+# Copyright Tony Burns
+
+load("@rules_python//python:defs.bzl", "py_binary")
+load("@rules_python_gazelle_plugin//manifest:defs.bzl", "gazelle_python_manifest")
+load("@rules_python_gazelle_plugin//modules_mapping:def.bzl", "modules_mapping")
+load("@rules_shell//shell:sh_binary.bzl", "sh_binary")
+load("@tbhb_rules//lint:defs.bzl", "tombi_test", "tree_check_test")
+load(
+    "@tbhb_rules_python//:defs.bzl",
+    "bandit_test",
+    "complexipy_test",
+    "deptry_test",
+    "import_linter_test",
+    "mutmut_test",
+    "pip_audit",
+    "pip_audit_test",
+    "pylint_test",
+    "pyrefly_test",
+    "python_tool",
+    "ruff_test",
+    "vulture_test",
+)
+
+# gazelle:python_extension enabled
+# gazelle:python_generation_mode file
+# gazelle:map_kind py_library cli_py_library //factory/cli:python.bzl
+# gazelle:exclude checks
+
+exports_files(["pyproject.toml"])
+
+py_binary(
+    name = "coverage_py",
+    legacy_create_init = False,
+    main_module = "coverage",
+    deps = ["@cli_pip//coverage"],
+)
+
+sh_binary(
+    name = "coverage",
+    srcs = ["combine_coverage.sh"],
+    args = ["$(rootpath :coverage_py)"],
+    data = [":coverage_py"],
+)
+
+modules_mapping(
+    name = "modules_map",
+    wheels = [
+        "@cli_pip//certifi:whl",
+        "@cli_pip//cryptography:whl",
+        "@cli_pip//httpx:whl",
+        "@cli_pip//httpx2:whl",
+        "@cli_pip//hypothesis:whl",
+        "@cli_pip//jsonschema:whl",
+        "@cli_pip//markdown_it_py:whl",
+        "@cli_pip//mdit_py_plugins:whl",
+        "@cli_pip//onepasswordconnectsdk:whl",
+        "@cli_pip//opentelemetry_sdk:whl",
+        "@cli_pip//psycopg:whl",
+        "@cli_pip//pytest:whl",
+        "@cli_pip//pyyaml:whl",
+        "@cli_pip//tbhb_telemetry:whl",
+        "@cli_pip//tomlkit:whl",
+    ],
+)
+
+gazelle_python_manifest(
+    name = "gazelle_python_manifest",
+    lockfiles = "//:uv.lock",
+    modules_mapping = ":modules_map",
+    pip_repository_name = "cli_pip",
+)
+
+filegroup(
+    name = "cli_files",
+    srcs = glob([
+        "docs/**",
+        "schemas/**",
+    ]) + [
+        "pyproject.toml",
+        ":source_files",
+        "//factory/cli/tests:package_files",
+    ],
+)
+
+filegroup(
+    name = "source_files",
+    srcs = [
+        "//factory/cli/src/tbhbdev:package_files",
+        "//factory/cli/src/tbhbdev/admin:package_files",
+        "//factory/cli/src/tbhbdev/alpha:package_files",
+        "//factory/cli/src/tbhbdev/alpha/agent:package_files",
+        "//factory/cli/src/tbhbdev/alpha/agent/decisions:package_files",
+        "//factory/cli/src/tbhbdev/alpha/merge:package_files",
+        "//factory/cli/src/tbhbdev/alpha/monorepo:package_files",
+        "//factory/cli/src/tbhbdev/analytics:package_files",
+        "//factory/cli/src/tbhbdev/analytics/decisions:package_files",
+    ],
+    visibility = ["//factory/cli/tests:__pkg__"],
+)
+
+filegroup(
+    name = "schemas",
+    srcs = glob(["schemas/**"]),
+    visibility = ["//factory/cli:__subpackages__"],
+)
+
+filegroup(
+    name = "agent_docs",
+    srcs = glob(["docs/reference/alpha/**"]),
+    visibility = ["//factory/cli/tests:__pkg__"],
+)
+
+CLI_CHECK_INPUTS = [
+    ":cli_files",
+    "//:cli_check_inputs",
+]
+
+# Python gates over the tbhbdev package and its tests.
+ruff_test(
+    name = "ruff_test",
+    srcs = CLI_CHECK_INPUTS,
+)
+
+# pyrefly's verdict depends on --python-platform, not the host. The tools
+# drive ssh and run on macOS and Linux only, so there is no win32 check.
+pyrefly_test(
+    name = "pyrefly_test",
+    srcs = CLI_CHECK_INPUTS,
+    args = [
+        "--config",
+        "factory/cli/pyproject.toml",
+        "--python-platform",
+        "linux",
+    ],
+)
+
+import_linter_test(
+    name = "import_linter_test",
+    srcs = CLI_CHECK_INPUTS,
+    chdir = "factory/cli",
+)
+
+pylint_test(
+    name = "pylint_test",
+    srcs = CLI_CHECK_INPUTS,
+    args = ["--rcfile=factory/cli/pyproject.toml"],
+)
+
+python_tool(
+    name = "lint_guards_test_tool",
+    testonly = True,
+    main = "checks/test_lint_guards.py",
+    tags = ["manual"],
+)
+
+tree_check_test(
+    name = "lint_guards_test",
+    srcs = [
+        ":pyproject.toml",
+        ":source_files",
+    ],
+    path_tools = [":import_linter_test.tool"],
+    tool = ":lint_guards_test_tool",
+)
+
+vulture_test(
+    name = "vulture_test",
+    srcs = CLI_CHECK_INPUTS,
+    args = [
+        "--config",
+        "factory/cli/pyproject.toml",
+    ],
+)
+
+complexipy_test(
+    name = "complexipy_test",
+    srcs = CLI_CHECK_INPUTS,
+    args = [
+        "--config",
+        "factory/cli/pyproject.toml",
+    ],
+)
+
+# B101 flags every assert, and asserts are pytest's API.
+bandit_test(
+    name = "bandit_test",
+    srcs = CLI_CHECK_INPUTS,
+    exclude = ["factory/cli/tests/*"],
+)
+
+# deptry checks pyproject.toml's dependencies against the Python under src.
+deptry_test(
+    name = "deptry_test",
+    srcs = CLI_CHECK_INPUTS,
+    chdir = "factory/cli",
+    roots = ["src"],
+)
+
+# The advisory database changes without any input changing: pip_audit_test
+# audits the shared workspace lock when requested.
+pip_audit(
+    name = "pip_audit",
+)
+
+pip_audit_test(
+    name = "pip_audit_test",
+    srcs = CLI_CHECK_INPUTS,
+)
+
+# Ruff from the locked workspace environment.
+python_tool(
+    name = "ruff",
+    tool = "ruff",
+)
+
+# The nightly workflow selects this target explicitly.
+mutmut_test(
+    name = "mutmut_test",
+    srcs = CLI_CHECK_INPUTS,
+    advisory = True,
+    chdir = "factory/cli",
+    cpus = 4,
+    tags = ["manual"],
+)
+
+tombi_test(
+    name = "tombi_test",
+    srcs = [
+        ":pyproject.toml",
+        "//:tombi.toml",
+    ],
+    config = "//:tombi.toml",
+    schemas = {
+        "https://www.schemastore.org/partial-pytest.json": "@schemastore_partial_pytest//file",
+        "https://www.schemastore.org/ruff.json": "@schemastore_ruff//file",
+        "https://www.schemastore.org/uv.json": "@schemastore_uv//file",
+    },
+)

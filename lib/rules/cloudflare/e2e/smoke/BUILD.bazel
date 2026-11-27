@@ -1,0 +1,383 @@
+# SPDX-License-Identifier: Apache-2.0
+# Copyright Tony Burns
+
+load("@aspect_rules_js//js:defs.bzl", "js_test")
+load("@bazel_lib//lib:copy_file.bzl", "copy_file")
+load("@bazel_lib//lib:copy_to_bin.bzl", "copy_to_bin")
+load("@bazel_lib//lib:expand_template.bzl", "expand_template")
+load("@bazel_skylib//rules:build_test.bzl", "build_test")
+load("@bazel_skylib//rules:diff_test.bzl", "diff_test")
+load("@bazel_skylib//rules:write_file.bzl", "write_file")
+load("@npm//:defs.bzl", "npm_link_all_packages")
+load("@tbhb_rules//repo:defs.bzl", "repo_files")
+load("@tbhb_rules//testing:defs.bzl", "expect_failure_test")
+load(
+    "@tbhb_rules_cloudflare//:defs.bzl",
+    "worker_bundle",
+    "worker_deploy",
+    "worker_types_test",
+    "workers_eslint_test",
+    "workers_stryker_test",
+    "workers_tsc_test",
+    "workers_vitest_test",
+)
+
+repo_files()
+
+npm_link_all_packages(name = "node_modules")
+
+WORKER = glob(["src/**"]) + [
+    "package.json",
+    "tsconfig.json",
+    "worker-configuration.d.ts",
+    "wrangler.jsonc",
+]
+
+# One bundle per environment; ms comes from the consumer's node_modules.
+worker_bundle(
+    name = "bundle",
+    srcs = WORKER,
+    node_modules = ":node_modules",
+)
+
+worker_bundle(
+    name = "bundle_stg",
+    srcs = WORKER,
+    env = "stg",
+    node_modules = ":node_modules",
+)
+
+# //deploy:deploy_test runs these against a fake wrangler; the real one
+# would need Cloudflare credentials. The tests may see SMOKE_READ_TOKENS
+# but not SMOKE_MAIN_TOKEN or the credentials.
+worker_deploy(
+    name = "deploy_stg",
+    srcs = WORKER,
+    config = "wrangler.jsonc",
+    env = "stg",
+    node_modules = ":node_modules",
+    optional_secrets = {"EXTRA_TOKEN": "SMOKE_EXTRA_TOKEN"},
+    pass_env = ["SMOKE_READ_TOKENS"],
+    post_deploy = ["//deploy:check"],
+    pre_deploy = ["//deploy:check"],
+    secrets = {
+        "MAIN_TOKEN": "SMOKE_MAIN_TOKEN",
+        "READ_TOKENS": "SMOKE_READ_TOKENS",
+    },
+    tags = ["manual"],
+    url = "https://smoke-stg.example",
+    visibility = ["//deploy:__pkg__"],
+)
+
+worker_deploy(
+    name = "deploy_stg_no_rollback",
+    srcs = WORKER,
+    config = "wrangler.jsonc",
+    env = "stg",
+    node_modules = ":node_modules",
+    pass_env = ["SMOKE_READ_TOKENS"],
+    post_deploy = ["//deploy:check"],
+    pre_deploy = ["//deploy:check"],
+    rollback = False,
+    secrets = {
+        "MAIN_TOKEN": "SMOKE_MAIN_TOKEN",
+        "READ_TOKENS": "SMOKE_READ_TOKENS",
+    },
+    tags = ["manual"],
+    url = "https://smoke-stg.example",
+    visibility = ["//deploy:__pkg__"],
+)
+
+worker_deploy(
+    name = "deploy_stg_timeout",
+    srcs = WORKER,
+    config = "wrangler.jsonc",
+    env = "stg",
+    node_modules = ":node_modules",
+    pass_env = ["SMOKE_READ_TOKENS"],
+    post_deploy = ["//deploy:check"],
+    pre_deploy = ["//deploy:check"],
+    secrets = {
+        "MAIN_TOKEN": "SMOKE_MAIN_TOKEN",
+        "READ_TOKENS": "SMOKE_READ_TOKENS",
+    },
+    tags = ["manual"],
+    test_timeout = 2,
+    url = "https://smoke-stg.example",
+    visibility = ["//deploy:__pkg__"],
+)
+
+# The config declares Durable Object migrations (v1 at the top level, v1 and
+# v2 for stg), so the target compares v2 with the tag the fake API reports.
+worker_deploy(
+    name = "deploy_stg_migrations",
+    srcs = WORKER + ["wrangler.migrations.jsonc"],
+    config = "wrangler.migrations.jsonc",
+    env = "stg",
+    node_modules = ":node_modules",
+    pass_env = ["SMOKE_READ_TOKENS"],
+    post_deploy = ["//deploy:check"],
+    pre_deploy = ["//deploy:check"],
+    secrets = {
+        "MAIN_TOKEN": "SMOKE_MAIN_TOKEN",
+        "READ_TOKENS": "SMOKE_READ_TOKENS",
+    },
+    tags = ["manual"],
+    url = "https://smoke-stg.example",
+    visibility = ["//deploy:__pkg__"],
+)
+
+build_test(
+    name = "bundle_test",
+    targets = [
+        ":bundle",
+        ":bundle_stg",
+    ],
+)
+
+worker_types_test(
+    name = "worker_types_test",
+    srcs = WORKER,
+)
+
+# Runs the .update target in a fresh work tree: it writes the types over an
+# empty or missing file, refuses a foreign one, and leaves no .wrangler.
+# wrangler caches what it fetches from Cloudflare (the request.cf data) only
+# when the network answers, so without it the .wrangler check proves little.
+# The tag would reach the sources' copy actions and clash with the bundles'
+# copies of them, so they're copied apart.
+copy_to_bin(
+    name = "update_srcs",
+    srcs = WORKER,
+)
+
+js_test(
+    name = "update_test",
+    data = [
+        ":update_srcs",
+        ":worker_types_test.update",
+    ],
+    entry_point = "update_test.mjs",
+    env = {"update": "$(rootpath :worker_types_test.update)"},
+    tags = ["requires-network"],
+)
+
+# The generated types are what tsc checks the Worker against.
+workers_tsc_test(
+    name = "tsc_test",
+    srcs = WORKER,
+    node_modules = [":node_modules"],
+)
+
+# Planted: the config gains a binding the checked-in types lack. The first
+# difference is the header's config hash, so this proves the header check;
+# proof_types_body below proves the full-file comparison.
+worker_types_test(
+    name = "proof_types_stale",
+    srcs = WORKER + ["proof/types_stale/wrangler.jsonc"],
+    config = "proof/types_stale/wrangler.jsonc",
+    tags = ["manual"],
+)
+
+expect_failure_test(
+    name = "proof_types_stale_fails",
+    pattern = "check_types: worker-configuration.d.ts differs from what wrangler types writes",
+    test = ":proof_types_stale",
+)
+
+# Planted: a line in the runtime types, below the header. The header still
+# matches, so `wrangler types --check` alone would pass. The proof copies the
+# Worker under proof/types_body/ and checks that copy as the tree's root.
+[
+    copy_file(
+        name = "types_body_" + f.replace("/", "_").replace(".", "_"),
+        src = f,
+        out = "proof/types_body/" + f,
+    )
+    for f in [
+        "src/index.ts",
+        "wrangler.jsonc",
+    ]
+]
+
+expand_template(
+    name = "types_body_planted",
+    out = "proof/types_body/worker-configuration.d.ts",
+    substitutions = {"interface R2Bucket {": "interface R2Bucket {\n\tplanted(): void;"},
+    template = "worker-configuration.d.ts",
+)
+
+worker_types_test(
+    name = "proof_types_body",
+    srcs = [
+        ":types_body_planted",
+        ":types_body_src_index_ts",
+        ":types_body_wrangler_jsonc",
+    ],
+    strip_prefix = "proof/types_body",
+    tags = ["manual"],
+)
+
+expect_failure_test(
+    name = "proof_types_body_fails",
+    pattern = "committed: \tplanted\\(\\): void;",
+    test = ":proof_types_body",
+)
+
+# The sonarjs layer applies to a Worker's check as to any other: the Worker,
+# its tests and its configs pass it.
+workers_eslint_test(
+    name = "eslint_test",
+    srcs = WORKER + [
+        "eslint.config.mjs",
+        "stryker.config.mjs",
+        "vitest.config.mjs",
+    ],
+    node_modules = [":node_modules"],
+)
+
+# Planted: as in typescript/e2e/smoke, a config that turns the layer's rules
+# off, a function over the cognitive complexity ceiling of 15, and a
+# hard-coded credential.
+SONARJS_PROOF = [
+    "proof/sonarjs/eslint.config.mjs",
+    "proof/sonarjs/tsconfig.json",
+    "proof/sonarjs/complexity.ts",
+    "proof/sonarjs/credential.ts",
+]
+
+workers_eslint_test(
+    name = "proof_eslint_sonarjs",
+    srcs = SONARJS_PROOF,
+    node_modules = [":node_modules"],
+    strip_prefix = "proof/sonarjs",
+    tags = ["manual"],
+)
+
+expect_failure_test(
+    name = "proof_eslint_sonarjs_complexity_fails",
+    pattern = "error +Refactor this function to reduce its Cognitive Complexity from 16 to the 15 allowed +sonarjs/cognitive-complexity",
+    test = ":proof_eslint_sonarjs",
+)
+
+expect_failure_test(
+    name = "proof_eslint_sonarjs_credential_fails",
+    pattern = "error +.*password.* +sonarjs/no-hardcoded-passwords",
+    test = ":proof_eslint_sonarjs",
+)
+
+# The Worker's tests run inside workerd, against a local R2 bucket.
+workers_vitest_test(
+    name = "vitest_test",
+    srcs = WORKER + ["vitest.config.mjs"],
+    node_modules = [":node_modules"],
+)
+
+workers_stryker_test(
+    name = "stryker_test",
+    srcs = WORKER + [
+        "stryker.config.mjs",
+        "vitest.config.mjs",
+    ],
+    node_modules = [":node_modules"],
+    tags = ["cpu:1"],
+)
+
+# The converse of typescript/e2e/smoke's plain_launchers_no_workerd_test: a
+# workers check's launcher does reach workerd, so that query can find it.
+genquery(
+    name = "workers_launcher_workerd",
+    expression = "filter('workerd', deps(:vitest_test_launcher))",
+    scope = [":vitest_test_launcher"],
+)
+
+write_file(
+    name = "nothing",
+    out = "nothing.txt",
+    content = [],
+)
+
+diff_test(
+    name = "proof_workers_launcher_no_workerd",
+    file1 = ":workers_launcher_workerd",
+    file2 = ":nothing",
+    tags = ["manual"],
+)
+
+expect_failure_test(
+    name = "proof_workers_launcher_no_workerd_fails",
+    # diff_test prints the differing lines on POSIX but only this line on
+    # Windows; either way the files differ only if workerd was found.
+    pattern = "workers_launcher_workerd.* differ",
+    test = ":proof_workers_launcher_no_workerd",
+)
+
+# Planted: a workers check whose Vitest config asks for V8 coverage.
+workers_vitest_test(
+    name = "proof_workers_v8",
+    srcs = WORKER + ["proof/workers_v8/vitest.config.mjs"],
+    config = "proof/workers_v8/vitest.config.mjs",
+    node_modules = [":node_modules"],
+    tags = ["manual"],
+)
+
+expect_failure_test(
+    name = "proof_workers_v8_fails",
+    pattern = "a workers check needs test.coverage.provider \"istanbul\"",
+    test = ":proof_workers_v8",
+)
+
+# Planted: a config with no thresholds and a branch its test leaves unrun.
+# Istanbul reports the gap, and the launcher's 100% floor fails the check.
+workers_vitest_test(
+    name = "proof_workers_floor",
+    srcs = WORKER + glob(["proof/workers_floor/**"]),
+    config = "proof/workers_floor/vitest.config.mjs",
+    node_modules = [":node_modules"],
+    tags = ["manual"],
+)
+
+expect_failure_test(
+    name = "proof_workers_floor_fails",
+    pattern = "Coverage for branches \\([0-9.]+%\\) does not meet global threshold \\(100%\\)",
+    test = ":proof_workers_floor",
+)
+
+# Planted: a wrangler config whose compatibility date the pinned workerd
+# doesn't support. The check fails at once, naming the date, instead of
+# hanging until the timeout; "short" bounds it at a minute.
+workers_vitest_test(
+    name = "proof_future_date",
+    srcs = WORKER + [
+        "proof/future_date/wrangler.jsonc",
+        "vitest.config.mjs",
+    ],
+    node_modules = [":node_modules"],
+    tags = ["manual"],
+)
+
+expect_failure_test(
+    name = "proof_future_date_fails",
+    timeout = "short",
+    pattern = "supports compatibility dates up to [0-9-]+, but proof/future_date/wrangler.jsonc \\(2099-01-01\\)",
+    test = ":proof_future_date",
+)
+
+# Planted: a Worker the Workers runtime refuses to start, for a reason the
+# date check above doesn't catch. The plugin leaves the failed Miniflare
+# running; the check still fails at once instead of hanging until the
+# timeout, and "short" bounds it at a minute.
+workers_vitest_test(
+    name = "proof_runtime_start",
+    srcs = WORKER + ["proof/runtime_start/vitest.config.mjs"],
+    config = "proof/runtime_start/vitest.config.mjs",
+    node_modules = [":node_modules"],
+    tags = ["manual"],
+)
+
+expect_failure_test(
+    name = "proof_runtime_start_fails",
+    timeout = "short",
+    pattern = "MiniflareCoreError \\[ERR_RUNTIME_FAILURE\\]: The Workers runtime failed to start",
+    test = ":proof_runtime_start",
+)

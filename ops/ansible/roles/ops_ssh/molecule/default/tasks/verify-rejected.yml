@@ -1,0 +1,25 @@
+---
+# Plants ops_ssh_plant, then checks that validating the live drop-in fails.
+- name: verify-rejected | Check that validation rejects {{ ops_ssh_plant.name }}
+  block:
+    - name: verify-rejected | Plant the conflicting file
+      ansible.builtin.copy:
+        content: "{{ ops_ssh_plant.content }}"
+        dest: "{{ ops_ssh_plant.dest }}"
+        mode: "0644"
+
+    - name: verify-rejected | Validate the unchanged live drop-in
+      ansible.builtin.command:
+        cmd: /usr/local/sbin/ops-sshd-validate /etc/ssh/sshd_config.d/00-ops-ssh.conf
+      register: ops_ssh_rejected
+      changed_when: false
+      failed_when: false
+
+    - name: verify-rejected | Check that the live configuration was rejected
+      ansible.builtin.assert:
+        that: ops_ssh_rejected.rc != 0
+  always:
+    - name: verify-rejected | Remove the conflicting file
+      ansible.builtin.file:
+        path: "{{ ops_ssh_plant.dest }}"
+        state: absent

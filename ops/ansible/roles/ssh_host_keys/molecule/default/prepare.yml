@@ -1,0 +1,54 @@
+---
+- name: Prepare accounts
+  hosts: all
+  become: true
+  tasks:
+    - name: Create the accounts
+      ansible.builtin.user:
+        name: "{{ item }}"
+        create_home: true
+      loop: [agent, ops]
+
+    # ops already has a key pair, which the role must keep.
+    - name: Create the ssh directory for ops
+      ansible.builtin.file:
+        path: /home/ops/.ssh
+        state: directory
+        owner: ops
+        group: ops
+        mode: "0700"
+
+    - name: Place the ops key files
+      ansible.builtin.copy:
+        dest: "/home/ops/.ssh/{{ item.name }}"
+        content: "{{ item.content }}"
+        owner: ops
+        group: ops
+        mode: "{{ item.mode }}"
+      loop:
+        - {name: id_ed25519, content: "fixture private\n", mode: "0600"}
+        - {name: id_ed25519.pub, content: "ssh-ed25519 AAAAfixture ops@fixture\n", mode: "0644"}
+      loop_control:
+        label: "{{ item.name }}"
+      no_log: true
+
+    # agent has a mesh config, of which the role changes only the one key line.
+    - name: Create the ssh directory for agent
+      ansible.builtin.file:
+        path: /home/example-user/.ssh
+        state: directory
+        owner: agent
+        group: agent
+        mode: "0700"
+
+    - name: Place the agent mesh config
+      ansible.builtin.copy:
+        dest: /home/example-user/.ssh/agent-mesh.conf
+        content: |
+          Host peer-a
+            IdentityFile ~/.ssh/agent-mesh/agent_ed25519
+          Host peer-b
+            IdentityFile ~/.ssh/agent-mesh/operator_ed25519
+        owner: agent
+        group: agent
+        mode: "0600"

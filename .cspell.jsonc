@@ -1,6 +1,10 @@
 {
   "language": "en",
   "ignorePaths": [
+    "**/repo/baseline/{files,kinds,visibility,seed}/**/*",
+    "**/lint/gitleaks/{base,upstream}.toml",
+    "**/preset.bazelrc",
+    "**/uv.lock",
     ".mise/**/*",
     ".rumdl_cache/**/*",
     ".vale/**/*",
@@ -16,9 +20,7 @@
     "**/testdata/**/*",
     "**/*.d2.svg",
     "**/*.d2.sha256",
-    "**/pnpm-lock.yaml",
-    "preset.bazelrc",
-    "uv.lock"
+    "**/pnpm-lock.yaml"
   ],
   "dictionaryDefinitions": [
     {
@@ -27,5 +29,6 @@
       "addWords": true
     }
   ],
-  "dictionaries": ["project", "golang", "python"]
+  "dictionaries": ["project", "golang", "python"],
+  "ignoreRegExpList": ["/\"(?:h1:[A-Za-z0-9+\\/]{43}=|zh:[0-9a-f]{64})\"/g"]
 }

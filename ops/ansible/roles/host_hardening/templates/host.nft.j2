@@ -1,0 +1,35 @@
+# {{ ansible_managed }}
+# Loaded by host-hardening-nft.service. Only table inet host is replaced;
+# Docker's and libvirt's tables, and the forward chain, are not touched.
+table inet host
+delete table inet host
+
+table inet host {
+  chain input {
+    type filter hook input priority filter + 10; policy drop;
+
+    iif "lo" accept
+    ct state established,related accept
+    ct state invalid drop
+
+    iifname "tailscale0" accept
+
+    # ICMP and ICMPv6 essentials, including neighbor and router discovery.
+    ip protocol icmp icmp type { destination-unreachable, time-exceeded, parameter-problem, echo-request } accept
+    meta l4proto ipv6-icmp icmpv6 type { destination-unreachable, packet-too-big, time-exceeded, parameter-problem, echo-request, echo-reply, nd-router-solicit, nd-router-advert, nd-neighbor-solicit, nd-neighbor-advert } accept
+
+    # DHCP client replies.
+    udp sport 67 udp dport 68 accept
+    udp sport 547 udp dport 546 accept
+
+    # Tailscale direct paths.
+    udp dport 41641 accept
+
+    # Node-to-node ssh on the lab bridge, from the Lab network only.
+    iifname "{{ host_hardening_lab_bridge }}" ip saddr {{ host_hardening_lab_subnet }} tcp dport 22 accept
+
+    # DHCP and DNS for guests.
+    iifname { {% for bridge in host_hardening_libvirt_bridges + [host_hardening_lab_bridge] %}"{{ bridge }}"{% if not loop.last %}, {% endif %}{% endfor %} } udp dport { 53, 67 } accept
+    iifname { {% for bridge in host_hardening_libvirt_bridges + [host_hardening_lab_bridge] %}"{{ bridge }}"{% if not loop.last %}, {% endif %}{% endfor %} } tcp dport 53 accept
+  }
+}

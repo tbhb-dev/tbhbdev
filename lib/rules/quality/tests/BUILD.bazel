@@ -1,0 +1,577 @@
+# SPDX-License-Identifier: Apache-2.0
+# Copyright Tony Burns
+
+load("@bazel_skylib//rules:diff_test.bzl", "diff_test")
+load("@bazel_skylib//rules:write_file.bzl", "write_file")
+load("//quality:defs.bzl", "mutation_gate_test")
+load("//repo:defs.bzl", "repo_files")
+load("//testing:defs.bzl", "expect_failure_test")
+load(":gate_output_test.bzl", "gate_command_error_test", "gate_output_test", "gate_summary_error_test")
+load(":mutation_changes_test.bzl", "mutation_changes_test")
+load(":slice_test.bzl", "changes_slice")
+
+repo_files()
+
+# Passes: every mutant killed or skipped, summed over two reports.
+mutation_gate_test(
+    name = "all_killed_test",
+    reports = [
+        "testdata/all_killed.txt",
+        "testdata/all_killed_2.txt",
+    ],
+)
+
+mutation_gate_test(
+    name = "skipped_some_test",
+    reports = ["testdata/skipped_some.txt"],
+)
+
+# Deliberately passes: all-skipped reports can accompany checked mutants,
+# because the gate checks the sum across all reports.
+mutation_gate_test(
+    name = "all_skipped_beside_killed_test",
+    reports = [
+        "testdata/all_skipped.txt",
+        "testdata/all_killed.txt",
+    ],
+)
+
+# Diff-scoped reports: a pass, an empty diff with no changed units (alone
+# and beside a full report), and a full report with explicit scope.
+mutation_gate_test(
+    name = "diff_ok_test",
+    reports = ["testdata/diff_ok.txt"],
+)
+
+mutation_gate_test(
+    name = "diff_empty_test",
+    reports = ["testdata/diff_empty.txt"],
+)
+
+mutation_gate_test(
+    name = "diff_beside_full_test",
+    reports = [
+        "testdata/all_killed.txt",
+        "testdata/diff_empty.txt",
+    ],
+)
+
+PROOF_TAGS = ["manual"]
+
+# Advisory permits survivors only; all other verdict checks still apply.
+mutation_gate_test(
+    name = "advisory_survivors_gate",
+    advisory = True,
+    reports = ["testdata/advisory_survivors.txt"],
+    tags = PROOF_TAGS,
+)
+
+gate_output_test(
+    name = "advisory_survivors_test",
+    gate = ":advisory_survivors_gate",
+    lines = [
+        "mutant.survived=pkg.x_f__mutmut_3",
+        "mutant.no_tests=pkg.x_g__mutmut_1",
+        "mutation_gate: advisory, 2 survivors (not failing)",
+    ],
+    summary_lines = ["mutation_gate: advisory, 2 survivors (not failing)"],
+)
+
+gate_summary_error_test(
+    name = "advisory_summary_error_test",
+    gate = ":advisory_survivors_gate",
+    lines = [
+        "mutant.survived=pkg.x_f__mutmut_3",
+        "mutant.no_tests=pkg.x_g__mutmut_1",
+        "mutation_gate: advisory, 2 survivors (not failing)",
+    ],
+    status = 0,
+)
+
+mutation_gate_test(
+    name = "advisory_clean_gate",
+    advisory = True,
+    reports = ["testdata/all_killed.txt"],
+    tags = PROOF_TAGS,
+)
+
+gate_output_test(
+    name = "advisory_clean_test",
+    gate = ":advisory_clean_gate",
+    lines = [
+        "mutation_gate: advisory, 0 survivors (not failing)",
+        "mutation_gate: ok: every mutant was killed",
+    ],
+    summary_lines = ["mutation_gate: advisory, 0 survivors (not failing)"],
+)
+
+mutation_gate_test(
+    name = "proof_advisory_survivors_off",
+    reports = ["testdata/advisory_survivors.txt"],
+    tags = PROOF_TAGS,
+)
+
+expect_failure_test(
+    name = "proof_advisory_survivors_off_fails",
+    pattern = "FAIL: 1 lived, 1 not_covered$",
+    test = ":proof_advisory_survivors_off",
+)
+
+ADVISORY_PROOFS = {
+    "all_skipped": ("all_skipped", "FAIL: all 5 mutant\\(s\\) were skipped; nothing was checked$", "any"),
+    "diff_zero_kill_timeout": ("diff_zero_kill_timeout", "FAIL: no mutant was killed \\(1 timed out\\)$", "any"),
+    "double_count": ("double_count", "counts add up to 11, above total 10", "any"),
+    "empty": ("empty", "FAIL: no mutants were generated", "any"),
+    "errored": ("advisory_errored", "FAIL: 1 errored$", "any"),
+    "interrupted": ("interrupted", "FAIL: run was interrupted", "any"),
+    "malformed": ("advisory_malformed", "killed is 'x', not a non-negative integer", "any"),
+    "require_full": ("diff_ok", "1 diff-scoped report\\(s\\), but a full run is required", "full"),
+    "timeout_above_cap": ("advisory_timeout_above_cap", "FAIL: 11 timeout\\(s\\) of 100, above 10%", "any"),
+    "unchecked": ("survivor", "FAIL: 2 not checked$", "any"),
+    "unmapped": ("advisory_unmapped", "FAIL: 1 unmapped$", "any"),
+    "zero_kill_timeout": ("zero_kill_timeout", "FAIL: no mutant was killed \\(1 timed out\\)$", "any"),
+}
+
+[
+    mutation_gate_test(
+        name = "proof_advisory_" + name,
+        advisory = True,
+        reports = ["testdata/{}.txt".format(report)],
+        require_scope = scope,
+        tags = PROOF_TAGS,
+    )
+    for name, (report, _, scope) in ADVISORY_PROOFS.items()
+]
+
+[
+    expect_failure_test(
+        name = "proof_advisory_" + name + "_fails",
+        exit_status = 1,
+        pattern = pattern,
+        test = ":proof_advisory_" + name,
+    )
+    for name, (_, pattern, _) in ADVISORY_PROOFS.items()
+]
+
+gate_command_error_test(
+    name = "command_error_survivor_listing_test",
+    gate = ":advisory_survivors_gate",
+    pattern = "^mutant\\.(survived|lived|no_tests|not_covered)=",
+    report = "quality/tests/testdata/advisory_survivors.txt",
+    step = "list survivors",
+)
+
+# Each case must fail for the stated reason. The wrapped gates are manual so
+# `bazel test //...` runs them only through expect_failure_test.
+PROOF_REASONS = {
+    "proof_all_skipped": "FAIL: all 5 mutant\\(s\\) were skipped; nothing was checked$",
+    "proof_count_over_limit": "total is '1000000001', above the 1000000000 limit",
+    "proof_diff_all_skipped": "FAIL: all 2 mutant\\(s\\) were skipped; nothing was checked$",
+    "proof_diff_bad_scope": "unknown scope=partial",
+    "proof_diff_no_selected": "lacks selected",
+    "proof_diff_selected_mismatch": "selected is 3, total 2",
+    "proof_diff_survivor": "FAIL: 1 lived$",
+    "proof_diff_unmapped": "FAIL: 1 unmapped$",
+    "proof_diff_zero_kill_timeout": "FAIL: no mutant was killed \\(1 timed out\\)$",
+    "proof_double_count": "testdata/double_count.txt: counts add up to 11, above total 10",
+    "proof_duplicate_key": "sets killed more than once",
+    "proof_empty": "FAIL: no mutants were generated",
+    "proof_go_all_suppressed": "FAIL: all 3 mutant\\(s\\) were skipped; nothing was checked$",
+    "proof_go_keys_fail": "FAIL: 1 lived, 1 not_covered, 1 errored$",
+    "proof_huge_value": "timeout is '4611686018427387904', above the 1000000000 limit",
+    "proof_huge_wrap": "killed is '9223372036854775807', above the 1000000000 limit",
+    "proof_interrupted": "FAIL: run was interrupted",
+    "proof_missing_key": "lacks errored",
+    "proof_not_a_number": "killed is 'x', not a non-negative integer",
+    "proof_not_checked": "testdata/not_checked.txt: lists 1 mutant.not_checked line\\(s\\)",
+    "proof_survivor": "FAIL: 1 lived, 2 not checked",
+    "proof_three_unchecked": "FAIL: 3 not checked$",
+    "proof_timeout_above_cap": "FAIL: 11 timeout\\(s\\) of 100, above 10%",
+    "proof_timeout_with_survivor": "FAIL: 1 lived$",
+    "proof_timeout_zero_total": "FAIL: .*1 timeout\\(s\\) of 0",
+    "proof_unchecked": "FAIL: 3280 not checked",
+    "proof_unknown_status": "testdata/unknown_status.txt: lists mutants under an unknown status: mutant.exploded",
+    "proof_zero_kill_timeout": "FAIL: no mutant was killed \\(1 timed out\\)$",
+}
+
+[
+    mutation_gate_test(
+        name = proof,
+        reports = ["testdata/{}.txt".format(proof.removeprefix("proof_"))],
+        tags = PROOF_TAGS,
+    )
+    for proof in PROOF_REASONS
+]
+
+[
+    expect_failure_test(
+        name = proof + "_fails",
+        exit_status = 1,
+        pattern = pattern,
+        test = ":" + proof,
+    )
+    for proof, pattern in PROOF_REASONS.items()
+]
+
+# A diff-scoped report with no selected mutants checked nothing, so the gate
+# passes without saying every mutant was killed.
+mutation_gate_test(
+    name = "diff_empty_gate",
+    reports = ["testdata/diff_empty.txt"],
+    tags = PROOF_TAGS,
+)
+
+gate_output_test(
+    name = "diff_empty_output_test",
+    gate = ":diff_empty_gate",
+    lines = [
+        "mutation_gate: ok: no mutant failed (none were checked)",
+    ],
+)
+
+# With at least one kill, timeouts count as killed up to 10% of the mutants
+# (10 of 100 passes, 5 passes, 11 fails), stay listed, and are counted on
+# stdout and in the job summary. Gate failures list them too.
+mutation_gate_test(
+    name = "timeout_below_cap_gate",
+    reports = ["testdata/timeout_below_cap.txt"],
+    tags = PROOF_TAGS,
+)
+
+gate_output_test(
+    name = "timeout_below_cap_test",
+    gate = ":timeout_below_cap_gate",
+    lines = [
+        "mutation_gate: 5 timed out of 100 (5.0%), counted as killed",
+        "mutant.timeout=pkg.x_f__mutmut_1",
+        "mutant.timeout=pkg.x_f__mutmut_5",
+        "mutation_gate: ok: every mutant was killed",
+    ],
+    summary_lines = ["mutation_gate: 5 timed out of 100 (5.0%), counted as killed"],
+)
+
+mutation_gate_test(
+    name = "timeout_at_cap_gate",
+    reports = ["testdata/timeout_at_cap.txt"],
+    tags = PROOF_TAGS,
+)
+
+gate_output_test(
+    name = "timeout_at_cap_test",
+    gate = ":timeout_at_cap_gate",
+    lines = ["mutation_gate: 10 timed out of 100 (10.0%), counted as killed"],
+    summary_lines = ["mutation_gate: 10 timed out of 100 (10.0%), counted as killed"],
+)
+
+# A job summary that cannot be written (here a missing directory) ends neither a passing
+# nor a failing run early: the verdict, the stdout line and the listed
+# timeouts stay, and stderr notes the failed write.
+gate_summary_error_test(
+    name = "summary_error_passes_test",
+    gate = ":timeout_below_cap_gate",
+    lines = [
+        "mutation_gate: 5 timed out of 100 (5.0%), counted as killed",
+        "mutant.timeout=pkg.x_f__mutmut_5",
+        "mutation_gate: ok: every mutant was killed",
+    ],
+    status = 0,
+)
+
+gate_summary_error_test(
+    name = "summary_error_fails_test",
+    err_lines = ["mutation_gate: FAIL: 1 lived"],
+    gate = ":proof_timeout_with_survivor",
+    lines = [
+        "mutation_gate: 5 timed out of 100 (5.0%), counted as killed",
+        "mutant.timeout=pkg.x_f__mutmut_5",
+    ],
+    status = 1,
+)
+
+# With stderr closed too, the warning's own write fails and still must not end
+# the run before the verdict.
+gate_summary_error_test(
+    name = "summary_error_closed_stderr_test",
+    close_stderr = True,
+    gate = ":timeout_below_cap_gate",
+    lines = [
+        "mutation_gate: 5 timed out of 100 (5.0%), counted as killed",
+        "mutation_gate: ok: every mutant was killed",
+    ],
+    status = 0,
+)
+
+# Timed-out mutants are listed in the gate's output, passing or failing.
+expect_failure_test(
+    name = "proof_timeout_with_survivor_lists_timeouts_fails",
+    pattern = "timeout: pkg.x_f__mutmut_5",
+    test = ":proof_timeout_with_survivor",
+)
+
+# The runners' own status names reach the gate too: a report with gomutants'
+# keys (timed_out, not_viable, equivalent) passes and lists the timeouts, and
+# one with infra_error, lived and not_covered fails and names each.
+mutation_gate_test(
+    name = "go_keys_pass_gate",
+    reports = ["testdata/go_keys_pass.txt"],
+    tags = PROOF_TAGS,
+)
+
+gate_output_test(
+    name = "go_keys_pass_test",
+    gate = ":go_keys_pass_gate",
+    lines = [
+        "mutation_gate: 2 timed out of 20 (10.0%), counted as killed",
+        "mutant.timed_out=mod/p/p.go:7:15 CONDITIONALS_BOUNDARY (p/p.go:Pass:CONDITIONALS_BOUNDARY#1)",
+        "mutant.timed_out=mod/p/p.go:9:3 X (p/p.go:Pass:X#1)",
+        "mutation_gate: ok: every mutant was killed",
+    ],
+    summary_lines = ["mutation_gate: 2 timed out of 20 (10.0%), counted as killed"],
+)
+
+[
+    expect_failure_test(
+        name = "proof_go_keys_fail_names_{}_fails".format(status),
+        pattern = "  {}: mod/p/p.go".format(status),
+        test = ":proof_go_keys_fail",
+    )
+    for status in [
+        "infra_error",
+        "lived",
+        "not_covered",
+    ]
+]
+
+# A report lists no mutant under a verdict its count denies. Each status name
+# the runners use, with the count it belongs to: one such line, with that
+# count at 0, fails.
+VERDICT_COUNTS = {
+    "caught_by_type_check": "skipped",
+    "equivalent": "skipped",
+    "infra_error": "errored",
+    "lived": "lived",
+    "no_tests": "not_covered",
+    "not_covered": "not_covered",
+    "not_viable": "skipped",
+    "segfault": "errored",
+    "skipped": "skipped",
+    "survived": "lived",
+    "suspicious": "errored",
+    "timed_out": "timeout",
+    "timeout": "timeout",
+}
+
+[
+    write_file(
+        name = "contradiction_{}_report".format(status),
+        out = "contradiction_{}.txt".format(status),
+        content = [
+            "total=1",
+            "killed=1",
+            "lived=0",
+            "not_covered=0",
+            "timeout=0",
+            "errored=0",
+            "skipped=0",
+            "interrupted=0",
+            "mutant.{}=pkg.x_f__mutmut_1".format(status),
+        ],
+        newline = "unix",
+    )
+    for status in VERDICT_COUNTS
+]
+
+[
+    mutation_gate_test(
+        name = "proof_contradiction_{}".format(status),
+        reports = [":contradiction_{}.txt".format(status)],
+        tags = PROOF_TAGS,
+    )
+    for status in VERDICT_COUNTS
+]
+
+[
+    expect_failure_test(
+        name = "proof_contradiction_{}_fails".format(status),
+        pattern = "contradiction_{}.txt: lists 1 {} mutant\\(s\\), but {} is 0$".format(status, count, count),
+        test = ":proof_contradiction_" + status,
+    )
+    for status, count in VERDICT_COUNTS.items()
+]
+
+# Counts above 1000000000 are malformed, not arithmetic: 64-bit shell
+# arithmetic would wrap them (huge_wrap.txt's counts add up to the total, and
+# its timeout product wraps to 0). The limit itself and zero-padded counts
+# pass.
+mutation_gate_test(
+    name = "count_at_limit_test",
+    reports = ["testdata/count_at_limit.txt"],
+)
+
+mutation_gate_test(
+    name = "count_leading_zeros_test",
+    reports = ["testdata/count_leading_zeros.txt"],
+)
+
+# The timeout cap holds for each report on its own: a large clean report
+# can't hide a small starved one (together 5 of 1010 pass the summed check).
+mutation_gate_test(
+    name = "proof_cap_per_report",
+    reports = [
+        "testdata/cap_large_clean.txt",
+        "testdata/cap_small_timeouts.txt",
+    ],
+    tags = PROOF_TAGS,
+)
+
+expect_failure_test(
+    name = "proof_cap_per_report_fails",
+    pattern = "FAIL: .*testdata/cap_small_timeouts.txt: 5 timeout\\(s\\) of 10, above 10%",
+    test = ":proof_cap_per_report",
+)
+
+mutation_gate_test(
+    name = "cap_per_report_at_cap_test",
+    reports = [
+        "testdata/cap_large_clean.txt",
+        "testdata/timeout_at_cap.txt",
+    ],
+)
+
+# A diff report never satisfies a gate that requires a full run.
+mutation_gate_test(
+    name = "proof_diff_where_full_required",
+    reports = ["testdata/diff_ok.txt"],
+    require_scope = "full",
+    tags = PROOF_TAGS,
+)
+
+expect_failure_test(
+    name = "proof_diff_where_full_required_fails",
+    pattern = "1 diff-scoped report\\(s\\), but a full run is required",
+    test = ":proof_diff_where_full_required",
+)
+
+# Full runs pass a full-scope gate.
+mutation_gate_test(
+    name = "full_where_full_required_test",
+    reports = ["testdata/all_killed.txt"],
+    require_scope = "full",
+)
+
+# Full-scope reports must mutate something even beside a diff report.
+mutation_gate_test(
+    name = "proof_full_empty_beside_diff",
+    reports = [
+        "testdata/empty.txt",
+        "testdata/diff_ok.txt",
+    ],
+    tags = PROOF_TAGS,
+)
+
+expect_failure_test(
+    name = "proof_full_empty_beside_diff_fails",
+    pattern = "FAIL: no mutants were generated",
+    test = ":proof_full_empty_beside_diff",
+)
+
+# A survivor is named in the failure output.
+expect_failure_test(
+    name = "proof_survivor_is_named_fails",
+    pattern = "survived: pkg.x_f__mutmut_3",
+    test = ":proof_survivor",
+)
+
+# The change set of a branch plus an uncommitted edit (changed, deleted,
+# added, binary and quoted paths; deletion-only and appended hunks), and
+# the slice of it a unit gets.
+mutation_changes_test(
+    name = "mutation_changes_test",
+    subject = "//quality:mutation_changes",
+)
+
+# Slices: a unit's slice of a change set holds the unit's entries without the
+# base, so change sets that differ only outside the unit (another base,
+# other files) give byte-identical slices and the unit's mutation action
+# stays cached. A unit untouched by the change set gets the empty slice, and
+# no change set at all gives no slice (a full run).
+SLICE_UNIT = glob(["testdata/slice/unit/*"])
+
+SLICE_OTHER = glob(["testdata/slice/other/*"])
+
+[
+    changes_slice(
+        name = "{}_{}".format(unit, pr),
+        srcs = files,
+        changes = "testdata/slice/{}.json".format(pr),
+    )
+    for unit, files in {
+        "other": SLICE_OTHER,
+        "unit": SLICE_UNIT,
+    }.items()
+    for pr in [
+        "pr1",
+        "pr2",
+    ]
+]
+
+changes_slice(
+    name = "unit_without_changes",
+    srcs = SLICE_UNIT,
+    changes = "//quality:no_changes",
+)
+
+[
+    diff_test(
+        name = name,
+        file1 = file1,
+        file2 = file2,
+    )
+    for name, file1, file2 in [
+        ("slice_keeps_the_unit_entries_test", ":unit_pr1", "testdata/slice/unit.json"),
+        ("slice_is_stable_across_diffs_test", ":unit_pr1", ":unit_pr2"),
+        ("slice_of_an_untouched_unit_is_empty_test", ":other_pr1", "testdata/slice/empty.json"),
+        ("slice_of_an_untouched_unit_is_stable_test", ":other_pr1", ":other_pr2"),
+        ("slice_without_changes_is_none_test", ":unit_without_changes", "testdata/slice/none.txt"),
+    ]
+]
+
+# Each grep shape, and every stage of the unknown-status pipeline, must
+# distinguish no matches from an operational error.
+COMMAND_ERRORS = {
+    "listed": ("grep", "^mutant\\.(survived|lived)=", "count lived"),
+    "mutants": ("grep", "^mutant\\.[a-z_]+=", "read mutants"),
+    "not_checked": ("grep", "^mutant\\.not_checked=", "count not_checked"),
+    "scope": ("grep", "^scope=", "read scope"),
+    "timeout_listing": ("grep", "^mutant\\.(timeout|timed_out)=", "list timeouts"),
+    "unknown_cut": ("cut", "", "collect unknown statuses"),
+    "unknown_filter": ("grep", "^mutant\\.(unmapped|survived|lived|no_tests|not_covered|timeout|timed_out|suspicious|segfault|infra_error|skipped|caught_by_type_check|not_viable|equivalent|not_checked)=", "filter known statuses"),
+    "unknown_paste": ("paste", "", "collect unknown statuses"),
+    "unknown_read": ("grep", "^mutant\\.", "read status lines"),
+    "unknown_sort": ("sort", "", "collect unknown statuses"),
+    "unmapped": ("grep", "^mutant\\.unmapped=", "count unmapped"),
+    "value": ("grep", "^total=", "read total"),
+}
+
+[
+    gate_command_error_test(
+        name = "command_error_{}_test".format(name),
+        gate = ":timeout_below_cap_gate",
+        option = "-E" if name == "timeout_listing" else "",
+        pattern = pattern,
+        report = "quality/tests/testdata/timeout_below_cap.txt",
+        step = step,
+        tool = tool,
+    )
+    for name, (tool, pattern, step) in COMMAND_ERRORS.items()
+]
+
+# Errors above grep's usual status 2 must fail closed too.
+gate_command_error_test(
+    name = "command_error_status_three_test",
+    error_status = 3,
+    gate = ":timeout_below_cap_gate",
+    pattern = "^scope=",
+    report = "quality/tests/testdata/timeout_below_cap.txt",
+    step = "read scope",
+)

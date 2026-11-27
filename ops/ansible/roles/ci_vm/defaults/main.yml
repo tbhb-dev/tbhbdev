@@ -1,0 +1,55 @@
+---
+# One VM per lab node, named after the node. The caller applies kvm_host
+# first, which installs libvirt and its default NAT network.
+ci_vm_name: "{{ inventory_hostname }}-ci"
+ci_vm_vcpus: 8
+ci_vm_memory_mib: 18432
+# The VM's disk is a raw logical volume, not a file. The role creates it once and
+# never resizes it. It touches nothing outside this volume group.
+ci_vm_vg: ubuntu-vg
+ci_vm_disk_size: 200G
+# Ubuntu 26.04 LTS (resolute) cloud image, release 2026-10-16, the dated release pinned by URL and checksum.
+# The sha256 is the release's SHA256SUMS entry. Canonical keeps a dated
+# directory for a while, so a bump replaces both lines together.
+ci_vm_image_url: >-
+  https://cloud-images.ubuntu.com/releases/resolute/release-20261016/ubuntu-26.04-server-cloudimg-amd64.img
+ci_vm_image_sha256: 5645d0318ad21f643ebb1ac4567514620e9893380b07b0201fda163baa5b7eb5
+ci_vm_image_dir: /var/lib/libvirt/images
+# libvirt's NAT network, and the bridge it makes. Never br-lab or any other
+# bridge on the lab port.
+ci_vm_network: default
+ci_vm_network_bridge: virbr0
+# The VM's fixed IPv4 address on that network, which libvirt's DHCP hands the
+# VM from a host entry keyed on its MAC. Every node has its own copy of the
+# default network, so all three VMs share the address. The ci group's
+# ansible_host must match it.
+# The lab node is the source of connections forwarded to its guest.
+# The ops account's keys come from the lab nodes' group_vars.
+ci_vm_admin_keys: "{{ ops_accounts_admin_keys }}"
+# Tailscale's stable apt repository for resolute, and the key in files/, whose
+# fingerprint is 2596 A99E AAB3 3821 893C 0A79 458C A832 957F 5868.
+ci_vm_tailscale_repo: https://pkgs.tailscale.com/stable/ubuntu
+# The OAuth client, read on the controller through Connect. Same lookup as the
+# connect_token role.
+ci_vm_tailscale_lookup_command: env -u SSH_AUTH_SOCK tbhbdev secret read
+ci_vm_tailscale_api: https://api.tailscale.com/api/v2
+# The tag the VM joins with, and how long its key stays valid. The key is
+# single-use and only needs to outlast the first boot.
+ci_vm_tailscale_tag: tag:gh-runner
+ci_vm_tailscale_key_seconds: 600
+# False on a host without KVM, libvirt and LVM, such as a test container:
+# skips the volume, the image, the domain and the table's load.
+ci_vm_hardware: true
+# The destinations the forward rule refuses to the VM, the same ranges as
+# actions_runner_pool_egress_blocked_v4 and _v6: the private and shared
+# address space, link-local, and the IPv6 unique local and link-local
+# prefixes. The unique local prefix covers the tailnet's.
+ci_vm_egress_blocked_v4:
+  - "{{ [10, 0, 0, 0] | join('.') }}/8"
+  - "{{ [172, 16, 0, 0] | join('.') }}/12"
+  - "{{ [192, 168, 0, 0] | join('.') }}/16"
+  - "{{ [100, 64, 0, 0] | join('.') }}/10"
+  - 169.254.0.0/16
+ci_vm_egress_blocked_v6:
+  - fc00::/7
+  - fe80::/10

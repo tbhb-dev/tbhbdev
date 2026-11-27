@@ -1,0 +1,126 @@
+---
+- name: render | Create the controller scratch directory
+  ansible.builtin.tempfile:
+    state: directory
+    prefix: o11y-
+  register: o11y_render
+  delegate_to: localhost
+  become: false
+  run_once: true
+  changed_when: false
+
+- name: render | Render and copy the pinned release
+  block:
+    - name: render | Export the stack from the release commit
+      ansible.builtin.command:
+        argv:
+          - git
+          - -C
+          - "{{ role_path }}/../../.."
+          - archive
+          - "--output={{ o11y_render.path }}/source.tar"
+          - "{{ o11y_release_id }}"
+          - o11y
+      delegate_to: localhost
+      become: false
+      run_once: true
+      changed_when: false
+
+    - name: render | Unpack the stack on the controller
+      ansible.builtin.unarchive:
+        src: "{{ o11y_render.path }}/source.tar"
+        dest: "{{ o11y_render.path }}"
+        remote_src: true
+        extra_opts: [--no-same-owner]
+      delegate_to: localhost
+      become: false
+      run_once: true
+      changed_when: false
+
+    - name: render | Render the stack on the controller
+      ansible.builtin.command:
+        argv:
+          - tbhbops
+          - o11y
+          - render
+          - --source
+          - "{{ o11y_render.path }}/o11y"
+          - --out
+          - "{{ o11y_render.path }}/out"
+          - --config-root
+          - "{{ o11y_root }}/releases/{{ o11y_release_id }}/config"
+      environment: "{{ lookup('ansible.builtin.template', 'environment.json.j2') | from_json }}"
+      delegate_to: localhost
+      become: false
+      run_once: true
+      changed_when: false
+
+    - name: render | Read the rendered configuration names
+      ansible.builtin.find:
+        paths: "{{ o11y_render.path }}/out/config"
+        file_type: directory
+      register: o11y_configs
+      delegate_to: localhost
+      become: false
+      run_once: true
+
+    - name: render | Remove the environment that the role templates separately
+      ansible.builtin.file:
+        path: "{{ o11y_render.path }}/out/release/.env"
+        state: absent
+      delegate_to: localhost
+      become: false
+      run_once: true
+      changed_when: false
+
+    - name: render | Create the release directory
+      ansible.builtin.file:
+        path: "{{ o11y_root }}/releases/{{ o11y_release_id }}"
+        state: directory
+        owner: root
+        group: root
+        mode: '0755'
+
+    - name: render | Copy the rendered release
+      ansible.builtin.copy:
+        src: "{{ o11y_render.path }}/out/release/"
+        dest: "{{ o11y_root }}/releases/{{ o11y_release_id }}/"
+        owner: root
+        group: root
+        mode: preserve
+
+    - name: render | Copy the rendered configuration
+      ansible.builtin.copy:
+        src: "{{ o11y_render.path }}/out/config/"
+        dest: "{{ o11y_root }}/releases/{{ o11y_release_id }}/config/"
+        owner: root
+        group: root
+        mode: preserve
+        directory_mode: '0755'
+
+    - name: render | Template the deployment environment
+      ansible.builtin.template:
+        src: compose.env.j2
+        dest: "{{ o11y_root }}/releases/{{ o11y_release_id }}/.env"
+        owner: root
+        group: root
+        mode: '0600'
+
+    - name: render | Refresh the manifest after templating release files
+      ansible.builtin.shell: >-
+        set -o pipefail &&
+        find . -type f ! -name MANIFEST.sha256 ! -name .inputs.sha256 -print0 |
+        sort -z | xargs -0 sha256sum > MANIFEST.sha256
+      args:
+        chdir: "{{ o11y_root }}/releases/{{ o11y_release_id }}"
+        executable: /bin/bash
+      changed_when: false
+  always:
+    - name: render | Remove controller scratch files
+      ansible.builtin.file:
+        path: "{{ o11y_render.path }}"
+        state: absent
+      delegate_to: localhost
+      become: false
+      run_once: true
+      changed_when: false

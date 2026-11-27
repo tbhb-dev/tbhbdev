@@ -1,0 +1,22 @@
+---
+# Fixed ids match bootstrap and agent_host's mounted home.
+agent_account_primary_group: "{{ 'agent' if ansible_facts.system == 'Linux' else 'devel' }}"
+agent_account_keys: []
+# Creates the controller's agent-exec launch key in a root-owned directory and
+# delivers it to the operator account, and never replaces one. Only the public
+# half is printed.
+agent_account_launch_controller: false
+# Empty preserves an existing config. Inventory supplies deployment values;
+# templates contain no credentials, only endpoints and op references.
+agent_account_tbhbdev_config: {}
+# Claude token profiles for tbhbdev, profile name to 1Password reference
+# (vault/item/field). Rendered as [agent.claude.profiles.<name>] tables; empty
+# renders none. Only used when agent_account_tbhbdev_config is set.
+agent_account_claude_profiles: {}
+# chezmoi release for the Linux hosts. The sha256 values come from the
+# release's chezmoi_<version>_checksums.txt, for the linux tar.gz assets.
+agent_account_chezmoi_version: 2.73.3
+agent_account_chezmoi_sha256:
+  amd64: 6e5827598cbfc02d132b04f95b5ea10efb5b79230e2a4a0e52df4af144a8ee9f
+  arm64: c9e6a6e71eb5291018e161a8426d7c313cd2e8553c2ca4029511fec2a33bc28c
+agent_account_chezmoi_arch: "{{ 'amd64' if ansible_facts.architecture == 'x86_64' else 'arm64' }}"

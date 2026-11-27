@@ -1,0 +1,229 @@
+# SPDX-License-Identifier: Apache-2.0
+# Copyright Tony Burns
+
+load("@bazel_skylib//:bzl_library.bzl", "bzl_library")
+load("@bazel_skylib//rules:common_settings.bzl", "bool_flag")
+load("@rules_shell//shell:sh_binary.bzl", "sh_binary")
+load("@rules_shell//shell:sh_test.bzl", "sh_test")
+load("//lint/private:commit_identity.bzl", "commit_identity")
+load("//lint/private:commit_messages.bzl", "commit_messages")
+load("//lint/private:gitleaks_text.bzl", "gitleaks_text")
+load("//lint/private:pr_size.bzl", "pr_size", "pr_size_count")
+load("//lint/private:review_policy.bzl", "review_policy_test")
+load("//repo:defs.bzl", "repo_files")
+load("//runtime:defs.bzl", "python_tool")
+load(":repo_check_targets.bzl", "repo_check_targets")
+
+repo_files()
+
+# The same policy wrapper used by the scanners, exposed for bazel_env shims.
+alias(
+    name = "gitleaks",
+    actual = "//lint/private:gitleaks",
+    visibility = ["//visibility:public"],
+)
+
+# Checks the caller's CODEOWNERS through GitHub's API, outside the test graph.
+sh_binary(
+    name = "codeowners_errors",
+    srcs = ["//lint/private:codeowners_errors.sh"],
+    visibility = ["//visibility:public"],
+)
+
+python_tool(
+    name = "job_timeouts",
+    main = "//lint/private/job_timeouts:check_job_timeouts.py",
+    python_env = "@tbhb_rules_python_runtime//:env",
+    visibility = ["//visibility:public"],
+)
+
+python_tool(
+    name = "runner_default",
+    main = "//lint/private/runner_default:check_runner_default.py",
+    python_env = "@tbhb_rules_python_runtime//:env",
+    visibility = ["//visibility:public"],
+)
+
+python_tool(
+    name = "actionlint_labels",
+    data = ["//repo/baseline:files/.github/actionlint.yaml"],
+    main = "//lint/private:check_actionlint_labels.py",
+    python_env = "@tbhb_rules_python_runtime//:env",
+    visibility = ["//visibility:public"],
+)
+
+python_tool(
+    name = "gitleaks_guard",
+    main = "//lint/private:gitleaks_guard.py",
+    python_env = "@tbhb_rules_python_runtime//:env",
+    visibility = ["//visibility:public"],
+)
+
+# `common --//lint:gitleaks_private_config` (in a consumer's .bazelrc:
+# `common --@tbhb_rules//lint:gitleaks_private_config`) makes gitleaks_test
+# and gitleaks_history require the private gitleaks config in
+# GITLEAKS_CONFIG_TOML and fail without it. See
+# //lint/private:gitleaks_tool.bzl.
+bool_flag(
+    name = "gitleaks_private_config",
+    build_setting_default = False,
+    visibility = ["//visibility:public"],
+)
+
+# Scans stdin: `bazel run @tbhb_rules//lint:gitleaks_text < file`, from a
+# consumer's workspace, under its .gitleaks.toml. repo-checks.yml runs it on
+# a pull request's title and body.
+gitleaks_text(
+    name = "gitleaks_text",
+    visibility = ["//visibility:public"],
+)
+
+# Checks new and changed text blobs with `bazel run //lint:trailing_newline -- BASE HEAD`.
+python_tool(
+    name = "trailing_newline",
+    data = [
+        "//lint/private:check_trailing_newline.py",
+        "//lint/private:git_read.py",
+    ],
+    main = "//:check_trailing_newline.py",
+    python_env = "@tbhb_rules_python_runtime//:env",
+    visibility = ["//visibility:public"],
+)
+
+sh_test(
+    name = "trailing_newline_test",
+    srcs = ["trailing_newline_test.sh"],
+    data = [
+        ":trailing_newline",
+        "@tbhb_rules_git//:git",
+    ],
+    env = {
+        "CHECKER_RLOCATIONPATH": "$(rlocationpath :trailing_newline)",
+        "GIT_RLOCATIONPATH": "$(rlocationpath @tbhb_rules_git//:git)",
+    },
+    # Tech debt: enable this Git subprocess test on Windows and remove the exclusion.
+    target_compatible_with = select({
+        "@platforms//os:windows": ["@platforms//:incompatible"],
+        "//conditions:default": [],
+    }),
+)
+
+# Checks the commits in a range against the allowed (author, committer)
+# pairs and require valid identity trailers for agent emails:
+# `bazel run @tbhb_rules//lint:commit_identity -- BASE HEAD`.
+# repo-checks.yml runs it on a pull request's commits.
+commit_identity(
+    name = "commit_identity",
+    visibility = ["//visibility:public"],
+)
+
+# Checks the subject of each non-merge commit in a range: conventional form,
+# at most 72 characters, no fixup!/squash!/amend!/WIP, no bare generic word:
+# `bazel run @tbhb_rules//lint:commit_messages -- BASE HEAD`.
+# repo-checks.yml runs it on a pull request's commits.
+commit_messages(
+    name = "commit_messages",
+    visibility = ["//visibility:public"],
+)
+
+# Checks a commit message file before Git records the commit.
+python_tool(
+    name = "commit_subject",
+    main = "//lint/private:commit_messages/check_subject.py",
+    python_env = "@tbhb_rules_python_runtime//:env",
+    visibility = ["//visibility:public"],
+)
+
+sh_binary(
+    name = "pr_merge_base",
+    srcs = ["pr_merge_base.sh"],
+    visibility = ["//visibility:public"],
+)
+
+python_tool(
+    name = "lint_baselines",
+    data = [
+        "check_lint_baselines.py",
+        "//lint/private:git_read.py",
+    ],
+    main = "//:check_lint_baselines.py",
+    python_env = "@tbhb_rules_python_runtime//:env",
+    visibility = ["//visibility:public"],
+)
+
+python_tool(
+    name = "repo_checks",
+    data = ["repo_checks.toml"],
+    main = "repo_checks.py",
+    python_env = "@tbhb_rules_python_runtime//:env",
+    visibility = ["//visibility:public"],
+)
+
+bzl_library(
+    name = "defs",
+    srcs = ["defs.bzl"],
+    visibility = ["//visibility:public"],
+    deps = [
+        "//lint/private:checks",
+        "//lint/private:codeowners",
+        "//lint/private:content",
+        "//lint/private:cspell",
+        "//lint/private:decision_records",
+        "//lint/private:gitleaks_history",
+        "//lint/private:gitleaks_tool",
+        "//lint/private:mutation_oses",
+        "//lint/private:okf_docs",
+        "//lint/private:reuse",
+        "//lint/private:shell",
+        "//lint/private:tree_check",
+        "//lint/private:vale",
+        "//lint/private:workflow_lint",
+    ],
+)
+
+# Resolve the binary through this module's tool repository mapping.
+alias(
+    name = "zizmor",
+    actual = "@tbhb_rules_zizmor//:zizmor",
+    visibility = ["//visibility:public"],
+)
+
+pr_size(
+    name = "pr_size",
+    visibility = ["//visibility:public"],
+)
+
+pr_size_count(
+    name = "pr_size_count",
+    visibility = ["//visibility:public"],
+)
+
+# The org floor for the review policy files. See //lint/private:review_policy.bzl.
+review_policy_test(
+    name = "review_policy_test",
+    srcs = ["//:review_policy_files"],
+    # Requires the tbhbdev review-policy source from the tools import.
+    target_compatible_with = ["@platforms//:incompatible"],
+)
+
+sh_test(
+    name = "pr_size_test",
+    srcs = ["pr_size_test.sh"],
+    data = [
+        ":pr_size",
+        ":pr_size_count",
+        "@tbhb_rules_git//:git",
+    ],
+    env = {
+        "CHECKER_RLOCATIONPATH": "$(rlocationpath :pr_size)",
+        "COUNTER_RLOCATIONPATH": "$(rlocationpath :pr_size_count)",
+        "GIT_RLOCATIONPATH": "$(rlocationpath @tbhb_rules_git//:git)",
+    },
+    # Tech debt: the test fails on windows-2025; find the assertion and remove this.
+    target_compatible_with = select({
+        "@platforms//os:windows": ["@platforms//:incompatible"],
+        "//conditions:default": [],
+    }),
+)
+
+repo_check_targets(visibility = ["//lint/tests:__pkg__"])

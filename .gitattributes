@@ -4,3 +4,13 @@
 go.sum -diff
 MODULE.bazel.lock -diff linguist-generated
 uv.lock -diff linguist-generated
+
+lib/rules/**/*.d2.svg linguist-generated
+lib/rules/**/*.d2.png binary linguist-generated
+lib/rules/**/*.d2.sha256 linguist-generated
+lib/rules/**/worker-configuration.d.ts linguist-generated
+lib/rules/**/structurizr-*.svg -text linguist-generated
+lib/rules/**/structurizr-*.png binary linguist-generated
+lib/rules/**/workspace.json -text linguist-generated
+lib/rules/lint/gitleaks/base.toml linguist-generated whitespace=-blank-at-eof
+lib/rules/lint/gitleaks/upstream.toml linguist-vendored whitespace=-blank-at-eof

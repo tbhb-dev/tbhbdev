@@ -1,0 +1,280 @@
+# SPDX-License-Identifier: Apache-2.0
+# Copyright Tony Burns
+
+---
+# Everything a Bazel CI job does between checkout and the first Bazel
+# command that tests. The caller checks out first: a composite action in
+# this repository is only reachable by a local path after checkout, and
+# Bazel needs the sources anyway.
+name: Set up Bazel for CI
+outputs:
+  fetch-seconds:
+    description: Seconds spent selecting and fetching the targets.
+    value: ${{ steps.fetch.outputs.seconds }}
+description: >-
+  Harden the runner, set up Bazel with its caches, make Windows and Linux
+  arm64 runners build, and fetch the dependencies with retries.
+
+inputs:
+  disk-cache:
+    description: >-
+      The disk cache key for setup-bazel, or "false" for no disk cache. Pass a
+      key that is unique per job, such as the workflow, OS and workspace.
+    required: false
+    default: "false"
+  cache-save:
+    description: >-
+      Whether this run may save the Bazel caches. Only the main-branch
+      cache-warm job passes true (see the README).
+    required: false
+    default: "false"
+  targets:
+    description: >-
+      The Bazel targets to fetch, retrying transient failures, split on
+      whitespace. The default reads fetch-targets.txt beside this action;
+      it includes the tools each workspace declares. Empty skips the fetch.
+    required: false
+    default: "@default"
+  fetch-workspaces:
+    description: >-
+      Additional workspace directories to fetch with the default list, split
+      on whitespace, relative to working-directory.
+    required: false
+    default: ""
+  working-directory:
+    description: The directory of the Bazel workspace the fetch runs in.
+    required: false
+    default: .
+  retry-budget-minutes:
+    description: >-
+      Whole minutes that the fetch may spend retrying, counted from the start
+      of the fetch step. The Bazel setup attempts are outside it. Keep it
+      below the job's timeout, with time left for the rest of the job.
+    required: false
+    default: "8"
+
+runs:
+  using: composite
+  steps:
+    # harden-runner monitors Linux runners only.
+    - name: Harden the runner
+      if: runner.os == 'Linux'
+      uses: step-security/harden-runner@aebdcf6156ab6691adf63218240e476564a1ed4c  # v2.23.0
+      with:
+        egress-policy: audit
+
+    # On Windows the rules' scripts run under the shell toolchain's Bash,
+    # MSYS2's on the hosted image. Only there: elsewhere Bazel would run
+    # genrule commands with it too.
+    - name: Point Bazel at Bash
+      if: runner.os == 'Windows'
+      shell: bash
+      run: |
+        # A self-hosted Windows runner may lack MSYS2, and Bazel then fails
+        # much later with a less direct error.
+        if [ ! -f /c/msys64/usr/bin/bash.exe ]; then
+          echo "::error::MSYS2's Bash isn't at C:/msys64/usr/bin/bash.exe. Install MSYS2 at C:/msys64 on this runner."
+          exit 1
+        fi
+        echo 'BAZEL_SH=C:/msys64/usr/bin/bash.exe' >>"$GITHUB_ENV"
+
+    # GitHub release downloads return 504 for minutes at times, and
+    # setup-bazel has no retry of its own, so a failed attempt is retried
+    # after a pause. Attempts that follow a success are skipped.
+    - name: Set up Bazel
+      id: setup_bazel_1
+      uses: bazel-contrib/setup-bazel@f34d6a05eae3c24acab7fa54587492daeaeffdab  # 0.19.2
+      continue-on-error: true
+      with:
+        # Self-hosted runners have no bazelisk; with a version set, the
+        # action downloads it when it's missing, as `bazel`.
+        bazelisk-version: 1.30.0
+        bazelisk-cache: true
+        disk-cache: ${{ inputs.disk-cache }}
+        # cache_contract_test checks every copy of this hash list.
+        repository-cache: |
+          - MODULE.bazel
+          - MODULE.bazel.lock
+          - pins/*.bzl
+        cache-save: ${{ inputs.cache-save }}
+
+    - name: Wait before retrying the Bazel setup
+      if: steps.setup_bazel_1.outcome == 'failure'
+      shell: bash
+      run: sleep 60
+
+    - name: Set up Bazel (attempt 2)
+      id: setup_bazel_2
+      if: steps.setup_bazel_1.outcome == 'failure'
+      uses: bazel-contrib/setup-bazel@f34d6a05eae3c24acab7fa54587492daeaeffdab  # 0.19.2
+      continue-on-error: true
+      with:
+        # Self-hosted runners have no bazelisk; with a version set, the
+        # action downloads it when it's missing, as `bazel`.
+        bazelisk-version: 1.30.0
+        bazelisk-cache: true
+        disk-cache: ${{ inputs.disk-cache }}
+        # cache_contract_test checks every copy of this hash list.
+        repository-cache: |
+          - MODULE.bazel
+          - MODULE.bazel.lock
+          - pins/*.bzl
+        cache-save: ${{ inputs.cache-save }}
+
+    - name: Wait before the last Bazel setup attempt
+      if: steps.setup_bazel_2.outcome == 'failure'
+      shell: bash
+      run: sleep 120
+
+    - name: Set up Bazel (attempt 3)
+      if: steps.setup_bazel_2.outcome == 'failure'
+      uses: bazel-contrib/setup-bazel@f34d6a05eae3c24acab7fa54587492daeaeffdab  # 0.19.2
+      with:
+        # Self-hosted runners have no bazelisk; with a version set, the
+        # action downloads it when it's missing, as `bazel`.
+        bazelisk-version: 1.30.0
+        bazelisk-cache: true
+        disk-cache: ${{ inputs.disk-cache }}
+        # cache_contract_test checks every copy of this hash list.
+        repository-cache: |
+          - MODULE.bazel
+          - MODULE.bazel.lock
+          - pins/*.bzl
+        cache-save: ${{ inputs.cache-save }}
+
+    # setup-bazel installs the pinned bazelisk under the name `bazel`, so a
+    # runner without its own bazelisk has no `bazelisk` command. Link one next
+    # to it, in the directory setup-bazel already put on PATH.
+    - name: Make bazelisk callable by name
+      shell: bash
+      run: |
+        if ! command -v bazelisk >/dev/null 2>&1; then
+          bazel="$(command -v bazel)"
+          dir="$(dirname "${bazel}")"
+          # Git Bash prints the Windows path without .exe.
+          if [ -f "${dir}/bazel.exe" ]; then
+            cp "${dir}/bazel.exe" "${dir}/bazelisk.exe"
+          else
+            ln -s "${bazel}" "${dir}/bazelisk"
+          fi
+        fi
+
+    # nproc and Python's os.cpu_count() count the host's CPUs, not a
+    # container's CPU quota, and Bazel's own CPU count did not follow the
+    # quota either: a 2-CPU container scheduled actions as for 16. So the
+    # quota goes to pytest-xdist's `-n auto` (pytest_test passes the variable
+    # through) and to Bazel's local CPU resources. mutmut's driver reads the
+    # quota itself, so it stays out of every action's cache key. A runner with
+    # no quota is left alone. After setup-bazel, which writes the user bazelrc
+    # too and leaves its last line unterminated, hence the leading newline.
+    - name: Size workers to the CPU quota
+      if: runner.os == 'Linux'
+      shell: bash
+      # The values written are integers that cpu_quota.sh printed from
+      # arithmetic on kernel files, so the writes can't carry anything else.
+      run: |  # zizmor: ignore[github-env]
+        cpus="$(bash "${GITHUB_ACTION_PATH}/cpu_quota.sh")"
+        [ -n "${cpus}" ] || exit 0
+        echo "PYTEST_XDIST_AUTO_NUM_WORKERS=${cpus}" >>"$GITHUB_ENV"
+        printf '\nbuild --local_resources=cpu=%s\n' "${cpus}" >>"$HOME/.bazelrc"
+
+    # complexipy publishes no Python 3.15 wheel for Linux arm64, so uv builds
+    # it from source there with maturin, which needs Rust and a C compiler. A
+    # runner image may have neither, so the step brings both: Rust's
+    # standalone component archives and zig, each checked against a pinned
+    # sha256, with zig serving as cc, c++ and ar. Python unpacks zig's .tar.xz
+    # because an image may lack xz. cc-rs passes Rust's target triple, which
+    # zig can't parse, and rustc passes aarch64's -Wl,--fix-cortex-a53-843419,
+    # which zig's linker rejects; the shims drop both and build for the host,
+    # the only target here. tbhb_rules' python_env_repo hands PATH to uv, so nothing
+    # else is needed. Drop this step once a cp315 manylinux aarch64 wheel
+    # exists.
+    - name: Set up Rust for complexipy's source build
+      if: runner.os == 'Linux' && runner.arch == 'ARM64'
+      shell: bash
+      env:
+        RUST_VERSION: 1.99.1
+        SHA256_RUSTC: e4656174f0ba5ea3dab5f58d069b7afae6d7616187de31c65cb6432e4f941399
+        SHA256_CARGO: 201dbeac1795713b98aeae044e01695e70ae2ea3ded42683ebce5a8a1c90f8a6
+        SHA256_RUST_STD: 32d1ddb44cd49d6497ab6a24f440d4286a20b2667fdf928b876f59c66d13d722
+        ZIG_VERSION: 0.17.1
+        SHA256_ZIG: a1546d5646eb184437918d6635ca6b762a0e889eac09cef720ee7a1ed3fe7795
+      run: |  # zizmor: ignore[github-env]
+        root="${RUNNER_TEMP}/rust-toolchain"
+        mkdir -p "${root}/dl" "${root}/rust" "${root}/zig" "${root}/cc"
+        fetch() {
+          curl -fsSL --retry 3 -o "${root}/dl/$3" "$1"
+          echo "$2  ${root}/dl/$3" | sha256sum -c --quiet -
+        }
+        for component in rustc:"${SHA256_RUSTC}" cargo:"${SHA256_CARGO}" rust-std:"${SHA256_RUST_STD}"; do
+          name="${component%%:*}-${RUST_VERSION}-aarch64-unknown-linux-gnu"
+          fetch "https://static.rust-lang.org/dist/${name}.tar.gz" "${component#*:}" "${name}.tar.gz"
+          tar -xzf "${root}/dl/${name}.tar.gz" -C "${root}/dl"
+          bash "${root}/dl/${name}/install.sh" --prefix="${root}/rust" --disable-ldconfig >/dev/null
+          rm -rf "${root}/dl/${name}" "${root}/dl/${name}.tar.gz"
+        done
+        zig_name="zig-aarch64-linux-${ZIG_VERSION}"
+        fetch "https://ziglang.org/download/${ZIG_VERSION}/${zig_name}.tar.xz" "${SHA256_ZIG}" "${zig_name}.tar.xz"
+        python3 -c 'import sys, tarfile; tarfile.open(sys.argv[1], "r:xz").extractall(sys.argv[2], filter="data")' \
+          "${root}/dl/${zig_name}.tar.xz" "${root}/zig"
+        rm -f "${root}/dl/${zig_name}.tar.xz"
+        for tool in cc c++ ar; do
+          printf '%s\n' '#!/usr/bin/env bash' 'args=()' 'for arg in "$@"; do' \
+            '  case "${arg}" in --target=* | -Wl,--fix-cortex-a53-843419) ;; *) args+=("${arg}") ;; esac' 'done' \
+            "exec '${root}/zig/${zig_name}/zig' ${tool} \"\${args[@]}\"" >"${root}/cc/${tool}"
+          chmod +x "${root}/cc/${tool}"
+        done
+        echo "${root}/rust/bin" >>"${GITHUB_PATH}"
+        echo "${root}/cc" >>"${GITHUB_PATH}"
+
+    # Some runfiles paths pass Windows' 260-character limit under the
+    # default output root in the runner's profile. The user bazelrc reaches
+    # the workspace wherever it is. After setup-bazel, which writes that file
+    # too and leaves its last line unterminated, hence the leading newline.
+    - name: Shorten Bazel's output root
+      if: runner.os == 'Windows'
+      shell: bash
+      run: printf '\nstartup --output_user_root=C:/b\n' >>"$HOME/.bazelrc"
+
+    # Even under that root, a few paths in the Python runtime's packages
+    # pass 260 characters; Python reads them only with long paths enabled.
+    - name: Enable long paths
+      if: runner.os == 'Windows'
+      shell: bash
+      run: reg add 'HKLM\SYSTEM\CurrentControlSet\Control\FileSystem' //v LongPathsEnabled //t REG_DWORD //d 1 //f
+
+    # Fetching hits go.dev's release list (go_sdk.from_file), PyPI, GitHub
+    # and the BCR mirror, which can fail for longer than Bazel's own
+    # download retries wait. The fetch retries with pauses of 30 seconds,
+    # doubling, until the next pause would pass the retry budget. It then
+    # fails with the last URL in the output, so a long outage ends in a
+    # failure instead of the job's timeout cancelling it. Only the fetch is
+    # retried: a test failure never is.
+    - name: Fetch, retrying transient failures
+      id: fetch
+      if: inputs.targets != ''
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      env:
+        BUDGET: ${{ inputs.retry-budget-minutes }}
+        TARGETS: ${{ inputs.targets }}
+        WORKSPACES: . ${{ inputs.fetch-workspaces }}
+        # MSYS Bash turns a leading `//` into `/` in an argument to a native
+        # program, which breaks a label such as `//tools:pip_audit`.
+        MSYS2_ARG_CONV_EXCL: "*"
+      run: bash "${GITHUB_ACTION_PATH}/fetch.sh"
+
+    # setup-bazel's post-if is !cancelled(), even after a failed fetch. Remove
+    # the incomplete repository cache so its post step cannot archive it.
+    - name: Discard an incomplete warm cache
+      if: failure() && inputs.cache-save == 'true'
+      shell: bash
+      run: |
+        cache="$HOME/.cache/bazel-repo"
+        if [[ $RUNNER_OS == Windows ]]; then
+          case "$GITHUB_WORKSPACE" in
+            [Dd]:*) cache=D:/_bazel-repo ;;
+            *) cache=C:/_bazel-repo ;;
+          esac
+        fi
+        rm -rf -- "$cache"

@@ -1,0 +1,150 @@
+# SPDX-License-Identifier: Apache-2.0
+# Copyright Tony Burns
+
+load("@tbhb_rules//repo:defs.bzl", "repo_files")
+load("@tbhb_rules//testing:defs.bzl", "expect_failure_test")
+load(
+    "@tbhb_rules_python//:defs.bzl",
+    "deptry_test",
+    "import_linter_test",
+    "mutmut_test",
+    "pyrefly_test",
+    "pytest_test",
+    "ruff_test",
+)
+load(":coverage_proofs.bzl", "pytest_coverage_proofs")
+
+repo_files()
+
+CLEAN = glob(
+    ["**"],
+    exclude = [
+        "planted/**",
+        "source_paths/**",
+        "weak/**",
+        "*.importlinter.toml",
+    ],
+)
+
+ruff_test(
+    name = "ruff_test",
+    srcs = CLEAN,
+)
+
+pyrefly_test(
+    name = "pyrefly_test",
+    srcs = CLEAN,
+)
+
+deptry_test(
+    name = "deptry_test",
+    srcs = CLEAN,
+)
+
+pytest_test(
+    name = "pytest_test",
+    srcs = CLEAN,
+    coverage = ["tools"],
+)
+
+import_linter_test(
+    name = "import_linter_test",
+    srcs = CLEAN,
+)
+
+mutmut_test(
+    name = "mutmut_test",
+    srcs = CLEAN,
+    cpus = 2,
+)
+
+# Each config is rewritten in the scratch tree only; the default keeps
+# the existing source_paths. All four cases must find and kill mutants.
+[
+    mutmut_test(
+        name = "mutmut_source_paths_" + case + "_test",
+        srcs = glob(["source_paths/" + case + "/**"]),
+        chdir = "source_paths/" + case,
+        cpus = 2,
+        source_paths = [] if case == "empty" else ["calc.py"],
+    )
+    for case in [
+        "replace",
+        "key_absent",
+        "table_absent",
+        "empty",
+    ]
+]
+
+# Proofs: each target must fail, for the reason expect_failure_test states.
+# They are manual so `bazel test //...` runs them only through the proofs.
+PROOF_TAGS = ["manual"]
+
+mutmut_test(
+    name = "proof_mutmut_survivor",
+    srcs = glob(["weak/**"]),
+    chdir = "weak",
+    cpus = 2,
+    tags = PROOF_TAGS,
+)
+
+import_linter_test(
+    name = "proof_import_linter_broken",
+    srcs = CLEAN + ["broken.importlinter.toml"],
+    config = "broken.importlinter.toml",
+    tags = PROOF_TAGS,
+)
+
+import_linter_test(
+    name = "proof_import_linter_no_contracts",
+    srcs = CLEAN + ["none.importlinter.toml"],
+    config = "none.importlinter.toml",
+    tags = PROOF_TAGS,
+)
+
+deptry_test(
+    name = "proof_deptry_undeclared",
+    srcs = CLEAN + ["planted/undeclared.py"],
+    tags = PROOF_TAGS,
+)
+
+# A project of its own whose one dependency nothing imports.
+deptry_test(
+    name = "proof_deptry_unused",
+    srcs = glob(["planted/unused/**"]),
+    chdir = "planted/unused",
+    tags = PROOF_TAGS,
+)
+
+pytest_test(
+    name = "proof_pytest_coverage",
+    # Without test_report.py, nothing runs report.score.
+    srcs = [f for f in CLEAN if f != "tools/test_report.py"],
+    coverage = ["tools"],
+    tags = PROOF_TAGS,
+)
+
+# A pytest_test with no `coverage` fails at analysis, naming the argument.
+pytest_coverage_proofs(
+    name = "proof_pytest_no_coverage",
+    srcs = CLEAN,
+)
+
+PROOF_REASONS = {
+    "proof_deptry_undeclared": "undeclared\\.py:.* DEP001 'requests' imported but missing from the dependency definitions",
+    "proof_deptry_unused": "DEP002 'packaging' defined as a dependency but not used in the codebase",
+    "proof_import_linter_broken": "report must not use calc BROKEN",
+    # The prefix also covers Import Linter 2.17, which names the config file in the message.
+    "proof_import_linter_no_contracts": "No contracts found in",
+    "proof_mutmut_survivor": "survived: lib\\.half\\.x_half__mutmut_",
+    "proof_pytest_coverage": "Required test coverage of 100(\\.0)?% not reached",
+}
+
+[
+    expect_failure_test(
+        name = proof + "_fails",
+        pattern = pattern,
+        test = ":" + proof,
+    )
+    for proof, pattern in PROOF_REASONS.items()
+]

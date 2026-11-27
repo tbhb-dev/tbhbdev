@@ -1,0 +1,68 @@
+---
+- name: reviews | Install the reviews App scripts and credentials cache for this account
+  become: true
+  become_user: "{{ agent_workspace_user }}"
+  block:
+    - name: reviews | Create the bin and cache directories
+      ansible.builtin.file:
+        path: "{{ item.path }}"
+        state: directory
+        mode: "{{ item.mode }}"
+      loop:
+        - {path: "{{ agent_workspace_home }}/.local/bin", mode: '0755'}
+        - {path: "{{ agent_workspace_home }}/.local/state/gh-reviews", mode: '0700'}
+
+    - name: reviews | Install gh-reviews-config
+      ansible.builtin.copy:
+        src: gh-reviews-config
+        dest: "{{ agent_workspace_home }}/.local/bin/gh-reviews-config"
+        mode: '0755'
+
+    - name: reviews | Install the companion approval tool
+      ansible.builtin.copy:
+        src: "{{ agent_workspace_approval_tool_src }}"
+        dest: "{{ agent_workspace_home }}/.local/bin/tbhb-approve"
+        mode: '0755'
+      when: agent_workspace_approval_tool_src is defined
+
+    - name: reviews | Write the credentials cache atomically
+      agent_workspace_pipelined_command:
+        argv:
+          - "{{ ansible_facts.python.executable }}"
+          - -c
+          - |
+              import os, pathlib, stat, sys, tempfile
+
+              cache = pathlib.Path(sys.argv[1])
+              mode = cache.lstat().st_mode
+              if not stat.S_ISDIR(mode) or stat.S_IMODE(mode) != 0o700:
+                  raise SystemExit('Expected a credentials cache directory with mode 0700')
+
+              dest = cache / 'credentials.json'
+              content = sys.stdin.buffer.read()
+              try:
+                  mode = dest.lstat().st_mode
+              except FileNotFoundError:
+                  pass
+              else:
+                  if stat.S_ISREG(mode) and stat.S_IMODE(mode) == 0o600 and dest.read_bytes() == content:
+                      raise SystemExit(0)
+
+              fd, temporary = tempfile.mkstemp(prefix='.credentials.', dir=cache)
+              try:
+                  with os.fdopen(fd, 'wb') as output:
+                      os.fchmod(output.fileno(), 0o600)
+                      output.write(content)
+                  os.replace(temporary, dest)
+              finally:
+                  pathlib.Path(temporary).unlink(missing_ok=True)
+              print('changed')
+          - "{{ agent_workspace_home }}/.local/state/gh-reviews"
+        expand_argument_vars: false
+        stdin: "{{ agent_workspace_reviews_cache | to_nice_json }}"
+      vars:
+        ansible_pipelining: true
+      register: agent_workspace_reviews_write
+      changed_when: agent_workspace_reviews_write.stdout == 'changed'
+      no_log: true
+      diff: false

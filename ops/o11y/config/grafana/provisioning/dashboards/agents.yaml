@@ -1,0 +1,12 @@
+---
+apiVersion: 1
+
+providers:
+  - name: agents
+    type: file
+    folder: Agents
+    folderUid: o11y-agents-folder
+    disableDeletion: true
+    allowUiUpdates: true
+    options:
+      path: /etc/o11y-grafana/dashboards/agents

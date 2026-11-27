@@ -1,0 +1,11 @@
+---
+# The agent and ops accounts on the Windows agent hosts. There is no Molecule
+# scenario for Windows, so check a run before applying it:
+#   mise run playbook -- playbooks/windows-accounts.yml --check --diff
+# Ansible reaches the host as the operator over ssh into PowerShell; an
+# administrator's session is already elevated, so no sudo or -K applies.
+- name: Create the Windows agent hosts' agent and ops accounts
+  hosts: windows
+  gather_facts: true
+  roles:
+    - windows_accounts

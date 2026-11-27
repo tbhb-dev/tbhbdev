@@ -3,28 +3,33 @@
 
 ---
 # Vendored from rules#422 at aa2f970279ca268aea6e6fc7fc3851a5b3d2fc5e.
-# Chooses the Bazel test targets a pull request or merge group can affect.
+# Chooses the Bazel test targets a pull request, merge group, or manual dispatch can affect.
 # Run it after checkout with `fetch-depth: 0` and after setup-bazel-ci, which
-# puts bazelisk on PATH. When it can't decide, it selects `//...`; see the
-# README for the list.
+# puts bazelisk on PATH. When it can't decide, it selects the root and all
+# shared rules modules.
 name: Affected Bazel targets
 description: >-
   Select the test targets that the change from the event's base commit can
-  affect, with target-determinator, and fall back to `//...` whenever the
+  affect with target-determinator. Fall back to all test patterns when the
   change can't be decided.
 
 inputs:
+  base:
+    description: Base commit for a manual dispatch. Defaults to the dispatched commit's first parent.
+    required: false
   working-directory:
     description: The directory of the Bazel workspace to query.
     required: false
     default: .
   query:
     description: >-
-      The Bazel query of the candidate targets, on one line. When an
-      affected test's tags match `manual` in `bazel cquery`, the action
-      selects `//...`, which can still run it through a test_suite.
+      An optional one-line Bazel query that narrows the graph-based candidates.
+      By default the candidates come from the root and shared rules modules.
+      Workspace checks can also be selected directly from changed paths.
+      When an affected test is tagged `manual`, the action falls back to
+      test patterns that can run it through a test_suite.
     required: false
-    default: 'tests(//...)'
+    default: ''
   bazel-opts:
     description: >-
       Options for target-determinator's cquery and build, and for the cquery
@@ -34,15 +39,14 @@ inputs:
     default: --config=ci
   timeout-minutes:
     description: >-
-      Whole minutes target-determinator and the cquery of manual tags may
-      run together before the action stops them and selects `//...`. Keep it
-      below the job's timeout.
+      Whole minutes the selection tools may run together before falling
+      back to all test patterns. Keep it below the job's timeout.
     required: false
     default: "15"
 
 outputs:
   all:
-    description: '"true" when the action fell back to `//...`, else "false".'
+    description: '"true" when the action fell back to all test patterns, else "false".'
     value: ${{ steps.select.outputs.all }}
   count:
     description: The number of selected targets, or "all" on a fallback.
@@ -52,7 +56,7 @@ outputs:
     value: ${{ steps.select.outputs.reason }}
   targets:
     description: >-
-      The selected targets, one per line, or `//...`. Empty when the change
+      The selected test targets or fallback patterns, one per line. Empty when the change
       affects no test target. Prefer `file`.
     value: ${{ steps.select.outputs.targets }}
   file:
@@ -66,7 +70,7 @@ runs:
   using: composite
   steps:
     # Release binaries are static, and the action checks each against its
-    # pinned sha256. Other runners and a failed download fall back to `//...`.
+    # pinned sha256. Other runners and a failed download use the fallback patterns.
     - name: Download target-determinator
       id: download
       if: runner.os == 'Linux' && (runner.arch == 'X64' || runner.arch == 'ARM64')
@@ -96,7 +100,7 @@ runs:
       working-directory: ${{ inputs.working-directory }}
       env:
         EVENT: ${{ github.event_name }}
-        BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha }}
+        BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha || inputs.base }}
         HEAD_SHA: ${{ github.event.merge_group.head_sha || github.sha }}
         TD: ${{ steps.download.outputs.path }}
         QUERY: ${{ inputs.query }}

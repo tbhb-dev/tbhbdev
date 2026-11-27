@@ -1,0 +1,92 @@
+---
+# No Code directory, no mise config and no agent account.
+- name: Prepare
+  hosts: all
+  become: true
+  tasks:
+    - name: Create ops
+      ansible.builtin.user:
+        name: ops
+        create_home: true
+        shell: /bin/bash
+    - name: Create fixture directories
+      ansible.builtin.file:
+        path: "{{ item }}"
+        state: directory
+        owner: ops
+        mode: '0700'
+      loop:
+        - /home/ops/.local/bin
+        - /home/ops/fixture/tbhbdev
+        - "{{ ['/home/ops/.config', 'tbhbdev', 'secrets'] | join('/') }}"
+    - name: Install command fixtures
+      ansible.builtin.copy:
+        src: "{{ playbook_dir }}/../default/files/{{ item }}"
+        dest: "/home/ops/.local/bin/{{ item }}"
+        owner: ops
+        mode: '0700'
+      loop: [uv, mise]
+    - name: Install the isolated secrets fixture
+      ansible.builtin.copy:
+        dest: /home/ops/fixture/tbhbdev/secrets.py
+        content: |
+          def token():
+              return 'molecule-fixture'
+
+          class Connect:
+              def __init__(self, value, endpoints):
+                  assert value == 'molecule-fixture'
+                  assert endpoints == ['https://op-connect.example.example.invalid']
+
+              def vaults(self):
+                  return [{'name': 'host-0-shared'}, {'name': 'host-fixture'}]
+        owner: ops
+        mode: '0600'
+    - name: Install a fallback token fixture
+      ansible.builtin.copy:
+        dest: "{{ ['/home/ops/.config', 'tbhbdev', 'secrets/connect-token'] | join('/') }}"
+        content: molecule-fixture
+        owner: ops
+        mode: '0600'
+    - name: Prepare a local remote for the clone
+      become: true
+      become_user: ops
+      ansible.builtin.shell:
+        cmd: |
+          set -eu
+          git init --quiet --bare --initial-branch=main /home/ops/repo.git
+          git clone --quiet /home/ops/repo.git /home/ops/seed 2>/dev/null
+          cd /home/ops/seed
+          git config user.name Molecule
+          git config user.email molecule@example.invalid
+          echo first > tracked
+          printf '[project]\nname = "tbhbdev"\nversion = "0"\n' > pyproject.toml
+          git add tracked
+          git add pyproject.toml
+          git commit --quiet -m first
+          git push --quiet origin main
+          git config --global url./home/ops/repo.git.insteadOf https://github.com/fixture/repo.git
+        creates: /home/ops/repo.git
+      environment:
+        HOME: /home/ops
+        SSH_AUTH_SOCK: ""
+    - name: Require the existing credential helper for private clone and fetch commands
+      ansible.builtin.copy:
+        dest: /home/ops/.local/bin/git
+        content: |
+          #!/usr/bin/python3
+          import os
+          import sys
+
+          args = sys.argv[1:]
+          if 'clone' in args or 'fetch' in args:
+              assert 'credential.helper=' in args
+              if '+refs/heads/main:refs/remotes/origin/main' in args:
+                  assert os.environ['GIT_TERMINAL_PROMPT'] == '0'
+                  assert 'credential.helper=!gh auth git-credential' not in args
+                  assert 'https://github.com/fixture/repo.git' in args
+              else:
+                  assert 'credential.helper=!gh auth git-credential' in args
+          os.execv('/usr/bin/git', ['git', *args])  # cspell:ignore execv
+        owner: ops
+        mode: '0700'

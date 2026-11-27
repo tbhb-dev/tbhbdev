@@ -1,0 +1,28 @@
+# SPDX-License-Identifier: Apache-2.0
+# Copyright Tony Burns
+
+load("@bazel_skylib//:bzl_library.bzl", "bzl_library")
+load("//repo:defs.bzl", "repo_files")
+
+repo_files()
+
+exports_files(["tools.json"])
+
+bzl_library(
+    name = "extensions",
+    srcs = ["extensions.bzl"],
+    visibility = ["//visibility:public"],
+    deps = [":hub"],
+)
+
+bzl_library(
+    name = "hub",
+    srcs = ["hub.bzl"],
+    visibility = ["//visibility:public"],
+)
+
+bzl_library(
+    name = "binary",
+    srcs = ["binary.bzl"],
+    visibility = ["//visibility:public"],
+)

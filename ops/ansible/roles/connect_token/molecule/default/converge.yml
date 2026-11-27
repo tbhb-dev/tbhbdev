@@ -1,0 +1,14 @@
+---
+- name: Converge
+  hosts: all
+  become: true
+  become_user: agent
+  vars:
+    connect_token_home: "{{ ['/home', 'agent'] | join('/') }}"
+    connect_token_ref: "{{ 'op://' ~ 'test-vault/token/value' }}"
+    # A synthetic value, read on the controller; never invokes tbhbdev or op.
+    connect_token_lookup_command: "bash {{ playbook_dir }}/files/read.sh"
+  tasks:
+    - name: Install into the Linux default, a file
+      ansible.builtin.include_role:
+        name: connect_token

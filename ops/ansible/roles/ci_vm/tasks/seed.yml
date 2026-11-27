@@ -1,0 +1,68 @@
+---
+- name: seed | Create the seed's directory
+  ansible.builtin.file:
+    path: "{{ ci_vm_image_dir }}/{{ ci_vm_name }}-seed"
+    state: directory
+    owner: root
+    group: root
+    mode: "0700"
+  register: ci_vm_seed_dir
+
+# user-data carries the auth key when one was minted. The files and the image
+# are root-only. libvirt gives the image to the QEMU user while the domain runs,
+# so the VM can read it without a wider mode.
+- name: seed | Write the seed's files
+  ansible.builtin.template:
+    src: "{{ item }}.j2"
+    dest: "{{ ci_vm_image_dir }}/{{ ci_vm_name }}-seed/{{ item }}"
+    owner: root
+    group: root
+    mode: "0600"
+  loop: [user-data, meta-data]
+  register: ci_vm_seed_files
+  no_log: "{{ ci_vm_key_minted | default(false) }}"
+  diff: false
+  when: not (ansible_check_mode and ci_vm_seed_dir is changed)
+
+- name: seed | Look for the seed image
+  ansible.builtin.stat:
+    path: "{{ ci_vm_image_dir }}/{{ ci_vm_name }}-seed.iso"
+    get_checksum: false
+  register: ci_vm_seed_iso
+
+# The image appears under its final name only once complete, so a run that
+# stopped mid-build never leaves a partial seed for the VM to boot from. The
+# umask keeps the image, which may hold the key, private from its first byte.
+- name: seed | Build the seed image
+  ansible.builtin.command:
+    argv:
+      - /bin/sh
+      - -c
+      - umask 077 && exec cloud-localds "$@"
+      - cloud-localds
+      - "{{ ci_vm_image_dir }}/{{ ci_vm_name }}-seed.iso.new"
+      - "{{ ci_vm_image_dir }}/{{ ci_vm_name }}-seed/user-data"
+      - "{{ ci_vm_image_dir }}/{{ ci_vm_name }}-seed/meta-data"
+  changed_when: true
+  no_log: "{{ ci_vm_key_minted | default(false) }}"
+  when: ci_vm_seed_files is changed or not ci_vm_seed_iso.stat.exists
+  register: ci_vm_seed_built
+
+# The build above is a task, not a handler, because the rename must follow it in this run.
+- name: seed | Put the seed image in place
+  ansible.builtin.command:  # noqa: no-handler
+    argv:
+      - mv
+      - --force
+      - "{{ ci_vm_image_dir }}/{{ ci_vm_name }}-seed.iso.new"
+      - "{{ ci_vm_image_dir }}/{{ ci_vm_name }}-seed.iso"
+  changed_when: true
+  when: ci_vm_seed_built is changed
+
+# Mode only: libvirt owns the image while the domain runs. A check run builds
+# no image, so it sets the mode only on an image that already exists.
+- name: seed | Keep the seed image private
+  ansible.builtin.file:
+    path: "{{ ci_vm_image_dir }}/{{ ci_vm_name }}-seed.iso"
+    mode: "0600"
+  when: not ansible_check_mode or ci_vm_seed_iso.stat.exists

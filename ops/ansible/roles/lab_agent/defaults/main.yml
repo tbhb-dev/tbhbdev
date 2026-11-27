@@ -1,0 +1,11 @@
+---
+# cspell:ignore slirp netns
+# Keep the primary devel group. Only these supplementary groups remain.
+lab_agent_groups: [kvm, adm]
+# Containers in Molecule do not provide a user systemd manager.
+lab_agent_manage_user_service: true
+lab_agent_rootless_packages:
+  - docker-ce-rootless-extras
+  - uidmap
+  - slirp4netns
+  - passt

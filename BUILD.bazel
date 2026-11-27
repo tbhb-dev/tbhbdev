@@ -1,34 +1,69 @@
 # SPDX-License-Identifier: Apache-2.0
 # Copyright Tony Burns
 
+load("@bazel_env.bzl", "bazel_env")
 load("@buildifier_prebuilt//:rules.bzl", "buildifier", "buildifier_test")
-load("@gazelle//:def.bzl", "gazelle", "gazelle_test")
+load("@gazelle//:def.bzl", "gazelle", "gazelle_binary", "gazelle_test")
 load("@rules_go//go:def.bzl", "nogo")
 load("@rules_shell//shell:sh_binary.bzl", "sh_binary")
+load("@tbhb_rules//lint:defs.bzl", "actionlint_test", "gitleaks_history")
 
 exports_files([
+    ".gitignore",
     ".go-arch-lint.yml",
     ".golangci.yml",
-    "go.mod",
+    ".cspell-words.txt",
+    ".cspell.jsonc",
+    ".github/actions/affected-targets/action.yml",
+    ".github/actions/affected-targets/select.sh",
+    ".github/actions/setup-bazel-ci/cpu_quota.sh",
+    ".github/actions/setup-bazel-ci/fetch-targets.txt",
+    ".github/actions/setup-bazel-ci/fetch.sh",
+    ".github/schemas/pull-request-draft.schema.json",
+    ".github/workflows/ci.yml",
+    ".github/workflows/mutation-nightly.yml",
+    ".vale.ini",
+    ".vale/config/vocabularies/project/accept.txt",
+    ".vale/config/vocabularies/project/reject.txt",
+    ".vale/project/Acronyms.yml",
+    ".vale/project/CoinedTerms.yml",
+    ".vale/project/Colons.yml",
+    ".vale/project/HeadingTitleCase.yml",
+    ".vale/project/WordList.yml",
+    "tombi.toml",
 ])
 
-# The root Renovate workflow, which lib/renovate-config's tests read.
 exports_files(
-    [".github/workflows/renovate.yaml"],
-    visibility = ["//lib/renovate-config:__pkg__"],
+    ["uv.lock"],
+    visibility = ["//factory/cli:__pkg__"],
 )
 
-# Minimal Gazelle setup until the rules import lands; reads go.mod.
-gazelle(name = "gazelle")
+# gazelle:python_extension disabled
+
+gazelle_binary(
+    name = "gazelle_bin",
+    languages = [
+        "@gazelle//language/proto",
+        "@gazelle//language/go",
+        "@rules_python_gazelle_plugin//python",
+    ],
+)
+
+gazelle(
+    name = "gazelle",
+    gazelle = ":gazelle_bin",
+)
 
 gazelle(
     name = "gazelle.check",
+    gazelle = ":gazelle_bin",
     mode = "diff",
 )
 
 gazelle_test(
     name = "gazelle_test",
     size = "small",
+    gazelle = ":gazelle_bin",
     workspace = "//:MODULE.bazel",
 )
 
@@ -38,10 +73,12 @@ nogo(
     visibility = ["//visibility:public"],
 )
 
-# Installs the Vale packages pinned in .vale.ini; uses `vale` from PATH.
+# Installs the Vale packages pinned in .vale.ini.
 sh_binary(
     name = "vale_sync",
     srcs = ["vale_sync.sh"],
+    args = ["$(rootpath @tbhb_rules_vale//:vale)"],
+    data = ["@tbhb_rules_vale//:vale"],
 )
 
 BUILDIFIER_EXCLUDES = [
@@ -51,6 +88,7 @@ BUILDIFIER_EXCLUDES = [
     "./bazel-*",
     "./.bazel-*",
     "./.worktrees/*",
+    "./lib/rules/*",
     "./tmp/*",
 ]
 
@@ -72,10 +110,21 @@ buildifier_test(
     workspace = "//:MODULE.bazel",
 )
 
+actionlint_test(
+    name = "actionlint_test",
+    srcs = glob([
+        ".github/actions/**",
+        ".github/workflows/**",
+    ]),
+    config = ".github/actionlint.yaml",
+)
+
+gitleaks_history(
+    name = "gitleaks_history",
+    config = ".gitleaks.toml",
+)
+
 # Repository filegroup consumed by //factory:visibility_test.
-# Additional repository-wide lint targets (repo_layout_test, gitleaks_test,
-# gitleaks_history, reuse_test, editorconfig_checker_test, shellcheck_test,
-# and shfmt_test) arrive with the rules import.
 filegroup(
     name = "repo_files",
     srcs = glob(
@@ -113,4 +162,47 @@ filegroup(
         "//lib:repo_files",
     ],
     visibility = ["//factory:__subpackages__"],
+)
+
+# Shared inputs for the CLI's hermetic Python checks.
+filegroup(
+    name = "cli_check_inputs",
+    srcs = glob([
+        ".vale/config/**",
+        ".vale/project/**",
+    ]) + [
+        ".cspell.jsonc",
+        ".cspell-words.txt",
+        ".gitattributes",
+        ".github/PULL_REQUEST_TEMPLATE.md",
+        ".github/pull-request-sections.toml",
+        ".github/schemas/pull-request-draft.schema.json",
+        ".github/workflows/ci.yml",
+        ".gitleaks.toml",
+        ".rumdl.toml",
+        ".vale.ini",
+        "pyproject.toml",
+        "uv.lock",
+    ],
+    visibility = ["//factory/cli:__subpackages__"],
+)
+
+bazel_env(
+    name = "bazel_env",
+    tools = {
+        "actionlint": "@tbhb_rules_actionlint//:actionlint",
+        "buildifier": "@buildifier_prebuilt//:buildifier",
+        "cog": "@tbhb_rules_cog//:cog",
+        "editorconfig-checker": "@tbhb_rules_editorconfig_checker//:editorconfig-checker",
+        "gitleaks": "@tbhb_rules//lint:gitleaks",
+        "gitleaks-raw": "@tbhb_rules_gitleaks//:gitleaks",
+        "rumdl": "@tbhb_rules_rumdl//:rumdl",
+        "ryl": "@tbhb_rules_ryl//:ryl",
+        "scc": "@tbhb_rules_scc//:scc",
+        "shellcheck": "@tbhb_rules_shellcheck//:shellcheck",
+        "shfmt": "@tbhb_rules_shfmt//:shfmt",
+        "tombi": "@tbhb_rules_tombi//:tombi",
+        "vale": "@tbhb_rules_vale//:vale",
+        "zizmor": "@tbhb_rules_zizmor//:zizmor",
+    },
 )

@@ -1,0 +1,24 @@
+---
+# The key and program paths are the ones agent_harness requires.
+agent_signing_home: "{{ '/Users/agent' if ansible_facts.system == 'Darwin' else '/home/agent' }}"
+agent_signing_directory: "{{ agent_signing_home }}/.config/devtools"
+agent_signing_private_key: "{{ agent_signing_directory }}/agent-signing-key"
+agent_signing_public_key: "{{ agent_signing_private_key }}.pub"
+agent_signing_config: "{{ agent_signing_directory }}/signing.env"
+agent_signing_bin: "{{ agent_signing_home }}/.local/bin"
+agent_signing_program: "{{ agent_signing_bin }}/ssh-sign"
+# The Go names for the architectures facts report.
+agent_signing_goarch: {x86_64: amd64, aarch64: arm64, arm64: arm64}
+# The GOOS-GOARCH pairs of every host in the play, which build.yml builds once each.
+agent_signing_targets: >-
+  {{ ansible_play_hosts | map('extract', hostvars, ['ansible_facts', 'system']) | map('lower')
+  | zip(ansible_play_hosts | map('extract', hostvars, ['ansible_facts', 'architecture'])
+  | map('extract', agent_signing_goarch)) | map('join', '-') | unique | list }}
+agent_signing_target: "{{ ansible_facts.system | lower }}-{{ agent_signing_goarch[ansible_facts.architecture] }}"
+agent_signing_process_environment:
+  HOME: "{{ agent_signing_home }}"
+  PATH: >-
+    {{ [agent_signing_bin, agent_signing_home + '/.local/share/mise/shims', '/opt/homebrew/bin',
+    '/usr/local/bin', '/usr/bin', '/bin'] | join(':') }}
+  SSH_AUTH_SOCK: ""
+  GIT_TERMINAL_PROMPT: "0"

@@ -11,6 +11,7 @@ exclude = [
   ".vale",
   "tmp",
   "LICENSE",
+  "lib/rules/lint/tests/content/testdata",
 ]
 
 [MD003]
@@ -26,5 +27,9 @@ front_matter_title = ""
 style = "backtick"
 
 [per-file-ignores]
+"**/index.md" = ["MD004"]
 # A PR body has no H1: GitHub shows the PR title above it.
 ".github/PULL_REQUEST_TEMPLATE.md" = ["MD041"]
+"lib/rules/repo/baseline/files/.github/PULL_REQUEST_TEMPLATE.md" = ["MD041"]
+"factory/cli/.github/PULL_REQUEST_TEMPLATE.md" = ["MD041"]
+"factory/cli/src/tbhbdev/alpha/review_data/PULL_REQUEST_REVIEW_TEMPLATE.md" = ["MD041"]

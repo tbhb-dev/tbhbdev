@@ -16,12 +16,9 @@ package_group(
     ],
 )
 
-# A glob stops at a package boundary, so include the project's filegroup.
 filegroup(
     name = "repo_files",
-    srcs = glob(["**"]) + [
-        "//lib/renovate-config:repo_files",
-    ],
+    srcs = glob(["**"]) + ["//lib/telemetry:repo_files"],
     visibility = ["//:__pkg__"],
 )
 

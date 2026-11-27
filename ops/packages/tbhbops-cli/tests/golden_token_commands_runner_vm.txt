@@ -1,0 +1,46 @@
+set -eu
+
+# @tbhb runs this script once, in their own terminal, and 1Password asks
+# them to approve once.
+# An agent only prints it. It needs op and jq.
+# It first creates each vault it needs that the account lacks.
+# It grants the Connect server srv the vault runner-fixture and each lab node's vault,
+# then creates one token with no expiry for each CI runner VM.
+# The token reads only the vault runner-fixture, read-only. It is kept
+# in its lab node's vault as the item runner-access-token, field token.
+# A VM whose node vault already holds it is skipped, so the script is
+# safe to run again.
+
+vaults=$(op vault list --account acct.example.com --format json) || {
+  echo 'could not list the vaults in the 1Password account' >&2
+  exit 1
+}
+for name in host-ex-lab1 runner-fixture; do
+  found=$(printf '%s' "$vaults" | jq -r --arg name "$name" 'any(.[]; .name == $name)') || {
+    echo 'could not read the vault list' >&2
+    exit 1
+  }
+  if [ "$found" = false ]; then
+    op vault create --account acct.example.com "$name" >/dev/null
+    echo "created vault $name"
+  fi
+done
+unset vaults
+
+op connect vault grant --account acct.example.com --server srv --vault host-ex-lab1
+op connect vault grant --account acct.example.com --server srv --vault runner-fixture
+
+# runner-vm ex-lab1-ci
+if op item get --account acct.example.com runner-access-token --vault host-ex-lab1 >/dev/null 2>&1; then
+  echo 'host-ex-lab1 already holds runner-access-token; skipping' >&2
+else
+  tok=$(op connect token create --account acct.example.com 'runner-vm:ex-lab1-ci:20261108T142100Z' --server srv --vault runner-fixture,r)
+  if [ -z "$tok" ]; then
+    echo 'op connect token create printed no token for ex-lab1-ci' >&2
+    exit 1
+  fi
+  printf '%s' "$tok" \
+    | jq -R '{title: "runner-access-token", category: "API_CREDENTIAL", fields: [{label: "token", type: "CONCEALED", value: .}]}' \
+    | op item create --account acct.example.com --vault host-ex-lab1 -
+  unset tok
+fi

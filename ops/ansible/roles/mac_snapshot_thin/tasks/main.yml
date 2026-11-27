@@ -1,0 +1,22 @@
+---
+- name: Create the snapshot thinner directory
+  ansible.builtin.file:
+    path: /Library/tbhb-snapshot-thin
+    state: directory
+    owner: root
+    group: wheel
+    mode: "0755"
+
+- name: Install the snapshot thinner
+  ansible.builtin.copy:
+    src: "{{ role_path }}/../../../packages/tbhbops/src/tbhbops/mac_snapshot_thin.py"
+    dest: /Library/tbhb-snapshot-thin/run.py
+    owner: root
+    group: wheel
+    mode: "0644"
+
+- name: Install the snapshot thinner launch daemon
+  ansible.builtin.include_tasks: "{{ role_path }}/../../tasks/launch-daemon.yml"
+  vars:
+    launch_daemon_label: dev.tbhb.mac-snapshot-thin
+    launch_daemon_source: "{{ role_path }}/files/dev.tbhb.mac-snapshot-thin.plist"

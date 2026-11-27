@@ -5,8 +5,9 @@ version = 1
 
 [[annotations]]
 path = [
-  "go.mod",
-  "go.sum",
+  "factory/github-metrics/go.mod",
+  "factory/github-metrics/go.sum",
+  "go.work",
   "uv.lock",
   "MODULE.bazel.lock",
   ".bazelversion",
@@ -25,5 +26,45 @@ path = [
   ".cspell.jsonc",
   ".vale/config/vocabularies/project/*.txt",
 ]
+SPDX-FileCopyrightText = "Tony Burns"
+SPDX-License-Identifier = "Apache-2.0"
+
+[[annotations]]
+path = [
+  ".github/actions/setup-bazel-ci/fetch-targets.txt",
+  "lib/rules/**/.bazelignore",
+  "lib/rules/**/.bazelrc",
+  "lib/rules/**/.bazelversion",
+  "lib/rules/**/.editorconfig",
+  "lib/rules/**/.gitignore",
+  "lib/rules/**/.python-version",
+  "lib/rules/**/.rylignore",
+  "lib/rules/**/go.mod",
+  "lib/rules/**/go.sum",
+  "lib/rules/**/pnpm-lock.yaml",
+  "lib/rules/**/pnpm-workspace.yaml",
+  "lib/rules/**/uv.lock",
+  "lib/rules/**/*.d2.svg",
+  "lib/rules/**/*.d2.png",
+  "lib/rules/**/*.d2.sha256",
+  "lib/rules/**/structurizr-*.svg",
+  "lib/rules/**/structurizr-*.png",
+  "lib/rules/**/testdata/**",
+  "lib/rules/content/**/*.md",
+  "lib/rules/docs/**/*.md",
+  "lib/rules/preset.bazelrc",
+]
+SPDX-FileCopyrightText = "Tony Burns"
+SPDX-License-Identifier = "Apache-2.0"
+
+# The baseline bundles license specimens and templates as reference content.
+[[annotations]]
+path = "lib/rules/repo/baseline/**"
+precedence = "override"
+SPDX-FileCopyrightText = "Tony Burns"
+SPDX-License-Identifier = "Apache-2.0"
+
+[[annotations]]
+path = "factory/cli/**"
 SPDX-FileCopyrightText = "Tony Burns"
 SPDX-License-Identifier = "Apache-2.0"

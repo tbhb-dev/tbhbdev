@@ -1,0 +1,9 @@
+---
+- name: Converge
+  hosts: all
+  vars:
+    ssh_host_keys_users: [agent, ops, absent]
+    ssh_host_keys_known_hosts_src: "{{ playbook_dir }}/known_hosts"
+    ssh_host_keys_peers: [peer-b, peer-a]
+  roles:
+    - ssh_host_keys

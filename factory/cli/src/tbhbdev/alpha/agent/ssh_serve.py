@@ -1,0 +1,178 @@
+"""A bounded, forced-command SSH interface to one host run."""
+
+from __future__ import annotations
+
+import json
+import os
+import pwd
+import shlex
+import sys
+from pathlib import Path
+
+from tbhbdev.alpha.agent import build_info, ownership, process_group, run_host, runfiles
+from tbhbdev.alpha.agent.decisions.run_state import Group, owns
+from tbhbdev.alpha.agent.model import NAME, Invalid
+
+MACOS_LAUNCH_KEY = Path("/Library/Application Support/tbhbdev/agent-launch/id_ed25519")
+LINUX_LAUNCH_KEY = Path("/etc/tbhbdev/agent-launch/id_ed25519")
+INPUT_LIMIT = 1024 * 1024
+COMMAND_WORDS = 2
+MAX_DEPTH = 32
+
+
+def too_deep(text: str) -> bool:
+    """Whether TEXT nests arrays or objects past MAX_DEPTH, outside strings.
+
+    The decoder's own recursion limit differs between platforms, so the bound
+    is checked here in one linear pass instead of relying on it.
+    """
+    depth = 0
+    quoted = False  # pragma: no mutate -- None is as falsy as False here
+    escaped = False  # pragma: no mutate -- None is as falsy as False here
+    for char in text:
+        if escaped:
+            escaped = False  # pragma: no mutate -- None is as falsy as False
+        elif quoted:
+            escaped = char == "\\"
+            quoted = char != '"'
+        elif char == '"':
+            quoted = True
+        elif char in "[{":
+            depth += 1
+            if depth > MAX_DEPTH:
+                return True
+        elif char in "]}":
+            depth -= 1
+    return False
+
+
+def command(arguments: list[str]) -> tuple[str, str]:
+    if pwd.getpwuid(os.getuid()).pw_name != "agent":
+        message = "requires agent account"
+        raise Invalid(message)
+    # A forced command passes the verb in SSH_ORIGINAL_COMMAND. A plain login
+    # passes it as arguments: `ssh-serve run-host NAME`.
+    words = arguments or shlex.split(os.environ["SSH_ORIGINAL_COMMAND"])
+    if len(words) != COMMAND_WORDS or words[0] not in (
+        "run-host",
+        "preflight",
+        "result",
+        "kill",
+    ):
+        message = "expected run-host NAME, preflight NAME, result NAME or kill NAME"
+        raise Invalid(message)
+    if not NAME.fullmatch(words[1]):
+        message = "invalid run name"
+        raise Invalid(message)
+    return words[0], words[1]
+
+
+def envelope() -> dict[str, object]:
+    raw = sys.stdin.buffer.read(INPUT_LIMIT + 1)
+    if len(raw) > INPUT_LIMIT:
+        message = "stdin exceeds 1 MiB"
+        raise Invalid(message)
+    message = "invalid envelope"
+    try:
+        # Strict UTF-8 only: the decoder would also accept UTF-16 or UTF-32,
+        # which hides brackets from a scan of the text.
+        text = raw.decode("utf-8")  # pragma: no mutate -- same codec, other spelling
+        if too_deep(text):
+            raise Invalid(message)
+        data: object = json.loads(text)
+    except UnicodeDecodeError, RecursionError:
+        raise Invalid(message) from None
+    if not isinstance(data, dict) or data.keys() != {"v", "request"}:
+        message = "expected v and request"
+        raise Invalid(message)
+    if type(data["v"]) is not int or data["v"] != 1:
+        message = "unsupported envelope version"
+        raise Invalid(message)
+    request: object = data["request"]
+    if not isinstance(request, dict):
+        message = "request must be an object"
+        raise Invalid(message)
+    request_fields: dict[str, object] = request
+    return request_fields
+
+
+def start(files: runfiles.RunFiles, prog: str, *, preflight_only: bool) -> int:
+    body = json.dumps(envelope()) + "\n"
+    run_host.refuse_started(files)
+    ownership.claim(files)
+    # Exclusive creation preserves the request of an existing run.
+    fd = os.open(
+        files.path("request.json"), os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600
+    )
+    with os.fdopen(fd, "w") as stream:
+        stream.write(body)
+        stream.flush()
+        os.fsync(stream.fileno())
+    arguments = [files.name, "--preflight"] if preflight_only else [files.name]
+    verb = "preflight" if preflight_only else "run-host"
+    return run_host.main(arguments, f"{prog} {verb}", claimed=True)
+
+
+def optional(path: Path) -> str | None:
+    try:
+        return path.read_text()
+    except FileNotFoundError:
+        return None
+
+
+def result(files: runfiles.RunFiles) -> int:
+    rc = optional(files.path("rc"))
+    log = optional(files.path("log")) or ""
+    print(
+        json.dumps(
+            {
+                **build_info.identities(),
+                "v": 1,
+                "name": files.name,
+                "rc": None if rc is None else int(rc),
+                "state": optional(files.path("phase")),
+                "report": optional(files.path("out.final")),
+                "log_tail": "".join(log.splitlines(keepends=True)[-200:]),
+                "branch": optional(files.path("branch")),
+                "pr": optional(files.path("pr")),
+                "head": optional(files.path("head")),
+            }
+        )
+    )
+    return 0
+
+
+def kill(files: runfiles.RunFiles) -> int:
+    if files.path("rc").exists():
+        print("already finished")
+        return 0
+    data = json.loads(files.path("pgid").read_text())
+    recorded = Group(**data)
+    if not owns(recorded, process_group.identity(recorded.pgid)):
+        message = "run group identity no longer matches"
+        raise Invalid(message)
+    # TERM reaches the owned harness group; its supervisor records completion.
+    if not process_group.stop_owned(files, recorded.pgid, 0):
+        message = "cannot signal run group"
+        raise Invalid(message)
+    return 0
+
+
+def main(arguments: list[str], prog: str) -> int:
+    try:
+        verb, name = command(arguments)
+        files = runfiles.RunFiles(
+            runfiles.state_home(Path.home()) / "tbhbdev" / "agent-runs", name
+        )
+        if verb in ("run-host", "preflight"):
+            return start(files, prog, preflight_only=verb == "preflight")
+        if not files.path("request.json").exists():
+            return 3
+        return result(files) if verb == "result" else kill(files)
+    except Invalid as exc:
+        print(f"ssh-serve: refused: {exc}", file=sys.stderr)
+        return 2
+    except OSError, ValueError, TypeError, KeyError, RecursionError:
+        # Never echo untrusted JSON or an exception that might contain its token.
+        print("ssh-serve: refused: invalid command or run data", file=sys.stderr)
+        return 2

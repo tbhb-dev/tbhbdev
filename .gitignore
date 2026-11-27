@@ -23,6 +23,12 @@ __pycache__/
 coverage.xml
 .hypothesis/
 
+# Mutation output and linter caches
+/lib/rules/**/mutants/
+/lib/rules/**/*.sqlite
+.ryl_cache/
+.complexipy_cache/
+
 # vale sync packages
 .vale/*
 !.vale/project/
@@ -37,3 +43,8 @@ coverage.xml
 .cspell/
 .github/PULL_REQUEST_DRAFT.md
 !.mcp.json
+
+# CLI build stamp and local Python artifacts.
+/factory/cli/src/tbhbdev/_build.py
+/factory/cli/mutants/
+*.pyc

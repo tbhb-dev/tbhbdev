@@ -1,0 +1,5859 @@
+"""Host orchestration with fake credentials and disposable launch processes."""
+
+from __future__ import annotations
+
+import dataclasses
+import errno
+import getpass
+import grp
+import hashlib
+import io
+import json
+import os
+import select
+import shutil
+import signal
+import socket
+import stat
+import subprocess
+import sys
+import tempfile
+import time
+import tomllib
+from contextlib import ExitStack, contextmanager
+from functools import partial
+from pathlib import Path
+from types import SimpleNamespace
+from typing import TYPE_CHECKING, cast
+from unittest.mock import ANY, Mock
+
+import httpx2
+import pytest
+from agent_host_example import (
+    build_provenance,
+    constant,
+    git,
+    host_settings,
+    isolate_host_git,
+    local_mirror_fetches,
+    preparation_failure,
+    repository,
+    run_request,
+    trusted_host_stat,
+    unusual_git_metadata,
+)
+from runfile_fixtures import agent_suffix_case as agent_suffix_case  # noqa: PLC0414
+from test_alpha_agent_codex_install import release
+from test_alpha_agent_credentials import VALUES
+from test_alpha_agent_settings import EXAMPLE
+
+from tbhbdev import secrets
+from tbhbdev.alpha import run_stop_hook
+from tbhbdev.alpha.agent import (
+    admission,
+    bazel_servers,
+    codex_install,
+    credentials,
+    host_tools,
+    process_group,
+    render,
+    run_host,
+    runfiles,
+    shims,
+)
+from tbhbdev.alpha.agent.decisions import policy, request
+from tbhbdev.alpha.agent.decisions.run_state import Group
+from tbhbdev.alpha.agent.model import (
+    CodexPolicy,
+    Harness,
+    Invalid,
+    Os,
+    Profile,
+    RunKind,
+)
+from tbhbdev.alpha.install.hooks import stop_hooks as stop
+
+RESOLVE = host_tools.resolve
+PUSH_RUN = run_host.push.run
+
+if TYPE_CHECKING:
+    from collections.abc import Callable, Generator, Mapping
+    from typing import TextIO
+
+    from tbhbdev.alpha.agent.model import Policy, RunRequest, Settings
+
+
+@pytest.fixture(autouse=True)
+def empty_bazel_listing(monkeypatch: pytest.MonkeyPatch) -> Callable[[int], str]:
+    original = bazel_servers.listing
+    monkeypatch.setattr(bazel_servers, "listing", constant(""))
+    return original
+
+
+@pytest.fixture(autouse=True, params=["regular", "symlinked"])
+def fake_host_bin(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, request: pytest.FixtureRequest
+) -> Path:
+    directory = tmp_path / "host-bin"
+    directory.mkdir()
+    binary = directory / "multicall"
+    binary.write_bytes(b"binary")
+    binary.chmod(0o755)
+    for name in ("true", "env"):
+        path = directory / name
+        if request.param == "symlinked":
+            path.symlink_to(binary.name)
+        else:
+            path.write_bytes(b"binary")
+            path.chmod(0o755)
+    trusted_host_stat(monkeypatch)
+    return directory
+
+
+@pytest.fixture(autouse=True)
+def fake_secrets(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, fake_host_bin: Path
+) -> None:
+    def read(reference: str) -> str:
+        return VALUES[reference]
+
+    def installation(*_args: object) -> str:
+        return "example-installation-credential"
+
+    monkeypatch.setenv("HOME", str(runfiles.private_dir(tmp_path / "operator-home")))
+    monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path / "state"))
+    for name in ("CACHE", "DATA"):
+        monkeypatch.setenv(f"XDG_{name}_HOME", str(tmp_path / name.lower()))
+    monkeypatch.setenv("XDG_RUNTIME_DIR", str(tmp_path / "runtime"))
+    for name in ("GIT_DIR", "GIT_WORK_TREE", "GIT_COMMON_DIR"):
+        monkeypatch.delenv(name, raising=False)
+    monkeypatch.setenv("GIT_CONFIG_NOSYSTEM", "1")
+    monkeypatch.setenv("GIT_CONFIG_GLOBAL", "/dev/null")
+    isolate_host_git(tmp_path, monkeypatch)
+    monkeypatch.setattr(admission, "ROOT", tmp_path / "admission")
+    monkeypatch.setattr(secrets, "read", read)
+    monkeypatch.setattr(credentials, "installation_token", installation)
+
+    real_resolve = host_tools.resolve
+
+    def resolve(
+        name: str, path: str | None = None, *, follow_symlinks: bool = True
+    ) -> str:
+        if follow_symlinks and name not in (
+            "codex",
+            "claude",
+            "agy",
+            "agy-agent",
+            "prek",
+        ):
+            return real_resolve(name, path)
+        if Path(name).is_absolute():
+            return str(Path(name).resolve() if follow_symlinks else Path(name))
+        return str(fake_host_bin / ("env" if name == "env" else "true"))
+
+    binary = fake_host_bin / "codex"
+    binary.write_bytes(b"binary")
+    binary.chmod(0o755)
+    monkeypatch.setenv("PATH", f"{fake_host_bin}:{os.environ['PATH']}")
+    monkeypatch.setattr(host_tools, "resolve", resolve)
+    monkeypatch.setattr(host_tools, "codex_proxy_supported", constant(value=True))
+    original_prepare = codex_install.prepare
+
+    def prepare(executable: str, home: Path) -> tuple[str, tuple[str, ...]]:
+        if executable == str(fake_host_bin / "true"):
+            return executable, ()
+        return original_prepare(executable, home)
+
+    monkeypatch.setattr(codex_install, "prepare", prepare)
+
+
+@pytest.fixture(autouse=True)
+def portable_run_protocol(
+    monkeypatch: pytest.MonkeyPatch, agent_suffix_case: None
+) -> None:
+    """Check protocol spelling even on a case-insensitive filesystem."""
+    del agent_suffix_case
+    original_copy = runfiles.copy_final
+
+    def copy(source: Path, destination: Path) -> None:
+        assert source.name == "out.final"
+        assert destination.name.endswith(".out.final")
+        original_copy(source, destination)
+
+    monkeypatch.setattr(runfiles, "copy_final", copy)
+
+
+def make_run(tmp_path: Path, **changes: object) -> run_host.Run:
+    files = runfiles.RunFiles(tmp_path / "runs", "example")
+    value = run_request(**changes)
+    home = runfiles.private_dir(tmp_path / "home")
+    tmpdir = runfiles.private_dir(tmp_path / "private-tmp")
+    return run_host.Run(
+        files,
+        value,
+        host_settings(),
+        host_settings().hosts[0],
+        home,
+        tmpdir,
+        1000,
+        time.monotonic() + 10,
+    )
+
+
+def preparation(run: run_host.Run) -> run_host.Prepared:
+    paths = run_host.RunPaths(
+        str(run.home),
+        str(runfiles.private_dir(run.home / "worktree")),
+        str(run.tmpdir),
+        str(runfiles.private_dir(run.tmpdir.parent / "codex")),
+        str(run.tmpdir / "audit"),
+    )
+    return run_host.Prepared(
+        paths,
+        credentials.Delivery({}, None, gh_fallback=False, claude_profile=None),
+        None,
+    )
+
+
+def harness_without_push(
+    run: run_host.Run,
+    prepared: run_host.Prepared,
+    stack: ExitStack,
+    harness: Callable[[run_host.Run, run_host.Prepared, ExitStack], int],
+) -> int:
+    return harness(run, prepared, stack)
+
+
+@pytest.fixture(autouse=True)
+def stub_push(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(run_host.push, "run", harness_without_push)
+
+
+@pytest.mark.parametrize("hook_tools", ["missing", "directory", "file"])
+@pytest.mark.parametrize("kind", RunKind)
+def test_preflight_prepares_and_stops_signing_without_launch(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, kind: RunKind, hook_tools: str
+) -> None:
+    run = make_run(tmp_path, kind=kind.value)
+    (run.home / ".bazel_env" / "bin").mkdir(parents=True)
+    prepared = dataclasses.replace(
+        preparation(run),
+        delivery=credentials.Delivery(
+            {}, "example-key", gh_fallback=False, claude_profile=None
+        ),
+    )
+    events: list[str] = []
+    original_harness = run_host.run_harness
+
+    def harness(
+        value: run_host.Run,
+        ready: run_host.Prepared,
+        stack: ExitStack,
+        *,
+        preflight_only: bool = False,
+    ) -> int:
+        assert isinstance(stack, ExitStack)
+        assert preflight_only is True
+        return original_harness(value, ready, stack, preflight_only=preflight_only)
+
+    def prepare(operation: Callable[[], object], *_args: object) -> object:
+        events.append("prepare")
+        return operation()
+
+    def workspace(value: run_host.Run) -> run_host.Prepared:
+        assert value is run
+        events.append("workspace")
+        tools = Path(prepared.paths.worktree) / ".bazel_env" / "bin"
+        tools.parent.mkdir()
+        if hook_tools == "directory":
+            tools.mkdir()
+        elif hook_tools == "file":
+            tools.touch()
+        return prepared
+
+    def sign(key: str, tmpdir: Path, deadline: float) -> Child:
+        assert (key, tmpdir, deadline) == ("example-key", run.tmpdir, run.deadline)
+        events.append("sign")
+        return Child()
+
+    def stop(child: Child) -> bool:
+        assert child.pid == Child.pid
+        events.append("stop")
+        return True
+
+    def command(
+        value: run_host.Run, ready: run_host.Prepared, policy: Policy, executable: str
+    ) -> tuple[str, ...]:
+        assert value is run
+        assert ready is prepared
+        assert policy.env
+        assert Path(executable).is_absolute()
+        events.append("command")
+        return (executable,)
+
+    def unexpected(*_args: object, **_kwargs: object) -> None:
+        pytest.fail("preflight must never launch or push")
+
+    monkeypatch.setattr(process_group, "prepare", prepare)
+    monkeypatch.setattr(run_host, "prepare_workspace", workspace)
+    monkeypatch.setattr(run_host, "run_harness", harness)
+    monkeypatch.setattr(credentials, "signing_agent", sign)
+    monkeypatch.setattr(run_host, "stop_agent", stop)
+    monkeypatch.setattr(run_host, "harness_command", command)
+    monkeypatch.setattr(process_group, "launch_owned", unexpected)
+    monkeypatch.setattr(run_host.push, "run", unexpected)
+    assert run_host.execute(run, "example", preflight_only=True) == 0
+    assert events == ["prepare", "workspace", "sign", "command", "stop"]
+    status = (
+        "present"
+        if hook_tools == "directory"
+        else "missing; commit hooks that call .bazel_env/bin will fail in this run"
+    )
+    assert run.files.path("log").read_text() == (
+        f"preflight: .bazel_env {status}\n"
+        f"preflight ok: {run.home.parent / 'host-bin' / 'true'}\n"
+    )
+    assert run.files.path("rc").read_text() == "0\n"
+    assert run.files.path("phase").read_text() == "ended"
+    assert runfiles.latest(run.files.root)["example"]["rc"] == 0
+    assert not run.files.path("launched").exists()
+
+
+def test_hook_tools_checks_the_exact_run_directory(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    run = make_run(tmp_path)
+    prepared = preparation(run)
+    expected = Path(prepared.paths.worktree) / ".bazel_env" / "bin"
+    checked: list[Path] = []
+    original = Path.is_dir
+
+    def is_dir(path: Path) -> bool:
+        checked.append(path)
+        return original(path)
+
+    monkeypatch.setattr(Path, "is_dir", is_dir)
+    run_host.log_hook_tools(run, prepared.paths)
+    assert expected in checked
+
+
+@pytest.mark.parametrize(
+    "step", ["credential delivery", "audit directory", "codex auth copy"]
+)
+@pytest.mark.parametrize(
+    ("error", "cause"),
+    [
+        (OSError, "[redacted]"),
+        (ValueError, "invalid value"),
+        (Invalid, "[redacted]"),
+        (subprocess.CalledProcessError, "[redacted]"),
+    ],
+)
+def test_workspace_failure_names_its_step_and_safe_cause(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    step: str,
+    error: type[Exception],
+    cause: str,
+) -> None:
+    monkeypatch.setenv("EXAMPLE_CREDENTIAL", "sensitive-exception")
+    monkeypatch.setenv("EXAMPLE_STDERR", "sensitive-stderr")
+    run = make_run(tmp_path)
+    monkeypatch.setattr(credentials, "deliver", constant(preparation(run).delivery))
+    monkeypatch.setattr(run_host.worktree, "create", constant(run.home / "workspace"))
+
+    fail = partial(preparation_failure, error)
+
+    if step == "credential delivery":
+        monkeypatch.setattr(credentials, "deliver", fail)
+    elif step == "audit directory":
+        monkeypatch.setattr(runfiles, "private_dir", fail)
+    else:
+        monkeypatch.setattr(credentials, "auth_copy", fail)
+    with pytest.raises(Invalid) as caught:
+        run_host.prepare_workspace(run)
+    assert str(caught.value) == f"run preparation failed at {step}: {cause}"
+    assert "sensitive" not in str(caught.value)
+
+
+def with_identity_cli(run: run_host.Run, *, ready: bool) -> run_host.Run:
+    tools = run.home / ".local/bin"
+    tools.mkdir(parents=True)
+    cli = tools / "tbhbdev"
+    check = '[ "$*" = "alpha identity trailer --dry-run" ]' if ready else "exit 1"
+    cli.write_text(f"#!/bin/sh\n{check}\n")
+    cli.chmod(0o755)
+    return dataclasses.replace(
+        run,
+        settings=dataclasses.replace(
+            run.settings,
+            sandbox=dataclasses.replace(run.settings.sandbox, host_path=(str(tools),)),
+        ),
+    )
+
+
+def test_hook_probe_refuses_before_credentials(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    run = with_identity_cli(make_run(tmp_path), ready=False)
+
+    def forbidden(*_args: object) -> str:
+        pytest.fail("hook failure must precede fetch and credential delivery")
+
+    monkeypatch.setattr(run_host.worktree, "fetch_commit", forbidden)
+    monkeypatch.setattr(credentials, "deliver", forbidden)
+    with pytest.raises(Invalid) as caught:
+        run_host.prepare_workspace(run)
+    assert str(caught.value) == (
+        "run preparation failed at hook verification: "
+        "tbhbdev alpha identity trailer --dry-run failed in the run environment"
+    )
+    assert not Path(run_host.planned_paths(run).worktree).exists()
+
+
+@pytest.mark.parametrize("harness", Harness)
+def test_prepare_uses_one_worktree_and_private_destinations(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, harness: Harness
+) -> None:
+    run = make_run(
+        tmp_path,
+        harness=harness.value,
+        profile="review",
+        commit="0" * 40,
+        timeout=900,
+        claude_profile="primary" if harness is Harness.CLAUDE else None,
+        reason="example" if harness is Harness.CLAUDE else None,
+    )
+    _, clone = repository(run.home / "Code" / "github.com" / "tbhb-dev")
+    clone.rename(clone.parent / "example-repo")
+    clone = clone.parent / "example-repo"
+    local_mirror_fetches(monkeypatch, clone.parent / "origin")
+    commit = subprocess.check_output(
+        ["git", "-C", str(clone), "rev-parse", "HEAD"], text=True
+    ).strip()
+    run = dataclasses.replace(
+        run, request=dataclasses.replace(run.request, commit=commit)
+    )
+    run = with_identity_cli(run, ready=True)
+    value, _ = run_host.checked_policy(run, run_host.planned_paths(run))
+    expected_path = value.env["PATH"] if harness is Harness.AGY else value.tool_path
+    assert run_host.hook_environment(value, unsandboxed=False)["PATH"] == expected_path
+    if harness is Harness.CLAUDE:
+        assert run_host.hook_environment(value, unsandboxed=True) == value.env
+    source = runfiles.private_dir(run.home / ".codex") / "auth.json"
+    source.write_text("example-auth")
+    (source.parent / "hooks.json").write_text('{"hooks":{"SessionStart":[]}}')
+    copy = credentials.auth_copy
+
+    def auth_copy(source_path: Path, destination: Path) -> str | None:
+        assert source_path == run.home / ".codex" / "auth.json"
+        assert destination == Path(run_host.planned_paths(run).codex_home) / "auth.json"
+        return copy(source_path, destination)
+
+    monkeypatch.setattr(credentials, "auth_copy", auth_copy)
+    deliver = credentials.deliver
+
+    def after_git_shape(
+        request: RunRequest, settings: Settings, tmpdir: Path
+    ) -> credentials.Delivery:
+        workspace = clone / ".worktrees" / "agent-example"
+        assert (workspace / "tracked").is_file()
+        assert (workspace / ".git/hooks/pre-commit").is_file()
+        assert (workspace / ".git/config.worktree").read_text() == ""
+        assert (workspace / ".git/commondir").read_text() == ".\n"
+        assert list((workspace / ".git/modules").iterdir()) == []
+        return deliver(request, settings, tmpdir)
+
+    monkeypatch.setattr(credentials, "deliver", after_git_shape)
+    result = run_host.prepare_workspace(run)
+    assert result.paths.uid == os.getuid()
+    assert result.paths.home == str(run.home)
+    assert result.paths.worktree == str(clone / ".worktrees" / "agent-example")
+    assert result.paths.tmpdir == str(run.tmpdir)
+    assert result.paths.codex_home == run_host.planned_paths(run).codex_home
+    assert result.paths.git_common_dir == str(Path(result.paths.worktree) / ".git")
+    assert result.paths.signing_socket is None
+    assert result.paths.audit_dir == str(run.home / run.settings.sandbox.audit_dir)
+    assert Path(result.paths.audit_dir).is_dir()
+    assert result.delivery.gh_fallback is False
+    assert result.auth_before == ("example-auth" if harness is Harness.CODEX else None)
+    assert (run.tmpdir / "gh" / "hosts.yml").is_file()
+    copied_auth = Path(result.paths.codex_home) / "auth.json"
+    assert copied_auth.exists() is (harness is Harness.CODEX)
+    if harness is Harness.CODEX:
+        assert copied_auth.read_text() == "example-auth"
+        assert_stop_config(copied_auth.parent)
+
+
+def assert_stop_config(home: Path) -> None:
+    assert json.loads((home / "hooks.json").read_text()) == {"hooks": stop("codex")}
+    config = tomllib.loads((home / "config.toml").read_text())
+    assert config["hooks"]["state"].keys() == {f"{home}/hooks.json:stop:0:0"}
+
+
+def otel_run(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    harness: Harness,
+    endpoint: str = "https://otlp.example.net:4318",
+) -> run_host.Run:
+    run = make_run(
+        tmp_path,
+        harness=harness.value,
+        claude_profile="primary" if harness is Harness.CLAUDE else None,
+        reason="example" if harness is Harness.CLAUDE else None,
+    )
+    settings = dataclasses.replace(run.settings, otel_endpoint=endpoint)
+    run = dataclasses.replace(run, settings=settings)
+    runfiles.private_dir(run.home / ".codex")
+    monkeypatch.setattr(credentials, "deliver", constant(preparation(run).delivery))
+    monkeypatch.setattr(run_host.worktree, "create", constant(run.home / "workspace"))
+    monkeypatch.setattr(run_host.push, "head", constant("a" * 40))
+    monkeypatch.setattr(credentials, "auth_copy", constant(None))
+    return run
+
+
+@pytest.mark.parametrize("scheme", ["http", "https"])
+def test_codex_run_config_holds_the_otel_table(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, scheme: str
+) -> None:
+    endpoint = f"{scheme}://otlp.example.net:4318"
+    run = otel_run(tmp_path, monkeypatch, Harness.CODEX, endpoint)
+    result = run_host.prepare_workspace(run)
+    config_path = Path(result.paths.codex_home) / "config.toml"
+    # The macOS filesystem ignores case, so name the file as written.
+    assert "config.toml" in [p.name for p in config_path.parent.iterdir()]
+    data = tomllib.loads(config_path.read_text())
+    assert data.pop("hooks")["state"]
+    assert data == {
+        "otel": {
+            "trace_exporter": {
+                "otlp-http": {
+                    "endpoint": f"{endpoint}/v1/traces",
+                    "protocol": "binary",
+                }
+            },
+            "metrics_exporter": {
+                "otlp-http": {
+                    "endpoint": f"{endpoint}/v1/metrics",
+                    "protocol": "binary",
+                }
+            },
+            "log_user_prompt": False,
+        }
+    }
+    assert "headers" not in config_path.read_text()
+    assert config_path.stat().st_mode & 0o777 == 0o600
+
+
+def test_codex_run_without_an_endpoint_writes_no_config(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    run = otel_run(tmp_path, monkeypatch, Harness.CODEX)
+    run = dataclasses.replace(
+        run,
+        request=dataclasses.replace(run.request, kind=RunKind.START),
+        settings=dataclasses.replace(run.settings, otel_endpoint=None),
+    )
+    result = run_host.prepare_workspace(run)
+    assert not (Path(result.paths.codex_home) / "config.toml").exists()
+
+
+def test_claude_run_writes_no_codex_config(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    run = otel_run(tmp_path, monkeypatch, Harness.CLAUDE)
+    result = run_host.prepare_workspace(run)
+    assert not (Path(result.paths.codex_home) / "config.toml").exists()
+
+
+@pytest.mark.parametrize("error", [OSError, ValueError])
+def test_codex_config_failure_names_its_step(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, error: type[Exception]
+) -> None:
+    monkeypatch.setenv("EXAMPLE_CREDENTIAL", "sensitive-exception")
+    run = otel_run(tmp_path, monkeypatch, Harness.CODEX)
+    monkeypatch.setattr(runfiles, "atomic", partial(preparation_failure, error))
+    with pytest.raises(Invalid) as caught:
+        run_host.prepare_workspace(run)
+    cause = "[redacted]" if error is OSError else "invalid value"
+    assert str(caught.value) == f"run preparation failed at codex config: {cause}"
+
+
+@pytest.mark.parametrize(("no_commit", "start"), [(False, "a" * 40), (True, None)])
+def test_build_preparation_has_the_run_socket(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, no_commit: bool, start: str | None
+) -> None:
+    run = make_run(tmp_path, no_commit=no_commit)
+    probe = run_host.hook_environment
+
+    def hook_environment(value: Policy, *, unsandboxed: bool) -> dict[str, str]:
+        assert unsandboxed is run.request.unsandboxed
+        return probe(value, unsandboxed=unsandboxed)
+
+    def fetch_token(request: RunRequest, settings: Settings) -> str:
+        assert (request, settings) == (run.request, run.settings)
+        return "example-credential"
+
+    def bazel_bases(home: Path, workspace: str) -> tuple[Path, ...]:
+        assert (home, workspace) == (run.home, str(run.home / "worktree"))
+        return (run.home / "base",)
+
+    def create(
+        _clone: Path,
+        _name: str,
+        _value: run_host.RunRequest,
+        token_source: Callable[[], str | None],
+        *,
+        hook_env: Mapping[str, str],
+    ) -> Path:
+        assert hook_env["GIT_CONFIG_COUNT"] == "0"
+        assert {name for name in hook_env if name.startswith("GIT_")} == {
+            "GIT_CONFIG_COUNT"
+        }
+        assert token_source() == "example-credential"
+        return runfiles.private_dir(run.home / "worktree")
+
+    monkeypatch.setattr(run_host.worktree, "create", create)
+    baseline = Mock(return_value=start)
+    monkeypatch.setattr(run_host.push, "head", baseline)
+    monkeypatch.setattr(run_host, "hook_environment", hook_environment)
+    monkeypatch.setattr(run_host, "bazel_bases", bazel_bases)
+    monkeypatch.setattr(credentials, "fetch_token", fetch_token)
+    result = run_host.prepare_workspace(run)
+    assert result.paths.signing_socket == str(run.tmpdir / "ssh.sock")
+    assert result.delivery.signing == "example-signing"
+    assert result.bases == (run.home / "base",)
+    assert result.start == start
+    assert baseline.call_count == int(not no_commit)
+
+
+class Child:
+    pid = 23
+
+    def __init__(self, code: int = 7, *, timeout: bool = False) -> None:
+        self.code = code
+        self.timeout = timeout
+        self.waits: list[int | None] = []
+
+    def poll(self) -> int:
+        return self.code
+
+    def wait(self, timeout: int | None = None) -> int:
+        self.waits.append(timeout)
+        if self.timeout and len(self.waits) == 1:
+            assert timeout is not None
+            command = "example-harness"
+            raise subprocess.TimeoutExpired(command, timeout)
+        return self.code
+
+
+@pytest.mark.parametrize("harness", Harness)
+@pytest.mark.parametrize("kind", RunKind)
+def test_launch_uses_the_policy_and_marks_only_after_spawn(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, harness: Harness, kind: RunKind
+) -> None:
+    run = make_run(
+        tmp_path,
+        harness=harness.value,
+        kind=kind.value,
+        timeout=900,
+        claude_profile="primary" if harness is Harness.CLAUDE else None,
+        reason="example" if harness is Harness.CLAUDE else None,
+    )
+    run = dataclasses.replace(
+        run, settings=dataclasses.replace(run.settings, max_run_minutes=1)
+    )
+    prepared = preparation(run)
+    env = (
+        {credentials.CLAUDE_TOKEN_ENV: "example-claude"}
+        if harness is Harness.CLAUDE
+        else {}
+    )
+    prepared = dataclasses.replace(
+        prepared,
+        delivery=credentials.Delivery(
+            env, None, gh_fallback=False, claude_profile="primary" if env else None
+        ),
+    )
+    run.files.write("prompt", render.brief(kind, "example task"))
+    metadata: list[tuple[str, str]] = []
+    real_write = run.files.write
+
+    def write(suffix: str, text: str) -> None:
+        metadata.append((suffix, text))
+        real_write(suffix, text)
+
+    monkeypatch.setattr(run.files, "write", write)
+    commands = check_harness_arguments(run, prepared, monkeypatch)
+    child = Child()
+    events: list[object] = []
+    monkeypatch.setenv("EXAMPLE_PARENT_MARKER", "example-parent-credential")
+    monkeypatch.setenv("EXAMPLE_TMUX_MARKER", "example-tmux-credential")
+
+    def launch(spec: process_group.Launch, **kwargs: object) -> Child:
+        command = spec.command
+        kwargs.update(
+            env=spec.env, cwd=spec.cwd, streams=spec.streams, terminal=spec.terminal
+        )
+        check_launch_contract(run, prepared, command, kwargs, commands[-1])
+        events.append("spawn")
+        cast("Callable[[Child], None]", kwargs["started"])(child)
+        return child
+
+    def record(files: runfiles.RunFiles, pid: int) -> None:
+        assert files is run.files
+        assert pid == 23
+        assert not files.path("launched").exists()
+        events.append("record")
+
+    def stop(pid: int, grace: float, *_args: object) -> None:
+        assert (pid, grace) == (23, 0)
+        assert run.files.path("launched").exists()
+        # Bazel servers shut down only after the harness group has stopped.
+        assert (run.files.path("phase").read_text(), run.bazel_shutdown) == (
+            "exited",
+            None,
+        )
+        events.append("stop")
+
+    def foreground(fd: int, group: int) -> None:
+        assert fd == 0
+        assert group == os.getpgrp()
+        events.append("foreground")
+
+    monkeypatch.setattr(process_group, "launch_owned", launch)
+    monkeypatch.setattr(process_group, "record", record)
+    monkeypatch.setattr(process_group, "stop_started", stop)
+    monkeypatch.setattr(process_group, "foreground", foreground)
+    monkeypatch.setattr(sys, "stdin", sys.__stdin__)
+    with ExitStack() as stack:
+        assert run_host.run_harness(run, prepared, stack) == 7
+    assert run.files.path("phase").read_text() == "stopped"
+    assert events == [
+        "spawn",
+        "record",
+        "stop",
+        *(["foreground"] if kind is RunKind.START else []),
+    ]
+    assert [entry for entry in metadata if not entry[1].startswith("argv: ")] == [
+        ("launched", "\n"),
+        ("phase", "running"),
+        ("log", "harness exited 7\n"),
+        ("phase", "exited"),
+        ("phase", "stopped"),
+    ]
+    assert not any("preflight:" in text for suffix, text in metadata if suffix == "log")
+    assert child.waits == [60 if kind is RunKind.EXEC else 900, None]
+    assert run.files.path("out").exists() is (kind is RunKind.EXEC)
+
+
+@pytest.mark.parametrize("expired", [False, True])
+def test_harness_deadlines(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, expired: bool
+) -> None:
+    run = make_run(tmp_path, timeout=1)
+    run = dataclasses.replace(run, deadline=1000 if expired else 1001)
+    monkeypatch.setattr(time, "monotonic", lambda: 1000)
+    prepared = preparation(run)
+    run.files.write("prompt", "example")
+    child = Child(timeout=True)
+
+    def launch(*_args: object, **kwargs: object) -> Child:
+        cast("Callable[[Child], None]", kwargs["started"])(child)
+        return child
+
+    def record(_files: runfiles.RunFiles, _pid: int) -> None:
+        return None
+
+    stopped: list[int] = []
+
+    def stop(pid: int, _grace: float, *_args: object) -> None:
+        stopped.append(pid)
+
+    monkeypatch.setattr(process_group, "launch_owned", launch)
+    monkeypatch.setattr(process_group, "record", record)
+    monkeypatch.setattr(process_group, "stop_started", stop)
+    with ExitStack() as stack:
+        if expired:
+            with pytest.raises(TimeoutError):
+                run_host.run_harness(run, prepared, stack)
+            assert stopped == []
+        else:
+            assert run_host.run_harness(run, prepared, stack) == 124
+            assert stopped == [23]
+            assert "harness exited 124\n" in run.files.path("log").read_text()
+
+
+@pytest.mark.parametrize(
+    ("failure", "code"),
+    [
+        (None, 7),
+        ("timeout", 124),
+        ("interrupt", 143),
+        ("invalid", 1),
+        ("os", 1),
+        ("auth", 1),
+        ("result", 1),
+    ],
+)
+def test_finish_orders_cleanup_auth_agent_index_and_atomic_rc(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, failure: str | None, code: int
+) -> None:
+    run = make_run(tmp_path)
+    prepared = preparation(run)
+    prepared = dataclasses.replace(
+        prepared,
+        auth_before="example-before",
+        delivery=credentials.Delivery(
+            {}, "example-key", gh_fallback=False, claude_profile=None
+        ),
+    )
+    runtime = HostRuntime(run, prepared, failure)
+    runtime.patch(monkeypatch)
+    assert run_host.execute(run, "example") == code
+    assert run.files.path("rc").read_text() == f"{code}\n"
+    assert run.files.path("phase").read_text() == "ended"
+    assert run.files.path("request.json").stat().st_mode & 0o777 == 0o600
+    assert "example-key" not in run.files.path("request.json").read_text()
+    if failure in (None, "auth"):
+        assert runtime.events == [
+            "agent-started",
+            "group-stopped",
+            "auth",
+            "agent-stopped",
+        ]
+        line = runfiles.latest(run.files.root)["example"]
+        assert line["worktree"] == prepared.paths.worktree
+        assert line["state"] == "ended"
+        assert line["rc"] == code
+        assert line["trace_id"] is None
+        assert line["v"] == 2
+    else:
+        assert not run.files.path("launched").exists()
+    assert runtime.phases == (
+        ["check", "workspace", "brief", "ended"]
+        if failure in (None, "auth")
+        else ["check", "ended"]
+    )
+    messages = {
+        "invalid": "safe preparation error\n",
+        "os": "run failed; check the clone and credential references\n",
+        "auth": "codex auth write-back failed\n",
+        "result": "run preparation returned no workspace\n",
+    }
+    if failure in messages:
+        assert run.files.path("log").read_text() == messages[failure]
+    else:
+        assert not run.files.path("log").exists()
+    if failure in (None, "auth"):
+        assert run.files.path("prompt").read_text() == render.brief(
+            run.request.kind,
+            "example",
+            profile=run.request.profile,
+            harness=run.request.harness,
+        )
+        entries = [
+            json.loads(line)
+            for line in (run.files.root / runfiles.INDEX).read_text().splitlines()
+        ]
+        assert entries[0]["worktree"] == prepared.paths.worktree
+        assert entries[0]["state"] == "running"
+        assert entries[0]["rc"] is None
+
+
+@pytest.mark.parametrize("code", [0, 7], ids=["finished", "failed"])
+def test_finished_run_writes_host_audit_summary(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, code: int
+) -> None:
+    run = make_run(tmp_path)
+    prepared = preparation(run)
+    _, workspace = repository(tmp_path / "repository")
+
+    def harness(*_args: object) -> int:
+        audit = Path(prepared.paths.audit_dir)
+        (audit / "nested").mkdir(parents=True)
+        (audit / "nested" / "event.json").write_bytes(b"event\n")
+        (audit / "empty").write_bytes(b"")
+        (audit / "link").symlink_to(workspace / "tracked")
+        return code
+
+    monkeypatch.setattr(run_host, "preflight", constant(None))
+    monkeypatch.setattr(process_group, "prepare", constant(prepared))
+    monkeypatch.setattr(run_host, "run_harness", harness)
+    assert run_host.execute(run, "example") == code
+    summary = run.files.path("audit.json")
+    assert summary.parent == run.files.path("rc").parent
+    assert summary.stat().st_mode & 0o777 == 0o600
+    assert json.loads(summary.read_text()) == {
+        "rc": code,
+        "files": {
+            "empty": hashlib.sha256(b"").hexdigest(),
+            "nested/event.json": hashlib.sha256(b"event\n").hexdigest(),
+        },
+        "would_refuse": [],
+    }
+
+
+def test_failed_preparation_still_writes_host_audit_summary(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    run = make_run(tmp_path)
+
+    def refuse(_run: run_host.Run) -> None:
+        message = "preflight refused"
+        raise Invalid(message)
+
+    monkeypatch.setattr(run_host, "preflight", refuse)
+    assert run_host.execute(run, "example") == 1
+    assert json.loads(run.files.path("audit.json").read_text()) == {
+        "rc": 1,
+        "files": {},
+        "would_refuse": [],
+    }
+
+
+def test_audit_summary_error_preserves_the_runs_exit_code(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    run = make_run(tmp_path)
+
+    def fail(*_args: object) -> None:
+        raise OSError
+
+    monkeypatch.setattr(run_host, "audit_summary", fail)
+    assert run_host.finish(run, None, None, 7) == 7
+    assert run.files.path("rc").read_text() == "7\n"
+    assert run.files.path("log").read_text() == "audit summary write failed\n"
+
+
+def test_interrupt_and_agent_cleanup(monkeypatch: pytest.MonkeyPatch) -> None:
+    with process_group.defer_signals(), pytest.raises(run_host.RunInterruptedError):
+        run_host.interrupt(15, None)
+    child = Child()
+    stopped: list[int] = []
+
+    def stop(pid: int, grace: float, reap: Callable[[], object] | None = None) -> bool:
+        assert grace == 0
+        assert reap == child.poll
+        stopped.append(pid)
+        return True
+
+    monkeypatch.setattr(process_group, "stop_started", stop)
+    run_host.stop_agent(cast("subprocess.Popen[str]", child))
+    assert stopped == [23]
+    assert child.waits == [None]
+    with process_group.ignore_signals():
+        assert run_host.interrupt(15, None) is None
+
+
+@pytest.mark.parametrize("source", ["file", "stdin", "recorded"])
+def test_hidden_dispatch_reads_request_and_restores_handlers(
+    tmp_path: Path, config_file: Path, monkeypatch: pytest.MonkeyPatch, source: str
+) -> None:
+    config_file.write_text(EXAMPLE)
+    expected_settings = run_host.settings.load()
+    files = runfiles.RunFiles(
+        Path(os.environ["XDG_STATE_HOME"]) / "tbhbdev" / "agent-runs", "example"
+    )
+    files.write("prompt", "example task")
+    files.write("json", "driver metadata")
+    value = run_request(harness="claude", claude_profile="Primary", reason="example")
+    raw = json.dumps(request.to_dict(value))
+    arguments = ["run-host", "example", "--host", "example-linux"]
+    if source == "recorded":
+        files.write("request.json", raw)
+    elif source == "stdin":
+        monkeypatch.setattr(sys, "stdin", io.StringIO(raw))
+        arguments.insert(2, "-")
+    else:
+        path = tmp_path / "received.json"
+        path.write_text(raw)
+        arguments.insert(2, str(path))
+        prompt = tmp_path / "prompt"
+        prompt.write_text("example task")
+        arguments += ["--prompt", str(prompt)]
+    before = {
+        s: signal.getsignal(s) for s in (signal.SIGHUP, signal.SIGTERM, signal.SIGINT)
+    }
+
+    def execute(
+        run: run_host.Run,
+        text: str,
+        *,
+        preflight_only: bool = False,
+    ) -> int:
+        assert preflight_only is False
+        assert run.settings == expected_settings
+        assert run.request.claude_profile == "primary"
+        assert run.files.root == files.root
+        assert files.path("run.lock").is_file()
+        assert run.home == Path.home()
+        assert text == "example task"
+        assert run.tmpdir.is_dir()
+        assert run.tmpdir.name == "tools"
+        assert 0 < run.started <= time.time()
+        assert 0 < run.deadline - time.monotonic() <= 120
+        for number in before:
+            assert signal.getsignal(number) is run_host.interrupt
+        return 9
+
+    monkeypatch.setattr(run_host, "execute", execute)
+    assert run_host.main(arguments[1:], "example agent run-host") == 9
+    assert {s: signal.getsignal(s) for s in before} == before
+    assert files.path("json").read_text() == "driver metadata"
+
+
+def test_run_host_refuses_when_host_has_zero_slots(config_file: Path) -> None:
+    config_file.write_text(EXAMPLE)
+    files = runfiles.RunFiles(
+        runfiles.state_home(Path.home()) / "tbhbdev" / "agent-runs", "example"
+    )
+    files.write(
+        "request.json",
+        json.dumps(request.to_dict(run_request(max_concurrent_runs=0))),
+    )
+    files.write("prompt", "example")
+    assert run_host.main(["example", "--host", "example-linux"], "run-host") == 1
+    assert files.path("rc").read_text() == "1\n"
+    assert "max_concurrent_runs=0" in files.path("log").read_text()
+
+
+@pytest.mark.parametrize(
+    "case", ["host", "list", "duplicate", "rc", "pgid", "account", "profile", "missing"]
+)
+def test_command_refuses_invalid_input(
+    tmp_path: Path,
+    config_file: Path,
+    capsys: pytest.CaptureFixture[str],
+    case: str,
+) -> None:
+    config_file.write_text(EXAMPLE)
+    files = runfiles.RunFiles(
+        Path(os.environ["XDG_STATE_HOME"]) / "tbhbdev" / "agent-runs", "example"
+    )
+    files.write("prompt", "example")
+    data = request.to_dict(run_request())
+    if case == "account":
+        data["account"] = "other"
+    if case == "profile":
+        data.update(harness="claude", claude_profile="unknown", reason="example")
+    path = tmp_path / "received.json"
+    path.write_text("[]" if case == "list" else json.dumps(data))
+    if case == "duplicate":
+        files.write("request.json", json.dumps(data))
+    if case in ("rc", "pgid"):
+        files.write(case, "0")
+    arguments = [
+        "example",
+        str(path),
+        "--host",
+        "unknown" if case == "host" else "example-linux",
+    ]
+    if case == "missing":
+        arguments = ["example", "--host", "example-linux"]
+    assert run_host.main(arguments, "example run-host") == 1
+    missing_path = files.path("request.json")
+    details = {
+        "host": "host 'unknown' is not configured",
+        "list": "request must be a JSON object",
+        "duplicate": "run 'example' already exists",
+        "rc": "run 'example' has already started",
+        "pgid": "run 'example' has already started",
+        "account": "account 'other' is not enabled on example-linux",
+        "profile": "claude profile 'unknown' is not configured",
+        "missing": f"[Errno 2] No such file or directory: '{missing_path}'",
+    }
+    assert capsys.readouterr().err == f"example run-host: {details[case]}\n"
+    if case in ("duplicate", "rc", "pgid"):
+        assert not files.path("log").exists()
+        assert (
+            files.path("rc").read_text() == "0"
+            if case == "rc"
+            else not files.path("rc").exists()
+        )
+    else:
+        assert files.path("rc").read_text() == "1\n"
+        assert files.path("log").read_text() == f"run refused: {details[case]}\n"
+
+
+def tmux_environment_probe(root: Path, harness: Harness) -> None:
+    run = make_run(
+        root,
+        harness=harness.value,
+        timeout=900,
+        claude_profile="primary" if harness is Harness.CLAUDE else None,
+        reason="example" if harness is Harness.CLAUDE else None,
+    )
+    paths = preparation(run).paths
+    env = run_host.policy.environment(
+        run.settings, run.host, harness, paths, run.request.account
+    )
+    if harness is Harness.CLAUDE:
+        env[credentials.CLAUDE_TOKEN_ENV] = "example-claude"
+    env["PYTHONCOERCECLOCALE"] = "0"
+    command = (
+        sys.executable,
+        "-c",
+        (
+            "import os; os.environ.pop('__CF_USER_TEXT_ENCODING', None); "
+            'print("\\n".join(k + "=" + v for k, v in os.environ.items()))'
+        ),
+    )
+    child = process_group.launch(
+        command,
+        env=env,
+        cwd=str(root),
+        streams=(None, subprocess.PIPE, subprocess.PIPE),
+        terminal=None,
+    )
+    output, error = child.communicate(timeout=5)
+    assert child.returncode == 0, error
+    actual = dict(line.split("=", 1) for line in output.splitlines())
+    assert actual.keys() == env.keys(), actual.keys() - env.keys()
+    assert actual == env
+    assert os.environ["EXAMPLE_PARENT_MARKER"] == "parent-marker"
+    assert os.environ["EXAMPLE_TMUX_MARKER"] == "server-marker"
+    (root / "result").write_text("isolated")
+
+
+@pytest.mark.parametrize("harness", Harness)
+def test_tmux_server_and_parent_markers_do_not_reach_a_harness(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, harness: Harness
+) -> None:
+    operating_system = Os.MACOS if sys.platform == "darwin" else Os.LINUX
+    with host_tools.configured(host_settings(), operating_system):
+        try:
+            tmux = host_tools.resolve("tmux")
+        except Invalid:
+            pytest.skip("tmux is unavailable in the production host search path")
+    monkeypatch.setenv("EXAMPLE_PARENT_MARKER", "parent-marker")
+    loader = (
+        "import runpy, sys, subprocess, traceback\n"
+        "from pathlib import Path\n"
+        "try:\n"
+        "    sys.path.insert(0, str(Path(sys.argv[1]).parent))\n"
+        "    m=runpy.run_path(sys.argv[1])\n"
+        f"    fn=m['{tmux_environment_probe.__name__}']\n"
+        "    fn(Path(sys.argv[2]), m['Harness'](sys.argv[3]))\n"
+        "except BaseException:\n"
+        "    (Path(sys.argv[2]) / 'error').write_text(traceback.format_exc())\n"
+        "finally:\n"
+        "    subprocess.run([sys.argv[5], '-S', sys.argv[4], 'wait-for', '-S', "
+        "'complete'], check=True)\n"
+    )
+    with tempfile.TemporaryDirectory(prefix="ag-tmux-") as directory:
+        socket_path = str(Path(directory) / "socket")
+        base = [tmux, "-S", socket_path]
+        subprocess.run(
+            [
+                *base,
+                "-f",
+                "/dev/null",
+                "new-session",
+                "-d",
+                "-s",
+                "anchor",
+                "sleep",
+                "30",
+            ],
+            check=True,
+            timeout=5,
+        )
+        try:
+            subprocess.run(
+                [
+                    *base,
+                    "set-environment",
+                    "-g",
+                    "EXAMPLE_TMUX_MARKER",
+                    "server-marker",
+                ],
+                check=True,
+                timeout=5,
+            )
+            subprocess.run(
+                [
+                    *base,
+                    "new-session",
+                    "-d",
+                    "-s",
+                    "probe",
+                    sys.executable,
+                    "-c",
+                    loader,
+                    str(Path(__file__).resolve()),
+                    str(tmp_path),
+                    harness.value,
+                    socket_path,
+                    tmux,
+                ],
+                check=True,
+                timeout=5,
+            )
+            subprocess.run([*base, "wait-for", "complete"], check=True, timeout=10)
+            assert (tmp_path / "result").exists(), (tmp_path / "error").read_text()
+            assert (tmp_path / "result").read_text() == "isolated"
+        finally:
+            subprocess.run([*base, "kill-server"], check=False, timeout=5)
+
+
+@pytest.mark.parametrize("phase", ["fetch", "secret"])
+def test_startup_deadline_stops_the_recorded_setup_group(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, phase: str
+) -> None:
+    run = make_run(tmp_path)
+    _, clone = repository(run.home / "Code" / "github.com" / "tbhb-dev")
+    clone.rename(clone.parent / "example-repo")
+    local_mirror_fetches(monkeypatch, clone.parent / "origin")
+    original = run_host.worktree.git
+
+    def hang() -> str:
+        code = (
+            "import json, os, signal, sys; "
+            "row = json.dumps([os.getpid(), os.getpgrp()]); "
+            "os.write(int(sys.argv[1]), row.encode() + b'\\n'); "
+            "signal.pause()"
+        )
+        return subprocess.check_output(
+            [sys.executable, "-c", code, str(ready_write)],
+            pass_fds=(ready_write,),
+            text=True,
+        )
+
+    def clock() -> float:
+        if not run.files.path("pgid").exists():
+            return time.monotonic()
+        assert select.select([ready_read], [], [], 5)[0], "setup child did not start"
+        return run.deadline
+
+    def git(path: Path, *args: str) -> str:
+        return (
+            hang()
+            if phase == "fetch" and args[0] in ("fetch", "ls-remote")
+            else original(path, *args)
+        )
+
+    def read(_reference: str) -> str:
+        return hang()
+
+    def boot() -> str:
+        return "example-boot"
+
+    def skip_verification(_workspace: Path, _env: Mapping[str, str]) -> None:
+        return None
+
+    monkeypatch.setattr(process_group, "boot_id", boot)
+    monkeypatch.setattr(run_host.worktree, "git", git)
+    monkeypatch.setattr(run_host.worktree, "verify_run_hooks", skip_verification)
+    if phase == "secret":
+        prepared = preparation(run)
+        monkeypatch.setattr(
+            run_host.worktree, "create", constant(Path(prepared.paths.worktree))
+        )
+        monkeypatch.setattr(secrets, "read", read)
+    ready_read, ready_write = os.pipe()
+    with os.fdopen(ready_read, "rb") as ready, os.fdopen(ready_write, "wb"):
+        monkeypatch.setattr(
+            process_group, "prepare", partial(process_group.prepare, clock=clock)
+        )
+        assert run_host.execute(run, "example") == 124
+        pid, group = json.loads(ready.readline())
+    assert run.files.path("rc").read_text() == "124\n"
+    assert not run.files.path("launched").exists()
+    assert json.loads(run.files.path("pgid").read_text())["pgid"] == group
+    assert process_group.leader_start(pid) is None
+    assert process_group.leader_start(group) is None
+
+
+def test_claude_review_reaches_preparation(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    run = make_run(
+        tmp_path,
+        harness="claude",
+        profile="review",
+        commit="0" * 40,
+        timeout=900,
+        claude_profile="primary",
+        reason="example review",
+    )
+
+    reached = []
+
+    def prepare(*_args: object) -> None:
+        reached.append(True)
+        message = "preparation reached"
+        raise Invalid(message)
+
+    monkeypatch.setattr(process_group, "prepare", prepare)
+    run.files.receive(run.request)
+    assert run_host.execute(run, "example") == 1
+    assert run.files.path("rc").read_text() == "1\n"
+    assert reached == [True]
+    assert "preparation reached" in run.files.path("log").read_text()
+    assert not (run.tmpdir / "ssh.sock").exists()
+    assert not (run.home / ".codex").exists()
+    assert runfiles.latest(run.files.root)["example"]["state"] == "ended"
+
+
+@pytest.mark.parametrize("escalate", [False, True])
+def test_hangup_stops_harness_group_writes_auth_and_rc(
+    tmp_path: Path, escalate: bool
+) -> None:
+    script = r'''
+import dataclasses, os, runpy, signal, subprocess, sys
+from pathlib import Path
+from tbhbdev.alpha.agent import host_tools, process_group, run_host, runfiles
+binary = str(Path(sys.argv[2]) / "host-bin" / "true")
+host_tools.resolve = lambda *args, **kwargs: binary
+host_tools.executable_paths = lambda executable, *args, **kwargs: (executable,)
+host_tools.codex_proxy_supported = lambda *args: True
+run_host.codex_install.prepare = lambda executable, home: (executable, ())
+
+sys.path.insert(0, str(Path(sys.argv[1]).parent))
+helpers = runpy.run_path(sys.argv[1])
+run_host.push.run = helpers["harness_without_push"]
+run = helpers["make_run"](Path(sys.argv[2]))
+run = dataclasses.replace(
+    run, settings=dataclasses.replace(run.settings, kill_grace_seconds=0.2)
+)
+prepared = dataclasses.replace(
+    helpers["preparation"](run), auth_before='{"value":"old"}'
+)
+source = runfiles.private_dir(run.home / ".codex") / "auth.json"
+source.write_text('{"value":"old"}')
+run_host._load = lambda args, tmpdir: (run, "example task")
+process_group.prepare = lambda *args: prepared
+process_group.boot_id = lambda: "example-boot"
+original_launch = process_group.launch_owned
+stub = """
+import os, signal, sys
+from pathlib import Path
+child = os.fork()
+if child == 0:
+    signal.pause()
+else:
+    def finish(number, frame):
+        os.waitpid(child, 0)
+        sys.exit(0)
+    signal.signal(signal.SIGTERM, finish)
+    (Path(os.environ["CODEX_HOME"]) / "auth.json").write_text('{"value":"new"}')
+    print(child, flush=True)
+    signal.pause()
+"""
+if sys.argv[3] == "True":
+    stub = """
+import os, signal
+from pathlib import Path
+signal.signal(signal.SIGTERM, signal.SIG_IGN)
+(Path(os.environ["CODEX_HOME"]) / "auth.json").write_text('{"value":"new"}')
+print(os.getpid(), flush=True)
+signal.pause()
+"""
+    original_stop = process_group.stop_started
+    def stop(pid, grace, *args):
+        print("cleanup", flush=True)
+        sys.stdin.readline()
+        return original_stop(pid, grace, *args)
+    process_group.stop_started = stop
+
+def launch(spec, *, started):
+    child = original_launch(
+        dataclasses.replace(
+            spec, command=(sys.executable, "-c", stub),
+            streams=(None, subprocess.PIPE, None), terminal=None,
+        ), started=started,
+    )
+    descendant = int(child.stdout.readline())
+    (run.files.root / "descendant").write_text(str(descendant))
+    return child
+process_group.launch_owned = launch
+write = runfiles.RunFiles.write
+def recorded(self, suffix, text):
+    write(self, suffix, text)
+    if suffix == "phase" and text == "running":
+        print("ready", flush=True)
+runfiles.RunFiles.write = recorded
+run_host.admission.ROOT = run.files.root / "admission"
+sys.exit(run_host.main(["example", "--host", "example-linux"], "example run-host"))
+'''
+    supervisor = subprocess.Popen(
+        [
+            sys.executable,
+            "-c",
+            script,
+            str(Path(__file__).resolve()),
+            str(tmp_path),
+            str(escalate),
+        ],
+        stdin=subprocess.PIPE,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+    )
+    try:
+        assert supervisor.stdout is not None
+        assert supervisor.stdout.readline() == "ready\n"
+        supervisor.send_signal(signal.SIGHUP)
+        if escalate:
+            assert supervisor.stdout.readline() == "cleanup\n"
+            supervisor.send_signal(signal.SIGTERM)
+            assert supervisor.stdin is not None
+            supervisor.stdin.write("continue\n")
+            supervisor.stdin.flush()
+        output, error = supervisor.communicate(timeout=10)
+        assert supervisor.returncode == 143, output + error
+        files = runfiles.RunFiles(tmp_path / "runs", "example")
+        assert files.path("rc").read_text() == "143\n"
+        assert files.path("phase").read_text() == "ended"
+        assert (
+            tmp_path / "home" / ".codex" / "auth.json"
+        ).read_text() == '{"value":"new"}'
+        group = json.loads(files.path("pgid").read_text())["pgid"]
+        descendant = int((files.root / "descendant").read_text())
+        assert process_group.leader_start(group) is None
+        assert process_group.leader_start(descendant) is None
+        assert not process_group.alive(group)
+    finally:
+        group_file = tmp_path / "runs" / "example.pgid"
+        if group_file.exists():
+            recorded = Group(**json.loads(group_file.read_text()))
+            # The fixture records a fake boot ID; match the actual leader's start.
+            if process_group.leader_start(recorded.pgid) == recorded.start:
+                process_group.stop_started(recorded.pgid, 0.2)
+        if supervisor.poll() is None:
+            supervisor.terminate()
+        supervisor.communicate(timeout=10)
+
+
+@pytest.mark.parametrize("prepared", [False, True])
+@pytest.mark.parametrize("rc", [None, 0, 7])
+def test_index_metadata_records_complete_outcome(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, prepared: bool, rc: int | None
+) -> None:
+    run = make_run(
+        tmp_path,
+        harness="claude",
+        claude_profile="primary",
+        reason="example reason",
+        **{"class": "example-class", "variant": "example-variant", "role": "worker"},
+    )
+    workspace = preparation(run)
+    workspace = dataclasses.replace(
+        workspace,
+        delivery=credentials.Delivery(
+            {}, None, gh_fallback=True, claude_profile="secondary"
+        ),
+    )
+    monkeypatch.setattr(time, "time", lambda: 2000)
+    assert run_host.index_entry(run, workspace if prepared else None, rc) == {
+        "v": 2,
+        "kind": "exec",
+        "harness": "claude",
+        "model": run.request.model,
+        "account": "agent",
+        "repo": run.request.repo,
+        "class": "example-class",
+        "variant": "example-variant",
+        "reason": "example reason",
+        "role": "worker",
+        "unsandboxed": False,
+        "authorized_by": None,
+        "run": "example",
+        "host": "example-linux",
+        "worktree": workspace.paths.worktree if prepared else None,
+        "started": 1000,
+        "ended": None if rc is None else 2000,
+        "rc": rc,
+        "cleaned": None,
+        "kept": False,
+        "claude_profile": "secondary" if prepared else "primary",
+        "trace_id": None,
+        "state": "running" if rc is None else "ended",
+        "gh_fallback": prepared,
+    }
+
+
+def test_host_defaults_use_fake_home_and_configured_machine(
+    config_file: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    config_file.write_text(EXAMPLE)
+    monkeypatch.delenv("XDG_STATE_HOME")
+    monkeypatch.setattr(socket, "gethostname", lambda: "example-linux")
+    root = Path.home() / ".local" / "state" / "tbhbdev" / "agent-runs"
+    files = runfiles.RunFiles(root, "example")
+    files.receive(run_request())
+    files.write("prompt", "example task")
+
+    def execute(
+        run: run_host.Run,
+        text: str,
+        *,
+        preflight_only: bool = False,
+    ) -> int:
+        assert preflight_only is False
+        assert run.files.root == root
+        assert run.host.name == "example-linux"
+        assert text == "example task"
+        return 37
+
+    monkeypatch.setattr(run_host, "execute", execute)
+    assert run_host.main(["example"], "example run-host") == 37
+
+
+def test_host_help_names_program_and_options(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    with pytest.raises(SystemExit) as caught:
+        run_host.main(["--help"], "example run-host")
+    assert caught.value.code == 0
+    output = capsys.readouterr()
+    assert output.err == ""
+    assert output.out.startswith("usage: example run-host ")
+    assert "--host HOST" in output.out
+    assert "--prompt PROMPT" in output.out
+
+
+def test_host_passes_configured_full_access_authorization(
+    config_file: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    config_file.write_text(EXAMPLE.replace("unsandboxed = false", "unsandboxed = true"))
+    account_path = os.environ["PATH"]
+    root = Path(os.environ["XDG_STATE_HOME"]) / "tbhbdev" / "agent-runs"
+    files = runfiles.RunFiles(root, "example")
+    files.receive(
+        run_request(
+            unsandboxed=True,
+            authorized_by="operator-chat-2026-11-09",
+            reason="approval",
+        )
+    )
+    files.write("prompt", "example task")
+
+    def execute(
+        run: run_host.Run,
+        _text: str,
+        *,
+        preflight_only: bool = False,
+    ) -> int:
+        assert preflight_only is False
+        assert os.environ["PATH"] == account_path
+        assert run.request.unsandboxed is True
+        assert run.request.authorized_by == "operator-chat-2026-11-09"
+        return 37
+
+    monkeypatch.setattr(run_host, "execute", execute)
+    assert (
+        run_host.main(["example", "--host", "example-linux"], "example run-host") == 37
+    )
+
+
+def check_harness_arguments(
+    run: run_host.Run, prepared: run_host.Prepared, monkeypatch: pytest.MonkeyPatch
+) -> list[tuple[str, ...]]:
+    harness, kind = run.request.harness, run.request.kind
+    commands: list[tuple[str, ...]] = []
+    real_build = run_host.policy.build
+    real_argv = run_host.argv.harness
+
+    def build(*args: object, **kwargs: object) -> Policy:
+        assert args == (run.settings, run.host)
+        assert kwargs.pop("protected")
+        assert kwargs.pop("denied") == run_host.resolved_denies(run, prepared.paths)
+        assert kwargs == {
+            "harness": harness,
+            "profile": run.request.profile,
+            "account": run.request.account,
+            "unsandboxed": False,
+            "paths": prepared.paths,
+        }
+        return real_build(
+            run.settings,
+            run.host,
+            harness=harness,
+            profile=run.request.profile,
+            account=run.request.account,
+            unsandboxed=False,
+            paths=prepared.paths,
+        )
+
+    def command(actual: RunRequest, value: Policy, **kwargs: object) -> tuple[str, ...]:
+        project = (
+            str(run.tmpdir / "agy-project.json") if harness is Harness.AGY else None
+        )
+        text = render.brief(kind, "example task")
+        assert actual is run.request
+        assert kwargs == {
+            "worktree": prepared.paths.worktree,
+            "brief_file": str(run.files.path("prompt")),
+            "agy_project": project,
+            "agy_brief": text,
+            "schema_file": None,
+            "schema_text": None,
+        }
+        generated = real_argv(
+            actual,
+            value,
+            worktree=prepared.paths.worktree,
+            brief_file=str(run.files.path("prompt")),
+            agy_project=project,
+            agy_brief=text,
+        )
+
+        commands.append(generated)
+        return generated
+
+    monkeypatch.setattr(run_host.policy, "build", build)
+    monkeypatch.setattr(run_host.argv, "harness", command)
+    return commands
+
+
+def check_launch_contract(
+    run: run_host.Run,
+    prepared: run_host.Prepared,
+    command: tuple[str, ...],
+    kwargs: dict[str, object],
+    original: tuple[str, ...],
+) -> None:
+    harness, kind = run.request.harness, run.request.kind
+    original = (str(run.home.parent / "host-bin" / "true"), *original[1:])
+    env = prepared.delivery.env
+    assert not run.files.path("launched").exists()
+    assert kwargs["cwd"] == prepared.paths.worktree
+    expected = (
+        run_host.policy.environment(
+            run.settings, run.host, harness, prepared.paths, run.request.account
+        )
+        | env
+    )
+    launched = dict(cast("dict[str, str]", kwargs["env"]))
+    if kind is RunKind.EXEC:
+        context = json.loads(launched.pop(run_stop_hook.ENV))
+        assert context["workspace"] == prepared.paths.worktree
+    assert launched == expected | {run_host.RUN_MODEL_ENV: run.request.model}
+    assert all(
+        marker not in repr(command)
+        for marker in (
+            "example-parent-credential",
+            "example-tmux-credential",
+            "example-claude",
+        )
+    )
+    assert kwargs["terminal"] == (None if kind is RunKind.EXEC else 0)
+    if kind is RunKind.EXEC:
+        streams = cast("tuple[TextIO, TextIO, TextIO]", kwargs["streams"])
+        assert streams[0].name == str(run.files.path("prompt"))
+        assert streams[0].read() == render.brief(kind, "example task")
+        assert streams[1].name == str(run.files.path("out"))
+        assert streams[1].mode == "w"
+        assert streams[2].name == str(run.files.path("log"))
+        assert streams[2].mode == "a"
+    else:
+        assert kwargs["streams"] == (None, None, None)
+    if harness is Harness.AGY:
+        project = json.loads((run.tmpdir / "agy-project.json").read_text())
+        assert project["name"] == "agent-example"
+        assert project["path"] == prepared.paths.worktree
+        assert project["timeout"] == 900
+        assert project["permissions"]
+        assert command[command.index("--project") + 1] == str(
+            run.tmpdir / "agy-project.json"
+        )
+    if kind is RunKind.EXEC and harness is Harness.CODEX:
+        assert command[:-3] == original[:-1]
+        assert command[-3:] == (
+            "--output-last-message",
+            str(run.tmpdir / "out.final"),
+            "-",
+        )
+    if kind is not RunKind.EXEC or harness is not Harness.CODEX:
+        assert command == original
+        assert "--output-last-message" not in command
+
+
+class HostRuntime:
+    def __init__(
+        self, run: run_host.Run, prepared: run_host.Prepared, failure: str | None
+    ) -> None:
+        self.run, self.prepared, self.failure = run, prepared, failure
+        self.events: list[str] = []
+        self.phases: list[str] = []
+        self.agent = Child()
+        self.write_file = run.files.write
+
+    def prepare(
+        self,
+        operation: Callable[[], object],
+        files: runfiles.RunFiles,
+        deadline: float,
+        grace: float,
+    ) -> run_host.Prepared | str:
+        assert callable(operation)
+        assert files is self.run.files
+        assert deadline == self.run.deadline
+        assert grace == self.run.settings.kill_grace_seconds
+        if self.failure == "result":
+            return "invalid"
+        if self.failure == "timeout":
+            raise TimeoutError
+        if self.failure == "interrupt":
+            raise run_host.RunInterruptedError
+        if self.failure == "invalid":
+            message = "safe preparation error"
+            raise Invalid(message)
+        if self.failure == "os":
+            message = "unprinted-error-material"
+            raise OSError(message)
+        return self.prepared
+
+    def harness(
+        self, run: run_host.Run, prepared: run_host.Prepared, stack: ExitStack
+    ) -> int:
+        assert run is self.run
+        assert prepared is self.prepared
+        assert isinstance(stack, ExitStack)
+        self.events.append("group-stopped")
+        return 7
+
+    def sign(self, key: str, tmpdir: Path, deadline: float) -> Child:
+        assert key == "example-key"
+        assert tmpdir == self.run.tmpdir
+        assert deadline == self.run.deadline
+        self.events.append("agent-started")
+        return self.agent
+
+    def write_back(self, source: Path, destination: Path, before: str | None) -> None:
+        assert source == self.run.home / ".codex" / "auth.json"
+        assert destination == Path(self.prepared.paths.codex_home) / "auth.json"
+        assert before == "example-before"
+        self.events.append("auth")
+        if self.failure == "auth":
+            raise OSError
+
+    def stop(self, agent: Child) -> None:
+        assert agent is self.agent
+        self.events.append("agent-stopped")
+
+    def write(self, suffix: str, text: str) -> None:
+        if suffix == "phase":
+            self.phases.append(text)
+        if suffix == "rc":
+            assert self.phases[-1] == "ended"
+            entry = runfiles.latest(self.run.files.root).get("example")
+            assert entry is None or entry["rc"] is None
+        self.write_file(suffix, text)
+
+    def patch(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(process_group, "prepare", self.prepare)
+        monkeypatch.setattr(run_host, "run_harness", self.harness)
+        monkeypatch.setattr(credentials, "signing_agent", self.sign)
+        monkeypatch.setattr(credentials, "auth_write_back", self.write_back)
+        monkeypatch.setattr(run_host, "stop_agent", self.stop)
+        monkeypatch.setattr(self.run.files, "write", self.write)
+
+
+def test_probe_failure_stops_its_recorded_harness_group(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    real_start = subprocess.Popen
+
+    def start(
+        command: list[str],
+        *,
+        stdin: int | None = None,
+        stdout: int,
+        stderr: int | None = None,
+        text: bool,
+    ) -> subprocess.Popen[str]:
+        assert text is True
+        child = real_start(
+            command, stdin=stdin, stdout=stdout, stderr=stderr, text=True
+        )
+        real_signal = child.send_signal
+
+        def send(number: int) -> None:
+            if number == signal.SIGHUP:
+                message = "probe signal failed"
+                raise RuntimeError(message)
+            real_signal(number)
+
+        monkeypatch.setattr(child, "send_signal", send)
+        return child
+
+    monkeypatch.setattr(subprocess, "Popen", start)
+    try:
+        with pytest.raises(RuntimeError, match=r"^probe signal failed$"):
+            test_hangup_stops_harness_group_writes_auth_and_rc(tmp_path, escalate=False)
+    finally:
+        files = runfiles.RunFiles(tmp_path / "runs", "example")
+        group = json.loads(files.path("pgid").read_text())["pgid"]
+        descendant = int((files.root / "descendant").read_text())
+        deadline = time.monotonic() + 1
+        while process_group.alive(group) and time.monotonic() < deadline:
+            time.sleep(0.02)
+        assert not process_group.alive(group)
+        assert process_group.leader_start(descendant) is None
+
+
+def index_should_fail(failure: str, entry: dict[str, object]) -> bool:
+    return (failure == "initial-index" and entry["rc"] is None) or (
+        failure == "final-index" and entry["rc"] is not None
+    )
+
+
+@pytest.mark.parametrize("failure", ["initial-index", "final-index", "agent", "phase"])
+def test_cleanup_failures_cannot_skip_rc(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, failure: str
+) -> None:
+    run = make_run(tmp_path)
+    prepared = dataclasses.replace(
+        preparation(run),
+        delivery=credentials.Delivery(
+            {}, "key", gh_fallback=False, claude_profile=None
+        ),
+    )
+    monkeypatch.setattr(process_group, "prepare", constant(prepared))
+    monkeypatch.setattr(run_host, "run_harness", constant(7))
+    monkeypatch.setattr(credentials, "signing_agent", constant(Child()))
+    stopped: list[str] = []
+
+    def stop(_child: object) -> None:
+        stopped.append("stopped")
+        if failure == "agent":
+            raise OSError
+
+    append = runfiles.append
+
+    def index(root: Path, entry: dict[str, object]) -> None:
+        if index_should_fail(failure, entry):
+            if entry["rc"] is not None:
+                assert run.files.path("rc").read_text() == "7\n"
+            raise OSError
+        append(root, entry)
+
+    write = run.files.write
+
+    def record(suffix: str, text: str) -> None:
+        if failure == "phase" and text == "ended":
+            raise OSError
+        write(suffix, text)
+
+    monkeypatch.setattr(run_host, "stop_agent", stop)
+    monkeypatch.setattr(runfiles, "append", index)
+    monkeypatch.setattr(run.files, "write", record)
+    assert run_host.execute(run, "example") == (1 if failure == "initial-index" else 7)
+    check_cleanup_result(run, stopped, failure)
+
+
+def check_cleanup_result(run: run_host.Run, stopped: list[str], failure: str) -> None:
+    assert run.files.path("rc").read_text() == (
+        "1\n" if failure == "initial-index" else "7\n"
+    )
+    assert stopped == ([] if failure == "initial-index" else ["stopped"])
+    if failure == "final-index":
+        assert run.files.path("log").read_text() == "completion index append failed\n"
+
+
+@pytest.mark.parametrize("name", ["../unsafe", ""])
+def test_invalid_name_has_no_completion_location(
+    tmp_path: Path, config_file: Path, name: str
+) -> None:
+    config_file.write_text(EXAMPLE)
+    assert run_host.main([name, "--host", "example-linux"], "example") == 1
+    assert not list(tmp_path.rglob("*.rc"))
+
+
+def test_load_interrupt_is_recorded_before_handlers_restore(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def load(_args: object, _tmpdir: Path) -> None:
+        assert signal.getsignal(signal.SIGHUP) is run_host.interrupt
+        os.kill(os.getpid(), signal.SIGHUP)
+
+    monkeypatch.setattr(run_host, "_load", load)
+    previous = signal.getsignal(signal.SIGHUP)
+    assert run_host.main(["example"], "example") == 143
+    root = Path(os.environ["XDG_STATE_HOME"]) / "tbhbdev" / "agent-runs"
+    assert (root / "example.rc").read_text() == "143\n"
+    assert (
+        root / "example.log"
+    ).read_text() == "run refused: interrupted during load\n"
+    assert signal.getsignal(signal.SIGHUP) == previous
+
+
+@pytest.mark.parametrize("terminal_lost", [False, True])
+def test_signal_at_launch_handoff_records_and_stops_child(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, terminal_lost: bool
+) -> None:
+    run = make_run(tmp_path, kind="start" if terminal_lost else "exec")
+    prepared = preparation(run)
+    monkeypatch.setattr(process_group, "prepare", constant(prepared))
+    monkeypatch.setattr(sys, "stdin", sys.__stdin__)
+    child = Child()
+    events: list[str] = []
+
+    def launch(*_args: object, **kwargs: object) -> Child:
+        cast("Callable[[Child], None]", kwargs["started"])(child)
+        os.kill(os.getpid(), signal.SIGHUP)
+        return child
+
+    def record(files: runfiles.RunFiles, pid: int) -> None:
+        assert pid == child.pid
+        files.write("pgid", "recorded")
+        events.append("recorded")
+
+    def stop(pid: int, grace: float, *_args: object) -> None:
+        assert (pid, grace) == (child.pid, 0)
+        events.append("stopped")
+        os.kill(os.getpid(), signal.SIGTERM)
+
+    def foreground(_fd: int, _pid: int) -> None:
+        raise OSError
+
+    monkeypatch.setattr(process_group, "launch_owned", launch)
+    monkeypatch.setattr(process_group, "record", record)
+    monkeypatch.setattr(process_group, "stop_started", stop)
+    monkeypatch.setattr(process_group, "foreground", foreground)
+    with process_group.defer_signals():
+        signal.signal(signal.SIGHUP, run_host.interrupt)
+        signal.signal(signal.SIGTERM, run_host.interrupt)
+        assert run_host.execute(run, "example") == 143
+    assert events == ["recorded", "stopped"]
+    assert child.waits == [None]
+    assert run.files.path("rc").read_text() == "143\n"
+    if terminal_lost:
+        log = run.files.path("log").read_text().splitlines()
+        assert log[0].startswith("argv: ")
+        assert log[1:] == ["terminal unavailable during cleanup"]
+
+
+def test_auth_skip_reason_is_logged_with_failure_status(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    run = make_run(tmp_path)
+    prepared = preparation(run)
+    monkeypatch.setattr(process_group, "prepare", constant(prepared))
+    monkeypatch.setattr(run_host, "run_harness", constant(0))
+    monkeypatch.setattr(
+        credentials, "auth_write_back", constant("unsafe auth skipped\n")
+    )
+    runfiles.atomic(Path(prepared.paths.codex_home) / "auth.json", "{}")
+    assert run_host.execute(run, "example") == 1
+    assert "unsafe auth skipped" in run.files.path("log").read_text()
+
+
+def test_refused_auth_is_moved_whole_to_private_recovery(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    run = make_run(tmp_path)
+    prepared = preparation(run)
+    source = runfiles.private_dir(run.home / ".codex") / "auth.json"
+    runfiles.atomic(source, '{"tokens":{}}')
+    prepared = dataclasses.replace(prepared, auth_before=source.read_text())
+    target = Path(prepared.paths.codex_home) / "auth.json"
+    refreshed = '{"tokens":{"access_token":"fixture-live-token"}}'
+    original_datetime = run_host.datetime
+
+    class FrozenClock:
+        @staticmethod
+        def now(zone: object) -> run_host.datetime:
+            assert zone is run_host.UTC
+            return original_datetime(2026, 1, 1, tzinfo=run_host.UTC)
+
+    monkeypatch.setattr(run_host, "datetime", FrozenClock)
+    mkdir = Path.mkdir
+    names = iter(
+        (
+            "example-20260101T000000.000000Z",
+            "example-20260101T000000.000000Z",
+            "example-20260101T000000.000001Z",
+        )
+    )
+
+    def checked_mkdir(
+        path: Path, mode: int = 0o777, *, parents: bool = False, exist_ok: bool = False
+    ) -> None:
+        if path.parent == run.home / ".codex-recovery":
+            assert path.name == next(names)
+            assert mode == 0o700
+            assert parents is False
+            assert exist_ok is False
+        mkdir(path, mode, parents=parents, exist_ok=exist_ok)
+
+    monkeypatch.setattr(Path, "mkdir", checked_mkdir)
+    expected_log = ""
+    for _ in range(2):
+        runfiles.private_dir(target.parent)
+        runfiles.atomic(target, refreshed)
+        inode = target.stat().st_ino
+        assert run_host.finish(run, prepared, None, 0) == 1
+        recovered = next(
+            path
+            for path in (run.home / ".codex-recovery").glob("*/auth.json")
+            if path.stat().st_ino == inode
+        )
+        assert recovered.read_text() == refreshed
+        assert stat.S_IMODE(recovered.stat().st_mode) == 0o600
+        assert stat.S_IMODE(recovered.parent.stat().st_mode) == 0o700
+        expected_log += (
+            "codex auth write-back skipped: tokens.id_token: found missing; "
+            f"expected string; recovery: {recovered}\n"
+        )
+        assert run.files.path("log").read_text() == expected_log
+    assert len(list((run.home / ".codex-recovery").glob("*/auth.json"))) == 2
+    assert {p.name for p in (run.home / ".codex-recovery").iterdir()} == {
+        "example-20260101T000000.000000Z",
+        "example-20260101T000000.000001Z",
+    }
+    assert source.read_text() == prepared.auth_before
+    assert "fixture-live-token" not in run.files.path("log").read_text()
+    paths = run_host.planned_paths(run)
+    value, executable = run_host.checked_policy(run, paths)
+    run.files.write("prompt", "fixture")
+    command = run_host.harness_command(run, prepared, value, executable)
+    override = next(arg for arg in command if arg.startswith("permissions.build="))
+    filesystem = tomllib.loads(override)["permissions"]["build"]["filesystem"]
+    assert filesystem[str(run.home / ".codex-recovery")] == "none"
+
+
+def test_failed_launch_still_records_completion(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    run = make_run(tmp_path)
+    run.files.receive(run.request)
+    prepared = preparation(run)
+    monkeypatch.setattr(process_group, "prepare", constant(prepared))
+
+    def launch(*_args: object, **_kwargs: object) -> None:
+        raise OSError
+
+    monkeypatch.setattr(process_group, "launch_owned", launch)
+    assert run_host.execute(run, "example") == 1
+    assert run.files.path("rc").read_text() == "1\n"
+    assert not run.files.path("launched").exists()
+
+
+def test_missing_name_exits_one_without_rc(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    assert run_host.main([], "example") == 1
+    assert not list(tmp_path.rglob("*.rc"))
+    assert capsys.readouterr() == ("", "example: run name is required\n")
+
+
+def test_terminal_setup_failure_keeps_registered_cleanup_owner(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    run = make_run(tmp_path, kind="start")
+    prepared = preparation(run)
+    monkeypatch.setattr(sys, "stdin", sys.__stdin__)
+    monkeypatch.setattr(process_group, "prepare", constant(prepared))
+    child = Child()
+    monkeypatch.setattr(subprocess, "Popen", constant(child))
+    monkeypatch.setattr(run_host, "shutdown_bazel", constant("skipped"))
+    events: list[str] = []
+
+    def record(files: runfiles.RunFiles, pid: int) -> None:
+        assert pid == child.pid
+        files.write("pgid", "registered")
+        events.append("registered")
+
+    def foreground(_fd: int, _pid: int) -> None:
+        assert events[0] == "registered"
+        raise OSError
+
+    def stop(pid: int, _grace: float, *_args: object) -> None:
+        assert pid == child.pid
+        events.append("stopped")
+
+    monkeypatch.setattr(process_group, "record", record)
+    monkeypatch.setattr(process_group, "foreground", foreground)
+    monkeypatch.setattr(process_group, "stop_started", stop)
+    assert run_host.execute(run, "example") == 1
+    assert events == ["registered", "stopped"]
+    assert child.waits == [None]
+    assert run.files.path("pgid").read_text() == "registered"
+    assert run.files.path("rc").read_text() == "1\n"
+
+
+@pytest.mark.parametrize("common", [False, True])
+def test_planned_paths_ignore_account_git_directory_data(
+    tmp_path: Path, common: bool
+) -> None:
+    run = make_run(tmp_path)
+    clone = Path(run_host.repo.clone_path(run.home, run.request.repo))
+    clone.mkdir(parents=True)
+    gitdir = run.home / "gitdir"
+    gitdir.mkdir()
+    (clone / ".git").write_text(f"gitdir: {gitdir}\n")
+    if common:
+        (gitdir / "commondir").write_text("../shared\n")
+    paths = run_host.planned_paths(run)
+    expected = clone / ".worktrees" / "agent-example" / ".git"
+    assert paths.git_common_dir == str(expected)
+    assert paths == run_host.RunPaths(
+        home=str(run.home),
+        worktree=str(clone / ".worktrees" / "agent-example"),
+        tmpdir=str(run.tmpdir),
+        codex_home=str(tmp_path / "state" / "tbhbdev" / "agent-codex" / run.files.name),
+        audit_dir=str(run.home / run.settings.sandbox.audit_dir),
+        git_common_dir=str(expected),
+        uid=os.getuid(),
+    )
+
+
+@pytest.mark.parametrize("harness", Harness)
+@pytest.mark.parametrize("opt_out", [False, True])
+def test_preflight_version_and_named_exceptions(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    harness: Harness,
+    opt_out: bool,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    run = make_run(
+        tmp_path,
+        harness=harness.value,
+        timeout=900,
+        reason="test",
+        claude_profile="primary" if harness is Harness.CLAUDE else None,
+    )
+    sandbox = dataclasses.replace(
+        run.settings.sandbox,
+        codex_network_proxy_opt_out="test exception" if opt_out else None,
+        agy_unsandboxed_opt_out="test exception" if opt_out else None,
+    )
+    run = dataclasses.replace(
+        run, settings=dataclasses.replace(run.settings, sandbox=sandbox)
+    )
+    checks: list[tuple[str, Path]] = []
+
+    def supported(executable: str, directory: Path) -> bool:
+        assert executable == str(tmp_path / "host-bin" / "true")
+        assert directory == run.tmpdir
+        checks.append((executable, directory))
+        return False
+
+    monkeypatch.setattr(host_tools, "codex_proxy_supported", supported)
+    if not opt_out and harness is Harness.CODEX:
+        with pytest.raises(Invalid) as caught:
+            run_host.preflight(run)
+        assert str(caught.value) == (
+            "Codex network_proxy support required (minimum 0.164.0); "
+            "upgrade or configure codex_network_proxy_opt_out"
+        )
+    else:
+        run_host.preflight(run)
+        if opt_out and harness is Harness.CODEX:
+            assert (
+                run.files.path("log").read_text()
+                == f"{harness} sandbox opt-out: test exception\n"
+            )
+
+    output = capsys.readouterr()
+    assert output.out == ""
+    assert output.err == (
+        f"{harness} sandbox opt-out: test exception\n"
+        if opt_out and harness is Harness.CODEX
+        else ""
+    )
+
+    assert checks == (
+        [(str(tmp_path / "host-bin" / "true"), run.tmpdir)]
+        if harness is Harness.CODEX and not opt_out
+        else []
+    )
+
+
+def test_mac_host_commands_are_resolved_before_launch(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+
+    run = make_run(tmp_path)
+    run = dataclasses.replace(run, host=dataclasses.replace(run.host, os=Os.MACOS))
+    calls: list[str] = []
+
+    def resolve(
+        name: str, _path: str | None = None, *, follow_symlinks: bool = True
+    ) -> str:
+        assert follow_symlinks is False
+        calls.append(name)
+        return str(tmp_path / "host-bin" / "true")
+
+    monkeypatch.setattr(host_tools, "resolve", resolve)
+    run_host.checked_policy(run, preparation(run).paths)
+    assert calls == [
+        "codex",
+        "git",
+        "ssh-agent",
+        "ssh-add",
+        "ssh",
+        "openssl",
+        "sysctl",
+        "ps",
+        "security",
+    ]
+
+
+@pytest.mark.parametrize(
+    "source", ["run directory", "symlink write root", "harness", "interpreter"]
+)
+def test_host_paths_refuse_before_any_host_execution(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, source: str
+) -> None:
+    run = make_run(tmp_path, harness="claude", claude_profile="primary", reason="test")
+    paths = preparation(run).paths
+    if source == "run directory":
+        root = str(run.files.root)
+    elif source == "symlink write root":
+        link = run.home / "writable-link"
+        link.symlink_to(run.files.root, target_is_directory=True)
+        root = str(link)
+    else:
+        root = str(run.tmpdir)
+        planted = run.tmpdir / "planted"
+        planted.write_text(
+            "#!" + str(tmp_path / "host-bin" / "true") + "\n"
+            if source == "harness"
+            else "#!" + str(run.tmpdir / "interpreter") + "\n"
+        )
+        if source == "interpreter":
+            (run.tmpdir / "interpreter").write_bytes(b"binary")
+            (run.tmpdir / "interpreter").chmod(0o700)
+            planted = tmp_path / "trusted-script"
+            planted.write_text("#!" + str(run.tmpdir / "interpreter") + "\n")
+        original = host_tools.resolve
+
+        def selected(
+            name: str, path: str | None = None, *, follow_symlinks: bool = True
+        ) -> str:
+            return (
+                str(planted)
+                if name == "claude"
+                else original(name, path, follow_symlinks=follow_symlinks)
+            )
+
+        monkeypatch.setattr(host_tools, "resolve", selected)
+    if source in ("run directory", "symlink write root"):
+        run = dataclasses.replace(
+            run,
+            settings=dataclasses.replace(
+                run.settings,
+                sandbox=dataclasses.replace(run.settings.sandbox, write_roots=(root,)),
+            ),
+        )
+    with pytest.raises(
+        Invalid,
+        match=(
+            r"protected host path.*overlaps write root"
+            r"|untrusted host executable component"
+        ),
+    ):
+        run_host.checked_policy(run, paths)
+
+
+@pytest.mark.parametrize("steer", [False, True])
+def test_final_answer_is_copied_only_after_child_stops(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, steer: bool
+) -> None:
+    run = make_run(tmp_path)
+    run.steer = steer
+    run.files.write("prompt", "task")
+    run.files.receive(run.request)
+    prepared = preparation(run)
+    child = Child()
+    original_read = Path.read_text
+    reads: list[Path] = []
+
+    def read(
+        path: Path,
+        encoding: str | None = None,
+        errors: str | None = None,
+        newline: str | None = None,
+    ) -> str:
+        if path == run.files.path("request.json"):
+            reads.append(path)
+        return original_read(path, encoding=encoding, errors=errors, newline=newline)
+
+    monkeypatch.setattr(Path, "read_text", read)
+    marker = run.tmpdir / "executed"
+
+    def launch(
+        spec: process_group.Launch, *, started: Callable[[Child], None]
+    ) -> Child:
+        if steer:
+            assert "app-server --listen unix://" in spec.command[-1]
+            assert "--remote unix://" in spec.command[-1]
+            assert "model=" in spec.command[-1]
+        else:
+            assert spec.command[-2] == str(run.tmpdir / "out.final")
+        assert not run.files.path("out.final").exists()
+        (run.tmpdir / "out.final").write_text("answer")
+        run.files.path("request.json").write_text(
+            f"__import__('pathlib').Path({str(marker)!r}).write_text('escaped')"
+        )
+        started(child)
+        return child
+
+    def stop(*_args: object) -> None:
+        assert not run.files.path("out.final").exists()
+
+    monkeypatch.setattr(process_group, "launch_owned", launch)
+    monkeypatch.setattr(process_group, "record", constant(None))
+    monkeypatch.setattr(process_group, "stop_started", stop)
+    with ExitStack() as stack:
+        assert run_host.run_harness(run, prepared, stack) == 7
+    assert run.files.path("out.final").read_text() == "answer"
+    assert not marker.exists()
+
+    assert reads == [run.files.path("request.json")]
+
+
+@pytest.mark.parametrize(
+    ("harness", "kind"),
+    [
+        (Harness.CLAUDE, RunKind.EXEC),
+        (Harness.AGY, RunKind.EXEC),
+        (Harness.CODEX, RunKind.START),
+    ],
+)
+def test_only_headless_codex_can_supply_final_output(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, harness: Harness, kind: RunKind
+) -> None:
+    run = make_run(
+        tmp_path,
+        harness=harness.value,
+        kind=kind.value,
+        timeout=900,
+        reason="test",
+        claude_profile="primary" if harness is Harness.CLAUDE else None,
+    )
+    run.files.write("prompt", "task")
+    (run.tmpdir / "out.final").write_text("unused")
+    child = Child()
+
+    def launch(
+        _spec: process_group.Launch, *, started: Callable[[Child], None]
+    ) -> Child:
+        started(child)
+        return child
+
+    monkeypatch.setattr(sys, "stdin", sys.__stdin__)
+    monkeypatch.setattr(process_group, "launch_owned", launch)
+    monkeypatch.setattr(process_group, "record", constant(None))
+    monkeypatch.setattr(process_group, "stop_started", constant(None))
+    monkeypatch.setattr(process_group, "foreground", constant(None))
+    with ExitStack() as stack:
+        assert run_host.run_harness(run, preparation(run), stack) == 7
+    assert not run.files.path("out.final").exists()
+
+
+@pytest.mark.parametrize("fail", [False, True])
+def test_execute_scopes_the_mac_host_path(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, fail: bool
+) -> None:
+    run = make_run(tmp_path)
+    run = dataclasses.replace(run, host=dataclasses.replace(run.host, os=Os.MACOS))
+    before = host_tools.search()
+
+    def execute(
+        actual: run_host.Run,
+        text: str,
+        stack: ExitStack,
+        *,
+        preflight_only: bool = False,
+    ) -> int:
+        assert preflight_only is False
+        assert actual is run
+        assert text == "task"
+        assert isinstance(stack, ExitStack)
+        assert (
+            host_tools.search()
+            == "/usr/bin:/bin:/usr/sbin:/sbin:/opt/homebrew/bin:/usr/local/bin"
+        )
+        if fail:
+            raise ValueError
+        return 7
+
+    monkeypatch.setattr(run_host, "_execute", execute)
+    if fail:
+        with pytest.raises(ValueError, match=r"^$"):
+            run_host.execute(run, "task")
+    else:
+        assert run_host.execute(run, "task") == 7
+    assert host_tools.search() == before
+
+
+def test_execute_preserves_path_for_unsandboxed_runs(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    run = make_run(tmp_path, unsandboxed=True, authorized_by="tbhb-dev/example-repo#1")
+    account_path = str(tmp_path / "account-bin")
+    monkeypatch.setenv("PATH", account_path)
+
+    def execute(*_args: object, **_kwargs: object) -> int:
+        assert os.environ["PATH"] == account_path
+        return 7
+
+    monkeypatch.setattr(run_host, "_execute", execute)
+    assert run_host.execute(run, "task") == 7
+
+
+@pytest.mark.parametrize("os", Os)
+@pytest.mark.parametrize("harness", Harness)
+@pytest.mark.parametrize("profile", ["build", "review"])
+def test_checked_policy_supplies_all_protected_paths(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    os: Os,
+    harness: Harness,
+    profile: str,
+) -> None:
+    run = make_run(
+        tmp_path,
+        harness=harness.value,
+        profile=profile,
+        timeout=900,
+        commit="0" * 40 if profile == "review" else None,
+        reason="test",
+        claude_profile="primary" if harness is Harness.CLAUDE else None,
+    )
+    run = dataclasses.replace(run, host=dataclasses.replace(run.host, os=os))
+    directories = ("/usr/bin", "/bin", "/usr/sbin", "/sbin")
+    names = ("git", "ssh-agent", "ssh-add", "ssh", "openssl")
+    if os is Os.MACOS:
+        directories += ("/opt/homebrew/bin", "/usr/local/bin")
+        names += ("sysctl", "ps", "security")
+    installed = ("/trusted/prefix", "/trusted/python", "/trusted/entry")
+    monkeypatch.setattr(host_tools, "installation", constant(installed))
+    protections: list[tuple[str, ...]] = []
+    configs: list[run_host.Settings] = []
+    supplied: list[run_host.RunPaths] = []
+    original = run_host.policy.protect_host
+
+    def protect(
+        configured: run_host.Settings,
+        paths: run_host.RunPaths,
+        protected: tuple[str, ...],
+    ) -> None:
+        protections.append(protected)
+        configs.append(configured)
+        supplied.append(paths)
+        original(configured, paths, protected)
+
+    lookups: list[tuple[str, str | None]] = []
+    headers: list[tuple[str, str]] = []
+
+    def resolve(
+        name: str, path: str | None = None, *, follow_symlinks: bool = True
+    ) -> str:
+        assert follow_symlinks is False
+        lookups.append((name, path))
+        return str(tmp_path / "host-bin" / "true")
+
+    def executable_paths(
+        executable: str, search: str, *, uid: int, write_roots: tuple[str, ...]
+    ) -> tuple[str, ...]:
+        assert (uid, write_roots) == (
+            12345,
+            (
+                str(real / "codex"),
+                str(real / "worktree"),
+                str(real / "temp"),
+                str(real / "audit"),
+                "/dev/fd",
+                *(
+                    str((run.home / p).resolve())
+                    for p in run.settings.sandbox.write_roots
+                ),
+                *(
+                    str((run.home / p).resolve())
+                    for p in run.settings.sandbox.agy.build_write
+                ),
+            ),
+        )
+        headers.append((executable, search))
+        return (executable,)
+
+    monkeypatch.setattr(run_host.policy, "protect_host", protect)
+    monkeypatch.setattr(host_tools, "resolve", resolve)
+    monkeypatch.setattr(host_tools, "executable_paths", executable_paths)
+    real = tmp_path / "resolved"
+    real.mkdir()
+    alias = tmp_path / "alias"
+    alias.symlink_to(real, target_is_directory=True)
+    paths = run_host.RunPaths(
+        str(run.home),
+        str(alias / "worktree"),
+        str(alias / "temp"),
+        str(real / "codex"),
+        str(alias / "audit"),
+        str(alias / "common"),
+        uid=12345,
+    )
+    expected_paths = dataclasses.replace(
+        paths,
+        worktree=str(real / "worktree"),
+        tmpdir=str(real / "temp"),
+        audit_dir=str(real / "audit"),
+        git_common_dir=str(real / "common"),
+    )
+    value, executable = run_host.checked_policy(run, paths)
+    expected = (
+        str(run.files.root.resolve()),
+        str(Path(paths.codex_home).resolve()),
+        *run_host.protected_home(run),
+        *installed,
+        *directories,
+        *(str(Path(path).resolve()) for path in directories),
+        *(
+            str(run.home / path)
+            for path in (
+                run.settings.sandbox.path.linux
+                if os is Os.LINUX
+                else run.settings.sandbox.path.macos
+            )
+        ),
+        *(
+            str((run.home / path).resolve())
+            for path in (
+                run.settings.sandbox.path.linux
+                if os is Os.LINUX
+                else run.settings.sandbox.path.macos
+            )
+        ),
+    )
+    if harness is Harness.CODEX:
+        assert protections.pop(1) == ()
+        assert supplied.pop(1) == expected_paths
+        assert configs.pop(1) == configs[0]
+    assert protections == [
+        (*expected, *run_host.full_denies(run, expected_paths)),
+        expected,
+        (str(tmp_path / "host-bin" / "true"),)
+        * (len(names) + 1 + (harness is Harness.CODEX))
+        + (
+            ()
+            if (tmp_path / "host-bin/true").is_symlink()
+            else (str(tmp_path / "host-bin"),)
+            * (len(names) + 1 + (harness is Harness.CODEX))
+        ),
+    ]
+    assert supplied == [expected_paths] * 3
+    for index in (0, 2):
+        assert configs[index].sandbox.write_roots == tuple(
+            str(run.home / p) for p in run.settings.sandbox.write_roots
+        )
+        assert configs[index].sandbox.agy.build_write == tuple(
+            str(run.home / p) for p in run.settings.sandbox.agy.build_write
+        )
+    assert configs[1] is run.settings
+    name = (
+        "agy-agent" if harness is Harness.AGY and profile == "build" else harness.value
+    )
+    assert lookups == [
+        (name, value.env["PATH"]),
+        *((name, ":".join(directories)) for name in names),
+    ]
+    assert headers == [
+        *(
+            [(str(tmp_path / "host-bin" / "true"), ":".join(directories))]
+            if harness is Harness.CODEX
+            else []
+        ),
+        (str(tmp_path / "host-bin" / "true"), value.env["PATH"]),
+        *(
+            (str(tmp_path / "host-bin" / "true"), ":".join(directories))
+            for _name in names
+        ),
+    ]
+    assert executable == str(tmp_path / "host-bin" / "true")
+
+
+def test_main_defaults_to_the_current_host(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    run = make_run(tmp_path)
+
+    def load(args: object, _tmpdir: Path) -> tuple[run_host.Run, str]:
+        assert isinstance(args, run_host.argparse.Namespace)
+        assert args.host == "example-linux"
+        return run, "task"
+
+    monkeypatch.setattr(socket, "gethostname", constant("example-linux"))
+    monkeypatch.setattr(run_host, "_load", load)
+    monkeypatch.setattr(run_host, "execute", constant(7))
+    assert run_host.main(["example"], "example") == 7
+
+
+def test_signal_after_the_run_is_recorded_keeps_its_result(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    run = make_run(tmp_path)
+
+    @contextmanager
+    def configured(*_args: object) -> Generator[None]:
+        yield
+        os.kill(os.getpid(), signal.SIGTERM)
+
+    def execute(run: run_host.Run, *_args: object, **_kwargs: object) -> int:
+        run.files.write("rc", "7\n")
+        return 7
+
+    monkeypatch.setattr(run_host, "_files", constant(run.files))
+    monkeypatch.setattr(run_host, "_load", constant((run, "task")))
+    monkeypatch.setattr(host_tools, "configured", configured)
+    monkeypatch.setattr(run_host, "_execute", execute)
+    assert run_host.main(["example"], "example") == 7
+    assert run.files.path("rc").read_text() == "7\n"
+
+
+def test_preparation_checks_paths_before_creation(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    run = make_run(tmp_path)
+    monkeypatch.setattr(
+        run_host,
+        "planned_paths",
+        constant(
+            dataclasses.replace(
+                run_host.planned_paths(run), worktree=str(run.files.root)
+            )
+        ),
+    )
+
+    def create(*_args: object) -> None:
+        pytest.fail("the discovered common directory must be checked first")
+
+    monkeypatch.setattr(run_host.worktree, "create", create)
+    with pytest.raises(Invalid, match=r"protected host path.*overlaps write root"):
+        run_host.prepare_workspace(run)
+
+
+def test_linux_denies_resolve_links_drop_missing_and_deduplicate(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    run = make_run(tmp_path)
+    target = tmp_path / "runtime"
+    target.mkdir()
+    socket = target / "socket"
+    socket.touch()
+    alias = tmp_path / "alias"
+    alias.symlink_to(target, target_is_directory=True)
+    candidates = (str(alias / "socket"), str(socket), str(alias / "missing"))
+    monkeypatch.setattr(run_host.policy, "denied_paths", constant(candidates))
+    value, _executable = run_host.checked_policy(run, preparation(run).paths)
+    assert value.deny == (str(socket),)
+    assert isinstance(value.detail, CodexPolicy)
+    assert value.detail.deny == (str(socket),)
+
+
+@pytest.mark.parametrize("request_file", [False, True])
+@pytest.mark.parametrize("marker", ["rc", "pgid", "owner"])
+def test_refused_rerun_preserves_every_file(
+    config_file: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    request_file: bool,
+    marker: str,
+) -> None:
+    config_file.write_text(EXAMPLE)
+    files = runfiles.RunFiles(
+        Path(os.environ["XDG_STATE_HOME"]) / "tbhbdev/agent-runs", "example"
+    )
+    files.receive(run_request())
+    files.write("prompt", "raw brief")
+    files.write("log", "finished output\n")
+    files.write(marker, "7\n")
+    before = {p.name: p.read_bytes() for p in files.root.iterdir()}
+    monkeypatch.setattr(run_host, "execute", constant(99))
+    arguments = ["example", "--host", "example-linux"]
+    if request_file:
+        arguments.insert(1, str(files.path("request.json")))
+    assert run_host.main(arguments, "example run-host") == 1
+    assert {p.name: p.read_bytes() for p in files.root.iterdir()} == before
+
+
+def test_empty_state_home_uses_home(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("XDG_STATE_HOME", "")
+    assert run_host.main(["example"], "example run-host") == 1
+    assert (
+        Path.home() / ".local/state/tbhbdev/agent-runs/example.rc"
+    ).read_text() == "1\n"
+
+
+@pytest.mark.parametrize(
+    "entry",
+    [
+        ".zshenv",
+        ".zshrc",
+        ".zprofile",
+        ".zlogin",
+        ".bashrc",
+        ".bash_profile",
+        ".profile",
+        ".tmux.conf",
+        ".config/tmux",
+        ".gitconfig",
+        ".config/git",
+        ".config/mise",
+        ".control",
+        ".control/sockets",
+    ],
+)
+def test_startup_and_socket_parents_are_protected(tmp_path: Path, entry: str) -> None:
+    run = make_run(tmp_path)
+    run = dataclasses.replace(
+        run,
+        settings=dataclasses.replace(
+            run.settings,
+            sockets_dir=".control/sockets/private",
+            sandbox=dataclasses.replace(run.settings.sandbox, write_roots=(entry,)),
+        ),
+    )
+    with pytest.raises(Invalid, match="protected host path"):
+        run_host.checked_policy(run, preparation(run).paths)
+
+
+@pytest.mark.parametrize(
+    ("harness", "kind"),
+    [
+        (Harness.CODEX, RunKind.EXEC),
+        (Harness.CODEX, RunKind.START),
+        (Harness.CLAUDE, RunKind.EXEC),
+    ],
+)
+def test_codex_argv_is_logged_without_environment_values(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    harness: Harness,
+    kind: RunKind,
+) -> None:
+    run = make_run(
+        tmp_path,
+        harness=harness.value,
+        kind=kind.value,
+        reason="test",
+        claude_profile="primary" if harness is Harness.CLAUDE else None,
+    )
+    run.files.write("prompt", "raw brief")
+    prepared = preparation(run)
+    value, _ = run_host.checked_policy(run, prepared.paths)
+
+    class Child:
+        pid = 99124
+
+        def poll(self) -> int:
+            return 0
+
+        def wait(self, **_kwargs: object) -> int:
+            return 0
+
+    def launch(
+        _spec: process_group.Launch, *, started: Callable[[Child], None]
+    ) -> Child:
+        child = Child()
+        started(child)
+        return child
+
+    monkeypatch.setattr(process_group, "launch_owned", launch)
+    monkeypatch.setattr(process_group, "record", constant(None))
+    monkeypatch.setattr(process_group, "stop_started", constant(None))
+    monkeypatch.setattr(sys, "stdin", sys.__stdin__)
+    with ExitStack() as stack:
+        assert run_host.run_harness(run, prepared, stack) == 0
+    log = run.files.path("log").read_text()
+    if harness is not Harness.CODEX:
+        assert "argv:" not in log
+        return
+    assert log.startswith("argv: ")
+    assert log.count("argv: ") == 1
+    assert "default_permissions=" in log
+    assert "permissions.build=" in log
+    assert "raw brief" not in log
+    assert "shell_environment_policy.set." not in log
+    assert value.tool_path not in log
+    assert "shell_environment_policy.exclude=" in log
+
+
+@pytest.mark.parametrize("harness", [Harness.CODEX, Harness.CLAUDE])
+def test_log_argv_writes_one_complete_line_only_for_codex(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, harness: Harness
+) -> None:
+    run = make_run(
+        tmp_path,
+        harness=harness.value,
+        claude_profile="primary" if harness is Harness.CLAUDE else None,
+        reason="example",
+    )
+    writes: list[tuple[str, str]] = []
+
+    def write(suffix: str, text: str) -> None:
+        writes.append((suffix, text))
+
+    monkeypatch.setattr(run.files, "write", write)
+    run_host.log_argv(run, ("codex", "a b"))
+    assert writes == (
+        [("log", "argv: codex 'a b'\n")] if harness is Harness.CODEX else []
+    )
+
+
+@pytest.mark.parametrize("harness", [Harness.CODEX, Harness.CLAUDE])
+def test_driver_schema_file_reaches_harness(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, harness: Harness
+) -> None:
+    run = make_run(
+        tmp_path,
+        harness=harness.value,
+        reason="test",
+        claude_profile="primary" if harness is Harness.CLAUDE else None,
+    )
+    schema = '{"type":"object","properties":{"answer":{"type":"string"}}}'
+    run.files.write("schema.json", schema)
+    run.files.write("prompt", "raw brief")
+    prepared = preparation(run)
+    commands: list[tuple[str, ...]] = []
+
+    class Child:
+        pid = 99123
+
+        def poll(self) -> int:
+            return 0
+
+        def wait(self, **_kwargs: object) -> int:
+            return 0
+
+    def launch(
+        spec: process_group.Launch, *, started: Callable[[Child], None]
+    ) -> Child:
+        commands.append(spec.command)
+        child = Child()
+        started(child)
+        return child
+
+    monkeypatch.setattr(process_group, "launch_owned", launch)
+    monkeypatch.setattr(process_group, "record", constant(None))
+    monkeypatch.setattr(process_group, "stop_started", constant(None))
+    with ExitStack() as stack:
+        assert run_host.run_harness(run, prepared, stack) == 0
+    command = commands[0]
+    if harness is Harness.CODEX:
+        assert command[command.index("--output-schema") + 1] == str(
+            run.files.path("schema.json")
+        )
+    else:
+        assert command[command.index("--json-schema") + 1] == schema
+        assert command[command.index("--output-format") + 1] == "json"
+
+
+def test_full_access_is_available_behind_the_existing_gate(tmp_path: Path) -> None:
+    run = make_run(
+        tmp_path,
+        unsandboxed=True,
+        authorized_by="tbhb-dev/example-repo#1",
+        reason="isolated host",
+    )
+    run_host.preflight(run)
+    prepared = preparation(run)
+    run.files.write("prompt", "probe")
+    value, executable = run_host.checked_policy(run, prepared.paths)
+    command = run_host.harness_command(run, prepared, value, executable)
+    assert command[command.index("-s") + 1] == "danger-full-access"
+    assert not any(arg.startswith("permissions.") for arg in command)
+
+
+@pytest.mark.parametrize("profile", ["build", "review"])
+@pytest.mark.parametrize("opt_out", [None, "isolated account"])
+def test_agy_preflight_launches_without_opt_out(
+    tmp_path: Path, profile: str, opt_out: str | None
+) -> None:
+    run = make_run(
+        tmp_path,
+        harness="agy",
+        profile=profile,
+        commit="0" * 40 if profile == "review" else None,
+        timeout=900,
+    )
+    run = dataclasses.replace(
+        run,
+        settings=dataclasses.replace(
+            run.settings,
+            sandbox=dataclasses.replace(
+                run.settings.sandbox, agy_unsandboxed_opt_out=opt_out
+            ),
+        ),
+    )
+    run_host.preflight(run)
+
+
+def test_startup_symlink_target_is_protected(tmp_path: Path) -> None:
+    run = make_run(tmp_path)
+    target = tmp_path / "trusted-startup"
+    target.touch()
+    (run.home / ".zshrc").symlink_to(target)
+    run = dataclasses.replace(
+        run,
+        settings=dataclasses.replace(
+            run.settings,
+            sandbox=dataclasses.replace(
+                run.settings.sandbox, write_roots=(str(target),)
+            ),
+        ),
+    )
+    with pytest.raises(Invalid, match="protected host path"):
+        run_host.checked_policy(run, preparation(run).paths)
+
+
+def test_protected_home_lists_startup_files_and_socket_ancestors(
+    tmp_path: Path,
+) -> None:
+    run = make_run(tmp_path)
+    run = dataclasses.replace(
+        run,
+        settings=dataclasses.replace(
+            run.settings, sockets_dir=".control/sockets/private"
+        ),
+    )
+    expected = (
+        ".zshenv",
+        ".zshrc",
+        ".zprofile",
+        ".zlogin",
+        ".bashrc",
+        ".bash_profile",
+        ".profile",
+        ".tmux.conf",
+        ".config/tmux",
+        ".gitconfig",
+        ".config/git",
+        ".config/mise",
+        ".ssh",
+        ".claude",
+        ".claude.json",
+        ".codex",
+        ".codex-recovery",
+        ".control/sockets",
+        ".control",
+    )
+    clone = Path(run_host.repo.clone_path(run.home, run.request.repo))
+    mirror = run_host.worktree.mirror_path(run.home, run.request.repo)
+    assert run_host.protected_home(run) == (
+        *(str(run.home / p) for p in expected),
+        str(clone / ".git"),
+        str(mirror),
+        str(mirror.parent),
+        str(mirror.parent.parent),
+        str(mirror.parent.parent.parent),
+        str(run_host.userconfig.path()),
+    )
+
+
+def test_resolved_denies_receive_host_facts(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    run = make_run(tmp_path)
+    paths = dataclasses.replace(preparation(run).paths, uid=24680)
+
+    def candidates(
+        configured: run_host.Settings, host: run_host.Host, home: str, uid: int
+    ) -> tuple[str, ...]:
+        assert configured is run.settings
+        assert host is run.host
+        assert home == paths.home
+        assert uid == 24680
+        return ()
+
+    monkeypatch.setattr(run_host.policy, "denied_paths", candidates)
+    assert run_host.resolved_denies(run, paths) == ()
+
+
+def test_unproven_harness_stop_keeps_rc_and_withholds_auth(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    run = make_run(tmp_path)
+    prepared = preparation(run)
+    monkeypatch.setattr(process_group, "prepare", constant(prepared))
+    monkeypatch.setattr(
+        run_host,
+        "checked_policy",
+        constant((run_host.checked_policy(run, prepared.paths)[0], "/example/harness")),
+    )
+    child = Child()
+
+    def launch(
+        _spec: process_group.Launch, *, started: Callable[[Child], None]
+    ) -> Child:
+        started(child)
+        return child
+
+    def denied(_pgid: int, _grace: float, *_args: object) -> None:
+        raise PermissionError
+
+    monkeypatch.setattr(process_group, "launch_owned", launch)
+    monkeypatch.setattr(process_group, "record", constant(None))
+    monkeypatch.setattr(process_group, "stop_started", denied)
+    assert run_host.execute(run, "example") == 7
+    assert run.files.path("phase").read_text() == "unknown"
+    assert run.files.path("rc").read_text() == "7\n"
+    log = run.files.path("log").read_text().splitlines()
+    assert log[0].startswith("argv: ")
+    assert log[1:] == ["harness exited 7", "run group stop unproven; phase unknown"]
+    assert not (run.home / ".codex" / "auth.json").exists()
+
+
+@pytest.mark.parametrize("relation", ["same", "parent", "child"])
+def test_missing_linux_denies_are_checked_before_filtering(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, relation: str
+) -> None:
+    run = make_run(tmp_path)
+    denied = run.home / "missing" / "secret-store"
+    root = {"same": denied, "parent": denied.parent, "child": denied / "inner"}[
+        relation
+    ]
+    monkeypatch.setattr(run_host.policy, "denied_paths", constant((str(denied),)))
+    run = dataclasses.replace(
+        run,
+        settings=dataclasses.replace(
+            run.settings,
+            sandbox=dataclasses.replace(run.settings.sandbox, write_roots=(str(root),)),
+        ),
+    )
+    assert run_host.resolved_denies(run, preparation(run).paths) == ()
+    with pytest.raises(Invalid, match="protected host path"):
+        run_host.checked_policy(run, preparation(run).paths)
+
+
+def test_macos_denies_include_real_paths(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    run = make_run(tmp_path)
+    run = dataclasses.replace(run, host=dataclasses.replace(run.host, os=Os.MACOS))
+    target = tmp_path / "real"
+    target.mkdir()
+    alias = tmp_path / "alias"
+    alias.symlink_to(target, target_is_directory=True)
+    monkeypatch.setattr(
+        run_host.policy, "denied_paths", constant((str(alias / "missing"),))
+    )
+    denied = run_host.resolved_denies(run, preparation(run).paths)
+    assert str(alias / "missing") in denied
+    assert str(target / "missing") in denied
+
+
+@pytest.mark.parametrize(
+    "entry",
+    [
+        ".ssh",
+        ".claude",
+        ".claude.json",
+        ".codex",
+        "clone",
+        "mirror",
+        "mirror-owner",
+        "mirror-root",
+        "config",
+    ],
+)
+def test_host_state_cannot_be_a_configured_write_root(
+    tmp_path: Path, entry: str
+) -> None:
+    run = make_run(tmp_path)
+    clone = Path(run_host.repo.clone_path(run.home, run.request.repo))
+    mirror = run_host.worktree.mirror_path(run.home, run.request.repo)
+    roots = {
+        "clone": clone / "other",
+        "mirror": mirror,
+        "mirror-owner": mirror.parent,
+        "mirror-root": mirror.parent.parent,
+        "config": run_host.userconfig.path(),
+    }
+    root = roots.get(entry, run.home / entry)
+    if entry == "clone":
+        (clone / ".git").mkdir(parents=True)
+        (clone / ".git" / "HEAD").write_text("ref: refs/heads/main\n")
+    run = dataclasses.replace(
+        run,
+        settings=dataclasses.replace(
+            run.settings,
+            sandbox=dataclasses.replace(run.settings.sandbox, write_roots=(str(root),)),
+        ),
+    )
+    if entry == "clone":
+        run_host.checked_policy(run, preparation(run).paths)
+        recorded = run.files.path("would_refuse").read_text().split("\n")[:-1]
+        assert f"write root {root} reaches main checkout {clone}" in [
+            json.loads(line) for line in recorded
+        ]
+        assert f"audit: would refuse: {recorded[0]}\n" in (
+            run.files.path("log").read_text()
+        )
+        return
+    with pytest.raises(Invalid, match="protected host path"):
+        run_host.checked_policy(run, preparation(run).paths)
+
+
+def test_account_clone_must_not_use_an_external_common_directory(
+    tmp_path: Path,
+) -> None:
+    run = make_run(tmp_path)
+    clone = Path(run_host.repo.clone_path(run.home, run.request.repo))
+    clone.mkdir(parents=True)
+    (clone / ".git").write_text(f"gitdir: {tmp_path / 'common'}\n")
+    with pytest.raises(
+        Invalid, match=r"^account clone must have its own git directory$"
+    ):
+        run_host.checked_policy(run, preparation(run).paths)
+
+
+@pytest.mark.parametrize("os_name", Os)
+@pytest.mark.parametrize("linked", [False, True])
+def test_sandbox_path_must_be_outside_write_roots(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, os_name: Os, linked: bool
+) -> None:
+    run = make_run(tmp_path)
+    root = run.home / "writable"
+    root.mkdir()
+    entry = root / "bin"
+    if linked:
+        entry = run.home / "tools"
+        entry.symlink_to(root, target_is_directory=True)
+    sandbox = dataclasses.replace(
+        run.settings.sandbox,
+        write_roots=(str(root),),
+        path=dataclasses.replace(
+            run.settings.sandbox.path, linux=(str(entry),), macos=(str(entry),)
+        ),
+    )
+    run = dataclasses.replace(
+        run,
+        host=dataclasses.replace(run.host, os=os_name),
+        settings=dataclasses.replace(run.settings, sandbox=sandbox),
+    )
+
+    def lookup(*_args: object) -> str:
+        pytest.fail("path overlap must be refused before executable inspection")
+
+    monkeypatch.setattr(host_tools, "resolve", lookup)
+    with pytest.raises(Invalid, match="protected host path"):
+        run_host.checked_policy(run, preparation(run).paths)
+
+
+def test_main_keeps_account_path_until_request_loaded(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("PATH", str(tmp_path / "untrusted"))
+
+    def load(_args: object, _tmpdir: Path) -> None:
+        assert os.environ["PATH"] == str(tmp_path / "untrusted")
+        message = "loading probe"
+        raise Invalid(message)
+
+    monkeypatch.setattr(run_host, "_load", load)
+    assert run_host.main(["example"], "example") == 1
+
+
+@pytest.mark.parametrize("error", [OSError, RecursionError])
+def test_late_temporary_cleanup_keeps_finished_records(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, error: type[Exception]
+) -> None:
+    run = make_run(tmp_path)
+    cleanup = tempfile.TemporaryDirectory.cleanup
+
+    def fail_cleanup(directory: tempfile.TemporaryDirectory[str]) -> None:
+        cleanup(directory)
+        raise error
+
+    def execute(
+        _run: run_host.Run,
+        _text: str,
+        *,
+        preflight_only: bool = False,
+    ) -> int:
+        assert preflight_only is False
+        run.files.write("log", "harness log\n")
+        run.files.write("phase", "ended")
+        run.files.write("rc", "7\n")
+        return 7
+
+    monkeypatch.setattr(tempfile.TemporaryDirectory, "cleanup", fail_cleanup)
+    monkeypatch.setattr(run_host, "_files", constant(run.files))
+    monkeypatch.setattr(run_host, "_load", constant((run, "task")))
+    monkeypatch.setattr(run_host, "execute", execute)
+    assert run_host.main(["example"], "example") == 7
+    assert run.files.path("rc").read_text() == "7\n"
+    assert run.files.path("phase").read_text() == "ended"
+    assert (
+        run.files.path("log").read_text()
+        == run_host.build_info.line() + "\nharness log\n"
+    )
+
+
+@pytest.mark.parametrize(
+    ("outcome", "rc"), [("success", 0), ("failure", 1), ("timeout", 124), ("exit", 7)]
+)
+def test_exec_removes_its_pytest_tree_after_each_outcome(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, outcome: str, rc: int
+) -> None:
+    run = make_run(tmp_path, timeout=1)
+    other_tree = tmp_path / "pytest-of-another-run"
+    other_tree.mkdir()
+    other_file = other_tree / "test-file"
+    other_file.write_text("keep")
+    monkeypatch.setattr(tempfile, "tempdir", str(tmp_path))
+    run_dirs: list[Path] = []
+    test = tmp_path / "test_probe.py"
+    test.write_text(
+        "from pathlib import Path\n"
+        "from os import environ\n"
+        "def test_temp(tmp_path):\n"
+        "    assert tmp_path.is_relative_to(Path(environ['TMPDIR']))\n"
+        "    tmp_path.joinpath('test-file').write_text('example')\n"
+    )
+
+    def load(_args: object, directory: Path) -> tuple[run_host.Run, str]:
+        run.tmpdir = runfiles.private_dir(directory / "tools")
+        run_dirs.append(directory)
+        return run, "example task"
+
+    def prepare(*_args: object) -> run_host.Prepared:
+        return preparation(run)
+
+    def launch(spec: process_group.Launch, **kwargs: object) -> Child:
+        assert (
+            spec.env["TMPDIR"] == spec.env["PYTEST_DEBUG_TEMPROOT"] == str(run.tmpdir)
+        )
+        subprocess.run(
+            [
+                sys.executable,
+                "-m",
+                "pytest",
+                "-q",
+                "--confcutdir",
+                str(tmp_path),
+                str(test),
+            ],
+            env={
+                **os.environ,
+                "TMPDIR": spec.env["TMPDIR"],
+                "PYTEST_DEBUG_TEMPROOT": spec.env["PYTEST_DEBUG_TEMPROOT"],
+                "PYTEST_ADDOPTS": "",
+                "PYTEST_DISABLE_PLUGIN_AUTOLOAD": "1",
+            },
+            check=True,
+            capture_output=True,
+        )
+        assert next(run.tmpdir.glob("pytest-of-*/pytest-*/test_temp0/test-file"))
+        (run.tmpdir / "outside").symlink_to(other_tree, target_is_directory=True)
+        if outcome == "failure":
+            raise OSError
+        child = Child(code=rc, timeout=outcome == "timeout")
+        cast("Callable[[Child], None]", kwargs["started"])(child)
+        return child
+
+    monkeypatch.setattr(run_host, "_files", constant(run.files))
+    monkeypatch.setattr(run_host, "_load", load)
+    monkeypatch.setattr(run_host, "preflight", constant(None))
+    monkeypatch.setattr(process_group, "prepare", prepare)
+    monkeypatch.setattr(process_group, "launch_owned", launch)
+    monkeypatch.setattr(process_group, "record", constant(None))
+    monkeypatch.setattr(process_group, "stop_owned", constant(value=True))
+    assert run_host.main(["example"], "run-host") == rc
+    assert run.files.path("rc").read_text() == f"{rc}\n"
+    assert len(run_dirs) == 1
+    assert not run_dirs[0].exists()
+    assert other_file.read_text() == "keep"
+
+
+def test_signer_stop_denial_keeps_harness_rc(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    run = make_run(tmp_path)
+    child = Child()
+    monkeypatch.setattr(process_group, "stop_started", constant(value=False))
+    agent = cast("subprocess.Popen[str]", child)
+    assert run_host.stop_agent(agent) is False
+    assert child.waits == []
+    assert run_host.finish(run, None, agent, 7) == 7
+    assert run.files.uncertain is True
+    assert run.files.path("phase").read_text() == "unknown"
+    assert run.files.path("rc").read_text() == "7\n"
+
+
+def test_terminal_cleanup_log_error_keeps_harness_rc(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    run = make_run(tmp_path, kind="start")
+    prepared = preparation(run)
+    child = Child()
+
+    def launch(
+        _spec: process_group.Launch, *, started: Callable[[Child], None]
+    ) -> Child:
+        started(child)
+        return child
+
+    def foreground(_fd: int, _pgid: int) -> None:
+        raise OSError
+
+    original = run.files.write
+
+    def write(suffix: str, text: str) -> None:
+        if suffix == "log":
+            raise OSError
+        original(suffix, text)
+
+    monkeypatch.setattr(sys, "stdin", sys.__stdin__)
+    monkeypatch.setattr(process_group, "prepare", constant(prepared))
+    monkeypatch.setattr(process_group, "record", constant(None))
+    monkeypatch.setattr(process_group, "launch_owned", launch)
+    monkeypatch.setattr(process_group, "stop_started", constant(None))
+    monkeypatch.setattr(process_group, "foreground", foreground)
+    monkeypatch.setattr(run.files, "write", write)
+    assert run_host.execute(run, "task") == 7
+    assert run.files.path("rc").read_text() == "7\n"
+
+
+@pytest.mark.parametrize("failure", ["exited", "stopped", "wait-os", "wait-subprocess"])
+def test_harness_cleanup_errors_keep_the_observed_exit_status(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, failure: str
+) -> None:
+    run = make_run(tmp_path, timeout=60)
+    prepared = preparation(run)
+    run.files.write("prompt", "probe")
+    child = Child()
+    original = run.files.write
+    stops: list[int] = []
+
+    def launch(
+        _spec: process_group.Launch, *, started: Callable[[Child], None]
+    ) -> Child:
+        started(child)
+        return child
+
+    def wait(timeout: int | None = None) -> int:
+        if timeout is None:
+            if failure == "wait-os":
+                raise OSError
+            if failure == "wait-subprocess":
+                raise subprocess.SubprocessError
+        return 7
+
+    def write(suffix: str, text: str) -> None:
+        if suffix == "phase" and text == failure:
+            raise OSError
+        original(suffix, text)
+
+    def stop(
+        files: runfiles.RunFiles,
+        pid: int,
+        grace: float,
+        reap: Callable[[], object] | None = None,
+    ) -> bool:
+        assert files is run.files
+        assert (pid, grace) == (child.pid, run.settings.kill_grace_seconds)
+        assert reap == child.poll
+        stops.append(pid)
+        return True
+
+    monkeypatch.setattr(child, "wait", wait)
+    monkeypatch.setattr(run.files, "write", write)
+    monkeypatch.setattr(process_group, "record", constant(None))
+    monkeypatch.setattr(process_group, "launch_owned", launch)
+    monkeypatch.setattr(process_group, "stop_owned", stop)
+    with ExitStack() as stack:
+        assert run_host.run_harness(run, prepared, stack) == 7
+    assert stops == [child.pid]
+
+
+def test_mirror_protection_uses_the_run_home_without_xdg_state(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    run = make_run(tmp_path)
+    monkeypatch.delenv("XDG_STATE_HOME")
+    mirror = (
+        run.home
+        / ".local"
+        / "state"
+        / "tbhbdev"
+        / "agent-mirrors"
+        / "github.com"
+        / "tbhb-dev"
+        / "example-repo.git"
+    )
+    assert str(mirror) in run_host.protected_home(run)
+    assert str(mirror) in run_host.full_denies(run, preparation(run).paths)
+
+
+def test_checkout_validation_receives_aliases_and_all_write_roots(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    run = make_run(tmp_path)
+    clone = Path(run_host.repo.clone_path(run.home, run.request.repo))
+    clone.parent.mkdir(parents=True)
+    target = run.home / "account-clone"
+    target.mkdir()
+    clone.symlink_to(target, target_is_directory=True)
+    calls: list[tuple[Path, Path, tuple[str, ...]]] = []
+    original = run_host.worktree.validate_writes
+
+    def validate(
+        workspace: Path, source: Path, writes: tuple[str, ...]
+    ) -> tuple[str, ...]:
+        calls.append((workspace, source, writes))
+        return original(workspace, source, writes)
+
+    monkeypatch.setattr(run_host.worktree, "validate_writes", validate)
+    paths = preparation(run).paths
+    run_host.checked_policy(run, paths)
+    sandbox = run.settings.sandbox
+    writes = (
+        paths.codex_home,
+        paths.worktree,
+        paths.tmpdir,
+        paths.audit_dir,
+        "/dev/fd",
+        *(
+            str((run.home / p).resolve())
+            for p in (*sandbox.write_roots, *sandbox.agy.build_write)
+        ),
+    )
+    assert calls == [(Path(paths.worktree), clone, writes)]
+    assert clone.resolve() == target
+
+
+@pytest.mark.parametrize("os_name", Os)
+@pytest.mark.parametrize("profile", ["build", "review"])
+def test_checked_policy_codex_table_has_unique_keys(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, os_name: Os, profile: str
+) -> None:
+    run = make_run(
+        tmp_path, profile=profile, commit="0" * 40 if profile == "review" else None
+    )
+    run = dataclasses.replace(run, host=dataclasses.replace(run.host, os=os_name))
+    mirror = run_host.worktree.mirror_path(run.home, run.request.repo)
+    mirror.mkdir(parents=True)
+    monkeypatch.setattr(
+        host_tools, "resolve", constant(str(tmp_path / "host-bin" / "true"))
+    )
+    prepared = preparation(run)
+    value, executable = run_host.checked_policy(run, prepared.paths)
+    run.files.write("prompt", "probe")
+    command = run_host.harness_command(run, prepared, value, executable)
+    override = next(arg for arg in command if arg.startswith(f"permissions.{profile}="))
+    table = tomllib.loads(override)["permissions"][profile]["filesystem"]
+    assert isinstance(value.detail, CodexPolicy)
+    expected = dict.fromkeys(value.detail.read_roots, "read")
+    expected.update(dict.fromkeys(value.detail.write_roots, "write"))
+    expected.update(dict.fromkeys(value.detail.deny, "none"))
+    assert table == expected
+    assert table[str(mirror)] == "none"
+    if profile == "build":
+        assert table[prepared.paths.worktree] == "write"
+
+
+@pytest.mark.parametrize(
+    "missing", ["reviews_app_id", "reviews_app_client_id", "reviews_app_pem"]
+)
+def test_preflight_refuses_review_without_app_references(
+    tmp_path: Path, missing: str
+) -> None:
+    run = make_run(tmp_path, profile="review", commit="0" * 40)
+    original = run.settings.credentials[0]
+    references = dataclasses.replace(
+        original,
+        reviews_app_id=None if missing == "reviews_app_id" else original.reviews_app_id,
+        reviews_app_client_id=None
+        if missing == "reviews_app_client_id"
+        else original.reviews_app_client_id,
+        reviews_app_pem=None
+        if missing == "reviews_app_pem"
+        else original.reviews_app_pem,
+    )
+    run = dataclasses.replace(
+        run, settings=dataclasses.replace(run.settings, credentials=(references,))
+    )
+    with pytest.raises(Invalid) as caught:
+        run_host.preflight(run)
+    assert str(caught.value) == "reviews App credentials are not configured"
+
+
+def test_preflight_checks_the_requested_accounts_app(tmp_path: Path) -> None:
+    run = make_run(tmp_path, profile="review", commit="0" * 40)
+    references = run.settings.credentials[0]
+    other = dataclasses.replace(references, account="ops", reviews_app_id=None)
+    run = dataclasses.replace(
+        run,
+        settings=dataclasses.replace(run.settings, credentials=(other, references)),
+    )
+    run_host.preflight(run)
+
+
+@pytest.mark.parametrize("harness", [Harness.CODEX, Harness.CLAUDE])
+def test_preflight_accepts_harness_without_recorded_pass(
+    tmp_path: Path, harness: Harness
+) -> None:
+    run = make_run(
+        tmp_path,
+        harness=harness.value,
+        claude_profile="primary" if harness is Harness.CLAUDE else None,
+        reason="sandbox test" if harness is Harness.CLAUDE else None,
+    )
+    run = dataclasses.replace(
+        run, host=dataclasses.replace(run.host, proven_harnesses=())
+    )
+    run_host.preflight(run)
+
+
+@pytest.mark.parametrize("unsandboxed", [False, True])
+def test_preflight_announces_access(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    unsandboxed: bool,
+) -> None:
+    run = make_run(
+        tmp_path,
+        unsandboxed=unsandboxed,
+        authorized_by="tbhb-dev/example-repo#1" if unsandboxed else None,
+    )
+    run_host.preflight(run)
+    lines = []
+    if unsandboxed:
+        lines.append("unsandboxed full access authorized_by=tbhb-dev/example-repo#1")
+    expected = "".join(f"{line}\n" for line in lines)
+    assert capsys.readouterr().err == expected
+    assert (run.files.path("log").read_text() if lines else "") == expected
+
+
+@pytest.mark.parametrize("profile", ["build", "review"])
+def test_codex_home_is_outside_all_write_roots(tmp_path: Path, profile: str) -> None:
+    run = make_run(
+        tmp_path, profile=profile, commit="0" * 40 if profile == "review" else None
+    )
+    paths = run_host.planned_paths(run)
+    value, executable = run_host.checked_policy(run, paths)
+    assert isinstance(value.detail, CodexPolicy)
+    home = Path(paths.codex_home)
+    assert home != run.home / ".codex"
+    for root in value.detail.write_roots:
+        assert not home.is_relative_to(root)
+    run.files.write("prompt", "probe")
+    prepared = run_host.Prepared(
+        paths,
+        credentials.Delivery({}, None, gh_fallback=False, claude_profile=None),
+        None,
+    )
+    command = run_host.harness_command(run, prepared, value, executable)
+    assert value.env["CODEX_HOME"] == str(home)
+    assert f'shell_environment_policy.set.CODEX_HOME="{home}"' in command
+    assert not (home / "hooks.json").exists()
+
+
+def test_codex_home_refuses_configured_write_root(tmp_path: Path) -> None:
+    run = make_run(tmp_path)
+    control = run.home / "control"
+    run = dataclasses.replace(
+        run,
+        settings=dataclasses.replace(
+            run.settings,
+            sandbox=dataclasses.replace(
+                run.settings.sandbox, write_roots=(str(control),)
+            ),
+        ),
+    )
+    paths = dataclasses.replace(run_host.planned_paths(run), codex_home=str(control))
+    with pytest.raises(Invalid) as caught:
+        run_host.checked_policy(run, paths)
+    assert str(caught.value) == (
+        f"protected host path {control} overlaps write root {control}; "
+        "narrow that write root"
+    )
+
+
+@pytest.mark.parametrize("relative", [False, True])
+def test_shell_config_directory_is_protected(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, relative: bool
+) -> None:
+    run = make_run(tmp_path)
+    directory = run.home / "shell-config"
+    monkeypatch.setenv("ZDOTDIR", "shell-config" if relative else str(directory))
+    assert str(directory) in run_host.protected_home(run)
+
+
+def test_protected_home_uses_the_account_home_without_state_override(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    run = make_run(tmp_path)
+    monkeypatch.delenv("XDG_STATE_HOME")
+    root = run.home / ".local" / "state" / "tbhbdev" / "agent-mirrors"
+    assert str(root) in run_host.protected_home(run)
+
+
+def test_resolved_executable_directory_cannot_contain_a_write_root(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    run = make_run(tmp_path)
+    directory = runfiles.private_dir(run.home / "install")
+    executable = directory / "codex"
+    executable.write_bytes(b"binary")
+    original = host_tools.resolve
+
+    def resolve(
+        name: str, path: str | None = None, *, follow_symlinks: bool = True
+    ) -> str:
+        return (
+            str(executable)
+            if name == "codex"
+            else original(name, path, follow_symlinks=follow_symlinks)
+        )
+
+    monkeypatch.setattr(host_tools, "resolve", resolve)
+    root = directory / "cache"
+    run = dataclasses.replace(
+        run,
+        settings=dataclasses.replace(
+            run.settings,
+            sandbox=dataclasses.replace(run.settings.sandbox, write_roots=(str(root),)),
+        ),
+    )
+    with pytest.raises(Invalid) as caught:
+        run_host.checked_policy(run, run_host.planned_paths(run))
+    assert str(caught.value) == f"standalone Codex install required: {executable}"
+
+
+def test_non_standalone_codex_never_starts_a_harness(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    run = make_run(tmp_path)
+    executable = run.home / "codex"
+    executable.write_bytes(b"fixture")
+    original = host_tools.resolve
+
+    def resolve(
+        name: str, path: str | None = None, *, follow_symlinks: bool = True
+    ) -> str:
+        return (
+            str(executable)
+            if name == "codex"
+            else original(name, path, follow_symlinks=follow_symlinks)
+        )
+
+    def unexpected(*_args: object, **_kwargs: object) -> None:
+        pytest.fail("non-standalone Codex must refuse before launch")
+
+    monkeypatch.setattr(host_tools, "resolve", resolve)
+    monkeypatch.setattr(process_group, "launch_owned", unexpected)
+    monkeypatch.setattr(process_group, "prepare", unexpected)
+    assert run_host.execute(run, "fixture") == 1
+    assert not run.files.path("launched").exists()
+    assert (
+        f"standalone Codex install required: {executable}"
+        in run.files.path("log").read_text()
+    )
+
+
+@pytest.mark.parametrize("os_name", Os)
+@pytest.mark.parametrize("profile", ["build", "review"])
+def test_codex_release_read_grant_keeps_account_state_denied(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, os_name: Os, profile: str
+) -> None:
+    run = make_run(
+        tmp_path, profile=profile, commit="0" * 40 if profile == "review" else None
+    )
+    release = (
+        run.home / ".codex" / "packages" / "standalone" / "releases" / "example-version"
+    )
+    binary = release / "bin" / "codex"
+    binary.parent.mkdir(parents=True)
+    binary.write_bytes(b"binary")
+    (release / "codex-package.json").write_text('{"entrypoint":"bin/codex"}')
+    monkeypatch.delenv("XDG_DATA_HOME", raising=False)
+    directory = runfiles.private_dir(run.home / ".local" / "bin")
+    alias = directory / "codex"
+    alias.symlink_to(binary)
+    original = host_tools.resolve
+
+    def resolve(
+        name: str, path: str | None = None, *, follow_symlinks: bool = True
+    ) -> str:
+        return (
+            str(binary)
+            if name == "codex"
+            else original(name, path, follow_symlinks=follow_symlinks)
+        )
+
+    monkeypatch.setattr(host_tools, "resolve", resolve)
+    run = dataclasses.replace(
+        run,
+        host=dataclasses.replace(run.host, os=os_name),
+        settings=dataclasses.replace(
+            run.settings,
+            sandbox=dataclasses.replace(
+                run.settings.sandbox,
+                denied_home_paths=(".codex",),
+                host_path=(str(directory),),
+            ),
+        ),
+    )
+    paths = run_host.planned_paths(run)
+    value, executable = run_host.checked_policy(run, paths)
+    run.files.write("prompt", "probe")
+    prepared = run_host.Prepared(
+        paths,
+        credentials.Delivery({}, None, gh_fallback=False, claude_profile=None),
+        None,
+    )
+    command = run_host.harness_command(run, prepared, value, executable)
+    override = next(arg for arg in command if arg.startswith(f"permissions.{profile}="))
+    filesystem = tomllib.loads(override)["permissions"][profile]["filesystem"]
+    copy = run.home / ".local/share/tbhbdev/codex" / release.name
+    assert command[0] == str(copy / "bin/codex")
+    assert filesystem[str(copy)] == "read"
+    assert str(binary) not in filesystem
+    assert str(alias) not in filesystem
+    assert str(release) not in filesystem
+    account_state = run.home / ".codex"
+    assert filesystem[str(account_state)] == "none"
+    for name in ("auth.json", "config.toml", "sessions"):
+        path = account_state / name
+        matches = [
+            key for key in filesystem if key != ":root" and path.is_relative_to(key)
+        ]
+        assert filesystem[max(matches, key=len)] == "none"
+
+
+@pytest.mark.parametrize("source", ["host", "tool"])
+def test_mise_shim_install_targets_cannot_be_a_write_root(
+    tmp_path: Path, source: str
+) -> None:
+    run = make_run(tmp_path)
+    directory = run.home / ".local" / "share" / "mise" / "shims"
+    installs = directory.parent / "installs"
+    sandbox = dataclasses.replace(
+        run.settings.sandbox,
+        write_roots=(str(installs),),
+        agy=dataclasses.replace(run.settings.sandbox.agy, build_write=()),
+    )
+    if source == "host":
+        sandbox = dataclasses.replace(sandbox, host_path=(str(directory),))
+    else:
+        sandbox = dataclasses.replace(
+            sandbox, path=dataclasses.replace(sandbox.path, linux=(str(directory),))
+        )
+    run = dataclasses.replace(
+        run, settings=dataclasses.replace(run.settings, sandbox=sandbox)
+    )
+    with pytest.raises(Invalid) as caught:
+        run_host.checked_policy(run, run_host.planned_paths(run))
+    assert str(caught.value) == (
+        f"protected host path {installs} overlaps write root {installs}; "
+        "narrow that write root"
+    )
+
+
+@pytest.mark.parametrize("os_name", [Os.LINUX, Os.MACOS])
+def test_system_temp_write_root_launches_with_state_codex_home(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, os_name: Os
+) -> None:
+    run = make_run(tmp_path)
+    system_temp = runfiles.private_dir(tmp_path / "system-temp")
+    run = dataclasses.replace(
+        run,
+        tmpdir=runfiles.private_dir(system_temp / "tools"),
+        host=dataclasses.replace(run.host, os=os_name),
+        settings=dataclasses.replace(
+            run.settings,
+            sandbox=dataclasses.replace(
+                run.settings.sandbox, write_roots=(str(system_temp),)
+            ),
+        ),
+    )
+    paths = run_host.planned_paths(run)
+    run_host.preflight(run)
+    value, executable = run_host.checked_policy(run, paths)
+    assert paths.codex_home == str(
+        tmp_path / "state" / "tbhbdev" / "agent-codex" / run.files.name
+    )
+    assert value.env["CODEX_HOME"] == paths.codex_home
+    run.files.write("prompt", "fixture")
+    prepared = run_host.Prepared(
+        paths,
+        credentials.Delivery({}, None, gh_fallback=False, claude_profile=None),
+        None,
+    )
+    command = run_host.harness_command(run, prepared, value, executable)
+    assert command[0] == str(tmp_path / "host-bin" / "true")
+    child = Child(code=0)
+
+    def launch(
+        spec: process_group.Launch, *, started: Callable[[Child], None]
+    ) -> Child:
+        assert spec.command == command
+        assert spec.env["CODEX_HOME"] == paths.codex_home
+        assert spec.env[run_host.RUN_MODEL_ENV] == run.request.model
+        started(child)
+        return child
+
+    monkeypatch.setattr(process_group, "launch_owned", launch)
+    monkeypatch.setattr(process_group, "record", constant(None))
+    monkeypatch.setattr(process_group, "stop_started", constant(None))
+    with ExitStack() as stack:
+        assert run_host.run_harness(run, prepared, stack) == 0
+    assert run.files.path("launched").exists()
+
+
+@pytest.mark.parametrize("failure", [False, True])
+def test_finish_removes_private_state_codex_home(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, failure: bool
+) -> None:
+    run = make_run(tmp_path)
+    workspace = runfiles.private_dir(run.home / "worktree")
+    monkeypatch.setattr(run_host.worktree, "create", constant(workspace))
+    monkeypatch.setattr(run_host.push, "head", constant("a" * 40))
+    prepared = run_host.prepare_workspace(run)
+    directory = Path(prepared.paths.codex_home)
+    assert directory == tmp_path / "state" / "tbhbdev" / "agent-codex" / run.files.name
+    assert stat.S_IMODE(directory.stat().st_mode) == 0o700
+
+    def write_back(_source: Path, destination: Path, _before: str | None) -> None:
+        assert destination.parent == directory
+        assert directory.is_dir()
+        if failure:
+            raise OSError
+
+    monkeypatch.setattr(credentials, "auth_write_back", write_back)
+    assert run_host.finish(run, prepared, None, 0) == int(failure)
+    assert directory.exists() is failure
+
+
+@pytest.mark.parametrize("state", [None, ""])
+def test_codex_home_defaults_to_account_state(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, state: str | None
+) -> None:
+    run = make_run(tmp_path)
+    if state is None:
+        monkeypatch.delenv("XDG_STATE_HOME")
+    else:
+        monkeypatch.setenv("XDG_STATE_HOME", state)
+    assert run_host.planned_paths(run).codex_home == str(
+        run.home / ".local/state/tbhbdev/agent-codex/example"
+    )
+
+
+@pytest.mark.parametrize("profile", ["build", "review"])
+def test_claude_preflight_launches(tmp_path: Path, profile: str) -> None:
+    run = make_run(
+        tmp_path,
+        harness="claude",
+        profile=profile,
+        commit="0" * 40 if profile == "review" else None,
+        claude_profile="primary",
+        reason="phase refusal",
+    )
+    run_host.preflight(run)
+
+
+@pytest.mark.parametrize("root", ["parent", "self", "child"])
+def test_codex_copy_refuses_overlapping_write_root(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, root: str
+) -> None:
+    run = make_run(tmp_path)
+    source = release(run.home)
+    monkeypatch.delenv("XDG_DATA_HOME", raising=False)
+    original = host_tools.resolve
+
+    def resolve(
+        name: str, path: str | None = None, *, follow_symlinks: bool = True
+    ) -> str:
+        return (
+            str(source / "bin/codex")
+            if name == "codex"
+            else original(name, path, follow_symlinks=follow_symlinks)
+        )
+
+    monkeypatch.setattr(host_tools, "resolve", resolve)
+    copy = run.home / ".local/share/tbhbdev/codex" / source.name
+    write = {"parent": copy.parent, "self": copy, "child": copy / "cache"}[root]
+    run = dataclasses.replace(
+        run,
+        settings=dataclasses.replace(
+            run.settings,
+            sandbox=dataclasses.replace(
+                run.settings.sandbox, write_roots=(str(write),)
+            ),
+        ),
+    )
+    with pytest.raises(Invalid, match=r"protected host path.*example-version"):
+        run_host.checked_policy(run, run_host.planned_paths(run))
+
+
+def test_developer_git_paths_are_protected(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    run = make_run(tmp_path)
+    paths = preparation(run).paths
+    run = dataclasses.replace(run, host=dataclasses.replace(run.host, os=Os.MACOS))
+    git = tmp_path / "host-bin/git"
+    git.write_bytes(b"binary")
+    git.chmod(0o755)
+    original_resolve = host_tools.resolve
+
+    def resolve(
+        name: str, path: str | None = None, *, follow_symlinks: bool = True
+    ) -> str:
+        return (
+            str(git)
+            if name == "git"
+            else original_resolve(name, path, follow_symlinks=follow_symlinks)
+        )
+
+    monkeypatch.setattr(host_tools, "resolve", resolve)
+    developer = str(tmp_path / "Developer/usr/bin/git")
+    Path(developer).parent.mkdir(parents=True)
+    Path(developer).write_bytes(b"binary")
+    protections: list[tuple[str, ...]] = []
+    checked: list[str] = []
+    original = run_host.policy.protect_host
+
+    def protect(
+        settings: run_host.Settings,
+        paths: run_host.RunPaths,
+        protected: tuple[str, ...],
+    ) -> None:
+        protections.append(protected)
+        original(settings, paths, protected)
+
+    def git_paths(
+        executable: str, operating_system: Os, uid: int, write_roots: tuple[str, ...]
+    ) -> tuple[str, ...]:
+        assert executable == str(git)
+        assert operating_system is Os.MACOS
+        assert uid == paths.uid
+        assert paths.worktree in write_roots
+        assert paths.tmpdir in write_roots
+        assert paths.audit_dir in write_roots
+        checked.append(executable)
+        return (developer,)
+
+    monkeypatch.setattr(host_tools, "git_shim_paths", git_paths, raising=False)
+    monkeypatch.setattr(run_host.policy, "protect_host", protect)
+    run_host.checked_policy(run, paths)
+    assert checked == [str(git)]
+    assert developer in protections[-1]
+    assert str(Path(developer).parent) in protections[-1]
+
+
+@pytest.mark.parametrize("through_link", [False, True])
+def test_executable_chain_through_private_codex_home_is_refused(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    through_link: bool,
+) -> None:
+    run = make_run(tmp_path)
+    paths = preparation(run).paths
+    directory = Path(paths.codex_home)
+    planted = directory / "git"
+    planted.write_bytes(b"binary")
+    planted.chmod(0o755)
+    selected = planted
+    if through_link:
+        selected = tmp_path / "git-link"
+        selected.symlink_to(planted)
+    original = host_tools.resolve
+
+    def resolve(
+        name: str, path: str | None = None, *, follow_symlinks: bool = True
+    ) -> str:
+        return (
+            str(selected)
+            if name == "git"
+            else original(name, path, follow_symlinks=follow_symlinks)
+        )
+
+    monkeypatch.setattr(host_tools, "resolve", resolve)
+    with pytest.raises(Invalid, match="untrusted host executable component"):
+        run_host.checked_policy(run, paths)
+
+
+@pytest.fixture
+def selected_xcode(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> run_host.Run:
+    """Model Apple's selection links without consulting the host filesystem."""
+    run = make_run(tmp_path)
+    run = dataclasses.replace(run, host=dataclasses.replace(run.host, os=Os.MACOS))
+    links = {
+        Path("/var"): Path("private/var"),
+        Path("/var/db/xcode_select_link"): Path(
+            "/Applications/Xcode.app/Contents/Developer"
+        ),
+        Path("/private/var/db/xcode_select_link"): Path(
+            "/Applications/Xcode.app/Contents/Developer"
+        ),
+        Path("/root-alias"): Path("/"),
+    }
+    original_resolve = Path.resolve
+    original_link = Path.is_symlink
+    original_readlink = Path.readlink
+    virtual = ("/var", "/private", "/Applications", "/usr", "/tool", "/root-alias")
+
+    def resolve(path: Path, *, strict: bool = False) -> Path:
+        if not any(path.is_relative_to(prefix) for prefix in virtual):
+            return original_resolve(path, strict=strict)
+        for link, target in links.items():
+            if path.is_relative_to(link):
+                return resolve(
+                    link.parent / target / path.relative_to(link), strict=strict
+                )
+        return path
+
+    def is_symlink(path: Path) -> bool:
+        if any(path.is_relative_to(prefix) for prefix in virtual):
+            return path in links
+        return original_link(path)
+
+    def readlink(path: Path) -> Path:
+        if path in links:
+            return links[path]
+        return original_readlink(path)
+
+    def lstat(path: Path) -> os.stat_result:
+        mode = stat.S_IFLNK if is_symlink(path) else stat.S_IFDIR
+        return os.stat_result((mode | 0o775, 0, 0, 1, 0, 80, 0, 0, 0, 0))
+
+    def command(name: str, *_args: object, **_kwargs: object) -> str:
+        return f"/usr/bin/{name}"
+
+    monkeypatch.setattr(Path, "resolve", resolve)
+    monkeypatch.setattr(Path, "is_symlink", is_symlink)
+    monkeypatch.setattr(Path, "readlink", readlink)
+    monkeypatch.setattr(host_tools, "lstat", lstat)
+    monkeypatch.setattr(host_tools.sys, "platform", "darwin")
+    monkeypatch.setattr(
+        grp, "getgrgid", constant(grp.struct_group(("admin", "*", 80, [])))
+    )
+    monkeypatch.setattr(host_tools, "resolve", command)
+    monkeypatch.setattr(host_tools, "executable_header", constant(b"binary"))
+    monkeypatch.setattr(codex_install, "prepare", constant(("/usr/bin/codex", ())))
+    return run
+
+
+def test_checked_policy_xcode_protected_tuple(
+    selected_xcode: run_host.Run, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    protections: list[tuple[str, ...]] = []
+
+    def protect(
+        _settings: Settings, _paths: run_host.RunPaths, protected: tuple[str, ...]
+    ) -> None:
+        protections.append(protected)
+
+    monkeypatch.setattr(run_host.policy, "protect_host", protect)
+    run_host.checked_policy(selected_xcode, preparation(selected_xcode).paths)
+    assert protections[-1] == (
+        "/var/db/xcode_select_link",
+        "/var",
+        "/private/var/db/xcode_select_link",
+        "/Applications/Xcode.app/Contents/Developer",
+        "/Applications/Xcode.app/Contents/Developer/usr/bin/git",
+        "/usr/bin/codex",
+        "/usr/bin/codex",
+        "/usr/bin/git",
+        "/usr/bin/ssh-agent",
+        "/usr/bin/ssh-add",
+        "/usr/bin/ssh",
+        "/usr/bin/openssl",
+        "/usr/bin/sysctl",
+        "/usr/bin/ps",
+        "/usr/bin/security",
+        "/Applications/Xcode.app/Contents",
+        "/Applications/Xcode.app/Contents/Developer/usr/bin",
+        *("/usr/bin",) * 10,
+    )
+    assert all("/" not in protected for protected in protections)
+
+
+def test_checked_policy_allows_selected_xcode(selected_xcode: run_host.Run) -> None:
+    value, executable = run_host.checked_policy(
+        selected_xcode, preparation(selected_xcode).paths
+    )
+    assert executable == "/usr/bin/codex"
+    assert isinstance(value.detail, CodexPolicy)
+
+
+@pytest.mark.parametrize("executable", ["/tool", "/root-alias/tool"])
+def test_checked_policy_never_adds_a_parent_resolving_to_root(
+    selected_xcode: run_host.Run, monkeypatch: pytest.MonkeyPatch, executable: str
+) -> None:
+    monkeypatch.setattr(codex_install, "prepare", constant((executable, ())))
+    monkeypatch.setattr(host_tools, "git_shim_paths", constant(()))
+    assert run_host.executable_parents((executable,)) == ()
+    run_host.checked_policy(selected_xcode, preparation(selected_xcode).paths)
+
+
+@pytest.mark.parametrize("kind", ["executable", "link", "parent"])
+def test_checked_policy_still_refuses_executable_link_and_parent_overlap(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, kind: str
+) -> None:
+    run = make_run(tmp_path)
+    entry = str(tmp_path / "tools" / "binary")
+    link = str(tmp_path / "links" / "alias")
+    write, protected = {
+        "executable": (entry, entry),
+        "link": (link + "/cache", link),
+        "parent": (str(tmp_path / "tools" / "cache"), str(tmp_path / "tools")),
+    }[kind]
+    paths = dataclasses.replace(preparation(run).paths, worktree=write)
+    monkeypatch.setattr(host_tools, "git_shim_paths", constant((entry, link)))
+    monkeypatch.setattr(host_tools, "executable_links", constant((link,)))
+    monkeypatch.setattr(host_tools, "executable_header", constant(b"binary"))
+    with pytest.raises(Invalid) as caught:
+        run_host.checked_policy(run, paths)
+    assert str(caught.value) == (
+        f"protected host path {protected} overlaps write root {write}; "
+        "narrow that write root"
+    )
+
+
+@pytest.mark.parametrize(
+    ("profile", "rc", "preflight_only", "uncertain", "posted", "should_post"),
+    [
+        (Profile.REVIEW, 0, False, False, True, True),
+        (Profile.REVIEW, 0, False, False, False, True),
+        (Profile.REVIEW, 7, False, False, True, False),
+        (Profile.REVIEW, 0, True, False, True, False),
+        (Profile.REVIEW, 0, False, True, True, False),
+        (Profile.BUILD, 0, False, False, True, False),
+    ],
+)
+def test_execute_posts_only_after_a_successful_review(  # noqa: PLR0913
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    profile: Profile,
+    rc: int,
+    *,
+    preflight_only: bool,
+    uncertain: bool,
+    posted: bool,
+    should_post: bool,
+) -> None:
+    commit = "a" * 40 if profile is Profile.REVIEW else None
+    run = make_run(tmp_path, profile=profile.value, commit=commit)
+    prepared = preparation(run)
+    monkeypatch.setattr(run_host, "preflight", Mock())
+    monkeypatch.setattr(process_group, "prepare", Mock(return_value=prepared))
+
+    def harness(*_args: object, **_kwargs: object) -> int:
+        run.files.uncertain = uncertain
+        return rc
+
+    finish_harness = Mock(side_effect=harness)
+    monkeypatch.setattr(run_host, "run_harness", finish_harness)
+
+    def record_review(actual: run_host.Run, ready: run_host.Prepared) -> bool:
+        finish_harness.assert_called_once()
+        assert actual is run
+        assert ready is prepared
+        assert Path(ready.paths.worktree).is_dir()
+        assert not run.files.path("rc").exists()
+        return posted
+
+    post = Mock(side_effect=record_review)
+    monkeypatch.setattr(run_host.review_post, "posted", post)
+    expected = 10 if uncertain or (should_post and not posted) else rc
+    assert run_host.execute(run, "example", preflight_only=preflight_only) == expected
+    assert post.call_count == int(should_post)
+    assert run.files.path("rc").read_text() == f"{expected}\n"
+    if uncertain:
+        assert (
+            "review not posted: harness shutdown unconfirmed"
+            in run.files.path("log").read_text()
+        )
+
+
+@pytest.mark.parametrize(
+    ("failure", "rc", "log"),
+    [
+        (None, 10, "review not posted: the draft frontmatter is nested too deeply\n"),
+        (RuntimeError("private"), 10, "review not posted: RuntimeError\n"),
+        (TimeoutError("private"), 10, "review not posted: TimeoutError\n"),
+        (
+            subprocess.TimeoutExpired(["private"], 20),
+            10,
+            "review not posted: TimeoutExpired\n",
+        ),
+        (run_host.RunInterruptedError(), 143, None),
+    ],
+    ids=["nested-yaml", "unexpected", "timeout", "subprocess-timeout", "signal"],
+)
+def test_review_post_failure_sets_the_completion_status(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    failure: Exception | None,
+    rc: int,
+    log: str | None,
+) -> None:
+    run = make_run(tmp_path, profile=Profile.REVIEW.value, commit="a" * 40)
+    prepared = preparation(run)
+    monkeypatch.setattr(run_host, "preflight", Mock())
+    monkeypatch.setattr(process_group, "prepare", Mock(return_value=prepared))
+    monkeypatch.setattr(run_host, "run_harness", Mock(return_value=0))
+    run.files.write("out.final", f"VERDICT: GO {run.request.commit}\n")
+    if failure is None or isinstance(failure, TimeoutError):
+        directory = Path(prepared.paths.worktree) / ".git" / "tbhb-alpha"
+        directory.mkdir(parents=True)
+        draft = (
+            f"---\npr: 7\ncommit_id: '{run.request.commit}'\nevent: COMMENT\n---\n"
+            "## Summary\n\nThe change preserves existing behavior.\n\n"
+            "## Verification\n\n- Read the diff.\n"
+        )
+        if failure is None:
+            nested_yaml = "[" * 1000 + "]" * 1000
+            draft = draft.replace("pr: 7", f"pr: {nested_yaml}")
+        (directory / "review-7.md").write_text(draft)
+        monkeypatch.setattr(
+            credentials,
+            "review_post_token",
+            Mock(return_value="fake", side_effect=failure),
+        )
+    else:
+        monkeypatch.setattr(run_host.review_post, "posted", Mock(side_effect=failure))
+
+    assert run_host.execute(run, "example") == rc
+    assert run.files.path("rc").read_text() == f"{rc}\n"
+    assert run.files.path("phase").read_text() == "ended"
+    assert runfiles.latest(run.files.root)[run.files.name]["rc"] == rc
+    assert not run.files.path("review").exists()
+    if log is None:
+        assert not run.files.path("log").exists()
+    else:
+        assert run.files.path("log").read_text() == log
+
+
+@pytest.mark.parametrize(
+    ("hook_reference", "enabled", "expected"),
+    [(True, True, 7), (True, False, 1), (False, False, 7)],
+)
+def test_run_builds_required_shims_before_harness(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    hook_reference: bool,
+    enabled: bool,
+    expected: int,
+) -> None:
+    run = make_run(tmp_path)
+    run.host = dataclasses.replace(run.host, build_shims=enabled)
+    prepared = dataclasses.replace(preparation(run), auth_before="example-before")
+    workspace = Path(prepared.paths.worktree)
+    if hook_reference:
+        (workspace / "prek.toml").write_text(".bazel_env/bin/cog")
+    runtime = HostRuntime(run, prepared, None)
+    runtime.patch(monkeypatch)
+    monkeypatch.setattr(run_host, "preflight", Mock())
+    tool = Mock(return_value="/tools/bazelisk")
+    monkeypatch.setattr(run_host, "_bazel_tool", tool)
+    deadline = run.deadline
+    ticks = iter([100, 130])
+    monkeypatch.setattr(
+        run_host, "time", SimpleNamespace(monotonic=lambda: next(ticks), time=time.time)
+    )
+
+    def build(*_args: object, **_kwargs: object) -> subprocess.CompletedProcess[bytes]:
+        assert runtime.phases == ["check", "workspace", "shims"]
+        assert runtime.events == []
+        cog = workspace / ".bazel_env/bin/cog"
+        cog.parent.mkdir(parents=True)
+        cog.touch()
+        return subprocess.CompletedProcess([], 1, b"", b"")
+
+    call = Mock(side_effect=build)
+    monkeypatch.setattr(shims.subprocess, "run", call)
+    assert run_host.execute(run, "example") == expected
+    assert run.files.path("rc").read_text() == f"{expected}\n"
+    if enabled:
+        assert runtime.events == ["group-stopped", "auth"]
+        assert runtime.phases == ["check", "workspace", "shims", "ended"]
+        assert run.deadline == deadline + 30
+        assert tool.call_count == 2  # Shim build and Bazel shutdown.
+        assert tool.call_args_list[0].args == (run,)
+        call.assert_called_once()
+    else:
+        assert run.deadline == deadline
+        tool.assert_called_once_with(run)  # Cleanup still looks for Bazel.
+        call.assert_not_called()
+        if hook_reference:
+            assert runtime.events == ["auth"]
+            assert runtime.phases == ["check", "workspace", "ended"]
+            assert (
+                "hook shims: the hooks need Bazel shims and this host has "
+                "build_shims = false; run on another host\n"
+                in run.files.path("log").read_text()
+            )
+        else:
+            assert runtime.events == ["group-stopped", "auth"]
+            assert runtime.phases == ["check", "workspace", "brief", "ended"]
+
+
+@pytest.mark.parametrize(
+    ("expect_commit", "harness_result", "published", "start_ref", "expected"),
+    [
+        (True, (0, None), None, None, 6),
+        (True, (0, "a" * 40), True, None, 0),
+        (True, (0, "a" * 40), False, None, 9),
+        (True, (0, "a" * 40), None, None, 9),
+        (True, (0, "a" * 40), True, "refs/heads/topic", 0),
+        (True, (0, "a" * 40), False, "refs/heads/topic", 9),
+        (True, (4, None), None, None, 4),
+        (False, (0, None), None, None, 0),
+    ],
+)
+def test_execute_checks_required_build_results(  # noqa: PLR0913, PLR0917
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    expect_commit: bool,
+    harness_result: tuple[int, str | None],
+    published: bool | None,
+    start_ref: str | None,
+    expected: int,
+) -> None:
+    run = make_run(tmp_path, expect_commit=expect_commit)
+    run.request = dataclasses.replace(run.request, start_ref=start_ref)
+    prepared = dataclasses.replace(preparation(run), auth_before="example-before")
+    HostRuntime(run, prepared, None).patch(monkeypatch)
+    origin_contains = Mock(return_value=published)
+    monkeypatch.setattr(run_host, "origin_contains", origin_contains)
+
+    def publish(*_args: object) -> int:
+        origin_contains.assert_not_called()
+        status, recorded_head = harness_result
+        if recorded_head is not None:
+            run.files.write("head", recorded_head)
+        return status
+
+    monkeypatch.setattr(run_host.push, "run", publish)
+    assert run_host.execute(run, "example") == expected
+    assert run.files.path("rc").read_text() == f"{expected}\n"
+    assert runfiles.latest(run.files.root)["example"]["rc"] == expected
+    log = run.files.path("log")
+    message = "no new commit: the build required one (--expect-commit)\n"
+    assert (log.exists() and message in log.read_text().splitlines(keepends=True)) is (
+        expected == 6
+    )
+    branch = start_ref.removeprefix("refs/heads/") if start_ref else "agent/example"
+    if expected == 9:
+        reason = "cannot verify" if published is None else "build commit missing from"
+        assert f"push failed: {reason} {branch} on origin" in log.read_text()
+    assert run.files.path("branch").exists() is bool(published)
+
+
+BRANCH_REF = "refs/heads/agent/example"
+
+
+@pytest.mark.parametrize(
+    ("result", "token", "tip"),
+    [
+        ((200, {"ref": BRANCH_REF, "object": {"sha": "a" * 40}}), "fake", "a" * 40),
+        ((200, {"ref": BRANCH_REF, "object": {"sha": "invalid"}}), None, None),
+        ((200, {"ref": BRANCH_REF}), None, None),
+        ((200, {"ref": f"{BRANCH_REF}-other"}), None, None),
+        ((200, []), None, None),
+        ((404, {}), None, ""),
+        ((403, {}), None, None),
+        (httpx2.ConnectError("offline"), None, None),
+    ],
+)
+def test_origin_tip_reads_the_run_branch_over_https(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    result: tuple[int, object] | Exception,
+    token: str | None,
+    tip: str | None,
+) -> None:
+    run = make_run(tmp_path)
+    repository = run.request.repo.removeprefix("github.com/")
+    url = f"https://api.github.com/repos/{repository}/git/ref/heads/agent/example"
+    if isinstance(result, Exception):
+        lookup = Mock(side_effect=result)
+    else:
+        status, body = result
+        response = httpx2.Response(
+            status, json=body, request=httpx2.Request("GET", url)
+        )
+        lookup = Mock(return_value=response)
+    monkeypatch.setattr(httpx2, "get", lookup)
+    monkeypatch.setattr(credentials, "fetch_token", Mock(return_value=token))
+    assert run_host.origin_tip(run) == tip
+    headers = {"Accept": "application/vnd.github+json"}
+    if token is not None:
+        headers["Authorization"] = f"Bearer {token}"
+    lookup.assert_called_once_with(url, headers=headers, timeout=20, verify=ANY)
+
+
+def test_execute_rejects_a_stale_head_when_requiring_a_commit(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    run = make_run(tmp_path, expect_commit=True)
+    _, clone = repository(tmp_path / "repo")
+    git(clone, "switch", "-c", "agent/example")
+    prepared = preparation(run)
+    prepared = dataclasses.replace(
+        prepared,
+        paths=dataclasses.replace(prepared.paths, worktree=str(clone)),
+        auth_before="example-before",
+    )
+    HostRuntime(run, prepared, None).patch(monkeypatch)
+    monkeypatch.setattr(run_host, "run_harness", constant(0))
+    monkeypatch.setattr(run_host.push, "run", PUSH_RUN)
+    run.files.write("head", "a" * 40)
+
+    assert run_host.execute(run, "example") == 6
+    assert run.files.path("rc").read_text() == "6\n"
+    assert "no new commit: the build required one (--expect-commit)" in (
+        run.files.path("log").read_text().splitlines()
+    )
+    assert not run.files.path("head").exists()
+
+
+def test_preflight_skips_build_shims(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    run = make_run(tmp_path, expect_commit=True)
+    prepared = dataclasses.replace(preparation(run), auth_before="example-before")
+    runtime = HostRuntime(run, prepared, None)
+    runtime.patch(monkeypatch)
+    (Path(prepared.paths.worktree) / "prek.toml").write_text(".bazel_env/bin/cog")
+
+    def probe(
+        actual: run_host.Run,
+        ready: run_host.Prepared,
+        stack: ExitStack,
+        *,
+        preflight_only: bool,
+    ) -> int:
+        assert actual is run
+        assert ready is prepared
+        assert isinstance(stack, ExitStack)
+        assert preflight_only is True
+        return 0
+
+    build = Mock()
+    monkeypatch.setattr(run_host, "build_shims", build)
+    monkeypatch.setattr(run_host, "run_harness", probe)
+    assert run_host.execute(run, "example", preflight_only=True) == 0
+    build.assert_not_called()
+
+
+@pytest.mark.parametrize("claimed", [False, True])
+def test_main_claims_owner_before_loading(
+    monkeypatch: pytest.MonkeyPatch,
+    claimed: bool,
+) -> None:
+    files = runfiles.RunFiles(
+        runfiles.state_home(Path.home()) / "tbhbdev/agent-runs", "example"
+    )
+
+    if claimed:
+        files.write("owner", "host\n")
+    calls: list[bool] = []
+
+    def load(_args: object, _temporary: Path) -> tuple[run_host.Run, str]:
+        assert files.path("owner").read_text() == "host\n"
+        assert files.path("owner").stat().st_mode & 0o777 == 0o600
+        calls.append(True)
+        message = "test refusal"
+        raise Invalid(message)
+
+    monkeypatch.setattr(run_host, "_load", load)
+    assert run_host.main(["example"], "run-host", claimed=claimed) == 1
+    assert calls == [True]
+
+
+@pytest.mark.parametrize("present", [True, False])
+def test_main_with_owned_flag_requires_the_drivers_file(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    *,
+    present: bool,
+) -> None:
+    files = runfiles.RunFiles(
+        runfiles.state_home(Path.home()) / "tbhbdev/agent-runs", "example"
+    )
+    if present:
+        files.write("owner", "run-id\n")
+    calls: list[bool] = []
+
+    def load(_args: object, _temporary: Path) -> tuple[run_host.Run, str]:
+        calls.append(True)
+        message = "test refusal"
+        raise Invalid(message)
+
+    monkeypatch.setattr(run_host, "_load", load)
+    arguments = ["example", "--host", "h", "--owned"]
+    assert run_host.main(arguments, "run-host") == 1
+    if present:
+        assert files.path("owner").read_text() == "run-id\n"
+        assert calls == [True]
+    else:
+        assert calls == []
+        assert "no usable owner file" in capsys.readouterr().err
+        assert not files.path("log").exists()
+        assert not files.path("rc").exists()
+
+
+def test_main_with_request_refuses_an_existing_owner(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    files = runfiles.RunFiles(
+        runfiles.state_home(Path.home()) / "tbhbdev/agent-runs", "example"
+    )
+    files.write("owner", "other\n")
+    assert run_host.main(["example", "request.json"], "run-host") == 1
+    assert "already has an owner" in capsys.readouterr().err
+    assert not files.path("log").exists()
+    assert not files.path("rc").exists()
+
+
+def test_lock_acquisition_failure_writes_nothing(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    files = runfiles.RunFiles(
+        runfiles.state_home(Path.home()) / "tbhbdev/agent-runs", "example"
+    )
+    files.write("log", "original output\n")
+
+    def refuse(_path: Path) -> None:
+        raise OSError(errno.EIO, "lock unavailable")
+
+    monkeypatch.setattr(run_host.runfiles, "locked", refuse)
+    assert run_host.main(["example"], "run-host") == 1
+    assert "lock unavailable" in capsys.readouterr().err
+    assert files.path("log").read_text() == "original output\n"
+    assert not files.path("rc").exists()
+
+
+def test_temp_directory_failure_leaves_log_and_rc(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    files = runfiles.RunFiles(
+        runfiles.state_home(Path.home()) / "tbhbdev/agent-runs", "example"
+    )
+
+    def full(*_args: object, **_kwargs: object) -> None:
+        raise OSError(errno.EIO, "temp directory unavailable")
+
+    monkeypatch.setattr(run_host.tempfile, "TemporaryDirectory", full)
+    assert run_host.main(["example"], "run-host") == 1
+    assert "temp directory unavailable" in capsys.readouterr().err
+    assert "temp directory unavailable" in files.path("log").read_text()
+    assert files.path("rc").read_text().strip() == "1"
+
+
+def test_failure_records_are_written_while_the_lock_is_held(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    held: list[bool] = []
+    state = {"held": False}
+    real = runfiles.locked
+
+    @contextmanager
+    def tracking(path: Path) -> Generator[None]:
+        with real(path):
+            state["held"] = True
+            try:
+                yield
+            finally:
+                state["held"] = False
+
+    real_write = runfiles.RunFiles.write
+
+    def write(self: runfiles.RunFiles, suffix: str, text: str) -> None:
+        held.append(state["held"])
+        real_write(self, suffix, text)
+
+    def load(_args: object, _tmpdir: Path) -> None:
+        os.kill(os.getpid(), signal.SIGHUP)
+
+    monkeypatch.setattr(run_host.runfiles, "locked", tracking)
+    monkeypatch.setattr(runfiles.RunFiles, "write", write)
+    monkeypatch.setattr(run_host, "_load", load)
+    assert run_host.main(["example"], "run-host") == 143
+    assert held == [True, True]
+
+
+def test_interrupted_second_admission_leaves_the_completed_run_alone(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    files = runfiles.RunFiles(
+        runfiles.state_home(Path.home()) / "tbhbdev/agent-runs", "example"
+    )
+    real = run_host.refuse_started
+    calls: list[int] = []
+
+    def admit(checked: runfiles.RunFiles) -> None:
+        calls.append(1)
+        if len(calls) == 1:
+            return
+        # The earlier run finished while this one waited for the lock.
+        files.write("log", "original output\n")
+        files.write("rc", "0\n")
+        try:
+            real(checked)
+        except run_host.RunExistsError:
+            raise run_host.RunInterruptedError from None
+
+    monkeypatch.setattr(run_host, "refuse_started", admit)
+    assert run_host.main(["example"], "run-host") == 143
+    assert files.path("log").read_text() == "original output\n"
+    assert files.path("rc").read_text() == "0\n"
+
+
+@pytest.mark.parametrize("expected", [1, 7])
+def test_interrupt_while_releasing_the_lock_keeps_the_recorded_result(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, expected: int
+) -> None:
+    run = make_run(tmp_path)
+
+    @contextmanager
+    def interrupted_release(_path: Path) -> Generator[None]:
+        try:
+            yield
+        finally:
+            raise run_host.RunInterruptedError
+
+    def load(_args: object, _tmpdir: Path) -> tuple[run_host.Run, str]:
+        if expected == 1:
+            raise OSError(errno.EIO, "load unavailable")
+        return run, "example task"
+
+    def execute(*_args: object, **_kwargs: object) -> int:
+        run.files.write("rc", "7\n")
+        return 7
+
+    monkeypatch.setattr(run_host, "_files", constant(run.files))
+    monkeypatch.setattr(run_host.runfiles, "locked", interrupted_release)
+    monkeypatch.setattr(run_host, "_load", load)
+    monkeypatch.setattr(run_host, "execute", execute)
+    assert run_host.main(["example"], "run-host") == expected
+    assert run.files.path("rc").read_text() == f"{expected}\n"
+
+
+def test_signal_after_recording_a_failure_keeps_the_recorded_result(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    files = runfiles.RunFiles(
+        runfiles.state_home(Path.home()) / "tbhbdev/agent-runs", "example"
+    )
+    record = run_host._record_failure  # noqa: SLF001
+
+    def record_then_terminate(files: runfiles.RunFiles, exc: Exception) -> None:
+        record(files, exc)
+        os.kill(os.getpid(), signal.SIGTERM)
+
+    def load(_args: object, _tmpdir: Path) -> None:
+        raise OSError(errno.EIO, "load unavailable")
+
+    monkeypatch.setattr(run_host, "_record_failure", record_then_terminate)
+    monkeypatch.setattr(run_host, "_load", load)
+    assert run_host.main(["example"], "run-host") == 1
+    assert files.path("rc").read_text().strip() == "1"
+
+
+def test_waiter_interrupted_before_the_lock_leaves_the_run_alone(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    files = runfiles.RunFiles(
+        runfiles.state_home(Path.home()) / "tbhbdev/agent-runs", "example"
+    )
+    files.write("log", "original output\n")
+
+    class Waiting:
+        def __enter__(self) -> None:
+            raise run_host.RunInterruptedError
+
+        def __exit__(self, *_exception: object) -> None:
+            return None
+
+    def waiting(_path: Path) -> Waiting:
+        return Waiting()
+
+    monkeypatch.setattr(run_host.runfiles, "locked", waiting)
+    assert run_host.main(["example"], "run-host") == 143
+    assert files.path("log").read_text() == "original output\n"
+    assert not files.path("rc").exists()
+
+
+def test_checked_policy_audits_workspace_in_main_checkout(tmp_path: Path) -> None:
+    run = make_run(tmp_path)
+    clone = run.home / "other-clone"
+    (clone / ".git").mkdir(parents=True)
+    (clone / ".git" / "HEAD").write_text("ref: refs/heads/main\n")
+    paths = dataclasses.replace(preparation(run).paths, worktree=str(clone))
+    run_host.checked_policy(run, paths)
+    assert "main checkout" in run.files.path("would_refuse").read_text()
+
+
+def test_checked_policy_allows_configured_workspace_subdirectory(
+    tmp_path: Path,
+) -> None:
+    run = make_run(tmp_path)
+    paths = run_host.planned_paths(run)
+    workspace = Path(paths.worktree)
+    (workspace / ".git").mkdir(parents=True)
+    git_dir = workspace.parent.parent / ".git"
+    git_dir.mkdir()
+    sandbox = dataclasses.replace(
+        run.settings.sandbox, write_roots=(str(workspace / "src"),)
+    )
+    run = dataclasses.replace(
+        run, settings=dataclasses.replace(run.settings, sandbox=sandbox)
+    )
+    value, _ = run_host.checked_policy(run, paths)
+    assert isinstance(value.detail, CodexPolicy)
+    assert str(workspace / "src") in value.detail.write_roots
+
+
+def test_checked_policy_checks_effective_hooks_before_launch(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    run = make_run(tmp_path)
+    paths = run_host.planned_paths(run)
+    workspace = Path(paths.worktree)
+    (workspace / ".git").mkdir(parents=True)
+    (workspace / ".git" / "HEAD").write_text("ref: refs/heads/main\n")
+
+    def output(command: list[str], **kwargs: object) -> str:
+        assert command[-1] == "core.hooksPath"
+        assert kwargs["cwd"] == workspace
+        return f"{run.tmpdir}/hooks\0/dev/null\0"
+
+    monkeypatch.setattr(subprocess, "check_output", output)
+    with pytest.raises(Invalid, match="under write root"):
+        run_host.checked_policy(run, paths)
+
+
+@pytest.mark.parametrize(
+    ("entry", "kind"),
+    [("commondir", "directory"), ("commondir", "fifo"), ("HEAD", "fifo")],
+)
+def test_unusual_git_metadata_launches_with_a_finding(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, entry: str, kind: str
+) -> None:
+    run = make_run(tmp_path)
+    root = unusual_git_metadata(tmp_path, entry, kind)
+    run = dataclasses.replace(
+        run,
+        settings=dataclasses.replace(
+            run.settings,
+            sandbox=dataclasses.replace(run.settings.sandbox, write_roots=(str(root),)),
+        ),
+    )
+    run_host.preflight(run)
+    prepared = preparation(run)
+    run.files.write("prompt", "fixture")
+    child = Child(code=0)
+
+    def launch(
+        _spec: process_group.Launch, *, started: Callable[[Child], None]
+    ) -> Child:
+        started(child)
+        return child
+
+    monkeypatch.setattr(process_group, "launch_owned", launch)
+    monkeypatch.setattr(process_group, "record", constant(None))
+    monkeypatch.setattr(process_group, "stop_started", constant(None))
+    with ExitStack() as stack:
+        assert run_host.run_harness(run, prepared, stack) == 0
+    assert run.files.path("launched").exists()
+    recorded = run.files.path("would_refuse").read_text().split("\n")[:-1]
+    log = run.files.path("log").read_text().splitlines()
+    assert any(f"{entry} is not a regular file" in line for line in recorded)
+    assert any("writable\nforged" in json.loads(line) for line in recorded)
+    assert all(log.count(f"audit: would refuse: {line}") == 1 for line in recorded)
+    assert "forged" not in log
+
+
+def test_policy_audit_merges_findings_across_calls(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    run = make_run(tmp_path)
+    paths = preparation(run).paths
+    for findings, expected in [
+        (("A", "A"), '"A"\n'),
+        ((), '"A"\n'),
+        (("B", "A", "B"), '"A"\n"B"\n'),
+        (("A", "B"), '"A"\n"B"\n'),
+    ]:
+        monkeypatch.setattr(run_host.worktree, "validate_writes", constant(findings))
+        run_host.checked_policy(run, paths)
+        assert run.files.path("would_refuse").read_text() == expected
+        assert run.files.path("log").read_text() == "".join(
+            f"audit: would refuse: {line}\n" for line in expected.split("\n")[:-1]
+        )
+
+
+def test_null_in_common_directory_is_audited_without_refusing(tmp_path: Path) -> None:
+    run = make_run(tmp_path)
+    workspace = tmp_path / "writable"
+    (workspace / ".git").mkdir(parents=True)
+    (workspace / ".git/HEAD").write_text("ref: refs/heads/main\n")
+    (workspace / ".git/commondir").write_bytes(b".\0\n")
+    run_host.audit_writes(run, workspace, workspace.parent.parent, ())
+    findings = [
+        json.loads(line)
+        for line in run.files.path("would_refuse").read_text().split("\n")[:-1]
+    ]
+    assert any(
+        line.startswith(f"cannot audit main checkout {workspace}: ")
+        and "embedded null" in line
+        for line in findings
+    )
+
+
+@pytest.mark.parametrize("prepared", [False, True])
+def test_audit_findings_round_trip_losslessly(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, *, prepared: bool
+) -> None:
+    run = make_run(tmp_path)
+    findings = [
+        f"finding{value}path"
+        for value in ("\r", "\n", "\u2028", "\u2029", "\\", r"\n", "\0")
+    ]
+    monkeypatch.setattr(run_host.worktree, "validate_writes", constant(tuple(findings)))
+    paths = run_host.planned_paths(run)
+    workspace = Path(paths.worktree)
+    run_host.audit_writes(run, workspace, workspace.parent.parent, ())
+    encoded = run.files.path("would_refuse").read_text()
+    assert encoded == "".join(f"{json.dumps(line)}\n" for line in findings)
+    assert [json.loads(line) for line in encoded.split("\n")[:-1]] == findings
+    # Existing JSON can spell the same decoded value differently.
+    run.files.write("would_refuse", encoded.replace(r"\u2028", "\u2028"))
+    run_host.audit_writes(run, workspace, workspace.parent.parent, ())
+    assert run.files.path("would_refuse").read_text() == encoded
+    assert run.files.path("log").read_text() == "".join(
+        f"audit: would refuse: {json.dumps(line)}\n" for line in findings
+    )
+    run_host.audit_summary(run, preparation(run) if prepared else None, 7)
+    assert json.loads(run.files.path("audit.json").read_text()) == {
+        "rc": 7,
+        "files": {},
+        "would_refuse": findings,
+    }
+
+
+@pytest.mark.parametrize("present", [False, True])
+def test_main_logs_build_provenance(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    present: bool,
+) -> None:
+    run = make_run(tmp_path)
+    expected = build_provenance(tmp_path, monkeypatch, present=present)
+    monkeypatch.setattr(run_host, "_load", constant((run, "task")))
+    monkeypatch.setattr(run_host, "execute", constant(7))
+    assert run_host.main(["example"], "run-host") == 7
+    assert run.files.path("log").read_text() == (
+        f"tbhbdev tools_commit={expected['tools_commit']} "
+        f"wheel_commit={expected['wheel_commit']}\n"
+    )
+
+
+def test_preflight_flag_reaches_execute(
+    config_file: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    config_file.write_text(EXAMPLE)
+    files = runfiles.RunFiles(
+        runfiles.state_home(Path.home()) / "tbhbdev" / "agent-runs", "example"
+    )
+    files.receive(run_request())
+    files.write("prompt", "example")
+
+    def execute(
+        run: run_host.Run,
+        text: str,
+        *,
+        preflight_only: bool = False,
+    ) -> int:
+        assert run.files.name == "example"
+        assert text == "example"
+        assert preflight_only is True
+        return 0
+
+    monkeypatch.setattr(run_host, "execute", execute)
+    assert (
+        run_host.main(["example", "--host", "example-linux", "--preflight"], "run-host")
+        == 0
+    )
+
+
+@pytest.mark.parametrize("kind", RunKind)
+def test_codex_preflight_without_github_reference(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, kind: RunKind
+) -> None:
+    run = make_run(tmp_path, kind=kind.value)
+    run = dataclasses.replace(
+        run,
+        settings=dataclasses.replace(
+            run.settings,
+            credentials=tuple(
+                dataclasses.replace(c, gh=None) for c in run.settings.credentials
+            ),
+        ),
+    )
+    prepared = preparation(run)
+    original_command = run_host.harness_command
+    commands: list[tuple[str, ...]] = []
+
+    def command(
+        value: run_host.Run, ready: run_host.Prepared, policy: Policy, executable: str
+    ) -> tuple[str, ...]:
+        result = original_command(value, ready, policy, executable)
+        overrides = "\n".join(
+            value for index, value in enumerate(result) if result[index - 1] == "-c"
+        )
+        env = tomllib.loads(overrides)["shell_environment_policy"]["set"]
+        assert env["GH_CONFIG_DIR"] == str(run.tmpdir / "gh")
+        assert env["GH_CONFIG_DIR"] == f"{env['TMPDIR']}/gh"
+        commands.append(result)
+        return result
+
+    monkeypatch.setattr(process_group, "prepare", constant(prepared))
+    monkeypatch.setattr(run_host, "harness_command", command)
+    assert run_host.execute(run, "example", preflight_only=True) == 0
+    assert len(commands) == 1
+    assert f"preflight ok: {commands[0][0]}\n" in run.files.path("log").read_text()
+    assert run.files.path("rc").read_text() == "0\n"
+    assert not run.files.path("launched").exists()
+
+
+@pytest.mark.parametrize("error", [KeyError, TypeError])
+@pytest.mark.parametrize("preflight_only", [False, True])
+def test_harness_command_failure_names_only_its_step(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    error: type[Exception],
+    preflight_only: bool,
+) -> None:
+    run = make_run(tmp_path)
+    monkeypatch.setattr(process_group, "prepare", constant(preparation(run)))
+    monkeypatch.setattr(
+        run_host, "harness_command", partial(preparation_failure, error)
+    )
+    assert run_host.execute(run, "example", preflight_only=preflight_only) == 1
+    assert run.files.path("log").read_text() == (
+        "run failed while building the harness command\n"
+    )
+    assert run.files.path("rc").read_text() == "1\n"
+    assert run.files.path("phase").read_text() == "ended"
+    assert not run.files.path("launched").exists()
+
+
+@pytest.mark.parametrize(
+    ("write", "startup"),
+    [
+        (".cache", None),
+        (".cache", ".example-startup"),
+        (".example-startup/cache", ".example-startup"),
+    ],
+)
+def test_config_check_protects_the_configured_startup_directory(
+    monkeypatch: pytest.MonkeyPatch, write: str, startup: str | None
+) -> None:
+    if startup is None:
+        monkeypatch.delenv("ZDOTDIR", raising=False)
+    else:
+        monkeypatch.setenv("ZDOTDIR", startup)
+    original = host_settings()
+    configured = dataclasses.replace(
+        original, sandbox=dataclasses.replace(original.sandbox, audit_dir=write)
+    )
+    if write == ".cache":
+        run_host.check_config(configured)
+    else:
+        with pytest.raises(
+            Invalid, match=r"protected host path .* overlaps write root"
+        ):
+            run_host.check_config(configured)
+
+
+@pytest.mark.parametrize("harness", Harness)
+@pytest.mark.parametrize("profile", ["build", "review"])
+def test_unsandboxed_preflight_launches_every_harness(
+    tmp_path: Path, harness: Harness, profile: str
+) -> None:
+    run = make_run(
+        tmp_path,
+        harness=harness.value,
+        profile=profile,
+        commit="0" * 40 if profile == "review" else None,
+        claude_profile="primary" if harness is Harness.CLAUDE else None,
+        reason="operator approval",
+        timeout=900,
+        unsandboxed=True,
+        authorized_by="operator-chat-2026-11-15",
+    )
+    run = dataclasses.replace(
+        run, host=dataclasses.replace(run.host, proven_harnesses=())
+    )
+    run_host.preflight(run)
+
+
+@pytest.mark.parametrize("missing", [False, True])
+@pytest.mark.parametrize("configured", [False, True])
+def test_unsandboxed_codex_uses_account_path(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, missing: bool, configured: bool
+) -> None:
+    monkeypatch.setattr(host_tools, "resolve", RESOLVE)
+    run = make_run(tmp_path, unsandboxed=True, authorized_by="operator-chat-2026-11-15")
+    account_dirs = tuple(
+        path
+        for path in host_tools.account_path(str(run.home))
+        if Path(path).is_relative_to(run.home)
+    )
+    monkeypatch.setattr(host_tools, "account_path", constant(account_dirs))
+    directory = run.home / ".local/bin"
+    directory.mkdir(parents=True)
+    binary = directory / "codex"
+    if not missing:
+        binary.write_bytes(b"binary")
+        binary.chmod(0o755)
+    inherited_path = str(tmp_path / "empty") if configured else str(directory)
+    monkeypatch.setenv("PATH", inherited_path)
+    sandbox_path = dataclasses.replace(
+        run.settings.sandbox.path, linux=(str(directory),)
+    )
+    sandbox = dataclasses.replace(run.settings.sandbox, path=sandbox_path)
+    run = dataclasses.replace(
+        run, settings=dataclasses.replace(run.settings, sandbox=sandbox)
+    )
+
+    def unexpected(*_args: object) -> None:
+        pytest.fail("unsandboxed runs must use the installed binary")
+
+    monkeypatch.setattr(codex_install, "prepare", unexpected)
+    if missing:
+        with pytest.raises(Invalid) as caught:
+            run_host.checked_policy(run, run_host.planned_paths(run))
+        search_path = ":".join(
+            (inherited_path, *host_tools.account_path(str(run.home)))
+        )
+        assert (
+            str(caught.value)
+            == f"host executable codex was not found on PATH {search_path}"
+        )
+    else:
+        value, executable = run_host.checked_policy(run, run_host.planned_paths(run))
+        assert executable == str(binary)
+        assert value.env["PATH"].split(":")[0] == inherited_path
+        assert str(directory) in value.env["PATH"].split(":")
+
+
+@pytest.mark.parametrize("harness", Harness)
+@pytest.mark.parametrize("profile", ["build", "review"])
+@pytest.mark.parametrize(
+    "directory", [".local/bin", ".local/gh-bin", ".bun/bin", ".npm-global/bin"]
+)
+def test_full_access_finds_every_harness_in_the_run_accounts_directories(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    harness: Harness,
+    profile: str,
+    directory: str,
+) -> None:
+    monkeypatch.setattr(host_tools, "resolve", RESOLVE)
+    run = make_run(
+        tmp_path,
+        unsandboxed=True,
+        authorized_by=None,
+        harness=harness.value,
+        profile=profile,
+        commit="0" * 40 if profile == "review" else None,
+        claude_profile="primary" if harness is Harness.CLAUDE else None,
+        reason="test run",
+        timeout=900,
+    )
+    name = harness.value
+    binary = run.home / directory / name
+    binary.parent.mkdir(parents=True)
+    binary.write_bytes(b"binary")
+    binary.chmod(0o755)
+    inherited = str(tmp_path / "empty")
+    monkeypatch.setenv("PATH", inherited)
+    sandbox = dataclasses.replace(
+        run.settings.sandbox,
+        write_roots=(str(run.home),),
+        denied_home_paths=(".config/gh",),
+        agy=dataclasses.replace(
+            run.settings.sandbox.agy,
+            build_read=(".config/gh",),
+            review_read=(".config/gh",),
+        ),
+        path=dataclasses.replace(
+            run.settings.sandbox.path, linux=("/missing",), macos=("/missing",)
+        ),
+    )
+    run = dataclasses.replace(
+        run,
+        settings=dataclasses.replace(run.settings, sandbox=sandbox),
+        host=dataclasses.replace(run.host, unsandboxed=False),
+    )
+
+    def unexpected(*_args: object, **_kwargs: object) -> None:
+        pytest.fail("full access must skip sandbox executable and write-root checks")
+
+    monkeypatch.setattr(run_host, "audit_writes", unexpected)
+    monkeypatch.setattr(run_host.policy, "tool_path", unexpected)
+    monkeypatch.setattr(host_tools, "executable_paths", unexpected)
+    monkeypatch.setattr(codex_install, "prepare", unexpected)
+    value, executable = run_host.checked_policy(run, run_host.planned_paths(run))
+    assert executable == str(binary)
+    assert value.env["PATH"] == ":".join(
+        (inherited, *host_tools.account_path(str(run.home)))
+    )
+    assert not run.files.path("would_refuse").exists()
+    assert not run.files.path("log").exists()
+
+
+@pytest.mark.parametrize("harness", Harness)
+def test_full_access_keeps_the_mise_shim_refusal(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, harness: Harness
+) -> None:
+    monkeypatch.setattr(host_tools, "resolve", RESOLVE)
+    run = make_run(
+        tmp_path,
+        unsandboxed=True,
+        harness=harness.value,
+        timeout=900,
+        claude_profile="primary" if harness is Harness.CLAUDE else None,
+        reason="test run",
+    )
+    directory = run.home / ".local/share/mise/shims"
+    directory.mkdir(parents=True)
+    name = harness.value
+    binary = directory / name
+    binary.write_bytes(b"binary")
+    binary.chmod(0o755)
+    monkeypatch.setenv("PATH", str(directory))
+    with pytest.raises(Invalid, match=f"host executable {name} is a mise shim"):
+        run_host.checked_policy(run, run_host.planned_paths(run))
+
+
+def bazel_run(tmp_path: Path) -> tuple[run_host.Run, run_host.Prepared]:
+    run = make_run(tmp_path)
+    prepared = preparation(run)
+    bases = run_host.bazel_bases(run.home, prepared.paths.worktree)
+    return run, dataclasses.replace(prepared, bases=bases)
+
+
+def fake_bazel(
+    monkeypatch: pytest.MonkeyPatch, code: int = 0, calls: list[list[str]] | None = None
+) -> None:
+    def run(
+        command: list[str], **_options: object
+    ) -> subprocess.CompletedProcess[bytes]:
+        if calls is not None:
+            calls.append(command)
+        return subprocess.CompletedProcess(command, code)
+
+    def found(name: str, path: str | None = None) -> str:  # noqa: ARG001
+        return f"/bin/{name}"
+
+    monkeypatch.setattr(shutil, "which", found)
+    monkeypatch.setattr(subprocess, "run", run)
+
+
+def make_base(prepared: run_host.Prepared) -> Path:
+    base = prepared.bases[0]
+    base.mkdir(parents=True)
+    return base
+
+
+def stop_and_clean(run: run_host.Run, prepared: run_host.Prepared) -> dict[str, int]:
+    return run_host.cleanup_bazel(run, prepared, run_host.shutdown_bazel(run, prepared))
+
+
+def test_shutdown_bazel_pins_the_recorded_output_base(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    run, prepared = bazel_run(tmp_path)
+    base = make_base(prepared)
+    calls: list[list[str]] = []
+    fake_bazel(monkeypatch, calls=calls)
+    stopped = run_host.shutdown_bazel(run, prepared)
+    assert calls == [["/bin/bazelisk", f"--output_base={base}", "shutdown"]]
+    status = base.lstat()
+    assert stopped == {base: ("rc=0", (status.st_dev, status.st_ino))}
+
+
+def server_row(base: Path, workspace: Path, pid: int, parent: int, group: int) -> str:
+    directory = base / "server"
+    directory.mkdir(parents=True)
+    (directory / "server.pid.txt").write_text(f"{pid}\n")
+    (directory / "cmdline").write_text(
+        f"bazel(workspace)\0--output_base={base}\0--workspace_directory={workspace}"
+    )
+    return (
+        f"{os.getuid()} {pid} {parent} {group} bazel(workspace) "
+        f"--output_base={base} --workspace_directory={workspace} --flag=value"
+    )
+
+
+def test_shutdown_bazel_discovers_and_stops_only_the_runs_servers(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    run, prepared = bazel_run(tmp_path)
+    worktree = Path(prepared.paths.worktree).resolve()
+    nested = worktree / ".worktrees" / "nested --checkout"
+    nested.mkdir(parents=True)
+    sibling = worktree.with_name("worktree-other")
+    sibling.mkdir()
+    recorded = prepared.bases[0]
+    other = bazel_base(run, sibling)
+    prepared = dataclasses.replace(prepared, bases=(*prepared.bases, other))
+    base = bazel_base(run, nested)
+    descendant, grouped, foreign = (
+        tmp_path / name for name in ("custom base", "grouped", "foreign")
+    )
+    uid, supervisor = os.getuid(), os.getpid()
+    group = supervisor + 100
+    rows = [
+        "malformed row",
+        f"{uid} {group} {supervisor} {group} harness",
+        f"{uid} {group + 1} {group} {group + 1} shell",
+        server_row(recorded, worktree, group + 2, 1, 1),
+        server_row(base, nested, group + 3, 1, 1),
+        server_row(descendant, sibling / "removed", group + 4, group + 1, 1),
+        server_row(grouped, sibling, group + 5, 1, group),
+        server_row(other, sibling, group + 6, 1, 1),
+        server_row(foreign, nested, group + 7, group, group).replace(
+            f"{uid} ", f"{uid + 1} ", 1
+        ),
+    ]
+    monkeypatch.setattr(bazel_servers, "listing", constant("\n".join(rows)))
+    fake_bazel(monkeypatch)
+    calls: list[tuple[str, str]] = []
+
+    def shutdown(
+        command: list[str], *, cwd: str, **_options: object
+    ) -> subprocess.CompletedProcess[bytes]:
+        executable, output_base, verb = command
+        assert (executable, verb) == ("/bin/bazelisk", "shutdown")
+        path = output_base.removeprefix("--output_base=")
+        calls.append((path, cwd))
+        if Path(path) == base:
+            raise subprocess.TimeoutExpired(command, 60)
+        (Path(path) / "server/server.pid.txt").unlink()
+        return subprocess.CompletedProcess(command, 0)
+
+    monkeypatch.setattr(subprocess, "run", shutdown)
+    run.bazel_shutdown = run_host.shutdown_bazel(run, prepared, group=group)
+    assert run_host.finish(run, prepared, None, 7) == 7
+    assert calls == [
+        (str(recorded), str(worktree)),
+        (str(base), str(nested)),
+        (str(descendant.resolve()), str(worktree)),
+        (str(grouped.resolve()), str(sibling)),
+    ]
+    log = run.files.path("log").read_text().splitlines()
+    assert [line for line in log if line.startswith("bazel shutdown:")] == [
+        f"bazel shutdown: {path!r} ({'timed out' if Path(path) == base else 'rc=0'})"
+        for path, _ in calls
+    ]
+    assert not recorded.exists()
+    assert all(path.is_dir() for path in (base, descendant, grouped, other, foreign))
+
+
+@pytest.mark.parametrize("available", [False, True])
+def test_shutdown_bazel_uses_recorded_bases_without_listed_servers(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    empty_bazel_listing: Callable[[int], str],
+    available: bool,
+) -> None:
+    run, prepared = bazel_run(tmp_path)
+    base = make_base(prepared)
+    calls: list[list[str]] = []
+    fake_bazel(monkeypatch, calls=calls)
+
+    def listing(command: list[str], **options: object) -> str:
+        assert Path(command[0]).name == "ps"
+        assert command[1:] == [
+            "-ww",
+            "-u",
+            str(os.getuid()),
+            "-o",
+            "uid=,pid=,ppid=,pgid=,args=",
+        ]
+        assert options["timeout"] == 5
+        if available:
+            return ""
+        raise subprocess.CalledProcessError(1, command)
+
+    monkeypatch.setattr(bazel_servers, "listing", empty_bazel_listing)
+    monkeypatch.setattr(subprocess, "check_output", listing)
+    assert list(run_host.shutdown_bazel(run, prepared, group=7)) == [base]
+    assert calls == [["/bin/bazelisk", f"--output_base={base}", "shutdown"]]
+
+
+@pytest.mark.parametrize("problem", ["tool missing", "pid changed"])
+def test_shutdown_bazel_logs_unavailable_discovered_servers(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, problem: str
+) -> None:
+    run, prepared = bazel_run(tmp_path)
+    workspace = Path(prepared.paths.worktree).resolve()
+    base = tmp_path.resolve() / "custom"
+    row = server_row(base, workspace, 17, 1, 1)
+    monkeypatch.setattr(bazel_servers, "listing", constant(row))
+    if problem == "tool missing":
+        monkeypatch.setattr(run_host, "_bazel_tool", constant(None))
+        status = "tool unavailable"
+    else:
+        original = bazel_servers.matches_pid
+        matches = iter([True, False])
+
+        def changed(path: Path, pid: int) -> bool:
+            return original(path, pid) and next(matches)
+
+        monkeypatch.setattr(bazel_servers, "matches_pid", changed)
+        monkeypatch.setattr(run_host, "_bazel_tool", constant("/bin/bazelisk"))
+        status = "server changed"
+    assert run_host.shutdown_bazel(run, prepared, group=7) == {base: (status, None)}
+    expected = f"bazel shutdown: {str(base)!r} ({status})\n"
+    assert run.files.path("log").read_text() == expected
+
+
+def test_discovery_refuses_unconfirmed_server_metadata(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    base = tmp_path / "candidate"
+    workspace = tmp_path / "workspace"
+    uid = os.getuid()
+    row = server_row(base, workspace, 17, 1, 17)
+    cmdline = base / "server/cmdline"
+    rows = [
+        f"{uid} 16 1 16 bazel(workspace)",
+        row.replace(f"{uid} 17", f"{uid} 18", 1),
+        row.replace(f"{uid} 17", f"{uid} 19", 1).replace(
+            str(base), str(base / "../candidate"), 1
+        ),
+        row.replace(f"{uid} 17", f"{uid} 20", 1).replace(str(base), str(tmp_path), 1),
+    ]
+    cmdline.unlink()
+    monkeypatch.setattr(bazel_servers, "listing", constant("\n".join([*rows, row])))
+    assert bazel_servers.find(workspace, 17) == {}
+    for args in ("bazel(workspace)", "--workspace_directory=/workspace/../other"):
+        cmdline.write_text(args)
+        assert bazel_servers.find(workspace, 17) == {}
+
+    link = tmp_path / "link"
+    link.symlink_to(base)
+    assert not bazel_servers.matches_pid(link, 17)
+    monkeypatch.setattr(os, "getuid", constant(uid + 1))
+    assert not bazel_servers.matches_pid(base, 17)
+
+
+def test_stop_harness_shuts_servers_down_after_stopping_the_group(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    run, prepared = bazel_run(tmp_path)
+    worktree = Path(prepared.paths.worktree)
+    server = bazel_servers.Server(41, worktree, belongs=True)
+    base = tmp_path / "base"
+    events: list[str] = []
+
+    def find(found_worktree: Path, group: int) -> dict[Path, bazel_servers.Server]:
+        assert (found_worktree, group) == (worktree, 23)
+        events.append("find")
+        return {base: server}
+
+    def stop(*_args: object) -> bool:
+        events.append("stop")
+        return True
+
+    def shutdown(
+        _run: run_host.Run,
+        _prepared: run_host.Prepared,
+        *,
+        servers: dict[Path, bazel_servers.Server],
+    ) -> run_host.BazelShutdown:
+        assert servers == {base: server}
+        events.append("shutdown")
+        return {}
+
+    monkeypatch.setattr(bazel_servers, "find", find)
+    monkeypatch.setattr(process_group, "stop_owned", stop)
+    monkeypatch.setattr(run_host, "shutdown_bazel", shutdown)
+    child = cast("subprocess.Popen[str]", Child())
+    assert run_host._stop_harness(run, prepared, child) is True  # noqa: SLF001
+    assert events == ["find", "stop", "shutdown"]
+    assert run.bazel_shutdown == {}
+
+
+@pytest.mark.parametrize(
+    ("available", "prepared"),
+    [(False, True), (True, False)],
+)
+def test_shutdown_bazel_skips_without_a_tool_or_workspace(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, available: bool, prepared: bool
+) -> None:
+    run, value = bazel_run(tmp_path)
+    make_base(value)
+    fake_bazel(monkeypatch)
+    if not available:
+
+        def missing(name: str, path: str | None = None) -> None:  # noqa: ARG001
+            return None
+
+        monkeypatch.setattr(shutil, "which", missing)
+    assert run_host.shutdown_bazel(run, value if prepared else None) == {}
+
+
+@pytest.mark.parametrize(
+    ("error", "expected"),
+    [
+        (subprocess.TimeoutExpired("bazelisk", 60), "timed out"),
+        (OSError(), "failed to run"),
+    ],
+)
+def test_shutdown_bazel_reports_a_failed_shutdown(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, error: Exception, expected: str
+) -> None:
+    run, prepared = bazel_run(tmp_path)
+    make_base(prepared)
+    fake_bazel(monkeypatch)
+
+    def fail(*_args: object, **_options: object) -> None:
+        raise error
+
+    monkeypatch.setattr(subprocess, "run", fail)
+    stopped = run_host.shutdown_bazel(run, prepared)
+    assert [status for status, _ in stopped.values()] == [expected]
+
+
+def test_shutdown_bazel_searches_the_configured_tool_path(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    run, prepared = bazel_run(tmp_path)
+    searched: list[str | None] = []
+    fake_bazel(monkeypatch)
+
+    def which(name: str, path: str | None = None) -> str:
+        searched.append(path)
+        return f"/bin/{name}"
+
+    monkeypatch.setattr(shutil, "which", which)
+    run_host.shutdown_bazel(run, prepared)
+    tools = policy.tool_path(run.settings, run.host, str(run.home))
+    assert searched[0] is not None
+    assert searched[0].endswith(":" + tools)
+
+
+def test_cleanup_deletes_only_the_recorded_base_and_its_links(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    run, prepared = bazel_run(tmp_path)
+    worktree = Path(prepared.paths.worktree)
+    base = make_base(prepared)
+    other = base.parent / ("0" * 32)
+    (base / "execroot/ws/locked").mkdir(parents=True)
+    (base / "execroot/ws/locked/file").write_text("12345")
+    (base / "execroot/ws/locked").chmod(0o500)
+    (base / "execroot/ws/dead").mkdir()
+    (base / "execroot/ws/dead").chmod(0)
+    other.mkdir()
+    (base / "execroot/ws/out").symlink_to(other)
+    (worktree / "bazel-out").symlink_to(base / "execroot/ws")
+    (worktree / ".bazel-ws").symlink_to(base)
+    (worktree / "bazel-other").symlink_to(other)
+    (worktree / "bazel-file").write_text("keep")
+    fake_bazel(monkeypatch)
+    spaces = iter([(100, 10), (4100, 14)])
+
+    def space(_fd: int) -> tuple[int, int]:
+        return next(spaces)
+
+    monkeypatch.setattr(run_host, "_space", space)
+    freed = stop_and_clean(run, prepared)
+    assert freed == {"bytes": 4000, "inodes": 4, "bases": 1}
+    assert not base.exists()
+    assert other.is_dir()
+    assert sorted(path.name for path in worktree.iterdir()) == [
+        "bazel-file",
+        "bazel-other",
+    ]
+    assert "bazel cleanup: freed" in run.files.path("log").read_text()
+
+
+def test_space_reads_statvfs(tmp_path: Path) -> None:
+    fd = os.open(tmp_path, os.O_RDONLY | os.O_DIRECTORY)
+    try:
+        free_bytes, free_inodes = run_host._space(fd)  # noqa: SLF001
+    finally:
+        os.close(fd)
+    assert free_bytes > 0
+    assert free_inodes >= 0
+
+
+def test_cleanup_ignores_a_swapped_worktree(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    run, prepared = bazel_run(tmp_path)
+    worktree = Path(prepared.paths.worktree)
+    base = make_base(prepared)
+    victim = run.home / "victim"
+    victim.mkdir()
+    victim_base = bazel_base(run, victim)
+    victim_base.mkdir(parents=True)
+    (victim / "bazel-out").symlink_to(victim_base)
+    shutil.rmtree(worktree)
+    worktree.symlink_to(victim)
+    fake_bazel(monkeypatch)
+    assert stop_and_clean(run, prepared)["bases"] == 1
+    assert not base.exists()
+    assert victim_base.is_dir()
+    assert (victim / "bazel-out").is_symlink()
+
+
+def test_cleanup_refuses_a_symlinked_ancestor(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    run, prepared = bazel_run(tmp_path)
+    base = prepared.bases[0]
+    victim = tmp_path / "victim"
+    (victim / "_bazel_x").mkdir(parents=True)
+    victim_base = victim / base.parent.name / base.name
+    victim_base.mkdir(parents=True)
+    (run.home / ".cache").symlink_to(victim)
+    (victim / "bazel").mkdir()
+    (victim / "bazel" / base.parent.name).symlink_to(victim / base.parent.name)
+    calls: list[list[str]] = []
+    fake_bazel(monkeypatch, calls=calls)
+    assert stop_and_clean(run, prepared)["bases"] == 0
+    assert victim_base.is_dir()
+    assert calls == []
+    assert "refused" in run.files.path("log").read_text()
+
+
+def test_cleanup_refuses_a_symlinked_base(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    run, prepared = bazel_run(tmp_path)
+    victim = tmp_path / "victim"
+    victim.mkdir()
+    (victim / "file").write_text("keep")
+    prepared.bases[0].parent.mkdir(parents=True)
+    prepared.bases[0].symlink_to(victim)
+    fake_bazel(monkeypatch)
+    assert stop_and_clean(run, prepared)["bases"] == 0
+    assert (victim / "file").read_text() == "keep"
+    assert run_host.cleanup_bazel(run, None, {})["bases"] == 0
+
+
+def test_cleanup_refuses_a_foreign_uid(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    run, prepared = bazel_run(tmp_path)
+    base = make_base(prepared)
+    fake_bazel(monkeypatch)
+    monkeypatch.setattr(os, "getuid", lambda: tmp_path.stat().st_uid + 1)
+    assert stop_and_clean(run, prepared)["bases"] == 0
+    assert base.is_dir()
+
+
+def test_cleanup_refuses_paths_outside_the_cache_roots(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    run, prepared = bazel_run(tmp_path)
+    outside = tmp_path / "elsewhere"
+    outside.mkdir()
+    (outside / "file").write_text("keep")
+    prepared = dataclasses.replace(prepared, bases=(outside,))
+    fake_bazel(monkeypatch)
+    assert stop_and_clean(run, prepared)["bases"] == 0
+    assert (outside / "file").read_text() == "keep"
+    assert run_host._owned_base(run.home, outside) is None  # noqa: SLF001
+    file_base = prepared.bases[0]
+    base = run_host.bazel_bases(run.home, str(tmp_path))[0]
+    base.parent.mkdir(parents=True)
+    base.write_text("not a directory")
+    assert run_host._owned_base(run.home, base) is None  # noqa: SLF001
+    assert file_base.exists()
+
+
+def test_cleanup_keeps_a_base_whose_server_is_alive(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    run, prepared = bazel_run(tmp_path)
+    base = make_base(prepared)
+    (base / "server").mkdir()
+    (base / "server/server.pid.txt").write_text(str(os.getpid()))
+    calls: list[list[str]] = []
+    pauses: list[float] = []
+    fake_bazel(monkeypatch, calls=calls)
+    monkeypatch.setattr(time, "sleep", pauses.append)
+    stopped = run_host.shutdown_bazel(run, prepared)
+    assert stopped[base][0] == "server alive"
+    assert (len(calls), pauses) == (4, [2, 2, 2])
+    assert run_host.cleanup_bazel(run, prepared, stopped)["bases"] == 0
+    assert base.is_dir()
+    assert "kept" in run.files.path("log").read_text()
+
+
+@pytest.mark.parametrize("text", ["garbage", "-1", "999999999", "999999999999"])
+def test_a_dead_or_unreadable_server_pid_is_not_alive(
+    tmp_path: Path, text: str
+) -> None:
+    (tmp_path / "server").mkdir()
+    (tmp_path / "server/server.pid.txt").write_text(text)
+    assert not run_host._server_alive(tmp_path)  # noqa: SLF001
+
+
+def test_cleanup_keeps_a_base_when_shutdown_fails(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    run, prepared = bazel_run(tmp_path)
+    base = make_base(prepared)
+    fake_bazel(monkeypatch, code=1)
+    assert stop_and_clean(run, prepared)["bases"] == 0
+    assert base.is_dir()
+
+
+def test_cleanup_refuses_a_base_swapped_after_shutdown(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    run, prepared = bazel_run(tmp_path)
+    base = make_base(prepared)
+    fake_bazel(monkeypatch)
+    stopped = run_host.shutdown_bazel(run, prepared)
+    base.rename(base.with_name("moved"))
+    base.mkdir()
+    (base / "file").write_text("replacement")
+    assert run_host.cleanup_bazel(run, prepared, stopped)["bases"] == 0
+    assert (base / "file").is_file()
+
+
+def test_server_alive_keeps_a_base_on_permission_error(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    (tmp_path / "server").mkdir()
+    (tmp_path / "server/server.pid.txt").write_text("1")
+
+    def deny(_pid: int, _signal: int) -> None:
+        raise PermissionError
+
+    monkeypatch.setattr(os, "kill", deny)
+    assert run_host._server_alive(tmp_path)  # noqa: SLF001
+
+
+def test_cleanup_keeps_a_base_whose_server_restarted_after_shutdown(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    run, prepared = bazel_run(tmp_path)
+    base = make_base(prepared)
+    fake_bazel(monkeypatch)
+    stopped = run_host.shutdown_bazel(run, prepared)
+    assert stopped[base][0] == "rc=0"
+    (base / "server").mkdir()
+    (base / "server/server.pid.txt").write_text(str(os.getpid()))
+    assert run_host.cleanup_bazel(run, prepared, stopped)["bases"] == 0
+    assert base.is_dir()
+    assert "(server alive)" in run.files.path("log").read_text()
+
+
+def test_cleanup_refuses_a_base_swapped_for_a_symlink_before_removal(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    run, prepared = bazel_run(tmp_path)
+    base = make_base(prepared)
+    victim = tmp_path / "victim"
+    victim.mkdir()
+    (victim / "file").write_text("keep")
+    fake_bazel(monkeypatch)
+    stopped = run_host.shutdown_bazel(run, prepared)
+    original = run_host._server_alive  # noqa: SLF001
+
+    def swap(path: Path) -> bool:
+        base.rename(base.with_name("moved"))
+        base.symlink_to(victim)
+        return original(path)
+
+    monkeypatch.setattr(run_host, "_server_alive", swap)
+    assert run_host.cleanup_bazel(run, prepared, stopped)["bases"] == 0
+    assert (victim / "file").read_text() == "keep"
+    assert "bazel cleanup failed" in run.files.path("log").read_text()
+
+
+def test_cleanup_deletes_through_the_validated_ancestors_after_a_swap(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    run, prepared = bazel_run(tmp_path)
+    base = make_base(prepared)
+    (base / "mine").write_text("x")
+    root = base.parent
+    victim = tmp_path / "victim"
+    (victim / base.name).mkdir(parents=True)
+    (victim / base.name / "file").write_text("keep")
+    fake_bazel(monkeypatch)
+    stopped = run_host.shutdown_bazel(run, prepared)
+    original = run_host._server_alive  # noqa: SLF001
+
+    def swap(path: Path) -> bool:
+        root.rename(root.with_name("moved"))
+        root.symlink_to(victim)
+        return original(path)
+
+    monkeypatch.setattr(run_host, "_server_alive", swap)
+    assert run_host.cleanup_bazel(run, prepared, stopped)["bases"] == 1
+    assert (victim / base.name / "file").read_text() == "keep"
+    assert not (root.with_name("moved") / base.name).exists()
+
+
+def test_cleanup_refuses_a_base_replaced_by_another_directory_before_removal(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    run, prepared = bazel_run(tmp_path)
+    base = make_base(prepared)
+    fake_bazel(monkeypatch)
+    stopped = run_host.shutdown_bazel(run, prepared)
+    original = run_host._server_alive  # noqa: SLF001
+
+    def swap(path: Path) -> bool:
+        base.rename(base.with_name("moved"))
+        base.mkdir()
+        (base / "file").write_text("replacement")
+        return original(path)
+
+    monkeypatch.setattr(run_host, "_server_alive", swap)
+    assert run_host.cleanup_bazel(run, prepared, stopped)["bases"] == 0
+    assert (base / "file").is_file()
+
+
+def test_cleanup_unlinks_relative_links_into_a_deleted_base(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    run, prepared = bazel_run(tmp_path)
+    worktree = Path(prepared.paths.worktree)
+    base = make_base(prepared)
+    (base / "execroot").mkdir()
+    (worktree / "bazel-rel").symlink_to(os.path.relpath(base / "execroot", worktree))
+    (worktree / "bazel-keep").symlink_to("../nowhere")
+    fake_bazel(monkeypatch)
+    assert stop_and_clean(run, prepared)["bases"] == 1
+    assert not (worktree / "bazel-rel").is_symlink()
+    assert (worktree / "bazel-keep").is_symlink()
+
+
+def test_cleanup_keeps_a_base_that_vanished_after_shutdown(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    run, prepared = bazel_run(tmp_path)
+    base = make_base(prepared)
+    fake_bazel(monkeypatch)
+    stopped = run_host.shutdown_bazel(run, prepared)
+    base.rmdir()
+    assert run_host.cleanup_bazel(run, prepared, stopped)["bases"] == 0
+    assert "kept" in run.files.path("log").read_text()
+
+
+def test_owned_base_is_none_when_the_anchor_is_missing(tmp_path: Path) -> None:
+    home = tmp_path / "absent"
+    base = run_host.bazel_bases(home, str(tmp_path))[0]
+    assert run_host._owned_base(home, base) is None  # noqa: SLF001
+
+
+def test_owned_base_rejects_a_cache_root_and_dot_dot(tmp_path: Path) -> None:
+    run, prepared = bazel_run(tmp_path)
+    base = make_base(prepared)
+    root = base.parent
+    assert run_host._owned_base(run.home, root) is None  # noqa: SLF001
+    assert run_host._owned_base(run.home, root / "..") is None  # noqa: SLF001
+    assert run_host._owned_base(run.home, base) is not None  # noqa: SLF001
+
+
+@pytest.mark.parametrize("mode", ["error", "left"])
+def test_failed_deletion_reports_no_counts(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, mode: str
+) -> None:
+    run, prepared = bazel_run(tmp_path)
+    make_base(prepared)
+    fake_bazel(monkeypatch)
+
+    def rmtree(*_args: object, **_options: object) -> None:
+        if mode == "error":
+            raise OSError
+
+    monkeypatch.setattr(shutil, "rmtree", rmtree)
+    assert stop_and_clean(run, prepared) == {"bytes": 0, "inodes": 0, "bases": 0}
+    assert "bazel cleanup failed" in run.files.path("log").read_text()
+
+
+def test_finish_survives_a_locked_base_and_a_failing_cleanup(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    run, prepared = bazel_run(tmp_path)
+    base = make_base(prepared)
+    (base / "dead").mkdir()
+    (base / "dead").chmod(0)
+    fake_bazel(monkeypatch)
+    entries: list[dict[str, object]] = []
+
+    def record(_root: Path, entry: dict[str, object]) -> None:
+        entries.append(entry)
+
+    monkeypatch.setattr(runfiles, "append", record)
+    assert run_host.finish(run, prepared, None, 0) == 0
+    assert not base.exists()
+    assert run.files.path("rc").read_text() == "0\n"
+    assert entries[0]["bazel_shutdown"] == "rc=0"
+    assert entries[0]["bazel_cleanup"]["bases"] == 1  # type: ignore[index]
+
+
+@pytest.mark.parametrize("rc", [0, 7])
+def test_finish_records_rc_phase_and_index_when_cleanup_raises(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, rc: int
+) -> None:
+    run = make_run(tmp_path)
+    entries: list[dict[str, object]] = []
+
+    def explode(*_args: object) -> None:
+        raise TypeError
+
+    monkeypatch.setattr(run_host, "shutdown_bazel", explode)
+
+    def record(_root: Path, entry: dict[str, object]) -> None:
+        entries.append(entry)
+
+    monkeypatch.setattr(runfiles, "append", record)
+    assert run_host.finish(run, None, None, rc) == rc
+    assert run.files.path("rc").read_text() == f"{rc}\n"
+    assert run.files.path("phase").read_text().strip() == "ended"
+    assert entries[0]["bazel_shutdown"] == "skipped"
+    assert entries[0]["bazel_cleanup"] == {}
+    assert "bazel cleanup failed" in run.files.path("log").read_text()
+
+
+def bazel_base(run: run_host.Run, worktree: Path) -> Path:
+    name = hashlib.md5(
+        os.path.realpath(worktree).encode(), usedforsecurity=False
+    ).hexdigest()
+    return run.home / ".cache/bazel" / f"_bazel_{getpass.getuser()}" / name
+
+
+@pytest.mark.parametrize("harness", Harness)
+def test_the_brief_carries_the_harness_subagent_rule(
+    tmp_path: Path, harness: Harness
+) -> None:
+    """Agy and Codex, whose controls are prompt-only gaps, get a rule in the brief."""
+    run = make_run(
+        tmp_path,
+        harness=harness,
+        timeout=60 if harness is Harness.AGY else None,
+        claude_profile="primary" if harness is Harness.CLAUDE else None,
+        reason="example reason" if harness is Harness.CLAUDE else None,
+    )
+    run_host.prepare_brief(run, tmp_path, "example task", preflight_only=True)
+    text = run.files.path("prompt").read_text()
+    assert (render.AGY_SUBAGENTS in text) is (harness is Harness.AGY)
+    assert (render.CODEX_SUBAGENTS in text) is (harness is Harness.CODEX)

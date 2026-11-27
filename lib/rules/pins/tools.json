@@ -1,0 +1,86 @@
+{
+  "cue": {
+    "version": "0.17.1",
+    "platforms": {
+      "darwin_arm64": {
+        "url": "https://github.com/cue-lang/cue/releases/download/v0.17.1/cue_v0.17.1_darwin_arm64.tar.gz",
+        "sha256": "64921403f012a97f89494c03605db2fbf7d9daa77dc2631819ac4406cb2e8074"
+      },
+      "linux_amd64": {
+        "url": "https://github.com/cue-lang/cue/releases/download/v0.17.1/cue_v0.17.1_linux_amd64.tar.gz",
+        "sha256": "a39b0c97695069d95d276d99be0f5dbabb081d801bfdc9ba49b76efaf94e2369"
+      },
+      "linux_arm64": {
+        "url": "https://github.com/cue-lang/cue/releases/download/v0.17.1/cue_v0.17.1_linux_arm64.tar.gz",
+        "sha256": "0d729be30d52c952ca38fc9dcb692caa09d8463fa0b64df5781312779183fbcd"
+      },
+      "windows_amd64": {
+        "url": "https://github.com/cue-lang/cue/releases/download/v0.17.1/cue_v0.17.1_windows_amd64.zip",
+        "sha256": "9f15378dc52b9a1bb6fa1755adc0410c9f17f330a621b784a5b31fdbc91c6d7a"
+      }
+    }
+  },
+  "gitleaks": {
+    "version": "8.30.1",
+    "platforms": {
+      "darwin_arm64": {
+        "url": "https://github.com/gitleaks/gitleaks/releases/download/v8.30.1/gitleaks_8.30.1_darwin_arm64.tar.gz",
+        "sha256": "b40ab0ae55c505963e365f271a8d3846efbc170aa17f2607f13df610a9aeb6a5"
+      },
+      "linux_amd64": {
+        "url": "https://github.com/gitleaks/gitleaks/releases/download/v8.30.1/gitleaks_8.30.1_linux_x64.tar.gz",
+        "sha256": "551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb"
+      },
+      "linux_arm64": {
+        "url": "https://github.com/gitleaks/gitleaks/releases/download/v8.30.1/gitleaks_8.30.1_linux_arm64.tar.gz",
+        "sha256": "e4a487ee7ccd7d3a7f7ec08657610aa3606637dab924210b3aee62570fb4b080"
+      },
+      "windows_amd64": {
+        "url": "https://github.com/gitleaks/gitleaks/releases/download/v8.30.1/gitleaks_8.30.1_windows_x64.zip",
+        "sha256": "d29144deff3a68aa93ced33dddf84b7fdc26070add4aa0f4513094c8332afc4e"
+      }
+    }
+  },
+  "scc": {
+    "version": "4.1.0",
+    "platforms": {
+      "darwin_arm64": {
+        "url": "https://github.com/boyter/scc/releases/download/v4.1.0/scc_Darwin_arm64.tar.gz",
+        "sha256": "7201c7aa4aace058d43308462cba72adb18f6094c08c0741727455976d0a0747"
+      },
+      "linux_amd64": {
+        "url": "https://github.com/boyter/scc/releases/download/v4.1.0/scc_Linux_x86_64.tar.gz",
+        "sha256": "c7328436d3027f4357d3d7853f7dc3ac2bbcb4ca08f1adad91a27c593884079b"
+      },
+      "linux_arm64": {
+        "url": "https://github.com/boyter/scc/releases/download/v4.1.0/scc_Linux_arm64.tar.gz",
+        "sha256": "6e0d2a1f8d3540ba7df185477dec40bb7340f1b214bfd303147de5cad2bd7b8b"
+      },
+      "windows_amd64": {
+        "url": "https://github.com/boyter/scc/releases/download/v4.1.0/scc_Windows_x86_64.zip",
+        "sha256": "4a433984f45ff29c94eeb3af6db5b511c58f5bf74063dccedafcbf473cb8ff31"
+      }
+    }
+  },
+  "vale": {
+    "version": "3.28.1",
+    "platforms": {
+      "darwin_arm64": {
+        "url": "https://github.com/vale-cli/vale/releases/download/v3.28.1/vale_3.28.1_macOS_arm64.tar.gz",
+        "sha256": "b5362c16d2c95db9d773078b957f5bd59cef27d05dac34c5248a93fed130e9f1"
+      },
+      "linux_amd64": {
+        "url": "https://github.com/vale-cli/vale/releases/download/v3.28.1/vale_3.28.1_Linux_64-bit.tar.gz",
+        "sha256": "068954ad869ebec24b8dec6ebcd1cbb1fd5f5a83e966a35baedfae8b2cdc093a"
+      },
+      "linux_arm64": {
+        "url": "https://github.com/vale-cli/vale/releases/download/v3.28.1/vale_3.28.1_Linux_arm64.tar.gz",
+        "sha256": "af0ca36ec6133ba20093295591e43ed2823b2632520d1f3811293aa4cbe758f2"
+      },
+      "windows_amd64": {
+        "url": "https://github.com/vale-cli/vale/releases/download/v3.28.1/vale_3.28.1_Windows_64-bit.zip",
+        "sha256": "5ad37282f16f3903bb2ec89a7b7b9e718ef838577ffc1657f892a0068cd9b0f3"
+      }
+    }
+  }
+}

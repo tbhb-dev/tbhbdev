@@ -1,0 +1,27 @@
+---
+# cspell:ignore blockinfile
+- name: profile | Disable agy's background self-updater
+  ansible.builtin.copy:
+    dest: /home/example-user/.agy-profile
+    content: "export AGY_CLI_DISABLE_AUTO_UPDATE=true\n"
+    owner: agent
+    group: devel
+    mode: "0644"
+
+# Bash reads .profile for login shells and .bashrc for interactive shells.
+# Prepend the block so an early return in .bashrc cannot bypass it.
+# Keep the hand-made PATH entries and guard the source for rollback.
+- name: profile | Source the managed environment from the agent's shells
+  ansible.builtin.blockinfile:
+    path: /home/example-user/{{ item }}
+    marker: "# {mark} ANSIBLE MANAGED lab_agent agy environment"
+    insertbefore: BOF
+    block: |
+      if [ -f "$HOME/.agy-profile" ]; then
+        . "$HOME/.agy-profile"
+      fi
+    create: true
+    owner: agent
+    group: devel
+    mode: "0644"
+  loop: [.profile, .bashrc]
