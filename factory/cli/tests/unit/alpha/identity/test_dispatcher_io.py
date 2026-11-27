@@ -461,6 +461,7 @@ def test_e2e_human_commit_is_untouched(wired: Path) -> None:
     stage(wired, "h.txt")
     done = git_commit(wired, "human work", HUMAN_COMMIT_ENV, "-s")
     assert done.returncode == 0, done.stderr
+    assert run_git(wired, "log", "-1", "--format=%ae") == "h@example.invalid\n"
     assert "Signed-off-by: Human <h@example.invalid>" in last_message(wired)
     assert trailers(wired) == []
 

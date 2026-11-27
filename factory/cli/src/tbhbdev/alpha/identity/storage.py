@@ -66,18 +66,13 @@ def repo_info(cwd: Path | None = None) -> Repo | None:
     return Repo(Path(top).resolve(), Path(own) / STORE, Path(common) / STORE)
 
 
-def read_json(path: Path, default: Json | None = None) -> Json | None:
-    """Parse a JSON file; return ``default`` when it is missing or invalid."""
+def read_record(path: Path) -> Json:
+    """Parse a JSON object file; an empty dict when missing or invalid."""
     try:
         loaded = json.loads(path.read_text())
     except OSError, ValueError:
-        return default
-    return loaded if isinstance(loaded, dict) else default
-
-
-def read_record(path: Path) -> Json:
-    """Parse a JSON object file; an empty dict when missing or invalid."""
-    return read_json(path) or {}
+        return {}
+    return loaded if isinstance(loaded, dict) else {}
 
 
 def write_json(path: Path, obj: Json) -> None:
