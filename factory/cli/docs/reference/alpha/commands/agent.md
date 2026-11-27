@@ -2,10 +2,9 @@
 description: Run coordination, host checks, signing parity, fetch refs, and build run expectations.
 generated:
   - role: generated
-    harness: codex:0.171.0
-    model: openai:gpt-6.2-sol
-    session: sha-256-64:3ad87b5659ac3b9c
-    at: "2026-11-27T05:23:18Z"
+    harness: codex
+    model: openai:gpt-6
+    at: "2026-11-27T09:06:58Z"
 status: stable
 tags: [alpha]
 title: Agent
@@ -57,7 +56,7 @@ Use `agent status NAME` to see the reason.
 For a build that updates an existing pull request, pass both `--fetch-ref refs/heads/<branch>` and `--start-ref refs/heads/<branch>`.
 The run starts at the fetched commit and pushes a fast-forward to that branch without opening a pull request.
 The command refuses the repository's default branch.
-If the remote tip changes before the push check, the run fails and keeps its worktree.
+A non-fast-forward push fails and the worktree remains available for inspection.
 
 A build run that opens a pull request writes `.github/PULL_REQUEST_DRAFT.md` in its worktree and keeps it out of commits.
 Set `base` in the draft's frontmatter to identify the target branch.

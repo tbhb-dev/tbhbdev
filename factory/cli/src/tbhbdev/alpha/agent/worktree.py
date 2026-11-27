@@ -148,9 +148,9 @@ def git(clone: Path, *args: str, token: str | None = None) -> str:
         if directory.is_dir()
         else ["--git-dir", str(clone)]
     )
-    offline = ["-c", "protocol.allow=never"]
     # A moved repository answers with a redirect, and the owner gate checks only
     # the requested name, so an online command never follows one.
+    offline = ["-c", "protocol.allow=never"]
     online_only = ["-c", "http.followRedirects=false"]
     online = args[0] in ("fetch", "ls-remote")
     invocation = [*command, *(online_only if online else offline), *args]
@@ -165,18 +165,9 @@ def git(clone: Path, *args: str, token: str | None = None) -> str:
     timeout = 300 if args[0] in ("fetch", "clone") else 30
     if args[0] == "init":
         return output(invocation).strip()
+    query = ("config", "--null", "--name-only", "--get-regexp", r"^(filter|merge)\.")
     try:
-        keys = output(
-            [
-                *command,
-                *offline,
-                "config",
-                "--null",
-                "--name-only",
-                "--get-regexp",
-                r"^(filter|merge)\.",
-            ]
-        )
+        keys = output([*command, *offline, *query])
     except subprocess.CalledProcessError as exc:
         if exc.returncode != 1:
             raise
@@ -209,26 +200,21 @@ def configure_mirror(mirror: Path, url: str) -> None:
     if not (mirror / "config").exists():
         git(mirror, "init", "--bare", "--template=")
     # All values come from validated repository names, never a checkout.
-    runfiles.atomic(
-        mirror / "config",
-        MIRROR_CONFIG.format(url=url),
-    )
+    runfiles.atomic(mirror / "config", MIRROR_CONFIG.format(url=url))
 
 
 def default_branch(mirror: Path, token: str | None = None) -> str:
     query = ("ls-remote", "--symref", "--end-of-options", "origin", "HEAD")
     listing = git(mirror, *query) if token is None else git(mirror, *query, token=token)
     for line in listing.splitlines():
-        match = re.fullmatch(r"ref: (refs/heads/[^\s]+)\tHEAD", line)
-        if match is not None:
-            branch = match[1]
+        if match := re.fullmatch(r"ref: (refs/heads/[^\s]+)\tHEAD", line):
             git(
                 mirror,
                 "check-ref-format",
                 "--branch",
-                branch.removeprefix("refs/heads/"),
+                match[1].removeprefix("refs/heads/"),
             )
-            return branch
+            return match[1]
     message = "origin HEAD does not name a branch"
     raise Invalid(message)
 
@@ -280,7 +266,9 @@ def fetch_commit(mirror: Path, request: RunRequest, token: str | None = None) ->
     return commit
 
 
-def install_hooks(workspace: Path, run_name: str, start: str) -> None:
+def install_hooks(
+    workspace: Path, run_name: str, start: str, *, start_ref: str | None = None
+) -> None:
     hooks = workspace / ".git" / "hooks"
     hooks.mkdir(mode=0o700, exist_ok=True)
     hooks.chmod(hooks.stat().st_mode | stat.S_IWUSR)
@@ -297,7 +285,11 @@ def install_hooks(workspace: Path, run_name: str, start: str) -> None:
         python=Path(sys.base_prefix, "bin", "python3"),
         mark=install.SHIM_MARK,
         pattern=TBHB_DEV_ORIGIN.pattern,
-        run_env={pre_push_guard.RUN_NAME_ENV: run_name},
+        run_env={
+            pre_push_guard.RUN_NAME_ENV: run_name,
+            pre_push_guard.RUN_START_REF_ENV: start_ref or "",
+            pre_push_guard.RUN_START_TIP_ENV: start,
+        },
     )
     scripts[hooks / "reference-transaction"] = RUN_REFERENCE_TRANSACTION.format(
         branch=shlex.quote(f"refs/heads/agent/{run_name}"), start=shlex.quote(start)
@@ -354,10 +346,14 @@ def discard_unlaunched(workspace: Path) -> None:
 
 
 def prepare_hooks(
-    workspace: Path, name: str, start: str, env: Mapping[str, str] | None
+    workspace: Path,
+    name: str,
+    start: str,
+    env: Mapping[str, str] | None,
+    start_ref: str | None,
 ) -> None:
     with preparation_step("hook install"):
-        install_hooks(workspace, name, start)
+        install_hooks(workspace, name, start, start_ref=start_ref)
     if env is not None:
         with preparation_step("hook verification"):
             verify_hook_files(workspace)
@@ -521,7 +517,7 @@ def validate_hooks(workspace: Path, writes: tuple[str, ...]) -> None:
         raise Invalid(message)
 
 
-def clone_run(mirror: Path, workspace: Path, url: str) -> None:
+def clone_run(mirror: Path, workspace: Path, url: str, profile: Profile) -> None:
     # A copying transport avoids shared object inodes and readable alternates.
     workspace.mkdir(mode=0o700)
     git(
@@ -536,6 +532,11 @@ def clone_run(mirror: Path, workspace: Path, url: str) -> None:
     )
     git(workspace, "config", "remote.origin.pushurl", url)
     git(workspace, "config", "core.hooksPath", str(workspace / ".git" / "hooks"))
+    if profile is Profile.BUILD:
+        # Reset inherited helpers so Git uses the run's GH_CONFIG_DIR.
+        helper = f"credential.https://{repo.DEFAULT_GIT_HOST}.helper"
+        git(workspace, "config", "--add", helper, "")
+        git(workspace, "config", "--add", helper, "!gh auth git-credential")
 
 
 def prepare_git(workspace: Path) -> None:
@@ -645,7 +646,7 @@ def create(
             configure_mirror(mirror, url)
         with preparation_step("clone"):
             worktree.parent.mkdir(exist_ok=True)
-            clone_run(mirror, worktree, url)
+            clone_run(mirror, worktree, url, request.profile)
         discard.callback(discard_unlaunched, worktree)
         if hook_env is not None:
             with preparation_step("hook verification"):
@@ -664,7 +665,7 @@ def create(
                 if token is None:
                     raise
                 commit = fetch_commit(mirror, request, token)
-        prepare_hooks(worktree, name, commit, hook_env)
+        prepare_hooks(worktree, name, commit, hook_env, request.start_ref)
         with preparation_step("checkout"):
             git(
                 worktree, "fetch", "--no-tags", "--no-write-fetch-head",

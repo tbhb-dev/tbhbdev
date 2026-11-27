@@ -1322,10 +1322,10 @@ DRIVER_APP_AUTHOR = "app/tbhb-dev-agent-pull-requests"
 
 
 def require_own_author(number: int, repo: str) -> None:
-    """Refuse unless PR N's author is this ``gh`` account or the driver's App.
+    """Refuse unless PR N's author is this ``gh`` account or the pull-requests App.
 
-    The driver opens a run's pull request as the pull-requests App, so no agent
-    account authors it. Any other author, a human's included, is refused.
+    A build run opens its own pull request using its GitHub credential, which
+    can belong to the pull-requests App.
 
     Both reads name github.com and ``repo``, the repository ``gh pr ready``
     acts on, so no ``GH_HOST`` or ``GH_REPO`` setting can split them. The two
