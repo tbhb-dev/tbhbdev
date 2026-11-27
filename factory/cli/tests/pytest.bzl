@@ -14,7 +14,6 @@ _IMPORTED_TESTS = [
     "test_alpha_agent_run_host",
     "test_alpha_agent_sandbox_live",
     "test_alpha_agent_settings",
-    "test_alpha_identity",
     "test_alpha_pull_request",
     "test_alpha_review_doc",
 ]
@@ -108,7 +107,6 @@ def cli_py_test(name, srcs, deps = [], data = [], extra_deps = [], pyi_deps = []
             data = data,
             deps = deps,
             tags = tags,
-            visibility = ["//factory/cli/tests:__subpackages__"],
         )
 
     tools = ["@cue_test_tool//:cue"] + path_tools

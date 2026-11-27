@@ -6,42 +6,36 @@
 from typing import TYPE_CHECKING
 
 import pytest
-import test_alpha_identity as support
 
 from tbhbdev.alpha.identity import dispatcher as ai
 from tbhbdev.alpha.identity import trailers
+from tbhbdev.alpha.repo import git
 
 if TYPE_CHECKING:
     from pathlib import Path
 
-fake_bin = support.fake_bin
-isolated = support.isolated
-repo = support.repo
+EARLY = "2026-11-14T00:02:41Z"
+LATE = "2026-11-14T00:09:00Z"
 
 
+@pytest.mark.usefixtures("isolated_home", "pr_checkout")
 @pytest.mark.parametrize("branch", ["topic", "initial", "detached"])
 def test_session_commit_start_from_branch_reflog_or_session(
-    repo: Path,
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-    branch: str,
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, branch: str
 ) -> None:
-    support.stage(repo, "base")
-    support.commit(repo)
     if branch == "topic":
         with monkeypatch.context() as dated:
-            dated.setenv("GIT_COMMITTER_DATE", support.EARLY)
-            support.run_git(repo, "switch", "-qc", "topic")
-        support.stage(repo, "later")
-        support.commit(repo)
+            dated.setenv("GIT_COMMITTER_DATE", EARLY)
+            assert git("switch", "-qc", "topic")[0] == 0
+        assert git("commit", "--allow-empty", "-qm", "later")[0] == 0
     elif branch == "detached":
-        support.run_git(repo, "switch", "--detach", "HEAD")
-    session = ai.sha256_64(support.CLAUDE_COMMIT_ENV["CLAUDE_CODE_SESSION_ID"])
-    ai.write_record(session, {"model": "anthropic:m", "started_at": support.LATE})
-    support.stage(repo, "change")
-    path = support.msg_file(tmp_path)
-    assert ai.cmd_trailer(str(path), "message", support.CLAUDE_COMMIT_ENV) == 0
-    [(_, trailer)] = ai.llm_trailers(path.read_text())
-    assert trailers.trailer_start(trailer) == (
-        support.EARLY if branch == "topic" else support.LATE
+        assert git("switch", "--detach", "HEAD")[0] == 0
+    env = {"CLAUDE_CODE_SESSION_ID": "session-raw"}
+    ai.write_record(
+        ai.sha256_64("session-raw"), {"model": "anthropic:m", "started_at": LATE}
     )
+    path = tmp_path / "MSG"
+    path.write_text("subject\n")
+    assert ai.cmd_trailer(str(path), "message", env) == 0
+    [(_, trailer)] = ai.llm_trailers(path.read_text())
+    assert trailers.trailer_start(trailer) == (EARLY if branch == "topic" else LATE)

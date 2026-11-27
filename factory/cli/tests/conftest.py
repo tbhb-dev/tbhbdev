@@ -13,6 +13,7 @@ from __future__ import annotations
 import inspect
 import json
 import os
+import shutil
 import sys
 import threading
 from dataclasses import dataclass, field
@@ -31,6 +32,21 @@ if TYPE_CHECKING:
     from tbhbdev.cli import Tool
 
 type Json = dict[str, object]
+
+
+@pytest.fixture
+def pr_checkout(
+    pr_git_baseline: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> Path:
+    """A checkout seeded with a commit and the origin's tracking refs."""
+    root = tmp_path / "repo"
+    shutil.copytree(pr_git_baseline, root / ".git")
+    monkeypatch.chdir(root)
+    for role in ("AUTHOR", "COMMITTER"):
+        monkeypatch.setenv(f"GIT_{role}_NAME", "Example")
+        monkeypatch.setenv(f"GIT_{role}_EMAIL", "example@example.test")
+    return root
+
 
 # The fake Connect API's own token, which reaches every vault.
 TOKEN = "fake-test-token"  # noqa: S105

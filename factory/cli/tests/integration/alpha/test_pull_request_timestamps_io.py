@@ -4,38 +4,61 @@
 """Retain the oldest trailer timestamp when creating or editing a pull request."""
 
 import json
+from subprocess import CompletedProcess
+from typing import TYPE_CHECKING
+from unittest.mock import Mock
 
-import test_alpha_pull_request as support
+import pytest
+from fake_tool import PR_ORIGIN
 
-world = support.world
+from tbhbdev.alpha import pull_request as pr
+from tbhbdev.alpha.repo import git
+
+if TYPE_CHECKING:
+    from collections.abc import Sequence
+    from pathlib import Path
 
 
-def timestamps() -> tuple[str, str]:
-    early = support.value(
-        harness="codex", model="openai:m", started_at="2026-11-14T00:02:41Z"
-    )
+@pytest.mark.usefixtures("isolated_home", "pr_checkout")
+@pytest.mark.parametrize("verb", ["create", "edit"])
+def test_pr_keeps_earliest_start(verb: str, monkeypatch: pytest.MonkeyPatch) -> None:
+    early = "LLM harness=codex;model=openai:m;started_at=2026-11-14T00:02:41Z"
     late = early.replace("00:02:41", "00:09:00")
-    return early, late
+    messages = [f"one\n\nGenerated-by: {late}", f"two\n\nAssisted-by: {early}"]
+    if verb == "create":
+        for message in messages:
+            assert git("commit", "--allow-empty", "-qm", message)[0] == 0
 
+    remote = PR_ORIGIN.removeprefix("git@").removesuffix(".git").replace(":", "/")
+    pages = [[{"commit": {"message": message}}] for message in messages]
+    actual_run = pr.run
+    posted = Mock()
 
-def test_create_keeps_earliest_start(world: support.World) -> None:
-    early, late = timestamps()
-    world.commit(f"one\n\nGenerated-by: {late}")
-    world.commit(f"two\n\nAssisted-by: {early}")
-    support.write_draft(world)
-    assert support.run_main("create") == 0
-    _, call = world.calls("gh")
-    assert str(call["stdin"]).endswith(f"Generated-by: {early}\n")
+    def run(
+        argv: Sequence[str], *, cwd: Path | None = None, stdin: str = ""
+    ) -> CompletedProcess[str]:
+        if argv[0] != "gh":
+            return actual_run(argv, cwd=cwd, stdin=stdin)
+        match list(argv[1:3]):
+            case ["pr", "view"] if verb == "create":
+                return CompletedProcess(argv, 1, "", "No Pull Requests Found")
+            case ["pr", "view"]:
+                return CompletedProcess(
+                    argv, 0, json.dumps({"url": f"https://{remote}/pull/40"}), ""
+                )
+            case ["api", _]:
+                return CompletedProcess(argv, 0, json.dumps(pages), "")
+            case ["pr", action]:
+                posted(action, stdin)
+        return CompletedProcess(argv, 0, "{}", "")
 
-
-def test_edit_keeps_earliest_start_from_commit_trailers(world: support.World) -> None:
-    early, late = timestamps()
-    pages = [
-        [{"commit": {"message": f"one\n\nGenerated-by: {late}"}}],
-        [{"commit": {"message": f"two\n\nAssisted-by: {early}"}}],
-    ]
-    support.fake_pr_commits(world, 40, json.dumps(pages))
-    draft = support.write_draft(world)
-    assert support.run_main("edit", str(draft), "--pr", "40") == 0
-    _, _, call = world.calls("gh")
-    assert str(call["stdin"]).endswith(f"Generated-by: {early}\n")
+    draft = pr.Checked([], "fix: x", ["# fix: x", "", "Example."], {"base": "main"})
+    monkeypatch.setattr(pr, "read_checked", Mock(return_value=draft))
+    monkeypatch.setattr(pr, "check_size", Mock())
+    monkeypatch.setattr(pr, "post_text", Mock())
+    monkeypatch.setattr(pr, "find_tools", Mock(return_value={}))
+    monkeypatch.setattr(pr, "find_tool", str)
+    monkeypatch.setattr(pr, "run", run)
+    args = ["create"] if verb == "create" else ["edit", str(pr.DRAFT), "--pr", "40"]
+    assert pr.main(args, env={}) == 0
+    posted.assert_called_once_with(verb, f"Example.\n\nGenerated-by: {early}\n")

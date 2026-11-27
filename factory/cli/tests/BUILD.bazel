@@ -17,7 +17,6 @@ load(":pytest.bzl", "cli_py_test")
 # gazelle:resolve py test_alpha_agent_run_host :test_alpha_agent_run_host_support
 # gazelle:resolve py test_alpha_agent_sandbox_live :test_alpha_agent_sandbox_live_support
 # gazelle:resolve py test_alpha_agent_settings :test_alpha_agent_settings_support
-# gazelle:resolve py test_alpha_identity //factory/cli/tests:test_alpha_identity_support
 # gazelle:resolve py test_alpha_pull_request :test_alpha_pull_request_support
 # gazelle:resolve py test_alpha_review_doc :test_alpha_review_doc_support
 
@@ -1319,6 +1318,7 @@ cli_py_test(
         "//factory/cli/src/tbhbdev/alpha:size_gate",
         "//factory/cli/src/tbhbdev/alpha:tool_pins",
         "//factory/cli/src/tbhbdev/alpha/identity:dispatcher",
+        "//factory/cli/src/tbhbdev/alpha/identity:trailers",
         "@cli_pip//hypothesis",
         "@cli_pip//jsonschema",
         "@cli_pip//pytest",
@@ -2027,7 +2027,6 @@ filegroup(
         exclude = ["BUILD.bazel"],
     ) + [
         "//factory/cli/tests/integration/alpha:test_pull_request_timestamps_io.py",
-        "//factory/cli/tests/integration/alpha/agent:test_app_server_io.py",
         "//factory/cli/tests/integration/alpha/identity:test_dispatcher_timestamps_io.py",
         "//factory/cli/tests/unit/alpha/identity:test_trailers.py",
     ],
@@ -2160,6 +2159,24 @@ cli_py_test(
     srcs = ["test_alpha_identity_models.py"],
     deps = [
         "//factory/cli/src/tbhbdev/alpha/identity:models",
+        "@cli_pip//pytest",
+    ],
+)
+
+cli_py_test(
+    name = "test_alpha_agent_send_failures",
+    srcs = ["test_alpha_agent_send_failures.py"],
+    deps = [
+        ":agent_cli_example",
+        ":agent_driver_example",
+        ":agent_example",
+        ":conftest",
+        "//factory/cli/src/tbhbdev/alpha/agent:app_server",
+        "//factory/cli/src/tbhbdev/alpha/agent:arguments",
+        "//factory/cli/src/tbhbdev/alpha/agent:driver",
+        "//factory/cli/src/tbhbdev/alpha/agent:host_tools",
+        "//factory/cli/src/tbhbdev/alpha/agent:settings",
+        "//factory/cli/src/tbhbdev/alpha/agent:transport",
         "@cli_pip//pytest",
     ],
 )

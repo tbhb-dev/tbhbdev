@@ -37,6 +37,7 @@ from tbhbdev.alpha import opened, size_gate, tool_pins
 from tbhbdev.alpha import pull_request as pr
 from tbhbdev.alpha import pull_request_frontmatter as frontmatter
 from tbhbdev.alpha.identity import dispatcher as agent_identity
+from tbhbdev.alpha.identity.trailers import identity_key, merge_pr_trailers
 from tbhbdev.alpha.secret_scan import REPO_RULES, without_name_rules
 
 # Tests can run from the project or a copy made by mutmut.
@@ -201,7 +202,7 @@ def copy_pr_baseline(root: Path) -> None:
     shutil.copy(WORKSPACE / pr.SECTIONS, root / pr.SECTIONS)
 
 
-def world_files(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> World:
+def world_files(root: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> World:
     """Give each test its own draft files, fake tools, logs, and home."""
     monkeypatch.setattr(
         size_gate,
@@ -209,7 +210,6 @@ def world_files(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> World:
         Mock(return_value=size_gate.SizeCounts(0, 400, 0, 1500, None)),
     )
     monkeypatch.setattr(pr, "target_is_origin", Mock(return_value=True))
-    root = tmp_path / "repo"
     tools_dir = tmp_path / "bin"
     tools_dir.mkdir()
     # One statement, not a loop: under Bazel's clean environment there is
@@ -249,18 +249,16 @@ def world_files(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> World:
 
 @pytest.fixture
 def world(
-    pr_git_baseline: Path,
+    pr_checkout: Path,
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> World:
     """Copy Git metadata for tests that exercise real refs or worktrees."""
-    made = world_files(tmp_path, monkeypatch)
+    made = world_files(pr_checkout, tmp_path, monkeypatch)
     git_dir = tmp_path / "git_dir"
     link_git(git_dir)
     monkeypatch.setenv("PATH", f"{made.bin}{os.pathsep}{git_dir}")
-    shutil.copytree(pr_git_baseline, made.root / ".git")
     write_test_hooks(made.root / ".git/hooks")
-    monkeypatch.chdir(made.root)
 
     def offline_git(*argv: str, cwd: Path | None = None) -> tuple[int, str]:
         # Preserve the seeded tracking refs without contacting the fake origin.
@@ -279,7 +277,7 @@ def world(
 @pytest.fixture
 def draft_world(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> World:
     """Run draft checks with fake tools and fixed answers for Git lookups."""
-    made = world_files(tmp_path, monkeypatch)
+    made = world_files(tmp_path / "repo", tmp_path, monkeypatch)
     git_dir = tmp_path / "git_dir"
     link_git(git_dir)
     monkeypatch.setenv("PATH", f"{made.bin}{os.pathsep}{git_dir}")
@@ -1338,36 +1336,26 @@ def value(**attrs: str) -> str:
     return agent_identity.format_value(attrs)
 
 
-def test_identity_key_ignores_effort_surface_and_version() -> None:
-    one = value(effort="low", harness="claude-code:1.0", model="a:m", surface="cli")
-    two = value(effort="high", harness="claude-code:2.0", model="a:m")
-    assert pr.identity_key(one) == pr.identity_key(two)
-    assert pr.identity_key(one) == ("claude-code", "a:m", "", "")
-    full = value(harness="codex", model="a:m", session=SESSION, subagent=SUBAGENT)
-    assert pr.identity_key(full) == ("codex", "a:m", SESSION, SUBAGENT)
-    assert pr.identity_key(value(harness="codex")) == ("codex", "", "", "")
-
-
 def test_merge_dedupes_and_orders() -> None:
     a = value(harness="claude-code", model="a:m1")
     b = value(harness="codex", model="a:m2")
     found = [("Assisted-by", a), ("Generated-by", b), ("Assisted-by", a)]
-    assert pr.merge_trailers(found, None) == [("Generated-by", b), ("Assisted-by", a)]
+    assert merge_pr_trailers(found, None) == [("Generated-by", b), ("Assisted-by", a)]
 
 
 def test_generated_by_wins_whichever_comes_first() -> None:
     low = value(effort="low", harness="claude-code", model="a:m")
     high = value(effort="high", harness="claude-code", model="a:m")
-    assert pr.merge_trailers([("Assisted-by", low), ("Generated-by", high)], None) == [
+    assert merge_pr_trailers([("Assisted-by", low), ("Generated-by", high)], None) == [
         ("Generated-by", high)
     ]
-    assert pr.merge_trailers([("Generated-by", high), ("Assisted-by", low)], None) == [
+    assert merge_pr_trailers([("Generated-by", high), ("Assisted-by", low)], None) == [
         ("Generated-by", high)
     ]
-    assert pr.merge_trailers([("Generated-by", high), ("Generated-by", low)], None) == [
+    assert merge_pr_trailers([("Generated-by", high), ("Generated-by", low)], None) == [
         ("Generated-by", high)
     ]
-    assert pr.merge_trailers([("Assisted-by", high), ("Assisted-by", low)], None) == [
+    assert merge_pr_trailers([("Assisted-by", high), ("Assisted-by", low)], None) == [
         ("Assisted-by", high)
     ]
 
@@ -1375,14 +1363,14 @@ def test_generated_by_wins_whichever_comes_first() -> None:
 def test_posting_agent_is_added_as_assisted_once() -> None:
     a = value(harness="claude-code", model="a:m")
     me = value(harness="codex", model="o:m")
-    assert pr.merge_trailers([("Generated-by", a)], me) == [
+    assert merge_pr_trailers([("Generated-by", a)], me) == [
         ("Generated-by", a),
         ("Assisted-by", me),
     ]
-    assert pr.merge_trailers([], me) == [("Assisted-by", me)]
-    assert pr.merge_trailers([("Generated-by", me)], me) == [("Generated-by", me)]
-    assert pr.merge_trailers([("Assisted-by", me)], me) == [("Assisted-by", me)]
-    assert pr.merge_trailers([], None) == []
+    assert merge_pr_trailers([], me) == [("Assisted-by", me)]
+    assert merge_pr_trailers([("Generated-by", me)], me) == [("Generated-by", me)]
+    assert merge_pr_trailers([("Assisted-by", me)], me) == [("Assisted-by", me)]
+    assert merge_pr_trailers([], None) == []
 
 
 def identity(harness: str, model: str, session: str) -> str:
@@ -1403,16 +1391,16 @@ TRAILERS = st.lists(
 
 @given(TRAILERS, st.none() | IDENTITIES)
 def test_merge_properties(found: list[tuple[str, str]], posting: str | None) -> None:
-    merged = pr.merge_trailers(found, posting)
-    keys = [pr.identity_key(v) for _, v in merged]
+    merged = merge_pr_trailers(found, posting)
+    keys = [identity_key(v) for _, v in merged]
     assert len(keys) == len(set(keys))
-    wanted = {pr.identity_key(v) for _, v in found}
+    wanted = {identity_key(v) for _, v in found}
     if posting is not None:
-        wanted.add(pr.identity_key(posting))
+        wanted.add(identity_key(posting))
     assert set(keys) == wanted
     roles = [k for k, _ in merged]
     assert roles == sorted(roles, key=lambda role: role != "Generated-by")
-    generated = {pr.identity_key(v) for k, v in found if k == "Generated-by"}
+    generated = {identity_key(v) for k, v in found if k == "Generated-by"}
     for (role, _), key in zip(merged, keys, strict=True):
         assert (role == "Generated-by") == (key in generated)
     assert not agent_identity.check_message("\n".join(f"{k}: {v}" for k, v in merged))
@@ -1597,7 +1585,7 @@ def test_the_posting_session_dedupes_against_its_commit_trailer(
     assert "model=anthropic:claude-opus-5-5" in trailer
     world.commit(f"one\n\nGenerated-by: {trailer}")
     assert pr.posting_value(agent) == trailer
-    merged = pr.merge_trailers(pr.branch_trailers("main"), pr.posting_value(agent))
+    merged = merge_pr_trailers(pr.branch_trailers("main"), pr.posting_value(agent))
     assert merged == [("Generated-by", trailer)]
     assert run_main("create", env=agent) == 0
     _, call = world.calls("gh")
@@ -1794,14 +1782,20 @@ def remote_default(world: World, tmp_path: Path, branch: str) -> None:
 
 
 @pytest.mark.parametrize(
-    ("base", "merge_parent"), [("parent", False), ("parent", True), ("main", False)]
+    ("base", "merged_parent"),
+    [
+        ("parent", None),
+        ("parent", "parent"),
+        ("parent", "fetched/heads/parent"),
+        ("main", None),
+    ],
 )
 def test_size_counts_only_the_drafts_own_lines(
     world: World,
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
     base: str,
-    merge_parent: bool,
+    merged_parent: str | None,
 ) -> None:
     assert REAL_SCC is not None
     (world.bin / "scc").unlink()
@@ -1820,10 +1814,11 @@ def test_size_counts_only_the_drafts_own_lines(
         world.git("add", f"{name}.py")
         world.commit(f"{name} main change")
     remote_default(world, world.root.parent, "main")
-    world.git("push", "-q", world.git("remote", "get-url", "origin"), "parent")
+    remote = world.git("remote", "get-url", "origin")
+    world.git("push", "-q", remote, f"parent:refs/heads/{merged_parent or 'parent'}")
 
     world.git("switch", "-qc", "child")
-    if merge_parent:
+    if merged_parent is not None:
         world.git("merge", "-q", "--no-edit", "parent")
     (world.root / "child.py").write_text("child = 1\n")
     world.git("add", "child.py")
@@ -2674,11 +2669,6 @@ def test_body_of_keeps_spaces_and_edge_letters() -> None:
     assert pr.body_of(["# T", "## Why", "x"]) == "## Why\nx\n"
 
 
-def test_identity_key_splits_on_the_first_equals() -> None:
-    value = "LLM harness=claude-code:1;model=a=b;session=s"
-    assert pr.identity_key(value) == ("claude-code", "a=b", "s", "")
-
-
 def test_posting_agent_is_added_to_an_empty_branch(
     world: World, agent: dict[str, str]
 ) -> None:
@@ -3121,13 +3111,13 @@ def test_branch_trailers_come_from_the_current_repository_not_root(
 
 def test_same_identity_in_commit_and_posting_is_one_generated_by() -> None:
     """Generated-by wins over the posting agent's own Assisted-by."""
-    assert pr.merge_trailers([("Generated-by", FALLBACK)], FALLBACK) == [
+    assert merge_pr_trailers([("Generated-by", FALLBACK)], FALLBACK) == [
         ("Generated-by", FALLBACK)
     ]
 
 
 def test_generated_by_precedes_assisted_by() -> None:
-    assert pr.merge_trailers([("Assisted-by", OTHER), ("Generated-by", GEN)], None) == [
+    assert merge_pr_trailers([("Assisted-by", OTHER), ("Generated-by", GEN)], None) == [
         ("Generated-by", GEN),
         ("Assisted-by", OTHER),
     ]
