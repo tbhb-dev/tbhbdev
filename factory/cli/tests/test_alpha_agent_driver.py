@@ -705,6 +705,30 @@ def test_two_declared_variants_may_review_one_commit(remote: Remote) -> None:
     driver.refuse_live_duplicate(CONFIG, second)
 
 
+def test_a_fifth_live_review_of_the_same_commit_is_refused(
+    remote: Remote, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    review = recorded_review(remote, "--variant", "one")
+    live = transport.Reading("running", None, launched=True, session=True, text="")
+    monkeypatch.setattr(transport, "read", Mock(return_value=live))
+    for variant in ("two", "three", "four"):
+        review.name = f"review-{variant}"
+        review.request = dataclasses.replace(review.request, variant=variant)
+        driver.refuse_live_duplicate(CONFIG, review)
+        driver.save(review)
+
+    stream = Mock(side_effect=AssertionError("started a fifth review"))
+    monkeypatch.setattr(transport, "stream", stream)
+    argv = arguments(
+        remote, "--profile", "review", "--ref", COMMIT, "--variant", "five"
+    )
+    argv[-2] = "review-five"
+    assert agent.main(argv, "example agent") == 1
+    assert "already has 4 live reviews" in capsys.readouterr().err
+    assert not driver.metadata_path("review-five").exists()
+    stream.assert_not_called()
+
+
 @pytest.mark.parametrize(
     ("first", "later"),
     [

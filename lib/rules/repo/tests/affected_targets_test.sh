@@ -61,6 +61,9 @@ if [[ ${0##*/} == bazelisk ]]; then
     fi
     printf '%s\n' //go:{cmd,lib,manual}_test @tbhb_rules_d2//private:inputs_test \
       @tbhb_rules_structurizr//private:{d2,manual}_test //diagrams:integration_test
+    if [[ $FAKE == cli_leaf && ${!#} != *'except set(//factory/cli:mutmut_test)'* ]]; then
+      echo //factory/cli:mutmut_test
+    fi
     exit
   fi
   printf '%s\n' "$@" >"$CQUERY_LOG"
@@ -80,6 +83,14 @@ straggle() { (sleep 2 && git checkout -q "$1" && : >"$CHILD_MARK") </dev/null >/
 case $FAKE in
   two) printf '//go:lib_test\n//go:cmd_test\n' ;;
   tagged) printf '//go:lib_test\n//go:manual_test\n//go:cmd_test\n' ;;
+  cli_leaf)
+    [[ $(git diff --name-only "${!#}" HEAD) == factory/cli/src/tbhbdev/alpha/repo_token.py ]] || exit 8
+    printf '//factory/cli:%s_test\n' bandit complexipy deptry pip_audit pylint pyrefly ruff vulture
+    printf '//factory/cli/tests:test_alpha_%s\n' agent_invariants repo_token
+    if [[ $* == *'"//factory/cli:mutmut_test"'* ]]; then
+      printf '//factory/cli:mutmut_test\n'
+    fi
+    ;;
   near_manual) [[ $* != *//go:near_manual_test* ]] || echo //go:near_manual_test ;;
   rules)
     printf '%s\n' '@@tbhb_rules_d2+//private:inputs_test' \
@@ -87,6 +98,13 @@ case $FAKE in
   rules_tagged) echo '@@tbhb_rules_structurizr+//private:manual_test' ;;
   space) printf '//a:with space\n//b:t\n' ;;
   none) ;;
+  dispatch)
+    for source in lib cmd; do
+      if ! git diff --quiet "${!#}" HEAD -- ":/src/$source.go"; then
+        echo "//go:${source}_test"
+      fi
+    done
+    ;;
   fail) git checkout -q "${!#}" && straggle "${!#}" && echo 'ERROR: cquery failed' >&2 && exit 3 ;;
   hang) git checkout -q "${!#}" && straggle "${!#}" && exec sleep 30 ;;
   mixed) git -C ../lib checkout -q HEAD~ && git checkout -q "${!#}" -- :/ && exit 3 ;;
@@ -233,9 +251,29 @@ refuse() {
 
 unset HEAD_SHA
 export BASE_SHA=$base FAKE=two TIMEOUT_SECONDS=''
-for event in push schedule workflow_dispatch ''; do
+for event in push schedule ''; do
   run "event '$event'" "$event" "$docs_head"
+  [[ $reason == "a '$event' event tests everything" ]] || fail 'unsupported event: wrong reason'
 done
+
+# A merge head distinguishes an explicit older base from either parent.
+git checkout -q "$base"
+dispatch_side=$(commit src/cmd.go)
+git checkout -q "$docs_head"
+dispatch_parent=$(commit src/lib.go)
+git -c user.name=test -c user.email=test@example.invalid -c commit.gpgsign=false \
+  merge -q --no-ff --no-edit "$dispatch_side"
+dispatch_head=$(git rev-parse HEAD)
+BASE_SHA=$base FAKE=dispatch run 'dispatch with explicit base' workflow_dispatch "$dispatch_head" false 2
+[[ $targets == $'//go:lib_test\n//go:cmd_test' ]] || fail 'dispatch explicit base: wrong targets'
+BASE_SHA='' FAKE=dispatch run 'dispatch with default base' workflow_dispatch "$dispatch_head" false 1
+[[ $targets == '//go:cmd_test' ]] || fail 'dispatch default base: wrong targets'
+last=$(tail -n 1 "$ARGS_LOG")
+[[ $last == "$dispatch_parent" ]] || fail 'dispatch default base: expected the first parent SHA'
+BASE_SHA=0123456789abcdef0123456789abcdef01234567 run 'dispatch with missing base' workflow_dispatch "$dispatch_head"
+[[ $reason == *'missing from the checkout'* ]] || fail 'dispatch missing base: wrong reason'
+BASE_SHA='' run 'dispatch of root commit' workflow_dispatch "$base"
+[[ $reason == *"'HEAD^' is missing from the checkout"* ]] || fail 'dispatch of root commit: wrong reason'
 
 run 'pull request' pull_request "$docs_head" false 2
 [[ $targets == $'//go:lib_test\n//go:cmd_test' ]] || fail 'targets output'
@@ -267,6 +305,14 @@ for tag in 'review manual' 'review, manual'; do
 done
 FAKE_CQUERY=fail run 'tag cquery failure' pull_request "$docs_head"
 [[ $reason == *'exit status 7' ]] || fail 'tag cquery failure: status missing'
+
+cli_head=$(commit factory/cli/src/tbhbdev/alpha/repo_token.py)
+BASE_SHA=$docs_head FAKE=cli_leaf run 'CLI leaf edit' pull_request "$cli_head" false 10
+cli_tests=$(printf '%s\n' "$targets" | grep '^//factory/cli/tests:')
+[[ $cli_tests == $'//factory/cli/tests:test_alpha_agent_invariants\n//factory/cli/tests:test_alpha_repo_token' ]] ||
+  fail 'CLI leaf edit: wrong per-file tests'
+[[ $targets != *mutmut_test* ]] || fail 'CLI leaf edit: selected nightly mutation test'
+grep -qF 'Selected 10 test targets' "$GITHUB_STEP_SUMMARY" || fail 'CLI leaf edit: summary count'
 
 FAKE=space run 'label with a space' pull_request "$docs_head" false 2
 [[ $targets == $'//a:with space\n//b:t' ]] || fail 'space: targets output'

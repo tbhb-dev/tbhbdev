@@ -10,6 +10,7 @@ import json
 import os
 import shlex
 import shutil
+import socket
 import stat
 import subprocess
 import sys
@@ -2855,6 +2856,23 @@ def test_the_ssh_shim_options(
     assert install.install_ssh_shim(dry_run=False) == 0
     options = shim_ssh_options(tmp_path, args, env)
     assert options == expected
+
+
+@pytest.mark.skipif(not Path("/usr/bin/ssh").exists(), reason="needs /usr/bin/ssh")
+def test_the_ssh_shim_disables_a_symlink_to_1password(
+    world: World, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    del world
+    assert install.install_ssh_shim(dry_run=False) == 0
+    monkeypatch.chdir(tmp_path)
+    target = Path("1Password/agent.sock")
+    target.parent.mkdir()
+    alias = tmp_path / "agent.sock"
+    with socket.socket(socket.AF_UNIX) as agent:
+        agent.bind(str(target))
+        alias.symlink_to(target)
+        options = shim_ssh_options(tmp_path, [], {"SSH_AUTH_SOCK": str(alias)})
+    assert options["identityagent"] == "none"
 
 
 def test_the_ssh_shim_without_another_ssh_exits_127(

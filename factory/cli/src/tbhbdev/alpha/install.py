@@ -213,10 +213,14 @@ if [ -z "$real" ]; then
   echo "ssh: no ssh on PATH besides the tbhbdev shim" >&2
   exit 127
 fi
-sock=none
-case ${{SSH_AUTH_SOCK:-}} in
-  ''|*[Pp][Aa][Ss][Ss][Ww][Oo][Rr][Dd]*) ;;
-  *) sock=$SSH_AUTH_SOCK ;;
+sock=${{SSH_AUTH_SOCK:-}}
+canonical_sock=
+if [ -n "$sock" ]; then
+  canonical_sock=$(realpath -- "$sock" 2>/dev/null ||
+    readlink -f -- "$sock" 2>/dev/null)
+fi
+case $sock:$canonical_sock in
+  :|*[Pp][Aa][Ss][Ss][Ww][Oo][Rr][Dd]*) sock=none ;;
 esac
 set -- -o "IdentityAgent=\\"$sock\\"" "$@"
 exec "$real" "$@"

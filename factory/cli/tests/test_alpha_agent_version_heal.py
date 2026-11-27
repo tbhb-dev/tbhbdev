@@ -5,9 +5,11 @@ from __future__ import annotations
 import argparse
 import os
 import shlex
+import shutil
 import subprocess
 import sys
-from typing import TYPE_CHECKING
+from pathlib import Path
+from pwd import getpwuid
 from unittest.mock import Mock
 
 import pytest
@@ -21,9 +23,6 @@ from tbhbdev.alpha.agent import driver, transport, version_heal
 from tbhbdev.alpha.agent.decisions import remote
 from tbhbdev.alpha.agent.model import Invalid
 
-if TYPE_CHECKING:
-    from pathlib import Path
-
 CONFIG = settings()
 HOST = CONFIG.hosts[0]
 HEAD = "a" * 40
@@ -33,7 +32,13 @@ OLD_LINE = f"tbhbdev 0 ({OLD})"
 URL = "https://github.com/tbhb-dev/tbhbdev"
 REF = "refs/heads/main"
 GIT_OVERRIDES = ("-c", "credential.helper=", "-c", "http.extraHeader=")
-GIT = ["git", *GIT_OVERRIDES, "ls-remote", URL, REF]
+GIT = [
+    shutil.which("git", path=version_check.TOOL_PATH) or "git",
+    *GIT_OVERRIDES,
+    "ls-remote",
+    URL,
+    REF,
+]
 INSTALL = (
     "uv",
     "tool",
@@ -44,11 +49,18 @@ INSTALL = (
 )
 RETRY = "_TBHB_AGENT_VERSION_HEAL"
 ORIGIN = subprocess.CompletedProcess(GIT, 0, f"{HEAD}\t{REF}\n")
+NETWORK_ENV = {
+    "HTTPS_PROXY": "http://proxy.example:3128",
+    "SSL_CERT_FILE": "/example/uv-ca.pem",
+    "GIT_SSL_CAINFO": "/example/git-ca.pem",
+}
 
 
 @pytest.fixture(autouse=True)
 def fresh_launch(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.delenv(RETRY, raising=False)
+    for key in NETWORK_ENV:
+        monkeypatch.delenv(key, raising=False)
 
 
 @pytest.mark.parametrize("scope", ["--local", "--global"])
@@ -65,7 +77,7 @@ def test_read_origin_ignores_git_url_rewrites(
     assert git(isolated_home, *command, env=env) == f"{fake_head}\t{REF}"
     monkeypatch.chdir(isolated_home)
     monkeypatch.setenv("GIT_CONFIG_GLOBAL", str(isolated_home / ".gitconfig"))
-    status, output = version_heal.read_origin(["git", *command])
+    status, output = version_heal.read_origin([GIT[0], *command])
     assert status != 0
     assert output == ""
 
@@ -83,14 +95,64 @@ def test_read_origin_uses_fixed_url_and_clean_git_context(
     assert version_check.latest(version_heal.read_origin) == HEAD
     run.assert_called_once()
     assert run.call_args.args == (GIT,)
-    assert run.call_args.kwargs["cwd"] == "/"
+    cwd = Path(run.call_args.kwargs["cwd"])
+    assert cwd.is_absolute()
+    assert cwd != Path.cwd()
+    home = getpwuid(os.getuid()).pw_dir
     assert run.call_args.kwargs["env"] == {
-        "PATH": os.environ["PATH"],
+        "HOME": home,
+        "PATH": f"{version_check.TOOL_PATH}:{home}/.local/bin",
+        "GIT_CEILING_DIRECTORIES": str(cwd.parent),
         "GIT_CONFIG_NOSYSTEM": "1",
         "GIT_CONFIG_GLOBAL": os.devnull,
         "GIT_TERMINAL_PROMPT": "0",
         "GIT_ASKPASS": "/bin/false",
     }
+
+
+def test_heal_ignores_path_overrides_and_root_git_config(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    root, origin = tmp_path / "root", tmp_path / "origin"
+    for repo in (root, origin):
+        repo.mkdir()
+        git(repo, "init", "--template=", "--initial-branch=main")
+    head = commit(origin, "expected main")
+    other = commit(root, "rewritten main")
+    url = origin.as_uri()
+    git(root, "config", "--local", f"url.{root.as_uri()}.insteadOf", url)
+    assert git(root, "ls-remote", url, REF) == f"{other}\t{REF}"
+
+    approved = tmp_path / "approved"
+    approved.mkdir()
+    # Probe uv without reinstalling the CLI. The Bazel test can run without uv.
+    home = getpwuid(os.getuid()).pw_dir
+    uv = shutil.which("uv", path=f"{version_check.TOOL_PATH}:{home}/.local/bin")
+    probe = approved / "uv"
+    probe.write_text(f"#!/bin/sh\nexec {shlex.quote(uv or '/bin/true')} --version\n")
+    probe.chmod(0o755)
+    shadow = tmp_path / "shadow"
+    shadow.mkdir()
+    for name in ("git", "uv"):
+        binary = shadow / name
+        binary.write_text("#!/bin/sh\nexit 99\n")
+        binary.chmod(0o755)
+    monkeypatch.setenv("PATH", str(shadow), prepend=os.pathsep)
+    monkeypatch.setattr(
+        version_check, "TOOL_PATH", f"{approved}:{version_check.TOOL_PATH}"
+    )
+    monkeypatch.setattr(version_check, "REPO_URL", url)
+    monkeypatch.setattr(version_heal, "_TEMP_ROOT", str(root))
+    monkeypatch.chdir(root)
+    restart = Mock()
+    shell = Mock()
+    monkeypatch.setattr(version_heal, "restart", restart)
+    monkeypatch.setattr(transport, "shell", shell)
+    installed = f"tbhbdev 0 ({head})"
+
+    assert version_heal.check(CONFIG, HOST, OLD_LINE, installed)
+    restart.assert_called_once()
+    shell.assert_not_called()
 
 
 def test_versions_match_without_sync(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -154,12 +216,19 @@ def test_host_sync_retries_review_preflight(
 
 @pytest.mark.parametrize("installed", [NEW_LINE, "tbhbdev 0 (unknown)"])
 def test_driver_sync_execs_the_same_argv_once(
-    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], installed: str
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    installed: str,
 ) -> None:
     argv = ["/example/bin/tbhbdev", "alpha", "agent", "exec", "sample", "brief.md"]
     original = f"version mismatch: driver {OLD_LINE!r}; host {installed!r}"
     run = Mock(side_effect=[ORIGIN, subprocess.CompletedProcess(INSTALL, 0)])
     shell = Mock()
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("UV_TOOL_BIN_DIR", str(tmp_path))
+    for key, value in NETWORK_ENV.items():
+        monkeypatch.setenv(key, value)
 
     def execv(path: str, args: list[str]) -> None:
         assert path == argv[0]
@@ -179,6 +248,11 @@ def test_driver_sync_execs_the_same_argv_once(
         version_heal.check(CONFIG, HOST, OLD_LINE, installed)
     restart.assert_called_once()
     assert [call.args[0] for call in run.call_args_list] == [GIT, INSTALL]
+    origin_call, install_call = [call.kwargs for call in run.call_args_list]
+    assert Path(install_call["cwd"]) != tmp_path
+    assert install_call["env"] == origin_call["env"]
+    assert "UV_TOOL_BIN_DIR" not in install_call["env"]
+    assert {key: install_call["env"][key] for key in NETWORK_ENV} == NETWORK_ENV
     assert run.call_args.kwargs["check"] is True
     assert run.call_args.kwargs["stderr"] == subprocess.DEVNULL
     assert RETRY not in os.environ
