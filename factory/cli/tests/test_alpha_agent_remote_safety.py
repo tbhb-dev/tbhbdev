@@ -23,12 +23,16 @@ from agent_driver_example import (
 )
 from agent_example import LINUX, settings, trusted_executables
 
-from tbhbdev.alpha.agent import arguments as agent_arguments
-from tbhbdev.alpha.agent import driver, transport
 from tbhbdev.alpha.agent import settings as agent_settings
+from tbhbdev.alpha.agent import transport
 from tbhbdev.alpha.agent.decisions import policy, remote
+from tbhbdev.alpha.agent.driver import arguments as agent_arguments
+from tbhbdev.alpha.agent.driver import metadata
+from tbhbdev.alpha.agent.driver.inspection import inspect
+from tbhbdev.alpha.agent.driver.launch import prepare
 
 if TYPE_CHECKING:
+    from tbhbdev.alpha.agent.driver.decisions.metadata import Run
     from tbhbdev.alpha.agent.model import Settings
 
 
@@ -84,10 +88,10 @@ def inspect_output(
     args = agent_arguments.parser("example").parse_args(
         execution_arguments("example.md")
     )
-    run = driver.prepare(settings(), args)
+    run = prepare(settings(), args)
     run.request = replace(run.request, unsandboxed=unsandboxed)
     run.owner = "example-owner"
-    assert driver.inspect(settings(), run, limit=limit) == 0
+    assert inspect(settings(), run, limit=limit) == 0
     return capsys.readouterr().out
 
 
@@ -251,7 +255,6 @@ def test_scripts_have_fixed_path_socket_and_git_environment() -> None:
     assert remote.installed(LINUX).endswith('"$HOME/.local/bin/tbhbdev" --version')
     assert "-lc" not in remote.start("sample", config.sockets_dir, LINUX)[2]
     for script in [
-        remote.origin_branch("example-org/example-repo", "sample"),
         remote.preflight("example-org/example-repo", "main", "example", LINUX),
     ]:
         for line in script.splitlines():
@@ -385,7 +388,7 @@ def test_mirror_lock_preserves_inner_exit(
     host: Path, command: str, expected: int
 ) -> None:
     mirror_in(host)
-    tokens = shlex.split(remote.origin_branch("example-org/example-repo", "sample"))
+    tokens = shlex.split(remote.mirror_command("example-org/example-repo", ":"))
     start = tokens.index("perl")
     result = subprocess.run(
         [*tokens[start : start + 4], str(host / "lock"), command],
@@ -523,7 +526,6 @@ def test_real_ssh_shell_quoting(host: Path) -> None:
         "session",
         "keep",
         "clean",
-        "origin_branch",
         "log",
         "diff",
         "start",
@@ -547,7 +549,6 @@ def test_owner_check_precedes_every_effect(
         "session": remote.session("sample", "kill-session", settings().sockets_dir),
         "keep": remote.keep("sample"),
         "clean": cleanup(),
-        "origin_branch": remote.origin_branch("example-org/example-repo", "sample"),
         "log": remote.inspect("example-org/example-repo", "sample", limit=10),
         "diff": remote.inspect("example-org/example-repo", "sample", limit=None),
         "start": remote.start("sample", settings().sockets_dir, LINUX)[2],
@@ -597,7 +598,9 @@ def test_locale_precedes_tmux_and_git(host: Path) -> None:
         )
     assert execute(remote.read("sample", settings().sockets_dir)).returncode == 0
     assert (
-        execute(remote.origin_branch("example-org/example-repo", "sample")).returncode
+        execute(
+            remote.inspect("example-org/example-repo", "sample", limit=10)
+        ).returncode
         == 0
     )
 
@@ -645,20 +648,6 @@ def test_preflight_ref_contract(host: Path) -> None:
     assert result.stdout == b"example version\ncommit\ttopic\n"
 
 
-def test_origin_branch_queries_remote_presence(host: Path) -> None:
-    mirror = mirror_in(host)
-    script = remote.origin_branch("example-org/example-repo", "sample")
-    result = execute(script)
-    expected = git_in(mirror, "rev-parse", "refs/heads/agent/sample")
-    assert result.returncode == 0, result.stderr
-    assert result.stdout.decode() == expected + "\trefs/heads/agent/sample\n"
-    git_in(host / "origin.git", "update-ref", "-d", "refs/heads/agent/sample")
-    assert execute(script).stdout == b""
-    assert git_in(mirror, "rev-parse", "refs/heads/agent/sample") == expected
-    git_in(mirror, "config", "remote.origin.url", str(host / "missing.git"))
-    assert execute(script).returncode != 0
-
-
 def test_clean_checks_flags_fallback_and_missing_clone(host: Path) -> None:
     no_session(host)
     state = host / "state/tbhbdev/agent-runs"
@@ -666,13 +655,6 @@ def test_clean_checks_flags_fallback_and_missing_clone(host: Path) -> None:
     assert execute(cleanup()).returncode == 65
     assert execute(cleanup(force=True)).returncode == 0
     assert (state / "trash/stamp-sample/sample.rc.fallback").is_file()
-
-
-def test_origin_branch_without_mirror(host: Path) -> None:
-    assert not (host / "state/tbhbdev/agent-mirrors").exists()
-    result = execute(remote.origin_branch("example-org/example-repo", "sample"))
-    assert result.returncode == 65
-    assert result.stdout == b""
 
 
 @pytest.mark.parametrize("limit", [None, 10])
@@ -687,28 +669,22 @@ def test_mirror_git_dir_never_discovers_parent(host: Path, limit: int | None) ->
         host / "bin/git",
         f"from pathlib import Path\nPath({str(marker)!r}).write_text('git called')\n",
     )
-    scripts = [
-        remote.origin_branch("example-org/example-repo", "sample"),
-        remote.inspect("example-org/example-repo", "sample", limit=limit),
-    ]
-    for script in scripts:
-        result = execute(script)
-        assert result.returncode == 65
-        assert result.stdout == b""
-        assert not marker.exists()
+    result = execute(remote.inspect("example-org/example-repo", "sample", limit=limit))
+    assert result.returncode == 65
+    assert result.stdout == b""
+    assert not marker.exists()
 
 
 def test_mirror_git_host_case_shares_path(host: Path) -> None:
     mirror = mirror_in(host)
     scripts = [
-        remote.origin_branch(f"{git_host}/example-org/example-repo", "sample")
+        remote.inspect(f"{git_host}/example-org/example-repo", "sample", limit=10)
         for git_host in ("GitHub.com", "github.com")
     ]
     assert scripts[0] == scripts[1]
     for script in scripts:
         result = execute(script)
         assert result.returncode == 0, result.stderr
-        assert result.stdout.endswith(b"\trefs/heads/agent/sample\n")
     assert list(mirror.parent.parent.parent.iterdir()) == [mirror.parent.parent]
 
 
@@ -870,35 +846,15 @@ def test_mirror_refuses_symlinks(host: Path, component: str, kind: str) -> None:
         path.symlink_to(host / "saved")
     elif kind == "file":
         path.write_text("not a directory")
-    result = execute(remote.origin_branch("example-org/example-repo", "sample"))
+    result = execute(remote.inspect("example-org/example-repo", "sample", limit=10))
     assert result.returncode == 65
     assert result.stdout == b""
 
 
-def test_mirror_path_separates_git_hosts(host: Path) -> None:
-    mirror = mirror_in(host)
-    other = (
-        host
-        / "state/tbhbdev/agent-mirrors/git.example.com/example-org/example-repo.git"
-    )
-    git_in(host, "clone", "--mirror", str(mirror), str(other))
-    git_in(other, "remote", "set-url", "origin", str(host / "missing.git"))
-    assert (
-        execute(remote.origin_branch("example-org/example-repo", "sample")).returncode
-        == 0
-    )
-    assert (
-        execute(
-            remote.origin_branch(
-                "git.example.com/example-org/example-repo",
-                "sample",
-            )
-        ).returncode
-        != 0
-    )
-
-
-def test_mirror_git_boundary(host: Path) -> None:
+@pytest.mark.parametrize("limit", [None, 10], ids=["diff", "log"])
+def test_inspection_holds_mirror_lock_and_hardens_git(
+    host: Path, limit: int | None
+) -> None:
     mirror = mirror_in(host)
     write_standalone_fake(
         host / "bin/git",
@@ -919,18 +875,16 @@ def test_mirror_git_boundary(host: Path) -> None:
         "    'protocol.ext.allow': 'never', 'core.pager': 'cat',\n"
         "    'gc.auto': '0', 'maintenance.auto': 'false',\n"
         "    'fetch.recurseSubmodules': 'false', 'submodule.recurse': 'false'}\n"
-        f"assert args == [{('--git-dir=' + str(mirror))!r},\n"
-        "                'ls-remote', '--end-of-options',\n"
-        "                'origin', 'refs/heads/agent/sample']\n"
-        f"with Path({str(mirror / 'agent-mirror.lock')!r}).open('a') as lock:\n"
+        f"assert args[0] == {('--git-dir=' + str(mirror))!r}\n"
+        f"with Path({str(mirror / 'agent-mirror.lock')!r}).open('r') as lock:\n"
         "    try:\n        fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)\n"
         "    except BlockingIOError:\n        pass\n"
         "    else:\n        raise AssertionError('mirror lock required')\n"
         "os.execv('/usr/bin/git', ['/usr/bin/git', *sys.argv[1:]])\n",
     )
-    result = execute(remote.origin_branch("example-org/example-repo", "sample"))
+    result = execute(remote.inspect("example-org/example-repo", "sample", limit=limit))
     assert result.returncode == 0, result.stderr
-    assert result.stdout.endswith(b"\trefs/heads/agent/sample\n")
+    assert b"pushed change" in result.stdout
 
 
 @pytest.mark.parametrize("limit", [None, 1, 10])
@@ -1386,14 +1340,14 @@ def mock_agent_run_for_diff(monkeypatch: pytest.MonkeyPatch) -> None:
     request_args = agent_arguments.parser("example").parse_args(
         execution_arguments("example.md")
     )
-    run = driver.prepare(config, request_args)
+    run = prepare(config, request_args)
     run.owner = "example-owner"
 
-    def load(_settings: Settings, _name: str) -> driver.Run:
+    def load(_settings: Settings, _name: str) -> Run:
         return run
 
     monkeypatch.setattr(agent_settings, "load", lambda: config)
-    monkeypatch.setattr(driver, "load", load)
+    monkeypatch.setattr(metadata, "load", load)
 
 
 def test_patch_export_refuses_unconfirmed_shutdown(host: Path) -> None:

@@ -15,6 +15,7 @@ cli_py_library(
     srcs = ["brief.py"],
     imports = ["../.."],
     visibility = ["//factory/cli:__subpackages__"],
+    deps = ["//factory/cli/src/tbhbdev/alpha/agent/driver/decisions:prompt"],
 )
 
 cli_py_library(
@@ -167,21 +168,7 @@ cli_py_library(
     srcs = ["opened.py"],
     imports = ["../.."],
     visibility = ["//factory/cli:__subpackages__"],
-    deps = [
-        ":repo",
-        "//factory/cli/src/tbhbdev/alpha/identity:dispatcher",
-    ],
-)
-
-cli_py_library(
-    name = "pr_stats",
-    srcs = ["pr_stats.py"],
-    imports = ["../.."],
-    visibility = ["//factory/cli:__subpackages__"],
-    deps = [
-        ":pull_request",
-        "//factory/cli/src/tbhbdev/alpha/identity:dispatcher",
-    ],
+    deps = ["//factory/cli/src/tbhbdev/alpha/identity:dispatcher"],
 )
 
 cli_py_library(
@@ -304,6 +291,7 @@ cli_py_library(
     deps = [
         ":pull_request",
         ":pull_request_frontmatter",
+        ":review_inline",
         "//factory/cli/src/tbhbdev:content",
         "//factory/cli/src/tbhbdev/alpha/identity:dispatcher",
     ],
@@ -380,7 +368,6 @@ cli_py_library(
     data = [":size_gate_data"],
     imports = ["../.."],
     visibility = ["//factory/cli:__subpackages__"],
-    deps = [":repo_bootstrap"],
 )
 
 cli_py_library(
@@ -473,7 +460,6 @@ cli_py_library(
     visibility = ["//factory/cli:__subpackages__"],
     deps = [
         ":brief",
-        ":chase_context",
         ":close",
         ":gh_app",
         ":gh_shim",
@@ -486,7 +472,6 @@ cli_py_library(
         ":guard_scripts",
         ":guard_sendmessage_clock",
         ":guard_ssh_agent",
-        ":pr_stats",
         ":pre_push_guard",
         ":pull_request",
         ":repo_bootstrap",
@@ -513,18 +498,6 @@ cli_py_library(
 )
 
 cli_py_library(
-    name = "chase_context",
-    srcs = ["chase_context.py"],
-    imports = ["../.."],
-    visibility = ["//factory/cli:__subpackages__"],
-    deps = [
-        ":gh_shim",
-        ":repo",
-        "//factory/cli/src/tbhbdev/alpha/agent:runfiles",
-    ],
-)
-
-cli_py_library(
     name = "worktree_sweep",
     srcs = ["worktree_sweep.py"],
     imports = ["../.."],
@@ -548,4 +521,12 @@ cli_py_library(
         ":guard_gh_pr",
         ":repo",
     ],
+)
+
+cli_py_library(
+    name = "review_inline",
+    srcs = ["review_inline.py"],
+    imports = ["../.."],
+    visibility = ["//factory/cli:__subpackages__"],
+    deps = ["@cli_pip//markdown_it_py"],
 )

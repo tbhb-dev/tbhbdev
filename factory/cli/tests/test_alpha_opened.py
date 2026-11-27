@@ -7,7 +7,6 @@ import fcntl
 import json
 import os
 import stat
-import subprocess
 from pathlib import Path
 
 import pytest
@@ -195,54 +194,6 @@ def test_agy_root_hash_needs_the_conversation_in_a_brain(tmp_path: Path) -> None
     assert opened.agy_root_hash(SUB, brain) == ai.sha256_64(CONV)
 
 
-def test_caller_root_of_claude_and_codex_is_the_session_id() -> None:
-    assert opened.caller_root({"session_id": "session-raw"}, {}) == ROOT
-    child: dict[str, object] = {"session_id": "session-raw", "agent_id": "agent-raw"}
-    assert opened.caller_root(child, {}) == ROOT
-    assert opened.caller_root({"sessionId": "session-raw"}, {}) == ROOT
-
-
-@pytest.mark.parametrize(
-    "data", [{}, {"session_id": ""}, {"session_id": 7}, {"tool_input": {}}]
-)
-def test_caller_root_without_a_session_is_none(data: dict[str, object]) -> None:
-    env = {"CLAUDE_CODE_SESSION_ID": "session-raw"}
-    assert opened.caller_root(data, env) is None
-
-
-def test_caller_root_of_antigravity_follows_the_artifact_directory(
-    tmp_path: Path,
-) -> None:
-    brain = make_brain(tmp_path, CONV)
-    adopt(brain, CONV, SUB)
-    data: dict[str, object] = {
-        "toolCall": {},
-        "conversationId": SUB,
-        "artifactDirectoryPath": str(brain / SUB),
-    }
-    assert opened.caller_root(data, {}) == ai.sha256_64(CONV)
-    data["artifactDirectoryPath"] = str(tmp_path / "elsewhere" / SUB)
-    assert opened.caller_root(data, {}) is None
-
-
-def test_caller_root_of_antigravity_falls_back_to_the_env_and_record(
-    tmp_path: Path,
-) -> None:
-    brain = make_brain(tmp_path, CONV, SUB)
-    adopt(brain, CONV, SUB)
-    data: dict[str, object] = {"toolCall": {}}
-    assert opened.caller_root(data, {}) is None
-    env = {"ANTIGRAVITY_CONVERSATION_ID": SUB}
-    assert opened.caller_root(data, env) is None
-    env["ANTIGRAVITY_APP_DATA_DIR"] = str(tmp_path)
-    assert opened.caller_root(data, env) == ai.sha256_64(CONV)
-    ai.write_user_record(ai.sha256_64(SUB), {"brain_root": str(brain)})
-    assert opened.caller_root(data, {"ANTIGRAVITY_CONVERSATION_ID": SUB}) == (
-        ai.sha256_64(CONV)
-    )
-    assert opened.caller_root({**data, "conversationId": "nope"}, env) is None
-
-
 def no_ancestry(*_args: object, **_kwargs: object) -> list[str]:
     return []
 
@@ -278,21 +229,6 @@ def test_opener_in_antigravity_finds_the_brain_in_its_record(tmp_path: Path) -> 
     ident = opened.opener({"ANTIGRAVITY_CONVERSATION_ID": SUB})
     assert ident is not None
     assert (ident.root, ident.subagent) == (ai.sha256_64(CONV), None)
-
-
-def test_caller_root_of_antigravity_reads_the_worktree_record(tmp_path: Path) -> None:
-    brain = make_brain(tmp_path / "elsewhere", CONV)
-    adopt(brain, CONV, SUB)
-    repo = tmp_path / "repo"
-    subprocess.run(["git", "init", "-q", str(repo)], check=True)
-    sessions = repo / ".git" / ai.STORE / "sessions"
-    sessions.mkdir(parents=True)
-    record = sessions / f"{ai.hx(ai.sha256_64(SUB))}.json"
-    record.write_text(json.dumps({"brain_root": str(brain)}))
-    data: dict[str, object] = {"toolCall": {}, "conversationId": SUB}
-    assert opened.caller_root(data, {}) is None
-    data["cwd"] = str(repo)
-    assert opened.caller_root(data, {}) == ai.sha256_64(CONV)
 
 
 def test_a_non_utf8_ledger_raises(state: Path) -> None:

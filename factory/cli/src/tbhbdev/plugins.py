@@ -1,15 +1,8 @@
-"""Plugins: subcommands and config files from other installed packages.
+"""Config files from other installed packages.
 
-A package adds to tbhbdev through an entry point in the `tbhbdev.plugins`
-group. The entry point resolves to an object, usually a module, that may
-expose either or both of:
-
-- `TOOLS: dict[str, Tool]`, subcommands to add beside the built-in ones. A
-  name that a built-in command or another plugin already uses is an error,
-  never a silent override.
-- `config(name: str) -> str | None`, the text of the config file NAME, or
-  None when the plugin doesn't supply it. The package doesn't include a
-  config file of its own, so a plugin's file is the only one there is.
+A package supplies config through an entry point in the `tbhbdev.plugins`
+group. The entry point's `config(name: str) -> str | None` returns the
+named file's text or None.
 
 Plugins load on first use, not at import. A plugin that fails to load is
 reported on stderr once and skipped, so the built-in commands keep working.
@@ -20,19 +13,16 @@ from __future__ import annotations
 import functools
 import sys
 from importlib.metadata import entry_points
-from importlib.resources import files
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Mapping
-
-    from tbhbdev.cli import Tool
+    from collections.abc import Callable
 
 GROUP = "tbhbdev.plugins"
 
 
 class PluginError(Exception):
-    """Two providers claim the same command or config file."""
+    """Two providers claim the same config file."""
 
 
 @functools.cache
@@ -54,28 +44,6 @@ def load() -> tuple[tuple[str, object], ...]:
     return tuple(loaded)
 
 
-def tools(builtins: Mapping[str, Tool]) -> dict[str, Tool]:
-    """BUILTINS with every plugin's TOOLS added.
-
-    Raises:
-        PluginError: A plugin's command has a name already taken.
-    """
-    merged = dict(builtins)
-    owner = dict.fromkeys(builtins, "the built-in commands")
-    for name, plugin in load():
-        extra: Mapping[str, Tool] = getattr(plugin, "TOOLS", {})
-        for command, tool in extra.items():
-            if command in owner:
-                message = (
-                    f"plugin {name!r} defines the command {command!r}, "
-                    f"which {owner[command]} already define"
-                )
-                raise PluginError(message)
-            owner[command] = f"plugin {name!r}"
-            merged[command] = tool
-    return merged
-
-
 def supplied(name: str) -> str | None:
     """The text of the config file NAME from the plugin that supplies it, if any.
 
@@ -93,20 +61,3 @@ def supplied(name: str) -> str | None:
         message = f"plugins {names} each supply {name}"
         raise PluginError(message)
     return found[0][1] if found else None
-
-
-def config(name: str) -> str:
-    """The text of the config file NAME: a plugin's, or else the package's.
-
-    Raises:
-        PluginError: More than one plugin supplies NAME.
-    """
-    text = supplied(name)
-    if text is not None:
-        return text
-    # Equivalent mutants: files(None) finds this module's package too, and
-    # macOS's case-insensitive disk finds config/ under any spelling.
-    default = files("tbhbdev").joinpath("config", name)  # pragma: no mutate
-    # Equivalent mutants: every spelling of UTF-8, and the hosts' default
-    # encoding, read the file alike.
-    return default.read_text(encoding="utf-8")  # pragma: no mutate

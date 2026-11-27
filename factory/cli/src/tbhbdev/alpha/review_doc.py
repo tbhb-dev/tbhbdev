@@ -3,15 +3,20 @@
 from __future__ import annotations
 
 import re
+import sys
 from dataclasses import dataclass
 from hashlib import sha256
 from pathlib import Path
-from typing import Literal, Protocol, cast
+from typing import TYPE_CHECKING, Literal, Protocol, cast
 
 from tbhbdev import content
 from tbhbdev.alpha import pull_request as pr
 from tbhbdev.alpha import pull_request_frontmatter as frontmatter
+from tbhbdev.alpha import review_inline
 from tbhbdev.alpha.identity import dispatcher as identity
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
 
 type Tier = Literal[0, 1, 2]
 type Verdict = Literal["GO", "NO-GO"]
@@ -20,11 +25,6 @@ type _ReviewRow = dict[str, dict[str, object] | str | int] | None
 type _Pull = dict[str, dict[str, object]] | None
 
 _HEAD = re.compile(r"[0-9a-f]{40}")
-_MARKER = re.compile(
-    r"^<!-- tbhb-review v1 repo=(?u:(\S+)) pr=([1-9][0-9]{0,11}) "
-    r"head=([0-9a-f]{40}) run=(?u:(\S+)) -->$",
-    re.ASCII | re.MULTILINE,
-)
 _MARKER_V2 = re.compile(r"^<!-- tbhb-review v2 ([0-9a-f]{64}) -->$", re.MULTILINE)
 _PAGE_SIZE = 100
 _MARKER_SYNTAX = re.compile(r"<!--\s*tbhb-(?:review|reply)\b", re.IGNORECASE)
@@ -60,9 +60,17 @@ class Marker:
 class Existing:
     id: int
     author: str
-    marker: Marker | str
+    marker: str
     state: str
     body: str
+
+
+@dataclass(frozen=True)
+class ReviewSubmission:
+    path: str
+    commit: str
+    body: str
+    event: str
 
 
 class Api(Protocol):
@@ -130,19 +138,15 @@ def render(doc: ReviewDoc) -> str:
     return f"{prose}\n\n<!-- tbhb-review v2 {marker} -->\n"
 
 
-def parse_marker(body: str) -> Marker | str | None:
-    """Read a current or legacy review marker."""
+def parse_marker(body: str) -> str | None:
+    """Read the posted review marker."""
     text = body.replace("\r\n", "\n")
     before, _, last = text.rstrip().rpartition("\n")
     if last.startswith(f"{identity.KEY_GEN}: LLM "):
         last = before.rstrip().rpartition("\n")[2]
     if matched := _MARKER_V2.fullmatch(last):
         return matched[1]
-    matches = list(_MARKER.finditer(text))
-    if not matches:
-        return None
-    repo, number, head, run = matches[-1].groups()
-    return Marker(repo, int(number), head, run)
+    return None
 
 
 def is_dismissed(existing: Existing) -> bool:
@@ -166,8 +170,7 @@ def _active_id(entry: object, expected: Marker, author: str, state: str) -> int 
         } if actual_state == state and (key := parse_marker(body)) is not None:
             existing = Existing(review_id, login, key, state, body)
             same_marker = (
-                existing.marker
-                in (expected, marker_id(expected.repo, expected.pr, expected.run))
+                existing.marker == marker_id(expected.repo, expected.pr, expected.run)
                 and head == expected.head_sha
             )
             same_author = existing.author.casefold() == author.casefold()
@@ -217,12 +220,41 @@ def check_head(api: Api, path: str, commit: str) -> None:
 
 
 def send_review(api: Api, path: str, commit: str, body: str, event: str) -> int | None:
-    """Submit the body with its review event and return the ID if provided."""
-    result = api.request(
-        "POST",
-        f"{path}/reviews",
-        {"commit_id": commit, "body": body, "event": event},
+    """Submit the review and return the ID if provided."""
+    return submit_review(
+        api.request,
+        ReviewSubmission(path, commit, body, event),
+        compare=lambda url: api.request("GET", url),
+        warn=lambda message: print(message, file=sys.stderr),
     )
+
+
+def submit_review(
+    request: Callable[[str, str, dict[str, object] | None], object],
+    review: ReviewSubmission,
+    *,
+    compare: Callable[[str], object],
+    warn: Callable[[str], None],
+) -> int | None:
+    """Submit the body and any inline findings in one review."""
+    payload: dict[str, object] = {
+        "commit_id": review.commit,
+        "body": review.body,
+        "event": review.event,
+    }
+    if findings := review_inline.findings(review.body):
+        try:
+            pull = cast("dict[str, dict[str, str]]", request("GET", review.path, None))
+            base = pull["base"]["sha"]
+            repository = review.path.rpartition("/pulls/")[0]
+            # Pin the comparison to the judged commit even if the PR head moves.
+            diff = compare(f"{repository}/compare/{base}...{review.commit}?per_page=1")
+        except ReviewError as exc:
+            warn(f"inline comments skipped: {exc}")
+        else:
+            if comments := review_inline.comments(findings, diff):
+                payload["comments"] = comments
+    result = request("POST", f"{review.path}/reviews", payload)
     match cast("dict[str, object] | None", result):  # pragma: no mutate -- cast
         case {"id": int(review_id)}:
             return review_id
@@ -296,10 +328,7 @@ def dismiss(
                 "COMMENTED" | "APPROVED" | "CHANGES_REQUESTED" | "DISMISSED"
             ) as state,
         }:
-            key = parse_marker(body)
-            if isinstance(key, str) or (
-                isinstance(key, Marker) and (key.repo, key.pr) == (repo, pr)
-            ):
+            if parse_marker(body) is not None:
                 if not _dismissed(state, body):
                     body = f"SUPERSEDED: {reason}\n{body}"
                     api.request("PUT", path, {"body": body})

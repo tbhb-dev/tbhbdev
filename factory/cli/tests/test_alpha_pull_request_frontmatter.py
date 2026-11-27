@@ -54,11 +54,6 @@ def test_frontmatter_refuses_a_repeated_key() -> None:
         frontmatter.parse_frontmatter("---\nbase: main\nbase: dev\n---\n")
 
 
-def test_schema_default() -> None:
-    assert frontmatter.schema_default(SCHEMA, "base") == "main"
-    assert frontmatter.schema_default(SCHEMA, "draft") is False
-
-
 def test_frontmatter_unknown_key_is_line_one() -> None:
     text = "---\ndraft: true\ntitle: x\n---\n"
     data, _ = frontmatter.parse_frontmatter(text)
