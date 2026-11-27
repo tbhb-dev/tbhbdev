@@ -24,7 +24,7 @@ from pathlib import Path
 
 import httpx2
 
-from tbhbdev import userconfig
+from tbhbdev import github_tls, userconfig
 from tbhbdev.alpha import codex_trust, install, run_stop_hook
 from tbhbdev.alpha.agent import (
     admission,
@@ -869,7 +869,9 @@ def origin_tip(run: Run) -> str | None:
         token = credentials.fetch_token(run.request, run.settings)
         if token is not None:
             headers["Authorization"] = f"Bearer {token}"
-        response = httpx2.get(url, headers=headers, timeout=20)
+        response = httpx2.get(
+            url, headers=headers, timeout=20, verify=github_tls.public_roots()
+        )
         if response.status_code == httpx2.codes.NOT_FOUND:
             return ""
         response.raise_for_status()

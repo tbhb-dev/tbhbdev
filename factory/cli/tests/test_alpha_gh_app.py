@@ -9,6 +9,7 @@ import errno
 import json
 import os
 import re
+import ssl
 import stat
 import subprocess
 import time
@@ -16,7 +17,9 @@ from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import NoReturn
+from unittest.mock import Mock
 
+import certifi
 import httpx2
 import pytest
 from cryptography.hazmat.primitives import hashes, serialization
@@ -1560,16 +1563,11 @@ def test_the_module_names_no_service_account() -> None:
 MINT_PERMISSIONS = {"contents": "write", "pull_requests": "write"}
 
 
-def test_mint_token_disables_client_environment(
+def test_mint_token_client_uses_only_public_roots(
     tmp_path: Path, rsa: Key, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    enter = httpx2.Client.__enter__
-
-    def check_client(client: httpx2.Client) -> httpx2.Client:
-        assert client.trust_env is False
-        return enter(client)
-
-    monkeypatch.setattr(httpx2.Client, "__enter__", check_client)
+    client = Mock(wraps=httpx2.Client)
+    monkeypatch.setattr(httpx2, "Client", client)
     github = Github()
     assert gh_app.mint_token(
         env_for(tmp_path, Store({}), github),
@@ -1579,6 +1577,16 @@ def test_mint_token_disables_client_environment(
         permissions=MINT_PERMISSIONS,
     ) == gh_app.Minted(TOKEN, EXPIRES_EPOCH)
     assert len(github.requests) == 2
+    client.assert_called_once()
+    assert client.call_args.kwargs["trust_env"] is False
+    context: object = client.call_args.kwargs["verify"]
+    assert isinstance(context, ssl.SSLContext)
+    assert context.check_hostname
+    assert context.verify_mode == ssl.CERT_REQUIRED
+    expected = ssl.create_default_context(cafile=certifi.where())
+    assert set(context.get_ca_certs(binary_form=True)) == set(
+        expected.get_ca_certs(binary_form=True)
+    )
 
 
 def test_mint_token_ignores_proxy_environment(

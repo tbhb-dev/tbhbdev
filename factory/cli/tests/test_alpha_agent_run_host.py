@@ -25,7 +25,7 @@ from functools import partial
 from pathlib import Path
 from types import SimpleNamespace
 from typing import TYPE_CHECKING, cast
-from unittest.mock import Mock
+from unittest.mock import ANY, Mock
 
 import httpx2
 import pytest
@@ -4456,7 +4456,7 @@ def test_origin_tip_reads_the_run_branch_over_https(
     headers = {"Accept": "application/vnd.github+json"}
     if token is not None:
         headers["Authorization"] = f"Bearer {token}"
-    lookup.assert_called_once_with(url, headers=headers, timeout=20)
+    lookup.assert_called_once_with(url, headers=headers, timeout=20, verify=ANY)
 
 
 def test_execute_rejects_a_stale_head_when_requiring_a_commit(

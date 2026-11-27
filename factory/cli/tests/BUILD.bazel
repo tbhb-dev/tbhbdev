@@ -1033,6 +1033,7 @@ cli_py_test(
         ":conftest",
         "//factory/cli/src/tbhbdev:secrets",
         "//factory/cli/src/tbhbdev/alpha:gh_app",
+        "@cli_pip//certifi",
         "@cli_pip//cryptography",
         "@cli_pip//httpx2",
         "@cli_pip//pytest",

@@ -46,7 +46,7 @@ from cryptography.exceptions import UnsupportedAlgorithm
 from cryptography.hazmat.primitives import hashes, serialization
 from cryptography.hazmat.primitives.asymmetric import padding, rsa
 
-from tbhbdev import secrets
+from tbhbdev import github_tls, secrets
 lazy from tbhbdev.alpha.agent import host_tools
 lazy from tbhbdev.alpha.agent.model import Invalid
 
@@ -634,6 +634,7 @@ def exchange_token(  # noqa: PLR0913  # Optional installation cache seams.
             timeout=TIMEOUT,
             transport=env.transport,
             trust_env=False,
+            verify=github_tls.public_roots(),
         ) as client:
             ident = known_installation
             if ident is None:

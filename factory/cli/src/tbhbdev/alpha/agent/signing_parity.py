@@ -20,6 +20,7 @@ from typing import cast
 
 import httpx2
 
+from tbhbdev import github_tls
 from tbhbdev.alpha.agent import credentials, host_tools, transport
 from tbhbdev.alpha.agent import settings as agent_settings
 from tbhbdev.alpha.agent.decisions import remote
@@ -99,6 +100,7 @@ def public_keys(
                 transport=transport,
                 follow_redirects=False,
                 trust_env=False,
+                verify=github_tls.public_roots(),
                 headers={"Accept": "application/vnd.github+json"},
             ) as client,
             client.stream("GET", KEYS_URL) as response,

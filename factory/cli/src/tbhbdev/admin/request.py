@@ -10,7 +10,7 @@ from typing import NamedTuple, cast
 
 import httpx2
 
-from tbhbdev import secrets
+from tbhbdev import github_tls, secrets
 from tbhbdev.admin import policy
 from tbhbdev.admin.audit import Audit, RefusedError, record
 from tbhbdev.alpha import gh_app
@@ -120,6 +120,7 @@ def send(
                 timeout=gh_app.TIMEOUT,
                 follow_redirects=False,
                 trust_env=False,
+                verify=github_tls.public_roots(),
                 headers={
                     AUTHORIZATION: f"Bearer {minted.token}",
                     **HEADERS,

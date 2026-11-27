@@ -22,6 +22,8 @@ from typing import TYPE_CHECKING, cast
 
 import httpx2
 
+from tbhbdev import github_tls
+
 if TYPE_CHECKING:
     from collections.abc import Callable, Sequence
 
@@ -93,7 +95,9 @@ def resolve(pin: Pin | None = None) -> Path:
 
 
 def _fetch(url: str) -> bytes:
-    response = httpx2.get(url, follow_redirects=True, timeout=TIMEOUT)
+    response = httpx2.get(
+        url, follow_redirects=True, timeout=TIMEOUT, verify=github_tls.public_roots()
+    )
     response.raise_for_status()
     return response.content
 

@@ -29,6 +29,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Protocol, override
 
 import httpx
+import httpx2
 from cryptography.exceptions import UnsupportedAlgorithm
 from cryptography.hazmat.primitives import serialization
 from onepasswordconnectsdk import client as connect_client
@@ -271,7 +272,7 @@ class Connect:
             # An SDK client whose constructor fails raises again as it's deleted,
             # so a URL httpx refuses never reaches one.
             httpx.URL(url)
-            config = ClientConfig(timeout=TIMEOUT)
+            config = ClientConfig(timeout=TIMEOUT, verify=httpx2.create_ssl_context())
             self._clients[url] = connect_client.Client(url, self._token, config)
         return self._clients[url]
 
@@ -660,6 +661,7 @@ class _ExplicitClient(connect_client.Client):
             headers=self.build_headers(token),
             timeout=TIMEOUT,
             trust_env=False,
+            verify=httpx2.create_ssl_context(trust_env=False),
         )
 
 

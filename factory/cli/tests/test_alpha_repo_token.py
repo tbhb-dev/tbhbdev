@@ -27,6 +27,7 @@ from tbhbdev.alpha import repo_token as rt
 
 if TYPE_CHECKING:
     from collections.abc import Callable
+    from ssl import SSLContext
 
 TOKEN = "test-repo-token"  # noqa: S105  # Synthetic fixture.
 CONNECT_TOKEN = "test-connect-token"  # noqa: S105  # Synthetic fixture.
@@ -185,6 +186,7 @@ def connect_transport(monkeypatch: pytest.MonkeyPatch) -> list[httpx.Request]:
         headers: dict[str, str],
         timeout: httpx.Timeout,
         trust_env: bool,
+        verify: SSLContext,
     ) -> httpx.Client:
         assert trust_env is False
         assert timeout == secrets.TIMEOUT
@@ -193,6 +195,7 @@ def connect_transport(monkeypatch: pytest.MonkeyPatch) -> list[httpx.Request]:
             headers=headers,
             timeout=timeout,
             trust_env=trust_env,
+            verify=verify,
             transport=httpx.MockTransport(respond),
         )
 
@@ -208,12 +211,19 @@ def test_explicit_connect_never_uses_user_state(
     def forbidden(*_args: object, **_kwargs: object) -> NoReturn:
         pytest.fail("implicit credentials or configuration accessed")
 
+    context = httpx2.create_ssl_context(trust_env=False)
+
+    def system_context(*, trust_env: bool) -> SSLContext:
+        assert trust_env is False
+        return context
+
     ambient = no_environment()
     with monkeypatch.context() as patch:
         patch.setattr(secrets, "token", forbidden)
         patch.setattr(secrets, "endpoints", forbidden)
         patch.setattr(secrets.userconfig, "strings", forbidden)
         patch.setattr(Path, "home", forbidden)
+        patch.setattr(httpx2, "create_ssl_context", system_context)
         patch.setattr(os, "environ", ambient)
         app = rt.read_app(token_file, ITEM, endpoints=URLS)
     assert app == rt.AppKey("123", "test-signing-key")

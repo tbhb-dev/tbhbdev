@@ -13,7 +13,7 @@ from typing import TYPE_CHECKING, cast
 
 import httpx2
 
-from tbhbdev import content
+from tbhbdev import content, github_tls
 from tbhbdev.alpha import identity, review, review_doc
 from tbhbdev.alpha.agent import credentials, runfiles
 from tbhbdev.alpha.agent.decisions import repo
@@ -133,6 +133,7 @@ def api(
             },
             json=payload,
             timeout=TIMEOUT,
+            verify=github_tls.public_roots(),
         )
     except httpx2.HTTPError as exc:
         message = f"the {method} request failed: {type(exc).__name__}"
