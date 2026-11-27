@@ -1,0 +1,244 @@
+# SPDX-License-Identifier: Apache-2.0
+# Copyright Tony Burns
+
+load("//factory/cli:python.bzl", "cli_py_library")
+
+cli_py_library(
+    name = "__init__",
+    srcs = ["__init__.py"],
+    imports = ["../../../.."],
+    visibility = ["//factory/cli:__subpackages__"],
+)
+
+cli_py_library(
+    name = "cleanup",
+    srcs = ["cleanup.py"],
+    imports = ["../../../.."],
+    pyi_deps = [
+        "//factory/cli/src/tbhbdev/alpha/agent:model",
+        "//factory/cli/src/tbhbdev/alpha/agent/driver/decisions:metadata",
+    ],
+    visibility = ["//factory/cli:__subpackages__"],
+    deps = [
+        ":metadata",
+        "//factory/cli/src/tbhbdev/alpha/agent:transport",
+        "//factory/cli/src/tbhbdev/alpha/agent/decisions:remote_cleanup",
+        "//factory/cli/src/tbhbdev/alpha/agent/driver/decisions:lifecycle",
+    ],
+)
+
+cli_py_library(
+    name = "dispatch",
+    srcs = ["dispatch.py"],
+    imports = ["../../../.."],
+    visibility = ["//factory/cli:__subpackages__"],
+    deps = [
+        ":cleanup",
+        ":inspection",
+        ":launch",
+        ":lifecycle",
+        ":metadata",
+        ":steering",
+        "//factory/cli/src/tbhbdev:telemetry",
+        "//factory/cli/src/tbhbdev/alpha/agent:model",
+        "//factory/cli/src/tbhbdev/alpha/agent:signing_parity",
+        "//factory/cli/src/tbhbdev/alpha/agent:transport",
+    ],
+)
+
+cli_py_library(
+    name = "hosts",
+    srcs = ["hosts.py"],
+    imports = ["../../../.."],
+    pyi_deps = ["//factory/cli/src/tbhbdev/alpha/agent/driver/decisions:metadata"],
+    visibility = ["//factory/cli:__subpackages__"],
+    deps = [
+        "//factory/cli/src/tbhbdev:telemetry",
+        "//factory/cli/src/tbhbdev/alpha/agent:admission",
+        "//factory/cli/src/tbhbdev/alpha/agent:model",
+        "//factory/cli/src/tbhbdev/alpha/agent:transport",
+        "//factory/cli/src/tbhbdev/alpha/agent/decisions:limits",
+        "//factory/cli/src/tbhbdev/alpha/agent/decisions:remote_host",
+        "//factory/cli/src/tbhbdev/alpha/agent/driver/decisions:hosts",
+    ],
+)
+
+cli_py_library(
+    name = "inputs",
+    srcs = ["inputs.py"],
+    imports = ["../../../.."],
+    visibility = ["//factory/cli:__subpackages__"],
+    deps = [
+        ":version_heal",
+        "//factory/cli/src/tbhbdev:telemetry",
+        "//factory/cli/src/tbhbdev/alpha/agent:model",
+        "//factory/cli/src/tbhbdev/alpha/agent/driver/decisions:prompt",
+    ],
+)
+
+cli_py_library(
+    name = "inspection",
+    srcs = ["inspection.py"],
+    imports = ["../../../.."],
+    pyi_deps = ["//factory/cli/src/tbhbdev/alpha/agent/driver/decisions:metadata"],
+    visibility = ["//factory/cli:__subpackages__"],
+    deps = [
+        "//factory/cli/src/tbhbdev/alpha:terminal",
+        "//factory/cli/src/tbhbdev/alpha/agent:model",
+        "//factory/cli/src/tbhbdev/alpha/agent:transport",
+        "//factory/cli/src/tbhbdev/alpha/agent/decisions:remote_inspection",
+        "//factory/cli/src/tbhbdev/alpha/agent/decisions:remote_run",
+    ],
+)
+
+cli_py_library(
+    name = "launch",
+    srcs = ["launch.py"],
+    imports = ["../../../.."],
+    visibility = ["//factory/cli:__subpackages__"],
+    deps = [
+        ":hosts",
+        ":inputs",
+        ":launcher",
+        ":metadata",
+        ":reviews",
+        ":startup",
+        ":version_heal",
+        "//factory/cli/src/tbhbdev:telemetry",
+        "//factory/cli/src/tbhbdev:version",
+        "//factory/cli/src/tbhbdev/alpha/agent:model",
+        "//factory/cli/src/tbhbdev/alpha/agent:transport",
+        "//factory/cli/src/tbhbdev/alpha/agent/decisions:remote_host",
+        "//factory/cli/src/tbhbdev/alpha/agent/decisions:remote_run",
+        "//factory/cli/src/tbhbdev/alpha/agent/decisions:request",
+        "//factory/cli/src/tbhbdev/alpha/agent/driver/decisions:hosts",
+        "//factory/cli/src/tbhbdev/alpha/agent/driver/decisions:launch",
+        "//factory/cli/src/tbhbdev/alpha/agent/driver/decisions:launcher",
+        "//factory/cli/src/tbhbdev/alpha/agent/driver/decisions:metadata",
+        "//factory/cli/src/tbhbdev/alpha/agent/driver/decisions:output",
+    ],
+)
+
+cli_py_library(
+    name = "launcher",
+    srcs = ["launcher.py"],
+    imports = ["../../../.."],
+    visibility = ["//factory/cli:__subpackages__"],
+    deps = [
+        "//factory/cli/src/tbhbdev/alpha:worker_identity",
+        "//factory/cli/src/tbhbdev/alpha/agent:model",
+        "//factory/cli/src/tbhbdev/alpha/agent/driver/decisions:launcher",
+    ],
+)
+
+cli_py_library(
+    name = "lifecycle",
+    srcs = ["lifecycle.py"],
+    imports = ["../../../.."],
+    pyi_deps = ["//factory/cli/src/tbhbdev/alpha/agent/driver/decisions:metadata"],
+    visibility = ["//factory/cli:__subpackages__"],
+    deps = [
+        "//factory/cli/src/tbhbdev/alpha/agent:model",
+        "//factory/cli/src/tbhbdev/alpha/agent:transport",
+        "//factory/cli/src/tbhbdev/alpha/agent/decisions:remote_run",
+        "//factory/cli/src/tbhbdev/alpha/agent/driver/decisions:lifecycle",
+        "//factory/cli/src/tbhbdev/alpha/agent/driver/decisions:output",
+    ],
+)
+
+cli_py_library(
+    name = "metadata",
+    srcs = ["metadata.py"],
+    imports = ["../../../.."],
+    visibility = ["//factory/cli:__subpackages__"],
+    deps = [
+        "//factory/cli/src/tbhbdev/alpha/agent:model",
+        "//factory/cli/src/tbhbdev/alpha/agent:runfiles",
+        "//factory/cli/src/tbhbdev/alpha/agent/decisions:runfiles_names",
+        "//factory/cli/src/tbhbdev/alpha/agent/driver/decisions:metadata",
+    ],
+)
+
+cli_py_library(
+    name = "reviews",
+    srcs = ["reviews.py"],
+    imports = ["../../../.."],
+    pyi_deps = ["//factory/cli/src/tbhbdev/alpha/agent/driver/decisions:metadata"],
+    visibility = ["//factory/cli:__subpackages__"],
+    deps = [
+        ":metadata",
+        "//factory/cli/src/tbhbdev/alpha/agent:model",
+        "//factory/cli/src/tbhbdev/alpha/agent:transport",
+        "//factory/cli/src/tbhbdev/alpha/agent/driver/decisions:reviews",
+    ],
+)
+
+cli_py_library(
+    name = "startup",
+    srcs = ["startup.py"],
+    imports = ["../../../.."],
+    pyi_deps = [
+        "//factory/cli/src/tbhbdev/alpha/agent/driver/decisions:metadata",
+        "//factory/cli/src/tbhbdev/alpha/agent:model",
+    ],
+    visibility = ["//factory/cli:__subpackages__"],
+    deps = [
+        ":cleanup",
+        ":lifecycle",
+        ":metadata",
+        "//factory/cli/src/tbhbdev/alpha/agent:shims",
+        "//factory/cli/src/tbhbdev/alpha/agent:transport",
+        "//factory/cli/src/tbhbdev/alpha/agent/decisions:remote_shell",
+        "//factory/cli/src/tbhbdev/alpha/agent/driver/decisions:lifecycle",
+        "//factory/cli/src/tbhbdev/alpha/agent/driver/decisions:output",
+    ],
+)
+
+cli_py_library(
+    name = "steering",
+    srcs = ["steering.py"],
+    imports = ["../../../.."],
+    pyi_deps = ["//factory/cli/src/tbhbdev/alpha/agent/driver/decisions:metadata"],
+    visibility = ["//factory/cli:__subpackages__"],
+    deps = [
+        "//factory/cli/src/tbhbdev/alpha:terminal",
+        "//factory/cli/src/tbhbdev/alpha/agent:model",
+        "//factory/cli/src/tbhbdev/alpha/agent:transport",
+        "//factory/cli/src/tbhbdev/alpha/agent/decisions:remote_host",
+        "//factory/cli/src/tbhbdev/alpha/agent/decisions:remote_shell",
+        "//factory/cli/src/tbhbdev/alpha/agent/driver/decisions:steering",
+    ],
+)
+
+cli_py_library(
+    name = "version_heal",
+    srcs = ["version_heal.py"],
+    imports = ["../../../.."],
+    visibility = ["//factory/cli:__subpackages__"],
+    deps = [
+        "//factory/cli/src/tbhbdev:version",
+        "//factory/cli/src/tbhbdev/alpha:version_check",
+        "//factory/cli/src/tbhbdev/alpha/agent:model",
+        "//factory/cli/src/tbhbdev/alpha/agent:transport",
+        "//factory/cli/src/tbhbdev/alpha/agent/decisions:remote_shell",
+        "//factory/cli/src/tbhbdev/alpha/agent/driver/decisions:launch",
+    ],
+)
+
+filegroup(
+    name = "package_files",
+    srcs = glob(["*.py"]) + ["//factory/cli/src/tbhbdev/alpha/agent/driver/decisions:package_files"],
+    visibility = ["//factory/cli/src/tbhbdev/alpha/agent:__pkg__"],
+)
+
+cli_py_library(
+    name = "arguments",
+    srcs = ["arguments.py"],
+    imports = ["../../../.."],
+    visibility = ["//factory/cli:__subpackages__"],
+    deps = [
+        "//factory/cli/src/tbhbdev/alpha:worker_identity",
+        "//factory/cli/src/tbhbdev/alpha/agent:model",
+        "//factory/cli/src/tbhbdev/alpha/agent/decisions:config",
+    ],
+)

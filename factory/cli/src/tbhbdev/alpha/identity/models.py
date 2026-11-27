@@ -2,13 +2,15 @@
 # Copyright Tony Burns
 """Normalize model, version, effort and surface values from known harnesses."""
 
-import re
-from pathlib import PurePath
-from typing import TYPE_CHECKING
+from __future__ import annotations
 
-if TYPE_CHECKING:
-    from collections.abc import Mapping
-    from typing import Literal
+import re
+from dataclasses import dataclass
+from pathlib import PurePath
+from typing import Literal
+lazy from collections.abc import Mapping
+
+from tbhbdev.alpha.identity.records import Json, as_str
 
 EFFORTS = {"none", "minimal", "low", "medium", "high", "xhigh", "max"}
 BAD_VALUE = re.compile(r"[\s;,]")
@@ -99,3 +101,132 @@ def provider_model(key: str, model: str | None) -> str | None:
     if key == "antigravity":
         return agy_model(model)[0]
     return model
+
+
+CLAUDE = "claude"
+
+
+CODEX = "codex"
+
+
+ANTIGRAVITY = "antigravity"
+
+
+SLUGS = {CLAUDE: "claude-code", CODEX: "codex", ANTIGRAVITY: "antigravity"}
+
+
+@dataclass(frozen=True)
+class Ident:
+    """One agent's final trailer values. ``root`` is the root session hash."""
+
+    root: str
+    harness: str
+    subagent: str | None = None
+    model: str | None = None
+    effort: str | None = None
+    surface: str | None = None
+    launch: str | None = None
+    started_at: str | None = None
+
+    @classmethod
+    def from_receipt(cls, receipt: Json) -> Ident:
+        """Rebuild an identity from a stored edit receipt."""
+        return cls(
+            root=str(receipt["root"]),
+            harness=str(receipt["harness"]),
+            subagent=as_str(receipt.get("subagent")),
+            model=as_str(receipt.get("model")),
+            effort=as_str(receipt.get("effort")),
+            surface=as_str(receipt.get("surface")),
+        )
+
+    def attrs(self) -> dict[str, str]:
+        """Trailer attributes; unknown values are omitted."""
+        found = {
+            "effort": self.effort,
+            "harness": self.harness,
+            "launch": self.launch,
+            "model": self.model,
+            "session": self.root,
+            "started_at": self.started_at,
+            "subagent": self.subagent,
+            "surface": self.surface,
+        }
+        return {k: v for k, v in found.items() if v}
+
+    def agent_key(self) -> tuple[str, str | None]:
+        """Which agent this is, independent of its model or effort."""
+        return (self.root, self.subagent)
+
+
+@dataclass(frozen=True)
+class Seen:
+    """Raw, unvalidated observations about one agent (any JSON-ish value)."""
+
+    version: object = None
+    model: object = None
+    effort: object = None
+    surface: object = None
+
+
+@dataclass(frozen=True)
+class Committer:
+    """The agent running ``git commit``, plus its root agent."""
+
+    key: str
+    ident: Ident
+    root_ident: Ident
+
+
+def detect(env: Mapping[str, str]) -> tuple[str, str] | None:
+    """Return (harness key, raw conversation ID), or None outside a harness.
+
+    The innermost harness wins: agy, then codex, then claude. For agy this is
+    the executing conversation (possibly a subagent); for codex, the root
+    session.
+    """
+    for key, var in (
+        (ANTIGRAVITY, "ANTIGRAVITY_CONVERSATION_ID"),
+        (CODEX, "CODEX_SESSION_ID"),
+        (CLAUDE, "CLAUDE_CODE_SESSION_ID"),
+    ):
+        if env.get(var):
+            return key, env[var]
+    return None
+
+
+def clean_value(value: object) -> str | None:
+    """Lowercase a trailer value; None when empty or not grammar-safe."""
+    text = str(value).strip().lower() if value is not None else ""
+    if not text or BAD_VALUE.search(text) or text == "<synthetic>":
+        return None
+    return text
+
+
+def model_effort(
+    key: str, raw_model: object, raw_effort: object
+) -> tuple[str | None, str | None]:
+    """Final (model, effort) trailer values from raw observations."""
+    model, effort = as_str(raw_model), raw_effort
+    if key == ANTIGRAVITY and model and not effort:
+        effort = agy_model(model)[1]  # only from the verified table
+    cleaned_effort = clean_value(effort)
+    return provider_model(key, model), (
+        cleaned_effort if cleaned_effort in EFFORTS else None
+    )
+
+
+def make_ident(
+    key: str, session: str, seen: Seen, subagent: str | None = None
+) -> Ident:
+    """Final trailer values from raw-ish parts. Unknowns are omitted, never guessed."""
+    model, effort = model_effort(key, seen.model, seen.effort)
+    cleaned_version = clean_value(seen.version)
+    return Ident(
+        root=session,
+        harness=SLUGS[key] + (f":{cleaned_version}" if cleaned_version else ""),
+        subagent=subagent or None,
+        model=model,
+        effort=effort,
+        surface=as_str(seen.surface),
+    )

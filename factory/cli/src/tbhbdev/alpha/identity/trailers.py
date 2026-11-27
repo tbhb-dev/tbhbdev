@@ -3,6 +3,8 @@
 
 """Merge attribution trailers and validate their timestamps."""
 
+from __future__ import annotations
+
 import re
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING
@@ -86,3 +88,87 @@ def merge_pr_trailers(
             value = replace_trailer_fields(value, {"started_at": start})
             roles[ident] = key, value
     return sorted(roles.values(), key=lambda pair: pair[0] != KEY_GEN)
+
+
+ATTR_ORDER = [
+    "effort",
+    "harness",
+    "launch",
+    "model",
+    "session",
+    "started_at",
+    "subagent",
+    "surface",
+    "variant",
+]
+
+
+def format_value(attrs: Mapping[str, str]) -> str:
+    """Render ``LLM k=v;...`` in the grammar's attribute order."""
+    return "LLM " + ";".join(f"{k}={attrs[k]}" for k in ATTR_ORDER if attrs.get(k))
+
+
+LLM_LINE = re.compile(r"^(Generated-by|Assisted-by):[ \t]*(LLM\b.*)$", re.MULTILINE)
+
+
+LLM_LINES = re.compile(r"^(?:Generated-by|Assisted-by):[ \t]*LLM\b.*\n?", re.MULTILINE)
+
+
+AGENT_ATTR = re.compile(r"(?<![^\s;])(session|subagent)=([^\s;]+)")
+
+
+ATTR_PAIR = re.compile(r"(?<![^\s;])([a-z_]+)=([^\s;]+)")
+
+
+type Trailer = tuple[str, str]
+
+
+def llm_trailers(text: str) -> list[Trailer]:
+    """The (key, value) of each ``LLM`` trailer line in a message."""
+    return [(m[1], m[2]) for m in LLM_LINE.finditer(text)]
+
+
+def trailer_agent(value: str) -> tuple[str | None, str | None]:
+    """(session, subagent) named by a trailer value; None where absent."""
+    attrs = dict(AGENT_ATTR.findall(value))
+    return attrs.get("session"), attrs.get("subagent")
+
+
+def without_start(value: str) -> str:
+    """A trailer value with its ``started_at`` attribute left out."""
+    parts = value.split(";")
+    return ";".join(p for p in parts if not p.startswith("started_at="))
+
+
+def earliest_starts(found: list[Trailer]) -> list[Trailer]:
+    """Each trailer replaced by its twin with the earliest start.
+
+    Twins have the same key and the same value apart from ``started_at``, so
+    the hook's re-stamp of an amended commit collapses onto the original line.
+    A line that differs in any other attribute stays apart, which means a
+    hand-written early time cannot replace the hook's line and drop its
+    ``launch``. The twin with the earliest ``started_at`` replaces the rest, so
+    a value with the field beats one without it.
+    """
+    best: dict[tuple[str, str], str] = {}
+    for key, value in found:
+        twin = (key, without_start(value))
+        start = trailer_start(value)
+        if start and (twin not in best or start < trailer_start(best[twin])):
+            best[twin] = value
+    return [(k, best.get((k, without_start(v)), v)) for k, v in found]
+
+
+def merge_trailers(found: list[Trailer]) -> list[Trailer]:
+    """Deduplicated, ``Generated-by`` first; Generated-by beats Assisted-by.
+
+    An agent with any ``Generated-by`` loses its ``Assisted-by`` lines, and
+    one agent's lines merge into the one with the earliest ``started_at``.
+    """
+    generated = {trailer_agent(v) for k, v in found if k == KEY_GEN}
+    kept = [
+        (k, v)
+        for k, v in earliest_starts(found)
+        if k == KEY_GEN or trailer_agent(v) not in generated
+    ]
+    return sorted(dict.fromkeys(kept), key=lambda kv: kv[0] != KEY_GEN)

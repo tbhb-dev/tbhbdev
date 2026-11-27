@@ -139,8 +139,6 @@ elif name == "git":
         sys.exit(0)
     assert verb == "ls-remote"
     if args[-1] == "refs/heads/agent/sample":
-        if control.get("origin_error"):
-            sys.exit(74)
         if control.get("branch", True):
             print("a" * 40 + "\\trefs/heads/agent/sample")
     else:

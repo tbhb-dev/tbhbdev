@@ -1,0 +1,116 @@
+# SPDX-License-Identifier: Apache-2.0
+# Copyright Tony Burns
+
+load("//factory/cli:python.bzl", "cli_py_library")
+load("//factory/cli/tests:pytest.bzl", "cli_py_test")
+
+filegroup(
+    name = "package_files",
+    srcs = glob(["*.py"]),
+    visibility = ["//factory/cli/tests:__pkg__"],
+)
+
+cli_py_test(
+    name = "test_remote_cleanup",
+    srcs = ["test_remote_cleanup.py"],
+    imports = ["../../../.."],
+    deps = [
+        ":conftest",
+        "//factory/cli/src/tbhbdev/alpha/agent/decisions:remote_cleanup",
+        "//factory/cli/tests:agent_driver_example",
+        "//factory/cli/tests:conftest",
+        "//factory/cli/tests:remote_script_example",
+        "@cli_pip//pytest",
+    ],
+)
+
+cli_py_test(
+    name = "test_remote_host",
+    srcs = ["test_remote_host.py"],
+    imports = ["../../../.."],
+    deps = [
+        ":conftest",
+        "//factory/cli/src/tbhbdev/alpha/agent/decisions:limits",
+        "//factory/cli/src/tbhbdev/alpha/agent/decisions:remote_host",
+        "//factory/cli/tests:agent_driver_example",
+        "//factory/cli/tests:agent_example",
+        "//factory/cli/tests:conftest",
+        "//factory/cli/tests:remote_script_example",
+        "@cli_pip//pytest",
+    ],
+)
+
+cli_py_test(
+    name = "test_remote_inspection",
+    srcs = ["test_remote_inspection.py"],
+    imports = ["../../../.."],
+    pyi_deps = [
+        "//factory/cli/src/tbhbdev/alpha/agent/driver/decisions:metadata",
+        "//factory/cli/src/tbhbdev/alpha/agent:model",
+    ],
+    deps = [
+        ":conftest",
+        "//factory/cli/src/tbhbdev/alpha/agent:settings",
+        "//factory/cli/src/tbhbdev/alpha/agent:transport",
+        "//factory/cli/src/tbhbdev/alpha/agent/decisions:remote_inspection",
+        "//factory/cli/src/tbhbdev/alpha/agent/driver:arguments",
+        "//factory/cli/src/tbhbdev/alpha/agent/driver:inspection",
+        "//factory/cli/src/tbhbdev/alpha/agent/driver:launch",
+        "//factory/cli/src/tbhbdev/alpha/agent/driver:metadata",
+        "//factory/cli/tests:agent_cli_example",
+        "//factory/cli/tests:agent_driver_example",
+        "//factory/cli/tests:agent_example",
+        "//factory/cli/tests:conftest",
+        "//factory/cli/tests:remote_script_example",
+        "@cli_pip//pytest",
+    ],
+)
+
+cli_py_test(
+    name = "test_remote_run",
+    srcs = ["test_remote_run.py"],
+    imports = ["../../../.."],
+    deps = [
+        ":conftest",
+        "//factory/cli/src/tbhbdev/alpha/agent:transport",
+        "//factory/cli/src/tbhbdev/alpha/agent/decisions:remote_host",
+        "//factory/cli/src/tbhbdev/alpha/agent/decisions:remote_run",
+        "//factory/cli/tests:agent_driver_example",
+        "//factory/cli/tests:agent_example",
+        "//factory/cli/tests:conftest",
+        "//factory/cli/tests:remote_script_example",
+        "@cli_pip//pytest",
+    ],
+)
+
+cli_py_test(
+    name = "test_remote_shell",
+    srcs = ["test_remote_shell.py"],
+    imports = ["../../../.."],
+    deps = [
+        ":conftest",
+        "//factory/cli/src/tbhbdev/alpha/agent/decisions:policy",
+        "//factory/cli/src/tbhbdev/alpha/agent/decisions:remote_cleanup",
+        "//factory/cli/src/tbhbdev/alpha/agent/decisions:remote_host",
+        "//factory/cli/src/tbhbdev/alpha/agent/decisions:remote_inspection",
+        "//factory/cli/src/tbhbdev/alpha/agent/decisions:remote_run",
+        "//factory/cli/src/tbhbdev/alpha/agent/decisions:remote_shell",
+        "//factory/cli/tests:agent_driver_example",
+        "//factory/cli/tests:agent_example",
+        "//factory/cli/tests:conftest",
+        "//factory/cli/tests:remote_script_example",
+        "@cli_pip//pytest",
+    ],
+)
+
+cli_py_library(
+    name = "conftest",
+    testonly = True,
+    srcs = ["conftest.py"],
+    imports = ["../../../.."],
+    visibility = ["//factory/cli/tests:__subpackages__"],
+    deps = [
+        "//factory/cli/tests:agent_example",
+        "@cli_pip//pytest",
+    ],
+)

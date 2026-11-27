@@ -41,28 +41,6 @@ cli_py_library(
 )
 
 cli_py_library(
-    name = "driver",
-    srcs = ["driver.py"],
-    imports = ["../../../.."],
-    visibility = ["//factory/cli:__subpackages__"],
-    deps = [
-        ":config",
-        ":request",
-        "//factory/cli/src/tbhbdev/alpha:brief",
-        "//factory/cli/src/tbhbdev/alpha/agent:model",
-        "//factory/cli/src/tbhbdev/alpha/identity:models",
-    ],
-)
-
-cli_py_library(
-    name = "launcher",
-    srcs = ["launcher.py"],
-    imports = ["../../../.."],
-    visibility = ["//factory/cli:__subpackages__"],
-    deps = ["//factory/cli/src/tbhbdev/alpha/agent:model"],
-)
-
-cli_py_library(
     name = "limits",
     srcs = ["limits.py"],
     imports = ["../../../.."],
@@ -83,15 +61,61 @@ cli_py_library(
 )
 
 cli_py_library(
-    name = "remote",
-    srcs = ["remote.py"],
+    name = "remote_inspection",
+    srcs = ["remote_inspection.py"],
+    imports = ["../../../.."],
+    visibility = ["//factory/cli:__subpackages__"],
+    deps = [
+        ":remote_run",
+        ":remote_shell",
+        ":repo",
+        ":runfiles_names",
+    ],
+)
+
+cli_py_library(
+    name = "remote_cleanup",
+    srcs = ["remote_cleanup.py"],
+    imports = ["../../../.."],
+    visibility = ["//factory/cli:__subpackages__"],
+    deps = [
+        ":remote_shell",
+        ":repo",
+        ":runfiles_names",
+    ],
+)
+
+cli_py_library(
+    name = "remote_run",
+    srcs = ["remote_run.py"],
     imports = ["../../../.."],
     pyi_deps = ["//factory/cli/src/tbhbdev/alpha/agent:model"],
     visibility = ["//factory/cli:__subpackages__"],
     deps = [
-        ":repo",
+        ":remote_host",
+        ":remote_shell",
         ":runfiles_names",
     ],
+)
+
+cli_py_library(
+    name = "remote_host",
+    srcs = ["remote_host.py"],
+    imports = ["../../../.."],
+    pyi_deps = ["//factory/cli/src/tbhbdev/alpha/agent:model"],
+    visibility = ["//factory/cli:__subpackages__"],
+    deps = [
+        ":remote_shell",
+        ":repo",
+    ],
+)
+
+cli_py_library(
+    name = "remote_shell",
+    srcs = ["remote_shell.py"],
+    imports = ["../../../.."],
+    visibility = ["//factory/cli:__subpackages__"],
+    deps = [":runfiles_names"],
 )
 
 cli_py_library(

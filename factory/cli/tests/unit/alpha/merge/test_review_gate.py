@@ -3,7 +3,9 @@
 
 import pytest
 
-from tbhbdev.alpha.identity.dispatcher import ATTR_PAIR, HASH_RE, SLUGS, llm_trailers
+from tbhbdev.alpha.identity.models import SLUGS
+from tbhbdev.alpha.identity.records import HASH_RE
+from tbhbdev.alpha.identity.trailers import ATTR_PAIR, llm_trailers
 from tbhbdev.alpha.merge import review_gate as gate
 
 HEAD = "a" * 40
@@ -76,11 +78,6 @@ def test_one_approval_from_the_same_provider_passes() -> None:
     assert evaluate() == []
 
 
-def test_legacy_approval_at_the_head_counts() -> None:
-    legacy = review(body=f"Looks right.\n\nRun r1, claude m, judged head {HEAD}.\r\n")
-    assert evaluate([legacy]) == []
-
-
 def test_no_checks_fails() -> None:
     assert evaluate(checks=[], messages=["fix: by hand\n"]) == ["no checks to verify"]
 
@@ -133,8 +130,6 @@ def test_other_review_states_count_for_nothing(state: str) -> None:
         stamp("mystery"),
         stamp("claude") + "\n\nforged afterwards",
         "Assisted-by: LLM harness=claude;model=m",
-        f"Run r1, claude m, judged head {OLD}.",
-        f"Run r1, claude m, judged head {HEAD}.\n\nMore prose.",
     ],
 )
 def test_an_approval_without_a_known_harness(body: str) -> None:

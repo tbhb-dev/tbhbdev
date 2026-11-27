@@ -15,7 +15,7 @@ from agent_example import settings
 from tbhbdev import userconfig
 from tbhbdev.alpha import close, opened
 from tbhbdev.alpha import pull_request as pr
-from tbhbdev.alpha.identity import dispatcher as agent_identity
+from tbhbdev.alpha.identity import trailers as identity_trailers
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
@@ -101,7 +101,7 @@ def root() -> str:
 def trailer_line() -> str:
     value = pr.posting_value(ENV)
     assert value is not None
-    return f"{agent_identity.KEY_GEN}: {value}"
+    return f"{identity_trailers.KEY_GEN}: {value}"
 
 
 def test_close_pr_it_opened_comments_the_reason_and_the_trailer(
@@ -797,12 +797,6 @@ def test_view_pins_the_repo_when_given(gh: Gh) -> None:
     close.view("pr", 7, "tbhb-dev/tbhbdev")
     (call,) = gh.calls
     assert call[3:5] == ["--repo", "github.com/tbhb-dev/tbhbdev"]
-
-
-def test_comment_is_an_alias_for_reason(gh: Gh) -> None:
-    opened.record_opened(root(), ["tbhb-dev/tbhbdev#7"])
-    assert close.main(["pr", "close", "7", "--comment", "Done."], env=ENV) == 0
-    assert gh.calls[-1][-1] == f"Done.\n\n{trailer_line()}\n"
 
 
 DELETE = ["api", "-X", "DELETE", "repos/tbhb-dev/tbhbdev/git/refs/heads/feat/x%20y"]

@@ -44,7 +44,7 @@ PATTERNS = (
 TAGS = {
     expression: oses for _, location, expression, oses in PATTERNS if location == "tag"
 }
-BUILD_TAG = re.compile(r"^//\s*(go:build|\+build)\s+(.+)$", re.MULTILINE)
+BUILD_TAG = re.compile(r"^//\s*go:build\s+(.+)$", re.MULTILINE)
 MACROS = {"gomutants_test": "go", "mutmut_test": "py"}
 
 
@@ -67,15 +67,9 @@ def possibilities(node: ast.expr, os: str) -> set[bool]:
 
 
 def build_oses(text: str) -> frozenset[str]:
-    """Intersect Go build expressions, preferring go:build over legacy lines."""
-    tags = BUILD_TAG.findall(text)
-    modern = [expression for kind, expression in tags if kind == "go:build"]
-    expressions = modern or [
-        " || ".join(" && ".join(term.split(",")) for term in expression.split())
-        for _, expression in tags
-    ]
+    """Intersect Go build expressions."""
     allowed = ALL
-    for expression in expressions:
+    for expression in BUILD_TAG.findall(text):
         translated = expression.replace("&&", " and ").replace("||", " or ")
         tree = ast.parse(translated.replace("!", " not ").strip(), mode="eval")
         allowed = allowed & {os for os in ALL if True in possibilities(tree.body, os)}
@@ -102,7 +96,7 @@ def implied_oses(path: Path) -> frozenset[str]:
         and BUILD_TAG.search(text)
         and any(
             re.search(r"\b" + tag + r"\b", expression)
-            for _, expression in BUILD_TAG.findall(text)
+            for expression in BUILD_TAG.findall(text)
             for tag in TAGS
         )
     ):

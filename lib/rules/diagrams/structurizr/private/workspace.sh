@@ -56,12 +56,12 @@ render() {
   local sources=("$out/diagrams/"*.puml) source
   ((${#sources[@]})) || error "export produced no PlantUML views"
   for source in "${sources[@]}"; do
-    awk '{print} /^@startuml/ && !inserted++ {print "!pragma layout smetana\nskinparam defaultFontName Liberation Sans"}' "$source" >"$source.tmp"
+    awk '{print} /^@startuml/ && !inserted++ {print "!pragma layout smetana\nskinparam defaultFontName IBM Plex Sans"}' "$source" >"$source.tmp"
     mv "$source.tmp" "$source"
   done
   # Fontconfig must never discover host font directories on Linux. Java on
   # macOS uses its native font manager; debugfonts below verifies the TTF used.
-  [[ -f $fonts/LiberationSans-Regular.ttf ]] || error "pinned Liberation Sans font is missing"
+  [[ -f $fonts/IBMPlexSans-Regular.ttf ]] || error "pinned IBM Plex Sans font is missing"
   mkdir -p "$scratch/pinned-fonts"
   cp -L "$fonts/"*.ttf "$scratch/pinned-fonts/"
   fonts=$(cd "$scratch/pinned-fonts" && pwd -P)
@@ -87,19 +87,19 @@ render() {
     # macOS still requires eager registration by its native font manager.
     if [[ $os == Linux ]] &&
       sed -n 's/^INFO: FC font [^ ]* maps to family //p' "$scratch/fonts.log" |
-      grep -Fx "Liberation Sans in file $fonts/LiberationSans-$face.ttf" >/dev/null; then
+      grep -Fx "IBM Plex Sans in file $fonts/IBMPlexSans-$face.ttf" >/dev/null; then
       continue
     fi
-    grep -F "Registered file $fonts/LiberationSans-$face.ttf as font ** TrueType Font: Family=Liberation Sans " "$scratch/fonts.log" >/dev/null || {
+    grep -F "Registered file $fonts/IBMPlexSans-$face.ttf as font ** TrueType Font: Family=IBM Plex Sans " "$scratch/fonts.log" >/dev/null || {
       cat "$scratch/fonts.log"
-      error "JVM did not use the pinned Liberation Sans TTF: $face"
+      error "JVM did not use the pinned IBM Plex Sans TTF: $face"
     }
   done
   java_run "-Duser.home=$scratch/java-home" "-Dsun.java2d.fontpath=$fonts" -jar "$plantuml" -failfast2 -tpng "${sources[@]}"
   for source in "${sources[@]}"; do
     local families
     families=$(grep -o '<text[^>]*' "${source%.puml}.svg" | grep -o 'font-family="[^"]*"' | sort -u || true)
-    [[ $families == 'font-family="Liberation Sans"' ]] || error "SVG does not use only Liberation Sans: ${source##*/}"
+    [[ $families == 'font-family="IBM Plex Sans"' ]] || error "SVG does not use only IBM Plex Sans: ${source##*/}"
     [[ -s ${source%.puml}.svg && -s ${source%.puml}.png ]] || error "render produced no images for ${source##*/}"
   done
 }
@@ -144,7 +144,7 @@ check() {
   if ((problems)); then return 1; fi
   if [[ $mode == check ]]; then
     echo "structurizr_workspace: committed JSON and SVG exports are current"
-    echo "structurizr_workspace: PNG bytes were not compared by this test; the PNG test compares them on macOS arm64 only"
+    echo "structurizr_workspace: PNG bytes were not compared by this test; the PNG test compares them on Linux x86_64 only"
   else
     echo "structurizr_workspace: committed PNG exports are current"
   fi
@@ -157,15 +157,14 @@ update() {
   cp "$out/workspace.json" "$BUILD_WORKSPACE_DIRECTORY/$workspace_json"
   chmod 0644 "$BUILD_WORKSPACE_DIRECTORY/$workspace_json"
   shopt -s nullglob
-  # PNG bytes are only measured on macOS arm64. Other platforms would write
-  # PNGs that the macOS arm64 test rejects.
+  # Match the platform that compares the committed PNG bytes.
   local images=("$out/diagrams/"*.svg) os arch
   os=$(uname -s)
   arch=$(uname -m)
-  if [[ $os == Darwin && $arch == arm64 ]]; then
+  if [[ $os == Linux && $arch == x86_64 ]]; then
     images+=("$out/diagrams/"*.png)
   else
-    echo "structurizr_workspace: skipped PNG files; update them on macOS arm64"
+    echo "structurizr_workspace: skipped PNG files; update them on Linux x86_64"
   fi
   for fresh in "${images[@]}"; do
     destination="$BUILD_WORKSPACE_DIRECTORY/$diagrams_dir/${fresh##*/}"
