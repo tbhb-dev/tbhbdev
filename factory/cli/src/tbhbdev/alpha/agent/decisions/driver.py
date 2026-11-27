@@ -39,8 +39,8 @@ _PUSH_COMMAND = re.compile(
     rf"[\"']?\+?(?:[^\s:`\"']+:)?({brief.BRANCH_REF}){brief.REF_END}"
 )
 _PUSH_PROSE = re.compile(
-    r"(?<!git )\bpush (?:(?:\w+ )?to )?(?:(?:a|the|this|its|current|existing) )*"
-    r"(?:branch (?:named )?)?[`\"']?"
+    r"(?<!git )\bpush\s+(?:(?:\w+\s+)?to\s+)?"
+    r"(?:(?:a|the|this|its|current|existing)\s+)*(?:branch\s+(?:named\s+)?)?[`\"']?"
     rf"({brief.BRANCH_REF}){brief.REF_END}",
     re.IGNORECASE,
 )
@@ -63,6 +63,15 @@ def _instructions(pattern: re.Pattern[str], prose: str) -> list[str | None]:
     ]
 
 
+def _prose_push_targets(prompt: str) -> list[str]:
+    return [
+        target
+        for block in brief.PROSE_BREAK.split(prompt)
+        for target in _instructions(_PUSH_PROSE, block)
+        if target and brief.looks_like_branch(target)
+    ]
+
+
 def _unfetched_explicit_refs(
     prompt: str, named_refs: list[str | None], fetch_refs: list[str]
 ) -> list[str]:
@@ -77,9 +86,8 @@ def _unfetched_explicit_refs(
     return [ref for ref in dict.fromkeys(explicit) if ref not in fetch_refs]
 
 
-def _wrong_build_branches(  # noqa: PLR0913 -- Keep the file lookup explicit.
+def _wrong_build_branches(
     prompt: str,
-    prose: str,
     branch: str,
     start_ref: str | None,
     updates: list[str | None],
@@ -91,9 +99,7 @@ def _wrong_build_branches(  # noqa: PLR0913 -- Keep the file lookup explicit.
         for target in brief.branch_instructions(prompt)
         if target.removeprefix("refs/heads/") != branch
     ]
-    push_targets = _instructions(_PUSH_COMMAND, prompt) + _instructions(
-        _PUSH_PROSE, prose
-    )
+    push_targets = _instructions(_PUSH_COMMAND, prompt) + _prose_push_targets(prompt)
     allowed_pushes = {branch, "HEAD"}
     if start_ref is not None:
         allowed_pushes.add(start_ref.removeprefix("refs/heads/"))
@@ -103,9 +109,7 @@ def _wrong_build_branches(  # noqa: PLR0913 -- Keep the file lookup explicit.
     selected.extend(
         target
         for target in push_targets
-        if target
-        and brief.looks_like_branch(target)
-        and target.removeprefix("refs/heads/") not in allowed_pushes
+        if target and target.removeprefix("refs/heads/") not in allowed_pushes
     )
     return [
         f"the brief directs work to {target}. Use the launcher branch {branch}."
@@ -142,9 +146,7 @@ def prompt_launch_problems(  # noqa: PLR0913 -- Keep the file lookup explicit.
     if profile is not Profile.BUILD:
         return problems
     problems.extend(
-        _wrong_build_branches(
-            prompt, prose, branch, start_ref, updates, is_file=is_file
-        )
+        _wrong_build_branches(prompt, branch, start_ref, updates, is_file=is_file)
     )
     if start_ref is None and updates:
         target = updates[0] or "<branch>"

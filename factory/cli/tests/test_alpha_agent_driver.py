@@ -1283,23 +1283,28 @@ def test_prompt_with_foreign_branch_warns_and_launches(
 
 
 @pytest.mark.parametrize(
-    "prompt",
+    ("prompt", "target"),
     [
-        "Create branch `feat/4-exporter`.",
-        "Run `git checkout -b feat/4-exporter`.",
-        "Run `git switch feat/4-exporter`.",
-        "Push to `feat/4-exporter`.",
-        "Push feat/4-exporter.",
-        "Run `git push --set-upstream origin HEAD:feat/4-exporter`.",
+        ("Create branch `feat/4-exporter`.", "feat/4-exporter"),
+        ("Run `git checkout -b feat/4-exporter`.", "feat/4-exporter"),
+        ("Run `git switch feat/4-exporter`.", "feat/4-exporter"),
+        ("Push to `feat/4-exporter`.", "feat/4-exporter"),
+        ("Push feat/4-exporter.", "feat/4-exporter"),
+        (
+            "Run `git push --set-upstream origin HEAD:feat/4-exporter`.",
+            "feat/4-exporter",
+        ),
+        ("Do not open a PR, but push feat/4-exporter.", "feat/4-exporter"),
+        ("Run `git push origin develop`.", "develop"),
     ],
 )
 def test_build_prompt_with_foreign_branch_refuses_launch(
-    remote: Remote, capsys: pytest.CaptureFixture[str], prompt: str
+    remote: Remote, capsys: pytest.CaptureFixture[str], prompt: str, target: str
 ) -> None:
     remote.prompt.write_text(prompt)
     assert launch(remote) == 1
     assert capsys.readouterr().err == (
-        f"example agent: {remote.prompt}: the brief directs work to feat/4-exporter. "
+        f"example agent: {remote.prompt}: the brief directs work to {target}. "
         "Use the launcher branch agent/sample.\n"
     )
     assert remote.records("ssh", limits=True) == []
@@ -1312,6 +1317,7 @@ def test_build_prompt_with_foreign_branch_refuses_launch(
         "Read the README.",
         "Do not create branch feat/other or run `git push origin feat/other`.",
         "Do not push to branch feat/other.",
+        "Do not run: `git push origin feat/other`.",
         "Run `git switch agent/sample`. Then run `git push origin agent/sample`.",
     ],
 )

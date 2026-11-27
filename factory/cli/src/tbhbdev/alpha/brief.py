@@ -90,11 +90,11 @@ NEGATION = re.compile(
     r"(?<![\w-])(?:never|no|not|don['\u2019]t|without|avoid|forbidden)\b"
 )
 TRAILING_PROHIBITION = re.compile(
-    r"[\s`\"')]*(?:(?:is|are) (?:forbidden|prohibited|not allowed)"
+    r"[ \t`\"')]*(?:(?:is|are) (?:forbidden|prohibited|not allowed)"
     r"|(?:must|should) (?:not|never))\b",
     re.IGNORECASE,
 )
-CLAUSE_END = re.compile(r"[.;:\n]")
+CLAUSE_END = re.compile(r"\bbut\b|[.;\n]", re.IGNORECASE)
 PROSE_BREAK = re.compile(r"\n(?=\n|[#>]|```|~~~|[-*+] |\d+[.)] )")
 OTHER_TRAILER_OMISSION = re.compile(
     r"\b(?:no|without) (?:an? |the )?[`\"']?(?:signed-off-by|co-authored-by)[`\"']?,"
