@@ -1434,11 +1434,36 @@ def test_prompt_warns_about_unfetched_refs_and_launches(
     assert capsys.readouterr() == (
         "sample: launched host=example-linux account=agent\n",
         "".join(
-            f"warning: the prompt names {ref} but this launch has no "
+            f"warning: {remote.prompt}: the prompt names {ref} but this launch has no "
             f"--fetch-ref {ref}; a run whose mirror lacks it may end with no work\n"
             for ref in unfetched
         ),
     )
+
+
+@pytest.mark.parametrize(
+    ("ref", "pinned"),
+    [
+        ("refs/heads/x/", False),
+        ("refs/heads/x//y", False),
+        ("refs/pull/5/head", True),
+        ("refs/heads/agent/topic", True),
+        ("refs/tags/topic", True),
+    ],
+)
+def test_ref_warning_malformed_and_pinned(
+    remote: Remote, capsys: pytest.CaptureFixture[str], ref: str, *, pinned: bool
+) -> None:
+    remote.prompt.write_text(f"Run `git checkout {ref}`. See `{ref}`.\n")
+    if pinned:
+        remote.configure(refs=f"{COMMIT}\t{ref}\n")
+        assert launch(remote, "--profile", "review", "--ref", ref) == 0
+        assert capsys.readouterr().err == ""
+    else:
+        assert launch(remote) == 0
+        assert capsys.readouterr().err == (
+            f"warning: {remote.prompt}: malformed ref {ref!r} in the prompt\n"
+        )
 
 
 @pytest.mark.parametrize(
@@ -1972,9 +1997,7 @@ def test_successful_wait_resets_failure_for_a_short_window(
     assert command("wait") == 0
 
 
-@pytest.mark.parametrize(
-    "verb", ["status", "wait", "clean", "keep", "kill", "log", "diff"]
-)
+@pytest.mark.parametrize("verb", ["status", "wait", "keep", "kill", "log", "diff"])
 def test_verbs_without_remote_run_directory(
     remote: Remote,
     capsys: pytest.CaptureFixture[str],
@@ -1988,6 +2011,14 @@ def test_verbs_without_remote_run_directory(
     assert "not owner" in capsys.readouterr().err
     assert not driver.metadata_path("sample").exists()
     assert not remote.state.exists()
+
+
+@pytest.mark.usefixtures("remote")
+def test_status_without_local_run_metadata(capsys: pytest.CaptureFixture[str]) -> None:
+    metadata = driver.metadata_path("sample")
+    metadata.parent.mkdir(parents=True)
+    assert command("status") == 1
+    assert str(metadata) in capsys.readouterr().err
 
 
 @pytest.mark.parametrize("finished", [False, True])
@@ -2104,16 +2135,52 @@ def test_metadata_directory_is_private_before_chmod(
         os.umask(previous)
 
 
-def test_clean_allows_name_reuse(remote: Remote) -> None:
+@pytest.mark.parametrize("ownerless", [False, True])
+def test_clean_allows_name_reuse(remote: Remote, *, ownerless: bool) -> None:
     assert launch(remote) == 0
     remote.file(".run.lock", "")
-    remote.file(".rc", "0\n")
     remote.configure(session=False)
+    if ownerless:
+        (remote.state / "sample.owner").unlink()
+        remote.configure(branch=False)
+    else:
+        remote.file(".rc", "0\n")
     for suffix in (".branch", ".pr", ".head"):
         remote.file(suffix, "previous run\n")
     assert command("clean") == 0
     assert not list(remote.state.glob("sample.*"))
+    assert not driver.metadata_path("sample").exists()
+    assert command("clean") == 0
     assert launch(remote) == 0
+
+
+def test_clean_releases_name_after_wait_archives_run(remote: Remote) -> None:
+    assert launch(remote) == 0
+    remote.configure(session=False)
+    (remote.state / "sample.owner").unlink()
+    for suffix in (".branch", ".pr", ".head"):
+        remote.file(suffix, "previous run\n")
+
+    assert command("wait") == 1
+    assert not driver.metadata_path("sample").exists()
+    assert list((driver.directory() / "trash").glob("*/sample.json"))
+    for suffix in (".branch", ".pr", ".head", ".request.json"):
+        assert (remote.state / f"sample{suffix}").exists()
+
+    assert command("clean") == 0
+    assert not list(remote.state.glob("sample.*"))
+    assert not driver.metadata_path("sample").exists()
+    assert command("clean") == 0
+    assert launch(remote) == 0
+
+
+def test_clean_ownerless_run_with_a_live_session(remote: Remote) -> None:
+    assert launch(remote) == 0
+    (remote.state / "sample.owner").unlink()
+    remote.file(".branch", "agent/sample\n")
+    assert command("clean", "--force") == 1
+    assert (remote.state / "sample.branch").exists()
+    assert driver.metadata_path("sample").exists()
 
 
 def test_keep_twice(remote: Remote) -> None:
@@ -2205,6 +2272,7 @@ def test_lost_clean_reply_cannot_clean_new_owner(
     assert command("clean") == 1
     assert "not owner" in capsys.readouterr().err
     assert not driver.metadata_path("sample").exists()
+    assert command("clean") == 1
     assert {
         p.name: p.read_bytes() for p in remote.state.iterdir() if p.is_file()
     } == before

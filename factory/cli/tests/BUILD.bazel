@@ -409,6 +409,7 @@ cli_py_test(
     deps = [
         ":agent_example",
         ":conftest",
+        "//factory/cli/src/tbhbdev/alpha:identity",
         "//factory/cli/src/tbhbdev/alpha/agent:model",
         "//factory/cli/src/tbhbdev/alpha/agent/decisions:driver",
         "//factory/cli/src/tbhbdev/alpha/agent/decisions:request",
@@ -1448,6 +1449,7 @@ cli_py_test(
     deps = [
         ":conftest",
         ":cue_fixtures",
+        "//factory/cli/src/tbhbdev/alpha:pull_request",
         "//factory/cli/src/tbhbdev/alpha:review",
         "//factory/cli/src/tbhbdev/alpha:review_doc",
         "@cli_pip//pytest",
@@ -2119,6 +2121,28 @@ cli_py_test(
         "//factory/cli/src/tbhbdev/alpha/agent:__init__",
         "//factory/cli/src/tbhbdev/alpha/agent:app_server",
         "//factory/cli/src/tbhbdev/alpha/agent:host_tools",
+        "@cli_pip//pytest",
+    ],
+)
+
+cli_py_test(
+    name = "test_alpha_chase_context",
+    srcs = ["test_alpha_chase_context.py"],
+    deps = [
+        ":conftest",
+        "//factory/cli/src/tbhbdev/alpha:__init__",
+        "//factory/cli/src/tbhbdev/alpha:chase_context",
+        "@cli_pip//pytest",
+    ],
+)
+
+cli_py_test(
+    name = "test_alpha_worktree_sweep",
+    srcs = ["test_alpha_worktree_sweep.py"],
+    deps = [
+        ":conftest",
+        "//factory/cli/src/tbhbdev/alpha:__init__",
+        "//factory/cli/src/tbhbdev/alpha:worktree_sweep",
         "@cli_pip//pytest",
     ],
 )
