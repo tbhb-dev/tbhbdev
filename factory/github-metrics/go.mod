@@ -1,4 +1,4 @@
-module github.com/tbhb-dev/tbhbdev
+module github.com/tbhb-dev/tbhbdev/factory/github-metrics
 
 go 1.27
 

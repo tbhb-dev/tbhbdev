@@ -85,7 +85,6 @@ func main() {
 	}
 }
 
-//nolint:funlen // Startup owns service shutdown ordering.
 func run(ctx context.Context, addr string, log *slog.Logger) error {
 	cfg, err := reconcilerConfig(os.Getenv)
 	if err != nil {
@@ -288,9 +287,8 @@ func probe(addr string) int {
 		return 1
 	}
 
-	defer func() { _ = resp.Body.Close() }()
-
-	if resp.StatusCode != http.StatusOK {
+	closeErr := resp.Body.Close()
+	if resp.StatusCode != http.StatusOK || closeErr != nil {
 		return 1
 	}
 

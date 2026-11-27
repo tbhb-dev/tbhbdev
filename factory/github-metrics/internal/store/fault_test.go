@@ -37,7 +37,7 @@ func rawDB(t *testing.T, path string) *bolt.DB {
 		t.Fatal(err)
 	}
 
-	t.Cleanup(func() { _ = database.Close() })
+	t.Cleanup(func() { closeStore(t, database) })
 
 	return database
 }
@@ -80,7 +80,7 @@ func TestOpenCorruptCreationTime(t *testing.T) {
 
 	repo, err := store.Open(path)
 	if repo != nil {
-		_ = repo.Close()
+		closeStore(t, repo)
 
 		t.Fatal("Open returned a store for a corrupt creation time")
 	}
@@ -135,7 +135,7 @@ func TestCreatedUsesUTC(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	t.Cleanup(func() { _ = repo.Close() })
+	t.Cleanup(func() { closeStore(t, repo) })
 
 	if repo.Created().Location() != time.UTC || !repo.Created().Equal(first) {
 		t.Fatalf("Created = %v, want UTC %v", repo.Created(), first.UTC())
@@ -167,7 +167,7 @@ func TestAppendConflictingBucket(t *testing.T) {
 				t.Fatal(err)
 			}
 
-			t.Cleanup(func() { _ = repo.Close() })
+			t.Cleanup(func() { closeStore(t, repo) })
 
 			conflict(t, repo.Database(), test.bucket, test.key)
 
@@ -210,7 +210,7 @@ func TestRemoveConflictingBucket(t *testing.T) {
 				t.Fatal(err)
 			}
 
-			t.Cleanup(func() { _ = repo.Close() })
+			t.Cleanup(func() { closeStore(t, repo) })
 
 			key := binary.BigEndian.AppendUint64(nil, 1)
 
@@ -238,7 +238,7 @@ func TestRemoveDeletesDeliveryID(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	t.Cleanup(func() { _ = repo.Close() })
+	t.Cleanup(func() { closeStore(t, repo) })
 
 	_, err = repo.Enqueue("d1", "pull_request", []byte("body"))
 	if err != nil {
@@ -272,7 +272,7 @@ func TestPendingMissingDeliveryID(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	t.Cleanup(func() { _ = repo.Close() })
+	t.Cleanup(func() { closeStore(t, repo) })
 
 	_, err = repo.Enqueue("d1", "pull_request", []byte("body"))
 	if err != nil {
@@ -311,9 +311,8 @@ func TestCloseFileError(t *testing.T) {
 	opts.OpenFile = func(path string, flags int, mode os.FileMode) (*os.File, error) {
 		var openErr error
 
-		//nolint:gosec // The test opens its temporary database.
 		file, openErr = os.OpenFile(
-			path,
+			filepath.Clean(path),
 			flags,
 			mode,
 		)
@@ -326,7 +325,7 @@ func TestCloseFileError(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	t.Cleanup(func() { _ = database.Close() })
+	t.Cleanup(func() { closeStore(t, database) })
 
 	err = file.Close()
 	if err != nil {

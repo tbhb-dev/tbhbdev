@@ -75,7 +75,7 @@ func openStore(t *testing.T) *store.Bolt {
 		t.Fatal(err)
 	}
 
-	t.Cleanup(func() { _ = repo.Close() })
+	t.Cleanup(func() { checkClose(t, repo) })
 
 	return repo
 }
@@ -160,38 +160,28 @@ func TestWebhook(t *testing.T) {
 	valid := webhookHeaders(sign(testSecret, body))
 
 	tests := []struct {
+		header map[string]string
 		name   string
 		body   string
-		header map[string]string
 		want   int
 	}{
-		{"valid", body, webhookHeaders(sign(testSecret, body)), http.StatusAccepted},
+		{valid, "valid", body, http.StatusAccepted},
+		{map[string]string{deliveryHeader: deliveryID}, "no signature", body, http.StatusUnauthorized},
+		{webhookHeaders(sign("other", body)), "wrong secret", body, http.StatusUnauthorized},
 		{
-			"no signature",
-			body,
-			map[string]string{deliveryHeader: deliveryID},
-			http.StatusUnauthorized,
-		},
-		{"wrong secret", body, webhookHeaders(sign("other", body)), http.StatusUnauthorized},
-		{
+			webhookHeaders(sign(testSecret, "x")),
 			"signature of another body",
 			body,
-			webhookHeaders(sign(testSecret, "x")),
 			http.StatusUnauthorized,
 		},
 		{
+			map[string]string{sigHeader: "sha256=zz", deliveryHeader: deliveryID},
 			"not hex",
 			body,
-			map[string]string{sigHeader: "sha256=zz", deliveryHeader: deliveryID},
 			http.StatusUnauthorized,
 		},
-		{"wrong prefix", body, badPrefix, http.StatusUnauthorized},
-		{
-			"too large",
-			strings.Repeat("a", receiver.MaxBody+1),
-			valid,
-			http.StatusRequestEntityTooLarge,
-		},
+		{badPrefix, "wrong prefix", body, http.StatusUnauthorized},
+		{valid, "too large", strings.Repeat("a", receiver.MaxBody+1), http.StatusRequestEntityTooLarge},
 	}
 
 	for _, spec := range tests {
@@ -326,26 +316,28 @@ func TestWebhookEarlyRejectReadsNoBody(t *testing.T) {
 	badEvent[eventHeader] = "pull request!"
 
 	for _, spec := range []struct {
-		name, body    string
 		header        map[string]string
+		name, body    string
 		contentLength int64
 		want          int
 	}{
-		{"missing signature", "", noSignature, 0, http.StatusUnauthorized},
-		{"malformed signature", "", webhookHeaders("sha256=zz"), 0, http.StatusUnauthorized},
-		{"missing event", "", map[string]string{sigHeader: validSig, deliveryHeader: deliveryID}, 0, http.StatusBadRequest},
+		{noSignature, "missing signature", "", 0, http.StatusUnauthorized},
+		{webhookHeaders("sha256=zz"), "malformed signature", "", 0, http.StatusUnauthorized},
+		{map[string]string{sigHeader: validSig, deliveryHeader: deliveryID}, "missing event", "", 0, http.StatusBadRequest},
 		{
-			"missing delivery id", "",
 			map[string]string{sigHeader: validSig, eventHeader: pullRequestEvent},
-			0, http.StatusBadRequest,
+			"missing delivery id",
+			"",
+			0,
+			http.StatusBadRequest,
 		},
-		{"malformed delivery id", "", badDelivery, 0, http.StatusBadRequest},
-		{"malformed event", "", badEvent, 0, http.StatusBadRequest},
+		{badDelivery, "malformed delivery id", "", 0, http.StatusBadRequest},
+		{badEvent, "malformed event", "", 0, http.StatusBadRequest},
 		{
-			"content length above max body", "", webhookHeaders(validSig), receiver.MaxBody + 1,
+			webhookHeaders(validSig), "content length above max body", "", receiver.MaxBody + 1,
 			http.StatusRequestEntityTooLarge,
 		},
-		{"valid request", openedBody, webhookHeaders(validSig), int64(len(openedBody)), http.StatusAccepted},
+		{webhookHeaders(validSig), "valid request", openedBody, int64(len(openedBody)), http.StatusAccepted},
 	} {
 		t.Run(spec.name, func(t *testing.T) {
 			t.Parallel()
@@ -788,7 +780,7 @@ func TestInFlightRejectDeadlineFailure(t *testing.T) {
 	conn := new(spyConn)
 	conn.deadlineErr = errNoDeadline
 
-	_ = serveBusy(t, conn)
+	serveBusy(t, conn)
 
 	if !conn.closed {
 		t.Error("connection stayed open")
