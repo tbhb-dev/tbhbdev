@@ -159,20 +159,17 @@ git cat-file -e "${BASE_SHA:-}^{commit}" 2>/dev/null ||
 git -c core.quotePath=false diff -z --raw --no-renames --ignore-submodules=none --output="$changed" "$BASE_SHA" "$head" 2>&1 | show >&2 ||
   finish all 'git diff failed'
 
-# A submodule's commit (mode 160000) is no file target-determinator can
-# trace. The other files change the module graph, the flags, the Bazel
-# version, the package set or the rules for the whole workspace. Match the
-# base name since a module can override a nested one by path. Let TD compare
-# rules-module BUILD and .bzl changes through the configured dependency graph.
+# Target-determinator compares BUILD and .bzl changes across the workspace
+# through the configured dependency graph. It cannot trace submodule commits
+# or the files below, which change the module graph, Bazel version, flags or
+# package set. Match the base name since a module can override a nested one
+# by path.
 while IFS= read -r -d '' meta && IFS= read -r -d '' path; do
   [[ ${meta:0:15} != *160000* ]] || finish all "the submodule $path changed"
   case ${path##*/} in
   MODULE.bazel* | *.MODULE.bazel | WORKSPACE* | REPO.bazel | \
     .bazelrc* | *bazelrc | .bazelversion | .bazeliskrc | .bazelignore)
     finish all "$path changed"
-    ;;
-  BUILD | BUILD.* | *.bzl)
-    [[ $path == lib/rules/* ]] || finish all "$path changed"
     ;;
   esac
 done <"$changed"
