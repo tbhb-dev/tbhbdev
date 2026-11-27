@@ -540,25 +540,28 @@ def clone_run(mirror: Path, workspace: Path, url: str, profile: Profile) -> None
 
 
 def prepare_git(workspace: Path) -> None:
+    directory = workspace / ".git"
     for name, content in (
         ("config.worktree", ""),
         ("info", None),
         ("modules", None),
         ("commondir", ".\n"),
     ):
-        entry = workspace / ".git" / name
-        message = f"unexpected git metadata: {name}"
+        entry = directory / name
         if entry.is_symlink():
+            message = f"unexpected git metadata: {name}"
             raise Invalid(message)
-        if content is None:
-            if not entry.exists():
-                entry.mkdir()
-            valid = entry.is_dir() and next(entry.iterdir(), None) is None
-        else:
-            if not entry.exists():
-                entry.write_text(content)
-            valid = entry.is_file() and entry.read_text() == content
+        match content:
+            case None:
+                if not entry.exists():
+                    entry.mkdir()
+                valid = entry.is_dir() and next(entry.iterdir(), None) is None
+            case _:
+                if not entry.exists():
+                    entry.write_text(content)
+                valid = entry.is_file() and entry.read_text() == content
         if not valid:
+            message = f"unexpected git metadata: {name}"
             raise Invalid(message)
 
 
@@ -648,10 +651,9 @@ def create(
         if hook_env is not None:
             with preparation_step("hook verification"):
                 verify_run_hooks(worktree, hook_env)
-        fetch_step = f"mirror fetch ({url})"
-        if request.fetch_refs:
-            fetch_step += f"; requested refs: {', '.join(request.fetch_refs)}"
-        with preparation_step(fetch_step):
+        refs = ", ".join(request.fetch_refs)
+        ref_details = f"; requested refs: {refs}" if refs else ""
+        with preparation_step(f"mirror fetch ({url}){ref_details}"):
             try:
                 commit = fetch_commit(mirror, request)
             except subprocess.SubprocessError:
@@ -669,12 +671,10 @@ def create(
                 "--no-recurse-submodules", str(mirror),
                 "+refs/heads/*:refs/remotes/origin/*",
             )  # fmt: skip
-            target = (
-                ("-b", f"agent/{name}")
-                if request.profile is Profile.BUILD
-                else ("--detach",)
-            )
-            git(worktree, "checkout", *target, commit, "--")
+            if request.profile is Profile.BUILD:
+                git(worktree, "checkout", "-b", f"agent/{name}", commit, "--")
+            else:
+                git(worktree, "checkout", "--detach", commit, "--")
         with preparation_step("git metadata"):
             prepare_git(worktree)
         host_tools.require_check_tools(worktree, hook_env)

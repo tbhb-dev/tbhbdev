@@ -60,11 +60,12 @@ def read_pins(top: Path) -> dict[str, str]:
     if not isinstance(tools, dict):
         message = "mise.toml [tools] must be a table"
         raise TypeError(message)
+    table = cast("dict[str, object]", tools)
     pins: dict[str, str] = {}
     for key in CHECK_TOOLS:
-        if key not in tools:
+        if key not in table:
             continue
-        value = tools[key]
+        value = table[key]
         if not isinstance(value, str) or not re.fullmatch(r"\d[\w.+-]*", value):
             message = f"mise.toml must specify an exact version for {key}"
             raise ValueError(message)

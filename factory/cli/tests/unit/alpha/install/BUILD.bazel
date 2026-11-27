@@ -202,8 +202,8 @@ cli_py_test(
 )
 
 cli_py_test(
-    name = "test_check_tools",
-    srcs = ["test_check_tools.py"],
+    name = "test_check_tools_io",
+    srcs = ["test_check_tools_io.py"],
     imports = ["../../.."],
     deps = [
         ":conftest",
