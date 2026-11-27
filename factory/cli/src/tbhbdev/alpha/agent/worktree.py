@@ -89,12 +89,13 @@ RUN_REFERENCE_TRANSACTION = r"""#!/bin/sh
 [ "$1" = prepared ] || exit 0
 branch={branch}
 start={start}
+start_ref={start_ref}
 while read -r _old new ref; do
   case "$ref" in
     "$branch")
       case "$new" in
         *[!0]*)
-          if ! git merge-base --is-ancestor "$start" "$new"; then
+          if [ -z "$start_ref" ] && ! git merge-base --is-ancestor "$start" "$new"; then
             printf 'reference-transaction: %s must descend from %s\n' \
               "$branch" "$start" >&2
             exit 1
@@ -150,10 +151,9 @@ def git(clone: Path, *args: str, token: str | None = None) -> str:
     )
     # A moved repository answers with a redirect, and the owner gate checks only
     # the requested name, so an online command never follows one.
-    offline = ["-c", "protocol.allow=never"]
-    online_only = ["-c", "http.followRedirects=false"]
+    offline = [*command, "-c", "protocol.allow=never"]
     online = args[0] in ("fetch", "ls-remote")
-    invocation = [*command, *(online_only if online else offline), *args]
+    invocation = [*command, "-c", "http.followRedirects=false"] if online else offline
     output = partial(
         subprocess.check_output,
         env=env,
@@ -164,18 +164,16 @@ def git(clone: Path, *args: str, token: str | None = None) -> str:
     )
     timeout = 300 if args[0] in ("fetch", "clone") else 30
     if args[0] == "init":
-        return output(invocation).strip()
+        return output([*invocation, *args]).strip()
     query = ("config", "--null", "--name-only", "--get-regexp", r"^(filter|merge)\.")
     try:
-        keys = output([*command, *offline, *query])
+        keys = output([*offline, *query])
     except subprocess.CalledProcessError as exc:
         if exc.returncode != 1:
             raise
-        return output(invocation, timeout=timeout).strip()
-    overrides = driver_overrides(keys)
-    return output(
-        [*invocation[: -len(args)], *overrides, *args], timeout=timeout
-    ).strip()
+        keys = ""
+    invocation.extend((*driver_overrides(keys), *args))
+    return output(invocation, timeout=timeout).strip()
 
 
 def driver_overrides(keys: str) -> list[str]:
@@ -292,7 +290,9 @@ def install_hooks(
         },
     )
     scripts[hooks / "reference-transaction"] = RUN_REFERENCE_TRANSACTION.format(
-        branch=shlex.quote(f"refs/heads/agent/{run_name}"), start=shlex.quote(start)
+        branch=shlex.quote(f"refs/heads/agent/{run_name}"),
+        start=shlex.quote(start),
+        start_ref=shlex.quote(start_ref or ""),
     )
     for hook, content in scripts.items():
         if hook.exists():

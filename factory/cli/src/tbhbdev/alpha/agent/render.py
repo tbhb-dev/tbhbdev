@@ -58,13 +58,21 @@ def brief(
         text = f"{AGY_SUBAGENTS}\n{text}"
     elif harness is Harness.CODEX:
         text = f"{CODEX_SUBAGENTS}\n{text}"
-    if profile is Profile.BUILD:
-        publication = (
-            f"For this `--start-ref` run, push with `git push origin HEAD:{start_ref}`."
-            if start_ref is not None
-            else BUILD_PUBLICATION
+    if profile is Profile.BUILD and start_ref is not None:
+        branch = start_ref.removeprefix("refs/heads/")
+        text = (
+            "Commit your changes locally and update the existing pull request branch.\n"
+            f"For a fast-forward, run `git push origin HEAD:{start_ref}`.\n"
+            "To publish a rewrite, use a lease with the fetched commit.\n"
+            "```sh\n"
+            "expected=$(git rev-parse --verify "
+            f"refs/remotes/origin/fetched/heads/{branch}) &&\n"
+            f'  git push "--force-with-lease={start_ref}:$expected" origin '
+            f"HEAD:{start_ref}\n"
+            f"```\n{text}"
         )
-        text = f"Commit your changes locally. {publication}\n{text}"
+    elif profile is Profile.BUILD:
+        text = f"Commit your changes locally. {BUILD_PUBLICATION}\n{text}"
     elif profile is Profile.REVIEW:
         text = f"{REVIEW_PUBLICATION}\n{text}"
     return f"{FINAL_ONLY}\n{text}" if kind is RunKind.EXEC else text
