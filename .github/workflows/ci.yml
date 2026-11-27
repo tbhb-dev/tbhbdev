@@ -54,8 +54,20 @@ jobs:
           BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha }}
           HEAD_SHA: ${{ github.event.pull_request.head.sha || github.event.merge_group.head_sha }}
         run: |
-          uv run --locked --no-dev --package tbhbdev \
-            tbhbdev alpha verify-range --identity-only "$BASE_SHA" "$HEAD_SHA"
+          base_checkout=$(mktemp -d "$RUNNER_TEMP/trailer-verifier.XXXXXX")
+          git -c core.hooksPath=/dev/null worktree add --quiet --detach "$base_checkout" "$BASE_SHA"
+          trap 'git worktree remove --force "$base_checkout"' EXIT
+          verifier=$base_checkout
+          # Older base revisions have verify-range but lack the identity-only mode.
+          if ! git -C "$base_checkout" grep -Fq -e '"--identity-only"' HEAD -- factory/cli/src/tbhbdev/alpha/verify_range.py; then
+            echo "Base revision lacks the identity-only verifier. Falling back to the candidate copy."
+            verifier=$GITHUB_WORKSPACE
+          fi
+          (
+            cd "$verifier"
+            uv run --locked --no-dev --package tbhbdev \
+              tbhbdev alpha verify-range --identity-only -C "$GITHUB_WORKSPACE" "$BASE_SHA" "$HEAD_SHA"
+          )
 
       - name: Set up Bazel for CI
         uses: ./.github/actions/setup-bazel-ci

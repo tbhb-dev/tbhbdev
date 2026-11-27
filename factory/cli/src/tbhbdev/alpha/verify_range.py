@@ -55,6 +55,7 @@ def inspect_commit(text: str, *, identity_only: bool = False) -> tuple[list[str]
             message,
             identity.IDENT_DATE.sub("", committer),
             require_identity=True,
+            author=identity.IDENT_DATE.sub("", values.get("author", "")),
         )
     else:
         reasons = problems(

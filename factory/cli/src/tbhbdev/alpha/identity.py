@@ -3035,10 +3035,17 @@ def check_message(text: str) -> list[str]:
     return errs
 
 
+def agent_needs_generated(lines: Iterable[str], idents: Iterable[str]) -> bool:
+    """Whether an agent author or committer lacks a Generated-by line."""
+    return not any(line.startswith(f"{KEY_GEN}:") for line in lines) and any(
+        ident.endswith(f"<{AGENT_EMAIL}>") for ident in idents
+    )
+
+
 def check_identity_trailers(
-    text: str, committer: str, *, require_identity: bool = False
+    text: str, committer: str, *, require_identity: bool = False, author: str = ""
 ) -> list[str]:
-    """Check attribution, optionally requiring a Generated-by or Committed-by line."""
+    """Check attribution, optionally requiring an identity trailer for CI."""
     errs = check_message(text)
     prefix = f"{KEY_COMMIT}:"
     lines = text.splitlines()
@@ -3047,12 +3054,11 @@ def check_identity_trailers(
     ]
     if any(not value or value != committer for value in human):
         errs.append(f"{KEY_COMMIT} must match the Git committer's name and email")
-    if (
-        require_identity
-        and not human
-        and not any(line.startswith(f"{KEY_GEN}:") for line in lines)
-    ):
-        errs.append(f"missing {KEY_GEN} or {KEY_COMMIT} trailer")
+    if require_identity:
+        if agent_needs_generated(lines, (author, committer)):
+            errs.append(f"missing {KEY_GEN} trailer for agent commit")
+        elif not human and not any(line.startswith(f"{KEY_GEN}:") for line in lines):
+            errs.append(f"missing {KEY_GEN} or {KEY_COMMIT} trailer")
     return errs
 
 
@@ -3067,13 +3073,12 @@ def ident_problems(text: str, env: Mapping[str, str]) -> list[str]:
     trailer; human identities aren't checked, even when crediting agent edits.
     """
     if detect(env) is None:
-        if any(line.startswith(f"{KEY_GEN}:") for line in text.splitlines()):
-            return []
-        for role in ("AUTHOR", "COMMITTER"):
-            _, out = git("var", f"GIT_{role}_IDENT")
-            if IDENT_DATE.sub("", out).endswith(f"<{AGENT_EMAIL}>"):
-                return [SESSION_ERROR]
-        return []
+        idents = (
+            IDENT_DATE.sub("", git("var", f"GIT_{role}_IDENT")[1])
+            for role in ("AUTHOR", "COMMITTER")
+        )
+        missing = agent_needs_generated(text.splitlines(), idents)
+        return [SESSION_ERROR] if missing else []
     errs = []
     for role in ("author", "committer"):
         _, out = git("var", f"GIT_{role.upper()}_IDENT")

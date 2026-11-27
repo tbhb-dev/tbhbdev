@@ -223,18 +223,39 @@ def test_identity_only_reports_all_missing_trailers(
 ) -> None:
     first = repo.commit(message="fix: missing trailer\n")
     tip = repo.commit(
+        author="human@example.com",
+        committer="human@example.com",
         parents=[first],
         message="fix: assistance only\n\nAssisted-by: LLM harness=codex;model=test\n",
     )
     assert verify_range.main(["--identity-only", repo.base, tip], PROG) == 1
-    missing = "missing Generated-by or Committed-by trailer"
     assert capsys.readouterr() == (
         (
-            f"{first} FAIL {missing} | fix: missing trailer\n"
-            f"{tip} FAIL {missing} | fix: assistance only\n"
+            f"{first} FAIL missing Generated-by trailer for agent commit"
+            " | fix: missing trailer\n"
+            f"{tip} FAIL missing Generated-by or Committed-by trailer"
+            " | fix: assistance only\n"
             "verify-range: 2 commits, 2 failed\n"
         ),
         "",
+    )
+
+
+@pytest.mark.parametrize(
+    ("author", "committer"),
+    [(EMAIL, "human@example.com"), ("human@example.com", EMAIL)],
+)
+def test_identity_only_requires_generated_by_for_agent(
+    repo: Repository, capsys: pytest.CaptureFixture[str], author: str, committer: str
+) -> None:
+    tip = repo.commit(
+        author=author,
+        committer=committer,
+        message=f"fix: agent change\n\nCommitted-by: Example <{committer}>\n",
+    )
+    assert verify_range.main(["--identity-only", repo.base, tip], PROG) == 1
+    assert f"{tip} FAIL missing Generated-by trailer for agent commit" in (
+        capsys.readouterr().out
     )
 
 
@@ -251,7 +272,11 @@ def test_identity_only_reports_all_missing_trailers(
 def test_identity_only_reuses_message_validation(
     repo: Repository, capsys: pytest.CaptureFixture[str], trailer: str, reason: str
 ) -> None:
-    tip = repo.commit(committer="human@example.com", message=f"fix: bad\n\n{trailer}\n")
+    tip = repo.commit(
+        author="human@example.com",
+        committer="human@example.com",
+        message=f"fix: bad\n\n{trailer}\n",
+    )
     assert verify_range.main(["--identity-only", repo.base, tip], PROG) == 1
     out, err = capsys.readouterr()
     assert out.startswith(f"{tip} FAIL ")
