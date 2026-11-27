@@ -28,7 +28,7 @@ Each Markdown file in the repository starts with a YAML metadata block, except a
 | `generated` | no | A non-empty list of contributor entries. |
 | `verified` | no | A human sign-off. Automation leaves it unset. |
 
-The `type` values are `Readme`, `Agent Instructions`, `Overview`, `Architecture Overview`, `Reference`, `How-to`, `Design Draft`, `Decision Record`, and `Policy`. The schema doesn't accept other values, so add a new type to it in the same change as the first doc that uses it.
+The `type` values are `Readme`, `Agent Instructions`, `Overview`, `Architecture Overview`, `Reference`, `How-to`, `Design Draft`, `Decision Record`, and `Policy`. Other values break the convention, so list a new type here in the same change as the first doc that uses it.
 
 ## Contributor entries
 
