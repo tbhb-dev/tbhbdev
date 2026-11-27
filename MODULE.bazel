@@ -46,7 +46,7 @@ bazel_dep(name = "buildifier_prebuilt", version = "10.1.0")
 bazel_dep(name = "rules_shell", version = "0.6.1")
 
 go_sdk = use_extension("@rules_go//go:extensions.bzl", "go_sdk")
-go_sdk.from_file(go_mod = "//:go.mod")
+go_sdk.from_file(go_work = "//:go.work")
 go_sdk.nogo(
     includes = ["//:__subpackages__"],
     nogo = "//:nogo",
@@ -72,14 +72,14 @@ use_repo(
 
 go_mod_proxy = use_extension("@tbhb_rules_go//:extensions.bzl", "go_mod_proxy")
 go_mod_proxy.from_file(
-    name = "go_mod_proxy",
-    go_sum = "//:go.sum",
+    name = "github_metrics_go_mod_proxy",
+    go_sum = "//factory/github-metrics:go.sum",
 )
 go_mod_proxy.from_file(
     name = "agent_capacity_go_mod_proxy",
     go_sum = "//factory/agent-capacity:go.sum",
 )
-use_repo(go_mod_proxy, "agent_capacity_go_mod_proxy", "go_mod_proxy")
+use_repo(go_mod_proxy, "agent_capacity_go_mod_proxy", "github_metrics_go_mod_proxy")
 
 python_toolchains = use_extension("@rules_python//python/extensions:python.bzl", "python")
 python_toolchains.toolchain(python_version = "3.15")

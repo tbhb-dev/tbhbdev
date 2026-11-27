@@ -262,8 +262,8 @@ func installationServer(
 			resp.WriteHeader(http.StatusCreated)
 
 			// The response grants fewer permissions than the request asks for.
-			_, _ = fmt.Fprintf(
-				resp,
+			writeResponsef(
+				t, resp,
 				`{"token":"installation-%d","expires_at":%q,"permissions":{"metadata":"read"}}`,
 				count,
 				now().Add(time.Hour).Format(time.RFC3339),
@@ -273,6 +273,15 @@ func installationServer(
 	t.Cleanup(server.Close)
 
 	return server
+}
+
+func writeResponsef(t *testing.T, resp http.ResponseWriter, format string, args ...any) {
+	t.Helper()
+
+	_, err := fmt.Fprintf(resp, format, args...)
+	if err != nil {
+		t.Error("write response failed")
+	}
 }
 
 func checkToken(t *testing.T, token func(context.Context) (string, error), want string) {

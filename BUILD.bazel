@@ -30,8 +30,6 @@ exports_files([
     ".vale/project/Colons.yml",
     ".vale/project/HeadingTitleCase.yml",
     ".vale/project/WordList.yml",
-    "go.mod",
-    "go.sum",
     "tombi.toml",
 ])
 
