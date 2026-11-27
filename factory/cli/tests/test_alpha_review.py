@@ -15,6 +15,7 @@ from test_alpha_pull_request import world as world  # noqa: PLC0414
 
 from tbhbdev.alpha import pull_request as pr
 from tbhbdev.alpha import review, review_doc
+from tbhbdev.alpha.pull_request_frontmatter import parse_frontmatter
 
 pytestmark = pytest.mark.usefixtures("review_cue")  # noqa: V107
 
@@ -459,7 +460,7 @@ def test_filled_template_with_real_linters(
 def test_refresh_preserves_yaml_layout_and_body(front: str) -> None:
     text = front + BODY + "\ncommit_id: body text\n"
     changed = review.refresh(text, NEXT)
-    data, body = pr.parse_frontmatter(changed)
+    data, body = parse_frontmatter(changed)
     assert data == {"pr": 7, "commit_id": NEXT, "event": "COMMENT"}
     assert body == BODY + "\ncommit_id: body text\n"
     if ">-" not in front:
@@ -570,7 +571,7 @@ def test_number_error_is_explicit(
 def test_refresh_fills_an_empty_commit_value(value: str) -> None:
     text = FILLED.replace(f" '{HEAD}'", value)
     changed = review.refresh(text, NEXT)
-    data, body = pr.parse_frontmatter(changed)
+    data, body = parse_frontmatter(changed)
     assert data == {"pr": 7, "commit_id": NEXT, "event": "COMMENT"}
     assert body == BODY
 
