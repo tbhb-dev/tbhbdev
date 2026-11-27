@@ -80,14 +80,10 @@ def test_send_host_proxy(
         *command: str, env: dict[str, str] | None = None, **_options: int
     ) -> SimpleNamespace:
         assert command[1:4] == ("app-server", "proxy", "--sock")
-        if platform == "linux":
-            assert command[0] == str(codex)
-            assert env is not None
-            assert env["PATH"].startswith(f"{path}:")
-            assert {str(local_bin), "/usr/local/bin"} <= set(env["PATH"].split(":"))
-        else:
-            assert command[0] == "codex"
-            assert env is None
+        assert command[0] == str(codex)
+        assert env is not None
+        assert env["PATH"].startswith(f"{path}:")
+        assert {str(local_bin), "/usr/local/bin"} <= set(env["PATH"].split(":"))
         if payload is True:
             raise TimeoutError
         reader = asyncio.StreamReader()

@@ -79,22 +79,19 @@ async def steer(rpc: Rpc, thread: str, message: str) -> None:
 
 
 async def proxy(command: tuple[str, ...], thread: str, message: str) -> None:
-    env = None
-    if sys.platform == "linux":
-        inherited_path = os.environ.get("PATH", os.defpath)
-        path = ":".join((inherited_path, *host_tools.account_path(str(Path.home()))))
-        try:
-            executable = host_tools.resolve(command[0], path, follow_symlinks=False)
-        except Invalid as exc:
-            raise Invalid(UNLOADED) from exc
-        command = (executable, *command[1:])
-        env = {**os.environ, "PATH": path}
+    inherited_path = os.environ.get("PATH", os.defpath)
+    path = ":".join((inherited_path, *host_tools.account_path(str(Path.home()))))
+    try:
+        executable = host_tools.resolve(command[0], path, follow_symlinks=False)
+    except Invalid as exc:
+        raise Invalid(UNLOADED) from exc
     process = await asyncio.create_subprocess_exec(
-        *command,
+        executable,
+        *command[1:],
         stdin=asyncio.subprocess.PIPE,
         stdout=asyncio.subprocess.PIPE,
         stderr=asyncio.subprocess.DEVNULL,
-        env=env,
+        env={**os.environ, "PATH": path},
     )
     writer = cast("asyncio.StreamWriter", process.stdin)
     reader = cast("asyncio.StreamReader", process.stdout)
