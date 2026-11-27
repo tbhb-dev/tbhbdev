@@ -94,7 +94,7 @@ func receiveGatewayHello(
 	checkEqual(t, kind, websocket.MessageText)
 	checkEqual(t, len(data) <= sessionFrameLimit, true)
 
-	frame := sessionJSON[sessionObject](data)
+	frame := *sessionJSON[sessionObject](data)
 	checkEqual(t, string(frame[typeKey]) == `"hello"`, true)
 	checkEqual(t, string(frame[resumeKey]), resume)
 	checkEqual(t, string(frame["import"]), imported)
@@ -108,30 +108,17 @@ func TestMCPGatewayFrames(t *testing.T) {
 	ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
 	defer cancel()
 
-	const (
-		subscriptionCount = 16
-		labelSize         = 128
-	)
-
-	subs := make([]filter.Subscription, 0, subscriptionCount)
-	for i := range subscriptionCount {
-		raw := fmt.Sprintf(`{"provider":"github","event":"issues","repository":"owner/repo%d","label":["%s","%s"]}`,
-			i, strings.Repeat("&", labelSize), strings.Repeat("<", labelSize))
-		sub, err := filter.Parse([]byte(raw))
-		checkError(t, err)
-
-		subs = append(subs, sub)
-	}
+	subs := gatewayFrameSubscriptions(t)
 
 	checkMCPGatewayHelloBoundary(t, subs[:12])
 
 	server, requests := fakeMCPGateway(t, []int{http.StatusSwitchingProtocols}, func(conn *websocket.Conn) {
 		frame := receiveGatewayHello(ctx, t, conn, "0", "")
 		checkEqual(t, string(frame["more"]) == "true", true)
-		got := sessionJSON[[]filter.Subscription](frame[subsKey])
+		got := *sessionJSON[[]filter.Subscription](frame[subsKey])
 		frame = receiveGatewayHello(ctx, t, conn, "", "")
 		checkEqual(t, frame["more"] == nil, true)
-		got = append(got, sessionJSON[[]filter.Subscription](frame[subsKey])...)
+		got = append(got, *sessionJSON[[]filter.Subscription](frame[subsKey])...)
 		checkEqual(t, reflect.DeepEqual(got, subs), true)
 
 		for _, data := range []string{
@@ -167,7 +154,34 @@ func TestMCPGatewayFrames(t *testing.T) {
 	checkEqual(t, err == nil, true)
 	checkEqual(t, requests.Load(), 1)
 
-	want := sessionJSON[[]channelParameters]([]byte(`[
+	checkGatewayFrameNotifications(t, messages)
+}
+
+func gatewayFrameSubscriptions(t *testing.T) []filter.Subscription {
+	t.Helper()
+
+	const (
+		subscriptionCount = 16
+		labelSize         = 128
+	)
+
+	subs := make([]filter.Subscription, 0, subscriptionCount)
+	for i := range subscriptionCount {
+		raw := fmt.Sprintf(`{"provider":"github","event":"issues","repository":"owner/repo%d","label":["%s","%s"]}`,
+			i, strings.Repeat("&", labelSize), strings.Repeat("<", labelSize))
+		sub, err := filter.Parse([]byte(raw))
+		checkError(t, err)
+
+		subs = append(subs, sub)
+	}
+
+	return subs
+}
+
+func checkGatewayFrameNotifications(t *testing.T, messages []channelParameters) {
+	t.Helper()
+
+	want := *sessionJSON[[]channelParameters]([]byte(`[
 		{"meta":{"provider":"event-gateway","event":"notice","delivery":""},
 		"content":"{\"level\":\"warning\",\"text\":\"Gateway events 3 through 5 are no longer available.\"}"},
 		{"meta":{"provider":"github","event":"issues","delivery":"id","repository":"owner/repo","action":"opened"},
@@ -209,17 +223,58 @@ func TestMCPGatewayReconnect(t *testing.T) {
 	ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
 	defer cancel()
 
-	const accept, fail = http.StatusSwitchingProtocols, http.StatusForbidden
-
 	sub, err := filter.Parse([]byte(`{"provider":"github","event":"issues","repository":"owner/repo"}`))
 	checkError(t, err)
+
+	server, requests := reconnectTestGateway(ctx, t, sub)
+
+	var (
+		logs         bytes.Buffer
+		subs         mcpSubscriptions
+		notices      []channelNotice
+		seconds      []time.Duration
+		noticeCounts []int
+	)
+
+	options := &slog.HandlerOptions{Level: slog.LevelDebug, AddSource: false, ReplaceAttr: nil}
+	logger := slog.New(slog.NewTextHandler(&logs, options))
+	err = runMCPGateway(ctx, logger, server.URL+sessionPath, mcpFixture, &subs, func(event channelEvent) bool {
+		notices = append(notices, *sessionJSON[channelNotice](event.payload))
+
+		return true
+	}, func(_ context.Context, delay time.Duration) bool {
+		seconds = append(seconds, delay/time.Second)
+		noticeCounts = append(noticeCounts, len(notices))
+
+		if len(seconds) == 3 {
+			checkEqual(t, subs.set(sub, true), true)
+		}
+
+		return len(seconds) <= 10
+	})
+	checkEqual(t, errors.Is(err, errGatewayToken), true)
+	checkEqual(t, requests.Load(), 11)
+	checkGatewayReconnectSchedule(t, seconds, noticeCounts, notices)
+
+	checkEqual(t, strings.Contains(logs.String(), "gateway retry scheduled"), true)
+	checkEqual(t, strings.Contains(logs.String(), mcpFixture), false)
+}
+
+func reconnectTestGateway(
+	ctx context.Context,
+	t *testing.T,
+	sub filter.Subscription,
+) (*httptest.Server, *atomic.Int32) {
+	t.Helper()
+
+	const accept, fail = http.StatusSwitchingProtocols, http.StatusForbidden
 
 	var connections atomic.Int32
 
 	statuses := []int{fail, accept, accept, fail, fail, fail, fail, fail, fail, accept, accept}
 	server, requests := fakeMCPGateway(t, statuses, func(conn *websocket.Conn) {
 		frame := receiveGatewayHello(ctx, t, conn, "", "")
-		got := sessionJSON[[]filter.Subscription](frame[subsKey])
+		got := *sessionJSON[[]filter.Subscription](frame[subsKey])
 
 		switch connections.Add(1) {
 		case 1: // Drop before the first frame, so backoff keeps increasing.
@@ -240,32 +295,12 @@ func TestMCPGatewayReconnect(t *testing.T) {
 		}
 	})
 
-	var (
-		logs         bytes.Buffer
-		subs         mcpSubscriptions
-		notices      []channelNotice
-		seconds      []time.Duration
-		noticeCounts []int
-	)
+	return server, requests
+}
 
-	options := &slog.HandlerOptions{Level: slog.LevelDebug, AddSource: false, ReplaceAttr: nil}
-	logger := slog.New(slog.NewTextHandler(&logs, options))
-	err = runMCPGateway(ctx, logger, server.URL+sessionPath, mcpFixture, &subs, func(event channelEvent) bool {
-		notices = append(notices, sessionJSON[channelNotice](event.payload))
+func checkGatewayReconnectSchedule(t *testing.T, seconds []time.Duration, noticeCounts []int, notices []channelNotice) {
+	t.Helper()
 
-		return true
-	}, func(_ context.Context, delay time.Duration) bool {
-		seconds = append(seconds, delay/time.Second)
-		noticeCounts = append(noticeCounts, len(notices))
-
-		if len(seconds) == 3 {
-			checkEqual(t, subs.set(sub, true), true)
-		}
-
-		return len(seconds) <= 10
-	})
-	checkEqual(t, errors.Is(err, errGatewayToken), true)
-	checkEqual(t, requests.Load(), 11)
 	checkEqual(t, slices.Equal(seconds, []time.Duration{1, 2, 1, 2, 4, 8, 16, 30, 30, 1}), true)
 	checkEqual(t, slices.Equal(noticeCounts, []int{0, 0, 1, 1, 1, 1, 1, 1, 1, 4}), true)
 	checkEqual(t, slices.Equal(notices, []channelNotice{
@@ -275,11 +310,11 @@ func TestMCPGatewayReconnect(t *testing.T) {
 		{Level: channelWarning, Text: "Gateway connection lost."},
 		{Level: channelWarning, Text: "Gateway token was rejected."},
 	}), true)
-	checkEqual(t, strings.Contains(logs.String(), "gateway retry scheduled"), true)
-	checkEqual(t, strings.Contains(logs.String(), mcpFixture), false)
 }
 
 func TestMCPGatewayImport(t *testing.T) {
+	t.Parallel()
+
 	ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
 	defer cancel()
 
@@ -288,12 +323,12 @@ func TestMCPGatewayImport(t *testing.T) {
 		caughtUp          = `{"type":"caught_up","seq":12}`
 	)
 
-	_, legacy := awrelStatePaths(t)
+	dir, _, legacy := awrelStatePaths(t)
 	document := mcpStateDocument(mcpStateTestSubscriptions(subscriptionCount))
 	checkError(t, os.WriteFile(legacy, []byte(document), 0o600))
 
 	logger := slog.New(slog.DiscardHandler)
-	subs := loadMCPSubscriptions(ctx, logger)
+	subs := restoreMCPSubscriptions(ctx, logger, awrelStateEnv(dir, mcpStateTestKey))
 	want := subs.list()
 	checkEqual(t, len(want), subscriptionCount)
 
@@ -307,10 +342,10 @@ func TestMCPGatewayImport(t *testing.T) {
 		step := steps[connections.Add(1)-1]
 		frame := receiveGatewayHello(ctx, t, conn, step.resume, step.imported)
 		checkEqual(t, string(frame["more"]), jsonTrue)
-		got := sessionJSON[[]filter.Subscription](frame[subsKey])
+		got := *sessionJSON[[]filter.Subscription](frame[subsKey])
 		frame = receiveGatewayHello(ctx, t, conn, "", "")
 		checkEqual(t, frame["more"] == nil, true)
-		got = append(got, sessionJSON[[]filter.Subscription](frame[subsKey])...)
+		got = append(got, *sessionJSON[[]filter.Subscription](frame[subsKey])...)
 		checkEqual(t, reflect.DeepEqual(got, want), true)
 
 		if step.reply != "" {
@@ -333,20 +368,11 @@ func TestMCPGatewayResume(t *testing.T) {
 	ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
 	defer cancel()
 
+	logger := slog.New(slog.DiscardHandler)
+
 	t.Setenv(mcpStateHomeEnv, t.TempDir())
 	setMCPStateKeys(t, [3]string{mcpStateTestKey, "", ""})
-
-	logger := slog.New(slog.DiscardHandler)
-	subs := loadMCPSubscriptions(ctx, logger)
-	subs.advanceCursor(4)
-	subs = loadMCPSubscriptions(ctx, logger)
-	_, cursor := subs.snapshot()
-	checkEqual(t, cursor != nil, true)
-	checkEqual(t, *cursor, uint64(4))
-
-	sub, err := filter.Parse([]byte(mcpStateTestSubscription))
-	checkError(t, err)
-	checkEqual(t, subs.set(sub, true), true)
+	sub := setupGatewayResume(ctx, t, logger)
 
 	steps := [...]struct {
 		resume string
@@ -378,7 +404,7 @@ func TestMCPGatewayResume(t *testing.T) {
 		retries  int
 	)
 
-	err = runMCPGateway(ctx, logger, server.URL+sessionPath, mcpFixture, loadMCPSubscriptions(ctx, logger),
+	err := runMCPGateway(ctx, logger, server.URL+sessionPath, mcpFixture, loadMCPSubscriptions(ctx, logger),
 		func(event channelEvent) bool {
 			messages = append(messages, string(event.payload))
 
@@ -394,12 +420,35 @@ func TestMCPGatewayResume(t *testing.T) {
 		})
 	checkError(t, err)
 	checkEqual(t, requests.Load(), int32(len(steps)))
+	checkGatewayResumeNotices(t, messages)
+}
+
+func checkGatewayResumeNotices(t *testing.T, messages []string) {
+	t.Helper()
+
 	checkEqual(t, slices.Equal(messages, []string{
 		`{}`, string(gatewayConnectionLost().channelEvent().payload),
 		string(gatewayReconnected().channelEvent().payload), string(gatewayConnectionLost().channelEvent().payload),
 		string(gatewayReconnected().channelEvent().payload), string(gatewayGap(3, 5).channelEvent().payload),
 		string(gatewayConnectionLost().channelEvent().payload),
 	}), true)
+}
+
+func setupGatewayResume(ctx context.Context, t *testing.T, logger *slog.Logger) filter.Subscription {
+	t.Helper()
+
+	subs := loadMCPSubscriptions(ctx, logger)
+	subs.advanceCursor(4)
+	subs = loadMCPSubscriptions(ctx, logger)
+	_, cursor := subs.snapshot()
+	checkEqual(t, cursor != nil, true)
+	checkEqual(t, *cursor, uint64(4))
+
+	sub, err := filter.Parse([]byte(mcpStateTestSubscription))
+	checkError(t, err)
+	checkEqual(t, subs.set(sub, true), true)
+
+	return sub
 }
 
 func gatewayTestEvent(seq int, provider, delivery string) string {
@@ -416,7 +465,7 @@ func TestMCPGatewayDeliveryLimit(t *testing.T) {
 	deliveries.ids = make(map[string]struct{})
 	count := 0
 	forward := func(data string) {
-		forwardGatewayFrame(sessionJSON[sessionObject]([]byte(data)), subs, &deliveries, func(channelEvent) bool {
+		forwardGatewayFrame(*sessionJSON[sessionObject]([]byte(data)), subs, &deliveries, func(channelEvent) bool {
 			count++
 
 			return true
@@ -551,7 +600,7 @@ func TestMCPGatewayRejectionNotice(t *testing.T) {
 	t.Setenv(gatewayURLEnv, server.URL+sessionPath)
 	t.Setenv(gatewayTokenEnv, mcpFixture)
 
-	initialized, stop := startMCPGateway(ctx, new(mcpSubscriptions), notifier, slog.New(slog.DiscardHandler))
+	initialized, stop := startMCPGateway(ctx, new(mcpSubscriptions), notifier, slog.New(slog.DiscardHandler), os.Getenv)
 	defer stop()
 
 	initialized(ctx, &mcp.InitializedRequest{Session: peer, Params: nil, Extra: nil})
@@ -608,14 +657,7 @@ func checkMCPGatewayLifetime(t *testing.T, name string) {
 	checkError(t, os.MkdirAll(filepath.Dir(file), 0o700))
 	checkError(t, os.WriteFile(file, []byte(mcpStateDocument(mcpStateTestSubscription)), 0o600))
 
-	for _, test := range [][2]string{{"", ""}, {"ws://example.invalid", ""}, {"", mcpFixture}} {
-		t.Setenv(gatewayURLEnv, test[0])
-		t.Setenv(gatewayTokenEnv, test[1])
-
-		initialized, stop := startMCPGateway(ctx, nil, notifier, logger)
-		checkEqual(t, initialized == nil, true)
-		stop()
-	}
+	checkDisabledGateway(ctx, t, logger, notifier)
 
 	disconnected := make(chan struct{})
 	server, requests := fakeMCPGateway(t, []int{http.StatusSwitchingProtocols}, func(conn *websocket.Conn) {
@@ -637,14 +679,49 @@ func checkMCPGatewayLifetime(t *testing.T, name string) {
 	t.Setenv(gatewayURLEnv, server.URL+sessionPath)
 	t.Setenv(gatewayTokenEnv, mcpFixture)
 
-	_, stop := startMCPGateway(ctx, nil, notifier, logger)
+	_, stop := startMCPGateway(ctx, nil, notifier, logger, os.Getenv)
 	stop()
 	checkEqual(t, requests.Load(), 0)
 
-	initialized, stop := startMCPGateway(ctx, loadMCPSubscriptions(ctx, logger), notifier, logger)
+	initialized, stop := startMCPGateway(ctx, loadMCPSubscriptions(ctx, logger), notifier, logger, os.Getenv)
 	defer stop()
 
 	initialized(ctx, &mcp.InitializedRequest{Session: peer, Params: nil, Extra: nil})
+
+	checkGatewayLifetimeNotice(ctx, t, name, notifications, stop)
+
+	select {
+	case <-disconnected:
+	case <-ctx.Done():
+		t.Fatal("gateway socket stayed open")
+	}
+
+	stop()
+	checkEqual(t, requests.Load(), 1)
+	checkEqual(t, len(notifications), 0)
+}
+
+func checkDisabledGateway(ctx context.Context, t *testing.T, logger *slog.Logger, notifier *mcpNotifier) {
+	t.Helper()
+
+	for _, test := range [][2]string{{"", ""}, {"ws://example.invalid", ""}, {"", mcpFixture}} {
+		t.Setenv(gatewayURLEnv, test[0])
+		t.Setenv(gatewayTokenEnv, test[1])
+
+		initialized, stop := startMCPGateway(ctx, nil, notifier, logger, os.Getenv)
+		checkEqual(t, initialized == nil, true)
+		stop()
+	}
+}
+
+func checkGatewayLifetimeNotice(
+	ctx context.Context,
+	t *testing.T,
+	name string,
+	notifications <-chan *jsonrpc.Request,
+	stop func(),
+) {
+	t.Helper()
 
 	if name == claudeCodeClient {
 		select {
@@ -656,16 +733,6 @@ func checkMCPGatewayLifetime(t *testing.T, name string) {
 
 		stop()
 	}
-
-	select {
-	case <-disconnected:
-	case <-ctx.Done():
-		t.Fatal("gateway socket stayed open")
-	}
-
-	stop()
-	checkEqual(t, requests.Load(), 1)
-	checkEqual(t, len(notifications), 0)
 }
 
 func rejectTestNotification(t *testing.T) func(channelEvent) bool {

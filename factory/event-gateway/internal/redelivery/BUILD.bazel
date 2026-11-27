@@ -16,7 +16,7 @@ go_library(
 
 go_test(
     name = "redelivery_test",
-    srcs = ["auth_test.go"],
+    srcs = ["auth_internal_test.go"],
     embed = [":redelivery"],
     visibility = ["//factory/event-gateway:__pkg__"],
 )

@@ -1,8 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright Tony Burns
 
-// cspell:ignore testpackage
-
 package redelivery
 
 import (
@@ -33,10 +31,10 @@ import (
 )
 
 const (
-	tokenPath   = "/app/installations/42/access_tokens"
-	secretToken = "test-installation-secret"
-	secretKey   = "test-key-material"
-	testAppID   = "12345"
+	installationPath = "/app/installations/42/access_tokens"
+	secretToken      = "test-installation-secret"
+	secretKey        = "test-key-material"
+	testAppID        = "12345"
 )
 
 func TestTokenCacheAndJWT(t *testing.T) {
@@ -49,7 +47,7 @@ func TestTokenCacheAndJWT(t *testing.T) {
 	var calls atomic.Int32
 
 	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, req *http.Request) {
-		if req.Method != http.MethodPost || req.URL.RequestURI() != tokenPath || req.ContentLength != 0 ||
+		if req.Method != http.MethodPost || req.URL.RequestURI() != installationPath || req.ContentLength != 0 ||
 			req.Header.Get("Accept") != "application/vnd.github+json" || req.UserAgent() != "event-gateway" ||
 			req.Header.Get("X-Github-Api-Version") != "2022-11-28" {
 			t.Error("unexpected installation token request")
@@ -62,7 +60,13 @@ func TestTokenCacheAndJWT(t *testing.T) {
 
 		writer.WriteHeader(http.StatusCreated)
 
-		_, _ = io.Copy(writer, tokenResponse(fmt.Sprint(secretToken, call), start.Add(time.Duration(call)*time.Hour)))
+		_, err := io.Copy(
+			writer,
+			tokenResponse(fmt.Sprint(secretToken, call), start.Add(time.Duration(call)*time.Hour)),
+		)
+		if err != nil {
+			t.Error(err)
+		}
 	}))
 	t.Cleanup(server.Close)
 
@@ -89,14 +93,20 @@ func TestTokenCacheAndJWT(t *testing.T) {
 	client.Invalidate()
 	check(3)
 
+	checkCredentialFormatting(t, client)
+
+	checkConcurrentTokens(t, client)
+}
+
+func checkCredentialFormatting(t *testing.T, client *Client) {
+	t.Helper()
+
 	for _, value := range []any{client, *client, client.cache.token} {
 		if fmt.Sprintf("%v %+v %#v", value, value, value) != strings.Repeat(redacted+" ", 2)+redacted ||
 			slog.AnyValue(value).Resolve().String() != redacted {
 			t.Fatal("formatter or logger exposed credentials")
 		}
 	}
-
-	checkConcurrentTokens(t, client)
 }
 
 func checkConcurrentTokens(t *testing.T, client *Client) {
@@ -205,20 +215,25 @@ func TestExchangeErrors(t *testing.T) {
 		{iotest.ErrReader(io.ErrUnexpectedEOF), "read error", http.StatusCreated},
 	} {
 		client.options.HTTPClient.Transport = roundTripFunc(func(req *http.Request) (*http.Response, error) {
-			if req.URL.Path != tokenPath {
+			if req.URL.Path != installationPath {
 				t.Error("token request followed a redirect")
 			}
 
-			return &http.Response{
-				StatusCode: test.status, Header: http.Header{"Location": {"/other"}}, Body: io.NopCloser(test.body),
-			}, nil
+			response := httptest.NewRecorder()
+			response.Header().Set("Location", "/other")
+			response.WriteHeader(test.status)
+
+			result := response.Result()
+			result.Body = io.NopCloser(test.body)
+
+			return result, nil
 		})
 
 		assertTokenError(t, client, test.name, fmt.Sprintf("HTTP %d", test.status))
 	}
 
 	client.options.HTTPClient.Transport = roundTripFunc(func(req *http.Request) (*http.Response, error) {
-		return nil, errors.New(req.Header.Get("Authorization") + secretToken)
+		return nil, fmt.Errorf("%w %s", authError(secretToken), req.Header.Get("Authorization"))
 	})
 	assertTokenError(t, client, "transport", "send token request")
 	client.key = new(rsa.PrivateKey)
@@ -240,7 +255,7 @@ func assertTokenError(t *testing.T, client *Client, name, detail string) {
 
 	token, err := client.Token(t.Context())
 	if token != "" || client.cache.token != empty || err == nil ||
-		strings.TrimSuffix(err.Error(), " invalid token response") != "POST "+tokenPath+": "+detail {
+		strings.TrimSuffix(err.Error(), " invalid token response") != "POST "+installationPath+": "+detail {
 		t.Errorf("%s: expected a redacted exchange error without a returned or cached token", name)
 	}
 }

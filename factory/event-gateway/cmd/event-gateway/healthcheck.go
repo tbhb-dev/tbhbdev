@@ -51,8 +51,11 @@ func healthcheck(ctx context.Context, args []string) error {
 
 	// The address is already validated, so the URL is built without parsing.
 	var endpoint url.URL
+
 	endpoint.Scheme, endpoint.Host, endpoint.Path = "http", *addr, healthPath
+
 	var req http.Request
+
 	req.Method, req.URL, req.Header = http.MethodGet, &endpoint, make(http.Header)
 
 	// A redirect is returned as-is, so only a direct 200 counts as healthy.

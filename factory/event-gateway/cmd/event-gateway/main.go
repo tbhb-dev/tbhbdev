@@ -57,7 +57,7 @@ func run(ctx context.Context, out io.Writer, logHandler slog.Handler, args []str
 	case parkedCommand:
 		return runParked(ctx, out, args[1:], requestParked)
 	case mcpCommand:
-		return runMCP(ctx, logHandler, args[1:])
+		return runMCP(ctx, logHandler, os.Stdin, out, args[1:])
 	default:
 		return errUsage
 	}

@@ -73,6 +73,23 @@ func TestStoreDeliveryDuplicates(t *testing.T) {
 	hash := sha256.Sum256(message.Payload)
 	checkEqual(t, msg.Header.Get(bodyHashKey), hex.EncodeToString(hash[:]))
 
+	checkStoredEvent(t, msg, body)
+
+	checkError(t, store.stream.DeleteMsg(ctx, msg.Sequence))
+
+	err = store.publish(ctx, message)
+	checkEqual(t, errors.Is(err, jetstream.ErrMsgNotFound), true)
+
+	canceled, cancel := context.WithCancel(ctx)
+	cancel()
+
+	err = store.publish(canceled, message)
+	checkEqual(t, errors.Is(err, context.Canceled), true)
+}
+
+func checkStoredEvent(t *testing.T, msg *jetstream.RawStreamMsg, body string) {
+	t.Helper()
+
 	var stored map[string]json.RawMessage
 	checkError(t, json.Unmarshal(msg.Data, &stored))
 	checkEqual(t, len(stored), 7)
@@ -90,17 +107,6 @@ func TestStoreDeliveryDuplicates(t *testing.T) {
 	var receivedAt time.Time
 	checkError(t, json.Unmarshal(stored["received_at"], &receivedAt))
 	checkEqual(t, receivedAt.Location(), time.UTC)
-
-	checkError(t, store.stream.DeleteMsg(ctx, msg.Sequence))
-
-	err = store.publish(ctx, message)
-	checkEqual(t, errors.Is(err, jetstream.ErrMsgNotFound), true)
-
-	canceled, cancel := context.WithCancel(ctx)
-	cancel()
-
-	err = store.publish(canceled, message)
-	checkEqual(t, errors.Is(err, context.Canceled), true)
 }
 
 func TestEventExpiry(t *testing.T) {
@@ -276,7 +282,7 @@ func retryFixture(jet *retryJet) (eventStore, envelope) {
 	event.Event = issuesEvent
 	event.Payload = []byte("{}")
 
-	return eventStore{jet: jet, stream: stream}, event
+	return eventStore{jet: jet, stream: stream, openOrdered: nil}, event
 }
 
 func TestStoreRetryAfterExpiry(t *testing.T) {

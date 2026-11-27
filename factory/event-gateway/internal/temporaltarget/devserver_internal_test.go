@@ -57,7 +57,13 @@ func temporalCLI(t *testing.T) string {
 		return filepath.Join(dir, filepath.FromSlash(key))
 	}
 
-	data, err := os.ReadFile(manifest)
+	dir, filename := filepath.Split(manifest)
+	root, err := os.OpenRoot(filepath.Clean(dir))
+	devCheck(t, err)
+
+	defer root.Close()
+
+	data, err := root.ReadFile(filename)
 	devCheck(t, err)
 
 	for line := range strings.SplitSeq(string(data), "\n") {
@@ -83,6 +89,14 @@ func devCheck(t *testing.T, err error) {
 	}
 }
 
+func devServerCommand(ctx context.Context, executable, port string) *exec.Cmd {
+	cmd := exec.CommandContext(ctx, executable, "server", "start-dev", "--ip", "127.0.0.1", "--headless",
+		"--log-level", "error", "--namespace", devNamespace)
+	cmd.Args = append(cmd.Args, "--port", port)
+
+	return cmd
+}
+
 func startDevServer(t *testing.T) (*SDKClient, func()) {
 	t.Helper()
 
@@ -92,16 +106,13 @@ func startDevServer(t *testing.T) (*SDKClient, func()) {
 	devCheck(t, listenErr)
 
 	address := listener.Addr().String()
-	host, port, splitErr := net.SplitHostPort(address)
+	_, port, splitErr := net.SplitHostPort(address)
 	devCheck(t, splitErr)
 
 	devCheck(t, listener.Close())
 
 	// Cleanup stops the worker before killing the server.
-	processCtx := context.WithoutCancel(t.Context())
-
-	cmd := exec.CommandContext(processCtx, temporalCLI(t), "server", "start-dev",
-		"--ip", host, "--port", port, "--headless", "--log-level", "error", "--namespace", devNamespace)
+	cmd := devServerCommand(context.WithoutCancel(t.Context()), temporalCLI(t), port)
 
 	var output bytes.Buffer
 
@@ -119,6 +130,15 @@ func startDevServer(t *testing.T) (*SDKClient, func()) {
 
 		close(exited)
 	}()
+
+	stop := devServerStop(t, cmd, exited)
+	t.Cleanup(stop)
+
+	return connectDevServer(t, address, &output, exited, stop), stop
+}
+
+func devServerStop(t *testing.T, cmd *exec.Cmd, exited <-chan error) func() {
+	t.Helper()
 
 	stopServer := sync.OnceValue(func() error {
 		var exitErr, killErr error
@@ -149,7 +169,12 @@ func startDevServer(t *testing.T) (*SDKClient, func()) {
 		t.Helper()
 		devCheck(t, stopServer())
 	}
-	t.Cleanup(stop)
+
+	return stop
+}
+
+func connectDevServer(t *testing.T, address string, output *bytes.Buffer, exited <-chan error, stop func()) *SDKClient {
+	t.Helper()
 
 	ctx, cancel := context.WithTimeout(t.Context(), 45*time.Second)
 	defer cancel()
@@ -157,24 +182,26 @@ func startDevServer(t *testing.T) (*SDKClient, func()) {
 	ticker := time.NewTicker(100 * time.Millisecond)
 	defer ticker.Stop()
 
-	options := sdk.Options{HostPort: address, Namespace: devNamespace}
+	var options sdk.Options
+
+	options.HostPort, options.Namespace = address, devNamespace
 	options.ConnectionOptions.GetSystemInfoTimeout = time.Second
 
 	for {
 		rpc, dialErr := sdk.DialContext(ctx, options)
 		if dialErr == nil {
-			adapter := &SDKClient{client: rpc}
+			adapter := newSDKClient(rpc)
 			t.Cleanup(adapter.Close)
 
-			return adapter, stop
+			return adapter
 		}
 
 		select {
 		case exitErr := <-exited:
-			t.Fatalf("Temporal dev server exited before readiness: %v\n%s", exitErr, &output)
+			t.Fatalf("Temporal dev server exited before readiness: %v\n%s", exitErr, output)
 		case <-ctx.Done():
 			stop()
-			t.Fatalf("Temporal dev server at %s was not ready: %v\n%s", address, dialErr, &output)
+			t.Fatalf("Temporal dev server at %s was not ready: %v\n%s", address, dialErr, output)
 		case <-ticker.C:
 		}
 	}
@@ -194,7 +221,7 @@ func actOnDevServer(ctx context.Context, t *testing.T, adapter *SDKClient, deliv
 	rule := routing.Rule{Name: "dev-rule", Action: json.RawMessage(action)}
 	target, err := New(
 		routing.Target{
-			Start:      routing.Start{},
+			Start:      routing.Start{Time: time.Time{}, Kind: routing.New},
 			Connection: nil,
 			Name:       "dev-target",
 			Type:       "temporal",
@@ -227,7 +254,10 @@ func TestTemporalDevServer(t *testing.T) {
 	t.Parallel()
 
 	adapter, _ := startDevServer(t)
-	poller := worker.New(adapter.client, devQueue, worker.Options{})
+
+	var workerOptions worker.Options
+
+	poller := worker.New(adapter.client, devQueue, workerOptions)
 	poller.RegisterWorkflowWithOptions(
 		waitForEvent,
 		workflow.RegisterOptions{DisableAlreadyRegisteredCheck: false, VersioningBehavior: 0, Name: devWorkflow},
@@ -290,13 +320,13 @@ type startObserver struct {
 	flag bool
 }
 
-func (o *startObserver) ExecuteWorkflow(
+func (o *startObserver) execute(
 	ctx context.Context, options sdk.StartWorkflowOptions, name any, args ...any,
-) (sdk.WorkflowRun, error) {
+) error {
 	options.WorkflowExecutionErrorWhenAlreadyStarted = o.flag
 	o.run, o.err = o.Client.ExecuteWorkflow(ctx, options, name, args...)
 
-	return o.run, o.err
+	return mapSDKError(o.err)
 }
 
 type repeatCase struct {
@@ -344,7 +374,8 @@ func checkDevRepeat(t *testing.T, rpc sdk.Client, workflowID string, testCase re
 	defer cancel()
 
 	observer := &startObserver{run: nil, err: nil, Client: rpc, flag: testCase.flag}
-	adapter := &SDKClient{client: observer}
+	adapter := newSDKClient(rpc)
+	adapter.execute = observer.execute
 	action := devStart + strconv.Quote(testCase.policy) + "}"
 	devCheck(t, actOnDevServer(ctx, t, adapter, workflowID, action, 1))
 

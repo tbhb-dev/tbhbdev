@@ -54,14 +54,29 @@ type Client struct {
 	options Options
 }
 
+// authError leaves the underlying error out of messages that could carry credentials.
+type authError string
+
+func (e authError) Error() string { return string(e) }
+
 type tokenCache struct {
 	token installationToken
 	mu    sync.Mutex
 }
 
 type installationToken struct {
-	ExpiresAt time.Time `json:"expires_at"`
-	Token     string    `json:"token"`
+	ExpiresAt time.Time
+	Token     string
+}
+
+func decodeToken(data []byte, token *installationToken) bool {
+	var object map[string]json.RawMessage
+	if json.Unmarshal(data, &object) != nil {
+		return false
+	}
+
+	return json.Unmarshal(object["token"], &token.Token) == nil &&
+		json.Unmarshal(object["expires_at"], &token.ExpiresAt) == nil
 }
 
 func (installationToken) String() string       { return redacted }
@@ -76,12 +91,12 @@ func NewClient(options Options) (*Client, error) {
 	}
 
 	if err != nil {
-		return nil, fmt.Errorf("read GitHub App key %s", options.KeyFile)
+		return nil, fmt.Errorf("%w %s", authError("read GitHub App key"), options.KeyFile)
 	}
 
 	key := parseKey(data)
 	if key == nil {
-		return nil, fmt.Errorf("parse GitHub App RSA key %s", options.KeyFile)
+		return nil, fmt.Errorf("%w %s", authError("parse GitHub App RSA key"), options.KeyFile)
 	}
 
 	if options.Now == nil {
@@ -118,13 +133,22 @@ func parseKey(data []byte) *rsa.PrivateKey {
 
 	switch block.Type {
 	case "RSA PRIVATE KEY":
-		key, _ := x509.ParsePKCS1PrivateKey(block.Bytes)
+		key, err := x509.ParsePKCS1PrivateKey(block.Bytes)
+		if err != nil {
+			return nil
+		}
 
 		return key
 	case "PRIVATE KEY":
-		key, _ := x509.ParsePKCS8PrivateKey(block.Bytes)
+		key, err := x509.ParsePKCS8PrivateKey(block.Bytes)
+		if err != nil {
+			return nil
+		}
 
-		rsaKey, _ := key.(*rsa.PrivateKey)
+		rsaKey, ok := key.(*rsa.PrivateKey)
+		if !ok {
+			return nil
+		}
 
 		return rsaKey
 	}
@@ -133,7 +157,7 @@ func parseKey(data []byte) *rsa.PrivateKey {
 }
 
 // Invalidate drops the cached installation token.
-func (c *Client) Invalidate() {
+func (c Client) Invalidate() {
 	c.cache.mu.Lock()
 	defer c.cache.mu.Unlock()
 
@@ -141,7 +165,7 @@ func (c *Client) Invalidate() {
 }
 
 // Token returns an installation token, refreshing it two minutes before expiry.
-func (c *Client) Token(ctx context.Context) (string, error) {
+func (c Client) Token(ctx context.Context) (string, error) {
 	cache := c.cache
 	cache.mu.Lock()
 	defer cache.mu.Unlock()
@@ -153,12 +177,12 @@ func (c *Client) Token(ctx context.Context) (string, error) {
 
 	jwt, ok := c.sign(now)
 	if !ok {
-		return "", fmt.Errorf("POST %s: sign GitHub App JWT", c.path)
+		return "", fmt.Errorf("POST %s: %w", c.path, authError("sign GitHub App JWT"))
 	}
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.options.BaseURL+c.path, nil)
 	if err != nil {
-		return "", fmt.Errorf("POST %s: create token request", c.path)
+		return "", fmt.Errorf("POST %s: %w", c.path, authError("create token request"))
 	}
 
 	req.Header.Set("Accept", "application/vnd.github+json")
@@ -168,21 +192,21 @@ func (c *Client) Token(ctx context.Context) (string, error) {
 
 	res, err := c.options.HTTPClient.Do(req)
 	if err != nil {
-		return "", fmt.Errorf("POST %s: send token request", c.path)
+		return "", fmt.Errorf("POST %s: %w", c.path, authError("send token request"))
 	}
 
 	defer res.Body.Close()
 
 	if res.StatusCode != http.StatusCreated {
-		return "", fmt.Errorf("POST %s: HTTP %d", c.path, res.StatusCode)
+		return "", fmt.Errorf("POST %s: %w %d", c.path, authError("HTTP"), res.StatusCode)
 	}
 
 	data, err := io.ReadAll(io.LimitReader(res.Body, responseLimit+1))
 
 	var token installationToken
-	if err != nil || len(data) > responseLimit || json.Unmarshal(data, &token) != nil ||
+	if err != nil || len(data) > responseLimit || !decodeToken(data, &token) ||
 		token.Token == "" || token.ExpiresAt.IsZero() || !token.ExpiresAt.After(now.Add(refreshBefore)) {
-		return "", fmt.Errorf("POST %s: HTTP %d invalid token response", c.path, res.StatusCode)
+		return "", fmt.Errorf("POST %s: HTTP %d %w", c.path, res.StatusCode, authError("invalid token response"))
 	}
 
 	cache.token = token
@@ -190,10 +214,14 @@ func (c *Client) Token(ctx context.Context) (string, error) {
 	return token.Token, nil
 }
 
-func (c *Client) sign(now time.Time) (string, bool) {
+func (c Client) sign(now time.Time) (string, bool) {
 	const header = `{"alg":"RS256","typ":"JWT"}`
 
-	issuer, _ := json.Marshal(c.options.AppID)
+	issuer, err := json.Marshal(c.options.AppID)
+	if err != nil {
+		return "", false
+	}
+
 	claims := fmt.Sprintf(
 		`{"iss":%s,"iat":%d,"exp":%d}`, issuer, now.Add(-time.Minute).Unix(), now.Add(jwtLifetime).Unix(),
 	)

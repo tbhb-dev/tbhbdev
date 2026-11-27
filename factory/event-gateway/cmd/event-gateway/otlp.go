@@ -9,6 +9,7 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"errors"
+	"fmt"
 	"log/slog"
 	"net"
 	"net/http"
@@ -22,21 +23,12 @@ import (
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/exporters/otlp/otlptrace"
-	"go.opentelemetry.io/otel/sdk/metric/exemplar"
-	"go.opentelemetry.io/otel/sdk/metric/metricdata"
 	"go.opentelemetry.io/otel/sdk/resource"
 	"google.golang.org/protobuf/proto"
 
 	sdklog "go.opentelemetry.io/otel/sdk/log"
-	sdkmetric "go.opentelemetry.io/otel/sdk/metric"
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
-	logexport "go.opentelemetry.io/proto/otlp/collector/logs/v1"
-	metricexport "go.opentelemetry.io/proto/otlp/collector/metrics/v1"
 	traceexport "go.opentelemetry.io/proto/otlp/collector/trace/v1"
-	commonpb "go.opentelemetry.io/proto/otlp/common/v1"
-	logpb "go.opentelemetry.io/proto/otlp/logs/v1"
-	metricpb "go.opentelemetry.io/proto/otlp/metrics/v1"
-	resourcepb "go.opentelemetry.io/proto/otlp/resource/v1"
 	tracepb "go.opentelemetry.io/proto/otlp/trace/v1"
 )
 
@@ -81,12 +73,37 @@ func openTelemetry(ctx context.Context, handler slog.Handler, cfg otlpConfig) (t
 	otel.SetLogger(logr.Discard())
 	otel.SetErrorHandler(otel.ErrorHandlerFunc(func(error) {}))
 
-	traceExporter, _ := otlptrace.New(ctx, writer)
-	// The SDK's WithResource options always merge OTEL_RESOURCE_ATTRIBUTES and OTEL_SERVICE_NAME
-	// into the provider resource, and v1.47.0 has no option to skip that. The wire resource is
-	// therefore rebuilt in UploadTraces, and the metric and log exporters already build their own.
+	traceExporter, err := otlptrace.New(ctx, writer)
+	if err != nil {
+		return telemetry{}, nil, fmt.Errorf("start OTLP traces: %w", err)
+	}
+
 	res := resource.NewSchemaless(attribute.String("service.name", serviceName))
-	tracer := sdktrace.NewTracerProvider(
+	tracer := newOTLPTracer(res, traceExporter)
+	meter, stopMetrics := newOTLPMeter(ctx, res, writer)
+	logger := newOTLPLogger(res, writer)
+	local := slog.New(handler)
+	both := slog.NewMultiHandler(handler, otelslog.NewHandler(serviceName, otelslog.WithLoggerProvider(logger)))
+
+	closeSignals := sync.OnceFunc(func() {
+		const shutdownTimeout = 15 * time.Second
+
+		shutdown, cancel := context.WithTimeout(context.WithoutCancel(ctx), shutdownTimeout)
+		defer cancel()
+		defer writer.client.CloseIdleConnections()
+
+		if errors.Join(tracer.Shutdown(shutdown), stopMetrics(shutdown), logger.Shutdown(shutdown)) != nil {
+			local.ErrorContext(shutdown, "OTLP shutdown failed")
+		}
+	})
+
+	return newTelemetry(both, tracer, meter), closeSignals, nil
+}
+
+func newOTLPTracer(res *resource.Resource, traceExporter *otlptrace.Exporter) *sdktrace.TracerProvider {
+	// WithResource merges OTEL_RESOURCE_ATTRIBUTES and OTEL_SERVICE_NAME. The wire
+	// resource is rebuilt in UploadTraces to honor the gateway's explicit settings.
+	return sdktrace.NewTracerProvider(
 		sdktrace.WithResource(res),
 		sdktrace.WithSampler(sdktrace.ParentBased(sdktrace.AlwaysSample())),
 		sdktrace.WithRawSpanLimits(sdktrace.SpanLimits{
@@ -105,16 +122,10 @@ func openTelemetry(ctx context.Context, handler slog.Handler, cfg otlpConfig) (t
 			sdktrace.WithExportTimeout(exportTimeout),
 		),
 	)
-	meter := sdkmetric.NewMeterProvider(
-		sdkmetric.WithResource(res),
-		sdkmetric.WithExemplarFilter(exemplar.TraceBasedFilter),
-		sdkmetric.WithCardinalityLimit(cardinalityLimit),
-		sdkmetric.WithReader(sdkmetric.NewPeriodicReader(
-			otlpMetrics{otlpWriter: writer, start: time.Now()},
-			sdkmetric.WithInterval(time.Minute), sdkmetric.WithTimeout(exportTimeout),
-		)),
-	)
-	logger := sdklog.NewLoggerProvider(
+}
+
+func newOTLPLogger(res *resource.Resource, writer *otlpWriter) *sdklog.LoggerProvider {
+	return sdklog.NewLoggerProvider(
 		sdklog.WithResource(res),
 		sdklog.WithProcessor(sdklog.NewBatchProcessor(otlpLogs{writer},
 			sdklog.WithMaxQueueSize(batchQueueSize),
@@ -123,22 +134,6 @@ func openTelemetry(ctx context.Context, handler slog.Handler, cfg otlpConfig) (t
 			sdklog.WithExportMaxBatchSize(batchSize),
 		)),
 	)
-	local := slog.New(handler)
-	both := slog.NewMultiHandler(handler, otelslog.NewHandler(serviceName, otelslog.WithLoggerProvider(logger)))
-
-	closeSignals := sync.OnceFunc(func() {
-		const shutdownTimeout = 15 * time.Second
-
-		shutdown, cancel := context.WithTimeout(context.WithoutCancel(ctx), shutdownTimeout)
-		defer cancel()
-		defer writer.client.CloseIdleConnections()
-
-		if errors.Join(tracer.Shutdown(shutdown), meter.Shutdown(shutdown), logger.Shutdown(shutdown)) != nil {
-			local.ErrorContext(shutdown, "OTLP shutdown failed")
-		}
-	})
-
-	return newTelemetry(both, tracer, meter), closeSignals, nil
 }
 
 type otlpWriter struct {
@@ -159,6 +154,7 @@ func newOTLPWriter(cfg otlpConfig) (*otlpWriter, error) {
 	}
 
 	var tlsConfig tls.Config
+
 	tlsConfig.MinVersion = tls.VersionTLS12
 
 	if cfg.CAFile != "" {
@@ -179,6 +175,7 @@ func newOTLPWriter(cfg otlpConfig) (*otlpWriter, error) {
 	headers.Set("Content-Type", "application/x-protobuf")
 
 	var transport http.Transport
+
 	transport.TLSClientConfig = &tlsConfig
 	client := &http.Client{
 		Jar:           nil,
@@ -233,128 +230,4 @@ func (w *otlpWriter) send(ctx context.Context, signal string, message proto.Mess
 	}
 
 	return nil
-}
-
-type otlpMetrics struct {
-	*otlpWriter
-
-	start time.Time
-}
-
-func (otlpMetrics) Temporality(kind sdkmetric.InstrumentKind) metricdata.Temporality {
-	return sdkmetric.DefaultTemporalitySelector(kind)
-}
-
-func (otlpMetrics) Aggregation(kind sdkmetric.InstrumentKind) sdkmetric.Aggregation {
-	return sdkmetric.DefaultAggregationSelector(kind)
-}
-
-func (w otlpMetrics) Export(ctx context.Context, data *metricdata.ResourceMetrics) error {
-	metrics := &metricpb.ResourceMetrics{ScopeMetrics: nil, SchemaUrl: "", Resource: otlpResource()}
-
-	for _, scope := range data.ScopeMetrics {
-		group := &metricpb.ScopeMetrics{
-			Metrics:   nil,
-			SchemaUrl: "",
-			Scope:     &commonpb.InstrumentationScope{Name: scope.Scope.Name},
-		}
-		for _, metric := range scope.Metrics {
-			sum, ok := metric.Data.(metricdata.Sum[int64])
-			if !ok {
-				continue
-			}
-
-			value := &metricpb.Sum{
-				DataPoints: nil,
-
-				IsMonotonic:            sum.IsMonotonic,
-				AggregationTemporality: metricpb.AggregationTemporality_AGGREGATION_TEMPORALITY_CUMULATIVE,
-			}
-			// The SDK forwards per-series start times when OTEL_GO_X_PER_SERIES_START_TIMESTAMPS is
-			// set, and v1.47.0 has no option to turn that off. Every cumulative point therefore
-			// reports the one start time fixed when the provider was built.
-			for _, point := range sum.DataPoints {
-				value.DataPoints = append(value.DataPoints, &metricpb.NumberDataPoint{
-					Exemplars: nil,
-					Flags:     0,
-
-					Attributes:        otlpAttributes(point.Attributes.ToSlice()),
-					StartTimeUnixNano: uint64(w.start.UnixNano()),
-					TimeUnixNano:      uint64(point.Time.UnixNano()),
-					Value:             &metricpb.NumberDataPoint_AsInt{AsInt: point.Value},
-				})
-			}
-
-			metric := &metricpb.Metric{
-				Description: "",
-				Unit:        "",
-				Metadata:    nil,
-				Name:        metric.Name,
-				Data:        &metricpb.Metric_Sum{Sum: value},
-			}
-			group.Metrics = append(group.Metrics, metric)
-		}
-
-		metrics.ScopeMetrics = append(metrics.ScopeMetrics, group)
-	}
-
-	message := &metricexport.ExportMetricsServiceRequest{ResourceMetrics: []*metricpb.ResourceMetrics{metrics}}
-
-	return w.send(ctx, "metrics", message)
-}
-
-type otlpLogs struct{ *otlpWriter }
-
-func (w otlpLogs) Export(ctx context.Context, records []sdklog.Record) error {
-	group := &logpb.ScopeLogs{LogRecords: nil, SchemaUrl: "", Scope: &commonpb.InstrumentationScope{Name: serviceName}}
-
-	for i := range records {
-		record := &records[i]
-		traceID, spanID := record.TraceID(), record.SpanID()
-		group.LogRecords = append(group.LogRecords, &logpb.LogRecord{
-			ObservedTimeUnixNano:   0,
-			Attributes:             nil,
-			DroppedAttributesCount: 0,
-			Flags:                  0,
-			EventName:              "",
-
-			TimeUnixNano:   uint64(record.Timestamp().UnixNano()),
-			SeverityNumber: logpb.SeverityNumber(record.Severity()),
-			SeverityText:   record.SeverityText(),
-			Body:           otlpString(record.Body().AsString()),
-			TraceId:        traceID[:],
-			SpanId:         spanID[:],
-		})
-	}
-
-	logs := &logpb.ResourceLogs{SchemaUrl: "", Resource: otlpResource(), ScopeLogs: []*logpb.ScopeLogs{group}}
-
-	return w.send(ctx, "logs", &logexport.ExportLogsServiceRequest{ResourceLogs: []*logpb.ResourceLogs{logs}})
-}
-
-func otlpResource() *resourcepb.Resource {
-	return &resourcepb.Resource{
-		DroppedAttributesCount: 0,
-		EntityRefs:             nil,
-
-		Attributes: otlpAttributes([]attribute.KeyValue{attribute.String("service.name", serviceName)}),
-	}
-}
-
-func otlpString(value string) *commonpb.AnyValue {
-	return &commonpb.AnyValue{Value: &commonpb.AnyValue_StringValue{StringValue: value}}
-}
-
-func otlpAttributes(attributes []attribute.KeyValue) []*commonpb.KeyValue {
-	values := make([]*commonpb.KeyValue, 0, len(attributes))
-	for _, attr := range attributes {
-		value := otlpString(attr.Value.AsString())
-		if attr.Value.Type() == attribute.INT64 {
-			value.Value = &commonpb.AnyValue_IntValue{IntValue: attr.Value.AsInt64()}
-		}
-
-		values = append(values, &commonpb.KeyValue{KeyStrindex: 0, Key: string(attr.Key), Value: value})
-	}
-
-	return values
 }

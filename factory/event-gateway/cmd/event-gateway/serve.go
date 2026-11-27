@@ -15,6 +15,8 @@ import (
 	"os"
 	"strings"
 	"time"
+
+	"github.com/tbhb-dev/tbhbdev/factory/event-gateway/internal/temporaltarget"
 )
 
 const (
@@ -56,7 +58,7 @@ type serveConfig struct {
 	maxStore   int64
 }
 
-func (cfg *serveConfig) parse(out io.Writer, args []string) error {
+func (cfg *serveConfig) flags() *flag.FlagSet {
 	flags := flag.NewFlagSet("event-gateway serve", flag.ContinueOnError)
 	// Flag parsing errors can quote argument values. Only print flag help.
 	flags.SetOutput(io.Discard)
@@ -111,6 +113,11 @@ func (cfg *serveConfig) parse(out io.Writer, args []string) error {
 		return nil
 	})
 
+	return flags
+}
+
+func (cfg *serveConfig) parse(out io.Writer, args []string) error {
+	flags := cfg.flags()
 	err := flags.Parse(args)
 	provided := make(map[string]bool)
 
@@ -160,6 +167,12 @@ func readSecret(value, file *string, env string) ([]byte, error) {
 }
 
 func serve(ctx context.Context, out io.Writer, logHandler slog.Handler, args []string) error {
+	return serveWithRegistry(ctx, out, logHandler, args, temporalRegistry(temporaltarget.Dial))
+}
+
+func serveWithRegistry(
+	ctx context.Context, out io.Writer, logHandler slog.Handler, args []string, registry map[string]targetFactory,
+) error {
 	var cfg serveConfig
 
 	err := cfg.parse(out, args)
@@ -171,7 +184,11 @@ func serve(ctx context.Context, out io.Writer, logHandler slog.Handler, args []s
 		return err
 	}
 
-	targets, closeTargets, err := loadTargets(cfg.targets, targetTypes)
+	return cfg.serve(ctx, logHandler, registry)
+}
+
+func (cfg *serveConfig) serve(ctx context.Context, logHandler slog.Handler, registry map[string]targetFactory) error {
+	targets, closeTargets, err := loadTargets(cfg.targets, registry)
 	if err != nil {
 		return err
 	}
@@ -207,9 +224,12 @@ func serve(ctx context.Context, out io.Writer, logHandler slog.Handler, args []s
 		return err
 	}
 
-	grafana, err := cfg.grafanaHandler()
-	if err != nil {
-		return err
+	var grafana *grafanaWebhook
+	if cfg.grafanaEnabled() {
+		grafana, err = cfg.grafanaHandler()
+		if err != nil {
+			return err
+		}
 	}
 
 	return cfg.withParked(ctx, targets, func(parked parkedService) error {
@@ -282,6 +302,7 @@ func noParkedService(eventStore) []httpService { return nil }
 
 func gatewayHTTP(address string, handler http.Handler) httpService {
 	var server http.Server
+
 	server.Addr = address
 	server.Handler = handler
 	server.DisableGeneralOptionsHandler = true

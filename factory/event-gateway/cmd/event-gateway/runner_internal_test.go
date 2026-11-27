@@ -10,6 +10,7 @@ import (
 	"log/slog"
 	"math"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -56,23 +57,23 @@ func startRunner(t *testing.T, run *runner) func() {
 
 	stop := sync.OnceFunc(func() {
 		cancel()
-		checkError(t, receiveRunner(t, result))
+		checkError(t, *receiveRunner(t, result))
 	})
 	t.Cleanup(stop)
 
 	return stop
 }
 
-func receiveRunner[T any](t *testing.T, results <-chan T) T {
+func receiveRunner[T any](t *testing.T, results <-chan T) *T {
 	t.Helper()
 
 	select {
 	case result := <-results:
-		return result
+		return &result
 	case <-time.After(runnerWait):
 		t.Fatal("timed out waiting for runner")
 
-		return *new(T)
+		return new(T)
 	}
 }
 
@@ -87,7 +88,7 @@ func expectRunner(t *testing.T, events <-chan Event, sequences ...uint64) {
 	t.Helper()
 
 	for _, seq := range sequences {
-		event := receiveRunner(t, events)
+		event := *receiveRunner(t, events)
 		checkEqual(t, event.Seq, seq)
 		checkEqual(t, string(event.Envelope), testEnvelope)
 	}
@@ -96,12 +97,7 @@ func expectRunner(t *testing.T, events <-chan Event, sequences ...uint64) {
 func TestRunnerDelivery(t *testing.T) {
 	t.Parallel()
 
-	cases := []struct {
-		fail func() error
-		name string
-		park string
-		want []uint64
-	}{
+	cases := []runnerDeliveryCase{
 		{park: "", name: "transient", fail: func() error { return errRetryDelivery }, want: []uint64{1, 1, 2}},
 		{
 			name: "permanent", fail: func() error { return fmt.Errorf("delivery: %w", ErrPermanent) },
@@ -116,55 +112,75 @@ func TestRunnerDelivery(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			t.Parallel()
 
-			store := testStore(t, retention)
-			parked := testParkedStream(t, store)
-			publishRunner(t, store, pullSubject)
-			publishRunner(t, store, pullSubject)
-
-			events := make(chan Event, 8)
-			first := true
-
-			target := fakeTarget{name: test.name, deliver: func(_ context.Context, event Event) error {
-				events <- event
-
-				if first {
-					first = false
-
-					return test.fail()
-				}
-
-				return nil
-			}}
-			run := &runner{stream: store.stream, retryBase: time.Millisecond, targets: []runnerTarget{{
-				Target: target, Subjects: nil, Start: startPosition{at: nil, all: true},
-			}}}
-			park := parkHook(store.jet, newTelemetry(slog.DiscardHandler, nil, nil), 0)
-			run.onPermanent = func(ctx context.Context, name string, event Event, err error) {
-				logPermanent(ctx, name, event, err)
-				park(ctx, name, event, err)
-			}
-
-			stop := startRunner(t, run)
-			expectRunner(t, events, test.want...)
-			stop()
-
-			records, err := listParked(t.Context(), parked, "", 0)
-			checkError(t, err)
-
-			if test.park == "" {
-				checkEqual(t, len(records), 0)
-			} else {
-				checkEqual(t, len(records), 1)
-				checkEqual(t, records[0].Seq, uint64(1))
-				checkEqual(t, records[0].Target, test.name)
-				checkEqual(t, records[0].Error, test.park)
-			}
-
-			info, err := store.stream.Consumer(t.Context(), test.name)
-			checkError(t, err)
-			checkEqual(t, info.CachedInfo().AckFloor.Stream, uint64(2))
+			checkRunnerDelivery(t, test)
 		})
 	}
+}
+
+type runnerDeliveryCase struct {
+	fail func() error
+	name string
+	park string
+	want []uint64
+}
+
+func checkRunnerDelivery(t *testing.T, test runnerDeliveryCase) {
+	t.Helper()
+
+	store := testStore(t, retention)
+	parked := testParkedStream(t, store)
+	publishRunner(t, store, pullSubject)
+	publishRunner(t, store, pullSubject)
+
+	events := make(chan Event, 8)
+	first := true
+
+	target := fakeTarget{name: test.name, deliver: func(_ context.Context, event Event) error {
+		events <- event
+
+		if first {
+			first = false
+
+			return test.fail()
+		}
+
+		return nil
+	}}
+	run := &runner{
+		onPermanent: nil,
+		ready:       nil,
+		possibleGap: atomic.Uint64{},
+		stream:      store.stream,
+		retryBase:   time.Millisecond,
+		targets: []runnerTarget{{
+			Target: target, Subjects: nil, Start: startPosition{at: nil, all: true},
+		}},
+	}
+	park := parkHook(store.jet, newTelemetry(slog.DiscardHandler, nil, nil), 0)
+	run.onPermanent = func(ctx context.Context, name string, event Event, err error) {
+		logPermanent(ctx, name, event, err)
+		park(ctx, name, event, err)
+	}
+
+	stop := startRunner(t, run)
+	expectRunner(t, events, test.want...)
+	stop()
+
+	records, err := listParked(t.Context(), parked, "", 0)
+	checkError(t, err)
+
+	if test.park == "" {
+		checkEqual(t, len(records), 0)
+	} else {
+		checkEqual(t, len(records), 1)
+		checkEqual(t, records[0].Seq, uint64(1))
+		checkEqual(t, records[0].Target, test.name)
+		checkEqual(t, records[0].Error, test.park)
+	}
+
+	info, err := store.stream.Consumer(t.Context(), test.name)
+	checkError(t, err)
+	checkEqual(t, info.CachedInfo().AckFloor.Stream, uint64(2))
 }
 
 func TestRunnerRestart(t *testing.T) {
@@ -175,16 +191,23 @@ func TestRunnerRestart(t *testing.T) {
 	publishRunner(t, store, pullSubject)
 
 	events := make(chan Event, 8)
-	run := &runner{stream: store.stream, targets: []runnerTarget{
-		{
-			Target: recordingTarget(
-				"restart",
-				events,
-			),
-			Subjects: []string{pullSubject},
-			Start:    startPosition{at: nil, all: true},
+	run := &runner{
+		onPermanent: nil,
+		ready:       nil,
+		possibleGap: atomic.Uint64{},
+		stream:      store.stream,
+		retryBase:   0,
+		targets: []runnerTarget{
+			{
+				Target: recordingTarget(
+					"restart",
+					events,
+				),
+				Subjects: []string{pullSubject},
+				Start:    startPosition{at: nil, all: true},
+			},
 		},
-	}}
+	}
 	stop := startRunner(t, run)
 	expectRunner(t, events, 2)
 	stop()
@@ -209,9 +232,16 @@ func TestRunnerGap(t *testing.T) {
 	store := testStore(t, retention)
 
 	events := make(chan Event, 4)
-	run := &runner{stream: store.stream, targets: []runnerTarget{{
-		Target: recordingTarget("gap", events), Start: startPosition{at: nil, all: true},
-	}}}
+	run := &runner{
+		onPermanent: nil,
+		ready:       nil,
+		possibleGap: atomic.Uint64{},
+		stream:      store.stream,
+		retryBase:   0,
+		targets: []runnerTarget{{
+			Subjects: nil, Target: recordingTarget("gap", events), Start: startPosition{at: nil, all: true},
+		}},
+	}
 	stop := startRunner(t, run)
 
 	publishRunner(t, store, pullSubject)
@@ -275,11 +305,18 @@ func TestRunnerStarts(t *testing.T) {
 		return nil
 	}}
 
-	run := &runner{stream: store.stream, targets: []runnerTarget{
-		{Subjects: nil, Target: all, Start: startPosition{all: true}},
-		{Subjects: nil, Target: recordingTarget("time", timedEvents), Start: startPosition{at: &since}},
-		{Start: startPosition{}, Subjects: nil, Target: recordingTarget("new", newEvents)},
-	}}
+	run := &runner{
+		onPermanent: nil,
+		ready:       nil,
+		possibleGap: atomic.Uint64{},
+		stream:      store.stream,
+		retryBase:   0,
+		targets: []runnerTarget{
+			{Subjects: nil, Target: all, Start: startPosition{at: nil, all: true}},
+			{Subjects: nil, Target: recordingTarget("time", timedEvents), Start: startPosition{at: &since, all: false}},
+			{Start: startPosition{at: nil, all: false}, Subjects: nil, Target: recordingTarget("new", newEvents)},
+		},
+	}
 
 	startRunner(t, run)
 	waitRunner(t, func() bool {
@@ -297,7 +334,16 @@ func TestRunnerConsumerError(t *testing.T) {
 	t.Parallel()
 
 	store := testStore(t, retention)
-	run := &runner{stream: store.stream, targets: []runnerTarget{{Target: fakeTarget{name: "."}}}}
+	run := &runner{
+		onPermanent: nil,
+		ready:       nil,
+		possibleGap: atomic.Uint64{},
+		stream:      store.stream,
+		retryBase:   0,
+		targets: []runnerTarget{
+			{Subjects: nil, Start: startPosition{at: nil, all: false}, Target: fakeTarget{name: ".", deliver: nil}},
+		},
+	}
 	err := run.run(t.Context())
 	checkEqual(t, errors.Is(err, jetstream.ErrInvalidConsumerName), true)
 
@@ -340,7 +386,7 @@ func TestRunnerAcknowledgment(t *testing.T) {
 	t.Parallel()
 
 	target := runnerTarget{
-		Start:    startPosition{},
+		Start:    startPosition{at: nil, all: false},
 		Subjects: nil,
 		Target: fakeTarget{name: "ack", deliver: func(_ context.Context, event Event) error {
 			return fmt.Errorf("%w: %s", ErrPermanent, event.Envelope)

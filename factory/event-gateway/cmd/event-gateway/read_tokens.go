@@ -9,6 +9,7 @@ import (
 	"crypto/subtle"
 	"encoding/hex"
 	"errors"
+	"fmt"
 	"log/slog"
 	"os"
 	"regexp"
@@ -29,7 +30,7 @@ type readTokens struct {
 func (tokens *readTokens) load() error {
 	data, err := os.ReadFile(tokens.path)
 	if err != nil {
-		return err
+		return fmt.Errorf("read token file: %w", err)
 	}
 
 	set := make(map[[sha256.Size]byte]string)
@@ -45,7 +46,11 @@ func (tokens *readTokens) load() error {
 			return errTokenFormat
 		}
 
-		hash, _ := hex.DecodeString(entry[2])
+		hash, decodeErr := hex.DecodeString(entry[2])
+		if decodeErr != nil {
+			return errTokenFormat
+		}
+
 		set[[sha256.Size]byte(hash)] = entry[1]
 	}
 

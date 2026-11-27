@@ -74,27 +74,30 @@ type sdkSpy struct {
 
 func (s sdkSpy) Close() { s.close() }
 
-func (s sdkSpy) ExecuteWorkflow(
-	_ context.Context,
-	options sdk.StartWorkflowOptions,
-	name any,
-	args ...any,
-) (sdk.WorkflowRun, error) {
-	return nil, s.call(sdkCall{id: "", run: "", signal: "", options: options, workflow: name, args: args})
-}
-
 func (s sdkSpy) SignalWorkflow(_ context.Context, id, run, signal string, arg any) error {
-	return s.call(
-		sdkCall{options: sdk.StartWorkflowOptions{}, workflow: nil, id: id, run: run, signal: signal, args: []any{arg}},
-	)
+	return s.call(sdkCall{options: s.noOptions(), workflow: nil, id: id, run: run, signal: signal, args: []any{arg}})
 }
 
-func (s sdkSpy) SignalWithStartWorkflow(
-	_ context.Context, id, signal string, arg any, options sdk.StartWorkflowOptions, name any, args ...any,
-) (sdk.WorkflowRun, error) {
-	return nil, s.call(
-		sdkCall{run: "", options: options, workflow: name, id: id, signal: signal, args: append(args, arg)},
-	)
+func (sdkSpy) noOptions() sdk.StartWorkflowOptions {
+	var options sdk.StartWorkflowOptions
+
+	return options
+}
+
+func observeSDKCalls(observe func(sdkCall) error) *SDKClient {
+	return &SDKClient{
+		client: sdkSpy{Client: nil, call: observe, close: nil},
+		execute: func(_ context.Context, options sdk.StartWorkflowOptions, name any, args ...any) error {
+			return observe(sdkCall{id: "", run: "", signal: "", options: options, workflow: name, args: args})
+		},
+		signalWithStart: func(_ context.Context, id, signal string, arg any, options sdk.StartWorkflowOptions,
+			name any, args ...any,
+		) error {
+			return observe(
+				sdkCall{run: "", options: options, workflow: name, id: id, signal: signal, args: append(args, arg)},
+			)
+		},
+	}
 }
 
 func TestSDKActions(t *testing.T) {
@@ -115,8 +118,10 @@ func TestSDKActions(t *testing.T) {
 		Data: []byte(input), Metadata: map[string][]byte{"encoding": []byte("json/plain")},
 	})
 
+	var emptyOptions sdk.StartWorkflowOptions
+
 	want := sdkCall{
-		options:  sdk.StartWorkflowOptions{},
+		options:  emptyOptions,
 		workflow: nil,
 		run:      "",
 		id:       req.WorkflowID,
@@ -124,19 +129,28 @@ func TestSDKActions(t *testing.T) {
 		args:     []any{raw},
 	}
 
-	var adapter Client = &SDKClient{client: sdkSpy{
-		Client: nil,
-		close:  nil,
-		call: func(got sdkCall) error {
-			if !reflect.DeepEqual(got, want) {
-				t.Fatalf("SDK call = %+v, want %+v", got, want)
-			}
+	adapter := observeSDKCalls(func(got sdkCall) error {
+		if !reflect.DeepEqual(got, want) {
+			t.Fatalf("SDK call = %+v, want %+v", got, want)
+		}
 
-			return nil
-		},
-	}}
+		return nil
+	})
 
 	sdkCheck(t, adapter.Signal(t.Context(), SignalRequest{req.WorkflowID, signalName, req.Input}))
+
+	checkSDKStarts(t, adapter, req, signalName, raw, &want)
+}
+
+func checkSDKStarts(
+	t *testing.T,
+	adapter *SDKClient,
+	req StartRequest,
+	signalName string,
+	raw converter.RawValue,
+	want *sdkCall,
+) {
+	t.Helper()
 
 	for reuse, expected := range map[IDReuse]enums.WorkflowIdReusePolicy{
 		AllowDuplicate:           enums.WORKFLOW_ID_REUSE_POLICY_ALLOW_DUPLICATE,
@@ -144,11 +158,14 @@ func TestSDKActions(t *testing.T) {
 		AllowDuplicateFailedOnly: enums.WORKFLOW_ID_REUSE_POLICY_ALLOW_DUPLICATE_FAILED_ONLY,
 	} {
 		req.IDReuse = reuse
-		options := sdk.StartWorkflowOptions{
-			ID: req.WorkflowID, TaskQueue: queue, WorkflowExecutionErrorWhenAlreadyStarted: true,
-			WorkflowIDConflictPolicy: enums.WORKFLOW_ID_CONFLICT_POLICY_USE_EXISTING, WorkflowIDReusePolicy: expected,
-		}
-		want = sdkCall{id: "", run: "", signal: "", options: options, workflow: workflowName, args: []any{raw}}
+
+		var options sdk.StartWorkflowOptions
+
+		options.ID, options.TaskQueue = req.WorkflowID, req.TaskQueue
+		options.WorkflowExecutionErrorWhenAlreadyStarted = true
+		options.WorkflowIDConflictPolicy = enums.WORKFLOW_ID_CONFLICT_POLICY_USE_EXISTING
+		options.WorkflowIDReusePolicy = expected
+		*want = sdkCall{id: "", run: "", signal: "", options: options, workflow: req.WorkflowType, args: []any{raw}}
 
 		sdkCheck(t, adapter.Start(t.Context(), req))
 
@@ -185,7 +202,8 @@ func TestTLSConfig(t *testing.T) {
 	pub, private, err := ed25519.GenerateKey(rand.Reader)
 	sdkCheck(t, err)
 
-	cert := &x509.Certificate{BasicConstraintsValid: true, IsCA: true}
+	cert := new(x509.Certificate)
+	cert.BasicConstraintsValid, cert.IsCA = true, true
 	der, err := x509.CreateCertificate(rand.Reader, cert, cert, pub, private)
 	sdkCheck(t, err)
 
@@ -224,11 +242,11 @@ func TestTLSConfig(t *testing.T) {
 }
 
 func TestDial(t *testing.T) {
-	t.Cleanup(func() { dialSDK = sdk.Dial })
+	t.Parallel()
 
 	connection := Connection{TLS: nil, HostPort: "[::1]:7233", Namespace: "default"}
 	closed := false
-	dialSDK = func(options sdk.Options) (sdk.Client, error) {
+	connect := func(options sdk.Options) (sdk.Client, error) {
 		if options.HostPort != connection.HostPort || options.Namespace != connection.Namespace {
 			t.Fatal("incorrect Temporal endpoint or namespace")
 		}
@@ -240,14 +258,14 @@ func TestDial(t *testing.T) {
 		return sdkSpy{Client: nil, call: nil, close: func() { closed = true }}, nil
 	}
 
-	_, err := Dial(connection)
+	_, err := dial(connection, connect)
 	if !errors.Is(err, ErrTransient) {
 		t.Fatalf("dial error = %v", err)
 	}
 
 	connection.TLS = new(TLSFiles)
 
-	client, err := Dial(connection)
+	client, err := dial(connection, connect)
 	sdkCheck(t, err)
 	client.Close()
 

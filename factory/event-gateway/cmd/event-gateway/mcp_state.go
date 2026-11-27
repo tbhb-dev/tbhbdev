@@ -47,16 +47,20 @@ type mcpState struct {
 // loadMCPSubscriptions restores the saved set before the gateway sends hello.
 // An unset session key leaves subscriptions in memory only.
 func loadMCPSubscriptions(ctx context.Context, logger *slog.Logger) *mcpSubscriptions {
+	return restoreMCPSubscriptions(ctx, logger, os.Getenv)
+}
+
+func restoreMCPSubscriptions(ctx context.Context, logger *slog.Logger, getenv func(string) string) *mcpSubscriptions {
 	subs := new(mcpSubscriptions)
 
-	key := cmp.Or(os.Getenv(mcpSessionKeyEnv), os.Getenv(awrelSessionEnv), os.Getenv(claudeCodeSessionEnv))
+	key := cmp.Or(getenv(mcpSessionKeyEnv), getenv(awrelSessionEnv), getenv(claudeCodeSessionEnv))
 	if key == "" {
 		return subs
 	}
 
-	dir := os.Getenv(mcpStateHomeEnv)
+	dir := getenv(mcpStateHomeEnv)
 	if !filepath.IsAbs(dir) {
-		dir = filepath.Join(os.Getenv("HOME"), ".local", "state")
+		dir = filepath.Join(getenv("HOME"), ".local", "state")
 	}
 
 	if !filepath.IsAbs(dir) {
@@ -222,9 +226,10 @@ func (state mcpState) write(subs []filter.Subscription, cursor *uint64) bool {
 		Version       int                   `json:"version"`
 	}{Version: mcpStateVersion, Subscriptions: subs, Cursor: cursor}
 
-	data, _ := json.Marshal(saved)
-
-	_ = os.MkdirAll(state.dir, mcpStateDirMode)
+	data, err := json.Marshal(saved)
+	if err != nil || os.MkdirAll(state.dir, mcpStateDirMode) != nil {
+		return false
+	}
 
 	root, err := os.OpenRoot(state.dir)
 	if err != nil {
@@ -234,7 +239,10 @@ func (state mcpState) write(subs []filter.Subscription, cursor *uint64) bool {
 
 	dir := filepath.Dir(state.file)
 
-	_ = root.MkdirAll(dir, mcpStateDirMode)
+	if root.MkdirAll(dir, mcpStateDirMode) != nil {
+		return false
+	}
+
 	temp := filepath.Join(dir, "subscriptions-"+rand.Text())
 
 	file, err := root.OpenFile(temp, os.O_WRONLY|os.O_CREATE|os.O_EXCL, mcpStateFileMode)
@@ -259,7 +267,10 @@ func replaceMCPState(
 		return true
 	}
 
-	_ = root.Remove(temp)
+	cleanupErr := root.Remove(temp)
+	if cleanupErr != nil {
+		slog.Default().Debug("MCP state cleanup failed")
+	}
 
 	return false
 }

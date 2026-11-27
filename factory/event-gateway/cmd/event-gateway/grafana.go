@@ -38,12 +38,13 @@ var (
 
 // grafanaHandler returns nil when no source enables the route. Once any source
 // is present, an empty, blank or unreadable secret fails startup.
-func (cfg *serveConfig) grafanaHandler() (*grafanaWebhook, error) {
+func (cfg *serveConfig) grafanaEnabled() bool {
 	_, fromEnv := os.LookupEnv(grafanaEnv)
-	if cfg.grafSecret == nil && cfg.grafFile == nil && !fromEnv {
-		return nil, nil
-	}
 
+	return cfg.grafSecret != nil || cfg.grafFile != nil || fromEnv
+}
+
+func (cfg *serveConfig) grafanaHandler() (*grafanaWebhook, error) {
 	secret, err := readSecret(cfg.grafSecret, cfg.grafFile, grafanaEnv)
 	if err != nil {
 		return nil, err
@@ -65,7 +66,12 @@ func newGrafanaWebhook(secret []byte) (*grafanaWebhook, error) {
 		return nil, errGrafanaSecret
 	}
 
-	return &grafanaWebhook{next: nil, store: eventStore{}, telemetry: telemetry{}, secret: secret}, nil
+	return &grafanaWebhook{
+		next:      nil,
+		store:     eventStore{jet: nil, stream: nil, openOrdered: nil},
+		telemetry: telemetry{logger: nil, tracer: nil, ingest: nil, parked: nil, parkFailed: nil},
+		secret:    secret,
+	}, nil
 }
 
 // withGrafana puts the Grafana route in front of the GitHub handler when enabled.
@@ -176,7 +182,12 @@ func normalizeGrafana(raw json.RawMessage, delivery string, receivedAt time.Time
 	}
 
 	status := text(entry, "status")
-	labels, _ := entry["labels"].(map[string]any)
+
+	labels, ok := entry["labels"].(map[string]any)
+	if !ok {
+		return envelope{}, errSkipped
+	}
+
 	kind, scopeID := "", ""
 
 	for _, scope := range [][2]string{{"host_name", "hosts"}, {"agent_account", "capacity"}} {
@@ -191,6 +202,26 @@ func normalizeGrafana(raw json.RawMessage, delivery string, receivedAt time.Time
 		return envelope{}, errSkipped
 	}
 
+	data, err := grafanaPayload(entry, labels, status, kind, scopeID)
+	if err != nil {
+		return envelope{}, errSkipped
+	}
+
+	repository := kind + "/" + scopeID
+
+	return envelope{
+		Type:       "event",
+		Provider:   grafanaProvider,
+		Event:      "alert." + status,
+		Delivery:   delivery,
+		Repository: &repository,
+		ReceivedAt: receivedAt.Format(time.RFC3339Nano),
+		Payload:    data,
+		projected:  nil,
+	}, nil
+}
+
+func grafanaPayload(entry, labels map[string]any, status, kind, scopeID string) ([]byte, error) {
 	payload := map[string]string{"status": status, "scope": scopeID, "kind": kind}
 	setString(payload, "alertname", labels, "alertname")
 
@@ -208,19 +239,12 @@ func normalizeGrafana(raw json.RawMessage, delivery string, receivedAt time.Time
 		}
 	}
 
-	data, _ := json.Marshal(payload)
-	repository := kind + "/" + scopeID
+	data, err := json.Marshal(payload)
+	if err != nil {
+		return nil, errSkipped
+	}
 
-	return envelope{
-		Type:       "event",
-		Provider:   grafanaProvider,
-		Event:      "alert." + status,
-		Delivery:   delivery,
-		Repository: &repository,
-		ReceivedAt: receivedAt.Format(time.RFC3339Nano),
-		Payload:    data,
-		projected:  nil,
-	}, nil
+	return data, nil
 }
 
 func isWebLink(link string) bool {

@@ -41,13 +41,21 @@ type envelope struct {
 	Event      string  `json:"event"`
 	Delivery   string  `json:"delivery"`
 	Repository *string `json:"repository"`
-	ReceivedAt string  `json:"received_at"`
+	ReceivedAt string  `json:"-"`
 	Payload    []byte  `json:"-"`
 	projected  []byte
 }
 
 func (event envelope) encode() []byte {
-	data, _ := json.Marshal(event)
+	data, err := json.Marshal(event)
+	if err != nil {
+		return nil
+	}
+
+	received, err := json.Marshal(event.ReceivedAt)
+	if err != nil {
+		return nil
+	}
 
 	payload := event.Payload
 	if event.projected != nil {
@@ -55,31 +63,16 @@ func (event envelope) encode() []byte {
 	}
 
 	// Append the retained JSON directly so full payloads keep their signed bytes.
-	data = append(data[:len(data)-1], `,"payload":`...)
+	data = append(data[:len(data)-1], `,"received_at":`...)
+	data = append(data, received...)
+	data = append(data, `,"payload":`...)
 	data = append(data, payload...)
 
 	return append(data, '}')
 }
 
-type githubRepository struct {
-	FullName *string `json:"full_name"`
-}
-
 type githubPayload struct {
-	Repository githubRepository `json:"repository"`
-}
-
-// truncatedGitHub keeps filter fields at their original JSON paths.
-type truncatedGitHub struct {
-	Action      *string            `json:"action,omitempty"`
-	CheckRun    *githubCheck       `json:"check_run,omitempty"`
-	CheckSuite  *githubCheck       `json:"check_suite,omitempty"`
-	WorkflowRun *githubCheck       `json:"workflow_run,omitempty"`
-	WorkflowJob *githubCheck       `json:"workflow_job,omitempty"`
-	Issue       *githubItem        `json:"issue,omitempty"`
-	PullRequest *githubPullRequest `json:"pull_request,omitempty"`
-	Label       *githubLabel       `json:"label,omitempty"`
-	Truncated   bool               `json:"truncated"`
+	Repository map[string]*json.RawMessage `json:"repository"`
 }
 
 type githubCheck struct {
@@ -121,7 +114,12 @@ func newGitHubWebhook(secret []byte, bodyCap int) (*githubWebhook, error) {
 		return nil, errSecret
 	}
 
-	return &githubWebhook{store: eventStore{}, telemetry: telemetry{}, secret: secret, bodyCap: bodyCap}, nil
+	return &githubWebhook{
+		store:     eventStore{jet: nil, stream: nil, openOrdered: nil},
+		telemetry: telemetry{logger: nil, tracer: nil, ingest: nil, parked: nil, parkFailed: nil},
+		secret:    secret,
+		bodyCap:   bodyCap,
+	}, nil
 }
 
 func (h *githubWebhook) ServeHTTP(response http.ResponseWriter, request *http.Request) {
@@ -258,12 +256,20 @@ func normalizeGitHub(event, delivery string, receivedAt time.Time, body []byte, 
 		return envelope{}, fmt.Errorf("decode GitHub payload: %w", err)
 	}
 
+	var repository *string
+	if name := scope.Repository["full_name"]; name != nil {
+		err = json.Unmarshal(*name, &repository)
+		if err != nil {
+			return envelope{}, fmt.Errorf("decode GitHub repository: %w", err)
+		}
+	}
+
 	message := envelope{
 		Type:       "event",
 		Provider:   "github",
 		Event:      event,
 		Delivery:   delivery,
-		Repository: scope.Repository.FullName,
+		Repository: repository,
 		ReceivedAt: receivedAt.Format(time.RFC3339Nano),
 		Payload:    body,
 		projected:  nil,
@@ -277,16 +283,37 @@ func normalizeGitHub(event, delivery string, receivedAt time.Time, body []byte, 
 }
 
 func truncateGitHub(body []byte) ([]byte, error) {
-	var payload truncatedGitHub
+	var fields map[string]json.RawMessage
 
-	err := json.Unmarshal(body, &payload)
+	err := json.Unmarshal(body, &fields)
 	if err != nil {
 		return nil, fmt.Errorf("decode GitHub filter fields: %w", err)
 	}
 
-	payload.Truncated = true
+	payload := map[string]any{"truncated": true}
 
-	data, _ := json.Marshal(payload)
+	for name, field := range map[string]any{
+		"action": new(*string), "check_run": new(*githubCheck), "check_suite": new(*githubCheck),
+		"workflow_run": new(*githubCheck), "workflow_job": new(*githubCheck), "issue": new(*githubItem),
+		"pull_request": new(*githubPullRequest), "label": new(*githubLabel),
+	} {
+		raw := fields[name]
+		if raw == nil || bytes.Equal(raw, []byte("null")) {
+			continue
+		}
+
+		err = json.Unmarshal(raw, field)
+		if err != nil {
+			return nil, fmt.Errorf("decode GitHub filter field %q: %w", name, err)
+		}
+
+		payload[name] = field
+	}
+
+	data, err := json.Marshal(payload)
+	if err != nil {
+		return nil, fmt.Errorf("encode GitHub filter fields: %w", err)
+	}
 
 	return data, nil
 }
