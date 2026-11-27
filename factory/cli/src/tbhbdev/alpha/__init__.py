@@ -16,6 +16,7 @@ from typing import TYPE_CHECKING
 from tbhbdev.alpha import (
     agent,
     brief,
+    chase_context,
     gh_shim,
     guard_agent_model,
     guard_gh_config_dir,
@@ -33,6 +34,7 @@ from tbhbdev.alpha import (
     state_guard,
     verify_range,
     version_check,
+    worktree_sweep,
 )
 
 if TYPE_CHECKING:
@@ -41,6 +43,7 @@ if TYPE_CHECKING:
 __all__ = [
     "agent",
     "brief",
+    "chase_context",
     "gh_shim",
     "guard_agent_model",
     "guard_gh_config_dir",
@@ -59,6 +62,7 @@ __all__ = [
     "state_guard",
     "verify_range",
     "version_check",
+    "worktree_sweep",
 ]
 
 USAGE = """usage: {prog} <command> [args...]
@@ -76,6 +80,8 @@ commands:
   state-guard  Claude Code hook: block sign-off commits and unchecked open items
   session-context
                SessionStart hook: name the host, the other hosts and the time
+  chase-context UserPromptSubmit hook: show stale pull requests to coordination
+  worktree-sweep classify and clean up merged worktrees
   guard-gh-poll PreToolUse hook: block bulk GitHub reads and token unsets
   guard-gh-config-dir PreToolUse hook: require nonempty GH_CONFIG_DIR for gh
   guard-scripts PreToolUse hook: keep scripts for the operator in
@@ -225,6 +231,8 @@ COMMANDS: dict[str, Callable[[list[str], str], int]] = {
     "guard-op": guard_op_command,
     "state-guard": state_guard_command,
     "session-context": session_context_command,
+    "chase-context": chase_context.main,
+    "worktree-sweep": worktree_sweep.main,
     "guard-gh-poll": poll_command,
     "guard-gh-config-dir": gh_config_dir_command,
     "guard-ssh-agent": ssh_agent_command,
