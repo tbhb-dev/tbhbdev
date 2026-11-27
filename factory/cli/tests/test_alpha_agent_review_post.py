@@ -11,10 +11,11 @@ import pytest
 from cue_fixtures import review_cue as review_cue  # noqa: PLC0414
 
 from tbhbdev import content
-from tbhbdev.alpha import identity, review, review_doc
+from tbhbdev.alpha import review, review_doc
 from tbhbdev.alpha.agent import credentials, review_post, runfiles
 from tbhbdev.alpha.agent.decisions import request as requests
 from tbhbdev.alpha.agent.model import Harness, Invalid, Profile, RunKind, RunRequest
+from tbhbdev.alpha.identity import dispatcher as identity
 
 if TYPE_CHECKING:
     from pathlib import Path

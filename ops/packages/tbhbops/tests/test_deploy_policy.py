@@ -1,11 +1,11 @@
 """Policy checks the normalized model, including every nested key boundary."""
 
+# gazelle:include_dep :tests
 import json
 from dataclasses import replace
 from pathlib import Path
 
 import pytest
-
 from tbhbops.deploy import policy
 from tbhbops.deploy.protocol import Json, RefusalError, array, mapping
 lazy from tbhbops.deploy.config import Service
@@ -142,7 +142,7 @@ def kitchen() -> dict[str, Json]:
                 "driver": "bridge",
                 "internal": False,
                 "labels": {"owner": "ops"},
-                "ipam": {"config": [{"subnet": "203.0.113.32/24"}]},
+                "ipam": {"config": [{"subnet": "203.0.113.32/27"}]},
             },
             "empty": {"name": "o11y_empty", "ipam": {}},
         },
@@ -330,7 +330,7 @@ def test_service_values_refuse(
                 "networks": {
                     "default": {
                         "name": "o11y_default",
-                        "ipam": {"config": [{"subnet": "203.0.113.64/24"}]},
+                        "ipam": {"config": [{"subnet": "203.0.113.64/27"}]},
                     }
                 }
             },
@@ -396,7 +396,7 @@ def test_network_options_independently(deploy_service: Service) -> None:
     assert policy.model(value, deploy_service) == ()
     value = minimal(networks={"default": {"ipv4_address": "203.0.113.66"}})
     value["networks"] = {"default": {"name": "o11y_default"}}
-    allowed = replace(deploy_service, networks={"default": "203.0.113.64/24"})
+    allowed = replace(deploy_service, networks={"default": "203.0.113.64/27"})
     assert policy.model(value, allowed) == ()
 
 
@@ -811,7 +811,7 @@ def test_network_validator_checks_its_own_field_boundary(
     deploy_service: Service,
 ) -> None:
     with pytest.raises(RefusalError, match=r"^unknown object key$"):
-        policy._network(  # noqa: SLF001  # Test the nested validator independently.
+        policy._network(  # Test the nested validator independently.
             "default", {"name": "o11y_default", "unknown": True}, deploy_service
         )
 
@@ -1102,13 +1102,13 @@ def test_pid_limit_accepts_one_process(deploy_service: Service) -> None:
 
 def test_plain_pid_validation_rejects_zero_before_required_limits() -> None:
     with pytest.raises(RefusalError, match=r"^integer below minimum$"):
-        policy._plain("pids_limit", 0)  # noqa: SLF001  # Check the field validator independently.
+        policy._plain("pids_limit", 0)  # Check the field validator independently.
 
 
 def test_required_pid_validation_rejects_zero_without_field_validation() -> None:
     candidate = mapping(mapping(minimal(pids_limit=0)["services"])["web"])
     with pytest.raises(RefusalError, match=r"^integer below minimum$"):
-        policy._limits(candidate)  # noqa: SLF001  # Check the required-limit validator independently.
+        policy._limits(candidate)  # Check the required-limit validator independently.
 
 
 @pytest.mark.parametrize("memory", ["1", "1024", "001024", "1K", "1g", "2M", "1b"])

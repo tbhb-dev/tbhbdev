@@ -26,6 +26,18 @@ Without `S3_BIND_ADDR`, Compose uses the local host address `127.0.0.1`. A wildc
 
 Setting `S3_TLS=1` switches the store to Transport Layer Security (TLS) with the `*.s3.example.invalid` certificate from the `lego` service and, by convention, the operator also sets `S3_BIND_ADDR`. Compose can't enforce that pairing. The `lego` service belongs to the `cert` profile. A weekly DiskStation Manager (DSM) task runs it, and `up` never starts it. With `RUSTFS_TLS_RELOAD_ENABLE` on in the compose file, RustFS re-reads `./tls` every 30 seconds (the default `RUSTFS_TLS_RELOAD_INTERVAL`) and serves a renewed certificate with no restart. Version 1.0.4 leaves it off by default, and it does nothing in interim mode.
 
+## Start after a restart
+
+Docker can try to start RustFS before Tailscale assigns `S3_BIND_ADDR`. A failed bind leaves RustFS stopped. The boot task checks for the address every five seconds and runs `docker compose up -d rustfs` once it appears. After 60 failed attempts, it logs an error and exits with a nonzero status.
+
+- Copy the boot script beside the deployed `compose.yaml` and `compose.env`. [Boot script](start-on-boot.sh)
+- In DSM Task Scheduler, choose **Create > Triggered Task > User-defined script**. Select **root** as the user and **Boot-up** as the event.
+- Enable the task and enter the command below under **Task Settings**. Replace `/path/to/s3` with the deployed directory.
+
+```sh
+/bin/sh /path/to/s3/start-on-boot.sh
+```
+
 ## Settings
 
 The `S3_*` variable names belong to this compose file: `S3_BIND_ADDR`, `S3_TLS`, `S3_PEER_NAME`, `S3_PEER_ADDR`, `S3_OBS_ENDPOINT` and `S3_ACME_EMAIL`. They start fresh with this file rather than extend an earlier naming convention. `RUSTFS_UNSUPPORTED_FS_POLICY=fail` stays, and RustFS keeps its console off.

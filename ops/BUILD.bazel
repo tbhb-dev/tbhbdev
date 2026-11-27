@@ -1,0 +1,17 @@
+# SPDX-License-Identifier: Apache-2.0
+# Copyright Tony Burns
+
+package(default_visibility = ["//ops/packages:__subpackages__"])
+
+filegroup(
+    name = "deployment_fixtures",
+    srcs = glob([
+        "apps/**",
+        "tools/*",
+    ]) + ["//ops/ansible:deployment_fixtures"],
+)
+
+filegroup(
+    name = "o11y_fixtures",
+    srcs = glob(["o11y/**"]),
+)

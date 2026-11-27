@@ -141,9 +141,9 @@ from urllib.parse import quote
 
 from jsonschema import Draft202012Validator
 
-from tbhbdev.alpha import identity as agent_identity
 from tbhbdev.alpha import opened, secret_scan, size_gate, tool_pins
 from tbhbdev.alpha import pull_request_frontmatter as frontmatter
+from tbhbdev.alpha.identity import dispatcher as agent_identity
 from tbhbdev.alpha.install import require_git_hooks
 from tbhbdev.alpha.repo import git as repo_git
 from tbhbdev.alpha.repo import hook_cwd, in_tbhb_dev, read_hook_stdin

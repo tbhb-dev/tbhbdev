@@ -9,9 +9,9 @@ from pathlib import Path
 from typing import Literal, Protocol, cast
 
 from tbhbdev import content
-from tbhbdev.alpha import identity
 from tbhbdev.alpha import pull_request as pr
 from tbhbdev.alpha import pull_request_frontmatter as frontmatter
+from tbhbdev.alpha.identity import dispatcher as identity
 
 type Tier = Literal[0, 1, 2]
 type Verdict = Literal["GO", "NO-GO"]

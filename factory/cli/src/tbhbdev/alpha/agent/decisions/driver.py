@@ -7,9 +7,10 @@ import re
 from dataclasses import replace
 from typing import TYPE_CHECKING
 
-from tbhbdev.alpha import brief, identity
+from tbhbdev.alpha import brief
 from tbhbdev.alpha.agent.decisions import config, request
 from tbhbdev.alpha.agent.model import NAME, Harness, Invalid, Profile, RunKind
+from tbhbdev.alpha.identity import models as identity
 
 if TYPE_CHECKING:
     from tbhbdev.alpha.agent.model import Host, RunRequest, Settings

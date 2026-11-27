@@ -16,17 +16,22 @@ from pathlib import Path
 from typing import TYPE_CHECKING, NoReturn, Self
 
 import pytest
+from tbhbops.o11y import init, smoke
 from tbhbops_cli import cli
+from tbhbops_cli.o11y import (
+    polling,
+    smoke_capacity,
+    smoke_checks,
+    smoke_lifecycle,
+    smoke_stages,
+)
 from tbhbops_cli.o11y import smoke as command
-from tbhbops_cli.o11y import smoke_capacity, smoke_checks, smoke_lifecycle, smoke_stages
 from tbhbops_cli.o11y.ports import LocalPorts
 from tbhbops_cli.o11y.runner import Result
+lazy from tbhbops.o11y.validate import Document
 lazy from tbhbops_cli.o11y.filesystem import Filesystem
 
-from tbhbops.o11y import init, smoke
-lazy from tbhbops.o11y.validate import Document
-
-from .test_o11y_cli import SOURCE, Fake, ProbeClock, render_fixture, world  # pyrefly: ignore[missing-import]  # pytest importlib supplies this namespace
+from .test_o11y_cli import SOURCE, Fake, render_fixture, world  # pyrefly: ignore[missing-import]  # pytest importlib supplies this namespace
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Mapping, Sequence
@@ -204,7 +209,7 @@ class Engine:
         else:
             self.fs.chmod(self.path(args[-1], argv), int(args[0], 8))
 
-    def run(  # noqa: PLR0911  # fake Docker API routing
+    def run(  # fake Docker API routing
         self,
         argv: Sequence[str],
         env: Mapping[str, str],
@@ -249,7 +254,9 @@ class Engine:
             return Result(0, name + " 2026-10-25T05:38:26Z")
         return Result(0, "exited:42" if name == "readiness-failed" else "exited 0")
 
-    def compose(self, argv: list[str], env: Mapping[str, str]) -> Result:  # noqa: PLR0911  # fake compose routes
+    def compose(
+        self, argv: list[str], env: Mapping[str, str]
+    ) -> Result:  # fake compose routes
         assert argv[1] == "compose"
         if argv[-2:] == ["--format", "json"]:
             return Result(0, json.dumps(model()))
@@ -364,7 +371,7 @@ def setup() -> tuple[Fake, Engine, cli.System]:
     fs.check = check
     render_fixture(fs)
     fs.modes[Path("/var/run/docker.sock")] = stat.S_IFSOCK | 0o600
-    engine, clock = Engine(fs), ProbeClock()
+    engine = Engine(fs)
     draws = iter(enumerate((4, 20, 40, 32, 32, 16, 16), 1))
 
     def random_bytes(size: int) -> bytes:
@@ -372,10 +379,13 @@ def setup() -> tuple[Fake, Engine, cli.System]:
         assert size == expected
         return bytes([number]) * size
 
+    elapsed = 0.0
+
     def sleep(seconds: float) -> None:
+        nonlocal elapsed
         assert seconds == 2
-        assert clock.now <= 400
-        clock.sleep(seconds)
+        assert elapsed <= 400
+        elapsed += seconds
 
     time_reads = 0
 
@@ -383,7 +393,7 @@ def setup() -> tuple[Fake, Engine, cli.System]:
         nonlocal time_reads
         time_reads += 1
         assert time_reads <= 1000
-        return clock.monotonic()
+        return elapsed
 
     system = replace(
         world(fs, 123),
@@ -458,7 +468,6 @@ def test_success_and_environment() -> None:
         assert "DOCKER_CONTEXT" not in env
         assert "DOCKER_HOST" not in env
         assert not any(key.startswith("COMPOSE_") for key in env)
-        assert "O11Y_POSTGRES_PORT" not in env
         assert {key: env[key] for key in smoke.FIXED_ENV} == smoke.FIXED_ENV
         assert env["O11Y_DATA_DIR"] == str(HOST)
         assert env["O11Y_SECRETS_OWNER"] == "123:456"
@@ -501,7 +510,6 @@ def test_environment_builder_wal_override() -> None:
             "DOCKER_CONFIG": "c",
             "DOCKER_CONTEXT": "remote",
             "O11Y_LOKI_WAL_DISK_FULL_THRESHOLD": "0.1",
-            "O11Y_POSTGRES_PORT": "99",
             "COMPOSE_PROFILES": "bad",
         },
         HOST,
@@ -802,14 +810,14 @@ def test_poll_timing() -> None:
         calls.append(system.monotonic())
         return False
 
-    assert not command.poll(system, 30, check)
+    assert not polling.poll(system, 30, check)
     assert calls == list(range(0, 31, 2))
-    assert command.poll(system, 180, lambda: True)
+    assert polling.poll(system, 180, lambda: True)
     assert (
         command.READY_TIMEOUT,
         command.HEALTH_TIMEOUT,
         command.FIXTURE_TIMEOUT,
-        command.POLL_INTERVAL,
+        polling.POLL_INTERVAL,
         command.WAIT_MARGIN,
         command.PULL_TIMEOUT,
     ) == (180, 120, 30, 2, 30, 600)
@@ -1210,7 +1218,7 @@ def test_inspect_failure_preserves_only_data_relative_message(
 
     def fail(instance: command.Smoke) -> None:
         instance.step = 20
-        command.initialization._inspect(  # noqa: SLF001  # exercise the real safe exception boundary
+        command.initialization._inspect(  # exercise the real safe exception boundary
             denied, instance.data / relative, instance.data, instance.system.euid
         )
 
@@ -1350,7 +1358,7 @@ def test_present_missing_facts(monkeypatch: pytest.MonkeyPatch) -> None:
     with pytest.raises(command.SmokeError, match="fingerprint unavailable"):
         instance.fingerprint()
     with pytest.raises(command.SmokeError, match="rendered file unavailable"):
-        instance._private_tree(OUT)  # noqa: SLF001  # a disappearing rendered file must fail
+        instance._private_tree(OUT)  # a disappearing rendered file must fail
 
 
 def test_original_status_survives_capture_and_cleanup(
@@ -1382,10 +1390,12 @@ def test_compose_and_utility_command_contract(platform: str) -> None:
         {"argv": list(argv), "timeout": timeout, "count": count}
         for (argv, timeout), count in counts.items()
     ]
-    fixture = (
-        "smoke-commands.json" if platform == "linux" else "smoke-macos-commands.json"
-    )
-    expected = json.loads((Path(__file__).parent / "testdata" / fixture).read_text())
+    fixture = Path(__file__).parent / "testdata/smoke-commands.json"
+    expected = [
+        record
+        for record in json.loads(fixture.read_text())
+        if record.pop("platform", platform) == platform
+    ]
     assert actual == expected
     for call in fs.calls:
         if (
@@ -1670,7 +1680,9 @@ def test_fingerprint_stage_failures(
         return (*value, ("changed", 0, 0, 0, 0, b"")) if calls == number else value
 
     monkeypatch.setattr(instance, "fingerprint", fingerprint)
-    with pytest.raises(command.SmokeError) as failure:  # noqa: PT012  # failure may occur in either ordered stage
+    with pytest.raises(
+        command.SmokeError
+    ) as failure:  # failure may occur in either ordered stage
         instance.group1()
         instance.group2()
     assert str(failure.value) == rule
@@ -1895,7 +1907,7 @@ def test_overlapping_paths_usage(out: str, artifacts: str, source: str) -> None:
     _, engine, system = setup()
     output = io.StringIO()
     args = argparse.Namespace(
-        stop_after=None, out=Path(out), artifacts=Path(artifacts), source=Path(source)
+        out=Path(out), artifacts=Path(artifacts), source=Path(source)
     )
     assert command.dispatch(args, system, output) == 2
     assert output.getvalue() == "FAIL usage: overlapping paths\n"
@@ -2205,7 +2217,6 @@ def test_smoke_parser_contract(capsys: pytest.CaptureFixture[str]) -> None:
     assert vars(args) == {
         "group": "o11y",
         "command": "smoke",
-        "stop_after": None,
         "dedicated_engine": None,
         "source": Path("/source"),
         "out": Path("/out"),

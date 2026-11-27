@@ -10,15 +10,14 @@ from urllib.parse import parse_qs, urlsplit
 lazy from collections.abc import Callable, Mapping, Sequence
 
 import pytest
+from tbhbops.o11y import init, smoke
+from tbhbops.o11y import smoke_access as access
 from tbhbops_cli import cli
 from tbhbops_cli.o11y import smoke as command
 from tbhbops_cli.o11y import smoke_capacity, smoke_checks, smoke_lifecycle
 from tbhbops_cli.o11y import smoke_stages as stages
 from tbhbops_cli.o11y.http import BodyTooLargeError, TransportError
 from tbhbops_cli.o11y.runner import Result
-
-from tbhbops.o11y import init, smoke
-from tbhbops.o11y import smoke_access as access
 lazy from tbhbops.o11y.validate import Document
 
 from .test_o11y_smoke import ARTIFACTS, HOST, OUT, Engine, setup  # pyrefly: ignore[missing-import]  # pytest importlib supplies this namespace
@@ -476,8 +475,9 @@ def test_group5_receipt_and_codex(
         call for call in engine.calls if "telemetrygen:pinned" in call[0]
     )
     network = ["--network", "host"] if platform == "linux" else []
+    desktop_domain = "docker.internal"
     endpoint = (
-        "127.0.0.1:14317" if platform == "linux" else ".".join(("host", "docker", "internal:14317"))
+        "127.0.0.1:14317" if platform == "linux" else f"host.{desktop_domain}:14317"
     )
     assert argv == [
         "docker",
@@ -713,52 +713,6 @@ def test_recheck_failure() -> None:
         stages.recheck(run)
 
 
-@pytest.mark.parametrize("value", ["4", "6", "invalid", "", "05.0"])
-def test_stop_after_only_five(value: str) -> None:
-    _, engine, _, system = setup_b()
-    code, output, error = execute(system, "--stop-after", value)
-    assert code == 2
-    assert engine.calls == []
-    assert output == ""
-    assert "--stop-after" in error
-
-
-def test_stop_after_five_finalizes_and_cleans_up(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    fs, engine, _, system = setup_b()
-    seen = []
-    original = command.Smoke.finalize_transcript
-
-    def finalize(run: command.Smoke) -> None:
-        original(run)
-        seen.append(fs.read_text(OUT / "transcript.log"))
-
-    monkeypatch.setattr(command.Smoke, "finalize_transcript", finalize)
-    # Group 4's export needs this run's generated sentinel.
-    original_group4 = stages.group4
-
-    def group4(run: command.Smoke) -> None:
-        assert isinstance(system.receipt_http, Http)
-        system.receipt_http.webhook = dict(run.sentinels.values)[init.WEBHOOK].decode()
-        original_group4(run)
-
-    monkeypatch.setattr(stages, "group4", group4)
-    code, output, error = execute(system, "--stop-after", "5")
-    assert code == 0, output + error
-    assert error == ""
-    assert len(seen) == 2
-    assert all(value == output for value in seen)
-    assert "ok 5:" in output
-    assert output.count("smoke: stopped after group 5\n") == 1
-    assert output.endswith("smoke: stopped after group 5\n")
-    assert "ok export persistence:" not in output
-    assert "ok 6:" not in output
-    assert fs.lstat(OUT) is fs.lstat(HOST) is None
-    assert any("down" in argv for argv, _, _ in engine.calls)
-    assert not any("flush" in " ".join(argv) for argv, _, _ in engine.calls)
-
-
 def test_full_flow_and_mimir_failure_cleanup(monkeypatch: pytest.MonkeyPatch) -> None:
     for fail in (False, True):
         fs, _engine, http, system = setup_b()
@@ -782,7 +736,6 @@ def test_full_flow_and_mimir_failure_cleanup(monkeypatch: pytest.MonkeyPatch) ->
             code, output, error = execute(system)
         assert code == int(fail), output + error
         assert error == ""
-        assert "stopped after group" not in output
         assert "private-body" not in output
         assert ("FAIL export persistence: sustained-loss" in output) == fail, output
         assert ("ok 6:" in output) != fail
@@ -1091,12 +1044,19 @@ def test_group5_dispatch_engine_environment(
 ) -> None:
     fs, engine, http, system = setup_b()
     original_group4 = stages.group4
+    original_finalize = command.Smoke.finalize_transcript
+    finalized = []
+
+    def finalize(run: command.Smoke) -> None:
+        original_finalize(run)
+        finalized.append(fs.read_text(OUT / "transcript.log"))
 
     def group4(run: command.Smoke) -> None:
         http.webhook = dict(run.sentinels.values)[init.WEBHOOK].decode()
         original_group4(run)
 
     monkeypatch.setattr(stages, "group4", group4)
+    monkeypatch.setattr(command.Smoke, "finalize_transcript", finalize)
     if dedicated is not None:
         fs.modes[Path("/run/dind/docker.sock")] = stat.S_IFSOCK | 0o600
         engine.overrides.update(
@@ -1107,12 +1067,13 @@ def test_group5_dispatch_engine_environment(
                 "network ls --format": Result(0, "bridge\nhost\nnone\n"),
             }
         )
-    args = ["--stop-after", "5"]
-    if dedicated is not None:
-        args.extend(["--dedicated-engine", dedicated])
+    args = ["--dedicated-engine", dedicated] if dedicated is not None else []
     code, output, error = execute(system, *args)
     assert code == 0, output
     assert error == ""
+    assert finalized == [output, output]
+    assert fs.lstat(OUT) is fs.lstat(HOST) is None
+    assert any("down" in argv for argv, _, _ in engine.calls)
     calls = [call for call in engine.calls if "telemetrygen:pinned" in call[0]]
     assert len(calls) == 1
     argv, env, _ = calls[0]

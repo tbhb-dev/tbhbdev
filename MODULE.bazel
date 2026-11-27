@@ -83,6 +83,12 @@ local_path_override(
     path = "lib/rules/ansible",
 )
 
+ansible = use_extension("@tbhb_rules_ansible//:extensions.bzl", "ansible")
+ansible.collections(
+    lock = "//ops/ansible:requirements.lock.json",
+    requirements = "//ops/ansible:requirements.yml",
+)
+
 bazel_dep(name = "tbhb_rules_python", version = "0.0.0")
 local_path_override(
     module_name = "tbhb_rules_python",
@@ -178,6 +184,13 @@ cue_test_tool = use_repo_rule("//factory/cli/tests:cue_test_tool.bzl", "cue_test
 
 cue_test_tool(
     name = "cue_test_tool",
+    dev_dependency = True,
+)
+
+promtool_test_tool = use_repo_rule("//ops/packages/tbhbops/tests:promtool_test_tool.bzl", "promtool_test_tool")
+
+promtool_test_tool(
+    name = "promtool_test_tool",
     dev_dependency = True,
 )
 

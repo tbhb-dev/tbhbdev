@@ -10,7 +10,7 @@ from tbhbops import op_connect as oc
 
 COMPOSE_FILE = next(
     path / "apps" / "op-connect" / "compose.yaml"
-    for path in Path(__file__).resolve().parents
+    for path in Path(__file__).parents
     if (path / "apps" / "op-connect" / "compose.yaml").is_file()
 )
 COMPOSE_TEXT = COMPOSE_FILE.read_text(encoding="utf-8")
