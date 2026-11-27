@@ -72,7 +72,7 @@ def test_approved_ruleset_call(
 
 
 @pytest.mark.parametrize(
-    "attempt", ["refuse", "dry-run", "empty", "unreadable", "redacted"]
+    "attempt", ["refuse", "dry-run", "empty", "unreadable", "redacted", "http", "call"]
 )
 def test_ruleset_call_refusal(
     fake: Fake,
@@ -88,13 +88,18 @@ def test_ruleset_call_refusal(
     fake.by_method["GET"] = (
         httpx2.Response(200, text="malformed")
         if attempt == "unreadable"
-        else httpx2.Response(200, json=current)
+        else httpx2.Response(404 if attempt == "http" else 200, json=current)
     )
+    fake.failure = "call" if attempt == "call" else ""
     args = UPDATE_RULESET.copy()
     if attempt == "refuse":
         body["name"] = "other"
     if attempt == "empty":
-        monkeypatch.setattr(request, "load_approvals", tuple)
+
+        def missing_approval_directory(_package: str) -> Path:
+            return fake.runtime.marker.parent
+
+        monkeypatch.setattr(request, "files", missing_approval_directory)
     if attempt == "dry-run":
         args.append("--dry-run")
     monkeypatch.setattr(sys, "stdin", io.StringIO(json.dumps(body)))

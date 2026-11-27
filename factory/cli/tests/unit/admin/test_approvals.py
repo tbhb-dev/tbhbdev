@@ -2,7 +2,7 @@
 
 import pytest
 
-from tbhbdev.admin.approvals import Approval, approved_decisions
+from tbhbdev.admin.approvals import Approval, approved_decisions, rule_decisions
 
 REPOSITORY = "tbhb-dev/tbhbdev"
 RULESET_ID = 28092610
@@ -15,6 +15,7 @@ APPROVAL = Approval(
 
 
 def ruleset(value: object, **parameters: object) -> dict[str, object]:
+    options = {THREADS: value, "require_last_push_approval": True, **parameters}
     return {
         "name": "main",
         "target": "branch",
@@ -23,7 +24,7 @@ def ruleset(value: object, **parameters: object) -> dict[str, object]:
         "conditions": {"ref_name": {"include": ["~DEFAULT_BRANCH"], "exclude": []}},
         "rules": [
             {"type": "deletion"},
-            {"type": "pull_request", "parameters": {THREADS: value, **parameters}},
+            {"type": "pull_request", "parameters": options},
         ],
     }
 
@@ -41,6 +42,19 @@ def test_approved_change() -> None:
     assert approved_decisions(PATH, CURRENT, ruleset(value=False), [APPROVAL]) == (
         DECISION,
     )
+
+
+@pytest.mark.parametrize(
+    "wanted",
+    [
+        {"type": "required_status_checks", "parameters": {THREADS: False}},
+        {"type": "pull_request", "parameters": {}},
+    ],
+    ids=["changed-rule-type", "removed-parameter"],
+)
+def test_rule_change_exceeds_approval(wanted: object) -> None:
+    current = {"type": "pull_request", "parameters": {THREADS: True}}
+    assert rule_decisions(current, wanted, [APPROVAL]) is None
 
 
 @pytest.mark.parametrize(
