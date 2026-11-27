@@ -74,11 +74,15 @@ vendor)
   ;;
 modules)
   cd "$1"
+  rm -f -- "$3"
   status=0
-  VENDOR_ROOT=$2 bazelisk run --config=ci \
-    --run_under="bash -c 'cd \"\$VENDOR_ROOT\" && exec \"\$@\"' _" \
-    //cmd/gomodscan -- -format sarif -o "$3" || status=$?
+  bazelisk run --config=ci --@rules_go//go/config:pure \
+    //cmd/gomodscan -- -modroot "$2" -format sarif -o "$3" || status=$?
   if ((status > 1)); then exit "$status"; fi
+  if [[ ! -s $3 ]]; then
+    printf 'Module scan produced no SARIF report.\n' >&2
+    exit 1
+  fi
   ;;
 *)
   printf 'Unknown CI check: %s\n' "$check" >&2

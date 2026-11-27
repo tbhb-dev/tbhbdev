@@ -44,6 +44,7 @@ exports_files(
 py_binary(
     name = "preflight",
     srcs = ["@tbhb_rules//lint:preflight/preflight.py"],
+    legacy_create_init = False,
     main = "@tbhb_rules//lint:preflight/preflight.py",
 )
 

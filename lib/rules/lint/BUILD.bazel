@@ -151,10 +151,7 @@ python_tool(
     visibility = ["//visibility:public"],
 )
 
-exports_files([
-    "ci_checks.sh",
-    "preflight/preflight.py",
-])
+exports_files(["preflight/preflight.py"])
 
 python_tool(
     name = "repo_checks",

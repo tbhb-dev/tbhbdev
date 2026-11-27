@@ -225,6 +225,8 @@ async def main() -> int:
     parser.add_argument("--check", choices=checks_for(["BUILD.bazel"], has_draft=True))
     args = parser.parse_args()
     os.chdir(os.environ.get("BUILD_WORKSPACE_DIRECTORY", "."))
+    # Keep the Bazel Python launcher's import policy scoped to this process.
+    os.environ.pop("PYTHONSAFEPATH", None)
     if await git("status", "--porcelain", "--untracked-files=no"):
         parser.error("commit tracked changes before checking the branch head")
     head = await git("rev-parse", "HEAD")
