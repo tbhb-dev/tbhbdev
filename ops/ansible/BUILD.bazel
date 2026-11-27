@@ -8,6 +8,20 @@ load(
 
 repo_files()
 
+filegroup(
+    name = "deployment_fixtures",
+    srcs = glob([
+        "playbooks/**",
+        "plugins/filter/**",
+        "roles/**",
+        "tasks/**",
+    ]) + [
+        "ansible.cfg",
+        "scripts/first-run-macos.sh",
+    ],
+    visibility = ["//ops:__pkg__"],
+)
+
 exports_files([
     "pyproject.toml",
     "requirements.lock.json",

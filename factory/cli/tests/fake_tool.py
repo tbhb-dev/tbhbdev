@@ -52,6 +52,26 @@ def link_git(directory: Path) -> None:
         (directory / name).symlink_to(shutil.which(name) or name)
 
 
+def write_test_hooks(hooks: Path) -> None:
+    """Stand-ins for the hooks that PR commands expect Git to use."""
+    hooks.mkdir(exist_ok=True)
+    for name in (
+        "pre-commit",
+        "pre-push",
+        "pre-push.prek",
+        "prepare-commit-msg",
+        "commit-msg",
+        "post-commit",
+    ):
+        hook = hooks / name
+        hook.write_text(
+            "#!/bin/sh\n"
+            "# tbhbdev alpha agent identity hook (tbhbdev alpha install)\n"
+            "exit 0\n"
+        )
+        hook.chmod(0o755)
+
+
 @pytest.fixture(scope="session")
 def pr_git_baseline(tmp_path_factory: pytest.TempPathFactory) -> Path:
     """Seed Git metadata once for pull request and review tests to copy."""

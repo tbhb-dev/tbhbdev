@@ -6,7 +6,7 @@ from pathlib import Path
 
 ANSIBLE = next(
     path / "ansible"
-    for path in Path(__file__).resolve().parents
+    for path in Path(__file__).parents
     if (path / "ansible" / "ansible.cfg").is_file()
 )
 

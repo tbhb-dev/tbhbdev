@@ -19,7 +19,6 @@ okf_version: "0.2"
 * [Content model](reference/content-model.md) - Markdown normalization, source spans, and content metrics.
 * [Plugins](reference/plugins.md) - Commands and configuration from installed packages.
 * [Alpha commands](reference/alpha/commands.md) - Interim agent commands, installation, and harness hooks.
-* [Loop configuration](reference/alpha/loop-configuration.md) - Loop settings, shadow rules, and store behavior.
 * [Agent configuration](reference/alpha/agent-configuration.md) - Agent settings, run requests, and host preparation.
 * [Agent isolation limits](reference/alpha/agent-isolation-limits.md) - Agent isolation constraints, coordination, and cleanup.
 * [Secret scan](reference/alpha/secret-scan.md) - Secret scanning for pull request and merge messages.

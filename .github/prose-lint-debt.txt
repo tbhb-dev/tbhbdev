@@ -1,3 +1,8 @@
+# List one tracked Markdown path per line, relative to the repository root.
+# Add unchanged Markdown copies in the import PR under a comment naming the import.
+# Remove each entry when its file is deleted or ready for prose linting.
+
+# Existing prose debt
 AGENTS.md
 CLAUDE.md
 docs/README.md
@@ -15,7 +20,6 @@ factory/cli/docs/reference/alpha/commands/guard-scripts.md
 factory/cli/docs/reference/alpha/commands/identity.md
 factory/cli/docs/reference/alpha/commands/install.md
 factory/cli/docs/reference/alpha/commands/issue.md
-factory/cli/docs/reference/alpha/commands/loop.md
 factory/cli/docs/reference/alpha/commands/pr.md
 factory/cli/docs/reference/alpha/commands/pre-push-guard.md
 factory/cli/docs/reference/alpha/commands/review.md
@@ -23,7 +27,6 @@ factory/cli/docs/reference/alpha/commands/run-stop-hook.md
 factory/cli/docs/reference/alpha/commands/verify-range.md
 factory/cli/docs/reference/alpha/commands/version-check.md
 factory/cli/docs/reference/alpha/github-polling.md
-factory/cli/docs/reference/alpha/loop-configuration.md
 factory/cli/docs/reference/alpha/monorepo.md
 factory/cli/docs/reference/alpha/no-self-approval.md
 factory/cli/docs/reference/alpha/repository-settings.md

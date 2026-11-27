@@ -22,12 +22,13 @@ from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
-import httpx
+import httpx2
 
-from tbhbdev import userconfig
+from tbhbdev import github_tls, userconfig
 from tbhbdev.alpha import codex_trust, install, run_stop_hook
 from tbhbdev.alpha.agent import (
     admission,
+    app_server,
     bazel_servers,
     build_info,
     codex_install,
@@ -77,6 +78,7 @@ class Run:
     started: float
     deadline: float
     bazel_shutdown: BazelShutdown | None = None
+    steer: bool = False
 
 
 @dataclass(frozen=True)
@@ -628,6 +630,20 @@ def log_argv(run: Run, command: tuple[str, ...]) -> None:
             run.files.write("log", run_host_telemetry.argv_log_line(command) + "\n")
 
 
+def wait_harness(run: Run, child: subprocess.Popen[str]) -> int:
+    limit = run_state.time_limit(
+        run.request.kind, run.request.timeout, run.settings.max_run_minutes
+    )
+    try:
+        rc = run_state.exit_status(child.wait(timeout=limit))
+    except subprocess.TimeoutExpired:
+        rc = 124
+    if rc:
+        with suppress(OSError):
+            run.files.write("log", f"harness exited {rc}\n")
+    return rc
+
+
 def run_harness(
     run: Run, prepared: Prepared, stack: ExitStack, *, preflight_only: bool = False
 ) -> int:
@@ -650,6 +666,9 @@ def run_harness(
         run.files.write("log", f"preflight ok: {executable}\n")
         return 0
     log_argv(run, command)
+    if run.steer:
+        socket = app_server.socket_path(run.files.root, run.files.name)
+        command = app_server.launch_command(command, socket)
     headless = run.request.kind is RunKind.EXEC
     terminal = None if headless else sys.stdin.fileno()
     streams = (None, None, None)
@@ -687,13 +706,7 @@ def run_harness(
         if run.files.path("request.json").exists():
             run.files.path("request.json").read_text()
         run.files.write("phase", "running")
-        limit = run_state.time_limit(
-            run.request.kind, run.request.timeout, run.settings.max_run_minutes
-        )
-        try:
-            return run_state.exit_status(child.wait(timeout=limit))
-        except subprocess.TimeoutExpired:
-            return 124
+        return wait_harness(run, child)
     finally:
         stack.enter_context(process_group.ignore_signals())
         if child is not None:
@@ -861,12 +874,14 @@ def origin_tip(run: Run) -> str | None:
         token = credentials.fetch_token(run.request, run.settings)
         if token is not None:
             headers["Authorization"] = f"Bearer {token}"
-        response = httpx.get(url, headers=headers, timeout=20)
-        if response.status_code == httpx.codes.NOT_FOUND:
+        response = httpx2.get(
+            url, headers=headers, timeout=20, verify=github_tls.public_roots()
+        )
+        if response.status_code == httpx2.codes.NOT_FOUND:
             return ""
         response.raise_for_status()
         record = response.json()
-    except OSError, ValueError, httpx.HTTPError:
+    except OSError, ValueError, httpx2.HTTPError:
         return None
     if not isinstance(record, dict) or record.get("ref") != f"refs/{branch}":
         return None
@@ -1375,6 +1390,7 @@ def main(
     parser.add_argument("--prompt")
     parser.add_argument("--preflight", action="store_true")
     parser.add_argument("--owned", action="store_true")
+    parser.add_argument("--steer", action="store_true")
     args = parser.parse_args(arguments)
     if args.name is None:
         print(f"{prog}: run name is required", file=sys.stderr)
@@ -1518,5 +1534,6 @@ def _load(args: argparse.Namespace, tmpdir: Path) -> tuple[Run, str]:
         tmpdir,
         started,
         clock + parsed.startup_deadline_seconds,
+        steer=args.steer,
     )
     return run, text

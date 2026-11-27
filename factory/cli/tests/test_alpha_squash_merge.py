@@ -20,6 +20,7 @@ from fake_tool import (
     pythonpath,
     write_fake,
     write_private_config,
+    write_test_hooks,
 )
 from hypothesis import example, given
 from hypothesis import strategies as st
@@ -226,12 +227,13 @@ def tools(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Tools:
     monkeypatch.setenv("HOME", str(tmp_path))
     monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "xdg"))
     monkeypatch.setenv("PATH", f"{bin_dir}{os.pathsep}{git_dir}")
-    # The scan runs from the repository root, which outside a git worktree is
-    # the current directory, and needs the committed and private configs.
+    # The scan runs from the repository root and needs both configs.
     repo = tmp_path / "repo"
     repo.mkdir()
     (repo / ".gitleaks.toml").write_text("")
     monkeypatch.chdir(repo)
+    subprocess.run(["git", "init", "-q", "--template="], check=True)
+    write_test_hooks(repo / ".git/hooks")
     write_private_config(tmp_path, PRIVATE_CONFIG + RULES_BEYOND_ONE)
     made = Tools(bin_dir)
     made.view()
@@ -596,12 +598,20 @@ def run_main(*argv: str) -> tuple[int | str | None, str]:
         ({"mergeStateStatus": "UNSTABLE"}, "mergeStateStatus=UNSTABLE"),
         ({"reviewDecision": "REVIEW_REQUIRED"}, "reviewDecision=REVIEW_REQUIRED"),
         ({"reviewDecision": None}, "no reviewDecision"),
-        ({"reviews": []}, "0 approvals at the head, need 2"),
+        ({"headRefOid": "short"}, "no full headRefOid"),
+        ({"reviews": []}, "0 approvals at the head, need 1"),
+        (
+            {"reviews": [{"state": "COMMENTED"}]},
+            "0 approvals at the head, need 1",
+        ),
+        (
+            {"reviews": [REVIEWS[0] | {"author": None}]},
+            "review with invalid verdict, author or commit",
+        ),
         (
             {"reviews": [item | {"commit": {"oid": OTHER_HEAD}} for item in REVIEWS]},
-            "0 approvals at the head, need 2",
+            "0 approvals at the head, need 1",
         ),
-        ({"reviews": REVIEWS[:1]}, "1 approving providers, need 2"),
         (
             {
                 "reviews": [
@@ -609,12 +619,14 @@ def run_main(*argv: str) -> tuple[int | str | None, str]:
                     for item in REVIEWS
                 ]
             },
-            "0 approvals at the head, need 2",
+            "0 approvals at the head, need 1",
         ),
         ({"statusCheckRollup": []}, "no checks to verify"),
         ({"statusCheckRollup": None}, "no usable statusCheckRollup"),
         ({"statusCheckRollup": [None]}, "invalid statusCheckRollup entry"),
         ({"commits": []}, "no commits for the current head"),
+        ({"commits": [commit("short")]}, "commit with invalid SHA, message or authors"),
+        ({"commits": [commit(OTHER_HEAD)]}, "commits do not end at the current head"),
         *[
             (
                 {
@@ -672,6 +684,18 @@ def test_merge_passes_subject_body_and_head(
     assert str(merge["stdin"]).endswith(
         "[1]: https://github.com/tbhb-dev/tbhbdev/issues/12\n"
     )
+
+
+def test_agent_merge_refuses_a_missing_pre_push_hook(
+    tools: Tools, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    (Path.cwd() / ".git/hooks/pre-push").unlink()
+    monkeypatch.setenv("CODEX_SESSION_ID", "test-session")
+    assert run_main("12")[0] == 1
+    assert not (tools.bin / "gh.log").exists()
+    err = capsys.readouterr().err
+    assert "pre-push" in err
+    assert "tbhbdev alpha install --hooks-only" in err
 
 
 def test_merge_refuses_a_head_that_moved_since_approval(tools: Tools) -> None:
@@ -811,6 +835,16 @@ def test_gh_view_garbage_is_reported(tools: Tools) -> None:
     code = run_main("3")[0]
     assert isinstance(code, str)
     assert code.startswith("gh pr view returned something that is not JSON")
+
+
+def test_gh_view_requires_a_pull_request_object(tools: Tools) -> None:
+    tools.gh(view_out="[]")
+    assert run_main("12")[0] == "gh pr view returned no usable pull request"
+
+
+def test_gh_view_rejects_an_invalid_commit_author(tools: Tools) -> None:
+    tools.view(commits=[commit() | {"authors": [{}]}])
+    assert run_main("12")[0] == "gh pr view returned invalid commit authors"
 
 
 def test_missing_fields_default_to_empty_and_refuse(tools: Tools) -> None:
@@ -1551,6 +1585,25 @@ def test_merge_requires_success_for_a_named_required_check(tools: Tools) -> None
 
 
 @pytest.mark.parametrize(
+    ("checks", "reason"),
+    [
+        ([], "no usable required status checks"),
+        ([{"context": ""}], "invalid required status check"),
+    ],
+)
+def test_merge_refuses_invalid_required_checks(
+    tools: Tools, checks: list[dict[str, str]], reason: str
+) -> None:
+    rule = {
+        "type": "required_status_checks",
+        "parameters": {"required_status_checks": checks},
+    }
+    amend(tools, rules_out=json.dumps([[rule]]))
+    assert reason in str(run_main("12")[0])
+    assert len(tools.calls()) == 1
+
+
+@pytest.mark.parametrize(
     ("spec", "reason"),
     [
         (
@@ -1558,12 +1611,35 @@ def test_merge_requires_success_for_a_named_required_check(tools: Tools) -> None
             "gh review lookup failed: forbidden",
         ),
         ({"reviews_out": "<html>"}, "gh review lookup returned invalid JSON"),
+        ({"reviews_out": "{}"}, "no usable pull request review data"),
     ],
 )
 def test_merge_refuses_when_reviews_cannot_be_read(
     tools: Tools, spec: dict[str, object], reason: str
 ) -> None:
     amend(tools, **spec)
+    assert reason in str(run_main("12")[0])
+    assert len(tools.calls()) == 1
+
+
+@pytest.mark.parametrize(
+    ("fields", "reason"),
+    [
+        ({"headRefOid": OTHER_HEAD}, "PR head changed"),
+        ({"reviewDecision": "CHANGES_REQUESTED"}, "no longer reports reviewDecision"),
+        (
+            {"reviews": {"pageInfo": {"hasNextPage": True}, "nodes": REVIEWS}},
+            "missing or incomplete review list",
+        ),
+    ],
+)
+def test_merge_refuses_when_review_evidence_changes(
+    tools: Tools, fields: dict[str, object], reason: str
+) -> None:
+    path = tools.bin / "gh.spec"
+    review = json.loads(json.loads(path.read_text())["reviews_out"])
+    review["data"]["repository"]["pullRequest"].update(fields)
+    amend(tools, reviews_out=json.dumps(review))
     assert reason in str(run_main("12")[0])
     assert len(tools.calls()) == 1
 

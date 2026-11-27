@@ -9,7 +9,7 @@ import urllib.error
 from typing import TYPE_CHECKING
 from unittest.mock import Mock
 
-import httpx
+import httpx2
 import pytest
 from agent_example import LINUX, MACOS, settings
 
@@ -100,9 +100,9 @@ def test_host_main_arguments(argv: list[str], code: int) -> None:
 
 def keys_transport(
     status: int, body: bytes, headers: dict[str, str] | None = None
-) -> httpx.MockTransport:
-    return httpx.MockTransport(
-        lambda _request: httpx.Response(status, content=body, headers=headers)
+) -> httpx2.MockTransport:
+    return httpx2.MockTransport(
+        lambda _request: httpx2.Response(status, content=body, headers=headers)
     )
 
 
@@ -134,12 +134,12 @@ def test_public_keys_refuses_an_oversized_body() -> None:
 
 
 def test_public_keys_reports_a_failed_request() -> None:
-    def refuse(request: httpx.Request) -> httpx.Response:
+    def refuse(request: httpx2.Request) -> httpx2.Response:
         message = "offline"
-        raise httpx.ConnectError(message, request=request)
+        raise httpx2.ConnectError(message, request=request)
 
     with pytest.raises(OSError, match="ConnectError"):
-        signing_parity.public_keys(timeout=5, transport=httpx.MockTransport(refuse))
+        signing_parity.public_keys(timeout=5, transport=httpx2.MockTransport(refuse))
 
 
 def test_remote_fingerprint_runs_the_host_command(

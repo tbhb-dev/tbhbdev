@@ -20,7 +20,9 @@ from importlib.resources import files
 from pathlib import Path
 from typing import TYPE_CHECKING, cast
 
-import httpx
+import httpx2
+
+from tbhbdev import github_tls
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Sequence
@@ -35,7 +37,7 @@ PLATFORMS = {
     ("Linux", "aarch64"): "linux_arm64",
     ("Linux", "arm64"): "linux_arm64",
 }
-TIMEOUT = httpx.Timeout(60.0, connect=10.0)
+TIMEOUT = httpx2.Timeout(60.0, connect=10.0)
 
 
 class CueError(RuntimeError):
@@ -93,7 +95,9 @@ def resolve(pin: Pin | None = None) -> Path:
 
 
 def _fetch(url: str) -> bytes:
-    response = httpx.get(url, follow_redirects=True, timeout=TIMEOUT)
+    response = httpx2.get(
+        url, follow_redirects=True, timeout=TIMEOUT, verify=github_tls.public_roots()
+    )
     response.raise_for_status()
     return response.content
 
@@ -149,7 +153,7 @@ def main(argv: Sequence[str], prog: str) -> int:
         return 2
     try:
         path = install() if argv[0] == "install" else resolve()
-    except (CueError, httpx.HTTPError, OSError) as exc:
+    except (CueError, httpx2.HTTPError, OSError) as exc:
         sys.stderr.write(f"{prog}: {exc}\n")
         return 1
     sys.stdout.write(f"{path}\n")

@@ -5,10 +5,32 @@
 
 set -euo pipefail
 # Counting logic and policy from tbhb-dev/rules at 0b12df1dd60e1f35a45695974d6a074ad47d86e7.
-# Keep the line counting and policy in sync with lint/private/pr_size.sh.tpl and pr-size-exempt.txt.
-base=$1 head=$2 scc=$3 git=$4 policy=$5 default_ref=${6:-}
-if [[ ${PR_AUTHOR:-} == 'tbhb-dev-renovate[bot]' ]]; then
-  echo '{"code_lines": 0, "code_limit": 400, "raw_lines": 0, "raw_limit": 1500, "failed": null}'
+# Keep counting and branch exemptions in sync with lint/private/pr_size.sh.tpl.
+# Keep pr-size-exempt.txt in sync with the rules copy too.
+base=$1 head=$2 scc=$3 git=$4 policy=$5 default_ref=${6:-} python=$7
+head_branch=${8:-} policy_base=$base
+helper=${BASH_SOURCE[0]%/*}/pr-size-import
+for tool in "$scc" "$git"; do
+  if ! type -P -- "$tool" >/dev/null; then
+    echo "pr_size_count: $tool missing or not executable" >&2
+    exit 1
+  fi
+done
+top=$("$git" rev-parse --show-toplevel)
+cd "$top"
+branch_exempt=false
+if [[ -n $head_branch ]]; then
+  while IFS= read -r pattern || [[ -n $pattern ]]; do
+    [[ -z $pattern || $pattern == \#* ]] && continue
+    # shellcheck disable=SC2053 # The policy contains globs.
+    if [[ $head_branch == $pattern ]]; then
+      branch_exempt=true
+      break
+    fi
+  done < <("$git" show "$policy_base:.github/pr-size-exempt-branches.txt" 2>/dev/null || true)
+fi
+if [[ $branch_exempt == false && ${PR_AUTHOR:-} == 'tbhb-dev-renovate[bot]' ]]; then
+  echo '{"code_lines": 0, "code_limit": 400, "raw_lines": 0, "raw_limit": 1500, "imported_lines": null, "failed": null, "branch_exempt": false}'
   exit 0
 fi
 # A repository's baseline PR is exempt while main's live tip is its single root
@@ -24,9 +46,9 @@ root_count=0
 if [[ -n $base_commit ]]; then
   root_count=$("$git" rev-list --count "$base_commit") || root_count=0
 fi
-if [[ -n $base_commit && $shallow == false && $root_count == 1 &&
+if [[ $branch_exempt == false && -n $base_commit && $shallow == false && $root_count == 1 &&
   ${MAIN_TIP:-} == "$base_commit" ]]; then
-  echo '{"code_lines": 0, "code_limit": 400, "raw_lines": 0, "raw_limit": 1500, "failed": null}'
+  echo '{"code_lines": 0, "code_limit": 400, "raw_lines": 0, "raw_limit": 1500, "imported_lines": null, "failed": null, "branch_exempt": false}'
   exit 0
 fi
 range="$base...$head"
@@ -71,8 +93,19 @@ scan() {
     --exclude-file '' --count-as-pattern '*/BUILD:Bazel:Bazel' \
     --count-as-pattern '*.bazel:Bazel:Bazel' --gen --format csv "$1"
 }
-code=0 raw=0
-"$git" diff --no-renames --diff-filter=AM --name-only -z "$range" >"$work/files"
+code=0 raw=0 imported_lines=null
+"$git" diff --no-renames --diff-filter=AMT --name-only -z "$range" >"$work/files"
+"$git" diff --no-renames --diff-filter=AMT --name-only -z "$range" \
+  -- ':(glob)**/IMPORT-MAP.toml' >"$work/maps"
+if [[ -s $work/maps ]]; then
+  imported_lines=0
+  "$python" -I "$helper" "$git" "$head" "$work/files" <"$work/maps" >"$work/imports"
+  while IFS= read -r -d '' path; do
+    stat=$("$git" --literal-pathspecs diff --no-ext-diff --no-textconv --numstat "$range" -- "$path")
+    IFS=$'\t' read -r additions _ <<<"$stat"
+    [[ $additions == - ]] || imported_lines=$((imported_lines + additions))
+  done <"$work/imports"
+fi
 while IFS= read -r -d '' path; do
   exempt=0
   for pattern in "${paths[@]}"; do
@@ -85,7 +118,7 @@ while IFS= read -r -d '' path; do
   ((exempt)) && continue
   attributes=$("$git" check-attr linguist-generated linguist-vendored -- "$path")
   if awk -F': ' '$NF == "set" || $NF == "true" {found=1} END {exit !found}' <<<"$attributes"; then continue; fi
-  stat=$("$git" diff --no-ext-diff --no-textconv --numstat "$range" -- "$path")
+  stat=$("$git" --literal-pathspecs diff --no-ext-diff --no-textconv --numstat "$range" -- "$path")
   [[ $stat == -* ]] && continue
   name=${path##*/}
   "$git" show "$head:$path" >"$work/full/$name"
@@ -100,7 +133,7 @@ while IFS= read -r -d '' path; do
     fi
   done
   ((exempt)) && continue
-  "$git" diff --no-ext-diff --no-textconv --no-renames --unified=0 "$range" -- "$path" |
+  "$git" --literal-pathspecs diff --no-ext-diff --no-textconv --no-renames --unified=0 "$range" -- "$path" |
     awk '/^@@/ {hunk=1; next} hunk && /^\+/ {print substr($0,2)}' >"$work/added/$name"
   count=$(wc -l <"$work/added/$name")
   raw=$((raw + count))
@@ -116,9 +149,11 @@ while IFS= read -r -d '' path; do
   code=$((code + ${amount:-0}))
 done <"$work/files"
 failed=null
-if ((code > 400)); then
-  failed='"code"'
-elif ((raw > 1500)); then
-  failed='"raw"'
+if [[ $branch_exempt == false ]]; then
+  if ((code > 400)); then
+    failed='"code"'
+  elif ((raw > 1500)); then
+    failed='"raw"'
+  fi
 fi
-printf '{"code_lines": %d, "code_limit": 400, "raw_lines": %d, "raw_limit": 1500, "failed": %s}\n' "$code" "$raw" "$failed"
+printf '{"code_lines": %d, "code_limit": 400, "raw_lines": %d, "raw_limit": 1500, "imported_lines": %s, "failed": %s, "branch_exempt": %s}\n' "$code" "$raw" "$imported_lines" "$failed" "$branch_exempt"

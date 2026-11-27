@@ -144,6 +144,7 @@ from jsonschema import Draft202012Validator
 from tbhbdev.alpha import opened, secret_scan, size_gate, tool_pins
 from tbhbdev.alpha import pull_request_frontmatter as frontmatter
 from tbhbdev.alpha.identity import dispatcher as agent_identity
+from tbhbdev.alpha.install import require_git_hooks
 from tbhbdev.alpha.repo import git as repo_git
 from tbhbdev.alpha.repo import hook_cwd, in_tbhb_dev, read_hook_stdin
 
@@ -1233,7 +1234,7 @@ def target_is_origin() -> bool:
 
     gh's default repository (``gh repo set-default``, or a parent fork) may
     differ from origin, and ``GH_REPO`` overrides both. Any failed read counts
-    as "no", so the size count is skipped instead of run against the wrong base.
+    as "no", so the size check refuses to count against the wrong base.
     """
     if os.environ.get("GH_REPO"):
         return False  # gh pr create posts to GH_REPO, not to its default repository
@@ -2033,13 +2034,86 @@ def opened_by(env: Mapping[str, str]) -> tuple[str | None, str | None]:
     return ident.root, f"{OPENED_KEY}: {value}"
 
 
-def check_size(args: argparse.Namespace, checked: Checked) -> None:
-    """Count the branch's added lines against the draft's base and flag an excess.
+def size_unavailable(checked: Checked, reason: str) -> None:
+    message = f"size count unavailable: {reason}"
+    checked.problems.append((1, message))
+    print(message, file=sys.stderr)
 
-    Refresh the base and, for a stacked draft, the default branch in one fetch
-    without tags. Dry runs write no refs. A failed refresh or count only warns,
-    and a dry run reports an excess as a warning and still previews.
-    """
+
+def _size_base(
+    branch: str, *, explicit_base: bool, dry_run: bool
+) -> tuple[str, str | None]:
+    """Refresh the base and any stacked default ref together, except in a dry run."""
+    base = f"refs/remotes/origin/{branch}"
+    default = branch
+    if explicit_base:
+        with contextlib.suppress(SystemExit):
+            default = default_base(origin_only=True)
+    default_ref = f"refs/remotes/origin/{default}" if default != branch else None
+    if not dry_run:
+        fetch = (
+            "fetch",
+            "--quiet",
+            "--no-tags",
+            "--no-write-fetch-head",
+            "--refmap=",
+            "origin",
+            f"+refs/heads/{branch}:{base}",
+        )
+        if default_ref is not None:
+            fetch += (f"+refs/heads/{default}:{default_ref}",)
+        if git(*fetch)[0] != 0:
+            message = f"cannot fetch {branch}"
+            raise size_gate.SizeCountError(message)
+    if git("rev-parse", "--verify", "--quiet", f"{base}^{{commit}}")[0] != 0:
+        message = f"base branch {base} not found"
+        raise size_gate.SizeCountError(message)
+    return base, default_ref
+
+
+def _print_size_counts(
+    command_name: str, counts: size_gate.SizeCounts, head_branch: str
+) -> None:
+    """Print size totals for check, imports and exempt branches."""
+    output = sys.stdout if command_name == "check" else sys.stderr
+    if counts.imported_lines is not None:
+        print(
+            f"{counts.imported_lines} added lines verified by import maps", file=output
+        )
+    if (
+        command_name == "check"
+        or counts.imported_lines is not None
+        or counts.branch_exempt
+    ):
+        print(f"{counts.code_lines} code lines, limit {counts.code_limit}", file=output)
+        print(f"{counts.raw_lines} raw lines, limit {counts.raw_limit}", file=output)
+    if counts.branch_exempt:
+        print(
+            f"Branch {head_branch} is exempt from the size limit by "
+            ".github/pr-size-exempt-branches.txt",
+            file=output,
+        )
+
+
+def _report_size_excess(
+    draft: str, checked: Checked, counts: size_gate.SizeCounts, *, dry_run: bool
+) -> None:
+    """Report a size excess as a draft problem or a dry-run warning."""
+    count, limit = (
+        (counts.code_lines, counts.code_limit)
+        if counts.failed == "code"
+        else (counts.raw_lines, counts.raw_limit)
+    )
+    why = f"{count} lines, limit {limit}: split into stacked PRs"
+    if dry_run:
+        print(f"warning: {draft}:1: {why}", file=sys.stderr)
+        return
+    checked.problems.append((1, why))
+    print(f"{draft}:1: {why}")
+
+
+def check_size(args: argparse.Namespace, checked: Checked) -> None:
+    """Count added lines and refuse an unavailable count, including in a dry run."""
     explicit_base = "base" in checked.meta
     branch = base_of(checked.meta)
     checked.meta.setdefault("base", branch)
@@ -2048,67 +2122,36 @@ def check_size(args: argparse.Namespace, checked: Checked) -> None:
         "dry_run",
         False,  # pragma: no mutate -- None is also false.
     )
-    base = f"refs/remotes/origin/{branch}"
-    verify = ("rev-parse", "--verify", "--quiet", f"{base}^{{commit}}")
     if args.command == "create" and not target_is_origin():
         # gh may open the PR against a repository whose base origin doesn't track.
-        message = "size count unavailable: gh may target a repository other than origin"
-        print(message, file=sys.stderr)
-        return
-    default = branch
-    if explicit_base:
-        with contextlib.suppress(SystemExit):
-            default = default_base(origin_only=True)
-    default_ref = None
-    fetch = (
-        "fetch",
-        "--quiet",
-        "--no-tags",
-        "--no-write-fetch-head",
-        "--refmap=",
-        "origin",
-        f"+refs/heads/{branch}:{base}",
-    )
-    if default != branch:
-        default_ref = f"refs/remotes/origin/{default}"
-        fetch += (f"+refs/heads/{default}:{default_ref}",)
-    if not dry_run and git(*fetch)[0] != 0:
-        # A stale tracking ref would count the wrong range, so stop here.
-        print(f"size count unavailable: cannot fetch {branch}", file=sys.stderr)
-        return
-    if git(*verify)[0] != 0:
-        print(f"size count unavailable: base branch {base} not found", file=sys.stderr)
+        size_unavailable(checked, "gh may target a repository other than origin")
         return
     try:
+        base, default_ref = _size_base(
+            branch, explicit_base=explicit_base, dry_run=dry_run
+        )
+        _, head_branch = git("branch", "--show-current")
+        tools = _TOOL_PATHS.get()
         counts = size_gate.size_counts(
             base,
             "HEAD",
             default_ref=default_ref,
+            head_branch=head_branch,
             scc=find_tool(SCC),
-            git=_TOOL_PATHS.get().get((GIT, False), GIT),
+            git=tools.get((GIT, False), GIT),
         )
     except size_gate.SizeCountError as exc:
-        print(f"size count unavailable: {exc}", file=sys.stderr)
+        size_unavailable(checked, str(exc))
         return
-    if args.command == "check":
-        print(f"{counts.code_lines} code lines, limit {counts.code_limit}")
-        print(f"{counts.raw_lines} raw lines, limit {counts.raw_limit}")
+    _print_size_counts(args.command, counts, head_branch)
     if counts.failed is not None:
-        count, limit = (
-            (counts.code_lines, counts.code_limit)
-            if counts.failed == "code"
-            else (counts.raw_lines, counts.raw_limit)
-        )
-        why = f"{count} lines, limit {limit}: split into stacked PRs"
-        if dry_run:
-            print(f"warning: {args.draft}:1: {why}", file=sys.stderr)
-            return
-        checked.problems.append((1, why))
-        print(f"{args.draft}:1: {why}")
+        _report_size_excess(args.draft, checked, counts, dry_run=dry_run)
 
 
 def command(args: argparse.Namespace, env: Mapping[str, str]) -> int:
     """Resolve the tools for check and create before running the subcommand."""
+    if args.command == "create" and not require_git_hooks(env):
+        return 1
     if args.command not in ("check", "create"):
         return _run_command(args, env)
     names = (COG, *(name for name, _, _ in LINTERS), GIT, SCC)

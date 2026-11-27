@@ -96,7 +96,9 @@ elif name == "tmux":
     if verb == "new-session":
         assert args[8:] == [str(root / "home/.local/bin/tbhbdev"),
                             "alpha", "agent", "run-host", "sample",
-                            "--host", os.environ["EXAMPLE_SSH_HOST"], "--owned"]
+                            "--host", os.environ["EXAMPLE_SSH_HOST"], "--owned"] + (
+                                ["--steer"] if control.get("steer") else []
+                            )
         (run / "sample.run.lock").write_text("")
         control["session"] = True
         launch = control.get("launch", {"launched": ""})

@@ -13,7 +13,7 @@ import time
 from pathlib import Path
 from typing import TYPE_CHECKING, cast
 
-import httpx
+import httpx2
 
 from tbhbdev.alpha.identity.models import AGY_MODELS
 
@@ -247,7 +247,7 @@ def export(directory: Path) -> int:
         return 2
     failed = False
     for signal in ("traces", "metrics"):
-        response = httpx.post(
+        response = httpx2.post(
             f"{endpoint.rstrip('/')}/v1/{signal}",
             content=directory.joinpath("otel", f"{signal}.json").read_bytes(),
             headers={"Content-Type": "application/json"},

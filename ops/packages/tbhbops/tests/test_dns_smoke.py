@@ -13,7 +13,7 @@ import yaml
 from tbhbops import dns_smoke as smoke
 
 ROOT = next(
-    p for p in Path(__file__).resolve().parents if (p / "apps/dns/compose.yaml").is_file()
+    p for p in Path(__file__).parents if (p / "apps/dns/compose.yaml").is_file()
 )
 SOURCE = ROOT / "apps/dns"
 COMPOSE = (SOURCE / "compose.yaml").read_text(encoding="utf-8")

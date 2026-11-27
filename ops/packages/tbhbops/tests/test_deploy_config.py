@@ -6,7 +6,6 @@ from copy import deepcopy
 from pathlib import Path
 
 import pytest
-
 from tbhbops.deploy import config
 from tbhbops.deploy.protocol import Json, RefusalError
 
@@ -32,7 +31,7 @@ def document() -> dict[str, Json]:
             "probes": [{"service": "web", "argv": ["true"]}],
         },
         "ports": [{"host_ip": "127.0.0.1", "port": 8080, "protocol": "tcp"}],
-        "networks": [{"key": "default", "subnet": "203.0.113.32/24"}],
+        "networks": [{"key": "default", "subnet": "203.0.113.32/27"}],
         "secrets": [
             {
                 "name": "token",
@@ -65,7 +64,7 @@ def test_service_preserves_every_setting(deploy_service: config.Service) -> None
         ("web",),
         (("web", ("true",)),),
         (("127.0.0.1", 8080, "tcp"),),
-        {"default": "203.0.113.32/24"},
+        {"default": "203.0.113.32/27"},
         (
             config.Secret(
                 "token",
@@ -204,7 +203,7 @@ def test_service_schema(deploy_service: config.Service, trusted_tree: Path) -> N
     assert deploy_service.root == Path("/srv/o11y")
     assert deploy_service.secrets[0].target == Path("/srv/o11y/data/secrets/token")
     assert deploy_service.probes == (("web", ("true",)),)
-    assert deploy_service.networks == {"default": "203.0.113.32/24"}
+    assert deploy_service.networks == {"default": "203.0.113.32/27"}
     model = document()
     del model["init"]
     del model["networks"]
@@ -252,7 +251,7 @@ def test_service_schema(deploy_service: config.Service, trusted_tree: Path) -> N
         ),
         (
             "ports",
-            [{"host_ip": "0.0.0.0", "port": 8080, "protocol": "tcp"}],  # noqa: S104  # refusal case
+            [{"host_ip": "0.0.0.0", "port": 8080, "protocol": "tcp"}],  # refusal case
             "unspecified port address",
         ),
         (
@@ -274,8 +273,8 @@ def test_service_schema(deploy_service: config.Service, trusted_tree: Path) -> N
         (
             "networks",
             [
-                {"key": "x", "subnet": "203.0.113.32/24"},
-                {"key": "x", "subnet": "203.0.113.32/24"},
+                {"key": "x", "subnet": "203.0.113.32/27"},
+                {"key": "x", "subnet": "203.0.113.32/27"},
             ],
             "duplicate network",
         ),

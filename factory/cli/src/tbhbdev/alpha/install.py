@@ -128,8 +128,8 @@ from typing import TYPE_CHECKING, cast
 
 from tbhbdev import plugins
 from tbhbdev.alpha import install_statusline_decisions as statusline
-from tbhbdev.alpha.gh_shim import bin_dir, wrapper_text
-from tbhbdev.alpha.identity.dispatcher import codex_home
+from tbhbdev.alpha.gh_shim import AGENT_MARKERS, agent_operation, bin_dir, wrapper_text
+from tbhbdev.alpha.identity.dispatcher import AGENT_EMAIL, codex_home
 from tbhbdev.alpha.repo import (
     TBHB_DEV_ORIGIN,
     TBHB_DEV_ORIGIN_ERE,
@@ -149,6 +149,7 @@ type Json = dict[str, object]
 # could tell a mutated type string from the original.
 
 PROG = "tbhbdev alpha install"
+INSTALL_HOOKS = f"{PROG} --hooks-only"
 MARK = "# tbhbdev alpha install"
 SHIM_MARK = "# tbhbdev alpha agent identity hook (tbhbdev alpha install)"
 # The identity shims this command and the old install script write.
@@ -232,23 +233,31 @@ HARNESS_TIMEOUT = 10
 # exactly what is on disk.
 CODEX_TIMEOUT = 600
 
-# Without tbhbdev on PATH, a shim blocks the commit only when origin is a
-# tbhb-dev repository, by the same pattern as repo.is_tbhb_dev_url. A newline
-# in the origin becomes a space, so grep sees the whole origin as one line.
+# Match known origins as repo.is_tbhb_dev_url does, treating newlines as spaces.
 ORIGIN_GREP = f"^{TBHB_DEV_ORIGIN_ERE}$"
+SHELL_AGENT_MARKERS = "".join("${" + name + ":-}" for name in AGENT_MARKERS)
 SHIM = """#!/bin/sh
 {mark}
+status=0
 if command -v tbhbdev >/dev/null 2>&1; then
   tbhbdev alpha identity {verb} "$@"
   status=$?
-elif origin=$(git remote get-url --push origin 2>/dev/null) &&
-  printf '%s' "$origin" | LC_ALL=C tr '\\n' ' ' |
-  LC_ALL=C grep -Eqi '{origin}'; then
-  echo "{hook}: tbhbdev is not on PATH, so the identity hooks can't run" >&2
-  echo "{hook}: install it with uv tool install, and put ~/.local/bin on PATH" >&2
-  status=1
 else
-  status=0
+  origin=$(git remote get-url --push origin 2>/dev/null) || origin=
+  if [ -z "$origin" ]; then
+    if [ -n "{agent_markers}" ] || [ "${{GIT_COMMITTER_EMAIL:-}}" = '{agent_email}' ] ||
+      [ "$(git config --get user.email 2>/dev/null)" = '{agent_email}' ]; then
+      echo "{hook}: cannot determine the origin push URL" >&2
+      status=1
+    fi
+  elif printf '%s' "$origin" | LC_ALL=C tr '\\n' ' ' |
+    LC_ALL=C grep -Eqi '{origin}'; then
+    status=1
+  fi
+  if [ "$status" -ne 0 ]; then
+    echo "{hook}: tbhbdev is not on PATH, so the identity hooks can't run" >&2
+    echo "{hook}: install tbhbdev on PATH and run {install_hooks}" >&2
+  fi
 fi
 next="$(dirname "$0")/{hook}.prek"
 if [ -x "$next" ]; then
@@ -276,17 +285,17 @@ if shutil.which("tbhbdev"):
         input=payload, env=os.environ | run_env, check=False,
     ).returncode
 else:
-    target = sys.argv[2]
+    target = sys.argv[2].strip() if len(sys.argv) > 2 else ""
     if not target:
-        remote = subprocess.run(
-            ["git", "-c", "core.fsmonitor=false", "-c", "core.hooksPath=/dev/null",
-             "-c", "diff.external=", "-c", "core.pager=cat",
-             "remote", "get-url", "--push", sys.argv[1]],
-            capture_output=True, text=True, check=False,
-        )
-        target = remote.stdout if remote.returncode == 0 else ""
-    if run_env or re.fullmatch({pattern!r}, target, re.IGNORECASE | re.ASCII):
+        print("pre-push: cannot determine the push destination", file=sys.stderr)
+    org_target = re.fullmatch({pattern!r}, target, re.IGNORECASE | re.ASCII)
+    if not target or run_env or org_target:
         print("pre-push: tbhbdev is not on PATH; push refused", file=sys.stderr)
+        print(
+            "pre-push: install tbhbdev on PATH and run "
+            "tbhbdev alpha install --hooks-only",
+            file=sys.stderr,
+        )
         status = 1
 next_hook = pathlib.Path(__file__).with_name("pre-push.prek")
 if next_hook.is_file():
@@ -1312,7 +1321,15 @@ def install_identity_hook(
             message = f"prek install -f --hook-type {name} wrote no {hook}"
             raise InstallError(message) from exc
     hook.write_text(
-        SHIM.format(mark=SHIM_MARK, verb=verb, hook=name, origin=ORIGIN_GREP)
+        SHIM.format(
+            mark=SHIM_MARK,
+            verb=verb,
+            hook=name,
+            origin=ORIGIN_GREP,
+            agent_markers=SHELL_AGENT_MARKERS,
+            agent_email=AGENT_EMAIL,
+            install_hooks=INSTALL_HOOKS,
+        )
     )
     hook.chmod(0o755)
 
@@ -1396,6 +1413,37 @@ def install_git_hooks(
         return 1
     print(f"{PROG}: installed git hooks in {hooks}")
     return 0
+
+
+def git_hooks_problem() -> str:
+    """Find a missing or ineffective hook in the directory Git actually uses."""
+    code, directory = git("rev-parse", "--path-format=absolute", "--git-path", "hooks")
+    if code or not directory:
+        return "cannot locate Git's hooks directory"
+    shims = ("pre-push", *(name for name, _ in IDENTITY_HOOKS))
+    for name in (*shims, "pre-commit", "pre-push.prek"):
+        hook = Path(directory) / name
+        try:
+            if not hook.is_file() or not os.access(hook, os.X_OK):
+                return f"{hook} is missing or not executable"
+            if name in shims and SHIM_MARK not in hook.read_text(errors="replace"):
+                return f"{hook} is missing the tbhbdev hook"
+        except OSError as exc:
+            return f"cannot read {hook}: {exc.strerror}"
+    return ""
+
+
+def require_git_hooks(env: Mapping[str, str]) -> bool:
+    """Refuse agent PR operations when the checkout's hooks cannot run."""
+    if agent_operation(env) and (problem := git_hooks_problem()):
+        print(
+            f"{problem}. In a tbhb-dev clone run `{INSTALL_HOOKS}`. "
+            "If core.hooksPath redirects Git, use the managed agent worktree "
+            "or restore the clone's hooks directory.",
+            file=sys.stderr,
+        )
+        return False
+    return True
 
 
 # ---------------------------------------------------------------- command line
