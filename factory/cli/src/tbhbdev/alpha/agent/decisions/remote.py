@@ -482,10 +482,10 @@ patch_git() {{
         -c protocol.allow=never -c diff.external= -c core.multiPackIndex=false \
         --no-optional-locks "$@"
 }}
-# A merge's conflict resolutions have no standalone patch. Export the final
-# tree as a single commit atop the recorded base whenever the range has merges.
+# Export the final tree as one commit atop the recorded base when the range
+# contains merges or the tip no longer descends from the base.
 merges=$(patch_git rev-list --max-count=1 --merges "$base..$tip" --) || exit 65
-if test -n "$merges"; then
+if test -n "$merges" || ! patch_git merge-base --is-ancestor "$base" "$tip"; then
     tree=$(patch_git rev-parse "$tip^{{tree}}") || exit 65
     base_tree=$(patch_git rev-parse "$base^{{tree}}") || exit 65
     test "$tree" != "$base_tree" || exit 0
