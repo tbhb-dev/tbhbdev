@@ -529,6 +529,14 @@ def test_merge_queue_reports_the_result_using_the_previous_removal(
     assert before == after
 
 
+def test_merge_refuses_failed_queue_lookup(queued_tools: Tools) -> None:
+    amend(queued_tools, queue_rc=1, queue_err="queue\n  unavailable\n")
+    assert run_main("12") == "gh merge queue lookup failed: queue unavailable"
+    _, lookup = queued_tools.calls()
+    assert cast("list[str]", lookup["argv"])[:2] == ["api", "graphql"]
+    assert queued_tools.scanned() == []
+
+
 def test_a_queue_merge_refusal_preserves_the_gh_error(
     queued_tools: Tools, capsys: pytest.CaptureFixture[str]
 ) -> None:
