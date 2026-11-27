@@ -378,7 +378,7 @@ def git_exits(code: int = 0) -> Mock:
     return Mock(return_value=(code, ""))
 
 
-@pytest.mark.parametrize("failure", ["count", "over", "base"])
+@pytest.mark.parametrize("failure", ["count", "over", "base", "missing"])
 @pytest.mark.usefixtures("pr_tools")
 def test_pr_create_size(
     monkeypatch: pytest.MonkeyPatch,
@@ -389,7 +389,8 @@ def test_pr_create_size(
     counter = Mock(return_value=counts)
     if failure == "count":
         counter = Mock(side_effect=sg.SizeCountError("missing target"))
-    monkeypatch.setattr(sg, "size_counts", counter)
+    if failure != "missing":
+        monkeypatch.setattr(sg, "size_counts", counter)
     git = git_exits(int(failure == "base"))
     monkeypatch.setattr(pr, "git", git)
     monkeypatch.setattr(pr, "base_of", Mock(return_value="main"))
@@ -409,14 +410,43 @@ def test_pr_create_size(
     post.assert_not_called()
     if failure == "over":
         assert captured.out == "d.md:1: 401 lines, limit 400: split into stacked PRs\n"
+    elif failure == "missing":
+        assert captured.err == (
+            "size count unavailable: pr_size_count: "
+            "/tools/scc missing or not executable\n"
+        )
     else:
         assert captured.err.startswith("size count unavailable: ")
     fetched = [*FETCH, "origin", "+refs/heads/main:refs/remotes/origin/main"]
     assert call(*fetched) in git.call_args_list
-    if failure != "base":
+    if failure in ("count", "over"):
         counter.assert_called_once_with(
             "refs/remotes/origin/main", "HEAD", scc="/tools/scc", git="/tools/git"
         )
+    elif failure == "base":
+        counter.assert_not_called()
+
+
+@pytest.mark.parametrize("command", ["check", "create"])
+@pytest.mark.parametrize("imported_lines", [0, 600])
+def test_size_reports_verified_imports(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    command: str,
+    imported_lines: int,
+) -> None:
+    counts = sg.SizeCounts(5, 400, 9, 1500, None, imported_lines=imported_lines)
+    monkeypatch.setattr(sg, "size_counts", Mock(return_value=counts))
+    monkeypatch.setattr(pr, "git", git_exits())
+    checked = pr.Checked([], meta={"base": "main"})
+    pr.check_size(argparse.Namespace(command=command, draft="d.md"), checked)
+    assert checked.problems == []
+    output = (
+        f"{imported_lines} added lines verified by import maps\n"
+        "5 code lines, limit 400\n"
+        "9 raw lines, limit 1500\n"
+    )
+    assert capsys.readouterr() == ((output, "") if command == "check" else ("", output))
 
 
 def test_the_base_is_refreshed_without_tags_then_counted(

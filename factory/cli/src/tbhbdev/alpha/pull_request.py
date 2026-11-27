@@ -2119,25 +2119,9 @@ def size_unavailable(checked: Checked, reason: str) -> None:
     print(message, file=sys.stderr)
 
 
-def check_size(args: argparse.Namespace, checked: Checked) -> None:
-    """Count the branch's added lines against the draft's base and flag an excess.
-
-    The base tracking ref is refreshed once, without tags, except in a dry run,
-    which writes no refs. An unavailable count blocks both commands.
-    A dry run reports an excess as a warning and still previews.
-    """
-    branch = base_of(checked.meta)
-    dry_run = getattr(
-        args,
-        "dry_run",
-        False,  # pragma: no mutate -- None is also false.
-    )
+def _size_base(branch: str, *, dry_run: bool) -> str:
+    """Refresh and verify the base tracking ref, using only local refs in a dry run."""
     base = f"refs/remotes/origin/{branch}"
-    verify = ("rev-parse", "--verify", "--quiet", f"{base}^{{commit}}")
-    if args.command == "create" and not target_is_origin():
-        # gh may open the PR against a repository whose base origin doesn't track.
-        size_unavailable(checked, "gh may target a repository other than origin")
-        return
     if not dry_run:
         fetch = (
             "fetch",
@@ -2149,42 +2133,70 @@ def check_size(args: argparse.Namespace, checked: Checked) -> None:
             f"+refs/heads/{branch}:{base}",
         )
         if git(*fetch)[0] != 0:
-            # A stale tracking ref would count the wrong range, so stop here.
-            size_unavailable(checked, f"cannot fetch {branch}")
-            return
-    if git(*verify)[0] != 0:
-        size_unavailable(checked, f"base branch {base} not found")
-        return
-    try:
-        counts = size_gate.size_counts(
-            base,
-            "HEAD",
-            scc=_TOOL_PATHS.get().get((SCC, False), SCC),
-            git=_TOOL_PATHS.get().get((GIT, False), GIT),
-        )
-    except size_gate.SizeCountError as exc:
-        size_unavailable(checked, str(exc))
-        return
-    output = sys.stdout if args.command == "check" else sys.stderr
+            message = f"cannot fetch {branch}"
+            raise size_gate.SizeCountError(message)
+    if git("rev-parse", "--verify", "--quiet", f"{base}^{{commit}}")[0] != 0:
+        message = f"base branch {base} not found"
+        raise size_gate.SizeCountError(message)
+    return base
+
+
+def _print_size_counts(command_name: str, counts: size_gate.SizeCounts) -> None:
+    """Print size totals for check and when create evaluates import maps."""
+    output = sys.stdout if command_name == "check" else sys.stderr
     if counts.imported_lines is not None:
         print(
             f"{counts.imported_lines} added lines verified by import maps", file=output
         )
-    if args.command == "check" or counts.imported_lines is not None:
+    if command_name == "check" or counts.imported_lines is not None:
         print(f"{counts.code_lines} code lines, limit {counts.code_limit}", file=output)
         print(f"{counts.raw_lines} raw lines, limit {counts.raw_limit}", file=output)
-    if counts.failed is not None:
-        count, limit = (
-            (counts.code_lines, counts.code_limit)
-            if counts.failed == "code"
-            else (counts.raw_lines, counts.raw_limit)
+
+
+def _report_size_excess(
+    draft: str, checked: Checked, counts: size_gate.SizeCounts, *, dry_run: bool
+) -> None:
+    """Report a size excess as a draft problem or a dry-run warning."""
+    count, limit = (
+        (counts.code_lines, counts.code_limit)
+        if counts.failed == "code"
+        else (counts.raw_lines, counts.raw_limit)
+    )
+    why = f"{count} lines, limit {limit}: split into stacked PRs"
+    if dry_run:
+        print(f"warning: {draft}:1: {why}", file=sys.stderr)
+        return
+    checked.problems.append((1, why))
+    print(f"{draft}:1: {why}")
+
+
+def check_size(args: argparse.Namespace, checked: Checked) -> None:
+    """Count added lines and refuse an unavailable count, including in a dry run."""
+    branch = base_of(checked.meta)
+    dry_run = getattr(
+        args,
+        "dry_run",
+        False,  # pragma: no mutate -- None is also false.
+    )
+    if args.command == "create" and not target_is_origin():
+        # gh may open the PR against a repository whose base origin doesn't track.
+        size_unavailable(checked, "gh may target a repository other than origin")
+        return
+    try:
+        base = _size_base(branch, dry_run=dry_run)
+        tools = _TOOL_PATHS.get()
+        counts = size_gate.size_counts(
+            base,
+            "HEAD",
+            scc=tools.get((SCC, False), SCC),
+            git=tools.get((GIT, False), GIT),
         )
-        why = f"{count} lines, limit {limit}: split into stacked PRs"
-        if dry_run:
-            print(f"warning: {args.draft}:1: {why}", file=sys.stderr)
-            return
-        checked.problems.append((1, why))
-        print(f"{args.draft}:1: {why}")
+    except size_gate.SizeCountError as exc:
+        size_unavailable(checked, str(exc))
+        return
+    _print_size_counts(args.command, counts)
+    if counts.failed is not None:
+        _report_size_excess(args.draft, checked, counts, dry_run=dry_run)
 
 
 def command(args: argparse.Namespace, env: Mapping[str, str]) -> int:

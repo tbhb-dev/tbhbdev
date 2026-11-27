@@ -12,9 +12,10 @@ import sys
 import tomllib
 from pathlib import Path, PurePosixPath
 from tempfile import TemporaryDirectory
+from typing import TypeGuard, cast
 
 
-def clean_path(value: object) -> bool:
+def clean_path(value: object) -> TypeGuard[str]:
     if not isinstance(value, str):
         return False
     path = PurePosixPath(value)
@@ -42,7 +43,7 @@ def read_map(data: bytes) -> tuple[str, str, dict[str, str]]:
         return "", "", {}
     writes = {
         path: src
-        for src, path in copies.items()
+        for src, path in cast("dict[object, object]", copies).items()
         if clean_path(src) and clean_path(path) and path.startswith(f"{dest}/")
     }
     if len(writes) != len(copies):
