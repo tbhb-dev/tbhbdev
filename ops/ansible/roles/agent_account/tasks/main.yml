@@ -105,6 +105,10 @@
     group: "{{ '24368' if ansible_facts.system == 'Linux' else '33835' }}"
     mode: '0700'
 
+- name: Configure Bazel for the agent
+  ansible.builtin.include_tasks: bazel.yml
+  when: not (ansible_check_mode and agent_account_new_user)
+
 - name: Require single-line agent exec launch public keys
   ansible.builtin.assert:
     that:
