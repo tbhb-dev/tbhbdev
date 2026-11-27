@@ -1,6 +1,4 @@
 # cspell:ignore publickey
-import base64
-import hashlib
 import socket
 from pathlib import Path
 from typing import TYPE_CHECKING, cast
@@ -15,7 +13,6 @@ from ansible.plugins.loader import filter_loader, init_plugin_loader
 from ansible.template import Templar
 from ansible.vars.manager import VariableManager
 from jinja2.nativetypes import NativeEnvironment
-
 from tbhbops import dsm_accounts as da
 from tbhbops.authorized_lines import authorized_lines
 from tbhbops.tailnet_addresses import RANGES
@@ -306,30 +303,26 @@ def test_retirement_is_opt_in_after_authorizing_session_keys() -> None:
     assert all("never" in task["tags"] for task in tasks[-4:])
 
 
-@pytest.mark.skip(reason="AnsibleUndefinedVariable: dsm_accounts_retired_key_src")
-def test_retirement_renders_only_the_exact_retired_key_as_absent() -> None:
+def test_retirement_renders_only_the_exact_retired_key_as_absent(
+    tmp_path: Path,
+) -> None:
+    retired_key = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIMBxMcLBO2dNsuwi0clAzEHghsyOUtwtQU2PXYShQKQa lab-ops"
+    key_file = tmp_path / "lab-ops.pub"
+    key_file.write_text(f"{retired_key}\n", encoding="utf-8")
     init_plugin_loader()
     loader = DataLoader()
     tasks = loader.load_from_file(
         str(ROLE / "tasks" / "ops_retire_lab_ops.yml"), trusted_as_template=True
     )
     removal = tasks[5]["ansible.posix.authorized_key"]
-    rendered = Templar(loader=loader, variables={"role_path": str(ROLE)}).template(
-        removal
-    )
+    rendered = Templar(
+        loader=loader, variables={"dsm_accounts_retired_key_src": str(key_file)}
+    ).template(removal)
     assert set(rendered) == {"user", "key", "state", "manage_dir"}
     assert rendered["user"] == "ops"
     assert rendered["state"] == "absent"
     assert rendered["manage_dir"] is False
-    lines = [line for line in rendered["key"].splitlines() if not line.startswith("#")]
-    assert len(lines) == 1
-    kind, body, comment = lines[0].split()
-    assert kind == "ssh-ed25519"
-    assert comment == "lab-ops"
-    fingerprint = base64.b64encode(hashlib.sha256(base64.b64decode(body)).digest())
-    assert fingerprint.decode().rstrip("=") == (
-        "rKtQigzxO/bexF17tVtXffDa2yG6emur3waToDBA7Ug"
-    )
+    assert rendered["key"].splitlines() == [retired_key]
 
 
 def test_retirement_never_sets_exclusive_or_uses_become() -> None:

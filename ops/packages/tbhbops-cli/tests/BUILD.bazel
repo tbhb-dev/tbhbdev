@@ -1,5 +1,3 @@
-load("@rules_python//python:defs.bzl", "py_library")
-
 # SPDX-License-Identifier: Apache-2.0
 # Copyright Tony Burns
 
@@ -28,18 +26,9 @@ ops_py_test(
         "testdata/**",
     ]) + ["//ops:o11y_fixtures"],
     deps = [
-        ":conftest",
         "//ops/packages/tbhbops-cli/src",
         "//ops/packages/tbhbops/src",
         "@cli_pip//pytest",
         "@cli_pip//pyyaml",
     ],
-)
-
-py_library(
-    name = "conftest",
-    testonly = True,
-    srcs = ["conftest.py"],
-    visibility = ["//ops/packages/tbhbops-cli/tests:__subpackages__"],
-    deps = ["@cli_pip//pytest"],
 )

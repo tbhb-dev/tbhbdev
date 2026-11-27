@@ -19,7 +19,6 @@ from unittest.mock import Mock
 
 import pytest
 import uv
-
 from tbhbops import op_connect
 
 ROOT = next(
@@ -31,6 +30,7 @@ LAUNCHERS = sorted(path.name for path in (ROOT / "tools").iterdir() if path.is_f
 # The end of the inline metadata block.
 METADATA_END = "# ///\n"
 EDITABLE = '# tbhbops = { path = "../packages/tbhbops", editable = true }\n'
+CA_ROOT = "apps/ca/roots/root_ca.crt"
 
 
 @pytest.fixture
@@ -105,11 +105,11 @@ def test_the_launcher_sees_a_module_added_after_its_first_run(
     repo: Path, launcher: str
 ) -> None:
     if launcher == "install-step-ca-root":
-        if not (ROOT / "apps/ca/roots/root_ca.crt").is_file():
-            pytest.skip("requires apps/ca/roots/root_ca.crt")
         # This launcher has no help option. Stop at validation on macOS so
         # the first run can populate the uv cache without using the keychain.
-        (repo / "apps/ca/roots/root_ca.crt").write_bytes(b"")
+        root = repo / CA_ROOT
+        root.parent.mkdir(parents=True, exist_ok=True)
+        root.write_bytes(b"")
         first = uv_run(repo, launcher)
         message = (
             "The root file must contain exactly one PEM certificate."
@@ -155,13 +155,12 @@ def test_the_launcher_sees_a_module_added_after_its_first_run(
         ),
     ],
 )
-@pytest.mark.skipif(
-    not (ROOT / "apps/ca/roots/root_ca.crt").is_file(),
-    reason="requires apps/ca/roots/root_ca.crt",
-)
 def test_step_ca_root_pin(
     repo: Path, monkeypatch: pytest.MonkeyPatch, defaults_text: str, message: str
 ) -> None:
+    root = repo / CA_ROOT
+    root.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copyfile(Path(__file__).parent / "testdata" / "root_ca.crt", root)
     fingerprint = ":".join(["AB"] * 32)
     defaults = repo / "ansible/roles/ca_client_trust/defaults/main.yml"
     defaults.parent.mkdir(parents=True)
