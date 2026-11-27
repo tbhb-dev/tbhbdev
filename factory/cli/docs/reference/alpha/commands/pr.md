@@ -6,8 +6,8 @@ generated:
     model: openai:gpt-6.2-sol
     effort: high
     surface: exec
-    session: sha-256-64:55f421bd5e9df8e7
-    at: "2026-11-27T03:22:14Z"
+    session: sha-256-64:b083225d0bf109b1
+    at: "2026-11-27T05:11:27Z"
 status: stable
 tags: [alpha]
 title: Pull request commands
