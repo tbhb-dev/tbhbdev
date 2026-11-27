@@ -124,7 +124,9 @@ import time
 from contextlib import contextmanager, redirect_stdout, suppress
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import TYPE_CHECKING, cast
+from typing import cast
+lazy from collections.abc import Callable, Generator, Mapping
+lazy from typing import IO
 
 from tbhbdev import plugins
 from tbhbdev.alpha import install_statusline_decisions as statusline
@@ -139,10 +141,6 @@ from tbhbdev.alpha.repo import (
     in_tbhb_dev,
     read_hook_stdin,
 )
-
-if TYPE_CHECKING:
-    from collections.abc import Callable, Generator, Mapping
-    from typing import IO
 
 type Json = dict[str, object]
 

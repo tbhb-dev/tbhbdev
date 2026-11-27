@@ -81,20 +81,17 @@ import re
 import shlex
 import sys
 from dataclasses import dataclass
-from email.utils import parseaddr
 from itertools import takewhile
-from typing import TYPE_CHECKING, NoReturn, cast
+from typing import NoReturn, cast
 from urllib.parse import quote
+lazy from collections.abc import Sequence
 
 from tbhbdev.alpha import pull_request as pr
 from tbhbdev.alpha import review_gate
 from tbhbdev.alpha.identity import records as identity_records
-from tbhbdev.alpha.identity.commit import grammar as identity_commit_grammar
-from tbhbdev.alpha.identity.commit import policy as identity_commit_policy
+from tbhbdev.alpha.identity.commit import grammar as trailer_grammar
+from tbhbdev.alpha.identity.commit.policy import AGENT_EMAIL
 from tbhbdev.alpha.install import require_git_hooks
-
-if TYPE_CHECKING:
-    from collections.abc import Sequence
 
 WIDTH = 72
 CODE_INDENT = "    "
@@ -395,8 +392,7 @@ def drop_opened(lines: Sequence[pr.Line]) -> list[pr.Line]:
         end -= 1
     run = takewhile(
         lambda line: (
-            identity_commit_grammar.LINE.match(line.text)
-            or pr.OPENED_LINE.match(line.text)
+            trailer_grammar.LINE.match(line.text) or pr.OPENED_LINE.match(line.text)
         ),
         reversed(lines[:end]),
     )
@@ -419,7 +415,7 @@ def split_trailers(lines: Sequence[pr.Line]) -> tuple[list[pr.Line], list[str]]:
     while (
         start
         and not lines[start - 1].code
-        and identity_commit_grammar.LINE.match(lines[start - 1].text)
+        and trailer_grammar.LINE.match(lines[start - 1].text)
     ):
         start -= 1
     if start == end or (start and not pr.is_blank(lines[start - 1])):
@@ -448,7 +444,7 @@ def check_trailers(
     problems = [why for _, why in pr.trailer_problems(text_lines)]
     problems.extend(
         f"invalid trailer block: {why}"
-        for why in identity_commit_grammar.check_message("\n".join(trailers))
+        for why in trailer_grammar.check_message("\n".join(trailers))
     )
     if agent and not trailers:
         problems.append("agent PR is missing final trailer paragraph")
@@ -729,11 +725,10 @@ def fetch(number: int) -> PullRequest:
         stop("gh pr view returned no usable pull request")
     who = identity_records.as_dict(data.get("author")) or {}
     base = data.get("baseRefName")
-    _, email = parseaddr(identity_commit_policy.AGENT_IDENT)
     commits = cast("list[dict[str, list[dict[str, str]]]]", data.get("commits", []))
     try:
         agent = any(
-            author["email"] == email
+            author["email"] == AGENT_EMAIL
             for commit in commits
             for author in commit["authors"]
         )

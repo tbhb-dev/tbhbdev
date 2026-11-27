@@ -29,7 +29,7 @@ from tbhbdev.alpha import pull_request as pr
 from tbhbdev.alpha import squash_merge as sm
 from tbhbdev.alpha import tool_pins
 from tbhbdev.alpha.identity.commit import grammar as identity_commit_grammar
-from tbhbdev.alpha.identity.commit import policy as identity_commit_policy
+from tbhbdev.alpha.identity.commit.policy import AGENT_EMAIL
 from tbhbdev.alpha.secret_scan import REPO_RULES, without_name_rules
 
 SRC = Path(sm.__file__).parents[2]
@@ -1217,7 +1217,6 @@ def test_the_view_reads_the_url() -> None:
     assert "url" in sm.VIEW_FIELDS.split(",")
 
 
-AGENT_EMAIL = identity_commit_policy.AGENT_IDENT.partition("<")[2].removesuffix(">")
 AGENT_COMMITS = [
     commit(OTHER_HEAD, "human@example.com"),
     commit(APPROVED_HEAD, "other@example.com", AGENT_EMAIL),
