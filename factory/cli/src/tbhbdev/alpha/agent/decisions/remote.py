@@ -427,17 +427,6 @@ perl -MFcntl=:flock -e {shlex.quote(MIRROR_LOCK)} \
     )
 
 
-def origin_branch(repository: str, name: str) -> str:
-    return (
-        owned(name)
-        + FILE_HELPERS
-        + mirror_command(
-            repository,
-            f"{MIRROR_GIT} ls-remote --end-of-options origin refs/heads/agent/{name}",
-        )
-    )
-
-
 def worktree_patch(repository: str, name: str, *, export: bool) -> str:
     tree = (
         repo.clone_path(PurePosixPath("."), repository) / ".worktrees" / f"agent-{name}"

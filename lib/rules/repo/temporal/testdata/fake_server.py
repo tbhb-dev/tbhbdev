@@ -39,13 +39,16 @@ def main() -> None:
         raise SystemExit(1)
     if mode == "ignore-term":
         signal.signal(signal.SIGTERM, signal.SIG_IGN)
-    if mode == "probe":
-        print(f"Temporal Server: localhost:{args.port}", flush=True)
-        time.sleep(0.2)
     with ExitStack() as sockets:
         listeners = [sockets.enter_context(socket.socket()) for _ in ports]
         for listener, port in zip(listeners, ports, strict=True):
             listener.bind((args.ip, port))
+        if mode == "probe":
+            print(f"Temporal Server: localhost:{args.port}", flush=True)
+            # Wait for the launcher's first real probe before accepting connections.
+            while not (state / "probe-refused").exists():
+                time.sleep(0.02)
+        for listener in listeners:
             listener.listen()
         if mode not in {"stall", "probe"}:
             print(f"Temporal Server: localhost:{args.port}", flush=True)

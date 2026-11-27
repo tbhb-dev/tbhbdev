@@ -1,0 +1,118 @@
+# SPDX-License-Identifier: Apache-2.0
+# Copyright Tony Burns
+
+load("//factory/cli:python.bzl", "cli_py_library")
+
+cli_py_library(
+    name = "__init__",
+    srcs = ["__init__.py"],
+    imports = ["../../../../.."],
+    visibility = ["//factory/cli:__subpackages__"],
+)
+
+cli_py_library(
+    name = "launch",
+    srcs = ["launch.py"],
+    imports = ["../../../../.."],
+    visibility = ["//factory/cli:__subpackages__"],
+    deps = [
+        ":launcher",
+        "//factory/cli/src/tbhbdev/alpha/agent:model",
+        "//factory/cli/src/tbhbdev/alpha/agent/decisions:config",
+        "//factory/cli/src/tbhbdev/alpha/agent/decisions:request",
+        "//factory/cli/src/tbhbdev/alpha/identity:models",
+    ],
+)
+
+cli_py_library(
+    name = "launcher",
+    srcs = ["launcher.py"],
+    imports = ["../../../../.."],
+    visibility = ["//factory/cli:__subpackages__"],
+    deps = ["//factory/cli/src/tbhbdev/alpha/agent:model"],
+)
+
+cli_py_library(
+    name = "lifecycle",
+    srcs = ["lifecycle.py"],
+    imports = ["../../../../.."],
+    visibility = ["//factory/cli:__subpackages__"],
+    deps = ["//factory/cli/src/tbhbdev/alpha/agent:model"],
+)
+
+cli_py_library(
+    name = "metadata",
+    srcs = ["metadata.py"],
+    imports = ["../../../../.."],
+    visibility = ["//factory/cli:__subpackages__"],
+    deps = [
+        ":hosts",
+        "//factory/cli/src/tbhbdev/alpha/agent:model",
+        "//factory/cli/src/tbhbdev/alpha/agent/decisions:request",
+    ],
+)
+
+cli_py_library(
+    name = "output",
+    srcs = ["output.py"],
+    imports = ["../../../../.."],
+    visibility = ["//factory/cli:__subpackages__"],
+    deps = [
+        "//factory/cli/src/tbhbdev/alpha:terminal",
+        "//factory/cli/src/tbhbdev/alpha/agent/decisions:repo",
+    ],
+)
+
+cli_py_library(
+    name = "prompt",
+    srcs = ["prompt.py"],
+    imports = ["../../../../.."],
+    visibility = ["//factory/cli:__subpackages__"],
+    deps = [
+        ":credentials",
+        "//factory/cli/src/tbhbdev/alpha/agent:model",
+        "//factory/cli/src/tbhbdev/alpha/agent/decisions:request",
+    ],
+)
+
+cli_py_library(
+    name = "reviews",
+    srcs = ["reviews.py"],
+    imports = ["../../../../.."],
+    pyi_deps = [":metadata"],
+    visibility = ["//factory/cli:__subpackages__"],
+    deps = ["//factory/cli/src/tbhbdev/alpha/agent:model"],
+)
+
+cli_py_library(
+    name = "steering",
+    srcs = ["steering.py"],
+    imports = ["../../../../.."],
+    visibility = ["//factory/cli:__subpackages__"],
+    deps = [
+        ":credentials",
+        "//factory/cli/src/tbhbdev/alpha/agent:model",
+    ],
+)
+
+filegroup(
+    name = "package_files",
+    srcs = glob(["*.py"]),
+    visibility = ["//factory/cli/src/tbhbdev/alpha/agent/driver:__pkg__"],
+)
+
+cli_py_library(
+    name = "credentials",
+    srcs = ["credentials.py"],
+    imports = ["../../../../.."],
+    visibility = ["//factory/cli:__subpackages__"],
+    deps = ["//factory/cli/src/tbhbdev/alpha/agent:model"],
+)
+
+cli_py_library(
+    name = "hosts",
+    srcs = ["hosts.py"],
+    imports = ["../../../../.."],
+    visibility = ["//factory/cli:__subpackages__"],
+    deps = ["//factory/cli/src/tbhbdev/alpha/agent:model"],
+)

@@ -20,9 +20,11 @@ from agent_host_example import commit, git
 
 from tbhbdev import version
 from tbhbdev.alpha import version_check
-from tbhbdev.alpha.agent import driver, transport, version_heal
 from tbhbdev.alpha.agent import settings as agent_settings
+from tbhbdev.alpha.agent import transport
 from tbhbdev.alpha.agent.decisions import remote
+from tbhbdev.alpha.agent.driver import metadata, startup, version_heal
+from tbhbdev.alpha.agent.driver.inputs import checked_prompt
 from tbhbdev.alpha.agent.model import Invalid
 
 CONFIG = settings()
@@ -188,7 +190,7 @@ def test_host_sync_retries_review_preflight(
     monkeypatch.setattr(transport, "shell", shell)
     monkeypatch.setattr(transport, "stream", stream)
     monkeypatch.setattr(transport, "call", Mock())
-    monkeypatch.setattr(driver, "poll_launch", Mock(return_value=0))
+    monkeypatch.setattr(startup, "poll_launch", Mock(return_value=0))
     monkeypatch.setattr(agent_settings, "load", lambda: CONFIG)
     prompt = tmp_path / "brief.md"
     prompt.write_text("Review the example.\n")
@@ -207,7 +209,7 @@ def test_host_sync_retries_review_preflight(
     assert err.splitlines()[0] == f"version heal: host {HOST.name} {OLD}->{HEAD}"
     if host_after == NEW_LINE:
         stream.assert_called_once()
-        assert driver.load(CONFIG, "sample").request.commit == HEAD
+        assert metadata.load(CONFIG, "sample").request.commit == HEAD
     else:
         stream.assert_not_called()
         assert (
@@ -287,10 +289,10 @@ def test_empty_brief_is_refused_after_driver_restart(
         start_ref=None,
         ref=None,
     )
-    assert driver.checked_prompt(args) == ""
+    assert checked_prompt(args) == ""
     monkeypatch.setenv(RETRY, "original mismatch")
     with pytest.raises(Invalid, match="brief is empty after the driver restarted"):
-        driver.checked_prompt(args)
+        checked_prompt(args)
 
 
 def test_module_restart_replays_python_argv(monkeypatch: pytest.MonkeyPatch) -> None:
