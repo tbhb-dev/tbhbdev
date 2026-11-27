@@ -245,11 +245,14 @@ func runGatewayConnection(
 		err = readErr
 	}
 
-	if websocket.CloseStatus(err) == tokenRevoked {
+	switch {
+	case websocket.CloseStatus(err) == tokenRevoked:
 		return errGatewayToken
+	case errors.Is(context.Cause(socketCtx), errGatewaySubscriptions):
+		return errGatewaySubscriptions
+	default:
+		return nil
 	}
-
-	return context.Cause(socketCtx)
 }
 
 func rejectGatewayToken(notify func(channelEvent) bool) error {

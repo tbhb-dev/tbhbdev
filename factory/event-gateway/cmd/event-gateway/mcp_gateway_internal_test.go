@@ -312,7 +312,9 @@ func TestMCPGatewaySubscriptionChanges(t *testing.T) {
 		_, data, readErr := conn.Read(ctx)
 		checkError(t, readErr)
 		checkError(t, conn.Write(ctx, websocket.MessageText, []byte(gatewayTestEvent(4, "github", "id"))))
+
 		hellos <- *sessionJSON[sessionObject](data)
+
 		<-conn.CloseRead(ctx).Done()
 	})
 	done := make(chan error, 1)
@@ -329,6 +331,7 @@ func TestMCPGatewaySubscriptionChanges(t *testing.T) {
 				return false
 			})
 	}()
+
 	defer func() {
 		cancel()
 		checkError(t, *receiveRunner(t, done))
@@ -344,6 +347,7 @@ func TestMCPGatewaySubscriptionChanges(t *testing.T) {
 	checkEqual(t, subs.set(sub, false), true)
 	checkEqual(t, string((*receiveRunner(t, hellos))[subsKey]), "[]")
 	checkEqual(t, subs.set(sub, false), false)
+
 	select {
 	case <-hellos:
 		t.Fatal("unchanged subscriptions caused a redial")
