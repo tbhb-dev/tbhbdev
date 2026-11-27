@@ -127,6 +127,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, cast
 
 from tbhbdev import plugins
+from tbhbdev.alpha import install_statusline_decisions as statusline
 from tbhbdev.alpha.gh_shim import AGENT_MARKERS, agent_operation, bin_dir, wrapper_text
 from tbhbdev.alpha.identity import AGENT_EMAIL, codex_home
 from tbhbdev.alpha.repo import (
@@ -743,21 +744,10 @@ def apply_config(
 # --------------------------------------------------------------- statusline
 
 STATUSLINE_VERSION = "2.2.33"
-COLUMNS_PREFIX = (
-    "COLUMNS=${COLUMNS:-$(tmux display-message -p '#{pane_width}' 2>/dev/null"
-    " || echo 80)}"
-)
-BUNX_COMMAND = "bunx -y ccstatusline@latest"
-# The two forms of the registry-resolving command this installer replaces.
-OLD_STATUSLINES = (
-    f"PATH=/opt/homebrew/bin:$PATH {COLUMNS_PREFIX} {BUNX_COMMAND}",
-    BUNX_COMMAND,
-)
 STATUSLINE_TIMEOUT = 300
 # The pinned package is about 3 MiB, so a package far past this isn't it.
 STATUSLINE_MAX_BYTES = 32 * 1024 * 1024
 STATUSLINE_CHUNK = 1024 * 1024
-STATUSLINE_TOKENS = 2  # the node path and the script
 # Written into a staged install once bun exited cleanly and the package checked out.
 STATUSLINE_MARKER = ".complete"
 # SHA-256 of ccstatusline 2.2.33's files as package_digest reads them. A version
@@ -769,20 +759,6 @@ def statusline_root() -> Path:
     """The directory the pinned ccstatusline is installed in."""
     base = os.environ.get("XDG_DATA_HOME") or Path.home() / ".local" / "share"
     return Path(base) / "tbhbdev" / "ccstatusline" / STATUSLINE_VERSION
-
-
-def statusline_script(root: Path) -> Path:
-    """The package's bin, `dist/ccstatusline.js` in its package.json."""
-    return root / "node_modules" / "ccstatusline" / "dist" / "ccstatusline.js"
-
-
-def statusline_command(node: str, script: Path) -> str:
-    return f"{COLUMNS_PREFIX} {shlex.quote(node)} {shlex.quote(str(script))}"
-
-
-def statusline_package(root: Path) -> Path:
-    """The installed package's directory."""
-    return root / "node_modules" / "ccstatusline"
 
 
 def package_digest(package: Path) -> str | None:
@@ -826,7 +802,7 @@ def statusline_installed(root: Path) -> bool:
     symlink, and the package's files hash to the pinned digest, so a truncated,
     replaced or relinked file fails.
     """
-    package = statusline_package(root)
+    package = statusline.statusline_package(root)
     path = (root, root / STATUSLINE_MARKER, root / "node_modules", package)
     marker = root / STATUSLINE_MARKER
     try:
@@ -834,7 +810,7 @@ def statusline_installed(root: Path) -> bool:
             not any(entry.is_symlink() for entry in path)
             and marker.is_file()
             and marker_text(marker) == STATUSLINE_VERSION.encode()
-            and statusline_script(root).is_file()
+            and statusline.statusline_script(root).is_file()
             and package_digest(package) == STATUSLINE_DIGEST
         )
     except OSError:
@@ -880,55 +856,6 @@ def add_statusline(root: Path, bun: str | None, run: Callable[..., object]) -> N
         shutil.rmtree(staging, ignore_errors=True)
 
 
-def missing_tool(node: str | None, bun: str | None, *, installed: bool) -> str | None:
-    """Name the tool the pin can't run without, or None when it has both."""
-    if not node:
-        return "node"
-    return "bun" if not installed and not bun else None
-
-
-def is_ours(command: str) -> bool:
-    """Whether COMMAND is exactly what this installer writes, for any node and version.
-
-    The node slot must be an absolute path named `node`, the script the pinned
-    package's bin under a version directory beside the current one, and the
-    quoting the installer's own. So `$MY_STATUS_NODE` and `evil-binary` don't match,
-    and a command written for an older version does.
-    """
-    head = f"{COLUMNS_PREFIX} "
-    if not command.startswith(head):
-        return False
-    try:
-        tokens = shlex.split(command[len(head) :])
-    except ValueError:
-        return False
-    if len(tokens) != STATUSLINE_TOKENS:
-        return False
-    node, script = Path(tokens[0]), Path(tokens[1])
-    return (
-        node.is_absolute()
-        and node.name == "node"
-        and script.is_absolute()
-        # Any root gives the same last four parts, so mutating "/" changes nothing.
-        and script.parts[-4:]
-        == statusline_script(Path("/")).parts[-4:]  # pragma: no mutate
-        and script.parents[3].parent == statusline_root().parent
-        and command == statusline_command(tokens[0], script)
-    )
-
-
-def replaceable_line(config: Json) -> Json | None:
-    """The `statusLine` object when its command is a known or our own one."""
-    line = config.get("statusLine")
-    if not isinstance(line, dict):
-        return None
-    command = line.get("command")
-    if not isinstance(command, str):
-        return None
-    known = command in OLD_STATUSLINES or is_ours(command)
-    return line if known else None
-
-
 def pin_statusline(path: Path, wanted: str | None) -> Path | None:
     """Write WANTED into the config as it is now; None when it's no longer ours.
 
@@ -936,7 +863,7 @@ def pin_statusline(path: Path, wanted: str | None) -> Path | None:
     ran is kept. Raises InstallError when the write can't be read back.
     """
     old, config = read_config(path)
-    line = replaceable_line(config)
+    line = statusline.replaceable_line(config, statusline_root().parent)
     if line is None:
         return None
     merged = {**config, "statusLine": {**line, "command": wanted}}
@@ -970,19 +897,25 @@ def install_statusline(  # noqa: PLR0911 -- one early return per outcome
         print(f"{PROG}: claude: cannot read {path}: {exc}", file=sys.stderr)
         return 1
     root = statusline_root()
-    script = statusline_script(root)
-    line = replaceable_line(config)
+    script = statusline.statusline_script(root)
+    line = statusline.replaceable_line(config, root.parent)
     if line is None:
         return 0
     bun, node = which("bun"), which("node")
     # With no node, shlex.quote turns None into '', which no replaceable line
     # equals, so dropping the guard changes nothing.
-    wanted = statusline_command(node, script) if node else None  # pragma: no mutate
+    wanted = (  # pragma: no mutate
+        statusline.statusline_command(node, script) if node else None
+    )
     installed = statusline_installed(root)
     if line["command"] == wanted and installed:
         print(f"claude: statusLine in {path} is up to date")
         return 0
-    missing = missing_tool(node, bun, installed=installed)
+    missing = None
+    if not node:
+        missing = "node"
+    elif not installed and not bun:
+        missing = "bun"
     if missing:
         print(
             f"claude: {missing} not found; left the statusLine command in {path}",

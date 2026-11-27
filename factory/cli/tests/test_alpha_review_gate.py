@@ -32,7 +32,9 @@ def review(  # noqa: PLR0913 -- one keyword for each field a test varies
 
 
 def check(
-    name: str = "ci", conclusion: str | None = "success", status: str = "completed"
+    name: str = "conclusion",
+    conclusion: str | None = "success",
+    status: str = "completed",
 ) -> gate.Check:
     return {"name": name, "status": status, "conclusion": conclusion}
 
@@ -50,7 +52,6 @@ def evaluate(
     reviews: list[gate.Review] | None = None,
     checks: list[gate.Check] | None = None,
     messages: list[str] | None = None,
-    ignore: tuple[str, ...] = (),
 ) -> list[str]:
     pull = gate.Pull(
         HEAD,
@@ -58,7 +59,7 @@ def evaluate(
         [check()] if checks is None else checks,
         BY_AGY if messages is None else messages,
     )
-    return gate.evaluate(APP, pull, ignore)
+    return gate.evaluate(APP, pull)
 
 
 def test_pass() -> None:
@@ -70,8 +71,8 @@ def test_current_and_legacy_approvals_count_together() -> None:
     assert evaluate([legacy, GOOD[1]]) == []
 
 
-def test_pass_without_trailers_and_checks() -> None:
-    assert evaluate(checks=[], messages=["fix: by hand\n"]) == []
+def test_no_checks_fails() -> None:
+    assert evaluate(checks=[], messages=["fix: by hand\n"]) == ["no checks to verify"]
 
 
 def test_pass_with_a_third_approval() -> None:
@@ -179,11 +180,13 @@ def test_an_approval_without_a_known_harness(body: str) -> None:
 @pytest.mark.parametrize(
     ("conclusion", "status", "reason"),
     [
-        ("failure", "completed", "check ci is failure"),
-        ("cancelled", "completed", "check ci is cancelled"),
-        (None, "in_progress", "check ci is in_progress"),
-        ("timed_out", "completed", "check ci is timed_out"),
-        ("success", "in_progress", "check ci is in_progress"),
+        ("failure", "completed", "check conclusion is failure"),
+        ("cancelled", "completed", "check conclusion is cancelled"),
+        (None, "in_progress", "check conclusion is in_progress"),
+        ("timed_out", "completed", "check conclusion is timed_out"),
+        ("success", "in_progress", "check conclusion is in_progress"),
+        ("skipped", "completed", "check conclusion is skipped"),
+        ("neutral", "completed", "check conclusion is neutral"),
     ],
 )
 def test_a_check_that_did_not_finish_well(
@@ -192,15 +195,8 @@ def test_a_check_that_did_not_finish_well(
     assert evaluate(checks=[check(conclusion=conclusion, status=status)]) == [reason]
 
 
-def test_checks_that_finished_well() -> None:
-    done = [check("a", "success"), check("b", "skipped"), check("c", "neutral")]
-    assert evaluate(checks=done) == []
-
-
-def test_the_gate_and_ignored_checks_are_left_out() -> None:
-    running = [check("review-gate", None, "in_progress"), check("job", None, "queued")]
-    assert evaluate(checks=running, ignore=("job",)) == []
-    assert evaluate(checks=running) == ["check job is queued"]
+def test_conclusion_success_with_a_skipped_wheel_check() -> None:
+    assert evaluate(checks=[check(), check("wheel", "skipped")]) == []
 
 
 def test_an_approving_provider_wrote_the_commits() -> None:

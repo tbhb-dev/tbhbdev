@@ -1,11 +1,13 @@
-"""Reserve a host-wide launch slot for the supervisor's lifetime."""
+"""Check and reserve host-wide launch slots."""
 
 from __future__ import annotations
 
+import argparse
 import fcntl
 import os
 import pwd
 import stat
+import sys
 from contextlib import ExitStack, contextmanager, suppress
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -18,15 +20,20 @@ if TYPE_CHECKING:
     from tbhbdev.alpha.agent.model import Host
 
 ROOT = Path("/var/tmp/tbhbdev-agent-admission")  # noqa: S108  # nosec B108  # Sticky directory with no-follow opens and slot owner and mode checks.
+SLOT_FULL = "full"
 _DIRECTORY_MODE = 0o1777
 
 
-def _owner_uids(accounts: tuple[str, ...]) -> set[int]:
-    uids = {0, os.getuid()}
+class SlotFullError(Invalid):
+    """No slot is available to the requested profile."""
+
+
+def _owner_ids(accounts: tuple[str, ...]) -> set[int]:
+    user_ids = {0, os.getuid()}
     for account in accounts:
         with suppress(KeyError):
-            uids.add(pwd.getpwnam(account).pw_uid)
-    return uids
+            user_ids.add(pwd.getpwnam(account).pw_uid)
+    return user_ids
 
 
 @contextmanager
@@ -51,7 +58,7 @@ def _directory(root: Path) -> Generator[int]:
 
 @contextmanager
 def _slot(
-    directory: int, name: str, owner_uids: set[int], *, create: bool = False
+    directory: int, name: str, owner_ids: set[int], *, create: bool = False
 ) -> Generator[int]:
     flags = os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK
     # Open existing files without O_CREAT so Linux's sticky-directory
@@ -69,7 +76,7 @@ def _slot(
         if not stat.S_ISREG(info.st_mode):
             message = "agent admission slot must be a regular file"
             raise Invalid(message)
-        if info.st_uid not in owner_uids:
+        if info.st_uid not in owner_ids:
             message = (
                 "agent admission slot must be owned by the current uid, root, "
                 "or a configured agent account"
@@ -83,16 +90,45 @@ def _slot(
         os.close(fd)
 
 
-def _active(directory: int, profile: Profile, owner_uids: set[int]) -> set[str]:
+def _active(directory: int, profile: Profile, owner_ids: set[int]) -> set[str]:
     active: set[str] = set()
     for name in os.listdir(directory):
         if name.startswith(f"{profile}-"):
-            with _slot(directory, name, owner_uids) as fd:
+            with _slot(directory, name, owner_ids) as fd:
                 try:
                     fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
                 except BlockingIOError:
                     active.add(name)
     return active
+
+
+@contextmanager
+def _available(
+    root: Path,
+    host_name: str,
+    profile: Profile,
+    limit: int | None,
+    owner_ids: set[int],
+) -> Generator[tuple[int, set[str]]]:
+    if limit is None:
+        message = f"{host_name}: the request carries no max_concurrent_runs"
+        raise Invalid(message)
+    with (
+        _directory(root) as directory,
+        _slot(directory, "admission.lock", owner_ids, create=True) as guard,
+    ):
+        fcntl.flock(guard, fcntl.LOCK_EX)
+        builds = _active(directory, Profile.BUILD, owner_ids)
+        reviews = _active(directory, Profile.REVIEW, owner_ids)
+        if len(builds) + len(reviews) >= limit:
+            message = (
+                f"{host_name}: no agent slot available (max_concurrent_runs={limit})"
+            )
+            raise SlotFullError(message)
+        if profile is Profile.BUILD and len(builds) >= max(limit - 1, 1):
+            message = f"{host_name}: remaining agent capacity is reserved for reviews"
+            raise SlotFullError(message)
+        yield directory, builds if profile is Profile.BUILD else reviews
 
 
 @contextmanager
@@ -108,29 +144,36 @@ def reserve(
     Raises:
         Invalid: LIMIT is None, or no slot is free.
     """
-    if limit is None:
-        message = f"{host.name}: the request carries no max_concurrent_runs"
-        raise Invalid(message)
-    owner_uids = _owner_uids(host.accounts)
-    with ExitStack() as slot, _directory(root) as directory:
-        with _slot(directory, "admission.lock", owner_uids, create=True) as guard:
-            fcntl.flock(guard, fcntl.LOCK_EX)
-            builds = _active(directory, Profile.BUILD, owner_uids)
-            reviews = _active(directory, Profile.REVIEW, owner_uids)
-            if len(builds) + len(reviews) >= limit:
-                message = (
-                    f"{host.name}: no agent slot available "
-                    f"(max_concurrent_runs={limit})"
-                )
-                raise Invalid(message)
-            if profile is Profile.BUILD and len(builds) >= max(limit - 1, 1):
-                message = (
-                    f"{host.name}: remaining agent capacity is reserved for reviews"
-                )
-                raise Invalid(message)
-            active = builds if profile is Profile.BUILD else reviews
+    owner_ids = _owner_ids(host.accounts)
+    with ExitStack() as slot:
+        with _available(root, host.name, profile, limit, owner_ids) as (
+            directory,
+            active,
+        ):
             names = (f"{profile}-{i}" for i in range(len(active) + 1))
             name = next(candidate for candidate in names if candidate not in active)
-            fd = slot.enter_context(_slot(directory, name, owner_uids, create=True))
+            fd = slot.enter_context(_slot(directory, name, owner_ids, create=True))
             fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
         yield
+
+
+def main(argv: list[str], prog: str) -> int:
+    """Report whether the launching profile can claim a slot on this host."""
+    parser = argparse.ArgumentParser(prog=prog)
+    parser.add_argument("host")
+    parser.add_argument("profile", type=Profile, choices=list(Profile))
+    parser.add_argument("limit", type=int)
+    parser.add_argument("accounts", nargs="*")
+    try:
+        args = parser.parse_args(argv)
+        owner_ids = _owner_ids(tuple(args.accounts))
+        with _available(ROOT, args.host, args.profile, args.limit, owner_ids):
+            return 0
+    except SystemExit as exc:
+        return int(exc.code or 0)
+    except SlotFullError:
+        print(SLOT_FULL)
+        return 0
+    except (Invalid, OSError) as exc:
+        print(f"{prog}: {exc}", file=sys.stderr)
+        return 1
