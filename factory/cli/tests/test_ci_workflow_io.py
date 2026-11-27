@@ -3,28 +3,51 @@
 import os
 import subprocess
 from pathlib import Path
-from typing import Any
 
 import pytest
 import yaml
 
 
-def _workflow_jobs() -> dict[str, Any]:
+def _mapping(value: object) -> dict[object, object]:
+    assert isinstance(value, dict)
+    return value
+
+
+def _workflow_jobs() -> dict[object, object]:
     parents = Path(__file__).resolve().parents
     workspace = next(parent.parent for parent in parents if parent.name == "factory")
-    workflow = workspace / ".github/workflows/ci.yml"
-    return yaml.safe_load(workflow.read_text())["jobs"]
+    workflow_path = workspace / ".github/workflows/ci.yml"
+    workflow = _mapping(yaml.safe_load(workflow_path.read_text()))
+    return _mapping(workflow["jobs"])
+
+
+def _workflow_steps(job: object) -> list[dict[object, object]]:
+    raw_steps = _mapping(job)["steps"]
+    assert isinstance(raw_steps, list)
+    steps: list[object] = raw_steps
+    return [_mapping(step) for step in steps]
+
+
+def _shell_command(step: dict[object, object], prefix: str = "") -> list[str]:
+    shell = step["shell"]
+    script = step["run"]
+    assert isinstance(shell, str)
+    assert isinstance(script, str)
+    return [shell, "-eo", "pipefail", "-c", prefix + script]
 
 
 def test_ci_shards_affected_targets(tmp_path: Path) -> None:
     jobs = _workflow_jobs()
-    strategy = jobs["bazel"]["strategy"]
-    shards = strategy["matrix"]["shard"]
-    assert shards == [1, 2, 3, 4]
+    bazel = _mapping(jobs["bazel"])
+    strategy = _mapping(bazel["strategy"])
+    shards = [1, 2, 3, 4]
+    assert _mapping(strategy["matrix"])["shard"] == shards
     assert strategy["fail-fast"] is False
-    assert "bazel" in jobs["conclusion"]["needs"]
+    needs = _mapping(jobs["conclusion"])["needs"]
+    assert isinstance(needs, list)
+    assert "bazel" in needs
 
-    steps = jobs["bazel"]["steps"]
+    steps = _workflow_steps(bazel)
     selector = next(step for step in steps if step.get("id") == "affected")
     assert selector["uses"] == "./.github/actions/affected-targets"
     test = next(step for step in steps if step["name"] == "Test")
@@ -50,7 +73,7 @@ def test_ci_shards_affected_targets(tmp_path: Path) -> None:
         targets.write_text("\n".join([*selected, *exclusions]))
         for shard in shards:
             run = subprocess.run(
-                [test["shell"], "-eo", "pipefail", "-c", fake_bazel + test["run"]],
+                _shell_command(test, fake_bazel),
                 env={
                     **os.environ,
                     "TARGETS": str(targets),
@@ -73,7 +96,7 @@ def test_ci_shards_affected_targets(tmp_path: Path) -> None:
 
 @pytest.mark.parametrize("case", ["listed", "unlisted", "missing"])
 def test_ci_prose_skip_list(tmp_path: Path, case: str) -> None:
-    steps = _workflow_jobs()["prose"]["steps"]
+    steps = _workflow_steps(_workflow_jobs()["prose"])
     lint = next(step for step in steps if step["name"] == "Lint prose")
 
     imported_copy = "imported [guide].md"
@@ -108,7 +131,7 @@ done
         tool.chmod(0o755)
 
     run = subprocess.run(
-        [lint["shell"], "-eo", "pipefail", "-c", lint["run"]],
+        _shell_command(lint),
         cwd=tmp_path,
         env={
             **os.environ,
