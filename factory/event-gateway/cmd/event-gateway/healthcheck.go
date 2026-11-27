@@ -50,18 +50,20 @@ func healthcheck(ctx context.Context, args []string) error {
 	defer cancel()
 
 	// The address is already validated, so the URL is built without parsing.
-	var endpoint url.URL
-
-	endpoint.Scheme, endpoint.Host, endpoint.Path = "http", *addr, healthPath
-
-	var req http.Request
-
-	req.Method, req.URL, req.Header = http.MethodGet, &endpoint, make(http.Header)
+	//nolint:exhaustruct_v5 // A GET request needs only the method, URL and headers.
+	req := (&http.Request{
+		Method: http.MethodGet,
+		URL:    &url.URL{Scheme: "http", Host: *addr, Path: "/healthz"},
+		Header: http.Header{},
+	}).WithContext(ctx)
 
 	// A redirect is returned as-is, so only a direct 200 counts as healthy.
-	client := &http.Client{CheckRedirect: rejectRedirect, Transport: nil, Jar: nil, Timeout: 0}
+	//nolint:exhaustruct_v5 // Only the redirect policy differs from the default client.
+	client := &http.Client{
+		CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse },
+	}
 
-	resp, err := client.Do(req.WithContext(ctx))
+	resp, err := client.Do(req)
 	if err != nil {
 		return errHealthcheck
 	}
@@ -74,8 +76,6 @@ func healthcheck(ctx context.Context, args []string) error {
 
 	return nil
 }
-
-func rejectRedirect(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
 
 // validateHealthcheckAddr requires HOST:PORT with a non-empty host without echoing the value.
 func validateHealthcheckAddr(addr string) error {

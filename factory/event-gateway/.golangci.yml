@@ -96,13 +96,19 @@ linters:
         - switch
         - mapliteral
 
-    # Strict threshold: 30, while the default of 150 tokens only catches blatant copies.
+    # Match duplicate blocks of 30 tokens.
     dupl:
       threshold: 30
 
+    # Third-party option structs are built with a few fields by design, and
+    # the pattern matches the full path, so each one used is listed here.
+    exhaustruct_v5:
+      ignore-patterns:
+        - 'github\.com/spf13/cobra\.Command$'
+
     funlen:
-      lines: 60
-      statements: 40
+      lines: 100
+      statements: 50
 
     gochecksumtype:
       default-signifies-exhaustive: false

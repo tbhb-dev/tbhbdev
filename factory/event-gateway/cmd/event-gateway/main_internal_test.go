@@ -188,13 +188,11 @@ func checkServeSession(ctx context.Context, t *testing.T, base, token string) {
 	options.Subprotocols = []string{sessionProtocol}
 
 	for {
-		conn, response, err := websocket.Dial(ctx, base+sessionPath, options)
-		if response != nil && response.Body != nil {
-			checkError(t, response.Body.Close())
-		}
-
+		//nolint:bodyclose // Dial owns the HTTP response body.
+		conn, _, err := websocket.Dial(ctx, base+sessionPath, options)
 		if err == nil {
-			defer func() { closeTestSocket(t, conn) }()
+			//nolint:errcheck // The server may have already closed the socket.
+			defer conn.CloseNow()
 
 			checkSessionReply(ctx, t, conn, `{"type":"ping"}`, typeKey, pong)
 
@@ -345,26 +343,6 @@ func exerciseServe(t *testing.T, file string, grafanaStatus int, flags ...string
 
 	t.Cleanup(client.CloseIdleConnections)
 
-	waitForGatewayHealth(ctx, t, &client, address, done)
-
-	checkServedWebhooks(ctx, t, &client, address, grafanaStatus)
-
-	cancel()
-
-	select {
-	case serveErr := <-done:
-		checkError(t, serveErr)
-	case <-time.After(30 * time.Second):
-		t.Fatal("gateway did not shut down after context cancellation")
-	}
-
-	checkEqual(t, strings.Contains(logs.String(), fixtureKey), false)
-	checkEqual(t, strings.Contains(logs.String(), "private test payload"), false)
-}
-
-func waitForGatewayHealth(ctx context.Context, t *testing.T, client *http.Client, address string, done <-chan error) {
-	t.Helper()
-
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, "http://"+address+healthPath, nil)
 	checkError(t, err)
 
@@ -385,10 +363,6 @@ func waitForGatewayHealth(ctx context.Context, t *testing.T, client *http.Client
 		case <-time.After(10 * time.Millisecond):
 		}
 	}
-}
-
-func checkServedWebhooks(ctx context.Context, t *testing.T, client *http.Client, address string, grafanaStatus int) {
-	t.Helper()
 
 	const body = `{"repository":{"full_name":"example/repository"},"message":"private test payload"}`
 
@@ -397,11 +371,23 @@ func checkServedWebhooks(ctx context.Context, t *testing.T, client *http.Client,
 	webhook.URL.Scheme = "http"
 	webhook.URL.Host = address
 	webhook.Host = address
-	expectHTTPStatus(t, client, webhook, http.StatusAccepted)
+	expectHTTPStatus(t, &client, webhook, http.StatusAccepted)
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, "http://"+address+grafanaPath, nil)
+	req, err = http.NewRequestWithContext(ctx, http.MethodPost, "http://"+address+grafanaPath, nil)
 	checkError(t, err)
-	expectHTTPStatus(t, client, req, grafanaStatus)
+	expectHTTPStatus(t, &client, req, grafanaStatus)
+
+	cancel()
+
+	select {
+	case serveErr := <-done:
+		checkError(t, serveErr)
+	case <-time.After(30 * time.Second):
+		t.Fatal("gateway did not shut down after context cancellation")
+	}
+
+	checkEqual(t, strings.Contains(logs.String(), fixtureKey), false)
+	checkEqual(t, strings.Contains(logs.String(), "private test payload"), false)
 }
 
 func expectHTTPStatus(t *testing.T, client *http.Client, req *http.Request, status int) {

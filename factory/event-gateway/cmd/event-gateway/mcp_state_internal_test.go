@@ -131,21 +131,17 @@ func TestMCPStateLoad(t *testing.T) {
 	}
 }
 
-func awrelStatePaths(t *testing.T) (string, string, string) {
+func awrelStatePaths(t *testing.T) (string, string) {
 	t.Helper()
 
 	dir := t.TempDir()
+	t.Setenv(mcpStateHomeEnv, dir)
+	setMCPStateKeys(t, [3]string{"", mcpStateTestKey, ""})
 	file := filepath.Join("sessions", fmt.Sprintf("%x.json", sha256.Sum256([]byte(mcpStateTestKey))))
 	legacy := filepath.Join(dir, "awrel", file)
 	checkError(t, os.MkdirAll(filepath.Dir(legacy), 0o700))
 
-	return dir, filepath.Join(dir, "event-gateway", file), legacy
-}
-
-func awrelStateEnv(dir, session string) func(string) string {
-	return func(name string) string {
-		return map[string]string{mcpStateHomeEnv: dir, awrelSessionEnv: session}[name]
-	}
+	return filepath.Join(dir, "event-gateway", file), legacy
 }
 
 func mcpStateTestSubscriptions(count int) string {
@@ -158,9 +154,7 @@ func mcpStateTestSubscriptions(count int) string {
 }
 
 func TestMCPStateAwrelImport(t *testing.T) {
-	dir, own, legacy := awrelStatePaths(t)
-	t.Setenv(mcpStateHomeEnv, dir)
-	setMCPStateKeys(t, [3]string{"", mcpStateTestKey, ""})
+	own, legacy := awrelStatePaths(t)
 	t.Setenv(gatewayTokenEnv, mcpFixture)
 
 	document := `{"endpoint":"wss://example.invalid/old",` + mcpStateDocument(mcpStateTestSubscription)[1:]
@@ -176,10 +170,10 @@ func TestMCPStateAwrelImport(t *testing.T) {
 	checkEqual(t, len(subs.list()), 1)
 	checkMCPStateLog(t, &logs, "")
 
-	data, err := os.ReadFile(filepath.Clean(own))
+	data, err := os.ReadFile(own)
 	checkError(t, err)
 	checkEqual(t, string(data), mcpStateDocument(mcpStateTestSubscription))
-	data, err = os.ReadFile(filepath.Clean(legacy))
+	data, err = os.ReadFile(legacy)
 	checkError(t, err)
 	checkEqual(t, string(data), document)
 
@@ -190,16 +184,18 @@ func TestMCPStateAwrelImport(t *testing.T) {
 	checkMCPStateLog(t, &logs, "")
 }
 
+//nolint:paralleltest // The awrel state fixture sets process-wide environment variables.
 func TestMCPStateAwrelSkip(t *testing.T) {
-	t.Parallel()
-	dir, own, legacy := awrelStatePaths(t)
+	own, legacy := awrelStatePaths(t)
 	checkError(t, os.WriteFile(legacy, []byte(mcpStateDocument(mcpStateTestSubscription)), 0o600))
 
 	var logs bytes.Buffer
 
 	logger := slog.New(slog.NewTextHandler(&logs, nil))
 
-	subs := restoreMCPSubscriptions(t.Context(), logger, awrelStateEnv(dir, ""))
+	setMCPStateKeys(t, [3]string{})
+
+	subs := loadMCPSubscriptions(t.Context(), logger)
 	checkEqual(t, len(subs.list()), 0)
 	checkEqual(t, subs.imported, false)
 	checkMCPStateLog(t, &logs, "")
@@ -207,10 +203,9 @@ func TestMCPStateAwrelSkip(t *testing.T) {
 	_, err := os.Stat(own)
 	checkEqual(t, os.IsNotExist(err), true)
 
-	getenv := awrelStateEnv(dir, mcpStateTestKey)
-
+	setMCPStateKeys(t, [3]string{mcpStateTestKey, "", ""})
 	checkError(t, os.MkdirAll(own, 0o700))
-	subs = restoreMCPSubscriptions(t.Context(), logger, getenv)
+	subs = loadMCPSubscriptions(t.Context(), logger)
 	checkEqual(t, subs.imported, false)
 	checkMCPStateLog(t, &logs, mcpStateReadWarning)
 	checkError(t, os.Remove(own))
@@ -221,20 +216,19 @@ func TestMCPStateAwrelSkip(t *testing.T) {
 		{mcpStateDocument(""), ""},
 	} {
 		checkError(t, os.WriteFile(own, []byte(test[0]), 0o600))
-		subs = restoreMCPSubscriptions(t.Context(), logger, getenv)
+		subs = loadMCPSubscriptions(t.Context(), logger)
 		checkEqual(t, len(subs.list()), 0)
 		checkEqual(t, subs.imported, false)
 		checkMCPStateLog(t, &logs, test[1])
 
-		data, readErr := os.ReadFile(filepath.Clean(own))
+		data, readErr := os.ReadFile(own)
 		checkError(t, readErr)
 		checkEqual(t, string(data), test[0])
 	}
 }
 
+//nolint:paralleltest // Each awrel state fixture sets process-wide environment variables.
 func TestMCPStateAwrelInvalid(t *testing.T) {
-	t.Parallel()
-
 	valid := mcpStateDocument(mcpStateTestSubscription)
 	for _, test := range []struct {
 		name, document string
@@ -251,9 +245,7 @@ func TestMCPStateAwrelInvalid(t *testing.T) {
 		{"too many", mcpStateDocument(mcpStateTestSubscriptions(subscriptionLimit + 1)), subscriptionLimit},
 	} {
 		t.Run(test.name, func(t *testing.T) {
-			t.Parallel()
-
-			dir, own, legacy := awrelStatePaths(t)
+			own, legacy := awrelStatePaths(t)
 			if test.document == "" {
 				checkError(t, os.Mkdir(legacy, 0o700))
 			} else {
@@ -262,16 +254,12 @@ func TestMCPStateAwrelInvalid(t *testing.T) {
 
 			var logs bytes.Buffer
 
-			subs := restoreMCPSubscriptions(
-				t.Context(),
-				slog.New(slog.NewTextHandler(&logs, nil)),
-				awrelStateEnv(dir, mcpStateTestKey),
-			)
+			subs := loadMCPSubscriptions(t.Context(), slog.New(slog.NewTextHandler(&logs, nil)))
 			checkEqual(t, len(subs.list()), test.count)
 			checkEqual(t, subs.imported, test.count > 0)
 			checkMCPStateLog(t, &logs, awrelStateWarning)
 
-			data, err := os.ReadFile(filepath.Clean(own))
+			data, err := os.ReadFile(own)
 
 			switch test.count {
 			case 0:
@@ -329,7 +317,7 @@ func TestMCPStateTools(t *testing.T) {
 	} {
 		checkEqual(t, callMCPTool(t, session, test[0], mcpStateTestSubscription).IsError, false)
 
-		data, err := os.ReadFile(filepath.Clean(path))
+		data, err := os.ReadFile(path)
 		checkError(t, err)
 		checkEqual(t, string(data), mcpStateDocument(test[1]))
 		checkEqual(t, bytes.Contains(data, []byte(mcpFixture)), false)
@@ -398,7 +386,7 @@ func TestMCPStateCursorWriteFailure(t *testing.T) {
 	var deliveries gatewayDeliveries
 
 	deliveries.ids = make(map[string]struct{})
-	frame := *sessionJSON[sessionObject]([]byte(gatewayTestEvent(7, "github", "id")))
+	frame := sessionJSON[sessionObject]([]byte(gatewayTestEvent(7, "github", "id")))
 	forwardGatewayFrame(frame, subs, &deliveries, func(channelEvent) bool { return false })
 	_, cursor := subs.snapshot()
 	checkEqual(t, cursor, nil)

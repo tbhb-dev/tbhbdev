@@ -6,9 +6,7 @@ package main
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"log/slog"
-	"net"
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
@@ -85,37 +83,21 @@ func exerciseSession(t *testing.T, read readAPI, hook *githubWebhook, consumer j
 	close(api.stop)
 	checkClose(ctx, t, socket, websocket.StatusGoingAway, "server shutdown")
 
-	checkUnavailableSession(ctx, t, read, consumer)
-}
-
-func checkUnavailableSession(ctx context.Context, t *testing.T, read readAPI, consumer jetstream.Consumer) {
-	t.Helper()
-
 	read.store.jet.Conn().Close()
 
-	peer := session{
-		stream:        read.store.stream,
-		openOrdered:   read.store.orderedConsumer(),
-		conn:          nil,
-		events:        nil,
-		subscriptions: nil,
-		replay:        nil,
-	}
+	peer := session{stream: read.store.stream, conn: nil, events: nil, subscriptions: nil, replay: nil}
 	for _, object := range []sessionObject{nil, {resumeKey: json.RawMessage("0")}} {
 		reply := peer.hello(ctx, object)
 		checkEqual(t, reply["message"], "stream unavailable")
 		checkEqual(t, reply[codeKey], "internal")
 	}
 
-	read.store.stream = readFetchStream{Stream: read.store.stream}
-	read.store.openOrdered = func(context.Context, jetstream.OrderedConsumerConfig) (jetstream.Consumer, error) {
-		return consumer, nil
-	}
+	read.store.stream = readFetchStream{Stream: read.store.stream, consumer: consumer}
 	failed := httptest.NewServer(http.HandlerFunc(newSessionAPI(read, helloTimeout).connect))
 
 	defer failed.Close()
 
-	socket := dialSession(ctx, t, failed.URL)
+	socket = dialSession(ctx, t, failed.URL)
 	checkSessionReply(ctx, t, socket, `{"type":"hello"}`, typeKey, helloKind)
 	checkClose(ctx, t, socket, websocket.StatusInternalError, "delivery failed")
 	peer.conn = socket
@@ -158,14 +140,7 @@ func checkSessionCommands(ctx context.Context, t *testing.T, conn *websocket.Con
 	importReply := checkSessionReply(ctx, t, conn, `{"type":"hello","import":true}`, codeKey, badFrame)
 	checkEqual(t, string(importReply["message"]), `"import is allowed only in the first hello frame"`)
 
-	limit := session{
-		stream:        nil,
-		openOrdered:   nil,
-		conn:          nil,
-		events:        make(chan jetstream.Msg),
-		subscriptions: nil,
-		replay:        nil,
-	}
+	limit := session{stream: nil, conn: nil, events: make(chan jetstream.Msg), subscriptions: nil, replay: nil}
 	subs := `[` + strings.Repeat(pushSubscription+",", subscriptionLimit-1) + pushSubscription + `]`
 	reply := limit.hello(ctx, sessionObject{"more": json.RawMessage(jsonTrue), subsKey: json.RawMessage(subs)})
 	checkEqual(t, reply == nil, true)
@@ -187,19 +162,8 @@ func TestSessionDeliveryErrors(t *testing.T) {
 	sub, err := filter.Parse([]byte(pushSubscription))
 	checkError(t, err)
 
-	peer := session{
-		stream:        nil,
-		openOrdered:   nil,
-		conn:          nil,
-		events:        nil,
-		subscriptions: []filter.Subscription{sub},
-		replay:        nil,
-	}
-	checkEqual(
-		t,
-		errors.Is(peer.deliver(t.Context(), invalidSessionMessage{Msg: nil}), jetstream.ErrNotJSMessage),
-		true,
-	)
+	peer := session{stream: nil, conn: nil, events: nil, subscriptions: []filter.Subscription{sub}, replay: nil}
+	checkEqual[error](t, peer.deliver(t.Context(), invalidSessionMessage{Msg: nil}), jetstream.ErrNotJSMessage)
 }
 
 type invalidSessionMessage struct{ jetstream.Msg }
@@ -225,8 +189,6 @@ func sessionReplayServer(t *testing.T, store eventStore) *httptest.Server {
 
 	return server
 }
-
-const sessionEventBody = `{"repository":{"full_name":"example/repo"}}`
 
 func publishSessionEvent(t *testing.T, hook *githubWebhook, event, delivery string) {
 	t.Helper()
@@ -326,6 +288,21 @@ func TestSessionResumeWithoutBacklog(t *testing.T) {
 	}
 }
 
+type sessionOpeningStream struct {
+	jetstream.Stream
+
+	publish func()
+}
+
+//nolint:ireturn // Match the JetStream stream interface.
+func (s sessionOpeningStream) OrderedConsumer(
+	ctx context.Context, config jetstream.OrderedConsumerConfig,
+) (jetstream.Consumer, error) {
+	s.publish()
+
+	return s.Stream.OrderedConsumer(ctx, config) //nolint:wrapcheck // Preserve the stream's result.
+}
+
 func TestSessionResumeMissingTail(t *testing.T) {
 	t.Parallel()
 
@@ -347,12 +324,9 @@ func TestSessionResumeMissingTail(t *testing.T) {
 	checkCaughtUp(ctx, t, conn, "2")
 
 	opening := store
-	opening.openOrdered = func(ctx context.Context, config jetstream.OrderedConsumerConfig) (jetstream.Consumer, error) {
-		request := signedRequest(ctx, pushEvent, "concurrent", sessionEventBody)
-		expectStatus(t, hook.ServeHTTP, request, http.StatusAccepted)
-
-		return store.stream.OrderedConsumer(ctx, config)
-	}
+	opening.stream = sessionOpeningStream{Stream: store.stream, publish: func() {
+		publishSessionEvent(t, hook, pushEvent, "concurrent")
+	}}
 	server = sessionReplayServer(t, opening)
 	conn = dialSession(ctx, t, server.URL)
 	checkSessionReply(ctx, t, conn, hello, typeKey, helloKind)
@@ -476,27 +450,16 @@ func checkClose(ctx context.Context, t *testing.T, conn *websocket.Conn, code we
 
 func dialSession(ctx context.Context, t *testing.T, url string) *websocket.Conn {
 	t.Helper()
-
-	conn, response, err := websocket.Dial(ctx, url+sessionPath, gatewayDialOptions(readFixture))
-	if response != nil && response.Body != nil {
-		checkError(t, response.Body.Close())
-	}
-
+	//nolint:exhaustruct_v5,bodyclose // A successful upgrade transfers ownership to the socket.
+	conn, _, err := websocket.Dial(ctx, url+sessionPath, &websocket.DialOptions{
+		HTTPHeader: http.Header{authorization: {"Bearer " + readFixture}}, Subprotocols: []string{sessionProtocol},
+	})
 	checkError(t, err)
 	checkEqual(t, conn.Subprotocol(), sessionProtocol)
-
-	t.Cleanup(func() { closeTestSocket(t, conn) })
+	//nolint:errcheck // The server may have already closed the socket.
+	t.Cleanup(func() { _ = conn.CloseNow() })
 
 	return conn
-}
-
-func closeTestSocket(t *testing.T, conn *websocket.Conn) {
-	t.Helper()
-
-	err := conn.CloseNow()
-	if err != nil && !errors.Is(err, net.ErrClosed) {
-		t.Error(err)
-	}
 }
 
 func checkSessionReply(ctx context.Context, t *testing.T, conn *websocket.Conn, send, key, want string) sessionObject {
@@ -509,7 +472,7 @@ func checkSessionReply(ctx context.Context, t *testing.T, conn *websocket.Conn, 
 	_, data, err := conn.Read(ctx)
 	checkError(t, err)
 
-	reply := *sessionJSON[sessionObject](data)
+	reply := sessionJSON[sessionObject](data)
 	checkEqual(t, strings.Trim(string(reply[key]), `"`), want)
 
 	return reply

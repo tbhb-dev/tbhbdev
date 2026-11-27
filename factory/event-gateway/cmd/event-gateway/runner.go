@@ -68,7 +68,7 @@ func (r *runner) run(ctx context.Context) error {
 	for index, target := range r.targets {
 		consumer, err := r.stream.CreateOrUpdateConsumer(ctx, target.consumerConfig())
 		if ctx.Err() != nil {
-			break
+			return nil //nolint:nilerr // Cancellation stops the runner successfully.
 		}
 
 		if err != nil {
@@ -76,12 +76,6 @@ func (r *runner) run(ctx context.Context) error {
 		}
 
 		consumers[index] = consumer
-	}
-
-	select {
-	case <-ctx.Done():
-		return nil
-	default:
 	}
 
 	if r.ready != nil {
@@ -109,16 +103,15 @@ func (target runnerTarget) consumerConfig() jetstream.ConsumerConfig {
 		policy = jetstream.DeliverAllPolicy
 	}
 
-	var config jetstream.ConsumerConfig
-
-	config.Durable = target.Name()
-	config.DeliverPolicy = policy
-	config.OptStartTime = target.Start.at
-	config.AckPolicy = jetstream.AckExplicitPolicy
-	config.MaxAckPending = 1
-	config.FilterSubjects = target.Subjects
-
-	return config
+	//nolint:exhaustruct_v5 // JetStream defaults to unlimited delivery attempts.
+	return jetstream.ConsumerConfig{
+		Durable:        target.Name(),
+		DeliverPolicy:  policy,
+		OptStartTime:   target.Start.at,
+		AckPolicy:      jetstream.AckExplicitPolicy,
+		MaxAckPending:  1,
+		FilterSubjects: target.Subjects,
+	}
 }
 
 func (r *runner) runTarget(ctx context.Context, target runnerTarget, consumer jetstream.Consumer) {
@@ -146,12 +139,10 @@ func (r *runner) runTarget(ctx context.Context, target runnerTarget, consumer je
 
 func (r *runner) checkGap(ctx context.Context, name string, lastAck, lastGap uint64) uint64 {
 	// On an info error the last known first sequence still provides a lower bound.
-	info, err := r.stream.Info(ctx)
-	if err != nil {
-		info = r.stream.CachedInfo()
-	}
+	//nolint:errcheck // CachedInfo retains the last successful response.
+	_, _ = r.stream.Info(ctx)
 
-	first := info.State.FirstSeq
+	first := r.stream.CachedInfo().State.FirstSeq
 	if lastAck != 0 && first > lastAck+1 && first != lastGap {
 		slog.Default().WarnContext(ctx, "possible gap", "target", name, "last_ack", lastAck, "first_seq", first)
 		r.possibleGap.Add(1)
@@ -163,20 +154,15 @@ func (r *runner) checkGap(ctx context.Context, name string, lastAck, lastGap uin
 }
 
 func (r *runner) deliver(ctx context.Context, target runnerTarget, message jetstream.Msg, lastAck uint64) uint64 {
-	meta, err := message.Metadata()
-	if err != nil {
-		return lastAck
-	}
-
+	//nolint:errcheck // Embedded JetStream supplies the acknowledgment metadata.
+	meta, _ := message.Metadata()
 	event := Event{Seq: meta.Sequence.Stream, Envelope: message.Data()}
-	err = deliverEvent(ctx, target, event)
+	err := deliverEvent(ctx, target, event)
 
 	if err != nil && !errors.Is(err, ErrPermanent) {
 		delay := retryDelay(cmp.Or(r.retryBase, time.Second), meta.NumDelivered)
-
-		if message.NakWithDelay(delay) != nil {
-			slog.Default().WarnContext(ctx, "could not reschedule event", "target", target.Name(), "seq", event.Seq)
-		}
+		//nolint:errcheck // JetStream redelivers at AckWait if the negative ack is lost.
+		_ = message.NakWithDelay(delay)
 
 		return lastAck
 	}
@@ -204,11 +190,7 @@ func (r *runner) deliver(ctx context.Context, target runnerTarget, message jetst
 	return event.Seq
 }
 
-// Keep the target's message unchanged because the parked stream persists it.
-type targetDeliveryError struct{ error }
-
-func (failure targetDeliveryError) Unwrap() error { return failure.error }
-
+//nolint:wrapcheck // The hook receives the target's original delivery error.
 func deliverEvent(ctx context.Context, target Target, event Event) (err error) {
 	defer func() {
 		if recover() != nil {
@@ -216,12 +198,7 @@ func deliverEvent(ctx context.Context, target Target, event Event) (err error) {
 		}
 	}()
 
-	err = target.Deliver(ctx, event)
-	if err != nil {
-		return targetDeliveryError{err}
-	}
-
-	return nil
+	return target.Deliver(ctx, event)
 }
 
 func logPermanent(ctx context.Context, name string, event Event, err error) {

@@ -14,7 +14,31 @@ import (
 func TestHealthcheck(t *testing.T) {
 	t.Parallel()
 
-	okAddr, badAddr, redirect, closed := healthcheckAddresses(t)
+	healthy := httptest.NewServer(http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) {
+		checkEqual(t, r.URL.Path, "/healthz")
+		checkEqual(t, r.Method, http.MethodGet)
+	}))
+	t.Cleanup(healthy.Close)
+
+	bad := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		http.Error(w, "secret-body", http.StatusServiceUnavailable)
+	}))
+	t.Cleanup(bad.Close)
+
+	target := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {}))
+	t.Cleanup(target.Close)
+
+	redirect := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, target.URL, http.StatusFound)
+	}))
+	t.Cleanup(redirect.Close)
+
+	gone := httptest.NewServer(http.NotFoundHandler())
+	closed := strings.TrimPrefix(gone.URL, "http://")
+	gone.Close()
+
+	okAddr := strings.TrimPrefix(healthy.URL, "http://")
+	badAddr := strings.TrimPrefix(bad.URL, "http://")
 
 	for _, test := range []struct {
 		name    string
@@ -56,36 +80,4 @@ func TestHealthcheck(t *testing.T) {
 			}
 		})
 	}
-}
-
-func healthcheckAddresses(t *testing.T) (string, string, *httptest.Server, string) {
-	t.Helper()
-
-	healthy := httptest.NewServer(http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) {
-		checkEqual(t, r.URL.Path, "/healthz")
-		checkEqual(t, r.Method, http.MethodGet)
-	}))
-	t.Cleanup(healthy.Close)
-
-	bad := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		http.Error(w, "secret-body", http.StatusServiceUnavailable)
-	}))
-	t.Cleanup(bad.Close)
-
-	target := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {}))
-	t.Cleanup(target.Close)
-
-	redirect := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		http.Redirect(w, r, target.URL, http.StatusFound)
-	}))
-	t.Cleanup(redirect.Close)
-
-	gone := httptest.NewServer(http.NotFoundHandler())
-	closed := strings.TrimPrefix(gone.URL, "http://")
-	gone.Close()
-
-	okAddr := strings.TrimPrefix(healthy.URL, "http://")
-	badAddr := strings.TrimPrefix(bad.URL, "http://")
-
-	return okAddr, badAddr, redirect, closed
 }

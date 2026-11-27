@@ -73,8 +73,8 @@ func signedRequest(ctx context.Context, event, delivery, body string) *http.Requ
 	req.Header.Set(deliveryHeader, delivery)
 
 	mac := hmac.New(sha256.New, []byte(fixtureKey))
-
-	_, _ = mac.Write([]byte(body))
+	//nolint:errcheck // The hash.Hash contract guarantees that Write succeeds.
+	_, _ = io.WriteString(mac, body)
 	req.Header.Set("X-Hub-Signature-256", "sha256="+hex.EncodeToString(mac.Sum(nil)))
 
 	return req
@@ -338,16 +338,6 @@ func TestGitHubTelemetry(t *testing.T) {
 
 	checkEqual(t, strings.Join(got, ","), "issues 202,issues 409, 401,issues 413, 400")
 
-	checkGitHubCounter(t, reader)
-
-	if strings.Contains(logs.String(), "raw-payload-fixture") {
-		t.Fatal("logger received raw payload")
-	}
-}
-
-func checkGitHubCounter(t *testing.T, reader *sdkmetric.ManualReader) {
-	t.Helper()
-
 	var metrics metricdata.ResourceMetrics
 	checkError(t, reader.Collect(t.Context(), &metrics))
 
@@ -364,6 +354,10 @@ func checkGitHubCounter(t *testing.T, reader *sdkmetric.ManualReader) {
 
 	slices.Sort(points)
 	checkEqual(t, strings.Join(points, ","), " 400=1, 401=1,issues 202=1,issues 409=1,issues 413=1")
+
+	if strings.Contains(logs.String(), "raw-payload-fixture") {
+		t.Fatal("logger received raw payload")
+	}
 }
 
 func TestNewTelemetryNilProviders(t *testing.T) {

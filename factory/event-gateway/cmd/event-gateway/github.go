@@ -10,7 +10,6 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
-	"encoding/json/jsontext"
 	"errors"
 	"fmt"
 	"io"
@@ -20,11 +19,7 @@ import (
 	"time"
 
 	"github.com/nats-io/nats.go"
-
-	jsonv2 "encoding/json/v2"
 )
-
-const eventType = "event"
 
 const defaultBodyCap = 5 << 20
 
@@ -40,20 +35,21 @@ var (
 	githubDelivery = regexp.MustCompile(`^[A-Za-z0-9_-]{1,128}$`)
 )
 
+//nolint:tagliatelle // The envelope uses the gateway protocol field names.
 type envelope struct {
 	Type       string  `json:"type"`
 	Provider   string  `json:"provider"`
 	Event      string  `json:"event"`
 	Delivery   string  `json:"delivery"`
 	Repository *string `json:"repository"`
-	ReceivedAt string  `json:"-"`
+	ReceivedAt string  `json:"received_at"`
 	Payload    []byte  `json:"-"`
 	projected  []byte
 }
 
-func (event envelope) encode() ([]byte, error) {
-	data, headerErr := jsonv2.Marshal(event, jsontext.EscapeForHTML(true), jsontext.EscapeForJS(true))
-	received, timeErr := json.Marshal(event.ReceivedAt)
+func (event envelope) encode() []byte {
+	//nolint:errcheck,errchkjson // Envelope metadata contains only strings and null.
+	data, _ := json.Marshal(event)
 
 	payload := event.Payload
 	if event.projected != nil {
@@ -61,16 +57,34 @@ func (event envelope) encode() ([]byte, error) {
 	}
 
 	// Append the retained JSON directly so full payloads keep their signed bytes.
-	data = append(bytes.TrimSuffix(data, []byte("}")), `,"received_at":`...)
-	data = append(data, received...)
-	data = append(data, `,"payload":`...)
+	data = append(data[:len(data)-1], `,"payload":`...)
 	data = append(data, payload...)
 
-	return append(data, '}'), errors.Join(headerErr, timeErr)
+	return append(data, '}')
+}
+
+//nolint:tagliatelle // GitHub sends full_name.
+type githubRepository struct {
+	FullName *string `json:"full_name"`
 }
 
 type githubPayload struct {
-	Repository map[string]*json.RawMessage `json:"repository"`
+	Repository githubRepository `json:"repository"`
+}
+
+// truncatedGitHub keeps filter fields at their original JSON paths.
+//
+//nolint:tagliatelle // GitHub sends these field names.
+type truncatedGitHub struct {
+	Action      *string            `json:"action,omitempty"`
+	CheckRun    *githubCheck       `json:"check_run,omitempty"`
+	CheckSuite  *githubCheck       `json:"check_suite,omitempty"`
+	WorkflowRun *githubCheck       `json:"workflow_run,omitempty"`
+	WorkflowJob *githubCheck       `json:"workflow_job,omitempty"`
+	Issue       *githubItem        `json:"issue,omitempty"`
+	PullRequest *githubPullRequest `json:"pull_request,omitempty"`
+	Label       *githubLabel       `json:"label,omitempty"`
+	Truncated   bool               `json:"truncated"`
 }
 
 type githubCheck struct {
@@ -112,12 +126,8 @@ func newGitHubWebhook(secret []byte, bodyCap int) (*githubWebhook, error) {
 		return nil, errSecret
 	}
 
-	return &githubWebhook{
-		store:     eventStore{jet: nil, stream: nil, openOrdered: nil},
-		telemetry: telemetry{logger: nil, tracer: nil, ingest: nil, parked: nil, parkFailed: nil},
-		secret:    secret,
-		bodyCap:   bodyCap,
-	}, nil
+	//nolint:exhaustruct_v5 // Serve opens and attaches the store and telemetry after validating the secret.
+	return &githubWebhook{secret: secret, bodyCap: bodyCap}, nil
 }
 
 func (h *githubWebhook) ServeHTTP(response http.ResponseWriter, request *http.Request) {
@@ -254,20 +264,12 @@ func normalizeGitHub(event, delivery string, receivedAt time.Time, body []byte, 
 		return envelope{}, fmt.Errorf("decode GitHub payload: %w", err)
 	}
 
-	var repository *string
-	if name := scope.Repository["full_name"]; name != nil {
-		err = json.Unmarshal(*name, &repository)
-		if err != nil {
-			return envelope{}, fmt.Errorf("decode GitHub repository: %w", err)
-		}
-	}
-
 	message := envelope{
-		Type:       eventType,
+		Type:       "event",
 		Provider:   "github",
 		Event:      event,
 		Delivery:   delivery,
-		Repository: repository,
+		Repository: scope.Repository.FullName,
 		ReceivedAt: receivedAt.Format(time.RFC3339Nano),
 		Payload:    body,
 		projected:  nil,
@@ -281,34 +283,17 @@ func normalizeGitHub(event, delivery string, receivedAt time.Time, body []byte, 
 }
 
 func truncateGitHub(body []byte) ([]byte, error) {
-	var fields map[string]json.RawMessage
+	var payload truncatedGitHub
 
-	err := json.Unmarshal(body, &fields)
+	err := json.Unmarshal(body, &payload)
 	if err != nil {
 		return nil, fmt.Errorf("decode GitHub filter fields: %w", err)
 	}
 
-	payload := map[string]any{"truncated": true}
+	payload.Truncated = true
 
-	for name, field := range map[string]any{
-		"action": new(*string), "check_run": new(*githubCheck), "check_suite": new(*githubCheck),
-		"workflow_run": new(*githubCheck), "workflow_job": new(*githubCheck), "issue": new(*githubItem),
-		"pull_request": new(*githubPullRequest), "label": new(*githubLabel),
-	} {
-		raw := fields[name]
-		if raw == nil || bytes.Equal(raw, []byte("null")) {
-			continue
-		}
+	//nolint:errcheck,errchkjson // The retained fields have fixed JSON types.
+	data, _ := json.Marshal(payload)
 
-		err = json.Unmarshal(raw, field)
-		if err != nil {
-			return nil, fmt.Errorf("decode GitHub filter field %q: %w", name, err)
-		}
-
-		payload[name] = field
-	}
-
-	data, err := json.Marshal(payload)
-
-	return data, errors.Join(err)
+	return data, nil
 }

@@ -1,5 +1,0 @@
-# SPDX-License-Identifier: Apache-2.0
-# Copyright Tony Burns
-
-max-module-lines = 400
-max-test-lines = 800

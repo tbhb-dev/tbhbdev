@@ -11,8 +11,6 @@ import (
 	"errors"
 	"fmt"
 	"os"
-	"path/filepath"
-	"sync/atomic"
 
 	"github.com/tbhb-dev/tbhbdev/factory/event-gateway/internal/eventfields"
 	"github.com/tbhb-dev/tbhbdev/factory/event-gateway/internal/filter"
@@ -21,6 +19,9 @@ import (
 )
 
 type targetFactory func(routing.Target) (actor, func(), error)
+
+//nolint:gochecknoglobals // Serve uses the registry of supported target types.
+var targetTypes = map[string]targetFactory{"temporal": newTemporalTarget}
 
 var (
 	errTargetsFile       = errors.New("invalid targets file")
@@ -34,21 +35,19 @@ type temporalClient interface {
 	Close()
 }
 
-func temporalRegistry[T temporalClient](dial func(temporaltarget.Connection) (T, error)) map[string]targetFactory {
-	return map[string]targetFactory{"temporal": func(config routing.Target) (actor, func(), error) {
-		return newTemporalTarget(config, dial)
-	}}
+//nolint:gochecknoglobals // Tests substitute a client without network access.
+var dialTemporal = func(connection temporaltarget.Connection) (temporalClient, error) {
+	return temporaltarget.Dial(connection)
 }
 
-func newTemporalTarget[T temporalClient](
-	config routing.Target, dial func(temporaltarget.Connection) (T, error),
-) (*temporaltarget.Target, func(), error) {
+//nolint:ireturn // The registry accepts actors from each target type.
+func newTemporalTarget(config routing.Target) (actor, func(), error) {
 	connection, err := temporaltarget.ParseConnection(config.Connection)
 	if err != nil {
 		return nil, nil, fmt.Errorf("parse Temporal connection: %w", err)
 	}
 
-	client, err := dial(connection)
+	client, err := dialTemporal(connection)
 	if err != nil {
 		return nil, nil, errTemporalDial
 	}
@@ -91,7 +90,7 @@ func (target ruleTarget) Deliver(ctx context.Context, event Event) error {
 		return fmt.Errorf("%w: %w", ErrPermanent, err)
 	}
 
-	payload := (*sessionJSON[sessionObject](event.Envelope))["payload"]
+	payload := sessionJSON[sessionObject](event.Envelope)["payload"]
 	matchFields := filter.Extract(fields.Event, payload)
 
 	for _, rule := range target.config.Rules {
@@ -172,7 +171,7 @@ func readTargetsConfig(path string) (routing.Config, error) {
 		return routing.Config{Targets: nil}, nil
 	}
 
-	data, err := os.ReadFile(filepath.Clean(path))
+	data, err := os.ReadFile(path)
 	if err != nil {
 		return routing.Config{}, fmt.Errorf("read targets file: %w", err)
 	}
@@ -191,7 +190,7 @@ func readTargetsConfig(path string) (routing.Config, error) {
 
 // The routing parser requires targets. Serve also accepts an empty config.
 func emptyTargetConfig(data []byte) bool {
-	object := *sessionJSON[sessionObject](data)
+	object := sessionJSON[sessionObject](data)
 	if object == nil {
 		return false
 	}
@@ -200,7 +199,7 @@ func emptyTargetConfig(data []byte) bool {
 		return true
 	}
 
-	entries := *sessionJSON[[]json.RawMessage](object["targets"])
+	entries := sessionJSON[[]json.RawMessage](object["targets"])
 
 	return len(object) == 1 && entries != nil && len(entries) == 0
 }
@@ -216,7 +215,7 @@ func runWithTargets(
 		return serveHTTP(ctx)
 	}
 
-	err := openParkedStream(ctx, store.jet)
+	_, err := openParkedStream(ctx, store.jet)
 	if err != nil {
 		return err
 	}
@@ -224,12 +223,12 @@ func runWithTargets(
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
+	//nolint:exhaustruct_v5 // The runner uses the default retry base and a fresh gap counter.
 	run := runner{
 		stream:      store.stream,
 		targets:     targets,
 		onPermanent: parkHook(store.jet, signals, 0),
 		ready:       make(chan struct{}),
-		retryBase:   0, possibleGap: atomic.Uint64{},
 	}
 	stopped := make(chan error, 1)
 

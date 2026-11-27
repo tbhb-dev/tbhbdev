@@ -21,7 +21,6 @@ import (
 
 	"github.com/go-logr/logr/funcr"
 	"go.opentelemetry.io/otel"
-	"go.opentelemetry.io/otel/sdk/instrumentation"
 	"go.opentelemetry.io/otel/sdk/metric/metricdata"
 	"google.golang.org/protobuf/proto"
 
@@ -144,9 +143,8 @@ func TestOTLPRedirects(t *testing.T) {
 	}
 }
 
+//nolint:paralleltest // The SDK's diagnostics are process-wide.
 func TestOTLPFailureKeepsWebhookAccepted(t *testing.T) {
-	t.Parallel()
-
 	collector := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, _ *http.Request) {
 		http.Error(response, collectorToken, http.StatusBadRequest)
 	}))
@@ -156,12 +154,9 @@ func TestOTLPFailureKeepsWebhookAccepted(t *testing.T) {
 
 	t.Cleanup(func() { otel.SetErrorHandler(previous) })
 	otel.SetErrorHandler(otel.ErrorHandlerFunc(func(err error) { t.Errorf("SDK exposed an error: %v", err) }))
-
-	var logOptions funcr.Options
-
 	otel.SetLogger(funcr.New(func(prefix, args string) {
 		t.Errorf("SDK exposed a diagnostic: %s %s", prefix, args)
-	}, logOptions))
+	}, funcr.Options{})) //nolint:exhaustruct_v5 // The test uses default logger options.
 
 	var logs bytes.Buffer
 
@@ -182,16 +177,9 @@ func TestOTLPFailureKeepsWebhookAccepted(t *testing.T) {
 	collector.Close()
 	writer, err := newOTLPWriter(otlpConfig{Endpoint: collector.URL, Headers: nil, CAFile: ""})
 	checkError(t, err)
-
-	var (
-		scope         instrumentation.Scope
-		ignoredMetric metricdata.Metrics
-	)
-
+	//nolint:exhaustruct_v5 // Simulate an unsupported SDK instrument.
 	unusedMetric := &metricdata.ResourceMetrics{
-		Resource: nil,
-
-		ScopeMetrics: []metricdata.ScopeMetrics{{Scope: scope, Metrics: []metricdata.Metrics{ignoredMetric}}},
+		ScopeMetrics: []metricdata.ScopeMetrics{{Metrics: []metricdata.Metrics{{}}}},
 	}
 	checkEqual(
 		t,
@@ -227,14 +215,15 @@ func setOTELVariables(t *testing.T) {
 		"OTEL_BLRP_SCHEDULE_DELAY":        "1",
 		"OTEL_GO_X_CARDINALITY_LIMIT":     "1",
 		"OTEL_GO_X_OBSERVABILITY":         enabled,
+
+		"OTEL_GO_X_PER_SERIES_START_TIMESTAMPS": enabled,
 	} {
 		t.Setenv(key, value)
 	}
 }
 
+//nolint:paralleltest // Environment variables are process-wide.
 func TestOTLPIgnoresOTELVariables(t *testing.T) {
-	t.Setenv("OTEL_GO_X_PER_SERIES_START_TIMESTAMPS", "true")
-
 	setOTELVariables(t)
 
 	var (
@@ -276,7 +265,12 @@ func TestOTLPIgnoresOTELVariables(t *testing.T) {
 	hook := &githubWebhook{
 		store: testStore(t, retention), telemetry: signals, secret: []byte(fixtureKey), bodyCap: defaultBodyCap,
 	}
-	exerciseOTLPSeries(t, hook)
+	// Two series (202 and 409), created after the provider, so per-series start times would differ.
+	expectStatus(t, hook.ServeHTTP, signedRequest(t.Context(), issuesEvent, "1", "{}"), http.StatusAccepted)
+	time.Sleep(20 * time.Millisecond)
+
+	conflict := signedRequest(t.Context(), issuesEvent, "1", `{"text":"x"}`)
+	expectStatus(t, hook.ServeHTTP, conflict, http.StatusConflict)
 
 	// The pinned one-minute reader interval and batch delays keep every signal queued until shutdown.
 	// A 1ms interval or delay from the environment would export within this wait.
@@ -292,24 +286,6 @@ func TestOTLPIgnoresOTELVariables(t *testing.T) {
 	lock.Lock()
 	defer lock.Unlock()
 
-	checkPinnedTraceExport(t, &traces)
-	checkPinnedMetricExport(t, &metrics, opened)
-}
-
-func exerciseOTLPSeries(t *testing.T, hook *githubWebhook) {
-	t.Helper()
-
-	// Two series (202 and 409), created after the provider, so per-series start times would differ.
-	expectStatus(t, hook.ServeHTTP, signedRequest(t.Context(), issuesEvent, "1", "{}"), http.StatusAccepted)
-	time.Sleep(20 * time.Millisecond)
-
-	conflict := signedRequest(t.Context(), issuesEvent, "1", `{"text":"x"}`)
-	expectStatus(t, hook.ServeHTTP, conflict, http.StatusConflict)
-}
-
-func checkPinnedTraceExport(t *testing.T, traces *traceexport.ExportTraceServiceRequest) {
-	t.Helper()
-
 	// The sampler keeps the span and the attribute limit keeps its attributes.
 	checkEqual(t, len(traces.GetResourceSpans()), 1)
 	spans := traces.GetResourceSpans()[0]
@@ -320,10 +296,6 @@ func checkPinnedTraceExport(t *testing.T, traces *traceexport.ExportTraceService
 	checkEqual(t, len(spans.GetResource().GetAttributes()), 1)
 	checkEqual(t, spans.GetResource().GetAttributes()[0].GetKey(), "service.name")
 	checkEqual(t, spans.GetResource().GetAttributes()[0].GetValue().GetStringValue(), serviceName)
-}
-
-func checkPinnedMetricExport(t *testing.T, metrics *metricexport.ExportMetricsServiceRequest, opened time.Time) {
-	t.Helper()
 
 	checkEqual(t, len(metrics.GetResourceMetrics()), 1)
 	resource := metrics.GetResourceMetrics()[0].GetResource()

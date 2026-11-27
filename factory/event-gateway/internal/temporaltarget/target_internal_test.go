@@ -110,6 +110,7 @@ func checkDelivery(t *testing.T, err error, step, class string) {
 	}
 }
 
+//nolint:gocognit // The nested tables exercise each action, reuse policy, and error.
 func TestAct(t *testing.T) {
 	t.Parallel()
 
@@ -150,52 +151,44 @@ func TestAct(t *testing.T) {
 			{withStart, "signal_with_start", start + strconv.Quote(policy) + "," + signal},
 			{SignalRequest{WorkflowID: "pr-12", SignalName: "update", Input: input}, signalKind, signal},
 		} {
-			checkTemporalAction(t, fields, envelope, reuse, action.request, action.kind, action.extra)
+			match := rule(`{"kind":"` + action.kind + `",` + workflowID + "," + action.extra + "}")
+
+			var response error
+
+			got := target(t, func(request any) error {
+				if !reflect.DeepEqual(request, action.request) {
+					t.Fatalf("%s request = %#v, want %#v", action.kind, request, action.request)
+				}
+
+				return response
+			}, match)
+
+			const transient = "transient"
+			for _, test := range []struct {
+				err   error
+				class string
+			}{
+				{nil, ""},
+				{ErrTransient, transient},
+				{context.DeadlineExceeded, transient},
+				{context.Canceled, transient},
+				{ErrAlreadyStarted, permanent},
+				{ErrNotFound, permanent},
+				{io.EOF, permanent},
+			} {
+				response = nil
+				if test.err != nil {
+					response = fmt.Errorf("%s %s: %w", fields.Delivery, fields.Sender, test.err)
+				}
+
+				class := test.class
+				if errors.Is(test.err, ErrAlreadyStarted) && action.kind != signalKind && reuse == RejectDuplicate {
+					class = ""
+				}
+
+				checkDelivery(t, got.Act(t.Context(), match, fields, envelope), action.kind, class)
+			}
 		}
-	}
-}
-
-func checkTemporalAction(
-	t *testing.T, fields eventfields.Fields, envelope []byte, reuse IDReuse, expected any, kind, extra string,
-) {
-	t.Helper()
-
-	match := rule(`{"kind":"` + kind + `",` + workflowID + "," + extra + "}")
-
-	var response error
-
-	got := target(t, func(request any) error {
-		if !reflect.DeepEqual(request, expected) {
-			t.Fatalf("%s request = %#v, want %#v", kind, request, expected)
-		}
-
-		return response
-	}, match)
-
-	const transient = "transient"
-	for _, test := range []struct {
-		err   error
-		class string
-	}{
-		{nil, ""},
-		{ErrTransient, transient},
-		{context.DeadlineExceeded, transient},
-		{context.Canceled, transient},
-		{ErrAlreadyStarted, permanent},
-		{ErrNotFound, permanent},
-		{io.EOF, permanent},
-	} {
-		response = nil
-		if test.err != nil {
-			response = fmt.Errorf("%s %s: %w", fields.Delivery, fields.Sender, test.err)
-		}
-
-		class := test.class
-		if errors.Is(test.err, ErrAlreadyStarted) && kind != signalKind && reuse == RejectDuplicate {
-			class = ""
-		}
-
-		checkDelivery(t, got.Act(t.Context(), match, fields, envelope), kind, class)
 	}
 }
 
@@ -208,8 +201,7 @@ func TestActValidation(t *testing.T) {
 
 	var fields eventfields.Fields
 
-	base, err := reference(&fields, nil, match.Name, "temporal-main")
-	sdkCheck(t, err)
+	base := reference(&fields, nil, match.Name, "temporal-main")
 	got := target(t, func(request any) error {
 		signal, ok := request.(SignalRequest)
 		if !ok || len(signal.Input) != 4096 {
@@ -229,7 +221,5 @@ func TestActValidation(t *testing.T) {
 	fields.Delivery = strings.Repeat("a", 4096-len(base))
 	checkDelivery(t, got.Act(t.Context(), match, fields, nil), "signal", "")
 	fields.Delivery += "a"
-	checkDelivery(t, got.Act(t.Context(), match, fields, nil), "event reference", permanent)
-	fields.Delivery = "\xff"
 	checkDelivery(t, got.Act(t.Context(), match, fields, nil), "event reference", permanent)
 }

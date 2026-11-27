@@ -6,16 +6,23 @@ package main
 // cspell:ignore nonamedreturns KeepAlives
 
 import (
+	"bytes"
 	"cmp"
 	"context"
 	"encoding/json"
 	"errors"
+	"flag"
 	"fmt"
 	"io"
 	"log/slog"
+	"net"
 	"net/http"
+	"net/url"
+	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
+	"syscall"
 	"time"
 
 	"github.com/nats-io/nats.go/jetstream"
@@ -46,6 +53,7 @@ func (e RuleError) Error() string    { return e.Err.Error() }
 func (e RuleError) Unwrap() error    { return e.Err }
 func (e RuleError) ruleName() string { return e.Rule }
 
+//nolint:tagliatelle // The record uses the gateway protocol's timestamp naming.
 type parkedRecord struct {
 	Target   string `json:"target"`
 	Rule     string `json:"rule"`
@@ -53,25 +61,25 @@ type parkedRecord struct {
 	Event    string `json:"event"`
 	Delivery string `json:"delivery"`
 	Error    string `json:"error"`
-	ParkedAt string `json:"-"`
-	Seq      uint64 `json:"-"`
+	ParkedAt string `json:"parked_at"`
+	Seq      uint64 `json:"seq"`
 }
 
-func openParkedStream(ctx context.Context, jet jetstream.JetStream) error {
-	var config jetstream.StreamConfig
-
-	config.Name = parkedStream
-	config.Subjects = []string{parkedPrefix + ">"}
-	config.Storage = jetstream.FileStorage
-	config.Replicas = 1
-	config.MaxAge = parkedMaxAge
-
-	_, err := jet.CreateOrUpdateStream(ctx, config)
+//nolint:ireturn // JetStream exposes streams through its Stream interface.
+func openParkedStream(ctx context.Context, jet jetstream.JetStream) (jetstream.Stream, error) {
+	//nolint:exhaustruct_v5 // The stream uses JetStream defaults for the other options.
+	stream, err := jet.CreateOrUpdateStream(ctx, jetstream.StreamConfig{
+		Name:     parkedStream,
+		Subjects: []string{parkedPrefix + ">"},
+		Storage:  jetstream.FileStorage,
+		Replicas: 1,
+		MaxAge:   parkedMaxAge,
+	})
 	if err != nil {
-		return fmt.Errorf("configure PARKED stream: %w", err)
+		return nil, fmt.Errorf("configure PARKED stream: %w", err)
 	}
 
-	return nil
+	return stream, nil
 }
 
 // parkHook takes validated target names and delivery errors safe to persist.
@@ -80,19 +88,14 @@ func parkHook(
 ) func(context.Context, string, Event, error) {
 	return func(ctx context.Context, target string, event Event, deliveryErr error) {
 		record := newParkedRecord(target, event, deliveryErr)
-
-		data, err := json.Marshal(record)
-		if err != nil {
-			signals.logger.ErrorContext(ctx, "encode parked record")
-
-			return
-		}
+		//nolint:errcheck // The record contains only strings and a sequence.
+		data, _ := json.Marshal(record)
 
 		// The runner has already acknowledged the event, even during shutdown.
 		publish, cancel := context.WithTimeout(context.WithoutCancel(ctx), cmp.Or(timeout, parkTimeout))
 		defer cancel()
 
-		_, err = jet.Publish(publish, parkedPrefix+target, data, jetstream.WithExpectStream(parkedStream))
+		_, err := jet.Publish(publish, parkedPrefix+target, data, jetstream.WithExpectStream(parkedStream))
 
 		counter, level, message := signals.parked, slog.LevelWarn, "event parked"
 		if err != nil {
@@ -116,9 +119,7 @@ func newParkedRecord(target string, event Event, deliveryErr error) parkedRecord
 		metadata.Provider, metadata.Event, metadata.Delivery = "", "", ""
 	}
 
-	details := parkedErrorDetails(deliveryErr)
-
-	message := details.message
+	name, message := parkedErrorDetails(deliveryErr)
 	if len(event.Envelope) > 0 {
 		message = strings.ReplaceAll(message, string(event.Envelope), "[redacted]")
 	}
@@ -128,61 +129,51 @@ func newParkedRecord(target string, event Event, deliveryErr error) parkedRecord
 	}
 
 	return parkedRecord{
-		Target: target, Rule: details.name, Seq: event.Seq, Provider: metadata.Provider,
+		Target: target, Rule: name, Seq: event.Seq, Provider: metadata.Provider,
 		Event: metadata.Event, Delivery: metadata.Delivery,
 		Error:    strings.ToValidUTF8(message[:min(len(message), parkedErrorCap)], ""),
 		ParkedAt: time.Now().UTC().Format(time.RFC3339),
 	}
 }
 
-type parkedError struct{ name, message string }
-
-func parkedErrorDetails(deliveryErr error) parkedError {
-	var details parkedError
-
-	func() {
-		defer func() {
-			if recover() != nil {
-				details.message = ErrPermanent.Error()
-			}
-		}()
-
-		var rule interface{ ruleName() string }
-		if errors.As(deliveryErr, &rule) {
-			details.name = rule.ruleName()
+//nolint:nonamedreturns // Recovery sets the message if a delivery error method panics.
+func parkedErrorDetails(deliveryErr error) (name, message string) {
+	defer func() {
+		if recover() != nil {
+			message = ErrPermanent.Error()
 		}
-
-		details.message = deliveryErr.Error()
 	}()
 
-	return details
+	var rule interface{ ruleName() string }
+	if errors.As(deliveryErr, &rule) {
+		name = rule.ruleName()
+	}
+
+	return name, deliveryErr.Error()
 }
 
+//nolint:wrapcheck // Report pull batch errors directly to the caller.
 func listParked(ctx context.Context, stream jetstream.Stream, target string, limit int) ([]parkedRecord, error) {
 	if limit < 0 {
 		return nil, errParkedLimit
 	}
 
-	var config jetstream.OrderedConsumerConfig
-
-	config.FilterSubjects = []string{parkedPrefix + cmp.Or(target, ">")}
-	config.MaxResetAttempts = 1
-	config.InactiveThreshold = shutdownTimeout
-
-	consumer, err := stream.OrderedConsumer(ctx, config)
+	//nolint:exhaustruct_v5 // The ordered consumer reads from the oldest retained record.
+	consumer, err := stream.OrderedConsumer(ctx, jetstream.OrderedConsumerConfig{
+		FilterSubjects:    []string{parkedPrefix + cmp.Or(target, ">")},
+		MaxResetAttempts:  1,
+		InactiveThreshold: shutdownTimeout,
+	})
 	if err != nil {
 		return nil, fmt.Errorf("create parked consumer: %w", err)
 	}
 
 	defer func() {
-		deleteOrderedConsumer(ctx, stream, consumer)
+		//nolint:errcheck // JetStream expires the consumer if deletion fails.
+		_ = stream.DeleteConsumer(ctx, consumer.CachedInfo().Name)
 	}()
 
-	return fetchParked(consumer.FetchNoWait, cmp.Or(limit, parkedListSize))
-}
-
-func fetchParked(fetch func(int) (jetstream.MessageBatch, error), limit int) ([]parkedRecord, error) {
-	batch, err := fetch(limit)
+	batch, err := consumer.FetchNoWait(cmp.Or(limit, parkedListSize))
 	if err != nil {
 		return nil, fmt.Errorf("fetch parked records: %w", err)
 	}
@@ -200,7 +191,7 @@ func fetchParked(fetch func(int) (jetstream.MessageBatch, error), limit int) ([]
 		records = append(records, record)
 	}
 
-	return records, errors.Join(batch.Error())
+	return records, batch.Error()
 }
 
 func retryParked(ctx context.Context, store eventStore, target Target, seq uint64) error {
@@ -285,4 +276,128 @@ func (api parkedAPI) retry(response http.ResponseWriter, request *http.Request) 
 	}
 
 	http.Error(response, "unknown target", http.StatusNotFound)
+}
+
+const (
+	parkedCommand      = "parked"
+	parkedListCommand  = "list"
+	parkedRetryCommand = "retry"
+	parkedSocketEnv    = "EVENT_GATEWAY_PARKED_SOCKET"
+	httpScheme         = "http"
+)
+
+var (
+	errParkedUsage      = errors.New("usage: event-gateway parked list [flags] or parked retry [flags] TARGET SEQ")
+	errParkedRequest    = errors.New("parked request failed")
+	errParkedNotRunning = errors.New("event-gateway is not running")
+)
+
+func parkedSocketPath(storeDir, path string) string {
+	return cmp.Or(path, filepath.Join(storeDir, "parked.sock"))
+}
+
+// Keep relative paths that start with @ in the filesystem namespace.
+func parkedAddress(path string) string { return filepath.Dir(path) + "/" + filepath.Base(path) }
+
+type parkedSend func(string, *http.Request) (*http.Response, error)
+
+func runParked(ctx context.Context, out io.Writer, args []string, send parkedSend) error {
+	if len(args) == 0 {
+		return errParkedUsage
+	}
+
+	flags := flag.NewFlagSet(parkedCommand, flag.ContinueOnError)
+	flags.SetOutput(io.Discard)
+	path := flags.String("socket", os.Getenv(parkedSocketEnv), "parked API Unix socket path")
+	//nolint:exhaustruct_v5 // The client needs only the method, URL and optional body.
+	request := &http.Request{URL: &url.URL{Scheme: httpScheme, Host: "unix"}, Header: http.Header{}}
+
+	switch args[0] {
+	case parkedListCommand:
+		target := flags.String("target", "", "target name")
+		limit := flags.Int("limit", 0, "maximum records")
+
+		if flags.Parse(args[1:]) != nil || flags.NArg() != 0 {
+			return errParkedUsage
+		}
+
+		request.Method, request.URL.Path = http.MethodGet, parkedListPath
+		request.URL.RawQuery = url.Values{"target": {*target}, "limit": {strconv.Itoa(*limit)}}.Encode()
+	case parkedRetryCommand:
+		if flags.Parse(args[1:]) != nil || flags.NArg() != 2 {
+			return errParkedUsage
+		}
+
+		seq, err := strconv.ParseUint(flags.Arg(1), decimal, 64)
+		if err != nil {
+			return errParkedUsage
+		}
+
+		//nolint:errcheck,errchkjson // The body contains only a string and a sequence.
+		body, _ := json.Marshal(parkedRetry{Target: flags.Arg(0), Seq: seq})
+		request.Method, request.URL.Path = http.MethodPost, parkedRetryPath
+		request.Body = io.NopCloser(bytes.NewReader(body))
+	default:
+		return errParkedUsage
+	}
+
+	socket := parkedSocketPath(defaultStoreDir, *path)
+
+	ctx, cancel := context.WithTimeout(ctx, writeTimeout)
+	defer cancel()
+
+	//nolint:bodyclose // parkedResponse closes the response body.
+	response, err := send(socket, request.WithContext(ctx))
+
+	return parkedResponse(out, socket, response, err)
+}
+
+func parkedResponse(out io.Writer, socket string, response *http.Response, err error) error {
+	switch {
+	case errors.Is(err, os.ErrNotExist), errors.Is(err, syscall.ECONNREFUSED):
+		return fmt.Errorf("%w (cannot reach %s)", errParkedNotRunning, socket)
+	case err != nil:
+		return errParkedRequest
+	}
+
+	defer func() { _ = response.Body.Close() }()
+
+	switch response.StatusCode {
+	case http.StatusOK:
+		return printParked(out, response.Body)
+	case http.StatusNoContent:
+		return nil
+	default:
+		return fmt.Errorf("%w (HTTP %d)", errParkedRequest, response.StatusCode)
+	}
+}
+
+//nolint:wrapcheck // Caller maps transport errors to fixed messages.
+func requestParked(path string, request *http.Request) (*http.Response, error) {
+	//nolint:exhaustruct_v5 // One request per invocation, using only the local socket.
+	transport := http.Transport{
+		DisableKeepAlives: true,
+		DialContext: func(ctx context.Context, _, _ string) (net.Conn, error) {
+			return new(net.Dialer).DialContext(ctx, "unix", parkedAddress(path))
+		},
+	}
+
+	return transport.RoundTrip(request)
+}
+
+func printParked(out io.Writer, body io.Reader) error {
+	var records []parkedRecord
+	if json.NewDecoder(body).Decode(&records) != nil {
+		return errParkedRequest
+	}
+
+	encoder := json.NewEncoder(out)
+	for _, record := range records {
+		err := encoder.Encode(record)
+		if err != nil {
+			return fmt.Errorf("write parked record: %w", err)
+		}
+	}
+
+	return nil
 }

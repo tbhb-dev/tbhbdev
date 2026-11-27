@@ -41,30 +41,20 @@ func newTelemetry(handler slog.Handler, tracer trace.TracerProvider, meter metri
 	}
 
 	signals := meter.Meter(serviceName)
+	//nolint:errcheck // The counter names are valid, fixed instrument names.
+	ingest, _ := signals.Int64Counter("event_gateway_ingest_total")
+	//nolint:errcheck // The counter name is a valid, fixed instrument name.
+	parked, _ := signals.Int64Counter("event_gateway_parked_total")
+	//nolint:errcheck // The counter name is a valid, fixed instrument name.
+	parkFailed, _ := signals.Int64Counter("event_gateway_park_publish_failed_total")
 
-	result := telemetry{
+	return telemetry{
 		logger:     slog.New(handler),
 		tracer:     tracer.Tracer(serviceName),
-		ingest:     nil,
-		parked:     nil,
-		parkFailed: nil,
+		ingest:     ingest,
+		parked:     parked,
+		parkFailed: parkFailed,
 	}
-	result.registerCounter(signals, "event_gateway_ingest_total", &result.ingest)
-	result.registerCounter(signals, "event_gateway_parked_total", &result.parked)
-	result.registerCounter(signals, "event_gateway_park_publish_failed_total", &result.parkFailed)
-
-	return result
-}
-
-func (t telemetry) registerCounter(meter metric.Meter, name string, counter *metric.Int64Counter) {
-	value, err := meter.Int64Counter(name)
-	if err != nil {
-		t.logger.Error("initialize event counter", "name", name)
-
-		value = metricnoop.Int64Counter{Int64Counter: nil}
-	}
-
-	*counter = value
 }
 
 func (t telemetry) record(ctx context.Context, span trace.Span, event string, status int) {

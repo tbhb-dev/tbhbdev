@@ -7,13 +7,9 @@ package filter
 import (
 	"cmp"
 	"encoding/json"
-	"errors"
-	"fmt"
 	"regexp"
 	"slices"
 	"strings"
-
-	jsonv2 "encoding/json/v2"
 )
 
 // Subscription selects events and optionally filters their payload fields.
@@ -24,55 +20,10 @@ type Subscription struct {
 	Action     []string `json:"action,omitempty"`
 	Conclusion []string `json:"conclusion,omitempty"`
 	Name       string   `json:"name,omitempty"`
-
-	WorkflowPath string   `json:"-"`
+	//nolint:tagliatelle // The protocol uses workflow_path on the wire.
+	WorkflowPath string   `json:"workflow_path,omitempty"`
 	Number       []int64  `json:"number,omitempty"`
 	Label        []string `json:"label,omitempty"`
-}
-
-// MarshalJSON preserves the subscription protocol's workflow_path field.
-func (s Subscription) MarshalJSON() ([]byte, error) {
-	type fields Subscription
-
-	data, err := jsonv2.Marshal(fields(s))
-	if err != nil {
-		return nil, fmt.Errorf("encode subscription: %w", err)
-	}
-
-	if s.WorkflowPath == "" {
-		return data, nil
-	}
-
-	path, err := jsonv2.Marshal(s.WorkflowPath)
-	if err != nil {
-		return nil, fmt.Errorf("encode subscription: %w", err)
-	}
-
-	data = append(data[:len(data)-1], `,"workflow_path":`...)
-	data = append(data, path...)
-
-	return append(data, '}'), nil
-}
-
-// UnmarshalJSON reads the persisted subscription and session protocol fields.
-func (s *Subscription) UnmarshalJSON(data []byte) error {
-	type fields Subscription
-
-	var object map[string]json.RawMessage
-
-	err := json.Unmarshal(data, &object)
-	if err != nil {
-		return fmt.Errorf("decode subscription: %w", err)
-	}
-
-	if path := object["workflow_path"]; path != nil {
-		err = json.Unmarshal(path, &s.WorkflowPath)
-		if err != nil {
-			return fmt.Errorf("decode workflow path: %w", err)
-		}
-	}
-
-	return errors.Join(json.Unmarshal(data, (*fields)(s)))
 }
 
 // Error reports a subscription validation failure with its protocol code.
@@ -118,11 +69,7 @@ var (
 
 // Parse validates and normalizes a subscription received as JSON.
 func Parse(raw json.RawMessage) (Subscription, error) {
-	return ParseObject(*decode[map[string]json.RawMessage](raw))
-}
-
-// ParseObject validates a subscription whose fields have already been decoded.
-func ParseObject(object map[string]json.RawMessage) (Subscription, error) {
+	object := decode[map[string]json.RawMessage](raw)
 	if object == nil {
 		return Subscription{}, &Error{Code: badMessage, Message: "subscription must be an object"}
 	}
@@ -169,7 +116,7 @@ func parseScope(sub *Subscription, object map[string]json.RawMessage) *Error {
 			continue
 		}
 
-		value := *decode[*string](raw)
+		value := decode[*string](raw)
 		if value == nil {
 			return &Error{Code: badMessage, Message: field.key + " must be a string"}
 		}
@@ -219,7 +166,7 @@ func parseFilters(sub *Subscription, object map[string]json.RawMessage) *Error {
 
 func textReader(target *string, pattern *regexp.Regexp) func(json.RawMessage) bool {
 	return func(raw json.RawMessage) bool {
-		*target = *decode[string](raw)
+		*target = decode[string](raw)
 
 		return pattern.MatchString(*target)
 	}
@@ -227,7 +174,7 @@ func textReader(target *string, pattern *regexp.Regexp) func(json.RawMessage) bo
 
 func listReader[T cmp.Ordered](target *[]T, valid func(T) bool) func(json.RawMessage) bool {
 	return func(raw json.RawMessage) bool {
-		values := *decode[[]T](raw)
+		values := decode[[]T](raw)
 		if len(values) == 0 || len(values) > maxList ||
 			slices.ContainsFunc(values, func(value T) bool { return !valid(value) }) {
 			return false
@@ -240,15 +187,16 @@ func listReader[T cmp.Ordered](target *[]T, valid func(T) bool) func(json.RawMes
 	}
 }
 
-func decode[T any](raw json.RawMessage) *T {
+//nolint:ireturn // Callers choose the concrete JSON value type.
+func decode[T any](raw json.RawMessage) T {
 	var value, zero T
 
 	err := json.Unmarshal(raw, &value)
 	if err != nil {
-		return &zero
+		return zero
 	}
 
-	return &value
+	return value
 }
 
 // Fields holds the payload values used by subscription filters.
@@ -263,27 +211,27 @@ type Fields struct {
 
 // Extract reads filter values from the payload of an event.
 func Extract(event string, payload []byte) Fields {
-	object := *decode[map[string]json.RawMessage](payload)
-	eventObject := *decode[map[string]json.RawMessage](object[event])
+	object := decode[map[string]json.RawMessage](payload)
+	eventObject := decode[map[string]json.RawMessage](object[event])
 	item := eventObject
 
 	switch event {
 	case "issues", "issue_comment":
-		item = *decode[map[string]json.RawMessage](object["issue"])
+		item = decode[map[string]json.RawMessage](object["issue"])
 	case "pull_request_review":
-		item = *decode[map[string]json.RawMessage](object["pull_request"])
+		item = decode[map[string]json.RawMessage](object["pull_request"])
 	}
 
 	fields := Fields{
-		Action:       *decode[string](object["action"]),
-		Conclusion:   *decode[string](eventObject["conclusion"]),
-		Name:         *decode[string](eventObject["name"]),
-		WorkflowPath: *decode[string](eventObject["path"]),
-		Number:       *decode[*int64](item["number"]),
+		Action:       decode[string](object["action"]),
+		Conclusion:   decode[string](eventObject["conclusion"]),
+		Name:         decode[string](eventObject["name"]),
+		WorkflowPath: decode[string](eventObject["path"]),
+		Number:       decode[*int64](item["number"]),
 		Labels:       nil,
 	}
 
-	for _, label := range *decode[[]json.RawMessage](item["labels"]) {
+	for _, label := range decode[[]json.RawMessage](item["labels"]) {
 		fields.Labels = appendLabel(fields.Labels, label)
 	}
 
@@ -296,8 +244,8 @@ func Extract(event string, payload []byte) Fields {
 }
 
 func appendLabel(labels []string, raw json.RawMessage) []string {
-	object := *decode[map[string]json.RawMessage](raw)
-	if name := *decode[*string](object["name"]); name != nil {
+	object := decode[map[string]json.RawMessage](raw)
+	if name := decode[*string](object["name"]); name != nil {
 		return append(labels, *name)
 	}
 

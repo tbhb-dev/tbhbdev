@@ -43,8 +43,8 @@ func grafanaHook(t *testing.T) (*grafanaWebhook, eventStore) {
 func grafanaSigned(ctx context.Context, body string) *http.Request {
 	req := httptest.NewRequestWithContext(ctx, http.MethodPost, grafanaPath, strings.NewReader(body))
 	mac := hmac.New(sha256.New, []byte(fixtureKey))
-
-	_, _ = mac.Write([]byte(body))
+	//nolint:errcheck // The hash.Hash contract guarantees that Write succeeds.
+	_, _ = io.WriteString(mac, body)
 	req.Header.Set(grafanaSignature, hex.EncodeToString(mac.Sum(nil)))
 
 	return req

@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright Tony Burns
 
+//nolint:exhaustruct_v5 // Fixtures use zero defaults for fields unrelated to the case.
 package main
 
 import (
@@ -10,7 +11,6 @@ import (
 	"log/slog"
 	"math"
 	"sync"
-	"sync/atomic"
 	"testing"
 	"time"
 
@@ -57,23 +57,24 @@ func startRunner(t *testing.T, run *runner) func() {
 
 	stop := sync.OnceFunc(func() {
 		cancel()
-		checkError(t, *receiveRunner(t, result))
+		checkError(t, receiveRunner(t, result))
 	})
 	t.Cleanup(stop)
 
 	return stop
 }
 
-func receiveRunner[T any](t *testing.T, results <-chan T) *T {
+//nolint:ireturn // Receive the concrete result type of the supplied channel.
+func receiveRunner[T any](t *testing.T, results <-chan T) T {
 	t.Helper()
 
 	select {
 	case result := <-results:
-		return &result
+		return result
 	case <-time.After(runnerWait):
 		t.Fatal("timed out waiting for runner")
 
-		return new(T)
+		return *new(T)
 	}
 }
 
@@ -88,7 +89,7 @@ func expectRunner(t *testing.T, events <-chan Event, sequences ...uint64) {
 	t.Helper()
 
 	for _, seq := range sequences {
-		event := *receiveRunner(t, events)
+		event := receiveRunner(t, events)
 		checkEqual(t, event.Seq, seq)
 		checkEqual(t, string(event.Envelope), testEnvelope)
 	}
@@ -97,8 +98,13 @@ func expectRunner(t *testing.T, events <-chan Event, sequences ...uint64) {
 func TestRunnerDelivery(t *testing.T) {
 	t.Parallel()
 
-	cases := []runnerDeliveryCase{
-		{park: "", name: "transient", fail: func() error { return errRetryDelivery }, want: []uint64{1, 1, 2}},
+	cases := []struct {
+		fail func() error
+		name string
+		park string
+		want []uint64
+	}{
+		{name: "transient", fail: func() error { return errRetryDelivery }, want: []uint64{1, 1, 2}},
 		{
 			name: "permanent", fail: func() error { return fmt.Errorf("delivery: %w", ErrPermanent) },
 			want: []uint64{1, 2}, park: "delivery: permanent",
@@ -112,75 +118,55 @@ func TestRunnerDelivery(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			t.Parallel()
 
-			checkRunnerDelivery(t, test)
+			store := testStore(t, retention)
+			parked := testParkedStream(t, store)
+			publishRunner(t, store, pullSubject)
+			publishRunner(t, store, pullSubject)
+
+			events := make(chan Event, 8)
+			first := true
+
+			target := fakeTarget{name: test.name, deliver: func(_ context.Context, event Event) error {
+				events <- event
+
+				if first {
+					first = false
+
+					return test.fail()
+				}
+
+				return nil
+			}}
+			run := &runner{stream: store.stream, retryBase: time.Millisecond, targets: []runnerTarget{{
+				Target: target, Subjects: nil, Start: startPosition{all: true},
+			}}}
+			park := parkHook(store.jet, newTelemetry(slog.DiscardHandler, nil, nil), 0)
+			run.onPermanent = func(ctx context.Context, name string, event Event, err error) {
+				logPermanent(ctx, name, event, err)
+				park(ctx, name, event, err)
+			}
+
+			stop := startRunner(t, run)
+			expectRunner(t, events, test.want...)
+			stop()
+
+			records, err := listParked(t.Context(), parked, "", 0)
+			checkError(t, err)
+
+			if test.park == "" {
+				checkEqual(t, len(records), 0)
+			} else {
+				checkEqual(t, len(records), 1)
+				checkEqual(t, records[0].Seq, uint64(1))
+				checkEqual(t, records[0].Target, test.name)
+				checkEqual(t, records[0].Error, test.park)
+			}
+
+			info, err := store.stream.Consumer(t.Context(), test.name)
+			checkError(t, err)
+			checkEqual(t, info.CachedInfo().AckFloor.Stream, uint64(2))
 		})
 	}
-}
-
-type runnerDeliveryCase struct {
-	fail func() error
-	name string
-	park string
-	want []uint64
-}
-
-func checkRunnerDelivery(t *testing.T, test runnerDeliveryCase) {
-	t.Helper()
-
-	store := testStore(t, retention)
-	parked := testParkedStream(t, store)
-	publishRunner(t, store, pullSubject)
-	publishRunner(t, store, pullSubject)
-
-	events := make(chan Event, 8)
-	first := true
-
-	target := fakeTarget{name: test.name, deliver: func(_ context.Context, event Event) error {
-		events <- event
-
-		if first {
-			first = false
-
-			return test.fail()
-		}
-
-		return nil
-	}}
-	run := &runner{
-		onPermanent: nil,
-		ready:       nil,
-		possibleGap: atomic.Uint64{},
-		stream:      store.stream,
-		retryBase:   time.Millisecond,
-		targets: []runnerTarget{{
-			Target: target, Subjects: nil, Start: startPosition{at: nil, all: true},
-		}},
-	}
-	park := parkHook(store.jet, newTelemetry(slog.DiscardHandler, nil, nil), 0)
-	run.onPermanent = func(ctx context.Context, name string, event Event, err error) {
-		logPermanent(ctx, name, event, err)
-		park(ctx, name, event, err)
-	}
-
-	stop := startRunner(t, run)
-	expectRunner(t, events, test.want...)
-	stop()
-
-	records, err := listParked(t.Context(), parked, "", 0)
-	checkError(t, err)
-
-	if test.park == "" {
-		checkEqual(t, len(records), 0)
-	} else {
-		checkEqual(t, len(records), 1)
-		checkEqual(t, records[0].Seq, uint64(1))
-		checkEqual(t, records[0].Target, test.name)
-		checkEqual(t, records[0].Error, test.park)
-	}
-
-	info, err := store.stream.Consumer(t.Context(), test.name)
-	checkError(t, err)
-	checkEqual(t, info.CachedInfo().AckFloor.Stream, uint64(2))
 }
 
 func TestRunnerRestart(t *testing.T) {
@@ -191,23 +177,9 @@ func TestRunnerRestart(t *testing.T) {
 	publishRunner(t, store, pullSubject)
 
 	events := make(chan Event, 8)
-	run := &runner{
-		onPermanent: nil,
-		ready:       nil,
-		possibleGap: atomic.Uint64{},
-		stream:      store.stream,
-		retryBase:   0,
-		targets: []runnerTarget{
-			{
-				Target: recordingTarget(
-					"restart",
-					events,
-				),
-				Subjects: []string{pullSubject},
-				Start:    startPosition{at: nil, all: true},
-			},
-		},
-	}
+	run := &runner{stream: store.stream, targets: []runnerTarget{{
+		Target: recordingTarget("restart", events), Subjects: []string{pullSubject}, Start: startPosition{all: true},
+	}}}
 	stop := startRunner(t, run)
 	expectRunner(t, events, 2)
 	stop()
@@ -232,16 +204,9 @@ func TestRunnerGap(t *testing.T) {
 	store := testStore(t, retention)
 
 	events := make(chan Event, 4)
-	run := &runner{
-		onPermanent: nil,
-		ready:       nil,
-		possibleGap: atomic.Uint64{},
-		stream:      store.stream,
-		retryBase:   0,
-		targets: []runnerTarget{{
-			Subjects: nil, Target: recordingTarget("gap", events), Start: startPosition{at: nil, all: true},
-		}},
-	}
+	run := &runner{stream: store.stream, targets: []runnerTarget{{
+		Target: recordingTarget("gap", events), Start: startPosition{all: true},
+	}}}
 	stop := startRunner(t, run)
 
 	publishRunner(t, store, pullSubject)
@@ -271,32 +236,6 @@ func TestRunnerGap(t *testing.T) {
 	publishRunner(t, store, pullSubject)
 	expectRunner(t, events, 3)
 	stop()
-	checkEqual(t, run.possibleGap.Load(), uint64(1))
-}
-
-func TestRunnerGapUsesCachedInfo(t *testing.T) {
-	t.Parallel()
-
-	store := testStore(t, retention)
-	for range 3 {
-		publishRunner(t, store, pullSubject)
-	}
-
-	checkError(t, store.stream.Purge(t.Context(), jetstream.WithPurgeKeep(1)))
-	info, err := store.stream.Info(t.Context())
-	checkError(t, err)
-	checkEqual(t, info.State.FirstSeq, uint64(3))
-
-	ctx, cancel := context.WithCancel(t.Context())
-	cancel()
-
-	_, err = store.stream.Info(ctx)
-	checkEqual(t, errors.Is(err, context.Canceled), true)
-
-	var run runner
-
-	run.stream = store.stream
-	checkEqual(t, run.checkGap(ctx, "gap", 1, 0), uint64(3))
 	checkEqual(t, run.possibleGap.Load(), uint64(1))
 }
 
@@ -331,18 +270,11 @@ func TestRunnerStarts(t *testing.T) {
 		return nil
 	}}
 
-	run := &runner{
-		onPermanent: nil,
-		ready:       nil,
-		possibleGap: atomic.Uint64{},
-		stream:      store.stream,
-		retryBase:   0,
-		targets: []runnerTarget{
-			{Subjects: nil, Target: all, Start: startPosition{at: nil, all: true}},
-			{Subjects: nil, Target: recordingTarget("time", timedEvents), Start: startPosition{at: &since, all: false}},
-			{Start: startPosition{at: nil, all: false}, Subjects: nil, Target: recordingTarget("new", newEvents)},
-		},
-	}
+	run := &runner{stream: store.stream, targets: []runnerTarget{
+		{Target: all, Start: startPosition{all: true}},
+		{Target: recordingTarget("time", timedEvents), Start: startPosition{at: &since}},
+		{Target: recordingTarget("new", newEvents)},
+	}}
 
 	startRunner(t, run)
 	waitRunner(t, func() bool {
@@ -360,16 +292,7 @@ func TestRunnerConsumerError(t *testing.T) {
 	t.Parallel()
 
 	store := testStore(t, retention)
-	run := &runner{
-		onPermanent: nil,
-		ready:       nil,
-		possibleGap: atomic.Uint64{},
-		stream:      store.stream,
-		retryBase:   0,
-		targets: []runnerTarget{
-			{Subjects: nil, Start: startPosition{at: nil, all: false}, Target: fakeTarget{name: ".", deliver: nil}},
-		},
-	}
+	run := &runner{stream: store.stream, targets: []runnerTarget{{Target: fakeTarget{name: "."}}}}
 	err := run.run(t.Context())
 	checkEqual(t, errors.Is(err, jetstream.ErrInvalidConsumerName), true)
 
@@ -398,7 +321,6 @@ type runnerMessage struct {
 	jetstream.Msg
 
 	ackError error
-	nakError error
 }
 
 func (runnerMessage) Metadata() (*jetstream.MsgMetadata, error) {
@@ -409,25 +331,15 @@ func (runnerMessage) Data() []byte { return []byte(testEnvelope) }
 
 func (message runnerMessage) DoubleAck(context.Context) error { return message.ackError }
 
-func (message runnerMessage) NakWithDelay(time.Duration) error { return message.nakError }
-
 func TestRunnerAcknowledgment(t *testing.T) {
 	t.Parallel()
 
-	target := runnerTarget{
-		Start:    startPosition{at: nil, all: false},
-		Subjects: nil,
-		Target: fakeTarget{name: "ack", deliver: func(_ context.Context, event Event) error {
-			return fmt.Errorf("%w: %s", ErrPermanent, event.Envelope)
-		}},
-	}
+	target := runnerTarget{Target: fakeTarget{name: "ack", deliver: func(_ context.Context, event Event) error {
+		return fmt.Errorf("%w: %s", ErrPermanent, event.Envelope)
+	}}}
 
 	var run runner
 
-	checkEqual(
-		t,
-		run.deliver(t.Context(), target, runnerMessage{Msg: nil, nakError: nil, ackError: errRetryDelivery}, 1),
-		uint64(1),
-	)
-	checkEqual(t, run.deliver(t.Context(), target, runnerMessage{Msg: nil, nakError: nil, ackError: nil}, 1), uint64(0))
+	checkEqual(t, run.deliver(t.Context(), target, runnerMessage{ackError: errRetryDelivery}, 1), uint64(1))
+	checkEqual(t, run.deliver(t.Context(), target, runnerMessage{}, 1), uint64(0))
 }

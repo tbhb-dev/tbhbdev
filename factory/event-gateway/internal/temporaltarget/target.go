@@ -9,13 +9,10 @@ package temporaltarget
 import (
 	"context"
 	"encoding/json"
-	"encoding/json/jsontext"
 	"errors"
 	"fmt"
 	"regexp"
 	"slices"
-
-	jsonv2 "encoding/json/v2"
 
 	"github.com/tbhb-dev/tbhbdev/factory/event-gateway/internal/eventfields"
 	"github.com/tbhb-dev/tbhbdev/factory/event-gateway/internal/routing"
@@ -54,9 +51,12 @@ type SignalRequest struct {
 }
 
 // SignalWithStartRequest starts a workflow if needed and signals it with the same input.
+//
+//nolint:govet // Keep the embedded request before ordinary fields.
 type SignalWithStartRequest struct {
-	SignalName   string
-	StartRequest StartRequest
+	StartRequest
+
+	SignalName string
 }
 
 // Client is the Temporal adapter. Start uses the use-existing conflict policy.
@@ -99,8 +99,8 @@ func (t *Target) Act(ctx context.Context, rule routing.Rule, fields eventfields.
 		return deliveryError{"workflow ID render", permanent}
 	}
 
-	input, err := reference(&fields, envelope, rule.Name, t.name)
-	if err != nil || len(input) > maxReferenceBytes {
+	input := reference(&fields, envelope, rule.Name, t.name)
+	if len(input) > maxReferenceBytes {
 		return deliveryError{"event reference", permanent}
 	}
 
@@ -130,13 +130,13 @@ func (t *Target) Act(ctx context.Context, rule routing.Rule, fields eventfields.
 	}
 }
 
-func reference(fields *eventfields.Fields, envelope []byte, rule, target string) ([]byte, error) {
-	var metadata map[string]json.RawMessage
-	if json.Unmarshal(envelope, &metadata) != nil {
-		metadata = nil
+func reference(fields *eventfields.Fields, envelope []byte, rule, target string) []byte {
+	var metadata struct {
+		//nolint:tagliatelle // Match the envelope's wire key.
+		ReceivedAt string `json:"received_at"`
 	}
-
-	receivedAt := readString(metadata["received_at"])
+	//nolint:errcheck // Missing or invalid timestamps leave the string empty.
+	_ = json.Unmarshal(envelope, &metadata)
 	value := func(name string, field any) any {
 		if fields.Has(name) {
 			return field
@@ -145,21 +145,18 @@ func reference(fields *eventfields.Fields, envelope []byte, rule, target string)
 		return nil
 	}
 	repository := value("repository", fields.Repository)
-
-	input, err := jsonv2.Marshal(map[string]any{
+	//nolint:errcheck,errchkjson // Every value is a JSON scalar or a map of scalars.
+	input, _ := json.Marshal(map[string]any{
 		"seq": fields.Seq, "provider": fields.Provider, "event": fields.Event, "delivery": fields.Delivery,
-		"repository": repository, "received_at": receivedAt, "rule": rule, "target": target,
+		"repository": repository, "received_at": metadata.ReceivedAt, "rule": rule, "target": target,
 		"fields": map[string]any{
 			"action": value("action", fields.Action), "number": value("number", fields.Number),
 			"head_sha": value("head_sha", fields.HeadSHA), "label": value("label", fields.Label),
 			"sender": value("sender", fields.Sender),
 		},
-	}, jsonv2.Deterministic(true), jsontext.EscapeForHTML(true), jsontext.EscapeForJS(true))
-	if err != nil {
-		return nil, fmt.Errorf("encode Temporal event reference: %w", err)
-	}
+	})
 
-	return input, nil
+	return input
 }
 
 type configError string
@@ -185,10 +182,8 @@ func readObject(raw json.RawMessage, keys ...string) map[string]json.RawMessage 
 
 func readString(raw json.RawMessage) string {
 	var value string
-
-	if json.Unmarshal(raw, &value) != nil {
-		return ""
-	}
+	//nolint:errcheck // Missing or invalid strings become empty and fail validation.
+	_ = json.Unmarshal(raw, &value)
 
 	return value
 }

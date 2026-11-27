@@ -9,7 +9,6 @@ import (
 	"crypto/subtle"
 	"encoding/hex"
 	"errors"
-	"fmt"
 	"log/slog"
 	"os"
 	"regexp"
@@ -19,7 +18,7 @@ import (
 
 var (
 	errTokenFormat = errors.New("read token file requires at least one name:SHA-256 hex entry")
-	tokenEntry     = regexp.MustCompile(`^([^:]+):(.{64})$`)
+	tokenEntry     = regexp.MustCompile(`^([^:]+):([a-fA-F0-9]{64})$`)
 )
 
 type readTokens struct {
@@ -27,10 +26,11 @@ type readTokens struct {
 	path string
 }
 
+//nolint:wrapcheck // Callers can report the token file read error directly.
 func (tokens *readTokens) load() error {
 	data, err := os.ReadFile(tokens.path)
 	if err != nil {
-		return fmt.Errorf("read token file: %w", err)
+		return err
 	}
 
 	set := make(map[[sha256.Size]byte]string)
@@ -46,11 +46,8 @@ func (tokens *readTokens) load() error {
 			return errTokenFormat
 		}
 
-		hash, decodeErr := hex.DecodeString(entry[2])
-		if decodeErr != nil {
-			return errTokenFormat
-		}
-
+		//nolint:errcheck // The pattern guarantees exactly 32 encoded bytes.
+		hash, _ := hex.DecodeString(entry[2])
 		set[[sha256.Size]byte(hash)] = entry[1]
 	}
 

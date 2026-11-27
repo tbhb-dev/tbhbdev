@@ -40,7 +40,7 @@ func TestStoreDeliveryDuplicates(t *testing.T) {
 	repository := "example/repository"
 	received := time.Now().UTC()
 	message := envelope{
-		Type:       eventType,
+		Type:       "event",
 		Provider:   "github",
 		Event:      event,
 		Delivery:   delivery,
@@ -73,23 +73,6 @@ func TestStoreDeliveryDuplicates(t *testing.T) {
 	hash := sha256.Sum256(message.Payload)
 	checkEqual(t, msg.Header.Get(bodyHashKey), hex.EncodeToString(hash[:]))
 
-	checkStoredEvent(t, msg, body)
-
-	checkError(t, store.stream.DeleteMsg(ctx, msg.Sequence))
-
-	err = store.publish(ctx, message)
-	checkEqual(t, errors.Is(err, jetstream.ErrMsgNotFound), true)
-
-	canceled, cancel := context.WithCancel(ctx)
-	cancel()
-
-	err = store.publish(canceled, message)
-	checkEqual(t, errors.Is(err, context.Canceled), true)
-}
-
-func checkStoredEvent(t *testing.T, msg *jetstream.RawStreamMsg, body string) {
-	t.Helper()
-
 	var stored map[string]json.RawMessage
 	checkError(t, json.Unmarshal(msg.Data, &stored))
 	checkEqual(t, len(stored), 7)
@@ -107,6 +90,17 @@ func checkStoredEvent(t *testing.T, msg *jetstream.RawStreamMsg, body string) {
 	var receivedAt time.Time
 	checkError(t, json.Unmarshal(stored["received_at"], &receivedAt))
 	checkEqual(t, receivedAt.Location(), time.UTC)
+
+	checkError(t, store.stream.DeleteMsg(ctx, msg.Sequence))
+
+	err = store.publish(ctx, message)
+	checkEqual(t, errors.Is(err, jetstream.ErrMsgNotFound), true)
+
+	canceled, cancel := context.WithCancel(ctx)
+	cancel()
+
+	err = store.publish(canceled, message)
+	checkEqual(t, errors.Is(err, context.Canceled), true)
 }
 
 func TestEventExpiry(t *testing.T) {
@@ -120,7 +114,7 @@ func TestEventExpiry(t *testing.T) {
 	ctx := t.Context()
 	store := testStore(t, maxAge)
 	message := envelope{
-		Type:       eventType,
+		Type:       "event",
 		Provider:   "github",
 		Event:      issuesEvent,
 		Delivery:   delivery,
@@ -218,7 +212,7 @@ func TestStoreStopsOnStreamError(t *testing.T) {
 	checkError(t, err)
 	t.Cleanup(conn.Close)
 
-	_, stop, err := openStream(t.Context(), embedded.Shutdown, conn, time.Nanosecond)
+	_, stop, err := openStream(t.Context(), embedded, conn, time.Nanosecond)
 	if err == nil || !strings.Contains(err.Error(), "configure EVENTS stream") {
 		t.Fatalf("expected a stream configuration error, got %v", err)
 	}
@@ -282,7 +276,7 @@ func retryFixture(jet *retryJet) (eventStore, envelope) {
 	event.Event = issuesEvent
 	event.Payload = []byte("{}")
 
-	return eventStore{jet: jet, stream: stream, openOrdered: nil}, event
+	return eventStore{jet: jet, stream: stream}, event
 }
 
 func TestStoreRetryAfterExpiry(t *testing.T) {

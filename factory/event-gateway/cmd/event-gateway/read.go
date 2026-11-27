@@ -4,13 +4,10 @@
 package main
 
 import (
-	"bytes"
 	"cmp"
 	"context"
 	"encoding/json"
 	"errors"
-	"fmt"
-	"log/slog"
 	"net/http"
 	"strconv"
 	"strings"
@@ -31,19 +28,11 @@ type readAPI struct {
 	telemetry telemetry
 }
 
+//nolint:tagliatelle // Use the same wire naming as received_at in the envelope.
 type eventPage struct {
 	Gap     map[string]uint64 `json:"gap,omitempty"`
 	Events  []json.RawMessage `json:"events"`
-	LastSeq uint64            `json:"-"`
-}
-
-func (page *eventPage) MarshalJSON() ([]byte, error) {
-	type fields eventPage
-
-	data, err := json.Marshal((*fields)(page))
-	data = strconv.AppendUint(append(bytes.TrimSuffix(data, []byte("}")), `,"last_seq":`...), page.LastSeq, decimal)
-
-	return append(data, '}'), errors.Join(err)
+	LastSeq uint64            `json:"last_seq"`
 }
 
 func (api readAPI) handler() http.Handler {
@@ -99,7 +88,7 @@ func (api readAPI) list(response http.ResponseWriter, request *http.Request) {
 			page.Gap = map[string]uint64{"from": after + 1, "to": page.LastSeq}
 		}
 
-		err = page.fetch(ctx, stream, subject, api.store.orderedConsumer())
+		err = page.fetch(ctx, stream, subject)
 		if err != nil {
 			response.WriteHeader(http.StatusServiceUnavailable)
 
@@ -107,7 +96,7 @@ func (api readAPI) list(response http.ResponseWriter, request *http.Request) {
 		}
 	}
 
-	writeReadJSON(response, &page)
+	writeReadJSON(response, page)
 }
 
 func (api readAPI) get(response http.ResponseWriter, request *http.Request) {
@@ -145,30 +134,14 @@ func (api readAPI) getSequence(ctx context.Context, response http.ResponseWriter
 
 func writeReadJSON(response http.ResponseWriter, body any) {
 	response.Header().Set("Content-Type", "application/json")
-
-	data, err := json.Marshal(body)
-	if err != nil {
-		response.WriteHeader(http.StatusInternalServerError)
-
-		return
-	}
-
-	_, err = response.Write(append(data, '\n'))
-	if err != nil {
-		slog.Default().Debug("JSON response write failed", "error", err)
-	}
+	//nolint:errcheck,errchkjson // Both response types contain only JSON and fixed fields.
+	_ = json.NewEncoder(response).Encode(body)
 }
 
-func (page *eventPage) fetch(
-	ctx context.Context, stream jetstream.Stream, subject string, open openOrderedConsumer,
-) error {
-	consumer, err := open(ctx, jetstream.OrderedConsumerConfig{
-		OptStartTime: nil,
-		ReplayPolicy: 0,
-		HeadersOnly:  false,
-		Metadata:     nil,
-		NamePrefix:   "",
-
+//nolint:wrapcheck // The handler only needs to know whether the store returned a page.
+func (page *eventPage) fetch(ctx context.Context, stream jetstream.Stream, subject string) error {
+	//nolint:exhaustruct_v5 // The ordered consumer starts after the page cursor.
+	consumer, err := stream.OrderedConsumer(ctx, jetstream.OrderedConsumerConfig{
 		DeliverPolicy:     jetstream.DeliverByStartSequencePolicy,
 		OptStartSeq:       page.LastSeq + 1,
 		FilterSubjects:    []string{subject},
@@ -176,44 +149,31 @@ func (page *eventPage) fetch(
 		InactiveThreshold: shutdownTimeout,
 	})
 	if err != nil {
-		return fmt.Errorf("open event page consumer: %w", err)
+		return err
 	}
 
 	defer func() {
-		deleteOrderedConsumer(ctx, stream, consumer)
+		//nolint:errcheck // JetStream expires the consumer if deletion fails.
+		_ = stream.DeleteConsumer(ctx, consumer.CachedInfo().Name)
 	}()
 
 	batch, err := consumer.FetchNoWait(pageLimit)
 	if err != nil {
-		return fmt.Errorf("fetch event page: %w", err)
+		return err
 	}
 
-	return page.appendBatch(batch)
-}
-
-func (page *eventPage) appendBatch(batch jetstream.MessageBatch) error {
 	for message := range batch.Messages() {
-		meta, metadataErr := message.Metadata()
-		if metadataErr != nil {
-			return fmt.Errorf("read event metadata: %w", metadataErr)
-		}
-
+		//nolint:errcheck // Fetch validates message metadata before accepting delivery.
+		meta, _ := message.Metadata()
 		page.LastSeq = meta.Sequence.Stream
 		page.Events = append(page.Events, sequenceEnvelope(page.LastSeq, message.Data()))
 	}
 
-	return errors.Join(batch.Error())
+	return batch.Error()
 }
 
 func sequenceEnvelope(seq uint64, data []byte) json.RawMessage {
 	encoded := strconv.AppendUint([]byte(`{"seq":`), seq, decimal)
 
 	return append(append(encoded, ','), data[1:]...)
-}
-
-func deleteOrderedConsumer(ctx context.Context, stream jetstream.Stream, consumer jetstream.Consumer) {
-	err := stream.DeleteConsumer(ctx, consumer.CachedInfo().Name)
-	if err != nil {
-		slog.Default().DebugContext(ctx, "ordered consumer cleanup failed", "error", err)
-	}
 }

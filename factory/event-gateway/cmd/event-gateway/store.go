@@ -35,25 +35,21 @@ var (
 	errBodyConflict = errors.New("delivery ID already has a different body")
 )
 
-type openOrderedConsumer func(context.Context, jetstream.OrderedConsumerConfig) (jetstream.Consumer, error)
-
 type eventStore struct {
-	openOrdered openOrderedConsumer
-	jet         jetstream.JetStream
-	stream      jetstream.Stream
+	jet    jetstream.JetStream
+	stream jetstream.Stream
 }
 
 func storeOptions(storeDir string) *server.Options {
-	var options server.Options
-
-	options.JetStream = true
-	options.StoreDir = storeDir
-	options.DontListen = true
-	options.NoSigs = true
-	options.SyncAlways = true
-	options.MaxPayload = maxPayload
-
-	return &options
+	//nolint:exhaustruct_v5 // The embedded server uses NATS defaults for the other options.
+	return &server.Options{
+		JetStream:  true,
+		StoreDir:   storeDir,
+		DontListen: true,
+		NoSigs:     true,
+		SyncAlways: true,
+		MaxPayload: maxPayload,
+	}
 }
 
 func openStore(ctx context.Context, options *server.Options, maxAge time.Duration) (eventStore, func(), error) {
@@ -119,53 +115,39 @@ func connectStore(ctx context.Context, embedded *server.Server, maxAge time.Dura
 		return eventStore{}, nil, fmt.Errorf("connect to embedded NATS: %w", err)
 	}
 
-	return openStream(ctx, embedded.Shutdown, conn, maxAge)
+	return openStream(ctx, embedded, conn, maxAge)
 }
 
 func openStream(
 	ctx context.Context,
-	shutdown func(),
+	embedded *server.Server,
 	conn *nats.Conn,
 	maxAge time.Duration,
-	options ...jetstream.JetStreamOpt,
 ) (eventStore, func(), error) {
 	closeStore := func() {
 		conn.Close()
-		shutdown()
+		embedded.Shutdown()
 	}
 
-	jet, err := jetstream.New(conn, options...)
-	if err != nil {
-		closeStore()
+	//nolint:errcheck // JetStream New only returns errors from options.
+	jet, _ := jetstream.New(conn)
 
-		return eventStore{}, nil, fmt.Errorf("initialize JetStream: %w", err)
-	}
-
-	var config jetstream.StreamConfig
-
-	config.Name = streamName
-	config.Subjects = []string{"events.>"}
-	config.Storage = jetstream.FileStorage
-	config.Replicas = 1
-	config.MaxAge = maxAge
-	config.Duplicates = maxAge
-
-	stream, err := jet.CreateOrUpdateStream(ctx, config)
+	//nolint:exhaustruct_v5 // The stream uses JetStream defaults for the other options.
+	stream, err := jet.CreateOrUpdateStream(ctx, jetstream.StreamConfig{
+		Name:       streamName,
+		Subjects:   []string{"events.>"},
+		Storage:    jetstream.FileStorage,
+		Replicas:   1,
+		MaxAge:     maxAge,
+		Duplicates: maxAge,
+	})
 	if err != nil {
 		closeStore()
 
 		return eventStore{}, nil, fmt.Errorf("configure EVENTS stream: %w", err)
 	}
 
-	return eventStore{jet: jet, stream: stream, openOrdered: nil}, closeStore, nil
-}
-
-func (s eventStore) orderedConsumer() openOrderedConsumer {
-	if s.openOrdered != nil {
-		return s.openOrdered
-	}
-
-	return s.stream.OrderedConsumer
+	return eventStore{jet: jet, stream: stream}, closeStore, nil
 }
 
 func validateEvent(name string, payload []byte) error {
@@ -195,12 +177,7 @@ func (s eventStore) publish(ctx context.Context, event envelope) error {
 	sum := sha256.Sum256(event.Payload)
 	hash := hex.EncodeToString(sum[:])
 	msg := nats.NewMsg("events." + event.Provider + "." + event.Event)
-
-	msg.Data, err = event.encode()
-	if err != nil {
-		return fmt.Errorf("encode event: %w", err)
-	}
-
+	msg.Data = event.encode()
 	msg.Header.Set(nats.MsgIdHdr, event.Provider+":"+event.Delivery)
 	msg.Header.Set(bodyHashKey, hash)
 

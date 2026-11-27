@@ -96,7 +96,7 @@ func Load(data []byte) (Config, error) {
 func loadEntries[T any](
 	raw json.RawMessage, kind string, load func(string, map[string]json.RawMessage) (T, error), keys ...string,
 ) ([]T, error) {
-	entries := *decode[[]json.RawMessage](raw)
+	entries := decode[[]json.RawMessage](raw)
 	if len(entries) == 0 {
 		return nil, fmt.Errorf("%ss: %w", kind, configError("expected one or more entries"))
 	}
@@ -106,7 +106,7 @@ func loadEntries[T any](
 
 	for index, entry := range entries {
 		object, err := readObject(entry, keys...)
-		name := *decode[string](object["name"])
+		name := decode[string](object["name"])
 
 		switch {
 		case err != nil:
@@ -128,7 +128,7 @@ func loadEntries[T any](
 }
 
 func loadTarget(name string, object map[string]json.RawMessage) (Target, error) {
-	kind := *decode[string](object["type"])
+	kind := decode[string](object["type"])
 	if !typePattern.MatchString(kind) {
 		return Target{}, configError("invalid type")
 	}
@@ -163,7 +163,7 @@ func loadRule(name string, object map[string]json.RawMessage) (Rule, error) {
 }
 
 func parseStart(raw json.RawMessage) (Start, error) {
-	value := *decode[string](raw)
+	value := decode[string](raw)
 	switch {
 	case raw == nil, value == "new":
 		return Start{Kind: New, Time: time.Time{}}, nil
@@ -188,9 +188,9 @@ func compileMatch(rule *Rule, raw json.RawMessage) error {
 
 	eventJSON := object["event"]
 
-	events := *decode[[]string](eventJSON)
+	events := decode[[]string](eventJSON)
 	if bytes.HasPrefix(eventJSON, []byte(`"`)) {
-		events = []string{*decode[string](eventJSON)}
+		events = []string{decode[string](eventJSON)}
 	}
 
 	slices.Sort(events)
@@ -203,7 +203,7 @@ func compileMatch(rule *Rule, raw json.RawMessage) error {
 	}
 
 	if repos := object["repository"]; repos != nil {
-		rule.repositories = *decode[[]string](repos)
+		rule.repositories = decode[[]string](repos)
 
 		err = validateTokens(rule.repositories, maxRepositories, repositoryPattern)
 		if err != nil {
@@ -221,8 +221,10 @@ func compileMatch(rule *Rule, raw json.RawMessage) error {
 
 	for _, event := range events {
 		object["event"] = json.RawMessage(`"` + event + `"`)
+		//nolint:errcheck,errchkjson // Every value is valid raw JSON.
+		data, _ := json.Marshal(object)
 
-		subscription, parseErr := filter.ParseObject(object)
+		subscription, parseErr := filter.Parse(data)
 		if parseErr != nil {
 			return fmt.Errorf("event %q: %w", event, parseErr)
 		}
@@ -249,7 +251,7 @@ func validateTokens(tokens []string, limit int, pattern *regexp.Regexp) error {
 }
 
 func readObject(raw []byte, keys ...string) (map[string]json.RawMessage, error) {
-	object := *decode[map[string]json.RawMessage](raw)
+	object := decode[map[string]json.RawMessage](raw)
 	if object == nil {
 		return nil, configError("expected a JSON object")
 	}
@@ -263,15 +265,16 @@ func readObject(raw []byte, keys ...string) (map[string]json.RawMessage, error) 
 	return object, nil
 }
 
-func decode[T any](raw json.RawMessage) *T {
+//nolint:ireturn // Callers select the concrete JSON type.
+func decode[T any](raw json.RawMessage) T {
 	var value, zero T
 
 	err := json.Unmarshal(raw, &value)
 	if err != nil {
-		return &zero
+		return zero
 	}
 
-	return &value
+	return value
 }
 
 // Subjects returns the target's sorted, distinct event subjects.

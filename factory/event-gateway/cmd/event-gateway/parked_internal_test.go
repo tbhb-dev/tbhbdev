@@ -1,12 +1,12 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright Tony Burns
 
+//nolint:exhaustruct_v5 // Fixtures use zero defaults for fields unrelated to the case.
 package main
 
 import (
 	"bytes"
 	"context"
-	"crypto/rand"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -15,7 +15,6 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
-	"path/filepath"
 	"reflect"
 	"slices"
 	"strings"
@@ -37,28 +36,29 @@ const (
 
 var errLongParked = errors.New(strings.Repeat("x", 512) + "overflow")
 
+//nolint:usetesting // Use a short root for Unix socket paths.
 func shortSocketDir(t *testing.T) string {
 	t.Helper()
 
-	// The test name in t.TempDir can exceed the Unix socket path limit.
-	dir := filepath.Join("/tmp", "eg-"+rand.Text())
-	checkError(t, os.Mkdir(dir, 0o700))
+	dir, err := os.MkdirTemp("/tmp", "eg-")
+	if err != nil {
+		dir, err = os.MkdirTemp("", "eg-")
+		checkError(t, err)
+	}
 
 	t.Cleanup(func() { checkError(t, os.RemoveAll(dir)) })
 
 	return dir
 }
 
-type parkedTestStream struct{ jetstream.Stream }
-
-func testParkedStream(t *testing.T, store eventStore) parkedTestStream {
+//nolint:ireturn // Return the actual JetStream stream to the tests.
+func testParkedStream(t *testing.T, store eventStore) jetstream.Stream {
 	t.Helper()
 
-	checkError(t, openParkedStream(t.Context(), store.jet))
-	stream, err := store.jet.Stream(t.Context(), parkedStream)
+	stream, err := openParkedStream(t.Context(), store.jet)
 	checkError(t, err)
 
-	return parkedTestStream{Stream: stream}
+	return stream
 }
 
 func TestParkedStreamConfig(t *testing.T) {
@@ -80,7 +80,7 @@ func TestParkedStreamConfig(t *testing.T) {
 	canceled, cancel := context.WithCancel(ctx)
 	cancel()
 
-	err = openParkedStream(canceled, store.jet)
+	_, err = openParkedStream(canceled, store.jet)
 	checkEqual(t, errors.Is(err, context.Canceled), true)
 }
 
@@ -102,7 +102,53 @@ func TestParkedRecord(t *testing.T) {
 	bodyErr := fmt.Errorf("%w: %s %s", ErrPermanent, stored.Data, parkedPayloadJSON)
 	hook := parkHook(store.jet, newTelemetry(slog.DiscardHandler, nil, nil), 0)
 
-	for _, test := range parkedRecordCases(valid, bodyErr, delivery) {
+	for _, test := range []struct {
+		err   error
+		name  string
+		want  parkedRecord
+		event Event
+	}{
+		{
+			name: "wrapped-rule", event: valid,
+			err: fmt.Errorf("delivery: %w", RuleError{Rule: "select", Err: bodyErr}),
+			want: parkedRecord{
+				Rule: "select", Provider: parkedFixtureProvider, Event: issuesEvent, Delivery: delivery,
+				Error: "delivery: permanent: [redacted] [redacted]",
+			},
+		},
+		{
+			name:  "undecodable-envelope",
+			event: Event{Envelope: []byte(`{"provider":"github","event":5,"delivery":"delivery-1"}`), Seq: 2},
+			err:   errLongParked,
+			want:  parkedRecord{Error: strings.Repeat("x", 512)},
+		},
+		{
+			name:  "short-payload",
+			event: Event{Envelope: []byte(`{"payload":0}`)},
+			err:   fmt.Errorf("%w: status 400", ErrPermanent),
+			want:  parkedRecord{Error: "permanent: status 400"},
+		},
+		{
+			name:  "eight-byte-payload",
+			event: Event{Envelope: []byte(`{"payload":12345678}`)},
+			err:   fmt.Errorf("%w: 12345678 12345678", ErrPermanent),
+			want:  parkedRecord{Error: "permanent: [redacted] [redacted]"},
+		},
+		{
+			name: "typed-nil-error", event: valid,
+			err: (*json.SyntaxError)(nil),
+			want: parkedRecord{
+				Provider: parkedFixtureProvider, Event: issuesEvent, Delivery: delivery, Error: ErrPermanent.Error(),
+			},
+		},
+		{
+			name: "empty-rule-error", event: valid,
+			err: RuleError{},
+			want: parkedRecord{
+				Provider: parkedFixtureProvider, Event: issuesEvent, Delivery: delivery, Error: ErrPermanent.Error(),
+			},
+		},
+	} {
 		t.Run(test.name, func(t *testing.T) {
 			t.Parallel()
 
@@ -124,57 +170,6 @@ func TestParkedRecord(t *testing.T) {
 			checkEqual(t, record, test.want)
 		})
 	}
-}
-
-type parkedRecordCase struct {
-	err   error
-	name  string
-	want  parkedRecord
-	event Event
-}
-
-func parkedRecordCases(valid Event, bodyErr error, delivery string) []parkedRecordCase {
-	metadata := parkedRecord{
-		Target: "", Rule: "", ParkedAt: "", Seq: 0, Error: ErrPermanent.Error(),
-		Provider: parkedFixtureProvider, Event: issuesEvent, Delivery: delivery,
-	}
-	wrapped := metadata
-	wrapped.Rule, wrapped.Error = "select", "delivery: permanent: [redacted] [redacted]"
-
-	var undecodable parkedRecord
-
-	undecodable.Error = strings.Repeat("x", 512)
-
-	cases := make([]parkedRecordCase, 0, 6)
-
-	cases = append(cases, []parkedRecordCase{
-		{
-			err:   fmt.Errorf("delivery: %w", RuleError{Rule: "select", Err: bodyErr}),
-			name:  "wrapped-rule",
-			want:  wrapped,
-			event: valid,
-		},
-		{err: (*json.SyntaxError)(nil), name: "typed-nil-error", want: metadata, event: valid},
-		{err: RuleError{Err: nil, Rule: ""}, name: "empty-rule-error", want: metadata, event: valid},
-		{
-			err: errLongParked, name: "undecodable-envelope", want: undecodable,
-			event: Event{Envelope: []byte(`{"provider":"github","event":5,"delivery":"delivery-1"}`), Seq: 2},
-		},
-	}...)
-	for _, test := range [...]struct{ name, payload, detail, want string }{
-		{"short-payload", "0", "status 400", "permanent: status 400"},
-		{"eight-byte-payload", "12345678", "12345678 12345678", "permanent: [redacted] [redacted]"},
-	} {
-		var want parkedRecord
-
-		want.Error = test.want
-		cases = append(cases, parkedRecordCase{
-			name: test.name, event: Event{Seq: 0, Envelope: []byte(`{"payload":` + test.payload + `}`)},
-			want: want, err: fmt.Errorf("%w: %s", ErrPermanent, test.detail),
-		})
-	}
-
-	return cases
 }
 
 func TestParkedTelemetry(t *testing.T) {
@@ -237,7 +232,7 @@ func TestListParked(t *testing.T) {
 
 	ctx := t.Context()
 	store := testStore(t, retention)
-	api := parkedAPI{targets: nil, store: store}
+	api := parkedAPI{store: store}
 	callParked(t, api, http.MethodGet, parkedListPath, "", http.StatusServiceUnavailable)
 	stream := testParkedStream(t, store)
 	empty, listErr := listParked(ctx, stream, "", 0)
@@ -248,7 +243,7 @@ func TestListParked(t *testing.T) {
 
 	hook := parkHook(store.jet, newTelemetry(slog.DiscardHandler, nil, nil), 0)
 	for i, target := range []string{"two", firstTarget, firstTarget} {
-		hook(ctx, target, Event{Envelope: nil, Seq: uint64(i + 1)}, ErrPermanent)
+		hook(ctx, target, Event{Seq: uint64(i + 1)}, ErrPermanent)
 	}
 
 	for _, test := range []struct {
@@ -256,9 +251,9 @@ func TestListParked(t *testing.T) {
 		want   []uint64
 		limit  int
 	}{
-		{limit: 0, target: firstTarget, want: []uint64{2, 3}},
-		{target: "", limit: 0, want: []uint64{1, 2, 3}},
-		{target: "", limit: 2, want: []uint64{1, 2}},
+		{target: firstTarget, want: []uint64{2, 3}},
+		{want: []uint64{1, 2, 3}},
+		{limit: 2, want: []uint64{1, 2}},
 	} {
 		records, err := listParked(ctx, stream, test.target, test.limit)
 		checkError(t, err)
@@ -281,16 +276,9 @@ func TestListParked(t *testing.T) {
 		callParked(t, api, http.MethodGet, parkedListPath+query, "", http.StatusBadRequest)
 	}
 
-	checkParkedListFailures(t, api, stream)
-}
-
-func checkParkedListFailures(t *testing.T, api parkedAPI, stream parkedTestStream) {
-	t.Helper()
-
-	store, ctx := api.store, t.Context()
 	_, err := listParked(ctx, stream, "", -1)
 	checkEqual(t, errors.Is(err, errParkedLimit), true)
-	_, err = fetchParked(func(int) (jetstream.MessageBatch, error) { return nil, errRetryDelivery }, parkedListSize)
+	_, err = listParked(ctx, parkedPullStream{Stream: stream}, "", 0)
 	checkEqual(t, errors.Is(err, errRetryDelivery), true)
 	_, err = store.jet.Publish(ctx, "parked.one", []byte("invalid JSON"))
 	checkError(t, err)
@@ -306,6 +294,24 @@ func checkParkedListFailures(t *testing.T, api parkedAPI, stream parkedTestStrea
 	checkEqual(t, errors.Is(err, jetstream.ErrStreamNotFound), true)
 }
 
+type failedParkedPull struct{ jetstream.Consumer }
+
+//nolint:ireturn // Match the JetStream consumer interface.
+func (failedParkedPull) FetchNoWait(int) (jetstream.MessageBatch, error) {
+	return nil, errRetryDelivery
+}
+
+type parkedPullStream struct{ jetstream.Stream }
+
+//nolint:ireturn // Match the JetStream stream interface.
+func (stream parkedPullStream) OrderedConsumer(
+	ctx context.Context, config jetstream.OrderedConsumerConfig,
+) (jetstream.Consumer, error) {
+	consumer, err := stream.Stream.OrderedConsumer(ctx, config)
+
+	return failedParkedPull{Consumer: consumer}, err //nolint:wrapcheck // Preserve the real consumer's error.
+}
+
 func TestRetryParked(t *testing.T) {
 	t.Parallel()
 
@@ -315,28 +321,7 @@ func TestRetryParked(t *testing.T) {
 	publishRunner(t, store, issuesSubject)
 	publishRunner(t, store, issuesSubject)
 	checkError(t, store.stream.DeleteMsg(ctx, 1))
-	parkHook(
-		store.jet,
-		newTelemetry(slog.DiscardHandler, nil, nil),
-		0,
-	)(
-		ctx,
-		"retry",
-		Event{Envelope: nil, Seq: 2},
-		ErrPermanent,
-	)
-
-	checkParkedDeliveryRetries(t, store)
-
-	checkInvalidParkedRetries(t, store)
-
-	info, err := stream.Info(ctx)
-	checkError(t, err)
-	checkEqual(t, info.State.Msgs, uint64(1))
-}
-
-func checkParkedDeliveryRetries(t *testing.T, store eventStore) {
-	t.Helper()
+	parkHook(store.jet, newTelemetry(slog.DiscardHandler, nil, nil), 0)(ctx, "retry", Event{Seq: 2}, ErrPermanent)
 
 	for _, test := range []struct {
 		deliveryErr error
@@ -345,15 +330,12 @@ func checkParkedDeliveryRetries(t *testing.T, store eventStore) {
 		calls       int
 		panics      bool
 	}{
-		{deliveryErr: nil, want: nil, panics: false, seq: 2, calls: 1},
-		{panics: false, seq: 2, calls: 1, deliveryErr: errRetryDelivery, want: errRetryDelivery},
-		{deliveryErr: nil, seq: 2, calls: 1, panics: true, want: ErrPermanent},
-		{
-			panics: false, seq: 2, calls: 1,
-			deliveryErr: fmt.Errorf("%w: %s", ErrPermanent, parkedPayloadFixture), want: ErrPermanent,
-		},
-		{deliveryErr: nil, calls: 0, panics: false, seq: 1, want: jetstream.ErrMsgNotFound},
-		{deliveryErr: nil, calls: 0, panics: false, seq: 3, want: jetstream.ErrMsgNotFound},
+		{seq: 2, calls: 1},
+		{seq: 2, calls: 1, deliveryErr: errRetryDelivery, want: errRetryDelivery},
+		{seq: 2, calls: 1, panics: true, want: ErrPermanent},
+		{seq: 2, calls: 1, deliveryErr: fmt.Errorf("%w: %s", ErrPermanent, parkedPayloadFixture), want: ErrPermanent},
+		{seq: 1, want: jetstream.ErrMsgNotFound},
+		{seq: 3, want: jetstream.ErrMsgNotFound},
 	} {
 		calls := 0
 		target := fakeTarget{name: "retry", deliver: func(_ context.Context, event Event) error {
@@ -368,14 +350,11 @@ func checkParkedDeliveryRetries(t *testing.T, store eventStore) {
 
 			return test.deliveryErr
 		}}
-		err := retryParked(t.Context(), store, target, test.seq)
+		err := retryParked(ctx, store, target, test.seq)
 		checkEqual(t, errors.Is(err, test.want), true)
 		checkEqual(t, calls, test.calls)
 
-		api := parkedAPI{
-			store:   store,
-			targets: []runnerTarget{{Start: startPosition{at: nil, all: false}, Subjects: nil, Target: target}},
-		}
+		api := parkedAPI{store: store, targets: []runnerTarget{{Target: target}}}
 		body := fmt.Sprintf(`{"target":%q,"seq":%d}`, target.name, test.seq)
 
 		status, wantBody := http.StatusInternalServerError, "retry failed\n"
@@ -386,26 +365,17 @@ func checkParkedDeliveryRetries(t *testing.T, store eventStore) {
 		checkEqual(t, callParked(t, api, http.MethodPost, parkedRetryPath, body, status), wantBody)
 		checkEqual(t, calls, 2*test.calls)
 	}
-}
 
-func checkInvalidParkedRetries(t *testing.T, store eventStore) {
-	t.Helper()
-
-	api := parkedAPI{
-		store: store,
-		targets: []runnerTarget{
-			{
-				Start:    startPosition{at: nil, all: false},
-				Subjects: nil,
-				Target:   fakeTarget{name: "present", deliver: nil},
-			},
-		},
-	}
+	api := parkedAPI{store: store, targets: []runnerTarget{{Target: fakeTarget{name: "present"}}}}
 	for _, body := range []string{"{", `{}`, `{"target":"retry"}`, `{"target":"retry","seq":1}[]`} {
 		callParked(t, api, http.MethodPost, parkedRetryPath, body, http.StatusBadRequest)
 	}
 
 	callParked(t, api, http.MethodPost, parkedRetryPath, `{"target":"missing","seq":2}`, http.StatusNotFound)
+
+	info, err := stream.Info(ctx)
+	checkError(t, err)
+	checkEqual(t, info.State.Msgs, uint64(1))
 }
 
 func callParked(t *testing.T, api parkedAPI, method, path, body string, status int) string {
@@ -437,23 +407,21 @@ func TestParkedCLI(t *testing.T) {
 	}
 
 	for _, transport := range []error{os.ErrNotExist, syscall.ECONNREFUSED} {
-		err := parkedRequestError("missing.sock", transport)
+		err := parkedResponse(io.Discard, "missing.sock", nil, transport)
 		checkEqual(t, err.Error(), "event-gateway is not running (cannot reach missing.sock)")
 		checkEqual(t, exitCode(ctx, slog.New(slog.DiscardHandler), err), 1)
 	}
 
-	empty := httptest.NewRecorder()
-	empty.WriteHeader(http.StatusNoContent)
-	response := empty.Result()
+	response := &http.Response{StatusCode: http.StatusNoContent, Body: http.NoBody}
 
 	checkError(t, runParked(ctx, io.Discard, []string{parkedRetryCommand, "sample", "3"},
 		func(string, *http.Request) (*http.Response, error) { return response, nil }))
 
 	response.StatusCode = http.StatusNotFound
-	checkEqual(t, errors.Is(parkedResponse(io.Discard, response), errParkedRequest), true)
+	checkEqual(t, errors.Is(parkedResponse(io.Discard, "", response, nil), errParkedRequest), true)
 	checkEqual(t, printParked(io.Discard, strings.NewReader("invalid")), errParkedRequest)
 
-	checkEqual(t, parkedRequestError("", os.ErrPermission), errParkedRequest)
+	checkEqual(t, parkedResponse(io.Discard, "", nil, os.ErrPermission), errParkedRequest)
 
 	const record = `{"target":"sample","rule":"select","provider":"github","event":"push",` +
 		`"delivery":"fixture","error":"failed","parked_at":"2026-11-24T00:00:00Z","seq":3}`
@@ -465,11 +433,7 @@ func TestParkedCLI(t *testing.T) {
 		checkEqual(t, path, "from-env.sock")
 		checkEqual(t, req.URL.RequestURI(), parkedListPath+"?limit=1&target=sample")
 
-		fixture := httptest.NewRecorder()
-		_, writeErr := io.WriteString(fixture, "["+record+"]")
-		checkError(t, writeErr)
-
-		return fixture.Result(), nil
+		return &http.Response{StatusCode: http.StatusOK, Body: io.NopCloser(strings.NewReader("[" + record + "]"))}, nil
 	})
 	checkError(t, err)
 	checkEqual(t, out.String(), record+"\n")

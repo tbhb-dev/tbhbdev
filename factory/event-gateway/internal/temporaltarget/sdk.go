@@ -23,60 +23,39 @@ import (
 )
 
 // SDKClient delivers event references through the Temporal SDK.
-type SDKClient struct {
-	client          sdk.Client
-	execute         func(context.Context, sdk.StartWorkflowOptions, any, ...any) error
-	signalWithStart func(context.Context, string, string, any, sdk.StartWorkflowOptions, any, ...any) error
-}
+type SDKClient struct{ client sdk.Client }
 
-func newSDKClient(client sdk.Client) *SDKClient {
-	return &SDKClient{
-		client: client,
-		execute: func(ctx context.Context, options sdk.StartWorkflowOptions, name any, args ...any) error {
-			_, err := client.ExecuteWorkflow(ctx, options, name, args...)
-
-			return mapSDKError(err)
-		},
-		signalWithStart: func(ctx context.Context, id, signal string, input any, options sdk.StartWorkflowOptions,
-			name any, args ...any,
-		) error {
-			_, err := client.SignalWithStartWorkflow(ctx, id, signal, input, options, name, args...)
-
-			return mapSDKError(err)
-		},
-	}
-}
+//nolint:gochecknoglobals // Tests replace the SDK dialer with a fake.
+var dialSDK = sdk.Dial
 
 // Dial connects to Temporal using the parsed connection settings.
 func Dial(connection Connection) (*SDKClient, error) {
-	return dial(connection, sdk.Dial)
-}
+	security, err := connection.TLS.config()
+	if err != nil {
+		return nil, err
+	}
 
-func dial(connection Connection, connect func(sdk.Options) (sdk.Client, error)) (*SDKClient, error) {
 	var options sdk.Options
 
 	options.HostPort, options.Namespace = connection.HostPort, connection.Namespace
-	if connection.TLS != nil {
-		security, err := connection.TLS.config()
-		if err != nil {
-			return nil, err
-		}
+	options.ConnectionOptions.TLS = security
 
-		options.ConnectionOptions.TLS = security
-	}
-
-	client, err := connect(options)
+	client, err := dialSDK(options)
 	if err != nil {
 		return nil, fmt.Errorf("dial Temporal: %w", err)
 	}
 
-	return newSDKClient(client), nil
+	return &SDKClient{client: client}, nil
 }
 
 // Close releases the Temporal connection.
 func (a *SDKClient) Close() { a.client.Close() }
 
 func (files *TLSFiles) config() (*tls.Config, error) {
+	if files == nil {
+		return nil, nil //nolint:nilnil // The SDK uses a nil configuration for plaintext.
+	}
+
 	config := new(tls.Config)
 	config.MinVersion = tls.VersionTLS12
 
@@ -110,7 +89,9 @@ func (files *TLSFiles) config() (*tls.Config, error) {
 
 // Start starts a workflow with one event reference.
 func (a *SDKClient) Start(ctx context.Context, req StartRequest) error {
-	return a.execute(ctx, startOptions(req), req.WorkflowType, rawInput(req.Input))
+	_, err := a.client.ExecuteWorkflow(ctx, startOptions(req), req.WorkflowType, rawInput(req.Input))
+
+	return mapSDKError(err)
 }
 
 // Signal sends an event reference to the current run.
@@ -120,18 +101,11 @@ func (a *SDKClient) Signal(ctx context.Context, req SignalRequest) error {
 
 // SignalWithStart starts the workflow if needed and signals it.
 func (a *SDKClient) SignalWithStart(ctx context.Context, req SignalWithStartRequest) error {
-	start := req.StartRequest
-	input := rawInput(start.Input)
+	input := rawInput(req.Input)
+	_, err := a.client.SignalWithStartWorkflow(ctx, req.WorkflowID, req.SignalName, input,
+		startOptions(req.StartRequest), req.WorkflowType, input)
 
-	return a.signalWithStart(
-		ctx,
-		start.WorkflowID,
-		req.SignalName,
-		input,
-		startOptions(start),
-		start.WorkflowType,
-		input,
-	)
+	return mapSDKError(err)
 }
 
 func startOptions(req StartRequest) sdk.StartWorkflowOptions {

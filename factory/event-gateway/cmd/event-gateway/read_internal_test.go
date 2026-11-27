@@ -63,7 +63,7 @@ func TestReadTokenReload(t *testing.T) {
 		checkEqual(t, tokens.authenticate("Bearer "+readFixture), "first")
 	}
 
-	api := readAPI{tokens: &tokens, store: eventStore{jet: nil, stream: nil, openOrdered: nil}, telemetry: signals}
+	api := readAPI{tokens: &tokens, store: eventStore{jet: nil, stream: nil}, telemetry: signals}
 	for _, header := range []string{"", "Basic " + readFixture, "Bearer wrong"} {
 		response := readRequest(t, api, eventsPath, header, http.StatusUnauthorized)
 		checkEqual(t, response.Body.Len(), 0)
@@ -96,7 +96,15 @@ func TestReadEventRoutes(t *testing.T) {
 	header := "Bearer " + readFixture
 	hook := testWebhook(t, store, defaultBodyCap)
 
-	publishReadEvents(t, hook)
+	for index := range pageLimit + 2 {
+		event := "push"
+		if index == pageLimit+1 {
+			event = "issues"
+		}
+
+		req := signedRequest(t.Context(), event, strconv.Itoa(index), `{"message":"stored"}`)
+		expectStatus(t, hook.ServeHTTP, req, http.StatusAccepted)
+	}
 
 	expectStatus(t, grafana.ServeHTTP, grafanaSigned(t.Context(), alertsBody(hostAlert)), http.StatusAccepted)
 	checkError(t, store.stream.DeleteMsg(t.Context(), 1))
@@ -107,7 +115,7 @@ func TestReadEventRoutes(t *testing.T) {
 	checkError(t, json.Unmarshal(response.Body.Bytes(), &page))
 	checkEqual(t, page.Gap["from"], uint64(1))
 	checkEqual(t, page.Gap["to"], uint64(1))
-	checkEqual(t, strings.Contains(response.Body.String(), `"last_seq":11`), true)
+	checkEqual(t, page.LastSeq, uint64(pageLimit+1))
 	checkEqual(t, len(page.Events), pageLimit)
 
 	response = readRequest(t, api, eventsPath+"?after=11&provider=github&event=issues", header, http.StatusOK)
@@ -135,32 +143,8 @@ func TestReadEventRoutes(t *testing.T) {
 	response = readRequest(t, api, eventsPath+"/2", header, http.StatusOK)
 	checkEqual(t, strings.Contains(response.Body.String(), `"payload":{"message":"stored"}`), true)
 
-	checkReadFailures(t, api, hook, &page, header)
-}
-
-func publishReadEvents(t *testing.T, hook *githubWebhook) {
-	t.Helper()
-
-	for index := range pageLimit + 2 {
-		event := "push"
-		if index == pageLimit+1 {
-			event = "issues"
-		}
-
-		req := signedRequest(t.Context(), event, strconv.Itoa(index), `{"message":"stored"}`)
-		expectStatus(t, hook.ServeHTTP, req, http.StatusAccepted)
-	}
-}
-
-func checkReadFailures(t *testing.T, api readAPI, hook *githubWebhook, page *eventPage, header string) {
-	t.Helper()
-
-	store := api.store
-
-	var config jetstream.OrderedConsumerConfig
-
-	config.MaxResetAttempts = 1
-	consumer, err := store.stream.OrderedConsumer(t.Context(), config)
+	//nolint:exhaustruct_v5 // The test consumer only needs a bounded reset.
+	consumer, err := store.stream.OrderedConsumer(t.Context(), jetstream.OrderedConsumerConfig{MaxResetAttempts: 1})
 	checkError(t, err)
 	exerciseSession(t, api, hook, consumer)
 	readRequest(t, api, eventsPath, header, http.StatusServiceUnavailable)
@@ -168,15 +152,21 @@ func checkReadFailures(t *testing.T, api readAPI, hook *githubWebhook, page *eve
 	api.store.stream = expiredStream{Stream: store.stream}
 	readRequest(t, api, eventsPath+"/1", header, http.StatusServiceUnavailable)
 
-	checkEqual(t, page.fetch(t.Context(), store.stream, "events.>", store.stream.OrderedConsumer) != nil, true)
-	api.store.stream = readFetchStream{Stream: store.stream}
-	api.store.openOrdered = func(context.Context, jetstream.OrderedConsumerConfig) (jetstream.Consumer, error) {
-		return consumer, nil
-	}
+	checkEqual(t, page.fetch(t.Context(), store.stream, "events.>") != nil, true)
+	api.store.stream = readFetchStream{Stream: store.stream, consumer: consumer}
 	readRequest(t, api, eventsPath, header, http.StatusServiceUnavailable)
 }
 
-type readFetchStream struct{ jetstream.Stream }
+type readFetchStream struct {
+	jetstream.Stream
+
+	consumer jetstream.Consumer
+}
+
+//nolint:ireturn // Match the JetStream stream interface.
+func (s readFetchStream) OrderedConsumer(context.Context, jetstream.OrderedConsumerConfig) (jetstream.Consumer, error) {
+	return s.consumer, nil
+}
 
 func (s readFetchStream) Info(context.Context, ...jetstream.StreamInfoOpt) (*jetstream.StreamInfo, error) {
 	return s.CachedInfo(), nil
