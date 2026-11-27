@@ -36,7 +36,7 @@ PUSH_PERMISSIONS = {
 # A review run returns its verdict as text, so its token can read and never write.
 # run-host posts the verdict after the run ends, so the posting token never reaches
 # the sandbox.
-REVIEW_POST_PERMISSIONS = {"pull_requests": "write"}
+REVIEW_POST_PERMISSIONS = {"contents": "read", "pull_requests": "write"}
 REVIEW_PERMISSIONS = {
     "contents": "read",
     "pull_requests": "read",

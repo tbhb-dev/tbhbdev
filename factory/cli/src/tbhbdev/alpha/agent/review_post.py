@@ -118,7 +118,7 @@ def validate(sub: Submission) -> tuple[dict[str, object], str]:
 
 
 def api(
-    method: str, url: str, token: str, payload: dict[str, str] | None = None
+    method: str, url: str, token: str, payload: dict[str, object] | None = None
 ) -> object:
     """One GitHub API call; any 2xx is success.
 
@@ -169,14 +169,13 @@ def create(sub: Submission, token: str) -> int | None:
     if event == "APPROVE" and pull_head(api("GET", base, token)) != sub.commit:
         message = "the pull request head moved since the run judged it"
         raise PostRefusedError(message)
-    payload = {
-        "commit_id": sub.commit,
-        "body": body,
-        "event": event,
-    }
-    data = api("POST", f"{base}/reviews", token, payload)
-    created = data.get("id") if isinstance(data, dict) else None
-    return created if isinstance(created, int) else None
+    return review_doc.submit_review(
+        lambda method, path, payload: api(method, path, token, payload),
+        base,
+        sub.commit,
+        body,
+        event,
+    )
 
 
 def stamp(run: Run) -> str:

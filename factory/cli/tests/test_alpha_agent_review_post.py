@@ -589,7 +589,7 @@ def settings_for_account() -> Settings:
     return cast("Settings", SimpleNamespace(credentials=[SimpleNamespace(account="a")]))
 
 
-def test_the_post_token_is_scoped_to_pull_request_writes(
+def test_the_post_token_can_read_diffs_and_write_reviews(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     seen: list[dict[str, str]] = []
@@ -604,7 +604,7 @@ def test_the_post_token_is_scoped_to_pull_request_writes(
     assert credentials.review_post_token(request_for(Profile.BUILD), settings) is None
     token = credentials.review_post_token(request_for(Profile.REVIEW), settings)
     assert token == MINTED
-    assert seen == [{"pull_requests": "write"}]
+    assert seen == [{"contents": "read", "pull_requests": "write"}]
 
 
 def test_a_failed_token_request_gives_none(monkeypatch: pytest.MonkeyPatch) -> None:

@@ -6,12 +6,16 @@ import re
 from dataclasses import dataclass
 from hashlib import sha256
 from pathlib import Path
-from typing import Literal, Protocol, cast
+from typing import TYPE_CHECKING, Literal, Protocol, cast
 
 from tbhbdev import content
 from tbhbdev.alpha import pull_request as pr
 from tbhbdev.alpha import pull_request_frontmatter as frontmatter
+from tbhbdev.alpha import review_inline
 from tbhbdev.alpha.identity import dispatcher as identity
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
 
 type Tier = Literal[0, 1, 2]
 type Verdict = Literal["GO", "NO-GO"]
@@ -217,12 +221,30 @@ def check_head(api: Api, path: str, commit: str) -> None:
 
 
 def send_review(api: Api, path: str, commit: str, body: str, event: str) -> int | None:
-    """Submit the body with its review event and return the ID if provided."""
-    result = api.request(
-        "POST",
-        f"{path}/reviews",
-        {"commit_id": commit, "body": body, "event": event},
-    )
+    """Submit the review and return the ID if provided."""
+    return submit_review(api.request, path, commit, body, event)
+
+
+def submit_review(
+    request: Callable[[str, str, dict[str, object] | None], object],
+    path: str,
+    commit: str,
+    body: str,
+    event: str,
+) -> int | None:
+    """Submit the body and any inline findings in one review."""
+    payload: dict[str, object] = {"commit_id": commit, "body": body, "event": event}
+    if findings := review_inline.findings(body):
+        pull = request("GET", path, None)
+        match cast("_Pull", pull):
+            case {"base": {"sha": str(base)}} if _HEAD.fullmatch(base):
+                repository = path.rpartition("/pulls/")[0]
+                # Pin the comparison to the judged commit even if the PR head moves.
+                comparison = f"{repository}/compare/{base}...{commit}?per_page=1"
+                diff = request("GET", comparison, None)
+                if comments := review_inline.comments(findings, diff):
+                    payload["comments"] = comments
+    result = request("POST", f"{path}/reviews", payload)
     match cast("dict[str, object] | None", result):  # pragma: no mutate -- cast
         case {"id": int(review_id)}:
             return review_id
