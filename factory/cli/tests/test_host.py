@@ -34,7 +34,7 @@ import stubtool
 from onepasswordconnectsdk.client import Client
 from stub_fixtures import stubs as stubs  # noqa: PLC0414
 
-from tbhbdev import cli, secrets, userconfig
+from tbhbdev import cli, host_tokens, secrets, userconfig
 from tbhbdev import host as host_tool
 
 if TYPE_CHECKING:
@@ -270,8 +270,12 @@ def run_setup(world: World, capfd: pytest.CaptureFixture[str], *argv: str) -> in
     return code
 
 
-def name_for(host: str, *vaults: str, when: datetime = T0) -> str:
-    return host_tool.token_name(host, when, {"vault-all", f"vault-{host}", *vaults})
+def name_for(
+    host: str, *vaults: str, when: datetime = T0, prefix: str = "example-host"
+) -> str:
+    return host_tokens.token_name(
+        host, when, {"vault-all", f"vault-{host}", *vaults}, prefix=prefix
+    )
 
 
 def token_row(host: str, *vaults: str, number: int = 1, when: datetime = T0) -> Json:
@@ -572,7 +576,7 @@ def test_a_token_prefix_from_the_config_names_the_tokens(
 
     assert "host-a: no token; creating a new token" in capfd.readouterr().out
     names = [str(t["name"]) for t in world.tokens()]
-    assert names == [first["name"], name_for("host-a")]
+    assert names == [first["name"], name_for("host-a", prefix="other-host")]
     assert names[1].startswith("other-host:host-a:")
 
 
@@ -671,19 +675,11 @@ def test_wrong_vaults_get_a_new_token_and_the_old_one_goes(
 ) -> None:
     host = host_tool.Host("host-a", "macOS", local=False)
     old = token_row(host.name)
-    server = seed_token_server(world, old)
+    seed_token_server(world, old)
     seed_keychain(world, host.name, old, recorded=str(old["name"]))
     copy_of(world, host.name).write_text(agent_copy_text())
 
-    account = host_tool.Account.load(server)
-    vaults = host_tool.base_vaults(host) | {"ops"}
     why = f"the token {old['name']} has other vaults"
-    assert (
-        host_tool.problem(
-            account.current(host), vaults, account.when, held=str(old["name"])
-        )
-        == why
-    )
 
     # Check that bootstrap grants the vault and confirms the config before rotation.
     assert run(world, capfd, "bootstrap", "--host", "host-a", "ops") == 0
@@ -721,7 +717,7 @@ def test_a_token_near_expiry_is_renewed(
     new = world.token_of(host.name)
     assert (new["id"] != old["id"]) is renewed
     if renewed:
-        expiry = f"{T0 + host_tool.LIFETIME:%Y-%m-%d}"
+        expiry = f"{T0 + host_tokens.LIFETIME:%Y-%m-%d}"
         assert f"the token {old['name']} expires {expiry}" in world.out
         assert new["name"] == name_for("host-c", when=later)
         assert world.installed("host-c") == new["token"]
@@ -1884,21 +1880,6 @@ RUNS = {
 def test_the_parsed_arguments(argv: list[str], expected: Json) -> None:
     args = vars(host_tool._parser(PROG).parse_args(argv))  # noqa: SLF001
     assert args == {"command_name": argv[0], "run": RUNS[argv[0]], **expected}
-
-
-def test_parse_token_ignores_other_names(
-    config: Callable[[list[str]], None],
-) -> None:
-    config(["https://connect-a.example.ts.net"])
-    assert host_tool.parse_token({"id": "t", "name": "ci"}) is None
-    assert host_tool.parse_token({"id": "t", "name": "example-host:h:bad:v"}) is None
-    assert (
-        host_tool.parse_token({"id": "t", "name": "other:h:20261104T120000Z:v"}) is None
-    )
-    token = host_tool.parse_token({"id": "t", "name": name_for("h", "a:b")})
-    assert token is not None
-    assert token.vaults == {"vault-all", "vault-h", "a:b"}
-    assert token.created == T0
 
 
 def test_now_is_utc() -> None:

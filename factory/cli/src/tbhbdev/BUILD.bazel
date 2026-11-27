@@ -144,6 +144,7 @@ cli_py_library(
     visibility = ["//factory/cli:__subpackages__"],
     deps = [
         ":gh_agent",
+        ":host_tokens",
         ":runner",
         ":secrets",
         ":userconfig",
@@ -247,4 +248,11 @@ py_binary(
     main = "__main__.py",
     visibility = ["//factory/cli:__subpackages__"],
     deps = [":cli"],
+)
+
+cli_py_library(
+    name = "host_tokens",
+    srcs = ["host_tokens.py"],
+    imports = [".."],
+    visibility = ["//factory/cli:__subpackages__"],
 )

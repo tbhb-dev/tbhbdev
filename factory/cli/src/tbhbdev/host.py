@@ -74,12 +74,12 @@ import tempfile
 import tomllib
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime
 from pathlib import Path, PurePosixPath
 from typing import TYPE_CHECKING, NoReturn
 from urllib.parse import urlsplit
 
-from tbhbdev import gh_agent, runner, secrets, userconfig
+from tbhbdev import gh_agent, host_tokens, runner, secrets, userconfig
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Iterable, Sequence
@@ -91,11 +91,7 @@ type Done = subprocess.CompletedProcess[str] | subprocess.CalledProcessError
 
 CREDENTIALS = "1password-credentials.json"
 AGENT = "agent"
-LIFETIME = timedelta(days=90)
 LIFETIME_FLAG = "90d"
-RENEW_WITHIN = timedelta(days=14)
-STAMP = "%Y%m%dT%H%M%SZ"
-TOKEN_NAME_PARTS = 4
 SWIFT = "/usr/bin/swift"
 TAILSCALE_APP = "/Applications/Tailscale.app/Contents/MacOS/Tailscale"
 HOSTNAME = re.compile(r"[A-Za-z0-9][A-Za-z0-9.-]*\Z")
@@ -541,46 +537,18 @@ def ensure_vaults(names: Iterable[str]) -> None:
         print(f"created the vault {name}")
 
 
-@dataclass(frozen=True)
-class Token:
-    """A Connect token, as its name describes it."""
-
-    id: str
-    name: str
-    host: str
-    created: datetime
-    vaults: frozenset[str]
-
-    @property
-    def expires(self) -> datetime:
-        return self.created + LIFETIME
-
-
-def token_name(host: str, created: datetime, vaults: Iterable[str]) -> str:
-    stamp = created.strftime(STAMP)
-    return f"{token_prefix()}:{host}:{stamp}:{','.join(sorted(vaults))}"
-
-
-def parse_token(entry: Json) -> Token | None:
-    """The agent host token ENTRY describes, or None for any other token."""
-    name = _str(entry, "name")
-    parts = name.split(":", TOKEN_NAME_PARTS - 1)
-    if len(parts) != TOKEN_NAME_PARTS or parts[0] != token_prefix():
+def _configured_token(name: str, token_id: str = "") -> host_tokens.Token | None:
+    # Only names with all four parts need the configured prefix.
+    if not host_tokens.has_token_name_shape(name):
         return None
-    try:
-        created = datetime.strptime(parts[2], STAMP).replace(tzinfo=UTC)
-    except ValueError:
-        return None
-    return Token(
-        _str(entry, "id"), name, parts[1], created, frozenset(parts[3].split(","))
-    )
+    return host_tokens.parse_token(name, token_id, prefix=token_prefix())
 
 
-def live_tokens(server: str) -> tuple[list[Token], int]:
+def live_tokens(server: str) -> tuple[list[host_tokens.Token], int]:
     """SERVER's live agent host tokens, and how many other live tokens it has."""
     entries = op_list("connect", "token", "list", "--server", server)
     live = [e for e in entries if _str(e, "state").upper() != "REVOKED"]
-    parsed = [parse_token(e) for e in live]
+    parsed = [_configured_token(_str(e, "name"), _str(e, "id")) for e in live]
     tokens = [t for t in parsed if t is not None]
     return tokens, len(parsed) - len(tokens)
 
@@ -591,7 +559,7 @@ class Account:
 
     server: str
     when: datetime
-    tokens: list[Token]
+    tokens: list[host_tokens.Token]
     foreign: int = 0
 
     @classmethod
@@ -602,7 +570,7 @@ class Account:
     def reload(self) -> None:
         self.tokens, self.foreign = live_tokens(self.server)
 
-    def current(self, host: Host) -> Token | None:
+    def current(self, host: Host) -> host_tokens.Token | None:
         """HOST's newest token."""
         mine = [t for t in self.tokens if t.host == host.name]
         return max(mine, key=lambda t: t.created, default=None)
@@ -616,7 +584,7 @@ class Account:
             op("connect", "vault", "grant", "--server", self.server, "--vault", vault)
             print(f"granted the Connect server the vault {vault}")
 
-    def delete(self, tokens: Iterable[Token]) -> None:
+    def delete(self, tokens: Iterable[host_tokens.Token]) -> None:
         for token in tokens:
             op("connect", "token", "delete", token.id, "--server", self.server)
             print(f"deleted the token {token.name}")
@@ -838,26 +806,6 @@ def base_vaults(host: Host) -> frozenset[str]:
     return frozenset({host_vault(host), setting("vaults", "all")})
 
 
-def problem(
-    token: Token | None, vaults: frozenset[str], when: datetime, *, held: str | None
-) -> str | None:
-    """Why HOST needs a new token, or None when its token is current.
-
-    HELD is the name the keychain records, as keychain_held gives it.
-    """
-    if token is None:
-        return "no token"
-    if token.vaults != vaults:
-        return f"the token {token.name} has other vaults"
-    if token.expires - when <= RENEW_WITHIN:
-        return f"the token {token.name} expires {token.expires:%Y-%m-%d}"
-    if held is None:
-        return "the keychain has no token"
-    if held != token.name:
-        return f"the keychain holds {held or 'an unrecorded token'}, not {token.name}"
-    return None
-
-
 def refresh(
     account: Account, host: Host, vaults: frozenset[str], urls: list[str]
 ) -> None:
@@ -868,7 +816,9 @@ def refresh(
     _require_keychain_writer(host)
     mine = [t for t in account.tokens if t.host == host.name]
     current = account.current(host)
-    why = problem(current, vaults, account.when, held=keychain_held(host))
+    why = host_tokens.rotation_reason(
+        current, vaults, account.when, held=keychain_held(host)
+    )
     if current is not None and why is None:
         stale = [t for t in mine if t is not current]
         if stale:
@@ -877,7 +827,9 @@ def refresh(
         print(f"{host.name}: the token {current.name} is current")
         return
     print(f"{host.name}: {why}; creating a new token")
-    name = token_name(host.name, account.when, vaults)
+    name = host_tokens.token_name(
+        host.name, account.when, vaults, prefix=token_prefix()
+    )
     try:
         value = account.create(name, vaults)
         install(host, value, name)
@@ -1562,11 +1514,11 @@ def token_health(target: Target) -> Result:
     hint = _bootstrap_hint(host)
     if not value:
         return Result(FAILED, f"the agent keychain has no token; {hint}")
-    token = parse_token({"name": recorded})
+    token = _configured_token(recorded)
     if token is None:
         return Result(FAILED, f"the keychain's token has no recorded name; {hint}")
     expires = f"{token.expires:%Y-%m-%d}"
-    if token.expires - now() <= RENEW_WITHIN:
+    if token.needs_renewal(now()):
         return Result(FAILED, f"the token {token.name} expires {expires}; {hint}")
     try:
         verify(value, token.vaults, target.urls, f"the token {token.name}")

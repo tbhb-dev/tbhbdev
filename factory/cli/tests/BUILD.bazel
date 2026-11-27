@@ -1914,6 +1914,7 @@ cli_py_test(
         ":stubtool",
         "//factory/cli/src/tbhbdev:cli",
         "//factory/cli/src/tbhbdev:host",
+        "//factory/cli/src/tbhbdev:host_tokens",
         "//factory/cli/src/tbhbdev:secrets",
         "//factory/cli/src/tbhbdev:userconfig",
         "@cli_pip//httpx",
@@ -2131,6 +2132,15 @@ cli_py_test(
         ":conftest",
         "//factory/cli/src/tbhbdev/alpha:__init__",
         "//factory/cli/src/tbhbdev/alpha:worktree_sweep",
+        "@cli_pip//pytest",
+    ],
+)
+
+cli_py_test(
+    name = "test_host_tokens",
+    srcs = ["test_host_tokens.py"],
+    deps = [
+        "//factory/cli/src/tbhbdev:host_tokens",
         "@cli_pip//pytest",
     ],
 )
