@@ -6,10 +6,11 @@ import asyncio
 import errno
 import os
 import shlex
+import shutil
 import signal
 import sys
+import tempfile
 from pathlib import Path
-from tempfile import TemporaryDirectory
 from typing import NamedTuple
 
 DEFAULT_BASE = "origin/main"
@@ -91,16 +92,13 @@ async def run(
         env=env,
         stdin=asyncio.subprocess.PIPE if stdin is not None else None,
         stdout=asyncio.subprocess.PIPE if capture else None,
-        start_new_session=sys.platform != "win32",
+        start_new_session=True,
     )
     try:
         output, _ = await asyncio.wait_for(process.communicate(stdin), seconds)
     except TimeoutError, asyncio.CancelledError:
         if process.returncode is None:
-            if sys.platform == "win32":
-                process.kill()
-            else:
-                os.killpg(process.pid, signal.SIGKILL)
+            os.killpg(process.pid, signal.SIGKILL)
             await process.communicate()
         raise
     if process.returncode:
@@ -250,19 +248,25 @@ async def main() -> int:
     )
     revisions = Revisions(base, merge_base, head, ref)
     results = []
-    with TemporaryDirectory(prefix="preflight-") as scratch:
-        for name in checks:
-            sys.stderr.write(f"Running {name}\n")
-            try:
-                await check(name, revisions, Path(scratch))
-            except (OSError, CheckError) as error:
-                message = str(error) or f"{name} timed out"
-                sys.stderr.write(f"{message}\n")
-                results.append((name, False))
-            else:
-                results.append((name, True))
+    scratch = Path(tempfile.mkdtemp(prefix="preflight-"))
+    for name in checks:
+        sys.stderr.write(f"Running {name}\n")
+        try:
+            await check(name, revisions, scratch)
+        except (OSError, CheckError) as error:
+            message = str(error) or f"{name} timed out"
+            sys.stderr.write(f"{message}\n")
+            results.append((name, False))
+        else:
+            results.append((name, True))
     sys.stdout.write(summary(results, args.base) + "\n")
-    return 0 if all(passed for _, passed in results) else 1
+    passed = all(passed for _, passed in results)
+    reports = {"design-report.md", "gomodscan.sarif", "agent-capacity.sarif"}
+    if not passed or reports.intersection(await asyncio.to_thread(os.listdir, scratch)):
+        sys.stdout.write(f"Preflight files: {scratch}\n")
+    else:
+        await asyncio.to_thread(shutil.rmtree, scratch)
+    return 0 if passed else 1
 
 
 if __name__ == "__main__":
