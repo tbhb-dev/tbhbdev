@@ -38,7 +38,7 @@ Warm caches can return stale values after an update.
 
 ## Findings
 
-- F1: P1 correctness Invalidate cached values when their source changes.
+- F1: P1 correctness `cache.py:42` returns stale values. `Occurs when:` a caller updates a cached record.
 
 ## Suggestions
 
@@ -53,6 +53,8 @@ Warm caches can return stale values after an update.
 Summary gives the reasons in one paragraph of one or two sentences and at most 40 words. Record the verdict in the review event. Keep standalone verdict lines out of the Summary, including bare verdicts and lines prefixed with `Decision:` or `VERDICT:`.
 
 Use Findings for whole-PR issues. Start each bullet with `F<n>: P<0-3> <kind>` and count from 1 without gaps. Use at most eight findings and at most 30 words after the kind. The kinds are `correctness`, `security`, `design`, `test`, and `docs`. Use P0 for harm or a security breach, P1 for broken basic use or correctness, P2 for debt that needs attention soon, and P3 for minor issues. P0 and P1 require `REQUEST_CHANGES`. Cite a `path:line` in the diff or cite a check and its result. Findings must describe issues beyond CI gate results.
+
+End each P1 finding with a short `Occurs when:` clause within the word limit.
 
 Use at most five Suggestions bullets. Start them with `S1:`, `S2:`, and so on without gaps. Each has at most 25 words after the prefix. Verification requires one to six unnumbered bullets of at most 20 words each, with no prefixes.
 

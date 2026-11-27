@@ -24,6 +24,8 @@ generated:
 
 ## Rating rules
 
+- State when each finding occurs with the actual callers, hosts, repositories, and tool inputs. Exclude impossible cases at every severity. From round 2, restrict new findings to lines the fix changed.
+- Flag code in the diff that handles an impossible case or adds an option, layer, or abstraction with one user. Ask for deletion.
 - The reviewer rates a finding that predates the PR by what it can do now, not by when it first entered the code. It blocks this PR when the PR relies on it or changes the same code path. Otherwise, it becomes a tracked follow-up with a named owner. The author and the reviewer record the follow-up where readers can find the PR.
 - When reviewers rate the same defect differently, use the higher severity.
 - An irreversible effect, such as a fence, a deletion, or a published record, raises the rating one level, capped at P1.
