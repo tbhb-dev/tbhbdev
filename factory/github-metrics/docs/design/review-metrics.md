@@ -193,11 +193,11 @@ A new bucket, `review_prs`, caches facts per PR that the webhook path needs and 
 
 Apart from that clear, a write keeps the later of the stored and new times, which stops out-of-order deliveries from moving a field backward.
 
-Size: a node ID takes about 20 bytes, and four Unix times in seconds take 32. Including the database's own overhead, a record takes under 100 bytes. A few hundred open PRs across the installation put the bucket at a few tens of kilobytes.
+Size: a node ID takes about 20 bytes, and four Unix times in seconds take 32. Including the database's own overhead, a record takes under 100 bytes. Hundreds of open PRs across the installation put the bucket at tens of kilobytes.
 
 Retention: an open PR keeps its record. Once the PR's `ended` milestone has a claim, the worker deletes the record. A daily pass, run alongside the reconciliation sweep, deletes records with an `updated_at` older than 30 days. A reopened PR without a record behaves like any PR missing from the cache, and the repair walk fills it in. Appendix E's data table gains a row for this bucket.
 
-Each new claim adds about 40 bytes to the `milestones` bucket. At a few hundred reviews a day, the total stays under 5 MB a year. The existing claims already grow without limit, since `ClaimMilestone` never deletes a key (`store.go:246-264`). A future pruning pass for them can include these, since a claim older than 24 hours can't change any outcome.
+Each new claim adds about 40 bytes to the `milestones` bucket. At hundreds of reviews a day, the total stays under 5 MB a year. The existing claims already grow without limit, since `ClaimMilestone` never deletes a key (`store.go:246-264`). A future pruning pass for them can include these, since a claim older than 24 hours can't change any outcome.
 
 ## 8. Repair and backfill
 
@@ -318,7 +318,7 @@ A and B can proceed in parallel. Work on C can start against fakes, and C merges
 
 ## 14. Open questions
 
-1. **Reviewer model as a metric label.** This design puts harness, model, and effort on the log line per review and leaves them off metrics, which keeps D10 intact. A `model` label on `github.pr.reviews` alone fits about three models before the cap. Recommendation: keep it in logs for now. If dashboards need it, add one counter, `github.pr.review.by_model`, with `model`, `state`, and `findings` and without `repository`. That fits about 160 models, under a D10 amendment.
+1. **Reviewer model as a metric label.** This design puts harness, model, and effort on the log line per review and leaves them off metrics, which keeps D10 intact. A `model` label on `github.pr.reviews` alone fits about three models before the cap. Recommendation: keep it in logs for now. If dashboards need it, add one counter, `github.pr.review.by_model`, with `model`, `state`, and `findings` and without `repository`. That fits about 160 models, under an amendment to D10.
 2. **History from before deploy.** The service can't export past weeks. The script's numbers for that period won't reappear. Suggested course: at deploy, run the script once and save its output as a dated report. Retire the script after the service has a week of data.
 3. **Inline comments.** Slice H depends on a change still in progress. Proposed order: build A to G now and H after the inline change merges, so H targets the real comment shape.
 4. **Per-merge totals without reconciliation.** The repair walk alone records the per-merge histograms, so a deployment without App credentials lacks them. Recommended: accept that, since reconciliation is the intended configuration. Whether production runs it today is unverified.
