@@ -2,8 +2,6 @@
 # SPDX-License-Identifier: Apache-2.0
 # Copyright Tony Burns
 
-# cspell:words gosec gostd stdlib
-
 # golangci-lint configuration: every linter on, with a reason beside each one
 # switched off. Adapted from
 # https://github.com/maratori/golangci-lint-config.
@@ -73,14 +71,6 @@ linters:
           deny:
             - pkg: log$
               desc: "Use log/slog instead"
-        # Stub for the Go CLI port (stdlib-only-front): once factory/tbhbdev
-        # lands, match its front-end package files here so they may import only
-        # $gostd and internal packages, never third-party vendors.
-        "stdlib-only-front":
-          files:
-            - "**/front/**/*.go"
-          allow:
-            - $gostd
 
     gomodguard_v2:
       blocked:
@@ -111,8 +101,8 @@ linters:
       threshold: 30
 
     funlen:
-      lines: 100
-      statements: 50
+      lines: 60
+      statements: 40
 
     gochecksumtype:
       default-signifies-exhaustive: false
@@ -196,15 +186,10 @@ linters:
 
   exclusions:
     rules:
-      # Preserve the standalone policy for known errcheck and gosec false positives.
+      # Preserve the standalone policy for known errcheck false positives.
       # Every imported Go file still goes through the linter.
       - path: ^(cmd|internal)/
         linters: [errcheck]
         text: >-
           (?i)Error return value of
           .((os\.)?std(out|err)\..*|.*Close|.*Flush|os\.Remove(All)?|.*print(f|ln)?|os\.(Un)?Setenv). is not checked
-      - path: ^(cmd|internal)/
-        linters: [gosec]
-        text: >-
-          G(103: Use of unsafe calls should be audited|204: Subprocess launched with variable|304: Potential file
-          inclusion via variable)
