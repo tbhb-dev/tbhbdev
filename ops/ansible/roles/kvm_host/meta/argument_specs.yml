@@ -1,0 +1,48 @@
+---
+argument_specs:
+  main:
+    short_description: Turn a host into a KVM host with a Linux bridge on its lab port
+    description:
+      - >-
+          Installs QEMU and libvirt, turns on nested virtualization for AMD, and bridges the
+          lab port. The bridge goes in its own netplan file, and the role removes the lab and
+          management ports' stanzas from the installer's netplan file, after it backs that file up
+          once. The bridge takes the default route, and the management port keeps no address. The
+          role validates the result in a scratch directory before it writes anything to /etc/netplan.
+      - >-
+          The role writes and applies the network only when kvm_host_apply_network is true.
+          Otherwise it validates the change and writes nothing to /etc/netplan, since a written
+          file takes effect at the next boot.
+    options:
+      kvm_host_bridge:
+        type: str
+        default: br-lab
+        description: Name of the Linux bridge and of its netplan file's bridge entry.
+      kvm_host_bridge_port:
+        type: str
+        default: enp5s0f0np0
+        description: >-
+          Network interface the bridge takes over. The bridge keeps the interface's MAC address, so a
+          DHCP reservation for the interface still matches.
+      kvm_host_management_port:
+        type: str
+        default: enp4s0
+        description: >-
+          Network interface on Management. The role takes its stanza out of the installer's netplan
+          file, and the bridge file keeps it up with no address, so the bridge is the only uplink.
+      kvm_host_apply_network:
+        type: bool
+        default: false
+        description: >-
+          Write the netplan files, and run netplan apply when they changed or the bridge doesn't
+          exist yet.
+      kvm_host_hardware:
+        type: bool
+        default: true
+        description: >-
+          Whether the host has KVM and the real interface. False skips the KVM check, the libvirt
+          services, netplan validation and apply, and the libvirt network.
+      kvm_host_libvirt_network:
+        type: str
+        default: lab
+        description: Name of the libvirt network in bridge mode on the bridge.

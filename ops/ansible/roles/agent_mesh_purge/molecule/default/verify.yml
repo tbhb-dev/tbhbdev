@@ -1,0 +1,72 @@
+---
+- name: Verify the purge
+  hosts: all
+  become: true
+  tasks:
+    - name: Stat the mesh artifacts
+      ansible.builtin.stat:
+        path: "/home/{{ item.0 }}/.ssh/{{ item.1 }}"
+      loop: "{{ ['agent', 'ops'] | product(['agent-mesh', 'agent-mesh.conf', 'agent-mesh_known_hosts']) | list }}"
+      loop_control:
+        label: "{{ item.0 }}/{{ item.1 }}"
+      register: agent_mesh_purge_test_gone
+
+    - name: Find any mesh config backups left
+      ansible.builtin.find:
+        paths: ["/home/example-user/.ssh", "/home/ops/.ssh"]
+        patterns: ["agent-mesh*"]
+        file_type: any
+      register: agent_mesh_purge_test_left
+
+    - name: Check the mesh files are gone
+      ansible.builtin.assert:
+        that:
+          - agent_mesh_purge_test_gone.results | map(attribute='stat.exists') | max == false
+          - agent_mesh_purge_test_left.files | length == 0
+
+    - name: Stat the files that stay
+      ansible.builtin.stat:
+        path: "/home/{{ item.0 }}/.ssh/{{ item.1 }}"
+      loop: "{{ ['agent', 'ops'] | product(['id_ed25519', 'known_hosts_tbhb', 'config']) | list }}"
+      loop_control:
+        label: "{{ item.0 }}/{{ item.1 }}"
+      register: agent_mesh_purge_test_kept
+
+    - name: Read each config
+      ansible.builtin.slurp:
+        src: "/home/{{ item }}/.ssh/config"
+      loop: [agent, ops]
+      register: agent_mesh_purge_test_config
+
+    - name: Check the key, known hosts and managed block stay and the Include lines go
+      ansible.builtin.assert:
+        that:
+          - agent_mesh_purge_test_kept.results | map(attribute='stat.exists') | min
+          - "'agent-mesh' not in (item.content | b64decode)"
+          - "'Include ~/.ssh/other.conf' in (item.content | b64decode)"
+          - "'# BEGIN ANSIBLE MANAGED BLOCK ssh_host_keys' in (item.content | b64decode)"
+          - "'IdentityFile ~/.ssh/id_ed25519' in (item.content | b64decode)"
+          - "'# END ANSIBLE MANAGED BLOCK ssh_host_keys' in (item.content | b64decode)"
+      loop: "{{ agent_mesh_purge_test_config.results }}"
+      loop_control:
+        label: "{{ item.item }}"
+
+    - name: Read the key
+      ansible.builtin.slurp:
+        src: /home/example-user/.ssh/id_ed25519
+      register: agent_mesh_purge_test_key
+      no_log: true
+
+    - name: Check the key is untouched
+      ansible.builtin.assert:
+        that: agent_mesh_purge_test_key.content | b64decode == 'fixture private\n'
+      no_log: true
+
+    - name: Look for the missing account
+      ansible.builtin.stat:
+        path: /home/absent
+      register: agent_mesh_purge_test_absent
+
+    - name: Check the missing account got nothing
+      ansible.builtin.assert:
+        that: not agent_mesh_purge_test_absent.stat.exists

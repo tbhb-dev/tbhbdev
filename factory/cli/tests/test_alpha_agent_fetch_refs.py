@@ -12,7 +12,7 @@ from agent_example import settings
 from agent_host_example import run_request
 from test_alpha_agent_request import BUILD
 
-from tbhbdev.alpha import agent
+from tbhbdev.alpha.agent import arguments as agent_arguments
 from tbhbdev.alpha.agent import driver, worktree
 from tbhbdev.alpha.agent.decisions import request
 from tbhbdev.alpha.agent.model import Invalid
@@ -72,7 +72,7 @@ def test_invalid_ref_is_refused_by_controller_and_host(
 ) -> None:
     monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path))
     before = list(tmp_path.rglob("*"))
-    args = agent.parser("agent").parse_args(
+    args = agent_arguments.parser("agent").parse_args(
         execution_arguments("brief.md", f"--fetch-ref={ref}")
     )
     expected = f"request fetch_refs contains invalid ref {ref!r}"
@@ -100,7 +100,7 @@ def test_eight_refs_round_trip_for_any_profile(
     options = [part for ref in GOOD_REFS for part in ("--fetch-ref", ref)]
     if profile == "review":
         options += ["--ref", "a" * 40]
-    args = agent.parser("agent").parse_args(
+    args = agent_arguments.parser("agent").parse_args(
         execution_arguments("brief.md", "--profile", profile, *options)
     )
     run = driver.prepare(settings(), args).request
@@ -117,7 +117,9 @@ def test_ninth_ref_is_refused_by_controller_and_host(
     before = list(tmp_path.rglob("*"))
     refs = [*GOOD_REFS, "refs/heads/ninth"]
     options = [part for ref in refs for part in ("--fetch-ref", ref)]
-    args = agent.parser("agent").parse_args(execution_arguments("brief.md", *options))
+    args = agent_arguments.parser("agent").parse_args(
+        execution_arguments("brief.md", *options)
+    )
     with pytest.raises(Invalid, match=r"^request fetch_refs allows at most 8 refs$"):
         driver.prepare(settings(), args)
     with pytest.raises(Invalid, match=r"^request fetch_refs allows at most 8 refs$"):
@@ -139,7 +141,9 @@ def test_wire_refs_must_be_a_list_of_strings(value: object) -> None:
 
 
 def test_exec_help_describes_fetch_refs(capsys: pytest.CaptureFixture[str]) -> None:
-    assert agent.main(["exec", "--help"], "agent") == 0
+    with pytest.raises(SystemExit) as caught:
+        agent_arguments.parser("agent").parse_args(["exec", "--help"])
+    assert caught.value.code == 0
     help_text = " ".join(capsys.readouterr().out.split())
     assert "--fetch-ref REF" in help_text
     assert "refs/heads/<branch> as origin/fetched/heads/<branch>" in help_text
@@ -167,7 +171,9 @@ def test_invalid_start_ref_is_refused_by_controller_and_host(
     refs = [ref] if fetched else []
     for name in refs:
         options.extend(("--fetch-ref", name))
-    args = agent.parser("agent").parse_args(execution_arguments("brief.md", *options))
+    args = agent_arguments.parser("agent").parse_args(
+        execution_arguments("brief.md", *options)
+    )
     with pytest.raises(Invalid, match=f"request --start-ref {message}"):
         driver.prepare(settings(), args)
     wire = BUILD | {"profile": profile, "start_ref": ref, "fetch_refs": refs}
@@ -177,7 +183,7 @@ def test_invalid_start_ref_is_refused_by_controller_and_host(
 
 def test_start_ref_round_trips() -> None:
     ref = "refs/heads/fix/topic"
-    args = agent.parser("agent").parse_args(
+    args = agent_arguments.parser("agent").parse_args(
         execution_arguments("brief.md", "--start-ref", ref, "--fetch-ref", ref)
     )
     run = driver.prepare(settings(), args).request

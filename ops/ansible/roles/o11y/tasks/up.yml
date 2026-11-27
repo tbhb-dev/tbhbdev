@@ -1,0 +1,21 @@
+---
+- name: up | Check the selected release's TLS certificates
+  ansible.builtin.include_tasks: tls.yml
+
+- name: up | Start the selected release and wait for Compose health
+  ansible.builtin.command:
+    argv: [docker, compose, up, -d, --wait, --remove-orphans]
+    chdir: "{{ o11y_target }}"
+  register: o11y_up
+  # Inspect container health even when Compose rejects an unhealthy service.
+  failed_when: false
+  changed_when: o11y_up.stderr is search('Created|Recreated|Started')
+
+- name: up | Check service readiness
+  ansible.builtin.include_tasks: health.yml
+
+- name: up | Reject a startup error even if the containers pass their probes
+  ansible.builtin.assert:
+    that: o11y_up.rc == 0
+    fail_msg: Compose startup failed in {{ o11y_target }}.
+    quiet: true

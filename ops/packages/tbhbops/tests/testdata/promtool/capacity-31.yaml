@@ -1,0 +1,42 @@
+---
+evaluation_interval: 1m
+rule_files:
+  - rules.yaml
+tests:
+  - alert_rule_test:
+      - alertname: o11y-capacity-warn
+        eval_time: 10m
+        exp_alerts: []
+      - alertname: o11y-capacity-warn
+        eval_time: 20m
+        exp_alerts: []
+      - alertname: o11y-capacity-shed
+        eval_time: 10m
+        exp_alerts: []
+      - alertname: o11y-capacity-shed
+        eval_time: 20m
+        exp_alerts: []
+      - alertname: o11y-capacity-stop
+        eval_time: 10m
+        exp_alerts: []
+      - alertname: o11y-capacity-stop
+        eval_time: 20m
+        exp_alerts: []
+    input_series:
+      - series: "agent_capacity_window_utilization_ratio{agent_plan_vendor=\"\
+          anthropic\",agent_plan_window=\"\
+          7d\",agent_account=\"primary\",host_name=\"\
+          fixture-a\",agent_capacity_source=\"\
+          claude_statusline\",agent_capacity_freshness=\"\
+          fresh\"}"
+        values: 0.50x20
+      - series: "agent_capacity_window_utilization_ratio{agent_plan_vendor=\"\
+          anthropic\",agent_plan_window=\"\
+          7d\",agent_account=\"primary\",host_name=\"\
+          fixture-b\",agent_capacity_source=\"\
+          claude_statusline\",agent_capacity_freshness=\"\
+          fresh\"}"
+        values: 0.50x20
+    interval: 1m
+    name: two hosts remain below every tier
+      despite their sum

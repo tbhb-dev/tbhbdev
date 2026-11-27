@@ -1,0 +1,39 @@
+---
+- name: Validate the event gateway commit
+  ansible.builtin.assert:
+    that: event_gateway_deploy_commit is regex('[0-9a-fA-F]{40}', match_type='fullmatch')
+    fail_msg: event_gateway_deploy_commit must be a full 40-hex Git commit.
+    quiet: true
+
+- name: Check out the pinned event gateway commit as ops
+  become: true
+  become_user: ops
+  ansible.builtin.git:
+    repo: "{{ event_gateway_deploy_repo_url }}"
+    version: "{{ event_gateway_deploy_commit | lower }}"
+    dest: "{{ event_gateway_deploy_checkout }}"
+
+- name: Check for the provisioned Compose secret files
+  become: true
+  ansible.builtin.stat:
+    path: "{{ event_gateway_deploy_checkout }}/deploy/secrets/{{ item }}"
+    get_checksum: false
+    get_attributes: false
+    get_mime: false
+  loop:
+    - github_webhook_secret
+    - tunnel_token
+  register: event_gateway_deploy_secrets
+
+- name: Require the admin VM to provision each secret file
+  ansible.builtin.assert:
+    that: item.stat.isreg | default(false)
+    fail_msg: "Required regular file missing: {{ event_gateway_deploy_checkout }}/deploy/secrets/{{ item.item }}"
+    quiet: true
+  loop: "{{ event_gateway_deploy_secrets.results }}"
+  loop_control:
+    label: "{{ item.item }}"
+
+- name: Converge the event gateway containers
+  ansible.builtin.include_tasks: containers.yml
+  when: not ansible_check_mode

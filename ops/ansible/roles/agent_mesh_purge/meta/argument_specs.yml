@@ -1,0 +1,22 @@
+---
+argument_specs:
+  main:
+    short_description: Remove the agent mesh files from each account after proving the per-host keys
+    options:
+      agent_mesh_purge_users:
+        type: list
+        elements: str
+        default: [agent, ops]
+        description: Accounts to purge. An account missing from the host is skipped.
+      agent_mesh_purge_require_proof:
+        type: bool
+        default: true
+        description: >-
+          Before any removal, log in as each account to every peer with its own key, and fail the
+          host when one login fails. An account with no ~/.ssh/id_ed25519 fails the host.
+      agent_mesh_purge_peers:
+        type: list
+        elements: str
+        description: >-
+          Hosts the proof logs in to. The default is every agent host except this one and the
+          Windows hosts, and only the other lab nodes when this host is a lab node.

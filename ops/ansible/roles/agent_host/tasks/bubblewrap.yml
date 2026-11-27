@@ -1,0 +1,121 @@
+---
+- name: bubblewrap | Install bubblewrap and AppArmor
+  ansible.builtin.apt:
+    name: [bubblewrap, apparmor]
+    state: present
+    install_recommends: false
+  register: agent_host_sandbox_packages
+  notify: Load the bubblewrap AppArmor profile
+
+# Read only: keep Ubuntu's host-wide user namespace restriction in place.
+- name: bubblewrap | Read the user namespace restriction
+  ansible.builtin.slurp:
+    src: /proc/sys/kernel/apparmor_restrict_unprivileged_userns
+  register: agent_host_userns_restriction
+  failed_when: false
+
+# A preview before installation cannot inspect the package's profiles yet.
+- name: bubblewrap | Configure the installed bubblewrap
+  when: not (ansible_check_mode and agent_host_sandbox_packages is changed)
+  block:
+    - name: bubblewrap | List the AppArmor package's files
+      ansible.builtin.command:
+        argv: [dpkg-query, --listfiles, apparmor]
+      register: agent_host_apparmor_files
+      changed_when: false
+      check_mode: false
+
+    - name: bubblewrap | Select the package's bubblewrap profiles
+      ansible.builtin.set_fact:
+        agent_host_bwrap_profiles: >-
+          {{ agent_host_apparmor_files.stdout_lines
+              | select('match', '^/etc/apparmor[.]d/(bwrap([-.][^/]*)?|usr[.]bin[.]bwrap|bubblewrap)$') | sort | list }}
+
+    - name: bubblewrap | Require the package's bubblewrap profiles
+      ansible.builtin.stat:
+        path: "{{ item }}"
+      loop: "{{ agent_host_bwrap_profiles }}"
+      register: agent_host_bwrap_profile_files
+
+    - name: bubblewrap | Check that package profiles have not been removed
+      ansible.builtin.assert:
+        that: item.stat.isreg | default(false)
+        fail_msg: "The apparmor package ships {{ item.item }}, but the profile is missing"
+        quiet: true
+      loop: "{{ agent_host_bwrap_profile_files.results }}"
+      loop_control:
+        label: "{{ item.item }}"
+
+    - name: bubblewrap | Install a bubblewrap profile when the package supplies none
+      ansible.builtin.template:
+        src: bwrap.j2
+        dest: /etc/apparmor.d/agent-host-bwrap
+        owner: root
+        group: root
+        mode: "0644"
+        validate: apparmor_parser -Q -T %s
+      when: agent_host_bwrap_profiles | length == 0
+      notify: Load the bubblewrap AppArmor profile
+
+    - name: bubblewrap | Remove the fallback when the package supplies a profile
+      ansible.builtin.file:
+        path: /etc/apparmor.d/agent-host-bwrap
+        state: absent
+      when: agent_host_bwrap_profiles | length > 0
+      notify: Load the bubblewrap AppArmor profile
+
+    - name: bubblewrap | Select the fallback profile when needed
+      ansible.builtin.set_fact:
+        agent_host_bwrap_profiles: [/etc/apparmor.d/agent-host-bwrap]
+      when: agent_host_bwrap_profiles | length == 0
+
+    - name: bubblewrap | Read the loaded AppArmor profiles
+      ansible.builtin.slurp:
+        src: /sys/kernel/security/apparmor/profiles
+      register: agent_host_loaded_profiles
+      when:
+        - agent_host_load_apparmor
+        - (agent_host_userns_restriction.content | default('MAo=') | b64decode | trim) == '1'
+
+    - name: bubblewrap | Queue a load if bubblewrap has no active profile
+      ansible.builtin.debug:
+        msg: The bubblewrap AppArmor profile must be loaded before the sandbox probe
+      changed_when: >-
+        (agent_host_loaded_profiles.content | b64decode)
+        is not search('(?m)^(?:bwrap|/usr/bin/bwrap) [(]')
+      when:
+        - agent_host_load_apparmor
+        - (agent_host_userns_restriction.content | default('MAo=') | b64decode | trim) == '1'
+      notify: Load the bubblewrap AppArmor profile
+
+    - name: bubblewrap | Load the profile before verifying the sandbox
+      ansible.builtin.meta: flush_handlers
+
+    # agent_host mounts the home before agent_account creates the user.
+    - name: bubblewrap | Look for the agent account
+      ansible.builtin.getent:
+        database: passwd
+        key: agent
+        fail_key: false
+      when: agent_host_verify_bwrap and not ansible_check_mode
+
+    - name: bubblewrap | Verify bubblewrap as the agent account
+      ansible.builtin.command:
+        argv: [bwrap, --ro-bind, /, /, --dev, /dev, --proc, /proc, "true"]
+      become: true
+      become_user: agent
+      changed_when: false
+      when:
+        - agent_host_verify_bwrap
+        - not ansible_check_mode
+        - ansible_facts.getent_passwd['agent'] is not none
+
+    - name: bubblewrap | Defer the sandbox probe until the agent account has been created
+      ansible.builtin.debug:
+        msg: Verify the sandbox after agent_account creates the user later in this play
+      changed_when: true
+      when:
+        - agent_host_verify_bwrap
+        - not ansible_check_mode
+        - ansible_facts.getent_passwd['agent'] is none
+      notify: Verify bubblewrap after account creation

@@ -8,8 +8,8 @@ lazy from pathlib import Path
 import pytest
 
 from tbhbdev import content as cw
-from tbhbdev.alpha import main as alpha_main
 from tbhbdev.alpha import pull_request as pr
+from tbhbdev.alpha.close import main as close_main
 
 type Call = tuple[str, str, cw.Json | None]
 REF = cw.IssueRef("example", "demo", 7)
@@ -453,7 +453,7 @@ def test_alpha_issue_relationship(
     cmd = ["issue", *argv]
     if dry_run:
         cmd.append("--dry-run")
-    assert alpha_main(cmd, "tbhbdev alpha") == 0
+    assert close_main(cmd, prog="tbhbdev alpha issue") == 0
     assert len(lookups) == origin_calls
     reads: list[Call] = [("GET", f"/repos/{lookup_repo}/issues/9", None)]
     if argv[0] == "link-sub":
@@ -486,7 +486,7 @@ def test_alpha_issue_relationship_reports_api_error(
 
     monkeypatch.setattr(cw.subprocess, "run", fail)
     args = ["issue", "block", "example/demo#7", "--by", "example/other#9"]
-    assert alpha_main(args, "tbhbdev alpha") == 4
+    assert close_main(args, prog="tbhbdev alpha issue") == 4
     assert capsys.readouterr() == ("", "issue missing\n")
     assert not (tmp_path / "audit.jsonl").exists()
 
@@ -497,7 +497,7 @@ def test_alpha_issue_relationship_rejects_bad_refs(
     capsys: pytest.CaptureFixture[str],
 ) -> None:
     with pytest.raises(SystemExit) as exc:
-        alpha_main(["issue", "link-sub", ref, "#9"], "tbhbdev alpha")
+        close_main(["issue", "link-sub", ref, "#9"], prog="tbhbdev alpha issue")
     assert exc.value.code == 2
     assert capsys.readouterr().err.endswith(": expected owner/repo#N or #N\n")
 
@@ -508,7 +508,7 @@ def test_alpha_issue_relationship_requires_one_direction(
     capsys: pytest.CaptureFixture[str],
 ) -> None:
     with pytest.raises(SystemExit) as exc:
-        alpha_main(["issue", "block", "#7", *direction], "tbhbdev alpha")
+        close_main(["issue", "block", "#7", *direction], prog="tbhbdev alpha issue")
     assert exc.value.code == 2
     assert "--blocking" in capsys.readouterr().err
 

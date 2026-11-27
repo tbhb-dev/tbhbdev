@@ -1,0 +1,122 @@
+---
+evaluation_interval: 1m
+rule_files:
+  - rules.yaml
+tests:
+  - alert_rule_test:
+      - alertname: o11y-capacity-warn
+        eval_time: 1m
+        exp_alerts: []
+      - alertname: o11y-capacity-shed
+        eval_time: 1m
+        exp_alerts: []
+      - alertname: o11y-capacity-stop
+        eval_time: 1m
+        exp_alerts: []
+      - alertname: o11y-capacity-stop
+        eval_time: 2m
+        exp_alerts:
+          - exp_annotations: {}
+            exp_labels:
+              agent_account: primary
+              agent_plan_vendor: anthropic
+              agent_plan_window: 7d_opus
+              env: prd
+              service: agent-capacity
+              severity: critical
+      - alertname: o11y-capacity-warn
+        eval_time: 10m
+        exp_alerts:
+          - exp_annotations: {}
+            exp_labels:
+              agent_account: primary
+              agent_plan_vendor: anthropic
+              agent_plan_window: 5h
+              env: prd
+              service: agent-capacity
+              severity: info
+          - exp_annotations: {}
+            exp_labels:
+              agent_account: primary
+              agent_plan_vendor: openai
+              agent_plan_window: 5h
+              env: prd
+              service: agent-capacity
+              severity: info
+          - exp_annotations: {}
+            exp_labels:
+              agent_account: primary
+              agent_plan_vendor: anthropic
+              agent_plan_window: 7d_opus
+              env: prd
+              service: agent-capacity
+              severity: info
+      - alertname: o11y-capacity-shed
+        eval_time: 10m
+        exp_alerts:
+          - exp_annotations: {}
+            exp_labels:
+              agent_account: primary
+              agent_plan_vendor: openai
+              agent_plan_window: 5h
+              env: prd
+              service: agent-capacity
+              severity: warning
+          - exp_annotations: {}
+            exp_labels:
+              agent_account: primary
+              agent_plan_vendor: anthropic
+              agent_plan_window: 7d_opus
+              env: prd
+              service: agent-capacity
+              severity: warning
+      - alertname: o11y-capacity-stop
+        eval_time: 10m
+        exp_alerts:
+          - exp_annotations: {}
+            exp_labels:
+              agent_account: primary
+              agent_plan_vendor: anthropic
+              agent_plan_window: 7d_opus
+              env: prd
+              service: agent-capacity
+              severity: critical
+    input_series:
+      - series: "agent_capacity_window_utilization_ratio{agent_plan_vendor=\"\
+          google\",agent_plan_window=\"5h\"\
+          ,agent_account=\"primary\",host_name=\"\
+          fixture-a\",agent_capacity_source=\"\
+          claude_statusline\",agent_capacity_freshness=\"\
+          fresh\"}"
+        values: 0.50x20
+      - series: "agent_capacity_window_utilization_ratio{agent_plan_vendor=\"\
+          anthropic\",agent_plan_window=\"\
+          5h\",agent_account=\"primary\",host_name=\"\
+          fixture-a\",agent_capacity_source=\"\
+          claude_statusline\",agent_capacity_freshness=\"\
+          fresh\"}"
+        values: 0.72x20
+      - series: "agent_capacity_window_utilization_ratio{agent_plan_vendor=\"\
+          openai\",agent_plan_window=\"5h\"\
+          ,agent_account=\"primary\",host_name=\"\
+          fixture-a\",agent_capacity_source=\"\
+          claude_statusline\",agent_capacity_freshness=\"\
+          fresh\"}"
+        values: 0.86x20
+      - series: "agent_capacity_window_utilization_ratio{agent_plan_vendor=\"\
+          anthropic\",agent_plan_window=\"\
+          7d_opus\",agent_account=\"primary\"\
+          ,host_name=\"fixture-a\",agent_capacity_source=\"\
+          claude_statusline\",agent_capacity_freshness=\"\
+          fresh\"}"
+        values: 0.92x20
+      - series: "agent_capacity_window_utilization_ratio{agent_plan_vendor=\"\
+          anthropic\",agent_plan_window=\"\
+          7d_opus\",agent_account=\"primary\"\
+          ,host_name=\"fixture-b\",agent_capacity_source=\"\
+          claude_statusline\",agent_capacity_freshness=\"\
+          fresh\"}"
+        values: 0.88x20
+    interval: 1m
+    name: threshold tiers isolate coexisting
+      windows and multi-host max
