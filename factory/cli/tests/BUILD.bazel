@@ -1200,6 +1200,17 @@ cli_py_test(
     deps = [
         ":conftest",
         "//factory/cli/src/tbhbdev/alpha:install",
+        "//factory/cli/src/tbhbdev/alpha:install_statusline_decisions",
+        "@cli_pip//pytest",
+    ],
+)
+
+cli_py_test(
+    name = "test_alpha_install_statusline_decisions",
+    srcs = ["test_alpha_install_statusline_decisions.py"],
+    deps = [
+        ":conftest",
+        "//factory/cli/src/tbhbdev/alpha:install_statusline_decisions",
         "@cli_pip//pytest",
     ],
 )
@@ -1422,8 +1433,6 @@ cli_py_test(
     deps = [
         ":conftest",
         ":repo_settings_example",
-        "//factory/cli/src/tbhbdev:gh_agent",
-        "//factory/cli/src/tbhbdev:host",
         "//factory/cli/src/tbhbdev/alpha:repo_bootstrap",
         "//factory/cli/src/tbhbdev/alpha:repo_settings",
         "@cli_pip//pytest",
@@ -1649,6 +1658,16 @@ cli_py_test(
 )
 
 cli_py_test(
+    name = "test_alpha_worker_identity_io",
+    srcs = ["test_alpha_worker_identity_io.py"],
+    deps = [
+        ":conftest",
+        "//factory/cli/src/tbhbdev/alpha:worker_identity",
+        "@cli_pip//pytest",
+    ],
+)
+
+cli_py_test(
     name = "test_analytics_catalog",
     srcs = ["test_analytics_catalog.py"],
     extra_deps = ["//factory/cli/src/tbhbdev/analytics:__init__"],
@@ -1813,8 +1832,28 @@ cli_py_test(
 )
 
 cli_py_test(
-    name = "test_ci_workflow",
-    srcs = ["test_ci_workflow.py"],
+    name = "test_bazel_test_setup",
+    srcs = ["test_bazel_test_setup.py"],
+    data = [
+        "io_test_baseline.txt",
+        "pytest.bzl",
+    ],
+    deps = ["@cli_pip//pytest"],
+)
+
+cli_py_test(
+    name = "test_bazel_test_setup_io",
+    srcs = ["test_bazel_test_setup_io.py"],
+    deps = [
+        ":bazel_test_io",
+        ":conftest",
+        "@cli_pip//pytest",
+    ],
+)
+
+cli_py_test(
+    name = "test_ci_workflow_io",
+    srcs = ["test_ci_workflow_io.py"],
     data = ["//:.github/workflows/ci.yml"],
     deps = [
         ":conftest",
@@ -1923,27 +1962,6 @@ cli_py_test(
         ":fake_tool",
         "//factory/cli/src/tbhbdev:gitleaks_check",
         "//factory/cli/src/tbhbdev/alpha:secret_scan",
-        "@cli_pip//pytest",
-    ],
-)
-
-cli_py_test(
-    name = "test_host",
-    timeout = "long",
-    srcs = ["test_host.py"],
-    data = ["//:cli_check_inputs"],
-    path_tools = ["@tbhb_rules_gitleaks//:gitleaks"],
-    shard_count = 8,
-    deps = [
-        ":conftest",
-        ":stub_fixtures",
-        ":stubtool",
-        "//factory/cli/src/tbhbdev:cli",
-        "//factory/cli/src/tbhbdev:host",
-        "//factory/cli/src/tbhbdev:secrets",
-        "//factory/cli/src/tbhbdev:userconfig",
-        "@cli_pip//httpx",
-        "@cli_pip//onepasswordconnectsdk",
         "@cli_pip//pytest",
     ],
 )
@@ -2080,6 +2098,13 @@ filegroup(
 )
 
 cli_py_library(
+    name = "bazel_test_io",
+    srcs = ["bazel_test_io.py"],
+    visibility = ["//factory/cli/tests:__subpackages__"],
+    deps = ["@cli_pip//pytest"],
+)
+
+cli_py_library(
     name = "bazel_test_setup",
     srcs = ["bazel_test_setup.py"],
     visibility = ["//factory/cli/tests:__subpackages__"],
@@ -2099,7 +2124,6 @@ cli_py_library(
     extra_deps = [":stubtool"],
     visibility = ["//factory/cli/tests:__subpackages__"],
     deps = [
-        "//factory/cli/src/tbhbdev:host",
         "//factory/cli/src/tbhbdev:secrets",
         "//factory/cli/src/tbhbdev/alpha/agent:host_tools",
         "@cli_pip//pytest",
