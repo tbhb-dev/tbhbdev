@@ -1501,7 +1501,11 @@ cli_py_test(
 cli_py_test(
     name = "test_ci_workflow_io",
     srcs = ["test_ci_workflow_io.py"],
-    data = ["//:.github/workflows/ci.yml"],
+    data = [
+        "//:.github/prose-lint.sh",
+        "//:.github/workflows/ci.yml",
+        "//:.pre-commit-config.yaml",
+    ],
     deps = [
         ":conftest",
         "@cli_pip//pytest",

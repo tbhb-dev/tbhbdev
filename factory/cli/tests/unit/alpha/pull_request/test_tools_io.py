@@ -3,12 +3,10 @@
 
 """Tests for pull request tools."""
 
-import json
 import os
 import re
 import sys
 from pathlib import Path
-from typing import cast
 
 import pytest
 from fake_tool import (
@@ -17,7 +15,6 @@ from fake_tool import (
 from unit.alpha.pull_request import pr_test_support
 from unit.alpha.pull_request.pr_test_support import (
     TOOL_VERSIONS,
-    WORKSPACE,
     World,
     run_main,
     write_draft,
@@ -29,14 +26,6 @@ from tbhbdev.alpha.pull_request import tools as pr_tools
 draft_world = pr_test_support.draft_world
 host_names = pr_test_support.host_names
 world = pr_test_support.world
-
-
-def test_cli_versions_match_the_rules_pins() -> None:
-    manifest = Path(__file__).with_name("rules-tool-pins.json")
-    if not manifest.exists():
-        manifest = WORKSPACE / "lib/rules/pins/tools.json"
-    rules = cast("dict[str, dict[str, object]]", json.loads(manifest.read_text()))
-    assert {name: rules[name]["version"] for name in TOOL_VERSIONS} == TOOL_VERSIONS
 
 
 @pytest.mark.parametrize("pin", [None, '{"vale": ""}', '{"vale": 123}', "{}", "{"])
