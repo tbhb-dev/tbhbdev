@@ -31,7 +31,7 @@ uv tool install "git+https://github.com/tbhb-dev/tbhbdev#subdirectory=factory/cl
 - `issue import FILE --check` validates staged GitHub issue blocks.
 - `alpha` holds the interim agent tools that the tbhb-dev repositories used to carry in `tools/interim`. They may change or go away without notice. `tbhbdev alpha version-check` compares the installed build across hosts.
 
-The shared `tbhbdev.content_issues` library provides scanned, audited GitHub issue and project writes for plugins. See [Content writes](docs/reference/content.md).
+The shared `tbhbdev.alpha.content_issues` library provides scanned, audited GitHub issue and project writes for plugins. See [Content writes](docs/reference/content.md).
 
 ## Agent SSH interface
 

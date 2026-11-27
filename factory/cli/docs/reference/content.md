@@ -16,7 +16,7 @@ type: Reference
 
 # Content writes
 
-Import issue and project writes from `tbhbdev.content_issues`.
+Import issue and project writes from `tbhbdev.alpha.content_issues`.
 
 - `create_issue(repo, title, body, *, issue_type, labels=(), fields=None, project=None, client=None)` creates an issue with its type and labels. `repo` is `owner/repo`. When given a project, it adds the issue and sets the fields after creation.
 - `add_comment(ref, text, *, client=None)` posts a comment.

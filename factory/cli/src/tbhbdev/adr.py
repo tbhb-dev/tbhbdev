@@ -18,11 +18,12 @@ from typing import TYPE_CHECKING
 
 from tbhbdev import runner
 from tbhbdev.adr_decision import Decision
+from tbhbdev.alpha.content_issues import Client, GhClient
 from tbhbdev.alpha.pull_request import origin_repository
 from tbhbdev.alpha.pull_request_frontmatter import parse_frontmatter
 from tbhbdev.alpha.repo_bootstrap import repo_name
 from tbhbdev.content_decision_record import check_decision_record
-from tbhbdev.content_issues import Client, GhClient, Refused
+from tbhbdev.content_model import Refused
 
 if TYPE_CHECKING:
     from collections.abc import Callable

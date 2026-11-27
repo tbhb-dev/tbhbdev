@@ -10,13 +10,11 @@ from typing import TYPE_CHECKING, Protocol, cast
 
 from tbhbdev.alpha import secret_scan
 from tbhbdev.alpha.pull_request import find_tool, root
-from tbhbdev.content_model import normalize
+from tbhbdev.content_model import Json, Refused, normalize
 from tbhbdev.content_vet import check_close, format_refusal
 
 if TYPE_CHECKING:
     from collections.abc import Mapping, Sequence
-
-type Json = dict[str, object]
 
 _PLANNING_ISSUE_TYPES = frozenset({"Initiative", "Epic", "Feature"})
 _LEAF_ISSUE_TYPES = frozenset({"Task", "Defect", "Chore", "Spike", "Research"})
@@ -31,10 +29,6 @@ class IssueRef:
     @property
     def path(self) -> str:
         return f"/repos/{self.owner}/{self.repo}/issues/{self.number}"
-
-
-class Refused(RuntimeError):  # noqa: N818 -- Required public name.
-    """A content refusal with a diagnostic."""
 
 
 class Client(Protocol):

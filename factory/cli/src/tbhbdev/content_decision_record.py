@@ -1,12 +1,9 @@
 """Validate Markdown decision records."""
 
 import re
-from typing import TYPE_CHECKING, cast
+from typing import cast
 
-from tbhbdev.content_model import normalize
-
-if TYPE_CHECKING:
-    from tbhbdev.content_vet import Json
+from tbhbdev.content_model import Json, normalize
 
 _RECORD_SECTIONS = ("Context", "Decision", "Consequences")
 _RECORD_OPTIONS = "Options considered"

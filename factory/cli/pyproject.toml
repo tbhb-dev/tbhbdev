@@ -75,15 +75,13 @@ type = "layers"
 unmatched_ignore_imports_alerting = "error"
 layers = [
   "tbhbdev.cli",
-  "tbhbdev.admin | tbhbdev.analytics | tbhbdev.adr | tbhbdev.agy | tbhbdev.issue | tbhbdev.secret | tbhbdev.content_issues | tbhbdev.prose_check | tbhbdev.gitleaks_check",
+  "tbhbdev.admin | tbhbdev.analytics | tbhbdev.adr | tbhbdev.agy | tbhbdev.issue | tbhbdev.secret | tbhbdev.prose_check | tbhbdev.gitleaks_check",
   "tbhbdev.alpha",
   "tbhbdev.runner : tbhbdev.userconfig : tbhbdev.secrets : tbhbdev.telemetry : tbhbdev.gh_agent : tbhbdev.plugins : tbhbdev.content_decision_record : tbhbdev.content_review : tbhbdev.content_vet : tbhbdev.cue_runtime",
-  "tbhbdev.version | tbhbdev.content_model | tbhbdev.adr_decision | tbhbdev.issue_import",
+  "tbhbdev.version | tbhbdev.adr_decision | tbhbdev.issue_import",
+  "tbhbdev.content_model",
 ]
 ignore_imports = [
-  "tbhbdev.adr -> tbhbdev.content_issues",
-  "tbhbdev.adr_decision -> tbhbdev.content_issues",
-  "tbhbdev.alpha.close -> tbhbdev.content_issues",
   "tbhbdev.secrets -> tbhbdev.alpha.agent.host_tools",
   "tbhbdev.secrets -> tbhbdev.alpha.agent.model",
 ]

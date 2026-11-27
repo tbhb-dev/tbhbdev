@@ -24,14 +24,27 @@ cli_py_library(
     imports = ["../.."],
     visibility = ["//factory/cli:__subpackages__"],
     deps = [
+        ":content_issues",
         ":opened",
         ":pull_request",
         ":worker_identity",
-        "//factory/cli/src/tbhbdev:content_issues",
         "//factory/cli/src/tbhbdev:issue_import",
         "//factory/cli/src/tbhbdev:userconfig",
         "//factory/cli/src/tbhbdev/alpha/agent:settings",
         "//factory/cli/src/tbhbdev/alpha/identity:dispatcher",
+    ],
+)
+
+cli_py_library(
+    name = "content_issues",
+    srcs = ["content_issues.py"],
+    imports = ["../.."],
+    visibility = ["//factory/cli:__subpackages__"],
+    deps = [
+        ":pull_request",
+        ":secret_scan",
+        "//factory/cli/src/tbhbdev:content_model",
+        "//factory/cli/src/tbhbdev:content_vet",
     ],
 )
 

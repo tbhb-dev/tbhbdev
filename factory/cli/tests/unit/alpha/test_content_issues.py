@@ -7,7 +7,7 @@ lazy from pathlib import Path
 
 import pytest
 
-from tbhbdev import content_issues as cw
+from tbhbdev.alpha import content_issues as cw
 from tbhbdev.alpha import pull_request as pr
 from tbhbdev.alpha.close import main as close_main
 
