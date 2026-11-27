@@ -25,7 +25,7 @@ from agent_example import LINUX, settings, trusted_executables
 
 from tbhbdev.alpha.agent import settings as agent_settings
 from tbhbdev.alpha.agent import transport
-from tbhbdev.alpha.agent.decisions import policy, remote, remote_shell
+from tbhbdev.alpha.agent.decisions import policy, remote, remote_host, remote_shell
 from tbhbdev.alpha.agent.driver import arguments as agent_arguments
 from tbhbdev.alpha.agent.driver import metadata
 from tbhbdev.alpha.agent.driver.inspection import inspect
@@ -248,10 +248,10 @@ def test_scripts_have_fixed_path_socket_and_git_environment() -> None:
         assert f"s={config.sockets_dir}\n" in script
     assert " git " not in scripts[-1]
     assert "agent-mirror.lock" not in scripts[-1]
-    assert remote.installed(LINUX).endswith('"$HOME/.local/bin/tbhbdev" --version')
+    assert remote_host.installed(LINUX).endswith('"$HOME/.local/bin/tbhbdev" --version')
     assert "-lc" not in remote.start("sample", config.sockets_dir, LINUX)[2]
     for script in [
-        remote.preflight("example-org/example-repo", "main", "example", LINUX),
+        remote_host.preflight("example-org/example-repo", "main", "example", LINUX),
     ]:
         for line in script.splitlines():
             if " git " in line:
@@ -287,8 +287,8 @@ def test_start_command_and_absolute_program() -> None:
         "--owned"
     )
     host = replace(LINUX, tbhbdev="/example path/bin/tbhbdev")
-    assert remote.program(host) == "'/example path/bin/tbhbdev'"
-    assert remote.installed(host).endswith("'/example path/bin/tbhbdev' --version")
+    assert remote_host.program(host) == "'/example path/bin/tbhbdev'"
+    assert remote_host.installed(host).endswith("'/example path/bin/tbhbdev' --version")
 
 
 def test_read_defaults_to_bounded_log(host: Path) -> None:
@@ -636,7 +636,7 @@ def test_preflight_ref_contract(host: Path) -> None:
         "print('commit\\ttopic')\n",
     )
     config = replace(LINUX, tbhbdev=str(host / "bin/version"))
-    script = remote.preflight(
+    script = remote_host.preflight(
         "example-org/example-repo", "topic", "example version", config
     )
     result = execute(script)

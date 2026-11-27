@@ -31,7 +31,7 @@ from tbhbdev import version
 from tbhbdev.alpha.agent import model, transport
 from tbhbdev.alpha.agent import settings as agent_settings
 from tbhbdev.alpha.agent.decisions import remote as remote_commands
-from tbhbdev.alpha.agent.decisions import remote_shell, request
+from tbhbdev.alpha.agent.decisions import remote_host, remote_shell, request
 from tbhbdev.alpha.agent.driver import launch as coordinator
 from tbhbdev.alpha.agent.driver import (
     metadata,
@@ -391,11 +391,11 @@ def test_exec_spends_one_startup_budget(
     ) -> str:
         assert settings == CONFIG
         assert host == CONFIG.hosts[0]
-        if script == remote_commands.limits():
+        if script == remote_host.limits():
             assert timeout == 110
             steps.append("limits")
             return "0.5 4 12582912 6291456 100 0 -"
-        assert script == remote_commands.installed(CONFIG.hosts[0])
+        assert script == remote_host.installed(CONFIG.hosts[0])
         assert timeout == 100
         steps.append("preflight")
         return version.line() + "\n"

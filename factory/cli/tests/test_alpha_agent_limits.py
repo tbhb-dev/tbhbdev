@@ -10,7 +10,7 @@ from typing import TYPE_CHECKING
 import pytest
 from agent_example import LINUX
 
-from tbhbdev.alpha.agent.decisions import limits, remote
+from tbhbdev.alpha.agent.decisions import limits, remote_host
 from tbhbdev.alpha.agent.model import Os
 
 if TYPE_CHECKING:
@@ -175,7 +175,7 @@ def test_decide_warns_when_ignored_or_warn_only(found: limits.Reading | str) -> 
 
 
 def test_script_prints_the_numbers_of_this_host() -> None:
-    script = remote.limits()
+    script = remote_host.limits()
     assert script.startswith("# tbhbdev-limits\n")
     done = subprocess.run(
         ["/bin/sh", "-c", script], capture_output=True, text=True, check=True
@@ -187,7 +187,7 @@ def test_script_prints_the_numbers_of_this_host() -> None:
     "key", ["vm.loadavg", "hw.logicalcpu", "hw.memsize", "vm.swapusage"]
 )
 def test_a_failed_macos_read_ends_the_script_nonzero(key: str) -> None:
-    script = remote.limits()
+    script = remote_host.limits()
     lines = [x for x in script.splitlines() if f"sysctl -n {key})" in x]
     assert len(lines) == 1
     assert lines[0].endswith("|| exit 1")
@@ -210,7 +210,7 @@ def run_script(script: str) -> tuple[int, str]:
     "text", ["read l _ < /proc/loadavg", "c=$(nproc)", "v=$(vm_stat)"]
 )
 def test_every_other_read_ends_the_script_nonzero_too(text: str) -> None:
-    lines = [x for x in remote.limits().splitlines() if text in x]
+    lines = [x for x in remote_host.limits().splitlines() if text in x]
     assert len(lines) == 1
     assert lines[0].endswith("|| exit 1")
 
@@ -224,7 +224,7 @@ def test_every_other_read_ends_the_script_nonzero_too(text: str) -> None:
     ],
 )
 def test_a_failed_linux_read_ends_the_script_nonzero(old: str, new: str) -> None:
-    script = remote.limits().replace(old, new)
+    script = remote_host.limits().replace(old, new)
     assert run_script(script) == (1, "")
 
 
@@ -251,7 +251,7 @@ def test_each_linux_memory_field_must_be_a_number(
     (tmp_path / "meminfo").write_text(
         "".join(f"{line}\n" for line in lines.values() if line)
     )
-    script = remote.limits().replace("/proc/meminfo", str(tmp_path / "meminfo"))
+    script = remote_host.limits().replace("/proc/meminfo", str(tmp_path / "meminfo"))
     assert run_script(script) == (1, "")
 
 
@@ -260,7 +260,7 @@ def test_a_swapless_linux_host_with_zero_fields_is_readable(tmp_path: Path) -> N
     (tmp_path / "meminfo").write_text(
         "".join(f"{name}: {value}\n" for name, value in MEMINFO.items())
     )
-    script = remote.limits().replace("/proc/meminfo", str(tmp_path / "meminfo"))
+    script = remote_host.limits().replace("/proc/meminfo", str(tmp_path / "meminfo"))
     code, out = run_script(script)
     assert code == 0
     reading = limits.parse(out)
@@ -285,7 +285,7 @@ vm_stat() {{
         'Pages purgeable: 2.' 'Pages active: 100.'
 }}
 """
-    return fake + remote.limits().replace("$(uname -s)", "Darwin")
+    return fake + remote_host.limits().replace("$(uname -s)", "Darwin")
 
 
 @pytest.mark.parametrize(
@@ -324,7 +324,7 @@ def test_linux_pressure_is_some_avg10_or_unknown(
     (tmp_path / "meminfo").write_text(
         "".join(f"{name}: {value}\n" for name, value in MEMINFO.items())
     )
-    script = remote.limits().replace("/proc/meminfo", str(tmp_path / "meminfo"))
+    script = remote_host.limits().replace("/proc/meminfo", str(tmp_path / "meminfo"))
     if text is None:
         script = script.replace("/proc/pressure/memory", str(tmp_path / "absent"))
     else:
@@ -351,4 +351,4 @@ def test_linux_pressure_is_some_avg10_or_unknown(
     ],
 )
 def test_a_partial_macos_read_ends_the_script_nonzero(old: str, new: str) -> None:
-    assert run_script(remote.limits().replace(old, new)) == (1, "")
+    assert run_script(remote_host.limits().replace(old, new)) == (1, "")

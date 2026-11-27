@@ -493,7 +493,7 @@ cli_py_test(
         ":conftest",
         "//factory/cli/src/tbhbdev/alpha/agent:model",
         "//factory/cli/src/tbhbdev/alpha/agent/decisions:limits",
-        "//factory/cli/src/tbhbdev/alpha/agent/decisions:remote",
+        "//factory/cli/src/tbhbdev/alpha/agent/decisions:remote_host",
         "@cli_pip//pytest",
     ],
 )
@@ -644,6 +644,7 @@ cli_py_test(
         "//factory/cli/src/tbhbdev/alpha/agent:transport",
         "//factory/cli/src/tbhbdev/alpha/agent/decisions:policy",
         "//factory/cli/src/tbhbdev/alpha/agent/decisions:remote",
+        "//factory/cli/src/tbhbdev/alpha/agent/decisions:remote_host",
         "//factory/cli/src/tbhbdev/alpha/agent/decisions:remote_shell",
         "//factory/cli/src/tbhbdev/alpha/agent/driver:arguments",
         "//factory/cli/src/tbhbdev/alpha/agent/driver:inspection",
