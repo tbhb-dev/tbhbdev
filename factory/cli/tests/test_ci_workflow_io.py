@@ -3,7 +3,9 @@
 import hashlib
 import json
 import os
+import shlex
 import subprocess
+import sys
 from pathlib import Path
 
 import pytest
@@ -107,7 +109,9 @@ def test_ci_runs_cli_coverage_in_parallel() -> None:
         "github.event_name == 'pull_request' || github.event_name == 'merge_group'"
     )
     assert coverage["runs-on"] == bazel["runs-on"]
-    assert coverage["environment"] == bazel["environment"]
+    assert coverage["environment"] == (
+        "${{ github.event_name == 'merge_group' && 'cache' || '' }}"
+    )
 
     checkout, setup, cache, selector, check = _workflow_steps(coverage)
     bazel_checkout, bazel_setup, bazel_cache, bazel_selector, _, test, _ = (
@@ -161,8 +165,16 @@ def test_ci_conclusion_requires_cli_coverage(
     }
 
     step = next(step for step in _workflow_steps(conclusion) if "run" in step)
+    sha256sum = f"""sha256sum() {{
+        {shlex.quote(sys.executable)} -I -S -c '
+import hashlib
+import sys
+print(hashlib.sha256(sys.stdin.buffer.read()).hexdigest(), " -")
+'
+    }}
+    """
     run = subprocess.run(
-        _shell_command(step),
+        _shell_command(step, sha256sum),
         env={**os.environ, "EVENT": event, "NEEDS": json.dumps(needs)},
         check=False,
         capture_output=True,

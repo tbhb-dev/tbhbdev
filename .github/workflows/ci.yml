@@ -115,7 +115,7 @@ jobs:
     timeout-minutes: 30
     outputs:
       coverage: ${{ steps.coverage.outcome }}
-    environment: ${{ (github.event_name == 'push' || github.event_name == 'merge_group') && 'cache' || '' }}
+    environment: ${{ github.event_name == 'merge_group' && 'cache' || '' }}
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
@@ -350,9 +350,9 @@ jobs:
           files="$RUNNER_TEMP/prose-files"
           git ls-files -z -- '*.md' "${exclusions[@]}" >"$files"
           vale sync
-          xargs -0 -r -a "$files" vale
-          xargs -0 -r -a "$files" cspell --no-progress
-          xargs -0 -r -a "$files" rumdl check
+          xargs -0 -r vale <"$files"
+          xargs -0 -r cspell --no-progress <"$files"
+          xargs -0 -r rumdl check <"$files"
 
   conclusion:
     name: conclusion

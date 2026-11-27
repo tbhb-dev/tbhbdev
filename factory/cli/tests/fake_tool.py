@@ -24,7 +24,7 @@ def pythonpath(src: Path) -> str:
     return os.pathsep.join(filter(None, [str(src), os.environ.get("PYTHONPATH")]))
 
 
-def write_fake(script: Path, body: str, *, stdlib_only: bool = False) -> None:
+def write_fake(script: Path, body: str) -> None:
     """A fake tool: a /bin/sh stub that runs ``body`` (saved beside it) in Python.
 
     Not a ``#!<python>`` shebang: under Bazel on Linux the interpreter path can
@@ -34,10 +34,6 @@ def write_fake(script: Path, body: str, *, stdlib_only: bool = False) -> None:
     source = script.with_name(script.name + ".py")
     source.write_text(body)
     python, path = shlex.quote(sys.executable), shlex.quote(str(source))
-    # These stand-ins never import the CLI, so they don't need its Python path
-    # or the site startup that collects coverage in CLI subprocesses.
-    if stdlib_only:
-        python += " -I -S"
     script.write_text(f'#!/bin/sh\nexec {python} {path} "$@"\n')
     script.chmod(0o755)
 

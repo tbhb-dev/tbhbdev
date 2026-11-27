@@ -6,6 +6,7 @@
 import json
 import os
 import re
+import shlex
 import subprocess
 import sys
 from dataclasses import dataclass
@@ -18,7 +19,6 @@ from fake_tool import (
     RULES_BEYOND_ONE,
     link_git,
     pythonpath,
-    write_fake,
     write_private_config,
     write_test_hooks,
 )
@@ -218,8 +218,16 @@ def tools(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Tools:
     git_dir = tmp_path / "git"
     link_git(git_dir)
     version = tool_pins.pinned_version("gitleaks")
+    python = shlex.quote(sys.executable)
     for name, body in (("gh", GH), ("cog", COG), ("gitleaks", GITLEAKS)):
-        write_fake(bin_dir / name, body.format(version=version), stdlib_only=True)
+        source = bin_dir / f"{name}.py"
+        source.write_text(body.format(version=version))
+        script = bin_dir / name
+        # These stand-ins only use the standard library and skip coverage startup.
+        script.write_text(
+            f'#!/bin/sh\nexec {python} -I -S {shlex.quote(str(source))} "$@"\n'
+        )
+        script.chmod(0o755)
     # One statement, not a loop: under Bazel's clean environment there is
     # nothing to remove, and a loop body that never runs is a missed branch.
     prefixes = ("CLAUDE", "CODEX", "ANTIGRAVITY", "GIT_")
