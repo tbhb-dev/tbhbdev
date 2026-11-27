@@ -179,10 +179,7 @@ cli_py_library(
     srcs = ["guard_ssh_agent.py"],
     imports = ["../.."],
     visibility = ["//factory/cli:__subpackages__"],
-    deps = [
-        ":guard_gh_pr",
-        ":repo",
-    ],
+    deps = [":guard_gh_pr"],
 )
 
 cli_py_library(
