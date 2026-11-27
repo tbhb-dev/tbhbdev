@@ -364,20 +364,22 @@ def usable_hosts(
     usable: list[tuple[float, Host, str]] = []
     profile = Profile(args.profile)
     account = args.account
-    for candidate in settings.hosts:
-        if (
-            not candidate.auto_select
-            or candidate.os is not system
-            or candidate.name == exclude
-            or candidate.max_concurrent_runs == 0
-            or (account is not None and account not in candidate.accounts)
-        ):
-            continue
+    candidates = [
+        candidate
+        for candidate in settings.hosts
+        if candidate.auto_select
+        and candidate.os is system
+        and candidate.name != exclude
+        and candidate.max_concurrent_runs != 0
+        and (account is None or account in candidate.accounts)
+    ]
+    for index, candidate in enumerate(candidates):
         host = rules.select_host(settings, candidate.name, account)
         now = time.monotonic()
-        if now >= deadline:
+        remaining = deadline - now
+        if remaining <= 0:
             break
-        probe_deadline = min(deadline, now + 30)
+        probe_deadline = now + min(30, remaining / (len(candidates) - index))
         found, refuse, message = read_limits(
             settings,
             host,

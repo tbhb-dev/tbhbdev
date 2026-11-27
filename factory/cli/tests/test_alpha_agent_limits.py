@@ -432,8 +432,9 @@ def test_exec_without_host_uses_the_idle_linux_host(
     ("launch_wait", "delayed_probe", "probe_timeouts"),
     [
         (120, "slot", [30, 29]),
-        (20, "slot", [10, 9]),
-        (20, "limits at deadline", [10]),
+        (20, "slot", [5, 4]),
+        (20, "limits at deadline", [5]),
+        (20, "limits timeout", [5]),
     ],
 )
 def test_exec_preserves_preflight_time_after_a_slow_probe(
@@ -443,16 +444,18 @@ def test_exec_preserves_preflight_time_after_a_slow_probe(
     delayed_probe: str,
     probe_timeouts: list[float],
 ) -> None:
-    first = dataclasses.replace(LINUX, auto_select=True)
-    slow = dataclasses.replace(first, name="example-slow")
-    last = dataclasses.replace(first, name="example-last")
+    preferred = dataclasses.replace(LINUX, auto_select=True)
+    slow = dataclasses.replace(preferred, name="example-slow")
+    last = dataclasses.replace(preferred, name="example-last")
+    limits_timeout = delayed_probe == "limits timeout"
+    candidates = (slow, preferred) if limits_timeout else (preferred, slow, last)
     config = dataclasses.replace(
-        CONFIG, hosts=(first, slow, last), launch_wait_seconds=launch_wait
+        CONFIG, hosts=candidates, launch_wait_seconds=launch_wait
     )
     monkeypatch.setattr(agent.settings, "load", lambda: config)
     host.configure(
         limits="1 4 12582912 6291456 100 0 -",
-        limits_by_host={first.name: "0.5 4 12582912 6291456 100 0 -"},
+        limits_by_host={preferred.name: "0.5 4 12582912 6291456 100 0 -"},
     )
     elapsed = 0.0
     monkeypatch.setattr(driver, "time", SimpleNamespace(monotonic=lambda: elapsed))
@@ -471,20 +474,21 @@ def test_exec_preserves_preflight_time_after_a_slow_probe(
         assert timeout > 0
         if target == slow:
             slow_timeouts.append(timeout)
-            if script == remote.check_slot(slow, Profile.BUILD):
+            if limits_timeout or script == remote.check_slot(slow, Profile.BUILD):
                 elapsed += timeout
                 message = "probe timed out"
                 raise driver.transport.TransportError(message)
-            elapsed += timeout if delayed_probe == "limits at deadline" else 1
-        if script == remote.installed(first):
-            assert target == first
-            assert timeout == launch_wait - probe_timeouts[0]
+            elapsed += launch_wait / 2 if delayed_probe == "limits at deadline" else 1
+        if script == remote.installed(preferred):
+            assert target == preferred
+            assert timeout == launch_wait - elapsed
+            assert timeout >= launch_wait / 2
         return real_shell(settings, target, script, stdin, timeout=timeout)
 
     monkeypatch.setattr(driver.transport, "shell", shell)
     assert launch(host, target=None) == 0
     assert slow_timeouts == probe_timeouts
-    assert driver.load(config, "sample").host == first
+    assert driver.load(config, "sample").host == preferred
 
 
 @pytest.mark.parametrize("probe_rc", [1, 2, 73])
