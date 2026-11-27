@@ -24,7 +24,7 @@ Import issue and project writes from `tbhbdev.alpha.content_issues`.
 - `link_sub_issue(parent, child, *, client=None)` reads the child's database ID and links it to the parent, including across repositories in the organization.
 - `add_to_project(ref, project, fields=None, *, client=None)` adds an issue to a Projects v2 project. `project` is the project node ID. `fields` maps field node IDs to GraphQL field values, such as `{"FIELD_ID": {"singleSelectOptionId": "OPTION_ID"}}`.
 
-`IssueRef(owner, repo, number)` is a frozen Python data class. Every write accepts an injected `Client` with `rest(method, path, payload=None)` and `graphql(query, variables)` methods returning dictionaries. The default `GhClient` runs `gh api` with JSON input and inherits credentials from the environment. API errors propagate to the caller. Earlier successful writes remain applied if a later step fails.
+`IssueRef(owner, repo, number)` is a frozen `dataclass`. Every write accepts an injected `Client` with `rest(method, path, payload=None)` and `graphql(query, variables)` methods returning dictionaries. The default `GhClient` runs `gh api` with JSON input and inherits credentials from the environment. API errors propagate to the caller. Earlier successful writes remain applied if a later step fails.
 
 ## Review validation
 
@@ -63,9 +63,9 @@ Schema 2 metadata requires `repo`, `pr`, `head_sha`, `tier` (0, 1, or 2), `verdi
 
 ## Caller and dry run
 
-Every write accepts the keyword arguments `caller="tbhbdev"` and `dry_run=False`. The caller identifies the plugin in each audit entry, including nested comments and project writes. Existing calls keep their return values: `create_issue` returns an `IssueRef`, and other writes return `None`.
+Pass `caller` to identify the plugin in each audit entry, including nested comments and project writes. It defaults to `tbhbdev`. With the default `dry_run=False`, `create_issue` returns an `IssueRef` and other writes return `None`.
 
-With `dry_run=True`, the library scans text, skips the writes and audit entries, and returns the proposed payload. For `completed`, `close_issue` reads the issue body to check its acceptance boxes. Both `link_sub_issue` and `add_to_project` read the issue ID.
+Set `dry_run=True` for a preview. The library scans text and returns the proposed payload without writing to GitHub or logging an audit entry. For `completed`, `close_issue` reads the issue body to check its acceptance boxes. Both `link_sub_issue` and `add_to_project` read the issue ID.
 
 - Closing with a comment returns `{"comment": {"body": "..."}, "issue": {"state": "closed", "state_reason": "..."}}`.
 - Adding to a project returns `add_item` with a GraphQL `query` and `variables`, plus `set_fields`, a list of GraphQL payloads. Field updates use `<created-project-item-id>` for the ID returned by the addition.
@@ -81,7 +81,7 @@ check_decision_record(markdown: str) -> list[str]
 
 Remove the frontmatter before passing in the Markdown body. Start the body with a hash-prefixed H1 title. The validator returns a list of refusals, which is empty when the body passes.
 
-Use at least four visible words in the title and avoid ending it with a colon or question mark. After the title, limit the headings to these H2 sections in order: Context, Decision, Options considered (optional), and Consequences. The word caps for Context, Decision, and Consequences are 150, 120, and 150 respectively. Options considered accepts up to five flat bullets of at most 25 words each. The 450-word body cap uses visible text and excludes the title and section headings. [Content model](content-model.md)
+Use at least four visible words in the title and avoid ending it with a colon or question mark. After the title, use Context and Decision as H2 headings. Follow them with an optional Options considered section and the required Consequences section. The word caps for Context, Decision, and Consequences are 150, 120, and 150 respectively. Options considered accepts up to five flat bullets of at most 25 words each. The 450-word body cap uses visible text and excludes the title and section headings. [Content model](content-model.md)
 
 Write each paragraph on one source line, including paragraphs within bullets. Avoid starting a line with a quoted sentence. Omit tables, code blocks, and block quotes.
 
@@ -89,7 +89,9 @@ Write each paragraph on one source line, including paragraphs within bullets. Av
 
 In `tbhbdev.content_vet`, `check(draft, schemas, *, variant_schema=None, definition="#Draft", parent_type=None)` takes a normalized draft and the path to the shared `schemas` directory. It runs `cue vet --all-errors` against `#Draft` and the selected definition. A caller can supply one `CUE` file with its variant definition. Install the pinned executable with `tbhbdev cue install`. [Markdown normalization](content-model.md)
 
-The result has `refusals` and `warnings` tuples. Each finding has a `code`, `path`, and `message`. Use `format_refusal(finding)` for the diagnostic with revision guidance or `guide(finding)` for the guidance alone. A criterion or verification item that repeats a CI gate receives a hint to describe its observable outcome.
+The result has `refusals` and `warnings` tuples.
+
+Each finding has a `code`, `path`, and `message`. Use `format_refusal(finding)` for the diagnostic with revision guidance or `guide(finding)` for the guidance alone. A criterion or verification item that repeats a CI gate receives a hint to describe its observable outcome.
 
 Once `CUE` accepts an issue draft, pass the actual parent issue type. A Feature requires an Epic, and an Epic requires an Initiative. Title shape and criteria that appear to join two checks with “and” produce warnings.
 
@@ -99,7 +101,7 @@ Once `CUE` accepts an issue draft, pass the actual parent issue type. A Feature 
 
 Issue writes scan the exact title, body, and comment text with `tbhbdev.alpha.secret_scan.scan`. A scan refusal blocks the write and raises `Refused` with the scanner's diagnostic. Tests use a recording client and a fake scanner.
 
-The scanner uses the current Git worktree root and locates gitleaks through the tool lookup. The scan requires the private gitleaks config. When the worktree has no `.gitleaks.toml`, gitleaks uses its defaults alongside the private config. The scanner uses private visibility when GitHub confirms the exact repository name and reports it as private. See [Secret scan](alpha/secret-scan.md) for scanner configuration.
+Tool lookup finds gitleaks for the scan, which uses the current Git worktree root. Install the private gitleaks config before scanning. When the worktree has no `.gitleaks.toml`, gitleaks uses its defaults alongside the private config. GitHub must confirm the exact repository name and report it as private for the scanner to use private visibility. See [Secret scan](alpha/secret-scan.md) for scanner configuration.
 
 ## Audit log
 

@@ -1,6 +1,6 @@
 # Shared tbhb-dev tools
 
-The `tbhbdev` Python package groups commands for tbhb-dev repositories and agent sessions. It depends on the shared Bazel rules in `lib/rules` and the Python packages pinned in the workspace lock.
+The `tbhbdev` package contains commands for tbhb-dev repositories and agent sessions. It depends on the shared Bazel rules in `lib/rules` and the Python packages pinned in the workspace lock.
 
 ## Running a tool
 
