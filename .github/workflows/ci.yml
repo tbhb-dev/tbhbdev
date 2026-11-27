@@ -108,6 +108,44 @@ jobs:
           digest=$(LC_ALL=C sort "$TARGETS" | sha256sum)
           echo "digest=${digest%% *}" >>"$GITHUB_OUTPUT"
 
+  cli-coverage:
+    name: factory/cli branch coverage
+    if: github.event_name == 'pull_request' || github.event_name == 'merge_group'
+    runs-on: ubuntu-26.04
+    timeout-minutes: 30
+    outputs:
+      coverage: ${{ steps.coverage.outcome }}
+    environment: ${{ github.event_name == 'merge_group' && 'cache' || '' }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Set up Bazel for CI
+        uses: ./.github/actions/setup-bazel-ci
+        with:
+          disk-cache: ${{ github.workflow }}-${{ github.job }}-ubuntu-26.04
+          cache-save: ${{ github.event_name == 'merge_group' }}
+
+      - name: Use the remote cache
+        uses: tbhb-dev/bazel-r2-cache/.github/actions/remote-cache@bdd7e71f0281998f10a52f253bcf4b9ec81396e8  # main
+        with:
+          main-token: ${{ secrets.BAZEL_CACHE_TOKEN }}
+          pr-token: ${{ secrets.BAZEL_CACHE_PR_TOKEN }}
+
+      - name: Select affected targets
+        id: affected
+        uses: ./.github/actions/affected-targets
+        with:
+          base: ${{ inputs.base }}
+
+      - name: Combine coverage from the CLI tests
+        id: coverage
+        if: steps.affected.outputs.count != '0'
+        run: bazelisk run --config=ci //factory/cli:coverage
+
   gazelle-current:
     name: gazelle-current
     runs-on: ubuntu-26.04
@@ -312,14 +350,14 @@ jobs:
           files="$RUNNER_TEMP/prose-files"
           git ls-files -z -- '*.md' "${exclusions[@]}" >"$files"
           vale sync
-          xargs -0 -r -a "$files" vale
-          xargs -0 -r -a "$files" cspell --no-progress
-          xargs -0 -r -a "$files" rumdl check
+          xargs -0 -r vale <"$files"
+          xargs -0 -r cspell --no-progress <"$files"
+          xargs -0 -r rumdl check <"$files"
 
   conclusion:
     name: conclusion
     if: always()
-    needs: [bazel, gazelle-current, gitleaks, prose, pr-size]
+    needs: [bazel, cli-coverage, gazelle-current, gitleaks, prose, pr-size]
     runs-on: ubuntu-26.04
     timeout-minutes: 5
     steps:
@@ -329,6 +367,7 @@ jobs:
           egress-policy: audit
 
       - name: Fail if any needed job did not succeed
+        shell: bash
         env:
           EVENT: ${{ github.event_name }}
           NEEDS: ${{ toJSON(needs) }}
@@ -336,7 +375,10 @@ jobs:
           echo "$NEEDS"
           if ! jq -e --arg event "$EVENT" 'all(to_entries[];
             .value.result == "success" or
-            (.key == "pr-size" and $event != "pull_request" and .value.result == "skipped")
+            (.value.result == "skipped" and (
+              (.key == "pr-size" and $event != "pull_request") or
+              (.key == "cli-coverage" and $event == "workflow_dispatch")
+            ))
           )' <<<"$NEEDS" >/dev/null; then
             echo "A required job did not succeed." >&2
             exit 1
@@ -346,5 +388,15 @@ jobs:
             | all(.[]; type == "string" and length == 64) and (unique | length == 1)' \
             <<<"$NEEDS" >/dev/null; then
             echo "Bazel shards did not agree on the selected targets." >&2
+            exit 1
+          fi
+          # The coverage job selects targets independently of the test shards.
+          empty_digest=$(sha256sum </dev/null)
+          if ! jq -e --arg empty "${empty_digest%% *}" '
+            ."cli-coverage" as $coverage |
+            $coverage.result == "skipped" or $coverage.outputs.coverage == "success" or
+            ($coverage.outputs.coverage == "skipped" and .bazel.outputs."shard-1" == $empty)
+          ' <<<"$NEEDS" >/dev/null; then
+            echo "CLI branch coverage was required but did not run." >&2
             exit 1
           fi

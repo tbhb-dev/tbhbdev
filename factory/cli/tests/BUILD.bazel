@@ -151,6 +151,12 @@ cli_py_library(
 )
 
 cli_py_library(
+    name = "squash_merge_fixtures",
+    srcs = ["squash_merge_fixtures.py"],
+    visibility = ["//factory/cli/tests:__subpackages__"],
+)
+
+cli_py_library(
     name = "stubtool",
     srcs = ["stubtool.py"],
     visibility = ["//factory/cli/tests:__subpackages__"],
@@ -1526,6 +1532,7 @@ cli_py_test(
     deps = [
         ":conftest",
         ":fake_tool",
+        ":squash_merge_fixtures",
         "//factory/cli/src/tbhbdev/alpha:pull_request",
         "//factory/cli/src/tbhbdev/alpha:secret_scan",
         "//factory/cli/src/tbhbdev/alpha:squash_merge",
