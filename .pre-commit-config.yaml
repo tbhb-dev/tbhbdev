@@ -104,7 +104,7 @@ repos:
         name: tombi format
         language: system
         entry: mise exec -- tombi format --check --offline
-        exclude: ^((factory/cli|lib/rules)/IMPORT-MAP|lib/rules/lint/gitleaks/(base|upstream))\.toml$
+        exclude: ^lib/rules/lint/gitleaks/(base|upstream)\.toml$
         types: [toml]
       - id: ryl
         name: ryl
