@@ -40,7 +40,6 @@ oxipng
 prek
 pyrefly
 refspecs
-reorganise
 repo
 resvg
 rules_js

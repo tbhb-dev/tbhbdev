@@ -24,7 +24,6 @@ from run_host_fixtures import (
     preparation,
 )
 
-from tbhbdev.alpha import install
 from tbhbdev.alpha.agent import (
     credentials,
     push,
@@ -43,6 +42,7 @@ from tbhbdev.alpha.agent.run_host import paths as host_paths
 from tbhbdev.alpha.agent.run_host import preflight as host_preflight
 from tbhbdev.alpha.agent.run_host import state
 from tbhbdev.alpha.agent.run_host import workspace as host_workspace
+from tbhbdev.alpha.install.hooks import stop_hooks as stop
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Mapping
@@ -201,7 +201,7 @@ def test_prepare_uses_one_worktree_and_private_destinations(
 
 def assert_stop_config(home: Path) -> None:
     path = home / "hooks.json"
-    assert json.loads(path.read_text()) == {"hooks": install.stop_hooks("codex")}
+    assert json.loads(path.read_text()) == {"hooks": stop("codex")}
     config = tomllib.loads(path.with_name("config.toml").read_text())
     assert config["hooks"]["state"].keys() == {f"{path}:stop:0:0"}
 

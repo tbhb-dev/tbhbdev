@@ -38,14 +38,6 @@ cli_py_library(
 )
 
 cli_py_library(
-    name = "codex_install",
-    srcs = ["codex_install.py"],
-    imports = ["../../.."],
-    visibility = ["//factory/cli:__subpackages__"],
-    deps = [":model"],
-)
-
-cli_py_library(
     name = "credentials",
     srcs = ["credentials.py"],
     imports = ["../../.."],
@@ -60,7 +52,6 @@ cli_py_library(
         "//factory/cli/src/tbhbdev/alpha/agent/decisions:auth",
         "//factory/cli/src/tbhbdev/alpha/agent/decisions:config",
         "//factory/cli/src/tbhbdev/alpha/agent/decisions:repo",
-        "//factory/cli/src/tbhbdev/alpha/agent/decisions:run_state",
         "@cli_pip//pyyaml",
     ],
 )
@@ -130,13 +121,6 @@ cli_py_library(
 )
 
 cli_py_library(
-    name = "precheck",
-    srcs = ["precheck.py"],
-    imports = ["../../.."],
-    visibility = ["//factory/cli:__subpackages__"],
-)
-
-cli_py_library(
     name = "process_group",
     srcs = ["process_group.py"],
     imports = ["../../.."],
@@ -153,7 +137,7 @@ cli_py_library(
     name = "push",
     srcs = ["push.py"],
     imports = ["../../.."],
-    pyi_deps = [":run_host"],
+    pyi_deps = ["//factory/cli/src/tbhbdev/alpha/agent/run_host:state"],
     visibility = ["//factory/cli:__subpackages__"],
     deps = [
         ":host_tools",
@@ -177,7 +161,7 @@ cli_py_library(
     name = "review_post",
     srcs = ["review_post.py"],
     imports = ["../../.."],
-    pyi_deps = [":run_host"],
+    pyi_deps = ["//factory/cli/src/tbhbdev/alpha/agent/run_host:state"],
     visibility = ["//factory/cli:__subpackages__"],
     deps = [
         ":credentials",
@@ -193,46 +177,6 @@ cli_py_library(
         "//factory/cli/src/tbhbdev/alpha/agent/decisions:repo",
         "//factory/cli/src/tbhbdev/alpha/agent/decisions:request",
         "//factory/cli/src/tbhbdev/alpha/identity:dispatcher",
-        "@cli_pip//httpx2",
-    ],
-)
-
-cli_py_library(
-    name = "run_host",
-    srcs = ["run_host.py"],
-    imports = ["../../.."],
-    visibility = ["//factory/cli:__subpackages__"],
-    deps = [
-        ":admission",
-        ":app_server",
-        ":bazel_servers",
-        ":build_info",
-        ":codex_install",
-        ":credentials",
-        ":host_tools",
-        ":model",
-        ":ownership",
-        ":process_group",
-        ":push",
-        ":render",
-        ":review_post",
-        ":run_host_telemetry",
-        ":runfiles",
-        ":settings",
-        ":shims",
-        ":worktree",
-        "//factory/cli/src/tbhbdev:github_tls",
-        "//factory/cli/src/tbhbdev:userconfig",
-        "//factory/cli/src/tbhbdev/alpha:run_stop_hook",
-        "//factory/cli/src/tbhbdev/alpha/agent/decisions:argv",
-        "//factory/cli/src/tbhbdev/alpha/agent/decisions:config",
-        "//factory/cli/src/tbhbdev/alpha/agent/decisions:policy",
-        "//factory/cli/src/tbhbdev/alpha/agent/decisions:repo",
-        "//factory/cli/src/tbhbdev/alpha/agent/decisions:request",
-        "//factory/cli/src/tbhbdev/alpha/agent/decisions:run_state",
-        "//factory/cli/src/tbhbdev/alpha/identity:dispatcher",
-        "//factory/cli/src/tbhbdev/alpha/install:hooks",
-        "//factory/cli/src/tbhbdev/alpha/install:trust",
         "@cli_pip//httpx2",
     ],
 )
@@ -272,23 +216,6 @@ cli_py_library(
 )
 
 cli_py_library(
-    name = "signing_parity",
-    srcs = ["signing_parity.py"],
-    imports = ["../../.."],
-    visibility = ["//factory/cli:__subpackages__"],
-    deps = [
-        ":credentials",
-        ":host_tools",
-        ":model",
-        ":settings",
-        ":transport",
-        "//factory/cli/src/tbhbdev:github_tls",
-        "//factory/cli/src/tbhbdev/alpha/agent/decisions:remote",
-        "@cli_pip//httpx2",
-    ],
-)
-
-cli_py_library(
     name = "ssh_serve",
     srcs = ["ssh_serve.py"],
     imports = ["../../.."],
@@ -298,9 +225,9 @@ cli_py_library(
         ":model",
         ":ownership",
         ":process_group",
-        ":run_host",
         ":runfiles",
         "//factory/cli/src/tbhbdev/alpha/agent/decisions:run_state",
+        "//factory/cli/src/tbhbdev/alpha/agent/run_host:dispatcher",
     ],
 )
 
@@ -386,14 +313,14 @@ cli_py_library(
         ":app_server",
         ":arguments",
         ":driver",
-        ":precheck",
-        ":run_host",
         ":settings",
         ":signing_parity",
         ":ssh_serve",
         "//factory/cli/src/tbhbdev:telemetry",
         "//factory/cli/src/tbhbdev:userconfig",
         "//factory/cli/src/tbhbdev/alpha/agent/decisions:host_names",
+        "//factory/cli/src/tbhbdev/alpha/agent/run_host:configuration",
+        "//factory/cli/src/tbhbdev/alpha/agent/run_host:dispatcher",
     ],
 )
 
@@ -410,8 +337,28 @@ cli_py_library(
 )
 
 cli_py_library(
-    name = "run_host_telemetry",
-    srcs = ["run_host_telemetry.py"],
+    name = "signing_keys",
+    srcs = ["signing_keys.py"],
     imports = ["../../.."],
     visibility = ["//factory/cli:__subpackages__"],
+    deps = [
+        "//factory/cli/src/tbhbdev:github_tls",
+        "@cli_pip//httpx2",
+    ],
+)
+
+cli_py_library(
+    name = "signing_parity",
+    srcs = ["signing_parity.py"],
+    imports = ["../../.."],
+    visibility = ["//factory/cli:__subpackages__"],
+    deps = [
+        ":credentials",
+        ":host_tools",
+        ":model",
+        ":settings",
+        ":signing_keys",
+        ":transport",
+        "//factory/cli/src/tbhbdev/alpha/agent/decisions:remote",
+    ],
 )

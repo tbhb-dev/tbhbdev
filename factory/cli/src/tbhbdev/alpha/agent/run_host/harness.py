@@ -9,7 +9,7 @@ from contextlib import ExitStack, suppress
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from tbhbdev.alpha import install, run_stop_hook
+from tbhbdev.alpha import run_stop_hook
 from tbhbdev.alpha.agent import app_server, bazel_servers, process_group, runfiles
 from tbhbdev.alpha.agent.decisions import run_state
 from tbhbdev.alpha.agent.model import AgyPolicy, Harness, Policy, RunPaths
@@ -20,6 +20,7 @@ from tbhbdev.alpha.agent.run_host import (
     telemetry,
 )
 from tbhbdev.alpha.identity.dispatcher import RUN_MODEL_ENV
+from tbhbdev.alpha.install.hooks import stop_hooks
 
 if TYPE_CHECKING:
     from tbhbdev.alpha.agent.run_host.state import Prepared, Run
@@ -110,7 +111,7 @@ def harness_command(
         worktree=paths.worktree,
         executable=executable,
         final_message=str(run.tmpdir / "out.final"),
-        stop_hooks=install.stop_hooks("claude")
+        stop_hooks=stop_hooks("claude")
         if run.request.harness is Harness.CLAUDE
         else {},
         agy_project=project,

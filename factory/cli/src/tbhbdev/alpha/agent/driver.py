@@ -23,6 +23,7 @@ from tbhbdev.alpha.agent import (
     render,
     runfiles,
     shims,
+    signing_parity,
     transport,
     version_heal,
 )
@@ -1003,6 +1004,13 @@ def inspect(settings: Settings, run: Run, *, limit: int | None) -> int:
     return 0
 
 
+def keep(settings: Settings, run: Run) -> int:
+    transport.shell(
+        settings, run.host, remote.keep(run.name), transport.Stdin(run.owner)
+    )
+    return 0
+
+
 def send(settings: Settings, run: Run, text: str) -> int:
     name = run.name
     if run.request.harness is Harness.CLAUDE:
@@ -1026,6 +1034,8 @@ def send(settings: Settings, run: Run, text: str) -> int:
 
 
 def dispatch(settings: Settings, args: argparse.Namespace) -> int:
+    if args.verb == "signing-parity":
+        return signing_parity.main(settings)
     if args.verb == "exec":
         result = execute(settings, args)
         telemetry.attributes(
@@ -1042,7 +1052,7 @@ def dispatch(settings: Settings, args: argparse.Namespace) -> int:
                 message = f"{args.name}: unknown run"
                 raise Invalid(message) from None
         raise
-    verbs = {"wait": wait, "status": status, "kill": kill}
+    verbs = {"wait": wait, "status": status, "kill": kill, "keep": keep}
     try:
         if args.verb == "diff" and args.patch:
             result = export_patch(settings, run)

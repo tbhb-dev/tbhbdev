@@ -1,3 +1,6 @@
+# SPDX-License-Identifier: Apache-2.0
+# Copyright Tony Burns
+
 load("//factory/cli:python.bzl", "cli_py_library")
 
 filegroup(
@@ -101,6 +104,7 @@ cli_py_library(
 cli_py_library(
     name = "dispatcher",
     srcs = ["dispatcher.py"],
+    extra_deps = [":__init__"],
     imports = ["../../../.."],
     visibility = ["//factory/cli:__subpackages__"],
     deps = [
@@ -159,7 +163,6 @@ cli_py_library(
         ":command_line",
         ":preflight",
         ":telemetry",
-        "//factory/cli/src/tbhbdev/alpha:install",
         "//factory/cli/src/tbhbdev/alpha:run_stop_hook",
         "//factory/cli/src/tbhbdev/alpha/agent:app_server",
         "//factory/cli/src/tbhbdev/alpha/agent:bazel_servers",
@@ -168,6 +171,7 @@ cli_py_library(
         "//factory/cli/src/tbhbdev/alpha/agent:runfiles",
         "//factory/cli/src/tbhbdev/alpha/agent/decisions:run_state",
         "//factory/cli/src/tbhbdev/alpha/identity:dispatcher",
+        "//factory/cli/src/tbhbdev/alpha/install:hooks",
     ],
 )
 
@@ -281,14 +285,14 @@ cli_py_library(
         ":preflight",
         ":state",
         ":telemetry",
-        "//factory/cli/src/tbhbdev/alpha:codex_trust",
-        "//factory/cli/src/tbhbdev/alpha:install",
         "//factory/cli/src/tbhbdev/alpha/agent:credentials",
         "//factory/cli/src/tbhbdev/alpha/agent:model",
         "//factory/cli/src/tbhbdev/alpha/agent:push",
         "//factory/cli/src/tbhbdev/alpha/agent:runfiles",
         "//factory/cli/src/tbhbdev/alpha/agent:worktree",
         "//factory/cli/src/tbhbdev/alpha/agent/decisions:repo",
+        "//factory/cli/src/tbhbdev/alpha/install:hooks",
+        "//factory/cli/src/tbhbdev/alpha/install:trust",
     ],
 )
 

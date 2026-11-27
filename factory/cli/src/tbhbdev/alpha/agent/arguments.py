@@ -71,7 +71,9 @@ def parser(prog: str) -> argparse.ArgumentParser:
         help="require a new commit and a push (default for builds); "
         "--no-expect-commit waives both and the Stop hook accepts a clean build",
     )
-    execute.add_argument("--account")
+    accounts = execute.add_mutually_exclusive_group()
+    accounts.add_argument("--account")
+    accounts.add_argument("--ops", dest="account", action="store_const", const="ops")
     execute.add_argument(
         "--model",
         required=True,
@@ -103,7 +105,7 @@ def parser(prog: str) -> argparse.ArgumentParser:
     )
     execute.add_argument("name")
     execute.add_argument("prompt_file")
-    for verb in ("wait", "status", "kill", "clean", "log", "diff"):
+    for verb in ("wait", "status", "kill", "clean", "keep", "log", "diff"):
         sub = verbs.add_parser(verb)
         sub.add_argument("name")
         if verb == "log":
@@ -118,4 +120,7 @@ def parser(prog: str) -> argparse.ArgumentParser:
     send.add_argument("--harness", choices=("codex", "claude"))
     send.add_argument("name", metavar="RUN")
     send.add_argument("message", metavar="MESSAGE")
+    verbs.add_parser(
+        "signing-parity", help="check each host's signing key is registered"
+    )
     return command

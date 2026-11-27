@@ -4,11 +4,12 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from tbhbdev.alpha.agent import model
-from tbhbdev.alpha.agent.decisions import argv
+from tbhbdev.alpha.agent import model, transport
 
 if TYPE_CHECKING:
     import pytest
+
+MARKER = "marker-secret-reference-0451"
 
 SANDBOX = model.Sandbox(
     audit_dir=".local/state/example-audit",
@@ -90,4 +91,4 @@ def trusted_executables(monkeypatch: pytest.MonkeyPatch) -> None:
         assert path.startswith("/usr/bin:/bin:/usr/sbin:/sbin")
         return f"/usr/bin/{name}"
 
-    monkeypatch.setattr(argv.shutil, "which", which)
+    monkeypatch.setattr(transport.shutil, "which", which)

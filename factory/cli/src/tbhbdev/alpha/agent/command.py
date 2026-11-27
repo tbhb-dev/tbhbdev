@@ -12,6 +12,7 @@ from tbhbdev.alpha.agent import (
     arguments,
     driver,
     settings,
+    signing_parity,
     ssh_serve,
 )
 from tbhbdev.alpha.agent.decisions import host_names
@@ -27,6 +28,7 @@ def main(argv: list[str], prog: str) -> int:
         "send-host": app_server.main,
         "ssh-serve": ssh_serve.main,
         "check-slot": admission.main,
+        "signing-fingerprint": signing_parity.host_main,
     }
     if argv and argv[0] in host_commands:
         return host_commands[argv[0]](argv[1:], f"{prog} {argv[0]}")

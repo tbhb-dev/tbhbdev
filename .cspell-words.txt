@@ -667,7 +667,6 @@ reconverge
 regedit
 rejectattr
 renovatebot
-reorganise
 resizefs
 rfile
 rgrp

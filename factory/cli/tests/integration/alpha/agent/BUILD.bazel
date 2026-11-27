@@ -51,3 +51,33 @@ cli_py_test(
         "@cli_pip//pytest",
     ],
 )
+
+cli_py_test(
+    name = "test_transport_ssh_io",
+    srcs = ["test_transport_ssh_io.py"],
+    imports = ["../../.."],
+    deps = [
+        "//factory/cli/src/tbhbdev/alpha/agent:model",
+        "//factory/cli/src/tbhbdev/alpha/agent:transport",
+        "//factory/cli/tests:agent_example",
+        "//factory/cli/tests:conftest",
+        "@cli_pip//pytest",
+    ],
+)
+
+cli_py_test(
+    name = "test_signing_parity_io",
+    srcs = ["test_signing_parity_io.py"],
+    imports = ["../../.."],
+    deps = [
+        "//factory/cli/src/tbhbdev/alpha/agent:model",
+        "//factory/cli/src/tbhbdev/alpha/agent:settings",
+        "//factory/cli/src/tbhbdev/alpha/agent:signing_keys",
+        "//factory/cli/src/tbhbdev/alpha/agent:signing_parity",
+        "//factory/cli/src/tbhbdev/alpha/agent:transport",
+        "//factory/cli/tests:agent_example",
+        "//factory/cli/tests:conftest",
+        "@cli_pip//httpx2",
+        "@cli_pip//pytest",
+    ],
+)

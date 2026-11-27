@@ -24,6 +24,7 @@ def test_file_names() -> None:
         ".pr",
         ".base",
         ".head",
+        ".keep",
         ".rc.pending",
         ".run.lock",
         ".rc.fallback",

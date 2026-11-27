@@ -13,7 +13,7 @@ from agent_example import (
     trusted_executables,
 )
 
-from tbhbdev.alpha.agent.decisions import argv
+from tbhbdev.alpha.agent import transport
 from tbhbdev.alpha.agent.model import Invalid
 
 pytestmark = pytest.mark.usefixtures("isolated_home")  # noqa: V107
@@ -36,7 +36,7 @@ def test_ssh(isolated_home: Path, hostname: str, key_kind: str) -> None:
     elif key_kind == "directory":
         key.mkdir()
     with patch("socket.gethostname", return_value=hostname):
-        result = argv.ssh(
+        result = transport.ssh_argv(
             LINUX,
             ("example-tool", "run", "a b"),
             connect_timeout=15,
@@ -66,7 +66,7 @@ def test_ssh(isolated_home: Path, hostname: str, key_kind: str) -> None:
 
 
 def test_ssh_uses_the_hosts_shell() -> None:
-    result = argv.ssh(MACOS, ("true",), connect_timeout=1, keepalive=2)
+    result = transport.ssh_argv(MACOS, ("true",), connect_timeout=1, keepalive=2)
     assert result[-2:] == ("example-macos", "/bin/zsh -c true")
 
 
@@ -74,7 +74,7 @@ def test_ssh_uses_the_hosts_shell() -> None:
 @pytest.mark.parametrize("count", [1, 5])
 def test_ssh_account_and_keepalive_count(account: str, count: int) -> None:
     host = dataclasses.replace(LINUX, account=account)
-    result = argv.ssh(
+    result = transport.ssh_argv(
         host, ("true",), connect_timeout=2, keepalive=7, keepalive_count_max=count
     )
     assert result == (
@@ -99,7 +99,7 @@ def test_executables_resolve_only_fixed_path(
     monkeypatch: pytest.MonkeyPatch, platform: str
 ) -> None:
     name = "ssh"
-    monkeypatch.setattr(argv.sys, "platform", platform)
+    monkeypatch.setattr(transport.sys, "platform", platform)
     expected = "/usr/bin:/bin:/usr/sbin:/sbin"
     if platform == "darwin":
         expected += ":/opt/homebrew/bin:/usr/local/bin"
@@ -109,14 +109,14 @@ def test_executables_resolve_only_fixed_path(
         assert path == expected
         return "/usr/bin/" + name
 
-    monkeypatch.setattr(argv.shutil, "which", which)
-    assert argv.executable("ssh") == "/usr/bin/" + name
+    monkeypatch.setattr(transport.shutil, "which", which)
+    assert transport.executable("ssh") == "/usr/bin/" + name
 
     def missing(*_args: object, **_kwargs: object) -> None:
         return None
 
-    monkeypatch.setattr(argv.shutil, "which", missing)
+    monkeypatch.setattr(transport.shutil, "which", missing)
     with pytest.raises(
         Invalid, match=f"required executable '{name}' missing from fixed PATH"
     ):
-        argv.executable("ssh")
+        transport.executable("ssh")

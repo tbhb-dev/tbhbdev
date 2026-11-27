@@ -1263,6 +1263,14 @@ def test_kill_fallback(remote: Remote, monkeypatch: pytest.MonkeyPatch) -> None:
     assert (remote.state / "sample.rc").stat().st_mode & 0o777 == 0o600
 
 
+def test_keep(remote: Remote) -> None:
+    assert launch(remote) == 0
+    assert command("keep") == 0
+    assert command("keep") == 0
+    assert (remote.state / "sample.keep").read_text() == ""
+    assert (remote.state / "sample.keep").stat().st_mode & 0o777 == 0o600
+
+
 def test_clean_running(remote: Remote, capsys: pytest.CaptureFixture[str]) -> None:
     assert launch(remote) == 0
     assert command("clean", "--force") == 1
@@ -2113,7 +2121,7 @@ def test_successful_wait_resets_failure_for_a_short_window(
     assert command("wait") == 0
 
 
-@pytest.mark.parametrize("verb", ["status", "wait", "kill", "log", "diff"])
+@pytest.mark.parametrize("verb", ["status", "wait", "keep", "kill", "log", "diff"])
 def test_verbs_without_remote_run_directory(
     remote: Remote,
     capsys: pytest.CaptureFixture[str],

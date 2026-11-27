@@ -138,8 +138,6 @@ forbidden_modules = [
   "tbhbdev.alpha.agent.host_tools",
 ]
 ignore_imports = [
-  "tbhbdev.alpha.agent.decisions.argv -> shutil",
-  "tbhbdev.alpha.agent.decisions.argv -> socket",
   "tbhbdev.alpha.agent.decisions.driver -> tbhbdev.alpha.brief",
 ]
 

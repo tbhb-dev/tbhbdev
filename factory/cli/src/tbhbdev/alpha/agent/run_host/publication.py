@@ -28,7 +28,7 @@ def post_review(run: Run, prepared: Prepared) -> int:
     except RunInterruptedError:
         # A signal during posting follows the run interrupt path and records 143.
         raise
-    except Exception as exc:  # noqa: BLE001 -- record posting failures safely  # noqa: BLE001 -- record posting failures safely.
+    except Exception as exc:  # noqa: BLE001 -- record posting failures safely.
         run.files.write("log", f"review not posted: {type(exc).__name__}\n")
         return NO_REVIEW
 

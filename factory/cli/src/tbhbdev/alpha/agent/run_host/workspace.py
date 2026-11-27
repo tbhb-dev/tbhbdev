@@ -5,13 +5,13 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from tbhbdev.alpha import codex_trust, install
 from tbhbdev.alpha.agent import credentials, push, runfiles, worktree
 from tbhbdev.alpha.agent.decisions import repo
 from tbhbdev.alpha.agent.model import Harness, Profile, RunPaths
 from tbhbdev.alpha.agent.run_host import bazel_cache, environment, preflight, telemetry
 from tbhbdev.alpha.agent.run_host.paths import planned_paths
 from tbhbdev.alpha.agent.run_host.state import Prepared, Run
+from tbhbdev.alpha.install import hooks, trust
 
 
 def prepare_workspace(run: Run) -> Prepared:
@@ -63,9 +63,8 @@ def prepare_workspace(run: Run) -> Prepared:
 def prepare_codex_config(home: Path, endpoint: str | None) -> None:
     text = telemetry.otel_config(endpoint) if endpoint is not None else ""
     path = home / "hooks.json"
-    config = {"hooks": install.stop_hooks("codex")}
+    config = {"hooks": hooks.stop_hooks("codex")}
     runfiles.atomic(path, json.dumps(config))
-    hashes = codex_trust.our_hashes(path, config, install.ours)
-    text = codex_trust.trusted_text(text, path, hashes)
+    text = trust.trusted_text(text, path, trust.our_hashes(path, config))
     if text:
         runfiles.atomic(home / "config.toml", text)

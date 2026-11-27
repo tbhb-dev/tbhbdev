@@ -13,7 +13,9 @@ type: Reference
 
 # Agent
 
-`agent` coordinates runs with `exec`, `send`, `wait`, `status`, `log`, `diff`, `kill` and `clean`.
+`agent` coordinates runs with `exec`, `send`, `wait`, `status`, `log`, `diff`, `kill`, `keep`, and `clean`.
+
+`signing-parity` checks whether GitHub lists the signing keys for the configured accounts.
 
 ## Launch and steer
 
