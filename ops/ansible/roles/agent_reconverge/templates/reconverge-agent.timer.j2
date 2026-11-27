@@ -1,0 +1,10 @@
+[Unit]
+Description=Reconverge the {{ agent_reconverge_account }} account settings periodically
+
+[Timer]
+OnActiveSec=1min
+OnUnitActiveSec={{ agent_reconverge_interval_seconds }}s
+Persistent=true
+
+[Install]
+WantedBy=timers.target

@@ -1,0 +1,64 @@
+---
+- name: release | Install the pinned tool for ops
+  ansible.builtin.include_role:
+    name: tbhbops_tool
+  vars:
+    tbhbops_tool_user: ops
+    tbhbops_tool_commit: "{{ o11y_release_id }}"
+    tbhbops_tool_repo: "{{ role_path }}/../../.."
+
+- name: release | Prepare persistent data
+  ansible.builtin.file:
+    path: "{{ o11y_data_dir }}"
+    state: directory
+    owner: root
+    group: root
+    mode: '0755'
+
+- name: release | Initialize data and generated secrets on the VM
+  ansible.builtin.command:
+    argv: ["{{ tbhbops_tool_bin }}/tbhbops", o11y, init, --data-dir, "{{ o11y_data_dir }}"]
+  changed_when: false
+  no_log: true
+  diff: false
+
+# pipe executes on the controller. Never retain copy results in registered vars.
+- name: release | Deliver the alert secrets from controller lookups
+  ansible.builtin.copy:
+    content: "{{ lookup('ansible.builtin.pipe', o11y_lookup_command + ' ' + (item.ref | quote)) }}"
+    dest: "{{ o11y_data_dir }}/secrets/{{ item.name }}"
+    owner: '472'
+    group: '472'
+    mode: '0400'
+  loop:
+    - name: alert_discord_webhook_url
+      ref: "{{ o11y_alert_discord_webhook_ref }}"
+    - name: alert_smtp_password
+      ref: "{{ o11y_alert_smtp_password_ref }}"
+  no_log: true
+  diff: false
+
+- name: release | Ensure the agents login exists in 1Password
+  ansible.builtin.shell: >-
+    op item get collector-access --vault host-0-shared --account account.example.invalid >/dev/null 2>&1 ||
+    op item create --category Login --title collector-access --vault host-0-shared
+    --generate-password=letters,digits,32 --account account.example.invalid >/dev/null
+  delegate_to: localhost
+  become: false
+  run_once: true
+  changed_when: false
+  no_log: true
+  diff: false
+
+- name: release | Deliver the agents password from 1Password
+  ansible.builtin.template:
+    src: grafana_agents_password.j2
+    dest: "{{ o11y_data_dir }}/secrets/grafana_agents_password"
+    owner: '472'
+    group: '472'
+    mode: '0400'
+  no_log: true
+  diff: false
+
+- name: release | Stage the release
+  ansible.builtin.include_tasks: stage.yml

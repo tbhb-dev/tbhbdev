@@ -1,0 +1,18 @@
+---
+# cspell:ignore statvfs bavail frsize
+# setup omits overlay mounts. Supply the container root's actual free bytes
+# through ansible_mounts so the production preflight still checks its input.
+- name: mounts | Read the overlay filesystem free space
+  ansible.builtin.command:
+    argv:
+      - python3
+      - -c
+      - "import os; s = os.statvfs('/'); print(s.f_bavail * s.f_frsize)"
+  register: o11y_test_space
+  changed_when: false
+
+- name: mounts | Include the overlay root in the test mount facts
+  ansible.builtin.set_fact:
+    ansible_mounts: >-
+      {{ [{'mount': '/', 'size_available': o11y_test_space.stdout | int}] +
+        ansible_facts.mounts }}

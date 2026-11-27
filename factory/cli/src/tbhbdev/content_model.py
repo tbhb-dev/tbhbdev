@@ -20,7 +20,9 @@ def _text_metrics(text: str) -> dict[str, int]:
     }
 
 
-def _visible(node: SyntaxTreeNode) -> str:
+def _visible(node: SyntaxTreeNode, *, replace_code: bool = False) -> str:
+    if node.type == "code_inline" and replace_code:
+        return "Code"
     if node.type in {"text", "code_inline"}:
         return node.content
     if node.type in {"softbreak", "hardbreak"}:
@@ -36,7 +38,7 @@ def _visible(node: SyntaxTreeNode) -> str:
         "tbody": "\n",
         "tr": "\t",
     }
-    parts = [_visible(c) for c in node.children]
+    parts = [_visible(c, replace_code=replace_code) for c in node.children]
     if node.type in separators:
         return separators[node.type].join(
             part.strip() for part in parts if part.strip()
@@ -289,16 +291,17 @@ def _without_heading(
 
 
 def _group_block(
-    doc: _Document, group: list[SyntaxTreeNode], start: int, end: int
+    doc: _Document, group: list[SyntaxTreeNode], start: int, end: int, *, review: bool
 ) -> tuple[str, dict[str, object]]:
     """Return the key and block for a preamble or a level-two section."""
     first = group[0]
     section = first.type == "heading" and first.tag == "h2"
     block = doc.value(group, start, end)
+    content = [doc.block(n) for n in group[int(section) :]]
     block.update(
         kind="section" if section else "text",
         inline={"elements": [], "repositoryReferences": []},
-        content=[doc.block(n) for n in group[int(section) :]],
+        content=content,
     )
     if not section:
         return "preamble", block
@@ -306,6 +309,8 @@ def _group_block(
     if not heading:
         message = "Section headings must have visible text"
         raise ValueError(message)
+    if review and heading == "Summary" and len(content) == 1:
+        content[0]["sentenceText"] = _visible(group[1], replace_code=True)
     block.update(heading=heading, level=2)
     heading_end = cast("tuple[int, int]", first.map)[1]
     _without_heading(block, doc.source[start : doc.offsets[heading_end]], group[1:])
@@ -352,7 +357,7 @@ def normalize(
         blocks["title"] = title
     ends = [*starts[1:], len(markdown)][: len(starts)]
     for group, start, end in zip(groups, starts, ends, strict=True):
-        key, block = _group_block(doc, group, start, end)
+        key, block = _group_block(doc, group, start, end, review=object == "pr-review")
         candidate, suffix = key, 1
         while candidate in blocks:
             suffix += 1

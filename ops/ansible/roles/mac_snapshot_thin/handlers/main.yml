@@ -1,0 +1,16 @@
+---
+- name: Unload the changed snapshot daemon
+  ansible.builtin.command:
+    argv: [/bin/launchctl, bootout, system/dev.tbhb.mac-snapshot-thin]
+  changed_when: true
+  when:
+    - not ansible_check_mode
+    - mac_snapshot_thin_daemon.rc == 0
+  listen: Reload the snapshot daemon
+
+- name: Load the changed snapshot daemon
+  ansible.builtin.command:
+    argv: [/bin/launchctl, bootstrap, system, /Library/LaunchDaemons/dev.tbhb.mac-snapshot-thin.plist]
+  changed_when: true
+  when: not ansible_check_mode
+  listen: Reload the snapshot daemon

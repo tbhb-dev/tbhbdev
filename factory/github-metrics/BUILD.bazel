@@ -38,10 +38,7 @@ golangci_lint_test(
 go_arch_lint_test(
     name = "go_arch_lint_test",
     size = "small",
-    srcs = GO_TARGETS + [
-        "//factory/cli/cmd/tbhbdev:tbhbdev_test",
-        "//factory/cli/internal/dispatch:dispatch_test",
-    ],
+    srcs = GO_TARGETS,
     config = "//:.go-arch-lint.yml",
     go_mod = "//:go.mod",
 )
@@ -53,11 +50,7 @@ go_deadcode_test(
 
 go_mod_tidy_test(
     name = "go_mod_tidy_test",
-    srcs = [
-        ":repo_files",
-        "//factory/cli/cmd/tbhbdev:go_module_sources",
-        "//factory/cli/internal/dispatch:go_module_sources",
-    ],
+    srcs = [":repo_files"],
     go_mod = "//:go.mod",
     go_sum = "//:go.sum",
     proxy = "@go_mod_proxy//:proxy",

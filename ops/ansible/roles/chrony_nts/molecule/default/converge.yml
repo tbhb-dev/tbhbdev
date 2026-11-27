@@ -1,0 +1,27 @@
+---
+- name: Converge
+  hosts: all
+  become: true
+  pre_tasks:
+    - name: Stat the fragment before check mode
+      ansible.builtin.stat:
+        path: /etc/chrony/conf.d/10-cloudflare-nts.conf
+      register: chrony_nts_before_check
+      when: ansible_check_mode
+  roles:
+    - role: chrony_nts
+      vars:
+        chrony_nts_run: false
+  post_tasks:
+    - name: Stat the fragment after check mode
+      ansible.builtin.stat:
+        path: /etc/chrony/conf.d/10-cloudflare-nts.conf
+      register: chrony_nts_after_check
+      when: ansible_check_mode
+
+    - name: Check that the preview leaves the fragment untouched
+      ansible.builtin.assert:
+        that:
+          - chrony_nts_before_check.stat == chrony_nts_after_check.stat
+        quiet: true
+      when: ansible_check_mode

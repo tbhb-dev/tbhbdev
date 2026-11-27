@@ -1,0 +1,10 @@
+---
+# Add the NTS source only to these three lab hosts:
+#   mise run playbook -- playbooks/lab-chrony-nts.yml --check --diff
+- name: Add Cloudflare NTS to the lab hosts
+  hosts: chrony_nts_hosts
+  gather_facts: false
+  become: true
+  roles:
+    - role: chrony_nts
+      tags: [chrony_nts]

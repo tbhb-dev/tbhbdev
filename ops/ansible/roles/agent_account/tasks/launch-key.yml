@@ -1,0 +1,522 @@
+---
+# ssh_serve.py in tbhb-dev/tools names these paths but checks no owner or mode.
+# The controller runs as the operator account, which owns the key (0600). The
+# key reaches only the agent account's forced ssh-serve command. The private key
+# is never printed.
+#
+# The delivery directory is root-owned (0755) and only the files in it belong to
+# the operator.
+# Ansible's copy module writes a temporary file made with mkstemp in the
+# destination directory, then uses atomic_move (rename) to put it in place,
+# then sets owner and mode by path.
+#
+# Root does all key work in a second root-owned directory (0700) the operator
+# can't read, and copies the finished files into the delivery directory.
+# packages/tbhbops/tests/test_ansible_hands_off_tony.py checks become_user.
+# Root makes directories and a key before it needs the operator, so check the
+# operator first and fail before anything exists.
+- name: launch-key | Require the operator account
+  ansible.builtin.assert:
+    that:
+      - agent_account_operator is defined
+      - agent_account_operator | string | trim | length > 0
+    fail_msg: agent_account_operator must name the operator account that runs the controller.
+    quiet: true
+
+- name: launch-key | Look up the Linux operator account
+  ansible.builtin.getent:
+    database: passwd
+    key: "{{ agent_account_operator }}"
+    fail_key: false
+  register: agent_account_launch_operator
+  when: ansible_facts.system == 'Linux'
+
+- name: launch-key | Look up the macOS operator account
+  ansible.builtin.command:
+    argv: [dscl, '.', -read, "/Users/{{ agent_account_operator }}", UniqueID]
+  register: agent_account_launch_macos_operator
+  check_mode: false
+  changed_when: false
+  failed_when: false
+  when: ansible_facts.system == 'Darwin'
+
+- name: launch-key | Look up the macOS operator primary group
+  ansible.builtin.command:
+    argv: [dscl, '.', -read, "/Users/{{ agent_account_operator }}", PrimaryGroupID]
+  register: agent_account_launch_macos_group
+  check_mode: false
+  changed_when: false
+  failed_when: false
+  when: ansible_facts.system == 'Darwin'
+
+- name: launch-key | Require the operator account and group
+  ansible.builtin.assert:
+    that:
+      - >-
+          (ansible_facts.system == 'Darwin' and agent_account_launch_macos_operator.rc == 0 and
+          agent_account_launch_macos_group.rc == 0) or
+          (ansible_facts.system == 'Linux' and
+          agent_account_launch_operator.ansible_facts.getent_passwd[agent_account_operator] is not none)
+    fail_msg: "Missing operator account {{ agent_account_operator }} or its primary group."
+    quiet: true
+
+- name: launch-key | Set the operator IDs
+  ansible.builtin.set_fact:
+    agent_account_launch_operator_uid: >-
+      {{ (agent_account_launch_operator.ansible_facts.getent_passwd[agent_account_operator][1]
+      if ansible_facts.system == 'Linux' else agent_account_launch_macos_operator.stdout.split()[1]) | int }}
+    agent_account_launch_operator_group: >-
+      {{ (agent_account_launch_operator.ansible_facts.getent_passwd[agent_account_operator][2]
+      if ansible_facts.system == 'Linux' else agent_account_launch_macos_group.stdout.split()[1]) | int }}
+
+- name: launch-key | Set the launch key directories
+  ansible.builtin.set_fact:
+    agent_account_launch_dir: >-
+      {{ '/Library/Application Support/tbhbdev/agent-launch' if ansible_facts.system == 'Darwin'
+      else '/etc/tbhbdev/agent-launch' }}
+    agent_account_launch_work_dir: >-
+      {{ '/Library/Application Support/tbhbdev/agent-launch-root' if ansible_facts.system == 'Darwin'
+      else '/etc/tbhbdev/agent-launch-root' }}
+
+# Check ancestors before any child path is read or changed.
+- name: launch-key | Inspect the parent directories
+  ansible.builtin.stat:
+    path: "{{ item }}"
+    follow: false
+  loop:
+    - "{{ agent_account_launch_work_dir | dirname | dirname }}"
+    - "{{ agent_account_launch_work_dir | dirname }}"
+  register: agent_account_launch_parent_stats
+
+- name: launch-key | Require safe parent directories
+  ansible.builtin.assert:
+    that:
+      - >-
+          not item.stat.exists or (item.stat.isdir and not item.stat.islnk and
+          item.stat.uid == 0 and not item.stat.wgrp and not item.stat.woth)
+    fail_msg: >-
+      {{ item.item }} must be a root-owned real directory without group or other write access.
+      Repair ownership and permissions with chown root '{{ item.item }}' and chmod 0755 '{{ item.item }}'.
+    quiet: true
+  loop: "{{ agent_account_launch_parent_stats.results }}"
+  loop_control:
+    label: "{{ item.item }}"
+
+# Inspect existing entries before any directory task can adopt them.
+- name: launch-key | Look for existing directories
+  ansible.builtin.stat:
+    path: "{{ item }}"
+    follow: false
+  loop:
+    - "{{ agent_account_launch_work_dir }}"
+    - "{{ agent_account_launch_dir }}"
+  register: agent_account_launch_directory_stats
+
+- name: launch-key | Require safe existing directories
+  ansible.builtin.assert:
+    that:
+      - >-
+          not item.stat.exists or (item.stat.isdir and not item.stat.islnk and
+          item.stat.uid == 0 and not item.stat.wgrp and not item.stat.woth)
+    fail_msg: >-
+      {{ item.item }} must be a root-owned real directory without group or other write access.
+      Repair ownership and permissions with chown root '{{ item.item }}' and chmod 0755 '{{ item.item }}'.
+    quiet: true
+  loop: "{{ agent_account_launch_directory_stats.results }}"
+  loop_control:
+    label: "{{ item.item }}"
+
+- name: launch-key | Look for the existing work key
+  ansible.builtin.stat:
+    path: "{{ agent_account_launch_work_dir }}/id_ed25519"
+    follow: false
+  register: agent_account_launch_work_stat
+
+- name: launch-key | Require a safe existing work key
+  ansible.builtin.assert:
+    that:
+      - >-
+          not agent_account_launch_work_stat.stat.exists or
+          (agent_account_launch_work_stat.stat.isreg and not agent_account_launch_work_stat.stat.islnk and
+          agent_account_launch_work_stat.stat.nlink == 1 and agent_account_launch_work_stat.stat.uid == 0)
+    fail_msg: "{{ agent_account_launch_work_dir }}/id_ed25519 must be a root-owned regular file with one link."
+    quiet: true
+
+- name: launch-key | Inspect the existing work public key
+  ansible.builtin.stat:
+    path: "{{ agent_account_launch_work_dir }}/id_ed25519.pub"
+    follow: false
+  register: agent_account_launch_existing_pub_stat
+
+- name: launch-key | Require a safe existing work public key
+  ansible.builtin.assert:
+    that:
+      - >-
+          not agent_account_launch_existing_pub_stat.stat.exists or
+          (agent_account_launch_existing_pub_stat.stat.isreg and
+          not agent_account_launch_existing_pub_stat.stat.islnk and
+          agent_account_launch_existing_pub_stat.stat.nlink == 1 and
+          agent_account_launch_existing_pub_stat.stat.uid == 0)
+    fail_msg: "{{ agent_account_launch_work_dir }}/id_ed25519.pub must be a root-owned regular file with one link."
+    quiet: true
+
+- name: launch-key | Look for existing delivery files
+  ansible.builtin.stat:
+    path: "{{ agent_account_launch_dir }}/{{ item }}"
+    follow: false
+  loop: [id_ed25519, id_ed25519.pub]
+  register: agent_account_launch_delivery_stats
+
+- name: launch-key | Require safe existing delivery files
+  ansible.builtin.assert:
+    that:
+      - not item.stat.exists or (item.stat.isreg and not item.stat.islnk and item.stat.nlink == 1)
+    fail_msg: "{{ item.item }} in {{ agent_account_launch_dir }} must be a regular file with one link, never a link."
+    quiet: true
+  loop: "{{ agent_account_launch_delivery_stats.results }}"
+  loop_control:
+    label: "{{ item.item }}"
+
+- name: launch-key | Require delivery ownership and modes
+  ansible.builtin.assert:
+    that:
+      - >-
+          not item.stat.exists or
+          ((item.stat.uid == agent_account_launch_operator_uid | int or
+          (item.item == 'id_ed25519.pub' and item.stat.uid == 0)) and
+          not item.stat.wgrp and not item.stat.woth and
+          (item.item != 'id_ed25519' or
+          (not item.stat.rgrp and not item.stat.roth and not item.stat.xgrp and not item.stat.xoth)))
+    fail_msg: >-
+      {{ agent_account_launch_dir }}/{{ item.item }} must belong to {{ agent_account_operator }}
+      {{ '(or root for the public half)' if item.item == 'id_ed25519.pub' else '' }} and have safe permissions.
+      Repair ownership with chown {{ agent_account_operator }} '{{ agent_account_launch_dir }}/{{ item.item }}'.
+    quiet: true
+  loop: "{{ agent_account_launch_delivery_stats.results }}"
+  loop_control:
+    label: "{{ item.item }}"
+
+# A public file without its private half cannot establish which key to keep.
+- name: launch-key | Require the delivery private half
+  ansible.builtin.assert:
+    that:
+      - >-
+          not agent_account_launch_delivery_stats.results[1].stat.exists or
+          agent_account_launch_delivery_stats.results[0].stat.exists
+    fail_msg: "{{ agent_account_launch_dir }}/id_ed25519.pub exists without id_ed25519; restore the private half first."
+    quiet: true
+
+# The sibling directories share a parent. If the operator could write the
+# parent, the operator could rename either directory away and put its own in
+# its place, so root owns and seals the parent first.
+- name: launch-key | Create the root-owned parent directory
+  ansible.builtin.file:
+    path: "{{ agent_account_launch_work_dir | dirname }}"
+    state: directory
+    owner: root
+    group: "{{ 'wheel' if ansible_facts.system == 'Darwin' else 'root' }}"
+    mode: '0755'
+    follow: false
+
+- name: launch-key | Create the root-owned launch key directory
+  ansible.builtin.file:
+    path: "{{ agent_account_launch_work_dir }}"
+    state: directory
+    owner: root
+    group: "{{ 'wheel' if ansible_facts.system == 'Darwin' else 'root' }}"
+    mode: '0700'
+    follow: false
+
+# Copy existing delivery files before deriving or comparing an adopted key.
+- name: launch-key | Adopt the delivery key files
+  ansible.builtin.copy:
+    src: "{{ agent_account_launch_dir }}/{{ item.name }}"
+    dest: "{{ agent_account_launch_work_dir }}/{{ item.name }}"
+    remote_src: true
+    force: false
+    owner: root
+    group: "{{ 'wheel' if ansible_facts.system == 'Darwin' else 'root' }}"
+    mode: "{{ item.mode }}"
+    follow: false
+  loop:
+    - {name: id_ed25519, mode: '0600'}
+    - {name: id_ed25519.pub, mode: '0644'}
+  loop_control:
+    index_var: agent_account_launch_file_index
+    label: "{{ item.name }}"
+  no_log: true
+  diff: false
+  when:
+    - not agent_account_launch_work_stat.stat.exists
+    - agent_account_launch_delivery_stats.results[0].stat.exists
+    - agent_account_launch_delivery_stats.results[agent_account_launch_file_index].stat.exists
+    - not ansible_check_mode
+
+# OpenSSH refuses a root-owned private key with a wide mode. Repair it
+# before either comparison or regeneration invokes ssh-keygen -y.
+- name: launch-key | Repair the existing root-only private key
+  ansible.builtin.file:
+    path: "{{ agent_account_launch_work_dir }}/id_ed25519"
+    owner: root
+    group: "{{ 'wheel' if ansible_facts.system == 'Darwin' else 'root' }}"
+    mode: '0600'
+    follow: false
+  when: agent_account_launch_work_stat.stat.exists
+
+# In check mode only existing keys can be compared. No adoption or fresh
+# key exists to inspect until a normal apply; unreadable keys fail the read.
+- name: launch-key | Derive existing public keys
+  ansible.builtin.command:
+    argv: [ssh-keygen, -y, -f, "{{ item.path }}"]
+  loop:
+    - path: "{{ agent_account_launch_work_dir }}/id_ed25519"
+      exists: >-
+        {{ agent_account_launch_work_stat.stat.exists or
+        (agent_account_launch_delivery_stats.results[0].stat.exists and not ansible_check_mode) }}
+    - path: "{{ agent_account_launch_dir }}/id_ed25519"
+      exists: >-
+        {{ agent_account_launch_work_stat.stat.exists and
+        agent_account_launch_delivery_stats.results[0].stat.exists }}
+  loop_control:
+    label: "{{ item.path }}"
+  when: item.exists
+  register: agent_account_launch_existing_public
+  check_mode: false
+  changed_when: false
+  no_log: true
+
+- name: launch-key | Require matching delivery keys
+  ansible.builtin.assert:
+    that:
+      - >-
+          not (agent_account_launch_work_stat.stat.exists and
+          agent_account_launch_delivery_stats.results[0].stat.exists) or
+          agent_account_launch_existing_public.results[0].stdout.split()[:2] ==
+          agent_account_launch_existing_public.results[1].stdout.split()[:2]
+    fail_msg: >-
+      {{ agent_account_launch_dir }}/id_ed25519 differs from the root-only work key; refusing to overwrite.
+    quiet: true
+
+- name: launch-key | Read the existing delivery public key
+  ansible.builtin.slurp:
+    src: >-
+      {{ (agent_account_launch_dir if agent_account_launch_work_stat.stat.exists
+      else agent_account_launch_work_dir) }}/id_ed25519.pub
+  register: agent_account_launch_delivery_public
+  no_log: true
+  when:
+    - agent_account_launch_delivery_stats.results[1].stat.exists
+    - agent_account_launch_work_stat.stat.exists or not ansible_check_mode
+
+- name: launch-key | Require a matching delivery public half
+  ansible.builtin.assert:
+    that:
+      - >-
+          (agent_account_launch_delivery_public.content | b64decode).split()[:2] ==
+          agent_account_launch_existing_public.results[
+          1 if agent_account_launch_work_stat.stat.exists else 0].stdout.split()[:2]
+    fail_msg: >-
+      {{ agent_account_launch_work_dir }}/id_ed25519 and its copied id_ed25519.pub must match
+      {{ agent_account_launch_dir }}/id_ed25519.pub; refusing to overwrite.
+    quiet: true
+  when:
+    - agent_account_launch_delivery_stats.results[1].stat.exists
+    - agent_account_launch_work_stat.stat.exists or not ansible_check_mode
+
+# creates: an existing key is never replaced.
+- name: launch-key | Create the launch key
+  ansible.builtin.command:
+    argv:
+      - ssh-keygen
+      - -t
+      - ed25519
+      - -N
+      - ''
+      - -C
+      - "agent-launch@{{ inventory_hostname }}"
+      - -f
+      - "{{ agent_account_launch_work_dir }}/id_ed25519"
+    creates: "{{ agent_account_launch_work_dir }}/id_ed25519"
+  when:
+    - not agent_account_launch_delivery_stats.results[0].stat.exists
+
+- name: launch-key | Look for the launch public key
+  ansible.builtin.stat:
+    path: "{{ agent_account_launch_work_dir }}/id_ed25519.pub"
+    follow: false
+  register: agent_account_launch_pub_stat
+
+- name: launch-key | Require a safe work public key
+  ansible.builtin.assert:
+    that:
+      - >-
+          not agent_account_launch_pub_stat.stat.exists or
+          (agent_account_launch_pub_stat.stat.isreg and not agent_account_launch_pub_stat.stat.islnk and
+          agent_account_launch_pub_stat.stat.nlink == 1 and agent_account_launch_pub_stat.stat.uid == 0)
+    fail_msg: "{{ agent_account_launch_work_dir }}/id_ed25519.pub must be a regular file with one link."
+    quiet: true
+
+- name: launch-key | Read the existing work public key
+  ansible.builtin.slurp:
+    src: "{{ agent_account_launch_work_dir }}/id_ed25519.pub"
+  register: agent_account_launch_work_public
+  no_log: true
+  when:
+    - agent_account_launch_pub_stat.stat.exists
+    - not ansible_check_mode
+
+- name: launch-key | Derive the work public half for comparison
+  ansible.builtin.command:
+    argv: [ssh-keygen, -y, -f, "{{ agent_account_launch_work_dir }}/id_ed25519"]
+  register: agent_account_launch_work_derived
+  changed_when: false
+  no_log: true
+  when:
+    - not ansible_check_mode
+
+- name: launch-key | Refuse the lab launch key
+  ansible.builtin.assert:
+    that:
+      - agent_account_launch_work_derived.stdout.split()[:2] != agent_launch_key.split()[:2]
+    fail_msg: "{{ agent_account_launch_work_dir }}/id_ed25519 matches agent_launch_key; use a distinct controller key."
+    quiet: true
+  when:
+    - agent_launch_key is defined
+    - not ansible_check_mode
+
+- name: launch-key | Require a matching work public half
+  ansible.builtin.assert:
+    that:
+      - >-
+          (agent_account_launch_work_public.content | b64decode).split()[:2] ==
+          agent_account_launch_work_derived.stdout.split()[:2]
+    fail_msg: "{{ agent_account_launch_work_dir }}/id_ed25519.pub differs from its private half; refusing to overwrite."
+    quiet: true
+  when:
+    - agent_account_launch_pub_stat.stat.exists
+    - not ansible_check_mode
+
+- name: launch-key | Check the work public key line
+  ansible.builtin.set_fact:
+    agent_account_launch_pub_missing: >-
+      {{ (agent_account_launch_work_public.content | default('') | b64decode
+      | regex_findall('(?m)^ssh-ed25519 [A-Za-z0-9+/=]+ agent-launch@'
+      ~ (inventory_hostname | regex_escape) ~ '$') | length) != 1 }}
+  no_log: true
+  when: not ansible_check_mode
+
+# A lost .pub is regenerated from the private key. ssh-keygen -y prints only
+# the public half, and the task only reads the key. The written line uses only
+# the type and key fields of that output, so a comment already in it can't
+# land twice.
+- name: launch-key | Regenerate a missing launch public key
+  ansible.builtin.command:
+    argv:
+      - ssh-keygen
+      - -y
+      - -f
+      - "{{ agent_account_launch_work_dir }}/id_ed25519"
+  register: agent_account_launch_pub_out
+  changed_when: false
+  when:
+    - not ansible_check_mode
+    - agent_account_launch_pub_missing
+
+- name: launch-key | Write the regenerated launch public key
+  vars:
+    agent_account_launch_pub_fields: "{{ (agent_account_launch_pub_out.stdout | trim).split()[:2] | join(' ') }}"
+  ansible.builtin.copy:
+    content: "{{ agent_account_launch_pub_fields }} agent-launch@{{ inventory_hostname }}\n"
+    dest: "{{ agent_account_launch_work_dir }}/id_ed25519.pub"
+    owner: root
+    group: "{{ 'wheel' if ansible_facts.system == 'Darwin' else 'root' }}"
+    mode: '0644'
+    follow: false
+  when:
+    - not ansible_check_mode
+    - agent_account_launch_pub_missing
+
+# Existing files keep their owner and mode: ssh-keygen's creates: skips a key
+# that is already there, so a drifted or replaced entry needs this task.
+- name: launch-key | Enforce the root-only key files
+  ansible.builtin.file:
+    path: "{{ agent_account_launch_work_dir }}/{{ item.name }}"
+    owner: root
+    group: "{{ 'wheel' if ansible_facts.system == 'Darwin' else 'root' }}"
+    mode: "{{ item.mode }}"
+    follow: false
+  loop:
+    - {name: id_ed25519, mode: '0600'}
+    - {name: id_ed25519.pub, mode: '0644'}
+  loop_control:
+    label: "{{ item.name }}"
+  when: not ansible_check_mode
+
+# Root owns this directory so the operator can't change its entries. The
+# controller reaches the key through the directory's 0755 mode and the key's
+# own 0600 owner.
+- name: launch-key | Create the root-owned delivery directory
+  ansible.builtin.file:
+    path: "{{ agent_account_launch_dir }}"
+    state: directory
+    owner: root
+    group: "{{ 'wheel' if ansible_facts.system == 'Darwin' else 'root' }}"
+    mode: '0755'
+    follow: false
+
+# The operator can't write the destination directory, so no link or temporary
+# file in it is operator-controlled. The files belong to the operator and the
+# operator's primary group. The copy sets the private mode explicitly to 0600;
+# the absence of a wider-mode window on the first run is not verified.
+# Existing delivery files stay untouched on adoption.
+- name: launch-key | Copy the launch key files to the operator
+  ansible.builtin.copy:
+    src: "{{ agent_account_launch_work_dir }}/{{ item.name }}"
+    dest: "{{ agent_account_launch_dir }}/{{ item.name }}"
+    remote_src: true
+    force: true
+    follow: false
+    owner: "{{ agent_account_operator }}"
+    group: "{{ agent_account_launch_operator_group }}"
+    mode: "{{ item.mode }}"
+  loop:
+    - {name: id_ed25519, mode: '0600'}
+    - {name: id_ed25519.pub, mode: '0644'}
+  loop_control:
+    index_var: agent_account_launch_file_index
+    label: "{{ item.name }}"
+  no_log: true
+  diff: false
+  when:
+    - not ansible_check_mode
+    - not agent_account_launch_delivery_stats.results[agent_account_launch_file_index].stat.exists
+    # Keep the existing delivery public line, including its comment.
+    - item.name != 'id_ed25519.pub' or not agent_account_launch_delivery_stats.results[1].stat.exists
+
+# Only the root-owned copy is read, so the operator can't redirect the read.
+- name: launch-key | Read the launch public key
+  ansible.builtin.slurp:
+    src: "{{ agent_account_launch_work_dir }}/id_ed25519.pub"
+  register: agent_account_launch_public
+  no_log: true
+  when: not ansible_check_mode
+
+- name: launch-key | Select printable public key lines
+  ansible.builtin.set_fact:
+    agent_account_launch_public_lines: >-
+      {{ agent_account_launch_public.content | b64decode
+      | regex_findall('(?m)^ssh-ed25519 [A-Za-z0-9+/=]+ agent-launch@[A-Za-z0-9._-]+$') }}
+  when: not ansible_check_mode
+
+- name: launch-key | Require a printable public key
+  ansible.builtin.assert:
+    that: agent_account_launch_public_lines | length == 1
+    fail_msg: "No valid agent-launch public key line in {{ agent_account_launch_work_dir }}/id_ed25519.pub."
+    quiet: true
+  when: not ansible_check_mode
+
+# The debug task prints only the checked public line.
+- name: launch-key | Show the launch public key
+  ansible.builtin.debug:
+    msg: "{{ agent_account_launch_public_lines[0] }}"
+  when: not ansible_check_mode

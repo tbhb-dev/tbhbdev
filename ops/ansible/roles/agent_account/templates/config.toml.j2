@@ -1,0 +1,38 @@
+# Managed by Ansible. Credentials stay in 1Password.
+{# cspell:ignore endmacro BMP #}
+{% macro toml_value(value) -%}
+{% if value is mapping -%}
+{ {% for key, item in value.items() %}{{ key | to_json }} = {{ toml_value(item) }}{{ ', ' if not loop.last else '' }}{% endfor %} }
+{%- else -%}
+{# String values are restricted to what to_json renders as valid TOML.
+   Non-BMP characters and U+007F are not guaranteed. #}
+{{ value | to_json }}
+{%- endif %}
+{%- endmacro %}
+{% macro render_table(table, values, array=false) -%}
+[{{ '[' if array else '' }}{{ table }}{{ ']' if array else '' }}]
+{% for key, value in values.items() %}
+{% set rows = value is sequence and value is not string and value | length > 0 and value | select('mapping') | list | length == value | length %}
+{% if (value is not mapping and not rows) or (table == 'agent.codex' and key == 'web_search') %}
+{{ key | to_json }} = {{ toml_value(connect_endpoints_resolved if table == 'connect' and key == 'endpoints' else value) }}
+{% endif %}
+{% endfor %}
+
+{% for key, value in values.items() %}
+{% if value is mapping and not (table == 'agent.codex' and key == 'web_search') %}
+{{ render_table(table ~ '.' ~ key, value) -}}
+{% elif value is sequence and value is not string and value | length > 0 and value | select('mapping') | list | length == value | length %}
+{% for row in value %}
+{{ render_table(table ~ '.' ~ key, row, true) -}}
+{% endfor %}
+{% endif %}
+{% endfor %}
+{% endmacro %}
+{% for table, values in agent_account_tbhbdev_config.items() %}
+{{ render_table(table, values) -}}
+{% endfor %}
+{% for name, ref in agent_account_claude_profiles.items() %}
+[agent.claude.profiles.{{ name }}]
+token = {{ ref | to_json }}
+
+{% endfor %}

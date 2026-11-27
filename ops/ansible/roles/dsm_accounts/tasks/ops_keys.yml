@@ -1,0 +1,15 @@
+---
+# Join the lines so one module call adds every controller key. Keeping
+# exclusive false preserves the shared lab-ops key and all other lines.
+# ops' ~/.ssh already exists on both servers, since ops logs in by key.
+# manage_dir false leaves that directory's owner and mode alone; true would
+# chown it and chmod it 0700 on every live write, which check mode doesn't show.
+# The module still sets authorized_keys itself to ops' owner and mode 0600
+# on a write.
+- name: ops_keys | Authorize the controller session keys for ops
+  ansible.posix.authorized_key:
+    user: ops
+    key: "{{ dsm_accounts_ops_keys | join('\n') }}"
+    exclusive: false
+    manage_dir: false
+  become: false

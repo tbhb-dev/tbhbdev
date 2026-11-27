@@ -1,0 +1,72 @@
+---
+- name: Verify
+  hosts: all
+  become: true
+  tasks:
+    - name: Read agent groups
+      ansible.builtin.command:
+        cmd: id -nG agent
+      changed_when: false
+      register: agent_account_existing_groups
+    - name: Read agent home
+      ansible.builtin.getent:
+        database: passwd
+        key: agent
+    - name: Read preserved authorized keys
+      ansible.builtin.slurp:
+        src: /srv/agent/.ssh/authorized_keys
+      register: agent_account_existing_keys
+    - name: Check existing account is preserved
+      ansible.builtin.assert:
+        that:
+          - agent_account_existing_groups.stdout.split() | sort == ['agent', 'agent_extra']
+          - ansible_facts.getent_passwd.agent[1:3] == ['24368', '24368']
+          - ansible_facts.getent_passwd.agent[4] == '/srv/agent'
+          - "'existing-test' in (agent_account_existing_keys.content | b64decode)"
+    - name: Check migrated paths and untouched outside targets
+      ansible.builtin.command:
+        argv:
+          - python3
+          - -c
+          - |
+              import grp, os, pathlib
+              assert grp.getgrnam('agent').gr_gid == 24368
+              assert 'devel' not in [group.gr_name for group in grp.getgrall()]
+              for path in ['/srv/agent', '/srv/agent/.ssh',
+                          '/srv/agent/.ssh/authorized_keys', '/srv/agent/legacy',
+                          '/srv/agent/outside-file', '/srv/agent/outside-dir',
+                          '/srv/agent-workspace', '/srv/agent-workspace/legacy']:
+                  assert os.lstat(path).st_gid == 24368, path
+              for path in ['/srv/legacy-outside', '/srv/legacy-outside/legacy']:
+                  assert os.lstat(path).st_gid == 33835, path
+              for path in ['/srv/agent/legacy', '/srv/agent-workspace/legacy',
+                          '/srv/legacy-outside/legacy']:
+                  assert pathlib.Path(path).read_text() == 'legacy fixture\n'
+              assert os.lstat('/srv/agent/keep-group').st_gid == grp.getgrnam('agent_extra').gr_gid
+      changed_when: false
+
+- name: Verify devel is retained for remaining members
+  hosts: all
+  become: true
+  tasks:
+    - name: Recreate a legacy group with another member
+      ansible.builtin.group:
+        name: devel
+        gid: 33835
+    - name: Create a supplementary legacy member
+      ansible.builtin.user:
+        name: legacy_member
+        group: agent_extra
+        groups: [devel]
+        create_home: false
+    - name: Run the role with the shared legacy group
+      ansible.builtin.include_role:
+        name: agent_account
+    - name: Read the retained legacy group
+      ansible.builtin.getent:
+        database: group
+        key: devel
+    - name: Require the supplementary membership to survive
+      ansible.builtin.assert:
+        that:
+          - ansible_facts.getent_group.devel[1:] == ['33835', 'legacy_member']

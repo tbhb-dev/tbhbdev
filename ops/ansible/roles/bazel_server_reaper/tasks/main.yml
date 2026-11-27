@@ -1,0 +1,50 @@
+---
+- name: Check the reaper user name
+  ansible.builtin.assert:
+    that:
+      - bazel_server_reaper_user is match('^[a-z_][a-z0-9_-]{0,31}$')
+    quiet: true
+
+- name: Create the reaper state directory
+  ansible.builtin.file:
+    path: /var/lib/bazel-server-reaper
+    state: directory
+    owner: root
+    group: root
+    mode: "0700"
+
+- name: Install the standalone Python reaper
+  ansible.builtin.copy:
+    src: "{{ role_path }}/../../../packages/tbhbops/src/tbhbops/bazel_server_reaper.py"
+    dest: /usr/local/lib/bazel-server-reaper.py
+    owner: root
+    group: root
+    mode: "0644"
+
+- name: Install the reaper service
+  ansible.builtin.template:
+    src: bazel-server-reaper.service.j2
+    dest: /etc/systemd/system/bazel-server-reaper.service
+    owner: root
+    group: root
+    mode: "0644"
+  notify: Reload reaper units
+
+- name: Install the reaper timer
+  ansible.builtin.copy:
+    src: bazel-server-reaper.timer
+    dest: /etc/systemd/system/bazel-server-reaper.timer
+    owner: root
+    group: root
+    mode: "0644"
+  notify: Reload reaper units
+
+- name: Load the reaper units
+  ansible.builtin.meta: flush_handlers
+
+- name: Set the reaper timer state
+  ansible.builtin.systemd_service:
+    name: bazel-server-reaper.timer
+    enabled: "{{ bazel_server_reaper_enabled }}"
+    state: "{{ 'started' if bazel_server_reaper_enabled else 'stopped' }}"
+  when: not ansible_check_mode

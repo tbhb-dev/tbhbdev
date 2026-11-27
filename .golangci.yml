@@ -65,24 +65,11 @@ linters:
           deny:
             - pkg: log$
               desc: "Use log/slog instead"
+        # Stub for the Go CLI port (stdlib-only-front): once factory/tbhbdev
+        # lands, match its front-end package files here so they may import only
+        # $gostd and internal packages, never third-party vendors.
         "stdlib-only-front":
           files:
-            - "**/factory/cli/cmd/tbhbdev/*.go"
+            - "**/front/**/*.go"
           allow:
             - $gostd
-            - github.com/tbhb-dev/tbhbdev/factory/cli/internal/dispatch$
-        "pure dispatch":
-          list-mode: strict
-          files:
-            - "**/factory/cli/internal/dispatch/*.go"
-            - "!$test"
-          allow:
-            - strings$
-        "pure dispatch tests":
-          list-mode: strict
-          files:
-            - "**/factory/cli/internal/dispatch/*_test.go"
-          allow:
-            - github.com/tbhb-dev/tbhbdev/factory/cli/internal/dispatch$
-            - reflect$
-            - testing$

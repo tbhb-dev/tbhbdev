@@ -1,0 +1,53 @@
+---
+evaluation_interval: 1m
+rule_files:
+  - rules.yaml
+tests:
+  - alert_rule_test:
+      - alertname: o11y-capacity-stop
+        eval_time: 2m
+        exp_alerts:
+          - exp_annotations: {}
+            exp_labels:
+              agent_account: primary
+              agent_plan_vendor: anthropic
+              agent_plan_window: 7d
+              env: prd
+              service: agent-capacity
+              severity: critical
+      - alertname: o11y-capacity-stale
+        eval_time: 40m
+        exp_alerts:
+          - exp_annotations: {}
+            exp_labels:
+              agent_account: primary
+              agent_plan_vendor: anthropic
+              agent_plan_window: other
+              env: prd
+              service: agent-capacity
+              severity: warning
+    input_series:
+      - series: "agent_capacity_window_utilization_ratio{agent_plan_vendor=\"\
+          anthropic\",agent_plan_window=\"\
+          7d\",agent_account=\"primary\",host_name=\"\
+          fixture-a\",agent_capacity_source=\"\
+          claude_statusline\",agent_capacity_freshness=\"\
+          carried\"}"
+        values: 0.95x45
+      - series: "agent_capacity_window_utilization_ratio{agent_plan_vendor=\"\
+          anthropic\",agent_plan_window=\"\
+          7d\",agent_account=\"secondary\"\
+          ,host_name=\"fixture-a\",agent_capacity_source=\"\
+          claude_statusline\",agent_capacity_freshness=\"\
+          fresh\"}"
+        values: 0.25x45
+      - series: "agent_capacity_window_utilization_ratio{agent_plan_vendor=\"\
+          anthropic\",agent_plan_window=\"\
+          7d\",agent_account=\"primary\",host_name=\"\
+          fixture-b\",agent_capacity_source=\"\
+          claude_statusline\",agent_capacity_freshness=\"\
+          carried\"}"
+        values: 0.20x45
+    interval: 1m
+    name: accounts for the same vendor keep
+      stop and stale identities separate

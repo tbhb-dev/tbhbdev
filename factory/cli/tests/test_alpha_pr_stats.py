@@ -3,7 +3,6 @@ from datetime import UTC, datetime
 
 import pytest
 
-from tbhbdev import alpha
 from tbhbdev.alpha import pr_stats
 from tbhbdev.alpha import pull_request as pr
 
@@ -221,16 +220,3 @@ def test_limit_requires_an_integer(
     out = capsys.readouterr()
     assert out.out == ""
     assert "stats: error: argument --limit: invalid int value: 'many'" in out.err
-
-
-def test_the_command_runs_the_module(monkeypatch: pytest.MonkeyPatch) -> None:
-    calls: list[tuple[list[str], str]] = []
-
-    def fake(argv: list[str], prog: str) -> int:
-        calls.append((argv, prog))
-        return 7
-
-    monkeypatch.setattr(pr_stats, "main", fake)
-    assert alpha.COMMANDS["pr-stats"] is alpha.pr_stats_command
-    assert alpha.pr_stats_command(["o/r"], "prog") == 7
-    assert calls == [(["o/r"], "prog")]
