@@ -1,8 +1,5 @@
 """Smoke stack startup and object storage bootstrap."""
 
-# pylint: disable=duplicate-code  # verify protocol literals independently
-# cspell:ignore udcff udcfe
-
 lazy from collections.abc import Callable
 
 import pytest

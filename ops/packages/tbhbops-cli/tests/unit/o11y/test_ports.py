@@ -1,8 +1,5 @@
 """The local smoke port probe."""
 
-# pylint: disable=duplicate-code  # verify protocol literals independently
-# cspell:ignore udcff udcfe
-
 from typing import Self
 
 import pytest

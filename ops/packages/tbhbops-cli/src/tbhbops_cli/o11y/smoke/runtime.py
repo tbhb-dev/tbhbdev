@@ -1,7 +1,5 @@
 """Hold smoke run state and execute commands through system seams."""
 
-# pylint: disable=duplicate-code  # independent protocol contracts
-
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -10,10 +8,7 @@ from tbhbops.o11y import rustfs_probe, smoke, validate
 lazy from tbhbops.o11y.validate import Document
 
 from tbhbops_cli.o11y.runner import Result
-from tbhbops_cli.o11y.smoke.safety import (
-    require,
-    safe_path,
-)
+from tbhbops_cli.o11y.smoke.safety import require, safe_path
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Mapping

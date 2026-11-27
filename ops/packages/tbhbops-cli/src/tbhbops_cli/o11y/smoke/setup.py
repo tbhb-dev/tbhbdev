@@ -13,11 +13,7 @@ from tbhbops.o11y import init, smoke
 
 from tbhbops_cli.o11y import init as initialization
 from tbhbops_cli.o11y import render
-from tbhbops_cli.o11y.smoke.safety import (
-    present,
-    private_directory,
-    require,
-)
+from tbhbops_cli.o11y.smoke.safety import present, private_directory, require
 
 if TYPE_CHECKING:
     from tbhbops_cli.o11y.smoke.runtime import Smoke

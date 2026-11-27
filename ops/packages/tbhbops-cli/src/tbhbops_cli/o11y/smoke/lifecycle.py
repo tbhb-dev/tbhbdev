@@ -12,18 +12,14 @@ from tbhbops.o11y import smoke_query as query
 from tbhbops_cli.o11y import render
 from tbhbops_cli.o11y.polling import poll
 from tbhbops_cli.o11y.smoke import queries, readiness
-from tbhbops_cli.o11y.smoke.safety import (
-    require,
-    scan_path,
-)
-from tbhbops_cli.o11y.smoke.transport import request
+from tbhbops_cli.o11y.smoke.safety import require, scan_path
+from tbhbops_cli.o11y.smoke.transport import HTTP_OK, request
 
 if TYPE_CHECKING:
     from pathlib import Path
 
     from tbhbops_cli.o11y.smoke.runtime import Smoke
 
-HTTP_OK = 200
 HEALTH_TIMEOUT = 180
 COPY_TIMEOUT = 60
 OWNER_TIMEOUT = 30

@@ -1,8 +1,5 @@
 """Smoke stage command, HTTP, artifact, and failure contracts."""
 
-# pylint: disable=duplicate-code  # verify protocol literals independently
-# cspell:ignore udcff udcfe
-
 import hashlib
 import json
 from pathlib import Path

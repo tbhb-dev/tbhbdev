@@ -1,8 +1,5 @@
 """Smoke Grafana queries and helper receipts."""
 
-# pylint: disable=duplicate-code  # verify protocol literals independently
-# cspell:ignore udcff udcfe
-
 import pytest
 from tbhbops_cli.o11y import receipt
 from tbhbops_cli.o11y.http import BodyTooLargeError, TransportError

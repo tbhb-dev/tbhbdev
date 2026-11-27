@@ -1,8 +1,5 @@
 """Release recreation, restart, and notification transitions."""
 
-# pylint: disable=duplicate-code  # verify protocol literals independently
-# cspell:ignore udcff udcfe
-
 from dataclasses import replace
 from functools import partial
 from pathlib import Path
@@ -10,6 +7,7 @@ lazy from collections.abc import Callable, Mapping, Sequence
 
 import pytest
 from tbhbops.o11y import smoke
+from tbhbops_cli.o11y import receipt
 from tbhbops_cli.o11y.runner import Result
 from tbhbops_cli.o11y.smoke import (
     lifecycle,
@@ -36,11 +34,11 @@ def test_release_recreation_and_direct_restart(monkeypatch: pytest.MonkeyPatch) 
     assert run.release == OUT / "release"
     assert fs.read_bytes(OUT / "src/config/loki/config.yaml").endswith(b"\n#\n")
 
-    def receipt(*_args: object, **kwargs: object) -> tuple[list[str], bool]:
+    def fake_receipt(*_args: object, **kwargs: object) -> tuple[list[str], bool]:
         assert kwargs == {"signals": "traces,logs,metrics", "safe_failures": True}
         return ["ok fixture receipt"], True
 
-    monkeypatch.setattr(receipt, "receipt", receipt)
+    monkeypatch.setattr(receipt, "receipt", fake_receipt)
     lifecycle.group9(run)
     assert "ok fixture receipt\n" in run.transcript
     direct = [argv for argv, _, _ in engine.calls if argv[1] in {"stop", "start"}]

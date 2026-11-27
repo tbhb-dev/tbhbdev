@@ -1,8 +1,5 @@
 """Smoke receipts, export history, and persistence."""
 
-# pylint: disable=duplicate-code  # verify protocol literals independently
-# cspell:ignore udcff udcfe
-
 import json
 from dataclasses import replace
 from urllib.parse import parse_qs, urlsplit

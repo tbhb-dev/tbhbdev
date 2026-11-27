@@ -1,8 +1,5 @@
 """Service readiness checks and Compose fixtures."""
 
-# pylint: disable=duplicate-code  # verify protocol literals independently
-# cspell:ignore udcff udcfe
-
 import json
 from dataclasses import replace
 lazy from collections.abc import Callable

@@ -1,6 +1,5 @@
 """Smoke evidence handling and cleanup."""
 
-# pylint: disable=duplicate-code  # verify protocol literals independently
 # cspell:ignore udcff udcfe
 
 import io

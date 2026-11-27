@@ -1,8 +1,5 @@
 """Smoke process execution and run state."""
 
-# pylint: disable=duplicate-code  # verify protocol literals independently
-# cspell:ignore udcff udcfe
-
 import json
 import stat
 from collections import Counter

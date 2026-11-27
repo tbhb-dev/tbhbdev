@@ -18,12 +18,8 @@ from tbhbops.o11y.receipt import decode
 from tbhbops_cli.o11y.http import BodyTooLargeError, TransportError
 from tbhbops_cli.o11y.polling import poll
 from tbhbops_cli.o11y.smoke import queries
-from tbhbops_cli.o11y.smoke.safety import (
-    SmokeError,
-    present,
-    require,
-)
-from tbhbops_cli.o11y.smoke.transport import GRAFANA, request
+from tbhbops_cli.o11y.smoke.safety import SmokeError, present, require
+from tbhbops_cli.o11y.smoke.transport import GRAFANA, HTTP_OK, request
 
 if TYPE_CHECKING:
     from tbhbops.o11y.validate import Document
@@ -31,7 +27,6 @@ if TYPE_CHECKING:
     from tbhbops_cli.o11y.smoke.runtime import Smoke
 
 CAPACITY_TIMEOUT = 120
-HTTP_OK = 200
 HTTP_NOT_FOUND = 404
 METADATA_COUNT = 5
 CODEX_RATE_BOUNDS = (0.999999, 1.000001)

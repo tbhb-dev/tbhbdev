@@ -1,8 +1,5 @@
 """Capacity telemetry verification and cleanup."""
 
-# pylint: disable=duplicate-code  # verify protocol literals independently
-# cspell:ignore udcff udcfe
-
 import json
 from functools import partial
 from pathlib import Path

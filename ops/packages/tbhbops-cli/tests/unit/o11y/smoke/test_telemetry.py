@@ -1,8 +1,5 @@
 """Delta and cumulative smoke telemetry."""
 
-# pylint: disable=duplicate-code  # verify protocol literals independently
-# cspell:ignore udcff udcfe
-
 import pytest
 from tbhbops_cli.o11y.runner import Result
 from tbhbops_cli.o11y.smoke import (

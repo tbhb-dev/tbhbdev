@@ -1,8 +1,5 @@
 """The smoke HTTP transport seam."""
 
-# pylint: disable=duplicate-code  # verify protocol literals independently
-# cspell:ignore udcff udcfe
-
 from tbhbops_cli.o11y.http import BodyTooLargeError, TransportError
 from tbhbops_cli.o11y.smoke import (
     transport,

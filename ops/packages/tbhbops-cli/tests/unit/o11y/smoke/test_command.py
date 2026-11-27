@@ -1,8 +1,5 @@
 """Smoke command dispatch, stage order, and failure reporting."""
 
-# pylint: disable=duplicate-code  # verify protocol literals independently
-# cspell:ignore udcff udcfe
-
 import argparse
 import errno
 import io
@@ -772,13 +769,9 @@ def test_flow_order(monkeypatch: pytest.MonkeyPatch) -> None:
 
     def recorder(name: str) -> Callable[..., None]:
         def record(*_args: object) -> None:
-            if name == "prepare":
-                assert _args == (run, STACK_SOURCE)
-            elif name in {
-                "finalize_transcript",
-            }:
+            if name == "finalize_transcript":
                 assert _args == ()
-            elif name in {"smoke", "group7", "group8", "group12", "group13"}:
+            elif name in {"prepare", "smoke", "group7", "group8", "group12", "group13"}:
                 assert _args == (run, STACK_SOURCE)
             else:
                 assert _args == (run,)

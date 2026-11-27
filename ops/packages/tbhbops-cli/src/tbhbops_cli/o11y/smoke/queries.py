@@ -9,6 +9,7 @@ from tbhbops.o11y import smoke_query as query
 
 from tbhbops_cli.o11y import receipt
 from tbhbops_cli.o11y.smoke.safety import require
+from tbhbops_cli.o11y.smoke.transport import GRAFANA, HTTP_OK, OTLP, request
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -16,9 +17,6 @@ if TYPE_CHECKING:
     from tbhbops.o11y.validate import Document
 
     from tbhbops_cli.o11y.smoke.runtime import Smoke
-
-
-from tbhbops_cli.o11y.smoke.transport import GRAFANA, HTTP_OK, OTLP, request
 
 EVAL_TIMEOUT = 30
 RULES_PATH = "/api/prometheus/grafana/api/v1/rules"

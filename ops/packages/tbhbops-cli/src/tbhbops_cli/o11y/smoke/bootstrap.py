@@ -5,10 +5,7 @@ from typing import TYPE_CHECKING
 from tbhbops.o11y import init, rustfs_probe, smoke
 
 from tbhbops_cli.o11y.smoke import setup
-from tbhbops_cli.o11y.smoke.safety import (
-    present,
-    require,
-)
+from tbhbops_cli.o11y.smoke.safety import present, require
 
 if TYPE_CHECKING:
     from tbhbops_cli.o11y.smoke.runtime import Smoke

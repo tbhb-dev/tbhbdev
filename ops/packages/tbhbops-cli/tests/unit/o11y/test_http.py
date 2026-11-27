@@ -1,8 +1,5 @@
 """HTTP methods used by the smoke admin transport."""
 
-# pylint: disable=duplicate-code  # verify protocol literals independently
-# cspell:ignore udcff udcfe
-
 import pytest
 from tbhbops_cli.o11y.http import LocalAdminHttp
 from test_o11y_admin_http import Response, connection

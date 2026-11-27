@@ -1,8 +1,5 @@
 """Scripted metrics, dashboards, and alert responses for smoke tests."""
 
-# pylint: disable=duplicate-code  # verify protocol literals independently
-# cspell:ignore udcff udcfe
-
 import json
 from dataclasses import dataclass, field
 from pathlib import Path

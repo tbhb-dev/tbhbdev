@@ -1,8 +1,5 @@
 """In-memory Grafana access and export seams for smoke tests."""
 
-# pylint: disable=duplicate-code  # verify protocol literals independently
-# cspell:ignore udcff udcfe
-
 import io
 import json
 from contextlib import redirect_stderr

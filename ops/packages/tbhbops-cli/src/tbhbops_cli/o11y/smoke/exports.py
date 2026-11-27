@@ -7,23 +7,19 @@ from tbhbops.o11y import smoke_export as export
 from tbhbops.o11y import smoke_filter as spans
 
 from tbhbops_cli.o11y import receipt
-from tbhbops_cli.o11y.http import BodyTooLargeError, TransportError
 from tbhbops_cli.o11y.polling import poll
-from tbhbops_cli.o11y.smoke.safety import SmokeError, present, require
-
-if TYPE_CHECKING:
-    from tbhbops_cli.o11y.smoke.runtime import Smoke
-
-
 from tbhbops_cli.o11y.smoke import readiness
 from tbhbops_cli.o11y.smoke.grafana import get
+from tbhbops_cli.o11y.smoke.safety import present, require
 from tbhbops_cli.o11y.smoke.transport import (
     GRAFANA,
     HTTP_OK,
     OTLP,
-    REQUEST_TIMEOUT,
     request,
 )
+
+if TYPE_CHECKING:
+    from tbhbops_cli.o11y.smoke.runtime import Smoke
 
 UPLOAD_CURL_TIMEOUT = 15
 FILTER_TIMEOUT = 60
@@ -38,17 +34,7 @@ def codex_span_filter(run: Smoke) -> None:
     for service in ("codex_exec", "codex_tui", control):
         trace = run.system.random_bytes(16).hex()
         fixture = spans.fixture(service, trace, sent)
-        try:
-            code, _ = run.system.receipt_http.request(
-                "POST",
-                OTLP + "/v1/traces",
-                fixture,
-                {"Content-Type": "application/json"},
-                REQUEST_TIMEOUT,
-            )
-        except BodyTooLargeError, TransportError:
-            rule = "5: codex-filter-post"
-            raise SmokeError(rule) from None
+        code, _ = request(run, "/v1/traces", method="POST", data=fixture, origin=OTLP)
         require(code == HTTP_OK, "5: codex-filter-post")
 
         def found(
@@ -100,14 +86,11 @@ def group5(run: Smoke) -> None:
 
 
 def history_query(run: Smoke, query: str) -> bytes:
-    url = GRAFANA + "/api/datasources/proxy/uid/mimir/api/v1/query_range?" + query
-    try:
-        code, body = run.system.receipt_http.request(
-            "GET", url, None, {}, QUERY_TIMEOUT
-        )
-    except BodyTooLargeError, TransportError:
-        rule = "export persistence: query-http"
-        raise SmokeError(rule) from None
+    code, body = request(
+        run,
+        "/api/datasources/proxy/uid/mimir/api/v1/query_range?" + query,
+        timeout=QUERY_TIMEOUT,
+    )
     require(code == HTTP_OK, "export persistence: query-http")
     return body
 

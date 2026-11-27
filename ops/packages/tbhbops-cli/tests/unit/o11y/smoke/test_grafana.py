@@ -1,8 +1,5 @@
 """Grafana access, dashboard provisioning, and recovery."""
 
-# pylint: disable=duplicate-code  # verify protocol literals independently
-# cspell:ignore udcff udcfe
-
 from dataclasses import replace
 
 import pytest

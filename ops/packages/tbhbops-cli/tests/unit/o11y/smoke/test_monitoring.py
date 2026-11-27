@@ -1,8 +1,5 @@
 """Smoke self-monitoring and RustFS metrics."""
 
-# pylint: disable=duplicate-code  # verify protocol literals independently
-# cspell:ignore udcff udcfe
-
 import json
 import re
 

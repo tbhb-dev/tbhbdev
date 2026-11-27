@@ -8,15 +8,13 @@ from tbhbops.o11y import smoke_query as query
 from tbhbops.o11y.receipt import decode
 
 from tbhbops_cli.o11y.polling import poll
+from tbhbops_cli.o11y.smoke import queries, telemetry
 from tbhbops_cli.o11y.smoke.safety import SmokeError, require, scan_path
 
 if TYPE_CHECKING:
     from pathlib import Path
 
     from tbhbops_cli.o11y.smoke.runtime import Smoke
-
-
-from tbhbops_cli.o11y.smoke import queries, telemetry
 
 RULE_TIMEOUT = 60
 PUSH_TIMEOUT = 120

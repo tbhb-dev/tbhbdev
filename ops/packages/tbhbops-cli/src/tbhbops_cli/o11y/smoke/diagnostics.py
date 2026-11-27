@@ -6,11 +6,7 @@ from tbhbops.o11y import smoke
 
 from tbhbops_cli.o11y import render
 from tbhbops_cli.o11y.runner import Result
-from tbhbops_cli.o11y.smoke.safety import (
-    SmokeError,
-    require,
-    scan_path,
-)
+from tbhbops_cli.o11y.smoke.safety import SmokeError, require, scan_path
 
 if TYPE_CHECKING:
     from collections.abc import Callable

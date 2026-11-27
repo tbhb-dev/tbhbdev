@@ -1,8 +1,5 @@
 """Smoke path checks and evidence scans."""
 
-# pylint: disable=duplicate-code  # verify protocol literals independently
-# cspell:ignore udcff udcfe
-
 import stat
 from pathlib import Path
 

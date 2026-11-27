@@ -15,11 +15,7 @@ from tbhbops_cli.o11y import init as initialization
 from tbhbops_cli.o11y import render
 from tbhbops_cli.o11y import validate as validation
 from tbhbops_cli.o11y.smoke.runtime import Smoke, environment
-from tbhbops_cli.o11y.smoke.safety import (
-    SmokeError,
-    require,
-    safe_path,
-)
+from tbhbops_cli.o11y.smoke.safety import SmokeError, require, safe_path
 lazy from tbhbops_cli.o11y.smoke import (
     alerts,
     bootstrap,

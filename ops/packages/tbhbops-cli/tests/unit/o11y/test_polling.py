@@ -1,8 +1,5 @@
 """Smoke polling deadlines and intervals."""
 
-# pylint: disable=duplicate-code  # verify protocol literals independently
-# cspell:ignore udcff udcfe
-
 from tbhbops_cli.o11y import polling
 from tbhbops_cli.o11y.smoke import (
     bootstrap,

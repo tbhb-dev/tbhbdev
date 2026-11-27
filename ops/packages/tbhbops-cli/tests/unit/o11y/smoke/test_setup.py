@@ -1,8 +1,5 @@
 """Smoke release setup and host initialization."""
 
-# pylint: disable=duplicate-code  # verify protocol literals independently
-# cspell:ignore udcff udcfe
-
 import json
 import os
 import stat

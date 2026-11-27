@@ -6,14 +6,12 @@ from tbhbops.o11y import smoke_query as query
 from tbhbops.o11y.receipt import decode
 
 from tbhbops_cli.o11y.polling import poll
+from tbhbops_cli.o11y.smoke import queries, readiness
 from tbhbops_cli.o11y.smoke.safety import present, require
+from tbhbops_cli.o11y.smoke.transport import HTTP_OK, OTLP, request
 
 if TYPE_CHECKING:
     from tbhbops_cli.o11y.smoke.runtime import Smoke
-
-
-from tbhbops_cli.o11y.smoke import queries, readiness
-from tbhbops_cli.o11y.smoke.transport import HTTP_OK, OTLP, request
 
 DELTA_TIMEOUT = 60
 

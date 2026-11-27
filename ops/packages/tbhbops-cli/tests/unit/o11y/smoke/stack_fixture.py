@@ -1,8 +1,5 @@
 """Scripted command and admin seams for the extended smoke stack."""
 
-# pylint: disable=duplicate-code  # verify protocol literals independently
-# cspell:ignore udcff udcfe
-
 import json
 from dataclasses import dataclass, field, replace
 from pathlib import Path

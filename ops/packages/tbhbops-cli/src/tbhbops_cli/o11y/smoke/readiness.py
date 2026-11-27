@@ -6,9 +6,7 @@ from typing import TYPE_CHECKING
 from tbhbops.o11y import smoke
 
 from tbhbops_cli.o11y.polling import poll
-from tbhbops_cli.o11y.smoke.safety import (
-    require,
-)
+from tbhbops_cli.o11y.smoke.safety import require
 
 if TYPE_CHECKING:
     from tbhbops.o11y.validate import Document

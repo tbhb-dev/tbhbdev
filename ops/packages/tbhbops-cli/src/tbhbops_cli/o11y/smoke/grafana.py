@@ -7,16 +7,11 @@ from tbhbops.o11y import init
 from tbhbops.o11y import smoke_access as access
 
 from tbhbops_cli.o11y.http import BodyTooLargeError, TransportError
-from tbhbops_cli.o11y.smoke.safety import (
-    SmokeError,
-    require,
-)
+from tbhbops_cli.o11y.smoke.safety import SmokeError, require
+from tbhbops_cli.o11y.smoke.transport import GRAFANA, HTTP_OK, REQUEST_TIMEOUT, request
 
 if TYPE_CHECKING:
     from tbhbops_cli.o11y.smoke.runtime import Smoke
-
-
-from tbhbops_cli.o11y.smoke.transport import GRAFANA, HTTP_OK, REQUEST_TIMEOUT, request
 
 
 def get(run: Smoke, path: str, *, login: str = "") -> bytes:

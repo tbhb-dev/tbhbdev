@@ -1,8 +1,5 @@
 """In-memory filesystem and Docker seams for smoke tests."""
 
-# pylint: disable=duplicate-code  # verify protocol literals independently
-# cspell:ignore udcff udcfe
-
 import io
 import json
 import signal
