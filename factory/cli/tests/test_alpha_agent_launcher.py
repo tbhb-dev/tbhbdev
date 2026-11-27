@@ -7,11 +7,12 @@ import subprocess
 from typing import TYPE_CHECKING
 
 import pytest
+from agent_cli_example import run_agent
 from agent_driver_example import Remote, execution_arguments, setup
 from agent_example import settings
 
-from tbhbdev.alpha.agent import command as agent
 from tbhbdev.alpha.agent import driver, launcher
+from tbhbdev.alpha.agent import settings as agent_settings
 from tbhbdev.alpha.agent.decisions import launcher as rules
 from tbhbdev.alpha.agent.model import Invalid, Profile
 
@@ -37,7 +38,7 @@ def named(name: str | None, session_id: str | None) -> Callable[..., SessionName
 @pytest.fixture
 def remote(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Remote:
     result = setup(tmp_path, monkeypatch)
-    monkeypatch.setattr(agent.settings, "load", settings)
+    monkeypatch.setattr(agent_settings, "load", settings)
     return result
 
 
@@ -97,7 +98,7 @@ def test_a_named_session_can_launch_reviews_for_any_repo(
     arguments[arguments.index("build")] = profile
     if profile == "review":
         arguments[-2:-2] = ["--ref", "a" * 40]
-    assert agent.main(arguments, "example agent") == 0
+    assert run_agent(arguments) == 0
     run = driver.load(settings(), "sample")
     assert run.launched_by == (session, "s")
     assert run.request.max_concurrent_runs == 3
@@ -117,7 +118,7 @@ def test_a_reviewer_launch_without_a_session_name_is_refused(
     arguments[arguments.index("build")] = profile
     if profile == "review":
         arguments[-2:-2] = ["--ref", "a" * 40]
-    assert agent.main(arguments, "example agent") != 0
+    assert run_agent(arguments) != 0
     assert (
         "name the launching session via the tmux pane title" in capsys.readouterr().err
     )
@@ -128,14 +129,14 @@ def test_a_build_launch_without_a_session_name_records_unknown(
     remote: Remote, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
     monkeypatch.setattr(launcher, "session", named(None, None))
-    assert agent.main(execution_arguments(remote.prompt), "example agent") == 0
-    assert agent.main(["status", "sample"], "example agent") == 0
+    assert run_agent(execution_arguments(remote.prompt)) == 0
+    assert run_agent(["status", "sample"]) == 0
     assert "launcher=unknown" in capsys.readouterr().out
     assert driver.load(settings(), "sample").launched_by == (None, None)
 
 
 def test_a_record_saved_before_the_launcher_field_loads(remote: Remote) -> None:
-    assert agent.main(execution_arguments(remote.prompt), "example agent") == 0
+    assert run_agent(execution_arguments(remote.prompt)) == 0
     path = driver.metadata_path("sample")
     record = path.read_text()
     path.write_text(
@@ -275,12 +276,12 @@ def test_a_review_prepares_for_a_matched_worker(
     asked = matched(monkeypatch, found=True)
     monkeypatch.setattr(launcher, "session", REAL_SESSION)
     monkeypatch.setattr(
-        agent.settings,
+        agent_settings,
         "load",
         lambda: dataclasses.replace(settings(), worker_path=WORKER),
     )
     arguments = worker_arguments(remote, "--worker-workflow", "run:7")
-    assert agent.main(arguments, "example agent") == 0
+    assert run_agent(arguments) == 0
     assert driver.load(settings(), "sample").launched_by == ("worker/run:7", None)
     assert asked == [WORKER]
 
@@ -290,8 +291,8 @@ def test_the_worker_launcher_shows_in_the_status(
 ) -> None:
     matched(monkeypatch, found=True)
     monkeypatch.setattr(launcher, "session", REAL_SESSION)
-    assert agent.main(worker_arguments(remote, "--worker-workflow", "w1"), "x") == 0
-    assert agent.main(["status", "sample"], "example agent") == 0
+    assert run_agent(worker_arguments(remote, "--worker-workflow", "w1")) == 0
+    assert run_agent(["status", "sample"]) == 0
     assert "launcher=worker/w1" in capsys.readouterr().out
 
 
@@ -301,9 +302,9 @@ def test_a_review_flag_without_a_matched_worker_is_refused(
     matched(monkeypatch, found=False)
     monkeypatch.setattr(launcher, "session", REAL_SESSION)
     arguments = worker_arguments(remote, "--worker-workflow", "run:7")
-    assert agent.main(arguments, "example agent") == 1
+    assert run_agent(arguments) == 1
     assert capsys.readouterr().err == (
-        "example agent: --worker-workflow needs the registered worker: "
+        "tbhbdev alpha agent: --worker-workflow needs the registered worker: "
         "no ancestor process runs the worker\n"
     )
     assert not driver.metadata_path("sample").exists()
@@ -314,7 +315,7 @@ def test_a_non_tmux_review_without_the_flag_fails_as_before(
 ) -> None:
     asked = matched(monkeypatch, found=True)
     monkeypatch.setattr(launcher, "session", REAL_SESSION)
-    assert agent.main(worker_arguments(remote), "example agent") != 0
+    assert run_agent(worker_arguments(remote)) != 0
     assert (
         "name the launching session via the tmux pane title" in capsys.readouterr().err
     )
@@ -327,9 +328,9 @@ def test_the_flag_is_refused_for_a_build_without_the_reviewer_role(
     asked = matched(monkeypatch, found=True)
     monkeypatch.setattr(launcher, "session", REAL_SESSION)
     arguments = execution_arguments(remote.prompt, "--worker-workflow", "w1")
-    assert agent.main(arguments, "example agent") == 1
+    assert run_agent(arguments) == 1
     assert capsys.readouterr().err == (
-        "example agent: --worker-workflow applies to reviewer-role runs only\n"
+        "tbhbdev alpha agent: --worker-workflow applies to reviewer-role runs only\n"
     )
     assert asked == []
 
@@ -338,14 +339,14 @@ def test_a_bad_workflow_id_is_a_usage_error(
     remote: Remote, capsys: pytest.CaptureFixture[str]
 ) -> None:
     arguments = worker_arguments(remote, "--worker-workflow", "a b")
-    assert agent.main(arguments, "example agent") == 2
+    assert run_agent(arguments) == 2
     assert "1 to 128 characters" in capsys.readouterr().err
 
 
 def test_exec_help_names_the_flag_and_the_table(
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    assert agent.main(["exec", "--help"], "example agent") == 0
+    assert run_agent(["exec", "--help"]) == 0
     text = " ".join(capsys.readouterr().out.split())
     assert (
         "--worker-workflow ID launch as worker/ID: the caller must descend from "

@@ -10,11 +10,12 @@ import sys
 from typing import TYPE_CHECKING
 
 import pytest
+from agent_cli_example import run_agent
 from agent_driver_example import Remote, setup
 from agent_example import LINUX, MARKER, settings
 
-from tbhbdev.alpha.agent import command as agent
 from tbhbdev.alpha.agent import driver
+from tbhbdev.alpha.agent import settings as agent_settings
 from tbhbdev.alpha.agent.decisions import limits, remote
 from tbhbdev.alpha.agent.model import Invalid, Os, Profile, Settings
 
@@ -367,7 +368,7 @@ def host(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Remote:
     def load() -> Settings:
         return CONFIG
 
-    monkeypatch.setattr(agent.settings, "load", load)
+    monkeypatch.setattr(agent_settings, "load", load)
     return result
 
 
@@ -377,7 +378,7 @@ def launch(host: Remote, *options: str) -> int:
         "--model", "m", "--effort", "high", "--profile", "build", *options,
         "sample", str(host.prompt),
     ]  # fmt: skip
-    return agent.main(args, "example agent")
+    return run_agent(args)
 
 
 def test_a_busy_host_refuses_before_any_transfer(
@@ -443,7 +444,7 @@ def test_a_disabled_host_refuses_even_with_limit_overrides(
     def load() -> Settings:
         return dataclasses.replace(CONFIG, hosts=(disabled, *CONFIG.hosts[1:]))
 
-    monkeypatch.setattr(agent.settings, "load", load)
+    monkeypatch.setattr(agent_settings, "load", load)
     assert launch(host, "--ignore-limits") == 1
     assert "max_concurrent_runs is 0" in capsys.readouterr().err
     assert host.records("ssh", limits=True) == []
@@ -472,7 +473,7 @@ def test_review_uses_its_own_reservation_at_the_boundary(
     def session(*_: object) -> tuple[str, None]:
         return "tools", None
 
-    monkeypatch.setattr(agent.settings, "load", load)
+    monkeypatch.setattr(agent_settings, "load", load)
     monkeypatch.setattr(driver.launcher, "session", session)
     host.configure(limits="0.5 4 4194304 1048575 0 0 -")
     with pytest.raises(Invalid, match="reservation 1024 MiB"):
