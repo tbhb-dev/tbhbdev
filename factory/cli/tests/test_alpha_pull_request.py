@@ -292,6 +292,7 @@ def draft_world(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> World:
         ("symbolic-ref", "--quiet", "refs/remotes/origin/HEAD"): (0, base),
         ("fetch", *fetch_options, "origin", f"+refs/heads/main:{base}"): (0, ""),
         ("rev-parse", "--verify", "--quiet", f"{base}^{{commit}}"): (0, ""),
+        ("branch", "--show-current"): (0, "agent/topic"),
     }
 
     def answer_git(*argv: str, **_kwargs: Path | None) -> tuple[int, str]:
