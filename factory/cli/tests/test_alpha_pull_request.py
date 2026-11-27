@@ -290,6 +290,7 @@ def draft_world(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> World:
         ("rev-parse", "--show-toplevel"): (0, str(made.root.resolve())),
         ("ls-remote", "--symref", "origin", "HEAD"): (128, ""),
         ("symbolic-ref", "--quiet", "refs/remotes/origin/HEAD"): (0, base),
+        ("symbolic-ref", "--quiet", "HEAD"): (0, "refs/heads/topic"),
         ("fetch", *fetch_options, "origin", f"+refs/heads/main:{base}"): (0, ""),
         ("rev-parse", "--verify", "--quiet", f"{base}^{{commit}}"): (0, ""),
     }
@@ -1751,6 +1752,35 @@ def test_create_defaults(world: World) -> None:
         "--base",
         "main",
     ]
+
+
+@pytest.mark.parametrize(
+    ("case", "message"),
+    [
+        ("host name", "branch name contains a host name"),
+        ("detached", "cannot read the current branch"),
+        ("config error", "cannot read known host names"),
+    ],
+)
+def test_create_checks_the_branch_for_host_names(
+    world: World,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    case: str,
+    message: str,
+) -> None:
+    monkeypatch.setattr("socket.gethostname", lambda: "examplehost01.example.test")
+    if case == "detached":
+        world.git("update-ref", "--no-deref", "HEAD", "HEAD")
+    else:
+        world.git("symbolic-ref", "HEAD", "refs/heads/agent/prepare-EXAMPLEHOST01")
+    if case == "config error":
+        path = Path(os.environ["XDG_CONFIG_HOME"]) / "tbhbdev" / "config.toml"
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text('[agent]\nhost = "examplehost01"\n')
+    assert run_main("create") == 1
+    assert capsys.readouterr().err == f"tbhbdev alpha pr: {message}\n"
+    assert world.calls("gh") == []
 
 
 @pytest.mark.parametrize("context", ["session", "account"])

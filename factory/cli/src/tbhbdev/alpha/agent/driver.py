@@ -27,9 +27,12 @@ from tbhbdev.alpha.agent import (
     transport,
     version_heal,
 )
+from tbhbdev.alpha.agent import (
+    settings as agent_settings,
+)
 from tbhbdev.alpha.agent.decisions import driver as rules
+from tbhbdev.alpha.agent.decisions import host_names, limits, remote, repo, request
 from tbhbdev.alpha.agent.decisions import launcher as launch_rules
-from tbhbdev.alpha.agent.decisions import limits, remote, repo, request
 from tbhbdev.alpha.agent.decisions import runfiles_names as files
 from tbhbdev.alpha.agent.model import Harness, Invalid, Profile, RunKind, RunRequest
 
@@ -553,6 +556,11 @@ def launch_attributes(run: Run) -> None:
 
 
 def execute(settings: Settings, args: argparse.Namespace) -> int:
+    if host_names.contains_host_name(
+        args.name, agent_settings.known_host_names(settings)
+    ):
+        message = "run name contains a host name"
+        raise Invalid(message)
     run = prepare(settings, args) if args.host is not None else None
     if run is not None:
         launch_attributes(run)

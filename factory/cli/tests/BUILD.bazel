@@ -2246,3 +2246,13 @@ cli_py_test(
         "@cli_pip//pytest",
     ],
 )
+
+cli_py_test(
+    name = "test_alpha_agent_host_names",
+    srcs = ["test_alpha_agent_host_names.py"],
+    deps = [
+        ":conftest",
+        "//factory/cli/src/tbhbdev/alpha/agent/decisions:host_names",
+        "@cli_pip//pytest",
+    ],
+)

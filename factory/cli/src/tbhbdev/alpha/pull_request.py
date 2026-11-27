@@ -141,9 +141,12 @@ from urllib.parse import quote
 
 from jsonschema import Draft202012Validator
 
+from tbhbdev import userconfig
 from tbhbdev.alpha import identity as agent_identity
 from tbhbdev.alpha import opened, secret_scan, size_gate, tool_pins
 from tbhbdev.alpha import pull_request_frontmatter as frontmatter
+from tbhbdev.alpha.agent import settings
+from tbhbdev.alpha.agent.decisions import host_names
 from tbhbdev.alpha.install import require_git_hooks
 from tbhbdev.alpha.repo import git as repo_git
 from tbhbdev.alpha.repo import hook_cwd, in_tbhb_dev, read_hook_stdin
@@ -2154,6 +2157,16 @@ def command(args: argparse.Namespace, env: Mapping[str, str]) -> int:
 
 def _run_command(args: argparse.Namespace, env: Mapping[str, str]) -> int:
     """Check the draft and carry out the requested action."""
+    if args.command == "create":
+        code, ref = git("symbolic-ref", "--quiet", "HEAD")
+        if code:
+            print("tbhbdev alpha pr: cannot read the current branch", file=sys.stderr)
+            return 1
+        if host_names.contains_host_name(
+            ref.removeprefix("refs/heads/"), settings.known_host_names()
+        ):
+            print("tbhbdev alpha pr: branch name contains a host name", file=sys.stderr)
+            return 1
     checked = read_checked(args.draft)
     if args.command in ("check", "create"):
         check_size(args, checked)
@@ -2288,6 +2301,8 @@ def main(
         return by_pr[args.command](args.pr)
     try:
         return command(args, env)
+    except userconfig.ConfigError as exc:
+        print(f"tbhbdev alpha pr: {exc}", file=sys.stderr)
     except agent_identity.AttributionError:
         print(
             "tbhbdev alpha pr: Attribution couldn't be resolved. Retry the pull "
@@ -2295,4 +2310,4 @@ def main(
             "finishes and its session record is available.",
             file=sys.stderr,
         )
-        return 1
+    return 1

@@ -483,6 +483,19 @@ def test_bad_name(
     assert capsys.readouterr().err
 
 
+def test_exec_refuses_a_name_that_contains_a_configured_host(
+    remote: Remote, capsys: pytest.CaptureFixture[str]
+) -> None:
+    args = arguments(remote)
+    args[-2] = "prepare-EXAMPLE-MACOS"
+    assert run_agent(args) == 1
+    assert remote.records("ssh") == []
+    assert (
+        capsys.readouterr().err
+        == "tbhbdev alpha agent: run name contains a host name\n"
+    )
+
+
 def test_version_mismatch(
     remote: Remote, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
 ) -> None:

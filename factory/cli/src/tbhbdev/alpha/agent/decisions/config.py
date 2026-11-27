@@ -438,22 +438,24 @@ def _claude(table: _Table) -> Claude:
     return Claude(default_profile=selected.name, profiles=tuple(found))
 
 
-def _hosts(root: _Table) -> tuple[Host, ...]:
+def hosts(agent: dict[str, object]) -> tuple[Host, ...]:
+    """Validate the host entries in the agent configuration."""
+    root = _Table("[agent]", agent)
     value = root.value("host")
     entries: list[object] = value if isinstance(value, list) else []
     if not entries:
         root.fail("host", "must be a non-empty array of tables")
-    hosts: list[Host] = []
+    found: list[Host] = []
     for entry in entries:
         if not isinstance(entry, dict):
             root.fail("host", "must be a non-empty array of tables")
         values: dict[str, object] = entry
         table = _Table("[[agent.host]]", values)
         host = _host(table)
-        if any(h.name == host.name for h in hosts):
+        if any(h.name == host.name for h in found):
             table.fail("name", f"{host.name!r} is defined twice")
-        hosts.append(host)
-    return tuple(hosts)
+        found.append(host)
+    return tuple(found)
 
 
 def _proven_harnesses(table: _Table) -> tuple[Harness, ...]:
@@ -620,7 +622,7 @@ def parse(agent: dict[str, object]) -> Settings:
         codex=_codex(root.table("codex") if "codex" in agent else None),
         credentials=_credentials(root.table("credentials")),
         claude=_claude(root.table("claude")),
-        hosts=_hosts(root),
+        hosts=hosts(agent),
         agy_build_timeout_seconds=root.duration("agy_build_timeout")
         if "agy_build_timeout" in agent
         else 3600,

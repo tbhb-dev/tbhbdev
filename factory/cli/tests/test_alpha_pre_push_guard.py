@@ -93,6 +93,29 @@ def guard(
     return pg.main(["origin", origin_url()], "tbhbdev alpha pre-push-guard")
 
 
+def test_refuses_a_host_name_only_when_creating_a_branch(
+    repo: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    config = Path(os.environ["XDG_CONFIG_HOME"]) / "tbhbdev" / "config.toml"
+    config.parent.mkdir(parents=True)
+    config.write_text(
+        '[[agent.host]]\nname = "examplehost01"\nos = "linux"\nshell = "bash"\n'
+        'account = "agent"\naccounts = ["agent"]\nproven_harnesses = ["codex"]\n'
+    )
+    base = git(repo, "rev-parse", "HEAD")
+    head = commit(repo)
+    ref = "refs/heads/agent/prepare-EXAMPLEHOST01"
+
+    assert guard(monkeypatch, head, ref=ref) == 1
+    assert (
+        capsys.readouterr().err
+        == "push refused because the branch name contains a host name\n"
+    )
+    assert guard(monkeypatch, head, base, ref=ref) == 0
+    assert guard(monkeypatch, ZERO, base, ref=ref) == 0
+    assert guard(monkeypatch, head, ref="refs/tags/prepare-examplehost01") == 0
+
+
 @pytest.mark.parametrize("kind", ["diverged", "forward", "new", "delete", "missing"])
 def test_ancestry(
     repo: Path,

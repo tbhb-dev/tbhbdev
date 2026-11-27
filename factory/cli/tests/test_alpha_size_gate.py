@@ -467,7 +467,13 @@ def test_pr_create_size(
         counter = Mock(side_effect=sg.SizeCountError("missing target"))
     if failure != "missing":
         monkeypatch.setattr(sg, "size_counts", counter)
-    git = git_exits(int(failure == "base"))
+
+    def inspect_git(verb: str, *_args: str) -> tuple[int, str]:
+        if verb == "symbolic-ref":
+            return 0, "refs/heads/topic"
+        return int(failure == "base"), ""
+
+    git = Mock(side_effect=inspect_git)
     monkeypatch.setattr(pr, "git", git)
     monkeypatch.setattr(pr, "base_of", Mock(return_value="main"))
     monkeypatch.setattr(pr, "read_checked", Mock(return_value=pr.Checked([])))
