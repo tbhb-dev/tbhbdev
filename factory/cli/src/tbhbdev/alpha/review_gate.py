@@ -11,14 +11,18 @@ import re
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, TypedDict
 
-from tbhbdev.alpha.identity import dispatcher as identity
+from tbhbdev.alpha.identity import models as identity_models
+from tbhbdev.alpha.identity import records as identity_records
+from tbhbdev.alpha.identity import trailers as identity_trailers
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
 
 MIN_APPROVALS = 1
 
-KNOWN_HARNESSES = frozenset({*identity.SLUGS.values(), "claude", "agy", "gemini"})
+KNOWN_HARNESSES = frozenset(
+    {*identity_models.SLUGS.values(), "claude", "agy", "gemini"}
+)
 HEAD_SHA = re.compile(r"[0-9a-f]{40}")
 LEGACY_FOOTER = re.compile(r"Run \S+, (\S+) \S+, judged head ([0-9a-f]{40})\.")
 
@@ -54,9 +58,9 @@ def known_harness(harness: str) -> bool:
 def review_attribution(body: str, head: str) -> dict[str, str]:
     """Read the approving run's attribution from either host-written footer."""
     footer = body.rstrip().rpartition("\n")[2]
-    trailers = identity.llm_trailers(footer)
-    if trailers and trailers[0][0] == identity.KEY_GEN:
-        return dict(identity.ATTR_PAIR.findall(trailers[0][1]))
+    trailers = identity_trailers.llm_trailers(footer)
+    if trailers and trailers[0][0] == identity_trailers.KEY_GEN:
+        return dict(identity_trailers.ATTR_PAIR.findall(trailers[0][1]))
     legacy = LEGACY_FOOTER.fullmatch(footer)
     if legacy and legacy[2] == head:
         return {"harness": legacy[1]}
@@ -68,11 +72,11 @@ def author_launches(messages: Sequence[str]) -> tuple[set[str], list[str]]:
     launches: set[str] = set()
     reasons: list[str] = []
     for message in messages:
-        for key, value in identity.llm_trailers(message):
-            if key != identity.KEY_GEN:
+        for key, value in identity_trailers.llm_trailers(message):
+            if key != identity_trailers.KEY_GEN:
                 continue
-            attrs = dict(identity.ATTR_PAIR.findall(value))
-            if (launch := identity.hash_ok(attrs.get("launch"))) is not None:
+            attrs = dict(identity_trailers.ATTR_PAIR.findall(value))
+            if (launch := identity_records.hash_ok(attrs.get("launch"))) is not None:
                 launches.add(launch)
             harness = attrs.get("harness", "")
             if not known_harness(harness):
@@ -96,7 +100,7 @@ def review_reasons(app: str, pull: Pull, launches: set[str]) -> list[str]:
             attrs = review_attribution(review["body"], pull.head)
             if not known_harness(attrs.get("harness", "")):
                 reasons.append(f"review {review['id']} names no known harness")
-            elif identity.hash_ok(attrs.get("launch")) in launches:
+            elif identity_records.hash_ok(attrs.get("launch")) in launches:
                 same_run.append(
                     f"review {review['id']} came from a run that wrote a commit"
                 )

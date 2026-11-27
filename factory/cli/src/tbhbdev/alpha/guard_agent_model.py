@@ -16,7 +16,9 @@ other tool, and input it can't read, is allowed.
 import sys
 from pathlib import Path
 
-from tbhbdev.alpha.identity.dispatcher import parse_line, read_tail, real_model
+from tbhbdev.alpha.identity.claude.transcript import real_model
+from tbhbdev.alpha.identity.records import parse_line
+from tbhbdev.alpha.identity.storage import read_tail
 from tbhbdev.alpha.repo import Json, read_hook_stdin
 
 TOOL = "Agent"

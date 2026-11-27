@@ -146,7 +146,14 @@ from tbhbdev.alpha import opened, secret_scan, size_gate, tool_pins
 from tbhbdev.alpha import pull_request_frontmatter as frontmatter
 from tbhbdev.alpha.agent import settings
 from tbhbdev.alpha.agent.decisions import host_names
-from tbhbdev.alpha.identity import dispatcher as agent_identity
+from tbhbdev.alpha.identity import attribution as identity_attribution
+from tbhbdev.alpha.identity import models as identity_models
+from tbhbdev.alpha.identity import payload as identity_payload
+from tbhbdev.alpha.identity import records as identity_records
+from tbhbdev.alpha.identity import trailers as identity_trailers
+from tbhbdev.alpha.identity.antigravity import payload as agy_payload
+from tbhbdev.alpha.identity.codex import payload as identity_codex_payload
+from tbhbdev.alpha.identity.commit import grammar as identity_commit_grammar
 from tbhbdev.alpha.identity.trailers import merge_pr_trailers
 from tbhbdev.alpha.install import require_git_hooks
 from tbhbdev.alpha.repo import git as repo_git
@@ -190,7 +197,7 @@ GIT = "git"
 CLAUDE = "claude"
 CODEX = "codex"
 ANTIGRAVITY = "antigravity"
-AGY_EDITS = agent_identity.AGY_EDIT_TOOLS
+AGY_EDITS = agy_payload.AGY_EDIT_TOOLS
 # The exit code that makes a harness feed a PostToolUse hook's stderr to the agent.
 HOOK_FEEDBACK = 2
 COG = "cog"
@@ -492,7 +499,7 @@ def wrap_problems(lines: Sequence[Line]) -> list[Problem]:
             or HEADING.fullmatch(line.text)
             or text.startswith("|")
             or HUMAN_TRAILER.match(text)
-            or agent_identity.LINE.match(text)
+            or identity_commit_grammar.LINE.match(text)
         ):
             start = None
         elif start is None or LIST_ITEM.match(line.text):
@@ -516,7 +523,7 @@ def trailer_problems(lines: Sequence[Line]) -> list[Problem]:
             continue
         if line.code:
             continue
-        if agent_identity.LINE.match(line.text):
+        if identity_commit_grammar.LINE.match(line.text):
             problems.append(
                 (
                     line.no,
@@ -870,7 +877,7 @@ def branch_trailers(base: str) -> list[tuple[str, str]]:
 
 def trailer_lines(text: str) -> list[tuple[str, str]]:
     """Match LLM trailer lines in Git's parsed trailer output."""
-    found = (agent_identity.LINE.match(line) for line in text.splitlines())
+    found = (identity_commit_grammar.LINE.match(line) for line in text.splitlines())
     return [(match[1], match[2]) for match in found if match]
 
 
@@ -881,8 +888,8 @@ def commit_messages(pages: Sequence[object], invalid: str) -> list[str]:
         if not isinstance(page, list):
             raise SystemExit(invalid)
         for entry in cast("list[object]", page):  # pragma: no mutate
-            item = agent_identity.as_dict(entry) or {}
-            commit = agent_identity.as_dict(item.get("commit")) or {}
+            item = identity_records.as_dict(entry) or {}
+            commit = identity_records.as_dict(item.get("commit")) or {}
             message = commit.get("message")
             if not isinstance(message, str):
                 raise SystemExit(invalid)
@@ -923,10 +930,10 @@ def pr_trailers(number: int, target: str) -> list[tuple[str, str]]:
 
 def posting_value(env: Mapping[str, str]) -> str | None:
     """The trailer value for the agent running this script, or None for a human."""
-    committer = agent_identity.committer_identity(env)
+    committer = identity_attribution.committer_identity(env)
     if committer is None:
         return None
-    return agent_identity.format_value(committer.ident.attrs())
+    return identity_trailers.format_value(committer.ident.attrs())
 
 
 def default_base(*, origin_only: bool = False) -> str:
@@ -1027,7 +1034,7 @@ def description(
     errors = [
         f"{value}: {why}"
         for value in values
-        if (why := agent_identity.check_value(value))
+        if (why := identity_commit_grammar.check_value(value))
     ]
     if errors:
         raise SystemExit("invalid LLM trailer: " + "; ".join(errors))
@@ -1989,15 +1996,15 @@ def opened_by(env: Mapping[str, str]) -> tuple[str | None, str | None]:
     """
     ident = opened.opener(env)
     if ident is None:
-        if agent_identity.detect(env) is not None:
+        if identity_models.detect(env) is not None:
             message = (
                 f"warning: no {OPENED_KEY} line or ledger entry: "
                 "cannot resolve the root session"
             )
             print(message, file=sys.stderr)
         return None, None
-    value = agent_identity.format_value(ident.attrs())
-    if why := agent_identity.check_value(value):
+    value = identity_trailers.format_value(ident.attrs())
+    if why := identity_commit_grammar.check_value(value):
         message = f"warning: no {OPENED_KEY} line or ledger entry: {value}: {why}"
         print(message, file=sys.stderr)
         return None, None
@@ -2172,15 +2179,15 @@ def _run_command(args: argparse.Namespace, env: Mapping[str, str]) -> int:
     return invoke_gh(argv, body)[0]
 
 
-def touched_paths(harness: str, data: agent_identity.Json) -> list[str]:
+def touched_paths(harness: str, data: identity_records.Json) -> list[str]:
     """Files a harness's PostToolUse payload says the tool call wrote."""
-    inputs = agent_identity.tool_input_of(data)
+    inputs = identity_payload.tool_input_of(data)
     path: object
     if harness == CODEX:
-        return agent_identity.patch_paths(inputs.get("command"))
+        return identity_codex_payload.patch_paths(inputs.get("command"))
     if harness == ANTIGRAVITY:
-        tool, args = agent_identity.agy_tool(data)
-        path = agent_identity.agy_edit_path(args) if tool in AGY_EDITS else None
+        tool, args = agy_payload.agy_tool(data)
+        path = agy_payload.agy_edit_path(args) if tool in AGY_EDITS else None
     else:
         path = inputs.get("file_path")
     return [path] if isinstance(path, str) and path else []
@@ -2273,7 +2280,7 @@ def main(
         return command(args, env)
     except userconfig.ConfigError as exc:
         print(f"tbhbdev alpha pr: {exc}", file=sys.stderr)
-    except agent_identity.AttributionError:
+    except identity_records.AttributionError:
         print(
             "tbhbdev alpha pr: Attribution couldn't be resolved. Retry the pull "
             "request command from the main session after the subagent's command "

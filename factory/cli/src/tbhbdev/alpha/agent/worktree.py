@@ -23,7 +23,7 @@ from tbhbdev.alpha.agent import host_tools, runfiles
 from tbhbdev.alpha.agent.decisions import repo
 from tbhbdev.alpha.agent.decisions.request import check_fetch_refs, check_start_ref
 from tbhbdev.alpha.agent.model import Invalid, Profile, RunRequest
-from tbhbdev.alpha.identity.dispatcher import RUN_HOOK_ENV
+from tbhbdev.alpha.identity.commit.policy import RUN_HOOK_ENV
 from tbhbdev.alpha.repo import TBHB_DEV_ORIGIN
 
 GIT_OVERRIDES = (

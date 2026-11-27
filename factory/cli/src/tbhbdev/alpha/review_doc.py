@@ -11,7 +11,8 @@ from typing import Literal, Protocol, cast
 from tbhbdev import content
 from tbhbdev.alpha import pull_request as pr
 from tbhbdev.alpha import pull_request_frontmatter as frontmatter
-from tbhbdev.alpha.identity import dispatcher as identity
+from tbhbdev.alpha.identity import trailers as identity_trailers
+from tbhbdev.alpha.identity.commit import grammar as identity_commit_grammar
 
 type Tier = Literal[0, 1, 2]
 type Verdict = Literal["GO", "NO-GO"]
@@ -134,7 +135,7 @@ def parse_marker(body: str) -> Marker | str | None:
     """Read a current or legacy review marker."""
     text = body.replace("\r\n", "\n")
     before, _, last = text.rstrip().rpartition("\n")
-    if last.startswith(f"{identity.KEY_GEN}: LLM "):
+    if last.startswith(f"{identity_trailers.KEY_GEN}: LLM "):
         last = before.rstrip().rpartition("\n")[2]
     if matched := _MARKER_V2.fullmatch(last):
         return matched[1]
@@ -235,10 +236,10 @@ def attribution(value: str | None) -> str:
     if value is None:
         message = "posting a review requires a recognized agent session"
         raise ReviewError(message)
-    if why := identity.check_value(value):
+    if why := identity_commit_grammar.check_value(value):
         message = f"invalid LLM trailer: {why}"
         raise ReviewError(message)
-    return f"{identity.KEY_GEN}: {value}"
+    return f"{identity_trailers.KEY_GEN}: {value}"
 
 
 def post(

@@ -17,7 +17,7 @@ from datetime import UTC, datetime
 from typing import TYPE_CHECKING, cast
 
 from tbhbdev.alpha import pull_request as pr
-from tbhbdev.alpha.identity import dispatcher as identity
+from tbhbdev.alpha.identity import trailers as identity_trailers
 
 if TYPE_CHECKING:
     from collections.abc import Mapping, Sequence
@@ -41,7 +41,7 @@ def line_starts(text: object) -> tuple[list[datetime], int]:
     """The valid ``started_at`` times in a text, and its identity lines without one."""
     starts: list[datetime] = []
     missing = 0
-    for _key, value in identity.llm_trailers(
+    for _key, value in identity_trailers.llm_trailers(
         text
         if isinstance(text, str)
         else ""  # pragma: no mutate -- any non-trailer fallback has no identity lines

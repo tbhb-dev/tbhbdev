@@ -28,7 +28,8 @@ from squash_merge_fixtures import write_isolated_tool
 from tbhbdev.alpha import pull_request as pr
 from tbhbdev.alpha import squash_merge as sm
 from tbhbdev.alpha import tool_pins
-from tbhbdev.alpha.identity import dispatcher as agent_identity
+from tbhbdev.alpha.identity.commit import grammar as identity_commit_grammar
+from tbhbdev.alpha.identity.commit import policy as identity_commit_policy
 from tbhbdev.alpha.secret_scan import REPO_RULES, without_name_rules
 
 SRC = Path(sm.__file__).parents[2]
@@ -1038,7 +1039,7 @@ def test_the_fallback_identity_block_is_kept_and_passes_the_check() -> None:
     message = message_of(f"## Why\n\nw\n\n{block}\n")
     assert message.endswith(f"\n\n{block}\n")
     assert read_back(message) == f"{block}\n"
-    assert agent_identity.check_message(message) == []
+    assert identity_commit_grammar.check_message(message) == []
 
 
 def test_one_line_paragraphs_still_wrap_at_72() -> None:
@@ -1216,7 +1217,7 @@ def test_the_view_reads_the_url() -> None:
     assert "url" in sm.VIEW_FIELDS.split(",")
 
 
-AGENT_EMAIL = agent_identity.AGENT_IDENT.partition("<")[2].removesuffix(">")
+AGENT_EMAIL = identity_commit_policy.AGENT_IDENT.partition("<")[2].removesuffix(">")
 AGENT_COMMITS = [
     commit(OTHER_HEAD, "human@example.com"),
     commit(APPROVED_HEAD, "other@example.com", AGENT_EMAIL),

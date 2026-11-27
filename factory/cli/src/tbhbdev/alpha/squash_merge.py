@@ -88,7 +88,9 @@ from urllib.parse import quote
 
 from tbhbdev.alpha import pull_request as pr
 from tbhbdev.alpha import review_gate
-from tbhbdev.alpha.identity import dispatcher as agent_identity
+from tbhbdev.alpha.identity import records as identity_records
+from tbhbdev.alpha.identity.commit import grammar as identity_commit_grammar
+from tbhbdev.alpha.identity.commit import policy as identity_commit_policy
 from tbhbdev.alpha.install import require_git_hooks
 
 if TYPE_CHECKING:
@@ -393,7 +395,8 @@ def drop_opened(lines: Sequence[pr.Line]) -> list[pr.Line]:
         end -= 1
     run = takewhile(
         lambda line: (
-            agent_identity.LINE.match(line.text) or pr.OPENED_LINE.match(line.text)
+            identity_commit_grammar.LINE.match(line.text)
+            or pr.OPENED_LINE.match(line.text)
         ),
         reversed(lines[:end]),
     )
@@ -416,7 +419,7 @@ def split_trailers(lines: Sequence[pr.Line]) -> tuple[list[pr.Line], list[str]]:
     while (
         start
         and not lines[start - 1].code
-        and agent_identity.LINE.match(lines[start - 1].text)
+        and identity_commit_grammar.LINE.match(lines[start - 1].text)
     ):
         start -= 1
     if start == end or (start and not pr.is_blank(lines[start - 1])):
@@ -445,7 +448,7 @@ def check_trailers(
     problems = [why for _, why in pr.trailer_problems(text_lines)]
     problems.extend(
         f"invalid trailer block: {why}"
-        for why in agent_identity.check_message("\n".join(trailers))
+        for why in identity_commit_grammar.check_message("\n".join(trailers))
     )
     if agent and not trailers:
         problems.append("agent PR is missing final trailer paragraph")
@@ -612,7 +615,7 @@ def commit_messages(entries: list[object], head: str) -> list[str]:
                 "messageBody": str(body),
                 "authors": list(authors),
             } if review_gate.HEAD_SHA.fullmatch(oid) and all(
-                isinstance((agent_identity.as_dict(row) or {}).get("email"), str)
+                isinstance((identity_records.as_dict(row) or {}).get("email"), str)
                 for row in cast("list[object]", authors)
             ):
                 messages.append(f"{title}\n\n{body}")
@@ -630,12 +633,12 @@ def commit_messages(entries: list[object], head: str) -> list[str]:
 def app_reviews(rows: list[object]) -> list[review_gate.Review]:
     reviews: list[review_gate.Review] = []
     for row in rows:
-        fields = agent_identity.as_dict(row) or {}
+        fields = identity_records.as_dict(row) or {}
         state = fields.get("state")
         if state in ("COMMENTED", "DISMISSED", "PENDING"):
             continue
-        author = agent_identity.as_dict(fields.get("author")) or {}
-        commit = agent_identity.as_dict(fields.get("commit")) or {}
+        author = identity_records.as_dict(fields.get("author")) or {}
+        commit = identity_records.as_dict(fields.get("commit")) or {}
         login, kind, oid = (
             author.get("login"),
             author.get("__typename"),
@@ -668,9 +671,9 @@ def app_reviews(rows: list[object]) -> list[review_gate.Review]:
 
 
 def review_snapshot(data: object, head: str) -> list[review_gate.Review]:
-    connection = agent_identity.as_dict(data) or {}
+    connection = identity_records.as_dict(data) or {}
     for key in ("data", "repository", "pullRequest"):
-        connection = agent_identity.as_dict(connection.get(key)) or {}
+        connection = identity_records.as_dict(connection.get(key)) or {}
     if not connection:
         message = "gh review lookup returned no usable pull request review data"
         raise EvidenceError(message)
@@ -680,8 +683,8 @@ def review_snapshot(data: object, head: str) -> list[review_gate.Review]:
     if connection.get("reviewDecision") != "APPROVED":
         message = "GitHub no longer reports reviewDecision=APPROVED"
         raise EvidenceError(message)
-    page = agent_identity.as_dict(connection.get("reviews")) or {}
-    info = agent_identity.as_dict(page.get("pageInfo")) or {}
+    page = identity_records.as_dict(connection.get("reviews")) or {}
+    info = identity_records.as_dict(page.get("pageInfo")) or {}
     rows = page.get("nodes")
     if info.get("hasNextPage") is not False or not isinstance(rows, list):
         message = "gh review lookup returned a missing or incomplete review list"
@@ -721,12 +724,12 @@ def fetch(number: int) -> PullRequest:
         raw: object = json.loads(done.stdout)
     except ValueError as exc:
         stop(f"gh pr view returned something that is not JSON: {exc}")
-    data = agent_identity.as_dict(raw)
+    data = identity_records.as_dict(raw)
     if data is None:
         stop("gh pr view returned no usable pull request")
-    who = agent_identity.as_dict(data.get("author")) or {}
+    who = identity_records.as_dict(data.get("author")) or {}
     base = data.get("baseRefName")
-    _, email = parseaddr(agent_identity.AGENT_IDENT)
+    _, email = parseaddr(identity_commit_policy.AGENT_IDENT)
     commits = cast("list[dict[str, list[dict[str, str]]]]", data.get("commits", []))
     try:
         agent = any(
@@ -818,7 +821,7 @@ def required_checks(rules: Sequence[object], pull: review_gate.Pull) -> list[str
     return [
         f"required check {name} has no success at the head"
         for row in rules
-        if (rule := agent_identity.as_dict(row))
+        if (rule := identity_records.as_dict(row))
         and rule.get("type") == "required_status_checks"
         for name in required_contexts(rule.get("parameters"))
         if name not in green
@@ -826,14 +829,14 @@ def required_checks(rules: Sequence[object], pull: review_gate.Pull) -> list[str
 
 
 def required_contexts(parameters: object) -> list[str]:
-    fields = agent_identity.as_dict(parameters) or {}
+    fields = identity_records.as_dict(parameters) or {}
     checks = fields.get("required_status_checks")
     if not isinstance(checks, list) or not checks:
         message = "gh returned no usable required status checks"
         raise EvidenceError(message)
     names = []
     for row in cast("list[object]", checks):
-        context = agent_identity.as_dict(row) or {}
+        context = identity_records.as_dict(row) or {}
         name = context.get("context")
         if not isinstance(name, str) or not name:
             message = "gh returned an invalid required status check"
@@ -846,11 +849,11 @@ def requires_queue(rules: Sequence[object]) -> str | None:
     """Return the active branch merge queue's method, if it has a queue."""
     method = None
     for entry in rules:
-        rule = agent_identity.as_dict(entry)
+        rule = identity_records.as_dict(entry)
         if rule is None or not isinstance(rule.get("type"), str):
             stop("gh returned no usable branch rules")
         if rule["type"] == "merge_queue":
-            parameters = agent_identity.as_dict(rule.get("parameters")) or {}
+            parameters = identity_records.as_dict(rule.get("parameters")) or {}
             method = str(parameters.get("merge_method", "(missing)")).upper()
             if method not in ("SQUASH", "MERGE"):
                 stop(f"not merging: unsupported branch merge queue method {method}")
@@ -880,7 +883,7 @@ def queue_state(target: str, number: int, *, preview: bool) -> dict[str, object]
         data = json.loads(done.stdout)["data"]["repository"]["pullRequest"]
     except ValueError, KeyError, TypeError:
         stop("gh returned no usable merge queue state")
-    state = agent_identity.as_dict(data)
+    state = identity_records.as_dict(data)
     if state is None:
         stop("gh returned no usable merge queue state")
     return state
@@ -888,7 +891,7 @@ def queue_state(target: str, number: int, *, preview: bool) -> dict[str, object]
 
 def queue_removal(state: dict[str, object]) -> tuple[str, str | None]:
     """Return the latest removal event's ID and reason."""
-    timeline = agent_identity.as_dict(state.get("timelineItems")) or {}
+    timeline = identity_records.as_dict(state.get("timelineItems")) or {}
     match cast("list[dict[str, object]]", timeline.get("nodes")):
         case [{"id": str() as event, "reason": (str() | None) as reason}]:
             return event, reason
@@ -918,7 +921,7 @@ def report_queue(target: str, number: int, previous_removal: str) -> int:
     """Report the result of one post-merge state read."""
     state = queue_state(target, number, preview=False)
     if state.get("state") == "MERGED":
-        commit = agent_identity.as_dict(state.get("mergeCommit")) or {}
+        commit = identity_records.as_dict(state.get("mergeCommit")) or {}
         sha = commit.get("oid")
         if isinstance(sha, str) and sha:
             print(f"PR #{number} merged as {sha}")

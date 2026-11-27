@@ -21,7 +21,7 @@ from tbhbdev.alpha import install
 from tbhbdev.alpha.agent import worktree
 from tbhbdev.alpha.agent.decisions.policy import GIT_CONFIG_PATHS
 from tbhbdev.alpha.agent.model import Harness, Profile
-from tbhbdev.alpha.identity import dispatcher as identity
+from tbhbdev.alpha.identity.commit import policy as identity_commit_policy
 
 
 @pytest.mark.parametrize(
@@ -183,7 +183,7 @@ def test_live_codex_commit_and_git_children(
     assert cli is not None
     run, paths = real_clone(tmp_path, monkeypatch, Harness.CODEX)
     workspace = Path(paths.worktree)
-    name, email = identity.AGENT_IDENT.split(" <", 1)
+    name, email = identity_commit_policy.AGENT_IDENT.split(" <", 1)
     for key, value in (
         ("user.name", name),
         ("user.email", email.removesuffix(">")),
@@ -226,7 +226,10 @@ def test_live_codex_commit_and_git_children(
         assert (
             workspace / ".git/hooks" / name
         ).read_text() == worktree.RUN_IDENTITY_SHIM.format(
-            mark=install.SHIM_MARK, verb=verb, hook=name, run_env=identity.RUN_HOOK_ENV
+            mark=install.SHIM_MARK,
+            verb=verb,
+            hook=name,
+            run_env=identity_commit_policy.RUN_HOOK_ENV,
         )
     command = shlex.join(
         (

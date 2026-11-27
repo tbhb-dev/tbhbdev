@@ -21,7 +21,7 @@ from hypothesis import strategies as st
 
 from tbhbdev.alpha import close, install, opened, pull_request, squash_merge
 from tbhbdev.alpha import guard_gh_pr as guard
-from tbhbdev.alpha.identity import dispatcher as ai
+from tbhbdev.alpha.identity import records as identity_records
 
 DATA = Path(__file__).parent / "testdata" / "alpha"
 SRC = Path(guard.__file__).parents[2]
@@ -660,7 +660,7 @@ def test_every_harness_config_runs_the_guard(
 
 # --- approval routes -------------------------------------------------------
 
-ROOT = ai.sha256_64("session-raw")
+ROOT = identity_records.sha256_64("session-raw")
 TARGET = "tbhb-dev/tbhbdev#7"
 GH_ROUTES = [
     ("gh pr review 7 --approve -R tbhb-dev/tbhbdev", "`gh pr review --approve`"),

@@ -36,7 +36,14 @@ from jsonschema import Draft202012Validator
 from tbhbdev.alpha import opened, size_gate, tool_pins
 from tbhbdev.alpha import pull_request as pr
 from tbhbdev.alpha import pull_request_frontmatter as frontmatter
-from tbhbdev.alpha.identity import dispatcher as agent_identity
+from tbhbdev.alpha.identity import attribution as identity_attribution
+from tbhbdev.alpha.identity import records as identity_records
+from tbhbdev.alpha.identity import sessions as identity_sessions
+from tbhbdev.alpha.identity import trailers as identity_trailers
+from tbhbdev.alpha.identity.claude import ancestry as identity_claude_ancestry
+from tbhbdev.alpha.identity.claude import commands as identity_claude_commands
+from tbhbdev.alpha.identity.commit import grammar as identity_commit_grammar
+from tbhbdev.alpha.identity.commit import policy as identity_commit_policy
 from tbhbdev.alpha.identity.trailers import identity_key, merge_pr_trailers
 from tbhbdev.alpha.secret_scan import REPO_RULES, without_name_rules
 
@@ -1333,7 +1340,7 @@ class TestRealLinters:
 
 
 def value(**attrs: str) -> str:
-    return agent_identity.format_value(attrs)
+    return identity_trailers.format_value(attrs)
 
 
 def test_merge_dedupes_and_orders() -> None:
@@ -1403,7 +1410,9 @@ def test_merge_properties(found: list[tuple[str, str]], posting: str | None) -> 
     generated = {identity_key(v) for k, v in found if k == "Generated-by"}
     for (role, _), key in zip(merged, keys, strict=True):
         assert (role == "Generated-by") == (key in generated)
-    assert not agent_identity.check_message("\n".join(f"{k}: {v}" for k, v in merged))
+    assert not identity_commit_grammar.check_message(
+        "\n".join(f"{k}: {v}" for k, v in merged)
+    )
 
 
 AGENT = {
@@ -1414,9 +1423,9 @@ AGENT = {
 }
 POSTING = (
     "LLM effort=high;harness=claude-code:2.1.0;model=anthropic:claude-opus-5-5;"
-    f"session={agent_identity.sha256_64('raw-session')};surface=cli"
+    f"session={identity_records.sha256_64('raw-session')};surface=cli"
 )
-ROOT = agent_identity.sha256_64("raw-session")
+ROOT = identity_records.sha256_64("raw-session")
 OPENER = (
     "Opened-by: LLM harness=claude-code:2.1.0;model=anthropic:claude-opus-5-5;"
     f"session={ROOT};surface=cli"
@@ -1437,8 +1446,8 @@ def seed_session(world: World, model: str | None = "claude-opus-5-5") -> None:
     transcript = world.root.parent / "session.jsonl"
     message = {"model": model} if model else {"content": "x"}
     transcript.write_text(json.dumps({"message": message}) + "\n")
-    agent_identity.write_record(
-        agent_identity.sha256_64("raw-session"),
+    identity_sessions.write_record(
+        identity_records.sha256_64("raw-session"),
         {"transcript": str(transcript)},
         world.root,
     )
@@ -1446,7 +1455,7 @@ def seed_session(world: World, model: str | None = "claude-opus-5-5") -> None:
 
 @pytest.fixture
 def agent(world: World, monkeypatch: pytest.MonkeyPatch) -> dict[str, str]:
-    monkeypatch.setattr(agent_identity, "ancestry", no_ancestry)
+    monkeypatch.setattr(identity_claude_ancestry, "ancestry", no_ancestry)
     seed_session(world)
     return AGENT
 
@@ -1565,7 +1574,7 @@ def test_a_resolved_posting_value_is_one_line_with_its_commit_trailer(
     world.git("switch", "-q", "-c", "topic")
     world.commit(f"one\n\nGenerated-by: {POSTING}")
     got = pr.description(checked_for(), agent, pr.branch_trailers("main"))
-    session = f"session={agent_identity.sha256_64('raw-session')}"
+    session = f"session={identity_records.sha256_64('raw-session')}"
     lines = [line for line in got.splitlines() if session in line]
     assert lines == [f"Generated-by: {POSTING}"]
     assert "Assisted-by" not in got
@@ -1579,9 +1588,9 @@ def test_the_posting_session_dedupes_against_its_commit_trailer(
     write_draft(world)
     world.git("switch", "-q", "-c", "topic")
     # The trailer the session's commit got, from the same commit-time source.
-    committed = agent_identity.committer_identity(agent, [])
+    committed = identity_attribution.committer_identity(agent, [])
     assert committed is not None
-    trailer = agent_identity.format_value(committed.ident.attrs())
+    trailer = identity_trailers.format_value(committed.ident.attrs())
     assert "model=anthropic:claude-opus-5-5" in trailer
     world.commit(f"one\n\nGenerated-by: {trailer}")
     assert pr.posting_value(agent) == trailer
@@ -1589,7 +1598,7 @@ def test_the_posting_session_dedupes_against_its_commit_trailer(
     assert merged == [("Generated-by", trailer)]
     assert run_main("create", env=agent) == 0
     _, call = world.calls("gh")
-    session = f"session={agent_identity.sha256_64('raw-session')}"
+    session = f"session={identity_records.sha256_64('raw-session')}"
     lines = [line for line in str(call["stdin"]).splitlines() if session in line]
     assert lines == [OPENER, f"Generated-by: {trailer}"]
 
@@ -1753,7 +1762,7 @@ def test_agent_create_refuses_when_hooks_are_disabled(
     world.git("config", "core.hooksPath", "/dev/null")
     env = agent if context == "session" else {}
     if context == "account":
-        world.git("config", "user.email", agent_identity.AGENT_EMAIL)
+        world.git("config", "user.email", identity_commit_policy.AGENT_EMAIL)
     assert run_main("create", env=env) == 1
     assert world.calls("gh") == []
     assert "/dev/null/" in capsys.readouterr().err
@@ -3239,7 +3248,7 @@ def test_create_writes_opened_by_first_and_the_ledger(
         f"\nv\n\n{OPENER}\nGenerated-by: {GEN}\nAssisted-by: {POSTING}\n"
     )
     assert "subagent=" not in OPENER
-    path = ledgers(world) / f"{agent_identity.hx(ROOT)}.json"
+    path = ledgers(world) / f"{identity_records.hx(ROOT)}.json"
     assert json.loads(path.read_text()) == {"prs": ["tbhb-dev/tbhbdev#1"]}
     assert capsys.readouterr() == ("https://github.com/tbhb-dev/tbhbdev/pull/1\n", "")
     world.fake("gh", stdout="Created\nhttps://github.com/tbhb-dev/tbhbdev/pull/12\n")
@@ -3258,7 +3267,9 @@ def test_pr_commands_report_unresolved_attribution(
     site: str,
 ) -> None:
     write_draft(world)
-    agent_identity.record_command(ROOT, SUBAGENT, "background command", world.root)
+    identity_claude_commands.record_command(
+        ROOT, SUBAGENT, "background command", world.root
+    )
     if site == "create-description":
         monkeypatch.setattr(pr, "opened_by", Mock(return_value=(None, None)))
     argv = (
@@ -3285,11 +3296,19 @@ def test_pr_commands_report_unresolved_attribution(
         assert reads == []
 
 
-def test_a_subagent_opens_under_its_root(world: World, agent: dict[str, str]) -> None:
+def test_a_subagent_opens_under_its_root(
+    world: World, agent: dict[str, str], monkeypatch: pytest.MonkeyPatch
+) -> None:
     write_draft(world)
-    child = agent_identity.sha256_64("agent-raw")
-    agent_identity.write_user_record(child, {"root": ROOT, "model": "claude-x"})
-    assert run_main("create", env={**agent, "ASCM_AGENT_ID": child}) == 0
+    child = identity_records.sha256_64("agent-raw")
+    identity_sessions.write_user_record(child, {"root": ROOT, "model": "claude-x"})
+    identity_claude_commands.record_command(ROOT, child, "tbhbdev alpha pr create")
+    monkeypatch.setattr(
+        identity_claude_ancestry,
+        "ancestry",
+        lambda: ["sh -c eval 'tbhbdev alpha pr create'"],
+    )
+    assert run_main("create", env=agent) == 0
     _, call = world.calls("gh")
     assert str(call["stdin"]).endswith(
         f"\n\n{OPENER}\nAssisted-by: LLM harness=claude-code:2.1.0;"
@@ -3305,8 +3324,8 @@ def test_no_root_means_no_line_and_no_ledger(
     world: World, env: dict[str, str], capsys: pytest.CaptureFixture[str]
 ) -> None:
     write_draft(world)
-    conv = agent_identity.sha256_64("conv-raw")
-    agent_identity.write_user_record(conv, {"model": "gemini-x"})
+    conv = identity_records.sha256_64("conv-raw")
+    identity_sessions.write_user_record(conv, {"model": "gemini-x"})
     assert run_main("create", env=env) == 0
     _, call = world.calls("gh")
     assert "Opened-by" not in str(call["stdin"])
@@ -3344,7 +3363,7 @@ def test_create_without_a_url_records_nothing(
 def test_create_with_a_corrupt_ledger_reports_it(
     world: World, agent: dict[str, str], capsys: pytest.CaptureFixture[str]
 ) -> None:
-    path = ledgers(world) / f"{agent_identity.hx(ROOT)}.json"
+    path = ledgers(world) / f"{identity_records.hx(ROOT)}.json"
     path.parent.mkdir(parents=True)
     path.write_text("[]")
     write_draft(world)
@@ -3432,10 +3451,10 @@ def test_check_rejects_opened_by_in_code_too() -> None:
     assert structure(BASE + "\nSee the Opened-by: line.\n") == []
 
 
-R1 = agent_identity.sha256_64("r1")
-R2 = agent_identity.sha256_64("r2")
-R3 = agent_identity.sha256_64("r3")
-SUB = agent_identity.sha256_64("sub")
+R1 = identity_records.sha256_64("r1")
+R2 = identity_records.sha256_64("r2")
+R3 = identity_records.sha256_64("r3")
+SUB = identity_records.sha256_64("sub")
 
 
 def gh_list(items: list[dict[str, object]], rc: int = 0) -> dict[str, object]:
@@ -3487,7 +3506,7 @@ def test_backfill_records_every_session_on_every_pr(
         assert opened.read_ledger(R2) == {"tbhb-dev/a#1"}
         assert opened.read_ledger(R3) == {"tbhb-dev/a#2"}
         assert sorted(p.name for p in ledgers(world).glob("*.json")) == sorted(
-            f"{agent_identity.hx(r)}.json" for r in (R1, R2, R3)
+            f"{identity_records.hx(r)}.json" for r in (R1, R2, R3)
         )
     calls = [call["argv"] for call in world.calls("gh")][:3]
     assert calls == [
@@ -3526,7 +3545,7 @@ def test_backfill_stops_when_gh_fails(
 
 def test_backfill_stops_at_a_corrupt_ledger(world: World) -> None:
     world.fake("gh", cases=BACKFILL_CASES)
-    path = ledgers(world) / f"{agent_identity.hx(R1)}.json"
+    path = ledgers(world) / f"{identity_records.hx(R1)}.json"
     path.parent.mkdir(parents=True)
     path.write_text("{")
     with pytest.raises(SystemExit, match=f"^{re.escape(str(path))} is not JSON$"):
@@ -5084,7 +5103,7 @@ def test_create_warns_when_the_ledger_cant_be_written(
 ) -> None:
     store = ledgers(world)
     store.mkdir(parents=True)
-    path = store / f"{agent_identity.hx(ROOT)}.json"
+    path = store / f"{identity_records.hx(ROOT)}.json"
     if make == "file":
         # A directory where the ledger file goes: the write fails with OSError.
         path.mkdir()
@@ -5118,13 +5137,22 @@ def test_create_warns_when_the_write_fails(
 
 
 def test_an_opener_without_a_model_gets_no_line_and_no_ledger(
-    world: World, agent: dict[str, str], capsys: pytest.CaptureFixture[str]
+    world: World,
+    agent: dict[str, str],
+    capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    child = agent_identity.sha256_64("agent-raw")
-    agent_identity.write_user_record(child, {"root": ROOT, "model": "claude-x"})
+    child = identity_records.sha256_64("agent-raw")
+    identity_sessions.write_user_record(child, {"root": ROOT, "model": "claude-x"})
     seed_session(world, None)
     write_draft(world)
-    assert run_main("create", env={**agent, "ASCM_AGENT_ID": child}) == 0
+    identity_claude_commands.record_command(ROOT, child, "tbhbdev alpha pr create")
+    monkeypatch.setattr(
+        identity_claude_ancestry,
+        "ancestry",
+        lambda: ["sh -c eval 'tbhbdev alpha pr create'"],
+    )
+    assert run_main("create", env=agent) == 0
     _, call = world.calls("gh")
     assert "Opened-by" not in str(call["stdin"])
     assert not ledgers(world).exists()

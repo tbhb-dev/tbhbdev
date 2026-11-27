@@ -13,10 +13,14 @@ from pathlib import Path
 import pytest
 
 from tbhbdev.alpha import opened
-from tbhbdev.alpha.identity import dispatcher as ai
+from tbhbdev.alpha.identity import models as identity_models
+from tbhbdev.alpha.identity import records as identity_records
+from tbhbdev.alpha.identity import sessions as identity_sessions
+from tbhbdev.alpha.identity import storage as identity_storage
+from tbhbdev.alpha.identity.claude import ancestry as identity_claude_ancestry
 
-ROOT = ai.sha256_64("session-raw")
-OTHER = ai.sha256_64("other-raw")
+ROOT = identity_records.sha256_64("session-raw")
+OTHER = identity_records.sha256_64("other-raw")
 CONV = "conv-raw"
 SUB = "sub-raw"
 
@@ -34,7 +38,7 @@ def state(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> Path:
 
 
 def test_the_ledger_path_is_the_root_hex_in_the_user_store(state: Path) -> None:
-    assert opened.ledger_path(ROOT) == state / f"{ai.hx(ROOT)}.json"
+    assert opened.ledger_path(ROOT) == state / f"{identity_records.hx(ROOT)}.json"
 
 
 def test_no_ledger_file_is_an_empty_ledger() -> None:
@@ -44,7 +48,7 @@ def test_no_ledger_file_is_an_empty_ledger() -> None:
 def test_record_sorts_deduplicates_and_keeps_entries(state: Path) -> None:
     opened.record_opened(ROOT, ["o/b#2", "o/a#9", "o/b#2"])
     opened.record_opened(ROOT, ["o/a#1", "o/a#9"])
-    path = state / f"{ai.hx(ROOT)}.json"
+    path = state / f"{identity_records.hx(ROOT)}.json"
     assert json.loads(path.read_text()) == {"prs": ["o/a#1", "o/a#9", "o/b#2"]}
     assert stat.S_IMODE(path.stat().st_mode) == 0o600
     assert opened.read_ledger(ROOT) == {"o/a#1", "o/a#9", "o/b#2"}
@@ -69,7 +73,7 @@ def test_record_uses_the_home_state_directory_when_xdg_is_unset(
         / "tbhbdev"
         / "tbhb-alpha"
         / "opened"
-        / f"{ai.hx(ROOT)}.json"
+        / f"{identity_records.hx(ROOT)}.json"
     )
     assert json.loads(path.read_text()) == {"prs": ["o/a#1"]}
     assert stat.S_IMODE(path.stat().st_mode) == 0o600
@@ -141,7 +145,7 @@ def test_a_failed_replace_preserves_the_ledger_and_releases_the_lock(
 def test_a_corrupt_ledger_raises_and_is_left_alone(
     state: Path, text: str, why: str
 ) -> None:
-    path = state / f"{ai.hx(ROOT)}.json"
+    path = state / f"{identity_records.hx(ROOT)}.json"
     state.mkdir(parents=True)
     path.write_text(text)
     with pytest.raises(opened.LedgerError, match=f"^{path} {why}$"):
@@ -152,7 +156,7 @@ def test_a_corrupt_ledger_raises_and_is_left_alone(
 
 
 def test_an_unreadable_ledger_raises(state: Path) -> None:
-    path = state / f"{ai.hx(ROOT)}.json"
+    path = state / f"{identity_records.hx(ROOT)}.json"
     path.mkdir(parents=True)
     with pytest.raises(
         opened.LedgerError, match=f"^cannot read {path}: Is a directory$"
@@ -162,7 +166,7 @@ def test_an_unreadable_ledger_raises(state: Path) -> None:
 
 def test_an_empty_ledger_list_is_valid(state: Path) -> None:
     state.mkdir(parents=True)
-    (state / f"{ai.hx(ROOT)}.json").write_text('{"prs": []}')
+    (state / f"{identity_records.hx(ROOT)}.json").write_text('{"prs": []}')
     assert opened.read_ledger(ROOT) == set()
 
 
@@ -190,9 +194,9 @@ def test_agy_root_hash_needs_the_conversation_in_a_brain(tmp_path: Path) -> None
     brain = make_brain(tmp_path, "someone-else")
     assert opened.agy_root_hash(CONV, brain) is None
     (brain / CONV).mkdir()
-    assert opened.agy_root_hash(CONV, brain) == ai.sha256_64(CONV)
+    assert opened.agy_root_hash(CONV, brain) == identity_records.sha256_64(CONV)
     adopt(brain, CONV, SUB)
-    assert opened.agy_root_hash(SUB, brain) == ai.sha256_64(CONV)
+    assert opened.agy_root_hash(SUB, brain) == identity_records.sha256_64(CONV)
 
 
 def test_caller_root_of_claude_and_codex_is_the_session_id() -> None:
@@ -220,7 +224,7 @@ def test_caller_root_of_antigravity_follows_the_artifact_directory(
         "conversationId": SUB,
         "artifactDirectoryPath": str(brain / SUB),
     }
-    assert opened.caller_root(data, {}) == ai.sha256_64(CONV)
+    assert opened.caller_root(data, {}) == identity_records.sha256_64(CONV)
     data["artifactDirectoryPath"] = str(tmp_path / "elsewhere" / SUB)
     assert opened.caller_root(data, {}) is None
 
@@ -235,10 +239,12 @@ def test_caller_root_of_antigravity_falls_back_to_the_env_and_record(
     env = {"ANTIGRAVITY_CONVERSATION_ID": SUB}
     assert opened.caller_root(data, env) is None
     env["ANTIGRAVITY_APP_DATA_DIR"] = str(tmp_path)
-    assert opened.caller_root(data, env) == ai.sha256_64(CONV)
-    ai.write_user_record(ai.sha256_64(SUB), {"brain_root": str(brain)})
+    assert opened.caller_root(data, env) == identity_records.sha256_64(CONV)
+    identity_sessions.write_user_record(
+        identity_records.sha256_64(SUB), {"brain_root": str(brain)}
+    )
     assert opened.caller_root(data, {"ANTIGRAVITY_CONVERSATION_ID": SUB}) == (
-        ai.sha256_64(CONV)
+        identity_records.sha256_64(CONV)
     )
     assert opened.caller_root({**data, "conversationId": "nope"}, env) is None
 
@@ -248,11 +254,11 @@ def no_ancestry(*_args: object, **_kwargs: object) -> list[str]:
 
 
 def test_opener_is_the_root_identity(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(ai, "ancestry", no_ancestry)
+    monkeypatch.setattr(identity_claude_ancestry, "ancestry", no_ancestry)
     assert opened.opener({}) is None
     env = {"CLAUDE_CODE_SESSION_ID": "session-raw", "CLAUDE_CODE_EXECPATH": "/x/2.1.0"}
     ident = opened.opener(env)
-    assert ident == ai.Ident(ROOT, "claude-code:2.1.0")
+    assert ident == identity_models.Ident(ROOT, "claude-code:2.1.0")
     codex = opened.opener({"CODEX_SESSION_ID": "session-raw", "CODEX_THREAD_ID": "t"})
     assert codex is not None
     assert (codex.root, codex.subagent) == (ROOT, None)
@@ -267,17 +273,19 @@ def test_opener_in_antigravity_needs_a_resolved_root(tmp_path: Path) -> None:
     adopt(brain, CONV, SUB)
     ident = opened.opener(env)
     assert ident is not None
-    assert (ident.root, ident.subagent) == (ai.sha256_64(CONV), None)
+    assert (ident.root, ident.subagent) == (identity_records.sha256_64(CONV), None)
     assert opened.opener({**env, "ANTIGRAVITY_CONVERSATION_ID": CONV}) == ident
 
 
 def test_opener_in_antigravity_finds_the_brain_in_its_record(tmp_path: Path) -> None:
     brain = make_brain(tmp_path / "elsewhere", CONV)
     adopt(brain, CONV, SUB)
-    ai.write_user_record(ai.sha256_64(SUB), {"brain_root": str(brain)})
+    identity_sessions.write_user_record(
+        identity_records.sha256_64(SUB), {"brain_root": str(brain)}
+    )
     ident = opened.opener({"ANTIGRAVITY_CONVERSATION_ID": SUB})
     assert ident is not None
-    assert (ident.root, ident.subagent) == (ai.sha256_64(CONV), None)
+    assert (ident.root, ident.subagent) == (identity_records.sha256_64(CONV), None)
 
 
 def test_caller_root_of_antigravity_reads_the_worktree_record(tmp_path: Path) -> None:
@@ -285,19 +293,19 @@ def test_caller_root_of_antigravity_reads_the_worktree_record(tmp_path: Path) ->
     adopt(brain, CONV, SUB)
     repo = tmp_path / "repo"
     subprocess.run(["git", "init", "-q", str(repo)], check=True)
-    sessions = repo / ".git" / ai.STORE / "sessions"
+    sessions = repo / ".git" / identity_storage.STORE / "sessions"
     sessions.mkdir(parents=True)
-    record = sessions / f"{ai.hx(ai.sha256_64(SUB))}.json"
+    record = sessions / f"{identity_records.hx(identity_records.sha256_64(SUB))}.json"
     record.write_text(json.dumps({"brain_root": str(brain)}))
     data: dict[str, object] = {"toolCall": {}, "conversationId": SUB}
     assert opened.caller_root(data, {}) is None
     data["cwd"] = str(repo)
-    assert opened.caller_root(data, {}) == ai.sha256_64(CONV)
+    assert opened.caller_root(data, {}) == identity_records.sha256_64(CONV)
 
 
 def test_a_non_utf8_ledger_raises(state: Path) -> None:
     state.mkdir(parents=True)
-    path = state / f"{ai.hx(ROOT)}.json"
+    path = state / f"{identity_records.hx(ROOT)}.json"
     path.write_bytes(b'{"prs": ["\xe9"]}')
     with pytest.raises(opened.LedgerError, match=f"^{path} is not UTF-8$"):
         opened.read_ledger(ROOT)

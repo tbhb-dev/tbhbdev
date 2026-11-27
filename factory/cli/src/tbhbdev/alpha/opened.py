@@ -20,27 +20,19 @@ import json
 from pathlib import Path
 from typing import TYPE_CHECKING, cast
 
-from tbhbdev.alpha.identity.dispatcher import (
-    ANTIGRAVITY,
-    Json,
-    agy_brain_root,
-    agy_root,
-    as_str,
-    committer_identity,
-    hx,
-    load_record,
-    locked,
-    parse_stdin,
-    sha256_64,
-    user_store,
-    write_private_json,
-)
+from tbhbdev.alpha.identity.antigravity.session import agy_brain_root, agy_root
+from tbhbdev.alpha.identity.attribution import committer_identity
+from tbhbdev.alpha.identity.models import ANTIGRAVITY
+from tbhbdev.alpha.identity.payload import parse_stdin
+from tbhbdev.alpha.identity.records import Json, as_str, hx, sha256_64
+from tbhbdev.alpha.identity.sessions import load_record
+from tbhbdev.alpha.identity.storage import locked, user_store, write_private_json
 from tbhbdev.alpha.repo import hook_cwd
 
 if TYPE_CHECKING:
     from collections.abc import Iterable, Mapping
 
-    from tbhbdev.alpha.identity.dispatcher import Ident
+    from tbhbdev.alpha.identity.models import Ident
 
 LEDGER = "opened"
 AGY_ENV = "ANTIGRAVITY_CONVERSATION_ID"

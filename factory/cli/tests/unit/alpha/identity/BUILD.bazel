@@ -1,6 +1,7 @@
 # SPDX-License-Identifier: Apache-2.0
 # Copyright Tony Burns
 
+load("//factory/cli:python.bzl", "cli_py_library")
 load("//factory/cli/tests:pytest.bzl", "cli_py_test")
 
 cli_py_test(
@@ -8,12 +9,224 @@ cli_py_test(
     srcs = ["test_trailers.py"],
     imports = ["../../.."],
     deps = [
+        "//factory/cli/src/tbhbdev/alpha/identity:models",
         "//factory/cli/src/tbhbdev/alpha/identity:trailers",
-        "//factory/cli/tests:conftest",
+        "//factory/cli/src/tbhbdev/alpha/identity/commit:grammar",
+        "//factory/cli/tests/unit/alpha/identity:identity_examples",
+        "@cli_pip//hypothesis",
+        "@cli_pip//pytest",
     ],
 )
 
-exports_files(
-    ["test_trailers.py"],
+# gazelle:resolve py unit.alpha.identity.identity_fixtures //factory/cli/tests/unit/alpha/identity:identity_fixtures
+# gazelle:resolve py unit.alpha.identity.identity_examples //factory/cli/tests/unit/alpha/identity:identity_examples
+
+filegroup(
+    name = "package_files",
+    srcs = glob(["*.py"]) + [
+        "//factory/cli/tests/unit/alpha/identity/antigravity:package_files",
+        "//factory/cli/tests/unit/alpha/identity/claude:package_files",
+        "//factory/cli/tests/unit/alpha/identity/codex:package_files",
+        "//factory/cli/tests/unit/alpha/identity/commit:package_files",
+        "//factory/cli/tests/unit/alpha/identity/documents:package_files",
+    ],
     visibility = ["//factory/cli/tests:__pkg__"],
+)
+
+cli_py_library(
+    name = "identity_examples",
+    srcs = ["identity_examples.py"],
+    imports = ["../../.."],
+    visibility = ["//factory/cli/tests:__subpackages__"],
+    deps = [
+        "//factory/cli/src/tbhbdev/alpha/identity:models",
+        "//factory/cli/src/tbhbdev/alpha/identity:records",
+    ],
+)
+
+cli_py_library(
+    name = "identity_fixtures",
+    testonly = True,
+    srcs = ["identity_fixtures.py"],
+    data = [
+        "//factory/cli/src/tbhbdev:tbhbdev_bin",
+        "//factory/cli/tests:alpha_testdata",
+    ],
+    extra_deps = ["//factory/cli/src/tbhbdev:cli"],
+    imports = ["../../.."],
+    visibility = ["//factory/cli/tests:__subpackages__"],
+    deps = [
+        "//factory/cli/src/tbhbdev/alpha:repo",
+        "//factory/cli/src/tbhbdev/alpha/identity:dispatcher",
+        "//factory/cli/src/tbhbdev/alpha/identity:models",
+        "//factory/cli/src/tbhbdev/alpha/identity:receipts",
+        "//factory/cli/src/tbhbdev/alpha/identity:records",
+        "//factory/cli/src/tbhbdev/alpha/identity:sessions",
+        "//factory/cli/src/tbhbdev/alpha/identity:storage",
+        "//factory/cli/src/tbhbdev/alpha/identity/codex:rollout",
+        "//factory/cli/src/tbhbdev/alpha/identity/commit:policy",
+        "//factory/cli/tests:fake_tool",
+        "//factory/cli/tests/unit/alpha/identity:identity_examples",
+        "@cli_pip//pytest",
+        "@cli_pip//pyyaml",
+    ],
+)
+
+cli_py_test(
+    name = "test_attribution_io",
+    srcs = ["test_attribution_io.py"],
+    imports = ["../../.."],
+    deps = [
+        ":conftest",
+        "//factory/cli/src/tbhbdev/alpha/identity:attribution",
+        "//factory/cli/src/tbhbdev/alpha/identity:sessions",
+        "//factory/cli/src/tbhbdev/alpha/identity:storage",
+        "//factory/cli/src/tbhbdev/alpha/identity/claude:hooks",
+        "//factory/cli/tests:conftest",
+        "//factory/cli/tests/unit/alpha/identity:identity_examples",
+        "//factory/cli/tests/unit/alpha/identity:identity_fixtures",
+        "@cli_pip//pytest",
+    ],
+)
+
+cli_py_test(
+    name = "test_commands",
+    srcs = ["test_commands.py"],
+    imports = ["../../.."],
+    deps = [
+        "//factory/cli/src/tbhbdev/alpha/identity:commands",
+        "@cli_pip//hypothesis",
+        "@cli_pip//pytest",
+    ],
+)
+
+cli_py_test(
+    name = "test_dispatcher_io",
+    srcs = ["test_dispatcher_io.py"],
+    imports = ["../../.."],
+    deps = [
+        ":conftest",
+        "//factory/cli/src/tbhbdev/alpha/identity:dispatcher",
+        "//factory/cli/src/tbhbdev/alpha/identity:records",
+        "//factory/cli/src/tbhbdev/alpha/identity:sessions",
+        "//factory/cli/src/tbhbdev/alpha/identity:storage",
+        "//factory/cli/src/tbhbdev/alpha/identity/commit:claims",
+        "//factory/cli/src/tbhbdev/alpha/identity/commit:hooks",
+        "//factory/cli/src/tbhbdev/alpha/identity/commit:policy",
+        "//factory/cli/tests:conftest",
+        "//factory/cli/tests/unit/alpha/identity:identity_examples",
+        "//factory/cli/tests/unit/alpha/identity:identity_fixtures",
+        "@cli_pip//pytest",
+    ],
+)
+
+cli_py_test(
+    name = "test_models",
+    srcs = ["test_models.py"],
+    imports = ["../../.."],
+    deps = [
+        "//factory/cli/src/tbhbdev/alpha/identity:models",
+        "//factory/cli/src/tbhbdev/alpha/identity:trailers",
+        "//factory/cli/tests/unit/alpha/identity:identity_examples",
+        "@cli_pip//hypothesis",
+        "@cli_pip//pytest",
+    ],
+)
+
+cli_py_test(
+    name = "test_payload",
+    srcs = ["test_payload.py"],
+    imports = ["../../.."],
+    deps = [
+        "//factory/cli/src/tbhbdev/alpha/identity:payload",
+        "//factory/cli/src/tbhbdev/alpha/identity:records",
+    ],
+)
+
+cli_py_test(
+    name = "test_receipts_io",
+    srcs = ["test_receipts_io.py"],
+    imports = ["../../.."],
+    deps = [
+        ":conftest",
+        "//factory/cli/src/tbhbdev/alpha:repo",
+        "//factory/cli/src/tbhbdev/alpha/identity:models",
+        "//factory/cli/src/tbhbdev/alpha/identity:receipts",
+        "//factory/cli/src/tbhbdev/alpha/identity:records",
+        "//factory/cli/src/tbhbdev/alpha/identity:sessions",
+        "//factory/cli/src/tbhbdev/alpha/identity:storage",
+        "//factory/cli/src/tbhbdev/alpha/identity/claude:commands",
+        "//factory/cli/tests:conftest",
+        "//factory/cli/tests/unit/alpha/identity:identity_examples",
+        "//factory/cli/tests/unit/alpha/identity:identity_fixtures",
+        "@cli_pip//pytest",
+    ],
+)
+
+cli_py_test(
+    name = "test_records",
+    srcs = ["test_records.py"],
+    imports = ["../../.."],
+    deps = [
+        "//factory/cli/src/tbhbdev/alpha/identity:records",
+        "//factory/cli/tests/unit/alpha/identity:identity_examples",
+        "@cli_pip//hypothesis",
+        "@cli_pip//pytest",
+    ],
+)
+
+cli_py_test(
+    name = "test_sessions_io",
+    srcs = ["test_sessions_io.py"],
+    imports = ["../../.."],
+    deps = [
+        ":conftest",
+        "//factory/cli/src/tbhbdev/alpha/identity:records",
+        "//factory/cli/src/tbhbdev/alpha/identity:sessions",
+        "//factory/cli/src/tbhbdev/alpha/identity:storage",
+        "//factory/cli/src/tbhbdev/alpha/identity/claude:hooks",
+        "//factory/cli/tests:conftest",
+        "//factory/cli/tests/unit/alpha/identity:identity_examples",
+        "//factory/cli/tests/unit/alpha/identity:identity_fixtures",
+        "@cli_pip//pytest",
+    ],
+)
+
+cli_py_test(
+    name = "test_storage_io",
+    srcs = ["test_storage_io.py"],
+    imports = ["../../.."],
+    deps = [
+        ":conftest",
+        "//factory/cli/src/tbhbdev/alpha:repo",
+        "//factory/cli/src/tbhbdev/alpha/identity:records",
+        "//factory/cli/src/tbhbdev/alpha/identity:sessions",
+        "//factory/cli/src/tbhbdev/alpha/identity:storage",
+        "//factory/cli/src/tbhbdev/alpha/identity/claude:commands",
+        "//factory/cli/src/tbhbdev/alpha/identity/codex:rollout",
+        "//factory/cli/tests:conftest",
+        "//factory/cli/tests/unit/alpha/identity:identity_examples",
+        "//factory/cli/tests/unit/alpha/identity:identity_fixtures",
+        "@cli_pip//hypothesis",
+        "@cli_pip//pytest",
+    ],
+)
+
+cli_py_test(
+    name = "test_diagnostics",
+    srcs = ["test_diagnostics.py"],
+    imports = ["../../.."],
+    deps = ["//factory/cli/src/tbhbdev/alpha/identity:diagnostics"],
+)
+
+cli_py_library(
+    name = "conftest",
+    testonly = True,
+    srcs = ["conftest.py"],
+    imports = ["../../.."],
+    visibility = ["//factory/cli/tests:__subpackages__"],
+    deps = [
+        "//factory/cli/tests/unit/alpha/identity:identity_fixtures",
+        "@cli_pip//pytest",
+    ],
 )
