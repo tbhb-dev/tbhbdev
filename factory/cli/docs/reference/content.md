@@ -18,7 +18,6 @@ type: Reference
 
 `tbhbdev.content` is the shared library for GitHub content validation and for writes by the `pm` and `sm` plugins. Import it directly.
 
-- `render(template_path, data)` replaces `{{key}}` placeholders with mapping values. A missing key raises `KeyError`.
 - `create_issue(repo, title, body, *, issue_type, labels=(), fields=None, project=None, client=None)` creates an issue with its type and labels. `repo` is `owner/repo`. When given a project, it adds the issue and sets the fields after creation.
 - `add_comment(ref, text, *, client=None)` posts a comment.
 - `close_issue(ref, reason, *, comment=None, client=None)` accepts `completed`, `not-planned`, or `duplicate`. Only for `completed`, it reads the issue body and raises `Refused` for unchecked acceptance boxes. A refused checklist or comment leaves the issue open.
@@ -95,8 +94,6 @@ Once CUE accepts an issue draft, pass the actual parent issue type. A Feature re
 `check_close(draft)` returns a refusal per acceptance section with any unchecked task box. It recognizes the normalized headings “Acceptance” and “Acceptance criteria”, including repeats. The close check can run without CUE.
 
 ## Secret scan
-
-`scan_text(text, what)` runs the same scan without rendering, sending, or auditing anything. Plugins can use it before committing a record.
 
 The library scans exact title, body, and comment text before sending it, through `tbhbdev.alpha.secret_scan.scan`. A refusal raises `Refused` with the scanner's diagnostic and sends no write. The library never rewrites refused text. Tests inject a recording client and replace the scanner; they need neither network access nor gitleaks.
 

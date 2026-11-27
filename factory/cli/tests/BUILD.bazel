@@ -1673,7 +1673,6 @@ cli_py_test(
     data = ["//factory/cli:schemas"],
     deps = [
         ":conftest",
-        "//factory/cli/src/tbhbdev:content",
         "//factory/cli/src/tbhbdev:content_model",
         "//factory/cli/src/tbhbdev:content_vet",
         "//factory/cli/src/tbhbdev:cue_runtime",

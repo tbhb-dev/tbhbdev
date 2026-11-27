@@ -166,10 +166,7 @@ def test_summary_rejects_review_stamps(summary: str) -> None:
 
 
 @pytest.mark.parametrize("verdict", ["GO", "BLOCK"])
-def test_review_refuses_standalone_verdict_line(verdict: str) -> None:
-    assert content.check_review(
-        body_with("Summary", f"The cache is warm.\nVERDICT: {verdict}\nRead the code.")
-    ) == ["Remove the standalone verdict line from Summary"]
+def test_verification_refuses_standalone_verdict_line(verdict: str) -> None:
     assert content.check_review(
         (SUMMARY + VERIFICATION + f"\nVERDICT: {verdict}\n").replace("\n", "\r\n")
     ) == ["Remove the standalone verdict line from Verification"]

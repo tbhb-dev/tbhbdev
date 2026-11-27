@@ -10,22 +10,16 @@ from importlib.resources import as_file, files
 from pathlib import Path
 from typing import TYPE_CHECKING, Protocol, cast
 
-from tbhbdev import content_vet, cue_runtime
+from tbhbdev import cue_runtime
 from tbhbdev.alpha import secret_scan
 from tbhbdev.alpha.pull_request import find_tool, root
 from tbhbdev.content_model import normalize
+from tbhbdev.content_vet import check_close, format_refusal
 
 if TYPE_CHECKING:
     from collections.abc import Mapping, Sequence
 
 type Json = dict[str, object]
-
-CheckResult = content_vet.CheckResult
-Finding = content_vet.Finding
-check = content_vet.check
-check_close = content_vet.check_close
-format_refusal = content_vet.format_refusal
-guide = content_vet.guide
 
 _PLANNING_ISSUE_TYPES = frozenset({"Initiative", "Epic", "Feature"})
 _LEAF_ISSUE_TYPES = frozenset({"Task", "Defect", "Chore", "Spike", "Research"})
@@ -342,15 +336,6 @@ def _audit(
     }
     with path.open("a") as stream:
         stream.write(json.dumps(entry) + "\n")
-
-
-def scan_text(text: str, what: str, visibility: str = "") -> None:
-    """Scan a record before the caller commits it."""
-    _scan(text, what, visibility)
-
-
-def render(template_path: Path, data: Mapping[str, str]) -> str:
-    return re.sub(r"\{\{([^{}]+)\}\}", lambda m: data[m[1]], template_path.read_text())
 
 
 def create_issue(  # noqa: PLR0913 -- Public plugin interface.
