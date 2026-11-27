@@ -16,17 +16,16 @@ from pathlib import Path
 from typing import TYPE_CHECKING, NoReturn, Self
 
 import pytest
+from tbhbops.o11y import init, smoke
 from tbhbops_cli import cli
 from tbhbops_cli.o11y import smoke as command
 from tbhbops_cli.o11y import smoke_capacity, smoke_checks, smoke_lifecycle, smoke_stages
 from tbhbops_cli.o11y.ports import LocalPorts
 from tbhbops_cli.o11y.runner import Result
+lazy from tbhbops.o11y.validate import Document
 lazy from tbhbops_cli.o11y.filesystem import Filesystem
 
-from tbhbops.o11y import init, smoke
-lazy from tbhbops.o11y.validate import Document
-
-from .test_o11y_cli import SOURCE, Fake, ProbeClock, render_fixture, world  # pyrefly: ignore[missing-import]  # pytest importlib supplies this namespace
+from .test_o11y_cli import SOURCE, Fake, render_fixture, world  # pyrefly: ignore[missing-import]  # pytest importlib supplies this namespace
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Mapping, Sequence
@@ -204,7 +203,7 @@ class Engine:
         else:
             self.fs.chmod(self.path(args[-1], argv), int(args[0], 8))
 
-    def run(  # noqa: PLR0911  # fake Docker API routing
+    def run(  # fake Docker API routing
         self,
         argv: Sequence[str],
         env: Mapping[str, str],
@@ -249,7 +248,9 @@ class Engine:
             return Result(0, name + " 2026-10-25T05:38:26Z")
         return Result(0, "exited:42" if name == "readiness-failed" else "exited 0")
 
-    def compose(self, argv: list[str], env: Mapping[str, str]) -> Result:  # noqa: PLR0911  # fake compose routes
+    def compose(
+        self, argv: list[str], env: Mapping[str, str]
+    ) -> Result:  # fake compose routes
         assert argv[1] == "compose"
         if argv[-2:] == ["--format", "json"]:
             return Result(0, json.dumps(model()))
@@ -364,7 +365,7 @@ def setup() -> tuple[Fake, Engine, cli.System]:
     fs.check = check
     render_fixture(fs)
     fs.modes[Path("/var/run/docker.sock")] = stat.S_IFSOCK | 0o600
-    engine, clock = Engine(fs), ProbeClock()
+    engine = Engine(fs)
     draws = iter(enumerate((4, 20, 40, 32, 32, 16, 16), 1))
 
     def random_bytes(size: int) -> bytes:
@@ -372,10 +373,13 @@ def setup() -> tuple[Fake, Engine, cli.System]:
         assert size == expected
         return bytes([number]) * size
 
+    elapsed = 0.0
+
     def sleep(seconds: float) -> None:
+        nonlocal elapsed
         assert seconds == 2
-        assert clock.now <= 400
-        clock.sleep(seconds)
+        assert elapsed <= 400
+        elapsed += seconds
 
     time_reads = 0
 
@@ -383,7 +387,7 @@ def setup() -> tuple[Fake, Engine, cli.System]:
         nonlocal time_reads
         time_reads += 1
         assert time_reads <= 1000
-        return clock.monotonic()
+        return elapsed
 
     system = replace(
         world(fs, 123),
@@ -1210,7 +1214,7 @@ def test_inspect_failure_preserves_only_data_relative_message(
 
     def fail(instance: command.Smoke) -> None:
         instance.step = 20
-        command.initialization._inspect(  # noqa: SLF001  # exercise the real safe exception boundary
+        command.initialization._inspect(  # exercise the real safe exception boundary
             denied, instance.data / relative, instance.data, instance.system.euid
         )
 
@@ -1350,7 +1354,7 @@ def test_present_missing_facts(monkeypatch: pytest.MonkeyPatch) -> None:
     with pytest.raises(command.SmokeError, match="fingerprint unavailable"):
         instance.fingerprint()
     with pytest.raises(command.SmokeError, match="rendered file unavailable"):
-        instance._private_tree(OUT)  # noqa: SLF001  # a disappearing rendered file must fail
+        instance._private_tree(OUT)  # a disappearing rendered file must fail
 
 
 def test_original_status_survives_capture_and_cleanup(
@@ -1670,7 +1674,9 @@ def test_fingerprint_stage_failures(
         return (*value, ("changed", 0, 0, 0, 0, b"")) if calls == number else value
 
     monkeypatch.setattr(instance, "fingerprint", fingerprint)
-    with pytest.raises(command.SmokeError) as failure:  # noqa: PT012  # failure may occur in either ordered stage
+    with pytest.raises(
+        command.SmokeError
+    ) as failure:  # failure may occur in either ordered stage
         instance.group1()
         instance.group2()
     assert str(failure.value) == rule

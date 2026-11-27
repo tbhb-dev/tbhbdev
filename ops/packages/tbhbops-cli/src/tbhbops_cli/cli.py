@@ -7,7 +7,6 @@
     tbhbops o11y init --data-dir PATH [--secrets-owner UID:GID] [--dry-run]
     tbhbops o11y render --source PATH --out PATH [--config-root ABSOLUTE_PATH]
     tbhbops o11y validate --source PATH
-    tbhbops o11y rustfs-probe --source PATH
 
 Run `tbhbops gitleaks generate --help` for the settings it reads.
 """
@@ -25,6 +24,7 @@ from typing import TextIO
 lazy from collections.abc import Callable, Mapping
 
 from tbhbops import dns_smoke
+
 from tbhbops_cli import (
     config,
     connect,
@@ -306,7 +306,7 @@ def generate(system: System, out: TextIO, *, dry_run: bool) -> None:
         out.write(f"{status}: {gitleaks.REF}\n")
 
 
-def token_commands(  # noqa: PLR0913  # the command's options, each one a fact
+def token_commands(  # the command's options, each one a fact
     system: System,
     out: TextIO,
     *,
