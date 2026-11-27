@@ -47,6 +47,7 @@ repos:
         language: system
         entry: mise run scan-secrets -- git --pre-commit --staged --redact --no-banner
         pass_filenames: false
+        always_run: true
       # The commit message: secrets, then the Conventional Commits header.
       - id: gitleaks-commit-msg
         name: gitleaks (commit message)
@@ -129,11 +130,19 @@ repos:
         entry: mise exec -- editorconfig-checker -config .editorconfig-checker.json
         exclude: ^factory/cli/python\.bzl$
 
-      - id: spelling-and-prose
-        name: cspell and vale
+      - id: cspell
+        name: cspell
+        language: system
+        entry: mise exec -- cspell --no-progress
+        types: [markdown]
+        stages: [pre-push]
+        require_serial: true
+
+      - id: vale
+        name: vale
         language: system
         entry: >-
-          mise exec -- bash -c 'cspell --no-progress "$@" && vale sync && vale "$@"' --
+          mise exec -- bash -c 'vale sync && vale "$@"' --
         types: [markdown]
         stages: [pre-push]
         require_serial: true
