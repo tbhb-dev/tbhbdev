@@ -531,7 +531,7 @@ def validate_hooks(workspace: Path, writes: tuple[str, ...]) -> None:
         raise Invalid(message)
 
 
-def clone_run(mirror: Path, workspace: Path, url: str) -> None:
+def clone_run(mirror: Path, workspace: Path, url: str, profile: Profile) -> None:
     # A copying transport avoids shared object inodes and readable alternates.
     workspace.mkdir(mode=0o700)
     git(
@@ -546,6 +546,11 @@ def clone_run(mirror: Path, workspace: Path, url: str) -> None:
     )
     git(workspace, "config", "remote.origin.pushurl", url)
     git(workspace, "config", "core.hooksPath", str(workspace / ".git" / "hooks"))
+    if profile is Profile.BUILD:
+        # Reset inherited helpers so Git uses the run's GH_CONFIG_DIR.
+        helper = f"credential.https://{repo.DEFAULT_GIT_HOST}.helper"
+        git(workspace, "config", "--add", helper, "")
+        git(workspace, "config", "--add", helper, "!gh auth git-credential")
 
 
 def prepare_git(workspace: Path) -> None:
@@ -655,7 +660,7 @@ def create(
             configure_mirror(mirror, url)
         with preparation_step("clone"):
             worktree.parent.mkdir(exist_ok=True)
-            clone_run(mirror, worktree, url)
+            clone_run(mirror, worktree, url, request.profile)
         discard.callback(discard_unlaunched, worktree)
         if hook_env is not None:
             with preparation_step("hook verification"):

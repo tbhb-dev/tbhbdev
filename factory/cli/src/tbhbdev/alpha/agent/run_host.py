@@ -880,11 +880,10 @@ def _execute(
 
 
 def run_and_check(run: Run, prepared: Prepared, stack: ExitStack) -> int:
-    before = origin_tip(run) if run.request.expect_commit else None
     rc = push.run(run, prepared, stack, run_harness)
     if rc == 0 and run.request.profile is Profile.REVIEW:
         return post_review(run, prepared)
-    return require_commit(run, rc, before)
+    return require_commit(run, rc)
 
 
 def post_review(run: Run, prepared: Prepared) -> int:
@@ -907,17 +906,21 @@ def publication_branch(run: Run) -> str:
     return f"agent/{run.files.name}"
 
 
+def _github_get(run: Run, endpoint: str) -> httpx.Response:
+    _, owner, repository = repo.parts(run.request.repo)
+    url = f"https://api.github.com/repos/{owner}/{repository}/{endpoint}"
+    headers = {"Accept": "application/vnd.github+json"}
+    token = credentials.fetch_token(run.request, run.settings)
+    if token is not None:
+        headers["Authorization"] = f"Bearer {token}"
+    return httpx.get(url, headers=headers, timeout=20)
+
+
 def origin_tip(run: Run) -> str | None:
     """Read the exact branch from origin. Empty means absent, None unreadable."""
-    _, owner, repository = repo.parts(run.request.repo)
     branch = f"heads/{publication_branch(run)}"
-    url = f"https://api.github.com/repos/{owner}/{repository}/git/ref/{branch}"
-    headers = {"Accept": "application/vnd.github+json"}
     try:
-        token = credentials.fetch_token(run.request, run.settings)
-        if token is not None:
-            headers["Authorization"] = f"Bearer {token}"
-        response = httpx.get(url, headers=headers, timeout=20)
+        response = _github_get(run, f"git/ref/{branch}")
         if response.status_code == httpx.codes.NOT_FOUND:
             return ""
         response.raise_for_status()
@@ -931,20 +934,43 @@ def origin_tip(run: Run) -> str | None:
     return tip if isinstance(tip, str) and re.fullmatch(r"[0-9a-f]{40}", tip) else None
 
 
-def require_commit(run: Run, rc: int, before: str | None) -> int:
+def origin_contains(run: Run, commit: str) -> bool | None:
+    tip = origin_tip(run)
+    if not tip:
+        return None if tip is None else False
+    if tip == commit:
+        return True
+    # Compare pinned commits so that a concurrent push cannot change the answer.
+    try:
+        response = _github_get(run, f"compare/{commit}...{tip}?per_page=1")
+        if response.status_code == httpx.codes.NOT_FOUND:
+            return False
+        response.raise_for_status()
+        record = response.json()
+    except OSError, ValueError, httpx.HTTPError:
+        return None
+    if not isinstance(record, dict):
+        return None
+    return record.get("status") == "ahead"
+
+
+def require_commit(run: Run, rc: int) -> int:
     if rc or not run.request.expect_commit:
         return rc
-    if not run.files.path("head").exists():
+    head = run.files.path("head")
+    if not head.exists():
         run.files.write(
             "log", "no new commit: the build required one (--expect-commit)\n"
         )
         return NO_COMMIT
-    after = origin_tip(run) if before is not None else None
+    published = origin_contains(run, head.read_text().strip())
     branch = publication_branch(run)
-    if after is None:
+    if published is None:
         run.files.write("log", f"push failed: cannot verify {branch} on origin\n")
-    elif not after or before == after:
-        run.files.write("log", f"push failed: no new tip for {branch} on origin\n")
+    elif not published:
+        run.files.write(
+            "log", f"push failed: build commit missing from {branch} on origin\n"
+        )
     else:
         run.files.write("branch", branch)
         return 0
