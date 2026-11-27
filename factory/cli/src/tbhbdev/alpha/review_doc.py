@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+import sys
 from dataclasses import dataclass
 from hashlib import sha256
 from pathlib import Path
@@ -67,6 +68,14 @@ class Existing:
     marker: Marker | str
     state: str
     body: str
+
+
+@dataclass(frozen=True)
+class ReviewSubmission:
+    path: str
+    commit: str
+    body: str
+    event: str
 
 
 class Api(Protocol):
@@ -222,31 +231,40 @@ def check_head(api: Api, path: str, commit: str) -> None:
 
 def send_review(api: Api, path: str, commit: str, body: str, event: str) -> int | None:
     """Submit the review and return the ID if provided."""
-    return submit_review(api.request, path, commit, body, event)
+    return submit_review(
+        api.request,
+        ReviewSubmission(path, commit, body, event),
+        compare=lambda url: api.request("GET", url),
+        warn=lambda message: print(message, file=sys.stderr),
+    )
 
 
 def submit_review(
     request: Callable[[str, str, dict[str, object] | None], object],
-    path: str,
-    commit: str,
-    body: str,
-    event: str,
+    review: ReviewSubmission,
+    *,
+    compare: Callable[[str], object],
+    warn: Callable[[str], None],
 ) -> int | None:
     """Submit the body and any inline findings in one review."""
-    payload: dict[str, object] = {"commit_id": commit, "body": body, "event": event}
-    if findings := review_inline.findings(body):
-        pull = request("GET", path, None)
-        match cast("_Pull", pull):
-            case {"base": {"sha": str(base)}} if _HEAD.fullmatch(base):
-                repository = path.rpartition("/pulls/")[0]
-                # Pin the comparison to the judged commit even if the PR head moves.
-                comparison = f"{repository}/compare/{base}...{commit}?per_page=1"
-                diff = request("GET", comparison, None)
-                if comments := review_inline.comments(findings, diff):
-                    payload["comments"] = comments
-            case _:
-                pass
-    result = request("POST", f"{path}/reviews", payload)
+    payload: dict[str, object] = {
+        "commit_id": review.commit,
+        "body": review.body,
+        "event": review.event,
+    }
+    if findings := review_inline.findings(review.body):
+        try:
+            pull = cast("dict[str, dict[str, str]]", request("GET", review.path, None))
+            base = pull["base"]["sha"]
+            repository = review.path.rpartition("/pulls/")[0]
+            # Pin the comparison to the judged commit even if the PR head moves.
+            diff = compare(f"{repository}/compare/{base}...{review.commit}?per_page=1")
+        except ReviewError as exc:
+            warn(f"inline comments skipped: {exc}")
+        else:
+            if comments := review_inline.comments(findings, diff):
+                payload["comments"] = comments
+    result = request("POST", f"{review.path}/reviews", payload)
     match cast("dict[str, object] | None", result):  # pragma: no mutate -- cast
         case {"id": int(review_id)}:
             return review_id

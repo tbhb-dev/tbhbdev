@@ -6,7 +6,7 @@ import re
 from dataclasses import dataclass
 from typing import cast
 
-from markdown_it import MarkdownIt
+from markdown_it.main import MarkdownIt
 
 _LOCATION = re.compile(r"(.+):([1-9][0-9]{0,9})")
 _HUNK = re.compile(r"^@@ -[0-9]+(?:,[0-9]+)? \+([0-9]+)(?:,[0-9]+)? @@")
