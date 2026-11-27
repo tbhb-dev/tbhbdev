@@ -103,12 +103,15 @@ def test_build_prompt_with_foreign_branch_refuses_launch(
     ("template", "status"),
     [
         ("Do not\nrun `git push origin {target}`.", 0),
+        ("Do not run\n`git push origin {target}`.", 0),
         ("No new PR\ngit push origin {target}", 1),
+        ("No new PR\nRun `git push origin {target}`.", 1),
         ("No new PR: run git push origin {target}", 1),
         ("Do not run: `git push origin {target}`.", 1),
         ("No new PR.\n```sh\ngit push origin {target}\n```", 1),
         ("- No new PR\n- Run `git push origin {target}`.", 1),
         ("Do not use `git status`\nRun `git push origin {target}`.", 1),
+        ("No `Signed-off-by`, `git push origin {target}`.", 1),
     ],
 )
 def test_build_prompt_limits_prohibition_to_its_instruction(

@@ -11,9 +11,13 @@ TRAILING_PROHIBITION = re.compile(
     r"|(?:must|should) (?:not|never))\b",
     re.IGNORECASE,
 )
-# Standalone shell commands begin a new instruction. Other line breaks can wrap prose.
+# A command can wrap after an introduction or start a new instruction on its own line.
 PROSE_BREAK = re.compile(
-    r"\n(?=[ \t]*(?:\n|[#>]|`{3,}|~{3,}|[-*+][ \t]|\d+[.)][ \t]|`*git[ \t]))"
+    r"[ \t]*\n(?=[ \t]*(?:\n|[#>]|`{3,}|~{3,}|[-*+][ \t]|\d+[.)][ \t]))"
+    r"|(?<![ \t])(?<!\b(?:not|run|use|and))(?<!\bor)"
+    r"(?<!\b(?:never|avoid|don['\u2019]t))(?<!\bexecute)"
+    r"[ \t]*\n(?=[ \t]*(?:(?:run|execute|use)[ \t]+)?`*git[ \t])",
+    re.IGNORECASE,
 )
 INLINE_CODE = re.compile(r"(?<!`)(`+)(?!`).*?(?<!`)\1(?!`)", re.DOTALL)
 CLAUSE_END = re.compile(
@@ -24,7 +28,9 @@ CLAUSE_END = re.compile(
 )
 FENCE = re.compile(r"^[ \t]*(?:```|~~~)[^\n]*(?:\n|$)", re.MULTILINE)
 OTHER_TRAILER_OMISSION = re.compile(
-    r"\b(?:no|without) (?:an? |the )?[`\"']?(?:signed-off-by|co-authored-by)[`\"']?,"
+    r"\b(?:no|without)\s+(?:(?:an?|the)\s+)?"
+    r"[`\"']?(?:signed-off-by|co-authored-by)[`\"']?,",
+    re.IGNORECASE,
 )
 BRANCH_PREFIXES = ("agent", "feat", "feature", "fix", "hotfix", "release")
 UNQUALIFIED_BRANCH_PREFIXES = tuple(f"{prefix}-" for prefix in BRANCH_PREFIXES)
@@ -44,14 +50,16 @@ def normalize(text: str) -> str:
 def prohibiting(text: str, start: int, end: int | None = None) -> bool:
     """Look for a prohibition before the instruction or immediately after it."""
     # A soft line break continues prose. A fenced command has its own line.
-    blocks = FENCE.split(text[:start])
+    prefix = text[:start]
+    blocks = FENCE.split(prefix)
     context = blocks[-1] if len(blocks) % 2 else blocks[-1].rsplit("\n", 1)[-1]
-    line_break = text.rfind("\n", 0, start)
-    if line_break >= 0 and PROSE_BREAK.match(text, line_break):
+    previous, newline, _ = prefix.rpartition("\n")
+    # Inspect the current line as well so a command at its start is visible.
+    if newline and PROSE_BREAK.match(text, len(previous.rstrip(" \t"))):
         context = context.rsplit("\n", 1)[-1]
+    context = OTHER_TRAILER_OMISSION.sub("", context)
     clause = CLAUSE_END.split(INLINE_CODE.sub("\0", context))[-1]
-    clause = OTHER_TRAILER_OMISSION.sub("", normalize(clause))
-    return NEGATION.search(clause) is not None or (
+    return NEGATION.search(normalize(clause)) is not None or (
         end is not None and TRAILING_PROHIBITION.match(text, end) is not None
     )
 
