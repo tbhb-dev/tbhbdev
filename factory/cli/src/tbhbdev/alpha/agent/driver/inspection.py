@@ -6,7 +6,7 @@ import sys
 from typing import TYPE_CHECKING
 
 from tbhbdev.alpha.agent import transport
-from tbhbdev.alpha.agent.decisions import remote
+from tbhbdev.alpha.agent.decisions import remote, remote_run
 from tbhbdev.alpha.agent.model import Invalid, Profile
 from tbhbdev.alpha.terminal import terminal_text
 
@@ -39,7 +39,7 @@ def inspect(settings: Settings, run: Run, *, limit: int | None) -> int:
         print(terminal_text(reading.text), end="")
         return 0
     script = (
-        remote.run_log(run.name)
+        remote_run.run_log(run.name)
         if run.request.unsandboxed and limit is not None
         else remote.inspect(run.request.repo, run.name, limit=limit)
     )

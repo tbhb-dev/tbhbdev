@@ -25,7 +25,13 @@ from agent_example import LINUX, settings, trusted_executables
 
 from tbhbdev.alpha.agent import settings as agent_settings
 from tbhbdev.alpha.agent import transport
-from tbhbdev.alpha.agent.decisions import policy, remote, remote_host, remote_shell
+from tbhbdev.alpha.agent.decisions import (
+    policy,
+    remote,
+    remote_host,
+    remote_run,
+    remote_shell,
+)
 from tbhbdev.alpha.agent.driver import arguments as agent_arguments
 from tbhbdev.alpha.agent.driver import metadata
 from tbhbdev.alpha.agent.driver.inspection import inspect
@@ -118,7 +124,7 @@ def test_tmux_error_never_writes_rc(host: Path, error: str, os_name: str) -> Non
             )
             (host / "bin" / name).symlink_to(program)
         os.environ["PATH"] = str(host / "bin")
-    result = execute(remote.fallback("sample", settings().sockets_dir))
+    result = execute(remote_run.fallback("sample", settings().sockets_dir))
     assert result.returncode == 75
     assert not (host / "state/tbhbdev/agent-runs/sample.rc").exists()
 
@@ -131,7 +137,7 @@ def test_session_is_checked_before_rc(host: Path) -> None:
         "(root / 'tbhbdev/agent-runs/sample.rc').write_text('0')\n"
         'sys.stderr.write("can\'t find session: ag-sample\\n")\nsys.exit(1)\n',
     )
-    result = execute(remote.read("sample", settings().sockets_dir))
+    result = execute(remote_run.read("sample", settings().sockets_dir))
     assert result.returncode == 0
     assert result.stdout.splitlines()[1] == b"30"
 
@@ -199,7 +205,7 @@ def test_socket_directory_refuses_unsafe_paths(host: Path, bad: str) -> None:
         directory.chmod(0o755 if bad == "mode" else 0o700)
         if bad == "socket-link":
             (directory / "agents").symlink_to(host / "elsewhere")
-    assert execute(remote.read("sample", settings().sockets_dir)).returncode == 65
+    assert execute(remote_run.read("sample", settings().sockets_dir)).returncode == 65
 
 
 @pytest.mark.parametrize("suffix", [".keep", ".rc.pending"])
@@ -215,7 +221,7 @@ def test_exclusive_markers_refuse_symlinks(host: Path, suffix: str) -> None:
     script = (
         remote.keep("sample")
         if suffix == ".keep"
-        else remote.fallback("sample", settings().sockets_dir)
+        else remote_run.fallback("sample", settings().sockets_dir)
     )
     assert execute(script).returncode != 0
     assert target.read_text() == "preserve"
@@ -225,12 +231,12 @@ def test_exclusive_markers_refuse_symlinks(host: Path, suffix: str) -> None:
 def test_scripts_have_fixed_path_socket_and_git_environment() -> None:
     config = settings()
     scripts = [
-        remote.session("sample", "kill-session", config.sockets_dir),
-        remote.transfer("sample", config.sockets_dir),
-        remote.start("sample", config.sockets_dir, LINUX)[2],
-        remote.read("sample", config.sockets_dir),
-        remote.read("sample", config.sockets_dir, answer=True),
-        remote.fallback("sample", config.sockets_dir),
+        remote_run.session("sample", "kill-session", config.sockets_dir),
+        remote_run.transfer("sample", config.sockets_dir),
+        remote_run.start("sample", config.sockets_dir, LINUX)[2],
+        remote_run.read("sample", config.sockets_dir),
+        remote_run.read("sample", config.sockets_dir, answer=True),
+        remote_run.fallback("sample", config.sockets_dir),
         remote.clean(
             "example-org/example-repo",
             "sample",
@@ -249,7 +255,7 @@ def test_scripts_have_fixed_path_socket_and_git_environment() -> None:
     assert " git " not in scripts[-1]
     assert "agent-mirror.lock" not in scripts[-1]
     assert remote_host.installed(LINUX).endswith('"$HOME/.local/bin/tbhbdev" --version')
-    assert "-lc" not in remote.start("sample", config.sockets_dir, LINUX)[2]
+    assert "-lc" not in remote_run.start("sample", config.sockets_dir, LINUX)[2]
     for script in [
         remote_host.preflight("example-org/example-repo", "main", "example", LINUX),
     ]:
@@ -279,7 +285,7 @@ def test_socket_home_relative_paths(host: Path, path: str) -> None:
 
 
 def test_start_command_and_absolute_program() -> None:
-    command = remote.start("example", "/example/sockets", LINUX)
+    command = remote_run.start("example", "/example/sockets", LINUX)
     assert command[:2] == ("/bin/sh", "-c")
     assert shlex.split(command[2].splitlines()[-1]) == shlex.split(
         "tmux -S '$s/agents' -f /dev/null new-session -d -s ag-example "
@@ -299,10 +305,10 @@ def test_read_defaults_to_bounded_log(host: Path) -> None:
         host / "bin/tmux",
         'import sys\nsys.stderr.write("no server running on example")\nsys.exit(1)\n',
     )
-    result = execute(remote.read("sample", settings().sockets_dir))
+    result = execute(remote_run.read("sample", settings().sockets_dir))
     assert result.returncode == 0
     assert result.stdout.split(b"\n", 4)[4] == b"L" * 65536
-    result = execute(remote.read("sample", settings().sockets_dir, answer=True))
+    result = execute(remote_run.read("sample", settings().sockets_dir, answer=True))
     assert result.returncode == 0
     assert result.stdout.split(b"\n", 4)[4] == b"O" * 65536
 
@@ -312,7 +318,7 @@ def test_claim_refusal_is_distinct_even_for_redirection_failure(host: Path) -> N
     # Isolate the creation step too: sh treats ':' as a special builtin.
     claim = host / "existing"
     claim.write_text("preserve")
-    script = remote.transfer("sample", settings().sockets_dir)
+    script = remote_run.transfer("sample", settings().sockets_dir)
     line = next(line for line in script.splitlines() if '> "$d/sample.owner"' in line)
     line = line.replace('"$d/sample.owner"', shlex.quote(str(claim)))
     result = execute("set -C\n" + line)
@@ -331,7 +337,7 @@ def test_run_directory_symlinks_are_not_followed(host: Path, component: str) -> 
         host / "bin/tmux",
         'import sys\nsys.stderr.write("no server running on example")\nsys.exit(1)\n',
     )
-    result = execute(remote.read("sample", settings().sockets_dir))
+    result = execute(remote_run.read("sample", settings().sockets_dir))
     assert result.returncode == 65
     assert b"private marker" not in result.stdout
 
@@ -346,7 +352,9 @@ def test_session_target_never_matches_another_runs_prefix(host: Path) -> None:
         "    sys.exit(1)\n"
         f"Path({str(marker)!r}).write_text('stopped ag-sample-other')\n",
     )
-    result = execute(remote.session("sample", "kill-session", settings().sockets_dir))
+    result = execute(
+        remote_run.session("sample", "kill-session", settings().sockets_dir)
+    )
     assert result.returncode == 0
     assert not marker.exists()
 
@@ -455,7 +463,7 @@ def test_claim_rejects_existing_owner(host: Path, kind: str) -> None:
         owner.write_text("other-owner\n")
     else:
         owner.symlink_to(host / ("preserved-owner" if kind == "symlink" else "missing"))
-    result = execute(remote.transfer("sample", settings().sockets_dir))
+    result = execute(remote_run.transfer("sample", settings().sockets_dir))
     assert result.returncode == 73
     assert (host / "preserved-owner").read_text() == "example-owner\n"
     assert (
@@ -469,7 +477,7 @@ def test_concurrent_claims_have_one_winner(host: Path) -> None:
     # Replace tar so the transfer reaches a successful end without input files.
     write_standalone_fake(host / "bin/tar", "")
     (host / "sockets").mkdir(mode=0o700)
-    scripts = [remote.transfer("sample", settings().sockets_dir)] * 2
+    scripts = [remote_run.transfer("sample", settings().sockets_dir)] * 2
     scripts = [
         s.replace(
             "PATH=/usr/bin:/bin:/usr/sbin:/sbin", "PATH=" + os.environ["PATH"]
@@ -498,7 +506,7 @@ def test_real_ssh_shell_quoting(host: Path) -> None:
     no_session(host)
     state = host / "state/tbhbdev/agent-runs"
     (state / "sample.log").write_text("literal ' $() ; bytes\n")
-    script = remote.read("sample", settings().sockets_dir)
+    script = remote_run.read("sample", settings().sockets_dir)
     script = script.replace(
         "PATH=/usr/bin:/bin:/usr/sbin:/sbin", "PATH=" + os.environ["PATH"]
     )
@@ -540,14 +548,14 @@ def test_owner_check_precedes_every_effect(
     elif owner_kind == "symlink":
         owner.symlink_to(host / "saved-owner")
     scripts = {
-        "read": remote.read("sample", settings().sockets_dir),
-        "fallback": remote.fallback("sample", settings().sockets_dir),
-        "session": remote.session("sample", "kill-session", settings().sockets_dir),
+        "read": remote_run.read("sample", settings().sockets_dir),
+        "fallback": remote_run.fallback("sample", settings().sockets_dir),
+        "session": remote_run.session("sample", "kill-session", settings().sockets_dir),
         "keep": remote.keep("sample"),
         "clean": cleanup(),
         "log": remote.inspect("example-org/example-repo", "sample", limit=10),
         "diff": remote.inspect("example-org/example-repo", "sample", limit=None),
-        "start": remote.start("sample", settings().sockets_dir, LINUX)[2],
+        "start": remote_run.start("sample", settings().sockets_dir, LINUX)[2],
     }
     result = execute(scripts[script])
     if script == "clean" and owner_kind == "missing":
@@ -592,7 +600,7 @@ def test_locale_precedes_tmux_and_git(host: Path) -> None:
                 "assert 'fetch.recurseSubmodules=false' in sys.argv\n"
             ),
         )
-    assert execute(remote.read("sample", settings().sockets_dir)).returncode == 0
+    assert execute(remote_run.read("sample", settings().sockets_dir)).returncode == 0
     assert (
         execute(
             remote.inspect("example-org/example-repo", "sample", limit=10)
@@ -613,7 +621,9 @@ def test_start_and_keep_with_matching_owner(host: Path) -> None:
     )
     config = replace(LINUX, tbhbdev="/example path/bin/tbhbdev")
     assert (
-        execute(remote.start("sample", settings().sockets_dir, config)[2]).returncode
+        execute(
+            remote_run.start("sample", settings().sockets_dir, config)[2]
+        ).returncode
         == 0
     )
     assert marker.read_text() == "started"
@@ -703,7 +713,7 @@ def test_real_tmux_preserves_longer_session(host: Path, verb: str) -> None:
             )
         subprocess.run([*command, "kill-session", "-t", "=ag-X"], check=True)
         script = (
-            remote.session("X", "kill-session", str(sockets))
+            remote_run.session("X", "kill-session", str(sockets))
             if verb == "kill"
             else remote.clean(
                 "example-org/example-repo",
@@ -1433,6 +1443,6 @@ def test_launch_finds_tmux_in_the_agent_accounts_local_bin(host: Path) -> None:
     directory = host / ".local/bin"
     directory.mkdir(parents=True)
     write_standalone_fake(directory / "tmux", 'print("account-tmux")\n')
-    result = execute(remote.start("sample", settings().sockets_dir, LINUX)[2])
+    result = execute(remote_run.start("sample", settings().sockets_dir, LINUX)[2])
     assert result.returncode == 0
     assert result.stdout == b"account-tmux\n"

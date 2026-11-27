@@ -11,7 +11,7 @@ from typing import TYPE_CHECKING
 
 from tbhbdev import telemetry, version
 from tbhbdev.alpha.agent import transport
-from tbhbdev.alpha.agent.decisions import remote, remote_host, request
+from tbhbdev.alpha.agent.decisions import remote_host, remote_run, request
 from tbhbdev.alpha.agent.driver import launcher, startup, version_heal
 from tbhbdev.alpha.agent.driver.decisions import launch as plan
 from tbhbdev.alpha.agent.driver.decisions.hosts import select_host
@@ -131,7 +131,9 @@ def execute(settings: Settings, args: argparse.Namespace) -> int:
         transport.call(
             settings,
             run.host,
-            remote.start(run.name, settings.sockets_dir, run.host, steer=args.steer),
+            remote_run.start(
+                run.name, settings.sockets_dir, run.host, steer=args.steer
+            ),
             transport.Stdin(run.owner),
             timeout=deadline - time.monotonic(),
         )
