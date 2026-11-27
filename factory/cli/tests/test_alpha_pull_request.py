@@ -259,6 +259,7 @@ def world(
     monkeypatch.setenv("PATH", f"{made.bin}{os.pathsep}{git_dir}")
     shutil.copytree(pr_git_baseline, made.root / ".git")
     monkeypatch.chdir(made.root)
+
     def offline_git(*argv: str, cwd: Path | None = None) -> tuple[int, str]:
         # Preserve the seeded tracking refs without contacting the fake origin.
         if argv[:1] == ("fetch",):
