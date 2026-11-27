@@ -131,8 +131,8 @@ PROSE_CONFLICTS = (
     (r"(?<![\w-])(?:prek|pre-commit) install(?![-\w])", "hook install is forbidden"),
 )
 BRANCH_INSTRUCTION = re.compile(
-    rf"(?:\b(?P<checkout>git checkout)(?! -[bB]\b|{COMMAND_ARGS} --{ARG_END}) "
-    r"|\bgit (?:checkout -[bB]|switch(?: -[cC])?|branch) "
+    r"(?:\bgit (?:checkout -[bB]|switch(?: -[cC])?|branch) "
+    rf"|\b(?P<checkout>git checkout)(?!{COMMAND_ARGS} --{ARG_END}) "
     rf"|\bgit worktree add{COMMAND_ARGS}? -[bB] "
     r"|\b(?:create|switch to|check out|commit on|work on) "
     r"(?:a |the )?branch (?:named )?)"
@@ -189,11 +189,12 @@ def branch_instructions(text: str) -> list[str]:
     branches = []
     for match in BRANCH_INSTRUCTION.finditer(text):
         branch = match["target"].rstrip(".,")
-        if not looks_like_branch(branch) or prohibiting(text, *match.span()):
-            continue
-        if match["checkout"] and brief_text.looks_like_checkout_path(branch):
-            continue
-        branches.append(branch)
+        if (
+            looks_like_branch(branch)
+            and not (match["checkout"] and brief_text.looks_like_checkout_path(branch))
+            and not prohibiting(text, *match.span())
+        ):
+            branches.append(branch)
     return branches
 
 

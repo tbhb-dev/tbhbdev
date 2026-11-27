@@ -39,12 +39,8 @@ def test_bad_name(name: str) -> None:
 def test_prompt_without_a_build_update_or_explicit_ref_problem(
     prompt: str, profile: Profile
 ) -> None:
-    assert not driver.prompt_launch_problems(
-        prompt,
-        [],
-        None,
-        build_branch="agent/sample" if profile is Profile.BUILD else None,
-    )
+    branch = "agent/sample" if profile is Profile.BUILD else None
+    assert not driver.prompt_launch_problems(prompt, [], None, build_branch=branch)
 
 
 @pytest.mark.parametrize("account", [None, "agent", "ops"])

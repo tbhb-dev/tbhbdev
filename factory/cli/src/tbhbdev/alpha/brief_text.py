@@ -34,11 +34,7 @@ OTHER_TRAILER_OMISSION = re.compile(
 )
 BRANCH_PREFIXES = ("agent", "feat", "feature", "fix", "hotfix", "release")
 UNQUALIFIED_BRANCH_PREFIXES = tuple(f"{prefix}-" for prefix in BRANCH_PREFIXES)
-QUALIFIED_REF_PREFIXES = (
-    "refs/",
-    "origin/",
-    *(f"{prefix}/" for prefix in BRANCH_PREFIXES),
-)
+QUALIFIED_REF_PREFIXES = ("refs/", "origin/", *(f"{p}/" for p in BRANCH_PREFIXES))
 FILE_EXTENSION = re.compile(r"\.[A-Za-z][A-Za-z0-9]*$")
 
 
@@ -52,10 +48,11 @@ def prohibiting(text: str, start: int, end: int | None = None) -> bool:
     # A soft line break continues prose. A fenced command has its own line.
     prefix = text[:start]
     blocks = FENCE.split(prefix)
-    context = blocks[-1] if len(blocks) % 2 else blocks[-1].rsplit("\n", 1)[-1]
+    context = blocks[-1]
     previous, newline, _ = prefix.rpartition("\n")
     # Inspect the current line as well so a command at its start is visible.
-    if newline and PROSE_BREAK.match(text, len(previous.rstrip(" \t"))):
+    hard_break = newline and PROSE_BREAK.match(text, len(previous.rstrip(" \t")))
+    if len(blocks) % 2 == 0 or hard_break:
         context = context.rsplit("\n", 1)[-1]
     context = OTHER_TRAILER_OMISSION.sub("", context)
     clause = CLAUSE_END.split(INLINE_CODE.sub("\0", context))[-1]

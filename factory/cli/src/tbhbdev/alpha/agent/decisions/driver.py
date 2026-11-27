@@ -79,14 +79,10 @@ def _instructions(pattern: re.Pattern[str], prose: str) -> list[str | None]:
 
 
 def _prose_push_targets(prompt: str) -> list[str]:
-    boundaries = [
-        0,
-        *(match.end() for match in PROSE_BREAK.finditer(prompt)),
-        len(prompt),
-    ]
+    breaks = (match.end() for match in PROSE_BREAK.finditer(prompt))
     return [
         match[1]
-        for start, end in pairwise(boundaries)
+        for start, end in pairwise((0, *breaks, len(prompt)))
         for match in _PUSH_PROSE.finditer(prompt, start, end)
         if brief.looks_like_branch(match[1]) and not prohibiting(prompt, *match.span())
     ]
@@ -123,11 +119,9 @@ def _wrong_build_branches(
     ]
     push_targets = _instructions(_PUSH_COMMAND, prompt) + _prose_push_targets(prompt)
     allowed_pushes = {branch, "HEAD"}
-    if start_ref is not None:
-        allowed_pushes.add(start_ref.removeprefix("refs/heads/"))
-    else:
-        # Keep the existing --start-ref guidance for recognized PR updates.
-        allowed_pushes.update(ref.removeprefix("refs/heads/") for ref in updates if ref)
+    # Keep the existing --start-ref guidance for recognized PR updates.
+    update_refs = updates if start_ref is None else [start_ref]
+    allowed_pushes.update(ref.removeprefix("refs/heads/") for ref in update_refs if ref)
     selected.extend(
         target
         for target in push_targets

@@ -22,6 +22,7 @@ from unittest.mock import AsyncMock, Mock
 import pytest
 from agent_cli_example import run_agent
 from agent_driver_example import (
+    BODY,
     Remote,
     execution_arguments,
     git_in,
@@ -1508,6 +1509,31 @@ def test_prompt_without_hook_conflicts_launches(remote: Remote) -> None:
     assert launch(remote) == 0
     assert driver.metadata_path("sample").is_file()
     assert (remote.state / "sample.prompt").read_text() == remote.prompt.read_text()
+
+
+@pytest.mark.parametrize(
+    ("prompt", "options"),
+    [
+        ("Create branch `agent/other`.", ("--profile", "review", "--ref", COMMIT)),
+        ("The earlier PR was on `agent/other`.", ()),
+    ],
+)
+def test_prompt_with_foreign_branch_warns_and_launches(
+    remote: Remote,
+    capsys: pytest.CaptureFixture[str],
+    prompt: str,
+    options: tuple[str, ...],
+) -> None:
+    write_standalone_fake(remote.bin / "tmux", BODY.replace("sample", "sample-run"))
+    remote.prompt.write_text(prompt)
+    args = arguments(remote, *options)
+    args[-2] = "sample-run"
+    assert run_agent(args) == 0
+    assert capsys.readouterr().err == (
+        f"warning: {remote.prompt}: use the launcher branch agent/sample-run "
+        "instead of agent/other\n"
+    )
+    assert driver.metadata_path("sample-run").is_file()
 
 
 @pytest.mark.parametrize(
