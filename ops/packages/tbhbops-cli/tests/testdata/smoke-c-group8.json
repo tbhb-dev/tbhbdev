@@ -852,7 +852,7 @@
   "writes": {
     "/output/again/release/compose.yaml": [
       384,
-      "34d83d3d1e4fdba4763f23f432335e446bb7fe2630441e560b3e71d7e1ac7694"
+      "5119601f3347add18e188aba785292091d51ce2b2ab5386e1c9c71c4c9aeb49c"
     ],
     "/output/again/release/compose.tools.yaml": [
       384,
@@ -872,7 +872,7 @@
     ],
     "/output/again/release/MANIFEST.sha256": [
       384,
-      "acf2faeec37feded87ebc5bffc87bf3de7a372f083c925ca47f2a0f7d14d102e"
+      "c3a33e54f2082efb100c78816965c5afbd0b74e4d8ea22c2e7e5f13cc244b434"
     ],
     "/output/up.log": [
       384,
@@ -884,7 +884,7 @@
     ],
     "/output/src/compose.yaml": [
       384,
-      "2966ed4e336f2ccf8b672ef2679a8d76bfa0b442be4caa8b1dffa84d993470c7"
+      "f0f280427256ea44ebb5e0680c534857e65f9fca0b34d6d6c460debadec03c3e"
     ],
     "/output/src/config/alloy/config.alloy": [
       384,
@@ -992,7 +992,7 @@
     ],
     "/output/release/compose.yaml": [
       384,
-      "34d83d3d1e4fdba4763f23f432335e446bb7fe2630441e560b3e71d7e1ac7694"
+      "5119601f3347add18e188aba785292091d51ce2b2ab5386e1c9c71c4c9aeb49c"
     ],
     "/output/release/compose.tools.yaml": [
       384,
@@ -1012,7 +1012,7 @@
     ],
     "/output/release/MANIFEST.sha256": [
       384,
-      "0f077e2750e39aab59262aea90b6ca79c142eb3072fb1a26e76c06027045f607"
+      "4e88e91b207a5d51d5e87d8364ba6ff891ba804d973de26588a773535025fdb3"
     ]
   },
   "files": {

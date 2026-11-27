@@ -13,13 +13,6 @@ mode=$1 uv_version=$2 python_version=$3 sha_x86_64=$4 sha_aarch64=$5
 bin=$HOME/.local/bin
 link=$bin/python$python_version
 
-for tool in curl tar sha256sum; do
-  command -v "$tool" >/dev/null 2>&1 || {
-    echo "nas_python: $tool is missing" >&2
-    exit 1
-  }
-done
-
 case $(uname -m) in
 x86_64) arch=x86_64 sha=$sha_x86_64 ;;
 aarch64) arch=aarch64 sha=$sha_aarch64 ;;

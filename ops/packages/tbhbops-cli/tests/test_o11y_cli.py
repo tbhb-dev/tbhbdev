@@ -2413,6 +2413,7 @@ def test_validate_preserves_explicit_placeholders(
         env = system.filesystem.read_text(Path("/temporary/release/.env.validate"))
         assert "O11Y_S3_ENV_FILE=dummy-s3.env\n" in env
         assert "O11Y_DATA_DIR=/temporary/data\n" in env
+        assert "O11Y_HOST_NAME=validate\n" in env
 
     monkeypatch.setattr(command, "dispatch", render_capture)
     assert validate_run(validation_fixture(), ValidationRunner())[0] == 0
@@ -2423,6 +2424,7 @@ def test_validate_preserves_explicit_placeholders(
                 "O11Y_DATA_DIR": "/temporary/data",
                 "O11Y_GRAFANA_ROOT_URL": "https://grafana.example.example.invalid/",
                 "O11Y_GRAFANA_OWNER_LOGIN": "owner@example.invalid",
+                "O11Y_HOST_NAME": "validate",
             },
         )
     ]
@@ -2650,6 +2652,26 @@ def test_validate_failed_steps(
     assert out.endswith(f"FAIL validate: {step} {item} failed: {exception}\n")
     assert "sensitive" not in out
     assert Path("/temporary") not in fs.modes
+
+
+def test_validate_release_loads_in_compose(tmp_path: Path) -> None:
+    system = cli.real_system()
+    env = model_validate.docker_environment(system.env)
+    if system.runner.run(["docker", "compose", "version"], env, 10).code != 0:
+        pytest.skip("Docker Compose is unavailable")
+    source = next(
+        parent / "o11y"
+        for parent in Path(__file__).parents
+        if (parent / "o11y/compose.yaml").is_file()
+    )
+    tree = shutil.copytree(source, tmp_path / "source")
+    release = validation.prepare(system, tree, tmp_path, "https://example.invalid/")
+    argv = ["docker", "compose", "--env-file", str(release / ".env.validate"), "-f"]
+    for name in ("compose.yaml", "compose.tools.yaml"):
+        result = system.runner.run(
+            [*argv, str(release / name), "config", "-q"], env, 30
+        )
+        assert result.code == 0, result.stderr
 
 
 def test_validate_real_filesystem(
@@ -3048,9 +3070,9 @@ def test_default_release_bytes(tmp_path: Path) -> None:
         for p in output.rglob("*")
         if p.is_file()
     }
-    # Snapshot of all rendered bytes and filenames after the image updates.
+    # Snapshot of all rendered bytes and filenames.
     assert hashlib.sha256(model.manifest(files).encode()).hexdigest() == (
-        "35337df04e4372ac3fd65f39aad7d7b40791c01f52dfdca3d8902de73c8e13a7"
+        "1f0063483d6221a648daee914bd68aa5b6d6827b23022bdd92e8fc8de7a38028"
     )
 
 

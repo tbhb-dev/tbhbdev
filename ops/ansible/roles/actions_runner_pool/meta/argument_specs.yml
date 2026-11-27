@@ -102,31 +102,17 @@ argument_specs:
         type: str
         default: 3g
         description: Memory limit of each slot's Docker daemon, as docker run --memory takes it.
-      actions_runner_pool_op_auth:
-        type: str
-        default: service_account
-        choices: [service_account, connect]
-        description: >-
-          How the slots read the App's key. service_account uses a 1Password service-account
-          token. connect uses a Connect token against the Connect server at svc:op-connect, and
-          the token can read only the vault that holds the key.
       actions_runner_pool_op_token_file:
         type: str
-        default: .config/actions-runner/op-service-account-token
+        default: .config/actions-runner/op-connect-token
         description: >-
-          Path, relative to the service user's home, of the 1Password token, a service-account
-          token or, with actions_runner_pool_op_auth connect, a Connect token. The operator
-          places it, mode 0400 for a service-account token and 0600 for a Connect token, owned
-          by the service user. The role writes it only from actions_runner_pool_op_token_ref,
-          and with connect it fails when the file is missing. Set it to a path such as
-          .config/actions-runner/op-connect-token when you switch, so a service-account token is never read
-          as a Connect token.
+          Path to the 1Password Connect token, relative to the service user's home.
+          The file is owned by the service user with mode 0600. The role fails when it is missing.
       actions_runner_pool_op_token_ref:
         type: str
         default: ""
         description: >-
-          With actions_runner_pool_op_auth connect, the op reference of the Connect token, such
-          as the vault, item and field of the 1Password reference. When set, the role reads it on the
+          The 1Password reference for the Connect token. When set, the role reads it on the
           controller with actions_runner_pool_op_token_lookup_command and writes it to
           actions_runner_pool_op_token_file, owned by the service user with mode 0600, changing
           the file only when the token differs. It does nothing in check mode and never logs the
@@ -141,10 +127,10 @@ argument_specs:
         type: str
         default: ""
         description: >-
-          Connect server's base URL for connect, https and without a path. Empty derives
+          Connect server's base URL, HTTPS and without a path. Empty derives
           https://op-connect.<MagicDNS suffix>, which the role reads from tailscale status on
-          the host, so a tailnet rename needs no change in git. For connect, the egress table accepts TCP
-          port 443 to the addresses the host resolves for this name. Ignored for service_account.
+          the host, so a tailnet rename needs no change in git. The egress table accepts TCP port 443 to the
+          resolved addresses.
       actions_runner_pool_op_key_vault:
         type: str
         required: true

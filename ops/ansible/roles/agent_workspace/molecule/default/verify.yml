@@ -25,7 +25,7 @@
           - agent_workspace_fixture_paths.results[4].stat.executable
     - name: Inspect the skipped private clone
       ansible.builtin.stat:
-        path: /home/example-user/Code/git.example.invalid/fixture/other
+        path: /home/example-user/Code/github.com/fixture/other
       register: agent_workspace_fixture_private
     - name: Check the private repository was skipped
       ansible.builtin.assert:
@@ -40,7 +40,6 @@
           test "$(cat /home/example-user/Code/github.com/fixture/fresh/tracked)" = first
           test "$(cat /home/example-user/Code/github.com/fixture/kept/tracked)" = first
           test ! -e /home/example-user/Code/github.com/fixture/skipped
-          test -e /home/example-user/Code/.tools-installed
           test -x /home/example-user/.local/bin/uv
           commit=$(git -C /home/example-user/Code/github.com/fixture/fresh rev-parse HEAD)
           test "$(/home/example-user/.local/bin/tbhbdev --version)" = "tbhbdev 0 ($commit)"

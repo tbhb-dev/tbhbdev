@@ -1,12 +1,7 @@
 ---
-- name: account | Require absolute paths for the account
-  ansible.builtin.assert:
-    that:
-      - agent_signing_home is match('^/')
-
 - name: account | Prepare signing as the account
   become: true
-  become_user: "{{ agent_signing_account.name }}"
+  become_user: agent
   environment: "{{ agent_signing_process_environment }}"
   block:
     # stat reads metadata only. Nothing here opens a key.
@@ -70,7 +65,7 @@
           - -N
           - ""
           - -C
-          - "{{ agent_signing_account.name }}@{{ inventory_hostname }} signing"
+          - "agent@{{ inventory_hostname }} signing"
           - -f
           - "{{ agent_signing_private_key }}"
         creates: "{{ agent_signing_private_key }}"
@@ -124,6 +119,6 @@
     - name: account | Show the public key for registration with GitHub
       ansible.builtin.debug:
         msg: >-
-          Register this public key as a signing key on the account that owns {{ agent_signing_account.name }}'s
-          commits: {{ agent_signing_public.content | b64decode | trim }}
+          Register this public key as a signing key on the agent's GitHub account.
+          {{ agent_signing_public.content | b64decode | trim }}
       when: agent_signing_keyed

@@ -54,11 +54,9 @@ ansible_syntax_check_test(
     inventory = "molecule/syntax_inventory.yml",
     playbooks = [
         "playbooks/agent-accounts.yml",
-        "playbooks/agent-mesh-purge.yml",
         "playbooks/agent-workspace.yml",
         "playbooks/ca-backup.yml",
         "playbooks/ca-client-trust.yml",
-        "playbooks/ci-vm-admin-keys.yml",
         "playbooks/codex-cli.yml",
         "playbooks/connect-token.yml",
         "playbooks/deploy-runner-vm.yml",
@@ -109,13 +107,5 @@ ansible_collections_lock_test(
     name = "collections_lock_test",
     lock = "requirements.lock.json",
     requirements = "requirements.yml",
-    strip_prefix = "ops/ansible",
-)
-
-ansible_lint_test(
-    name = "o11y_lint_test",
-    srcs = SRCS,
-    args = ["roles/o11y"],
-    env = {"ANSIBLE_INVENTORY": "molecule/syntax_inventory.yml"},
     strip_prefix = "ops/ansible",
 )

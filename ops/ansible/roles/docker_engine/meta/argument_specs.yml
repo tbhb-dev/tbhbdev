@@ -13,11 +13,6 @@ argument_specs:
           and isn't yet that volume, and deletes nothing. It refuses a volume of another size
           and never resizes one.
     options:
-      docker_engine_runsc_args:
-        type: list
-        elements: str
-        default: []
-        description: Arguments the daemon passes to runsc for every container that runs under it.
       docker_engine_data_vg:
         type: str
         default: ubuntu-vg

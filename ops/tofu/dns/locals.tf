@@ -1,10 +1,8 @@
 locals {
   zone = yamldecode(file(var.zone_config_path))
 
-  zone_id    = local.zone.id
-  email      = local.zone.email_routing
-  rules      = { for rule in local.email.rules : rule.key => rule }
-  dns_record = local.zone.records
+  email = local.zone.email_routing
+  rules = { for rule in local.email.rules : rule.key => rule }
 }
 
 variable "zone_config_path" {

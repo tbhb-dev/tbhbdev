@@ -12,9 +12,7 @@ from typing import Protocol, TypedDict, cast
 import pytest
 import yaml
 
-ROOT = next(
-    path for path in Path(__file__).parents if (path / "ansible").is_dir()
-)
+ROOT = next(path for path in Path(__file__).parents if (path / "ansible").is_dir())
 TASKS = ROOT / "ansible/roles/dsm_accounts/tasks"
 TAG = "dsm_accounts_agent_log_group"
 
@@ -24,7 +22,6 @@ class DsmOptions(TypedDict, total=False):
     events: list[str]
     group_rc: int
     group_output: str
-    help: str
     stat: dict[str, str | int | bool]
     login_rc: int
     add_rc: int
@@ -62,7 +59,6 @@ class ActionModule(ActionBase):
             assert self._task.become is True
             argv = args["argv"]
             assert argv in (["synogroup", "--get", "log"],
-                            ["synogroup", "--help"],
                             ["synogroup", "--memberadd", "log", "agent"])
             event = argv[1]
             if event == "--get":
@@ -72,10 +68,6 @@ class ActionModule(ActionBase):
                     "Group Name: [log]\\nGroup Type: [AUTH_LOCAL]\\n"
                     "Group ID:   [19]\\nGroup Members: \\n" + members)
                 result["rc"] = state.get("group_rc", 0)
-            elif event == "--help":
-                result["stderr"] = state.get("help",
-                                             "    --memberadd groupname username")
-                result["rc"] = 1  # Usage output need not exit successfully.
             else:
                 assert not self._task.check_mode
                 assert "agent" not in state["members"]
@@ -225,7 +217,6 @@ def test_apply_preserves_members_and_second_apply_is_unchanged(run_dsm: DsmRun) 
     assert state["events"] == [
         "--get",
         "stat",
-        "--help",
         "login",
         "--memberadd",
         "--get",
@@ -251,7 +242,6 @@ def test_check_reads_real_state_and_never_writes(
     assert state["events"] == [
         "--get",
         "stat",
-        "--help",
         "login",
         "--get",
         "stat",
@@ -274,7 +264,6 @@ def test_check_reads_real_state_and_never_writes(
         {"stat": {"gr_name": "other"}},
         {"stat": {"gid": 20}},
         {"stat": {"mode": "0660"}},
-        {"help": "    --member groupname username"},
         {"login_rc": 2},
     ],
 )

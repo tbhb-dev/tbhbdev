@@ -55,19 +55,6 @@
       run_once: true
       changed_when: false
 
-    - name: render | Require a controller renderer with Grafana TLS support
-      ansible.builtin.assert:
-        that: >-
-          '@O11Y_GRAFANA_TLS_CERT_DIR@' not in
-          lookup('ansible.builtin.file', o11y_render.path + '/out/release/compose.yaml')
-        fail_msg: >-
-          The controller tbhbops renderer lacks Grafana TLS support.
-          Install tbhbops from this ops checkout before deploying.
-        quiet: true
-      delegate_to: localhost
-      become: false
-      run_once: true
-
     - name: render | Read the rendered configuration names
       ansible.builtin.find:
         paths: "{{ o11y_render.path }}/out/config"
