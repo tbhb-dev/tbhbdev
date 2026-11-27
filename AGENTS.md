@@ -19,6 +19,11 @@ Leave out code for cases outside that scope. Skip options, layers, and abstracti
 - Run shared rules tests from the monorepo root using their Bazel repository names. Workspaces under `lib/rules/**/e2e/` have their own module configuration.
 - Don't create packages named `core` or `shell`. Keep Go and Python targets in separate Bazel packages with no catch-all test targets so Go-only changes don't trigger Python tests.
 
+## Python
+
+- An `__init__.py` holds only a short docstring that says what the package contains. Leave out imports, re-exports, and code. In reviews, don't ask for the docstring to be removed or for an empty initializer.
+- Mirror the module structure of `src` in `tests/unit` and `tests/integration`, omitting the top-level package folder. For example, `tests/unit/alpha/agent/test_run_host.py` tests `src/tbhbdev/alpha/agent/run_host.py`. When you move or split a module, move its tests to the matching path in the same pull request. Don't block a pull request because untouched tests are still in their old locations.
+
 ## Commands
 
 - `bazelisk build //...` and `bazelisk test //...` run all builds and repository checks.
