@@ -391,10 +391,7 @@ cli_py_library(
     srcs = ["secret_scan.py"],
     imports = ["../.."],
     visibility = ["//factory/cli:__subpackages__"],
-    deps = [
-        "//factory/cli/src/tbhbdev:host",
-        "@cli_pip//tomlkit",
-    ],
+    deps = ["@cli_pip//tomlkit"],
 )
 
 cli_py_library(
