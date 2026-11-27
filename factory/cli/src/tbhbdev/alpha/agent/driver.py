@@ -899,6 +899,18 @@ def send(settings: Settings, name: str, text: str) -> int:
     return 0
 
 
+def _dispatch_run(settings: Settings, args: argparse.Namespace, run: Run) -> int:
+    verbs = {"wait": wait, "status": status, "kill": kill, "keep": keep}
+    try:
+        if args.verb in {"log", "diff"}:
+            return inspect(settings, run, limit=args.n if args.verb == "log" else None)
+        if args.verb == "clean":
+            return clean(settings, run, force=args.force)
+        return verbs[args.verb](settings, run)
+    except transport.CollisionError:
+        not_owner(run)
+
+
 def dispatch(settings: Settings, args: argparse.Namespace) -> int:
     if args.verb == "signing-parity":
         return signing_parity.main(settings)
@@ -916,12 +928,4 @@ def dispatch(settings: Settings, args: argparse.Namespace) -> int:
         if args.verb == "clean":
             return clean_archived(settings, args.name, force=args.force)
         raise
-    verbs = {"wait": wait, "status": status, "kill": kill, "keep": keep}
-    try:
-        if args.verb in {"log", "diff"}:
-            return inspect(settings, run, limit=args.n if args.verb == "log" else None)
-        if args.verb == "clean":
-            return clean(settings, run, force=args.force)
-        return verbs[args.verb](settings, run)
-    except transport.CollisionError:
-        not_owner(run)
+    return _dispatch_run(settings, args, run)
