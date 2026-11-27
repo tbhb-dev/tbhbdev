@@ -124,7 +124,6 @@ from tbhbdev.alpha.identity.models import (
     version,
 )
 from tbhbdev.alpha.identity.trailers import (
-    earliest_starts,
     replace_trailer_fields,
     start_ok,
     trailer_start,
@@ -175,7 +174,6 @@ REQUIRED = ("harness", "model")
 HASH_RE = re.compile(r"sha-256-64:[0-9a-f]{16}")
 LAUNCH_FILE = "launch.json"
 THREAD_ID = re.compile(r"[0-9a-fA-F-]{8,64}")
-
 
 # Only used by the optional rewrite path, which stays off unless
 # ASCM_AGENT_REWRITE=1 is set at hook time (it costs a permission prompt).
@@ -1909,8 +1907,7 @@ MODEL_ATTR = re.compile(r"(?<![^\s;])model=[^\s;]")
 ATTR_PAIR = re.compile(r"(?<![^\s;])([a-z_]+)=([^\s;]+)")
 IDENT_EMAIL = re.compile(r"<([^>]*)>")
 
-
-type Trailer = trailers.Trailer
+type Trailer = tuple[str, str]
 
 
 def llm_trailers(text: str) -> list[Trailer]:
@@ -1922,6 +1919,12 @@ def trailer_agent(value: str) -> tuple[str | None, str | None]:
     """(session, subagent) named by a trailer value; None where absent."""
     attrs = dict(AGENT_ATTR.findall(value))
     return attrs.get("session"), attrs.get("subagent")
+
+
+def without_start(value: str) -> str:
+    """A trailer value with its ``started_at`` attribute left out."""
+    parts = value.split(";")
+    return ";".join(p for p in parts if not p.startswith("started_at="))
 
 
 def with_record(value: str, *, branch_start: str | None = None) -> str:
@@ -1946,6 +1949,25 @@ def with_record(value: str, *, branch_start: str | None = None) -> str:
         "started_at": branch_start or start_ok(rec.get("started_at")),
     }
     return replace_trailer_fields(value, fields)
+
+
+def earliest_starts(found: list[Trailer]) -> list[Trailer]:
+    """Each trailer replaced by its twin with the earliest start.
+
+    Twins have the same key and the same value apart from ``started_at``, so
+    the hook's re-stamp of an amended commit collapses onto the original line.
+    A line that differs in any other attribute stays apart, which means a
+    hand-written early time cannot replace the hook's line and drop its
+    ``launch``. The twin with the earliest ``started_at`` replaces the rest, so
+    a value with the field beats one without it.
+    """
+    best: dict[tuple[str, str], str] = {}
+    for key, value in found:
+        twin = (key, without_start(value))
+        start = trailer_start(value)
+        if start and (twin not in best or start < trailer_start(best[twin])):
+            best[twin] = value
+    return [(k, best.get((k, without_start(v)), v)) for k, v in found]
 
 
 def merge_trailers(found: list[Trailer]) -> list[Trailer]:
@@ -2251,13 +2273,8 @@ def cmd_trailer(msgfile: str, source: str | None, env: Mapping[str, str]) -> int
         gen, assisted = list[Ident](), list[Ident]()
     # Enriching can make two identities of one agent equal, so deduplicate again.
     gen = list(dict.fromkeys(with_start(enrich(i, committer)) for i in gen))
-    add_trailers(
-        path,
-        gen,
-        [with_start(i) for i in assisted],
-        kept,
-        branch_start=branch_created_at(repo.top),
-    )
+    assisted = [with_start(i) for i in assisted]
+    add_trailers(path, gen, assisted, kept, branch_start=branch_created_at(repo.top))
     write_claim(repo, committer.ident.root, [p for p, _ in edits])
     return 0
 

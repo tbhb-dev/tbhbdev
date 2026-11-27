@@ -1168,7 +1168,6 @@ cli_py_test(
         "//factory/cli/src/tbhbdev/alpha/identity:commands",
         "//factory/cli/src/tbhbdev/alpha/identity:dispatcher",
         "//factory/cli/src/tbhbdev/alpha/identity:models",
-        "//factory/cli/src/tbhbdev/alpha/identity:trailers",
         "@cli_pip//hypothesis",
         "@cli_pip//jsonschema",
         "@cli_pip//pytest",

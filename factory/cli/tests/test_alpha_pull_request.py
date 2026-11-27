@@ -2906,7 +2906,7 @@ def test_hook_feeds_problems_back_on_stderr(
 def test_hook_outside_tbhb_dev_is_silent(
     hooked: World, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    hooked.git("remote", "set-url", "--push", "origin", "unrelated")
+    hooked.git("remote", "set-url", "origin", "git@github.com:someone/x.git")
     write_hook_draft(hooked, "broken")
     harness, payload = hook_payloads(hooked.root.resolve())["claude-relative"]
     assert run_hook(monkeypatch, harness, payload) == 0
