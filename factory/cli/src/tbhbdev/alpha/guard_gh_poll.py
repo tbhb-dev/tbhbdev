@@ -165,8 +165,7 @@ REPEATER_VALUE_FLAGS = {
     "--max-lines", "--max-procs", "--replace",
 }  # fmt: skip
 GH_RUN = re.compile(r"\bgh\b.*\brun\b", re.DOTALL)
-REDIRECT = re.compile(r"\d*(?:[<>]&|&>>?|>>?|<)")
-AMPERSAND_REDIRECTS = (">&", "<&", "&>")
+REDIRECT = re.compile(r"(?:[0-9]+(?=[<>]))?(&>>?|>>|>[&|]?|<<<|<<-?|<[&>]?)")
 REPEAT_REASON = (
     "Don't run a CI listing through xargs or parallel; each repeat is a separate "
     "call. Ask the coordinator."
@@ -225,23 +224,47 @@ class BodyScanner(Scanner):
     piped: dict[int, int] = field(default_factory=dict)
     group_starts: dict[int, int] = field(default_factory=dict)
     closed_group: int | None = None
+    redirect_target: bool = False
+
+    @override
+    def end_word(self) -> None:
+        """Consume a redirect target without adding it to the command words."""
+        if self.in_word and self.redirect_target:
+            self.in_word = self.redirect_target = False
+        super().end_word()
+
+    @override
+    def end_command(self) -> None:
+        """Clear any pending redirect at a command boundary."""
+        super().end_command()
+        self.redirect_target = False
+
+    @override
+    def unquoted(self, char: str) -> None:
+        """Recognize redirects before their operators reach the separator scan."""
+        if (char in "<>&" or not self.in_word) and (
+            redirect := REDIRECT.match(self.text, self.pos)
+        ):
+            self.end_word()
+            self.pos = redirect.end()
+            operator = redirect[1]
+            if operator in {"<<", "<<-"}:
+                self.pos -= len(operator)
+                self.heredoc()
+            else:
+                self.redirect_target = True
+            return
+        super().unquoted(char)
 
     @override
     def plain(self, char: str) -> None:
-        """Keep the command indices followed by a pipe and scan redirects as words."""
-        if self.text.startswith(AMPERSAND_REDIRECTS, self.pos):
-            self.add(self.text[self.pos : self.pos + 2])
-            self.pos += 2
-            return
+        """Keep the command indices followed by a pipe."""
         if self.text.startswith(("&&", "||"), self.pos):
             self.pos += 1
         elif char == "|":
             if self.closed_group is not None:
-                index = len(self.commands)
-                if not (self.words or self.in_word):
-                    index -= 1
-                self.piped[index] = self.closed_group
-            elif self.words or self.in_word:
+                self.piped[len(self.commands) - 1] = self.closed_group
+            elif self.words or (self.in_word and not self.redirect_target):
                 index = len(self.commands)
                 self.piped[index] = index
         if char in ";&|\n":
@@ -526,9 +549,7 @@ def unwrap(
         repeating = repeating or wrapper in REPEATERS
         if word == f"{TOKEN}=":
             return None, repeating
-        if REDIRECT.match(word):
-            rest = rest[1 if REDIRECT.fullmatch(word) is None else 2 :]
-        elif word in KEYWORDS or ASSIGNMENT.match(word):
+        if word in KEYWORDS or ASSIGNMENT.match(word):
             rest = rest[1:]
         elif wrapper == "env":
             rest = env_rest(rest[1:])

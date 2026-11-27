@@ -1326,23 +1326,6 @@ def test_other_paths_and_programs_pass_the_state_directory_check(command: str) -
     assert guard.inspect(command)[0] is None
 
 
-def test_ssh_remote_xargs_rm_with_state_path_text_passes() -> None:
-    command = "ssh host 'ls ~/.local/state/tbhb && ls /tmp/scratch/* | xargs rm -rf'"
-    assert guard.inspect(command)[0] is None
-
-
-@pytest.mark.parametrize(
-    "command",
-    [
-        'pgrep -af "rm -rf|xargs ~/.local/state/tbhb"',
-        'pgrep -af "rm" | xargs echo ~/.local/state/tbhb',
-        'pgrep -af "xargs" && ls ~/.local/state/tbhb && rm -rf /tmp/scratch',
-    ],
-)
-def test_pgrep_pattern_is_data_for_the_state_directory_check(command: str) -> None:
-    assert guard.inspect(command)[0] is None
-
-
 @pytest.mark.parametrize("wrapper", ["{}", "ssh host '{}'"])
 def test_xargs_rm_on_a_state_directory_glob_is_denied(wrapper: str) -> None:
     command = wrapper.format("echo ~/.local/state/tbhb/* | xargs -n 1 rm -rf")
@@ -1363,17 +1346,57 @@ def test_compound_state_directory_movers_are_denied(command: str) -> None:
 
 
 @pytest.mark.parametrize(
-    "producer",
-    ["echo ~/.local/state/tbhb/*", "echo ~/.local/state/tbhb/*; echo /tmp/scratch"],
+    ("command", "reason"),
+    [
+        *(
+            (command, guard.PROTECT_REASON)
+            for redirect in (
+                ">out",
+                "> out",
+                ">>log",
+                ">> log",
+                "<in",
+                "< in",
+                "&>file",
+                "&> file",
+                "&>>file",
+                "&>> file",
+                "2>/dev/null",
+                "2> /dev/null",
+                "2>>log",
+                "2>> log",
+                "2>&1",
+                "2>& 1",
+                ">&2",
+                ">& 2",
+                "3<in",
+                "3< in",
+            )
+            for command in (
+                f"(echo ~/.local/state/tbhb/*) {redirect} | xargs rm",
+                (
+                    "(echo ~/.local/state/tbhb/*; echo /tmp/scratch) "
+                    f"{redirect} | xargs rm"
+                ),
+                (
+                    "(echo ~/.local/state/tbhb/*) | xargs rm"
+                    f"{' ' if redirect[0].isdigit() else ''}{redirect}"
+                ),
+            )
+        ),
+        ("echo ~/.local/state/tbhb/* | xargs >out rm", guard.PROTECT_REASON),
+        ("echo /tmp/scratch/* > ~/.local/state/tbhb/* | xargs rm", None),
+        ("echo ~/.local/state/tbhb/* | xargs >rm echo", None),
+        ("ssh host 'ls ~/.local/state/tbhb && ls /tmp/scratch/* | xargs rm -rf'", None),
+        ('pgrep -af "rm -rf|xargs ~/.local/state/tbhb"', None),
+        ('pgrep -af "rm" | xargs echo ~/.local/state/tbhb', None),
+        ('pgrep -af "xargs" && ls ~/.local/state/tbhb && rm -rf /tmp/scratch', None),
+    ],
 )
-@pytest.mark.parametrize(
-    "redirect", ["2>/dev/null", "2> /dev/null", "2>&1", ">&2", "&>file"]
-)
-def test_redirected_group_keeps_state_directory_in_pipeline(
-    producer: str, redirect: str
+def test_state_directory_pipeline_checks_commands_and_arguments(
+    command: str, reason: str | None
 ) -> None:
-    command = f"({producer}) {redirect} | xargs rm"
-    assert guard.inspect(command)[0] == guard.PROTECT_REASON
+    assert guard.inspect(command)[0] == reason
 
 
 @pytest.mark.parametrize("separator", [";", "&", "&&", "||", "\n"])
