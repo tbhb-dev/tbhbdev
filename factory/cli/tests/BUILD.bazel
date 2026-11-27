@@ -22,6 +22,17 @@ load(":pytest.bzl", "cli_py_test")
 
 package(default_testonly = True)
 
+filegroup(
+    name = "agent_runfile_names_inputs",
+    srcs = [
+        "agent_driver_example.py",
+        "agent_example.py",
+        "//factory/cli/src/tbhbdev/alpha/agent:package_files",
+        "//factory/cli/src/tbhbdev/alpha/agent/decisions:package_files",
+    ],
+    visibility = ["//factory/cli/tests/unit/alpha/agent/decisions:__pkg__"],
+)
+
 cli_py_library(
     name = "agent_driver_example",
     srcs = ["agent_driver_example.py"],
@@ -493,7 +504,6 @@ cli_py_test(
         ":conftest",
         "//factory/cli/src/tbhbdev/alpha/agent:model",
         "//factory/cli/src/tbhbdev/alpha/agent/decisions:limits",
-        "//factory/cli/src/tbhbdev/alpha/agent/decisions:remote",
         "@cli_pip//pytest",
     ],
 )
@@ -609,45 +619,6 @@ cli_py_test(
         "//factory/cli/src/tbhbdev/alpha/agent:push",
         "//factory/cli/src/tbhbdev/alpha/agent:run_host",
         "//factory/cli/src/tbhbdev/alpha/agent:runfiles",
-        "@cli_pip//pytest",
-    ],
-)
-
-cli_py_test(
-    name = "test_alpha_agent_remote",
-    srcs = ["test_alpha_agent_remote.py"],
-    data = [
-        "agent_driver_example.py",
-        "agent_example.py",
-        "//factory/cli/src/tbhbdev/alpha/agent:package_files",
-        "//factory/cli/src/tbhbdev/alpha/agent/decisions:package_files",
-    ],
-    deps = [
-        ":conftest",
-        "//factory/cli/src/tbhbdev/alpha/agent/decisions:runfiles_names",
-    ],
-)
-
-cli_py_test(
-    name = "test_alpha_agent_remote_safety",
-    srcs = ["test_alpha_agent_remote_safety.py"],
-    pyi_deps = [
-        "//factory/cli/src/tbhbdev/alpha/agent:model",
-        "//factory/cli/src/tbhbdev/alpha/agent/driver/decisions:metadata",
-    ],
-    deps = [
-        ":agent_cli_example",
-        ":agent_driver_example",
-        ":agent_example",
-        ":conftest",
-        "//factory/cli/src/tbhbdev/alpha/agent:settings",
-        "//factory/cli/src/tbhbdev/alpha/agent:transport",
-        "//factory/cli/src/tbhbdev/alpha/agent/decisions:policy",
-        "//factory/cli/src/tbhbdev/alpha/agent/decisions:remote",
-        "//factory/cli/src/tbhbdev/alpha/agent/driver:arguments",
-        "//factory/cli/src/tbhbdev/alpha/agent/driver:inspection",
-        "//factory/cli/src/tbhbdev/alpha/agent/driver:launch",
-        "//factory/cli/src/tbhbdev/alpha/agent/driver:metadata",
         "@cli_pip//pytest",
     ],
 )
@@ -891,7 +862,7 @@ cli_py_test(
         ":conftest",
         "//factory/cli/src/tbhbdev/alpha/agent:model",
         "//factory/cli/src/tbhbdev/alpha/agent:transport",
-        "//factory/cli/src/tbhbdev/alpha/agent/decisions:remote",
+        "//factory/cli/src/tbhbdev/alpha/agent/decisions:remote_run",
         "@cli_pip//pytest",
     ],
 )
@@ -1853,6 +1824,7 @@ filegroup(
     ) + [
         "//factory/cli/tests/integration/alpha:test_pull_request_timestamps_io.py",
         "//factory/cli/tests/integration/alpha/agent:package_files",
+        "//factory/cli/tests/integration/alpha/agent/decisions:package_files",
         "//factory/cli/tests/integration/alpha/identity:test_dispatcher_timestamps_io.py",
         "//factory/cli/tests/unit/alpha:package_files",
         "//factory/cli/tests/unit/alpha/agent:package_files",
@@ -2026,5 +1998,16 @@ cli_py_library(
         "//factory/cli/src/tbhbdev/alpha/agent/driver:lifecycle",
         "//factory/cli/src/tbhbdev/alpha/agent/driver:metadata",
         "//factory/cli/src/tbhbdev/alpha/agent/driver:startup",
+    ],
+)
+
+cli_py_library(
+    name = "remote_script_example",
+    srcs = ["remote_script_example.py"],
+    visibility = ["//factory/cli/tests:__subpackages__"],
+    deps = [
+        ":agent_driver_example",
+        ":agent_example",
+        "//factory/cli/src/tbhbdev/alpha/agent/decisions:remote_cleanup",
     ],
 )

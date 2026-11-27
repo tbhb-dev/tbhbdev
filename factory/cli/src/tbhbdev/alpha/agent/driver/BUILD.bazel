@@ -22,7 +22,7 @@ cli_py_library(
     deps = [
         ":metadata",
         "//factory/cli/src/tbhbdev/alpha/agent:transport",
-        "//factory/cli/src/tbhbdev/alpha/agent/decisions:remote",
+        "//factory/cli/src/tbhbdev/alpha/agent/decisions:remote_cleanup",
         "//factory/cli/src/tbhbdev/alpha/agent/driver/decisions:lifecycle",
     ],
 )
@@ -58,7 +58,7 @@ cli_py_library(
         "//factory/cli/src/tbhbdev/alpha/agent:model",
         "//factory/cli/src/tbhbdev/alpha/agent:transport",
         "//factory/cli/src/tbhbdev/alpha/agent/decisions:limits",
-        "//factory/cli/src/tbhbdev/alpha/agent/decisions:remote",
+        "//factory/cli/src/tbhbdev/alpha/agent/decisions:remote_host",
         "//factory/cli/src/tbhbdev/alpha/agent/driver/decisions:hosts",
     ],
 )
@@ -86,7 +86,8 @@ cli_py_library(
         "//factory/cli/src/tbhbdev/alpha:terminal",
         "//factory/cli/src/tbhbdev/alpha/agent:model",
         "//factory/cli/src/tbhbdev/alpha/agent:transport",
-        "//factory/cli/src/tbhbdev/alpha/agent/decisions:remote",
+        "//factory/cli/src/tbhbdev/alpha/agent/decisions:remote_inspection",
+        "//factory/cli/src/tbhbdev/alpha/agent/decisions:remote_run",
     ],
 )
 
@@ -107,7 +108,8 @@ cli_py_library(
         "//factory/cli/src/tbhbdev:version",
         "//factory/cli/src/tbhbdev/alpha/agent:model",
         "//factory/cli/src/tbhbdev/alpha/agent:transport",
-        "//factory/cli/src/tbhbdev/alpha/agent/decisions:remote",
+        "//factory/cli/src/tbhbdev/alpha/agent/decisions:remote_host",
+        "//factory/cli/src/tbhbdev/alpha/agent/decisions:remote_run",
         "//factory/cli/src/tbhbdev/alpha/agent/decisions:request",
         "//factory/cli/src/tbhbdev/alpha/agent/driver/decisions:hosts",
         "//factory/cli/src/tbhbdev/alpha/agent/driver/decisions:launch",
@@ -138,7 +140,7 @@ cli_py_library(
     deps = [
         "//factory/cli/src/tbhbdev/alpha/agent:model",
         "//factory/cli/src/tbhbdev/alpha/agent:transport",
-        "//factory/cli/src/tbhbdev/alpha/agent/decisions:remote",
+        "//factory/cli/src/tbhbdev/alpha/agent/decisions:remote_run",
         "//factory/cli/src/tbhbdev/alpha/agent/driver/decisions:lifecycle",
         "//factory/cli/src/tbhbdev/alpha/agent/driver/decisions:output",
     ],
@@ -186,7 +188,7 @@ cli_py_library(
         ":metadata",
         "//factory/cli/src/tbhbdev/alpha/agent:shims",
         "//factory/cli/src/tbhbdev/alpha/agent:transport",
-        "//factory/cli/src/tbhbdev/alpha/agent/decisions:remote",
+        "//factory/cli/src/tbhbdev/alpha/agent/decisions:remote_shell",
         "//factory/cli/src/tbhbdev/alpha/agent/driver/decisions:lifecycle",
         "//factory/cli/src/tbhbdev/alpha/agent/driver/decisions:output",
     ],
@@ -202,7 +204,8 @@ cli_py_library(
         "//factory/cli/src/tbhbdev/alpha:terminal",
         "//factory/cli/src/tbhbdev/alpha/agent:model",
         "//factory/cli/src/tbhbdev/alpha/agent:transport",
-        "//factory/cli/src/tbhbdev/alpha/agent/decisions:remote",
+        "//factory/cli/src/tbhbdev/alpha/agent/decisions:remote_host",
+        "//factory/cli/src/tbhbdev/alpha/agent/decisions:remote_shell",
         "//factory/cli/src/tbhbdev/alpha/agent/driver/decisions:steering",
     ],
 )
@@ -217,7 +220,7 @@ cli_py_library(
         "//factory/cli/src/tbhbdev/alpha:version_check",
         "//factory/cli/src/tbhbdev/alpha/agent:model",
         "//factory/cli/src/tbhbdev/alpha/agent:transport",
-        "//factory/cli/src/tbhbdev/alpha/agent/decisions:remote",
+        "//factory/cli/src/tbhbdev/alpha/agent/decisions:remote_shell",
         "//factory/cli/src/tbhbdev/alpha/agent/driver/decisions:launch",
     ],
 )
