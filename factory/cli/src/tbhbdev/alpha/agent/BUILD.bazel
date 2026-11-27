@@ -72,6 +72,7 @@ cli_py_library(
     imports = ["../../.."],
     visibility = ["//factory/cli:__subpackages__"],
     deps = [
+        ":admission",
         ":launcher",
         ":model",
         ":render",
@@ -367,6 +368,7 @@ cli_py_library(
     imports = ["../../.."],
     visibility = ["//factory/cli:__subpackages__"],
     deps = [
+        ":admission",
         ":arguments",
         ":driver",
         ":precheck",
@@ -385,6 +387,7 @@ cli_py_library(
     imports = ["../../.."],
     visibility = ["//factory/cli:__subpackages__"],
     deps = [
+        ":model",
         "//factory/cli/src/tbhbdev/alpha:worker_identity",
         "//factory/cli/src/tbhbdev/alpha/agent/decisions:config",
     ],

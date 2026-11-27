@@ -325,6 +325,7 @@ cli_py_test(
         ":agent_example",
         ":conftest",
         "//factory/cli/src/tbhbdev/alpha/agent:admission",
+        "//factory/cli/src/tbhbdev/alpha/agent:command",
         "//factory/cli/src/tbhbdev/alpha/agent:model",
         "@cli_pip//pytest",
     ],
