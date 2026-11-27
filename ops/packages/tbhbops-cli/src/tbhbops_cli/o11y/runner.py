@@ -6,7 +6,6 @@ import os
 import select
 import signal
 import subprocess  # nosec B404: this seam runs explicit argument vectors
-import sys
 import time
 from dataclasses import dataclass
 from typing import Protocol
@@ -46,10 +45,7 @@ class ProcessHandle:
 
     def kill(self) -> None:
         with contextlib.suppress(ProcessLookupError):
-            if sys.platform != "win32":
-                os.killpg(self.process.pid, signal.SIGKILL)
-            else:
-                self.process.kill()
+            os.killpg(self.process.pid, signal.SIGKILL)
 
 
 class SubprocessRunner:

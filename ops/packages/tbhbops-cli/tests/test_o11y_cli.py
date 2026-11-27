@@ -149,7 +149,7 @@ def run(fs: Fake, *args: str, uid: int = 0) -> tuple[int, str, str]:
 
 def test_fresh_and_rerun() -> None:
     fs = Fake()
-    code, out, err = run(fs, "--secrets-owner", "123:456")
+    code, out, err = run(fs)
     assert (code, err) == (0, "")
     assert out == "".join(f"init: generated {s.name}\n" for s in init.SECRETS) + (
         "init: wrote a placeholder alert_discord_webhook_url\n"
@@ -169,7 +169,7 @@ def test_fresh_and_rerun() -> None:
         + "a" * 40
         + "\n"
     )
-    assert fs.owners[DATA / "secrets/s3.env"] == (123, 456)
+    assert fs.owners[DATA / "secrets/s3.env"] == (0, 0)
     assert fs.modes[DATA / "secrets/s3.env"] == stat.S_IFREG | 0o600
     assert fs.files[DATA / "secrets" / init.WEBHOOK] == init.PLACEHOLDER
     assert fs.files[DATA / "secrets" / init.SMTP] == ""
@@ -211,12 +211,7 @@ def test_refusal_changes_nothing(status: str) -> None:
     fs.modes[DATA / "grafana/grafana.db"] = stat.S_IFREG
     fs.unlink(DATA / "secrets/rustfs.access_key")
     before = fs.files.copy(), fs.modes.copy(), fs.calls.copy()
-    code, out, err = run(
-        fs,
-        "--dry-run" if status == "unreadable" else "--secrets-owner",
-        *([] if status == "unreadable" else ["0:0"]),
-        uid=1 if status == "unreadable" else 0,
-    )
+    code, out, err = run(fs, "--dry-run", uid=1) if status == "unreadable" else run(fs)
     assert code == (3 if status == "unreadable" else 1)
     assert name in out + err
     assert (fs.files, fs.modes, fs.calls) == before
@@ -353,20 +348,6 @@ def test_io_errors_do_not_quote_exception_text(error: type[Exception]) -> None:
         "",
         f"tbhbops o11y init: init: Gather . failed: {error.__name__}\n",
     )
-
-
-@pytest.mark.parametrize("value", ["", "1", "1:2:3", "a:0", "0:-1", "\uff10:0", "0:"])
-def test_invalid_owner_is_usage(value: str) -> None:
-    with pytest.raises(SystemExit) as exc:
-        cli.parser().parse_args(
-            ["o11y", "init", "--data-dir", "/data", "--secrets-owner", value]
-        )
-    assert exc.value.code == 2
-
-
-def test_owner_diagnostic() -> None:
-    with pytest.raises(argparse.ArgumentTypeError, match=r"^expected UID:GID$"):
-        o11y.owner("bad")
 
 
 @pytest.mark.parametrize("argv", [["o11y"], ["o11y", "init"]])
@@ -612,15 +593,8 @@ def test_real_filesystem_refuses_symlinks_and_files_in_place_of_directories(
     assert stat.S_IMODE(target.stat().st_mode) == 0o600
 
 
-def test_effective_uid_and_unix_requirement(monkeypatch: pytest.MonkeyPatch) -> None:
-    if sys.platform != "win32":
-        assert o11y.effective_uid() == os.geteuid()
-    monkeypatch.setattr(sys, "platform", "win32")
-    assert o11y.effective_uid() == -1
-    with pytest.raises(CliError, match=r"^init filesystem operations require Unix$"):
-        o11y.LocalFilesystem().lstat(DATA)
-    with pytest.raises(CliError, match=r"^init filesystem operations require Unix$"):
-        o11y.LocalFilesystem().chown(DATA, 0, 0)
+def test_effective_uid() -> None:
+    assert o11y.effective_uid() == os.geteuid()
 
 
 @pytest.mark.parametrize("value", ["broken", "X" * 20 + " \n"])
@@ -1318,9 +1292,6 @@ def test_render_real_filesystem_and_new_seam_methods(tmp_path: Path) -> None:
     source, output = root / "source", root / "nested/output"
     render_fixture(fs, source)
     fs.write_atomic(source / "config/loki/raw-text", "\udc80", 0o644)
-    fs.write_atomic(
-        source / "config/loki/token-bytes", b"\xff @O11Y_DISK_RESERVE_GB@\n", 0o644
-    )
     fs.write_atomic(source / "config/loki/MANIFEST.sha256", b"stale", 0o644)
     assert render_run(fs, source=source, output=output) == (0, "", "")
     files = {
@@ -1332,6 +1303,9 @@ def test_render_real_filesystem_and_new_seam_methods(tmp_path: Path) -> None:
     } == files
     assert stat.S_IMODE((output / "release").stat().st_mode) == 0o700
     assert fs.read_bytes(output / "release/compose.yaml") == b"compose\r\n"
+    assert [data for path, data in files.items() if path.name == "raw-text"] == [
+        b"\x80"
+    ]
     binary = root / "binary"
     fs.write_atomic(binary, b"\x00\xff\r\n", 0o640)
     assert fs.read_bytes(binary) == b"\x00\xff\r\n"
@@ -1524,20 +1498,6 @@ def test_render_missing_compose_before_writing(name: str, directory: bool) -> No
         1,
         "",
         f"tbhbops o11y render: render: source is missing {name}\n",
-    )
-    assert fs.calls == []
-
-
-@pytest.mark.parametrize("value", ["", "sensitive-port"])
-def test_render_postgres_before_writing(value: str) -> None:
-    fs = Fake()
-    assert render_run(fs, RENDER_ENV | {"O11Y_POSTGRES_PORT": value}) == (
-        1,
-        "",
-        (
-            "tbhbops o11y render: O11Y_POSTGRES_PORT is no longer supported; "
-            "PostgreSQL moved out of the stack\n"
-        ),
     )
     assert fs.calls == []
 
@@ -2827,11 +2787,8 @@ def test_local_socket_symlinked_parent(
 
 
 def test_effective_gid(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(sys, "platform", "linux")
     monkeypatch.setattr(os, "getegid", lambda: 456)
     assert filesystem.effective_gid() == 456
-    monkeypatch.setattr(sys, "platform", "win32")
-    assert filesystem.effective_gid() == -1
 
 
 def test_process_handle_kill(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -2840,24 +2797,13 @@ def test_process_handle_kill(monkeypatch: pytest.MonkeyPatch) -> None:
     class Process:
         pid = 123
 
-        def kill(self) -> None:
-            calls.append("windows-kill")
-
     def killpg(pid: int, sig: int) -> None:
         calls.append(("killpg", pid, sig))
 
     monkeypatch.setattr(os, "killpg", killpg)
     handle = ProcessHandle(cast("subprocess.Popen[bytes]", Process()))
-    monkeypatch.setattr(sys, "platform", "linux")
     handle.kill()
-    assert calls[-1] == ("killpg", 123, 9)
-    monkeypatch.setattr(sys, "platform", "win32")
-    handle.kill()
-    assert calls[-1] == "windows-kill"
-    monkeypatch.setattr(sys, "platform", "linux")
-    previous = list(calls)
-    handle.kill()
-    assert calls == [*previous, ("killpg", 123, 9)]
+    assert calls == [("killpg", 123, 9)]
 
     def vanished(_pid: int, _sig: int) -> None:
         raise ProcessLookupError

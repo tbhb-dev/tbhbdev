@@ -9,18 +9,20 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 import yaml
-
 from tbhbops.o11y import smoke_access as access
 from tbhbops.o11y import smoke_capacity as capacity
 from tbhbops.o11y import smoke_export as export
 from tbhbops.o11y import smoke_query as query
 from tbhbops.o11y.receipt import decode
+
 from tbhbops_cli.o11y import smoke_checks as checks
 from tbhbops_cli.o11y.http import BodyTooLargeError, TransportError
-from tbhbops_cli.o11y.smoke import SmokeError, poll, present, require
+from tbhbops_cli.o11y.polling import poll
+from tbhbops_cli.o11y.smoke import SmokeError, present, require
 
 if TYPE_CHECKING:
     from tbhbops.o11y.validate import Document
+
     from tbhbops_cli.o11y.smoke import Smoke
 
 CAPACITY_TIMEOUT = 120
@@ -165,7 +167,7 @@ def history_ok(rows: list[Document]) -> bool:
     )
 
 
-def panel_ok(title: str, rows: list[Document] | None) -> bool:  # noqa: PLR0911
+def panel_ok(title: str, rows: list[Document] | None) -> bool:
     try:
         if rows is None:
             return False

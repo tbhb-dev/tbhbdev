@@ -4,7 +4,7 @@
     tbhbops connect token-commands [--host H ...] [--ops-session H]
                                   [--runner-vm H ...] [--dry-run]
     tbhbops connect check [--host H] [--ops-controller] [--inventory PATH]
-    tbhbops o11y init --data-dir PATH [--secrets-owner UID:GID] [--dry-run]
+    tbhbops o11y init --data-dir PATH [--dry-run]
     tbhbops o11y render --source PATH --out PATH [--config-root ABSOLUTE_PATH]
     tbhbops o11y validate --source PATH
 
@@ -213,11 +213,6 @@ def parser() -> argparse.ArgumentParser:
         type=Path,
         default=Path("dns-smoke-artifacts"),
         help="the directory for failure logs; default dns-smoke-artifacts",
-    )
-    smoke.add_argument(
-        "--dedicated-engine",
-        metavar="DOCKER_HOST",
-        help=("the dedicated Docker engine URI, such as unix:///run/dind/docker.sock"),
     )
     o11y.add_parser(groups)
     s3.add_parser(groups)

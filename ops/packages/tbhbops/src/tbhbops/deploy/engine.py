@@ -6,7 +6,6 @@ import os
 import selectors
 import signal
 import subprocess  # nosec B404: argv only, empty environment, no shell
-import sys
 import tempfile
 import time
 from contextlib import suppress
@@ -52,7 +51,7 @@ class CommandError(RuntimeError):
     """A child failed, with its potentially secret-bearing output withheld."""
 
 
-def health_require(condition: bool, reason: str) -> None:  # noqa: FBT001  # readiness predicate
+def health_require(condition: bool, reason: str) -> None:  # readiness predicate
     """Retry unhealthy containers without swallowing safety refusals from probes."""
     if not condition:
         raise CommandError(reason)
@@ -127,7 +126,7 @@ def capture(
 
 @dataclass(frozen=True)
 class Command:
-    def __call__(  # noqa: PLR0913  # Separate stream caps and unit cleanup are caller budgets.
+    def __call__(  # Separate stream caps and unit cleanup are caller budgets.
         self,
         argv: list[str],
         data: bytes | None = None,
@@ -173,10 +172,7 @@ class Command:
 
     def terminate(self, process: subprocess.Popen[bytes], unit: str | None) -> None:
         with suppress(ProcessLookupError):
-            if sys.platform != "win32":
-                os.killpg(process.pid, signal.SIGKILL)
-            else:
-                process.kill()
+            os.killpg(process.pid, signal.SIGKILL)
         process.wait()
         if unit is not None:
             self.stop_unit(unit)
@@ -257,7 +253,7 @@ class Engine:
             f"RuntimeMaxSec={PARSE_TIMEOUT_S}",
             "BindReadOnlyPaths=" + " ".join(binds),
         ):
-            argv.append("--property=" + property_)  # noqa: PERF401  # ordered unit properties
+            argv.append("--property=" + property_)  # ordered unit properties
         argv.extend(self.compose(release, source, env))
         argv.extend(("config", "--no-env-resolution", "--format", "json"))
         return decode(

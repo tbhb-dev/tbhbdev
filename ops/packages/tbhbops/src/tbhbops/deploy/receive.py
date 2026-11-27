@@ -76,17 +76,13 @@ class Signals:
         self.stopped = True
 
     def start(self) -> None:
-        if sys.platform != "win32":
-            for number, handler in (
-                (signal.SIGHUP, signal.SIG_IGN),
-                (signal.SIGPIPE, signal.SIG_IGN),
-                (signal.SIGTERM, self.stop),
-                (signal.SIGINT, self.stop),
-            ):
-                self.original[number] = signal.signal(number, handler)
-        else:
-            message = "receive requires Unix"
-            raise RefusalError(message)
+        for number, handler in (
+            (signal.SIGHUP, signal.SIG_IGN),
+            (signal.SIGPIPE, signal.SIG_IGN),
+            (signal.SIGTERM, self.stop),
+            (signal.SIGINT, self.stop),
+        ):
+            self.original[number] = signal.signal(number, handler)
 
     def restore(self) -> None:
         for number, handler in self.original.items():
@@ -510,6 +506,4 @@ def receive(out: TextIO, *, rollback: str | None = None) -> int:
 
 
 def effective_uid() -> int:
-    if sys.platform != "win32":
-        return os.geteuid()
-    return -1
+    return os.geteuid()

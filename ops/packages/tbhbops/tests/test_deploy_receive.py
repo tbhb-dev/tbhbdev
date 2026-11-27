@@ -11,7 +11,6 @@ from unittest.mock import Mock, call, patch
 lazy from pathlib import Path
 
 import pytest
-
 from tbhbops.deploy import engine as engine_module
 from tbhbops.deploy import filesystem as fs
 from tbhbops.deploy import receive
@@ -613,13 +612,6 @@ def test_request_identity_and_version(
     assert json.loads(output.getvalue())["release"] is None
 
 
-def test_unix_guard(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(receive.sys, "platform", "win32")
-    assert receive.effective_uid() == -1
-    with pytest.raises(RefusalError):
-        receive.Signals().start()
-
-
 def test_init_and_unchanged_secret_skip_recreate(receiver: receive.Receiver) -> None:
     executable = receiver.service.root / "init"
     executable.write_bytes(b"fixture")
@@ -693,9 +685,7 @@ def test_exact_result_record(
     flush.assert_called_once_with()
 
 
-def test_signal_install_and_restore_exact_handlers(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
+def test_signal_install_and_restore_exact_handlers() -> None:
     if sys.platform == "win32":
         pytest.skip("Unix signals required")
     signals = receive.Signals()
@@ -730,9 +720,6 @@ def test_signal_install_and_restore_exact_handlers(
     assert signals.stopped is True
     with pytest.raises(CommandError, match=r"^stop signal$"):
         signals.check()
-    monkeypatch.setattr(receive.sys, "platform", "win32")
-    with pytest.raises(RefusalError, match=r"^receive requires Unix$"):
-        receive.Signals().start()
 
 
 @pytest.mark.parametrize(
