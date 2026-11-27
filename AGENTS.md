@@ -3,6 +3,12 @@
 This is `tbhb-dev/tbhbdev`, the public Apache-2.0 monorepo for `tbhb-dev`.
 This repository contains its Bazel rules and checks. Only the checks present here apply until the rules import arrives.
 
+## Build rules
+
+Write the simplest code that serves the actual callers. The operator and the agent account are the two committers. The hosts and repositories belong to the team, and its tools produce the inputs.
+
+Leave out code for cases outside that scope. Skip options, layers, and abstractions with one user. Record any doubt about whether a case can occur under Decisions in the PR body.
+
 ## Layout and dependency rule
 
 - `factory/` holds internal factory projects, one folder directly under `factory/` per project (`factory/<project>/`, such as `factory/tbhbdev/`) with no grouping folders. Each project's `README.md` and `OWNERS` describe what the project is, what it depends on, and list its owners.

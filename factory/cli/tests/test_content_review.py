@@ -10,7 +10,10 @@ pytestmark = pytest.mark.usefixtures("review_cue")  # noqa: V107
 
 SUMMARY = "## Summary\n\nThe cache preserves the last saved value.\n"
 VERIFICATION = "\n## Verification\n\n- Read the cache implementation.\n"
-FINDING = "- F1: P1 correctness The cache returns stale values.\n"
+FINDING = (
+    "- F1: P1 correctness The cache returns stale values. "
+    "Occurs when: a caller saves a record.\n"
+)
 DEBT = "- F1: P2 design Rename the fixture. It also serves the CLI.\n"
 
 
@@ -174,8 +177,18 @@ def test_review_refuses_standalone_verdict_line(verdict: str) -> None:
 
 @pytest.mark.parametrize("evidence", ["src/app.py:4", "`src/app.py:4`"])
 def test_review_accepts_path_line_evidence(evidence: str) -> None:
-    body = body_with("Findings", f"- F1: P1 correctness Fix the cache at {evidence}.")
+    body = body_with(
+        "Findings",
+        f"- F1: P1 correctness {evidence} returns stale values. "
+        "Occurs when: a caller saves a record.",
+    )
     assert not content.check_review(body, event="REQUEST_CHANGES")
+
+
+@pytest.mark.parametrize("clause", ["", " Occurs when:", " Occurs when: ."])
+def test_p1_requires_a_nonempty_occurs_when_clause(clause: str) -> None:
+    body = body_with("Findings", f"- F1: P1 correctness The cache is stale.{clause}")
+    assert "Occurs when:" in content.check_review(body, event="REQUEST_CHANGES")[0]
 
 
 @pytest.mark.parametrize(
