@@ -7,7 +7,6 @@ load("@rules_python//python:defs.bzl", "py_binary", "py_library")
 # gazelle:python_generation_mode project
 # gazelle:python_default_visibility //ops/packages:__subpackages__
 
-# Generate the entry point and metadata that uv installs from pyproject.toml.
 genrule(
     name = "console_files",
     srcs = ["//ops/packages:tbhbops-mcp/pyproject.toml"],

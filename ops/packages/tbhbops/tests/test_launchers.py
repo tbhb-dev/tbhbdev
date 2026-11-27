@@ -46,16 +46,14 @@ def repo(tmp_path: Path) -> Path:
     return copy
 
 
-def uv_bin() -> str:
-    if "TEST_SRCDIR" in os.environ:
-        # rules_python places wheel scripts beside site-packages.
-        executable = "uv.exe" if sys.platform == "win32" else "uv"
-        return str(Path(uv.__file__).parents[2] / "bin" / executable)
-    return uv.find_uv_bin()
-
-
 def uv_run(repo: Path, script: str, *args: str) -> subprocess.CompletedProcess[str]:
     """Run tools/<script> through uv, offline, with the repo's own uv cache."""
+    if "TEST_SRCDIR" in os.environ:
+        # rules_python places wheel scripts beside site-packages.
+        name = "uv.exe" if sys.platform == "win32" else "uv"
+        executable = str(Path(uv.__file__).parents[2] / "bin" / name)
+    else:
+        executable = uv.find_uv_bin()
     # Nothing from the test's own environment that picks a Python, a package
     # or a uv setting: mutmut's PYTHONPATH would import its mutated tbhbops
     # ahead of the copy.
@@ -72,7 +70,7 @@ def uv_run(repo: Path, script: str, *args: str) -> subprocess.CompletedProcess[s
     }
     return subprocess.run(
         [
-            uv_bin(),
+            executable,
             "run",
             "--quiet",
             "--python",

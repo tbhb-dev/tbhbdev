@@ -1,7 +1,6 @@
 # SPDX-License-Identifier: Apache-2.0
 # Copyright Tony Burns
 
-# The ops Python tests also exercise the checked-in deployment assets.
 package(default_visibility = ["//ops/packages:__subpackages__"])
 
 filegroup(
