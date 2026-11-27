@@ -204,6 +204,7 @@ cli_py_library(
         ":codex_trust",
         ":gh_shim",
         ":identity",
+        ":install_statusline_policy",
         ":repo",
         "//factory/cli/src/tbhbdev:plugins",
         "@cli_pip//tomlkit",
@@ -512,6 +513,13 @@ cli_py_library(
 cli_py_library(
     name = "worktree_sweep",
     srcs = ["worktree_sweep.py"],
+    imports = ["../.."],
+    visibility = ["//factory/cli:__subpackages__"],
+)
+
+cli_py_library(
+    name = "install_statusline_policy",
+    srcs = ["install_statusline_policy.py"],
     imports = ["../.."],
     visibility = ["//factory/cli:__subpackages__"],
 )

@@ -1176,6 +1176,7 @@ cli_py_test(
     deps = [
         ":conftest",
         "//factory/cli/src/tbhbdev/alpha:install",
+        "//factory/cli/src/tbhbdev/alpha:install_statusline_policy",
         "@cli_pip//pytest",
     ],
 )
@@ -2131,6 +2132,15 @@ cli_py_test(
         ":conftest",
         "//factory/cli/src/tbhbdev/alpha:__init__",
         "//factory/cli/src/tbhbdev/alpha:worktree_sweep",
+        "@cli_pip//pytest",
+    ],
+)
+
+cli_py_test(
+    name = "test_alpha_install_statusline_policy",
+    srcs = ["test_alpha_install_statusline_policy.py"],
+    deps = [
+        "//factory/cli/src/tbhbdev/alpha:install_statusline_policy",
         "@cli_pip//pytest",
     ],
 )
