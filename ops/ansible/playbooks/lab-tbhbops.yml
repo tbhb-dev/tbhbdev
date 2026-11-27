@@ -1,0 +1,12 @@
+---
+# Give the lab nodes' agent account its own tbhbops, so `tbhbops connect
+# check` can prove each node's Connect token. Run with --check first,
+# then use --limit to select the nodes to update.
+- name: Install tbhbops for the agent account on the lab nodes
+  hosts: lab
+  gather_facts: true
+  become: true
+  roles:
+    - role: tbhbops_tool
+      vars:
+        tbhbops_tool_user: agent

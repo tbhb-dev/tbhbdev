@@ -1,0 +1,16 @@
+---
+- name: Converge
+  hosts: all
+  become: true
+  tasks:
+    - name: Install the revert helper
+      ansible.builtin.include_role:
+        name: host_hardening
+        tasks_from: prepare
+
+    - name: Apply the role without loading it
+      ansible.builtin.include_role:
+        name: host_hardening
+      vars:
+        host_hardening_lab_subnet: 198.51.100.128/25
+        host_hardening_load: false

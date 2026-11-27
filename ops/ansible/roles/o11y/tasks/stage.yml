@@ -1,0 +1,48 @@
+---
+- name: stage | Compute the release input digest
+  ansible.builtin.set_fact:
+    o11y_input_digest: >-
+      {{ lookup('ansible.builtin.template', 'environment.json.j2') | hash('sha256') }}
+
+- name: stage | Look for a completed release
+  ansible.builtin.stat:
+    path: "{{ o11y_root }}/releases/{{ o11y_release_id }}/.inputs.sha256"
+  register: o11y_sealed
+
+- name: stage | Read the completed release digest
+  ansible.builtin.slurp:
+    src: "{{ o11y_root }}/releases/{{ o11y_release_id }}/.inputs.sha256"
+  register: o11y_seal
+  when: o11y_sealed.stat.exists
+
+- name: stage | Refuse changed inputs for an existing release
+  ansible.builtin.assert:
+    that: (o11y_seal.content | b64decode | trim) == o11y_input_digest
+    fail_msg: Release inputs changed. Use a new ops commit as o11y_release_id.
+    quiet: true
+  when: o11y_sealed.stat.exists
+
+- name: stage | Render a new release
+  ansible.builtin.include_tasks: render.yml
+  when: not o11y_sealed.stat.exists
+
+- name: stage | Validate without printing environment values
+  ansible.builtin.command:
+    argv: [docker, compose, config, -q]
+    chdir: "{{ o11y_root }}/releases/{{ o11y_release_id }}"
+  changed_when: false
+  no_log: true
+  diff: false
+
+- name: stage | Pull the release images
+  ansible.builtin.command:
+    argv: [docker, compose, pull]
+    chdir: "{{ o11y_root }}/releases/{{ o11y_release_id }}"
+  changed_when: false
+- name: stage | Seal the release inputs
+  ansible.builtin.copy:
+    content: "{{ o11y_input_digest }}\n"
+    dest: "{{ o11y_root }}/releases/{{ o11y_release_id }}/.inputs.sha256"
+    owner: root
+    group: root
+    mode: '0600'

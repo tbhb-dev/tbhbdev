@@ -1,0 +1,87 @@
+---
+- name: Read the Tailscale IPv4 address
+  ansible.builtin.command:
+    argv: [tailscale, ip, "-4"]
+  register: temporal_dev_address
+  changed_when: false
+  check_mode: false
+
+- name: Create the Temporal system group
+  ansible.builtin.group:
+    name: temporal-dev
+    system: true
+
+- name: Create the Temporal system user
+  ansible.builtin.user:
+    name: temporal-dev
+    group: temporal-dev
+    system: true
+    create_home: false
+    home: "{{ temporal_dev_data }}"
+    shell: /usr/sbin/nologin
+
+- name: Mount the Temporal datastore
+  ansible.builtin.include_role:
+    name: lvm_volume
+  vars:
+    lvm_volume_vg: data-vg
+    lvm_volume_lv: temporal-dev
+    lvm_volume_size: 20G
+    lvm_volume_path: "{{ temporal_dev_data }}"
+    lvm_volume_owner: temporal-dev
+    lvm_volume_group: temporal-dev
+    lvm_volume_mode: "0700"
+
+- name: Create the versioned CLI directory
+  ansible.builtin.file:
+    path: "{{ temporal_dev_install }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Download the pinned Temporal CLI
+  ansible.builtin.get_url:
+    url: https://github.com/temporalio/cli/releases/download/v{{ temporal_dev_version }}/{{ temporal_dev_archive }}
+    dest: /usr/local/src/{{ temporal_dev_archive }}
+    checksum: sha256:{{ temporal_dev_sha256 }}
+    owner: root
+    group: root
+    mode: "0644"
+
+- name: Install the Temporal CLI
+  ansible.builtin.unarchive:
+    src: /usr/local/src/{{ temporal_dev_archive }}
+    dest: "{{ temporal_dev_install }}"
+    include: [temporal]
+    creates: "{{ temporal_dev_install }}/temporal"
+    remote_src: true
+    owner: root
+    group: root
+    mode: "0755"
+  when: not ansible_check_mode
+  notify: Restart Temporal dev
+
+- name: Install the Temporal dev unit
+  ansible.builtin.template:
+    src: temporal-dev.service.j2
+    dest: /etc/systemd/system/temporal-dev.service
+    owner: root
+    group: root
+    mode: "0644"
+  register: temporal_dev_unit
+  notify: Restart Temporal dev
+
+- name: Enable and start Temporal dev
+  ansible.builtin.systemd_service:
+    name: temporal-dev.service
+    daemon_reload: true
+    enabled: true
+    state: started
+  when: not (ansible_check_mode and temporal_dev_unit is changed)
+
+- name: Apply the Temporal unit before publishing
+  ansible.builtin.meta: flush_handlers
+
+- name: Publish the named Tailscale Services
+  ansible.builtin.import_tasks: serve.yml

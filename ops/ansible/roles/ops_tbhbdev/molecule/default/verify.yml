@@ -1,0 +1,56 @@
+---
+- name: Verify
+  hosts: all
+  vars:
+    ops_tbhbdev_home: /home/ops
+    ops_tbhbdev_mise: /usr/local/bin/mise
+    ops_tbhbdev_connect_endpoints: [https://op-connect.example.example.invalid, https://connect.other.example.invalid]
+  tasks:
+    - name: Check the expanded config and endpoint order
+      ansible.builtin.command:
+        argv:
+          - python3
+          - -c
+          - |
+              import pathlib, tomllib
+              path = pathlib.Path('/'.join(('/home/ops/.config', 'tbhbdev', 'config.toml')))
+              config = tomllib.loads(path.read_text())
+              assert config['connect']['endpoints'] == [
+                  'https://op-connect.example.example.invalid', 'https://connect.other.example.invalid']
+              assert path.stat().st_mode & 0o777 == 0o600
+      changed_when: false
+    - name: Check unavailable Tailscale and missing suffix failures
+      ansible.builtin.include_tasks: "{{ playbook_dir }}/../../../../molecule/tasks/verify-connect-failure.yml"
+      loop:
+        - '{"BackendState": "Stopped", "MagicDNSSuffix": "example.example.invalid"}'
+        - '{"BackendState": "Running", "MagicDNSSuffix": ""}'
+        - '{"BackendState": "Running"}'
+        - not-json
+      loop_control:
+        loop_var: connect_fixture_status
+    - name: Remove the lookup fixture to require full names to work without Tailscale
+      ansible.builtin.file:
+        path: /usr/local/bin/tailscale
+        state: absent
+    - name: Supply the macOS platform fact for the isolated tools fixture
+      ansible.builtin.set_fact:
+        ansible_facts:
+          system: Darwin
+    - name: Reapply with full names and no Tailscale command
+      ansible.builtin.include_role:
+        name: ops_tbhbdev
+    - name: Check the full names rendered unchanged
+      ansible.builtin.command:
+        argv:
+          - python3
+          - -c
+          - |
+              import pathlib, tomllib
+              config = tomllib.loads(pathlib.Path('/'.join(('/home/ops/.config', 'tbhbdev', 'config.toml'))).read_text())
+              assert config['connect']['endpoints'] == [
+                  'https://op-connect.example.example.invalid', 'https://connect.other.example.invalid']
+      changed_when: false
+    - name: Check a missing Tailscale command fails clearly for short names
+      ansible.builtin.include_tasks: "{{ playbook_dir }}/../../../../molecule/tasks/verify-connect-failure.yml"
+      vars:
+        connect_fixture_status: '{}'

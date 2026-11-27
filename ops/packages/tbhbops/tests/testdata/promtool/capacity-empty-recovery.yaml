@@ -1,0 +1,70 @@
+---
+evaluation_interval: 1m
+rule_files:
+  - rules.yaml
+tests:
+  - alert_rule_test:
+      - alertname: o11y-capacity-exhaustion
+        eval_time: 12h30m
+        exp_alerts:
+          - exp_annotations: {}
+            exp_labels:
+              agent_account: primary
+              agent_plan_vendor: anthropic
+              agent_plan_window: 7d
+              env: prd
+              service: agent-capacity
+              severity: high
+      - alertname: o11y-capacity-exhaustion
+        eval_time: 12h45m
+        exp_alerts: []
+      - alertname: o11y-capacity-exhaustion
+        eval_time: 13h
+        exp_alerts: []
+    input_series:
+      - series: "agent_capacity_window_utilization_ratio{agent_plan_vendor=\"\
+          anthropic\",agent_plan_window=\"\
+          7d\",agent_account=\"primary\",host_name=\"\
+          fixture-a\",agent_capacity_source=\"\
+          claude_statusline\",agent_capacity_freshness=\"\
+          fresh\"}"
+        values: 0+0.003x150 stale
+      - series: "agent_capacity_window_reset_time_seconds{agent_plan_vendor=\"\
+          anthropic\",agent_plan_window=\"\
+          7d\",agent_account=\"primary\",host_name=\"\
+          fixture-a\",agent_capacity_source=\"\
+          claude_statusline\",agent_capacity_freshness=\"\
+          fresh\"}"
+        values: 604800x150 stale
+    interval: 5m
+    name: firing exhaustion clears when query
+      returns nothing
+  - alert_rule_test:
+      - alertname: o11y-capacity-stale
+        eval_time: 35m
+        exp_alerts:
+          - exp_annotations: {}
+            exp_labels:
+              agent_account: primary
+              agent_plan_vendor: anthropic
+              agent_plan_window: other
+              env: prd
+              service: agent-capacity
+              severity: warning
+      - alertname: o11y-capacity-stale
+        eval_time: 6h
+        exp_alerts: []
+      - alertname: o11y-capacity-stale
+        eval_time: 6h1m
+        exp_alerts: []
+    input_series:
+      - series: "agent_capacity_window_utilization_ratio{agent_plan_vendor=\"\
+          anthropic\",agent_plan_window=\"\
+          7d\",agent_account=\"primary\",host_name=\"\
+          fixture-a\",agent_capacity_source=\"\
+          claude_statusline\",agent_capacity_freshness=\"\
+          fresh\"}"
+        values: 0.9 stale
+    interval: 1m
+    name: firing stale clears when query returns
+      nothing

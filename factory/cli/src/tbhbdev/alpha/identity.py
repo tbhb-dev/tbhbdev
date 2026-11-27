@@ -100,7 +100,6 @@ import hashlib
 import json
 import os
 import re
-import shlex
 import subprocess  # nosec B404
 import sys
 import time
@@ -109,10 +108,11 @@ import uuid
 from contextlib import contextmanager
 from dataclasses import dataclass, replace
 from datetime import UTC, datetime
-from itertools import dropwhile, islice, takewhile
+from itertools import islice, takewhile
 from pathlib import Path, PurePosixPath
 from typing import TYPE_CHECKING, cast
 
+from tbhbdev.alpha import identity_commands
 from tbhbdev.alpha.process import process_row
 from tbhbdev.alpha.repo import git, hook_cwd, in_tbhb_dev, read_hook_stdin
 
@@ -159,8 +159,6 @@ START_RE = re.compile(r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z", re.ASCII)
 LAUNCH_FILE = "launch.json"
 CODEX_MODEL = re.compile(r"(gpt-|o\d|codex-)")
 THREAD_ID = re.compile(r"[0-9a-fA-F-]{8,64}")
-# A control character, or the octal escape macOS ps writes for one.
-CONTROL = re.compile(r"\\(?:0[0-3][0-7]|177)|[\x00-\x1f\x7f]")
 
 # Only used by the optional rewrite path, which stays off unless
 # ASCM_AGENT_REWRITE=1 is set at hook time (it costs a permission prompt).
@@ -846,21 +844,6 @@ def record_child(data: Json, effort: str | None) -> str:
     return agent
 
 
-def flat(cmd: str) -> str:
-    r"""A command with each control character, or ps's octal escape of one, as a space.
-
-    ps shows a multi-line command differently by platform: macOS writes a
-    newline as ``\012`` and Linux writes it as a space. Both reduce to this.
-    """
-    return CONTROL.sub(" ", cmd)
-
-
-def cmd_hashes(cmd: str) -> list[str]:
-    """SHA-256 of a command as given, stripped (the harness may trim it) and flat."""
-    forms = (cmd, cmd.strip(), flat(cmd), flat(cmd).strip())
-    return sorted({hashlib.sha256(c.encode()).hexdigest() for c in forms})
-
-
 def rec_ts(rec: Json) -> float:
     """A stored record's timestamp (our own store: trusted to be a number)."""
     ts = rec.get("ts", 0)
@@ -891,7 +874,7 @@ def record_command(
     name = f"{uuid.uuid4().hex}.json"
     rec: Json = {
         "agent": agent,
-        "cmd": cmd_hashes(cmd),
+        "cmd": identity_commands.cmd_hashes(cmd),
         "ts": time.time(),
         "done": None,
     }
@@ -934,7 +917,7 @@ def finish_command(
     if user_only and not user_store().exists():
         return
     state = None if user_only else state_dir(cwd)
-    hashes, done = set(cmd_hashes(cmd)), time.time()
+    hashes, done = set(identity_commands.cmd_hashes(cmd)), time.time()
     stores = [(user_store(), write_private_json)]
     if state:
         stores.insert(0, (state, write_json))
@@ -1001,22 +984,6 @@ def ancestry(pid: int | None = None, limit: int = ANCESTRY_LIMIT) -> list[str]:
     return out
 
 
-def command_candidates(cmdline: str) -> list[str]:
-    """Strings that could equal ``tool_input.command`` in one ancestor's command line.
-
-    Claude Code (2.1.316) runs ``<shell> -c 'source <snapshot> ... &&
-    eval '<command>' < /dev/null && pwd -P >| <file>'``.
-    ps flattens argv, but the ``-c`` argument is itself shell text, so shlex
-    recovers the eval operand exactly (embedded single quotes survive the
-    ``'"'"'`` escape).
-    """
-    try:
-        tokens = shlex.split(cmdline)
-    except ValueError:
-        return []
-    return [tokens[i + 1] for i, tok in enumerate(tokens[:-1]) if tok == "eval"]
-
-
 class AttributionError(Exception):
     """A plausible child committer could not be identified safely."""
 
@@ -1053,8 +1020,8 @@ def match_command_agent(  # noqa: PLR0913 -- lookup inputs and commit policy
     hashes = {
         h
         for line in command_lines
-        for cand in command_candidates(line)
-        for h in cmd_hashes(cand)
+        for cand in identity_commands.command_candidates(line)
+        for h in identity_commands.cmd_hashes(cand)
     }
     agents = {as_str(rec.get("agent")) for rec in records if hashes & rec_hashes(rec)}
     if len(agents) == 1:
@@ -1170,82 +1137,6 @@ def edit_paths_from_bash(resp: object) -> list[str]:
     return [p for p in dict.fromkeys(walk_paths(diff)) if p != "/dev/null"]
 
 
-# Git commands that rewrite work-tree files from a commit or the stash.
-MOVING_GIT = frozenset(
-    {
-        "am",
-        "checkout",
-        "cherry-pick",
-        "merge",
-        "pull",
-        "rebase",
-        "reset",
-        "restore",
-        "revert",
-        "stash",
-        "switch",
-    }
-)
-# Commands that write no work-tree content, so they cannot hide an edit.
-QUIET_GIT = frozenset({"branch", "diff", "fetch", "log", "rev-parse", "show", "status"})
-QUIET_TOOLS = frozenset(
-    {"cat", "cd", "echo", "grep", "head", "ls", "pwd", "rg", "tail", "true", "wc"}
-)
-SEGMENT_BREAKS = re.compile(r"&&|\|\||[;|&\n]")
-# A command or process substitution can run any command.
-SUBSTITUTION = re.compile(r"\$\(|`|[<>]\(")
-# Leading ``VAR=value`` words only set the environment.
-ASSIGNMENT = re.compile(r"[A-Za-z_]\w*=")
-# ``git rebase --exec`` runs arbitrary commands between the replayed commits.
-EXEC_FLAGS = frozenset({"-x", "--exec"})
-# Redirects that write nothing: ``2>&1`` and ``>/dev/null``.
-HARMLESS_REDIRECT = re.compile(r"\d*>&\d+|\d*>>?\s*/dev/null")
-
-
-def git_verb(words: list[str]) -> str:
-    """The subcommand of ``git``, skipping its global options."""
-    i = 1
-    while i < len(words) and words[i].startswith("-"):
-        i += 2 if words[i] in {"-C", "-c"} else 1
-    return words[i] if i < len(words) else ""
-
-
-def segment_kind(segment: str) -> str:
-    """``move``, ``quiet`` or ``other`` for one simple command."""
-    # The replacement text never holds ">", so mutating it cannot change the result.
-    if ">" in HARMLESS_REDIRECT.sub("", segment):  # pragma: no mutate
-        return "other"
-    try:
-        words = shlex.split(segment)
-    except ValueError:
-        return "other"
-    words = list(dropwhile(ASSIGNMENT.match, words))
-    if not words:
-        return "quiet"
-    if words[0] != "git":
-        return "quiet" if words[0] in QUIET_TOOLS else "other"
-    verb = git_verb(words)
-    if verb == "rebase" and EXEC_FLAGS.intersection(words):
-        return "other"
-    return "move" if verb in MOVING_GIT else "quiet" if verb in QUIET_GIT else "other"
-
-
-def moves_work_tree(cmd: object) -> bool:
-    """Whether a command only moves the work tree with git.
-
-    True when it runs a work-tree-moving git command and every other part is
-    read-only. Any other command could have written content, so a line that
-    mixes the two keeps its receipts.
-    """
-    if not isinstance(cmd, str):
-        return False
-    if SUBSTITUTION.search(cmd):
-        return False
-    plain = HARMLESS_REDIRECT.sub("", cmd)
-    kinds = {segment_kind(s) for s in SEGMENT_BREAKS.split(plain)}
-    return "move" in kinds and "other" not in kinds
-
-
 def load_edits(repo: Repo, root: str) -> list[tuple[Path, Json]]:
     """Unconsumed edit receipts for a root session."""
     out = []
@@ -1286,7 +1177,7 @@ def write_bash_edits(
 ) -> None:
     """Edit receipts for the paths in a Bash result, unless git only moved them."""
     paths = edit_paths_from_bash(data.get("tool_response"))
-    if paths and not moves_work_tree(cmd):
+    if paths and not identity_commands.moves_work_tree(cmd):
         ident = claude_ident(data, env)
         for path in paths:
             write_edit(ident, path, cwd)
@@ -2090,7 +1981,6 @@ def enrich(ident: Ident, committer: Committer) -> Ident:
 LLM_LINE = re.compile(r"^(Generated-by|Assisted-by):[ \t]*(LLM\b.*)$", re.MULTILINE)
 LLM_LINES = re.compile(r"^(?:Generated-by|Assisted-by):[ \t]*LLM\b.*\n?", re.MULTILINE)
 AGENT_ATTR = re.compile(r"(?<![^\s;])(session|subagent)=([^\s;]+)")
-AMEND_FLAGS = {"--am", "--ame", "--amen", "--amend"}  # git takes unique prefixes
 PICKED_FROM = re.compile(
     r"^\(cherry picked from commit ([0-9a-f]{40})\)$", re.MULTILINE
 )
@@ -2242,23 +2132,9 @@ def add_trailers(
         msgfile.write_text(out + "\n")
 
 
-def amending(command_lines: list[str]) -> bool:
-    """Whether the nearest ``git ... commit`` in the ancestry has ``--amend``.
-
-    ps flattens argv, so a message word ``--amend`` (``-m "fix --amend"``)
-    reads as the flag too; the cost is only keeping the parent's trailers.
-    """
-    for line in command_lines:
-        tokens = line.split()
-        if tokens and Path(tokens[0]).name == "git" and "commit" in tokens:
-            args = tokens[tokens.index("commit") + 1 :]
-            return bool(AMEND_FLAGS & set(takewhile(lambda t: t != "--", args)))
-    return False
-
-
 def amended_trailers(top: Path) -> list[Trailer]:
     """HEAD's ``LLM`` trailers when this commit replaces HEAD (``--amend``)."""
-    if not amending(ancestry()):
+    if not identity_commands.amending(ancestry()):
         return []
     _, msg = git("log", "-1", "--format=%B", "HEAD", cwd=top)
     return llm_trailers(msg)

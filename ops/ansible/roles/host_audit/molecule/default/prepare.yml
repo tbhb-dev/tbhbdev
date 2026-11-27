@@ -1,0 +1,24 @@
+---
+# A lab node's accounts (the image's ubuntu user holds UID 1000): ops and tony with ssh directories, the agent
+# without one yet, and no ops-ro, which the role must skip.
+- name: Prepare
+  hosts: all
+  gather_facts: false
+  become: true
+  tasks:
+    - name: Create the accounts
+      ansible.builtin.user:
+        name: "{{ item.name }}"
+        uid: "{{ item.uid }}"
+        shell: /bin/bash
+      loop:
+        - {name: ops, uid: 2001}
+        - {name: tony, uid: 1001}
+        - {name: agent, uid: 24368}
+
+    - name: Give root, ops and tony ssh directories
+      ansible.builtin.file:
+        path: "{{ item }}/.ssh"
+        state: directory
+        mode: "0700"
+      loop: [/root, /home/ops, /home/example-operator]

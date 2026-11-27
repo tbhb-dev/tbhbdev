@@ -1,0 +1,10 @@
+---
+- name: Prepare
+  hosts: all
+  gather_facts: false
+  tasks:
+    - name: Create the tool account
+      ansible.builtin.user:
+        name: ops
+        create_home: true
+        shell: /bin/bash

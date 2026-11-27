@@ -1,0 +1,32 @@
+---
+argument_specs:
+  main:
+    short_description: Firewall the host with its own nftables table, and tighten sysctl and mounts
+    description:
+      - >-
+          Loads table inet host, which drops inbound traffic except loopback, replies, the tailnet,
+          ICMP essentials, DHCP, Tailscale's direct-path port, ssh from the Lab subnet on the lab
+          bridge, and DHCP and DNS for guests. The forward chain and Docker's and libvirt's tables
+          are untouched. Also writes a sysctl drop-in and hardens the /dev/shm and /boot mounts.
+          The playbook arms host-hardening-revert first (see prepare).
+    options:
+      host_hardening_lab_subnet:
+        type: str
+        description: The Lab network, the only source allowed to ssh to the node over the lab bridge.
+      host_hardening_lab_bridge:
+        type: str
+        default: br-lab
+        description: The bridge the lab nodes and their guests share.
+      host_hardening_libvirt_bridges:
+        type: list
+        elements: str
+        default: [virbr0]
+        description: >-
+          All libvirt bridges allowed guest DNS and DHCP. Each name must match ^[A-Za-z0-9_.-]+$.
+      host_hardening_load:
+        type: bool
+        default: true
+        description: Load the table and mount changes into the running system. False only in a container.
+  prepare:
+    short_description: Install the firewall's revert helper
+    options: {}

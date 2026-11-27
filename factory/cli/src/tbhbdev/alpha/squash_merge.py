@@ -48,15 +48,11 @@ fit 72 characters, or the script stops. The body comes from the PR body:
 The script never adds Signed-off-by or Co-authored-by, and it refuses a PR body
 that already holds one, whoever runs it.
 
-Agents run this script to merge once the PR is approved. Branch rulesets keep
-GitHub enforcing the human review. The script refuses a draft PR, one that is
-not open or not mergeable, and one whose merge state gh reports as blocked,
-behind, dirty or unknown (which includes failing required checks), and it names
-any failing checks. It leaves the rules themselves to GitHub. With
-``--expect-head SHA``, the PR's current head must match the approved commit.
-The merge passes the approved head, or the fetched head by default, as
-``--match-head-commit`` to guard against a later push. ``--dry-run`` previews
-the message and the command and merges nothing.
+The PR must be open, mergeable and approved. The review gate requires
+independent Reviews App approvals of the current head and successful checks.
+An optional ``--expect-head SHA`` must also match that head. The merge passes
+the verified head as ``--match-head-commit`` to guard against a later push.
+``--dry-run`` applies the same checks before previewing the merge.
 
 Before the preview or the merge, the final commit message goes through gitleaks
 under the host's private config (see ``tbhbdev.alpha.secret_scan``), and a
@@ -91,6 +87,7 @@ from urllib.parse import quote
 
 from tbhbdev.alpha import identity as agent_identity
 from tbhbdev.alpha import pull_request as pr
+from tbhbdev.alpha import review_gate
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
@@ -103,8 +100,24 @@ DEFAULT_MERGE_TITLES = ("Merge pull request", "Merge branch")
 GIT = "git"
 VIEW_FIELDS = (
     "title,body,headRefOid,baseRefName,state,isDraft,mergeable,"
-    "mergeStateStatus,statusCheckRollup,author,url,commits"
+    "mergeStateStatus,statusCheckRollup,author,url,commits,reviewDecision"
 )
+REVIEWS_APP = "tbhb-dev-agent-reviews"
+# gh pr view returns at most 100 commits and check contexts without page info.
+VIEW_LIMIT = 100
+REVIEWS_QUERY = """\
+query($owner: String!, $repo: String!, $number: Int!) {
+  repository(owner: $owner, name: $repo) {
+    pullRequest(number: $number) {
+      headRefOid reviewDecision
+      reviews(first: 100) {
+        pageInfo { hasNextPage }
+        nodes { id state body commit { oid } author { login __typename } }
+      }
+    }
+  }
+}
+"""
 QUEUE_QUERY = """\
 query($owner: String!, $repo: String!, $number: Int!, $preview: Boolean!) {
   repository(owner: $owner, name: $repo) {
@@ -121,12 +134,16 @@ query($owner: String!, $repo: String!, $number: Int!, $preview: Boolean!) {
   }
 }
 """
-# gh's merge states that mean "not now", with the reason GitHub already computed.
-REFUSED_STATES = frozenset({"BLOCKED", "BEHIND", "DIRTY", "DRAFT", "UNKNOWN"})
-FAILED_CONCLUSIONS = frozenset(
-    {"FAILURE", "CANCELLED", "TIMED_OUT", "ACTION_REQUIRED", "STARTUP_FAILURE"}
+# Both states mean GitHub reports passing commit status.
+PASSING_STATES = frozenset({"CLEAN", "HAS_HOOKS"})
+FAILED_CONCLUSIONS = (
+    "FAILURE",
+    "CANCELLED",
+    "TIMED_OUT",
+    "ACTION_REQUIRED",
+    "STARTUP_FAILURE",
 )
-FAILED_STATES = frozenset({"FAILURE", "ERROR"})
+FAILED_STATES = ("FAILURE", "ERROR")
 TOKEN = re.compile(r"(?:(`+).+?\1|\S)+")
 ITEM = re.compile(r"( *)([-*+]|\d+[.)]) +(\S.*)")
 # A table's delimiter row, such as ``|---|:--:|`` or ``--- | ---``.
@@ -152,11 +169,17 @@ class PullRequest:
     draft: bool
     mergeable: str
     merge_state: str
-    failing: list[str]
     renovate: bool = False
     url: object = None
     agent: bool = False
     base: str = ""
+    decision: object = None
+    rollup: object = None
+    commits: object = None
+
+
+class EvidenceError(ValueError):
+    """GitHub did not return usable evidence for the merge decision."""
 
 
 @dataclass(frozen=True)
@@ -522,10 +545,10 @@ def refusals(request: PullRequest) -> list[str]:
         reasons.append("the PR is a draft")
     if request.mergeable != "MERGEABLE":
         reasons.append(f"gh reports mergeable={request.mergeable}")
-    if request.merge_state in REFUSED_STATES:
+    if request.merge_state not in PASSING_STATES:
         reasons.append(f"gh reports mergeStateStatus={request.merge_state}")
-    if reasons and request.failing:
-        reasons.append("failing checks: " + ", ".join(request.failing))
+    if reasons and (failed := failing_checks(request.rollup)):
+        reasons.append("failing checks: " + ", ".join(failed))
     return reasons
 
 
@@ -546,6 +569,142 @@ def failing_checks(rollup: object) -> list[str]:
     return [name for entry in entries if (name := failed_name(entry))]
 
 
+def view_entries(value: object, field: str) -> list[object]:
+    """Read a gh pr view list only when it is known to be complete."""
+    if not isinstance(value, list) or len(value) >= VIEW_LIMIT:
+        message = f"gh pr view returned no usable {field} or truncated it"
+        raise EvidenceError(message)
+    return cast("list[object]", value)
+
+
+def check_entry(entry: object) -> review_gate.Check:
+    match cast("dict[str, object]", entry):
+        case {
+            "name": str(name),
+            "status": str(status),
+            "conclusion": (str() | None) as conclusion,
+        } if name and status:
+            return {
+                "name": name,
+                "status": status.lower(),
+                "conclusion": conclusion.lower() if conclusion else None,
+            }
+        case {"context": str(name), "state": str(state)} if name and state:
+            return {"name": name, "status": "completed", "conclusion": state.lower()}
+        case _:
+            message = "gh pr view returned an invalid statusCheckRollup entry"
+            raise EvidenceError(message)
+
+
+def commit_messages(entries: list[object], head: str) -> list[str]:
+    if not entries:
+        message = "gh pr view returned no commits for the current head"
+        raise EvidenceError(message)
+    messages: list[str] = []
+    oid = ""
+    for entry in entries:
+        match cast("dict[str, object]", entry):
+            case {
+                "oid": str(oid),
+                "messageHeadline": str(title),
+                "messageBody": str(body),
+                "authors": list(authors),
+            } if review_gate.HEAD_SHA.fullmatch(oid) and all(
+                isinstance((agent_identity.as_dict(row) or {}).get("email"), str)
+                for row in cast("list[object]", authors)
+            ):
+                messages.append(f"{title}\n\n{body}")
+            case _:
+                message = (
+                    "gh pr view returned a commit with invalid SHA, message or authors"
+                )
+                raise EvidenceError(message)
+    if oid != head:
+        message = "gh pr view commits do not end at the current head"
+        raise EvidenceError(message)
+    return messages
+
+
+def app_reviews(rows: list[object]) -> list[review_gate.Review]:
+    reviews: list[review_gate.Review] = []
+    for row in rows:
+        fields = agent_identity.as_dict(row) or {}
+        state = fields.get("state")
+        if state in ("COMMENTED", "DISMISSED", "PENDING"):
+            continue
+        author = agent_identity.as_dict(fields.get("author")) or {}
+        commit = agent_identity.as_dict(fields.get("commit")) or {}
+        login, kind, oid = (
+            author.get("login"),
+            author.get("__typename"),
+            commit.get("oid"),
+        )
+        key, body = fields.get("id"), fields.get("body")
+        if (
+            not isinstance(state, str)
+            or state not in ("APPROVED", "CHANGES_REQUESTED")
+            or not isinstance(login, str)
+            or not isinstance(kind, str)
+            or not isinstance(oid, str)
+            or not review_gate.HEAD_SHA.fullmatch(oid)
+            or not isinstance(key, str)
+            or not isinstance(body, str)
+        ):
+            message = "GitHub returned a review with invalid verdict, author or commit"
+            raise EvidenceError(message)
+        if kind == "Bot":
+            reviews.append(
+                {
+                    "id": key,
+                    "state": state,
+                    "body": body,
+                    "commit_id": oid,
+                    "login": login,
+                }
+            )
+    return reviews
+
+
+def review_snapshot(data: object, head: str) -> list[review_gate.Review]:
+    connection = agent_identity.as_dict(data) or {}
+    for key in ("data", "repository", "pullRequest"):
+        connection = agent_identity.as_dict(connection.get(key)) or {}
+    if not connection:
+        message = "gh review lookup returned no usable pull request review data"
+        raise EvidenceError(message)
+    if connection.get("headRefOid") != head:
+        message = "the PR head changed or is missing in the review data"
+        raise EvidenceError(message)
+    if connection.get("reviewDecision") != "APPROVED":
+        message = "GitHub no longer reports reviewDecision=APPROVED"
+        raise EvidenceError(message)
+    page = agent_identity.as_dict(connection.get("reviews")) or {}
+    info = agent_identity.as_dict(page.get("pageInfo")) or {}
+    rows = page.get("nodes")
+    if info.get("hasNextPage") is not False or not isinstance(rows, list):
+        message = "gh review lookup returned a missing or incomplete review list"
+        raise EvidenceError(message)
+    return app_reviews(cast("list[object]", rows))
+
+
+def fetch_reviews(target: str, number: int, head: str) -> list[review_gate.Review]:
+    """Read review authors with their GitHub account type."""
+    if not pr.NAME_WITH_OWNER.fullmatch(target):
+        stop("not merging: can't tell which repository the PR is in")
+    owner, repo = target.split("/", 1)
+    done = pr.run([
+        pr.find_tool(GH), "api", "graphql", "-f", f"query={REVIEWS_QUERY}",
+        "-f", f"owner={owner}", "-f", f"repo={repo}", "-F", f"number={number}",
+    ])  # fmt: skip
+    if done.returncode != 0:
+        stop(f"gh review lookup failed: {' '.join(done.stderr.split())}")
+    try:
+        raw: object = json.loads(done.stdout)
+    except ValueError:
+        stop("gh review lookup returned invalid JSON")
+    return review_snapshot(raw, head)
+
+
 def fetch(number: int) -> PullRequest:
     """Read the PR through gh.
 
@@ -557,19 +716,26 @@ def fetch(number: int) -> PullRequest:
     if done.returncode != 0:
         stop(f"gh pr view failed: {' '.join(done.stderr.split())}")
     try:
-        data = json.loads(done.stdout)
+        raw: object = json.loads(done.stdout)
     except ValueError as exc:
         stop(f"gh pr view returned something that is not JSON: {exc}")
+    data = agent_identity.as_dict(raw)
+    if data is None:
+        stop("gh pr view returned no usable pull request")
     who = agent_identity.as_dict(data.get("author")) or {}
-    commits = data.get("commits", [])
     base = data.get("baseRefName")
     _, email = parseaddr(agent_identity.AGENT_IDENT)
-    return PullRequest(
-        agent=any(
+    commits = cast("list[dict[str, list[dict[str, str]]]]", data.get("commits", []))
+    try:
+        agent = any(
             author["email"] == email
             for commit in commits
             for author in commit["authors"]
-        ),
+        )
+    except KeyError, TypeError:
+        stop("gh pr view returned invalid commit authors")
+    return PullRequest(
+        agent=agent,
         renovate=who.get("is_bot") is True and RENOVATE in str(who.get("login")),
         title=str(data.get("title", "")),
         body=str(data.get("body") or ""),
@@ -579,8 +745,10 @@ def fetch(number: int) -> PullRequest:
         draft=data.get("isDraft") is True,
         mergeable=str(data.get("mergeable", "")),
         merge_state=str(data.get("mergeStateStatus", "")),
-        failing=failing_checks(data.get("statusCheckRollup")),
         url=data.get("url"),
+        decision=data.get("reviewDecision"),
+        rollup=data.get("statusCheckRollup"),
+        commits=data.get("commits"),
     )
 
 
@@ -640,10 +808,44 @@ def branch_rules(target: str, base: str) -> list[object]:
     return rules
 
 
-def requires_queue(target: str, base: str) -> str | None:
+def required_checks(rules: Sequence[object], pull: review_gate.Pull) -> list[str]:
+    """Find required ruleset contexts that lack a successful result at the head."""
+    green = {
+        check["name"]
+        for check in pull.checks
+        if check["status"] == "completed" and check["conclusion"] == "success"
+    }
+    return [
+        f"required check {name} has no success at the head"
+        for row in rules
+        if (rule := agent_identity.as_dict(row))
+        and rule.get("type") == "required_status_checks"
+        for name in required_contexts(rule.get("parameters"))
+        if name not in green
+    ]
+
+
+def required_contexts(parameters: object) -> list[str]:
+    fields = agent_identity.as_dict(parameters) or {}
+    checks = fields.get("required_status_checks")
+    if not isinstance(checks, list) or not checks:
+        message = "gh returned no usable required status checks"
+        raise EvidenceError(message)
+    names = []
+    for row in cast("list[object]", checks):
+        context = agent_identity.as_dict(row) or {}
+        name = context.get("context")
+        if not isinstance(name, str) or not name:
+            message = "gh returned an invalid required status check"
+            raise EvidenceError(message)
+        names.append(name)
+    return names
+
+
+def requires_queue(rules: Sequence[object]) -> str | None:
     """Return the active branch merge queue's method, if it has a queue."""
     method = None
-    for entry in branch_rules(target, base):
+    for entry in rules:
         rule = agent_identity.as_dict(entry)
         if rule is None or not isinstance(rule.get("type"), str):
             stop("gh returned no usable branch rules")
@@ -743,16 +945,46 @@ def parse_head(value: str) -> str:
     return head
 
 
-def merge_head(current: str, expected: str | None, number: int) -> str:
-    """Select the commit to send to GitHub and refuse a changed head."""
-    if expected is None:
-        return current
-    if expected != current:
-        stop(
-            f"not merging PR #{number}: expected head {expected}, "
-            f"but the current head is {current}"
+def approval_reasons(request: PullRequest, expected: str | None) -> list[str]:
+    """Require a valid head, any caller-supplied match, and GitHub's approval."""
+    head = request.head
+    if expected is not None and expected != head:
+        return [f"expected head {expected}, but the current head is {head}"]
+    if not review_gate.HEAD_SHA.fullmatch(head):
+        return ["gh pr view returned no full headRefOid"]
+    if not isinstance(request.decision, str) or not request.decision:
+        return ["gh pr view returned no reviewDecision"]
+    if request.decision != "APPROVED":
+        return [f"gh reports reviewDecision={request.decision}"]
+    return []
+
+
+def verify_head(
+    number: int, expected: str | None
+) -> tuple[PullRequest, str, list[object]]:
+    request = fetch(number)
+    prefix = f"not merging PR #{number}: "
+    if reasons := refusals(request) or approval_reasons(request, expected):
+        stop(prefix + "; ".join(reasons))
+    target = pr.target_of_pr(request.url)
+    try:
+        checks = [
+            check_entry(entry)
+            for entry in view_entries(request.rollup, "statusCheckRollup")
+        ]
+        messages = commit_messages(
+            view_entries(request.commits, "commits"), request.head
         )
-    return expected
+        reviews = fetch_reviews(target, number, request.head)
+        pull = review_gate.Pull(request.head, reviews, checks, messages)
+        if reasons := review_gate.evaluate(REVIEWS_APP, pull):
+            stop(prefix + "; ".join(reasons))
+        rules = branch_rules(target, request.base)
+        if reasons := required_checks(rules, pull):
+            stop(prefix + "; ".join(reasons))
+    except EvidenceError as exc:
+        stop(prefix + str(exc))
+    return request, target, rules
 
 
 def build_parser(prog: str | None = None) -> argparse.ArgumentParser:
@@ -766,7 +998,7 @@ def build_parser(prog: str | None = None) -> argparse.ArgumentParser:
         "--expect-head",
         type=parse_head,
         metavar="SHA",
-        help="approved 40-character SHA",
+        help="also require this approved 40-character SHA",
     )
     parser.add_argument("--dry-run", action="store_true", help="show it, merge nothing")
     return parser
@@ -775,13 +1007,9 @@ def build_parser(prog: str | None = None) -> argparse.ArgumentParser:
 def main(argv: Sequence[str] | None = None, prog: str | None = None) -> int:
     """Preview or perform the merge."""
     args = build_parser(prog).parse_args(argv)
-    request = fetch(args.number)
-    head = merge_head(request.head, args.expect_head, args.number)
-    if reasons := refusals(request):
-        stop(f"not merging PR #{args.number}: " + "; ".join(reasons))
-    target = pr.target_of_pr(request.url)
+    request, target, rules = verify_head(args.number, args.expect_head)
     methods = merge_methods(target)
-    queue_method = requires_queue(target, request.base)
+    queue_method = requires_queue(rules)
     if queue_method is not None:
         methods = [queue_flag(queue_method, methods, args.number)]
     body = renovate_body(request.body) if request.renovate else request.body
@@ -810,7 +1038,7 @@ def main(argv: Sequence[str] | None = None, prog: str | None = None) -> int:
     )
     argv_gh = [
         GH, "pr", "merge", str(args.number), methods[0], "--subject", message.subject,
-        "--body-file", "-", "--match-head-commit", head,
+        "--body-file", "-", "--match-head-commit", request.head,
     ]  # fmt: skip
     if args.dry_run:
         print(shlex.join(argv_gh))

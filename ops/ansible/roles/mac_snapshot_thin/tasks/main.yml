@@ -1,0 +1,46 @@
+---
+- name: Create the snapshot thinner directory
+  ansible.builtin.file:
+    path: /Library/tbhb-snapshot-thin
+    state: directory
+    owner: root
+    group: wheel
+    mode: "0755"
+
+- name: Install the snapshot thinner
+  ansible.builtin.copy:
+    src: "{{ role_path }}/../../../packages/tbhbops/src/tbhbops/mac_snapshot_thin.py"
+    dest: /Library/tbhb-snapshot-thin/run.py
+    owner: root
+    group: wheel
+    mode: "0644"
+
+- name: Read the snapshot daemon state
+  ansible.builtin.command:
+    argv: [/bin/launchctl, print, system/dev.tbhb.mac-snapshot-thin]
+  register: mac_snapshot_thin_daemon
+  check_mode: false
+  changed_when: false
+  failed_when: false
+
+- name: Install the snapshot daemon
+  ansible.builtin.copy:
+    src: dev.tbhb.mac-snapshot-thin.plist
+    dest: /Library/LaunchDaemons/dev.tbhb.mac-snapshot-thin.plist
+    owner: root
+    group: wheel
+    mode: "0644"
+  register: mac_snapshot_thin_plist
+  notify: Reload the snapshot daemon
+
+- name: Reload the snapshot daemon if changed
+  ansible.builtin.meta: flush_handlers
+
+- name: Load an unloaded snapshot daemon
+  ansible.builtin.command:
+    argv: [/bin/launchctl, bootstrap, system, /Library/LaunchDaemons/dev.tbhb.mac-snapshot-thin.plist]
+  changed_when: true
+  when:
+    - not ansible_check_mode
+    - mac_snapshot_thin_plist is not changed
+    - mac_snapshot_thin_daemon.rc != 0

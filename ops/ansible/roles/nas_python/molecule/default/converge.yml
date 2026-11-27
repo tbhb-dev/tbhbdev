@@ -1,0 +1,10 @@
+---
+# Connects as an unprivileged ops, with no become, as the NAS play does.
+- name: Converge
+  hosts: all
+  gather_facts: false
+  vars:
+    ansible_user: ops
+    nas_python_interpreter: /home/ops/.local/bin/python3.14
+  roles:
+    - nas_python

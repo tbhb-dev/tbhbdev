@@ -1,0 +1,56 @@
+---
+# The container has no KVM, libvirt or LVM, so ci_vm_hardware is false: the
+# scenario covers the egress table and its unit, and the cloud-init seed. The
+# volume, image and domain creation stay untested here. Verification exercises
+# only memory reconciliation with a virsh stub on PATH. The table is
+# validated with nft -c and never loaded, since the container shares the
+# host's kernel. The role's check run on a real lab node covers the rest.
+dependency:
+  name: galaxy
+  enabled: false
+driver:
+  name: docker
+platforms:
+  # test-ansible sets MOLECULE_RUN_ID, so concurrent runs get distinct containers.
+  - name: ci-vm-${MOLECULE_RUN_ID:-local}
+    # The runner builds this content-addressed image when its cache is missing.
+    image: ${MOLECULE_IMAGE}
+    pre_build_image: true
+    privileged: true
+    command: /sbin/init
+    cgroupns_mode: private
+    tmpfs:
+      - /run
+      - /tmp
+prerun: false
+provisioner:
+  name: ansible
+  connection_options:
+    ansible_connection: community.docker.docker_api
+  inventory:
+    group_vars:
+      all:
+        ansible_user: ops
+        ci_vm_hardware: false
+        ci_vm_admin_keys:
+          - >-
+              from="{{ ci_vm_network_gateway }}" ssh-ed25519
+              AAAA fixture@mac-a
+          - >-
+              from="{{ ci_vm_network_gateway }}" ssh-ed25519
+              AAAA fixture@mac-b
+          - >-
+              from="{{ ci_vm_network_gateway }}" ssh-ed25519
+              AAAA fixture@host-f
+verifier:
+  name: ansible
+scenario:
+  test_sequence:
+    - destroy
+    - syntax
+    - create
+    - check
+    - converge
+    - idempotence
+    - verify
+    - destroy

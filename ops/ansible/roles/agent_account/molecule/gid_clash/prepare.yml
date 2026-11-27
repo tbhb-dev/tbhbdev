@@ -1,0 +1,10 @@
+---
+- name: Prepare
+  hosts: all
+  gather_facts: false
+  become: true
+  tasks:
+    - name: Occupy the fixed gid
+      ansible.builtin.group:
+        name: clash
+        gid: 24368

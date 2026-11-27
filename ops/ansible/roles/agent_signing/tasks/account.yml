@@ -1,0 +1,129 @@
+---
+- name: account | Require absolute paths for the account
+  ansible.builtin.assert:
+    that:
+      - agent_signing_home is match('^/')
+
+- name: account | Prepare signing as the account
+  become: true
+  become_user: "{{ agent_signing_account.name }}"
+  environment: "{{ agent_signing_process_environment }}"
+  block:
+    # stat reads metadata only. Nothing here opens a key.
+    - name: account | Inspect the signing files without reading them
+      ansible.builtin.stat:
+        path: "{{ item }}"
+      loop:
+        - "{{ agent_signing_private_key }}"
+        - "{{ agent_signing_public_key }}"
+        - "{{ agent_signing_config }}"
+      register: agent_signing_stats
+
+    - name: account | Record which files exist
+      ansible.builtin.set_fact:
+        agent_signing_paths: "{{ agent_signing_stats.results | map(attribute='item') | list }}"
+        agent_signing_found: "{{ agent_signing_stats.results | map(attribute='stat.exists') | list }}"
+
+    - name: account | Index the existence flags by path
+      ansible.builtin.set_fact:
+        agent_signing_have: "{{ dict(agent_signing_paths | zip(agent_signing_found)) }}"
+
+    # ssh-keygen would replace the public half and ask before replacing the private one.
+    # A lone private key is left for the operator, who can recover its public half by hand.
+    - name: account | Refuse a private key without its public half
+      ansible.builtin.fail:
+        msg: >-
+          {{ agent_signing_private_key }} exists but {{ agent_signing_public_key }} does not.
+          Nothing was changed; recover the public half with ssh-keygen -y by hand.
+      when:
+        - agent_signing_have[agent_signing_private_key]
+        - not agent_signing_have[agent_signing_public_key]
+
+    - name: account | Create the directories for the program and the key
+      ansible.builtin.file:
+        path: "{{ item.path }}"
+        state: directory
+        mode: "{{ item.mode | default(omit) }}"
+      loop:
+        - path: "{{ agent_signing_bin }}"
+        - path: "{{ agent_signing_directory }}"
+          mode: "0700"
+      loop_control:
+        label: "{{ item.path }}"
+
+    # copy compares checksums and replaces the program only when they differ, so a new tag
+    # in agent_signing_devtools_version upgrades it and a repeat run changes nothing.
+    - name: account | Install the controller's ssh-sign build
+      ansible.builtin.copy:
+        src: "{{ agent_signing_workdir.path }}/ssh-sign-{{ agent_signing_target }}"
+        dest: "{{ agent_signing_program }}"
+        mode: "0755"
+
+    # A public key with no private half belongs to the op provider, so it stays untouched.
+    - name: account | Create an ed25519 signing key only when neither half exists
+      ansible.builtin.command:
+        argv:
+          - ssh-keygen
+          - -q
+          - -t
+          - ed25519
+          - -N
+          - ""
+          - -C
+          - "{{ agent_signing_account.name }}@{{ inventory_hostname }} signing"
+          - -f
+          - "{{ agent_signing_private_key }}"
+        creates: "{{ agent_signing_private_key }}"
+      register: agent_signing_keygen
+      when: not agent_signing_have[agent_signing_public_key]
+      no_log: true
+
+    # In check mode the key creation only reports; no file exists to read.
+    - name: account | Record whether the account has a file key
+      ansible.builtin.set_fact:
+        agent_signing_keyed: >-
+          {{ agent_signing_have[agent_signing_private_key] or
+          (agent_signing_keygen is changed and not ansible_check_mode) }}
+
+    - name: account | Point ssh-sign at the key file, never replacing existing settings
+      ansible.builtin.copy:
+        dest: "{{ agent_signing_config }}"
+        content: |
+          DEVTOOLS_SIGNING_PROVIDER=file
+          DEVTOOLS_SIGNING_KEY_FILE={{ agent_signing_private_key }}
+          DEVTOOLS_SIGNING_PUBLIC_KEY={{ agent_signing_public_key }}
+        mode: "0600"
+        force: false
+      when: agent_signing_keyed
+
+    # Matches what host-a carries. Hosts with a file key sign as the agent identity; an
+    # op-style account keeps its own git settings.
+    - name: account | Give the account its git identity and ssh signing settings
+      ansible.builtin.copy:
+        dest: "{{ agent_signing_home }}/.gitconfig"
+        content: |
+          [gpg]
+            format = ssh
+          [user]
+            signingkey = {{ agent_signing_public_key }}
+            name = {{ agent_signing_git_name }}
+            email = {{ agent_signing_git_email }}
+          [gpg "ssh"]
+            program = {{ agent_signing_program }}
+          [commit]
+            gpgsign = true
+        mode: "0644"
+      when: agent_signing_keyed
+
+    - name: account | Read the public half to register it
+      ansible.builtin.slurp:
+        src: "{{ agent_signing_public_key }}"
+      register: agent_signing_public
+      when: agent_signing_keyed
+
+    - name: account | Show the public key for registration with GitHub
+      ansible.builtin.debug:
+        msg: >-
+          Register this public key as a signing key on the account that owns {{ agent_signing_account.name }}'s
+          commits: {{ agent_signing_public.content | b64decode | trim }}
+      when: agent_signing_keyed
