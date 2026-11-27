@@ -2109,9 +2109,9 @@ def test_edit_pr_40_uses_github_commit_trailers(
         "effort=medium;harness=claude-code;model=anthropic:claude-sonnet-5-5;"
         "session=sha-256-64:7ff1a5b545107a55;surface=cli"
     )
-    merged = attrs.replace("7ff1a5b545107a55", "1234567890abcdef")
     early = attrs.replace(";surface=", ";started_at=2026-11-14T00:02:41Z;surface=")
     late = attrs.replace(";surface=", ";started_at=2026-11-14T00:09:00Z;surface=")
+    merged = early.replace("7ff1a5b545107a55", "1234567890abcdef")
     world.git("switch", "-q", "-c", "other-branch")
     world.commit(f"other PR\n\nGenerated-by: {local}")
     pages = [
@@ -2923,7 +2923,7 @@ def test_hook_feeds_problems_back_on_stderr(
 def test_hook_outside_tbhb_dev_is_silent(
     hooked: World, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    hooked.git("remote", "set-url", "origin", "git@github.com:someone/x.git")
+    hooked.git("remote", "set-url", "--push", "origin", "unrelated")
     write_hook_draft(hooked, "broken")
     harness, payload = hook_payloads(hooked.root.resolve())["claude-relative"]
     assert run_hook(monkeypatch, harness, payload) == 0

@@ -196,6 +196,14 @@ def test_send_explicit_claude_needs_no_config(
     assert capsys.readouterr().err == "Claude delivery is not built\n"
 
 
+def test_send_refuses_a_saved_run_from_another_harness(remote: Remote) -> None:
+    assert launch(remote) == 0
+    run = driver.load(CONFIG, "sample")
+    run.request = dataclasses.replace(run.request, harness=model.Harness.AGY)
+    with pytest.raises(Invalid, match="send requires a Codex run"):
+        driver.send(CONFIG, run, "hello")
+
+
 THREAD = '{"type":"thread.started","thread_id":"thread"}\n'
 INACTIVE = "Codex thread has no active turn"
 MESSAGE = "next\u00a0line\nthen this"
@@ -247,12 +255,13 @@ def stream(response: bytes) -> bytes:
         ),
         (stream(b"\x88\x00"), app_server.UNLOADED),
         (b"HTTP/1.1 403 Forbidden\r\n\r\n", app_server.UNLOADED),
+        (None, "Codex app-server timed out"),
     ],
 )
 def test_send_host_proxy(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
-    wire: bytes,
+    wire: bytes | None,
     error: str,
     isolated_home: Path,
 ) -> None:
@@ -270,6 +279,8 @@ def test_send_host_proxy(
         assert command[:4] == (str(codex), "app-server", "proxy", "--sock")
         assert env["PATH"].startswith(f"{isolated_home}:")
         assert "/usr/local/bin" in env["PATH"].split(":")
+        if wire is None:
+            raise TimeoutError
         reader = asyncio.StreamReader()
         reader.feed_data(wire)
         reader.feed_eof()
@@ -292,10 +303,19 @@ def test_send_host_proxy(
         }
 
 
-def test_send_host_without_log_reports_unloaded(
-    live_log: Path, capsys: pytest.CaptureFixture[str]
+@pytest.mark.parametrize("log", [None, "{}", THREAD])
+def test_send_host_reports_unloaded(
+    live_log: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    log: str | None,
 ) -> None:
-    live_log.unlink()
+    if log is None:
+        live_log.unlink()
+    else:
+        live_log.write_text(log)
+    monkeypatch.setattr(app_server.host_tools, "account_path", Mock(return_value=()))
+    monkeypatch.setenv("PATH", str(live_log.parent))
     assert app_server.main(["sample"], "send-host") == 0
     assert capsys.readouterr().out.strip() == app_server.UNLOADED
 

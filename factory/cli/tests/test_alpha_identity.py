@@ -8415,28 +8415,30 @@ NOW = 1_794_614_400.0
 NOW_UTC = "2026-11-14T00:00:00Z"
 
 
-@pytest.mark.parametrize("has_creation_entry", [True, False])
+@pytest.mark.parametrize("branch", ["topic", "initial", "detached"])
 def test_session_commit_start_from_branch_reflog_or_session(
     repo: Path,
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
-    has_creation_entry: bool,
+    branch: str,
 ) -> None:
     stage(repo, "base")
     commit(repo)
-    if has_creation_entry:
+    if branch == "topic":
         with monkeypatch.context() as dated:
             dated.setenv("GIT_COMMITTER_DATE", EARLY)
             run_git(repo, "switch", "-qc", "topic")
         stage(repo, "later")
         commit(repo)
+    elif branch == "detached":
+        run_git(repo, "switch", "--detach", "HEAD")
     session = ai.sha256_64(CLAUDE_COMMIT_ENV["CLAUDE_CODE_SESSION_ID"])
     ai.write_record(session, {"model": "anthropic:m", "started_at": LATE})
     stage(repo, "change")
     path = msg_file(tmp_path)
     assert ai.cmd_trailer(str(path), "message", CLAUDE_COMMIT_ENV) == 0
     [(_, trailer)] = ai.llm_trailers(path.read_text())
-    assert ai.trailer_start(trailer) == (EARLY if has_creation_entry else LATE)
+    assert ai.trailer_start(trailer) == (EARLY if branch == "topic" else LATE)
 
 
 @pytest.fixture
