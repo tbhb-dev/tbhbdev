@@ -33,9 +33,9 @@ update_on() {
   PATH=$workspace/bin:$PATH BUILD_WORKSPACE_DIRECTORY=$workspace "$update"
 }
 
-# PNG bytes are only measured on macOS arm64, so the update writes them there only.
-update_on Linux x86_64
-[[ ! -e $diagrams/structurizr-context.png ]] || fail "update wrote a PNG off macOS arm64"
+# The update writes PNGs on the platform that compares the committed PNG bytes.
+update_on Darwin arm64
+[[ ! -e $diagrams/structurizr-context.png ]] || fail "update wrote a PNG off Linux x86_64"
 cmp -s "$json" "$workspace/$package/testdata/workspace.json" || fail "workspace.json differs from the committed copy"
 cmp -s "$svg" "$diagrams/structurizr-context.svg" || fail "structurizr-context.svg differs from the committed copy"
 [[ ! -e $diagrams/structurizr-orphan.svg ]] || fail "orphan SVG was not removed"
@@ -44,8 +44,8 @@ for file in "$workspace/$package/testdata/workspace.json" "$diagrams/"*; do
   [[ -n $mode ]] || fail "$file does not have mode 644"
 done
 
-update_on Darwin arm64
-[[ -f $diagrams/structurizr-context.png ]] || fail "macOS arm64 update wrote no PNG"
+update_on Linux x86_64
+[[ -f $diagrams/structurizr-context.png ]] || fail "Linux x86_64 update wrote no PNG"
 
 # Without a workspace directory the update refuses to run.
 status=0
