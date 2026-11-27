@@ -1200,6 +1200,17 @@ cli_py_test(
     deps = [
         ":conftest",
         "//factory/cli/src/tbhbdev/alpha:install",
+        "//factory/cli/src/tbhbdev/alpha:install_statusline_decisions",
+        "@cli_pip//pytest",
+    ],
+)
+
+cli_py_test(
+    name = "test_alpha_install_statusline_decisions",
+    srcs = ["test_alpha_install_statusline_decisions.py"],
+    deps = [
+        ":conftest",
+        "//factory/cli/src/tbhbdev/alpha:install_statusline_decisions",
         "@cli_pip//pytest",
     ],
 )
