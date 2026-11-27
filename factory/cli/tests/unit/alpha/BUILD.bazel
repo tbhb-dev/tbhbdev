@@ -45,6 +45,27 @@ cli_py_test(
 )
 
 cli_py_test(
+    name = "test_review_inline",
+    srcs = ["test_review_inline.py"],
+    imports = ["../.."],
+    deps = [
+        "//factory/cli/src/tbhbdev/alpha:review_inline",
+        "//factory/cli/tests:conftest",
+    ],
+)
+
+cli_py_test(
+    name = "test_review_doc",
+    srcs = ["test_review_doc.py"],
+    imports = ["../.."],
+    deps = [
+        "//factory/cli/src/tbhbdev/alpha:review_doc",
+        "//factory/cli/tests:conftest",
+        "@cli_pip//pytest",
+    ],
+)
+
+cli_py_test(
     name = "test_brief_text",
     srcs = ["test_brief_text.py"],
     imports = ["../.."],
