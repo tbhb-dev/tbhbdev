@@ -1850,6 +1850,7 @@ def test_a_draft_without_a_base_takes_the_default_branch(
         "refs/remotes/origin/trunk",
         "HEAD",
         default_ref=None,
+        head_branch=world.git("branch", "--show-current"),
         scc=str(world.bin / "scc"),
         git=str(world.root.parent / "git_dir" / "git"),
     )
@@ -1914,6 +1915,7 @@ def test_check_counts_an_explicit_base_with_gh_repo(
         "refs/remotes/origin/trunk",
         "HEAD",
         default_ref=None,
+        head_branch=world.git("branch", "--show-current"),
         scc=str(world.bin / "scc"),
         git=str(world.root.parent / "git_dir" / "git"),
     )
