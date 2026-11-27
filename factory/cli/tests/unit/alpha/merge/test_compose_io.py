@@ -9,7 +9,7 @@ import pytest
 from unit.alpha.merge.examples import ASSIST, GEN, OPENED
 from unit.alpha.merge.fake_github import Tools, read_back
 
-from tbhbdev.alpha.identity.dispatcher import check_message
+from tbhbdev.alpha.identity.validation import check_message
 from tbhbdev.alpha.merge.body import WIDTH
 from tbhbdev.alpha.merge.compose import build_message
 from tbhbdev.alpha.merge.github import fetch

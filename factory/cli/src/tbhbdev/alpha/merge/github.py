@@ -4,13 +4,8 @@
 
 from urllib.parse import quote
 
-from tbhbdev.alpha.identity.dispatcher import (
-    AGENT_EMAIL,
-    ATTR_PAIR,
-    HASH_RE,
-    SLUGS,
-    llm_trailers,
-)
+from tbhbdev.alpha.identity.validation import AGENT_EMAIL, ATTR_PAIR, llm_trailers
+from tbhbdev.alpha.identity.values import HASH_RE, SLUGS
 from tbhbdev.alpha.merge.evidence import (
     EvidenceError,
     PullRequest,

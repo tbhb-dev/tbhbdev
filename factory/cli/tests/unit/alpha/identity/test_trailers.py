@@ -3,7 +3,11 @@
 
 """Identity keys for attribution trailers."""
 
+import pytest
+
 from tbhbdev.alpha.identity import trailers
+
+EARLY = "2026-11-14T00:02:41Z"
 
 ROOT = "sha-256-64:" + "a" * 16
 CHILD = "sha-256-64:" + "c" * 16
@@ -25,3 +29,24 @@ def test_identity_key_ignores_effort_surface_and_version() -> None:
 def test_identity_key_splits_on_the_first_equals() -> None:
     value = "LLM harness=claude-code:1;model=a=b;session=s"
     assert trailers.identity_key(value) == ("claude-code", "a=b", "s", "")
+
+
+@pytest.mark.parametrize(
+    ("value", "expected"),
+    [
+        (EARLY, EARLY),
+        ("2026-02-30T00:00:00Z", None),
+        ("2026-11-14T24:00:00Z", None),
+        ("2026-11-14t00:02:41z", None),
+        ("\u0662\u0660\u0662\u0666-11-14T00:02:41Z", None),
+        ("2026-11-14T00:02:41", None),
+        ("2026-11-14T00:02:41+00:00", None),
+        ("2026-11-14T00:02:41.5Z", None),
+        (" " + EARLY, None),
+        (EARLY + "Z", None),
+        (None, None),
+        (5, None),
+    ],
+)
+def test_start_ok(value: object, expected: str | None) -> None:
+    assert trailers.start_ok(value) == expected

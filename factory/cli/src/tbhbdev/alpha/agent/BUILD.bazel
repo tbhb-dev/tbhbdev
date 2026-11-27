@@ -149,7 +149,9 @@ cli_py_library(
         "//factory/cli/src/tbhbdev/alpha:size_gate",
         "//factory/cli/src/tbhbdev/alpha/agent/decisions:repo",
         "//factory/cli/src/tbhbdev/alpha/agent/decisions:request",
-        "//factory/cli/src/tbhbdev/alpha/identity:dispatcher",
+        "//factory/cli/src/tbhbdev/alpha/identity:trailers",
+        "//factory/cli/src/tbhbdev/alpha/identity:validation",
+        "//factory/cli/src/tbhbdev/alpha/identity:values",
         "@cli_pip//httpx2",
     ],
 )
@@ -187,7 +189,7 @@ cli_py_library(
         "//factory/cli/src/tbhbdev/alpha/agent/decisions:repo",
         "//factory/cli/src/tbhbdev/alpha/agent/decisions:request",
         "//factory/cli/src/tbhbdev/alpha/agent/decisions:run_state",
-        "//factory/cli/src/tbhbdev/alpha/identity:dispatcher",
+        "//factory/cli/src/tbhbdev/alpha/identity:values",
         "//factory/cli/src/tbhbdev/alpha/install:hooks",
         "//factory/cli/src/tbhbdev/alpha/install:trust",
         "@cli_pip//httpx2",
@@ -288,7 +290,7 @@ cli_py_library(
         "//factory/cli/src/tbhbdev/alpha:repo",
         "//factory/cli/src/tbhbdev/alpha/agent/decisions:repo",
         "//factory/cli/src/tbhbdev/alpha/agent/decisions:request",
-        "//factory/cli/src/tbhbdev/alpha/identity:dispatcher",
+        "//factory/cli/src/tbhbdev/alpha/identity:values",
         "//factory/cli/src/tbhbdev/alpha/install:scripts",
     ],
 )

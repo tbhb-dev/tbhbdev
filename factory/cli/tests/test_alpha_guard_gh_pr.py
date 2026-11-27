@@ -21,7 +21,7 @@ from hypothesis import strategies as st
 
 from tbhbdev.alpha import close, opened, pull_request
 from tbhbdev.alpha import guard_gh_pr as guard
-from tbhbdev.alpha.identity import dispatcher as ai
+from tbhbdev.alpha.identity import values
 from tbhbdev.alpha.merge import options as squash_merge
 
 DATA = Path(__file__).parent / "testdata" / "alpha"
@@ -626,7 +626,7 @@ def test_property_main_is_silent_without_a_match(text: str) -> None:
 
 # --- approval routes -------------------------------------------------------
 
-ROOT = ai.sha256_64("session-raw")
+ROOT = values.sha256_64("session-raw")
 TARGET = "tbhb-dev/tbhbdev#7"
 GH_ROUTES = [
     ("gh pr review 7 --approve -R tbhb-dev/tbhbdev", "`gh pr review --approve`"),

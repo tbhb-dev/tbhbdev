@@ -1,7 +1,12 @@
 # SPDX-License-Identifier: Apache-2.0
 # Copyright Tony Burns
 
-"""Stamp attribution into staged Markdown documents and their worktree files."""
+"""Stamp attribution into staged Markdown documents and worktree files.
+
+The index and worktree receive the same generated block so pre-commit sees
+consistent content. Stage the whole file if a partially staged edit touches
+the insertion point and prevents the pre-commit runner from restoring it.
+"""
 
 import subprocess  # nosec B404
 import sys

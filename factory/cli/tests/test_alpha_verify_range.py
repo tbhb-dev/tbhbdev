@@ -6,7 +6,7 @@ from typing import TYPE_CHECKING, Literal, TypedDict
 import pytest
 
 from tbhbdev.alpha import verify_range
-from tbhbdev.alpha.identity import dispatcher as identity
+from tbhbdev.alpha.identity import validation
 from tbhbdev.alpha.verify_range import main as verify_main
 
 if TYPE_CHECKING:
@@ -23,7 +23,7 @@ class Change(TypedDict, total=False):
 PROG = "tbhbdev alpha verify-range"
 TRAILER = "Generated-by: LLM harness=codex;model=test"
 MESSAGE = f"feat: example\n\n{TRAILER}\n"
-EMAIL = identity.ident_email(identity.AGENT_IDENT)
+EMAIL = validation.ident_email(validation.AGENT_IDENT)
 
 
 class Repository:
@@ -135,11 +135,11 @@ def test_valid_range(repo: Repository, capsys: pytest.CaptureFixture[str]) -> No
         ),
         (
             {"message": MESSAGE + "sIgNeD-oFf-bY \t: Example <human@example.com>\n"},
-            [identity.SIGNOFF_ERROR],
+            [validation.SIGNOFF_ERROR],
         ),
         (
             {"message": MESSAGE + "Co-authored-by: Example <human@example.com>\n"},
-            [identity.SIGNOFF_ERROR],
+            [validation.SIGNOFF_ERROR],
         ),
         (
             {"author": "123+bot@users.noreply.github.com"},
@@ -512,16 +512,16 @@ def test_subject_paragraph(message: str, subject: str, repo: Repository) -> None
 def test_missing_identities_delegate_empty_values(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    parse_email = identity.ident_email
+    parse_email = validation.ident_email
     values: list[str] = []
 
     def capture(value: str) -> str:
         values.append(value)
         return parse_email(value)
 
-    monkeypatch.setattr(identity, "ident_email", capture)
+    monkeypatch.setattr(validation, "ident_email", capture)
     verify_range.inspect_commit("tree ignored\n\n")
-    assert values == ["", "", identity.AGENT_IDENT]
+    assert values == ["", "", validation.AGENT_IDENT]
 
 
 def test_range_git_arguments(repo: Repository, monkeypatch: pytest.MonkeyPatch) -> None:

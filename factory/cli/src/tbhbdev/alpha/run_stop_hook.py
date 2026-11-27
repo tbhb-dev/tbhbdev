@@ -11,7 +11,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, NotRequired, TypedDict, cast
 
 from tbhbdev.alpha.agent import push, runfiles
-from tbhbdev.alpha.identity.dispatcher import as_str, parse_line, read_tail
+from tbhbdev.alpha.identity.payload import as_str, parse_line, read_tail
 from tbhbdev.alpha.repo import git, read_hook_stdin
 from tbhbdev.alpha.size_gate import SIZE_REVIEW, size_verdict
 

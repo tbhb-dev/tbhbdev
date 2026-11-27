@@ -3,6 +3,36 @@
 
 load("//factory/cli/tests:pytest.bzl", "cli_py_test")
 
+package(default_testonly = True)
+
+filegroup(
+    name = "package_files",
+    testonly = False,
+    srcs = glob(["*.py"]),
+    visibility = ["//factory/cli/tests:__pkg__"],
+)
+
+cli_py_test(
+    name = "test_commands",
+    srcs = ["test_commands.py"],
+    imports = ["../../.."],
+    deps = [
+        "//factory/cli/src/tbhbdev/alpha/identity:commands",
+        "@cli_pip//hypothesis",
+        "@cli_pip//pytest",
+    ],
+)
+
+cli_py_test(
+    name = "test_models",
+    srcs = ["test_models.py"],
+    imports = ["../../.."],
+    deps = [
+        "//factory/cli/src/tbhbdev/alpha/identity:models",
+        "@cli_pip//pytest",
+    ],
+)
+
 cli_py_test(
     name = "test_trailers",
     srcs = ["test_trailers.py"],
@@ -10,10 +40,6 @@ cli_py_test(
     deps = [
         "//factory/cli/src/tbhbdev/alpha/identity:trailers",
         "//factory/cli/tests:conftest",
+        "@cli_pip//pytest",
     ],
-)
-
-exports_files(
-    ["test_trailers.py"],
-    visibility = ["//factory/cli/tests:__pkg__"],
 )

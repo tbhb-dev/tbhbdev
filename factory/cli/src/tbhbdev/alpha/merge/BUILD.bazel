@@ -60,7 +60,8 @@ cli_py_library(
         ":review_gate",
         ":rules",
         "//factory/cli/src/tbhbdev/alpha:pull_request",
-        "//factory/cli/src/tbhbdev/alpha/identity:dispatcher",
+        "//factory/cli/src/tbhbdev/alpha/identity:validation",
+        "//factory/cli/src/tbhbdev/alpha/identity:values",
     ],
 )
 
@@ -81,7 +82,7 @@ cli_py_library(
         ":body",
         ":message",
         "//factory/cli/src/tbhbdev/alpha:pull_request",
-        "//factory/cli/src/tbhbdev/alpha/identity:dispatcher",
+        "//factory/cli/src/tbhbdev/alpha/identity:validation",
     ],
 )
 

@@ -2,7 +2,7 @@
 # Copyright Tony Burns
 """Read commit linter and Git results while building a merge message."""
 
-from tbhbdev.alpha.identity.dispatcher import LINE, check_message
+from tbhbdev.alpha.identity.validation import LINE, check_message
 from tbhbdev.alpha.merge.body import WIDTH, Syntax, render_body
 from tbhbdev.alpha.merge.message import (
     Message,

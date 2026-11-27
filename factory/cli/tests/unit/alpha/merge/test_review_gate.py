@@ -3,7 +3,8 @@
 
 import pytest
 
-from tbhbdev.alpha.identity.dispatcher import ATTR_PAIR, HASH_RE, SLUGS, llm_trailers
+from tbhbdev.alpha.identity.validation import ATTR_PAIR, llm_trailers
+from tbhbdev.alpha.identity.values import HASH_RE, SLUGS
 from tbhbdev.alpha.merge import review_gate as gate
 
 HEAD = "a" * 40

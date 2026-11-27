@@ -146,8 +146,12 @@ from tbhbdev.alpha import opened, secret_scan, size_gate, tool_pins
 from tbhbdev.alpha import pull_request_frontmatter as frontmatter
 from tbhbdev.alpha.agent import settings
 from tbhbdev.alpha.agent.decisions import host_names
-from tbhbdev.alpha.identity import dispatcher as agent_identity
+from tbhbdev.alpha.identity import antigravity, attribution, payload, values
+from tbhbdev.alpha.identity.claude import tool_input_of
+from tbhbdev.alpha.identity.claude_commands import AttributionError
+from tbhbdev.alpha.identity.codex_rollout import patch_paths
 from tbhbdev.alpha.identity.trailers import merge_pr_trailers
+from tbhbdev.alpha.identity.validation import LINE, check_value
 from tbhbdev.alpha.install.git.hooks import require_git_hooks
 from tbhbdev.alpha.repo import git as repo_git
 from tbhbdev.alpha.repo import hook_cwd, in_tbhb_dev, read_hook_stdin
@@ -187,10 +191,6 @@ REBASE_MARKER = "<!-- rebase-check -->"
 REBASE_UNCHECKED = "- [ ]"
 REBASE_CHECKED = "- [x]"
 GIT = "git"
-CLAUDE = "claude"
-CODEX = "codex"
-ANTIGRAVITY = "antigravity"
-AGY_EDITS = agent_identity.AGY_EDIT_TOOLS
 # The exit code that makes a harness feed a PostToolUse hook's stderr to the agent.
 HOOK_FEEDBACK = 2
 COG = "cog"
@@ -492,7 +492,7 @@ def wrap_problems(lines: Sequence[Line]) -> list[Problem]:
             or HEADING.fullmatch(line.text)
             or text.startswith("|")
             or HUMAN_TRAILER.match(text)
-            or agent_identity.LINE.match(text)
+            or LINE.match(text)
         ):
             start = None
         elif start is None or LIST_ITEM.match(line.text):
@@ -516,7 +516,7 @@ def trailer_problems(lines: Sequence[Line]) -> list[Problem]:
             continue
         if line.code:
             continue
-        if agent_identity.LINE.match(line.text):
+        if LINE.match(line.text):
             problems.append(
                 (
                     line.no,
@@ -870,7 +870,7 @@ def branch_trailers(base: str) -> list[tuple[str, str]]:
 
 def trailer_lines(text: str) -> list[tuple[str, str]]:
     """Match LLM trailer lines in Git's parsed trailer output."""
-    found = (agent_identity.LINE.match(line) for line in text.splitlines())
+    found = (LINE.match(line) for line in text.splitlines())
     return [(match[1], match[2]) for match in found if match]
 
 
@@ -881,8 +881,8 @@ def commit_messages(pages: Sequence[object], invalid: str) -> list[str]:
         if not isinstance(page, list):
             raise SystemExit(invalid)
         for entry in cast("list[object]", page):  # pragma: no mutate
-            item = agent_identity.as_dict(entry) or {}
-            commit = agent_identity.as_dict(item.get("commit")) or {}
+            item = payload.as_dict(entry) or {}
+            commit = payload.as_dict(item.get("commit")) or {}
             message = commit.get("message")
             if not isinstance(message, str):
                 raise SystemExit(invalid)
@@ -923,10 +923,10 @@ def pr_trailers(number: int, target: str) -> list[tuple[str, str]]:
 
 def posting_value(env: Mapping[str, str]) -> str | None:
     """The trailer value for the agent running this script, or None for a human."""
-    committer = agent_identity.committer_identity(env)
+    committer = attribution.committer_identity(env)
     if committer is None:
         return None
-    return agent_identity.format_value(committer.ident.attrs())
+    return values.format_value(committer.ident.attrs())
 
 
 def default_base(*, origin_only: bool = False) -> str:
@@ -1024,11 +1024,7 @@ def description(
     """
     posting = posting_value(env)
     values = [value for _, value in found] + ([posting] if posting else [])
-    errors = [
-        f"{value}: {why}"
-        for value in values
-        if (why := agent_identity.check_value(value))
-    ]
+    errors = [f"{value}: {why}" for value in values if (why := check_value(value))]
     if errors:
         raise SystemExit("invalid LLM trailer: " + "; ".join(errors))
     merged = [f"{key}: {value}" for key, value in merge_pr_trailers(found, posting)]
@@ -1989,15 +1985,15 @@ def opened_by(env: Mapping[str, str]) -> tuple[str | None, str | None]:
     """
     ident = opened.opener(env)
     if ident is None:
-        if agent_identity.detect(env) is not None:
+        if values.detect(env) is not None:
             message = (
                 f"warning: no {OPENED_KEY} line or ledger entry: "
                 "cannot resolve the root session"
             )
             print(message, file=sys.stderr)
         return None, None
-    value = agent_identity.format_value(ident.attrs())
-    if why := agent_identity.check_value(value):
+    value = values.format_value(ident.attrs())
+    if why := check_value(value):
         message = f"warning: no {OPENED_KEY} line or ledger entry: {value}: {why}"
         print(message, file=sys.stderr)
         return None, None
@@ -2172,15 +2168,19 @@ def _run_command(args: argparse.Namespace, env: Mapping[str, str]) -> int:
     return invoke_gh(argv, body)[0]
 
 
-def touched_paths(harness: str, data: agent_identity.Json) -> list[str]:
+def touched_paths(harness: str, data: payload.Json) -> list[str]:
     """Files a harness's PostToolUse payload says the tool call wrote."""
-    inputs = agent_identity.tool_input_of(data)
+    inputs = tool_input_of(data)
     path: object
-    if harness == CODEX:
-        return agent_identity.patch_paths(inputs.get("command"))
-    if harness == ANTIGRAVITY:
-        tool, args = agent_identity.agy_tool(data)
-        path = agent_identity.agy_edit_path(args) if tool in AGY_EDITS else None
+    if harness == values.CODEX:
+        return patch_paths(inputs.get("command"))
+    if harness == values.ANTIGRAVITY:
+        tool, args = antigravity.agy_tool(data)
+        path = (
+            antigravity.agy_edit_path(args)
+            if tool in antigravity.AGY_EDIT_TOOLS
+            else None
+        )
     else:
         path = inputs.get("file_path")
     return [path] if isinstance(path, str) and path else []
@@ -2222,7 +2222,7 @@ def build_parser(prog: str | None = None) -> argparse.ArgumentParser:
         prog=prog, description="Check a PR draft and open the PR."
     )
     sub = parser.add_subparsers(dest="command", required=True)
-    sub.add_parser("hook").add_argument("harness", choices=[CLAUDE, CODEX, ANTIGRAVITY])
+    sub.add_parser("hook").add_argument("harness", choices=values.SLUGS)
     sub.add_parser("backfill-opened").add_argument("owner")
     sub.add_parser("ready").add_argument("pr", type=int, nargs="+")
     sub.add_parser("rebase").add_argument("pr", type=int, nargs="+")
@@ -2273,7 +2273,7 @@ def main(
         return command(args, env)
     except userconfig.ConfigError as exc:
         print(f"tbhbdev alpha pr: {exc}", file=sys.stderr)
-    except agent_identity.AttributionError:
+    except AttributionError:
         print(
             "tbhbdev alpha pr: Attribution couldn't be resolved. Retry the pull "
             "request command from the main session after the subagent's command "

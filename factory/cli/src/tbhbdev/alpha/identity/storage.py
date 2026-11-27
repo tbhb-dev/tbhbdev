@@ -1,7 +1,14 @@
 # SPDX-License-Identifier: Apache-2.0
 # Copyright Tony Burns
 
-"""Locate worktree state and read, write, and lock its files."""
+"""Locate worktree state and read, write, and lock its files.
+
+Each worktree keeps its own session records, command records, edit receipts,
+and commit claims. Codex rollout offsets use the common Git directory because
+a rollout can record changes in several worktrees. Session and agent IDs are
+stored as hashes. Writers hold a lock across each read-modify-write and
+replace files atomically so readers never see partial records.
+"""
 
 import fcntl
 import json

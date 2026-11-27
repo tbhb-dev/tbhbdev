@@ -4,7 +4,7 @@ import argparse
 import subprocess  # nosec B404
 import sys
 
-from tbhbdev.alpha.identity import dispatcher as identity
+from tbhbdev.alpha.identity import replay, trailers, validation
 from tbhbdev.alpha.terminal import terminal_text
 
 
@@ -20,7 +20,7 @@ def problems(
     if parents > 1:
         return [] if signed else ["missing gpgsig header"]
     reasons = []
-    email = identity.ident_email(identity.AGENT_IDENT)
+    email = validation.ident_email(validation.AGENT_IDENT)
     for role, address in (("author", author), ("committer", committer)):
         if address != email:
             reasons.append(f"{role} email is {address!r}; expected {email}")
@@ -30,11 +30,11 @@ def problems(
             reasons.append(f"{role} uses a GitHub noreply address")
     if not signed:
         reasons.append("missing gpgsig header")
-    if identity.SIGNOFF.search(message):
-        reasons.append(identity.SIGNOFF_ERROR)
-    reasons.extend(identity.check_message(message))
-    if identity.pick_refused(identity.llm_trailers(message), own=True):
-        reasons.append(f"missing {identity.KEY_GEN} trailer with model=")
+    if validation.SIGNOFF.search(message):
+        reasons.append(validation.SIGNOFF_ERROR)
+    reasons.extend(validation.check_message(message))
+    if replay.pick_refused(validation.llm_trailers(message), own=True):
+        reasons.append(f"missing {trailers.KEY_GEN} trailer with model=")
     if parents != 1:
         reasons.append(f"expected one parent, found {parents}")
     return reasons
@@ -42,20 +42,20 @@ def problems(
 
 def identity_problems(author: str, committer: str, message: str) -> list[str]:
     """Require attribution trailers and match any Committed-by to the committer."""
-    reasons = identity.check_message(message)
+    reasons = validation.check_message(message)
     lines = message.splitlines()
     prefix = "Committed-by:"
     claimed_committers = [
         line.removeprefix(prefix).strip() for line in lines if line.startswith(prefix)
     ]
-    recorded_committer = identity.IDENT_DATE.sub("", committer)
+    recorded_committer = validation.IDENT_DATE.sub("", committer)
     if any(not value or value != recorded_committer for value in claimed_committers):
         reasons.append("Committed-by must match the Git committer's name and email")
-    if not any(line.startswith(f"{identity.KEY_GEN}:") for line in lines):
-        if identity.AGENT_EMAIL in map(identity.ident_email, (author, committer)):
-            reasons.append(f"missing {identity.KEY_GEN} trailer for agent commit")
+    if not any(line.startswith(f"{trailers.KEY_GEN}:") for line in lines):
+        if validation.AGENT_EMAIL in map(validation.ident_email, (author, committer)):
+            reasons.append(f"missing {trailers.KEY_GEN} trailer for agent commit")
         elif not claimed_committers:
-            reasons.append(f"missing {identity.KEY_GEN} or Committed-by trailer")
+            reasons.append(f"missing {trailers.KEY_GEN} or Committed-by trailer")
     return reasons
 
 
@@ -74,8 +74,8 @@ def inspect_commit(text: str, *, identity_only: bool = False) -> tuple[list[str]
         reasons = identity_problems(author, committer, message)
     else:
         reasons = problems(
-            identity.ident_email(author),
-            identity.ident_email(committer),
+            validation.ident_email(author),
+            validation.ident_email(committer),
             sum(key == "parent" for key, _, _ in fields),
             signed="gpgsig" in values or "gpgsig-sha256" in values,
             message=message,
