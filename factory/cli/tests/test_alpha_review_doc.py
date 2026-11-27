@@ -25,7 +25,7 @@ A warm cache can return a stale value.
 
 ## Findings
 
-- F1: P1 correctness Return the saved value.
+- F1: P1 correctness The cache goes stale. Occurs when: a caller saves a new value.
 
 ## Verification
 

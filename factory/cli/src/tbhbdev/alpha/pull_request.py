@@ -142,7 +142,7 @@ from urllib.parse import quote
 from jsonschema import Draft202012Validator
 
 from tbhbdev.alpha import identity as agent_identity
-from tbhbdev.alpha import opened, secret_scan, size_gate
+from tbhbdev.alpha import opened, secret_scan, size_gate, tool_pins
 from tbhbdev.alpha import pull_request_frontmatter as frontmatter
 from tbhbdev.alpha.repo import git as repo_git
 from tbhbdev.alpha.repo import hook_cwd, in_tbhb_dev, read_hook_stdin
@@ -547,37 +547,40 @@ def ref_problems(lines: Sequence[Line]) -> list[Problem]:
 
 
 def find_tool(name: str, *, unwrapped: bool = False) -> str:
-    """Find a tool on PATH, in the worktree's Bazel shims, or through mise.
+    """Find a tool in the worktree's Bazel shims, on PATH, or through mise.
 
-    ``unwrapped`` skips the Bazel shims in ``.bazel_env``. For gitleaks the shim
-    is the rules wrapper, which refuses a config with ``[extend]``, and the text
-    scan writes one that has it, so the scan needs the real binary.
+    ``unwrapped`` selects the raw shim. The gitleaks text scan writes its own
+    config with ``[extend]``, which the rules wrapper refuses.
     """
     found = _TOOL_PATHS.get().get((name, unwrapped)) or _locate_tool(
         name, unwrapped=unwrapped
     )
     if found:
         return found
-    message = f"{name} not found on PATH or through `mise which`; run `mise install`"
+    message = (
+        f"{name} not found in .bazel_env, on PATH or through `mise which`; "
+        "run `bazelisk run //:bazel_env` or `mise install`"
+    )
     raise SystemExit(message)
 
 
 def _locate_tool(name: str, *, unwrapped: bool) -> str | None:
-    """Return the executable path, or None when all lookups fail."""
+    """Return the selected executable after checking its pin, if any."""
+    shim_name = f"{name}-raw" if unwrapped else name
+    if shim := shutil.which(str(root() / BAZEL_ENV / "bin" / shim_name)):
+        return tool_pins.require_version(name, shim)
     path = None
     if unwrapped:
         entries = os.environ.get("PATH", "").split(os.pathsep)
         path = os.pathsep.join(e for e in entries if BAZEL_ENV not in e)
     found = shutil.which(name, path=path)
     if found:
-        return found
-    if not unwrapped and (shim := shutil.which(str(root() / BAZEL_ENV / "bin" / name))):
-        return shim
+        return tool_pins.require_version(name, found)
     mise = shutil.which(MISE, path=path)
     if mise:
         done = run([mise, "which", name])
         if done.returncode == 0 and done.stdout.strip():
-            return done.stdout.strip()
+            return tool_pins.require_version(name, done.stdout.strip())
     return None
 
 
@@ -636,17 +639,22 @@ def title_problems(title: str, limit: int = MAX_TITLE) -> list[str]:
 
 def parse_vale(output: str) -> list[Problem]:
     """Vale's JSON alerts."""
+    data = cast(
+        "dict[str, list[dict[str, object]]]", json.loads(output)
+    )  # pragma: no mutate
+    invalid = "expected Vale alerts grouped by file"
+    if not isinstance(data, dict) or any(
+        not isinstance(alerts, list) for alerts in data.values()
+    ):
+        raise ValueError(invalid)
     try:
-        data = cast(
-            "dict[str, list[dict[str, object]]]", json.loads(output)
-        )  # pragma: no mutate
-    except ValueError:
-        return []
-    return [
-        (int(str(alert["Line"])), f"vale {alert['Check']}: {alert['Message']}")
-        for alerts in data.values()
-        for alert in alerts
-    ]
+        return [
+            (int(str(alert["Line"])), f"vale {alert['Check']}: {alert['Message']}")
+            for alerts in data.values()
+            for alert in alerts
+        ]
+    except (KeyError, TypeError) as exc:
+        raise ValueError(invalid) from exc
 
 
 def parse_lines(pattern: re.Pattern[str], tool: str) -> Callable[[str], list[Problem]]:
@@ -764,13 +772,16 @@ def run_linter(
 ) -> list[Problem]:
     """Run one linter on ``path`` in ``work``; its findings, or why it failed."""
     done = run([*argv, str(path)], cwd=work)
-    found = parse(done.stdout)
-    # Exit 1 means findings in all three tools; anything else, or
-    # exit 1 with nothing parsed, is the tool failing.
-    if done.returncode not in {0, 1} or (done.returncode == 1 and not found):
-        why = " ".join((done.stderr or done.stdout).split())
-        found = [(1, f"{name} failed (exit {done.returncode}): {why}")]
-    return found
+    if done.returncode in {0, 1}:
+        try:
+            found = parse(done.stdout)
+        except ValueError:
+            return [(1, f"{name} failed (exit {done.returncode}): invalid JSON")]
+        # Exit 1 requires findings. Exit 0 can report a clean result.
+        if done.returncode == 0 or found:
+            return found
+    why = " ".join((done.stderr or done.stdout).split())
+    return [(1, f"{name} failed (exit {done.returncode}): {why}")]
 
 
 def body_problems(
@@ -2073,7 +2084,7 @@ def check_size(args: argparse.Namespace, checked: Checked) -> None:
             base,
             "HEAD",
             default_ref=default_ref,
-            scc=_TOOL_PATHS.get().get((SCC, False), SCC),
+            scc=find_tool(SCC),
             git=_TOOL_PATHS.get().get((GIT, False), GIT),
         )
     except size_gate.SizeCountError as exc:
@@ -2100,14 +2111,11 @@ def command(args: argparse.Namespace, env: Mapping[str, str]) -> int:
     """Resolve the tools for check and create before running the subcommand."""
     if args.command not in ("check", "create"):
         return _run_command(args, env)
-    names = (COG, *(name for name, _, _ in LINTERS), GIT)
+    names = (COG, *(name for name, _, _ in LINTERS), GIT, SCC)
     unwrapped = (GITLEAKS,)
     if args.command == "create":
         names += (GITLEAKS, GH)
     paths = find_tools(names, unwrapped=unwrapped)
-    # Not required: without scc the size count only warns.
-    with contextlib.suppress(SystemExit):
-        paths.update(find_tools((SCC,)))
     token = _TOOL_PATHS.set({(name, name in unwrapped): p for name, p in paths.items()})
     try:
         return _run_command(args, env)
