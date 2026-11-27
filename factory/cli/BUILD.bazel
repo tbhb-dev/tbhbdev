@@ -15,6 +15,7 @@ load(
     "mutmut_test",
     "pip_audit",
     "pip_audit_test",
+    "pylint_test",
     "pyrefly_test",
     "python_tool",
     "ruff_test",
@@ -138,24 +139,15 @@ import_linter_test(
     chdir = "factory/cli",
 )
 
-python_tool(
-    name = "pylint_tool",
-    testonly = True,
-    main = "checks/check_cli_lint.py",
-    select = True,
-    tags = ["manual"],
-)
-
-tree_check_test(
+pylint_test(
     name = "pylint_test",
-    srcs = CLI_CHECK_INPUTS + ["lint-baseline.toml"],
-    tool = ":pylint_tool",
+    srcs = CLI_CHECK_INPUTS,
+    args = ["--rcfile=factory/cli/pyproject.toml"],
 )
 
 python_tool(
     name = "lint_guards_test_tool",
     testonly = True,
-    data = ["checks/check_cli_lint.py"],
     main = "checks/test_lint_guards.py",
     tags = ["manual"],
 )

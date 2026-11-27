@@ -70,6 +70,16 @@ jobs:
         with:
           base: ${{ inputs.base }}
 
+      - name: Check lint allowances against Git history
+        if: matrix.shard == 1
+        shell: bash
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha || inputs.base }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha || github.event.merge_group.head_sha || github.sha }}
+        run: |
+          base=$(git merge-base -- "${BASE_SHA:-HEAD^}" "$HEAD_SHA")
+          bazel run --config=ci @tbhb_rules//lint:lint_baselines -- "$base" "$HEAD_SHA"
+
       - name: Test
         if: steps.affected.outputs.count != '0'
         shell: bash

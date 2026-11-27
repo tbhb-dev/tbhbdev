@@ -1,47 +1,93 @@
 # SPDX-License-Identifier: Apache-2.0
 # Copyright Tony Burns
 
-from pathlib import Path
+lazy from pathlib import Path
 
 import pytest
 
 from lint.check_lint_baselines import REGISTRY, check
+from lint.private.check_trailing_newline import git_output
 
-ROOT = Path(__file__).absolute().parents[2]
+CLI = "factory/cli"
+CONFIG = f"{CLI}/pyproject.toml"
 
 
-def test_lint_baseline_growth(monkeypatch: pytest.MonkeyPatch) -> None:
-    registry: dict[str, object] = {
-        "counts.toml": "counts",
-        "pyproject.toml": "python-project",
-    }
-    base: dict[str, object] = {"module_lines": {"a.py": 320}, "noqa": {"S105": 2}}
+@pytest.fixture
+def repo(tmp_path: Path) -> Path:
+    git_output(tmp_path, "init", "-q")
+    git_output(tmp_path, "config", "user.name", "Test User")
+    git_output(tmp_path, "config", "user.email", "test@example.com")
+    git_output(tmp_path, "config", "commit.gpgsign", "false")
+    return tmp_path
 
-    def project(edges: list[str], limit: int) -> dict[str, object]:
-        return {
-            "tool": {
-                "importlinter": {
-                    "contracts": [{"id": "example", "ignore_imports": edges}]
-                },
-                "pylint": {"format": {"max-module-lines": limit}},
-            }
-        }
 
-    docs: dict[tuple[str, str], dict[str, object]] = {
-        ("base", REGISTRY): registry,
-        ("head", REGISTRY): registry,
-        ("base", "counts.toml"): base,
-        ("base", "pyproject.toml"): project(["a -> b"], 300),
-        ("head", "counts.toml"): {"module_lines": {"a.py": 321}, "noqa": {"S105": 3}},
-        ("head", "pyproject.toml"): project(["a -> c"], 301),
-    }
+def write(repo: Path, name: str, content: str) -> None:
+    path = repo / name
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(content, encoding="utf-8")
 
-    def read_at(_root: Path, revision: str, path: str) -> dict[str, object]:
-        return docs[revision, path]
 
-    monkeypatch.setattr("lint.check_lint_baselines.read_at", read_at)
-    assert len(check(ROOT, "base", "head")) == 4
+def commit(repo: Path) -> str:
+    git_output(repo, "add", ".")
+    git_output(repo, "commit", "-qm", "lint fixture")
+    return git_output(repo, "rev-parse", "HEAD").decode().strip()
 
-    docs["head", "counts.toml"] = {"module_lines": {"a.py": 319}, "noqa": {"S105": 1}}
-    docs["head", "pyproject.toml"] = project([], 299)
-    assert check(ROOT, "base", "head") == []
+
+def configure(repo: Path, edge: str, limit: int = 300) -> None:
+    write(repo, REGISTRY, f'"{CONFIG}" = "python-project"\n')
+    write(
+        repo,
+        CONFIG,
+        f"""
+[[tool.importlinter.contracts]]
+id = "example"
+ignore_imports = ["{edge}"]
+
+[tool.pylint.format]
+max-module-lines = {limit}
+""",
+    )
+
+
+def test_lint_baseline_growth(repo: Path) -> None:
+    configure(repo, "a -> b")
+    base = commit(repo)
+    configure(repo, "a -> c", 301)
+    head = commit(repo)
+    assert check(repo, base, head) == [
+        f"{CONFIG}: example / a -> c grew from 0 to 1",
+        f"{CONFIG}: pylint / max-module-lines grew from 300 to 301",
+    ]
+
+
+def test_file_allowances_follow_git_base(repo: Path) -> None:
+    existing = f"{CLI}/src/existing.py"
+    added = f"{CLI}/tests/new.py"
+    write(repo, existing, "pass  # noqa: S105\n" + "\n" * 300)
+    old_base = commit(repo)
+
+    write(repo, existing, "pass  # noqa: S105, S106\n" + "\n" * 301)
+    base = commit(repo)
+
+    configure(repo, "a -> b")
+    write(repo, added, 'text = "# noqa: S106"\n' + "\n" * 299)
+    head = commit(repo)
+    assert check(repo, base, head) == []
+    assert check(repo, old_base, head) == [
+        f"{existing}: 302 lines (ceiling 301)",
+        f"{CLI}: S106 has 1 noqa suppressions (ceiling 0)",
+    ]
+
+    write(repo, existing, "pass  # noqa: S105\n" + "\n" * 302)
+    write(repo, added, "pass  # noqa: S105\n# ruff: noqa\n" + "\n" * 299)
+    head = commit(repo)
+    assert check(repo, base, head) == [
+        f"{existing}: 303 lines (ceiling 302)",
+        f"{added}: 301 lines (ceiling 300)",
+        f"{CLI}: S105 has 2 noqa suppressions (ceiling 1)",
+        f"{CLI}: all has 1 noqa suppressions (ceiling 0)",
+    ]
+
+    write(repo, existing, "pass\n" + "\n" * 300)
+    (repo / added).unlink()
+    assert check(repo, base, commit(repo)) == []

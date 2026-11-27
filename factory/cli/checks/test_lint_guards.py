@@ -1,45 +1,16 @@
-"""Exercise CLI lint failures and the paths for shrinking the baseline."""
+"""Exercise CLI import contract violations and stale exceptions."""
 
 from __future__ import annotations
 
 import shutil
 import subprocess
 import sys
-import tempfile
 from pathlib import Path
-from typing import TYPE_CHECKING
 
 import pytest
-from check_cli_lint import CLI, CONFIG, violations
 
-if TYPE_CHECKING:
-    from collections.abc import Iterator
-
-
-@pytest.fixture
-def sample() -> Iterator[Path]:
-    with tempfile.TemporaryDirectory(dir=CLI / "src") as directory:
-        yield Path(directory).relative_to(Path.cwd()) / "sample.py"
-
-
-def test_module_size(sample: Path) -> None:
-    name = sample.relative_to(CLI).as_posix()
-    sample.write_text("# a line\n" * 302, encoding="utf-8")
-    assert "ceiling 300" in violations([sample], {}, {}, 300)[0]
-    assert "ceiling 301" in violations([sample], {name: 301}, {}, 300)[0]
-    sample.write_text("# a line\n" * 301, encoding="utf-8")
-    assert violations([sample], {name: 301}, {}, 300) == []
-    sample.write_text("# a line\n" * 300, encoding="utf-8")
-    assert violations([sample], {}, {}, 300) == []
-
-
-def test_suppressions(sample: Path) -> None:
-    sample.write_text("pass  # noqa: S105, S106\n", encoding="utf-8")
-    assert "S106" in violations([sample], {}, {"S105": 1}, 300)[0]
-    sample.write_text('text = "# noqa: S106"\n', encoding="utf-8")
-    assert violations([sample], {}, {"S105": 1}, 300) == []
-    sample.write_text("# ruff: noqa\n", encoding="utf-8")
-    assert "all" in violations([sample], {}, {}, 300)[0]
+CLI = Path("factory/cli")
+CONFIG = CLI / "pyproject.toml"
 
 
 @pytest.mark.parametrize(

@@ -84,7 +84,6 @@ ignore_imports = [
   "tbhbdev.alpha.close -> tbhbdev.content",
   "tbhbdev.alpha.review -> tbhbdev.content",
   "tbhbdev.alpha.review_doc -> tbhbdev.content",
-  "tbhbdev.alpha.secret_scan -> tbhbdev.host",
   "tbhbdev.secrets -> tbhbdev.alpha.agent.host_tools",
   "tbhbdev.secrets -> tbhbdev.alpha.agent.model",
 ]
@@ -131,9 +130,10 @@ recursive = true
 
 [tool.pylint."messages control"]
 disable = ["all"]
-enable = ["duplicate-code", "too-many-lines"]
+enable = ["duplicate-code"]
 
 [tool.pylint.format]
+# The Git range check applies this limit with allowances from the merge base.
 max-module-lines = 300
 
 [tool.pylint.similarities]
@@ -375,6 +375,7 @@ max-complexity = 15
 # FBT001: a parametrized expected value is data. S603 and S607: the tests
 # drive the tools as processes, since their contract is the command line.
 "tests/*.py" = ["S101", "PLR2004", "INP001", "FBT001", "S603", "S607"]
+"checks/test_lint_guards.py" = ["S101", "S603"]
 # The tools are command-line programs: they print, and they run ssh, git and
 # the other tools by bare name from PATH.
 "src/tbhbdev/**/*.py" = ["T201", "S603", "S607"]

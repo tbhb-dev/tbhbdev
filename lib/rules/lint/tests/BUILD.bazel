@@ -168,6 +168,7 @@ pytest_test(
         "lint/tests/test_repo_checks.py::test_runner",
     ],
     coverage = None,
+    path_tools = ["@tbhb_rules_git//:git"],
     # Tech debt (AGENTS.md): port the runner's subprocess fixture to Windows.
     target_compatible_with = select({
         "@platforms//os:windows": ["@platforms//:incompatible"],
