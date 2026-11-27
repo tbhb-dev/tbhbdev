@@ -393,8 +393,10 @@ cli_py_library(
     deps = [
         ":host_tools",
         ":model",
+        ":runfiles",
         ":worktree_errors",
         "//factory/cli/src/tbhbdev/alpha:pre_push_guard",
+        "//factory/cli/src/tbhbdev/alpha:preflight_gate",
         "//factory/cli/src/tbhbdev/alpha:repo",
         "//factory/cli/src/tbhbdev/alpha/identity/commit:policy",
         "//factory/cli/src/tbhbdev/alpha/install:scripts",

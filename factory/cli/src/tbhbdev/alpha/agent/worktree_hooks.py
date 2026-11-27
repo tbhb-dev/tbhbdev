@@ -11,8 +11,8 @@ from functools import partial
 from pathlib import Path
 lazy from collections.abc import Mapping
 
-from tbhbdev.alpha import pre_push_guard
-from tbhbdev.alpha.agent import host_tools, worktree_errors
+from tbhbdev.alpha import pre_push_guard, preflight_gate
+from tbhbdev.alpha.agent import host_tools, runfiles, worktree_errors
 from tbhbdev.alpha.agent.model import Invalid
 from tbhbdev.alpha.identity.commit.policy import RUN_HOOK_ENV
 from tbhbdev.alpha.install.scripts import IDENTITY_HOOKS, SHIM_MARK, pre_push_shim
@@ -83,6 +83,7 @@ def install_hooks(
         scripts[hooks / name] = RUN_IDENTITY_SHIM.format(
             mark=SHIM_MARK, verb=verb, hook=name, run_env=RUN_HOOK_ENV
         )
+    run_logs = runfiles.state_home(Path.home()) / "tbhbdev" / "agent-runs"
     scripts[hooks / "pre-push"] = pre_push_shim(
         Path(sys.base_prefix, "bin", "python3"),
         TBHB_DEV_ORIGIN.pattern,
@@ -90,6 +91,7 @@ def install_hooks(
             pre_push_guard.RUN_NAME_ENV: run_name,
             pre_push_guard.RUN_START_REF_ENV: start_ref or "",
             pre_push_guard.RUN_START_TIP_ENV: start,
+            preflight_gate.RUN_LOG_ENV: str(run_logs / f"{run_name}.log"),
         },
     )
     scripts[hooks / "reference-transaction"] = RUN_REFERENCE_TRANSACTION.format(

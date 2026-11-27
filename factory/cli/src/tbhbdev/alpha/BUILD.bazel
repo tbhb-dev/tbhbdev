@@ -180,12 +180,24 @@ cli_py_library(
     visibility = ["//factory/cli:__subpackages__"],
     deps = [
         ":gh_shim",
+        ":preflight_gate",
         ":repo",
         "//factory/cli/src/tbhbdev:userconfig",
         "//factory/cli/src/tbhbdev/alpha/agent:settings",
         "//factory/cli/src/tbhbdev/alpha/agent:signing_parity",
         "//factory/cli/src/tbhbdev/alpha/agent/decisions:host_names",
         "//factory/cli/src/tbhbdev/alpha/identity/commit:policy",
+    ],
+)
+
+cli_py_library(
+    name = "preflight_gate",
+    srcs = ["preflight_gate.py"],
+    imports = ["../.."],
+    visibility = ["//factory/cli:__subpackages__"],
+    deps = [
+        ":repo",
+        "//factory/cli/src/tbhbdev/alpha/agent:runfiles",
     ],
 )
 

@@ -152,6 +152,7 @@ cli_py_test(
         ":pr_draft_samples",
         ":pr_test_support",
         "//factory/cli/src/tbhbdev:userconfig",
+        "//factory/cli/src/tbhbdev/alpha:preflight_gate",
         "//factory/cli/src/tbhbdev/alpha:repo",
         "//factory/cli/src/tbhbdev/alpha/identity/commit:policy",
         "//factory/cli/src/tbhbdev/alpha/pull_request:command",

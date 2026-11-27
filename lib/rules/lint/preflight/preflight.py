@@ -114,6 +114,29 @@ async def git(*args: str) -> str:
     return os.fsdecode(await run("git", *args, capture=True)).rstrip("\n")
 
 
+def write_record(path: Path, text: str) -> None:
+    path.parent.mkdir(exist_ok=True)
+    with tempfile.TemporaryDirectory(dir=path.parent) as directory:
+        temporary = Path(directory) / path.name
+        temporary.write_text(text, encoding="utf-8")
+        temporary.replace(path)
+
+
+async def record_result(revisions: Revisions, results: list[tuple[str, bool]]) -> None:
+    head, base = revisions.head, revisions.merge_base
+    if base == head or await git("rev-parse", "HEAD") != head:
+        return
+    if await git("status", "--porcelain", "--untracked-files=no"):
+        return
+    records = Path(await git("rev-parse", "--git-common-dir")) / "tbhbdev-preflight"
+    tree = await git("rev-parse", f"{head}^{{tree}}")
+    failed = " ".join(name for name, passed in results if not passed)
+    result = f"fail {failed}" if failed else "pass"
+    await asyncio.to_thread(
+        write_record, records / head, f"tree {tree}\nbase {base}\nresult {result}\n"
+    )
+
+
 async def affected_tests(base: str, head: str, scratch: Path) -> None:
     determinator = scratch / "target-determinator"
     output = scratch / "selection"
@@ -241,6 +264,8 @@ async def main() -> int:
         else:
             results.append((name, True))
     sys.stdout.write(summary(results, args.base) + "\n")
+    if not args.check:
+        await record_result(revisions, results)
     passed = all(passed for _, passed in results)
     reports = {"design-report.md", "gomodscan.sarif", "agent-capacity.sarif"}
     if not passed or reports.intersection(await asyncio.to_thread(os.listdir, scratch)):

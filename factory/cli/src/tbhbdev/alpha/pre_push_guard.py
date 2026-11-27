@@ -22,6 +22,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from tbhbdev import userconfig
+from tbhbdev.alpha import preflight_gate
 from tbhbdev.alpha.agent import settings
 from tbhbdev.alpha.agent.decisions import host_names
 from tbhbdev.alpha.agent.signing_parity import public_keys
@@ -300,6 +301,20 @@ def ref_problems(
     return problems
 
 
+def preflight_problems(
+    rows: Sequence[tuple[str, str, str]], *, agent_push: bool
+) -> list[str]:
+    if not agent_push:
+        return []
+    return [
+        f"{ref}: {reason}"
+        for local, ref, _ in rows
+        if ref.startswith("refs/heads/")
+        and local.strip("0")
+        and (reason := preflight_gate.check(local))
+    ]
+
+
 def push_problems(
     remote: str, lines: Sequence[str], *, agent_push: bool, run_name: str
 ) -> list[str]:
@@ -317,7 +332,7 @@ def push_problems(
         rows.append((local, ref, old))
     tips = remote_tips()
     keys = SigningKeys()
-    problems = []
+    problems = preflight_problems(rows, agent_push=agent_push)
     start_ref = os.environ.get(RUN_START_REF_ENV) if run_name else None
     for row in rows:
         local, ref, _ = row
