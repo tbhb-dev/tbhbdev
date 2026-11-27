@@ -2076,12 +2076,12 @@ def run_size_review_in_pane(
 
 def start_size_review(
     repo: str,
-    base: tuple[str, str],
+    branch: str,
     head: str,
     counts: size_gate.SizeCounts,
     env: Mapping[str, str],
 ) -> None:
-    """Start the sizing review with the base branch and the commit counted."""
+    """Start the sizing review for the same range used to count lines."""
     host = env.get("TBHBDEV_SIZE_REVIEW_HOST")
     detected = agent_identity.detect(env)
     harness, model = (
@@ -2094,7 +2094,6 @@ def start_size_review(
         host = next(
             (h.name for h in hosts if harness in h.proven_harnesses), hosts[0].name
         )
-    branch, base_commit = base
     argv = [
         find_tool("tbhbdev"), "alpha", "agent", "exec",
         "--host", host, "--repo", repo, "--ref", head,
@@ -2104,11 +2103,16 @@ def start_size_review(
         "--variant", size_gate.SIZE_REVIEW,
     ]  # fmt: skip
     name = f"{size_gate.SIZE_REVIEW}-{head[:12]}"
+    prepare_diff = (
+        f"First run `{counts.merge_tree_command}` to create the comparison tree. "
+        if counts.merge_tree_command
+        else ""
+    )
     with tempfile.TemporaryDirectory() as directory:
         prompt = Path(directory) / "sizing.md"
         prompt.write_text(
             (size_gate.DATA / "review.md").read_text().format(
-                base=base_commit, head=head,
+                diff_range=counts.diff_range, prepare_diff=prepare_diff, head=head,
                 code=counts.code_lines, raw=counts.raw_lines,
             )
         )  # fmt: skip
@@ -2123,7 +2127,7 @@ def start_size_review(
 
 
 def size_review_allows(
-    base: tuple[str, str],
+    branch: str,
     head: str,
     counts: size_gate.SizeCounts,
     env: Mapping[str, str],
@@ -2135,7 +2139,7 @@ def size_review_allows(
         if state == "success":
             return True
         if state not in {"pending", "failure"}:
-            start_size_review(repo, base, head, counts, env)
+            start_size_review(repo, branch, head, counts, env)
     except NotFoundError:
         print(
             "push this head to origin before starting its sizing review",
@@ -2214,8 +2218,8 @@ def check_size(
     base_commit, head = commits
     try:
         counts = size_gate.size_counts(
-            base,
-            "HEAD",
+            base_commit,
+            head,
             default_ref=default_ref,
             scc=find_tool(SCC),
             git=_TOOL_PATHS.get().get((GIT, False), GIT),
@@ -2236,7 +2240,7 @@ def check_size(
         if dry_run:
             print(f"warning: {args.draft}:1: {why}", file=sys.stderr)
             return
-        if size_review_allows((branch, base_commit), head, counts, env):
+        if size_review_allows(branch, head, counts, env):
             return
         checked.problems.append((1, why))
         print(f"{args.draft}:1: {why}")

@@ -4,6 +4,7 @@ import argparse
 import json
 import os
 import subprocess
+from dataclasses import replace
 from unittest.mock import Mock, call
 lazy from pathlib import Path
 
@@ -12,15 +13,18 @@ import pytest
 from tbhbdev.alpha import pull_request as pr
 from tbhbdev.alpha import size_gate as sg
 
+BASE_COMMIT = "a" * 40
+HEAD_COMMIT = "b" * 40
+DIFF_RANGE = f"{BASE_COMMIT}...{HEAD_COMMIT}"
 GOOD = {
     "code_lines": 400,
     "code_limit": 400,
     "raw_lines": 1500,
     "raw_limit": 1500,
     "failed": None,
+    "diff_range": DIFF_RANGE,
+    "merge_tree_command": "",
 }
-BASE_COMMIT = "a" * 40
-HEAD_COMMIT = "b" * 40
 
 
 @pytest.mark.parametrize(
@@ -92,6 +96,7 @@ def test_size_count_matches_rules_counting(
     git("worktree", "add", "-q", "--detach", str(linked), "HEAD")
     assert (linked / ".git").is_file()
     monkeypatch.chdir(linked / ".github")
+    head = git("rev-parse", "HEAD")
     runner = sg.subprocess.run
 
     def without_bazel(
@@ -101,7 +106,9 @@ def test_size_count_matches_rules_counting(
         return runner(argv, capture_output=capture_output, text=text, check=check)
 
     monkeypatch.setattr(sg.subprocess, "run", without_bazel)
-    assert sg.size_counts(base, "HEAD") == expected
+    assert sg.size_counts(base, "HEAD") == replace(
+        expected, diff_range=f"{base}...{head}"
+    )
 
 
 @pytest.mark.parametrize(
@@ -140,8 +147,10 @@ def test_stacked_count_includes_child_lines_in_a_resolved_conflict(
     monkeypatch.chdir(tmp_path)
     parent, main, resolved, additions = history
 
-    def git(*args: str) -> None:
-        subprocess.run(["git", *args], capture_output=True, check=True)
+    def git(*args: str) -> str:
+        return subprocess.check_output(
+            ["git", *args], stderr=subprocess.PIPE, text=True
+        ).strip()
 
     git("init", "-q", "-b", "main")
     git("config", "user.name", "test")
@@ -168,7 +177,9 @@ def test_stacked_count_includes_child_lines_in_a_resolved_conflict(
         out.write(additions)
     git("commit", "-qam", "child work")
 
-    assert sg.size_counts("parent", "HEAD", default_ref="main") == expected
+    assert sg.size_counts("parent", "HEAD", default_ref="main") == replace(
+        expected, diff_range=f"{git('rev-parse', 'main')}..{git('rev-parse', 'HEAD')}"
+    )
 
 
 @pytest.mark.parametrize("failed", [None, "code", "raw"])
@@ -188,7 +199,7 @@ def test_counts(
     monkeypatch.setattr(sg.subprocess, "run", runner)
     assert sg.size_counts(
         "origin/main", "HEAD", default_ref=default_ref, **tools
-    ) == sg.SizeCounts(400, 400, 1500, 1500, failed)
+    ) == sg.SizeCounts(400, 400, 1500, 1500, failed, diff_range=DIFF_RANGE)
     assert runner.call_count == 1
     assert runner.call_args.args == (
         [
@@ -336,8 +347,8 @@ def test_pr_check(
     ) == bool(problem)
     lint.assert_called_once_with("draft.md")
     counter.assert_called_once_with(
-        "refs/remotes/origin/main",
-        "HEAD",
+        BASE_COMMIT,
+        HEAD_COMMIT,
         default_ref=None,
         scc="/tools/scc",
         git="/tools/git",
@@ -350,7 +361,7 @@ def test_pr_check(
     )
     if problem:
         size_launcher.assert_called_once_with(
-            "owner/repo", ("main", BASE_COMMIT), HEAD_COMMIT, counts, {}
+            "owner/repo", "main", HEAD_COMMIT, counts, {}
         )
         assert checked.problems == [(1, f"{problem}: split into stacked PRs")]
         assert captured.out.endswith(f"draft.md:1: {problem}: split into stacked PRs\n")
@@ -443,7 +454,7 @@ def test_pr_create_size(
     assert post.called is (failure != "over")
     if failure == "over":
         size_launcher.assert_called_once_with(
-            "owner/repo", ("main", BASE_COMMIT), HEAD_COMMIT, counts, {}
+            "owner/repo", "main", HEAD_COMMIT, counts, {}
         )
         assert captured.out == "d.md:1: 401 lines, limit 400: split into stacked PRs\n"
     elif failure != "override":
@@ -454,8 +465,8 @@ def test_pr_create_size(
     assert call(*fetched) in git.call_args_list
     if failure != "base":
         counter.assert_called_once_with(
-            "refs/remotes/origin/main",
-            "HEAD",
+            BASE_COMMIT,
+            HEAD_COMMIT,
             default_ref=None,
             scc="/tools/scc",
             git="/tools/git",
@@ -482,8 +493,8 @@ def test_both_stacked_refs_are_refreshed_without_tags_then_counted(
         "+refs/heads/main:refs/remotes/origin/main",
     )
     counter.assert_called_once_with(
-        "refs/remotes/origin/topic",
-        "HEAD",
+        BASE_COMMIT,
+        HEAD_COMMIT,
         default_ref="refs/remotes/origin/main",
         scc="/tools/scc",
         git="git",

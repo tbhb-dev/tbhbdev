@@ -22,6 +22,8 @@ class SizeCounts:
     raw_lines: int
     raw_limit: int
     failed: str | None
+    diff_range: str = ""
+    merge_tree_command: str = ""
 
 
 class SizeCountError(Exception):
@@ -70,6 +72,8 @@ def size_counts(
     if (
         not isinstance(data, dict)
         or any(type(data.get(key)) is not int for key in COUNT_KEYS)
+        or not isinstance(diff_range := data.get("diff_range"), str)
+        or not isinstance(merge_tree_command := data.get("merge_tree_command"), str)
         or "failed" not in data
         or cast(
             "object",  # pragma: no mutate -- Type-only argument.
@@ -91,6 +95,8 @@ def size_counts(
             "str | None",  # pragma: no mutate -- Type-only argument.
             data["failed"],
         ),
+        diff_range=diff_range,
+        merge_tree_command=merge_tree_command,
     )
 
 

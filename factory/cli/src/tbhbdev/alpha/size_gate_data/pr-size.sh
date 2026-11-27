@@ -9,8 +9,9 @@ set -euo pipefail
 base=$1 head=$2 scc=$3 git=$4 policy=$5 default_ref=${6:-}
 top=$("$git" rev-parse --show-toplevel)
 cd "$top"
+exempt_counts='{"code_lines": 0, "code_limit": 400, "raw_lines": 0, "raw_limit": 1500, "failed": null, "diff_range": "", "merge_tree_command": ""}'
 if [[ ${PR_AUTHOR:-} == 'tbhb-dev-renovate[bot]' ]]; then
-  echo '{"code_lines": 0, "code_limit": 400, "raw_lines": 0, "raw_limit": 1500, "failed": null}'
+  echo "$exempt_counts"
   exit 0
 fi
 # A repository's baseline PR is exempt while main's live tip is its single root
@@ -20,24 +21,26 @@ fi
 # MAIN_TIP is a live API read the workflow passes in. A missing tip or a
 # shallow clone means no exemption, and a run after main moves sees a
 # different tip and applies the limit.
-base_commit=$("$git" rev-parse --verify --quiet "$base^{commit}") || base_commit=
+base_commit=$("$git" rev-parse --verify "$base^{commit}")
 shallow=$("$git" rev-parse --is-shallow-repository) || shallow=true
-root_count=0
-if [[ -n $base_commit ]]; then
-  root_count=$("$git" rev-list --count "$base_commit") || root_count=0
-fi
-if [[ -n $base_commit && $shallow == false && $root_count == 1 &&
+root_count=$("$git" rev-list --count "$base_commit") || root_count=0
+if [[ $shallow == false && $root_count == 1 &&
   ${MAIN_TIP:-} == "$base_commit" ]]; then
-  echo '{"code_lines": 0, "code_limit": 400, "raw_lines": 0, "raw_limit": 1500, "failed": null}'
+  echo "$exempt_counts"
   exit 0
 fi
-range="$base...$head"
+head=$("$git" rev-parse --verify "$head^{commit}")
+range="$base_commit...$head"
+merge_tree_command=
 if [[ -n $default_ref ]]; then
   # Use only changes from the base and default branch that HEAD already has.
-  shared_base=$("$git" merge-base "$base" "$head")
+  shared_base=$("$git" merge-base "$base_commit" "$head")
   shared_default=$("$git" merge-base "$default_ref" "$head")
-  if shared_merge=$("$git" merge-tree --write-tree --no-messages "$shared_base" "$shared_default"); then
+  merge_tree_args=(merge-tree --write-tree --no-messages "$shared_base" "$shared_default")
+  if shared_merge=$("$git" "${merge_tree_args[@]}"); then
     range="$shared_merge..$head"
+    # The reviewer's checkout may not have this tree object yet.
+    merge_tree_command="git ${merge_tree_args[*]}"
   else
     [[ $? == 1 ]] || exit 1
     # Conflict markers can match literal additions. Count from the shared default commit.
@@ -123,4 +126,5 @@ if ((code > 400)); then
 elif ((raw > 1500)); then
   failed='"raw"'
 fi
-printf '{"code_lines": %d, "code_limit": 400, "raw_lines": %d, "raw_limit": 1500, "failed": %s}\n' "$code" "$raw" "$failed"
+printf '{"code_lines": %d, "code_limit": 400, "raw_lines": %d, "raw_limit": 1500, "failed": %s, "diff_range": "%s", "merge_tree_command": "%s"}\n' \
+  "$code" "$raw" "$failed" "$range" "$merge_tree_command"
