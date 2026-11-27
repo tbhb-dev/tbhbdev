@@ -3,14 +3,12 @@
 import hashlib
 import os
 import subprocess
-from dataclasses import replace
-from types import SimpleNamespace
+from math import inf
 from unittest.mock import Mock
 lazy from pathlib import Path
 
 import pytest
-from agent_host_example import commit, git, repository
-from test_alpha_agent_run_host import make_run, preparation
+from agent_host_example import commit, git, host_settings, repository, run_request
 
 from tbhbdev.alpha.agent import (
     credentials,
@@ -19,6 +17,7 @@ from tbhbdev.alpha.agent import (
     push,
     rescue,
     run_host,
+    runfiles,
 )
 
 BRANCH = "agent/example"
@@ -84,11 +83,7 @@ def test_fault_publication(
     if change == "vendored secret":
         install_vendored_policy(workspace)
     base = git(workspace, "rev-parse", "HEAD")
-    run = make_run(
-        workspace.parent, timeout=1, start_ref=START_REF, fetch_refs=[START_REF]
-    )
-    prepared = preparation(run)
-    prepared = replace(prepared, paths=replace(prepared.paths, worktree=str(workspace)))
+    run, prepared = build_run(workspace)
     monkeypatch.setattr(run_host, "preflight", Mock())
     monkeypatch.setattr(process_group, "prepare", Mock(return_value=prepared))
 
@@ -141,6 +136,20 @@ def install_vendored_policy(workspace: Path) -> None:
     git(workspace, "push", "origin", "HEAD:refs/heads/main", "HEAD:refs/heads/topic")
 
 
+def build_run(workspace: Path) -> tuple[run_host.Run, run_host.Prepared]:
+    root = workspace.parent
+    settings = host_settings()
+    request = run_request(timeout=1, start_ref=START_REF, fetch_refs=[START_REF])
+    files = runfiles.RunFiles(root / "runs", "example")
+    run = run_host.Run(files, request, settings, settings.hosts[0], root, root, 0, inf)
+    home = str(root)
+    paths = run_host.RunPaths(
+        home, str(workspace), home, f"{home}/codex", f"{home}/audit"
+    )
+    delivery = credentials.Delivery({}, None, gh_fallback=False, claude_profile=None)
+    return run, run_host.Prepared(paths, delivery, None)
+
+
 def change_checkout(workspace: Path, change: str) -> None:
     if change == "nothing":
         return
@@ -169,18 +178,11 @@ def change_checkout(workspace: Path, change: str) -> None:
         commit(workspace, "remove test value")
     if change == "already pushed":
         git(workspace, "push", "origin", REF)
-    break_checkout(workspace, change)
-
-
-def break_checkout(workspace: Path, change: str) -> None:
-    match change:
-        case "checkout error":
-            (workspace / ".git" / "index.lock").touch()
-        case "symlink index":
-            index = workspace / ".git" / "index"
-            index.symlink_to(index.rename(index.with_name("original-index")))
-        case _:
-            return
+    if change == "checkout error":
+        (workspace / ".git/index.lock").touch()
+    if change == "symlink index":
+        index = workspace / ".git/index"
+        index.symlink_to(index.rename(index.with_name("original-index")))
 
 
 def scan_fault(monkeypatch: pytest.MonkeyPatch, change: str) -> None:
@@ -195,4 +197,4 @@ def scan_fault(monkeypatch: pytest.MonkeyPatch, change: str) -> None:
         ),
     }
     if scanner := faults.get(change):
-        monkeypatch.setattr(rescue, "subprocess", SimpleNamespace(run=scanner))
+        monkeypatch.setattr(rescue, "subprocess", Mock(run=scanner))
