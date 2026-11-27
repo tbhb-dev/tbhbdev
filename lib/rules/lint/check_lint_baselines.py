@@ -45,9 +45,8 @@ def project_ceilings(doc: TomlDocument) -> Ceilings | None:
     if limits is None:
         # Older revisions kept the module limit in Pylint's format table.
         pylint = cast("dict[str, dict[str, int]]", tool["pylint"])
-        ceilings["lint-baselines", "max-module-lines"] = pylint["format"][
-            "max-module-lines"
-        ]
+        key = LIMIT_KEYS["src"]
+        ceilings["lint-baselines", key] = pylint["format"][key]
     else:
         for key in LIMIT_KEYS.values():
             ceilings["lint-baselines", key] = limits[key]

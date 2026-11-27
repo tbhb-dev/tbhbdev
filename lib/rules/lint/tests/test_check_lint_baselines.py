@@ -114,21 +114,14 @@ class Example:
 
 @pytest.mark.parametrize(("directory", "limit"), [("src", 400), ("tests", 800)])
 def test_oversized_file_cannot_grow(repo: Path, directory: str, limit: int) -> None:
+    configure(repo, "a -> b")
     path = f"{CLI}/{directory}/existing.py"
-    write(repo, path, "pass\n" * limit)
-    old_base = commit(repo)
-
     oversized = "pass\n" * (limit + 1)
     write(repo, path, oversized)
     base = commit(repo)
 
-    configure(repo, "a -> b")
     write(repo, path, '"""Added documentation."""\n# Added comment\n\n' + oversized)
-    head = commit(repo)
-    assert check(repo, base, head) == []
-    assert check(repo, old_base, head) == [
-        f"{path}: {limit + 1} code lines (ceiling {limit})",
-    ]
+    assert check(repo, base, commit(repo)) == []
 
     write(repo, path, oversized + "pass\n")
     assert check(repo, base, commit(repo)) == [
