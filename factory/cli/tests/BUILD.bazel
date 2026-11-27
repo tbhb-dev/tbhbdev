@@ -1826,8 +1826,8 @@ cli_py_test(
 )
 
 cli_py_test(
-    name = "test_ci_workflow",
-    srcs = ["test_ci_workflow.py"],
+    name = "test_ci_workflow_io",
+    srcs = ["test_ci_workflow_io.py"],
     data = ["//:.github/workflows/ci.yml"],
     deps = [
         ":conftest",
