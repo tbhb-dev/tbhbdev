@@ -16,6 +16,14 @@ paths = [
   '''^\.(ruff|pytest|hypothesis|rumdl)_cache/''',
 ]
 
+# The deleted import maps still appear in Git history.
+[[allowlists]]
+description = "Deleted import maps in Git history"
+paths = [
+  '''^factory/cli/IMPORT-MAP\.toml$''',
+  '''^lib/rules/IMPORT-MAP\.toml$''',
+]
+
 # The Bedrock rule contains its own public detection prefix. Allow only that
 # exact regex declaration in generated policy files (including old copies
 # in history), for that rule alone.
