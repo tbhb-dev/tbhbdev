@@ -169,6 +169,36 @@ def test_online_commands_never_follow_redirects(
     assert ("http.followRedirects=false" in seen[-1]) is (verb != "status")
 
 
+def test_fetch_never_receives_credentials(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("SSH_AUTH_SOCK", "sensitive-socket")
+    monkeypatch.setenv("GH_TOKEN", "sensitive-token")
+    calls: list[list[str]] = []
+
+    def output(command: list[str], **kwargs: object) -> str:
+        calls.append(command)
+        environment = kwargs["env"]
+        assert isinstance(environment, dict)
+        assert environment["GIT_ASKPASS"] == "/bin/false"
+        assert environment["GIT_TERMINAL_PROMPT"] == "0"
+        assert environment["GIT_CONFIG_GLOBAL"] == "/dev/null"
+        assert environment["GIT_CONFIG_NOSYSTEM"] == "1"
+        assert "SSH_AUTH_SOCK" not in environment
+        assert "GH_TOKEN" not in environment
+        assert "credential.helper=" in command
+        assert "core.askPass=" in command
+        assert not any("sensitive" in value for value in command)
+        if "--get-regexp" in command:
+            raise subprocess.CalledProcessError(1, command)
+        assert command[-2:] == ["fetch", "origin"]
+        return ""
+
+    monkeypatch.setattr(subprocess, "check_output", output)
+    assert worktree_git.git(tmp_path, "fetch", "origin") == ""
+    assert len(calls) == 2
+
+
 def test_driver_overrides_are_complete() -> None:
     assert worktree_git.driver_overrides(
         "filter.example.smudge\0filter.example.required\0merge.example.driver\0merge.example.name\0other.key\0"
