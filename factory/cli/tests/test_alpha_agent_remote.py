@@ -23,6 +23,7 @@ def test_file_names() -> None:
         ".log",
         ".branch",
         ".pr",
+        ".base",
         ".head",
         ".keep",
         ".rc.pending",

@@ -107,6 +107,10 @@ def parser(prog: str) -> argparse.ArgumentParser:
         sub.add_argument("name")
         if verb == "log":
             sub.add_argument("-n", type=int, default=10)
+        if verb == "diff":
+            sub.add_argument(
+                "--patch", action="store_true", help="export commits for git am"
+            )
         if verb == "clean":
             sub.add_argument("--force", action="store_true")
     verbs.add_parser(

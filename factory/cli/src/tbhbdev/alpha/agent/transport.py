@@ -63,6 +63,19 @@ def call(
     *,
     timeout: float = 30,
 ) -> str:
+    return call_bytes(settings, host, command, stdin, timeout=timeout).decode(
+        errors="replace"
+    )
+
+
+def call_bytes(
+    settings: Settings,
+    host: Host,
+    command: tuple[str, ...],
+    stdin: Stdin | None = None,
+    *,
+    timeout: float = 30,
+) -> bytes:
     data = b"" if stdin is None else stdin.encode()
     args = argv.ssh(
         host,
@@ -84,7 +97,7 @@ def call(
     if code:
         message = f"{host.name}: remote command failed ({code})"
         raise TransportError(message)
-    return output.decode(errors="replace")
+    return output
 
 
 async def execute(args: tuple[str, ...], data: bytes) -> tuple[int, bytes]:
