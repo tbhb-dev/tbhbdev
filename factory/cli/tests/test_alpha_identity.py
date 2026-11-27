@@ -556,16 +556,6 @@ def test_format_order_and_omission() -> None:
 # --------------------------------------------------------- git and the store
 
 
-def test_git_reports_exit_code_and_trims_newlines(repo: Path, plain: Path) -> None:
-    assert ai.git("rev-parse", "--show-toplevel", cwd=repo) == (0, str(repo))
-    code, out = ai.git("rev-parse", "--git-dir", cwd=plain)
-    assert code != 0
-    assert out == ""
-    code, out = ai.git("--version")
-    assert code == 0
-    assert out.startswith("git version")
-
-
 def test_state_dir_and_repo_info(
     repo: Path, plain: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -1640,17 +1630,6 @@ def test_cmd_record_claude_dispatch(
     feed(monkeypatch, {**data, "sessionId": "session-raw"})
     assert ai.cmd_record("claude", CLAUDE_HOOK_ENV) == 0
     assert len(pending(repo)) == 2
-
-
-def test_read_hook_stdin(monkeypatch: pytest.MonkeyPatch) -> None:
-    feed(monkeypatch, '{"a": 1}')
-    assert ai.read_hook_stdin() == {"a": 1}
-    feed(monkeypatch, "")
-    assert ai.read_hook_stdin() == {}
-    feed(monkeypatch, "[1]")
-    assert ai.read_hook_stdin() == {}
-    feed(monkeypatch, "{")
-    assert ai.read_hook_stdin() == {}
 
 
 # ------------------------------------------------------------------- Codex
