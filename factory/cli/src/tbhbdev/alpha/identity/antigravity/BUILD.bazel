@@ -1,0 +1,41 @@
+# SPDX-License-Identifier: Apache-2.0
+# Copyright Tony Burns
+
+load("//factory/cli:python.bzl", "cli_py_library")
+
+filegroup(
+    name = "package_files",
+    srcs = glob(["*.py"]),
+    visibility = ["//factory/cli/src/tbhbdev/alpha/identity:__pkg__"],
+)
+
+cli_py_library(
+    name = "__init__",
+    srcs = ["__init__.py"],
+    imports = ["../../../.."],
+    visibility = ["//factory/cli:__subpackages__"],
+)
+
+cli_py_library(
+    name = "payload",
+    srcs = ["payload.py"],
+    imports = ["../../../.."],
+    visibility = ["//factory/cli:__subpackages__"],
+    deps = ["//factory/cli/src/tbhbdev/alpha/identity:records"],
+)
+
+cli_py_library(
+    name = "session",
+    srcs = ["session.py"],
+    imports = ["../../../.."],
+    visibility = ["//factory/cli:__subpackages__"],
+    deps = [
+        ":payload",
+        "//factory/cli/src/tbhbdev/alpha:repo",
+        "//factory/cli/src/tbhbdev/alpha/identity:models",
+        "//factory/cli/src/tbhbdev/alpha/identity:receipts",
+        "//factory/cli/src/tbhbdev/alpha/identity:records",
+        "//factory/cli/src/tbhbdev/alpha/identity:sessions",
+        "//factory/cli/src/tbhbdev/alpha/identity:storage",
+    ],
+)

@@ -1,0 +1,176 @@
+# SPDX-License-Identifier: Apache-2.0
+# Copyright Tony Burns
+
+load("//factory/cli/tests:pytest.bzl", "cli_py_test")
+
+filegroup(
+    name = "package_files",
+    srcs = glob(["*.py"]),
+    visibility = ["//factory/cli/tests/unit/alpha/identity:__pkg__"],
+)
+
+cli_py_test(
+    name = "test_claims_io",
+    srcs = ["test_claims_io.py"],
+    imports = ["../../../.."],
+    deps = [
+        "//factory/cli/src/tbhbdev/alpha:repo",
+        "//factory/cli/src/tbhbdev/alpha/identity:records",
+        "//factory/cli/src/tbhbdev/alpha/identity:storage",
+        "//factory/cli/src/tbhbdev/alpha/identity/commit:claims",
+        "//factory/cli/src/tbhbdev/alpha/identity/commit:hooks",
+        "//factory/cli/tests:conftest",
+        "//factory/cli/tests/unit/alpha/identity:conftest",
+        "//factory/cli/tests/unit/alpha/identity:identity_examples",
+        "//factory/cli/tests/unit/alpha/identity:identity_fixtures",
+        "@cli_pip//pytest",
+        "@cli_pip//pyyaml",
+    ],
+)
+
+cli_py_test(
+    name = "test_grammar",
+    srcs = ["test_grammar.py"],
+    imports = ["../../../.."],
+    deps = [
+        "//factory/cli/src/tbhbdev/alpha/identity:models",
+        "//factory/cli/src/tbhbdev/alpha/identity:trailers",
+        "//factory/cli/src/tbhbdev/alpha/identity/commit:grammar",
+        "//factory/cli/tests/unit/alpha/identity:identity_examples",
+        "@cli_pip//hypothesis",
+        "@cli_pip//pytest",
+    ],
+)
+
+cli_py_test(
+    name = "test_hooks_io",
+    srcs = ["test_hooks_io.py"],
+    imports = ["../../../.."],
+    deps = [
+        "//factory/cli/src/tbhbdev/alpha:repo",
+        "//factory/cli/src/tbhbdev/alpha/identity:dispatcher",
+        "//factory/cli/src/tbhbdev/alpha/identity:records",
+        "//factory/cli/src/tbhbdev/alpha/identity:sessions",
+        "//factory/cli/src/tbhbdev/alpha/identity:storage",
+        "//factory/cli/src/tbhbdev/alpha/identity:trailers",
+        "//factory/cli/src/tbhbdev/alpha/identity/claude:ancestry",
+        "//factory/cli/src/tbhbdev/alpha/identity/commit:grammar",
+        "//factory/cli/src/tbhbdev/alpha/identity/commit:hooks",
+        "//factory/cli/src/tbhbdev/alpha/identity/commit:policy",
+        "//factory/cli/tests:conftest",
+        "//factory/cli/tests/unit/alpha/identity:conftest",
+        "//factory/cli/tests/unit/alpha/identity:identity_examples",
+        "//factory/cli/tests/unit/alpha/identity:identity_fixtures",
+        "@cli_pip//pytest",
+        "@cli_pip//pyyaml",
+    ],
+)
+
+cli_py_test(
+    name = "test_inputs_io",
+    srcs = ["test_inputs_io.py"],
+    imports = ["../../../.."],
+    deps = [
+        "//factory/cli/src/tbhbdev/alpha:repo",
+        "//factory/cli/src/tbhbdev/alpha/identity:models",
+        "//factory/cli/src/tbhbdev/alpha/identity:sessions",
+        "//factory/cli/src/tbhbdev/alpha/identity/commit:inputs",
+        "//factory/cli/tests:conftest",
+        "//factory/cli/tests/unit/alpha/identity:conftest",
+        "//factory/cli/tests/unit/alpha/identity:identity_examples",
+        "//factory/cli/tests/unit/alpha/identity:identity_fixtures",
+        "@cli_pip//pytest",
+    ],
+)
+
+cli_py_test(
+    name = "test_message_io",
+    srcs = ["test_message_io.py"],
+    imports = ["../../../.."],
+    deps = [
+        "//factory/cli/src/tbhbdev/alpha:repo",
+        "//factory/cli/src/tbhbdev/alpha/identity:records",
+        "//factory/cli/src/tbhbdev/alpha/identity:sessions",
+        "//factory/cli/src/tbhbdev/alpha/identity:trailers",
+        "//factory/cli/src/tbhbdev/alpha/identity/claude:ancestry",
+        "//factory/cli/src/tbhbdev/alpha/identity/claude:commands",
+        "//factory/cli/src/tbhbdev/alpha/identity/commit:grammar",
+        "//factory/cli/src/tbhbdev/alpha/identity/commit:hooks",
+        "//factory/cli/src/tbhbdev/alpha/identity/commit:message",
+        "//factory/cli/tests:conftest",
+        "//factory/cli/tests/unit/alpha/identity:conftest",
+        "//factory/cli/tests/unit/alpha/identity:identity_examples",
+        "//factory/cli/tests/unit/alpha/identity:identity_fixtures",
+        "@cli_pip//pytest",
+    ],
+)
+
+cli_py_test(
+    name = "test_picking",
+    srcs = ["test_picking.py"],
+    imports = ["../../../.."],
+    deps = [
+        "//factory/cli/src/tbhbdev/alpha/identity:trailers",
+        "//factory/cli/src/tbhbdev/alpha/identity/commit:picking",
+        "//factory/cli/tests/unit/alpha/identity:identity_examples",
+        "@cli_pip//pytest",
+    ],
+)
+
+cli_py_test(
+    name = "test_policy",
+    srcs = ["test_policy.py"],
+    imports = ["../../../.."],
+    deps = [
+        "//factory/cli/src/tbhbdev/alpha/identity/commit:policy",
+        "@cli_pip//pytest",
+    ],
+)
+
+cli_py_test(
+    name = "test_replay_io",
+    srcs = ["test_replay_io.py"],
+    imports = ["../../../.."],
+    deps = [
+        "//factory/cli/src/tbhbdev/alpha:repo",
+        "//factory/cli/src/tbhbdev/alpha/identity:attribution",
+        "//factory/cli/src/tbhbdev/alpha/identity:records",
+        "//factory/cli/src/tbhbdev/alpha/identity:sessions",
+        "//factory/cli/src/tbhbdev/alpha/identity:trailers",
+        "//factory/cli/src/tbhbdev/alpha/identity/claude:ancestry",
+        "//factory/cli/src/tbhbdev/alpha/identity/commit:grammar",
+        "//factory/cli/src/tbhbdev/alpha/identity/commit:hooks",
+        "//factory/cli/src/tbhbdev/alpha/identity/commit:replay",
+        "//factory/cli/tests:conftest",
+        "//factory/cli/tests/unit/alpha/identity:conftest",
+        "//factory/cli/tests/unit/alpha/identity:identity_examples",
+        "//factory/cli/tests/unit/alpha/identity:identity_fixtures",
+        "@cli_pip//pytest",
+    ],
+)
+
+cli_py_test(
+    name = "test_roles",
+    srcs = ["test_roles.py"],
+    imports = ["../../../.."],
+    deps = [
+        "//factory/cli/src/tbhbdev/alpha/identity:models",
+        "//factory/cli/src/tbhbdev/alpha/identity/commit:roles",
+        "//factory/cli/tests/unit/alpha/identity:identity_examples",
+        "@cli_pip//pytest",
+    ],
+)
+
+cli_py_test(
+    name = "test_formatting",
+    srcs = ["test_formatting.py"],
+    imports = ["../../../.."],
+    deps = ["//factory/cli/src/tbhbdev/alpha/identity/commit:formatting"],
+)
+
+cli_py_test(
+    name = "test_index",
+    srcs = ["test_index.py"],
+    imports = ["../../../.."],
+    deps = ["//factory/cli/src/tbhbdev/alpha/identity/commit:index"],
+)
