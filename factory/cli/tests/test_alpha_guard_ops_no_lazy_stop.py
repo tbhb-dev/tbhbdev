@@ -8,12 +8,10 @@ from typing import TYPE_CHECKING
 
 import pytest
 
-from tbhbdev import alpha
+from tbhbdev.alpha.guard_ops_no_lazy_stop import main
 
 if TYPE_CHECKING:
     from pathlib import Path
-
-COMMAND = ["guard-ops-no-lazy-stop"]
 
 
 def test_blocks_a_verification_qualifier(
@@ -22,7 +20,7 @@ def test_blocks_a_verification_qualifier(
     payload = {"last_assistant_message": "The deployment is Unverified."}
     monkeypatch.setattr(sys, "stdin", io.StringIO(json.dumps(payload)))
 
-    assert alpha.main(COMMAND, "tbhbdev alpha") == 0
+    assert main() == 0
     assert json.loads(capsys.readouterr().out) == {
         "decision": "block",
         "reason": (
@@ -50,7 +48,7 @@ def test_allows_clean_replies_active_stop_hooks_and_bad_stdin(
 ) -> None:
     monkeypatch.setattr(sys, "stdin", io.StringIO(stdin))
 
-    assert alpha.main(COMMAND, "tbhbdev alpha") == 0
+    assert main() == 0
     assert capsys.readouterr().out == ""
 
 
@@ -72,7 +70,7 @@ def test_uses_latest_assistant_message_from_transcript(
     payload = {"transcript_path": str(transcript)}
     monkeypatch.setattr(sys, "stdin", io.StringIO(json.dumps(payload)))
 
-    assert alpha.main(COMMAND, "tbhbdev alpha") == 0
+    assert main() == 0
     output = json.loads(capsys.readouterr().out)
     assert output["decision"] == "block"
     assert output["reason"].startswith('You wrote "haven\'t checked".')
@@ -91,5 +89,5 @@ def test_allows_a_transcript_without_a_readable_message(
     payload = {"transcript_path": str(transcript)}
     monkeypatch.setattr(sys, "stdin", io.StringIO(json.dumps(payload)))
 
-    assert alpha.main(COMMAND, "tbhbdev alpha") == 0
+    assert main() == 0
     assert capsys.readouterr().out == ""

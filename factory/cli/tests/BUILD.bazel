@@ -2140,7 +2140,7 @@ cli_py_test(
     srcs = ["test_alpha_guard_ops_no_lazy_stop.py"],
     deps = [
         ":conftest",
-        "//factory/cli/src/tbhbdev/alpha:__init__",
+        "//factory/cli/src/tbhbdev/alpha:guard_ops_no_lazy_stop",
         "@cli_pip//pytest",
     ],
 )
@@ -2150,7 +2150,6 @@ cli_py_test(
     srcs = ["test_alpha_guard_sendmessage_clock.py"],
     deps = [
         ":conftest",
-        "//factory/cli/src/tbhbdev/alpha:__init__",
         "//factory/cli/src/tbhbdev/alpha:guard_sendmessage_clock",
         "@cli_pip//pytest",
     ],

@@ -18,7 +18,7 @@ STAMP = re.compile(r"\s*\[?([01]\d|2[0-3]):([0-5]\d)Z\b")
 def main(*, now: datetime | None = None) -> int:
     """Read a hook event on stdin, optionally supplying the current UTC time."""
     data: dict[str, object] = {}
-    with suppress(OSError, RecursionError):
+    with suppress(OSError):
         data = read_hook_stdin()
     inputs = data.get("tool_input")
     message = inputs.get("message") if isinstance(inputs, dict) else None

@@ -8,8 +8,7 @@ from datetime import UTC, datetime
 
 import pytest
 
-from tbhbdev import alpha
-from tbhbdev.alpha import guard_sendmessage_clock
+from tbhbdev.alpha.guard_sendmessage_clock import main
 
 NOW = datetime(2026, 11, 26, 0, 2, tzinfo=UTC)
 
@@ -20,7 +19,7 @@ def test_denies_a_leading_stamp_six_minutes_away(
     payload = {"tool_input": {"message": "  [23:56Z] Started"}}
     monkeypatch.setattr(sys, "stdin", io.StringIO(json.dumps(payload)))
 
-    assert guard_sendmessage_clock.main(now=NOW) == 0
+    assert main(now=NOW) == 0
     assert json.loads(capsys.readouterr().out) == {
         "hookSpecificOutput": {
             "hookEventName": "PreToolUse",
@@ -40,7 +39,7 @@ def test_allows_a_stamp_five_minutes_away_across_midnight(
     payload = {"tool_input": {"message": "23:57Z Started"}}
     monkeypatch.setattr(sys, "stdin", io.StringIO(json.dumps(payload)))
 
-    assert guard_sendmessage_clock.main(now=NOW) == 0
+    assert main(now=NOW) == 0
     assert capsys.readouterr().out == ""
 
 
@@ -48,10 +47,10 @@ def test_allows_a_stamp_five_minutes_away_across_midnight(
     "stdin",
     ['{"tool_input":{"message":"Started at 23:56Z"}}', "{", "[]", '{"tool_input":[]}'],
 )
-def test_cli_allows_later_stamps_and_bad_stdin(
+def test_allows_later_stamps_and_bad_stdin(
     stdin: str, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
     monkeypatch.setattr(sys, "stdin", io.StringIO(stdin))
 
-    assert alpha.main(["guard-sendmessage-clock"], "tbhbdev alpha") == 0
+    assert main(now=NOW) == 0
     assert capsys.readouterr().out == ""

@@ -42,7 +42,7 @@ def transcript_message(path: object) -> str:
 def main() -> int:
     """Read a Stop event on stdin and print a block decision on a phrase match."""
     event: dict[str, object] = {}
-    with suppress(OSError, RecursionError):
+    with suppress(OSError):
         event = read_hook_stdin()
     if event.get("stop_hook_active"):
         return 0
