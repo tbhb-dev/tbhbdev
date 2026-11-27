@@ -11,14 +11,14 @@ import re
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, TypedDict
 
-from tbhbdev.alpha.identity import dispatcher as identity
+from tbhbdev.alpha.identity.trailers import KEY_GEN
 
 if TYPE_CHECKING:
-    from collections.abc import Sequence
+    from collections.abc import Callable, Collection, Sequence
+    from re import Pattern
 
 MIN_APPROVALS = 1
 
-KNOWN_HARNESSES = frozenset({*identity.SLUGS.values(), "claude", "agy", "gemini"})
 HEAD_SHA = re.compile(r"[0-9a-f]{40}")
 LEGACY_FOOTER = re.compile(r"Run \S+, (\S+) \S+, judged head ([0-9a-f]{40})\.")
 
@@ -47,41 +47,67 @@ class Pull:
     messages: Sequence[str]
 
 
-def known_harness(harness: str) -> bool:
-    return harness.lower().partition(":")[0] in KNOWN_HARNESSES
+@dataclass(frozen=True)
+class Attribution:
+    """How to read and validate attribution from a commit or review footer."""
+
+    trailers: Callable[[str], list[tuple[str, str]]]
+    attr_pattern: Pattern[str]
+    harnesses: Collection[str]
+    hash_pattern: Pattern[str]
+
+    def generated(self, text: str) -> list[dict[str, str]]:
+        """Read the attributes of each Generated-by trailer."""
+        return [
+            dict(self.attr_pattern.findall(value))
+            for key, value in self.trailers(text)
+            if key == KEY_GEN
+        ]
+
+    def known_harness(self, harness: str) -> bool:
+        """Whether the harness name before any version is recognized."""
+        return harness.lower().partition(":")[0] in self.harnesses
+
+    def launch(self, attrs: dict[str, str]) -> str | None:
+        """The launch hash in the attribution, if valid."""
+        value = attrs.get("launch")
+        return value if value and self.hash_pattern.fullmatch(value) else None
 
 
-def review_attribution(body: str, head: str) -> dict[str, str]:
+def review_attribution(
+    body: str, head: str, attribution: Attribution
+) -> dict[str, str]:
     """Read the approving run's attribution from either host-written footer."""
     footer = body.rstrip().rpartition("\n")[2]
-    trailers = identity.llm_trailers(footer)
-    if trailers and trailers[0][0] == identity.KEY_GEN:
-        return dict(identity.ATTR_PAIR.findall(trailers[0][1]))
+    trailers = attribution.generated(footer)
+    if trailers:
+        return trailers[0]
     legacy = LEGACY_FOOTER.fullmatch(footer)
     if legacy and legacy[2] == head:
         return {"harness": legacy[1]}
     return {}
 
 
-def author_launches(messages: Sequence[str]) -> tuple[set[str], list[str]]:
+def author_launches(
+    messages: Sequence[str], attribution: Attribution
+) -> tuple[set[str], list[str]]:
     """The launch hashes of the Generated-by trailers and any attribution errors."""
     launches: set[str] = set()
     reasons: list[str] = []
     for message in messages:
-        for key, value in identity.llm_trailers(message):
-            if key != identity.KEY_GEN:
-                continue
-            attrs = dict(identity.ATTR_PAIR.findall(value))
-            if (launch := identity.hash_ok(attrs.get("launch"))) is not None:
+        for attrs in attribution.generated(message):
+            if (launch := attribution.launch(attrs)) is not None:
                 launches.add(launch)
             harness = attrs.get("harness", "")
-            if not known_harness(harness):
+            if not attribution.known_harness(harness):
                 name = harness or "(none)"
                 reasons.append(f"a Generated-by trailer names unknown harness {name}")
     return launches, reasons
 
 
-def review_reasons(app: str, pull: Pull, launches: set[str]) -> list[str]:
+def review_reasons(
+    app: str, pull: Pull, launches: set[str], attribution: Attribution
+) -> list[str]:
     """The reasons the App's reviews do not approve the current head."""
     reasons: list[str] = []
     same_run: list[str] = []
@@ -93,10 +119,10 @@ def review_reasons(app: str, pull: Pull, launches: set[str]) -> list[str]:
         if review["state"] == "CHANGES_REQUESTED":
             reasons.append(f"review {review['id']} requests changes at the head")
         elif review["state"] == "APPROVED":
-            attrs = review_attribution(review["body"], pull.head)
-            if not known_harness(attrs.get("harness", "")):
+            attrs = review_attribution(review["body"], pull.head, attribution)
+            if not attribution.known_harness(attrs.get("harness", "")):
                 reasons.append(f"review {review['id']} names no known harness")
-            elif identity.hash_ok(attrs.get("launch")) in launches:
+            elif attribution.launch(attrs) in launches:
                 same_run.append(
                     f"review {review['id']} came from a run that wrote a commit"
                 )
@@ -127,12 +153,12 @@ def check_reasons(pull: Pull) -> list[str]:
     ]
 
 
-def evaluate(app: str, pull: Pull) -> list[str]:
+def evaluate(app: str, pull: Pull, attribution: Attribution) -> list[str]:
     """The reasons a pull request fails at its head; none means it passes."""
     if not HEAD_SHA.fullmatch(pull.head):
         return [f"the pull request head {pull.head!r} is not a full commit SHA"]
-    launches, attribution_reasons = author_launches(pull.messages)
-    reasons = review_reasons(app, pull, launches)
+    launches, attribution_reasons = author_launches(pull.messages, attribution)
+    reasons = review_reasons(app, pull, launches, attribution)
     reasons.extend(check_reasons(pull))
     reasons.extend(attribution_reasons)
     return reasons

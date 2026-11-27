@@ -310,14 +310,6 @@ cli_py_library(
 )
 
 cli_py_library(
-    name = "review_gate",
-    srcs = ["review_gate.py"],
-    imports = ["../.."],
-    visibility = ["//factory/cli:__subpackages__"],
-    deps = ["//factory/cli/src/tbhbdev/alpha/identity:dispatcher"],
-)
-
-cli_py_library(
     name = "review_policy",
     srcs = ["review_policy.py"],
     data = [":review_data"],
@@ -389,19 +381,6 @@ cli_py_library(
     imports = ["../.."],
     visibility = ["//factory/cli:__subpackages__"],
     deps = [":repo_bootstrap"],
-)
-
-cli_py_library(
-    name = "squash_merge",
-    srcs = ["squash_merge.py"],
-    imports = ["../.."],
-    visibility = ["//factory/cli:__subpackages__"],
-    deps = [
-        ":pull_request",
-        ":review_gate",
-        "//factory/cli/src/tbhbdev/alpha/identity:dispatcher",
-        "//factory/cli/src/tbhbdev/alpha/install/git:hooks",
-    ],
 )
 
 cli_py_library(
@@ -514,7 +493,6 @@ cli_py_library(
         ":review",
         ":run_stop_hook",
         ":session_context",
-        ":squash_merge",
         ":state_guard",
         ":verify_range",
         ":version_check",
@@ -522,6 +500,7 @@ cli_py_library(
         "//factory/cli/src/tbhbdev/alpha/agent:command",
         "//factory/cli/src/tbhbdev/alpha/identity:dispatcher",
         "//factory/cli/src/tbhbdev/alpha/install:command",
+        "//factory/cli/src/tbhbdev/alpha/merge:command",
         "//factory/cli/src/tbhbdev/alpha/monorepo:command",
     ],
 )

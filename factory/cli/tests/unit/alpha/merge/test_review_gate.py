@@ -1,12 +1,22 @@
+# SPDX-License-Identifier: Apache-2.0
+# Copyright Tony Burns
+
 import pytest
 
-from tbhbdev.alpha import review_gate as gate
+from tbhbdev.alpha.identity.dispatcher import ATTR_PAIR, HASH_RE, SLUGS, llm_trailers
+from tbhbdev.alpha.merge import review_gate as gate
 
 HEAD = "a" * 40
 OLD = "b" * 40
 APP = "reviews-app[bot]"
 LAUNCH = "sha-256-64:" + "2" * 16
 OTHER_LAUNCH = "sha-256-64:" + "3" * 16
+ATTRIBUTION = gate.Attribution(
+    llm_trailers,
+    ATTR_PAIR,
+    frozenset({*SLUGS.values(), "claude", "agy", "gemini"}),
+    HASH_RE,
+)
 
 
 def stamp(harness: str, **attrs: str) -> str:
@@ -59,7 +69,7 @@ def evaluate(
         [check()] if checks is None else checks,
         [trailer(harness="claude-code")] if messages is None else messages,
     )
-    return gate.evaluate(APP, pull)
+    return gate.evaluate(APP, pull, ATTRIBUTION)
 
 
 def test_one_approval_from_the_same_provider_passes() -> None:
@@ -78,7 +88,7 @@ def test_no_checks_fails() -> None:
 @pytest.mark.parametrize("head", ["", "abc", "A" * 40, "g" * 40, HEAD + "0"])
 def test_a_malformed_head_fails_the_gate(head: str) -> None:
     pull = gate.Pull(head, [review(commit=head, body=stamp("claude"))], [], [])
-    assert gate.evaluate(APP, pull) == [
+    assert gate.evaluate(APP, pull, ATTRIBUTION) == [
         f"the pull request head {head!r} is not a full commit SHA"
     ]
 

@@ -65,7 +65,6 @@ _IO_TESTS = [
     "test_alpha_run_stop_hook",
     "test_alpha_secret_scan",
     "test_alpha_size_gate",
-    "test_alpha_squash_merge",
     "test_alpha_verify_range",
     "test_cli",
     "test_conftest",
