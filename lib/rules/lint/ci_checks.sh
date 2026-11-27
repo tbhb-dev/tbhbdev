@@ -76,8 +76,9 @@ modules)
   scanner=$1/gomodscan
   GOWORK=off CGO_ENABLED=0 bazelisk run --config=ci @rules_go//go -- \
     -C "$1" build -mod=readonly -o "$scanner" ./cmd/gomodscan
+  cd "$2"
   status=0
-  "$scanner" -modroot "$2" -format sarif -o "$3" || status=$?
+  "$scanner" -format sarif -o "$3" || status=$?
   if ((status > 1)); then exit "$status"; fi
   if [[ ! -s $3 ]]; then
     printf 'Module scan produced no SARIF report.\n' >&2
