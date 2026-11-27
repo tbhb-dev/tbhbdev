@@ -107,7 +107,7 @@ def test_patch_command_field(tmp_path: Path) -> None:
 
 
 def test_notebook_edit_yields_no_text_writes(tmp_path: Path) -> None:
-    payload = {
+    payload: dict[str, object] = {
         "cwd": str(tmp_path),
         "tool_name": "NotebookEdit",
         "tool_input": {
