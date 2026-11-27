@@ -4,7 +4,7 @@ import argparse
 import subprocess  # nosec B404
 import sys
 
-from tbhbdev.alpha import identity
+from tbhbdev.alpha.identity import dispatcher as identity
 from tbhbdev.alpha.terminal import terminal_text
 
 

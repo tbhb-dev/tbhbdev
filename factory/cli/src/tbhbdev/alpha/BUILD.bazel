@@ -23,7 +23,6 @@ cli_py_library(
     imports = ["../.."],
     visibility = ["//factory/cli:__subpackages__"],
     deps = [
-        ":identity",
         ":opened",
         ":pull_request",
         ":worker_identity",
@@ -31,6 +30,7 @@ cli_py_library(
         "//factory/cli/src/tbhbdev:issue_import",
         "//factory/cli/src/tbhbdev:userconfig",
         "//factory/cli/src/tbhbdev/alpha/agent:settings",
+        "//factory/cli/src/tbhbdev/alpha/identity:dispatcher",
     ],
 )
 
@@ -63,8 +63,8 @@ cli_py_library(
     visibility = ["//factory/cli:__subpackages__"],
     deps = [
         ":guard_gh_poll",
-        ":identity",
         "//factory/cli/src/tbhbdev:userconfig",
+        "//factory/cli/src/tbhbdev/alpha/identity:dispatcher",
     ],
 )
 
@@ -74,8 +74,8 @@ cli_py_library(
     imports = ["../.."],
     visibility = ["//factory/cli:__subpackages__"],
     deps = [
-        ":identity",
         ":repo",
+        "//factory/cli/src/tbhbdev/alpha/identity:dispatcher",
     ],
 )
 
@@ -125,9 +125,9 @@ cli_py_library(
     visibility = ["//factory/cli:__subpackages__"],
     deps = [
         ":guard_gh_pr",
-        ":identity",
         ":repo",
         "//factory/cli/src/tbhbdev:userconfig",
+        "//factory/cli/src/tbhbdev/alpha/identity:dispatcher",
         "@cli_pip//pyyaml",
     ],
 )
@@ -140,8 +140,8 @@ cli_py_library(
     deps = [
         ":guard_gh_poll",
         ":guard_gh_pr",
-        ":identity",
         ":repo",
+        "//factory/cli/src/tbhbdev/alpha/identity:dispatcher",
     ],
 )
 
@@ -159,17 +159,11 @@ cli_py_library(
     imports = ["../.."],
     visibility = ["//factory/cli:__subpackages__"],
     deps = [
-        ":identity_commands",
         ":process",
         ":repo",
+        "//factory/cli/src/tbhbdev/alpha/identity:commands",
+        "//factory/cli/src/tbhbdev/alpha/identity:models",
     ],
-)
-
-cli_py_library(
-    name = "identity_commands",
-    srcs = ["identity_commands.py"],
-    imports = ["../.."],
-    visibility = ["//factory/cli:__subpackages__"],
 )
 
 cli_py_library(
@@ -180,9 +174,9 @@ cli_py_library(
     deps = [
         ":codex_trust",
         ":gh_shim",
-        ":identity",
         ":repo",
         "//factory/cli/src/tbhbdev:plugins",
+        "//factory/cli/src/tbhbdev/alpha/identity:dispatcher",
         "@cli_pip//tomlkit",
     ],
 )
@@ -193,8 +187,8 @@ cli_py_library(
     imports = ["../.."],
     visibility = ["//factory/cli:__subpackages__"],
     deps = [
-        ":identity",
         ":repo",
+        "//factory/cli/src/tbhbdev/alpha/identity:dispatcher",
     ],
 )
 
@@ -204,8 +198,8 @@ cli_py_library(
     imports = ["../.."],
     visibility = ["//factory/cli:__subpackages__"],
     deps = [
-        ":identity",
         ":pull_request",
+        "//factory/cli/src/tbhbdev/alpha/identity:dispatcher",
     ],
 )
 
@@ -216,9 +210,9 @@ cli_py_library(
     visibility = ["//factory/cli:__subpackages__"],
     deps = [
         ":gh_shim",
-        ":identity",
         ":repo",
         "//factory/cli/src/tbhbdev/alpha/agent:signing_parity",
+        "//factory/cli/src/tbhbdev/alpha/identity:dispatcher",
     ],
 )
 
@@ -235,12 +229,12 @@ cli_py_library(
     imports = ["../.."],
     visibility = ["//factory/cli:__subpackages__"],
     deps = [
-        ":identity",
         ":opened",
         ":pull_request_frontmatter",
         ":repo",
         ":secret_scan",
         ":size_gate",
+        "//factory/cli/src/tbhbdev/alpha/identity:dispatcher",
         "@cli_pip//jsonschema",
     ],
 )
@@ -317,10 +311,10 @@ cli_py_library(
     imports = ["../.."],
     visibility = ["//factory/cli:__subpackages__"],
     deps = [
-        ":identity",
         ":pull_request",
         ":pull_request_frontmatter",
         "//factory/cli/src/tbhbdev:content",
+        "//factory/cli/src/tbhbdev/alpha/identity:dispatcher",
     ],
 )
 
@@ -329,7 +323,7 @@ cli_py_library(
     srcs = ["review_gate.py"],
     imports = ["../.."],
     visibility = ["//factory/cli:__subpackages__"],
-    deps = [":identity"],
+    deps = ["//factory/cli/src/tbhbdev/alpha/identity:dispatcher"],
 )
 
 cli_py_library(
@@ -372,9 +366,9 @@ cli_py_library(
     imports = ["../.."],
     visibility = ["//factory/cli:__subpackages__"],
     deps = [
-        ":identity",
         ":repo",
         "//factory/cli/src/tbhbdev/alpha/agent:runfiles",
+        "//factory/cli/src/tbhbdev/alpha/identity:dispatcher",
     ],
 )
 
@@ -412,8 +406,8 @@ cli_py_library(
     imports = ["../.."],
     visibility = ["//factory/cli:__subpackages__"],
     deps = [
-        ":identity",
         ":pull_request",
+        "//factory/cli/src/tbhbdev/alpha/identity:dispatcher",
     ],
 )
 
@@ -434,8 +428,8 @@ cli_py_library(
     imports = ["../.."],
     visibility = ["//factory/cli:__subpackages__"],
     deps = [
-        ":identity",
         ":terminal",
+        "//factory/cli/src/tbhbdev/alpha/identity:dispatcher",
     ],
 )
 
@@ -462,8 +456,12 @@ filegroup(
     name = "package_files",
     srcs = glob(
         ["**"],
-        exclude = ["BUILD.bazel"],
-    ),
+        # The dispatcher is collected through identity/dispatcher.py.
+        exclude = [
+            "BUILD.bazel",
+            "identity.py",
+        ],
+    ) + ["//factory/cli/src/tbhbdev/alpha/identity:package_files"],
     visibility = ["//factory/cli:__pkg__"],
 )
 
@@ -503,7 +501,6 @@ cli_py_library(
         ":guard_op",
         ":guard_scripts",
         ":guard_ssh_agent",
-        ":identity",
         ":install",
         ":pr_stats",
         ":pre_push_guard",
@@ -518,6 +515,7 @@ cli_py_library(
         ":version_check",
         ":worktree_sweep",
         "//factory/cli/src/tbhbdev/alpha/agent:command",
+        "//factory/cli/src/tbhbdev/alpha/identity:dispatcher",
         "//factory/cli/src/tbhbdev/alpha/loop:command",
         "//factory/cli/src/tbhbdev/alpha/monorepo:command",
     ],

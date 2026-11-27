@@ -14,11 +14,12 @@ from typing import TYPE_CHECKING, cast
 import httpx
 
 from tbhbdev import content
-from tbhbdev.alpha import identity, review, review_doc
+from tbhbdev.alpha import review, review_doc
 from tbhbdev.alpha.agent import credentials, runfiles
 from tbhbdev.alpha.agent.decisions import repo
 from tbhbdev.alpha.agent.decisions import request as requests
 from tbhbdev.alpha.agent.model import Harness, Invalid, RunKind
+from tbhbdev.alpha.identity import dispatcher as identity
 from tbhbdev.alpha.pull_request_frontmatter import parse_frontmatter
 
 if TYPE_CHECKING:

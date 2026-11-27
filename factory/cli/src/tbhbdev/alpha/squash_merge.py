@@ -89,8 +89,8 @@ from itertools import takewhile
 from typing import TYPE_CHECKING, NoReturn, cast
 from urllib.parse import quote
 
-from tbhbdev.alpha import identity as agent_identity
 from tbhbdev.alpha import pull_request as pr
+from tbhbdev.alpha.identity import dispatcher as agent_identity
 
 if TYPE_CHECKING:
     from collections.abc import Sequence

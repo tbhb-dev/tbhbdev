@@ -85,7 +85,7 @@ from typing import TYPE_CHECKING
 
 from tbhbdev import userconfig
 from tbhbdev.alpha.guard_gh_poll import POLL_REASON
-from tbhbdev.alpha.identity import locked, write_private_json
+from tbhbdev.alpha.identity.dispatcher import locked, write_private_json
 
 if TYPE_CHECKING:
     from collections.abc import Generator, Mapping

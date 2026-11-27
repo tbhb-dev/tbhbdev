@@ -22,7 +22,6 @@ from tbhbdev.alpha import (
     guard_op,
     guard_scripts,
     guard_ssh_agent,
-    identity,
     install,
     pr_stats,
     pre_push_guard,
@@ -36,6 +35,7 @@ from tbhbdev.alpha import (
 )
 from tbhbdev.alpha import command as alpha
 from tbhbdev.alpha.agent import command as agent
+from tbhbdev.alpha.identity import dispatcher as identity
 from tbhbdev.alpha.loop import command as loop
 
 if TYPE_CHECKING:

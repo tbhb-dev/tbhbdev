@@ -12,8 +12,8 @@ from pathlib import Path
 
 import pytest
 
-from tbhbdev.alpha import identity as ai
 from tbhbdev.alpha import opened
+from tbhbdev.alpha.identity import dispatcher as ai
 
 ROOT = ai.sha256_64("session-raw")
 OTHER = ai.sha256_64("other-raw")

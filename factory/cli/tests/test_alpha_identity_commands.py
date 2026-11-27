@@ -11,7 +11,7 @@ import pytest
 from hypothesis import given, settings
 from hypothesis import strategies as st
 
-from tbhbdev.alpha.identity_commands import (
+from tbhbdev.alpha.identity.commands import (
     amending,
     cmd_hashes,
     command_candidates,

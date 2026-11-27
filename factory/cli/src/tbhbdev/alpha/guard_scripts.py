@@ -91,7 +91,6 @@ from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import TYPE_CHECKING, NamedTuple, override
 
-from tbhbdev.alpha import identity
 from tbhbdev.alpha.guard_gh_poll import BodyScanner, inner_script
 from tbhbdev.alpha.guard_gh_pr import (
     command_of,
@@ -101,6 +100,7 @@ from tbhbdev.alpha.guard_gh_pr import (
     skip_prefix,
     split_args,
 )
+from tbhbdev.alpha.identity import dispatcher as identity
 from tbhbdev.alpha.repo import hook_cwd, read_hook_stdin
 
 if TYPE_CHECKING:

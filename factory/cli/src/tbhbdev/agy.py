@@ -15,7 +15,7 @@ from typing import TYPE_CHECKING, cast
 
 import httpx
 
-from tbhbdev.alpha.identity import AGY_MODELS
+from tbhbdev.alpha.identity.models import AGY_MODELS
 
 if TYPE_CHECKING:
     from typing import TextIO

@@ -24,9 +24,9 @@ from fake_tool import (
 from hypothesis import example, given
 from hypothesis import strategies as st
 
-from tbhbdev.alpha import identity as agent_identity
 from tbhbdev.alpha import pull_request as pr
 from tbhbdev.alpha import squash_merge as sm
+from tbhbdev.alpha.identity import dispatcher as agent_identity
 from tbhbdev.alpha.secret_scan import REPO_RULES, without_name_rules
 
 SRC = Path(sm.__file__).parents[2]

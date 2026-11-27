@@ -24,7 +24,7 @@ import tbhbdev.alpha.guard_gh_pr
 import tbhbdev.alpha.guard_op
 import tbhbdev.alpha.guard_scripts
 import tbhbdev.alpha.guard_ssh_agent
-import tbhbdev.alpha.identity
+import tbhbdev.alpha.identity.dispatcher
 import tbhbdev.alpha.install
 import tbhbdev.alpha.loop.command
 import tbhbdev.alpha.pre_push_guard
@@ -104,7 +104,7 @@ commands:
 
 
 def identity_command(argv: list[str], _prog: str) -> int:
-    return tbhbdev.alpha.identity.run(argv, os.environ)
+    return tbhbdev.alpha.identity.dispatcher.run(argv, os.environ)
 
 
 def guard_command(_argv: list[str], _prog: str) -> int:

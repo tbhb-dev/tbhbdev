@@ -11,7 +11,7 @@ import re
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, TypedDict
 
-from tbhbdev.alpha import identity
+from tbhbdev.alpha.identity import dispatcher as identity
 
 if TYPE_CHECKING:
     from collections.abc import Sequence

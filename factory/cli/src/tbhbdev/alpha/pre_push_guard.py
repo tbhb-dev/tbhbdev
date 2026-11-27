@@ -22,7 +22,7 @@ from typing import TYPE_CHECKING
 
 from tbhbdev.alpha.agent.signing_parity import public_keys
 from tbhbdev.alpha.gh_shim import session_root
-from tbhbdev.alpha.identity import AGENT_EMAIL
+from tbhbdev.alpha.identity.dispatcher import AGENT_EMAIL
 from tbhbdev.alpha.repo import git
 
 if TYPE_CHECKING:
