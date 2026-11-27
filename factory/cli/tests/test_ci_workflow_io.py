@@ -13,6 +13,11 @@ def _mapping(value: object) -> dict[object, object]:
     return value
 
 
+def _list(value: object) -> list[object]:
+    assert isinstance(value, list)
+    return value
+
+
 def _workflow_jobs() -> dict[object, object]:
     parents = Path(__file__).resolve().parents
     workspace = next(parent.parent for parent in parents if parent.name == "factory")
@@ -22,9 +27,7 @@ def _workflow_jobs() -> dict[object, object]:
 
 
 def _workflow_steps(job: object) -> list[dict[object, object]]:
-    raw_steps = _mapping(job)["steps"]
-    assert isinstance(raw_steps, list)
-    steps: list[object] = raw_steps
+    steps = _list(_mapping(job)["steps"])
     return [_mapping(step) for step in steps]
 
 
@@ -40,12 +43,10 @@ def test_ci_shards_affected_targets(tmp_path: Path) -> None:
     jobs = _workflow_jobs()
     bazel = _mapping(jobs["bazel"])
     strategy = _mapping(bazel["strategy"])
-    shards = [1, 2, 3, 4]
-    assert _mapping(strategy["matrix"])["shard"] == shards
+    shards = _list(_mapping(strategy["matrix"])["shard"])
+    assert shards == [1, 2, 3, 4]
     assert strategy["fail-fast"] is False
-    needs = _mapping(jobs["conclusion"])["needs"]
-    assert isinstance(needs, list)
-    assert "bazel" in needs
+    assert "bazel" in _list(_mapping(jobs["conclusion"])["needs"])
 
     steps = _workflow_steps(bazel)
     selector = next(step for step in steps if step.get("id") == "affected")
@@ -72,6 +73,7 @@ def test_ci_shards_affected_targets(tmp_path: Path) -> None:
     ):
         targets.write_text("\n".join([*selected, *exclusions]))
         for shard in shards:
+            assert isinstance(shard, int)
             run = subprocess.run(
                 _shell_command(test, fake_bazel),
                 env={
