@@ -580,9 +580,7 @@ def test_codex_config_failure_names_its_step(
     assert str(caught.value) == f"run preparation failed at codex config: {cause}"
 
 
-@pytest.mark.parametrize(
-    ("no_commit", "start"), [(False, "a" * 40), (True, None), (False, None)]
-)
+@pytest.mark.parametrize(("no_commit", "start"), [(False, "a" * 40), (True, None)])
 def test_build_preparation_has_the_run_socket(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, no_commit: bool, start: str | None
 ) -> None:
@@ -622,10 +620,6 @@ def test_build_preparation_has_the_run_socket(
     monkeypatch.setattr(run_host, "hook_environment", hook_environment)
     monkeypatch.setattr(run_host, "bazel_bases", bazel_bases)
     monkeypatch.setattr(credentials, "fetch_token", fetch_token)
-    if not no_commit and start is None:
-        with pytest.raises(Invalid, match="run branch must be checked out"):
-            run_host.prepare_workspace(run)
-        return
     result = run_host.prepare_workspace(run)
     assert result.paths.signing_socket == str(run.tmpdir / "ssh.sock")
     assert result.delivery.signing == "example-signing"

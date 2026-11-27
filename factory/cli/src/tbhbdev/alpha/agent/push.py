@@ -205,14 +205,9 @@ def history_git(directory: Path, *args: str, revisions: str | None = None) -> st
     ).stdout
 
 
-def head(workspace: Path, branch: str) -> str | None:
+def head(workspace: Path, branch: str) -> str:
     """Read refs as data; never load the sandbox's git configuration."""
     directory = workspace / ".git"
-    if (
-        runfiles.read_owned(directory / "HEAD", 1024, "run HEAD").strip()
-        != f"ref: refs/heads/{branch}"
-    ):
-        return None
     reference = f"refs/heads/{branch}"
     try:
         value = runfiles.read_owned(directory / reference, 1024, "run ref").strip()
