@@ -1,0 +1,21 @@
+# SPDX-License-Identifier: Apache-2.0
+# Copyright Tony Burns
+
+load("@rules_go//go:def.bzl", "go_library")
+load("//factory:go.bzl", "go_test")
+
+# gazelle:map_kind go_test go_test //factory:go.bzl
+
+go_library(
+    name = "dispatch",
+    srcs = ["dispatch.go"],
+    importpath = "github.com/tbhb-dev/tbhbdev/factory/cli/internal/dispatch",
+    visibility = ["//factory/cli:__subpackages__"],
+)
+
+go_test(
+    name = "dispatch_test",
+    srcs = ["dispatch_test.go"],
+    visibility = ["//factory/cli/cmd/tbhbdev:__pkg__"],
+    deps = [":dispatch"],
+)
