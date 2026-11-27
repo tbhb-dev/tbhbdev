@@ -1,4 +1,4 @@
-"""Tests for run Git with host-controlled options during clone preparation."""
+"""Host-controlled Git commands used during worktree preparation."""
 
 from __future__ import annotations
 

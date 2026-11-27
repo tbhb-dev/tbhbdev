@@ -1,4 +1,4 @@
-"""Tests for create a standalone run clone and prepare its Git metadata."""
+"""Standalone clone creation and Git metadata preparation."""
 
 from __future__ import annotations
 

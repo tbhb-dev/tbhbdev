@@ -1,4 +1,4 @@
-"""Tests for configure a host-owned mirror and fetch the requested refs."""
+"""Mirror configuration and fetching requested refs."""
 
 from __future__ import annotations
 

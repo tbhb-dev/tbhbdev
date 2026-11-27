@@ -1,4 +1,4 @@
-"""Tests for audit writable roots for overlapping Git checkouts."""
+"""Checkout overlap and writable-root audits."""
 
 from __future__ import annotations
 

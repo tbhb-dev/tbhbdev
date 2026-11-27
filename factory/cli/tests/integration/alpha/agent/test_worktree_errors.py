@@ -1,4 +1,4 @@
-"""Tests for sanitize and label failures during run preparation."""
+"""Safe error reporting for worktree preparation failures."""
 
 from __future__ import annotations
 

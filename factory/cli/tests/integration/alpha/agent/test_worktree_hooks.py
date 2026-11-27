@@ -1,4 +1,4 @@
-"""Tests for install and verify the Git hooks for a run clone."""
+"""Hook installation and validation for run clones."""
 
 from __future__ import annotations
 

@@ -1,4 +1,4 @@
-"""Tests for coordinate checkout of a fresh workspace from the host mirror."""
+"""Checkout orchestration for fresh run workspaces."""
 
 from __future__ import annotations
 
@@ -23,7 +23,6 @@ from fake_tool import pythonpath, write_fake
 
 from tbhbdev.alpha import pre_push_guard, run_stop_hook
 from tbhbdev.alpha.agent import (
-    host_tools,
     push,
     runfiles,
     worktree_checkout,
@@ -645,12 +644,6 @@ def run_tools(
     scratch_cwd: None, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     del scratch_cwd
-    resolve = host_tools.resolve
-
-    def executable(name: str) -> str:
-        return "/unused/prek" if name == "prek" else resolve(name)
-
-    monkeypatch.setattr(host_tools, "resolve", executable)
     binary = tmp_path / "bin"
     binary.mkdir()
     write_fake(
@@ -666,6 +659,8 @@ def run_tools(
     monkeypatch.setenv(
         "PYTHONPATH", pythonpath(Path(pre_push_guard.__file__).parents[2])
     )
+    # The fake tool's script must not shadow the package it imports.
+    monkeypatch.setenv("PYTHONSAFEPATH", "1")
     # Keep the installed hook's interpreter path within the shebang limit.
     prefix = tmp_path / "python"
     prefix.symlink_to(Path(sys.base_prefix), target_is_directory=True)
