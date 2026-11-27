@@ -26,9 +26,14 @@ class SizeCountError(Exception):
 
 
 def size_counts(
-    base: str, head: str, *, scc: str = "scc", git: str = "git"
+    base: str,
+    head: str,
+    *,
+    default_ref: str | None = None,
+    scc: str = "scc",
+    git: str = "git",
 ) -> SizeCounts:
-    """Count added lines with the bundled rules counter, without Bazel.
+    """Count added lines, excluding shared default-branch changes if given.
 
     Raises:
         SizeCountError: The command is unavailable, fails or returns bad JSON.
@@ -43,6 +48,7 @@ def size_counts(
                 scc,
                 git,
                 str(DATA / "pr-size-exempt.txt"),
+                default_ref or "",
             ],
             capture_output=True,
             text=True,

@@ -132,6 +132,7 @@ def env_of(os: Os, harness: Harness, account: str) -> dict[str, str]:
         "SHELL": "/bin/bash" if os is Os.LINUX else "/bin/zsh",
         "LANG": "C.UTF-8" if os is Os.LINUX else "en_US.UTF-8",
         "TMPDIR": tmp,
+        "CLAUDE_CODE_TMPDIR": tmp,
         "TMPPREFIX": f"{tmp}/zsh",
         "GH_CONFIG_DIR": f"{tmp}/gh",
         "DOCKER_CONFIG": f"{tmp}/docker",
@@ -208,6 +209,7 @@ def test_environment_is_exactly_the_allowlist(
         "PATH",
         "HOME",
         "TMPDIR",
+        "CLAUDE_CODE_TMPDIR",
         "TMPPREFIX",
         "GH_CONFIG_DIR",
         "USER",
@@ -222,6 +224,7 @@ def test_environment_is_exactly_the_allowlist(
     result = made(os, profile, harness, account)
     assert result.env == env_of(os, harness, account)
     assert result.env["TMPPREFIX"] == result.env["TMPDIR"] + "/zsh"
+    assert result.env["CLAUDE_CODE_TMPDIR"] == result.env["TMPDIR"]
 
 
 @pytest.mark.parametrize(("os", "profile", "harness", "account"), COMBINATIONS, ids=IDS)
@@ -488,6 +491,7 @@ def claude_expected(os: Os, profile: Profile, account: str) -> dict[str, object]
         "env": {
             "PATH": PATH[os].format(home=home),
             "TMPDIR": tmp,
+            "CLAUDE_CODE_TMPDIR": tmp,
             "TMPPREFIX": f"{tmp}/zsh",
             "GH_CONFIG_DIR": f"{tmp}/gh",
             "DOCKER_CONFIG": f"{tmp}/docker",
@@ -1231,6 +1235,7 @@ def test_unsandboxed_skips_all_sandbox_checks(
             "env": {
                 "GH_CONFIG_DIR": f"{run_paths.tmpdir}/gh",
                 "DOCKER_CONFIG": f"{run_paths.tmpdir}/docker",
+                "CLAUDE_CODE_TMPDIR": run_paths.tmpdir,
                 "CLAUDE_CODE_FORK_SUBAGENT": "0",
             },
             "hooks": guard_hooks(f"{run_paths.home}/.local/bin/tbhbdev"),

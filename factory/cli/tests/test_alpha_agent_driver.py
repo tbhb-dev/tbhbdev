@@ -30,7 +30,7 @@ from agent_driver_example import (
 from agent_example import MARKER, settings
 
 from tbhbdev import version
-from tbhbdev.alpha import agent
+from tbhbdev.alpha.agent import command as agent
 from tbhbdev.alpha.agent import driver, model, render, transport, version_heal
 from tbhbdev.alpha.agent.decisions import remote as remote_commands
 from tbhbdev.alpha.agent.decisions import repo, request, runfiles_names
@@ -1931,9 +1931,7 @@ def test_successful_wait_resets_failure_for_a_short_window(
     assert command("wait") == 0
 
 
-@pytest.mark.parametrize(
-    "verb", ["status", "wait", "clean", "keep", "kill", "log", "diff"]
-)
+@pytest.mark.parametrize("verb", ["status", "wait", "keep", "kill", "log", "diff"])
 def test_verbs_without_remote_run_directory(
     remote: Remote,
     capsys: pytest.CaptureFixture[str],
@@ -1947,6 +1945,14 @@ def test_verbs_without_remote_run_directory(
     assert "not owner" in capsys.readouterr().err
     assert not driver.metadata_path("sample").exists()
     assert not remote.state.exists()
+
+
+@pytest.mark.usefixtures("remote")
+def test_status_without_local_run_metadata(capsys: pytest.CaptureFixture[str]) -> None:
+    metadata = driver.metadata_path("sample")
+    metadata.parent.mkdir(parents=True)
+    assert command("status") == 1
+    assert str(metadata) in capsys.readouterr().err
 
 
 @pytest.mark.parametrize("finished", [False, True])
@@ -2063,16 +2069,52 @@ def test_metadata_directory_is_private_before_chmod(
         os.umask(previous)
 
 
-def test_clean_allows_name_reuse(remote: Remote) -> None:
+@pytest.mark.parametrize("ownerless", [False, True])
+def test_clean_allows_name_reuse(remote: Remote, *, ownerless: bool) -> None:
     assert launch(remote) == 0
     remote.file(".run.lock", "")
-    remote.file(".rc", "0\n")
     remote.configure(session=False)
+    if ownerless:
+        (remote.state / "sample.owner").unlink()
+        remote.configure(branch=False)
+    else:
+        remote.file(".rc", "0\n")
     for suffix in (".branch", ".pr", ".head"):
         remote.file(suffix, "previous run\n")
     assert command("clean") == 0
     assert not list(remote.state.glob("sample.*"))
+    assert not driver.metadata_path("sample").exists()
+    assert command("clean") == 0
     assert launch(remote) == 0
+
+
+def test_clean_releases_name_after_wait_archives_run(remote: Remote) -> None:
+    assert launch(remote) == 0
+    remote.configure(session=False)
+    (remote.state / "sample.owner").unlink()
+    for suffix in (".branch", ".pr", ".head"):
+        remote.file(suffix, "previous run\n")
+
+    assert command("wait") == 1
+    assert not driver.metadata_path("sample").exists()
+    assert list((driver.directory() / "trash").glob("*/sample.json"))
+    for suffix in (".branch", ".pr", ".head", ".request.json"):
+        assert (remote.state / f"sample{suffix}").exists()
+
+    assert command("clean") == 0
+    assert not list(remote.state.glob("sample.*"))
+    assert not driver.metadata_path("sample").exists()
+    assert command("clean") == 0
+    assert launch(remote) == 0
+
+
+def test_clean_ownerless_run_with_a_live_session(remote: Remote) -> None:
+    assert launch(remote) == 0
+    (remote.state / "sample.owner").unlink()
+    remote.file(".branch", "agent/sample\n")
+    assert command("clean", "--force") == 1
+    assert (remote.state / "sample.branch").exists()
+    assert driver.metadata_path("sample").exists()
 
 
 def test_keep_twice(remote: Remote) -> None:
@@ -2164,6 +2206,7 @@ def test_lost_clean_reply_cannot_clean_new_owner(
     assert command("clean") == 1
     assert "not owner" in capsys.readouterr().err
     assert not driver.metadata_path("sample").exists()
+    assert command("clean") == 1
     assert {
         p.name: p.read_bytes() for p in remote.state.iterdir() if p.is_file()
     } == before

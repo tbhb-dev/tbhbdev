@@ -5,8 +5,8 @@ from typing import TYPE_CHECKING
 
 import pytest
 
-from tbhbdev import alpha, cli
 from tbhbdev.alpha import brief
+from tbhbdev.alpha.brief import main
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -244,14 +244,6 @@ def test_check_warns_about_foreign_branch_without_failing(
     )
 
 
-def test_registered() -> None:
-    assert alpha.COMMANDS["brief"] is brief.main
-    assert (
-        "\n  brief        new | check: peer-run briefs with required safeguards\n"
-        in (alpha.USAGE)
-    )
-
-
 def test_render_defaults() -> None:
     assert brief.render("demo", "tbhb-dev/tbhbdev") == EXPECTED
     assert brief.check(FILLED) == []
@@ -284,14 +276,12 @@ def test_render_overrides_and_quotes_arguments() -> None:
 
 
 @pytest.mark.parametrize("push", [False, True])
-def test_new_from_top_level(
+def test_new_command(
     capsys: pytest.CaptureFixture[str], tmp_path: Path, push: bool
 ) -> None:
     assert (
-        cli.main(
+        main(
             [
-                "alpha",
-                "brief",
                 "new",
                 "demo",
                 "--repo",
@@ -299,7 +289,8 @@ def test_new_from_top_level(
                 "--expected-size",
                 "280",
                 *(["--push", "--scan-command", SCAN_COMMAND] if push else []),
-            ]
+            ],
+            PROG,
         )
         == 0
     )

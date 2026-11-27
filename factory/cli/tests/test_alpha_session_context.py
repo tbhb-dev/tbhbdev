@@ -10,7 +10,8 @@ lazy from pathlib import Path
 
 import pytest
 
-from tbhbdev.alpha import agent, close, pull_request, session_context, squash_merge
+from tbhbdev.alpha import close, pull_request, session_context, squash_merge
+from tbhbdev.alpha.agent import command as agent
 
 NOW = datetime(2026, 1, 2, 3, 4, tzinfo=UTC)
 
