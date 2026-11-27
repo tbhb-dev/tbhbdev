@@ -86,9 +86,9 @@ from itertools import takewhile
 from typing import TYPE_CHECKING, NoReturn, cast
 from urllib.parse import quote
 
-from tbhbdev.alpha import identity as agent_identity
 from tbhbdev.alpha import pull_request as pr
 from tbhbdev.alpha import review_gate
+from tbhbdev.alpha.identity import dispatcher as agent_identity
 from tbhbdev.alpha.install import require_git_hooks
 
 if TYPE_CHECKING:

@@ -216,6 +216,10 @@ jobs:
             printf '%s\n\n%s\n' "$PR_TITLE" "$PR_BODY" | bazel run --config=ci @tbhb_rules//lint:gitleaks_text
           fi
 
+      - name: Scan github-metrics for Go vulnerabilities
+        run: |
+          bazel test --config=ci //factory/github-metrics:govulncheck_test
+
   pr-size:
     name: pr-size
     if: github.event_name == 'pull_request'

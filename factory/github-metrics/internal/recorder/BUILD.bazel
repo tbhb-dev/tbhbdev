@@ -1,0 +1,35 @@
+# SPDX-License-Identifier: Apache-2.0
+# Copyright Tony Burns
+
+load("@rules_go//go:def.bzl", "go_library")
+load("@tbhb_rules//repo:defs.bzl", "repo_files")
+load("//factory:go.bzl", "go_test")
+
+repo_files(visibility = ["//factory/github-metrics:__subpackages__"])
+
+go_library(
+    name = "recorder",
+    srcs = ["recorder.go"],
+    importpath = "github.com/tbhb-dev/tbhbdev/factory/github-metrics/internal/recorder",
+    visibility = ["//factory/github-metrics:__subpackages__"],
+    deps = [
+        "@io_opentelemetry_go_otel//attribute",
+        "@io_opentelemetry_go_otel_metric//:metric",
+    ],
+)
+
+go_test(
+    name = "recorder_test",
+    srcs = [
+        "closed_test.go",
+        "export_test.go",
+        "recorder_test.go",
+        "workflow_job_test.go",
+    ],
+    embed = [":recorder"],
+    visibility = ["//factory/github-metrics:__pkg__"],
+    deps = [
+        "@io_opentelemetry_go_otel_sdk_metric//:metric",
+        "@io_opentelemetry_go_otel_sdk_metric//metricdata",
+    ],
+)

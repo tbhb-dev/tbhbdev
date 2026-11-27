@@ -4,34 +4,23 @@ import re
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, TextIO
 lazy import argparse
-lazy from collections.abc import Callable, Mapping, Sequence
+lazy from collections.abc import Mapping, Sequence
 lazy from pathlib import Path
 
 from tbhbops.o11y import receipt as model
-from tbhbops.o11y import validate
+
 from tbhbops_cli.o11y.http import BodyTooLargeError, TransportError
+from tbhbops_cli.o11y.polling import poll
 
 if TYPE_CHECKING:
     from tbhbops_cli.cli import System
 
 REQUEST_TIMEOUT = 15
 POLL_TIMEOUT = 60
-POLL_INTERVAL = 2
 GRPC_TIMEOUT = 120
 # Tempo hides the newest 30 seconds from search.
 GRPC_SEARCH_TIMEOUT = 120
 HTTP_OK = 200
-
-
-def _poll(
-    system: System, check: Callable[[], bool], timeout: int = POLL_TIMEOUT
-) -> bool:
-    deadline = system.monotonic() + timeout
-    while not check():
-        if system.monotonic() >= deadline:
-            return False
-        system.sleep(POLL_INTERVAL)
-    return True
 
 
 def _nonzero(system: System, size: int) -> str:
@@ -135,7 +124,7 @@ class Check:
 
     def log_receipt(self, lines: list[str]) -> bool:
         started = self.system.monotonic()
-        if _poll(self.system, self.log_check):
+        if poll(self.system, POLL_TIMEOUT, self.log_check):
             return True
         query_http = f"{self.log_http:03d}" if self.log_http else "unavailable"
         elapsed = int(self.system.monotonic() - started)
@@ -147,7 +136,7 @@ class Check:
 
     def signal_check(self, signal: str, lines: list[str]) -> tuple[bool, str, str]:
         if signal == "traces":
-            passed = _poll(self.system, self.trace_check)
+            passed = poll(self.system, POLL_TIMEOUT, self.trace_check)
             failure = (
                 f"trace {self.trace} is no longer returned"
                 if self.rechecking
@@ -163,7 +152,7 @@ class Check:
             )
             success = "exactly one log line with the run's body found in Loki"
         else:
-            passed = _poll(self.system, self.metric_check)
+            passed = poll(self.system, POLL_TIMEOUT, self.metric_check)
             failure = (
                 f"the metric sample of run {self.run} is no longer returned"
                 if self.rechecking
@@ -199,7 +188,7 @@ class Check:
         if result.code != 0:
             msg = "telemetrygen could not send a trace over gRPC"
             raise ReceiptError(msg)
-        if not _poll(self.system, self.grpc_check, GRPC_SEARCH_TIMEOUT):
+        if not poll(self.system, GRPC_SEARCH_TIMEOUT, self.grpc_check):
             msg = f"no trace for service {service} was found"
             raise ReceiptError(msg)
         lines.append(f"ok receipt: gRPC trace found in Tempo by service {service}")
@@ -240,7 +229,7 @@ def _signal_failure(
     return lines, False
 
 
-def receipt(  # noqa: PLR0913, PLR0917  # shared in-process smoke API
+def receipt(  # shared in-process smoke API
     system: System,
     otlp_url: str | None,
     grafana_url: str,
@@ -300,12 +289,6 @@ def receipt(  # noqa: PLR0913, PLR0917  # shared in-process smoke API
 
 
 def dispatch(args: argparse.Namespace, system: System, out: TextIO) -> int:
-    argv = args.grpc_argv
-    if bool(argv) != args.grpc or (argv and (argv[0] != "--" or len(argv) == 1)):
-        out.write("tbhbops o11y receipt: grpc requires -- ARGV\n")
-        return 2
-    if argv:
-        argv = argv[1:]
     try:
         lines, ok = receipt(
             system,
@@ -314,8 +297,6 @@ def dispatch(args: argparse.Namespace, system: System, out: TextIO) -> int:
             args.signals,
             args.state_file,
             args.recheck,
-            argv if args.grpc else None,
-            validate.docker_environment(system.env),
         )
     except ValueError as exc:
         out.write(f"tbhbops o11y receipt: {exc}\n")

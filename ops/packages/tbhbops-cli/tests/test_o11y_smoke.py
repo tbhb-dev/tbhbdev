@@ -18,8 +18,14 @@ from typing import TYPE_CHECKING, NoReturn, Self
 import pytest
 from tbhbops.o11y import init, smoke
 from tbhbops_cli import cli
+from tbhbops_cli.o11y import (
+    polling,
+    smoke_capacity,
+    smoke_checks,
+    smoke_lifecycle,
+    smoke_stages,
+)
 from tbhbops_cli.o11y import smoke as command
-from tbhbops_cli.o11y import smoke_capacity, smoke_checks, smoke_lifecycle, smoke_stages
 from tbhbops_cli.o11y.ports import LocalPorts
 from tbhbops_cli.o11y.runner import Result
 lazy from tbhbops.o11y.validate import Document
@@ -462,7 +468,6 @@ def test_success_and_environment() -> None:
         assert "DOCKER_CONTEXT" not in env
         assert "DOCKER_HOST" not in env
         assert not any(key.startswith("COMPOSE_") for key in env)
-        assert "O11Y_POSTGRES_PORT" not in env
         assert {key: env[key] for key in smoke.FIXED_ENV} == smoke.FIXED_ENV
         assert env["O11Y_DATA_DIR"] == str(HOST)
         assert env["O11Y_SECRETS_OWNER"] == "123:456"
@@ -505,7 +510,6 @@ def test_environment_builder_wal_override() -> None:
             "DOCKER_CONFIG": "c",
             "DOCKER_CONTEXT": "remote",
             "O11Y_LOKI_WAL_DISK_FULL_THRESHOLD": "0.1",
-            "O11Y_POSTGRES_PORT": "99",
             "COMPOSE_PROFILES": "bad",
         },
         HOST,
@@ -806,14 +810,14 @@ def test_poll_timing() -> None:
         calls.append(system.monotonic())
         return False
 
-    assert not command.poll(system, 30, check)
+    assert not polling.poll(system, 30, check)
     assert calls == list(range(0, 31, 2))
-    assert command.poll(system, 180, lambda: True)
+    assert polling.poll(system, 180, lambda: True)
     assert (
         command.READY_TIMEOUT,
         command.HEALTH_TIMEOUT,
         command.FIXTURE_TIMEOUT,
-        command.POLL_INTERVAL,
+        polling.POLL_INTERVAL,
         command.WAIT_MARGIN,
         command.PULL_TIMEOUT,
     ) == (180, 120, 30, 2, 30, 600)
@@ -1386,10 +1390,12 @@ def test_compose_and_utility_command_contract(platform: str) -> None:
         {"argv": list(argv), "timeout": timeout, "count": count}
         for (argv, timeout), count in counts.items()
     ]
-    fixture = (
-        "smoke-commands.json" if platform == "linux" else "smoke-macos-commands.json"
-    )
-    expected = json.loads((Path(__file__).parent / "testdata" / fixture).read_text())
+    fixture = Path(__file__).parent / "testdata/smoke-commands.json"
+    expected = [
+        record
+        for record in json.loads(fixture.read_text())
+        if record.pop("platform", platform) == platform
+    ]
     assert actual == expected
     for call in fs.calls:
         if (
@@ -1901,7 +1907,7 @@ def test_overlapping_paths_usage(out: str, artifacts: str, source: str) -> None:
     _, engine, system = setup()
     output = io.StringIO()
     args = argparse.Namespace(
-        stop_after=None, out=Path(out), artifacts=Path(artifacts), source=Path(source)
+        out=Path(out), artifacts=Path(artifacts), source=Path(source)
     )
     assert command.dispatch(args, system, output) == 2
     assert output.getvalue() == "FAIL usage: overlapping paths\n"
@@ -2211,7 +2217,6 @@ def test_smoke_parser_contract(capsys: pytest.CaptureFixture[str]) -> None:
     assert vars(args) == {
         "group": "o11y",
         "command": "smoke",
-        "stop_after": None,
         "dedicated_engine": None,
         "source": Path("/source"),
         "out": Path("/out"),
