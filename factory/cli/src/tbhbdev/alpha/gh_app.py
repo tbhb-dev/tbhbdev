@@ -27,8 +27,6 @@ clock, the state root, the secret store, the openssl runner and the HTTP
 transport.
 """
 
-import base64
-import json
 import os
 import re
 import sys
@@ -39,12 +37,9 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 import httpx2
-from cryptography.exceptions import UnsupportedAlgorithm
-from cryptography.hazmat.primitives import hashes, serialization
-from cryptography.hazmat.primitives.asymmetric import padding, rsa
 
 from tbhbdev import github_tls, secrets
-from tbhbdev.alpha import gh_app_runtime
+from tbhbdev.alpha import gh_app_runtime, gh_app_signing
 from tbhbdev.alpha.gh_app_args import (
     USAGE,
     Args,
@@ -61,6 +56,7 @@ from tbhbdev.alpha.gh_app_runtime import (
     Reader,
     fill,
 )
+from tbhbdev.alpha.gh_app_signing import rebuild_pem, sign_in_memory
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Mapping
@@ -73,27 +69,15 @@ EXIT_COOLDOWN = 75
 # A run this long of token characters in a failure message may be a credential.
 SECRET_LIKE = re.compile(r"[A-Za-z0-9_.~+/=-]{20,}")
 TOKEN_PATTERN = re.compile(r"[A-Za-z0-9_.~+/=-]+")
-PEM_PATTERN = re.compile(
-    r"-----BEGIN ([A-Z0-9 ]+)-----(.*?)-----END \1-----", re.DOTALL
-)
 API = "https://api.github.com"
 TIMEOUT = httpx2.Timeout(10.0, connect=5.0)
 REUSE_MARGIN = 600
-JWT_BACKDATE = 60
-JWT_LIFETIME = 540
-PEM_WIDTH = 64
-# The text of `openssl pkey -noout -text` for an RSA key. Older OpenSSL builds
-# put "RSA " before the header.
-# cspell:words RDONLY
-RSA_HEADER = re.compile(rb"\A(?:RSA )?Private-Key: \(")
-RSA_MODULUS = re.compile(rb"^modulus:", re.MULTILINE)
 ALL_REPOS_DIR = "+all"
 # mutmut changes only function bodies, so these file names, which mint and
 # store_token share and the filesystem may match in any case, are constants.
 HOSTS_FILE = "hosts.yml"
 SLUG_FILE = "app-slug"
 EXPIRES_FILE = "expires-at"
-HEADER = {"alg": "RS256", "typ": "JWT"}
 MINT_FAILURE = "GitHub App token mint failed"
 
 
@@ -149,37 +133,6 @@ def utc(epoch: int) -> str:
 
 def cooldown_message(until: int) -> str:
     return f"cooldown until {utc(until)}"
-
-
-def rebuild_pem(raw: str) -> str:
-    """A PEM with proper lines from RAW, which a concealed field may flatten.
-
-    Text that holds no BEGIN and END pair comes back unchanged, for openssl to
-    refuse.
-    """
-    found = PEM_PATTERN.search(raw)
-    if found is None:
-        return raw
-    label, body = found.groups()
-    body = "".join(body.split())
-    lines = [body[i : i + PEM_WIDTH] for i in range(0, len(body), PEM_WIDTH)]
-    return "\n".join([f"-----BEGIN {label}-----", *lines, f"-----END {label}-----\n"])
-
-
-def b64url(data: bytes) -> str:
-    return base64.urlsafe_b64encode(data).rstrip(b"=").decode()
-
-
-def claims(app_id: str, now: int) -> Json:
-    return {"iat": now - JWT_BACKDATE, "exp": now + JWT_LIFETIME, "iss": app_id}
-
-
-def signing_input(app_id: str, now: int) -> bytes:
-    parts = [
-        b64url(json.dumps(part, separators=(",", ":")).encode())
-        for part in (HEADER, claims(app_id, now))
-    ]
-    return ".".join(parts).encode()
 
 
 def lookup_paths(repo: str) -> list[str]:
@@ -321,32 +274,6 @@ def read_fields(env: Env, args: Args) -> tuple[str, str]:
     return app_id, rebuild_pem(read_field(store, args, "private_key"))
 
 
-def is_rsa(text: bytes) -> bool:
-    """Whether TEXT, from `openssl pkey -noout -text`, describes an RSA key."""
-    return RSA_HEADER.match(text) is not None and RSA_MODULUS.search(text) is not None
-
-
-def sign(env: Env, app_id: str, key: str) -> str:
-    """A signed JWT for APP_ID, from the PEM KEY, which only a 0600 file holds."""
-    with tempfile.TemporaryDirectory() as directory:
-        # mkstemp creates the file 0600, before anything is written to it.
-        handle, keyfile = tempfile.mkstemp(dir=directory)
-        fill(handle, key)
-        described = env.openssl(["pkey", "-in", keyfile, "-noout", "-text"])
-        if described.returncode:
-            message = "private_key does not parse"
-            raise GhAppError(message)
-        if not is_rsa(described.stdout):
-            message = "the app private key is not an RSA key"
-            raise GhAppError(message)
-        data = signing_input(app_id, env.now())
-        done = env.openssl(["dgst", "-sha256", "-sign", keyfile], data)
-    if done.returncode or not done.stdout:
-        message = "cannot sign the JWT"
-        raise GhAppError(message)
-    return f"{data.decode()}.{b64url(done.stdout)}"
-
-
 def find_installation(client: httpx2.Client, repo: str) -> int | None:
     """The installation of the repository, or else of its owner.
 
@@ -450,19 +377,7 @@ def mint_token(  # noqa: PLR0913  # Explicit credentials and installation cache.
     ):
         message = "permissions must be nonempty and contain only read or write"
         raise GhAppError(message)
-    try:
-        key = serialization.load_pem_private_key(
-            rebuild_pem(pem).encode(), password=None
-        )
-    except ValueError, TypeError, UnsupportedAlgorithm:
-        message = "private_key does not parse"
-        raise GhAppError(message) from None
-    if not isinstance(key, rsa.RSAPrivateKey):
-        message = "the app private key is not an RSA key"
-        raise GhAppError(message)
-    data = signing_input(app_id, env.now())
-    signature = key.sign(data, padding.PKCS1v15(), hashes.SHA256())
-    jwt = f"{data.decode()}.{b64url(signature)}"
+    jwt = sign_in_memory(env, app_id, pem)
     body = token_body(
         repository, all_repos="/" not in repository, permissions=permissions
     )
@@ -509,7 +424,7 @@ def mint(args: Args, env: Env) -> int:
         sys.stderr.write(f"{cooldown_message(until)}\n")
         return EXIT_COOLDOWN
     app_id, key = read_fields(env, args)
-    jwt = sign(env, app_id, key)
+    jwt = gh_app_signing.sign(env, app_id, key)
     if args.dry_run:
         sys.stdout.write(
             f"dry run: read app_id and private_key for {args.app}, "

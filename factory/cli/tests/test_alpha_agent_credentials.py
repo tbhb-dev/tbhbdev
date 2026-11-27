@@ -21,7 +21,7 @@ from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric import rsa
 
 from tbhbdev import secrets
-from tbhbdev.alpha import gh_app, gh_app_runtime
+from tbhbdev.alpha import gh_app, gh_app_runtime, gh_app_signing
 from tbhbdev.alpha.agent import credentials, process_group, runfiles
 from tbhbdev.alpha.agent.model import Credentials, Harness, Invalid, Profile
 
@@ -298,7 +298,6 @@ def test_review_token_request_is_read_only_for_only_run_repository(
         httpx2.MockTransport(respond),
     )
     monkeypatch.setattr(gh_app_runtime, "default_env", lambda: env)
-    monkeypatch.setattr(gh_app, "sign", constant("example-jwt"))
     credentials.deliver(
         run_request(profile="review", commit="0" * 40), host_settings(), tmp_path
     )
@@ -1065,7 +1064,7 @@ def test_build_token_request_names_one_repository_and_write_permissions(
     )
     monkeypatch.setattr(gh_app_runtime, "default_env", lambda: env)
     # The build path signs in memory, never through the key-file signer.
-    monkeypatch.setattr(gh_app, "sign", no_key_file)
+    monkeypatch.setattr(gh_app_signing, "sign", no_key_file)
     credentials.deliver(run_request(), pull_requests_settings(), tmp_path)
     assert [(request.method, request.url.path) for request in requests] == list(replies)
     assert json.loads(requests[1].content) == {

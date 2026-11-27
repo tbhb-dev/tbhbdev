@@ -27,7 +27,7 @@ from cryptography.hazmat.primitives.asymmetric import padding
 from cryptography.hazmat.primitives.asymmetric import rsa as rsa_keys
 
 from tbhbdev import secrets
-from tbhbdev.alpha import gh_app, gh_app_args, gh_app_runtime
+from tbhbdev.alpha import gh_app, gh_app_args, gh_app_runtime, gh_app_signing
 
 NOW = 1_800_000_000
 # The token a fake GitHub mints lives an hour past the fake clock.
@@ -410,20 +410,20 @@ def test_utc() -> None:
 def test_rebuild_pem_refolds_a_flattened_key() -> None:
     body = "A" * 64 + "B" * 64 + "C" * 3
     flat = f"{BEGIN} {body[:50]}  {body[50:]} \n{END}"
-    assert gh_app.rebuild_pem(flat) == (
+    assert gh_app_signing.rebuild_pem(flat) == (
         f"{BEGIN}\n{'A' * 64}\n{'B' * 64}\nCCC\n{END}\n"
     )
 
 
 def test_rebuild_pem_keeps_a_proper_key_and_the_label(rsa: Key) -> None:
-    assert gh_app.rebuild_pem(rsa.pem) == rsa.pem
+    assert gh_app_signing.rebuild_pem(rsa.pem) == rsa.pem
     flat = rsa.pem.replace("\n", " ")
-    assert gh_app.rebuild_pem(flat) == rsa.pem
+    assert gh_app_signing.rebuild_pem(flat) == rsa.pem
 
 
 def test_rebuild_pem_leaves_other_text_to_openssl() -> None:
-    assert gh_app.rebuild_pem("not a key") == "not a key"
-    assert gh_app.rebuild_pem("-----BEGIN A-----x-----END B-----") == (
+    assert gh_app_signing.rebuild_pem("not a key") == "not a key"
+    assert gh_app_signing.rebuild_pem("-----BEGIN A-----x-----END B-----") == (
         "-----BEGIN A-----x-----END B-----"
     )
 
@@ -435,10 +435,10 @@ def decode(part: str) -> object:
 
 
 def test_signing_input() -> None:
-    header, payload = gh_app.signing_input("123", NOW).decode().split(".")
+    header, payload = gh_app_signing.signing_input("123", NOW).decode().split(".")
     assert decode(header) == {"alg": "RS256", "typ": "JWT"}
     assert decode(payload) == {"iat": NOW - 60, "exp": NOW + 540, "iss": "123"}
-    raw = gh_app.signing_input("123", NOW).decode().split(".")
+    raw = gh_app_signing.signing_input("123", NOW).decode().split(".")
     assert base64.urlsafe_b64decode(raw[0] + "==") == b'{"alg":"RS256","typ":"JWT"}'
     assert base64.urlsafe_b64decode(raw[1] + "==") == (
         f'{{"iat":{NOW - 60},"exp":{NOW + 540},"iss":"123"}}'.encode()
@@ -446,10 +446,10 @@ def test_signing_input() -> None:
 
 
 def test_b64url_drops_padding_and_uses_the_url_alphabet() -> None:
-    assert gh_app.b64url(b"\xfb\xff") == "-_8"
-    assert gh_app.b64url(b"a") == "YQ"
-    assert gh_app.b64url(b"\x00\x00\x17") == "AAA" + "X"
-    assert gh_app.b64url(b"") == ""
+    assert gh_app_signing.b64url(b"\xfb\xff") == "-_8"
+    assert gh_app_signing.b64url(b"a") == "YQ"
+    assert gh_app_signing.b64url(b"\x00\x00\x17") == "AAA" + "X"
+    assert gh_app_signing.b64url(b"") == ""
 
 
 def test_the_owner_is_what_precedes_the_first_slash() -> None:
@@ -598,7 +598,7 @@ RSA_TEXT = (
     ],
 )
 def test_is_rsa(text: bytes, rsa_key: bool) -> None:
-    assert gh_app.is_rsa(text) is rsa_key
+    assert gh_app_signing.is_rsa(text) is rsa_key
 
 
 def test_render_hosts() -> None:
@@ -1613,9 +1613,9 @@ def test_mint_token_narrows_and_signs_without_files(
         assert isinstance(key, rsa_keys.RSAPrivateKey)
         return key
 
-    monkeypatch.setattr(gh_app.serialization, "load_pem_private_key", load)
-    monkeypatch.setattr(gh_app.tempfile, "mkstemp", refuse)
-    monkeypatch.setattr(gh_app.tempfile, "TemporaryDirectory", refuse)
+    monkeypatch.setattr(gh_app_signing.serialization, "load_pem_private_key", load)
+    monkeypatch.setattr(gh_app_signing.tempfile, "mkstemp", refuse)
+    monkeypatch.setattr(gh_app_signing.tempfile, "TemporaryDirectory", refuse)
     before = list(tmp_path.rglob("*"))
     github = Github()
     env = env_for(tmp_path, Store({}), github, openssl=refuse)
@@ -1637,7 +1637,7 @@ def test_mint_token_narrows_and_signs_without_files(
         "permissions": permissions,
     }
     header, payload, signature = github.jwt.split(".")
-    assert json.loads(base64.urlsafe_b64decode(header + "==")) == gh_app.HEADER
+    assert json.loads(base64.urlsafe_b64decode(header + "==")) == gh_app_signing.HEADER
     claims = json.loads(base64.urlsafe_b64decode(payload + "=="))
     assert claims == {"iat": NOW - 60, "exp": NOW + 540, "iss": APP_ID}
     assert 0 < claims["exp"] - claims["iat"] <= 600
