@@ -13,6 +13,7 @@ cli_py_library(
         ":audit",
         ":policy",
         ":request",
+        "//factory/cli/src/tbhbdev:userconfig",
         "//factory/cli/src/tbhbdev/alpha:gh_app",
     ],
 )
