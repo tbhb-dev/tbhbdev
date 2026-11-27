@@ -137,6 +137,48 @@ jobs:
             printf '%s\n\n%s\n' "$PR_TITLE" "$PR_BODY" | bazel run --config=ci @tbhb_rules//lint:gitleaks_text
           fi
 
+  design-report:
+    name: design-report
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-26.04
+    timeout-minutes: 5
+    steps:
+      - name: Checkout head
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          persist-credentials: false
+
+      - name: Checkout base
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.base.sha }}
+          path: design-base
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1  # v6.3.0
+        with:
+          python-version-file: .python-version
+
+      - name: Compare design metrics
+        run: |
+          tool=lib/rules/lint/private/design_report
+          python -m unittest discover -s "$tool"
+          python "$tool/design_report.py" measure design-base/factory/cli/src design-base/factory/cli/tests > base.json
+          python "$tool/design_report.py" measure factory/cli/src factory/cli/tests > head.json
+          python "$tool/design_report.py" diff base.json head.json > design-report.md
+          cat design-report.md >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload design report
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9  # v7.0.2
+        with:
+          name: design-report
+          path: |
+            design-report.md
+            base.json
+            head.json
+
   conclusion:
     name: conclusion
     if: always()
