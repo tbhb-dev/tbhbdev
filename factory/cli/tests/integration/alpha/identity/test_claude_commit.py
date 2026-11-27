@@ -15,6 +15,7 @@ from integration.alpha.identity.identity_test_support import (
     CLAUDE_COMMIT_ENV,
     CLAUDE_E2E,
     CLAUDE_HOOK_ENV,
+    CLAUDE_MAIN,
     HAIKU,
     OPUS,
     OTHER,
@@ -64,14 +65,7 @@ def test_claude_committer_main_agent(repo: Path) -> None:
         "low",
         "cli",
     )
-    assert got.root_ident == values.Ident(
-        SESSION_HASH,
-        "claude-code:2.1.316",
-        None,
-        "anthropic:claude-opus-5-5",
-        "high",
-        "cli",
-    )
+    assert got.root_ident == CLAUDE_MAIN
     no_effort = {k: v for k, v in CLAUDE_COMMIT_ENV.items() if k != "CLAUDE_EFFORT"}
     again = attribution.committer_identity(no_effort, [])
     assert again is not None

@@ -16,6 +16,7 @@ from integration.alpha.identity.identity_test_support import (
     CHILD_THREAD,
     ROOT_THREAD,
     Json,
+    child_meta,
     fork_lines,
     loaded,
     meta,
@@ -347,12 +348,7 @@ def test_codex_ident_and_scan(repo: Path, tmp_path: Path) -> None:
         home,
         CHILD_THREAD,
         [
-            meta(
-                id=CHILD_THREAD,
-                session_id=ROOT_THREAD,
-                cwd=str(repo),
-                source={"subagent": 1},
-            ),
+            child_meta(repo),
             turn("gpt-5.6-luna", "low"),
             patch_call("b.txt"),
         ],

@@ -55,6 +55,15 @@ CHILD = H + "c" * 16
 
 OTHER = H + "d" * 16
 
+CODEX_ATTRS = {
+    "effort": "low",
+    "harness": "codex",
+    "model": "openai:m",
+    "session": ROOT,
+    "subagent": CHILD,
+    "surface": "exec",
+}
+
 AGENT_VARS = (
     "GIT_",
     "PRE_COMMIT",
@@ -195,6 +204,14 @@ CLAUDE_HOOK_ENV = {
 }
 
 SESSION_HASH = values.sha256_64("session-raw")
+
+CLAUDE_MAIN = values.Ident(
+    SESSION_HASH,
+    "claude-code:2.1.316",
+    model="anthropic:claude-opus-5-5",
+    effort="high",
+    surface="cli",
+)
 
 AGENT = values.sha256_64("agent-raw")
 
@@ -600,6 +617,16 @@ def hook_data(name: str, repo: Path, rollout: Path | None, **kw: object) -> Json
     return data
 
 
+def child_meta(repo: Path, **fields: object) -> Json:
+    return meta(
+        id=CHILD_THREAD,
+        session_id=ROOT_THREAD,
+        cwd=str(repo),
+        source={"subagent": 1},
+        **fields,
+    )
+
+
 def hook_rollouts(home: Path, repo: Path) -> tuple[Path, Path]:
     """(root rollout, child rollout) shaped like Codex 0.166.0's."""
     root = write_rollout(
@@ -620,13 +647,7 @@ def hook_rollouts(home: Path, repo: Path) -> tuple[Path, Path]:
         home,
         CHILD_THREAD,
         [
-            meta(
-                id=CHILD_THREAD,
-                session_id=ROOT_THREAD,
-                cwd=str(repo),
-                source={"subagent": 1},
-                cli_version="0.166.0",
-            ),
+            child_meta(repo, cli_version="0.166.0"),
             turn("gpt-5.6-terra", "low"),
         ],
     )

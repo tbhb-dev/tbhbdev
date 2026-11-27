@@ -14,6 +14,7 @@ from integration.alpha.identity.identity_test_support import (
     CHILD,
     CLAUDE_COMMIT_ENV,
     CLAUDE_E2E,
+    CODEX_ATTRS,
     EARLY,
     GEN_ROOT,
     GOOD,
@@ -182,14 +183,7 @@ def test_check_message_orders_and_signoff() -> None:
     )
 )
 def test_check_value_order_property(keys: list[str]) -> None:
-    samples = {
-        "effort": "low",
-        "harness": "codex",
-        "model": "openai:m",
-        "session": ROOT,
-        "subagent": CHILD,
-        "surface": "cli",
-    }
+    samples = {**CODEX_ATTRS, "surface": "cli"}
     ordered = [k for k in values.ATTR_ORDER if k in keys]
     value = "LLM " + ";".join(f"{k}={samples[k]}" for k in ordered)
     expected = None

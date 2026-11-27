@@ -12,6 +12,7 @@ from hypothesis import given
 from hypothesis import strategies as st
 from integration.alpha.identity.identity_test_support import (
     CHILD,
+    CODEX_ATTRS,
     DATA,
     LAUNCH,
     ROOT,
@@ -165,14 +166,7 @@ def test_agy_1_5_7_models_render_a_complete_trailer(model: str, expected: str) -
 
 def test_ident_attrs_and_keys() -> None:
     who = values.Ident(ROOT, "codex", CHILD, "openai:m", "low", "exec")
-    assert who.attrs() == {
-        "effort": "low",
-        "harness": "codex",
-        "model": "openai:m",
-        "session": ROOT,
-        "subagent": CHILD,
-        "surface": "exec",
-    }
+    assert who.attrs() == CODEX_ATTRS
     assert values.Ident(ROOT, "codex").attrs() == {"harness": "codex", "session": ROOT}
     assert who.agent_key() == (ROOT, CHILD)
     receipt = make_receipt("p", who)

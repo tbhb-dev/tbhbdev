@@ -14,6 +14,7 @@ from integration.alpha.identity.identity_test_support import (
     CHILD,
     CLAUDE_COMMIT_ENV,
     CLAUDE_HOOK_ENV,
+    CLAUDE_MAIN,
     EARLY,
     HAIKU,
     LAUNCH,
@@ -148,14 +149,7 @@ EVENT_FAIL = "PostToolUseFailure"
 
 def test_claude_ident_main_and_child(repo: Path) -> None:
     main = claude_data(repo)
-    assert claude.claude_ident(main, CLAUDE_HOOK_ENV) == values.Ident(
-        SESSION_HASH,
-        "claude-code:2.1.316",
-        None,
-        "anthropic:claude-opus-5-5",
-        "high",
-        "cli",
-    )
+    assert claude.claude_ident(main, CLAUDE_HOOK_ENV) == CLAUDE_MAIN
     write_transcript(
         repo / "session-raw" / "subagents" / "agent-agent-raw.jsonl",
         {"message": {"model": "claude-haiku-5-5"}},
