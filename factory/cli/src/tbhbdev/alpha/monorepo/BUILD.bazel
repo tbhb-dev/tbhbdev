@@ -1,0 +1,55 @@
+# SPDX-License-Identifier: Apache-2.0
+# Copyright Tony Burns
+
+load("//factory/cli:python.bzl", "cli_py_library")
+
+cli_py_library(
+    name = "__init__",
+    srcs = ["__init__.py"],
+    imports = ["../../.."],
+    visibility = ["//factory/cli:__subpackages__"],
+    deps = [
+        ":pathmap",
+        ":source",
+        ":verify",
+        "//factory/cli/src/tbhbdev/alpha/agent:transport",
+    ],
+)
+
+cli_py_library(
+    name = "pathmap",
+    srcs = ["pathmap.py"],
+    imports = ["../../.."],
+    visibility = ["//factory/cli:__subpackages__"],
+    deps = [
+        ":source",
+        "@cli_pip//tomlkit",
+    ],
+)
+
+cli_py_library(
+    name = "source",
+    srcs = ["source.py"],
+    imports = ["../../.."],
+    visibility = ["//factory/cli:__subpackages__"],
+)
+
+cli_py_library(
+    name = "verify",
+    srcs = ["verify.py"],
+    imports = ["../../.."],
+    visibility = ["//factory/cli:__subpackages__"],
+    deps = [
+        ":pathmap",
+        ":source",
+    ],
+)
+
+filegroup(
+    name = "package_files",
+    srcs = glob(
+        ["**"],
+        exclude = ["BUILD.bazel"],
+    ),
+    visibility = ["//factory/cli:__pkg__"],
+)

@@ -1,0 +1,92 @@
+# SPDX-License-Identifier: Apache-2.0
+# Copyright Tony Burns
+
+load("//factory/cli:python.bzl", "cli_py_library")
+
+cli_py_library(
+    name = "__init__",
+    srcs = ["__init__.py"],
+    data = [":analytics_data"],
+    imports = ["../.."],
+    visibility = ["//factory/cli:__subpackages__"],
+    deps = [
+        ":catalog",
+        ":database",
+        ":model",
+        ":render",
+        ":settings",
+        "//factory/cli/src/tbhbdev/analytics/decisions:contract",
+        "//factory/cli/src/tbhbdev/analytics/decisions:roles",
+    ],
+)
+
+cli_py_library(
+    name = "catalog",
+    srcs = ["catalog.py"],
+    data = [":analytics_data"],
+    imports = ["../.."],
+    pyi_deps = [":database"],
+    visibility = ["//factory/cli:__subpackages__"],
+    deps = [":model"],
+)
+
+cli_py_library(
+    name = "database",
+    srcs = ["database.py"],
+    data = [
+        ":analytics_data",
+        "@cli_pip//psycopg_binary",
+    ],
+    imports = ["../.."],
+    visibility = ["//factory/cli:__subpackages__"],
+    deps = [
+        ":model",
+        "//factory/cli/src/tbhbdev/analytics/decisions:migrations",
+        "//factory/cli/src/tbhbdev/analytics/decisions:roles",
+        "//factory/cli/src/tbhbdev/analytics/decisions:scram",
+        "@cli_pip//psycopg",
+    ],
+)
+
+cli_py_library(
+    name = "model",
+    srcs = ["model.py"],
+    imports = ["../.."],
+    visibility = ["//factory/cli:__subpackages__"],
+)
+
+cli_py_library(
+    name = "render",
+    srcs = ["render.py"],
+    imports = ["../.."],
+    pyi_deps = [":model"],
+    visibility = ["//factory/cli:__subpackages__"],
+    deps = ["//factory/cli/src/tbhbdev/analytics/decisions:diagnostic"],
+)
+
+cli_py_library(
+    name = "settings",
+    srcs = ["settings.py"],
+    imports = ["../.."],
+    visibility = ["//factory/cli:__subpackages__"],
+    deps = [
+        ":model",
+        "//factory/cli/src/tbhbdev:userconfig",
+        "//factory/cli/src/tbhbdev/analytics/decisions:config",
+    ],
+)
+
+filegroup(
+    name = "package_files",
+    srcs = glob(
+        ["**"],
+        exclude = ["BUILD.bazel"],
+    ),
+    visibility = ["//factory/cli:__pkg__"],
+)
+
+filegroup(
+    name = "analytics_data",
+    srcs = glob(["data/**"]),
+    visibility = ["//factory/cli:__subpackages__"],
+)
