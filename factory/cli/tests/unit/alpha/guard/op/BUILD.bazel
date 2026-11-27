@@ -1,0 +1,70 @@
+# SPDX-License-Identifier: Apache-2.0
+# Copyright Tony Burns
+
+load("//factory/cli/tests:pytest.bzl", "cli_py_test")
+
+cli_py_test(
+    name = "test_command",
+    srcs = ["test_command.py"],
+    imports = ["../../../.."],
+    deps = [
+        "//factory/cli/src/tbhbdev:userconfig",
+        "//factory/cli/src/tbhbdev/alpha/guard/op:command",
+        "//factory/cli/tests:conftest",
+        "@cli_pip//pytest",
+    ],
+)
+
+cli_py_test(
+    name = "test_decision",
+    srcs = ["test_decision.py"],
+    imports = ["../../../.."],
+    deps = [
+        "//factory/cli/src/tbhbdev/alpha/guard/op:decision",
+        "//factory/cli/src/tbhbdev/alpha/guard/op:file_calls",
+        "//factory/cli/src/tbhbdev/alpha/guard/op:shell_calls",
+        "//factory/cli/tests:conftest",
+        "@cli_pip//pytest",
+    ],
+)
+
+cli_py_test(
+    name = "test_edits",
+    srcs = ["test_edits.py"],
+    imports = ["../../../.."],
+    deps = [
+        "//factory/cli/src/tbhbdev/alpha/guard/op:edits",
+        "//factory/cli/tests:conftest",
+        "@cli_pip//pytest",
+    ],
+)
+
+cli_py_test(
+    name = "test_file_calls",
+    srcs = ["test_file_calls.py"],
+    imports = ["../../../.."],
+    deps = [
+        "//factory/cli/src/tbhbdev/alpha/guard/op:decision",
+        "//factory/cli/src/tbhbdev/alpha/guard/op:file_calls",
+        "//factory/cli/tests:conftest",
+        "@cli_pip//pytest",
+    ],
+)
+
+cli_py_test(
+    name = "test_shell_calls",
+    srcs = ["test_shell_calls.py"],
+    imports = ["../../../.."],
+    deps = [
+        "//factory/cli/src/tbhbdev/alpha/guard/op:decision",
+        "//factory/cli/src/tbhbdev/alpha/guard/op:shell_calls",
+        "//factory/cli/tests:conftest",
+        "@cli_pip//pytest",
+    ],
+)
+
+filegroup(
+    name = "package_files",
+    srcs = glob(["*.py"]),
+    visibility = ["//factory/cli:__subpackages__"],
+)

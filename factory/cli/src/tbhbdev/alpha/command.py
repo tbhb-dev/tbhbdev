@@ -16,20 +16,19 @@ from typing import TYPE_CHECKING
 import tbhbdev.alpha.agent.command
 import tbhbdev.alpha.brief
 import tbhbdev.alpha.gh_shim
-import tbhbdev.alpha.guard_agent_model
-import tbhbdev.alpha.guard_gh_config_dir
-import tbhbdev.alpha.guard_gh_poll
-import tbhbdev.alpha.guard_gh_pr
-import tbhbdev.alpha.guard_op
-import tbhbdev.alpha.guard_ops_no_lazy_stop
-import tbhbdev.alpha.guard_scripts
-import tbhbdev.alpha.guard_sendmessage_clock
-import tbhbdev.alpha.guard_ssh_agent
+import tbhbdev.alpha.guard.agent_model
+import tbhbdev.alpha.guard.gh_config_dir
+import tbhbdev.alpha.guard.gh_poll.command
+import tbhbdev.alpha.guard.gh_pr.command
+import tbhbdev.alpha.guard.op.command
+import tbhbdev.alpha.guard.ops_no_lazy_stop
+import tbhbdev.alpha.guard.scripts.command
+import tbhbdev.alpha.guard.sendmessage_clock
+import tbhbdev.alpha.guard.state
 import tbhbdev.alpha.install.command
 import tbhbdev.alpha.pre_push_guard
 import tbhbdev.alpha.run_stop_hook
 import tbhbdev.alpha.session_context
-import tbhbdev.alpha.state_guard
 import tbhbdev.alpha.verify_range
 import tbhbdev.alpha.version_check
 import tbhbdev.alpha.worktree_sweep
@@ -51,10 +50,9 @@ commands:
                gh issue close, gh run rerun, gh api branch deletes and
                pull request approvals through gh
   guard-op     PreToolUse hook: require the configured 1Password account
-  guard-ssh-agent PreToolUse hook: block ssh-add and paths in the ssh dir (not sessions)
   guard-sendmessage-clock PreToolUse hook: block stale or future SendMessage stamps
   guard-ops-no-lazy-stop Stop hook: ask the assistant to verify marked claims
-  state-guard  Claude Code hook: block sign-off commits and unchecked open items
+  state-guard  Claude Code hook: block sign-off and co-author trailers
   session-context
                SessionStart hook: name the host, the other hosts and the time
   worktree-sweep classify and clean up merged worktrees
@@ -106,15 +104,15 @@ def identity_command(argv: list[str], _prog: str) -> int:
 
 
 def guard_command(_argv: list[str], _prog: str) -> int:
-    return tbhbdev.alpha.guard_gh_pr.main()
+    return tbhbdev.alpha.guard.gh_pr.command.main()
 
 
 def guard_op_command(_argv: list[str], _prog: str) -> int:
-    return tbhbdev.alpha.guard_op.main()
+    return tbhbdev.alpha.guard.op.command.main()
 
 
 def state_guard_command(_argv: list[str], _prog: str) -> int:
-    return tbhbdev.alpha.state_guard.main()
+    return tbhbdev.alpha.guard.state.main()
 
 
 def session_context_command(_argv: list[str], _prog: str) -> int:
@@ -122,31 +120,27 @@ def session_context_command(_argv: list[str], _prog: str) -> int:
 
 
 def poll_command(_argv: list[str], _prog: str) -> int:
-    return tbhbdev.alpha.guard_gh_poll.main()
-
-
-def ssh_agent_command(_argv: list[str], _prog: str) -> int:
-    return tbhbdev.alpha.guard_ssh_agent.main()
+    return tbhbdev.alpha.guard.gh_poll.command.main()
 
 
 def sendmessage_clock_command(_argv: list[str], _prog: str) -> int:
-    return tbhbdev.alpha.guard_sendmessage_clock.main()
+    return tbhbdev.alpha.guard.sendmessage_clock.main()
 
 
 def ops_no_lazy_stop_command(_argv: list[str], _prog: str) -> int:
-    return tbhbdev.alpha.guard_ops_no_lazy_stop.main()
+    return tbhbdev.alpha.guard.ops_no_lazy_stop.main()
 
 
 def gh_config_dir_command(_argv: list[str], _prog: str) -> int:
-    return tbhbdev.alpha.guard_gh_config_dir.main()
+    return tbhbdev.alpha.guard.gh_config_dir.main()
 
 
 def agent_model_command(_argv: list[str], _prog: str) -> int:
-    return tbhbdev.alpha.guard_agent_model.main()
+    return tbhbdev.alpha.guard.agent_model.main()
 
 
 def scripts_command(_argv: list[str], _prog: str) -> int:
-    return tbhbdev.alpha.guard_scripts.main()
+    return tbhbdev.alpha.guard.scripts.command.main()
 
 
 def pr(argv: list[str], prog: str) -> int:
@@ -209,7 +203,6 @@ COMMANDS: dict[str, Callable[[list[str], str], int]] = {
     "worktree-sweep": tbhbdev.alpha.worktree_sweep.main,
     "guard-gh-poll": poll_command,
     "guard-gh-config-dir": gh_config_dir_command,
-    "guard-ssh-agent": ssh_agent_command,
     "guard-sendmessage-clock": sendmessage_clock_command,
     "guard-ops-no-lazy-stop": ops_no_lazy_stop_command,
     "guard-scripts": scripts_command,
