@@ -1133,7 +1133,7 @@ def test_unpublished_diff_bounds_output_and_preserves_failure(
         "if 'ls-remote' in sys.argv: sys.exit(0)\n"
         "if 'init' in sys.argv:\n"
         "    (Path(sys.argv[-1]) / 'objects/info').mkdir(parents=True); sys.exit(0)\n"
-        "if 'rev-list' in sys.argv: sys.exit(0)\n"
+        "if 'rev-list' in sys.argv or 'merge-base' in sys.argv: sys.exit(0)\n"
         "assert 'format-patch' in sys.argv\n"
         "assert 'diff.external=' in sys.argv\n"
         "assert '--no-ext-diff' in sys.argv and '--no-textconv' in sys.argv\n"
@@ -1315,7 +1315,21 @@ def merge_run_changes(tree: Path, resolution: bytes) -> None:
     commit_in(tree, "resolve merge")
 
 
-@pytest.mark.parametrize("history", ["linear", "merge", "empty merge"])
+def reset_then_add(tree: Path, content: bytes) -> str:
+    (tree / "base-only").write_text("present on the recorded base\n")
+    git_in(tree, "add", "base-only")
+    commit_in(tree, "add base-only file")
+    base = git_in(tree, "rev-parse", "HEAD")
+    git_in(tree, "reset", "--hard", "HEAD^")
+    (tree / "added").write_bytes(content)
+    git_in(tree, "add", "added")
+    commit_in(tree, "add unrelated file")
+    return base
+
+
+@pytest.mark.parametrize(
+    "history", ["linear", "merge", "empty merge", "reset then add"]
+)
 def test_finished_build_exports_complete_patch_offline(
     host: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -1332,6 +1346,8 @@ def test_finished_build_exports_complete_patch_offline(
         example.write_bytes(content)
         git_in(tree, "add", "example")
         commit_in(tree, "unpublished change")
+    elif history == "reset then add":
+        base = reset_then_add(tree, content)
     else:
         merge_run_changes(
             tree, example.read_bytes() if history == "empty merge" else content
@@ -1377,6 +1393,9 @@ def test_finished_build_exports_complete_patch_offline(
         patch = host / "run.patch"
         patch.write_bytes(output)
         git_in(tree, "am", str(patch))
+    if history == "reset then add":
+        assert (tree / "added").read_bytes() == content
+        assert not (tree / "base-only").exists()
     assert git_in(tree, "rev-parse", "HEAD^{tree}") == tip_tree
 
 
