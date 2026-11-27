@@ -10,7 +10,7 @@ import pytest
 from agent_driver_example import Remote, execution_arguments, setup
 from agent_example import settings
 
-from tbhbdev.alpha import agent
+from tbhbdev.alpha.agent import command as agent
 from tbhbdev.alpha.agent import driver, launcher
 from tbhbdev.alpha.agent.decisions import launcher as rules
 from tbhbdev.alpha.agent.model import Invalid, Profile

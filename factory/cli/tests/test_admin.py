@@ -11,7 +11,7 @@ import pytest
 from test_admin_request import fake as admin_fake
 lazy from test_admin_request import Fake
 
-from tbhbdev import admin
+from tbhbdev.admin import command as admin
 lazy from tbhbdev.admin import request
 
 fake = admin_fake

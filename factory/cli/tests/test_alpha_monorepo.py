@@ -10,7 +10,7 @@ from typing import TYPE_CHECKING, cast
 
 import pytest
 
-from tbhbdev import alpha
+from tbhbdev.alpha import command as alpha
 from tbhbdev.alpha import monorepo
 from tbhbdev.alpha.monorepo import source
 from tbhbdev.alpha.monorepo.pathmap import Rewrite, dump, load

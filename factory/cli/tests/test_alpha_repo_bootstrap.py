@@ -17,7 +17,8 @@ from typing import TYPE_CHECKING
 import pytest
 from repo_settings_example import DEFAULTS, EXAMPLE
 
-from tbhbdev import alpha, gh_agent, host
+from tbhbdev import gh_agent, host
+from tbhbdev.alpha import command as alpha
 from tbhbdev.alpha import repo_bootstrap as rb
 from tbhbdev.alpha import repo_settings as rs
 

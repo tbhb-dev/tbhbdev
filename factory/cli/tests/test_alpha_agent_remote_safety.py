@@ -21,7 +21,7 @@ from agent_driver_example import (
 )
 from agent_example import LINUX, settings, trusted_executables
 
-from tbhbdev.alpha import agent
+from tbhbdev.alpha.agent import command as agent
 from tbhbdev.alpha.agent import driver, transport
 from tbhbdev.alpha.agent.decisions import policy, remote
 

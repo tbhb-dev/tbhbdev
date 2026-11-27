@@ -1,0 +1,267 @@
+# SPDX-License-Identifier: Apache-2.0
+# Copyright Tony Burns
+
+"""`tbhbdev alpha`: interim agent tools, ported from an earlier interim toolset.
+
+Alpha commands are interim. They may change or go away without notice, and
+only the tbhb-dev harness hooks and agents in tbhb-dev repositories should
+call them.
+
+The harness hooks run on every tool call, so this module imports pr, review,
+gh_app and merge, which load yaml, jsonschema and the Connect client, only when
+one of them runs.
+"""
+
+import os
+import sys
+from typing import TYPE_CHECKING
+
+from tbhbdev.alpha import (
+    brief,
+    gh_shim,
+    guard_agent_model,
+    guard_gh_config_dir,
+    guard_gh_poll,
+    guard_gh_pr,
+    guard_op,
+    guard_scripts,
+    guard_ssh_agent,
+    identity,
+    install,
+    loop,
+    pre_push_guard,
+    run_stop_hook,
+    session_context,
+    state_guard,
+    verify_range,
+    version_check,
+)
+from tbhbdev.alpha.agent import command as agent_command
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
+
+__all__ = [
+    "brief",
+    "gh_shim",
+    "guard_agent_model",
+    "guard_gh_config_dir",
+    "guard_gh_poll",
+    "guard_gh_pr",
+    "guard_op",
+    "guard_scripts",
+    "guard_ssh_agent",
+    "identity",
+    "install",
+    "loop",
+    "main",
+    "pre_push_guard",
+    "run_stop_hook",
+    "session_context",
+    "state_guard",
+    "verify_range",
+    "version_check",
+]
+
+USAGE = """usage: {prog} <command> [args...]
+
+Alpha commands are interim: they may change or go away without notice.
+
+commands:
+  identity     agent identity: record <harness> | trailer MSGFILE [SOURCE]
+               | consume | check MSGFILE | stamp-docs
+  guard-gh-pr  PreToolUse hook: block gh pr create|edit|merge|ready|close,
+               gh issue close, gh run rerun, gh api branch deletes and
+               pull request approvals through gh
+  guard-op     PreToolUse hook: require the configured 1Password account
+  guard-ssh-agent PreToolUse hook: block ssh-add and paths in the ssh dir (not sessions)
+  state-guard  Claude Code hook: block sign-off commits and unchecked open items
+  session-context
+               SessionStart hook: name the host, the other hosts and the time
+  guard-gh-poll PreToolUse hook: block bulk GitHub reads and token unsets
+  guard-gh-config-dir PreToolUse hook: require nonempty GH_CONFIG_DIR for gh
+  guard-scripts PreToolUse hook: keep scripts for the operator in
+               ~/.local/libexec/tbhb
+  guard-agent-model PreToolUse hook: require a model on Agent launches, and
+               a fork only on a session model that isn't costly
+  gh-shim      budget gh calls made by agent sessions and their scripts
+  agent-env    launch a harness with the gh shim first on PATH
+  pr           check | create | edit | hook: the pull request draft
+               | backfill-opened OWNER: the opened ledgers
+               | rerun N [--stuck]: rerun failed jobs of the head; --stuck reruns
+               a run of only this PR with a job in progress over an hour,
+               cancelled first and rerun in full
+               | delete-branch N: delete a finished PR's head branch on origin
+               | close N --reason TEXT: close a pull request (--comment is an alias)
+  pr-stats     OWNER/REPO [--limit N]: cycle time of merged and closed pull requests
+  review       draft N [--force] | check N: the review draft
+  issue        close N --reason completed|not-planned: close an issue
+               | create --repo OWNER/REPO --type TYPE --title TEXT --body-file FILE
+               [--label L ...] [--parent N|OWNER/REPO#N] [--reason TEXT] [--dry-run]
+               | link-sub PARENT CHILD | unlink-sub PARENT CHILD
+               | block BLOCKED --by BLOCKER | unblock BLOCKED --by BLOCKER
+               Relationship commands accept --dry-run and owner/repo#N or #N.
+               For dependencies, --blocked-by aliases --by, and
+               --blocking takes BLOCKED with BLOCKER as the positional issue.
+  gh-app       APP OWNER/REPO [--fresh] [--dry-run] [--all-repos]: mint a GitHub
+               App installation token through Connect | APP --cooldown-until
+               EPOCH | APP --cooldown-status
+  repo         bootstrap [--dry-run] [--create --private|--public] ORG/REPO:
+               apply the standard repository settings
+  merge        merge an approved pull request
+  monorepo     map CLONE COMMIT --dest FOLDER | import CLONE@COMMIT --map MAP
+               --into CLONE | verify CLONE@COMMIT --map MAP --tree CLONE:
+               import a public repository into the monorepo
+  verify-range BASE TIP [-C PATH]: check every agent commit in a range
+  version-check [--host NAME ...] [--expect SHA|latest] [--json]: compare the
+               installed build on each host
+  loop         validate loop configuration (runner not yet available)
+  agent        exec | wait | status | kill | clean | keep: headless runs
+  run-stop-hook <claude|codex|antigravity>: check whether an exec run can stop
+  pre-push-guard REMOTE URL: refuse protected-branch and unfetched-rewrite pushes
+  brief        new | check: peer-run briefs with required safeguards
+  install      install the git hooks and the user-level harness hooks
+"""
+
+
+def identity_command(argv: list[str], _prog: str) -> int:
+    return identity.run(argv, os.environ)
+
+
+def guard_command(_argv: list[str], _prog: str) -> int:
+    return guard_gh_pr.main()
+
+
+def guard_op_command(_argv: list[str], _prog: str) -> int:
+    return guard_op.main()
+
+
+def state_guard_command(_argv: list[str], _prog: str) -> int:
+    return state_guard.main()
+
+
+def session_context_command(_argv: list[str], _prog: str) -> int:
+    return session_context.main()
+
+
+def poll_command(_argv: list[str], _prog: str) -> int:
+    return guard_gh_poll.main()
+
+
+def ssh_agent_command(_argv: list[str], _prog: str) -> int:
+    return guard_ssh_agent.main()
+
+
+def gh_config_dir_command(_argv: list[str], _prog: str) -> int:
+    return guard_gh_config_dir.main()
+
+
+def agent_model_command(_argv: list[str], _prog: str) -> int:
+    return guard_agent_model.main()
+
+
+def scripts_command(_argv: list[str], _prog: str) -> int:
+    return guard_scripts.main()
+
+
+def pr(argv: list[str], prog: str) -> int:
+    # Every close goes through close.py's checks: agent session, open PR, ledger.
+    if argv[:1] == ["close"]:
+        from tbhbdev.alpha import close  # noqa: PLC0415 -- see the docstring
+
+        return close.main(["pr", *argv], prog=prog)
+    from tbhbdev.alpha import pull_request  # noqa: PLC0415 -- see the docstring
+
+    return pull_request.main(argv, prog=prog)
+
+
+def pr_stats_command(argv: list[str], prog: str) -> int:
+    from tbhbdev.alpha import pr_stats  # noqa: PLC0415 -- see the docstring
+
+    return pr_stats.main(argv, prog=prog)
+
+
+def review_command(argv: list[str], prog: str) -> int:
+    from tbhbdev.alpha import review  # noqa: PLC0415 -- see the docstring
+
+    return review.main(argv, prog=prog)
+
+
+def issue(argv: list[str], prog: str) -> int:
+    from tbhbdev.alpha import close  # noqa: PLC0415 -- see the docstring
+
+    return close.main(["issue", *argv], prog=prog)
+
+
+def gh_app_command(argv: list[str], prog: str) -> int:
+    from tbhbdev.alpha import gh_app  # noqa: PLC0415 -- see the docstring
+
+    return gh_app.main(argv, prog)
+
+
+def repo_command(argv: list[str], prog: str) -> int:
+    from tbhbdev.alpha import repo_bootstrap  # noqa: PLC0415 -- see the docstring
+
+    return repo_bootstrap.main(argv, prog=prog)
+
+
+def merge(argv: list[str], prog: str) -> int:
+    from tbhbdev.alpha import squash_merge  # noqa: PLC0415 -- see the docstring
+
+    return squash_merge.main(argv, prog=prog)
+
+
+def monorepo_command(argv: list[str], prog: str) -> int:
+    from tbhbdev.alpha import monorepo  # noqa: PLC0415 -- see the docstring
+
+    return monorepo.main(argv, prog)
+
+
+def install_command(argv: list[str], prog: str) -> int:
+    return install.main(argv, prog)
+
+
+COMMANDS: dict[str, Callable[[list[str], str], int]] = {
+    "identity": identity_command,
+    "guard-gh-pr": guard_command,
+    "guard-op": guard_op_command,
+    "state-guard": state_guard_command,
+    "session-context": session_context_command,
+    "guard-gh-poll": poll_command,
+    "guard-gh-config-dir": gh_config_dir_command,
+    "guard-ssh-agent": ssh_agent_command,
+    "guard-scripts": scripts_command,
+    "guard-agent-model": agent_model_command,
+    "gh-shim": gh_shim.main,
+    "agent-env": gh_shim.agent_env,
+    "pr": pr,
+    "pr-stats": pr_stats_command,
+    "review": review_command,
+    "issue": issue,
+    "gh-app": gh_app_command,
+    "repo": repo_command,
+    "merge": merge,
+    "monorepo": monorepo_command,
+    "verify-range": verify_range.main,
+    "version-check": version_check.main,
+    "install": install_command,
+    "pre-push-guard": pre_push_guard.main,
+    "loop": loop.main,
+    "agent": agent_command.main,
+    "run-stop-hook": run_stop_hook.main,
+    "brief": brief.main,
+}
+
+
+def main(argv: list[str], prog: str) -> int:
+    """Run the alpha command argv names, passing it the rest of argv."""
+    if not argv or argv[0] in {"-h", "--help"}:
+        stream = sys.stdout if argv else sys.stderr
+        stream.write(USAGE.format(prog=prog))
+        return 0 if argv else 2
+    command = COMMANDS.get(argv[0])
+    if command is None:
+        sys.stderr.write(f"{prog}: unknown command {argv[0]!r}\n")
+        sys.stderr.write(USAGE.format(prog=prog))
+        return 2
+    return command(argv[1:], f"{prog} {argv[0]}")

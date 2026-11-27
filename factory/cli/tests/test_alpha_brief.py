@@ -5,8 +5,9 @@ from typing import TYPE_CHECKING
 
 import pytest
 
-from tbhbdev import alpha, cli
+from tbhbdev import cli
 from tbhbdev.alpha import brief
+from tbhbdev.alpha import command as alpha
 
 if TYPE_CHECKING:
     from pathlib import Path

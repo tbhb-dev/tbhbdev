@@ -9,7 +9,8 @@ from typing import TYPE_CHECKING
 
 import pytest
 
-from tbhbdev import alpha, cli, userconfig
+from tbhbdev import cli, userconfig
+from tbhbdev.alpha import command as alpha
 from tbhbdev.alpha import loop
 from tbhbdev.alpha.loop import config
 
