@@ -213,7 +213,7 @@ def build_provenance(
     checkout = tmp_path / "tools"
     checkout.mkdir()
     source = checkout / "factory/cli/src/tbhbdev/alpha/agent/build_info.py"
-    monkeypatch.setattr(build_info, "__file__", str(source))
+    monkeypatch.setattr(build_info, "SOURCE", source)
     if present:
         (checkout / ".git").write_text("gitdir: metadata\n")
         (tmp_path / ".git").mkdir()
