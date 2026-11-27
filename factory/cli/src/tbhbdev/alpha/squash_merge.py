@@ -48,8 +48,8 @@ fit 72 characters, or the script stops. The body comes from the PR body:
 The script never adds Signed-off-by or Co-authored-by, and it refuses a PR body
 that already holds one, whoever runs it.
 
-The PR must be open, mergeable and approved. The review gate requires
-independent Reviews App approvals of the current head and successful checks.
+The PR must be open, mergeable and approved. The review gate requires a
+Reviews App approval of the current head and successful checks.
 An optional ``--expect-head SHA`` must also match that head. The merge passes
 the verified head as ``--match-head-commit`` to guard against a later push.
 ``--dry-run`` applies the same checks before previewing the merge.
