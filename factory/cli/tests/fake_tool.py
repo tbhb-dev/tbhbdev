@@ -24,17 +24,29 @@ def pythonpath(src: Path) -> str:
     return os.pathsep.join(filter(None, [str(src), os.environ.get("PYTHONPATH")]))
 
 
-def write_fake(script: Path, body: str) -> None:
+def write_fake(script: Path, body: str, *, version: str | None = None) -> None:
     """A fake tool: a /bin/sh stub that runs ``body`` (saved beside it) in Python.
 
     Not a ``#!<python>`` shebang: under Bazel on Linux the interpreter path can
     pass the kernel's shebang length limit, or be a script itself, and exec
     then fails with ENOEXEC.
+
+    A fixed version takes only the shell launcher, which keeps repeated tool
+    pin checks from starting Python during subprocess coverage.
     """
     source = script.with_name(script.name + ".py")
     source.write_text(body)
     python, path = shlex.quote(sys.executable), shlex.quote(str(source))
-    script.write_text(f'#!/bin/sh\nexec {python} {path} "$@"\n')
+    launcher = "#!/bin/sh\n"
+    if version is not None:
+        report = shlex.quote(f"{script.name} version {version}")
+        launcher += (
+            'if [ "$#" -eq 1 ] && [ "$1" = --version ]; then\n'
+            f"  printf '%s\\n' {report}\n"
+            "  exit 0\n"
+            "fi\n"
+        )
+    script.write_text(launcher + f'exec {python} {path} "$@"\n')
     script.chmod(0o755)
 
 
