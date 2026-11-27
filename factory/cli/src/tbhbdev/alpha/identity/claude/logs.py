@@ -23,15 +23,17 @@ from tbhbdev.alpha.identity.storage import read_tail
 CLAUDE_TAIL = 256 * 1024
 
 
-def transcript_entry(path: object) -> tuple[str, float] | None:
+def transcript_entry(path: object, size: int | None = None) -> tuple[str, float] | None:
     """Claude: the last real assistant model in a transcript tail, and its time."""
-    lines = read_tail(Path(path), CLAUDE_TAIL) if isinstance(path, str) else None
+    lines = (
+        read_tail(Path(path), size or CLAUDE_TAIL) if isinstance(path, str) else None
+    )
     return latest_model_entry(lines)
 
 
-def transcript_model(path: object) -> str | None:
+def transcript_model(path: object, size: int | None = None) -> str | None:
     """Claude: the last real assistant ``message.model`` in a transcript tail."""
-    found = transcript_entry(path)
+    found = transcript_entry(path, size)
     return found[0] if found else None
 
 

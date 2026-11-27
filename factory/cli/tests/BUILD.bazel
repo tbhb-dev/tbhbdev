@@ -248,15 +248,6 @@ cli_py_test(
         "//factory/cli/src/tbhbdev/alpha:close",
         "//factory/cli/src/tbhbdev/alpha:command",
         "//factory/cli/src/tbhbdev/alpha:gh_app",
-        "//factory/cli/src/tbhbdev/alpha:guard_agent_model",
-        "//factory/cli/src/tbhbdev/alpha:guard_gh_config_dir",
-        "//factory/cli/src/tbhbdev/alpha:guard_gh_poll",
-        "//factory/cli/src/tbhbdev/alpha:guard_gh_pr",
-        "//factory/cli/src/tbhbdev/alpha:guard_op",
-        "//factory/cli/src/tbhbdev/alpha:guard_ops_no_lazy_stop",
-        "//factory/cli/src/tbhbdev/alpha:guard_scripts",
-        "//factory/cli/src/tbhbdev/alpha:guard_sendmessage_clock",
-        "//factory/cli/src/tbhbdev/alpha:guard_ssh_agent",
         "//factory/cli/src/tbhbdev/alpha:pre_push_guard",
         "//factory/cli/src/tbhbdev/alpha:repo_bootstrap",
         "//factory/cli/src/tbhbdev/alpha:review",
@@ -266,6 +257,14 @@ cli_py_test(
         "//factory/cli/src/tbhbdev/alpha/agent:command",
         "//factory/cli/src/tbhbdev/alpha/agent:ssh_serve",
         "//factory/cli/src/tbhbdev/alpha/agent/run_host:dispatcher",
+        "//factory/cli/src/tbhbdev/alpha/guard:agent_model",
+        "//factory/cli/src/tbhbdev/alpha/guard:gh_config_dir",
+        "//factory/cli/src/tbhbdev/alpha/guard:ops_no_lazy_stop",
+        "//factory/cli/src/tbhbdev/alpha/guard:sendmessage_clock",
+        "//factory/cli/src/tbhbdev/alpha/guard/gh_poll:command",
+        "//factory/cli/src/tbhbdev/alpha/guard/gh_pr:command",
+        "//factory/cli/src/tbhbdev/alpha/guard/op:command",
+        "//factory/cli/src/tbhbdev/alpha/guard/scripts:command",
         "//factory/cli/src/tbhbdev/alpha/identity:dispatcher",
         "//factory/cli/src/tbhbdev/alpha/install:command",
         "//factory/cli/src/tbhbdev/alpha/merge:command",
@@ -659,101 +658,6 @@ cli_py_test(
 )
 
 cli_py_test(
-    name = "test_alpha_guard_agent_model",
-    srcs = ["test_alpha_guard_agent_model.py"],
-    deps = [
-        ":conftest",
-        "//factory/cli/src/tbhbdev/alpha:guard_agent_model",
-        "@cli_pip//pytest",
-    ],
-)
-
-cli_py_test(
-    name = "test_alpha_guard_gh_config_dir",
-    srcs = ["test_alpha_guard_gh_config_dir.py"],
-    deps = [
-        ":conftest",
-        ":stub_fixtures",
-        "//factory/cli/src/tbhbdev/alpha:guard_gh_config_dir",
-        "@cli_pip//pytest",
-    ],
-)
-
-cli_py_test(
-    name = "test_alpha_guard_gh_poll",
-    srcs = ["test_alpha_guard_gh_poll.py"],
-    deps = [
-        ":conftest",
-        "//factory/cli/src/tbhbdev/alpha:guard_gh_poll",
-        "@cli_pip//pytest",
-    ],
-)
-
-cli_py_test(
-    name = "test_alpha_guard_gh_pr",
-    srcs = ["test_alpha_guard_gh_pr.py"],
-    data = [
-        ":alpha_testdata",
-        "//factory/cli/src/tbhbdev:tbhbdev_bin",
-    ],
-    extra_deps = ["//factory/cli/src/tbhbdev:cli"],
-    deps = [
-        ":conftest",
-        ":fake_tool",
-        "//factory/cli/src/tbhbdev/alpha:close",
-        "//factory/cli/src/tbhbdev/alpha:guard_gh_pr",
-        "//factory/cli/src/tbhbdev/alpha:opened",
-        "//factory/cli/src/tbhbdev/alpha/identity:records",
-        "//factory/cli/src/tbhbdev/alpha/merge:options",
-        "//factory/cli/src/tbhbdev/alpha/pull_request:arguments",
-        "@cli_pip//hypothesis",
-        "@cli_pip//pytest",
-    ],
-)
-
-cli_py_test(
-    name = "test_alpha_guard_git_hooks",
-    srcs = ["test_alpha_guard_git_hooks.py"],
-    deps = [
-        ":conftest",
-        "//factory/cli/src/tbhbdev/alpha:guard_gh_poll",
-        "//factory/cli/src/tbhbdev/alpha:guard_git_hooks",
-        "@cli_pip//pytest",
-    ],
-)
-
-cli_py_test(
-    name = "test_alpha_guard_op",
-    srcs = ["test_alpha_guard_op.py"],
-    deps = [
-        ":conftest",
-        "//factory/cli/src/tbhbdev:userconfig",
-        "//factory/cli/src/tbhbdev/alpha:guard_op",
-        "@cli_pip//pytest",
-    ],
-)
-
-cli_py_test(
-    name = "test_alpha_guard_scripts",
-    srcs = ["test_alpha_guard_scripts.py"],
-    deps = [
-        ":conftest",
-        "//factory/cli/src/tbhbdev/alpha:guard_scripts",
-        "@cli_pip//pytest",
-    ],
-)
-
-cli_py_test(
-    name = "test_alpha_guard_ssh_agent",
-    srcs = ["test_alpha_guard_ssh_agent.py"],
-    deps = [
-        ":conftest",
-        "//factory/cli/src/tbhbdev/alpha:guard_ssh_agent",
-        "@cli_pip//pytest",
-    ],
-)
-
-cli_py_test(
     name = "test_alpha_monorepo",
     srcs = ["test_alpha_monorepo.py"],
     deps = [
@@ -981,16 +885,6 @@ cli_py_test(
         "//factory/cli/src/tbhbdev/alpha/pull_request:repository",
         "//factory/cli/src/tbhbdev/alpha/pull_request:sizing",
         "//factory/cli/src/tbhbdev/alpha/pull_request:tools",
-        "@cli_pip//pytest",
-    ],
-)
-
-cli_py_test(
-    name = "test_alpha_state_guard",
-    srcs = ["test_alpha_state_guard.py"],
-    deps = [
-        ":conftest",
-        "//factory/cli/src/tbhbdev/alpha:state_guard",
         "@cli_pip//pytest",
     ],
 )
@@ -1455,6 +1349,7 @@ filegroup(
         "//factory/cli/tests/unit/alpha/agent:package_files",
         "//factory/cli/tests/unit/alpha/agent/decisions:package_files",
         "//factory/cli/tests/unit/alpha/agent/run_host:package_files",
+        "//factory/cli/tests/unit/alpha/guard:package_files",
         "//factory/cli/tests/unit/alpha/identity:package_files",
         "//factory/cli/tests/unit/alpha/install:package_files",
         "//factory/cli/tests/unit/alpha/merge:package_files",
@@ -1500,6 +1395,7 @@ filegroup(
     name = "alpha_testdata",
     srcs = glob(["testdata/alpha/**"]),
     visibility = [
+        "//factory/cli/tests/unit/alpha/guard/gh_pr:__pkg__",
         "//factory/cli/tests/unit/alpha/identity:__pkg__",
         "//factory/cli/tests/unit/alpha/merge:__pkg__",
         "//factory/cli/tests/unit/alpha/pull_request:__pkg__",
@@ -1547,26 +1443,6 @@ cli_py_library(
     srcs = ["agent_cli_example.py"],
     visibility = ["//factory/cli/tests:__subpackages__"],
     deps = ["//factory/cli/src/tbhbdev:cli"],
-)
-
-cli_py_test(
-    name = "test_alpha_guard_ops_no_lazy_stop",
-    srcs = ["test_alpha_guard_ops_no_lazy_stop.py"],
-    deps = [
-        ":conftest",
-        "//factory/cli/src/tbhbdev/alpha:guard_ops_no_lazy_stop",
-        "@cli_pip//pytest",
-    ],
-)
-
-cli_py_test(
-    name = "test_alpha_guard_sendmessage_clock",
-    srcs = ["test_alpha_guard_sendmessage_clock.py"],
-    deps = [
-        ":conftest",
-        "//factory/cli/src/tbhbdev/alpha:guard_sendmessage_clock",
-        "@cli_pip//pytest",
-    ],
 )
 
 cli_py_test(

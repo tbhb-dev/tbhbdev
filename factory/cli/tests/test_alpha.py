@@ -10,21 +10,20 @@ from unittest.mock import Mock
 import pytest
 from test_alpha_agent_settings import EXAMPLE
 
+import tbhbdev.alpha.guard.agent_model as guard_agent_model
+import tbhbdev.alpha.guard.gh_config_dir as guard_gh_config_dir
+import tbhbdev.alpha.guard.gh_poll.command as guard_gh_poll
+import tbhbdev.alpha.guard.gh_pr.command as guard_gh_pr
+import tbhbdev.alpha.guard.op.command as guard_op
+import tbhbdev.alpha.guard.ops_no_lazy_stop as guard_ops_no_lazy_stop
+import tbhbdev.alpha.guard.scripts.command as guard_scripts
+import tbhbdev.alpha.guard.sendmessage_clock as guard_sendmessage_clock
 import tbhbdev.alpha.monorepo.command as monorepo
 from tbhbdev import cli
 from tbhbdev.alpha import (
     brief,
     close,
     gh_app,
-    guard_agent_model,
-    guard_gh_config_dir,
-    guard_gh_poll,
-    guard_gh_pr,
-    guard_op,
-    guard_ops_no_lazy_stop,
-    guard_scripts,
-    guard_sendmessage_clock,
-    guard_ssh_agent,
     pre_push_guard,
     repo_bootstrap,
     review,
@@ -141,7 +140,6 @@ def test_dispatch(monkeypatch: pytest.MonkeyPatch) -> None:
         ("guard-ops-no-lazy-stop", guard_ops_no_lazy_stop, [], "hook"),
         ("guard-scripts", guard_scripts, [], "hook"),
         ("guard-sendmessage-clock", guard_sendmessage_clock, [], "hook"),
-        ("guard-ssh-agent", guard_ssh_agent, [], "hook"),
         ("monorepo", monorepo, ["-h"], "positional"),
         ("pre-push-guard", pre_push_guard, ["origin", "url"], "direct"),
         ("repo", repo_bootstrap, ["bootstrap", "o/r"], "keyword"),
