@@ -409,6 +409,7 @@ cli_py_test(
     deps = [
         ":agent_example",
         ":conftest",
+        "//factory/cli/src/tbhbdev/alpha:identity",
         "//factory/cli/src/tbhbdev/alpha/agent:model",
         "//factory/cli/src/tbhbdev/alpha/agent/decisions:driver",
         "//factory/cli/src/tbhbdev/alpha/agent/decisions:request",
