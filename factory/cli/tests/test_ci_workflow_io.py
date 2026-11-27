@@ -1,4 +1,4 @@
-"""Exercise the shell steps in the root CI workflow."""
+"""Exercise the root CI workflow and its prose hooks."""
 
 import hashlib
 import json
@@ -187,11 +187,8 @@ print(hashlib.sha256(sys.stdin.buffer.read()).hexdigest(), " -")
     assert (run.returncode == 0) == accepted, run.stderr
 
 
-@pytest.mark.parametrize("case", ["listed", "unlisted", "missing"])
-def test_ci_prose_skip_list(tmp_path: Path, case: str) -> None:
-    steps = _workflow_steps(_workflow_jobs()["prose"])
-    lint = next(step for step in steps if step["name"] == "Lint prose")
-
+@pytest.fixture
+def prose_repo(tmp_path: Path) -> tuple[str, dict[str, str]]:
     imported_copy = "imported [guide].md"
     (tmp_path / imported_copy).write_text("A prose finding.\n")
     (tmp_path / "clean.md").write_text("Clean prose.\n")
@@ -202,12 +199,7 @@ def test_ci_prose_skip_list(tmp_path: Path, case: str) -> None:
     (tmp_path / ".vale.ini").touch()
     (tmp_path / ".vale/project").mkdir(parents=True)
     (tmp_path / ".vale/config/vocabularies").mkdir(parents=True)
-    entries = ["# Example import", ""]
-    if case != "unlisted":
-        entries.append(imported_copy)
-    if case == "missing":
-        entries.append("removed.md")
-    skip_list.write_text("\n".join(entries) + "\n")
+    skip_list.write_text(f"# Example import\n\n{imported_copy}\n")
 
     subprocess.run(["git", "init", "--quiet"], cwd=tmp_path, check=True)
     subprocess.run(["git", "add", "--all"], cwd=tmp_path, check=True)
@@ -228,13 +220,31 @@ done
         tool.write_text(fake_linter)
         tool.chmod(0o755)
 
+    mise = bin_dir / "mise"
+    mise.write_text(
+        '#!/bin/bash\n[[ $1 == exec && $2 == -- ]] || exit 2\nshift 2\nexec "$@"\n'
+    )
+    mise.chmod(0o755)
+    return imported_copy, {**os.environ, "PATH": f"{bin_dir}:{os.environ['PATH']}"}
+
+
+@pytest.mark.parametrize("case", ["listed", "unlisted", "missing"])
+def test_ci_prose_skip_list(
+    tmp_path: Path, prose_repo: tuple[str, dict[str, str]], case: str
+) -> None:
+    steps = _workflow_steps(_workflow_jobs()["prose"])
+    lint = next(step for step in steps if step["name"] == "Lint prose")
+    imported_copy, env = prose_repo
+    skip_list = tmp_path / ".github/prose-lint-debt.txt"
+    if case == "unlisted":
+        skip_list.write_text("")
+    if case == "missing":
+        skip_list.write_text(f"{imported_copy}\nremoved.md\n")
+
     run = subprocess.run(
         _shell_command(lint),
         cwd=tmp_path,
-        env={
-            **os.environ,
-            "PATH": f"{bin_dir}:{os.environ['PATH']}",
-        },
+        env=env,
         check=False,
         capture_output=True,
         text=True,
@@ -256,3 +266,68 @@ done
             "Prose skip list entry must name an existing Markdown file: removed.md"
             in run.stderr
         )
+
+
+def _prose_hook(name: str) -> dict[object, object]:
+    path = WORKSPACE / ".pre-commit-config.yaml"
+    config = _mapping(yaml.safe_load(path.read_text()))
+    assert config.get("files", "") == ""
+    assert config.get("exclude", "^$") == "^$"
+    for repo in _list(config["repos"]):
+        for entry in _list(_mapping(repo)["hooks"]):
+            hook = _mapping(entry)
+            if hook["id"] == name:
+                return hook
+    pytest.fail(f"Missing {name} hook")
+
+
+@pytest.mark.parametrize("name", ["cspell", "rumdl"])
+def test_prose_hook_checks_listed_markdown(
+    tmp_path: Path, prose_repo: tuple[str, dict[str, str]], name: str
+) -> None:
+    imported_copy, env = prose_repo
+    hook = _prose_hook(name)
+    assert (
+        hook.get("files", ""),
+        hook.get("exclude", "^$"),
+        hook.get("types"),
+        hook.get("types_or", []),
+        hook.get("exclude_types", []),
+        hook.get("pass_filenames", True),
+    ) == ("", "^$", ["markdown"], [], [], True)
+    entry = hook["entry"]
+    assert isinstance(entry, str)
+    assert hook.get("args", []) == []
+    run = subprocess.run(
+        [*shlex.split(entry), imported_copy],
+        cwd=tmp_path,
+        env=env,
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    assert run.stdout.splitlines() == [f"{name}: {imported_copy}"]
+    assert run.returncode == 1
+
+
+def test_rumdl_hook_rejects_untracked_debt_without_files(
+    tmp_path: Path, prose_repo: tuple[str, dict[str, str]]
+) -> None:
+    imported_copy, env = prose_repo
+    hook = _prose_hook("rumdl")
+    assert hook["always_run"] is True
+    entry = hook["entry"]
+    assert isinstance(entry, str)
+    subprocess.run(
+        ["git", "rm", "--cached", "--", imported_copy], cwd=tmp_path, check=True
+    )
+    run = subprocess.run(
+        shlex.split(entry),
+        cwd=tmp_path,
+        env=env,
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    assert run.returncode != 0
+    assert imported_copy in run.stderr

@@ -1729,6 +1729,7 @@ cli_py_test(
     data = [
         "//:.github/prose-lint.sh",
         "//:.github/workflows/ci.yml",
+        "//:.pre-commit-config.yaml",
     ],
     deps = [
         ":conftest",

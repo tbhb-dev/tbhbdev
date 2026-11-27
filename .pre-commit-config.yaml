@@ -125,17 +125,12 @@ repos:
         entry: mise exec -- ryl check --strict -c .ryl.toml
         exclude: ^lib/rules/(.*/)?pnpm-workspace\.yaml$
         types: [yaml]
-      - id: prose-lint-debt
-        name: Prose lint debt paths
-        language: system
-        entry: bash .github/prose-lint.sh check
-        pass_filenames: false
-        always_run: true
       - id: rumdl
         name: rumdl
         language: system
-        entry: mise run lint-prose -- rumdl
+        entry: mise exec -- bash .github/prose-lint.sh rumdl
         types: [markdown]
+        always_run: true
       - id: actionlint
         name: actionlint
         language: system
@@ -153,7 +148,7 @@ repos:
       - id: cspell
         name: cspell
         language: system
-        entry: mise run lint-prose -- cspell
+        entry: mise exec -- cspell --no-progress --
         types: [markdown]
         stages: [pre-push]
         require_serial: true

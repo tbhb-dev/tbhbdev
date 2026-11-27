@@ -4,21 +4,24 @@
 
 set -eo pipefail
 
-mode=${1:?expected check, all, vale, cspell, or rumdl}
+mode=${1:?expected all, vale, or rumdl}
 shift
 
 debt=()
-while IFS= read -r path || [[ -n $path ]]; do
-  [[ -z $path || $path == \#* ]] && continue
-  if [[ $path != *.md || ! -f $path ]]; then
-    printf 'Prose skip list entry must name an existing Markdown file: %s\n' "$path" >&2
-    exit 1
+load_debt() {
+  local path
+  while IFS= read -r path || [[ -n $path ]]; do
+    [[ -z $path || $path == \#* ]] && continue
+    if [[ $path != *.md || ! -f $path ]]; then
+      printf 'Prose skip list entry must name an existing Markdown file: %s\n' "$path" >&2
+      exit 1
+    fi
+    debt+=("$path")
+  done <.github/prose-lint-debt.txt
+  if ((${#debt[@]})); then
+    git --literal-pathspecs ls-files --error-unmatch -- "${debt[@]}" >/dev/null
   fi
-  debt+=("$path")
-done <.github/prose-lint-debt.txt
-if ((${#debt[@]})); then
-  git --literal-pathspecs ls-files --error-unmatch -- "${debt[@]}" >/dev/null
-fi
+}
 
 files=()
 select_file() {
@@ -45,33 +48,37 @@ lint_vale() (
   vale "${flags[@]}" -- "${files[@]}"
 )
 
-lint() {
-  ((${#files[@]})) || return 0
-  case $1 in
-  vale) lint_vale ;;
-  cspell) cspell --no-progress -- "${files[@]}" ;;
-  rumdl) rumdl check -- "${files[@]}" ;;
-  esac
-}
-
 lint_all() {
   local path
   while IFS= read -r -d '' path; do
     select_file "$path"
   done
-  lint vale
-  lint cspell
-  lint rumdl
+  if ((${#files[@]})); then
+    lint_vale
+    cspell --no-progress -- "${files[@]}"
+    rumdl check -- "${files[@]}"
+  fi
 }
 
 case $mode in
-check) ;;
-all) git ls-files -z -- '*.md' | lint_all ;;
-vale | cspell | rumdl)
+all)
+  load_debt
+  git ls-files -z -- '*.md' | lint_all
+  ;;
+vale)
+  load_debt
   for path; do
     select_file "$path"
   done
-  lint "$mode"
+  if ((${#files[@]})); then
+    lint_vale
+  fi
+  ;;
+rumdl)
+  load_debt
+  if (($#)); then
+    rumdl check -- "$@"
+  fi
   ;;
 *)
   printf 'Unknown prose lint mode: %s\n' "$mode" >&2

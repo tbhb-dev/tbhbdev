@@ -23,6 +23,7 @@ exports_files([
     ".github/schemas/pull-request-draft.schema.json",
     ".github/workflows/ci.yml",
     ".github/workflows/mutation-nightly.yml",
+    ".pre-commit-config.yaml",
     ".vale.ini",
     ".vale/config/vocabularies/project/accept.txt",
     ".vale/config/vocabularies/project/reject.txt",
