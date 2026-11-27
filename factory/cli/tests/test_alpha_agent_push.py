@@ -154,11 +154,12 @@ def test_build_records_its_commit_and_verifies_the_harness_push(
             git(workspace, "push", target.as_uri(), f"HEAD:{branch}")
         return rc
 
-    def origin_tip(_run: run_host.Run) -> str:
-        return git(target, "for-each-ref", "--format=%(objectname)", branch)
+    def origin_contains(_run: run_host.Run, head: str) -> bool:
+        tip = git(target, "for-each-ref", "--format=%(objectname)", branch)
+        return bool(tip) and head in git(target, "rev-list", tip).splitlines()
 
     monkeypatch.setattr(run_host, "run_harness", work)
-    monkeypatch.setattr(run_host, "origin_tip", origin_tip)
+    monkeypatch.setattr(run_host, "origin_contains", origin_contains)
     with ExitStack() as stack:
         assert run_host.run_and_check(run, prepared, stack) == (
             0 if pushed_in_run else run_host.NO_PUSH

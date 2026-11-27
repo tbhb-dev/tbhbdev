@@ -17,7 +17,7 @@ def test_brief_and_launch() -> None:
     assert "set its `base` frontmatter field" in build
     assert "`gh repo view --json defaultBranchRef --jq .defaultBranchRef.name`" in build
     assert "Push your `agent/` branch" in build
-    assert "push --set-upstream origin HEAD" in build
+    assert "`git push --set-upstream origin HEAD`" in build
     assert "`tbhbdev alpha pr create` with your draft." in build
     assert ".github/PULL_REQUEST_DRAFT.md" not in build
     assert "driver" not in build
@@ -25,7 +25,9 @@ def test_brief_and_launch() -> None:
     fix = render.brief(
         RunKind.EXEC, "example", profile=Profile.BUILD, start_ref="refs/heads/fix/topic"
     )
-    assert "push origin HEAD:refs/heads/fix/topic" in fix
+    assert "`git push origin HEAD:refs/heads/fix/topic`" in fix
+    assert fix.count("git push") == 1
+    assert "pr create" not in fix
     review = render.brief(RunKind.START, "example", profile=Profile.REVIEW)
     assert "`tbhbdev alpha review draft N`" in review
     assert "set `commit_id` to the run's pinned checkout commit" in review

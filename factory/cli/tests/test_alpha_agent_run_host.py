@@ -4352,20 +4352,16 @@ def test_run_builds_required_shims_before_harness(
 
 
 @pytest.mark.parametrize(
-    ("expect_commit", "harness_result", "tips", "start_ref", "expected"),
+    ("expect_commit", "harness_result", "published", "start_ref", "expected"),
     [
-        (True, (0, None), ("",), None, 6),
-        (True, (0, "a" * 40), ("", "a" * 40), None, 0),
-        (True, (0, "a" * 40), ("b" * 40, "a" * 40), None, 0),
-        (True, (0, "a" * 40), ("a" * 40, "a" * 40), None, 9),
-        (True, (0, "a" * 40), ("", ""), None, 9),
-        (True, (0, "a" * 40), ("b" * 40, ""), None, 9),
-        (True, (0, "a" * 40), (None,), None, 9),
-        (True, (0, "a" * 40), ("", None), None, 9),
-        (True, (0, "a" * 40), ("b" * 40, "a" * 40), "refs/heads/topic", 0),
-        (True, (0, "a" * 40), ("b" * 40, "b" * 40), "refs/heads/topic", 9),
-        (True, (4, None), ("",), None, 4),
-        (False, (0, None), (), None, 0),
+        (True, (0, None), None, None, 6),
+        (True, (0, "a" * 40), True, None, 0),
+        (True, (0, "a" * 40), False, None, 9),
+        (True, (0, "a" * 40), None, None, 9),
+        (True, (0, "a" * 40), True, "refs/heads/topic", 0),
+        (True, (0, "a" * 40), False, "refs/heads/topic", 9),
+        (True, (4, None), None, None, 4),
+        (False, (0, None), None, None, 0),
     ],
 )
 def test_execute_checks_required_build_results(  # noqa: PLR0913, PLR0917
@@ -4373,7 +4369,7 @@ def test_execute_checks_required_build_results(  # noqa: PLR0913, PLR0917
     monkeypatch: pytest.MonkeyPatch,
     expect_commit: bool,
     harness_result: tuple[int, str | None],
-    tips: tuple[str | None, ...],
+    published: bool | None,
     start_ref: str | None,
     expected: int,
 ) -> None:
@@ -4381,11 +4377,11 @@ def test_execute_checks_required_build_results(  # noqa: PLR0913, PLR0917
     run.request = dataclasses.replace(run.request, start_ref=start_ref)
     prepared = dataclasses.replace(preparation(run), auth_before="example-before")
     HostRuntime(run, prepared, None).patch(monkeypatch)
-    origin_tip = Mock(side_effect=tips)
-    monkeypatch.setattr(run_host, "origin_tip", origin_tip)
+    origin_contains = Mock(return_value=published)
+    monkeypatch.setattr(run_host, "origin_contains", origin_contains)
 
     def run_harness(*_args: object) -> int:
-        assert origin_tip.call_count == int(expect_commit)
+        origin_contains.assert_not_called()
         status, recorded_head = harness_result
         if recorded_head is not None:
             run.files.write("head", recorded_head)
@@ -4395,16 +4391,24 @@ def test_execute_checks_required_build_results(  # noqa: PLR0913, PLR0917
     assert run_host.execute(run, "example") == expected
     assert run.files.path("rc").read_text() == f"{expected}\n"
     assert runfiles.latest(run.files.root)["example"]["rc"] == expected
-    assert origin_tip.call_count == len(tips)
+    status, recorded_head = harness_result
+    if expect_commit and status == 0 and recorded_head is not None:
+        origin_contains.assert_called_once_with(run, recorded_head)
+    else:
+        origin_contains.assert_not_called()
     log = run.files.path("log")
     message = "no new commit: the build required one (--expect-commit)\n"
     assert (log.exists() and message in log.read_text().splitlines(keepends=True)) is (
         expected == 6
     )
+    branch = start_ref.removeprefix("refs/heads/") if start_ref else "agent/example"
     if expected == 9:
-        reason = "cannot verify" if None in tips else "no new tip for"
-        branch = start_ref.removeprefix("refs/heads/") if start_ref else "agent/example"
+        reason = "cannot verify" if published is None else "build commit missing from"
         assert f"push failed: {reason} {branch} on origin" in log.read_text()
+    if published:
+        assert run.files.path("branch").read_text() == branch
+    else:
+        assert not run.files.path("branch").exists()
 
 
 BRANCH_REF = "refs/heads/agent/example"
@@ -4448,6 +4452,53 @@ def test_origin_tip_reads_the_run_branch_over_https(
     lookup.assert_called_once_with(url, headers=headers, timeout=20)
 
 
+@pytest.mark.parametrize(
+    ("tip", "comparison", "contained"),
+    [
+        (None, None, None),
+        ("", None, False),
+        ("a" * 40, None, True),
+        ("b" * 40, (200, {"status": "ahead"}), True),
+        ("b" * 40, (200, {"status": "diverged"}), False),
+        ("b" * 40, (200, {"status": "behind"}), False),
+        ("b" * 40, (404, {}), False),
+        ("b" * 40, (403, {}), None),
+    ],
+)
+def test_origin_contains_checks_the_recorded_commit_against_the_branch_tip(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    tip: str | None,
+    comparison: tuple[int, dict[str, str]] | None,
+    contained: bool | None,
+) -> None:
+    run = make_run(tmp_path)
+    head = "a" * 40
+    monkeypatch.setattr(run_host, "origin_tip", Mock(return_value=tip))
+    repository = run.request.repo.removeprefix("github.com/")
+    url = f"https://api.github.com/repos/{repository}/compare/{head}...{tip}?per_page=1"
+    lookup = Mock()
+    if comparison is not None:
+        status, body = comparison
+        lookup.return_value = httpx.Response(
+            status, json=body, request=httpx.Request("GET", url)
+        )
+    monkeypatch.setattr(httpx, "get", lookup)
+    monkeypatch.setattr(credentials, "fetch_token", Mock(return_value="fake"))
+    assert run_host.origin_contains(run, head) is contained
+    if comparison is None:
+        lookup.assert_not_called()
+    else:
+        lookup.assert_called_once_with(
+            url,
+            headers={
+                "Accept": "application/vnd.github+json",
+                "Authorization": "Bearer fake",
+            },
+            timeout=20,
+        )
+
+
 def test_execute_rejects_a_stale_head_when_requiring_a_commit(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -4463,7 +4514,6 @@ def test_execute_rejects_a_stale_head_when_requiring_a_commit(
     HostRuntime(run, prepared, None).patch(monkeypatch)
     monkeypatch.setattr(run_host, "run_harness", constant(0))
     monkeypatch.setattr(run_host.push, "run", PUSH_RUN)
-    monkeypatch.setattr(run_host, "origin_tip", constant(""))
     run.files.write("head", "a" * 40)
 
     assert run_host.execute(run, "example") == 6
