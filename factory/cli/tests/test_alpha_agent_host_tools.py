@@ -5,6 +5,7 @@ from __future__ import annotations
 import dataclasses
 import grp
 import os
+import shutil
 import stat
 import subprocess
 import sys
@@ -29,29 +30,6 @@ def script(path: Path, text: str) -> str:
     return str(path)
 
 
-@pytest.mark.parametrize("relative", [False, True])
-def test_executable_links_follow_directory_aliases_after_parent_components(
-    tmp_path: Path, relative: bool
-) -> None:
-    release = tmp_path / "release"
-    (release / "bin").mkdir(parents=True)
-    script(release / "bin/codex", "binary")
-    directory = tmp_path / "bin"
-    directory.mkdir()
-    current = tmp_path / "current"
-    current.symlink_to(
-        release.relative_to(tmp_path) if relative else release, target_is_directory=True
-    )
-    alias = directory / "codex"
-    alias.symlink_to("../current/bin/codex" if relative else current / "bin/codex")
-    assert host_tools.executable_links(alias) == (str(alias), str(current))
-
-
-def test_executable_link_walk_refuses_missing_paths(tmp_path: Path) -> None:
-    with pytest.raises(FileNotFoundError):
-        host_tools.executable_links(tmp_path / "missing")
-
-
 @pytest.mark.parametrize("os", Os)
 def test_host_path_is_fixed_and_scoped(
     os: Os, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
@@ -73,7 +51,7 @@ def test_host_path_is_fixed_and_scoped(
         assert path == directories
         return executable if name == "git" else None
 
-    monkeypatch.setattr(host_tools.shutil, "which", which)
+    monkeypatch.setattr(shutil, "which", which)
     before = host_tools.search()
     with host_tools.configured(configured, os):
         assert host_tools.search() == directories

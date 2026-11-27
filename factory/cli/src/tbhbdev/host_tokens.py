@@ -7,10 +7,15 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
+from pathlib import Path
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from collections.abc import Iterable
+
+# Token storage paths are relative to the current user's home.
+LINUX_TOKEN_FILE = Path(".config/tbhbdev/secrets/connect-token")
+MACOS_KEYCHAIN_FILE = Path("Library/Keychains/tbhbdev.keychain-db")
 
 LIFETIME = timedelta(days=90)
 _RENEW_WITHIN = timedelta(days=14)

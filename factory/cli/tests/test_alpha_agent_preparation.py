@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import shutil
 import subprocess
 import time
 from functools import partial
@@ -282,7 +283,7 @@ def test_missing_prek_reaches_supervisor(
     monkeypatch.setattr(worktree, "configure_mirror", constant(None))
     monkeypatch.setattr(worktree, "fetch_commit", constant("a" * 40))
     monkeypatch.setattr(worktree, "clone_run", constant(None))
-    monkeypatch.setattr(worktree.host_tools.shutil, "which", constant(None))
+    monkeypatch.setattr(shutil, "which", constant(None))
     monkeypatch.setattr(process_group, "boot_id", constant("example-boot"))
     (tmp_path / ".worktrees" / "agent-example" / ".git").mkdir(parents=True)
     files = runfiles.RunFiles(tmp_path / "runs", "example")

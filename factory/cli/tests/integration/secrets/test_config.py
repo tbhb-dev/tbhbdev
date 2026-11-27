@@ -13,6 +13,8 @@ lazy from pathlib import Path
 import pytest
 from stub_fixtures import stubs as stubs  # noqa: PLC0414
 
+from tbhbdev import host_executables
+from tbhbdev.host_tokens import LINUX_TOKEN_FILE
 from tbhbdev.secrets import config as secret_config
 from tbhbdev.secrets.connect import SecretsError
 
@@ -162,10 +164,7 @@ def token_file(home: Path, text: str | None = "fake-linux-token\n") -> Path:
 
 
 def test_the_linux_token_path_is_under_home() -> None:
-    assert (
-        secret_config.LINUX_TOKEN_FILE.as_posix()
-        == ".config/tbhbdev/secrets/connect-token"
-    )
+    assert LINUX_TOKEN_FILE.as_posix() == ".config/tbhbdev/secrets/connect-token"
 
 
 @pytest.mark.parametrize(
@@ -326,9 +325,7 @@ def test_token_without_the_keychain_tool_fails(
     monkeypatch.setattr(secret_config.platform, "system", lambda: "Darwin")
     (tmp_path / "empty").mkdir()
     monkeypatch.setenv("PATH", str(tmp_path / "empty"))
-    monkeypatch.setattr(
-        secret_config.host_tools, "search", lambda: str(tmp_path / "empty")
-    )
+    monkeypatch.setattr(host_executables, "search", lambda: str(tmp_path / "empty"))
     with pytest.raises(SecretsError) as caught:
         secret_config.token()
     assert str(caught.value) == (
@@ -346,7 +343,7 @@ def resolved_security(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> str:
         assert name == "security"
         return executable
 
-    monkeypatch.setattr(secret_config.host_tools, "resolve", resolve)
+    monkeypatch.setattr(host_executables, "resolve", resolve)
     return executable
 
 

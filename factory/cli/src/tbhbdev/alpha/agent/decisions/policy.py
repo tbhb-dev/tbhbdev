@@ -30,7 +30,7 @@ from tbhbdev.alpha.agent.model import (
     RunPaths,
     Settings,
 )
-from tbhbdev.secrets.config import LINUX_TOKEN_FILE, MACOS_KEYCHAIN_FILE
+from tbhbdev.host_tokens import LINUX_TOKEN_FILE, MACOS_KEYCHAIN_FILE
 
 # Codex's name for the whole filesystem, which a profile makes read-only.
 READ_ROOT = ":root"

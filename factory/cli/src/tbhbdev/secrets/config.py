@@ -12,21 +12,17 @@ import stat
 import subprocess  # nosec B404
 from pathlib import Path
 
-from tbhbdev import userconfig
+from tbhbdev import host_executables, userconfig
+from tbhbdev.host_tokens import LINUX_TOKEN_FILE
 from tbhbdev.secrets.connect import SecretsError
-lazy from tbhbdev.alpha.agent import host_tools
-lazy from tbhbdev.alpha.agent.model import Invalid
 
 # Where the token lives in the agent account. On macOS, security(1) resolves
 # the keychain name inside ~/Library/Keychains; the service and account are
 # the item's attributes. They name the tool, not a deployment: a host needs
 # them before it reads any config.
 KEYCHAIN = "tbhbdev.keychain"
-MACOS_KEYCHAIN_FILE = Path("Library/Keychains/tbhbdev.keychain-db")
 SERVICE = "tbhbdev-connect"
 ACCOUNT = "agent"
-# On Linux the token is this file, relative to the home directory.
-LINUX_TOKEN_FILE = Path(".config/tbhbdev/secrets/connect-token")
 MAX_TOKEN_FILE = 1 << 16
 
 # Tests only: the name of a variable holding a token to use instead of the
@@ -106,7 +102,7 @@ def token() -> str:
     if platform.system() != "Darwin":
         return _linux_token()
     try:
-        security = host_tools.resolve("security")
+        security = host_executables.resolve("security")
         # The keychain has no password, so unlocking it is idempotent and
         # holds no secret. It is locked again after every restart.
         subprocess.run(  # nosec B603 B607
@@ -135,7 +131,7 @@ def token() -> str:
     except subprocess.TimeoutExpired:
         message = f"the keychain read timed out after {KEYCHAIN_TIMEOUT} seconds"
         raise SecretsError(message) from None
-    except FileNotFoundError, Invalid:
+    except FileNotFoundError, host_executables.ExecutableLookupError:
         message = "can't read the Connect token: security isn't installed"
         raise SecretsError(message) from None
     value = done.stdout.rstrip("\n")

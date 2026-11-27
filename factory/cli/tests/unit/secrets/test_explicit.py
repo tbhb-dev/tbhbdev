@@ -19,6 +19,4 @@ def test_explicit_protocol_errors(status: int, monkeypatch: pytest.MonkeyPatch) 
         else explicit.ConnectUnavailableError
     )
     with pytest.raises(error):
-        explicit.explicit_item(
-            "fixture", "vault", "app", urls=["https://example.invalid"]
-        )
+        explicit.explicit_item("fixture", "vault", "app", urls=["fixture"])

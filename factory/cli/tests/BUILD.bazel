@@ -39,9 +39,9 @@ cli_py_library(
     pyi_deps = ["@cli_pip//pytest"],
     visibility = ["//factory/cli/tests:__subpackages__"],
     deps = [
+        "//factory/cli/src/tbhbdev:host_tokens",
         "//factory/cli/src/tbhbdev/alpha/agent:model",
         "//factory/cli/src/tbhbdev/alpha/agent/decisions:argv",
-        "//factory/cli/src/tbhbdev/secrets:config",
     ],
 )
 
@@ -553,10 +553,10 @@ cli_py_test(
     deps = [
         ":agent_example",
         ":conftest",
+        "//factory/cli/src/tbhbdev:host_tokens",
         "//factory/cli/src/tbhbdev/alpha/agent:host_tools",
         "//factory/cli/src/tbhbdev/alpha/agent:model",
         "//factory/cli/src/tbhbdev/alpha/agent/decisions:policy",
-        "//factory/cli/src/tbhbdev/secrets:config",
         "@cli_pip//pytest",
     ],
 )
@@ -1838,6 +1838,7 @@ filegroup(
         ["**"],
         exclude = ["BUILD.bazel"],
     ) + [
+        "//factory/cli/tests/integration:test_host_executables.py",
         "//factory/cli/tests/integration/alpha:test_pull_request_timestamps_io.py",
         "//factory/cli/tests/integration/alpha/agent:package_files",
         "//factory/cli/tests/integration/alpha/identity:test_dispatcher_timestamps_io.py",
@@ -1880,7 +1881,7 @@ cli_py_library(
     extra_deps = [":stubtool"],
     visibility = ["//factory/cli/tests:__subpackages__"],
     deps = [
-        "//factory/cli/src/tbhbdev/alpha/agent:host_tools",
+        "//factory/cli/src/tbhbdev:host_executables",
         "//factory/cli/src/tbhbdev/secrets:config",
         "@cli_pip//pytest",
     ],

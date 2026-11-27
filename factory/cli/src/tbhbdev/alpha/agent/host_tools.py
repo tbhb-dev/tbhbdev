@@ -6,13 +6,10 @@ import grp
 import os
 import re
 import shlex
-import shutil
 import stat
 import subprocess  # nosec B404
 import sys
-from collections import deque
 from contextlib import contextmanager
-from contextvars import ContextVar
 from os import lstat
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -20,16 +17,13 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from collections.abc import Generator
 
+from tbhbdev import host_executables
 from tbhbdev.alpha.agent.model import Invalid, Os, Settings
 
 _LINUX_LINK_MODE = 0o777
 _MACOS_ADMIN_GID = 80
 _XCODE_SELECT_LINK = "/var/db/xcode_select_link"
 _COMMAND_LINE_TOOLS = "/Library/Developer/CommandLineTools"
-
-_SEARCH: ContextVar[str] = ContextVar(
-    "host_search", default="/usr/bin:/bin:/usr/sbin:/sbin"
-)
 
 
 def search_path(settings: Settings, os: Os) -> tuple[str, ...]:
@@ -56,36 +50,23 @@ def account_path(home: str) -> tuple[str, ...]:
 
 
 def search() -> str:
-    return _SEARCH.get()
+    return host_executables.search()
 
 
 @contextmanager
 def configured(settings: Settings, os: Os) -> Generator[None]:
-    token = _SEARCH.set(":".join(search_path(settings, os)))
-    try:
+    with host_executables.configured(":".join(search_path(settings, os))):
         yield
-    finally:
-        _SEARCH.reset(token)
 
 
 def resolve(name: str, path: str | None = None, *, follow_symlinks: bool = True) -> str:
     directories = search() if path is None else path
-    found = shutil.which(name, path=directories)
-    if found is None:
-        message = f"host executable {name} was not found on PATH {directories}"
-        raise Invalid(message)
-    aliases = (Path(found), *(Path(p) for p in executable_links(Path(found))))
-    if any(
-        parent.name == "shims" and parent.parent.name == "mise"
-        for alias in aliases
-        for parent in (alias, alias.parent)
-    ):
-        message = (
-            f"host executable {name} is a mise shim; "
-            "configure its fixed install directory"
+    try:
+        return host_executables.resolve(
+            name, directories, follow_symlinks=follow_symlinks
         )
-        raise Invalid(message)
-    return str(Path(found).resolve() if follow_symlinks else Path(found).absolute())
+    except host_executables.ExecutableLookupError as exc:
+        raise Invalid(str(exc)) from None
 
 
 def mise_installations(directories: tuple[str, ...]) -> tuple[str, ...]:
@@ -100,32 +81,7 @@ def mise_installations(directories: tuple[str, ...]) -> tuple[str, ...]:
 
 
 def executable_links(path: Path) -> tuple[str, ...]:
-    """Record directory and file links while walking an executable path."""
-    return tuple(str(p) for p in executable_components(path) if p.is_symlink())
-
-
-def executable_components(path: Path) -> Generator[Path]:
-    """Walk every directory and link, including targets containing parent steps."""
-    path.resolve(strict=True)
-    pending = deque(path.parts)
-    current = Path(pending.popleft())
-    yield current
-    while pending:
-        part = pending.popleft()
-        if part == "..":
-            current = current.parent
-            continue
-        current /= part
-        yield current
-        if current.is_symlink():
-            target = current.readlink()
-            if target.is_absolute():
-                current = Path(target.anchor)
-                yield current
-                pending.extendleft(reversed(target.parts[1:]))
-            else:
-                current = current.parent
-                pending.extendleft(reversed(target.parts))
+    return host_executables.executable_links(path)
 
 
 def macos_root_admin(info: os.stat_result) -> bool:
@@ -164,7 +120,7 @@ def executable_chain(
     """Trust each traversed component before opening the resolved executable."""
     path = Path(executable)
     roots = tuple(Path(root).resolve() for root in write_roots)
-    for component in executable_components(path):
+    for component in host_executables.executable_components(path):
         info = lstat(component)
         if (
             info.st_uid not in (0, uid)

@@ -71,7 +71,10 @@ cli_py_library(
     srcs = ["host_tools.py"],
     imports = ["../../.."],
     visibility = ["//factory/cli:__subpackages__"],
-    deps = [":model"],
+    deps = [
+        ":model",
+        "//factory/cli/src/tbhbdev:host_executables",
+    ],
 )
 
 cli_py_library(

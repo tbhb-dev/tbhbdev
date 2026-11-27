@@ -78,7 +78,7 @@ layers = [
   "tbhbdev.admin | tbhbdev.analytics | tbhbdev.adr | tbhbdev.agy | tbhbdev.issue | tbhbdev.secret | tbhbdev.content | tbhbdev.prose_check | tbhbdev.gitleaks_check",
   "tbhbdev.alpha",
   "tbhbdev.runner : tbhbdev.userconfig : tbhbdev.secrets : tbhbdev.telemetry : tbhbdev.gh_agent : tbhbdev.plugins : tbhbdev.content_vet : tbhbdev.cue_runtime",
-  "tbhbdev.version | tbhbdev.content_model | tbhbdev.adr_decision | tbhbdev.issue_import",
+  "tbhbdev.version | tbhbdev.content_model | tbhbdev.adr_decision | tbhbdev.issue_import | tbhbdev.host_executables",
 ]
 ignore_imports = [
   "tbhbdev.adr -> tbhbdev.content",
@@ -87,8 +87,6 @@ ignore_imports = [
   "tbhbdev.alpha.close -> tbhbdev.content",
   "tbhbdev.alpha.review -> tbhbdev.content",
   "tbhbdev.alpha.review_doc -> tbhbdev.content",
-  "tbhbdev.secrets.config -> tbhbdev.alpha.agent.host_tools",
-  "tbhbdev.secrets.config -> tbhbdev.alpha.agent.model",
 ]
 
 [[tool.importlinter.contracts]]
@@ -141,7 +139,6 @@ ignore_imports = [
   "tbhbdev.alpha.agent.decisions.argv -> shutil",
   "tbhbdev.alpha.agent.decisions.argv -> socket",
   "tbhbdev.alpha.agent.decisions.policy -> tbhbdev.alpha.agent.host_tools",
-  "tbhbdev.alpha.agent.decisions.policy -> tbhbdev.secrets.config",
 ]
 
 [tool.pylint.main]

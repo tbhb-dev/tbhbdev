@@ -8,7 +8,7 @@ from typing import TYPE_CHECKING
 
 from tbhbdev.alpha.agent import model
 from tbhbdev.alpha.agent.decisions import argv
-from tbhbdev.secrets.config import LINUX_TOKEN_FILE
+from tbhbdev.host_tokens import LINUX_TOKEN_FILE
 
 if TYPE_CHECKING:
     import pytest

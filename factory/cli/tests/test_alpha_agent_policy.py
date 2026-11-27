@@ -37,7 +37,7 @@ from tbhbdev.alpha.agent.model import (
     Profile,
     WebSearch,
 )
-from tbhbdev.secrets.config import LINUX_TOKEN_FILE, MACOS_KEYCHAIN_FILE
+from tbhbdev.host_tokens import LINUX_TOKEN_FILE, MACOS_KEYCHAIN_FILE
 
 HOSTS = {Os.LINUX: LINUX, Os.MACOS: MACOS}
 ACCOUNTS = ["agent", "ops"]
