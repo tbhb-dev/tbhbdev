@@ -64,7 +64,11 @@ jobs:
       cache_key: renovate-cache
       # Outside the cached subtree, inside the base directory, which the cache
       # step opens to the container uid; unique for every run and retry.
-      LOG_FILE: /tmp/renovate/${{ github.event.repository.name }}/renovate-${{ github.run_id }}-${{ github.run_attempt }}.ndjson
+      LOG_FILE: /tmp/renovate/${{ github.event.repository.name }}/${{ github.run_id }}-${{ github.run_attempt }}.ndjson
+      # Tag plus digest pins the Renovate container by content.
+      # renovate: datasource=docker depName=ghcr.io/renovatebot/renovate
+      RENOVATE_IMAGE:
+        ghcr.io/renovatebot/renovate:44.206.2@sha256:d515a99f5d14d1c62b792ee61339d165dd9d20ee82ca9d5379daf639050bab51
     steps:
       - name: Harden the runner
         uses: step-security/harden-runner@1d88384fd173af6ecb012dfd0264a306b711241a  # v2.22.4
@@ -135,9 +139,11 @@ jobs:
                   output = Path(directory) / "reply"
                   try:
                       run = subprocess.run(
-                          ["curl", "--proto", "=https", "--max-time", "60", "--max-filesize", str(limit),
-                           "--fail", "--silent", "--show-error", "--config", "-", "--output", str(output),
-                           "--write-out", "%{http_code}"],
+                          [
+                              "curl", "--proto", "=https", "--max-time", "60", "--max-filesize", str(limit),
+                              "--fail", "--silent", "--show-error", "--config", "-", "--output", str(output),
+                              "--write-out", "%{http_code}",
+                          ],
                           input=config, capture_output=True, text=True, timeout=70, check=False,
                       )
                   except subprocess.TimeoutExpired:
@@ -191,7 +197,11 @@ jobs:
                   ruleset = api(f"repos/{repo}/rulesets/{ruleset_id}")
                   if ruleset.get("current_user_can_bypass") != "never":
                       fail(f"the Renovate App can bypass ruleset {ruleset_id}")
-              required = "approval and status checks required" if require_approval else "status checks required, approval check off"
+              required = (
+                  "approval and status checks required"
+                  if require_approval
+                  else "status checks required, approval check off"
+              )
               print(f"Automerge ruleset audit: {required}, {len(ids)} rulesets cannot be bypassed")
           except (ValueError, KeyError, TypeError, AttributeError, RecursionError):
               fail("Could not verify automerge ruleset protection")
@@ -244,14 +254,12 @@ jobs:
           # mise's safe mode off.
           RENOVATE_ALLOWED_UNSAFE_EXECUTIONS: '["bazelModDeps"]'
           # The only post-upgrade commands, anchored so nothing else matches.
-          # bazel.json5 attaches preset.update to the Bazel version group
-          # alone; ansible.json5 attaches the collection lock to
+          # bazelrc.json5 enables preset.update for projects with a generated
+          # Bazel RC file. ansible.json5 attaches the collection lock to
           # ansible-galaxy bumps alone. cloudflare-worker.json5 attaches
           # worker_types_test.update to tbhb_rules bumps in Worker repos.
           # rules-cloudflare.json5 attaches that command and its nested twin
-          # to bumps of wrangler and its group in the rules project. That scope
-          # is a convention: the allowlist is global, so any repo that runs
-          # this workflow can use these commands from its own config.
+          # to bumps of wrangler and its group in the rules project.
           RENOVATE_ALLOWED_COMMANDS: '["^bazelisk run //:preset\\.update$",
             "^bazelisk run @tbhb_rules_ansible//:lock$",
             "^bazelisk run //:worker_types_test\\.update$",
@@ -260,14 +268,11 @@ jobs:
           # "custom", which the platform token does not cover. Registered
           # host-rule tokens are sanitized from Renovate's logs. Keep this
           # value out of `run:` scripts.
-          RENOVATE_HOST_RULES: '[{"matchHost":"api.github.com","hostType":"custom","token":"${{ steps.token.outputs.token }}"}]'
+          RENOVATE_HOST_RULES: >-
+            [{"matchHost":"api.github.com","hostType":"custom",
+            "token":"${{ steps.token.outputs.token }}"}]
         with:
-          # Tag plus digest: the action takes a value containing `:` as the
-          # whole image reference, so the container is pinned by content.
-          # The shared "renovate" group moves this pin and any other
-          # Renovate image reference.
-          # renovate: datasource=docker depName=ghcr.io/renovatebot/renovate
-          renovate-image: ghcr.io/renovatebot/renovate:44.206.2@sha256:d515a99f5d14d1c62b792ee61339d165dd9d20ee82ca9d5379daf639050bab51
+          renovate-image: ${{ env.RENOVATE_IMAGE }}
           token: ${{ steps.token.outputs.token }}
           additional-env-list: |
             LOG_FILE

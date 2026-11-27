@@ -2,7 +2,6 @@
   "Exclude": [
     "^bazel-",
     "^\\.bazel-",
-    "^\\.github/workflows/renovate\\.yaml$",
     "^\\.mise/",
     "^\\.vale/(Google|write-good|proselint|ai-tells.*)/",
     "^\\.venv/",

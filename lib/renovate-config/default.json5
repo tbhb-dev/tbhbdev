@@ -5,16 +5,16 @@
   $schema: "https://docs.renovatebot.com/renovate-schema.json",
 
   // Shared repository-level policy for every tbhb-dev repo. Consumers extend
-  // it from their own .github/renovate.json5, pinned by commit SHA:
+  // it from their own Renovate config, pinned by commit SHA:
   //
-  //   "github>tbhb-dev/renovate-config//default.json5#<sha>", // v1.0.0
+  //   "github>tbhb-dev/tbhbdev//lib/renovate-config/default.json5#<sha>", // v1.0.0
   //
   // The `.json5` suffix is required: Renovate keeps a custom preset filename
   // verbatim only when it already ends in .json, .json5 or .jsonc.
   //
   // Only repo-level options belong in presets. Global-only settings (identity,
   // limits, allowedUnsafeExecutions, allowedCommands, hostRules with tokens)
-  // live in the reusable workflow's env.
+  // live in the Renovate workflow's environment.
   //
   // `packageRules` and `customManagers` are mergeable arrays, so presets and
   // the consuming repo append to each other. For `groupName`, the LAST matching
@@ -116,7 +116,7 @@
     },
 
     // Pin-only updates (action SHAs, mise tool versions, and, below and in
-    // bazel.json5, the renovate-config and tbhb_rules pins) share one PR per
+    // bazel.json5, the Renovate preset and tbhb_rules pins) share one PR per
     // repository, opened once a day. Its three-hour window spans three
     // hourly runs, so one dropped run doesn't skip a day. Major versions keep
     // their own PR: Renovate splits them from a group by default
@@ -167,13 +167,11 @@
       rebaseWhen: "conflicted",
     },
 
-    // The pinned preset references in every consumer's .github/renovate.json5
+    // The pinned preset references in each consumer's Renovate config
     // move together, one PR per consumer. First-party and reviewed before it
-    // merges, so a consumer takes a renovate-config commit as soon as it
-    // lands instead of after the 5-day cooldown above, which is for
-    // third-party releases.
+    // merges, so those updates can skip the cooldown for third-party releases.
     {
-      matchPackageNames: ["tbhb-dev/renovate-config"],
+      matchPackageNames: ["tbhb-dev/tbhbdev"],
       groupName: "pins",
       minimumReleaseAge: null,
       schedule: ["* 5-7 * * *"],
@@ -182,7 +180,7 @@
     // The same references pinned to a branch (`// main`, `# main`) come from
     // the git-refs managers below, whose package name is the repository URL.
     {
-      matchDepNames: ["tbhb-dev/renovate-config"],
+      matchDepNames: ["tbhb-dev/tbhbdev"],
       groupName: "pins",
       minimumReleaseAge: null,
       // Internal fan-out: every merge here would otherwise open a PR in each
@@ -289,10 +287,9 @@
       datasourceTemplate: "github-releases",
     },
 
-    // The pinned `extends` reference to these presets, in each consumer's
-    // .github/renovate.json5:
+    // A pinned `extends` entry in a consumer's Renovate config:
     //
-    //   "github>tbhb-dev/renovate-config//default.json5#<sha>", // v1.0.0
+    //   "github>tbhb-dev/tbhbdev//lib/renovate-config/default.json5#<sha>", // v1.0.0
     //
     // Renovate documents preset pinning with a tag suffix, but a full commit
     // SHA resolves too. The SHA plus a version comment keeps the convention
@@ -302,7 +299,7 @@
     {
       customType: "regex",
       description: "Pinned preset references: github>owner/repo//file#<sha> // vX",
-      managerFilePatterns: ["/^\\.github/renovate\\.json5$/"],
+      managerFilePatterns: ["/^(?:\\.github/)?renovate\\.json5?$/"],
       matchStrings: [
         "\"github>(?<depName>[^/\"]+/[^/\"]+)//[^\"#]+#(?<currentDigest>[0-9a-f]{40})\",?\\s*//\\s*(?<currentValue>v[^\\s]+)",
       ],
@@ -310,13 +307,13 @@
     },
     // The same preset references pinned to a branch instead of a release:
     //
-    //   "github>tbhb-dev/renovate-config//default.json5#<sha>", // main
+    //   "github>tbhb-dev/tbhbdev//lib/renovate-config/default.json5#<sha>", // main
     //
     // Each bump moves the SHA to the branch's latest commit.
     {
       customType: "regex",
       description: "Branch-pinned preset references: github>owner/repo//file#<sha> // main",
-      managerFilePatterns: ["/^\\.github/renovate\\.json5$/"],
+      managerFilePatterns: ["/^(?:\\.github/)?renovate\\.json5?$/"],
       matchStrings: [
         "\"github>(?<depName>[^/\"]+/[^/\"]+)//[^\"#]+#(?<currentDigest>[0-9a-f]{40})\",?\\s*//\\s*(?<currentValue>main)\\b",
       ],
@@ -325,7 +322,7 @@
     },
     // Reusable workflows pinned to a branch:
     //
-    //   uses: tbhb-dev/renovate-config/.github/workflows/renovate.yaml@<sha> # main
+    //   uses: owner/repo/.github/workflows/checks.yml@<sha> # main
     {
       customType: "regex",
       description: "Branch-pinned reusable workflows: uses: owner/repo/path@<sha> # main",

@@ -38,6 +38,11 @@ exports_files(
     visibility = ["//factory/cli:__pkg__"],
 )
 
+exports_files(
+    [".github/workflows/renovate.yaml"],
+    visibility = ["//lib/renovate-config:__pkg__"],
+)
+
 # gazelle:python_extension disabled
 
 gazelle_binary(

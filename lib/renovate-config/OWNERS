@@ -1,3 +1,2 @@
-# lib/renovate-config/OWNERS
-owners: tbhb, tbhb-agent
-about: the shared Renovate presets and the tests that keep them in step with the root Renovate workflow
+# Shared Renovate presets and tests for the root Renovate workflow.
+@tbhb @tbhb-agent

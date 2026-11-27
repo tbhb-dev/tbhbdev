@@ -3,4 +3,4 @@
 # Copyright Tony Burns
 
 set -euo pipefail
-exec python3 "$(dirname "$0")/renovate_awrel_pin_test.py"
+exec python3 -B "$(dirname "$0")/renovate_awrel_pin_test.py"
