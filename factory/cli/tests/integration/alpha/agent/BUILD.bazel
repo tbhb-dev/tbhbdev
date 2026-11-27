@@ -38,6 +38,7 @@ cli_py_test(
         "//factory/cli/src/tbhbdev/alpha/agent:runfiles",
         "//factory/cli/tests:agent_host_example",
         "//factory/cli/tests:conftest",
+        "//factory/cli/tests:fake_tool",
         "@cli_pip//pytest",
     ],
 )

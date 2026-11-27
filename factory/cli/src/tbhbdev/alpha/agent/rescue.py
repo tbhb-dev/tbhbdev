@@ -125,7 +125,7 @@ def publish_commit(run: Run, directory: Path, branch: str, base: str, tip: str) 
 
 
 def scan(directory: Path, base: str, tip: str) -> str | None:
-    """Scan the outgoing range with policy from the run's starting commit."""
+    """Scan the outgoing range with the host policy and the committed rules."""
     try:
         config = write_policy(directory, base)
         options = ("--text", "--diff-merges=separate", f"{base}..{tip}")
@@ -164,8 +164,14 @@ def scan(directory: Path, base: str, tip: str) -> str | None:
 
 
 def write_policy(directory: Path, base: str) -> Path:
-    """Restore the committed policy and its base in the private scan directory."""
+    """Extend the run's starting policy with the host's public scan rules."""
     name = secret_scan.GITLEAKS_EXTENDS
+    private = secret_scan.private_config().read_text()
+    reduced = secret_scan.without_name_rules(private, secret_scan.REPO_RULES)
+    private, paths = secret_scan.EXTENDS_PATH.subn(rf'\g<1>"{name}"', reduced or "")
+    if not paths or not secret_scan.CANARY.search(private):
+        message = "invalid private gitleaks config"
+        raise ValueError(message)
     policy = push.history_git(directory, "show", f"{base}:{name}")
     if push.history_git(directory, "ls-tree", base, "--", VENDORED_RULES):
         rules = push.history_git(directory, "show", f"{base}:{VENDORED_RULES}")
@@ -173,6 +179,7 @@ def write_policy(directory: Path, base: str) -> Path:
         policy += '\n[extend]\npath = "base.toml"\n'
     else:
         policy = secret_scan.with_base(policy)
-    config = directory / name
-    config.write_text(policy)
+    (directory / name).write_text(policy)
+    config = directory / "private.toml"
+    config.write_text(private)
     return config

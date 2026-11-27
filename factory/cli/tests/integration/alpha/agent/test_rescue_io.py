@@ -9,6 +9,7 @@ lazy from pathlib import Path
 
 import pytest
 from agent_host_example import commit, git, host_settings, repository, run_request
+from fake_tool import PRIVATE_CONFIG, RULES_BEYOND_ONE
 
 from tbhbdev.alpha.agent import (
     credentials,
@@ -23,30 +24,43 @@ from tbhbdev.alpha.agent import (
 BRANCH = "agent/example"
 REF = f"refs/heads/{BRANCH}"
 START_REF = "refs/heads/topic"
+FOUND = "kept local: secret scan found a secret"
+UNAVAILABLE = "kept local: secret scan unavailable"
 
 
 @pytest.fixture
-def checkout(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> tuple[Path, Path]:
+def checkout(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, change: str
+) -> tuple[Path, Path, str]:
     monkeypatch.setattr(run_host.admission, "ROOT", tmp_path / "admission")
+    private = tmp_path / "private.toml"
+    monkeypatch.setattr(rescue.secret_scan, "private_config", lambda: private)
+    policy = PRIVATE_CONFIG + RULES_BEYOND_ONE
+    if change == "no private canary":
+        policy = policy.replace("tbhb-private-canary", "test-rule")
+    if change != "missing private config":
+        private.write_text(policy)
     workspace, _ = repository(tmp_path)
     origin = tmp_path / "origin"
-    (workspace / ".gitleaks.toml").write_text("")
-    commit(workspace, "configure scan")
-    git(workspace, "push", "origin", "main", "main:refs/heads/topic")
+    (workspace / ".gitleaks.toml").touch()
+    if change == "vendored secret":
+        rules = workspace / rescue.VENDORED_RULES
+        rules.parent.mkdir(parents=True)
+        rules.write_text('[[rules]]\nid = "example-rule"\nregex = "test-value"\n')
+    base = commit(workspace, "configure scan")
+    git(workspace, "push", "origin", "main", f"main:{START_REF}")
     git(workspace, "switch", "-c", BRANCH)
     original = push.remote_git
 
     def local(path: Path, *args: str, token: str | None = None) -> str:
         assert path != workspace
-        args = tuple(
-            str(origin) if part.startswith("https://") else part for part in args
-        )
-        return original(path, *args, token=token)
+        mapped = [str(origin) if arg.startswith("https://") else arg for arg in args]
+        return original(path, *mapped, token=token)
 
     monkeypatch.setattr(push, "remote_git", local)
     monkeypatch.setattr(credentials, "github_token", Mock(return_value="example-token"))
     monkeypatch.setattr(host_tools, "search", Mock(return_value=os.environ["PATH"]))
-    return workspace, origin
+    return workspace, origin, base
 
 
 @pytest.mark.parametrize(
@@ -54,13 +68,15 @@ def checkout(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> tuple[Path, Pat
     [
         ("committed", "published", 124),
         ("dirty", "published", 124),
-        ("secret", "kept local: secret scan found a secret", 124),
-        ("vendored secret", "kept local: secret scan found a secret", 7),
-        ("earlier secret", "kept local: secret scan found a secret", 7),
-        ("unavailable", "kept local: secret scan unavailable", 7),
-        ("silent error", "kept local: secret scan unavailable", 7),
-        ("scan timeout", "kept local: secret scan unavailable", 7),
-        ("scan error", "kept local: secret scan unavailable", 7),
+        ("secret", FOUND, 124),
+        ("vendored secret", FOUND, 7),
+        ("committed earlier secret", FOUND, 7),
+        ("committed private", FOUND, 7),
+        ("missing private config", UNAVAILABLE, 7),
+        ("no private canary", UNAVAILABLE, 7),
+        ("silent error", UNAVAILABLE, 7),
+        ("scan timeout", UNAVAILABLE, 7),
+        ("scan error", UNAVAILABLE, 7),
         ("checkout error", "kept local: could not save the run checkout", 7),
         ("symlink index", "kept local: could not save the run checkout", 7),
         ("diverged", "kept local: could not publish the run branch", 7),
@@ -73,16 +89,13 @@ def checkout(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> tuple[Path, Pat
     ],
 )
 def test_fault_publication(
-    checkout: tuple[Path, Path],
+    checkout: tuple[Path, Path, str],
     monkeypatch: pytest.MonkeyPatch,
     change: str,
     result: str,
     rc: int,
 ) -> None:
-    workspace, origin = checkout
-    if change == "vendored secret":
-        install_vendored_policy(workspace)
-    base = git(workspace, "rev-parse", "HEAD")
+    workspace, origin, base = checkout
     run, prepared = build_run(workspace)
     monkeypatch.setattr(run_host, "preflight", Mock())
     monkeypatch.setattr(process_group, "prepare", Mock(return_value=prepared))
@@ -103,37 +116,24 @@ def test_fault_publication(
     log = run.files.path("log").read_text().splitlines()
     assert [line for line in log if line.startswith("fault publication:")] == expected
 
-    markers = git(origin, "rev-parse", "refs/heads/main", START_REF)
-    assert markers.splitlines() == [base, base]
-    local = git(workspace, "rev-parse", REF)
-    remote = git(origin, "for-each-ref", "--format=%(objectname)", REF)
-    expected_tip = local if result == "published" or change == "already pushed" else ""
-    if change == "diverged":
-        expected_tip = git(workspace, "rev-parse", "other")
-    assert remote == expected_tip
+    assert git(origin, "rev-parse", "refs/heads/main", START_REF) == f"{base}\n{base}"
+    pushed = {"published": REF, "already pushed": REF, "diverged": "other"}
+    expected_ref = pushed.get(result) or pushed.get(change)
+    expected = git(workspace, "rev-parse", expected_ref) if expected_ref else ""
+    assert git(origin, "for-each-ref", "--format=%(objectname)", REF) == expected
     subject = git(workspace, "log", "-1", "--format=%s", REF)
-    if change in {"dirty", "secret", "vendored secret", "unavailable", "scan timeout"}:
-        assert subject.startswith("rescue:")
+    saved = change in {"dirty", "secret", "vendored secret"} or result == UNAVAILABLE
+    assert subject.startswith("rescue:") == saved
+    if saved:
         assert git(workspace, "rev-list", "--count", f"{base}..{REF}") == "1"
         assert git(workspace, "status", "--porcelain") == ""
-        changed = git(workspace, "show", "--format=", "--name-only", REF)
-        assert "tracked" in changed.splitlines()
+        assert git(workspace, "show", f"{REF}:tracked") == "changed"
         assert git(workspace, "show", f"{REF}:notes")
-    elif change not in {"scan error", "silent error"}:
-        assert not subject.startswith("rescue:")
     if change == "switched":
         assert git(workspace, "log", "-1", "--format=%s").startswith("rescue:")
         assert git(workspace, "log", "-1", "--format=%s", "other") == "other work"
     if change == "clean exit":
         assert git(workspace, "status", "--porcelain") == " M tracked\n?? notes".strip()
-
-
-def install_vendored_policy(workspace: Path) -> None:
-    rules = workspace / "lib/rules/lint/gitleaks/base.toml"
-    rules.parent.mkdir(parents=True)
-    rules.write_text('[[rules]]\nid = "example-rule"\nregex = "example-test-value"\n')
-    commit(workspace, "configure vendored scanner")
-    git(workspace, "push", "origin", "HEAD:refs/heads/main", "HEAD:refs/heads/topic")
 
 
 def build_run(workspace: Path) -> tuple[run_host.Run, run_host.Prepared]:
@@ -162,18 +162,13 @@ def change_checkout(workspace: Path, change: str) -> None:
     if change != "empty commit":
         (workspace / "tracked").write_text("changed\n")
         note = "ghp_" + hashlib.sha256(b"fixture").hexdigest()[:36]
-        if change == "vendored secret":
-            note = "example-test-value"
-        (workspace / "notes").write_text(note if "secret" in change else "notes\n")
-    if change in (
-        "committed",
-        "earlier secret",
-        "already pushed",
-        "empty commit",
-        "diverged",
-    ):
+        notes = {"vendored secret": "test-value", "committed private": "host-x"}
+        fallback = note if "secret" in change else "repo-x\n"
+        (workspace / "notes").write_text(notes.get(change, fallback))
+    commit_changes = {"already pushed", "empty commit", "diverged"}
+    if change.startswith("committed") or change in commit_changes:
         commit(workspace, "build work")
-    if change == "earlier secret":
+    if change == "committed earlier secret":
         (workspace / "notes").unlink()
         commit(workspace, "remove test value")
     if change == "already pushed":
@@ -186,15 +181,11 @@ def change_checkout(workspace: Path, change: str) -> None:
 
 
 def scan_fault(monkeypatch: pytest.MonkeyPatch, change: str) -> None:
-    faults = {
-        "unavailable": Mock(side_effect=FileNotFoundError),
-        "scan timeout": Mock(side_effect=subprocess.TimeoutExpired("gitleaks", 60)),
-        "silent error": Mock(
-            return_value=subprocess.CompletedProcess([], 0, "", "0 commits scanned")
-        ),
-        "scan error": Mock(
-            return_value=subprocess.CompletedProcess([], 0, "", "ERR scan failed")
-        ),
-    }
-    if scanner := faults.get(change):
-        monkeypatch.setattr(rescue, "subprocess", Mock(run=scanner))
+    errors = {"silent error": "0 commits scanned", "scan error": "ERR scan failed"}
+    if change == "scan timeout":
+        scanner = Mock(side_effect=subprocess.TimeoutExpired("gitleaks", 60))
+    elif stderr := errors.get(change):
+        scanner = Mock(return_value=subprocess.CompletedProcess([], 0, "", stderr))
+    else:
+        return
+    monkeypatch.setattr(rescue, "subprocess", Mock(run=scanner))
