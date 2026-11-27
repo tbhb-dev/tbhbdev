@@ -18,7 +18,9 @@ cli_py_library(
         ":guard_gh_poll",
         ":guard_gh_pr",
         ":guard_op",
+        ":guard_ops_no_lazy_stop",
         ":guard_scripts",
+        ":guard_sendmessage_clock",
         ":guard_ssh_agent",
         ":identity",
         ":install",
@@ -496,4 +498,23 @@ filegroup(
     name = "size_gate_data",
     srcs = glob(["size_gate_data/**"]),
     visibility = ["//factory/cli:__subpackages__"],
+)
+
+cli_py_library(
+    name = "guard_ops_no_lazy_stop",
+    srcs = ["guard_ops_no_lazy_stop.py"],
+    imports = ["../.."],
+    visibility = ["//factory/cli:__subpackages__"],
+    deps = [":repo"],
+)
+
+cli_py_library(
+    name = "guard_sendmessage_clock",
+    srcs = ["guard_sendmessage_clock.py"],
+    imports = ["../.."],
+    visibility = ["//factory/cli:__subpackages__"],
+    deps = [
+        ":guard_gh_pr",
+        ":repo",
+    ],
 )
