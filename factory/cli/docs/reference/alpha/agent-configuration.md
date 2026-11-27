@@ -2,12 +2,8 @@
 description: Agent settings, run requests, and host preparation.
 generated:
   - role: generated
-    harness: codex:0.171.0
-    model: openai:gpt-6.2-sol
-    effort: high
-    surface: exec
-    session: sha-256-64:fc673283f6abca40
-    at: "2026-11-27T06:25:28Z"
+    harness: codex
+    at: "2026-11-27T12:42:30Z"
 status: stable
 tags: [alpha]
 title: Agent configuration
@@ -24,7 +20,7 @@ When the host reports a failed launch before the harness starts, `agent exec` pr
 
 The launcher warns when the prompt mentions a ref that no `--fetch-ref` option covers.
 
-The build profile enables `--expect-commit` by default. If the harness succeeds and the host records no new commit, the run exits 6 and logs `no new commit:`. The host compares the live tip of the destination branch on origin before and after the harness. That branch is `refs/heads/agent/<name>` by default or the selected branch for a build using `--start-ref`. An absent branch after the run, an unchanged tip, or a failed lookup exits 9 and logs `push failed:`. Pass `--no-expect-commit` to waive the commit and run branch requirements for research builds. Both flags apply only to the build profile.
+The build profile enables `--expect-commit` by default. If the harness succeeds without a new local commit, the run exits 6 and logs `no new commit:`. The host checks that the recorded commit is the tip of `refs/heads/agent/<name>` on origin or an ancestor of that tip. With `--start-ref`, the host checks the selected branch on origin. If the branch is missing or doesn't contain the commit, the run exits 9 and logs `push failed:`. A failed lookup gives the same exit code and log prefix. The selected branch must still point to the fetched commit when the build pushes. To push rewritten history, use an explicit lease with that commit. For research builds, pass `--no-expect-commit` to skip commit verification. The build profile supports both flags.
 
 The Stop hook checks the run worktree for uncommitted tracked changes and the run branch for a commit past its starting point. Use `agent exec --no-expect-commit` for a build that can finish without a new commit; the worktree still has to be clean of tracked changes. For reviews, the hook requires a standalone `VERDICT: GO`, `VERDICT: BLOCK` or `VERDICT: NO-GO` line in the final reply, with an optional full commit SHA. The hook asks the model to continue up to three times per run, then allows the stop and logs the reason.
 
@@ -62,7 +58,7 @@ The supervisor calls `bazelisk shutdown` or `bazel shutdown` with each output ba
 
 Every `tbhb-dev` repository on GitHub runs on any host with no list entry, and any other repository is refused before run-host creates a mirror. `public_repos` accepts only `tbhb-dev` entries (`owner/name` or `github.com/owner/name`) and the config refuses any other owner. Git never follows a redirect, so a repository that moved out of the organization fails the fetch. Mirrors fetch from `https://github.com/<owner>/<name>.git` without credentials, prompts, SSH, or token fallback. Existing mirror configs switch to HTTPS on the next run.
 
-The ssh verb `preflight NAME` and the local `--preflight` flag prepare the workspace and credentials and load the signing agent. It logs whether the run worktree has `.bazel_env/bin` and warns that commit hooks fail when the directory is missing, without changing the exit status. After checking the policy and harness command, it writes `preflight ok: <executable path>` to the log. It stops the signing agent and records the exit status, phase, and index entry without launching the harness. Use a fresh name for the next run. Preparation errors use `run preparation failed at <step>: <cause>`. The cause keeps the validation message, the operating system error with only the filename's basename, or the first line of git's standard error. It removes control characters, redacts environment values, credentials and URL user information, and limits the cause to 200 characters. Other value errors and git failures without standard error use a generic cause.
+The ssh verb `preflight NAME` and the local `--preflight` flag prepare the workspace and credentials and load the signing agent. It logs whether the run worktree has `.bazel_env/bin` and warns that commit hooks fail when the directory is missing, without changing the exit status. After checking the policy and harness command, it writes `preflight ok: <executable path>` to the log. It stops the signing agent and records the exit status, phase, and index entry without launching the harness. Use a fresh name for the next run. Preparation errors use `run preparation failed at <step>: <cause>`. The cause reports the validation message or the first line Git writes to standard error. For an operating system error, it reports the message and the filename without the directory path. Run-host removes control characters and redacts environment values, credentials, and URL user information. The cause has a 200-character limit. Other value errors and git failures without standard error use a generic cause.
 
 Preparation redacts the search path it reports when a hook executable is missing. Check the run log for the failing step and `host_tools.search_path` for the search directories. Install `prek` in a fixed directory on the host tools' search path, or add its directory to `host_path`.
 

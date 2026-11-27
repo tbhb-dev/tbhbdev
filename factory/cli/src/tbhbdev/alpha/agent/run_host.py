@@ -508,9 +508,6 @@ def prepare_workspace(run: Run) -> Prepared:
     if headless and run.request.profile is Profile.BUILD and not run.request.no_commit:
         with worktree.preparation_step("stop hook baseline"):
             start = push.head(workspace, f"agent/{run.files.name}")
-            if start is None:
-                message = "stop hook baseline: the run branch must be checked out"
-                raise Invalid(message)
     return Prepared(
         paths, delivery, before, bazel_bases(run.home, str(workspace)), start
     )
@@ -673,13 +670,8 @@ def run_harness(
     terminal = None if headless else sys.stdin.fileno()
     streams = (None, None, None)
     if headless:
-        context = run_stop_hook.StopRun(
-            profile=run.request.profile.value,
-            workspace=paths.worktree,
-            reference=f"refs/heads/agent/{run.files.name}",
-            start=prepared.start,
-            counter=str(run.tmpdir / "stop-count"),
-            log=str(run.files.path("log")),
+        context = run_stop_hook.run_context(
+            run.request, paths.worktree, run.files, run.tmpdir, prepared.start
         )
         env[run_stop_hook.ENV] = json.dumps(context)
         streams = (
@@ -831,11 +823,10 @@ def _execute(
 
 
 def run_and_check(run: Run, prepared: Prepared, stack: ExitStack) -> int:
-    before = origin_tip(run) if run.request.expect_commit else None
     rc = push.run(run, prepared, stack, run_harness)
     if rc == 0 and run.request.profile is Profile.REVIEW:
         return post_review(run, prepared)
-    return require_commit(run, rc, before)
+    return require_commit(run, rc)
 
 
 def post_review(run: Run, prepared: Prepared) -> int:
@@ -858,19 +849,22 @@ def publication_branch(run: Run) -> str:
     return f"agent/{run.files.name}"
 
 
+def github_get(run: Run, endpoint: str) -> httpx2.Response:
+    _, owner, repository = repo.parts(run.request.repo)
+    url = f"https://api.github.com/repos/{owner}/{repository}/{endpoint}"
+    headers = {"Accept": "application/vnd.github+json"}
+    if (token := credentials.fetch_token(run.request, run.settings)) is not None:
+        headers["Authorization"] = f"Bearer {token}"
+    return httpx2.get(
+        url, headers=headers, timeout=20, verify=github_tls.public_roots()
+    )
+
+
 def origin_tip(run: Run) -> str | None:
     """Read the exact branch from origin. Empty means absent, None unreadable."""
-    _, owner, repository = repo.parts(run.request.repo)
     branch = f"heads/{publication_branch(run)}"
-    url = f"https://api.github.com/repos/{owner}/{repository}/git/ref/{branch}"
-    headers = {"Accept": "application/vnd.github+json"}
     try:
-        token = credentials.fetch_token(run.request, run.settings)
-        if token is not None:
-            headers["Authorization"] = f"Bearer {token}"
-        response = httpx2.get(
-            url, headers=headers, timeout=20, verify=github_tls.public_roots()
-        )
+        response = github_get(run, f"git/ref/{branch}")
         if response.status_code == httpx2.codes.NOT_FOUND:
             return ""
         response.raise_for_status()
@@ -884,23 +878,37 @@ def origin_tip(run: Run) -> str | None:
     return tip if isinstance(tip, str) and re.fullmatch(r"[0-9a-f]{40}", tip) else None
 
 
-def require_commit(run: Run, rc: int, before: str | None) -> int:
+def origin_contains(run: Run, commit: str) -> bool | None:
+    tip = origin_tip(run)
+    if tip is None or not tip or tip == commit:
+        return None if tip is None else bool(tip)
+    # Compare pinned commits so that a concurrent push cannot change the answer.
+    try:
+        response = github_get(run, f"compare/{commit}...{tip}?per_page=1")
+        if response.status_code == httpx2.codes.NOT_FOUND:
+            return False
+        response.raise_for_status()
+        record = response.json()
+    except OSError, ValueError, httpx2.HTTPError:
+        return None
+    return record.get("status") == "ahead" if isinstance(record, dict) else None
+
+
+def require_commit(run: Run, rc: int) -> int:
     if rc or not run.request.expect_commit:
         return rc
-    if not run.files.path("head").exists():
+    if not (head := run.files.path("head")).exists():
         run.files.write(
             "log", "no new commit: the build required one (--expect-commit)\n"
         )
         return NO_COMMIT
-    after = origin_tip(run) if before is not None else None
+    published = origin_contains(run, head.read_text().strip())
     branch = publication_branch(run)
-    if after is None:
-        run.files.write("log", f"push failed: cannot verify {branch} on origin\n")
-    elif not after or before == after:
-        run.files.write("log", f"push failed: no new tip for {branch} on origin\n")
-    else:
+    if published:
         run.files.write("branch", branch)
         return 0
+    reason = "cannot verify" if published is None else "build commit missing from"
+    run.files.write("log", f"push failed: {reason} {branch} on origin\n")
     return NO_PUSH
 
 

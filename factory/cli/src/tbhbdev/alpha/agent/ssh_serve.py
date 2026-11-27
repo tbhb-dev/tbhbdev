@@ -67,7 +67,7 @@ def command(arguments: list[str]) -> tuple[str, str]:
     return words[0], words[1]
 
 
-def envelope(*, preflight_only: bool) -> dict[str, object]:
+def envelope() -> dict[str, object]:
     raw = sys.stdin.buffer.read(INPUT_LIMIT + 1)
     if len(raw) > INPUT_LIMIT:
         message = "stdin exceeds 1 MiB"
@@ -82,34 +82,22 @@ def envelope(*, preflight_only: bool) -> dict[str, object]:
         data: object = json.loads(text)
     except UnicodeDecodeError, RecursionError:
         raise Invalid(message) from None
-    if not isinstance(data, dict) or data.keys() - {"push_token"} != {"v", "request"}:
+    if not isinstance(data, dict) or data.keys() != {"v", "request"}:
         message = "expected v and request"
         raise Invalid(message)
     if type(data["v"]) is not int or data["v"] != 1:
         message = "unsupported envelope version"
         raise Invalid(message)
-    fields: dict[str, object] = data
-    request = fields["request"]
-    # Accept envelopes from controllers that still send the legacy field.
-    token = fields.get("push_token")
+    request: object = data["request"]
     if not isinstance(request, dict):
         message = "request must be an object"
-        raise Invalid(message)
-    if token is not None and (
-        not isinstance(token, str) or not token or any(c in token for c in "\r\n\0")
-    ):
-        message = "push_token must be a nonempty single line or null"
-        raise Invalid(message)
-    if preflight_only and token is not None:
-        message = "preflight requires a null push_token"
         raise Invalid(message)
     request_fields: dict[str, object] = request
     return request_fields
 
 
 def start(files: runfiles.RunFiles, prog: str, *, preflight_only: bool) -> int:
-    request = envelope(preflight_only=preflight_only)
-    body = json.dumps(request) + "\n"
+    body = json.dumps(envelope()) + "\n"
     run_host.refuse_started(files)
     ownership.claim(files)
     # Exclusive creation preserves the request of an existing run.

@@ -32,3 +32,14 @@ cli_py_test(
         "@cli_pip//pytest",
     ],
 )
+
+cli_py_test(
+    name = "test_pre_push_guard",
+    srcs = ["test_pre_push_guard.py"],
+    imports = ["../.."],
+    deps = [
+        "//factory/cli/src/tbhbdev/alpha:pre_push_guard",
+        "//factory/cli/tests:conftest",
+        "@cli_pip//pytest",
+    ],
+)

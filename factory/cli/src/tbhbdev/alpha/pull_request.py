@@ -147,6 +147,7 @@ from tbhbdev.alpha import pull_request_frontmatter as frontmatter
 from tbhbdev.alpha.agent import settings
 from tbhbdev.alpha.agent.decisions import host_names
 from tbhbdev.alpha.identity import dispatcher as agent_identity
+from tbhbdev.alpha.identity.trailers import merge_pr_trailers
 from tbhbdev.alpha.install import require_git_hooks
 from tbhbdev.alpha.repo import git as repo_git
 from tbhbdev.alpha.repo import hook_cwd, in_tbhb_dev, read_hook_stdin
@@ -848,40 +849,6 @@ def body_of(rendered: Sequence[str]) -> str:
     return "\n".join(rendered[1:]).strip("\n") + "\n"
 
 
-def identity_key(value: str) -> tuple[str, ...]:
-    """Who an LLM trailer value names: harness slug, model, session, subagent."""
-    blob = value.split()[1]
-    attrs = {
-        key: val for key, _, val in (pair.partition("=") for pair in blob.split(";"))
-    }
-    return (
-        attrs["harness"].partition(":")[0],
-        attrs.get("model", ""),
-        attrs.get("session", ""),
-        attrs.get("subagent", ""),
-    )
-
-
-def merge_trailers(
-    found: Sequence[tuple[str, str]], posting: str | None
-) -> list[tuple[str, str]]:
-    """Deduplicate (key, value) trailers by identity; Generated-by wins.
-
-    The posting agent's value is added as Assisted-by when its identity is
-    absent. Generated-by lines come first, as the commit-msg check requires.
-    """
-    roles: dict[tuple[str, ...], tuple[str, str]] = {}
-    for key, value in found:
-        ident = identity_key(value)
-        if ident not in roles or (
-            key == agent_identity.KEY_GEN and roles[ident][0] != key
-        ):
-            roles[ident] = (key, value)
-    if posting is not None and identity_key(posting) not in roles:
-        roles[identity_key(posting)] = (agent_identity.KEY_ASSIST, posting)
-    return sorted(roles.values(), key=lambda pair: pair[0] != agent_identity.KEY_GEN)
-
-
 def branch_trailers(base: str) -> list[tuple[str, str]]:
     """The LLM trailers of the commits on this branch, oldest first.
 
@@ -1064,7 +1031,7 @@ def description(
     ]
     if errors:
         raise SystemExit("invalid LLM trailer: " + "; ".join(errors))
-    merged = [f"{key}: {value}" for key, value in merge_trailers(found, posting)]
+    merged = [f"{key}: {value}" for key, value in merge_pr_trailers(found, posting)]
     trailers = ([opened_by] if opened_by else []) + merged
     body = body_of(checked.rendered)
     if not trailers:
@@ -2043,6 +2010,20 @@ def size_unavailable(checked: Checked, reason: str) -> None:
     print(message, file=sys.stderr)
 
 
+def _stacked_base_source(branch: str) -> str:
+    """Use the build mirror's fetched ref when it has no ordinary branch ref."""
+    source = f"refs/heads/{branch}"
+    code, origin = git("remote", "get-url", "origin")
+    if code != 0 or not Path(origin).is_absolute():
+        return source
+    mirror_source = f"refs/heads/fetched/heads/{branch}"
+    code, advertised = git("ls-remote", "origin", source, mirror_source)
+    refs = {line.partition("\t")[2] for line in advertised.splitlines()}
+    if code == 0 and source not in refs and mirror_source in refs:
+        return mirror_source
+    return source
+
+
 def _size_base(
     branch: str, *, explicit_base: bool, dry_run: bool
 ) -> tuple[str, str | None]:
@@ -2054,6 +2035,7 @@ def _size_base(
             default = default_base(origin_only=True)
     default_ref = f"refs/remotes/origin/{default}" if default != branch else None
     if not dry_run:
+        source = _stacked_base_source(branch) if default_ref else f"refs/heads/{branch}"
         fetch = (
             "fetch",
             "--quiet",
@@ -2061,7 +2043,7 @@ def _size_base(
             "--no-write-fetch-head",
             "--refmap=",
             "origin",
-            f"+refs/heads/{branch}:{base}",
+            f"+{source}:{base}",
         )
         if default_ref is not None:
             fetch += (f"+refs/heads/{default}:{default_ref}",)

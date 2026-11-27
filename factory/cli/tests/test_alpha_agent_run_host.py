@@ -580,9 +580,7 @@ def test_codex_config_failure_names_its_step(
     assert str(caught.value) == f"run preparation failed at codex config: {cause}"
 
 
-@pytest.mark.parametrize(
-    ("no_commit", "start"), [(False, "a" * 40), (True, None), (False, None)]
-)
+@pytest.mark.parametrize(("no_commit", "start"), [(False, "a" * 40), (True, None)])
 def test_build_preparation_has_the_run_socket(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, no_commit: bool, start: str | None
 ) -> None:
@@ -622,10 +620,6 @@ def test_build_preparation_has_the_run_socket(
     monkeypatch.setattr(run_host, "hook_environment", hook_environment)
     monkeypatch.setattr(run_host, "bazel_bases", bazel_bases)
     monkeypatch.setattr(credentials, "fetch_token", fetch_token)
-    if not no_commit and start is None:
-        with pytest.raises(Invalid, match="run branch must be checked out"):
-            run_host.prepare_workspace(run)
-        return
     result = run_host.prepare_workspace(run)
     assert result.paths.signing_socket == str(run.tmpdir / "ssh.sock")
     assert result.delivery.signing == "example-signing"
@@ -4301,20 +4295,16 @@ def test_run_builds_required_shims_before_harness(
 
 
 @pytest.mark.parametrize(
-    ("expect_commit", "harness_result", "tips", "start_ref", "expected"),
+    ("expect_commit", "harness_result", "published", "start_ref", "expected"),
     [
-        (True, (0, None), ("",), None, 6),
-        (True, (0, "a" * 40), ("", "a" * 40), None, 0),
-        (True, (0, "a" * 40), ("b" * 40, "a" * 40), None, 0),
-        (True, (0, "a" * 40), ("a" * 40, "a" * 40), None, 9),
-        (True, (0, "a" * 40), ("", ""), None, 9),
-        (True, (0, "a" * 40), ("b" * 40, ""), None, 9),
-        (True, (0, "a" * 40), (None,), None, 9),
-        (True, (0, "a" * 40), ("", None), None, 9),
-        (True, (0, "a" * 40), ("b" * 40, "a" * 40), "refs/heads/topic", 0),
-        (True, (0, "a" * 40), ("b" * 40, "b" * 40), "refs/heads/topic", 9),
-        (True, (4, None), ("",), None, 4),
-        (False, (0, None), (), None, 0),
+        (True, (0, None), None, None, 6),
+        (True, (0, "a" * 40), True, None, 0),
+        (True, (0, "a" * 40), False, None, 9),
+        (True, (0, "a" * 40), None, None, 9),
+        (True, (0, "a" * 40), True, "refs/heads/topic", 0),
+        (True, (0, "a" * 40), False, "refs/heads/topic", 9),
+        (True, (4, None), None, None, 4),
+        (False, (0, None), None, None, 0),
     ],
 )
 def test_execute_checks_required_build_results(  # noqa: PLR0913, PLR0917
@@ -4322,7 +4312,7 @@ def test_execute_checks_required_build_results(  # noqa: PLR0913, PLR0917
     monkeypatch: pytest.MonkeyPatch,
     expect_commit: bool,
     harness_result: tuple[int, str | None],
-    tips: tuple[str | None, ...],
+    published: bool | None,
     start_ref: str | None,
     expected: int,
 ) -> None:
@@ -4330,30 +4320,30 @@ def test_execute_checks_required_build_results(  # noqa: PLR0913, PLR0917
     run.request = dataclasses.replace(run.request, start_ref=start_ref)
     prepared = dataclasses.replace(preparation(run), auth_before="example-before")
     HostRuntime(run, prepared, None).patch(monkeypatch)
-    origin_tip = Mock(side_effect=tips)
-    monkeypatch.setattr(run_host, "origin_tip", origin_tip)
+    origin_contains = Mock(return_value=published)
+    monkeypatch.setattr(run_host, "origin_contains", origin_contains)
 
-    def run_harness(*_args: object) -> int:
-        assert origin_tip.call_count == int(expect_commit)
+    def publish(*_args: object) -> int:
+        origin_contains.assert_not_called()
         status, recorded_head = harness_result
         if recorded_head is not None:
             run.files.write("head", recorded_head)
         return status
 
-    monkeypatch.setattr(run_host.push, "run", run_harness)
+    monkeypatch.setattr(run_host.push, "run", publish)
     assert run_host.execute(run, "example") == expected
     assert run.files.path("rc").read_text() == f"{expected}\n"
     assert runfiles.latest(run.files.root)["example"]["rc"] == expected
-    assert origin_tip.call_count == len(tips)
     log = run.files.path("log")
     message = "no new commit: the build required one (--expect-commit)\n"
     assert (log.exists() and message in log.read_text().splitlines(keepends=True)) is (
         expected == 6
     )
+    branch = start_ref.removeprefix("refs/heads/") if start_ref else "agent/example"
     if expected == 9:
-        reason = "cannot verify" if None in tips else "no new tip for"
-        branch = start_ref.removeprefix("refs/heads/") if start_ref else "agent/example"
+        reason = "cannot verify" if published is None else "build commit missing from"
         assert f"push failed: {reason} {branch} on origin" in log.read_text()
+    assert run.files.path("branch").exists() is bool(published)
 
 
 BRANCH_REF = "refs/heads/agent/example"
@@ -4414,7 +4404,6 @@ def test_execute_rejects_a_stale_head_when_requiring_a_commit(
     HostRuntime(run, prepared, None).patch(monkeypatch)
     monkeypatch.setattr(run_host, "run_harness", constant(0))
     monkeypatch.setattr(run_host.push, "run", PUSH_RUN)
-    monkeypatch.setattr(run_host, "origin_tip", constant(""))
     run.files.write("head", "a" * 40)
 
     assert run_host.execute(run, "example") == 6
@@ -5018,8 +5007,12 @@ def test_unsandboxed_codex_uses_account_path(
 ) -> None:
     monkeypatch.setattr(host_tools, "resolve", RESOLVE)
     run = make_run(tmp_path, unsandboxed=True, authorized_by="operator-chat-2026-11-15")
-    account_path = host_tools.account_path(str(run.home))[:4]
-    monkeypatch.setattr(host_tools, "account_path", constant(account_path))
+    account_dirs = tuple(
+        path
+        for path in host_tools.account_path(str(run.home))
+        if Path(path).is_relative_to(run.home)
+    )
+    monkeypatch.setattr(host_tools, "account_path", constant(account_dirs))
     directory = run.home / ".local/bin"
     directory.mkdir(parents=True)
     binary = directory / "codex"

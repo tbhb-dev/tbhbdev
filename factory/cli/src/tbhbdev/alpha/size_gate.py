@@ -11,6 +11,7 @@ from tbhbdev.alpha.repo_bootstrap import gh_api
 
 DATA = Path(__file__).with_name("size_gate_data")
 COUNT_KEYS = ("code_lines", "code_limit", "raw_lines", "raw_limit")
+SIZE_REVIEW = "size-review"
 
 
 @dataclass(frozen=True)
@@ -123,6 +124,15 @@ def size_counts(  # noqa: PLR0913 -- refs, branch name and counter tools are ind
     )
 
 
+def size_verdict(line: str, head: str) -> str | None:
+    """Return the sizing verdict from a final line that names the pinned head."""
+    if line == f"VERDICT: SPLIT {head}":
+        return "SPLIT"
+    if line == f"VERDICT: OVERRIDE {head}":
+        return "OVERRIDE"
+    return None
+
+
 def has_size_review_success(repo: str, head: str) -> bool:
     """Whether this exact commit has a successful size-review status."""
     data = gh_api("GET", f"repos/{repo}/commits/{head}/status")
@@ -133,7 +143,7 @@ def has_size_review_success(repo: str, head: str) -> bool:
         return False
     return any(
         isinstance(status, dict)
-        and status.get("context") == "size-review"
+        and status.get("context") == SIZE_REVIEW
         and status.get("state") == "success"
         for status in cast("list[object]", statuses)
     )

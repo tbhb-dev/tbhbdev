@@ -22,7 +22,7 @@ from agent_host_example import (
 )
 
 from tbhbdev.alpha.agent import worktree
-from tbhbdev.alpha.agent.model import Invalid
+from tbhbdev.alpha.agent.model import Invalid, Profile
 from tbhbdev.alpha.identity import dispatcher as identity
 
 
@@ -830,7 +830,11 @@ def test_hook_installation_is_repeatable_private_and_read_only(
         python=Path(sys.base_prefix, "bin", "python3"),
         mark=worktree.install.SHIM_MARK,
         pattern=worktree.TBHB_DEV_ORIGIN.pattern,
-        run_env={"TBHBDEV_RUN_NAME": "example", "TBHBDEV_RUN_START_REF": ""},
+        run_env={
+            "TBHBDEV_RUN_NAME": "example",
+            "TBHBDEV_RUN_START_REF": "",
+            "TBHBDEV_RUN_START_TIP": "a" * 40,
+        },
     )
 
 
@@ -952,16 +956,11 @@ def test_prelaunch_git_protocol(
         else ("checkout", "--detach", full_sha, "--")
     )
     options = ("clone", "--no-local", "--no-hardlinks", "--no-checkout", "--template=")
+    helper = ("config", "--add", "credential.https://github.com.helper")
+    values = ("", "!gh auth git-credential") if profile == "build" else ()
     assert calls == [
         common[0],
-        (
-            mirror,
-            (
-                *options,
-                str(mirror),
-                str(workspace),
-            ),
-        ),
+        (mirror, (*options, str(mirror), str(workspace))),
         (
             workspace,
             (
@@ -971,6 +970,7 @@ def test_prelaunch_git_protocol(
             ),
         ),
         (workspace, ("config", "core.hooksPath", str(workspace / ".git" / "hooks"))),
+        *((workspace, (*helper, value)) for value in values),
         *common[1:],
         (
             mirror,
@@ -1043,7 +1043,7 @@ def test_clone_destination_is_exclusive(
 
     monkeypatch.setattr(worktree, "git", unexpected)
     with pytest.raises(FileExistsError):
-        worktree.clone_run(tmp_path / "mirror", workspace, "example")
+        worktree.clone_run(tmp_path / "mirror", workspace, "example", Profile.BUILD)
 
 
 def test_clone_directory_mode_is_private_before_git(
@@ -1056,17 +1056,15 @@ def test_clone_directory_mode_is_private_before_git(
         calls.append((path, mode))
         original(path, mode=mode)
 
-    def git(*_args: object) -> str:
+    def git_command(*_args: object) -> str:
         assert calls == [(tmp_path / "workspace", 0o700)]
         return ""
 
-    def hooks(path: Path) -> None:
-        assert path == tmp_path / "workspace"
-
     monkeypatch.setattr(Path, "mkdir", mkdir)
-    monkeypatch.setattr(worktree, "git", git)
-    monkeypatch.setattr(worktree, "install_hooks", hooks)
-    worktree.clone_run(tmp_path / "mirror", tmp_path / "workspace", "example")
+    monkeypatch.setattr(worktree, "git", git_command)
+    worktree.clone_run(
+        tmp_path / "mirror", tmp_path / "workspace", "example", Profile.BUILD
+    )
 
 
 @pytest.mark.parametrize("depth", [0, 1, 2, 3])
@@ -1313,8 +1311,8 @@ def test_host_checkout_disables_a_planted_run_hook(
     original = worktree.clone_run
     marker = tmp_path / "hook-executed"
 
-    def planted(mirror: Path, workspace: Path, url: str) -> None:
-        original(mirror, workspace, url)
+    def planted(mirror: Path, workspace: Path, url: str, profile: Profile) -> None:
+        original(mirror, workspace, url, profile)
         hook = workspace / ".git" / "hooks" / "post-checkout"
         hook.parent.mkdir()
         hook.write_text(f'#!/bin/sh\nprintf invoked > "{marker}"\n')

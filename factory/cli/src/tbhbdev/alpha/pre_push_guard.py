@@ -1,9 +1,8 @@
 """Refuse protected-branch pushes, unfetched rewrites, and invalid agent branches.
 
 A non-fast-forward update to an unprotected branch is allowed only when the
-remote tip git reports is the tip this clone fetched. Start-ref runs check
-``refs/remotes/<remote>/fetched/heads/<branch>``. Other pushes check
-``refs/remotes/<remote>/<branch>``.
+remote tip git reports is the tip this clone fetched into
+``refs/remotes/<remote>/<branch>``, the value ``--force-with-lease`` checks.
 The hook cannot see the flag, so a plain force reports the same tip. The
 command-line guard (``guard_git_hooks``) refuses plain force, and this hook
 logs ``old -> new`` on stderr for every rewrite it allows.
@@ -44,6 +43,7 @@ SAFE = (
 )
 HOOK_ARGUMENTS = 2
 RUN_START_REF_ENV = "TBHBDEV_RUN_START_REF"
+RUN_START_TIP_ENV = "TBHBDEV_RUN_START_TIP"
 PROTECTED = frozenset({"refs/heads/main", "refs/heads/master"})
 AGENT_BRANCH_PREFIX = "refs/heads/agent/"
 AGENT_BRANCH_PREFIXES = (AGENT_BRANCH_PREFIX, "refs/heads/renovate/")
@@ -220,7 +220,7 @@ def agent_commit_problems(
     return problems
 
 
-def fetched_tip(remote: str, ref: str, start_ref: str) -> str:
+def fetched_tip(remote: str, ref: str, start_ref: str | None) -> str:
     """The fetched tip for a pushed branch, or empty."""
     if not ref.startswith("refs/heads/"):
         return ""
@@ -237,7 +237,7 @@ def fetched_tip(remote: str, ref: str, start_ref: str) -> str:
 
 
 def destination_problem(
-    ref: str, *, deleting: bool, agent_push: bool, run_name: str, start_ref: str
+    ref: str, *, deleting: bool, agent_push: bool, run_name: str, start_ref: str | None
 ) -> str:
     """The refusal for a disallowed push destination, or empty when allowed."""
     if run_name and ref.startswith("refs/heads/"):
@@ -265,13 +265,18 @@ def ref_problems(
     row: tuple[str, str, str],
     tips: Sequence[str],
     keys: SigningKeys,
-    start_ref: str,
+    start_ref: str | None,
 ) -> list[str]:
     """The refusals for one pushed ref: LOCAL, REF, and the remote's OLD value."""
     local, ref, old = row
     deleting = not local.strip("0")
     if deleting:
         return []
+    if ref == start_ref:
+        if not old.strip("0"):
+            return [f"{ref}: the start ref must already exist; push refused"]
+        if old != os.environ.get(RUN_START_TIP_ENV):
+            return [f"{ref}: remote tip changed since fetch; push refused"]
     exclude = known_objects([*tips, old] if old.strip("0") else list(tips))
     problems = agent_commit_problems(ref, local, exclude, keys)
     ancestry = (
@@ -295,12 +300,7 @@ def ref_problems(
 
 
 def push_problems(
-    remote: str,
-    lines: Sequence[str],
-    *,
-    agent_push: bool,
-    run_name: str,
-    start_ref: str,
+    remote: str, lines: Sequence[str], *, agent_push: bool, run_name: str
 ) -> list[str]:
     rows: list[tuple[str, str, str]] = []
     known_hosts: set[str] | None = None
@@ -317,6 +317,7 @@ def push_problems(
     tips = remote_tips()
     keys = SigningKeys()
     problems = []
+    start_ref = os.environ.get(RUN_START_REF_ENV) if run_name else None
     for row in rows:
         local, ref, _ = row
         problem = destination_problem(
@@ -348,10 +349,7 @@ def inspect_push(remote: str, target: str, lines: Sequence[str]) -> list[str]:
         )
         raise InspectionError(message)
     agent_push = agent_org_push or session_root(os.environ) is not None
-    start_ref = os.environ.get(RUN_START_REF_ENV, "") if run_name else ""
-    return push_problems(
-        remote, lines, agent_push=agent_push, run_name=run_name, start_ref=start_ref
-    )
+    return push_problems(remote, lines, agent_push=agent_push, run_name=run_name)
 
 
 def main(argv: list[str], prog: str) -> int:
