@@ -59,7 +59,7 @@ ops_py_test(
     env = {"TBHB_PROMTOOL": "$(rlocationpath @promtool_test_tool//:promtool)"},
     deps = [
         ":conftest",
-        ":tests",
+        ":tests",  # keep
         "//ops/packages/tbhbops/src",
         "@cli_pip//ansible_core",
         "@cli_pip//hypothesis",
