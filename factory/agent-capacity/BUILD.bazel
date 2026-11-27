@@ -4,7 +4,7 @@
 load("@tbhb_rules//format:defs.bzl", "format_test")
 load("@tbhb_rules//repo:defs.bzl", "repo_files")
 load("@tbhb_rules_go//:defs.bzl", "go_arch_lint_test", "go_deadcode_test", "go_mod_tidy_test", "gobco_test", "gomutants_test", "govulncheck")
-load("//factory:go_lint.bzl", "golangci_lint_test")
+load(":go_lint.bzl", "golangci_lint_test")
 
 # gazelle:go_visibility //factory/agent-capacity:__subpackages__
 # gazelle:map_kind go_test go_test //factory:go.bzl
@@ -13,7 +13,7 @@ package(default_visibility = ["//factory:__subpackages__"])
 
 repo_files(visibility = ["//factory:__pkg__"])
 
-# The Go checks, over every binary, library and test of the module.
+# The Go checks cover every binary, library and test of agent-capacity.
 # golangci-lint runs per package as an aspect, over export data, and fails if
 # any Go file of the tree is never linted. deadcode takes every binary at once,
 # so a function only one binary calls is live. go-arch-lint holds the import
@@ -57,26 +57,26 @@ go_deadcode_test(
 go_arch_lint_test(
     name = "go_arch_lint_test",
     size = "small",
-    srcs = ["//:repo_files"],
-    config = "//:.go-arch-lint.yml",
-    go_mod = "//:go.mod",
+    srcs = GO_TARGETS,
+    config = ":.go-arch-lint.yml",
+    go_mod = ":go.mod",
 )
 
 go_mod_tidy_test(
     name = "go_mod_tidy_test",
-    srcs = ["//:repo_files"],
-    go_mod = "//:go.mod",
-    go_sum = "//:go.sum",
-    proxy = "@go_mod_proxy//:proxy",
+    srcs = [":repo_files"],
+    go_mod = ":go.mod",
+    go_sum = ":go.sum",
+    proxy = "@agent_capacity_go_mod_proxy//:proxy",
 )
 
 # CI runs the live vulnerability scan and retains its SARIF report.
 govulncheck(
     name = "govulncheck",
     srcs = GO_TARGETS,
-    go_mod = "//:go.mod",
-    go_sum = "//:go.sum",
-    proxy = "@go_mod_proxy//:proxy",
+    go_mod = ":go.mod",
+    go_sum = ":go.sum",
+    proxy = "@agent_capacity_go_mod_proxy//:proxy",
 )
 
 # Mutation testing runs in full, on pushes to main and nightly only. The target
@@ -94,9 +94,9 @@ gomutants_test(
         "--timeout-min=20s",
         "--test-flags=-failfast",
     ],
-    go_mod = "//:go.mod",
-    go_sum = "//:go.sum",
-    proxy = "@go_mod_proxy//:proxy",
+    go_mod = ":go.mod",
+    go_sum = ":go.sum",
+    proxy = "@agent_capacity_go_mod_proxy//:proxy",
     tags = ["manual"],
     # Windows does not enforce Unix mode bits. Mutation testing runs only
     # on Linux and macOS, so tests can detect file permission changes.
@@ -111,84 +111,85 @@ gomutants_test(
 gobco_test(
     name = "agent_capacity_gobco_test",
     data = ["//factory/agent-capacity/cmd/agent-capacity:testdata/agy-usage.json"],
-    go_mod = "//:go.mod",
-    go_sum = "//:go.sum",
-    proxy = "@go_mod_proxy//:proxy",
+    go_mod = ":go.mod",
+    go_sum = ":go.sum",
+    proxy = "@agent_capacity_go_mod_proxy//:proxy",
     tests = ["//factory/agent-capacity/cmd/agent-capacity:agent-capacity_test"],
 )
 
 gobco_test(
     name = "capacity_gobco_test",
-    go_mod = "//:go.mod",
-    go_sum = "//:go.sum",
-    proxy = "@go_mod_proxy//:proxy",
+    go_mod = ":go.mod",
+    go_sum = ":go.sum",
+    proxy = "@agent_capacity_go_mod_proxy//:proxy",
     tests = ["//factory/agent-capacity/internal/capacity:capacity_test"],
 )
 
 gobco_test(
     name = "keepalive_gobco_test",
     data = ["//factory/agent-capacity/internal/keepalive:testdata/stops.json"],
-    go_mod = "//:go.mod",
-    go_sum = "//:go.sum",
-    proxy = "@go_mod_proxy//:proxy",
+    go_mod = ":go.mod",
+    go_sum = ":go.sum",
+    proxy = "@agent_capacity_go_mod_proxy//:proxy",
     tests = ["//factory/agent-capacity/internal/keepalive:keepalive_test"],
 )
 
 gobco_test(
     name = "export_gobco_test",
-    go_mod = "//:go.mod",
-    go_sum = "//:go.sum",
-    proxy = "@go_mod_proxy//:proxy",
+    go_mod = ":go.mod",
+    go_sum = ":go.sum",
+    proxy = "@agent_capacity_go_mod_proxy//:proxy",
     tests = ["//factory/agent-capacity/internal/export:export_test"],
 )
 
 gobco_test(
     name = "codex_gobco_test",
-    go_mod = "//:go.mod",
-    go_sum = "//:go.sum",
-    proxy = "@go_mod_proxy//:proxy",
+    go_mod = ":go.mod",
+    go_sum = ":go.sum",
+    proxy = "@agent_capacity_go_mod_proxy//:proxy",
     tests = ["//factory/agent-capacity/internal/source/codex:codex_test"],
 )
 
 gobco_test(
     name = "session_gobco_test",
-    go_mod = "//:go.mod",
-    go_sum = "//:go.sum",
-    proxy = "@go_mod_proxy//:proxy",
+    go_mod = ":go.mod",
+    go_sum = ":go.sum",
+    proxy = "@agent_capacity_go_mod_proxy//:proxy",
     tests = ["//factory/agent-capacity/internal/session:session_test"],
 )
 
 gobco_test(
     name = "spool_gobco_test",
-    go_mod = "//:go.mod",
-    go_sum = "//:go.sum",
-    proxy = "@go_mod_proxy//:proxy",
+    go_mod = ":go.mod",
+    go_sum = ":go.sum",
+    proxy = "@agent_capacity_go_mod_proxy//:proxy",
     tests = ["//factory/agent-capacity/internal/spool:spool_test"],
 )
 
 gobco_test(
     name = "claude_gobco_test",
-    go_mod = "//:go.mod",
-    go_sum = "//:go.sum",
-    proxy = "@go_mod_proxy//:proxy",
+    go_mod = ":go.mod",
+    go_sum = ":go.sum",
+    proxy = "@agent_capacity_go_mod_proxy//:proxy",
     tests = ["//factory/agent-capacity/internal/source/claude:claude_test"],
 )
 
 gobco_test(
     name = "agy_gobco_test",
     data = ["//factory/agent-capacity/internal/source/agy:testdata/usage-data.json"],
-    go_mod = "//:go.mod",
-    go_sum = "//:go.sum",
-    proxy = "@go_mod_proxy//:proxy",
+    go_mod = ":go.mod",
+    go_sum = ":go.sum",
+    proxy = "@agent_capacity_go_mod_proxy//:proxy",
     tests = ["//factory/agent-capacity/internal/source/agy:agy_test"],
 )
 
 format_test(
     name = "go_format_test",
     srcs = [
+        ":.golangci.yml",
+        ":go.mod",
         ":repo_files",
-        "//:.golangci.yml",
-        "//:go.mod",
     ],
     formatters = ["@tbhb_rules_go//:golangci_fmt"],
+    strip_prefix = "factory/agent-capacity",
 )

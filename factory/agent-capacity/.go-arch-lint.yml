@@ -1,0 +1,60 @@
+# SPDX-License-Identifier: Apache-2.0
+# Copyright Tony Burns
+
+# cspell:words creack stretchr
+
+---
+# The command wires sources to the capacity model and metrics export.
+version: 3
+
+allow:
+  depOnAnyVendor: false
+  deepScan: false
+
+components:
+  cmd: {in: cmd/agent-capacity}
+  capacity: {in: internal/capacity}
+  keepalive: {in: internal/keepalive}
+  spool: {in: internal/spool}
+  session: {in: internal/session}
+  claude: {in: internal/source/claude}
+  agy: {in: internal/source/agy}
+  export: {in: internal/export}
+  codex: {in: internal/source/codex}
+
+vendors:
+  otel: {in: go.opentelemetry.io/otel/**}
+  otel-root: {in: go.opentelemetry.io/otel}
+  testify: {in: github.com/stretchr/testify/**}
+  pty: {in: github.com/creack/pty}
+  sys: {in: golang.org/x/sys/**}
+
+# go-arch-lint requires a non-empty dependency list for each component.
+deps:
+  cmd:
+    mayDependOn: [cmd, capacity, export, codex, spool, claude, agy, session]
+    canUse: [otel, otel-root, testify]
+  capacity:
+    mayDependOn: [capacity]
+    canUse: [testify]
+  keepalive:
+    mayDependOn: [keepalive]
+    canUse: [testify]
+  export:
+    mayDependOn: [capacity, export]
+    canUse: [otel, testify]
+  codex:
+    mayDependOn: [capacity, codex, spool]
+    canUse: [testify]
+  session:
+    mayDependOn: [session, spool]
+    canUse: [pty, sys]
+  spool:
+    mayDependOn: [spool, capacity]
+    canUse: [testify]
+  claude:
+    mayDependOn: [claude, spool, capacity]
+    canUse: [testify]
+  agy:
+    mayDependOn: [agy, spool, capacity]
+    canUse: [testify]

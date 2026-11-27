@@ -480,13 +480,20 @@
     "@@tbhb_rules_go+//:extensions.bzl%go_mod_proxy": {
       "general": {
         "bzlTransitiveDigest": "d+aJfWyHtvw15XRr3GCXF8ABJb7tZ9TtQRIX66t8F8g=",
-        "usagesDigest": "R0DXwHWJ6lrcVH6FhDXNmTr8n+04TMlh/A4yYxObuaw=",
+        "usagesDigest": "DvuB3dapEeQwsUBC8a5VV2BoOlvulsmi69A3JEHhRaA=",
         "recordedInputs": [],
         "generatedRepoSpecs": {
           "go_mod_proxy": {
             "repoRuleId": "@@tbhb_rules_go+//private:go_mod_proxy.bzl%go_mod_proxy_repo",
             "attributes": {
               "go_sum": "@@//:go.sum",
+              "proxy_url": "https://proxy.golang.org"
+            }
+          },
+          "agent_capacity_go_mod_proxy": {
+            "repoRuleId": "@@tbhb_rules_go+//private:go_mod_proxy.bzl%go_mod_proxy_repo",
+            "attributes": {
+              "go_sum": "@@//factory/agent-capacity:go.sum",
               "proxy_url": "https://proxy.golang.org"
             }
           },

@@ -407,8 +407,9 @@ jobs:
         run: |
           scratch="$RUNNER_TEMP/vendored"
           mkdir "$scratch"
-          cp go.mod go.sum "$scratch/"
-          bazel run --config=ci @rules_go//go -- -C "$GITHUB_WORKSPACE" mod vendor -o "$scratch/vendor"
+          cp factory/agent-capacity/go.{mod,sum} "$scratch/"
+          GOWORK=off bazel run --config=ci @rules_go//go -- \
+            -C "$GITHUB_WORKSPACE/factory/agent-capacity" mod vendor -o "$scratch/vendor"
 
       - name: Scan Go module dependencies
         working-directory: tmp/gomodscan

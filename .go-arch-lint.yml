@@ -15,15 +15,6 @@ allow:
 components:
   # front: {in: "**/front/**"}
   # lib: {in: lib/**}
-  agent-capacity-cmd: {in: factory/agent-capacity/cmd/agent-capacity}
-  agent-capacity-capacity: {in: factory/agent-capacity/internal/capacity}
-  agent-capacity-keepalive: {in: factory/agent-capacity/internal/keepalive}
-  agent-capacity-spool: {in: factory/agent-capacity/internal/spool}
-  agent-capacity-session: {in: factory/agent-capacity/internal/session}
-  agent-capacity-claude: {in: factory/agent-capacity/internal/source/claude}
-  agent-capacity-agy: {in: factory/agent-capacity/internal/source/agy}
-  agent-capacity-export: {in: factory/agent-capacity/internal/export}
-  agent-capacity-codex: {in: factory/agent-capacity/internal/source/codex}
   metrics-cmd: {in: factory/github-metrics/cmd/github-metrics}
   metrics-appauth: {in: factory/github-metrics/internal/appauth}
   metrics-backfill: {in: factory/github-metrics/internal/backfill}
@@ -40,10 +31,6 @@ components:
 vendors:
   bbolt: {in: [go.etcd.io/bbolt, go.etcd.io/bbolt/errors]}
   otel: {in: go.opentelemetry.io/otel/**}
-  otel-root: {in: go.opentelemetry.io/otel}
-  testify: {in: github.com/stretchr/testify/**}
-  pty: {in: github.com/creack/pty}
-  sys: {in: golang.org/x/sys/**}
   otlp: {in: go.opentelemetry.io/proto/otlp/**}
   protobuf: {in: google.golang.org/protobuf/proto}
 
@@ -52,41 +39,6 @@ deps:
   #   mayDependOn: [lib]
   # lib:
   #   mayDependOn: [lib]
-  agent-capacity-cmd:
-    mayDependOn:
-      - agent-capacity-agy
-      - agent-capacity-capacity
-      - agent-capacity-claude
-      - agent-capacity-cmd
-      - agent-capacity-codex
-      - agent-capacity-export
-      - agent-capacity-session
-      - agent-capacity-spool
-    canUse: [otel, otel-root, testify]
-  agent-capacity-capacity:
-    mayDependOn: [agent-capacity-capacity]
-    canUse: [testify]
-  agent-capacity-keepalive:
-    mayDependOn: [agent-capacity-keepalive]
-    canUse: [testify]
-  agent-capacity-export:
-    mayDependOn: [agent-capacity-capacity, agent-capacity-export]
-    canUse: [otel, testify]
-  agent-capacity-codex:
-    mayDependOn: [agent-capacity-capacity, agent-capacity-codex, agent-capacity-spool]
-    canUse: [testify]
-  agent-capacity-session:
-    mayDependOn: [agent-capacity-session, agent-capacity-spool]
-    canUse: [pty, sys]
-  agent-capacity-spool:
-    mayDependOn: [agent-capacity-spool, agent-capacity-capacity]
-    canUse: [testify]
-  agent-capacity-claude:
-    mayDependOn: [agent-capacity-claude, agent-capacity-spool, agent-capacity-capacity]
-    canUse: [testify]
-  agent-capacity-agy:
-    mayDependOn: [agent-capacity-agy, agent-capacity-spool, agent-capacity-capacity]
-    canUse: [testify]
   metrics-cmd:
     mayDependOn:
       - metrics-appauth

@@ -2,7 +2,7 @@
 
 `agent-capacity` reads plan usage windows for Claude Code, Codex, and Antigravity from passive local sources and exports them as OpenTelemetry metrics. At startup, the registry includes the Claude status-line source and the Antigravity and Codex probe sources and adds the Codex rollout source when `--codex-home` or `CODEX_HOME` supplies a home directory. `--claude-transcripts` or `AGENT_CAPACITY_CLAUDE_TRANSCRIPTS` adds the Claude transcript source.
 
-Supported platforms include Linux (amd64 and arm64) and macOS (arm64). The [root module](../../go.mod) declares the Go dependencies.
+Supported platforms include Linux (amd64 and arm64) and macOS (arm64). The [Go module](go.mod) declares the project's dependencies.
 
 ```sh
 bazelisk build //factory/agent-capacity/cmd/agent-capacity
