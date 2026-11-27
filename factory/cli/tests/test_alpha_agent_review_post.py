@@ -405,6 +405,20 @@ def test_host_refuses_invalid_schema_two_drafts(
         review_post.validate(sub)
 
 
+def test_host_refuses_an_invalid_rendered_review(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    text = document()
+    assert review.check_document(text, 7, lint=False) == []
+    sub = review_post.Submission(
+        "github.com/o/r", 7, text, HEAD, f"{STAMP} text", document=True
+    )
+    api = Api(monkeypatch)
+    with pytest.raises(review_post.PostRefusedError, match="Write Verification"):
+        review_post.create(sub, MINTED)
+    assert api.calls == []
+
+
 @pytest.mark.parametrize(
     "pull",
     [reply(200, {"head": {"sha": "b" * 40}}), reply(200, {}), reply(200, [])],
@@ -543,19 +557,14 @@ def test_review_attribution(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> 
     [
         (Harness.CODEX, "gpt-6.2-sol", "xhigh", "effort=xhigh;harness=codex;"),
         (Harness.CLAUDE, "claude-opus-5-5", "high", "effort=high;harness=claude-code;"),
-        (
-            Harness.AGY,
-            "gemini-3.8-flash-low",
-            "auto",
-            "effort=low;harness=antigravity;",
-        ),
+        (Harness.AGY, "gemini-3.8-flash-low", "auto", None),
         (
             Harness.AGY,
             "gemini-3.8-flash-low",
             "high",
             "effort=low;harness=antigravity;",
         ),
-        (Harness.AGY, "gemini-unknown", "auto", "LLM harness=antigravity;"),
+        (Harness.AGY, "gemini-unknown", "high", "LLM harness=antigravity;"),
         (Harness.CODEX, "gpt-6.2-sol", "auto", None),
         (Harness.CLAUDE, "claude-opus-5-5", "auto", None),
         (Harness.AGY, "gemini-3.8-flash-low", "typo", None),
@@ -569,7 +578,7 @@ def test_review_launch_and_post_share_the_effort_rule(  # noqa: PLR0913, PLR0917
     effort: str,
     expected: str | None,
 ) -> None:
-    run, _ = make(tmp_path, draft())
+    run, prepared = make(tmp_path, draft())
     request = replace(
         run.request,
         harness=harness,
@@ -584,8 +593,11 @@ def test_review_launch_and_post_share_the_effort_rule(  # noqa: PLR0913, PLR0917
         message = f"request effort {effort!r} is unsupported for {harness.value}"
         with pytest.raises(Invalid, match=message):
             requests.validate(run.request, host_allows_unsandboxed=False)
-        with pytest.raises(review_post.PostRefusedError, match=message):
-            review_post.stamp(run)
+        monkeypatch.setattr(credentials, "review_post_token", mint_token)
+        api = Api(monkeypatch)
+        assert not review_post.posted(run, prepared)
+        assert run.files.path("log").read_text() == f"review not posted: {message}\n"
+        assert api.calls == []
     else:
         requests.validate(run.request, host_allows_unsandboxed=False)
         assert expected in review_post.stamp(run)

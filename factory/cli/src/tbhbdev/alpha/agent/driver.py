@@ -371,24 +371,36 @@ def checked_prompt(args: argparse.Namespace) -> str:
     if not prompt and version_heal.retrying():
         message = f"{args.prompt_file}: brief is empty after the driver restarted"
         raise Invalid(message)
+    pinned_refs = (args.ref,) if args.ref and args.ref.startswith("refs/") else ()
+    available_refs = [*args.fetch_ref, *pinned_refs]
     problems = brief.check_hooks(prompt)
     problems.extend(
         rules.prompt_launch_problems(
-            prompt, Profile(args.profile), args.fetch_ref, args.start_ref
+            prompt, Profile(args.profile), available_refs, args.start_ref
         )
     )
     if problems:
         telemetry.attributes(**{"tbhb.agent.outcome": "refused"})
         message = "\n".join(f"{args.prompt_file}: {problem}" for problem in problems)
         raise Invalid(message)
+    malformed_refs = rules.malformed_prompt_refs(prompt)
     for warning in brief.branch_warnings(
-        prompt, run=args.name, fetch_refs=tuple(args.fetch_ref)
+        prompt,
+        run=args.name,
+        fetch_refs=tuple(args.fetch_ref),
+        ignored_refs=(*pinned_refs, *malformed_refs),
     ):
         print(f"warning: {args.prompt_file}: {warning}", file=sys.stderr)
-    for ref in rules.unfetched_prompt_refs(prompt, args.fetch_ref):
+    for ref in malformed_refs:
         print(
-            f"warning: the prompt names {ref} but this launch has no "
-            f"--fetch-ref {ref}; a run whose mirror lacks it may end with no work",
+            f"warning: {args.prompt_file}: malformed ref {ref!r} in the prompt",
+            file=sys.stderr,
+        )
+    for ref in rules.unfetched_prompt_refs(prompt, available_refs):
+        print(
+            f"warning: {args.prompt_file}: the prompt names {ref} but this launch "
+            f"has no --fetch-ref {ref}; "
+            "a run whose mirror lacks it may end with no work",
             file=sys.stderr,
         )
     return prompt

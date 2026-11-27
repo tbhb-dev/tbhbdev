@@ -34,12 +34,21 @@ _UPDATE = re.compile(
 
 
 def unfetched_prompt_refs(prompt: str, fetch_refs: list[str]) -> list[str]:
-    """Return refs missing from the fetch list in order of first mention."""
+    """Return valid refs missing from the fetch list in order of first mention."""
     return [
         ref
         for ref in dict.fromkeys(_PROMPT_REF.findall(prompt))
-        if ref not in fetch_refs
+        if ref not in fetch_refs and request.valid_fetch_ref(ref)
     ]
+
+
+def malformed_prompt_refs(prompt: str) -> tuple[str, ...]:
+    """Return malformed full ref names recognized in the prompt."""
+    return tuple(
+        ref
+        for ref in dict.fromkeys(_PROMPT_REF.findall(prompt))
+        if not request.valid_fetch_ref(ref)
+    )
 
 
 def _instructions(pattern: re.Pattern[str], prose: str) -> list[str | None]:
@@ -61,7 +70,11 @@ def _unfetched_explicit_refs(
     explicit.extend(
         f"refs/heads/{ref}" for ref in named_refs if ref and ref.startswith("agent/")
     )
-    return [ref for ref in dict.fromkeys(explicit) if ref not in fetch_refs]
+    return [
+        ref
+        for ref in dict.fromkeys(explicit)
+        if ref not in fetch_refs and request.valid_fetch_ref(ref)
+    ]
 
 
 def prompt_launch_problems(
@@ -72,7 +85,12 @@ def prompt_launch_problems(
     prose = "\n".join(
         " ".join(block.split()) for block in brief.PROSE_BREAK.split(prompt)
     )
-    updates = _instructions(_UPDATE, prose)
+    updates = [
+        target
+        for target in _instructions(_UPDATE, prose)
+        if target is None
+        or request.valid_fetch_ref(f"refs/heads/{target.removeprefix('refs/heads/')}")
+    ]
     named_refs = _instructions(_REF_USE, prose) + updates
     problems = [
         f"the brief names {ref}. Add `--fetch-ref {ref}`"

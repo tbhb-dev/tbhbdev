@@ -1368,11 +1368,36 @@ def test_prompt_warns_about_unfetched_refs_and_launches(
     assert capsys.readouterr() == (
         "sample: launched host=example-linux account=agent\n",
         "".join(
-            f"warning: the prompt names {ref} but this launch has no "
+            f"warning: {remote.prompt}: the prompt names {ref} but this launch has no "
             f"--fetch-ref {ref}; a run whose mirror lacks it may end with no work\n"
             for ref in unfetched
         ),
     )
+
+
+@pytest.mark.parametrize(
+    ("ref", "pinned"),
+    [
+        ("refs/heads/x/", False),
+        ("refs/heads/x//y", False),
+        ("refs/pull/5/head", True),
+        ("refs/heads/agent/topic", True),
+        ("refs/tags/topic", True),
+    ],
+)
+def test_ref_warning_malformed_and_pinned(
+    remote: Remote, capsys: pytest.CaptureFixture[str], ref: str, *, pinned: bool
+) -> None:
+    remote.prompt.write_text(f"Run `git checkout {ref}`. See `{ref}`.\n")
+    if pinned:
+        remote.configure(refs=f"{COMMIT}\t{ref}\n")
+        assert launch(remote, "--profile", "review", "--ref", ref) == 0
+        assert capsys.readouterr().err == ""
+    else:
+        assert launch(remote) == 0
+        assert capsys.readouterr().err == (
+            f"warning: {remote.prompt}: malformed ref {ref!r} in the prompt\n"
+        )
 
 
 @pytest.mark.parametrize(

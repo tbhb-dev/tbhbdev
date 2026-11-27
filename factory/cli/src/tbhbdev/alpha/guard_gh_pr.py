@@ -42,10 +42,8 @@ post a COMMENT review instead:
                                       -f/-F/--field/--raw-field) whose fields
                                       hold event=APPROVE; also .../reviews/ID/events
 
-Approval comes only from ``tbhb-approve REPO N SHA``. The commissioning session
-may run it after a separate agent run or subagent reviews the pull request.
-The run host posts a review run's GO as an approval when the head matches the
-pinned commit.
+Review runs post the approving review through the run host. The host posts a
+GO verdict as an approval when the pull request head matches the pinned commit.
 
 Allowing prints nothing. The hook fails open: unreadable input or any crash
 allows the command and prints nothing, because a broken hook must never stop
@@ -120,8 +118,8 @@ TEMPLATE = ".github/PULL_REQUEST_TEMPLATE.md"
 
 GH_RULE = (
     "An agent can't approve a pull request through gh, whoever opened it. "
-    "Approval comes only from `tbhb-approve`, run by the coordinator. "
-    "Post the verdict as a COMMENT review instead"
+    "Review runs post the approving review. "
+    "Use a COMMENT review to leave feedback directly."
 )
 # gh pr review's flags that take a value; the next word is not the PR.
 REVIEW_VALUE_FLAGS = {"-b", "--body", "-F", "--body-file", "-R", "--repo"}
@@ -594,13 +592,15 @@ def changes_directory(words: list[str]) -> bool:
 
 
 def approvals(text: str, cwd: Path | None) -> list[Approval]:
-    """Every gh approval route in a shell command."""
+    """Every blocked approval route in a shell command."""
     found: list[Approval] = []
     moved = False  # pragma: no mutate -- None is as falsy as False here
     for prefix, words in simple_commands(text):
         program = program_of(words)
         if program == "gh":
             match = gh_approval(words[1:], default_repo(prefix, cwd, moved=moved))
+        elif program.partition("-") == ("tbhb", "-", "approve"):
+            match = Approval("the retired approval command", None)
         else:
             moved = moved or changes_directory(words)
             continue
@@ -697,14 +697,14 @@ def decision(message: str, *, antigravity: bool) -> Json:
 
 
 def approval_message(data: Json, text: str) -> str | None:
-    """The deny message for the first gh approval in ``text``, or None."""
+    """The deny message for the first blocked approval in ``text``, or None."""
     try:
         found = approvals(text, hook_cwd(data))
     except Exception:  # noqa: BLE001  # fail open on any crash
         return None
     if not found:
         return None
-    return f"{GH_RULE}: it refuses {found[0].route}."
+    return f"{GH_RULE} The hook blocks {found[0].route}."
 
 
 def main() -> int:
