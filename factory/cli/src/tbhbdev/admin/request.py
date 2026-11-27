@@ -1,17 +1,19 @@
-"""One policy check, one uncached restricted token, one bounded REST call."""
+"""Apply policy and audit bounded REST calls with uncached restricted tokens."""
 
 import json
 import os
 import re
 import stat
-from dataclasses import dataclass, field
+import tomllib
+from dataclasses import dataclass, field, replace
+from importlib.resources import files
 from pathlib import Path
 from typing import NamedTuple, cast
 
 import httpx2
 
 from tbhbdev import github_tls, secrets
-from tbhbdev.admin import policy
+from tbhbdev.admin import approvals, policy
 from tbhbdev.admin.audit import Audit, RefusedError, record
 from tbhbdev.alpha import gh_app
 
@@ -101,9 +103,13 @@ def redact(text: str, token: str, key: str) -> str:
 
 
 def send(
-    runtime: Runtime, method: str, path: str, body: bytes, decision: policy.Decision
-) -> tuple[int, str]:
-    target, permissions = scope(decision, method)
+    runtime: Runtime,
+    method: str,
+    path: str,
+    body: bytes,
+    access: tuple[str, dict[str, str]],
+) -> tuple[int, str, bool]:
+    target, permissions = access
     key = private_key(runtime)
     try:
         minted = gh_app.mint_token(
@@ -137,9 +143,9 @@ def send(
             if response.is_redirect:
                 msg = "redirect_refused"
                 raise RefusedError(msg)
-            return response.status_code, redact(
-                data.decode(errors="replace"), minted.token, key
-            )
+            text = data.decode(errors="replace")
+            redacted = redact(text, minted.token, key)
+            return response.status_code, redacted, redacted != text
     except gh_app.GhAppError, httpx2.HTTPError:
         msg = "request_failed"
         raise RefusedError(msg) from None
@@ -233,6 +239,51 @@ def keep_environment(runtime: Runtime, path: str, body: object, reason: str) -> 
         raise RefusedError(msg)
 
 
+def load_approvals() -> tuple[approvals.Approval, ...]:
+    try:
+        document = files("tbhbdev.admin").joinpath("approved_changes.toml")
+        with document.open("rb") as source:
+            return tuple(
+                approvals.Approval(**row)
+                for row in tomllib.load(source).get("approval", [])
+            )
+    except OSError, ValueError, TypeError:
+        return ()
+
+
+def read_ruleset(runtime: Runtime, path: str, reason: str) -> object:
+    decision = policy.check("GET", path)
+    entry = record("GET", decision, reason, b"", path)
+    runtime.audit.append(entry)
+    try:
+        # GitHub only returns bypass actors to a caller with write access.
+        status, text, was_redacted = send(
+            runtime, "GET", path, b"", scope(decision, "PUT")
+        )
+    except RefusedError as exc:
+        runtime.audit.append({**entry, "phase": "after", "code": str(exc)})
+        return None
+    runtime.audit.append({**entry, "phase": "after", "status": status})
+    if status != HTTP_OK or was_redacted:
+        return None
+    try:
+        return cast("object", json.loads(text))
+    except ValueError, RecursionError:
+        return None
+
+
+def ruleset_decisions(
+    runtime: Runtime, wire: str, path: str, body: object, reason: str
+) -> tuple[str, ...]:
+    if not re.fullmatch(rf"{policy.REPO}/rulesets/[0-9]+", path):
+        return ()
+    entries = approvals.for_path(path, load_approvals())
+    if not entries:
+        return ()
+    current = read_ruleset(runtime, wire, reason)
+    return approvals.approved_decisions(path, current, body, entries)
+
+
 def call(  # noqa: PLR0913  # Explicit one-call inputs and optional dry run.
     runtime: Runtime,
     method: str,
@@ -251,7 +302,19 @@ def call(  # noqa: PLR0913  # Explicit one-call inputs and optional dry run.
     )
     # fold=None survives: None is as falsy as False.
     wire = policy.normalize(path, fold=False)  # pragma: no mutate
+    decisions: tuple[str, ...] = ()
+    if not dry_run and method == "PUT" and decision.code == "protection_weakening":
+        decisions = ruleset_decisions(runtime, wire, decision.path, body, reason)
+        if decisions:
+            decision = replace(
+                decision,
+                allowed=True,
+                code="allowed",
+                permission=policy.permission_for(decision.path),
+            )
     entry = record(method, decision, reason, encoded, wire)
+    if decisions:
+        entry["approval_decisions"] = decisions
     runtime.audit.append(entry)
     if not decision.allowed:
         raise RefusedError(decision.code)
@@ -260,7 +323,9 @@ def call(  # noqa: PLR0913  # Explicit one-call inputs and optional dry run.
     try:
         if method == "PUT" and policy.ENVIRONMENT.fullmatch(decision.path):
             keep_environment(runtime, wire, body, reason)
-        status, response = send(runtime, method, wire, encoded, decision)
+        status, response, _ = send(
+            runtime, method, wire, encoded, scope(decision, method)
+        )
     except RefusedError as exc:
         runtime.audit.append({**entry, "phase": "after", "code": str(exc)})
         raise
