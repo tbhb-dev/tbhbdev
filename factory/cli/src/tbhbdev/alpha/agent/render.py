@@ -26,15 +26,12 @@ CODEX_SUBAGENTS = (
     'that omits `fork_turns` or sets it to `"all"`.'
 )
 BUILD_PUBLICATION = (
-    "Commit your changes locally. "
+    "Push your `agent/` branch with `git push --set-upstream origin HEAD`. "
     "If this run should open a pull request, write a draft at the repository's "
     "default draft path and set its `base` frontmatter field. To find the "
     "repository's default branch, run "
     "`gh repo view --json defaultBranchRef --jq .defaultBranchRef.name`. "
-    "Push your `agent/` branch with "
-    "`git -c credential.helper= -c 'credential.helper=!gh auth git-credential' "
-    "push --set-upstream origin HEAD`. Then run `tbhbdev alpha pr create` "
-    "with your draft."
+    "Then run `tbhbdev alpha pr create` with your draft."
 )
 REVIEW_PUBLICATION = (
     "Use the pull request number for N. Run `tbhbdev alpha review draft N`, "
@@ -79,7 +76,7 @@ def brief(
             f"```\n{text}"
         )
     elif profile is Profile.BUILD:
-        text = f"{BUILD_PUBLICATION}\n{text}"
+        text = f"Commit your changes locally. {BUILD_PUBLICATION}\n{text}"
     elif profile is Profile.REVIEW:
         text = f"{REVIEW_PUBLICATION}\n{text}"
     return f"{FINAL_ONLY}\n{text}" if kind is RunKind.EXEC else text

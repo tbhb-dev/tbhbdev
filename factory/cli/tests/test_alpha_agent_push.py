@@ -409,11 +409,14 @@ def test_eligible_tips_orders_refs_and_ignores_existing_history(
     ]
 
 
+@pytest.mark.parametrize("start_ref", [None, START_REF])
 def test_existing_history_does_not_count_as_new_commits(
-    local_run: tuple[run_host.Run, run_host.Prepared, Path],
+    local_run: LocalRun, start_ref: str | None
 ) -> None:
     run, prepared, target = local_run
+    run.request = replace(run.request, start_ref=start_ref)
     workspace = Path(prepared.paths.worktree)
+    base = git(workspace, "rev-parse", "HEAD")
     git(workspace, "switch", "-c", "topic/existing")
     commit(workspace, "existing history")
     existing = git(workspace, "rev-parse", "HEAD")
@@ -421,7 +424,10 @@ def test_existing_history_does_not_count_as_new_commits(
     git(workspace, "switch", "agent/example")
 
     def switch(*_args: object) -> int:
-        git(workspace, "switch", "--detach", existing)
+        if start_ref is None:
+            git(workspace, "switch", "--detach", existing)
+        else:
+            git(workspace, "reset", "--hard", existing)
         refs = workspace / ".git" / "refs" / "heads"
         (refs / "stale.lock").write_text(existing)
         (refs / "invalid").write_text("invalid\n")
@@ -431,7 +437,9 @@ def test_existing_history_does_not_count_as_new_commits(
         assert push.run(run, prepared, stack, switch) == 0
     assert git(target, "for-each-ref") == ""
     assert not run.files.path("head").exists()
-    assert not run.files.path("log").exists()
+    assert_run_file(
+        run, "log", f"start ref: {start_ref} at {base}\n" if start_ref else None
+    )
 
 
 @pytest.mark.parametrize("start_ref", [None, START_REF])

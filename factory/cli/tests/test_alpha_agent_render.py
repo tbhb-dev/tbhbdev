@@ -17,7 +17,7 @@ def test_brief_and_launch() -> None:
     assert "set its `base` frontmatter field" in build
     assert "`gh repo view --json defaultBranchRef --jq .defaultBranchRef.name`" in build
     assert "Push your `agent/` branch" in build
-    assert "push --set-upstream origin HEAD" in build
+    assert "`git push --set-upstream origin HEAD`" in build
     assert "`tbhbdev alpha pr create` with your draft." in build
     assert ".github/PULL_REQUEST_DRAFT.md" not in build
     assert "driver" not in build
