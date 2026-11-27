@@ -7,6 +7,10 @@ from pathlib import Path
 
 from tbhbdev import version
 
+# Tests point this at a fake checkout. Patching __file__ instead would make
+# coverage file the module's code under the fake path.
+SOURCE = Path(__file__)
+
 
 def wheel_commit() -> str:
     try:
@@ -23,7 +27,7 @@ def wheel_commit() -> str:
 
 def tools_commit() -> str:
     try:
-        for checkout in Path(__file__).resolve().parents:
+        for checkout in SOURCE.resolve().parents:
             if (checkout / ".git").exists():
                 return subprocess.check_output(  # nosec B603 B607
                     ["git", "-C", str(checkout), "rev-parse", "HEAD"],
