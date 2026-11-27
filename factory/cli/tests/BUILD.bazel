@@ -22,6 +22,17 @@ load(":pytest.bzl", "cli_py_test")
 
 package(default_testonly = True)
 
+filegroup(
+    name = "agent_runfile_names_inputs",
+    srcs = [
+        "agent_driver_example.py",
+        "agent_example.py",
+        "//factory/cli/src/tbhbdev/alpha/agent:package_files",
+        "//factory/cli/src/tbhbdev/alpha/agent/decisions:package_files",
+    ],
+    visibility = ["//factory/cli/tests/unit/alpha/agent/decisions:__pkg__"],
+)
+
 cli_py_library(
     name = "agent_driver_example",
     srcs = ["agent_driver_example.py"],

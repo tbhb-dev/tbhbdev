@@ -23,12 +23,7 @@ cli_py_test(
 cli_py_test(
     name = "test_runfiles_names",
     srcs = ["test_runfiles_names.py"],
-    data = [
-        "//factory/cli/src/tbhbdev/alpha/agent:package_files",
-        "//factory/cli/src/tbhbdev/alpha/agent/decisions:package_files",
-        "//factory/cli/tests:agent_driver_example.py",
-        "//factory/cli/tests:agent_example.py",
-    ],
+    data = ["//factory/cli/tests:agent_runfile_names_inputs"],
     imports = ["../../../.."],
     deps = [
         "//factory/cli/src/tbhbdev/alpha/agent/decisions:runfiles_names",
