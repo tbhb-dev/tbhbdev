@@ -144,6 +144,7 @@ from jsonschema import Draft202012Validator
 from tbhbdev.alpha import identity as agent_identity
 from tbhbdev.alpha import opened, secret_scan, size_gate, tool_pins
 from tbhbdev.alpha import pull_request_frontmatter as frontmatter
+from tbhbdev.alpha.install import require_git_hooks
 from tbhbdev.alpha.repo import git as repo_git
 from tbhbdev.alpha.repo import hook_cwd, in_tbhb_dev, read_hook_stdin
 
@@ -2135,6 +2136,8 @@ def check_size(args: argparse.Namespace, checked: Checked) -> None:
 
 def command(args: argparse.Namespace, env: Mapping[str, str]) -> int:
     """Resolve the tools for check and create before running the subcommand."""
+    if args.command == "create" and not require_git_hooks(env):
+        return 1
     if args.command not in ("check", "create"):
         return _run_command(args, env)
     names = (COG, *(name for name, _, _ in LINTERS), GIT, SCC)
