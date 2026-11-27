@@ -1,0 +1,50 @@
+---
+- name: Verify
+  hosts: all
+  gather_facts: false
+  vars:
+    ansible_user: ops
+  tasks:
+    - name: Run the installed Python
+      ansible.builtin.command:
+        cmd: /home/ops/.local/bin/python3.14 -c "import sys; print(sys.version_info[:2])"
+      register: nas_python_version
+      changed_when: false
+
+    - name: Read the installed uv version
+      ansible.builtin.command:
+        cmd: /home/ops/.local/bin/uv --version
+      register: nas_python_uv
+      changed_when: false
+
+    # A wrong digest must stop the install before it puts anything in place.
+    - name: Run the install with a wrong checksum in an empty home
+      ansible.builtin.command:
+        argv:
+          - sh
+          - -c
+          - "{{ lookup('ansible.builtin.file', playbook_dir + '/../../files/install.sh') }}"
+          - nas-python
+          - apply
+          - 0.13.6
+          - "3.14"
+          - "{{ '0' * 64 }}"
+          - "{{ '0' * 64 }}"
+      environment:
+        HOME: /tmp/nas-python-bad-checksum
+      register: nas_python_bad
+      changed_when: false
+      failed_when: false
+
+    - name: Look for a uv from the bad run
+      ansible.builtin.stat:
+        path: /tmp/nas-python-bad-checksum/.local/bin/uv
+      register: nas_python_bad_uv
+
+    - name: Check the results
+      ansible.builtin.assert:
+        that:
+          - nas_python_version.stdout == '(3, 14)'
+          - nas_python_uv.stdout.startswith('uv 0.13.6')
+          - nas_python_bad.rc != 0
+          - not nas_python_bad_uv.stat.exists

@@ -1,0 +1,8 @@
+---
+# The table's file starts with a delete, so loading it again replaces the
+# table in one transaction.
+- name: Reload the CI VM egress table
+  ansible.builtin.systemd_service:
+    name: ci-vm-egress.service
+    state: reloaded
+  when: ci_vm_hardware and not (ansible_check_mode and ci_vm_egress_unit is changed)

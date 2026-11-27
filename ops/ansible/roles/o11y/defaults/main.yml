@@ -1,0 +1,9 @@
+---
+o11y_min_free_gib: 50
+o11y_health_retries: 30
+o11y_health_delay: 5
+# Empty hostname disables the sidecar; fixed addresses are independent.
+o11y_ts_hostname: ""
+o11y_fixed_addresses: "false"
+# Empty path disables the TLS proxy; certificates are provisioned separately.
+o11y_grafana_tls_cert_dir: ""

@@ -1,0 +1,316 @@
+#!/usr/bin/python3
+"""Refuse a job unless it runs a commit on the allowed branch of the allowed repository.
+
+The runner starts the job-guard.sh shim as ACTIONS_RUNNER_HOOK_JOB_STARTED, and
+the shim starts this guard. A nonzero exit fails the hook, but the runner's
+later steps with `if: always()` or `if: failure()` still run, so the exit
+status admits nothing. What admits a job is that the keys exist only after this
+guard writes them. The slot script offers the keys once, as base64 of a tar
+stream, on a FIFO that only the shim opens. The shim reads it to its end before
+anything else, and passes the stream to this guard on standard input, so a
+later step finds the FIFO empty. Only on admission does the guard write the
+keys into the job's own tmpfs, with mode 0600. A refused job gets no key.
+
+Every doubt refuses: a missing variable, a failed fetch, an unreadable settings
+file, a missing key and a parent that isn't the shim all exit nonzero. The
+guard dies with the shim, through PR_SET_PDEATHSIG, and keeps no key in a file
+while it verifies: the fetch key sits in a memory file, reached only through
+/proc/<pid>/fd, so no kill leaves it readable. It reads the allowed
+repository, reference, events and fetch settings from a JSON file in the job
+directory, which the container mounts read-only and no job can change.
+
+It runs under the runner image's Python, 3.12 on Ubuntu Noble, so a name that
+an annotation uses must exist at run time, since annotations there are
+evaluated when the function is defined.
+"""
+
+import base64
+import contextlib
+import ctypes
+import importlib
+import io
+import json
+import os
+import subprocess  # nosec B404 - runs git with a fixed argument list, no shell
+import sys
+import tarfile
+from collections.abc import Generator, Mapping, Sequence  # noqa: TC003 - Python 3.12 evaluates annotations at definition, so these must exist at run time
+from pathlib import Path
+from typing import IO, cast
+
+SETTINGS = Path("/etc/actions-runner/job/guard.json")
+# The keys' stream arrives on standard input, from the shim. The tmpfs starts
+# empty, owned by the job's user with mode 0700, for the keys of an admitted
+# job. It stays a fixed path, not a setting, like the shim's own paths.
+KEYS_DIR = Path("/run/job-secrets")
+# The keys' file names, which the deploy_runner role also writes.
+DEPLOY_KEY = "deploy-key"
+REPO_KEY = "repo-key"
+KEY_NAMES = (DEPLOY_KEY, REPO_KEY)
+# The slot script offers at most 16 KiB of files, about 28 KiB as base64 of a
+# padded tar stream, so this bound refuses anything that isn't its stream.
+MAX_STREAM = 64 * 1024
+GIT_TIMEOUT = 120
+SHA_LENGTH = 40
+HEX = "0123456789abcdef"
+PR_SET_PDEATHSIG = 1  # from <linux/prctl.h>
+# The calls below exist on Linux only, and the guard refuses every other platform.
+_linux_os = importlib.import_module("os")
+_linux_signal = importlib.import_module("signal")
+
+
+class RefusalError(Exception):
+    """A reason the job must not run."""
+
+
+def _shim_pid(argv: Sequence[str]) -> int:
+    """Return the shim's process ID, the first argument, or refuse."""
+    if len(argv) != 2:  # noqa: PLR2004 - the program name and the shim's PID
+        message = "expected the shim's process ID as the one argument"
+        raise RefusalError(message)
+    try:
+        return int(argv[1])
+    except ValueError as error:
+        message = f"the shim's process ID {argv[1]!r} is not a number"
+        raise RefusalError(message) from error
+
+
+def _check_shim(shim: int) -> None:
+    """Refuse unless the shim is still this process's parent."""
+    if os.getppid() != shim:
+        message = f"the parent is not the shim (process {shim})"
+        raise RefusalError(message)
+
+
+def _die_with_parent() -> None:
+    """Have the kernel kill this guard when its parent dies; refuse off Linux."""
+    if sys.platform != "linux":
+        message = "the guard can't tie its life to the shim on this platform"
+        raise RefusalError(message)
+    libc = ctypes.CDLL(None, use_errno=True)
+    if libc.prctl(PR_SET_PDEATHSIG, _linux_signal.SIGKILL, 0, 0, 0) != 0:
+        message = f"prctl(PR_SET_PDEATHSIG) failed: {os.strerror(ctypes.get_errno())}"
+        raise RefusalError(message)
+
+
+def _tie_to_shim(shim: int) -> None:
+    """Tie the guard's life to the shim, then check that the shim lives.
+
+    The check comes after the request, so a shim that died before it shows as a
+    changed parent.
+    """
+    _die_with_parent()
+    _check_shim(shim)
+
+
+def drain_secrets(stream: IO[bytes]) -> dict[str, bytes]:
+    """Read the stream to its end and return the keys by file name.
+
+    This comes first, whatever happens after it. The shim has already taken the
+    keys from the FIFO, so nothing here leaves one behind.
+    """
+    data = stream.read(MAX_STREAM + 1)
+    if len(data) > MAX_STREAM:
+        message = f"the keys' stream is longer than {MAX_STREAM} bytes"
+        raise RefusalError(message)
+    try:
+        # The shim joins the FIFO's lines, so there is no whitespace to skip.
+        raw = base64.b64decode(data, validate=True)
+    except ValueError as error:
+        message = f"the keys didn't decode: {error}"
+        raise RefusalError(message) from error
+    keys: dict[str, bytes] = {}
+    try:
+        with tarfile.open(fileobj=io.BytesIO(raw), mode="r:") as archive:
+            for member in archive:
+                name = member.name.removeprefix("./")
+                if member.isreg() and name in KEY_NAMES:
+                    # A regular member always has a file object.
+                    keys[name] = cast("IO[bytes]", archive.extractfile(member)).read()
+    except tarfile.TarError as error:
+        message = f"the keys didn't parse: {error}"
+        raise RefusalError(message) from error
+    missing = [name for name in KEY_NAMES if not keys.get(name)]
+    if missing:
+        message = f"missing or empty keys: {', '.join(missing)}"
+        raise RefusalError(message)
+    return keys
+
+
+def write_keys(keys: Mapping[str, bytes], directory: Path = KEYS_DIR) -> None:
+    """Write each key into directory with mode 0600, or leave nothing behind."""
+    written: list[Path] = []
+    try:
+        for name in KEY_NAMES:
+            target = directory / name
+            descriptor = os.open(target, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+            written.append(target)
+            with os.fdopen(descriptor, "wb") as handle:
+                handle.write(keys[name])
+    except OSError:
+        for target in written:
+            target.unlink(missing_ok=True)
+        raise
+
+
+def check_context(settings: Mapping[str, object], env: Mapping[str, str]) -> str:
+    """Return the job's commit, or raise RefusalError for a repository, ref or event."""
+    repository = env.get("GITHUB_REPOSITORY", "")
+    ref = env.get("GITHUB_REF", "")
+    event = env.get("GITHUB_EVENT_NAME", "")
+    sha = env.get("GITHUB_SHA", "")
+    reason = ""
+    if repository != settings["repository"]:
+        reason = f"repository {repository!r} is not {settings['repository']!r}"
+    elif ref != settings["ref"]:
+        reason = f"ref {ref!r} is not {settings['ref']!r}"
+    elif event not in settings["events"]:  # type: ignore[operator]
+        reason = f"event {event!r} is not one of {settings['events']!r}"
+    elif len(sha) != SHA_LENGTH or any(char not in HEX for char in sha):
+        reason = f"sha {sha!r} is not a full commit id"
+    if reason:
+        raise RefusalError(reason)
+    return sha
+
+
+def _kill_group(process: subprocess.Popen[str]) -> None:
+    """Kill the process group git started, with whatever ssh it left behind."""
+    with contextlib.suppress(ProcessLookupError):
+        _linux_os.killpg(process.pid, _linux_signal.SIGKILL)
+
+
+def _run(argv: list[str], env: dict[str, str]) -> subprocess.CompletedProcess[str]:
+    # Its own session, so that a timeout, and the end of the call, kill git and
+    # every ssh it started, whichever way they were running.
+    with subprocess.Popen(  # noqa: S603  # nosec B603 - fixed argv, no shell, the settings come from the read-only job mount
+        argv,
+        env=env,
+        start_new_session=True,
+        text=True,
+        stdin=subprocess.DEVNULL,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+    ) as process:
+        try:
+            stdout, stderr = process.communicate(timeout=GIT_TIMEOUT)
+        finally:
+            _kill_group(process)
+    return subprocess.CompletedProcess(argv, process.returncode, stdout, stderr)
+
+
+def _git(
+    settings: Mapping[str, str], key: Path, *args: str
+) -> subprocess.CompletedProcess[str]:
+    # -F /dev/null and the agent, control and timeout options keep the config
+    # files, the job's agent socket and any shared connection out of the fetch,
+    # and bound a stalled connection.
+    ssh = (
+        f"ssh -F /dev/null -i {key} -o IdentitiesOnly=yes -o IdentityAgent=none"
+        " -o BatchMode=yes -o ControlMaster=no -o ControlPath=none"
+        " -o ConnectTimeout=20 -o ServerAliveInterval=10 -o ServerAliveCountMax=3"
+        f" -o StrictHostKeyChecking=yes -o UserKnownHostsFile={settings['known_hosts']}"
+    )
+    env = {
+        "PATH": "/usr/bin:/bin",
+        "GIT_SSH_COMMAND": ssh,
+        "GIT_TERMINAL_PROMPT": "0",
+    }
+    return _run(["git", "--git-dir", settings["cache"], *args], env)
+
+
+def check_on_branch(settings: Mapping[str, str], key: Path, sha: str) -> None:
+    """Raise RefusalError unless sha is on the branch, as a read-only fetch shows."""
+    branch = settings["ref"].removeprefix("refs/heads/")
+    remote = f"refs/remotes/origin/{branch}"
+    if not Path(settings["cache"]).is_dir():
+        init = _run(
+            ["git", "init", "--bare", "--quiet", settings["cache"]],
+            {"PATH": "/usr/bin:/bin"},
+        )
+        if init.returncode != 0:
+            message = f"cannot create the cache: {init.stderr.strip()}"
+            raise RefusalError(message)
+    fetch = _git(
+        settings,
+        key,
+        "fetch",
+        "--quiet",
+        "--force",
+        settings["url"],
+        f"+{settings['ref']}:{remote}",
+    )
+    if fetch.returncode != 0:
+        message = f"cannot verify against origin/{branch}: {fetch.stderr.strip()}"
+        raise RefusalError(message)
+    ancestor = _git(settings, key, "merge-base", "--is-ancestor", sha, remote)
+    if ancestor.returncode != 0:
+        message = f"commit {sha} is not on origin/{branch}"
+        raise RefusalError(message)
+
+
+@contextlib.contextmanager
+def _memory_key(key: bytes) -> Generator[Path]:
+    """Yield a path to the key in a memory file, which closes when the block ends.
+
+    No directory entry holds the key, and the process's descriptor is the only
+    way to it, so a kill leaves nothing readable. ssh gets /proc/<pid>/fd/<n>,
+    which it opens and checks like a file. A pipe or /dev/fd/<n> would not do:
+    ssh may close inherited descriptors and reads the identity twice.
+    """
+    if sys.platform != "linux":
+        message = "the fetch key needs memfd_create, which this platform lacks"
+        raise RefusalError(message)
+    descriptor = _linux_os.memfd_create(REPO_KEY, _linux_os.MFD_CLOEXEC)
+    try:
+        view = memoryview(key)
+        while view:
+            view = view[os.write(descriptor, view) :]
+        os.fchmod(descriptor, 0o600)
+        yield Path(f"/proc/{os.getpid()}/fd/{descriptor}")
+    finally:
+        os.close(descriptor)
+
+
+def _verify(
+    keys: Mapping[str, bytes], settings: Mapping[str, str], env: Mapping[str, str]
+) -> None:
+    sha = check_context(settings, env)
+    with _memory_key(keys[REPO_KEY]) as key:
+        check_on_branch(settings, key, sha)
+
+
+def main(
+    argv: Sequence[str] | None = None,
+    env: Mapping[str, str] | None = None,
+    settings_path: Path = SETTINGS,
+    stream: IO[bytes] | None = None,
+    keys_dir: Path = KEYS_DIR,
+) -> int:
+    """Return 0 and write the keys to admit the job, or 1 with a reason on stderr."""
+    argv = sys.argv if argv is None else argv
+    env = os.environ if env is None else env
+    stream = sys.stdin.buffer if stream is None else stream
+    try:
+        shim = _shim_pid(argv)
+        _tie_to_shim(shim)
+        keys = drain_secrets(stream)
+        with settings_path.open(encoding="utf-8") as handle:
+            settings = json.load(handle)
+        _verify(keys, settings, env)
+        # The last check, and the last act before admission.
+        _check_shim(shim)
+        write_keys(keys, keys_dir)
+    except (
+        RefusalError,
+        OSError,
+        ValueError,
+        KeyError,
+        subprocess.SubprocessError,
+    ) as error:
+        sys.stderr.write(f"deploy-runner-job-guard: refusing the job: {error}\n")
+        return 1
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

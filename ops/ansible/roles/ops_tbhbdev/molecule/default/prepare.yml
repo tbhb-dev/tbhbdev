@@ -1,0 +1,25 @@
+---
+- name: Prepare
+  hosts: all
+  become: true
+  tasks:
+    - name: Prepare the isolated Connect endpoint lookup
+      ansible.builtin.include_tasks: "{{ playbook_dir }}/../../../../molecule/tasks/prepare-connect.yml"
+    - name: Create the recorded tools directory
+      ansible.builtin.file:
+        path: /home/ops/.local/share/uv/tools/tbhbdev/lib/tbhbdev-0.dist-info
+        state: directory
+        mode: '0700'
+    - name: Record the pinned tools commit
+      ansible.builtin.copy:
+        dest: /home/ops/.local/share/uv/tools/tbhbdev/lib/tbhbdev-0.dist-info/direct_url.json
+        content: '{"vcs_info": {"commit_id": "3bf88eef651da2b8a56b3c7fd82ffc9032828c84"}}'
+        mode: '0600'
+    - name: Stub mise with the pinned uv already installed
+      ansible.builtin.copy:
+        dest: /usr/local/bin/mise
+        content: |
+          #!/bin/sh
+          [ "$1" = where ] || exit 1
+          echo /opt/fixture/uv
+        mode: '0755'

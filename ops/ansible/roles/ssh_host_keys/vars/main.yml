@@ -1,0 +1,9 @@
+---
+# These derive from the account being handled, so the argument specs can't validate them.
+ssh_host_keys_home: "{{ ('/Users' if ansible_facts.system == 'Darwin' else '/home') + '/' + ssh_host_keys_user }}"
+ssh_host_keys_directory: "{{ ssh_host_keys_home }}/.ssh"
+ssh_host_keys_private_key: "{{ ssh_host_keys_directory }}/id_ed25519"
+ssh_host_keys_public_key: "{{ ssh_host_keys_private_key }}.pub"
+ssh_host_keys_known_hosts: "{{ ssh_host_keys_directory }}/known_hosts_tbhb"
+ssh_host_keys_config: "{{ ssh_host_keys_directory }}/config"
+ssh_host_keys_mesh_config: "{{ ssh_host_keys_directory }}/agent-mesh.conf"

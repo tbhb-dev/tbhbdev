@@ -1,0 +1,45 @@
+---
+- name: linux | Create the user unit directories
+  ansible.builtin.file:
+    path: "{{ agent_reconverge_identity.home }}/{{ item }}"
+    state: directory
+    owner: "{{ agent_reconverge_account }}"
+    group: "{{ agent_reconverge_identity.gid }}"
+    mode: "0700"
+  loop: [.config, .config/systemd, .config/systemd/user]
+
+- name: linux | Install the user units
+  ansible.builtin.template:
+    src: "{{ item }}.j2"
+    dest: "{{ agent_reconverge_identity.home }}/.config/systemd/user/{{ item }}"
+    owner: "{{ agent_reconverge_account }}"
+    group: "{{ agent_reconverge_identity.gid }}"
+    mode: "0644"
+  loop: [reconverge-agent.service, reconverge-agent.timer]
+  notify: Reload the agent reconverge timer
+
+- name: linux | Enable lingering for the reconverge account
+  ansible.builtin.command:
+    argv: [loginctl, enable-linger, "{{ agent_reconverge_account }}"]
+    creates: /var/lib/systemd/linger/{{ agent_reconverge_account }}
+
+- name: linux | Start the account user manager
+  ansible.builtin.systemd_service:
+    name: user@{{ agent_reconverge_identity.uid }}.service
+    state: started
+  when: not ansible_check_mode
+
+- name: linux | Load the changed reconverge units
+  ansible.builtin.meta: flush_handlers
+
+- name: linux | Enable and start the reconverge timer
+  become: true
+  become_user: "{{ agent_reconverge_account }}"
+  environment:
+    XDG_RUNTIME_DIR: /run/user/{{ agent_reconverge_identity.uid }}
+  ansible.builtin.systemd_service:
+    name: reconverge-agent.timer
+    scope: user
+    enabled: true
+    state: started
+  when: not ansible_check_mode

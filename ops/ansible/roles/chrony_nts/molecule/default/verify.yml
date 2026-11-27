@@ -1,0 +1,54 @@
+---
+- name: Verify
+  hosts: all
+  become: true
+  tasks:
+    - name: Read the NTS fragment
+      ansible.builtin.slurp:
+        src: /etc/chrony/conf.d/10-cloudflare-nts.conf
+      register: chrony_nts_fragment
+
+    - name: Stat the NTS fragment
+      ansible.builtin.stat:
+        path: /etc/chrony/conf.d/10-cloudflare-nts.conf
+      register: chrony_nts_fragment_stat
+
+    - name: Preview the role with an existing fragment
+      ansible.builtin.import_role:
+        name: chrony_nts
+      vars:
+        chrony_nts_run: false
+      check_mode: true
+
+    - name: Stat the NTS fragment after check mode
+      ansible.builtin.stat:
+        path: /etc/chrony/conf.d/10-cloudflare-nts.conf
+      register: chrony_nts_fragment_after_check
+
+    - name: Read the packaged configuration after convergence
+      ansible.builtin.stat:
+        path: /etc/chrony/chrony.conf
+      register: chrony_nts_packaged_config
+
+    - name: Read the saved packaged configuration
+      ansible.builtin.stat:
+        path: /var/tmp/chrony-nts-original.conf
+      register: chrony_nts_original_config
+
+    - name: Check the fragment and the packaged configuration
+      vars:
+        chrony_nts_expected: |
+          # Managed by ansible role chrony_nts
+          server time.cloudflare.com iburst nts
+      ansible.builtin.assert:
+        that:
+          - chrony_nts_fragment.content | b64decode == chrony_nts_expected
+          - chrony_nts_fragment_stat.stat.pw_name == 'root'
+          - chrony_nts_fragment_stat.stat.gr_name == 'root'
+          - chrony_nts_fragment_stat.stat.mode == '0644'
+          - chrony_nts_fragment_stat.stat.checksum == chrony_nts_fragment_after_check.stat.checksum
+          - chrony_nts_fragment_stat.stat.mtime == chrony_nts_fragment_after_check.stat.mtime
+          - chrony_nts_fragment_stat.stat.ctime == chrony_nts_fragment_after_check.stat.ctime
+          - chrony_nts_fragment_stat.stat.inode == chrony_nts_fragment_after_check.stat.inode
+          - chrony_nts_packaged_config.stat.checksum == chrony_nts_original_config.stat.checksum
+        quiet: true

@@ -1,0 +1,120 @@
+#!/usr/bin/env -S uv run --script
+# /// script
+# requires-python = ">=3.15"
+# dependencies = ["tbhbops"]
+#
+# [tool.uv.sources]
+# tbhbops = { path = "../packages/tbhbops", editable = true }
+# ///
+# cspell:ignore noout
+"""Install the pinned step-ca root in the macOS System keychain."""
+
+import re
+import sys
+import tempfile
+from pathlib import Path
+from subprocess import CalledProcessError  # nosec B404: exception type only
+
+from tbhbops.op_connect import run_subprocess
+
+REPOSITORY = Path(__file__).resolve().parents[1]
+ROOT = REPOSITORY / "apps/ca/roots/root_ca.crt"
+DEFAULTS = REPOSITORY / "ansible/roles/ca_client_trust/defaults/main.yml"
+SYSTEM_KEYCHAIN = "/Library/Keychains/System.keychain"
+SECURITY = "/usr/bin/security"
+SUDO = "/usr/bin/sudo"
+
+
+def succeeds(argv: list[str]) -> bool:
+    """Run a read-only local check with an absolute executable path."""
+    try:
+        run_subprocess(argv, None)
+    except CalledProcessError:
+        return False
+    return True
+
+
+def main() -> None:
+    """Check the root and local authorization before changing admin trust."""
+    print("Install the step-ca root on this Mac (run here with !)", flush=True)  # noqa: T201
+    if sys.platform != "darwin":
+        sys.exit("This command requires macOS.")
+
+    root_pem = ROOT.read_bytes()
+    if not re.fullmatch(
+        rb"-----BEGIN CERTIFICATE-----\r?\n[A-Za-z0-9+/=\r\n]+"
+        rb"-----END CERTIFICATE-----\r?\n?",
+        root_pem,
+    ):
+        sys.exit("The root file must contain exactly one PEM certificate.")
+    match = re.search(
+        r"^ca_client_trust_root_sha256:[ >-]*\n\s+((?:[0-9A-F]{2}:){31}[0-9A-F]{2})$",
+        DEFAULTS.read_text(encoding="utf-8"),
+        re.MULTILINE,
+    )
+    if match is None:
+        sys.exit("The CA trust defaults lack a valid ca_client_trust_root_sha256 pin.")
+    expected = match[1]
+    fingerprint = (
+        run_subprocess(
+            ["/usr/bin/openssl", "x509", "-noout", "-fingerprint", "-sha256"], root_pem
+        )
+        .decode()
+        .strip()
+        .split("=")[-1]
+    )
+    if fingerprint != expected:
+        sys.exit("The step-ca root does not match the pinned SHA-256 fingerprint.")
+
+    certs = (
+        run_subprocess(
+            [SECURITY, "find-certificate", "-a", "-Z", SYSTEM_KEYCHAIN], None
+        )
+        .decode()
+        .splitlines()
+    )
+    with tempfile.TemporaryDirectory() as directory:
+        root = Path(directory) / "root.crt"
+        root.write_bytes(root_pem)
+        verify = [
+            SECURITY,
+            "verify-cert",
+            "-q",
+            "-L",
+            "-l",
+            "-p",
+            "basic",
+            "-k",
+            SYSTEM_KEYCHAIN,
+            "-c",
+            str(root),
+        ]
+        system_hash = f"SHA-256 hash: {expected.replace(':', '').upper()}"
+        if system_hash in certs and succeeds(verify):
+            print("The pinned root is already trusted in the System keychain.")  # noqa: T201
+            return
+
+        add = [
+            SECURITY,
+            "add-trusted-cert",
+            "-d",
+            "-r",
+            "trustRoot",
+            "-k",
+            SYSTEM_KEYCHAIN,
+            str(root),
+        ]
+        interactive = sys.stdin.isatty()
+        sudo = [SUDO] if interactive else [SUDO, "-n"]
+        if not interactive and not succeeds([*sudo, "-l", "--", *add]):
+            sys.exit("sudo needs authorization in a local Mac terminal.")
+        run_subprocess([*sudo, "--", *add], None)
+        run_subprocess(verify, None)
+        print("The pinned root is trusted in the System keychain.")  # noqa: T201
+
+
+if __name__ == "__main__":
+    try:
+        main()
+    except (OSError, CalledProcessError) as error:
+        sys.exit(f"System keychain installation failed: {error}")

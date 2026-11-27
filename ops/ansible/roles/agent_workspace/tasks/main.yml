@@ -1,0 +1,186 @@
+---
+- name: Check workspace settings
+  ansible.builtin.assert:
+    that:
+      - ansible_facts.system in ['Linux', 'Darwin']
+      - agent_workspace_user is match('^[a-z_][a-z0-9_-]*$')
+      - agent_workspace_home is match('^/[^\n]+$')
+      - "'..' not in agent_workspace_home.split('/')"
+      - agent_workspace_connect_storage in ['native', 'file']
+      - agent_workspace_connect_vaults | length > 0
+      - agent_workspace_connect_endpoints | length > 0
+      - agent_workspace_gitleaks_ref is match(('^op://' ~ '[^/]+/[^/]+/[^/]+$'))
+      - agent_workspace_uv_version is match('^[0-9]+\.[0-9]+\.[0-9]+$')
+    quiet: true
+
+- name: Require tailnet hostnames for Connect
+  ansible.builtin.assert:
+    that:
+      - item is match('^https://[a-zA-Z][a-zA-Z0-9.-]*$')
+      - "'.' not in item or item is not match('^https://[0-9.]+$')"
+    quiet: true
+  loop: "{{ agent_workspace_connect_endpoints }}"
+
+- name: Maintain the agent workspace
+  become: true
+  become_user: "{{ agent_workspace_user }}"
+  environment:
+    HOME: "{{ agent_workspace_home }}"
+    PATH: "{{ agent_workspace_path }}"
+    SSH_AUTH_SOCK: ""
+    GH_CONFIG_DIR: "{{ agent_workspace_gh_config_dir }}"
+  block:
+    # The account's own home is the only place the role writes clones, so
+    # the root is created here instead of being found on the host. The group
+    # comes from the account, not a name, so a host that runs agents as
+    # another account gets that account's group.
+    - name: Look up the account's primary group
+      ansible.builtin.command:
+        argv: [id, -gn]
+      register: agent_workspace_group
+      changed_when: false
+      check_mode: false
+
+    - name: Create the workspace root for this account only
+      ansible.builtin.file:
+        path: "{{ agent_workspace_root }}"
+        state: directory
+        owner: "{{ agent_workspace_user }}"
+        group: "{{ agent_workspace_group.stdout }}"
+        mode: '0700'
+
+    - name: Maintain safe workspace clones
+      ansible.builtin.include_tasks: clone.yml
+      loop: "{{ agent_workspace_repos }}"
+      loop_control:
+        loop_var: agent_workspace_repo
+      when:
+        - agent_workspace_repo.workspace | default(true) | bool
+        - agent_workspace_private_clones or (agent_workspace_repo.public | default(false) | bool)
+
+    - name: Provide uv through mise when the account has no uv
+      ansible.builtin.command:
+        argv:
+          - /bin/bash
+          - -c
+          - "{{ lookup('ansible.builtin.file', role_path + '/files/uv.sh') }}"
+          - workspace-uv
+          - "{{ agent_workspace_uv_version }}"
+        chdir: "{{ agent_workspace_home }}"
+      register: agent_workspace_uv_install
+      changed_when: agent_workspace_uv_install.stdout == 'changed'
+      when: not ansible_check_mode
+
+    - name: Install tbhbdev from a clean tools checkout at origin/main
+      ansible.builtin.include_tasks:
+        file: tbhbdev.yml
+        apply:
+          environment:
+            UV_TOOL_DIR: "{{ agent_workspace_home }}/.local/share/uv/tools"
+            UV_TOOL_BIN_DIR: "{{ agent_workspace_home }}/.local/bin"
+            GIT_TERMINAL_PROMPT: "0"
+      when: not ansible_check_mode
+
+    - name: Install workspace tools when a mise config exists
+      ansible.builtin.command:
+        argv:
+          - /bin/bash
+          - -c
+          - "{{ lookup('ansible.builtin.file', role_path + '/files/tools.sh') }}"
+        chdir: "{{ agent_workspace_root }}"
+      register: agent_workspace_install
+      changed_when: agent_workspace_install.stdout == 'changed'
+      # A check run doesn't create the root on a fresh host, so chdir fails.
+      when: not ansible_check_mode
+
+    - name: Resolve Connect endpoints for the account
+      ansible.builtin.include_tasks: "{{ role_path }}/../../tasks/connect-endpoints.yml"
+      vars:
+        connect_endpoints: "{{ agent_workspace_connect_endpoints }}"
+
+    - name: Check the host token and its exact vault scope
+      ansible.builtin.command:
+        argv:
+          - uv
+          - run
+          - --project
+          - "{{ agent_workspace_tools }}"
+          - python
+          - -c
+          - |
+              import json, pathlib, sys
+              from tbhbdev import secrets
+              settings = json.load(sys.stdin)
+              if settings['storage'] == 'file':
+                  value = pathlib.Path(settings['file']).read_text().strip()
+              else:
+                  value = secrets.token()
+              if not value:
+                  raise SystemExit('No host Connect token')
+              vaults = secrets.Connect(value, settings['endpoints']).vaults()
+              if {v['name'] for v in vaults} != set(settings['vaults']):
+                  raise SystemExit('Host Connect token has the wrong vault scope')
+        stdin: >-
+          {{ {'storage': agent_workspace_connect_storage, 'file': agent_workspace_connect_file,
+          'endpoints': connect_endpoints_resolved, 'vaults': agent_workspace_connect_vaults} | to_json }}
+      changed_when: false
+      no_log: true
+
+    - name: Read the private gitleaks config through the controller's Connect token
+      ansible.builtin.set_fact:
+        agent_workspace_private_config: >-
+          {{ lookup('ansible.builtin.pipe', agent_workspace_lookup_command + ' ' +
+          (agent_workspace_gitleaks_ref | quote)) }}
+        cacheable: false
+      no_log: true
+      when: not ansible_check_mode
+
+    - name: Validate the private gitleaks config before installing it
+      ansible.builtin.command:
+        argv:
+          - uv
+          - run
+          - --project
+          - "{{ agent_workspace_tools }}"
+          - python
+          - -c
+          - "{{ agent_workspace_validate_code }}"
+        stdin: "{{ agent_workspace_private_config }}"
+      vars:
+        agent_workspace_validate_code: |
+          import sys, tomllib
+          data = tomllib.loads(sys.stdin.read())
+          if data.get('extend', {}).get('path') != '.gitleaks.toml':
+              raise SystemExit('Invalid private gitleaks extension')
+          if not any(r.get('id') == 'tbhb-private-canary' for r in data.get('rules', [])):
+              raise SystemExit('Missing private gitleaks canary')
+      changed_when: false
+      no_log: true
+      when: not ansible_check_mode
+
+    - name: Install the account's private gitleaks config
+      ansible.builtin.include_tasks: gitleaks.yml
+      vars:
+        agent_workspace_config_home: "{{ agent_workspace_home }}"
+      when: not ansible_check_mode
+
+    - name: Read the reviews App credentials through the controller's Connect token
+      ansible.builtin.set_fact:
+        agent_workspace_reviews_cache: >-
+          {{ agent_workspace_reviews_cache | default({}) | combine({item: lookup('ansible.builtin.pipe',
+          agent_workspace_lookup_command + ' ' + ((agent_workspace_reviews_ref + '/' + item) | quote))}) }}
+        cacheable: false
+      loop: [app_id, client_id, private_key]
+      no_log: true
+      when: not ansible_check_mode
+
+    - name: Install the reviews App scripts and credentials cache
+      ansible.builtin.include_tasks: reviews.yml
+      when: not ansible_check_mode
+
+- name: Discard the private config from host variables
+  ansible.builtin.set_fact:
+    agent_workspace_private_config: ""
+    agent_workspace_reviews_cache: {}
+    cacheable: false
+  no_log: true

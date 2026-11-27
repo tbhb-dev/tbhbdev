@@ -1,0 +1,11 @@
+---
+galaxy_info:
+  author: tbhb
+  description: Put a directory on its own ext4 logical volume
+  license: Apache-2.0
+  min_ansible_version: "2.21"
+  platforms:
+    - name: Ubuntu
+      versions:
+        - resolute
+dependencies: []

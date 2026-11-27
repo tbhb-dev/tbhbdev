@@ -1,0 +1,91 @@
+---
+# cspell:ignore endmacro unsandboxed
+- name: config-values | Require typed TOML values recursively
+  vars:
+    agent_account_config_invalid: >-
+      {%- macro invalid(value, path='') -%}
+      {%- if agent_account_config_table.key == 'agent' and path == '.host' -%}
+      {%- if value is not sequence or value is string or value is mapping -%}invalid
+      {%- else -%}
+      {%- for row in value -%}
+      {%- if row is not mapping or row | list | sort !=
+          ['account', 'accounts', 'name', 'os', 'proven_harnesses', 'shell', 'unsandboxed'] -%}invalid
+      {%- elif row.name is not string or row.os is not string or row.shell is not string or
+          row.account is not string or row.unsandboxed is not boolean or
+          row.accounts is not sequence or row.accounts is string or row.accounts is mapping or
+          row.proven_harnesses is not sequence or row.proven_harnesses is string or
+          row.proven_harnesses is mapping -%}invalid
+      {%- elif row.accounts | select('string') | list != row.accounts or
+          row.proven_harnesses | select('string') | list != row.proven_harnesses -%}invalid
+      {%- endif -%}
+      {%- endfor -%}
+      {%- endif -%}
+      {%- endif -%}
+      {%- if agent_account_config_table.key == 'agent' and path == '.sandbox' and value is mapping -%}
+      {%- set baseline = ['.claude', '.config/tbhbdev', '.config/gh', '.config/devtools/agent-signing-key',
+          '.ssh', '.git-credentials', '.netrc', '.gemini'] -%}
+      {%- if value.denied_home_paths is not defined or value.denied_home_paths is not sequence or
+          value.denied_home_paths is string or value.denied_home_paths is mapping or
+          value.denied_home_paths | select('string') | list != value.denied_home_paths or
+          baseline | difference(value.denied_home_paths) | length > 0 -%}invalid
+      {%- endif -%}
+      {%- if value.agy is defined and value.agy is not mapping -%}invalid{%- endif -%}
+      {%- set agy = value.agy if value.agy is defined and value.agy is mapping else {} -%}
+      {%- for roots in [value.write_roots | default(none), agy.review_read | default([]),
+          agy.build_read | default([]), agy.build_write | default([])] -%}
+      {%- if roots is not sequence or roots is string or roots is mapping -%}invalid
+      {%- else -%}
+      {%- for root in roots -%}
+      {%- if root is not string or root == '' or root is search('(^|/)[.]{1,2}(/|$)|//|^~') -%}invalid
+      {%- else -%}
+      {%- set home = agent_account_config_home | default('/home/example-user') -%}
+      {%- set absolute = (root if root.startswith('/') else home ~ '/' ~ root).rstrip('/') -%}
+      {%- for denied in (value.denied_home_paths if value.denied_home_paths is defined and
+          value.denied_home_paths is sequence and value.denied_home_paths is not string and
+          value.denied_home_paths is not mapping else baseline) -%}
+      {%- if denied is string -%}
+      {%- set blocked = home ~ '/' ~ denied -%}
+      {%- if (ansible_facts | default({})).get('system') == 'Darwin' -%}
+      {%- set absolute = absolute | lower -%}
+      {%- set blocked = blocked | lower -%}
+      {%- endif -%}
+      {%- if absolute == blocked or blocked.startswith(absolute ~ '/') or absolute.startswith(blocked ~ '/') -%}invalid
+      {%- endif -%}
+      {%- endif -%}
+      {%- endfor -%}
+      {%- endif -%}
+      {%- endfor -%}
+      {%- endif -%}
+      {%- endfor -%}
+      {%- endif -%}
+      {%- if agent_account_config_table.key == 'agent' and path == '.claude' and
+          value is mapping and 'profiles' in value -%}invalid{%- endif -%}
+      {%- if value is string and value is search('[\x7f\U00010000-\U0010ffff]') -%}invalid{%- endif -%}
+      {%- if value is mapping -%}
+      {%- for key, item in value.items() -%}
+      {%- if key is not string or key is not match('^[A-Za-z0-9_-]+\\Z') -%}invalid{%- endif -%}
+      {{- invalid(item, path ~ '.' ~ key) -}}
+      {%- endfor -%}
+      {%- elif value is sequence and value is not string -%}
+      {%- if agent_account_config_table.key == 'agent' and
+          (path == '.codex.web_search' or path.startswith('.codex.web_search.')) and
+          value | select('mapping') | list | length > 0 -%}invalid{%- endif -%}
+      {%- if value | select('mapping') | list | length not in [0, value | length] -%}invalid{%- endif -%}
+      {%- for item in value -%}
+      {%- if item is sequence and item is not string and item is not mapping -%}invalid{%- endif -%}
+      {{- invalid(item, path ~ '[]') -}}
+      {%- endfor -%}
+      {%- elif value is not string and value is not integer and value is not boolean -%}invalid
+      {%- endif -%}
+      {%- endmacro -%}
+      valid{{- invalid(agent_account_config_table.value) -}}
+  ansible.builtin.assert:
+    that:
+      - agent_account_config_table.key is string
+      - agent_account_config_table.key is match('^[A-Za-z0-9_-]+\\Z')
+      - agent_account_config_table.value is mapping
+      - agent_account_config_invalid == 'valid'
+    fail_msg: >-
+      Agent TOML requires typed values, exact host row keys, baseline denials,
+      and access roots checked against denied_home_paths only
+    quiet: true

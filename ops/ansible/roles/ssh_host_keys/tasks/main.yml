@@ -1,0 +1,13 @@
+---
+- name: Require Linux or macOS
+  ansible.builtin.assert:
+    that:
+      - ansible_facts.system in ['Linux', 'Darwin']
+      - ssh_host_keys_users | length > 0
+    quiet: true
+
+- name: Prepare each account
+  ansible.builtin.include_tasks: user.yml
+  loop: "{{ ssh_host_keys_users }}"
+  loop_control:
+    loop_var: ssh_host_keys_user

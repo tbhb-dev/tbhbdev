@@ -1,0 +1,28 @@
+---
+- name: linux | Install the root certificate
+  ansible.builtin.copy:
+    content: "{{ ca_client_trust_root_pem }}"
+    dest: /usr/local/share/ca-certificates/tbhb-dev-step-ca-root.crt
+    owner: root
+    group: root
+    mode: "0644"
+  register: ca_client_trust_linux_root
+  notify: Refresh Debian CA certificates
+
+# Recover if a previous run wrote the root but did not finish the handler.
+- name: linux | Check whether the Debian CA bundle trusts the root
+  ansible.builtin.command:
+    argv:
+      - openssl
+      - verify
+      - -CAfile
+      - /etc/ssl/certs/ca-certificates.crt
+      - -no-CApath
+      - -no-CAstore
+      - /usr/local/share/ca-certificates/tbhb-dev-step-ca-root.crt
+  register: ca_client_trust_linux_verify
+  changed_when: ca_client_trust_linux_verify.rc == 2
+  failed_when: ca_client_trust_linux_verify.rc not in [0, 2]
+  check_mode: false
+  when: not ca_client_trust_linux_root.changed
+  notify: Refresh Debian CA certificates

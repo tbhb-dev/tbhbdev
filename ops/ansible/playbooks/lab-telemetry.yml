@@ -1,0 +1,12 @@
+---
+# Ships the lab nodes' journals and audit logs off the node, kept apart
+# from lab-hosts.yml so it goes out only when this playbook runs. It
+# follows lab-audit.yml, whose role makes audit.log readable to Alloy:
+#   mise run playbook -- playbooks/lab-telemetry.yml --limit NODE --check --diff
+- name: Ship the lab nodes' logs
+  hosts: lab
+  gather_facts: false
+  become: true
+  roles:
+    - host_telemetry
+    - bazel_server_reaper

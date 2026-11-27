@@ -1,0 +1,39 @@
+---
+- name: Prepare a stand-in for macOS launchd
+  hosts: all
+  become: true
+  tasks:
+    - name: Create the wheel group
+      ansible.builtin.group:
+        name: wheel
+
+    - name: Create the launchd directory
+      ansible.builtin.file:
+        path: /Library/LaunchDaemons
+        state: directory
+        mode: "0755"
+
+    - name: Install the launchctl stand-in
+      ansible.builtin.copy:
+        dest: /bin/launchctl
+        mode: "0755"
+        content: |
+          #!/usr/bin/python3
+          import plistlib
+          import sys
+          from pathlib import Path
+
+          state = Path("/run/mac-snapshot-thin-loaded")
+          args = sys.argv[1:]
+          service = "system/dev.tbhb.mac-snapshot-thin"
+          if args == ["print", service]:
+              sys.exit(0 if state.exists() else 1)
+          if args == ["bootout", service]:
+              state.unlink()
+          else:
+              path = Path("/Library/LaunchDaemons/dev.tbhb.mac-snapshot-thin.plist")
+              assert args == ["bootstrap", "system", str(path)]
+              with path.open("rb") as file:
+                  plist = plistlib.load(file)
+              assert plist["Label"] == "dev.tbhb.mac-snapshot-thin"
+              state.touch(exist_ok=False)

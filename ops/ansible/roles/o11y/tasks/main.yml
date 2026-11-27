@@ -1,0 +1,29 @@
+---
+- name: Check deployment inputs
+  ansible.builtin.assert:
+    that:
+      - o11y_release_id is match('^[0-9a-f]{40}$')
+      - o11y_data_dir is match('^/[A-Za-z0-9_/-]+$')
+      - o11y_data_dir != '/'
+      - "'..' not in o11y_data_dir.split('/')"
+      - not o11y_data_dir.startswith(o11y_root + '/releases')
+      - o11y_data_dir != o11y_root
+      - o11y_host_name is match('^[A-Za-z0-9._-]+$')
+      - o11y_ts_hostname is match('^(?:[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?)?\Z')
+      - o11y_fixed_addresses is match('^(true|false)\Z')
+      - o11y_grafana_tls_cert_dir is match('^(?:/(?:[A-Za-z0-9_-]+/)*[A-Za-z0-9_-]+)?\Z')
+      - o11y_grafana_root_url is match('^https://[A-Za-z0-9._/-]+$')
+      - o11y_secrets_vault is match('^[A-Za-z0-9_-]+$')
+      - o11y_alert_discord_webhook_ref.startswith('op://' + o11y_secrets_vault + '/')
+      - o11y_alert_smtp_password_ref.startswith('op://' + o11y_secrets_vault + '/')
+      - o11y_alert_discord_webhook_ref is match(('^op://' ~ '[^/]+/[^/]+/[^/]+$'))
+      - o11y_alert_smtp_password_ref is match(('^op://' ~ '[^/]+/[^/]+/[^/]+$'))
+    quiet: true
+
+- name: Run deployment preflight
+  ansible.builtin.include_tasks: preflight.yml
+
+- name: Deploy under the exclusive lock
+  ansible.builtin.include_tasks: locked.yml
+  vars:
+    o11y_action: deploy.yml
