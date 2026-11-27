@@ -763,8 +763,6 @@ def merge_methods(target: str) -> list[str]:
     Raises:
         SystemExit: The read fails or is malformed, or neither is allowed.
     """
-    if not pr.NAME_WITH_OWNER.fullmatch(target):
-        stop("not merging: can't tell which repository the PR is in")
     done = pr.run([pr.find_tool(GH), "repo", "view", target, "--json", METHOD_FIELDS])
     if done.returncode != 0:
         stop(f"gh repo view failed: {' '.join(done.stderr.split())}")

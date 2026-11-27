@@ -598,7 +598,16 @@ def run_main(*argv: str) -> tuple[int | str | None, str]:
         ({"mergeStateStatus": "UNSTABLE"}, "mergeStateStatus=UNSTABLE"),
         ({"reviewDecision": "REVIEW_REQUIRED"}, "reviewDecision=REVIEW_REQUIRED"),
         ({"reviewDecision": None}, "no reviewDecision"),
+        ({"headRefOid": "short"}, "no full headRefOid"),
         ({"reviews": []}, "0 approvals at the head, need 1"),
+        (
+            {"reviews": [{"state": "COMMENTED"}]},
+            "0 approvals at the head, need 1",
+        ),
+        (
+            {"reviews": [REVIEWS[0] | {"author": None}]},
+            "review with invalid verdict, author or commit",
+        ),
         (
             {"reviews": [item | {"commit": {"oid": OTHER_HEAD}} for item in REVIEWS]},
             "0 approvals at the head, need 1",
@@ -616,6 +625,8 @@ def run_main(*argv: str) -> tuple[int | str | None, str]:
         ({"statusCheckRollup": None}, "no usable statusCheckRollup"),
         ({"statusCheckRollup": [None]}, "invalid statusCheckRollup entry"),
         ({"commits": []}, "no commits for the current head"),
+        ({"commits": [commit("short")]}, "commit with invalid SHA, message or authors"),
+        ({"commits": [commit(OTHER_HEAD)]}, "commits do not end at the current head"),
         *[
             (
                 {
@@ -824,6 +835,16 @@ def test_gh_view_garbage_is_reported(tools: Tools) -> None:
     code = run_main("3")[0]
     assert isinstance(code, str)
     assert code.startswith("gh pr view returned something that is not JSON")
+
+
+def test_gh_view_requires_a_pull_request_object(tools: Tools) -> None:
+    tools.gh(view_out="[]")
+    assert run_main("12")[0] == "gh pr view returned no usable pull request"
+
+
+def test_gh_view_rejects_an_invalid_commit_author(tools: Tools) -> None:
+    tools.view(commits=[commit() | {"authors": [{}]}])
+    assert run_main("12")[0] == "gh pr view returned invalid commit authors"
 
 
 def test_missing_fields_default_to_empty_and_refuse(tools: Tools) -> None:
@@ -1564,6 +1585,25 @@ def test_merge_requires_success_for_a_named_required_check(tools: Tools) -> None
 
 
 @pytest.mark.parametrize(
+    ("checks", "reason"),
+    [
+        ([], "no usable required status checks"),
+        ([{"context": ""}], "invalid required status check"),
+    ],
+)
+def test_merge_refuses_invalid_required_checks(
+    tools: Tools, checks: list[dict[str, str]], reason: str
+) -> None:
+    rule = {
+        "type": "required_status_checks",
+        "parameters": {"required_status_checks": checks},
+    }
+    amend(tools, rules_out=json.dumps([[rule]]))
+    assert reason in str(run_main("12")[0])
+    assert len(tools.calls()) == 1
+
+
+@pytest.mark.parametrize(
     ("spec", "reason"),
     [
         (
@@ -1571,12 +1611,35 @@ def test_merge_requires_success_for_a_named_required_check(tools: Tools) -> None
             "gh review lookup failed: forbidden",
         ),
         ({"reviews_out": "<html>"}, "gh review lookup returned invalid JSON"),
+        ({"reviews_out": "{}"}, "no usable pull request review data"),
     ],
 )
 def test_merge_refuses_when_reviews_cannot_be_read(
     tools: Tools, spec: dict[str, object], reason: str
 ) -> None:
     amend(tools, **spec)
+    assert reason in str(run_main("12")[0])
+    assert len(tools.calls()) == 1
+
+
+@pytest.mark.parametrize(
+    ("fields", "reason"),
+    [
+        ({"headRefOid": OTHER_HEAD}, "PR head changed"),
+        ({"reviewDecision": "CHANGES_REQUESTED"}, "no longer reports reviewDecision"),
+        (
+            {"reviews": {"pageInfo": {"hasNextPage": True}, "nodes": REVIEWS}},
+            "missing or incomplete review list",
+        ),
+    ],
+)
+def test_merge_refuses_when_review_evidence_changes(
+    tools: Tools, fields: dict[str, object], reason: str
+) -> None:
+    path = tools.bin / "gh.spec"
+    review = json.loads(json.loads(path.read_text())["reviews_out"])
+    review["data"]["repository"]["pullRequest"].update(fields)
+    amend(tools, reviews_out=json.dumps(review))
     assert reason in str(run_main("12")[0])
     assert len(tools.calls()) == 1
 
