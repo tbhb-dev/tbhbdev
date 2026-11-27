@@ -6,12 +6,12 @@ title: Structurizr macro reference
 type: Reference
 generated:
   - role: generated
-    harness: codex:0.166.0
-    model: openai:gpt-6.1-sol
+    harness: codex:0.171.0
+    model: openai:gpt-6.2-sol
     effort: high
     surface: exec
-    session: sha-256-64:6b731be41a6f6e69
-    at: "2026-11-15T19:39:33Z"
+    session: sha-256-64:4a647161bc55662a
+    at: "2026-11-27T18:47:36Z"
 ---
 
 # Structurizr macro reference
