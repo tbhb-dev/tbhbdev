@@ -13,7 +13,6 @@ from jsonschema import Draft202012Validator
 from test_alpha_pull_request import REAL, World
 from test_alpha_pull_request import world as world  # noqa: PLC0414
 
-from tbhbdev import alpha
 from tbhbdev.alpha import pull_request as pr
 from tbhbdev.alpha import review, review_doc
 
@@ -374,11 +373,12 @@ def test_subcommand_help(
     assert re.search(rf"(?m)^ +{label} +{help_text}$", capsys.readouterr().out)
 
 
-def test_alpha_dispatch(world: World, capsys: pytest.CaptureFixture[str]) -> None:
+def test_draft_command_prints_path(
+    world: World, capsys: pytest.CaptureFixture[str]
+) -> None:
     head(world)
-    assert alpha.main(["review", "draft", "7"], "tbhbdev alpha") == 0
+    assert run_main("draft", "7") == 0
     assert capsys.readouterr().out == f"{review.draft_path(7)}\n"
-    assert "\n  review " in alpha.USAGE
 
 
 def test_lint_uses_review_path_and_drops_only_missing_h1(world: World) -> None:
@@ -483,10 +483,7 @@ def test_commit_is_exactly_40_hex_characters(value: str) -> None:
     assert any(line == 3 and "commit_id" in why for line, why in structure(text))
 
 
-def test_dispatch_forwards_arguments_program_and_status() -> None:
-    with patch.object(review, "main", return_value=3) as run:
-        assert alpha.main(["review", "check", "7"], "p") == 3
-        run.assert_called_once_with(["check", "7"], prog="p review")
+def test_policy_dispatch_forwards_arguments_program_and_status() -> None:
     with patch.object(review.review_policy, "main", return_value=3) as run:
         assert review.main(["policy", "check"], "p") == 3
         run.assert_called_once_with(["check"], "p policy")

@@ -18,7 +18,8 @@ from agent_example import settings
 from agent_host_example import commit, git
 
 from tbhbdev import version
-from tbhbdev.alpha import agent, version_check
+from tbhbdev.alpha import version_check
+from tbhbdev.alpha.agent import command as agent
 from tbhbdev.alpha.agent import driver, transport, version_heal
 from tbhbdev.alpha.agent.decisions import remote
 from tbhbdev.alpha.agent.model import Invalid
@@ -278,7 +279,12 @@ def test_empty_brief_is_refused_after_driver_restart(
     prompt = tmp_path / "brief.md"
     prompt.touch()
     args = argparse.Namespace(
-        name="sample", prompt_file=prompt, fetch_ref=[], profile="build", start_ref=None
+        name="sample",
+        prompt_file=prompt,
+        fetch_ref=[],
+        profile="build",
+        start_ref=None,
+        ref=None,
     )
     assert driver.checked_prompt(args) == ""
     monkeypatch.setenv(RETRY, "original mismatch")

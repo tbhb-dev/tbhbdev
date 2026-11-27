@@ -1037,19 +1037,18 @@ def posting_value(env: Mapping[str, str]) -> str | None:
     return agent_identity.format_value(committer.ident.attrs())
 
 
-def default_base() -> str:
+def default_base(*, origin_only: bool = False) -> str:
     """The repository's default branch: the remote's own HEAD, else origin/HEAD.
 
     The remote answers first because origin/HEAD goes stale when the default
     branch moves and a plain fetch leaves it, and a fresh mirror may have none.
 
     Raises:
-        SystemExit: ``GH_REPO`` names a repository that origin does not describe,
-            or neither read answers. No guess stands in, so a draft never
-            targets a wrong base.
+        SystemExit: ``GH_REPO`` overrides origin and ``origin_only`` is false,
+            or neither read answers.
     """
     hint = "; name the base in the draft's frontmatter"
-    if os.environ.get("GH_REPO"):
+    if not origin_only and os.environ.get("GH_REPO"):
         message = f"cannot find the default branch of GH_REPO{hint}"
         raise SystemExit(message)
     code, out = git("ls-remote", "--symref", "origin", "HEAD")
@@ -2116,12 +2115,13 @@ def opened_by(env: Mapping[str, str]) -> tuple[str | None, str | None]:
 def check_size(args: argparse.Namespace, checked: Checked) -> None:
     """Count the branch's added lines against the draft's base and flag an excess.
 
-    The base tracking ref is refreshed once, without tags, except in a dry run,
-    which writes no refs. A failed refresh or a count that stays unavailable
-    only warns, for ``pr create`` too, so a broken counter never blocks a valid
-    PR. A dry run reports an excess as a warning and still previews.
+    Refresh the base and, for a stacked draft, the default branch in one fetch
+    without tags. Dry runs write no refs. A failed refresh or count only warns,
+    and a dry run reports an excess as a warning and still previews.
     """
+    explicit_base = "base" in checked.meta
     branch = base_of(checked.meta)
+    checked.meta.setdefault("base", branch)
     dry_run = getattr(
         args,
         "dry_run",
@@ -2134,20 +2134,27 @@ def check_size(args: argparse.Namespace, checked: Checked) -> None:
         message = "size count unavailable: gh may target a repository other than origin"
         print(message, file=sys.stderr)
         return
-    if not dry_run:
-        fetch = (
-            "fetch",
-            "--quiet",
-            "--no-tags",
-            "--no-write-fetch-head",
-            "--refmap=",
-            "origin",
-            f"+refs/heads/{branch}:{base}",
-        )
-        if git(*fetch)[0] != 0:
-            # A stale tracking ref would count the wrong range, so stop here.
-            print(f"size count unavailable: cannot fetch {branch}", file=sys.stderr)
-            return
+    default = branch
+    if explicit_base:
+        with contextlib.suppress(SystemExit):
+            default = default_base(origin_only=True)
+    default_ref = None
+    fetch = (
+        "fetch",
+        "--quiet",
+        "--no-tags",
+        "--no-write-fetch-head",
+        "--refmap=",
+        "origin",
+        f"+refs/heads/{branch}:{base}",
+    )
+    if default != branch:
+        default_ref = f"refs/remotes/origin/{default}"
+        fetch += (f"+refs/heads/{default}:{default_ref}",)
+    if not dry_run and git(*fetch)[0] != 0:
+        # A stale tracking ref would count the wrong range, so stop here.
+        print(f"size count unavailable: cannot fetch {branch}", file=sys.stderr)
+        return
     if git(*verify)[0] != 0:
         print(f"size count unavailable: base branch {base} not found", file=sys.stderr)
         return
@@ -2155,6 +2162,7 @@ def check_size(args: argparse.Namespace, checked: Checked) -> None:
         counts = size_gate.size_counts(
             base,
             "HEAD",
+            default_ref=default_ref,
             scc=_TOOL_PATHS.get().get((SCC, False), SCC),
             git=_TOOL_PATHS.get().get((GIT, False), GIT),
         )
@@ -2201,9 +2209,6 @@ def _run_command(args: argparse.Namespace, env: Mapping[str, str]) -> int:
     """Check the draft and carry out the requested action."""
     checked = read_checked(args.draft)
     if args.command in ("check", "create"):
-        # One read of the default branch feeds the size count, the trailers, and
-        # `gh --base`, so a remote change mid-run can't split them.
-        checked.meta.setdefault("base", base_of(checked.meta))
         check_size(args, checked)
     if checked.problems:
         return 1

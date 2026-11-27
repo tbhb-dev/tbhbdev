@@ -27,6 +27,7 @@ idiomatic_version_file_enable_tools = []
 # uv provisions the interpreter named by .python-version.
 UV_PYTHON_PREFERENCE = "only-managed"
 
+# The prose lint job uses the cspell, node, rumdl, and vale pins below.
 [tools]
 bazel = "9.3.2"
 bazelisk = "1.30.0"

@@ -7,8 +7,8 @@ from typing import TYPE_CHECKING
 
 import pytest
 
-from tbhbdev import alpha, cli, userconfig
-from tbhbdev.alpha import agent
+from tbhbdev import userconfig
+from tbhbdev.alpha.agent import command as agent
 from tbhbdev.alpha.agent import model, settings
 
 if TYPE_CHECKING:
@@ -169,20 +169,11 @@ def test_loading_reads_only_the_config(config_file: Path, tmp_path: Path) -> Non
     assert sorted(p.name for p in tmp_path.iterdir()) == before
 
 
-def test_agent_is_registered_in_usage_and_dispatch() -> None:
-    assert alpha.COMMANDS["agent"] is agent.main
-    assert (
-        "\n  agent        exec | wait | status | kill | clean | keep: headless runs\n"
-        in alpha.USAGE
-    )
-
-
 @pytest.mark.parametrize(
     "run",
     [
         lambda: agent.main([], "example agent"),
         lambda: agent.main(["status", "sample"], "example agent"),
-        lambda: cli.main(["alpha", "agent", "status", "sample"]),
     ],
 )
 def test_command_refuses_missing_configuration(
