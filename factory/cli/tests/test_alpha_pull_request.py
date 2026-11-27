@@ -1433,6 +1433,7 @@ def test_branch_trailers_stop_at_the_merge_base(world: World) -> None:
     world.commit(f"theirs\n\nGenerated-by: {OTHER}")
     world.git("switch", "-q", "topic")
     assert pr.branch_trailers("main") == [("Generated-by", GEN)]
+    world.git("update-ref", "refs/remotes/origin/topic", "HEAD")
     assert pr.branch_trailers("topic") == []
 
 
@@ -1459,12 +1460,26 @@ def test_branch_trailers_ignore_a_tag_named_like_the_remote_base(
     assert pr.branch_trailers("main") == [("Generated-by", GEN)]
 
 
-def test_branch_trailers_need_a_known_base(world: World) -> None:
-    del world
-    with pytest.raises(
-        SystemExit, match=r"cannot list the commits in nope\.\.HEAD; is nope fetched"
-    ):
-        pr.branch_trailers("nope")
+def test_branch_trailers_fetch_a_missing_remote_base(
+    world: World, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    remote_default(world, tmp_path, "main")
+    world.git("update-ref", "-d", "refs/remotes/origin/main")
+    world.commit(f"mine\n\nGenerated-by: {GEN}")
+    monkeypatch.setattr(pr, "git", pr.repo_git)
+
+    assert pr.branch_trailers("main") == [("Generated-by", GEN)]
+
+
+def test_branch_trailers_refuse_a_local_base_if_fetch_fails(
+    world: World, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    world.git("update-ref", "-d", "refs/remotes/origin/main")
+    world.git("remote", "set-url", "origin", str(tmp_path / "missing.git"))
+    monkeypatch.setattr(pr, "git", pr.repo_git)
+
+    with pytest.raises(SystemExit, match="cannot fetch PR base branch main"):
+        pr.branch_trailers("main")
 
 
 def checked_for() -> pr.Checked:

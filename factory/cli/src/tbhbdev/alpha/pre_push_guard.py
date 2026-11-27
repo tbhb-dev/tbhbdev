@@ -269,17 +269,13 @@ def ref_problems(
 
 
 def scan_pushed_commits(
-    remote: str, url: str, rows: Sequence[tuple[str, str, str]]
+    url: str, rows: Sequence[tuple[str, str, str]]
 ) -> list[str]:
     """Scan commits a run introduces to the destination remote."""
-    # A local tag or a ref from a different remote cannot prove a commit is
-    # already on the destination.
-    code, out = git(
-        *SAFE, "for-each-ref", "--format=%(objectname)", f"refs/remotes/{remote}/"
-    )
+    code, out = git(*SAFE, "ls-remote", "--heads", "--", url)
     if code:
-        return ["cannot list fetched tips; push refused"]
-    tips = out.split()
+        return ["cannot list destination branch tips; push refused"]
+    tips = [line.partition("\t")[0] for line in out.splitlines()]
     commits: set[str] = set()
     for local, ref, old in rows:
         if not local.strip("0"):
@@ -319,7 +315,7 @@ def push_problems(remote: str, lines: Sequence[str], *, url: str) -> list[str]:
     ]
     if not problems and os.environ.get(RUN_NAME_ENV):
         try:
-            return scan_pushed_commits(remote, url, rows)
+            return scan_pushed_commits(url, rows)
         except SystemExit as exc:
             return [str(exc)]
     return problems

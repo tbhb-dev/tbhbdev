@@ -321,7 +321,12 @@ def test_pr_create_size(
     if failure == "count":
         counter = Mock(side_effect=sg.SizeCountError("missing target"))
     monkeypatch.setattr(sg, "size_counts", counter)
-    git = git_exits(int(failure == "base"))
+
+    def run_git(command: str, *_args: str, **_kwargs: object) -> tuple[int, str]:
+        # The size fetch can fail while the tracking ref still exists for the scan.
+        return int(failure == "base" and command == "fetch"), ""
+
+    git = Mock(side_effect=run_git)
     monkeypatch.setattr(pr, "git", git)
     monkeypatch.setattr(pr, "base_of", Mock(return_value="main"))
     monkeypatch.setattr(pr, "read_checked", Mock(return_value=pr.Checked([])))
@@ -342,7 +347,9 @@ def test_pr_create_size(
         assert captured.err.startswith("size count unavailable: ")
     fetched = [*FETCH, "origin", "+refs/heads/main:refs/remotes/origin/main"]
     assert call(*fetched) in git.call_args_list
-    if failure != "base":
+    if failure == "base":
+        counter.assert_not_called()
+    else:
         counter.assert_called_once_with(
             "refs/remotes/origin/main", "HEAD", scc="/tools/scc", git="/tools/git"
         )

@@ -953,11 +953,27 @@ def merge_trailers(
     return sorted(roles.values(), key=lambda pair: pair[0] != agent_identity.KEY_GEN)
 
 
+def fetch_base(branch: str, ref: str) -> int:
+    """Refresh the origin tracking ref for the PR base branch."""
+    return git(
+        "fetch",
+        "--quiet",
+        "--no-tags",
+        "--no-write-fetch-head",
+        "--refmap=",
+        "origin",
+        f"+refs/heads/{branch}:{ref}",
+    )[0]
+
+
 def branch_range(base: str) -> str:
-    """The PR commit range, using the remote base when available."""
+    """The PR commit range against the origin base branch."""
     remote = f"refs/remotes/origin/{base}"
     code, _ = git("rev-parse", "--verify", "--quiet", f"{remote}^{{commit}}")
-    return f"{remote if code == 0 else f'refs/heads/{base}'}..HEAD"
+    if code and fetch_base(base, remote):
+        message = f"cannot fetch PR base branch {base} from origin"
+        raise SystemExit(message)
+    return f"{remote}..HEAD"
 
 
 def branch_trailers(base: str, *, span: str | None = None) -> list[tuple[str, str]]:
@@ -2128,20 +2144,10 @@ def check_size(args: argparse.Namespace, checked: Checked) -> None:
         message = "size count unavailable: gh may target a repository other than origin"
         print(message, file=sys.stderr)
         return
-    if not dry_run:
-        fetch = (
-            "fetch",
-            "--quiet",
-            "--no-tags",
-            "--no-write-fetch-head",
-            "--refmap=",
-            "origin",
-            f"+refs/heads/{branch}:{base}",
-        )
-        if git(*fetch)[0] != 0:
-            # A stale tracking ref would count the wrong range, so stop here.
-            print(f"size count unavailable: cannot fetch {branch}", file=sys.stderr)
-            return
+    if not dry_run and fetch_base(branch, base):
+        # A stale tracking ref would count the wrong range, so stop here.
+        print(f"size count unavailable: cannot fetch {branch}", file=sys.stderr)
+        return
     if git(*verify)[0] != 0:
         print(f"size count unavailable: base branch {base} not found", file=sys.stderr)
         return

@@ -216,13 +216,22 @@ def test_run_hook_confines_pushed_branches(
             )
 
 
-def test_run_push_scans_new_commits_even_under_a_local_tag(
-    repo: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+@pytest.mark.parametrize("cached_ref", ["tag", "deleted_branch"])
+def test_run_push_scans_new_commits_under_cached_refs(
+    repo: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    cached_ref: str,
 ) -> None:
     monkeypatch.setenv(pg.RUN_NAME_ENV, "example")
     write_private_config(Path.home())
     secret = commit(repo, **{"sample.txt": "test-canary-0123456789abcdef\n"})
-    git(repo, "tag", "example", secret)
+    if cached_ref == "tag":
+        git(repo, "tag", "example", secret)
+    else:
+        git(repo, "push", "origin", f"{secret}:refs/heads/retired")
+        git(repo.parent / "remote.git", "update-ref", "-d", "refs/heads/retired")
+        assert git(repo, "rev-parse", "refs/remotes/origin/retired") == secret
     git(repo, "rm", "sample.txt")
     head = commit(repo, "remove sample")
 
@@ -230,6 +239,18 @@ def test_run_push_scans_new_commits_even_under_a_local_tag(
     assert capsys.readouterr().err.splitlines()[-1] == (
         "refusing the commits: gitleaks finds a secret: "
         "rule tbhb-private-canary at sample.txt:1"
+    )
+
+
+def test_run_push_refuses_when_the_destination_cannot_be_listed(
+    repo: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    monkeypatch.setenv(pg.RUN_NAME_ENV, "example")
+    git(repo, "remote", "set-url", "origin", str(repo.parent / "missing.git"))
+
+    assert guard(monkeypatch, commit(repo), ref="refs/heads/agent/example") == 1
+    assert capsys.readouterr().err == (
+        "cannot list destination branch tips; push refused\n"
     )
 
 
