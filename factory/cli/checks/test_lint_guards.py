@@ -23,6 +23,18 @@ CONFIG = CLI / "pyproject.toml"
             "subprocess",
             "import subprocess",
         ),
+        (
+            "cli-decisions",
+            "alpha.identity.commands",
+            "tbhbdev.alpha.identity.dispatcher",
+            "from tbhbdev.alpha.identity import dispatcher",
+        ),
+        (
+            "cli-decisions",
+            "alpha.identity.models",
+            "tbhbdev.alpha.identity.dispatcher",
+            "from tbhbdev.alpha.identity import dispatcher",
+        ),
     ],
 )
 def test_import_contract(
@@ -55,7 +67,8 @@ def test_import_contract(
         path.write_text(original, encoding="utf-8")
         stale = lint()
         assert stale.returncode == 1, stale.stdout + stale.stderr
-        assert edge in stale.stdout + stale.stderr
+        diagnostic = " ".join((stale.stdout + stale.stderr).split())
+        assert f"No matches for ignored import {edge}" in diagnostic
     finally:
         path.write_text(original, encoding="utf-8")
         CONFIG.write_text(config, encoding="utf-8")

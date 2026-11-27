@@ -50,7 +50,7 @@ cli_py_library(
     imports = [".."],
     visibility = ["//factory/cli:__subpackages__"],
     deps = [
-        "//factory/cli/src/tbhbdev/alpha:identity",
+        "//factory/cli/src/tbhbdev/alpha/identity:models",
         "@cli_pip//httpx2",
     ],
 )

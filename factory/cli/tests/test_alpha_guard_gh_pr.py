@@ -21,7 +21,7 @@ from hypothesis import strategies as st
 
 from tbhbdev.alpha import close, install, opened, pull_request, squash_merge
 from tbhbdev.alpha import guard_gh_pr as guard
-from tbhbdev.alpha import identity as ai
+from tbhbdev.alpha.identity import dispatcher as ai
 
 DATA = Path(__file__).parent / "testdata" / "alpha"
 SRC = Path(guard.__file__).parents[2]
