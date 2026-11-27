@@ -153,7 +153,7 @@ def git(clone: Path, *args: str, token: str | None = None) -> str:
     # A moved repository answers with a redirect, and the owner gate checks only
     # the requested name, so an online command never follows one.
     offline = [*command, "-c", "protocol.allow=never"]
-    online = args[0] in ("fetch", "ls-remote")
+    online = args[0] in ("fetch", "ls-remote", "push")
     invocation = [*command, "-c", "http.followRedirects=false"] if online else offline
     output = partial(
         subprocess.check_output,

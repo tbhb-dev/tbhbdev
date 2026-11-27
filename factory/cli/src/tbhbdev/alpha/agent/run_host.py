@@ -38,6 +38,7 @@ from tbhbdev.alpha.agent import (
     process_group,
     push,
     render,
+    rescue,
     review_post,
     run_host_telemetry,
     runfiles,
@@ -1336,10 +1337,9 @@ def finish(
                 # Nothing from the Bazel cleanup may block the rc and completion record.
                 with suppress(Exception):
                     run.files.write("log", "bazel cleanup failed\n")
-            bazel = bazel or "skipped"
             try:
-                phase = "unknown" if run.files.uncertain else "ended"
-                run.files.write("phase", phase)
+                rescue.on_fault(run, prepared, rc)
+                run.files.write("phase", "unknown" if run.files.uncertain else "ended")
             except OSError:
                 process_group.unknown(run.files)
             finally:
@@ -1350,7 +1350,7 @@ def finish(
         run.files.write("log", "audit summary write failed\n")
     try:
         entry = index_entry(run, prepared, rc) | {
-            "bazel_shutdown": bazel,
+            "bazel_shutdown": bazel or "skipped",
             "bazel_cleanup": cleanup,
         }
         runfiles.append(run.files.root, entry)

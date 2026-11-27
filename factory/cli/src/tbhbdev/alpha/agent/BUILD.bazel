@@ -131,6 +131,24 @@ cli_py_library(
 )
 
 cli_py_library(
+    name = "rescue",
+    srcs = ["rescue.py"],
+    imports = ["../../.."],
+    pyi_deps = [":run_host"],
+    visibility = ["//factory/cli:__subpackages__"],
+    deps = [
+        ":credentials",
+        ":host_tools",
+        ":model",
+        ":push",
+        ":worktree",
+        "//factory/cli/src/tbhbdev/alpha:gh_app",
+        "//factory/cli/src/tbhbdev/alpha:secret_scan",
+        "//factory/cli/src/tbhbdev/alpha/agent/decisions:repo",
+    ],
+)
+
+cli_py_library(
     name = "review_post",
     srcs = ["review_post.py"],
     imports = ["../../.."],
@@ -172,6 +190,7 @@ cli_py_library(
         ":process_group",
         ":push",
         ":render",
+        ":rescue",
         ":review_post",
         ":run_host_telemetry",
         ":runfiles",

@@ -70,7 +70,7 @@ jobs:
         with:
           base: ${{ inputs.base }}
 
-      - name: Check lint allowances against Git history
+      - name: Check commit subjects and lint allowances
         if: matrix.shard == 1
         shell: bash
         env:
@@ -78,6 +78,11 @@ jobs:
           HEAD_SHA: ${{ github.event.pull_request.head.sha || github.event.merge_group.head_sha || github.sha }}
         run: |
           base=$(git merge-base -- "${BASE_SHA:-HEAD^}" "$HEAD_SHA")
+          subjects=$(git log --format=%s "$base..$HEAD_SHA")
+          if grep -q '^rescue:' <<<"$subjects"; then
+            echo "Reword or replace rescue commits before merging." >&2
+            exit 1
+          fi
           bazel run --config=ci @tbhb_rules//lint:lint_baselines -- "$base" "$HEAD_SHA"
 
       - name: Test
