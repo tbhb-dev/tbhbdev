@@ -6,7 +6,7 @@
 import pytest
 from unit.alpha.merge.examples import ASSIST, GEN, OPENED
 
-from tbhbdev.alpha.identity.dispatcher import LINE, check_message
+from tbhbdev.alpha.identity.commit.grammar import LINE, check_message
 from tbhbdev.alpha.merge.message import (
     Message,
     assemble,

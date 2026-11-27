@@ -14,7 +14,7 @@ from driver_scenarios import set_clock
 
 from tbhbdev.alpha.agent import settings as agent_settings
 from tbhbdev.alpha.agent import transport
-from tbhbdev.alpha.agent.decisions import remote
+from tbhbdev.alpha.agent.decisions import remote_host
 from tbhbdev.alpha.agent.driver import hosts, launcher, metadata
 from tbhbdev.alpha.agent.model import Host, Invalid, Profile, Settings
 
@@ -139,12 +139,12 @@ def test_exec_preserves_preflight_time_after_a_slow_probe(
         assert timeout > 0
         if target == slow:
             slow_timeouts.append(timeout)
-            if limits_timeout or script == remote.check_slot(slow, Profile.BUILD):
+            if limits_timeout or script == remote_host.check_slot(slow, Profile.BUILD):
                 elapsed += timeout
                 message = "probe timed out"
                 raise transport.TransportError(message)
             elapsed += launch_wait / 2 if delayed_probe == "limits at deadline" else 1
-        if script == remote.installed(preferred):
+        if script == remote_host.installed(preferred):
             assert target == preferred
             assert timeout == launch_wait - elapsed
             assert timeout >= launch_wait / 2

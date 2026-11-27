@@ -36,7 +36,7 @@ from tbhbdev.alpha import (
 from tbhbdev.alpha import command as alpha
 from tbhbdev.alpha.agent import command as agent
 from tbhbdev.alpha.agent import precheck, run_host, settings, signing_parity, ssh_serve
-from tbhbdev.alpha.identity import dispatcher as identity
+from tbhbdev.alpha.identity import dispatcher as identity_dispatcher
 from tbhbdev.alpha.install import command as install
 from tbhbdev.alpha.merge import command as squash_merge
 
@@ -99,7 +99,7 @@ def test_dispatch(monkeypatch: pytest.MonkeyPatch) -> None:
 
         return main
 
-    monkeypatch.setattr(identity, "run", run)
+    monkeypatch.setattr(identity_dispatcher, "run", run)
     monkeypatch.setattr(guard_gh_pr, "main", guard)
     monkeypatch.setattr(pull_request, "main", fake("pr", 5))
     monkeypatch.setattr(squash_merge, "main", fake("merge", 6))

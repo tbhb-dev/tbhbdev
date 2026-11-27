@@ -1,0 +1,39 @@
+# SPDX-License-Identifier: Apache-2.0
+# Copyright Tony Burns
+
+load("//factory/cli/tests:pytest.bzl", "cli_py_test")
+
+filegroup(
+    name = "package_files",
+    srcs = glob(["*.py"]),
+    visibility = ["//factory/cli/tests/unit/alpha/identity:__pkg__"],
+)
+
+cli_py_test(
+    name = "test_payload",
+    srcs = ["test_payload.py"],
+    imports = ["../../../.."],
+    deps = ["//factory/cli/src/tbhbdev/alpha/identity/antigravity:payload"],
+)
+
+cli_py_test(
+    name = "test_session_io",
+    srcs = ["test_session_io.py"],
+    imports = ["../../../.."],
+    deps = [
+        "//factory/cli/src/tbhbdev/alpha/identity:attribution",
+        "//factory/cli/src/tbhbdev/alpha/identity:dispatcher",
+        "//factory/cli/src/tbhbdev/alpha/identity:models",
+        "//factory/cli/src/tbhbdev/alpha/identity:records",
+        "//factory/cli/src/tbhbdev/alpha/identity:sessions",
+        "//factory/cli/src/tbhbdev/alpha/identity:storage",
+        "//factory/cli/src/tbhbdev/alpha/identity:trailers",
+        "//factory/cli/src/tbhbdev/alpha/identity/antigravity:session",
+        "//factory/cli/src/tbhbdev/alpha/identity/commit:hooks",
+        "//factory/cli/tests:conftest",
+        "//factory/cli/tests/unit/alpha/identity:conftest",
+        "//factory/cli/tests/unit/alpha/identity:identity_examples",
+        "//factory/cli/tests/unit/alpha/identity:identity_fixtures",
+        "@cli_pip//pytest",
+    ],
+)

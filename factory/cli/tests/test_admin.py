@@ -17,6 +17,98 @@ from tbhbdev.alpha import gh_app_args
 lazy from tbhbdev.admin import request
 
 fake = admin_fake
+RULESET = "/repos/tbhb-dev/tbhbdev/rulesets/28092610"
+UPDATE_RULESET = ["call", "PUT", RULESET, "--reason", "test", "--json", "-"]
+
+
+@pytest.fixture
+def ruleset_update() -> tuple[dict[str, object], dict[str, object]]:
+    thread_resolution = "required_review_thread_resolution"
+    body: dict[str, object] = {
+        "name": "main",
+        "target": "branch",
+        "enforcement": "active",
+        "conditions": {},
+        "bypass_actors": [],
+        "rules": [{"type": "pull_request", "parameters": {thread_resolution: False}}],
+    }
+    current = {
+        **body,
+        "source": "tbhb-dev/tbhbdev",
+        "source_type": "Repository",
+        "id": 28092610,
+        "rules": [{"type": "pull_request", "parameters": {thread_resolution: True}}],
+    }
+    return current, body
+
+
+def ruleset_writes(fake: Fake) -> list[dict[str, object]]:
+    audit = fake.runtime.audit.directory / "calls.jsonl"
+    entries = [json.loads(line) for line in audit.read_text().splitlines()]
+    return [row for row in entries if row["method"] == "PUT"]
+
+
+def test_approved_ruleset_call(
+    fake: Fake,
+    ruleset_update: tuple[dict[str, object], dict[str, object]],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    current, body = ruleset_update
+    fake.by_method["GET"] = httpx2.Response(200, json=current)
+    monkeypatch.setattr(sys, "stdin", io.StringIO(json.dumps(body)))
+    assert admin.main(UPDATE_RULESET, "admin", runtime=fake.runtime) == 0
+    calls = [req for req in fake.requests if req.url.path == RULESET]
+    assert [req.method for req in calls] == ["GET", "PUT"]
+    assert json.loads(fake.requests[1].content)["permissions"] == {
+        "administration": "write"
+    }
+    assert json.loads(calls[-1].content) == body
+    writes = ruleset_writes(fake)
+    assert [row["phase"] for row in writes] == ["before", "after"]
+    for row in writes:
+        assert row["decision"] == "allow"
+        assert row["approval_decisions"] == [
+            "2026-11-27-merge-does-not-require-resolved-threads",
+        ]
+
+
+@pytest.mark.parametrize(
+    "attempt", ["refuse", "dry-run", "empty", "unreadable", "redacted", "http", "call"]
+)
+def test_ruleset_call_refusal(
+    fake: Fake,
+    ruleset_update: tuple[dict[str, object], dict[str, object]],
+    attempt: str,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    current, body = ruleset_update
+    if attempt == "redacted":
+        current["name"] = "eyJ.sample.value"
+        body["name"] = "[redacted]"
+    fake.by_method["GET"] = (
+        httpx2.Response(200, text="malformed")
+        if attempt == "unreadable"
+        else httpx2.Response(404 if attempt == "http" else 200, json=current)
+    )
+    fake.failure = "call" if attempt == "call" else ""
+    args = UPDATE_RULESET.copy()
+    if attempt == "refuse":
+        body["name"] = "other"
+    if attempt == "empty":
+
+        def missing_approval_directory(_package: str) -> Path:
+            return fake.runtime.marker.parent
+
+        monkeypatch.setattr(request, "files", missing_approval_directory)
+    if attempt == "dry-run":
+        args.append("--dry-run")
+    monkeypatch.setattr(sys, "stdin", io.StringIO(json.dumps(body)))
+    assert admin.main(args, "admin", runtime=fake.runtime) == 3
+    assert capsys.readouterr().err == "protection_weakening\n"
+    methods = [req.method for req in fake.requests if req.url.path == RULESET]
+    assert methods == ([] if attempt in {"empty", "dry-run"} else ["GET"])
+    assert [row["decision"] for row in ruleset_writes(fake)] == ["refuse"]
 
 
 @pytest.mark.parametrize(

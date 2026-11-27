@@ -19,7 +19,10 @@ from tbhbdev.alpha.agent import credentials, runfiles
 from tbhbdev.alpha.agent.decisions import repo
 from tbhbdev.alpha.agent.decisions import request as requests
 from tbhbdev.alpha.agent.model import Harness, Invalid, RunKind
-from tbhbdev.alpha.identity import dispatcher as identity
+from tbhbdev.alpha.identity import models as identity_models
+from tbhbdev.alpha.identity import records as identity_records
+from tbhbdev.alpha.identity import trailers as identity_trailers
+from tbhbdev.alpha.identity.commit import grammar as identity_commit_grammar
 from tbhbdev.alpha.pull_request_frontmatter import parse_frontmatter
 from tbhbdev.alpha.size_gate import SIZE_REVIEW, size_verdict
 
@@ -193,7 +196,7 @@ def stamp(run: Run) -> str:
     """Build the host-written attribution for the review."""
     request = run.request
     key = (
-        identity.ANTIGRAVITY
+        identity_models.ANTIGRAVITY
         if request.harness is Harness.AGY
         else request.harness.value
     )
@@ -201,21 +204,21 @@ def stamp(run: Run) -> str:
         raw_effort = requests.review_effort(request)
     except Invalid as exc:
         raise PostRefusedError(str(exc)) from exc
-    model, effort = identity.model_effort(key, request.model, raw_effort)
-    value = identity.format_value(
+    model, effort = identity_models.model_effort(key, request.model, raw_effort)
+    value = identity_trailers.format_value(
         {
             "effort": effort or "",
-            "harness": identity.SLUGS[key],
-            "launch": identity.sha256_64(run.files.name),
+            "harness": identity_models.SLUGS[key],
+            "launch": identity_records.sha256_64(run.files.name),
             "model": model or "",
             "surface": request.kind.value,
             "variant": request.variant or "",
         }
     )
-    if why := identity.check_value(value):
+    if why := identity_commit_grammar.check_value(value):
         message = f"invalid LLM trailer: {why}"
         raise PostRefusedError(message)
-    return f"{identity.KEY_GEN}: {value}"
+    return f"{identity_trailers.KEY_GEN}: {value}"
 
 
 def final_verdict_line(run: Run) -> str:

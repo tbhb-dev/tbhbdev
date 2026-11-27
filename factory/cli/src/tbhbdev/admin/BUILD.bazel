@@ -36,9 +36,11 @@ cli_py_library(
 cli_py_library(
     name = "request",
     srcs = ["request.py"],
+    data = ["approved_changes.toml"],
     imports = ["../.."],
     visibility = ["//factory/cli:__subpackages__"],
     deps = [
+        ":approvals",
         ":audit",
         ":policy",
         "//factory/cli/src/tbhbdev:github_tls",
@@ -69,4 +71,12 @@ cli_py_library(
         "//factory/cli/src/tbhbdev:userconfig",
         "//factory/cli/src/tbhbdev/alpha:gh_app_args",
     ],
+)
+
+cli_py_library(
+    name = "approvals",
+    srcs = ["approvals.py"],
+    imports = ["../.."],
+    visibility = ["//factory/cli:__subpackages__"],
+    deps = [":policy"],
 )
