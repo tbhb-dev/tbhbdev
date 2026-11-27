@@ -12,7 +12,7 @@ cli_py_library(
         ":pathmap",
         ":source",
         ":verify",
-        "//factory/cli/src/tbhbdev/alpha/agent:transport",
+        "//factory/cli/src/tbhbdev/alpha:terminal",
     ],
 )
 

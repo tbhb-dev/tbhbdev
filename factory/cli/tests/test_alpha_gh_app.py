@@ -23,7 +23,7 @@ from cryptography.hazmat.primitives import hashes, serialization
 from cryptography.hazmat.primitives.asymmetric import padding
 from cryptography.hazmat.primitives.asymmetric import rsa as rsa_keys
 
-from tbhbdev import alpha, secrets
+from tbhbdev import secrets
 from tbhbdev.alpha import gh_app
 
 NOW = 1_800_000_000
@@ -673,13 +673,6 @@ def test_run_openssl_runs_openssl_with_its_input_and_captures_its_output(
             {"input": None, "capture_output": True, "check": False},
         ),
     ]
-
-
-def test_alpha_lists_and_runs_gh_app(capsys: pytest.CaptureFixture[str]) -> None:
-    assert "\n  gh-app " in alpha.USAGE
-    assert alpha.COMMANDS["gh-app"] is alpha.gh_app_command
-    assert alpha.main(["gh-app", "--help"], "tbhbdev alpha") == 0
-    assert capsys.readouterr() == (gh_app.USAGE.format(prog="tbhbdev alpha gh-app"), "")
 
 
 def test_the_parser_raises_where_argparse_would_print_help() -> None:

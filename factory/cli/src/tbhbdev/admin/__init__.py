@@ -9,10 +9,10 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 lazy import argparse
 
+import tbhbdev.alpha.gh_app as gh_app  # noqa: PLR0402 -- Import the defining module.
 from tbhbdev.admin.audit import RefusedError
 from tbhbdev.admin.policy import check as check
 from tbhbdev.admin.request import Runtime, Settings, call, default_runtime
-from tbhbdev.alpha import gh_app
 
 if TYPE_CHECKING:
     from collections.abc import Sequence

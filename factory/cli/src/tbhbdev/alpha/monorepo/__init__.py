@@ -11,7 +11,6 @@ import sys
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from tbhbdev.alpha.agent.transport import terminal_text
 from tbhbdev.alpha.monorepo import pathmap
 from tbhbdev.alpha.monorepo.source import (
     EXECUTABLE,
@@ -23,6 +22,7 @@ from tbhbdev.alpha.monorepo.source import (
     resolve,
 )
 from tbhbdev.alpha.monorepo.verify import check
+from tbhbdev.alpha.terminal import terminal_text
 
 if TYPE_CHECKING:
     from collections.abc import Callable

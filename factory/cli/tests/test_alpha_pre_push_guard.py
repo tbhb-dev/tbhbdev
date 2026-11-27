@@ -14,7 +14,7 @@ import httpx
 import pytest
 from fake_tool import pythonpath, write_fake
 
-from tbhbdev import alpha
+from tbhbdev.alpha import command as alpha
 from tbhbdev.alpha import gh_shim, install
 from tbhbdev.alpha import pre_push_guard as pg
 from tbhbdev.alpha.agent import worktree

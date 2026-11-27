@@ -13,7 +13,6 @@ from tbhbdev import (
     admin,
     adr,
     agy,
-    alpha,
     analytics,
     cue_runtime,
     host,
@@ -22,6 +21,7 @@ from tbhbdev import (
     secret,
     version,
 )
+from tbhbdev.alpha import command as alpha_command
 
 Tool = Callable[[list[str], str], int]
 
@@ -30,7 +30,7 @@ TOOLS: dict[str, Tool] = {
     "admin": admin.main,
     "adr": adr.main,
     "agy": agy.main,
-    "alpha": alpha.main,
+    "alpha": alpha_command.main,
     "analytics": analytics.main,
     "cue": cue_runtime.main,
     "host": host.main,

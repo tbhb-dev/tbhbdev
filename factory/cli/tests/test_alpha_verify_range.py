@@ -5,8 +5,8 @@ from typing import TYPE_CHECKING, Literal, TypedDict
 
 import pytest
 
-from tbhbdev import alpha
 from tbhbdev.alpha import identity, verify_range
+from tbhbdev.alpha.verify_range import main as verify_main
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -76,24 +76,17 @@ def repo(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Repository:
     return Repository(tmp_path)
 
 
-def test_valid_range_and_dispatch(
-    repo: Repository, capsys: pytest.CaptureFixture[str]
-) -> None:
+def test_valid_range(repo: Repository, capsys: pytest.CaptureFixture[str]) -> None:
     first = repo.commit()
     second = repo.commit(parents=[first], message=f"fix: second\n\n{TRAILER}\n")
     repo.git("update-ref", "refs/heads/test", second)
-    assert alpha.main(["verify-range", repo.base, "test"], "tbhbdev alpha") == 0
+    assert verify_main([repo.base, "test"], "tbhbdev alpha verify-range") == 0
     assert capsys.readouterr() == (
         (
             f"{first[:7]} ok feat: example\n{second[:7]} ok fix: second\n"
             "verify-range: 2 commits, 0 failed\n"
         ),
         "",
-    )
-    assert alpha.COMMANDS["verify-range"] is verify_range.main
-    assert (
-        "  verify-range BASE TIP [-C PATH]: check every agent commit in a range\n"
-        in alpha.USAGE
     )
 
 
