@@ -17,6 +17,7 @@ load(":pytest.bzl", "cli_py_test")
 # gazelle:resolve py test_alpha_agent_run_host :test_alpha_agent_run_host_support
 # gazelle:resolve py test_alpha_agent_sandbox_live :test_alpha_agent_sandbox_live_support
 # gazelle:resolve py test_alpha_agent_settings :test_alpha_agent_settings_support
+# gazelle:resolve py test_alpha_identity //factory/cli/tests:test_alpha_identity_support
 # gazelle:resolve py test_alpha_pull_request :test_alpha_pull_request_support
 # gazelle:resolve py test_alpha_review_doc :test_alpha_review_doc_support
 
@@ -1168,6 +1169,7 @@ cli_py_test(
         "//factory/cli/src/tbhbdev/alpha/identity:commands",
         "//factory/cli/src/tbhbdev/alpha/identity:dispatcher",
         "//factory/cli/src/tbhbdev/alpha/identity:models",
+        "//factory/cli/src/tbhbdev/alpha/identity:trailers",
         "@cli_pip//hypothesis",
         "@cli_pip//jsonschema",
         "@cli_pip//pytest",
@@ -2023,7 +2025,12 @@ filegroup(
     srcs = glob(
         ["**"],
         exclude = ["BUILD.bazel"],
-    ),
+    ) + [
+        "//factory/cli/tests/integration/alpha:test_pull_request_timestamps_io.py",
+        "//factory/cli/tests/integration/alpha/agent:test_app_server_io.py",
+        "//factory/cli/tests/integration/alpha/identity:test_dispatcher_timestamps_io.py",
+        "//factory/cli/tests/unit/alpha/identity:test_trailers.py",
+    ],
     visibility = ["//factory/cli:__pkg__"],
 )
 

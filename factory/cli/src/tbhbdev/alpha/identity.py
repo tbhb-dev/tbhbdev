@@ -107,12 +107,13 @@ import traceback
 import uuid
 from contextlib import contextmanager
 from dataclasses import dataclass, replace
-from datetime import UTC, datetime
+from datetime import datetime
 from itertools import islice, takewhile
 from pathlib import Path, PurePosixPath
 from typing import TYPE_CHECKING, cast
 
 from tbhbdev.alpha.identity import commands as identity_commands
+from tbhbdev.alpha.identity import trailers
 from tbhbdev.alpha.identity.models import (
     BAD_VALUE,
     EFFORTS,
@@ -122,8 +123,21 @@ from tbhbdev.alpha.identity.models import (
     surface_ok,
     version,
 )
+from tbhbdev.alpha.identity.trailers import (
+    earliest_starts,
+    replace_trailer_fields,
+    start_ok,
+    trailer_start,
+    utc,
+)
 from tbhbdev.alpha.process import process_row
-from tbhbdev.alpha.repo import git, hook_cwd, in_tbhb_dev, read_hook_stdin
+from tbhbdev.alpha.repo import (
+    branch_created_at,
+    git,
+    hook_cwd,
+    in_tbhb_dev,
+    read_hook_stdin,
+)
 
 if TYPE_CHECKING:
     from collections.abc import Generator, Iterable, Iterator, Mapping
@@ -132,8 +146,8 @@ if TYPE_CHECKING:
 # common dir. The earlier tools used another name; a new name keeps the two apart.
 STORE = "tbhb-alpha"
 PROG = "tbhbdev alpha identity"
-KEY_GEN = "Generated-by"
-KEY_ASSIST = "Assisted-by"
+KEY_GEN = trailers.KEY_GEN
+KEY_ASSIST = trailers.KEY_ASSIST
 RUN_HOOK_ENV = "TBHBDEV_REQUIRE_IDENTITY"
 RUN_MODEL_ENV = "TBHBDEV_IDENTITY_MODEL"
 
@@ -159,10 +173,9 @@ ATTR_ORDER = [
 # Attributes every trailer value needs, in the order a missing one is reported.
 REQUIRED = ("harness", "model")
 HASH_RE = re.compile(r"sha-256-64:[0-9a-f]{16}")
-START_FORMAT = "%Y-%m-%dT%H:%M:%SZ"
-START_RE = re.compile(r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z", re.ASCII)
 LAUNCH_FILE = "launch.json"
 THREAD_ID = re.compile(r"[0-9a-fA-F-]{8,64}")
+
 
 # Only used by the optional rewrite path, which stays off unless
 # ASCM_AGENT_REWRITE=1 is set at hook time (it costs a permission prompt).
@@ -412,17 +425,6 @@ def clean_value(value: object) -> str | None:
     if not text or BAD_VALUE.search(text) or text == "<synthetic>":
         return None
     return text
-
-
-def start_ok(value: object) -> str | None:
-    """A ``started_at`` value (case preserved) if it is a real UTC time."""
-    if not isinstance(value, str) or not START_RE.fullmatch(value):
-        return None
-    try:
-        datetime.strptime(value, START_FORMAT).replace(tzinfo=UTC)  # DTZ007
-    except ValueError:
-        return None
-    return value
 
 
 def hash_ok(value: object) -> str | None:
@@ -1904,11 +1906,11 @@ PICKED_FROM = re.compile(
     r"^\(cherry picked from commit ([0-9a-f]{40})\)$", re.MULTILINE
 )
 MODEL_ATTR = re.compile(r"(?<![^\s;])model=[^\s;]")
-START_ATTR = re.compile(r"(?<![^\s;])started_at=([^\s;]+)")
 ATTR_PAIR = re.compile(r"(?<![^\s;])([a-z_]+)=([^\s;]+)")
 IDENT_EMAIL = re.compile(r"<([^>]*)>")
 
-type Trailer = tuple[str, str]
+
+type Trailer = trailers.Trailer
 
 
 def llm_trailers(text: str) -> list[Trailer]:
@@ -1920,44 +1922,6 @@ def trailer_agent(value: str) -> tuple[str | None, str | None]:
     """(session, subagent) named by a trailer value; None where absent."""
     attrs = dict(AGENT_ATTR.findall(value))
     return attrs.get("session"), attrs.get("subagent")
-
-
-def without_start(value: str) -> str:
-    """A trailer value with its ``started_at`` attribute left out."""
-    parts = value.split(";")
-    return ";".join(p for p in parts if not p.startswith("started_at="))
-
-
-def trailer_start(value: str) -> str:
-    """A trailer value's valid ``started_at``, or an empty string without one."""
-    found = START_ATTR.search(value)
-    return (found and start_ok(found[1])) or ""
-
-
-def branch_created_at(top: Path) -> str | None:
-    """Return the first branch creation time in the current branch's reflog."""
-    code, branch = git("symbolic-ref", "--quiet", "HEAD", cwd=top)
-    if code != 0:
-        return None
-    _, log = git(
-        "reflog",
-        "show",
-        "--grep-reflog=^branch: Created from ",
-        "--date=raw",
-        "--format=%gd",
-        branch,
-        cwd=top,
-    )
-    matches = re.findall(r"@\{(\d+) [+-]\d{4}\}", log)
-    return utc(int(matches[-1])) if matches else None
-
-
-def replace_trailer_fields(value: str, fields: Mapping[str, str | None]) -> str:
-    """Update only the specified attributes in the trailer's attribute blob."""
-    blob = next(token for token in value.split() if "=" in token)
-    pairs = [pair for pair in blob.split(";") if pair.partition("=")[0] not in fields]
-    pairs.extend(f"{key}={field}" for key, field in fields.items() if field)
-    return value.replace(blob, ";".join(sorted(pairs)))
 
 
 def with_record(value: str, *, branch_start: str | None = None) -> str:
@@ -1982,25 +1946,6 @@ def with_record(value: str, *, branch_start: str | None = None) -> str:
         "started_at": branch_start or start_ok(rec.get("started_at")),
     }
     return replace_trailer_fields(value, fields)
-
-
-def earliest_starts(found: list[Trailer]) -> list[Trailer]:
-    """Each trailer replaced by its twin with the earliest start.
-
-    Twins have the same key and the same value apart from ``started_at``, so
-    the hook's re-stamp of an amended commit collapses onto the original line.
-    A line that differs in any other attribute stays apart, which means a
-    hand-written early time cannot replace the hook's line and drop its
-    ``launch``. The twin with the earliest ``started_at`` replaces the rest, so
-    a value with the field beats one without it.
-    """
-    best: dict[tuple[str, str], str] = {}
-    for key, value in found:
-        twin = (key, without_start(value))
-        start = trailer_start(value)
-        if start and (twin not in best or start < trailer_start(best[twin])):
-            best[twin] = value
-    return [(k, best.get((k, without_start(v)), v)) for k, v in found]
 
 
 def merge_trailers(found: list[Trailer]) -> list[Trailer]:
@@ -2398,11 +2343,6 @@ class DocEntry:
     last: int
     indent: int
     fields: Entry
-
-
-def utc(timestamp: float) -> str:
-    """A UTC ISO 8601 time with whole seconds and a Z suffix."""
-    return datetime.fromtimestamp(timestamp, UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
 def valid_entry(entry: Mapping[str, str]) -> bool:

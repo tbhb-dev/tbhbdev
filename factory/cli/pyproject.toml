@@ -101,6 +101,7 @@ source_modules = [
   "tbhbdev.**.model",
   "tbhbdev.alpha.identity.commands",
   "tbhbdev.alpha.identity.models",
+  "tbhbdev.alpha.identity.trailers",
   "tbhbdev.content_model",
 ]
 forbidden_modules = [

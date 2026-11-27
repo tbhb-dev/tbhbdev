@@ -144,6 +144,7 @@ from jsonschema import Draft202012Validator
 from tbhbdev.alpha import opened, secret_scan, size_gate, tool_pins
 from tbhbdev.alpha import pull_request_frontmatter as frontmatter
 from tbhbdev.alpha.identity import dispatcher as agent_identity
+from tbhbdev.alpha.identity.trailers import merge_pr_trailers
 from tbhbdev.alpha.install import require_git_hooks
 from tbhbdev.alpha.repo import git as repo_git
 from tbhbdev.alpha.repo import hook_cwd, in_tbhb_dev, read_hook_stdin
@@ -845,49 +846,6 @@ def body_of(rendered: Sequence[str]) -> str:
     return "\n".join(rendered[1:]).strip("\n") + "\n"
 
 
-def identity_key(value: str) -> tuple[str, ...]:
-    """Who an LLM trailer value names: harness slug, model, session, subagent."""
-    blob = value.split()[1]
-    attrs = {
-        key: val for key, _, val in (pair.partition("=") for pair in blob.split(";"))
-    }
-    return (
-        attrs["harness"].partition(":")[0],
-        attrs.get("model", ""),
-        attrs.get("session", ""),
-        attrs.get("subagent", ""),
-    )
-
-
-def merge_trailers(
-    found: Sequence[tuple[str, str]], posting: str | None
-) -> list[tuple[str, str]]:
-    """Deduplicate (key, value) trailers by identity; Generated-by wins.
-
-    The posting agent's value is added as Assisted-by when its identity is
-    absent. Generated-by lines come first, as the commit-msg check requires.
-    Each identity keeps its oldest commit trailer timestamp.
-    """
-    roles: dict[tuple[str, ...], tuple[str, str]] = {}
-    starts: dict[tuple[str, ...], str] = {}
-    for key, value in found:
-        ident = identity_key(value)
-        if start := agent_identity.trailer_start(value):
-            starts[ident] = min(start, starts.get(ident, start))
-        if ident not in roles or (
-            key == agent_identity.KEY_GEN and roles[ident][0] != key
-        ):
-            roles[ident] = (key, value)
-    if posting is not None and identity_key(posting) not in roles:
-        roles[identity_key(posting)] = (agent_identity.KEY_ASSIST, posting)
-    for ident, start in starts.items():
-        key, value = roles[ident]
-        if agent_identity.trailer_start(value) != start:
-            value = agent_identity.replace_trailer_fields(value, {"started_at": start})
-            roles[ident] = key, value
-    return sorted(roles.values(), key=lambda pair: pair[0] != agent_identity.KEY_GEN)
-
-
 def branch_trailers(base: str) -> list[tuple[str, str]]:
     """The LLM trailers of the commits on this branch, oldest first.
 
@@ -1070,7 +1028,7 @@ def description(
     ]
     if errors:
         raise SystemExit("invalid LLM trailer: " + "; ".join(errors))
-    merged = [f"{key}: {value}" for key, value in merge_trailers(found, posting)]
+    merged = [f"{key}: {value}" for key, value in merge_pr_trailers(found, posting)]
     trailers = ([opened_by] if opened_by else []) + merged
     body = body_of(checked.rendered)
     if not trailers:

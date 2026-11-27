@@ -30,6 +30,7 @@ from hypothesis import strategies as st
 
 from tbhbdev.alpha import install
 from tbhbdev.alpha.identity import dispatcher as ai
+from tbhbdev.alpha.identity import trailers as trailer_fields
 from tbhbdev.alpha.identity.commands import cmd_hashes
 from tbhbdev.alpha.identity.models import EFFORTS
 
@@ -3939,7 +3940,7 @@ def test_e2e_claude_edit_then_commit(wired: Path) -> None:
         no_start(line) == "Generated-by: LLM harness=claude-code:2.1.316;"
         f"model=anthropic:claude-opus-5-5;session={session};surface=cli"
     )
-    assert ai.start_ok(ai.trailer_start(line)) is not None
+    assert trailer_fields.start_ok(trailer_fields.trailer_start(line)) is not None
     receipts = list((wired / ".git" / "tbhb-alpha" / "edits").rglob("*.json"))
     assert [loaded(p)["consumed"] for p in receipts] == [True]
     # Consumed: a later commit of another file falls back to the committer.
@@ -5858,12 +5859,7 @@ MAIN = ai.Ident(
 WRITER = ai.Ident(
     SESSION_HASH, "claude-code", AGENT, "anthropic:claude-haiku-5-5", "low", "cli"
 )
-STAMP_AT = ai.utc(1_800_000_000)
-
-
-def test_utc_formats_whole_seconds() -> None:
-    assert ai.utc(0) == "1970-01-01T00:00:00Z"
-    assert ai.utc(1_800_000_000.9) == "2027-01-15T08:00:00Z"
+STAMP_AT = trailer_fields.utc(1_800_000_000)
 
 
 def test_contributor_of() -> None:
@@ -5967,7 +5963,7 @@ def test_stamp_entries_one_agent_latest_edit_wins(repo: Path) -> None:
             "model": "anthropic:claude-opus-5-5",
             "session": SESSION_HASH,
             "surface": "cli",
-            "at": ai.utc(1_800_000_100),
+            "at": trailer_fields.utc(1_800_000_100),
         }
     ]
     receipts.reverse()
@@ -5982,7 +5978,7 @@ def test_stamp_entries_writer_subagent_makes_its_root_assisted(repo: Path) -> No
         ("generated", AGENT, "claude-code"),
         ("assisted", None, "claude-code:2.1"),
     ]
-    assert all(e["at"] == ai.utc(1_800_000_000) for e in got)
+    assert all(e["at"] == trailer_fields.utc(1_800_000_000) for e in got)
 
 
 def test_stamp_entries_root_that_wrote_too_is_not_assisted(repo: Path) -> None:
@@ -5995,7 +5991,10 @@ def test_stamp_entries_root_that_wrote_too_is_not_assisted(repo: Path) -> None:
         ("generated", AGENT),
         ("generated", None),
     ]
-    assert [e["at"] for e in got] == [ai.utc(1_800_000_000), ai.utc(1_800_000_500)]
+    assert [e["at"] for e in got] == [
+        trailer_fields.utc(1_800_000_000),
+        trailer_fields.utc(1_800_000_500),
+    ]
 
 
 def test_stamp_entries_sorts_by_time_and_only_subagents_get_roots(repo: Path) -> None:
@@ -8267,32 +8266,6 @@ NOW = 1_794_614_400.0
 NOW_UTC = "2026-11-14T00:00:00Z"
 
 
-@pytest.mark.parametrize("branch", ["topic", "initial", "detached"])
-def test_session_commit_start_from_branch_reflog_or_session(
-    repo: Path,
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-    branch: str,
-) -> None:
-    stage(repo, "base")
-    commit(repo)
-    if branch == "topic":
-        with monkeypatch.context() as dated:
-            dated.setenv("GIT_COMMITTER_DATE", EARLY)
-            run_git(repo, "switch", "-qc", "topic")
-        stage(repo, "later")
-        commit(repo)
-    elif branch == "detached":
-        run_git(repo, "switch", "--detach", "HEAD")
-    session = ai.sha256_64(CLAUDE_COMMIT_ENV["CLAUDE_CODE_SESSION_ID"])
-    ai.write_record(session, {"model": "anthropic:m", "started_at": LATE})
-    stage(repo, "change")
-    path = msg_file(tmp_path)
-    assert ai.cmd_trailer(str(path), "message", CLAUDE_COMMIT_ENV) == 0
-    [(_, trailer)] = ai.llm_trailers(path.read_text())
-    assert ai.trailer_start(trailer) == (EARLY if branch == "topic" else LATE)
-
-
 @pytest.fixture
 def launch_file(repo: Path) -> Path:
     """The launch file a launcher writes before its harness starts."""
@@ -8305,27 +8278,6 @@ def launch_file(repo: Path) -> Path:
 @pytest.fixture
 def clock(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(ai.time, "time", returning(NOW))
-
-
-@pytest.mark.parametrize(
-    ("value", "expected"),
-    [
-        (EARLY, EARLY),
-        ("2026-02-30T00:00:00Z", None),
-        ("2026-11-14T24:00:00Z", None),
-        ("2026-11-14t00:02:41z", None),
-        ("\u0662\u0660\u0662\u0666-11-14T00:02:41Z", None),
-        ("2026-11-14T00:02:41", None),
-        ("2026-11-14T00:02:41+00:00", None),
-        ("2026-11-14T00:02:41.5Z", None),
-        (" " + EARLY, None),
-        (EARLY + "Z", None),
-        (None, None),
-        (5, None),
-    ],
-)
-def test_start_ok(value: object, expected: str | None) -> None:
-    assert ai.start_ok(value) == expected
 
 
 def test_hash_ok() -> None:
@@ -8454,7 +8406,7 @@ def test_cmd_record_agy_subagent_never_claims_the_launch(
     feed(monkeypatch, child)
     assert ai.cmd_record("antigravity", {}) == 0
     kid = ai.load_record(ai.sha256_64(SUB), repo, root=ai.sha256_64(CONV))
-    assert kid["started_at"] == ai.utc(NOW) != EARLY
+    assert kid["started_at"] == trailer_fields.utc(NOW) != EARLY
     assert "launch" not in kid
     assert "session" not in loaded(launch_file)
     root = agy_post(
@@ -8550,20 +8502,6 @@ def line_of(start: str | None = None, extra: str = "", who: str = ROOT) -> str:
     return f"{base};session={who};{stamp}surface=cli"
 
 
-def test_without_start_and_trailer_start() -> None:
-    value = f"LLM harness=h;model=m;session={ROOT};started_at={EARLY};subagent={CHILD}"
-    assert (
-        ai.without_start(value)
-        == f"LLM harness=h;model=m;session={ROOT};subagent={CHILD}"
-    )
-    assert ai.without_start(f"LLM x_started_at={EARLY}") == f"LLM x_started_at={EARLY}"
-    assert ai.trailer_start(value) == EARLY
-    assert ai.trailer_start(f"LLM x_started_at={EARLY}") == ""
-    assert ai.trailer_start("LLM harness=h") == ""
-    assert ai.trailer_start("LLM started_at=0") == ""
-    assert ai.trailer_start("LLM started_at=2026-02-30T00:00:00Z") == ""
-
-
 def test_merge_trailers_keeps_the_earliest_start_per_identity() -> None:
     gen, assist = "Generated-by", "Assisted-by"
     found = [
@@ -8595,14 +8533,14 @@ def test_merge_trailers_keeps_the_earliest_start_per_identity() -> None:
             f"LLM harness=a;model=m;session={ROOT};started_at={EARLY};subagent={CHILD}",
         ),
     ]
-    assert ai.earliest_starts(apart) == apart
+    assert trailer_fields.earliest_starts(apart) == apart
     # A line that differs in any other attribute never takes another's place,
     # so a hand-written earlier time cannot drop the hook's launch or effort.
     real = (gen, line_of(LATE, f"launch={LAUNCH};"))
     forged = (gen, line_of(EARLY))
     assert ai.merge_trailers([real, forged]) == [real, forged]
     mixed = [(assist, line_of(EARLY)), (gen, line_of(LATE, who=OTHER))]
-    assert ai.earliest_starts(mixed) == mixed
+    assert trailer_fields.earliest_starts(mixed) == mixed
 
 
 def test_cmd_trailer_amend_takes_the_start_from_the_record(

@@ -1739,14 +1739,9 @@ def test_create_runs_gh_with_the_frontmatter(
 
 
 def test_create_defaults(world: World) -> None:
-    early = value(harness="codex", model="openai:m", started_at="2026-11-14T00:02:41Z")
-    late = early.replace("00:02:41", "00:09:00")
-    world.commit(f"one\n\nGenerated-by: {late}")
-    world.commit(f"two\n\nAssisted-by: {early}")
     write_draft(world)
     assert run_main("create") == 0
     _, call = world.calls("gh")
-    assert str(call["stdin"]).endswith(f"Generated-by: {early}\n")
     assert call["argv"] == [
         "pr",
         "create",
@@ -2096,46 +2091,6 @@ def fake_pr_commits(
     view = view_case(pr_page(TARGET, number))
     world.fake("gh", cases={"pr view": view, " ".join(argv): answer})
     return argv
-
-
-def test_edit_pr_40_uses_github_commit_trailers(
-    world: World, agent: dict[str, str]
-) -> None:
-    local = (
-        "LLM effort=medium;harness=codex:0.171.0;model=openai:gpt-6.2-sol;"
-        "session=sha-256-64:ae40cbadd8ab72ec;surface=cli"
-    )
-    attrs = (
-        "effort=medium;harness=claude-code;model=anthropic:claude-sonnet-5-5;"
-        "session=sha-256-64:7ff1a5b545107a55;surface=cli"
-    )
-    early = attrs.replace(";surface=", ";started_at=2026-11-14T00:02:41Z;surface=")
-    late = attrs.replace(";surface=", ";started_at=2026-11-14T00:09:00Z;surface=")
-    merged = early.replace("7ff1a5b545107a55", "1234567890abcdef")
-    world.git("switch", "-q", "-c", "other-branch")
-    world.commit(f"other PR\n\nGenerated-by: {local}")
-    pages = [
-        [{"commit": {"message": f"one\n\nGenerated-by: LLM {late}"}}],
-        [
-            {"commit": {"message": f"two\n\nAssisted-by: LLM {early}"}},
-            {
-                "parents": [{"sha": "a" * 40}, {"sha": "b" * 40}],
-                "commit": {"message": f"merge\n\n---\n\nGenerated-by: LLM\n {merged}"},
-            },
-            {"commit": {"message": f"body\n\nGenerated-by: {local}\n\nMore prose."}},
-        ],
-    ]
-    argv = fake_pr_commits(world, 40, json.dumps(pages))
-    write_draft(world)
-    assert run_main("edit", str(pr.DRAFT), "--pr", "40", env=agent) == 0
-    _, commits, edit = world.calls("gh")
-    assert commits["argv"] == argv
-    assert str(edit["stdin"]).split("\n\n")[-1] == (
-        f"Generated-by: LLM {early}\nGenerated-by: LLM {merged}\n"
-        f"Assisted-by: {POSTING}\n"
-    )
-    (scan,) = world.calls("gitleaks")
-    assert scan["stdin"] == f"fix: x\n\n{edit['stdin']}"
 
 
 @pytest.mark.parametrize(

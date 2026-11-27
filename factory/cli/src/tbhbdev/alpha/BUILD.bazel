@@ -166,6 +166,7 @@ cli_py_library(
         ":repo",
         "//factory/cli/src/tbhbdev/alpha/identity:commands",
         "//factory/cli/src/tbhbdev/alpha/identity:models",
+        "//factory/cli/src/tbhbdev/alpha/identity:trailers",
     ],
 )
 
@@ -248,6 +249,7 @@ cli_py_library(
         ":size_gate",
         ":tool_pins",
         "//factory/cli/src/tbhbdev/alpha/identity:dispatcher",
+        "//factory/cli/src/tbhbdev/alpha/identity:trailers",
         "@cli_pip//jsonschema",
     ],
 )
@@ -266,6 +268,7 @@ cli_py_library(
     srcs = ["repo.py"],
     imports = ["../.."],
     visibility = ["//factory/cli:__subpackages__"],
+    deps = ["//factory/cli/src/tbhbdev/alpha/identity:trailers"],
 )
 
 cli_py_library(
