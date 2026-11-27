@@ -418,7 +418,6 @@ cli_py_test(
         "//factory/cli/src/tbhbdev/alpha/agent:app_server",
         "//factory/cli/src/tbhbdev/alpha/agent:arguments",
         "//factory/cli/src/tbhbdev/alpha/agent:driver",
-        "//factory/cli/src/tbhbdev/alpha/agent:host_tools",
         "//factory/cli/src/tbhbdev/alpha/agent:model",
         "//factory/cli/src/tbhbdev/alpha/agent:render",
         "//factory/cli/src/tbhbdev/alpha/agent:settings",
@@ -2154,6 +2153,24 @@ cli_py_test(
     srcs = ["test_alpha_identity_models.py"],
     deps = [
         "//factory/cli/src/tbhbdev/alpha/identity:models",
+        "@cli_pip//pytest",
+    ],
+)
+
+cli_py_test(
+    name = "test_alpha_agent_send_failures",
+    srcs = ["test_alpha_agent_send_failures.py"],
+    deps = [
+        ":agent_cli_example",
+        ":agent_driver_example",
+        ":agent_example",
+        ":conftest",
+        "//factory/cli/src/tbhbdev/alpha/agent:app_server",
+        "//factory/cli/src/tbhbdev/alpha/agent:arguments",
+        "//factory/cli/src/tbhbdev/alpha/agent:driver",
+        "//factory/cli/src/tbhbdev/alpha/agent:host_tools",
+        "//factory/cli/src/tbhbdev/alpha/agent:settings",
+        "//factory/cli/src/tbhbdev/alpha/agent:transport",
         "@cli_pip//pytest",
     ],
 )

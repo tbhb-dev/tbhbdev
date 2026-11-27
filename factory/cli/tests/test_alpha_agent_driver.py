@@ -36,7 +36,6 @@ from tbhbdev import version
 from tbhbdev.alpha.agent import (
     app_server,
     driver,
-    host_tools,
     model,
     render,
     transport,
@@ -190,20 +189,6 @@ def test_send_refuses_unknown_run(
     assert remote.records("ssh") == []
 
 
-def test_send_refuses_agy_run(
-    remote: Remote, capsys: pytest.CaptureFixture[str]
-) -> None:
-    assert launch(remote, "--harness", "agy", "--model", "gemini-example") == 0
-    capsys.readouterr()
-    calls = remote.records("ssh", limits=True)
-
-    assert command("send", "hello") == 1
-    assert capsys.readouterr().err == (
-        "tbhbdev alpha agent: sample: send requires a Codex run\n"
-    )
-    assert remote.records("ssh", limits=True) == calls
-
-
 def test_send_explicit_claude_needs_no_config(
     capsys: pytest.CaptureFixture[str],
 ) -> None:
@@ -262,13 +247,12 @@ def stream(response: bytes) -> bytes:
         ),
         (stream(b"\x88\x00"), app_server.UNLOADED),
         (b"HTTP/1.1 403 Forbidden\r\n\r\n", app_server.UNLOADED),
-        (None, "Codex app-server timed out"),
     ],
 )
 def test_send_host_proxy(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
-    wire: bytes | None,
+    wire: bytes,
     error: str,
     isolated_home: Path,
 ) -> None:
@@ -279,13 +263,6 @@ def test_send_host_proxy(
     writer = SimpleNamespace(write=Mock(), drain=AsyncMock())
     frame = Mock(wraps=app_server.frame)
     monkeypatch.setattr(app_server, "frame", frame)
-    if wire is None:
-        timeout = asyncio.timeout
-
-        def immediate_timeout(_seconds: float | None) -> asyncio.Timeout:
-            return timeout(0)
-
-        monkeypatch.setattr(asyncio, "timeout", immediate_timeout)
 
     async def connect(
         *command: str, env: dict[str, str], **_options: int
@@ -294,9 +271,8 @@ def test_send_host_proxy(
         assert env["PATH"].startswith(f"{isolated_home}:")
         assert "/usr/local/bin" in env["PATH"].split(":")
         reader = asyncio.StreamReader()
-        if wire is not None:
-            reader.feed_data(wire)
-            reader.feed_eof()
+        reader.feed_data(wire)
+        reader.feed_eof()
         return SimpleNamespace(
             stdin=writer, stdout=reader, kill=Mock(), communicate=AsyncMock()
         )
@@ -316,32 +292,12 @@ def test_send_host_proxy(
         }
 
 
-@pytest.mark.parametrize("event", [None, '{"type":"error"}\n'])
-def test_send_host_without_thread_reports_unloaded(
-    live_log: Path, capsys: pytest.CaptureFixture[str], event: str | None
+def test_send_host_without_log_reports_unloaded(
+    live_log: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    if event is None:
-        live_log.unlink()
-    else:
-        live_log.write_text(event)
-    assert run_agent(["send-host", "sample"]) == 0
+    live_log.unlink()
+    assert app_server.main(["sample"], "send-host") == 0
     assert capsys.readouterr().out.strip() == app_server.UNLOADED
-
-
-@pytest.mark.usefixtures("live_log")
-def test_send_host_without_codex_reports_unloaded(
-    isolated_home: Path,
-    monkeypatch: pytest.MonkeyPatch,
-    capsys: pytest.CaptureFixture[str],
-) -> None:
-    monkeypatch.setenv("PATH", str(isolated_home))
-    monkeypatch.setattr(host_tools, "account_path", Mock(return_value=()))
-    connect = AsyncMock()
-    monkeypatch.setattr(asyncio, "create_subprocess_exec", connect)
-
-    assert run_agent(["send-host", "sample"]) == 0
-    assert capsys.readouterr().out.strip() == app_server.UNLOADED
-    connect.assert_not_awaited()
 
 
 def test_frame_supports_long_messages() -> None:
