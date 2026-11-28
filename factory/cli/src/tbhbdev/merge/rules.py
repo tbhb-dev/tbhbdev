@@ -100,3 +100,11 @@ def requires_queue(rules: Sequence[object]) -> bool:
                 raise SystemExit(error)
             queued = True
     return queued
+
+
+def has_merge_queue(rules: Sequence[object]) -> bool:
+    """Whether the base branch has a merge queue, whatever its merge method."""
+    return any(
+        (rule := object_fields(entry)) and rule.get("type") == "merge_queue"
+        for entry in rules
+    )
