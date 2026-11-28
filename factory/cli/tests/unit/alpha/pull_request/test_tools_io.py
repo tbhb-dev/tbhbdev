@@ -330,3 +330,24 @@ def test_root_outside_a_repository_is_the_directory_given(
     elsewhere.mkdir()
     assert Path.cwd() == hooked.root
     assert pr_tools.root(elsewhere) == elsewhere
+
+
+def test_run_refreshes_gh_token_before_invoking_gh(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    gh = tmp_path / "gh"
+    write_fake(gh, "print('ok')")
+    events: list[str] = []
+    monkeypatch.setattr(
+        pr_tools.gh_refresh, "refresh_if_served", lambda: events.append("refresh")
+    )
+    assert pr_tools.run([str(gh), "pr", "create"]).stdout == "ok\n"
+    assert events == ["refresh"]
+
+    def refuse() -> None:
+        message = "could not get a fresh GitHub credential before push"
+        raise pr_tools.Invalid(message)
+
+    monkeypatch.setattr(pr_tools.gh_refresh, "refresh_if_served", refuse)
+    with pytest.raises(SystemExit, match="could not get a fresh GitHub credential"):
+        pr_tools.run([str(gh), "pr", "create"])

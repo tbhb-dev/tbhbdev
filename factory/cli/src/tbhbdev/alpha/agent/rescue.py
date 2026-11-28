@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import re
 import subprocess  # nosec B404
-import time
 from functools import partial
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -109,7 +108,7 @@ def publish_commit(run: Run, directory: Path, ref: str, base: str, tip: str) -> 
     host, owner, name = repo.parts(request.repo)
     url = f"https://{host}/{owner}/{name}.git"
     account = next(c for c in run.settings.credentials if c.account == request.account)
-    token = credentials.fresh_token(request, account, None, clock=time.time)
+    token = credentials.fresh_token(request, account)
     git = partial(push.remote_git, directory, token=token)
     current = git("ls-remote", "--refs", url, remote_ref)
     if start_ref and current != f"{base}\t{start_ref}":

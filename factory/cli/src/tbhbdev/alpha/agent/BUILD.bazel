@@ -300,6 +300,7 @@ cli_py_library(
     imports = ["../../.."],
     visibility = ["//factory/cli:__subpackages__"],
     deps = [
+        ":gh_refresh",
         ":model",
         ":worktree_git",
         "//factory/cli/src/tbhbdev/alpha/agent/decisions:repo",
@@ -396,5 +397,17 @@ cli_py_library(
         "//factory/cli/src/tbhbdev/alpha/agent/decisions:run_state",
         "//factory/cli/src/tbhbdev/alpha/agent/decisions:runfiles_names",
         "//factory/cli/src/tbhbdev/alpha/agent/run_host:bazel_cache",
+    ],
+)
+
+cli_py_library(
+    name = "gh_refresh",
+    srcs = ["gh_refresh.py"],
+    imports = ["../../.."],
+    visibility = ["//factory/cli:__subpackages__"],
+    deps = [
+        ":credentials",
+        ":model",
+        "//factory/cli/src/tbhbdev/alpha/agent/decisions:repo",
     ],
 )

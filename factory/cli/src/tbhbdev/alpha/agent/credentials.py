@@ -52,6 +52,7 @@ class Delivery:
     env: dict[str, str] = field(repr=False)
     signing: str | None = field(repr=False)
     claude_profile: str | None
+    gh_token: StoredToken | None = field(default=None, repr=False)
 
 
 def read(reference: str, *, label: str) -> str:
@@ -188,12 +189,16 @@ class StoredToken:
     minted_at: float
 
 
+def hosts_yaml(host: str, token: str) -> str:
+    return yaml.safe_dump({host: {"oauth_token": token, "git_protocol": "https"}})
+
+
 def fresh_token(
     request: RunRequest,
     references: Credentials,
-    stored: StoredToken | None,
+    stored: StoredToken | None = None,
     *,
-    clock: Callable[[], float],
+    clock: Callable[[], float] = time.time,
     source: Callable[[Credentials, str, dict[str, str]], str] = pull_requests_token,
 ) -> str | None:
     """A token that is still valid now: the stored one when young, else a new mint.
@@ -241,16 +246,26 @@ def fetch_token(request: RunRequest, settings: Settings) -> str | None:
     )
 
 
-def deliver(request: RunRequest, settings: Settings, tmpdir: Path) -> Delivery:
+def deliver(
+    request: RunRequest,
+    settings: Settings,
+    tmpdir: Path,
+    *,
+    clock: Callable[[], float] = time.time,
+) -> Delivery:
     references = next(c for c in settings.credentials if c.account == request.account)
     gh_token = github_token(request, references)
     gh = runfiles.private_dir(tmpdir / "gh")
+    stored: StoredToken | None = None
     if gh_token is not None:
         host = repo.parts(request.repo)[0]
-        runfiles.atomic(
-            gh / "hosts.yml",
-            yaml.safe_dump({host: {"oauth_token": gh_token, "git_protocol": "https"}}),
-        )
+        runfiles.atomic(gh / "hosts.yml", hosts_yaml(host, gh_token))
+        if (
+            request.profile is Profile.BUILD
+            and references.pull_requests_app_client_id is not None
+            and references.pull_requests_app_pem is not None
+        ):
+            stored = StoredToken(gh_token, clock())
     docker = runfiles.private_dir(tmpdir / "docker")
     docker_text = (
         read(references.docker, label="docker") if references.docker else '{"auths":{}}'
@@ -272,7 +287,7 @@ def deliver(request: RunRequest, settings: Settings, tmpdir: Path) -> Delivery:
     signing = (
         signing_key(references.signing) if request.profile is Profile.BUILD else None
     )
-    return Delivery(env, signing, profile_name)
+    return Delivery(env, signing, profile_name, stored)
 
 
 def signing_key(source: str) -> str:

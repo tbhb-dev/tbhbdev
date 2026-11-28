@@ -12,6 +12,8 @@ from types import MappingProxyType
 from typing import TYPE_CHECKING
 
 from tbhbdev.alpha import tool_pins
+from tbhbdev.alpha.agent import gh_refresh
+from tbhbdev.alpha.agent.model import Invalid
 from tbhbdev.alpha.repo import git as repo_git
 
 if TYPE_CHECKING:
@@ -105,6 +107,14 @@ def find_tools(
     return paths
 
 
+def _refresh_for_gh(argv: Sequence[str]) -> None:
+    if argv and Path(argv[0]).name == GH:
+        try:
+            gh_refresh.refresh_if_served()
+        except Invalid as exc:
+            raise SystemExit(str(exc)) from None
+
+
 def run(
     argv: Sequence[str], *, cwd: Path | None = None, stdin: str = ""
 ) -> subprocess.CompletedProcess[str]:
@@ -113,6 +123,7 @@ def run(
     Stdin is a pipe, never a terminal, so gh cannot prompt, and a prompt could
     push a branch.
     """
+    _refresh_for_gh(argv)
     # Argv comes from fixed names and validated draft fields.
     return subprocess.run(  # nosec B603
         list(argv),
@@ -126,6 +137,7 @@ def run(
 
 def run_bytes(argv: Sequence[str]) -> subprocess.CompletedProcess[bytes]:
     """Run a command and keep its output as bytes, so line endings stay as written."""
+    _refresh_for_gh(argv)
     # Argv comes from fixed names and a validated pull request number.
     return subprocess.run(  # nosec B603
         list(argv),
