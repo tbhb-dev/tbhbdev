@@ -25,13 +25,14 @@ endpoints = ["https://connect.example.com"]
 [admin]
 vault = "vault-admin"
 item = "item-admin"
+protected_repositories = ["tbhb-dev/gadget"]
 
 [gh_budget]
 hourly_limit = 300
 core_floor = 1000
 ```
 
-`tbhbdev admin` reads `[admin] vault` and `[admin] item` unless you supply the corresponding flags. The package has no defaults for these two settings.
+`tbhbdev admin` reads `[admin] vault` and `[admin] item` unless you supply the corresponding flags. The package has no defaults for these two settings. The optional `[admin] protected_repositories` list names additional `OWNER/REPO` repositories that archive calls cannot archive.
 
 `[gh_budget]` sets the agent `gh` budget that [GitHub polling](alpha/github-polling.md) describes. Its values are whole numbers, and the ones shown are the defaults.
 

@@ -11,8 +11,9 @@ import sys
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from tbhbdev.alpha.monorepo import pathmap
-from tbhbdev.alpha.monorepo.source import (
+from tbhbdev.alpha.terminal import terminal_text
+from tbhbdev.monorepo import pathmap
+from tbhbdev.monorepo.source import (
     EXECUTABLE,
     LINK,
     MonorepoError,
@@ -21,8 +22,7 @@ from tbhbdev.alpha.monorepo.source import (
     origin_repo,
     resolve,
 )
-from tbhbdev.alpha.monorepo.verify import check
-from tbhbdev.alpha.terminal import terminal_text
+from tbhbdev.monorepo.verify import check
 
 if TYPE_CHECKING:
     from collections.abc import Callable

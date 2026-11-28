@@ -24,6 +24,7 @@ from tbhbdev.alpha.agent import (
     push,
     runfiles,
 )
+from tbhbdev.alpha.agent.run_host import sweep_first
 
 
 @pytest.fixture
@@ -71,6 +72,8 @@ def fake_secrets(
     monkeypatch.setenv("GIT_CONFIG_GLOBAL", "/dev/null")
     isolate_host_git(tmp_path, monkeypatch)
     monkeypatch.setattr(admission, "ROOT", tmp_path / "admission")
+    # A launch must never start a real sweep here; test_sweep_first_io restores it.
+    monkeypatch.setattr(sweep_first, "run_sweep", constant(None))
     monkeypatch.setattr(secrets, "read", read)
     monkeypatch.setattr(credentials, "installation_token", installation)
 

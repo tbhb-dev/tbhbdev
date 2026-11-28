@@ -9,7 +9,8 @@ from typing import TYPE_CHECKING
 from tbhbdev.alpha.install.git.hooks import require_git_hooks
 from tbhbdev.alpha.pull_request.publish import scan_secrets
 from tbhbdev.alpha.pull_request.repository import repo_visibility
-from tbhbdev.alpha.pull_request.tools import GH, find_tool, run
+from tbhbdev.alpha.pull_request.tools import GH
+from tbhbdev.merge import write
 from tbhbdev.merge.compose import build_message
 from tbhbdev.merge.github import check_repository, queue_state, verify_head
 from tbhbdev.merge.message import require_clean_message
@@ -46,7 +47,7 @@ def main(argv: Sequence[str] | None = None, prog: str | None = None) -> int:
     if args.dry_run:
         print(preview([GH, *gh_args], message), end="")
         return 0
-    done = run([find_tool(GH), *gh_args], stdin=message.body)
+    done = write.gh_write("merge", (target, number), gh_args, stdin=message.body)
     if queued and done.returncode == 0:
         print(done.stderr, end="", file=sys.stderr)
         print(queue_result(queue_state(target, number), number, previous_removal))

@@ -97,6 +97,9 @@ _IPV4 = r"(?:^|[^0-9A-Za-z.]){}(?:[^0-9.]|$)"
 _PATH = r"""[^\s"'`<>()\[\],;=]*"""
 # A path that starts at $HOME or ~ names no one's home.
 GENERIC_HOME = r"^(?:~|\$HOME|\$\{HOME\})/"
+# Generated Worker type files hold certificate key identifier examples whose
+# colon-separated hex matches the MAC-address rule.
+WORKER_TYPES_PATH = r"(?:^|/)worker-configuration\.d\.ts$"
 
 
 @dataclass(frozen=True)
@@ -130,6 +133,7 @@ class Rule:
     category: str
     regex: str
     allow: tuple[str, ...] = ()
+    paths: tuple[str, ...] = ()
 
 
 def problem(text: str) -> str | None:
@@ -251,7 +255,8 @@ def rules(facts: Facts) -> tuple[list[Rule], dict[str, int]]:
         "tailnet-ipv4",
         rf"100\.(?:6[4-9]|[7-9][0-9]|1[01][0-9]|12[0-7])(?:\.{_OCTET}){{2}}",
     )
-    prefix = ":".join(("fd7a", "115c", "a1e0"))
+    overlay = ("fd7a", "115c", "a1e0")
+    prefix = ":".join(overlay)
     made += [Rule("tailnet-ipv6", rf"(?i)\b{prefix}:[0-9a-f:]*")]
     made += [
         Rule("home-path", f"/(?:Users|home)/{re.escape(name)}{_bound(name, -1)}")
@@ -278,6 +283,7 @@ def rules(facts: Facts) -> tuple[list[Rule], dict[str, int]]:
         Rule(
             "mac-address",
             r"(?i)\b[0-9a-f]{2}(?:(?::[0-9a-f]{2}){5}|(?:-[0-9a-f]{2}){5})\b",
+            paths=(WORKER_TYPES_PATH,),
         ),
         Rule("op-reference", REF_SCHEME + r"""[^\s"'`<>]+"""),
     ]
@@ -326,4 +332,6 @@ def render(made: Iterable[Rule]) -> str:
         lines += _rule_lines(rule_id, CATEGORIES[rule.category], rule.regex)
         if rule.allow:
             lines += ["[[rules.allowlists]]", f"regexes = {json.dumps(rule.allow)}", ""]
+        if rule.paths:
+            lines += ["[[rules.allowlists]]", f"paths = {json.dumps(rule.paths)}", ""]
     return "\n".join(lines)
