@@ -129,11 +129,9 @@ def test_fault_publication(
     request = run_request(
         repo=target, start_ref=start_ref, fetch_refs=[start_ref or START_REF]
     )
-    if change in ("review", "fix"):
-        # The run request currently defines only build and review.
-        request = Mock(
-            wraps=request, profile=Profile.REVIEW if change == "review" else change
-        )
+    profile = {"review": Profile.REVIEW, "fix": "fix"}.get(change)
+    if profile is not None:
+        request = Mock(wraps=request, profile=profile)
     files = runfiles.RunFiles(workspace.parent / "runs", "example")
     files.write("launched", "\n")
     files.write("base", base)
@@ -232,9 +230,9 @@ def test_fault_draft(
     tip = commit(workspace, subject)
     if change == "already pushed":
         git(workspace, "push", "origin", REF)
+    error = OSError if change == "already pushed" else None
     if change in ("already pushed", "dirty with commit"):
         monkeypatch.setattr(draft_pr.attribution, "opened_by", constant(("root", None)))
-        error = OSError if change == "already pushed" else None
         monkeypatch.setattr(draft_pr.opened, "record_opened", Mock(side_effect=error))
     if change == "dirty with commit":
         staged = workspace / ".git/tbhbdev-preflight" / f"{tip}.stages"
