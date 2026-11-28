@@ -47,12 +47,12 @@ def test_parse_refuses_anything_else(text: str) -> None:
 
 
 def test_decide_passes_a_quiet_host() -> None:
-    assert limits.decide(LINUX, FINE, 0, ignore=False) == (False, "")
+    assert limits.decide(LINUX, FINE, 0, admitted=0, ignore=False) == (False, "")
 
 
 def test_decide_names_every_number_over_a_limit() -> None:
     busy = limits.Reading(8.0, 8, 1000, 100, 100, 90, None)
-    refuse, message = limits.decide(LINUX, busy, 0, ignore=False)
+    refuse, message = limits.decide(LINUX, busy, 0, admitted=0, ignore=False)
     assert refuse
     assert message == (
         "example-linux: load 8 >= limit 8; memory available 10% < 20%; "
@@ -65,9 +65,9 @@ def test_decide_uses_the_configured_limits() -> None:
         LINUX, load_limit=24, min_memory_available_percent=10, max_swap_used_percent=95
     )
     reading = limits.Reading(23.9, 32, 1000, 100, 100, 90, None)
-    assert limits.decide(host, reading, 0, ignore=False) == (False, "")
+    assert limits.decide(host, reading, 0, admitted=0, ignore=False) == (False, "")
     low = dataclasses.replace(host, load_limit=2)
-    assert limits.decide(low, reading, 0, ignore=False)[0]
+    assert limits.decide(low, reading, 0, admitted=0, ignore=False)[0]
 
 
 FULL_SWAP = limits.Reading(1.0, 8, 1000, 500, 100, 99, 0.5)
@@ -75,7 +75,7 @@ MAC = dataclasses.replace(LINUX, os=Os.MACOS)
 
 
 def test_full_swap_with_low_pressure_launches_with_a_warning() -> None:
-    assert limits.decide(LINUX, FULL_SWAP, 0, ignore=False) == (
+    assert limits.decide(LINUX, FULL_SWAP, 0, admitted=0, ignore=False) == (
         False,
         "warning: example-linux: swap used 99% > 80%",
     )
@@ -87,22 +87,22 @@ def test_high_pressure_refuses_and_still_names_the_swap() -> None:
         "example-linux: memory pressure avg10 10 >= limit 10; "
         "swap used 99% > 80%; pass --ignore-limits to launch anyway"
     )
-    assert limits.decide(LINUX, found, 0, ignore=False) == (True, expected)
+    assert limits.decide(LINUX, found, 0, admitted=0, ignore=False) == (True, expected)
     quiet = dataclasses.replace(FULL_SWAP, swap_used=0, pressure=9.9)
-    assert limits.decide(LINUX, quiet, 0, ignore=False) == (False, "")
+    assert limits.decide(LINUX, quiet, 0, admitted=0, ignore=False) == (False, "")
     assert limits.decide(
-        LINUX, dataclasses.replace(quiet, pressure=12), 0, ignore=True
+        LINUX, dataclasses.replace(quiet, pressure=12), 0, admitted=0, ignore=True
     )[1].startswith("warning: ")
 
 
 def test_unknown_pressure_keeps_the_swap_refusal() -> None:
     found = dataclasses.replace(FULL_SWAP, pressure=None)
-    assert limits.decide(LINUX, found, 0, ignore=False) == (
+    assert limits.decide(LINUX, found, 0, admitted=0, ignore=False) == (
         True,
         "example-linux: swap used 99% > 80%; pass --ignore-limits to launch anyway",
     )
     assert limits.decide(
-        LINUX, dataclasses.replace(found, swap_used=0), 0, ignore=False
+        LINUX, dataclasses.replace(found, swap_used=0), 0, admitted=0, ignore=False
     ) == (
         False,
         "",
@@ -112,40 +112,40 @@ def test_unknown_pressure_keeps_the_swap_refusal() -> None:
 @pytest.mark.parametrize(("level", "refuse"), [(1, False), (2, False), (4, True)])
 def test_macos_levels(level: int, refuse: bool) -> None:
     found = dataclasses.replace(FULL_SWAP, pressure=level)
-    assert limits.decide(MAC, found, 0, ignore=False)[0] is refuse
+    assert limits.decide(MAC, found, 0, admitted=0, ignore=False)[0] is refuse
     if refuse:
         assert (
             "memory pressure level 4 >= limit 4"
-            in limits.decide(MAC, found, 0, ignore=False)[1]
+            in limits.decide(MAC, found, 0, admitted=0, ignore=False)[1]
         )
 
 
 def test_the_pressure_limits_are_per_host() -> None:
     found = dataclasses.replace(FULL_SWAP, pressure=2)
     host = dataclasses.replace(MAC, max_memory_pressure_level=2)
-    assert limits.decide(host, found, 0, ignore=False)[0]
+    assert limits.decide(host, found, 0, admitted=0, ignore=False)[0]
     busy = dataclasses.replace(LINUX, max_memory_pressure_avg10=1)
-    assert limits.decide(busy, dataclasses.replace(found, pressure=1), 0, ignore=False)[
-        0
-    ]
+    assert limits.decide(
+        busy, dataclasses.replace(found, pressure=1), 0, admitted=0, ignore=False
+    )[0]
 
 
 def test_macos_level_one_refuses_when_the_host_limit_is_one() -> None:
     found = dataclasses.replace(FULL_SWAP, pressure=1)
     host = dataclasses.replace(MAC, max_memory_pressure_level=1)
-    refuse, message = limits.decide(host, found, 0, ignore=False)
+    refuse, message = limits.decide(host, found, 0, admitted=0, ignore=False)
     assert refuse
     assert "memory pressure level 1 >= limit 1" in message
-    assert not limits.decide(MAC, found, 0, ignore=False)[0]
+    assert not limits.decide(MAC, found, 0, admitted=0, ignore=False)[0]
 
 
 def test_decide_allows_swap_of_zero() -> None:
     reading = limits.Reading(1.0, 8, 1000, 500, 0, 0, None)
-    assert limits.decide(LINUX, reading, 0, ignore=False) == (False, "")
+    assert limits.decide(LINUX, reading, 0, admitted=0, ignore=False) == (False, "")
 
 
 def test_decide_refuses_a_failed_read() -> None:
-    refuse, message = limits.decide(LINUX, "cause", 0, ignore=False)
+    refuse, message = limits.decide(LINUX, "cause", 0, admitted=0, ignore=False)
     assert refuse
     assert message == (
         "example-linux: cannot read host limits: cause; "
@@ -159,8 +159,55 @@ def test_decide_refuses_a_failed_read() -> None:
 def test_decide_warns_when_ignored_or_warn_only(found: limits.Reading | str) -> None:
     warn_only = dataclasses.replace(LINUX, limits_warn_only=True)
     for refuse, message in (
-        limits.decide(LINUX, found, 0, ignore=True),
-        limits.decide(warn_only, found, 0, ignore=False),
+        limits.decide(LINUX, found, 0, admitted=0, ignore=True),
+        limits.decide(warn_only, found, 0, admitted=0, ignore=False),
     ):
         assert not refuse
         assert message.startswith("warning: example-linux: ")
+
+
+def test_parse_probe_reads_optional_admitted_count() -> None:
+    expected = limits.Reading(0.5, 4, 1000, 900, 100, 0, None)
+    assert limits.parse_probe("0.5 4 1000 900 100 0 -\n") == (expected, 0)
+    assert limits.parse_probe("0.5 4 1000 900 100 0 -\n2\n") == (expected, 2)
+    assert limits.parse_probe("") == ("unparsable output", 0)
+    assert limits.parse_probe("0.5 4 1000 900 100 0 -\nbad\n") == (
+        "unparsable output",
+        0,
+    )
+    assert limits.parse_probe("0.5 4 1000 900 100 0 -\n2\nextra\n") == (
+        "unparsable output",
+        0,
+    )
+
+
+def test_decide_counts_admitted_runs_in_the_memory_reservation() -> None:
+    reservation_mib = 6144
+    one_run_kib = reservation_mib * 1024
+    total_kib = 24 * 1024 * 1024
+    two_runs = limits.Reading(1.0, 8, total_kib, 2 * one_run_kib, 0, 0, None)
+    refuse, message = limits.decide(
+        LINUX, two_runs, reservation_mib, admitted=2, ignore=False
+    )
+    assert refuse
+    assert f"{2 * one_run_kib} KiB" in message
+    assert "2 admitted" in message
+    assert f"reservation {reservation_mib} MiB" in message
+
+    three_runs = dataclasses.replace(two_runs, memory_available=3 * one_run_kib)
+    assert limits.decide(
+        LINUX, three_runs, reservation_mib, admitted=2, ignore=False
+    ) == (False, "")
+
+    assert limits.decide(
+        LINUX, two_runs, reservation_mib, admitted=0, ignore=False
+    ) == (False, "")
+    short = dataclasses.replace(two_runs, memory_available=one_run_kib - 1)
+    expected = (
+        f"example-linux: memory available {one_run_kib - 1} KiB "
+        f"< reservation {reservation_mib} MiB; pass --ignore-limits to launch anyway"
+    )
+    assert limits.decide(LINUX, short, reservation_mib, admitted=0, ignore=False) == (
+        True,
+        expected,
+    )
