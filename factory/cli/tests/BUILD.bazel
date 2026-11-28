@@ -1334,7 +1334,6 @@ filegroup(
         exclude = ["BUILD.bazel"],
     ) + [
         "//factory/cli/tests/integration:test_content_review.py",
-        "//factory/cli/tests/integration:test_review_body_examples.py",
         "//factory/cli/tests/integration/alpha:package_files",
         "//factory/cli/tests/integration/alpha/agent:package_files",
         "//factory/cli/tests/integration/alpha/agent/decisions:package_files",
