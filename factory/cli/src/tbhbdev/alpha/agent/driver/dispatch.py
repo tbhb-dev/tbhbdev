@@ -5,12 +5,18 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from tbhbdev import telemetry
-from tbhbdev.alpha.agent import signing_parity, transport
+from tbhbdev.alpha.agent import runfiles, signing_parity, transport
 from tbhbdev.alpha.agent.driver import metadata
 from tbhbdev.alpha.agent.driver.cleanup import clean, clean_archived, keep
 from tbhbdev.alpha.agent.driver.inspection import export_patch, inspect
 from tbhbdev.alpha.agent.driver.launch import execute
-from tbhbdev.alpha.agent.driver.lifecycle import kill, status, wait
+from tbhbdev.alpha.agent.driver.lifecycle import (
+    kill,
+    kill_local,
+    status,
+    status_local,
+    wait,
+)
 from tbhbdev.alpha.agent.driver.metadata import not_owner
 from tbhbdev.alpha.agent.driver.steering import send
 from tbhbdev.alpha.agent.model import Invalid
@@ -32,14 +38,8 @@ def dispatch(settings: Settings, args: argparse.Namespace) -> int:
         return result
     try:
         run = metadata.load(settings, args.name)
-    except FileNotFoundError:
-        match args.verb:
-            case "clean":
-                return clean_archived(settings, args.name, force=args.force)
-            case "send":
-                message = f"{args.name}: unknown run"
-                raise Invalid(message) from None
-        raise
+    except FileNotFoundError as missing:
+        return dispatch_without_record(settings, args, missing)
     verbs = {"wait": wait, "status": status, "kill": kill, "keep": keep}
     try:
         if args.verb == "diff" and args.patch:
@@ -48,7 +48,8 @@ def dispatch(settings: Settings, args: argparse.Namespace) -> int:
             limit = args.n if args.verb == "log" else None
             result = inspect(settings, run, limit=limit)
         elif args.verb == "clean":
-            result = clean(settings, run, force=args.force)
+            print(clean(settings, run, force=args.force), end="")
+            result = 0
         elif args.verb == "send":
             result = send(settings, run, args.message)
         else:
@@ -57,3 +58,21 @@ def dispatch(settings: Settings, args: argparse.Namespace) -> int:
         not_owner(run)
     else:
         return result
+
+
+def dispatch_without_record(
+    settings: Settings, args: argparse.Namespace, missing: FileNotFoundError
+) -> int:
+    match args.verb:
+        case "clean":
+            return clean_archived(settings, args.name, force=args.force)
+        case "kill" | "status":
+            files = runfiles.RunFiles(metadata.directory(), args.name)
+            if args.verb == "kill":
+                return kill_local(files, settings.launch_wait_seconds)
+            return status_local(files)
+        case "send":
+            message = f"{args.name}: unknown run"
+            raise Invalid(message) from None
+        case _:
+            raise missing

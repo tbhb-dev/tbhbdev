@@ -3,9 +3,10 @@
 from __future__ import annotations
 
 import time
+from contextlib import suppress
 from typing import TYPE_CHECKING
 
-from tbhbdev.alpha.agent import transport
+from tbhbdev.alpha.agent import process_group, runfiles, transport
 from tbhbdev.alpha.agent.decisions import remote_run
 from tbhbdev.alpha.agent.driver.decisions import lifecycle as rules
 from tbhbdev.alpha.agent.driver.decisions import output
@@ -15,6 +16,53 @@ from tbhbdev.alpha.agent.model import Invalid
 if TYPE_CHECKING:
     from tbhbdev.alpha.agent.driver.decisions.metadata import Run
     from tbhbdev.alpha.agent.model import Settings
+
+
+def status_local(files: runfiles.RunFiles) -> int:
+    phase = None
+    rc = "unknown"
+    with suppress(FileNotFoundError):
+        rc = str(int(runfiles.read_owned(files.path("rc"), 64, "return code")))
+    with suppress(FileNotFoundError):
+        phase = runfiles.read_owned(files.path("phase"), 64, "run phase").strip()
+    if files.path("keep").is_file():
+        phase = "kept"
+    elif phase is None and rc != "unknown":
+        phase = "ended"
+    elif phase is None and files.path("request.json").is_file():
+        phase = "launching"
+    elif phase is None and any(
+        (files.root / "trash").glob(f"????????T????????????Z-{files.name}")
+    ):
+        phase = "cleaned"
+    elif phase is None:
+        message = f"{files.name}: unknown run; local record absent"
+        raise Invalid(message)
+    print(f"{files.name}: phase={phase} rc={rc} (local record absent)")
+    return 0
+
+
+def kill_local(files: runfiles.RunFiles, wait_seconds: int) -> int:
+    deadline = time.monotonic() + wait_seconds
+    while True:
+        with runfiles.try_lock(files.path("run.lock")) as unlocked:
+            if files.path("rc").is_file():
+                print("already finished")
+                return 0
+            with suppress(FileNotFoundError):
+                recorded = process_group.read_record(files)
+                return process_group.kill_recorded(files, recorded)
+            if unlocked:
+                message = (
+                    f"{files.name}: no process group recorded and run lock is not held"
+                )
+                raise Invalid(message)
+        if time.monotonic() >= deadline:
+            message = (
+                f"{files.name}: timed out waiting for the run to record a process group"
+            )
+            raise Invalid(message)
+        time.sleep(0.1)
 
 
 def wait(settings: Settings, run: Run) -> int:

@@ -30,7 +30,7 @@ if test ! -f {path}; then ( : > {path} ); fi
 
 
 # A supervisor may hold the lock outside tmux, or leave a detached group.
-OWNERLESS_LIVENESS = r"""
+LIVENESS = r"""
 my ($lock, $group) = @ARGV;
 if (-f $lock) {
     open(my $fh, "<", $lock) or exit 65;
@@ -74,6 +74,7 @@ def clean(  # noqa: PLR0913 -- explicit remote cleanup inputs
 if test -d "$path"; then
     test ! -e "$trash/worktree" && test ! -L "$trash/worktree" || exit 65
     mv "$path" "$trash/worktree" || exit "$?"
+    printf '%s\\n' 'moved worktree'
 fi
 """
     command = (
@@ -85,15 +86,18 @@ fi
         + socket_root(sockets_dir)
         + f"""tmux_state has-session ag-{name}
 test "$present" -eq 0 || exit 1
+lock="$d/{name}{files.RUN_LOCK}"
+group=
+safe_file "$lock"
 if test "$orphan" -eq 1; then
-    lock="$d/{name}{files.RUN_LOCK}"
     group="$d/{name}{files.PGID}"
-    safe_file "$lock"
     safe_file "$group"
-    if test -f "$lock" || test -f "$group"; then
-        perl -MFcntl=:flock -MJSON::PP -MErrno=ESRCH \\
-            -e {shlex.quote(OWNERLESS_LIVENESS)} "$lock" "$group" || exit "$?"
-    fi
+fi
+if test -f "$lock" || test -f "$group"; then
+    perl -MFcntl=:flock -MJSON::PP -MErrno=ESRCH \\
+        -e {shlex.quote(LIVENESS)} "$lock" "$group" || exit "$?"
+fi
+if test "$orphan" -eq 1; then
     # Claim the name just as transfer does, and keep it until all moves finish.
     mkdir -p -m 700 "$d" || exit "$?"
     (set -C; printf '%s\\n' "$given" > "$owner") || exit 73
@@ -126,6 +130,7 @@ mkdir -p "$trash" || exit "$?"
             f'    target="$trash/{name}{suffix}"\n'
             '    test ! -e "$target" && test ! -L "$target" || exit 65\n'
             f'    mv {path} "$target" || exit "$?"\n'
+            f"    printf '%s\\n' 'moved {name}{suffix}'\n"
             "fi\n"
         )
     return command

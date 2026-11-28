@@ -17,7 +17,7 @@ from driver_scenarios import (
     ticking,
 )
 
-from tbhbdev.alpha.agent import model, transport
+from tbhbdev.alpha.agent import model, runfiles, transport
 from tbhbdev.alpha.agent.decisions import runfiles_names
 from tbhbdev.alpha.agent.driver import (
     cleanup,
@@ -95,7 +95,8 @@ def test_unsandboxed_force_clean_of_an_ended_run_only_moves_to_trash(
     before = {tool: remote.records(tool) for tool in ("ssh", "git", "tmux")}
     capsys.readouterr()
     assert command("clean", "--force") == 0
-    assert capsys.readouterr() == ("", "")
+    output = capsys.readouterr()
+    assert output.err == ""
     assert remote.records("git") == before["git"]
     assert len(remote.records("tmux")) == len(before["tmux"]) + 2
     calls = remote.records("ssh")
@@ -109,6 +110,10 @@ def test_unsandboxed_force_clean_of_an_ended_run_only_moves_to_trash(
     assert trash.name.endswith("-sample")
     assert (trash / "worktree").is_dir()
     assert (trash / "sample.owner").is_file()
+    assert set(output.out.splitlines()) == {
+        "moved sample.json",
+        *(f"moved {path.name}" for path in trash.iterdir()),
+    }
 
 
 def test_clean_running(remote: Remote, capsys: pytest.CaptureFixture[str]) -> None:
@@ -191,6 +196,39 @@ def test_clean_moves_every_run_file_with_one_utc_stamp(
         if p.is_file() and p.suffix != ".owner"
     )
     assert (remote.state / "index.jsonl").read_text() == "preserve\n"
+
+
+def test_cleaned_run_archives_late_files(
+    remote: Remote, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    assert launch(remote) == 0
+    remote.configure(session=False)
+    remote.file(".rc", "0\n")
+    with runfiles.locked(remote.state / "sample.run.lock"):
+        assert command("clean", "--force") == 1
+        assert (remote.state / "sample.rc").is_file()
+    assert command("clean", "--force") == 0
+    assert not metadata.metadata_path("sample").exists()
+    assert not list(remote.state.glob("sample.*"))
+    capsys.readouterr()
+
+    late = (".audit.json", ".launched", ".log", ".review")
+    for suffix in late:
+        remote.file(suffix, "late\n")
+    with monkeypatch.context() as host:
+        host.setenv("XDG_STATE_HOME", str(remote.state.parent.parent))
+        assert command("status") == 0
+        assert "phase=cleaned" in capsys.readouterr().out
+    assert command("clean", "--force") == 0
+
+    output = capsys.readouterr().out
+    for suffix in late:
+        assert f"sample{suffix}" in output
+        assert any(
+            path.read_text() == "late\n"
+            for path in (remote.state / "trash").glob(f"*/sample{suffix}")
+        )
+    assert not list(remote.state.glob("sample.*"))
 
 
 @pytest.mark.parametrize("finished", [False, True])

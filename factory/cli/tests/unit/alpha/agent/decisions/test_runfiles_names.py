@@ -22,14 +22,15 @@ def test_file_names() -> None:
         ".log",
         ".branch",
         ".pr",
+        ".review",
         ".base",
         ".head",
         ".keep",
         ".rc.pending",
-        ".run.lock",
         ".rc.fallback",
         ".rc",
         ".audit.json",
+        ".run.lock",
         ".owner",
     )
 
