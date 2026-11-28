@@ -7,7 +7,7 @@ import json
 import sys
 import time
 from dataclasses import replace
-from importlib import metadata as importlib_metadata
+from importlib import metadata as pkg
 from pathlib import Path
 
 from tbhbdev import userconfig
@@ -23,29 +23,16 @@ from tbhbdev.alpha.agent.launch import ship
 from tbhbdev.alpha.agent.launch.decisions import bootstrap
 from tbhbdev.alpha.agent.model import Profile
 
-_OPTIONAL = (
-    "--ref",
-    "--start-ref",
-    "--reason",
-    "--claude-profile",
-    "--unsandboxed",
-    "--schema",
-    "--variant",
-    "--role",
-)
-_REFUSALS = (
-    userconfig.ConfigError,
-    OSError,
-    ValueError,
-    importlib_metadata.PackageNotFoundError,
-)
+_OPTIONAL = ("--ref", "--start-ref", "--reason", "--claude-profile")
+_EXTRA = ("--unsandboxed", "--schema", "--variant", "--role")
+_REFUSALS = (userconfig.ConfigError, OSError, ValueError, pkg.PackageNotFoundError)
 
 
 def _parser(prog: str) -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(prog=prog)
     for flag in ("--host", "--repo", "--model", "--effort"):
         p.add_argument(flag, required=True)
-    for flag in _OPTIONAL:
+    for flag in (*_OPTIONAL, *_EXTRA):
         p.add_argument(flag)
     for flag in ("--allow-non-gemini", "--ignore-limits", "--steer"):
         p.add_argument(flag, action="store_true")
@@ -83,9 +70,8 @@ def _execute(args: argparse.Namespace) -> int:
         if review:
             reviews.refuse_live_duplicate(loaded, run)
         metadata.save(run)
-    inputs = transport.Inputs(
-        json.dumps(request.to_dict(run.request)), prompt_text, schema_text, run.owner
-    )
+    body = json.dumps(request.to_dict(run.request))
+    inputs = transport.Inputs(body, prompt_text, schema_text, run.owner)
     try:
         ship.send(loaded, run.host, run, bundle, inputs, deadline - time.monotonic())
         cmd = bootstrap.start(
@@ -100,11 +86,9 @@ def _execute(args: argparse.Namespace) -> int:
         raise
     except transport.TransportError:
         startup.recover_transfer(loaded, run)
-        note = sandbox(run.request.authorized_by)
-        print(
-            f"{run.name}: launch unconfirmed host={run.host.name}"
-            f" phase=unreachable{note}"
-        )
+        tail = sandbox(run.request.authorized_by)
+        msg = f"{run.name}: launch unconfirmed host={run.host.name}"
+        print(f"{msg} phase=unreachable{tail}")
         return 75
     try:
         return startup.poll_launch(loaded, run, deadline)

@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import json
-from importlib import metadata as importlib_metadata
+from importlib import metadata as pkg
 from typing import TYPE_CHECKING, NoReturn
 
 import pytest
@@ -30,11 +30,9 @@ BUNDLE = b"packed-cli-archive"
 
 def launch_argv(prompt: Path, *extra: str, host: bool = True) -> list[str]:
     target = ["--host", LINUX.name] if host else []
-    return [
-        *target,
-        *("--repo", "example-org/example-repo", "--model", "example-model"),
-        *("--effort", "high", "--profile", "build", *extra, "sample", str(prompt)),
-    ]
+    base = ("--repo", "example-org/example-repo", "--model", "example-model")
+    tail = ("--effort", "high", "--profile", "build", *extra, "sample", str(prompt))
+    return [*target, *base, *tail]
 
 
 def raising(error: Exception) -> Callable[..., NoReturn]:
@@ -68,11 +66,7 @@ def test_main_without_host_refuses(
 
 @pytest.mark.parametrize(
     "error",
-    [
-        Invalid("CLI bundle requires a 40-hex build commit"),
-        OSError("bundle unreadable"),
-        importlib_metadata.PackageNotFoundError("tbhbdev"),
-    ],
+    [Invalid("bad commit"), OSError("unreadable"), pkg.PackageNotFoundError("tbhbdev")],
 )
 def test_pack_failure_refuses_before_saving_or_shipping(
     brief: Path,
@@ -122,21 +116,15 @@ def test_successful_launch_saves_ships_starts_and_polls_in_order(
     assert events == ["save", "ship", "start", "poll"]
     record = json.loads(metadata.metadata_path("sample").read_text())
     assert (record["cli_commit"], record["cli_sha256"]) == (COMMIT, DIGEST)
-    got_cfg, got_host, got_run, got_bundle, got_inputs, got_t, existed = recorded[
-        "ship"
-    ]
+    got_cfg, got_host, _run, got_bundle, got_inputs, got_t, existed = recorded["ship"]
     assert (got_cfg, got_host, got_bundle, existed) == (cfg, LINUX, BUNDLE, True)
     assert isinstance(got_t, float)
     assert got_t > 0
     assert isinstance(got_inputs, transport.Inputs)
     assert got_inputs.schema is None
-    assert recorded["start"] == (
-        cfg,
-        LINUX,
-        bootstrap.start("sample", cfg.sockets_dir, LINUX.name),
-        transport.Stdin(metadata.load(cfg, "sample").owner),
-    )
-    assert got_run is not None
+    owner = transport.Stdin(metadata.load(cfg, "sample").owner)
+    start = bootstrap.start("sample", cfg.sockets_dir, LINUX.name)
+    assert recorded["start"] == (cfg, LINUX, start, owner)
 
 
 def test_launch_passes_schema_warnings_and_review_commit(
@@ -194,9 +182,7 @@ def test_transfer_and_poll_errors(
         startup, "poll_launch", raising(transport.TransportError("offline"))
     )
     monkeypatch.setattr(
-        startup,
-        "unconfirmed",
-        lambda _s, run, phase: unconfirmed.append((run.name, phase)) or 1,
+        startup, "unconfirmed", lambda _s, r, p: unconfirmed.append((r.name, p)) or 1
     )
     assert command.main(launch_argv(brief), PROG) == 1
     assert unconfirmed == [("sample", "unreachable")]

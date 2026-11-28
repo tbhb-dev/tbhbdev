@@ -41,15 +41,14 @@ def test_send_streams_owner_inputs_and_bundle(
 
     assert len(calls) == 1
     args, kwargs = calls[0]
-    python = f"{sys.version_info.major}.{sys.version_info.minor}"
-    expected_script = bootstrap.receive("sample", cfg.sockets_dir, DIGEST, python)
-    assert args[:3] == (cfg, LINUX, expected_script)
+    py = f"{sys.version_info.major}.{sys.version_info.minor}"
+    script = bootstrap.receive("sample", cfg.sockets_dir, DIGEST, py)
+    assert args[:3] == (cfg, LINUX, script)
     assert kwargs == {"timeout": 42.5}
-    stdin = args[3]
-    assert isinstance(stdin, transport.Stdin)
-    owner_line, archive_bytes = stdin.encode().split(b"\n", 1)
+    assert isinstance(args[3], transport.Stdin)
+    owner_line, raw = args[3].encode().split(b"\n", 1)
     assert owner_line == b"owner-token"
-    with tarfile.open(fileobj=io.BytesIO(archive_bytes)) as archive:
+    with tarfile.open(fileobj=io.BytesIO(raw)) as archive:
         contents = {
             info.name: (info.mode, handle.read())
             for info in archive.getmembers()
@@ -71,15 +70,13 @@ def test_send_streams_owner_inputs_and_bundle(
 def test_send_surfaces_transport_failure(
     monkeypatch: pytest.MonkeyPatch, error: OSError
 ) -> None:
-    run = sample_run()
-    inputs = Inputs("{}", "brief", None, run.owner)
-
     def fail(*_a: object, **_kw: object) -> str:
         raise error
 
     monkeypatch.setattr(transport, "shell", fail)
+    inputs = Inputs("{}", "b", None, "o")
     with pytest.raises(type(error)) as caught:
-        ship.send(settings(), LINUX, run, b"bundle", inputs, 1.0)
+        ship.send(settings(), LINUX, sample_run(), b"b", inputs, 1.0)
     assert caught.value is error
 
 
