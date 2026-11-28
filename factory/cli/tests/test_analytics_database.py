@@ -35,10 +35,13 @@ def options(tmp_path: Path) -> Settings:
         max_size=32,
     )
 )
-def test_password_first_line(
-    value: str, tmp_path_factory: pytest.TempPathFactory
-) -> None:
-    path = tmp_path_factory.mktemp("password") / "owner_password"
+def test_password_first_line(value: str) -> None:
+    assert database.parse_password(f"{value}\nignored\nextra".encode()) == value
+
+
+def test_password_file_first_line(tmp_path: Path) -> None:
+    value = "a" * 32
+    path = tmp_path / "owner_password"
     path.write_text(value + "\nignored\nextra")
     assert database.password(path) == value
 
