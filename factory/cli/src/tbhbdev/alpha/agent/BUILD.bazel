@@ -64,7 +64,10 @@ cli_py_library(
     srcs = ["host_tools.py"],
     imports = ["../../.."],
     visibility = ["//factory/cli:__subpackages__"],
-    deps = [":model"],
+    deps = [
+        ":model",
+        "//factory/cli/src/tbhbdev/alpha:tool_pins",
+    ],
 )
 
 cli_py_library(
@@ -278,6 +281,7 @@ cli_py_library(
     imports = ["../../.."],
     visibility = ["//factory/cli:__subpackages__"],
     deps = [
+        ":host_tools",
         ":model",
         ":runfiles",
         ":worktree_clone",

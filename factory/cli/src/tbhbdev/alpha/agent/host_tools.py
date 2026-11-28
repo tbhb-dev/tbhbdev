@@ -10,8 +10,9 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from collections.abc import Generator
+    from collections.abc import Generator, Mapping
 
+from tbhbdev.alpha import tool_pins
 from tbhbdev.alpha.agent.model import Invalid, Os, Settings
 
 _SEARCH: ContextVar[str] = ContextVar(
@@ -40,6 +41,23 @@ def account_path(home: str) -> tuple[str, ...]:
         "/usr/sbin",
         "/sbin",
     )
+
+
+def require_check_tools(workspace: Path, env: Mapping[str, str] | None) -> None:
+    if env is None:
+        return
+    try:
+        _, problems = tool_pins.check_tools(workspace, env, Path.home())
+    except (OSError, TypeError, ValueError) as exc:
+        message = "could not read the check tool pins from mise.toml"
+        raise Invalid(message) from exc
+    if problems:
+        details = ", ".join(problems.values())
+        message = (
+            f"pinned check tools: {details}. Run `tbhbdev alpha install` "
+            "from a checkout at the run's starting ref."
+        )
+        raise Invalid(message)
 
 
 def search() -> str:
