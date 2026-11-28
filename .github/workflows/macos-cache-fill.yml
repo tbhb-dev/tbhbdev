@@ -45,7 +45,6 @@ jobs:
         uses: tbhb-dev/bazel-r2-cache/.github/actions/remote-cache@bdd7e71f0281998f10a52f253bcf4b9ec81396e8  # main
         with:
           main-token: ${{ secrets.BAZEL_CACHE_TOKEN }}
-          pr-token: ${{ secrets.BAZEL_CACHE_PR_TOKEN }}
 
       # Records the image's Xcode build number in the run log.
       - name: Record the toolchain
@@ -55,8 +54,8 @@ jobs:
           xcode-select -p
           sw_vers
 
-      # No target here compiles C or C++: the repository has none outside
-      # the separate Swift and Apple e2e workspaces.
+      # The Go tests use the race-enabled wrapper in factory/go.bzl.
+      # The rules_go transition enables cgo for these tests.
       - name: Test
         shell: bash
         run: |
