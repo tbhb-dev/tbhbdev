@@ -63,19 +63,29 @@ def parse(text: str) -> Reading | str:
     return found
 
 
-def parse_probe(text: str) -> tuple[Reading | str, int]:
-    """Parse line 1 as a host reading and optional line 2 as the admitted count."""
+def parse_probe(text: str) -> tuple[Reading | str, int, int]:
+    """Parse line 1 as a host reading and optional line 2 as the run counts.
+
+    Line 2 is `TOTAL RECENT`: the admitted runs, and those admitted within the
+    admission window. An older host prints only TOTAL, so every run counts as
+    recent there. A host without line 2 reports no runs.
+    """
     lines = text.splitlines()
     if not lines:
-        return "unparsable output", 0
+        return "unparsable output", 0, 0
     found = parse(lines[0])
-    match lines[1:]:
+    counts = lines[1].split() if len(lines) == 2 else []  # noqa: PLR2004
+    if len(lines) > 2 or not all(c.isascii() and c.isdigit() for c in counts):  # noqa: PLR2004
+        return "unparsable output", 0, 0
+    match [int(c) for c in counts]:
         case []:
-            return found, 0
-        case [count] if count.isascii() and count.isdigit():
-            return found, int(count)
+            return found, 0, 0
+        case [total]:
+            return found, total, total
+        case [total, recent] if recent <= total:
+            return found, total, recent
         case _:
-            return "unparsable output", 0
+            return "unparsable output", 0, 0
 
 
 def _pressure(host: Host, found: Reading) -> tuple[list[str], list[str]]:
@@ -101,19 +111,19 @@ def _pressure(host: Host, found: Reading) -> tuple[list[str], list[str]]:
     return refusals, ([swap] if swap else [])
 
 
-def _reservation(available: int, memory_mib: int, admitted: int) -> str | None:
-    if available >= (admitted + 1) * memory_mib * 1024:
+def _reservation(available: int, memory_mib: int, recent: int) -> str | None:
+    if available >= (recent + 1) * memory_mib * 1024:
         return None
     target = (
-        f"{admitted + 1} * reservation {memory_mib} MiB ({admitted} admitted)"
-        if admitted
+        f"{recent + 1} * reservation {memory_mib} MiB ({recent} recently admitted)"
+        if recent
         else f"reservation {memory_mib} MiB"
     )
     return f"memory available {available} KiB < {target}"
 
 
 def _problems(
-    host: Host, found: Reading, memory_mib: int, admitted: int
+    host: Host, found: Reading, memory_mib: int, recent: int
 ) -> tuple[list[str], list[str]]:
     limit = found.cpus if host.load_limit is None else host.load_limit
     memory = 100 * found.memory_available / found.memory_total
@@ -124,7 +134,7 @@ def _problems(
         problems.append(
             f"memory available {memory:.0f}% < {host.min_memory_available_percent}%"
         )
-    if reservation := _reservation(found.memory_available, memory_mib, admitted):
+    if reservation := _reservation(found.memory_available, memory_mib, recent):
         problems.append(reservation)
     refusals, notes = _pressure(host, found)
     problems.extend(refusals)
@@ -136,20 +146,21 @@ def decide(
     found: Reading | str,
     memory_mib: int,
     *,
-    admitted: int,
+    recent: int,
     ignore: bool,
 ) -> tuple[bool, str]:
     """Whether to refuse the launch, and the message to print, empty if none.
 
-    FOUND is the reading, or the cause of a failed read. ADMITTED is the count
-    of runs already admitted on the host. A warn-only host and IGNORE turn a
-    refusal into a warning.
+    FOUND is the reading, or the cause of a failed read. RECENT is the count of
+    admitted runs claimed within the admission window, which the host's
+    available memory can't yet reflect; older runs are already subtracted from
+    it. A warn-only host and IGNORE turn a refusal into a warning.
     """
     notes: list[str] = []
     if isinstance(found, str):
         problems = [f"cannot read host limits: {found}"]
     else:
-        problems, notes = _problems(host, found, memory_mib, admitted)
+        problems, notes = _problems(host, found, memory_mib, recent)
     if not problems:
         return False, f"warning: {host.name}: " + "; ".join(notes) if notes else ""
     message = f"{host.name}: " + "; ".join(problems + notes)

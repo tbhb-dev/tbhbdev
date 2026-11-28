@@ -6,6 +6,7 @@ import errno
 import os
 import pwd
 import stat
+import time
 from contextlib import ExitStack, nullcontext
 from dataclasses import replace
 from types import SimpleNamespace
@@ -251,15 +252,15 @@ def test_admitted_counts_held_builds_and_reviews_together(
     monkeypatch.setattr(admission, "ROOT", root)
     command = ["admitted", "--", *LINUX.accounts]
     assert agent.main(command, "example agent") == 0
-    assert capsys.readouterr().out == "0\n"
+    assert capsys.readouterr().out == "0 0\n"
     with admission.reserve(root, LINUX, Profile.BUILD, 3):
         assert agent.main(command, "example agent") == 0
-        assert capsys.readouterr().out == "1\n"
+        assert capsys.readouterr().out == "1 1\n"
         with admission.reserve(root, LINUX, Profile.REVIEW, 3):
             assert agent.main(command, "example agent") == 0
-            assert capsys.readouterr().out == "2\n"
+            assert capsys.readouterr().out == "2 2\n"
     assert agent.main(command, "example agent") == 0
-    assert capsys.readouterr().out == "0\n"
+    assert capsys.readouterr().out == "0 0\n"
 
 
 def test_admitted_reports_a_probe_error(
@@ -273,3 +274,51 @@ def test_admitted_reports_a_probe_error(
     assert output.out == ""
     assert "example agent admitted:" in output.err
     assert agent.main(["admitted", "--help"], "example agent") == 0
+
+
+def _age(path: Path, seconds: float) -> None:
+    then = time.time() - seconds
+    os.utime(path, (then, then))
+
+
+def test_reserve_stamps_the_slot_with_the_claim_time(tmp_path: Path) -> None:
+    root = tmp_path / "admission"
+    root.mkdir(mode=0o1777)
+    stale = root / "build-0"
+    stale.touch()
+    _age(stale, 10_000)
+    before = time.time()
+    with admission.reserve(root, LINUX, Profile.BUILD, 3):
+        assert stale.stat().st_mtime >= before - 1
+        assert time.time() - stale.stat().st_mtime < admission.RECENT_SECONDS
+
+
+def test_active_count_separates_recent_from_older_runs(tmp_path: Path) -> None:
+    root = tmp_path / "admission"
+    accounts = LINUX.accounts
+    assert admission.active_count(root, accounts) == (0, 0)
+    with ExitStack() as slots:
+        for _ in range(3):
+            slots.enter_context(admission.reserve(root, LINUX, Profile.BUILD, 5))
+        slots.enter_context(admission.reserve(root, LINUX, Profile.REVIEW, 5))
+        assert admission.active_count(root, accounts) == (4, 4)
+        _age(root / "build-0", admission.RECENT_SECONDS - 1)
+        assert admission.active_count(root, accounts) == (4, 4)
+        _age(root / "build-0", admission.RECENT_SECONDS + 1)
+        assert admission.active_count(root, accounts) == (4, 3)
+        _age(root / "build-1", 3600)
+        _age(root / "review-0", 3600)
+        assert admission.active_count(root, accounts) == (4, 1)
+    assert admission.active_count(root, accounts) == (0, 0)
+
+
+def test_a_slot_that_is_not_held_is_neither_total_nor_recent(tmp_path: Path) -> None:
+    root = tmp_path / "admission"
+    with admission.reserve(root, LINUX, Profile.BUILD, 3):
+        pass
+    assert (root / "build-0").exists()
+    assert admission.active_count(root, LINUX.accounts) == (0, 0)
+
+
+def test_the_recent_window_is_five_minutes() -> None:
+    assert admission.RECENT_SECONDS == 300

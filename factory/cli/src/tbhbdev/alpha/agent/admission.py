@@ -8,6 +8,7 @@ import os
 import pwd
 import stat
 import sys
+import time
 from contextlib import ExitStack, contextmanager, suppress
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -22,6 +23,11 @@ if TYPE_CHECKING:
 ROOT = Path("/var/tmp/tbhbdev-agent-admission")  # noqa: S108  # nosec B108  # Sticky directory with no-follow opens and slot owner and mode checks.
 SLOT_FULL = "full"
 _DIRECTORY_MODE = 0o1777
+# A run's first checkout and Bazel start take minutes, and its memory peak
+# (about 4.5 GiB) is reached by then. After this long a held slot's memory is
+# assumed to be in the host's available memory, so the launch check stops
+# charging it a reservation.
+RECENT_SECONDS = 300
 
 
 class SlotFullError(Invalid):
@@ -90,15 +96,16 @@ def _slot(
         os.close(fd)
 
 
-def _active(directory: int, profile: Profile, owner_ids: set[int]) -> set[str]:
-    active: set[str] = set()
+def _active(directory: int, profile: Profile, owner_ids: set[int]) -> dict[str, float]:
+    """The held slots of PROFILE, mapped to the time each was claimed."""
+    active: dict[str, float] = {}
     for name in os.listdir(directory):
         if name.startswith(f"{profile}-"):
             with _slot(directory, name, owner_ids) as fd:
                 try:
                     fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
                 except BlockingIOError:
-                    active.add(name)
+                    active[name] = os.fstat(fd).st_mtime
     return active
 
 
@@ -109,7 +116,7 @@ def _available(
     profile: Profile,
     limit: int | None,
     owner_ids: set[int],
-) -> Generator[tuple[int, set[str]]]:
+) -> Generator[tuple[int, dict[str, float]]]:
     if limit is None:
         message = f"{host_name}: the request carries no max_concurrent_runs"
         raise Invalid(message)
@@ -154,11 +161,19 @@ def reserve(
             name = next(candidate for candidate in names if candidate not in active)
             fd = slot.enter_context(_slot(directory, name, owner_ids, create=True))
             fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            # Slot files outlive their runs, so stamp the claim time here, under
+            # the admission lock, for `active_count` to age. A slot another
+            # account created can't be stamped; it then counts as older.
+            with suppress(PermissionError):
+                os.utime(fd)
         yield
 
 
-def active_count(root: Path, accounts: tuple[str, ...]) -> int:
-    """Count held build and review slots under ROOT."""
+def active_count(root: Path, accounts: tuple[str, ...]) -> tuple[int, int]:
+    """Count held build and review slots under ROOT, in total and recently.
+
+    A slot is recent when it was claimed less than RECENT_SECONDS ago.
+    """
     owner_ids = _owner_ids(accounts)
     with (
         _directory(root) as directory,
@@ -167,16 +182,22 @@ def active_count(root: Path, accounts: tuple[str, ...]) -> int:
         fcntl.flock(guard, fcntl.LOCK_EX)
         builds = _active(directory, Profile.BUILD, owner_ids)
         reviews = _active(directory, Profile.REVIEW, owner_ids)
-        return len(builds) + len(reviews)
+        now = time.time()
+        claimed = [*builds.values(), *reviews.values()]
+        return len(claimed), sum(now - at < RECENT_SECONDS for at in claimed)
 
 
 def count_main(argv: list[str], prog: str) -> int:
-    """Print the count of active build and review slots on this host."""
+    """Print `TOTAL RECENT`, the active build and review slots on this host.
+
+    RECENT counts the slots claimed within RECENT_SECONDS.
+    """
     parser = argparse.ArgumentParser(prog=prog)
     parser.add_argument("accounts", nargs="*")
     try:
         args = parser.parse_args(argv)
-        print(active_count(ROOT, tuple(args.accounts)))
+        total, recent = active_count(ROOT, tuple(args.accounts))
+        print(total, recent)
     except SystemExit as exc:
         return int(exc.code or 0)
     except (Invalid, OSError) as exc:

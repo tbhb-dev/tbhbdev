@@ -50,8 +50,8 @@ def limits(host: Host | None = None) -> str:
     MemAvailable, swap total, swap used and the memory pressure. The pressure
     is Linux's `some avg10` or macOS's pressure level, and `-` where the host
     can't say, such as a kernel without /proc/pressure/memory. When HOST is
-    given, prints the count of admitted runs on a second line if the host's
-    tbhbdev supports it.
+    given, prints `TOTAL RECENT`, the admitted runs and those admitted lately, on
+    a second line if the host's tbhbdev supports it. An older one prints TOTAL.
     """
     linux = (
         "read l _ < /proc/loadavg || exit 1\n"
@@ -90,7 +90,7 @@ def limits(host: Host | None = None) -> str:
         command = shlex.join(("alpha", "agent", "admitted", "--", *host.accounts))
         admitted = (
             f"a=$({program(host)} {command} 2>/dev/null) || a=\n"
-            "case \"$a\" in ''|*[!0-9]*) ;; *) printf '%s\\n' \"$a\";; esac\n"
+            "case \"$a\" in ''|*[!0-9\\ ]*) ;; *) printf '%s\\n' \"$a\";; esac\n"
         )
     return (
         "# tbhbdev-limits\n"

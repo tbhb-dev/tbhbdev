@@ -49,19 +49,32 @@ def test_script_prints_the_numbers_of_this_host() -> None:
     assert isinstance(limits.parse(done.stdout), limits.Reading)
 
 
-def test_limits_appends_admitted_count_and_falls_back_on_older_host(host: Path) -> None:
+def test_limits_appends_total_and_recent_counts_and_falls_back_on_older_hosts(
+    host: Path,
+) -> None:
     write_standalone_fake(
         host / "bin/tbhbdev",
         "import sys\n"
         "assert sys.argv[1:] == ['alpha', 'agent', 'admitted', '--', 'agent', 'ops']\n"
-        "print('2')\n",
+        "print('5 2')\n",
     )
     config = replace(LINUX, tbhbdev=str(host / "bin/tbhbdev"))
     result = execute(remote_host.limits(config))
     assert result.returncode == 0, result.stderr
-    found, admitted = limits.parse_probe(result.stdout.decode())
+    found, total, recent = limits.parse_probe(result.stdout.decode())
     assert isinstance(found, limits.Reading)
-    assert admitted == 2
+    assert (total, recent) == (5, 2)
+
+    write_standalone_fake(
+        host / "bin/tbhbdev-one-number",
+        "print('3')\n",
+    )
+    one_number = replace(LINUX, tbhbdev=str(host / "bin/tbhbdev-one-number"))
+    one_result = execute(remote_host.limits(one_number))
+    assert one_result.returncode == 0, one_result.stderr
+    one_found, one_total, one_recent = limits.parse_probe(one_result.stdout.decode())
+    assert isinstance(one_found, limits.Reading)
+    assert (one_total, one_recent) == (3, 3)
 
     write_standalone_fake(
         host / "bin/tbhbdev-old",
@@ -72,9 +85,9 @@ def test_limits_appends_admitted_count_and_falls_back_on_older_host(host: Path) 
     older = replace(LINUX, tbhbdev=str(host / "bin/tbhbdev-old"))
     old_result = execute(remote_host.limits(older))
     assert old_result.returncode == 0, old_result.stderr
-    old_found, old_admitted = limits.parse_probe(old_result.stdout.decode())
+    old_found, old_total, old_recent = limits.parse_probe(old_result.stdout.decode())
     assert isinstance(old_found, limits.Reading)
-    assert old_admitted == 0
+    assert (old_total, old_recent) == (0, 0)
 
 
 @pytest.mark.parametrize(

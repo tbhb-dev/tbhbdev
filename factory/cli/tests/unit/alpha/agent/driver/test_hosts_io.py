@@ -339,18 +339,24 @@ def test_check_limits_runs_without_a_launch(host: Remote) -> None:
     hosts.check_limits(CONFIG, config_host, Profile.BUILD, ignore=True)
 
 
-def test_check_limits_counts_admitted_runs_and_keeps_single_run_fallback(
+def test_check_limits_charges_only_recent_runs_and_keeps_single_run_fallback(
     host: Remote,
 ) -> None:
     config_host = CONFIG.hosts[0]
     two_runs_reading = "0.5 4 33554432 12582912 0 0 -"
-    host.configure(limits=two_runs_reading, admitted=2)
-    with pytest.raises(
-        Invalid, match=r"12582912 KiB.*reservation 6144 MiB.*2 admitted"
-    ):
+    refused = r"12582912 KiB.*3 \* reservation 6144 MiB.*2 recently admitted"
+    host.configure(limits=two_runs_reading, admitted="2 2")
+    with pytest.raises(Invalid, match=refused):
         hosts.check_limits(CONFIG, config_host, Profile.BUILD, ignore=False)
 
-    host.configure(limits=two_runs_reading, admitted=0)
+    host.configure(limits=two_runs_reading, admitted="2")
+    with pytest.raises(Invalid, match=refused):
+        hosts.check_limits(CONFIG, config_host, Profile.BUILD, ignore=False)
+
+    host.configure(limits=two_runs_reading, admitted="2 0")
+    hosts.check_limits(CONFIG, config_host, Profile.BUILD, ignore=False)
+
+    host.configure(limits=two_runs_reading, admitted="0 0")
     hosts.check_limits(CONFIG, config_host, Profile.BUILD, ignore=False)
 
     host.configure(limits=two_runs_reading, admitted=None)
