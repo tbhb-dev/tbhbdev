@@ -59,14 +59,10 @@ def kill_local(files: runfiles.RunFiles, wait_seconds: int) -> int:
                     recorded = process_group.read_record(files)
                     return process_group.kill_recorded(files, recorded)
             if unlocked:
-                message = (
-                    f"{files.name}: no process group recorded and run lock is not held"
-                )
+                message = f"{files.name}: no process group recorded, lock not held"
                 raise Invalid(message)
         if time.monotonic() >= deadline:
-            message = (
-                f"{files.name}: timed out waiting for the run to record a process group"
-            )
+            message = f"{files.name}: timed out waiting for a process group"
             raise Invalid(message)
         time.sleep(0.1)
 

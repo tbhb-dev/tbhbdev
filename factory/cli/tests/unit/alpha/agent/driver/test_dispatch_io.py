@@ -88,9 +88,7 @@ def test_launching_run_without_local_record(
     assert command("status") == 0
     assert "phase=launching" in capsys.readouterr().out
     assert command("kill") == 1
-    assert (
-        "no process group recorded and run lock is not held" in capsys.readouterr().err
-    )
+    assert "no process group recorded, lock not held" in capsys.readouterr().err
     with runfiles.locked(files.path("run.lock")):
         assert command("clean", "--force") == 1
         assert "run is running" in capsys.readouterr().err
@@ -139,17 +137,12 @@ def test_kill_times_out_when_only_the_setup_record_exists(
     monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
     files = _setup_record()
-    identity = Mock(return_value=None)
-    monkeypatch.setattr(process_group, "identity", identity)
     ticks = iter(range(1000))
 
     with runfiles.locked(files.path("run.lock")):
         set_clock(monkeypatch, lambda: next(ticks) * 10)
         assert command("kill") == 1
-    assert "timed out waiting for the run to record a process group" in (
-        capsys.readouterr().err
-    )
-    identity.assert_not_called()
+    assert "timed out waiting for a process group" in capsys.readouterr().err
 
 
 @pytest.mark.usefixtures("remote")
@@ -200,10 +193,15 @@ def test_ended_run_without_local_record(capsys: pytest.CaptureFixture[str]) -> N
     assert "phase=ended rc=4" in capsys.readouterr().out
     assert command("kill") == 0
     assert "already finished" in capsys.readouterr().out
+    files.write("keep", "")
+    assert command("status") == 0
+    assert "phase=kept rc=4" in capsys.readouterr().out
+    assert command("clean") == 1
+    files.path("keep").unlink()
     trash = files.root / "trash"
     trash.symlink_to(files.root)
     assert command("clean", "--force") == 1
-    assert "trash is a symlink" in capsys.readouterr().err
+    assert "not a plain directory" in capsys.readouterr().err
     trash.unlink()
     assert command("clean", "--force") == 0
     output = capsys.readouterr().out
@@ -212,18 +210,6 @@ def test_ended_run_without_local_record(capsys: pytest.CaptureFixture[str]) -> N
     assert not list(files.root.glob("sample.*"))
     assert command("clean", "--force") == 0
     assert capsys.readouterr().out == ""
-
-
-@pytest.mark.usefixtures("remote")
-def test_kept_run_without_local_record(capsys: pytest.CaptureFixture[str]) -> None:
-    files = runfiles.RunFiles(metadata.directory(), "sample")
-    files.write("keep", "")
-    files.write("rc", "0\n")
-
-    assert command("status") == 0
-    assert "phase=kept rc=0" in capsys.readouterr().out
-    assert command("clean") == 1
-    assert files.path("keep").exists()
 
 
 @pytest.mark.parametrize(

@@ -102,10 +102,10 @@ def try_lock(path: Path) -> Generator[bool]:
     with os.fdopen(fd, "a") as lock:
         try:
             fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            free = True
         except BlockingIOError:
-            yield False
-        else:
-            yield True
+            free = False
+        yield free
 
 
 class RunFiles:

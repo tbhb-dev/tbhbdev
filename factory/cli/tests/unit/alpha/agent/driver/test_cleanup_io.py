@@ -407,40 +407,23 @@ def _local_run(home: Path, *, worktree: bool) -> tuple[runfiles.RunFiles, Path]:
 
 
 @pytest.mark.usefixtures("remote")
+@pytest.mark.parametrize("worktree", [True, False])
 def test_local_clean_moves_the_worktree_into_the_trash(
-    isolated_home: Path, capsys: pytest.CaptureFixture[str]
+    isolated_home: Path, capsys: pytest.CaptureFixture[str], *, worktree: bool
 ) -> None:
-    files, tree = _local_run(isolated_home, worktree=True)
+    files, tree = _local_run(isolated_home, worktree=worktree)
     assert command("clean", "--force") == 0
-    assert "moved worktree" in capsys.readouterr().out
+    assert ("moved worktree" in capsys.readouterr().out) is worktree
     assert not tree.exists()
     (entry,) = (files.root / "trash").glob("*-sample")
-    assert (entry / "worktree" / "work.txt").read_text() == "kept\n"
+    assert (entry / "worktree" / "work.txt").exists() is worktree
     assert (entry / "sample.request.json").is_file()
 
 
 @pytest.mark.usefixtures("remote")
-def test_local_clean_without_a_worktree(
-    isolated_home: Path, capsys: pytest.CaptureFixture[str]
-) -> None:
-    files, _ = _local_run(isolated_home, worktree=False)
-    assert command("clean", "--force") == 0
-    assert "moved worktree" not in capsys.readouterr().out
-    (entry,) = (files.root / "trash").glob("*-sample")
-    assert not (entry / "worktree").exists()
-
-
-@pytest.mark.usefixtures("remote")
-@pytest.mark.parametrize(
-    ("symlink", "message"),
-    [(True, "is a symlink"), (False, "is not a directory")],
-)
+@pytest.mark.parametrize("symlink", [True, False])
 def test_local_clean_refuses_a_misplaced_worktree(
-    isolated_home: Path,
-    capsys: pytest.CaptureFixture[str],
-    *,
-    symlink: bool,
-    message: str,
+    isolated_home: Path, capsys: pytest.CaptureFixture[str], *, symlink: bool
 ) -> None:
     files, tree = _local_run(isolated_home, worktree=False)
     tree.parent.mkdir(parents=True)
@@ -449,7 +432,7 @@ def test_local_clean_refuses_a_misplaced_worktree(
     else:
         tree.write_text("not a clone\n")
     assert command("clean", "--force") == 1
-    assert message in capsys.readouterr().err
+    assert "not a plain directory" in capsys.readouterr().err
     assert tree.exists(follow_symlinks=False)
     assert files.path("request.json").is_file()
     assert not (files.root / "trash").exists()

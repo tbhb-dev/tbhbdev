@@ -78,21 +78,14 @@ def clean_local(files: runfiles.RunFiles, *, force: bool) -> int:
         running = not unlocked
         with suppress(FileNotFoundError):
             running |= process_group.alive(process_group.read_record(files).pgid)
-        paths = [
-            path
-            for suffix in runfiles_names.SUFFIXES
-            if (path := files.root / f"{files.name}{suffix}").exists(
-                follow_symlinks=False
-            )
-        ]
+        names = (files.root / f"{files.name}{s}" for s in runfiles_names.SUFFIXES)
+        paths = [path for path in names if path.exists(follow_symlinks=False)]
         if not paths:
             return 0
         rc = 0 if files.path("rc").is_file() else None
         check_clean(rc, session=running, force=force)
         trash = files.root / "trash"
-        if trash.is_symlink():
-            message = "clean refused: trash is a symlink"
-            raise Invalid(message)
+        _plain(trash)
         stamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%S%fZ")
         target = trash / f"{stamp}-{files.name}"
         tree = _local_worktree(files)
@@ -104,6 +97,13 @@ def clean_local(files: runfiles.RunFiles, *, force: bool) -> int:
             path.rename(target / path.name)
             print(f"moved {path.name}")
     return 0
+
+
+def _plain(*paths: Path) -> None:
+    for path in paths:
+        if path.is_symlink() or (path.exists() and not path.is_dir()):
+            message = f"clean refused: {path} is not a plain directory"
+            raise Invalid(message)
 
 
 def _local_worktree(files: runfiles.RunFiles) -> Path | None:
@@ -118,13 +118,7 @@ def _local_worktree(files: runfiles.RunFiles) -> Path | None:
     except FileNotFoundError, ValueError, Invalid:
         return None
     tree = clone / ".worktrees" / f"agent-{files.name}"
-    for component in (clone, clone / ".worktrees", tree):
-        if component.is_symlink():
-            message = f"clean refused: {component} is a symlink"
-            raise Invalid(message)
-        if component.exists() and not component.is_dir():
-            message = f"clean refused: {component} is not a directory"
-            raise Invalid(message)
+    _plain(clone, clone / ".worktrees", tree)
     return tree if tree.is_dir() else None
 
 
