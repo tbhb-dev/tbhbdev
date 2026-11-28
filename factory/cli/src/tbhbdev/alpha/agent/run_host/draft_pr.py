@@ -166,11 +166,8 @@ def _history(workspace: Path, records: str) -> tuple[list[str], list[str]]:
 def _scan(directory: Path, base: str, subject: str, text: str) -> None:
     """Use the starting tree's policy and the full scan for unknown visibility."""
     _copy_policy(directory, base, secret_scan.GITLEAKS_EXTENDS)
-    scanner = partial(
-        secret_scan.scan,
-        root=directory,
-        gitleaks=host_tools.resolve("gitleaks"),
-    )
+    gitleaks = host_tools.resolve("gitleaks")
+    scanner = partial(secret_scan.scan, root=directory, gitleaks=gitleaks)
     publish.post_text(subject, text, "", scan=scanner)
 
 
