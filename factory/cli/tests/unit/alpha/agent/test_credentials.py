@@ -112,6 +112,78 @@ def test_build_refusal_names_failed_step_and_error_class(
     assert caught.value.__cause__ is None
 
 
+REVIEW_VALUES = {
+    "example/app/client": "fake-review-client-value",
+    "example/app/pem": "fake-review-key-value",
+}
+REVIEW_ERROR_MARKER = "distinctive-review-token-error"
+REVIEW_FAILURES = [
+    ("missing_configuration", "configuration", "Invalid"),
+    ("client_read", "client id read", "Invalid"),
+    ("key_read", "key read", "Invalid"),
+    ("mint_app_error", "mint", "GhAppError"),
+    ("mint_os_error", "mint", "OSError"),
+]
+
+
+def refuse_review_token(monkeypatch: pytest.MonkeyPatch, scenario: str) -> None:
+    settings = ex.host_settings()
+    references = settings.credentials[0]
+    request = ex.run_request(
+        profile="review", repo="example-owner/example-repo", commit="a" * 40
+    )
+    if scenario == "missing_configuration":
+        settings = dataclasses.replace(
+            settings,
+            credentials=(dataclasses.replace(references, reviews_app_pem=None),),
+        )
+
+    def fake_read(reference: str) -> str:
+        if (scenario, reference) in {
+            ("client_read", "example/app/client"),
+            ("key_read", "example/app/pem"),
+        }:
+            raise secrets.SecretsError(REVIEW_ERROR_MARKER)
+        return REVIEW_VALUES[reference]
+
+    def fake_mint(*_args: object, **_kwargs: object) -> gh_app_api.Minted:
+        if scenario == "mint_app_error":
+            raise gh_app_runtime.GhAppError(REVIEW_ERROR_MARKER)
+        assert scenario == "mint_os_error"
+        raise OSError(REVIEW_ERROR_MARKER)
+
+    monkeypatch.setattr(secrets, "read", fake_read)
+    monkeypatch.setattr(gh_app_api, "mint_token", fake_mint)
+    credentials.review_post_token(request, settings)
+
+
+@pytest.mark.parametrize(("scenario", "step", "error_name"), REVIEW_FAILURES)
+def test_review_post_refusal_names_failed_step_and_error_class(
+    monkeypatch: pytest.MonkeyPatch, scenario: str, step: str, error_name: str
+) -> None:
+    with pytest.raises(Invalid) as caught:
+        refuse_review_token(monkeypatch, scenario)
+    assert str(caught.value) == (
+        f"reviews App token unavailable (step: {step}; error: {error_name})"
+    )
+
+
+@pytest.mark.parametrize("scenario", [case[0] for case in REVIEW_FAILURES])
+def test_review_post_refusal_redacts_secrets_references_and_underlying_message(
+    monkeypatch: pytest.MonkeyPatch, scenario: str
+) -> None:
+    with pytest.raises(Invalid) as caught:
+        refuse_review_token(monkeypatch, scenario)
+    message = str(caught.value)
+    for forbidden in (
+        *REVIEW_VALUES.keys(),
+        *REVIEW_VALUES.values(),
+        REVIEW_ERROR_MARKER,
+    ):
+        assert forbidden not in message
+    assert caught.value.__cause__ is None
+
+
 @pytest.mark.parametrize(
     "scenario",
     ["client_read", "key_read", "mint_gh_app_error", "mint_os_error"],
