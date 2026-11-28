@@ -7,7 +7,7 @@ from contextlib import suppress
 from typing import TYPE_CHECKING
 
 from tbhbdev.alpha.agent import process_group, runfiles, transport
-from tbhbdev.alpha.agent.decisions import remote_run
+from tbhbdev.alpha.agent.decisions import remote_run, run_state
 from tbhbdev.alpha.agent.driver.decisions import lifecycle as rules
 from tbhbdev.alpha.agent.driver.decisions import output
 from tbhbdev.alpha.agent.driver.decisions.lifecycle import answer_state, state
@@ -42,6 +42,14 @@ def status_local(files: runfiles.RunFiles) -> int:
     return 0
 
 
+def _setup_record(files: runfiles.RunFiles) -> bool:
+    """Whether the group on record is the setup worker's, so not yet the harness's."""
+    phase = None
+    with suppress(FileNotFoundError):
+        phase = runfiles.read_owned(files.path("phase"), 64, "run phase").strip()
+    return run_state.setup_record(phase, launched=files.path("launched").exists())
+
+
 def kill_local(files: runfiles.RunFiles, wait_seconds: int) -> int:
     deadline = time.monotonic() + wait_seconds
     while True:
@@ -49,9 +57,10 @@ def kill_local(files: runfiles.RunFiles, wait_seconds: int) -> int:
             if files.path("rc").is_file():
                 print("already finished")
                 return 0
-            with suppress(FileNotFoundError):
-                recorded = process_group.read_record(files)
-                return process_group.kill_recorded(files, recorded)
+            if not _setup_record(files):
+                with suppress(FileNotFoundError):
+                    recorded = process_group.read_record(files)
+                    return process_group.kill_recorded(files, recorded)
             if unlocked:
                 message = (
                     f"{files.name}: no process group recorded and run lock is not held"

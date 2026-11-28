@@ -3,13 +3,16 @@
 from __future__ import annotations
 
 import datetime as dt
+import json
 import os
+from typing import TYPE_CHECKING
 
 import pytest
 from agent_driver_example import (
     Remote,
     git_in,
 )
+from driver_run_example import BUILD
 from driver_scenarios import (
     PREPARE,
     command,
@@ -18,12 +21,15 @@ from driver_scenarios import (
 )
 
 from tbhbdev.alpha.agent import model, runfiles, transport
-from tbhbdev.alpha.agent.decisions import runfiles_names
+from tbhbdev.alpha.agent.decisions import request, runfiles_names
 from tbhbdev.alpha.agent.driver import (
     cleanup,
     metadata,
 )
 from tbhbdev.alpha.agent.driver import launch as coordinator
+
+if TYPE_CHECKING:
+    from pathlib import Path
 
 
 def test_unsandboxed_clean_refuses_a_run_without_a_result(
@@ -386,3 +392,57 @@ def test_unsandboxed_force_clean_refuses_live_session(
     assert (remote.state / "sample.owner").is_file()
     assert not (remote.state / "trash").exists()
     assert remote.records("git") == before
+
+
+def _local_run(home: Path, *, worktree: bool) -> runfiles.RunFiles:
+    files = runfiles.RunFiles(metadata.directory(), "sample")
+    files.write("request.json", json.dumps(request.to_dict(BUILD)))
+    files.write("rc", "0\n")
+    tree = home / "Code" / "github.com" / "example-org" / "example-repo"
+    tree = tree / ".worktrees" / "agent-sample"
+    if worktree:
+        tree.mkdir(parents=True)
+        (tree / "work.txt").write_text("kept\n")
+    return files
+
+
+@pytest.mark.usefixtures("remote")
+def test_local_clean_moves_the_worktree_into_the_trash(
+    isolated_home: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    files = _local_run(isolated_home, worktree=True)
+    assert command("clean", "--force") == 0
+    assert "moved worktree" in capsys.readouterr().out
+    clone = isolated_home / "Code" / "github.com" / "example-org" / "example-repo"
+    assert not (clone / ".worktrees" / "agent-sample").exists()
+    (entry,) = (files.root / "trash").glob("*-sample")
+    assert (entry / "worktree" / "work.txt").read_text() == "kept\n"
+    assert (entry / "sample.request.json").is_file()
+
+
+@pytest.mark.usefixtures("remote")
+def test_local_clean_without_a_worktree(
+    isolated_home: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    files = _local_run(isolated_home, worktree=False)
+    assert command("clean", "--force") == 0
+    assert "moved worktree" not in capsys.readouterr().out
+    (entry,) = (files.root / "trash").glob("*-sample")
+    assert not (entry / "worktree").exists()
+
+
+@pytest.mark.usefixtures("remote")
+def test_local_clean_refuses_a_symlinked_worktree(
+    isolated_home: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    files = _local_run(isolated_home, worktree=False)
+    clone = isolated_home / "Code" / "github.com" / "example-org" / "example-repo"
+    (clone / ".worktrees").mkdir(parents=True)
+    elsewhere = isolated_home / "elsewhere"
+    elsewhere.mkdir()
+    (clone / ".worktrees" / "agent-sample").symlink_to(elsewhere)
+    assert command("clean", "--force") == 1
+    assert "is a symlink" in capsys.readouterr().err
+    assert elsewhere.is_dir()
+    assert files.path("request.json").is_file()
+    assert not (files.root / "trash").exists()

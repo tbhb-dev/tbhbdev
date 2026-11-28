@@ -96,6 +96,60 @@ def test_launching_run_without_local_record(
         assert "already finished" in capsys.readouterr().out
 
 
+def _setup_record(files: runfiles.RunFiles) -> None:
+    """The setup worker's group record, which names no live harness."""
+    files.write("pgid", '{"pgid": 1234, "boot": "current", "start": "123"}')
+    files.write("phase", "shims")
+
+
+@pytest.mark.usefixtures("remote")
+def test_kill_waits_past_the_setup_record_for_the_harness_group(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    files = runfiles.RunFiles(metadata.directory(), "sample")
+    files.write("request.json", "{}")
+    files.path("run.lock").touch()
+    _setup_record(files)
+    # The setup worker's group is gone; any use of its record would fail.
+    identity = Mock(side_effect=lambda pgid: Group(pgid, "current", "7"))
+    stop = Mock(return_value=True)
+    monkeypatch.setattr(process_group, "identity", identity)
+    monkeypatch.setattr(process_group, "stop_owned", stop)
+    ticks = iter(range(100))
+
+    def harness_starts(_: float) -> None:
+        files.write("pgid", '{"pgid": 4321, "boot": "current", "start": "7"}')
+        files.write("launched", "\n")
+
+    with runfiles.locked(files.path("run.lock")):
+        set_clock(monkeypatch, lambda: next(ticks) / 10, harness_starts)
+        assert command("kill") == 0
+    assert capsys.readouterr().err == ""
+    assert stop.call_args.args[1:] == (4321, 0)
+    identity.assert_called_once_with(4321)
+
+
+@pytest.mark.usefixtures("remote")
+def test_kill_times_out_when_only_the_setup_record_exists(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    files = runfiles.RunFiles(metadata.directory(), "sample")
+    files.write("request.json", "{}")
+    files.path("run.lock").touch()
+    _setup_record(files)
+    identity = Mock(return_value=None)
+    monkeypatch.setattr(process_group, "identity", identity)
+    ticks = iter(range(1000))
+
+    with runfiles.locked(files.path("run.lock")):
+        set_clock(monkeypatch, lambda: next(ticks) * 10)
+        assert command("kill") == 1
+    assert "timed out waiting for the run to record a process group" in (
+        capsys.readouterr().err
+    )
+    identity.assert_not_called()
+
+
 @pytest.mark.usefixtures("remote")
 def test_running_run_without_local_record(
     monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]

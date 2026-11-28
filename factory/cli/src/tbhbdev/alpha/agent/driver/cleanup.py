@@ -2,12 +2,15 @@
 
 from __future__ import annotations
 
+import json
+import shutil
 from contextlib import suppress
 from datetime import UTC, datetime
+from pathlib import Path
 from typing import TYPE_CHECKING
 
 from tbhbdev.alpha.agent import process_group, runfiles, transport
-from tbhbdev.alpha.agent.decisions import remote_cleanup, runfiles_names
+from tbhbdev.alpha.agent.decisions import remote_cleanup, repo, request, runfiles_names
 from tbhbdev.alpha.agent.driver.decisions.lifecycle import clean as check_clean
 from tbhbdev.alpha.agent.driver.metadata import (
     archive_metadata,
@@ -18,8 +21,6 @@ from tbhbdev.alpha.agent.driver.metadata import (
 from tbhbdev.alpha.agent.model import Invalid
 
 if TYPE_CHECKING:
-    from pathlib import Path
-
     from tbhbdev.alpha.agent.driver.decisions.metadata import Run
     from tbhbdev.alpha.agent.model import Settings
 
@@ -94,11 +95,37 @@ def clean_local(files: runfiles.RunFiles, *, force: bool) -> int:
             raise Invalid(message)
         stamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%S%fZ")
         target = trash / f"{stamp}-{files.name}"
+        tree = _local_worktree(files)
         target.mkdir(mode=0o700, parents=True)
+        if tree is not None:
+            shutil.move(tree, target / "worktree")
+            print("moved worktree")
         for path in paths:
             path.rename(target / path.name)
             print(f"moved {path.name}")
     return 0
+
+
+def _local_worktree(files: runfiles.RunFiles) -> Path | None:
+    """The run's worktree on this host, or None when there is none to move.
+
+    The request names the clone, so find it before the run files move away.
+    """
+    try:
+        text = runfiles.read_owned(files.path("request.json"), 65536, "request")
+        data = json.loads(text)
+        clone = Path(repo.clone_path(Path.home(), request.parse(data).repo))
+    except FileNotFoundError, ValueError, Invalid:
+        return None
+    tree = clone / ".worktrees" / f"agent-{files.name}"
+    for component in (clone, clone / ".worktrees", tree):
+        if component.is_symlink():
+            message = f"clean refused: {component} is a symlink"
+            raise Invalid(message)
+        if component.exists() and not component.is_dir():
+            message = f"clean refused: {component} is not a directory"
+            raise Invalid(message)
+    return tree if tree.is_dir() else None
 
 
 def keep(settings: Settings, run: Run) -> int:
