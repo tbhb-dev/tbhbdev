@@ -524,6 +524,7 @@ redirections
 refmap
 refspec
 refspecs
+remerge
 regclass
 regedit
 regenerable
