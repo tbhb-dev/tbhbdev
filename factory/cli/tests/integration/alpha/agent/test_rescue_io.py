@@ -162,7 +162,7 @@ def test_push_uses_a_fresh_credential(
     change_checkout(workspace, "dirty")
     assert rescue.publish(run, workspace) == "published"
     fresh.assert_called_once()
-    assert remote.call_args.kwargs["token"] == "fresh-token"  # noqa: S105
+    assert remote.call_args.kwargs == {"token": "fresh-token"}
 
 
 @pytest.mark.parametrize("change", ["dirty"])

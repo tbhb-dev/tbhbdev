@@ -374,6 +374,18 @@ cli_py_test(
 )
 
 cli_py_test(
+    name = "test_alpha_agent_fresh_token",
+    srcs = ["test_alpha_agent_fresh_token.py"],
+    deps = [
+        ":agent_host_example",
+        ":conftest",
+        "//factory/cli/src/tbhbdev/alpha/agent:credentials",
+        "//factory/cli/src/tbhbdev/alpha/agent:model",
+        "@cli_pip//pytest",
+    ],
+)
+
+cli_py_test(
     name = "test_alpha_agent_fetch_refs",
     srcs = ["test_alpha_agent_fetch_refs.py"],
     deps = [
