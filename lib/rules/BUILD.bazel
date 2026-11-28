@@ -63,6 +63,7 @@ _VALE_STYLES = [
         ],
     )
     for path in _VALE_STYLES + [
+        "AGENTS.md",
         ".cspell-words.txt",
         ".cspell.jsonc",
         ".github/actions/affected-targets/affected_targets/__init__.py",

@@ -46,8 +46,10 @@ A change that touches one of these paths needs two fresh review runs. Nothing lo
 | `.github/workflows/**` | Selects the jobs the required `conclusion` check covers, and holds the workflows that use app credentials (the tier 0 workflow, `ci.yml`, and Renovate). |
 | `.github/actions/**` | Selects and runs the tests in CI and propagates their failures. |
 | `.github/rulesets/**` | Sets branch protection, approval requirements, and required checks. Planned, the folder isn't present yet. |
-| `factory/cli/src/tbhbdev/alpha/merge/**` | The merge code decides when a pull request may merge. |
+| `factory/cli/src/tbhbdev/merge/**` | The merge code decides when a pull request may merge. |
 | `factory/cli/src/tbhbdev/alpha/review*` | The review code decides which runs clear a head commit. |
+| `factory/cli/src/tbhbdev/alpha/review_data/**` | The review checklist, template, and schema decide what a review run must cover. |
+| `factory/cli/src/tbhbdev/alpha/review_prompt_data/**` | The tier prompts decide what each review run checks. |
 | `lib/renovate-config/**` | Sets the presets and rules for the Renovate app's pull requests. |
 | `lib/rules/BUILD.bazel` | Wires the required status and review policy targets that select what those checks inspect. |
 | `lib/rules/lint/BUILD.bazel` | Wires the review policy and repository check targets to the gate code and inputs. |
