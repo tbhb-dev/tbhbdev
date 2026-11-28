@@ -23,35 +23,35 @@ from tbhbdev.alpha.agent.launch import ship
 from tbhbdev.alpha.agent.launch.decisions import bootstrap
 from tbhbdev.alpha.agent.model import Profile
 
+_OPTIONAL = ("--ref", "--start-ref", "--reason", "--claude-profile")
+_EXTRA = ("--unsandboxed", "--schema", "--variant", "--role")
+_REFUSALS = (
+    userconfig.ConfigError,
+    OSError,
+    ValueError,
+    importlib_metadata.PackageNotFoundError,
+)
+
 
 def _parser(prog: str) -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog=prog)
-    parser.add_argument("--host", required=True)
-    parser.add_argument("--repo", required=True)
-    parser.add_argument("--model", required=True)
-    parser.add_argument("--effort", required=True)
+    for flag in ("--host", "--repo", "--model", "--effort"):
+        parser.add_argument(flag, required=True)
+    for flag in (*_OPTIONAL, *_EXTRA):
+        parser.add_argument(flag)
+    for flag in ("--allow-non-gemini", "--ignore-limits", "--steer"):
+        parser.add_argument(flag, action="store_true")
     parser.add_argument("--profile", choices=("build", "review"), required=True)
     parser.add_argument(
         "--harness", choices=("codex", "claude", "agy"), default="codex"
     )
-    parser.add_argument("--ref")
     parser.add_argument("--fetch-ref", action="append", default=[])
-    parser.add_argument("--start-ref")
-    parser.add_argument("--allow-non-gemini", action="store_true")
-    parser.add_argument("--ignore-limits", action="store_true")
     parser.add_argument("--expect-commit", action=argparse.BooleanOptionalAction)
     accounts = parser.add_mutually_exclusive_group()
     accounts.add_argument("--account")
     accounts.add_argument("--ops", dest="account", action="store_const", const="ops")
-    parser.add_argument("--reason")
-    parser.add_argument("--claude-profile")
-    parser.add_argument("--unsandboxed")
     parser.add_argument("--timeout", type=arguments.duration)
-    parser.add_argument("--schema")
-    parser.add_argument("--steer", action="store_true")
     parser.add_argument("--class", dest="class_")
-    parser.add_argument("--variant")
-    parser.add_argument("--role")
     parser.add_argument("--worker-workflow", type=worker_identity.workflow)
     parser.add_argument("name")
     parser.add_argument("prompt_file")
@@ -78,10 +78,7 @@ def _execute(args: argparse.Namespace) -> int:
             reviews.refuse_live_duplicate(loaded, run)
         metadata.save(run)
     inputs = transport.Inputs(
-        json.dumps(request.to_dict(run.request)),
-        prompt_text,
-        schema_text,
-        run.owner,
+        json.dumps(request.to_dict(run.request)), prompt_text, schema_text, run.owner
     )
     try:
         ship.send(loaded, run.host, run, bundle, inputs, deadline - time.monotonic())
@@ -121,11 +118,6 @@ def main(argv: list[str], prog: str) -> int:
         return int(exc.code or 0)
     try:
         return _execute(args)
-    except (
-        userconfig.ConfigError,
-        OSError,
-        ValueError,
-        importlib_metadata.PackageNotFoundError,
-    ) as exc:
+    except _REFUSALS as exc:
         print(f"{prog}: {exc}", file=sys.stderr)
         return 1

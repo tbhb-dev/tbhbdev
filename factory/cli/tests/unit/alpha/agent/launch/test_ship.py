@@ -25,15 +25,18 @@ if TYPE_CHECKING:
 DIGEST = "a" * 64
 
 
+def sample_run(digest: str | None = DIGEST) -> Run:
+    run = Run("sample", LINUX, request.parse(BUILD), "", "owner-token")
+    run.cli_sha256 = digest
+    return run
+
+
 @pytest.mark.parametrize("schema", [None, '{"type":"object"}'])
 def test_send_streams_owner_inputs_and_bundle(
     monkeypatch: pytest.MonkeyPatch, schema: str | None
 ) -> None:
-    cfg = settings()
-    run = Run("sample", LINUX, request.parse(BUILD), "", "owner-token")
-    run.cli_sha256 = DIGEST
+    cfg, run, bundle = settings(), sample_run(), b"packed-cli-bytes"
     inputs = Inputs('{"v":2}', "brief text\n", schema, run.owner)
-    bundle = b"packed-cli-bytes"
     calls: list[tuple[Settings, Host, str, transport.Stdin | None, float]] = []
 
     def fake_shell(
@@ -48,27 +51,21 @@ def test_send_streams_owner_inputs_and_bundle(
         return ""
 
     monkeypatch.setattr(transport, "shell", fake_shell)
-
     ship.send(cfg, LINUX, run, bundle, inputs, 42.5)
 
     assert len(calls) == 1
     got_cfg, got_host, got_script, got_stdin, got_timeout = calls[0]
-    assert got_cfg == cfg
-    assert got_host == LINUX
-    assert got_timeout == 42.5
     python = f"{sys.version_info.major}.{sys.version_info.minor}"
+    assert (got_cfg, got_host, got_timeout) == (cfg, LINUX, 42.5)
     assert got_script == bootstrap.receive("sample", cfg.sockets_dir, DIGEST, python)
     assert got_stdin is not None
     owner_line, archive_bytes = got_stdin.encode().split(b"\n", 1)
     assert owner_line == b"owner-token"
     with tarfile.open(fileobj=io.BytesIO(archive_bytes)) as archive:
-        members = {
-            info.name: (info.mode, archive.extractfile(info))
-            for info in archive.getmembers()
-        }
         contents = {
-            name: (mode, handle.read() if handle is not None else b"")
-            for name, (mode, handle) in members.items()
+            info.name: (info.mode, handle.read())
+            for info in archive.getmembers()
+            if (handle := archive.extractfile(info)) is not None
         }
     expected = {
         "sample.request.json": (0o600, b'{"v":2}'),
@@ -81,41 +78,27 @@ def test_send_streams_owner_inputs_and_bundle(
 
 
 @pytest.mark.parametrize(
-    "error",
-    [
-        transport.TransportError("host unreachable"),
-        transport.CollisionError("name taken"),
-    ],
+    "error", [transport.TransportError("offline"), transport.CollisionError("taken")]
 )
 def test_send_surfaces_transport_failure(
     monkeypatch: pytest.MonkeyPatch, error: OSError
 ) -> None:
-    run = Run("sample", LINUX, request.parse(BUILD), "", "owner-token")
-    run.cli_sha256 = DIGEST
+    run = sample_run()
     inputs = Inputs("{}", "brief", None, run.owner)
 
-    def fail(*_args: object, **_kwargs: object) -> str:
+    def fail(*_a: object, **_kw: object) -> str:
         raise error
 
     monkeypatch.setattr(transport, "shell", fail)
-
     with pytest.raises(type(error)) as caught:
         ship.send(settings(), LINUX, run, b"bundle", inputs, 1.0)
     assert caught.value is error
 
 
 def test_send_requires_cli_digest(monkeypatch: pytest.MonkeyPatch) -> None:
-    run = Run("sample", LINUX, request.parse(BUILD), "", "owner-token")
-    inputs = Inputs("{}", "brief", None, run.owner)
-    called = False
-
-    def unexpected(*_args: object, **_kwargs: object) -> str:
-        nonlocal called
-        called = True
-        return ""
-
-    monkeypatch.setattr(transport, "shell", unexpected)
-
+    run = sample_run(digest=None)
+    calls: list[object] = []
+    monkeypatch.setattr(transport, "shell", lambda *a, **kw: calls.append((a, kw)))
     with pytest.raises(Invalid, match="cli_sha256"):
-        ship.send(settings(), LINUX, run, b"bundle", inputs, 1.0)
-    assert not called
+        ship.send(settings(), LINUX, run, b"bundle", Inputs("{}", "b", None, "o"), 1.0)
+    assert calls == []

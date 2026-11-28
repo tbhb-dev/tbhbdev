@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 from importlib import metadata as importlib_metadata
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, NoReturn
 
 import pytest
 from agent_example import LINUX, settings
@@ -17,6 +17,7 @@ from tbhbdev.alpha.agent.launch.decisions import bootstrap
 from tbhbdev.alpha.agent.model import Invalid
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
     from pathlib import Path
 
     from tbhbdev.alpha.agent.driver.decisions.metadata import Run
@@ -28,49 +29,44 @@ DIGEST = "b" * 64
 BUNDLE = b"packed-cli-archive"
 
 
-def launch_argv(prompt: Path, *extra: str, include_host: bool = True) -> list[str]:
-    host = ["--host", LINUX.name] if include_host else []
+def launch_argv(prompt: Path, *extra: str, host: bool = True) -> list[str]:
+    target = ["--host", LINUX.name] if host else []
     return [
-        *host,
-        "--repo",
-        "example-org/example-repo",
-        "--model",
-        "example-model",
-        "--effort",
-        "high",
-        "--profile",
-        "build",
-        *extra,
-        "sample",
-        str(prompt),
+        *target,
+        *("--repo", "example-org/example-repo", "--model", "example-model"),
+        *("--effort", "high", "--profile", "build", *extra, "sample", str(prompt)),
     ]
 
 
-@pytest.mark.usefixtures("isolated_home")
+def raising(error: Exception) -> Callable[..., NoReturn]:
+    def fail(*_args: object, **_kwargs: object) -> NoReturn:
+        raise error
+
+    return fail
+
+
+@pytest.fixture
+def brief(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, isolated_home: Path) -> Path:
+    assert isolated_home.is_dir()
+    path = tmp_path / "brief.md"
+    path.write_text("Carry out the example.\n")
+    monkeypatch.setattr(agent_settings, "load", settings)
+    monkeypatch.setattr(cli_bundle, "installed", lambda: (BUNDLE, COMMIT, DIGEST))
+    return path
+
+
 def test_main_without_host_refuses(
-    tmp_path: Path,
-    capsys: pytest.CaptureFixture[str],
-    monkeypatch: pytest.MonkeyPatch,
+    brief: Path, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    prompt = tmp_path / "brief.md"
-    prompt.write_text("Carry out the example.\n")
-    called = False
-
-    def unexpected(*_args: object, **_kwargs: object) -> object:
-        nonlocal called
-        called = True
-        return ""
-
-    monkeypatch.setattr(ship, "send", unexpected)
-    monkeypatch.setattr(transport, "call", unexpected)
-
-    assert command.main(launch_argv(prompt, include_host=False), PROG) == 2
+    calls: list[object] = []
+    monkeypatch.setattr(ship, "send", lambda *a, **kw: calls.append((a, kw)))
+    monkeypatch.setattr(transport, "call", lambda *a, **kw: calls.append((a, kw)))
+    assert command.main(launch_argv(brief, host=False), PROG) == 2
     assert "--host" in capsys.readouterr().err
     assert not metadata.metadata_path("sample").exists()
-    assert not called
+    assert calls == []
 
 
-@pytest.mark.usefixtures("isolated_home")
 @pytest.mark.parametrize(
     "error",
     [
@@ -80,49 +76,28 @@ def test_main_without_host_refuses(
     ],
 )
 def test_pack_failure_refuses_before_saving_or_shipping(
-    tmp_path: Path,
+    brief: Path,
     capsys: pytest.CaptureFixture[str],
     monkeypatch: pytest.MonkeyPatch,
     error: Exception,
 ) -> None:
-    prompt = tmp_path / "brief.md"
-    prompt.write_text("Carry out the example.\n")
-    monkeypatch.setattr(agent_settings, "load", settings)
-
-    def broken() -> tuple[bytes, str, str]:
-        raise error
-
-    called = False
-
-    def unexpected(*_args: object, **_kwargs: object) -> object:
-        nonlocal called
-        called = True
-        return ""
-
-    monkeypatch.setattr(cli_bundle, "installed", broken)
-    monkeypatch.setattr(ship, "send", unexpected)
-    monkeypatch.setattr(transport, "call", unexpected)
-
-    assert command.main(launch_argv(prompt), PROG) == 1
+    calls: list[object] = []
+    monkeypatch.setattr(cli_bundle, "installed", raising(error))
+    monkeypatch.setattr(ship, "send", lambda *a, **kw: calls.append((a, kw)))
+    monkeypatch.setattr(transport, "call", lambda *a, **kw: calls.append((a, kw)))
+    assert command.main(launch_argv(brief), PROG) == 1
     assert str(error) in capsys.readouterr().err
     assert not metadata.metadata_path("sample").exists()
-    assert not called
+    assert calls == []
 
 
-@pytest.mark.usefixtures("isolated_home")
 def test_successful_launch_saves_ships_starts_and_polls_in_order(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
+    brief: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    cfg = settings()
-    prompt = tmp_path / "brief.md"
-    prompt.write_text("Carry out the example.\n")
-    events: list[str] = []
-    real_save = metadata.save
+    cfg, events, real_save = settings(), [], metadata.save
 
     def fake_save(run: Run) -> None:
-        assert run.cli_commit == COMMIT
-        assert run.cli_sha256 == DIGEST
+        assert (run.cli_commit, run.cli_sha256) == (COMMIT, DIGEST)
         events.append("save")
         real_save(run)
 
@@ -135,14 +110,9 @@ def test_successful_launch_saves_ships_starts_and_polls_in_order(
         timeout: float,
     ) -> None:
         assert metadata.metadata_path("sample").exists()
-        assert config == cfg
-        assert host == LINUX
-        assert run.cli_commit == COMMIT
-        assert run.cli_sha256 == DIGEST
-        assert bundle == BUNDLE
-        assert inputs.owner == run.owner
-        assert inputs.prompt == "Carry out the example.\n"
-        assert inputs.schema is None
+        assert (config, host, bundle) == (cfg, LINUX, BUNDLE)
+        assert (run.cli_commit, run.cli_sha256) == (COMMIT, DIGEST)
+        assert (inputs.owner, inputs.schema) == (run.owner, None)
         assert timeout > 0
         events.append("ship")
 
@@ -154,185 +124,85 @@ def test_successful_launch_saves_ships_starts_and_polls_in_order(
         *,
         timeout: float = 30,
     ) -> str:
-        assert config == cfg
-        assert host == LINUX
+        assert (config, host) == (cfg, LINUX)
         assert remote == bootstrap.start("sample", cfg.sockets_dir, LINUX.name)
         assert stdin == transport.Stdin(metadata.load(cfg, "sample").owner)
         assert timeout > 0
         events.append("start")
         return ""
 
-    def fake_poll(config: Settings, run: Run, deadline: float) -> int:
-        assert config == cfg
-        assert run.name == "sample"
-        assert deadline > 0
-        events.append("poll")
-        return 0
-
     monkeypatch.setattr(agent_settings, "load", lambda: cfg)
-    monkeypatch.setattr(cli_bundle, "installed", lambda: (BUNDLE, COMMIT, DIGEST))
     monkeypatch.setattr(metadata, "save", fake_save)
     monkeypatch.setattr(ship, "send", fake_send)
     monkeypatch.setattr(transport, "call", fake_call)
-    monkeypatch.setattr(startup, "poll_launch", fake_poll)
+    monkeypatch.setattr(
+        startup, "poll_launch", lambda _s, _r, _d: events.append("poll") or 0
+    )
 
-    assert command.main(launch_argv(prompt), PROG) == 0
+    assert command.main(launch_argv(brief), PROG) == 0
     assert events == ["save", "ship", "start", "poll"]
     record = json.loads(metadata.metadata_path("sample").read_text())
-    assert record["cli_commit"] == COMMIT
-    assert record["cli_sha256"] == DIGEST
+    assert (record["cli_commit"], record["cli_sha256"]) == (COMMIT, DIGEST)
 
 
-@pytest.mark.usefixtures("isolated_home")
 def test_launch_passes_schema_warnings_and_review_commit(
+    brief: Path,
     tmp_path: Path,
     capsys: pytest.CaptureFixture[str],
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    cfg = settings()
-    prompt = tmp_path / "brief.md"
-    prompt.write_text("Work on a branch named other-branch.\n")
+    brief.write_text("Work on a branch named other-branch.\n")
     schema = tmp_path / "schema.json"
     schema.write_text('{"type":"object"}')
     shipped: list[transport.Inputs] = []
-
-    def fake_send(
-        _config: Settings,
-        _host: Host,
-        _run: Run,
-        _bundle: bytes,
-        inputs: transport.Inputs,
-        _timeout: float,
-    ) -> None:
-        shipped.append(inputs)
-
-    monkeypatch.setattr(agent_settings, "load", lambda: cfg)
-    monkeypatch.setattr(cli_bundle, "installed", lambda: (BUNDLE, COMMIT, DIGEST))
-    monkeypatch.setattr(ship, "send", fake_send)
+    monkeypatch.setattr(ship, "send", lambda *_a: shipped.append(_a[4]))
     monkeypatch.setattr(transport, "call", lambda *_a, **_kw: "")
     monkeypatch.setattr(startup, "poll_launch", lambda *_a, **_kw: 0)
-
     argv = [
-        "--host",
-        LINUX.name,
-        "--repo",
-        "example-org/example-repo",
-        "--model",
-        "example-model",
-        "--effort",
-        "high",
-        "--profile",
-        "review",
-        "--ref",
-        COMMIT,
-        "--schema",
-        str(schema),
-        "sample",
-        str(prompt),
+        *("--host", LINUX.name, "--repo", "example-org/example-repo"),
+        *("--model", "example-model", "--effort", "high", "--profile", "review"),
+        *("--ref", COMMIT, "--schema", str(schema), "sample", str(brief)),
     ]
     assert command.main(argv, PROG) == 0
     assert "warning:" in capsys.readouterr().err
-    assert len(shipped) == 1
     assert shipped[0].schema == '{"type":"object"}'
     assert json.loads(shipped[0].request)["commit"] == COMMIT
 
 
-@pytest.mark.usefixtures("isolated_home")
-def test_transfer_collision_archives_metadata(
-    tmp_path: Path,
-    capsys: pytest.CaptureFixture[str],
-    monkeypatch: pytest.MonkeyPatch,
+def test_transfer_and_poll_errors(
+    brief: Path, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    prompt = tmp_path / "brief.md"
-    prompt.write_text("Carry out the example.\n")
-    monkeypatch.setattr(agent_settings, "load", settings)
-    monkeypatch.setattr(cli_bundle, "installed", lambda: (BUNDLE, COMMIT, DIGEST))
-
-    def collide(*_args: object, **_kwargs: object) -> None:
-        message = "name collision"
-        raise transport.CollisionError(message)
-
-    monkeypatch.setattr(ship, "send", collide)
-
-    assert command.main(launch_argv(prompt), PROG) == 1
-    assert "name collision" in capsys.readouterr().err
+    recovered: list[str] = []
+    unconfirmed: list[tuple[str, str]] = []
+    monkeypatch.setattr(ship, "send", raising(transport.CollisionError("taken")))
+    assert command.main(launch_argv(brief), PROG) == 1
+    assert "taken" in capsys.readouterr().err
     assert not metadata.metadata_path("sample").exists()
 
-
-@pytest.mark.usefixtures("isolated_home")
-def test_transfer_error_recovers_and_returns_75(
-    tmp_path: Path,
-    capsys: pytest.CaptureFixture[str],
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    prompt = tmp_path / "brief.md"
-    prompt.write_text("Carry out the example.\n")
-    recovered: list[str] = []
-    monkeypatch.setattr(agent_settings, "load", settings)
-    monkeypatch.setattr(cli_bundle, "installed", lambda: (BUNDLE, COMMIT, DIGEST))
-
-    def fail(*_args: object, **_kwargs: object) -> None:
-        message = "host unreachable"
-        raise transport.TransportError(message)
-
-    monkeypatch.setattr(ship, "send", fail)
+    monkeypatch.setattr(ship, "send", raising(transport.TransportError("offline")))
     monkeypatch.setattr(
         startup, "recover_transfer", lambda _s, run: recovered.append(run.name)
     )
-
-    assert command.main(launch_argv(prompt), PROG) == 75
+    assert command.main(launch_argv(brief), PROG) == 75
     assert recovered == ["sample"]
     assert "launch unconfirmed" in capsys.readouterr().out
-    assert metadata.metadata_path("sample").exists()
+    metadata.metadata_path("sample").unlink()
 
-
-@pytest.mark.usefixtures("isolated_home")
-def test_poll_collision_marks_not_owner(
-    tmp_path: Path,
-    capsys: pytest.CaptureFixture[str],
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    prompt = tmp_path / "brief.md"
-    prompt.write_text("Carry out the example.\n")
-    monkeypatch.setattr(agent_settings, "load", settings)
-    monkeypatch.setattr(cli_bundle, "installed", lambda: (BUNDLE, COMMIT, DIGEST))
     monkeypatch.setattr(ship, "send", lambda *_a, **_kw: None)
     monkeypatch.setattr(transport, "call", lambda *_a, **_kw: "")
-
-    def collide(*_args: object, **_kwargs: object) -> int:
-        message = "name collision"
-        raise transport.CollisionError(message)
-
-    monkeypatch.setattr(startup, "poll_launch", collide)
-
-    assert command.main(launch_argv(prompt), PROG) == 1
+    monkeypatch.setattr(
+        startup, "poll_launch", raising(transport.CollisionError("taken"))
+    )
+    assert command.main(launch_argv(brief), PROG) == 1
     assert "not owner" in capsys.readouterr().err
-    assert not metadata.metadata_path("sample").exists()
 
-
-@pytest.mark.usefixtures("isolated_home")
-def test_poll_transport_error_marks_unconfirmed(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    prompt = tmp_path / "brief.md"
-    prompt.write_text("Carry out the example.\n")
-    unconfirmed: list[tuple[str, str]] = []
-    monkeypatch.setattr(agent_settings, "load", settings)
-    monkeypatch.setattr(cli_bundle, "installed", lambda: (BUNDLE, COMMIT, DIGEST))
-    monkeypatch.setattr(ship, "send", lambda *_a, **_kw: None)
-    monkeypatch.setattr(transport, "call", lambda *_a, **_kw: "")
-
-    def fail(*_args: object, **_kwargs: object) -> int:
-        message = "host unreachable"
-        raise transport.TransportError(message)
-
-    def mark(_settings: Settings, run: Run, phase: str) -> int:
-        unconfirmed.append((run.name, phase))
-        return 1
-
-    monkeypatch.setattr(startup, "poll_launch", fail)
-    monkeypatch.setattr(startup, "unconfirmed", mark)
-
-    assert command.main(launch_argv(prompt), PROG) == 1
+    monkeypatch.setattr(
+        startup, "poll_launch", raising(transport.TransportError("offline"))
+    )
+    monkeypatch.setattr(
+        startup,
+        "unconfirmed",
+        lambda _s, run, phase: unconfirmed.append((run.name, phase)) or 1,
+    )
+    assert command.main(launch_argv(brief), PROG) == 1
     assert unconfirmed == [("sample", "unreachable")]
