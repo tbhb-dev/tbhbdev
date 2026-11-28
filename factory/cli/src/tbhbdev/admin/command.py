@@ -9,10 +9,10 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 lazy import argparse
 
-import tbhbdev.alpha.gh_app as gh_app  # noqa: PLR0402 -- Import the defining module.
 from tbhbdev import userconfig
 from tbhbdev.admin.audit import RefusedError
 from tbhbdev.admin.request import Runtime, Settings, call, default_runtime
+from tbhbdev.alpha import gh_app_args
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
@@ -25,7 +25,7 @@ COMPONENT = re.compile(r"[A-Za-z0-9_][A-Za-z0-9_.-]*")
 
 
 def parser() -> argparse.ArgumentParser:
-    result = gh_app.Parser()
+    result = gh_app_args.Parser()
     commands = result.add_subparsers(dest="command", required=True)
     direct = commands.add_parser("call")
     direct.add_argument("method")
@@ -84,7 +84,7 @@ def secret_repos(runtime: Runtime, args: argparse.Namespace) -> int:
     for repository in args.repos:
         repo = repository if "/" in repository else f"{args.org}/{repository}"
         if (
-            not gh_app.valid_repo(repo)
+            not gh_app_args.valid_repo(repo)
             or repo.split("/")[0].lower() != args.org.lower()
         ):
             msg = "repository_mismatch"
@@ -143,10 +143,10 @@ def main(argv: Sequence[str], prog: str, *, runtime: Runtime | None = None) -> i
     try:
         args = parser().parse_args(argv)
         return dispatch(runtime or default_runtime(), args)
-    except gh_app.HelpRequestedError:
+    except gh_app_args.HelpRequestedError:
         sys.stdout.write(USAGE.format(prog=prog))
         return 0
-    except gh_app.UsageError:
+    except gh_app_args.UsageError:
         sys.stderr.write(USAGE.format(prog=prog))
         return 2
     except RefusedError as exc:

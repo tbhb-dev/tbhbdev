@@ -21,9 +21,10 @@ from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric import rsa
 
 from tbhbdev import secrets
-from tbhbdev.alpha import gh_app
+from tbhbdev.alpha import gh_app_api, gh_app_runtime, gh_app_signing
 from tbhbdev.alpha.agent import credentials, process_group, runfiles
 from tbhbdev.alpha.agent.model import Credentials, Harness, Invalid, Profile
+from tbhbdev.alpha.gh_app_runtime import run_openssl
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Generator
@@ -134,7 +135,7 @@ def test_each_credential_only_reaches_its_destination(
         ValueError,
         KeyError,
         TypeError,
-        gh_app.GhAppError,
+        gh_app_runtime.GhAppError,
     ],
 )
 def test_review_token_failure_never_delivers_the_broad_token(
@@ -216,14 +217,14 @@ def test_installation_token_is_read_only(
     monkeypatch.setitem(VALUES, "example/app/pem", "example-pem")
     seen: list[dict[str, object]] = []
 
-    def mint(_env: gh_app.Env, **keywords: object) -> gh_app.Minted:
+    def mint(_env: gh_app_runtime.Env, **keywords: object) -> gh_app_api.Minted:
         seen.append(keywords)
         if failure == "mint":
             message = "request failed"
-            raise gh_app.GhAppError(message)
-        return gh_app.Minted("example-installation", 2000)
+            raise gh_app_runtime.GhAppError(message)
+        return gh_app_api.Minted("example-installation", 2000)
 
-    monkeypatch.setattr(gh_app, "mint_token", mint)
+    monkeypatch.setattr(gh_app_api, "mint_token", mint)
     repository = (
         "example.com/tbhb-dev/example-repo"
         if failure == "host"
@@ -232,7 +233,7 @@ def test_installation_token_is_read_only(
     references = host_settings().credentials[0]
     if failure:
         with pytest.raises(
-            Invalid if failure == "host" else gh_app.GhAppError
+            Invalid if failure == "host" else gh_app_runtime.GhAppError
         ) as caught:
             credentials.installation_token(references, repository)
         if failure == "host":
@@ -287,15 +288,14 @@ def test_review_token_request_is_read_only_for_only_run_repository(
         requests.append(request)
         return replies[request.method, request.url.path]
 
-    env = gh_app.Env(
+    env = gh_app_runtime.Env(
         tmp_path,
         lambda: 1000,
         secrets.Store,
-        gh_app.run_openssl,
+        run_openssl,
         httpx2.MockTransport(respond),
     )
-    monkeypatch.setattr(gh_app, "default_env", lambda: env)
-    monkeypatch.setattr(gh_app, "sign", constant("example-jwt"))
+    monkeypatch.setattr(gh_app_runtime, "default_env", lambda: env)
     credentials.deliver(
         run_request(profile="review", commit="0" * 40), host_settings(), tmp_path
     )
@@ -600,7 +600,7 @@ def test_missing_credentials_report_only_label_and_reference(
 
     def installation(*_args: object) -> str:
         message = "unprinted-marker"
-        raise gh_app.GhAppError(message)
+        raise gh_app_runtime.GhAppError(message)
 
     monkeypatch.setattr(secrets, "read", read)
     if profile != "app":
@@ -731,16 +731,16 @@ def test_app_token_scope_ignores_planted_origin(
         "remote.origin.url",
         "https://github.com/example-other/other.git",
     )
-    env = gh_app.Env(tmp_path, lambda: 1000, secrets.Store, gh_app.run_openssl)
-    monkeypatch.setattr(gh_app, "default_env", lambda: env)
+    env = gh_app_runtime.Env(tmp_path, lambda: 1000, secrets.Store, run_openssl)
+    monkeypatch.setattr(gh_app_runtime, "default_env", lambda: env)
     monkeypatch.setitem(VALUES, "example/app/pem", "fake pem")
     scopes: list[object] = []
 
-    def mint(_env: gh_app.Env, **keywords: object) -> gh_app.Minted:
+    def mint(_env: gh_app_runtime.Env, **keywords: object) -> gh_app_api.Minted:
         scopes.append(keywords["repository"])
-        return gh_app.Minted("fake installation", 2000)
+        return gh_app_api.Minted("fake installation", 2000)
 
-    monkeypatch.setattr(gh_app, "mint_token", mint)
+    monkeypatch.setattr(gh_app_api, "mint_token", mint)
     value = run_request(profile="review", commit="0" * 40)
     credentials.deliver(value, host_settings(), tmp_path)
     assert scopes == ["tbhb-dev/example-repo"]
@@ -996,11 +996,11 @@ def test_build_without_gh_mints_from_the_pull_requests_app(
 ) -> None:
     seen: list[dict[str, object]] = []
 
-    def mint(_env: gh_app.Env, **keywords: object) -> gh_app.Minted:
+    def mint(_env: gh_app_runtime.Env, **keywords: object) -> gh_app_api.Minted:
         seen.append(keywords)
-        return gh_app.Minted(BUILD_TOKEN, 2000)
+        return gh_app_api.Minted(BUILD_TOKEN, 2000)
 
-    monkeypatch.setattr(gh_app, "mint_token", mint)
+    monkeypatch.setattr(gh_app_api, "mint_token", mint)
     monkeypatch.setitem(VALUES, "example/app/pem", "example-pem")
     credentials.deliver(run_request(), pull_requests_settings(), tmp_path)
     assert seen == [
@@ -1050,16 +1050,16 @@ def test_build_token_request_names_one_repository_and_write_permissions(
     def no_key_file(*_args: object) -> str:
         raise AssertionError
 
-    env = gh_app.Env(
+    env = gh_app_runtime.Env(
         tmp_path / "state",
         lambda: 1000,
         secrets.Store,
-        gh_app.run_openssl,
+        run_openssl,
         httpx2.MockTransport(respond),
     )
-    monkeypatch.setattr(gh_app, "default_env", lambda: env)
+    monkeypatch.setattr(gh_app_runtime, "default_env", lambda: env)
     # The build path signs in memory, never through the key-file signer.
-    monkeypatch.setattr(gh_app, "sign", no_key_file)
+    monkeypatch.setattr(gh_app_signing, "sign", no_key_file)
     credentials.deliver(run_request(), pull_requests_settings(), tmp_path)
     assert [(request.method, request.url.path) for request in requests] == list(replies)
     assert json.loads(requests[1].content) == {
@@ -1077,10 +1077,10 @@ def test_build_token_request_names_one_repository_and_write_permissions(
 def test_build_with_gh_ignores_the_pull_requests_app(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    def refuse(*_args: object, **_keywords: object) -> gh_app.Minted:
+    def refuse(*_args: object, **_keywords: object) -> gh_app_api.Minted:
         raise AssertionError
 
-    monkeypatch.setattr(gh_app, "mint_token", refuse)
+    monkeypatch.setattr(gh_app_api, "mint_token", refuse)
     credentials.deliver(
         run_request(), pull_requests_settings(gh="example/gh/value"), tmp_path
     )
@@ -1097,12 +1097,12 @@ def test_build_refuses_when_the_pull_requests_app_token_fails(
 ) -> None:
     seen: list[dict[str, object]] = []
 
-    def fail(*_args: object, **keywords: object) -> gh_app.Minted:
+    def fail(*_args: object, **keywords: object) -> gh_app_api.Minted:
         seen.append(keywords)
         message = "never-log"
-        raise gh_app.GhAppError(message)
+        raise gh_app_runtime.GhAppError(message)
 
-    monkeypatch.setattr(gh_app, "mint_token", fail)
+    monkeypatch.setattr(gh_app_api, "mint_token", fail)
     monkeypatch.setitem(VALUES, "example/app/pem", "example-pem")
     with pytest.raises(Invalid) as caught:
         credentials.deliver(run_request(), pull_requests_settings(), tmp_path)
@@ -1118,11 +1118,11 @@ def test_review_ignores_the_pull_requests_app(
     monkeypatch.setitem(VALUES, "example/app/pem", "example-pem")
     seen: list[dict[str, object]] = []
 
-    def mint(_env: gh_app.Env, **keywords: object) -> gh_app.Minted:
+    def mint(_env: gh_app_runtime.Env, **keywords: object) -> gh_app_api.Minted:
         seen.append(keywords)
-        return gh_app.Minted(REVIEW_TOKEN, 2000)
+        return gh_app_api.Minted(REVIEW_TOKEN, 2000)
 
-    monkeypatch.setattr(gh_app, "mint_token", mint)
+    monkeypatch.setattr(gh_app_api, "mint_token", mint)
     credentials.deliver(
         run_request(profile="review", commit="0" * 40),
         pull_requests_settings(),
@@ -1199,10 +1199,10 @@ def test_pull_requests_token_names_the_unreadable_reference(
 def test_pull_requests_token_refuses_a_host_other_than_github(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    def refuse(*_args: object, **_keywords: object) -> gh_app.Minted:
+    def refuse(*_args: object, **_keywords: object) -> gh_app_api.Minted:
         raise AssertionError
 
-    monkeypatch.setattr(gh_app, "mint_token", refuse)
+    monkeypatch.setattr(gh_app_api, "mint_token", refuse)
     references = pull_requests_settings().credentials[0]
     with pytest.raises(Invalid) as caught:
         credentials.pull_requests_token(references, "example.com/o/r")
@@ -1281,11 +1281,11 @@ def test_harness_mints_permissions_for_the_profile(
     monkeypatch.setitem(VALUES, "example/app/pem", "example-pem")
     seen: list[dict[str, object]] = []
 
-    def mint(_env: gh_app.Env, **keywords: object) -> gh_app.Minted:
+    def mint(_env: gh_app_runtime.Env, **keywords: object) -> gh_app_api.Minted:
         seen.append(keywords)
-        return gh_app.Minted(REVIEW_TOKEN, 2000)
+        return gh_app_api.Minted(REVIEW_TOKEN, 2000)
 
-    monkeypatch.setattr(gh_app, "mint_token", mint)
+    monkeypatch.setattr(gh_app_api, "mint_token", mint)
     settings = pull_requests_settings()
     request = run_request(
         profile=profile.value, commit="0" * 40 if profile is Profile.REVIEW else None
