@@ -1346,7 +1346,7 @@ filegroup(
         "//factory/cli/tests/integration/monorepo:package_files",
         "//factory/cli/tests/unit:test_command_table.py",
         "//factory/cli/tests/unit:test_content_decision_record.py",
-        "//factory/cli/tests/unit/admin:test_approvals.py",
+        "//factory/cli/tests/unit/admin:package_files",
         "//factory/cli/tests/unit/alpha:package_files",
         "//factory/cli/tests/unit/alpha/agent:package_files",
         "//factory/cli/tests/unit/alpha/agent/decisions:package_files",
