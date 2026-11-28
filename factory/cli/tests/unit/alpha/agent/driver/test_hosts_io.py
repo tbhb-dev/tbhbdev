@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import argparse
 import dataclasses
 import json
 from typing import TYPE_CHECKING
@@ -105,6 +104,7 @@ def test_exec_without_host_uses_the_idle_linux_host(
         (20, "limits at deadline", [5]),
         (20, "limits timeout", [5]),
         (20, "install lock", [5]),
+        (20, "heal at deadline", []),
     ],
 )
 def test_exec_preserves_preflight_time_after_a_slow_probe(
@@ -124,8 +124,7 @@ def test_exec_preserves_preflight_time_after_a_slow_probe(
         CONFIG, hosts=candidates, launch_wait_seconds=launch_wait
     )
     monkeypatch.setattr(agent_settings, "load", lambda: config)
-    head = "a" * 40
-    current = f"tbhbdev 0 ({head})"
+    current = f"tbhbdev 0 ({'a' * 40})"
     host.configure(
         limits="1 4 12582912 6291456 100 0 - -",
         limits_by_host={preferred.name: "0.5 4 12582912 6291456 100 0 - -"},
@@ -134,7 +133,7 @@ def test_exec_preserves_preflight_time_after_a_slow_probe(
     )
     elapsed = 0.0
     set_clock(monkeypatch, lambda: elapsed)
-    monkeypatch.setattr(version_check, "latest", Mock(return_value=head))
+    monkeypatch.setattr(version_check, "latest", Mock(return_value="a" * 40))
     monkeypatch.setattr(version, "line", lambda: current)
     real_shell = transport.shell
     slow_timeouts: list[float] = []
@@ -149,6 +148,7 @@ def test_exec_preserves_preflight_time_after_a_slow_probe(
     ) -> str:
         nonlocal elapsed
         assert timeout > 0
+        elapsed += timeout * (target == slow and delayed_probe == "heal at deadline")
         if target == slow and "# tbhbdev-heal-probe" not in script:
             slow_timeouts.append(timeout)
             if times_out or script == remote_host.check_slot(slow, Profile.BUILD):
@@ -465,8 +465,8 @@ def test_failed_heal_and_once_per_invocation(
     events = _stale_shell(monkeypatch)
     with pytest.raises(Invalid, match="load 9 >= limit 4"):
         hosts.check_limits(config, h1, Profile.BUILD, ignore=False)
-    args = argparse.Namespace(profile="build", account=None)
-    assert hosts.usable_hosts(config, h1.os, args, 1e9) == []
+    args = Mock(profile="build", account=None)
+    assert not hosts.usable_hosts(config, h1.os, args, 1e9)
     assert [n for n, step in events if step == "install"] == ["host-1", "host-2"]
 
     events = _stale_shell(monkeypatch, fail_host="host-1")
