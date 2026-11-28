@@ -13,6 +13,7 @@ lazy from test_admin_request import Fake
 
 from tbhbdev.admin import command as admin
 from tbhbdev.admin.audit import RefusedError
+from tbhbdev.alpha import gh_app_args
 lazy from tbhbdev.admin import request
 
 fake = admin_fake
@@ -440,7 +441,7 @@ def test_parser_contract() -> None:
     ],
 )
 def test_required_secret_arguments(argv: list[str]) -> None:
-    with pytest.raises(admin.gh_app.UsageError):
+    with pytest.raises(gh_app_args.UsageError):
         admin.parser().parse_args(argv)
 
 

@@ -5,10 +5,15 @@ argument_specs:
     options:
       event_gateway_deploy_repo_url:
         type: str
-        description: Git repository to clone as ops.
+        description: Monorepo Git repository to clone as ops.
       event_gateway_deploy_commit:
         type: str
-        description: Full 40-hex commit to check out and build.
+        required: true
+        description: Full 40-hex monorepo commit to check out and build.
       event_gateway_deploy_checkout:
         type: path
         description: Absolute path to the checkout owned by ops.
+      event_gateway_deploy_session_bind:
+        type: str
+        required: true
+        description: Private IPv4 address for the gateway session port.

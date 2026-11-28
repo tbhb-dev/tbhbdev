@@ -1,7 +1,7 @@
 ---
 type: Readme
 title: Event gateway deployment
-description: Deploy the pinned event gateway and its outbound tunnel on host-c.
+description: Deploy the pinned event gateway and its outbound tunnel.
 tags: [ansible, event-gateway]
 status: draft
 generated:
@@ -14,17 +14,19 @@ generated:
     at: "2026-11-25T15:18:30Z"
 ---
 
-The `ansible/playbooks/event-gateway.yml` playbook targets `host-c` through the `event_gateway` inventory group. It checks out the pinned commit as `ops` and builds the gateway image locally when its commit tag is missing. The deployment script receives the Docker image ID and uses `--pull never`. Before applying, pull the pinned tunnel image.
+The `ansible/playbooks/event-gateway.yml` playbook targets the `event_gateway` inventory group.
+Set `event_gateway_deploy_commit` to a full monorepo commit and `event_gateway_deploy_session_bind` to the private IPv4 address for the session listener.
+The role checks out that commit as `ops`. When its image tag is missing, `bazelisk` builds the image and the role loads it into Docker.
+The deployment script uses the local Docker image ID and passes `--pull never`.
 
 ## Deployment prerequisites
 
-From the administrator VM, provision the Cloudflare route and both secret files in `/home/ops/event-gateway-deploy/repo/deploy/secrets/`. Install Docker and Compose, and allow `ops` to run Docker with `sudo`. On a fresh checkout, the role stops at the missing paths so the administrator VM can provision them before the next run.
+Install `bazelisk`, Docker, and Compose. Allow `ops` to run Docker with `sudo`.
+Pull the tunnel image pinned in `factory/event-gateway/deploy/compose.yaml` and provision the Cloudflare route.
+Under the checkout's `factory/event-gateway/deploy/secrets/`, provision `github_webhook_secret`, `event_gateway_session_tokens`, and `tunnel_token`.
+Each must be a regular file owned by user ID 65532 with mode 0400.
+The role reports missing files after checkout so the administrator can provision them before the next run.
 
 ## Rollback
 
-To undo the deployment, run these commands from the checkout. The `-v` flag removes the gateway's event store.
-
-```sh
-sudo env EVENT_GATEWAY_IMAGE=unused docker compose -f deploy/compose.yaml down -v
-sudo docker rmi event-gateway:f31b3ec2
-```
+To return to a previous imported version, set `event_gateway_deploy_commit` to its full monorepo commit and apply the playbook again.

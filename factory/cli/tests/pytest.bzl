@@ -31,7 +31,6 @@ _IO_TESTS = [
     "test_alpha_agent_ssh_serve",
     "test_alpha_agent_transport",
     "test_alpha_close",
-    "test_alpha_gh_app",
     "test_alpha_gh_shim",
     "test_alpha_monorepo",
     "test_alpha_opened",

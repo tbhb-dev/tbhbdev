@@ -66,10 +66,10 @@ def find_tool(name: str, *, unwrapped: bool = False) -> str:
 
 
 def _locate_tool(name: str, *, unwrapped: bool) -> str | None:
-    """Return the selected executable after checking its pin, if any."""
+    """Return the selected executable after checking its version or pin, if any."""
     shim_name = f"{name}-raw" if unwrapped else name
     if shim := shutil.which(str(root() / BAZEL_ENV / "bin" / shim_name)):
-        return tool_pins.require_version(name, shim)
+        return tool_pins.require_reported_version(name, shim)
     path = None
     if unwrapped:
         entries = os.environ.get("PATH", "").split(os.pathsep)

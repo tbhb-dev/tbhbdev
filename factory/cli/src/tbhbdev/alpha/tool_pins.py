@@ -1,4 +1,4 @@
-"""Check PR tools against the versions pinned by the repository."""
+"""Check PR tools against pinned versions or verify they report a version."""
 
 import json
 import re
@@ -10,12 +10,16 @@ VERSIONS = Path(__file__).with_name("pr-tool-versions.json")
 PINNED = frozenset({"cspell", "gitleaks", "rumdl", "scc", "vale"})
 
 
+def _parse_version(name: str, output: str) -> str | None:
+    match = re.fullmatch(
+        rf"(?:{re.escape(name)} (?:version )?)?v?(\d\S*)", output.strip()
+    )
+    return match[1] if match else None
+
+
 def version_problem(name: str, expected: str, output: str) -> str | None:
     """Explain why a bare or tool-prefixed version report fails the pin."""
-    match = re.fullmatch(
-        rf"(?:{re.escape(name)} (?:version )?)?v?(\S+)", output.strip()
-    )
-    version = match[1] if match else None
+    version = _parse_version(name, output)
     if version == expected:
         return None
     return f"reports {version or 'no version'}, expected pinned version {expected}"
@@ -36,12 +40,7 @@ def pinned_version(name: str) -> str:
     return version
 
 
-def require_version(name: str, path: str) -> str:
-    """Return the selected path or stop if its version cannot be verified."""
-    if name not in PINNED:
-        return path
-    expected = pinned_version(name)
-    executable = Path(path).absolute()
+def _run_version(name: str, executable: Path, *, expected: str | None = None) -> str:
     try:
         done = subprocess.run(  # nosec B603
             [str(executable), "--version"],
@@ -51,9 +50,31 @@ def require_version(name: str, path: str) -> str:
             timeout=10,
         )
     except (OSError, UnicodeError, subprocess.TimeoutExpired) as exc:
-        message = f"cannot check {name} version at {executable} (pin {expected}): {exc}"
+        pin = f" (pin {expected})" if expected is not None else ""
+        message = f"cannot check {name} version at {executable}{pin}: {exc}"
         raise SystemExit(message) from exc
-    output = done.stdout if done.returncode == 0 else ""
+    return done.stdout if done.returncode == 0 else ""
+
+
+def require_reported_version(name: str, path: str) -> str:
+    """Return the selected path or stop if it cannot report a version."""
+    if name not in PINNED:
+        return path
+    executable = Path(path).absolute()
+    output = _run_version(name, executable)
+    if _parse_version(name, output) is None:
+        message = f"{name} at {executable} reports no version"
+        raise SystemExit(message)
+    return str(executable)
+
+
+def require_version(name: str, path: str) -> str:
+    """Return the selected path or stop if its version cannot be verified."""
+    if name not in PINNED:
+        return path
+    expected = pinned_version(name)
+    executable = Path(path).absolute()
+    output = _run_version(name, executable, expected=expected)
     if problem := version_problem(name, expected, output):
         message = f"{name} at {executable} {problem}"
         raise SystemExit(message)

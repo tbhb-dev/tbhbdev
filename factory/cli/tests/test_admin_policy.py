@@ -5,7 +5,7 @@
 import pytest
 from conftest import SAFE_ENVIRONMENT
 
-from tbhbdev.admin import policy
+from tbhbdev.admin import policy, policy_ruleset
 
 ENVIRONMENT_PATH = "/repos/tbhb-dev/widget/environments/test"
 
@@ -775,13 +775,13 @@ def test_normalization_and_nested_fields() -> None:
         "role",
         "empty",
     }
-    assert not policy.protection(
+    assert not policy_ruleset.protection(
         "PUT", "/repos/tbhb-dev/widget/branches/main/protection", {}
     )
-    assert not policy.protection(
+    assert not policy_ruleset.protection(
         "POST", "/repos/tbhb-dev/widget/rulesets", {"enforcement": "active"}
     )
-    assert not policy.protection(
+    assert not policy_ruleset.protection(
         "POST",
         "/repos/tbhb-dev/widget/branches/main/protection/required_signatures",
         {"unknown": True},
@@ -950,7 +950,7 @@ def test_a_pull_request_rule_may_carry_every_live_review_option() -> None:
         require_extra_approval_for_unattributed_changes=True,
         allowed_merge_methods=["squash"],
     )
-    assert set(rule["parameters"]) == policy.RULESET_REVIEW_KEYS  # type: ignore[arg-type]
+    assert set(rule["parameters"]) == policy_ruleset.RULESET_REVIEW_KEYS  # type: ignore[arg-type]
     assert policy.check("POST", RULESET_PATH, with_rules(rule)).allowed
 
 

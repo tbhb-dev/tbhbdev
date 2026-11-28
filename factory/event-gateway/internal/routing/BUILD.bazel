@@ -1,0 +1,26 @@
+# SPDX-License-Identifier: Apache-2.0
+# Copyright Tony Burns
+
+load("@rules_go//go:def.bzl", "go_library")
+load("@tbhb_rules//repo:defs.bzl", "repo_files")
+load("//factory:go.bzl", "go_test")
+
+repo_files(visibility = ["//factory/event-gateway:__subpackages__"])
+
+go_library(
+    name = "routing",
+    srcs = ["routing.go"],
+    importpath = "github.com/tbhb-dev/tbhbdev/factory/event-gateway/internal/routing",
+    visibility = ["//factory/event-gateway:__subpackages__"],
+    deps = ["//factory/event-gateway/internal/filter"],
+)
+
+go_test(
+    name = "routing_test",
+    srcs = ["routing_test.go"],
+    visibility = ["//factory/event-gateway:__pkg__"],
+    deps = [
+        ":routing",
+        "//factory/event-gateway/internal/filter",
+    ],
+)
