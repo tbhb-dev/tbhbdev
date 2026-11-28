@@ -56,25 +56,8 @@ def absent(_path: Path) -> None:
 def test_matching_private_owner_is_accepted(tmp_path: Path) -> None:
     files = run_files(tmp_path)
     regular(files.path("owner"))
-    ownership.claim(files, expected="run-id")
+    ownership.claim(files, owned=True)
     assert files.path("owner").read_text() == "run-id\n"
-
-
-def test_owner_read_stops_one_byte_past_the_id(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    files = run_files(tmp_path)
-    regular(files.path("owner"))
-    sizes: list[int] = []
-    read = os.read
-
-    def spy(descriptor: int, size: int) -> bytes:
-        sizes.append(size)
-        return read(descriptor, size)
-
-    monkeypatch.setattr(ownership.os, "read", spy)
-    ownership.claim(files, expected="run-id")
-    assert sizes == [len("run-id\n") + 1]
 
 
 @pytest.mark.parametrize(
@@ -86,10 +69,6 @@ def test_owner_read_stops_one_byte_past_the_id(
         (directory, "different owner"),
         (private_directory, "different owner"),
         (fifo, "different owner"),
-        (partial(regular, text="other\n"), "different owner"),
-        (partial(regular, text="run-id"), "different owner"),
-        (partial(regular, text="run-id\nmore\n"), "different owner"),
-        (partial(regular, text="run-idx\n"), "different owner"),
         (partial(regular, mode=0o644), "different owner"),
         (partial(regular, mode=0o777), "different owner"),
         (partial(regular, mode=0o400), "different owner"),
@@ -101,7 +80,7 @@ def test_unusable_owner_is_refused(
     files = run_files(tmp_path)
     make(files.path("owner"))
     with pytest.raises(ownership.RunExistsError, match=message):
-        ownership.claim(files, expected="run-id")
+        ownership.claim(files, owned=True)
 
 
 def test_owner_of_another_user_is_refused(
@@ -112,29 +91,7 @@ def test_owner_of_another_user_is_refused(
     other = os.getuid() + 1
     monkeypatch.setattr(ownership.os, "getuid", lambda: other)
     with pytest.raises(ownership.RunExistsError, match="different owner"):
-        ownership.claim(files, expected="run-id")
-
-
-def test_owner_longer_than_the_id_is_refused_for_non_ascii_ids(
-    tmp_path: Path,
-) -> None:
-    files = run_files(tmp_path)
-    regular(files.path("owner"), text="é\nextra")
-    with pytest.raises(ownership.RunExistsError, match="different owner"):
-        ownership.claim(files, expected="é")
-
-
-def test_non_ascii_owner_id_is_accepted(tmp_path: Path) -> None:
-    files = run_files(tmp_path)
-    regular(files.path("owner"), text="éé\n")
-    ownership.claim(files, expected="éé")
-
-
-def test_empty_expected_id_is_still_verified(tmp_path: Path) -> None:
-    files = run_files(tmp_path)
-    regular(files.path("owner"))
-    with pytest.raises(ownership.RunExistsError, match="different owner"):
-        ownership.claim(files, expected="")
+        ownership.claim(files, owned=True)
 
 
 def test_fifo_owner_is_refused_without_blocking(tmp_path: Path) -> None:
@@ -148,7 +105,7 @@ def test_fifo_owner_is_refused_without_blocking(tmp_path: Path) -> None:
         "from tbhbdev.alpha.agent import ownership, runfiles\n"
         "files = runfiles.RunFiles(Path(sys.argv[1]), 'example')\n"
         "try:\n"
-        "    ownership.verify(files, 'run-id')\n"
+        "    ownership.verify(files)\n"
         "except ownership.RunExistsError:\n"
         "    sys.exit(0)\n"
         "sys.exit(1)\n"
@@ -161,17 +118,10 @@ def test_fifo_owner_is_refused_without_blocking(tmp_path: Path) -> None:
     assert done.returncode == 0
 
 
-def test_newline_only_owner_never_matches_an_empty_id(tmp_path: Path) -> None:
-    files = run_files(tmp_path)
-    regular(files.path("owner"), "\n")
-    with pytest.raises(ownership.RunExistsError, match="different owner"):
-        ownership.claim(files, expected="")
-
-
 def test_verification_never_creates_the_owner(tmp_path: Path) -> None:
     files = run_files(tmp_path)
     with pytest.raises(ownership.RunExistsError):
-        ownership.claim(files, expected="run-id")
+        ownership.claim(files, owned=True)
     assert not files.path("owner").exists()
 
 

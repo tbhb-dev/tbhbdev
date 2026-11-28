@@ -9,9 +9,10 @@ import shlex
 import sys
 from pathlib import Path
 
-from tbhbdev.alpha.agent import build_info, ownership, process_group, run_host, runfiles
+from tbhbdev.alpha.agent import build_info, ownership, process_group, runfiles
 from tbhbdev.alpha.agent.decisions.run_state import Group, owns
 from tbhbdev.alpha.agent.model import NAME, Invalid
+from tbhbdev.alpha.agent.run_host import dispatcher
 
 MACOS_LAUNCH_KEY = Path("/Library/Application Support/tbhbdev/agent-launch/id_ed25519")
 LINUX_LAUNCH_KEY = Path("/etc/tbhbdev/agent-launch/id_ed25519")
@@ -98,7 +99,7 @@ def envelope() -> dict[str, object]:
 
 def start(files: runfiles.RunFiles, prog: str, *, preflight_only: bool) -> int:
     body = json.dumps(envelope()) + "\n"
-    run_host.refuse_started(files)
+    dispatcher.refuse_started(files)
     ownership.claim(files)
     # Exclusive creation preserves the request of an existing run.
     fd = os.open(
@@ -110,7 +111,7 @@ def start(files: runfiles.RunFiles, prog: str, *, preflight_only: bool) -> int:
         os.fsync(stream.fileno())
     arguments = [files.name, "--preflight"] if preflight_only else [files.name]
     verb = "preflight" if preflight_only else "run-host"
-    return run_host.main(arguments, f"{prog} {verb}", claimed=True)
+    return dispatcher.main(arguments, f"{prog} {verb}", claimed=True)
 
 
 def optional(path: Path) -> str | None:

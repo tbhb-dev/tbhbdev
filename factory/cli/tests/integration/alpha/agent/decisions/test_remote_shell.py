@@ -13,13 +13,13 @@ from agent_example import LINUX, settings
 from remote_script_example import cleanup, execute, no_session
 
 from tbhbdev.alpha.agent.decisions import (
-    policy,
     remote_cleanup,
     remote_host,
     remote_inspection,
     remote_run,
     remote_shell,
 )
+from tbhbdev.alpha.agent.run_host import environment
 
 
 @pytest.mark.parametrize("bad", ["file", "symlink", "mode", "socket-link"])
@@ -110,7 +110,7 @@ def test_socket_home_relative_paths(host: Path, path: str) -> None:
     script = remote_shell.socket_root(path) + 'printf "%s" "$s/agents"\n'
     result = execute(script)
     assert result.returncode == 0
-    assert result.stdout.decode() == policy.resolve(str(host), path) + "/agents"
+    assert result.stdout.decode() == environment.resolve(str(host), path) + "/agents"
 
 
 @pytest.mark.parametrize("component", ["state", "tbhbdev", "agent-runs"])

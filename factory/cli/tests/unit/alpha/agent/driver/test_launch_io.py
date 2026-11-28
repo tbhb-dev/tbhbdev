@@ -23,7 +23,6 @@ from driver_scenarios import (
     CONFIG,
     arguments,
     command,
-    disable_host_sandbox_setting,
     launch,
 )
 
@@ -85,7 +84,7 @@ def test_launch_stream_and_metadata(
         "",
     )
     data = json.loads((remote.state / "sample.request.json").read_text())
-    parsed = request.parse(data, host_allows_unsandboxed=True)
+    parsed = request.parse(data)
     assert request.to_dict(parsed) == data
     assert (parsed.class_, parsed.variant, parsed.role) == ("test", "one", "worker")
     assert parsed.commit is None
@@ -340,7 +339,7 @@ def test_agy_review_uses_the_review_timeout(remote: Remote) -> None:
 @pytest.mark.parametrize(
     ("options", "timeout"),
     [
-        (("--ops", "--unsandboxed", "o/r#1"), None),
+        (("--account", "ops", "--unsandboxed", "o/r#1"), None),
         (("--harness", "agy", "--model", "gemini-example"), 3600),
         (("--harness", "agy", "--allow-non-gemini", "--timeout", "1h"), 3600),
         (
@@ -358,7 +357,7 @@ def test_request_options(
     assert launch(remote, *options) == 0
     record = json.loads((remote.state / "sample.request.json").read_text())
     assert record["timeout"] == timeout
-    if "--ops" in options:
+    if "--account" in options:
         assert record["account"] == "ops"
         assert record["unsandboxed"] is True
         assert record["authorized_by"] == "o/r#1"
@@ -560,14 +559,3 @@ def test_lost_start_reply_keeps_unreachable_run_reachable(
     remote.file(".rc", "7\n")
     remote.configure(session=False)
     assert command("wait") == 7
-
-
-def test_unsandboxed_new_launch_ignores_host_setting(
-    remote: Remote,
-    monkeypatch: pytest.MonkeyPatch,
-    capsys: pytest.CaptureFixture[str],
-) -> None:
-    disable_host_sandbox_setting(monkeypatch)
-    assert launch(remote, "--ops", "--unsandboxed", "o/r#1") == 0
-    assert capsys.readouterr().err == ""
-    assert remote.records("ssh")

@@ -1,0 +1,337 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright Tony Burns
+
+{
+  $schema: "https://docs.renovatebot.com/renovate-schema.json",
+
+  // Shared repository-level policy for every tbhb-dev repo. Consumers extend
+  // it from their own Renovate config, pinned by commit SHA:
+  //
+  //   "github>tbhb-dev/tbhbdev//lib/renovate-config/default.json5#<sha>", // v1.0.0
+  //
+  // The `.json5` suffix is required: Renovate keeps a custom preset filename
+  // verbatim only when it already ends in .json, .json5 or .jsonc.
+  //
+  // Only repo-level options belong in presets. Global-only settings (identity,
+  // limits, allowedUnsafeExecutions, allowedCommands, hostRules with tokens)
+  // live in the Renovate workflow's environment.
+  //
+  // `packageRules` and `customManagers` are mergeable arrays, so presets and
+  // the consuming repo append to each other. For `groupName`, the LAST matching
+  // rule wins, so a consumer's rules (listed after its extends) override these.
+  extends: [
+    "config:best-practices",
+    // DCO sign-off on every commit, matching the bot's gitAuthor.
+    ":gitSignOff",
+  ],
+
+  // `ignorePaths` is not mergeable: setting it replaces the defaults from
+  // config:best-practices (node_modules, vendor, examples, tests and the like),
+  // so those are repeated here before the additions.
+  ignorePaths: [
+    "**/node_modules/**",
+    "**/bower_components/**",
+    "**/vendor/**",
+    "**/examples/**",
+    "**/__tests__/**",
+    "**/test/**",
+    "**/tests/**",
+    "**/__fixtures__/**",
+    // Fixtures hold deliberately stale pins and fake manifests.
+    "**/testdata/**",
+    // mise's per-tool lock sidecars (for example cspell's package.json) are
+    // mise.lock's business, not an npm manifest to bump.
+    "**/.mise/locks/**",
+  ],
+
+  // Commit through the GitHub API so GitHub signs the commits as the App
+  // (verified). The main rulesets require signatures, and a plain git push
+  // from the container would be unsigned. Values: auto, disabled, enabled.
+  platformCommit: "enabled",
+
+  // GitHub merges only after the ruleset's required approval and checks pass.
+  // Renovate's own merge never bypasses them.
+  automerge: true,
+  platformAutomerge: true,
+
+  // Renovate's default (`auto`, which behaves as behind-base-branch) rebases
+  // every open PR after each merge to the base branch; that voids reviews made
+  // at the old head and limits a repo to roughly one merge a day. The rulesets
+  // do not require PRs to be up to date, so `conclusion` only needs the PR's
+  // own head; `conflicted` rebases only when the branch conflicts with the base.
+  rebaseWhen: "conflicted",
+
+  // Enforce the age cooldown strictly: a release younger than
+  // minimumReleaseAge is not proposed at all, instead of showing as a pending
+  // status check.
+  internalChecksFilter: "strict",
+
+  // Known CVEs open PRs at once, with no cooldown. Needs the App's
+  // "Dependabot alerts: read" permission.
+  vulnerabilityAlerts: {
+    enabled: true,
+    minimumReleaseAge: null,
+    // The alert PR keeps the settings of the rule it matched, so a pin moving
+    // to a security fix would inherit the pins rebase setting without this.
+    rebaseWhen: "conflicted",
+    // The default body adds the advisory text (a prBodyNotes entry, so the
+    // notes section) and the changelogs. Alert PR bodies reached 58 KB, and
+    // the gitleaks_text check on the PR text failed on two of them. This is the default template without {{{notes}}} and
+    // {{{changelogs}}}. The PR then shows no advisory text; find it through
+    // the [SECURITY] title and the Dependabot alert. Any prBodyNotes on an
+    // alert PR, such as a lock reminder, is dropped too.
+    prBodyTemplate: "{{{header}}}{{{table}}}{{{warnings}}}{{{configDescription}}}{{{controls}}}{{{footer}}}",
+  },
+
+  // Also read advisories from the OSV database, which covers ecosystems and
+  // advisories that GitHub's alerts miss. These PRs take the
+  // vulnerabilityAlerts settings, so they skip the cooldown too.
+  osvVulnerabilityAlerts: true,
+
+  // Refresh the whole locked closure, but only when a human ticks the box on
+  // the Dependency Dashboard. The age cooldown cannot reach inside a re-lock,
+  // so the dashboard approval gates the refresh. Lock maintenance can run
+  // package-manager code. These PRs automerge after required CI passes and
+  // the reviews App approves a diff limited to manifests and lock files.
+  lockFileMaintenance: {
+    enabled: true,
+    dependencyDashboardApproval: true,
+    schedule: ["at any time"],
+  },
+
+  packageRules: [
+    // 5-day cooldown. Most supply-chain attacks are noticed and yanked inside
+    // that window. vulnerabilityAlerts above bypasses it.
+    {
+      description: "5-day minimum release age",
+      matchUpdateTypes: ["major", "minor", "patch", "digest"],
+      minimumReleaseAge: "5 days",
+    },
+
+    // One review surface for every GitHub Actions pin refresh.
+    {
+      description: "GitHub Actions pins, SHA-pinned with a version comment",
+      matchManagers: ["github-actions"],
+      groupName: "github-actions",
+    },
+
+    // Pin-only updates (action SHAs, mise tool versions, and, below and in
+    // bazel.json5, the Renovate preset and tbhb_rules pins) share one PR per
+    // repository, opened once a day. Its three-hour window spans three
+    // hourly runs, so one dropped run doesn't skip a day. Major versions keep
+    // their own PR: Renovate splits them from a group by default
+    // (separateMajorMinor). Security updates keep theirs too: Renovate's
+    // vulnerabilityAlerts defaults clear groupName and schedule. One failing pin holds
+    // the others back until it's fixed or a repository rule excludes it.
+    // Listed before the runner rule, so hosted runner images keep their group.
+    {
+      description: "Pin-only updates: one daily PR per repository",
+      matchManagers: ["github-actions", "mise"],
+      matchUpdateTypes: ["minor", "patch", "digest", "pin", "pinDigest"],
+      groupName: "pins",
+      schedule: ["* 5-7 * * *"],
+      // Pins PRs are about one per repository, so a rebase voids few reviews.
+      // Every later rule that sets another groupName sets `conflicted` again,
+      // because matching rules merge field by field. The grouping test checks it.
+      rebaseWhen: "behind-base-branch",
+    },
+
+    // A hosted runner image (ubuntu-24.04, macos-15, windows-2025) moves as
+    // one PR per image: its `runs-on` lines, which the github-actions manager
+    // reads, and its matrix entries, which the runner-matrix manager below
+    // reads. Listed after the github-actions rule: last groupName wins.
+    {
+      description: "Hosted runner images: runs-on and matrix entries together",
+      matchDatasources: ["github-runners"],
+      groupName: "{{{depName}}} runner",
+      rebaseWhen: "conflicted",
+    },
+
+    // cspell and its dictionaries come from npm via pnpm. Renovate runs pnpm
+    // with scripts ignored unless allowScripts is set globally; it is not.
+    {
+      description: "cspell and its dictionaries",
+      matchManagers: ["npm"],
+      matchFileNames: ["**/cspell/**", "package.json"],
+      groupName: "cspell",
+      rebaseWhen: "conflicted",
+    },
+
+    // The Renovate engine image is pinned in renovate.yaml and in the
+    // validator workflow of the repos that host them. One PR keeps the two
+    // engines in step. Listed after the github-actions rule: last groupName
+    // wins.
+    {
+      matchDepNames: ["ghcr.io/renovatebot/renovate"],
+      groupName: "renovate",
+      rebaseWhen: "conflicted",
+    },
+
+    // The pinned preset references in each consumer's Renovate config
+    // move together, one PR per consumer. First-party and reviewed before it
+    // merges, so those updates can skip the cooldown for third-party releases.
+    {
+      matchPackageNames: ["tbhb-dev/tbhbdev"],
+      groupName: "pins",
+      minimumReleaseAge: null,
+      schedule: ["* 5-7 * * *"],
+      rebaseWhen: "behind-base-branch",
+    },
+    // The same references pinned to a branch (`// main`, `# main`) come from
+    // the git-refs managers below, whose package name is the repository URL.
+    {
+      matchDepNames: ["tbhb-dev/tbhbdev"],
+      groupName: "pins",
+      minimumReleaseAge: null,
+      // Internal fan-out: every merge here would otherwise open a PR in each
+      // consumer. The daily pins window batches them.
+      schedule: ["* 5-7 * * *"],
+      rebaseWhen: "behind-base-branch",
+    },
+    // A reusable-workflow `uses:` pinned to a branch is the git-refs
+    // manager's. The github-actions manager would read `main` as a tag and
+    // fail to look it up.
+    {
+      matchManagers: ["github-actions"],
+      matchCurrentValue: "/^main$/",
+      enabled: false,
+    },
+
+    // .vale.ini packages and their MODULE.bazel http_file twins are the same
+    // upstream. The group name template resolves to the same branch for both,
+    // so one PR moves .vale.ini and the Bazel pin together.
+    {
+      description: "Vale packages: .vale.ini and the MODULE.bazel twins in one PR",
+      matchFileNames: [".vale.ini"],
+      groupName: "{{{packageName}}}",
+      rebaseWhen: "conflicted",
+    },
+
+    // PR titles, and the squash subjects made from them, fit 72 characters
+    // with " (#NNNN)" appended, so they stay within 64. The longest prefix is
+    // "chore(deps): update " (20). The topic drops Renovate's "dependency",
+    // "module" and "docker" words, and a dependency name over 26 characters
+    // keeps its last 25, after "…" (Go module paths reach 84). A version over
+    // 14 characters keeps its first 13, then "…" (buf.build SDK versions
+    // reach 39). 20 + 26 + " to " + 14 = 64, and a digest adds " digest"
+    // and a 7-character hash: 64. The PR body table still names the full
+    // dependency and version. A group's title is its groupName, which these
+    // rules leave alone. Replacements keep Renovate's "replace X with Y" text,
+    // which can still run long.
+    {
+      description: "Commit subjects and PR titles within 64 characters",
+      matchUpdateTypes: ["major", "minor", "patch", "rollback", "bump"],
+      commitMessageTopic: "{{{replace '^.+(.{25})$' '…$1' depName}}}",
+      commitMessageExtra: "to {{#if isMajor}}{{{prettyNewMajor}}}{{else}}{{#if isSingleVersion}}{{{replace '^(.{13}).+$' '$1…' prettyNewVersion}}}{{else}}{{#if newValue}}{{{replace '^(.{13}).+$' '$1…' newValue}}}{{else}}{{{newDigestShort}}}{{/if}}{{/if}}{{/if}}",
+    },
+    {
+      description: "Digest commit subjects and PR titles within 64 characters",
+      matchUpdateTypes: ["digest"],
+      commitMessageTopic: "{{{replace '^.+(.{25})$' '…$1' depName}}} digest",
+    },
+  ],
+
+  customManagers: [
+    // The awrel MCP client version in a JSON args array, on one or many lines:
+    //
+    //   "args": ["run", "go.tbhb.dev/awrel/cmd/awrel@v0.5.0", "mcp"],
+    {
+      customType: "regex",
+      description: "awrel MCP client pin: go.tbhb.dev/awrel/cmd/awrel@vX in .mcp.json",
+      managerFilePatterns: ["/(^|/)\\.mcp\\.json$/"],
+      matchStrings: [
+        "\"go\\.tbhb\\.dev/awrel/cmd/awrel@(?<currentValue>v\\d+\\.\\d+\\.\\d+)\"",
+      ],
+      depNameTemplate: "tbhb-dev/awrel",
+      datasourceTemplate: "github-tags",
+    },
+
+    // Hosted runner labels in workflow matrices. The github-actions manager
+    // reads a label only from a literal `runs-on:`, so a job with
+    // `runs-on: ${{ matrix.os }}` keeps its old image when the others move.
+    // The first expression finds an `os:` list or an `include` entry's `os:`;
+    // the second takes each label in it:
+    //
+    //   os: [ubuntu-24.04, macos-15, windows-2025]
+    //   - os: ubuntu-24.04
+    {
+      customType: "regex",
+      description: "Hosted runner labels in workflow matrices",
+      managerFilePatterns: ["/^\\.github/workflows/[^/]+\\.ya?ml$/"],
+      matchStringsStrategy: "recursive",
+      matchStrings: [
+        "(?:\\bos:[ \\t]*\\[[^\\]\\n]*\\]|-[ \\t]+os:[ \\t]*[A-Za-z0-9.-]+)",
+        "(?<depName>ubuntu|macos|windows)-(?<currentValue>[0-9]+(?:\\.[0-9]+)?)\\b",
+      ],
+      datasourceTemplate: "github-runners",
+    },
+
+    // .vale.ini `Packages` block. Each entry is a GitHub release-asset URL
+    // that already carries owner/repo and the version tag, so no inline
+    // `# renovate:` marker is needed (Vale's backslash-continued list has
+    // nowhere to put one anyway).
+    //
+    //   https://github.com/errata-ai/Google/releases/download/v0.6.3/Google.zip, \
+    //
+    // Several assets of one release (tbhb/vale-ai-tells) share an identical
+    // matched substring, so autoReplaceGlobalMatch rewrites all in one update.
+    // The Bazel twins in MODULE.bazel are the `bazel` manager's.
+    {
+      customType: "regex",
+      description: "Vale packages in .vale.ini",
+      managerFilePatterns: ["/(^|/)\\.vale\\.ini$/"],
+      matchStrings: [
+        "https://github\\.com/(?<packageName>[^/\\s]+/[^/\\s]+)/releases/download/(?<currentValue>[^/\\s]+)/",
+      ],
+      depNameTemplate: "{{{packageName}}}",
+      datasourceTemplate: "github-releases",
+    },
+
+    // A pinned `extends` entry in a consumer's Renovate config:
+    //
+    //   "github>tbhb-dev/tbhbdev//lib/renovate-config/default.json5#<sha>", // v1.0.0
+    //
+    // Renovate documents preset pinning with a tag suffix, but a full commit
+    // SHA resolves too. The SHA plus a version comment keeps the convention
+    // every other pin here uses; the comment is the only human-readable
+    // version at that site. A preset pinned to an old ref governs its own
+    // bump, so this takes effect one release after it lands.
+    {
+      customType: "regex",
+      description: "Pinned preset references: github>owner/repo//file#<sha> // vX",
+      managerFilePatterns: ["/^(?:\\.github/)?renovate\\.json5?$/"],
+      matchStrings: [
+        "\"github>(?<depName>[^/\"]+/[^/\"]+)//[^\"#]+#(?<currentDigest>[0-9a-f]{40})\",?\\s*//\\s*(?<currentValue>v[^\\s]+)",
+      ],
+      datasourceTemplate: "github-tags",
+    },
+    // The same preset references pinned to a branch instead of a release:
+    //
+    //   "github>tbhb-dev/tbhbdev//lib/renovate-config/default.json5#<sha>", // main
+    //
+    // Each bump moves the SHA to the branch's latest commit.
+    {
+      customType: "regex",
+      description: "Branch-pinned preset references: github>owner/repo//file#<sha> // main",
+      managerFilePatterns: ["/^(?:\\.github/)?renovate\\.json5?$/"],
+      matchStrings: [
+        "\"github>(?<depName>[^/\"]+/[^/\"]+)//[^\"#]+#(?<currentDigest>[0-9a-f]{40})\",?\\s*//\\s*(?<currentValue>main)\\b",
+      ],
+      packageNameTemplate: "https://github.com/{{{depName}}}",
+      datasourceTemplate: "git-refs",
+    },
+    // Reusable workflows pinned to a branch:
+    //
+    //   uses: owner/repo/.github/workflows/checks.yml@<sha> # main
+    {
+      customType: "regex",
+      description: "Branch-pinned reusable workflows: uses: owner/repo/path@<sha> # main",
+      managerFilePatterns: ["/^\\.github/workflows/[^/]+\\.ya?ml$/"],
+      matchStrings: [
+        "uses:\\s*(?<depName>[^/\\s]+/[^/\\s]+)/[^@\\s]+@(?<currentDigest>[0-9a-f]{40})\\s+#\\s*(?<currentValue>main)\\b",
+      ],
+      packageNameTemplate: "https://github.com/{{{depName}}}",
+      datasourceTemplate: "git-refs",
+    },
+  ],
+}

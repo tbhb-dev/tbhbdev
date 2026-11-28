@@ -126,21 +126,6 @@ def test_model(harness: Harness, model: str, allow: bool, valid: bool) -> None:
         assert [model.strip() for model in models] == list(AGY_MODELS)
 
 
-def test_unsandboxed_host_flag_does_not_gate_validation() -> None:
-    run = dataclasses.replace(BUILD, unsandboxed=True, authorized_by=None)
-    assert launch.check(run, CONFIG, LINUX, existing_name=None, ref=None) == run
-    assert (
-        launch.check(
-            run,
-            CONFIG,
-            dataclasses.replace(LINUX, unsandboxed=False),
-            existing_name=None,
-            ref=None,
-        )
-        == run
-    )
-
-
 def test_peeled_tag_does_not_hide_an_ambiguous_branch() -> None:
     text = (
         f"{'b' * 40} refs/heads/topic\n{'a' * 40} refs/tags/topic\n"

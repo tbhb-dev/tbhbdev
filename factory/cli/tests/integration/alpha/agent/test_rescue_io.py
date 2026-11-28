@@ -9,7 +9,8 @@ from agent_host_example import commit, git, host_settings, repository, run_reque
 from fake_tool import PRIVATE_CONFIG, RULES_BEYOND_ONE
 
 from tbhbdev.alpha import pre_push_guard
-from tbhbdev.alpha.agent import rescue, run_host, runfiles
+from tbhbdev.alpha.agent import rescue, runfiles
+from tbhbdev.alpha.agent.run_host import state
 
 BRANCH = "agent/example"
 REF = f"refs/heads/{BRANCH}"
@@ -96,8 +97,8 @@ def test_fault_publication(
     files.write("launched", "\n")
     files.write("base", base)
     files.uncertain = change == "uncertain"
-    run = Mock(run_host.Run, files=files, request=request, settings=host_settings())
-    ready = Mock(spec=run_host.Prepared, paths=Mock(worktree=str(workspace)))
+    run = Mock(state.Run, files=files, request=request, settings=host_settings())
+    ready = Mock(spec=state.Prepared, paths=Mock(worktree=str(workspace)))
     change_checkout(workspace, change)
     rescue.on_fault(run, ready, 0 if change == "clean exit" else 7)
     log = files.path("log")

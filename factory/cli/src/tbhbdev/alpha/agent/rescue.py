@@ -15,7 +15,7 @@ from tbhbdev.alpha.agent.model import Profile
 from tbhbdev.alpha.gh_app import GhAppError
 
 if TYPE_CHECKING:
-    from tbhbdev.alpha.agent.run_host import Prepared, Run
+    from tbhbdev.alpha.agent.run_host.state import Prepared, Run
 
 FAILURES = (OSError, ValueError, subprocess.SubprocessError)
 FINDING = 3

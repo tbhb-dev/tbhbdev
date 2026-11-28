@@ -1,0 +1,135 @@
+# SPDX-License-Identifier: Apache-2.0
+# Copyright Tony Burns
+
+load("//factory/cli:python.bzl", "cli_py_library")
+
+cli_py_library(
+    name = "__init__",
+    srcs = ["__init__.py"],
+    imports = ["../../.."],
+    visibility = ["//factory/cli:__subpackages__"],
+)
+
+cli_py_library(
+    name = "agent_model",
+    srcs = ["agent_model.py"],
+    imports = ["../../.."],
+    visibility = ["//factory/cli:__subpackages__"],
+    deps = [
+        "//factory/cli/src/tbhbdev/alpha:repo",
+        "//factory/cli/src/tbhbdev/alpha/identity/claude:logs",
+    ],
+)
+
+cli_py_library(
+    name = "gh_config_dir",
+    srcs = ["gh_config_dir.py"],
+    imports = ["../../.."],
+    visibility = ["//factory/cli:__subpackages__"],
+    deps = [
+        ":payload",
+        ":shell_commands",
+        "//factory/cli/src/tbhbdev/alpha:repo",
+    ],
+)
+
+cli_py_library(
+    name = "gh_options",
+    srcs = ["gh_options.py"],
+    imports = ["../../.."],
+    visibility = ["//factory/cli:__subpackages__"],
+)
+
+cli_py_library(
+    name = "git_command",
+    srcs = ["git_command.py"],
+    imports = ["../../.."],
+    visibility = ["//factory/cli:__subpackages__"],
+)
+
+cli_py_library(
+    name = "git_hooks",
+    srcs = ["git_hooks.py"],
+    imports = ["../../.."],
+    visibility = ["//factory/cli:__subpackages__"],
+    deps = [
+        ":git_command",
+        ":shell_commands",
+    ],
+)
+
+cli_py_library(
+    name = "ops_no_lazy_stop",
+    srcs = ["ops_no_lazy_stop.py"],
+    imports = ["../../.."],
+    visibility = ["//factory/cli:__subpackages__"],
+    deps = ["//factory/cli/src/tbhbdev/alpha:repo"],
+)
+
+cli_py_library(
+    name = "payload",
+    srcs = ["payload.py"],
+    imports = ["../../.."],
+    pyi_deps = ["//factory/cli/src/tbhbdev/alpha:repo"],
+    visibility = ["//factory/cli:__subpackages__"],
+)
+
+cli_py_library(
+    name = "sendmessage_clock",
+    srcs = ["sendmessage_clock.py"],
+    imports = ["../../.."],
+    visibility = ["//factory/cli:__subpackages__"],
+    deps = [
+        ":payload",
+        "//factory/cli/src/tbhbdev/alpha:repo",
+    ],
+)
+
+cli_py_library(
+    name = "shell_commands",
+    srcs = ["shell_commands.py"],
+    imports = ["../../.."],
+    visibility = ["//factory/cli:__subpackages__"],
+)
+
+cli_py_library(
+    name = "state",
+    srcs = ["state.py"],
+    imports = ["../../.."],
+    visibility = ["//factory/cli:__subpackages__"],
+    deps = [
+        ":trailers",
+        "//factory/cli/src/tbhbdev:userconfig",
+        "//factory/cli/src/tbhbdev/alpha:repo",
+    ],
+)
+
+cli_py_library(
+    name = "trailers",
+    srcs = ["trailers.py"],
+    imports = ["../../.."],
+    pyi_deps = ["//factory/cli/src/tbhbdev/alpha:repo"],
+    visibility = ["//factory/cli:__subpackages__"],
+    deps = [
+        ":git_command",
+        ":shell_commands",
+    ],
+)
+
+cli_py_library(
+    name = "options",
+    srcs = ["options.py"],
+    imports = ["../../.."],
+    visibility = ["//factory/cli:__subpackages__"],
+)
+
+filegroup(
+    name = "package_files",
+    srcs = glob(["*.py"]) + [
+        "//factory/cli/src/tbhbdev/alpha/guard/gh_poll:package_files",
+        "//factory/cli/src/tbhbdev/alpha/guard/gh_pr:package_files",
+        "//factory/cli/src/tbhbdev/alpha/guard/op:package_files",
+        "//factory/cli/src/tbhbdev/alpha/guard/scripts:package_files",
+    ],
+    visibility = ["//factory/cli:__subpackages__"],
+)

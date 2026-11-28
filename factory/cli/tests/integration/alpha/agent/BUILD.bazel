@@ -121,7 +121,6 @@ cli_py_test(
     deps = [
         ":conftest",
         "//factory/cli/src/tbhbdev/alpha:repo",
-        "//factory/cli/src/tbhbdev/alpha/agent:host_tools",
         "//factory/cli/src/tbhbdev/alpha/agent:model",
         "//factory/cli/src/tbhbdev/alpha/agent:worktree_checkout",
         "//factory/cli/src/tbhbdev/alpha/agent:worktree_hooks",
@@ -152,13 +151,32 @@ cli_py_test(
 )
 
 cli_py_test(
-    name = "test_worktree_writes",
-    srcs = ["test_worktree_writes.py"],
+    name = "test_signing_parity_io",
+    srcs = ["test_signing_parity_io.py"],
     imports = ["../../.."],
     deps = [
         ":conftest",
-        "//factory/cli/src/tbhbdev/alpha/agent:worktree_writes",
-        "//factory/cli/tests:agent_host_example",
+        "//factory/cli/src/tbhbdev/alpha/agent:model",
+        "//factory/cli/src/tbhbdev/alpha/agent:settings",
+        "//factory/cli/src/tbhbdev/alpha/agent:signing_keys",
+        "//factory/cli/src/tbhbdev/alpha/agent:signing_parity",
+        "//factory/cli/src/tbhbdev/alpha/agent:transport",
+        "//factory/cli/tests:agent_example",
+        "//factory/cli/tests:conftest",
+        "@cli_pip//httpx2",
+        "@cli_pip//pytest",
+    ],
+)
+
+cli_py_test(
+    name = "test_transport_ssh_io",
+    srcs = ["test_transport_ssh_io.py"],
+    imports = ["../../.."],
+    deps = [
+        ":conftest",
+        "//factory/cli/src/tbhbdev/alpha/agent:model",
+        "//factory/cli/src/tbhbdev/alpha/agent:transport",
+        "//factory/cli/tests:agent_example",
         "//factory/cli/tests:conftest",
         "@cli_pip//pytest",
     ],
@@ -173,8 +191,8 @@ cli_py_test(
         ":conftest",
         "//factory/cli/src/tbhbdev/alpha:pre_push_guard",
         "//factory/cli/src/tbhbdev/alpha/agent:rescue",
-        "//factory/cli/src/tbhbdev/alpha/agent:run_host",
         "//factory/cli/src/tbhbdev/alpha/agent:runfiles",
+        "//factory/cli/src/tbhbdev/alpha/agent/run_host:state",
         "//factory/cli/tests:agent_host_example",
         "//factory/cli/tests:conftest",
         "//factory/cli/tests:fake_tool",

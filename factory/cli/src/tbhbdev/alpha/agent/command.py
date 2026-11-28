@@ -9,8 +9,6 @@ from tbhbdev import telemetry, userconfig
 from tbhbdev.alpha.agent import (
     admission,
     app_server,
-    precheck,
-    run_host,
     settings,
     signing_parity,
     ssh_serve,
@@ -19,6 +17,7 @@ from tbhbdev.alpha.agent.decisions import host_names
 from tbhbdev.alpha.agent.driver import arguments
 from tbhbdev.alpha.agent.driver import dispatch as coordinator
 from tbhbdev.alpha.agent.driver.decisions.steering import CLAUDE_UNAVAILABLE
+from tbhbdev.alpha.agent.run_host import configuration, dispatcher
 
 if TYPE_CHECKING:
     import argparse
@@ -26,10 +25,9 @@ if TYPE_CHECKING:
 
 def main(argv: list[str], prog: str) -> int:
     host_commands = {
-        "run-host": run_host.main,
+        "run-host": dispatcher.main,
         "send-host": app_server.main,
         "ssh-serve": ssh_serve.main,
-        "precheck": precheck.main,
         "check-slot": admission.main,
         "signing-fingerprint": signing_parity.host_main,
     }
@@ -51,7 +49,7 @@ def dispatch(args: argparse.Namespace | None, prog: str) -> int:
     try:
         loaded = settings.load()
         if args is None:
-            run_host.check_config(loaded)
+            configuration.check_config(loaded)
             print(f"{prog}: configuration valid")
             return 0
         if args.verb == "exec" and host_names.contains_host_name(

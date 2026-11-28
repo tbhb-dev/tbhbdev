@@ -14,8 +14,9 @@ import pytest
 from agent_host_example import build_provenance
 from runfile_fixtures import agent_suffix_case as agent_suffix_case  # noqa: PLC0414
 
-from tbhbdev.alpha.agent import build_info, process_group, run_host, runfiles, ssh_serve
+from tbhbdev.alpha.agent import build_info, process_group, runfiles, ssh_serve
 from tbhbdev.alpha.agent.decisions.run_state import Group
+from tbhbdev.alpha.agent.run_host import dispatcher
 
 
 @pytest.fixture(autouse=True)
@@ -44,7 +45,7 @@ def test_preflight_envelope(
         assert kwargs == {"claimed": True}
         return 0
 
-    monkeypatch.setattr(run_host, "main", main)
+    monkeypatch.setattr(dispatcher, "main", main)
     assert ssh_serve.main([], "ssh-serve") == 0
     files = files_for("example")
     assert calls == [["example", "--preflight"]]
@@ -146,7 +147,7 @@ def test_run_dispatch(
         sys.stdout.write("normal run output\n")
         return 7
 
-    monkeypatch.setattr(run_host, "main", run)
+    monkeypatch.setattr(dispatcher, "main", run)
     assert ssh_serve.main([], "ssh-serve") == 7
     assert capsys.readouterr().out == "normal run output\n"
 
@@ -453,7 +454,7 @@ def test_private_run_files_ignore_permissive_umask(
     def run(*_args: object, **_kwargs: object) -> int:
         return 0
 
-    monkeypatch.setattr(run_host, "main", run)
+    monkeypatch.setattr(dispatcher, "main", run)
     previous = os.umask(0)
     try:
         assert ssh_serve.main([], "ssh-serve") == 0
