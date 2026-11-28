@@ -15,7 +15,7 @@ import httpx2
 from tbhbdev import github_tls, secrets
 from tbhbdev.admin import approvals, policy, policy_paths
 from tbhbdev.admin.audit import Audit, RefusedError, record
-from tbhbdev.alpha import gh_app
+from tbhbdev.alpha import gh_app_api, gh_app_runtime
 
 MAX_RESPONSE = 1024 * 1024
 HTTP_OK = 200
@@ -44,7 +44,7 @@ class Settings:
 @dataclass(frozen=True)
 class Runtime:
     audit: Audit
-    env: gh_app.Env = field(repr=False)
+    env: gh_app_runtime.Env = field(repr=False)
     marker: Path
     settings: Settings = Settings()
 
@@ -52,7 +52,9 @@ class Runtime:
 def default_runtime() -> Runtime:
     root = Path(os.environ.get("XDG_STATE_HOME") or Path.home() / ".local/state")
     directory = root / "tbhb/admin-app"
-    return Runtime(Audit(directory), gh_app.default_env(), marker=directory / "enabled")
+    return Runtime(
+        Audit(directory), gh_app_runtime.default_env(), marker=directory / "enabled"
+    )
 
 
 def scope(decision: policy.Decision, method: str) -> tuple[str, dict[str, str]]:
@@ -85,7 +87,7 @@ def private_key(runtime: Runtime) -> str:
         msg = "credential_unavailable"
         raise RefusedError(msg)
     try:
-        reader: gh_app.Reader = runtime.env.store()
+        reader: gh_app_runtime.Reader = runtime.env.store()
         key = reader.read(f"op://{settings.vault}/{settings.item}/private_key")
     except secrets.SecretsError:
         msg = "credential_unavailable"
@@ -112,7 +114,7 @@ def send(
     target, permissions = access
     key = private_key(runtime)
     try:
-        minted = gh_app.mint_token(
+        minted = gh_app_api.mint_token(
             runtime.env,
             app_id=runtime.settings.app_id,
             pem=key,
@@ -121,9 +123,9 @@ def send(
         )
         with (
             httpx2.Client(
-                base_url=gh_app.API,
+                base_url=gh_app_api.API,
                 transport=runtime.env.transport,
-                timeout=gh_app.TIMEOUT,
+                timeout=gh_app_api.TIMEOUT,
                 follow_redirects=False,
                 trust_env=False,
                 verify=github_tls.public_roots(),
@@ -146,7 +148,7 @@ def send(
             text = data.decode(errors="replace")
             redacted = redact(text, minted.token, key)
             return response.status_code, redacted, redacted != text
-    except gh_app.GhAppError, httpx2.HTTPError:
+    except gh_app_runtime.GhAppError, httpx2.HTTPError:
         msg = "request_failed"
         raise RefusedError(msg) from None
 

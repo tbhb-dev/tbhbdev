@@ -50,7 +50,8 @@ cli_py_library(
         ":process_group",
         ":runfiles",
         "//factory/cli/src/tbhbdev:secrets",
-        "//factory/cli/src/tbhbdev/alpha:gh_app",
+        "//factory/cli/src/tbhbdev/alpha:gh_app_api",
+        "//factory/cli/src/tbhbdev/alpha:gh_app_runtime",
         "//factory/cli/src/tbhbdev/alpha/agent/decisions:auth",
         "//factory/cli/src/tbhbdev/alpha/agent/decisions:config",
         "//factory/cli/src/tbhbdev/alpha/agent/decisions:repo",
@@ -63,7 +64,10 @@ cli_py_library(
     srcs = ["host_tools.py"],
     imports = ["../../.."],
     visibility = ["//factory/cli:__subpackages__"],
-    deps = [":model"],
+    deps = [
+        ":model",
+        "//factory/cli/src/tbhbdev/alpha:tool_pins",
+    ],
 )
 
 cli_py_library(
@@ -128,7 +132,7 @@ cli_py_library(
         ":runfiles",
         "//factory/cli/src/tbhbdev:content_review",
         "//factory/cli/src/tbhbdev:github_tls",
-        "//factory/cli/src/tbhbdev/alpha:gh_app",
+        "//factory/cli/src/tbhbdev/alpha:gh_app_api",
         "//factory/cli/src/tbhbdev/alpha:review",
         "//factory/cli/src/tbhbdev/alpha:review_doc",
         "//factory/cli/src/tbhbdev/alpha:size_gate",
@@ -277,6 +281,7 @@ cli_py_library(
     imports = ["../../.."],
     visibility = ["//factory/cli:__subpackages__"],
     deps = [
+        ":host_tools",
         ":model",
         ":runfiles",
         ":worktree_clone",
@@ -325,8 +330,10 @@ cli_py_library(
     deps = [
         ":host_tools",
         ":model",
+        ":runfiles",
         ":worktree_errors",
         "//factory/cli/src/tbhbdev/alpha:pre_push_guard",
+        "//factory/cli/src/tbhbdev/alpha:preflight_gate",
         "//factory/cli/src/tbhbdev/alpha:repo",
         "//factory/cli/src/tbhbdev/alpha/identity/commit:policy",
         "//factory/cli/src/tbhbdev/alpha/install:scripts",
@@ -355,5 +362,23 @@ cli_py_library(
     deps = [
         "//factory/cli/src/tbhbdev:github_tls",
         "@cli_pip//httpx2",
+    ],
+)
+
+cli_py_library(
+    name = "rescue",
+    srcs = ["rescue.py"],
+    imports = ["../../.."],
+    pyi_deps = ["//factory/cli/src/tbhbdev/alpha/agent/run_host:state"],
+    visibility = ["//factory/cli:__subpackages__"],
+    deps = [
+        ":credentials",
+        ":host_tools",
+        ":model",
+        ":push",
+        "//factory/cli/src/tbhbdev/alpha:gh_app_runtime",
+        "//factory/cli/src/tbhbdev/alpha:pre_push_guard",
+        "//factory/cli/src/tbhbdev/alpha:secret_scan",
+        "//factory/cli/src/tbhbdev/alpha/agent/decisions:repo",
     ],
 )

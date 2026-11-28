@@ -162,11 +162,22 @@ git -c core.quotePath=false diff -z --raw --no-renames --no-relative --ignore-su
 # Target-determinator hashes the configured graph. Submodule and symlink
 # changes can affect files outside the paths in the diff. Module and Bazel
 # configuration changes can invalidate the whole graph.
-declare -A workspace_checks=()
+# A newline-separated set of labels, as bash 3.2 on macOS has no associative arrays.
+workspace_checks=
+workspace_check_count=0
+add_workspace_check() {
+  case $'\n'$workspace_checks in
+  *$'\n'"$1"$'\n'*) ;;
+  *)
+    workspace_checks+=$1$'\n'
+    workspace_check_count=$((workspace_check_count + 1))
+    ;;
+  esac
+}
 # Gazelle walks the checkout for sources, BUILD directives, and embedded
 # files. Embeds can have any extension.
 if [[ -s $changed ]]; then
-  workspace_checks[//:gazelle_test]=1
+  add_workspace_check //:gazelle_test
 fi
 while IFS= read -r -d '' meta && IFS= read -r -d '' path; do
   [[ ${meta:0:15} != *160000* ]] || finish all "the submodule $path changed"
@@ -179,25 +190,25 @@ while IFS= read -r -d '' meta && IFS= read -r -d '' path; do
   BUILD | BUILD.* | *.BUILD | *.bazel | *.bzl | *.sky | *.star)
     # The root buildifier excludes lib/rules, which has its own scan.
     if [[ $path == lib/rules/* ]]; then
-      workspace_checks[@tbhb_rules//:buildifier_test]=1
+      add_workspace_check @tbhb_rules//:buildifier_test
     else
-      workspace_checks[//:buildifier_test]=1
+      add_workspace_check //:buildifier_test
     fi
     ;;
   esac
   case $path in
   lib/rules/*.sh | lib/rules/*.sh.tpl | lib/rules/*.yml)
-    workspace_checks[@tbhb_rules//repo/tests:mktemp_test]=1
+    add_workspace_check @tbhb_rules//repo/tests:mktemp_test
     ;;
   esac
   # Markdown links can point to any tracked file or directory in lib/rules.
   if [[ $path == lib/rules/* && (${meta: -1} != M || $path == *.md || $path == lib/rules/.markdown-links.toml) ]]; then
-    workspace_checks[@tbhb_rules//repo/tests:markdown_links_test]=1
+    add_workspace_check @tbhb_rules//repo/tests:markdown_links_test
   fi
   case $path in
   lib/rules/.gitleaks*.toml | lib/rules/*/.gitleaks*.toml | lib/rules/lint/gitleaks/* | \
     lib/rules/pins/extensions.bzl | LICENSES/MIT.txt)
-    workspace_checks[@tbhb_rules//lint/tests:gitleaks_configs_test]=1
+    add_workspace_check @tbhb_rules//lint/tests:gitleaks_configs_test
     ;;
   esac
 done <"$changed"
@@ -290,11 +301,12 @@ select_targets() {
     run_step target-determinator "$TD" -bazel bazelisk -nocache_results -delete-cached-worktree \
       -before-query-error-behavior=fatal -targets "$targets" "${opts[@]/#/-bazel-opts=}" "$BASE_SHA" >"$file" || return
   fi
-  if ((${#workspace_checks[@]})); then
+  if ((workspace_check_count)); then
     step='the query of workspace checks'
+    newline=$'\n' # bash 3.2 doesn't expand $'' inside a quoted pattern
     run_step "$step" bazelisk query --consistent_labels --output=label \
-      "kind('.*_test rule', set(${!workspace_checks[*]}))" >"$out/workspace-checks" || return
-    [[ $(wc -l <"$out/workspace-checks") -eq ${#workspace_checks[@]} ]] || return 1
+      "kind('.*_test rule', set(${workspace_checks//"$newline"/ }))" >"$out/workspace-checks" || return
+    [[ $(wc -l <"$out/workspace-checks") -eq $workspace_check_count ]] || return 1
     # Bazel can spell the main repository with or without an explicit @@.
     step='combining affected tests and workspace checks'
     LC_ALL=C sed 's,^@@//,//,' "$file" "$out/workspace-checks" | LC_ALL=C sort -u >"$out/combined" || return

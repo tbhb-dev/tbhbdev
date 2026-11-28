@@ -1,7 +1,7 @@
 """In-memory repository credentials for the ops deployer.
 
-All inputs are explicit. JWT clock refusals are reported as ``mint``: gh_app
-sanitizes API failures before returning them, so they cannot be distinguished.
+All inputs are explicit. GitHub App token minting sanitizes API failures,
+so JWT clock refusals are reported as ``mint``.
 Git's private credential helper runs with only standard library imports.
 Git runs with hooks disabled so hooks cannot read the credential pipe.
 Git always receives ``GIT_TERMINAL_PROMPT=0`` to prevent interactive prompts.
@@ -25,8 +25,8 @@ from typing import TYPE_CHECKING, Literal
 import httpx2
 
 from tbhbdev import secrets
-from tbhbdev.alpha import gh_app
-lazy from tbhbdev.alpha.gh_app import Minted
+from tbhbdev.alpha import gh_app_api, gh_app_runtime
+lazy from tbhbdev.alpha.gh_app_api import Minted
 
 if TYPE_CHECKING:
     from collections.abc import Mapping, Sequence
@@ -51,7 +51,9 @@ TWO_PARTS = 2
 DIRECTORY_FLAGS = os.O_RDONLY | os.O_DIRECTORY | os.O_CLOEXEC
 FILE_FLAGS = os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK | os.O_CLOEXEC
 # mint_token uses only the clock and transport; its other Env slots are inert.
-_MINT_ENV = gh_app.Env(Path(), gh_app.clock, secrets.Store, gh_app.run_openssl)
+_MINT_ENV = gh_app_runtime.Env(
+    Path(), gh_app_runtime.clock, secrets.Store, gh_app_runtime.run_openssl
+)
 # Isolated interpreters need no installed package to read the credential pipe.
 HELPER_CODE = """\
 import os
@@ -183,7 +185,7 @@ def _mint(
     app: AppKey, repository: str, permissions: Mapping[str, str], cache: dict[str, int]
 ) -> Minted:
     try:
-        return gh_app.mint_token(
+        return gh_app_api.mint_token(
             _MINT_ENV,
             app_id=app.app_id,
             pem=app.private_key,
@@ -192,11 +194,11 @@ def _mint(
             known_installation=cache.get(repository),
             installation_found=lambda ident: cache.update({repository: ident}),
         )
-    except gh_app.InstallationMissingError:
+    except gh_app_api.InstallationMissingError:
         raise RepoTokenError(kind="installation") from None
-    except gh_app.CachedInstallationMissingError:
+    except gh_app_api.CachedInstallationMissingError:
         raise
-    except gh_app.GhAppError:
+    except gh_app_runtime.GhAppError:
         raise RepoTokenError(kind="mint") from None
 
 
@@ -213,7 +215,7 @@ def mint(
     cache = _cache(installation_cache)
     try:
         result = _mint(app, repository, permissions, cache)
-    except gh_app.CachedInstallationMissingError:
+    except gh_app_api.CachedInstallationMissingError:
         del cache[repository]
         _write_cache(installation_cache, cache)
         result = _mint(app, repository, permissions, cache)

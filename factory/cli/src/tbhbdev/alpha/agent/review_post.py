@@ -14,7 +14,7 @@ from typing import TYPE_CHECKING, cast
 import httpx2
 
 from tbhbdev import github_tls
-from tbhbdev.alpha import gh_app, review, review_doc
+from tbhbdev.alpha import gh_app_api, review, review_doc
 from tbhbdev.alpha.agent import credentials, runfiles
 from tbhbdev.alpha.agent.decisions import repo
 from tbhbdev.alpha.agent.decisions import request as requests
@@ -265,7 +265,7 @@ def post_size_review(run: Run) -> None:
     _, owner, name = repo.parts(run.request.repo)
     api(
         "POST",
-        f"{gh_app.API}/repos/{owner}/{name}/statuses/{head}",
+        f"{gh_app_api.API}/repos/{owner}/{name}/statuses/{head}",
         token,
         {
             "context": SIZE_REVIEW,

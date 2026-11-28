@@ -50,7 +50,8 @@ cli_py_library(
         ":policy_paths",
         "//factory/cli/src/tbhbdev:github_tls",
         "//factory/cli/src/tbhbdev:secrets",
-        "//factory/cli/src/tbhbdev/alpha:gh_app",
+        "//factory/cli/src/tbhbdev/alpha:gh_app_api",
+        "//factory/cli/src/tbhbdev/alpha:gh_app_runtime",
         "@cli_pip//httpx2",
     ],
 )
@@ -73,7 +74,7 @@ cli_py_library(
         ":audit",
         ":request",
         "//factory/cli/src/tbhbdev:userconfig",
-        "//factory/cli/src/tbhbdev/alpha:gh_app",
+        "//factory/cli/src/tbhbdev/alpha:gh_app_args",
     ],
 )
 

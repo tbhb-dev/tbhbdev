@@ -1,0 +1,119 @@
+# SPDX-License-Identifier: Apache-2.0
+# Copyright Tony Burns
+
+load("//factory/cli:python.bzl", "cli_py_library")
+load("//factory/cli/tests:pytest.bzl", "cli_py_test")
+
+filegroup(
+    name = "package_files",
+    srcs = glob(["*.py"]),
+    visibility = ["//factory/cli/tests:__pkg__"],
+)
+
+cli_py_library(
+    name = "gh_app_fakes",
+    testonly = True,
+    srcs = ["gh_app_fakes.py"],
+    imports = ["../.."],
+    visibility = ["//factory/cli/tests:__subpackages__"],
+    deps = [
+        "//factory/cli/src/tbhbdev:secrets",
+        "//factory/cli/src/tbhbdev/alpha:gh_app_command",
+        "//factory/cli/src/tbhbdev/alpha:gh_app_runtime",
+        "@cli_pip//httpx2",
+        "@cli_pip//pytest",
+    ],
+)
+
+cli_py_library(
+    name = "conftest",
+    testonly = True,
+    srcs = ["conftest.py"],
+    imports = ["../.."],
+    visibility = ["//factory/cli/tests:__subpackages__"],
+    deps = [
+        ":gh_app_fakes",
+        "@cli_pip//pytest",
+    ],
+)
+
+cli_py_test(
+    name = "test_gh_app_api",
+    srcs = ["test_gh_app_api.py"],
+    imports = ["../.."],
+    deps = [
+        ":conftest",
+        ":gh_app_fakes",
+        "//factory/cli/src/tbhbdev/alpha:gh_app_api",
+        "//factory/cli/src/tbhbdev/alpha:gh_app_runtime",
+        "//factory/cli/src/tbhbdev/alpha:gh_app_signing",
+        "//factory/cli/tests:conftest",
+        "@cli_pip//certifi",
+        "@cli_pip//cryptography",
+        "@cli_pip//httpx2",
+        "@cli_pip//pytest",
+    ],
+)
+
+cli_py_test(
+    name = "test_gh_app_command",
+    srcs = ["test_gh_app_command.py"],
+    imports = ["../.."],
+    deps = [
+        ":conftest",
+        ":gh_app_fakes",
+        "//factory/cli/src/tbhbdev:secrets",
+        "//factory/cli/src/tbhbdev/alpha:gh_app_api",
+        "//factory/cli/src/tbhbdev/alpha:gh_app_args",
+        "//factory/cli/src/tbhbdev/alpha:gh_app_command",
+        "//factory/cli/src/tbhbdev/alpha:gh_app_runtime",
+        "//factory/cli/src/tbhbdev/alpha:gh_app_signing",
+        "//factory/cli/src/tbhbdev/alpha:gh_app_state",
+        "//factory/cli/tests:conftest",
+        "@cli_pip//httpx2",
+        "@cli_pip//pytest",
+    ],
+)
+
+cli_py_test(
+    name = "test_gh_app_runtime",
+    srcs = ["test_gh_app_runtime.py"],
+    imports = ["../.."],
+    deps = [
+        ":conftest",
+        "//factory/cli/src/tbhbdev:secrets",
+        "//factory/cli/src/tbhbdev/alpha:gh_app_runtime",
+        "//factory/cli/src/tbhbdev/alpha/agent:host_tools",
+        "//factory/cli/tests:conftest",
+        "@cli_pip//pytest",
+    ],
+)
+
+cli_py_test(
+    name = "test_gh_app_signing",
+    srcs = ["test_gh_app_signing.py"],
+    imports = ["../.."],
+    deps = [
+        ":conftest",
+        ":gh_app_fakes",
+        "//factory/cli/src/tbhbdev/alpha:gh_app_runtime",
+        "//factory/cli/src/tbhbdev/alpha:gh_app_signing",
+        "//factory/cli/src/tbhbdev/alpha/agent:host_tools",
+        "//factory/cli/tests:conftest",
+        "@cli_pip//pytest",
+    ],
+)
+
+cli_py_test(
+    name = "test_gh_app_state",
+    srcs = ["test_gh_app_state.py"],
+    imports = ["../.."],
+    deps = [
+        ":conftest",
+        ":gh_app_fakes",
+        "//factory/cli/src/tbhbdev/alpha:gh_app_args",
+        "//factory/cli/src/tbhbdev/alpha:gh_app_state",
+        "//factory/cli/tests:conftest",
+        "@cli_pip//pytest",
+    ],
+)

@@ -3,36 +3,13 @@
 Alpha commands are interim. They may change or go away without notice, and
 only the tbhb-dev harness hooks and agents in tbhb-dev repositories should
 call them.
-
-The harness hooks run on every tool call, so this module imports pr, review,
-gh_app and merge, which load yaml, jsonschema and the Connect client, only when
-one of them runs.
 """
 
+import importlib
 import os
 import sys
-from typing import TYPE_CHECKING
-
-import tbhbdev.alpha.agent.command
-import tbhbdev.alpha.brief
-import tbhbdev.alpha.gh_shim
-import tbhbdev.alpha.guard.agent_model
-import tbhbdev.alpha.guard.gh_config_dir
-import tbhbdev.alpha.guard.gh_poll.command
-import tbhbdev.alpha.guard.gh_pr.command
-import tbhbdev.alpha.guard.op.command
-import tbhbdev.alpha.guard.ops_no_lazy_stop
-import tbhbdev.alpha.guard.scripts.command
-import tbhbdev.alpha.guard.sendmessage_clock
-import tbhbdev.alpha.guard.state
-import tbhbdev.alpha.install.command
-import tbhbdev.alpha.pre_push_guard
-import tbhbdev.alpha.run_stop_hook
-import tbhbdev.alpha.session_context
-import tbhbdev.alpha.verify_range
-import tbhbdev.alpha.version_check
-import tbhbdev.alpha.worktree_sweep
-from tbhbdev.alpha.identity import dispatcher as identity_dispatcher
+from functools import partial
+from typing import TYPE_CHECKING, cast
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -99,131 +76,104 @@ commands:
 """
 
 
-def identity_command(argv: list[str], _prog: str) -> int:
-    return identity_dispatcher.run(argv, os.environ)
+COMMAND_MODULES = {
+    "identity": ("tbhbdev.alpha.identity.dispatcher", "run"),
+    "guard-gh-pr": ("tbhbdev.alpha.guard.gh_pr.command", "main"),
+    "guard-op": ("tbhbdev.alpha.guard.op.command", "main"),
+    "state-guard": ("tbhbdev.alpha.guard.state", "main"),
+    "session-context": ("tbhbdev.alpha.session_context", "main"),
+    "worktree-sweep": ("tbhbdev.alpha.worktree_sweep", "main"),
+    "guard-gh-poll": ("tbhbdev.alpha.guard.gh_poll.command", "main"),
+    "guard-gh-config-dir": ("tbhbdev.alpha.guard.gh_config_dir", "main"),
+    "guard-sendmessage-clock": ("tbhbdev.alpha.guard.sendmessage_clock", "main"),
+    "guard-ops-no-lazy-stop": ("tbhbdev.alpha.guard.ops_no_lazy_stop", "main"),
+    "guard-scripts": ("tbhbdev.alpha.guard.scripts.command", "main"),
+    "guard-agent-model": ("tbhbdev.alpha.guard.agent_model", "main"),
+    "gh-shim": ("tbhbdev.alpha.gh_shim", "main"),
+    "agent-env": ("tbhbdev.alpha.gh_shim", "agent_env"),
+    "pr": ("tbhbdev.alpha.pull_request.command", "main"),
+    "review": ("tbhbdev.alpha.review", "main"),
+    "issue": ("tbhbdev.alpha.close", "main"),
+    "gh-app": ("tbhbdev.alpha.gh_app_command", "main"),
+    "repo": ("tbhbdev.alpha.repo_bootstrap", "main"),
+    "merge": ("tbhbdev.alpha.merge.command", "main"),
+    "monorepo": ("tbhbdev.alpha.monorepo.command", "main"),
+    "verify-range": ("tbhbdev.alpha.verify_range", "main"),
+    "version-check": ("tbhbdev.alpha.version_check", "main"),
+    "install": ("tbhbdev.alpha.install.command", "main"),
+    "pre-push-guard": ("tbhbdev.alpha.pre_push_guard", "main"),
+    "agent": ("tbhbdev.alpha.agent.command", "main"),
+    "run-stop-hook": ("tbhbdev.alpha.run_stop_hook", "main"),
+    "brief": ("tbhbdev.alpha.brief", "main"),
+}
 
 
-def guard_command(_argv: list[str], _prog: str) -> int:
-    return tbhbdev.alpha.guard.gh_pr.command.main()
+def _run(name: str, prog: str, /, *args: object, **kwargs: object) -> int:
+    module_name, function_name = COMMAND_MODULES[name]
+    try:
+        module = importlib.import_module(module_name)
+    except ModuleNotFoundError as exc:
+        missing = exc.name
+        if missing is None or not (
+            module_name == missing or module_name.startswith(f"{missing}.")
+        ):
+            raise
+        sys.stderr.write(f"{prog}: cannot load module {module_name!r}\n")
+        return 1
+    command = cast("Callable[..., int]", getattr(module, function_name))
+    return command(*args, **kwargs)
 
 
-def guard_op_command(_argv: list[str], _prog: str) -> int:
-    return tbhbdev.alpha.guard.op.command.main()
+def _standard(name: str, argv: list[str], prog: str) -> int:
+    return _run(name, prog, argv, prog)
 
 
-def state_guard_command(_argv: list[str], _prog: str) -> int:
-    return tbhbdev.alpha.guard.state.main()
+def _hook(name: str, _argv: list[str], prog: str) -> int:
+    return _run(name, prog)
 
 
-def session_context_command(_argv: list[str], _prog: str) -> int:
-    return tbhbdev.alpha.session_context.main()
+def _keyword_prog(name: str, argv: list[str], prog: str) -> int:
+    return _run(name, prog, argv, prog=prog)
 
 
-def poll_command(_argv: list[str], _prog: str) -> int:
-    return tbhbdev.alpha.guard.gh_poll.command.main()
-
-
-def sendmessage_clock_command(_argv: list[str], _prog: str) -> int:
-    return tbhbdev.alpha.guard.sendmessage_clock.main()
-
-
-def ops_no_lazy_stop_command(_argv: list[str], _prog: str) -> int:
-    return tbhbdev.alpha.guard.ops_no_lazy_stop.main()
-
-
-def gh_config_dir_command(_argv: list[str], _prog: str) -> int:
-    return tbhbdev.alpha.guard.gh_config_dir.main()
-
-
-def agent_model_command(_argv: list[str], _prog: str) -> int:
-    return tbhbdev.alpha.guard.agent_model.main()
-
-
-def scripts_command(_argv: list[str], _prog: str) -> int:
-    return tbhbdev.alpha.guard.scripts.command.main()
+def identity_command(argv: list[str], prog: str) -> int:
+    return _run("identity", prog, argv, os.environ)
 
 
 def pr(argv: list[str], prog: str) -> int:
     # Every close goes through close.py's checks: agent session, open PR, ledger.
     if argv[:1] == ["close"]:
-        from tbhbdev.alpha.close import main as close_main  # noqa: PLC0415 -- see the docstring
-
-        return close_main(["pr", *argv], prog=prog)
-    from tbhbdev.alpha.pull_request.command import main as pull_request_main  # noqa: PLC0415 -- see the docstring
-
-    return pull_request_main(argv, prog=prog)
-
-
-def review_command(argv: list[str], prog: str) -> int:
-    from tbhbdev.alpha.review import main as review_main  # noqa: PLC0415 -- see the docstring
-
-    return review_main(argv, prog=prog)
+        return _run("issue", prog, ["pr", *argv], prog=prog)
+    return _run("pr", prog, argv, prog=prog)
 
 
 def issue(argv: list[str], prog: str) -> int:
-    from tbhbdev.alpha.close import main as close_main  # noqa: PLC0415 -- see the docstring
-
-    return close_main(["issue", *argv], prog=prog)
-
-
-def gh_app_command(argv: list[str], prog: str) -> int:
-    from tbhbdev.alpha.gh_app import main as gh_app_main  # noqa: PLC0415 -- see the docstring
-
-    return gh_app_main(argv, prog)
-
-
-def repo_command(argv: list[str], prog: str) -> int:
-    from tbhbdev.alpha.repo_bootstrap import main as repo_main  # noqa: PLC0415 -- see the docstring
-
-    return repo_main(argv, prog=prog)
-
-
-def merge(argv: list[str], prog: str) -> int:
-    from tbhbdev.alpha.merge.command import main as merge_main  # noqa: PLC0415 -- see the docstring
-
-    return merge_main(argv, prog=prog)
-
-
-def monorepo_command(argv: list[str], prog: str) -> int:
-    from tbhbdev.alpha.monorepo.command import main as monorepo_main  # noqa: PLC0415 -- see the docstring
-
-    return monorepo_main(argv, prog)
-
-
-def install_command(argv: list[str], prog: str) -> int:
-    return tbhbdev.alpha.install.command.main(argv, prog)
+    return _run("issue", prog, ["issue", *argv], prog=prog)
 
 
 COMMANDS: dict[str, Callable[[list[str], str], int]] = {
-    "identity": identity_command,
-    "guard-gh-pr": guard_command,
-    "guard-op": guard_op_command,
-    "state-guard": state_guard_command,
-    "session-context": session_context_command,
-    "worktree-sweep": tbhbdev.alpha.worktree_sweep.main,
-    "guard-gh-poll": poll_command,
-    "guard-gh-config-dir": gh_config_dir_command,
-    "guard-sendmessage-clock": sendmessage_clock_command,
-    "guard-ops-no-lazy-stop": ops_no_lazy_stop_command,
-    "guard-scripts": scripts_command,
-    "guard-agent-model": agent_model_command,
-    "gh-shim": tbhbdev.alpha.gh_shim.main,
-    "agent-env": tbhbdev.alpha.gh_shim.agent_env,
-    "pr": pr,
-    "review": review_command,
-    "issue": issue,
-    "gh-app": gh_app_command,
-    "repo": repo_command,
-    "merge": merge,
-    "monorepo": monorepo_command,
-    "verify-range": tbhbdev.alpha.verify_range.main,
-    "version-check": tbhbdev.alpha.version_check.main,
-    "install": install_command,
-    "pre-push-guard": tbhbdev.alpha.pre_push_guard.main,
-    "agent": tbhbdev.alpha.agent.command.main,
-    "run-stop-hook": tbhbdev.alpha.run_stop_hook.main,
-    "brief": tbhbdev.alpha.brief.main,
+    name: partial(_standard, name) for name in COMMAND_MODULES
 }
+COMMANDS.update(
+    {
+        "identity": identity_command,
+        "guard-gh-pr": partial(_hook, "guard-gh-pr"),
+        "guard-op": partial(_hook, "guard-op"),
+        "state-guard": partial(_hook, "state-guard"),
+        "session-context": partial(_hook, "session-context"),
+        "guard-gh-poll": partial(_hook, "guard-gh-poll"),
+        "guard-gh-config-dir": partial(_hook, "guard-gh-config-dir"),
+        "guard-sendmessage-clock": partial(_hook, "guard-sendmessage-clock"),
+        "guard-ops-no-lazy-stop": partial(_hook, "guard-ops-no-lazy-stop"),
+        "guard-scripts": partial(_hook, "guard-scripts"),
+        "guard-agent-model": partial(_hook, "guard-agent-model"),
+        "pr": pr,
+        "review": partial(_keyword_prog, "review"),
+        "issue": issue,
+        "repo": partial(_keyword_prog, "repo"),
+        "merge": partial(_keyword_prog, "merge"),
+    }
+)
 
 
 def main(argv: list[str], prog: str) -> int:
