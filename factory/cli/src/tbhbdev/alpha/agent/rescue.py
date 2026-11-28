@@ -68,9 +68,6 @@ def save_checkout(directory: Path, checkout: Path, ref: str) -> str | None:
     if any(path.resolve() != path for path in paths):
         message = "unexpected symlink in run Git metadata"
         raise OSError(message)
-    with (directory / "config").open("a") as config:
-        config.write("[core]\nfsmonitor = false\n[user]\n")
-        config.write("name = Run launcher\nemail = run-launcher\n")
     location = ("--git-dir", str(directory), "--work-tree", str(checkout))
     env = {"GIT_INDEX_FILE": str(index), "GIT_OBJECT_DIRECTORY": str(objects)}
     git = partial(push.history_git, directory, *location, extra_env=env)
