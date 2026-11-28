@@ -59,12 +59,10 @@ type FilePath = str | bytes | os.PathLike[str] | os.PathLike[bytes]
 def account_auth_write() -> bool:
     frame = inspect.currentframe()
     while frame is not None:
-        if frame.f_globals.get(
-            "__name__"
-        ) == "tbhbdev.alpha.agent.credentials" and frame.f_code.co_name in {
-            "auth_copy",
-            "auth_write_back",
-        }:
+        if (
+            frame.f_globals.get("__name__") == "tbhbdev.alpha.agent.credentials"
+            and frame.f_code.co_name in {"auth_copy", "auth_write_back"}
+        ):
             return True
         frame = frame.f_back
     return False
