@@ -338,6 +338,21 @@ cli_py_test(
 )
 
 cli_py_test(
+    name = "test_alpha_agent_build_fetch",
+    srcs = ["test_alpha_agent_build_fetch.py"],
+    deps = [
+        ":agent_host_example",
+        ":conftest",
+        "//factory/cli/src/tbhbdev:secrets",
+        "//factory/cli/src/tbhbdev/alpha:gh_app_api",
+        "//factory/cli/src/tbhbdev/alpha:gh_app_runtime",
+        "//factory/cli/src/tbhbdev/alpha/agent:credentials",
+        "//factory/cli/src/tbhbdev/alpha/agent:model",
+        "@cli_pip//pytest",
+    ],
+)
+
+cli_py_test(
     name = "test_alpha_agent_credentials",
     srcs = ["test_alpha_agent_credentials.py"],
     deps = [

@@ -133,6 +133,17 @@ TOKEN_ERRORS = (
 )
 
 
+def has_app_references(references: Credentials) -> bool:
+    return any(
+        (
+            references.pull_requests_app_client_id,
+            references.pull_requests_app_pem,
+            references.reviews_app_client_id,
+            references.reviews_app_pem,
+        )
+    )
+
+
 def github_token(
     request: RunRequest,
     references: Credentials,
@@ -146,6 +157,11 @@ def github_token(
             message = "reviews App token unavailable; review refused"
             raise Invalid(message) from None
     if references.gh:
+        if has_app_references(references):
+            message = (
+                "gh reference conflicts with App references; configure App tokens only"
+            )
+            raise Invalid(message)
         return read(references.gh, label="gh")
     if (
         references.pull_requests_app_client_id is None
@@ -178,17 +194,8 @@ def review_post_token(
 def fetch_token(request: RunRequest, settings: Settings) -> str | None:
     """The token for the mirror's https fetch of a private repository."""
     references = next(c for c in settings.credentials if c.account == request.account)
-    if (
-        request.profile is Profile.BUILD
-        and references.reviews_app_client_id is not None
-        and references.reviews_app_pem is not None
-    ):
-        # A build can fetch with the read-only reviews App token.
-        try:
-            return installation_token(references, request.repo)
-        except TOKEN_ERRORS:
-            message = "reviews App token unavailable; build fetch refused"
-            raise Invalid(message) from None
+    # A build run fetches with its own pull-requests App, read-only. Review runs
+    # keep the reviews App; a build never reads the reviewer's credentials.
     return github_token(
         request, references, build_permissions=PULL_REQUESTS_PERMISSIONS
     )
