@@ -49,6 +49,34 @@ def test_script_prints_the_numbers_of_this_host() -> None:
     assert isinstance(limits.parse(done.stdout), limits.Reading)
 
 
+def test_limits_appends_admitted_count_and_falls_back_on_older_host(host: Path) -> None:
+    write_standalone_fake(
+        host / "bin/tbhbdev",
+        "import sys\n"
+        "assert sys.argv[1:] == ['alpha', 'agent', 'admitted', '--', 'agent', 'ops']\n"
+        "print('2')\n",
+    )
+    config = replace(LINUX, tbhbdev=str(host / "bin/tbhbdev"))
+    result = execute(remote_host.limits(config))
+    assert result.returncode == 0, result.stderr
+    found, admitted = limits.parse_probe(result.stdout.decode())
+    assert isinstance(found, limits.Reading)
+    assert admitted == 2
+
+    write_standalone_fake(
+        host / "bin/tbhbdev-old",
+        "import sys\n"
+        "sys.stderr.write('unrecognized arguments: admitted\\n')\n"
+        "sys.exit(2)\n",
+    )
+    older = replace(LINUX, tbhbdev=str(host / "bin/tbhbdev-old"))
+    old_result = execute(remote_host.limits(older))
+    assert old_result.returncode == 0, old_result.stderr
+    old_found, old_admitted = limits.parse_probe(old_result.stdout.decode())
+    assert isinstance(old_found, limits.Reading)
+    assert old_admitted == 0
+
+
 @pytest.mark.parametrize(
     "key", ["vm.loadavg", "hw.logicalcpu", "hw.memsize", "vm.swapusage"]
 )

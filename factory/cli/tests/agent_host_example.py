@@ -142,6 +142,27 @@ def host_settings() -> model.Settings:
     )
 
 
+def build_settings() -> model.Settings:
+    """Settings for a build account: a gh reference and no App references."""
+    original = host_settings()
+    references = dataclasses.replace(
+        original.credentials[0], reviews_app_client_id=None, reviews_app_pem=None
+    )
+    return dataclasses.replace(original, credentials=(references,))
+
+
+def pull_requests_app_settings() -> model.Settings:
+    """Settings for a build account that holds the pull-requests App and no gh."""
+    base = host_settings()
+    account = dataclasses.replace(
+        base.credentials[0],
+        gh=None,
+        pull_requests_app_client_id="example/pr/client",
+        pull_requests_app_pem="example/pr/pem",
+    )
+    return dataclasses.replace(base, credentials=(account,))
+
+
 def constant[Result](value: Result) -> Callable[..., Result]:
     def fixed(*_args: object, **_kwargs: object) -> Result:
         return value
@@ -209,11 +230,15 @@ def make_run(tmp_path: Path, **changes: object) -> state.Run:
     value = run_request(**changes)
     home = runfiles.private_dir(tmp_path / "home")
     tmpdir = runfiles.private_dir(tmp_path / "private-tmp")
+    # A build account holds a gh reference, which refuses beside App references.
+    settings = (
+        build_settings() if value.profile is model.Profile.BUILD else host_settings()
+    )
     return state.Run(
         files,
         value,
-        host_settings(),
-        host_settings().hosts[0],
+        settings,
+        settings.hosts[0],
         home,
         tmpdir,
         1000,

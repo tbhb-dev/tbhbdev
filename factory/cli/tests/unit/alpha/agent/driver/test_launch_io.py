@@ -389,7 +389,7 @@ def test_exec_spends_one_startup_budget(
     ) -> str:
         assert settings == CONFIG
         assert host == CONFIG.hosts[0]
-        if script == remote_host.limits():
+        if script == remote_host.limits(CONFIG.hosts[0]):
             assert timeout == 110
             steps.append("limits")
             return "0.5 4 12582912 6291456 100 0 -"

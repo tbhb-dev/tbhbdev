@@ -169,7 +169,9 @@ def known_objects(shas: list[str]) -> list[str]:
     return [row for row in done.stdout.splitlines() if not row.endswith(" missing")]
 
 
-def pushed_commits(local: str, exclude: list[str]) -> tuple[int, list[str]]:
+def pushed_commits(
+    local: str, exclude: list[str], directory: Path | None = None
+) -> tuple[int, list[str]]:
     """The commits reachable from ``local`` but not from ``exclude``, capped."""
     done = subprocess.run(  # nosec B603 B607
         ["git", *SAFE, "rev-list", f"--max-count={RANGE_LIMIT + 1}", "--stdin"],
@@ -177,16 +179,18 @@ def pushed_commits(local: str, exclude: list[str]) -> tuple[int, list[str]]:
         capture_output=True,
         text=True,
         check=False,
+        cwd=directory,
     )
     return done.returncode, done.stdout.split()
 
 
-def commit_bytes(sha: str) -> bytes:
+def commit_bytes(sha: str, directory: Path | None = None) -> bytes:
     """The commit object as git stores it, byte for byte."""
     done = subprocess.run(  # nosec B603 B607
         ["git", *SAFE, "cat-file", "commit", sha],
         capture_output=True,
         check=False,
+        cwd=directory,
     )
     if done.returncode or not done.stdout:
         message = f"git cat-file could not read commit {sha}"
@@ -195,21 +199,25 @@ def commit_bytes(sha: str) -> bytes:
 
 
 def agent_commit_problems(
-    ref: str, local: str, exclude: list[str], keys: SigningKeys
+    ref: str,
+    local: str,
+    exclude: list[str],
+    keys: SigningKeys,
+    directory: Path | None = None,
 ) -> list[str]:
     """Check signatures for newly pushed agent commits.
 
     ``exclude`` holds every remote-tracking and tag tip and the old sha git reports. A
     failed listing or a range over RANGE_LIMIT refuses the push.
     """
-    code, shas = pushed_commits(local, exclude)
+    code, shas = pushed_commits(local, exclude, directory)
     if code:
         return [f"{ref}: cannot list the commits to push; push refused"]
     if len(shas) > RANGE_LIMIT:
         return [f"{ref}: the push adds over {RANGE_LIMIT} commits; push refused"]
     problems: list[str] = []
     for sha in shas:
-        raw = commit_bytes(sha)
+        raw = commit_bytes(sha, directory)
         headers = raw.partition(b"\n\n")[0].split(b"\n")
         idents = [
             next((line for line in headers if line.startswith(role)), b"")

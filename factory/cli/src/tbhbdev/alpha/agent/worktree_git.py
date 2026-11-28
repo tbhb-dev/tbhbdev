@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import base64
 import os
 import subprocess  # nosec B404
 from functools import partial
@@ -42,14 +41,7 @@ def git(clone: Path, *args: str, token: str | None = None) -> str:
     )
     # ssh still reads the account's own ssh config, so its GitHub key applies.
     env["GIT_SSH_COMMAND"] = "ssh -o BatchMode=yes -o StrictHostKeyChecking=accept-new"
-    if token is not None:
-        # The header travels in the environment, so no argument list shows it.
-        basic = base64.b64encode(f"x-access-token:{token}".encode()).decode()
-        env.update(
-            GIT_CONFIG_COUNT="1",
-            GIT_CONFIG_KEY_0="http.extraheader",
-            GIT_CONFIG_VALUE_0=f"Authorization: Basic {basic}",
-        )
+    env.update(host_tools.git_token_env(token))
     command = [host_tools.resolve("git")]
     command += [item for value in GIT_OVERRIDES for item in ("-c", value)]
     directory = clone / ".git"
