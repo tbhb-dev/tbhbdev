@@ -9,7 +9,8 @@ def build_parser(prog: str) -> argparse.ArgumentParser:
         prog=prog,
         description=(
             "Install this clone's git hooks and merge the tbhbdev alpha hooks "
-            "into each harness's user-level config."
+            "into each harness's user-level config, or use cli REVISION to "
+            "update tbhbdev."
         ),
     )
     mode = parser.add_mutually_exclusive_group()

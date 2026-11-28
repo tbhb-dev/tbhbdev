@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import os
-import shlex
 import subprocess  # nosec B404
 import sys
 from pathlib import Path
@@ -17,6 +16,7 @@ from tbhbdev.alpha.agent import transport
 from tbhbdev.alpha.agent.decisions import remote_shell
 from tbhbdev.alpha.agent.driver.decisions.launch import check_retry, same_version
 from tbhbdev.alpha.agent.model import Invalid
+from tbhbdev.alpha.install import cli_build
 
 if TYPE_CHECKING:
     from typing import NoReturn
@@ -25,7 +25,7 @@ if TYPE_CHECKING:
 
 _RETRY = "_TBHB_AGENT_VERSION_HEAL"
 _INSTALL_TIMEOUT = 300
-_INSTALL = ("uv", "tool", "install", "--no-config", "--force")
+_FAILED = "install failed"
 # TemporaryDirectory creates the private cwd under this fixed parent.
 _TEMP_ROOT = "/tmp"  # noqa: S108  # nosec B108
 _NETWORK_ENV = ("HTTPS_PROXY", "SSL_CERT_FILE", "GIT_SSL_CAINFO")
@@ -72,12 +72,16 @@ def retrying() -> bool:
 def restart(mismatch: str) -> NoReturn:
     os.environ[_RETRY] = mismatch
     try:
-        # Open the entry point again so its shebang selects the new environment.
-        if sys.argv[0].endswith("/tbhbdev/__main__.py"):
-            os.execv(sys.executable, sys.orig_argv)  # noqa: S606  # nosec B606
-        os.execv(sys.argv[0], sys.argv)  # noqa: S606  # nosec B606
+        entry = Path(getpwuid(os.getuid()).pw_dir) / ".local/bin/tbhbdev"
+        os.execv(entry, [str(entry), *sys.argv[1:]])  # noqa: S606  # nosec B606
     finally:
         os.environ.pop(_RETRY, None)
+
+
+def report_install(summary: str, *, failed: bool) -> None:
+    if failed:
+        raise OSError(summary or _FAILED)
+    print(f"version heal: {summary}", file=sys.stderr, flush=True)
 
 
 def check(settings: Settings, host: Host, local: str, installed: str) -> str | None:
@@ -96,37 +100,35 @@ def check(settings: Settings, host: Host, local: str, installed: str) -> str | N
         driver_commit = version_check.parse_stamp(local) or version.UNKNOWN
         if host_commit == driver_commit == head:
             raise
-        source = f"git+{version_check.REPO_URL}@{head}#subdirectory=factory/cli"
-        install = (*_INSTALL, source)
+        install = cli_build.script(head, version_check.REPO_URL)
         try:
             if host_commit != head:
-                transport.shell(
+                # SSH drops stdout on a nonzero exit. Carry the status in-band.
+                summary = transport.shell(
                     settings,
                     host,
-                    remote_shell.PREFIX + "exec " + shlex.join(install),
+                    remote_shell.PREFIX
+                    + f"(\n{install}) || printf '%s\\n' '{_FAILED}'\n",
                     timeout=_INSTALL_TIMEOUT,
-                )
-                print(
-                    f"version heal: host {host.name} {host_commit}->{head}",
-                    file=sys.stderr,
+                ).strip()
+                report_install(
+                    summary.removesuffix(_FAILED).strip(),
+                    failed=summary.endswith(_FAILED),
                 )
             if driver_commit != head:
                 with TemporaryDirectory(dir=_TEMP_ROOT) as cwd:
-                    subprocess.run(  # nosec B603
-                        install,
+                    result = subprocess.run(  # nosec B603
+                        ["/bin/sh", "-c", install],
                         cwd=cwd,
                         env=heal_env(cwd),
                         stdin=subprocess.DEVNULL,
-                        stdout=subprocess.DEVNULL,
+                        stdout=subprocess.PIPE,
                         stderr=subprocess.DEVNULL,
+                        errors="replace",
                         timeout=_INSTALL_TIMEOUT,
-                        check=True,
+                        check=False,
                     )
-                print(
-                    f"version heal: driver {driver_commit}->{head}",
-                    file=sys.stderr,
-                    flush=True,
-                )
+                report_install(result.stdout.strip(), failed=result.returncode != 0)
                 restart(str(mismatch))
         except (OSError, subprocess.SubprocessError) as exc:
             message = f"{mismatch} (version sync failed: {exc})"
