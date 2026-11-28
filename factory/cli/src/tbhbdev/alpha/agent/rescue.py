@@ -27,6 +27,8 @@ def on_fault(run: Run, prepared: Prepared | None, rc: int) -> None:
     """Save failed build work and log the publication result."""
     if rc == 0 or prepared is None or run.request.profile is not Profile.BUILD:
         return
+    if run.files.path("branch").exists():
+        return
     if not all(run.files.path(name).exists() for name in ("launched", "base")):
         return
     result = "kept local: harness shutdown unconfirmed"

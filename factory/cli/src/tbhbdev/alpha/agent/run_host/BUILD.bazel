@@ -237,6 +237,7 @@ cli_py_library(
     visibility = ["//factory/cli:__subpackages__"],
     deps = [
         ":publication_plan",
+        ":republish",
         ":state",
         "//factory/cli/src/tbhbdev:github_tls",
         "//factory/cli/src/tbhbdev/alpha/agent:credentials",
@@ -306,4 +307,23 @@ cli_py_library(
     srcs = ["publication_plan.py"],
     imports = ["../../../.."],
     visibility = ["//factory/cli:__subpackages__"],
+)
+
+cli_py_library(
+    name = "republish",
+    srcs = ["republish.py"],
+    imports = ["../../../.."],
+    pyi_deps = [":state"],
+    visibility = ["//factory/cli:__subpackages__"],
+    deps = [
+        ":publication_plan",
+        "//factory/cli/src/tbhbdev/alpha:gh_app_runtime",
+        "//factory/cli/src/tbhbdev/alpha:pre_push_guard",
+        "//factory/cli/src/tbhbdev/alpha/agent:credentials",
+        "//factory/cli/src/tbhbdev/alpha/agent:host_tools",
+        "//factory/cli/src/tbhbdev/alpha/agent:model",
+        "//factory/cli/src/tbhbdev/alpha/agent:push",
+        "//factory/cli/src/tbhbdev/alpha/agent:rescue",
+        "//factory/cli/src/tbhbdev/alpha/agent/decisions:repo",
+    ],
 )

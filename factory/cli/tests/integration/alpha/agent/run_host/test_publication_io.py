@@ -36,6 +36,7 @@ from tbhbdev.alpha.agent.run_host import execution as host_execution
 from tbhbdev.alpha.agent.run_host import harness as host_harness
 from tbhbdev.alpha.agent.run_host import preflight as host_preflight
 from tbhbdev.alpha.agent.run_host import publication as host_publication
+from tbhbdev.alpha.agent.run_host import republish as host_republish
 from tbhbdev.alpha.agent.run_host import state
 
 __all__ = ["pytestmark"]
@@ -170,7 +171,9 @@ def test_review_post_failure_sets_the_completion_status(
         (True, (0, "a" * 40), None, None, 9),
         (True, (0, "a" * 40), True, "refs/heads/topic", 0),
         (True, (0, "a" * 40), False, "refs/heads/topic", 9),
+        (True, (0, "a" * 40), None, "refs/heads/topic", 9),
         (True, (4, None), None, None, 4),
+        (True, (4, "a" * 40), False, "refs/heads/topic", 4),
         (False, (0, None), None, None, 0),
     ],
 )
@@ -189,6 +192,8 @@ def test_execute_checks_required_build_results(  # noqa: PLR0913, PLR0917
     HostRuntime(run, prepared, None).patch(monkeypatch)
     origin_contains = Mock(return_value=published)
     monkeypatch.setattr(host_publication, "origin_contains", origin_contains)
+    republish = Mock(wraps=host_republish.republish)
+    monkeypatch.setattr(host_republish, "republish", republish)
 
     def publish(*_args: object) -> int:
         origin_contains.assert_not_called()
@@ -211,6 +216,14 @@ def test_execute_checks_required_build_results(  # noqa: PLR0913, PLR0917
         reason = "cannot verify" if published is None else "build commit missing from"
         assert f"push failed: {reason} {branch} on origin" in log.read_text()
     assert run.files.path("branch").exists() is bool(published)
+    should_republish = (
+        expect_commit
+        and harness_result[0] == 0
+        and harness_result[1] is not None
+        and published is False
+        and start_ref is not None
+    )
+    assert republish.call_count == int(should_republish)
 
 
 BRANCH_REF = "refs/heads/agent/example"
