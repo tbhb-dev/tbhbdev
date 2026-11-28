@@ -325,8 +325,8 @@ filegroup(
 )
 
 cli_py_library(
-    name = "command",
-    srcs = ["command.py"],
+    name = "command_modules",
+    srcs = ["command_modules.py"],
     imports = ["../.."],
     visibility = ["//factory/cli:__subpackages__"],
     deps = [
@@ -358,6 +358,13 @@ cli_py_library(
         "//factory/cli/src/tbhbdev/alpha/monorepo:command",
         "//factory/cli/src/tbhbdev/alpha/pull_request:command",
     ],
+)
+
+cli_py_library(
+    name = "command",
+    srcs = ["command.py"],
+    imports = ["../.."],
+    visibility = ["//factory/cli:__subpackages__"],
 )
 
 cli_py_library(

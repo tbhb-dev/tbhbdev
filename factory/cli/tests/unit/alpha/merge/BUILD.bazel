@@ -19,7 +19,7 @@ cli_py_test(
     name = "test_command_io",
     srcs = ["test_command_io.py"],
     data = [
-        "//factory/cli/src/tbhbdev:tbhbdev_bin",
+        "//factory/cli/src/tbhbdev:module_entrypoint",
         "//factory/cli/tests:alpha_testdata",
     ],
     extra_deps = ["//factory/cli/src/tbhbdev:cli"],

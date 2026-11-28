@@ -6,6 +6,15 @@ load("//factory/cli:python.bzl", "cli_py_library")
 exports_files(["cue-pin.json"])
 
 filegroup(
+    name = "module_entrypoint",
+    srcs = [
+        "__init__.py",
+        "__main__.py",
+    ],
+    visibility = ["//factory/cli/tests:__subpackages__"],
+)
+
+filegroup(
     name = "package_files",
     srcs = glob(
         ["**"],
@@ -227,7 +236,10 @@ py_binary(
     legacy_create_init = False,
     main = "__main__.py",
     visibility = ["//factory/cli:__subpackages__"],
-    deps = [":cli"],
+    deps = [
+        ":cli",
+        "//factory/cli/src/tbhbdev/alpha:command_modules",
+    ],
 )
 
 cli_py_library(

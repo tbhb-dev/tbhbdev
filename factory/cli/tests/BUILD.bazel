@@ -244,6 +244,10 @@ cli_py_test(
 cli_py_test(
     name = "test_alpha",
     srcs = ["test_alpha.py"],
+    extra_deps = [
+        "//factory/cli/src/tbhbdev/alpha:session_context",
+        "//factory/cli/src/tbhbdev/alpha/guard:state",
+    ],
     deps = [
         ":conftest",
         "//factory/cli/src/tbhbdev:cli",
@@ -637,7 +641,7 @@ cli_py_test(
 cli_py_test(
     name = "test_alpha_gh_shim",
     srcs = ["test_alpha_gh_shim.py"],
-    data = ["//factory/cli/src/tbhbdev:tbhbdev_bin"],
+    data = ["//factory/cli/src/tbhbdev:module_entrypoint"],
     extra_deps = ["//factory/cli/src/tbhbdev:cli"],
     deps = [
         ":conftest",
@@ -1123,7 +1127,7 @@ cli_py_test(
 cli_py_test(
     name = "test_cli",
     srcs = ["test_cli.py"],
-    data = ["//factory/cli/src/tbhbdev:tbhbdev_bin"],
+    data = ["//factory/cli/src/tbhbdev:module_entrypoint"],
     deps = [
         ":conftest",
         "//factory/cli/src/tbhbdev:cli",
@@ -1433,6 +1437,7 @@ cli_py_test(
 cli_py_library(
     name = "agent_cli_example",
     srcs = ["agent_cli_example.py"],
+    extra_deps = ["//factory/cli/src/tbhbdev/alpha/agent:command"],
     visibility = ["//factory/cli/tests:__subpackages__"],
     deps = ["//factory/cli/src/tbhbdev:cli"],
 )

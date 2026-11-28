@@ -73,9 +73,12 @@ cli_py_test(
     srcs = ["test_baseline_io.py"],
     data = [
         "//:cli_check_inputs",
-        "//factory/cli/src/tbhbdev:tbhbdev_bin",
+        "//factory/cli/src/tbhbdev:module_entrypoint",
     ],
-    extra_deps = ["//factory/cli/src/tbhbdev:cli"],
+    extra_deps = [
+        "//factory/cli/src/tbhbdev:cli",
+        "//factory/cli/src/tbhbdev/alpha/pull_request:command",
+    ],
     imports = ["../../.."],
     deps = [
         ":pr_test_support",
@@ -144,7 +147,7 @@ cli_py_test(
     srcs = ["test_command_io.py"],
     data = [
         "//:cli_check_inputs",
-        "//factory/cli/src/tbhbdev:tbhbdev_bin",
+        "//factory/cli/src/tbhbdev:module_entrypoint",
     ],
     extra_deps = ["//factory/cli/src/tbhbdev:cli"],
     imports = ["../../.."],
