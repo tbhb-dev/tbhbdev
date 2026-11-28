@@ -5,20 +5,21 @@ load("@aspect_rules_js//js:defs.bzl", "js_binary")
 load("@tbhb_rules//repo:defs.bzl", "repo_files")
 load("@tbhb_rules_typescript//:defs.bzl", "vitest_test")
 
-repo_files()
+repo_files(visibility = ["//factory/go-vanity:__pkg__"])
 
 # The deploys' pre- and post-deploy check against a deployed Worker.
 js_binary(
     name = "check",
     data = ["check.mjs"],
     entry_point = "main.mjs",
-    visibility = ["//:__pkg__"],
+    visibility = ["//factory/go-vanity:__pkg__"],
 )
 
 # The check against the Worker's own entry point, with coverage.
 vitest_test(
     name = "check_test",
-    srcs = glob(["*.mjs"]) + ["//:worker_srcs"],
+    srcs = glob(["*.mjs"]) + ["//factory/go-vanity:worker_srcs"],
     config = "vitest.config.mjs",
-    node_modules = ["//:node_modules"],
+    node_modules = ["//factory/go-vanity:node_modules"],
+    strip_prefix = "factory/go-vanity",
 )

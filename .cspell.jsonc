@@ -20,7 +20,8 @@
     "**/testdata/**/*",
     "**/*.d2.svg",
     "**/*.d2.sha256",
-    "**/pnpm-lock.yaml"
+    "**/pnpm-lock.yaml",
+    "factory/go-vanity/worker-configuration.d.ts"
   ],
   "dictionaryDefinitions": [
     {
