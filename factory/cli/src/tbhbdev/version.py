@@ -75,9 +75,14 @@ def direct_url_identity(text: str | None) -> str:
     return UNKNOWN
 
 
+def installed_identity(dist: metadata.Distribution) -> str:
+    """The installed distribution's recorded identity or release stamp."""
+    recorded = direct_url_identity(dist.read_text("direct_url.json"))
+    return recorded if recorded != UNKNOWN else identity(None, build_module())
+
+
 def line() -> str:
     """The `--version` line for the installed distribution."""
     dist = metadata.distribution(NAME)
-    recorded = direct_url_identity(dist.read_text("direct_url.json"))
-    build = recorded if recorded != UNKNOWN else identity(None, build_module())
+    build = installed_identity(dist)
     return f"{NAME} {dist.version} ({build})"

@@ -23,6 +23,7 @@ def main(
     prog: str,
     *,
     claimed: bool = False,
+    build: str | None = None,
 ) -> int:
     parser = argparse.ArgumentParser(prog=prog)
     parser.add_argument("name", nargs="?")
@@ -52,19 +53,7 @@ def main(
             # replaces it, must leave the earlier run's records alone.
             refuse_started(files)
             try:
-                # Inside the try so a failure to create the temp directory
-                # leaves a record like any other refusal.
-                temporary = tempfile.TemporaryDirectory()
-                try:
-                    run, text = intake.load(args, Path(temporary.name).resolve())
-                    run.files.write("log", build_info.line() + "\n")
-                    completed = execution.execute(
-                        run, text, preflight_only=args.preflight
-                    )
-                finally:
-                    # The run's result takes precedence over temporary cleanup.
-                    with suppress(Exception):
-                        temporary.cleanup()
+                completed = _execute(args, build)
             except _REFUSALS as exc:
                 if completed is None and not isinstance(exc, RunExistsError):
                     # Ignored until `recorded` is set: a signal in between
@@ -87,6 +76,22 @@ def main(
     finally:
         for number, handler in previous.items():
             signal.signal(number, handler)
+
+
+def _execute(args: argparse.Namespace, build: str | None) -> int:
+    # Inside the caller's try so a failure to create the temp directory
+    # leaves a record like any other refusal.
+    temporary = tempfile.TemporaryDirectory()
+    try:
+        run, text = intake.load(args, Path(temporary.name).resolve())
+        if build is not None:
+            run.files.write("build", build)
+        run.files.write("log", build_info.line() + "\n")
+        return execution.execute(run, text, preflight_only=args.preflight)
+    finally:
+        # The run's result takes precedence over temporary cleanup.
+        with suppress(Exception):
+            temporary.cleanup()
 
 
 def refuse_started(files: runfiles.RunFiles) -> None:

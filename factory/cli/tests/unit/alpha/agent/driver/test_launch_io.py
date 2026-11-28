@@ -8,6 +8,7 @@ import io
 import json
 import shlex
 import tarfile
+from importlib.metadata import PathDistribution
 from typing import TYPE_CHECKING
 from unittest.mock import Mock
 
@@ -27,9 +28,10 @@ from driver_scenarios import (
 )
 
 from tbhbdev import version
-from tbhbdev.alpha.agent import model, transport
+from tbhbdev.alpha.agent import cli_bundle, model, transport
 from tbhbdev.alpha.agent import settings as agent_settings
 from tbhbdev.alpha.agent.decisions import remote_host, remote_run, remote_shell, request
+from tbhbdev.alpha.agent.decisions.cli_bundle import pack
 from tbhbdev.alpha.agent.driver import launch as coordinator
 from tbhbdev.alpha.agent.driver import (
     metadata,
@@ -54,10 +56,61 @@ def test_default_launch_sends_unsandboxed_request(
     assert wire["authorized_by"] is None
 
 
+def fake_installation(
+    remote: Remote,
+    monkeypatch: pytest.MonkeyPatch,
+    build: str,
+) -> tuple[str | None, str | None]:
+    package = remote.root / "tbhbdev"
+    dist_info = remote.root / "tbhbdev-0.dist-info"
+    other_info = remote.root / "example-1.dist-info"
+    direct_url = (
+        {"url": "file:///example", "dir_info": {"editable": True}}
+        if build == "editable"
+        else {"vcs_info": {"commit_id": COMMIT}}
+    )
+    package_files = {f"{package.name}/cli.py": b"# CLI\n"}
+    dist_files = {
+        f"{dist_info.name}/METADATA": b"Name: tbhbdev\nVersion: 0\n",
+        f"{dist_info.name}/direct_url.json": json.dumps(direct_url).encode(),
+    }
+    files = {
+        **dist_files,
+        f"{other_info.name}/METADATA": b"Name: example\nVersion: 1\n",
+    }
+    if build != "missing-package":
+        files.update(package_files)
+        files[f"{package.name}/old.pyc"] = b"cache"
+        files[f"{package.name}/__pycache__/cached"] = b"cache"
+    for name, content in files.items():
+        path = remote.root / name
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(content)
+    installed = PathDistribution(dist_info)
+    monkeypatch.setattr(cli_bundle, "PACKAGE", package)
+    monkeypatch.setattr(version.metadata, "distribution", Mock(return_value=installed))
+    monkeypatch.setattr(
+        version.metadata,
+        "distributions",
+        lambda: [installed, PathDistribution(other_info)],
+    )
+    remote.configure(version=version.line())
+    if build != "commit":
+        return None, None
+    pins = {"example": "example==1"}
+    _, digest = pack(package_files, dist_files, identity=COMMIT, distributions=pins)
+    return COMMIT, digest
+
+
+@pytest.mark.parametrize("build", ["commit", "editable", "missing-package"])
 def test_launch_stream_and_metadata(
-    remote: Remote, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
+    remote: Remote,
+    capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
+    build: str,
 ) -> None:
     monkeypatch.setenv("OTEL_SDK_DISABLED", "true")
+    build_commit, digest = fake_installation(remote, monkeypatch, build)
     schema = remote.root / "schema.json"
     schema.write_text('{"type":"object"}')
     assert (
@@ -109,6 +162,8 @@ def test_launch_stream_and_metadata(
         "launcher_session": "session-1",
         "cleaning": False,
         "ignore_limits": False,
+        "cli_commit": build_commit,
+        "cli_sha256": digest,
     }
     assert len(record["owner"]) == 32
     assert (remote.state / "sample.owner").read_text() == record["owner"] + "\n"
@@ -135,6 +190,42 @@ def test_launch_stream_and_metadata(
     assert tmux == shlex.split(
         f"-S {remote.root}/sockets/agents -f /dev/null has-session -t =ag-sample"
     )
+
+
+def test_an_unexpected_pack_error_is_not_suppressed(
+    remote: Remote, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    def broken() -> tuple[bytes, str, str]:
+        message = "unexpected"
+        raise RuntimeError(message)
+
+    monkeypatch.setattr(cli_bundle, "installed", broken)
+    with pytest.raises(RuntimeError, match="unexpected"):
+        launch(remote)
+
+
+def test_the_pack_runs_before_the_launch_lock(
+    remote: Remote, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    events: list[str] = []
+    real_lock = metadata.launch_lock
+    real_installed = cli_bundle.installed
+
+    @contextlib.contextmanager
+    def lock() -> Generator[None]:
+        events.append("enter")
+        with real_lock():
+            yield
+
+    def installed() -> tuple[bytes, str, str]:
+        events.append("pack")
+        return real_installed()
+
+    monkeypatch.setattr(coordinator, "launch_lock", lock)
+    monkeypatch.setattr(cli_bundle, "installed", installed)
+    fake_installation(remote, monkeypatch, "commit")
+    assert launch(remote) == 0
+    assert events == ["pack", "enter"]
 
 
 STEER_ERROR = "exec --steer requires a Codex build without --schema"

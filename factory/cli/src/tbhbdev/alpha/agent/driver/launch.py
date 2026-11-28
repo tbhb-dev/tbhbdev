@@ -5,12 +5,14 @@ from __future__ import annotations
 import json
 import secrets
 import time
+from contextlib import suppress
 from dataclasses import replace
 from datetime import UTC, datetime
+from importlib import metadata
 from typing import TYPE_CHECKING
 
 from tbhbdev import telemetry, version
-from tbhbdev.alpha.agent import transport
+from tbhbdev.alpha.agent import cli_bundle, transport
 from tbhbdev.alpha.agent.decisions import remote_host, remote_run, request
 from tbhbdev.alpha.agent.driver import launcher, startup, version_heal
 from tbhbdev.alpha.agent.driver.decisions import launch as plan
@@ -28,7 +30,7 @@ from tbhbdev.alpha.agent.driver.metadata import (
     save,
 )
 from tbhbdev.alpha.agent.driver.reviews import refuse_live_duplicate
-from tbhbdev.alpha.agent.model import Profile
+from tbhbdev.alpha.agent.model import Invalid, Profile
 
 if TYPE_CHECKING:
     import argparse
@@ -114,6 +116,9 @@ def execute(settings: Settings, args: argparse.Namespace) -> int:
         plan.check_retry(local_version, host_version, mismatch)
     if run.request.profile is Profile.REVIEW:
         run.request = replace(run.request, commit=plan.resolve_ref(ref, refs))
+    with suppress(Invalid, OSError, metadata.PackageNotFoundError):
+        bundle, run.cli_commit, run.cli_sha256 = cli_bundle.installed()
+        del bundle
     with launch_lock():
         if run.request.profile is Profile.REVIEW:
             refuse_live_duplicate(settings, run)

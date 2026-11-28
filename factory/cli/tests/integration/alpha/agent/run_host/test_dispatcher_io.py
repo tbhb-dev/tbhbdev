@@ -333,14 +333,93 @@ def test_refused_rerun_preserves_every_file(
     files.receive(run_request())
     files.write("prompt", "raw brief")
     files.write("log", "finished output\n")
+    files.write("build", '{"sha256":"original"}\n')
     files.write(marker, "7\n")
     before = {p.name: p.read_bytes() for p in files.root.iterdir()}
     monkeypatch.setattr(host_execution, "execute", constant(99))
     arguments = ["example", "--host", "example-linux"]
     if request_file:
         arguments.insert(1, str(files.path("request.json")))
-    assert host_dispatcher.main(arguments, "example run-host") == 1
+    assert (
+        host_dispatcher.main(
+            arguments, "example run-host", build='{"sha256":"retry"}\n'
+        )
+        == 1
+    )
     assert {p.name: p.read_bytes() for p in files.root.iterdir()} == before
+
+
+def test_duplicate_request_under_lock_preserves_build_record(
+    config_file: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    config_file.write_text(EXAMPLE)
+    files = runfiles.RunFiles(
+        Path(os.environ["XDG_STATE_HOME"]) / "tbhbdev/agent-runs", "example"
+    )
+    files.receive(run_request())
+    files.write("owner", "driver\n")
+    files.write("prompt", "raw brief")
+    files.write("build", '{"sha256":"original"}\n')
+    original = files.path("build").read_bytes()
+    monkeypatch.setattr(host_execution, "execute", constant(99))
+    arguments = [
+        "example",
+        str(files.path("request.json")),
+        "--host",
+        "example-linux",
+        "--owned",
+    ]
+    assert (
+        host_dispatcher.main(
+            arguments, "example run-host", build='{"sha256":"retry"}\n'
+        )
+        == 1
+    )
+    assert files.path("build").read_bytes() == original
+
+
+def test_build_record_is_written_while_the_lock_is_held(
+    config_file: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    config_file.write_text(EXAMPLE)
+    files = runfiles.RunFiles(
+        Path(os.environ["XDG_STATE_HOME"]) / "tbhbdev/agent-runs", "example"
+    )
+    files.receive(run_request())
+    files.write("prompt", "raw brief")
+    held: list[tuple[str, bool]] = []
+    lock_state = {"held": False}
+    real_locked = runfiles.locked
+
+    @contextmanager
+    def tracking(path: Path) -> Generator[None]:
+        with real_locked(path):
+            lock_state["held"] = True
+            try:
+                yield
+            finally:
+                lock_state["held"] = False
+
+    real_write = runfiles.RunFiles.write
+
+    def write(self: runfiles.RunFiles, suffix: str, text: str) -> None:
+        held.append((suffix, lock_state["held"]))
+        real_write(self, suffix, text)
+
+    monkeypatch.setattr(runfiles, "locked", tracking)
+    monkeypatch.setattr(runfiles.RunFiles, "write", write)
+    monkeypatch.setattr(host_execution, "execute", constant(0))
+    record = '{"sha256":"first"}\n'
+    assert (
+        host_dispatcher.main(
+            ["example", "--host", "example-linux"], "example run-host", build=record
+        )
+        == 0
+    )
+    assert files.path("build").read_text() == record
+    assert ("build", True) in held
 
 
 @pytest.mark.parametrize("error", [OSError, RecursionError])

@@ -25,6 +25,14 @@ cli_py_library(
 )
 
 cli_py_library(
+    name = "cli_bundle",
+    srcs = ["cli_bundle.py"],
+    imports = ["../../../.."],
+    visibility = ["//factory/cli:__subpackages__"],
+    deps = ["//factory/cli/src/tbhbdev/alpha/agent:model"],
+)
+
+cli_py_library(
     name = "config",
     srcs = ["config.py"],
     imports = ["../../../.."],
