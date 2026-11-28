@@ -63,7 +63,7 @@ def test_main_keeps_report(
 
 @pytest.mark.parametrize(
     "case",
-    ["pass", "skip", "fail", "single", "dirty", "became-dirty", "moved", "unchanged"],
+    ["pass", "fail", "single", "dirty", "became-dirty", "moved", "unchanged"],
 )
 def test_main_records_full_runs_at_a_clean_head(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, case: str
@@ -91,13 +91,7 @@ def test_main_records_full_runs_at_a_clean_head(
     async def fake_git(*args: str) -> str:
         return replies[args]
 
-    async def fake_check(name: str, _: preflight.Revisions, scratch: Path) -> None:
-        if case == "skip" and name == "affected-tests":
-            targets = scratch / "targets.txt"
-            targets.write_text("//ops/tests:test_x\n", encoding="utf-8")
-            (scratch / "selection").write_text(
-                f"all=false\nfile={targets}\n", encoding="utf-8"
-            )
+    async def fake_check(name: str, _: preflight.Revisions, _scratch: Path) -> None:
         if case == "moved":
             replies["rev-parse", "HEAD"] = "d" * 40
         if case == "became-dirty":
@@ -122,7 +116,7 @@ def test_main_records_full_runs_at_a_clean_head(
     else:
         assert asyncio.run(preflight.main()) == (case == "fail")
 
-    if case in {"pass", "skip"}:
+    if case == "pass":
         assert record.read_text() == f"tree {tree}\nbase {base}\nresult pass\n"
     elif case == "fail":
         assert (
@@ -292,3 +286,38 @@ def test_failed_stage_is_reported_with_its_time(
     lines = capsys.readouterr().err.splitlines()
     assert "Finished prose in 12 s (FAIL)" in lines
     assert lines[-1] == "Preflight finished in 12 s: fail"
+
+
+@pytest.mark.parametrize(
+    ("results", "expected"),
+    [
+        ([("gazelle", True), ("cli-coverage", None)], "pass"),
+        ([("gazelle", False), ("cli-coverage", None)], "fail gazelle"),
+        ([("cli-coverage", False), ("prose", True)], "fail cli-coverage"),
+    ],
+)
+def test_record_result_counts_a_skipped_stage_as_passed(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    results: list[tuple[str, bool | None]],
+    expected: str,
+) -> None:
+    head, tree, base = "a" * 40, "b" * 40, "c" * 40
+    replies = {
+        ("rev-parse", "HEAD"): head,
+        ("status", "--porcelain", "--untracked-files=no"): "",
+        ("rev-parse", "--git-common-dir"): str(tmp_path),
+        ("rev-parse", f"{head}^{{tree}}"): tree,
+    }
+
+    async def fake_git(*args: str) -> str:
+        return replies[args]
+
+    monkeypatch.setattr(preflight, "git", fake_git)
+
+    asyncio.run(
+        preflight.record_result(preflight.Revisions("b", base, head, "main"), results)
+    )
+
+    record = tmp_path / "tbhbdev-preflight" / head
+    assert record.read_text() == f"tree {tree}\nbase {base}\nresult {expected}\n"

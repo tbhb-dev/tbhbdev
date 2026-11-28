@@ -260,7 +260,12 @@ def say(text: str) -> None:
     sys.stderr.flush()
 
 
-async def stage(name: str, revisions: Revisions, scratch: Path) -> bool:
+async def stage(
+    name: str, revisions: Revisions, scratch: Path, explicit: str | None
+) -> Outcome:
+    if name == "cli-coverage" and not (explicit or await cli_tests_affected(scratch)):
+        say(f"Skipping {name}: no CLI test affected")
+        return None
     say(f"Running {name}")
     began = clock()
     passed = True
@@ -303,16 +308,9 @@ async def main() -> int:
         has_draft = await asyncio.to_thread(DRAFT.is_file)
         checks = checks_for(paths.split("\0")[:-1], has_draft=has_draft)
     revisions = Revisions(base, merge_base, head, ref)
-    results: list[tuple[str, Outcome]] = []
     scratch = Path(tempfile.mkdtemp(prefix="preflight-"))
-    for name in checks:
-        if name == "cli-coverage" and not (
-            args.check or await cli_tests_affected(scratch)
-        ):
-            say(f"Skipping {name}: no CLI test affected")
-            results.append((name, None))
-            continue
-        results.append((name, await stage(name, revisions, scratch)))
+    # One stage at a time: each await finishes before the next name starts.
+    results = [(n, await stage(n, revisions, scratch, args.check)) for n in checks]
     sys.stdout.write(summary(results, args.base) + "\n")
     if not args.check:
         await record_result(revisions, results)
