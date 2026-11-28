@@ -336,7 +336,7 @@ def test_fault_draft(
     if change == "large":
         (workspace / "large.py").write_text("n = 1\n" * 401)
     tip = commit(workspace, subject)
-    if change == "already pushed":
+    if change in ("already pushed", "without token"):
         git(workspace, "push", "origin", REF)
     error = OSError if change == "already pushed" else None
     if change in ("already pushed", "dirty with commit"):
@@ -351,7 +351,9 @@ def test_fault_draft(
         (staged.parent / f"{second}.stages").touch()
         (workspace / "tracked").write_text("unfinished\n")
     pulls.configure_mock(side_effect=replies(change))
-    tokens = ["rescue", None if change == "without token" else "fresh"]
+    tokens, header = {"without token": ([None, None], None)}.get(
+        change, (["rescue", "fresh"], "Bearer fresh")
+    )
     monkeypatch.setattr(rescue.credentials, "github_token", Mock(side_effect=tokens))
     assert completion.finish(run, ready, None, rc) == rc
     assert run.files.path("rc").read_text() == f"{rc}\n"
@@ -359,9 +361,7 @@ def test_fault_draft(
     requests = [call.args[0] for call in pulls.call_args_list]
     posted = not refusal or change in ("post denied", "invalid number")
     assert [request.method for request in requests] == ["GET"] + ["POST"] * posted
-    assert {request.headers.get("Authorization") for request in requests} == {
-        None if tokens[1] is None else "Bearer fresh"
-    }
+    assert {request.headers.get("Authorization") for request in requests} == {header}
     assert requests[0].url.params["state"] == "all"
     log = run.files.path("log").read_text()
     if refusal:
