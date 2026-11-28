@@ -133,7 +133,7 @@ def test_successful_launch_saves_ships_starts_and_polls_in_order(
     assert got_inputs.schema is None
     got_cmd = recorded["start"][2]
     assert isinstance(got_cmd, tuple)
-    script = got_cmd[2]
+    script: object = got_cmd[2]
     assert isinstance(script, str)
     tokens = shlex.split(script.splitlines()[-1])
     assert tokens[tokens.index("--cli-sha256") + 1] == DIGEST
