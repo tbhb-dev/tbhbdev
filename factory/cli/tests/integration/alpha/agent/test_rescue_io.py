@@ -83,6 +83,11 @@ def checkout(
     monkeypatch.setattr(rescue.host_tools, "search", lambda: os.environ["PATH"])
     monkeypatch.setattr(pre_push_guard, "agent_fingerprint", Mock(return_value=""))
     monkeypatch.setattr(pre_push_guard, "public_keys", Mock(side_effect=OSError))
+    mock_scan_failure(monkeypatch, change)
+    return workspace, base, remote
+
+
+def mock_scan_failure(monkeypatch: pytest.MonkeyPatch, change: str) -> None:
     errors = {"silent error": "0 commits scanned", "scan error": "ERR scan failed"}
     if change in errors or change == "finding without commit":
         code = rescue.FINDING if change == "finding without commit" else 0
@@ -90,7 +95,6 @@ def checkout(
             return_value=Mock(returncode=code, stderr=errors.get(change, ""), stdout="")
         )
         monkeypatch.setattr(rescue, "subprocess", Mock(run=scan))
-    return workspace, base, remote
 
 
 @pytest.mark.parametrize(
@@ -164,13 +168,17 @@ def test_fault_publication(
         assert files.path("branch").read_text() == destination.split("/", 2)[-1]
     if change in ("unsigned", "start ref moved"):
         assert files.path("head").read_text() == git(workspace, "rev-parse", REF)
+    assert_fault_draft_lookup(pulls, change, result)
+    if change in ("dirty", "switched"):
+        assert git(workspace, "log", "-1", "--format=%ae") == "run-launcher"
+
+
+def assert_fault_draft_lookup(pulls: Mock, change: str, result: str) -> None:
     skipped = ("nothing", "base only", "other domain")
     expected = result in ("published", "nothing to publish") and change not in skipped
     assert [call.args[0].method for call in pulls.call_args_list] == ["GET"] * expected
     if change == "start ref":
         assert pulls.call_args.args[0].url.params["head"] == "tbhb-dev:topic"
-    if change in ("dirty", "switched"):
-        assert git(workspace, "log", "-1", "--format=%ae") == "run-launcher"
 
 
 @pytest.fixture
