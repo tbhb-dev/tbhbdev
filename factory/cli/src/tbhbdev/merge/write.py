@@ -18,7 +18,7 @@ from tbhbdev.alpha.identity.storage import locked, user_store
 from tbhbdev.alpha.pull_request.tools import GH, find_tool, run
 
 if TYPE_CHECKING:
-    import subprocess
+    import subprocess  # nosec B404
     from collections.abc import Sequence
 
 LEDGER = "merge-writes.jsonl"
@@ -35,7 +35,7 @@ def gh_write(
     """Run a gh write on ``(repository, number)``; record it when it succeeds."""
     done = run([find_tool(GH), *argv], stdin=stdin)
     if done.returncode == 0:
-        entry = {
+        entry: dict[str, object] = {
             "at": datetime.now(UTC).isoformat(timespec="seconds"),
             "verb": verb,
             "repo": pull[0],
