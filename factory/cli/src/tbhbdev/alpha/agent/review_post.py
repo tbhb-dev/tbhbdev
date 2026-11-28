@@ -13,21 +13,22 @@ from typing import TYPE_CHECKING, cast
 
 import httpx2
 
-from tbhbdev import content, github_tls
+from tbhbdev import github_tls
 from tbhbdev.alpha import gh_app, review, review_doc
 from tbhbdev.alpha.agent import credentials, runfiles
 from tbhbdev.alpha.agent.decisions import repo
 from tbhbdev.alpha.agent.decisions import request as requests
-from tbhbdev.alpha.agent.model import Harness, Invalid, RunKind
+from tbhbdev.alpha.agent.model import Harness, Invalid
 from tbhbdev.alpha.identity import models as identity_models
 from tbhbdev.alpha.identity import records as identity_records
 from tbhbdev.alpha.identity import trailers as identity_trailers
 from tbhbdev.alpha.identity.commit import grammar as identity_commit_grammar
 from tbhbdev.alpha.pull_request.frontmatter import parse_frontmatter
 from tbhbdev.alpha.size_gate import SIZE_REVIEW, size_verdict
+from tbhbdev.content_review import check_review
 
 if TYPE_CHECKING:
-    from tbhbdev.alpha.agent.run_host import Prepared, Run
+    from tbhbdev.alpha.agent.run_host.state import Prepared, Run
 
 VERDICTS = frozenset({"GO", "BLOCK", "NO-GO"})
 DRAFT_NAME = re.compile(r"review-([1-9][0-9]*)(?:\.doc)?\.md")
@@ -84,12 +85,10 @@ def validate_document(sub: Submission) -> tuple[dict[str, object], str]:
     if doc.head_sha != sub.commit:
         message = "the draft's head_sha isn't the commit the run reviewed"
         raise PostRefusedError(message)
-    if problems := content.check_review(doc.body, metadata=doc.metadata):
+    if problems := check_review(doc.body, metadata=doc.metadata):
         raise PostRefusedError(problems[0])
     event = "APPROVE" if doc.verdict == "GO" else "REQUEST_CHANGES"
     body = f"{review_doc.render(doc)}\n{sub.stamp}\n"
-    if problems := content.check_review(body, metadata=doc.metadata, posted=True):
-        raise PostRefusedError(problems[0])
     return {**doc.metadata, "event": event}, body
 
 
@@ -186,7 +185,9 @@ def create(sub: Submission, token: str, run: Run) -> int | None:
         raise PostRefusedError(message)
     return review_doc.submit_review(
         lambda method, path, payload: api(method, path, token, payload),
-        review_doc.ReviewSubmission(base, sub.commit, body, event),
+        review_doc.ReviewSubmission(
+            base, sub.commit, body, event, fields if sub.document else None
+        ),
         compare=lambda path: compare(run, path),
         warn=lambda message: run.files.write("log", f"{message}\n"),
     )
@@ -285,16 +286,13 @@ def posted(run: Run, prepared: Prepared) -> bool:
             post_size_review(run)
             return True
         # A supplied output schema defines the final answer's format.
-        if (
-            run.request.kind is RunKind.EXEC
-            and not run.files.path("schema.json").is_file()
-        ):
+        if not run.files.path("schema.json").is_file():
             check_verdict(run)
         number, text, document = find_draft(workspace)
         token = credentials.review_post_token(run.request, run.settings)
         if token is None:
             message = "reviews App token unavailable"
-            raise PostRefusedError(message)  # noqa: TRY301
+            raise PostRefusedError(message)
         sub = Submission(
             run.request.repo,
             number,
@@ -304,7 +302,7 @@ def posted(run: Run, prepared: Prepared) -> bool:
             document,
         )
         identifier = create(sub, token, run)
-    except PostRefusedError as refusal:
+    except review_doc.ReviewError as refusal:
         run.files.write("log", f"review not posted: {refusal}\n")
         return False
     run.files.write("review", f"{run.request.repo}#{number} {identifier or 'unknown'}")

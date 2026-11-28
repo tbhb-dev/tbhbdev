@@ -10,7 +10,7 @@ from typing import TYPE_CHECKING, cast
 import pytest
 from cue_fixtures import review_cue as review_cue  # noqa: PLC0414
 
-from tbhbdev import content
+from tbhbdev import content_review
 from tbhbdev.alpha import review_doc, review_prompt
 from tbhbdev.alpha.review_doc import ReviewError
 
@@ -100,7 +100,7 @@ def test_render_and_validate(
     )
     doc = review_doc.parse(draft)
     assert doc.head_sha == HEAD
-    assert content.check_review(doc.body, metadata=doc.metadata) == []
+    assert content_review.check_review(doc.body, metadata=doc.metadata) == []
 
 
 @pytest.mark.parametrize(

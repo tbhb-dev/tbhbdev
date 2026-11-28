@@ -11,7 +11,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 from tbhbdev import version
-from tbhbdev.alpha.agent.decisions import argv
+from tbhbdev.alpha.agent import transport
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -219,7 +219,7 @@ def setup(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Remote:
     def executable(name: str) -> str:
         return str(tools / name)
 
-    monkeypatch.setattr(argv, "executable", executable)
+    monkeypatch.setattr(transport, "executable", executable)
     (root / "control.json").write_text(json.dumps({"version": version.line()}))
     monkeypatch.setenv("EXAMPLE_REMOTE", str(root))
     monkeypatch.setenv("PATH", str(tools) + os.pathsep + os.environ["PATH"])

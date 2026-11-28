@@ -171,7 +171,10 @@ async def affected_tests(base: str, head: str, scratch: Path) -> None:
         raise OSError(errno.EIO, "affected-targets did not report a target file")
     if (await asyncio.to_thread(Path(target_file).stat)).st_size:
         await run(
-            *BAZEL_TEST, "--build_tests_only", f"--target_pattern_file={target_file}"
+            *BAZEL_TEST,
+            "--test_tag_filters=-slow-external",
+            "--build_tests_only",
+            f"--target_pattern_file={target_file}",
         )
 
 

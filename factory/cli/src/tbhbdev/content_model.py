@@ -11,6 +11,13 @@ from markdown_it.rules_block.html_block import HTML_SEQUENCES
 from markdown_it.tree import SyntaxTreeNode
 from mdit_py_plugins.tasklists import tasklists_plugin
 
+type Json = dict[str, object]
+_REVIEW_LOCATION = re.compile(r"(.+):([1-9][0-9]{0,9})")
+
+
+class Refused(RuntimeError):  # noqa: N818 -- Required public name.
+    """A content refusal with a diagnostic."""
+
 
 def _text_metrics(text: str) -> dict[str, int]:
     return {
@@ -290,6 +297,20 @@ def _without_heading(
     block["visible"] = visible
 
 
+def _review_locations(nodes: list[SyntaxTreeNode], content: list[Json]) -> None:
+    for node, block in zip(nodes, content, strict=True):
+        if node.type != "bullet_list":
+            continue
+        items = cast("list[Json]", block["items"])
+        for child, item in zip(node.children, items, strict=True):
+            for inline in child.walk():
+                if inline.type == "code_inline" and (
+                    citation := _REVIEW_LOCATION.fullmatch(inline.content)
+                ):
+                    item["location"] = (citation[1], int(citation[2]))
+                    break
+
+
 def _group_block(
     doc: _Document, group: list[SyntaxTreeNode], start: int, end: int, *, review: bool
 ) -> tuple[str, dict[str, object]]:
@@ -311,6 +332,8 @@ def _group_block(
         raise ValueError(message)
     if review and heading == "Summary" and len(content) == 1:
         content[0]["sentenceText"] = _visible(group[1], replace_code=True)
+    if review and heading == "Findings":
+        _review_locations(group[1:], content)
     block.update(heading=heading, level=2)
     heading_end = cast("tuple[int, int]", first.map)[1]
     _without_heading(block, doc.source[start : doc.offsets[heading_end]], group[1:])

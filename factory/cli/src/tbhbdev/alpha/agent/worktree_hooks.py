@@ -155,38 +155,3 @@ def prepare_hooks(
     if env is not None:
         with worktree_errors.preparation_step("hook verification"):
             verify_hook_files(workspace)
-
-
-def validate_hooks(workspace: Path, writes: tuple[str, ...]) -> None:
-    """Read every Git config scope with the host environment, before launch."""
-    if not (workspace / ".git").is_dir():
-        return
-    # The final command override disables hooks for this host-side query. Drop
-    # just that value from the result, retaining earlier command-scope values.
-    values = subprocess.check_output(  # nosec B603
-        [
-            host_tools.resolve("git"),
-            "-c",
-            "core.hooksPath=/dev/null",
-            "config",
-            "--path",
-            "--null",
-            "--get-all",
-            "core.hooksPath",
-        ],
-        cwd=workspace,
-        text=True,
-        stderr=subprocess.DEVNULL,
-        timeout=30,
-    ).split("\0")[:-2]
-    allowed = {(workspace / ".git/hooks").resolve(), Path("/dev/null")}
-    for value in values:
-        path = (workspace / value).resolve()
-        if path in allowed:
-            continue
-        writable = next(
-            (p for p in writes if path.is_relative_to(Path(p).resolve())), None
-        )
-        reason = "" if writable is None else f" under write root {writable}"
-        message = f"core.hooksPath {path}{reason} is not the workspace hooks directory"
-        raise Invalid(message)

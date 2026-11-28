@@ -49,7 +49,7 @@ def test_push_checks_host_names_when_creating_a_branch(
     config.parent.mkdir()
     config.write_text(
         '[[agent.host]]\nname = "examplehost01"\nos = "linux"\nshell = "bash"\n'
-        'account = "agent"\naccounts = ["agent"]\nproven_harnesses = ["codex"]\n'
+        'account = "agent"\naccounts = ["agent"]\n'
     )
     monkeypatch.setattr(sys, "stdin", io.StringIO("\n".join(rows) + "\n"))
     monkeypatch.setattr(pg, "remote_tips", Mock(return_value=[]))
