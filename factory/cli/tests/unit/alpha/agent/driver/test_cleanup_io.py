@@ -446,3 +446,16 @@ def test_local_clean_refuses_a_symlinked_worktree(
     assert elsewhere.is_dir()
     assert files.path("request.json").is_file()
     assert not (files.root / "trash").exists()
+
+
+@pytest.mark.usefixtures("remote")
+def test_local_clean_refuses_a_worktree_that_is_a_file(
+    isolated_home: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    files = _local_run(isolated_home, worktree=False)
+    clone = isolated_home / "Code" / "github.com" / "example-org" / "example-repo"
+    (clone / ".worktrees").mkdir(parents=True)
+    (clone / ".worktrees" / "agent-sample").write_text("not a clone\n")
+    assert command("clean", "--force") == 1
+    assert "is not a directory" in capsys.readouterr().err
+    assert files.path("request.json").is_file()
