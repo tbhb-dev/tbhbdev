@@ -280,6 +280,9 @@ exclude_also = [
   # Tests that need git or a POSIX shell skip on Windows, where their bodies
   # never run. Excluding a decorator line excludes the whole function.
   "^@posix_only",
+  # Tests that read the root AGENTS.md skip in the Bazel copy of this module's
+  # tree, which cannot hold it; their bodies run in a full checkout.
+  "^@needs_root_agents",
 ]
 
 [tool.pytest]

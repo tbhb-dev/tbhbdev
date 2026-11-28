@@ -11,10 +11,18 @@ from repo.private.tier0_approval import __main__ as gate
 from repo.private.tier0_approval import tier2_map
 
 SCRIPT = Path(tier2_map.__file__)
+# The root AGENTS.md sits outside the lib/rules module, so the copy of the tree
+# that Bazel tests holds no such file; those runs skip the tests that read it.
 ROOT_AGENTS = next(
-    parent / "AGENTS.md"
-    for parent in SCRIPT.parents
-    if (parent / "AGENTS.md").is_file() and (parent / "MODULE.bazel").is_file()
+    (
+        parent / "AGENTS.md"
+        for parent in SCRIPT.parents
+        if (parent / "AGENTS.md").is_file() and (parent / "MODULE.bazel").is_file()
+    ),
+    None,
+)
+needs_root_agents = pytest.mark.skipif(
+    ROOT_AGENTS is None, reason="the root AGENTS.md is not in this tree"
 )
 SECTION = """\
 # Agent instructions
@@ -60,7 +68,9 @@ def test_tier2_paths_rejects_an_empty_table() -> None:
         tier2_map.tier2_paths(text)
 
 
+@needs_root_agents
 def test_real_map_lists_the_gate_paths() -> None:
+    assert ROOT_AGENTS is not None
     paths = tier2_map.tier2_paths(ROOT_AGENTS.read_text(encoding="utf-8")).splitlines()
     assert {
         ".github/workflows/**",
@@ -69,6 +79,7 @@ def test_real_map_lists_the_gate_paths() -> None:
     } <= set(paths)
 
 
+@needs_root_agents
 @pytest.mark.parametrize(
     ("path", "expected"),
     [
@@ -79,6 +90,7 @@ def test_real_map_lists_the_gate_paths() -> None:
     ],
 )
 def test_real_map_matches(path: str, expected: bool) -> None:
+    assert ROOT_AGENTS is not None
     text = ROOT_AGENTS.read_text(encoding="utf-8")
     assert gate.matches(path, tier2_map.tier2_paths(text)) is expected
 
