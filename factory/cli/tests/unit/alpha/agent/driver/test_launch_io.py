@@ -97,9 +97,8 @@ def fake_installation(
     remote.configure(version=version.line())
     if build != "commit":
         return None, None
-    _, digest = pack(
-        package_files, dist_files, identity=COMMIT, distributions={"example": "1"}
-    )
+    pins = {"example": "example==1"}
+    _, digest = pack(package_files, dist_files, identity=COMMIT, distributions=pins)
     return COMMIT, digest
 
 
@@ -191,6 +190,42 @@ def test_launch_stream_and_metadata(
     assert tmux == shlex.split(
         f"-S {remote.root}/sockets/agents -f /dev/null has-session -t =ag-sample"
     )
+
+
+def test_an_unexpected_pack_error_is_not_suppressed(
+    remote: Remote, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    def broken() -> tuple[bytes, str, str]:
+        message = "unexpected"
+        raise RuntimeError(message)
+
+    monkeypatch.setattr(cli_bundle, "installed", broken)
+    with pytest.raises(RuntimeError, match="unexpected"):
+        launch(remote)
+
+
+def test_the_pack_runs_before_the_launch_lock(
+    remote: Remote, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    events: list[str] = []
+    real_lock = metadata.launch_lock
+    real_installed = cli_bundle.installed
+
+    @contextlib.contextmanager
+    def lock() -> Generator[None]:
+        events.append("enter")
+        with real_lock():
+            yield
+
+    def installed() -> tuple[bytes, str, str]:
+        events.append("pack")
+        return real_installed()
+
+    monkeypatch.setattr(coordinator, "launch_lock", lock)
+    monkeypatch.setattr(cli_bundle, "installed", installed)
+    fake_installation(remote, monkeypatch, "commit")
+    assert launch(remote) == 0
+    assert events == ["pack", "enter"]
 
 
 STEER_ERROR = "exec --steer requires a Codex build without --schema"

@@ -21,13 +21,16 @@ def pack(
     identity: str,
     distributions: Mapping[str, str],
 ) -> tuple[bytes, str]:
-    """Return the tar bytes and SHA-256 for files relative to the import root."""
+    """Return the tar bytes and SHA-256 for files relative to the import root.
+
+    DISTRIBUTIONS maps each dependency name to its `requirements.txt` line.
+    """
     if re.fullmatch(r"[0-9a-f]{40}", identity) is None:
         message = "CLI bundle requires a 40-hex build commit"
         raise Invalid(message)
     pins = "".join(
-        f"{name}=={version}\n"
-        for name, version in sorted(distributions.items())
+        f"{pin}\n"
+        for name, pin in sorted(distributions.items())
         if name.casefold() != "tbhbdev"
     )
     entries = {**package_files, **dist_info_files, "requirements.txt": pins.encode()}

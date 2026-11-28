@@ -17,7 +17,7 @@ DIST_INFO = {
     + COMMIT.encode()
     + b'"}}',
 }
-PINS = {"zeta": "2.0", "alpha": "1.0", "tbhbdev": "0"}
+PINS = {"zeta": "zeta==2.0", "alpha": "alpha==1.0", "tbhbdev": "tbhbdev==0"}
 
 
 def test_deterministic_bundle() -> None:
@@ -62,3 +62,30 @@ def test_bundle_contents() -> None:
 def test_refuses_unidentified_build(identity: str) -> None:
     with pytest.raises(Invalid, match="40-hex"):
         pack(PACKAGE, DIST_INFO, identity=identity, distributions=PINS)
+
+
+def requirements(pins: dict[str, str]) -> bytes:
+    bundle, _ = pack(PACKAGE, DIST_INFO, identity=COMMIT, distributions=pins)
+    with tarfile.open(fileobj=io.BytesIO(bundle), mode="r:") as archive:
+        payload = archive.extractfile("requirements.txt")
+        assert payload is not None
+        with payload:
+            return payload.read()
+
+
+def test_pins_are_written_as_given() -> None:
+    pins = {
+        "plain": "plain==1.0",
+        "telemetry": "telemetry @ https://example.test/telemetry-0-py3-none-any.whl",
+    }
+    assert requirements(pins) == (
+        b"plain==1.0\ntelemetry @ https://example.test/telemetry-0-py3-none-any.whl\n"
+    )
+
+
+def test_direct_url_change_changes_the_digest() -> None:
+    first = {"telemetry": "telemetry @ https://example.test/one.whl"}
+    second = {"telemetry": "telemetry @ https://example.test/two.whl"}
+    _, one = pack(PACKAGE, DIST_INFO, identity=COMMIT, distributions=first)
+    _, two = pack(PACKAGE, DIST_INFO, identity=COMMIT, distributions=second)
+    assert one != two

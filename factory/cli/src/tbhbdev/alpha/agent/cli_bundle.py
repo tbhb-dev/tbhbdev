@@ -1,5 +1,6 @@
 """Gather the running CLI installation for packing on the driver."""
 
+import json
 from importlib import metadata
 from pathlib import Path
 
@@ -25,12 +26,20 @@ def _files(root: Path) -> dict[str, bytes]:
     return files
 
 
+def _pin(dist: metadata.Distribution) -> str:
+    text = dist.read_text("direct_url.json")
+    url = None if text is None else json.loads(text).get("url")
+    if url is None:
+        return f"{dist.name}=={dist.version}"
+    return f"{dist.name} @ {url}"
+
+
 def installed() -> tuple[bytes, str, str]:
     """Return the running CLI's bundle, build commit and bundle SHA-256."""
     dist = metadata.distribution(version.NAME)
     commit = version.installed_identity(dist)
     info = Path(str(dist.locate_file(f"{version.NAME}-{dist.version}.dist-info")))
-    pins = {item.name: item.version for item in metadata.distributions()}
+    pins = {item.name: _pin(item) for item in metadata.distributions()}
     bundle, digest = pack(
         _files(PACKAGE), _files(info), identity=commit, distributions=pins
     )
