@@ -13,6 +13,8 @@ type: Reference
 
 # GitHub administration
 
+<!-- cspell:words unarchiving -->
+
 `tbhbdev admin` uses a fresh installation token for each REST call. The token is restricted to the endpoint's permissions and repository or organization. Connect supplies the private key through the service's reader. Callers receive the response body. They never receive credentials, including the private key or JSON Web Token (JWT). This command keeps credentials in memory without caching them.
 
 ```sh
@@ -43,6 +45,8 @@ Path normalization folds names to lower case to check the policy and decodes per
 
 Before an environment write to an existing environment, the tool reads that environment. Its reviewers must match the reviewers in the write. Its branch policy must be unset or `{"protected_branches": true, "custom_branch_policies": false}`. A positive wait timer refuses the write, because a write would reset the timer to 0. These refusals use the `protection_weakening` code. GitHub offers only unconditional writes between the read and the write. The tool doesn't see a concurrent change in that window and accepts that risk.
 
+An archive-only `PATCH` to a repository (`{"archived": true}`) passes unless the repository is protected. The monorepo (`tbhb-dev/tbhbdev`) is always protected, and `[admin] protected_repositories` in [user config](config.md) adds more repositories. An unreadable or malformed config refuses archive calls as `repository_removal` and leaves other calls unaffected.
+
 A refusal exits 3 with its code on standard error. Usage errors exit 2. HTTP error responses exit 1 with the response body.
 
 | Code | Meaning |
@@ -51,7 +55,7 @@ A refusal exits 3 with its code on standard error. Usage errors exit 2. HTTP err
 | `environment_unreadable` | An environment write where the lookup returned a status other than 200 or 404. Also a lookup whose JSON has a missing field or a malformed reviewer id or wait timer, or whose nesting is too deep. |
 | `broad_visibility` | An organization secret, variable, or runner group whose visibility isn't `selected`, a new runner group that omits it, a runner group that allows public repositories, a runner group whose `restricted_to_workflows` isn't true, or any `selected_workflows` change |
 | `membership_change` | Membership, invitations, collaborators, or role changes |
-| `repository_removal` | Repository deletion, transfer, or archiving |
+| `repository_removal` | Repository deletion, transfer, unarchiving, archiving together with any other field, or archiving a protected repository |
 | `paid_feature` | Security analysis, larger runners, Codespaces, Copilot, billing, or spending |
 | `public_visibility` | Public visibility, `private: false`, or a new organization repository that omits `private: true` or `visibility: private` |
 | `approval_or_merge` | A write to a pull request's `reviews`, or any request to its `merge` endpoint |

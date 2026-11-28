@@ -28,10 +28,10 @@ from tbhbdev.alpha.guard.op import command as guard_op
 from tbhbdev.alpha.guard.scripts import command as guard_scripts
 from tbhbdev.alpha.identity import dispatcher as identity
 from tbhbdev.alpha.install import command as install
-from tbhbdev.alpha.monorepo import command as monorepo
 from tbhbdev.alpha.pull_request import command as pull_request
 from tbhbdev.merge import command as merge
 from tbhbdev.merge import remove as merge_queue_remove
+from tbhbdev.monorepo import command as monorepo
 
 __all__ = [
     "agent",

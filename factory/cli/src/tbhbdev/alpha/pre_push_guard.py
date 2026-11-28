@@ -80,6 +80,9 @@ def agent_fingerprint() -> str:
 class SigningKeys:
     """Load signing keys on demand, once per push across all refs."""
 
+    def __init__(self, *, short_sha: bool = False) -> None:
+        self.short_sha = short_sha
+
     @cached_property
     def local(self) -> str:
         return agent_fingerprint()
@@ -107,8 +110,9 @@ class SigningKeys:
             if registered is None
             else ""
         )
+        commit = sha[:7] if self.short_sha else sha
         return (
-            f"{ref}: agent commit {sha} lacks a valid agent signature{fallback}; "
+            f"{ref}: agent commit {commit} lacks a valid agent signature{fallback}; "
             "push refused"
         )
 
@@ -207,8 +211,8 @@ def agent_commit_problems(
 ) -> list[str]:
     """Check signatures for newly pushed agent commits.
 
-    ``exclude`` holds every remote-tracking and tag tip and the old sha git reports. A
-    failed listing or a range over RANGE_LIMIT refuses the push.
+    ``exclude`` holds tips whose history is already present on the remote. A failed
+    listing or a range over RANGE_LIMIT refuses the push.
     """
     code, shas = pushed_commits(local, exclude, directory)
     if code:

@@ -149,6 +149,9 @@ id = "mac-address-1"
 description = "A MAC address"
 regex = "(?i)\\b[0-9a-f]{2}(?:(?::[0-9a-f]{2}){5}|(?:-[0-9a-f]{2}){5})\\b"
 
+[[rules.allowlists]]
+paths = ["(?:^|/)worker-configuration\\.d\\.ts$"]
+
 [[rules]]
 id = "op-reference-1"
 description = "A 1Password secret reference"
