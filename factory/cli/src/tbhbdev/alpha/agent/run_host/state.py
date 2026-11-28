@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import dataclasses
+import time
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
@@ -28,6 +29,13 @@ class Run:
     deadline: float
     bazel_shutdown: BazelShutdown | None = None
     steer: bool = False
+    # Monotonic seconds. `begun` and `waited` are marks; the rest are phase lengths,
+    # None until the run reaches the end of that phase.
+    begun: float = dataclasses.field(default_factory=time.monotonic)
+    waited: float | None = None
+    setup_seconds: float | None = None
+    model_seconds: float | None = None
+    publication_seconds: float | None = None
 
 
 @dataclass(frozen=True)
