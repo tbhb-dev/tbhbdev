@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import re
 import subprocess  # nosec B404
 import tempfile
 from contextlib import suppress
@@ -24,7 +23,6 @@ if TYPE_CHECKING:
     from tbhbdev.alpha.agent.run_host.state import Prepared, Run
 
 NO_PUSH_MOVED = 12
-SHA = re.compile(r"[0-9a-f]{40}")
 FAILURES = (OSError, ValueError, subprocess.SubprocessError, Invalid, GhAppError)
 FETCH = ("fetch", "--no-tags", "--no-recurse-submodules", "--")
 PUSH = ("push", "--no-follow-tags", "--recurse-submodules=no", "--")
@@ -49,10 +47,6 @@ def republish(run: Run, prepared: Prepared) -> int | None:
     if start_ref is None or run.files.uncertain or not (bp.exists() and hp.exists()):
         return None
     base, head = bp.read_text().strip(), hp.read_text().strip()
-    if not (SHA.fullmatch(base) and SHA.fullmatch(head)) or base == head:
-        return None
-    if not _dest_ok(run, start_ref, start_ref):
-        return None
     try:
         host, owner, name = repo.parts(run.request.repo)
         url = f"https://{host}/{owner}/{name}.git"
@@ -73,35 +67,46 @@ def _kept(run: Run, reason: str) -> None:
     run.files.write("log", f"republish: kept local: {reason}\n")
 
 
-def _dest_ok(run: Run, ref: str, start_ref: str | None) -> bool:
-    name = run.files.name
-    problem = guard.destination_problem(
+def _push_checked(
+    ctx: _Ctx,
+    git: Callable[..., str],
+    ref: str,
+    span: tuple[str, str],
+    start_ref: str | None,
+) -> bool:
+    base, tip = span
+    name = ctx.run.files.name
+    if problem := guard.destination_problem(
         ref, deleting=False, agent_push=True, run_name=name, start_ref=start_ref
-    )
-    if problem:
-        _kept(run, problem)
-    return not problem
+    ):
+        _kept(ctx.run, problem)
+        return False
+    if problem := rescue.scan(ctx.d, base, tip):
+        _kept(ctx.run, problem)
+        return False
+    if guard.agent_commit_problems(ref, tip, [base], guard.SigningKeys(), ctx.d):
+        _kept(ctx.run, "agent commit signature refused")
+        return False
+    git(*PUSH, ctx.url, f"{tip}:{ref}")
+    return True
 
 
 def _republish(ctx: _Ctx, start_ref: str, git: Callable[..., str]) -> int | None:
     tip, _, ref = git("ls-remote", "--refs", ctx.url, start_ref).partition("\t")
-    if ref != start_ref or not SHA.fullmatch(tip):
+    if ref != start_ref:
         return _kept(ctx.run, "start ref missing")
     if tip == ctx.base:
         return None
     git(*FETCH, ctx.url, f"{start_ref}:refs/republish/start")
     fetched = push.history_git(ctx.d, "rev-parse", "refs/republish/start").strip()
-    if fetched == ctx.base:
-        return None
     replayed = _replay(ctx, fetched)
-    if replayed is not None and (problem := rescue.scan(ctx.d, fetched, replayed)):
-        return _kept(ctx.run, problem)
     keys = guard.SigningKeys()
     if replayed is None or guard.agent_commit_problems(
-        start_ref, replayed, [fetched], keys, directory=ctx.d
+        start_ref, replayed, [fetched], keys, ctx.d
     ):
         return _publish_separate(ctx, git)
-    git(*PUSH, ctx.url, f"{replayed}:{start_ref}")
+    if not _push_checked(ctx, git, start_ref, (fetched, replayed), start_ref):
+        return None
     branch = publication_plan.branch_name(ctx.run.files.name, start_ref)
     ctx.run.files.write("head", replayed)
     ctx.run.files.write("branch", branch)
@@ -115,14 +120,8 @@ def _publish_separate(ctx: _Ctx, git: Callable[..., str]) -> int | None:
     # A start-ref run may normally push only start_ref; pass start_ref=None here
     # so the launcher can publish unmodified commits to the separate run branch
     # without loosening pre_push_guard for the agent's own pushes.
-    if not _dest_ok(ctx.run, ref, None):
+    if not _push_checked(ctx, git, ref, (ctx.base, ctx.head), None):
         return None
-    if problem := rescue.scan(ctx.d, ctx.base, ctx.head):
-        return _kept(ctx.run, problem)
-    keys = guard.SigningKeys()
-    if guard.agent_commit_problems(ref, ctx.head, [ctx.base], keys, directory=ctx.d):
-        return _kept(ctx.run, "agent commit signature refused")
-    git(*PUSH, ctx.url, f"{ctx.head}:{ref}")
     ctx.run.files.write("branch", branch)
     ctx.run.files.write("log", f"republish: conflict, published to {branch}\n")
     return NO_PUSH_MOVED
@@ -144,13 +143,9 @@ def _replay(ctx: _Ctx, onto: str) -> str | None:
         for sha, _ in rows:
             raw = hgit("show", "-s", "--format=%cn%n%ce", sha).strip()
             name, _, email = raw.partition("\n")
-            pick_env = (
-                {**env, "GIT_COMMITTER_NAME": name, "GIT_COMMITTER_EMAIL": email}
-                if email
-                else env
-            )
+            who = {"GIT_COMMITTER_NAME": name, "GIT_COMMITTER_EMAIL": email}
             try:
-                hgit(*loc, *sign_args, *PICK, sha, extra_env=pick_env)
+                hgit(*loc, *sign_args, *PICK, sha, extra_env={**env, **who})
             except subprocess.CalledProcessError:
                 with suppress(subprocess.SubprocessError):
                     hgit(*loc, "cherry-pick", "--abort", extra_env=env)
@@ -159,21 +154,18 @@ def _replay(ctx: _Ctx, onto: str) -> str | None:
 
 
 def _signing_config(socket: str | None) -> tuple[tuple[str, ...], dict[str, str]]:
-    unsigned = (("-c", "commit.gpgsign=false"), {})
-    if socket is None:
-        return unsigned
     try:
         out = subprocess.check_output(  # nosec B603
             [host_tools.resolve("ssh-add"), "-L"],
-            env={"SSH_AUTH_SOCK": socket},
+            env={"SSH_AUTH_SOCK": socket or ""},
             stderr=subprocess.DEVNULL,
             text=True,
             timeout=SIGN_TIMEOUT,
         )
     except OSError, subprocess.SubprocessError:
-        return unsigned
-    key = next((s.strip() for s in out.splitlines() if s.strip()), "")
-    if not key:
-        return unsigned
+        return (("-c", "commit.gpgsign=false"), {})
+    key = out.splitlines()[0].strip()
     cfg = ("gpg.format=ssh", f"user.signingkey=key::{key}", "commit.gpgsign=true")
-    return tuple(x for item in cfg for x in ("-c", item)), {"SSH_AUTH_SOCK": socket}
+    return tuple(x for item in cfg for x in ("-c", item)), {
+        "SSH_AUTH_SOCK": socket or ""
+    }
