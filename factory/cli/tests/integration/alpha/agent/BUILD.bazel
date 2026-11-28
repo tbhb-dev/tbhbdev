@@ -190,3 +190,22 @@ cli_py_test(
         "@cli_pip//pytest",
     ],
 )
+
+cli_py_test(
+    name = "test_rescue_io",
+    srcs = ["test_rescue_io.py"],
+    imports = ["../../.."],
+    path_tools = ["@tbhb_rules_gitleaks//:gitleaks"],
+    deps = [
+        ":conftest",
+        "//factory/cli/src/tbhbdev/alpha:pre_push_guard",
+        "//factory/cli/src/tbhbdev/alpha/agent:rescue",
+        "//factory/cli/src/tbhbdev/alpha/agent:runfiles",
+        "//factory/cli/src/tbhbdev/alpha/agent/run_host:state",
+        "//factory/cli/tests:agent_host_example",
+        "//factory/cli/tests:conftest",
+        "//factory/cli/tests:fake_tool",
+        "//factory/cli/tests/integration/alpha:conftest",
+        "@cli_pip//pytest",
+    ],
+)
