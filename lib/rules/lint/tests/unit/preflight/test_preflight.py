@@ -163,14 +163,16 @@ def drive_main(
     monkeypatch: pytest.MonkeyPatch,
     argv: list[str],
     selection: str | None,
+    *,
+    changed_path: str = "ops/templates/a.j2",
 ) -> tuple[list[str], list[float]]:
-    """Run main over an ops-only change; return the checks run and the clock."""
+    """Run main over one changed path; return the checks run and the clock."""
     ran: list[str] = []
     now = [100.0]
     seconds = {"affected-tests": 7.0, "cli-coverage": 40.0}
 
     async def fake_git(*args: str) -> str:
-        return "ops/templates/a.j2\0" if args[0] == "diff" else ""
+        return f"{changed_path}\0" if args[0] == "diff" else ""
 
     async def fake_check(name: str, _: preflight.Revisions, scratch: Path) -> None:
         ran.append(name)
@@ -183,7 +185,9 @@ def drive_main(
                 f"all={all_targets}\nfile={targets}\n", encoding="utf-8"
             )
         if name == "affected-tests" and selection == "unreadable":
-            (scratch / "selection").write_text("file=/nonexistent\n", encoding="utf-8")
+            (scratch / "selection").write_text(
+                "all=false\nfile=/nonexistent\n", encoding="utf-8"
+            )
 
     monkeypatch.chdir(tmp_path)
     monkeypatch.delenv("BUILD_WORKSPACE_DIRECTORY", raising=False)
@@ -209,6 +213,17 @@ def test_ops_only_selection_skips_cli_coverage(
     assert "SKIP cli-coverage  bazelisk run //:preflight -- --check" in captured.out
     assert "Skipping cli-coverage: no CLI test affected" in captured.err
     assert "Running cli-coverage" not in captured.err
+
+
+@pytest.mark.parametrize(
+    "changed_path", ["factory/cli/combine_coverage.sh", "factory/cli/BUILD.bazel"]
+)
+def test_coverage_input_change_runs_cli_coverage(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, changed_path: str
+) -> None:
+    ran, _ = drive_main(tmp_path, monkeypatch, [], "", changed_path=changed_path)
+
+    assert "cli-coverage" in ran
 
 
 @pytest.mark.parametrize(

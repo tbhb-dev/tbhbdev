@@ -17,6 +17,7 @@ from typing import NamedTuple
 
 DEFAULT_BASE = "origin/main"
 SELECTION = "selection"
+CLI_COVERAGE_INPUTS = {"factory/cli/BUILD.bazel", "factory/cli/combine_coverage.sh"}
 # A selected label under the CLI package; select.sh may spell the main
 # repository with a leading @@.
 CLI_TARGET = re.compile(r"(@@)?//factory/cli([:/]|$)")
@@ -155,8 +156,10 @@ def selected_file(selection: str) -> str:
     return next((line[5:] for line in lines if line.startswith("file=")), "")
 
 
-async def cli_tests_affected(scratch: Path) -> bool:
-    """Whether coverage must run: false only when the selection proves no CLI test."""
+async def cli_tests_affected(scratch: Path, paths: list[str]) -> bool:
+    """Whether changed paths or the test selection require CLI coverage."""
+    if CLI_COVERAGE_INPUTS.intersection(paths):
+        return True
     try:
         selection = await asyncio.to_thread((scratch / SELECTION).read_text)
         # A fallback selection lists patterns such as //... and not labels.
@@ -261,9 +264,15 @@ def say(text: str) -> None:
 
 
 async def stage(
-    name: str, revisions: Revisions, scratch: Path, explicit: str | None
+    name: str,
+    revisions: Revisions,
+    scratch: Path,
+    explicit: str | None,
+    paths: list[str],
 ) -> Outcome:
-    if name == "cli-coverage" and not (explicit or await cli_tests_affected(scratch)):
+    if name == "cli-coverage" and not (
+        explicit or await cli_tests_affected(scratch, paths)
+    ):
         say(f"Skipping {name}: no CLI test affected")
         return None
     say(f"Running {name}")
@@ -301,16 +310,19 @@ async def main() -> int:
     )
     ref = ref.removeprefix("refs/remotes/").removeprefix("refs/heads/")
     ref = DEFAULT_BASE if args.base == "HEAD" or ref in {"", "main"} else ref
-    paths = await git("diff", "--name-only", "-z", "--no-renames", merge_base, head)
+    changed = await git("diff", "--name-only", "-z", "--no-renames", merge_base, head)
+    paths = changed.split("\0")[:-1]
     if args.check:
         checks = (args.check,)
     else:
         has_draft = await asyncio.to_thread(DRAFT.is_file)
-        checks = checks_for(paths.split("\0")[:-1], has_draft=has_draft)
+        checks = checks_for(paths, has_draft=has_draft)
     revisions = Revisions(base, merge_base, head, ref)
     scratch = Path(tempfile.mkdtemp(prefix="preflight-"))
     # One stage at a time: each await finishes before the next name starts.
-    results = [(n, await stage(n, revisions, scratch, args.check)) for n in checks]
+    results = [
+        (n, await stage(n, revisions, scratch, args.check, paths)) for n in checks
+    ]
     sys.stdout.write(summary(results, args.base) + "\n")
     if not args.check:
         await record_result(revisions, results)
