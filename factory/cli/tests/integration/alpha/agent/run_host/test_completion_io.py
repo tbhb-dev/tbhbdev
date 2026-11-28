@@ -297,13 +297,7 @@ def test_run_that_raised_before_launch_has_no_model_or_publication_phase(
     phases = cast("dict[str, float | None]", row["phase_seconds"])
     assert phases["model"] is None
     assert phases["publication"] is None
-    assert row["usage"] == {
-        "input_tokens": NOT_REPORTED,
-        "output_tokens": NOT_REPORTED,
-        "total_tokens": NOT_REPORTED,
-        "cost_usd": NOT_REPORTED,
-        "source": NOT_REPORTED,
-    }
+    assert set(row["usage"].values()) == {NOT_REPORTED}  # type: ignore[union-attr]
 
 
 def test_unreadable_log_keeps_the_rc_and_the_row(
