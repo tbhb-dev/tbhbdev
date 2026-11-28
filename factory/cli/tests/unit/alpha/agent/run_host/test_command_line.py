@@ -69,6 +69,11 @@ def test_full_access_arguments(harness: Harness, profile: Profile) -> None:
             == settings().codex.subagent_model
         )
         assert config["shell_environment_policy"]["exclude"] == ["GIT_*"]
+        # Bazel's Go fetch rule rejects a count of 0, so no count is set at all.
+        assert not any(
+            name.startswith("GIT_")
+            for name in config["shell_environment_policy"]["set"]
+        )
         assert (
             config["shell_environment_policy"]["set"]["SSH_AUTH_SOCK"]
             == files.signing_socket

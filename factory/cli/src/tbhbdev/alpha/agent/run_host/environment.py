@@ -159,5 +159,5 @@ def hook_environment(value: Policy) -> dict[str, str]:
         shell = {
             key: val for key, val in value.env.items() if not key.startswith("GIT_")
         }
-        return shell | {"PATH": value.tool_path, "GIT_CONFIG_COUNT": "0"}
+        return shell | {"PATH": value.tool_path}
     return value.env

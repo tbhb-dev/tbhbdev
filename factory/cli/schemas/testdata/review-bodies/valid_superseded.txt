@@ -1,0 +1,16 @@
+SUPERSEDED: replaced by a newer run
+## Summary
+
+The cache preserves the latest saved value.
+
+## Findings
+
+- F1: P2 docs Note the timeout default in the package comment.
+
+## Verification
+
+- Read the cache implementation and its unit tests.
+
+<!-- tbhb-review v2 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef -->
+
+Generated-by: LLM effort=medium;harness=codex;model=gpt-5.4

@@ -18,13 +18,6 @@
         dest: "{{ agent_workspace_home }}/.local/bin/gh-reviews-config"
         mode: '0755'
 
-    - name: reviews | Install the companion approval tool
-      ansible.builtin.copy:
-        src: "{{ agent_workspace_approval_tool_src }}"
-        dest: "{{ agent_workspace_home }}/.local/bin/tbhb-approve"
-        mode: '0755'
-      when: agent_workspace_approval_tool_src is defined
-
     - name: reviews | Write the credentials cache atomically
       agent_workspace_pipelined_command:
         argv:

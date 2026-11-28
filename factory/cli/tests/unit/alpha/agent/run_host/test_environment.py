@@ -41,9 +41,7 @@ def test_codex_environment_and_hook_overrides(host: Host, lang: str) -> None:
     assert policy.env["GIT_CONFIG_COUNT"] == "7"
     hooks = environment.hook_environment(policy)
     assert hooks["PATH"] == "/example/bin"
-    assert {key: val for key, val in hooks.items() if key.startswith("GIT_")} == {
-        "GIT_CONFIG_COUNT": "0"
-    }
+    assert not [key for key in hooks if key.startswith("GIT_")]
 
 
 def test_claude_guard_uses_the_supplied_command() -> None:

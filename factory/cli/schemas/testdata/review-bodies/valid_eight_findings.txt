@@ -1,0 +1,18 @@
+## Summary
+
+The cache preserves the latest saved value.
+
+## Findings
+
+- F1: P0 security Escape the shell argument.
+- F2: P1 correctness The counter wraps on overflow. Occurs when: retries exceed the limit.
+- F3: P1 security Accept only HTTPS endpoints. Occurs when: a proxy header is present.
+- F4: P2 correctness Preserve the original timestamp.
+- F5: P2 design Merge the duplicate helpers.
+- F6: P2 test Assert the status code.
+- F7: P3 design Use a constant for the delimiter.
+- F8: P3 docs Describe the exit status.
+
+## Verification
+
+- Read the cache implementation and its unit tests.
