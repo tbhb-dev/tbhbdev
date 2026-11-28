@@ -18,6 +18,7 @@ components:
   receiver: {in: internal/receiver}
   reconcile: {in: internal/reconcile}
   recorder: {in: internal/recorder}
+  review: {in: internal/review}
   store: {in: internal/store}
   telemetry: {in: internal/telemetry}
   version: {in: internal/version}
@@ -58,6 +59,8 @@ deps:
   recorder:
     mayDependOn: [recorder]
     canUse: [otel]
+  review:
+    mayDependOn: [review]
   store:
     mayDependOn: [store]
     canUse: [bbolt]

@@ -23,6 +23,7 @@
 * [Merge](merge.md) - Merging an approved pull request.
 * [Monorepo commands](monorepo.md) - Writing the path map and making the import commit for a public repository.
 * [Agent](agent.md) - Run coordination, host checks, fetch refs, and build run expectations.
+* [Agent launch](agent-launch.md) - The run state files for a bundled agent launch.
 * [Verify range](verify-range.md) - Per-commit attribution and signature checks over a range.
 * [Brief](brief.md) - Peer-run brief skeletons and checks.
 * [Issue commands](issue.md) - Creating issues, sub-issues and dependencies.

@@ -1,0 +1,13 @@
+## Summary
+
+The cache preserves the latest saved value.
+
+## Suggestions
+
+- S1: Rename the helper so callers see its scope.
+
+## Verification
+
+- Read the cache implementation and its unit tests.
+
+Generated-by: LLM harness=claude;model=claude-opus-4-7

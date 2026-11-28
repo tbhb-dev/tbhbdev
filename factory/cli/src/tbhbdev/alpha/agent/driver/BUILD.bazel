@@ -15,14 +15,19 @@ cli_py_library(
     srcs = ["cleanup.py"],
     imports = ["../../../.."],
     pyi_deps = [
-        "//factory/cli/src/tbhbdev/alpha/agent:model",
         "//factory/cli/src/tbhbdev/alpha/agent/driver/decisions:metadata",
     ],
     visibility = ["//factory/cli:__subpackages__"],
     deps = [
         ":metadata",
+        "//factory/cli/src/tbhbdev/alpha/agent:model",
+        "//factory/cli/src/tbhbdev/alpha/agent:process_group",
+        "//factory/cli/src/tbhbdev/alpha/agent:runfiles",
         "//factory/cli/src/tbhbdev/alpha/agent:transport",
         "//factory/cli/src/tbhbdev/alpha/agent/decisions:remote_cleanup",
+        "//factory/cli/src/tbhbdev/alpha/agent/decisions:repo",
+        "//factory/cli/src/tbhbdev/alpha/agent/decisions:request",
+        "//factory/cli/src/tbhbdev/alpha/agent/decisions:runfiles_names",
         "//factory/cli/src/tbhbdev/alpha/agent/driver/decisions:lifecycle",
     ],
 )
@@ -41,6 +46,7 @@ cli_py_library(
         ":steering",
         "//factory/cli/src/tbhbdev:telemetry",
         "//factory/cli/src/tbhbdev/alpha/agent:model",
+        "//factory/cli/src/tbhbdev/alpha/agent:runfiles",
         "//factory/cli/src/tbhbdev/alpha/agent:signing_parity",
         "//factory/cli/src/tbhbdev/alpha/agent:transport",
     ],
@@ -139,8 +145,11 @@ cli_py_library(
     visibility = ["//factory/cli:__subpackages__"],
     deps = [
         "//factory/cli/src/tbhbdev/alpha/agent:model",
+        "//factory/cli/src/tbhbdev/alpha/agent:process_group",
+        "//factory/cli/src/tbhbdev/alpha/agent:runfiles",
         "//factory/cli/src/tbhbdev/alpha/agent:transport",
         "//factory/cli/src/tbhbdev/alpha/agent/decisions:remote_run",
+        "//factory/cli/src/tbhbdev/alpha/agent/decisions:run_state",
         "//factory/cli/src/tbhbdev/alpha/agent/driver/decisions:lifecycle",
         "//factory/cli/src/tbhbdev/alpha/agent/driver/decisions:output",
     ],
@@ -222,6 +231,7 @@ cli_py_library(
         "//factory/cli/src/tbhbdev/alpha/agent:transport",
         "//factory/cli/src/tbhbdev/alpha/agent/decisions:remote_shell",
         "//factory/cli/src/tbhbdev/alpha/agent/driver/decisions:launch",
+        "//factory/cli/src/tbhbdev/alpha/install:cli_build",
     ],
 )
 

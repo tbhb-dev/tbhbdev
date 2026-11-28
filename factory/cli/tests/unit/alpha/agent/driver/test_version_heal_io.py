@@ -26,6 +26,7 @@ from tbhbdev.alpha.agent.decisions import remote_shell
 from tbhbdev.alpha.agent.driver import metadata, startup, version_heal
 from tbhbdev.alpha.agent.driver.inputs import checked_prompt
 from tbhbdev.alpha.agent.model import Invalid
+from tbhbdev.alpha.install import cli_build
 
 CONFIG = settings()
 HOST = CONFIG.hosts[0]
@@ -43,14 +44,9 @@ GIT = [
     URL,
     REF,
 ]
-INSTALL = (
-    "uv",
-    "tool",
-    "install",
-    "--no-config",
-    "--force",
-    f"git+{URL}@{HEAD}#subdirectory=factory/cli",
-)
+INSTALL = ["/bin/sh", "-c", cli_build.script(HEAD, URL)]
+SUMMARY = f"{OLD} {HEAD} ok 0.1s"
+LIVE = Path(getpwuid(os.getuid()).pw_dir) / ".local/bin/tbhbdev"
 RETRY = "_TBHB_AGENT_VERSION_HEAL"
 ORIGIN = subprocess.CompletedProcess(GIT, 0, f"{HEAD}\t{REF}\n")
 NETWORK_ENV = {
@@ -151,6 +147,7 @@ def test_heal_ignores_path_overrides_and_root_git_config(
     restart = Mock()
     shell = Mock()
     monkeypatch.setattr(version_heal, "restart", restart)
+    monkeypatch.setattr(cli_build, "script", Mock(return_value="exec uv --version"))
     monkeypatch.setattr(transport, "shell", shell)
     installed = f"tbhbdev 0 ({head})"
 
@@ -180,7 +177,7 @@ def test_host_sync_retries_review_preflight(
         side_effect=[
             "0 4 12582912 6291456 0 0 -",
             OLD_LINE,
-            "",
+            SUMMARY,
             f"{host_after}\n{HEAD}\trefs/heads/topic\n",
         ]
     )
@@ -204,9 +201,10 @@ def test_host_sync_retries_review_preflight(
     assert install[:2] == (CONFIG, HOST)
     command = install[2]
     assert command.startswith(remote_shell.PREFIX)
-    assert shlex.split(command.removeprefix(remote_shell.PREFIX)) == ["exec", *INSTALL]
+    assert cli_build.script(HEAD, URL) in command
+    assert "--force" not in command
     err = capsys.readouterr().err
-    assert err.splitlines()[0] == f"version heal: host {HOST.name} {OLD}->{HEAD}"
+    assert err.splitlines()[0] == f"version heal: {SUMMARY}"
     if host_after == NEW_LINE:
         stream.assert_called_once()
         assert metadata.load(CONFIG, "sample").request.commit == HEAD
@@ -227,16 +225,16 @@ def test_driver_sync_execs_the_same_argv_once(
 ) -> None:
     argv = ["/example/bin/tbhbdev", "alpha", "agent", "exec", "sample", "brief.md"]
     original = f"version mismatch: driver {OLD_LINE!r}; host {installed!r}"
-    run = Mock(side_effect=[ORIGIN, subprocess.CompletedProcess(INSTALL, 0)])
-    shell = Mock()
+    run = Mock(side_effect=[ORIGIN, subprocess.CompletedProcess(INSTALL, 0, SUMMARY)])
+    shell = Mock(return_value=SUMMARY)
     monkeypatch.chdir(tmp_path)
     monkeypatch.setenv("UV_TOOL_BIN_DIR", str(tmp_path))
     for key, value in NETWORK_ENV.items():
         monkeypatch.setenv(key, value)
 
-    def execv(path: str, args: list[str]) -> None:
-        assert path == argv[0]
-        assert args == argv
+    def execv(path: Path, args: list[str]) -> None:
+        assert path == LIVE
+        assert args == [str(LIVE), *argv[1:]]
         assert os.environ[RETRY] == original
         with pytest.raises(Invalid) as caught:
             version_heal.check(CONFIG, HOST, NEW_LINE, OLD_LINE)
@@ -257,16 +255,16 @@ def test_driver_sync_execs_the_same_argv_once(
     assert install_call["env"] == origin_call["env"]
     assert "UV_TOOL_BIN_DIR" not in install_call["env"]
     assert {key: install_call["env"][key] for key in NETWORK_ENV} == NETWORK_ENV
-    assert run.call_args.kwargs["check"] is True
+    assert run.call_args.kwargs["check"] is False
     assert run.call_args.kwargs["stderr"] == subprocess.DEVNULL
     assert RETRY not in os.environ
     log = capsys.readouterr().err.splitlines()
-    assert log[-1] == f"version heal: driver {OLD}->{HEAD}"
+    assert log[-1] == f"version heal: {SUMMARY}"
     if installed == NEW_LINE:
         assert len(log) == 1
         shell.assert_not_called()
     else:
-        assert log[0] == f"version heal: host {HOST.name} unknown->{HEAD}"
+        assert log[0] == f"version heal: {SUMMARY}"
         shell.assert_called_once()
 
 
@@ -295,15 +293,16 @@ def test_empty_brief_is_refused_after_driver_restart(
         checked_prompt(args)
 
 
-def test_module_restart_replays_python_argv(monkeypatch: pytest.MonkeyPatch) -> None:
-    argv = ["python", "-m", "tbhbdev", "alpha", "agent", "exec"]
-    monkeypatch.setattr(sys, "orig_argv", argv)
-    monkeypatch.setattr(sys, "argv", ["/example/tbhbdev/__main__.py", *argv[3:]])
+def test_module_restart_uses_switched_entry_point(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    args = ["alpha", "agent", "exec"]
+    monkeypatch.setattr(sys, "argv", ["/example/tbhbdev/__main__.py", *args])
     restart = Mock(side_effect=FileNotFoundError("Python missing"))
     monkeypatch.setattr(os, "execv", restart)
     with pytest.raises(FileNotFoundError, match="Python missing"):
         version_heal.restart("original mismatch")
-    restart.assert_called_once_with(sys.executable, argv)
+    restart.assert_called_once_with(LIVE, [str(LIVE), *args])
     assert RETRY not in os.environ
 
 
@@ -351,3 +350,13 @@ def test_no_install_preserves_the_mismatch(
     )
     run.assert_called_once()
     shell.assert_not_called()
+
+
+def test_failed_remote_build_reports_summary(monkeypatch: pytest.MonkeyPatch) -> None:
+    summary = f"{OLD} {OLD} failed 0.1s"
+    shell = Mock(return_value=f"{summary}\ninstall failed\n")
+    monkeypatch.setattr(subprocess, "run", Mock(return_value=ORIGIN))
+    monkeypatch.setattr(transport, "shell", shell)
+
+    with pytest.raises(Invalid, match=summary):
+        version_heal.check(CONFIG, HOST, NEW_LINE, OLD_LINE)

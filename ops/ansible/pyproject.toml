@@ -19,7 +19,7 @@ dependencies = [
   "molecule==26.11.0",
   "molecule-plugins[docker]==26.11.0",
   # password_hash needs a crypt backend, and Python 3.14 has no crypt module.
-  "passlib==1.7.4",
+  "passlib==1.9.5",
 ]
 
 [tool.uv]

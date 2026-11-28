@@ -53,6 +53,24 @@ bazel_dep(name = "rules_python_gazelle_plugin", version = "2.5.1")
 bazel_dep(name = "buildifier_prebuilt", version = "10.1.0")
 bazel_dep(name = "rules_shell", version = "0.6.1")
 
+# The Go vanity Worker's packages and lock refresh tool.
+npm = use_extension("@aspect_rules_js//npm:extensions.bzl", "npm")
+npm.npm_translate_lock(
+    name = "npm_go_vanity",
+    data = ["//factory/go-vanity:package.json"],
+    lifecycle_hooks = {"*": []},
+    pnpm_lock = "//factory/go-vanity:pnpm-lock.yaml",
+)
+use_repo(npm, "npm_go_vanity")
+
+pnpm = use_extension("@aspect_rules_js//npm:extensions.bzl", "pnpm", dev_dependency = True)
+pnpm.pnpm(
+    name = "pnpm",
+    pnpm_version = "12.16.1",
+    pnpm_version_integrity = "sha512-CR0d7nknV1Zhsl2rPCrjHK/BxU1rce1qZgDPDByxBDSkR+rhQBXxsj4ua+3u1535SpMuIWTSgyKA3OP7MvZW0Q==",
+)
+use_repo(pnpm, "pnpm")
+
 go_sdk = use_extension("@rules_go//go:extensions.bzl", "go_sdk")
 go_sdk.from_file(go_work = "//:go.work")
 go_sdk.nogo(

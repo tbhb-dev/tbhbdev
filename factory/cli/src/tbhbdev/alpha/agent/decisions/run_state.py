@@ -17,6 +17,16 @@ def owns(recorded: Group, current: Group | None) -> bool:
     return recorded.pgid > 1 and recorded == current
 
 
+# Phases before the harness starts. The group record in them belongs to the
+# setup worker, which has exited, until the harness replaces it.
+SETUP_PHASES = frozenset({"check", "workspace", "brief", "shims"})
+
+
+def setup_record(phase: str | None, *, launched: bool) -> bool:
+    """Whether the recorded group is the setup worker's, not the harness's."""
+    return phase in SETUP_PHASES and not launched
+
+
 def time_limit(timeout: int | None, maximum: int | None) -> int | None:
     """The run cap in seconds, limited by the request and configuration."""
     limits = [timeout]

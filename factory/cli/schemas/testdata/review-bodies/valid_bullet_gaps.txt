@@ -1,0 +1,20 @@
+## Summary
+
+The cache preserves the latest saved value.
+
+## Findings
+
+- F1: P1 correctness The retry skips the final item. Occurs when: the slice ends early.
+- F2: P2 design Inline the single-use wrapper.
+- F4: P2 test Cover the timeout branch in the worker suite.
+- F5: P3 docs Explain the default cap in the package comment.
+- F7: P3 design Rename the local variable for clarity.
+- F8: P3 test Add a table case for blank input.
+
+## Verification
+
+- Read the cache implementation and its unit tests.
+
+<!-- tbhb-review v2 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef -->
+
+Generated-by: LLM effort=high;harness=codex;model=gpt-5.4

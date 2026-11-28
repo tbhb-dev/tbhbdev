@@ -9,6 +9,7 @@ lib/rules/**/*.d2.svg linguist-generated
 lib/rules/**/*.d2.png binary linguist-generated
 lib/rules/**/*.d2.sha256 linguist-generated
 lib/rules/**/worker-configuration.d.ts linguist-generated
+factory/go-vanity/worker-configuration.d.ts linguist-generated
 lib/rules/**/structurizr-*.svg -text linguist-generated
 lib/rules/**/structurizr-*.png binary linguist-generated
 lib/rules/**/workspace.json -text linguist-generated

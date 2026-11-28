@@ -36,7 +36,8 @@ repos:
       - id: fix-byte-order-marker
       - id: mixed-line-ending
       - id: trailing-whitespace
-        exclude: ^lib/rules/cloudflare/e2e/smoke/(nested/)?worker-configuration\.d\.ts$
+        # worker_types_test compares these files byte for byte with Wrangler.
+        exclude: ^(factory/go-vanity|lib/rules/cloudflare/e2e/smoke(/nested)?)/worker-configuration\.d\.ts$
 
   - repo: local
     hooks:

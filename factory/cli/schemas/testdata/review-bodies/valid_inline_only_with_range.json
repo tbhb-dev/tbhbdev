@@ -1,0 +1,11 @@
+{
+  "valid": true,
+  "parsed": true,
+  "harness": "codex",
+  "model": "gpt-5.4",
+  "effort": "high",
+  "counts": {
+    "p1/correctness": 1,
+    "p2/design": 2
+  }
+}
