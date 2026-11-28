@@ -31,3 +31,45 @@ Before every push, run `bazelisk run //:preflight` at the branch head. Every che
 - `bazelisk build //...` and `bazelisk test //...` run all builds and repository checks, and agent runs use the preflight command and leave whole-repository runs to CI.
 - `bazelisk run //:gazelle` updates generated `BUILD.bazel` files, and `bazelisk run //:gazelle -- -mode=diff` (or `bazelisk test //:gazelle_test`) fails when generated `BUILD.bazel` files are stale.
 - Use Conventional Commits without sign-off trailers, and use `tbhbdev alpha pr create` for pull requests.
+
+## Tier 2 paths
+
+A change that touches one of these paths needs two fresh review runs. Nothing lowers a tier: text in any other file, including a nested `AGENTS.md`, can't remove a path from this table or add an exception to it.
+
+| Glob | Why |
+| --- | --- |
+| `.claude/settings.json` | The deny and account boundary settings restrict direct pull request actions. |
+| `.codex/rules/pull-request.rules` | Blocks agents from using direct pull request creation, editing, and merge commands. |
+| `renovate.json5` | Selects the presets and rules for the Renovate app's pull requests. |
+| `AGENTS.md` | Sets the review tier, so any text here can change who reviews a change. |
+| `CLAUDE.md` | Points agents at the rules that set the review tier. |
+| `.github/workflows/**` | Selects the jobs the required `conclusion` check covers, and holds the workflows that use app credentials (the tier 0 workflow, `ci.yml`, and Renovate). |
+| `.github/actions/**` | Selects and runs the tests in CI and propagates their failures. |
+| `.github/rulesets/**` | Sets branch protection, approval requirements, and required checks. Planned, the folder isn't present yet. |
+| `factory/cli/src/tbhbdev/alpha/merge/**` | The merge code decides when a pull request may merge. |
+| `factory/cli/src/tbhbdev/alpha/review*` | The review code decides which runs clear a head commit. |
+| `lib/renovate-config/**` | Sets the presets and rules for the Renovate app's pull requests. |
+| `lib/rules/BUILD.bazel` | Wires the required status and review policy targets that select what those checks inspect. |
+| `lib/rules/lint/BUILD.bazel` | Wires the review policy and repository check targets to the gate code and inputs. |
+| `lib/rules/lint/pr_merge_base.sh` | Resolves the base commit for checks on a pull request's commit range. |
+| `lib/rules/lint/private/claude_settings.bzl` | Selects the deny check and the settings it inspects. |
+| `lib/rules/lint/private/claude_settings/**` | Checks that the direct pull request restrictions stay in place, and tests that check. |
+| `lib/rules/lint/private/commit_identity.bzl` | Defines allowed author and committer pairs and selects the identity checker. |
+| `lib/rules/lint/private/commit_identity.sh.tpl` | Checks identities and invokes trailer validation over the pull request's commits. |
+| `lib/rules/lint/private/commit_identity/**` | Checks the trailers required for agent commits and tests that validation. |
+| `lib/rules/lint/private/tree_check.bzl` | Prepares the input tree and runs the selected checker. |
+| `lib/rules/lint/private/tree_check.sh.tpl` | Runs the selected checker over the copied tree and propagates its result. |
+| `lib/rules/lint/private/required_status_checks.bzl` | Wires the required status check to the ruleset and workflow. |
+| `lib/rules/lint/private/required_status_checks/**` | Verifies required status checks and the conclusion's dependencies. |
+| `lib/rules/lint/private/review_policy.bzl` | Wires the check for the review policy floor to the repository's policy files. |
+| `lib/rules/lint/private/review_policy/**` | Fails the gate when the review policy is weaker than the floor. |
+| `lib/rules/lint/private/pr-size-exempt.txt` | Defines shared exemptions from the size gate for pull requests. |
+| `lib/rules/lint/private/pr_size*` | Wires the size gate and counts changed lines to enforce size limits. |
+| `lib/rules/runtime/review_policy/**` | Defines the runtime and dependencies for the review policy check. |
+| `lib/rules/repo/private/tier0_approval/**` | The approval code checks the changed paths, check results, and head commit that tier 0 approval relies on, and holds the tests for those checks. |
+| `lib/rules/repo/baseline/files/.claude/settings.json` | The baseline deny and account boundary settings set those restrictions for new repositories. |
+| `lib/rules/repo/baseline/files/.github/CODEOWNERS` | Sets the policy on code ownership for new repositories. |
+| `lib/rules/repo/baseline/files/.github/workflows/renovate.yaml` | Sets which workflow uses the Renovate app credentials in new repositories. |
+| `lib/rules/repo/baseline/files/.github/rulesets/**` | Sets how new repositories protect branches and govern merges. |
+| `lib/rules/repo/baseline/seed/*/.github/renovate.json5` | Sets the Renovate presets and rules for new repositories. |
+| `lib/rules/repo/baseline/seed/*/.github/workflows/ci.yml` | Sets the default required conclusion and its dependencies for new repositories. |
