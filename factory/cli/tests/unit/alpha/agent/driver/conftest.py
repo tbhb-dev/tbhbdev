@@ -11,6 +11,7 @@ from driver_scenarios import CONFIG, PREPARE, ticking
 
 from tbhbdev.alpha.agent import settings as agent_settings
 from tbhbdev.alpha.agent.driver import launch as coordinator
+from tbhbdev.alpha.agent.driver import version_heal
 
 if TYPE_CHECKING:
     import argparse
@@ -20,6 +21,11 @@ if TYPE_CHECKING:
 
     from tbhbdev.alpha.agent import model
     from tbhbdev.alpha.agent.driver.decisions.metadata import Run
+
+
+@pytest.fixture(autouse=True)
+def reset_version_heal() -> None:
+    version_heal.reset()
 
 
 @pytest.fixture

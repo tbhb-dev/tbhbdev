@@ -1500,6 +1500,7 @@ cli_py_library(
         "//factory/cli/src/tbhbdev/alpha/agent/driver:lifecycle",
         "//factory/cli/src/tbhbdev/alpha/agent/driver:metadata",
         "//factory/cli/src/tbhbdev/alpha/agent/driver:startup",
+        "//factory/cli/src/tbhbdev/alpha/agent/driver:version_heal",
     ],
 )
 

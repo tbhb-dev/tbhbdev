@@ -10,6 +10,7 @@ from typing import TYPE_CHECKING
 from tbhbdev import telemetry
 from tbhbdev.alpha.agent import admission, transport
 from tbhbdev.alpha.agent.decisions import limits, remote_host
+from tbhbdev.alpha.agent.driver import version_heal
 from tbhbdev.alpha.agent.driver.decisions.hosts import candidates, select_host
 from tbhbdev.alpha.agent.model import Invalid, Profile
 
@@ -28,10 +29,16 @@ def read_limits(
     ignore: bool,
     timeout: float,
 ) -> tuple[limits.Reading | str, bool, str]:
-    """Read and judge the host's load, memory, pressure and swap in one SSH call."""
+    """Heal if needed, then read and judge the host's limits in one SSH call."""
     if host.max_concurrent_runs == 0:
         message = f"{host.name}: max_concurrent_runs is 0"
         raise Invalid(message)
+    failed, _ = version_heal.heal_candidate(settings, host, timeout=timeout)
+    if failed is not None:
+        mismatch, error = failed
+        cause = f"heal failed: {error}"
+        detail = f"{mismatch}; {cause}" if mismatch else cause
+        return cause, True, f"{host.name}: {detail}"
     try:
         found, admitted = limits.parse_probe(
             transport.shell(settings, host, remote_host.limits(host), timeout=timeout)
@@ -67,6 +74,27 @@ def check_limits(
         print(message, file=sys.stderr)
 
 
+def _window(deadline: float, share: int) -> tuple[float, float] | None:
+    now = time.monotonic()
+    remaining = deadline - now
+    return None if remaining <= 0 else (now, now + min(30, remaining / share))
+
+
+def _heal_probe_deadline(
+    settings: Settings, host: Host, deadline: float, share: int
+) -> tuple[float, float] | None:
+    window = _window(deadline, share)
+    if window is None:
+        return None
+    now, probe_deadline = window
+    failed, synced = version_heal.heal_candidate(
+        settings, host, timeout=probe_deadline - now, deadline=deadline
+    )
+    if failed is not None:
+        return None
+    return _window(deadline, share) if synced else window
+
+
 def usable_hosts(
     settings: Settings,
     system: Os,
@@ -82,11 +110,10 @@ def usable_hosts(
     eligible = candidates(settings, system, account, exclude)
     for index, candidate in enumerate(eligible):
         host = select_host(settings, candidate.name, account)
-        now = time.monotonic()
-        remaining = deadline - now
-        if remaining <= 0:
-            break
-        probe_deadline = now + min(30, remaining / (len(eligible) - index))
+        window = _heal_probe_deadline(settings, host, deadline, len(eligible) - index)
+        if window is None:
+            continue
+        now, probe_deadline = window
         found, refuse, message = read_limits(
             settings,
             host,
