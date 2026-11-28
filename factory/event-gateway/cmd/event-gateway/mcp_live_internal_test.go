@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -174,7 +175,8 @@ func TestMCPGatewayLiveCursorReconnect(t *testing.T) {
 		done <- runMCPGateway(ctx, slog.New(slog.DiscardHandler), server.URL+sessionPath, readFixture, subs,
 			func(event channelEvent) bool {
 				if event.provider == mcpServerName {
-					if string(event.payload) == string(gatewayReconnected().channelEvent().payload) {
+					notice := sessionJSON[channelNotice](event.payload)
+					if strings.HasPrefix(notice.Text, "Gateway reconnected") {
 						reconnected <- struct{}{}
 					}
 

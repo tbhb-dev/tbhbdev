@@ -87,6 +87,7 @@ go_test(
         "grafana_internal_test.go",
         "healthcheck_internal_test.go",
         "main_internal_test.go",
+        "mcp_delivery_internal_test.go",
         "mcp_gateway_internal_test.go",
         "mcp_internal_test.go",
         "mcp_live_internal_test.go",

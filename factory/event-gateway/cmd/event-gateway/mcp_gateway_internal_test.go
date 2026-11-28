@@ -268,13 +268,13 @@ func TestMCPGatewayReconnect(t *testing.T) {
 	checkEqual(t, requests.Load(), 11)
 	checkEqual(t, slices.Equal(seconds, []time.Duration{1, 2, 1, 2, 4, 8, 16, 30, 30, 1}), true)
 	checkEqual(t, slices.Equal(noticeCounts, []int{0, 0, 1, 1, 1, 1, 1, 1, 1, 4}), true)
-	checkEqual(t, slices.Equal(notices, []channelNotice{
-		{Level: channelWarning, Text: "Gateway connection lost."},
-		{Level: "info", Text: "Gateway reconnected."},
-		{Level: channelWarning, Text: "Gateway events 8 through 13 are no longer available."},
-		{Level: channelWarning, Text: "Gateway connection lost."},
-		{Level: channelWarning, Text: "Gateway token was rejected."},
-	}), true)
+	checkEqual(t, len(notices), 5)
+	checkEqual(t, strings.HasPrefix(notices[0].Text, "Gateway connection lost at "), true)
+	checkEqual(t, notices[1].Level, "info")
+	checkEqual(t, strings.Contains(notices[1].Text, "outage lasted "), true)
+	checkEqual(t, notices[2].Text, "Gateway events 8 through 13 are no longer available.")
+	checkEqual(t, strings.HasPrefix(notices[3].Text, "Gateway connection lost at "), true)
+	checkEqual(t, notices[4].Text, "Gateway token was rejected.")
 	checkEqual(t, strings.Contains(logs.String(), "gateway retry scheduled"), true)
 	checkEqual(t, strings.Contains(logs.String(), mcpFixture), false)
 }

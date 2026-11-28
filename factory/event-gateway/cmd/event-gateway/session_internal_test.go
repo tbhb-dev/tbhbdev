@@ -115,6 +115,30 @@ func checkSessionFrameLimit(ctx context.Context, t *testing.T, conn *websocket.C
 	checkClose(ctx, t, other, websocket.StatusMessageTooBig, "")
 }
 
+func TestSessionEcho(t *testing.T) {
+	t.Parallel()
+
+	ctx, cancel := context.WithTimeout(t.Context(), liveTestTimeout)
+	defer cancel()
+
+	server := sessionReplayServer(t, testStore(t, retention))
+	conn := dialSession(ctx, t, server.URL)
+
+	const echo = `{"type":"echo","id":"nonce","payload":"ignored"}`
+
+	checkSessionReply(ctx, t, conn, echo, codeKey, badFrame)
+	checkError(t, conn.Write(ctx, websocket.MessageText, []byte(`{"type":"hello","more":true}`)))
+	checkSessionReply(ctx, t, conn, echo, codeKey, badFrame)
+	checkSessionReply(ctx, t, conn, `{"type":"hello"}`, typeKey, helloKind)
+
+	reply := checkSessionReply(ctx, t, conn, echo, typeKey, "echo")
+	checkEqual(t, string(reply["id"]), `"nonce"`)
+	checkEqual(t, len(reply), 2)
+
+	longID := `{"type":"echo","id":"` + strings.Repeat("x", idLimit+1) + `"}`
+	checkEqual(t, len(checkSessionReply(ctx, t, conn, longID, typeKey, "echo")), 1)
+}
+
 func checkSessionCommands(ctx context.Context, t *testing.T, conn *websocket.Conn) {
 	t.Helper()
 

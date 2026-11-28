@@ -415,17 +415,19 @@ func TestMCPCheckDelivery(t *testing.T) {
 			notifications := make(chan *jsonrpc.Request, 3)
 			session, _, _ := connectMCPClient(t, name, notifications)
 			checkEqual(t, callMCPTool(t, session, checkDeliveryTool, `{"extra":true}`).IsError, true)
-			checkEqual(t, callMCPTool(t, session, checkDeliveryTool, "").IsError, name != clientName)
+			result := callMCPTool(t, session, checkDeliveryTool, "")
+			checkEqual(t, result.IsError, name != clientName)
 
 			// The tool response follows any notifications on the same connection.
 			if name == clientName {
-				checkEqual(t, len(notifications), 2)
-
-				for _, event := range []string{"self_test", "echo"} {
-					params := readChannelNotification(t, <-notifications)
-					checkEqual(t, params.Meta[channelEventKey], event)
-					checkEqual(t, params.Content, `{"message":"Local stdio delivery test"}`)
-				}
+				checkEqual(t, len(notifications), 1)
+				params := readChannelNotification(t, <-notifications)
+				checkEqual(t, params.Meta[channelEventKey], "self_test")
+				checkEqual(t, params.Content, `{"message":"Local stdio delivery test"}`)
+				status := checkDeliveryStatus(t, result)
+				checkEqual(t, string(status["connection"]), `"not configured"`)
+				checkEqual(t, string(status["echo"]), `"not configured"`)
+				checkEqual(t, string(status["persistence"]), "false")
 			}
 
 			checkEqual(t, len(notifications), 0)
@@ -547,8 +549,6 @@ func TestMCPChannelNotice(t *testing.T) {
 		notice  channelNotice
 		content string
 	}{
-		{gatewayConnectionLost(), `{"level":"warning","text":"Gateway connection lost."}`},
-		{gatewayReconnected(), `{"level":"info","text":"Gateway reconnected."}`},
 		{gatewayGap(3, 5), `{"level":"warning","text":"Gateway events 3 through 5 are no longer available."}`},
 	} {
 		checkError(t, notifier.deliverChannel(ctx, peer, test.notice.channelEvent()))
