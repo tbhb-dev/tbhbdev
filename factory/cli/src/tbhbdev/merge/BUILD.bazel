@@ -40,6 +40,7 @@ cli_py_library(
         "//factory/cli/src/tbhbdev/alpha/install/git:hooks",
         "//factory/cli/src/tbhbdev/alpha/pull_request:publish",
         "//factory/cli/src/tbhbdev/alpha/pull_request:repository",
+        "//factory/cli/src/tbhbdev/alpha/pull_request:tools",
     ],
 )
 
