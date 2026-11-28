@@ -254,6 +254,16 @@ def _python_env_repo_impl(rctx):
         site_packages = "venv/lib/{}/site-packages".format(lib[0])
     if not rctx.path(executable).exists:
         fail("{}: the interpreter is not at {}".format(rctx.name, executable))
+    if not windows:
+        rctx.file("normalize_env.py", rctx.read(rctx.attr._normalize_env))
+        _run(rctx, [
+            interpreter,
+            "-B",
+            "normalize_env.py",
+            rctx.path("."),
+            rctx.path("python/" + install),
+            rctx.path(site_packages),
+        ], env, "normalizing Python environment paths")
     rctx.file("BUILD.bazel", _BUILD.format(
         bin = bin,
         install = install,
@@ -272,5 +282,6 @@ python_env_repo = repository_rule(
         "pyproject": attr.label(doc = "The root pyproject.toml of the project or workspace."),
         "python_version": attr.string(doc = "The interpreter version; defaults to the first line of .python-version next to pyproject."),
         "_lock_info": attr.label(default = Label(":lock_info.py"), allow_single_file = True),
+        "_normalize_env": attr.label(default = Label(":normalize_env.py"), allow_single_file = True),
     },
 )
