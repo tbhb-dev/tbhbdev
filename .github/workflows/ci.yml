@@ -451,10 +451,77 @@ jobs:
           path: ${{ runner.temp }}/event-gateway.sarif
           if-no-files-found: ignore
 
+  # The smoke modules under lib/rules/*/e2e/ are Bazel roots of their own, and
+  # lib/rules/ is in .bazelignore, so the bazel job never runs their proofs
+  # (planted defects that must fail for a stated reason). Nothing else runs
+  # them, so a change that breaks one, or edits a fixture a proof depends on,
+  # would pass. This job runs the suites that need only the network, and only
+  # when their e2e module changes; the job still reports success when nothing
+  # matched, so the conclusion job can require it. The other e2e modules need
+  # macOS, browsers or Docker and stay manual.
+  rules-e2e:
+    name: rules e2e proofs
+    runs-on: ubuntu-26.04
+    timeout-minutes: 30
+    environment: ${{ github.event_name == 'merge_group' && 'cache' || '' }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Select the e2e modules that changed
+        id: changed
+        shell: bash
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha || inputs.base }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha || github.event.merge_group.head_sha || github.sha }}
+        run: |
+          base=$(git merge-base -- "${BASE_SHA:-HEAD^}" "$HEAD_SHA")
+          files=$(git diff --name-only "$base" "$HEAD_SHA" -- 'lib/rules/*/e2e/')
+          for module in go ansible; do
+            if grep -q "^lib/rules/$module/e2e/" <<<"$files"; then
+              echo "$module=true" >>"$GITHUB_OUTPUT"
+            else
+              echo "$module=false" >>"$GITHUB_OUTPUT"
+            fi
+          done
+
+      - name: Set up Bazel for CI
+        if: steps.changed.outputs.go == 'true' || steps.changed.outputs.ansible == 'true'
+        uses: ./.github/actions/setup-bazel-ci
+        with:
+          disk-cache: ${{ github.workflow }}-${{ github.job }}-ubuntu-26.04
+          cache-save: ${{ github.event_name == 'merge_group' }}
+          # Each module fetches what it needs when it runs.
+          targets: ''
+
+      - name: Use the remote cache
+        if: steps.changed.outputs.go == 'true' || steps.changed.outputs.ansible == 'true'
+        uses: tbhb-dev/bazel-r2-cache/.github/actions/remote-cache@bdd7e71f0281998f10a52f253bcf4b9ec81396e8  # main
+        with:
+          main-token: ${{ secrets.BAZEL_CACHE_TOKEN }}
+          pr-token: ${{ secrets.BAZEL_CACHE_PR_TOKEN }}
+
+      # The govulncheck proofs name a vulnerable x/text pinned in
+      # lib/rules/go/e2e/smoke/govulncheck/ and need the Go proxy.
+      - name: Prove govulncheck
+        if: steps.changed.outputs.go == 'true'
+        working-directory: lib/rules/go/e2e/smoke
+        run: bazelisk test --config=ci //:govulncheck_proofs
+
+      # Includes proof_lock_mismatch, which needs planted/mismatch/requirements.yml
+      # to differ from the lock.
+      - name: Prove the Ansible checks
+        if: steps.changed.outputs.ansible == 'true'
+        working-directory: lib/rules/ansible/e2e
+        run: bazelisk test --config=ci //ansible:all
+
   conclusion:
     name: conclusion
     if: always()
-    needs: [bazel, cli-coverage, gazelle-current, gitleaks, prose, pr-size, agent-capacity, event-gateway]
+    needs: [bazel, cli-coverage, gazelle-current, gitleaks, prose, pr-size, agent-capacity, event-gateway, rules-e2e]
     runs-on: ubuntu-26.04
     timeout-minutes: 5
     steps:
