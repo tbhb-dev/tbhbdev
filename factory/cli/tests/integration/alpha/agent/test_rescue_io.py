@@ -201,7 +201,16 @@ def agent_key(tmp_path: Path) -> Path:
 
 
 @pytest.mark.parametrize(
-    "change", ["signed", "unsigned after rebase", "run secret", "main secret", "topic"]
+    "change",
+    [
+        "signed",
+        "unsigned after rebase",
+        "run secret",
+        "main secret",
+        "topic",
+        "merged main secret",
+        "merge resolution secret",
+    ],
 )
 def test_publication_after_main_advances(
     checkout: tuple[Path, str, Mock],
@@ -220,7 +229,7 @@ def test_publication_after_main_advances(
         GIT_COMMITTER_NAME="Example",
         GIT_COMMITTER_EMAIL="example@example.com",
     )
-    start_ref = START_REF if change == "topic" else None
+    start_ref = START_REF if change == "topic" or change.startswith("merge") else None
     if start_ref:
         (workspace / "topic").write_text("topic work")
         base = commit(workspace, "existing topic work", env=env)
@@ -228,13 +237,14 @@ def test_publication_after_main_advances(
 
     upstream = workspace.parent / "clone"
     git(upstream, "pull", "--ff-only")
-    (upstream / "upstream").write_text("host-x" if change == "main secret" else "main")
+    (upstream / "upstream").write_text("host-x" if "main secret" in change else "main")
     if change == "run secret":
         (upstream / ".gitleaks.toml").unlink()
     main = commit(upstream, "advance main", env=env)
     git(upstream, "push", "origin", "main")
 
-    work = workspace / "work"
+    conflict = "upstream" if change == "merge resolution secret" else "work"
+    work = workspace / conflict
     work.write_text("host-x" if change == "run secret" else "build work")
     commit(workspace, "build work", env=env)
     if change == "run secret":
@@ -248,8 +258,7 @@ def test_publication_after_main_advances(
     sign = "--no-gpg-sign" if change == "unsigned after rebase" else "-S"
     if start_ref:
         git(workspace, *signing, "commit", "--amend", "--no-edit", sign, env=env)
-    operation = ("merge", "--no-edit") if start_ref else ("rebase",)
-    git(workspace, *signing, *operation, sign, main, env=env)
+    integrate(workspace, change, (*signing, sign), main, env)
     tip = git(workspace, "rev-parse", "HEAD")
     files = runfiles.RunFiles(workspace.parent / "runs", "example")
     files.write("base", base)
@@ -260,15 +269,38 @@ def test_publication_after_main_advances(
 
     if change == "unsigned after rebase":
         assert f"agent commit {tip[:7]} lacks a valid agent signature" in result
-    elif change == "run secret":
-        secret = git(workspace, "rev-parse", "HEAD^")
-        assert result == f"{FOUND} in commit {secret[:7]}"
+    elif change in ("run secret", "merge resolution secret"):
+        own = "HEAD" if change.startswith("merge") else "HEAD^"
+        secret = git(workspace, "rev-parse", own)
+        assert result == f"{FOUND} in commit {secret[:7]} (rule tailnet-host-1)"
+        assert "host-x" not in result
     else:
         assert result == "published"
         assert git(origin, "rev-parse", start_ref or REF) == tip
     assert any(call.args[1] == "push" for call in remote.call_args_list) == (
         result == "published"
     )
+
+
+def integrate(
+    workspace: Path,
+    change: str,
+    signing: tuple[str, ...],
+    main: str,
+    env: dict[str, str],
+) -> None:
+    """Rebase onto main, or merge it, resolving a conflict with a secret."""
+    *config, sign = signing
+    if change == "merge resolution secret":
+        with pytest.raises(subprocess.CalledProcessError):
+            git(workspace, *config, "merge", "--no-edit", sign, main, env=env)
+        (workspace / "upstream").write_text("host-x")
+        git(workspace, "add", ".", env=env)
+        git(workspace, *config, "commit", "--no-edit", sign, env=env)
+        return
+    merging = change == "topic" or change.startswith("merged")
+    operation = ("merge", "--no-edit") if merging else ("rebase",)
+    git(workspace, *config, *operation, sign, main, env=env)
 
 
 def change_checkout(workspace: Path, change: str) -> None:
