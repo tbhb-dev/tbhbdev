@@ -90,11 +90,11 @@ cli_py_library(
     name = "process_group",
     srcs = ["process_group.py"],
     imports = ["../../.."],
-    pyi_deps = [":runfiles"],
     visibility = ["//factory/cli:__subpackages__"],
     deps = [
         ":host_tools",
         ":model",
+        ":runfiles",
         "//factory/cli/src/tbhbdev/alpha/agent/decisions:run_state",
     ],
 )
@@ -209,7 +209,6 @@ cli_py_library(
         ":ownership",
         ":process_group",
         ":runfiles",
-        "//factory/cli/src/tbhbdev/alpha/agent/decisions:run_state",
         "//factory/cli/src/tbhbdev/alpha/agent/run_host:dispatcher",
     ],
 )
