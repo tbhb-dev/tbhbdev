@@ -5,12 +5,13 @@ from __future__ import annotations
 import json
 import secrets
 import time
+from contextlib import suppress
 from dataclasses import replace
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
 from tbhbdev import telemetry, version
-from tbhbdev.alpha.agent import transport
+from tbhbdev.alpha.agent import cli_bundle, transport
 from tbhbdev.alpha.agent.decisions import remote_host, remote_run, request
 from tbhbdev.alpha.agent.driver import launcher, startup, version_heal
 from tbhbdev.alpha.agent.driver.decisions import launch as plan
@@ -117,6 +118,9 @@ def execute(settings: Settings, args: argparse.Namespace) -> int:
     with launch_lock():
         if run.request.profile is Profile.REVIEW:
             refuse_live_duplicate(settings, run)
+        with suppress(Exception):
+            bundle, run.cli_commit, run.cli_sha256 = cli_bundle.installed()
+            del bundle
         save(run)
     try:
         transport.stream(

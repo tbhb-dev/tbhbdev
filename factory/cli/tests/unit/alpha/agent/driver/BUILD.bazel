@@ -79,9 +79,11 @@ cli_py_test(
     deps = [
         ":conftest",
         "//factory/cli/src/tbhbdev:version",
+        "//factory/cli/src/tbhbdev/alpha/agent:cli_bundle",
         "//factory/cli/src/tbhbdev/alpha/agent:model",
         "//factory/cli/src/tbhbdev/alpha/agent:settings",
         "//factory/cli/src/tbhbdev/alpha/agent:transport",
+        "//factory/cli/src/tbhbdev/alpha/agent/decisions:cli_bundle",
         "//factory/cli/src/tbhbdev/alpha/agent/decisions:remote_host",
         "//factory/cli/src/tbhbdev/alpha/agent/decisions:remote_run",
         "//factory/cli/src/tbhbdev/alpha/agent/decisions:remote_shell",

@@ -31,6 +31,8 @@ class Run:
         self.owner = owner
         self.launched_by: tuple[str | None, str | None] = (None, None)
         self.ignore_limits = False
+        self.cli_commit: str | None = None
+        self.cli_sha256: str | None = None
 
 
 def check_name(name: str) -> None:
@@ -49,6 +51,8 @@ def record_fields(run: Run) -> dict[str, object]:
         "launcher_session": run.launched_by[1],
         "cleaning": False,  # Older coordinators expect this field.
         "ignore_limits": run.ignore_limits,
+        "cli_commit": run.cli_commit,
+        "cli_sha256": run.cli_sha256,
     }
 
 
@@ -68,8 +72,12 @@ def parse_record(settings: Settings, name: str, text: str) -> Run:
     )
     # Records from before the limits check have no such field.
     ignore_limits = record.pop("ignore_limits", False)
+    cli_commit = _maybe_text(record.pop("cli_commit", None))
+    cli_sha256 = _maybe_text(record.pop("cli_sha256", None))
     run = request.parse(record)
     result = Run(name, host, run, started, owner)
     result.launched_by = launched_by
     result.ignore_limits = bool(ignore_limits)
+    result.cli_commit = cli_commit
+    result.cli_sha256 = cli_sha256
     return result
