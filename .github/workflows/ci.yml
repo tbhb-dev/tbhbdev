@@ -416,10 +416,7 @@ jobs:
             -format sarif -o "$RUNNER_TEMP/gomodscan.sarif" || status=$?
           if ((status > 1)); then exit "$status"; fi
 
-      # A merge group whose branch the queue already deleted is doomed, and the
-      # upload then fails on the missing ref, so only a pull request must pass it.
       - name: Upload the Go module scan
-        continue-on-error: ${{ github.event_name == 'merge_group' }}
         uses: github/codeql-action/upload-sarif@33d7b85da1a04171e211befe2c739303b9a4c066  # v4.39.3
         with:
           sarif_file: ${{ runner.temp }}/gomodscan.sarif
