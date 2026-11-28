@@ -50,7 +50,7 @@ def launch(host: Remote, *options: str, target: str | None = "example-linux") ->
 def test_a_busy_host_refuses_before_any_transfer(
     host: Remote, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    host.configure(limits="9 4 1000 900 100 0 -")
+    host.configure(limits="9 4 1000 900 100 0 - -")
     assert launch(host) == 1
     assert "load 9 >= limit 4" in capsys.readouterr().err
     assert len(host.records("ssh", limits=True)) == 1
@@ -68,12 +68,12 @@ def host_pool(host: Remote, monkeypatch: pytest.MonkeyPatch) -> Remote:
     config = dataclasses.replace(CONFIG, hosts=(busy, active, idle, laptop, mac))
     monkeypatch.setattr(agent_settings, "load", lambda: config)
     host.configure(
-        limits="1.5 32 33554432 16777216 100 0 -",
+        limits="1.5 32 33554432 16777216 100 0 - -",
         limits_by_host={
-            busy.name: "24 32 33554432 16777216 100 0 -",
-            active.name: "4 32 33554432 16777216 100 0 -",
-            laptop.name: "0.1 8 33554432 16777216 100 0 -",
-            mac.name: "0.2 8 33554432 16777216 100 0 -",
+            busy.name: "24 32 33554432 16777216 100 0 - -",
+            active.name: "4 32 33554432 16777216 100 0 - -",
+            laptop.name: "0.1 8 33554432 16777216 100 0 - -",
+            mac.name: "0.2 8 33554432 16777216 100 0 - -",
         },
     )
     return host
@@ -84,7 +84,7 @@ def test_exec_without_host_uses_the_idle_linux_host(
     host_pool: Remote, capsys: pytest.CaptureFixture[str], swap_warning: bool
 ) -> None:
     if swap_warning:
-        host_pool.configure(limits="1.5 32 33554432 16777216 100 90 0.4")
+        host_pool.configure(limits="1.5 32 33554432 16777216 100 90 0.4 -")
     assert launch(host_pool, target=None) == 0
     record = json.loads(metadata.metadata_path("sample").read_text())
     assert record["host"] == "example-idle"
@@ -119,8 +119,8 @@ def test_exec_preserves_preflight_time_after_a_slow_probe(
     )
     monkeypatch.setattr(agent_settings, "load", lambda: config)
     host.configure(
-        limits="1 4 12582912 6291456 100 0 -",
-        limits_by_host={preferred.name: "0.5 4 12582912 6291456 100 0 -"},
+        limits="1 4 12582912 6291456 100 0 - -",
+        limits_by_host={preferred.name: "0.5 4 12582912 6291456 100 0 - -"},
     )
     elapsed = 0.0
     set_clock(monkeypatch, lambda: elapsed)
@@ -176,8 +176,8 @@ def test_exec_without_host_skips_hosts_without_a_slot(
         full.append("example-active")
     host_pool.configure(
         limits_by_host={
-            "example-linux": "22 32 33554432 16777216 100 0 -",
-            "example-active": "4 32 33554432 16777216 100 0 -",
+            "example-linux": "22 32 33554432 16777216 100 0 - -",
+            "example-active": "4 32 33554432 16777216 100 0 - -",
         },
         full_slot_hosts=full,
     )
@@ -242,10 +242,10 @@ def test_exec_without_host_refuses_before_ssh(
 def test_full_swap_with_low_pressure_launches_with_a_warning_end_to_end(
     host: Remote, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    host.configure(limits="0.5 4 12582912 6291456 8191 8167 0.4")
+    host.configure(limits="0.5 4 12582912 6291456 8191 8167 0.4 -")
     assert launch(host) == 0
     assert "warning: example-linux: swap used 100% > 80%" in capsys.readouterr().err
-    host.configure(limits="0.5 4 12582912 6291456 8191 8167 -")
+    host.configure(limits="0.5 4 12582912 6291456 8191 8167 - -")
     with pytest.raises(Invalid, match="swap used 100% > 80%"):
         hosts.check_limits(CONFIG, CONFIG.hosts[0], Profile.BUILD, ignore=False)
 
@@ -253,26 +253,25 @@ def test_full_swap_with_low_pressure_launches_with_a_warning_end_to_end(
 def test_full_swap_uses_swap_in_when_pressure_is_unknown(
     host: Remote, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    host.configure(limits="0.5 4 12582912 6291456 100 99 - 0")
     config_host = CONFIG.hosts[0]
+    host.configure(limits="0.5 4 12582912 6291456 100 99 - 0")
     hosts.check_limits(CONFIG, config_host, Profile.BUILD, ignore=False)
     assert (
         capsys.readouterr().err == f"warning: {config_host.name}: swap used 99% > 80%\n"
     )
-
     host.configure(limits="0.5 4 12582912 6291456 100 99 - 5000")
-    with pytest.raises(Invalid) as caught:
-        hosts.check_limits(CONFIG, config_host, Profile.BUILD, ignore=False)
-    assert str(caught.value) == (
-        f"{config_host.name}: swap-in 5000 pages/s >= limit 1000; swap used 99% > 80%; "
-        "pass --ignore-limits to launch anyway"
+    expected = (
+        rf"^{config_host.name}: swap-in 5000 pages/s >= limit 1000; "
+        r"swap used 99% > 80%; pass --ignore-limits to launch anyway$"
     )
+    with pytest.raises(Invalid, match=expected):
+        hosts.check_limits(CONFIG, config_host, Profile.BUILD, ignore=False)
 
 
 def test_ignore_limits_launches_warns_and_is_recorded(
     host: Remote, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    host.configure(limits="9 4 1000 900 100 0 -")
+    host.configure(limits="9 4 1000 900 100 0 - -")
     assert launch(host, "--ignore-limits") == 0
     assert "warning: example-linux: load 9 >= limit 4" in capsys.readouterr().err
     assert json.loads(metadata.metadata_path("sample").read_text())["ignore_limits"]
@@ -319,7 +318,7 @@ def test_a_disabled_host_refuses_even_with_limit_overrides(
 def test_build_reservation_uses_available_memory(
     host: Remote, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    host.configure(limits="0.5 4 12582912 6291455 0 0 -")
+    host.configure(limits="0.5 4 12582912 6291455 0 0 - -")
     assert launch(host) == 1
     assert (
         "memory available 6291455 KiB < reservation 6144 MiB" in capsys.readouterr().err
@@ -341,17 +340,17 @@ def test_review_uses_its_own_reservation_at_the_boundary(
 
     monkeypatch.setattr(agent_settings, "load", load)
     monkeypatch.setattr(launcher, "session", session)
-    host.configure(limits="0.5 4 4194304 1048575 0 0 -")
+    host.configure(limits="0.5 4 4194304 1048575 0 0 - -")
     with pytest.raises(Invalid, match="reservation 1024 MiB"):
         hosts.check_limits(config, config_host, Profile.REVIEW, ignore=False)
-    host.configure(limits="0.5 4 4194304 1048576 0 0 -")
+    host.configure(limits="0.5 4 4194304 1048576 0 0 - -")
     assert launch(host, "--profile", "review", "--ref", "a" * 40) == 0
     with pytest.raises(Invalid, match="reservation 6144 MiB"):
         hosts.check_limits(config, config_host, Profile.BUILD, ignore=False)
 
 
 def test_check_limits_runs_without_a_launch(host: Remote) -> None:
-    host.configure(limits="9 4 1000 900 100 0 -")
+    host.configure(limits="9 4 1000 900 100 0 - -")
     config_host = CONFIG.hosts[0]
     with pytest.raises(Invalid, match="load 9"):
         hosts.check_limits(CONFIG, config_host, Profile.BUILD, ignore=False)
@@ -362,25 +361,16 @@ def test_check_limits_charges_only_recent_runs_and_keeps_single_run_fallback(
     host: Remote,
 ) -> None:
     config_host = CONFIG.hosts[0]
-    two_runs_reading = "0.5 4 33554432 12582912 0 0 - 0"
+    reading = "0.5 4 33554432 12582912 0 0 - 0"
     refused = r"12582912 KiB.*3 \* reservation 6144 MiB.*2 recently admitted"
-    host.configure(limits=two_runs_reading, admitted="2 2")
-    with pytest.raises(Invalid, match=refused):
+    for admitted in ("2 2", "2"):
+        host.configure(limits=reading, admitted=admitted)
+        with pytest.raises(Invalid, match=refused):
+            hosts.check_limits(CONFIG, config_host, Profile.BUILD, ignore=False)
+    for admitted in ("2 0", "0 0", None):
+        host.configure(limits=reading, admitted=admitted)
         hosts.check_limits(CONFIG, config_host, Profile.BUILD, ignore=False)
-
-    host.configure(limits=two_runs_reading, admitted="2")
-    with pytest.raises(Invalid, match=refused):
-        hosts.check_limits(CONFIG, config_host, Profile.BUILD, ignore=False)
-
-    host.configure(limits=two_runs_reading, admitted="2 0")
-    hosts.check_limits(CONFIG, config_host, Profile.BUILD, ignore=False)
-
-    host.configure(limits=two_runs_reading, admitted="0 0")
-    hosts.check_limits(CONFIG, config_host, Profile.BUILD, ignore=False)
-
-    host.configure(limits=two_runs_reading, admitted=None)
-    hosts.check_limits(CONFIG, config_host, Profile.BUILD, ignore=False)
-    host.configure(limits="0.5 4 25165824 6291455 0 0 -", admitted=None)
+    host.configure(limits="0.5 4 25165824 6291455 0 0 - -", admitted=None)
     with pytest.raises(
         Invalid, match="memory available 6291455 KiB < reservation 6144 MiB"
     ):

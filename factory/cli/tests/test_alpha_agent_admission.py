@@ -281,44 +281,75 @@ def _age(path: Path, seconds: float) -> None:
     os.utime(path, (then, then))
 
 
-def test_reserve_stamps_the_slot_with_the_claim_time(tmp_path: Path) -> None:
-    root = tmp_path / "admission"
-    root.mkdir(mode=0o1777)
-    stale = root / "build-0"
+def _stamp(root: Path, slot_name: str) -> Path:
+    return root / f"claim-{slot_name}-{os.getuid()}"
+
+
+def test_reused_slot_from_another_account_counts_as_recent(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    stale = tmp_path / "build-0"
     stale.touch()
     _age(stale, 10_000)
-    before = time.time()
-    with admission.reserve(root, LINUX, Profile.BUILD, 3):
-        assert stale.stat().st_mtime >= before - 1
-        assert time.time() - stale.stat().st_mtime < admission.RECENT_SECONDS
+    stale_inode, other_uid = stale.stat().st_ino, os.getuid() + 1
+    real_fstat, real_utime = os.fstat, os.utime
+
+    def lookup(name: str) -> SimpleNamespace:
+        return SimpleNamespace(pw_uid=other_uid if name == LINUX.accounts[-1] else 0)
+
+    def stat_fd(fd: int) -> os.stat_result | SimpleNamespace:
+        info = real_fstat(fd)
+        if info.st_ino != stale_inode:
+            return info
+        return SimpleNamespace(
+            st_mode=info.st_mode, st_uid=other_uid, st_mtime=info.st_mtime
+        )
+
+    def utime(fd: int) -> None:
+        if real_fstat(fd).st_ino == stale_inode:
+            raise PermissionError
+        real_utime(fd)
+
+    monkeypatch.setattr(pwd, "getpwnam", lookup)
+    monkeypatch.setattr(admission.os, "fstat", stat_fd)
+    monkeypatch.setattr(admission.os, "utime", utime)
+    with admission.reserve(tmp_path, LINUX, Profile.BUILD, 3):
+        assert admission.active_count(tmp_path, LINUX.accounts) == (1, 1)
+
+
+def test_unwritable_stamp_never_yields_old(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    for path in (tmp_path / "build-0", _stamp(tmp_path, "build-0")):
+        path.touch()
+        _age(path, 10_000)
+
+    def fail_utime(*_args: object, **_kwargs: object) -> None:
+        raise PermissionError
+
+    monkeypatch.setattr(admission.os, "utime", fail_utime)
+    with admission.reserve(tmp_path, LINUX, Profile.BUILD, 3):
+        assert admission.active_count(tmp_path, LINUX.accounts) == (1, 1)
+        later = time.time() + 10_000
+        monkeypatch.setattr(admission.time, "time", lambda: later)
+        assert admission.active_count(tmp_path, LINUX.accounts) == (1, 1)
 
 
 def test_active_count_separates_recent_from_older_runs(tmp_path: Path) -> None:
-    root = tmp_path / "admission"
+    assert admission.RECENT_SECONDS == 300
     accounts = LINUX.accounts
-    assert admission.active_count(root, accounts) == (0, 0)
+    assert admission.active_count(tmp_path, accounts) == (0, 0)
     with ExitStack() as slots:
         for _ in range(3):
-            slots.enter_context(admission.reserve(root, LINUX, Profile.BUILD, 5))
-        slots.enter_context(admission.reserve(root, LINUX, Profile.REVIEW, 5))
-        assert admission.active_count(root, accounts) == (4, 4)
-        _age(root / "build-0", admission.RECENT_SECONDS - 1)
-        assert admission.active_count(root, accounts) == (4, 4)
-        _age(root / "build-0", admission.RECENT_SECONDS + 1)
-        assert admission.active_count(root, accounts) == (4, 3)
-        _age(root / "build-1", 3600)
-        _age(root / "review-0", 3600)
-        assert admission.active_count(root, accounts) == (4, 1)
-    assert admission.active_count(root, accounts) == (0, 0)
-
-
-def test_a_slot_that_is_not_held_is_neither_total_nor_recent(tmp_path: Path) -> None:
-    root = tmp_path / "admission"
-    with admission.reserve(root, LINUX, Profile.BUILD, 3):
-        pass
-    assert (root / "build-0").exists()
-    assert admission.active_count(root, LINUX.accounts) == (0, 0)
-
-
-def test_the_recent_window_is_five_minutes() -> None:
-    assert admission.RECENT_SECONDS == 300
+            slots.enter_context(admission.reserve(tmp_path, LINUX, Profile.BUILD, 5))
+        slots.enter_context(admission.reserve(tmp_path, LINUX, Profile.REVIEW, 5))
+        assert admission.active_count(tmp_path, accounts) == (4, 4)
+        _age(_stamp(tmp_path, "build-0"), admission.RECENT_SECONDS - 1)
+        assert admission.active_count(tmp_path, accounts) == (4, 4)
+        _age(_stamp(tmp_path, "build-0"), admission.RECENT_SECONDS + 1)
+        assert admission.active_count(tmp_path, accounts) == (4, 3)
+        _age(_stamp(tmp_path, "build-1"), 3600)
+        _age(_stamp(tmp_path, "review-0"), 3600)
+        assert admission.active_count(tmp_path, accounts) == (4, 1)
+    assert (tmp_path / "build-0").exists()
+    assert admission.active_count(tmp_path, accounts) == (0, 0)

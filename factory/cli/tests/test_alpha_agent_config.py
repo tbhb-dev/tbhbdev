@@ -1082,7 +1082,6 @@ def test_host_limits_default_and_set() -> None:
     host = limits_host()
     assert (host.load_limit, host.min_memory_available_percent) == (None, 20)
     assert (host.max_swap_used_percent, host.limits_warn_only) == (80, False)
-    assert host.max_swap_in_pages_per_second == 1000
     assert host.max_concurrent_runs == 3
     assert (host.max_memory_pressure_avg10, host.max_memory_pressure_level) == (10, 4)
     host = limits_host(max_memory_pressure_avg10=25, max_memory_pressure_level=2)
@@ -1091,15 +1090,17 @@ def test_host_limits_default_and_set() -> None:
         load_limit=24,
         min_memory_available_percent=30,
         max_swap_used_percent=50,
-        max_swap_in_pages_per_second=750,
         limits_warn_only=True,
         max_concurrent_runs=0,
     )
     assert (host.load_limit, host.min_memory_available_percent) == (24, 30)
     assert (host.max_swap_used_percent, host.limits_warn_only) == (50, True)
-    assert host.max_swap_in_pages_per_second == 750
     assert host.max_concurrent_runs == 0
-    assert limits_host(max_swap_in_pages_per_second=0).max_swap_in_pages_per_second == 0
+
+
+def test_max_swap_in_pages_per_second_is_refused_as_unknown() -> None:
+    with pytest.raises(Invalid, match=r"max_swap_in_pages_per_second not recognized"):
+        limits_host(max_swap_in_pages_per_second=1000)
 
 
 def test_host_builds_shims_by_default() -> None:
@@ -1122,9 +1123,6 @@ def test_host_shim_setting(value: bool) -> None:
         ("load_limit", 0, "must be a positive integer"),
         ("min_memory_available_percent", 101, "at most 100"),
         ("max_swap_used_percent", 0, "must be a positive integer"),
-        ("max_swap_in_pages_per_second", -1, "must be a non-negative integer"),
-        ("max_swap_in_pages_per_second", 1.5, "must be a non-negative integer"),
-        ("max_swap_in_pages_per_second", True, "must be a non-negative integer"),
         ("max_memory_pressure_avg10", 101, "at most 100"),
         ("max_memory_pressure_avg10", 0, "must be a positive integer"),
         ("max_memory_pressure_level", 3, "must be 1 \\(normal\\)"),

@@ -15,7 +15,6 @@ from enum import StrEnum
 REQUEST_VERSION = 2
 DEFAULT_RUN_MEMORY_MIB = 6 * 1024
 DEFAULT_MAX_CONCURRENT_RUNS = 3
-DEFAULT_MAX_SWAP_IN_PAGES_PER_SECOND = 1000
 # The Codex model for a spawned agent that names none: the model that
 # tbhb-dev/wiki `models/README.md` pairs with Sonnet (line 58) and names as the
 # non-trial Codex builder (line 45). Its `gpt-6.2-sol` is unverified (line 73).
@@ -137,7 +136,6 @@ class Host:
     max_concurrent_runs: int = DEFAULT_MAX_CONCURRENT_RUNS
     build_shims: bool = True
     auto_select: bool = False
-    max_swap_in_pages_per_second: int = DEFAULT_MAX_SWAP_IN_PAGES_PER_SECOND
 
 
 @dataclass(frozen=True)

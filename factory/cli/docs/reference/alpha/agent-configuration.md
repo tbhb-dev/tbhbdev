@@ -53,9 +53,9 @@ Set `auto_select = true` in each `[[agent.host]]` table for hosts that can take 
 
 Settings in `[[agent.host]]` control the thresholds. The default `load_limit` equals the logical CPU count and `min_memory_available_percent` defaults to 20. The default pressure limit is 10 for `max_memory_pressure_avg10` on Linux and 4 for `max_memory_pressure_level` on macOS. Both checks refuse at or over their limit. On macOS, use a pressure limit of 1, 2, or 4.
 
-The launch check uses memory pressure when the probe reports it. When Linux cannot read pressure, the probe samples pages swapped in over one second. The check refuses a rate at or above `max_swap_in_pages_per_second`, which defaults to 1000. With 4 KiB pages, that is about 4 MiB/s of sustained swap-in. Idle pages can stay in swap with a rate near zero, while a host that is thrashing can swap in tens of thousands of pages per second. The one-second sample adds little to launch time. A host can enable the kernel's pressure files to use the `avg10` rule.
+The launch check uses memory pressure when the probe reports it. When Linux cannot read pressure, the probe samples pages swapped in over one second. The check refuses a rate at or above 1000 pages per second. With 4 KiB pages, that is about 4 MiB/s of sustained swap-in. Idle pages can stay in swap with a rate near zero, while a host that is thrashing can swap in tens of thousands of pages per second. The one-second sample adds little to launch time. A host can enable the kernel's pressure files to use the `avg10` rule.
 
-`max_swap_used_percent` defaults to 80. Swap use over the threshold yields a warning when either pressure or swap-in is known. When both are unknown, the same swap threshold refuses the launch. Older probes omit swap-in, and macOS probes always report it as unknown. macOS uses its pressure level when available and falls back to swap use otherwise.
+`max_swap_used_percent` defaults to 80. Swap use over the threshold yields a warning when either pressure or swap-in is known. When both are unknown, the same swap threshold refuses the launch. macOS probes always report swap-in as unknown. macOS uses its pressure level when available and falls back to swap use otherwise.
 
 An unreadable resource check reports `cannot read host limits`. To continue, use `--ignore-limits` or configure `limits_warn_only = true`. The run record saves the flag. Older records omit it and load as `false`.
 
@@ -213,7 +213,6 @@ The settings have these constraints:
 - Only `signing` also accepts a field label with internal spaces and `?ssh-format=openssh`, which converts the private key to OpenSSH format in memory.
 - `default_profile` names one of the profiles, matching without regard to case, so `Primary` selects `primary`. Profile names that differ only in case fail validation. Display uses the name as written.
 - `[[agent.host]]` lists at least one host. Its `name` is lower-case, dot-separated labels, `os` is `linux` or `macos`, `shell` is `bash` or `zsh`, `account` must be one of `accounts`, and host names are unique. Every name in `accounts` needs an `[agent.credentials.<name>]` table.
-- `max_swap_in_pages_per_second` in `[[agent.host]]` is an optional non-negative integer and defaults to 1000.
 
 ## Run request format
 

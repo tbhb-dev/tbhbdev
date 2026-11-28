@@ -18,7 +18,6 @@ from typing import NoReturn, cast
 from tbhbdev.alpha.agent.model import (
     DEFAULT_CODEX_SUBAGENT_MODEL,
     DEFAULT_MAX_CONCURRENT_RUNS,
-    DEFAULT_MAX_SWAP_IN_PAGES_PER_SECOND,
     DEFAULT_RUN_MEMORY_MIB,
     HOST_NAME,
     NAME,
@@ -437,7 +436,6 @@ def _host(table: _Table) -> Host:
         "load_limit",
         "min_memory_available_percent",
         "max_swap_used_percent",
-        "max_swap_in_pages_per_second",
         "max_memory_pressure_avg10",
         "max_memory_pressure_level",
         "limits_warn_only",
@@ -477,9 +475,6 @@ def _host(table: _Table) -> Host:
             table, "min_memory_available_percent", 20
         ),
         max_swap_used_percent=_percent(table, "max_swap_used_percent", 80),
-        max_swap_in_pages_per_second=table.nonnegative(
-            "max_swap_in_pages_per_second", DEFAULT_MAX_SWAP_IN_PAGES_PER_SECOND
-        ),
         max_memory_pressure_avg10=_percent(table, "max_memory_pressure_avg10", 10),
         max_memory_pressure_level=_pressure_level(table),
         limits_warn_only=table.flag("limits_warn_only", default=False),

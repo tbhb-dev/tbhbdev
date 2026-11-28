@@ -13,21 +13,15 @@ from tbhbdev.alpha.agent.model import Host, Os
 FINE = limits.Reading(1.0, 8, 1000, 500, 100, 10, None)
 
 
-def test_parse_reads_seven_fields() -> None:
-    assert limits.parse("0.5 4 1000 900 100 0 -\n") == limits.Reading(
-        0.5, 4, 1000, 900, 100, 0, None
-    )
-    assert limits.parse("0.5 4 1000 900 100 0 12.5\n") == limits.Reading(
-        0.5, 4, 1000, 900, 100, 0, 12.5
-    )
-
-
-@pytest.mark.parametrize(("field", "expected"), [("7.5", 7.5), ("-", None)])
-def test_parse_reads_eight_fields(field: str, expected: float | None) -> None:
-    found = limits.parse(f"0.5 4 1000 900 100 0 - {field}\n")
-    assert isinstance(found, limits.Reading)
-    assert found.pressure is None
-    assert found.swap_in == expected
+@pytest.mark.parametrize(
+    ("tail", "pressure", "swap_in"),
+    [("- -", None, None), ("12.5 -", 12.5, None), ("- 7.5", None, 7.5)],
+)
+def test_parse_reads_eight_fields(
+    tail: str, pressure: float | None, swap_in: float | None
+) -> None:
+    found = limits.parse(f"0.5 4 1000 900 100 0 {tail}\n")
+    assert found == limits.Reading(0.5, 4, 1000, 900, 100, 0, pressure, swap_in)
 
 
 @pytest.mark.parametrize(
@@ -36,22 +30,17 @@ def test_parse_reads_eight_fields(field: str, expected: float | None) -> None:
         "",
         "1 2 3",
         "1 4 1000 900 100 0",
-        "1 4 1000 900 100 0 x",
-        "1 4 1000 900 100 0 nan",
-        "1 4 1000 900 100 0 -1",
-        "x 4 1000 900 100 0 -",
+        "0.5 4 1000 900 100 0 -",
+        "0.5 4 1000 900 100 0 12.5",
         "1 4 1000 900 100 0 - 7 extra",
-        "1 4 1000 900 100 0 - -1",
-        "1 4 1000 900 100 0 - x",
-        "1 4 1000 900 100 0 - nan",
-        "1 4 1000 900 100 0 - inf",
-        "nan 4 1000 900 100 0 -",
-        "-1 4 1000 900 100 0 -",
-        "1 0 1000 900 100 0 -",
-        "1 4 0 0 100 0 -",
-        "1 4 1000 -1 100 0 -",
-        "1 4 1000 900 -1 0 -",
-        "1 4 1000 900 100 -1 -",
+        *(f"1 4 1000 900 100 0 {p} -" for p in ("x", "nan", "-1")),
+        *(f"1 4 1000 900 100 0 - {s}" for s in ("-1", "x", "nan", "inf")),
+        *(f"{x} 4 1000 900 100 0 - -" for x in ("x", "nan", "-1")),
+        "1 0 1000 900 100 0 - -",
+        "1 4 0 0 100 0 - -",
+        "1 4 1000 -1 100 0 - -",
+        "1 4 1000 900 -1 0 - -",
+        "1 4 1000 900 100 -1 - -",
     ],
 )
 def test_parse_refuses_anything_else(text: str) -> None:
@@ -87,15 +76,10 @@ MAC = dataclasses.replace(LINUX, os=Os.MACOS)
 
 
 def test_full_swap_with_low_pressure_launches_with_a_warning() -> None:
-    assert limits.decide(LINUX, FULL_SWAP, 0, recent=0, ignore=False) == (
-        False,
-        "warning: example-linux: swap used 99% > 80%",
-    )
+    expected = (False, "warning: example-linux: swap used 99% > 80%")
+    assert limits.decide(LINUX, FULL_SWAP, 0, recent=0, ignore=False) == expected
     found = dataclasses.replace(FULL_SWAP, swap_in=5000)
-    assert limits.decide(LINUX, found, 0, recent=0, ignore=False) == (
-        False,
-        "warning: example-linux: swap used 99% > 80%",
-    )
+    assert limits.decide(LINUX, found, 0, recent=0, ignore=False) == expected
 
 
 def test_high_pressure_refuses_and_still_names_the_swap() -> None:
@@ -127,23 +111,20 @@ def test_unknown_pressure_and_swap_in_keep_the_swap_refusal(host: Host) -> None:
     )
 
 
-@pytest.mark.parametrize(
-    ("limit", "rate", "refuse"),
-    [(1000, 0.0, False), (1000, 5000.0, True), (750, 749.0, False), (750, 750.0, True)],
-)
-def test_swap_in_is_used_when_pressure_is_unknown(
-    limit: int, rate: float, refuse: bool
-) -> None:
-    host = dataclasses.replace(LINUX, max_swap_in_pages_per_second=limit)
+@pytest.mark.parametrize("delta", [-1000.0, -1.0, 0.0, 4000.0])
+def test_swap_in_is_used_when_pressure_is_unknown(delta: float) -> None:
+    limit = limits.MAX_SWAP_IN_PAGES_PER_SECOND
+    assert limit == 1000
+    rate, refuse = limit + delta, delta >= 0
     reading = dataclasses.replace(FULL_SWAP, pressure=None, swap_in=rate)
     swap = "swap used 99% > 80%"
-    expected = (
-        f"{host.name}: swap-in {rate:g} pages/s >= limit {limit}; {swap}; "
+    msg = (
+        f"{LINUX.name}: swap-in {rate:g} pages/s >= limit {limit}; {swap}; "
         "pass --ignore-limits to launch anyway"
         if refuse
-        else f"warning: {host.name}: {swap}"
+        else f"warning: {LINUX.name}: {swap}"
     )
-    assert limits.decide(host, reading, 0, recent=0, ignore=False) == (refuse, expected)
+    assert limits.decide(LINUX, reading, 0, recent=0, ignore=False) == (refuse, msg)
 
 
 @pytest.mark.parametrize(("level", "refuse"), [(1, False), (2, False), (4, True)])
@@ -205,75 +186,37 @@ def test_decide_warns_when_ignored_or_warn_only(found: limits.Reading | str) -> 
 
 def test_parse_probe_reads_total_and_recent_counts() -> None:
     expected = limits.Reading(0.5, 4, 1000, 900, 100, 0, None)
-    assert limits.parse_probe("0.5 4 1000 900 100 0 -\n") == (expected, 0, 0)
-    assert limits.parse_probe("0.5 4 1000 900 100 0 -\n5 2\n") == (expected, 5, 2)
-    assert limits.parse_probe("0.5 4 1000 900 100 0 -\n0 0\n") == (expected, 0, 0)
+    row = "0.5 4 1000 900 100 0 - -"
+    assert limits.parse_probe(f"{row}\n") == (expected, 0, 0)
+    assert limits.parse_probe(f"{row}\n2\n") == (expected, 2, 2)
+    assert limits.parse_probe(f"{row}\n5 2\n") == (expected, 5, 2)
+    assert limits.parse_probe(f"{row}\n0 0\n") == (expected, 0, 0)
     assert limits.parse_probe("") == ("unparsable output", 0, 0)
-    for line in ("bad", "2 bad", "2 3", "2 1 1", "-1 0", "2\textra"):
-        assert limits.parse_probe(f"0.5 4 1000 900 100 0 -\n{line}\n") == (
-            "unparsable output",
-            0,
-            0,
-        )
-    assert limits.parse_probe("0.5 4 1000 900 100 0 -\n2\nextra\n") == (
-        "unparsable output",
-        0,
-        0,
-    )
+    bad = ("bad", "2 bad", "2 3", "2 1 1", "-1 0", "2\textra", "2\nextra")
+    for tail in bad:
+        assert limits.parse_probe(f"{row}\n{tail}\n") == ("unparsable output", 0, 0)
 
 
-def test_parse_probe_counts_every_run_as_recent_for_an_older_host() -> None:
-    expected = limits.Reading(0.5, 4, 1000, 900, 100, 0, None)
-    assert limits.parse_probe("0.5 4 1000 900 100 0 -\n2\n") == (expected, 2, 2)
+def test_decide_charges_only_recent_runs_in_the_memory_reservation() -> None:
+    mib, kib = 6144, 6144 * 1024
+    roomy = dataclasses.replace(LINUX, min_memory_available_percent=0)
 
+    def check(available: int, recent: int) -> tuple[bool, str]:
+        reading = limits.Reading(1.0, 8, 64 * 1024 * 1024, available, 0, 0, None)
+        return limits.decide(roomy, reading, mib, recent=recent, ignore=False)
 
-RESERVATION_MIB = 6144
-RESERVATION_KIB = RESERVATION_MIB * 1024
-GIB_KIB = 1024 * 1024
-
-
-def _memory(available_kib: int) -> limits.Reading:
-    return limits.Reading(1.0, 8, 64 * GIB_KIB, available_kib, 0, 0, None)
-
-
-# The reservation check alone: no floor on the percent of memory available.
-ROOMY = dataclasses.replace(LINUX, min_memory_available_percent=0)
-
-
-def _decide(available_kib: int, recent: int) -> tuple[bool, str]:
-    return limits.decide(
-        ROOMY, _memory(available_kib), RESERVATION_MIB, recent=recent, ignore=False
-    )
-
-
-def test_a_burst_of_recent_runs_is_charged_before_they_allocate() -> None:
-    refuse, message = _decide(RESERVATION_KIB * 3 // 2, recent=3)
+    refuse, message = check(kib * 3 // 2, 3)
     assert refuse
-    assert f"memory available {RESERVATION_KIB * 3 // 2} KiB" in message
-    assert f"< 4 * reservation {RESERVATION_MIB} MiB (3 recently admitted)" in message
-    assert _decide(RESERVATION_KIB, recent=0) == (False, "")
-    assert _decide(4 * RESERVATION_KIB, recent=3) == (False, "")
-    assert _decide(4 * RESERVATION_KIB - 1, recent=3)[0]
-
-
-def test_runs_past_the_window_are_not_charged_again() -> None:
-    assert _decide(RESERVATION_KIB * 6 // 5, recent=0) == (False, "")
-    host_2 = _memory(round(30.1 * GIB_KIB))
-    host_1 = _memory(round(23.9 * GIB_KIB))
-    for reading in (host_2, host_1):
-        assert limits.decide(
-            ROOMY, reading, RESERVATION_MIB, recent=0, ignore=False
-        ) == (False, "")
-    short = _decide(round(5.9 * GIB_KIB), recent=0)
-    assert short[0]
-    assert f"< reservation {RESERVATION_MIB} MiB;" in short[1]
-    assert "recently admitted" not in short[1]
-
-
-def test_decide_names_the_recent_count_in_the_reservation() -> None:
-    one_run = _decide(RESERVATION_KIB, recent=1)
+    assert f"memory available {kib * 3 // 2} KiB" in message
+    assert f"< 4 * reservation {mib} MiB (3 recently admitted)" in message
+    assert check(kib, 0) == (False, "")
+    assert check(4 * kib, 3) == (False, "")
+    assert check(4 * kib - 1, 3)[0]
+    one_run = check(kib, 1)
     assert one_run[0]
-    assert (
-        f"< 2 * reservation {RESERVATION_MIB} MiB (1 recently admitted)" in one_run[1]
-    )
-    assert _decide(2 * RESERVATION_KIB, recent=1) == (False, "")
+    assert f"< 2 * reservation {mib} MiB (1 recently admitted)" in one_run[1]
+    assert check(2 * kib, 1) == (False, "")
+    short = check(kib - 1, 0)
+    assert short[0]
+    assert f"< reservation {mib} MiB;" in short[1]
+    assert "recently admitted" not in short[1]

@@ -96,16 +96,44 @@ def _slot(
         os.close(fd)
 
 
-def _active(directory: int, profile: Profile, owner_ids: set[int]) -> dict[str, float]:
-    """The held slots of PROFILE, mapped to the time each was claimed."""
-    active: dict[str, float] = {}
+def _claim_time(directory: int, name: str, owner_ids: set[int]) -> float | None:
+    for uid in owner_ids:
+        stamp = f"claim-{name}-{uid}"
+        with suppress(FileNotFoundError), _slot(directory, stamp, owner_ids) as fd:
+            try:
+                fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            except BlockingIOError:
+                return os.fstat(fd).st_mtime
+    return None
+
+
+def _stamp_claim(
+    slot: ExitStack, directory: int, name: str, owner_ids: set[int]
+) -> None:
+    # Slot files outlive runs and are opened read-only across accounts, so
+    # another account can't utime a slot file it didn't create. Hold a
+    # per-account locked stamp file instead; if stamping fails, no stamp is
+    # held and active_count counts the slot as recent.
+    stamp_name = f"claim-{name}-{os.getuid()}"
+    with ExitStack() as stamp, suppress(PermissionError):
+        fd = stamp.enter_context(_slot(directory, stamp_name, owner_ids, create=True))
+        fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        os.utime(fd)
+        slot.push(stamp.pop_all())
+
+
+def _active(
+    directory: int, profile: Profile, owner_ids: set[int]
+) -> dict[str, float | None]:
+    """The held slots of PROFILE, mapped to the claim time or None if unknown."""
+    active: dict[str, float | None] = {}
     for name in os.listdir(directory):
         if name.startswith(f"{profile}-"):
             with _slot(directory, name, owner_ids) as fd:
                 try:
                     fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
                 except BlockingIOError:
-                    active[name] = os.fstat(fd).st_mtime
+                    active[name] = _claim_time(directory, name, owner_ids)
     return active
 
 
@@ -116,7 +144,7 @@ def _available(
     profile: Profile,
     limit: int | None,
     owner_ids: set[int],
-) -> Generator[tuple[int, dict[str, float]]]:
+) -> Generator[tuple[int, dict[str, float | None]]]:
     if limit is None:
         message = f"{host_name}: the request carries no max_concurrent_runs"
         raise Invalid(message)
@@ -161,18 +189,15 @@ def reserve(
             name = next(candidate for candidate in names if candidate not in active)
             fd = slot.enter_context(_slot(directory, name, owner_ids, create=True))
             fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
-            # Slot files outlive their runs, so stamp the claim time here, under
-            # the admission lock, for `active_count` to age. A slot another
-            # account created can't be stamped; it then counts as older.
-            with suppress(PermissionError):
-                os.utime(fd)
+            _stamp_claim(slot, directory, name, owner_ids)
         yield
 
 
 def active_count(root: Path, accounts: tuple[str, ...]) -> tuple[int, int]:
     """Count held build and review slots under ROOT, in total and recently.
 
-    A slot is recent when it was claimed less than RECENT_SECONDS ago.
+    A slot is recent when it was claimed less than RECENT_SECONDS ago or when
+    its claim time was not recorded.
     """
     owner_ids = _owner_ids(accounts)
     with (
@@ -184,7 +209,9 @@ def active_count(root: Path, accounts: tuple[str, ...]) -> tuple[int, int]:
         reviews = _active(directory, Profile.REVIEW, owner_ids)
         now = time.time()
         claimed = [*builds.values(), *reviews.values()]
-        return len(claimed), sum(now - at < RECENT_SECONDS for at in claimed)
+        return len(claimed), sum(
+            at is None or now - at < RECENT_SECONDS for at in claimed
+        )
 
 
 def count_main(argv: list[str], prog: str) -> int:

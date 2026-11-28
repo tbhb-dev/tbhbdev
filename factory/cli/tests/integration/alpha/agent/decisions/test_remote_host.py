@@ -52,42 +52,26 @@ def test_script_prints_the_numbers_of_this_host() -> None:
 def test_limits_appends_total_and_recent_counts_and_falls_back_on_older_hosts(
     host: Path,
 ) -> None:
-    write_standalone_fake(
-        host / "bin/tbhbdev",
+    two_counts = (
         "import sys\n"
-        "assert sys.argv[1:] == ['alpha', 'agent', 'admitted', '--', 'agent', 'ops']\n"
-        "print('5 2')\n",
+        "assert sys.argv[1:] == "
+        "['alpha', 'agent', 'admitted', '--', 'agent', 'ops']\n"
+        "print('5 2')\n"
     )
-    config = replace(LINUX, tbhbdev=str(host / "bin/tbhbdev"))
-    result = execute(remote_host.limits(config))
-    assert result.returncode == 0, result.stderr
-    found, total, recent = limits.parse_probe(result.stdout.decode())
-    assert isinstance(found, limits.Reading)
-    assert (total, recent) == (5, 2)
-
-    write_standalone_fake(
-        host / "bin/tbhbdev-one-number",
-        "print('3')\n",
-    )
-    one_number = replace(LINUX, tbhbdev=str(host / "bin/tbhbdev-one-number"))
-    one_result = execute(remote_host.limits(one_number))
-    assert one_result.returncode == 0, one_result.stderr
-    one_found, one_total, one_recent = limits.parse_probe(one_result.stdout.decode())
-    assert isinstance(one_found, limits.Reading)
-    assert (one_total, one_recent) == (3, 3)
-
-    write_standalone_fake(
-        host / "bin/tbhbdev-old",
-        "import sys\n"
-        "sys.stderr.write('unrecognized arguments: admitted\\n')\n"
-        "sys.exit(2)\n",
-    )
-    older = replace(LINUX, tbhbdev=str(host / "bin/tbhbdev-old"))
-    old_result = execute(remote_host.limits(older))
-    assert old_result.returncode == 0, old_result.stderr
-    old_found, old_total, old_recent = limits.parse_probe(old_result.stdout.decode())
-    assert isinstance(old_found, limits.Reading)
-    assert (old_total, old_recent) == (0, 0)
+    cases = [
+        ("tbhbdev", two_counts, (5, 2)),
+        ("tbhbdev-one-number", "print('3')\n", (3, 3)),
+        ("tbhbdev-old", "import sys\nsys.exit(2)\n", (0, 0)),
+    ]
+    for name, body, counts in cases:
+        write_standalone_fake(host / f"bin/{name}", body)
+        result = execute(
+            remote_host.limits(replace(LINUX, tbhbdev=str(host / f"bin/{name}")))
+        )
+        assert result.returncode == 0, result.stderr
+        found, total, recent = limits.parse_probe(result.stdout.decode())
+        assert isinstance(found, limits.Reading)
+        assert (total, recent) == counts
 
 
 @pytest.mark.parametrize(
@@ -260,8 +244,7 @@ def test_linux_uses_some_avg10_or_samples_swap_in(
     assert len(out.split()) == 8
     found = limits.parse(out)
     assert isinstance(found, limits.Reading)
-    assert found.pressure == expected
-    assert found.swap_in == swap_in
+    assert (found.pressure, found.swap_in) == (expected, swap_in)
     if expected is not None:
         assert vmstat.read_text() == "pswpin 100\n"
 

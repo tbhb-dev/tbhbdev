@@ -13,6 +13,7 @@ if TYPE_CHECKING:
 
 _FIELDS = 8
 _UNKNOWN = "-"
+MAX_SWAP_IN_PAGES_PER_SECOND = 1000
 
 
 @dataclass(frozen=True)
@@ -38,11 +39,8 @@ def parse(text: str) -> Reading | str:
     """The host reading in TEXT, or the cause of failure.
 
     The last two fields are memory pressure and swap-in, with `-` for unknown.
-    Older probes omit swap-in.
     """
     parts = text.split()
-    if len(parts) == _FIELDS - 1:
-        parts.append(_UNKNOWN)
     try:
         if len(parts) != _FIELDS:
             raise ValueError  # noqa: TRY301 -- one cause for every bad shape
@@ -71,12 +69,7 @@ def parse(text: str) -> Reading | str:
 
 
 def parse_probe(text: str) -> tuple[Reading | str, int, int]:
-    """Parse line 1 as a host reading and optional line 2 as the run counts.
-
-    Line 2 is `TOTAL RECENT`: the admitted runs, and those admitted within the
-    admission window. An older host prints only TOTAL, so every run counts as
-    recent there. A host without line 2 reports no runs.
-    """
+    """Parse line 1 as a host reading and optional line 2 as `TOTAL [RECENT]`."""
     match text.splitlines():
         case [reading]:
             counts: list[str] = []
@@ -115,7 +108,7 @@ def _pressure(host: Host, found: Reading) -> tuple[list[str], list[str]]:
         value = found.swap_in
         if value is None:
             return warnings, []
-        limit, name = host.max_swap_in_pages_per_second, "swap-in"
+        limit, name = MAX_SWAP_IN_PAGES_PER_SECOND, "swap-in"
         unit = " pages/s"
     elif host.os is Os.MACOS:
         limit, name = host.max_memory_pressure_level, "memory pressure level"
