@@ -24,6 +24,10 @@ CODEX_SUBAGENTS = (
     "`model` explicitly. Never spawn a full-history fork, which is a spawn "
     'that omits `fork_turns` or sets it to `"all"`.'
 )
+BUILD_TIME_LIMIT = (
+    "The run ends at its time limit, and any work you have not pushed by then "
+    "can be lost."
+)
 BUILD_PUBLICATION = (
     "Push your `agent/` branch with `git push --set-upstream origin HEAD`. "
     "If this run should open a pull request, write a draft at the repository's "
@@ -60,6 +64,8 @@ def brief(
         branch = start_ref.removeprefix("refs/heads/")
         text = (
             "Commit your changes locally and update the existing pull request branch.\n"
+            f"{BUILD_TIME_LIMIT} "
+            "Push as soon as the first re-run of what failed passes.\n"
             f"For a fast-forward, run `git push origin HEAD:{start_ref}`.\n"
             "To publish a rewrite, use a lease with the fetched commit.\n"
             "```sh\n"
@@ -70,7 +76,15 @@ def brief(
             f"```\n{text}"
         )
     elif profile is Profile.BUILD:
-        text = f"Commit your changes locally. {BUILD_PUBLICATION}\n{text}"
+        text = (
+            f"Commit your changes locally. {BUILD_PUBLICATION}\n"
+            f"{BUILD_TIME_LIMIT} "
+            "Push and open the draft pull request as soon as the first tests of your "
+            "change pass, before running any wider checks. "
+            "Push again after later commits. "
+            "Use one long wait for a long command instead of polling it repeatedly.\n"
+            f"{text}"
+        )
     elif profile is Profile.REVIEW:
         text = f"{REVIEW_PUBLICATION}\n{text}"
     return f"{FINAL_ONLY}\n{text}"
