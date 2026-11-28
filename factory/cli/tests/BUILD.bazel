@@ -274,9 +274,9 @@ cli_py_test(
         "//factory/cli/src/tbhbdev/alpha/guard/scripts:command",
         "//factory/cli/src/tbhbdev/alpha/identity:dispatcher",
         "//factory/cli/src/tbhbdev/alpha/install:command",
-        "//factory/cli/src/tbhbdev/alpha/monorepo:command",
         "//factory/cli/src/tbhbdev/alpha/pull_request:command",
         "//factory/cli/src/tbhbdev/merge:command",
+        "//factory/cli/src/tbhbdev/monorepo:command",
         "//factory/cli/tests:test_alpha_agent_settings_support",
         "@cli_pip//pytest",
     ],
@@ -663,18 +663,6 @@ cli_py_test(
         ":fake_tool",
         "//factory/cli/src/tbhbdev:userconfig",
         "//factory/cli/src/tbhbdev/alpha:gh_shim",
-        "@cli_pip//pytest",
-    ],
-)
-
-cli_py_test(
-    name = "test_alpha_monorepo",
-    srcs = ["test_alpha_monorepo.py"],
-    deps = [
-        ":conftest",
-        "//factory/cli/src/tbhbdev/alpha/monorepo:command",
-        "//factory/cli/src/tbhbdev/alpha/monorepo:pathmap",
-        "//factory/cli/src/tbhbdev/alpha/monorepo:source",
         "@cli_pip//pytest",
     ],
 )
@@ -1355,6 +1343,7 @@ filegroup(
         "//factory/cli/tests/integration/alpha/agent/decisions:package_files",
         "//factory/cli/tests/integration/alpha/agent/run_host:package_files",
         "//factory/cli/tests/integration/alpha/identity:test_dispatcher_timestamps_io.py",
+        "//factory/cli/tests/integration/monorepo:package_files",
         "//factory/cli/tests/unit:test_command_table.py",
         "//factory/cli/tests/unit:test_content_decision_record.py",
         "//factory/cli/tests/unit/admin:test_approvals.py",

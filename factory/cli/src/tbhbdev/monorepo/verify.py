@@ -4,8 +4,8 @@ import os
 import stat
 from typing import TYPE_CHECKING
 
-from tbhbdev.alpha.monorepo.pathmap import rewrite_bytes
-from tbhbdev.alpha.monorepo.source import (
+from tbhbdev.monorepo.pathmap import rewrite_bytes
+from tbhbdev.monorepo.source import (
     EXECUTABLE,
     LINK,
     MonorepoError,
@@ -16,7 +16,7 @@ from tbhbdev.alpha.monorepo.source import (
 if TYPE_CHECKING:
     from pathlib import Path
 
-    from tbhbdev.alpha.monorepo.pathmap import PathMap
+    from tbhbdev.monorepo.pathmap import PathMap
 
 
 def read(path: Path) -> tuple[str, bytes] | None:

@@ -18,7 +18,7 @@ import tbhbdev.alpha.guard.op.command as guard_op
 import tbhbdev.alpha.guard.ops_no_lazy_stop as guard_ops_no_lazy_stop
 import tbhbdev.alpha.guard.scripts.command as guard_scripts
 import tbhbdev.alpha.guard.sendmessage_clock as guard_sendmessage_clock
-import tbhbdev.alpha.monorepo.command as monorepo
+import tbhbdev.monorepo.command as monorepo
 from tbhbdev import cli
 from tbhbdev.alpha import (
     brief,

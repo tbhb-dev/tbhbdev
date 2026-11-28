@@ -366,9 +366,9 @@ cli_py_library(
         "//factory/cli/src/tbhbdev/alpha/guard/scripts:command",
         "//factory/cli/src/tbhbdev/alpha/identity:dispatcher",
         "//factory/cli/src/tbhbdev/alpha/install:command",
-        "//factory/cli/src/tbhbdev/alpha/monorepo:command",
         "//factory/cli/src/tbhbdev/alpha/pull_request:command",
         "//factory/cli/src/tbhbdev/merge:command",
+        "//factory/cli/src/tbhbdev/monorepo:command",
     ],
 )
 
