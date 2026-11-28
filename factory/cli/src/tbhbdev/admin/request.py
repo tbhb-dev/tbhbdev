@@ -13,7 +13,7 @@ from typing import NamedTuple, cast
 import httpx2
 
 from tbhbdev import github_tls, secrets
-from tbhbdev.admin import approvals, policy
+from tbhbdev.admin import approvals, policy, policy_paths
 from tbhbdev.admin.audit import Audit, RefusedError, record
 from tbhbdev.alpha import gh_app
 
@@ -60,7 +60,7 @@ def scope(decision: policy.Decision, method: str) -> tuple[str, dict[str, str]]:
     target = "/".join(parts[2:4]) if parts[1] == "repos" else parts[2]
     permission = (
         "metadata"
-        if method == "GET" and re.fullmatch(policy.REPO, decision.path)
+        if method == "GET" and re.fullmatch(policy_paths.REPO, decision.path)
         else decision.permission
     )
     return target, {permission: "read" if method == "GET" else "write"}
@@ -275,7 +275,7 @@ def read_ruleset(runtime: Runtime, path: str, reason: str) -> object:
 def ruleset_decisions(
     runtime: Runtime, wire: str, path: str, body: object, reason: str
 ) -> tuple[str, ...]:
-    if not re.fullmatch(rf"{policy.REPO}/rulesets/[0-9]+", path):
+    if not re.fullmatch(rf"{policy_paths.REPO}/rulesets/[0-9]+", path):
         return ()
     entries = approvals.for_path(path, load_approvals())
     if not entries:

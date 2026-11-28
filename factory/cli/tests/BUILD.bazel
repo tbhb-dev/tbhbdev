@@ -190,6 +190,7 @@ cli_py_test(
     deps = [
         ":conftest",
         "//factory/cli/src/tbhbdev/admin:policy",
+        "//factory/cli/src/tbhbdev/admin:policy_ruleset",
         "@cli_pip//pytest",
     ],
 )
@@ -1518,5 +1519,18 @@ cli_py_library(
         "//factory/cli/src/tbhbdev/alpha/agent/run_host:harness",
         "//factory/cli/src/tbhbdev/alpha/agent/run_host:state",
         "@cli_pip//pytest",
+    ],
+)
+
+cli_py_test(
+    name = "test_admin_policy_modules",
+    srcs = ["test_admin_policy_modules.py"],
+    extra_deps = [
+        "//factory/cli/src/tbhbdev/admin:policy_paths",
+        "//factory/cli/src/tbhbdev/admin:policy_ruleset",
+    ],
+    deps = [
+        ":conftest",
+        "//factory/cli/src/tbhbdev:__init__",
     ],
 )
