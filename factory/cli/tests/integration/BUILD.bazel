@@ -3,11 +3,14 @@
 
 load("//factory/cli/tests:pytest.bzl", "cli_py_test")
 
-exports_files(["test_content_review.py"])
+exports_files([
+    "test_content_review.py",
+])
 
 cli_py_test(
     name = "test_content_review",
     srcs = ["test_content_review.py"],
+    data = ["//factory/cli:review_body_examples"],
     imports = [".."],
     deps = [
         "//factory/cli/src/tbhbdev:content_review",

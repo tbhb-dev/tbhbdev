@@ -1,0 +1,16 @@
+## Summary
+
+The cache preserves the latest saved value.
+
+## Findings
+
+- F1: P1 correctness The loop skips the tail. Occurs when: the input ends in CRLF.
+- F2: P3 test Add a case with Windows line endings.
+
+## Verification
+
+- Read the cache implementation and its unit tests.
+
+<!-- tbhb-review v2 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef -->
+
+Generated-by: LLM effort=high;harness=codex;model=gpt-5.4

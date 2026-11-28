@@ -103,8 +103,20 @@ filegroup(
 
 filegroup(
     name = "schemas",
-    srcs = glob(["schemas/**"]),
+    srcs = glob(
+        ["schemas/**"],
+        exclude = ["schemas/testdata/**"],
+    ),
     visibility = ["//factory/cli:__subpackages__"],
+)
+
+filegroup(
+    name = "review_body_examples",
+    srcs = glob(["schemas/testdata/review-bodies/**"]),
+    visibility = [
+        "//factory/cli/tests:__subpackages__",
+        "//factory/github-metrics/internal/review:__pkg__",
+    ],
 )
 
 filegroup(

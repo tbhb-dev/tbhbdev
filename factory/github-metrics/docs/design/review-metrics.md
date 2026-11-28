@@ -31,7 +31,7 @@ Out of scope are spans for reviews, which appendix A plans alongside the other t
 | Body reading | `recorder.go:639-660` | `cycleStart` reads a PR body for trailer fields and keeps nothing else, a precedent for parsing a review body in memory |
 | Reconciliation walk | `internal/reconcile/list.go:251-326`, `run.go:238-296` | A walk in order of update time per repository. `absorb` drops items without a close time (`list.go:318`), and `FirstEnd` reads issue events per PR (`events.go:45-80`) |
 | Review template | `factory/cli/src/tbhbdev/alpha/review_data/PULL_REQUEST_REVIEW_TEMPLATE.md` | Guidance for reviewers |
-| Review grammar | `factory/cli/src/tbhbdev/schemas/review.cue:14`, `:107`, `:135`, `:145`, `:150-156` | The schema that `tbhbdev` checks every posted review against, and the source of truth for the finding line |
+| Review grammar | `factory/cli/schemas/review.cue:15`, `:85-87`, `:107-110`, `:136-139`, `:160-163`, `:183-189` | The schema that `tbhbdev` checks every posted review against, and the source of truth for the finding line |
 | Soft dismissal | `factory/cli/src/tbhbdev/alpha/review_doc.py:274-310` | `tbhbdev alpha review dismiss` edits a body to start with `SUPERSEDED:` and never calls GitHub's dismissal |
 | Main branch rules | `lib/rules/repo/baseline/files/.github/rulesets/main.json:28-36` | A push dismisses stale approvals, the last push needs approval, and each review thread must resolve before merge |
 
@@ -66,8 +66,8 @@ A malformed bullet in `Findings`, a malformed inline count, or a missing require
 
 The schema in `review.cue` defines the grammar. The parser and the schema share one set of example bodies, and tests on both sides read the same files. Neither side can change alone.
 
-- A new folder of review bodies under `factory/cli/src/tbhbdev/schemas/testdata/review-bodies/` keeps valid and invalid examples, each with a small expected-result file beside it. The existing `schemas` file group has visibility limited to `factory/cli` (`factory/cli/BUILD.bazel:101-105`). A new file group for the folder opens it to `//factory/github-metrics/internal/review`.
-- A Python test in `factory/cli` runs `content.check_review` on each body and checks that valid examples pass and invalid ones fail.
+- A new folder of review bodies under `factory/cli/schemas/testdata/review-bodies/` keeps valid and invalid examples, each with a small expected-result file beside it. The existing `schemas` file group has visibility limited to `factory/cli` (`factory/cli/BUILD.bazel:104-111`). A new file group for the folder opens it to `//factory/github-metrics/internal/review`.
+- A Python test in `factory/cli` runs `tbhbdev.content_review.check_review` on each body and checks that valid examples pass and invalid ones fail.
 - A Go test parses each body and compares the result with the expected file.
 
 Changing `#FindingPrefix` or the section list breaks the Python test until someone updates the examples. Updated examples then break the Go test until someone updates the parser. In production, a rising `findings="unparsed"` rate on `github.pr.reviews` signals drift that the examples missed.

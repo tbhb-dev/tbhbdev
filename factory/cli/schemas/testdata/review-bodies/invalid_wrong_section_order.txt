@@ -1,0 +1,17 @@
+## Summary
+
+The cache preserves the latest saved value.
+
+## Suggestions
+
+- S1: Rename the helper so callers see its scope.
+
+## Findings
+
+- F1: P2 docs Fix the comment.
+
+## Verification
+
+- Read the cache implementation and its unit tests.
+
+Generated-by: LLM effort=high;harness=codex;model=gpt-5.4
