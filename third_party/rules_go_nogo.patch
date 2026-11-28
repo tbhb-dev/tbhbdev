@@ -1,0 +1,19 @@
+SPDX-License-Identifier: Apache-2.0
+Copyright The Bazel Authors
+
+Backport the nogo change from rules_go commit e5a457da845621241d89a277c9dbf5dd14c3df7e.
+
+--- a/go/tools/builders/nogo_main.go
++++ b/go/tools/builders/nogo_main.go
+@@ -547 +547 @@
+-	pkg.facts, err = facts.NewDecoder(pkg.types).Decode(imp.readFacts)
++	pkg.facts, err = facts.NewDecoder(pkg.types, imp.cachedPackage).Decode(imp.readFacts)
+@@ -770 +770,8 @@
++// cachedPackage returns the already-imported package with the given path, or
++// nil. The package cache holds every package (perhaps indirect) that may own an
++// object facts are attached to, which is the lookup facts.NewDecoder needs.
++func (i *importer) cachedPackage(path string) *types.Package {
++	return i.packageCache[path]
++}
++
+ func (i *importer) readFacts(pkgPath string) ([]byte, error) {
