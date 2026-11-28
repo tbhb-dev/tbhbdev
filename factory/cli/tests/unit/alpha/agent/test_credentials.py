@@ -2,12 +2,14 @@
 
 from __future__ import annotations
 
+import dataclasses
 from typing import TYPE_CHECKING
 
 import agent_host_example as ex
 import pytest
 
 from tbhbdev import secrets
+from tbhbdev.alpha import gh_app_api, gh_app_runtime
 from tbhbdev.alpha.agent import credentials
 from tbhbdev.alpha.agent.model import Invalid
 
@@ -49,3 +51,99 @@ def test_fresh_token_and_deliver(
     fail[0] = True
     with pytest.raises(Invalid, match=credentials.FRESH_REFUSAL):
         ft(req, refs)
+
+
+BUILD_REFUSAL = "pull-requests App token unavailable; build refused"
+PR_VALUES = {
+    "example/pr/client": "example-pr-client-secret",
+    "example/pr/pem": "example-pr-pem-secret",
+}
+
+
+@pytest.mark.parametrize(
+    ("scenario", "step", "error_name"),
+    [
+        ("missing_client", "configuration", "Invalid"),
+        ("missing_pem", "configuration", "Invalid"),
+        ("non_github_host", "configuration", "Invalid"),
+        ("client_read", "client id read", "Invalid"),
+        ("key_read", "key read", "Invalid"),
+        ("mint_gh_app_error", "mint", "GhAppError"),
+        ("mint_os_error", "mint", "OSError"),
+    ],
+)
+def test_build_refusal_names_failed_step_and_error_class(
+    monkeypatch: pytest.MonkeyPatch,
+    scenario: str,
+    step: str,
+    error_name: str,
+) -> None:
+    refs = ex.pull_requests_app_settings().credentials[0]
+    req = ex.run_request(
+        repo="example.com/tbhb-dev/example-repo"
+        if scenario == "non_github_host"
+        else "tbhb-dev/example-repo"
+    )
+    if scenario == "missing_client":
+        refs = dataclasses.replace(refs, pull_requests_app_client_id=None)
+    elif scenario == "missing_pem":
+        refs = dataclasses.replace(refs, pull_requests_app_pem=None)
+
+    def fake_read(reference: str) -> str:
+        if scenario == "client_read" and reference == "example/pr/client":
+            message = "distinctive-client-read-failure"
+            raise secrets.SecretsError(message)
+        if scenario == "key_read" and reference == "example/pr/pem":
+            message = "distinctive-key-read-failure"
+            raise secrets.SecretsError(message)
+        return PR_VALUES[reference]
+
+    def fake_mint(*_args: object, **_kwargs: object) -> gh_app_api.Minted:
+        message = "distinctive-mint-failure"
+        if scenario == "mint_gh_app_error":
+            raise gh_app_runtime.GhAppError(message)
+        raise OSError(message)
+
+    monkeypatch.setattr(secrets, "read", fake_read)
+    monkeypatch.setattr(gh_app_api, "mint_token", fake_mint)
+    with pytest.raises(Invalid) as caught:
+        credentials.github_token(req, refs)
+    assert str(caught.value) == f"{BUILD_REFUSAL} (step: {step}; error: {error_name})"
+    assert caught.value.__cause__ is None
+
+
+@pytest.mark.parametrize(
+    "scenario",
+    ["client_read", "key_read", "mint_gh_app_error", "mint_os_error"],
+)
+def test_build_refusal_redacts_secrets_references_and_underlying_message(
+    monkeypatch: pytest.MonkeyPatch,
+    scenario: str,
+) -> None:
+    refs = ex.pull_requests_app_settings().credentials[0]
+    distinctive = "distinctive-underlying-error-marker"
+
+    def fake_read(reference: str) -> str:
+        if (scenario == "client_read" and reference == "example/pr/client") or (
+            scenario == "key_read" and reference == "example/pr/pem"
+        ):
+            raise secrets.SecretsError(distinctive)
+        return PR_VALUES[reference]
+
+    def fake_mint(*_args: object, **_kwargs: object) -> gh_app_api.Minted:
+        if scenario == "mint_gh_app_error":
+            raise gh_app_runtime.GhAppError(distinctive)
+        raise OSError(distinctive)
+
+    monkeypatch.setattr(secrets, "read", fake_read)
+    monkeypatch.setattr(gh_app_api, "mint_token", fake_mint)
+    with pytest.raises(Invalid) as caught:
+        credentials.github_token(ex.run_request(), refs)
+    text = str(caught.value)
+    for forbidden in (
+        *PR_VALUES.keys(),
+        *PR_VALUES.values(),
+        distinctive,
+    ):
+        assert forbidden not in text
+    assert caught.value.__cause__ is None

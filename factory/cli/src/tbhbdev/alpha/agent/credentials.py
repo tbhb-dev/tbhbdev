@@ -97,32 +97,48 @@ def installation_token(
     ).token
 
 
+class _TokenStepError(Invalid):
+    def __init__(self, step: str, error: Exception) -> None:
+        super().__init__(str(error))
+        self.step = step
+        self.error_name = type(error).__name__
+
+
 def pull_requests_token(
     references: Credentials,
     repository: str,
     permissions: dict[str, str] = PULL_REQUESTS_PERMISSIONS,
 ) -> str:
     """Mint the pull-requests App token for one repository, read-only by default."""
+    step = "configuration"
     if (
         references.pull_requests_app_client_id is None
         or references.pull_requests_app_pem is None
     ):
         message = "pull-requests App credentials are not configured"
-        raise Invalid(message)
+        raise _TokenStepError(step, Invalid(message))
     host, owner, name = repo.parts(repository)
     if host != "github.com":
         message = "pull-requests app supports github.com repositories"
-        raise Invalid(message)
-    client_id = read(references.pull_requests_app_client_id, label="pull-requests app")
-    pem = read(references.pull_requests_app_pem, label="pull-requests app")
-    # Explicit permissions, so the token stays narrow whatever the App holds.
-    return gh_app_api.mint_token(
-        gh_app_runtime.default_env(),
-        app_id=client_id,
-        pem=pem,
-        repository=f"{owner}/{name}",
-        permissions=permissions,
-    ).token
+        raise _TokenStepError(step, Invalid(message))
+    step = "client id read"
+    try:
+        client_id = read(
+            references.pull_requests_app_client_id, label="pull-requests app"
+        )
+        step = "key read"
+        pem = read(references.pull_requests_app_pem, label="pull-requests app")
+        step = "mint"
+        # Explicit permissions, so the token stays narrow whatever the App holds.
+        return gh_app_api.mint_token(
+            gh_app_runtime.default_env(),
+            app_id=client_id,
+            pem=pem,
+            repository=f"{owner}/{name}",
+            permissions=permissions,
+        ).token
+    except TOKEN_ERRORS as error:
+        raise _TokenStepError(step, error) from None
 
 
 TOKEN_ERRORS = (
@@ -172,8 +188,11 @@ def github_token(
         return None
     try:
         return pull_requests_token(references, request.repo, build_permissions)
-    except TOKEN_ERRORS:
-        message = "pull-requests App token unavailable; build refused"
+    except _TokenStepError as error:
+        message = (
+            "pull-requests App token unavailable; build refused "
+            f"(step: {error.step}; error: {error.error_name})"
+        )
         raise Invalid(message) from None
 
 
