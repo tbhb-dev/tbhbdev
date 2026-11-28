@@ -97,10 +97,14 @@ def _execute(
 
 
 def run_and_check(run: Run, prepared: Prepared, stack: ExitStack) -> int:
-    rc = push.run(run, prepared, stack, harness.run_harness)
-    if rc == 0 and run.request.profile is Profile.REVIEW:
-        return publication.post_review(run, prepared)
-    return publication.require_commit(run, prepared, rc)
+    try:
+        rc = push.run(run, prepared, stack, harness.run_harness)
+        if rc == 0 and run.request.profile is Profile.REVIEW:
+            return publication.post_review(run, prepared)
+        return publication.require_commit(run, prepared, rc)
+    finally:
+        if run.waited is not None:
+            run.publication_seconds = time.monotonic() - run.waited
 
 
 def prepare_brief(

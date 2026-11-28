@@ -197,6 +197,33 @@ def test_harness_deadlines(
             assert "harness exited 124\n" in run.files.path("log").read_text()
 
 
+def test_harness_measures_setup_and_model_seconds(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    run = make_run(tmp_path, timeout=1)
+    run.begun, run.deadline = 1000.0, 2000.0
+    run.files.write("prompt", "example")
+    child = Child()
+    # The deadline check, the launch, then the end of the wait.
+    ticks = iter([1001.0, 1004.5, 1024.5, 9999.0])
+    monkeypatch.setattr(time, "monotonic", lambda: next(ticks))
+
+    def launch(*_args: object, **kwargs: object) -> Child:
+        cast("Callable[[Child], None]", kwargs["started"])(child)
+        return child
+
+    monkeypatch.setattr(process_group, "launch_owned", launch)
+
+    def nothing(*_args: object) -> None:
+        return None
+
+    monkeypatch.setattr(process_group, "record", nothing)
+    monkeypatch.setattr(process_group, "stop_started", nothing)
+    with ExitStack() as stack:
+        host_harness.run_harness(run, preparation(run), stack)
+    assert (run.setup_seconds, run.model_seconds, run.waited) == (4.5, 20.0, 1024.5)
+
+
 def tmux_environment_probe(root: Path, harness: Harness) -> None:
     run = make_run(
         root,

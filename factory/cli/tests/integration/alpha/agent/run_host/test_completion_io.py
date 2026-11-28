@@ -5,7 +5,9 @@ from __future__ import annotations
 import dataclasses
 import hashlib
 import json
+from contextlib import ExitStack
 from pathlib import Path
+from types import SimpleNamespace
 from typing import cast
 from unittest.mock import Mock
 lazy import subprocess
@@ -27,6 +29,7 @@ from run_host_fixtures import (
 from tbhbdev.alpha.agent import (
     credentials,
     process_group,
+    push,
     rescue,
     runfiles,
 )
@@ -39,6 +42,7 @@ from tbhbdev.alpha.agent.run_host import completion as host_completion
 from tbhbdev.alpha.agent.run_host import execution as host_execution
 from tbhbdev.alpha.agent.run_host import harness as host_harness
 from tbhbdev.alpha.agent.run_host import preflight as host_preflight
+from tbhbdev.alpha.agent.run_host import publication as host_publication
 from tbhbdev.alpha.agent.run_host import state
 
 __all__ = ["pytestmark"]
@@ -222,3 +226,88 @@ def test_finish_records_rc_phase_and_index_when_cleanup_raises(
     assert ("fault publication failed" in run.files.path("log").read_text()) == (
         rc == 3
     )
+
+
+NOT_REPORTED = "not reported"
+CODEX_LOG = "answer\ntokens used\n54,534\nbazel shutdown: 'x' (rc=0)\n"
+
+
+def end_row(run: state.Run) -> dict[str, object]:
+    return runfiles.latest(run.files.root)[run.files.name]
+
+
+def test_finished_run_index_row_has_usage_phases_and_published(tmp_path: Path) -> None:
+    run = make_run(tmp_path)
+    prepared = preparation(run)
+    run.files.write("log", CODEX_LOG)
+    run.files.write("branch", "agent/example")
+    run.files.write("pr", "example-org/example-repo#12")
+    run.setup_seconds, run.model_seconds, run.publication_seconds = 1.5, 20.0, 0.25
+    assert host_completion.finish(run, prepared, None, 0) == 0
+    row = end_row(run)
+    assert row["usage"] == {
+        "input_tokens": NOT_REPORTED,
+        "output_tokens": NOT_REPORTED,
+        "total_tokens": 54534,
+        "cost_usd": NOT_REPORTED,
+        "source": "codex log",
+    }
+    assert row["phase_seconds"] == {"setup": 1.5, "model": 20.0, "publication": 0.25}
+    assert row["published"] == {"branch": "agent/example", "pr": 12}
+
+
+def test_run_without_branch_or_pr_files_published_nothing(tmp_path: Path) -> None:
+    run = make_run(tmp_path)
+    run.files.write("pr", "garbage")
+    assert host_completion.finish(run, None, None, 0) == 0
+    assert end_row(run)["published"] == {"branch": None, "pr": None}
+
+
+def test_run_that_raised_before_launch_has_no_model_or_publication_phase(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    run = make_run(tmp_path)
+
+    def refuse(_run: state.Run) -> None:
+        message = "preflight refused"
+        raise Invalid(message)
+
+    monkeypatch.setattr(host_preflight, "preflight", refuse)
+    assert host_execution.execute(run, "example") == 1
+    row = end_row(run)
+    phases = cast("dict[str, float | None]", row["phase_seconds"])
+    assert phases["model"] is None
+    assert phases["publication"] is None
+    assert set(row["usage"].values()) == {NOT_REPORTED}  # type: ignore[union-attr]
+
+
+def test_unreadable_log_keeps_the_rc_and_the_row(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    run = make_run(tmp_path)
+    run.files.write("log", CODEX_LOG)
+    real_open = Path.open
+
+    def opening(path: Path, *args: object, **kwargs: object) -> object:
+        if path == run.files.path("log") and args[:1] == ("rb",):
+            raise PermissionError
+        return real_open(path, *args, **kwargs)  # type: ignore[call-overload]
+
+    monkeypatch.setattr(Path, "open", opening)
+    assert host_completion.finish(run, None, None, 7) == 7
+    assert run.files.path("rc").read_text() == "7\n"
+    row = end_row(run)
+    assert row["rc"] == 7
+    assert row["usage"]["total_tokens"] == NOT_REPORTED  # type: ignore[index]
+
+
+def test_publication_seconds_run_from_the_end_of_the_wait(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    run = make_run(tmp_path)
+    run.waited = 10.0
+    monkeypatch.setattr(host_execution, "time", SimpleNamespace(monotonic=lambda: 14.5))
+    monkeypatch.setattr(push, "run", constant(0))
+    monkeypatch.setattr(host_publication, "require_commit", constant(0))
+    assert host_execution.run_and_check(run, preparation(run), ExitStack()) == 0
+    assert run.publication_seconds == 4.5

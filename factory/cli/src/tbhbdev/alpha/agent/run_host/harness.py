@@ -70,10 +70,13 @@ def run_harness(
     if time.monotonic() >= run.deadline:
         raise TimeoutError
     child = None
+    launched = 0.0
 
     def started(value: subprocess.Popen[str]) -> None:
-        nonlocal child
+        nonlocal child, launched
         child = value
+        launched = time.monotonic()
+        run.setup_seconds = launched - run.begun
         process_group.record(run.files, child.pid)
         run.files.write("launched", "\n")
 
@@ -91,6 +94,9 @@ def run_harness(
         run.files.write("phase", "running")
         return wait_harness(run, child)
     finally:
+        if child is not None:
+            run.waited = time.monotonic()
+            run.model_seconds = run.waited - launched
         stack.enter_context(process_group.ignore_signals())
         if child is not None:
             stopped = _stop_harness(run, prepared, child)

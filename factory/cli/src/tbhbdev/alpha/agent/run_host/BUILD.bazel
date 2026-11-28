@@ -86,6 +86,7 @@ cli_py_library(
         ":bazel_shutdown",
         ":index",
         ":paths",
+        ":run_usage",
         "//factory/cli/src/tbhbdev/alpha/agent:model",
         "//factory/cli/src/tbhbdev/alpha/agent:process_group",
         "//factory/cli/src/tbhbdev/alpha/agent:rescue",
@@ -272,6 +273,14 @@ cli_py_library(
         "//factory/cli/src/tbhbdev/alpha/agent:runfiles",
     ],
     visibility = ["//factory/cli:__subpackages__"],
+)
+
+cli_py_library(
+    name = "run_usage",
+    srcs = ["run_usage.py"],
+    imports = ["../../../.."],
+    visibility = ["//factory/cli:__subpackages__"],
+    deps = ["//factory/cli/src/tbhbdev/alpha/agent:model"],
 )
 
 cli_py_library(

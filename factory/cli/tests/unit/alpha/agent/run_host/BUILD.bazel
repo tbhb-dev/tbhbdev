@@ -88,6 +88,17 @@ cli_py_test(
 )
 
 cli_py_test(
+    name = "test_run_usage",
+    srcs = ["test_run_usage.py"],
+    imports = ["../../../.."],
+    deps = [
+        "//factory/cli/src/tbhbdev/alpha/agent:model",
+        "//factory/cli/src/tbhbdev/alpha/agent/run_host:run_usage",
+        "@cli_pip//pytest",
+    ],
+)
+
+cli_py_test(
     name = "test_telemetry",
     srcs = ["test_telemetry.py"],
     imports = ["../../../.."],
