@@ -148,9 +148,7 @@ def test_tool_git_environment_keeps_scratch_commits_out_of_the_run_clone(
         for name, value in inherited.items()
         if not any(fnmatch.fnmatchcase(name, pattern) for pattern in shell["exclude"])
     } | shell["set"]
-    assert {name: value for name, value in env.items() if name.startswith("GIT_")} == {
-        "GIT_CONFIG_COUNT": "0"
-    }
+    assert not [name for name in env if name.startswith("GIT_")]
     scratch = tmp_path / "scratch"
     scratch.mkdir()
     git(scratch, "init", "--template=", ".", env=env)

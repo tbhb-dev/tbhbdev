@@ -313,10 +313,7 @@ def test_build_preparation_has_the_run_socket(
         *,
         hook_env: Mapping[str, str],
     ) -> Path:
-        assert hook_env["GIT_CONFIG_COUNT"] == "0"
-        assert {name for name in hook_env if name.startswith("GIT_")} == {
-            "GIT_CONFIG_COUNT"
-        }
+        assert not [name for name in hook_env if name.startswith("GIT_")]
         assert token_source() == "example-credential"
         return runfiles.private_dir(run.home / "worktree")
 

@@ -33,8 +33,9 @@ const (
 )
 
 var (
-	errGatewayToken = errors.New("gateway token rejected")
-	errGatewayHello = errors.New("invalid gateway hello subscription")
+	errGatewayToken  = errors.New("gateway token rejected")
+	errGatewayHello  = errors.New("invalid gateway hello subscription")
+	errGatewayRedial = errors.New("gateway subscriptions changed")
 )
 
 func startMCPGateway(
@@ -117,6 +118,8 @@ func runMCPGateway(
 		switch {
 		case errors.Is(err, errGatewayToken):
 			return rejectGatewayToken(notify)
+		case errors.Is(err, errGatewayRedial):
+			continue
 		case err != nil:
 			return err
 		}
@@ -197,7 +200,11 @@ func runGatewayConnection(
 	// The server may expand each payload byte to a JSON escape.
 	conn.SetReadLimit(int64(len(`\u003c`)*maxPayload + sessionFrameLimit))
 
-	subs, cursor := subscriptions.snapshot()
+	connCtx, cancel := context.WithCancelCause(ctx)
+	defer cancel(nil)
+
+	subs, cursor, unwatch := subscriptions.watch(func() { cancel(errGatewayRedial) })
+	defer unwatch()
 
 	frames, err := gatewayHelloFrames(subs, cursor, subscriptions.imported)
 	if err != nil {
@@ -206,13 +213,13 @@ func runGatewayConnection(
 
 	for err == nil {
 		if len(frames) > 0 {
-			err = conn.Write(ctx, websocket.MessageText, frames[0])
+			err = conn.Write(connCtx, websocket.MessageText, frames[0])
 			frames = frames[1:]
 
 			continue
 		}
 
-		kind, data, readErr := conn.Read(ctx)
+		kind, data, readErr := conn.Read(connCtx)
 		if readErr == nil {
 			receive(kind, data)
 		}
@@ -220,11 +227,14 @@ func runGatewayConnection(
 		err = readErr
 	}
 
-	if websocket.CloseStatus(err) == tokenRevoked {
+	switch {
+	case websocket.CloseStatus(err) == tokenRevoked:
 		return errGatewayToken
+	case errors.Is(context.Cause(connCtx), errGatewayRedial):
+		return errGatewayRedial
+	default:
+		return nil
 	}
-
-	return nil
 }
 
 func rejectGatewayToken(notify func(channelEvent) bool) error {
@@ -311,7 +321,7 @@ func forwardGatewayFrame(
 				deliveries.remember(deliveryID)
 			}
 		}
-	case "caught_up":
+	case "caught_up", helloKind:
 	case "gap":
 		notify(gatewayGap(sessionJSON[uint64](frame["from"]), sessionJSON[uint64](frame["to"])).channelEvent())
 
@@ -320,7 +330,7 @@ func forwardGatewayFrame(
 		return
 	}
 
-	seq, err := strconv.ParseUint(string(frame["seq"]), decimal, 64)
+	seq, err := strconv.ParseUint(string(frame[seqKey]), decimal, 64)
 	if err == nil {
 		subscriptions.advanceCursor(seq)
 	}

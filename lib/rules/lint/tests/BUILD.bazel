@@ -154,10 +154,18 @@ pytest_test(
     srcs = [
         "//:.github/actions/affected-targets/affected_targets/__init__.py",
         "//:.github/actions/affected-targets/affected_targets/decide.py",
+        "//:.github/actions/affected-targets/affected_targets/edge.py",
         "//:repo_files",
     ],
-    args = ["lint/tests/unit/affected_targets/test_decide.py"],
-    coverage = ["affected_targets.decide"],
+    args = [
+        "lint/tests/unit/affected_targets/test_decide.py",
+        "lint/tests/unit/affected_targets/test_edge.py",
+    ],
+    coverage = [
+        "affected_targets.decide",
+        "affected_targets.edge",
+    ],
+    path_tools = ["@tbhb_rules_git//:git"],
     target_compatible_with = select({
         "@platforms//os:windows": ["@platforms//:incompatible"],
         "//conditions:default": [],
