@@ -81,7 +81,7 @@ def _push_checked(
     ):
         _kept(ctx.run, problem)
         return False
-    if problem := rescue.scan(ctx.d, base, tip):
+    if problem := rescue.scan(ctx.d, base, tip, [base]):
         _kept(ctx.run, problem)
         return False
     if guard.agent_commit_problems(ref, tip, [base], guard.SigningKeys(), ctx.d):

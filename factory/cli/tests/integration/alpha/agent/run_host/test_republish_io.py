@@ -27,7 +27,7 @@ pytestmark = HOST_FIXTURES
 BRANCH, START_REF = "agent/example", "refs/heads/topic"
 MISSING = "push failed: build commit missing from topic on origin\n"
 CONFLICT_LOG = f"republish: conflict, published to {BRANCH}\n"
-FOUND_LOG = "republish: kept local: secret scan found a secret\n"
+FOUND_LOG = "republish: kept local: secret scan found a secret in commit "
 RESCUE_LOG = "fault publication: kept local: start ref moved\n"
 
 
