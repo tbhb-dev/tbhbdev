@@ -228,8 +228,8 @@ def check(settings: Settings, host: Host, local: str, installed: str) -> str | N
         key = (host.name, host.account)
         prior = _ATTEMPTED.get(key)
         if prior is not None and prior[0] is not None:
-            check_retry(local, installed, prior[0])
-            return None
+            message = f"{prior[0]} (after one sync)"
+            raise Invalid(message) from mismatch
         try:
             sync(settings, host, local, installed)
         except LookupError:

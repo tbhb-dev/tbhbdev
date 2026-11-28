@@ -356,6 +356,21 @@ def test_no_install_preserves_the_mismatch(
     shell.assert_not_called()
 
 
+def test_second_mismatch_after_sync_is_refused(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(subprocess, "run", Mock(return_value=ORIGIN))
+    shell = Mock(return_value=f"{SUMMARY}\n")
+    monkeypatch.setattr(transport, "shell", shell)
+    original = version_heal.check(CONFIG, HOST, NEW_LINE, OLD_LINE)
+    assert original is not None
+    shell.reset_mock()
+    with pytest.raises(Invalid) as caught:
+        version_heal.check(CONFIG, HOST, NEW_LINE, OLD_LINE)
+    assert str(caught.value) == f"{original} (after one sync)"
+    shell.assert_not_called()
+
+
 def test_failed_remote_build_reports_summary(monkeypatch: pytest.MonkeyPatch) -> None:
     summary = f"{OLD} {OLD} failed 0.1s"
     shell = Mock(return_value=f"{summary}\ninstall failed\n")
