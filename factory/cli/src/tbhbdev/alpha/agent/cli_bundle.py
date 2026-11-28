@@ -28,9 +28,14 @@ def _files(root: Path) -> dict[str, bytes]:
 
 def _pin(dist: metadata.Distribution) -> str:
     text = dist.read_text("direct_url.json")
-    url = None if text is None else json.loads(text).get("url")
+    record = {} if text is None else json.loads(text)
+    url = record.get("url")
     if url is None:
         return f"{dist.name}=={dist.version}"
+    commit = (record.get("vcs_info") or {}).get("commit_id")
+    if commit:
+        source = url if url.startswith("git+") else f"git+{url}"
+        return f"{dist.name} @ {source}@{commit}"
     return f"{dist.name} @ {url}"
 
 

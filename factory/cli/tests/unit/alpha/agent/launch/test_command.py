@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import shlex
 from importlib import metadata as pkg
 from typing import TYPE_CHECKING, NoReturn
 
@@ -130,8 +131,14 @@ def test_successful_launch_saves_ships_starts_and_polls_in_order(
     assert got_t > 0
     assert isinstance(got_inputs, transport.Inputs)
     assert got_inputs.schema is None
+    got_cmd = recorded["start"][2]
+    assert isinstance(got_cmd, tuple)
+    script: object = got_cmd[2]
+    assert isinstance(script, str)
+    tokens = shlex.split(script.splitlines()[-1])
+    assert tokens[tokens.index("--cli-sha256") + 1] == DIGEST
     owner = transport.Stdin(metadata.load(cfg, "sample").owner)
-    start = bootstrap.start("sample", cfg.sockets_dir, LINUX.name)
+    start = bootstrap.start("sample", cfg.sockets_dir, LINUX.name, DIGEST)
     assert recorded["start"] == (cfg, LINUX, start, owner)
 
 
@@ -160,6 +167,26 @@ def test_launch_passes_schema_warnings_and_review_commit(
     assert "warning:" in capsys.readouterr().err
     assert shipped[0].schema == '{"type":"object"}'
     assert json.loads(shipped[0].request)["commit"] == COMMIT
+
+
+@pytest.mark.parametrize(
+    ("extra", "match"),
+    [
+        ((), "--ref"),
+        (("--ref", "main"), "main"),
+    ],
+)
+def test_review_without_commit_ref_refuses_before_saving_or_shipping(
+    brief: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    extra: tuple[str, ...],
+    match: str,
+) -> None:
+    monkeypatch.setattr(ship, "send", forbid)
+    monkeypatch.setattr(transport, "call", forbid)
+    with pytest.raises(Invalid, match=match):
+        command.main(launch_argv(brief, *extra, profile="review"), PROG)
+    assert not metadata.metadata_path("sample").exists()
 
 
 def test_transfer_and_poll_errors(

@@ -60,14 +60,17 @@ def test_receive_writes_isolated_entry_points() -> None:
 
 @pytest.mark.parametrize(("steer", "extra"), [(False, ""), (True, " --steer")])
 def test_start_dispatches_shipped_program(steer: bool, extra: str) -> None:
-    shell, option, script = bootstrap.start("run", "sockets", LINUX.name, steer=steer)
+    digest = "1234" * 16
+    shell, option, script = bootstrap.start(
+        "run", "sockets", LINUX.name, digest, steer=steer
+    )
     assert (shell, option) == ("/bin/sh", "-c")
     assert 'owner="$d/run.owner"' in script
     assert 'test "$(cat "$owner")" = "$given" || exit 73' in script
     expected = shlex.split(
         "tmux -S '$s/agents' -f /dev/null new-session -d -s ag-run "
         "'$d/run.cli/bin/tbhbdev' alpha agent run run --host "
-        f"{shlex.quote(LINUX.name)} --owned{extra}"
+        f"{shlex.quote(LINUX.name)} --owned --cli-sha256 {digest}{extra}"
     )
     assert shlex.split(script.splitlines()[-1]) == expected
 
