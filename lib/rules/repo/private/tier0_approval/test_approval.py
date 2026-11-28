@@ -327,6 +327,7 @@ def api(monkeypatch: pytest.MonkeyPatch) -> Mock:
     monkeypatch.setattr(gate, "api", request)
     monkeypatch.setattr(gate, "contexts_pass", Mock(return_value=True))
     monkeypatch.setattr(gate, "changed_paths", Mock(return_value=(["README.md"], True)))
+    monkeypatch.setattr(gate, "commit_authors", Mock(return_value=["writer"]))
     return request
 
 
@@ -356,6 +357,8 @@ def test_run(api: Mock, patch: gate.Record, reason: str) -> None:
         "head_sha": "" if reason == "invalid-sha" else HEAD,
         "pr": None,
         "files": 0,
+        "tier": None,
+        "tier_reason": "",
     }
     api.assert_not_called()
 
@@ -471,6 +474,8 @@ def test_enforce(api: Mock, monkeypatch: pytest.MonkeyPatch) -> None:
         "head_sha": HEAD,
         "pr": 5,
         "files": 1,
+        "tier": 0,
+        "tier_reason": "prose",
     }
 
 
@@ -524,10 +529,14 @@ def test_main(
         "head_sha": HEAD,
         "pr": 5,
         "files": 0,
+        "tier": None,
+        "tier_reason": "",
     }
     assert capsys.readouterr().out == artifact
     previous = "previous=value\ndecision=hold\nreason=evidence-or-command-failed\n"
-    assert Path("output").read_text(encoding="utf-8") == f"{previous}head_sha={HEAD}\n"
+    assert Path("output").read_text(encoding="utf-8") == (
+        f"{previous}head_sha={HEAD}\ntier=None\n"
+    )
 
 
 @pytest.mark.parametrize("arguments", [(), ("merge",)])
@@ -554,6 +563,7 @@ def test_enforce_cli_only_reviews(
             "",
             "",
             ":100644 100644 777 000 M\0README.md\x001\t0\tREADME.md\0",
+            json.dumps([[{"author": WRITER}]]),
             *map(json.dumps, EVIDENCE[4:]),
         ]
     )
@@ -579,3 +589,206 @@ def test_enforce_cli_only_reviews(
     opened_paths = {entry.args[0].name for entry in opened.call_args_list}
     assert "tier0-merge.json" not in opened_paths
     assert json.loads(ARTIFACT.read_text(encoding="utf-8"))["decision"] == "approve"
+
+
+RENOVATE = "tbhb-dev-renovate[bot]"
+TIER_ENV = ENV | {"TIER2_PATHS": "MODULE.bazel\n.github/**", "RENOVATE_LOGIN": RENOVATE}
+LOCK = ["uv.lock", "MODULE.bazel.lock"]
+
+
+@pytest.mark.parametrize(
+    ("author", "commits"),
+    [(RENOVATE, [RENOVATE]), ("writer", ["writer"]), (RENOVATE, [])],
+)
+@pytest.mark.parametrize("others", [[], ["README.md"]])
+def test_tier2_path(author: str, commits: list[str], others: list[str]) -> None:
+    paths = [*others, "MODULE.bazel"]
+    assert gate.tier(paths, author, commits, TIER_ENV) == (2, "tier2-path")
+
+
+def test_tier2_path_case_insensitive() -> None:
+    assert gate.tier(["module.bazel"], "w", [], TIER_ENV) == (2, "tier2-path")
+
+
+@pytest.mark.parametrize("paths", [LOCK, ["MODULE.bazel.lock"], ["a.md", "uv.lock"]])
+@pytest.mark.parametrize("login", [RENOVATE, RENOVATE.upper()])
+def test_renovate_tier(paths: list[str], login: str) -> None:
+    assert gate.tier(paths, login, [RENOVATE, login], TIER_ENV) == (0, "renovate")
+
+
+@pytest.mark.parametrize(
+    "commits",
+    [
+        [RENOVATE, "writer"],  # A fix commit by someone else.
+        [RENOVATE, "tbhb-dev"],  # A merge of main by the operator.
+        [RENOVATE, "web-flow"],
+        [RENOVATE, ""],  # An unlinked email.
+    ],
+)
+def test_renovate_with_other_commit(commits: list[str]) -> None:
+    assert gate.tier(LOCK, RENOVATE, commits, TIER_ENV) == (1, "default")
+    assert gate.tier(["README.md"], RENOVATE, commits, TIER_ENV) == (0, "prose")
+
+
+def test_renovate_with_no_commits() -> None:
+    assert gate.tier(LOCK, RENOVATE, [], TIER_ENV) == (1, "default")
+    assert gate.tier(["README.md"], RENOVATE, [], TIER_ENV) == (0, "prose")
+
+
+def test_renovate_author_with_other_commit_author() -> None:
+    # The bot authored every commit, but the PR author is someone else.
+    assert gate.tier(LOCK, "writer", [RENOVATE], TIER_ENV) == (1, "default")
+
+
+@pytest.mark.parametrize(
+    "login", ["renovate-fan", f"someone-{RENOVATE}", "renovate", f"{RENOVATE}x", "x"]
+)
+def test_renovate_lookalike(login: str) -> None:
+    assert gate.tier(LOCK, login, [login], TIER_ENV) == (1, "default")
+
+
+@pytest.mark.parametrize("env", [ENV, ENV | {"RENOVATE_LOGIN": ""}])
+def test_renovate_login_missing(env: dict[str, str]) -> None:
+    assert gate.tier(LOCK, "", [""], env) == (1, "default")
+    assert gate.tier(LOCK, "", [], env) == (1, "default")
+    assert gate.tier(["a.md"], "", [""], env) == (0, "prose")
+
+
+def test_tier2_paths_missing_matches_nothing() -> None:
+    assert gate.tier(["MODULE.bazel"], "w", ["w"], ENV) == (1, "default")
+    env = ENV | {"TIER2_PATHS": ""}
+    assert gate.tier(["MODULE.bazel"], "w", ["w"], env) == (1, "default")
+
+
+def test_prose_and_default() -> None:
+    assert gate.tier(["README.md"], "writer", ["writer"], TIER_ENV) == (0, "prose")
+    mixed = ["README.md", "a.py"]
+    assert gate.tier(mixed, "writer", ["writer"], TIER_ENV) == (1, "default")
+    assert gate.tier([".github/x.md"], "writer", ["writer"], ENV) == (1, "default")
+
+
+def test_commit_authors(monkeypatch: pytest.MonkeyPatch) -> None:
+    pages: list[list[gate.Record]] = [
+        [{"author": {"login": RENOVATE}}, {"author": None}],
+        [{"author": {"login": "writer"}}],
+    ]
+    request = Mock(return_value=pages)
+    monkeypatch.setattr(gate, "api", request)
+    assert gate.commit_authors(REPO, 5) == [RENOVATE, "", "writer"]
+    request.assert_called_once_with(REPO, "pulls/5/commits", "--paginate", "--slurp")
+
+
+@pytest.mark.parametrize(
+    ("login", "changes", "expected"),
+    [
+        (WRITER["login"], (["README.md"], ["writer"]), (0, "prose", "tier0")),
+        (
+            WRITER["login"],
+            (["MODULE.bazel"], ["writer"]),
+            (2, "tier2-path", "path-outside-tier0"),
+        ),
+        (
+            RENOVATE,
+            (["uv.lock"], [RENOVATE]),
+            (0, "renovate", "path-outside-tier0"),
+        ),
+        (
+            RENOVATE,
+            (["uv.lock"], [RENOVATE, "x"]),
+            (1, "default", "path-outside-tier0"),
+        ),
+    ],
+)
+def test_evaluate_records_tier(
+    api: Mock,
+    monkeypatch: pytest.MonkeyPatch,
+    login: str,
+    changes: tuple[list[str], list[str]],
+    expected: tuple[int, str, str],
+) -> None:
+    pull = PULL | {"user": {"login": login}}
+    api.configure_mock(side_effect=(*EVIDENCE[:1], pull, *EVIDENCE[2:]))
+    paths, authors = changes
+    monkeypatch.setattr(gate, "changed_paths", Mock(return_value=(paths, True)))
+    listing = Mock(return_value=authors)
+    monkeypatch.setattr(gate, "commit_authors", listing)
+    result = gate.decide(RUN, TIER_ENV)
+    listing.assert_called_once_with(REPO, 5)
+    assert (result["tier"], result["tier_reason"], result["reason"]) == expected
+    assert result["decision"] == ("approve" if expected[2] == "tier0" else "hold")
+
+
+def test_tier_unset_before_paths(api: Mock) -> None:
+    api.configure_mock(side_effect=(*EVIDENCE[:2], COMMIT | {"author": BOT}))
+    result = gate.decide(RUN, TIER_ENV)
+    assert result["reason"] == "approver-is-committer"
+    assert (result["tier"], result["tier_reason"]) == (None, "")
+    gate.commit_authors.assert_not_called()  # type: ignore[attr-defined]
+
+
+@pytest.mark.usefixtures("api")
+def test_tier_recorded_on_file_count_hold(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(
+        gate, "changed_paths", Mock(return_value=(["a.md", "b.md"], True))
+    )
+    result = gate.decide(RUN, TIER_ENV)
+    assert result["reason"] == "file-count"
+    assert (result["tier"], result["tier_reason"]) == (0, "prose")
+
+
+@pytest.mark.parametrize(
+    "error",
+    [
+        subprocess.CalledProcessError(1, "gh"),
+        subprocess.TimeoutExpired("gh", 5),
+        json.JSONDecodeError("bad", "", 0),
+        OSError("io"),
+        KeyError("author"),
+        TypeError("bad"),
+    ],
+)
+def test_commits_unavailable_still_approves_prose(
+    monkeypatch: pytest.MonkeyPatch, error: Exception
+) -> None:
+    request = Mock(side_effect=(*EVIDENCE[:4], error))
+    monkeypatch.setattr(gate, "api", request)
+    monkeypatch.setattr(gate, "contexts_pass", Mock(return_value=True))
+    monkeypatch.setattr(gate, "changed_paths", Mock(return_value=(["README.md"], True)))
+    result = gate.decide(RUN, TIER_ENV)
+    assert request.call_args_list[-1] == call(
+        REPO, "pulls/5/commits", "--paginate", "--slurp"
+    )
+    assert (
+        result["decision"],
+        result["reason"],
+        result["tier"],
+        result["tier_reason"],
+    ) == ("approve", "tier0", 0, "commits-unavailable")
+
+
+@pytest.mark.parametrize(
+    ("login", "paths", "expected"),
+    [
+        (RENOVATE, ["uv.lock"], (1, "commits-unavailable", "path-outside-tier0")),
+        (
+            WRITER["login"],
+            ["MODULE.bazel"],
+            (2, "commits-unavailable", "path-outside-tier0"),
+        ),
+    ],
+)
+def test_commits_unavailable_falls_back_to_paths(
+    monkeypatch: pytest.MonkeyPatch,
+    login: str,
+    paths: list[str],
+    expected: tuple[int, str, str],
+) -> None:
+    pull = PULL | {"user": {"login": login}}
+    error = subprocess.CalledProcessError(1, "gh")
+    request = Mock(side_effect=(*EVIDENCE[:1], pull, *EVIDENCE[2:4], error))
+    monkeypatch.setattr(gate, "api", request)
+    monkeypatch.setattr(gate, "contexts_pass", Mock(return_value=True))
+    monkeypatch.setattr(gate, "changed_paths", Mock(return_value=(paths, True)))
+    result = gate.decide(RUN, TIER_ENV)
+    assert (result["tier"], result["tier_reason"], result["reason"]) == expected
+    assert result["decision"] == "hold"
