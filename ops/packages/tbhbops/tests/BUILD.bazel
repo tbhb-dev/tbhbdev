@@ -135,6 +135,7 @@ HOST_AND_SERVICES_TESTS = [
     "test_launchers.py",
     "test_mac_snapshot_thin.py",
     "test_op_connect.py",
+    "test_role_sources.py",
     "test_runner_pool_egress.py",
     "test_rustfs_probe.py",
     "test_s3_compose.py",
