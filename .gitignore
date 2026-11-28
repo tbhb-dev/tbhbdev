@@ -48,3 +48,6 @@ coverage.xml
 /factory/cli/src/tbhbdev/_build.py
 /factory/cli/mutants/
 *.pyc
+
+# Local event gateway deployment secrets.
+/factory/event-gateway/deploy/secrets/

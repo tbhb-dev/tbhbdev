@@ -1,0 +1,144 @@
+# SPDX-License-Identifier: Apache-2.0
+# Copyright Tony Burns
+# cspell:words tailnet
+
+---
+# Start this Compose project with deploy/up.sh. The script accepts an
+# image digest or the ID of a loaded image (sha256:...), and rejects tags.
+# Compose checks that EVENT_GATEWAY_IMAGE is set and nonempty.
+#
+# The service publishes one port, the session port 8081, bound to the host
+# address in EVENT_GATEWAY_SESSION_BIND (never 0.0.0.0, which up.sh refuses).
+# The webhook port 8080 stays unpublished; whatever carries webhook deliveries
+# to it joins the `edge` network and reaches it at gateway:8080.
+#
+# Secrets stay in files, secrets/github_webhook_secret,
+# secrets/event_gateway_session_tokens and secrets/tunnel_token beside this
+# file. Plain Compose ignores uid, gid and mode for file secrets, and the host
+# file keeps its ownership. So up.sh refuses to start unless each file is a
+# regular file, not a symlink, with mode 0400 and owner uid 65532. The long
+# form below records the same intent for Compose versions that apply it.
+# The named `data` volume mounts at `/data`, which the image creates owned by
+# 65532:65532 so the gateway can write its JetStream store while the root
+# filesystem stays read-only.
+#
+# The tunnel connector makes outbound connections only. Its route is set in
+# Cloudflare, because a token-run connector takes its routes from there. That
+# route is a deployment prerequisite for ops to verify: it must send only
+# `POST /webhooks/github` to `http://gateway:8080`, because the gateway also
+# serves `GET /healthz` without authentication.
+#
+# `restart: unless-stopped` restarts a container that exits, and does not
+# restart one that stays running but unhealthy. The health checks only report.
+name: event-gateway
+
+services:
+  gateway:
+    image: ${EVENT_GATEWAY_IMAGE:?start with deploy/up.sh, which sets the image digest}
+    user: "65532:65532"
+    read_only: true
+    tmpfs:
+      - /tmp:size=16m
+    cap_drop: [ALL]
+    security_opt:
+      - no-new-privileges:true
+    mem_limit: 512m
+    cpus: 0.5
+    pids_limit: 128
+    restart: unless-stopped
+    command:
+      - serve
+      - -listen
+      - ":8080"
+      - -session-listen
+      - ":8081"
+      - -read-token-file
+      - /run/secrets/event_gateway_session_tokens
+      - -github-secret-file
+      - /run/secrets/github_webhook_secret
+      - -store-dir
+      - /data/nats
+    ports:
+      # yamllint disable-line rule:line-length
+      - "${EVENT_GATEWAY_SESSION_BIND:?set the host address for the session port, for example a tailnet address}:8081:8081"
+    volumes:
+      - data:/data
+    secrets:
+      - source: github_webhook_secret
+        uid: "65532"
+        gid: "65532"
+        mode: 0400
+      - source: event_gateway_session_tokens
+        uid: "65532"
+        gid: "65532"
+        mode: 0400
+    networks:
+      - edge
+    healthcheck:
+      test: ["CMD", "/event-gateway", "healthcheck"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 5s
+    logging:
+      driver: local
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  tunnel:
+    image: cloudflare/cloudflared:2026.9.3@sha256:072c067d25ccbe61d46e18f0d0723255f2bb5304f7317caa95b27031520ff92c
+    # Use runc because cloudflared cannot resolve DNS under the gVisor runtime
+    # (runsc) that ops uses. Remove this override when fixed.
+    runtime: runc
+    user: "65532:65532"
+    read_only: true
+    tmpfs:
+      - /tmp:size=16m
+    cap_drop: [ALL]
+    security_opt:
+      - no-new-privileges:true
+    mem_limit: 128m
+    cpus: 0.5
+    pids_limit: 128
+    restart: unless-stopped
+    command:
+      - tunnel
+      - --no-autoupdate
+      - --metrics
+      - 127.0.0.1:2000
+      - run
+      - --token-file
+      - /run/secrets/tunnel_token
+    secrets:
+      - tunnel_token
+    depends_on:
+      gateway:
+        condition: service_healthy
+    networks:
+      - edge
+    healthcheck:
+      test: ["CMD", "cloudflared", "tunnel", "--metrics", "127.0.0.1:2000", "ready"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+    logging:
+      driver: local
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+secrets:
+  github_webhook_secret:
+    file: ./secrets/github_webhook_secret
+  event_gateway_session_tokens:
+    file: ./secrets/event_gateway_session_tokens
+  tunnel_token:
+    file: ./secrets/tunnel_token
+
+networks:
+  edge: {}
+
+volumes:
+  data: {}

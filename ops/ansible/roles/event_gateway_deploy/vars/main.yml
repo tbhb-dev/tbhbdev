@@ -1,2 +1,3 @@
 ---
 event_gateway_deploy_image_tag: "event-gateway:{{ (event_gateway_deploy_commit | lower)[:8] }}"
+event_gateway_deploy_dir: "{{ event_gateway_deploy_checkout }}/factory/event-gateway/deploy"
