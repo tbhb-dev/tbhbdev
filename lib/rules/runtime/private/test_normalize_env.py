@@ -34,18 +34,19 @@ def test_generated_inputs_match_across_repository_paths(tmp_path: Path) -> None:
         plain = scripts / "plain"
         plain.write_bytes(b"#!" + interpreter + b"3.15\nprint('plain')\n")
         wrapped = scripts / "wrapped"
-        quoted = interpreter.replace(b"'", b"""'"'"'""")
-        wrapped.write_bytes(
-            b"#!/bin/sh\n'''exec' '" + quoted + b"' \"$0\" \"$@\"\n' '''\n"
-        )
+        header = b"#!" + interpreter
+        if b" " in interpreter:
+            quoted = interpreter.replace(b"'", b"""'"'"'""")
+            header = b"#!/bin/sh\n'''exec' '" + quoted + b"' \"$0\" \"$@\"\n' '''"
+        wrapped.write_bytes(header + b"\nprint('wrapped')\n")
         native = scripts / "native"
         native.write_bytes(b"\x7fELF\x00\xff")
         site_packages = root / "venv/lib/python3.15/site-packages"
         record = site_packages / "example.dist-info/RECORD"
         record.parent.mkdir(parents=True)
-        original = plain.read_bytes()
+        original = wrapped.read_bytes()
         record.write_text(
-            f"../../../bin/plain,sha256={hashlib.sha256(original).hexdigest()},{len(original)}\n"
+            f"../../../bin/wrapped,sha256={hashlib.sha256(original).hexdigest()},{len(original)}\n"
             "example.dist-info/RECORD,,\n",
             encoding="utf-8",
         )
@@ -66,14 +67,14 @@ def test_generated_inputs_match_across_repository_paths(tmp_path: Path) -> None:
     assert all(os.fsencode(root) not in data for root in roots for data in outputs[0])
     assert outputs[0][:4] == [
         b"#!/usr/bin/env python3.15\nprint('plain')\n",
-        b"#!/bin/sh\n'''exec' python \"$0\" \"$@\"\n' '''\n",
+        b"#!/usr/bin/env python\nprint('wrapped')\n",
         b"\x7fELF\x00\xff",
         b"build_time_vars = {'prefix': '/install'}\n",
     ]
-    data = outputs[0][0]
+    data = outputs[0][1]
     digest = base64.urlsafe_b64encode(hashlib.sha256(data).digest()).rstrip(b"=")
     assert outputs[0][4] == (
-        b"../../../bin/plain,sha256="
+        b"../../../bin/wrapped,sha256="
         + digest
         + f",{len(data)}\n".encode()
         + b"example.dist-info/RECORD,,\n"

@@ -24,7 +24,14 @@ def normalize_scripts(bin_dir: Path) -> dict[str, tuple[str, str]]:
     executable = rb"(python[0-9.]*t?)"
     plain = re.compile(rb"\A#!" + re.escape(prefix) + executable + rb"(?=\r?\n|\Z)")
     quoted = re.escape(prefix.replace(b"'", b"""'"'"'"""))
-    wrapped = re.compile(rb"\A(#!/bin/sh\n'''exec' )'" + quoted + executable + rb"' ")
+    # uv uses a shell wrapper when the interpreter path is too long or has spaces.
+    wrapped = re.compile(
+        rb"\A#!/bin/sh\n'''exec' '"
+        + quoted
+        + executable
+        + rb"""' "\$0" "\$@"\n' '''(?=\r?\n|\Z)"""
+    )
+    shebang = rb"#!/usr/bin/env \1"
 
     records = {}
     for path in bin_dir.iterdir():
@@ -33,7 +40,7 @@ def normalize_scripts(bin_dir: Path) -> dict[str, tuple[str, str]]:
         original = path.read_bytes()
         if b"\x00" in original:
             continue
-        data = wrapped.sub(rb"\1\2 ", plain.sub(rb"#!/usr/bin/env \1", original))
+        data = wrapped.sub(shebang, plain.sub(shebang, original))
         if data != original:
             path.write_bytes(data)
             digest = base64.urlsafe_b64encode(hashlib.sha256(data).digest()).decode()
