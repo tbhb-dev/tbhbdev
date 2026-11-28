@@ -73,11 +73,11 @@ def test_accepts_the_joined_option_form(
 def test_a_value_after_host_is_not_the_run_name(
     started: list[tuple[list[str], str, bool]],
 ) -> None:
-    run.main(["--host", "example", "--cli-sha256", DIGEST, "other"], PROG)
+    run.main(["--steer", "--host", "example", "--cli-sha256", DIGEST, "other"], PROG)
 
     assert build_path("other").exists()
     assert not build_path().exists()
-    assert started[0][0] == ["--host", "example", "other"]
+    assert started[0][0] == ["--steer", "--host", "example", "other"]
 
 
 def test_uses_the_stamp_when_nothing_is_installed(
