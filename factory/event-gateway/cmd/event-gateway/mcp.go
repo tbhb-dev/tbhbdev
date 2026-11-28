@@ -353,10 +353,11 @@ func subscriptionSchema(required string) json.RawMessage {
 }
 
 type mcpSubscriptions struct {
-	cursor *uint64
-	state  mcpState
-	subs   []filter.Subscription
-	mu     sync.Mutex
+	cursor   *uint64
+	onChange func()
+	state    mcpState
+	subs     []filter.Subscription
+	mu       sync.Mutex
 	// Set during startup and immutable once callers can access the subscriptions.
 	imported bool
 }
@@ -390,7 +391,6 @@ func (s *mcpSubscriptions) change(
 
 func (s *mcpSubscriptions) set(sub filter.Subscription, add bool) bool {
 	s.mu.Lock()
-	defer s.mu.Unlock()
 
 	index := slices.IndexFunc(s.subs, func(existing filter.Subscription) bool {
 		return reflect.DeepEqual(existing, sub)
@@ -402,10 +402,19 @@ func (s *mcpSubscriptions) set(sub filter.Subscription, add bool) bool {
 	case !add && index >= 0:
 		s.subs = slices.Delete(s.subs, index, index+1)
 	default:
+		s.mu.Unlock()
+
 		return false
 	}
 
 	s.saveLocked()
+
+	onChange := s.onChange
+	s.mu.Unlock()
+
+	if onChange != nil {
+		onChange()
+	}
 
 	return true
 }

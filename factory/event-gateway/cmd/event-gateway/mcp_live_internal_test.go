@@ -238,6 +238,7 @@ func TestMCPGatewayNoOpSubscribe(t *testing.T) {
 	server, requests := fakeMCPGateway(t, []int{http.StatusSwitchingProtocols}, func(conn *websocket.Conn) {
 		receiveGatewayHello(ctx, t, conn, "", "")
 		checkError(t, conn.Write(ctx, websocket.MessageText, []byte(`{"type":"hello","subscriptions":1,"seq":0}`)))
+
 		connected <- struct{}{}
 
 		select {
