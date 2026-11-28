@@ -9,7 +9,6 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
-	"math"
 	"net/http"
 	"slices"
 	"strconv"
@@ -37,6 +36,7 @@ const (
 	typeKey           = "type"
 	subsKey           = "subscriptions"
 	resumeKey         = "resume_after"
+	seqKey            = "seq"
 	jsonTrue          = "true"
 	idLimit           = 64
 )
@@ -85,7 +85,9 @@ func (api *sessionAPI) connect(writer http.ResponseWriter, req *http.Request) {
 
 		api.telemetry.logger.InfoContext(req.Context(), "session connected", "token.name", name)
 
-		state := session{conn: conn, stream: api.store.stream, events: nil, subscriptions: nil, replay: nil}
+		state := session{
+			conn: conn, stream: api.store.stream, events: nil, subscriptions: nil, replay: nil, liveSeq: nil,
+		}
 		code, reason := api.run(req.Context(), &state, sha256.Sum256([]byte(strings.Fields(header)[1])))
 		_ = conn.Close(code, reason)
 	}
@@ -104,6 +106,7 @@ type session struct {
 	conn          *websocket.Conn
 	events        chan jetstream.Msg
 	replay        *sessionReplay
+	liveSeq       *uint64
 	subscriptions []filter.Subscription
 }
 
@@ -279,7 +282,7 @@ func (s *session) hello(ctx context.Context, object sessionObject) sessionReply 
 		return nil
 	}
 
-	return sessionReply{typeKey: helloKind, subsKey: len(subs)}
+	return s.helloReply(len(subs))
 }
 
 func (s *session) importError(object sessionObject) sessionReply {
@@ -298,37 +301,17 @@ func (s *session) importError(object sessionObject) sessionReply {
 }
 
 func (s *session) consume(ctx context.Context, resume *uint64, importing bool) bool {
+	info, err := s.stream.Info(ctx)
+	if err != nil {
+		return false
+	}
+
 	//nolint:exhaustruct_v5 // Use the default ordered consumer configuration.
 	config := jetstream.OrderedConsumerConfig{
-		DeliverPolicy: jetstream.DeliverNewPolicy, InactiveThreshold: shutdownTimeout, MaxResetAttempts: 1,
+		DeliverPolicy: jetstream.DeliverByStartSequencePolicy, InactiveThreshold: shutdownTimeout, MaxResetAttempts: 1,
 	}
 
-	var after uint64
-
-	switch {
-	case resume != nil:
-		after = *resume
-		config.DeliverPolicy = jetstream.DeliverByStartSequencePolicy
-		// Saturate the start at MaxUint64 so it cannot wrap into retained history.
-		config.OptStartSeq = min(after, math.MaxUint64-1) + 1
-	case importing:
-		config.DeliverPolicy = jetstream.DeliverAllPolicy
-	}
-
-	var replay *sessionReplay
-
-	if importing || resume != nil {
-		info, err := s.stream.Info(ctx)
-		if err != nil {
-			return false
-		}
-
-		replay = &sessionReplay{last: info.State.LastSeq, gap: nil, pending: false}
-		if resume != nil && info.State.LastSeq != 0 && config.OptStartSeq < info.State.FirstSeq {
-			replay.gap = sessionReply{typeKey: "gap", "from": config.OptStartSeq, "to": info.State.FirstSeq - 1}
-			config.OptStartSeq = info.State.FirstSeq
-		}
-	}
+	after, replay, liveSeq := configureSessionConsumer(&config, info.State, resume, importing)
 
 	consumer, err := s.stream.OrderedConsumer(ctx, config)
 	if err != nil {
@@ -339,6 +322,8 @@ func (s *session) consume(ctx context.Context, resume *uint64, importing bool) b
 		replay.pending = after < replay.last && consumer.CachedInfo().NumPending != 0
 		s.replay = replay
 	}
+
+	s.liveSeq = liveSeq
 
 	s.events = make(chan jetstream.Msg)
 	send := func(msg jetstream.Msg) {
@@ -437,7 +422,7 @@ func (s *session) caughtUp() sessionReply {
 	last := s.replay.last
 	s.replay = nil
 
-	return sessionReply{typeKey: "caught_up", "seq": last}
+	return sessionReply{typeKey: "caught_up", seqKey: last}
 }
 
 //nolint:wrapcheck // The run loop converts write errors into the protocol close status.

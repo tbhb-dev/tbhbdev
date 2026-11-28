@@ -67,6 +67,7 @@ _VALE_STYLES = [
         ".cspell.jsonc",
         ".github/actions/affected-targets/affected_targets/__init__.py",
         ".github/actions/affected-targets/affected_targets/decide.py",
+        ".github/actions/affected-targets/affected_targets/edge.py",
         ".github/schemas/pull-request-draft.schema.json",
         ".gitignore",
         ".vale.ini",

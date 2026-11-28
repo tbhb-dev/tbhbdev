@@ -8,6 +8,7 @@ afakt
 afenc
 afixture
 ahosts
+AIAA
 AIVM
 AKIA
 akia
@@ -56,6 +57,7 @@ bootcmd
 bootout
 boottime
 BRDA
+Breckenridge
 bsdinfo
 btrfs
 bubblewrap
@@ -193,6 +195,7 @@ filesize
 finit
 fixturerepo
 flatmap
+FMEA
 fontconfig
 forc
 forcepathstyle
@@ -280,6 +283,7 @@ importpath
 includeif
 inconshreveable
 indentless
+Infotech
 infoplists
 inlines
 inmemory
@@ -604,6 +608,7 @@ statusline
 statuslines
 statvfs
 sthree
+STPA
 strconcat
 strerror
 strikethrough
