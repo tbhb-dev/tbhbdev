@@ -1074,15 +1074,8 @@ def test_gh_with_the_pull_requests_app_is_refused() -> None:
 
 
 def limits_host(**changes: object) -> model.Host:
-    table = {
-        "name": "example-linux",
-        "os": "linux",
-        "shell": "bash",
-        "account": "agent",
-        "accounts": ["agent"],
-        **changes,
-    }
-    return config._host(config._Table("[[agent.host]]", table))  # noqa: SLF001
+    host = cast("list[Table]", GOOD["host"])[0]
+    return config.hosts({"host": [host | changes]})[0]
 
 
 def test_host_limits_default_and_set() -> None:
@@ -1103,6 +1096,11 @@ def test_host_limits_default_and_set() -> None:
     assert (host.load_limit, host.min_memory_available_percent) == (24, 30)
     assert (host.max_swap_used_percent, host.limits_warn_only) == (50, True)
     assert host.max_concurrent_runs == 0
+
+
+def test_max_swap_in_pages_per_second_is_refused_as_unknown() -> None:
+    with pytest.raises(Invalid, match=r"max_swap_in_pages_per_second not recognized"):
+        limits_host(max_swap_in_pages_per_second=1000)
 
 
 def test_host_builds_shims_by_default() -> None:

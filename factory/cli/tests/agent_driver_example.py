@@ -38,7 +38,7 @@ if name == "ssh":
     if len((root / "ssh.jsonl").read_text().splitlines()) > 20:
         raise AssertionError("ssh call budget exceeded")
     if "# tbhbdev-limits" in args[-1]:
-        reading = control.get("limits", "0.5 4 12582912 6291456 100 0 -")
+        reading = control.get("limits", "0.5 4 12582912 6291456 100 0 - -")
         print(control.get("limits_by_host", {}).get(args[-2], reading))
         admitted = control.get("admitted_by_host", {}).get(
             args[-2], control.get("admitted")
