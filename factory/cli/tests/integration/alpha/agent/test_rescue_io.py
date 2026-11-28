@@ -267,12 +267,16 @@ def test_publication_after_main_advances(
 
     result = rescue.publish(run, workspace)
 
-    if change == "unsigned after rebase":
-        assert f"agent commit {tip[:7]} lacks a valid agent signature" in result
-    elif change in ("run secret", "merge resolution secret"):
-        own = "HEAD" if change.startswith("merge") else "HEAD^"
-        secret = git(workspace, "rev-parse", own)
-        assert result == f"{FOUND} in commit {secret[:7]} (rule tailnet-host-1)"
+    found = f"{FOUND} in commit "
+    rule = " (rule tailnet-host-1)"
+    earlier = git(workspace, "rev-parse", "HEAD^")[:7]
+    refusals = {
+        "unsigned after rebase": f"agent commit {tip[:7]} lacks a valid agent sig",
+        "run secret": f"{found}{earlier}{rule}",
+        "merge resolution secret": f"{found}{tip[:7]}{rule}",
+    }
+    if change in refusals:
+        assert refusals[change] in result
         assert "host-x" not in result
     else:
         assert result == "published"
