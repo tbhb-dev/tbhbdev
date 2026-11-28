@@ -123,4 +123,6 @@ def parser(prog: str) -> argparse.ArgumentParser:
     verbs.add_parser(
         "signing-parity", help="check each host's signing key is registered"
     )
+    heal = verbs.add_parser("heal", help="bring named hosts to the latest CLI build")
+    heal.add_argument("hosts", nargs="+", metavar="HOST")
     return command

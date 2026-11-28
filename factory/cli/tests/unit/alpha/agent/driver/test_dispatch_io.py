@@ -9,13 +9,17 @@ import pytest
 from agent_cli_example import run_agent
 from driver_scenarios import CONFIG, command, launch, set_clock
 
+from tbhbdev import version
+from tbhbdev.alpha import version_check
 from tbhbdev.alpha.agent import process_group, runfiles, signing_parity, transport
 from tbhbdev.alpha.agent import settings as agent_settings
 from tbhbdev.alpha.agent.decisions.run_state import Group
-from tbhbdev.alpha.agent.driver import metadata
+from tbhbdev.alpha.agent.driver import hosts, metadata
 
 if TYPE_CHECKING:
     from agent_driver_example import Remote
+
+    from tbhbdev.alpha.agent.model import Host
 
 
 def test_signing_parity_dispatches_with_loaded_settings(
@@ -262,3 +266,46 @@ def test_unsandboxed_run_verbs(
         assert not metadata.metadata_path("sample").exists()
     if verb == "kill":
         assert any("kill-session" in str(call) for call in remote.records("tmux"))
+
+
+def test_heal_verb_syncs_reports_failures_and_rejects_unknown_host(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    head, old = "a" * 40, f"tbhbdev 0 ({'b' * 40})"
+    new = f"tbhbdev 0 ({head})"
+    versions = {"example-linux": old, "example-macos": new}
+    scripts: list[tuple[str, str]] = []
+    fail_install = False
+
+    def shell(_s: object, target: Host, script: str, *_a: object, **_k: object) -> str:
+        scripts.append((target.name, script))
+        if script.endswith("--version"):
+            return versions[target.name]
+        if fail_install:
+            msg = "SSH down"
+            raise transport.TransportError(msg)
+        versions[target.name] = new
+        return f"{'b' * 40} {head} ok 0.1s"
+
+    monkeypatch.setattr(agent_settings, "load", lambda: CONFIG)
+    monkeypatch.setattr(version, "line", lambda: new)
+    monkeypatch.setattr(version_check, "latest", Mock(return_value=head))
+    monkeypatch.setattr(transport, "shell", shell)
+    no_call = Mock(side_effect=AssertionError("unexpected launch"))
+    monkeypatch.setattr(transport, "stream", no_call)
+    monkeypatch.setattr(hosts, "launch_host", no_call)
+    assert run_agent(["heal", "example-linux", "example-macos"]) == 0
+    assert capsys.readouterr().out.splitlines() == [
+        f"example-linux: before {old} after {new}",
+        f"example-macos: before {new} after {new}",
+    ]
+    assert [n for n, s in scripts if not s.endswith("--version")] == ["example-linux"]
+    no_call.assert_not_called()
+    versions["example-linux"], fail_install = old, True
+    assert run_agent(["heal", "example-linux", "example-macos"]) == 1
+    assert capsys.readouterr().out.splitlines() == [
+        "example-linux: heal failed: SSH down",
+        f"example-macos: before {new} after {new}",
+    ]
+    assert run_agent(["heal", "missing"]) == 1
+    assert "host 'missing' isn't configured" in capsys.readouterr().err

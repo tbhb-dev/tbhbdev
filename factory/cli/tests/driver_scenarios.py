@@ -12,7 +12,7 @@ from agent_driver_example import execution_arguments
 from agent_example import MARKER, settings
 
 from tbhbdev.alpha.agent.decisions import repo
-from tbhbdev.alpha.agent.driver import hosts, lifecycle, metadata, startup
+from tbhbdev.alpha.agent.driver import hosts, lifecycle, metadata, startup, version_heal
 from tbhbdev.alpha.agent.driver import launch as coordinator
 
 if TYPE_CHECKING:
@@ -56,7 +56,7 @@ def set_clock(
     sleep: Callable[[float], None] = lambda _: None,
 ) -> None:
     clock = SimpleNamespace(monotonic=monotonic, sleep=sleep)
-    for module in (coordinator, hosts, lifecycle, startup):
+    for module in (coordinator, hosts, lifecycle, startup, version_heal):
         monkeypatch.setattr(module, "time", clock)
 
 

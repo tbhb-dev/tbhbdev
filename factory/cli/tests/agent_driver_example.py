@@ -37,6 +37,10 @@ with (root / (name + ".jsonl")).open("a") as log:
 if name == "ssh":
     if len((root / "ssh.jsonl").read_text().splitlines()) > 20:
         raise AssertionError("ssh call budget exceeded")
+    if "# tbhbdev-heal-probe" in args[-1]:
+        versions = control.get("version_by_host", {})
+        print(versions.get(args[-2], control["version"]))
+        sys.exit(control.get("version_rc_by_host", {}).get(args[-2], 0))
     if "# tbhbdev-limits" in args[-1]:
         reading = control.get("limits", "0.5 4 12582912 6291456 100 0 - -")
         print(control.get("limits_by_host", {}).get(args[-2], reading))
@@ -181,7 +185,11 @@ class Remote:
             if limits
             or all(
                 marker not in str(r["args"])
-                for marker in ("# tbhbdev-limits", "# tbhbdev-check-slot")
+                for marker in (
+                    "# tbhbdev-heal-probe",
+                    "# tbhbdev-limits",
+                    "# tbhbdev-check-slot",
+                )
             )
         ]
 

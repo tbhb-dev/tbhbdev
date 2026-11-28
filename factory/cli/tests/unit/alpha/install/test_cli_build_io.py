@@ -29,6 +29,9 @@ ln -s "$HOME/proof-python" "$UV_TOOL_DIR/tbhbdev/bin/python"
 cat > "$UV_TOOL_BIN_DIR/tbhbdev" <<EOF
 #!/bin/sh
 if test "\$1" = --version; then echo "tbhbdev 0 ($TEST_REVISION)"
+elif test -n "${ADMITTED_RC:-}"; then
+  echo 'agent admission slot must be owned by the current uid' >&2
+  exit "${ADMITTED_RC}"
 else echo "${ADMITTED:-0}"; fi
 EOF
 chmod +x "$UV_TOOL_BIN_DIR/tbhbdev"
@@ -128,9 +131,12 @@ def test_failed_build_keeps_live_link(
         assert run_install().returncode == 0
 
 
-@pytest.mark.parametrize(("count", "remaining"), [("0", 3), ("1", 5), ("error", 5)])
+@pytest.mark.parametrize(
+    ("count", "rc", "remaining"),
+    [("0", "", 3), ("1", "", 5), ("error", "", 5), ("0", "1", 5)],
+)
 def test_prunes_only_with_zero_admitted_runs(
-    home: Path, monkeypatch: pytest.MonkeyPatch, count: str, remaining: int
+    home: Path, monkeypatch: pytest.MonkeyPatch, count: str, rc: str, remaining: int
 ) -> None:
     builds = home / BUILDS
     for number in range(4):
@@ -138,7 +144,9 @@ def test_prunes_only_with_zero_admitted_runs(
         build.mkdir(parents=True)
         os.utime(build, (number, number))
     monkeypatch.setenv("ADMITTED", count)
+    monkeypatch.setenv("ADMITTED_RC", rc)
     assert run_install().returncode == 0
     assert len([build for build in builds.iterdir() if build.is_dir()]) == remaining
+    assert "Traceback" not in (home / LOG).read_text()
     for revision in (f"{2:040x}", f"{3:040x}", REVISION):
         assert (builds / revision).is_dir()

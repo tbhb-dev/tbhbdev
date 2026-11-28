@@ -7,7 +7,7 @@ from typing import TYPE_CHECKING
 from tbhbdev import telemetry
 from tbhbdev.alpha.agent import runfiles, signing_parity, transport
 from tbhbdev.alpha.agent.driver import lifecycle as life
-from tbhbdev.alpha.agent.driver import metadata
+from tbhbdev.alpha.agent.driver import metadata, version_heal
 from tbhbdev.alpha.agent.driver.cleanup import clean, clean_archived, keep
 from tbhbdev.alpha.agent.driver.inspection import export_patch, inspect
 from tbhbdev.alpha.agent.driver.launch import execute
@@ -22,8 +22,11 @@ if TYPE_CHECKING:
 
 
 def dispatch(settings: Settings, args: argparse.Namespace) -> int:
+    version_heal.reset()
     if args.verb == "signing-parity":
         return signing_parity.main(settings)
+    if args.verb == "heal":
+        return version_heal.heal_hosts(settings, args.hosts)
     if args.verb == "exec":
         result = execute(settings, args)
         telemetry.attributes(

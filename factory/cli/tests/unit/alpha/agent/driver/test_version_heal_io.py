@@ -175,9 +175,9 @@ def test_host_sync_retries_review_preflight(
     run = Mock(return_value=ORIGIN)
     shell = Mock(
         side_effect=[
-            "0 4 12582912 6291456 0 0 - -",
             OLD_LINE,
             SUMMARY,
+            "0 4 12582912 6291456 0 0 - -",
             f"{host_after}\n{HEAD}\trefs/heads/topic\n",
         ]
     )
@@ -196,8 +196,12 @@ def test_host_sync_retries_review_preflight(
     run.assert_called_once()
     assert run.call_args.args == (GIT,)
     assert run.call_args.kwargs["env"]["GIT_TERMINAL_PROMPT"] == "0"
-    _, preflight, install, reread = [call.args for call in shell.call_args_list]
-    assert preflight == reread
+    probe, install, limits_call, preflight = [
+        call.args for call in shell.call_args_list
+    ]
+    assert "--version" in probe[2]
+    assert "# tbhbdev-limits" in limits_call[2]
+    assert "ls-remote" in preflight[2]
     assert install[:2] == (CONFIG, HOST)
     command = install[2]
     assert command.startswith(remote_shell.PREFIX)
@@ -360,3 +364,32 @@ def test_failed_remote_build_reports_summary(monkeypatch: pytest.MonkeyPatch) ->
 
     with pytest.raises(Invalid, match=summary):
         version_heal.check(CONFIG, HOST, NEW_LINE, OLD_LINE)
+
+
+@pytest.mark.usefixtures("isolated_home")
+def test_sync_skips_matching_and_refuses_second_restart(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    unexpected = Mock(side_effect=AssertionError("unexpected call"))
+    monkeypatch.setattr(subprocess, "run", unexpected)
+    monkeypatch.setattr(transport, "shell", unexpected)
+    assert version_heal.sync(CONFIG, HOST, NEW_LINE, NEW_LINE) is False
+    with pytest.raises(TimeoutError, match="launch deadline"):
+        version_heal.sync(CONFIG, HOST, NEW_LINE, OLD_LINE, deadline=0)
+    monkeypatch.setenv(RETRY, "original mismatch")
+    monkeypatch.setattr(subprocess, "run", Mock(return_value=ORIGIN))
+    monkeypatch.setattr(version_heal, "restart", unexpected)
+    with pytest.raises(OSError, match="restart"):
+        version_heal.sync(CONFIG, HOST, OLD_LINE, NEW_LINE)
+    unexpected.assert_not_called()
+    monkeypatch.delenv(RETRY)
+    monkeypatch.setattr(version, "line", lambda: NEW_LINE)
+    monkeypatch.setattr(agent_settings, "load", lambda: CONFIG)
+    for attr in ("stream", "call"):
+        monkeypatch.setattr(transport, attr, Mock())
+    monkeypatch.setattr(startup, "poll_launch", Mock(return_value=0))
+    replies = [NEW_LINE, "0 4 12582912 6291456 0 0 -", OLD_LINE, SUMMARY, NEW_LINE]
+    monkeypatch.setattr(transport, "shell", Mock(side_effect=replies))
+    prompt = tmp_path / "brief.md"
+    prompt.write_text("Build.\n")
+    assert run_agent(execution_arguments(prompt)) == 0

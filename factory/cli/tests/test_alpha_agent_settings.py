@@ -164,7 +164,8 @@ def test_duration() -> None:
 def test_command_help_contract() -> None:
     help_text = arguments.parser("example agent").format_help()
     assert (
-        "{exec,wait,status,kill,clean,keep,log,diff,send,signing-parity}" in help_text
+        "{exec,wait,status,kill,clean,keep,log,diff,send,signing-parity,heal}"
+        in help_text
     )
     assert "launch a headless run" in help_text
     assert "steer an active Codex run" in help_text
