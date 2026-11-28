@@ -17,6 +17,7 @@
 [Rr]unbooks?
 afakt
 agy
+AIAA
 ascm
 awrel
 Bazel
@@ -27,6 +28,7 @@ ccstatusline
 commit's
 complexipy
 cspell
+CUE
 deptry
 dereferenced
 dugite
@@ -57,6 +59,7 @@ tbhb
 tbhb_rules
 tbhbdev
 Temurin
+TLA
 tmux
 tombi
 toolchains
