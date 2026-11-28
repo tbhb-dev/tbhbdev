@@ -131,6 +131,15 @@ def _available(
         yield directory, builds if profile is Profile.BUILD else reviews
 
 
+def has_room(root: Path, host: Host, profile: Profile, limit: int | None) -> bool:
+    """Report whether a launch could claim a slot now, without claiming one."""
+    try:
+        with _available(root, host.name, profile, limit, _owner_ids(host.accounts)):
+            return True
+    except SlotFullError:
+        return False
+
+
 @contextmanager
 def reserve(
     root: Path, host: Host, profile: Profile, limit: int | None
