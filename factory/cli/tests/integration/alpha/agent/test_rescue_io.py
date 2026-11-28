@@ -307,6 +307,7 @@ def change_checkout(workspace: Path, change: str) -> None:
         ("dirty with commit", ""),
         ("already pushed", ""),
         ("without opener", ""),
+        ("without token", f"cannot check {BRANCH}"),
         ("get denied", f"cannot check {BRANCH}"),
         ("get offline", f"cannot check {BRANCH}"),
         ("large", "401 lines, limit 400"),
@@ -350,27 +351,25 @@ def test_fault_draft(
         (staged.parent / f"{second}.stages").touch()
         (workspace / "tracked").write_text("unfinished\n")
     pulls.configure_mock(side_effect=replies(change))
-    tokens = ["rescue", "fresh"]
+    tokens = ["rescue", None if change == "without token" else "fresh"]
     monkeypatch.setattr(rescue.credentials, "github_token", Mock(side_effect=tokens))
     assert completion.finish(run, ready, None, rc) == rc
     assert run.files.path("rc").read_text() == f"{rc}\n"
     assert remote.call_args_list[0].kwargs["token"] == tokens[0]
     requests = [call.args[0] for call in pulls.call_args_list]
-    assert [request.method for request in requests] == (
-        ["GET"]
-        if refusal and change not in ("post denied", "invalid number")
-        else ["GET", "POST"]
-    )
+    posted = not refusal or change in ("post denied", "invalid number")
+    assert [request.method for request in requests] == ["GET"] + ["POST"] * posted
+    assert {request.headers.get("Authorization") for request in requests} == {
+        None if tokens[1] is None else "Bearer fresh"
+    }
     assert requests[0].url.params["state"] == "all"
     log = run.files.path("log").read_text()
     if refusal:
         assert not run.files.path("pr").exists()
         assert f"draft pull request: not opened: {refusal}" in log
     else:
-        post = requests[1]
-        assert str(post.url) == PULLS
-        assert post.headers["Authorization"] == "Bearer fresh"
-        payload = json.loads(post.content)
+        assert str(requests[1].url) == PULLS
+        payload = json.loads(requests[1].content)
         assert (payload["title"], payload["head"]) == (subject, BRANCH)
         assert payload["draft"] is True
         assert run.files.path("pr").read_text().strip() == "31"
