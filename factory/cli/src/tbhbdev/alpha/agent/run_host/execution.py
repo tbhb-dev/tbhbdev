@@ -17,6 +17,7 @@ from tbhbdev.alpha.agent import (
     push,
     render,
     shims,
+    token_helper,
 )
 from tbhbdev.alpha.agent.model import Invalid, Profile
 from tbhbdev.alpha.agent.run_host import (
@@ -78,6 +79,8 @@ def _execute(
         if preflight_only:
             rc = harness.run_harness(run, prepared, stack, preflight_only=True)
         else:
+            if (helper := prepared.delivery.token_helper) is not None:
+                stack.enter_context(helper.serve(run.tmpdir / token_helper.GH_SOCKET))
             rc = run_and_check(run, prepared, stack)
     except TimeoutError, subprocess.TimeoutExpired:
         rc = 124
@@ -99,7 +102,9 @@ def run_and_check(run: Run, prepared: Prepared, stack: ExitStack) -> int:
     rc = push.run(run, prepared, stack, harness.run_harness)
     if rc == 0 and run.request.profile is Profile.REVIEW:
         return publication.post_review(run, prepared)
-    return publication.require_commit(run, rc)
+    return publication.require_commit(
+        run, rc, token_helper=prepared.delivery.token_helper
+    )
 
 
 def prepare_brief(

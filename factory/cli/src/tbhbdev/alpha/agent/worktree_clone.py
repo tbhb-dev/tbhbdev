@@ -27,11 +27,15 @@ def clone_run(mirror: Path, workspace: Path, url: str, profile: Profile) -> None
         workspace, "config", "core.hooksPath", str(workspace / ".git" / "hooks")
     )
     if profile is Profile.BUILD:
-        # Reset inherited helpers so Git uses the run's GH_CONFIG_DIR.
+        # Reset inherited helpers so Git uses run-host's token helper / GH_CONFIG_DIR.
         helper = f"credential.https://{repo.DEFAULT_GIT_HOST}.helper"
         worktree_git.git(workspace, "config", "--add", helper, "")
         worktree_git.git(
-            workspace, "config", "--add", helper, "!gh auth git-credential"
+            workspace,
+            "config",
+            "--add",
+            helper,
+            "!tbhbdev alpha agent git-credential",
         )
 
 

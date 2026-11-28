@@ -12,6 +12,7 @@ from tbhbdev.alpha.agent import (
     settings,
     signing_parity,
     ssh_serve,
+    token_helper,
 )
 from tbhbdev.alpha.agent.decisions import host_names
 from tbhbdev.alpha.agent.driver import arguments
@@ -31,6 +32,7 @@ def main(argv: list[str], prog: str) -> int:
         "check-slot": admission.main,
         "admitted": admission.count_main,
         "signing-fingerprint": signing_parity.host_main,
+        "git-credential": token_helper.git_credential_main,
     }
     if argv and argv[0] in host_commands:
         return host_commands[argv[0]](argv[1:], f"{prog} {argv[0]}")

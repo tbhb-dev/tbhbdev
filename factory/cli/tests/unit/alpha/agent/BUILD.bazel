@@ -36,3 +36,21 @@ cli_py_test(
         "@cli_pip//pytest",
     ],
 )
+
+cli_py_test(
+    name = "test_token_helper_io",
+    srcs = ["test_token_helper_io.py"],
+    imports = ["../../.."],
+    deps = [
+        "//factory/cli/src/tbhbdev:secrets",
+        "//factory/cli/src/tbhbdev/alpha:gh_app_api",
+        "//factory/cli/src/tbhbdev/alpha:gh_app_runtime",
+        "//factory/cli/src/tbhbdev/alpha/agent:credentials",
+        "//factory/cli/src/tbhbdev/alpha/agent:model",
+        "//factory/cli/src/tbhbdev/alpha/agent:token_helper",
+        "//factory/cli/tests:agent_host_example",
+        "//factory/cli/tests:conftest",
+        "@cli_pip//pytest",
+        "@cli_pip//pyyaml",
+    ],
+)

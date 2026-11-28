@@ -153,6 +153,7 @@ cli_py_library(
         "//factory/cli/src/tbhbdev/alpha/agent:push",
         "//factory/cli/src/tbhbdev/alpha/agent:render",
         "//factory/cli/src/tbhbdev/alpha/agent:shims",
+        "//factory/cli/src/tbhbdev/alpha/agent:token_helper",
     ],
 )
 
@@ -234,6 +235,7 @@ cli_py_library(
     name = "publication",
     srcs = ["publication.py"],
     imports = ["../../../.."],
+    pyi_deps = ["//factory/cli/src/tbhbdev/alpha/agent:token_helper"],
     visibility = ["//factory/cli:__subpackages__"],
     deps = [
         ":publication_plan",

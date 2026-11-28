@@ -31,3 +31,16 @@ def test_ref_tip(ref: str, sha: str, expected: str | None) -> None:
 )
 def test_origin_ahead(record: object, expected: bool | None) -> None:
     assert publication_plan.origin_ahead(record) is expected
+
+
+def test_credential_rejected_and_push_failure_message() -> None:
+    assert publication_plan.credential_rejected("HTTP 401: Bad credentials")
+    assert not publication_plan.credential_rejected("branch is behind")
+    sha = "a" * 40
+    got = publication_plan.push_failure_message(
+        "a", sha, published=None, rejected=False
+    )
+    assert got == (
+        "push failed: cannot verify a on origin "
+        f"(no GitHub credential rejection; unpushed commit {sha})"
+    )

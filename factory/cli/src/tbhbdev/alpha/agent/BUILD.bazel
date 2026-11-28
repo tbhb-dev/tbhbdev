@@ -49,6 +49,7 @@ cli_py_library(
         ":model",
         ":process_group",
         ":runfiles",
+        ":token_helper",
         "//factory/cli/src/tbhbdev:secrets",
         "//factory/cli/src/tbhbdev/alpha:gh_app_api",
         "//factory/cli/src/tbhbdev/alpha:gh_app_runtime",
@@ -264,6 +265,7 @@ cli_py_library(
         ":settings",
         ":signing_parity",
         ":ssh_serve",
+        ":token_helper",
         "//factory/cli/src/tbhbdev:telemetry",
         "//factory/cli/src/tbhbdev:userconfig",
         "//factory/cli/src/tbhbdev/alpha/agent/decisions:host_names",
@@ -380,5 +382,19 @@ cli_py_library(
         "//factory/cli/src/tbhbdev/alpha:pre_push_guard",
         "//factory/cli/src/tbhbdev/alpha:secret_scan",
         "//factory/cli/src/tbhbdev/alpha/agent/decisions:repo",
+    ],
+)
+
+cli_py_library(
+    name = "token_helper",
+    srcs = ["token_helper.py"],
+    imports = ["../../.."],
+    pyi_deps = ["//factory/cli/src/tbhbdev/alpha:gh_app_api"],
+    visibility = ["//factory/cli:__subpackages__"],
+    deps = [
+        ":model",
+        "//factory/cli/src/tbhbdev/alpha:gh_app_runtime",
+        "//factory/cli/src/tbhbdev/alpha/agent/decisions:repo",
+        "@cli_pip//pyyaml",
     ],
 )

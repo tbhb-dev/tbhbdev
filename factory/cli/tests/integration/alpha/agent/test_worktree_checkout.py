@@ -379,7 +379,7 @@ def test_prelaunch_git_protocol(
     )
     options = ("clone", "--no-local", "--no-hardlinks", "--no-checkout", "--template=")
     helper = ("config", "--add", "credential.https://github.com.helper")
-    values = ("", "!gh auth git-credential") if profile == "build" else ()
+    values = ("", "!tbhbdev alpha agent git-credential") if profile == "build" else ()
     assert calls == [
         (mirror, ("init", "--bare", "--template=")),
         (mirror, (*options, str(mirror), str(workspace))),

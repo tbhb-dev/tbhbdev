@@ -14,7 +14,7 @@ import yaml
 
 from tbhbdev import secrets
 from tbhbdev.alpha import gh_app_api, gh_app_runtime
-from tbhbdev.alpha.agent import host_tools, process_group, runfiles
+from tbhbdev.alpha.agent import host_tools, process_group, runfiles, token_helper
 from tbhbdev.alpha.agent.decisions import auth, config, repo
 from tbhbdev.alpha.agent.model import Harness, Invalid, Profile
 
@@ -51,6 +51,7 @@ class Delivery:
     env: dict[str, str] = field(repr=False)
     signing: str | None = field(repr=False)
     claude_profile: str | None
+    token_helper: token_helper.TokenHelper | None = field(default=None, repr=False)
 
 
 def read(reference: str, *, label: str) -> str:
@@ -95,12 +96,12 @@ def installation_token(
     ).token
 
 
-def pull_requests_token(
+def mint_pull_requests_token(
     references: Credentials,
     repository: str,
     permissions: dict[str, str] = PULL_REQUESTS_PERMISSIONS,
-) -> str:
-    """Mint the pull-requests App token for one repository, read-only by default."""
+) -> gh_app_api.Minted:
+    """Mint the pull-requests App token and keep its expiry."""
     if (
         references.pull_requests_app_client_id is None
         or references.pull_requests_app_pem is None
@@ -120,17 +121,19 @@ def pull_requests_token(
         pem=pem,
         repository=f"{owner}/{name}",
         permissions=permissions,
-    ).token
+    )
 
 
-TOKEN_ERRORS = (
-    Invalid,
-    OSError,
-    ValueError,
-    KeyError,
-    TypeError,
-    gh_app_runtime.GhAppError,
-)
+def pull_requests_token(
+    references: Credentials,
+    repository: str,
+    permissions: dict[str, str] = PULL_REQUESTS_PERMISSIONS,
+) -> str:
+    """Mint the pull-requests App token for one repository, read-only by default."""
+    return mint_pull_requests_token(references, repository, permissions).token
+
+
+TOKEN_ERRORS = token_helper.TOKEN_ERRORS
 
 
 def has_app_references(references: Credentials) -> bool:
@@ -201,16 +204,49 @@ def fetch_token(request: RunRequest, settings: Settings) -> str | None:
     )
 
 
+def write_hosts(gh_dir: Path, expected: Path, host: str, token: str) -> None:
+    if gh_dir.is_symlink() or gh_dir.resolve() != expected:
+        msg = "gh config directory is redirected"
+        raise Invalid(msg)
+    runfiles.atomic(
+        gh_dir / "hosts.yml",
+        yaml.safe_dump({host: {"oauth_token": token, "git_protocol": "https"}}),
+    )
+
+
+def _deliver_gh(
+    request: RunRequest, references: Credentials, tmpdir: Path
+) -> token_helper.TokenHelper | None:
+    minted: gh_app_api.Minted | None = None
+    has_app = references.pull_requests_app_client_id or references.pull_requests_app_pem
+    if request.profile is Profile.BUILD and not references.gh and has_app:
+        try:
+            minted = mint_pull_requests_token(
+                references, request.repo, PUSH_PERMISSIONS
+            )
+        except TOKEN_ERRORS:
+            msg = "pull-requests App token unavailable; build refused"
+            raise Invalid(msg) from None
+        gh_token: str | None = minted.token
+    else:
+        gh_token = github_token(request, references)
+    gh = runfiles.private_dir(tmpdir / "gh")
+    if gh_token is None:
+        return None
+    host, expected = repo.parts(request.repo)[0], gh.resolve()
+    write_hosts(gh, expected, host, gh_token)
+    if minted is None:
+        return None
+    return token_helper.TokenHelper(
+        lambda: mint_pull_requests_token(references, request.repo, PUSH_PERMISSIONS),
+        minted,
+        on_refresh=lambda tok: write_hosts(gh, expected, host, tok),
+    )
+
+
 def deliver(request: RunRequest, settings: Settings, tmpdir: Path) -> Delivery:
     references = next(c for c in settings.credentials if c.account == request.account)
-    gh_token = github_token(request, references)
-    gh = runfiles.private_dir(tmpdir / "gh")
-    if gh_token is not None:
-        host = repo.parts(request.repo)[0]
-        runfiles.atomic(
-            gh / "hosts.yml",
-            yaml.safe_dump({host: {"oauth_token": gh_token, "git_protocol": "https"}}),
-        )
+    helper = _deliver_gh(request, references, tmpdir)
     docker = runfiles.private_dir(tmpdir / "docker")
     docker_text = (
         read(references.docker, label="docker") if references.docker else '{"auths":{}}'
@@ -232,7 +268,7 @@ def deliver(request: RunRequest, settings: Settings, tmpdir: Path) -> Delivery:
     signing = (
         signing_key(references.signing) if request.profile is Profile.BUILD else None
     )
-    return Delivery(env, signing, profile_name)
+    return Delivery(env, signing, profile_name, token_helper=helper)
 
 
 def signing_key(source: str) -> str:

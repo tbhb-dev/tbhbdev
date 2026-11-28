@@ -2,6 +2,10 @@
 
 from __future__ import annotations
 
+import os
+from contextlib import suppress
+from typing import TYPE_CHECKING
+
 import httpx2
 
 from tbhbdev import github_tls
@@ -10,13 +14,10 @@ from tbhbdev.alpha.agent.decisions import repo
 from tbhbdev.alpha.agent.run_host import publication_plan
 from tbhbdev.alpha.agent.run_host.state import Prepared, Run, RunInterruptedError
 
-NO_COMMIT = 6
+if TYPE_CHECKING:
+    from tbhbdev.alpha.agent.token_helper import TokenHelper
 
-
-NO_PUSH = 9
-
-
-NO_REVIEW = 10
+NO_COMMIT, NO_PUSH, NO_REVIEW, OUTPUT_TAIL_BYTES = 6, 9, 10, 65536
 
 
 def post_review(run: Run, prepared: Prepared) -> int:
@@ -74,7 +75,24 @@ def origin_contains(run: Run, commit: str) -> bool | None:
     return publication_plan.origin_ahead(record)
 
 
-def require_commit(run: Run, rc: int) -> int:
+def _credential_rejected(run: Run, helper: TokenHelper | None) -> bool:
+    if helper is not None and helper.rejected:
+        return True
+    for suffix in ("out.final", "out"):
+        path = run.files.path(suffix)
+        if path.is_file() and not path.is_symlink():
+            with suppress(OSError), path.open("rb") as f:
+                f.seek(max(0, f.seek(0, os.SEEK_END) - OUTPUT_TAIL_BYTES))
+                if publication_plan.credential_rejected(
+                    f.read(OUTPUT_TAIL_BYTES).decode(errors="replace")
+                ):
+                    return True
+    return False
+
+
+def require_commit(
+    run: Run, rc: int, *, token_helper: TokenHelper | None = None
+) -> int:
     if rc or not run.request.expect_commit:
         return rc
     if not (head := run.files.path("head")).exists():
@@ -82,11 +100,17 @@ def require_commit(run: Run, rc: int) -> int:
             "log", "no new commit: the build required one (--expect-commit)\n"
         )
         return NO_COMMIT
-    published = origin_contains(run, head.read_text().strip())
+    commit = head.read_text().strip()
+    published = origin_contains(run, commit)
     branch = publication_plan.branch_name(run.files.name, run.request.start_ref)
     if published:
         run.files.write("branch", branch)
         return 0
-    reason = "cannot verify" if published is None else "build commit missing from"
-    run.files.write("log", f"push failed: {reason} {branch} on origin\n")
+    msg = publication_plan.push_failure_message(
+        branch,
+        commit,
+        published=published,
+        rejected=_credential_rejected(run, token_helper),
+    )
+    run.files.write("log", f"{msg}\n")
     return NO_PUSH

@@ -22,12 +22,14 @@ from run_host_fixtures import (
     preparation,
 )
 
+from tbhbdev.alpha import gh_app_api
 from tbhbdev.alpha.agent import (
     credentials,
     process_group,
     push,
     review_post,
     runfiles,
+    token_helper,
 )
 from tbhbdev.alpha.agent.model import (
     Profile,
@@ -209,7 +211,11 @@ def test_execute_checks_required_build_results(  # noqa: PLR0913, PLR0917
     branch = start_ref.removeprefix("refs/heads/") if start_ref else "agent/example"
     if expected == 9:
         reason = "cannot verify" if published is None else "build commit missing from"
-        assert f"push failed: {reason} {branch} on origin" in log.read_text()
+        assert (
+            f"push failed: {reason} {branch} on origin "
+            f"(no GitHub credential rejection; unpushed commit {'a' * 40})"
+            in log.read_text()
+        )
     assert run.files.path("branch").exists() is bool(published)
 
 
@@ -311,3 +317,42 @@ def test_origin_contains_recorded_commit(
         lookup.assert_called_once_with(run, f"compare/{commit}...{tip}?per_page=1")
     else:
         lookup.assert_not_called()
+
+
+@pytest.mark.parametrize("source", ["helper", "output", "none"])
+def test_missing_commit_status_names_credential_rejection_and_unpushed_sha(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, source: str
+) -> None:
+    commit, run = "b" * 40, make_run(tmp_path, expect_commit=True)
+    run.files.write(
+        "out.final", "HTTP 401 Bad credentials\n" if source == "output" else "ok\n"
+    )
+    helper = None
+    if source == "helper":
+        helper = token_helper.TokenHelper(
+            lambda: gh_app_api.Minted("t2", 5000), gh_app_api.Minted("t1", 4000)
+        )
+        helper.retry()
+    prepared = dataclasses.replace(
+        preparation(run),
+        auth_before="example-before",
+        delivery=credentials.Delivery({}, None, None, token_helper=helper),
+    )
+
+    def fake_push(*_args: object) -> int:
+        run.files.write("head", commit)
+        return 0
+
+    HostRuntime(run, prepared, None).patch(monkeypatch)
+    monkeypatch.setattr(host_publication, "origin_contains", Mock(return_value=False))
+    monkeypatch.setattr(push, "run", fake_push)
+    auth = (
+        "no GitHub credential rejection"
+        if source == "none"
+        else "GitHub credential rejected"
+    )
+    assert host_execution.execute(run, "example") == 9
+    assert (
+        f"push failed: build commit missing from agent/example on origin "
+        f"({auth}; unpushed commit {commit})\n"
+    ) in run.files.path("log").read_text()

@@ -2,6 +2,11 @@
 
 import re
 
+AUTH_REJECTION = re.compile(
+    r"HTTP 401\b|\bBad credentials\b|Authentication failed for 'https://github\.com/"
+    r"|The requested URL returned error: 401\b"
+)
+
 
 def branch_name(run_name: str, start_ref: str | None) -> str:
     if start_ref is not None:
@@ -19,3 +24,19 @@ def ref_tip(record: object, ref: str) -> str | None:
 
 def origin_ahead(record: object) -> bool | None:
     return record.get("status") == "ahead" if isinstance(record, dict) else None
+
+
+def credential_rejected(text: str) -> bool:
+    return bool(AUTH_REJECTION.search(text))
+
+
+def push_failure_message(
+    branch: str, commit: str, *, published: bool | None, rejected: bool
+) -> str:
+    reason = "cannot verify" if published is None else "build commit missing from"
+    auth = (
+        "GitHub credential rejected" if rejected else "no GitHub credential rejection"
+    )
+    return (
+        f"push failed: {reason} {branch} on origin ({auth}; unpushed commit {commit})"
+    )

@@ -208,7 +208,7 @@ def test_build_git_uses_the_run_gh_credential(
     worktree_clone.clone_run(
         mirror, clone, "https://example.test/repo.git", Profile.BUILD
     )
-    helper = tmp_path / "gh"
+    helper = tmp_path / "tbhbdev"
     helper.write_text('#!/bin/sh\ncat "$GH_CONFIG_DIR/credential"\n')
     helper.chmod(0o700)
     value = "username=example\npassword=example-run-credential\n"
