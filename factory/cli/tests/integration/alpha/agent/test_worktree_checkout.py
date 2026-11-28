@@ -195,6 +195,45 @@ def test_review_detaches_at_resolved_commit(tmp_path: Path) -> None:
     assert git(path, "branch", "--show-current") == ""
 
 
+def pinned_ruff_checkout(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> tuple[Path, dict[str, str], str]:
+    seed, clone = repository(tmp_path)
+    (seed / "mise.toml").write_text('[tools]\nruff = "9.9.9"\n')
+    head = commit(seed, "raise the ruff pin")
+    git(seed, "push", "origin", "main")
+    tools = tmp_path / "tools"
+    tools.mkdir()
+    write_fake(tools / "ruff", "print('ruff 9.9.8')\n")
+    monkeypatch.setattr(worktree_hooks, "verify_run_hooks", lambda *_: None)
+    return clone, {"PATH": str(tools)}, head
+
+
+def test_review_start_accepts_pins_that_differ_from_the_host(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    clone, env, head = pinned_ruff_checkout(tmp_path, monkeypatch)
+    request = run_request(profile="review", commit=head)
+    path = worktree_checkout.create(clone, "review-pins", request, hook_env=env)
+    assert git(path, "rev-parse", "HEAD") == head
+
+
+def test_build_start_refuses_pins_that_differ_from_the_host(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    clone, env, _ = pinned_ruff_checkout(tmp_path, monkeypatch)
+    message = (
+        "pinned check tools: ruff reports 9.9.8, expected pinned version 9.9.9. "
+        "Run `tbhbdev alpha install` from a checkout at the run's starting ref."
+    )
+    with pytest.raises(Invalid) as caught:
+        worktree_checkout.create(
+            clone, "build-pins", run_request(profile="build"), hook_env=env
+        )
+    assert str(caught.value) == message
+    assert not (clone / ".worktrees" / "agent-build-pins").exists()
+
+
 def test_missing_commit_is_refused(tmp_path: Path) -> None:
     _, clone = repository(tmp_path)
     with pytest.raises(Invalid, match="run preparation failed at mirror fetch"):

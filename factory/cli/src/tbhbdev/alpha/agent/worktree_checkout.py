@@ -80,8 +80,11 @@ def create(
         if hook_env is not None:
             with worktree_errors.preparation_step("hook verification"):
                 worktree_hooks.verify_run_hooks(worktree, hook_env)
-        refs = ", ".join(request.fetch_refs)
-        ref_details = f"; requested refs: {refs}" if refs else ""
+        ref_details = (
+            f"; requested refs: {', '.join(request.fetch_refs)}"
+            if request.fetch_refs
+            else ""
+        )
         with worktree_errors.preparation_step(f"mirror fetch ({url}){ref_details}"):
             try:
                 commit = worktree_mirror.fetch_commit(mirror, request)
@@ -110,6 +113,8 @@ def create(
                 worktree_git.git(worktree, "checkout", "--detach", commit, "--")
         with worktree_errors.preparation_step("git metadata"):
             worktree_clone.prepare_git(worktree)
-        host_tools.require_check_tools(worktree, hook_env)
+        if request.profile is Profile.BUILD:
+            # A review never commits, so the tools its commit hooks use may differ.
+            host_tools.require_check_tools(worktree, hook_env)
         discard.pop_all()
     return worktree
