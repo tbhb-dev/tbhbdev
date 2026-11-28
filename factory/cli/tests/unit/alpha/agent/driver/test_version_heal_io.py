@@ -388,7 +388,7 @@ def test_sync_skips_matching_and_refuses_second_restart(
     for attr in ("stream", "call"):
         monkeypatch.setattr(transport, attr, Mock())
     monkeypatch.setattr(startup, "poll_launch", Mock(return_value=0))
-    replies = [NEW_LINE, "0 4 12582912 6291456 0 0 -", OLD_LINE, SUMMARY, NEW_LINE]
+    replies = [NEW_LINE, "0 4 12582912 6291456 0 0 - -", OLD_LINE, SUMMARY, NEW_LINE]
     monkeypatch.setattr(transport, "shell", Mock(side_effect=replies))
     prompt = tmp_path / "brief.md"
     prompt.write_text("Build.\n")

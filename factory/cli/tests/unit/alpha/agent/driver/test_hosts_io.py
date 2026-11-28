@@ -381,19 +381,29 @@ def test_check_limits_charges_only_recent_runs_and_keeps_single_run_fallback(
         hosts.check_limits(CONFIG, config_host, Profile.BUILD, ignore=False)
 
 
+REAL_SHELL = transport.shell
+
+
 def _stale_shell(
     monkeypatch: pytest.MonkeyPatch,
-    limits_reply: str = "9 4 12582912 6291456 0 0 -",
+    limits_reply: str = "9 4 12582912 6291456 0 0 - -",
     slot_reply: str = "",
     fail_host: str | None = None,
 ) -> list[tuple[str, str]]:
     head, old = "a" * 40, f"tbhbdev 0 ({'b' * 40})"
-    new, real_shell = f"tbhbdev 0 ({head})", transport.shell
+    new = f"tbhbdev 0 ({head})"
     monkeypatch.setattr(version, "line", lambda: new)
     monkeypatch.setattr(version_check, "latest", Mock(return_value=head))
     events: list[tuple[str, str]] = []
 
-    def shell(s: Settings, t: Host, script: str, *_a: object, **k: float) -> str:
+    def shell(
+        s: Settings,
+        t: Host,
+        script: str,
+        stdin: transport.Stdin | None = None,
+        *,
+        timeout: float = 30,
+    ) -> str:
         if script.endswith("--version"):
             events.append((t.name, "version"))
             return old if fail_host in {None, t.name} else new
@@ -404,7 +414,7 @@ def _stale_shell(
                 raise transport.TransportError(msg)
             return f"{'b' * 40} {head} ok 0.1s"
         if fail_host is not None:
-            return real_shell(s, t, script, timeout=k.get("timeout", 30))
+            return REAL_SHELL(s, t, script, stdin, timeout=timeout)
         if "# tbhbdev-limits" in script:
             assert "alpha agent admitted" in script
             events.append((t.name, "limits"))
@@ -419,9 +429,9 @@ def _stale_shell(
 @pytest.mark.parametrize(
     ("target", "limits_reply", "slot_reply"),
     [
-        ("host-1", "9 4 12582912 6291456 0 0 -", ""),
-        ("host-1", "0.5 4 12582912 1048576 0 0 -", ""),
-        (None, "0.5 4 12582912 6291456 0 0 -", admission.SLOT_FULL),
+        ("host-1", "9 4 12582912 6291456 0 0 - -", ""),
+        ("host-1", "0.5 4 12582912 1048576 0 0 - -", ""),
+        (None, "0.5 4 12582912 6291456 0 0 - -", admission.SLOT_FULL),
     ],
 )
 def test_stale_host_is_healed_before_limits_admitted_and_slot(
