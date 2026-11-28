@@ -1,0 +1,3 @@
+# Serves Go vanity imports from a Cloudflare Worker.
+# Depends on the TypeScript and Cloudflare rules in lib/rules.
+@tbhb
