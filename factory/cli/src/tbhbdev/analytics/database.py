@@ -49,7 +49,12 @@ def driver(settings: Settings, password: str) -> Connection:
 
 
 def password(path: Path) -> str:
-    value = path.read_bytes().decode().partition("\n")[0]
+    return parse_password(path.read_bytes())
+
+
+def parse_password(contents: bytes) -> str:
+    """Validate and return the first line of a password file."""
+    value = contents.decode().partition("\n")[0]
     if re.fullmatch(r"[A-Za-z0-9]{32}", value) is None:
         message = "password file damaged"
         raise ValueError(message)
