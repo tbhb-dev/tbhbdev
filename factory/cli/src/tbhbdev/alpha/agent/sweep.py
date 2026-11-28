@@ -314,13 +314,13 @@ def _remove_run_records(runs_dir: Path, name: str) -> None:
             for suffix in runfiles_names.SUFFIXES:
                 entry = f"{name}{suffix}"
                 with suppress(OSError):
-                    st = os.stat(entry, dir_fd=fd, follow_symlinks=False)
-                    if st.st_uid != os.getuid():
-                        continue
                     if suffix == runfiles_names.CLI:
-                        if stat.S_ISDIR(st.st_mode):
-                            shutil.rmtree(entry, dir_fd=fd)
-                    elif stat.S_ISREG(st.st_mode):
+                        bazel_cache.remove_owned_dir(
+                            runs_dir.parent.parent, runs_dir / entry
+                        )
+                        continue
+                    st = os.stat(entry, dir_fd=fd, follow_symlinks=False)
+                    if stat.S_ISREG(st.st_mode) and st.st_uid == os.getuid():
                         os.unlink(entry, dir_fd=fd)
         finally:
             os.close(fd)
