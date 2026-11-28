@@ -92,6 +92,10 @@ class Revisions(NamedTuple):
     head: str
     ref: str
 
+    @property
+    def stage_record_header(self) -> str:
+        return f"base {self.base} merge-base {self.merge_base}"
+
 
 async def run(
     *command: str | Path,
@@ -150,12 +154,12 @@ def write_record(path: Path, text: str) -> None:
         temporary.replace(path)
 
 
-def read_passed_stages(path: Path, base: str) -> set[str]:
+def read_passed_stages(path: Path, header: str) -> set[str]:
     try:
         lines = path.read_text(encoding="utf-8").splitlines()
     except OSError:
         return set()
-    if not lines or lines[0] != f"base {base}":
+    if not lines or lines[0] != header:
         return set()
     return {
         stage
@@ -164,8 +168,10 @@ def read_passed_stages(path: Path, base: str) -> set[str]:
     }
 
 
-def update_stage_record(path: Path, base: str, name: str, *, passed: bool) -> set[str]:
-    stages = read_passed_stages(path, base)
+def update_stage_record(
+    path: Path, header: str, name: str, *, passed: bool
+) -> set[str]:
+    stages = read_passed_stages(path, header)
     if passed:
         stages.add(name)
     elif name not in stages:
@@ -174,7 +180,7 @@ def update_stage_record(path: Path, base: str, name: str, *, passed: bool) -> se
         stages.discard(name)
     if stages:
         body = "".join(f"{stage} PASS\n" for stage in sorted(stages))
-        write_record(path, f"base {base}\n{body}")
+        write_record(path, f"{header}\n{body}")
     else:
         path.unlink(missing_ok=True)
     return stages
@@ -194,7 +200,9 @@ async def load_passed_stages(revisions: Revisions) -> set[str]:
     if records is None:
         return set()
     return await asyncio.to_thread(
-        read_passed_stages, records / f"{revisions.head}.stages", revisions.merge_base
+        read_passed_stages,
+        records / f"{revisions.head}.stages",
+        revisions.stage_record_header,
     )
 
 
@@ -207,7 +215,7 @@ async def record_stage(
     return await asyncio.to_thread(
         update_stage_record,
         records / f"{revisions.head}.stages",
-        revisions.merge_base,
+        revisions.stage_record_header,
         name,
         passed=passed,
     )

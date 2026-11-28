@@ -123,7 +123,10 @@ def test_main_records_full_runs_at_a_clean_head(
     expected = {
         "pass": (record, f"tree {tree}\nbase {base}\nresult pass\n"),
         "fail": (record, f"tree {tree}\nbase {base}\nresult fail gazelle prose\n"),
-        "single": (record.parent / f"{head}.stages", f"base {base}\ngazelle PASS\n"),
+        "single": (
+            record.parent / f"{head}.stages",
+            f"base {base} merge-base {base}\ngazelle PASS\n",
+        ),
     }
     if case in expected:
         path, text = expected[case]
@@ -202,7 +205,7 @@ def test_single_check_records_pass_and_clears_on_failure(
         _argv(monkeypatch, "--check", name)
         assert asyncio.run(preflight.main()) == 0
     assert stages.read_text(encoding="utf-8") == (
-        f"base {BASE}\ngazelle PASS\nprose PASS\n"
+        f"base {BASE} merge-base {BASE}\ngazelle PASS\nprose PASS\n"
     )
     assert not (records / HEAD).exists()
 
@@ -210,7 +213,9 @@ def test_single_check_records_pass_and_clears_on_failure(
     failing.add("gazelle")
     _argv(monkeypatch, "--check", "gazelle")
     assert asyncio.run(preflight.main()) == 1
-    assert stages.read_text(encoding="utf-8") == f"base {BASE}\nprose PASS\n"
+    assert stages.read_text(encoding="utf-8") == (
+        f"base {BASE} merge-base {BASE}\nprose PASS\n"
+    )
 
     # Removing the final PASS line removes the stage file.
     failing.add("prose")
@@ -251,7 +256,7 @@ def test_full_run_skips_earlier_passed_stages(
     )
 
 
-@pytest.mark.parametrize("mismatch", ["head", "base"])
+@pytest.mark.parametrize("mismatch", ["head", "merge-base"])
 def test_full_run_ignores_pass_lines_from_other_head_or_base(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -262,11 +267,11 @@ def test_full_run_ignores_pass_lines_from_other_head_or_base(
     records.mkdir(parents=True)
     if mismatch == "head":
         (records / f"{'e' * 40}.stages").write_text(
-            f"base {BASE}\ngazelle PASS\n", encoding="utf-8"
+            f"base {BASE} merge-base {BASE}\ngazelle PASS\n", encoding="utf-8"
         )
     else:
         (records / f"{HEAD}.stages").write_text(
-            f"base {OTHER_BASE}\ngazelle PASS\n", encoding="utf-8"
+            f"base {BASE} merge-base {OTHER_BASE}\ngazelle PASS\n", encoding="utf-8"
         )
     ran = _record_ran(monkeypatch)
 
@@ -277,19 +282,45 @@ def test_full_run_ignores_pass_lines_from_other_head_or_base(
     assert "Skipping" not in capsys.readouterr().err
 
 
-def test_stage_record_for_another_base_is_rewritten(
+def test_stage_record_for_another_merge_base_is_rewritten(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     records, _ = _setup_fake_repo(tmp_path, monkeypatch)
     records.mkdir(parents=True)
     stages = records / f"{HEAD}.stages"
-    stages.write_text(f"base {OTHER_BASE}\ngazelle PASS\n", encoding="utf-8")
+    stages.write_text(
+        f"base {BASE} merge-base {OTHER_BASE}\ngazelle PASS\n", encoding="utf-8"
+    )
     _record_ran(monkeypatch)
 
     _argv(monkeypatch, "--check", "prose")
     assert asyncio.run(preflight.main()) == 0
 
-    assert stages.read_text(encoding="utf-8") == f"base {BASE}\nprose PASS\n"
+    assert stages.read_text(encoding="utf-8") == (
+        f"base {BASE} merge-base {BASE}\nprose PASS\n"
+    )
+
+
+def test_full_run_rechecks_pr_size_when_the_base_tip_moves(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    records, replies = _setup_fake_repo(tmp_path, monkeypatch)
+    ran = _record_ran(monkeypatch)
+    _argv(monkeypatch, "--check", "pr-size")
+    assert asyncio.run(preflight.main()) == 0
+    assert ran == ["pr-size"]
+    ran.clear()
+
+    replies["rev-parse", "--verify", "--end-of-options", "stack^{commit}"] = OTHER_BASE
+    replies["merge-base", OTHER_BASE, HEAD] = BASE
+    _argv(monkeypatch)
+    assert asyncio.run(preflight.main()) == 0
+
+    assert "pr-size" in ran
+    stages = records / f"{HEAD}.stages"
+    assert stages.read_text(encoding="utf-8").splitlines()[0] == (
+        f"base {OTHER_BASE} merge-base {BASE}"
+    )
 
 
 @pytest.mark.parametrize("stage", LIVE_STAGES)
@@ -301,7 +332,9 @@ def test_live_stages_are_never_recorded_or_skipped(
     (tmp_path / ".github" / "PULL_REQUEST_DRAFT.md").write_text("draft\n")
     records.mkdir(parents=True)
     stages = records / f"{HEAD}.stages"
-    stages.write_text(f"base {BASE}\ngazelle PASS\n{stage} PASS\n", encoding="utf-8")
+    stages.write_text(
+        f"base {BASE} merge-base {BASE}\ngazelle PASS\n{stage} PASS\n", encoding="utf-8"
+    )
     ran = _record_ran(monkeypatch)
 
     _argv(monkeypatch)
@@ -350,7 +383,7 @@ def test_piecewise_checks_never_write_full_record(
 
     assert not (records / HEAD).exists()
     recorded = (records / f"{HEAD}.stages").read_text(encoding="utf-8")
-    assert recorded.splitlines()[0] == f"base {BASE}"
+    assert recorded.splitlines()[0] == f"base {BASE} merge-base {BASE}"
     assert "agent-capacity-vulnerabilities" not in recorded
 
 
@@ -360,7 +393,7 @@ def test_failed_stage_after_skipped_ones_records_fail(
     records, _ = _setup_fake_repo(tmp_path, monkeypatch)
     records.mkdir(parents=True)
     (records / f"{HEAD}.stages").write_text(
-        f"base {BASE}\ngazelle PASS\n", encoding="utf-8"
+        f"base {BASE} merge-base {BASE}\ngazelle PASS\n", encoding="utf-8"
     )
     ran = _record_ran(monkeypatch, {"prose"})
 
