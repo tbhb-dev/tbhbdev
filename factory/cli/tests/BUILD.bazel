@@ -1355,10 +1355,12 @@ filegroup(
         "//factory/cli/tests/unit/alpha/agent/launch/decisions:package_files",
         "//factory/cli/tests/unit/alpha/agent/run_host:package_files",
         "//factory/cli/tests/unit/alpha/guard:package_files",
+        "//factory/cli/tests/unit/alpha/host:package_files",
         "//factory/cli/tests/unit/alpha/identity:package_files",
         "//factory/cli/tests/unit/alpha/install:package_files",
         "//factory/cli/tests/unit/alpha/pull_request:package_files",
         "//factory/cli/tests/unit/merge:package_files",
+        "//factory/cli/tests/unit/read:package_files",
     ],
     visibility = ["//factory/cli:__pkg__"],
 )

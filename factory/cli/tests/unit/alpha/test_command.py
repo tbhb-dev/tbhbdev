@@ -12,7 +12,7 @@ def test_command_table() -> None:
     names = """
         agent agent-env brief gh-app gh-shim guard-agent-model guard-gh-config-dir
         guard-gh-poll guard-gh-pr guard-op guard-ops-no-lazy-stop guard-scripts
-        guard-sendmessage-clock identity install issue merge merge-queue-remove
+        guard-sendmessage-clock host identity install issue merge merge-queue-remove
         monorepo pr pre-push-guard repo review run-stop-hook session-context state-guard
         verify-range version-check worktree-sweep
     """

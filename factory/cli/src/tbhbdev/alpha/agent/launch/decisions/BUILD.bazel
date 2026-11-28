@@ -25,5 +25,8 @@ cli_py_library(
     ],
     imports = ["../../../../.."],
     visibility = ["//factory/cli:__subpackages__"],
-    deps = ["//factory/cli/src/tbhbdev/alpha/agent:model"],
+    deps = [
+        "//factory/cli/src/tbhbdev/alpha/agent:model",
+        "//factory/cli/src/tbhbdev/alpha/agent/decisions:remote_shell",
+    ],
 )

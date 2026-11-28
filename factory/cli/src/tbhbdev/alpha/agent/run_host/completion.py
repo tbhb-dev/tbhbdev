@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import time
 from contextlib import ExitStack, suppress
 from pathlib import Path
@@ -11,13 +12,20 @@ from typing import TYPE_CHECKING
 lazy import subprocess  # nosec B404
 
 from tbhbdev.alpha.agent import process_group, rescue, runfiles
-from tbhbdev.alpha.agent.model import Invalid
-from tbhbdev.alpha.agent.run_host import auth, bazel_cache, bazel_shutdown
+from tbhbdev.alpha.agent.model import Harness, Invalid
+from tbhbdev.alpha.agent.run_host import (
+    auth,
+    bazel_cache,
+    bazel_shutdown,
+    run_usage,
+)
 from tbhbdev.alpha.agent.run_host.index import IndexRun, index_entry
 from tbhbdev.alpha.agent.run_host.paths import planned_paths
 
 if TYPE_CHECKING:
     from tbhbdev.alpha.agent.run_host.state import Prepared, Run
+
+OUTPUT_LIMIT = 4 * 1024 * 1024
 
 
 def finish(
@@ -65,9 +73,15 @@ def finish(
         audit_summary(run, prepared, rc)
     except OSError, ValueError:
         run.files.write("log", "audit summary write failed\n")
+    outcome = run_outcome(run)
     try:
         record_index(
-            run, prepared, rc, bazel_shutdown=bazel or "skipped", bazel_cleanup=cleanup
+            run,
+            prepared,
+            rc,
+            bazel_shutdown=bazel or "skipped",
+            bazel_cleanup=cleanup,
+            **outcome,
         )
     except OSError, ValueError:
         run.files.write("log", "completion index append failed\n")
@@ -105,3 +119,50 @@ def record_index(
     )
     ended = time.time() if rc is not None else None
     runfiles.append(run.files.root, index_entry(facts, rc, ended=ended) | details)
+
+
+def run_outcome(run: Run) -> dict[str, dict[str, object]]:
+    """The end record's usage, phase seconds and published state; never raises."""
+    phases: dict[str, object] = {
+        "setup": run.setup_seconds,
+        "model": run.model_seconds,
+        "publication": run.publication_seconds,
+    }
+    if phases["setup"] is None:
+        # The run raised in setup: that is how long it ran before it stopped.
+        phases["setup"] = time.monotonic() - run.begun
+    usage: dict[str, object] = dict(run_usage.unreported())
+    with suppress(Exception):
+        usage = dict(
+            run_usage.parse(
+                run.request.harness,
+                _read_tail(run.files.path("log"), run_usage.LOG_TAIL_BYTES),
+                _read_tail(run.files.path("out"), OUTPUT_LIMIT)
+                if run.request.harness is Harness.CLAUDE
+                else "",
+            )
+        )
+    published: dict[str, object] = {"branch": None, "pr": None}
+    with suppress(Exception):
+        published = {
+            "branch": _read_tail(run.files.path("branch"), 256).strip() or None,
+            "pr": _pr_number(_read_tail(run.files.path("pr"), 256)),
+        }
+    return {"usage": usage, "phase_seconds": phases, "published": published}
+
+
+def _read_tail(path: Path, limit: int) -> str:
+    """The last LIMIT bytes of PATH, or "" when it cannot be read."""
+    try:
+        with path.open("rb") as stream:
+            stream.seek(0, os.SEEK_END)
+            stream.seek(max(0, stream.tell() - limit))
+            return stream.read(limit).decode(errors="replace")
+    except OSError:
+        return ""
+
+
+def _pr_number(text: str) -> int | None:
+    """The number of a `pr` run file: `owner/repo#12`, or a bare `12`."""
+    _, _, number = text.strip().rpartition("#")
+    return int(number) if number.isascii() and number.isdigit() else None

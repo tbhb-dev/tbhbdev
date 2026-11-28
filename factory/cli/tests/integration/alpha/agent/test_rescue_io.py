@@ -79,7 +79,13 @@ def checkout(
 
     remote = Mock(wraps=local)
     monkeypatch.setattr(rescue.push, "remote_git", remote)
-    monkeypatch.setattr(rescue.credentials, "github_token", Mock(return_value=None))
+    msg = rescue.credentials.FRESH_REFUSAL
+    tok = (
+        Mock(side_effect=rescue.credentials.Invalid(msg))
+        if change == "credential refused"
+        else Mock(return_value="fresh-token")
+    )
+    monkeypatch.setattr(rescue.credentials, "github_token", tok)
     monkeypatch.setattr(rescue.host_tools, "search", lambda: os.environ["PATH"])
     monkeypatch.setattr(pre_push_guard, "agent_fingerprint", Mock(return_value=""))
     monkeypatch.setattr(pre_push_guard, "public_keys", Mock(side_effect=OSError))
@@ -102,6 +108,7 @@ def mock_scan_failure(monkeypatch: pytest.MonkeyPatch, change: str) -> None:
     [
         ("dirty", "published"),
         ("other domain", "published"),
+        ("credential refused", f"kept local: {rescue.credentials.FRESH_REFUSAL}"),
         (
             "unsigned",
             f"kept local: {REF}: agent commit {{sha}} lacks a valid agent signature",
@@ -165,6 +172,7 @@ def test_fault_publication(
         destination = start_ref or REF
         tip = git(workspace, "rev-parse", REF)
         assert remote.call_args.args[-1] == f"{tip}:{destination}"
+        assert remote.call_args.kwargs == {"token": "fresh-token"}
         assert files.path("branch").read_text() == destination.split("/", 2)[-1]
     if change in ("unsigned", "start ref moved"):
         assert files.path("head").read_text() == git(workspace, "rev-parse", REF)

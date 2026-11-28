@@ -61,6 +61,7 @@ commands:
                EPOCH | APP --cooldown-status
   repo         bootstrap [--dry-run] [--create --private|--public] ORG/REPO:
                apply the standard repository settings
+  host         check [--json] [--no-fetch]: can this host take a run
   merge        merge an approved pull request
   merge-queue-remove N --reason TEXT [--dry-run]: take an open pull request out
                of its merge queue; it stays open and approved. Re-queue with merge
@@ -98,6 +99,7 @@ COMMAND_MODULES = {
     "issue": ("tbhbdev.alpha.close", "main"),
     "gh-app": ("tbhbdev.alpha.gh_app_command", "main"),
     "repo": ("tbhbdev.alpha.repo_bootstrap", "main"),
+    "host": ("tbhbdev.alpha.host.command", "main"),
     "merge": ("tbhbdev.merge.command", "main"),
     "merge-queue-remove": ("tbhbdev.merge.remove", "main"),
     "monorepo": ("tbhbdev.monorepo.command", "main"),

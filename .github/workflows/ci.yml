@@ -460,7 +460,25 @@ jobs:
             -format sarif -o "$RUNNER_TEMP/gomodscan.sarif" || status=$?
           if ((status > 1)); then exit "$status"; fi
 
+      - name: Check the merge group ref
+        id: merge-group-ref
+        if: github.event_name == 'merge_group'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          if out=$(gh api "repos/$GITHUB_REPOSITORY/git/ref/${GITHUB_REF#refs/}" --silent 2>&1); then
+            echo "ref_gone=false" >> "$GITHUB_OUTPUT"
+          elif [[ "$out" == *"(HTTP 404)"* ]]; then
+            echo "::notice::merge group ref is gone, the queue dissolved the group; skipping the Go module scan upload"
+            echo "ref_gone=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "$out" >&2
+            exit 1
+          fi
+
       - name: Upload the Go module scan
+        if: steps.merge-group-ref.outputs.ref_gone != 'true'
         uses: github/codeql-action/upload-sarif@33d7b85da1a04171e211befe2c739303b9a4c066  # v4.39.3
         with:
           sarif_file: ${{ runner.temp }}/gomodscan.sarif

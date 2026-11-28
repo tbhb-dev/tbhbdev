@@ -11,7 +11,7 @@ from typing import TYPE_CHECKING
 from tbhbdev.alpha import pre_push_guard, secret_scan
 from tbhbdev.alpha.agent import credentials, host_tools, push
 from tbhbdev.alpha.agent.decisions import repo
-from tbhbdev.alpha.agent.model import Profile
+from tbhbdev.alpha.agent.model import Invalid, Profile
 from tbhbdev.alpha.agent.run_host import draft_pr
 from tbhbdev.alpha.gh_app_runtime import GhAppError
 
@@ -57,6 +57,8 @@ def publish(run: Run, workspace: Path) -> str:
                 return "nothing to publish"
             failure = "could not publish the run branch"
             return publish_commit(run, directory, ref, base, tip)
+    except Invalid as exc:
+        return f"kept local: {exc}"
     except (*FAILURES, GhAppError):
         return f"kept local: {failure}"
 
@@ -108,7 +110,7 @@ def publish_commit(run: Run, directory: Path, ref: str, base: str, tip: str) -> 
     host, owner, name = repo.parts(request.repo)
     url = f"https://{host}/{owner}/{name}.git"
     account = next(c for c in run.settings.credentials if c.account == request.account)
-    token = credentials.github_token(request, account)
+    token = credentials.fresh_token(request, account)
     git = partial(push.remote_git, directory, token=token)
     current = git("ls-remote", "--refs", url, remote_ref)
     if start_ref and current != f"{base}\t{start_ref}":
