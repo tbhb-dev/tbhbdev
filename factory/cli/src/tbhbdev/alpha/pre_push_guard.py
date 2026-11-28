@@ -276,30 +276,15 @@ def destination_problem(
     return ""
 
 
-def ref_problems(
+def update_problems(
     remote: str,
     row: tuple[str, str, str],
     tips: Sequence[str],
     keys: SigningKeys,
     start_ref: str | None,
 ) -> list[str]:
-    """The refusals for one pushed ref: LOCAL, REF, and the remote's OLD value."""
+    """The signature and fast-forward refusals for one pushed ref."""
     local, ref, old = row
-    deleting = not local.strip("0")
-    if deleting:
-        return []
-    pushed_tips = None
-    if ref == start_ref:
-        if not old.strip("0"):
-            return [f"{ref}: the start ref must already exist; push refused"]
-        code, git_dir = git(*SAFE, "rev-parse", "--absolute-git-dir")
-        if code:
-            return [f"{ref}: cannot find the git directory; push refused"]
-        # Outside the read-only hooks directory, so the guard can append to it.
-        pushed_tips = Path(git_dir) / PUSHED_TIPS_FILE
-        own = pushed_tips.read_text("utf-8").split() if pushed_tips.exists() else []
-        if old not in (os.environ.get(RUN_START_TIP_ENV), *own):
-            return [f"{ref}: remote tip changed since fetch; push refused"]
     exclude = known_objects([*tips, old] if old.strip("0") else list(tips))
     problems = agent_commit_problems(ref, local, exclude, keys)
     ancestry = (
@@ -319,7 +304,34 @@ def ref_problems(
             problems.append(
                 f"{ref}: git merge-base could not check ancestry; push refused"
             )
-    if pushed_tips and not problems:
+    return problems
+
+
+def ref_problems(
+    remote: str,
+    row: tuple[str, str, str],
+    tips: Sequence[str],
+    keys: SigningKeys,
+    start_ref: str | None,
+) -> list[str]:
+    """The refusals for one pushed ref: LOCAL, REF, and the remote's OLD value."""
+    local, ref, old = row
+    if not local.strip("0"):
+        return []
+    if ref != start_ref:
+        return update_problems(remote, row, tips, keys, start_ref)
+    if not old.strip("0"):
+        return [f"{ref}: the start ref must already exist; push refused"]
+    code, git_dir = git(*SAFE, "rev-parse", "--absolute-git-dir")
+    if code:
+        return [f"{ref}: cannot find the git directory; push refused"]
+    # Outside the read-only hooks directory, so the guard can append to it.
+    pushed_tips = Path(git_dir) / PUSHED_TIPS_FILE
+    own = pushed_tips.read_text("utf-8").split() if pushed_tips.exists() else []
+    if old not in (os.environ.get(RUN_START_TIP_ENV), *own):
+        return [f"{ref}: remote tip changed since fetch; push refused"]
+    problems = update_problems(remote, row, tips, keys, start_ref)
+    if not problems:
         # A recorded sha cannot be a stale accept: the remote shows it as its
         # tip only after a push of that sha landed. A push that fails after
         # this hook leaves the remote at the launch pin, which still matches.

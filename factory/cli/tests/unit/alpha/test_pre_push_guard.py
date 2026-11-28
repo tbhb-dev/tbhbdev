@@ -112,6 +112,15 @@ def test_push_that_fails_after_the_guard_keeps_the_launch_pin(
     assert push("c", "a") == []  # the remote still shows the pin
 
 
+def test_start_ref_push_without_a_git_directory_is_refused(
+    monkeypatch: pytest.MonkeyPatch, push: Callable[..., list[str]]
+) -> None:
+    monkeypatch.setattr(pg, "git", Mock(return_value=(128, "")))
+    assert push("b", "a") == [
+        "refs/heads/fix/topic: cannot find the git directory; push refused"
+    ]
+
+
 def test_recorded_tip_is_not_accepted_for_another_ref(
     tmp_path: Path, push: Callable[..., list[str]]
 ) -> None:
