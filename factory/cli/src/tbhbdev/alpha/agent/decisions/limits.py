@@ -70,13 +70,16 @@ def parse_probe(text: str) -> tuple[Reading | str, int, int]:
     admission window. An older host prints only TOTAL, so every run counts as
     recent there. A host without line 2 reports no runs.
     """
-    lines = text.splitlines()
-    if not lines:
+    match text.splitlines():
+        case [reading]:
+            counts: list[str] = []
+        case [reading, count_line]:
+            counts = count_line.split()
+        case _:
+            return "unparsable output", 0, 0
+    if not all(c.isascii() and c.isdigit() for c in counts):
         return "unparsable output", 0, 0
-    found = parse(lines[0])
-    counts = lines[1].split() if len(lines) == 2 else []  # noqa: PLR2004
-    if len(lines) > 2 or not all(c.isascii() and c.isdigit() for c in counts):  # noqa: PLR2004
-        return "unparsable output", 0, 0
+    found = parse(reading)
     match [int(c) for c in counts]:
         case []:
             return found, 0, 0
