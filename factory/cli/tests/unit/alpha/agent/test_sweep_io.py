@@ -148,6 +148,35 @@ def test_recent_base_without_pid_survives(env: _Env, args: tuple[str, ...]) -> N
     assert old.exists() == bool(args)
 
 
+@pytest.mark.parametrize("old", [True, False])
+def test_sweep_removes_shipped_build_records_with_the_checkout(
+    env: _Env, *, old: bool
+) -> None:
+    tree = env.r / "example"
+    tree.mkdir()
+    ended = time.time() - (3 * 3600 if old else 0)
+    runfiles.append(
+        env.r,
+        {"run": "example", "state": "ended", "worktree": str(tree), "ended": ended},
+    )
+    folder = env.r / "example.cli"
+    folder.mkdir()
+    (folder / "example.txt").write_text("example build")
+    archive = env.r / "example.cli.tar"
+    archive.write_text("example archive")
+    record = env.r / "example.build"
+    record.write_text("example record")
+    env.mp.setattr(
+        "tbhbdev.alpha.agent.sweep._checkout_state", Mock(return_value="remove")
+    )
+
+    assert env.run()[0] == 0
+    assert tree.exists() is (not old)
+    assert folder.exists() is (not old)
+    assert archive.exists() is (not old)
+    assert record.exists() is (not old)
+
+
 def test_old_base_of_run_started_after_snapshot_survives(env: _Env) -> None:
     wt = (env.h / "wt-new-owner").resolve()
     base = bazel_cache.bazel_bases(env.h, str(wt))[0]

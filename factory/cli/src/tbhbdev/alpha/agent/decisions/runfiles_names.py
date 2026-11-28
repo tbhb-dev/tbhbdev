@@ -10,6 +10,9 @@ PHASE = ".phase"
 OUT = ".out"
 FINAL = ".out.final"
 LOG = ".log"
+BUILD = ".build"
+CLI = ".cli"
+CLI_ARCHIVE = ".cli.tar"
 BRANCH = ".branch"
 PR = ".pr"
 REVIEW = ".review"
@@ -32,6 +35,9 @@ SUFFIXES = (
     OUT,
     FINAL,
     LOG,
+    BUILD,
+    CLI_ARCHIVE,
+    CLI,
     BRANCH,
     PR,
     REVIEW,

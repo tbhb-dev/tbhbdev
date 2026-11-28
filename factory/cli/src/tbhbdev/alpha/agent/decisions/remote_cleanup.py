@@ -124,9 +124,12 @@ mkdir -p "$trash" || exit "$?"
         if suffix == files.OWNER:
             command += 'test "$orphan" -eq 0 || exit 0\n'
         path = f'"$d/{name}{suffix}"'
+        check, kind = (
+            ("check_directory", "d") if suffix == files.CLI else ("safe_file", "f")
+        )
         command += (
-            f"safe_file {path}\n"
-            f"if test -f {path}; then\n"
+            f"{check} {path}\n"
+            f"if test -{kind} {path}; then\n"
             f'    target="$trash/{name}{suffix}"\n'
             '    test ! -e "$target" && test ! -L "$target" || exit 65\n'
             f'    mv {path} "$target" || exit "$?"\n'

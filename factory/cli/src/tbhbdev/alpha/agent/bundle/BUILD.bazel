@@ -43,6 +43,10 @@ cli_py_library(
         ":arguments",
         "//factory/cli/src/tbhbdev:__init__",
         "//factory/cli/src/tbhbdev:version",
+        "//factory/cli/src/tbhbdev/alpha/agent:model",
+        "//factory/cli/src/tbhbdev/alpha/agent/decisions:runfiles_names",
+        "//factory/cli/src/tbhbdev/alpha/agent/run_host:bazel_cache",
         "//factory/cli/src/tbhbdev/alpha/agent/run_host:dispatcher",
+        "//factory/cli/src/tbhbdev/alpha/agent/run_host:intake",
     ],
 )

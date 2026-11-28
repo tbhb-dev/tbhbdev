@@ -85,7 +85,7 @@ def clean_local(files: runfiles.RunFiles, *, force: bool) -> int:
         rc = 0 if files.path("rc").is_file() else None
         check_clean(rc, session=running, force=force)
         trash = files.root / "trash"
-        _plain(trash)
+        _plain(files.root.parent, files.root, trash)
         stamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%S%fZ")
         target = trash / f"{stamp}-{files.name}"
         tree = _local_worktree(files)

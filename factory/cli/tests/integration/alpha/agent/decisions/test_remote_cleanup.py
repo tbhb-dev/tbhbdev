@@ -71,16 +71,28 @@ def test_clean_preserves_an_ownerless_detached_group(host: Path) -> None:
     (state / "sample.owner").unlink()
     group = state / "sample.pgid"
     (state / "sample.rc").write_text("137\n")
+    (state / "sample.build").write_text("example record")
+    (state / "sample.cli.tar").write_text("example archive")
+    folder = state / "sample.cli"
+    folder.mkdir()
+    (folder / "example.txt").write_text("example build")
     with subprocess.Popen(["sleep", "30"], start_new_session=True) as process:
         try:
             group.write_text(json.dumps({"pgid": process.pid}))
             assert execute(cleanup()).returncode == 1
             assert group.exists()
+            assert folder.is_dir()
+            assert (state / "sample.cli.tar").is_file()
+            assert (state / "sample.build").is_file()
             assert not (state / "sample.owner").exists()
         finally:
             process.terminate()
     assert execute(cleanup()).returncode == 0
-    assert not group.exists()
+    assert not list(state.glob("sample.*"))
+    trash = state / "trash/stamp-sample"
+    assert (trash / "sample.cli/example.txt").read_text() == "example build"
+    assert (trash / "sample.cli.tar").read_text() == "example archive"
+    assert (trash / "sample.build").read_text() == "example record"
 
 
 def test_clean_checks_flags_fallback_and_missing_clone(host: Path) -> None:
