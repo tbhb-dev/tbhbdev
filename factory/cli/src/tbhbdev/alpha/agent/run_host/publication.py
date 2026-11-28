@@ -1,6 +1,8 @@
-"""Verify a required push and publish successful review results."""
+"""Verify build publication and publish successful review results."""
 
 from __future__ import annotations
+
+from pathlib import Path
 
 import httpx2
 
@@ -9,6 +11,7 @@ from tbhbdev.alpha.agent import credentials, review_post
 from tbhbdev.alpha.agent.decisions import repo
 from tbhbdev.alpha.agent.run_host import publication_plan, republish
 from tbhbdev.alpha.agent.run_host.state import Prepared, Run, RunInterruptedError
+from tbhbdev.alpha.pull_request.draft import DRAFT
 
 NO_COMMIT = 6
 
@@ -17,6 +20,9 @@ NO_PUSH = 9
 
 
 NO_REVIEW = 10
+
+
+NO_PR = 11
 
 
 NO_PUSH_MOVED = 12
@@ -77,6 +83,48 @@ def origin_contains(run: Run, commit: str) -> bool | None:
     return publication_plan.origin_ahead(record)
 
 
+def read_pull_number(run: Run, branch: str) -> str | None:
+    request = run.request
+    _, owner, repository = repo.parts(request.repo)
+    account = next(c for c in run.settings.credentials if c.account == request.account)
+    try:
+        token = credentials.github_token(
+            request, account, build_permissions=credentials.PUSH_PERMISSIONS
+        )
+        if not token:
+            return None
+        response = httpx2.get(
+            f"https://api.github.com/repos/{owner}/{repository}/pulls",
+            params={"head": f"{owner}:{branch}", "state": "all", "per_page": 1},
+            headers={
+                "Accept": "application/vnd.github+json",
+                "Authorization": f"Bearer {token}",
+            },
+            timeout=20,
+            verify=github_tls.public_roots(),
+        )
+        response.raise_for_status()
+        record = response.json()
+    except OSError, ValueError, httpx2.HTTPError:
+        return None
+    return publication_plan.pull_number(record)
+
+
+def require_pull_request(run: Run, prepared: Prepared, branch: str) -> int:
+    number = read_pull_number(run, branch)
+    if number:
+        run.files.write("pr", number)
+        return 0
+    if number is None:
+        reason = f"cannot verify {branch}"
+    else:
+        reason = f"{branch} is pushed but has none"
+        if (Path(prepared.paths.worktree) / DRAFT).is_file():
+            reason += "; draft present"
+    run.files.write("log", f"no pull request: {reason}\n")
+    return NO_PR
+
+
 def require_commit(run: Run, prepared: Prepared, rc: int) -> int:
     if rc or not run.request.expect_commit:
         return rc
@@ -89,7 +137,7 @@ def require_commit(run: Run, prepared: Prepared, rc: int) -> int:
     branch = publication_plan.branch_name(run.files.name, run.request.start_ref)
     if published:
         run.files.write("branch", branch)
-        return 0
+        return require_pull_request(run, prepared, branch)
     if (
         published is False
         and run.request.start_ref is not None

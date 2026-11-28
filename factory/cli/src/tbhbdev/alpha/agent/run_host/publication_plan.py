@@ -1,4 +1,4 @@
-"""Interpret branch and comparison values for build publication."""
+"""Interpret branch, comparison and pull request values for build publication."""
 
 import re
 
@@ -19,3 +19,14 @@ def ref_tip(record: object, ref: str) -> str | None:
 
 def origin_ahead(record: object) -> bool | None:
     return record.get("status") == "ahead" if isinstance(record, dict) else None
+
+
+def pull_number(record: object) -> str | None:
+    """Return the first pull request number. Empty means absent, None unreadable."""
+    if not isinstance(record, list):
+        return None
+    if not record:
+        return ""
+    pull: object = record[0]
+    number: object = pull.get("number") if isinstance(pull, dict) else None
+    return str(number) if type(number) is int and number > 0 else None

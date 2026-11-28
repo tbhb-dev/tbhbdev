@@ -244,6 +244,7 @@ cli_py_library(
         "//factory/cli/src/tbhbdev/alpha/agent:credentials",
         "//factory/cli/src/tbhbdev/alpha/agent:review_post",
         "//factory/cli/src/tbhbdev/alpha/agent/decisions:repo",
+        "//factory/cli/src/tbhbdev/alpha/pull_request:draft",
         "@cli_pip//httpx2",
     ],
 )
