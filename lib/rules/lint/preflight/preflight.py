@@ -122,18 +122,84 @@ def write_record(path: Path, text: str) -> None:
         temporary.replace(path)
 
 
-async def record_result(revisions: Revisions, results: list[tuple[str, bool]]) -> None:
+def read_passed_stages(path: Path, tree: str) -> set[str]:
+    try:
+        lines = path.read_text(encoding="utf-8").splitlines()
+    except OSError:
+        return set()
+    if not lines or lines[0] != f"tree {tree}":
+        return set()
+    return {
+        line.removesuffix(" PASS")
+        for line in lines[1:]
+        if line.endswith(" PASS") and line != " PASS"
+    }
+
+
+def update_stage_record(path: Path, tree: str, name: str, *, passed: bool) -> set[str]:
+    stages = read_passed_stages(path, tree)
+    if passed:
+        stages.add(name)
+    elif name not in stages:
+        return stages
+    else:
+        stages.discard(name)
+    if stages:
+        body = "".join(f"{stage} PASS\n" for stage in sorted(stages))
+        write_record(path, f"tree {tree}\n{body}")
+    else:
+        path.unlink(missing_ok=True)
+    return stages
+
+
+async def record_target(revisions: Revisions) -> tuple[Path, str] | None:
     head, base = revisions.head, revisions.merge_base
     if base == head or await git("rev-parse", "HEAD") != head:
-        return
+        return None
     if await git("status", "--porcelain", "--untracked-files=no"):
-        return
+        return None
     records = Path(await git("rev-parse", "--git-common-dir")) / "tbhbdev-preflight"
     tree = await git("rev-parse", f"{head}^{{tree}}")
+    return records, tree
+
+
+async def load_passed_stages(revisions: Revisions) -> set[str]:
+    target = await record_target(revisions)
+    if target is None:
+        return set()
+    records, tree = target
+    return await asyncio.to_thread(
+        read_passed_stages, records / f"{revisions.head}.stages", tree
+    )
+
+
+async def record_stage(
+    revisions: Revisions, name: str, *, passed: bool
+) -> set[str] | None:
+    target = await record_target(revisions)
+    if target is None:
+        return None
+    records, tree = target
+    return await asyncio.to_thread(
+        update_stage_record,
+        records / f"{revisions.head}.stages",
+        tree,
+        name,
+        passed=passed,
+    )
+
+
+async def record_result(revisions: Revisions, results: list[tuple[str, bool]]) -> None:
+    target = await record_target(revisions)
+    if target is None:
+        return
+    records, tree = target
     failed = " ".join(name for name, passed in results if not passed)
     result = f"fail {failed}" if failed else "pass"
     await asyncio.to_thread(
-        write_record, records / head, f"tree {tree}\nbase {base}\nresult {result}\n"
+        write_record,
+        records / revisions.head,
+        f"tree {tree}\nbase {revisions.merge_base}\nresult {result}\n",
     )
 
 
@@ -225,6 +291,34 @@ async def check(name: str, revisions: Revisions, scratch: Path) -> None:
             raise OSError(errno.EINVAL, "unknown check", name)
 
 
+async def run_checks(
+    checks: tuple[str, ...],
+    revisions: Revisions,
+    scratch: Path,
+    *,
+    skipped: set[str],
+) -> tuple[list[tuple[str, bool]], set[str] | None]:
+    results: list[tuple[str, bool]] = []
+    recorded: set[str] | None = None
+    for name in checks:
+        if name in skipped:
+            sys.stderr.write(f"Skipping {name}: passed earlier at this head\n")
+            results.append((name, True))
+            continue
+        sys.stderr.write(f"Running {name}\n")
+        try:
+            await check(name, revisions, scratch)
+        except (OSError, CheckError) as error:
+            message = str(error) or f"{name} timed out"
+            sys.stderr.write(f"{message}\n")
+            stage_passed = False
+        else:
+            stage_passed = True
+        results.append((name, stage_passed))
+        recorded = await record_stage(revisions, name, passed=stage_passed)
+    return results, recorded
+
+
 async def main() -> int:
     parser = argparse.ArgumentParser(
         description="Run the CI checks at the current commit."
@@ -248,28 +342,19 @@ async def main() -> int:
     ref = ref.removeprefix("refs/remotes/").removeprefix("refs/heads/")
     ref = DEFAULT_BASE if args.base == "HEAD" or ref in {"", "main"} else ref
     paths = await git("diff", "--name-only", "-z", "--no-renames", merge_base, head)
-    if args.check:
-        checks = (args.check,)
-    else:
-        has_draft = await asyncio.to_thread(DRAFT.is_file)
-        checks = checks_for(paths.split("\0")[:-1], has_draft=has_draft)
+    has_draft = await asyncio.to_thread(DRAFT.is_file)
+    selected = checks_for(paths.split("\0")[:-1], has_draft=has_draft)
+    checks = (args.check,) if args.check else selected
     revisions = Revisions(base, merge_base, head, ref)
-    results = []
+    skipped = set() if args.check else await load_passed_stages(revisions)
     scratch = Path(tempfile.mkdtemp(prefix="preflight-"))
-    for name in checks:
-        sys.stderr.write(f"Running {name}\n")
-        try:
-            await check(name, revisions, scratch)
-        except (OSError, CheckError) as error:
-            message = str(error) or f"{name} timed out"
-            sys.stderr.write(f"{message}\n")
-            results.append((name, False))
-        else:
-            results.append((name, True))
+    results, recorded = await run_checks(checks, revisions, scratch, skipped=skipped)
     sys.stdout.write(summary(results, args.base) + "\n")
+    passed = all(ok for _, ok in results)
     if not args.check:
         await record_result(revisions, results)
-    passed = all(passed for _, passed in results)
+    elif passed and recorded is not None and set(selected).issubset(recorded):
+        await record_result(revisions, [(stage, True) for stage in selected])
     reports = {"design-report.md", "gomodscan.sarif", "agent-capacity.sarif"}
     if not passed or reports.intersection(await asyncio.to_thread(os.listdir, scratch)):
         sys.stdout.write(f"Preflight files: {scratch}\n")
