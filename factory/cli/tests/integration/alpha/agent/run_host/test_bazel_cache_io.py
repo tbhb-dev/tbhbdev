@@ -160,18 +160,16 @@ def test_a_dead_or_unreadable_server_pid_is_not_alive(
     assert not host_bazel_cache.server_alive(tmp_path)
 
 
-def test_cleanup_keeps_a_base_when_shutdown_fails(tmp_path: Path) -> None:
+@pytest.mark.parametrize("result", ["timed out", "permission denied", "server alive"])
+def test_cleanup_removes_a_base_whose_server_is_gone_despite_the_stop_result(
+    tmp_path: Path, result: str
+) -> None:
     run, prepared = bazel_run(tmp_path)
     base = make_base(prepared)
-    stopped = host_bazel_shutdown.shutdown_bazel(run, prepared)
-    _, identity = stopped[base]
-    assert (
-        host_bazel_cache.cleanup_bazel(
-            run, prepared, {base: ("permission denied", identity)}
-        )["bases"]
-        == 0
-    )
-    assert base.is_dir()
+    _, identity = host_bazel_shutdown.shutdown_bazel(run, prepared)[base]
+    stopped = {base: (result, identity)}
+    assert host_bazel_cache.cleanup_bazel(run, prepared, stopped)["bases"] == 1
+    assert not base.exists()
 
 
 def test_cleanup_refuses_a_base_swapped_after_shutdown(tmp_path: Path) -> None:
