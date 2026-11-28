@@ -177,7 +177,7 @@ def outside_history(
 def remote_git(directory: Path, *args: str, token: str | None) -> str:
     """Use the same protected metadata for authenticated remote Git operations."""
     env = host_tools.git_token_env(token)
-    return history_git(directory, *args, extra_env=env).strip()
+    return history_git(directory, "--no-replace-objects", *args, extra_env=env).strip()
 
 
 def history_git(
@@ -200,7 +200,6 @@ def history_git(
     env.update(
         GIT_CONFIG_GLOBAL="/dev/null",
         GIT_CONFIG_NOSYSTEM="1",
-        GIT_NO_REPLACE_OBJECTS="1",
         GIT_TERMINAL_PROMPT="0",
         PATH=host_tools.search(),
     )
