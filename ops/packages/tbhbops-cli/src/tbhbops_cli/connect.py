@@ -10,8 +10,9 @@ import urllib.parse
 from dataclasses import dataclass
 
 from tbhbops.op_connect import SERVICE_HOST
+
 from tbhbops_cli.common import CliError, Http, Run
-from tbhbops_cli.gitleaks import FIELD, ITEM, REF, VAULT
+from tbhbops_cli.gitleaks import DEFAULT_REF, ItemRef
 
 # Quote every reserved character in an id, "/" too. quote() never escapes a
 # letter, so a safe set of letters alone ("XXXX") quotes the same.
@@ -60,7 +61,7 @@ class Connect:
     def call(self, method: str, path: str, what: str, body: object = None) -> object:
         """Call PATH, and return the decoded answer. WHAT names the call."""
         status, raw = self.send(method, path, body)
-        if not 200 <= status < 300:  # noqa: PLR2004  # the 2xx statuses
+        if not 200 <= status < 300:  # the 2xx statuses
             message = f"{what} failed: HTTP {status}"
             raise CliError(message)
         try:
@@ -96,7 +97,7 @@ def vaults(connect: Connect) -> dict[str, str]:
 
 
 def _ok(status: int) -> bool:
-    return 200 <= status < 300  # noqa: PLR2004  # the 2xx statuses
+    return 200 <= status < 300  # the 2xx statuses
 
 
 def _item_id(raw: bytes) -> str:
@@ -145,41 +146,48 @@ def probe_write(connect: Connect, vault: str, stamp: str) -> tuple[bool, str]:
     return True, "write ok"
 
 
-def publish(connect: Connect, vault: str, text: str, *, write: bool) -> str:
+def publish(
+    connect: Connect,
+    vault: str,
+    text: str,
+    *,
+    write: bool,
+    ref: ItemRef = DEFAULT_REF,
+) -> str:
     """Put TEXT in the REF field, and return `created`, `updated` or `current`.
 
     The item is created when it's missing. With WRITE false, it reads and
     changes nothing, and the answer says what WRITE true would do.
     """
     base = f"/v1/vaults/{urllib.parse.quote(vault, safe=_SAFE)}/items"
-    query = urllib.parse.quote(f'title eq "{ITEM}"')
+    query = urllib.parse.quote(f'title eq "{ref.item}"')
     summaries = _dicts(connect.call("GET", f"{base}?filter={query}", "listing items"))
-    found = [s for s in summaries if s.get("title") == ITEM]
+    found = [s for s in summaries if s.get("title") == ref.item]
     if len(found) > 1:
-        message = f"{VAULT} holds {len(found)} items named {ITEM}"
+        message = f"{ref.vault} holds {len(found)} items named {ref.item}"
         raise CliError(message)
-    field = {"id": FIELD, "label": FIELD, "type": "CONCEALED", "value": text}
+    field = {"id": ref.field, "label": ref.field, "type": "CONCEALED", "value": text}
     if not found:
         if write:
             item = {
                 "vault": {"id": vault},
-                "title": ITEM,
+                "title": ref.item,
                 "category": "SECURE_NOTE",
                 "fields": [field],
             }
-            connect.call("POST", base, f"creating {REF}", item)
+            connect.call("POST", base, f"creating {ref}", item)
         return "created"
     item_id = found[0].get("id")
     if not isinstance(item_id, str) or not item_id:
-        message = f"listing items printed {ITEM} without an id"
+        message = f"listing items printed {ref.item} without an id"
         raise CliError(message)
     where = f"{base}/{urllib.parse.quote(item_id, safe=_SAFE)}"
-    existing = connect.call("GET", where, f"reading {REF}")
+    existing = connect.call("GET", where, f"reading {ref}")
     item = dict(existing) if isinstance(existing, dict) else {}
     fields = _dicts(item.get("fields"))
-    if [f.get("value") for f in fields if f.get("label") == FIELD] == [text]:
+    if [f.get("value") for f in fields if f.get("label") == ref.field] == [text]:
         return "current"
     if write:
-        item["fields"] = [f for f in fields if f.get("label") != FIELD] + [field]
-        connect.call("PUT", where, f"updating {REF}", item)
+        item["fields"] = [f for f in fields if f.get("label") != ref.field] + [field]
+        connect.call("PUT", where, f"updating {ref}", item)
     return "updated"

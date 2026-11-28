@@ -4,6 +4,7 @@ import io
 import json
 import os
 import re
+import stat
 import urllib.parse
 from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime
@@ -86,17 +87,22 @@ class Connect:
             return 200, json.dumps(
                 [{"id": i, "name": n} for n, i in self.vaults.items()]
             ).encode()
-        if path.startswith("/v1/vaults/v-all/items?filter="):
-            listed: list[dict[str, str]] = (
-                []
-                if self.item is None
-                else [{"id": ITEM_ID, "title": "scanner-policy"}]
-            )
-            return 200, json.dumps(listed).encode()
-        if method == "GET" and path == f"/v1/vaults/v-all/items/{ITEM_ID}":
-            return 200, json.dumps(self.item).encode()
-        if method in {"POST", "PUT"} and path.startswith("/v1/vaults/v-all/items"):
-            return 200, b"{}"
+        for vault_id in self.vaults.values():
+            prefix = f"/v1/vaults/{vault_id}/items"
+            if path.startswith(f"{prefix}?filter="):
+                title = (
+                    "scanner-policy"
+                    if self.item is None
+                    else str(self.item.get("title", "scanner-policy"))
+                )
+                listed: list[dict[str, str]] = (
+                    [] if self.item is None else [{"id": ITEM_ID, "title": title}]
+                )
+                return 200, json.dumps(listed).encode()
+            if method == "GET" and path == f"{prefix}/{ITEM_ID}":
+                return 200, json.dumps(self.item).encode()
+            if method in {"POST", "PUT"} and path.startswith(prefix):
+                return 200, b"{}"
         return 404, b""
 
 
@@ -446,7 +452,7 @@ def test_a_problem_with_the_config_is_reported_after_the_summary_and_writes_noth
     world: World, monkeypatch: pytest.MonkeyPatch
 ) -> None:
 
-    def wrong(_text: str) -> str:
+    def wrong(_text: str, _ref: gitleaks.ItemRef = gitleaks.DEFAULT_REF) -> str:
         return "the config is wrong"
 
     monkeypatch.setattr(gitleaks, "problem", wrong)
@@ -623,3 +629,105 @@ def test_dns_help(
     with pytest.raises(SystemExit) as missing_command:
         cli.parser().parse_args(["dns"])
     assert missing_command.value.code == 2
+
+
+def configure_item_ref(world: World, ref: str) -> None:
+    cfg = Path(world.system.env["XDG_CONFIG_HOME"]) / "tbhbdev" / "config.toml"
+    text = cfg.read_text(encoding="utf-8")
+    cfg.write_text(
+        text.replace("[gitleaks]\n", f'[gitleaks]\nitem_ref = "{ref}"\n'),
+        encoding="utf-8",
+    )
+
+
+def test_generate_uses_a_configured_item_reference(world: World) -> None:
+    ref = "op:\x2f/vault-a/item-a/field-a"
+    configure_item_ref(world, ref)
+    world.connect.vaults = {"vault-a": "v-custom", "ab": "v2"}
+
+    creds = config.credentials(world.system.env)
+    settings = config.settings(world.system.env)
+    facts = cli._facts(world.system, creds, settings, world.connect.vaults)
+    assert facts.items == ("item-a",)
+
+    code, out, err = world.run()
+    assert (code, err) == (0, "")
+    assert out.splitlines()[-1] == f"created: {ref}"
+    assert ("POST", "/v1/vaults/v-custom/items") in world.connect.calls
+    assert (
+        "GET",
+        '/v1/vaults/v-custom/items?filter=title eq "item-a"',
+    ) in world.connect.calls
+    (item,) = world.connect.bodies
+    assert item["title"] == "item-a"
+    (written,) = item["fields"]  # type: ignore[misc]
+    assert written["id"] == "field-a"
+    assert written["label"] == "field-a"
+    assert r"item\\-a" in written["value"]
+    secrets_absent(out, err)
+
+
+def test_a_token_that_does_not_reach_the_configured_vault_is_refused(
+    world: World,
+) -> None:
+    configure_item_ref(world, "op:\x2f/vault-a/item-a/field-a")
+    world.connect.vaults = {"host-0-shared": "v-all", "ab": "v2"}
+    code, _, err = world.run()
+    assert code == 1
+    assert err == (
+        "tbhbops gitleaks generate: the Connect token doesn't reach the vault "
+        "vault-a; wrote nothing\n"
+    )
+    assert world.connect.calls == [("GET", "/v1/vaults")]
+
+
+def test_dry_run_out_writes_config_with_mode_0600_and_publishes_nothing(
+    world: World, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    def fail_chmod(*_args: object, **_kwargs: object) -> None:
+        raise AssertionError("chmod must not be called")
+
+    monkeypatch.setattr(os, "chmod", fail_chmod)
+    target = tmp_path / "preview.toml"
+    code, out, err = world.run("--dry-run", "--out", str(target))
+    assert (code, err) == (0, "")
+    assert out == SUMMARY + f"dry run: wrote config to {target}\n"
+    secrets_absent(out, err)
+    assert world.connect.calls == [("GET", "/v1/vaults")]
+    assert world.connect.bodies == []
+    assert stat.S_IMODE(target.stat().st_mode) == 0o600
+    written = target.read_text(encoding="utf-8")
+    assert gitleaks.problem(written) is None
+    assert world.run()[0] == 0
+    assert written == world.connect.bodies[0]["fields"][0]["value"]  # type: ignore[index]
+
+
+def test_out_errors_and_help(
+    world: World,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    target = tmp_path / "preview.toml"
+    code, out, err = world.run("--out", str(target))
+    assert (code, out) == (1, "")
+    assert "--dry-run" in err
+    assert not target.exists()
+    assert world.connect.calls == []
+
+    existing = tmp_path / "existing.toml"
+    existing.write_text("keep-me\n", encoding="utf-8")
+    code, _, err = world.run("--dry-run", "--out", str(existing))
+    assert code == 1
+    assert str(existing) in err
+    assert existing.read_text(encoding="utf-8") == "keep-me\n"
+    assert world.connect.bodies == []
+
+    missing = tmp_path / "missing-dir" / "preview.toml"
+    code, _, err = world.run("--dry-run", "--out", str(missing))
+    assert code == 1
+    assert err == f"tbhbops gitleaks generate: cannot write {missing}; wrote nothing\n"
+
+    shown = help_of(monkeypatch, capsys, "gitleaks", "generate")
+    assert "--out" in shown
+    assert "[gitleaks] item_ref" in shown

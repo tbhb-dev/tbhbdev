@@ -338,3 +338,40 @@ def test_a_token_that_reaches_no_vault_lists_none_without_an_error() -> None:
     server = Server()
     server.raw = b"[]"
     assert connect.listed_vaults(client(server)) == {}
+
+
+def test_publish_uses_a_configured_item_reference() -> None:
+    ref = connect.ItemRef("vault-a", "item-a", "field-a")
+    server = Server()
+    assert connect.publish(client(server), VAULT, "NEW", write=True, ref=ref) == (
+        "created"
+    )
+    list_call, create_call = server.calls
+    assert list_call[:2] == (
+        "GET",
+        "https://connect.example/v1/vaults/vault-id/items?filter=title%20eq%20%22item-a%22",
+    )
+    assert create_call[3] == {
+        "vault": {"id": VAULT},
+        "title": "item-a",
+        "category": "SECURE_NOTE",
+        "fields": [
+            {"id": "field-a", "label": "field-a", "type": "CONCEALED", "value": "NEW"}
+        ],
+    }
+    duplicate = Server(
+        [
+            {"id": "a", "title": "item-a", "vault": {"id": VAULT}, "fields": []},
+            {"id": "b", "title": "item-a", "vault": {"id": VAULT}, "fields": []},
+        ]
+    )
+    with pytest.raises(CliError) as raised:
+        connect.publish(client(duplicate), VAULT, "NEW", write=True, ref=ref)
+    assert str(raised.value) == "vault-a holds 2 items named item-a"
+    with pytest.raises(CliError) as raised:
+        connect.publish(
+            failing_at(Server(), "POST", "/items"), VAULT, "NEW", write=True, ref=ref
+        )
+    assert (
+        str(raised.value) == "creating op:\x2f/vault-a/item-a/field-a failed: HTTP 500"
+    )

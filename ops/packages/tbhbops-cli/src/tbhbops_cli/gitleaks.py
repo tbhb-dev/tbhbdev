@@ -15,11 +15,25 @@ lazy from pathlib import PurePosixPath
 if TYPE_CHECKING:
     from collections.abc import Iterable, Sequence
 
+
+@dataclass(frozen=True)
+class ItemRef:
+    """A 1Password secret reference: vault, item and field."""
+
+    vault: str
+    item: str
+    field: str
+
+    def __str__(self) -> str:
+        return f"{REF_SCHEME}{self.vault}/{self.item}/{self.field}"
+
+
 VAULT = "host-0-shared"
 ITEM = "scanner-policy"
 FIELD = "config"
 REF_SCHEME = "op://"
-REF = f"{REF_SCHEME}{VAULT}/{ITEM}/{FIELD}"
+DEFAULT_REF = ItemRef(VAULT, ITEM, FIELD)
+REF = str(DEFAULT_REF)
 EXTENDS = ".gitleaks.toml"
 CANARY_ID = "tbhb-private-canary"
 # The line tbhb_rules' gitleaks_tool.sh.tpl looks for.
@@ -136,17 +150,17 @@ class Rule:
     paths: tuple[str, ...] = ()
 
 
-def problem(text: str) -> str | None:
+def problem(text: str, ref: ItemRef = DEFAULT_REF) -> str | None:
     """Why TEXT isn't the private gitleaks config, or None. It never quotes TEXT."""
     try:
         data = tomllib.loads(text)
     except tomllib.TOMLDecodeError:
-        return f"{REF} isn't valid TOML"
+        return f"{ref} isn't valid TOML"
     extend = data.get("extend")
     if not isinstance(extend, dict) or extend.get("path") != EXTENDS:
-        return f'{REF} has no [extend] path = "{EXTENDS}"'
+        return f'{ref} has no [extend] path = "{EXTENDS}"'
     if not CANARY.search(text):
-        return f"{REF} has no rule with the id {CANARY_ID}"
+        return f"{ref} has no rule with the id {CANARY_ID}"
     return None
 
 
