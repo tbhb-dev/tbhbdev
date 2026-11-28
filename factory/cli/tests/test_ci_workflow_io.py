@@ -105,6 +105,120 @@ def test_ci_shards_affected_targets(tmp_path: Path) -> None:
             assert run.stdout.splitlines() == expected_output
 
 
+AGENT_CAPACITY_REF = "refs/heads/gh-readonly-queue/main/pr-209-0123abcd"
+AGENT_CAPACITY_UPLOAD_CONDITION = "steps.merge-group-ref.outputs.ref_gone != 'true'"
+
+
+def _agent_capacity_steps() -> tuple[dict[object, object], dict[object, object]]:
+    steps = _workflow_steps(_workflow_jobs()["agent-capacity"])
+    check = next(step for step in steps if step["name"] == "Check the merge group ref")
+    upload = next(step for step in steps if step["name"] == "Upload the Go module scan")
+    return check, upload
+
+
+def _upload_runs(ref_gone: str) -> bool:
+    """Evaluate the upload condition for the check step's `ref_gone` output."""
+    match = re.fullmatch(
+        r"steps\.merge-group-ref\.outputs\.ref_gone != '(\w+)'",
+        AGENT_CAPACITY_UPLOAD_CONDITION,
+    )
+    assert match
+    return ref_gone != match.group(1)
+
+
+def _run_merge_group_ref_check(
+    tmp_path: Path, stub_body: str
+) -> tuple[subprocess.CompletedProcess[str], Path, Path]:
+    check, _ = _agent_capacity_steps()
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    calls = tmp_path / "gh calls.txt"
+    stub = bin_dir / "gh"
+    stub.write_text(
+        f'#!/usr/bin/env bash\nprintf "%s\\n" "$*" >> {shlex.quote(str(calls))}\n'
+        + stub_body
+    )
+    stub.chmod(0o755)
+    output = tmp_path / "github output.txt"
+    output.touch()
+    # The job's steps set no shell; the helper needs one to build the command.
+    run = subprocess.run(
+        _shell_command({**check, "shell": "bash"}),
+        env={
+            **os.environ,
+            "PATH": f"{bin_dir}{os.pathsep}{os.environ['PATH']}",
+            "GITHUB_OUTPUT": str(output),
+            "GITHUB_REPOSITORY": "example/repo",
+            "GITHUB_REF": AGENT_CAPACITY_REF,
+            "GH_TOKEN": "stub-token",
+        },
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    return run, output, calls
+
+
+def test_agent_capacity_upload_skips_only_on_gone_ref() -> None:
+    check, upload = _agent_capacity_steps()
+    assert "continue-on-error" not in upload
+    assert check["id"] == "merge-group-ref"
+    assert check["if"] == "github.event_name == 'merge_group'"
+    assert check["env"] == {"GH_TOKEN": "${{ github.token }}"}
+    assert "continue-on-error" not in check
+    # The condition is asserted as an exact string, as for the coverage steps.
+    assert upload["if"] == AGENT_CAPACITY_UPLOAD_CONDITION
+    assert upload["uses"].startswith("github/codeql-action/upload-sarif@")
+    assert upload["with"] == {
+        "sarif_file": "${{ runner.temp }}/gomodscan.sarif",
+        "category": "agent-capacity-dependencies",
+    }
+
+
+def test_agent_capacity_ref_gone_skips_upload(tmp_path: Path) -> None:
+    run, output, calls = _run_merge_group_ref_check(
+        tmp_path, 'echo "gh: Not Found (HTTP 404)" >&2\nexit 1\n'
+    )
+    assert run.returncode == 0, run.stderr
+    assert output.read_text().splitlines() == ["ref_gone=true"]
+    assert (
+        "::notice::merge group ref is gone, the queue dissolved the group; "
+        "skipping the Go module scan upload"
+    ) in run.stdout.splitlines()
+    assert not _upload_runs("true")
+    assert calls.read_text().split()[0] == "api"
+
+
+def test_agent_capacity_live_ref_uploads(tmp_path: Path) -> None:
+    run, output, _ = _run_merge_group_ref_check(tmp_path, "echo '{}'\n")
+    assert run.returncode == 0, run.stderr
+    assert output.read_text().splitlines() == ["ref_gone=false"]
+    assert "::notice::" not in run.stdout
+    assert _upload_runs("false")
+    # A skipped check step (pull_request, workflow_dispatch) has an empty output.
+    assert _upload_runs("")
+
+
+@pytest.mark.parametrize("status", ["500", "403"])
+def test_agent_capacity_unanswered_read_fails_job(tmp_path: Path, status: str) -> None:
+    run, output, _ = _run_merge_group_ref_check(
+        tmp_path, f'echo "gh: Server said no (HTTP {status})" >&2\nexit 1\n'
+    )
+    assert run.returncode != 0
+    assert "ref_gone=true" not in output.read_text()
+    assert "::notice::" not in run.stdout
+
+
+def test_agent_capacity_ref_call_uses_the_queue_ref(tmp_path: Path) -> None:
+    _, _, calls = _run_merge_group_ref_check(tmp_path, "exit 0\n")
+    api_call = calls.read_text().split()
+    assert api_call[0] == "api"
+    assert (
+        "repos/example/repo/git/ref/heads/gh-readonly-queue/main/pr-209-0123abcd"
+        in api_call
+    )
+
+
 def test_ci_test_steps_do_not_exclude_slow_external() -> None:
     jobs = _workflow_jobs()
     test_runs: list[str] = []
