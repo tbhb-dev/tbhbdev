@@ -6,12 +6,12 @@ import argparse
 import shlex
 from typing import TYPE_CHECKING
 
-from tbhbdev.alpha.merge.review_gate import HEAD_SHA
+from tbhbdev.merge.review_gate import HEAD_SHA
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
 
-    from tbhbdev.alpha.merge.message import Message
+    from tbhbdev.merge.message import Message
 
 
 def parse_head(value: str) -> str:

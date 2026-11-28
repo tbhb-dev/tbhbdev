@@ -2,7 +2,7 @@
 # Copyright Tony Burns
 """Summarize the dependency updates in a Renovate pull request."""
 
-from tbhbdev.alpha.merge.body import MD_LINK
+from tbhbdev.merge.body import MD_LINK
 
 
 def table_cells(row: str) -> list[str]:

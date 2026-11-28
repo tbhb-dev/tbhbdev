@@ -6,7 +6,7 @@
 import json
 
 import pytest
-from unit.alpha.merge.fake_github import (
+from unit.merge.fake_github import (
     APPROVED_HEAD,
     OTHER_HEAD,
     REVIEWS,
@@ -20,7 +20,7 @@ from unit.alpha.merge.fake_github import (
     run_main,
 )
 
-from tbhbdev.alpha.merge.github import VIEW_FIELDS, check_repository, fetch
+from tbhbdev.merge.github import VIEW_FIELDS, check_repository, fetch
 
 
 def settings_calls(tools: Tools) -> list[dict[str, object]]:

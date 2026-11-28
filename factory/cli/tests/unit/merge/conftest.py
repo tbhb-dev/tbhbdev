@@ -17,7 +17,7 @@ from fake_tool import (
     write_private_config,
     write_test_hooks,
 )
-from unit.alpha.merge.fake_github import COG, GH, GITLEAKS, Tools, amend, queue_data
+from unit.merge.fake_github import COG, GH, GITLEAKS, Tools, amend, queue_data
 
 from tbhbdev.alpha import tool_pins
 

@@ -18,8 +18,8 @@ from hypothesis import strategies as st
 from tbhbdev.alpha import close, command
 from tbhbdev.alpha.guard.gh_pr import command as hook
 from tbhbdev.alpha.guard.gh_pr import decision as guard
-from tbhbdev.alpha.merge import options as squash_merge
 from tbhbdev.alpha.pull_request.arguments import build_parser as pr_parser
+from tbhbdev.merge import options as squash_merge
 
 DATA = Path(__file__).parents[4] / "testdata" / "alpha"
 
