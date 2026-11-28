@@ -69,27 +69,27 @@ url = "https://github.com/bats-core/bats-core/archive/refs/tags/v1.14.0.tar.gz"
 url_api = "https://api.github.com/repos/bats-core/bats-core/tarball/v1.14.0"
 
 [[tools.bazel]]
-version = "9.3.2"
+version = "9.3.3"
 backend = "aqua:bazelbuild/bazel"
-specifiers = ["9.3.2"]
+specifiers = ["9.3.3"]
 
 [tools.bazel."platforms.linux-arm64"]
-checksum = "sha256:13d5677509ac5e52f28139d76b1343e8a4aa494451558222599abbb86bff92cb"
+checksum = "sha256:41349440c343005f0531ad128df3d3da58e39d5b50bda3eb495e186c2e0bd23b"
 checksum_source = "mise-versions"
-url = "https://github.com/bazelbuild/bazel/releases/download/9.3.2/bazel-9.3.2-linux-arm64"
-url_api = "https://api.github.com/repos/bazelbuild/bazel/releases/assets/714280482"
+url = "https://github.com/bazelbuild/bazel/releases/download/9.3.3/bazel-9.3.3-linux-arm64"
+url_api = "https://api.github.com/repos/bazelbuild/bazel/releases/assets/768715926"
 
 [tools.bazel."platforms.linux-x64"]
-checksum = "sha256:2e14c55c298752d71e8a0bbd762665ffce5966c9ad00ec5d1a8b82a58e7bfa06"
+checksum = "sha256:24f30faa845410547a4fdeaa8d083e2eb9e95438b996ca76a0102ff8ef171334"
 checksum_source = "mise-versions"
-url = "https://github.com/bazelbuild/bazel/releases/download/9.3.2/bazel-9.3.2-linux-x86_64"
-url_api = "https://api.github.com/repos/bazelbuild/bazel/releases/assets/714280538"
+url = "https://github.com/bazelbuild/bazel/releases/download/9.3.3/bazel-9.3.3-linux-x86_64"
+url_api = "https://api.github.com/repos/bazelbuild/bazel/releases/assets/768715995"
 
 [tools.bazel."platforms.macos-arm64"]
-checksum = "sha256:33fc3b489d159a86be0b465e9d1a58e5d03d2cc55faa87d8a19cd4de0a65f569"
+checksum = "sha256:5bcb76f9e94651f1eeec72243a69b03b4cd589c104611c583a59d4abbf9ea15a"
 checksum_source = "mise-versions"
-url = "https://github.com/bazelbuild/bazel/releases/download/9.3.2/bazel-9.3.2-darwin-arm64"
-url_api = "https://api.github.com/repos/bazelbuild/bazel/releases/assets/714280044"
+url = "https://github.com/bazelbuild/bazel/releases/download/9.3.3/bazel-9.3.3-darwin-arm64"
+url_api = "https://api.github.com/repos/bazelbuild/bazel/releases/assets/768715566"
 
 [[tools.bazelisk]]
 version = "1.30.0"

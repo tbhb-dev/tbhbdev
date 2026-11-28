@@ -29,7 +29,7 @@ UV_PYTHON_PREFERENCE = "only-managed"
 
 # The prose lint job uses the cspell, node, rumdl, and vale pins below.
 [tools]
-bazel = "9.3.2"
+bazel = "9.3.3"
 bazelisk = "1.30.0"
 go = "1.27.4"
 python = "3.15"
