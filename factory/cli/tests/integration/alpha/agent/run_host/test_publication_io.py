@@ -251,7 +251,7 @@ def test_execute_checks_required_build_results(  # noqa: PLR0913, PLR0917
 
 
 @pytest.mark.parametrize(
-    ("pull_result", "fresh", "draft_present", "reason"),
+    "case",
     [
         (httpx2.ConnectError("offline"), "fresh", False, "cannot verify agent/example"),
         (403, "fresh", False, "cannot verify agent/example"),
@@ -261,15 +261,12 @@ def test_execute_checks_required_build_results(  # noqa: PLR0913, PLR0917
     ],
     ids=["offline", "forbidden", "mint-failed", "no-token", "draft"],
 )
-def test_execute_reports_pull_request_verification_failure(  # noqa: PLR0913
+def test_execute_reports_pull_request_verification_failure(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
-    pull_result: int | Exception,
-    fresh: str | Exception | None,
-    *,
-    draft_present: bool,
-    reason: str,
+    case: tuple[int | Exception, str | Exception | None, bool, str],
 ) -> None:
+    pull_result, fresh, draft_present, reason = case
     run = make_run(tmp_path, expect_commit=True)
     prepared = dataclasses.replace(preparation(run), auth_before="example-before")
     runtime = HostRuntime(run, prepared, None)
