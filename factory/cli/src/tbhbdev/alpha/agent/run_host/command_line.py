@@ -72,12 +72,12 @@ def _codex(
         f"agents.default_subagent_model={_toml(detail.subagent_model)}",
     ]
     argv += ["-c", "features.network_proxy.enabled=false"]
-    # A codex policy's environment holds every handoff variable.
+    # A codex policy's environment holds every handoff variable. Excluding
+    # `GIT_*` already drops inherited config pairs; setting a count of 0 would
+    # only break Bazel's Go fetch rule, which rejects it.
     argv += [
         "-c",
         'shell_environment_policy.exclude=["GIT_*"]',
-        "-c",
-        'shell_environment_policy.set.GIT_CONFIG_COUNT="0"',
         "-c",
         f"shell_environment_policy.set.PATH={_toml(policy.tool_path)}",
     ]
