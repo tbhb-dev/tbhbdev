@@ -39,7 +39,7 @@ prek = "0.5.11"
 # Match the pins in lib/rules/pins and MODULE.bazel.
 actionlint = "1.7.12"
 bats = "1.14.0"
-buildifier = "10.1.0"
+buildifier = "10.2.0"
 cocogitto = "7.0.0"
 cue = "0.17.1"
 editorconfig-checker = "4.0.2"
@@ -51,12 +51,12 @@ shellcheck = "0.11.0"
 shfmt = "3.14.1"
 tombi = "1.11.3"
 vale = "3.28.1"
-zizmor = "1.32.0"
+zizmor = "1.33.1"
 
 # Match the cspell package and Ruff's uv.lock entry.
 node = "26.13.1"
 cspell = "10.5.2"
-ruff = "0.17.3"
+ruff = "0.17.6"
 
 [tasks.lint-prose]
 description = "Lint Markdown with the same tools and styles as CI"
