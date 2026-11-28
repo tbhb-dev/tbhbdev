@@ -49,7 +49,6 @@ _IO_TESTS = [
     "test_cue_runtime",
     "test_gitleaks_check",
     "test_host",
-    "test_monorepo",
     "test_secret",
     "test_secrets",
     "test_telemetry",
