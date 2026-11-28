@@ -211,11 +211,7 @@ def test_execute_checks_required_build_results(  # noqa: PLR0913, PLR0917
     branch = start_ref.removeprefix("refs/heads/") if start_ref else "agent/example"
     if expected == 9:
         reason = "cannot verify" if published is None else "build commit missing from"
-        assert (
-            f"push failed: {reason} {branch} on origin "
-            f"(no GitHub credential rejection; unpushed commit {'a' * 40})"
-            in log.read_text()
-        )
+        assert f"push failed: {reason} {branch} on origin" in log.read_text()
     assert run.files.path("branch").exists() is bool(published)
 
 
@@ -324,9 +320,8 @@ def test_missing_commit_status_names_credential_rejection_and_unpushed_sha(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, source: str
 ) -> None:
     commit, run = "b" * 40, make_run(tmp_path, expect_commit=True)
-    run.files.write(
-        "out.final", "HTTP 401 Bad credentials\n" if source == "output" else "ok\n"
-    )
+    msg = "HTTP 401 Bad credentials\n" if source == "output" else "ok\n"
+    run.files.write("out.final", msg)
     helper = None
     if source == "helper":
         helper = token_helper.TokenHelper(

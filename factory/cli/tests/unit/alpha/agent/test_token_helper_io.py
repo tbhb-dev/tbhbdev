@@ -82,13 +82,16 @@ def test_build_delivery_caches_refreshes_and_serves_git_credential(
             assert f"password={ref_v}\n" in call("get")
             assert (call("erase"), helper.rejected) == ("", True)
             hosts = yaml.safe_load((gh_dir / "hosts.yml").read_text())["github.com"]
-            assert hosts["oauth_token"] == ret_v
-            assert (call("store"), helper.rejected) == ("", False)
-            assert token_helper.send(str(gh_dir), "unknown") is None
-            assert (call("other"), call("get", "protocol=https\nhost=x\n\n")) == (
+            assert (hosts["oauth_token"], call("store"), helper.rejected) == (
+                ret_v,
                 "",
-                "",
+                False,
             )
+            assert (
+                token_helper.send(str(gh_dir), "unknown"),
+                call("other"),
+                call("get", "protocol=https\nhost=x\n\n"),
+            ) == (None, "", "")
             assert done.wait(timeout=2.0)
         assert (not sock.exists(), f"password={pro_v}\n" in call("get")) == (True, True)
         assert all(kw["permissions"] == credentials.PUSH_PERMISSIONS for kw in seen)

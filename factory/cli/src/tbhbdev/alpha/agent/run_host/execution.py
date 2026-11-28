@@ -102,9 +102,7 @@ def run_and_check(run: Run, prepared: Prepared, stack: ExitStack) -> int:
     rc = push.run(run, prepared, stack, harness.run_harness)
     if rc == 0 and run.request.profile is Profile.REVIEW:
         return publication.post_review(run, prepared)
-    return publication.require_commit(
-        run, rc, token_helper=prepared.delivery.token_helper
-    )
+    return publication.require_commit(run, rc, helper=prepared.delivery.token_helper)
 
 
 def prepare_brief(

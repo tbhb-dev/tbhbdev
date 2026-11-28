@@ -4,20 +4,22 @@ from __future__ import annotations
 
 import os
 from contextlib import suppress
-from typing import TYPE_CHECKING
 
 import httpx2
 
 from tbhbdev import github_tls
-from tbhbdev.alpha.agent import credentials, review_post
+from tbhbdev.alpha.agent import credentials, review_post, token_helper
 from tbhbdev.alpha.agent.decisions import repo
 from tbhbdev.alpha.agent.run_host import publication_plan
 from tbhbdev.alpha.agent.run_host.state import Prepared, Run, RunInterruptedError
 
-if TYPE_CHECKING:
-    from tbhbdev.alpha.agent.token_helper import TokenHelper
+NO_COMMIT = 6
 
-NO_COMMIT, NO_PUSH, NO_REVIEW, OUTPUT_TAIL_BYTES = 6, 9, 10, 65536
+
+NO_PUSH = 9
+
+
+NO_REVIEW = 10
 
 
 def post_review(run: Run, prepared: Prepared) -> int:
@@ -75,23 +77,23 @@ def origin_contains(run: Run, commit: str) -> bool | None:
     return publication_plan.origin_ahead(record)
 
 
-def _credential_rejected(run: Run, helper: TokenHelper | None) -> bool:
+def _credential_rejected(run: Run, helper: token_helper.TokenHelper | None) -> bool:
     if helper is not None and helper.rejected:
         return True
     for suffix in ("out.final", "out"):
         path = run.files.path(suffix)
         if path.is_file() and not path.is_symlink():
             with suppress(OSError), path.open("rb") as f:
-                f.seek(max(0, f.seek(0, os.SEEK_END) - OUTPUT_TAIL_BYTES))
+                f.seek(max(0, f.seek(0, os.SEEK_END) - 65536))
                 if publication_plan.credential_rejected(
-                    f.read(OUTPUT_TAIL_BYTES).decode(errors="replace")
+                    f.read(65536).decode(errors="replace")
                 ):
                     return True
     return False
 
 
 def require_commit(
-    run: Run, rc: int, *, token_helper: TokenHelper | None = None
+    run: Run, rc: int, *, helper: token_helper.TokenHelper | None = None
 ) -> int:
     if rc or not run.request.expect_commit:
         return rc
@@ -107,10 +109,7 @@ def require_commit(
         run.files.write("branch", branch)
         return 0
     msg = publication_plan.push_failure_message(
-        branch,
-        commit,
-        published=published,
-        rejected=_credential_rejected(run, token_helper),
+        branch, commit, published=published, rejected=_credential_rejected(run, helper)
     )
     run.files.write("log", f"{msg}\n")
     return NO_PUSH
