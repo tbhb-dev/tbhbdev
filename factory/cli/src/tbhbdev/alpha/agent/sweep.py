@@ -315,7 +315,12 @@ def _remove_run_records(runs_dir: Path, name: str) -> None:
                 entry = f"{name}{suffix}"
                 with suppress(OSError):
                     st = os.stat(entry, dir_fd=fd, follow_symlinks=False)
-                    if stat.S_ISREG(st.st_mode) and st.st_uid == os.getuid():
+                    if st.st_uid != os.getuid():
+                        continue
+                    if suffix == runfiles_names.CLI:
+                        if stat.S_ISDIR(st.st_mode):
+                            shutil.rmtree(entry, dir_fd=fd)
+                    elif stat.S_ISREG(st.st_mode):
                         os.unlink(entry, dir_fd=fd)
         finally:
             os.close(fd)

@@ -160,7 +160,9 @@ def test_keep(remote: Remote) -> None:
 
 def finish_run_files(remote: Remote) -> None:
     for suffix in runfiles_names.SUFFIXES:
-        if suffix not in {".owner", ".rc.fallback"}:
+        if suffix == runfiles_names.CLI:
+            (remote.state / f"sample{suffix}").mkdir()
+        elif suffix not in {".owner", ".rc.fallback"}:
             remote.file(suffix, "finished" if suffix == ".phase" else "0")
 
 
@@ -191,7 +193,8 @@ def test_clean_moves_every_run_file_with_one_utc_stamp(
     assert [p.name for p in local.iterdir()] == ["sample.json"]
     trash = remote.state / "trash" / f"{stamp}-sample"
     assert (trash / "worktree").is_dir()
-    assert sorted(p.name for p in trash.iterdir() if p.is_file()) == sorted(
+    assert (trash / "sample.cli").is_dir()
+    assert sorted(p.name for p in trash.iterdir() if p.name != "worktree") == sorted(
         "sample" + suffix
         for suffix in runfiles_names.SUFFIXES
         if suffix != ".rc.fallback"
@@ -418,6 +421,36 @@ def test_local_clean_moves_the_worktree_into_the_trash(
     (entry,) = (files.root / "trash").glob("*-sample")
     assert (entry / "worktree" / "work.txt").exists() is worktree
     assert (entry / "sample.request.json").is_file()
+
+
+@pytest.mark.usefixtures("remote")
+@pytest.mark.parametrize("running", [False, True])
+def test_local_clean_archives_the_shipped_build(
+    isolated_home: Path, capsys: pytest.CaptureFixture[str], *, running: bool
+) -> None:
+    files, _ = _local_run(isolated_home, worktree=False)
+    archive = files.path("cli.tar")
+    files.write("build", "example record")
+    archive.write_text("example archive")
+    folder = files.path("cli")
+    folder.mkdir()
+    (folder / "example.txt").write_text("example build")
+
+    if running:
+        files.path("rc").unlink()
+        with runfiles.locked(files.path("run.lock")):
+            assert command("clean") == 1
+        assert "run is running; clean refused" in capsys.readouterr().err
+        assert folder.is_dir()
+        assert archive.is_file()
+        assert files.path("build").is_file()
+    else:
+        assert command("clean", "--force") == 0
+        (entry,) = (files.root / "trash").glob("*-sample")
+        assert (entry / "sample.cli/example.txt").read_text() == "example build"
+        assert (entry / archive.name).read_text() == "example archive"
+        assert (entry / files.path("build").name).read_text() == "example record"
+        assert not list(files.root.glob("sample.*"))
 
 
 @pytest.mark.usefixtures("remote")

@@ -83,6 +83,30 @@ def test_records_the_build_before_execution(
     assert (args.name, args.host, args.steer, existed) == ("example", "h", True, True)
 
 
+@pytest.mark.usefixtures("started")
+@pytest.mark.parametrize("finished", [True, False])
+def test_removes_the_shipped_cli_only_after_a_result(
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    finished: bool,
+) -> None:
+    folder = build_path().with_suffix(".cli")
+    folder.mkdir(parents=True)
+    (folder / "example.txt").write_text("example build")
+    monkeypatch.chdir(folder)
+
+    def finish(active: StubRun, _text: str, *, preflight_only: bool = False) -> int:
+        del preflight_only
+        if finished:
+            active.files.write("rc", "7\n")
+        return 7
+
+    monkeypatch.setattr(run.dispatcher.execution, "execute", finish)
+
+    assert run.main(["example", "--host", "example", "--cli-sha256", DIGEST], PROG) == 7
+    assert folder.exists() is (not finished)
+
+
 def test_refused_rerun_preserves_the_build_record(
     started: list[tuple[argparse.Namespace, bool]],
     capsys: pytest.CaptureFixture[str],
