@@ -114,10 +114,8 @@ def _server_workspace(base: Path) -> Path | None:
     return None
 
 
-def find(worktree: Path, group: int | None = None) -> dict[Path, Server]:
-    processes = _processes(os.getuid())
-    owned = _run_pids(processes, group)
-    servers: dict[Path, Server] = {}
+def _scan(processes: dict[int, Process]) -> dict[Path, tuple[int, Path, str]]:
+    servers: dict[Path, tuple[int, Path, str]] = {}
     for pid, process in processes.items():
         if not process.command.startswith("bazel("):
             continue
@@ -132,9 +130,22 @@ def find(worktree: Path, group: int | None = None) -> dict[Path, Server]:
         workspace = _server_workspace(base)
         started = process_group.leader_start(pid)
         if workspace is not None and started is not None:
-            belongs = pid in owned or workspace.is_relative_to(worktree)
-            servers[base.resolve()] = Server(pid, belongs, started)
+            servers[base.resolve()] = (pid, workspace, started)
     return servers
+
+
+def running() -> dict[Path, tuple[Server, Path]]:
+    found = _scan(_processes(os.getuid())).items()
+    return {b: (Server(p, belongs=True, started=s), w) for b, (p, w, s) in found}
+
+
+def find(worktree: Path, group: int | None = None) -> dict[Path, Server]:
+    processes = _processes(os.getuid())
+    owned = _run_pids(processes, group)
+    return {
+        b: Server(pid, pid in owned or ws.is_relative_to(worktree), started)
+        for b, (pid, ws, started) in _scan(processes).items()
+    }
 
 
 def stop(base: Path, server: Server) -> str:
