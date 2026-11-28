@@ -76,7 +76,7 @@ unmatched_ignore_imports_alerting = "error"
 layers = [
   "tbhbdev.cli",
   "tbhbdev.admin | tbhbdev.analytics | tbhbdev.adr | tbhbdev.agy | tbhbdev.issue | tbhbdev.secret | tbhbdev.prose_check | tbhbdev.gitleaks_check",
-  "tbhbdev.alpha : tbhbdev.merge : tbhbdev.read",
+  "tbhbdev.alpha : tbhbdev.merge : tbhbdev.monorepo : tbhbdev.read",
   "tbhbdev.runner : tbhbdev.userconfig : tbhbdev.secrets : tbhbdev.telemetry : tbhbdev.gh_agent : tbhbdev.plugins : tbhbdev.content_decision_record : tbhbdev.content_review : tbhbdev.content_vet : tbhbdev.cue_runtime",
   "tbhbdev.version | tbhbdev.adr_decision | tbhbdev.issue_import",
   "tbhbdev.content_model",

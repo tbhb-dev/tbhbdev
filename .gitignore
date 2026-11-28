@@ -3,6 +3,7 @@ tmp/
 bin/
 dist/
 bazel-*
+!/ops/ansible/roles/bazel_server_reaper/*/bazel-server-reaper.*
 .bazel-*
 .bazelrc.user
 .bazel_env

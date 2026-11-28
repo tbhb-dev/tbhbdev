@@ -1,0 +1,16 @@
+[Unit]
+Description=Retire orphaned agent Bazel servers
+
+[Service]
+Type=oneshot
+User=root
+ExecStart=/usr/bin/python3 /usr/local/lib/bazel-server-reaper.py --user {{ bazel_server_reaper_user }}{{ '' if bazel_server_reaper_dry_run else ' --live' }}
+StateDirectory=bazel-server-reaper
+StateDirectoryMode=0700
+UMask=0077
+SyslogIdentifier=bazel-reaper
+StandardOutput=journal
+StandardError=journal
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true

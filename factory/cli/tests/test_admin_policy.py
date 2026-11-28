@@ -452,7 +452,7 @@ REFUSALS: list[tuple[str, str, str, object]] = [
         "/repos/tbhb-dev/widget/transfer",
         {"new_owner": "other"},
     ),
-    ("repository_removal", "PATCH", "/repos/tbhb-dev/widget", {"archived": True}),
+    ("repository_removal", "PATCH", "/repos/tbhb-dev/widget", {"archived": False}),
     ("repository_removal", "DELETE", "/REPOS/TBHB-DEV/%77idget/?x=1", None),
     (
         "paid_feature",
@@ -620,12 +620,7 @@ def test_unknown_settings(path: str) -> None:
             {"key_id": "1"},
             "organization_secrets",
         ),
-        (
-            "PATCH",
-            "/repos/tbhb-dev/widget",
-            {"archived": False, "visibility": "private"},
-            "administration",
-        ),
+        ("PATCH", "/repos/tbhb-dev/widget", {"archived": True}, "administration"),
         ("GET", "/orgs/tbhb-dev", None, "organization_administration"),
         (
             "POST",
@@ -810,10 +805,8 @@ def test_get_settings_has_no_write_field_restriction(path: str) -> None:
 
 
 def test_complete_setting_lists() -> None:
-    repository: dict[str, object] = dict.fromkeys(policy.SETTINGS, True)
-    repository.update(
-        allow_auto_merge=False, archived=False, private=True, visibility="private"
-    )
+    repository: dict[str, object] = dict.fromkeys(policy.SETTINGS - {"archived"}, True)
+    repository.update(allow_auto_merge=False, private=True, visibility="private")
     assert policy.check("PATCH", "/repos/tbhb-dev/widget", repository).allowed is True
     organization = dict.fromkeys(
         ["name", "description", "company", "blog", "email", "location"], "example"

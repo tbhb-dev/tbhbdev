@@ -11,6 +11,7 @@ from tbhbdev.admin.policy_paths import REPO as _REPO
 
 METHODS = frozenset({"GET", "POST", "PUT", "PATCH", "DELETE"})
 OWNER = "tbhb-dev"
+SELF_REPOSITORY = "tbhb-dev/tbhbdev"
 ORG = rf"/orgs/{_PART}"
 OWNED = re.compile(rf"/(?:repos|orgs)/({_PART})(?:/|$)")
 REVIEW = re.compile(rf"{_REPO}/pulls/[0-9]+/reviews(?:/|$)")
@@ -189,7 +190,37 @@ def unsafe_setting(path: str, body: dict[str, object]) -> bool:
     )
 
 
-def write_refusal(method: str, path: str, body: dict[str, object]) -> str:
+def repository_removal(
+    method: str,
+    path: str,
+    body: dict[str, object],
+    protected: frozenset[str] | None,
+) -> bool:
+    if re.fullmatch(rf"{_REPO}/transfer", path):
+        return True
+    if not re.fullmatch(_REPO, path):
+        return False
+    if method == "DELETE":
+        return True
+    if "archived" not in body:
+        return False
+    repo = path.removeprefix("/repos/")
+    return (
+        method != "PATCH"
+        or body["archived"] is not True
+        or len(body) != 1
+        or protected is None
+        or repo == SELF_REPOSITORY
+        or repo in protected
+    )
+
+
+def write_refusal(
+    method: str,
+    path: str,
+    body: dict[str, object],
+    protected: frozenset[str] | None,
+) -> str:
     if set(path.split("/")) & MEMBERSHIP or fields(body) & {
         "role",
         "permission",
@@ -197,11 +228,7 @@ def write_refusal(method: str, path: str, body: dict[str, object]) -> str:
         "team_id",
     }:
         return "membership_change"
-    if re.fullmatch(_REPO, path) and (
-        method == "DELETE" or body.get("archived") is True
-    ):
-        return "repository_removal"
-    if re.fullmatch(rf"{_REPO}/transfer", path):
+    if repository_removal(method, path, body, protected):
         return "repository_removal"
     if visibility_refusal(method, path, body):
         return "public_visibility"
@@ -318,7 +345,12 @@ def deployment_refusal(method: str, path: str, body: dict[str, object]) -> str:
     return sharing_refusal(method, path, body)
 
 
-def explicit_refusal(method: str, path: str, body: dict[str, object]) -> str:
+def explicit_refusal(
+    method: str,
+    path: str,
+    body: dict[str, object],
+    protected: frozenset[str] | None,
+) -> str:
     if set(path.split("/")) & PAID or "security_and_analysis" in fields(body):
         return "paid_feature"
     if fields(body) & {"actions_spending_limit", "spending_limit", "use_static_ip"}:
@@ -327,7 +359,9 @@ def explicit_refusal(method: str, path: str, body: dict[str, object]) -> str:
         return "approval_or_merge"
     if method == "GET":
         return ""
-    return write_refusal(method, path, body) or deployment_refusal(method, path, body)
+    return write_refusal(method, path, body, protected) or deployment_refusal(
+        method, path, body
+    )
 
 
 def permission_for(path: str) -> str:
@@ -338,7 +372,11 @@ def permission_for(path: str) -> str:
 
 
 def check(  # noqa: PLR0911  # Ordered default-deny decisions.
-    method: str, path: str, body: object = None
+    method: str,
+    path: str,
+    body: object = None,
+    *,
+    protected: frozenset[str] | None = frozenset(),
 ) -> Decision:
     """Return a stable decision before any credentials or network are used."""
     canonical = normalize(path)
@@ -352,7 +390,7 @@ def check(  # noqa: PLR0911  # Ordered default-deny decisions.
     if owner and owner[1] != OWNER:
         return Decision(allowed=False, code="foreign_owner", path=canonical)
     payload: dict[str, object] = body or {}
-    code = explicit_refusal(method, canonical, payload)
+    code = explicit_refusal(method, canonical, payload, protected)
     if code:
         return Decision(allowed=False, code=code, path=canonical)
     permission = permission_for(canonical)
