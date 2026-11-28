@@ -66,6 +66,7 @@ In the design, the public tunnel routes `/webhook`. At the edge, every other pat
 | Raw bodies that fail to parse | The dead-letter bucket | 7 days, then deleted |
 | Delivery IDs, body hashes, and times | The dedupe table | 7 days, at most 200,000 entries |
 | Span IDs, milestones, watermarks, and `ETag` values | The store | The life of the store |
+| PR node IDs and their ready and update times | The `review_prs` bucket in the store | Until the worker claims the `ended` milestone or the daily pass finds an update time older than 30 days |
 
 Deletion from the store is logical. `bbolt` may not zero freed pages, so a deleted body can stay in the file and in any copy of it until `bbolt` reuses its pages (unverified). The design proposes mode `0600` for the store file, owned by the image's non-root user, on a volume reserved for this service to mount. The threat-model follow-up, [plan step 6 on page 11](11-risks-and-technical-debt.md), settles the final modes, owner, and corruption handling.
 
