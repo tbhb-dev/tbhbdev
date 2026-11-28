@@ -26,7 +26,7 @@ The role makes `<home>/Code` at 0700. Its owner is the account and its group is 
 
 List clones in `agent_workspace_repos` as entries with a `name` of `org/repo` on GitHub. Set `public: true` to clone and fetch over HTTPS with an empty credential helper and `GIT_TERMINAL_PROMPT=0`. These repositories clone without `gh` or a GitHub credential. Public fetches use the HTTPS URL even when the origin of an existing clone uses another transport. Repositories without that key keep the `gh auth git-credential` helper and need credentials in `GH_CONFIG_DIR`.
 
-Set `workspace: false` on an entry to exclude it from cloning and `workspace.repos` while keeping it available for `public_repos`. Entries without this key remain in the workspace.
+Set `workspace: false` on an entry to exclude it from cloning and `workspace.repos`. Entries without this key remain in the workspace.
 
 `agent_workspace_private_clones` defaults to `true`. Set it to `false` to skip every repository without `public: true`, including existing clones. The `lab` and `lab_macos` groups turn off private clones until the GitHub App supplies the account's credential. Other hosts keep cloning both kinds. The inventory marks `tbhb-dev/tools` and `tbhb-dev/rules` public.
 

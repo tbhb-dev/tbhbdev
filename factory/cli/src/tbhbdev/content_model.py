@@ -11,6 +11,12 @@ from markdown_it.rules_block.html_block import HTML_SEQUENCES
 from markdown_it.tree import SyntaxTreeNode
 from mdit_py_plugins.tasklists import tasklists_plugin
 
+type Json = dict[str, object]
+
+
+class Refused(RuntimeError):  # noqa: N818 -- Required public name.
+    """A content refusal with a diagnostic."""
+
 
 def _text_metrics(text: str) -> dict[str, int]:
     return {

@@ -29,7 +29,7 @@ from tbhbdev.alpha.agent.driver import launch as coordinator
 def test_unsandboxed_clean_refuses_a_run_without_a_result(
     remote: Remote, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    assert launch(remote, "--ops", "--unsandboxed", "o/r#1") == 0
+    assert launch(remote, "--account", "ops", "--unsandboxed", "o/r#1") == 0
     capsys.readouterr()
     assert command("clean") == 1
     assert "clean refused" in capsys.readouterr().err
@@ -89,7 +89,7 @@ def test_clean_refuses_unpushed_build_worktree(
 def test_unsandboxed_force_clean_of_an_ended_run_only_moves_to_trash(
     remote: Remote, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    assert launch(remote, "--ops", "--unsandboxed", "o/r#1") == 0
+    assert launch(remote, "--account", "ops", "--unsandboxed", "o/r#1") == 0
     remote.configure(session=False)
     remote.file(".rc", "0")
     before = {tool: remote.records(tool) for tool in ("ssh", "git", "tmux")}
@@ -141,6 +141,7 @@ def test_clean_unknown_needs_force(
 
 def test_keep(remote: Remote) -> None:
     assert launch(remote) == 0
+    assert command("keep") == 0
     assert command("keep") == 0
     assert (remote.state / "sample.keep").read_text() == ""
     assert (remote.state / "sample.keep").stat().st_mode & 0o777 == 0o600
@@ -254,12 +255,6 @@ def test_clean_ownerless_run_with_a_live_session(remote: Remote) -> None:
     assert metadata.metadata_path("sample").exists()
 
 
-def test_keep_twice(remote: Remote) -> None:
-    assert launch(remote) == 0
-    assert command("keep") == 0
-    assert command("keep") == 0
-
-
 def test_clean_fallback_requires_force(
     remote: Remote, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -345,7 +340,7 @@ def test_clean_retry_after_rc_was_trashed(
 def test_unsandboxed_force_clean_refuses_live_session(
     remote: Remote, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    assert launch(remote, "--ops", "--unsandboxed", "o/r#1") == 0
+    assert launch(remote, "--account", "ops", "--unsandboxed", "o/r#1") == 0
     before = remote.records("git")
     assert command("clean", "--force") == 1
     assert "run is running; clean refused" in capsys.readouterr().err

@@ -15,18 +15,6 @@ filegroup(
 )
 
 cli_py_test(
-    name = "test_run_host_publication",
-    srcs = ["test_run_host_publication.py"],
-    imports = ["../../.."],
-    deps = [
-        "//factory/cli/src/tbhbdev/alpha/agent:run_host",
-        "//factory/cli/tests:conftest",
-        "@cli_pip//httpx2",
-        "@cli_pip//pytest",
-    ],
-)
-
-cli_py_test(
     name = "test_render",
     srcs = ["test_render.py"],
     imports = ["../../.."],

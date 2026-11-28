@@ -14,6 +14,7 @@ import textwrap
 import time
 from pathlib import Path
 from typing import TYPE_CHECKING, cast
+from unittest.mock import Mock
 
 import pytest
 from agent_host_example import constant
@@ -64,7 +65,6 @@ def test_group_stop_reaps_a_forked_child() -> None:
             env={},
             cwd="/",
             streams=(None, subprocess.PIPE, subprocess.PIPE),
-            terminal=None,
         )
         try:
             descendant = int(child.stdout.readline())
@@ -109,71 +109,10 @@ def test_group_stop_escalates() -> None:
             env={},
             cwd="/",
             streams=(None, subprocess.PIPE, None),
-            terminal=None,
         )
         assert child.stdout.readline() == "ready\\n"
         g.stop_started(child.pid, 0.05, child.poll)
         assert child.wait(timeout=5) == -9
-    """)
-
-
-def test_interactive_harness_keeps_terminal_and_foreground_group() -> None:
-    probe("""\
-        import errno, json, os, pty, select, subprocess, sys
-        from tbhbdev.alpha.agent import process_group as g
-
-        pid, master = pty.fork()
-        if pid == 0:
-            child = g.launch(
-                (
-                    sys.executable,
-                    "-c",
-                    (
-                        "import json, os; text=input(); print(json.dumps("
-                        "[os.getpgrp(), os.tcgetpgrp(0), os.getsid(0), te"
-                        "xt]), flush=True)"
-                    ),
-                ),
-                env={},
-                cwd="/",
-                streams=(None, None, None),
-                terminal=0,
-            )
-            os.write(1, b"parent-ready\\n")
-            rc = child.wait(timeout=5)
-            g.foreground(0, os.getpgrp())
-            assert os.tcgetpgrp(0) == os.getpgrp()
-            sys.exit(rc)
-        try:
-            output = b""
-            while b"parent-ready" not in output:
-                assert select.select([master], [], [], 5)[0]
-                output += os.read(master, 4096)
-            os.write(master, b"hello\\n")
-            while True:
-                assert select.select([master], [], [], 5)[0]
-                try:
-                    part = os.read(master, 4096)
-                except OSError as exc:
-                    assert exc.errno == errno.EIO
-                    break
-                if not part:
-                    break
-                output += part
-            assert os.waitpid(pid, 0)[1] == 0, output
-            rows = [
-                json.loads(line)
-                for line in output.decode().splitlines()
-                if line.startswith("[")
-            ]
-            assert len(rows) == 1, output
-            pgid, foreground, session, text = rows[0]
-            assert pgid == foreground
-            assert session == pid
-            assert pgid != session
-            assert text == "hello"
-        finally:
-            os.close(master)
     """)
 
 
@@ -257,22 +196,6 @@ def test_record_missing_leader(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) 
     with pytest.raises(Invalid) as caught:
         groups.record(runfiles.RunFiles(tmp_path, "example"), 23)
     assert str(caught.value) == "run group leader exited before it could be recorded"
-
-
-def test_foreground_restores_handler_on_failure(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    before = signal.getsignal(signal.SIGTTOU)
-
-    def fail(fd: int, group: int) -> None:
-        assert signal.getsignal(signal.SIGTTOU) == signal.SIG_IGN
-        assert (fd, group) == (4, 23)
-        raise OSError
-
-    monkeypatch.setattr(os, "tcsetpgrp", fail)
-    with pytest.raises(OSError, match=r"^$"):
-        groups.foreground(4, 23)
-    assert signal.getsignal(signal.SIGTTOU) == before
 
 
 def test_prepare_success_and_errors(
@@ -488,9 +411,8 @@ def test_stop_absent_group_and_liveness(monkeypatch: pytest.MonkeyPatch) -> None
     assert calls == [0, signal.SIGTERM, 0]
 
 
-@pytest.mark.parametrize("terminal", [None, 4])
 def test_launch_assigns_group_streams_and_exact_environment(
-    monkeypatch: pytest.MonkeyPatch, terminal: int | None
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     events: list[object] = []
     environment = {"PATH": "/example/bin", "EXAMPLE": "value"}
@@ -510,37 +432,23 @@ def test_launch_assigns_group_streams_and_exact_environment(
             "stdout": subprocess.DEVNULL,
             "stderr": subprocess.STDOUT,
             "text": True,
-            "start_new_session": terminal is None,
-            "process_group": 0 if terminal is not None else None,
+            "start_new_session": True,
         }
         assert kwargs["env"] is environment
         events.append("spawn")
         return child
 
-    def foreground(descriptor: int, group: int) -> None:
-        events.append(("foreground", descriptor, group))
-
-    def signal_group(group: int, number: int) -> None:
-        events.append(("signal", group, number))
-
     monkeypatch.setattr(subprocess, "Popen", spawn)
-    monkeypatch.setattr(groups, "foreground", foreground)
-    monkeypatch.setattr(os, "killpg", signal_group)
     assert (
         groups.launch(
             ("example", "argument"),
             env=environment,
             cwd="/example/worktree",
             streams=streams,
-            terminal=terminal,
         )
         is child
     )
-    assert events == (
-        ["spawn"]
-        if terminal is None
-        else ["spawn", ("foreground", 4, 23), ("signal", 23, signal.SIGCONT)]
-    )
+    assert events == ["spawn"]
 
 
 @pytest.mark.parametrize("released", [False, True])
@@ -596,42 +504,6 @@ def test_worker_pid_requires_a_started_worker(pid: int | None) -> None:
         assert groups.worker_pid(worker) == 23
 
 
-@pytest.mark.parametrize("permitted", [False, True])
-def test_launch_foreground_failure_stops_created_group(
-    monkeypatch: pytest.MonkeyPatch,
-    permitted: bool,
-) -> None:
-    events: list[object] = []
-
-    class Child:
-        pid = 23
-
-        def poll(self) -> None:
-            return None
-
-        def wait(self) -> None:
-            events.append("wait")
-
-    def foreground(_fd: int, _pid: int) -> None:
-        raise OSError
-
-    child = Child()
-    monkeypatch.setattr(subprocess, "Popen", constant(child))
-    monkeypatch.setattr(groups, "foreground", foreground)
-
-    def stop(pid: int, grace: float, reap: Callable[[], object] | None = None) -> bool:
-        assert reap == child.poll
-        events.append((pid, grace))
-        return permitted
-
-    monkeypatch.setattr(groups, "stop_started", stop)
-    with pytest.raises(OSError, match=r"^$"):
-        groups.launch(
-            ("example",), env={}, cwd="/example", streams=(None, None, None), terminal=0
-        )
-    assert events == [(23, 0), *(["wait"] if permitted else [])]
-
-
 @pytest.mark.parametrize("reaped", [False, True])
 def test_prepare_before_setpgid_is_bounded_and_never_signals_reaped_pid(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, reaped: bool
@@ -676,34 +548,42 @@ def test_failed_spawn_has_no_group_to_stop(monkeypatch: pytest.MonkeyPatch) -> N
 
     monkeypatch.setattr(subprocess, "Popen", spawn)
     with pytest.raises(OSError, match=r"^$"):
-        groups.launch(
-            ("example",), env={}, cwd="/", streams=(None, None, None), terminal=None
-        )
+        groups.launch(("example",), env={}, cwd="/", streams=(None, None, None))
 
 
-@pytest.mark.parametrize("terminal", [None, 0])
-def test_launch_transfers_the_exact_child_before_terminal_setup(
-    monkeypatch: pytest.MonkeyPatch, terminal: int | None
+@pytest.mark.parametrize("stopped", [False, True])
+def test_interrupted_spawn_cleans_up_before_returning_the_child(
+    monkeypatch: pytest.MonkeyPatch, *, stopped: bool
 ) -> None:
     class Child:
         pid = 23
 
+        def __init__(self) -> None:
+            self.wait = Mock()
+
+        def poll(self) -> int | None:
+            return None
+
     child = Child()
-    seen: list[object] = []
-    monkeypatch.setattr(subprocess, "Popen", constant(child))
+    stop = Mock(return_value=stopped)
 
-    def foreground(_fd: int, _pid: int) -> None:
-        assert seen == [child]
-        raise OSError
+    def spawn(*_args: object, **_kwargs: object) -> Child:
+        os.kill(os.getpid(), signal.SIGTERM)
+        return child
 
-    monkeypatch.setattr(groups, "foreground", foreground)
-    spec = groups.Launch(("example",), {}, "/", (None, None, None), terminal)
-    if terminal is None:
-        assert groups.launch_owned(spec, started=seen.append) is child
-    else:
-        with pytest.raises(OSError, match=r"^$"):
-            groups.launch_owned(spec, started=seen.append)
-    assert seen == [child]
+    def interrupt(_number: int, _frame: object) -> None:
+        raise KeyboardInterrupt
+
+    monkeypatch.setattr(subprocess, "Popen", spawn)
+    monkeypatch.setattr(groups, "stop_started", stop)
+    previous = signal.signal(signal.SIGTERM, interrupt)
+    try:
+        with pytest.raises(KeyboardInterrupt):
+            groups.launch(("example",), env={}, cwd="/", streams=(None, None, None))
+    finally:
+        signal.signal(signal.SIGTERM, previous)
+    stop.assert_called_once_with(child.pid, 0, child.poll)
+    assert child.wait.call_count == int(stopped)
 
 
 def test_cleanup_handler_installation_cannot_be_interrupted(

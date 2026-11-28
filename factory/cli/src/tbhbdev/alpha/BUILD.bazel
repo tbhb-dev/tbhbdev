@@ -24,9 +24,9 @@ cli_py_library(
     imports = ["../.."],
     visibility = ["//factory/cli:__subpackages__"],
     deps = [
+        ":content_issues",
         ":opened",
         ":worker_identity",
-        "//factory/cli/src/tbhbdev:content",
         "//factory/cli/src/tbhbdev:issue_import",
         "//factory/cli/src/tbhbdev:userconfig",
         "//factory/cli/src/tbhbdev/alpha/agent:settings",
@@ -63,99 +63,12 @@ cli_py_library(
     visibility = ["//factory/cli:__subpackages__"],
     deps = [
         ":gh_app",
-        ":guard_gh_poll",
         ":repo",
         "//factory/cli/src/tbhbdev:userconfig",
+        "//factory/cli/src/tbhbdev/alpha/guard/gh_poll:decision",
         "//factory/cli/src/tbhbdev/alpha/identity:storage",
         "//factory/cli/src/tbhbdev/alpha/identity/commit:policy",
     ],
-)
-
-cli_py_library(
-    name = "guard_agent_model",
-    srcs = ["guard_agent_model.py"],
-    imports = ["../.."],
-    visibility = ["//factory/cli:__subpackages__"],
-    deps = [
-        ":repo",
-        "//factory/cli/src/tbhbdev/alpha/identity:records",
-        "//factory/cli/src/tbhbdev/alpha/identity:storage",
-        "//factory/cli/src/tbhbdev/alpha/identity/claude:transcript",
-    ],
-)
-
-cli_py_library(
-    name = "guard_gh_config_dir",
-    srcs = ["guard_gh_config_dir.py"],
-    imports = ["../.."],
-    visibility = ["//factory/cli:__subpackages__"],
-    deps = [
-        ":guard_gh_pr",
-        ":repo",
-    ],
-)
-
-cli_py_library(
-    name = "guard_gh_poll",
-    srcs = ["guard_gh_poll.py"],
-    imports = ["../.."],
-    visibility = ["//factory/cli:__subpackages__"],
-    deps = [
-        ":guard_gh_pr",
-        ":guard_git_hooks",
-        ":repo",
-    ],
-)
-
-cli_py_library(
-    name = "guard_gh_pr",
-    srcs = ["guard_gh_pr.py"],
-    imports = ["../.."],
-    visibility = ["//factory/cli:__subpackages__"],
-    deps = [":repo"],
-)
-
-cli_py_library(
-    name = "guard_git_hooks",
-    srcs = ["guard_git_hooks.py"],
-    imports = ["../.."],
-    visibility = ["//factory/cli:__subpackages__"],
-    deps = [":guard_gh_pr"],
-)
-
-cli_py_library(
-    name = "guard_op",
-    srcs = ["guard_op.py"],
-    imports = ["../.."],
-    visibility = ["//factory/cli:__subpackages__"],
-    deps = [
-        ":guard_gh_pr",
-        ":repo",
-        "//factory/cli/src/tbhbdev:userconfig",
-        "//factory/cli/src/tbhbdev/alpha/identity/antigravity:payload",
-        "@cli_pip//pyyaml",
-    ],
-)
-
-cli_py_library(
-    name = "guard_scripts",
-    srcs = ["guard_scripts.py"],
-    imports = ["../.."],
-    visibility = ["//factory/cli:__subpackages__"],
-    deps = [
-        ":guard_gh_poll",
-        ":guard_gh_pr",
-        ":repo",
-        "//factory/cli/src/tbhbdev/alpha/identity/antigravity:payload",
-    ],
-)
-
-cli_py_library(
-    name = "guard_ssh_agent",
-    srcs = ["guard_ssh_agent.py"],
-    imports = ["../.."],
-    visibility = ["//factory/cli:__subpackages__"],
-    deps = [":guard_gh_pr"],
 )
 
 cli_py_library(
@@ -183,7 +96,7 @@ cli_py_library(
         ":repo",
         "//factory/cli/src/tbhbdev:userconfig",
         "//factory/cli/src/tbhbdev/alpha/agent:settings",
-        "//factory/cli/src/tbhbdev/alpha/agent:signing_parity",
+        "//factory/cli/src/tbhbdev/alpha/agent:signing_keys",
         "//factory/cli/src/tbhbdev/alpha/agent/decisions:host_names",
         "//factory/cli/src/tbhbdev/alpha/identity/commit:policy",
     ],
@@ -245,7 +158,7 @@ cli_py_library(
         ":review_doc",
         ":review_policy",
         ":review_threads",
-        "//factory/cli/src/tbhbdev:content",
+        "//factory/cli/src/tbhbdev:content_review",
         "//factory/cli/src/tbhbdev/alpha/pull_request:attribution",
         "//factory/cli/src/tbhbdev/alpha/pull_request:body",
         "//factory/cli/src/tbhbdev/alpha/pull_request:frontmatter",
@@ -266,7 +179,7 @@ cli_py_library(
     visibility = ["//factory/cli:__subpackages__"],
     deps = [
         ":review_inline",
-        "//factory/cli/src/tbhbdev:content",
+        "//factory/cli/src/tbhbdev:content_review",
         "//factory/cli/src/tbhbdev/alpha/identity:trailers",
         "//factory/cli/src/tbhbdev/alpha/identity/commit:grammar",
         "//factory/cli/src/tbhbdev/alpha/pull_request:frontmatter",
@@ -350,17 +263,6 @@ cli_py_library(
 )
 
 cli_py_library(
-    name = "state_guard",
-    srcs = ["state_guard.py"],
-    imports = ["../.."],
-    visibility = ["//factory/cli:__subpackages__"],
-    deps = [
-        ":repo",
-        "//factory/cli/src/tbhbdev:userconfig",
-    ],
-)
-
-cli_py_library(
     name = "verify_range",
     srcs = ["verify_range.py"],
     imports = ["../.."],
@@ -411,6 +313,7 @@ filegroup(
             "identity.py",
         ],
     ) + [
+        "//factory/cli/src/tbhbdev/alpha/guard:package_files",
         "//factory/cli/src/tbhbdev/alpha/identity:package_files",
         "//factory/cli/src/tbhbdev/alpha/install:package_files",
     ],
@@ -445,25 +348,24 @@ cli_py_library(
         ":close",
         ":gh_app",
         ":gh_shim",
-        ":guard_agent_model",
-        ":guard_gh_config_dir",
-        ":guard_gh_poll",
-        ":guard_gh_pr",
-        ":guard_op",
-        ":guard_ops_no_lazy_stop",
-        ":guard_scripts",
-        ":guard_sendmessage_clock",
-        ":guard_ssh_agent",
         ":pre_push_guard",
         ":repo_bootstrap",
         ":review",
         ":run_stop_hook",
         ":session_context",
-        ":state_guard",
         ":verify_range",
         ":version_check",
         ":worktree_sweep",
         "//factory/cli/src/tbhbdev/alpha/agent:command",
+        "//factory/cli/src/tbhbdev/alpha/guard:agent_model",
+        "//factory/cli/src/tbhbdev/alpha/guard:gh_config_dir",
+        "//factory/cli/src/tbhbdev/alpha/guard:ops_no_lazy_stop",
+        "//factory/cli/src/tbhbdev/alpha/guard:sendmessage_clock",
+        "//factory/cli/src/tbhbdev/alpha/guard:state",
+        "//factory/cli/src/tbhbdev/alpha/guard/gh_poll:command",
+        "//factory/cli/src/tbhbdev/alpha/guard/gh_pr:command",
+        "//factory/cli/src/tbhbdev/alpha/guard/op:command",
+        "//factory/cli/src/tbhbdev/alpha/guard/scripts:command",
         "//factory/cli/src/tbhbdev/alpha/identity:dispatcher",
         "//factory/cli/src/tbhbdev/alpha/install:command",
         "//factory/cli/src/tbhbdev/alpha/merge:command",
@@ -487,28 +389,22 @@ cli_py_library(
 )
 
 cli_py_library(
-    name = "guard_ops_no_lazy_stop",
-    srcs = ["guard_ops_no_lazy_stop.py"],
-    imports = ["../.."],
-    visibility = ["//factory/cli:__subpackages__"],
-    deps = [":repo"],
-)
-
-cli_py_library(
-    name = "guard_sendmessage_clock",
-    srcs = ["guard_sendmessage_clock.py"],
-    imports = ["../.."],
-    visibility = ["//factory/cli:__subpackages__"],
-    deps = [
-        ":guard_gh_pr",
-        ":repo",
-    ],
-)
-
-cli_py_library(
     name = "review_inline",
     srcs = ["review_inline.py"],
     imports = ["../.."],
     visibility = ["//factory/cli:__subpackages__"],
     deps = ["@cli_pip//markdown_it_py"],
+)
+
+cli_py_library(
+    name = "content_issues",
+    srcs = ["content_issues.py"],
+    imports = ["../.."],
+    visibility = ["//factory/cli:__subpackages__"],
+    deps = [
+        ":secret_scan",
+        "//factory/cli/src/tbhbdev:content_model",
+        "//factory/cli/src/tbhbdev:content_vet",
+        "//factory/cli/src/tbhbdev/alpha/pull_request:tools",
+    ],
 )

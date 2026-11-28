@@ -1,37 +1,24 @@
 # A regression fixture copied from the inventory values, not evidence of live hosts.
-# cspell:ignore unsandboxed
 [agent]
 launch_wait_seconds = 120
 kill_grace_seconds = 10
 agy_timeout = "900s"
 max_run_minutes = 45
-public_repos = ["tbhb-dev/tools", "tbhb-dev/rules", "tbhb-dev/tbhbdev", "example-org/wiki-companion", "tbhb-dev/awrel", "tbhb-dev/github-metrics", "tbhb-dev/agent-capacity", "tbhb-dev/afakt", "tbhb-dev/afenc", "example-org/account-config", "example-org/example-memories-example", "tbhb-dev/ansible", "tbhb-dev/ascm", "tbhb-dev/avirt", "tbhb-dev/bazel-r2-cache", "tbhb-dev/dashboard", "tbhb-dev/design", "tbhb-dev/dotfiles", "tbhb-dev/evals", "example-org/evals-example", "example-org/go-imports", "tbhb-dev/gomodscan", "tbhb-dev/renovate-config", "tbhb-dev/research", "example-org/research-example", "tbhb-dev/spikes", "example-org/spikes-example", "example-org/tools-example", "tbhb-dev/wiki"]
 sockets_dir = ".local/state/tbhbdev/sockets"
 
 [agent.sandbox]
-write_roots = ["agent-cache", ".cache/bazel", ".cache", "/tmp"]
-codex_network_proxy_opt_out = "Policy: Decisions/2026-11-12-lab-runs-network.md and Decisions/2026-11-15-agent-egress-open.md: no egress limit on agent runs."
-agy_unsandboxed_opt_out = "Peer runs use no harness sandbox (Decisions/2026-11-15-peer-runs-no-harness-sandbox.md)"
-codex_unsandboxed_opt_out = "Peer runs use no harness sandbox (Decisions/2026-11-15-peer-runs-no-harness-sandbox.md)"
 host_path = ["/home/example-user/.local/share/example-tools/bazelisk-1.30.0/bin", "/home/example-user/.local/share/codex-standalone/releases/0.166.0-x86_64-unknown-linux-musl/bin", "/home/example-user/.local/share/uv/tools/prek/bin"]
 audit_dir = "agent-audit"
-denied_home_paths = [".claude", ".config/tbhbdev", ".config/gh", ".config/devtools/agent-signing-key", ".ssh", ".git-credentials", ".netrc", ".gemini"]
 
 [agent.sandbox.path]
 linux = ["/usr/bin", "/bin", "/usr/local/bin"]
 macos = ["/usr/bin", "/bin", "/usr/local/bin"]
-
-[agent.sandbox.agy]
-review_read = ["agent-cache"]
-build_read = ["agent-cache"]
-build_write = ["agent-cache"]
 
 [agent.codex]
 web_search = { build = "disabled", review = "disabled" }
 
 [agent.credentials.agent]
 signing = "/home/example-user/.config/devtools/agent-signing-key"
-reviews_app_id = "host-0-shared/review-app/app_id"
 reviews_app_client_id = "host-0-shared/review-app/client_id"
 reviews_app_pem = "host-0-shared/review-app/private_key"
 pull_requests_app_client_id = "host-0-shared/github-app-tbhb-dev-agent-pull-requests/client_id"
@@ -45,69 +32,53 @@ name = "host-a"
 os = "linux"
 shell = "bash"
 account = "agent"
-unsandboxed = true
 accounts = ["agent"]
-proven_harnesses = ["codex"]
 
 [[agent.host]]
 name = "host-b"
 os = "linux"
 shell = "bash"
 account = "agent"
-unsandboxed = true
 accounts = ["agent"]
-proven_harnesses = []
 
 [[agent.host]]
 name = "host-c"
 os = "linux"
 shell = "bash"
 account = "agent"
-unsandboxed = true
 accounts = ["agent"]
-proven_harnesses = []
 
 [[agent.host]]
 name = "host-d"
 os = "macos"
 shell = "zsh"
 account = "agent"
-unsandboxed = true
 accounts = ["agent"]
-proven_harnesses = []
 
 [[agent.host]]
 name = "host-e"
 os = "linux"
 shell = "bash"
 account = "agent"
-unsandboxed = true
 accounts = ["agent"]
-proven_harnesses = []
 
 [[agent.host]]
 name = "host-f"
 os = "linux"
 shell = "bash"
 account = "agent"
-unsandboxed = true
 accounts = ["agent"]
-proven_harnesses = []
 
 [[agent.host]]
 name = "mac-a"
 os = "macos"
 shell = "zsh"
 account = "agent"
-unsandboxed = true
 accounts = ["agent"]
-proven_harnesses = []
 
 [[agent.host]]
 name = "mac-b"
 os = "macos"
 shell = "zsh"
 account = "agent"
-unsandboxed = true
 accounts = ["agent"]
-proven_harnesses = []

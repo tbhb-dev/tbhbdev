@@ -83,8 +83,6 @@ Their private values come from an optional `[harness]` table in the user config,
 ```toml
 [harness]
 rule = "Example rule: a status claim carries its evidence."   # SessionStart text
-decisions_dir = "/example/decisions"   # the path the open-note block names
-open_note = "/example/Open.md"         # a path suffix; a new item needs "Decisions checked:"
 hosts = ["example-a=peer Mac", "example-b=Linux VM", "example-c"]   # "name=role"
 ```
 

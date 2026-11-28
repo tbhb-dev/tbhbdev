@@ -10,7 +10,6 @@ from tbhbdev.alpha.agent.decisions import runfiles_names as files
 
 def test_file_names() -> None:
     assert files.DIRECTORY == "tbhbdev/agent-runs"
-    assert files.INDEX == "index.jsonl"
     assert files.SUFFIXES == (
         ".request.json",
         ".prompt",
@@ -31,7 +30,6 @@ def test_file_names() -> None:
         ".rc.fallback",
         ".rc",
         ".audit.json",
-        ".would_refuse",
         ".owner",
     )
 
@@ -47,3 +45,23 @@ def test_source_and_fixtures_are_independent() -> None:
     forbidden = re.compile(r"peer-(?:agent|run)\.sh|run.book|PEER_")
     for path in paths:
         assert forbidden.search(path.read_text()) is None, str(path)
+
+
+def test_runfile_suffixes_cover_run_host_1a222fa() -> None:
+    # 1a222fa: run_host.run_harness, _execute, finish and main,
+    # RunFiles.receive and process_group.record/unknown write these run files.
+    written = (
+        ".request.json",
+        ".prompt",
+        ".schema.json",
+        ".pgid",
+        ".launched",
+        ".phase",
+        ".out",
+        ".out.final",
+        ".log",
+        ".rc",
+        ".run.lock",
+        ".audit.json",
+    )
+    assert set(written) <= set(files.SUFFIXES)

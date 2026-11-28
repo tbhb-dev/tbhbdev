@@ -1,6 +1,6 @@
 # Shared tbhb-dev tools
 
-This project provides commands that several tbhb-dev repositories and sessions use. It depends on the shared Bazel rules in `lib/rules` and the Python packages pinned in the workspace lock. Every tool is a subcommand of one Python package, `tbhbdev`.
+The `tbhbdev` package contains commands for tbhb-dev repositories and agent sessions. It depends on the shared Bazel rules in `lib/rules` and the Python packages pinned in the workspace lock.
 
 ## Running a tool
 
@@ -20,18 +20,18 @@ uv tool install "git+https://github.com/tbhb-dev/tbhbdev#subdirectory=factory/cl
 
 ## Tools
 
-- `admin` makes policy-controlled GitHub administration calls with an append-only audit log. See [GitHub administration](docs/reference/admin.md).
+- `admin` makes policy-controlled GitHub administration calls and appends each action to an audit log. See [GitHub administration](docs/reference/admin.md).
 - `adr new --from-decision N` drafts an architecture decision record from a GitHub Decision issue. See [Decision record commands](docs/reference/adr.md).
-- `agy` records plain-answer and file-tool runs as OpenTelemetry; `record --dir DIR -- agy ARGS` writes local traces and delta metrics, and `export DIR` sends them to `OTEL_EXPORTER_OTLP_ENDPOINT`.
+- `agy` records plain-answer and file-tool runs as OpenTelemetry. `record --dir DIR -- agy ARGS` writes local traces and delta metrics, and `export DIR` sends them to `OTEL_EXPORTER_OTLP_ENDPOINT`.
 - `analytics` applies PostgreSQL migrations and checks the installed catalog contract.
-- `gitleaks_check` is a library, not a command: `tbhbdev.gitleaks_check.scan_text` scans text with gitleaks and raises `ScanRefused` on a finding or a failure. See [Gitleaks check](docs/reference/gitleaks-check.md).
-- `prose_check` is a library, not a command: `tbhbdev.prose_check.check_prose` runs vale, cspell and rumdl on text and raises `ProseRefused` on a finding or a failure. See [Prose check](docs/reference/prose-check.md).
+- The library function `tbhbdev.gitleaks_check.scan_text` scans text with gitleaks and raises `ScanRefused` on a finding or a failure. See [gitleaks check](docs/reference/gitleaks-check.md).
+- The library function `tbhbdev.prose_check.check_prose` runs vale, cspell and rumdl on text and raises `ProseRefused` on a finding or a failure. See [Prose check](docs/reference/prose-check.md).
 - `secret` reads and manages 1Password items through the `tbhbdev.secrets` library.
 - `host` manages agent hosts from the operator's Mac.
 - `issue import FILE --check` validates staged GitHub issue blocks.
 - `alpha` holds the interim agent tools that the tbhb-dev repositories used to carry in `tools/interim`. They may change or go away without notice. `tbhbdev alpha version-check` compares the installed build across hosts.
 
-The shared `tbhbdev.content` library provides scanned, audited GitHub issue and project writes for plugins. See [Content writes](docs/reference/content.md).
+Plugins can use `tbhbdev.alpha.content_issues` to write GitHub issues and project data with secret scanning and audit logs. See [Content writes](docs/reference/content.md).
 
 ## Agent SSH interface
 
@@ -64,7 +64,7 @@ One SSH connection remains open until the run finishes and shows run-host's norm
 
 `result NAME` prints one JSON object with `v`, `name`, `rc`, `state`, `report`, `log_tail`, `branch`, `head`, `tools_commit` and `wheel_commit`. It reads the existing run files and limits the log to its last 200 lines. While a run continues, `rc` is `null`. Missing output fields use `null`. The `branch` field names the branch verified on origin for a successful build. `tools_commit` and `wheel_commit` identify the tools checkout and installed distribution, and absent provenance prints `unknown`. Run-host records both identities in its log header.
 
-`kill NAME` stops the recorded process group after checking its identity. A supervisor records the run's completion. For a finished run it prints `already finished` and exits successfully.
+`kill NAME` stops the recorded process group after checking its identity. A supervisor records the run's completion. For a finished run it prints `already finished` and exits with code 0.
 
 | Exit code | Meaning |
 | --- | --- |
@@ -82,7 +82,7 @@ The GitHub credential (`gh`) is optional. Without it, a build run requests its G
 - [Config](docs/reference/config.md)
 - [Analytics](docs/reference/analytics.md)
 - [Secrets](docs/reference/secrets.md)
-- [Gitleaks check](docs/reference/gitleaks-check.md)
+- [gitleaks check](docs/reference/gitleaks-check.md)
 - [Prose check](docs/reference/prose-check.md)
 - [Agent hosts](docs/reference/agent-hosts.md)
 - [Plugins](docs/reference/plugins.md)
@@ -96,4 +96,4 @@ The GitHub credential (`gh`) is optional. Without it, a build run requests its G
 
 ## Checks
 
-From the repository root, run `bazelisk test //factory/cli/tests:all` for the per-file CLI tests or `bazelisk run //factory/cli:coverage` for the combined branch coverage report.
+From the repository root, run `bazelisk test //factory/cli/tests/...` for the command-line tool tests or `bazelisk run //factory/cli:coverage` for the combined branch coverage report.

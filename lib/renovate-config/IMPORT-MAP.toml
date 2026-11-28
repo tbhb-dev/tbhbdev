@@ -1,0 +1,2150 @@
+# SPDX-License-Identifier: Apache-2.0
+# Copyright Tony Burns
+
+# Provenance for the presets and tests under lib/renovate-config.
+# OWNERS, this map, and the test helper are monorepo additions. The root renovate.json5
+# selects presets, and the root workflow runs Renovate in the monorepo.
+
+repo = "tbhb-dev/renovate-config"
+commit = "6fc408cfec75871cd01b04bf1396e4f82c7fc792"
+dest = "lib/renovate-config"
+
+[copy]
+"ansible.json5" = "lib/renovate-config/ansible.json5"
+"cloudflare-worker.json5" = "lib/renovate-config/cloudflare-worker.json5"
+"go.json5" = "lib/renovate-config/go.json5"
+"python.json5" = "lib/renovate-config/python.json5"
+"renovate_allowlist_test.sh" = "lib/renovate-config/renovate_allowlist_test.sh"
+"renovate_log_check_test.sh" = "lib/renovate-config/renovate_log_check_test.sh"
+"renovate_ruleset_audit_test.sh" = "lib/renovate-config/renovate_ruleset_audit_test.sh"
+
+# The root build file of the old repository held the test targets with its lint
+# gates. Only the sh_test targets for the kept tests move here. The test targets
+# read the root workflow through //:.github/workflows/renovate.yaml, exported
+# from the root BUILD.bazel.
+[rewrite."BUILD.bazel"]
+dest = "lib/renovate-config/BUILD.bazel"
+replace = [
+  [
+    '''
+
+load("@bazel_env.bzl", "bazel_env")
+load("@bazelrc-preset.bzl", "bazelrc_preset")
+load("@buildifier_prebuilt//:rules.bzl", "buildifier", "buildifier_test")
+load("@rules_shell//shell:sh_test.bzl", "sh_test")
+load("@tbhb_rules//format:defs.bzl", "format", "format_test")
+load(
+    "@tbhb_rules//lint:defs.bzl",
+    "actionlint_test",
+    "codeowners_test",
+    "cspell_test",
+    "editorconfig_checker_test",
+    "gitleaks_history",
+    "gitleaks_test",
+    "reuse_test",
+    "rumdl_test",
+    "ryl_test",
+    "shellcheck_test",
+    "shfmt_test",
+    "tombi_test",
+    "vale_sync",
+    "vale_test",
+    "zizmor_test",
+)
+load("@tbhb_rules//repo:defs.bzl", "repo_files", "repo_layout_test")
+
+# Every file of the repository, for the whole-tree checks below. Ignored
+# directories are listed in REPO.bazel; these are the gitignored files that
+# can sit at the root of a working checkout.
+repo_files(
+    exclude = [
+        ".DS_Store",
+        "**/.DS_Store",
+        ".bazelrc.user",
+        ".env*",
+        ".github/PULL_REQUEST_DRAFT.md",
+        "mise.local.toml",
+    ],
+)
+
+# Generates preset.bazelrc, which .bazelrc imports. The content depends on the
+# Bazel version that runs the generator; the committed copy matches
+# .bazelversion, and `preset.update_test` fails when it is stale.
+bazelrc_preset(
+    name = "preset",
+)
+
+# buildifier: `//:buildifier` formats and applies lint fixes in place,
+# `//:buildifier.check` fails on any formatting or lint difference, and the
+# test below makes `bazel test //...` fail on the same findings. Every
+# available warning is on. Bazel's convenience symlinks, agent worktrees,
+# and the Python and tool caches hold no Starlark that this repository owns.
+BUILDIFIER_EXCLUDES = [
+    "./.git/*",
+    "./.venv/*",
+    "./.mise/*",
+    "./.bazel-*",
+    "./bazel-*",
+    "./.worktrees/*",
+    "./tmp/*",
+]
+
+buildifier(
+    name = "buildifier",
+    exclude_patterns = BUILDIFIER_EXCLUDES,
+    lint_mode = "fix",
+    lint_warnings = ["all"],
+    mode = "fix",
+)
+
+buildifier(
+    name = "buildifier.check",
+    exclude_patterns = BUILDIFIER_EXCLUDES,
+    lint_mode = "warn",
+    lint_warnings = ["all"],
+    mode = "diff",
+)
+
+buildifier_test(
+    name = "buildifier_test",
+    exclude_patterns = BUILDIFIER_EXCLUDES,
+    lint_mode = "warn",
+    lint_warnings = ["all"],
+    no_sandbox = True,
+    workspace = "//:MODULE.bazel",
+)
+
+# The repository's shape. Only these top-level directories may exist; add a
+# new one here in the change that first uses it.
+repo_layout_test(
+    name = "repo_layout_test",
+    srcs = [":repo_files"],
+    top_level_dirs = [
+        ".agents",
+        ".claude",
+        ".codex",
+        ".github",
+        ".vale",
+        "LICENSES",
+    ],
+)
+
+# Scans the git history: `bazel run //:gitleaks_history`, which CI runs.
+# The working tree is //:gitleaks_test's job.
+gitleaks_history(
+    name = "gitleaks_history",
+    config = ".gitleaks.toml",
+)
+
+# This repository's gates, from @tbhb_rules. Each one checks the whole tree.
+gitleaks_test(
+    name = "gitleaks_test",
+    srcs = [":repo_files"],
+    config = ".gitleaks.toml",
+)
+
+# Copyright and licensing information on every file (REUSE.toml, LICENSES/).
+reuse_test(
+    name = "reuse_test",
+    srcs = [":repo_files"],
+)
+
+ryl_test(
+    name = "ryl_test",
+    srcs = [":repo_files"],
+    config = ".ryl.toml",
+)
+
+tombi_test(
+    name = "tombi_test",
+    srcs = [":repo_files"],
+    config = "tombi.toml",
+)
+
+rumdl_test(
+    name = "rumdl_test",
+    srcs = [":repo_files"],
+    config = ".rumdl.toml",
+)
+
+editorconfig_checker_test(
+    name = "editorconfig_checker_test",
+    srcs = [":repo_files"],
+    config = ".editorconfig-checker.json",
+)
+
+actionlint_test(
+    name = "actionlint_test",
+    srcs = [":repo_files"],
+)
+
+zizmor_test(
+    name = "zizmor_test",
+    srcs = [":repo_files"],
+    config = ".github/zizmor.yml",
+)
+
+# Shell scripts are selected by extension and by shebang. shfmt reads its
+# style from .editorconfig. The repository has no shell scripts today, so
+# allow_empty keeps both checks wired for a script added later.
+shellcheck_test(
+    name = "shellcheck_test",
+    srcs = [":repo_files"],
+    allow_empty = True,
+)
+
+shfmt_test(
+    name = "shfmt_test",
+    srcs = [":repo_files"],
+    allow_empty = True,
+)
+
+codeowners_test(
+    name = "codeowners_test",
+    srcs = [":repo_files"],
+)
+
+cspell_test(
+    name = "cspell_test",
+    srcs = [":repo_files"],
+    config = ".cspell.jsonc",
+    data = [".cspell-words.txt"],
+)
+
+# The packages .vale.ini lists, pinned in MODULE.bazel, in the config's
+# order. `bazel run //:vale_sync` writes them into .vale/ for editors.
+VALE_PACKAGES = {
+    "Google": "@vale_google//file",
+    "ai-tells": "@vale_ai_tells//file",
+    "ai-tells-experimental": "@vale_ai_tells_experimental//file",
+    "proselint": "@vale_proselint//file",
+    "write-good": "@vale_write_good//file",
+}
+
+vale_test(
+    name = "vale_test",
+    srcs = [":repo_files"],
+    config = ".vale.ini",
+    packages = VALE_PACKAGES,
+)
+
+vale_sync(
+    name = "vale_sync",
+    config = ".vale.ini",
+    packages = VALE_PACKAGES,
+)
+
+# Formatting: `bazel run //:format` rewrites, `bazel run //:format.check`
+# checks the working tree, and format_test is the cached check in `bazel
+# test //...`.
+FORMATTERS = [
+    "@tbhb_rules//format:buildifier",
+    "@tbhb_rules//format:rumdl",
+    "@tbhb_rules//format:ryl",
+    "@tbhb_rules//format:shfmt",
+    "@tbhb_rules//format:tombi",
+]
+
+# Consumers pin the two reusable workflows by commit, and any change to them
+# at main bumps every consumer's pin, so no formatter rewrites them; they
+# change only in a deliberate PR.
+FORMAT_EXCLUDE = [
+    ".github/workflows/renovate.yaml",
+    ".github/workflows/renovate-config-validator.yaml",
+]
+
+format(
+    name = "format",
+    exclude = FORMAT_EXCLUDE,
+    formatters = FORMATTERS,
+)
+
+format_test(
+    name = "format_test",
+    srcs = [":repo_files"],
+    exclude = FORMAT_EXCLUDE,
+    formatters = FORMATTERS,
+)
+
+# `bazel run //:bazel_env` puts shims for the Bazel-pinned tools in
+# .bazel_env/bin, which mise adds to PATH. Git hooks call them directly, so
+# a commit never waits on the Bazel server.
+bazel_env(
+    name = "bazel_env",
+    tools = {
+        "actionlint": "@tbhb_rules_actionlint//:actionlint",
+        "buildifier": "@buildifier_prebuilt//:buildifier",
+        "cog": "@tbhb_rules_cog//:cog",
+        "editorconfig-checker": "@tbhb_rules_editorconfig_checker//:editorconfig-checker",
+        "git": "@tbhb_rules_git//:git",
+        "gitleaks": "@tbhb_rules//lint:gitleaks",
+        "rumdl": "@tbhb_rules_rumdl//:rumdl",
+        "ryl": "@tbhb_rules_ryl//:ryl",
+        "shellcheck": "@tbhb_rules_shellcheck//:shellcheck",
+        "shfmt": "@tbhb_rules_shfmt//:shfmt",
+        "tombi": "@tbhb_rules_tombi//:tombi",
+        "vale": "@tbhb_rules_vale//:vale",
+        "zizmor": "@tbhb_rules_zizmor//:zizmor",
+    },
+)
+''',
+    '''
+
+load("@rules_shell//shell:sh_test.bzl", "sh_test")
+
+package(default_visibility = [
+    "//factory:__subpackages__",
+    "//lib:__subpackages__",
+    "//products:__subpackages__",
+])
+
+# Globs stop at a package boundary, so this project hands its files to
+# //lib:repo_files, which feeds the whole-tree checks in //:repo_files.
+filegroup(
+    name = "repo_files",
+    srcs = glob(["**"]),
+    visibility = ["//lib:__pkg__"],
+)
+''',
+  ],
+  [
+    '''
+    data = [
+        ".github/workflows/renovate.yaml",
+        "renovate_log_check_test.py",
+    ],
+''',
+    '''
+    data = [
+        "renovate_log_check_test.py",
+        "//:.github/workflows/renovate.yaml",
+    ],
+''',
+  ],
+  [
+    '''
+    data = glob(["*.json5"]) + [
+        ".github/workflows/renovate.yaml",
+        "renovate_allowlist_test.py",
+    ],
+''',
+    '''
+    data = glob(["*.json5"]) + [
+        "renovate_allowlist_test.py",
+        "//:.github/workflows/renovate.yaml",
+    ],
+''',
+  ],
+  [
+    '''
+
+# Exercise the inline range check against Git history and a fake GitHub API.
+sh_test(
+    name = "renovate_pin_range_test",
+    size = "small",
+    srcs = ["renovate_pin_range_test.sh"],
+    data = [
+        ".github/workflows/renovate-config-validator.yaml",
+        "renovate_pin_range_test.py",
+    ],
+)
+
+# Exercise the inline consumer pin check in caller checkout fixtures.
+sh_test(
+    name = "renovate_pin_consistency_test",
+    size = "small",
+    srcs = ["renovate_pin_consistency_test.sh"],
+    data = [
+        ".github/workflows/renovate-config-validator.yaml",
+        "renovate_pin_consistency_test.py",
+    ],
+)
+
+# Check that the caller pin bump moves every reference or fails.
+sh_test(
+    name = "renovate_bump_pins_test",
+    size = "small",
+    srcs = ["renovate_bump_pins_test.sh"],
+    data = [
+        "renovate_bump_pins.py",
+        "renovate_bump_pins_test.py",
+    ],
+)
+
+# Exercise the App-token ruleset audit with local GitHub API fixtures.
+''',
+    '''
+
+# Exercise the App-token ruleset audit with local GitHub API fixtures.
+''',
+  ],
+  [
+    '''
+    data = [
+        ".github/workflows/renovate.yaml",
+        "renovate_ruleset_audit_test.py",
+    ],
+''',
+    '''
+    data = [
+        "renovate_ruleset_audit_test.py",
+        "//:.github/workflows/renovate.yaml",
+    ],
+''',
+  ],
+  [
+    '''
+
+# Keep post-upgrade commands and the workflow allowlist in exact agreement.
+sh_test(
+''',
+    '''
+
+# Keep commands from root presets and the workflow allowlist in exact agreement.
+sh_test(
+''',
+  ],
+  [
+    '''
+        "renovate_allowlist_test.py",
+        "//:.github/workflows/renovate.yaml",
+    ],
+''',
+    '''
+        "renovate_allowlist_test.py",
+        "renovate_test_helpers.py",
+        "//:.github/workflows/renovate.yaml",
+        "//:renovate.json5",
+    ],
+''',
+  ],
+  [
+    '''
+    data = glob(["*.json5"]) + [
+        "renovate_allowlist_test.py",
+        "renovate_grouping_test.py",
+    ],
+''',
+    '''
+    data = glob(["*.json5"]) + [
+        "renovate_grouping_test.py",
+        "renovate_test_helpers.py",
+        "//:renovate.json5",
+    ],
+''',
+  ],
+  [
+    '''
+        "default.json5",
+        "renovate_allowlist_test.py",
+        "renovate_awrel_pin_test.py",
+    ],
+''',
+    '''
+        "default.json5",
+        "renovate_awrel_pin_test.py",
+        "renovate_test_helpers.py",
+    ],
+''',
+  ],
+]
+
+# Described consumers pinning the reusable workflows and presets of the old
+# repository. Rewritten for the monorepo: contents, rules for the presets, the
+# root workflow.
+[rewrite."README.md"]
+dest = "lib/renovate-config/README.md"
+replace = [
+  [
+    '''
+# `renovate-config`
+
+Shared self-hosted Renovate setup for the tbhb-dev repositories. It holds
+seven presets and two reusable workflows: one runs Renovate for the calling
+repo, and the other validates that repo's Renovate configuration.
+
+The Renovate workflow checks its JSON file log after each run, failing on
+missing, empty, invalid, or incomplete logs. Error or fatal entries and the
+known failures `Error updating branch`, `artifactErrors`, and
+`Failed to update MODULE.bazel.lock` also fail the job. The workflow defines
+this allowlist. Annotations show only a fixed label and a validated branch.
+
+## Contents
+
+| Path | Purpose |
+|---|---|
+| `.github/workflows/renovate.yaml` | Reusable (`workflow_call`) Renovate run for the caller's repo. Global settings live in its `env`. |
+| `.github/workflows/renovate-config-validator.yaml` | Reusable strict validation, preset-reference resolution, consistent consumer pins, and PR pin-range summaries. |
+| `.github/workflows/ci.yml` | This repo's gate: `bazel test //...` over the tree, rules' shared repository checks, preset validation, and the `conclusion` job. |
+| `.github/workflows/renovate-self.yaml` | Renovate for this repo, through its own reusable workflow. |
+| `default.json5` | Every repo: best-practices, 5-day cooldown, ignore paths, grouping, Vale and preset-pin managers, `platformCommit`, and PR titles that fit the 72-character squash subject. |
+| `bazel.json5` | Bazel repos: `bazel` manager on `MODULE.bazel` and `*.bzl`, dugite datasource, Bazel version group with its one post-upgrade task. |
+| `cloudflare-worker.json5` | Worker repos: a `tbhb_rules` bump regenerates `worker-configuration.d.ts` in the same branch. |
+| `rules-cloudflare.json5` | `tbhb-dev/rules` only: a bump of wrangler or its group (vitest, playwright) regenerates both smoke Workers' `worker-configuration.d.ts` in the same branch. |
+| `go.json5` | Go repos: `gomodTidy` plus module and toolchain groups. |
+| `python.json5` | uv projects: `pyproject.toml`, `uv.lock`, the uv version pin. |
+| `ansible.json5` | Repos that pin Galaxy collections with `tbhb_rules_ansible`. A collection bump rewrites `requirements.lock.json` in the same branch. |
+
+## Using it from a repo
+
+Add `.github/renovate.json5`, a caller `.github/workflows/renovate.yaml` and a
+validator caller. Pin the presets and workflows to a full commit hash, with a
+trailing comment that states the ref it tracks: `main`, which Renovate bumps
+to the branch's latest commit, or a release tag such as `v1.0.0`:
+
+```json5
+{
+  extends: [
+    "github>tbhb-dev/renovate-config//default.json5#<sha>", // main
+    "github>tbhb-dev/renovate-config//bazel.json5#<sha>", // main
+  ],
+}
+```
+
+```yaml
+on:
+  push:
+    branches: [main]
+  schedule:
+    - cron: "<minute> * * * 1-5"
+    - cron: "<minute> */2 * * 6,0"
+  workflow_dispatch:
+
+jobs:
+  renovate:
+    uses: tbhb-dev/renovate-config/.github/workflows/renovate.yaml@<sha> # main
+    secrets:
+      RENOVATE_CLIENT_ID: ${{ secrets.RENOVATE_CLIENT_ID }}
+      RENOVATE_PRIVATE_KEY: ${{ secrets.RENOVATE_PRIVATE_KEY }}
+```
+
+The push trigger runs Renovate on each push to the caller repository's `main`,
+when open PRs can fall behind. Merges in `tbhb-dev/renovate-config` or any other
+repository don't trigger the caller. GitHub drops scheduled runs for hours at a
+time, and the push trigger doesn't depend on the schedule. Pick a different
+`<minute>` per repository to stagger only the scheduled starts.
+
+The reusable workflow defaults `dry_run` to `false`, so the bare
+`workflow_dispatch:` runs Renovate for real at `DEBUG`, as do pushes and
+scheduled runs. To default manual runs to a dry run, copy the
+`workflow_dispatch` inputs and `with:` expressions from
+`.github/workflows/renovate-self.yaml`.
+
+The validator caller runs on PRs that change the Renovate config, the
+workflows, or a `tbhb_rules` pin. The pin checks then see every bump:
+
+```yaml
+on:
+  pull_request:
+    paths:
+      - ".github/renovate.json5"
+      - ".github/workflows/*.yaml"
+      - ".github/workflows/*.yml"
+      - "MODULE.bazel"
+      - "**/*.bzl"
+
+jobs:
+  validate:
+    uses: tbhb-dev/renovate-config/.github/workflows/renovate-config-validator.yaml@<sha> # main
+    with:
+      configs: .github/renovate.json5
+```
+
+A preset reference must include the `.json5` suffix.
+
+The validator requires
+all `tbhb-dev/renovate-config` preset and reusable workflow pins in a consumer
+to use the same full 40-character commit hash. Repositories without these
+references pass the check. Renovate keeps them in step: every
+`tbhb-dev/renovate-config` reference, preset or workflow, joins the
+`pins` group in `default.json5`, so one PR moves them all.
+
+The `pins` group opens one PR per repository a day, between 05:00 and 08:00
+Coordinated Universal Time. It takes the `renovate-config` and `tbhb_rules`
+pins, plus minor, patch, and digest updates to GitHub Actions and mise tools.
+Renovate opens a separate PR for each major version and each security fix.
+The Bazel version group uses the same window but stays a separate PR, and so
+do `tbhb_rules` bumps in Worker repos, because each runs its own post-upgrade
+task. Renovate rebases a pins PR whenever its base branch moves. The presets set
+every other group to rebase only on a conflict, but Renovate's built-in
+"Pin Dependencies" default (`pin.rebaseWhen`) still rebases npm pin PRs
+whenever their base moves. A rule that sets another `groupName` must set
+`rebaseWhen: "conflicted"` too, because matching rules merge field by field.
+One failing pin blocks the rest of the group. To exclude one, add a rule to the
+repository's `.github/renovate.json5`:
+
+```json5
+{
+  packageRules: [
+    { matchPackageNames: ["<package>"], groupName: "<package>", rebaseWhen: "conflicted" },
+  ],
+}
+```
+
+Worker repos add `github>tbhb-dev/renovate-config//cloudflare-worker.json5#<sha>`
+after `bazel.json5` in their `extends` list.
+
+Renovate PRs auto-merge after the main ruleset's required approval and CI
+checks pass. Before Renovate starts, the workflow checks active rules on
+`main` using the Renovate App token. It requires at least one approving
+review and a status-check rule. Every applied ruleset must report that the
+App can never bypass it. Only the drafts repositories pass
+`require_approval: false`, because their PRs merge on green CI alone. Their
+check keeps the status-check and bypass parts. Missing protection or a failed API check stops
+the run. Consumer repos must enable "Allow auto-merge" in GitHub
+settings for native auto-merge.
+
+Extend `ansible.json5` only from a repository whose root `MODULE.bazel`
+declares `ansible.collections`. The lock task runs at the repository root,
+so it rewrites the `requirements.lock.json` that tag names. A repository
+with an Ansible module root nested below its own root shouldn't extend the
+preset, because the task fails there.
+
+Both reusable workflows take a `runs_on` input, the runner label, which
+defaults to `ubuntu-24.04`. Public repositories leave it out. A private
+repository must pass its `tbhb-dev-*` runner label, because private jobs
+never run on GitHub-hosted runners:
+
+```yaml
+    with:
+      runs_on: tbhb-dev-ubuntu-24-amd64
+```
+
+## Pin-bump validation
+
+On pull requests, the validator checks changed `tbhb-dev/renovate-config` and
+`tbhb-dev/rules` pins against their upstream `main` branch. Each new pin must
+use a full commit hash on that branch. The job summary lists up to 50 commit
+subjects per range and the changed upstream files. New pins have no previous
+range to list. Other workflow events skip this check.
+
+## Security model
+
+- `allowedUnsafeExecutions` allows only `bazelModDeps`. It leaves out `mise`,
+  so mise stays in safe mode.
+- Four post-upgrade commands, each matched by an anchored regular expression
+  in the workflow `env`. `bazel.json5` attaches `bazelisk run //:preset.update`
+  to the Bazel version group alone. `ansible.json5` attaches
+  `bazelisk run @tbhb_rules_ansible//:lock` to `ansible-galaxy` bumps alone.
+  The lock target reads Galaxy version metadata and writes
+  `requirements.lock.json`, without downloading any collection.
+  `cloudflare-worker.json5` attaches `bazelisk run //:worker_types_test.update`
+  to `tbhb_rules` bumps in Worker repos and commits only
+  `worker-configuration.d.ts` through `fileFilters`.
+  `rules-cloudflare.json5` attaches `bazelisk run //:worker_types_test.update`
+  and `bazelisk run //nested:worker_types_test.update` to bumps of wrangler
+  and its group in `tbhb-dev/rules`, run from
+  `cloudflare/e2e/smoke`, and commits only the smoke Workers'
+  `worker-configuration.d.ts` files.
+- The allowlist applies to each repo that runs the workflow. Scoping a preset
+  to one repo is a convention, and no check enforces it. A repo's PR can't add
+  a command, but it can use any listed one.
+- Both allowlists live in the workflow `env`. They're global-only options,
+  which Renovate ignores in a repo's config, so a repo PR can't widen them.
+- Each run creates its own App token, limited to the target repo (the caller,
+  or the repo the `repository` input names), and downscoped to the
+  permissions Renovate needs. A first job rejects any `repository` value that
+  isn't `<organization>/<name>` in the caller's organization before the token,
+  audit or cache steps run. An empty value means the caller's own repo. A
+  public caller can't target a private repo, because its logs and caches are
+  public, and a public target with a `.github/workflows/renovate.yaml` is refused.
+- The reviews App approves updates that ran commands only when the diff
+  touches manifests and lock files, plus the generated file named in
+  `fileFilters` for post-upgrade tasks. This covers post-upgrade tasks,
+  `bazel mod deps`, and lock maintenance. These PRs auto-merge after the
+  required review and CI pass. Lock maintenance also needs a human to tick
+  its Dependency Dashboard box before it runs.
+- Commits go through the GitHub API (`platformCommit`), so GitHub signs them.
+''',
+    '''
+# Renovate presets
+
+This directory in `tbhb-dev/tbhbdev` holds the shared Renovate presets and their tests. The monorepo's root `renovate.json5` extends the presets from the default branch. The root workflow runs Renovate with a GitHub App token.
+
+## Use the presets in another repository
+
+In your repository's `renovate.json5`, extend `default.json5` first and add the presets for the tools you use. Replace `<commit-sha>` with the full hash of a commit on `tbhb-dev/tbhbdev` that contains the presets. Use the same hash for each preset. The `// main` comment lets Renovate update the pin as the branch advances.
+
+```json5
+{
+  extends: [
+    "github>tbhb-dev/tbhbdev//lib/renovate-config/default.json5#<commit-sha>", // main
+  ],
+}
+```
+
+## Choose presets
+
+| Preset | Purpose |
+| --- | --- |
+| `default.json5` | Shared update policy, grouping, and managers for Vale and preset pins. |
+| `bazel.json5` | Bazel modules, tool archives, and the Bazel version group. |
+| `bazelrc.json5` | Extend after `bazel.json5` if your root defines `//:preset.update` to regenerate `preset.bazelrc`. |
+| `go.json5` | Go module and toolchain groups, with `gomodTidy`. |
+| `python.json5` | Python projects that use uv. |
+| `ansible.json5` | Refresh the Galaxy collection lock on Ansible collection updates. |
+| `cloudflare-worker.json5` | Regenerate Worker types on rules updates. |
+| `rules-cloudflare.json5` | Regenerate types for both Workers in the rules project's smoke tests. |
+| `workflow.json5` | Manage image and tool pins in Renovate workflows. |
+
+The monorepo uses `default.json5`, `bazel.json5`, `go.json5`, `python.json5`, and `workflow.json5`.
+
+## Maintain the presets
+
+- Put global settings such as credentials and allowed commands in the Renovate runner configuration.
+- Keep the `.json5` suffix in each preset reference.
+- Set `rebaseWhen: "conflicted"` when a rule overrides the pins group with another group. `renovate_grouping_test.py` checks that these rules reset the rebase policy.
+- Match each post-upgrade command to one anchored expression in the workflow's `RENOVATE_ALLOWED_COMMANDS`. `renovate_allowlist_test.py` checks the presets and allowlist against each other.
+
+## Root workflow
+
+Renovate runs on pushes to `main`, on a schedule, and on demand. Before running, it checks that the default branch requires a review and status checks, and that the App can't bypass those rules. After running, it checks the log for completion and errors.
+
+Each run uses an App token scoped to this repository. GitHub signs commits made through its API. The runner allows `bazelModDeps` to refresh the Bazel lockfile. Mise runs in safe mode.
+
+## Import history
+
+The presets came from `tbhb-dev/renovate-config` at commit `6fc408cfec75871cd01b04bf1396e4f82c7fc792`. [IMPORT-MAP.toml](IMPORT-MAP.toml) records which files the import copied, rewrote, or dropped.
+''',
+  ],
+  [
+    '''
+
+The monorepo uses `default.json5`, `bazel.json5`, `go.json5`, `python.json5`, and `workflow.json5`.
+
+''',
+    '''
+
+The root `renovate.json5` lists the presets the monorepo uses. The `rules-cloudflare.json5` preset regenerates types for both smoke Workers when Wrangler or a package in its group updates.
+
+''',
+  ],
+  [
+    '''
+- Set `rebaseWhen: "conflicted"` when a rule overrides the pins group with another group. `renovate_grouping_test.py` checks that these rules reset the rebase policy.
+- Match each post-upgrade command to one anchored expression in the workflow's `RENOVATE_ALLOWED_COMMANDS`. `renovate_allowlist_test.py` checks the presets and allowlist against each other.
+
+''',
+    '''
+- Set `rebaseWhen: "conflicted"` when a rule overrides the pins group with another group. `renovate_grouping_test.py` checks that these rules reset the rebase policy.
+- Match each post-upgrade command in the root's presets to one anchored expression in the workflow's `RENOVATE_ALLOWED_COMMANDS`. `renovate_allowlist_test.py` checks that each expression matches a command and each command matches one expression.
+
+''',
+  ],
+]
+
+[rewrite.".bazelrc"]
+dest = "lib/renovate-config/bazelrc.json5"
+replace = [
+  [
+    '''
+# Generated by `bazel run //:preset.update`; the content follows the Bazel
+# version, so it is regenerated whenever .bazelversion moves. It comes first
+# so the flags below can override it.
+import %workspace%/preset.bazelrc
+
+# aspect_tools_telemetry, which aspect_rules_js brings in, reports the Bazel
+# and module versions in use unless told not to.
+common --repo_env=DO_NOT_TRACK=1
+
+common --lockfile_mode=error
+
+# Dot-prefix the convenience symlinks (.bazel-bin, .bazel-out, .bazel-testlogs,
+# .bazel-<workspace>), so tools that skip dotfiles leave them alone instead of
+# following them into the output base.
+common --symlink_prefix=.bazel-
+
+# Fail when a bazel_dep version is lower than what the module graph resolves
+# to, so the declared minimums stay honest.
+common --check_direct_dependencies=error
+
+try-import %workspace%/.bazelrc.user
+''',
+    '''
+// SPDX-License-Identifier: Apache-2.0
+// Copyright Tony Burns
+
+{
+  $schema: "https://docs.renovatebot.com/renovate-schema.json",
+
+  // Extend after bazel.json5 when the root imports a generated preset.bazelrc.
+  packageRules: [
+    {
+      description: "Regenerate preset.bazelrc on Bazel and preset generator updates",
+      matchPackageNames: ["bazelbuild/bazel", "bazelrc-preset.bzl"],
+      postUpgradeTasks: {
+        commands: ["bazelisk run //:preset.update"],
+        fileFilters: ["preset.bazelrc"],
+        executionMode: "branch",
+        installTools: { bazelisk: {} },
+      },
+    },
+  ],
+}
+''',
+  ],
+]
+
+[rewrite.".github/renovate.json5"]
+dest = "lib/renovate-config/workflow.json5"
+replace = [
+  [
+    '''
+{
+  $schema: "https://docs.renovatebot.com/renovate-schema.json",
+
+  // Renovate for this repo itself. The presets are referenced unpinned: they
+  // sit beside this file and Renovate resolves `extends` over the platform
+  // API, not off the checkout. The validator checks the unpinned self
+  // references against the PR tree.
+  extends: [
+    "github>tbhb-dev/renovate-config//default.json5",
+    "github>tbhb-dev/renovate-config//bazel.json5",
+    "github>tbhb-dev/renovate-config//python.json5",
+  ],
+
+  // Image and tool pins that only a repo hosting the shared workflows has.
+  customManagers: [
+    // `renovate-image: <ref>` action inputs and `<NAME>_IMAGE: "<ref>"` /
+''',
+    '''
+// SPDX-License-Identifier: Apache-2.0
+// Copyright Tony Burns
+
+{
+  $schema: "https://docs.renovatebot.com/renovate-schema.json",
+
+  // Image and tool pins in Renovate workflows.
+  customManagers: [
+    // `renovate-image: <ref>` action inputs and `<NAME>_IMAGE: "<ref>"` /
+''',
+  ],
+]
+
+[rewrite."bazel.json5"]
+dest = "lib/renovate-config/bazel.json5"
+replace = [
+  [
+    '''
+    },
+
+    // The one post-upgrade task. preset.bazelrc is generated from the Bazel
+    // version and checked by //:preset.update_test, so a .bazelversion bump
+    // (and a bazelrc-preset.bzl bump) needs a regenerate commit. One rule
+    // covers both and sits after "Bazel modules" so its group wins for
+    // bazelrc-preset.bzl. The command is allowlisted by an anchored regex in
+    // the workflow env (RENOVATE_ALLOWED_COMMANDS), not here, so a repo PR
+    // cannot widen it. fileFilters limits what the task may add to the
+    // commit. A command ran with the token in the clone. These PRs automerge
+    // after required CI passes and the reviews App approves a diff limited
+    // to manifests, lock files and preset.bazelrc (named in fileFilters).
+    {
+      description: "Bazel version and preset generator move together; preset.bazelrc is regenerated in-branch",
+      matchPackageNames: ["bazelbuild/bazel", "bazelrc-preset.bzl"],
+      groupName: "bazel version",
+      rebaseWhen: "conflicted",
+      // Same daily window as the pins PR, but its own PR until a live run
+      // shows a grouped branch runs every member's branch-mode task.
+      schedule: ["* 5-7 * * *"],
+      postUpgradeTasks: {
+        commands: ["bazelisk run //:preset.update"],
+        fileFilters: ["preset.bazelrc"],
+        executionMode: "branch",
+        installTools: { bazelisk: {} },
+      },
+    },
+  ],
+''',
+    '''
+    },
+
+    // Keep Bazel and the preset generator in one version group.
+    {
+      description: "Bazel version and preset generator move together",
+      matchPackageNames: ["bazelbuild/bazel", "bazelrc-preset.bzl"],
+      groupName: "bazel version",
+      rebaseWhen: "conflicted",
+      // Use the same daily window as the pins PR.
+      schedule: ["* 5-7 * * *"],
+    },
+  ],
+''',
+  ],
+]
+
+[rewrite."default.json5"]
+dest = "lib/renovate-config/default.json5"
+replace = [
+  [
+    '''
+
+  // Shared repository-level policy for every tbhb-dev repo. Consumers extend
+  // it from their own .github/renovate.json5, pinned by commit SHA:
+  //
+  //   "github>tbhb-dev/renovate-config//default.json5#<sha>", // v1.0.0
+  //
+  // The `.json5` suffix is required: Renovate keeps a custom preset filename
+''',
+    '''
+
+  // Shared repository-level policy for every tbhb-dev repo. Consumers extend
+  // it from their own Renovate config, pinned by commit SHA:
+  //
+  //   "github>tbhb-dev/tbhbdev//lib/renovate-config/default.json5#<sha>", // v1.0.0
+  //
+  // The `.json5` suffix is required: Renovate keeps a custom preset filename
+''',
+  ],
+  [
+    '''
+  // Only repo-level options belong in presets. Global-only settings (identity,
+  // limits, allowedUnsafeExecutions, allowedCommands, hostRules with tokens)
+  // live in the reusable workflow's env.
+  //
+  // `packageRules` and `customManagers` are mergeable arrays, so presets and
+''',
+    '''
+  // Only repo-level options belong in presets. Global-only settings (identity,
+  // limits, allowedUnsafeExecutions, allowedCommands, hostRules with tokens)
+  // live in the Renovate workflow's environment.
+  //
+  // `packageRules` and `customManagers` are mergeable arrays, so presets and
+''',
+  ],
+  [
+    '''
+
+    // Pin-only updates (action SHAs, mise tool versions, and, below and in
+    // bazel.json5, the renovate-config and tbhb_rules pins) share one PR per
+    // repository, opened once a day. Its three-hour window spans three
+    // hourly runs, so one dropped run doesn't skip a day. Major versions keep
+''',
+    '''
+
+    // Pin-only updates (action SHAs, mise tool versions, and, below and in
+    // bazel.json5, the Renovate preset and tbhb_rules pins) share one PR per
+    // repository, opened once a day. Its three-hour window spans three
+    // hourly runs, so one dropped run doesn't skip a day. Major versions keep
+''',
+  ],
+  [
+    '''
+    },
+
+    // The pinned preset references in every consumer's .github/renovate.json5
+    // move together, one PR per consumer. First-party and reviewed before it
+    // merges, so a consumer takes a renovate-config commit as soon as it
+    // lands instead of after the 5-day cooldown above, which is for
+    // third-party releases.
+    {
+      matchPackageNames: ["tbhb-dev/renovate-config"],
+      groupName: "pins",
+      minimumReleaseAge: null,
+''',
+    '''
+    },
+
+    // The pinned preset references in each consumer's Renovate config
+    // move together, one PR per consumer. First-party and reviewed before it
+    // merges, so those updates can skip the cooldown for third-party releases.
+    {
+      matchPackageNames: ["tbhb-dev/tbhbdev"],
+      groupName: "pins",
+      minimumReleaseAge: null,
+''',
+  ],
+  [
+    '''
+    // the git-refs managers below, whose package name is the repository URL.
+    {
+      matchDepNames: ["tbhb-dev/renovate-config"],
+      groupName: "pins",
+      minimumReleaseAge: null,
+''',
+    '''
+    // the git-refs managers below, whose package name is the repository URL.
+    {
+      matchDepNames: ["tbhb-dev/tbhbdev"],
+      groupName: "pins",
+      minimumReleaseAge: null,
+''',
+  ],
+  [
+    '''
+    },
+
+    // The pinned `extends` reference to these presets, in each consumer's
+    // .github/renovate.json5:
+    //
+    //   "github>tbhb-dev/renovate-config//default.json5#<sha>", // v1.0.0
+    //
+    // Renovate documents preset pinning with a tag suffix, but a full commit
+''',
+    '''
+    },
+
+    // A pinned `extends` entry in a consumer's Renovate config:
+    //
+    //   "github>tbhb-dev/tbhbdev//lib/renovate-config/default.json5#<sha>", // v1.0.0
+    //
+    // Renovate documents preset pinning with a tag suffix, but a full commit
+''',
+  ],
+  [
+    '''
+      customType: "regex",
+      description: "Pinned preset references: github>owner/repo//file#<sha> // vX",
+      managerFilePatterns: ["/^\\.github/renovate\\.json5$/"],
+      matchStrings: [
+        "\"github>(?<depName>[^/\"]+/[^/\"]+)//[^\"#]+#(?<currentDigest>[0-9a-f]{40})\",?\\s*//\\s*(?<currentValue>v[^\\s]+)",
+''',
+    '''
+      customType: "regex",
+      description: "Pinned preset references: github>owner/repo//file#<sha> // vX",
+      managerFilePatterns: ["/^(?:\\.github/)?renovate\\.json5?$/"],
+      matchStrings: [
+        "\"github>(?<depName>[^/\"]+/[^/\"]+)//[^\"#]+#(?<currentDigest>[0-9a-f]{40})\",?\\s*//\\s*(?<currentValue>v[^\\s]+)",
+''',
+  ],
+  [
+    '''
+    // The same preset references pinned to a branch instead of a release:
+    //
+    //   "github>tbhb-dev/renovate-config//default.json5#<sha>", // main
+    //
+    // Each bump moves the SHA to the branch's latest commit.
+''',
+    '''
+    // The same preset references pinned to a branch instead of a release:
+    //
+    //   "github>tbhb-dev/tbhbdev//lib/renovate-config/default.json5#<sha>", // main
+    //
+    // Each bump moves the SHA to the branch's latest commit.
+''',
+  ],
+  [
+    '''
+      customType: "regex",
+      description: "Branch-pinned preset references: github>owner/repo//file#<sha> // main",
+      managerFilePatterns: ["/^\\.github/renovate\\.json5$/"],
+      matchStrings: [
+        "\"github>(?<depName>[^/\"]+/[^/\"]+)//[^\"#]+#(?<currentDigest>[0-9a-f]{40})\",?\\s*//\\s*(?<currentValue>main)\\b",
+''',
+    '''
+      customType: "regex",
+      description: "Branch-pinned preset references: github>owner/repo//file#<sha> // main",
+      managerFilePatterns: ["/^(?:\\.github/)?renovate\\.json5?$/"],
+      matchStrings: [
+        "\"github>(?<depName>[^/\"]+/[^/\"]+)//[^\"#]+#(?<currentDigest>[0-9a-f]{40})\",?\\s*//\\s*(?<currentValue>main)\\b",
+''',
+  ],
+  [
+    '''
+    // Reusable workflows pinned to a branch:
+    //
+    //   uses: tbhb-dev/renovate-config/.github/workflows/renovate.yaml@<sha> # main
+    {
+      customType: "regex",
+''',
+    '''
+    // Reusable workflows pinned to a branch:
+    //
+    //   uses: owner/repo/.github/workflows/checks.yml@<sha> # main
+    {
+      customType: "regex",
+''',
+  ],
+]
+
+[rewrite."renovate_awrel_pin_test.sh"]
+dest = "lib/renovate-config/renovate_awrel_pin_test.sh"
+replace = [
+  [
+    '''
+
+set -euo pipefail
+exec python3 "$(dirname "$0")/renovate_awrel_pin_test.py"
+''',
+    '''
+
+set -euo pipefail
+exec python3 -B "$(dirname "$0")/renovate_awrel_pin_test.py"
+''',
+  ],
+]
+
+[rewrite."renovate_grouping_test.py"]
+dest = "lib/renovate-config/renovate_grouping_test.py"
+replace = [
+  [
+    '''
+# cspell:ignore bazelbuild
+
+from fnmatch import fnmatchcase
+from pathlib import Path
+import unittest
+
+from renovate_allowlist_test import parse_preset
+''',
+    '''
+# cspell:ignore bazelbuild
+
+import unittest
+from fnmatch import fnmatchcase
+from pathlib import Path
+
+from renovate_allowlist_test import parse_preset
+''',
+  ],
+  [
+    '''
+DAILY = ["* 5-7 * * *"]
+RULES = "https://github.com/tbhb-dev/rules"
+CONFIG = "https://github.com/tbhb-dev/renovate-config"
+
+
+''',
+    '''
+DAILY = ["* 5-7 * * *"]
+RULES = "https://github.com/tbhb-dev/rules"
+CONFIG = "https://github.com/tbhb-dev/tbhbdev"
+
+
+''',
+  ],
+  [
+    "    def test_pins_group(self):\n        for update_type in [\"minor\", \"patch\", \"digest\", \"pinDigest\"]:\n            action = {\"manager\": \"github-actions\", \"packageName\": \"actions/checkout\",\n                      \"depName\": \"actions/checkout\", \"datasource\": \"github-tags\",\n                      \"updateType\": update_type}\n            self.assertEqual(self.check(DEFAULT, action, \"pins\")[\"rebaseWhen\"], \"behind-base-branch\")\n        tool = {\"manager\": \"mise\", \"packageName\": \"vale\", \"depName\": \"vale\",\n                \"datasource\": \"github-releases\", \"updateType\": \"minor\"}\n        self.check(BAZEL, tool, \"pins\")\n        config = {\"manager\": \"regex\", \"packageName\": CONFIG,\n                  \"depName\": \"tbhb-dev/renovate-config\", \"datasource\": \"git-refs\",\n                  \"updateType\": \"digest\"}\n        self.assertIsNone(self.check(BAZEL, config, \"pins\").get(\"minimumReleaseAge\"))\n        for name in [\"tbhb_rules\", \"tbhb_rules_ansible\", RULES]:\n            rules_pin = {\"manager\": \"bazel-module\", \"packageName\": name,\n                         \"depName\": name, \"datasource\": \"git-refs\",\n                         \"updateType\": \"digest\"}\n            self.check(BAZEL, rules_pin, \"pins\")\n\n    def test_separate_groups(self):\n        major = {\"manager\": \"github-actions\", \"packageName\": \"actions/checkout\",\n                 \"depName\": \"actions/checkout\", \"datasource\": \"github-tags\",\n                 \"updateType\": \"major\"}\n        self.check(DEFAULT, major, \"github-actions\", schedule=None)\n        runner = {\"manager\": \"github-actions\", \"packageName\": \"ubuntu\",\n                  \"depName\": \"ubuntu\", \"datasource\": \"github-runners\",\n                  \"updateType\": \"minor\"}\n        self.assertEqual(self.check(DEFAULT, runner, \"{{{depName}}} runner\")[\"rebaseWhen\"], \"conflicted\")\n        engine = {\"manager\": \"github-actions\", \"packageName\": \"ghcr.io/renovatebot/renovate\",\n                  \"depName\": \"ghcr.io/renovatebot/renovate\", \"datasource\": \"docker\",\n                  \"updateType\": \"minor\"}\n        self.assertEqual(self.check(DEFAULT, engine, \"renovate\")[\"rebaseWhen\"], \"conflicted\")\n        bazel = {\"manager\": \"bazelisk\", \"packageName\": \"bazelbuild/bazel\",\n                 \"depName\": \"bazel\", \"datasource\": \"github-releases\",\n                 \"updateType\": \"patch\"}\n        self.check(BAZEL, bazel, \"bazel version\")\n        worker_rules = {\"manager\": \"bazel-module\", \"packageName\": \"tbhb_rules\",\n                        \"depName\": \"tbhb_rules\", \"datasource\": \"git-refs\",\n                        \"updateType\": \"digest\"}\n        resolved = self.check(WORKER, worker_rules, \"tbhb_rules\")\n        self.assertIn(\"postUpgradeTasks\", resolved)\n",
+    '''
+    def test_pins_group(self):
+        for update_type in ["minor", "patch", "digest", "pinDigest"]:
+            action = {
+                "manager": "github-actions",
+                "packageName": "actions/checkout",
+                "depName": "actions/checkout",
+                "datasource": "github-tags",
+                "updateType": update_type,
+            }
+            self.assertEqual(
+                self.check(DEFAULT, action, "pins")["rebaseWhen"], "behind-base-branch"
+            )
+        tool = {
+            "manager": "mise",
+            "packageName": "vale",
+            "depName": "vale",
+            "datasource": "github-releases",
+            "updateType": "minor",
+        }
+        self.check(BAZEL, tool, "pins")
+        config = {
+            "manager": "regex",
+            "packageName": CONFIG,
+            "depName": "tbhb-dev/tbhbdev",
+            "datasource": "git-refs",
+            "updateType": "digest",
+        }
+        self.assertIsNone(self.check(BAZEL, config, "pins").get("minimumReleaseAge"))
+        for name in ["tbhb_rules", "tbhb_rules_ansible", RULES]:
+            rules_pin = {
+                "manager": "bazel-module",
+                "packageName": name,
+                "depName": name,
+                "datasource": "git-refs",
+                "updateType": "digest",
+            }
+            self.check(BAZEL, rules_pin, "pins")
+
+    def test_separate_groups(self):
+        major = {
+            "manager": "github-actions",
+            "packageName": "actions/checkout",
+            "depName": "actions/checkout",
+            "datasource": "github-tags",
+            "updateType": "major",
+        }
+        self.check(DEFAULT, major, "github-actions", schedule=None)
+        runner = {
+            "manager": "github-actions",
+            "packageName": "ubuntu",
+            "depName": "ubuntu",
+            "datasource": "github-runners",
+            "updateType": "minor",
+        }
+        self.assertEqual(
+            self.check(DEFAULT, runner, "{{{depName}}} runner")["rebaseWhen"],
+            "conflicted",
+        )
+        engine = {
+            "manager": "github-actions",
+            "packageName": "ghcr.io/renovatebot/renovate",
+            "depName": "ghcr.io/renovatebot/renovate",
+            "datasource": "docker",
+            "updateType": "minor",
+        }
+        self.assertEqual(
+            self.check(DEFAULT, engine, "renovate")["rebaseWhen"], "conflicted"
+        )
+        bazel = {
+            "manager": "bazelisk",
+            "packageName": "bazelbuild/bazel",
+            "depName": "bazel",
+            "datasource": "github-releases",
+            "updateType": "patch",
+        }
+        self.assertNotIn("postUpgradeTasks", self.check(BAZEL, bazel, "bazel version"))
+        task = self.check(BAZEL + ["bazelrc.json5"], bazel, "bazel version")[
+            "postUpgradeTasks"
+        ]
+        self.assertEqual(task["commands"], ["bazelisk run //:preset.update"])
+        worker_rules = {
+            "manager": "bazel-module",
+            "packageName": "tbhb_rules",
+            "depName": "tbhb_rules",
+            "datasource": "git-refs",
+            "updateType": "digest",
+        }
+        resolved = self.check(WORKER, worker_rules, "tbhb_rules")
+        self.assertIn("postUpgradeTasks", resolved)
+''',
+  ],
+  [
+    "            \"playwright-core\",\n        ]:\n            update = {\"manager\": \"npm\", \"packageName\": name,\n                      \"depName\": name, \"datasource\": \"npm\",\n                      \"updateType\": \"minor\"}\n            resolved = self.check(RULES_CLOUDFLARE, update, None, schedule=None)\n            self.assertIs(resolved.get(\"automerge\"), False, update)\n            self.assertIn(\"postUpgradeTasks\", resolved, update)\n            self.assertEqual(resolved[\"postUpgradeTasks\"].get(\"commands\"), commands, update)\n        other = {\"manager\": \"npm\", \"packageName\": \"typescript\",\n                 \"depName\": \"typescript\", \"datasource\": \"npm\",\n                 \"updateType\": \"minor\"}\n        self.assertNotIn(\"postUpgradeTasks\", self.check(RULES_CLOUDFLARE, other, None, schedule=None))\n\n    def test_security_updates_skip_cooldown(self):\n",
+    '''
+            "playwright-core",
+        ]:
+            update = {
+                "manager": "npm",
+                "packageName": name,
+                "depName": name,
+                "datasource": "npm",
+                "updateType": "minor",
+            }
+            resolved = self.check(RULES_CLOUDFLARE, update, None, schedule=None)
+            self.assertIs(resolved.get("automerge"), False, update)
+            self.assertIn("postUpgradeTasks", resolved, update)
+            self.assertEqual(
+                resolved["postUpgradeTasks"].get("commands"), commands, update
+            )
+        other = {
+            "manager": "npm",
+            "packageName": "typescript",
+            "depName": "typescript",
+            "datasource": "npm",
+            "updateType": "minor",
+        }
+        self.assertNotIn(
+            "postUpgradeTasks", self.check(RULES_CLOUDFLARE, other, None, schedule=None)
+        )
+
+    def test_security_updates_skip_cooldown(self):
+''',
+  ],
+  [
+    '''
+            for rule in rules(preset.name):
+                group = rule.get("groupName")
+                if group in (None, "pins") or (preset.name == "default.json5" and group == "github-actions"):
+                    continue
+                self.assertEqual(rule.get("rebaseWhen"), "conflicted", (preset.name, group))
+        for presets, name in [(BAZEL, "bazel"), (BAZEL + ["python.json5"], "uv")]:
+            update = {"manager": "mise", "packageName": name, "depName": name,
+                      "datasource": "github-releases", "updateType": "patch"}
+            if name == "bazel":
+                update["packageName"] = "bazelbuild/bazel"
+            self.assertEqual(resolve(presets, update).get("rebaseWhen"), "conflicted", update)
+
+    def test_no_post_upgrade_task_in_pins(self):
+''',
+    '''
+            for rule in rules(preset.name):
+                group = rule.get("groupName")
+                if group in (None, "pins") or (
+                    preset.name == "default.json5" and group == "github-actions"
+                ):
+                    continue
+                self.assertEqual(
+                    rule.get("rebaseWhen"), "conflicted", (preset.name, group)
+                )
+        for presets, name in [(BAZEL, "bazel"), (BAZEL + ["python.json5"], "uv")]:
+            update = {
+                "manager": "mise",
+                "packageName": name,
+                "depName": name,
+                "datasource": "github-releases",
+                "updateType": "patch",
+            }
+            if name == "bazel":
+                update["packageName"] = "bazelbuild/bazel"
+            self.assertEqual(
+                resolve(presets, update).get("rebaseWhen"), "conflicted", update
+            )
+
+    def test_no_post_upgrade_task_in_pins(self):
+''',
+  ],
+  [
+    '''
+
+from renovate_allowlist_test import parse_preset
+
+''',
+    '''
+
+from renovate_test_helpers import parse_preset
+
+''',
+  ],
+  [
+    '''
+    def test_rules_cloudflare(self):
+        commands = [
+''',
+    '''
+    def test_rules_cloudflare(self):
+        root_config = parse_preset((ROOT.parents[1] / "renovate.json5").read_text())
+        self.assertIn(
+            "github>tbhb-dev/tbhbdev//lib/renovate-config/rules-cloudflare.json5",
+            root_config["extends"],
+        )
+        workspace = "lib/rules/cloudflare/e2e/smoke"
+        commands = [
+''',
+  ],
+  [
+    '''
+            self.assertIs(resolved.get("automerge"), False, update)
+            self.assertIn("postUpgradeTasks", resolved, update)
+            self.assertEqual(
+                resolved["postUpgradeTasks"].get("commands"), commands, update
+            )
+''',
+    '''
+            self.assertIs(resolved.get("automerge"), False, update)
+            tasks = resolved["postUpgradeTasks"]
+            self.assertEqual(tasks["commands"], commands, update)
+            self.assertEqual(tasks["workingDirTemplate"], workspace, update)
+            self.assertEqual(tasks["executionMode"], "branch", update)
+            self.assertEqual(
+                tasks["fileFilters"],
+                [
+                    f"{workspace}/worker-configuration.d.ts",
+                    f"{workspace}/nested/worker-configuration.d.ts",
+                ],
+                update,
+            )
+''',
+  ],
+]
+
+[rewrite."renovate_grouping_test.sh"]
+dest = "lib/renovate-config/renovate_grouping_test.sh"
+replace = [
+  [
+    '''
+
+set -euo pipefail
+exec python3 "$(dirname "$0")/renovate_grouping_test.py"
+''',
+    '''
+
+set -euo pipefail
+exec python3 -B "$(dirname "$0")/renovate_grouping_test.py"
+''',
+  ],
+]
+
+[rewrite."renovate_allowlist_test.py"]
+dest = "lib/renovate-config/renovate_allowlist_test.py"
+replace = [
+  [
+    '''
+
+"""Check every preset command against the reusable workflow's allowlist."""
+
+''',
+    '''
+
+"""Check every preset command against the root Renovate workflow's allowlist."""
+
+''',
+  ],
+  [
+    '''
+                commands.extend(rule.get("postUpgradeTasks", {}).get("commands", []))
+        patterns = allowed_patterns((ROOT / ".github/workflows/renovate.yaml").read_text())
+        self.assertTrue(commands, "No post-upgrade commands found")
+''',
+    '''
+                commands.extend(rule.get("postUpgradeTasks", {}).get("commands", []))
+        # The workflow sits at the monorepo root, two levels above this project.
+        patterns = allowed_patterns((ROOT.parents[1] / ".github/workflows/renovate.yaml").read_text())
+        self.assertTrue(commands, "No post-upgrade commands found")
+''',
+  ],
+  [
+    '''
+
+"""Check every preset command against the root Renovate workflow's allowlist."""
+
+import json
+from pathlib import Path
+import re
+import unittest
+
+
+ROOT = Path(__file__).parent
+# Match strings first, preserving comment markers and commas inside strings.
+TOKENS = re.compile(r'"(?:\\.|[^"\\])*"|//[^\n]*|/\*.*?\*/', re.DOTALL)
+
+
+def parse_preset(source):
+    """Read the JSON5 subset used by presets without changing string values."""
+    source = TOKENS.sub(lambda m: m[0] if m[0].startswith('"') else "", source)
+    # Transform only the gaps between strings, where keys and commas occur.
+    parts = re.split(r'("(?:\\.|[^"\\])*")', source)
+    for index in range(0, len(parts), 2):
+        parts[index] = re.sub(r'([A-Za-z_$][\w$]*)\s*:', r'"\1":', parts[index])
+        parts[index] = re.sub(r',\s*([}\]])', r'\1', parts[index])
+    return json.loads("".join(parts))
+
+''',
+    '''
+
+"""Check commands in the selected presets against the workflow's allowlist."""
+
+import json
+import re
+import unittest
+from pathlib import Path
+
+from renovate_test_helpers import parse_preset
+
+PRESETS = Path(__file__).parent
+ROOT = PRESETS.parents[1]
+PRESET_PREFIX = "github>tbhb-dev/tbhbdev//lib/renovate-config/"
+
+''',
+  ],
+  [
+    '''
+    def test_repository(self):
+        commands = []
+        for preset in sorted(ROOT.glob("*.json5")):
+            config = parse_preset(preset.read_text())
+            for rule in config.get("packageRules", []):
+                commands.extend(rule.get("postUpgradeTasks", {}).get("commands", []))
+        # The workflow sits at the monorepo root, two levels above this project.
+        patterns = allowed_patterns((ROOT.parents[1] / ".github/workflows/renovate.yaml").read_text())
+        self.assertTrue(commands, "No post-upgrade commands found")
+''',
+    '''
+    def test_repository(self):
+        root_config = parse_preset((ROOT / "renovate.json5").read_text())
+        commands = []
+        for preset in root_config["extends"]:
+            if not preset.startswith(PRESET_PREFIX):
+                continue
+            preset_path = PRESETS / preset.removeprefix(PRESET_PREFIX)
+            config = parse_preset(preset_path.read_text())
+            for rule in config.get("packageRules", []):
+                commands.extend(rule.get("postUpgradeTasks", {}).get("commands", []))
+        patterns = allowed_patterns(
+            (ROOT / ".github/workflows/renovate.yaml").read_text()
+        )
+        self.assertTrue(commands, "No post-upgrade commands found")
+''',
+  ],
+  [
+    '''
+                if "matches no command" in detail:
+                    self.assertIn("Regular expression '^unused$' matches no command", errors)
+                else:
+''',
+    '''
+                if "matches no command" in detail:
+                    self.assertIn(
+                        "Regular expression '^unused$' matches no command", errors
+                    )
+                else:
+''',
+  ],
+  [
+    "    def test_json5_strings_survive(self):\n        config = parse_preset('''// comment\n        {url: \"https://example.test/a,]\", commands: [\"run //:target\",],}\n        ''')\n        self.assertEqual(config, {\"url\": \"https://example.test/a,]\", \"commands\": [\"run //:target\"]})\n\n",
+    '''
+    def test_json5_strings_survive(self):
+        config = parse_preset("""// comment
+        {url: "https://example.test/a,]", commands: ["run //:target",],}
+        """)
+        self.assertEqual(
+            config, {"url": "https://example.test/a,]", "commands": ["run //:target"]}
+        )
+
+''',
+  ],
+]
+
+# Reads the workflow from the monorepo root, two levels above the project,
+# because the workflow is no longer reusable and no longer sits beside the
+# tests. The only change besides the docstring is the path.
+[rewrite."renovate_log_check_test.py"]
+dest = "lib/renovate-config/renovate_log_check_test.py"
+replace = [
+  [
+    '''
+
+"""Run the reusable workflow's actual log check against local NDJSON fixtures."""
+
+''',
+    '''
+
+"""Run the root Renovate workflow's actual log check against local NDJSON fixtures."""
+
+''',
+  ],
+  [
+    '''
+
+WORKFLOW = Path(__file__).parent / ".github/workflows/renovate.yaml"
+FINISHED = '{"level":30,"msg":"Repository finished"}\n'
+''',
+    '''
+
+# The workflow sits at the monorepo root, two levels above this project.
+WORKFLOW = Path(__file__).parents[2] / ".github/workflows/renovate.yaml"
+FINISHED = '{"level":30,"msg":"Repository finished"}\n'
+''',
+  ],
+]
+
+# Reads the workflow from the monorepo root, two levels above the project,
+# because the workflow is no longer reusable and no longer sits beside the
+# tests. The fixtures cover the approval policy of the root workflow.
+[rewrite."renovate_ruleset_audit_test.py"]
+dest = "lib/renovate-config/renovate_ruleset_audit_test.py"
+replace = [
+  [
+    '''
+
+WORKFLOW = Path(__file__).parent / ".github/workflows/renovate.yaml"
+APPROVAL = {"type": "pull_request", "ruleset_id": 42,
+''',
+    '''
+
+# The workflow sits at the monorepo root, two levels above this project.
+WORKFLOW = Path(__file__).parents[2] / ".github/workflows/renovate.yaml"
+APPROVAL = {"type": "pull_request", "ruleset_id": 42,
+''',
+  ],
+  [
+    '''
+import os
+from http.server import BaseHTTPRequestHandler, HTTPServer
+from pathlib import Path
+import re
+''',
+    '''
+import os
+import re
+''',
+  ],
+  [
+    '''
+import unittest
+
+
+''',
+    '''
+import unittest
+from http.server import BaseHTTPRequestHandler, HTTPServer
+from pathlib import Path
+
+''',
+  ],
+  [
+    '''
+WORKFLOW = Path(__file__).parents[2] / ".github/workflows/renovate.yaml"
+APPROVAL = {"type": "pull_request", "ruleset_id": 42,
+            "parameters": {"required_approving_review_count": 1}}
+STATUS = {"type": "required_status_checks", "ruleset_id": 73,
+          "parameters": {"required_status_checks": [{"context": "conclusion"}]}}
+
+''',
+    '''
+WORKFLOW = Path(__file__).parents[2] / ".github/workflows/renovate.yaml"
+APPROVAL = {
+    "type": "pull_request",
+    "ruleset_id": 42,
+    "parameters": {"required_approving_review_count": 1},
+}
+STATUS = {
+    "type": "required_status_checks",
+    "ruleset_id": 73,
+    "parameters": {"required_status_checks": [{"context": "conclusion"}]},
+}
+
+''',
+  ],
+  [
+    '''
+        r"^      - name: Audit automerge rulesets\n(?P<step>.*?)(?=^      - name:|\Z)",
+        source, re.MULTILINE | re.DOTALL,
+    )
+''',
+    '''
+        r"^      - name: Audit automerge rulesets\n(?P<step>.*?)(?=^      - name:|\Z)",
+        source,
+        re.MULTILINE | re.DOTALL,
+    )
+''',
+  ],
+  [
+    '''
+        raise AssertionError("Missing automerge audit step")
+    if not source.index("- name: Get token") < step.start() < source.index("- name: Self-hosted Renovate"):
+        raise AssertionError("Audit must run after token creation and before Renovate")
+''',
+    '''
+        raise AssertionError("Missing automerge audit step")
+    if (
+        not source.index("- name: Get token")
+        < step.start()
+        < source.index("- name: Self-hosted Renovate")
+    ):
+        raise AssertionError("Audit must run after token creation and before Renovate")
+''',
+  ],
+  [
+    '''
+        raise AssertionError("Audit must use the Renovate App token")
+    script = re.search(r"^        run: \|\n(?P<script>(?:^          .*\n|^\n)+)", step["step"], re.MULTILINE)
+    if script is None or "${{" in script["script"]:
+''',
+    '''
+        raise AssertionError("Audit must use the Renovate App token")
+    script = re.search(
+        r"^        run: \|\n(?P<script>(?:^          .*\n|^\n)+)",
+        step["step"],
+        re.MULTILINE,
+    )
+    if script is None or "${{" in script["script"]:
+''',
+  ],
+  [
+    '''
+class RulesetAuditTest(unittest.TestCase):
+    def run_fixture(self, pages=None, bypass="never", status=200, extra_rules=(), missing_field=False,
+                    require_approval=None, mode="", api_url=None, token="fixture-app-token", path=None):
+        pages = [[APPROVAL, STATUS, *extra_rules]] if pages is None else pages
+''',
+    '''
+class RulesetAuditTest(unittest.TestCase):
+    def run_fixture(
+        self,
+        pages=None,
+        bypass="never",
+        status=200,
+        extra_rules=(),
+        missing_field=False,
+        mode="",
+        api_url=None,
+        token="fixture-app-token",
+    ):
+        pages = [[APPROVAL, STATUS, *extra_rules]] if pages is None else pages
+''',
+  ],
+  [
+    '''
+                    number = int(re.search(r"[&?]page=([0-9]+)", self.path)[1])
+                    body = json.dumps(pages[number - 1] if number <= len(pages) else []).encode()
+                else:
+                    body = json.dumps({} if missing_field else {"current_user_can_bypass": bypass}).encode()
+                self.send_response(200)
+''',
+    '''
+                    number = int(re.search(r"[&?]page=([0-9]+)", self.path)[1])
+                    body = json.dumps(
+                        pages[number - 1] if number <= len(pages) else []
+                    ).encode()
+                else:
+                    body = json.dumps(
+                        {} if missing_field else {"current_user_can_bypass": bypass}
+                    ).encode()
+                self.send_response(200)
+''',
+  ],
+  [
+    "            subprocess.run(\n                [\"openssl\", \"req\", \"-x509\", \"-newkey\", \"ec\", \"-pkeyopt\", \"ec_paramgen_curve:prime256v1\", \"-nodes\",\n                 \"-keyout\", str(key), \"-out\", str(certificate), \"-days\", \"1\", \"-subj\", \"/CN=localhost\",\n                 \"-addext\", \"subjectAltName=DNS:localhost\"],\n                check=True, capture_output=True,\n            )\n",
+    '''
+            subprocess.run(
+                [
+                    "openssl",
+                    "req",
+                    "-x509",
+                    "-newkey",
+                    "ec",
+                    "-pkeyopt",
+                    "ec_paramgen_curve:prime256v1",
+                    "-nodes",
+                    "-keyout",
+                    str(key),
+                    "-out",
+                    str(certificate),
+                    "-days",
+                    "1",
+                    "-subj",
+                    "/CN=localhost",
+                    "-addext",
+                    "subjectAltName=DNS:localhost",
+                ],
+                check=True,
+                capture_output=True,
+            )
+''',
+  ],
+  [
+    '''
+                for name in ("bash", "python3"):
+                    (tools / name).symlink_to((shutil.which(name) if name == "bash" else os.path.realpath(sys.executable)))
+                search_path = str(tools)
+''',
+    '''
+                for name in ("bash", "python3"):
+                    (tools / name).symlink_to(
+                        shutil.which(name)
+                        if name == "bash"
+                        else os.path.realpath(sys.executable)
+                    )
+                search_path = str(tools)
+''',
+  ],
+  [
+    "                result = subprocess.run(\n                    [\"bash\", \"--noprofile\", \"--norc\", \"-e\", \"-o\", \"pipefail\", \"-c\", workflow_script()], cwd=root,\n                    env={**os.environ, \"PATH\": search_path,\n                         \"GH_TOKEN\": token, \"REPO\": \"fixture/repo\",\n                         \"GITHUB_API_URL\": (api_url or \"https://localhost:{port}\").format(port=server.server_port),\n                         \"SSL_CERT_FILE\": str(certificate), \"CURL_CA_BUNDLE\": str(certificate),\n                         **({} if require_approval is None else {\"REQUIRE_APPROVAL\": require_approval})},\n                    text=True, capture_output=True, check=False, timeout=120,\n                )\n",
+    '''
+                result = subprocess.run(
+                    [
+                        "bash",
+                        "--noprofile",
+                        "--norc",
+                        "-e",
+                        "-o",
+                        "pipefail",
+                        "-c",
+                        workflow_script(),
+                    ],
+                    cwd=root,
+                    env={
+                        **os.environ,
+                        "PATH": search_path,
+                        "GH_TOKEN": token,
+                        "REPO": "fixture/repo",
+                        "GITHUB_API_URL": (
+                            api_url or "https://localhost:{port}"
+                        ).format(port=server.server_port),
+                        "SSL_CERT_FILE": str(certificate),
+                        "CURL_CA_BUNDLE": str(certificate),
+                    },
+                    text=True,
+                    capture_output=True,
+                    check=False,
+                    timeout=120,
+                )
+''',
+  ],
+  [
+    "        self.assertEqual(result.returncode, 0, result.stdout)\n        self.assertEqual(result.stdout, \"Automerge ruleset audit: approval and status checks required, 3 rulesets cannot be bypassed\\n\")\n        self.assertEqual(calls, [\"/repos/fixture/repo/rules/branches/main?per_page=100&page=1\",\n                                 \"/repos/fixture/repo/rulesets/42\", \"/repos/fixture/repo/rulesets/73\",\n                                 \"/repos/fixture/repo/rulesets/99\"])\n\n",
+    '''
+        self.assertEqual(result.returncode, 0, result.stdout)
+        self.assertEqual(
+            result.stdout,
+            "Automerge ruleset audit: approval and status checks required, 3 rulesets cannot be bypassed\n",
+        )
+        self.assertEqual(
+            calls,
+            [
+                "/repos/fixture/repo/rules/branches/main?per_page=100&page=1",
+                "/repos/fixture/repo/rulesets/42",
+                "/repos/fixture/repo/rulesets/73",
+                "/repos/fixture/repo/rulesets/99",
+            ],
+        )
+
+''',
+  ],
+  [
+    "        self.assertEqual(result.returncode, 0, result.stdout)\n        self.assertEqual(calls[:2], [\"/repos/fixture/repo/rules/branches/main?per_page=100&page=1\",\n                                     \"/repos/fixture/repo/rules/branches/main?per_page=100&page=2\"])\n\n",
+    '''
+        self.assertEqual(result.returncode, 0, result.stdout)
+        self.assertEqual(
+            calls[:2],
+            [
+                "/repos/fixture/repo/rules/branches/main?per_page=100&page=1",
+                "/repos/fixture/repo/rules/branches/main?per_page=100&page=2",
+            ],
+        )
+
+''',
+  ],
+  [
+    '''
+        filler = [{"type": "deletion", "ruleset_id": 99}] * 100
+        calls = self.assert_failure("Could not verify default branch rules", pages=[filler] * 10)
+        self.assertEqual(len(calls), 10)
+''',
+    '''
+        filler = [{"type": "deletion", "ruleset_id": 99}] * 100
+        calls = self.assert_failure(
+            "Could not verify default branch rules", pages=[filler] * 10
+        )
+        self.assertEqual(len(calls), 10)
+''',
+  ],
+  [
+    '''
+    def test_no_rules(self):
+        self.assert_failure("Default branch has no approval rule requiring at least one review", pages=[[]])
+
+''',
+    '''
+    def test_no_rules(self):
+        self.assert_failure(
+            "Default branch has no approval rule requiring at least one review",
+            pages=[[]],
+        )
+
+''',
+  ],
+  [
+    '''
+        zero = {**APPROVAL, "parameters": {"required_approving_review_count": 0}}
+        self.assert_failure("Default branch has no approval rule requiring at least one review", pages=[[zero, STATUS]])
+
+    def test_approval_kept_unless_input_is_false(self):
+        zero = {**APPROVAL, "parameters": {"required_approving_review_count": 0}}
+        for value in ("true", "", "False"):
+            with self.subTest(value=value):
+                self.assert_failure("Default branch has no approval rule requiring at least one review",
+                                    pages=[[zero, STATUS]], require_approval=value)
+
+    def test_approval_not_required(self):
+        zero = {**APPROVAL, "parameters": {"required_approving_review_count": 0}}
+        result, _ = self.run_fixture(pages=[[zero, STATUS]], require_approval="false")
+        self.assertEqual(result.returncode, 0, result.stdout)
+        self.assertEqual(result.stdout, "Automerge ruleset audit: status checks required, approval check off, 2 rulesets cannot be bypassed\n")
+
+    def test_status_checks_still_required_without_approval(self):
+        self.assert_failure("Default branch has no status-check rule", pages=[[]], require_approval="false")
+
+    def test_bypass_still_refused_without_approval(self):
+        self.assert_failure("the Renovate App can bypass ruleset 42", bypass="always", require_approval="false")
+
+    def test_no_status_checks(self):
+        self.assert_failure("Default branch has no status-check rule", pages=[[APPROVAL]])
+
+''',
+    '''
+        zero = {**APPROVAL, "parameters": {"required_approving_review_count": 0}}
+        self.assert_failure(
+            "Default branch has no approval rule requiring at least one review",
+            pages=[[zero, STATUS]],
+        )
+
+    def test_no_status_checks(self):
+        self.assert_failure(
+            "Default branch has no status-check rule", pages=[[APPROVAL]]
+        )
+
+''',
+  ],
+  [
+    '''
+            with self.subTest(bypass=bypass):
+                self.assert_failure("the Renovate App can bypass ruleset 42", bypass=bypass)
+
+    def test_missing_bypass_field_fails_closed(self):
+        self.assert_failure("the Renovate App can bypass ruleset 42", missing_field=True)
+
+''',
+    '''
+            with self.subTest(bypass=bypass):
+                self.assert_failure(
+                    "the Renovate App can bypass ruleset 42", bypass=bypass
+                )
+
+    def test_missing_bypass_field_fails_closed(self):
+        self.assert_failure(
+            "the Renovate App can bypass ruleset 42", missing_field=True
+        )
+
+''',
+  ],
+  [
+    '''
+            with self.subTest(status=status):
+                calls = self.assert_failure(f"Could not verify automerge ruleset protection (HTTP {status})", status=status)
+                self.assertEqual(len(calls), 1)
+''',
+    '''
+            with self.subTest(status=status):
+                calls = self.assert_failure(
+                    f"Could not verify automerge ruleset protection (HTTP {status})",
+                    status=status,
+                )
+                self.assertEqual(len(calls), 1)
+''',
+  ],
+  [
+    '''
+    def test_redirects_are_refused(self):
+        self.assert_failure("Could not verify automerge ruleset protection (HTTP 302)", mode="redirect")
+
+''',
+    '''
+    def test_redirects_are_refused(self):
+        self.assert_failure(
+            "Could not verify automerge ruleset protection (HTTP 302)", mode="redirect"
+        )
+
+''',
+  ],
+  [
+    '''
+            with self.subTest(mode=mode):
+                self.assert_failure("Could not verify automerge ruleset protection (unreadable data)", mode=mode)
+
+    def test_api_url_must_be_plain_https(self):
+        for url in ("http://localhost:{port}", "https://user:secret@localhost:{port}",
+                    "https://localhost:{port}\nheader = \"X-Injected: yes\"", "https://localhost:{port}/\"",
+                    "https://localhost:{port} "):
+            with self.subTest(url=url):
+                calls = self.assert_failure("Automerge audit refuses a GitHub API URL that is not plain https", api_url=url)
+                self.assertEqual(calls, [])
+''',
+    '''
+            with self.subTest(mode=mode):
+                self.assert_failure(
+                    "Could not verify automerge ruleset protection (unreadable data)",
+                    mode=mode,
+                )
+
+    def test_api_url_must_be_plain_https(self):
+        for url in (
+            "http://localhost:{port}",
+            "https://user:secret@localhost:{port}",
+            'https://localhost:{port}\nheader = "X-Injected: yes"',
+            'https://localhost:{port}/"',
+            "https://localhost:{port} ",
+        ):
+            with self.subTest(url=url):
+                calls = self.assert_failure(
+                    "Automerge audit refuses a GitHub API URL that is not plain https",
+                    api_url=url,
+                )
+                self.assertEqual(calls, [])
+''',
+  ],
+  [
+    '''
+    def test_odd_token_is_refused(self):
+        calls = self.assert_failure("Automerge audit: the job token has unexpected characters", token="a\"b")
+        self.assertEqual(calls, [])
+''',
+    '''
+    def test_odd_token_is_refused(self):
+        calls = self.assert_failure(
+            "Automerge audit: the job token has unexpected characters", token='a"b'
+        )
+        self.assertEqual(calls, [])
+''',
+  ],
+  [
+    '''
+    def test_invalid_ruleset_id_fails_closed(self):
+        self.assert_failure("Could not verify ruleset bypass protection", extra_rules=[
+            {"type": "deletion", "ruleset_id": "::warning::injected"},
+        ])
+
+''',
+    '''
+    def test_invalid_ruleset_id_fails_closed(self):
+        self.assert_failure(
+            "Could not verify ruleset bypass protection",
+            extra_rules=[
+                {"type": "deletion", "ruleset_id": "::warning::injected"},
+            ],
+        )
+
+''',
+  ],
+]
+
+[rewrite."renovate_awrel_pin_test.py"]
+dest = "lib/renovate-config/renovate_awrel_pin_test.py"
+replace = [
+  [
+    '''
+
+from pathlib import Path
+import re
+import unittest
+
+from renovate_allowlist_test import parse_preset
+
+''',
+    '''
+
+import re
+import unittest
+from pathlib import Path
+
+from renovate_test_helpers import parse_preset
+
+''',
+  ],
+  [
+    "        config = parse_preset((Path(__file__).parent / \"default.json5\").read_text())\n        cls.manager = next(manager for manager in config[\"customManagers\"]\n                           if manager.get(\"depNameTemplate\") == \"tbhb-dev/awrel\")\n        # Python spells the named capture differently from Renovate's RE2.\n",
+    '''
+        config = parse_preset((Path(__file__).parent / "default.json5").read_text())
+        cls.manager = next(
+            manager
+            for manager in config["customManagers"]
+            if manager.get("depNameTemplate") == "tbhb-dev/awrel"
+        )
+        # Python spells the named capture differently from Renovate's RE2.
+''',
+  ],
+  [
+    '''
+                matches = list(self.pattern.finditer(source))
+                self.assertEqual([match["currentValue"] for match in matches], ["v0.5.0"])
+
+''',
+    '''
+                matches = list(self.pattern.finditer(source))
+                self.assertEqual(
+                    [match["currentValue"] for match in matches], ["v0.5.0"]
+                )
+
+''',
+  ],
+  [
+    '''
+            '"args": ["run", "example.com/other/cmd/other@v0.5.0", "mcp"],',
+            '# go run go.tbhb.dev/awrel/cmd/awrel@v0.5.0 mcp',
+        ):
+''',
+    '''
+            '"args": ["run", "example.com/other/cmd/other@v0.5.0", "mcp"],',
+            "# go run go.tbhb.dev/awrel/cmd/awrel@v0.5.0 mcp",
+        ):
+''',
+  ],
+]
+
+[rewrite."rules-cloudflare.json5"]
+dest = "lib/renovate-config/rules-cloudflare.json5"
+replace = [
+  [
+    '''
+
+  // Only tbhb-dev/rules extends this preset, after bazel.json5. That is a
+  // convention. The command allowlist is global, not per repo.
+  packageRules: [
+    // A wrangler bump that moves workerd changes every Worker's generated
+    // types, and worker_types_test fails until they are regenerated. The two
+    // smoke Workers (the root one and the nested one) sit in one Bazel
+    // workspace, cloudflare/e2e/smoke. The commands are allowlisted by
+    // anchored regexes in the workflow env (RENOVATE_ALLOWED_COMMANDS), not
+    // here. fileFilters limits the commit to worker-configuration.d.ts.
+    // automerge is off: no one has confirmed that the reviews App's path
+    // limit accepts cloudflare/e2e/smoke/**/worker-configuration.d.ts, so a
+    // human merges these PRs. Delete the line once the App is confirmed to
+    // approve that diff, as it does for cloudflare-worker.json5.
+    // The rule has no file match: a grouped branch takes its tasks from the
+    // first-sorted member, which may live outside cloudflare/ (storybook/,
+    // playwright/), so every listed package carries them. A live run on the
+    // first such bump is the check.
+    {
+''',
+    '''
+
+  // The monorepo extends this preset after bazel.json5.
+  packageRules: [
+    // A wrangler bump that moves workerd changes the generated types for both
+    // smoke Workers. Both targets run from the smoke workspace. A human
+    // merges these PRs until the reviews App can approve the generated files.
+    // A grouped branch takes its tasks from the first-sorted member, so
+    // every package in the group carries the tasks even outside cloudflare/.
+    {
+''',
+  ],
+  [
+    '''
+        ],
+        workingDirTemplate: "cloudflare/e2e/smoke",
+        fileFilters: ["cloudflare/e2e/smoke/**/worker-configuration.d.ts"],
+        executionMode: "branch",
+''',
+    '''
+        ],
+        workingDirTemplate: "lib/rules/cloudflare/e2e/smoke",
+        fileFilters: [
+          "lib/rules/cloudflare/e2e/smoke/worker-configuration.d.ts",
+          "lib/rules/cloudflare/e2e/smoke/nested/worker-configuration.d.ts",
+        ],
+        executionMode: "branch",
+''',
+  ],
+]
+
+[drop]
+".bazelignore" = "Root Bazel configuration. The shared root replaces it."
+".bazelversion" = "Root Bazel configuration. The shared root replaces it."
+".claude/settings.json" = "Root agent harness configuration. It arrives at the monorepo root with the rules import (wave 2), where appendix C lists it as a class 2 path."
+".codex/rules/pull-request.rules" = "Root agent harness configuration. It arrives at the monorepo root with the rules import (wave 2), where appendix C lists it as a class 2 path."
+".cspell-words.txt" = "Root lint, format, or editor configuration. The shared root replaces it, or it arrives with the rules import (wave 2)."
+".cspell.jsonc" = "Root lint, format, or editor configuration. The shared root replaces it, or it arrives with the rules import (wave 2)."
+".editorconfig" = "Root lint, format, or editor configuration. The shared root replaces it, or it arrives with the rules import (wave 2)."
+".editorconfig-checker.json" = "Root lint, format, or editor configuration. The shared root replaces it, or it arrives with the rules import (wave 2)."
+".gitattributes" = "Root lint, format, or editor configuration. The shared root replaces it, or it arrives with the rules import (wave 2)."
+".github/CODEOWNERS" = "The monorepo has no CODEOWNERS file, because GitHub turns its entries into required reviewers. The project's OWNERS file replaces it (appendix C)."
+".github/PULL_REQUEST_TEMPLATE.md" = "Root repository files. The monorepo's own copy replaces it."
+".github/actionlint.yaml" = "Root lint, format, or editor configuration. The shared root replaces it, or it arrives with the rules import (wave 2)."
+".github/pull-request-sections.toml" = "Root repository files. The monorepo's own copy replaces it."
+".github/rulesets/main.json" = "Root repository files. The monorepo's own copy replaces it."
+".github/schemas/pull-request-draft.schema.json" = "Root repository files. The monorepo's own copy replaces it."
+".github/workflows/ci.yml" = "The repository's own gate. It pins workflows and actions of the old rules repository, and the monorepo's inline ci.yml replaces it (D27)."
+".github/workflows/renovate-config-validator.yaml" = "Consumer-pin tooling: it checks, summarizes, or moves pins of the old repository's presets and workflows in other repositories. Nothing in this repository pins them, so it has nothing to check."
+".github/workflows/renovate-self.yaml" = "replaced by the root .github/workflows/renovate.yaml"
+".github/workflows/renovate.yaml" = "replaced by the root .github/workflows/renovate.yaml"
+".github/zizmor.yml" = "Root lint, format, or editor configuration. The shared root replaces it, or it arrives with the rules import (wave 2)."
+".gitignore" = "Root lint, format, or editor configuration. The shared root replaces it, or it arrives with the rules import (wave 2)."
+".gitleaks.toml" = "Root lint, format, or editor configuration. The shared root replaces it, or it arrives with the rules import (wave 2)."
+".mcp.json" = "Root agent harness configuration. It arrives at the monorepo root with the rules import (wave 2), where appendix C lists it as a class 2 path."
+".pre-commit-config.yaml" = "Root lint, format, or editor configuration. The shared root replaces it, or it arrives with the rules import (wave 2)."
+".rumdl.toml" = "Root lint, format, or editor configuration. The shared root replaces it, or it arrives with the rules import (wave 2)."
+".ryl.toml" = "Root lint, format, or editor configuration. The shared root replaces it, or it arrives with the rules import (wave 2)."
+".rylignore" = "Root lint, format, or editor configuration. The shared root replaces it, or it arrives with the rules import (wave 2)."
+".vale.ini" = "Root lint, format, or editor configuration. The shared root replaces it, or it arrives with the rules import (wave 2)."
+".vale/config/vocabularies/project/accept.txt" = "Root lint, format, or editor configuration. The shared root replaces it, or it arrives with the rules import (wave 2)."
+".vale/config/vocabularies/project/reject.txt" = "Root lint, format, or editor configuration. The shared root replaces it, or it arrives with the rules import (wave 2)."
+".vale/project/Acronyms.yml" = "Root lint, format, or editor configuration. The shared root replaces it, or it arrives with the rules import (wave 2)."
+".vale/project/Colons.yml" = "Root lint, format, or editor configuration. The shared root replaces it, or it arrives with the rules import (wave 2)."
+".vale/project/HeadingTitleCase.yml" = "Root lint, format, or editor configuration. The shared root replaces it, or it arrives with the rules import (wave 2)."
+".vale/project/WordList.yml" = "Root lint, format, or editor configuration. The shared root replaces it, or it arrives with the rules import (wave 2)."
+"AGENTS.md" = "Root agent instructions. The shared root AGENTS.md replaces them. The one line they held, which points to the wiki's models page, returns with the wiki import (wave 4)."
+"LICENSE" = "Root repository files. The monorepo's own copy replaces it."
+"LICENSES/Apache-2.0.txt" = "Root repository files. The monorepo's own copy replaces it."
+"MODULE.bazel" = "Root Bazel configuration. The shared root replaces it."
+"MODULE.bazel.lock" = "Root Bazel configuration. The shared root replaces it."
+"REPO.bazel" = "Root Bazel configuration. The shared root replaces it."
+"REUSE.toml" = "Root repository files. The monorepo's own copy replaces it."
+"mise.lock" = "Tool pins for the old repository's root. The shared root replaces them, or they arrive with the rules import (wave 2)."
+"mise.toml" = "Tool pins for the old repository's root. The shared root replaces them, or they arrive with the rules import (wave 2)."
+"preset.bazelrc" = "Generated configuration for the old repository. Consumers with this file can opt in to bazelrc.json5."
+"renovate_bump_pins.py" = "Consumer-pin tooling: it checks, summarizes, or moves pins of the old repository's presets and workflows in other repositories. Nothing in this repository pins them, so it has nothing to check."
+"renovate_bump_pins_test.py" = "Consumer-pin tooling: it checks, summarizes, or moves pins of the old repository's presets and workflows in other repositories. Nothing in this repository pins them, so it has nothing to check."
+"renovate_bump_pins_test.sh" = "Consumer-pin tooling: it checks, summarizes, or moves pins of the old repository's presets and workflows in other repositories. Nothing in this repository pins them, so it has nothing to check."
+"renovate_pin_consistency_test.py" = "Consumer-pin tooling: it checks, summarizes, or moves pins of the old repository's presets and workflows in other repositories. Nothing in this repository pins them, so it has nothing to check."
+"renovate_pin_consistency_test.sh" = "Consumer-pin tooling: it checks, summarizes, or moves pins of the old repository's presets and workflows in other repositories. Nothing in this repository pins them, so it has nothing to check."
+"renovate_pin_range_test.py" = "Consumer-pin tooling: it checks, summarizes, or moves pins of the old repository's presets and workflows in other repositories. Nothing in this repository pins them, so it has nothing to check."
+"renovate_pin_range_test.sh" = "Consumer-pin tooling: it checks, summarizes, or moves pins of the old repository's presets and workflows in other repositories. Nothing in this repository pins them, so it has nothing to check."
+"tombi.toml" = "Root lint, format, or editor configuration. The shared root replaces it, or it arrives with the rules import (wave 2)."

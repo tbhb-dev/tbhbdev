@@ -15,11 +15,6 @@ cli_py_library(
     srcs = ["argv.py"],
     imports = ["../../../.."],
     visibility = ["//factory/cli:__subpackages__"],
-    deps = [
-        ":policy",
-        "//factory/cli/src/tbhbdev/alpha/agent:model",
-        "//factory/cli/src/tbhbdev/alpha/install:hooks",
-    ],
 )
 
 cli_py_library(
@@ -34,10 +29,7 @@ cli_py_library(
     srcs = ["config.py"],
     imports = ["../../../.."],
     visibility = ["//factory/cli:__subpackages__"],
-    deps = [
-        ":repo",
-        "//factory/cli/src/tbhbdev/alpha/agent:model",
-    ],
+    deps = ["//factory/cli/src/tbhbdev/alpha/agent:model"],
 )
 
 cli_py_library(
@@ -46,18 +38,6 @@ cli_py_library(
     imports = ["../../../.."],
     visibility = ["//factory/cli:__subpackages__"],
     deps = ["//factory/cli/src/tbhbdev/alpha/agent:model"],
-)
-
-cli_py_library(
-    name = "policy",
-    srcs = ["policy.py"],
-    imports = ["../../../.."],
-    visibility = ["//factory/cli:__subpackages__"],
-    deps = [
-        "//factory/cli/src/tbhbdev:secrets",
-        "//factory/cli/src/tbhbdev/alpha/agent:host_tools",
-        "//factory/cli/src/tbhbdev/alpha/agent:model",
-    ],
 )
 
 cli_py_library(
@@ -143,7 +123,6 @@ cli_py_library(
     srcs = ["run_state.py"],
     imports = ["../../../.."],
     visibility = ["//factory/cli:__subpackages__"],
-    deps = ["//factory/cli/src/tbhbdev/alpha/agent:model"],
 )
 
 cli_py_library(
