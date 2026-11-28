@@ -19,6 +19,7 @@ from tbhbdev.alpha.agent.decisions import auth, config, repo
 from tbhbdev.alpha.agent.model import Harness, Invalid, Profile
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
     from pathlib import Path
 
     from tbhbdev.alpha.agent.model import Credentials, RunRequest, Settings
@@ -173,6 +174,45 @@ def github_token(
     except TOKEN_ERRORS:
         message = "pull-requests App token unavailable; build refused"
         raise Invalid(message) from None
+
+
+# An installation token lives one hour; replace it a little before it expires.
+TOKEN_LIFETIME_SECONDS = 3600
+REFRESH_MARGIN_SECONDS = 300
+FRESH_REFUSAL = "could not get a fresh GitHub credential before push"
+
+
+@dataclass(frozen=True)
+class StoredToken:
+    token: str = field(repr=False)
+    minted_at: float
+
+
+def fresh_token(
+    request: RunRequest,
+    references: Credentials,
+    stored: StoredToken | None,
+    *,
+    clock: Callable[[], float],
+    source: Callable[[Credentials, str, dict[str, str]], str] = pull_requests_token,
+) -> str | None:
+    """A token that is still valid now: the stored one when young, else a new mint.
+
+    The App key is read here, on the host, and never reaches the run.
+    """
+    if stored is not None:
+        age = clock() - stored.minted_at
+        if age < TOKEN_LIFETIME_SECONDS - REFRESH_MARGIN_SECONDS:
+            return stored.token
+    try:
+        if (
+            references.pull_requests_app_client_id is None
+            and references.pull_requests_app_pem is None
+        ):
+            return github_token(request, references)
+        return source(references, request.repo, PUSH_PERMISSIONS)
+    except TOKEN_ERRORS:
+        raise Invalid(FRESH_REFUSAL) from None
 
 
 def review_post_token(
