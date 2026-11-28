@@ -39,6 +39,14 @@
     "**/__fixtures__/**",
     // Fixtures hold deliberately stale pins and fake manifests.
     "**/testdata/**",
+    // Planted defects for the failure proofs: a proof such as
+    // proof_lock_mismatch needs its requirements to differ from the lock, so
+    // a bump would make it fail for another reason (or pass).
+    "**/planted/**",
+    // A module pinned to a vulnerable golang.org/x/text so the GO-2021-0113
+    // proofs find it. The same pin sits in the smoke MODULE.bazel, which
+    // Renovate does not read as a Go module.
+    "lib/rules/go/e2e/smoke/govulncheck/**",
     // mise's per-tool lock sidecars (for example cspell's package.json) are
     // mise.lock's business, not an npm manifest to bump.
     "**/.mise/locks/**",
