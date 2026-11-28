@@ -46,7 +46,13 @@ The operator's decision record of 2026-11-27 (GitHub read commands: credential a
 
 ### Command set
 
-Register `read` in alpha help and `COMMANDS`. See the [command table](#command-fields-and-refusal-hints). The read commands form a package named `read` directly under `factory/cli/src/tbhbdev/`, not under `alpha/`, with tests under `factory/cli/tests/unit/read/`. The command module holds arguments, output, and exit status. Handler modules do the work and never import argument parsing. The alpha dispatcher binds `read` by name, and command names remain `tbhbdev alpha read ...`.
+Register `read` in alpha help and `COMMANDS`. See the [command table](#command-fields-and-refusal-hints).
+
+The read commands are a package named `read` directly under `factory/cli/src/tbhbdev/`, not under `alpha/`, with tests under `factory/cli/tests/unit/read/`.
+
+The command module holds arguments, output, and exit status. Handler modules do the work and never import argument parsing.
+
+The alpha dispatcher binds `read` by name, and command names remain `tbhbdev alpha read ...`.
 
 Build `read pr state <pr>` with `--repo` and `--fields` first. The second build adds `read pr show [<pr|sha>]`, which resolves the head once and reads state and checks. Add files, commits, and reviews on request with `--files`, `--commits`, and `--reviews`.
 
