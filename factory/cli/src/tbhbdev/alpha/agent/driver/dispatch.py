@@ -6,17 +6,11 @@ from typing import TYPE_CHECKING
 
 from tbhbdev import telemetry
 from tbhbdev.alpha.agent import runfiles, signing_parity, transport
+from tbhbdev.alpha.agent.driver import lifecycle as life
 from tbhbdev.alpha.agent.driver import metadata
 from tbhbdev.alpha.agent.driver.cleanup import clean, clean_archived, keep
 from tbhbdev.alpha.agent.driver.inspection import export_patch, inspect
 from tbhbdev.alpha.agent.driver.launch import execute
-from tbhbdev.alpha.agent.driver.lifecycle import (
-    kill,
-    kill_local,
-    status,
-    status_local,
-    wait,
-)
 from tbhbdev.alpha.agent.driver.metadata import not_owner
 from tbhbdev.alpha.agent.driver.steering import send
 from tbhbdev.alpha.agent.model import Invalid
@@ -40,7 +34,7 @@ def dispatch(settings: Settings, args: argparse.Namespace) -> int:
         run = metadata.load(settings, args.name)
     except FileNotFoundError as missing:
         return dispatch_without_record(settings, args, missing)
-    verbs = {"wait": wait, "status": status, "kill": kill, "keep": keep}
+    verbs = {"wait": life.wait, "status": life.status, "kill": life.kill, "keep": keep}
     try:
         if args.verb == "diff" and args.patch:
             result = export_patch(settings, run)
@@ -69,8 +63,8 @@ def dispatch_without_record(
         case "kill" | "status":
             files = runfiles.RunFiles(metadata.directory(), args.name)
             if args.verb == "kill":
-                return kill_local(files, settings.launch_wait_seconds)
-            return status_local(files)
+                return life.kill_local(files, settings.launch_wait_seconds)
+            return life.status_local(files)
         case "send":
             message = f"{args.name}: unknown run"
             raise Invalid(message) from None
