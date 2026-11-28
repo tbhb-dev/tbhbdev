@@ -303,6 +303,7 @@ cli_py_test(
     srcs = ["test_publish_io.py"],
     data = ["//:cli_check_inputs"],
     imports = ["../../.."],
+    shard_count = 3,
     deps = [
         ":pr_draft_samples",
         ":pr_test_support",

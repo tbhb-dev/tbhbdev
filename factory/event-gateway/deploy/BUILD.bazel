@@ -1,0 +1,20 @@
+# SPDX-License-Identifier: Apache-2.0
+# Copyright Tony Burns
+
+load("@tbhb_rules//repo:defs.bzl", "repo_files")
+load("//factory:go.bzl", "go_test")
+
+repo_files(
+    exclude = ["secrets/**"],
+    visibility = ["//factory/event-gateway:__pkg__"],
+)
+
+go_test(
+    name = "deploy_test",
+    srcs = ["deploy_test.go"],
+    data = [
+        "compose.yaml",
+        "up.sh",
+    ],
+    visibility = ["//factory/event-gateway:__pkg__"],
+)

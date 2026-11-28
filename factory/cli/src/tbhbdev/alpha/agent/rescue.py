@@ -12,7 +12,7 @@ from tbhbdev.alpha import pre_push_guard, secret_scan
 from tbhbdev.alpha.agent import credentials, host_tools, push
 from tbhbdev.alpha.agent.decisions import repo
 from tbhbdev.alpha.agent.model import Profile
-from tbhbdev.alpha.gh_app import GhAppError
+from tbhbdev.alpha.gh_app_runtime import GhAppError
 
 if TYPE_CHECKING:
     from tbhbdev.alpha.agent.run_host.state import Prepared, Run

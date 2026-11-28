@@ -5,6 +5,7 @@ load(
     "ansible_lint_test",
     "ansible_syntax_check_test",
 )
+load(":tags_test.bzl", "slow_external_tags_test")
 
 repo_files()
 
@@ -44,6 +45,7 @@ SRCS = glob(
         "collections/**",
         "molecule/syntax_inventory.yml",
         "BUILD.bazel",
+        "tags_test.bzl",
     ],
 ) + [":syntax_inventory"]
 
@@ -87,6 +89,7 @@ ansible_syntax_check_test(
         "playbooks/windows-update-policy.yml",
     ],
     strip_prefix = "ops/ansible",
+    tags = ["slow-external"],
 )
 
 # ansible-lint syntax-checks each playbook, which needs an inventory that ansible.cfg doesn't name.
@@ -99,6 +102,7 @@ ansible_lint_test(
     srcs = SRCS,
     env = {"ANSIBLE_INVENTORY": "molecule/syntax_inventory.yml"},
     strip_prefix = "ops/ansible",
+    tags = ["slow-external"],
 )
 
 # requirements.lock.json pins each collection's tarball by sha256, and
@@ -108,4 +112,12 @@ ansible_collections_lock_test(
     lock = "requirements.lock.json",
     requirements = "requirements.yml",
     strip_prefix = "ops/ansible",
+)
+
+slow_external_tags_test(
+    name = "slow_external_tags_test",
+    targets = [
+        "lint_test",
+        "syntax_test",
+    ],
 )

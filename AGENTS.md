@@ -28,6 +28,6 @@ Before every push, run `bazelisk run //:preflight` at the branch head. Every che
 
 ## Commands
 
-- `bazelisk build //...` and `bazelisk test //...` run all builds and repository checks.
+- `bazelisk build //...` and `bazelisk test //...` run all builds and repository checks, and agent runs use the preflight command and leave whole-repository runs to CI.
 - `bazelisk run //:gazelle` updates generated `BUILD.bazel` files, and `bazelisk run //:gazelle -- -mode=diff` (or `bazelisk test //:gazelle_test`) fails when generated `BUILD.bazel` files are stale.
 - Use Conventional Commits without sign-off trailers, and use `tbhbdev alpha pr create` for pull requests.

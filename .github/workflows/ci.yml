@@ -410,10 +410,51 @@ jobs:
           sarif_file: ${{ runner.temp }}/gomodscan.sarif
           category: agent-capacity-dependencies
 
+  event-gateway:
+    name: event-gateway image and vulnerability scans
+    runs-on: ubuntu-26.04
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up Bazel for CI
+        uses: ./.github/actions/setup-bazel-ci
+        with:
+          disk-cache: ${{ github.workflow }}-${{ github.job }}-ubuntu-26.04
+          cache-save: ${{ github.event_name == 'merge_group' }}
+          targets: >-
+            //factory/event-gateway/container:image_multiarch
+            //factory/event-gateway/container:image_config_test
+            //factory/event-gateway:govulncheck
+
+      - name: Build and test the Linux images
+        run: >-
+          bazelisk test --config=ci -c opt
+          //factory/event-gateway/container:image_multiarch
+          //factory/event-gateway/container:image_config_test
+
+      - name: Scan for reachable Go vulnerabilities
+        run: >-
+          bazelisk run --config=ci //factory/event-gateway:govulncheck
+          -- --sarif="$RUNNER_TEMP/event-gateway.sarif"
+
+      - name: Retain the Go vulnerability scan
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9  # v7.0.2
+        with:
+          name: event-gateway-govulncheck
+          path: ${{ runner.temp }}/event-gateway.sarif
+          if-no-files-found: ignore
+
   conclusion:
     name: conclusion
     if: always()
-    needs: [bazel, cli-coverage, gazelle-current, gitleaks, prose, pr-size, agent-capacity]
+    needs: [bazel, cli-coverage, gazelle-current, gitleaks, prose, pr-size, agent-capacity, event-gateway]
     runs-on: ubuntu-26.04
     timeout-minutes: 5
     steps:

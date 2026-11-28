@@ -105,6 +105,22 @@ def test_ci_shards_affected_targets(tmp_path: Path) -> None:
             assert run.stdout.splitlines() == expected_output
 
 
+def test_ci_test_steps_do_not_exclude_slow_external() -> None:
+    jobs = _workflow_jobs()
+    test_runs: list[str] = []
+    for job in jobs.values():
+        for step in _workflow_steps(job):
+            script = step.get("run")
+            if isinstance(script, str) and re.search(
+                r"\bbazel(?:isk)?\s+test\b", script
+            ):
+                test_runs.append(script)
+    assert test_runs
+    for script in test_runs:
+        assert "--test_tag_filters" not in script
+        assert "slow-external" not in script
+
+
 def test_ci_runs_cli_coverage_in_parallel() -> None:
     jobs = _workflow_jobs()
     bazel = _mapping(jobs["bazel"])

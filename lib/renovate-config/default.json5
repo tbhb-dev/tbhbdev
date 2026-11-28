@@ -136,6 +136,31 @@
       rebaseWhen: "behind-base-branch",
     },
 
+    // Held: "Hold two Renovate updates that need planned migrations". The
+    // `required_version` constraints under ops/tofu name the OpenTofu release
+    // the modules accept, and no pinned binary backs them yet. Lift this rule
+    // when a real binary pin exists, the hosts run it, and the constraint moves
+    // with it.
+    {
+      description: "Hold required_version in ops/tofu until the OpenTofu binary is pinned",
+      matchManagers: ["terraform"],
+      matchFileNames: ["ops/tofu/**"],
+      matchDepTypes: ["required_version"],
+      enabled: false,
+    },
+
+    // Held: "Hold two Renovate updates that need planned migrations". Lift
+    // this rule when the Astro checker, typescript-eslint and Stryker release
+    // versions that support TypeScript 7. lib/rules/storybook already declares
+    // 7.0.2 and stays outside the rule.
+    {
+      description: "Hold typescript below 7 in the astro and typescript rules",
+      matchManagers: ["npm"],
+      matchPackageNames: ["typescript"],
+      matchFileNames: ["lib/rules/astro/package.json", "lib/rules/typescript/package.json"],
+      allowedVersions: "<7",
+    },
+
     // A hosted runner image (ubuntu-24.04, macos-15, windows-2025) moves as
     // one PR per image: its `runs-on` lines, which the github-actions manager
     // reads, and its matrix entries, which the runner-matrix manager below

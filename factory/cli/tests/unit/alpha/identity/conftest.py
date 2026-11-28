@@ -11,9 +11,18 @@ from unit.alpha.identity.identity_fixtures import (
     plain_checkout,
     repo,
     wired,
+    wired_seed,
 )
 
-__all__ = ["fake_bin", "isolated", "launch_file", "plain_checkout", "repo", "wired"]
+__all__ = [
+    "fake_bin",
+    "isolated",
+    "launch_file",
+    "plain_checkout",
+    "repo",
+    "wired",
+    "wired_seed",
+]
 
 
 @pytest.fixture(autouse=True)

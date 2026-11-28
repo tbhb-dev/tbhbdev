@@ -10,6 +10,14 @@ bazel_dep(name = "gazelle", version = "0.54.0")
 bazel_dep(name = "rules_oci", version = "2.3.0")
 bazel_dep(name = "rules_pkg", version = "1.3.0")
 
+# Backport the rules_go #4791 nogo fix for golang.org/x/tools v0.53.0.
+# Remove the patch when the rules_go release includes the fix.
+single_version_override(
+    module_name = "rules_go",
+    patch_strip = 1,
+    patches = ["//:third_party/rules_go_nogo.patch"],
+)
+
 # Public, digest-pinned base. Fetching happens before the sandboxed build.
 oci = use_extension("@rules_oci//oci:extensions.bzl", "oci")
 oci.pull(
@@ -56,16 +64,27 @@ go_deps = use_extension("@gazelle//:extensions.bzl", "go_deps")
 go_deps.from_file(go_work = "//:go.work")
 use_repo(
     go_deps,
+    "com_github_coder_websocket",
     "com_github_creack_pty",
+    "com_github_go_logr_logr",
+    "com_github_modelcontextprotocol_go_sdk",
+    "com_github_nats_io_nats_go",
+    "com_github_nats_io_nats_server_v2",
     "com_github_stretchr_testify",
     "io_etcd_go_bbolt",
+    "io_opentelemetry_go_contrib_bridges_otelslog",
     "io_opentelemetry_go_otel",
     "io_opentelemetry_go_otel_exporters_otlp_otlpmetric_otlpmetricgrpc",
     "io_opentelemetry_go_otel_exporters_otlp_otlpmetric_otlpmetrichttp",
+    "io_opentelemetry_go_otel_exporters_otlp_otlptrace",
     "io_opentelemetry_go_otel_metric",
     "io_opentelemetry_go_otel_sdk",
+    "io_opentelemetry_go_otel_sdk_log",
     "io_opentelemetry_go_otel_sdk_metric",
+    "io_opentelemetry_go_otel_trace",
     "io_opentelemetry_go_proto_otlp",
+    "io_temporal_go_api",
+    "io_temporal_go_sdk",
     "org_golang_google_protobuf",
     "org_golang_x_sys",
 )
@@ -79,7 +98,11 @@ go_mod_proxy.from_file(
     name = "agent_capacity_go_mod_proxy",
     go_sum = "//factory/agent-capacity:go.sum",
 )
-use_repo(go_mod_proxy, "agent_capacity_go_mod_proxy", "github_metrics_go_mod_proxy")
+go_mod_proxy.from_file(
+    name = "event_gateway_go_mod_proxy",
+    go_sum = "//factory/event-gateway:go.sum",
+)
+use_repo(go_mod_proxy, "agent_capacity_go_mod_proxy", "event_gateway_go_mod_proxy", "github_metrics_go_mod_proxy")
 
 python_toolchains = use_extension("@rules_python//python/extensions:python.bzl", "python")
 python_toolchains.toolchain(python_version = "3.15")
@@ -203,6 +226,52 @@ use_repo(
 # to a SchemaStore commit, because www.schemastore.org serves whatever is
 # current and its digests drift.
 http_file = use_repo_rule("@bazel_tools//tools/build_defs/repo:http.bzl", "http_file")
+
+http_archive = use_repo_rule("@bazel_tools//tools/build_defs/repo:http.bzl", "http_archive")
+
+# Temporal CLI v1.10.1 archives follow this URL pattern (Windows uses .zip).
+# https://github.com/temporalio/cli/releases/download/v1.10.1/temporal_cli_1.10.1_<os>_<arch>.tar.gz
+# Pins come from the release's own checksum file.
+# https://github.com/temporalio/cli/releases/download/v1.10.1/checksums.txt
+http_archive(
+    name = "temporal_linux_amd64",
+    build_file_content = 'exports_files(["temporal"])',
+    dev_dependency = True,
+    sha256 = "4c1500e2ce2d4de136e5fe8852d9b7f82eb62f19b6b383b3e0c040519a9d20b1",
+    urls = ["https://github.com/temporalio/cli/releases/download/v1.10.1/temporal_cli_1.10.1_linux_amd64.tar.gz"],
+)
+
+http_archive(
+    name = "temporal_linux_arm64",
+    build_file_content = 'exports_files(["temporal"])',
+    dev_dependency = True,
+    sha256 = "2f748e9411b37c9cabb57f1f08e37765388c12b5534432c7aea28b593df9145d",
+    urls = ["https://github.com/temporalio/cli/releases/download/v1.10.1/temporal_cli_1.10.1_linux_arm64.tar.gz"],
+)
+
+http_archive(
+    name = "temporal_darwin_amd64",
+    build_file_content = 'exports_files(["temporal"])',
+    dev_dependency = True,
+    sha256 = "8ec6c513ad2177de4eb15d2cb17a4fe5070e6078afd7f80bdfcc37fae459d3c4",
+    urls = ["https://github.com/temporalio/cli/releases/download/v1.10.1/temporal_cli_1.10.1_darwin_amd64.tar.gz"],
+)
+
+http_archive(
+    name = "temporal_darwin_arm64",
+    build_file_content = 'exports_files(["temporal"])',
+    dev_dependency = True,
+    sha256 = "94f7f982b26438e8abbde6000ba471b694be6a2413b31f6162f87a9f9c48c738",
+    urls = ["https://github.com/temporalio/cli/releases/download/v1.10.1/temporal_cli_1.10.1_darwin_arm64.tar.gz"],
+)
+
+http_archive(
+    name = "temporal_windows_amd64",
+    build_file_content = 'exports_files(["temporal.exe"])',
+    dev_dependency = True,
+    sha256 = "5069cdb76569914305ed7c90e1c8406cd27bcb6c2a822fce201a488c34ab074f",
+    urls = ["https://github.com/temporalio/cli/releases/download/v1.10.1/temporal_cli_1.10.1_windows_amd64.zip"],
+)
 
 cue_test_tool = use_repo_rule("//factory/cli/tests:cue_test_tool.bzl", "cue_test_tool")
 

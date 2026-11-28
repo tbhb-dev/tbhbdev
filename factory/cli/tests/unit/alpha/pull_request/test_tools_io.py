@@ -65,6 +65,20 @@ def test_find_tool_prefers_the_raw_gitleaks_shim(draft_world: World) -> None:
     assert pr_tools.find_tool("gitleaks", unwrapped=True) == str(shim)
 
 
+def test_find_tool_accepts_an_older_raw_gitleaks_shim(draft_world: World) -> None:
+    worktree_tool(draft_world, "gitleaks")
+    shim = worktree_tool(draft_world, "gitleaks-raw", "print('8.29.0')")
+    assert pr_tools.find_tool("gitleaks", unwrapped=True) == str(shim)
+
+
+def test_find_tool_refuses_a_broken_raw_gitleaks_shim(draft_world: World) -> None:
+    worktree_tool(draft_world, "gitleaks")
+    shim = worktree_tool(draft_world, "gitleaks-raw", "import sys\nsys.exit(1)")
+    with pytest.raises(SystemExit) as error:
+        pr_tools.find_tool("gitleaks", unwrapped=True)
+    assert str(error.value) == f"gitleaks at {shim} reports no version"
+
+
 def test_find_tool_refuses_the_wrong_version(draft_world: World) -> None:
     version = TOOL_VERSIONS["vale"]
     write_fake(draft_world.bin / "vale", f"print('vale version {version}0')")
@@ -74,23 +88,66 @@ def test_find_tool_refuses_the_wrong_version(draft_world: World) -> None:
         pr_tools.find_tool("vale")
 
 
-def test_find_tool_refuses_a_wrong_shim_even_with_the_right_path_version(
-    draft_world: World,
+def test_find_tool_refuses_a_wrong_mise_version(
+    draft_world: World, tmp_path: Path
 ) -> None:
-    shim = worktree_tool(draft_world, "scc", "print('0.0.0')")
-    with pytest.raises(SystemExit, match=rf"{re.escape(str(shim))} reports 0\.0\.0"):
-        pr_tools.find_tool("scc")
+    (draft_world.bin / "cspell").unlink()
+    installed = tmp_path / "mise-cspell"
+    write_fake(installed, "print('10.5.1')")
+    draft_world.fake("mise", stdout=f"{installed}\n")
+    version = TOOL_VERSIONS["cspell"]
+    with pytest.raises(SystemExit) as error:
+        pr_tools.find_tool("cspell")
+    assert str(error.value) == (
+        f"cspell at {installed} reports 10.5.1, expected pinned version {version}"
+    )
 
 
 @pytest.mark.parametrize(
-    "body", ["pass", "print('missing version info')", "print('4.1.0'); sys.exit(2)"]
+    ("name", "reported"),
+    [
+        ("cspell", "10.5.1"),
+        ("gitleaks", "8.29.0"),
+        ("rumdl", "rumdl 0.3.4"),
+        ("scc", "scc version 4.0.0"),
+        ("vale", "vale version 3.27.0"),
+    ],
+)
+def test_find_tool_accepts_an_older_shim_even_with_the_right_path_version(
+    draft_world: World, name: str, reported: str
+) -> None:
+    shim = worktree_tool(draft_world, name, f"print({reported!r})")
+    assert pr_tools.find_tool(name) == str(shim)
+
+
+@pytest.mark.parametrize(
+    "body",
+    [
+        "pass",
+        "print('missing version info')",
+        "print('not-a-version')",
+        "print('4.1.0'); sys.exit(2)",
+    ],
 )
 def test_find_tool_requires_a_successful_version_report(
     draft_world: World, body: str
 ) -> None:
-    worktree_tool(draft_world, "scc", f"import sys\n{body}")
-    with pytest.raises(SystemExit, match=r"scc.*no version"):
+    shim = worktree_tool(draft_world, "scc", f"import sys\n{body}")
+    with pytest.raises(SystemExit) as error:
         pr_tools.find_tool("scc")
+    assert str(error.value) == f"scc at {shim} reports no version"
+
+
+def test_find_tool_refuses_an_unstartable_shim(draft_world: World) -> None:
+    shim = draft_world.root / ".bazel_env" / "bin" / "cspell"
+    shim.parent.mkdir(parents=True, exist_ok=True)
+    shim.write_text("#!/nonexistent/interpreter\n")
+    shim.chmod(0o755)
+    with pytest.raises(
+        SystemExit,
+        match=rf"^cannot check cspell version at {re.escape(str(shim))}: ",
+    ):
+        pr_tools.find_tool("cspell")
 
 
 def test_find_tool_refuses_an_unusable_mise_tool(draft_world: World) -> None:

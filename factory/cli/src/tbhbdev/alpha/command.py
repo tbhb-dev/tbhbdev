@@ -5,7 +5,8 @@ only the tbhb-dev harness hooks and agents in tbhb-dev repositories should
 call them.
 
 The harness hooks run on every tool call, so this module imports pr, review,
-gh_app and merge, which load yaml, jsonschema and the Connect client, only when
+the GitHub App and merge commands, which load yaml, jsonschema and the Connect
+client, only when
 one of them runs.
 """
 
@@ -167,7 +168,7 @@ def issue(argv: list[str], prog: str) -> int:
 
 
 def gh_app_command(argv: list[str], prog: str) -> int:
-    from tbhbdev.alpha.gh_app import main as gh_app_main  # noqa: PLC0415 -- see the docstring
+    from tbhbdev.alpha.gh_app_command import main as gh_app_main  # noqa: PLC0415 -- see the docstring
 
     return gh_app_main(argv, prog)
 

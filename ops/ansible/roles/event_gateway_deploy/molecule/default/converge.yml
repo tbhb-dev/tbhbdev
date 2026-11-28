@@ -17,3 +17,4 @@
       vars:
         event_gateway_deploy_repo_url: /home/ops/source
         event_gateway_deploy_commit: "{{ event_gateway_deploy_fixture_commit.stdout }}"
+        event_gateway_deploy_session_bind: 192.0.2.1

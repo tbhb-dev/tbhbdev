@@ -131,6 +131,7 @@ cli_py_test(
     name = "test_replay_io",
     srcs = ["test_replay_io.py"],
     imports = ["../../../.."],
+    shard_count = 3,
     deps = [
         "//factory/cli/src/tbhbdev/alpha:repo",
         "//factory/cli/src/tbhbdev/alpha/identity:attribution",

@@ -75,3 +75,15 @@ sh_test(
         "renovate_test_helpers.py",
     ],
 )
+
+# Keep the held tofu constraint and TypeScript 7 updates held in default.json5.
+sh_test(
+    name = "renovate_holds_test",
+    size = "small",
+    srcs = ["renovate_holds_test.sh"],
+    data = [
+        "default.json5",
+        "renovate_holds_test.py",
+        "renovate_test_helpers.py",
+    ],
+)

@@ -17,7 +17,7 @@ import pytest
 
 from tbhbdev.admin import policy, request
 from tbhbdev.admin.audit import GENESIS, Audit, RefusedError, record
-from tbhbdev.alpha import gh_app
+from tbhbdev.alpha import gh_app_runtime
 
 
 def unchained(lines: list[str]) -> list[dict[str, object]]:
@@ -416,17 +416,17 @@ def test_fail_closed_before_any_io(
     def unavailable(*_args: object, **_kwargs: object) -> int:
         raise OSError
 
-    def no_store() -> gh_app.Reader:
+    def no_store() -> gh_app_runtime.Reader:
         pytest.fail("refusal reached the secret reader")
 
     def no_network(_req: httpx2.Request) -> httpx2.Response:
         pytest.fail("refusal reached HTTP")
 
-    env = gh_app.Env(
+    env = gh_app_runtime.Env(
         tmp_path,
         lambda: 0,
         no_store,
-        gh_app.run_openssl,
+        gh_app_runtime.run_openssl,
         httpx2.MockTransport(no_network),
     )
     runtime = request.Runtime(Audit(tmp_path / "admin"), env, tmp_path / "enabled")
