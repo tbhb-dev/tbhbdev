@@ -111,7 +111,11 @@ def test_kill_waits_past_the_setup_record_for_the_harness_group(
     files.path("run.lock").touch()
     _setup_record(files)
     # The setup worker's group is gone; any use of its record would fail.
-    identity = Mock(side_effect=lambda pgid: Group(pgid, "current", "7"))
+
+    def current(pgid: int) -> Group:
+        return Group(pgid, "current", "7")
+
+    identity = Mock(side_effect=current)
     stop = Mock(return_value=True)
     monkeypatch.setattr(process_group, "identity", identity)
     monkeypatch.setattr(process_group, "stop_owned", stop)
