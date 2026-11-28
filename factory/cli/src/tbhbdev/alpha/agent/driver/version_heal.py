@@ -113,8 +113,8 @@ def sync(
     local: str,
     installed: str,
     deadline: float | None = None,
-) -> None:
-    """Install origin main on each side that differs; restart if driver updates."""
+) -> str:
+    """Return the target commit after syncing, or restart if the driver updates."""
     _remaining(deadline)
     head = version_check.latest(read_origin)
     if head is None:
@@ -122,7 +122,7 @@ def sync(
         raise LookupError(message)
     host_commit = version_check.parse_stamp(installed) or version.UNKNOWN
     driver_commit = version_check.parse_stamp(local) or version.UNKNOWN
-    if host_commit == driver_commit == head:
+    if host_commit == driver_commit == head and local != installed:
         message = "host and driver already match origin main"
         raise LookupError(message)
     install = cli_build.script(head, version_check.REPO_URL)
@@ -152,33 +152,31 @@ def sync(
             )
         report_install(result.stdout.strip(), failed=result.returncode != 0)
         restart(f"version mismatch: driver {local!r}; host {installed!r}")
+    return head
 
 
 def heal_candidate(
     settings: Settings,
     host: Host,
-    timeout: float,
-    deadline: float | None = None,
-) -> tuple[tuple[str | None, str | None] | None, bool]:
-    """Heal HOST once before limits; return ((mismatch, error) or None, synced)."""
+    deadline: float,
+) -> tuple[str | None, str | None] | None:
+    """Heal HOST once before limits and return any failure."""
     key = (host.name, host.account)
     if (prior := _ATTEMPTED.get(key)) is not None:
-        return (prior if prior[1] is not None else None), False
-    local, mismatch_text, synced = version.line(), None, False
+        return prior if prior[1] is not None else None
+    local, mismatch_text = version.line(), None
     try:
-        installed = _installed(settings, host, timeout)
+        installed = _installed(settings, host, _remaining(deadline))
         try:
             same_version(local, installed)
         except Invalid as mismatch:
             mismatch_text = str(mismatch)
-            end = time.monotonic() + timeout if deadline is None else deadline
-            sync(settings, host, local, installed, end)
-            synced = True
+            sync(settings, host, local, installed, deadline)
     except (LookupError, OSError, subprocess.SubprocessError) as exc:
         _ATTEMPTED[key] = (mismatch_text, str(exc))
-        return _ATTEMPTED[key], False
+        return _ATTEMPTED[key]
     _ATTEMPTED[key] = (mismatch_text, None)
-    return None, synced
+    return None
 
 
 def heal_hosts(settings: Settings, names: Sequence[str]) -> int:
@@ -188,11 +186,15 @@ def heal_hosts(settings: Settings, names: Sequence[str]) -> int:
         for host in [select_host(settings, name, None) for name in names]:
             try:
                 before = after = _installed(settings, host)
-                if before != local:
-                    sync(settings, host, local, before)
+                head = sync(settings, host, local, before)
+                if version_check.parse_stamp(before) != head:
                     after = _installed(settings, host)
             except (LookupError, OSError, subprocess.SubprocessError) as exc:
                 print(f"{host.name}: heal failed: {exc}")
+                failed = True
+                continue
+            if version_check.parse_stamp(after) != head:
+                print(f"{host.name}: heal failed: expected {head}, got {after}")
                 failed = True
             else:
                 print(f"{host.name}: before {before} after {after}")

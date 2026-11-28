@@ -164,6 +164,23 @@ def test_versions_match_without_sync(monkeypatch: pytest.MonkeyPatch) -> None:
     unexpected.assert_not_called()
 
 
+@pytest.mark.parametrize("after", [NEW_LINE, OLD_LINE])
+def test_heal_checks_main_when_driver_and_host_match(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], after: str
+) -> None:
+    shell = Mock(side_effect=[OLD_LINE, SUMMARY, after])
+    monkeypatch.setattr(version_heal.version, "line", lambda: OLD_LINE)
+    run = Mock(side_effect=[ORIGIN, subprocess.CompletedProcess(INSTALL, 0, SUMMARY)])
+    monkeypatch.setattr(version_heal.subprocess, "run", run)
+    monkeypatch.setattr(version_heal, "restart", Mock())
+    monkeypatch.setattr(version_heal.transport, "shell", shell)
+    status = version_heal.heal_hosts(CONFIG, [HOST.name])
+    assert status == (0 if after == NEW_LINE else 1)
+    assert shell.call_count == 3
+    assert HEAD in shell.call_args_list[1].args[2]
+    assert after in capsys.readouterr().out
+
+
 @pytest.mark.parametrize("host_after", [NEW_LINE, f"tbhbdev 0 ({'c' * 40})"])
 @pytest.mark.usefixtures("isolated_home")
 def test_host_sync_retries_review_preflight(

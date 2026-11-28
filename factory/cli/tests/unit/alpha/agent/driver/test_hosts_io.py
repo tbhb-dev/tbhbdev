@@ -104,6 +104,7 @@ def test_exec_without_host_uses_the_idle_linux_host(
         (20, "slot", [5, 4]),
         (20, "limits at deadline", [5]),
         (20, "limits timeout", [5]),
+        (20, "install lock", [5]),
     ],
 )
 def test_exec_preserves_preflight_time_after_a_slow_probe(
@@ -116,8 +117,9 @@ def test_exec_preserves_preflight_time_after_a_slow_probe(
     preferred = dataclasses.replace(LINUX, auto_select=True)
     slow = dataclasses.replace(preferred, name="example-slow")
     last = dataclasses.replace(preferred, name="example-last")
-    limits_timeout = delayed_probe == "limits timeout"
-    candidates = (slow, preferred) if limits_timeout else (preferred, slow, last)
+    install_lock = delayed_probe == "install lock"
+    times_out = delayed_probe in {"limits timeout", "install lock"}
+    candidates = (slow, preferred) if times_out else (preferred, slow, last)
     config = dataclasses.replace(
         CONFIG, hosts=candidates, launch_wait_seconds=launch_wait
     )
@@ -128,6 +130,11 @@ def test_exec_preserves_preflight_time_after_a_slow_probe(
     )
     elapsed = 0.0
     set_clock(monkeypatch, lambda: elapsed)
+    if install_lock:
+        current = f"tbhbdev 0 ({'a' * 40})"
+        host.configure(version=current)
+        monkeypatch.setattr(version_check, "latest", Mock(return_value="a" * 40))
+        monkeypatch.setattr(version, "line", lambda: current)
     real_shell = transport.shell
     slow_timeouts: list[float] = []
 
@@ -141,9 +148,11 @@ def test_exec_preserves_preflight_time_after_a_slow_probe(
     ) -> str:
         nonlocal elapsed
         assert timeout > 0
+        if install_lock and target == slow and script.endswith("--version"):
+            return f"tbhbdev 0 ({'b' * 40})"
         if target == slow and "# tbhbdev-heal-probe" not in script:
             slow_timeouts.append(timeout)
-            if limits_timeout or script == remote_host.check_slot(slow, Profile.BUILD):
+            if times_out or script == remote_host.check_slot(slow, Profile.BUILD):
                 elapsed += timeout
                 message = "probe timed out"
                 raise transport.TransportError(message)
