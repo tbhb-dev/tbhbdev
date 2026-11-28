@@ -59,3 +59,31 @@ def test_main_keeps_report(
     (report,) = tmp_path.glob("preflight-*/design-report.md")
     assert report.read_text(encoding="utf-8") == "report\n"
     assert str(report.parent) in capsys.readouterr().out
+
+
+def test_affected_tests_excludes_slow_external(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    targets = tmp_path / "targets.txt"
+    targets.write_text(
+        "//ops/ansible:lint_test\n//ops/ansible:syntax_test\n", encoding="utf-8"
+    )
+    (tmp_path / "selection").write_text(f"file={targets}\n", encoding="utf-8")
+    commands: list[tuple[object, ...]] = []
+
+    async def fake_run(*command: object, **_kwargs: object) -> bytes:
+        commands.append(command)
+        return b""
+
+    monkeypatch.setattr(preflight, "run", fake_run)
+
+    asyncio.run(preflight.affected_tests("base-sha", "head-sha", tmp_path))
+
+    assert commands[-1] == (
+        "bazelisk",
+        "test",
+        "--config=ci",
+        "--test_tag_filters=-slow-external",
+        "--build_tests_only",
+        f"--target_pattern_file={targets}",
+    )
