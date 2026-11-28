@@ -61,20 +61,15 @@ def _owned_dir(status: os.stat_result) -> bool:
     return stat.S_ISDIR(status.st_mode) and status.st_uid == os.getuid()
 
 
-def _open_owned(home: Path, base: Path) -> tuple[int, os.stat_result] | None:
-    """Open the base's parent and return its fd with the base's status.
+def open_owned_dir(anchor: Path, target: Path) -> tuple[int, os.stat_result] | None:
+    """Open target's parent and return its fd with target's lstat, no-follow.
 
     Every directory below the trusted anchor is opened with O_NOFOLLOW relative
     to the one before, and must be owned by the agent's uid, so a symlinked
     ancestor cannot redirect a deletion and the returned fd pins the validated
     chain even if a path is replaced later. The caller closes the fd.
     """
-    anchor = next((a for a, root in _bazel_roots(home) if base.parent == root), None)
-    if anchor is None and base.parent.is_relative_to(bazel_servers.MEMORY_DISK):
-        anchor = bazel_servers.MEMORY_DISK
-    if anchor is None or ".." in base.parts:
-        return None
-    names = base.relative_to(anchor).parts
+    names = target.relative_to(anchor).parts
     try:
         fd = os.open(anchor, os.O_RDONLY | os.O_DIRECTORY)
     except OSError:
@@ -93,6 +88,27 @@ def _open_owned(home: Path, base: Path) -> tuple[int, os.stat_result] | None:
         os.close(fd)
         return None
     return fd, status
+
+
+def _open_owned(home: Path, base: Path) -> tuple[int, os.stat_result] | None:
+    anchor = next((a for a, root in _bazel_roots(home) if base.parent == root), None)
+    if anchor is None and base.parent.is_relative_to(bazel_servers.MEMORY_DISK):
+        anchor = bazel_servers.MEMORY_DISK
+    if anchor is None or ".." in base.parts:
+        return None
+    return open_owned_dir(anchor, base)
+
+
+def remove_owned_dir(anchor: Path, target: Path) -> bool:
+    """Remove an owned directory below anchor through its pinned parent fd."""
+    if (opened := open_owned_dir(anchor, target)) is None:
+        return False
+    fd, _ = opened
+    try:
+        _remove_base(fd, target.name)
+        return not _exists(fd, target.name)
+    finally:
+        os.close(fd)
 
 
 def owned_base(home: Path, base: Path) -> os.stat_result | None:

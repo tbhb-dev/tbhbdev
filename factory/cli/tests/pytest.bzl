@@ -32,7 +32,6 @@ _IO_TESTS = [
     "test_alpha_agent_transport",
     "test_alpha_close",
     "test_alpha_gh_shim",
-    "test_alpha_monorepo",
     "test_alpha_opened",
     "test_alpha_pre_push_guard",
     "test_alpha_repo",

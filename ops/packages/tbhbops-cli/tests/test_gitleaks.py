@@ -31,9 +31,14 @@ def facts(**changes: object) -> gitleaks.Facts:
         "endpoints": ("op-connect.tail-ex.net",),
         "names": ("k.chain", "svc", "srv"),
         "account": "acct.example.com",
-        "session_sockets": ("/tmp/sock/a.sock", "/var/x y"),  # noqa: S108  # never opened
+        "session_sockets": ("/tmp/sock/a.sock", "/var/x y"),  # never opened
     }
     return gitleaks.Facts(**(base | changes))  # pyrefly: ignore
+
+
+def joined(sep: str, *parts: str) -> str:
+    """Join PARTS with SEP so no matching literal sits in the source."""
+    return sep.join(parts)
 
 
 def test_the_config_is_the_one_tbhbdev_host_bootstrap_makes() -> None:
@@ -43,7 +48,7 @@ def test_the_config_is_the_one_tbhbdev_host_bootstrap_makes() -> None:
     assert gitleaks.render(made) == (
         GOLDEN.read_text(encoding="utf-8")
         .replace("{slash}", "/")
-        .replace("{overlay_prefix}", ":".join(("fd7a", "115c", "a1e0")))
+        .replace("{overlay_prefix}", joined(":", "fd7a", "115c", "a1e0"))
     )
 
 
@@ -168,7 +173,7 @@ def test_text_without_the_canary_is_a_problem() -> None:
     ],
 )
 def test_a_short_or_common_name_is_common(name: str, common: bool) -> None:
-    assert gitleaks._common(name, WORDS) is common  # noqa: SLF001
+    assert gitleaks._common(name, WORDS) is common
 
 
 @pytest.mark.parametrize(
@@ -187,13 +192,13 @@ def test_a_short_or_common_name_is_common(name: str, common: bool) -> None:
 def test_a_boundary_follows_ascii_word_characters_only(
     text: str, at: int, bound: str
 ) -> None:
-    assert gitleaks._bound(text, at) == bound  # noqa: SLF001
+    assert gitleaks._bound(text, at) == bound
 
 
 def test_a_literal_is_a_case_blind_whole_word_with_escapes() -> None:
-    assert gitleaks._literal("a.b") == r"(?i)\ba\.b\b"  # noqa: SLF001
-    assert gitleaks._literal(".a.") == r"(?i)\.a\."  # noqa: SLF001
-    assert gitleaks._literal("-a-") == r"(?i)\-a\-"  # noqa: SLF001
+    assert gitleaks._literal("a.b") == r"(?i)\ba\.b\b"
+    assert gitleaks._literal(".a.") == r"(?i)\.a\."
+    assert gitleaks._literal("-a-") == r"(?i)\-a\-"
 
 
 @pytest.mark.parametrize(
@@ -219,12 +224,12 @@ def test_a_family_of_names_gives_its_shared_prefix_as_a_stem(
 
 def test_a_family_whose_names_are_all_equal_keeps_one_stem() -> None:
     assert gitleaks.stems(["abcd", "abcd"]) == ["abcd"]
-    assert gitleaks._shared(["abc"]) == "abc"  # noqa: SLF001
-    assert gitleaks._shared(["moon", "moss", "mop"]) == "mo"  # noqa: SLF001
+    assert gitleaks._shared(["abc"]) == "abc"
+    assert gitleaks._shared(["moon", "moss", "mop"]) == "mo"
 
 
 def test_a_common_repository_name_matches_only_scoped_and_others_either_way() -> None:
-    made, left = gitleaks._repos(facts())  # noqa: SLF001
+    made, left = gitleaks._repos(facts())
     assert left == 2
     by_name = {rule.regex: rule for rule in made}
     scoped = r"(?i)\bex\-org/config\b"
@@ -246,7 +251,7 @@ def repo_regex(
     name: str, words: frozenset[str] = frozenset(), owner: str = "tbhb-dev"
 ) -> str:
     """The one rule that `_repos` makes for tbhb-dev/NAME."""
-    made, _ = gitleaks._repos(facts(repos=((owner, name),), words=words))  # noqa: SLF001
+    made, _ = gitleaks._repos(facts(repos=((owner, name),), words=words))
     (rule,) = made
     return rule.regex
 
@@ -284,7 +289,7 @@ def test_a_listed_repository_name_matches_only_with_its_owner() -> None:
 def test_the_known_ordinary_repository_names_match_only_with_their_owner(
     name: str,
 ) -> None:
-    assert gitleaks._ordinary(name, frozenset()) is True  # noqa: SLF001
+    assert gitleaks._ordinary(name, frozenset()) is True
     assert not re.search(repo_regex(name), f"the {name.lstrip('.')} here")
 
 
@@ -305,7 +310,7 @@ def test_the_known_ordinary_repository_names_match_only_with_their_owner(
 def test_a_name_made_only_of_common_words_is_ordinary(
     name: str, *, ordinary: bool
 ) -> None:
-    assert gitleaks._ordinary(name, ORDINARY_WORDS) is ordinary  # noqa: SLF001
+    assert gitleaks._ordinary(name, ORDINARY_WORDS) is ordinary
 
 
 def test_a_name_of_common_words_joined_by_hyphens_matches_only_with_its_owner() -> None:
@@ -354,22 +359,22 @@ def test_the_rules_match_what_they_are_for() -> None:
     assert hits("tailnet-ipv4", quad(100, 127, 255, 254))
     assert not hits("tailnet-ipv4", quad(100, 128, 0, 1))
     assert not hits("tailnet-ipv4", quad(100, 63, 0, 1))
-    assert hits("tailnet-ipv6", ":".join(("fd7a", "115c", "a1e0", "ab12", "", "1")))
+    assert hits("tailnet-ipv6", joined(":", "fd7a", "115c", "a1e0", "ab12", "", "1"))
     assert hits("private-ipv4", quad(10, 1, 2, 3))
     assert hits("private-ipv4", quad(172, 16, 0, 1))
     assert hits("private-ipv4", quad(172, 31, 255, 1))
     assert hits("private-ipv4", quad(192, 168, 1, 1))
     assert not hits("private-ipv4", quad(172, 32, 0, 1))
     assert not hits("private-ipv4", quad(11, 1, 2, 3))
-    assert hits("local-name", ".".join(("box", "local")))
-    assert hits("mac-address", ":".join(['02', '00', '5e', '00', '53', '07']))
-    assert hits("mac-address", "-".join(['02', '00', '5E', '00', '53', '04']))
+    assert hits("local-name", joined(".", "box", "local"))
+    assert hits("mac-address", joined(":", "02", "00", "5e", "00", "53", "07"))
+    assert hits("mac-address", joined("-", "02", "00", "5E", "00", "53", "04"))
     assert hits("op-reference", "op:\x2f/vault/item/field")
     assert hits("home-path", "/Users/opr/x")
-    assert hits("home-path", "/".join(("/home", gitleaks.AGENT, "x")))
+    assert hits("home-path", joined("/", "/home", gitleaks.AGENT, "x"))
     assert not hits("home-path", "/Users/oprah/x")
-    assert hits("tool-dir", "/".join(("/abc", ".config", "awrel")))
-    assert hits("tool-dir", "/".join(("/abc", ".local", "share", "tbhbdev", "x")))
+    assert hits("tool-dir", joined("/", "/abc", ".config", "awrel"))
+    assert hits("tool-dir", joined("/", "/abc", ".local", "share", "tbhbdev", "x"))
     assert hits("checkout-path", "/Users/x/Code/ex/y")
     assert hits("tailnet-suffix", "box.TAIL-EX.NET")
     assert hits("op-account", "ACCT.example.com")
@@ -401,3 +406,65 @@ def test_a_name_that_ends_or_starts_in_punctuation_gets_no_boundary_there() -> N
     ]
     (checkout,) = regexes("checkout-path")
     assert checkout.endswith(r"/Code/ex\.")
+
+
+WORKER_TYPES_PATH = r"(?:^|/)worker-configuration\.d\.ts$"
+
+
+def _rendered_rules() -> dict[str, dict[str, object]]:
+    made, _ = gitleaks.rules(facts())
+    parsed = tomllib.loads(gitleaks.render(made))
+    return {rule["id"]: rule for rule in parsed["rules"]}
+
+
+def test_mac_address_rule_allows_only_worker_configuration_types() -> None:
+    by_id = _rendered_rules()
+    assert by_id["mac-address-1"]["allowlists"] == [{"paths": [WORKER_TYPES_PATH]}]
+    for rule_id, rule in by_id.items():
+        if rule_id == "mac-address-1":
+            continue
+        allowlists = rule.get("allowlists", [])
+        assert isinstance(allowlists, list)
+        assert not any("paths" in entry for entry in allowlists), rule_id
+
+
+@pytest.mark.parametrize(
+    ("path", "matched"),
+    [
+        ("worker-configuration.d.ts", True),
+        ("lib/rules/cloudflare/e2e/smoke/worker-configuration.d.ts", True),
+        ("a/b/c/worker-configuration.d.ts", True),
+        ("my-worker-configuration.d.ts", False),
+        ("worker-configuration.d.ts.bak", False),
+        ("src/worker-configuration.ts", False),
+        ("worker-configuration.d.ts/x", False),
+    ],
+)
+def test_mac_address_path_allowlist_matches_exact_filename_at_any_depth(
+    path: str, *, matched: bool
+) -> None:
+    allowlists = _rendered_rules()["mac-address-1"]["allowlists"]
+    assert isinstance(allowlists, list)
+    (pattern,) = allowlists[0]["paths"]
+    assert bool(re.search(pattern, path)) is matched
+
+
+def test_mac_address_rule_still_matches_colon_separated_hex_in_other_files() -> None:
+    regex = _rendered_rules()["mac-address-1"]["regex"]
+    assert isinstance(regex, str)
+    sample = joined(":", "02", "00", "5e", "00", "53", "01")
+    assert re.search(regex, f"key id {sample} in other.d.ts")
+
+
+def test_render_writes_allowlists_for_regexes_paths_or_both() -> None:
+    made = [
+        gitleaks.Rule("mac-address", "a"),
+        gitleaks.Rule("mac-address", "b", allow=("^x",), paths=(r"(?:^|/)y\.ts$",)),
+    ]
+    parsed = tomllib.loads(gitleaks.render(made))
+    by_id = {rule["id"]: rule for rule in parsed["rules"]}
+    assert "allowlists" not in by_id["mac-address-1"]
+    assert by_id["mac-address-2"]["allowlists"] == [
+        {"regexes": ["^x"]},
+        {"paths": [r"(?:^|/)y\.ts$"]},
+    ]
