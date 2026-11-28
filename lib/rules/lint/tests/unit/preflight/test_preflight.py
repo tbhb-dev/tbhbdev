@@ -497,6 +497,9 @@ def test_affected_tests_skip_cli_py_tests_when_coverage_runs(
     commands: list[tuple[str | Path, ...]] = []
     tested: list[str] = []
 
+    async def fake_git(*args: str) -> str:
+        return f"{path}\0" if args[0] == "diff" else ""
+
     def fake_run(
         *command: str | Path, env: dict[str, str] | None = None, **_kwargs: object
     ) -> bytes:
@@ -518,11 +521,7 @@ def test_affected_tests_skip_cli_py_tests_when_coverage_runs(
     if mode != "single":
         monkeypatch.setattr(sys, "argv", ["preflight"])
     monkeypatch.setattr(preflight, "ALWAYS", ())
-    monkeypatch.setattr(
-        preflight,
-        "git",
-        AsyncMock(side_effect=lambda cmd, *_: f"{path}\0" if cmd == "diff" else ""),
-    )
+    monkeypatch.setattr(preflight, "git", fake_git)
     monkeypatch.setattr(preflight, "run", AsyncMock(side_effect=fake_run))
 
     assert asyncio.run(preflight.main()) == 0

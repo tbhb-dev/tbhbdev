@@ -258,6 +258,35 @@ async def cli_tests_affected(scratch: Path, paths: list[str]) -> bool:
     return any(CLI_TARGET.match(line) for line in targets.splitlines())
 
 
+async def exclude_covered_cli_tests(
+    targets: Path, scratch: Path, *, fallback: bool
+) -> Path | None:
+    labels = await run(
+        "bazelisk",
+        "query",
+        'kind("^py_test rule$", //factory/cli/tests/...)',
+        capture=True,
+    )
+    covered = {label.removeprefix("@@") for label in os.fsdecode(labels).splitlines()}
+    contents = await asyncio.to_thread(targets.read_text, encoding="utf-8")
+    selected = [
+        label
+        for label in contents.splitlines()
+        if label.removeprefix("@@") not in covered
+    ]
+    # The fallback selects tests via wildcards.
+    if fallback:
+        selected.extend(f"-{label}" for label in sorted(covered))
+    if not selected:
+        return None
+    # Keep the original selection for the coverage stage's decision.
+    filtered = scratch / "preflight-targets.txt"
+    await asyncio.to_thread(
+        filtered.write_text, "\n".join(selected) + "\n", encoding="utf-8"
+    )
+    return filtered
+
+
 async def affected_tests(
     base: str, head: str, scratch: Path, *, coverage_paths: list[str] | None = None
 ) -> None:
@@ -297,31 +326,12 @@ async def affected_tests(
     if not (await asyncio.to_thread(targets.stat)).st_size:
         return
     if coverage_paths is not None and await cli_tests_affected(scratch, coverage_paths):
-        labels = await run(
-            "bazelisk",
-            "query",
-            'kind("^py_test rule$", //factory/cli/tests/...)',
-            capture=True,
+        filtered = await exclude_covered_cli_tests(
+            targets, scratch, fallback="all=true" in selection.splitlines()
         )
-        covered = {
-            label.removeprefix("@@") for label in os.fsdecode(labels).splitlines()
-        }
-        contents = await asyncio.to_thread(targets.read_text, encoding="utf-8")
-        selected = [
-            label
-            for label in contents.splitlines()
-            if label.removeprefix("@@") not in covered
-        ]
-        # The fallback selects tests via wildcards.
-        if "all=true" in selection.splitlines():
-            selected.extend(f"-{label}" for label in sorted(covered))
-        if not selected:
+        if filtered is None:
             return
-        # Keep the original selection for the coverage stage's decision.
-        targets = scratch / "preflight-targets.txt"
-        await asyncio.to_thread(
-            targets.write_text, "\n".join(selected) + "\n", encoding="utf-8"
-        )
+        targets = filtered
     await run(
         *BAZEL_TEST,
         "--test_tag_filters=-slow-external",
