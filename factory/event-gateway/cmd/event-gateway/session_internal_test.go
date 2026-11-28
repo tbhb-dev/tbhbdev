@@ -83,9 +83,9 @@ func exerciseSession(t *testing.T, read readAPI, hook *githubWebhook, consumer j
 	close(api.stop)
 	checkClose(ctx, t, socket, websocket.StatusGoingAway, "server shutdown")
 
-	read.store.jet.Conn().Close()
+	opening := sessionOpeningStream{Stream: read.store.stream, publish: read.store.jet.Conn().Close}
+	peer := session{stream: opening, conn: nil, events: nil, subscriptions: nil, replay: nil, liveSeq: nil}
 
-	peer := session{stream: read.store.stream, conn: nil, events: nil, subscriptions: nil, replay: nil}
 	for _, object := range []sessionObject{nil, {resumeKey: json.RawMessage("0")}} {
 		reply := peer.hello(ctx, object)
 		checkEqual(t, reply["message"], "stream unavailable")
@@ -140,7 +140,9 @@ func checkSessionCommands(ctx context.Context, t *testing.T, conn *websocket.Con
 	importReply := checkSessionReply(ctx, t, conn, `{"type":"hello","import":true}`, codeKey, badFrame)
 	checkEqual(t, string(importReply["message"]), `"import is allowed only in the first hello frame"`)
 
-	limit := session{stream: nil, conn: nil, events: make(chan jetstream.Msg), subscriptions: nil, replay: nil}
+	limit := session{
+		stream: nil, conn: nil, events: make(chan jetstream.Msg), subscriptions: nil, replay: nil, liveSeq: nil,
+	}
 	subs := `[` + strings.Repeat(pushSubscription+",", subscriptionLimit-1) + pushSubscription + `]`
 	reply := limit.hello(ctx, sessionObject{"more": json.RawMessage(jsonTrue), subsKey: json.RawMessage(subs)})
 	checkEqual(t, reply == nil, true)
@@ -162,7 +164,9 @@ func TestSessionDeliveryErrors(t *testing.T) {
 	sub, err := filter.Parse([]byte(pushSubscription))
 	checkError(t, err)
 
-	peer := session{stream: nil, conn: nil, events: nil, subscriptions: []filter.Subscription{sub}, replay: nil}
+	peer := session{
+		stream: nil, conn: nil, events: nil, subscriptions: []filter.Subscription{sub}, replay: nil, liveSeq: nil,
+	}
 	checkEqual[error](t, peer.deliver(t.Context(), invalidSessionMessage{Msg: nil}), jetstream.ErrNotJSMessage)
 }
 
@@ -409,6 +413,49 @@ func TestSessionImportWithoutSubscriptions(t *testing.T) {
 		publishSessionEvent(t, hook, pushEvent, seq)
 		checkSessionReply(ctx, t, conn, `{"type":"ping"}`, typeKey, pong)
 	}
+}
+
+func TestSessionLivePosition(t *testing.T) {
+	t.Parallel()
+
+	ctx, cancel := context.WithTimeout(t.Context(), shutdownTimeout)
+	defer cancel()
+
+	store := testStore(t, retention)
+	hook := testWebhook(t, store, defaultBodyCap)
+	server := sessionReplayServer(t, store)
+
+	const hello = `{"type":"hello","subscriptions":[` + pushSubscription + `]}`
+
+	conn := dialSession(ctx, t, server.URL)
+	reply := checkSessionReply(ctx, t, conn, hello, typeKey, helloKind)
+	checkEqual(t, string(reply[seqKey]), "0")
+	publishSessionEvent(t, hook, pushEvent, "first")
+	checkSessionReply(ctx, t, conn, "", seqKey, "1")
+
+	publishSessionEvent(t, hook, pushEvent, "second")
+
+	conn = dialSession(ctx, t, server.URL)
+	reply = checkSessionReply(ctx, t, conn, hello, typeKey, helloKind)
+	checkEqual(t, string(reply[seqKey]), "2")
+	publishSessionEvent(t, hook, pushEvent, "third")
+	checkSessionReply(ctx, t, conn, "", seqKey, "3")
+
+	opening := store
+	opening.stream = sessionOpeningStream{
+		Stream:  store.stream,
+		publish: func() { publishSessionEvent(t, hook, pushEvent, "concurrent") },
+	}
+	server = sessionReplayServer(t, opening)
+	conn = dialSession(ctx, t, server.URL)
+	reply = checkSessionReply(ctx, t, conn, hello, typeKey, helloKind)
+	checkEqual(t, string(reply[seqKey]), "3")
+	checkSessionReply(ctx, t, conn, "", seqKey, "4")
+
+	resume := `{"type":"hello","resume_after":4,"subscriptions":[` + pushSubscription + `]}`
+	conn = dialSession(ctx, t, server.URL)
+	reply = checkSessionReply(ctx, t, conn, resume, typeKey, helloKind)
+	checkEqual(t, reply[seqKey] == nil, true)
 }
 
 func checkSessionHandshakes(t *testing.T, api *sessionAPI) {

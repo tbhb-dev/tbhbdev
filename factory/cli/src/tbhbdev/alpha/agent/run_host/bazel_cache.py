@@ -5,6 +5,7 @@ from __future__ import annotations
 import getpass
 import hashlib
 import os
+import re
 import shutil
 import stat
 from contextlib import suppress
@@ -16,14 +17,26 @@ from tbhbdev.alpha.agent import bazel_servers, process_group
 if TYPE_CHECKING:
     from tbhbdev.alpha.agent.run_host.state import BazelShutdown, Prepared, Run
 
+VAR_TMP = Path("/var/tmp")  # noqa: S108  # nosec B108 -- the trusted /var/tmp anchor, not a temp file
+_HEX_BASE = re.compile(r"^[0-9a-f]{32}$")
+
 
 def _bazel_roots(home: Path) -> tuple[tuple[Path, Path], ...]:
     """The (trusted anchor, cache root) pairs of the agent's own Bazel caches."""
     user = f"_bazel_{getpass.getuser()}"
     return (
         (home, home / ".cache/bazel" / user),
-        (Path("/var/tmp"), Path("/var/tmp") / user),  # noqa: S108  # nosec B108 -- the trusted /var/tmp anchor, not a temp file
+        (VAR_TMP, VAR_TMP / user),
     )
+
+
+def output_bases(home: Path) -> list[Path]:
+    out: list[Path] = []
+    for _, root in _bazel_roots(home):
+        with suppress(OSError):
+            entries = (e for e in sorted(root.iterdir()) if _HEX_BASE.fullmatch(e.name))
+            out.extend(e for e in entries if owned_base(home, e))
+    return out
 
 
 def bazel_bases(home: Path, worktree: str) -> tuple[Path, ...]:
@@ -139,6 +152,19 @@ def _space(fd: int) -> tuple[int, int]:
     return status.f_bavail * status.f_frsize, status.f_favail
 
 
+def remove_unused_base(home: Path, base: Path) -> bool:
+    if (opened := _open_owned(home, base)) is None:
+        return False
+    fd, _ = opened
+    try:
+        if server_alive(base):
+            return False
+        _remove_base(fd, base.name)
+        return not _exists(fd, base.name)
+    finally:
+        os.close(fd)
+
+
 def _delete_base(
     run: Run, parent_fd: int, name: str, identity: tuple[int, int]
 ) -> tuple[int, int] | None:
@@ -175,15 +201,19 @@ def _unlink_bazel_links(worktree: Path, deleted: list[Path]) -> None:
 def _clean_base(
     run: Run, base: Path, result: str, identity: tuple[int, int]
 ) -> tuple[int, int] | None:
-    """Delete one base unless it changed, its shutdown failed, or a server holds it."""
+    """Delete one base unless it changed or a live server holds it.
+
+    The stop result is only logged: a server that was slow to die or failed to
+    answer no longer keeps the base once its process is gone.
+    """
     opened = _open_owned(run.home, base)
     if opened is None:
         run.files.write("log", f"bazel cleanup: kept {base} ({result})\n")
         return None
     fd, status = opened
     try:
-        if result != "rc=0" or (status.st_dev, status.st_ino) != identity:
-            reason = result
+        if (status.st_dev, status.st_ino) != identity:
+            reason = f"changed ({result})"
         elif server_alive(base):
             reason = "server alive"
         else:

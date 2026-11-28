@@ -1,0 +1,13 @@
+## Summary
+
+The cache preserves the latest saved value.
+
+## Notes
+
+Extra context.
+
+## Verification
+
+- Read the cache implementation and its unit tests.
+
+Generated-by: LLM effort=high;harness=codex;model=gpt-5.4
