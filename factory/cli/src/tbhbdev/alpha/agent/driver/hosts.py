@@ -33,7 +33,7 @@ def read_limits(
     if host.max_concurrent_runs == 0:
         message = f"{host.name}: max_concurrent_runs is 0"
         raise Invalid(message)
-    failed = version_heal.heal_candidate(settings, host, time.monotonic() + timeout)
+    failed = version_heal.heal_candidate(settings, host, timeout)
     if failed is not None:
         mismatch, error = failed
         cause = f"heal failed: {error}"
@@ -93,7 +93,10 @@ def usable_hosts(
         if now >= deadline:
             break
         probe_deadline = now + min(30, (deadline - now) / (len(eligible) - index))
-        if version_heal.heal_candidate(settings, host, probe_deadline) is not None:
+        failed = version_heal.heal_candidate(
+            settings, host, probe_deadline - now, probe_deadline
+        )
+        if failed is not None:
             continue
         if (timeout := probe_deadline - time.monotonic()) <= 0:
             continue

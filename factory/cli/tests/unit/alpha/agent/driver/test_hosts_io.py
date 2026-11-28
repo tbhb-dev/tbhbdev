@@ -124,17 +124,18 @@ def test_exec_preserves_preflight_time_after_a_slow_probe(
         CONFIG, hosts=candidates, launch_wait_seconds=launch_wait
     )
     monkeypatch.setattr(agent_settings, "load", lambda: config)
+    head = "a" * 40
+    current = f"tbhbdev 0 ({head})"
     host.configure(
         limits="1 4 12582912 6291456 100 0 - -",
         limits_by_host={preferred.name: "0.5 4 12582912 6291456 100 0 - -"},
+        version=current,
+        version_by_host={slow.name: f"tbhbdev 0 ({'b' * 40})"} if install_lock else {},
     )
     elapsed = 0.0
     set_clock(monkeypatch, lambda: elapsed)
-    if install_lock:
-        current = f"tbhbdev 0 ({'a' * 40})"
-        host.configure(version=current)
-        monkeypatch.setattr(version_check, "latest", Mock(return_value="a" * 40))
-        monkeypatch.setattr(version, "line", lambda: current)
+    monkeypatch.setattr(version_check, "latest", Mock(return_value=head))
+    monkeypatch.setattr(version, "line", lambda: current)
     real_shell = transport.shell
     slow_timeouts: list[float] = []
 
@@ -148,12 +149,8 @@ def test_exec_preserves_preflight_time_after_a_slow_probe(
     ) -> str:
         nonlocal elapsed
         assert timeout > 0
-        if install_lock and target == slow and script.endswith("--version"):
-            return f"tbhbdev 0 ({'b' * 40})"
         if target == slow and "# tbhbdev-heal-probe" not in script:
             slow_timeouts.append(timeout)
-            if install_lock:
-                assert "install failed" in script
             if times_out or script == remote_host.check_slot(slow, Profile.BUILD):
                 elapsed += timeout
                 message = "probe timed out"

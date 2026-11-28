@@ -158,7 +158,8 @@ def sync(
 def heal_candidate(
     settings: Settings,
     host: Host,
-    deadline: float,
+    timeout: float,
+    deadline: float | None = None,
 ) -> tuple[str | None, str | None] | None:
     """Heal HOST once before limits and return any failure."""
     key = (host.name, host.account)
@@ -166,12 +167,13 @@ def heal_candidate(
         return prior if prior[1] is not None else None
     local, mismatch_text = version.line(), None
     try:
-        installed = _installed(settings, host, _remaining(deadline))
+        installed = _installed(settings, host, timeout)
         try:
             same_version(local, installed)
         except Invalid as mismatch:
             mismatch_text = str(mismatch)
-            sync(settings, host, local, installed, deadline)
+            end = time.monotonic() + timeout if deadline is None else deadline
+            sync(settings, host, local, installed, end)
     except (LookupError, OSError, subprocess.SubprocessError) as exc:
         _ATTEMPTED[key] = (mismatch_text, str(exc))
         return _ATTEMPTED[key]

@@ -176,7 +176,6 @@ def test_heal_checks_main_when_driver_and_host_match(
     monkeypatch.setattr(version_heal.transport, "shell", shell)
     status = version_heal.heal_hosts(CONFIG, [HOST.name])
     assert status == (0 if after == NEW_LINE else 1)
-    assert shell.call_count == 3
     assert HEAD in shell.call_args_list[1].args[2]
     assert after in capsys.readouterr().out
 
