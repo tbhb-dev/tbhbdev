@@ -17,6 +17,10 @@ inputs:
   base:
     description: Base commit for a manual dispatch. Defaults to the dispatched commit's first parent.
     required: false
+  explain:
+    description: Write target-determinator's per-target explanations to its log.
+    required: false
+    default: 'false'
   working-directory:
     description: The directory of the Bazel workspace to query.
     required: false
@@ -90,6 +94,7 @@ runs:
         BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha || inputs.base }}
         HEAD_SHA: ${{ github.event.merge_group.head_sha || github.sha }}
         TD: ${{ steps.download.outputs.path }}
+        EXPLAIN: ${{ inputs.explain }}
         QUERY: ${{ inputs.query }}
         BAZEL_OPTS: ${{ inputs.bazel-opts }}
         TIMEOUT_MINUTES: ${{ inputs.timeout-minutes }}

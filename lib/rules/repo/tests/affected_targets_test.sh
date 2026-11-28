@@ -97,6 +97,10 @@ printf '%s\n' "$@" >"$ARGS_LOG"
 straggle() { (sleep 2 && git checkout -q "$1" && : >"$CHILD_MARK") </dev/null >/dev/null 2>&1 & }
 case $FAKE in
   two) printf '//go:lib_test\n//go:cmd_test\n' ;;
+  verbose)
+    printf '%s\n' '//go:lib_test Changes: FileContents' '//go:cmd_test Changes: Dependency'
+    printf '%s\n' '//go:lib_test Changes: AnotherConfiguration'
+    ;;
   two_and_buildifier) printf '//go:lib_test\n//go:cmd_test\n//:buildifier_test\n' ;;
   tagged) printf '//go:lib_test\n//go:manual_test\n//go:cmd_test\n' ;;
   cli_leaf)
@@ -315,6 +319,7 @@ for arg in -bazel bazelisk -targets -bazel-opts=--config=ci -bazel-opts=--keep_g
 done
 last=$(tail -n 1 "$ARGS_LOG")
 [[ $last == "$base" ]] || fail 'the base commit is not the last argument'
+! grep -qxF -- -verbose "$ARGS_LOG" || fail 'target-determinator explained targets by default'
 for arg in cquery --output=jsonproto --config=ci --keep_going --skip_incompatible_explicit_targets; do
   grep -qxF -- "$arg" "$CQUERY_LOG" || fail "cquery missed argument $arg"
 done
@@ -324,6 +329,10 @@ while IFS= read -r pattern; do
 done <<<"$fallback"
 grep -Fq -- 'except set(@tbhb_rules//tools:mutmut_test @tbhb_rules_go//tests/self:gomutants_test @tbhb_rules_python//private:mutmut_test)' \
   "$QUERY_LOG" || fail 'candidate query did not exclude mutation tests before hashing'
+EXPLAIN=true FAKE=verbose run 'explain the selected targets' pull_request "$docs_head" false 3
+grep -qxF -- -verbose "$ARGS_LOG" || fail 'target-determinator missed -verbose'
+[[ $targets == $'//:gazelle_test\n//go:cmd_test\n//go:lib_test' ]] || fail 'verbose mode changed the selected targets'
+grep -qF '//go:lib_test Changes: FileContents' "${file%/*}/target-determinator.log" || fail 'missing target explanation'
 FAKE_QUERY=fail run 'candidate query failure' pull_request "$docs_head"
 [[ $reason == *'candidate tests failed with exit status 6' ]] || fail 'candidate query failure: status missing'
 
