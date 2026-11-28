@@ -781,3 +781,44 @@ def test_start_ref_rebase_and_push(
         assert result.returncode != 0
         assert "remote tip changed since fetch" in result.stderr
     assert git(remote, "rev-parse", branch) == remote_tip
+
+
+@pytest.mark.usefixtures("run_tools")
+def test_start_ref_accepts_the_tip_this_run_pushed(tmp_path: Path) -> None:
+    seed, clone = repository(tmp_path)
+    remote = tmp_path / "origin"
+    branch = "refs/heads/fix/topic"
+    git(seed, "switch", "-c", "fix/topic")
+    commit(seed, "topic")
+    git(seed, "push", "origin", branch)
+    request = run_request(start_ref=branch, fetch_refs=[branch])
+    workspace = worktree_checkout.create(clone, "example", request)
+    git(workspace, "config", "remote.origin.pushurl", str(remote))
+
+    def publish() -> subprocess.CompletedProcess[str]:
+        return subprocess.run(
+            ["git", "push", "origin", f"HEAD:{branch}"],
+            cwd=workspace,
+            capture_output=True,
+            text=True,
+            check=False,
+            timeout=10,
+        )
+
+    first = commit(workspace, "first")
+    assert publish().returncode == 0
+    assert git(remote, "rev-parse", branch) == first
+    second = commit(workspace, "second")
+    result = publish()
+    assert result.returncode == 0, result.stderr
+    assert git(remote, "rev-parse", branch) == second
+
+    git(seed, "fetch", "origin")
+    git(seed, "reset", "--hard", "origin/fix/topic")
+    other = commit(seed, "other writer")
+    git(seed, "push", "origin", branch)
+    commit(workspace, "third")
+    result = publish()
+    assert result.returncode != 0
+    assert f"{branch}: remote tip changed since fetch; push refused" in result.stderr
+    assert git(remote, "rev-parse", branch) == other

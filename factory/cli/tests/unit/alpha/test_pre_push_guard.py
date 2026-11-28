@@ -11,6 +11,7 @@ from tbhbdev.alpha import pre_push_guard as pg
 from tbhbdev.alpha import preflight_gate
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
     from pathlib import Path
 
 
@@ -38,7 +39,7 @@ if TYPE_CHECKING:
     ],
 )
 def test_start_ref_push(
-    monkeypatch: pytest.MonkeyPatch, case: tuple[str, str, int, str]
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, case: tuple[str, str, int, str]
 ) -> None:
     branch, shas, ancestry, expected = case
     monkeypatch.setenv(pg.RUN_START_REF_ENV, "refs/heads/fix/topic")
@@ -46,7 +47,7 @@ def test_start_ref_push(
     monkeypatch.setattr(preflight_gate, "check", Mock(return_value=""))
     for name in ("remote_tips", "known_objects", "agent_commit_problems"):
         monkeypatch.setattr(pg, name, Mock(return_value=[]))
-    git = Mock(side_effect=[(ancestry, ""), (0, "a" * 40)])
+    git = Mock(side_effect=[(0, str(tmp_path)), (ancestry, ""), (0, "a" * 40)])
     monkeypatch.setattr(pg, "git", git)
     local, old = shas
     ref = f"refs/heads/{branch}"
@@ -65,6 +66,72 @@ def test_start_ref_push(
             "--quiet",
             "refs/remotes/origin/fetched/heads/fix/topic^{commit}",
         )
+
+
+@pytest.fixture
+def push(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Callable[..., list[str]]:
+    """Push ``local`` over ``old``; the launch pin is a and git dir is tmp_path."""
+    monkeypatch.setenv(pg.RUN_START_REF_ENV, "refs/heads/fix/topic")
+    monkeypatch.setenv(pg.RUN_START_TIP_ENV, "a" * 40)
+    monkeypatch.setattr(preflight_gate, "check", Mock(return_value=""))
+    for name in ("remote_tips", "known_objects", "agent_commit_problems"):
+        monkeypatch.setattr(pg, name, Mock(return_value=[]))
+    monkeypatch.setattr(pg, "git", Mock(return_value=(0, str(tmp_path))))
+
+    def run(local: str, old: str, branch: str = "fix/topic") -> list[str]:
+        row = f"HEAD {local * 40} refs/heads/{branch} {old * 40}"
+        return pg.push_problems("origin", [row], agent_push=True, run_name="example")
+
+    return run
+
+
+REFUSED = ["refs/heads/fix/topic: remote tip changed since fetch; push refused"]
+
+
+def test_second_push_after_an_own_push_is_accepted(
+    tmp_path: Path, push: Callable[..., list[str]]
+) -> None:
+    assert push("b", "a") == []
+    assert push("c", "b") == []
+    recorded = (tmp_path / pg.PUSHED_TIPS_FILE).read_text("utf-8")
+    assert recorded == f"{'b' * 40}\n{'c' * 40}\n"
+
+
+def test_tip_moved_by_someone_else_is_refused(
+    tmp_path: Path, push: Callable[..., list[str]]
+) -> None:
+    assert push("b", "a") == []
+    assert push("c", "d") == REFUSED
+    assert (tmp_path / pg.PUSHED_TIPS_FILE).read_text("utf-8") == "b" * 40 + "\n"
+
+
+def test_push_that_fails_after_the_guard_keeps_the_launch_pin(
+    push: Callable[..., list[str]],
+) -> None:
+    assert push("b", "a") == []  # recorded, but the push never landed
+    assert push("c", "a") == []  # the remote still shows the pin
+
+
+def test_start_ref_push_without_a_git_directory_is_refused(
+    monkeypatch: pytest.MonkeyPatch, push: Callable[..., list[str]]
+) -> None:
+    monkeypatch.setattr(pg, "git", Mock(return_value=(128, "")))
+    assert push("b", "a") == [
+        "refs/heads/fix/topic: cannot find the git directory; push refused"
+    ]
+
+
+def test_recorded_tip_is_not_accepted_for_another_ref(
+    tmp_path: Path, push: Callable[..., list[str]]
+) -> None:
+    assert push("b", "a") == []
+    problems = push("c", "b", "agent/example")
+    assert problems == [
+        "refs/heads/agent/example: this run may only push refs/heads/fix/topic"
+    ]
+    row = ("c" * 40, "refs/heads/agent/example", "b" * 40)
+    assert pg.ref_problems("origin", row, [], pg.SigningKeys(), None) == []
+    assert (tmp_path / pg.PUSHED_TIPS_FILE).read_text("utf-8") == "b" * 40 + "\n"
 
 
 @pytest.mark.parametrize("ref", ["refs/heads/main", "refs/heads/master"])
