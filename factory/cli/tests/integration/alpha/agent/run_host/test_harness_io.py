@@ -672,3 +672,26 @@ def check_launch_contract(
         )
     else:
         assert "--output-last-message" not in spec.command
+
+
+def test_run_harness_serves_gh_refresh_while_running(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    run, child = make_run(tmp_path), Child(code=0)
+    seen: list[bool] = []
+    sock = runfiles.private_dir(run.tmpdir / "gh") / "token.sock"
+    dlv = credentials.Delivery({}, None, None, credentials.StoredToken("t", 1.0))
+    prepared = dataclasses.replace(preparation(run), delivery=dlv)
+    run.files.write("prompt", "example")
+
+    def launch(*_args: object, **kwargs: object) -> Child:
+        seen.append(sock.is_socket())
+        cast("Callable[[Child], None]", kwargs["started"])(child)
+        return child
+
+    monkeypatch.setattr(process_group, "launch_owned", launch)
+    monkeypatch.setattr(process_group, "record", constant(None))
+    monkeypatch.setattr(process_group, "stop_started", constant(None))
+    with ExitStack() as stack:
+        assert host_harness.run_harness(run, prepared, stack) == 0
+    assert (seen, sock.exists()) == ([True], False)

@@ -166,11 +166,13 @@ cli_py_library(
     deps = [
         ":bazel_shutdown",
         ":command_line",
+        ":environment",
         ":preflight",
         ":telemetry",
         "//factory/cli/src/tbhbdev/alpha:run_stop_hook",
         "//factory/cli/src/tbhbdev/alpha/agent:app_server",
         "//factory/cli/src/tbhbdev/alpha/agent:bazel_servers",
+        "//factory/cli/src/tbhbdev/alpha/agent:gh_refresh",
         "//factory/cli/src/tbhbdev/alpha/agent:model",
         "//factory/cli/src/tbhbdev/alpha/agent:process_group",
         "//factory/cli/src/tbhbdev/alpha/agent:runfiles",

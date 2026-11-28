@@ -10,12 +10,19 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from tbhbdev.alpha import run_stop_hook
-from tbhbdev.alpha.agent import app_server, bazel_servers, process_group, runfiles
+from tbhbdev.alpha.agent import (
+    app_server,
+    bazel_servers,
+    gh_refresh,
+    process_group,
+    runfiles,
+)
 from tbhbdev.alpha.agent.decisions import run_state
 from tbhbdev.alpha.agent.model import AgyPolicy, Harness, Policy, RunPaths
 from tbhbdev.alpha.agent.run_host import (
     bazel_shutdown,
     command_line,
+    environment,
     preflight,
     telemetry,
 )
@@ -70,6 +77,11 @@ def run_harness(
         process_group.record(run.files, child.pid)
         run.files.write("launched", "\n")
 
+    if token := prepared.delivery.gh_token:
+        creds = run.settings.credentials
+        account = next(c for c in creds if c.account == run.request.account)
+        gh = run.tmpdir / environment.GH_CONFIG_SUBDIR
+        stack.enter_context(gh_refresh.serve(gh, run.request, account, token))
     try:
         with process_group.defer_signals():
             child = process_group.launch_owned(

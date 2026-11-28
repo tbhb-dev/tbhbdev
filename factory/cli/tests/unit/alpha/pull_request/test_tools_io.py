@@ -330,3 +330,21 @@ def test_root_outside_a_repository_is_the_directory_given(
     elsewhere.mkdir()
     assert Path.cwd() == hooked.root
     assert pr_tools.root(elsewhere) == elsewhere
+
+
+def test_run_refreshes_gh_token_before_invoking_gh(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    gh, rf = tmp_path / "gh", pr_tools.gh_refresh
+    events: list[int] = []
+    write_fake(gh, "print('ok')")
+    refusal = rf.credentials.FRESH_REFUSAL
+    monkeypatch.setattr(rf, "refresh_if_served", lambda: events.append(1))
+    assert (pr_tools.run([str(gh), "pr", "create"]).stdout, events) == ("ok\n", [1])
+
+    def refuse() -> None:
+        raise pr_tools.Invalid(refusal)
+
+    monkeypatch.setattr(rf, "refresh_if_served", refuse)
+    with pytest.raises(SystemExit, match=refusal):
+        pr_tools.run([str(gh), "pr", "create"])

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 lazy from pathlib import Path
 
-from tbhbdev.alpha.agent import worktree_git
+from tbhbdev.alpha.agent import gh_refresh, worktree_git
 from tbhbdev.alpha.agent.decisions import repo
 from tbhbdev.alpha.agent.model import Invalid, Profile
 
@@ -31,7 +31,7 @@ def clone_run(mirror: Path, workspace: Path, url: str, profile: Profile) -> None
         helper = f"credential.https://{repo.DEFAULT_GIT_HOST}.helper"
         worktree_git.git(workspace, "config", "--add", helper, "")
         worktree_git.git(
-            workspace, "config", "--add", helper, "!gh auth git-credential"
+            workspace, "config", "--add", helper, gh_refresh.credential_helper()
         )
 
 
