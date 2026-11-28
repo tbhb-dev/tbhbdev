@@ -233,7 +233,9 @@ def post_event_draft(text: str, number: int) -> int | None:
     review_doc.check_head(api, path, commit)
     trailer = review_doc.attribution(pr_attribution.posting_value(os.environ))
     prose = body.strip("\n")
-    return review_doc.send_review(api, path, commit, f"{prose}\n\n{trailer}\n", event)
+    return review_doc.send_review(
+        api, review_doc.ReviewSubmission(path, commit, f"{prose}\n\n{trailer}\n", event)
+    )
 
 
 def parse_document(text: str, number: int) -> review_doc.ReviewDoc:

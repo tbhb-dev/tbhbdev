@@ -393,7 +393,7 @@ cli_py_library(
     srcs = ["review_inline.py"],
     imports = ["../.."],
     visibility = ["//factory/cli:__subpackages__"],
-    deps = ["@cli_pip//markdown_it_py"],
+    deps = ["//factory/cli/src/tbhbdev:content_model"],
 )
 
 cli_py_library(

@@ -89,8 +89,6 @@ def validate_document(sub: Submission) -> tuple[dict[str, object], str]:
         raise PostRefusedError(problems[0])
     event = "APPROVE" if doc.verdict == "GO" else "REQUEST_CHANGES"
     body = f"{review_doc.render(doc)}\n{sub.stamp}\n"
-    if problems := check_review(body, metadata=doc.metadata, posted=True):
-        raise PostRefusedError(problems[0])
     return {**doc.metadata, "event": event}, body
 
 
@@ -187,7 +185,9 @@ def create(sub: Submission, token: str, run: Run) -> int | None:
         raise PostRefusedError(message)
     return review_doc.submit_review(
         lambda method, path, payload: api(method, path, token, payload),
-        review_doc.ReviewSubmission(base, sub.commit, body, event),
+        review_doc.ReviewSubmission(
+            base, sub.commit, body, event, fields if sub.document else None
+        ),
         compare=lambda path: compare(run, path),
         warn=lambda message: run.files.write("log", f"{message}\n"),
     )
@@ -292,7 +292,7 @@ def posted(run: Run, prepared: Prepared) -> bool:
         token = credentials.review_post_token(run.request, run.settings)
         if token is None:
             message = "reviews App token unavailable"
-            raise PostRefusedError(message)  # noqa: TRY301
+            raise PostRefusedError(message)
         sub = Submission(
             run.request.repo,
             number,
@@ -302,7 +302,7 @@ def posted(run: Run, prepared: Prepared) -> bool:
             document,
         )
         identifier = create(sub, token, run)
-    except PostRefusedError as refusal:
+    except review_doc.ReviewError as refusal:
         run.files.write("log", f"review not posted: {refusal}\n")
         return False
     run.files.write("review", f"{run.request.repo}#{number} {identifier or 'unknown'}")

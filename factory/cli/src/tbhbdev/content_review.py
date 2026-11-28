@@ -31,7 +31,7 @@ def _review_section_order_refusal(order: list[str]) -> str:
     return "Use Summary, optional Findings and Suggestions, then Verification"
 
 
-def _review_refusal(stderr: str, draft: dict[str, object]) -> str:
+def _review_refusal(stderr: str, draft: dict[str, object], *, posted: bool) -> str:
     first = stderr.strip().partition("\n")[0]
     path, _, detail = first.partition(":")
     field, _, rest = path.partition(".")
@@ -41,7 +41,13 @@ def _review_refusal(stderr: str, draft: dict[str, object]) -> str:
             section == "summary" and constraint == "content.0.visible"
         ):
             return f"Remove the standalone verdict line from {section.title()}"
-        return _REVIEW_SECTION_FIXES.get(section, "Review validation failed")
+        fix = _REVIEW_SECTION_FIXES.get(section, "Review validation failed")
+        if posted and section == "findings":
+            fix = (
+                "Use an inline findings count, Findings bullets with severity and "
+                "kind, or both with the count first"
+            )
+        return fix
     if field == "_err":
         return f"Findings: {detail.strip().removesuffix(':')}"
     if field == "blockOrder":
@@ -100,5 +106,5 @@ def check_review(
     except (cue_runtime.CueError, OSError, subprocess.TimeoutExpired) as exc:
         return [f"Review validation could not run: {exc}"]
     if done.returncode:
-        return [_review_refusal(done.stderr, draft)]
+        return [_review_refusal(done.stderr, draft, posted=posted)]
     return []
