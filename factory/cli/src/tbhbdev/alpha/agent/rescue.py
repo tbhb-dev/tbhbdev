@@ -12,6 +12,7 @@ from tbhbdev.alpha import pre_push_guard, secret_scan
 from tbhbdev.alpha.agent import credentials, host_tools, push
 from tbhbdev.alpha.agent.decisions import repo
 from tbhbdev.alpha.agent.model import Profile
+from tbhbdev.alpha.agent.run_host import draft_pr
 from tbhbdev.alpha.gh_app_runtime import GhAppError
 
 if TYPE_CHECKING:
@@ -33,6 +34,7 @@ def on_fault(run: Run, prepared: Prepared | None, rc: int) -> None:
     if not run.files.uncertain:
         result = publish(run, Path(prepared.paths.worktree))
     run.files.write("log", f"fault publication: {result}\n")
+    draft_pr.open_draft(run, Path(prepared.paths.worktree), rc, result)
 
 
 def publish(run: Run, workspace: Path) -> str:
@@ -80,7 +82,7 @@ def save_checkout(directory: Path, checkout: Path, ref: str) -> str | None:
     try:
         with stream:
             git("add", "-A")
-            git("commit", "--no-gpg-sign", "-m", "rescue: save failed run work")
+            git("commit", "--no-gpg-sign", "-m", draft_pr.SAVE)
             tip = git("rev-parse", "HEAD").strip()
             stream.write(tip + "\n")
         lock.replace(destination)

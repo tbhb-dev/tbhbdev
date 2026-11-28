@@ -2,7 +2,10 @@
 # Copyright Tony Burns
 """Scan pull request text, create the pull request, and record its opener."""
 
+from __future__ import annotations
+
 import sys
+from typing import TYPE_CHECKING
 
 from tbhbdev.alpha import opened, secret_scan
 from tbhbdev.alpha.pull_request import github as pr_github
@@ -13,6 +16,9 @@ from tbhbdev.alpha.pull_request.publication import (
     existing_pr_problem,
 )
 from tbhbdev.alpha.pull_request.tools import GH, GITLEAKS
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
 
 
 def scan_secrets(text: str, what: str, visibility: str) -> None:
@@ -31,9 +37,13 @@ def scan_secrets(text: str, what: str, visibility: str) -> None:
     )
 
 
-def post_text(title: str, body: str, visibility: str) -> None:
+def post_text(
+    title: str, body: str, visibility: str, *, scan: Callable[..., None] | None = None
+) -> None:
     """Scan the PR title and body as gh would post them."""
-    scan_secrets(f"{title}\n\n{body}", "the PR title and body", visibility)
+    (scan or scan_secrets)(
+        f"{title}\n\n{body}", "the PR title and body", visibility=visibility
+    )
 
 
 def create_pr(argv: list[str], body: str, root: str | None, *, dry_run: bool) -> int:
