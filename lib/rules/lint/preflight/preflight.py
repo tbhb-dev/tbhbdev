@@ -27,6 +27,7 @@ AFFECTED = Path(".github/actions/affected-targets")
 DRAFT = Path(".github/PULL_REQUEST_DRAFT.md")
 BAZEL_TEST = ("bazelisk", "test", "--config=ci")
 BAZEL_RUN = ("bazelisk", "run", "--config=ci")
+BAZEL_SHUTDOWN_SECONDS = 30
 FIXED_COMMANDS = {
     "gazelle": ("bazelisk", "run", "//:gazelle", "--", "-mode=diff"),
     "actionlint": (*BAZEL_TEST, "//:actionlint_test"),
@@ -126,6 +127,19 @@ async def git(*args: str) -> str:
     return os.fsdecode(await run("git", *args, capture=True)).rstrip("\n")
 
 
+async def shutdown_bazel(workspace: Path) -> None:
+    try:
+        await run(
+            "bazelisk",
+            "shutdown",
+            seconds=BAZEL_SHUTDOWN_SECONDS,
+            cwd=workspace,
+        )
+    except (OSError, CheckError) as error:
+        message = str(error) or "timed out"
+        sys.stderr.write(f"Failed to stop Bazel server in {workspace}: {message}\n")
+
+
 def write_record(path: Path, text: str) -> None:
     path.parent.mkdir(exist_ok=True)
     with tempfile.TemporaryDirectory(dir=path.parent) as directory:
@@ -182,22 +196,25 @@ async def affected_tests(base: str, head: str, scratch: Path) -> None:
     checkout = scratch / "checkout"
     await run("git", "clone", "--quiet", "--shared", "--no-checkout", ".", checkout)
     await run("git", "checkout", "--quiet", "--detach", head, cwd=checkout)
-    await run(
-        "bash",
-        AFFECTED / "select.sh",
-        seconds=1020,
-        cwd=checkout,
-        env={
-            **os.environ,
-            "EVENT": "pull_request",
-            "BASE_SHA": base,
-            "HEAD_SHA": head,
-            "TD": str(determinator or ""),
-            "RUNNER_TEMP": str(scratch),
-            "GITHUB_OUTPUT": str(output),
-            "BAZEL_OPTS": "--config=ci",
-        },
-    )
+    try:
+        await run(
+            "bash",
+            AFFECTED / "select.sh",
+            seconds=1020,
+            cwd=checkout,
+            env={
+                **os.environ,
+                "EVENT": "pull_request",
+                "BASE_SHA": base,
+                "HEAD_SHA": head,
+                "TD": str(determinator or ""),
+                "RUNNER_TEMP": str(scratch),
+                "GITHUB_OUTPUT": str(output),
+                "BAZEL_OPTS": "--config=ci",
+            },
+        )
+    finally:
+        await shutdown_bazel(checkout)
     selection = await asyncio.to_thread(output.read_text)
     target_file = selected_file(selection)
     if not target_file:
@@ -211,8 +228,29 @@ async def affected_tests(base: str, head: str, scratch: Path) -> None:
         )
 
 
+async def check_with_base(
+    name: str, revisions: Revisions, scratch: Path, script: Path
+) -> None:
+    base, _merge_base, head, ref = revisions
+    checkout = scratch / "base"
+    await run("git", "worktree", "add", "--quiet", "--detach", checkout, base)
+    try:
+        if name == "pr-size":
+            branch = await git("branch", "--show-current")
+            args = (base, head, ref, DEFAULT_BASE, branch)
+            try:
+                await run("bash", script, name, *args, cwd=checkout)
+            finally:
+                await shutdown_bazel(checkout)
+            return
+        env = {**os.environ, "PYTHON": sys.executable}
+        await run("bash", script, name, checkout, scratch, env=env)
+    finally:
+        await run("git", "worktree", "remove", "--force", checkout)
+
+
 async def check(name: str, revisions: Revisions, scratch: Path) -> None:
-    base, merge_base, head, ref = revisions
+    merge_base, head = revisions.merge_base, revisions.head
     if name in FIXED_COMMANDS:
         await run(*FIXED_COMMANDS[name])
         return
@@ -242,18 +280,7 @@ async def check(name: str, revisions: Revisions, scratch: Path) -> None:
             report = scratch / "gomodscan.sarif"
             await run("bash", script, "modules", scanner, vendor, report)
         case "pr-size" | "design-report":
-            checkout = scratch / "base"
-            await run("git", "worktree", "add", "--quiet", "--detach", checkout, base)
-            try:
-                if name == "pr-size":
-                    branch = await git("branch", "--show-current")
-                    args = (base, head, ref, DEFAULT_BASE, branch)
-                    await run("bash", script, name, *args, cwd=checkout)
-                    return
-                env = {**os.environ, "PYTHON": sys.executable}
-                await run("bash", script, name, checkout, scratch, env=env)
-            finally:
-                await run("git", "worktree", "remove", "--force", checkout)
+            await check_with_base(name, revisions, scratch, script)
         case _:
             raise OSError(errno.EINVAL, "unknown check", name)
 
