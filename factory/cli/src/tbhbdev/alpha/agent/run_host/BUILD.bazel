@@ -87,8 +87,6 @@ cli_py_library(
         ":index",
         ":paths",
         ":run_usage",
-        ":telemetry",
-        "//factory/cli/src/tbhbdev:telemetry",
         "//factory/cli/src/tbhbdev/alpha/agent:model",
         "//factory/cli/src/tbhbdev/alpha/agent:process_group",
         "//factory/cli/src/tbhbdev/alpha/agent:rescue",

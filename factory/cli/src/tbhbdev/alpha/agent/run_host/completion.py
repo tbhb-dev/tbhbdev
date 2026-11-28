@@ -11,7 +11,6 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 lazy import subprocess  # nosec B404
 
-from tbhbdev import telemetry
 from tbhbdev.alpha.agent import process_group, rescue, runfiles
 from tbhbdev.alpha.agent.model import Harness, Invalid
 from tbhbdev.alpha.agent.run_host import (
@@ -22,7 +21,6 @@ from tbhbdev.alpha.agent.run_host import (
 )
 from tbhbdev.alpha.agent.run_host.index import IndexRun, index_entry
 from tbhbdev.alpha.agent.run_host.paths import planned_paths
-from tbhbdev.alpha.agent.run_host.telemetry import run_end_attributes
 
 if TYPE_CHECKING:
     from tbhbdev.alpha.agent.run_host.state import Prepared, Run
@@ -76,11 +74,6 @@ def finish(
     except OSError, ValueError:
         run.files.write("log", "audit summary write failed\n")
     outcome = run_outcome(run)
-    telemetry.attributes(
-        **run_end_attributes(
-            outcome["usage"], outcome["phase_seconds"], outcome["published"]
-        )
-    )
     try:
         record_index(
             run,
@@ -145,7 +138,7 @@ def run_outcome(run: Run) -> dict[str, dict[str, object]]:
                 run.request.harness,
                 _read_tail(run.files.path("log"), run_usage.LOG_TAIL_BYTES),
                 _read_tail(run.files.path("out"), OUTPUT_LIMIT)
-                if run.request.harness is not Harness.CODEX
+                if run.request.harness is Harness.CLAUDE
                 else "",
             )
         )

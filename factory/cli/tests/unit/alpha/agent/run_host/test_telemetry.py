@@ -90,29 +90,3 @@ def test_argv_log_line_keeps_other_overrides() -> None:
     assert telemetry.argv_log_line(command) == (
         "argv: codex -c 'model_reasoning_effort='\"'\"'high'\"'\"'' -m -c"
     )
-
-
-def test_run_end_attributes_keep_numbers_and_strings_only() -> None:
-    usage = {
-        "input_tokens": "not reported",
-        "output_tokens": 4,
-        "total_tokens": 54534,
-        "cost_usd": 0.5,
-        "source": "codex log",
-    }
-    phases = {"setup": 1.5, "model": 20.0, "publication": None}
-    published = {"branch": "agent/example", "pr": None}
-    assert telemetry.run_end_attributes(usage, phases, published) == {
-        "tbhb.run.usage.output_tokens": 4,
-        "tbhb.run.usage.total_tokens": 54534,
-        "tbhb.run.usage.cost_usd": 0.5,
-        "tbhb.run.phase.setup_seconds": 1.5,
-        "tbhb.run.phase.model_seconds": 20.0,
-        "tbhb.run.published.branch": "agent/example",
-    }
-
-
-def test_run_end_attributes_of_an_unreached_run_are_empty() -> None:
-    nothing = {"input_tokens": "not reported", "output_tokens": "not reported"}
-    phases: dict[str, object] = dict.fromkeys(("setup", "model", "publication"))
-    assert telemetry.run_end_attributes(nothing, phases, {"branch": None}) == {}

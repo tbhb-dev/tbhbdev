@@ -4,13 +4,8 @@ from __future__ import annotations
 
 import json
 import shlex
-from typing import TYPE_CHECKING
-
-if TYPE_CHECKING:
-    from collections.abc import Mapping
 
 _ENV_OVERRIDE = "shell_environment_policy.set."
-_NOT_REPORTED = "not reported"
 
 
 def otel_config(endpoint: str) -> str:
@@ -68,33 +63,3 @@ def argv_log_line(command: tuple[str, ...]) -> str:
             shown.append(word)
         previous = word
     return "argv: " + shlex.join(shown)
-
-
-def run_end_attributes(
-    usage: Mapping[str, object],
-    phase_seconds: Mapping[str, object],
-    published: Mapping[str, object],
-) -> dict[str, float | str]:
-    """The end record's usage, phase seconds and published state as attributes.
-
-    A value that is neither a number nor a string, and a `"not reported"`, is
-    left out, so a missing figure never reaches the backend as a zero.
-    """
-    named = {
-        "tbhb.run.usage.input_tokens": usage.get("input_tokens"),
-        "tbhb.run.usage.output_tokens": usage.get("output_tokens"),
-        "tbhb.run.usage.total_tokens": usage.get("total_tokens"),
-        "tbhb.run.usage.cost_usd": usage.get("cost_usd"),
-        "tbhb.run.phase.setup_seconds": phase_seconds.get("setup"),
-        "tbhb.run.phase.model_seconds": phase_seconds.get("model"),
-        "tbhb.run.phase.publication_seconds": phase_seconds.get("publication"),
-        "tbhb.run.published.branch": published.get("branch"),
-        "tbhb.run.published.pr": published.get("pr"),
-    }
-    return {
-        key: value
-        for key, value in named.items()
-        if isinstance(value, (int, float, str))
-        and not isinstance(value, bool)
-        and value != _NOT_REPORTED
-    }

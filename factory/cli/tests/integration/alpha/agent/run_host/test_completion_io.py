@@ -26,7 +26,6 @@ from run_host_fixtures import (
     preparation,
 )
 
-from tbhbdev import telemetry
 from tbhbdev.alpha.agent import (
     credentials,
     process_group,
@@ -237,16 +236,13 @@ def end_row(run: state.Run) -> dict[str, object]:
     return runfiles.latest(run.files.root)[run.files.name]
 
 
-def test_finished_run_index_row_has_usage_phases_and_published(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_finished_run_index_row_has_usage_phases_and_published(tmp_path: Path) -> None:
     run = make_run(tmp_path)
     prepared = preparation(run)
     run.files.write("log", CODEX_LOG)
     run.files.write("branch", "agent/example")
     run.files.write("pr", "example-org/example-repo#12")
     run.setup_seconds, run.model_seconds, run.publication_seconds = 1.5, 20.0, 0.25
-    monkeypatch.setattr(telemetry, "attributes", sent := Mock())
     assert host_completion.finish(run, prepared, None, 0) == 0
     row = end_row(run)
     assert row["usage"] == {
@@ -258,10 +254,6 @@ def test_finished_run_index_row_has_usage_phases_and_published(
     }
     assert row["phase_seconds"] == {"setup": 1.5, "model": 20.0, "publication": 0.25}
     assert row["published"] == {"branch": "agent/example", "pr": 12}
-    attributes = sent.call_args.kwargs
-    assert attributes["tbhb.run.usage.total_tokens"] == 54534
-    assert attributes["tbhb.run.phase.model_seconds"] == 20.0
-    assert attributes["tbhb.run.published.pr"] == 12
 
 
 def test_run_without_branch_or_pr_files_published_nothing(tmp_path: Path) -> None:

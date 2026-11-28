@@ -96,7 +96,7 @@ def _report(sources: dict[str, str]) -> None:
                 stderr.flush()
 
 
-def attributes(**values: str | float) -> None:
+def attributes(**values: str) -> None:
     with suppress(Exception):
         import tbhb_telemetry  # noqa: PLC0415 -- exec-only optional instrumentation
 

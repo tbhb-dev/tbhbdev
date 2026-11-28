@@ -33,18 +33,6 @@ CLAUDE_RESULT = {
         "output_tokens": 45,
     },
 }
-AGY_RESULT = {
-    "event": "result",
-    "result": {
-        "usage": {
-            "input_tokens": 8654,
-            "output_tokens": 25,
-            "thinking_tokens": 20,
-            "cache_read_tokens": 0,
-            "total_tokens": 8679,
-        },
-    },
-}
 
 
 def test_codex_total_is_read_and_the_rest_is_not_reported() -> None:
@@ -65,21 +53,39 @@ def test_claude_result_gives_input_output_and_cost() -> None:
     assert run_usage.parse(Harness.CLAUDE, "", json.dumps(CLAUDE_RESULT)) == {
         "input_tokens": 120,
         "output_tokens": 45,
-        "total_tokens": 165,
+        "total_tokens": 9165,
         "cost_usd": 0.0421,
         "source": "claude result",
     }
 
 
-def test_agy_result_gives_its_usage_fields() -> None:
-    text = json.dumps({"event": "step_update"}) + "\n" + json.dumps(AGY_RESULT) + "\n"
-    assert run_usage.parse(Harness.AGY, "", text) == {
-        "input_tokens": 8654,
-        "output_tokens": 25,
-        "total_tokens": 8679,
-        "cost_usd": NOT_REPORTED,
-        "source": "agy result",
+def test_claude_total_counts_the_cache_tokens() -> None:
+    usage = {
+        "input_tokens": 120,
+        "cache_read_input_tokens": 9000,
+        "cache_creation_input_tokens": 300,
+        "output_tokens": 45,
     }
+    text = json.dumps({"type": "result", "usage": usage})
+    parsed = run_usage.parse(Harness.CLAUDE, "", text)
+    assert (parsed["input_tokens"], parsed["total_tokens"]) == (120, 9465)
+
+
+def test_claude_total_skips_a_cache_count_that_is_not_a_number() -> None:
+    usage = CLAUDE_RESULT["usage"] | {"cache_creation_input_tokens": -5}
+    text = json.dumps({"usage": usage})
+    assert run_usage.parse(Harness.CLAUDE, "", text)["total_tokens"] == 9165
+
+
+def test_claude_result_without_cache_tokens_keeps_input_plus_output() -> None:
+    usage = {"input_tokens": 120, "output_tokens": 45}
+    text = json.dumps({"usage": usage})
+    assert run_usage.parse(Harness.CLAUDE, "", text)["total_tokens"] == 165
+
+
+def test_agy_reports_nothing_even_for_a_result_object() -> None:
+    text = json.dumps(CLAUDE_RESULT)
+    assert run_usage.parse(Harness.AGY, "", text) == NOTHING
 
 
 @pytest.mark.parametrize("harness", list(Harness))
@@ -90,6 +96,8 @@ def test_agy_result_gives_its_usage_fields() -> None:
         "plain answer\n\nVERDICT: GO\n",
         "{not json",
         "[]",
+        json.dumps([CLAUDE_RESULT]),
+        json.dumps({"event": "step_update"}) + "\n" + json.dumps(CLAUDE_RESULT),
         '{"usage": "x"}',
         '{"type": "result", "usage": {"input_tokens": true, "output_tokens": -1}}',
     ],
