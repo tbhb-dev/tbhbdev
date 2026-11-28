@@ -84,6 +84,23 @@ expect_failure_test(
     test = ":proof_no_files",
 )
 
+# The affected-targets scripts run on stock macOS bash 3.2, so they must avoid
+# the constructs that came later.
+sh_test(
+    name = "bash3_compat_test",
+    srcs = ["bash3_compat_test.sh"],
+    data = [
+        "@@//:.github/actions/affected-targets/download.sh",
+        "@@//:.github/actions/affected-targets/select.sh",
+    ],
+    env = {
+        "SCRIPT_RLOCATIONPATHS": " ".join([
+            "$(rlocationpath @@//:.github/actions/affected-targets/download.sh)",
+            "$(rlocationpath @@//:.github/actions/affected-targets/select.sh)",
+        ]),
+    },
+)
+
 # The affected-targets action's selection and every fallback, with a fake
 # target-determinator in a scratch Git repository.
 sh_test(
