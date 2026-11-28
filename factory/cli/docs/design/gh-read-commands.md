@@ -46,9 +46,7 @@ The operator's decision record of 2026-11-27 (GitHub read commands: credential a
 
 ### Command set
 
-Register `read` in alpha help and `COMMANDS`. See the [command table](#command-fields-and-refusal-hints).
-
-The read commands form a package named `read` directly under `factory/cli/src/tbhbdev/`, not under `alpha/`, with tests under `factory/cli/tests/unit/read/`. The command module holds arguments, output, and exit status. Handler modules do the work and never import argument parsing, so the package moves without rework. The alpha dispatcher binds `read` by name, and command names remain `tbhbdev alpha read ...`.
+Register `read` in alpha help and `COMMANDS`. See the [command table](#command-fields-and-refusal-hints). The read commands form a package named `read` directly under `factory/cli/src/tbhbdev/`, not under `alpha/`, with tests under `factory/cli/tests/unit/read/`. The command module holds arguments, output, and exit status. Handler modules do the work and never import argument parsing. The alpha dispatcher binds `read` by name, and command names remain `tbhbdev alpha read ...`.
 
 Build `read pr state <pr>` with `--repo` and `--fields` first. The second build adds `read pr show [<pr|sha>]`, which resolves the head once and reads state and checks. Add files, commits, and reviews on request with `--files`, `--commits`, and `--reviews`.
 
@@ -163,7 +161,7 @@ Scan commands in pipes, loops, and shell groups in parentheses, including those 
 
 Refuse changes to the assigned `GH_CONFIG_DIR`. Alpha write commands use the internal invocation path after validation. Human terminal calls outside agent sessions pass through.
 
-Keep the 1Password token-unset check, `verdict` in `factory/cli/src/tbhbdev/alpha/guard/git_hooks.py` (called from `guard/gh_poll/command.py`), and the self-matching `pgrep -f` loop check. The operator's write controls in `guard-gh-pr` are unchanged. PR 122 already split the guard code: `guard/shell_commands.py` scans shell commands, `guard/gh_options.py` and `guard/options.py` parse `gh` options, `guard/gh_poll/decision.py` and `guard/gh_poll/token.py` hold the poll rules, and `guard/gh_pr/decision.py` holds the PR write rules. The unified hook reuses and extends these modules and keeps each under 400 code lines. It creates no parallel ones.
+Keep the 1Password token-unset check, `verdict` in `factory/cli/src/tbhbdev/alpha/guard/git_hooks.py` (called from `guard/gh_poll/command.py`), and the self-matching `pgrep -f` loop check. The operator's write controls in `guard-gh-pr` are unchanged. PR 122 already split the guard code: `guard/shell_commands.py` scans shell commands, `guard/gh_options.py` and `guard/options.py` parse `gh` options, `guard/gh_poll/decision.py` and `guard/gh_poll/token.py` hold the poll rules, and `guard/gh_pr/decision.py` holds the PR write rules. The unified hook reuses and extends these modules and keeps each under 400 code lines. It builds on them instead of adding parallel ones.
 
 The owner of the poll guard defines the change to the standing polling rule for fallback requests inside one bounded wait.
 
