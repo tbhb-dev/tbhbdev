@@ -1119,9 +1119,11 @@ cli_py_test(
         "//:.github/prose-lint.sh",
         "//:.github/workflows/ci.yml",
         "//:.pre-commit-config.yaml",
+        "//factory/cli:combine_coverage.sh",
     ],
     deps = [
         ":conftest",
+        "@cli_pip//coverage",
         "@cli_pip//pytest",
         "@cli_pip//pyyaml",
     ],

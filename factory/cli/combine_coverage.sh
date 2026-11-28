@@ -24,7 +24,6 @@ run_bazel test --config=ci --remote_download_regex='.*/test\.outputs/\.coverage$
   --target_pattern_file="$temp/targets" \
   --build_event_json_file="$temp/events.json" \
   --nozip_undeclared_test_outputs \
-  --nocache_test_results \
   --test_arg=--cov=tbhbdev --test_arg=--cov-config=pyproject.toml \
   --test_arg=--cov-branch --test_arg=--cov-report= --test_arg=--cov-fail-under=0 \
   || test_status=$?

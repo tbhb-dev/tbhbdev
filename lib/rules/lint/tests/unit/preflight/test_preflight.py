@@ -47,7 +47,9 @@ def test_summary_for_mixed_results() -> None:
 def test_main_keeps_report(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    async def fake_check(_name: str, _: preflight.Revisions, scratch: Path) -> None:
+    async def fake_check(
+        _name: str, _: preflight.Revisions, scratch: Path, **_kwargs: object
+    ) -> None:
         (scratch / "design-report.md").write_text("report\n", encoding="utf-8")
 
     monkeypatch.chdir(tmp_path)
@@ -95,7 +97,9 @@ def test_main_records_full_runs_at_a_clean_head(
     async def fake_git(*args: str) -> str:
         return replies[args]
 
-    async def fake_check(name: str, _: preflight.Revisions, _scratch: Path) -> None:
+    async def fake_check(
+        name: str, _: preflight.Revisions, _scratch: Path, **_kwargs: object
+    ) -> None:
         if case == "moved":
             replies["rev-parse", "HEAD"] = "d" * 40
         if case == "became-dirty":
@@ -471,6 +475,68 @@ def test_affected_tests_excludes_slow_external(
 CLI_TEST = "//factory/cli/tests/unit:test_command"
 
 
+@pytest.mark.parametrize("mode", ["coverage", "other-path", "fallback", "single"])
+def test_affected_tests_skip_cli_py_tests_when_coverage_runs(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, mode: str
+) -> None:
+    other_test = "//ops/ansible:lint_test"
+    shell_test = "//factory/cli/tests/unit:shell_test"
+    selected = [f"@@{CLI_TEST}", shell_test, other_test]
+    if mode == "fallback":
+        selected = ["//..."]
+    elif mode == "other-path":
+        selected = [other_test]
+    targets = tmp_path / "targets.txt"
+    original = "\n".join(selected) + "\n"
+    targets.write_text(original, encoding="utf-8")
+    path = (
+        "ops/templates/a.j2"
+        if mode == "other-path"
+        else "factory/cli/src/tbhbdev/alpha/size_gate.py"
+    )
+    commands: list[tuple[str | Path, ...]] = []
+    tested: list[str] = []
+
+    def fake_run(
+        *command: str | Path, env: dict[str, str] | None = None, **_kwargs: object
+    ) -> bytes:
+        commands.append(command)
+        if _is_select_command(command):
+            assert env is not None
+            fallback = "true" if mode == "fallback" else "false"
+            Path(env["GITHUB_OUTPUT"]).write_text(
+                f"all={fallback}\nfile={targets}\n", encoding="utf-8"
+            )
+        if command[:2] == ("bazelisk", "query"):
+            return f"{CLI_TEST}\n".encode()
+        if command[:2] == ("bazelisk", "test"):
+            pattern = str(command[-1]).removeprefix("--target_pattern_file=")
+            tested.extend(Path(pattern).read_text(encoding="utf-8").splitlines())
+        return b""
+
+    _configure_single_check(tmp_path, monkeypatch, "affected-tests")
+    if mode != "single":
+        monkeypatch.setattr(sys, "argv", ["preflight"])
+    monkeypatch.setattr(preflight, "ALWAYS", ())
+    monkeypatch.setattr(
+        preflight,
+        "git",
+        AsyncMock(side_effect=lambda cmd, *_: f"{path}\0" if cmd == "diff" else ""),
+    )
+    monkeypatch.setattr(preflight, "run", AsyncMock(side_effect=fake_run))
+
+    assert asyncio.run(preflight.main()) == 0
+    expected = {
+        "coverage": [shell_test, other_test],
+        "fallback": [*selected, f"-{CLI_TEST}"],
+    }
+    assert tested == expected.get(mode, selected)
+    assert targets.read_text(encoding="utf-8") == original
+    assert (
+        ("bazelisk", "run", "--config=ci", "//factory/cli:coverage") in commands
+    ) == (mode in expected)
+
+
 def drive_main(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -487,7 +553,9 @@ def drive_main(
     async def fake_git(*args: str) -> str:
         return f"{changed_path}\0" if args[0] == "diff" else ""
 
-    async def fake_check(name: str, _: preflight.Revisions, scratch: Path) -> None:
+    async def fake_check(
+        name: str, _: preflight.Revisions, scratch: Path, **_kwargs: object
+    ) -> None:
         ran.append(name)
         now[0] += seconds.get(name, 1.0)
         if name == "affected-tests" and selection is not None:
@@ -597,7 +665,9 @@ def test_failed_stage_is_reported_with_its_time(
 ) -> None:
     now = [0.0]
 
-    async def fake_check(_name: str, _: preflight.Revisions, _scratch: Path) -> None:
+    async def fake_check(
+        _name: str, _: preflight.Revisions, _scratch: Path, **_kwargs: object
+    ) -> None:
         now[0] += 12.4
         raise preflight.CheckError
 
