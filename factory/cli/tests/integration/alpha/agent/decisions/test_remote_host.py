@@ -203,6 +203,8 @@ def test_macos_reads_four_page_counts_and_the_pressure_level(
 ) -> None:
     code, out = run_script(macos_script(answer))
     assert code == 0
+    assert len(out.split()) == 8
+    assert out.split()[-1] == "-"
     assert limits.parse(out) == limits.Reading(
         0.5, 8, 8388608, 560, 4096, 1024, expected
     )
@@ -216,32 +218,52 @@ PRESSURE = (
 
 @pytest.mark.skipif(sys.platform != "linux", reason="reads /proc")
 @pytest.mark.parametrize(
-    ("text", "expected"),
+    ("text", "expected", "second_counter", "swap_in"),
     [
-        (PRESSURE % "12.50", 12.5),
-        (PRESSURE % "0.00", 0.0),
-        ("full avg10=3.00 avg60=0 avg300=0 total=0\n", None),
-        ("some garbage\n", None),
-        (None, None),
+        (PRESSURE % "12.50", 12.5, "pswpin 5100", None),
+        (PRESSURE % "0.00", 0.0, "pswpin 5100", None),
+        ("full avg10=3.00 avg60=0 avg300=0 total=0\n", None, "pswpin 100", 0.0),
+        ("some garbage\n", None, "pswpin 5100", 5000.0),
+        (PRESSURE % ".", None, "pswpin 5100", 5000.0),
+        (None, None, "pswpin 5100", 5000.0),
+        (None, None, "pswpin 99", None),
+        (None, None, "pswpin x", None),
+        (None, None, None, None),
     ],
 )
-def test_linux_pressure_is_some_avg10_or_unknown(
-    text: str | None, expected: float | None, tmp_path: Path
+def test_linux_uses_some_avg10_or_samples_swap_in(
+    text: str | None,
+    expected: float | None,
+    second_counter: str | None,
+    swap_in: float | None,
+    tmp_path: Path,
 ) -> None:
     (tmp_path / "meminfo").write_text(
         "".join(f"{name}: {value}\n" for name, value in MEMINFO.items())
     )
-    script = remote_host.limits().replace("/proc/meminfo", str(tmp_path / "meminfo"))
-    if text is None:
-        script = script.replace("/proc/pressure/memory", str(tmp_path / "absent"))
-    else:
-        (tmp_path / "pressure").write_text(text)
-        script = script.replace("/proc/pressure/memory", str(tmp_path / "pressure"))
-    code, out = run_script(script)
+    pressure = tmp_path / "pressure"
+    if text is not None:
+        pressure.write_text(text)
+    vmstat = tmp_path / "vmstat"
+    if second_counter is not None:
+        vmstat.write_text("pswpin 100\n")
+    sleep = f"""sleep() {{ test "$1" = 1 && echo '{second_counter}' > "{vmstat}"; }}
+"""
+    script = (
+        remote_host.limits()
+        .replace("/proc/meminfo", str(tmp_path / "meminfo"))
+        .replace("/proc/pressure/memory", str(pressure))
+        .replace("/proc/vmstat", str(vmstat))
+    )
+    code, out = run_script(sleep + script)
     assert code == 0
+    assert len(out.split()) == 8
     found = limits.parse(out)
     assert isinstance(found, limits.Reading)
     assert found.pressure == expected
+    assert found.swap_in == swap_in
+    if expected is not None:
+        assert vmstat.read_text() == "pswpin 100\n"
 
 
 @pytest.mark.skipif(sys.platform != "darwin", reason="reads sysctl and vm_stat")

@@ -250,6 +250,25 @@ def test_full_swap_with_low_pressure_launches_with_a_warning_end_to_end(
         hosts.check_limits(CONFIG, CONFIG.hosts[0], Profile.BUILD, ignore=False)
 
 
+def test_full_swap_uses_swap_in_when_pressure_is_unknown(
+    host: Remote, capsys: pytest.CaptureFixture[str]
+) -> None:
+    host.configure(limits="0.5 4 12582912 6291456 100 99 - 0")
+    config_host = CONFIG.hosts[0]
+    hosts.check_limits(CONFIG, config_host, Profile.BUILD, ignore=False)
+    assert (
+        capsys.readouterr().err == f"warning: {config_host.name}: swap used 99% > 80%\n"
+    )
+
+    host.configure(limits="0.5 4 12582912 6291456 100 99 - 5000")
+    with pytest.raises(Invalid) as caught:
+        hosts.check_limits(CONFIG, config_host, Profile.BUILD, ignore=False)
+    assert str(caught.value) == (
+        f"{config_host.name}: swap-in 5000 pages/s >= limit 1000; swap used 99% > 80%; "
+        "pass --ignore-limits to launch anyway"
+    )
+
+
 def test_ignore_limits_launches_warns_and_is_recorded(
     host: Remote, capsys: pytest.CaptureFixture[str]
 ) -> None:
@@ -343,7 +362,7 @@ def test_check_limits_charges_only_recent_runs_and_keeps_single_run_fallback(
     host: Remote,
 ) -> None:
     config_host = CONFIG.hosts[0]
-    two_runs_reading = "0.5 4 33554432 12582912 0 0 -"
+    two_runs_reading = "0.5 4 33554432 12582912 0 0 - 0"
     refused = r"12582912 KiB.*3 \* reservation 6144 MiB.*2 recently admitted"
     host.configure(limits=two_runs_reading, admitted="2 2")
     with pytest.raises(Invalid, match=refused):

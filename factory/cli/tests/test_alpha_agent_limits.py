@@ -8,7 +8,7 @@ import pytest
 from agent_example import LINUX
 
 from tbhbdev.alpha.agent.decisions import limits
-from tbhbdev.alpha.agent.model import Os
+from tbhbdev.alpha.agent.model import Host, Os
 
 FINE = limits.Reading(1.0, 8, 1000, 500, 100, 10, None)
 
@@ -22,6 +22,14 @@ def test_parse_reads_seven_fields() -> None:
     )
 
 
+@pytest.mark.parametrize(("field", "expected"), [("7.5", 7.5), ("-", None)])
+def test_parse_reads_eight_fields(field: str, expected: float | None) -> None:
+    found = limits.parse(f"0.5 4 1000 900 100 0 - {field}\n")
+    assert isinstance(found, limits.Reading)
+    assert found.pressure is None
+    assert found.swap_in == expected
+
+
 @pytest.mark.parametrize(
     "text",
     [
@@ -32,7 +40,11 @@ def test_parse_reads_seven_fields() -> None:
         "1 4 1000 900 100 0 nan",
         "1 4 1000 900 100 0 -1",
         "x 4 1000 900 100 0 -",
-        "1 4 1000 900 100 0 - 7",
+        "1 4 1000 900 100 0 - 7 extra",
+        "1 4 1000 900 100 0 - -1",
+        "1 4 1000 900 100 0 - x",
+        "1 4 1000 900 100 0 - nan",
+        "1 4 1000 900 100 0 - inf",
         "nan 4 1000 900 100 0 -",
         "-1 4 1000 900 100 0 -",
         "1 0 1000 900 100 0 -",
@@ -79,6 +91,11 @@ def test_full_swap_with_low_pressure_launches_with_a_warning() -> None:
         False,
         "warning: example-linux: swap used 99% > 80%",
     )
+    found = dataclasses.replace(FULL_SWAP, swap_in=5000)
+    assert limits.decide(LINUX, found, 0, recent=0, ignore=False) == (
+        False,
+        "warning: example-linux: swap used 99% > 80%",
+    )
 
 
 def test_high_pressure_refuses_and_still_names_the_swap() -> None:
@@ -95,18 +112,38 @@ def test_high_pressure_refuses_and_still_names_the_swap() -> None:
     )[1].startswith("warning: ")
 
 
-def test_unknown_pressure_keeps_the_swap_refusal() -> None:
+@pytest.mark.parametrize("host", [LINUX, MAC], ids=["linux", "macos"])
+def test_unknown_pressure_and_swap_in_keep_the_swap_refusal(host: Host) -> None:
     found = dataclasses.replace(FULL_SWAP, pressure=None)
-    assert limits.decide(LINUX, found, 0, recent=0, ignore=False) == (
+    assert limits.decide(host, found, 0, recent=0, ignore=False) == (
         True,
-        "example-linux: swap used 99% > 80%; pass --ignore-limits to launch anyway",
+        f"{host.name}: swap used 99% > 80%; pass --ignore-limits to launch anyway",
     )
     assert limits.decide(
-        LINUX, dataclasses.replace(found, swap_used=0), 0, recent=0, ignore=False
+        host, dataclasses.replace(found, swap_used=0), 0, recent=0, ignore=False
     ) == (
         False,
         "",
     )
+
+
+@pytest.mark.parametrize(
+    ("limit", "rate", "refuse"),
+    [(1000, 0.0, False), (1000, 5000.0, True), (750, 749.0, False), (750, 750.0, True)],
+)
+def test_swap_in_is_used_when_pressure_is_unknown(
+    limit: int, rate: float, refuse: bool
+) -> None:
+    host = dataclasses.replace(LINUX, max_swap_in_pages_per_second=limit)
+    reading = dataclasses.replace(FULL_SWAP, pressure=None, swap_in=rate)
+    swap = "swap used 99% > 80%"
+    expected = (
+        f"{host.name}: swap-in {rate:g} pages/s >= limit {limit}; {swap}; "
+        "pass --ignore-limits to launch anyway"
+        if refuse
+        else f"warning: {host.name}: {swap}"
+    )
+    assert limits.decide(host, reading, 0, recent=0, ignore=False) == (refuse, expected)
 
 
 @pytest.mark.parametrize(("level", "refuse"), [(1, False), (2, False), (4, True)])

@@ -11,7 +11,7 @@ from tbhbdev.alpha.agent.model import Os
 if TYPE_CHECKING:
     from tbhbdev.alpha.agent.model import Host
 
-_FIELDS = 7
+_FIELDS = 8
 _UNKNOWN = "-"
 
 
@@ -19,8 +19,9 @@ _UNKNOWN = "-"
 class Reading:
     """The host's 1-minute load and CPU count, with memory and swap in KiB.
 
-    PRESSURE is Linux's memory `some avg10` or macOS's pressure level, and is
-    None where the host can't say.
+    PRESSURE is Linux's memory `some avg10` or macOS's pressure level.
+    SWAP_IN is Linux's swap-in rate in pages per second. An unknown reading
+    for either is None.
     """
 
     load: float
@@ -30,21 +31,27 @@ class Reading:
     swap_total: int
     swap_used: int
     pressure: float | None
+    swap_in: float | None = None
 
 
 def parse(text: str) -> Reading | str:
-    """The numbers in TEXT, or the cause of failure when TEXT isn't seven fields.
+    """The host reading in TEXT, or the cause of failure.
 
-    The last field is the memory pressure, or `-` when the host can't say.
+    The last two fields are memory pressure and swap-in, with `-` for unknown.
+    Older probes omit swap-in.
     """
     parts = text.split()
+    if len(parts) == _FIELDS - 1:
+        parts.append(_UNKNOWN)
     try:
         if len(parts) != _FIELDS:
             raise ValueError  # noqa: TRY301 -- one cause for every bad shape
-        pressure = None if parts[6] == _UNKNOWN else float(parts[6])
+        pressure, swap_in = (None if p == _UNKNOWN else float(p) for p in parts[6:])
         load = float(parts[0])
         cpus, total, available, swap_total, swap_used = (int(p) for p in parts[1:6])
-        found = Reading(load, cpus, total, available, swap_total, swap_used, pressure)
+        found = Reading(
+            load, cpus, total, available, swap_total, swap_used, pressure, swap_in
+        )
     except ValueError:
         return "unparsable output"
     sizes = (found.memory_available, found.swap_total, found.swap_used)
@@ -54,9 +61,9 @@ def parse(text: str) -> Reading | str:
         and found.cpus > 0
         and found.memory_total > 0
         and min(sizes) >= 0
-        and (
-            found.pressure is None
-            or (math.isfinite(found.pressure) and found.pressure >= 0)
+        and all(
+            value is None or (math.isfinite(value) and value >= 0)
+            for value in (found.pressure, found.swap_in)
         )
     ):
         return "unparsable output"
@@ -94,24 +101,28 @@ def parse_probe(text: str) -> tuple[Reading | str, int, int]:
 def _pressure(host: Host, found: Reading) -> tuple[list[str], list[str]]:
     """The refusals and the warnings that FOUND's pressure and swap raise.
 
-    Swap fill alone only warns while the pressure is known, because Linux keeps
-    cold pages in swap long after pressure ends. Where the pressure is unknown
-    a full swap still refuses, so nothing gets looser where we can't see.
+    Swap fill only warns when either pressure or swap-in is known. Linux can
+    keep cold pages in swap long after pressure ends.
     """
     swap = ""
     if 100 * found.swap_used > host.max_swap_used_percent * found.swap_total:
         used = 100 * found.swap_used / found.swap_total
         swap = f"swap used {used:.0f}% > {host.max_swap_used_percent}%"
-    if found.pressure is None:
-        return ([swap] if swap else []), []
-    if host.os is Os.MACOS:
+    warnings = [swap] if swap else []
+    value = found.pressure
+    unit = ""
+    if value is None:
+        value = found.swap_in
+        if value is None:
+            return warnings, []
+        limit, name = host.max_swap_in_pages_per_second, "swap-in"
+        unit = " pages/s"
+    elif host.os is Os.MACOS:
         limit, name = host.max_memory_pressure_level, "memory pressure level"
     else:
         limit, name = host.max_memory_pressure_avg10, "memory pressure avg10"
-    refusals = []
-    if found.pressure >= limit:
-        refusals.append(f"{name} {found.pressure:g} >= limit {limit}")
-    return refusals, ([swap] if swap else [])
+    refusals = [f"{name} {value:g}{unit} >= limit {limit}"] if value >= limit else []
+    return refusals, warnings
 
 
 def _reservation(available: int, memory_mib: int, recent: int) -> str | None:
