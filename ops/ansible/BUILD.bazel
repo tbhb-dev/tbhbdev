@@ -5,7 +5,7 @@ load(
     "ansible_lint_test",
     "ansible_syntax_check_test",
 )
-load(":tags_test.bzl", "slow_external_tags_test")
+load(":tags_test.bzl", "slow_external_tags_test", "timeout_fits_load_test")
 
 repo_files()
 
@@ -50,8 +50,11 @@ SRCS = glob(
 ) + [":syntax_inventory"]
 
 # A new playbook under playbooks/ goes in this list, or no test checks it.
+# The default moderate timeout is 180 s in the repository's --test_timeout, and
+# the check timed out at 180.1 s under CI load. Eternal is 900 s.
 ansible_syntax_check_test(
     name = "syntax_test",
+    timeout = "eternal",
     srcs = SRCS,
     inventory = "molecule/syntax_inventory.yml",
     playbooks = [
@@ -93,12 +96,13 @@ ansible_syntax_check_test(
 )
 
 # ansible-lint syntax-checks each playbook, which needs an inventory that ansible.cfg doesn't name.
-# Its watchdog stops ansible-lint at 80% of the test timeout. On a CI runner
-# beside the mutmut tests it needs more than the 240 s that the default
-# moderate timeout gives, so the long timeout sets 720 s.
+# Its watchdog stops ansible-lint at 80% of the test timeout. The repository's
+# --test_timeout (.bazelrc) maps eternal to 900 s, so the watchdog fires at
+# 720 s. The longest run seen under CI load took 241.9 s; the old long
+# timeout (300 s, watchdog at 240 s) was too tight.
 ansible_lint_test(
     name = "lint_test",
-    timeout = "long",
+    timeout = "eternal",
     srcs = SRCS,
     env = {"ANSIBLE_INVENTORY": "molecule/syntax_inventory.yml"},
     strip_prefix = "ops/ansible",
@@ -116,6 +120,14 @@ ansible_collections_lock_test(
 
 slow_external_tags_test(
     name = "slow_external_tags_test",
+    targets = [
+        "lint_test",
+        "syntax_test",
+    ],
+)
+
+timeout_fits_load_test(
+    name = "timeout_fits_load_test",
     targets = [
         "lint_test",
         "syntax_test",

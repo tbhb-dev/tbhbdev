@@ -42,10 +42,13 @@ def ruleset_update() -> tuple[dict[str, object], dict[str, object]]:
     return current, body
 
 
-def ruleset_writes(fake: Fake) -> list[dict[str, object]]:
+def audit_entries(fake: Fake) -> list[dict[str, object]]:
     audit = fake.runtime.audit.directory / "calls.jsonl"
-    entries = [json.loads(line) for line in audit.read_text().splitlines()]
-    return [row for row in entries if row["method"] == "PUT"]
+    return [json.loads(line) for line in audit.read_text().splitlines()]
+
+
+def ruleset_writes(fake: Fake) -> list[dict[str, object]]:
+    return [row for row in audit_entries(fake) if row["method"] == "PUT"]
 
 
 def test_approved_ruleset_call(
@@ -334,7 +337,7 @@ def test_secret_visibility_refused(
 
 
 @pytest.mark.parametrize(
-    ("repo", "ident", "status", "code"),
+    "case",
     [
         ("other/widget", 8, 204, "repository_mismatch"),
         ("../widget", 8, 204, "repository_mismatch"),
@@ -346,14 +349,12 @@ def test_secret_visibility_refused(
         ("widget", 8, 403, "request_failed"),
     ],
 )
-def test_repository_selection_errors(  # noqa: PLR0913, PLR0917  # Table plus fixtures.
+def test_repository_selection_errors(
     fake: Fake,
-    repo: str,
-    ident: object,
-    status: int,
-    code: str,
+    case: tuple[str, object, int, str],
     capsys: pytest.CaptureFixture[str],
 ) -> None:
+    repo, ident, status, code = case
     runtime = selected_transport(
         fake,
         {
@@ -497,3 +498,147 @@ def test_custom_settings_and_dry_run(
         )
     ]
     assert capsys.readouterr() == ("bad request", "")
+
+
+def archive_argv(tmp_path: Path, reason: str, *extra: str) -> list[str]:
+    body = tmp_path / "archive.json"
+    body.write_text('{"archived": true}')
+    return [
+        "call",
+        "PATCH",
+        "/repos/tbhb-dev/gadget",
+        "--json",
+        str(body),
+        "--reason",
+        reason,
+        *extra,
+    ]
+
+
+def test_archive_command_respects_protected_repositories(
+    fake: Fake,
+    config_file: Path,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    config_file.write_text(
+        '[admin]\nvault = "vault-admin"\nitem = "item-admin"\n'
+        'protected_repositories = ["TBHB-DEV/Gadget"]\n'
+    )
+    for extra in ((), ("--dry-run",)):
+        argv = archive_argv(tmp_path, "decision-ref", *extra)
+        assert admin.main(argv, "admin", runtime=fake.runtime) == 3
+        assert capsys.readouterr() == ("", "repository_removal\n")
+    assert fake.reads == fake.requests == []
+
+
+def test_archive_command_allowed_and_audited(
+    fake: Fake, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    argv = archive_argv(tmp_path, "2026-11-27-archive-gadget")
+    assert admin.main(argv, "admin", runtime=fake.runtime) == 0
+    assert capsys.readouterr() == ('{"ok":true}', "")
+    assert fake.requests[-1].method == "PATCH"
+    assert fake.requests[-1].url.path == "/repos/tbhb-dev/gadget"
+    assert fake.requests[-1].content == b'{"archived":true}'
+    entries = audit_entries(fake)
+    assert [(e["phase"], e["decision"], e["reason"]) for e in entries] == [
+        ("before", "allow", "2026-11-27-archive-gadget"),
+        ("after", "allow", "2026-11-27-archive-gadget"),
+    ]
+
+
+def test_empty_protected_repositories_allows_archive(
+    fake: Fake,
+    config_file: Path,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    config_file.write_text(
+        '[admin]\nvault = "vault-admin"\nitem = "item-admin"\n'
+        "protected_repositories = []\n"
+    )
+    argv = archive_argv(tmp_path, "empty-protected-list")
+    assert admin.main(argv, "admin", runtime=fake.runtime) == 0
+    assert capsys.readouterr() == ('{"ok":true}', "")
+    assert fake.requests[-1].method == "PATCH"
+    assert fake.requests[-1].url.path == "/repos/tbhb-dev/gadget"
+    assert fake.requests[-1].content == b'{"archived":true}'
+
+
+@pytest.mark.parametrize(
+    "case",
+    [
+        ("DELETE", "/repos/tbhb-dev/gadget", None),
+        ("POST", "/repos/tbhb-dev/gadget/transfer", {"new_owner": "other"}),
+        ("PATCH", "/repos/tbhb-dev/gadget", {"archived": False}),
+        ("PATCH", "/repos/tbhb-dev/gadget", {"archived": True, "description": "x"}),
+        ("PATCH", "/repos/tbhb-dev/tbhbdev", {"archived": True}),
+    ],
+)
+def test_empty_protected_repositories_still_refuses_other_removals(
+    fake: Fake,
+    config_file: Path,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    case: tuple[str, str, dict[str, object] | None],
+) -> None:
+    method, path, payload = case
+    config_file.write_text(
+        '[admin]\nvault = "vault-admin"\nitem = "item-admin"\n'
+        "protected_repositories = []\n"
+    )
+    argv = ["call", method, path, "--reason", "empty-protected-list"]
+    if payload is not None:
+        body = tmp_path / "body.json"
+        body.write_text(json.dumps(payload))
+        argv.extend(["--json", str(body)])
+    assert admin.main(argv, "admin", runtime=fake.runtime) == 3
+    assert capsys.readouterr() == ("", "repository_removal\n")
+    assert fake.reads == fake.requests == []
+
+
+@pytest.mark.parametrize(
+    "case",
+    [
+        (
+            (
+                '[admin]\nvault = "vault-admin"\nitem = "item-admin"\n'
+                'protected_repositories = "tbhb-dev/gadget"\n'
+            ),
+            [],
+        ),
+        (
+            (
+                '[admin]\nvault = "vault-admin"\nitem = "item-admin"\n'
+                'protected_repositories = [""]\n'
+            ),
+            [],
+        ),
+        (
+            (
+                '[admin]\nvault = "vault-admin"\nitem = "item-admin"\n'
+                "protected_repositories = [1]\n"
+            ),
+            [],
+        ),
+        ("not valid toml = [\n", ["--vault", "vault-admin", "--item", "item-admin"]),
+    ],
+)
+def test_malformed_config_refuses_archive_only(
+    fake: Fake,
+    config_file: Path,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    case: tuple[str, list[str]],
+) -> None:
+    text, flags = case
+    config_file.write_text(text)
+    archive = archive_argv(tmp_path, "test", *flags)
+    assert admin.main(archive, "admin", runtime=fake.runtime) == 3
+    assert capsys.readouterr() == ("", "repository_removal\n")
+    assert fake.reads == fake.requests == []
+    read = ["call", "GET", "/repos/tbhb-dev/gadget", "--reason", "test", *flags]
+    assert admin.main(read, "admin", runtime=fake.runtime) == 0
+    assert capsys.readouterr() == ('{"ok":true}', "")
+    assert fake.requests[-1].method == "GET"

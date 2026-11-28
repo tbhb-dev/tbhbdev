@@ -62,6 +62,8 @@ commands:
   repo         bootstrap [--dry-run] [--create --private|--public] ORG/REPO:
                apply the standard repository settings
   merge        merge an approved pull request
+  merge-queue-remove N --reason TEXT [--dry-run]: take an open pull request out
+               of its merge queue; it stays open and approved. Re-queue with merge
   monorepo     map CLONE COMMIT --dest FOLDER | import CLONE@COMMIT --map MAP
                --into CLONE | verify CLONE@COMMIT --map MAP --tree CLONE:
                import a public repository into the monorepo
@@ -97,7 +99,8 @@ COMMAND_MODULES = {
     "gh-app": ("tbhbdev.alpha.gh_app_command", "main"),
     "repo": ("tbhbdev.alpha.repo_bootstrap", "main"),
     "merge": ("tbhbdev.merge.command", "main"),
-    "monorepo": ("tbhbdev.alpha.monorepo.command", "main"),
+    "merge-queue-remove": ("tbhbdev.merge.remove", "main"),
+    "monorepo": ("tbhbdev.monorepo.command", "main"),
     "verify-range": ("tbhbdev.alpha.verify_range", "main"),
     "version-check": ("tbhbdev.alpha.version_check", "main"),
     "install": ("tbhbdev.alpha.install.command", "main"),
@@ -172,6 +175,7 @@ COMMANDS.update(
         "issue": issue,
         "repo": partial(_keyword_prog, "repo"),
         "merge": partial(_keyword_prog, "merge"),
+        "merge-queue-remove": partial(_keyword_prog, "merge-queue-remove"),
     }
 )
 

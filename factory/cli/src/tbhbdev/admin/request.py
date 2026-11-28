@@ -39,6 +39,7 @@ class Settings:
     item: str | None = None
     vault: str | None = None
     app_id: str = "5733271"
+    protected: frozenset[str] | None = frozenset()
 
 
 @dataclass(frozen=True)
@@ -296,7 +297,7 @@ def call(  # noqa: PLR0913  # Explicit one-call inputs and optional dry run.
     dry_run: bool = False,
 ) -> tuple[int, str]:
     """Enforce policy and audit even when called by another subcommand."""
-    decision = policy.check(method, path, body)
+    decision = policy.check(method, path, body, protected=runtime.settings.protected)
     encoded = (
         b""
         if body is None

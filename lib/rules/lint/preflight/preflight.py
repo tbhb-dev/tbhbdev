@@ -5,15 +5,23 @@ import argparse
 import asyncio
 import errno
 import os
+import re
 import shlex
 import shutil
 import signal
 import sys
 import tempfile
+import time
 from pathlib import Path
 from typing import NamedTuple
 
 DEFAULT_BASE = "origin/main"
+SELECTION = "selection"
+CLI_COVERAGE_INPUTS = {"factory/cli/BUILD.bazel", "factory/cli/combine_coverage.sh"}
+# A selected label under the CLI package; select.sh may spell the main
+# repository with a leading @@.
+CLI_TARGET = re.compile(r"(@@)?//factory/cli([:/]|$)")
+clock = time.monotonic
 CI_CHECKS = Path("lib/rules/lint/ci_checks.sh")
 AFFECTED = Path(".github/actions/affected-targets")
 DRAFT = Path(".github/PULL_REQUEST_DRAFT.md")
@@ -61,10 +69,14 @@ def checks_for(paths: list[str], *, has_draft: bool) -> tuple[str, ...]:
     return (*affected, *text, *ALWAYS)
 
 
-def summary(results: list[tuple[str, bool]], base: str) -> str:
+# True: the stage passed. False: it failed. None: the selection proved it unaffected.
+Outcome = bool | None
+
+
+def summary(results: list[tuple[str, Outcome]], base: str) -> str:
     lines = []
     for name, passed in results:
-        status = "PASS" if passed else "FAIL"
+        status = "SKIP" if passed is None else "PASS" if passed else "FAIL"
         command = f"bazelisk run //:preflight -- --check {shlex.join((name, base))}"
         lines.append(f"{status} {name}  {command}")
     return "\n".join(lines)
@@ -201,12 +213,14 @@ async def record_stage(
     )
 
 
-async def record_result(revisions: Revisions, results: list[tuple[str, bool]]) -> None:
+async def record_result(
+    revisions: Revisions, results: list[tuple[str, Outcome]]
+) -> None:
     records = await record_target(revisions)
     if records is None:
         return
     tree = await git("rev-parse", f"{revisions.head}^{{tree}}")
-    failed = " ".join(name for name, passed in results if not passed)
+    failed = " ".join(name for name, passed in results if passed is False)
     result = f"fail {failed}" if failed else "pass"
     await asyncio.to_thread(
         write_record,
@@ -215,9 +229,30 @@ async def record_result(revisions: Revisions, results: list[tuple[str, bool]]) -
     )
 
 
+def selected_file(selection: str) -> str:
+    lines = selection.splitlines()
+    return next((line[5:] for line in lines if line.startswith("file=")), "")
+
+
+async def cli_tests_affected(scratch: Path, paths: list[str]) -> bool:
+    """Whether changed paths or the test selection require CLI coverage."""
+    if CLI_COVERAGE_INPUTS.intersection(paths):
+        return True
+    try:
+        selection = await asyncio.to_thread((scratch / SELECTION).read_text)
+        # A fallback selection lists patterns such as //... and not labels.
+        target_file = selected_file(selection)
+        if "all=false" not in selection.splitlines() or not target_file:
+            return True
+        targets = await asyncio.to_thread(Path(target_file).read_text)
+    except OSError, ValueError:
+        return True
+    return any(CLI_TARGET.match(line) for line in targets.splitlines())
+
+
 async def affected_tests(base: str, head: str, scratch: Path) -> None:
     determinator = scratch / "target-determinator"
-    output = scratch / "selection"
+    output = scratch / SELECTION
     try:
         await run("bash", AFFECTED / "download.sh", determinator, seconds=90)
     except CheckError, TimeoutError:
@@ -245,9 +280,7 @@ async def affected_tests(base: str, head: str, scratch: Path) -> None:
     finally:
         await shutdown_bazel(checkout)
     selection = await asyncio.to_thread(output.read_text)
-    target_file = next(
-        (line[5:] for line in selection.splitlines() if line.startswith("file=")), ""
-    )
+    target_file = selected_file(selection)
     if not target_file:
         raise OSError(errno.EIO, "affected-targets did not report a target file")
     if (await asyncio.to_thread(Path(target_file).stat)).st_size:
@@ -316,35 +349,59 @@ async def check(name: str, revisions: Revisions, scratch: Path) -> None:
             raise OSError(errno.EINVAL, "unknown check", name)
 
 
+def say(text: str) -> None:
+    sys.stderr.write(f"{text}\n")
+    sys.stderr.flush()
+
+
+async def stage(
+    name: str,
+    revisions: Revisions,
+    scratch: Path,
+    explicit: str | None,
+    paths: list[str],
+) -> Outcome:
+    if name == "cli-coverage" and not (
+        explicit or await cli_tests_affected(scratch, paths)
+    ):
+        say(f"Skipping {name}: no CLI test affected")
+        return None
+    say(f"Running {name}")
+    began = clock()
+    passed = True
+    try:
+        await check(name, revisions, scratch)
+    except (OSError, CheckError) as error:
+        say(str(error) or f"{name} timed out")
+        passed = False
+    say(f"Finished {name} in {clock() - began:.0f} s ({'PASS' if passed else 'FAIL'})")
+    return passed
+
+
 async def run_checks(
     checks: tuple[str, ...],
     revisions: Revisions,
     scratch: Path,
-    *,
-    skipped: set[str],
-) -> tuple[list[tuple[str, bool]], set[str] | None]:
-    results: list[tuple[str, bool]] = []
+    explicit: str | None,
+    paths: list[str],
+) -> tuple[list[tuple[str, Outcome]], set[str] | None]:
+    skipped = set() if explicit else await load_passed_stages(revisions)
+    results: list[tuple[str, Outcome]] = []
     recorded: set[str] | None = None
     for name in checks:
         if name in skipped:
-            sys.stderr.write(f"Skipping {name}: passed earlier at this head\n")
+            say(f"Skipping {name}: passed earlier at this head")
             results.append((name, True))
             continue
-        sys.stderr.write(f"Running {name}\n")
-        try:
-            await check(name, revisions, scratch)
-        except (OSError, CheckError) as error:
-            message = str(error) or f"{name} timed out"
-            sys.stderr.write(f"{message}\n")
-            stage_passed = False
-        else:
-            stage_passed = True
-        results.append((name, stage_passed))
-        recorded = await record_stage(revisions, name, passed=stage_passed)
+        outcome = await stage(name, revisions, scratch, explicit, paths)
+        results.append((name, outcome))
+        if outcome is not None:
+            recorded = await record_stage(revisions, name, passed=outcome)
     return results, recorded
 
 
 async def main() -> int:
+    started = clock()
     parser = argparse.ArgumentParser(
         description="Run the CI checks at the current commit."
     )
@@ -366,20 +423,22 @@ async def main() -> int:
     )
     ref = ref.removeprefix("refs/remotes/").removeprefix("refs/heads/")
     ref = DEFAULT_BASE if args.base == "HEAD" or ref in {"", "main"} else ref
-    paths = await git("diff", "--name-only", "-z", "--no-renames", merge_base, head)
+    changed = await git("diff", "--name-only", "-z", "--no-renames", merge_base, head)
+    paths = changed.split("\0")[:-1]
     has_draft = await asyncio.to_thread(DRAFT.is_file)
-    selected = checks_for(paths.split("\0")[:-1], has_draft=has_draft)
+    selected = checks_for(paths, has_draft=has_draft)
     checks = (args.check,) if args.check else selected
     revisions = Revisions(base, merge_base, head, ref)
-    skipped = set() if args.check else await load_passed_stages(revisions)
     scratch = Path(tempfile.mkdtemp(prefix="preflight-"))
-    results, recorded = await run_checks(checks, revisions, scratch, skipped=skipped)
+    results, recorded = await run_checks(checks, revisions, scratch, args.check, paths)
     sys.stdout.write(summary(results, args.base) + "\n")
-    passed = all(ok for _, ok in results)
+    passed = False not in (outcome for _, outcome in results)
     if not args.check:
         await record_result(revisions, results)
     elif passed and recorded is not None and set(selected).issubset(recorded):
-        await record_result(revisions, [(stage, True) for stage in selected])
+        await record_result(revisions, [(name, True) for name in selected])
+    word = "pass" if passed else "fail"
+    say(f"Preflight finished in {clock() - started:.0f} s: {word}")
     reports = {"design-report.md", "gomodscan.sarif", "agent-capacity.sarif"}
     if not passed or reports.intersection(await asyncio.to_thread(os.listdir, scratch)):
         sys.stdout.write(f"Preflight files: {scratch}\n")

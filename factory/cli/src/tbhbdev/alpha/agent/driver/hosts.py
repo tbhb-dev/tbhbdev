@@ -33,18 +33,18 @@ def read_limits(
         message = f"{host.name}: max_concurrent_runs is 0"
         raise Invalid(message)
     try:
-        found, admitted = limits.parse_probe(
+        found, _, recent = limits.parse_probe(
             transport.shell(settings, host, remote_host.limits(host), timeout=timeout)
         )
     except transport.TransportError as exc:
-        found, admitted = str(exc), 0
+        found, recent = str(exc), 0
     memory_mib = (
         settings.review_memory_mib
         if profile is Profile.REVIEW
         else settings.run_memory_mib
     )
     refuse, message = limits.decide(
-        host, found, memory_mib, admitted=admitted, ignore=ignore
+        host, found, memory_mib, recent=recent, ignore=ignore
     )
     return found, refuse, message
 

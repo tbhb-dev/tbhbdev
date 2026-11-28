@@ -36,6 +36,7 @@ cli_py_library(
         ":queue",
         ":renovate",
         ":rules",
+        ":write",
         "//factory/cli/src/tbhbdev/alpha/install/git:hooks",
         "//factory/cli/src/tbhbdev/alpha/pull_request:publish",
         "//factory/cli/src/tbhbdev/alpha/pull_request:repository",
@@ -134,4 +135,30 @@ cli_py_library(
     pyi_deps = [":review_gate"],
     visibility = ["//factory/cli:__subpackages__"],
     deps = [":evidence"],
+)
+
+cli_py_library(
+    name = "write",
+    srcs = ["write.py"],
+    imports = ["../.."],
+    visibility = ["//factory/cli:__subpackages__"],
+    deps = [
+        "//factory/cli/src/tbhbdev/alpha/identity:storage",
+        "//factory/cli/src/tbhbdev/alpha/pull_request:tools",
+    ],
+)
+
+cli_py_library(
+    name = "remove",
+    srcs = ["remove.py"],
+    imports = ["../.."],
+    visibility = ["//factory/cli:__subpackages__"],
+    deps = [
+        ":evidence",
+        ":github",
+        ":rules",
+        ":write",
+        "//factory/cli/src/tbhbdev/alpha/pull_request:metadata",
+        "//factory/cli/src/tbhbdev/alpha/pull_request:tools",
+    ],
 )

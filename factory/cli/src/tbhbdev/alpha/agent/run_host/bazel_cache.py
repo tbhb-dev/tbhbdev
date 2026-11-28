@@ -8,6 +8,7 @@ import os
 import re
 import shutil
 import stat
+import time
 from contextlib import suppress
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -19,6 +20,8 @@ if TYPE_CHECKING:
 
 VAR_TMP = Path("/var/tmp")  # noqa: S108  # nosec B108 -- the trusted /var/tmp anchor, not a temp file
 _HEX_BASE = re.compile(r"^[0-9a-f]{32}$")
+# Give Bazel a minute to publish its PID when a concurrent run starts shims.
+_STARTUP_SECONDS = 60
 
 
 def _bazel_roots(home: Path) -> tuple[tuple[Path, Path], ...]:
@@ -61,20 +64,15 @@ def _owned_dir(status: os.stat_result) -> bool:
     return stat.S_ISDIR(status.st_mode) and status.st_uid == os.getuid()
 
 
-def _open_owned(home: Path, base: Path) -> tuple[int, os.stat_result] | None:
-    """Open the base's parent and return its fd with the base's status.
+def open_owned_dir(anchor: Path, target: Path) -> tuple[int, os.stat_result] | None:
+    """Open target's parent and return its fd with target's lstat, no-follow.
 
     Every directory below the trusted anchor is opened with O_NOFOLLOW relative
     to the one before, and must be owned by the agent's uid, so a symlinked
     ancestor cannot redirect a deletion and the returned fd pins the validated
     chain even if a path is replaced later. The caller closes the fd.
     """
-    anchor = next((a for a, root in _bazel_roots(home) if base.parent == root), None)
-    if anchor is None and base.parent.is_relative_to(bazel_servers.MEMORY_DISK):
-        anchor = bazel_servers.MEMORY_DISK
-    if anchor is None or ".." in base.parts:
-        return None
-    names = base.relative_to(anchor).parts
+    names = target.relative_to(anchor).parts
     try:
         fd = os.open(anchor, os.O_RDONLY | os.O_DIRECTORY)
     except OSError:
@@ -93,6 +91,27 @@ def _open_owned(home: Path, base: Path) -> tuple[int, os.stat_result] | None:
         os.close(fd)
         return None
     return fd, status
+
+
+def _open_owned(home: Path, base: Path) -> tuple[int, os.stat_result] | None:
+    anchor = next((a for a, root in _bazel_roots(home) if base.parent == root), None)
+    if anchor is None and base.parent.is_relative_to(bazel_servers.MEMORY_DISK):
+        anchor = bazel_servers.MEMORY_DISK
+    if anchor is None or ".." in base.parts:
+        return None
+    return open_owned_dir(anchor, base)
+
+
+def remove_owned_dir(anchor: Path, target: Path) -> bool:
+    """Remove an owned directory below anchor through its pinned parent fd."""
+    if (opened := open_owned_dir(anchor, target)) is None:
+        return False
+    fd, _ = opened
+    try:
+        _remove_base(fd, target.name)
+        return not _exists(fd, target.name)
+    finally:
+        os.close(fd)
 
 
 def owned_base(home: Path, base: Path) -> os.stat_result | None:
@@ -152,12 +171,16 @@ def _space(fd: int) -> tuple[int, int]:
     return status.f_bavail * status.f_frsize, status.f_favail
 
 
+def old_enough(status: os.stat_result) -> bool:
+    return time.time() - status.st_mtime >= _STARTUP_SECONDS
+
+
 def remove_unused_base(home: Path, base: Path) -> bool:
     if (opened := _open_owned(home, base)) is None:
         return False
-    fd, _ = opened
+    fd, status = opened
     try:
-        if server_alive(base):
+        if not old_enough(status) or server_alive(base):
             return False
         _remove_base(fd, base.name)
         return not _exists(fd, base.name)
