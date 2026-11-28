@@ -144,7 +144,7 @@ def run_outcome(run: Run) -> dict[str, dict[str, object]]:
             run_usage.parse(
                 run.request.harness,
                 _read_tail(run.files.path("log"), run_usage.LOG_TAIL_BYTES),
-                _read_whole(run.files.path("out"))
+                _read_tail(run.files.path("out"), OUTPUT_LIMIT)
                 if run.request.harness is not Harness.CODEX
                 else "",
             )
@@ -166,13 +166,6 @@ def _read_tail(path: Path, limit: int) -> str:
             stream.seek(max(0, stream.tell() - limit))
             return stream.read(limit).decode(errors="replace")
     except OSError:
-        return ""
-
-
-def _read_whole(path: Path) -> str:
-    try:
-        return runfiles.read_owned(path, OUTPUT_LIMIT, "run output")
-    except OSError, Invalid, UnicodeDecodeError:
         return ""
 
 

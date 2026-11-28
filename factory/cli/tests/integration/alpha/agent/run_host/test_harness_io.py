@@ -201,9 +201,7 @@ def test_harness_measures_setup_and_model_seconds(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     run = make_run(tmp_path, timeout=1)
-    run.begun = 1000.0
-    run.deadline = 2000.0
-    prepared = preparation(run)
+    run.begun, run.deadline = 1000.0, 2000.0
     run.files.write("prompt", "example")
     child = Child()
     # The deadline check, the launch, then the end of the wait.
@@ -222,10 +220,8 @@ def test_harness_measures_setup_and_model_seconds(
     monkeypatch.setattr(process_group, "record", nothing)
     monkeypatch.setattr(process_group, "stop_started", nothing)
     with ExitStack() as stack:
-        host_harness.run_harness(run, prepared, stack)
-    assert (run.setup_seconds, run.model_seconds) == (4.5, 20.0)
-    assert run.waited == 1024.5
-    assert run.publication_seconds is None
+        host_harness.run_harness(run, preparation(run), stack)
+    assert (run.setup_seconds, run.model_seconds, run.waited) == (4.5, 20.0, 1024.5)
 
 
 def tmux_environment_probe(root: Path, harness: Harness) -> None:

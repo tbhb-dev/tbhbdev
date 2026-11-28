@@ -12,13 +12,10 @@ from tbhbdev.alpha.agent.model import Harness
 from tbhbdev.alpha.agent.run_host import run_usage
 
 NOT_REPORTED = "not reported"
-NOTHING = {
-    "input_tokens": NOT_REPORTED,
-    "output_tokens": NOT_REPORTED,
-    "total_tokens": NOT_REPORTED,
-    "cost_usd": NOT_REPORTED,
-    "source": NOT_REPORTED,
-}
+NOTHING = dict.fromkeys(
+    ("input_tokens", "output_tokens", "total_tokens", "cost_usd", "source"),
+    NOT_REPORTED,
+)
 # The end of a real codex run log: the harness's last lines, then the launcher's.
 CODEX_TAIL = (
     "The SHA-256 pin matches. `bazelisk run //:bazel_env` passed.\n"
@@ -39,8 +36,6 @@ CLAUDE_RESULT = {
 AGY_RESULT = {
     "event": "result",
     "result": {
-        "status": "SUCCESS",
-        "num_turns": 1,
         "usage": {
             "input_tokens": 8654,
             "output_tokens": 25,
