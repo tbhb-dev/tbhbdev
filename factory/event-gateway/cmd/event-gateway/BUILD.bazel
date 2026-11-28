@@ -87,6 +87,7 @@ go_test(
         "main_internal_test.go",
         "mcp_gateway_internal_test.go",
         "mcp_internal_test.go",
+        "mcp_live_internal_test.go",
         "mcp_state_internal_test.go",
         "otlp_internal_test.go",
         "parked_internal_test.go",

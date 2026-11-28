@@ -411,6 +411,49 @@ func TestSessionImportWithoutSubscriptions(t *testing.T) {
 	}
 }
 
+func TestSessionLivePosition(t *testing.T) {
+	t.Parallel()
+
+	ctx, cancel := context.WithTimeout(t.Context(), shutdownTimeout)
+	defer cancel()
+
+	store := testStore(t, retention)
+	hook := testWebhook(t, store, defaultBodyCap)
+	server := sessionReplayServer(t, store)
+
+	const hello = `{"type":"hello","subscriptions":[` + pushSubscription + `]}`
+
+	conn := dialSession(ctx, t, server.URL)
+	reply := checkSessionReply(ctx, t, conn, hello, typeKey, helloKind)
+	checkEqual(t, string(reply["seq"]), "0")
+	publishSessionEvent(t, hook, pushEvent, "first")
+	checkSessionReply(ctx, t, conn, "", "seq", "1")
+
+	publishSessionEvent(t, hook, pushEvent, "second")
+
+	conn = dialSession(ctx, t, server.URL)
+	reply = checkSessionReply(ctx, t, conn, hello, typeKey, helloKind)
+	checkEqual(t, string(reply["seq"]), "2")
+	publishSessionEvent(t, hook, pushEvent, "third")
+	checkSessionReply(ctx, t, conn, "", "seq", "3")
+
+	opening := store
+	opening.stream = sessionOpeningStream{
+		Stream:  store.stream,
+		publish: func() { publishSessionEvent(t, hook, pushEvent, "concurrent") },
+	}
+	server = sessionReplayServer(t, opening)
+	conn = dialSession(ctx, t, server.URL)
+	reply = checkSessionReply(ctx, t, conn, hello, typeKey, helloKind)
+	checkEqual(t, string(reply["seq"]), "3")
+	checkSessionReply(ctx, t, conn, "", "seq", "4")
+
+	resume := `{"type":"hello","resume_after":4,"subscriptions":[` + pushSubscription + `]}`
+	conn = dialSession(ctx, t, server.URL)
+	reply = checkSessionReply(ctx, t, conn, resume, typeKey, helloKind)
+	checkEqual(t, reply["seq"] == nil, true)
+}
+
 func checkSessionHandshakes(t *testing.T, api *sessionAPI) {
 	t.Helper()
 
