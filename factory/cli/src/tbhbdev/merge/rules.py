@@ -5,12 +5,12 @@
 import json
 from typing import TYPE_CHECKING, cast
 
-from tbhbdev.alpha.merge.evidence import EvidenceError, object_fields
+from tbhbdev.merge.evidence import EvidenceError, object_fields
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
 
-    from tbhbdev.alpha.merge.review_gate import Pull
+    from tbhbdev.merge.review_gate import Pull
 
 MERGE_FIELD = "mergeCommitAllowed"
 

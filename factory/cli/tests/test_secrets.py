@@ -22,7 +22,7 @@ lazy from pathlib import Path
 
 import httpx
 import pytest
-from agent_host_example import host_settings, run_request
+from agent_host_example import build_settings, run_request
 from cryptography.exceptions import UnsupportedAlgorithm
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric import ed25519, rsa, x25519
@@ -1306,7 +1306,7 @@ def test_converted_key_reaches_only_ssh_add_stdin(
     monkeypatch.setattr(
         secrets, "connect", lambda: secrets.Connect(fake.token, [fake.url])
     )
-    settings = host_settings()
+    settings = build_settings()
     refs = dataclasses.replace(
         settings.credentials[0],
         gh="ops/db/password",

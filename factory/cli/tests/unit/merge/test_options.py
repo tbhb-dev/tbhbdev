@@ -5,8 +5,8 @@
 
 import pytest
 
-from tbhbdev.alpha.merge.message import Message
-from tbhbdev.alpha.merge.options import build_parser, merge_args, preview
+from tbhbdev.merge.message import Message
+from tbhbdev.merge.options import build_parser, merge_args, preview
 
 
 @pytest.mark.parametrize("head", ["", "abc123", "g" * 40])

@@ -3,16 +3,6 @@
 """Read commit linter and Git results while building a merge message."""
 
 from tbhbdev.alpha.identity.commit.grammar import LINE, check_message
-from tbhbdev.alpha.merge.body import WIDTH, Syntax, render_body
-from tbhbdev.alpha.merge.message import (
-    Message,
-    assemble,
-    check_round_trip,
-    check_subject,
-    check_trailers,
-    drop_opened,
-    split_trailers,
-)
 from tbhbdev.alpha.pull_request.body import (
     FENCE,
     INLINE_CODE,
@@ -25,6 +15,16 @@ from tbhbdev.alpha.pull_request.body import (
 from tbhbdev.alpha.pull_request.description import OPENED_LINE
 from tbhbdev.alpha.pull_request.prose import title_problems
 from tbhbdev.alpha.pull_request.tools import GIT, find_tool, run
+from tbhbdev.merge.body import WIDTH, Syntax, render_body
+from tbhbdev.merge.message import (
+    Message,
+    assemble,
+    check_round_trip,
+    check_subject,
+    check_trailers,
+    drop_opened,
+    split_trailers,
+)
 
 SYNTAX = Syntax(FENCE, INLINE_CODE, heading_of)
 

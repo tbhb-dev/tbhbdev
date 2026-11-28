@@ -274,9 +274,9 @@ cli_py_test(
         "//factory/cli/src/tbhbdev/alpha/guard/scripts:command",
         "//factory/cli/src/tbhbdev/alpha/identity:dispatcher",
         "//factory/cli/src/tbhbdev/alpha/install:command",
-        "//factory/cli/src/tbhbdev/alpha/merge:command",
         "//factory/cli/src/tbhbdev/alpha/monorepo:command",
         "//factory/cli/src/tbhbdev/alpha/pull_request:command",
+        "//factory/cli/src/tbhbdev/merge:command",
         "//factory/cli/tests:test_alpha_agent_settings_support",
         "@cli_pip//pytest",
     ],
@@ -333,6 +333,21 @@ cli_py_test(
         ":conftest",
         "//factory/cli/src/tbhbdev/alpha/agent:model",
         "//factory/cli/src/tbhbdev/alpha/agent/decisions:config",
+        "@cli_pip//pytest",
+    ],
+)
+
+cli_py_test(
+    name = "test_alpha_agent_build_fetch",
+    srcs = ["test_alpha_agent_build_fetch.py"],
+    deps = [
+        ":agent_host_example",
+        ":conftest",
+        "//factory/cli/src/tbhbdev:secrets",
+        "//factory/cli/src/tbhbdev/alpha:gh_app_api",
+        "//factory/cli/src/tbhbdev/alpha:gh_app_runtime",
+        "//factory/cli/src/tbhbdev/alpha/agent:credentials",
+        "//factory/cli/src/tbhbdev/alpha/agent:model",
         "@cli_pip//pytest",
     ],
 )
@@ -858,8 +873,8 @@ cli_py_test(
         "//factory/cli/src/tbhbdev/alpha:close",
         "//factory/cli/src/tbhbdev/alpha:session_context",
         "//factory/cli/src/tbhbdev/alpha/agent/driver:arguments",
-        "//factory/cli/src/tbhbdev/alpha/merge:options",
         "//factory/cli/src/tbhbdev/alpha/pull_request:arguments",
+        "//factory/cli/src/tbhbdev/merge:options",
         "@cli_pip//pytest",
     ],
 )
@@ -1128,6 +1143,7 @@ cli_py_test(
     name = "test_cli",
     srcs = ["test_cli.py"],
     data = ["//factory/cli/src/tbhbdev:module_entrypoint"],
+    extra_deps = ["//factory/cli/src/tbhbdev/alpha/identity:dispatcher"],
     deps = [
         ":conftest",
         "//factory/cli/src/tbhbdev:cli",
@@ -1339,6 +1355,7 @@ filegroup(
         "//factory/cli/tests/integration/alpha/agent/decisions:package_files",
         "//factory/cli/tests/integration/alpha/agent/run_host:package_files",
         "//factory/cli/tests/integration/alpha/identity:test_dispatcher_timestamps_io.py",
+        "//factory/cli/tests/unit:test_command_table.py",
         "//factory/cli/tests/unit:test_content_decision_record.py",
         "//factory/cli/tests/unit/admin:test_approvals.py",
         "//factory/cli/tests/unit/alpha:package_files",
@@ -1348,8 +1365,8 @@ filegroup(
         "//factory/cli/tests/unit/alpha/guard:package_files",
         "//factory/cli/tests/unit/alpha/identity:package_files",
         "//factory/cli/tests/unit/alpha/install:package_files",
-        "//factory/cli/tests/unit/alpha/merge:package_files",
         "//factory/cli/tests/unit/alpha/pull_request:package_files",
+        "//factory/cli/tests/unit/merge:package_files",
     ],
     visibility = ["//factory/cli:__pkg__"],
 )
@@ -1393,8 +1410,8 @@ filegroup(
     visibility = [
         "//factory/cli/tests/unit/alpha/guard/gh_pr:__pkg__",
         "//factory/cli/tests/unit/alpha/identity:__pkg__",
-        "//factory/cli/tests/unit/alpha/merge:__pkg__",
         "//factory/cli/tests/unit/alpha/pull_request:__pkg__",
+        "//factory/cli/tests/unit/merge:__pkg__",
     ],
 )
 

@@ -8,7 +8,9 @@ from tbhbdev.alpha.identity.commit.policy import AGENT_EMAIL
 from tbhbdev.alpha.identity.models import SLUGS
 from tbhbdev.alpha.identity.records import HASH_RE
 from tbhbdev.alpha.identity.trailers import ATTR_PAIR, llm_trailers
-from tbhbdev.alpha.merge.evidence import (
+from tbhbdev.alpha.pull_request.metadata import NAME_WITH_OWNER, target_of_pr
+from tbhbdev.alpha.pull_request.tools import GH, find_tool, run
+from tbhbdev.merge.evidence import (
     EvidenceError,
     PullRequest,
     approval_reasons,
@@ -19,16 +21,14 @@ from tbhbdev.alpha.merge.evidence import (
     review_snapshot,
     view_entries,
 )
-from tbhbdev.alpha.merge.queue import parse_queue_state
-from tbhbdev.alpha.merge.review_gate import Attribution, Pull, Review, evaluate
-from tbhbdev.alpha.merge.rules import (
+from tbhbdev.merge.queue import parse_queue_state
+from tbhbdev.merge.review_gate import Attribution, Pull, Review, evaluate
+from tbhbdev.merge.rules import (
     MERGE_FIELD,
     parse_branch_rules,
     require_merge_commits,
     required_checks,
 )
-from tbhbdev.alpha.pull_request.metadata import NAME_WITH_OWNER, target_of_pr
-from tbhbdev.alpha.pull_request.tools import GH, find_tool, run
 
 VIEW_FIELDS = (
     "title,body,headRefOid,baseRefName,state,isDraft,mergeable,"

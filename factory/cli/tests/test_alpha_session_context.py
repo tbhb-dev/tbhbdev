@@ -12,8 +12,8 @@ import pytest
 
 from tbhbdev.alpha import close, session_context
 from tbhbdev.alpha.agent.driver import arguments as agent_arguments
-from tbhbdev.alpha.merge import options as squash_merge
 from tbhbdev.alpha.pull_request.arguments import build_parser as pr_parser
+from tbhbdev.merge import options as squash_merge
 
 NOW = datetime(2026, 1, 2, 3, 4, tzinfo=UTC)
 

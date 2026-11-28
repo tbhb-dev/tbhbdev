@@ -16,7 +16,14 @@ from typing import TYPE_CHECKING, cast
 import httpx2
 import pytest
 import yaml
-from agent_host_example import constant, git, host_settings, repository, run_request
+from agent_host_example import (
+    build_settings,
+    constant,
+    git,
+    host_settings,
+    repository,
+    run_request,
+)
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric import rsa
 
@@ -89,7 +96,8 @@ def test_each_credential_only_reaches_its_destination(
         reason="example reason" if harness is Harness.CLAUDE else None,
         timeout=900,
     )
-    result = credentials.deliver(value, host_settings(), tmp_path)
+    settings = host_settings() if profile is Profile.REVIEW else build_settings()
+    result = credentials.deliver(value, settings, tmp_path)
     assert result.signing == (
         VALUES["example/signing/key"] if profile is Profile.BUILD else None
     )
@@ -161,7 +169,7 @@ def test_review_token_failure_never_delivers_the_broad_token(
 def test_anonymous_docker_reads_no_docker_credential(
     tmp_path: Path, fake_reader: list[str]
 ) -> None:
-    original = host_settings()
+    original = build_settings()
     config = dataclasses.replace(
         original,
         credentials=(dataclasses.replace(original.credentials[0], docker=None),),
@@ -189,7 +197,7 @@ def test_claude_empty_or_failed_read_names_profile_and_reference(
     with pytest.raises(Invalid) as caught:
         credentials.deliver(
             run_request(harness="claude", claude_profile="primary", reason="example"),
-            host_settings(),
+            build_settings(),
             tmp_path,
         )
     assert (
@@ -203,7 +211,7 @@ def test_unknown_claude_profile(tmp_path: Path) -> None:
     with pytest.raises(Invalid, match=r"^claude profile 'unknown' is not configured$"):
         credentials.deliver(
             run_request(harness="claude", claude_profile="unknown", reason="example"),
-            host_settings(),
+            build_settings(),
             tmp_path,
         )
 
@@ -327,7 +335,7 @@ def test_signing_key_is_loaded_over_stdin_and_agent_stops(
         check=True,
         timeout=10,
     )
-    original = host_settings()
+    original = build_settings()
     config = dataclasses.replace(
         original,
         credentials=(
@@ -615,7 +623,7 @@ def test_missing_credentials_report_only_label_and_reference(
             run_request(
                 profile=profile, commit="0" * 40 if profile == "review" else None
             ),
-            host_settings(),
+            host_settings() if profile == "review" else build_settings(),
             tmp_path,
         )
 
@@ -911,7 +919,7 @@ def test_signing_file_refuses_unsafe_input(
         key.write_bytes(b"k" * (64 * 1024 + 1))
     else:
         key.write_bytes(b"\xff")
-    original = host_settings()
+    original = build_settings()
     config = dataclasses.replace(
         original,
         credentials=(dataclasses.replace(original.credentials[0], signing=str(key)),),
@@ -1074,22 +1082,18 @@ def test_build_token_request_names_one_repository_and_write_permissions(
     )
 
 
-def test_build_with_gh_ignores_the_pull_requests_app(
+def test_build_with_gh_and_the_pull_requests_app_is_refused(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     def refuse(*_args: object, **_keywords: object) -> gh_app_api.Minted:
         raise AssertionError
 
     monkeypatch.setattr(gh_app_api, "mint_token", refuse)
-    credentials.deliver(
-        run_request(), pull_requests_settings(gh="example/gh/value"), tmp_path
-    )
-    assert (
-        yaml.safe_load((tmp_path / "gh" / "hosts.yml").read_text())["github.com"][
-            "oauth_token"
-        ]
-        == VALUES["example/gh/value"]
-    )
+    with pytest.raises(Invalid, match="conflicts with App references"):
+        credentials.deliver(
+            run_request(), pull_requests_settings(gh="example/gh/value"), tmp_path
+        )
+    assert not (tmp_path / "gh" / "hosts.yml").exists()
 
 
 def test_build_refuses_when_the_pull_requests_app_token_fails(
@@ -1209,46 +1213,8 @@ def test_pull_requests_token_refuses_a_host_other_than_github(
     assert str(caught.value) == "pull-requests app supports github.com repositories"
 
 
-def test_build_fetch_uses_the_read_only_reviews_token(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    seen: list[tuple[str, str]] = []
-
-    def installation(references: Credentials, repository: str) -> str:
-        seen.append((str(references.reviews_app_client_id), repository))
-        return "example-reviews-token"
-
-    monkeypatch.setattr(credentials, "installation_token", installation)
-    value = run_request()
-    assert credentials.fetch_token(value, host_settings()) == "example-reviews-token"
-    assert seen == [("example/app/client", value.repo)]
-
-
-def test_build_fetch_refuses_when_the_reviews_token_fails(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    def fail(*_: object) -> str:
-        message = "unprinted-app-material"
-        raise OSError(message)
-
-    monkeypatch.setattr(credentials, "installation_token", fail)
-    with pytest.raises(Invalid) as caught:
-        credentials.fetch_token(run_request(), host_settings())
-    assert str(caught.value) == "reviews App token unavailable; build fetch refused"
-
-
 def test_fetch_token_without_reviews_refs_reads_the_account_credentials() -> None:
-    original = host_settings()
-    settings = dataclasses.replace(
-        original,
-        credentials=(
-            dataclasses.replace(
-                original.credentials[0],
-                reviews_app_client_id=None,
-                reviews_app_pem=None,
-            ),
-        ),
-    )
+    settings = build_settings()
     assert (
         credentials.fetch_token(run_request(), settings) == VALUES["example/gh/value"]
     )

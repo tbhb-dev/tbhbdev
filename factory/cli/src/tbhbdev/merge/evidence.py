@@ -6,7 +6,7 @@ import json
 from dataclasses import dataclass
 from typing import cast
 
-from tbhbdev.alpha.merge.review_gate import HEAD_SHA, Check, Review
+from tbhbdev.merge.review_gate import HEAD_SHA, Check, Review
 
 PASSING_STATES = frozenset({"CLEAN", "HAS_HOOKS"})
 FAILED_CONCLUSIONS = (

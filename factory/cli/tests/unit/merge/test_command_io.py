@@ -13,14 +13,14 @@ from typing import cast
 
 import pytest
 from fake_tool import pythonpath
-from unit.alpha.merge.examples import (
+from unit.merge.examples import (
     ASSIST,
     GEN,
     OPENED,
     RENOVATE_AUTHOR,
     RENOVATE_BODY,
 )
-from unit.alpha.merge.fake_github import (
+from unit.merge.fake_github import (
     APPROVED_HEAD,
     OTHER_HEAD,
     TARGET,
@@ -35,12 +35,12 @@ from unit.alpha.merge.fake_github import (
 )
 
 from tbhbdev.alpha.identity.commit.policy import AGENT_EMAIL
-from tbhbdev.alpha.merge import command
-from tbhbdev.alpha.merge.command import main
-from tbhbdev.alpha.merge.github import QUEUE_QUERY, VIEW_FIELDS
 from tbhbdev.alpha.secret_scan import REPO_RULES, without_name_rules
+from tbhbdev.merge import command
+from tbhbdev.merge.command import main
+from tbhbdev.merge.github import QUEUE_QUERY, VIEW_FIELDS
 
-SRC = Path(command.__file__).parents[3]
+SRC = Path(command.__file__).parents[2]
 
 HARNESS_ENV = {"CLAUDE_CODE_SESSION_ID": "raw-session"}
 

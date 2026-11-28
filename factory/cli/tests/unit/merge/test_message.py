@@ -4,10 +4,12 @@
 """Pure tests for merge message validation."""
 
 import pytest
-from unit.alpha.merge.examples import ASSIST, GEN, OPENED
+from unit.merge.examples import ASSIST, GEN, OPENED
 
 from tbhbdev.alpha.identity.commit.grammar import LINE, check_message
-from tbhbdev.alpha.merge.message import (
+from tbhbdev.alpha.pull_request.body import Line, scan, trailer_problems
+from tbhbdev.alpha.pull_request.description import OPENED_LINE
+from tbhbdev.merge.message import (
     Message,
     assemble,
     check_round_trip,
@@ -17,8 +19,6 @@ from tbhbdev.alpha.merge.message import (
     require_clean_message,
     split_trailers,
 )
-from tbhbdev.alpha.pull_request.body import Line, scan, trailer_problems
-from tbhbdev.alpha.pull_request.description import OPENED_LINE
 
 
 def test_a_trailer_git_cannot_read_back_fails() -> None:

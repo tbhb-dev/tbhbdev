@@ -150,6 +150,21 @@ pytest_test(
 )
 
 pytest_test(
+    name = "affected_targets_decide_test",
+    srcs = [
+        "//:.github/actions/affected-targets/affected_targets/__init__.py",
+        "//:.github/actions/affected-targets/affected_targets/decide.py",
+        "//:repo_files",
+    ],
+    args = ["lint/tests/unit/affected_targets/test_decide.py"],
+    coverage = ["affected_targets.decide"],
+    target_compatible_with = select({
+        "@platforms//os:windows": ["@platforms//:incompatible"],
+        "//conditions:default": [],
+    }),
+)
+
+pytest_test(
     name = "lint_baselines_test",
     srcs = ["//:repo_files"],
     args = [
