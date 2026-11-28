@@ -30,6 +30,7 @@ from tbhbdev.alpha.identity import dispatcher as identity
 from tbhbdev.alpha.install import command as install
 from tbhbdev.alpha.pull_request import command as pull_request
 from tbhbdev.merge import command as merge
+from tbhbdev.merge import remove as merge_queue_remove
 from tbhbdev.monorepo import command as monorepo
 
 __all__ = [
@@ -47,6 +48,7 @@ __all__ = [
     "identity",
     "install",
     "merge",
+    "merge_queue_remove",
     "monorepo",
     "ops_no_lazy_stop",
     "pre_push_guard",
