@@ -72,13 +72,18 @@ def test_status_without_local_run_metadata(
     assert str(path) in capsys.readouterr().err
 
 
+def _launching() -> runfiles.RunFiles:
+    files = runfiles.RunFiles(metadata.directory(), "sample")
+    files.write("request.json", "{}")
+    files.path("run.lock").touch()
+    return files
+
+
 @pytest.mark.usefixtures("remote")
 def test_launching_run_without_local_record(
     monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    files = runfiles.RunFiles(metadata.directory(), "sample")
-    files.write("request.json", "{}")
-    files.path("run.lock").touch()
+    files = _launching()
 
     assert command("status") == 0
     assert "phase=launching" in capsys.readouterr().out
@@ -96,26 +101,22 @@ def test_launching_run_without_local_record(
         assert "already finished" in capsys.readouterr().out
 
 
-def _setup_record(files: runfiles.RunFiles) -> None:
-    """The setup worker's group record, which names no live harness."""
+def _setup_record() -> runfiles.RunFiles:
+    """A launching run whose group record is the setup worker's."""
+    files = _launching()
     files.write("pgid", '{"pgid": 1234, "boot": "current", "start": "123"}')
     files.write("phase", "shims")
+    return files
 
 
 @pytest.mark.usefixtures("remote")
 def test_kill_waits_past_the_setup_record_for_the_harness_group(
     monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    files = runfiles.RunFiles(metadata.directory(), "sample")
-    files.write("request.json", "{}")
-    files.path("run.lock").touch()
-    _setup_record(files)
+    files = _setup_record()
     # The setup worker's group is gone; any use of its record would fail.
 
-    def current(pgid: int) -> Group:
-        return Group(pgid, "current", "7")
-
-    identity = Mock(side_effect=current)
+    identity = Mock(return_value=Group(4321, "current", "7"))
     stop = Mock(return_value=True)
     monkeypatch.setattr(process_group, "identity", identity)
     monkeypatch.setattr(process_group, "stop_owned", stop)
@@ -137,10 +138,7 @@ def test_kill_waits_past_the_setup_record_for_the_harness_group(
 def test_kill_times_out_when_only_the_setup_record_exists(
     monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    files = runfiles.RunFiles(metadata.directory(), "sample")
-    files.write("request.json", "{}")
-    files.path("run.lock").touch()
-    _setup_record(files)
+    files = _setup_record()
     identity = Mock(return_value=None)
     monkeypatch.setattr(process_group, "identity", identity)
     ticks = iter(range(1000))

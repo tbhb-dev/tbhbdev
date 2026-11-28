@@ -18,36 +18,31 @@ if TYPE_CHECKING:
     from tbhbdev.alpha.agent.model import Settings
 
 
+def _phase(files: runfiles.RunFiles) -> str | None:
+    with suppress(FileNotFoundError):
+        return runfiles.read_owned(files.path("phase"), 64, "run phase").strip()
+    return None
+
+
 def status_local(files: runfiles.RunFiles) -> int:
-    phase = None
     rc = "unknown"
     with suppress(FileNotFoundError):
         rc = str(int(runfiles.read_owned(files.path("rc"), 64, "return code")))
-    with suppress(FileNotFoundError):
-        phase = runfiles.read_owned(files.path("phase"), 64, "run phase").strip()
+    trash = (files.root / "trash").glob(f"????????T????????????Z-{files.name}")
+    phase = _phase(files)
     if files.path("keep").is_file():
         phase = "kept"
     elif phase is None and rc != "unknown":
         phase = "ended"
     elif phase is None and files.path("request.json").is_file():
         phase = "launching"
-    elif phase is None and any(
-        (files.root / "trash").glob(f"????????T????????????Z-{files.name}")
-    ):
+    elif phase is None and any(trash):
         phase = "cleaned"
     elif phase is None:
         message = f"{files.name}: unknown run; local record absent"
         raise Invalid(message)
     print(f"{files.name}: phase={phase} rc={rc} (local record absent)")
     return 0
-
-
-def _setup_record(files: runfiles.RunFiles) -> bool:
-    """Whether the group on record is the setup worker's, so not yet the harness's."""
-    phase = None
-    with suppress(FileNotFoundError):
-        phase = runfiles.read_owned(files.path("phase"), 64, "run phase").strip()
-    return run_state.setup_record(phase, launched=files.path("launched").exists())
 
 
 def kill_local(files: runfiles.RunFiles, wait_seconds: int) -> int:
@@ -57,7 +52,9 @@ def kill_local(files: runfiles.RunFiles, wait_seconds: int) -> int:
             if files.path("rc").is_file():
                 print("already finished")
                 return 0
-            if not _setup_record(files):
+            if not run_state.setup_record(
+                _phase(files), launched=files.path("launched").exists()
+            ):
                 with suppress(FileNotFoundError):
                     recorded = process_group.read_record(files)
                     return process_group.kill_recorded(files, recorded)
