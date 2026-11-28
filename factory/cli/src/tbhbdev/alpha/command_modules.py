@@ -26,6 +26,7 @@ from tbhbdev.alpha.guard.gh_poll import command as guard_gh_poll
 from tbhbdev.alpha.guard.gh_pr import command as guard_gh_pr
 from tbhbdev.alpha.guard.op import command as guard_op
 from tbhbdev.alpha.guard.scripts import command as guard_scripts
+from tbhbdev.alpha.host import command as host
 from tbhbdev.alpha.identity import dispatcher as identity
 from tbhbdev.alpha.install import command as install
 from tbhbdev.alpha.monorepo import command as monorepo
@@ -44,6 +45,7 @@ __all__ = [
     "guard_gh_pr",
     "guard_op",
     "guard_scripts",
+    "host",
     "identity",
     "install",
     "merge",

@@ -1363,6 +1363,7 @@ filegroup(
         "//factory/cli/tests/unit/alpha/agent/decisions:package_files",
         "//factory/cli/tests/unit/alpha/agent/run_host:package_files",
         "//factory/cli/tests/unit/alpha/guard:package_files",
+        "//factory/cli/tests/unit/alpha/host:package_files",
         "//factory/cli/tests/unit/alpha/identity:package_files",
         "//factory/cli/tests/unit/alpha/install:package_files",
         "//factory/cli/tests/unit/alpha/pull_request:package_files",
