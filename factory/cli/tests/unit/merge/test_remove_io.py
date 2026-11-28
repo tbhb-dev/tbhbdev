@@ -124,3 +124,46 @@ def test_merge_writes_a_ledger_entry_without_a_reason() -> None:
     assert run_main("12") == 0
     (entry,) = ledger()
     assert (entry["verb"], entry["pr"], entry["reason"]) == ("merge", 12, None)
+
+
+def test_a_failed_dequeue_is_reported_and_not_recorded(listed: Tools) -> None:
+    amend(listed, dequeue_rc=1, dequeue_err="boom\n")
+    assert "gh dequeue failed: boom" in str(verb("12", "--reason", REASON))
+    assert ledger() == []
+
+
+@pytest.mark.parametrize(
+    ("spec", "message"),
+    [
+        ({"view_rc": 1, "view_err": "boom"}, "gh pr view failed: boom"),
+        ({"view_out": "not json"}, "no usable pull request"),
+        ({"view_out": "{}"}, "no usable pull request"),
+        (
+            {"view_out": json.dumps({
+                "id": NODE, "state": "OPEN", "baseRefName": "main", "url": "x"
+            })},
+            "which repository",
+        ),
+    ],
+)  # fmt: skip
+def test_refuses_what_gh_cannot_describe(
+    listed: Tools, spec: dict[str, object], message: str
+) -> None:
+    amend(listed, **spec)
+    assert message in str(verb("12", "--reason", REASON))
+    assert dequeues(listed) == []
+
+
+def test_a_ledger_that_cannot_be_written_only_warns(
+    listed: Tools,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    def refuse(_entry: dict[str, object]) -> None:
+        message = "read-only"
+        raise OSError(message)
+
+    monkeypatch.setattr(write, "record", refuse)
+    assert verb("12", "--reason", REASON) == 0
+    assert "the write ledger was not updated: read-only" in capsys.readouterr().err
+    assert len(dequeues(listed)) == 1
