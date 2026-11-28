@@ -41,8 +41,7 @@ exports_files(
     visibility = ["//lint:__pkg__"],
 )
 
-# Stage monorepo lint configuration in the module-relative tree assembled by
-# the lint tests. The source of each file lives at the monorepo root.
+# Stage monorepo files in the module-relative tree assembled by the lint tests.
 _VALE_STYLES = [
     ".vale/config/vocabularies/project/accept.txt",
     ".vale/config/vocabularies/project/reject.txt",
@@ -66,6 +65,8 @@ _VALE_STYLES = [
     for path in _VALE_STYLES + [
         ".cspell-words.txt",
         ".cspell.jsonc",
+        ".github/actions/affected-targets/affected_targets/__init__.py",
+        ".github/actions/affected-targets/affected_targets/decide.py",
         ".github/schemas/pull-request-draft.schema.json",
         ".gitignore",
         ".vale.ini",

@@ -16,6 +16,8 @@ exports_files([
     ".cspell-words.txt",
     ".cspell.jsonc",
     ".github/actions/affected-targets/action.yml",
+    ".github/actions/affected-targets/affected_targets/__init__.py",
+    ".github/actions/affected-targets/affected_targets/decide.py",
     ".github/actions/affected-targets/select.sh",
     ".github/actions/setup-bazel-ci/cpu_quota.sh",
     ".github/actions/setup-bazel-ci/fetch-targets.txt",
