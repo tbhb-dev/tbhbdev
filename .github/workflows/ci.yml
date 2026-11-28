@@ -24,19 +24,84 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
+  affected-targets:
+    runs-on: ubuntu-26.04
+    timeout-minutes: 30
+    environment: ${{ (github.event_name == 'push' || github.event_name == 'merge_group') && 'cache' || '' }}
+    outputs:
+      count: ${{ steps.affected.outputs.count }}
+      digest: ${{ steps.selection.outputs.digest }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Set up Bazel for CI
+        uses: ./.github/actions/setup-bazel-ci
+        with:
+          disk-cache: ${{ github.workflow }}-${{ github.job }}-ubuntu-26.04
+          cache-save: ${{ github.event_name == 'merge_group' }}
+
+      - name: Use the remote cache
+        uses: tbhb-dev/bazel-r2-cache/.github/actions/remote-cache@bdd7e71f0281998f10a52f253bcf4b9ec81396e8  # main
+        with:
+          main-token: ${{ secrets.BAZEL_CACHE_TOKEN }}
+          pr-token: ${{ secrets.BAZEL_CACHE_PR_TOKEN }}
+
+      - name: Select affected targets
+        id: affected
+        uses: ./.github/actions/affected-targets
+        with:
+          base: ${{ inputs.base }}
+
+      - name: Publish the affected targets
+        id: selection
+        shell: bash
+        env:
+          TARGETS: ${{ steps.affected.outputs.file }}
+          SORTED_TARGETS: ${{ runner.temp }}/affected-targets.txt
+        run: |
+          LC_ALL=C sort "$TARGETS" >"$SORTED_TARGETS"
+          digest=$(sha256sum <"$SORTED_TARGETS")
+          printf 'digest=%s\n' "${digest%% *}" >>"$GITHUB_OUTPUT"
+
+          token=$(od -An -N16 -tx1 /dev/urandom | tr -d ' \n')
+          echo "::stop-commands::$token"
+          {
+            printf '\n### Sorted target patterns\n\n'
+            if [[ -s $SORTED_TARGETS ]]; then
+              sed 's/^/    /' "$SORTED_TARGETS"
+            else
+              echo 'No affected targets.'
+            fi
+          } | tee -a "$GITHUB_STEP_SUMMARY" | awk '{ print "  | " $0 }'
+
+          log=${TARGETS%/*}/target-determinator.log
+          if [[ -s $log ]]; then
+            echo 'Target-determinator diagnostics:'
+            { grep -E '^[^[:space:]]+ Changes:' "$log" || tail -n 40 "$log"; } | awk '{ print "  | " $0 }'
+          fi
+          echo "::$token::"
+
+      - name: Upload the affected targets
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9  # v7.0.2
+        with:
+          name: affected-targets
+          path: ${{ runner.temp }}/affected-targets.txt
+          retention-days: 3
+          if-no-files-found: error
+
   bazel:
     name: bazel (${{ matrix.shard }})
+    needs: affected-targets
     runs-on: ubuntu-26.04
     timeout-minutes: 30
     strategy:
       fail-fast: false
       matrix:
         shard: [1, 2, 3, 4]
-    outputs:
-      shard-1: ${{ matrix.shard == 1 && steps.selection.outputs.digest || '' }}
-      shard-2: ${{ matrix.shard == 2 && steps.selection.outputs.digest || '' }}
-      shard-3: ${{ matrix.shard == 3 && steps.selection.outputs.digest || '' }}
-      shard-4: ${{ matrix.shard == 4 && steps.selection.outputs.digest || '' }}
     # A push to main or a merge_group run uses the main token, a secret
     # of the main-only `cache` environment that no pull request can read.
     # Pull requests use the org's PR token, which writes only their own
@@ -64,12 +129,6 @@ jobs:
           main-token: ${{ secrets.BAZEL_CACHE_TOKEN }}
           pr-token: ${{ secrets.BAZEL_CACHE_PR_TOKEN }}
 
-      - name: Select affected targets
-        id: affected
-        uses: ./.github/actions/affected-targets
-        with:
-          base: ${{ inputs.base }}
-
       - name: Check commit subjects and lint allowances
         if: matrix.shard == 1
         shell: bash
@@ -85,11 +144,17 @@ jobs:
           fi
           bazel run --config=ci @tbhb_rules//lint:lint_baselines -- "$base" "$HEAD_SHA"
 
+      - name: Download the affected targets
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333  # v8.0.2
+        with:
+          name: affected-targets
+          path: ${{ runner.temp }}
+
       - name: Test
-        if: steps.affected.outputs.count != '0'
+        if: needs.affected-targets.outputs.count != '0'
         shell: bash
         env:
-          TARGETS: ${{ steps.affected.outputs.file }}
+          TARGETS: ${{ runner.temp }}/affected-targets.txt
           SHARD: ${{ matrix.shard }}
           SHARD_COUNT: ${{ strategy.job-total }}
         run: |
@@ -103,27 +168,6 @@ jobs:
           # Apply fallback exclusions after the positive patterns in every shard.
           sed -n '/^-/p' "$TARGETS" >>"$shard_targets"
           bazel test --config=ci --build_tests_only --target_pattern_file="$shard_targets"
-
-      - name: Record the target selection
-        id: selection
-        shell: bash
-        env:
-          TARGETS: ${{ steps.affected.outputs.file }}
-          SHARD: ${{ matrix.shard }}
-        run: |
-          digest=$(LC_ALL=C sort "$TARGETS" | sha256sum)
-          echo "digest=${digest%% *}" >>"$GITHUB_OUTPUT"
-          # Keep the sorted list so a disagreement between shards can be diagnosed.
-          LC_ALL=C sort "$TARGETS" >"$RUNNER_TEMP/selected-targets-$SHARD.txt"
-          echo "Selected targets of shard $SHARD:"
-          cat "$RUNNER_TEMP/selected-targets-$SHARD.txt"
-
-      - name: Upload the selected targets
-        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9  # v7.0.2
-        with:
-          name: selected-targets-${{ matrix.shard }}
-          path: ${{ runner.temp }}/selected-targets-${{ matrix.shard }}.txt
-          retention-days: 3
 
   cli-coverage:
     name: factory/cli branch coverage
@@ -533,7 +577,17 @@ jobs:
   conclusion:
     name: conclusion
     if: always()
-    needs: [bazel, cli-coverage, gazelle-current, gitleaks, prose, pr-size, agent-capacity, event-gateway, rules-e2e]
+    needs:
+      - affected-targets
+      - bazel
+      - cli-coverage
+      - gazelle-current
+      - gitleaks
+      - prose
+      - pr-size
+      - agent-capacity
+      - event-gateway
+      - rules-e2e
     runs-on: ubuntu-26.04
     timeout-minutes: 5
     steps:
@@ -541,59 +595,6 @@ jobs:
         uses: step-security/harden-runner@1d88384fd173af6ecb012dfd0264a306b711241a  # v2.22.4
         with:
           egress-policy: audit
-
-      - name: Check whether the Bazel shards agree
-        id: shards
-        shell: bash
-        env:
-          NEEDS: ${{ toJSON(needs) }}
-        run: |
-          if jq -e '.bazel.outputs | [."shard-1", ."shard-2", ."shard-3", ."shard-4"]
-            | all(.[]; type == "string" and length == 64) and (unique | length == 1)' \
-            <<<"$NEEDS" >/dev/null; then
-            echo "disagree=false" >>"$GITHUB_OUTPUT"
-          else
-            echo "disagree=true" >>"$GITHUB_OUTPUT"
-          fi
-
-      - name: Download the selected targets
-        if: steps.shards.outputs.disagree == 'true'
-        continue-on-error: true
-        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333  # v8.0.2
-        with:
-          pattern: selected-targets-*
-          merge-multiple: true
-          path: ${{ runner.temp }}/selected-targets
-
-      - name: Show where the selected targets differ
-        if: steps.shards.outputs.disagree == 'true'
-        shell: bash
-        run: |
-          dir="$RUNNER_TEMP/selected-targets"
-          files=()
-          for shard in 1 2 3 4; do
-            if [[ -f $dir/selected-targets-$shard.txt ]]; then
-              files+=("$dir/selected-targets-$shard.txt")
-            else
-              echo "No target list from shard $shard."
-            fi
-          done
-          if ((${#files[@]} == 0)); then
-            echo "No shard uploaded its selected targets, so they cannot be compared."
-            exit 0
-          fi
-          # A label is listed when some of the shards that uploaded a list lack it.
-          echo "Labels not selected by every shard (label, then the shards that selected it):"
-          awk -v total="${#files[@]}" '
-            NF && !seen[$0, FILENAME]++ {
-              shard = FILENAME
-              sub(/.*selected-targets-/, "", shard)
-              sub(/\.txt$/, "", shard)
-              count[$0]++
-              where[$0] = where[$0] " " shard
-            }
-            END { for (label in count) if (count[label] < total) print label "\t" where[label] }
-          ' "${files[@]}" | LC_ALL=C sort
 
       - name: Fail if any needed job did not succeed
         shell: bash
@@ -612,11 +613,9 @@ jobs:
             echo "A required job did not succeed." >&2
             exit 1
           fi
-          # A runner can fall back to all targets independently of the others.
-          if ! jq -e '.bazel.outputs | [."shard-1", ."shard-2", ."shard-3", ."shard-4"]
-            | all(.[]; type == "string" and length == 64) and (unique | length == 1)' \
+          if ! jq -e '."affected-targets".outputs.digest | type == "string" and length == 64' \
             <<<"$NEEDS" >/dev/null; then
-            echo "Bazel shards did not agree on the selected targets." >&2
+            echo "The affected-target list digest was missing or invalid." >&2
             exit 1
           fi
           # The coverage job selects targets independently of the test shards.
@@ -624,7 +623,7 @@ jobs:
           if ! jq -e --arg empty "${empty_digest%% *}" '
             ."cli-coverage" as $coverage |
             $coverage.result == "skipped" or $coverage.outputs.coverage == "success" or
-            ($coverage.outputs.coverage == "skipped" and .bazel.outputs."shard-1" == $empty)
+            ($coverage.outputs.coverage == "skipped" and ."affected-targets".outputs.digest == $empty)
           ' <<<"$NEEDS" >/dev/null; then
             echo "CLI branch coverage was required but did not run." >&2
             exit 1
