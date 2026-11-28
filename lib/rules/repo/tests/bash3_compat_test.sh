@@ -8,15 +8,15 @@
 set -euo pipefail
 
 if (($# == 0)); then
-  for rlocation in ${SCRIPT_RLOCATIONPATHS:?}; do
+  for rlocation in ${SCRIPT_RLOCATIONPATH_LIST:?}; do
     set -- "$@" "${TEST_SRCDIR:?}/$rlocation"
   done
 fi
 
 status=0
 for file in "$@"; do
-  # Bash 4 and later: associative arrays, namerefs, mapfile, readarray, case
-  # conversion, appending redirections of both streams, and coprocesses.
+  # Bash 4 and later: associative arrays, name references, mapfile, readarray,
+  # case conversion, appending both streams to a file, and coproc.
   if grep -nE \
     -e '(declare|typeset|local|readonly)[[:space:]]+-[A-Za-z]*[AnN]' \
     -e '(^|[^[:alnum:]_])(mapfile|readarray|coproc)([^[:alnum:]_]|$)' \

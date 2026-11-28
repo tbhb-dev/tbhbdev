@@ -94,7 +94,7 @@ sh_test(
         "@@//:.github/actions/affected-targets/select.sh",
     ],
     env = {
-        "SCRIPT_RLOCATIONPATHS": " ".join([
+        "SCRIPT_RLOCATIONPATH_LIST": " ".join([
             "$(rlocationpath @@//:.github/actions/affected-targets/download.sh)",
             "$(rlocationpath @@//:.github/actions/affected-targets/select.sh)",
         ]),
