@@ -92,6 +92,6 @@ def _result(text: str, source: str) -> dict[str, Value]:
                 input_tokens=input_tokens,
                 output_tokens=output_tokens,
                 total_tokens=total,
-                cost_usd=body.get("total_cost_usd"),
+                cost_usd=item.get("total_cost_usd"),
             )
     return unreported()
