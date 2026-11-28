@@ -18,10 +18,10 @@ cli_py_test(
     name = "test_cli_bundle",
     srcs = ["test_cli_bundle.py"],
     imports = ["../../.."],
+    pyi_deps = ["@cli_pip//pytest"],
     deps = [
         "//factory/cli/src/tbhbdev/alpha/agent:cli_bundle",
         "//factory/cli/tests:conftest",
-        "@cli_pip//pytest",
     ],
 )
 
