@@ -3,8 +3,8 @@ description: Refusals for pushes to main and history rewrites, and signature req
 generated:
   - role: generated
     harness: codex
-    model: openai:gpt-6
-    at: "2026-11-27T14:44:32Z"
+    model: openai:gpt-6.2-sol
+    at: "2026-11-27T21:46:02Z"
 status: stable
 tags: [alpha]
 title: Pre-push guard
@@ -33,3 +33,5 @@ If the request fails, the guard accepts the local key alone and explains the fal
 From a detected agent session, every branch creation or update must target a remote branch under `agent/` or `renovate/`, including when the push sends no new commits.
 Agents may delete only `agent/` branches.
 The guard names each refused ref.
+
+For an agent push to a branch, the guard checks for a passing preflight record for the commit being pushed when that commit includes preflight. The gate logs its decision without blocking the push. Run `bazelisk run //:preflight` at a clean branch head to record the result.

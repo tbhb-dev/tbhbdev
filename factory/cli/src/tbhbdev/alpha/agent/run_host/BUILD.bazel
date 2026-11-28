@@ -88,6 +88,7 @@ cli_py_library(
         ":paths",
         "//factory/cli/src/tbhbdev/alpha/agent:model",
         "//factory/cli/src/tbhbdev/alpha/agent:process_group",
+        "//factory/cli/src/tbhbdev/alpha/agent:rescue",
         "//factory/cli/src/tbhbdev/alpha/agent:runfiles",
     ],
 )
