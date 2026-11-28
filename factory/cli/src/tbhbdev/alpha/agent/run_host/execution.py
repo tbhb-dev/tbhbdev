@@ -25,6 +25,7 @@ from tbhbdev.alpha.agent.run_host import (
     harness,
     preflight,
     publication,
+    sweep_first,
     workspace,
 )
 from tbhbdev.alpha.agent.run_host.state import Prepared, Run, RunInterruptedError
@@ -34,14 +35,14 @@ def execute(run: Run, text: str, *, preflight_only: bool = False) -> int:
     """Keep cleanup protected until the completion record is durable."""
     with host_tools.configured(run.settings, run.host.os), ExitStack() as stack:
         if not preflight_only:
-            stack.enter_context(
-                admission.reserve(
-                    admission.ROOT,
-                    run.host,
-                    run.request.profile,
-                    run.request.max_concurrent_runs,
-                )
+            slot = (
+                admission.ROOT,
+                run.host,
+                run.request.profile,
+                run.request.max_concurrent_runs,
             )
+            sweep_first.run_sweep(run)
+            stack.enter_context(admission.reserve(*slot))
         return _execute(run, text, stack, preflight_only=preflight_only)
 
 
@@ -100,7 +101,7 @@ def run_and_check(run: Run, prepared: Prepared, stack: ExitStack) -> int:
         rc = push.run(run, prepared, stack, harness.run_harness)
         if rc == 0 and run.request.profile is Profile.REVIEW:
             return publication.post_review(run, prepared)
-        return publication.require_commit(run, rc)
+        return publication.require_commit(run, prepared, rc)
     finally:
         if run.waited is not None:
             run.publication_seconds = time.monotonic() - run.waited

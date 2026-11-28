@@ -147,6 +147,7 @@ cli_py_library(
         ":preflight",
         ":publication",
         ":state",
+        ":sweep_first",
         ":workspace",
         "//factory/cli/src/tbhbdev/alpha/agent:admission",
         "//factory/cli/src/tbhbdev/alpha/agent:credentials",
@@ -245,6 +246,7 @@ cli_py_library(
         "//factory/cli/src/tbhbdev/alpha/agent:credentials",
         "//factory/cli/src/tbhbdev/alpha/agent:review_post",
         "//factory/cli/src/tbhbdev/alpha/agent/decisions:repo",
+        "//factory/cli/src/tbhbdev/alpha/pull_request:draft",
         "@cli_pip//httpx2",
     ],
 )
@@ -317,4 +319,15 @@ cli_py_library(
     srcs = ["publication_plan.py"],
     imports = ["../../../.."],
     visibility = ["//factory/cli:__subpackages__"],
+)
+
+cli_py_library(
+    name = "sweep_first",
+    srcs = ["sweep_first.py"],
+    imports = ["../../../.."],
+    visibility = ["//factory/cli:__subpackages__"],
+    deps = [
+        ":state",
+        "//factory/cli/src/tbhbdev/alpha/agent:sweep",
+    ],
 )

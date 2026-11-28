@@ -1,0 +1,35 @@
+# SPDX-License-Identifier: Apache-2.0
+# Copyright Tony Burns
+
+load("//factory/cli:python.bzl", "cli_py_library")
+
+filegroup(
+    name = "package_files",
+    srcs = glob(["*.py"]),
+    visibility = ["//factory/cli:__pkg__"],
+)
+
+cli_py_library(
+    name = "__init__",
+    srcs = ["__init__.py"],
+    imports = ["../../../.."],
+    visibility = ["//factory/cli:__subpackages__"],
+)
+
+cli_py_library(
+    name = "home",
+    srcs = ["home.py"],
+    extra_deps = [":__init__"],
+    imports = ["../../../.."],
+    visibility = ["//factory/cli:__subpackages__"],
+    deps = ["//factory/cli/src/tbhbdev/alpha/agent:model"],
+)
+
+cli_py_library(
+    name = "run",
+    srcs = ["run.py"],
+    extra_deps = [":__init__"],
+    imports = ["../../../.."],
+    visibility = ["//factory/cli:__subpackages__"],
+    deps = ["//factory/cli/src/tbhbdev/alpha/agent:model"],
+)

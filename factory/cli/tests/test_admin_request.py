@@ -802,3 +802,40 @@ def test_marker_must_be_a_regular_file_of_this_user(
     assert request.enabled(target)
     monkeypatch.setattr(os, "getuid", lambda: target.stat().st_uid + 1)
     assert not request.enabled(target)
+
+
+def test_archive_request_audit_and_protected_refusal(fake: Fake) -> None:
+    archive = {"archived": True}
+    assert request.call(
+        fake.runtime, "PATCH", "/repos/tbhb-dev/gadget", archive, "archive-decision"
+    ) == (200, '{"ok":true}')
+    assert fake.requests[-1].content == b'{"archived":true}'
+    entries = [
+        json.loads(line)
+        for line in (fake.runtime.audit.directory / "calls.jsonl")
+        .read_text()
+        .splitlines()
+    ]
+    assert [(e["phase"], e["decision"], e["reason"]) for e in entries] == [
+        ("before", "allow", "archive-decision"),
+        ("after", "allow", "archive-decision"),
+    ]
+    guarded = replace(
+        fake.runtime,
+        settings=replace(
+            fake.runtime.settings, protected=frozenset({"tbhb-dev/gadget"})
+        ),
+    )
+    fake.reads.clear()
+    fake.requests.clear()
+    for dry_run in (False, True):
+        with pytest.raises(RefusedError, match=r"^repository_removal$"):
+            request.call(
+                guarded,
+                "PATCH",
+                "/repos/tbhb-dev/gadget",
+                archive,
+                "archive-decision",
+                dry_run=dry_run,
+            )
+    assert fake.reads == fake.requests == []

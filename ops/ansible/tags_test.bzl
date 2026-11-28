@@ -22,3 +22,26 @@ def slow_external_tags_test(name, targets):
             env.expect.that_collection(tags).contains("slow-external")
 
     unit_test(name = name, impl = impl)
+
+def timeout_fits_load_test(name, targets):
+    """Checks that each named target in this package has the eternal timeout.
+
+    The repository's `--test_timeout` mapping gives `eternal` 900 s, so the
+    lint watchdog, at 80% of it, stops ansible-lint at 720 s. A target that
+    leaves the timeout unset is `moderate`, 180 s here, which a loaded CI
+    runner exceeds.
+
+    Args:
+        name: Test target name.
+        targets: Target names in the current package that must set `timeout = "eternal"`.
+    """
+    timeout_by_target = {
+        target: native.existing_rule(target).get("timeout")
+        for target in targets
+    }
+
+    def impl(env):
+        for target, timeout in timeout_by_target.items():
+            env.expect.where(target = target).that_str(timeout).equals("eternal")
+
+    unit_test(name = name, impl = impl)

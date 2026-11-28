@@ -49,32 +49,29 @@ def test_script_prints_the_numbers_of_this_host() -> None:
     assert isinstance(limits.parse(done.stdout), limits.Reading)
 
 
-def test_limits_appends_admitted_count_and_falls_back_on_older_host(host: Path) -> None:
-    write_standalone_fake(
-        host / "bin/tbhbdev",
+def test_limits_appends_total_and_recent_counts_and_falls_back_on_older_hosts(
+    host: Path,
+) -> None:
+    two_counts = (
         "import sys\n"
-        "assert sys.argv[1:] == ['alpha', 'agent', 'admitted', '--', 'agent', 'ops']\n"
-        "print('2')\n",
+        "assert sys.argv[1:] == "
+        "['alpha', 'agent', 'admitted', '--', 'agent', 'ops']\n"
+        "print('5 2')\n"
     )
-    config = replace(LINUX, tbhbdev=str(host / "bin/tbhbdev"))
-    result = execute(remote_host.limits(config))
-    assert result.returncode == 0, result.stderr
-    found, admitted = limits.parse_probe(result.stdout.decode())
-    assert isinstance(found, limits.Reading)
-    assert admitted == 2
-
-    write_standalone_fake(
-        host / "bin/tbhbdev-old",
-        "import sys\n"
-        "sys.stderr.write('unrecognized arguments: admitted\\n')\n"
-        "sys.exit(2)\n",
-    )
-    older = replace(LINUX, tbhbdev=str(host / "bin/tbhbdev-old"))
-    old_result = execute(remote_host.limits(older))
-    assert old_result.returncode == 0, old_result.stderr
-    old_found, old_admitted = limits.parse_probe(old_result.stdout.decode())
-    assert isinstance(old_found, limits.Reading)
-    assert old_admitted == 0
+    cases = [
+        ("tbhbdev", two_counts, (5, 2)),
+        ("tbhbdev-one-number", "print('3')\n", (3, 3)),
+        ("tbhbdev-old", "import sys\nsys.exit(2)\n", (0, 0)),
+    ]
+    for name, body, counts in cases:
+        write_standalone_fake(host / f"bin/{name}", body)
+        result = execute(
+            remote_host.limits(replace(LINUX, tbhbdev=str(host / f"bin/{name}")))
+        )
+        assert result.returncode == 0, result.stderr
+        found, total, recent = limits.parse_probe(result.stdout.decode())
+        assert isinstance(found, limits.Reading)
+        assert (total, recent) == counts
 
 
 @pytest.mark.parametrize(
@@ -190,6 +187,8 @@ def test_macos_reads_four_page_counts_and_the_pressure_level(
 ) -> None:
     code, out = run_script(macos_script(answer))
     assert code == 0
+    assert len(out.split()) == 8
+    assert out.split()[-1] == "-"
     assert limits.parse(out) == limits.Reading(
         0.5, 8, 8388608, 560, 4096, 1024, expected
     )
@@ -203,32 +202,51 @@ PRESSURE = (
 
 @pytest.mark.skipif(sys.platform != "linux", reason="reads /proc")
 @pytest.mark.parametrize(
-    ("text", "expected"),
+    ("text", "expected", "second_counter", "swap_in"),
     [
-        (PRESSURE % "12.50", 12.5),
-        (PRESSURE % "0.00", 0.0),
-        ("full avg10=3.00 avg60=0 avg300=0 total=0\n", None),
-        ("some garbage\n", None),
-        (None, None),
+        (PRESSURE % "12.50", 12.5, "pswpin 5100", None),
+        (PRESSURE % "0.00", 0.0, "pswpin 5100", None),
+        ("full avg10=3.00 avg60=0 avg300=0 total=0\n", None, "pswpin 100", 0.0),
+        ("some garbage\n", None, "pswpin 5100", 5000.0),
+        (PRESSURE % ".", None, "pswpin 5100", 5000.0),
+        (None, None, "pswpin 5100", 5000.0),
+        (None, None, "pswpin 99", None),
+        (None, None, "pswpin x", None),
+        (None, None, None, None),
     ],
 )
-def test_linux_pressure_is_some_avg10_or_unknown(
-    text: str | None, expected: float | None, tmp_path: Path
+def test_linux_uses_some_avg10_or_samples_swap_in(
+    text: str | None,
+    expected: float | None,
+    second_counter: str | None,
+    swap_in: float | None,
+    tmp_path: Path,
 ) -> None:
     (tmp_path / "meminfo").write_text(
         "".join(f"{name}: {value}\n" for name, value in MEMINFO.items())
     )
-    script = remote_host.limits().replace("/proc/meminfo", str(tmp_path / "meminfo"))
-    if text is None:
-        script = script.replace("/proc/pressure/memory", str(tmp_path / "absent"))
-    else:
-        (tmp_path / "pressure").write_text(text)
-        script = script.replace("/proc/pressure/memory", str(tmp_path / "pressure"))
-    code, out = run_script(script)
+    pressure = tmp_path / "pressure"
+    if text is not None:
+        pressure.write_text(text)
+    vmstat = tmp_path / "vmstat"
+    if second_counter is not None:
+        vmstat.write_text("pswpin 100\n")
+    sleep = f"""sleep() {{ test "$1" = 1 && echo '{second_counter}' > "{vmstat}"; }}
+"""
+    script = (
+        remote_host.limits()
+        .replace("/proc/meminfo", str(tmp_path / "meminfo"))
+        .replace("/proc/pressure/memory", str(pressure))
+        .replace("/proc/vmstat", str(vmstat))
+    )
+    code, out = run_script(sleep + script)
     assert code == 0
+    assert len(out.split()) == 8
     found = limits.parse(out)
     assert isinstance(found, limits.Reading)
-    assert found.pressure == expected
+    assert (found.pressure, found.swap_in) == (expected, swap_in)
+    if expected is not None:
+        assert vmstat.read_text() == "pswpin 100\n"
 
 
 @pytest.mark.skipif(sys.platform != "darwin", reason="reads sysctl and vm_stat")
