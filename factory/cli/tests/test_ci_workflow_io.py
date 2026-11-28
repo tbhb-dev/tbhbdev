@@ -168,7 +168,9 @@ def test_agent_capacity_upload_skips_only_on_gone_ref() -> None:
     assert "continue-on-error" not in check
     # The condition is asserted as an exact string, as for the coverage steps.
     assert upload["if"] == AGENT_CAPACITY_UPLOAD_CONDITION
-    assert upload["uses"].startswith("github/codeql-action/upload-sarif@")
+    uses = upload["uses"]
+    assert isinstance(uses, str)
+    assert uses.startswith("github/codeql-action/upload-sarif@")
     assert upload["with"] == {
         "sarif_file": "${{ runner.temp }}/gomodscan.sarif",
         "category": "agent-capacity-dependencies",
