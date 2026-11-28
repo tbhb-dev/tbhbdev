@@ -4,6 +4,7 @@ import json
 import subprocess  # nosec B404
 import sys
 from dataclasses import dataclass
+from functools import partial
 from pathlib import Path
 from typing import cast
 
@@ -53,14 +54,18 @@ def size_counts(  # noqa: PLR0913 -- refs, branch name and counter tools are ind
     head_branch: str = "",
     scc: str = "scc",
     git: str = "git",
+    env: dict[str, str] | None = None,
 ) -> SizeCounts:
     """Count added lines, excluding shared default-branch changes if given.
 
     Raises:
         SizeCountError: The command is unavailable, fails or returns bad JSON.
     """
+    invoke = (
+        subprocess.run if env is None else partial(subprocess.run, env=env, timeout=10)
+    )
     try:
-        done = subprocess.run(  # nosec B603 B607
+        done = invoke(  # nosec B603 B607
             [
                 "bash",
                 str(DATA / "pr-size.sh"),

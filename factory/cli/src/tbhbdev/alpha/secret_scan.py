@@ -198,6 +198,7 @@ def run_gitleaks(
         text=True,
         check=False,  # pragma: no mutate -- the default, spelled for the linter
         cwd=root,
+        timeout=30,
         input=text,
         env=os.environ | {"NO_COLOR": "1"},
     )

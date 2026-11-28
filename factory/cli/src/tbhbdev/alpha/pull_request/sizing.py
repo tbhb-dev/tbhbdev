@@ -70,16 +70,21 @@ def _size_base(
     return base, default_ref
 
 
-def _report_size_excess(
-    draft: str, checked: Checked, counts: size_gate.SizeCounts, *, dry_run: bool
-) -> None:
-    """Report a size excess as a draft problem or a dry-run warning."""
+def size_excess(counts: size_gate.SizeCounts) -> str:
+    """Give the same refusal for any pull request that exceeds the limit."""
     count, limit = (
         (counts.code_lines, counts.code_limit)
         if counts.failed == "code"
         else (counts.raw_lines, counts.raw_limit)
     )
-    why = f"{count} lines, limit {limit}: split into stacked PRs"
+    return f"{count} lines, limit {limit}: split into stacked PRs"
+
+
+def _report_size_excess(
+    draft: str, checked: Checked, counts: size_gate.SizeCounts, *, dry_run: bool
+) -> None:
+    """Report a size excess as a draft problem or a dry-run warning."""
+    why = size_excess(counts)
     if dry_run:
         print(f"warning: {draft}:1: {why}", file=sys.stderr)
         return

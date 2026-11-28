@@ -317,8 +317,9 @@ def test_counts(
         )
     )
     monkeypatch.setattr(sg.subprocess, "run", runner)
+    scc, git = tools.get("scc", "scc"), tools.get("git", "git")
     assert sg.size_counts(
-        "origin/main", "HEAD", default_ref=default_ref, **tools
+        "origin/main", "HEAD", default_ref=default_ref, scc=scc, git=git
     ) == sg.SizeCounts(400, 400, 1500, 1500, failed)
     assert runner.call_count == 1
     assert runner.call_args.args == (

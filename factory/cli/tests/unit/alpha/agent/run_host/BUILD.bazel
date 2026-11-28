@@ -130,3 +130,13 @@ cli_py_test(
         "//factory/cli/tests:conftest",
     ],
 )
+
+cli_py_test(
+    name = "test_draft_pr",
+    srcs = ["test_draft_pr.py"],
+    imports = ["../../../.."],
+    deps = [
+        "//factory/cli/src/tbhbdev/alpha/agent/run_host:draft_pr",
+        "//factory/cli/tests:conftest",
+    ],
+)

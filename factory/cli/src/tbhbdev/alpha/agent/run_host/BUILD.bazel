@@ -351,3 +351,32 @@ cli_py_library(
         "//factory/cli/src/tbhbdev/alpha/agent/decisions:repo",
     ],
 )
+
+cli_py_library(
+    name = "draft_pr",
+    srcs = ["draft_pr.py"],
+    imports = ["../../../.."],
+    pyi_deps = [":state"],
+    visibility = ["//factory/cli:__subpackages__"],
+    deps = [
+        ":publication_plan",
+        "//factory/cli/src/tbhbdev:github_tls",
+        "//factory/cli/src/tbhbdev/alpha:opened",
+        "//factory/cli/src/tbhbdev/alpha:secret_scan",
+        "//factory/cli/src/tbhbdev/alpha:size_gate",
+        "//factory/cli/src/tbhbdev/alpha/agent:credentials",
+        "//factory/cli/src/tbhbdev/alpha/agent:host_tools",
+        "//factory/cli/src/tbhbdev/alpha/agent:push",
+        "//factory/cli/src/tbhbdev/alpha/agent:runfiles",
+        "//factory/cli/src/tbhbdev/alpha/agent/decisions:repo",
+        "//factory/cli/src/tbhbdev/alpha/agent/decisions:runfiles_names",
+        "//factory/cli/src/tbhbdev/alpha/identity/commit:grammar",
+        "//factory/cli/src/tbhbdev/alpha/pull_request:attribution",
+        "//factory/cli/src/tbhbdev/alpha/pull_request:description",
+        "//factory/cli/src/tbhbdev/alpha/pull_request:draft",
+        "//factory/cli/src/tbhbdev/alpha/pull_request:metadata",
+        "//factory/cli/src/tbhbdev/alpha/pull_request:publish",
+        "//factory/cli/src/tbhbdev/alpha/pull_request:sizing",
+        "@cli_pip//httpx2",
+    ],
+)
