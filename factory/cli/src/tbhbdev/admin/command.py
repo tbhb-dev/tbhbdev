@@ -113,6 +113,22 @@ def credential_setting(key: str, flag: str | None) -> str:
         raise RefusedError(msg) from None
 
 
+def protected_repositories() -> frozenset[str] | None:
+    try:
+        table = userconfig.optional_table("admin")
+    except userconfig.ConfigError, OSError, UnicodeError:
+        return None
+    if table is None or "protected_repositories" not in table:
+        return frozenset()
+    value = table["protected_repositories"]
+    if not isinstance(value, list):
+        return None
+    entries: list[object] = value
+    if not all(isinstance(entry, str) and entry for entry in entries):
+        return None
+    return frozenset(str(entry).lower() for entry in entries)
+
+
 def dispatch(runtime: Runtime, args: argparse.Namespace) -> int:
     if not args.reason.strip():
         msg = "reason_required"
@@ -124,7 +140,10 @@ def dispatch(runtime: Runtime, args: argparse.Namespace) -> int:
     ):
         msg = "invalid_setting"
         raise RefusedError(msg)
-    runtime = replace(runtime, settings=Settings(args.app, item, vault, args.app_id))
+    runtime = replace(
+        runtime,
+        settings=Settings(args.app, item, vault, args.app_id, protected_repositories()),
+    )
     if args.command == "secret-repos":
         return secret_repos(runtime, args)
     status, text = call(
