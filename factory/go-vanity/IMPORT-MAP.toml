@@ -1,0 +1,796 @@
+# SPDX-License-Identifier: Apache-2.0
+# Copyright Tony Burns
+
+repo = "tbhb-dev/go.tbhb.dev"
+commit = "f533892a3315c4c135d15f0c0cf8c1d6593cfa2a"
+dest = "factory/go-vanity"
+
+[copy]
+".dependency-cruiser.cjs" = "factory/go-vanity/.dependency-cruiser.cjs"
+"biome.json" = "factory/go-vanity/biome.json"
+"e2e/check.mjs" = "factory/go-vanity/e2e/check.mjs"
+"e2e/check.test.mjs" = "factory/go-vanity/e2e/check.test.mjs"
+"e2e/main.mjs" = "factory/go-vanity/e2e/main.mjs"
+"e2e/vitest.config.mjs" = "factory/go-vanity/e2e/vitest.config.mjs"
+"eslint.config.mjs" = "factory/go-vanity/eslint.config.mjs"
+"knip.json" = "factory/go-vanity/knip.json"
+"package.json" = "factory/go-vanity/package.json"
+"pnpm-lock.yaml" = "factory/go-vanity/pnpm-lock.yaml"
+"pnpm-workspace.yaml" = "factory/go-vanity/pnpm-workspace.yaml"
+"src/index.test.ts" = "factory/go-vanity/src/index.test.ts"
+"src/index.ts" = "factory/go-vanity/src/index.ts"
+"src/vanity.test.ts" = "factory/go-vanity/src/vanity.test.ts"
+"src/vanity.ts" = "factory/go-vanity/src/vanity.ts"
+"stryker.config.mjs" = "factory/go-vanity/stryker.config.mjs"
+"tsconfig.json" = "factory/go-vanity/tsconfig.json"
+"vitest.config.mjs" = "factory/go-vanity/vitest.config.mjs"
+"wrangler.jsonc" = "factory/go-vanity/wrangler.jsonc"
+
+[rewrite."BUILD.bazel"]
+dest = "factory/go-vanity/BUILD.bazel"
+replace = [
+  [
+    '''
+# SPDX-License-Identifier: Apache-2.0
+# Copyright Tony Burns
+
+load("@bazel_env.bzl", "bazel_env")
+load("@bazelrc-preset.bzl", "bazelrc_preset")
+load("@buildifier_prebuilt//:rules.bzl", "buildifier", "buildifier_test")
+load("@npm//:defs.bzl", "npm_link_all_packages")
+load("@tbhb_rules//format:defs.bzl", "format", "format_test")
+load(
+    "@tbhb_rules//lint:defs.bzl",
+    "actionlint_test",
+    "codeowners_test",
+    "cspell_test",
+    "editorconfig_checker_test",
+    "gitleaks_history",
+    "gitleaks_test",
+    "okf_docs_test",
+    "reuse_test",
+    "rumdl_test",
+    "ryl_test",
+    "shellcheck_test",
+    "shfmt_test",
+    "tombi_test",
+    "vale_sync",
+    "vale_test",
+    "zizmor_test",
+)
+load("@tbhb_rules//repo:defs.bzl", "repo_files")
+load("@tbhb_rules_cloudflare//:defs.bzl", "worker_deploy", "worker_types_test")
+load(
+    "@tbhb_rules_typescript//:defs.bzl",
+    "biome_test",
+    "depcruise_test",
+''',
+    '''
+# SPDX-License-Identifier: Apache-2.0
+# Copyright Tony Burns
+
+load("@bazel_skylib//rules:build_test.bzl", "build_test")
+load("@npm_go_vanity//:defs.bzl", "npm_link_all_packages")
+load("@tbhb_rules//repo:defs.bzl", "repo_files")
+load("@tbhb_rules_cloudflare//:defs.bzl", "worker_bundle", "worker_types_test")
+load(
+    "@tbhb_rules_typescript//:defs.bzl",
+    "biome_test",
+    "depcruise_test",
+''',
+  ],
+  [
+    '''
+    "stryker_test",
+    "tsc_test",
+    "vitest_test",
+)
+load("//:vale_packages.bzl", "VALE_PACKAGES")
+
+# Generates preset.bazelrc, which .bazelrc imports. The content depends on the
+# Bazel version that runs the generator; the committed copy matches
+# .bazelversion, and `preset.update_test` fails when it is stale.
+bazelrc_preset(
+    name = "preset",
+)
+
+# buildifier: `//:buildifier` formats and applies lint fixes in place,
+# `//:buildifier.check` fails on any formatting or lint difference, and the
+# test below makes `bazel test //...` fail on the same findings. Every
+# available warning is on. `bazel-*` convenience symlinks, the Python and
+# tool caches and scratch space hold no Starlark that this
+# repository owns.
+BUILDIFIER_EXCLUDES = [
+    "./.git/*",
+    "./.venv/*",
+    "./.mise/*",
+    "./bazel-*",
+    "./.bazel-*",
+    "./node_modules/*",
+    "./tmp/*",
+]
+
+buildifier(
+    name = "buildifier",
+    exclude_patterns = BUILDIFIER_EXCLUDES,
+    lint_mode = "fix",
+    lint_warnings = ["all"],
+    mode = "fix",
+)
+
+buildifier(
+    name = "buildifier.check",
+    exclude_patterns = BUILDIFIER_EXCLUDES,
+    lint_mode = "warn",
+    lint_warnings = ["all"],
+    mode = "diff",
+)
+
+buildifier_test(
+    name = "buildifier_test",
+    exclude_patterns = BUILDIFIER_EXCLUDES,
+    lint_mode = "warn",
+    lint_warnings = ["all"],
+    no_sandbox = True,
+    workspace = "//:MODULE.bazel",
+)
+
+# Every file of the repository, for the whole-tree checks below. Each package
+# calls repo_files() too, so the chain covers the tree. Directories that hold
+# no source are ignored in REPO.bazel; these are the gitignored loose files
+# that can sit in a working checkout.
+repo_files(
+    exclude = [
+        "**/.DS_Store",
+        ".bazelrc.user",
+        ".coverage*",
+        ".env*",
+        ".claude/settings.local.json",
+        ".github/PULL_REQUEST_DRAFT.md",
+        "coverage.*",
+        "mise.local.toml",
+        # Synced Vale packages: only the project's own style is tracked.
+        ".vale/Google/**",
+        ".vale/write-good/**",
+        ".vale/proselint/**",
+        ".vale/ai-tells/**",
+        ".vale/ai-tells-experimental/**",
+        ".vale/config/scripts/**",
+        ".vale/config/templates/**",
+    ],
+)
+
+# The Worker's own npm packages, which the TypeScript checks read.
+npm_link_all_packages(name = "node_modules")
+
+''',
+    '''
+    "stryker_test",
+    "tsc_test",
+    "vitest_test",
+)
+
+package(default_visibility = ["//factory:__subpackages__"])
+
+repo_files(visibility = ["//factory:__pkg__"])
+
+# The Worker's own npm packages, which the TypeScript checks read.
+npm_link_all_packages(name = "node_modules")
+
+''',
+  ],
+  [
+    '''
+    "worker-configuration.d.ts",
+    "wrangler.jsonc",
+]
+
+# The handler's sources, for //e2e:check_test, which serves them from Node.
+filegroup(
+    name = "worker_srcs",
+    srcs = glob(
+        ["src/*.ts"],
+        exclude = ["src/*.test.ts"],
+    ),
+    visibility = ["//e2e:__pkg__"],
+)
+
+# The committed `Env` and runtime types, exactly what the pinned wrangler
+# writes; `bazel run //:worker_types_test.update` regenerates them.
+worker_types_test(
+    name = "worker_types_test",
+    srcs = WORKER,
+)
+
+# `bazel run //:deploy_stg` (then prd) deploys the Worker: the new version
+# runs //e2e:check at 0% through the version override, then again on the
+# live URL after it takes all traffic. The workflow supplies the Cloudflare
+# credentials from 1Password; the Worker has no secrets. Each environment's
+# first deploy is a manual bootstrap.
+worker_deploy(
+    name = "deploy_stg",
+    srcs = WORKER,
+    env = "stg",
+    post_deploy = ["//e2e:check"],
+    pre_deploy = ["//e2e:check"],
+    url = "https://go-stg.tbhb.dev",
+)
+
+worker_deploy(
+    name = "deploy_prd",
+    srcs = WORKER,
+    env = "prd",
+    post_deploy = ["//e2e:check"],
+    pre_deploy = ["//e2e:check"],
+    url = "https://go.tbhb.dev",
+)
+
+# The TypeScript gates, from tbhb_rules_typescript, each over a copy of the
+# Worker project with its node_modules linked in. The Worker imports no npm
+''',
+    '''
+    "worker-configuration.d.ts",
+    "wrangler.jsonc",
+]
+
+# The handler's sources, for //factory/go-vanity/e2e:check_test, which serves them from Node.
+filegroup(
+    name = "worker_srcs",
+    srcs = glob(
+        ["src/*.ts"],
+        exclude = ["src/*.test.ts"],
+    ),
+    visibility = ["//factory/go-vanity/e2e:__pkg__"],
+)
+
+# The committed `Env` and runtime types, exactly what the pinned wrangler
+# writes; `bazel run //factory/go-vanity:worker_types_test.update` regenerates them.
+worker_types_test(
+    name = "worker_types_test",
+    srcs = WORKER,
+)
+
+worker_bundle(
+    name = "staging_bundle",
+    srcs = WORKER,
+    env = "stg",
+)
+
+worker_bundle(
+    name = "production_bundle",
+    srcs = WORKER,
+    env = "prd",
+)
+
+build_test(
+    name = "bundles_test",
+    targets = [
+        ":production_bundle",
+        ":staging_bundle",
+    ],
+)
+
+# The TypeScript gates, from tbhb_rules_typescript, each over a copy of the
+# Worker project with its node_modules linked in. The Worker imports no npm
+''',
+  ],
+  [
+    '''
+tsc_test(
+    name = "tsc_test",
+    srcs = WORKER,
+    node_modules = [":node_modules"],
+)
+
+biome_test(
+    name = "biome_test",
+    srcs = WORKER,
+)
+
+eslint_test(
+    name = "eslint_test",
+    srcs = WORKER,
+    node_modules = [":node_modules"],
+)
+
+knip_test(
+    name = "knip_test",
+    srcs = WORKER,
+    node_modules = [":node_modules"],
+)
+
+depcruise_test(
+    name = "depcruise_test",
+    srcs = WORKER,
+    node_modules = [":node_modules"],
+)
+
+vitest_test(
+    name = "vitest_test",
+    srcs = WORKER,
+    node_modules = [":node_modules"],
+)
+
+# stryker.config.mjs sets concurrency 2; the tag gives the test those CPUs.
+stryker_test(
+    name = "stryker_test",
+    srcs = WORKER,
+    node_modules = [":node_modules"],
+    tags = ["cpu:2"],
+)
+
+# Whole-tree gates over //:repo_files, from tbhb_rules. Each test runs its
+# tool over a dereferenced copy of the tree, so it is hermetic and cached,
+# and fails when it scanned nothing.
+gitleaks_test(
+    name = "gitleaks_test",
+    srcs = [":repo_files"],
+    config = ".gitleaks.toml",
+)
+
+# `bazel run //:gitleaks_history` scans every commit. History is not a
+# declared input, so it cannot be a cached test; CI runs it.
+gitleaks_history(
+    name = "gitleaks_history",
+    config = ".gitleaks.toml",
+)
+
+ryl_test(
+    name = "ryl_test",
+    srcs = [":repo_files"],
+    config = ".ryl.toml",
+    data = [".rylignore"],
+)
+
+tombi_test(
+    name = "tombi_test",
+    srcs = [":repo_files"],
+    config = "tombi.toml",
+)
+
+rumdl_test(
+    name = "rumdl_test",
+    srcs = [":repo_files"],
+    config = ".rumdl.toml",
+)
+
+editorconfig_checker_test(
+    name = "editorconfig_checker_test",
+    srcs = [":repo_files"],
+    config = ".editorconfig-checker.json",
+)
+
+actionlint_test(
+    name = "actionlint_test",
+    srcs = [":repo_files"],
+)
+
+# Offline audits. The online ones need a token and the network; CI runs
+# them outside the test graph.
+zizmor_test(
+    name = "zizmor_test",
+    srcs = [":repo_files"],
+    config = ".github/zizmor.yml",
+)
+
+# Shell scripts, found by extension and shebang. The repo has none today, so
+# allow_empty lets the test pass without inputs.
+shellcheck_test(
+    name = "shellcheck_test",
+    srcs = [":repo_files"],
+    allow_empty = True,
+)
+
+# shfmt reads its style from .editorconfig.
+shfmt_test(
+    name = "shfmt_test",
+    srcs = [":repo_files"],
+    allow_empty = True,
+)
+
+# Every CODEOWNERS pattern still matches a file. GitHub's owner and syntax
+# validation needs its API, so CI runs that outside the test graph.
+codeowners_test(
+    name = "codeowners_test",
+    srcs = [":repo_files"],
+)
+
+# docs/ as an OKF v0.2 bundle, and every Markdown file's frontmatter, against
+# the schemas in docs/schemas.
+okf_docs_test(
+    name = "okf_docs_test",
+    srcs = [":repo_files"],
+)
+
+# Copyright and licensing information on every file (REUSE.toml, LICENSES/).
+reuse_test(
+    name = "reuse_test",
+    srcs = [":repo_files"],
+)
+
+cspell_test(
+    name = "cspell_test",
+    srcs = [":repo_files"],
+    config = ".cspell.jsonc",
+    data = [".cspell-words.txt"],
+)
+
+# Vale style packages, in .vale.ini's `Packages` order.
+# Markdown, against the pinned packages, offline.
+vale_test(
+    name = "vale_test",
+    srcs = [":repo_files"],
+    include = [
+        "*.md",
+    ],
+    config = ".vale.ini",
+    packages = VALE_PACKAGES,
+)
+
+# `bazel run //:vale_sync` writes the same packages into .vale/, for editors
+# and for running vale by hand.
+vale_sync(
+    name = "vale_sync",
+    config = ".vale.ini",
+    packages = VALE_PACKAGES,
+)
+
+# Formatters. `bazel run //:format` rewrites the workspace in place,
+# `bazel run //:format.check` only reports, and //:format_test makes
+# `bazel test //...` fail on any unformatted file.
+FORMATTERS = [
+    "@tbhb_rules//format:buildifier",
+    "@tbhb_rules//format:rumdl",
+    "@tbhb_rules//format:ryl",
+    "@tbhb_rules//format:shfmt",
+    "@tbhb_rules//format:tombi",
+]
+
+format(
+    name = "format",
+    formatters = FORMATTERS,
+)
+
+format_test(
+    name = "format_test",
+    srcs = [":repo_files"],
+    formatters = FORMATTERS,
+)
+
+# `bazel run //:bazel_env` puts shims for the Bazel-pinned tools in
+# .bazel_env/bin, which mise and direnv add to PATH. Git hooks call them
+# directly, so a commit never waits on the Bazel server.
+bazel_env(
+    name = "bazel_env",
+    tools = {
+        "actionlint": "@tbhb_rules_actionlint//:actionlint",
+        "buildifier": "@buildifier_prebuilt//:buildifier",
+        "cog": "@tbhb_rules_cog//:cog",
+        "cspell": "@tbhb_rules//lint/private/cspell",
+        "editorconfig-checker": "@tbhb_rules_editorconfig_checker//:editorconfig-checker",
+        "git": "@tbhb_rules_git//:git",
+        "gitleaks": "@tbhb_rules//lint:gitleaks",
+        "rumdl": "@tbhb_rules_rumdl//:rumdl",
+        "ryl": "@tbhb_rules_ryl//:ryl",
+        "shellcheck": "@tbhb_rules_shellcheck//:shellcheck",
+        "shfmt": "@tbhb_rules_shfmt//:shfmt",
+        "tombi": "@tbhb_rules_tombi//:tombi",
+        "vale": "@tbhb_rules_vale//:vale",
+        "zizmor": "@tbhb_rules_zizmor//:zizmor",
+    },
+)
+''',
+    '''
+tsc_test(
+    name = "tsc_test",
+    srcs = WORKER,
+    node_modules = [":node_modules"],
+    strip_prefix = package_name(),
+)
+
+biome_test(
+    name = "biome_test",
+    srcs = WORKER,
+    strip_prefix = package_name(),
+)
+
+eslint_test(
+    name = "eslint_test",
+    srcs = WORKER,
+    node_modules = [":node_modules"],
+    strip_prefix = package_name(),
+)
+
+knip_test(
+    name = "knip_test",
+    srcs = WORKER,
+    node_modules = [":node_modules"],
+    strip_prefix = package_name(),
+)
+
+depcruise_test(
+    name = "depcruise_test",
+    srcs = WORKER,
+    node_modules = [":node_modules"],
+    strip_prefix = package_name(),
+)
+
+vitest_test(
+    name = "vitest_test",
+    srcs = WORKER,
+    node_modules = [":node_modules"],
+    strip_prefix = package_name(),
+)
+
+# stryker.config.mjs sets concurrency 2; the tag gives the test those CPUs.
+stryker_test(
+    name = "stryker_test",
+    srcs = WORKER,
+    node_modules = [":node_modules"],
+    strip_prefix = package_name(),
+    tags = ["cpu:2"],
+)
+''',
+  ],
+]
+
+[rewrite."README.md"]
+dest = "factory/go-vanity/README.md"
+replace = [
+  ["## Getting started\n\n```sh\nmise install\nbazelisk run //:bazel_env\ntbhbdev alpha install\nbazelisk test //...\n```\n\n`bazelisk test //...` runs every lint, audit, and test gate. Each push to main deploys to the `go-tbhb-dev-stg` Worker at `go-stg.tbhb.dev`, then to `go-tbhb-dev-prd` at `go.tbhb.dev`. The documentation is in [docs/](docs/index.md).\n", "## Build and test\n\nFrom the monorepo root, run:\n\n```sh\nbazelisk test --config=ci //factory/go-vanity/...\n```\n\nThe tests use the TypeScript and Cloudflare rules in `lib/rules`. The\n[end-to-end test](e2e/check.test.mjs) serves the Worker on a local port.\n"],
+]
+
+[rewrite."e2e/BUILD.bazel"]
+dest = "factory/go-vanity/e2e/BUILD.bazel"
+replace = [
+  [
+    '''
+load("@aspect_rules_js//js:defs.bzl", "js_binary")
+load("@tbhb_rules//repo:defs.bzl", "repo_files")
+load("@tbhb_rules_typescript//:defs.bzl", "vitest_test")
+
+repo_files()
+
+# The deploys' pre- and post-deploy check against a deployed Worker.
+js_binary(
+    name = "check",
+    data = ["check.mjs"],
+    entry_point = "main.mjs",
+    visibility = ["//:__pkg__"],
+)
+
+# The check against the Worker's own entry point, with coverage.
+vitest_test(
+    name = "check_test",
+    srcs = glob(["*.mjs"]) + ["//:worker_srcs"],
+    config = "vitest.config.mjs",
+    node_modules = ["//:node_modules"],
+)
+''',
+    '''
+load("@aspect_rules_js//js:defs.bzl", "js_binary")
+load("@tbhb_rules//repo:defs.bzl", "repo_files")
+load("@tbhb_rules_typescript//:defs.bzl", "vitest_test")
+
+repo_files(visibility = ["//factory/go-vanity:__pkg__"])
+
+# The deploys' pre- and post-deploy check against a deployed Worker.
+js_binary(
+    name = "check",
+    data = ["check.mjs"],
+    entry_point = "main.mjs",
+    visibility = ["//factory/go-vanity:__pkg__"],
+)
+
+# The check against the Worker's own entry point, with coverage.
+vitest_test(
+    name = "check_test",
+    srcs = glob(["*.mjs"]) + ["//factory/go-vanity:worker_srcs"],
+    config = "vitest.config.mjs",
+    node_modules = ["//factory/go-vanity:node_modules"],
+    strip_prefix = "factory/go-vanity",
+)
+''',
+  ],
+]
+
+[rewrite."worker-configuration.d.ts"]
+dest = "factory/go-vanity/worker-configuration.d.ts"
+replace = [
+  [
+    "/* eslint-disable */\n// Generated by Wrangler by running `wrangler types --config=wrangler.jsonc` (hash: cad1d2dd604909de0fd65223114f8939)\n// Runtime types generated with workerd@1.20261118.1 2026-10-23\ninterface __BaseEnv_Env {\n\tCF_VERSION_METADATA?: WorkerVersionMetadata;\n}\ndeclare namespace Cloudflare {\n",
+    "/* eslint-disable */\n// Generated by Wrangler by running `wrangler types --config=wrangler.jsonc` (hash: cad1d2dd604909de0fd65223114f8939)\n// Runtime types generated with workerd@1.20261119.1 2026-10-23\ninterface __BaseEnv_Env {\n\tCF_VERSION_METADATA?: WorkerVersionMetadata;\n}\ndeclare namespace Cloudflare {\n",
+  ],
+  [
+    '''
+    getActiveSpan(): Span | undefined;
+    withActiveSpan<T, A extends unknown[]>(span: Span, callback: (...args: A) => T, ...args: A): T;
+    Span: typeof Span;
+}
+declare abstract class Span {
+    get isTraced(): boolean;
+    spanContext(): TracingSpanContext;
+    setAttribute(key: string, value: boolean | number | string): this;
+''',
+    '''
+    getActiveSpan(): Span | undefined;
+    withActiveSpan<T, A extends unknown[]>(span: Span, callback: (...args: A) => T, ...args: A): T;
+    Span: typeof Span;
+}
+interface TracingSpanLink {
+    context: TracingSpanContext;
+    attributes?: Record<string, boolean | number | string | undefined>;
+    droppedAttributesCount?: number;
+}
+declare abstract class Span {
+    get isTraced(): boolean;
+    spanContext(): TracingSpanContext;
+    setAttribute(key: string, value: boolean | number | string): this;
+''',
+  ],
+  [
+    '''
+    }): void;
+    updateName(name: string): this;
+    setStatus(status: TracingSpanStatus): this;
+    end(): void;
+}
+type TracingSpanStatusCode = "unset" | "ok" | "error";
+interface TracingSpanStatus {
+    code: TracingSpanStatusCode;
+''',
+    '''
+    }): void;
+    updateName(name: string): this;
+    setStatus(status: TracingSpanStatus): this;
+    end(): void;
+    addLink(link: TracingSpanLink): this;
+    addLinks(links: readonly TracingSpanLink[]): this;
+}
+type TracingSpanStatusCode = "unset" | "ok" | "error";
+interface TracingSpanStatus {
+    code: TracingSpanStatusCode;
+''',
+  ],
+  [
+    '''
+    interface SpanUpdate {
+        readonly type: "spanUpdate";
+        readonly info: SpanUpdateInfo;
+    }
+    interface DiagnosticChannelEvent {
+        readonly type: "diagnosticChannel";
+        readonly channel: string;
+        readonly message: any;
+''',
+    '''
+    interface SpanUpdate {
+        readonly type: "spanUpdate";
+        readonly info: SpanUpdateInfo;
+    }
+    /** A causal relationship to a span, including spans in another trace. */
+    interface SpanLink {
+        readonly context: {
+            readonly traceId: string;
+            readonly spanId: string;
+            readonly traceFlags: number;
+        };
+        readonly attributes: readonly Attribute[];
+        /** Attributes dropped before this link was recorded. */
+        readonly droppedAttributesCount: number;
+    }
+    /** Links added to the receiver identified by the event's spanContext. */
+    interface SpanLinks {
+        readonly type: "spanLinks";
+        readonly links: readonly SpanLink[];
+    }
+    interface DiagnosticChannelEvent {
+        readonly type: "diagnosticChannel";
+        readonly channel: string;
+        readonly message: any;
+''',
+  ],
+  [
+    '''
+    interface Attributes {
+        readonly type: "attributes";
+        readonly info: Attribute[];
+    }
+    type EventType = Onset | Outcome | SpanOpen | SpanClose | SpanUpdate | DiagnosticChannelEvent | Exception | Log | StreamDiagnostic | Return | Attributes;
+    // Context in which this trace event lives.
+    interface SpanContext {
+        // Single id for the entire top-level invocation
+        // This should be a new traceId for the first worker stage invoked in the eyeball request and then
+''',
+    '''
+    interface Attributes {
+        readonly type: "attributes";
+        readonly info: Attribute[];
+    }
+    type EventType = Onset | Outcome | SpanOpen | SpanClose | SpanUpdate | SpanLinks | DiagnosticChannelEvent | Exception | Log | StreamDiagnostic | Return | Attributes;
+    // Context in which this trace event lives.
+    interface SpanContext {
+        // Single id for the entire top-level invocation
+        // This should be a new traceId for the first worker stage invoked in the eyeball request and then
+''',
+  ],
+  [
+    '''
+        outcome?: TailEventHandler<Outcome>;
+        spanOpen?: TailEventHandler<SpanOpen>;
+        spanClose?: TailEventHandler<SpanClose>;
+        spanUpdate?: TailEventHandler<SpanUpdate>;
+        diagnosticChannel?: TailEventHandler<DiagnosticChannelEvent>;
+        exception?: TailEventHandler<Exception>;
+        log?: TailEventHandler<Log>;
+        streamDiagEvent?: TailEventHandler<StreamDiagnostic>;
+''',
+    '''
+        outcome?: TailEventHandler<Outcome>;
+        spanOpen?: TailEventHandler<SpanOpen>;
+        spanClose?: TailEventHandler<SpanClose>;
+        spanUpdate?: TailEventHandler<SpanUpdate>;
+        spanLinks?: TailEventHandler<SpanLinks>;
+        diagnosticChannel?: TailEventHandler<DiagnosticChannelEvent>;
+        exception?: TailEventHandler<Exception>;
+        log?: TailEventHandler<Log>;
+        streamDiagEvent?: TailEventHandler<StreamDiagnostic>;
+''',
+  ],
+]
+
+[drop]
+".bazelignore" = "root configuration (.bazel*)"
+".bazelrc" = "root configuration (.bazel*)"
+".bazelversion" = "root configuration (.bazel*)"
+".claude/settings.json" = "standalone repository configuration"
+".codex/rules/pull-request.rules" = "standalone repository configuration"
+".cspell-words.txt" = "root configuration (.cspell*)"
+".cspell.jsonc" = "root configuration (.cspell*)"
+".editorconfig" = "root configuration (.editorconfig*)"
+".editorconfig-checker.json" = "root configuration (.editorconfig*)"
+".gitattributes" = "root configuration (.gitattributes)"
+".github/CODEOWNERS" = "root configuration (.github/CODEOWNERS)"
+".github/PULL_REQUEST_TEMPLATE.md" = "standalone repository configuration"
+".github/actionlint.yaml" = "root configuration (.github/actionlint.yaml)"
+".github/pull-request-sections.toml" = "standalone repository configuration"
+".github/renovate.json5" = "root configuration (.github/renovate.json*)"
+".github/rulesets/main.json" = "root configuration (.github/rulesets/*)"
+".github/schemas/pull-request-draft.schema.json" = "standalone repository configuration"
+".github/workflows/ci.yml" = "standalone workflow; workflow migration is a separate change"
+".github/workflows/deploy.yml" = "standalone workflow; workflow migration is a separate change"
+".github/workflows/renovate-config-validator.yaml" = "standalone workflow; workflow migration is a separate change"
+".github/workflows/renovate.yaml" = "standalone workflow; workflow migration is a separate change"
+".github/zizmor.yml" = "root configuration (.github/zizmor.yml)"
+".gitignore" = "root configuration (.gitignore)"
+".gitleaks.toml" = "root configuration (.gitleaks.toml)"
+".mcp.json" = "standalone repository configuration"
+".pre-commit-config.yaml" = "root configuration (.pre-commit-config.yaml)"
+".rumdl.toml" = "root configuration (.rumdl.toml)"
+".ryl.toml" = "root configuration (.ryl*)"
+".rylignore" = "root configuration (.ryl*)"
+".vale.ini" = "root configuration (.vale*)"
+".vale/config/vocabularies/project/accept.txt" = "root configuration (.vale/**)"
+".vale/config/vocabularies/project/reject.txt" = "root configuration (.vale/**)"
+".vale/project/Acronyms.yml" = "root configuration (.vale/**)"
+".vale/project/Colons.yml" = "root configuration (.vale/**)"
+".vale/project/HeadingTitleCase.yml" = "root configuration (.vale/**)"
+".vale/project/WordList.yml" = "root configuration (.vale/**)"
+LICENSE = "root configuration (LICENSE)"
+"LICENSES/Apache-2.0.txt" = "root configuration (LICENSES/**)"
+"MODULE.bazel" = "root configuration (MODULE.bazel*)"
+"MODULE.bazel.lock" = "root configuration (MODULE.bazel*)"
+"REPO.bazel" = "root configuration (REPO.bazel)"
+"REUSE.toml" = "root configuration (REUSE.toml)"
+"docs/AGENTS.md" = "standalone agent instructions"
+"docs/CLAUDE.md" = "standalone agent instructions"
+"docs/index.md" = "standalone documentation policy and schemas; the shared rules document frontmatter"
+"docs/reference/frontmatter.md" = "standalone documentation policy and schemas; the shared rules document frontmatter"
+"docs/schemas/frontmatter.schema.json" = "standalone documentation policy and schemas; the shared rules document frontmatter"
+"docs/schemas/index-frontmatter.schema.json" = "standalone documentation policy and schemas; the shared rules document frontmatter"
+"mise.lock" = "root configuration (mise.*)"
+"mise.toml" = "root configuration (mise.*)"
+"preset.bazelrc" = "root configuration (preset.bazelrc)"
+"tombi.toml" = "root configuration (tombi.toml)"
+"tools/BUILD.bazel" = "file inventory for standalone repository checks; no Worker target reads it"
+"vale_packages.bzl" = "standalone repository configuration"

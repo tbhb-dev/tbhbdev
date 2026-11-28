@@ -18,7 +18,7 @@ import tbhbdev.alpha.guard.op.command as guard_op
 import tbhbdev.alpha.guard.ops_no_lazy_stop as guard_ops_no_lazy_stop
 import tbhbdev.alpha.guard.scripts.command as guard_scripts
 import tbhbdev.alpha.guard.sendmessage_clock as guard_sendmessage_clock
-import tbhbdev.alpha.monorepo.command as monorepo
+import tbhbdev.monorepo.command as monorepo
 from tbhbdev import cli
 from tbhbdev.alpha import (
     brief,
@@ -54,7 +54,15 @@ def test_alpha_is_a_tool() -> None:
 
 def test_usage_says_the_commands_are_interim() -> None:
     assert "interim: they may change or go away without notice" in USAGE
-    for name in ("identity", "guard-gh-pr", "pr", "issue", "merge", "install"):
+    for name in (
+        "identity",
+        "guard-gh-pr",
+        "pr",
+        "issue",
+        "merge",
+        "merge-queue-remove",
+        "install",
+    ):
         assert f"\n  {name} " in USAGE
 
 

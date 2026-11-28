@@ -39,6 +39,26 @@ cli_py_test(
 )
 
 cli_py_test(
+    name = "test_remove_io",
+    srcs = ["test_remove_io.py"],
+    data = [
+        "//factory/cli/src/tbhbdev:module_entrypoint",
+        "//factory/cli/tests:alpha_testdata",
+    ],
+    imports = ["../.."],
+    deps = [
+        ":conftest",
+        ":fake_github",
+        "//factory/cli/src/tbhbdev/alpha/identity:storage",
+        "//factory/cli/src/tbhbdev/merge:command",
+        "//factory/cli/src/tbhbdev/merge:remove",
+        "//factory/cli/src/tbhbdev/merge:write",
+        "//factory/cli/tests:conftest",
+        "@cli_pip//pytest",
+    ],
+)
+
+cli_py_test(
     name = "test_github_io",
     srcs = ["test_github_io.py"],
     data = ["//factory/cli/tests:alpha_testdata"],

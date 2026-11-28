@@ -12,6 +12,7 @@ exports_files([
     "launch.py",
     "launch.sh.tpl",
     "lock_info.py",
+    "normalize_env.py",
 ])
 
 bzl_library(

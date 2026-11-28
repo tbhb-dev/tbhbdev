@@ -1,12 +1,23 @@
 ---
-# Ships the lab nodes' journals and audit logs off the node, kept apart
-# from lab-hosts.yml so it goes out only when this playbook runs. It
-# follows lab-audit.yml, whose role makes audit.log readable to Alloy:
-#   mise run playbook -- playbooks/lab-telemetry.yml --limit NODE --check --diff
-- name: Ship the lab nodes' logs
-  hosts: lab
+# Ships journals from the Linux agent hosts and audit logs from the lab
+# nodes. Telemetry setup stays apart from lab-hosts.yml.
+# The linux_agent_hosts group includes the lab nodes as a child group and
+# the other Linux agent hosts. lab-audit.yml runs on the lab nodes and
+# makes audit.log readable to Alloy.
+#   mise run playbook -- playbooks/lab-telemetry.yml --limit HOST --check --diff
+- name: Ship the Linux agent hosts' logs
+  hosts: linux_agent_hosts
+  serial: 1
   gather_facts: false
   become: true
   roles:
     - host_telemetry
+
+# The reaper stops Bazel servers, so it stays on the lab nodes it was
+# decided for and never follows the class above.
+- name: Reap the lab nodes' idle Bazel servers
+  hosts: lab
+  gather_facts: false
+  become: true
+  roles:
     - bazel_server_reaper

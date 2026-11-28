@@ -214,3 +214,16 @@ cli_py_test(
         "@cli_pip//pytest",
     ],
 )
+
+cli_py_test(
+    name = "test_cli_build_io",
+    srcs = ["test_cli_build_io.py"],
+    imports = ["../../.."],
+    deps = [
+        ":conftest",
+        "//factory/cli/src/tbhbdev/alpha/install:cli_build",
+        "//factory/cli/src/tbhbdev/alpha/install:command",
+        "//factory/cli/tests:conftest",
+        "@cli_pip//pytest",
+    ],
+)
