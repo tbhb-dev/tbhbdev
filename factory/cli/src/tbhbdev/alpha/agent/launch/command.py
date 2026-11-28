@@ -21,7 +21,7 @@ from tbhbdev.alpha.agent.driver.decisions import prompt as brief
 from tbhbdev.alpha.agent.driver.decisions.output import sandbox
 from tbhbdev.alpha.agent.launch import ship
 from tbhbdev.alpha.agent.launch.decisions import bootstrap
-from tbhbdev.alpha.agent.model import Profile
+from tbhbdev.alpha.agent.model import Invalid, Profile
 
 _OPTIONAL = ("--ref", "--start-ref", "--reason", "--claude-profile")
 _EXTRA = ("--unsandboxed", "--schema", "--variant", "--role")
@@ -99,6 +99,12 @@ def _execute(args: argparse.Namespace) -> int:
 
 
 def main(argv: list[str], prog: str) -> int:
+    has_host = any(
+        arg in {"-h", "--help", "--host"} or arg.startswith("--host=") for arg in argv
+    )
+    if not has_host:
+        message = "--host is required"
+        raise Invalid(message)
     try:
         args = _parser(prog).parse_args(argv)
     except SystemExit as exc:
@@ -106,5 +112,4 @@ def main(argv: list[str], prog: str) -> int:
     try:
         return _execute(args)
     except _REFUSALS as exc:
-        print(f"{prog}: {exc}", file=sys.stderr)
-        return 1
+        raise Invalid(str(exc)) from exc

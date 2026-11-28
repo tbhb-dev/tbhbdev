@@ -34,9 +34,12 @@ def test_send_streams_owner_inputs_and_bundle(
     cfg, run, bundle = settings(), sample_run(), b"packed-cli-bytes"
     inputs = Inputs('{"v":2}', "brief text\n", schema, run.owner)
     calls: list[tuple[tuple[object, ...], dict[str, object]]] = []
-    monkeypatch.setattr(
-        transport, "shell", lambda *a, **kw: calls.append((a, kw)) or ""
-    )
+
+    def fake_shell(*args: object, **kwargs: object) -> str:
+        calls.append((args, kwargs))
+        return ""
+
+    monkeypatch.setattr(transport, "shell", fake_shell)
     ship.send(cfg, LINUX, run, bundle, inputs, 42.5)
 
     assert len(calls) == 1
@@ -81,10 +84,11 @@ def test_send_surfaces_transport_failure(
 
 
 def test_send_requires_cli_digest(monkeypatch: pytest.MonkeyPatch) -> None:
-    calls: list[object] = []
-    monkeypatch.setattr(transport, "shell", lambda *a, **kw: calls.append((a, kw)))
+    def forbid(*_a: object, **_kw: object) -> str:
+        raise AssertionError
+
+    monkeypatch.setattr(transport, "shell", forbid)
     with pytest.raises(Invalid, match="cli_sha256"):
         ship.send(
             settings(), LINUX, sample_run(None), b"b", Inputs("{}", "b", None, "o"), 1.0
         )
-    assert calls == []
