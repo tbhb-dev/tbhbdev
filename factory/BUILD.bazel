@@ -16,6 +16,7 @@ filegroup(
     srcs = glob(["**"]) + [
         "//factory/agent-capacity:repo_files",
         "//factory/event-gateway:repo_files",
+        "//factory/go-vanity:repo_files",
     ],
     visibility = ["//:__pkg__"],
 )

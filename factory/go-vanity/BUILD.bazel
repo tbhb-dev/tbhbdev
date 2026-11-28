@@ -1,0 +1,128 @@
+# SPDX-License-Identifier: Apache-2.0
+# Copyright Tony Burns
+
+load("@bazel_skylib//rules:build_test.bzl", "build_test")
+load("@npm_go_vanity//:defs.bzl", "npm_link_all_packages")
+load("@tbhb_rules//repo:defs.bzl", "repo_files")
+load("@tbhb_rules_cloudflare//:defs.bzl", "worker_bundle", "worker_types_test")
+load(
+    "@tbhb_rules_typescript//:defs.bzl",
+    "biome_test",
+    "depcruise_test",
+    "eslint_test",
+    "knip_test",
+    "stryker_test",
+    "tsc_test",
+    "vitest_test",
+)
+
+package(default_visibility = ["//factory:__subpackages__"])
+
+repo_files(visibility = ["//factory:__pkg__"])
+
+# The Worker's own npm packages, which the TypeScript checks read.
+npm_link_all_packages(name = "node_modules")
+
+# The Worker project: its sources, tests and tool configs.
+WORKER = glob(["src/**"]) + [
+    ".dependency-cruiser.cjs",
+    "biome.json",
+    "eslint.config.mjs",
+    "knip.json",
+    "package.json",
+    "stryker.config.mjs",
+    "tsconfig.json",
+    "vitest.config.mjs",
+    "worker-configuration.d.ts",
+    "wrangler.jsonc",
+]
+
+# The handler's sources, for //factory/go-vanity/e2e:check_test, which serves them from Node.
+filegroup(
+    name = "worker_srcs",
+    srcs = glob(
+        ["src/*.ts"],
+        exclude = ["src/*.test.ts"],
+    ),
+    visibility = ["//factory/go-vanity/e2e:__pkg__"],
+)
+
+# The committed `Env` and runtime types, exactly what the pinned wrangler
+# writes; `bazel run //factory/go-vanity:worker_types_test.update` regenerates them.
+worker_types_test(
+    name = "worker_types_test",
+    srcs = WORKER,
+)
+
+worker_bundle(
+    name = "staging_bundle",
+    srcs = WORKER,
+    env = "stg",
+)
+
+worker_bundle(
+    name = "production_bundle",
+    srcs = WORKER,
+    env = "prd",
+)
+
+build_test(
+    name = "bundles_test",
+    targets = [
+        ":production_bundle",
+        ":staging_bundle",
+    ],
+)
+
+# The TypeScript gates, from tbhb_rules_typescript, each over a copy of the
+# Worker project with its node_modules linked in. The Worker imports no npm
+# package yet, and its types come from worker-configuration.d.ts.
+tsc_test(
+    name = "tsc_test",
+    srcs = WORKER,
+    node_modules = [":node_modules"],
+    strip_prefix = package_name(),
+)
+
+biome_test(
+    name = "biome_test",
+    srcs = WORKER,
+    strip_prefix = package_name(),
+)
+
+eslint_test(
+    name = "eslint_test",
+    srcs = WORKER,
+    node_modules = [":node_modules"],
+    strip_prefix = package_name(),
+)
+
+knip_test(
+    name = "knip_test",
+    srcs = WORKER,
+    node_modules = [":node_modules"],
+    strip_prefix = package_name(),
+)
+
+depcruise_test(
+    name = "depcruise_test",
+    srcs = WORKER,
+    node_modules = [":node_modules"],
+    strip_prefix = package_name(),
+)
+
+vitest_test(
+    name = "vitest_test",
+    srcs = WORKER,
+    node_modules = [":node_modules"],
+    strip_prefix = package_name(),
+)
+
+# stryker.config.mjs sets concurrency 2; the tag gives the test those CPUs.
+stryker_test(
+    name = "stryker_test",
+    srcs = WORKER,
+    node_modules = [":node_modules"],
+    strip_prefix = package_name(),
+    tags = ["cpu:2"],
+)

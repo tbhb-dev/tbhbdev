@@ -160,6 +160,7 @@ OBSERVABILITY_TESTS = glob([
 ]) + [
     "test_host_telemetry.py",
     "test_receipt.py",
+    "test_telemetry_coverage.py",
 ]
 
 ops_py_test(
