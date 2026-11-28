@@ -76,11 +76,11 @@ def test_ci_shards_affected_targets(tmp_path: Path) -> None:
     assert _mapping(checkout["with"])["fetch-depth"] == 0
     assert setup["uses"] == "./.github/actions/setup-bazel-ci"
     assert selector["uses"] == "./.github/actions/affected-targets"
-    assert selector["with"] == {"base": "${{ inputs.base }}", "explain": "true"}
+    assert selector["with"] == {"base": "${{ inputs.base }}"}
     assert publish["id"] == "selection"
     assert affected["outputs"] == {
-        output: f"${{{{ steps.selection.outputs.{output} }}}}"
-        for output in ("all", "count", "reason", "digest")
+        "count": "${{ steps.affected.outputs.count }}",
+        "digest": "${{ steps.selection.outputs.digest }}",
     }
     assert str(upload["uses"]).startswith("actions/upload-artifact@")
     assert upload["with"] == {
@@ -150,21 +150,20 @@ def test_ci_shards_affected_targets(tmp_path: Path) -> None:
 
 
 @pytest.mark.parametrize(
-    ("targets", "expected", "count", "all_targets"),
+    ("targets", "expected"),
     [
-        (b"//:b\n//:a\n", b"//:a\n//:b\n", "2", "false"),
-        (b"", b"", "0", "false"),
-        (b"//...\n-//:manual\n", b"-//:manual\n//...\n", "all", "true"),
+        (b"//:b\n//:a\n", b"//:a\n//:b\n"),
+        (b"", b""),
+        (b"//...\n-//:manual\n", b"-//:manual\n//...\n"),
     ],
 )
 def test_ci_publishes_affected_targets(
-    tmp_path: Path, targets: bytes, expected: bytes, count: str, all_targets: str
+    tmp_path: Path, targets: bytes, expected: bytes
 ) -> None:
     steps = _workflow_steps(_workflow_jobs()["affected-targets"])
     publish = next(step for step in steps if step.get("id") == "selection")
     source = tmp_path / "targets.txt"
     source.write_bytes(targets)
-    reason = "test selection"
     log = source.with_name("target-determinator.log")
     log.write_text("//:a Changes: changed source\n")
     output = tmp_path / "output"
@@ -176,9 +175,6 @@ def test_ci_publishes_affected_targets(
             **os.environ,
             "TARGETS": str(source),
             "SORTED_TARGETS": str(sorted_targets),
-            "COUNT": count,
-            "ALL": all_targets,
-            "REASON": reason,
             "GITHUB_OUTPUT": str(output),
             "GITHUB_STEP_SUMMARY": str(summary),
         },
@@ -188,9 +184,6 @@ def test_ci_publishes_affected_targets(
     )
     assert sorted_targets.read_bytes() == expected
     assert dict(line.split("=", 1) for line in output.read_text().splitlines()) == {
-        "all": all_targets,
-        "count": count,
-        "reason": reason,
         "digest": hashlib.sha256(expected).hexdigest(),
     }
     labels = expected.decode().splitlines()

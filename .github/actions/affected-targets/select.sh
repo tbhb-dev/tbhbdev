@@ -287,8 +287,7 @@ check_base_candidates() {
 }
 
 select_targets() {
-  local scope targets td_output=$file
-  local -a td_flags=()
+  local scope targets td_output=$out/explanations
   scope=$(
     IFS=+
     printf '(%s)' "${patterns[*]}"
@@ -302,19 +301,13 @@ select_targets() {
     targets=$(label_set "$out/candidates") || return
 
     # The determinator hashes configured dependencies in local overrides too.
-    if [[ ${EXPLAIN:-} == true ]]; then
-      td_flags=(-verbose)
-      td_output=$out/explanations
-    fi
-    run_step target-determinator "$TD" ${td_flags[@]+"${td_flags[@]}"} -bazel bazelisk \
+    run_step target-determinator "$TD" -verbose -bazel bazelisk \
       -nocache_results -delete-cached-worktree -before-query-error-behavior=fatal \
       -targets "$targets" "${opts[@]/#/-bazel-opts=}" "$BASE_SHA" >"$td_output" || return
-    if [[ ${EXPLAIN:-} == true ]]; then
-      # Verbose stdout includes optional reasons and can repeat a label for different configurations.
-      step='reading target-determinator explanations'
-      cat "$td_output" >>"$log" || return
-      LC_ALL=C sed 's/ Changes:.*//' "$td_output" | LC_ALL=C sort -u >"$file" || return
-    fi
+    # Verbose stdout includes optional reasons and can repeat a label for different configurations.
+    step='reading target-determinator explanations'
+    cat "$td_output" >>"$log" || return
+    LC_ALL=C sed 's/ Changes:.*//' "$td_output" | LC_ALL=C sort -u >"$file" || return
   fi
   if ((workspace_check_count)); then
     step='the query of workspace checks'

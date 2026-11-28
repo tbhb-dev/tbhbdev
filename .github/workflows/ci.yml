@@ -29,9 +29,7 @@ jobs:
     timeout-minutes: 30
     environment: ${{ (github.event_name == 'push' || github.event_name == 'merge_group') && 'cache' || '' }}
     outputs:
-      count: ${{ steps.selection.outputs.count }}
-      all: ${{ steps.selection.outputs.all }}
-      reason: ${{ steps.selection.outputs.reason }}
+      count: ${{ steps.affected.outputs.count }}
       digest: ${{ steps.selection.outputs.digest }}
     steps:
       - name: Checkout
@@ -57,7 +55,6 @@ jobs:
         uses: ./.github/actions/affected-targets
         with:
           base: ${{ inputs.base }}
-          explain: 'true'
 
       - name: Publish the affected targets
         id: selection
@@ -65,14 +62,10 @@ jobs:
         env:
           TARGETS: ${{ steps.affected.outputs.file }}
           SORTED_TARGETS: ${{ runner.temp }}/affected-targets.txt
-          COUNT: ${{ steps.affected.outputs.count }}
-          ALL: ${{ steps.affected.outputs.all }}
-          REASON: ${{ steps.affected.outputs.reason }}
         run: |
           LC_ALL=C sort "$TARGETS" >"$SORTED_TARGETS"
           digest=$(sha256sum <"$SORTED_TARGETS")
-          printf 'count=%s\nall=%s\nreason=%s\ndigest=%s\n' \
-            "$COUNT" "$ALL" "$REASON" "${digest%% *}" >>"$GITHUB_OUTPUT"
+          printf 'digest=%s\n' "${digest%% *}" >>"$GITHUB_OUTPUT"
 
           token=$(od -An -N16 -tx1 /dev/urandom | tr -d ' \n')
           echo "::stop-commands::$token"
