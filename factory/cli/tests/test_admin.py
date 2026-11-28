@@ -337,7 +337,7 @@ def test_secret_visibility_refused(
 
 
 @pytest.mark.parametrize(
-    ("repo", "ident", "status", "code"),
+    "case",
     [
         ("other/widget", 8, 204, "repository_mismatch"),
         ("../widget", 8, 204, "repository_mismatch"),
@@ -349,14 +349,12 @@ def test_secret_visibility_refused(
         ("widget", 8, 403, "request_failed"),
     ],
 )
-def test_repository_selection_errors(  # noqa: PLR0913, PLR0917  # Table plus fixtures.
+def test_repository_selection_errors(
     fake: Fake,
-    repo: str,
-    ident: object,
-    status: int,
-    code: str,
+    case: tuple[str, object, int, str],
     capsys: pytest.CaptureFixture[str],
 ) -> None:
+    repo, ident, status, code = case
     runtime = selected_transport(
         fake,
         {

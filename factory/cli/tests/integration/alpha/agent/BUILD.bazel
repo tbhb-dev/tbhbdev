@@ -212,3 +212,16 @@ cli_py_test(
         "@cli_pip//pytest",
     ],
 )
+
+cli_py_test(
+    name = "test_command_stubs",
+    srcs = ["test_command_stubs.py"],
+    imports = ["../../.."],
+    deps = [
+        ":conftest",
+        "//factory/cli/tests:agent_cli_example",
+        "//factory/cli/tests:conftest",
+        "//factory/cli/tests/integration/alpha:conftest",
+        "@cli_pip//pytest",
+    ],
+)
