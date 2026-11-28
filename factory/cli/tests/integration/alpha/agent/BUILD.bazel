@@ -195,6 +195,24 @@ cli_py_test(
 )
 
 cli_py_test(
+    name = "test_sweep",
+    srcs = ["test_sweep.py"],
+    imports = ["../../.."],
+    deps = [
+        ":conftest",
+        "//factory/cli/src/tbhbdev/alpha/agent:bazel_servers",
+        "//factory/cli/src/tbhbdev/alpha/agent:runfiles",
+        "//factory/cli/src/tbhbdev/alpha/agent/decisions:runfiles_names",
+        "//factory/cli/src/tbhbdev/alpha/agent/run_host:bazel_cache",
+        "//factory/cli/tests:agent_cli_example",
+        "//factory/cli/tests:agent_host_example",
+        "//factory/cli/tests:conftest",
+        "//factory/cli/tests/integration/alpha:conftest",
+        "@cli_pip//pytest",
+    ],
+)
+
+cli_py_test(
     name = "test_rescue_io",
     srcs = ["test_rescue_io.py"],
     imports = ["../../.."],
