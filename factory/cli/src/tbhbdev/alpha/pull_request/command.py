@@ -7,8 +7,10 @@ import sys
 from typing import TYPE_CHECKING, cast
 
 from tbhbdev import userconfig
+from tbhbdev.alpha import preflight_gate
 from tbhbdev.alpha.agent import settings
 from tbhbdev.alpha.agent.decisions import host_names
+from tbhbdev.alpha.gh_shim import agent_operation
 from tbhbdev.alpha.identity.records import AttributionError
 from tbhbdev.alpha.install.git.hooks import require_git_hooks
 
@@ -56,16 +58,24 @@ def command(args: argparse.Namespace, env: Mapping[str, str]) -> int:
         return _run_command(args, env)
 
 
+def _can_create(env: Mapping[str, str]) -> bool:
+    code, branch = pr_tools.git("branch", "--show-current")
+    if code or not branch:
+        print("tbhbdev alpha pr: cannot read the current branch", file=sys.stderr)
+        return False
+    if host_names.contains_host_name(branch, settings.known_host_names()):
+        print("tbhbdev alpha pr: branch name contains a host name", file=sys.stderr)
+        return False
+    if agent_operation(env):
+        _, sha = pr_tools.git("rev-parse", "HEAD")
+        return not preflight_gate.check(sha or "HEAD")
+    return True
+
+
 def _run_command(args: argparse.Namespace, env: Mapping[str, str]) -> int:
     """Check the draft and carry out the requested action."""
-    if args.command == "create":
-        code, branch = pr_tools.git("branch", "--show-current")
-        if code or not branch:
-            print("tbhbdev alpha pr: cannot read the current branch", file=sys.stderr)
-            return 1
-        if host_names.contains_host_name(branch, settings.known_host_names()):
-            print("tbhbdev alpha pr: branch name contains a host name", file=sys.stderr)
-            return 1
+    if args.command == "create" and not _can_create(env):
+        return 1
     checked = pr_draft_io.read_checked(args.draft)
     if args.command in ("check", "create"):
         pr_sizing.check_size(args, checked)

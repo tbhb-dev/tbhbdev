@@ -31,6 +31,7 @@ def test_hook_installation_is_repeatable_private_and_read_only(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     (tmp_path / ".git").mkdir()
+    monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path / "state"))
     original = Path.mkdir
     calls: list[tuple[str, int, bool]] = []
 
@@ -80,6 +81,7 @@ def test_hook_installation_is_repeatable_private_and_read_only(
             "TBHBDEV_RUN_NAME": "example",
             "TBHBDEV_RUN_START_REF": "",
             "TBHBDEV_RUN_START_TIP": "a" * 40,
+            "TBHBDEV_RUN_LOG": str(tmp_path / "state/tbhbdev/agent-runs/example.log"),
         },
     )
 

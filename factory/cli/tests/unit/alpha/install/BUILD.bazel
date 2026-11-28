@@ -200,3 +200,17 @@ cli_py_test(
         "@cli_pip//pytest",
     ],
 )
+
+cli_py_test(
+    name = "test_check_tools_io",
+    srcs = ["test_check_tools_io.py"],
+    imports = ["../../.."],
+    deps = [
+        ":conftest",
+        "//factory/cli/src/tbhbdev/alpha/install:check_tools",
+        "//factory/cli/src/tbhbdev/alpha/install:command",
+        "//factory/cli/tests:conftest",
+        "//factory/cli/tests:fake_tool",
+        "@cli_pip//pytest",
+    ],
+)

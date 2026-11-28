@@ -7,6 +7,7 @@ import hashlib
 import json
 from pathlib import Path
 from typing import cast
+from unittest.mock import Mock
 lazy import subprocess
 
 import pytest
@@ -26,6 +27,7 @@ from run_host_fixtures import (
 from tbhbdev.alpha.agent import (
     credentials,
     process_group,
+    rescue,
     runfiles,
 )
 from tbhbdev.alpha.agent.model import (
@@ -97,11 +99,7 @@ def test_audit_summary_error_preserves_the_runs_exit_code(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     run = make_run(tmp_path)
-
-    def fail(*_args: object) -> None:
-        raise OSError
-
-    monkeypatch.setattr(host_completion, "audit_summary", fail)
+    monkeypatch.setattr(host_completion, "audit_summary", Mock(side_effect=OSError))
     assert host_completion.finish(run, None, None, 7) == 7
     assert run.files.path("rc").read_text() == "7\n"
     assert run.files.path("log").read_text() == "audit summary write failed\n"
@@ -205,25 +203,22 @@ def test_finish_survives_a_locked_base_and_a_failing_cleanup(
     assert entries[0]["bazel_cleanup"]["bases"] == 1  # type: ignore[index]
 
 
-@pytest.mark.parametrize("rc", [0, 7])
+@pytest.mark.parametrize("rc", [0, 3, 7])
 def test_finish_records_rc_phase_and_index_when_cleanup_raises(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, rc: int
 ) -> None:
     run = make_run(tmp_path)
-    entries: list[dict[str, object]] = []
-
-    def explode(*_args: object) -> None:
-        raise TypeError
-
-    monkeypatch.setattr(host_bazel_shutdown, "shutdown_bazel", explode)
-
-    def record(_root: Path, entry: dict[str, object]) -> None:
-        entries.append(entry)
-
-    monkeypatch.setattr(runfiles, "append", record)
+    monkeypatch.setattr(
+        host_bazel_shutdown, "shutdown_bazel", Mock(side_effect=TypeError)
+    )
+    if rc == 3:
+        monkeypatch.setattr(rescue, "on_fault", Mock(side_effect=RuntimeError))
     assert host_completion.finish(run, None, None, rc) == rc
-    assert run.files.path("rc").read_text() == f"{rc}\n"
     assert run.files.path("phase").read_text().strip() == "ended"
-    assert entries[0]["bazel_shutdown"] == "skipped"
-    assert entries[0]["bazel_cleanup"] == {}
-    assert "bazel cleanup failed" in run.files.path("log").read_text()
+    entry = runfiles.latest(run.files.root)["example"]
+    assert (entry["bazel_shutdown"], entry["bazel_cleanup"]) == ("skipped", {})
+    assert entry["rc"] == rc
+    assert run.files.path("audit.json").exists()
+    assert ("fault publication failed" in run.files.path("log").read_text()) == (
+        rc == 3
+    )

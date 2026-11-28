@@ -5,12 +5,12 @@ from __future__ import annotations
 import hashlib
 import json
 import time
-from contextlib import suppress
+from contextlib import ExitStack, suppress
 from pathlib import Path
 from typing import TYPE_CHECKING
 lazy import subprocess  # nosec B404
 
-from tbhbdev.alpha.agent import process_group, runfiles
+from tbhbdev.alpha.agent import process_group, rescue, runfiles
 from tbhbdev.alpha.agent.model import Invalid
 from tbhbdev.alpha.agent.run_host import auth, bazel_cache, bazel_shutdown
 from tbhbdev.alpha.agent.run_host.index import IndexRun, index_entry
@@ -51,20 +51,24 @@ def finish(
                 # Nothing from the Bazel cleanup may block the rc and completion record.
                 with suppress(Exception):
                     run.files.write("log", "bazel cleanup failed\n")
-            bazel = bazel or "skipped"
             try:
-                phase = "unknown" if run.files.uncertain else "ended"
-                run.files.write("phase", phase)
+                run.files.write("phase", "unknown" if run.files.uncertain else "ended")
             except OSError:
                 process_group.unknown(run.files)
             finally:
                 run.files.write("rc", f"{rc}\n")
+    with suppress(Exception), ExitStack() as publication:
+        publication.callback(run.files.write, "log", "fault publication failed\n")
+        rescue.on_fault(run, prepared, rc)
+        publication.pop_all()
     try:
         audit_summary(run, prepared, rc)
     except OSError, ValueError:
         run.files.write("log", "audit summary write failed\n")
     try:
-        record_index(run, prepared, rc, bazel_shutdown=bazel, bazel_cleanup=cleanup)
+        record_index(
+            run, prepared, rc, bazel_shutdown=bazel or "skipped", bazel_cleanup=cleanup
+        )
     except OSError, ValueError:
         run.files.write("log", "completion index append failed\n")
     return rc
