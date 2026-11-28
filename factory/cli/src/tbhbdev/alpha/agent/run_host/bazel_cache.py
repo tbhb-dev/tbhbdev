@@ -8,6 +8,7 @@ import os
 import re
 import shutil
 import stat
+import time
 from contextlib import suppress
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -19,6 +20,8 @@ if TYPE_CHECKING:
 
 VAR_TMP = Path("/var/tmp")  # noqa: S108  # nosec B108 -- the trusted /var/tmp anchor, not a temp file
 _HEX_BASE = re.compile(r"^[0-9a-f]{32}$")
+# Give Bazel a minute to publish its PID when a concurrent run starts shims.
+_STARTUP_SECONDS = 60
 
 
 def _bazel_roots(home: Path) -> tuple[tuple[Path, Path], ...]:
@@ -168,12 +171,16 @@ def _space(fd: int) -> tuple[int, int]:
     return status.f_bavail * status.f_frsize, status.f_favail
 
 
+def old_enough(status: os.stat_result) -> bool:
+    return time.time() - status.st_mtime >= _STARTUP_SECONDS
+
+
 def remove_unused_base(home: Path, base: Path) -> bool:
     if (opened := _open_owned(home, base)) is None:
         return False
-    fd, _ = opened
+    fd, status = opened
     try:
-        if server_alive(base):
+        if not old_enough(status) or server_alive(base):
             return False
         _remove_base(fd, base.name)
         return not _exists(fd, base.name)

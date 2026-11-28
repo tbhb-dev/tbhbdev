@@ -143,8 +143,8 @@ class _Table:
             self.fail(key, why)
         return seconds
 
-    def flag(self, key: str) -> bool:
-        value = self.value(key)
+    def flag(self, key: str, *, default: bool) -> bool:
+        value = self.values.get(key, default)
         if not isinstance(value, bool):
             self.fail(key, "must be true or false")
         return value
@@ -477,18 +477,12 @@ def _host(table: _Table) -> Host:
         max_swap_used_percent=_percent(table, "max_swap_used_percent", 80),
         max_memory_pressure_avg10=_percent(table, "max_memory_pressure_avg10", 10),
         max_memory_pressure_level=_pressure_level(table),
-        limits_warn_only=table.flag("limits_warn_only")
-        if "limits_warn_only" in table.values
-        else False,
-        build_shims=table.flag("build_shims")
-        if "build_shims" in table.values
-        else True,
+        limits_warn_only=table.flag("limits_warn_only", default=False),
+        build_shims=table.flag("build_shims", default=True),
         max_concurrent_runs=table.nonnegative(
             "max_concurrent_runs", DEFAULT_MAX_CONCURRENT_RUNS
         ),
-        auto_select=table.flag("auto_select")
-        if "auto_select" in table.values
-        else False,
+        auto_select=table.flag("auto_select", default=False),
     )
 
 
