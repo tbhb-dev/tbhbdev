@@ -54,7 +54,7 @@ def heal_env(cwd: str) -> dict[str, str]:
     }
 
 
-def read_origin(argv: list[str]) -> tuple[int, str]:
+def read_origin(argv: list[str], timeout: float) -> tuple[int, str]:
     flags = ("-c", "credential.helper=", "-c", "http.extraHeader=")
     try:
         with TemporaryDirectory(dir=_TEMP_ROOT) as cwd:
@@ -66,7 +66,7 @@ def read_origin(argv: list[str]) -> tuple[int, str]:
                 stdout=subprocess.PIPE,
                 stderr=subprocess.DEVNULL,
                 errors="replace",
-                timeout=version_check.TIMEOUT,
+                timeout=timeout,
                 check=False,
             )
     except OSError, subprocess.TimeoutExpired:
@@ -115,8 +115,8 @@ def sync(
     deadline: float | None = None,
 ) -> str:
     """Return the target commit after syncing, or restart if the driver updates."""
-    _remaining(deadline)
-    head = version_check.latest(read_origin)
+    timeout = min(version_check.TIMEOUT, _remaining(deadline))
+    head = version_check.latest(lambda argv: read_origin(argv, timeout))
     if head is None:
         message = f"cannot read main of {version_check.REPO_URL}"
         raise LookupError(message)

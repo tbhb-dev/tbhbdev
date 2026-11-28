@@ -77,7 +77,7 @@ def test_read_origin_ignores_git_url_rewrites(
     assert git(isolated_home, *command, env=env) == f"{fake_head}\t{REF}"
     monkeypatch.chdir(isolated_home)
     monkeypatch.setenv("GIT_CONFIG_GLOBAL", str(isolated_home / ".gitconfig"))
-    status, output = version_heal.read_origin([GIT[0], *command])
+    status, output = version_heal.read_origin([GIT[0], *command], version_check.TIMEOUT)
     assert status != 0
     assert output == ""
 
@@ -92,7 +92,7 @@ def test_read_origin_uses_fixed_url_and_clean_git_context(
     run = Mock(return_value=ORIGIN)
     monkeypatch.setattr(subprocess, "run", run)
 
-    assert version_check.latest(version_heal.read_origin) == HEAD
+    assert version_heal.sync(CONFIG, HOST, NEW_LINE, NEW_LINE) == HEAD
     run.assert_called_once()
     assert run.call_args.args == (GIT,)
     cwd = Path(run.call_args.kwargs["cwd"])

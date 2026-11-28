@@ -152,6 +152,8 @@ def test_exec_preserves_preflight_time_after_a_slow_probe(
             return f"tbhbdev 0 ({'b' * 40})"
         if target == slow and "# tbhbdev-heal-probe" not in script:
             slow_timeouts.append(timeout)
+            if install_lock:
+                assert "install failed" in script
             if times_out or script == remote_host.check_slot(slow, Profile.BUILD):
                 elapsed += timeout
                 message = "probe timed out"
