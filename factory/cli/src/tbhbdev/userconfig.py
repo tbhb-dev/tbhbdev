@@ -16,8 +16,6 @@ for these hooks: checks that need a setting do nothing without it. The sign-off
 check runs without configuration.
 
     rule          text `alpha state-guard` prints at session start
-    decisions_dir path its block messages cite as the place to check first
-    open_note     path suffix of the note it holds to the item rule
     hosts         `["name=role", ...]`, which `alpha session-context` lists;
                   a name alone, with no `=`, has no role
 """

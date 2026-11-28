@@ -1,0 +1,20 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright Tony Burns
+
+{
+  $schema: "https://docs.renovatebot.com/renovate-schema.json",
+
+  // Extend after bazel.json5 when the root imports a generated preset.bazelrc.
+  packageRules: [
+    {
+      description: "Regenerate preset.bazelrc on Bazel and preset generator updates",
+      matchPackageNames: ["bazelbuild/bazel", "bazelrc-preset.bzl"],
+      postUpgradeTasks: {
+        commands: ["bazelisk run //:preset.update"],
+        fileFilters: ["preset.bazelrc"],
+        executionMode: "branch",
+        installTools: { bazelisk: {} },
+      },
+    },
+  ],
+}

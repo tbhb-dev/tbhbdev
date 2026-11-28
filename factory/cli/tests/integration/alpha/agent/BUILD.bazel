@@ -21,6 +21,7 @@ cli_py_test(
         "//factory/cli/tests:agent_driver_example",
         "//factory/cli/tests:agent_example",
         "//factory/cli/tests:conftest",
+        "//factory/cli/tests/integration/alpha:conftest",
         "@cli_pip//pytest",
     ],
 )
@@ -57,6 +58,7 @@ cli_py_test(
         "//factory/cli/tests:agent_host_example",
         "//factory/cli/tests:conftest",
         "//factory/cli/tests:fake_tool",
+        "//factory/cli/tests/integration/alpha:conftest",
         "@cli_pip//pytest",
     ],
 )
@@ -74,6 +76,7 @@ cli_py_test(
         "//factory/cli/src/tbhbdev/alpha/agent:worktree_mirror",
         "//factory/cli/tests:agent_host_example",
         "//factory/cli/tests:conftest",
+        "//factory/cli/tests/integration/alpha:conftest",
         "@cli_pip//pytest",
     ],
 )
@@ -95,6 +98,7 @@ cli_py_test(
         "//factory/cli/src/tbhbdev/alpha/agent:worktree_mirror",
         "//factory/cli/tests:agent_host_example",
         "//factory/cli/tests:conftest",
+        "//factory/cli/tests/integration/alpha:conftest",
         "@cli_pip//pytest",
     ],
 )
@@ -110,6 +114,7 @@ cli_py_test(
         "//factory/cli/src/tbhbdev/alpha/agent:worktree_git",
         "//factory/cli/tests:agent_host_example",
         "//factory/cli/tests:conftest",
+        "//factory/cli/tests/integration/alpha:conftest",
         "@cli_pip//pytest",
     ],
 )
@@ -121,7 +126,6 @@ cli_py_test(
     deps = [
         ":conftest",
         "//factory/cli/src/tbhbdev/alpha:repo",
-        "//factory/cli/src/tbhbdev/alpha/agent:host_tools",
         "//factory/cli/src/tbhbdev/alpha/agent:model",
         "//factory/cli/src/tbhbdev/alpha/agent:worktree_checkout",
         "//factory/cli/src/tbhbdev/alpha/agent:worktree_hooks",
@@ -129,6 +133,7 @@ cli_py_test(
         "//factory/cli/src/tbhbdev/alpha/install:scripts",
         "//factory/cli/tests:agent_host_example",
         "//factory/cli/tests:conftest",
+        "//factory/cli/tests/integration/alpha:conftest",
         "@cli_pip//pytest",
     ],
 )
@@ -147,19 +152,41 @@ cli_py_test(
         "//factory/cli/src/tbhbdev/alpha/agent:worktree_mirror",
         "//factory/cli/tests:agent_host_example",
         "//factory/cli/tests:conftest",
+        "//factory/cli/tests/integration/alpha:conftest",
         "@cli_pip//pytest",
     ],
 )
 
 cli_py_test(
-    name = "test_worktree_writes",
-    srcs = ["test_worktree_writes.py"],
+    name = "test_signing_parity_io",
+    srcs = ["test_signing_parity_io.py"],
     imports = ["../../.."],
     deps = [
         ":conftest",
-        "//factory/cli/src/tbhbdev/alpha/agent:worktree_writes",
-        "//factory/cli/tests:agent_host_example",
+        "//factory/cli/src/tbhbdev/alpha/agent:model",
+        "//factory/cli/src/tbhbdev/alpha/agent:settings",
+        "//factory/cli/src/tbhbdev/alpha/agent:signing_keys",
+        "//factory/cli/src/tbhbdev/alpha/agent:signing_parity",
+        "//factory/cli/src/tbhbdev/alpha/agent:transport",
+        "//factory/cli/tests:agent_example",
         "//factory/cli/tests:conftest",
+        "//factory/cli/tests/integration/alpha:conftest",
+        "@cli_pip//httpx2",
+        "@cli_pip//pytest",
+    ],
+)
+
+cli_py_test(
+    name = "test_transport_ssh_io",
+    srcs = ["test_transport_ssh_io.py"],
+    imports = ["../../.."],
+    deps = [
+        ":conftest",
+        "//factory/cli/src/tbhbdev/alpha/agent:model",
+        "//factory/cli/src/tbhbdev/alpha/agent:transport",
+        "//factory/cli/tests:agent_example",
+        "//factory/cli/tests:conftest",
+        "//factory/cli/tests/integration/alpha:conftest",
         "@cli_pip//pytest",
     ],
 )

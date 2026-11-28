@@ -5,8 +5,12 @@ from __future__ import annotations
 import asyncio
 import io
 import re
+import shutil
+import socket
+import sys
 import tarfile
 from dataclasses import dataclass
+from pathlib import Path
 from typing import TYPE_CHECKING
 
 from tbhbdev.alpha.agent.decisions import argv, remote_run
@@ -55,6 +59,60 @@ class Stdin:
         return f"{self.owner}\n".encode() + self.data
 
 
+def executable(name: str) -> str:
+    path = "/usr/bin:/bin:/usr/sbin:/sbin"
+    if sys.platform == "darwin":
+        path += ":/opt/homebrew/bin:/usr/local/bin"
+    found = shutil.which(name, path=path)
+    if found is None:
+        message = f"required executable {name!r} missing from fixed PATH"
+        raise Invalid(message)
+    return found
+
+
+def ssh_argv(
+    host: Host,
+    remote: tuple[str, ...],
+    *,
+    connect_timeout: int,
+    keepalive: int,
+    keepalive_count_max: int = 3,
+) -> tuple[str, ...]:
+    """The driver's call to HOST, which runs REMOTE in the host's shell.
+
+    It never prompts, gives up connecting after CONNECT_TIMEOUT seconds and
+    probes the connection every KEEPALIVE seconds. When present, the local
+    machine's session key is the only identity offered, without an SSH agent.
+    """
+    key = (
+        Path.home()
+        / ".ssh"
+        / "sessions"
+        / f"{socket.gethostname().split('.')[0]}_ed25519"
+    )
+    identity = (
+        ("-i", str(key), "-o", "IdentityAgent=none", "-o", "IdentitiesOnly=yes")
+        if key.is_file()
+        else ()
+    )
+    return (
+        executable("ssh"),
+        "-o",
+        "BatchMode=yes",
+        "-o",
+        f"ConnectTimeout={connect_timeout}",
+        "-o",
+        f"ServerAliveInterval={keepalive}",
+        "-o",
+        f"ServerAliveCountMax={keepalive_count_max}",
+        *identity,
+        "-l",
+        host.account,
+        host.name,
+        argv.ssh_command(host.shell, remote),
+    )
+
+
 def call(
     settings: Settings,
     host: Host,
@@ -69,7 +127,7 @@ def call(
 
 
 def call_bytes(
-    settings: Settings,
+    _settings: Settings,
     host: Host,
     command: tuple[str, ...],
     stdin: Stdin | None = None,
@@ -77,12 +135,11 @@ def call_bytes(
     timeout: float = 30,
 ) -> bytes:
     data = b"" if stdin is None else stdin.encode()
-    args = argv.ssh(
+    args = ssh_argv(
         host,
         command,
-        connect_timeout=settings.ssh_connect_timeout,
-        keepalive=settings.ssh_keepalive_seconds,
-        keepalive_count_max=settings.ssh_keepalive_count_max,
+        connect_timeout=15,
+        keepalive=30,
     )
     try:
         code, output = asyncio.run(

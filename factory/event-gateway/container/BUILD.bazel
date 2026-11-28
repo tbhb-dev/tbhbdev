@@ -1,0 +1,114 @@
+# SPDX-License-Identifier: Apache-2.0
+# Copyright Tony Burns
+
+load("@bazel_skylib//rules:native_binary.bzl", "native_test")
+load("@bazel_skylib//rules:write_file.bzl", "write_file")
+load("@rules_oci//oci:defs.bzl", "oci_image", "oci_image_index", "oci_load")
+load("@rules_pkg//pkg:tar.bzl", "pkg_tar")
+load("@tbhb_rules//repo:defs.bzl", "repo_files")
+load("@tbhb_rules_python//:defs.bzl", "python_tool")
+
+repo_files(visibility = ["//factory/event-gateway:__pkg__"])
+
+# Explicit CI targets keep Linux images out of wildcard checks on macOS.
+pkg_tar(
+    name = "binary",
+    srcs = ["//factory/event-gateway/cmd/event-gateway"],
+    mode = "0555",
+    package_dir = "/",
+    tags = ["manual"],
+)
+
+# Docker initializes a new named volume with this directory's ownership.
+pkg_tar(
+    name = "data",
+    empty_dirs = ["data"],
+    mode = "0700",
+    owner = "65532.65532",
+    tags = ["manual"],
+)
+
+oci_image(
+    name = "image",
+    base = "@distroless_static",
+    entrypoint = ["/event-gateway"],
+    exposed_ports = ["8080/tcp"],
+    tags = ["manual"],
+    tars = [
+        ":binary",
+        ":data",
+    ],
+    user = "65532:65532",
+)
+
+oci_image_index(
+    name = "image_multiarch",
+    images = [":image"],
+    platforms = [
+        "@rules_go//go/toolchain:linux_amd64",
+        "@rules_go//go/toolchain:linux_arm64",
+    ],
+    tags = ["manual"],
+)
+
+oci_load(
+    name = "image_load",
+    image = ":image",
+    repo_tags = ["event-gateway:local"],
+    tags = ["manual"],
+)
+
+write_file(
+    name = "image_config_source",
+    out = "image_config_test.py",
+    content = [
+        "# SPDX-License-Identifier: Apache-2.0",
+        "# Copyright Tony Burns",
+        "",
+        "\"\"\"Check the event gateway OCI entrypoint and data volume permissions.\"\"\"",
+        "",
+        "import json",
+        "from pathlib import Path",
+        "import sys",
+        "import tarfile",
+        "import unittest",
+        "",
+        "",
+        "layout = Path(sys.argv[1])",
+        "",
+        "",
+        "def blob(digest):",
+        "    \"\"\"Find a blob in the OCI layout by its digest.\"\"\"",
+        "    algorithm, value = digest.split(\":\", 1)",
+        "    return layout / \"blobs\" / algorithm / value",
+        "",
+        "",
+        "index = json.loads((layout / \"index.json\").read_text())",
+        "manifest = json.loads(blob(index[\"manifests\"][0][\"digest\"]).read_text())",
+        "config = json.loads(blob(manifest[\"config\"][\"digest\"]).read_text())[\"config\"]",
+        "check = unittest.TestCase()",
+        "check.assertEqual(config[\"Entrypoint\"], [\"/event-gateway\"])",
+        "check.assertEqual(config[\"User\"], \"65532:65532\")",
+        "check.assertEqual(config[\"ExposedPorts\"], {\"8080/tcp\": {}})",
+        "",
+        "with tarfile.open(blob(manifest[\"layers\"][-1][\"digest\"])) as layer:",
+        "    data = next(member for member in layer if member.name.removeprefix(\"./\") == \"data\")",
+        "    check.assertTrue(data.isdir())",
+        "    check.assertEqual((data.uid, data.gid, data.mode), (65532, 65532, 0o700))",
+    ],
+    tags = ["manual"],
+)
+
+python_tool(
+    name = "image_config_check",
+    main = "image_config_test.py",
+    tags = ["manual"],
+)
+
+native_test(
+    name = "image_config_test",
+    src = ":image_config_check",
+    args = ["$(rootpath :image)"],
+    data = [":image"],
+    tags = ["manual"],
+)

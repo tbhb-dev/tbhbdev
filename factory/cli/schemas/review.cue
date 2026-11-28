@@ -11,7 +11,10 @@ import (
 #ReviewHost:    #"[a-z0-9](?:[a-z0-9-]*[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]*[a-z0-9])?)+"#
 #ReviewVerdict: "GO" | "NO-GO"
 #ReviewEvent:   "APPROVE" | "REQUEST_CHANGES" | "COMMENT"
-#FindingPrefix: #"^F([1-8]): P([0-3]) (correctness|security|design|test|docs)\s+([\s\S]+)$"#
+#FindingKind:   #"(?:correctness|security|design|test|docs)"#
+#FindingPrefix: #"^F([1-8]): P([0-3]) (\#(#FindingKind))\s+([\s\S]+)$"#
+#Unanchored:    " (not anchored: line not in the diff)"
+#InlinePair:    #"P[0-3] \#(#FindingKind) [1-8]"#
 #Word:          #"[\p{L}\p{N}_]+"#
 #VerdictLine:   #"(?m)^[\t\p{Z}]*VERDICT:[\t ]+(?:GO|BLOCK|NO-GO)(?:[\t ]+\#(#ReviewSHA))?[\t\p{Z}]*\r?$"#
 
@@ -58,12 +61,29 @@ import (
 
 #ReviewFinding: #ReviewItem & #ReviewProse & {
 	visible: string
-	_parts:  regexp.FindSubmatch(#FindingPrefix, visible)
-	_text:   strings.TrimRight(strings.Join(strings.Fields(_parts[4]), " "), ".!?") & !~#CIRestatement
-	_words:  <=30
+	location: *null | [string, int]
+	_posted:   *false | bool
+	_parts:    regexp.FindSubmatch(#FindingPrefix, visible)
+	_evidence: string
+	if _posted {
+		_evidence: strings.TrimSuffix(_parts[4], #Unanchored)
+	}
+	if !_posted {
+		_evidence: _parts[4]
+	}
+	_text:  strings.TrimRight(strings.Join(strings.Fields(_evidence), " "), ".!?") & !~#CIRestatement
+	_words: <=30
 	if _parts[2] == "1" {
 		_text: =~#"(?:^| )Occurs when: [\p{L}\p{N}]"#
 	}
+}
+
+#ReviewFindingList: #GFMTextValue & #UnorderedList & {
+	items: [...#ReviewFinding] & list.MaxItems(8)
+}
+
+#ReviewInlineCount: #Paragraph & {
+	visible: =~#"^Inline findings: [1-8] \(\#(#InlinePair)(?:, \#(#InlinePair))*\)\.(?:\nF[1-8](?: to F[1-8])?\.)?$"#
 }
 
 #ReviewSuggestion: #ReviewItem & #ReviewProse & {
@@ -103,14 +123,20 @@ import (
 		findings?: {
 			kind:    "section"
 			heading: "Findings"
-			content: [#GFMTextValue & #UnorderedList & {
-				items: [...#ReviewFinding] & list.MaxItems(8)
-				for i, item in items {
-					if item._parts[1] != "\(i+1)" {
-						_err: error("Number items consecutively from 1")
+			if !metadata.posted {
+				content: [#ReviewFindingList & {
+					items: [...]
+					for i, item in items {
+						if item._parts[1] != "\(i+1)" {
+							_err: error("Number items consecutively from 1")
+						}
 					}
-				}
-			}]
+				}]
+			}
+			if metadata.posted {
+				let postedList = #ReviewFindingList & {items: [...{_posted: true}]}
+				content: [postedList] | [#ReviewInlineCount] | [#ReviewInlineCount, postedList]
+			}
 		}
 		suggestions?: {
 			kind:    "section"
@@ -137,12 +163,19 @@ import (
 			}
 		}
 	})
-	_blocks: *blocks.findings.content[0].items | []
-	_blocking: len([for item in _blocks if list.Contains(["0", "1"], item._parts[2]) {item}])
-	if metadata.event == "REQUEST_CHANGES" && _blocking == 0 {
+	_findings: *blocks.findings.content | []
+	_items: [for block in _findings if block.kind == "list" for item in block.items {item}]
+	if metadata.posted {
+		for item in _items if item.location != null && !strings.HasSuffix(item.visible, #Unanchored) {
+			_err: error("Move an anchored finding to an inline comment, or mark it not anchored")
+		}
+	}
+	_blocking: len([for item in _items if list.Contains(["0", "1"], item._parts[2]) {true}]) > 0 ||
+		len([for block in _findings if block.kind == "paragraph" && block.visible =~ #"[(,] ?P[01] "# {true}]) > 0
+	if metadata.event == "REQUEST_CHANGES" && !_blocking {
 		_err: error("REQUEST_CHANGES requires a P0 or P1 finding")
 	}
-	if metadata.event != "" && metadata.event != "REQUEST_CHANGES" && _blocking > 0 {
+	if metadata.event != "" && metadata.event != "REQUEST_CHANGES" && _blocking {
 		_err: error("P0 and P1 findings require REQUEST_CHANGES")
 	}
 }

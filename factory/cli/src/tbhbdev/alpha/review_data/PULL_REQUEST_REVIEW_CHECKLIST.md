@@ -47,7 +47,7 @@ This is the organization's floor. It applies to every repository, and a reposito
 - **R3** The review covers the risky parts of the diff. It addresses or explicitly clears security, data loss, concurrency, public interfaces and anything irreversible.
 - **R4** Verification reports only what the reviewer read and the check results it relied on, as they stand.
 - **R5** The review claims only what the evidence shows. It never reports a test pass, a file read or a behavior check without a trace in the evidence.
-- **R6** Reserved for inline comments, which v1 leaves out. The reviewer reports this item as `not_applicable` until inline comments exist.
+- **R6** Each finding with a location is posted only as an inline comment on that line. If the line is unavailable in the diff, the body keeps the finding and marks it as unanchored.
 - **R7** Findings list issues with the pull request at severities P0 to P3. Suggestions list optional improvements.
 - **R8** The pull request's description matches the diff. A mismatch is a finding.
 - **R9** The output lists every escalation rule that applies, with the reason for each.

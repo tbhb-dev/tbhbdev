@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import itertools
-from dataclasses import replace
 from pathlib import PurePosixPath
 from types import SimpleNamespace
 from typing import TYPE_CHECKING
@@ -12,7 +11,6 @@ from agent_cli_example import run_agent
 from agent_driver_example import execution_arguments
 from agent_example import MARKER, settings
 
-from tbhbdev.alpha.agent import settings as agent_settings
 from tbhbdev.alpha.agent.decisions import repo
 from tbhbdev.alpha.agent.driver import hosts, lifecycle, metadata, startup
 from tbhbdev.alpha.agent.driver import launch as coordinator
@@ -65,10 +63,3 @@ def set_clock(
 def ticking(monkeypatch: pytest.MonkeyPatch, step: float = 100) -> None:
     ticks = itertools.count()
     set_clock(monkeypatch, lambda: next(ticks) * step)
-
-
-def disable_host_sandbox_setting(monkeypatch: pytest.MonkeyPatch) -> None:
-    disabled = replace(
-        CONFIG, hosts=tuple(replace(host, unsandboxed=False) for host in CONFIG.hosts)
-    )
-    monkeypatch.setattr(agent_settings, "load", lambda: disabled)

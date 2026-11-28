@@ -10,21 +10,20 @@ from unittest.mock import Mock
 import pytest
 from test_alpha_agent_settings import EXAMPLE
 
+import tbhbdev.alpha.guard.agent_model as guard_agent_model
+import tbhbdev.alpha.guard.gh_config_dir as guard_gh_config_dir
+import tbhbdev.alpha.guard.gh_poll.command as guard_gh_poll
+import tbhbdev.alpha.guard.gh_pr.command as guard_gh_pr
+import tbhbdev.alpha.guard.op.command as guard_op
+import tbhbdev.alpha.guard.ops_no_lazy_stop as guard_ops_no_lazy_stop
+import tbhbdev.alpha.guard.scripts.command as guard_scripts
+import tbhbdev.alpha.guard.sendmessage_clock as guard_sendmessage_clock
 import tbhbdev.alpha.monorepo.command as monorepo
 from tbhbdev import cli
 from tbhbdev.alpha import (
     brief,
     close,
-    gh_app,
-    guard_agent_model,
-    guard_gh_config_dir,
-    guard_gh_poll,
-    guard_gh_pr,
-    guard_op,
-    guard_ops_no_lazy_stop,
-    guard_scripts,
-    guard_sendmessage_clock,
-    guard_ssh_agent,
+    gh_app_command,
     pre_push_guard,
     repo_bootstrap,
     review,
@@ -34,7 +33,8 @@ from tbhbdev.alpha import (
 )
 from tbhbdev.alpha import command as alpha
 from tbhbdev.alpha.agent import command as agent
-from tbhbdev.alpha.agent import precheck, run_host, settings, signing_parity, ssh_serve
+from tbhbdev.alpha.agent import ssh_serve
+from tbhbdev.alpha.agent.run_host import dispatcher
 from tbhbdev.alpha.identity import dispatcher as identity_dispatcher
 from tbhbdev.alpha.install import command as install
 from tbhbdev.alpha.merge import command as squash_merge
@@ -132,7 +132,7 @@ def test_dispatch(monkeypatch: pytest.MonkeyPatch) -> None:
     [
         ("agent", agent, ["status", "sample"], "direct"),
         ("brief", brief, ["new", "demo"], "direct"),
-        ("gh-app", gh_app, ["--help"], "positional"),
+        ("gh-app", gh_app_command, ["--help"], "positional"),
         ("guard-agent-model", guard_agent_model, [], "hook"),
         ("guard-gh-config-dir", guard_gh_config_dir, [], "hook"),
         ("guard-gh-poll", guard_gh_poll, [], "hook"),
@@ -140,7 +140,6 @@ def test_dispatch(monkeypatch: pytest.MonkeyPatch) -> None:
         ("guard-ops-no-lazy-stop", guard_ops_no_lazy_stop, [], "hook"),
         ("guard-scripts", guard_scripts, [], "hook"),
         ("guard-sendmessage-clock", guard_sendmessage_clock, [], "hook"),
-        ("guard-ssh-agent", guard_ssh_agent, [], "hook"),
         ("monorepo", monorepo, ["-h"], "positional"),
         ("pre-push-guard", pre_push_guard, ["origin", "url"], "direct"),
         ("repo", repo_bootstrap, ["bootstrap", "o/r"], "keyword"),
@@ -198,10 +197,8 @@ def test_harness_hooks_run_from_the_top_without_config(
 @pytest.mark.parametrize(
     ("verb", "module", "function", "args"),
     [
-        ("precheck", precheck, "main", ["a", "--reference", "b"]),
-        ("run-host", run_host, "main", ["example", "--host", "example-linux"]),
+        ("run-host", dispatcher, "main", ["example", "--host", "example-linux"]),
         ("ssh-serve", ssh_serve, "main", ["extra"]),
-        ("signing-fingerprint", signing_parity, "host_main", ["agent"]),
     ],
 )
 def test_agent_host_command_wiring(
@@ -215,17 +212,6 @@ def test_agent_host_command_wiring(
     monkeypatch.setattr(module, function, run)
     assert agent.main([verb, *args], "example agent") == 37
     run.assert_called_once_with(args, f"example agent {verb}")
-
-
-def test_agent_signing_parity_uses_coordinator_settings(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    loaded = Mock()
-    run = Mock(return_value=7)
-    monkeypatch.setattr(settings, "load", lambda: loaded)
-    monkeypatch.setattr(signing_parity, "main", run)
-    assert agent.main(["signing-parity"], "example agent") == 7
-    run.assert_called_once_with(loaded)
 
 
 @pytest.mark.parametrize(
@@ -256,37 +242,21 @@ def test_command_reports_a_config_error(
     )
 
 
-@pytest.mark.parametrize("field", ["audit_dir", "write_roots", "build_write"])
 @pytest.mark.parametrize("absolute", [False, True])
 def test_config_check_refuses_write_paths_under_socket_parents(
     config_file: Path,
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
-    field: str,
     absolute: bool,
 ) -> None:
     home = config_file.parent.parent / "agent"
     monkeypatch.setenv("HOME", str(home))
     write = ".local/state/tbhbdev/agent-audit"
     configured = str(home / write) if absolute else write
-    text = (
-        EXAMPLE.replace(
-            'sockets_dir = "/example/sockets"',
-            'sockets_dir = ".local/state/tbhbdev/sockets"',
-        )
-        .replace(
-            'write_roots = [".cache", ".local/share/mise", ".local/state"]',
-            f'write_roots = ["{configured if field == "write_roots" else ".cache"}"]',
-        )
-        .replace(
-            'audit_dir = ".local/state/example-audit"',
-            f'audit_dir = "{configured if field == "audit_dir" else "audit"}"',
-        )
-        .replace(
-            'build_write = [".local/state/mise", ".local/share/mise"]',
-            f'build_write = ["{configured if field == "build_write" else ".cache"}"]',
-        )
-    )
+    text = EXAMPLE.replace(
+        'sockets_dir = "/example/sockets"',
+        'sockets_dir = ".local/state/tbhbdev/sockets"',
+    ).replace('audit_dir = ".local/state/example-audit"', f'audit_dir = "{configured}"')
     config_file.write_text(text)
 
     assert agent.main([], "example agent") == 1

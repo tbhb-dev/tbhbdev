@@ -32,6 +32,8 @@ Create `review-N.doc.md` next to `review-N.md`. Put the schema 2 metadata in YAM
 
 Posting `review-N.md` uses its `APPROVE` or `REQUEST_CHANGES` event. The schema 2 repository must match the origin remote, and the commit must match the current pull request head. The command sends the review through the GitHub account of a recognized agent session and adds its `Generated-by` trailer. It prints `posted` or `exists` with the review ID when available. Both statuses exit 0. Refusals exit 1 and usage errors exit 2.
 
+For an inline finding, cite the changed line as `path:line` in the draft. Posting moves it to an inline comment when the line is in the diff. The body keeps whole-PR findings and marks citations when the comparison lacks the cited line. When findings move, the body gives their count by priority and kind and their range. Body findings start at F1, and inline comments continue the sequence. Read the review and run `tbhbdev alpha review threads N` for its inline findings.
+
 ## Supersede or reply to a review
 
 `tbhbdev alpha review dismiss N REVIEW_ID --reason TEXT` prefixes the marked comment review's body with `SUPERSEDED:` and the reason. Write the reason on one line in up to 200 characters and omit review and reply markers. A review already superseded or dismissed succeeds without another edit.

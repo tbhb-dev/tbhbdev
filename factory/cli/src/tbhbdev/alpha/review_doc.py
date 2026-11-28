@@ -9,13 +9,13 @@ from hashlib import sha256
 from pathlib import Path
 from typing import TYPE_CHECKING, Literal, Protocol, cast
 
-from tbhbdev import content
 from tbhbdev.alpha import review_inline
 from tbhbdev.alpha.identity import trailers as identity_trailers
 from tbhbdev.alpha.identity.commit import grammar as identity_commit_grammar
 from tbhbdev.alpha.pull_request import frontmatter
 from tbhbdev.alpha.pull_request import prose as pr_prose
 from tbhbdev.alpha.pull_request import tools as pr_tools
+from tbhbdev.content_review import check_review
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -45,7 +45,7 @@ class ReviewDoc:
     run: str
     verdict: Verdict
     body: str
-    metadata: content.Json
+    metadata: dict[str, object]
 
 
 @dataclass(frozen=True)
@@ -73,6 +73,7 @@ class ReviewSubmission:
     commit: str
     body: str
     event: str
+    metadata: dict[str, object] | None = None
 
 
 class Api(Protocol):
@@ -121,7 +122,13 @@ def parse(text: str) -> ReviewDoc:
             "verdict": ("GO" | "NO-GO") as verdict,
         } if type(number) is int:
             return ReviewDoc(
-                repo, number, head, run, verdict, body, cast("content.Json", fields)
+                repo,
+                number,
+                head,
+                run,
+                verdict,
+                body,
+                cast("dict[str, object]", fields),
             )
         case _:
             message = "expected repo, integer pr, head_sha, run name, and GO or NO-GO"
@@ -221,11 +228,11 @@ def check_head(api: Api, path: str, commit: str) -> None:
             raise ReviewError(message)
 
 
-def send_review(api: Api, path: str, commit: str, body: str, event: str) -> int | None:
+def send_review(api: Api, review: ReviewSubmission) -> int | None:
     """Submit the review and return the ID if provided."""
     return submit_review(
         api.request,
-        ReviewSubmission(path, commit, body, event),
+        review,
         compare=lambda url: api.request("GET", url),
         warn=lambda message: print(message, file=sys.stderr),
     )
@@ -239,23 +246,29 @@ def submit_review(
     warn: Callable[[str], None],
 ) -> int | None:
     """Submit the body and any inline findings in one review."""
-    payload: dict[str, object] = {
-        "commit_id": review.commit,
-        "body": review.body,
-        "event": review.event,
-    }
-    if findings := review_inline.findings(review.body):
+    diff = None
+    findings = review_inline.findings(review.body)
+    if any(finding.location for finding in findings):
         try:
             pull = cast("dict[str, dict[str, str]]", request("GET", review.path, None))
             base = pull["base"]["sha"]
             repository = review.path.rpartition("/pulls/")[0]
             # Pin the comparison to the judged commit even if the PR head moves.
             diff = compare(f"{repository}/compare/{base}...{review.commit}?per_page=1")
-        except ReviewError as exc:
+        except (ReviewError, KeyError, TypeError) as exc:
             warn(f"inline comments skipped: {exc}")
-        else:
-            if comments := review_inline.comments(findings, diff):
-                payload["comments"] = comments
+    body, comments = review_inline.render(review.body, findings, diff)
+    if problems := check_review(
+        body, metadata=review.metadata, event=review.event, posted=True
+    ):
+        raise ReviewError("\n".join(problems))
+    payload: dict[str, object] = {
+        "commit_id": review.commit,
+        "body": body,
+        "event": review.event,
+    }
+    if comments:
+        payload["comments"] = comments
     result = request("POST", f"{review.path}/reviews", payload)
     match cast("dict[str, object] | None", result):  # pragma: no mutate -- cast
         case {"id": int(review_id)}:
@@ -283,7 +296,7 @@ def post(
     Return ("exists", id) if the author already posted the matching decision.
     Accept the race between concurrent posts without a lock.
     """
-    problems = content.check_review(doc.body, metadata=doc.metadata)
+    problems = check_review(doc.body, metadata=doc.metadata)
     if problems := problems or lint_post(doc.body):
         raise ReviewError("\n".join(problems))
     path = f"repos/{doc.repo}/pulls/{doc.pr}"
@@ -300,9 +313,9 @@ def post(
         return "exists", existing
     trailer = attribution(identity_value)
     body = f"{render(doc)}\n{trailer}\n"
-    if problems := content.check_review(body, metadata=doc.metadata, posted=True):
-        raise ReviewError("\n".join(problems))
-    return "posted", send_review(api, path, doc.head_sha, body, event)
+    return "posted", send_review(
+        api, ReviewSubmission(path, doc.head_sha, body, event, doc.metadata)
+    )
 
 
 def dismiss(

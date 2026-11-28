@@ -22,7 +22,7 @@ from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric import rsa
 
 from tbhbdev import secrets
-from tbhbdev.alpha import gh_app
+from tbhbdev.alpha import gh_app_api
 from tbhbdev.alpha import repo_token as rt
 
 if TYPE_CHECKING:
@@ -434,13 +434,13 @@ def test_stale_installation_is_dropped_before_retry(
     cache = tmp_path / "cache"
     cache.write_text(json.dumps({REPO: 9}))
     cache.chmod(0o600)
-    original = gh_app.find_installation
+    original = gh_app_api.find_installation
 
     def find(client: httpx2.Client, repository: str) -> int | None:
         assert json.loads(cache.read_text()) == {}
         return original(client, repository)
 
-    monkeypatch.setattr(gh_app, "find_installation", find)
+    monkeypatch.setattr(gh_app_api, "find_installation", find)
     assert rt.mint(app, REPO, PERMISSIONS, installation_cache=cache).token == TOKEN
     assert [r.url.path for r in requests] == [
         "/app/installations/9/access_tokens",

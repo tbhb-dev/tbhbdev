@@ -21,7 +21,6 @@ from unit.alpha.identity.identity_examples import CHILD, OTHER, ROOT, patch_call
 from unit.alpha.identity.identity_fixtures import (
     DATA,
     add_worktree,
-    feed,
     hook_env,
     init_repo,
     loaded,
@@ -34,12 +33,10 @@ from tbhbdev.alpha import repo as git_repo
 from tbhbdev.alpha.identity import records, sessions, storage
 from tbhbdev.alpha.identity.claude import commands as claude_commands
 from tbhbdev.alpha.identity.codex import rollout as codex_rollout
-lazy from tbhbdev.alpha.identity.records import Json
 
 
 def test_read_hash_vectors_from_json() -> None:
-    stored = storage.read_json(DATA / "hash-vectors.json")
-    assert stored is not None
+    stored = storage.read_record(DATA / "hash-vectors.json")
     vectors = stored["vectors"]
     assert isinstance(vectors, list)
     assert len(vectors) >= 3
@@ -49,24 +46,16 @@ def test_read_hash_vectors_from_json() -> None:
         assert records.sha256_64(raw) == vector["expected"]
 
 
-def test_read_json_defaults(tmp_path: Path) -> None:
+def test_read_record_defaults(tmp_path: Path) -> None:
     good = tmp_path / "good.json"
     good.write_text('{"a": 1}', encoding="utf-8")
     listy = tmp_path / "list.json"
     listy.write_text("[1]", encoding="utf-8")
     bad = tmp_path / "bad.json"
     bad.write_text("{", encoding="utf-8")
-    fallback: Json = {"d": 1}
-    assert storage.read_json(good, fallback) == {"a": 1}
-    assert storage.read_json(listy, fallback) is fallback
-    assert storage.read_json(bad, fallback) is fallback
-    assert storage.read_json(tmp_path / "missing.json", fallback) is fallback
-    assert storage.read_json(bad) is None
     assert storage.read_record(good) == {"a": 1}
-    assert storage.read_record(bad) == {}
-    empty = tmp_path / "empty.json"
-    empty.write_text("{}", encoding="utf-8")
-    assert storage.read_record(empty) == {}
+    for path in (listy, bad, tmp_path / "missing.json"):
+        assert storage.read_record(path) == {}
 
 
 def test_write_json_is_atomic_and_creates_parents(tmp_path: Path) -> None:
@@ -89,7 +78,7 @@ def test_json_round_trip(obj: dict[str, object]) -> None:
     with tempfile.TemporaryDirectory() as tmp:
         path = Path(tmp) / "x.json"
         storage.write_json(path, obj)
-        assert storage.read_json(path) == obj
+        assert storage.read_record(path) == obj
 
 
 LOCK_PROBE = """
@@ -119,18 +108,6 @@ def test_locked_holds_an_exclusive_lock_and_creates_the_store(
     with storage.locked(store):  # the store exists now
         pass
     assert [p.name for p in store.iterdir()] == ["lock"]
-
-
-def test_git_reports_exit_code_and_trims_newlines(
-    repo: Path, plain_checkout: Path
-) -> None:
-    assert git_repo.git("rev-parse", "--show-toplevel", cwd=repo) == (0, str(repo))
-    code, out = git_repo.git("rev-parse", "--git-dir", cwd=plain_checkout)
-    assert code != 0
-    assert out == ""
-    code, out = git_repo.git("--version")
-    assert code == 0
-    assert out.startswith("git version")
 
 
 def test_state_dir_and_repo_info(
@@ -289,17 +266,6 @@ class FakeRun:
     def __init__(self, returncode: int, stdout: str) -> None:
         self.returncode = returncode
         self.stdout = stdout
-
-
-def test_read_hook_stdin(monkeypatch: pytest.MonkeyPatch) -> None:
-    feed(monkeypatch, '{"a": 1}')
-    assert git_repo.read_hook_stdin() == {"a": 1}
-    feed(monkeypatch, "")
-    assert git_repo.read_hook_stdin() == {}
-    feed(monkeypatch, "[1]")
-    assert git_repo.read_hook_stdin() == {}
-    feed(monkeypatch, "{")
-    assert git_repo.read_hook_stdin() == {}
 
 
 @pytest.mark.parametrize(

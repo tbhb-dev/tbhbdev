@@ -1,0 +1,15 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright Tony Burns
+
+{
+  $schema: "https://docs.renovatebot.com/renovate-schema.json",
+
+  extends: [
+    "github>tbhb-dev/tbhbdev//lib/renovate-config/default.json5",
+    "github>tbhb-dev/tbhbdev//lib/renovate-config/bazel.json5",
+    "github>tbhb-dev/tbhbdev//lib/renovate-config/go.json5",
+    "github>tbhb-dev/tbhbdev//lib/renovate-config/python.json5",
+    "github>tbhb-dev/tbhbdev//lib/renovate-config/rules-cloudflare.json5",
+    "github>tbhb-dev/tbhbdev//lib/renovate-config/workflow.json5",
+  ],
+}

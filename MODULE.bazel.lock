@@ -480,7 +480,7 @@
     "@@tbhb_rules_go+//:extensions.bzl%go_mod_proxy": {
       "general": {
         "bzlTransitiveDigest": "d+aJfWyHtvw15XRr3GCXF8ABJb7tZ9TtQRIX66t8F8g=",
-        "usagesDigest": "cDr6ZHJA1NagXOwhvry4JgvHR2pYyNY21hnTrYr6JSM=",
+        "usagesDigest": "gAwUSns+CumblW+6YMTfL/pVGzTGKTV84EJab3XAlGo=",
         "recordedInputs": [],
         "generatedRepoSpecs": {
           "github_metrics_go_mod_proxy": {
@@ -494,6 +494,13 @@
             "repoRuleId": "@@tbhb_rules_go+//private:go_mod_proxy.bzl%go_mod_proxy_repo",
             "attributes": {
               "go_sum": "@@//factory/agent-capacity:go.sum",
+              "proxy_url": "https://proxy.golang.org"
+            }
+          },
+          "event_gateway_go_mod_proxy": {
+            "repoRuleId": "@@tbhb_rules_go+//private:go_mod_proxy.bzl%go_mod_proxy_repo",
+            "attributes": {
+              "go_sum": "@@//factory/event-gateway:go.sum",
               "proxy_url": "https://proxy.golang.org"
             }
           },

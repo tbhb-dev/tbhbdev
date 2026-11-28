@@ -29,7 +29,7 @@ COMMIT = re.compile(r"[0-9a-f]{40}|[0-9a-f]{64}")
 def check(
     run: RunRequest,
     settings: Settings,
-    host: Host,
+    _host: Host,
     *,
     existing_name: str | None,
     ref: str | None,
@@ -60,7 +60,7 @@ def check(
             message = f"claude profile {name!r} isn't defined"
             raise Invalid(message)
         run = replace(run, claude_profile=profile.name)
-    request.validate(run, host_allows_unsandboxed=host.unsandboxed)
+    request.validate(run)
     return run
 
 
