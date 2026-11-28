@@ -24,6 +24,10 @@ class Dist:
         return json.dumps({"vcs_info": {"commit_id": COMMIT}, "url": "file:///x"})
 
 
+def installed(_name: str) -> Dist:
+    return Dist()
+
+
 def build_path(name: str = "example") -> Path:
     return runfiles.state_home(Path.home()) / "tbhbdev" / "agent-runs" / f"{name}.build"
 
@@ -38,7 +42,7 @@ def started(monkeypatch: pytest.MonkeyPatch) -> list[tuple[list[str], str, bool]
         return 7
 
     monkeypatch.setattr(run.dispatcher, "main", dispatch)
-    monkeypatch.setattr(metadata, "distribution", lambda _name: Dist())
+    monkeypatch.setattr(metadata, "distribution", installed)
     return calls
 
 
