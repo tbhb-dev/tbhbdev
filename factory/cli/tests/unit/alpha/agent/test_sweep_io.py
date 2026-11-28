@@ -9,6 +9,7 @@ import shutil
 import signal
 import subprocess
 import sys
+import time
 from types import SimpleNamespace
 from typing import TYPE_CHECKING
 from unittest.mock import Mock
@@ -24,11 +25,17 @@ if TYPE_CHECKING:
     from pathlib import Path
 
 
+def _age(base: Path) -> None:
+    past = time.time() - 3600
+    os.utime(base, (past, past))
+
+
 def _srv(b: Path, ws: Path, pid: int) -> str:
     (b / "server").mkdir(parents=True, exist_ok=True)
     (b / "server/server.pid.txt").write_text(f"{pid}\n")
     flags = f"--output_base={b}\0--workspace_directory={ws}"
     (b / "server/cmdline").write_text(f"bazel(w)\0{flags}")
+    _age(b)
     return f"{os.getuid()} {pid} 1 1 bazel(w) {flags.replace(chr(0), ' ')} -f"
 
 
@@ -43,6 +50,7 @@ class _Env:
         wt.mkdir(exist_ok=True)
         b = bazel_cache.bazel_bases(self.h, str(wt))[0]
         b.mkdir(parents=True, exist_ok=True)
+        _age(b)
         row = json.dumps({"run": name, "worktree": str(wt), "state": st})
         with (self.r / runfiles.INDEX).open("a") as out:
             out.write(row + "\n")
@@ -98,6 +106,8 @@ def test_live_kept_dead_marked_ended_and_orphans_cleaned(env: _Env) -> None:
     orphan, inst, ext = p / ("a" * 32), p / "install", p / ("b" * 32)
     for d in (orphan, inst, ext / "server"):
         d.mkdir(parents=True)
+    _age(orphan)
+    _age(ext)
     (ext / "server/server.pid.txt").write_text(str(os.getpid()))
     with (r / "live-lock.run.lock").open("w") as lk:
         fcntl.flock(lk, fcntl.LOCK_EX | fcntl.LOCK_NB)
@@ -114,6 +124,44 @@ def test_live_kept_dead_marked_ended_and_orphans_cleaned(env: _Env) -> None:
     assert (r / "phase-only.phase").read_text() == "ended"
     assert (b_dead.exists(), orphan.exists()) == (False, False)
     assert (inst.is_dir(), ext.is_dir()) == (True, True)
+
+
+@pytest.mark.parametrize("args", [(), ("--dry-run",)])
+def test_recent_base_without_pid_survives(env: _Env, args: tuple[str, ...]) -> None:
+    _, ended = env.mk("recent-ended", "ended")
+    recent, old = ended.parent / ("a" * 32), ended.parent / ("b" * 32)
+    recent.mkdir()
+    old.mkdir()
+    _age(old)
+    ended.touch()
+
+    rc, out, _ = env.run(*args)
+
+    assert rc == 0
+    env.check(out, (0, 0, 1, 0))
+    assert str(old) in out
+    assert recent.is_dir()
+    assert ended.is_dir()
+    assert old.exists() == bool(args)
+
+
+def test_old_base_of_run_started_after_snapshot_survives(env: _Env) -> None:
+    wt = (env.h / "wt-new-owner").resolve()
+    base = bazel_cache.bazel_bases(env.h, str(wt))[0]
+    base.mkdir(parents=True)
+    _age(base)
+
+    def register(*_args: object) -> str:
+        env.mk("new-owner")
+        process_group.record(runfiles.RunFiles(env.r, "new-owner"), os.getpid())
+        return ""
+
+    env.mp.setattr(bazel_servers, "listing", register)
+    rc, out, _ = env.run()
+
+    assert rc == 0
+    env.check(out, (0, 0, 0, 0))
+    assert base.is_dir()
 
 
 def test_ended_run_stops_bazel_by_process_and_removes_output(env: _Env) -> None:
@@ -177,6 +225,7 @@ def test_failing_run_and_foreign_owner_isolated(env: _Env) -> None:
     (r / "sym-lock.run.lock").mkdir()
     bad_b = b_ok.parent / ("0" * 32)
     bad_b.mkdir()
+    _age(bad_b)
     real_rm = bazel_cache.remove_unused_base
 
     def flaky(home: Path, b: Path) -> bool:

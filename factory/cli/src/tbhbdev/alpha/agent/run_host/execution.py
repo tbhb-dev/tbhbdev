@@ -41,9 +41,7 @@ def execute(run: Run, text: str, *, preflight_only: bool = False) -> int:
                 run.request.profile,
                 run.request.max_concurrent_runs,
             )
-            # A launch the slots refuse pays nothing: reserve refuses it below.
-            if admission.has_room(*slot):
-                sweep_first.run_sweep(run)
+            sweep_first.run_sweep(run)
             stack.enter_context(admission.reserve(*slot))
         return _execute(run, text, stack, preflight_only=preflight_only)
 

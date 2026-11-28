@@ -51,6 +51,11 @@ def _group_alive(path: Path) -> bool:
     return run_state.owns(rec, process_group.identity(rec.pgid))
 
 
+def _worktree(entry: dict[str, object] | None) -> Path | None:
+    value = entry.get("worktree") if entry is not None else None
+    return Path(value) if isinstance(value, str) and value else None
+
+
 class _Sweeper:
     def __init__(self, home: Path, *, dry_run: bool) -> None:
         self.home, self.dry_run = home, dry_run
@@ -82,8 +87,7 @@ class _Sweeper:
             runfiles.append(self.runs_dir, {**entry, **end, "end_reason": END_REASON})
 
     def _inspect_one(self, name: str, entry: dict[str, object] | None) -> None:
-        v = entry.get("worktree") if entry is not None else None
-        wt = Path(v) if isinstance(v, str) and v else None
+        wt = _worktree(entry)
         try:
             d = self.runs_dir
             if _lock_held(d / f"{name}.run.lock") or _group_alive(d / f"{name}.pgid"):
@@ -99,15 +103,25 @@ class _Sweeper:
             self._err(f"run {name}", exc)
             self.live.append(wt)
 
-    def inspect_runs(self) -> None:
-        if not self.runs_dir.exists():
-            return
-        st = self.runs_dir.lstat()
-        if not stat.S_ISDIR(st.st_mode) or st.st_uid != os.getuid():
-            self._err(str(self.runs_dir), "not an owned directory")
-            return
+    def _index(self) -> dict[str, dict[str, object]]:
+        if not self._owned_runs_dir():
+            return {}
         raw = _read_opt(self.runs_dir / runfiles.INDEX, 64 << 20) or ""
-        index = {str(d["run"]): d for d in map(json.loads, raw.splitlines())}
+        return {str(d["run"]): d for d in map(json.loads, raw.splitlines())}
+
+    def _owned_runs_dir(self) -> bool:
+        try:
+            status = self.runs_dir.lstat()
+        except FileNotFoundError:
+            return False
+        return stat.S_ISDIR(status.st_mode) and status.st_uid == os.getuid()
+
+    def inspect_runs(self) -> None:
+        if not self._owned_runs_dir():
+            if self.runs_dir.exists():
+                self._err(str(self.runs_dir), "not an owned directory")
+            return
+        index = self._index()
         names = {n for n in index if NAME.fullmatch(n)}
         for e in self.runs_dir.iterdir():
             for s in (".phase", ".pgid", ".run.lock", ".rc"):
@@ -142,13 +156,21 @@ class _Sweeper:
 
     def sweep_bazel(self) -> None:
         sv = self.srvs = bazel_servers.running()
+        outputs = bazel_cache.output_bases(self.home)
         lw = [w.resolve() for w in self.live if w]
+        # A run records its worktree before starting the shims. Check again
+        # after listing bases so a run registered during the scan is protected.
+        lw.extend(
+            wt.resolve()
+            for name, entry in self._index().items()
+            if (wt := _worktree(entry)) and self.ended_runs.get(name) != wt
+        )
         ew = [w.resolve() for w in self.ended_runs.values() if w]
         in_lw = {b for b, (_, p) in sv.items() if any(p.is_relative_to(w) for w in lw)}
         prot = set(self._bases(lw, set())) | in_lw
         cands = self._bases(ew, prot)
         stopped = self._stop_ended(cands, ew, prot)
-        for b in bazel_cache.output_bases(self.home):
+        for b in outputs:
             if (r := b.resolve()) not in prot:
                 cands.setdefault(r, b)
         self._remove_bases(cands, stopped)
@@ -160,7 +182,12 @@ class _Sweeper:
             try:
                 if self.dry_run:
                     live = res not in stopped and bazel_cache.server_alive(base)
-                    ok = not live and bool(bazel_cache.owned_base(self.home, base))
+                    status = bazel_cache.owned_base(self.home, base)
+                    ok = (
+                        not live
+                        and status is not None
+                        and bazel_cache.old_enough(status)
+                    )
                 else:
                     ok = bazel_cache.remove_unused_base(self.home, base)
                 if ok:
