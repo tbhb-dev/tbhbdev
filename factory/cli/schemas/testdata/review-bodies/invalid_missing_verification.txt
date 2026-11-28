@@ -1,0 +1,5 @@
+## Summary
+
+The cache preserves the latest saved value.
+
+Generated-by: LLM effort=high;harness=codex;model=gpt-5.4

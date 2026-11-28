@@ -42,6 +42,13 @@ cli_py_library(
 )
 
 cli_py_library(
+    name = "cli_build",
+    srcs = ["cli_build.py"],
+    imports = ["../../.."],
+    visibility = ["//factory/cli:__subpackages__"],
+)
+
+cli_py_library(
     name = "command",
     srcs = ["command.py"],
     imports = ["../../.."],
@@ -49,10 +56,12 @@ cli_py_library(
     deps = [
         ":arguments",
         ":check_tools",
+        ":cli_build",
         ":config",
         ":model",
         ":session",
         ":shims",
+        "//factory/cli/src/tbhbdev/alpha:version_check",
         "//factory/cli/src/tbhbdev/alpha/install/git:hooks",
         "//factory/cli/src/tbhbdev/alpha/install/statusline:pin",
     ],

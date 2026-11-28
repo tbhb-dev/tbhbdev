@@ -1,0 +1,21 @@
+## Summary
+
+The cache preserves the latest saved value.
+
+## Findings
+
+- F1: P0 security Validate the webhook signature before reading JSON.
+- F2: P1 correctness The cache returns stale entries. Occurs when: a caller overwrites a key.
+- F3: P2 design Split the transport setup from request decoding.
+- F4: P2 test Cover empty payloads in the handler suite.
+- F5: P3 docs Document the retry header in the readme.
+
+## Suggestions
+
+- S1: Rename the helper so callers see its scope.
+
+## Verification
+
+- Read the cache implementation and its unit tests.
+
+Generated-by: LLM effort=high;harness=codex;model=gpt-5.4

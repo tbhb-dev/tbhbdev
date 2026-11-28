@@ -1,7 +1,11 @@
 """Run the Git hook and harness installers."""
 
+import argparse
 import os
+import subprocess  # nosec B404
 
+from tbhbdev.alpha import version_check
+from tbhbdev.alpha.install import cli_build
 from tbhbdev.alpha.install.arguments import build_parser
 from tbhbdev.alpha.install.check_tools import install_check_tools
 from tbhbdev.alpha.install.config import install_config
@@ -12,8 +16,22 @@ from tbhbdev.alpha.install.shims import install_gh_shim, install_ssh_shim
 from tbhbdev.alpha.install.statusline.pin import install_statusline
 
 
+def install_cli(argv: list[str], prog: str) -> int:
+    parser = argparse.ArgumentParser(
+        prog=prog, description="Install a verified CLI build."
+    )
+    parser.add_argument("revision", help="full commit SHA")
+    args = parser.parse_args(argv)
+    return subprocess.run(  # nosec B603
+        ["/bin/sh", "-c", cli_build.script(args.revision, version_check.REPO_URL)],
+        check=False,
+    ).returncode
+
+
 def main(argv: list[str], prog: str) -> int:
     """Install the hooks, or preview every change for a manual dry run."""
+    if argv[:1] == ["cli"]:
+        return install_cli(argv[1:], f"{prog} cli")
     parser = build_parser(prog)
     args = parser.parse_args(argv)
     env = os.environ

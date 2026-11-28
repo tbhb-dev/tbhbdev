@@ -3,7 +3,8 @@
 
 // Package store keeps the service's durable state in one `bbolt` file. It holds
 // the webhook queue, the delivery dedupe table, milestone claims, repository
-// watermarks, the store's creation time, and the repair floor.
+// watermarks, review PR timestamps, the store's creation time, and the repair
+// floor.
 //
 // Later slices add the dedupe bound (entries last 7 days, at most 200,000,
 // oldest evicted first), the dead-letter bucket, and the span ID and entity tag
@@ -42,6 +43,7 @@ const (
 	deliveriesBucket  = "dedupe_deliveries"
 	milestonesBucket  = "milestones"
 	watermarksBucket  = "watermarks"
+	reviewPRsBucket   = "review_prs"
 	createdKey        = "created"
 	repairFloorKey    = "repair_floor"
 )
@@ -162,6 +164,7 @@ func open(path string, now func() time.Time) (*Bolt, error) {
 func initialize(txn *bolt.Tx, first time.Time) (time.Time, error) {
 	for _, name := range []string{
 		queueBucket, queueIDsBucket, queueEventsBucket, bodiesBucket, deliveriesBucket, milestonesBucket, watermarksBucket,
+		reviewPRsBucket,
 	} {
 		_, err := txn.CreateBucketIfNotExists([]byte(name))
 		if err != nil {

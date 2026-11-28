@@ -10,7 +10,6 @@ import sys
 from pathlib import Path
 
 from tbhbdev.alpha.agent import build_info, ownership, process_group, runfiles
-from tbhbdev.alpha.agent.decisions.run_state import Group, owns
 from tbhbdev.alpha.agent.model import NAME, Invalid
 from tbhbdev.alpha.agent.run_host import dispatcher
 
@@ -147,16 +146,7 @@ def kill(files: runfiles.RunFiles) -> int:
     if files.path("rc").exists():
         print("already finished")
         return 0
-    data = json.loads(files.path("pgid").read_text())
-    recorded = Group(**data)
-    if not owns(recorded, process_group.identity(recorded.pgid)):
-        message = "run group identity no longer matches"
-        raise Invalid(message)
-    # TERM reaches the owned harness group; its supervisor records completion.
-    if not process_group.stop_owned(files, recorded.pgid, 0):
-        message = "cannot signal run group"
-        raise Invalid(message)
-    return 0
+    return process_group.kill_recorded(files, process_group.read_record(files))
 
 
 def main(arguments: list[str], prog: str) -> int:
