@@ -668,7 +668,7 @@ def test_prose_and_default() -> None:
 
 
 def test_commit_authors(monkeypatch: pytest.MonkeyPatch) -> None:
-    pages = [
+    pages: list[list[gate.Record]] = [
         [{"author": {"login": RENOVATE}}, {"author": None}],
         [{"author": {"login": "writer"}}],
     ]
