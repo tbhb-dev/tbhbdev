@@ -734,3 +734,61 @@ def test_tier_recorded_on_file_count_hold(monkeypatch: pytest.MonkeyPatch) -> No
     result = gate.decide(RUN, TIER_ENV)
     assert result["reason"] == "file-count"
     assert (result["tier"], result["tier_reason"]) == (0, "prose")
+
+
+@pytest.mark.parametrize(
+    "error",
+    [
+        subprocess.CalledProcessError(1, "gh"),
+        subprocess.TimeoutExpired("gh", 5),
+        json.JSONDecodeError("bad", "", 0),
+        OSError("io"),
+        KeyError("author"),
+        TypeError("bad"),
+    ],
+)
+def test_commits_unavailable_still_approves_prose(
+    monkeypatch: pytest.MonkeyPatch, error: Exception
+) -> None:
+    request = Mock(side_effect=(*EVIDENCE[:4], error))
+    monkeypatch.setattr(gate, "api", request)
+    monkeypatch.setattr(gate, "contexts_pass", Mock(return_value=True))
+    monkeypatch.setattr(gate, "changed_paths", Mock(return_value=(["README.md"], True)))
+    result = gate.decide(RUN, TIER_ENV)
+    assert request.call_args_list[-1] == call(
+        REPO, "pulls/5/commits", "--paginate", "--slurp"
+    )
+    assert (
+        result["decision"],
+        result["reason"],
+        result["tier"],
+        result["tier_reason"],
+    ) == ("approve", "tier0", 0, "commits-unavailable")
+
+
+@pytest.mark.parametrize(
+    ("login", "paths", "expected"),
+    [
+        (RENOVATE, ["uv.lock"], (1, "commits-unavailable", "path-outside-tier0")),
+        (
+            WRITER["login"],
+            ["MODULE.bazel"],
+            (2, "commits-unavailable", "path-outside-tier0"),
+        ),
+    ],
+)
+def test_commits_unavailable_falls_back_to_paths(
+    monkeypatch: pytest.MonkeyPatch,
+    login: str,
+    paths: list[str],
+    expected: tuple[int, str, str],
+) -> None:
+    pull = PULL | {"user": {"login": login}}
+    error = subprocess.CalledProcessError(1, "gh")
+    request = Mock(side_effect=(*EVIDENCE[:1], pull, *EVIDENCE[2:4], error))
+    monkeypatch.setattr(gate, "api", request)
+    monkeypatch.setattr(gate, "contexts_pass", Mock(return_value=True))
+    monkeypatch.setattr(gate, "changed_paths", Mock(return_value=(paths, True)))
+    result = gate.decide(RUN, TIER_ENV)
+    assert (result["tier"], result["tier_reason"], result["reason"]) == expected
+    assert result["decision"] == "hold"

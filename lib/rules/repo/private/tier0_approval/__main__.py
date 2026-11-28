@@ -169,6 +169,22 @@ def commit_authors(repo: str, number: object) -> list[str]:
     ]
 
 
+def classify(
+    repo: str,
+    number: object,
+    paths: list[str],
+    author: str,
+    env: Mapping[str, str],
+) -> tuple[int, str]:
+    try:
+        authors: list[str] | None = commit_authors(repo, number)
+    except KeyError, TypeError, ValueError, OSError, subprocess.SubprocessError:
+        authors = None
+    commits: list[str] = [] if authors is None else authors
+    value, reason = tier(paths, author, commits, env)
+    return value, "commits-unavailable" if authors is None else reason
+
+
 def record(value: object) -> Record:
     return cast("Record", value)  # pragma: no mutate
 
@@ -221,8 +237,9 @@ def evaluate(
         raise HoldError("checks-unsuccessful")
     paths, regular_text = changed_paths(repo, base, head)
     author = cast("str", record(pr["user"])["login"])  # pragma: no mutate
-    authors = commit_authors(repo, result["pr"])
-    result["tier"], result["tier_reason"] = tier(paths, author, authors, env)
+    result["tier"], result["tier_reason"] = classify(
+        repo, result["pr"], paths, author, env
+    )
     result["files"] = len(paths)
     if not 0 < len(paths) <= int(env["MAX_FILES"]):
         raise HoldError("file-count")
