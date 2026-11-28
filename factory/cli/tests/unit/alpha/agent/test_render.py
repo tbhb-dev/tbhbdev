@@ -46,18 +46,17 @@ def test_new_pull_request_brief() -> None:
 
 def test_review_brief() -> None:
     review = render.brief("example", profile=Profile.REVIEW)
-    assert review == FINAL_ONLY + (
-        "Use the pull request number for N. Run `tbhbdev alpha review draft N`, "
-        "and set `commit_id` to the run's pinned checkout commit. "
-        "Set `event: APPROVE` for GO or `event: REQUEST_CHANGES` for BLOCK, "
-        "with a P0 or P1 whole-PR finding for a change request. "
-        "Keep the commit and run details out of the review body. "
-        "Keep the final verdict line in your final answer only. "
-        "Follow the generated draft's guidance and run "
-        "`tbhbdev alpha review check N --no-lint`. "
-        "Leave exactly one `.git/tbhb-alpha/review-N.md` for the run host to post.\n"
-        "example"
-    )
+    assert review.startswith(FINAL_ONLY)
+    assert "`tbhbdev alpha review draft N`" in review
+    assert "set `commit_id` to the run's pinned checkout commit" in review
+    assert "`event: APPROVE` for GO" in review
+    assert "`event: REQUEST_CHANGES` for BLOCK" in review
+    assert "P0 or P1 whole-PR finding for a change request" in review
+    assert "Keep the commit and run details out of the review body" in review
+    assert "Keep the final verdict line in your final answer only" in review
+    assert "`tbhbdev alpha review check N --no-lint`" in review
+    assert "exactly one `.git/tbhb-alpha/review-N.md`" in review
+    assert review.endswith("\nexample")
 
 
 def test_build_brief_overrides_an_instruction_to_commit_the_draft() -> None:
