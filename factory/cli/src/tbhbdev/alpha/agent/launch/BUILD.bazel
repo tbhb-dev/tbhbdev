@@ -22,7 +22,25 @@ cli_py_library(
     extra_deps = [":__init__"],
     imports = ["../../../.."],
     visibility = ["//factory/cli:__subpackages__"],
-    deps = ["//factory/cli/src/tbhbdev/alpha/agent:model"],
+    deps = [
+        ":ship",
+        "//factory/cli/src/tbhbdev:userconfig",
+        "//factory/cli/src/tbhbdev/alpha:worker_identity",
+        "//factory/cli/src/tbhbdev/alpha/agent:cli_bundle",
+        "//factory/cli/src/tbhbdev/alpha/agent:model",
+        "//factory/cli/src/tbhbdev/alpha/agent:settings",
+        "//factory/cli/src/tbhbdev/alpha/agent:transport",
+        "//factory/cli/src/tbhbdev/alpha/agent/decisions:request",
+        "//factory/cli/src/tbhbdev/alpha/agent/driver:arguments",
+        "//factory/cli/src/tbhbdev/alpha/agent/driver:launch",
+        "//factory/cli/src/tbhbdev/alpha/agent/driver:metadata",
+        "//factory/cli/src/tbhbdev/alpha/agent/driver:reviews",
+        "//factory/cli/src/tbhbdev/alpha/agent/driver:startup",
+        "//factory/cli/src/tbhbdev/alpha/agent/driver/decisions:launch",
+        "//factory/cli/src/tbhbdev/alpha/agent/driver/decisions:output",
+        "//factory/cli/src/tbhbdev/alpha/agent/driver/decisions:prompt",
+        "//factory/cli/src/tbhbdev/alpha/agent/launch/decisions:bootstrap",
+    ],
 )
 
 cli_py_library(
@@ -30,10 +48,12 @@ cli_py_library(
     srcs = ["ship.py"],
     extra_deps = [":__init__"],
     imports = ["../../../.."],
-    pyi_deps = [
-        "//factory/cli/src/tbhbdev/alpha/agent/driver/decisions:metadata",
-        "//factory/cli/src/tbhbdev/alpha/agent:transport",
-    ],
+    pyi_deps = ["//factory/cli/src/tbhbdev/alpha/agent/driver/decisions:metadata"],
     visibility = ["//factory/cli:__subpackages__"],
-    deps = ["//factory/cli/src/tbhbdev/alpha/agent:model"],
+    deps = [
+        "//factory/cli/src/tbhbdev/alpha/agent:model",
+        "//factory/cli/src/tbhbdev/alpha/agent:transport",
+        "//factory/cli/src/tbhbdev/alpha/agent/decisions:runfiles_names",
+        "//factory/cli/src/tbhbdev/alpha/agent/launch/decisions:bootstrap",
+    ],
 )
