@@ -5,7 +5,7 @@ from __future__ import annotations
 import dataclasses
 import subprocess
 from pathlib import Path
-from unittest.mock import ANY, Mock
+from unittest.mock import ANY, Mock, call
 
 import httpx2
 import pytest
@@ -30,6 +30,7 @@ from tbhbdev.alpha.agent import (
     runfiles,
 )
 from tbhbdev.alpha.agent.model import (
+    Invalid,
     Profile,
 )
 from tbhbdev.alpha.agent.run_host import execution as host_execution
@@ -37,6 +38,7 @@ from tbhbdev.alpha.agent.run_host import harness as host_harness
 from tbhbdev.alpha.agent.run_host import preflight as host_preflight
 from tbhbdev.alpha.agent.run_host import publication as host_publication
 from tbhbdev.alpha.agent.run_host import state
+from tbhbdev.alpha.pull_request.draft import DRAFT
 
 __all__ = ["pytestmark"]
 
@@ -162,16 +164,17 @@ def test_review_post_failure_sets_the_completion_status(
 
 
 @pytest.mark.parametrize(
-    ("expect_commit", "harness_result", "published", "start_ref", "expected"),
+    ("expect_commit", "harness_result", "published", "start_ref", "pulls", "expected"),
     [
-        (True, (0, None), None, None, 6),
-        (True, (0, "a" * 40), True, None, 0),
-        (True, (0, "a" * 40), False, None, 9),
-        (True, (0, "a" * 40), None, None, 9),
-        (True, (0, "a" * 40), True, "refs/heads/topic", 0),
-        (True, (0, "a" * 40), False, "refs/heads/topic", 9),
-        (True, (4, None), None, None, 4),
-        (False, (0, None), None, None, 0),
+        (True, (0, None), None, None, [], 6),
+        (True, (0, "a" * 40), True, None, [{"number": 42}], 0),
+        (True, (0, "a" * 40), True, None, [], 11),
+        (True, (0, "a" * 40), False, None, [], 9),
+        (True, (0, "a" * 40), None, None, [], 9),
+        (True, (0, "a" * 40), True, "refs/heads/topic", [{"number": 42}], 0),
+        (True, (0, "a" * 40), False, "refs/heads/topic", [], 9),
+        (True, (4, "a" * 40), None, None, [], 4),
+        (False, (0, "a" * 40), None, None, [], 0),
     ],
 )
 def test_execute_checks_required_build_results(  # noqa: PLR0913, PLR0917
@@ -181,6 +184,7 @@ def test_execute_checks_required_build_results(  # noqa: PLR0913, PLR0917
     harness_result: tuple[int, str | None],
     published: bool | None,
     start_ref: str | None,
+    pulls: list[dict[str, int]],
     expected: int,
 ) -> None:
     run = make_run(tmp_path, expect_commit=expect_commit)
@@ -189,6 +193,16 @@ def test_execute_checks_required_build_results(  # noqa: PLR0913, PLR0917
     HostRuntime(run, prepared, None).patch(monkeypatch)
     origin_contains = Mock(return_value=published)
     monkeypatch.setattr(host_publication, "origin_contains", origin_contains)
+    fresh = "example-fresh"
+    mint = Mock(return_value=fresh)
+    monkeypatch.setattr(credentials, "github_token", mint)
+    url = "https://api.github.com/repos/tbhb-dev/example-repo/pulls"
+    lookup = Mock(
+        return_value=httpx2.Response(
+            200, json=pulls, request=httpx2.Request("GET", url)
+        )
+    )
+    monkeypatch.setattr(httpx2, "get", lookup)
 
     def publish(*_args: object) -> int:
         origin_contains.assert_not_called()
@@ -210,7 +224,105 @@ def test_execute_checks_required_build_results(  # noqa: PLR0913, PLR0917
     if expected == 9:
         reason = "cannot verify" if published is None else "build commit missing from"
         assert f"push failed: {reason} {branch} on origin" in log.read_text()
-    assert run.files.path("branch").exists() is bool(published)
+    if expected == 11:
+        assert f"no pull request: {branch} is pushed but has none\n" in log.read_text()
+    branch_file = run.files.path("branch")
+    pr_file = run.files.path("pr")
+    if published:
+        assert branch_file.read_text() == branch
+        lookup.assert_called_once_with(
+            url,
+            params={"head": f"tbhb-dev:{branch}", "state": "all", "per_page": 1},
+            headers={
+                "Accept": "application/vnd.github+json",
+                "Authorization": f"Bearer {fresh}",
+            },
+            timeout=20,
+            verify=ANY,
+        )
+    else:
+        assert not branch_file.exists()
+        mint.assert_not_called()
+        lookup.assert_not_called()
+    if pulls:
+        assert pr_file.read_text() == "42"
+    else:
+        assert not pr_file.exists()
+
+
+@pytest.mark.parametrize(
+    ("pull_result", "fresh", "draft_present", "reason"),
+    [
+        (httpx2.ConnectError("offline"), "fresh", False, "cannot verify agent/example"),
+        (403, "fresh", False, "cannot verify agent/example"),
+        (200, Invalid("unavailable"), False, "cannot verify agent/example"),
+        (200, None, False, "cannot verify agent/example"),
+        (200, "fresh", True, "agent/example is pushed but has none; draft present"),
+    ],
+    ids=["offline", "forbidden", "mint-failed", "no-token", "draft"],
+)
+def test_execute_reports_pull_request_verification_failure(  # noqa: PLR0913
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    pull_result: int | Exception,
+    fresh: str | Exception | None,
+    *,
+    draft_present: bool,
+    reason: str,
+) -> None:
+    run = make_run(tmp_path, expect_commit=True)
+    prepared = dataclasses.replace(preparation(run), auth_before="example-before")
+    runtime = HostRuntime(run, prepared, None)
+    runtime.patch(monkeypatch)
+    if draft_present:
+        draft = Path(prepared.paths.worktree) / DRAFT
+        draft.parent.mkdir()
+        draft.write_text("# Example draft\n")
+    commit = "a" * 40
+    mint = Mock(side_effect=["earlier", "read-only", fresh])
+    monkeypatch.setattr(credentials, "github_token", mint)
+
+    def prepare(*_args: object) -> state.Prepared:
+        credentials.deliver(run.request, run.settings, run.tmpdir)
+        return prepared
+
+    monkeypatch.setattr(process_group, "prepare", prepare)
+
+    def publish(*_args: object) -> int:
+        mint.assert_called_once_with(run.request, run.settings.credentials[0])
+        run.files.write("head", commit)
+        return 0
+
+    monkeypatch.setattr(push, "run", publish)
+    ref = {"ref": "refs/heads/agent/example", "object": {"sha": commit}}
+    url = "https://api.github.com/repos/tbhb-dev/example-repo"
+    ref_request = httpx2.Request("GET", f"{url}/git/ref/heads/agent/example")
+    response = (
+        pull_result
+        if isinstance(pull_result, Exception)
+        else httpx2.Response(
+            pull_result, json=[], request=httpx2.Request("GET", f"{url}/pulls")
+        )
+    )
+    lookup = Mock(
+        side_effect=[httpx2.Response(200, json=ref, request=ref_request), response]
+    )
+    monkeypatch.setattr(httpx2, "get", lookup)
+
+    assert host_execution.execute(run, "example") == 11
+    assert run.files.path("rc").read_text() == "11\n"
+    assert run.files.path("branch").read_text() == "agent/example"
+    assert not run.files.path("pr").exists()
+    assert f"no pull request: {reason}\n" in run.files.path("log").read_text()
+    request, account = run.request, run.settings.credentials[0]
+    assert mint.call_args_list == [
+        call(request, account),
+        call(request, account, build_permissions=credentials.PULL_REQUESTS_PERMISSIONS),
+        call(request, account, build_permissions=credentials.PUSH_PERMISSIONS),
+    ]
+    assert lookup.call_count == (2 if isinstance(fresh, str) else 1)
+    if isinstance(fresh, str):
+        assert lookup.call_args.kwargs["headers"]["Authorization"] == f"Bearer {fresh}"
 
 
 BRANCH_REF = "refs/heads/agent/example"

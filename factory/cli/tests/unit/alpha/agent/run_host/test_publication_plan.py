@@ -31,3 +31,11 @@ def test_ref_tip(ref: str, sha: str, expected: str | None) -> None:
 )
 def test_origin_ahead(record: object, expected: bool | None) -> None:
     assert publication_plan.origin_ahead(record) is expected
+
+
+@pytest.mark.parametrize(
+    ("record", "expected"),
+    [([{"number": 42}], "42"), ([], ""), ({}, None), ([42], None), ([{}], None)],
+)
+def test_pull_number(record: object, expected: str | None) -> None:
+    assert publication_plan.pull_number(record) == expected
