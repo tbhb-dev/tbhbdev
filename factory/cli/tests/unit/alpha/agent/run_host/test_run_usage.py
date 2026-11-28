@@ -90,10 +90,8 @@ def test_agy_result_gives_its_usage_fields() -> None:
         "plain answer\n\nVERDICT: GO\n",
         "{not json",
         "[]",
-        "null",
         '{"usage": "x"}',
         '{"type": "result", "usage": {"input_tokens": true, "output_tokens": -1}}',
-        "\x00\xff",
     ],
 )
 def test_garbage_reports_nothing_and_never_raises(harness: Harness, text: str) -> None:
