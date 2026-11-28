@@ -37,8 +37,8 @@ from tbhbdev.alpha.agent import ssh_serve
 from tbhbdev.alpha.agent.run_host import dispatcher
 from tbhbdev.alpha.identity import dispatcher as identity_dispatcher
 from tbhbdev.alpha.install import command as install
-from tbhbdev.alpha.merge import command as squash_merge
 from tbhbdev.alpha.pull_request import command as pr_command
+from tbhbdev.merge import command as squash_merge
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -158,11 +158,7 @@ def test_command_wiring(
 ) -> None:
     assert f"\n  {name} " in USAGE
     run = Mock(return_value=7)
-    if style == "direct":
-        assert alpha.COMMANDS[name] is vars(module)["main"]
-        monkeypatch.setitem(alpha.COMMANDS, name, run)
-    else:
-        monkeypatch.setattr(module, "main", run)
+    monkeypatch.setattr(module, "main", run)
     assert alpha.main([name, *args], "p") == 7
     prog = f"p {name}"
     if style == "hook":

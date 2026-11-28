@@ -175,15 +175,19 @@ def _unlink_bazel_links(worktree: Path, deleted: list[Path]) -> None:
 def _clean_base(
     run: Run, base: Path, result: str, identity: tuple[int, int]
 ) -> tuple[int, int] | None:
-    """Delete one base unless it changed, its shutdown failed, or a server holds it."""
+    """Delete one base unless it changed or a live server holds it.
+
+    The stop result is only logged: a server that was slow to die or failed to
+    answer no longer keeps the base once its process is gone.
+    """
     opened = _open_owned(run.home, base)
     if opened is None:
         run.files.write("log", f"bazel cleanup: kept {base} ({result})\n")
         return None
     fd, status = opened
     try:
-        if result != "rc=0" or (status.st_dev, status.st_ino) != identity:
-            reason = result
+        if (status.st_dev, status.st_ino) != identity:
+            reason = f"changed ({result})"
         elif server_alive(base):
             reason = "server alive"
         else:

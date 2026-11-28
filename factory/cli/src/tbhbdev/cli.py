@@ -2,13 +2,17 @@
 
 Each tool is a module of this package with a `main(argv, prog)` that returns
 its exit status. `tbhbdev <tool> ARGS...` passes ARGS to it unchanged, with
-`tbhbdev <tool>` as the program name in its messages.
+`tbhbdev <tool>` as the program name in its messages. Tool modules are imported
+lazily so invoking one tool or `--help`/`--version` does not load the rest.
 """
 
-import sys
-from collections.abc import Callable, Mapping, Sequence
+from __future__ import annotations
 
-from tbhbdev import (
+import sys
+lazy from collections.abc import Mapping, MutableMapping, Sequence
+
+from tbhbdev.command_table import Command, CommandTable
+lazy from tbhbdev import (
     adr,
     agy,
     cue_runtime,
@@ -16,22 +20,24 @@ from tbhbdev import (
     secret,
     version,
 )
-from tbhbdev.admin import command as admin_command
-from tbhbdev.alpha import command as alpha_command
-from tbhbdev.analytics import command as analytics_command
+lazy from tbhbdev.admin import command as admin_command
+lazy from tbhbdev.alpha import command as alpha_command
+lazy from tbhbdev.analytics import command as analytics_command
 
-Tool = Callable[[list[str], str], int]
+Tool = Command
 
-TOOLS: dict[str, Tool] = {
-    "admin": admin_command.main,
-    "adr": adr.main,
-    "agy": agy.main,
-    "alpha": alpha_command.main,
-    "analytics": analytics_command.main,
-    "cue": cue_runtime.main,
-    "issue": issue.main,
-    "secret": secret.main,
-}
+TOOLS: MutableMapping[str, Tool] = CommandTable(
+    {
+        "admin": lambda: admin_command.main,
+        "adr": lambda: adr.main,
+        "agy": lambda: agy.main,
+        "alpha": lambda: alpha_command.main,
+        "analytics": lambda: analytics_command.main,
+        "cue": lambda: cue_runtime.main,
+        "issue": lambda: issue.main,
+        "secret": lambda: secret.main,
+    }
+)
 
 
 def usage(tools: Mapping[str, Tool]) -> str:

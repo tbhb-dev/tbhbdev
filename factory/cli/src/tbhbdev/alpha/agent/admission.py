@@ -157,6 +157,35 @@ def reserve(
         yield
 
 
+def active_count(root: Path, accounts: tuple[str, ...]) -> int:
+    """Count held build and review slots under ROOT."""
+    owner_ids = _owner_ids(accounts)
+    with (
+        _directory(root) as directory,
+        _slot(directory, "admission.lock", owner_ids, create=True) as guard,
+    ):
+        fcntl.flock(guard, fcntl.LOCK_EX)
+        builds = _active(directory, Profile.BUILD, owner_ids)
+        reviews = _active(directory, Profile.REVIEW, owner_ids)
+        return len(builds) + len(reviews)
+
+
+def count_main(argv: list[str], prog: str) -> int:
+    """Print the count of active build and review slots on this host."""
+    parser = argparse.ArgumentParser(prog=prog)
+    parser.add_argument("accounts", nargs="*")
+    try:
+        args = parser.parse_args(argv)
+        print(active_count(ROOT, tuple(args.accounts)))
+    except SystemExit as exc:
+        return int(exc.code or 0)
+    except (Invalid, OSError) as exc:
+        print(f"{prog}: {exc}", file=sys.stderr)
+        return 1
+    else:
+        return 0
+
+
 def main(argv: list[str], prog: str) -> int:
     """Report whether the launching profile can claim a slot on this host."""
     parser = argparse.ArgumentParser(prog=prog)

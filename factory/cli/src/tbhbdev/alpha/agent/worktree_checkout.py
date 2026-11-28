@@ -11,6 +11,7 @@ from pathlib import Path
 lazy from collections.abc import Callable, Mapping
 
 from tbhbdev.alpha.agent import (
+    host_tools,
     runfiles,
     worktree_clone,
     worktree_errors,
@@ -79,10 +80,9 @@ def create(
         if hook_env is not None:
             with worktree_errors.preparation_step("hook verification"):
                 worktree_hooks.verify_run_hooks(worktree, hook_env)
-        fetch_step = f"mirror fetch ({url})"
-        if request.fetch_refs:
-            fetch_step += f"; requested refs: {', '.join(request.fetch_refs)}"
-        with worktree_errors.preparation_step(fetch_step):
+        refs = ", ".join(request.fetch_refs)
+        ref_details = f"; requested refs: {refs}" if refs else ""
+        with worktree_errors.preparation_step(f"mirror fetch ({url}){ref_details}"):
             try:
                 commit = worktree_mirror.fetch_commit(mirror, request)
             except subprocess.SubprocessError:
@@ -110,5 +110,6 @@ def create(
                 worktree_git.git(worktree, "checkout", "--detach", commit, "--")
         with worktree_errors.preparation_step("git metadata"):
             worktree_clone.prepare_git(worktree)
+        host_tools.require_check_tools(worktree, hook_env)
         discard.pop_all()
     return worktree
