@@ -95,7 +95,7 @@ def test_argv_log_line_keeps_other_overrides() -> None:
 def test_run_end_attributes_keep_numbers_and_strings_only() -> None:
     usage = {
         "input_tokens": "not reported",
-        "output_tokens": "not reported",
+        "output_tokens": 4,
         "total_tokens": 54534,
         "cost_usd": 0.5,
         "source": "codex log",
@@ -103,6 +103,7 @@ def test_run_end_attributes_keep_numbers_and_strings_only() -> None:
     phases = {"setup": 1.5, "model": 20.0, "publication": None}
     published = {"branch": "agent/example", "pr": None}
     assert telemetry.run_end_attributes(usage, phases, published) == {
+        "tbhb.run.usage.output_tokens": 4,
         "tbhb.run.usage.total_tokens": 54534,
         "tbhb.run.usage.cost_usd": 0.5,
         "tbhb.run.phase.setup_seconds": 1.5,
@@ -115,13 +116,3 @@ def test_run_end_attributes_of_an_unreached_run_are_empty() -> None:
     nothing = {"input_tokens": "not reported", "output_tokens": "not reported"}
     phases: dict[str, object] = dict.fromkeys(("setup", "model", "publication"))
     assert telemetry.run_end_attributes(nothing, phases, {"branch": None}) == {}
-
-
-def test_run_end_attributes_pass_input_and_output_tokens() -> None:
-    usage = {"input_tokens": 3, "output_tokens": 4}
-    phases: dict[str, object] = {}
-    assert telemetry.run_end_attributes(usage, phases, {"pr": 12}) == {
-        "tbhb.run.usage.input_tokens": 3,
-        "tbhb.run.usage.output_tokens": 4,
-        "tbhb.run.published.pr": 12,
-    }

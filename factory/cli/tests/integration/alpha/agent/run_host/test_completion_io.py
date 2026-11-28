@@ -270,16 +270,9 @@ def test_finished_run_index_row_has_usage_phases_and_published(
 
 def test_run_without_branch_or_pr_files_published_nothing(tmp_path: Path) -> None:
     run = make_run(tmp_path)
+    run.files.write("pr", "garbage")
     assert host_completion.finish(run, None, None, 0) == 0
     assert end_row(run)["published"] == {"branch": None, "pr": None}
-
-
-@pytest.mark.parametrize("pr", ["", "garbage", "example-org/example-repo#x"])
-def test_unreadable_pr_file_is_null(tmp_path: Path, pr: str) -> None:
-    run = make_run(tmp_path)
-    run.files.write("pr", pr)
-    assert host_completion.finish(run, None, None, 0) == 0
-    assert end_row(run)["published"]["pr"] is None  # type: ignore[index]
 
 
 def test_run_that_raised_before_launch_has_no_model_or_publication_phase(

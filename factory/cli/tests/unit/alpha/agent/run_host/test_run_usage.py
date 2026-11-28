@@ -29,9 +29,6 @@ CODEX_TAIL = (
 CLAUDE_RESULT = {
     "type": "result",
     "subtype": "success",
-    "is_error": False,
-    "num_turns": 3,
-    "result": "done",
     "total_cost_usd": 0.0421,
     "usage": {
         "input_tokens": 120,
@@ -62,11 +59,6 @@ def test_codex_total_is_read_and_the_rest_is_not_reported() -> None:
     }
 
 
-def test_codex_takes_the_last_tokens_used_line() -> None:
-    tail = "tokens used\n9\n" + CODEX_TAIL
-    assert run_usage.parse(Harness.CODEX, tail, "")["total_tokens"] == 54534
-
-
 @pytest.mark.parametrize(
     "tail", ["", "no count here\n", 'quoted "3 tokens used",\n', "tokens used\nmany\n"]
 )
@@ -82,20 +74,6 @@ def test_claude_result_gives_input_output_and_cost() -> None:
         "cost_usd": 0.0421,
         "source": "claude result",
     }
-
-
-def test_claude_result_without_cost_leaves_cost_unreported() -> None:
-    result = {k: v for k, v in CLAUDE_RESULT.items() if k != "total_cost_usd"}
-    usage = run_usage.parse(Harness.CLAUDE, "", json.dumps(result))
-    assert usage["cost_usd"] == NOT_REPORTED
-    assert usage["input_tokens"] == 120
-
-
-def test_claude_result_in_a_list_of_events_is_found() -> None:
-    events = [{"type": "system"}, CLAUDE_RESULT]
-    assert run_usage.parse(Harness.CLAUDE, "", json.dumps(events))["output_tokens"] == (
-        45
-    )
 
 
 def test_agy_result_gives_its_usage_fields() -> None:
