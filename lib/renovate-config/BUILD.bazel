@@ -87,3 +87,14 @@ sh_test(
         "renovate_test_helpers.py",
     ],
 )
+
+# Keep the fixtures that are pinned on purpose in default.json5's ignorePaths.
+sh_test(
+    name = "renovate_ignore_paths_test",
+    size = "small",
+    srcs = ["renovate_ignore_paths_test.sh"],
+    data = glob(["*.json5"]) + [
+        "renovate_ignore_paths_test.py",
+        "renovate_test_helpers.py",
+    ],
+)
