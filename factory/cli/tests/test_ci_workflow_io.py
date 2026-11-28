@@ -135,7 +135,7 @@ def test_ci_runs_cli_coverage_in_parallel() -> None:
     )
 
     checkout, setup, cache, selector, check = _workflow_steps(coverage)
-    bazel_checkout, bazel_setup, bazel_cache, bazel_selector, _, test, _ = (
+    bazel_checkout, bazel_setup, bazel_cache, bazel_selector, _, test, _, _ = (
         _workflow_steps(bazel)
     )
     assert checkout == bazel_checkout
@@ -185,7 +185,11 @@ def test_ci_conclusion_requires_cli_coverage(
         "outputs": {"coverage": step_outcome},
     }
 
-    step = next(step for step in _workflow_steps(conclusion) if "run" in step)
+    step = next(
+        step
+        for step in _workflow_steps(conclusion)
+        if step.get("name") == "Fail if any needed job did not succeed"
+    )
     sha256sum = f"""sha256sum() {{
         {shlex.quote(sys.executable)} -I -S -c '
 import hashlib
