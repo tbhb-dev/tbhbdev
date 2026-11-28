@@ -81,7 +81,9 @@ def _objects(text: str) -> Iterator[Json]:
     except ValueError:
         whole = None
     if isinstance(whole, list):
-        yield from (item for item in reversed(whole) if isinstance(item, dict))
+        for element in reversed(cast("list[object]", whole)):
+            if isinstance(element, dict):
+                yield cast("Json", element)
     elif isinstance(whole, dict):
         yield cast("Json", whole)
     else:

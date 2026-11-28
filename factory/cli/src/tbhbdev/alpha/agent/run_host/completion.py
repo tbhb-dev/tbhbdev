@@ -130,7 +130,7 @@ def record_index(
 
 def run_outcome(run: Run) -> dict[str, dict[str, object]]:
     """The end record's usage, phase seconds and published state; never raises."""
-    phases = {
+    phases: dict[str, object] = {
         "setup": run.setup_seconds,
         "model": run.model_seconds,
         "publication": run.publication_seconds,

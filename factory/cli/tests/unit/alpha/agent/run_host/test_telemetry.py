@@ -113,13 +113,14 @@ def test_run_end_attributes_keep_numbers_and_strings_only() -> None:
 
 def test_run_end_attributes_of_an_unreached_run_are_empty() -> None:
     nothing = {"input_tokens": "not reported", "output_tokens": "not reported"}
-    phases = {"setup": None, "model": None, "publication": None}
+    phases: dict[str, object] = dict.fromkeys(("setup", "model", "publication"))
     assert telemetry.run_end_attributes(nothing, phases, {"branch": None}) == {}
 
 
 def test_run_end_attributes_pass_input_and_output_tokens() -> None:
     usage = {"input_tokens": 3, "output_tokens": 4}
-    assert telemetry.run_end_attributes(usage, {}, {"pr": 12}) == {
+    phases: dict[str, object] = {}
+    assert telemetry.run_end_attributes(usage, phases, {"pr": 12}) == {
         "tbhb.run.usage.input_tokens": 3,
         "tbhb.run.usage.output_tokens": 4,
         "tbhb.run.published.pr": 12,

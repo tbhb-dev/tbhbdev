@@ -215,8 +215,12 @@ def test_harness_measures_setup_and_model_seconds(
         return child
 
     monkeypatch.setattr(process_group, "launch_owned", launch)
-    monkeypatch.setattr(process_group, "record", lambda *_args: None)
-    monkeypatch.setattr(process_group, "stop_started", lambda *_args: None)
+
+    def nothing(*_args: object) -> None:
+        return None
+
+    monkeypatch.setattr(process_group, "record", nothing)
+    monkeypatch.setattr(process_group, "stop_started", nothing)
     with ExitStack() as stack:
         host_harness.run_harness(run, prepared, stack)
     assert (run.setup_seconds, run.model_seconds) == (4.5, 20.0)
