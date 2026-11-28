@@ -122,9 +122,8 @@ def test_fault_publication(
     checkout: tuple[Path, str, Mock], change: str, result: str, pulls: Mock
 ) -> None:
     workspace, base, remote = checkout
-    start_ref = START_REF if change.startswith("start ref") else None
-    if change == "protected":
-        start_ref = "refs/heads/main"
+    start_ref = {"protected": "refs/heads/main"}.get(change)
+    start_ref = START_REF if change.startswith("start ref") else start_ref
     target = f"example.invalid/{REPO}" if change == "other domain" else REPO
     request = run_request(
         repo=target, start_ref=start_ref, fetch_refs=[start_ref or START_REF]
