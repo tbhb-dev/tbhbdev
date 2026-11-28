@@ -16,8 +16,8 @@ from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, cast
 
-from tbhbdev.alpha.agent import host_tools
-from tbhbdev.alpha.agent.decisions.run_state import Group
+from tbhbdev.alpha.agent import host_tools, runfiles
+from tbhbdev.alpha.agent.decisions.run_state import Group, owns
 from tbhbdev.alpha.agent.model import Invalid
 
 if TYPE_CHECKING:
@@ -34,6 +34,7 @@ _BSD_SIZE = 136
 _BSD_START = 120
 _PROC_PIDTBSDINFO = 3
 _ZOMBIE = 5
+_MAX_PGID = 2**31 - 1
 
 
 def boot_id() -> str:
@@ -77,6 +78,30 @@ def record(files: RunFiles, pgid: int) -> None:
         message = "run group leader exited before it could be recorded"
         raise Invalid(message)
     files.write("pgid", json.dumps(asdict(group)) + "\n")
+
+
+def read_record(files: RunFiles) -> Group:
+    data = runfiles.read_owned(files.path("pgid"), 4096, "run group record")
+    try:
+        group = Group(**json.loads(data))
+    except TypeError, ValueError, RecursionError:
+        message = "invalid command or run data"
+        raise Invalid(message) from None
+    if type(group.pgid) is not int or not 1 < group.pgid <= _MAX_PGID:
+        message = "invalid run group ID"
+        raise Invalid(message)
+    return group
+
+
+def kill_recorded(files: RunFiles, recorded: Group) -> int:
+    if not owns(recorded, identity(recorded.pgid)):
+        message = "run group identity no longer matches"
+        raise Invalid(message)
+    # Signal the owned group so the supervisor can record completion.
+    if not stop_owned(files, recorded.pgid, 0):
+        message = "cannot signal run group"
+        raise Invalid(message)
+    return 0
 
 
 def alive(pgid: int) -> bool:

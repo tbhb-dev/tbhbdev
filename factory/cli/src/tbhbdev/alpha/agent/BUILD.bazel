@@ -90,11 +90,11 @@ cli_py_library(
     name = "process_group",
     srcs = ["process_group.py"],
     imports = ["../../.."],
-    pyi_deps = [":runfiles"],
     visibility = ["//factory/cli:__subpackages__"],
     deps = [
         ":host_tools",
         ":model",
+        ":runfiles",
         "//factory/cli/src/tbhbdev/alpha/agent/decisions:run_state",
     ],
 )
@@ -209,7 +209,6 @@ cli_py_library(
         ":ownership",
         ":process_group",
         ":runfiles",
-        "//factory/cli/src/tbhbdev/alpha/agent/decisions:run_state",
         "//factory/cli/src/tbhbdev/alpha/agent/run_host:dispatcher",
     ],
 )
@@ -264,6 +263,7 @@ cli_py_library(
         ":settings",
         ":signing_parity",
         ":ssh_serve",
+        ":sweep",
         "//factory/cli/src/tbhbdev:telemetry",
         "//factory/cli/src/tbhbdev:userconfig",
         "//factory/cli/src/tbhbdev/alpha/agent/decisions:host_names",
@@ -380,5 +380,21 @@ cli_py_library(
         "//factory/cli/src/tbhbdev/alpha:pre_push_guard",
         "//factory/cli/src/tbhbdev/alpha:secret_scan",
         "//factory/cli/src/tbhbdev/alpha/agent/decisions:repo",
+    ],
+)
+
+cli_py_library(
+    name = "sweep",
+    srcs = ["sweep.py"],
+    imports = ["../../.."],
+    visibility = ["//factory/cli:__subpackages__"],
+    deps = [
+        ":bazel_servers",
+        ":model",
+        ":process_group",
+        ":runfiles",
+        "//factory/cli/src/tbhbdev/alpha/agent/decisions:run_state",
+        "//factory/cli/src/tbhbdev/alpha/agent/decisions:runfiles_names",
+        "//factory/cli/src/tbhbdev/alpha/agent/run_host:bazel_cache",
     ],
 )

@@ -91,6 +91,23 @@ def locked(path: Path) -> Generator[None]:
         yield
 
 
+@contextmanager
+def try_lock(path: Path) -> Generator[bool]:
+    """Check the supervisor's lock without waiting or creating its file."""
+    try:
+        fd = os.open(path, os.O_RDWR | os.O_NOFOLLOW | os.O_NONBLOCK)
+    except FileNotFoundError:
+        yield True
+        return
+    with os.fdopen(fd, "a") as lock:
+        try:
+            fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            free = True
+        except BlockingIOError:
+            free = False
+        yield free
+
+
 class RunFiles:
     def __init__(self, root: Path, name: str) -> None:
         if not NAME.fullmatch(name):

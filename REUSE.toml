@@ -7,6 +7,8 @@ version = 1
 path = [
   "factory/event-gateway/go.mod",
   "factory/event-gateway/go.sum",
+  "factory/go-vanity/pnpm-lock.yaml",
+  "factory/go-vanity/worker-configuration.d.ts",
   "factory/github-metrics/go.mod",
   "factory/github-metrics/go.sum",
   "go.work",
