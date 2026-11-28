@@ -18,6 +18,18 @@ genrule(
 )
 
 cli_py_test(
+    name = "test_command",
+    srcs = ["test_command.py"],
+    imports = ["../.."],
+    deps = [
+        "//factory/cli/src/tbhbdev/alpha:command",
+        "//factory/cli/src/tbhbdev/alpha:command_modules",
+        "//factory/cli/tests:conftest",
+        "@cli_pip//pytest",
+    ],
+)
+
+cli_py_test(
     name = "test_content_issues",
     srcs = ["test_content_issues.py"],
     imports = ["../.."],
@@ -48,6 +60,19 @@ cli_py_test(
     imports = ["../.."],
     deps = [
         "//factory/cli/src/tbhbdev/alpha:pre_push_guard",
+        "//factory/cli/src/tbhbdev/alpha:preflight_gate",
+        "//factory/cli/tests:conftest",
+        "@cli_pip//pytest",
+    ],
+)
+
+cli_py_test(
+    name = "test_preflight_gate_io",
+    srcs = ["test_preflight_gate_io.py"],
+    imports = ["../.."],
+    deps = [
+        "//factory/cli/src/tbhbdev/alpha:preflight_gate",
+        "//factory/cli/src/tbhbdev/alpha:repo",
         "//factory/cli/tests:conftest",
         "@cli_pip//pytest",
     ],
@@ -85,6 +110,31 @@ cli_py_test(
     deps = [
         "//factory/cli/src/tbhbdev/alpha:tool_pins",
         "//factory/cli/tests:conftest",
+        "@cli_pip//pytest",
+    ],
+)
+
+cli_py_test(
+    name = "test_gh_app_args",
+    srcs = ["test_gh_app_args.py"],
+    imports = ["../.."],
+    deps = [
+        "//factory/cli/src/tbhbdev/alpha:gh_app_args",
+        "//factory/cli/tests:conftest",
+        "@cli_pip//pytest",
+    ],
+)
+
+cli_py_test(
+    name = "test_tool_pins_io",
+    srcs = ["test_tool_pins_io.py"],
+    imports = ["../.."],
+    deps = [
+        "//factory/cli/src/tbhbdev/alpha:tool_pins",
+        "//factory/cli/src/tbhbdev/alpha/agent:host_tools",
+        "//factory/cli/src/tbhbdev/alpha/agent:model",
+        "//factory/cli/tests:conftest",
+        "//factory/cli/tests:fake_tool",
         "@cli_pip//pytest",
     ],
 )

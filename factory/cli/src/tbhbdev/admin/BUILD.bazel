@@ -31,6 +31,10 @@ cli_py_library(
     srcs = ["policy.py"],
     imports = ["../.."],
     visibility = ["//factory/cli:__subpackages__"],
+    deps = [
+        ":policy_paths",
+        ":policy_ruleset",
+    ],
 )
 
 cli_py_library(
@@ -43,9 +47,11 @@ cli_py_library(
         ":approvals",
         ":audit",
         ":policy",
+        ":policy_paths",
         "//factory/cli/src/tbhbdev:github_tls",
         "//factory/cli/src/tbhbdev:secrets",
-        "//factory/cli/src/tbhbdev/alpha:gh_app",
+        "//factory/cli/src/tbhbdev/alpha:gh_app_api",
+        "//factory/cli/src/tbhbdev/alpha:gh_app_runtime",
         "@cli_pip//httpx2",
     ],
 )
@@ -68,7 +74,7 @@ cli_py_library(
         ":audit",
         ":request",
         "//factory/cli/src/tbhbdev:userconfig",
-        "//factory/cli/src/tbhbdev/alpha:gh_app",
+        "//factory/cli/src/tbhbdev/alpha:gh_app_args",
     ],
 )
 
@@ -77,5 +83,20 @@ cli_py_library(
     srcs = ["approvals.py"],
     imports = ["../.."],
     visibility = ["//factory/cli:__subpackages__"],
-    deps = [":policy"],
+    deps = [":policy_ruleset"],
+)
+
+cli_py_library(
+    name = "policy_paths",
+    srcs = ["policy_paths.py"],
+    imports = ["../.."],
+    visibility = ["//factory/cli:__subpackages__"],
+)
+
+cli_py_library(
+    name = "policy_ruleset",
+    srcs = ["policy_ruleset.py"],
+    imports = ["../.."],
+    visibility = ["//factory/cli:__subpackages__"],
+    deps = [":policy_paths"],
 )

@@ -23,7 +23,7 @@ from tbhbdev import cli
 from tbhbdev.alpha import (
     brief,
     close,
-    gh_app,
+    gh_app_command,
     pre_push_guard,
     repo_bootstrap,
     review,
@@ -50,11 +50,6 @@ USAGE = alpha.USAGE.format(prog="tbhbdev alpha")
 
 def test_alpha_is_a_tool() -> None:
     assert cli.TOOLS["alpha"] is alpha.main
-
-
-def test_every_command_resolves_to_a_callable() -> None:
-    for name in alpha.COMMANDS:
-        assert callable(alpha.COMMANDS[name])
 
 
 def test_usage_says_the_commands_are_interim() -> None:
@@ -137,7 +132,7 @@ def test_dispatch(monkeypatch: pytest.MonkeyPatch) -> None:
     [
         ("agent", agent, ["status", "sample"], "direct"),
         ("brief", brief, ["new", "demo"], "direct"),
-        ("gh-app", gh_app, ["--help"], "positional"),
+        ("gh-app", gh_app_command, ["--help"], "positional"),
         ("guard-agent-model", guard_agent_model, [], "hook"),
         ("guard-gh-config-dir", guard_gh_config_dir, [], "hook"),
         ("guard-gh-poll", guard_gh_poll, [], "hook"),
@@ -163,11 +158,7 @@ def test_command_wiring(
 ) -> None:
     assert f"\n  {name} " in USAGE
     run = Mock(return_value=7)
-    if style == "direct":
-        assert alpha.COMMANDS[name] is vars(module)["main"]
-        monkeypatch.setitem(alpha.COMMANDS, name, run)
-    else:
-        monkeypatch.setattr(module, "main", run)
+    monkeypatch.setattr(module, "main", run)
     assert alpha.main([name, *args], "p") == 7
     prog = f"p {name}"
     if style == "hook":

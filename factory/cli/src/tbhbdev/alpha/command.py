@@ -3,57 +3,16 @@
 Alpha commands are interim. They may change or go away without notice, and
 only the tbhb-dev harness hooks and agents in tbhb-dev repositories should
 call them.
-
-The harness and Git hooks run on every tool call and commit, so every command
-module is imported lazily only when its subcommand is selected.
 """
 
-from __future__ import annotations
-
+import importlib
 import os
 import sys
-lazy from collections.abc import MutableMapping
+from functools import partial
+from typing import TYPE_CHECKING, cast
 
-from tbhbdev.command_table import Command, CommandTable
-lazy from tbhbdev.alpha import (
-    brief,
-    close,
-    gh_app,
-    gh_shim,
-    pre_push_guard,
-    repo_bootstrap,
-    review,
-    run_stop_hook,
-    session_context,
-    verify_range,
-    version_check,
-    worktree_sweep,
-)
-lazy from tbhbdev.alpha.agent import command as agent_command
-lazy from tbhbdev.alpha.guard import (
-    agent_model as guard_agent_model,
-)
-lazy from tbhbdev.alpha.guard import (
-    gh_config_dir as guard_gh_config_dir,
-)
-lazy from tbhbdev.alpha.guard import (
-    ops_no_lazy_stop as guard_ops_no_lazy_stop,
-)
-lazy from tbhbdev.alpha.guard import (
-    sendmessage_clock as guard_sendmessage_clock,
-)
-lazy from tbhbdev.alpha.guard import (
-    state as guard_state,
-)
-lazy from tbhbdev.alpha.guard.gh_poll import command as guard_gh_poll
-lazy from tbhbdev.alpha.guard.gh_pr import command as guard_gh_pr
-lazy from tbhbdev.alpha.guard.op import command as guard_op
-lazy from tbhbdev.alpha.guard.scripts import command as guard_scripts
-lazy from tbhbdev.alpha.identity import dispatcher as identity_dispatcher
-lazy from tbhbdev.alpha.install import command as install_command_module
-lazy from tbhbdev.alpha.merge import command as merge_command_module
-lazy from tbhbdev.alpha.monorepo import command as monorepo_command_module
-lazy from tbhbdev.alpha.pull_request import command as pull_request_command
+if TYPE_CHECKING:
+    from collections.abc import Callable
 
 __all__ = ["main"]
 
@@ -117,111 +76,102 @@ commands:
 """
 
 
-def identity_command(argv: list[str], _prog: str) -> int:
-    return identity_dispatcher.run(argv, os.environ)
+COMMAND_MODULES = {
+    "identity": ("tbhbdev.alpha.identity.dispatcher", "run"),
+    "guard-gh-pr": ("tbhbdev.alpha.guard.gh_pr.command", "main"),
+    "guard-op": ("tbhbdev.alpha.guard.op.command", "main"),
+    "state-guard": ("tbhbdev.alpha.guard.state", "main"),
+    "session-context": ("tbhbdev.alpha.session_context", "main"),
+    "worktree-sweep": ("tbhbdev.alpha.worktree_sweep", "main"),
+    "guard-gh-poll": ("tbhbdev.alpha.guard.gh_poll.command", "main"),
+    "guard-gh-config-dir": ("tbhbdev.alpha.guard.gh_config_dir", "main"),
+    "guard-sendmessage-clock": ("tbhbdev.alpha.guard.sendmessage_clock", "main"),
+    "guard-ops-no-lazy-stop": ("tbhbdev.alpha.guard.ops_no_lazy_stop", "main"),
+    "guard-scripts": ("tbhbdev.alpha.guard.scripts.command", "main"),
+    "guard-agent-model": ("tbhbdev.alpha.guard.agent_model", "main"),
+    "gh-shim": ("tbhbdev.alpha.gh_shim", "main"),
+    "agent-env": ("tbhbdev.alpha.gh_shim", "agent_env"),
+    "pr": ("tbhbdev.alpha.pull_request.command", "main"),
+    "review": ("tbhbdev.alpha.review", "main"),
+    "issue": ("tbhbdev.alpha.close", "main"),
+    "gh-app": ("tbhbdev.alpha.gh_app_command", "main"),
+    "repo": ("tbhbdev.alpha.repo_bootstrap", "main"),
+    "merge": ("tbhbdev.alpha.merge.command", "main"),
+    "monorepo": ("tbhbdev.alpha.monorepo.command", "main"),
+    "verify-range": ("tbhbdev.alpha.verify_range", "main"),
+    "version-check": ("tbhbdev.alpha.version_check", "main"),
+    "install": ("tbhbdev.alpha.install.command", "main"),
+    "pre-push-guard": ("tbhbdev.alpha.pre_push_guard", "main"),
+    "agent": ("tbhbdev.alpha.agent.command", "main"),
+    "run-stop-hook": ("tbhbdev.alpha.run_stop_hook", "main"),
+    "brief": ("tbhbdev.alpha.brief", "main"),
+}
 
 
-def guard_command(_argv: list[str], _prog: str) -> int:
-    return guard_gh_pr.main()
+def _run(name: str, prog: str, /, *args: object, **kwargs: object) -> int:
+    module_name, function_name = COMMAND_MODULES[name]
+    try:
+        module = importlib.import_module(module_name)
+    except ModuleNotFoundError as exc:
+        missing = exc.name
+        if missing is None or not (
+            module_name == missing or module_name.startswith(f"{missing}.")
+        ):
+            raise
+        sys.stderr.write(f"{prog}: cannot load module {module_name!r}\n")
+        return 1
+    command = cast("Callable[..., int]", getattr(module, function_name))
+    return command(*args, **kwargs)
 
 
-def guard_op_command(_argv: list[str], _prog: str) -> int:
-    return guard_op.main()
+def _standard(name: str, argv: list[str], prog: str) -> int:
+    return _run(name, prog, argv, prog)
 
 
-def state_guard_command(_argv: list[str], _prog: str) -> int:
-    return guard_state.main()
+def _hook(name: str, _argv: list[str], prog: str) -> int:
+    return _run(name, prog)
 
 
-def session_context_command(_argv: list[str], _prog: str) -> int:
-    return session_context.main()
+def _keyword_prog(name: str, argv: list[str], prog: str) -> int:
+    return _run(name, prog, argv, prog=prog)
 
 
-def poll_command(_argv: list[str], _prog: str) -> int:
-    return guard_gh_poll.main()
-
-
-def sendmessage_clock_command(_argv: list[str], _prog: str) -> int:
-    return guard_sendmessage_clock.main()
-
-
-def ops_no_lazy_stop_command(_argv: list[str], _prog: str) -> int:
-    return guard_ops_no_lazy_stop.main()
-
-
-def gh_config_dir_command(_argv: list[str], _prog: str) -> int:
-    return guard_gh_config_dir.main()
-
-
-def agent_model_command(_argv: list[str], _prog: str) -> int:
-    return guard_agent_model.main()
-
-
-def scripts_command(_argv: list[str], _prog: str) -> int:
-    return guard_scripts.main()
+def identity_command(argv: list[str], prog: str) -> int:
+    return _run("identity", prog, argv, os.environ)
 
 
 def pr(argv: list[str], prog: str) -> int:
     # Every close goes through close.py's checks: agent session, open PR, ledger.
     if argv[:1] == ["close"]:
-        return close.main(["pr", *argv], prog=prog)
-    return pull_request_command.main(argv, prog=prog)
-
-
-def review_command(argv: list[str], prog: str) -> int:
-    return review.main(argv, prog=prog)
+        return _run("issue", prog, ["pr", *argv], prog=prog)
+    return _run("pr", prog, argv, prog=prog)
 
 
 def issue(argv: list[str], prog: str) -> int:
-    return close.main(["issue", *argv], prog=prog)
+    return _run("issue", prog, ["issue", *argv], prog=prog)
 
 
-def gh_app_command(argv: list[str], prog: str) -> int:
-    return gh_app.main(argv, prog)
-
-
-def repo_command(argv: list[str], prog: str) -> int:
-    return repo_bootstrap.main(argv, prog=prog)
-
-
-def merge(argv: list[str], prog: str) -> int:
-    return merge_command_module.main(argv, prog=prog)
-
-
-def monorepo_command(argv: list[str], prog: str) -> int:
-    return monorepo_command_module.main(argv, prog)
-
-
-COMMANDS: MutableMapping[str, Command] = CommandTable(
+COMMANDS: dict[str, Callable[[list[str], str], int]] = {
+    name: partial(_standard, name) for name in COMMAND_MODULES
+}
+COMMANDS.update(
     {
-        "identity": lambda: identity_command,
-        "guard-gh-pr": lambda: guard_command,
-        "guard-op": lambda: guard_op_command,
-        "state-guard": lambda: state_guard_command,
-        "session-context": lambda: session_context_command,
-        "worktree-sweep": lambda: worktree_sweep.main,
-        "guard-gh-poll": lambda: poll_command,
-        "guard-gh-config-dir": lambda: gh_config_dir_command,
-        "guard-sendmessage-clock": lambda: sendmessage_clock_command,
-        "guard-ops-no-lazy-stop": lambda: ops_no_lazy_stop_command,
-        "guard-scripts": lambda: scripts_command,
-        "guard-agent-model": lambda: agent_model_command,
-        "gh-shim": lambda: gh_shim.main,
-        "agent-env": lambda: gh_shim.agent_env,
-        "pr": lambda: pr,
-        "review": lambda: review_command,
-        "issue": lambda: issue,
-        "gh-app": lambda: gh_app_command,
-        "repo": lambda: repo_command,
-        "merge": lambda: merge,
-        "monorepo": lambda: monorepo_command,
-        "verify-range": lambda: verify_range.main,
-        "version-check": lambda: version_check.main,
-        "install": lambda: install_command_module.main,
-        "pre-push-guard": lambda: pre_push_guard.main,
-        "agent": lambda: agent_command.main,
-        "run-stop-hook": lambda: run_stop_hook.main,
-        "brief": lambda: brief.main,
+        "identity": identity_command,
+        "guard-gh-pr": partial(_hook, "guard-gh-pr"),
+        "guard-op": partial(_hook, "guard-op"),
+        "state-guard": partial(_hook, "state-guard"),
+        "session-context": partial(_hook, "session-context"),
+        "guard-gh-poll": partial(_hook, "guard-gh-poll"),
+        "guard-gh-config-dir": partial(_hook, "guard-gh-config-dir"),
+        "guard-sendmessage-clock": partial(_hook, "guard-sendmessage-clock"),
+        "guard-ops-no-lazy-stop": partial(_hook, "guard-ops-no-lazy-stop"),
+        "guard-scripts": partial(_hook, "guard-scripts"),
+        "guard-agent-model": partial(_hook, "guard-agent-model"),
+        "pr": pr,
+        "review": partial(_keyword_prog, "review"),
+        "issue": issue,
+        "repo": partial(_keyword_prog, "repo"),
+        "merge": partial(_keyword_prog, "merge"),
     }
 )
 

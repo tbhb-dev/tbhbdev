@@ -174,7 +174,18 @@ def outside_history(
     return history_git(directory, *arguments, revisions=revisions).strip()
 
 
-def history_git(directory: Path, *args: str, revisions: str | None = None) -> str:
+def remote_git(directory: Path, *args: str, token: str | None) -> str:
+    """Use the same protected metadata for authenticated remote Git operations."""
+    env = host_tools.git_token_env(token)
+    return history_git(directory, "--no-replace-objects", *args, extra_env=env).strip()
+
+
+def history_git(
+    directory: Path,
+    *args: str,
+    revisions: str | None = None,
+    extra_env: dict[str, str] | None = None,
+) -> str:
     """Run a Git history query with the protected repository metadata."""
     env = dict.fromkeys(
         (
@@ -192,6 +203,7 @@ def history_git(directory: Path, *args: str, revisions: str | None = None) -> st
         GIT_TERMINAL_PROMPT="0",
         PATH=host_tools.search(),
     )
+    env.update(extra_env or {})
     return subprocess.run(  # nosec B603
         [
             host_tools.resolve("git"),
@@ -252,7 +264,10 @@ def publication(root: Path, workspace: Path, commit: str) -> Generator[Path]:
         objects.mkdir(parents=True)
         (objects / "alternates").write_text(str(workspace / ".git" / "objects") + "\n")
         (directory / "config").write_text(
-            "[core]\nrepositoryformatversion = 0\nbare = true\n"
+            "[core]\nrepositoryformatversion = 0\nbare = true\nfsmonitor = false\n"
+            "[http]\nfollowRedirects = false\n"
+            "[transfer]\nfsckObjects = true\n"
+            "[user]\nname = Run launcher\nemail = run-launcher\n"
         )
         (directory / "HEAD").write_text(commit + "\n")
         yield directory

@@ -3,7 +3,7 @@
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
-from tbhbdev.admin.policy import RULESET_KEYS
+from tbhbdev.admin.policy_ruleset import RULESET_KEYS
 
 if TYPE_CHECKING:
     from collections.abc import Sequence

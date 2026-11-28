@@ -41,6 +41,7 @@ from tbhbdev.alpha.agent import (
     process_group,
     push,
     render,
+    rescue,
     runfiles,
     shims,
     worktree_checkout,
@@ -547,9 +548,14 @@ def test_finish_orders_cleanup_auth_agent_index_and_atomic_rc(
     )
     runtime = HostRuntime(run, prepared, failure)
     runtime.patch(monkeypatch)
+    observed = Mock()
+
+    def publish(*_args: object) -> None:
+        observed(*(run.files.path(name).read_text() for name in ("phase", "rc")))
+
+    monkeypatch.setattr(rescue, "on_fault", publish)
     assert host_execution.execute(run, "example") == code
-    assert run.files.path("rc").read_text() == f"{code}\n"
-    assert run.files.path("phase").read_text() == "ended"
+    observed.assert_called_once_with("ended", f"{code}\n")
     assert run.files.path("request.json").stat().st_mode & 0o777 == 0o600
     assert "example-key" not in run.files.path("request.json").read_text()
     if failure in (None, "auth"):

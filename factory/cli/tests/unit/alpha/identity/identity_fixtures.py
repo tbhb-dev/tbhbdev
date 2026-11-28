@@ -332,25 +332,55 @@ needs_prek = pytest.mark.skipif(
 )
 
 
+@pytest.fixture(scope="session")
+def wired_seed(tmp_path_factory: pytest.TempPathFactory, fake_bin: Path) -> Path:
+    """A tbhb-dev repository with `tbhbdev alpha install`'s git hooks, built once."""
+    base = tmp_path_factory.mktemp("wired-seed")
+    (base / "home").mkdir()
+    with pytest.MonkeyPatch.context() as patch:
+        # The install writes the user's shims and harness configs, and prek its
+        # cache, under HOME: they belong to the seed, not to the cases.
+        patch.setenv("HOME", str(base / "home"))
+        patch.setenv("XDG_CONFIG_HOME", str(base / "xdg"))
+        patch.setenv("PATH", f"{fake_bin}{os.pathsep}{os.environ['PATH']}")
+        patch.setenv("GIT_CEILING_DIRECTORIES", str(base))
+        for who in ("AUTHOR", "COMMITTER"):
+            patch.setenv(f"GIT_{who}_NAME", "tbhb.dev Agent")
+            patch.setenv(f"GIT_{who}_EMAIL", "agent@tonyburns.net")
+        path = init_repo(base / "wired")
+        (path / ".pre-commit-config.yaml").write_text(
+            yaml.safe_dump(PREK_CONFIG), encoding="utf-8"
+        )
+        stage(path, "base.txt")
+        run_git(path, "add", ".pre-commit-config.yaml")
+        run_git(path, "commit", "-q", "-m", "init")
+        done = subprocess.run(
+            ["tbhbdev", "alpha", "install"],
+            capture_output=True,
+            text=True,
+            check=False,
+            cwd=path,
+            env=hook_env(),
+        )
+        assert done.returncode == 0, done.stderr
+    # A case copies this tree to another path: the hooks must stay executable,
+    # and nothing the install wrote may name the seed.
+    hooks = [p for p in (path / ".git" / "hooks").iterdir() if p.suffix != ".sample"]
+    assert hooks
+    assert all(os.access(p, os.X_OK) for p in hooks), hooks
+    seed = str(base).encode()
+    files = [p for p in (path / ".git").rglob("*") if p.is_file()]
+    named = [p for p in files if seed in p.read_bytes()]
+    assert not named, named
+    return path
+
+
 @pytest.fixture
-def wired(isolated: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
-    """A tbhb-dev repository with `tbhbdev alpha install`'s git hooks."""
-    path = init_repo(isolated / "wired")
-    (path / ".pre-commit-config.yaml").write_text(
-        yaml.safe_dump(PREK_CONFIG), encoding="utf-8"
-    )
-    stage(path, "base.txt")
-    run_git(path, "add", ".pre-commit-config.yaml")
-    run_git(path, "commit", "-q", "-m", "init")
+def wired(isolated: Path, monkeypatch: pytest.MonkeyPatch, wired_seed: Path) -> Path:
+    """A copy of the seed repository, with its git hooks, in the case's directory."""
+    path = isolated / "wired"
+    shutil.copytree(wired_seed, path, symlinks=True)
     monkeypatch.chdir(path)
-    done = subprocess.run(
-        ["tbhbdev", "alpha", "install"],
-        capture_output=True,
-        text=True,
-        check=False,
-        env=hook_env(),
-    )
-    assert done.returncode == 0, done.stderr
     return path
 
 

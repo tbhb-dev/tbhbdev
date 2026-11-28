@@ -14,6 +14,7 @@ cli_py_test(
         "//factory/cli/src/tbhbdev/alpha/identity:trailers",
         "//factory/cli/src/tbhbdev/alpha/identity/commit:hooks",
         "//factory/cli/tests:conftest",
+        "//factory/cli/tests/integration/alpha:conftest",
         "@cli_pip//pytest",
     ],
 )
