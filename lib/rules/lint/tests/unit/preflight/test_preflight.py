@@ -181,7 +181,9 @@ def _record_ran(
 ) -> list[str]:
     ran: list[str] = []
 
-    async def fake_check(name: str, _: preflight.Revisions, _scratch: Path) -> None:
+    async def fake_check(
+        name: str, _: preflight.Revisions, _scratch: Path, **_kwargs: object
+    ) -> None:
         ran.append(name)
         if fail and name in fail:
             raise preflight.CheckError(name)
