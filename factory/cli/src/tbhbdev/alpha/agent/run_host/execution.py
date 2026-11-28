@@ -6,7 +6,7 @@ import os
 import shutil
 import subprocess  # nosec B404
 import time
-from contextlib import ExitStack
+from contextlib import ExitStack, suppress
 from pathlib import Path
 
 from tbhbdev.alpha.agent import (
@@ -29,6 +29,8 @@ from tbhbdev.alpha.agent.run_host import (
 )
 from tbhbdev.alpha.agent.run_host.state import Prepared, Run, RunInterruptedError
 
+SWEEP_TIMEOUT_SECONDS = 60
+
 
 def execute(run: Run, text: str, *, preflight_only: bool = False) -> int:
     """Keep cleanup protected until the completion record is durable."""
@@ -42,7 +44,39 @@ def execute(run: Run, text: str, *, preflight_only: bool = False) -> int:
                     run.request.max_concurrent_runs,
                 )
             )
+            # A slot can fill after the driver's probe. Sweep only after the
+            # host has made its atomic capacity decision.
+            _sweep_before_launch(run)
         return _execute(run, text, stack, preflight_only=preflight_only)
+
+
+def _sweep_before_launch(run: Run) -> None:
+    program = run.host.tbhbdev or str(run.home / ".local/bin/tbhbdev")
+    try:
+        child = process_group.launch(
+            (program, "alpha", "agent", "sweep"),
+            env=dict(os.environ),
+            cwd=str(run.home),
+            streams=(subprocess.DEVNULL, subprocess.DEVNULL, subprocess.DEVNULL),
+        )
+        try:
+            status = child.wait(timeout=SWEEP_TIMEOUT_SECONDS)
+        except BaseException:
+            with process_group.ignore_signals():
+                process_group.stop_started(
+                    child.pid, run.settings.kill_grace_seconds, child.poll
+                )
+            raise
+    except subprocess.TimeoutExpired:
+        failure = f"timed out after {SWEEP_TIMEOUT_SECONDS} seconds"
+    except OSError, ValueError, subprocess.SubprocessError:
+        failure = "could not run"
+    else:
+        if status == 0:
+            return
+        failure = f"failed (exit {status})"
+    with suppress(OSError):
+        run.files.write("log", f"agent sweep {failure}\n")
 
 
 def _execute(

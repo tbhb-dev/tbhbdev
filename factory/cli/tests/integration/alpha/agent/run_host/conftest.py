@@ -24,6 +24,7 @@ from tbhbdev.alpha.agent import (
     push,
     runfiles,
 )
+from tbhbdev.alpha.agent.run_host import execution
 
 
 @pytest.fixture
@@ -71,6 +72,7 @@ def fake_secrets(
     monkeypatch.setenv("GIT_CONFIG_GLOBAL", "/dev/null")
     isolate_host_git(tmp_path, monkeypatch)
     monkeypatch.setattr(admission, "ROOT", tmp_path / "admission")
+    monkeypatch.setattr(execution, "_sweep_before_launch", constant(None))
     monkeypatch.setattr(secrets, "read", read)
     monkeypatch.setattr(credentials, "installation_token", installation)
 

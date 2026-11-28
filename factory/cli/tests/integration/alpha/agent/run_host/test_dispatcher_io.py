@@ -128,9 +128,10 @@ from pathlib import Path
 from agent_host_example import make_run
 from run_host_fixtures import harness_without_push, preparation
 from tbhbdev.alpha.agent import admission, host_tools, process_group, push, runfiles
-from tbhbdev.alpha.agent.run_host import dispatcher, intake
+from tbhbdev.alpha.agent.run_host import dispatcher, execution, intake
 binary = str(Path(sys.argv[2]) / "host-bin" / "true")
 host_tools.resolve = lambda *args, **kwargs: binary
+execution._sweep_before_launch = lambda run: None
 
 push.run = harness_without_push
 run = make_run(Path(sys.argv[2]))
