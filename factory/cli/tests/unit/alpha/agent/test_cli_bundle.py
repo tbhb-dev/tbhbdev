@@ -19,6 +19,8 @@ if TYPE_CHECKING:
 
 COMMIT = "0123456789abcdef0123456789abcdef01234567"
 WHEEL = "https://example.test/telemetry-0-py3-none-any.whl"
+VCS_URL = "https://example.test/vcs.git"
+PREFIXED_VCS_URL = "git+https://example.test/prefixed.git"
 
 
 def write_installation(root: Path) -> list[PathDistribution]:
@@ -35,6 +37,14 @@ def write_installation(root: Path) -> list[PathDistribution]:
         "telemetry-0.dist-info/direct_url.json": json.dumps(
             {"url": WHEEL, "archive_info": {}}
         ).encode(),
+        "vcs-0.dist-info/METADATA": b"Name: vcs\nVersion: 0\n",
+        "vcs-0.dist-info/direct_url.json": json.dumps(
+            {"url": VCS_URL, "vcs_info": {"commit_id": COMMIT}}
+        ).encode(),
+        "prefixed-0.dist-info/METADATA": b"Name: prefixed\nVersion: 0\n",
+        "prefixed-0.dist-info/direct_url.json": json.dumps(
+            {"url": PREFIXED_VCS_URL, "vcs_info": {"commit_id": COMMIT}}
+        ).encode(),
     }
     for name, content in files.items():
         path = root / name
@@ -44,6 +54,8 @@ def write_installation(root: Path) -> list[PathDistribution]:
         PathDistribution(root / "tbhbdev-0.dist-info"),
         PathDistribution(root / "plain-1.0.dist-info"),
         PathDistribution(root / "telemetry-0.dist-info"),
+        PathDistribution(root / "vcs-0.dist-info"),
+        PathDistribution(root / "prefixed-0.dist-info"),
     ]
 
 
@@ -70,4 +82,12 @@ def test_installed_packs_the_recorded_build(
         payload = archive.extractfile("requirements.txt")
         assert payload is not None
         with payload:
-            assert payload.read() == f"plain==1.0\ntelemetry @ {WHEEL}\n".encode()
+            assert (
+                payload.read()
+                == (
+                    f"plain==1.0\n"
+                    f"prefixed @ {PREFIXED_VCS_URL}@{COMMIT}\n"
+                    f"telemetry @ {WHEEL}\n"
+                    f"vcs @ git+{VCS_URL}@{COMMIT}\n"
+                ).encode()
+            )

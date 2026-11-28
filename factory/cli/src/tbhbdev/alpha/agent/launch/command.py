@@ -64,7 +64,8 @@ def _execute(args: argparse.Namespace) -> int:
     schema_text = None if args.schema is None else Path(args.schema).read_text()
     if schema_text is not None:
         brief.check_schema(schema_text)
-    bundle, run.cli_commit, run.cli_sha256 = cli_bundle.installed()
+    bundle, run.cli_commit, digest = cli_bundle.installed()
+    run.cli_sha256 = digest
     deadline = time.monotonic() + loaded.launch_wait_seconds
     with metadata.launch_lock():
         if review:
@@ -75,7 +76,7 @@ def _execute(args: argparse.Namespace) -> int:
     try:
         ship.send(loaded, run.host, run, bundle, inputs, deadline - time.monotonic())
         cmd = bootstrap.start(
-            run.name, loaded.sockets_dir, run.host.name, steer=args.steer
+            run.name, loaded.sockets_dir, run.host.name, digest, steer=args.steer
         )
         owner = transport.Stdin(run.owner)
         transport.call(

@@ -78,11 +78,26 @@ uv pip install --python "$cli/venv/bin/python" -r "$cli/lib/requirements.txt"
 
 
 def start(
-    name: str, sockets_dir: str, host_name: str, *, steer: bool = False
+    name: str,
+    sockets_dir: str,
+    host_name: str,
+    sha256: str,
+    *,
+    steer: bool = False,
 ) -> tuple[str, ...]:
     cli = _cli_path(name)
     command = shlex.join(
-        ("alpha", "agent", "run", name, "--host", host_name, "--owned")
+        (
+            "alpha",
+            "agent",
+            "run",
+            name,
+            "--host",
+            host_name,
+            "--owned",
+            "--cli-sha256",
+            sha256,
+        )
     )
     if steer:
         command += " --steer"
