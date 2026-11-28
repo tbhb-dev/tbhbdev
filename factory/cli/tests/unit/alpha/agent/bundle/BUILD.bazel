@@ -26,7 +26,9 @@ cli_py_test(
     srcs = ["test_run.py"],
     imports = ["../../../.."],
     deps = [
-        "//factory/cli/src/tbhbdev/alpha/agent:model",
+        "//factory/cli/src/tbhbdev:__init__",
+        "//factory/cli/src/tbhbdev:version",
+        "//factory/cli/src/tbhbdev/alpha/agent:runfiles",
         "//factory/cli/src/tbhbdev/alpha/agent/bundle:run",
         "//factory/cli/tests:conftest",
         "@cli_pip//pytest",

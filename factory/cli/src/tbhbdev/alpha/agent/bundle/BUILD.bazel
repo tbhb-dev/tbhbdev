@@ -26,10 +26,25 @@ cli_py_library(
 )
 
 cli_py_library(
+    name = "arguments",
+    srcs = ["arguments.py"],
+    extra_deps = [":__init__"],
+    imports = ["../../../.."],
+    visibility = ["//factory/cli:__subpackages__"],
+)
+
+cli_py_library(
     name = "run",
     srcs = ["run.py"],
     extra_deps = [":__init__"],
     imports = ["../../../.."],
     visibility = ["//factory/cli:__subpackages__"],
-    deps = ["//factory/cli/src/tbhbdev/alpha/agent:model"],
+    deps = [
+        ":arguments",
+        "//factory/cli/src/tbhbdev:__init__",
+        "//factory/cli/src/tbhbdev:version",
+        "//factory/cli/src/tbhbdev/alpha/agent:model",
+        "//factory/cli/src/tbhbdev/alpha/agent/run_host:dispatcher",
+        "//factory/cli/src/tbhbdev/alpha/agent/run_host:intake",
+    ],
 )
