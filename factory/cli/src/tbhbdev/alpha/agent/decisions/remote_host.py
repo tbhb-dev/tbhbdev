@@ -43,13 +43,15 @@ def check_slot(host: Host, profile: Profile) -> str:
 PRESSURE_CHECK = "case \"$q\" in ''|*[!0-9.]*) q=-;; esac\n"
 
 
-def limits() -> str:
+def limits(host: Host | None = None) -> str:
     """Print one line of host numbers: load, CPUs, then memory and swap in KiB.
 
     The fields are the 1-minute load, the logical CPU count, MemTotal,
     MemAvailable, swap total, swap used and the memory pressure. The pressure
     is Linux's `some avg10` or macOS's pressure level, and `-` where the host
-    can't say, such as a kernel without /proc/pressure/memory.
+    can't say, such as a kernel without /proc/pressure/memory. When HOST is
+    given, prints the count of admitted runs on a second line if the host's
+    tbhbdev supports it.
     """
     linux = (
         "read l _ < /proc/loadavg || exit 1\n"
@@ -83,10 +85,18 @@ def limits() -> str:
         'printf "%s %s %d %d %d %d %s\\n", x[2], c, m/1024, p*z/1024, '
         "w[2]*1024, w[4]*1024, q}'\n"
     )
+    admitted = ""
+    if host is not None:
+        command = shlex.join(("alpha", "agent", "admitted", "--", *host.accounts))
+        admitted = (
+            f"a=$({program(host)} {command} 2>/dev/null) || a=\n"
+            "case \"$a\" in ''|*[!0-9]*) ;; *) printf '%s\\n' \"$a\";; esac\n"
+        )
     return (
         "# tbhbdev-limits\n"
         + PREFIX
         + f'if test "$(uname -s)" = Darwin; then\n{macos}else\n{linux}fi\n'
+        + admitted
     )
 
 

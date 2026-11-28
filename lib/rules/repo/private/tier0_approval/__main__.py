@@ -144,6 +144,47 @@ def matches(path: str, patterns: str) -> bool:
     )
 
 
+def tier(
+    paths: list[str], author: str, commits: list[str], env: Mapping[str, str]
+) -> tuple[int, str]:
+    # Pure: the diff's paths and the commit authors at the head set the tier.
+    if any(matches(path, env.get("TIER2_PATHS", "")) for path in paths):
+        return 2, "tier2-path"
+    bot = env.get("RENOVATE_LOGIN", "").casefold()
+    if bot and commits and {author.casefold(), *map(str.casefold, commits)} == {bot}:
+        return 0, "renovate"
+    if all(tier0_path(path, env) for path in paths):
+        return 0, "prose"
+    return 1, "default"
+
+
+def commit_authors(repo: str, number: object) -> list[str]:
+    response = api(repo, f"pulls/{number}/commits", *PAGINATE)
+    pages = cast("list[list[Record]]", response)  # pragma: no mutate
+    # A null GitHub author (an unlinked email) gives "", which matches no bot.
+    return [
+        str(record(entry["author"] or {}).get("login", ""))
+        for page in pages
+        for entry in page
+    ]
+
+
+def classify(
+    repo: str,
+    number: object,
+    paths: list[str],
+    author: str,
+    env: Mapping[str, str],
+) -> tuple[int, str]:
+    try:
+        authors: list[str] | None = commit_authors(repo, number)
+    except KeyError, TypeError, ValueError, OSError, subprocess.SubprocessError:
+        authors = None
+    commits: list[str] = [] if authors is None else authors
+    value, reason = tier(paths, author, commits, env)
+    return value, "commits-unavailable" if authors is None else reason
+
+
 def record(value: object) -> Record:
     return cast("Record", value)  # pragma: no mutate
 
@@ -195,6 +236,10 @@ def evaluate(
     if not contexts_pass(repo, head, env["CHECK_WORKFLOWS"]):
         raise HoldError("checks-unsuccessful")
     paths, regular_text = changed_paths(repo, base, head)
+    author = cast("str", record(pr["user"])["login"])  # pragma: no mutate
+    result["tier"], result["tier_reason"] = classify(
+        repo, result["pr"], paths, author, env
+    )
     result["files"] = len(paths)
     if not 0 < len(paths) <= int(env["MAX_FILES"]):
         raise HoldError("file-count")
@@ -255,6 +300,7 @@ def require_current(pr: Record, head: str, base: str) -> None:
 
 def decide(run: Record, env: Mapping[str, str]) -> Record:
     result: Record = {"decision": "hold", "pr": None, "head_sha": "", "files": 0}
+    result |= {"tier": None, "tier_reason": ""}
     repo = env["GITHUB_REPOSITORY"]
     try:
         endpoint, base = evaluate(repo, run, env, result)
@@ -282,7 +328,8 @@ def main() -> None:
     Path(ARTIFACT).write_text(f"{artifact}\n", encoding="utf-8")
     with Path(os.environ["GITHUB_OUTPUT"]).open("a", encoding="utf-8") as output:
         output.writelines(
-            f"{key}={result[key]}\n" for key in ("decision", "reason", "head_sha")
+            f"{key}={result[key]}\n"
+            for key in ("decision", "reason", "head_sha", "tier")
         )
     print(artifact)  # noqa: T201
 

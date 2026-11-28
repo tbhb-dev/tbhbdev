@@ -16,13 +16,16 @@ from agent_host_example import (
     constant,
     git,
     preparation_failure,
+    pull_requests_app_settings,
     repository,
     run_request,
 )
 from fake_tool import pythonpath, write_fake
 
-from tbhbdev.alpha import pre_push_guard, run_stop_hook
+from tbhbdev import secrets
+from tbhbdev.alpha import gh_app_api, pre_push_guard, run_stop_hook
 from tbhbdev.alpha.agent import (
+    credentials,
     push,
     runfiles,
     worktree_checkout,
@@ -499,6 +502,52 @@ def test_private_fetch_retries_over_https_with_the_token(
         )
     assert urls == ["https://github.com/tbhb-dev/example-repo.git"]
     assert tokens == [None, "example-token"]
+
+
+def test_private_build_fetch_retries_over_https_with_the_pull_requests_token(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    store = {
+        "example/pr/client": "stub-pr-client",
+        "example/pr/pem": "stub-pr-pem",
+        "example/gh/value": "stub-gh",
+    }
+    reads: list[str] = []
+    minted: list[dict[str, object]] = []
+
+    def read(reference: str) -> str:
+        reads.append(reference)
+        return store[reference]
+
+    def mint(_env: object, **keywords: object) -> gh_app_api.Minted:
+        minted.append(keywords)
+        return gh_app_api.Minted("stub-fetch-token", 2000)
+
+    monkeypatch.setattr(secrets, "read", read)
+    monkeypatch.setattr(gh_app_api, "mint_token", mint)
+    _, clone = repository(tmp_path)
+    request = run_request()
+    settings = pull_requests_app_settings()
+    tokens: list[str | None] = []
+
+    def fetch(_mirror: Path, _request: object, token: str | None = None) -> str:
+        tokens.append(token)
+        if token is None:
+            raise subprocess.CalledProcessError(128, "git")
+        raise Stop
+
+    monkeypatch.setattr(worktree_mirror, "fetch_commit", fetch)
+    with pytest.raises(Stop):
+        worktree_checkout.create(
+            clone,
+            "p5",
+            request,
+            lambda: credentials.fetch_token(request, settings),
+        )
+    assert tokens == [None, "stub-fetch-token"]
+    assert reads == ["example/pr/client", "example/pr/pem"]
+    assert [m["permissions"] for m in minted] == [{"contents": "read"}]
+    assert [m["repository"] for m in minted] == [request.repo]
 
 
 def test_private_fetch_with_no_token_fails_without_an_ssh_retry(

@@ -242,3 +242,34 @@ def test_check_slot_reports_a_probe_error(
 @pytest.mark.parametrize(("args", "rc"), [(["--help"], 0), ([], 2)])
 def test_check_slot_validates_arguments(args: list[str], rc: int) -> None:
     assert agent.main(["check-slot", *args], "example agent") == rc
+
+
+def test_admitted_counts_held_builds_and_reviews_together(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    root = tmp_path / "admission"
+    monkeypatch.setattr(admission, "ROOT", root)
+    command = ["admitted", "--", *LINUX.accounts]
+    assert agent.main(command, "example agent") == 0
+    assert capsys.readouterr().out == "0\n"
+    with admission.reserve(root, LINUX, Profile.BUILD, 3):
+        assert agent.main(command, "example agent") == 0
+        assert capsys.readouterr().out == "1\n"
+        with admission.reserve(root, LINUX, Profile.REVIEW, 3):
+            assert agent.main(command, "example agent") == 0
+            assert capsys.readouterr().out == "2\n"
+    assert agent.main(command, "example agent") == 0
+    assert capsys.readouterr().out == "0\n"
+
+
+def test_admitted_reports_a_probe_error(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    root = tmp_path / "admission"
+    root.touch()
+    monkeypatch.setattr(admission, "ROOT", root)
+    assert agent.main(["admitted", "--", *LINUX.accounts], "example agent") == 1
+    output = capsys.readouterr()
+    assert output.out == ""
+    assert "example agent admitted:" in output.err
+    assert agent.main(["admitted", "--help"], "example agent") == 0

@@ -13,6 +13,7 @@ from fake_tool import PR_ORIGIN
 from unit.alpha.pull_request import pr_test_support
 from unit.alpha.pull_request.pr_draft_samples import replace_once
 
+from tbhbdev.alpha import preflight_gate
 from tbhbdev.alpha.pull_request import command as pr_command
 from tbhbdev.alpha.pull_request import draft as pr_draft
 from tbhbdev.alpha.pull_request import draft_io as pr_draft_io
@@ -152,6 +153,29 @@ def test_agent_create_refuses_when_hooks_are_disabled(
     assert run_main("create", env=env) == 1
     assert world.calls("gh") == []
     assert "/dev/null/" in capsys.readouterr().err
+
+
+def test_agent_create_refuses_before_contacting_github(
+    world: World,
+    agent: dict[str, str],
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    write_draft(world)
+    source = world.root / "lib/rules/lint/preflight/preflight.py"
+    source.parent.mkdir(parents=True)
+    source.touch()
+    world.git("add", str(source))
+    world.git("commit", "-qm", "Add preflight")
+    sha = world.git("rev-parse", "HEAD").strip()
+    monkeypatch.setattr(preflight_gate, "REFUSE", True)
+
+    assert run_main("create", env=agent) == 1
+    assert world.calls("gh") == world.calls("gh.repo") == []
+    assert capsys.readouterr().err == (
+        f"push-gate: refused {sha}: no preflight result for {sha}; "
+        "run: bazelisk run //:preflight\n"
+    )
 
 
 @pytest.mark.parametrize("ending", ["", "\n", "\n\n"])

@@ -100,6 +100,8 @@ cli_py_library(
         ":sizing",
         ":tools",
         "//factory/cli/src/tbhbdev:userconfig",
+        "//factory/cli/src/tbhbdev/alpha:gh_shim",
+        "//factory/cli/src/tbhbdev/alpha:preflight_gate",
         "//factory/cli/src/tbhbdev/alpha/agent:settings",
         "//factory/cli/src/tbhbdev/alpha/agent/decisions:host_names",
         "//factory/cli/src/tbhbdev/alpha/identity:records",
