@@ -38,7 +38,7 @@ def test_unsandboxed_run_is_visible(
 ) -> None:
     if verb == "finished":
         remote.configure(launch={"rc": "0"})
-    assert launch(remote, "--ops", "--unsandboxed", "o/r#1") == 0
+    assert launch(remote, "--account", "ops", "--unsandboxed", "o/r#1") == 0
     suffix = " sandbox=none authorized_by=o/r#1"
     assert suffix in capsys.readouterr().out
     if verb == "finished":
@@ -442,7 +442,7 @@ def test_inspection_warning(remote: Remote, capsys: pytest.CaptureFixture[str]) 
 def test_wait_keeps_an_unsandboxed_success(
     remote: Remote, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    assert launch(remote, "--ops", "--unsandboxed", "o/r#1") == 0
+    assert launch(remote, "--account", "ops", "--unsandboxed", "o/r#1") == 0
     capsys.readouterr()
     remote.configure(session=False)
     remote.file(".rc", "0\n")

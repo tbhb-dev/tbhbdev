@@ -48,7 +48,7 @@ if (-f $group) {
 """
 
 
-def clean(  # noqa: PLR0913 -- separate the target from the two cleanup guards
+def clean(  # noqa: PLR0913 -- explicit remote cleanup inputs
     repository: str,
     name: str,
     stamp: str,

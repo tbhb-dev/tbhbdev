@@ -15,7 +15,7 @@ import yaml
 from tbhbdev import secrets
 from tbhbdev.alpha import gh_app_api, gh_app_runtime
 from tbhbdev.alpha.agent import host_tools, process_group, runfiles
-from tbhbdev.alpha.agent.decisions import auth, config, repo, run_state
+from tbhbdev.alpha.agent.decisions import auth, config, repo
 from tbhbdev.alpha.agent.model import Harness, Invalid, Profile
 
 if TYPE_CHECKING:
@@ -50,7 +50,6 @@ REVIEW_PERMISSIONS = {
 class Delivery:
     env: dict[str, str] = field(repr=False)
     signing: str | None = field(repr=False)
-    gh_fallback: bool
     claude_profile: str | None
 
 
@@ -66,11 +65,7 @@ def read(reference: str, *, label: str) -> str:
 
 
 def require_reviews_app(references: Credentials) -> None:
-    if (
-        references.reviews_app_id is None
-        or references.reviews_app_client_id is None
-        or references.reviews_app_pem is None
-    ):
+    if references.reviews_app_client_id is None or references.reviews_app_pem is None:
         message = "reviews App credentials are not configured"
         raise Invalid(message)
 
@@ -230,7 +225,7 @@ def deliver(request: RunRequest, settings: Settings, tmpdir: Path) -> Delivery:
     signing = (
         signing_key(references.signing) if request.profile is Profile.BUILD else None
     )
-    return Delivery(env, signing, gh_fallback=False, claude_profile=profile_name)
+    return Delivery(env, signing, profile_name)
 
 
 def signing_key(source: str) -> str:
@@ -333,7 +328,7 @@ def auth_write_back(source: Path, destination: Path, before: str | None) -> str 
     reason = auth.validate(before, after)
     if reason is not None:
         return f"codex auth write-back skipped: {reason}\n"
-    if run_state.write_auth(Harness.CODEX, before, after):
+    if before != after:
         with runfiles.locked(source.parent / "agent-auth.lock"):
             current = source.read_text() if source.exists() else None
             if current == before:

@@ -87,7 +87,7 @@ def test_object_store_compose() -> None:
 def test_certificate_service_compose() -> None:
     lego = _services()["lego"]
     image = _text(lego["image"])
-    assert re.fullmatch(r"goacme/lego:v5\.6\.0@sha256:[0-9a-f]{64}", image)
+    assert re.fullmatch(r"goacme/lego:v5\.7\.0@sha256:[0-9a-f]{64}", image)
     assert lego["profiles"] == ["cert"]
     assert lego["cap_drop"] == ["ALL"]
     assert lego.get("cap_add", []) == []

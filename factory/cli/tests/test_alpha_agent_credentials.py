@@ -33,13 +33,13 @@ if TYPE_CHECKING:
     from tbhbdev.alpha.agent.model import Settings
 
 
-BUILD_TOKEN = "example-build-token"  # noqa: S105  # Stub credential.
+BUILD_TOKEN = "example-build-token"  # noqa: S105 -- stub credential
 BUILD_PERMISSIONS = {
     "contents": "write",
     "pull_requests": "write",
     "workflows": "write",
 }
-REVIEW_TOKEN = "example-review-token"  # noqa: S105  # Stub credential.
+REVIEW_TOKEN = "example-review-token"  # noqa: S105 -- stub credential
 REVIEW_PERMISSIONS = dict.fromkeys(
     ("contents", "pull_requests", "checks", "statuses", "actions"), "read"
 )
@@ -50,7 +50,6 @@ VALUES = {
     ),
     "example/signing/key": "example-signing",
     "example/primary/token": "example-claude",
-    "example/app/id": "123",
     "example/app/client": "example-client",
 }
 
@@ -91,7 +90,6 @@ def test_each_credential_only_reaches_its_destination(
         timeout=900,
     )
     result = credentials.deliver(value, host_settings(), tmp_path)
-    assert result.gh_fallback is False
     assert result.signing == (
         VALUES["example/signing/key"] if profile is Profile.BUILD else None
     )
@@ -168,8 +166,7 @@ def test_anonymous_docker_reads_no_docker_credential(
         original,
         credentials=(dataclasses.replace(original.credentials[0], docker=None),),
     )
-    result = credentials.deliver(run_request(), config, tmp_path)
-    assert result.gh_fallback is False
+    credentials.deliver(run_request(), config, tmp_path)
     assert fake_reader == ["example/gh/value", "example/signing/key"]
     assert json.loads((tmp_path / "docker" / "config.json").read_text()) == {
         "auths": {}
@@ -851,7 +848,7 @@ def test_without_build_github_credential(
         return "example-installation"
 
     monkeypatch.setattr(credentials, "installation_token", installation)
-    result = credentials.deliver(
+    credentials.deliver(
         run_request(
             profile=profile.value,
             commit="0" * 40 if profile is Profile.REVIEW else None,
@@ -859,7 +856,6 @@ def test_without_build_github_credential(
         config,
         tmp_path,
     )
-    assert result.gh_fallback is False
     assert fake_reader == (
         ["example/docker/value", "example/signing/key"]
         if profile is Profile.BUILD

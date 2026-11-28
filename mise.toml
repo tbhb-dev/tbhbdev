@@ -54,7 +54,7 @@ vale = "3.28.1"
 zizmor = "1.32.0"
 
 # Match the cspell package and Ruff's uv.lock entry.
-node = "22.23.4"
+node = "26.13.1"
 cspell = "10.5.2"
 ruff = "0.17.3"
 

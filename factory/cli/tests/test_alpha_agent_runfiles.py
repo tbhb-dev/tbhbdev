@@ -30,14 +30,12 @@ def test_private_request_and_snapshot(tmp_path: Path) -> None:
     assert files.name == "run-1"
     assert files.root == tmp_path / "runs"
     assert files.root.stat().st_mode & 0o777 == 0o700
-    assert files.snapshot() == {}
-    files.receive(request.parse(BUILD, host_allows_unsandboxed=False))
+    files.receive(request.parse(BUILD))
     assert "run-1.request.json" in {p.name for p in files.root.iterdir()}
     assert json.loads(files.path("request.json").read_text()) == BUILD
     assert files.path("request.json").stat().st_mode & 0o777 == 0o600
     for suffix, text in (("phase", "running"), ("launched", ""), ("rc", "0\n")):
         files.write(suffix, text)
-    assert files.snapshot() == {"phase": "running", "launched": "", "rc": "0\n"}
     files.root.chmod(0o755)
     assert runfiles.private_dir(files.root).stat().st_mode & 0o777 == 0o700
 
@@ -237,7 +235,7 @@ print('ready', flush=True)
 sys.stdin.readline()
 try:
     runfiles.RunFiles(Path(sys.argv[1]), 'example').receive(
-        request.parse(json.loads(sys.argv[2]), host_allows_unsandboxed=False)
+        request.parse(json.loads(sys.argv[2]))
     )
 except FileExistsError:
     sys.exit(2)
@@ -272,7 +270,7 @@ def test_claim_mode_ignores_permissive_umask(tmp_path: Path) -> None:
     files = runfiles.RunFiles(tmp_path, "example")
     previous = os.umask(0)
     try:
-        files.receive(request.parse(BUILD, host_allows_unsandboxed=False))
+        files.receive(request.parse(BUILD))
     finally:
         os.umask(previous)
     assert files.path("request.json").stat().st_mode & 0o777 == 0o600
