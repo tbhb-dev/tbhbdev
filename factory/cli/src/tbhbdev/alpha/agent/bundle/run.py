@@ -8,31 +8,24 @@ from importlib import metadata
 import tbhbdev
 from tbhbdev import version
 from tbhbdev.alpha.agent.bundle import arguments
-from tbhbdev.alpha.agent.model import Invalid
-from tbhbdev.alpha.agent.run_host import dispatcher, intake
+from tbhbdev.alpha.agent.run_host import dispatcher
 
 
 def main(argv: list[str], prog: str) -> int:
-    """Record this build in `NAME.build`, then start the dispatcher.
+    """Start the dispatcher with this build's record for `NAME.build`.
 
-    The dispatcher does not accept `--cli-sha256`, so it gets ARGV without it.
+    The dispatcher does not accept `--cli-sha256`, so it gets ARGV without it
+    and writes the build record under its run lock after duplicate-run checks.
     """
     digest, rest = arguments.split_digest(argv)
-    name = arguments.run_name(rest)
-    if name is None:
+    if arguments.run_name(rest) is None:
         # The dispatcher reports the missing name.
         return dispatcher.main(rest, prog)
     if digest is None:
         print(f"{prog}: {arguments.DIGEST_OPTION} is required", file=sys.stderr)
         return 1
-    try:
-        intake.files_for(name).write(
-            "build", arguments.record(_commit(), tbhbdev.__file__, digest)
-        )
-    except (Invalid, OSError) as exc:
-        print(f"{prog}: {exc}", file=sys.stderr)
-        return 1
-    return dispatcher.main(rest, prog)
+    record = arguments.record(_commit(), tbhbdev.__file__, digest)
+    return dispatcher.main(rest, prog, build=record)
 
 
 def _commit() -> str:

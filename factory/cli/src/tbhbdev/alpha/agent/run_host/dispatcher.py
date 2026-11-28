@@ -23,6 +23,7 @@ def main(
     prog: str,
     *,
     claimed: bool = False,
+    build: str | None = None,
 ) -> int:
     parser = argparse.ArgumentParser(prog=prog)
     parser.add_argument("name", nargs="?")
@@ -57,6 +58,8 @@ def main(
                 temporary = tempfile.TemporaryDirectory()
                 try:
                     run, text = intake.load(args, Path(temporary.name).resolve())
+                    if build is not None:
+                        run.files.write("build", build)
                     run.files.write("log", build_info.line() + "\n")
                     completed = execution.execute(
                         run, text, preflight_only=args.preflight
