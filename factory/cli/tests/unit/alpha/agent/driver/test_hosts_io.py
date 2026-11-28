@@ -426,28 +426,22 @@ def _stale_shell(
     return events
 
 
-@pytest.mark.parametrize(
-    ("target", "limits_reply", "slot_reply"),
-    [
-        ("host-1", "9 4 12582912 6291456 0 0 - -", ""),
-        ("host-1", "0.5 4 12582912 1048576 0 0 - -", ""),
-        (None, "0.5 4 12582912 6291456 0 0 - -", admission.SLOT_FULL),
-    ],
-)
 def test_stale_host_is_healed_before_limits_admitted_and_slot(
-    host: Remote,
-    monkeypatch: pytest.MonkeyPatch,
-    target: str | None,
-    limits_reply: str,
-    slot_reply: str,
+    host: Remote, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     candidate = dataclasses.replace(LINUX, name="host-1", auto_select=True)
     cfg = dataclasses.replace(CONFIG, hosts=(candidate,))
     monkeypatch.setattr(agent_settings, "load", lambda: cfg)
-    events = _stale_shell(monkeypatch, limits_reply, slot_reply)
-    assert launch(host, target=target) == 1
-    tail = ["check-slot"] if slot_reply else []
-    assert [step for _, step in events] == ["version", "install", "limits", *tail]
+    cases = [
+        ("host-1", "9 4 12582912 6291456 0 0 - -", ""),
+        ("host-1", "0.5 4 12582912 1048576 0 0 - -", ""),
+        (None, "0.5 4 12582912 6291456 0 0 - -", admission.SLOT_FULL),
+    ]
+    for target, limits_reply, slot_reply in cases:
+        events = _stale_shell(monkeypatch, limits_reply, slot_reply)
+        assert launch(host, target=target) == 1
+        tail = ["check-slot"] if slot_reply else []
+        assert [s for _, s in events] == ["version", "install", "limits", *tail]
 
 
 def test_failed_heal_and_once_per_invocation(
@@ -457,9 +451,7 @@ def test_failed_heal_and_once_per_invocation(
     h2 = dataclasses.replace(LINUX, name="host-2", auto_select=True)
     config = dataclasses.replace(CONFIG, hosts=(h1, h2))
     monkeypatch.setattr(agent_settings, "load", lambda: config)
-    monkeypatch.setattr(
-        version_check, "latest", Mock(side_effect=AssertionError("unexpected sync"))
-    )
+    monkeypatch.setattr(version_check, "latest", Mock(side_effect=AssertionError))
     hosts.check_limits(CONFIG, CONFIG.hosts[0], Profile.BUILD, ignore=False)
 
     events = _stale_shell(monkeypatch)

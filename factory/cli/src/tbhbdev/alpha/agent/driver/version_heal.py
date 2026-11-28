@@ -28,7 +28,6 @@ if TYPE_CHECKING:
 
 _RETRY = "_TBHB_AGENT_VERSION_HEAL"
 _INSTALL_TIMEOUT = 300
-_PROBE_TIMEOUT = 30
 _FAILED = "install failed"
 _PROBE_MARKER = "# tbhbdev-heal-probe\n"
 # TemporaryDirectory creates the private cwd under this fixed parent.
@@ -38,7 +37,6 @@ _ATTEMPTED: dict[tuple[str, str], tuple[str | None, str | None]] = {}
 
 
 def reset() -> None:
-    """Clear the per-invocation host heal record."""
     _ATTEMPTED.clear()
 
 
@@ -95,20 +93,18 @@ def report_install(summary: str, *, failed: bool) -> None:
     print(f"version heal: {summary}", file=sys.stderr, flush=True)
 
 
-def _remaining(deadline: float | None, limit: float) -> float:
+def _remaining(deadline: float | None) -> float:
     if deadline is None:
-        return limit
-    left = deadline - time.monotonic()
-    if left <= 0:
+        return _INSTALL_TIMEOUT
+    if (left := deadline - time.monotonic()) <= 0:
         message = "launch deadline exceeded"
         raise TimeoutError(message)
-    return min(limit, left)
+    return min(_INSTALL_TIMEOUT, left)
 
 
-def _installed(settings: Settings, host: Host, *, timeout: float) -> str:
-    return transport.shell(
-        settings, host, _PROBE_MARKER + remote_host.installed(host), timeout=timeout
-    ).strip()
+def _installed(settings: Settings, host: Host, timeout: float = 30) -> str:
+    script = _PROBE_MARKER + remote_host.installed(host)
+    return transport.shell(settings, host, script, timeout=timeout).strip()
 
 
 def sync(
@@ -116,13 +112,10 @@ def sync(
     host: Host,
     local: str,
     installed: str,
-    *,
     deadline: float | None = None,
-) -> bool:
+) -> None:
     """Install origin main on each side that differs; restart if driver updates."""
-    if local == installed:
-        return False
-    _remaining(deadline, version_check.TIMEOUT)
+    _remaining(deadline)
     head = version_check.latest(read_origin)
     if head is None:
         message = f"cannot read main of {version_check.REPO_URL}"
@@ -135,15 +128,12 @@ def sync(
     install = cli_build.script(head, version_check.REPO_URL)
     if host_commit != head:
         # SSH drops stdout on a nonzero exit. Carry the status in-band.
+        script = remote_shell.PREFIX + f"(\n{install}) || printf '%s\\n' '{_FAILED}'\n"
         summary = transport.shell(
-            settings,
-            host,
-            remote_shell.PREFIX + f"(\n{install}) || printf '%s\\n' '{_FAILED}'\n",
-            timeout=_remaining(deadline, _INSTALL_TIMEOUT),
+            settings, host, script, timeout=_remaining(deadline)
         ).strip()
-        report_install(
-            summary.removesuffix(_FAILED).strip(), failed=summary.endswith(_FAILED)
-        )
+        failed = summary.endswith(_FAILED)
+        report_install(summary.removesuffix(_FAILED).strip(), failed=failed)
     if driver_commit != head:
         if retrying():
             message = "driver already restarted once"
@@ -157,18 +147,16 @@ def sync(
                 stdout=subprocess.PIPE,
                 stderr=subprocess.DEVNULL,
                 errors="replace",
-                timeout=_remaining(deadline, _INSTALL_TIMEOUT),
+                timeout=_remaining(deadline),
                 check=False,
             )
         report_install(result.stdout.strip(), failed=result.returncode != 0)
         restart(f"version mismatch: driver {local!r}; host {installed!r}")
-    return True
 
 
 def heal_candidate(
     settings: Settings,
     host: Host,
-    *,
     timeout: float,
     deadline: float | None = None,
 ) -> tuple[tuple[str | None, str | None] | None, bool]:
@@ -176,36 +164,33 @@ def heal_candidate(
     key = (host.name, host.account)
     if (prior := _ATTEMPTED.get(key)) is not None:
         return (prior if prior[1] is not None else None), False
-    local, mismatch_text = version.line(), None
+    local, mismatch_text, synced = version.line(), None, False
     try:
-        installed = _installed(settings, host, timeout=timeout)
+        installed = _installed(settings, host, timeout)
         try:
             same_version(local, installed)
         except Invalid as mismatch:
             mismatch_text = str(mismatch)
             end = time.monotonic() + timeout if deadline is None else deadline
-            synced = sync(settings, host, local, installed, deadline=end)
-            _ATTEMPTED[key] = (mismatch_text, None)
-            return None, synced
+            sync(settings, host, local, installed, end)
+            synced = True
     except (LookupError, OSError, subprocess.SubprocessError) as exc:
         _ATTEMPTED[key] = (mismatch_text, str(exc))
         return _ATTEMPTED[key], False
-    _ATTEMPTED[key] = (None, None)
-    return None, False
+    _ATTEMPTED[key] = (mismatch_text, None)
+    return None, synced
 
 
 def heal_hosts(settings: Settings, names: Sequence[str]) -> int:
     """Sync each named host to origin main and print before/after versions."""
-    targets = [select_host(settings, name, None) for name in names]
     local, failed = version.line(), False
     try:
-        for host in targets:
+        for host in [select_host(settings, name, None) for name in names]:
             try:
-                before = _installed(settings, host, timeout=_PROBE_TIMEOUT)
-                after = before
+                before = after = _installed(settings, host)
                 if before != local:
                     sync(settings, host, local, before)
-                    after = _installed(settings, host, timeout=_PROBE_TIMEOUT)
+                    after = _installed(settings, host)
             except (LookupError, OSError, subprocess.SubprocessError) as exc:
                 print(f"{host.name}: heal failed: {exc}")
                 failed = True
@@ -226,8 +211,7 @@ def check(settings: Settings, host: Host, local: str, installed: str) -> str | N
         same_version(local, installed)
     except Invalid as mismatch:
         key = (host.name, host.account)
-        prior = _ATTEMPTED.get(key)
-        if prior is not None and prior[0] is not None:
+        if (prior := _ATTEMPTED.get(key)) and prior[0] is not None:
             message = f"{prior[0]} (after one sync)"
             raise Invalid(message) from mismatch
         try:

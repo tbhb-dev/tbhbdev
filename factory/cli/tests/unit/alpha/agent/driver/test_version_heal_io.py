@@ -196,9 +196,7 @@ def test_host_sync_retries_review_preflight(
     run.assert_called_once()
     assert run.call_args.args == (GIT,)
     assert run.call_args.kwargs["env"]["GIT_TERMINAL_PROMPT"] == "0"
-    probe, install, limits_call, preflight = [
-        call.args for call in shell.call_args_list
-    ]
+    probe, install, limits_call, preflight = [c.args for c in shell.call_args_list]
     assert "--version" in probe[2]
     assert "# tbhbdev-limits" in limits_call[2]
     assert "ls-remote" in preflight[2]
@@ -356,9 +354,7 @@ def test_no_install_preserves_the_mismatch(
     shell.assert_not_called()
 
 
-def test_second_mismatch_after_sync_is_refused(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
+def test_second_mismatch_after_sync_fails(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(subprocess, "run", Mock(return_value=ORIGIN))
     shell = Mock(return_value=f"{SUMMARY}\n")
     monkeypatch.setattr(transport, "shell", shell)
@@ -382,13 +378,10 @@ def test_failed_remote_build_reports_summary(monkeypatch: pytest.MonkeyPatch) ->
 
 
 @pytest.mark.usefixtures("isolated_home")
-def test_sync_skips_matching_and_refuses_second_restart(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_sync_guards(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     unexpected = Mock(side_effect=AssertionError("unexpected call"))
     monkeypatch.setattr(subprocess, "run", unexpected)
     monkeypatch.setattr(transport, "shell", unexpected)
-    assert version_heal.sync(CONFIG, HOST, NEW_LINE, NEW_LINE) is False
     with pytest.raises(TimeoutError, match="launch deadline"):
         version_heal.sync(CONFIG, HOST, NEW_LINE, OLD_LINE, deadline=0)
     monkeypatch.setenv(RETRY, "original mismatch")
