@@ -94,11 +94,11 @@ def reply(status: int, data: object) -> httpx2.Response:
     )
 
 
-def mint_token(_request: object, _settings: object) -> str | None:
+def mint_token(_request: object, _settings: object, **_kwargs: object) -> str | None:
     return MINTED
 
 
-def no_token(_request: object, _settings: object) -> str | None:
+def no_token(_request: object, _settings: object, **_kwargs: object) -> str | None:
     return None
 
 
@@ -573,6 +573,50 @@ def test_a_missing_token_blocks_the_post(
     assert "token unavailable" in run.files.path("log").read_text()
 
 
+MINT_ERROR_MARKER = "distinctive-posting-token-error"
+
+
+def fail_token_mint(run: state.Run, monkeypatch: pytest.MonkeyPatch) -> None:
+    run.settings = settings_for_account()
+    monkeypatch.setattr(credentials.secrets, "read", Mock(return_value="fake-value"))
+    monkeypatch.setattr(
+        credentials.gh_app_api,
+        "mint_token",
+        Mock(side_effect=credentials.gh_app_runtime.GhAppError(MINT_ERROR_MARKER)),
+    )
+    monkeypatch.setattr(httpx2, "request", forbidden)
+
+
+def test_a_failed_token_mint_logs_step_and_error_class(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    run, prepared = make(tmp_path, draft())
+    fail_token_mint(run, monkeypatch)
+    assert not review_post.posted(run, prepared)
+    log = run.files.path("log").read_text()
+    assert log == (
+        "review not posted: reviews App token unavailable "
+        "(step: mint; error: GhAppError)\n"
+    )
+    assert MINT_ERROR_MARKER not in log
+
+
+def test_a_failed_sizing_token_mint_logs_step_and_error_class(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    run, prepared = make(tmp_path, None)
+    run.request = replace(run.request, variant="size-review")
+    run.files.write("out.final", f"VERDICT: OVERRIDE {HEAD}\n")
+    fail_token_mint(run, monkeypatch)
+    assert not review_post.posted(run, prepared)
+    log = run.files.path("log").read_text()
+    assert log == (
+        "review not posted: reviews App token with commit-status write access "
+        "unavailable (step: mint; error: GhAppError)\n"
+    )
+    assert MINT_ERROR_MARKER not in log
+
+
 @pytest.mark.parametrize(
     ("line", "state"),
     [
@@ -699,7 +743,18 @@ def request_for(profile: Profile) -> RunRequest:
 
 
 def settings_for_account() -> Settings:
-    return cast("Settings", SimpleNamespace(credentials=[SimpleNamespace(account="a")]))
+    return cast(
+        "Settings",
+        SimpleNamespace(
+            credentials=[
+                SimpleNamespace(
+                    account="a",
+                    reviews_app_client_id="example/app/client",
+                    reviews_app_pem="example/app/key",
+                )
+            ]
+        ),
+    )
 
 
 def test_a_build_cannot_mint_a_review_post_token(
@@ -712,16 +767,6 @@ def test_a_build_cannot_mint_a_review_post_token(
         )
         is None
     )
-
-
-def test_a_failed_token_request_gives_none(monkeypatch: pytest.MonkeyPatch) -> None:
-    def fail(*_args: object) -> str:
-        message = "no"
-        raise credentials.Invalid(message)
-
-    monkeypatch.setattr(credentials, "installation_token", fail)
-    request = request_for(Profile.REVIEW)
-    assert credentials.review_post_token(request, settings_for_account()) is None
 
 
 def test_review_attribution(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

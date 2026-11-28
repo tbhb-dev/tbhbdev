@@ -249,6 +249,18 @@ def check_verdict(run: Run) -> None:
     raise PostRefusedError(message)
 
 
+def _posting_token(run: Run, permissions: dict[str, str]) -> str:
+    try:
+        token = credentials.review_post_token(
+            run.request, run.settings, permissions=permissions
+        )
+    except Invalid as error:
+        raise PostRefusedError(str(error)) from None
+    if token is None:
+        raise PostRefusedError(credentials.review_token_unavailable(permissions))
+    return token
+
+
 def post_size_review(run: Run) -> None:
     """Post a sizing decision as a status on the commit the run reviewed."""
     head = run.request.commit or ""
@@ -256,12 +268,7 @@ def post_size_review(run: Run) -> None:
     if verdict is None:
         message = "no sizing verdict at the end of the final answer for the pinned head"
         raise PostRefusedError(message)
-    token = credentials.review_post_token(
-        run.request, run.settings, permissions={"statuses": "write"}
-    )
-    if token is None:
-        message = "reviews App token with commit-status write access unavailable"
-        raise PostRefusedError(message)
+    token = _posting_token(run, credentials.SIZE_REVIEW_POST_PERMISSIONS)
     _, owner, name = repo.parts(run.request.repo)
     api(
         "POST",
@@ -289,10 +296,7 @@ def posted(run: Run, prepared: Prepared) -> bool:
         if not run.files.path("schema.json").is_file():
             check_verdict(run)
         number, text, document = find_draft(workspace)
-        token = credentials.review_post_token(run.request, run.settings)
-        if token is None:
-            message = "reviews App token unavailable"
-            raise PostRefusedError(message)
+        token = _posting_token(run, credentials.REVIEW_POST_PERMISSIONS)
         sub = Submission(
             run.request.repo,
             number,

@@ -38,6 +38,7 @@ PUSH_PERMISSIONS = {
 # run-host posts the verdict after the run ends, so the posting token never reaches
 # the sandbox.
 REVIEW_POST_PERMISSIONS = {"pull_requests": "write"}
+SIZE_REVIEW_POST_PERMISSIONS = {"statuses": "write"}
 REVIEW_PERMISSIONS = {
     "contents": "read",
     "pull_requests": "read",
@@ -78,23 +79,13 @@ def installation_token(
     permissions: dict[str, str] = REVIEW_PERMISSIONS,
 ) -> str:
     """Mint the reviews App's token for one repository, read-only by default."""
-    if references.reviews_app_client_id is None or references.reviews_app_pem is None:
-        message = "reviews App credentials are not configured"
-        raise Invalid(message)
-    host, owner, name = repo.parts(repository)
-    if host != "github.com":
-        message = "reviews app supports github.com repositories"
-        raise Invalid(message)
-    client_id = read(references.reviews_app_client_id, label="reviews app")
-    pem = read(references.reviews_app_pem, label="reviews app")
-    # Explicit permissions, so the token stays narrow whatever the App holds.
-    return gh_app_api.mint_token(
-        gh_app_runtime.default_env(),
-        app_id=client_id,
-        pem=pem,
-        repository=f"{owner}/{name}",
-        permissions=permissions,
-    ).token
+    return _app_token(
+        references.reviews_app_client_id,
+        references.reviews_app_pem,
+        repository,
+        permissions,
+        app="reviews",
+    )
 
 
 class _TokenStepError(Invalid):
@@ -110,24 +101,36 @@ def pull_requests_token(
     permissions: dict[str, str] = PULL_REQUESTS_PERMISSIONS,
 ) -> str:
     """Mint the pull-requests App token for one repository, read-only by default."""
+    return _app_token(
+        references.pull_requests_app_client_id,
+        references.pull_requests_app_pem,
+        repository,
+        permissions,
+        app="pull-requests",
+    )
+
+
+def _app_token(
+    client_reference: str | None,
+    key_reference: str | None,
+    repository: str,
+    permissions: dict[str, str],
+    *,
+    app: str,
+) -> str:
     step = "configuration"
-    if (
-        references.pull_requests_app_client_id is None
-        or references.pull_requests_app_pem is None
-    ):
-        message = "pull-requests App credentials are not configured"
-        raise _TokenStepError(step, Invalid(message))
-    host, owner, name = repo.parts(repository)
-    if host != "github.com":
-        message = "pull-requests app supports github.com repositories"
-        raise _TokenStepError(step, Invalid(message))
-    step = "client id read"
     try:
-        client_id = read(
-            references.pull_requests_app_client_id, label="pull-requests app"
-        )
+        if client_reference is None or key_reference is None:
+            message = f"{app} App credentials are not configured"
+            raise Invalid(message)
+        host, owner, name = repo.parts(repository)
+        if host != "github.com":
+            message = f"{app} app supports github.com repositories"
+            raise Invalid(message)
+        step = "client id read"
+        client_id = read(client_reference, label=f"{app} app")
         step = "key read"
-        pem = read(references.pull_requests_app_pem, label="pull-requests app")
+        pem = read(key_reference, label=f"{app} app")
         step = "mint"
         # Explicit permissions, so the token stays narrow whatever the App holds.
         return gh_app_api.mint_token(
@@ -138,6 +141,8 @@ def pull_requests_token(
             permissions=permissions,
         ).token
     except TOKEN_ERRORS as error:
+        if app == "reviews" and permissions == REVIEW_PERMISSIONS:
+            raise
         raise _TokenStepError(step, error) from None
 
 
@@ -227,20 +232,31 @@ def fresh_token(
         raise Invalid(FRESH_REFUSAL) from None
 
 
+def review_token_unavailable(permissions: dict[str, str]) -> str:
+    """Return the posting refusal prefix for the requested permissions."""
+    if permissions == SIZE_REVIEW_POST_PERMISSIONS:
+        return "reviews App token with commit-status write access unavailable"
+    return "reviews App token unavailable"
+
+
 def review_post_token(
     request: RunRequest,
     settings: Settings,
     *,
     permissions: dict[str, str] = REVIEW_POST_PERMISSIONS,
 ) -> str | None:
-    """The run-scoped token that posts a review run's verdict, or None."""
+    """Mint a posting token for a review run, or return None for other profiles."""
     if request.profile is not Profile.REVIEW:
         return None
     references = next(c for c in settings.credentials if c.account == request.account)
     try:
         return installation_token(references, request.repo, permissions)
-    except TOKEN_ERRORS:
-        return None
+    except _TokenStepError as error:
+        message = (
+            f"{review_token_unavailable(permissions)} "
+            f"(step: {error.step}; error: {error.error_name})"
+        )
+        raise Invalid(message) from None
 
 
 def fetch_token(request: RunRequest, settings: Settings) -> str | None:
