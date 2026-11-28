@@ -303,7 +303,7 @@ def test_record_result_counts_a_skipped_stage_as_passed(
     expected: str,
 ) -> None:
     head, tree, base = "a" * 40, "b" * 40, "c" * 40
-    replies = {
+    replies: dict[tuple[str, ...], str] = {
         ("rev-parse", "HEAD"): head,
         ("status", "--porcelain", "--untracked-files=no"): "",
         ("rev-parse", "--git-common-dir"): str(tmp_path),
