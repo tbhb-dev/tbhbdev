@@ -5,6 +5,7 @@ from __future__ import annotations
 import getpass
 import hashlib
 import os
+import re
 import shutil
 import stat
 from contextlib import suppress
@@ -16,14 +17,26 @@ from tbhbdev.alpha.agent import bazel_servers, process_group
 if TYPE_CHECKING:
     from tbhbdev.alpha.agent.run_host.state import BazelShutdown, Prepared, Run
 
+VAR_TMP = Path("/var/tmp")  # noqa: S108  # nosec B108 -- the trusted /var/tmp anchor, not a temp file
+_HEX_BASE = re.compile(r"^[0-9a-f]{32}$")
+
 
 def _bazel_roots(home: Path) -> tuple[tuple[Path, Path], ...]:
     """The (trusted anchor, cache root) pairs of the agent's own Bazel caches."""
     user = f"_bazel_{getpass.getuser()}"
     return (
         (home, home / ".cache/bazel" / user),
-        (Path("/var/tmp"), Path("/var/tmp") / user),  # noqa: S108  # nosec B108 -- the trusted /var/tmp anchor, not a temp file
+        (VAR_TMP, VAR_TMP / user),
     )
+
+
+def output_bases(home: Path) -> list[Path]:
+    out: list[Path] = []
+    for _, root in _bazel_roots(home):
+        with suppress(OSError):
+            entries = (e for e in sorted(root.iterdir()) if _HEX_BASE.fullmatch(e.name))
+            out.extend(e for e in entries if owned_base(home, e))
+    return out
 
 
 def bazel_bases(home: Path, worktree: str) -> tuple[Path, ...]:
@@ -137,6 +150,19 @@ def _exists(parent_fd: int, name: str) -> bool:
 def _space(fd: int) -> tuple[int, int]:
     status = os.fstatvfs(fd)
     return status.f_bavail * status.f_frsize, status.f_favail
+
+
+def remove_unused_base(home: Path, base: Path) -> bool:
+    if (opened := _open_owned(home, base)) is None:
+        return False
+    fd, _ = opened
+    try:
+        if server_alive(base):
+            return False
+        _remove_base(fd, base.name)
+        return not _exists(fd, base.name)
+    finally:
+        os.close(fd)
 
 
 def _delete_base(
