@@ -17,14 +17,6 @@ genrule(
     cmd = "cp $< $@",
 )
 
-genrule(
-    name = "rules_preflight",
-    testonly = True,
-    srcs = ["@tbhb_rules//lint:preflight/preflight.py"],
-    outs = ["rules-preflight.py"],
-    cmd = "cp $< $@",
-)
-
 cli_py_test(
     name = "test_command",
     srcs = ["test_command.py"],
@@ -77,7 +69,6 @@ cli_py_test(
 cli_py_test(
     name = "test_preflight_gate_io",
     srcs = ["test_preflight_gate_io.py"],
-    data = [":rules_preflight"],
     imports = ["../.."],
     deps = [
         "//factory/cli/src/tbhbdev/alpha:preflight_gate",

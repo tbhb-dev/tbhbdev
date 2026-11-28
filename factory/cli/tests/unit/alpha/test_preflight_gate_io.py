@@ -3,12 +3,7 @@
 
 """Read preflight records for the proposed commit."""
 
-import asyncio
-import importlib.util
-import sys
-import tempfile
-from pathlib import Path
-from typing import Protocol, cast
+from typing import TYPE_CHECKING
 from unittest.mock import Mock
 
 import pytest
@@ -16,26 +11,8 @@ import pytest
 from tbhbdev.alpha import preflight_gate
 from tbhbdev.alpha.repo import git
 
-
-class _PreflightModule(Protocol):
-    def checks_for(self, _paths: list[str], **_kwargs: bool) -> tuple[str, ...]: ...
-
-    async def main(self) -> int: ...
-
-
-def _load_preflight() -> _PreflightModule:
-    source = Path(__file__).with_name("rules-preflight.py")
-    if not source.exists():
-        root = next(
-            p.parent for p in Path(__file__).resolve().parents if p.name == "factory"
-        )
-        source = root / "lib/rules/lint/preflight/preflight.py"
-    spec = importlib.util.spec_from_file_location("_rules_preflight", source)
-    assert spec is not None
-    assert spec.loader is not None
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    return cast("_PreflightModule", module)
+if TYPE_CHECKING:
+    from pathlib import Path
 
 
 @pytest.mark.parametrize(
@@ -105,9 +82,7 @@ def test_report_when_run_log_is_unwritable(
     assert capsys.readouterr().err == f"push-gate: pass {'a' * 40}\n"
 
 
-def test_piecewise_preflight_checks_satisfy_gate(
-    pr_checkout: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_stage_record_does_not_satisfy_gate(pr_checkout: Path) -> None:
     _, base = git("rev-parse", "HEAD")
     source = pr_checkout / "lib/rules/lint/preflight/preflight.py"
     source.parent.mkdir(parents=True)
@@ -115,26 +90,17 @@ def test_piecewise_preflight_checks_satisfy_gate(
     assert git("add", str(source))[0] == 0
     assert git("commit", "-qm", "Add preflight")[0] == 0
     _, head = git("rev-parse", "HEAD")
-
-    preflight = _load_preflight()
-
-    async def fake_check(_name: str, _revisions: object, _scratch: Path) -> None:
-        return None
-
-    monkeypatch.setenv("BUILD_WORKSPACE_DIRECTORY", str(pr_checkout))
-    monkeypatch.setattr(tempfile, "tempdir", str(tmp_path))
-    monkeypatch.setattr(preflight, "check", fake_check)
-
-    stages = preflight.checks_for(
-        ["lib/rules/lint/preflight/preflight.py"], has_draft=False
+    _, tree = git("rev-parse", "HEAD^{tree}")
+    records = pr_checkout / ".git" / "tbhbdev-preflight"
+    records.mkdir()
+    (records / f"{head}.stages").write_text(
+        f"base {base}\ngazelle PASS\n", encoding="utf-8"
     )
-    for stage in stages[:-1]:
-        monkeypatch.setattr(sys, "argv", ["preflight", base, "--check", stage])
-        assert asyncio.run(preflight.main()) == 0
-        assert preflight_gate.problem(head) == (
-            f"no preflight result for {head}; run: bazelisk run //:preflight"
-        )
+    no_result = f"no preflight result for {head}; run: bazelisk run //:preflight"
 
-    monkeypatch.setattr(sys, "argv", ["preflight", base, "--check", stages[-1]])
-    assert asyncio.run(preflight.main()) == 0
+    assert preflight_gate.problem(head) == no_result
+
+    (records / head).write_text(
+        f"tree {tree}\nbase {base}\nresult pass\n", encoding="utf-8"
+    )
     assert preflight_gate.problem(head) == ""

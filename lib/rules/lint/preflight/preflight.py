@@ -41,6 +41,8 @@ FIXED_COMMANDS = {
         "//factory/agent-capacity/container:image_config_test",
     ),
 }
+# The draft changes and advisories appear between runs, so these always run.
+LIVE = frozenset({"gitleaks-text", "agent-capacity-vulnerabilities"})
 ALWAYS = (
     "lint-baselines",
     *FIXED_COMMANDS,
@@ -136,22 +138,22 @@ def write_record(path: Path, text: str) -> None:
         temporary.replace(path)
 
 
-def read_passed_stages(path: Path, tree: str) -> set[str]:
+def read_passed_stages(path: Path, base: str) -> set[str]:
     try:
         lines = path.read_text(encoding="utf-8").splitlines()
     except OSError:
         return set()
-    if not lines or lines[0] != f"tree {tree}":
+    if not lines or lines[0] != f"base {base}":
         return set()
     return {
-        line.removesuffix(" PASS")
+        stage
         for line in lines[1:]
-        if line.endswith(" PASS") and line != " PASS"
+        if line.endswith(" PASS") and (stage := line.removesuffix(" PASS")) not in LIVE
     }
 
 
-def update_stage_record(path: Path, tree: str, name: str, *, passed: bool) -> set[str]:
-    stages = read_passed_stages(path, tree)
+def update_stage_record(path: Path, base: str, name: str, *, passed: bool) -> set[str]:
+    stages = read_passed_stages(path, base)
     if passed:
         stages.add(name)
     elif name not in stages:
@@ -160,54 +162,50 @@ def update_stage_record(path: Path, tree: str, name: str, *, passed: bool) -> se
         stages.discard(name)
     if stages:
         body = "".join(f"{stage} PASS\n" for stage in sorted(stages))
-        write_record(path, f"tree {tree}\n{body}")
+        write_record(path, f"base {base}\n{body}")
     else:
         path.unlink(missing_ok=True)
     return stages
 
 
-async def record_target(revisions: Revisions) -> tuple[Path, str] | None:
+async def record_target(revisions: Revisions) -> Path | None:
     head, base = revisions.head, revisions.merge_base
     if base == head or await git("rev-parse", "HEAD") != head:
         return None
     if await git("status", "--porcelain", "--untracked-files=no"):
         return None
-    records = Path(await git("rev-parse", "--git-common-dir")) / "tbhbdev-preflight"
-    tree = await git("rev-parse", f"{head}^{{tree}}")
-    return records, tree
+    return Path(await git("rev-parse", "--git-common-dir")) / "tbhbdev-preflight"
 
 
 async def load_passed_stages(revisions: Revisions) -> set[str]:
-    target = await record_target(revisions)
-    if target is None:
+    records = await record_target(revisions)
+    if records is None:
         return set()
-    records, tree = target
     return await asyncio.to_thread(
-        read_passed_stages, records / f"{revisions.head}.stages", tree
+        read_passed_stages, records / f"{revisions.head}.stages", revisions.merge_base
     )
 
 
 async def record_stage(
     revisions: Revisions, name: str, *, passed: bool
 ) -> set[str] | None:
-    target = await record_target(revisions)
-    if target is None:
+    records = await record_target(revisions) if name not in LIVE else None
+    if records is None:
         return None
-    records, tree = target
     return await asyncio.to_thread(
         update_stage_record,
         records / f"{revisions.head}.stages",
-        tree,
+        revisions.merge_base,
         name,
         passed=passed,
     )
 
 
 async def record_result(revisions: Revisions, results: list[tuple[str, bool]]) -> None:
-    target = await record_target(revisions)
-    if target is None:
+    records = await record_target(revisions)
+    if records is None:
         return
-    records, tree = target
+    tree = await git("rev-parse", f"{revisions.head}^{{tree}}")
     failed = " ".join(name for name, passed in results if not passed)
     result = f"fail {failed}" if failed else "pass"
     await asyncio.to_thread(
