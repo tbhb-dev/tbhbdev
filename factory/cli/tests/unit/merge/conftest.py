@@ -50,6 +50,7 @@ def tools(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Tools:
     list(map(monkeypatch.delenv, [n for n in os.environ if n.startswith(prefixes)]))
     monkeypatch.setenv("HOME", str(tmp_path))
     monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "xdg"))
+    monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path / "state"))
     monkeypatch.setenv("PATH", f"{bin_dir}{os.pathsep}{git_dir}")
     # The scan runs from the repository root and needs both configs.
     repo = tmp_path / "repo"

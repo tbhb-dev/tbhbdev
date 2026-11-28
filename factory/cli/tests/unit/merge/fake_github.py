@@ -66,6 +66,8 @@ elif repo:
     kind = "cwd" if sys.argv[2].startswith("-") else "repo"
 elif sys.argv[1:3] == ["api", "graphql"] and "reviews(first:" in " ".join(sys.argv):
     kind = "reviews"
+elif sys.argv[1:3] == ["api", "graphql"] and "dequeuePullRequest" in " ".join(sys.argv):
+    kind = "dequeue"
 elif sys.argv[1] == "api":
     kind = "rules" if sys.argv[2] != "graphql" else "queue"
 else:
@@ -149,6 +151,9 @@ class Tools:
             "queue_rc": 0,
             "queue_out": "",
             "queue_err": "",
+            "dequeue_rc": 0,
+            "dequeue_out": "{}",
+            "dequeue_err": "",
             "cwd_rc": 0,
             "cwd_out": "PRIVATE\\n",
             "cwd_err": "",

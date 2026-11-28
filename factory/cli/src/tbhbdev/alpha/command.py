@@ -63,6 +63,8 @@ commands:
                apply the standard repository settings
   host         check [--json] [--no-fetch]: can this host take a run
   merge        merge an approved pull request
+  merge-queue-remove N --reason TEXT [--dry-run]: take an open pull request out
+               of its merge queue; it stays open and approved. Re-queue with merge
   monorepo     map CLONE COMMIT --dest FOLDER | import CLONE@COMMIT --map MAP
                --into CLONE | verify CLONE@COMMIT --map MAP --tree CLONE:
                import a public repository into the monorepo
@@ -99,6 +101,7 @@ COMMAND_MODULES = {
     "repo": ("tbhbdev.alpha.repo_bootstrap", "main"),
     "host": ("tbhbdev.alpha.host.command", "main"),
     "merge": ("tbhbdev.merge.command", "main"),
+    "merge-queue-remove": ("tbhbdev.merge.remove", "main"),
     "monorepo": ("tbhbdev.monorepo.command", "main"),
     "verify-range": ("tbhbdev.alpha.verify_range", "main"),
     "version-check": ("tbhbdev.alpha.version_check", "main"),
@@ -174,6 +177,7 @@ COMMANDS.update(
         "issue": issue,
         "repo": partial(_keyword_prog, "repo"),
         "merge": partial(_keyword_prog, "merge"),
+        "merge-queue-remove": partial(_keyword_prog, "merge-queue-remove"),
     }
 )
 

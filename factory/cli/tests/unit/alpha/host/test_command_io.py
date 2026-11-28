@@ -27,7 +27,7 @@ if TYPE_CHECKING:
 
 BASE = "2026-01-01T00:00:00Z"
 LATE = "2026-01-01T07:00:00Z"
-PROBE = "{} 4 64000000 60000000 0 0 -\n2\n"
+PROBE = "{} 4 64000000 60000000 0 0 - -\n2 1\n"
 
 
 def git(repo: Path, *args: str, when: str = BASE) -> None:

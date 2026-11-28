@@ -163,8 +163,8 @@ def _probe(host: Host) -> str:
 def load_checks() -> list[Check]:
     """Load, memory and admitted runs as the launcher reads them; information only."""
     host, memory = _host()
-    found, admitted = limits.parse_probe(_probe(host))
-    _, message = limits.decide(host, found, memory, admitted=admitted, ignore=False)
+    found, admitted, recent = limits.parse_probe(_probe(host))
+    _, message = limits.decide(host, found, memory, recent=recent, ignore=False)
     return [
         Check("load", ok=True, value=message or "within limits", limit="launcher"),
         Check("admitted", ok=True, value=str(admitted), limit="none"),
