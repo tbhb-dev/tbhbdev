@@ -29,6 +29,7 @@ def main(argv: list[str], prog: str) -> int:
         "send-host": app_server.main,
         "ssh-serve": ssh_serve.main,
         "check-slot": admission.main,
+        "admitted": admission.count_main,
         "signing-fingerprint": signing_parity.host_main,
     }
     if argv and argv[0] in host_commands:

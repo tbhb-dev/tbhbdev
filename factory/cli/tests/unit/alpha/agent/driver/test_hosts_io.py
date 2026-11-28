@@ -337,3 +337,26 @@ def test_check_limits_runs_without_a_launch(host: Remote) -> None:
     with pytest.raises(Invalid, match="load 9"):
         hosts.check_limits(CONFIG, config_host, Profile.BUILD, ignore=False)
     hosts.check_limits(CONFIG, config_host, Profile.BUILD, ignore=True)
+
+
+def test_check_limits_counts_admitted_runs_and_keeps_single_run_fallback(
+    host: Remote,
+) -> None:
+    config_host = CONFIG.hosts[0]
+    two_runs_reading = "0.5 4 33554432 12582912 0 0 -"
+    host.configure(limits=two_runs_reading, admitted=2)
+    with pytest.raises(
+        Invalid, match=r"12582912 KiB.*reservation 6144 MiB.*2 admitted"
+    ):
+        hosts.check_limits(CONFIG, config_host, Profile.BUILD, ignore=False)
+
+    host.configure(limits=two_runs_reading, admitted=0)
+    hosts.check_limits(CONFIG, config_host, Profile.BUILD, ignore=False)
+
+    host.configure(limits=two_runs_reading, admitted=None)
+    hosts.check_limits(CONFIG, config_host, Profile.BUILD, ignore=False)
+    host.configure(limits="0.5 4 25165824 6291455 0 0 -", admitted=None)
+    with pytest.raises(
+        Invalid, match="memory available 6291455 KiB < reservation 6144 MiB"
+    ):
+        hosts.check_limits(CONFIG, config_host, Profile.BUILD, ignore=False)
