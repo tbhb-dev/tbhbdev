@@ -6,6 +6,7 @@ import errno
 import os
 import pwd
 import stat
+import time
 from contextlib import ExitStack, nullcontext
 from dataclasses import replace
 from types import SimpleNamespace
@@ -251,15 +252,15 @@ def test_admitted_counts_held_builds_and_reviews_together(
     monkeypatch.setattr(admission, "ROOT", root)
     command = ["admitted", "--", *LINUX.accounts]
     assert agent.main(command, "example agent") == 0
-    assert capsys.readouterr().out == "0\n"
+    assert capsys.readouterr().out == "0 0\n"
     with admission.reserve(root, LINUX, Profile.BUILD, 3):
         assert agent.main(command, "example agent") == 0
-        assert capsys.readouterr().out == "1\n"
+        assert capsys.readouterr().out == "1 1\n"
         with admission.reserve(root, LINUX, Profile.REVIEW, 3):
             assert agent.main(command, "example agent") == 0
-            assert capsys.readouterr().out == "2\n"
+            assert capsys.readouterr().out == "2 2\n"
     assert agent.main(command, "example agent") == 0
-    assert capsys.readouterr().out == "0\n"
+    assert capsys.readouterr().out == "0 0\n"
 
 
 def test_admitted_reports_a_probe_error(
@@ -273,3 +274,82 @@ def test_admitted_reports_a_probe_error(
     assert output.out == ""
     assert "example agent admitted:" in output.err
     assert agent.main(["admitted", "--help"], "example agent") == 0
+
+
+def _age(path: Path, seconds: float) -> None:
+    then = time.time() - seconds
+    os.utime(path, (then, then))
+
+
+def _stamp(root: Path, slot_name: str) -> Path:
+    return root / f"claim-{slot_name}-{os.getuid()}"
+
+
+def test_reused_slot_from_another_account_counts_as_recent(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    stale = tmp_path / "build-0"
+    stale.touch()
+    _age(stale, 10_000)
+    stale_inode, other_uid = stale.stat().st_ino, os.getuid() + 1
+    real_fstat, real_utime = os.fstat, os.utime
+
+    def lookup(name: str) -> SimpleNamespace:
+        return SimpleNamespace(pw_uid=other_uid if name == LINUX.accounts[-1] else 0)
+
+    def stat_fd(fd: int) -> os.stat_result | SimpleNamespace:
+        info = real_fstat(fd)
+        if info.st_ino != stale_inode:
+            return info
+        return SimpleNamespace(
+            st_mode=info.st_mode, st_uid=other_uid, st_mtime=info.st_mtime
+        )
+
+    def utime(fd: int) -> None:
+        if real_fstat(fd).st_ino == stale_inode:
+            raise PermissionError
+        real_utime(fd)
+
+    monkeypatch.setattr(pwd, "getpwnam", lookup)
+    monkeypatch.setattr(admission.os, "fstat", stat_fd)
+    monkeypatch.setattr(admission.os, "utime", utime)
+    with admission.reserve(tmp_path, LINUX, Profile.BUILD, 3):
+        assert admission.active_count(tmp_path, LINUX.accounts) == (1, 1)
+
+
+def test_unwritable_stamp_never_yields_old(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    for path in (tmp_path / "build-0", _stamp(tmp_path, "build-0")):
+        path.touch()
+        _age(path, 10_000)
+
+    def fail_utime(*_args: object, **_kwargs: object) -> None:
+        raise PermissionError
+
+    monkeypatch.setattr(admission.os, "utime", fail_utime)
+    with admission.reserve(tmp_path, LINUX, Profile.BUILD, 3):
+        assert admission.active_count(tmp_path, LINUX.accounts) == (1, 1)
+        later = time.time() + 10_000
+        monkeypatch.setattr(admission.time, "time", lambda: later)
+        assert admission.active_count(tmp_path, LINUX.accounts) == (1, 1)
+
+
+def test_active_count_separates_recent_from_older_runs(tmp_path: Path) -> None:
+    assert admission.RECENT_SECONDS == 300
+    accounts = LINUX.accounts
+    assert admission.active_count(tmp_path, accounts) == (0, 0)
+    with ExitStack() as slots:
+        for _ in range(3):
+            slots.enter_context(admission.reserve(tmp_path, LINUX, Profile.BUILD, 5))
+        slots.enter_context(admission.reserve(tmp_path, LINUX, Profile.REVIEW, 5))
+        assert admission.active_count(tmp_path, accounts) == (4, 4)
+        _age(_stamp(tmp_path, "build-0"), admission.RECENT_SECONDS - 1)
+        assert admission.active_count(tmp_path, accounts) == (4, 4)
+        _age(_stamp(tmp_path, "build-0"), admission.RECENT_SECONDS + 1)
+        assert admission.active_count(tmp_path, accounts) == (4, 3)
+        _age(_stamp(tmp_path, "build-1"), 3600)
+        _age(_stamp(tmp_path, "review-0"), 3600)
+        assert admission.active_count(tmp_path, accounts) == (4, 1)
+    assert (tmp_path / "build-0").exists()
+    assert admission.active_count(tmp_path, accounts) == (0, 0)

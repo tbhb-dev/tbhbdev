@@ -69,27 +69,27 @@ url = "https://github.com/bats-core/bats-core/archive/refs/tags/v1.14.0.tar.gz"
 url_api = "https://api.github.com/repos/bats-core/bats-core/tarball/v1.14.0"
 
 [[tools.bazel]]
-version = "9.3.2"
+version = "9.3.3"
 backend = "aqua:bazelbuild/bazel"
-specifiers = ["9.3.2"]
+specifiers = ["9.3.3"]
 
 [tools.bazel."platforms.linux-arm64"]
-checksum = "sha256:13d5677509ac5e52f28139d76b1343e8a4aa494451558222599abbb86bff92cb"
+checksum = "sha256:41349440c343005f0531ad128df3d3da58e39d5b50bda3eb495e186c2e0bd23b"
 checksum_source = "mise-versions"
-url = "https://github.com/bazelbuild/bazel/releases/download/9.3.2/bazel-9.3.2-linux-arm64"
-url_api = "https://api.github.com/repos/bazelbuild/bazel/releases/assets/714280482"
+url = "https://github.com/bazelbuild/bazel/releases/download/9.3.3/bazel-9.3.3-linux-arm64"
+url_api = "https://api.github.com/repos/bazelbuild/bazel/releases/assets/768715926"
 
 [tools.bazel."platforms.linux-x64"]
-checksum = "sha256:2e14c55c298752d71e8a0bbd762665ffce5966c9ad00ec5d1a8b82a58e7bfa06"
+checksum = "sha256:24f30faa845410547a4fdeaa8d083e2eb9e95438b996ca76a0102ff8ef171334"
 checksum_source = "mise-versions"
-url = "https://github.com/bazelbuild/bazel/releases/download/9.3.2/bazel-9.3.2-linux-x86_64"
-url_api = "https://api.github.com/repos/bazelbuild/bazel/releases/assets/714280538"
+url = "https://github.com/bazelbuild/bazel/releases/download/9.3.3/bazel-9.3.3-linux-x86_64"
+url_api = "https://api.github.com/repos/bazelbuild/bazel/releases/assets/768715995"
 
 [tools.bazel."platforms.macos-arm64"]
-checksum = "sha256:33fc3b489d159a86be0b465e9d1a58e5d03d2cc55faa87d8a19cd4de0a65f569"
+checksum = "sha256:5bcb76f9e94651f1eeec72243a69b03b4cd589c104611c583a59d4abbf9ea15a"
 checksum_source = "mise-versions"
-url = "https://github.com/bazelbuild/bazel/releases/download/9.3.2/bazel-9.3.2-darwin-arm64"
-url_api = "https://api.github.com/repos/bazelbuild/bazel/releases/assets/714280044"
+url = "https://github.com/bazelbuild/bazel/releases/download/9.3.3/bazel-9.3.3-darwin-arm64"
+url_api = "https://api.github.com/repos/bazelbuild/bazel/releases/assets/768715566"
 
 [[tools.bazelisk]]
 version = "1.30.0"
@@ -450,26 +450,26 @@ url_api = "https://api.github.com/repos/tombi-toml/tombi/releases/assets/7556263
 provenance = "github-attestations"
 
 [[tools.uv]]
-version = "0.13.8"
+version = "0.13.9"
 backend = "aqua:astral-sh/uv"
-specifiers = ["0.13.8"]
+specifiers = ["0.13.9"]
 
 [tools.uv."platforms.linux-arm64"]
-checksum = "sha256:74f2f5c6024d397481db228db8fc25eed420db192243f88438c118e7e013e585"
-url = "https://github.com/astral-sh/uv/releases/download/0.13.8/uv-aarch64-unknown-linux-gnu.tar.gz"
-url_api = "https://api.github.com/repos/astral-sh/uv/releases/assets/740313629"
+checksum = "sha256:0797542018e541a9288855df555c8077eed06f7a47d206362030480e8ecc9f3d"
+url = "https://github.com/astral-sh/uv/releases/download/0.13.9/uv-aarch64-unknown-linux-gnu.tar.gz"
+url_api = "https://api.github.com/repos/astral-sh/uv/releases/assets/758513657"
 provenance = "github-attestations"
 
 [tools.uv."platforms.linux-x64"]
-checksum = "sha256:5acfd9177cfecf0bf87578f059728215ccc884388988f55f7a65041b57387d91"
-url = "https://github.com/astral-sh/uv/releases/download/0.13.8/uv-x86_64-unknown-linux-gnu.tar.gz"
-url_api = "https://api.github.com/repos/astral-sh/uv/releases/assets/740313966"
+checksum = "sha256:a7fbaff2b9a271d85c1bdb540941090fd1ce011797b4abeb48e4dcd39c2471d5"
+url = "https://github.com/astral-sh/uv/releases/download/0.13.9/uv-x86_64-unknown-linux-gnu.tar.gz"
+url_api = "https://api.github.com/repos/astral-sh/uv/releases/assets/758513954"
 provenance = "github-attestations"
 
 [tools.uv."platforms.macos-arm64"]
-checksum = "sha256:6b71028a6b904f2ae3340ef52e595512de807d06c0a20eaef2f692581b246558"
-url = "https://github.com/astral-sh/uv/releases/download/0.13.8/uv-aarch64-apple-darwin.tar.gz"
-url_api = "https://api.github.com/repos/astral-sh/uv/releases/assets/740313603"
+checksum = "sha256:5aeca67f2283f75235de40d0bd9c0a5bbc5fce23b6d48b3bf9fa1b2db08382ca"
+url = "https://github.com/astral-sh/uv/releases/download/0.13.9/uv-aarch64-apple-darwin.tar.gz"
+url_api = "https://api.github.com/repos/astral-sh/uv/releases/assets/758513631"
 provenance = "github-attestations"
 
 [[tools.vale]]

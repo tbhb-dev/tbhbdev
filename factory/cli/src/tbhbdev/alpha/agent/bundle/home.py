@@ -2,23 +2,44 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from pathlib import Path
 
-from tbhbdev.alpha.agent.model import Invalid
+import tbhbdev
 
-if TYPE_CHECKING:
-    from pathlib import Path
+_BUNDLE_SUFFIX = ".cli"
+_RUNS_DIR = "agent-runs"
+_LIB_DIR = "lib"
+_BIN_DIR = "bin"
+_PROGRAM = "tbhbdev"
 
-_NOT_BUILT = "not built"
+
+def module_file() -> str | None:
+    return tbhbdev.__file__
 
 
 def root() -> Path | None:
-    raise Invalid(_NOT_BUILT)
+    location = module_file()
+    if location is None:
+        return None
+    path = Path(location)
+    if not path.is_absolute():
+        return None
+    for folder in path.parents:
+        bundle = folder.parent
+        if (
+            folder.name == _LIB_DIR
+            and bundle.suffix == _BUNDLE_SUFFIX
+            and bundle.parent.name == _RUNS_DIR
+        ):
+            return bundle
+    return None
 
 
 def program() -> str:
-    raise Invalid(_NOT_BUILT)
+    directory = bin_dir()
+    return _PROGRAM if directory is None else str(directory / _PROGRAM)
 
 
 def bin_dir() -> Path | None:
-    raise Invalid(_NOT_BUILT)
+    bundle = root()
+    return None if bundle is None else bundle / _BIN_DIR

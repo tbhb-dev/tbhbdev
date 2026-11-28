@@ -17,6 +17,14 @@ WORKSPACE = next(
     for parent in Path(__file__).resolve().parents
     if parent.name == "factory"
 )
+SHA256SUM = f"""sha256sum() {{
+    {shlex.quote(sys.executable)} -I -S -c '
+import hashlib
+import sys
+print(hashlib.sha256(sys.stdin.buffer.read()).hexdigest(), " -")
+'
+}}
+"""
 
 
 def _mapping(value: object) -> dict[object, object]:
@@ -50,19 +58,55 @@ def _shell_command(step: dict[object, object], prefix: str = "") -> list[str]:
 
 def test_ci_shards_affected_targets(tmp_path: Path) -> None:
     jobs = _workflow_jobs()
+    affected = _mapping(jobs["affected-targets"])
     bazel = _mapping(jobs["bazel"])
     strategy = _mapping(bazel["strategy"])
     shards = _list(_mapping(strategy["matrix"])["shard"])
     assert shards == [1, 2, 3, 4]
     assert strategy["fail-fast"] is False
-    assert "bazel" in _list(_mapping(jobs["conclusion"])["needs"])
+    assert bazel["needs"] == "affected-targets"
+    assert "outputs" not in bazel
+    assert {"affected-targets", "bazel"}.issubset(
+        _list(_mapping(jobs["conclusion"])["needs"])
+    )
+
+    checkout, setup, cache, selector, publish, upload = _workflow_steps(affected)
+    assert affected["environment"] == bazel["environment"]
+    assert affected["runs-on"] == bazel["runs-on"]
+    assert _mapping(checkout["with"])["fetch-depth"] == 0
+    assert setup["uses"] == "./.github/actions/setup-bazel-ci"
+    assert selector["uses"] == "./.github/actions/affected-targets"
+    assert selector["with"] == {"base": "${{ inputs.base }}"}
+    assert publish["id"] == "selection"
+    assert affected["outputs"] == {
+        "count": "${{ steps.affected.outputs.count }}",
+        "digest": "${{ steps.selection.outputs.digest }}",
+    }
+    assert str(upload["uses"]).startswith("actions/upload-artifact@")
+    assert upload["with"] == {
+        "name": "affected-targets",
+        "path": "${{ runner.temp }}/affected-targets.txt",
+        "retention-days": 3,
+        "if-no-files-found": "error",
+    }
 
     steps = _workflow_steps(bazel)
-    selector = next(step for step in steps if step.get("id") == "affected")
-    assert selector["uses"] == "./.github/actions/affected-targets"
+    assert cache in steps
+    assert all(step.get("uses") != selector["uses"] for step in steps)
+    download = next(
+        step for step in steps if step["name"] == "Download the affected targets"
+    )
+    assert str(download["uses"]).startswith("actions/download-artifact@")
+    assert download["with"] == {
+        "name": "affected-targets",
+        "path": "${{ runner.temp }}",
+    }
+    assert "if" not in download
     test = next(step for step in steps if step["name"] == "Test")
+    assert steps.index(download) < steps.index(test)
+    assert test["if"] == "needs.affected-targets.outputs.count != '0'"
     assert test["env"] == {
-        "TARGETS": "${{ steps.affected.outputs.file }}",
+        "TARGETS": "${{ runner.temp }}/affected-targets.txt",
         "SHARD": "${{ matrix.shard }}",
         "SHARD_COUNT": "${{ strategy.job-total }}",
     }
@@ -105,6 +149,168 @@ def test_ci_shards_affected_targets(tmp_path: Path) -> None:
             assert run.stdout.splitlines() == expected_output
 
 
+AGENT_CAPACITY_REF = "refs/heads/gh-readonly-queue/main/pr-209-0123abcd"
+AGENT_CAPACITY_UPLOAD_CONDITION = "steps.merge-group-ref.outputs.ref_gone != 'true'"
+
+
+def _agent_capacity_steps() -> tuple[dict[object, object], dict[object, object]]:
+    steps = _workflow_steps(_workflow_jobs()["agent-capacity"])
+    check = next(step for step in steps if step["name"] == "Check the merge group ref")
+    upload = next(step for step in steps if step["name"] == "Upload the Go module scan")
+    return check, upload
+
+
+def _upload_runs(ref_gone: str) -> bool:
+    """Evaluate the upload condition for the check step's `ref_gone` output."""
+    match = re.fullmatch(
+        r"steps\.merge-group-ref\.outputs\.ref_gone != '(\w+)'",
+        AGENT_CAPACITY_UPLOAD_CONDITION,
+    )
+    assert match
+    return ref_gone != match.group(1)
+
+
+def _run_merge_group_ref_check(
+    tmp_path: Path, stub_body: str
+) -> tuple[subprocess.CompletedProcess[str], Path, Path]:
+    check, _ = _agent_capacity_steps()
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    calls = tmp_path / "gh calls.txt"
+    stub = bin_dir / "gh"
+    stub.write_text(
+        f'#!/usr/bin/env bash\nprintf "%s\\n" "$*" >> {shlex.quote(str(calls))}\n'
+        + stub_body
+    )
+    stub.chmod(0o755)
+    output = tmp_path / "github output.txt"
+    output.touch()
+    # The job's steps set no shell; the helper needs one to build the command.
+    run = subprocess.run(
+        _shell_command({**check, "shell": "bash"}),
+        env={
+            **os.environ,
+            "PATH": f"{bin_dir}{os.pathsep}{os.environ['PATH']}",
+            "GITHUB_OUTPUT": str(output),
+            "GITHUB_REPOSITORY": "example/repo",
+            "GITHUB_REF": AGENT_CAPACITY_REF,
+            "GH_TOKEN": "stub-token",
+        },
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    return run, output, calls
+
+
+def test_agent_capacity_upload_skips_only_on_gone_ref() -> None:
+    check, upload = _agent_capacity_steps()
+    assert "continue-on-error" not in upload
+    assert check["id"] == "merge-group-ref"
+    assert check["if"] == "github.event_name == 'merge_group'"
+    assert check["env"] == {"GH_TOKEN": "${{ github.token }}"}
+    assert "continue-on-error" not in check
+    # The condition is asserted as an exact string, as for the coverage steps.
+    assert upload["if"] == AGENT_CAPACITY_UPLOAD_CONDITION
+    uses = upload["uses"]
+    assert isinstance(uses, str)
+    assert uses.startswith("github/codeql-action/upload-sarif@")
+    assert upload["with"] == {
+        "sarif_file": "${{ runner.temp }}/gomodscan.sarif",
+        "category": "agent-capacity-dependencies",
+    }
+
+
+def test_agent_capacity_ref_gone_skips_upload(tmp_path: Path) -> None:
+    run, output, calls = _run_merge_group_ref_check(
+        tmp_path, 'echo "gh: Not Found (HTTP 404)" >&2\nexit 1\n'
+    )
+    assert run.returncode == 0, run.stderr
+    assert output.read_text().splitlines() == ["ref_gone=true"]
+    assert (
+        "::notice::merge group ref is gone, the queue dissolved the group; "
+        "skipping the Go module scan upload"
+    ) in run.stdout.splitlines()
+    assert not _upload_runs("true")
+    assert calls.read_text().split()[0] == "api"
+
+
+def test_agent_capacity_live_ref_uploads(tmp_path: Path) -> None:
+    run, output, _ = _run_merge_group_ref_check(tmp_path, "echo '{}'\n")
+    assert run.returncode == 0, run.stderr
+    assert output.read_text().splitlines() == ["ref_gone=false"]
+    assert "::notice::" not in run.stdout
+    assert _upload_runs("false")
+    # A skipped check step (pull_request, workflow_dispatch) has an empty output.
+    assert _upload_runs("")
+
+
+@pytest.mark.parametrize("status", ["500", "403"])
+def test_agent_capacity_unanswered_read_fails_job(tmp_path: Path, status: str) -> None:
+    run, output, _ = _run_merge_group_ref_check(
+        tmp_path, f'echo "gh: Server said no (HTTP {status})" >&2\nexit 1\n'
+    )
+    assert run.returncode != 0
+    assert "ref_gone=true" not in output.read_text()
+    assert "::notice::" not in run.stdout
+
+
+def test_agent_capacity_ref_call_uses_the_queue_ref(tmp_path: Path) -> None:
+    _, _, calls = _run_merge_group_ref_check(tmp_path, "exit 0\n")
+    api_call = calls.read_text().split()
+    assert api_call[0] == "api"
+    assert (
+        "repos/example/repo/git/ref/heads/gh-readonly-queue/main/pr-209-0123abcd"
+        in api_call
+    )
+
+
+@pytest.mark.parametrize(
+    ("targets", "expected"),
+    [
+        (b"//:b\n//:a\n", b"//:a\n//:b\n"),
+        (b"", b""),
+        (b"//...\n-//:manual\n", b"-//:manual\n//...\n"),
+    ],
+)
+def test_ci_publishes_affected_targets(
+    tmp_path: Path, targets: bytes, expected: bytes
+) -> None:
+    steps = _workflow_steps(_workflow_jobs()["affected-targets"])
+    publish = next(step for step in steps if step.get("id") == "selection")
+    source = tmp_path / "targets.txt"
+    source.write_bytes(targets)
+    log = source.with_name("target-determinator.log")
+    log.write_text("//:a Changes: changed source\n")
+    output = tmp_path / "output"
+    summary = tmp_path / "summary"
+    sorted_targets = tmp_path / "affected-targets.txt"
+    run = subprocess.run(
+        _shell_command(publish, SHA256SUM),
+        env={
+            **os.environ,
+            "TARGETS": str(source),
+            "SORTED_TARGETS": str(sorted_targets),
+            "GITHUB_OUTPUT": str(output),
+            "GITHUB_STEP_SUMMARY": str(summary),
+        },
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    assert sorted_targets.read_bytes() == expected
+    assert dict(line.split("=", 1) for line in output.read_text().splitlines()) == {
+        "digest": hashlib.sha256(expected).hexdigest(),
+    }
+    labels = expected.decode().splitlines()
+    for printed in (run.stdout, summary.read_text()):
+        lines = [line.removeprefix("  | ").strip() for line in printed.splitlines()]
+        assert [line for line in lines if line in labels] == labels
+        if not labels:
+            assert "No affected targets." in lines
+    assert log.read_text().strip() in run.stdout
+
+
 def test_ci_test_steps_do_not_exclude_slow_external() -> None:
     jobs = _workflow_jobs()
     test_runs: list[str] = []
@@ -135,9 +341,7 @@ def test_ci_runs_cli_coverage_in_parallel() -> None:
     )
 
     checkout, setup, cache, selector, check = _workflow_steps(coverage)
-    bazel_checkout, bazel_setup, bazel_cache, bazel_selector, _, test, _, _ = (
-        _workflow_steps(bazel)
-    )
+    bazel_checkout, bazel_setup, bazel_cache, *_ = _workflow_steps(bazel)
     assert checkout == bazel_checkout
     assert setup == {
         **bazel_setup,
@@ -147,8 +351,9 @@ def test_ci_runs_cli_coverage_in_parallel() -> None:
         },
     }
     assert cache == bazel_cache
-    assert selector == bazel_selector
-    assert check["if"] == test["if"] == "steps.affected.outputs.count != '0'"
+    assert selector["uses"] == "./.github/actions/affected-targets"
+    assert selector["with"] == {"base": "${{ inputs.base }}"}
+    assert check["if"] == "steps.affected.outputs.count != '0'"
     assert check["run"] == "bazelisk run --config=ci //factory/cli:coverage"
     assert check["id"] == "coverage"
     assert coverage["outputs"] == {"coverage": "${{ steps.coverage.outcome }}"}
@@ -165,10 +370,15 @@ def test_ci_runs_cli_coverage_in_parallel() -> None:
         ("merge_group", b"//:tests\n", "cancelled", "cancelled", False),
         ("merge_group", b"", "skipped", "", False),
         ("workflow_dispatch", b"//:tests\n", "skipped", "", True),
+        ("pull_request", None, "success", "success", False),
     ],
 )
 def test_ci_conclusion_requires_cli_coverage(
-    event: str, targets: bytes, job_result: str, step_outcome: str, accepted: bool
+    event: str,
+    targets: bytes | None,
+    job_result: str,
+    step_outcome: str,
+    accepted: bool,
 ) -> None:
     conclusion = _mapping(_workflow_jobs()["conclusion"])
     required = _list(conclusion["needs"])
@@ -178,34 +388,45 @@ def test_ci_conclusion_requires_cli_coverage(
     }
     if event != "pull_request":
         needs["pr-size"]["result"] = "skipped"
-    digest = hashlib.sha256(targets).hexdigest()
-    needs["bazel"]["outputs"] = {f"shard-{shard}": digest for shard in range(1, 5)}
+    digest = hashlib.sha256(targets).hexdigest() if targets is not None else ""
+    needs["affected-targets"]["outputs"] = {"digest": digest}
     needs["cli-coverage"] = {
         "result": job_result,
         "outputs": {"coverage": step_outcome},
     }
 
-    step = next(
-        step
-        for step in _workflow_steps(conclusion)
-        if step.get("name") == "Fail if any needed job did not succeed"
-    )
-    sha256sum = f"""sha256sum() {{
-        {shlex.quote(sys.executable)} -I -S -c '
-import hashlib
-import sys
-print(hashlib.sha256(sys.stdin.buffer.read()).hexdigest(), " -")
-'
-    }}
-    """
+    step = next(step for step in _workflow_steps(conclusion) if "run" in step)
     run = subprocess.run(
-        _shell_command(step, sha256sum),
+        _shell_command(step, SHA256SUM),
         env={**os.environ, "EVENT": event, "NEEDS": json.dumps(needs)},
         check=False,
         capture_output=True,
         text=True,
     )
     assert (run.returncode == 0) == accepted, run.stderr
+
+
+@pytest.mark.parametrize("job", ["affected-targets", "bazel"])
+def test_ci_conclusion_rejects_failed_selection_or_shard(job: str) -> None:
+    conclusion = _workflow_jobs()["conclusion"]
+    needs: dict[object, dict[str, object]] = {
+        name: {"result": "success"} for name in _list(_mapping(conclusion)["needs"])
+    }
+    needs["affected-targets"]["outputs"] = {
+        "digest": hashlib.sha256(b"//:tests\n").hexdigest()
+    }
+    needs["cli-coverage"]["outputs"] = {"coverage": "success"}
+    needs[job]["result"] = "failure"
+    step = next(step for step in _workflow_steps(conclusion) if "run" in step)
+    run = subprocess.run(
+        _shell_command(step, SHA256SUM),
+        env={**os.environ, "EVENT": "pull_request", "NEEDS": json.dumps(needs)},
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    assert run.returncode != 0
+    assert run.stderr.strip() == "A required job did not succeed."
 
 
 @pytest.fixture

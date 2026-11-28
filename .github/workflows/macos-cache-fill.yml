@@ -1,0 +1,69 @@
+# SPDX-License-Identifier: Apache-2.0
+# Copyright Tony Burns
+
+---
+name: macos-cache-fill
+
+# Fills the Bazel remote cache with macOS arm64 results. Only a push to main
+# gets the main token, so only this trigger writes the namespace that agent
+# hosts read. It is not a required check and the ci workflow's `conclusion`
+# job does not wait for it. To revert, delete this file.
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  macos:
+    name: macos arm64 cache fill
+    # The newest hosted arm64 image in actions/runner-images' list.
+    runs-on: xcode-27
+    timeout-minutes: 40
+    # The `cache` environment holds BAZEL_CACHE_TOKEN, the main token.
+    environment: cache
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Set up Bazel for CI
+        uses: ./.github/actions/setup-bazel-ci
+        with:
+          disk-cache: "false"
+          cache-save: "false"
+
+      - name: Use the remote cache
+        uses: tbhb-dev/bazel-r2-cache/.github/actions/remote-cache@bdd7e71f0281998f10a52f253bcf4b9ec81396e8  # main
+        with:
+          main-token: ${{ secrets.BAZEL_CACHE_TOKEN }}
+
+      # Records the image's Xcode build number in the run log.
+      - name: Record the toolchain
+        shell: bash
+        run: |
+          xcodebuild -version
+          xcode-select -p
+          sw_vers
+
+      # The Go tests use the race-enabled wrapper in factory/go.bzl.
+      # The rules_go transition enables cgo for these tests.
+      - name: Test
+        shell: bash
+        run: |
+          bazel test --config=ci --build_tests_only \
+            //factory/agent-capacity/internal/spool/... \
+            //factory/agent-capacity/internal/capacity:capacity_test \
+            //factory/github-metrics/internal/budget:budget_test \
+            //factory/github-metrics/internal/version:version_test \
+            @tbhb_rules//lint/private/required_status_checks:pytest_test \
+            @tbhb_rules//lint/tests/job_timeouts:pytest_test \
+            @tbhb_rules//lint/tests/runner_default:pytest_test

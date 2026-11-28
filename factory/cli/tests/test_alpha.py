@@ -54,7 +54,15 @@ def test_alpha_is_a_tool() -> None:
 
 def test_usage_says_the_commands_are_interim() -> None:
     assert "interim: they may change or go away without notice" in USAGE
-    for name in ("identity", "guard-gh-pr", "pr", "issue", "merge", "install"):
+    for name in (
+        "identity",
+        "guard-gh-pr",
+        "pr",
+        "issue",
+        "merge",
+        "merge-queue-remove",
+        "install",
+    ):
         assert f"\n  {name} " in USAGE
 
 

@@ -22,7 +22,7 @@ cli_py_library(
     extra_deps = [":__init__"],
     imports = ["../../../.."],
     visibility = ["//factory/cli:__subpackages__"],
-    deps = ["//factory/cli/src/tbhbdev/alpha/agent:model"],
+    deps = ["//factory/cli/src/tbhbdev:__init__"],
 )
 
 cli_py_library(
