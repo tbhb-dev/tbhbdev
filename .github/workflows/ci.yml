@@ -109,9 +109,21 @@ jobs:
         shell: bash
         env:
           TARGETS: ${{ steps.affected.outputs.file }}
+          SHARD: ${{ matrix.shard }}
         run: |
           digest=$(LC_ALL=C sort "$TARGETS" | sha256sum)
           echo "digest=${digest%% *}" >>"$GITHUB_OUTPUT"
+          # Keep the sorted list so a disagreement between shards can be diagnosed.
+          LC_ALL=C sort "$TARGETS" >"$RUNNER_TEMP/selected-targets-$SHARD.txt"
+          echo "Selected targets of shard $SHARD:"
+          cat "$RUNNER_TEMP/selected-targets-$SHARD.txt"
+
+      - name: Upload the selected targets
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9  # v7.0.2
+        with:
+          name: selected-targets-${{ matrix.shard }}
+          path: ${{ runner.temp }}/selected-targets-${{ matrix.shard }}.txt
+          retention-days: 3
 
   cli-coverage:
     name: factory/cli branch coverage
@@ -404,7 +416,10 @@ jobs:
             -format sarif -o "$RUNNER_TEMP/gomodscan.sarif" || status=$?
           if ((status > 1)); then exit "$status"; fi
 
+      # A merge group whose branch the queue already deleted is doomed, and the
+      # upload then fails on the missing ref, so only a pull request must pass it.
       - name: Upload the Go module scan
+        continue-on-error: ${{ github.event_name == 'merge_group' }}
         uses: github/codeql-action/upload-sarif@33d7b85da1a04171e211befe2c739303b9a4c066  # v4.39.3
         with:
           sarif_file: ${{ runner.temp }}/gomodscan.sarif
@@ -462,6 +477,59 @@ jobs:
         uses: step-security/harden-runner@1d88384fd173af6ecb012dfd0264a306b711241a  # v2.22.4
         with:
           egress-policy: audit
+
+      - name: Check whether the Bazel shards agree
+        id: shards
+        shell: bash
+        env:
+          NEEDS: ${{ toJSON(needs) }}
+        run: |
+          if jq -e '.bazel.outputs | [."shard-1", ."shard-2", ."shard-3", ."shard-4"]
+            | all(.[]; type == "string" and length == 64) and (unique | length == 1)' \
+            <<<"$NEEDS" >/dev/null; then
+            echo "disagree=false" >>"$GITHUB_OUTPUT"
+          else
+            echo "disagree=true" >>"$GITHUB_OUTPUT"
+          fi
+
+      - name: Download the selected targets
+        if: steps.shards.outputs.disagree == 'true'
+        continue-on-error: true
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333  # v8.0.2
+        with:
+          pattern: selected-targets-*
+          merge-multiple: true
+          path: ${{ runner.temp }}/selected-targets
+
+      - name: Show where the selected targets differ
+        if: steps.shards.outputs.disagree == 'true'
+        shell: bash
+        run: |
+          dir="$RUNNER_TEMP/selected-targets"
+          files=()
+          for shard in 1 2 3 4; do
+            if [[ -f $dir/selected-targets-$shard.txt ]]; then
+              files+=("$dir/selected-targets-$shard.txt")
+            else
+              echo "No target list from shard $shard."
+            fi
+          done
+          if ((${#files[@]} == 0)); then
+            echo "No shard uploaded its selected targets, so they cannot be compared."
+            exit 0
+          fi
+          # A label is listed when some of the shards that uploaded a list lack it.
+          echo "Labels not selected by every shard (label, then the shards that selected it):"
+          awk -v total="${#files[@]}" '
+            NF && !seen[$0, FILENAME]++ {
+              shard = FILENAME
+              sub(/.*selected-targets-/, "", shard)
+              sub(/\.txt$/, "", shard)
+              count[$0]++
+              where[$0] = where[$0] " " shard
+            }
+            END { for (label in count) if (count[label] < total) print label "\t" where[label] }
+          ' "${files[@]}" | LC_ALL=C sort
 
       - name: Fail if any needed job did not succeed
         shell: bash
