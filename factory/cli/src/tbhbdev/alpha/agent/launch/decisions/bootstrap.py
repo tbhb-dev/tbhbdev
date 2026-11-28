@@ -97,23 +97,14 @@ def start(
 
 
 def check_slot(name: str, host: Host, profile: Profile) -> str:
-    command = shlex.join(
-        (
-            "alpha",
-            "agent",
-            "check-slot",
-            host.name,
-            profile,
-            str(host.max_concurrent_runs),
-            "--",
-            *host.accounts,
-        )
+    arguments = shlex.join(
+        (host.name, profile, str(host.max_concurrent_runs), "--", *host.accounts)
     )
     return (
         "# tbhbdev-check-slot\n"
         + PREFIX
         + ROOT
-        + f'exec "{_cli_path(name)}/bin/tbhbdev" {command}\n'
+        + f'exec "{_cli_path(name)}/bin/tbhbdev" alpha agent check-slot {arguments}\n'
     )
 
 

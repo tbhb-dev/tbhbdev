@@ -58,32 +58,18 @@ def test_receive_writes_isolated_entry_points() -> None:
     assert "entry.chmod(0o700)" in entry_points
 
 
-@pytest.mark.parametrize("steer", [False, True])
-def test_start_dispatches_shipped_program(steer: bool) -> None:
+@pytest.mark.parametrize(("steer", "extra"), [(False, ""), (True, " --steer")])
+def test_start_dispatches_shipped_program(steer: bool, extra: str) -> None:
     shell, option, script = bootstrap.start("run", "sockets", LINUX.name, steer=steer)
     assert (shell, option) == ("/bin/sh", "-c")
     assert 'owner="$d/run.owner"' in script
     assert 'test "$(cat "$owner")" = "$given" || exit 73' in script
-    assert shlex.split(script.splitlines()[-1]) == [
-        "tmux",
-        "-S",
-        "$s/agents",
-        "-f",
-        "/dev/null",
-        "new-session",
-        "-d",
-        "-s",
-        "ag-run",
-        "$d/run.cli/bin/tbhbdev",
-        "alpha",
-        "agent",
-        "run",
-        "run",
-        "--host",
-        LINUX.name,
-        "--owned",
-        *(["--steer"] if steer else []),
-    ]
+    expected = shlex.split(
+        "tmux -S '$s/agents' -f /dev/null new-session -d -s ag-run "
+        "'$d/run.cli/bin/tbhbdev' alpha agent run run --host "
+        f"{shlex.quote(LINUX.name)} --owned{extra}"
+    )
+    assert shlex.split(script.splitlines()[-1]) == expected
 
 
 def test_check_slot_uses_shipped_program() -> None:
