@@ -24,6 +24,7 @@ GO_TARGETS = [
     "//factory/github-metrics/internal/receiver:receiver_test",
     "//factory/github-metrics/internal/reconcile:reconcile_test",
     "//factory/github-metrics/internal/recorder:recorder_test",
+    "//factory/github-metrics/internal/review:review_test",
     "//factory/github-metrics/internal/store:store_test",
     "//factory/github-metrics/internal/telemetry:telemetry_test",
     "//factory/github-metrics/internal/version:version_test",

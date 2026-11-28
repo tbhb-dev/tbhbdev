@@ -3,7 +3,10 @@
 
 load("//factory/cli/tests:pytest.bzl", "cli_py_test")
 
-exports_files(["test_content_review.py"])
+exports_files([
+    "test_content_review.py",
+    "test_review_body_examples.py",
+])
 
 cli_py_test(
     name = "test_content_review",
@@ -12,6 +15,19 @@ cli_py_test(
     deps = [
         "//factory/cli/src/tbhbdev:content_review",
         "//factory/cli/src/tbhbdev:cue_runtime",
+        "//factory/cli/tests:conftest",
+        "//factory/cli/tests:cue_fixtures",
+        "@cli_pip//pytest",
+    ],
+)
+
+cli_py_test(
+    name = "test_review_body_examples",
+    srcs = ["test_review_body_examples.py"],
+    data = ["//factory/cli:review_body_examples"],
+    imports = [".."],
+    deps = [
+        "//factory/cli/src/tbhbdev:content_review",
         "//factory/cli/tests:conftest",
         "//factory/cli/tests:cue_fixtures",
         "@cli_pip//pytest",

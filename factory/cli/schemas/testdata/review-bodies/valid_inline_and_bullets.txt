@@ -1,0 +1,19 @@
+## Summary
+
+The cache preserves the latest saved value.
+
+## Findings
+
+Inline findings: 2 (P0 security 1, P1 correctness 1).
+F2 to F3.
+
+- F1: P2 design `cache.py:12` duplicates the default value. (not anchored: line not in the diff)
+- F4: P3 docs Clarify the retry window in the readme.
+
+## Verification
+
+- Read the cache implementation and its unit tests.
+
+<!-- tbhb-review v2 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef -->
+
+Generated-by: LLM effort=high;harness=codex;model=gpt-5.4

@@ -1,0 +1,11 @@
+{
+  "valid": true,
+  "parsed": true,
+  "superseded": true,
+  "harness": "codex",
+  "model": "gpt-5.4",
+  "effort": "medium",
+  "counts": {
+    "p2/docs": 1
+  }
+}
