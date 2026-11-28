@@ -205,7 +205,7 @@ def pinned_ruff_checkout(
     tools = tmp_path / "tools"
     tools.mkdir()
     write_fake(tools / "ruff", "print('ruff 9.9.8')\n")
-    monkeypatch.setattr(worktree_hooks, "verify_run_hooks", lambda *_: None)
+    monkeypatch.setattr(worktree_hooks, "verify_run_hooks", constant(None))
     return clone, {"PATH": str(tools)}, head
 
 
