@@ -356,6 +356,7 @@ cli_py_library(
         ":verify_range",
         ":version_check",
         ":worktree_sweep",
+        "//factory/cli/src/tbhbdev:command_table",
         "//factory/cli/src/tbhbdev/alpha/agent:command",
         "//factory/cli/src/tbhbdev/alpha/guard:agent_model",
         "//factory/cli/src/tbhbdev/alpha/guard:gh_config_dir",

@@ -52,6 +52,11 @@ def test_alpha_is_a_tool() -> None:
     assert cli.TOOLS["alpha"] is alpha.main
 
 
+def test_every_command_resolves_to_a_callable() -> None:
+    for name in alpha.COMMANDS:
+        assert callable(alpha.COMMANDS[name])
+
+
 def test_usage_says_the_commands_are_interim() -> None:
     assert "interim: they may change or go away without notice" in USAGE
     for name in ("identity", "guard-gh-pr", "pr", "issue", "merge", "install"):
