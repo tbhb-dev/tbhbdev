@@ -84,7 +84,14 @@ def stamp(entry):
 
 
 def prune(builds, entry, previous):
-    if output(entry, "alpha", "agent", "admitted") != "0":
+    admitted = subprocess.run(
+        [entry, "alpha", "agent", "admitted"],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.DEVNULL,
+        text=True,
+        check=False,
+    )
+    if admitted.returncode != 0 or admitted.stdout.strip() != "0":
         return
     candidates = [
         path for path in builds.iterdir()

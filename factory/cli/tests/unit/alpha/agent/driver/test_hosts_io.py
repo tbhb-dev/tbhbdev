@@ -5,6 +5,7 @@ from __future__ import annotations
 import dataclasses
 import json
 from typing import TYPE_CHECKING
+from unittest.mock import Mock
 
 import pytest
 from agent_cli_example import run_agent
@@ -12,8 +13,10 @@ from agent_driver_example import Remote, setup
 from agent_example import LINUX, MARKER, settings
 from driver_scenarios import set_clock
 
+from tbhbdev import version
+from tbhbdev.alpha import version_check
+from tbhbdev.alpha.agent import admission, transport
 from tbhbdev.alpha.agent import settings as agent_settings
-from tbhbdev.alpha.agent import transport
 from tbhbdev.alpha.agent.decisions import remote_host
 from tbhbdev.alpha.agent.driver import hosts, launcher, metadata
 from tbhbdev.alpha.agent.model import Host, Invalid, Profile, Settings
@@ -53,7 +56,7 @@ def test_a_busy_host_refuses_before_any_transfer(
     host.configure(limits="9 4 1000 900 100 0 - -")
     assert launch(host) == 1
     assert "load 9 >= limit 4" in capsys.readouterr().err
-    assert len(host.records("ssh", limits=True)) == 1
+    assert len(host.records("ssh", limits=True)) == 2
     assert host.records("ssh") == []
     assert not metadata.metadata_path("sample").exists()
 
@@ -100,6 +103,8 @@ def test_exec_without_host_uses_the_idle_linux_host(
         (20, "slot", [5, 4]),
         (20, "limits at deadline", [5]),
         (20, "limits timeout", [5]),
+        (20, "install lock", [5]),
+        (20, "heal at deadline", []),
     ],
 )
 def test_exec_preserves_preflight_time_after_a_slow_probe(
@@ -112,18 +117,24 @@ def test_exec_preserves_preflight_time_after_a_slow_probe(
     preferred = dataclasses.replace(LINUX, auto_select=True)
     slow = dataclasses.replace(preferred, name="example-slow")
     last = dataclasses.replace(preferred, name="example-last")
-    limits_timeout = delayed_probe == "limits timeout"
-    candidates = (slow, preferred) if limits_timeout else (preferred, slow, last)
+    install_lock = delayed_probe == "install lock"
+    times_out = delayed_probe in {"limits timeout", "install lock"}
+    candidates = (slow, preferred) if times_out else (preferred, slow, last)
     config = dataclasses.replace(
         CONFIG, hosts=candidates, launch_wait_seconds=launch_wait
     )
     monkeypatch.setattr(agent_settings, "load", lambda: config)
+    current = f"tbhbdev 0 ({'a' * 40})"
     host.configure(
         limits="1 4 12582912 6291456 100 0 - -",
         limits_by_host={preferred.name: "0.5 4 12582912 6291456 100 0 - -"},
+        version=current,
+        version_by_host={slow.name: f"tbhbdev 0 ({'b' * 40})"} if install_lock else {},
     )
     elapsed = 0.0
     set_clock(monkeypatch, lambda: elapsed)
+    monkeypatch.setattr(version_check, "latest", Mock(return_value="a" * 40))
+    monkeypatch.setattr(version, "line", lambda: current)
     real_shell = transport.shell
     slow_timeouts: list[float] = []
 
@@ -137,9 +148,10 @@ def test_exec_preserves_preflight_time_after_a_slow_probe(
     ) -> str:
         nonlocal elapsed
         assert timeout > 0
-        if target == slow:
+        elapsed += timeout * (target == slow and delayed_probe == "heal at deadline")
+        if target == slow and "# tbhbdev-heal-probe" not in script:
             slow_timeouts.append(timeout)
-            if limits_timeout or script == remote_host.check_slot(slow, Profile.BUILD):
+            if times_out or script == remote_host.check_slot(slow, Profile.BUILD):
                 elapsed += timeout
                 message = "probe timed out"
                 raise transport.TransportError(message)
@@ -375,3 +387,93 @@ def test_check_limits_charges_only_recent_runs_and_keeps_single_run_fallback(
         Invalid, match="memory available 6291455 KiB < reservation 6144 MiB"
     ):
         hosts.check_limits(CONFIG, config_host, Profile.BUILD, ignore=False)
+
+
+REAL_SHELL = transport.shell
+
+
+def _stale_shell(
+    monkeypatch: pytest.MonkeyPatch,
+    limits_reply: str = "9 4 12582912 6291456 0 0 - -",
+    slot_reply: str = "",
+    fail_host: str | None = None,
+) -> list[tuple[str, str]]:
+    head, old = "a" * 40, f"tbhbdev 0 ({'b' * 40})"
+    new = f"tbhbdev 0 ({head})"
+    monkeypatch.setattr(version, "line", lambda: new)
+    monkeypatch.setattr(version_check, "latest", Mock(return_value=head))
+    events: list[tuple[str, str]] = []
+
+    def shell(
+        s: Settings,
+        t: Host,
+        script: str,
+        stdin: transport.Stdin | None = None,
+        *,
+        timeout: float = 30,
+    ) -> str:
+        if script.endswith("--version"):
+            events.append((t.name, "version"))
+            return old if fail_host in {None, t.name} else new
+        if "install failed" in script:
+            events.append((t.name, "install"))
+            if fail_host == t.name:
+                msg = "network down"
+                raise transport.TransportError(msg)
+            return f"{'b' * 40} {head} ok 0.1s"
+        if fail_host is not None:
+            return REAL_SHELL(s, t, script, stdin, timeout=timeout)
+        if "# tbhbdev-limits" in script:
+            assert "alpha agent admitted" in script
+            events.append((t.name, "limits"))
+            return limits_reply
+        events.append((t.name, "check-slot"))
+        return slot_reply
+
+    monkeypatch.setattr(transport, "shell", shell)
+    return events
+
+
+def test_stale_host_is_healed_before_limits_admitted_and_slot(
+    host: Remote, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    candidate = dataclasses.replace(LINUX, name="host-1", auto_select=True)
+    cfg = dataclasses.replace(CONFIG, hosts=(candidate,))
+    monkeypatch.setattr(agent_settings, "load", lambda: cfg)
+    cases = [
+        ("host-1", "9 4 12582912 6291456 0 0 - -", ""),
+        ("host-1", "0.5 4 12582912 1048576 0 0 - -", ""),
+        (None, "0.5 4 12582912 6291456 0 0 - -", admission.SLOT_FULL),
+    ]
+    for target, limits_reply, slot_reply in cases:
+        events = _stale_shell(monkeypatch, limits_reply, slot_reply)
+        assert launch(host, target=target) == 1
+        tail = ["check-slot"] if slot_reply else []
+        assert [s for _, s in events] == ["version", "install", "limits", *tail]
+
+
+def test_failed_heal_and_once_per_invocation(
+    host: Remote, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    h1 = dataclasses.replace(LINUX, name="host-1", auto_select=True)
+    h2 = dataclasses.replace(LINUX, name="host-2", auto_select=True)
+    config = dataclasses.replace(CONFIG, hosts=(h1, h2))
+    monkeypatch.setattr(agent_settings, "load", lambda: config)
+    monkeypatch.setattr(version_check, "latest", Mock(side_effect=AssertionError))
+    hosts.check_limits(CONFIG, CONFIG.hosts[0], Profile.BUILD, ignore=False)
+
+    events = _stale_shell(monkeypatch)
+    with pytest.raises(Invalid, match="load 9 >= limit 4"):
+        hosts.check_limits(config, h1, Profile.BUILD, ignore=False)
+    args = Mock(profile="build", account=None)
+    assert not hosts.usable_hosts(config, h1.os, args, 1e9)
+    assert [n for n, step in events if step == "install"] == ["host-1", "host-2"]
+
+    events = _stale_shell(monkeypatch, fail_host="host-1")
+    assert launch(host, target="host-1") == 1
+    err = capsys.readouterr().err
+    assert "heal failed: network down" in err
+    assert "available alternatives: host-2" in err
+    assert launch(host, target=None) == 0
+    assert metadata.load(config, "sample").host.name == "host-2"
+    assert [n for n, step in events if step == "install"] == ["host-1", "host-1"]

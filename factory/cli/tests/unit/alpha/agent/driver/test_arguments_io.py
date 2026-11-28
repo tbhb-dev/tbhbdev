@@ -81,3 +81,11 @@ def test_inspection_rejects_extra_options(args: list[str]) -> None:
     with pytest.raises(SystemExit) as caught:
         parser("tbhbdev alpha agent").parse_args(args)
     assert caught.value.code == 2
+
+
+def test_heal_requires_at_least_one_host() -> None:
+    parsed = parser("tbhbdev alpha agent").parse_args(["heal", "host-1", "host-2"])
+    assert (parsed.verb, parsed.hosts) == ("heal", ["host-1", "host-2"])
+    with pytest.raises(SystemExit) as caught:
+        parser("tbhbdev alpha agent").parse_args(["heal"])
+    assert caught.value.code == 2

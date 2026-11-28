@@ -303,7 +303,9 @@ def test_version_mismatch(
     assert "version mismatch" in message
     assert version.line() in message
     assert "tbhbdev example-other" in message
-    assert len(remote.records("ssh")) == 1
+    assert "heal failed:" in message
+    assert remote.records("ssh") == []
+    assert len(remote.records("ssh", limits=True)) == 1
 
 
 def test_review_without_ref_starts_nothing(
@@ -480,6 +482,10 @@ def test_exec_spends_one_startup_budget(
     ) -> str:
         assert settings == CONFIG
         assert host == CONFIG.hosts[0]
+        if "# tbhbdev-heal-probe" in script:
+            assert timeout == 110
+            steps.append("version")
+            return version.line() + "\n"
         if script == remote_host.limits(CONFIG.hosts[0]):
             assert timeout == 110
             steps.append("limits")
@@ -542,7 +548,7 @@ def test_exec_spends_one_startup_budget(
     monkeypatch.setattr(transport, "call", call)
     monkeypatch.setattr(transport, "read", read)
     assert launch(remote) == 0
-    assert steps == ["limits", "preflight", "stream", "start", "poll"]
+    assert steps == ["version", "limits", "preflight", "stream", "start", "poll"]
 
 
 def test_explicit_codex_harness(remote: Remote) -> None:

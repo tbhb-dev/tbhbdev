@@ -77,7 +77,7 @@ def test_read_origin_ignores_git_url_rewrites(
     assert git(isolated_home, *command, env=env) == f"{fake_head}\t{REF}"
     monkeypatch.chdir(isolated_home)
     monkeypatch.setenv("GIT_CONFIG_GLOBAL", str(isolated_home / ".gitconfig"))
-    status, output = version_heal.read_origin([GIT[0], *command])
+    status, output = version_heal.read_origin([GIT[0], *command], version_check.TIMEOUT)
     assert status != 0
     assert output == ""
 
@@ -92,7 +92,7 @@ def test_read_origin_uses_fixed_url_and_clean_git_context(
     run = Mock(return_value=ORIGIN)
     monkeypatch.setattr(subprocess, "run", run)
 
-    assert version_check.latest(version_heal.read_origin) == HEAD
+    assert version_heal.sync(CONFIG, HOST, NEW_LINE, NEW_LINE) == HEAD
     run.assert_called_once()
     assert run.call_args.args == (GIT,)
     cwd = Path(run.call_args.kwargs["cwd"])
@@ -164,6 +164,22 @@ def test_versions_match_without_sync(monkeypatch: pytest.MonkeyPatch) -> None:
     unexpected.assert_not_called()
 
 
+@pytest.mark.parametrize("after", [NEW_LINE, OLD_LINE])
+def test_heal_checks_main_when_driver_and_host_match(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], after: str
+) -> None:
+    shell = Mock(side_effect=[OLD_LINE, SUMMARY, after])
+    monkeypatch.setattr(version_heal.version, "line", lambda: OLD_LINE)
+    run = Mock(side_effect=[ORIGIN, subprocess.CompletedProcess(INSTALL, 0, SUMMARY)])
+    monkeypatch.setattr(version_heal.subprocess, "run", run)
+    monkeypatch.setattr(version_heal, "restart", Mock())
+    monkeypatch.setattr(version_heal.transport, "shell", shell)
+    status = version_heal.heal_hosts(CONFIG, [HOST.name])
+    assert status == (0 if after == NEW_LINE else 1)
+    assert HEAD in shell.call_args_list[1].args[2]
+    assert after in capsys.readouterr().out
+
+
 @pytest.mark.parametrize("host_after", [NEW_LINE, f"tbhbdev 0 ({'c' * 40})"])
 @pytest.mark.usefixtures("isolated_home")
 def test_host_sync_retries_review_preflight(
@@ -175,9 +191,9 @@ def test_host_sync_retries_review_preflight(
     run = Mock(return_value=ORIGIN)
     shell = Mock(
         side_effect=[
-            "0 4 12582912 6291456 0 0 - -",
             OLD_LINE,
             SUMMARY,
+            "0 4 12582912 6291456 0 0 - -",
             f"{host_after}\n{HEAD}\trefs/heads/topic\n",
         ]
     )
@@ -196,8 +212,10 @@ def test_host_sync_retries_review_preflight(
     run.assert_called_once()
     assert run.call_args.args == (GIT,)
     assert run.call_args.kwargs["env"]["GIT_TERMINAL_PROMPT"] == "0"
-    _, preflight, install, reread = [call.args for call in shell.call_args_list]
-    assert preflight == reread
+    probe, install, limits_call, preflight = [c.args for c in shell.call_args_list]
+    assert "--version" in probe[2]
+    assert "# tbhbdev-limits" in limits_call[2]
+    assert "ls-remote" in preflight[2]
     assert install[:2] == (CONFIG, HOST)
     command = install[2]
     assert command.startswith(remote_shell.PREFIX)
@@ -352,6 +370,19 @@ def test_no_install_preserves_the_mismatch(
     shell.assert_not_called()
 
 
+def test_second_mismatch_after_sync_fails(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(subprocess, "run", Mock(return_value=ORIGIN))
+    shell = Mock(return_value=f"{SUMMARY}\n")
+    monkeypatch.setattr(transport, "shell", shell)
+    original = version_heal.check(CONFIG, HOST, NEW_LINE, OLD_LINE)
+    assert original is not None
+    shell.reset_mock()
+    with pytest.raises(Invalid) as caught:
+        version_heal.check(CONFIG, HOST, NEW_LINE, OLD_LINE)
+    assert str(caught.value) == f"{original} (after one sync)"
+    shell.assert_not_called()
+
+
 def test_failed_remote_build_reports_summary(monkeypatch: pytest.MonkeyPatch) -> None:
     summary = f"{OLD} {OLD} failed 0.1s"
     shell = Mock(return_value=f"{summary}\ninstall failed\n")
@@ -360,3 +391,29 @@ def test_failed_remote_build_reports_summary(monkeypatch: pytest.MonkeyPatch) ->
 
     with pytest.raises(Invalid, match=summary):
         version_heal.check(CONFIG, HOST, NEW_LINE, OLD_LINE)
+
+
+@pytest.mark.usefixtures("isolated_home")
+def test_sync_guards(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    unexpected = Mock(side_effect=AssertionError("unexpected call"))
+    monkeypatch.setattr(subprocess, "run", unexpected)
+    monkeypatch.setattr(transport, "shell", unexpected)
+    with pytest.raises(TimeoutError, match="launch deadline"):
+        version_heal.sync(CONFIG, HOST, NEW_LINE, OLD_LINE, deadline=0)
+    monkeypatch.setenv(RETRY, "original mismatch")
+    monkeypatch.setattr(subprocess, "run", Mock(return_value=ORIGIN))
+    monkeypatch.setattr(version_heal, "restart", unexpected)
+    with pytest.raises(OSError, match="restart"):
+        version_heal.sync(CONFIG, HOST, OLD_LINE, NEW_LINE)
+    unexpected.assert_not_called()
+    monkeypatch.delenv(RETRY)
+    monkeypatch.setattr(version, "line", lambda: NEW_LINE)
+    monkeypatch.setattr(agent_settings, "load", lambda: CONFIG)
+    for attr in ("stream", "call"):
+        monkeypatch.setattr(transport, attr, Mock())
+    monkeypatch.setattr(startup, "poll_launch", Mock(return_value=0))
+    replies = [NEW_LINE, "0 4 12582912 6291456 0 0 - -", OLD_LINE, SUMMARY, NEW_LINE]
+    monkeypatch.setattr(transport, "shell", Mock(side_effect=replies))
+    prompt = tmp_path / "brief.md"
+    prompt.write_text("Build.\n")
+    assert run_agent(execution_arguments(prompt)) == 0

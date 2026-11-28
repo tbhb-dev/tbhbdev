@@ -17,6 +17,8 @@ type: Reference
 
 `signing-parity` checks whether GitHub lists the signing keys for the configured accounts.
 
+`heal HOST...` brings each host to the latest command-line tool build on `main` without checking limits or launching a run, and prints one line per host (`HOST: before <version> after <version>` or `HOST: heal failed: <cause>`). It exits nonzero if any host fails or is unknown.
+
 ## Launch and steer
 
 `tbhbdev alpha agent exec` checks the brief and any `--schema` file before contacting the run host.
@@ -30,7 +32,9 @@ Steering requires a build without `--schema`. If the run is unknown or its threa
 
 ## Version and launch options
 
-When `tbhbdev alpha agent exec` finds a version mismatch, it looks up the head of `tbhb-dev/tbhbdev` on `main` and installs that commit on each side that differs.
+When `tbhbdev alpha agent exec` evaluates a candidate host, it reads the host's installed command-line tool version and heals a mismatch before checking limits, admitted runs, or slots.
+It looks up the head of `tbhb-dev/tbhbdev` on `main` and installs that commit on each side that differs, at most once per host per driver invocation.
+If a heal fails, the host's refusal message includes `heal failed: <cause>`, and automatic selection continues to the next candidate host.
 It logs each successful install to standard error.
 If it updates the driver, it re-executes the command with the original arguments.
 The retry reads the host version again.

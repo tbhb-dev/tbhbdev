@@ -10,6 +10,7 @@ from typing import TYPE_CHECKING
 from tbhbdev import telemetry
 from tbhbdev.alpha.agent import admission, transport
 from tbhbdev.alpha.agent.decisions import limits, remote_host
+from tbhbdev.alpha.agent.driver import version_heal
 from tbhbdev.alpha.agent.driver.decisions.hosts import candidates, select_host
 from tbhbdev.alpha.agent.model import Invalid, Profile
 
@@ -28,10 +29,16 @@ def read_limits(
     ignore: bool,
     timeout: float,
 ) -> tuple[limits.Reading | str, bool, str]:
-    """Read and judge the host's load, memory, pressure and swap in one SSH call."""
+    """Heal if needed, then read and judge the host's limits in one SSH call."""
     if host.max_concurrent_runs == 0:
         message = f"{host.name}: max_concurrent_runs is 0"
         raise Invalid(message)
+    failed = version_heal.heal_candidate(settings, host, timeout)
+    if failed is not None:
+        mismatch, error = failed
+        cause = f"heal failed: {error}"
+        detail = f"{mismatch}; {cause}" if mismatch else cause
+        return cause, True, f"{host.name}: {detail}"
     try:
         found, _, recent = limits.parse_probe(
             transport.shell(settings, host, remote_host.limits(host), timeout=timeout)
@@ -83,16 +90,22 @@ def usable_hosts(
     for index, candidate in enumerate(eligible):
         host = select_host(settings, candidate.name, account)
         now = time.monotonic()
-        remaining = deadline - now
-        if remaining <= 0:
+        if now >= deadline:
             break
-        probe_deadline = now + min(30, remaining / (len(eligible) - index))
+        probe_deadline = now + min(30, (deadline - now) / (len(eligible) - index))
+        failed = version_heal.heal_candidate(
+            settings, host, probe_deadline - now, probe_deadline
+        )
+        if failed is not None:
+            continue
+        if (timeout := probe_deadline - time.monotonic()) <= 0:
+            continue
         found, refuse, message = read_limits(
             settings,
             host,
             profile,
             ignore=False,
-            timeout=probe_deadline - now,
+            timeout=timeout,
         )
         if refuse or not isinstance(found, limits.Reading):
             continue
