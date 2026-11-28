@@ -40,6 +40,7 @@ if TYPE_CHECKING:
     from tbhbdev.alpha.agent.model import Settings
 
 
+BUILD_REFUSAL = "pull-requests App token unavailable; build refused"
 BUILD_TOKEN = "example-build-token"  # noqa: S105 -- stub credential
 BUILD_PERMISSIONS = {
     "contents": "write",
@@ -1111,7 +1112,7 @@ def test_build_refuses_when_the_pull_requests_app_token_fails(
     with pytest.raises(Invalid) as caught:
         credentials.deliver(run_request(), pull_requests_settings(), tmp_path)
     assert len(seen) == 1
-    assert str(caught.value) == "pull-requests App token unavailable; build refused"
+    assert str(caught.value) == f"{BUILD_REFUSAL} (step: mint; error: GhAppError)"
     assert caught.value.__cause__ is None
     assert not (tmp_path / "gh" / "hosts.yml").exists()
 
@@ -1165,19 +1166,18 @@ def test_build_refuses_when_one_pull_requests_app_reference_is_missing(
     tmp_path: Path, missing: str
 ) -> None:
     settings = pull_requests_settings()
+    creds = settings.credentials[0]
     references = dataclasses.replace(
-        settings.credentials[0],
+        creds,
         pull_requests_app_client_id=None
         if missing == "client"
-        else settings.credentials[0].pull_requests_app_client_id,
-        pull_requests_app_pem=None
-        if missing == "pem"
-        else settings.credentials[0].pull_requests_app_pem,
+        else creds.pull_requests_app_client_id,
+        pull_requests_app_pem=None if missing == "pem" else creds.pull_requests_app_pem,
     )
     settings = dataclasses.replace(settings, credentials=(references,))
     with pytest.raises(Invalid) as caught:
         credentials.deliver(run_request(), settings, tmp_path)
-    assert str(caught.value) == "pull-requests App token unavailable; build refused"
+    assert str(caught.value) == f"{BUILD_REFUSAL} (step: configuration; error: Invalid)"
 
 
 @pytest.mark.parametrize("reference", ["example/app/client", "example/app/pem"])
