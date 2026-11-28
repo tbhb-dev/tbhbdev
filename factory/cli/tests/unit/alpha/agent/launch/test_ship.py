@@ -5,7 +5,6 @@ from __future__ import annotations
 import io
 import sys
 import tarfile
-from typing import TYPE_CHECKING
 
 import pytest
 from agent_example import LINUX, settings
@@ -18,9 +17,6 @@ from tbhbdev.alpha.agent.launch import ship
 from tbhbdev.alpha.agent.launch.decisions import bootstrap
 from tbhbdev.alpha.agent.model import Invalid
 from tbhbdev.alpha.agent.transport import Inputs
-
-if TYPE_CHECKING:
-    from tbhbdev.alpha.agent.model import Host, Settings
 
 DIGEST = "a" * 64
 
@@ -37,29 +33,21 @@ def test_send_streams_owner_inputs_and_bundle(
 ) -> None:
     cfg, run, bundle = settings(), sample_run(), b"packed-cli-bytes"
     inputs = Inputs('{"v":2}', "brief text\n", schema, run.owner)
-    calls: list[tuple[Settings, Host, str, transport.Stdin | None, float]] = []
-
-    def fake_shell(
-        config: Settings,
-        host: Host,
-        script: str,
-        stdin: transport.Stdin | None = None,
-        *,
-        timeout: float = 30,
-    ) -> str:
-        calls.append((config, host, script, stdin, timeout))
-        return ""
-
-    monkeypatch.setattr(transport, "shell", fake_shell)
+    calls: list[tuple[tuple[object, ...], dict[str, object]]] = []
+    monkeypatch.setattr(
+        transport, "shell", lambda *a, **kw: calls.append((a, kw)) or ""
+    )
     ship.send(cfg, LINUX, run, bundle, inputs, 42.5)
 
     assert len(calls) == 1
-    got_cfg, got_host, got_script, got_stdin, got_timeout = calls[0]
+    args, kwargs = calls[0]
     python = f"{sys.version_info.major}.{sys.version_info.minor}"
-    assert (got_cfg, got_host, got_timeout) == (cfg, LINUX, 42.5)
-    assert got_script == bootstrap.receive("sample", cfg.sockets_dir, DIGEST, python)
-    assert got_stdin is not None
-    owner_line, archive_bytes = got_stdin.encode().split(b"\n", 1)
+    expected_script = bootstrap.receive("sample", cfg.sockets_dir, DIGEST, python)
+    assert args[:3] == (cfg, LINUX, expected_script)
+    assert kwargs == {"timeout": 42.5}
+    stdin = args[3]
+    assert isinstance(stdin, transport.Stdin)
+    owner_line, archive_bytes = stdin.encode().split(b"\n", 1)
     assert owner_line == b"owner-token"
     with tarfile.open(fileobj=io.BytesIO(archive_bytes)) as archive:
         contents = {
@@ -96,9 +84,10 @@ def test_send_surfaces_transport_failure(
 
 
 def test_send_requires_cli_digest(monkeypatch: pytest.MonkeyPatch) -> None:
-    run = sample_run(digest=None)
     calls: list[object] = []
     monkeypatch.setattr(transport, "shell", lambda *a, **kw: calls.append((a, kw)))
     with pytest.raises(Invalid, match="cli_sha256"):
-        ship.send(settings(), LINUX, run, b"bundle", Inputs("{}", "b", None, "o"), 1.0)
+        ship.send(
+            settings(), LINUX, sample_run(None), b"b", Inputs("{}", "b", None, "o"), 1.0
+        )
     assert calls == []

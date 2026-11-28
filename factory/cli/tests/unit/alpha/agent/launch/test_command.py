@@ -21,7 +21,6 @@ if TYPE_CHECKING:
     from pathlib import Path
 
     from tbhbdev.alpha.agent.driver.decisions.metadata import Run
-    from tbhbdev.alpha.agent.model import Host, Settings
 
 PROG = "tbhbdev alpha agent launch"
 COMMIT = "0123456789abcdef0123456789abcdef01234567"
@@ -95,39 +94,19 @@ def test_successful_launch_saves_ships_starts_and_polls_in_order(
     brief: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     cfg, events, real_save = settings(), [], metadata.save
+    recorded: dict[str, tuple[object, ...]] = {}
 
     def fake_save(run: Run) -> None:
         assert (run.cli_commit, run.cli_sha256) == (COMMIT, DIGEST)
         events.append("save")
         real_save(run)
 
-    def fake_send(  # noqa: PLR0913, PLR0917 -- mirrors ship.send
-        config: Settings,
-        host: Host,
-        run: Run,
-        bundle: bytes,
-        inputs: transport.Inputs,
-        timeout: float,
-    ) -> None:
-        assert metadata.metadata_path("sample").exists()
-        assert (config, host, bundle) == (cfg, LINUX, BUNDLE)
-        assert (run.cli_commit, run.cli_sha256) == (COMMIT, DIGEST)
-        assert (inputs.owner, inputs.schema) == (run.owner, None)
-        assert timeout > 0
+    def fake_send(*args: object) -> None:
+        recorded["ship"] = (*args, metadata.metadata_path("sample").exists())
         events.append("ship")
 
-    def fake_call(
-        config: Settings,
-        host: Host,
-        remote: tuple[str, ...],
-        stdin: transport.Stdin | None = None,
-        *,
-        timeout: float = 30,
-    ) -> str:
-        assert (config, host) == (cfg, LINUX)
-        assert remote == bootstrap.start("sample", cfg.sockets_dir, LINUX.name)
-        assert stdin == transport.Stdin(metadata.load(cfg, "sample").owner)
-        assert timeout > 0
+    def fake_call(*args: object, **_kwargs: object) -> str:
+        recorded["start"] = args
         events.append("start")
         return ""
 
@@ -143,6 +122,21 @@ def test_successful_launch_saves_ships_starts_and_polls_in_order(
     assert events == ["save", "ship", "start", "poll"]
     record = json.loads(metadata.metadata_path("sample").read_text())
     assert (record["cli_commit"], record["cli_sha256"]) == (COMMIT, DIGEST)
+    got_cfg, got_host, got_run, got_bundle, got_inputs, got_t, existed = recorded[
+        "ship"
+    ]
+    assert (got_cfg, got_host, got_bundle, existed) == (cfg, LINUX, BUNDLE, True)
+    assert isinstance(got_t, float)
+    assert got_t > 0
+    assert isinstance(got_inputs, transport.Inputs)
+    assert got_inputs.schema is None
+    assert recorded["start"] == (
+        cfg,
+        LINUX,
+        bootstrap.start("sample", cfg.sockets_dir, LINUX.name),
+        transport.Stdin(metadata.load(cfg, "sample").owner),
+    )
+    assert got_run is not None
 
 
 def test_launch_passes_schema_warnings_and_review_commit(

@@ -23,8 +23,16 @@ from tbhbdev.alpha.agent.launch import ship
 from tbhbdev.alpha.agent.launch.decisions import bootstrap
 from tbhbdev.alpha.agent.model import Profile
 
-_OPTIONAL = ("--ref", "--start-ref", "--reason", "--claude-profile")
-_EXTRA = ("--unsandboxed", "--schema", "--variant", "--role")
+_OPTIONAL = (
+    "--ref",
+    "--start-ref",
+    "--reason",
+    "--claude-profile",
+    "--unsandboxed",
+    "--schema",
+    "--variant",
+    "--role",
+)
 _REFUSALS = (
     userconfig.ConfigError,
     OSError,
@@ -34,28 +42,26 @@ _REFUSALS = (
 
 
 def _parser(prog: str) -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(prog=prog)
+    p = argparse.ArgumentParser(prog=prog)
     for flag in ("--host", "--repo", "--model", "--effort"):
-        parser.add_argument(flag, required=True)
-    for flag in (*_OPTIONAL, *_EXTRA):
-        parser.add_argument(flag)
+        p.add_argument(flag, required=True)
+    for flag in _OPTIONAL:
+        p.add_argument(flag)
     for flag in ("--allow-non-gemini", "--ignore-limits", "--steer"):
-        parser.add_argument(flag, action="store_true")
-    parser.add_argument("--profile", choices=("build", "review"), required=True)
-    parser.add_argument(
-        "--harness", choices=("codex", "claude", "agy"), default="codex"
-    )
-    parser.add_argument("--fetch-ref", action="append", default=[])
-    parser.add_argument("--expect-commit", action=argparse.BooleanOptionalAction)
-    accounts = parser.add_mutually_exclusive_group()
+        p.add_argument(flag, action="store_true")
+    p.add_argument("--profile", choices=("build", "review"), required=True)
+    p.add_argument("--harness", choices=("codex", "claude", "agy"), default="codex")
+    p.add_argument("--fetch-ref", action="append", default=[])
+    p.add_argument("--expect-commit", action=argparse.BooleanOptionalAction)
+    accounts = p.add_mutually_exclusive_group()
     accounts.add_argument("--account")
     accounts.add_argument("--ops", dest="account", action="store_const", const="ops")
-    parser.add_argument("--timeout", type=arguments.duration)
-    parser.add_argument("--class", dest="class_")
-    parser.add_argument("--worker-workflow", type=worker_identity.workflow)
-    parser.add_argument("name")
-    parser.add_argument("prompt_file")
-    return parser
+    p.add_argument("--timeout", type=arguments.duration)
+    p.add_argument("--class", dest="class_")
+    p.add_argument("--worker-workflow", type=worker_identity.workflow)
+    p.add_argument("name")
+    p.add_argument("prompt_file")
+    return p
 
 
 def _execute(args: argparse.Namespace) -> int:
@@ -82,15 +88,12 @@ def _execute(args: argparse.Namespace) -> int:
     )
     try:
         ship.send(loaded, run.host, run, bundle, inputs, deadline - time.monotonic())
-        start_cmd = bootstrap.start(
+        cmd = bootstrap.start(
             run.name, loaded.sockets_dir, run.host.name, steer=args.steer
         )
+        owner = transport.Stdin(run.owner)
         transport.call(
-            loaded,
-            run.host,
-            start_cmd,
-            transport.Stdin(run.owner),
-            timeout=deadline - time.monotonic(),
+            loaded, run.host, cmd, owner, timeout=deadline - time.monotonic()
         )
     except transport.CollisionError:
         metadata.archive_metadata(metadata.metadata_path(run.name), run.started)
