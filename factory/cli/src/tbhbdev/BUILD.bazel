@@ -74,6 +74,7 @@ cli_py_library(
     deps = [
         ":adr",
         ":agy",
+        ":command_table",
         ":cue_runtime",
         ":issue",
         ":secret",
@@ -273,4 +274,11 @@ cli_py_library(
         ":content_model",
         ":cue_runtime",
     ],
+)
+
+cli_py_library(
+    name = "command_table",
+    srcs = ["command_table.py"],
+    imports = [".."],
+    visibility = ["//factory/cli:__subpackages__"],
 )

@@ -1143,6 +1143,7 @@ cli_py_test(
     name = "test_cli",
     srcs = ["test_cli.py"],
     data = ["//factory/cli/src/tbhbdev:module_entrypoint"],
+    extra_deps = ["//factory/cli/src/tbhbdev/alpha/identity:dispatcher"],
     deps = [
         ":conftest",
         "//factory/cli/src/tbhbdev:cli",
@@ -1354,6 +1355,7 @@ filegroup(
         "//factory/cli/tests/integration/alpha/agent/decisions:package_files",
         "//factory/cli/tests/integration/alpha/agent/run_host:package_files",
         "//factory/cli/tests/integration/alpha/identity:test_dispatcher_timestamps_io.py",
+        "//factory/cli/tests/unit:test_command_table.py",
         "//factory/cli/tests/unit:test_content_decision_record.py",
         "//factory/cli/tests/unit/admin:test_approvals.py",
         "//factory/cli/tests/unit/alpha:package_files",

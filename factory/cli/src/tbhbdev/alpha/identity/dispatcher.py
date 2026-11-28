@@ -6,22 +6,22 @@
 from __future__ import annotations
 
 import sys
-import traceback
+lazy import traceback
 lazy from collections.abc import Mapping
 
-from tbhbdev.alpha.identity.antigravity.session import record_agy, save_agy_session
-from tbhbdev.alpha.identity.claude.hooks import handle_claude
-from tbhbdev.alpha.identity.codex.hooks import handle_codex
-from tbhbdev.alpha.identity.commit import claims
-from tbhbdev.alpha.identity.commit import hooks as commit_hooks
-from tbhbdev.alpha.identity.commit.hooks import trailer_command
-from tbhbdev.alpha.identity.diagnostics import PROG, hook_failure
-from tbhbdev.alpha.identity.documents import hooks as document_hooks
-from tbhbdev.alpha.identity.models import CLAUDE, CODEX, SLUGS, detect
-from tbhbdev.alpha.identity.payload import parse_stdin
-from tbhbdev.alpha.identity.records import AttributionError
-from tbhbdev.alpha.identity.storage import state_dir
-from tbhbdev.alpha.repo import hook_cwd, in_tbhb_dev, read_hook_stdin
+lazy from tbhbdev.alpha.identity.antigravity.session import record_agy, save_agy_session
+lazy from tbhbdev.alpha.identity.claude.hooks import handle_claude
+lazy from tbhbdev.alpha.identity.codex.hooks import handle_codex
+lazy from tbhbdev.alpha.identity.commit import claims
+lazy from tbhbdev.alpha.identity.commit import hooks as commit_hooks
+lazy from tbhbdev.alpha.identity.commit.hooks import trailer_command
+lazy from tbhbdev.alpha.identity.diagnostics import PROG, hook_failure
+lazy from tbhbdev.alpha.identity.documents import hooks as document_hooks
+lazy from tbhbdev.alpha.identity.models import CLAUDE, CODEX, SLUGS, detect
+lazy from tbhbdev.alpha.identity.payload import parse_stdin
+lazy from tbhbdev.alpha.identity.records import AttributionError
+lazy from tbhbdev.alpha.identity.storage import state_dir
+lazy from tbhbdev.alpha.repo import hook_cwd, in_tbhb_dev, read_hook_stdin
 
 
 def cmd_record(harness: str, env: Mapping[str, str]) -> int:
