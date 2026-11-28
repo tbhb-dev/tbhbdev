@@ -157,6 +157,26 @@ def test_text_without_the_canary_is_a_problem() -> None:
     )
 
 
+def test_problem_names_the_given_item_reference() -> None:
+    ref = gitleaks.ItemRef("vault-a", "item-a", "field-a")
+    assert str(ref) == "op:\x2f/vault-a/item-a/field-a"
+    assert gitleaks.DEFAULT_REF == gitleaks.ItemRef(
+        gitleaks.VAULT, gitleaks.ITEM, gitleaks.FIELD
+    )
+    assert gitleaks.problem("= = bad", ref) == (
+        "op:\x2f/vault-a/item-a/field-a isn't valid TOML"
+    )
+    assert gitleaks.problem('id = "tbhb-private-canary"\n', ref) == (
+        'op:\x2f/vault-a/item-a/field-a has no [extend] path = ".gitleaks.toml"'
+    )
+    assert (
+        gitleaks.problem('[extend]\npath = ".gitleaks.toml"\n', ref)
+        == "op:\x2f/vault-a/item-a/field-a has no rule with the id tbhb-private-canary"
+    )
+    valid = '[extend]\npath = ".gitleaks.toml"\n[[rules]]\nid = "tbhb-private-canary"\n'
+    assert gitleaks.problem(valid, ref) is None
+
+
 @pytest.mark.parametrize(
     ("name", "common"),
     [

@@ -1,6 +1,6 @@
 """The tbhbops command.
 
-    tbhbops gitleaks generate [--dry-run]
+    tbhbops gitleaks generate [--dry-run] [--out PATH]
     tbhbops connect token-commands [--host H ...] [--ops-session H]
                                   [--runner-vm H ...] [--dry-run]
     tbhbops connect check [--host H] [--ops-controller] [--inventory PATH]
@@ -54,8 +54,9 @@ Environment (no token is ever printed):
 Until the two tokens exist, @tbhb runs this command under their own session.
 
 The hosts come from the Ansible inventory, ansible/inventory/, found from the
-current directory. The owners, the 1Password account and the Connect server
-come from the tbhbdev config, $XDG_CONFIG_HOME/tbhbdev/config.toml.
+current directory. The owners, the 1Password account, the Connect server and
+the optional [gitleaks] item_ref come from the tbhbdev config,
+$XDG_CONFIG_HOME/tbhbdev/config.toml.
 """
 
 
@@ -114,7 +115,9 @@ def parser() -> argparse.ArgumentParser:
         description=(
             f"Generate the private gitleaks config and write it to the {gitleaks.FIELD}"
             f" field of the 1Password item {gitleaks.ITEM} in the {gitleaks.VAULT}"
-            " vault."
+            " vault.\n\n"
+            "When [gitleaks] item_ref is set in the tbhbdev config, write to that"
+            " reference instead of the default."
         ),
         epilog=EPILOG,
         formatter_class=argparse.RawDescriptionHelpFormatter,
@@ -123,6 +126,15 @@ def parser() -> argparse.ArgumentParser:
         "--dry-run",
         action="store_true",
         help="print what it would write, which never includes the config, and stop",
+    )
+    generate.add_argument(
+        "--out",
+        type=Path,
+        metavar="PATH",
+        help=(
+            "with --dry-run, write the generated config to a new local file"
+            " (mode 0600) instead of publishing; refuses to overwrite"
+        ),
     )
     link = groups.add_parser("connect", help="the agent hosts' Connect tokens")
     steps = link.add_subparsers(dest="command", required=True)
@@ -248,7 +260,7 @@ def _facts(
         operators=operators,
         checkout=settings.workspace,
         vaults=tuple(sorted(name for name in vaults if name)),
-        items=(gitleaks.ITEM,),
+        items=(settings.item_ref.item,),
         endpoints=tuple(sorted(hosts_of_server)),
         names=tuple(sorted({gitleaks.KEYCHAIN, gitleaks.SERVICE, settings.server})),
         account=settings.account,
@@ -281,28 +293,59 @@ def summary(
     return lines
 
 
-def generate(system: System, out: TextIO, *, dry_run: bool) -> None:
+def _write_private(path: Path, text: str) -> None:
+    """Create PATH with mode 0600 and write TEXT, refusing to overwrite."""
+    flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW
+    try:
+        fd = os.open(path, flags, 0o600)
+        with os.fdopen(fd, "w", encoding="utf-8") as stream:
+            stream.write(text)
+    except FileExistsError:
+        message = f"{path} already exists"
+        raise CliError(message) from None
+    except OSError:
+        message = f"cannot write {path}"
+        raise CliError(message) from None
+
+
+def generate(
+    system: System,
+    out: TextIO,
+    *,
+    dry_run: bool,
+    output: Path | None,
+) -> None:
     """Generate the config, check it, and write it unless DRY_RUN."""
+    if output is not None and not dry_run:
+        message = "--out requires --dry-run"
+        raise CliError(message)
     creds = config.credentials(system.env)
     settings = config.settings(system.env)
+    ref = settings.item_ref
     server = connect.Connect(system.http, creds.op_host, creds.op_token)
     reached = connect.vaults(server)
     facts = _facts(system, creds, settings, reached)
     made, omitted = gitleaks.rules(facts)
     text = gitleaks.render(made)
-    found = gitleaks.problem(text)
+    found = gitleaks.problem(text, ref)
     out.writelines(f"{line}\n" for line in summary(text, made, omitted, facts))
     if found is not None:
         raise CliError(found)
-    if gitleaks.VAULT not in reached:
-        message = f"the Connect token doesn't reach the vault {gitleaks.VAULT}"
+    if output is not None:
+        _write_private(output, text)
+        out.write(f"dry run: wrote config to {output}\n")
+        return
+    if ref.vault not in reached:
+        message = f"the Connect token doesn't reach the vault {ref.vault}"
         raise CliError(message)
-    status = connect.publish(server, reached[gitleaks.VAULT], text, write=not dry_run)
+    status = connect.publish(
+        server, reached[ref.vault], text, write=not dry_run, ref=ref
+    )
     if dry_run:
         verb = "is current" if status == "current" else f"would be {status}"
-        out.write(f"dry run: {gitleaks.REF} {verb}; wrote nothing\n")
+        out.write(f"dry run: {ref} {verb}; wrote nothing\n")
     else:
-        out.write(f"{status}: {gitleaks.REF}\n")
+        out.write(f"{status}: {ref}\n")
 
 
 def token_commands(  # the command's options, each one a fact
@@ -411,7 +454,7 @@ def run(argv: list[str] | None, system: System, out: TextIO, err: TextIO) -> int
         if args.group == "o11y":
             return o11y_command.dispatch(args, system, out)
         if args.group == "gitleaks":
-            generate(system, out, dry_run=args.dry_run)
+            generate(system, out, dry_run=args.dry_run, output=args.out)
         elif args.command == "token-commands":
             token_commands(
                 system,
