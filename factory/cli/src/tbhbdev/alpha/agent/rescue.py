@@ -156,13 +156,13 @@ def scan(directory: Path, base: str, tip: str, exclude: list[str]) -> str | None
         config = write_policy(directory, base)
         diff = (
             "--text",
-            "--diff-merges=separate",
+            "--diff-merges=remerge",
             tip,
             *(f"^{sha}" for sha in exclude),
         )
         stats = push.history_git(directory, "log", "--format=", "--numstat", *diff)
         report = directory / "finding.tmpl"
-        report.write_text("{{range .}}{{.Commit}}\n{{end}}")
+        report.write_text("{{range .}}{{.Commit}} {{.RuleID}}\n{{end}}")
         flags = ("--no-banner", "--no-color", "--redact", f"--exit-code={FINDING}")
         args = (
             *flags,
@@ -190,8 +190,8 @@ def scan(directory: Path, base: str, tip: str, exclude: list[str]) -> str | None
     except FAILURES:
         return "secret scan unavailable"
     if done.returncode == FINDING:
-        commit = re.match(r"[0-9a-f]{40}(?:[0-9a-f]{24})?\n", done.stdout)
-        where = f" in commit {commit[0][:7]}" if commit else ""
+        found = re.match(r"([0-9a-f]{40}(?:[0-9a-f]{24})?) ([\w.-]+)\n", done.stdout)
+        where = f" in commit {found[1][:7]} (rule {found[2]})" if found else ""
         return f"secret scan found a secret{where}"
     # Gitleaks can exit zero when its Git subprocess fails.
     if done.returncode or re.search(r"\bERR\b", done.stderr):
