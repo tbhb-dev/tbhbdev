@@ -5,7 +5,7 @@
 import json
 from typing import cast
 
-from tbhbdev.alpha.merge.evidence import object_fields
+from tbhbdev.merge.evidence import object_fields
 
 
 def parse_queue_state(output: str) -> dict[str, object]:

@@ -7,7 +7,14 @@ import pytest
 from hypothesis import example, given
 from hypothesis import strategies as st
 
-from tbhbdev.alpha.merge.body import (
+from tbhbdev.alpha.pull_request.body import (
+    FENCE,
+    INLINE_CODE,
+    heading_of,
+    scan,
+    split_blocks,
+)
+from tbhbdev.merge.body import (
     TOKEN,
     WIDTH,
     Line,
@@ -15,13 +22,6 @@ from tbhbdev.alpha.merge.body import (
     render,
     render_body,
     wrap,
-)
-from tbhbdev.alpha.pull_request.body import (
-    FENCE,
-    INLINE_CODE,
-    heading_of,
-    scan,
-    split_blocks,
 )
 
 

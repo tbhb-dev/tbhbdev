@@ -6,7 +6,7 @@ import pytest
 from tbhbdev.alpha.identity.models import SLUGS
 from tbhbdev.alpha.identity.records import HASH_RE
 from tbhbdev.alpha.identity.trailers import ATTR_PAIR, llm_trailers
-from tbhbdev.alpha.merge import review_gate as gate
+from tbhbdev.merge import review_gate as gate
 
 HEAD = "a" * 40
 OLD = "b" * 40

@@ -5,7 +5,7 @@
 
 import pytest
 
-from tbhbdev.alpha.merge.queue import parse_queue_state, queue_removal, queue_result
+from tbhbdev.merge.queue import parse_queue_state, queue_removal, queue_result
 
 
 @pytest.mark.parametrize(

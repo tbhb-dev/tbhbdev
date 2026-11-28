@@ -96,7 +96,7 @@ COMMAND_MODULES = {
     "issue": ("tbhbdev.alpha.close", "main"),
     "gh-app": ("tbhbdev.alpha.gh_app_command", "main"),
     "repo": ("tbhbdev.alpha.repo_bootstrap", "main"),
-    "merge": ("tbhbdev.alpha.merge.command", "main"),
+    "merge": ("tbhbdev.merge.command", "main"),
     "monorepo": ("tbhbdev.alpha.monorepo.command", "main"),
     "verify-range": ("tbhbdev.alpha.verify_range", "main"),
     "version-check": ("tbhbdev.alpha.version_check", "main"),

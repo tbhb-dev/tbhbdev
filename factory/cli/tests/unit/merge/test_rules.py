@@ -5,9 +5,9 @@
 
 import pytest
 
-from tbhbdev.alpha.merge.evidence import EvidenceError
-from tbhbdev.alpha.merge.review_gate import Pull
-from tbhbdev.alpha.merge.rules import (
+from tbhbdev.merge.evidence import EvidenceError
+from tbhbdev.merge.review_gate import Pull
+from tbhbdev.merge.rules import (
     parse_branch_rules,
     require_merge_commits,
     required_checks,

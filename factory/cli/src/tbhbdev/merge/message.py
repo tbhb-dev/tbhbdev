@@ -6,7 +6,7 @@ from dataclasses import dataclass
 from itertools import takewhile
 from typing import TYPE_CHECKING
 
-from tbhbdev.alpha.merge.body import MarkdownLine
+from tbhbdev.merge.body import MarkdownLine
 
 if TYPE_CHECKING:
     from collections.abc import Sequence

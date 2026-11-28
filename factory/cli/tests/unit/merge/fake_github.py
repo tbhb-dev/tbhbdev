@@ -10,10 +10,10 @@ import subprocess
 from dataclasses import dataclass
 from pathlib import Path
 
-from tbhbdev.alpha.merge.command import main
+from tbhbdev.merge.command import main
 
 FIXTURE = (
-    Path(__file__).parents[3]
+    Path(__file__).parents[2]
     / "testdata"
     / "alpha"
     / "pull_request"

@@ -6,13 +6,13 @@
 import json
 
 import pytest
-from unit.alpha.merge.examples import ASSIST, GEN, OPENED
-from unit.alpha.merge.fake_github import Tools, read_back
+from unit.merge.examples import ASSIST, GEN, OPENED
+from unit.merge.fake_github import Tools, read_back
 
 from tbhbdev.alpha.identity.commit.grammar import check_message
-from tbhbdev.alpha.merge.body import WIDTH
-from tbhbdev.alpha.merge.compose import build_message
-from tbhbdev.alpha.merge.github import fetch
+from tbhbdev.merge.body import WIDTH
+from tbhbdev.merge.compose import build_message
+from tbhbdev.merge.github import fetch
 
 
 def message_of(body: str, title: str = "fix: x", number: int = 7) -> str:

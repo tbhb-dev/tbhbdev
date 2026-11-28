@@ -4,9 +4,9 @@
 """Pure tests for the body of a Renovate pull request."""
 
 import pytest
-from unit.alpha.merge.examples import RENOVATE_BODY
+from unit.merge.examples import RENOVATE_BODY
 
-from tbhbdev.alpha.merge.renovate import renovate_body
+from tbhbdev.merge.renovate import renovate_body
 
 
 def test_renovate_body_keeps_only_the_update_table() -> None:

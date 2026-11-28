@@ -6,9 +6,9 @@
 import json
 
 import pytest
-from unit.alpha.merge.examples import RENOVATE_AUTHOR
+from unit.merge.examples import RENOVATE_AUTHOR
 
-from tbhbdev.alpha.merge.evidence import PullRequest, failing_checks, parse_pull_request
+from tbhbdev.merge.evidence import PullRequest, failing_checks, parse_pull_request
 
 AGENT_EMAIL = "agent@example.com"
 TARGET = "owner/repository"
