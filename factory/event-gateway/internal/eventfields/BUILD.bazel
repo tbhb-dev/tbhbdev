@@ -1,0 +1,27 @@
+# SPDX-License-Identifier: Apache-2.0
+# Copyright Tony Burns
+# cspell:words eventfields
+
+load("@rules_go//go:def.bzl", "go_library")
+load("@tbhb_rules//repo:defs.bzl", "repo_files")
+load("//factory:go.bzl", "go_test")
+
+repo_files(visibility = ["//factory/event-gateway:__subpackages__"])
+
+go_library(
+    name = "eventfields",
+    srcs = [
+        "fields.go",
+        "template.go",
+    ],
+    importpath = "github.com/tbhb-dev/tbhbdev/factory/event-gateway/internal/eventfields",
+    visibility = ["//factory/event-gateway:__subpackages__"],
+    deps = ["//factory/event-gateway/internal/filter"],
+)
+
+go_test(
+    name = "eventfields_test",
+    srcs = ["eventfields_test.go"],
+    visibility = ["//factory/event-gateway:__pkg__"],
+    deps = [":eventfields"],
+)

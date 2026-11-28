@@ -5,6 +5,8 @@ version = 1
 
 [[annotations]]
 path = [
+  "factory/event-gateway/go.mod",
+  "factory/event-gateway/go.sum",
   "factory/github-metrics/go.mod",
   "factory/github-metrics/go.sum",
   "go.work",

@@ -1,0 +1,3 @@
+# Receives, stores, and routes factory webhook events.
+# Depends on lib/rules and external Go modules.
+@tbhb
