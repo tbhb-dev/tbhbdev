@@ -16,12 +16,12 @@ from typing import TYPE_CHECKING, cast
 
 import tomlkit
 
-from tbhbdev.alpha.monorepo.source import MonorepoError, contents
+from tbhbdev.monorepo.source import MonorepoError, contents
 
 if TYPE_CHECKING:
     from collections.abc import Collection, Iterator
 
-    from tbhbdev.alpha.monorepo.source import Blob
+    from tbhbdev.monorepo.source import Blob
 
 # Root configuration that the shared roots of the monorepo replace, from the
 # root of tbhb-dev/tbhbdev. A pattern matches the whole path, and `*` stays

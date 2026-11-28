@@ -65,8 +65,11 @@ class _Env:
         out, err = self.cap.readouterr()
         return rc, out, err
 
-    def check(self, out: str, c: tuple[int, int, int, int], disk: int = 40) -> None:
-        tail = f"outputs_removed={c[2]} errors={c[3]} disk={disk}%"
+    def check(
+        self, out: str, c: tuple[int, int, int, int], disk: int = 40, ko: int = 0
+    ) -> None:
+        ck = f"checkouts_removed=0 checkouts_kept_unpushed=0 checkouts_kept_other={ko}"
+        tail = f"outputs_removed={c[2]} {ck} errors={c[3]} disk={disk}%"
         want = f"summary: ended={c[0]} servers_stopped={c[1]} {tail}"
         assert [ln for ln in out.splitlines() if ln.startswith("summary:")] == [want]
 
@@ -113,7 +116,7 @@ def test_live_kept_dead_marked_ended_and_orphans_cleaned(env: _Env) -> None:
         fcntl.flock(lk, fcntl.LOCK_EX | fcntl.LOCK_NB)
         rc, out, _ = env.run()
     assert rc == 0
-    env.check(out, (2, 0, 2, 0))
+    env.check(out, (2, 0, 2, 0), ko=1)
     assert (b_lk.is_dir(), b_pg.is_dir(), custom.is_dir()) == (True, True, True)
     assert (r / "live-lock.phase").read_text() == "running"
     assert not (r / "live-pgid.rc").exists()
@@ -138,7 +141,7 @@ def test_recent_base_without_pid_survives(env: _Env, args: tuple[str, ...]) -> N
     rc, out, _ = env.run(*args)
 
     assert rc == 0
-    env.check(out, (0, 0, 1, 0))
+    env.check(out, (0, 0, 1, 0), ko=1)
     assert str(old) in out
     assert recent.is_dir()
     assert ended.is_dir()
@@ -176,7 +179,7 @@ def test_ended_run_stops_bazel_by_process_and_removes_output(env: _Env) -> None:
             p.kill()
     client.assert_not_called()
     assert (rc, base.exists()) == (0, False)
-    env.check(out, (0, 1, 1, 0))
+    env.check(out, (0, 1, 1, 0), ko=1)
 
 
 def test_hung_server_stop_does_not_stop_sweep(env: _Env) -> None:
@@ -188,7 +191,7 @@ def test_hung_server_stop_does_not_stop_sweep(env: _Env) -> None:
     rc, out, err = env.run()
     assert (rc, "server alive" in err) == (0, True)
     assert (b_h.is_dir(), b_ok.exists()) == (True, False)
-    env.check(out, (0, 1, 1, 1))
+    env.check(out, (0, 1, 1, 1), ko=2)
 
 
 def test_dry_run_changes_nothing(env: _Env) -> None:
@@ -201,7 +204,7 @@ def test_dry_run_changes_nothing(env: _Env) -> None:
     assert (rc, sorted(p.name for p in env.r.iterdir())) == (0, before)
     for want in ("mark ended dry", "stop bazel server 5001", "remove bazel output"):
         assert f"dry-run: {want}" in out
-    env.check(out, (1, 1, 1, 0))
+    env.check(out, (1, 1, 1, 0), ko=1)
     assert ((env.r / "dry.phase").read_text(), base.is_dir()) == ("running", True)
     stop.assert_not_called()
 
@@ -236,7 +239,7 @@ def test_failing_run_and_foreign_owner_isolated(env: _Env) -> None:
     env.mp.setattr(bazel_cache, "remove_unused_base", flaky)
     rc, out, err = env.run()
     assert (rc, "bad-run" in err, str(bad_b) in err) == (0, True, True)
-    env.check(out, (1, 0, 1, 3))
+    env.check(out, (1, 0, 1, 3), ko=1)
     assert (b_bad.is_dir(), b_ok.exists()) == (True, False)
     assert (r / "good-run.phase").read_text() == "ended"
     env.mp.setattr(os, "getuid", Mock(return_value=os.getuid() + 1))
