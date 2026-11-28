@@ -49,6 +49,8 @@ FIXED_COMMANDS = {
         "//factory/agent-capacity/container:image_config_test",
     ),
 }
+# The draft changes and advisories appear between runs, so these always run.
+LIVE = frozenset({"gitleaks-text", "agent-capacity-vulnerabilities"})
 ALWAYS = (
     "lint-baselines",
     *FIXED_COMMANDS,
@@ -89,6 +91,10 @@ class Revisions(NamedTuple):
     merge_base: str
     head: str
     ref: str
+
+    @property
+    def stage_record_header(self) -> str:
+        return f"base {self.base} merge-base {self.merge_base}"
 
 
 async def run(
@@ -148,20 +154,86 @@ def write_record(path: Path, text: str) -> None:
         temporary.replace(path)
 
 
+def read_passed_stages(path: Path, header: str) -> set[str]:
+    try:
+        lines = path.read_text(encoding="utf-8").splitlines()
+    except OSError:
+        return set()
+    if not lines or lines[0] != header:
+        return set()
+    return {
+        stage
+        for line in lines[1:]
+        if line.endswith(" PASS") and (stage := line.removesuffix(" PASS")) not in LIVE
+    }
+
+
+def update_stage_record(
+    path: Path, header: str, name: str, *, passed: bool
+) -> set[str]:
+    stages = read_passed_stages(path, header)
+    if passed:
+        stages.add(name)
+    elif name not in stages:
+        return stages
+    else:
+        stages.discard(name)
+    if stages:
+        body = "".join(f"{stage} PASS\n" for stage in sorted(stages))
+        write_record(path, f"{header}\n{body}")
+    else:
+        path.unlink(missing_ok=True)
+    return stages
+
+
+async def record_target(revisions: Revisions) -> Path | None:
+    head, base = revisions.head, revisions.merge_base
+    if base == head or await git("rev-parse", "HEAD") != head:
+        return None
+    if await git("status", "--porcelain", "--untracked-files=no"):
+        return None
+    return Path(await git("rev-parse", "--git-common-dir")) / "tbhbdev-preflight"
+
+
+async def load_passed_stages(revisions: Revisions) -> set[str]:
+    records = await record_target(revisions)
+    if records is None:
+        return set()
+    return await asyncio.to_thread(
+        read_passed_stages,
+        records / f"{revisions.head}.stages",
+        revisions.stage_record_header,
+    )
+
+
+async def record_stage(
+    revisions: Revisions, name: str, *, passed: bool
+) -> set[str] | None:
+    records = await record_target(revisions) if name not in LIVE else None
+    if records is None:
+        return None
+    return await asyncio.to_thread(
+        update_stage_record,
+        records / f"{revisions.head}.stages",
+        revisions.stage_record_header,
+        name,
+        passed=passed,
+    )
+
+
 async def record_result(
     revisions: Revisions, results: list[tuple[str, Outcome]]
 ) -> None:
-    head, base = revisions.head, revisions.merge_base
-    if base == head or await git("rev-parse", "HEAD") != head:
+    records = await record_target(revisions)
+    if records is None:
         return
-    if await git("status", "--porcelain", "--untracked-files=no"):
-        return
-    records = Path(await git("rev-parse", "--git-common-dir")) / "tbhbdev-preflight"
-    tree = await git("rev-parse", f"{head}^{{tree}}")
+    tree = await git("rev-parse", f"{revisions.head}^{{tree}}")
     failed = " ".join(name for name, passed in results if passed is False)
     result = f"fail {failed}" if failed else "pass"
     await asyncio.to_thread(
-        write_record, records / head, f"tree {tree}\nbase {base}\nresult {result}\n"
+        write_record,
+        records / revisions.head,
+        f"tree {tree}\nbase {revisions.merge_base}\nresult {result}\n",
     )
 
 
@@ -314,6 +386,28 @@ async def stage(
     return passed
 
 
+async def run_checks(
+    checks: tuple[str, ...],
+    revisions: Revisions,
+    scratch: Path,
+    explicit: str | None,
+    paths: list[str],
+) -> tuple[list[tuple[str, Outcome]], set[str] | None]:
+    skipped = set() if explicit else await load_passed_stages(revisions)
+    results: list[tuple[str, Outcome]] = []
+    recorded: set[str] | None = None
+    for name in checks:
+        if name in skipped:
+            say(f"Skipping {name}: passed earlier at this head")
+            results.append((name, True))
+            continue
+        outcome = await stage(name, revisions, scratch, explicit, paths)
+        results.append((name, outcome))
+        if outcome is not None:
+            recorded = await record_stage(revisions, name, passed=outcome)
+    return results, recorded
+
+
 async def main() -> int:
     started = clock()
     parser = argparse.ArgumentParser(
@@ -339,21 +433,18 @@ async def main() -> int:
     ref = DEFAULT_BASE if args.base == "HEAD" or ref in {"", "main"} else ref
     changed = await git("diff", "--name-only", "-z", "--no-renames", merge_base, head)
     paths = changed.split("\0")[:-1]
-    if args.check:
-        checks = (args.check,)
-    else:
-        has_draft = await asyncio.to_thread(DRAFT.is_file)
-        checks = checks_for(paths, has_draft=has_draft)
+    has_draft = await asyncio.to_thread(DRAFT.is_file)
+    selected = checks_for(paths, has_draft=has_draft)
+    checks = (args.check,) if args.check else selected
     revisions = Revisions(base, merge_base, head, ref)
     scratch = Path(tempfile.mkdtemp(prefix="preflight-"))
-    # One stage at a time: each await finishes before the next name starts.
-    results = [
-        (n, await stage(n, revisions, scratch, args.check, paths)) for n in checks
-    ]
+    results, recorded = await run_checks(checks, revisions, scratch, args.check, paths)
     sys.stdout.write(summary(results, args.base) + "\n")
+    passed = False not in (outcome for _, outcome in results)
     if not args.check:
         await record_result(revisions, results)
-    passed = False not in (outcome for _, outcome in results)
+    elif passed and recorded is not None and set(selected).issubset(recorded):
+        await record_result(revisions, [(name, True) for name in selected])
     word = "pass" if passed else "fail"
     say(f"Preflight finished in {clock() - started:.0f} s: {word}")
     reports = {"design-report.md", "gomodscan.sarif", "agent-capacity.sarif"}

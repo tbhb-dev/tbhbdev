@@ -6,6 +6,7 @@ load("//factory/cli/tests:pytest.bzl", "cli_py_test")
 
 # gazelle:resolve py agent_example //factory/cli/tests:agent_example
 # gazelle:resolve py agent_host_example //factory/cli/tests:agent_host_example
+# gazelle:resolve py fake_tool //factory/cli/tests:fake_tool
 # gazelle:resolve py run_host_fixtures //factory/cli/tests:run_host_fixtures
 # gazelle:resolve py runfile_fixtures //factory/cli/tests:runfile_fixtures
 
@@ -111,6 +112,7 @@ cli_py_test(
         "//factory/cli/src/tbhbdev/alpha/agent:credentials",
         "//factory/cli/src/tbhbdev/alpha/agent:model",
         "//factory/cli/src/tbhbdev/alpha/agent:process_group",
+        "//factory/cli/src/tbhbdev/alpha/agent:push",
         "//factory/cli/src/tbhbdev/alpha/agent:rescue",
         "//factory/cli/src/tbhbdev/alpha/agent:runfiles",
         "//factory/cli/src/tbhbdev/alpha/agent/run_host:auth",
@@ -119,6 +121,7 @@ cli_py_test(
         "//factory/cli/src/tbhbdev/alpha/agent/run_host:execution",
         "//factory/cli/src/tbhbdev/alpha/agent/run_host:harness",
         "//factory/cli/src/tbhbdev/alpha/agent/run_host:preflight",
+        "//factory/cli/src/tbhbdev/alpha/agent/run_host:publication",
         "//factory/cli/src/tbhbdev/alpha/agent/run_host:state",
         "//factory/cli/tests:agent_host_example",
         "//factory/cli/tests:conftest",
@@ -295,6 +298,7 @@ cli_py_test(
         "//factory/cli/src/tbhbdev/alpha/agent/run_host:harness",
         "//factory/cli/src/tbhbdev/alpha/agent/run_host:preflight",
         "//factory/cli/src/tbhbdev/alpha/agent/run_host:publication",
+        "//factory/cli/src/tbhbdev/alpha/agent/run_host:republish",
         "//factory/cli/src/tbhbdev/alpha/agent/run_host:state",
         "//factory/cli/src/tbhbdev/alpha/pull_request:draft",
         "//factory/cli/tests:agent_host_example",
@@ -303,6 +307,34 @@ cli_py_test(
         "//factory/cli/tests/integration/alpha:conftest",
         "//factory/cli/tests/integration/alpha/agent:conftest",
         "@cli_pip//httpx2",
+        "@cli_pip//pytest",
+    ],
+)
+
+cli_py_test(
+    name = "test_republish_io",
+    srcs = ["test_republish_io.py"],
+    imports = ["../../../.."],
+    path_tools = ["@tbhb_rules_gitleaks//:gitleaks"],
+    pyi_deps = ["//factory/cli/src/tbhbdev/alpha/agent/run_host:state"],
+    deps = [
+        ":conftest",
+        "//factory/cli/src/tbhbdev/alpha:pre_push_guard",
+        "//factory/cli/src/tbhbdev/alpha/agent:credentials",
+        "//factory/cli/src/tbhbdev/alpha/agent:host_tools",
+        "//factory/cli/src/tbhbdev/alpha/agent:process_group",
+        "//factory/cli/src/tbhbdev/alpha/agent:push",
+        "//factory/cli/src/tbhbdev/alpha/agent:rescue",
+        "//factory/cli/src/tbhbdev/alpha/agent/run_host:execution",
+        "//factory/cli/src/tbhbdev/alpha/agent/run_host:harness",
+        "//factory/cli/src/tbhbdev/alpha/agent/run_host:preflight",
+        "//factory/cli/src/tbhbdev/alpha/agent/run_host:publication",
+        "//factory/cli/tests:agent_host_example",
+        "//factory/cli/tests:conftest",
+        "//factory/cli/tests:fake_tool",
+        "//factory/cli/tests:run_host_fixtures",
+        "//factory/cli/tests/integration/alpha:conftest",
+        "//factory/cli/tests/integration/alpha/agent:conftest",
         "@cli_pip//pytest",
     ],
 )

@@ -114,6 +114,7 @@ cli_py_library(
         ":version_heal",
         "//factory/cli/src/tbhbdev:telemetry",
         "//factory/cli/src/tbhbdev:version",
+        "//factory/cli/src/tbhbdev/alpha/agent:cli_bundle",
         "//factory/cli/src/tbhbdev/alpha/agent:model",
         "//factory/cli/src/tbhbdev/alpha/agent:transport",
         "//factory/cli/src/tbhbdev/alpha/agent/decisions:remote_host",

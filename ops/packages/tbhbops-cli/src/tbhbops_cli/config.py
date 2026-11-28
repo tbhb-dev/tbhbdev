@@ -7,6 +7,7 @@ This command reads these values from it, as bootstrap does:
 
     [gitleaks] owners            the owners whose private repositories it covers
     [gitleaks] session_sockets   optional; session socket paths to keep out
+    [gitleaks] item_ref          optional; the 1Password reference for the config
     [op] account                 the 1Password account
     [connect] server             the Connect server's name
     [connect] server_hosts       the hosts that run it, each a DNS label
@@ -21,22 +22,29 @@ from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 lazy from collections.abc import Mapping
 
-from tbhbops_cli import connect
+from tbhbops_cli import connect, gitleaks
 from tbhbops_cli.common import CliError, Run
 
 # The names of the three settings that come from the environment, and what
 # each one is for. The first two are credentials.
-OP_TOKEN = "OP_CONNECT_TOKEN"  # noqa: S105  # nosec B105  # a variable's name
-GITHUB_TOKEN = "TBHBOPS_GITHUB_TOKEN"  # noqa: S105  # nosec B105  # a variable's name
+OP_TOKEN = "OP_CONNECT_TOKEN"  # nosec B105  # a variable's name
+GITHUB_TOKEN = "TBHBOPS_GITHUB_TOKEN"  # nosec B105  # a variable's name
 OP_HOST = "OP_CONNECT_HOST"
 ENVIRONMENT = (
-    (OP_TOKEN, "a 1Password Connect token with write access to scanner-policy"),
+    (
+        OP_TOKEN,
+        (
+            "a 1Password Connect token with write access to the scan config item"
+            " (default scanner-policy)"
+        ),
+    ),
     (GITHUB_TOKEN, "a read-only GitHub token that lists the private repositories"),
     (OP_HOST, "the Connect server's https URL"),
 )
 # What each of `[connect] server_hosts` must be, so that its endpoint's host
 # is that one label under the tailnet's suffix.
 DNS_LABEL = re.compile(r"[A-Za-z0-9]([A-Za-z0-9-]{0,61}[A-Za-z0-9])?")
+_REF_PARTS = 3
 
 
 @dataclass(frozen=True)
@@ -58,6 +66,7 @@ class Settings:
     server: str
     server_hosts: tuple[str, ...]
     workspace: PurePosixPath | None
+    item_ref: gitleaks.ItemRef = gitleaks.DEFAULT_REF
 
 
 def _missing(env: Mapping[str, str], wanted: tuple[tuple[str, str], ...]) -> str:
@@ -148,6 +157,27 @@ def _workspace(data: dict[str, object], path: Path) -> PurePosixPath | None:
     return found
 
 
+def _item_ref(data: dict[str, object], path: Path) -> gitleaks.ItemRef:
+    if "item_ref" not in _table(data, path, "gitleaks"):
+        return gitleaks.DEFAULT_REF
+    raw = _string(data, path, "gitleaks", "item_ref")
+    body = raw.removeprefix(gitleaks.REF_SCHEME)
+    parts = body.split("/")
+    if (
+        not raw.startswith(gitleaks.REF_SCHEME)
+        or len(parts) != _REF_PARTS
+        or not all(parts)
+        or ".." in parts
+        or any(c.isspace() or c in "?#" for c in body)
+    ):
+        message = (
+            f"{path}: [gitleaks] item_ref must be "
+            f"{gitleaks.REF_SCHEME}<vault>/<item>/<field>"
+        )
+        raise CliError(message)
+    return gitleaks.ItemRef(parts[0], parts[1], parts[2])
+
+
 def connect_server(env: Mapping[str, str]) -> str:
     """The Connect server's name, `[connect] server` in the tbhbdev config."""
     path = config_path(env)
@@ -183,4 +213,5 @@ def settings(env: Mapping[str, str]) -> Settings:
         server=_string(data, path, "connect", "server"),
         server_hosts=server_hosts,
         workspace=_workspace(data, path),
+        item_ref=_item_ref(data, path),
     )

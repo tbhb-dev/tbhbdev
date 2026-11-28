@@ -14,6 +14,10 @@ import pytest
 
 from lint.preflight import preflight
 
+HEAD, TREE, BASE = "a" * 40, "b" * 40, "c" * 40
+OTHER_BASE = "f" * 40
+LIVE_STAGES = ("gitleaks-text", "agent-capacity-vulnerabilities")
+
 
 def test_checks_for_changed_paths() -> None:
     always = preflight.checks_for([], has_draft=False)
@@ -116,15 +120,324 @@ def test_main_records_full_runs_at_a_clean_head(
     else:
         assert asyncio.run(preflight.main()) == (case == "fail")
 
-    if case == "pass":
-        assert record.read_text() == f"tree {tree}\nbase {base}\nresult pass\n"
-    elif case == "fail":
-        assert (
-            record.read_text()
-            == f"tree {tree}\nbase {base}\nresult fail gazelle prose\n"
-        )
+    expected = {
+        "pass": (record, f"tree {tree}\nbase {base}\nresult pass\n"),
+        "fail": (record, f"tree {tree}\nbase {base}\nresult fail gazelle prose\n"),
+        "single": (
+            record.parent / f"{head}.stages",
+            f"base {base} merge-base {base}\ngazelle PASS\n",
+        ),
+    }
+    if case in expected:
+        path, text = expected[case]
+        assert path.read_text() == text
+        assert record.exists() is (case != "single")
     else:
         assert not record.parent.exists()
+
+
+def _setup_fake_repo(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> tuple[Path, dict[tuple[str, ...], str]]:
+    replies: dict[tuple[str, ...], str] = {
+        ("status", "--porcelain", "--untracked-files=no"): "",
+        ("rev-parse", "HEAD"): HEAD,
+        ("rev-parse", "--verify", "--end-of-options", "stack^{commit}"): BASE,
+        ("merge-base", BASE, HEAD): BASE,
+        (
+            "rev-parse",
+            "--verify",
+            "--symbolic-full-name",
+            "--end-of-options",
+            "stack",
+        ): "refs/heads/stack",
+        ("diff", "--name-only", "-z", "--no-renames", BASE, HEAD): "tracked\0",
+        ("rev-parse", "--git-common-dir"): ".git",
+        ("rev-parse", f"{HEAD}^{{tree}}"): TREE,
+    }
+
+    async def fake_git(*args: str) -> str:
+        return replies[args]
+
+    monkeypatch.setenv("BUILD_WORKSPACE_DIRECTORY", str(tmp_path))
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(tempfile, "tempdir", str(tmp_path))
+    monkeypatch.setattr(preflight, "git", fake_git)
+    (tmp_path / ".git").mkdir(exist_ok=True)
+    return tmp_path / ".git" / "tbhbdev-preflight", replies
+
+
+def _argv(monkeypatch: pytest.MonkeyPatch, *args: str) -> None:
+    monkeypatch.setattr(sys, "argv", ["preflight", "stack", *args])
+
+
+def _record_ran(
+    monkeypatch: pytest.MonkeyPatch, fail: set[str] | None = None
+) -> list[str]:
+    ran: list[str] = []
+
+    async def fake_check(name: str, _: preflight.Revisions, _scratch: Path) -> None:
+        ran.append(name)
+        if fail and name in fail:
+            raise preflight.CheckError(name)
+
+    monkeypatch.setattr(preflight, "check", fake_check)
+    return ran
+
+
+def test_single_check_records_pass_and_clears_on_failure(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    records, _ = _setup_fake_repo(tmp_path, monkeypatch)
+    failing = {"gazelle"}
+    _record_ran(monkeypatch, failing)
+    stages = records / f"{HEAD}.stages"
+
+    # A failing stage with no prior pass writes nothing.
+    _argv(monkeypatch, "--check", "gazelle")
+    assert asyncio.run(preflight.main()) == 1
+    assert not records.exists()
+
+    # Passing stages append PASS lines under the current head and base.
+    failing.clear()
+    for name in ("gazelle", "prose"):
+        _argv(monkeypatch, "--check", name)
+        assert asyncio.run(preflight.main()) == 0
+    assert stages.read_text(encoding="utf-8") == (
+        f"base {BASE} merge-base {BASE}\ngazelle PASS\nprose PASS\n"
+    )
+    assert not (records / HEAD).exists()
+
+    # A failing stage removes only its own earlier PASS line.
+    failing.add("gazelle")
+    _argv(monkeypatch, "--check", "gazelle")
+    assert asyncio.run(preflight.main()) == 1
+    assert stages.read_text(encoding="utf-8") == (
+        f"base {BASE} merge-base {BASE}\nprose PASS\n"
+    )
+
+    # Removing the final PASS line removes the stage file.
+    failing.add("prose")
+    _argv(monkeypatch, "--check", "prose")
+    assert asyncio.run(preflight.main()) == 1
+    assert not stages.exists()
+
+
+def test_full_run_skips_earlier_passed_stages(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    records, _ = _setup_fake_repo(tmp_path, monkeypatch)
+    ran = _record_ran(monkeypatch)
+    for name in ("gazelle", "prose"):
+        _argv(monkeypatch, "--check", name)
+        assert asyncio.run(preflight.main()) == 0
+    ran.clear()
+    capsys.readouterr()
+
+    _argv(monkeypatch)
+    assert asyncio.run(preflight.main()) == 0
+
+    captured = capsys.readouterr()
+    selected = preflight.checks_for(["tracked"], has_draft=False)
+    assert ran == [name for name in selected if name not in {"gazelle", "prose"}]
+    assert "Skipping gazelle: passed earlier at this head\n" in captured.err
+    assert "Skipping prose: passed earlier at this head\n" in captured.err
+    assert "PASS gazelle  bazelisk run //:preflight -- --check gazelle stack" in (
+        captured.out
+    )
+    assert "PASS prose  bazelisk run //:preflight -- --check prose stack" in (
+        captured.out
+    )
+    assert (records / HEAD).read_text(encoding="utf-8") == (
+        f"tree {TREE}\nbase {BASE}\nresult pass\n"
+    )
+
+
+@pytest.mark.parametrize("mismatch", ["head", "merge-base"])
+def test_full_run_ignores_pass_lines_from_other_head_or_base(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    mismatch: str,
+) -> None:
+    records, _ = _setup_fake_repo(tmp_path, monkeypatch)
+    records.mkdir(parents=True)
+    if mismatch == "head":
+        (records / f"{'e' * 40}.stages").write_text(
+            f"base {BASE} merge-base {BASE}\ngazelle PASS\n", encoding="utf-8"
+        )
+    else:
+        (records / f"{HEAD}.stages").write_text(
+            f"base {BASE} merge-base {OTHER_BASE}\ngazelle PASS\n", encoding="utf-8"
+        )
+    ran = _record_ran(monkeypatch)
+
+    _argv(monkeypatch)
+    assert asyncio.run(preflight.main()) == 0
+
+    assert ran == list(preflight.checks_for(["tracked"], has_draft=False))
+    assert "Skipping" not in capsys.readouterr().err
+
+
+def test_stage_record_for_another_merge_base_is_rewritten(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    records, _ = _setup_fake_repo(tmp_path, monkeypatch)
+    records.mkdir(parents=True)
+    stages = records / f"{HEAD}.stages"
+    stages.write_text(
+        f"base {BASE} merge-base {OTHER_BASE}\ngazelle PASS\n", encoding="utf-8"
+    )
+    _record_ran(monkeypatch)
+
+    _argv(monkeypatch, "--check", "prose")
+    assert asyncio.run(preflight.main()) == 0
+
+    assert stages.read_text(encoding="utf-8") == (
+        f"base {BASE} merge-base {BASE}\nprose PASS\n"
+    )
+
+
+def test_full_run_rechecks_pr_size_when_the_base_tip_moves(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    records, replies = _setup_fake_repo(tmp_path, monkeypatch)
+    ran = _record_ran(monkeypatch)
+    _argv(monkeypatch, "--check", "pr-size")
+    assert asyncio.run(preflight.main()) == 0
+    assert ran == ["pr-size"]
+    ran.clear()
+
+    replies["rev-parse", "--verify", "--end-of-options", "stack^{commit}"] = OTHER_BASE
+    replies["merge-base", OTHER_BASE, HEAD] = BASE
+    _argv(monkeypatch)
+    assert asyncio.run(preflight.main()) == 0
+
+    assert "pr-size" in ran
+    stages = records / f"{HEAD}.stages"
+    assert stages.read_text(encoding="utf-8").splitlines()[0] == (
+        f"base {OTHER_BASE} merge-base {BASE}"
+    )
+
+
+@pytest.mark.parametrize("stage", LIVE_STAGES)
+def test_live_stages_are_never_recorded_or_skipped(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, stage: str
+) -> None:
+    records, _ = _setup_fake_repo(tmp_path, monkeypatch)
+    (tmp_path / ".github").mkdir()
+    (tmp_path / ".github" / "PULL_REQUEST_DRAFT.md").write_text("draft\n")
+    records.mkdir(parents=True)
+    stages = records / f"{HEAD}.stages"
+    stages.write_text(
+        f"base {BASE} merge-base {BASE}\ngazelle PASS\n{stage} PASS\n", encoding="utf-8"
+    )
+    ran = _record_ran(monkeypatch)
+
+    _argv(monkeypatch)
+    assert asyncio.run(preflight.main()) == 0
+
+    assert stage in ran
+    assert "gazelle" not in ran
+    assert stage not in stages.read_text(encoding="utf-8")
+    assert (records / HEAD).exists()
+
+    # A single-stage run neither records the stage nor the aggregate pass.
+    (records / HEAD).unlink()
+    _argv(monkeypatch, "--check", stage)
+    assert asyncio.run(preflight.main()) == 0
+    assert stage not in stages.read_text(encoding="utf-8")
+    assert not (records / HEAD).exists()
+
+
+def test_changed_draft_is_scanned_again(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _setup_fake_repo(tmp_path, monkeypatch)
+    draft = tmp_path / ".github" / "PULL_REQUEST_DRAFT.md"
+    draft.parent.mkdir()
+    draft.write_text("clean\n", encoding="utf-8")
+    ran = _record_ran(monkeypatch)
+
+    _argv(monkeypatch)
+    assert asyncio.run(preflight.main()) == 0
+    draft.write_text("changed after the pass\n", encoding="utf-8")
+    assert asyncio.run(preflight.main()) == 0
+
+    assert ran.count("gitleaks-text") == 2
+
+
+def test_piecewise_checks_never_write_full_record(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    records, _ = _setup_fake_repo(tmp_path, monkeypatch)
+    _record_ran(monkeypatch)
+    selected = preflight.checks_for(["tracked"], has_draft=False)
+
+    for stage in selected:
+        _argv(monkeypatch, "--check", stage)
+        assert asyncio.run(preflight.main()) == 0
+
+    assert not (records / HEAD).exists()
+    recorded = (records / f"{HEAD}.stages").read_text(encoding="utf-8")
+    assert recorded.splitlines()[0] == f"base {BASE} merge-base {BASE}"
+    assert "agent-capacity-vulnerabilities" not in recorded
+
+
+def test_failed_stage_after_skipped_ones_records_fail(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    records, _ = _setup_fake_repo(tmp_path, monkeypatch)
+    records.mkdir(parents=True)
+    (records / f"{HEAD}.stages").write_text(
+        f"base {BASE} merge-base {BASE}\ngazelle PASS\n", encoding="utf-8"
+    )
+    ran = _record_ran(monkeypatch, {"prose"})
+
+    _argv(monkeypatch)
+    assert asyncio.run(preflight.main()) == 1
+
+    assert "gazelle" not in ran
+    assert "prose" in ran
+    assert (records / HEAD).read_text(encoding="utf-8") == (
+        f"tree {TREE}\nbase {BASE}\nresult fail prose\n"
+    )
+    assert "prose PASS" not in (records / f"{HEAD}.stages").read_text(encoding="utf-8")
+
+
+def test_unselected_stage_and_unchanged_head_are_unchanged(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    _, replies = _setup_fake_repo(tmp_path, monkeypatch)
+    ran = _record_ran(monkeypatch)
+
+    # An unselected stage (gitleaks-text without a draft) is not part of a full run.
+    _argv(monkeypatch, "--check", "gitleaks-text")
+    assert asyncio.run(preflight.main()) == 0
+    ran.clear()
+    capsys.readouterr()
+
+    _argv(monkeypatch)
+    assert asyncio.run(preflight.main()) == 0
+    captured = capsys.readouterr()
+    assert "gitleaks-text" not in ran
+    assert "gitleaks-text" not in captured.err
+    assert "gitleaks-text" not in captured.out
+
+    # Base equal to head writes no stage or full record under --check either.
+    other_records = tmp_path / "unchanged" / ".git" / "tbhbdev-preflight"
+    (tmp_path / "unchanged" / ".git").mkdir(parents=True)
+    replies["merge-base", BASE, HEAD] = HEAD
+    replies["diff", "--name-only", "-z", "--no-renames", HEAD, HEAD] = ""
+    replies["rev-parse", "--git-common-dir"] = str(tmp_path / "unchanged" / ".git")
+    _argv(monkeypatch, "--check", "gazelle")
+    assert asyncio.run(preflight.main()) == 0
+    assert not other_records.exists()
 
 
 def test_affected_tests_excludes_slow_external(

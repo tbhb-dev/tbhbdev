@@ -3,6 +3,7 @@
 
 load("//factory/cli/tests:pytest.bzl", "cli_py_test")
 
+# gazelle:resolve py agent_example //factory/cli/tests:agent_example
 # gazelle:resolve py agent_host_example //factory/cli/tests:agent_host_example
 
 package(default_testonly = True)
@@ -12,6 +13,17 @@ filegroup(
     testonly = False,
     srcs = glob(["*.py"]) + ["//factory/cli/tests/unit/alpha/agent/driver:package_files"],
     visibility = ["//factory/cli/tests:__pkg__"],
+)
+
+cli_py_test(
+    name = "test_cli_bundle",
+    srcs = ["test_cli_bundle.py"],
+    imports = ["../../.."],
+    pyi_deps = ["@cli_pip//pytest"],
+    deps = [
+        "//factory/cli/src/tbhbdev/alpha/agent:cli_bundle",
+        "//factory/cli/tests:conftest",
+    ],
 )
 
 cli_py_test(
@@ -48,6 +60,35 @@ cli_py_test(
         "//factory/cli/src/tbhbdev/alpha/agent/decisions:runfiles_names",
         "//factory/cli/src/tbhbdev/alpha/agent/run_host:bazel_cache",
         "//factory/cli/tests:agent_cli_example",
+        "//factory/cli/tests:conftest",
+        "@cli_pip//pytest",
+    ],
+)
+
+cli_py_test(
+    name = "test_credentials",
+    srcs = ["test_credentials.py"],
+    imports = ["../../.."],
+    deps = [
+        "//factory/cli/src/tbhbdev:secrets",
+        "//factory/cli/src/tbhbdev/alpha/agent:credentials",
+        "//factory/cli/src/tbhbdev/alpha/agent:model",
+        "//factory/cli/tests:agent_host_example",
+        "//factory/cli/tests:conftest",
+        "@cli_pip//pytest",
+    ],
+)
+
+cli_py_test(
+    name = "test_gh_refresh_io",
+    srcs = ["test_gh_refresh_io.py"],
+    imports = ["../../.."],
+    deps = [
+        "//factory/cli/src/tbhbdev/alpha/agent:credentials",
+        "//factory/cli/src/tbhbdev/alpha/agent:gh_refresh",
+        "//factory/cli/src/tbhbdev/alpha/agent:model",
+        "//factory/cli/src/tbhbdev/alpha/agent:worktree_clone",
+        "//factory/cli/tests:agent_host_example",
         "//factory/cli/tests:conftest",
         "@cli_pip//pytest",
     ],

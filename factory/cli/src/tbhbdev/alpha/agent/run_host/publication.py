@@ -9,7 +9,7 @@ import httpx2
 from tbhbdev import github_tls
 from tbhbdev.alpha.agent import credentials, review_post
 from tbhbdev.alpha.agent.decisions import repo
-from tbhbdev.alpha.agent.run_host import publication_plan
+from tbhbdev.alpha.agent.run_host import publication_plan, republish
 from tbhbdev.alpha.agent.run_host.state import Prepared, Run, RunInterruptedError
 from tbhbdev.alpha.pull_request.draft import DRAFT
 
@@ -23,6 +23,9 @@ NO_REVIEW = 10
 
 
 NO_PR = 11
+
+
+NO_PUSH_MOVED = 12
 
 
 def post_review(run: Run, prepared: Prepared) -> int:
@@ -135,6 +138,12 @@ def require_commit(run: Run, prepared: Prepared, rc: int) -> int:
     if published:
         run.files.write("branch", branch)
         return require_pull_request(run, prepared, branch)
+    if (
+        published is False
+        and run.request.start_ref is not None
+        and (status := republish.republish(run, prepared)) is not None
+    ):
+        return status
     reason = "cannot verify" if published is None else "build commit missing from"
     run.files.write("log", f"push failed: {reason} {branch} on origin\n")
     return NO_PUSH

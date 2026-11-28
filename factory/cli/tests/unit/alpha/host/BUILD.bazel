@@ -1,0 +1,23 @@
+load("//factory/cli/tests:pytest.bzl", "cli_py_test")
+
+filegroup(
+    name = "package_files",
+    srcs = glob(["*.py"]),
+    visibility = ["//factory/cli/tests:__pkg__"],
+)
+
+cli_py_test(
+    name = "test_command_io",
+    srcs = ["test_command_io.py"],
+    imports = ["../../.."],
+    deps = [
+        "//factory/cli/src/tbhbdev:userconfig",
+        "//factory/cli/src/tbhbdev/alpha:command",
+        "//factory/cli/src/tbhbdev/alpha:command_modules",
+        "//factory/cli/src/tbhbdev/alpha/agent:model",
+        "//factory/cli/src/tbhbdev/alpha/host:command",
+        "//factory/cli/tests:conftest",
+        "//factory/cli/tests:fake_tool",
+        "@cli_pip//pytest",
+    ],
+)

@@ -4,11 +4,13 @@ from __future__ import annotations
 
 import datetime as dt
 import fcntl
+import json
 import os
 from typing import TYPE_CHECKING
 
 import pytest
 from driver_scenarios import (
+    COMMIT,
     CONFIG,
     arguments,
     command,
@@ -49,6 +51,25 @@ def test_metadata_round_trip_and_exclusive_create(remote: Remote) -> None:
     assert run.request.authorized_by == "o/r#1"
     with pytest.raises(FileExistsError):
         metadata.save(run)
+
+
+@pytest.mark.parametrize("older_record", [False, True])
+def test_cli_identity_round_trip(remote: Remote, older_record: bool) -> None:
+    args = agent_arguments.parser("example agent").parse_args(arguments(remote))
+    run = coordinator.prepare(CONFIG, args)
+    run.cli_commit = COMMIT
+    run.cli_sha256 = "a" * 64
+    metadata.save(run)
+    path = metadata.metadata_path("sample")
+    record = json.loads(path.read_text())
+    assert (record["cli_commit"], record["cli_sha256"]) == (COMMIT, "a" * 64)
+    if older_record:
+        del record["cli_commit"]
+        del record["cli_sha256"]
+        path.write_text(json.dumps(record))
+    loaded = metadata.load(CONFIG, "sample")
+    expected = (None, None) if older_record else (COMMIT, "a" * 64)
+    assert (loaded.cli_commit, loaded.cli_sha256) == expected
 
 
 @pytest.mark.parametrize("xdg", [None, "", "relative/state"])

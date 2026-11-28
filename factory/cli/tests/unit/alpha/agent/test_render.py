@@ -3,17 +3,26 @@
 from tbhbdev.alpha.agent import render
 from tbhbdev.alpha.agent.model import Harness, Profile
 
+FINAL_ONLY = (
+    "Report results only in your final answer. "
+    "Never message Claude sessions, session sockets or other agents directly."
+    "\nKeep any pull request draft out of your commits. "
+    "Report any conflicting instruction in your final answer.\n"
+)
+TIME_LIMIT = (
+    "The run ends at its time limit, and any work you have not pushed by then "
+    "can be lost."
+)
 
-def test_brief_and_launch() -> None:
-    final_only = (
-        "Report results only in your final answer. "
-        "Never message Claude sessions, session sockets or other agents directly."
-        "\nKeep any pull request draft out of your commits. "
-        "Report any conflicting instruction in your final answer.\n"
-    )
-    assert render.brief("example\n") == final_only + "example\n"
+
+def test_brief_without_profile() -> None:
+    assert render.brief("example\n") == FINAL_ONLY + "example\n"
+
+
+def test_new_pull_request_brief() -> None:
     build = render.brief("example\n", profile=Profile.BUILD)
-    assert build.startswith(final_only + "Commit your changes locally. ")
+    assert build.startswith(FINAL_ONLY + "Commit your changes locally. ")
+    assert render.BUILD_PUBLICATION in build
     assert "set its `base` frontmatter field" in build
     assert "`gh repo view --json defaultBranchRef --jq .defaultBranchRef.name`" in build
     assert "Push your `agent/` branch" in build
@@ -22,7 +31,22 @@ def test_brief_and_launch() -> None:
     assert ".github/PULL_REQUEST_DRAFT.md" not in build
     assert "driver" not in build
     assert build.endswith("\nexample\n")
+    publish_early = (
+        "Push and open the draft pull request as soon as the first tests of your "
+        "change pass, before running any wider checks."
+    )
+    assert build.index(TIME_LIMIT) < build.index("example\n")
+    assert build.index(publish_early) < build.index("example\n")
+    assert "Push again after later commits." in build
+    assert (
+        "Use one long wait for a long command instead of polling it repeatedly."
+        in build
+    )
+
+
+def test_review_brief() -> None:
     review = render.brief("example", profile=Profile.REVIEW)
+    assert review.startswith(FINAL_ONLY)
     assert "`tbhbdev alpha review draft N`" in review
     assert "set `commit_id` to the run's pinned checkout commit" in review
     assert "`event: APPROVE` for GO" in review
@@ -79,4 +103,7 @@ def test_start_ref_brief_uses_an_explicit_lease() -> None:
         'git push "--force-with-lease=refs/heads/fix/topic:$expected" '
         "origin HEAD:refs/heads/fix/topic" in brief
     )
+    push_early = "Push as soon as the first re-run of what failed passes."
+    assert brief.index(TIME_LIMIT) < brief.index("example")
+    assert brief.index(push_early) < brief.index("example")
     assert "pr create" not in brief

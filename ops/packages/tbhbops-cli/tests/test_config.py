@@ -313,3 +313,62 @@ def test_the_missing_connect_settings_are_named_with_their_use() -> None:
     assert message.startswith(f"missing from the environment: {config.OP_TOKEN} (")
     assert config.GITHUB_TOKEN not in message
     assert "@tbhb" not in message
+
+
+def test_item_ref_defaults_when_absent(tmp_path: Path) -> None:
+    got = config.settings(write(tmp_path, GOOD))
+    assert (got.item_ref.vault, got.item_ref.item, got.item_ref.field) == (
+        "host-0-shared",
+        "scanner-policy",
+        "config",
+    )
+    assert str(got.item_ref) == "op:\x2f/host-0-shared/scanner-policy/config"
+
+
+def test_a_valid_item_ref_is_parsed_into_its_three_parts(tmp_path: Path) -> None:
+    ref = "op:\x2f/vault-a/item-a/field-a"
+    text = GOOD.replace("[gitleaks]\n", f'[gitleaks]\nitem_ref = "{ref}"\n')
+    got = config.settings(write(tmp_path, text))
+    assert (got.item_ref.vault, got.item_ref.item, got.item_ref.field) == (
+        "vault-a",
+        "item-a",
+        "field-a",
+    )
+    assert str(got.item_ref) == ref
+
+
+@pytest.mark.parametrize(
+    ("raw_line", "forbidden"),
+    [
+        ('item_ref = "op:\x2f/vault-a/item-a"', "vault-a"),
+        ('item_ref = "op:\x2f/vault-a/item-a/field-a/extra"', "extra"),
+        ('item_ref = "op:\x2f//item-a/field-a"', "item-a"),
+        ('item_ref = "op:\x2f/vault-a//field-a"', "vault-a"),
+        ('item_ref = "op:\x2f/vault-a/item-a/"', "vault-a"),
+        ('item_ref = "op:\x2f/vault a/item-a/field-a"', "vault a"),
+        ('item_ref = "op:\x2f/vault-a/item\\ta/field-a"', "item-a"),
+        ('item_ref = "op:\x2f/vault-a/item-a/field-a "', "field-a"),
+        ('item_ref = " op:\x2f/vault-a/item-a/field-a"', "vault-a"),
+        ('item_ref = "op:\x2f/../item-a/field-a"', "item-a"),
+        ('item_ref = "op:\x2f/vault-a/../field-a"', "vault-a"),
+        ('item_ref = "op:\x2f/vault-a/item-a/.."', "vault-a"),
+        ('item_ref = "op:\x2f/vault-a/item-a/field-a?q=1"', "field-a"),
+        ('item_ref = "op:\x2f/vault-a/item-a/field-a#frag"', "frag"),
+        ('item_ref = "vault-a/item-a/field-a"', "vault-a"),
+        ('item_ref = "https://vault-a/item-a/field-a"', "vault-a"),
+        ('item_ref = ""', "vault-a"),
+        ("item_ref = 987654", "987654"),
+        ('item_ref = ["vault-a"]', "vault-a"),
+    ],
+)
+def test_a_bad_item_ref_names_the_file_and_key_without_the_value(
+    tmp_path: Path, raw_line: str, forbidden: str
+) -> None:
+    env = write(tmp_path, GOOD.replace("[gitleaks]\n", f"[gitleaks]\n{raw_line}\n"))
+    with pytest.raises(CliError) as raised:
+        config.settings(env)
+    message = str(raised.value)
+    path = str(tmp_path / "tbhbdev" / "config.toml")
+    assert message.startswith(path)
+    assert "[gitleaks] item_ref" in message
+    assert forbidden not in message.removeprefix(path)

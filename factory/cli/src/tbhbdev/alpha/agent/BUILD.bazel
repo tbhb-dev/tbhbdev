@@ -40,6 +40,17 @@ cli_py_library(
 )
 
 cli_py_library(
+    name = "cli_bundle",
+    srcs = ["cli_bundle.py"],
+    imports = ["../../.."],
+    visibility = ["//factory/cli:__subpackages__"],
+    deps = [
+        "//factory/cli/src/tbhbdev:version",
+        "//factory/cli/src/tbhbdev/alpha/agent/decisions:cli_bundle",
+    ],
+)
+
+cli_py_library(
     name = "credentials",
     srcs = ["credentials.py"],
     imports = ["../../.."],
@@ -303,6 +314,7 @@ cli_py_library(
     imports = ["../../.."],
     visibility = ["//factory/cli:__subpackages__"],
     deps = [
+        ":gh_refresh",
         ":model",
         ":worktree_git",
         "//factory/cli/src/tbhbdev/alpha/agent/decisions:repo",
@@ -383,6 +395,7 @@ cli_py_library(
         "//factory/cli/src/tbhbdev/alpha:pre_push_guard",
         "//factory/cli/src/tbhbdev/alpha:secret_scan",
         "//factory/cli/src/tbhbdev/alpha/agent/decisions:repo",
+        "//factory/cli/src/tbhbdev/alpha/agent/run_host:draft_pr",
     ],
 )
 
@@ -401,5 +414,17 @@ cli_py_library(
         "//factory/cli/src/tbhbdev/alpha/agent/decisions:run_state",
         "//factory/cli/src/tbhbdev/alpha/agent/decisions:runfiles_names",
         "//factory/cli/src/tbhbdev/alpha/agent/run_host:bazel_cache",
+    ],
+)
+
+cli_py_library(
+    name = "gh_refresh",
+    srcs = ["gh_refresh.py"],
+    imports = ["../../.."],
+    visibility = ["//factory/cli:__subpackages__"],
+    deps = [
+        ":credentials",
+        ":model",
+        "//factory/cli/src/tbhbdev/alpha/agent/decisions:repo",
     ],
 )

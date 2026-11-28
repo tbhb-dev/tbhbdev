@@ -82,6 +82,7 @@ vale_sync(
 # Each runs over a copy of the tree with pyproject.toml as its
 # configuration, from the environment the root uv.lock pins.
 PYTHON_SRCS = [
+    "//:AGENTS.md",
     "//:.github/schemas/pull-request-draft.schema.json",
     "//:repo_files",
 ]

@@ -19,6 +19,7 @@ from tbhbdev.alpha.agent.decisions import auth, config, repo
 from tbhbdev.alpha.agent.model import Harness, Invalid, Profile
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
     from pathlib import Path
 
     from tbhbdev.alpha.agent.model import Credentials, RunRequest, Settings
@@ -51,6 +52,7 @@ class Delivery:
     env: dict[str, str] = field(repr=False)
     signing: str | None = field(repr=False)
     claude_profile: str | None
+    gh_token: StoredToken | None = field(default=None, repr=False)
 
 
 def read(reference: str, *, label: str) -> str:
@@ -175,6 +177,37 @@ def github_token(
         raise Invalid(message) from None
 
 
+# Installation tokens live one hour; refresh five minutes early.
+FRESH_SECONDS = 3300
+FRESH_REFUSAL = "could not get a fresh GitHub credential before push"
+
+
+@dataclass(frozen=True)
+class StoredToken:
+    token: str = field(repr=False)
+    minted_at: float
+
+
+def hosts_yaml(host: str, token: str) -> str:
+    return yaml.safe_dump({host: {"oauth_token": token, "git_protocol": "https"}})
+
+
+def fresh_token(
+    request: RunRequest,
+    references: Credentials,
+    stored: StoredToken | None = None,
+    *,
+    clock: Callable[[], float] = time.time,
+) -> str | None:
+    """Return a valid token: reuse stored when young, else mint on the host."""
+    if stored is not None and clock() - stored.minted_at < FRESH_SECONDS:
+        return stored.token
+    try:
+        return github_token(request, references)
+    except Invalid:
+        raise Invalid(FRESH_REFUSAL) from None
+
+
 def review_post_token(
     request: RunRequest,
     settings: Settings,
@@ -205,12 +238,12 @@ def deliver(request: RunRequest, settings: Settings, tmpdir: Path) -> Delivery:
     references = next(c for c in settings.credentials if c.account == request.account)
     gh_token = github_token(request, references)
     gh = runfiles.private_dir(tmpdir / "gh")
+    stored: StoredToken | None = None
     if gh_token is not None:
         host = repo.parts(request.repo)[0]
-        runfiles.atomic(
-            gh / "hosts.yml",
-            yaml.safe_dump({host: {"oauth_token": gh_token, "git_protocol": "https"}}),
-        )
+        runfiles.atomic(gh / "hosts.yml", hosts_yaml(host, gh_token))
+        if request.profile is Profile.BUILD and references.pull_requests_app_client_id:
+            stored = StoredToken(gh_token, time.time())
     docker = runfiles.private_dir(tmpdir / "docker")
     docker_text = (
         read(references.docker, label="docker") if references.docker else '{"auths":{}}'
@@ -232,7 +265,7 @@ def deliver(request: RunRequest, settings: Settings, tmpdir: Path) -> Delivery:
     signing = (
         signing_key(references.signing) if request.profile is Profile.BUILD else None
     )
-    return Delivery(env, signing, profile_name)
+    return Delivery(env, signing, profile_name, stored)
 
 
 def signing_key(source: str) -> str:

@@ -311,6 +311,8 @@ cli_py_library(
     deps = [
         "//factory/cli/src/tbhbdev/alpha:repo",
         "//factory/cli/src/tbhbdev/alpha:tool_pins",
+        "//factory/cli/src/tbhbdev/alpha/agent:gh_refresh",
+        "//factory/cli/src/tbhbdev/alpha/agent:model",
     ],
 )
 

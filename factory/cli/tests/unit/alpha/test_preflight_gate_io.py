@@ -80,3 +80,27 @@ def test_report_when_run_log_is_unwritable(
     monkeypatch.setenv("TBHBDEV_RUN_LOG", str(tmp_path))
     preflight_gate.report("a" * 40, "")
     assert capsys.readouterr().err == f"push-gate: pass {'a' * 40}\n"
+
+
+def test_stage_record_does_not_satisfy_gate(pr_checkout: Path) -> None:
+    _, base = git("rev-parse", "HEAD")
+    source = pr_checkout / "lib/rules/lint/preflight/preflight.py"
+    source.parent.mkdir(parents=True)
+    source.touch()
+    assert git("add", str(source))[0] == 0
+    assert git("commit", "-qm", "Add preflight")[0] == 0
+    _, head = git("rev-parse", "HEAD")
+    _, tree = git("rev-parse", "HEAD^{tree}")
+    records = pr_checkout / ".git" / "tbhbdev-preflight"
+    records.mkdir()
+    (records / f"{head}.stages").write_text(
+        f"base {base}\ngazelle PASS\n", encoding="utf-8"
+    )
+    no_result = f"no preflight result for {head}; run: bazelisk run //:preflight"
+
+    assert preflight_gate.problem(head) == no_result
+
+    (records / head).write_text(
+        f"tree {tree}\nbase {base}\nresult pass\n", encoding="utf-8"
+    )
+    assert preflight_gate.problem(head) == ""

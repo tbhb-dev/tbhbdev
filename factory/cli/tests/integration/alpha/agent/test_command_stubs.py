@@ -2,11 +2,15 @@
 
 from __future__ import annotations
 
-import pytest
 from agent_cli_example import run_agent
+lazy import pytest
 
 
-@pytest.mark.parametrize("verb", ["launch", "run"])
-def test_bundle_command_refuses(verb: str, capsys: pytest.CaptureFixture[str]) -> None:
-    assert run_agent([verb]) == 1
-    assert capsys.readouterr().err == f"tbhbdev alpha agent {verb}: not built\n"
+def test_launch_command_refuses(capsys: pytest.CaptureFixture[str]) -> None:
+    assert run_agent(["launch"]) == 1
+    assert capsys.readouterr().err == "tbhbdev alpha agent launch: not built\n"
+
+
+def test_run_command_needs_a_run_name(capsys: pytest.CaptureFixture[str]) -> None:
+    assert run_agent(["run"]) == 1
+    assert capsys.readouterr().err == "tbhbdev alpha agent run: run name is required\n"
