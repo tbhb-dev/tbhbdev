@@ -219,7 +219,7 @@ def write_refusal(
     method: str,
     path: str,
     body: dict[str, object],
-    protected: frozenset[str] | None = frozenset(),
+    protected: frozenset[str] | None,
 ) -> str:
     if set(path.split("/")) & MEMBERSHIP or fields(body) & {
         "role",
@@ -349,7 +349,7 @@ def explicit_refusal(
     method: str,
     path: str,
     body: dict[str, object],
-    protected: frozenset[str] | None = frozenset(),
+    protected: frozenset[str] | None,
 ) -> str:
     if set(path.split("/")) & PAID or "security_and_analysis" in fields(body):
         return "paid_feature"

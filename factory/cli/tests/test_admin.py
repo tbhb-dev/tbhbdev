@@ -550,6 +550,56 @@ def test_archive_command_allowed_and_audited(
     ]
 
 
+def test_empty_protected_repositories_allows_archive(
+    fake: Fake,
+    config_file: Path,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    config_file.write_text(
+        '[admin]\nvault = "vault-admin"\nitem = "item-admin"\n'
+        "protected_repositories = []\n"
+    )
+    argv = archive_argv(tmp_path, "empty-protected-list")
+    assert admin.main(argv, "admin", runtime=fake.runtime) == 0
+    assert capsys.readouterr() == ('{"ok":true}', "")
+    assert fake.requests[-1].method == "PATCH"
+    assert fake.requests[-1].url.path == "/repos/tbhb-dev/gadget"
+    assert fake.requests[-1].content == b'{"archived":true}'
+
+
+@pytest.mark.parametrize(
+    "case",
+    [
+        ("DELETE", "/repos/tbhb-dev/gadget", None),
+        ("POST", "/repos/tbhb-dev/gadget/transfer", {"new_owner": "other"}),
+        ("PATCH", "/repos/tbhb-dev/gadget", {"archived": False}),
+        ("PATCH", "/repos/tbhb-dev/gadget", {"archived": True, "description": "x"}),
+        ("PATCH", "/repos/tbhb-dev/tbhbdev", {"archived": True}),
+    ],
+)
+def test_empty_protected_repositories_still_refuses_other_removals(
+    fake: Fake,
+    config_file: Path,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    case: tuple[str, str, dict[str, object] | None],
+) -> None:
+    method, path, payload = case
+    config_file.write_text(
+        '[admin]\nvault = "vault-admin"\nitem = "item-admin"\n'
+        "protected_repositories = []\n"
+    )
+    argv = ["call", method, path, "--reason", "empty-protected-list"]
+    if payload is not None:
+        body = tmp_path / "body.json"
+        body.write_text(json.dumps(payload))
+        argv.extend(["--json", str(body)])
+    assert admin.main(argv, "admin", runtime=fake.runtime) == 3
+    assert capsys.readouterr() == ("", "repository_removal\n")
+    assert fake.reads == fake.requests == []
+
+
 @pytest.mark.parametrize(
     "case",
     [
@@ -557,6 +607,20 @@ def test_archive_command_allowed_and_audited(
             (
                 '[admin]\nvault = "vault-admin"\nitem = "item-admin"\n'
                 'protected_repositories = "tbhb-dev/gadget"\n'
+            ),
+            [],
+        ),
+        (
+            (
+                '[admin]\nvault = "vault-admin"\nitem = "item-admin"\n'
+                'protected_repositories = [""]\n'
+            ),
+            [],
+        ),
+        (
+            (
+                '[admin]\nvault = "vault-admin"\nitem = "item-admin"\n'
+                "protected_repositories = [1]\n"
             ),
             [],
         ),

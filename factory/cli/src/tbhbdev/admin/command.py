@@ -115,10 +115,18 @@ def credential_setting(key: str, flag: str | None) -> str:
 
 def protected_repositories() -> frozenset[str] | None:
     try:
-        entries = userconfig.optional_strings("admin", "protected_repositories")
+        table = userconfig.optional_table("admin")
     except userconfig.ConfigError, OSError, UnicodeError:
         return None
-    return frozenset(entry.lower() for entry in entries or ())
+    if table is None or "protected_repositories" not in table:
+        return frozenset()
+    value = table["protected_repositories"]
+    if not isinstance(value, list):
+        return None
+    entries: list[object] = value
+    if not all(isinstance(entry, str) and entry for entry in entries):
+        return None
+    return frozenset(str(entry).lower() for entry in entries)
 
 
 def dispatch(runtime: Runtime, args: argparse.Namespace) -> int:
