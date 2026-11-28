@@ -10,9 +10,9 @@ from typing import TYPE_CHECKING, cast
 
 import pytest
 
-from tbhbdev.alpha.monorepo import source
-from tbhbdev.alpha.monorepo.command import main
-from tbhbdev.alpha.monorepo.pathmap import Rewrite, dump, load
+from tbhbdev.monorepo import source
+from tbhbdev.monorepo.command import main
+from tbhbdev.monorepo.pathmap import Rewrite, dump, load
 
 if TYPE_CHECKING:
     from collections.abc import Callable

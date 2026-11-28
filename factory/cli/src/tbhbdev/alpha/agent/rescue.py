@@ -115,26 +115,60 @@ def publish_commit(run: Run, directory: Path, ref: str, base: str, tip: str) -> 
         return "kept local: start ref moved"
     if current == f"{tip}\t{remote_ref}":
         return "nothing to publish"
-    if problem := scan(directory, base, tip):
+    # Run checkout refs are writable by the harness. Fetch the default branch
+    # from the publication remote and pin its tip in the protected repository.
+    git(
+        "fetch",
+        "--no-tags",
+        "--no-recurse-submodules",
+        "--no-auto-maintenance",
+        "--",
+        url,
+        "HEAD",
+    )
+    main = push.history_git(
+        directory, "rev-parse", "--verify", "FETCH_HEAD^{commit}"
+    ).strip()
+    exclude = [main, base] if start_ref else [main]
+    if problem := scan(directory, base, tip, exclude):
         return f"kept local: {problem}"
-    if pre_push_guard.agent_commit_problems(
-        remote_ref, tip, [base], pre_push_guard.SigningKeys(), directory=directory
+    if problems := pre_push_guard.agent_commit_problems(
+        remote_ref,
+        tip,
+        exclude,
+        pre_push_guard.SigningKeys(short_sha=True),
+        directory=directory,
     ):
-        return "kept local: agent commit signature refused"
+        return f"kept local: {problems[0]}"
     refspec = f"{tip}:{remote_ref}"
     git("push", "--no-follow-tags", "--recurse-submodules=no", "--", url, refspec)
     run.files.write("branch", remote_ref.removeprefix("refs/heads/"))
     return "published"
 
 
-def scan(directory: Path, base: str, tip: str) -> str | None:
+def scan(directory: Path, base: str, tip: str, exclude: list[str]) -> str | None:
     """Scan the outgoing range with the host policy and the committed rules."""
     try:
         config = write_policy(directory, base)
-        diff = ("--text", "--diff-merges=separate", f"{base}..{tip}")
+        diff = (
+            "--text",
+            "--diff-merges=separate",
+            tip,
+            *(f"^{sha}" for sha in exclude),
+        )
         stats = push.history_git(directory, "log", "--format=", "--numstat", *diff)
+        report = directory / "finding.tmpl"
+        report.write_text("{{range .}}{{.Commit}}\n{{end}}")
         flags = ("--no-banner", "--no-color", "--redact", f"--exit-code={FINDING}")
-        args = (*flags, "--config", str(config), f"--log-opts={' '.join(diff)}")
+        args = (
+            *flags,
+            "--config",
+            str(config),
+            f"--log-opts={' '.join(diff)}",
+            "--report-format=template",
+            "--report-path=-",
+            f"--report-template={report}",
+        )
         done = subprocess.run(  # nosec B603 -- resolved tool and pinned history
             [host_tools.resolve("gitleaks"), "git", *args, str(directory)],
             cwd=directory,
@@ -152,7 +186,9 @@ def scan(directory: Path, base: str, tip: str) -> str | None:
     except FAILURES:
         return "secret scan unavailable"
     if done.returncode == FINDING:
-        return "secret scan found a secret"
+        commit = re.match(r"[0-9a-f]{40}(?:[0-9a-f]{24})?\n", done.stdout)
+        where = f" in commit {commit[0][:7]}" if commit else ""
+        return f"secret scan found a secret{where}"
     # Gitleaks can exit zero when its Git subprocess fails.
     if done.returncode or re.search(r"\bERR\b", done.stderr):
         return "secret scan unavailable"

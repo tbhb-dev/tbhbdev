@@ -3,6 +3,15 @@
 
 load("//factory/cli/tests:pytest.bzl", "cli_py_test")
 
+package(default_testonly = True)
+
+filegroup(
+    name = "package_files",
+    testonly = False,
+    srcs = glob(["*.py"]),
+    visibility = ["//factory/cli/tests:__pkg__"],
+)
+
 cli_py_test(
     name = "test_approvals",
     srcs = ["test_approvals.py"],
@@ -14,7 +23,13 @@ cli_py_test(
     ],
 )
 
-exports_files(
-    ["test_approvals.py"],
-    visibility = ["//factory/cli/tests:__pkg__"],
+cli_py_test(
+    name = "test_policy",
+    srcs = ["test_policy.py"],
+    imports = ["../.."],
+    deps = [
+        "//factory/cli/src/tbhbdev/admin:policy",
+        "//factory/cli/tests:conftest",
+        "@cli_pip//pytest",
+    ],
 )

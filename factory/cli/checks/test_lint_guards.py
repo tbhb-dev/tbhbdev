@@ -25,6 +25,12 @@ CONFIG = CLI / "pyproject.toml"
         ),
         (
             "cli-decisions",
+            "alpha.agent.launch.decisions.bootstrap",
+            "subprocess",
+            "import subprocess",
+        ),
+        (
+            "cli-decisions",
             "alpha.identity.commands",
             "tbhbdev.alpha.identity.dispatcher",
             "from tbhbdev.alpha.identity import dispatcher",

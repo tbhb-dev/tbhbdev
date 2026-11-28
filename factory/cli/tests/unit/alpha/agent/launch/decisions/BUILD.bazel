@@ -1,0 +1,23 @@
+# SPDX-License-Identifier: Apache-2.0
+# Copyright Tony Burns
+
+load("//factory/cli/tests:pytest.bzl", "cli_py_test")
+
+filegroup(
+    name = "package_files",
+    srcs = glob(["*.py"]),
+    visibility = ["//factory/cli/tests:__pkg__"],
+)
+
+cli_py_test(
+    name = "test_bootstrap",
+    srcs = ["test_bootstrap.py"],
+    imports = ["../../../../.."],
+    deps = [
+        "//factory/cli/src/tbhbdev/alpha/agent:model",
+        "//factory/cli/src/tbhbdev/alpha/agent/launch/decisions:bootstrap",
+        "//factory/cli/tests:agent_example",
+        "//factory/cli/tests:conftest",
+        "@cli_pip//pytest",
+    ],
+)

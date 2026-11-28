@@ -287,8 +287,11 @@ check_base_candidates() {
 }
 
 select_targets() {
-  local scope targets
-  scope=$(IFS=+; printf '(%s)' "${patterns[*]}")
+  local scope targets td_output=$out/explanations
+  scope=$(
+    IFS=+
+    printf '(%s)' "${patterns[*]}"
+  )
   # Resolve the wildcard expansion before cquery, which would analyze every
   # matched rule, including intentionally failing manual proof targets.
   step='the query of candidate tests'
@@ -298,8 +301,13 @@ select_targets() {
     targets=$(label_set "$out/candidates") || return
 
     # The determinator hashes configured dependencies in local overrides too.
-    run_step target-determinator "$TD" -bazel bazelisk -nocache_results -delete-cached-worktree \
-      -before-query-error-behavior=fatal -targets "$targets" "${opts[@]/#/-bazel-opts=}" "$BASE_SHA" >"$file" || return
+    run_step target-determinator "$TD" -verbose -bazel bazelisk \
+      -nocache_results -delete-cached-worktree -before-query-error-behavior=fatal \
+      -targets "$targets" "${opts[@]/#/-bazel-opts=}" "$BASE_SHA" >"$td_output" || return
+    # Verbose stdout includes optional reasons and can repeat a label for different configurations.
+    step='reading target-determinator explanations'
+    cat "$td_output" >>"$log" || return
+    LC_ALL=C sed 's/ Changes:.*//' "$td_output" | LC_ALL=C sort -u >"$file" || return
   fi
   if ((workspace_check_count)); then
     step='the query of workspace checks'
