@@ -27,7 +27,10 @@ load(
 # gazelle:map_kind py_library cli_py_library //factory/cli:python.bzl
 # gazelle:exclude checks
 
-exports_files(["pyproject.toml"])
+exports_files([
+    "combine_coverage.sh",
+    "pyproject.toml",
+])
 
 py_binary(
     name = "coverage_py",

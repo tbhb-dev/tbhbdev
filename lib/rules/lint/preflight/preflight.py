@@ -258,7 +258,38 @@ async def cli_tests_affected(scratch: Path, paths: list[str]) -> bool:
     return any(CLI_TARGET.match(line) for line in targets.splitlines())
 
 
-async def affected_tests(base: str, head: str, scratch: Path) -> None:
+async def exclude_covered_cli_tests(
+    targets: Path, scratch: Path, *, fallback: bool
+) -> Path | None:
+    labels = await run(
+        "bazelisk",
+        "query",
+        'kind("^py_test rule$", //factory/cli/tests/...)',
+        capture=True,
+    )
+    covered = {label.removeprefix("@@") for label in os.fsdecode(labels).splitlines()}
+    contents = await asyncio.to_thread(targets.read_text, encoding="utf-8")
+    selected = [
+        label
+        for label in contents.splitlines()
+        if label.removeprefix("@@") not in covered
+    ]
+    # The fallback selects tests via wildcards.
+    if fallback:
+        selected.extend(f"-{label}" for label in sorted(covered))
+    if not selected:
+        return None
+    # Keep the original selection for the coverage stage's decision.
+    filtered = scratch / "preflight-targets.txt"
+    await asyncio.to_thread(
+        filtered.write_text, "\n".join(selected) + "\n", encoding="utf-8"
+    )
+    return filtered
+
+
+async def affected_tests(
+    base: str, head: str, scratch: Path, *, coverage_paths: list[str] | None = None
+) -> None:
     determinator = scratch / "target-determinator"
     output = scratch / SELECTION
     try:
@@ -291,13 +322,22 @@ async def affected_tests(base: str, head: str, scratch: Path) -> None:
     target_file = selected_file(selection)
     if not target_file:
         raise OSError(errno.EIO, "affected-targets did not report a target file")
-    if (await asyncio.to_thread(Path(target_file).stat)).st_size:
-        await run(
-            *BAZEL_TEST,
-            "--test_tag_filters=-slow-external",
-            "--build_tests_only",
-            f"--target_pattern_file={target_file}",
+    targets = Path(target_file)
+    if not (await asyncio.to_thread(targets.stat)).st_size:
+        return
+    if coverage_paths is not None and await cli_tests_affected(scratch, coverage_paths):
+        filtered = await exclude_covered_cli_tests(
+            targets, scratch, fallback="all=true" in selection.splitlines()
         )
+        if filtered is None:
+            return
+        targets = filtered
+    await run(
+        *BAZEL_TEST,
+        "--test_tag_filters=-slow-external",
+        "--build_tests_only",
+        f"--target_pattern_file={targets}",
+    )
 
 
 async def check_with_base(
@@ -321,7 +361,13 @@ async def check_with_base(
         await run("git", "worktree", "remove", "--force", checkout)
 
 
-async def check(name: str, revisions: Revisions, scratch: Path) -> None:
+async def check(
+    name: str,
+    revisions: Revisions,
+    scratch: Path,
+    *,
+    coverage_paths: list[str] | None = None,
+) -> None:
     merge_base, head = revisions.merge_base, revisions.head
     if name in FIXED_COMMANDS:
         await run(*FIXED_COMMANDS[name])
@@ -329,7 +375,9 @@ async def check(name: str, revisions: Revisions, scratch: Path) -> None:
     script = Path.cwd() / CI_CHECKS
     match name:
         case "affected-tests":
-            await affected_tests(merge_base, head, scratch)
+            await affected_tests(
+                merge_base, head, scratch, coverage_paths=coverage_paths
+            )
         case "cli-coverage":
             await run(*BAZEL_RUN, "//factory/cli:coverage")
         case "lint-baselines":
@@ -378,7 +426,9 @@ async def stage(
     began = clock()
     passed = True
     try:
-        await check(name, revisions, scratch)
+        await check(
+            name, revisions, scratch, coverage_paths=paths if explicit is None else None
+        )
     except (OSError, CheckError) as error:
         say(str(error) or f"{name} timed out")
         passed = False

@@ -11,6 +11,7 @@ from pathlib import Path
 
 import pytest
 import yaml
+from coverage import CoverageData
 
 WORKSPACE = next(
     parent.parent
@@ -54,6 +55,72 @@ def _shell_command(step: dict[object, object], prefix: str = "") -> list[str]:
     assert isinstance(shell, str)
     assert isinstance(script, str)
     return [shell, "-eo", "pipefail", "-c", prefix + script]
+
+
+def test_cli_coverage_combines_cached_results(tmp_path: Path) -> None:
+    cli = tmp_path / "factory/cli"
+    (cli / "src/tbhbdev").mkdir(parents=True)
+    (cli / ".coveragerc").write_text("[run]\nrelative_files = true\n")
+    events = []
+    for name in ("first", "second"):
+        source = f"src/tbhbdev/{name}.py"
+        (cli / source).write_text("value = 1\n")
+        raw = tmp_path / name / "test.outputs/.coverage"
+        raw.parent.mkdir(parents=True)
+        data = CoverageData(basename=str(raw))
+        data.add_arcs({source: [(-1, 1), (1, -1)]})
+        data.write()
+        events.append(
+            {
+                "id": {"testResult": {"label": f"//factory/cli/tests:{name}"}},
+                "testResult": {
+                    "cachedLocally": True,
+                    "testActionOutput": [
+                        {"name": "test.outputs/.coverage", "uri": raw.as_uri()}
+                    ],
+                },
+            }
+        )
+    (tmp_path / "events.json").write_text("\n".join(map(json.dumps, events)))
+    bazelisk = tmp_path / "bazelisk"
+    bazelisk.write_text(r"""#!/usr/bin/env bash
+set -euo pipefail
+case "$1" in
+  query) printf '//factory/cli/tests:%s\n' first second ;;
+  test)
+    for arg in "$@"; do
+      case "$arg" in
+        --nocache_test_results) exit 1 ;;
+        --build_event_json_file=*) cp events.json "${arg#*=}" ;;
+      esac
+    done
+    ;;
+  info) printf '%s\n' "$PWD" ;;
+  *) exit 1 ;;
+esac
+""")
+    bazelisk.chmod(0o700)
+    coverage = tmp_path / "coverage"
+    coverage.write_text(
+        f'#!/bin/sh\nexec {shlex.quote(sys.executable)} -m coverage "$@"\n'
+    )
+    coverage.chmod(0o700)
+    env = {
+        key: val for key, val in os.environ.items() if not key.startswith("COVERAGE_")
+    }
+    env.update(
+        BUILD_WORKSPACE_DIRECTORY=str(tmp_path), PATH=f"{tmp_path}:{env['PATH']}"
+    )
+    script = WORKSPACE / "factory/cli/combine_coverage.sh"
+    subprocess.run(
+        ["bash", str(script), coverage.name], cwd=tmp_path, env=env, check=True
+    )
+    sources = sorted(
+        line
+        for line in (cli / "coverage.lcov").read_text().splitlines()
+        if line.startswith("SF:")
+    )
+    assert sources == ["SF:src/tbhbdev/first.py", "SF:src/tbhbdev/second.py"]
 
 
 def test_ci_shards_affected_targets(tmp_path: Path) -> None:
