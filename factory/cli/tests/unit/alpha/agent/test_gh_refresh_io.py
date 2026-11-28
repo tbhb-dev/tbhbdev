@@ -3,178 +3,105 @@
 from __future__ import annotations
 
 import os
+import socket
 import subprocess
 import time
 from typing import TYPE_CHECKING
 
-import yaml
+import agent_host_example as ex
+import pytest
 
-from tbhbdev.alpha.agent import (
-    credentials,
-    gh_refresh,
-    runfiles,
-    worktree_clone,
-    worktree_git,
-)
-from tbhbdev.alpha.agent.model import (
-    Credentials,
-    Harness,
-    Invalid,
-    Profile,
-    RunKind,
-    RunRequest,
-)
+from tbhbdev.alpha.agent import credentials, gh_refresh, worktree_clone
+from tbhbdev.alpha.agent.model import Invalid, Profile
 
 if TYPE_CHECKING:
     from pathlib import Path
 
-HOUR = 3600
-PUSH = {"contents": "write", "pull_requests": "write", "workflows": "write"}
 
-
-def build_request() -> RunRequest:
-    return RunRequest(
-        RunKind.EXEC, "tbhb-dev/example-repo", None, Harness.CODEX,
-        "gpt-5.4", "high", Profile.BUILD, None, None, "agent", 900,
-        None, None, None, unsandboxed=True, authorized_by=None,
-        startup_deadline_seconds=60,
-    )  # fmt: skip
-
-
-def app_references() -> Credentials:
-    return Credentials(
-        "agent", None, None, None, None, "signing", "example/client", "example/pem"
-    )
-
-
-def hosts_token(gh_dir: Path) -> str:
-    data = yaml.safe_load((gh_dir / "hosts.yml").read_text())
-    return str(data["github.com"]["oauth_token"])
-
-
-def setup_push(tmp_path: Path) -> tuple[Path, Path, dict[str, str]]:
-    mirror, clone, tools = tmp_path / "mirror", tmp_path / "clone", tmp_path / "bin"
-    mirror.mkdir()
-    tools.mkdir()
-    worktree_git.git(mirror, "init", "--bare", "--template=")
-    worktree_clone.clone_run(
-        mirror, clone, "https://github.com/tbhb-dev/example-repo.git", Profile.BUILD
-    )
-    gh = tools / "gh"
-    gh.write_text(
-        "#!/bin/sh\n"
-        'tok=$(sed -n "s/^[[:space:]]*oauth_token:[[:space:]]*//p"'
-        ' "$GH_CONFIG_DIR/hosts.yml")\n'
-        'printf "username=x-access-token\\npassword=%s\\n" "$tok"\n'
-    )
-    gh.chmod(0o700)
-    gh_dir = runfiles.private_dir(tmp_path / "gh")
-    runfiles.atomic(
-        gh_dir / "hosts.yml", credentials.hosts_yaml("github.com", "expired-launch")
-    )
-    env = {
-        **os.environ,
-        "PATH": f"{tools}{os.pathsep}{os.environ['PATH']}",
-        "GH_CONFIG_DIR": str(gh_dir),
-        "GIT_CONFIG_GLOBAL": "/dev/null",
-        "GIT_CONFIG_NOSYSTEM": "1",
-    }
-    return clone, gh_dir, env
-
-
-def fill(clone: Path, env: dict[str, str]) -> subprocess.CompletedProcess[str]:
+def fill(clone: Path) -> subprocess.CompletedProcess[str]:
     return subprocess.run(
         ["git", "-C", str(clone), "credential", "fill"],
         input="protocol=https\nhost=github.com\n\n",
-        env=env, capture_output=True, text=True, check=False, timeout=10,
+        capture_output=True, text=True, check=False, timeout=10,
     )  # fmt: skip
 
 
-def test_build_push_credential_helper_refreshes_expired_and_reports_refusal(
-    tmp_path: Path,
+def test_credential_helper_refresh_symlink_safety_and_refusal(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    clone, gh_dir, env = setup_push(tmp_path)
-    now = [1000.0]
-    minted: list[tuple[str, dict[str, str]]] = []
-    fail_next = [False]
-
-    def source(_refs: Credentials, repo: str, permissions: dict[str, str]) -> str:
-        if fail_next[0]:
-            message = "app unavailable"
-            raise Invalid(message)
-        minted.append((repo, permissions))
-        return "fresh-minted-token"
-
-    initial = credentials.StoredToken("expired-launch", 1000.0)
-    refresher = gh_refresh.Refresher(
-        build_request(), app_references(), initial, clock=lambda: now[0], source=source
+    mirror, clone, tools = tmp_path / "m", tmp_path / "c", tmp_path / "bin"
+    gh_dir, outside, hy = tmp_path / "gh", tmp_path / "out", credentials.hosts_yaml
+    for path in (tools, gh_dir, outside):
+        path.mkdir()
+    subprocess.run(["git", "init", "--bare", str(mirror)], check=True, timeout=10)
+    worktree_clone.clone_run(mirror, clone, "https://github.com/o/r.git", Profile.BUILD)
+    gh = tools / "gh"
+    gh.write_text(
+        "#!/bin/sh\necho username=x\n"
+        'sed -n "s/.*oauth_token: /password=/p" "$GH_CONFIG_DIR/hosts.yml"\n'
     )
-    with refresher.serve(gh_dir):
+    gh.chmod(0o700)
+    (gh_dir / "hosts.yml").write_text(hy("github.com", "old"))
+    monkeypatch.setenv("PATH", f"{tools}{os.pathsep}{os.environ['PATH']}")
+    monkeypatch.setenv("GIT_CONFIG_GLOBAL", "/dev/null")
+    monkeypatch.setenv("GIT_CONFIG_NOSYSTEM", "1")
+    monkeypatch.setenv("GH_CONFIG_DIR", str(gh_dir))
+
+    now, fail_next = [1000.0], [False]
+    minted: list[tuple[str, dict[str, str]]] = []
+
+    def mint(_refs: object, repo: str, perms: dict[str, str]) -> str:
+        if fail_next[0]:
+            raise Invalid(credentials.FRESH_REFUSAL)
+        minted.append((repo, perms))
+        return f"fresh-{len(minted)}"
+
+    monkeypatch.setattr(credentials, "pull_requests_token", mint)
+    req, refs = ex.run_request(), ex.pull_requests_app_settings().credentials[0]
+    tok = credentials.StoredToken("old", 1000.0)
+    with gh_refresh.serve(gh_dir, req, refs, tok, clock=lambda: now[0]):
         now[0] = 1060.0
-        assert "password=expired-launch\n" in fill(clone, env).stdout
-        assert minted == []
-
-        now[0] = 1000.0 + 2 * HOUR
-        refreshed = fill(clone, env)
-        assert refreshed.returncode == 0, refreshed.stderr
-        assert "password=fresh-minted-token\n" in refreshed.stdout
-        assert minted == [("tbhb-dev/example-repo", PUSH)]
-        assert hosts_token(gh_dir) == "fresh-minted-token"
-
-        now[0] = 1000.0 + 2 * HOUR + 60.0
-        assert "password=fresh-minted-token\n" in fill(clone, env).stdout
-        assert len(minted) == 1
-
-        fail_next[0] = True
-        now[0] = 1000.0 + 4 * HOUR
-        refused = fill(clone, env)
+        assert ("password=old\n" in fill(clone).stdout, minted) == (True, [])
+        now[0] = 8200.0
+        got = fill(clone)
+        assert (got.returncode, "password=fresh-1\n" in got.stdout) == (0, True)
+        assert minted == [("tbhb-dev/example-repo", credentials.PUSH_PERMISSIONS)]
+        assert (gh_dir / "hosts.yml").read_text() == hy("github.com", "fresh-1")
+        now[0] = 8260.0
+        assert ("password=fresh-1\n" in fill(clone).stdout, len(minted)) == (True, 1)
+        moved = gh_dir.rename(tmp_path / "moved")
+        gh_dir.symlink_to(outside, target_is_directory=True)
+        monkeypatch.setenv("GH_CONFIG_DIR", str(moved))
+        now[0] = 15400.0
+        gh_refresh.refresh_if_served()
+        assert not (outside / "hosts.yml").exists()
+        assert (moved / "hosts.yml").read_text() == hy("github.com", "fresh-2")
+        fail_next[0], now[0] = True, 22600.0
+        refused = fill(clone)
         assert refused.returncode != 0
         assert credentials.FRESH_REFUSAL in refused.stderr
-    assert not (gh_dir / gh_refresh.SOCKET_NAME).exists()
+    assert not (moved / gh_refresh.SOCKET_NAME).exists()
 
 
-def test_pr_refresh_symlink_safety_and_proactive_update(tmp_path: Path) -> None:
-    gh_dir = runfiles.private_dir(tmp_path / "gh")
-    outside = runfiles.private_dir(tmp_path / "outside")
-    runfiles.atomic(
-        gh_dir / "hosts.yml", credentials.hosts_yaml("github.com", "expired-launch")
-    )
-    gh_refresh.refresh_if_served({"GH_CONFIG_DIR": str(gh_dir)})
-    gh_refresh.refresh_if_served({})
-    now = [1000.0]
-    initial = credentials.StoredToken("expired-launch", 1000.0)
-    refresher = gh_refresh.Refresher(
-        build_request(),
-        app_references(),
-        initial,
-        clock=lambda: now[0],
-        source=lambda *_a: "pinned-fresh",
-    )
-    with refresher.serve(gh_dir):
-        moved = tmp_path / "moved"
-        gh_dir.rename(moved)
-        gh_dir.symlink_to(outside, target_is_directory=True)
-        now[0] = 1000.0 + 2 * HOUR
-        gh_refresh.refresh_if_served({"GH_CONFIG_DIR": str(moved)})
-    assert not (outside / "hosts.yml").exists()
-    assert hosts_token(moved) == "pinned-fresh"
+def test_proactive_refresh_and_missing_or_dead_socket(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.delenv("GH_CONFIG_DIR", raising=False)
+    gh_refresh.refresh_if_served()
+    monkeypatch.setenv("GH_CONFIG_DIR", str(tmp_path))
+    gh_refresh.refresh_if_served()
+    with socket.socket(socket.AF_UNIX) as dead:
+        dead.bind(str(tmp_path / gh_refresh.SOCKET_NAME))
+    with pytest.raises(Invalid, match=credentials.FRESH_REFUSAL):
+        gh_refresh.refresh_if_served()
 
-    proactive_dir = runfiles.private_dir(tmp_path / "proactive")
-    runfiles.atomic(
-        proactive_dir / "hosts.yml",
-        credentials.hosts_yaml("github.com", "expired-launch"),
-    )
-    proactive = gh_refresh.Refresher(
-        build_request(),
-        app_references(),
-        initial,
-        clock=lambda: 1000.0 + 2 * HOUR,
-        source=lambda *_a: "proactive-token",
-    )
-    with proactive.serve(proactive_dir):
-        deadline = time.monotonic() + 5
-        while time.monotonic() < deadline:
-            if hosts_token(proactive_dir) == "proactive-token":
-                break
+    hosts, want = tmp_path / "hosts.yml", credentials.hosts_yaml("github.com", "pro")
+    hosts.write_text(credentials.hosts_yaml("github.com", "old"))
+    monkeypatch.setattr(credentials, "pull_requests_token", ex.constant("pro"))
+    req, refs = ex.run_request(), ex.pull_requests_app_settings().credentials[0]
+    tok = credentials.StoredToken("old", 1000.0)
+    with gh_refresh.serve(tmp_path, req, refs, tok, clock=lambda: 8200.0):
+        end = time.monotonic() + 5
+        while time.monotonic() < end and hosts.read_text() != want:
             time.sleep(0.01)
-    assert hosts_token(proactive_dir) == "proactive-token"
+    assert hosts.read_text() == want

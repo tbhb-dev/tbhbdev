@@ -26,6 +26,7 @@ from tbhbdev import secrets
 from tbhbdev.alpha import gh_app_api, pre_push_guard, run_stop_hook
 from tbhbdev.alpha.agent import (
     credentials,
+    gh_refresh,
     push,
     runfiles,
     worktree_checkout,
@@ -379,7 +380,7 @@ def test_prelaunch_git_protocol(
     )
     options = ("clone", "--no-local", "--no-hardlinks", "--no-checkout", "--template=")
     helper = ("config", "--add", "credential.https://github.com.helper")
-    values = ("", "!gh auth git-credential") if profile == "build" else ()
+    values = ("", gh_refresh.credential_helper()) if profile == "build" else ()
     assert calls == [
         (mirror, ("init", "--bare", "--template=")),
         (mirror, (*options, str(mirror), str(workspace))),

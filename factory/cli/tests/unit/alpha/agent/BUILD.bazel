@@ -62,10 +62,9 @@ cli_py_test(
         "//factory/cli/src/tbhbdev:secrets",
         "//factory/cli/src/tbhbdev/alpha/agent:credentials",
         "//factory/cli/src/tbhbdev/alpha/agent:model",
-        "//factory/cli/tests:agent_example",
+        "//factory/cli/tests:agent_host_example",
         "//factory/cli/tests:conftest",
         "@cli_pip//pytest",
-        "@cli_pip//pyyaml",
     ],
 )
 
@@ -77,10 +76,9 @@ cli_py_test(
         "//factory/cli/src/tbhbdev/alpha/agent:credentials",
         "//factory/cli/src/tbhbdev/alpha/agent:gh_refresh",
         "//factory/cli/src/tbhbdev/alpha/agent:model",
-        "//factory/cli/src/tbhbdev/alpha/agent:runfiles",
         "//factory/cli/src/tbhbdev/alpha/agent:worktree_clone",
-        "//factory/cli/src/tbhbdev/alpha/agent:worktree_git",
+        "//factory/cli/tests:agent_host_example",
         "//factory/cli/tests:conftest",
-        "@cli_pip//pyyaml",
+        "@cli_pip//pytest",
     ],
 )

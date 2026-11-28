@@ -177,9 +177,8 @@ def github_token(
         raise Invalid(message) from None
 
 
-# An installation token lives one hour; replace it a little before it expires.
-TOKEN_LIFETIME_SECONDS = 3600
-REFRESH_MARGIN_SECONDS = 300
+# Installation tokens live one hour; refresh five minutes early.
+FRESH_SECONDS = 3300
 FRESH_REFUSAL = "could not get a fresh GitHub credential before push"
 
 
@@ -199,24 +198,13 @@ def fresh_token(
     stored: StoredToken | None = None,
     *,
     clock: Callable[[], float] = time.time,
-    source: Callable[[Credentials, str, dict[str, str]], str] = pull_requests_token,
 ) -> str | None:
-    """A token that is still valid now: the stored one when young, else a new mint.
-
-    The App key is read here, on the host, and never reaches the run.
-    """
-    if stored is not None:
-        age = clock() - stored.minted_at
-        if age < TOKEN_LIFETIME_SECONDS - REFRESH_MARGIN_SECONDS:
-            return stored.token
+    """Return a valid token: reuse stored when young, else mint on the host."""
+    if stored is not None and clock() - stored.minted_at < FRESH_SECONDS:
+        return stored.token
     try:
-        if (
-            references.pull_requests_app_client_id is None
-            and references.pull_requests_app_pem is None
-        ):
-            return github_token(request, references)
-        return source(references, request.repo, PUSH_PERMISSIONS)
-    except TOKEN_ERRORS:
+        return github_token(request, references)
+    except Invalid:
         raise Invalid(FRESH_REFUSAL) from None
 
 
@@ -246,13 +234,7 @@ def fetch_token(request: RunRequest, settings: Settings) -> str | None:
     )
 
 
-def deliver(
-    request: RunRequest,
-    settings: Settings,
-    tmpdir: Path,
-    *,
-    clock: Callable[[], float] = time.time,
-) -> Delivery:
+def deliver(request: RunRequest, settings: Settings, tmpdir: Path) -> Delivery:
     references = next(c for c in settings.credentials if c.account == request.account)
     gh_token = github_token(request, references)
     gh = runfiles.private_dir(tmpdir / "gh")
@@ -260,12 +242,8 @@ def deliver(
     if gh_token is not None:
         host = repo.parts(request.repo)[0]
         runfiles.atomic(gh / "hosts.yml", hosts_yaml(host, gh_token))
-        if (
-            request.profile is Profile.BUILD
-            and references.pull_requests_app_client_id is not None
-            and references.pull_requests_app_pem is not None
-        ):
-            stored = StoredToken(gh_token, clock())
+        if request.profile is Profile.BUILD and references.pull_requests_app_client_id:
+            stored = StoredToken(gh_token, time.time())
     docker = runfiles.private_dir(tmpdir / "docker")
     docker_text = (
         read(references.docker, label="docker") if references.docker else '{"auths":{}}'

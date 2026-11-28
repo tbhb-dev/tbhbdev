@@ -77,14 +77,11 @@ def run_harness(
         process_group.record(run.files, child.pid)
         run.files.write("launched", "\n")
 
-    if prepared.delivery.gh_token is not None:
-        account = next(
-            c for c in run.settings.credentials if c.account == run.request.account
-        )
-        refresher = gh_refresh.Refresher(
-            run.request, account, prepared.delivery.gh_token
-        )
-        stack.enter_context(refresher.serve(run.tmpdir / environment.GH_CONFIG_SUBDIR))
+    if token := prepared.delivery.gh_token:
+        creds = run.settings.credentials
+        account = next(c for c in creds if c.account == run.request.account)
+        gh = run.tmpdir / environment.GH_CONFIG_SUBDIR
+        stack.enter_context(gh_refresh.serve(gh, run.request, account, token))
     try:
         with process_group.defer_signals():
             child = process_group.launch_owned(

@@ -49,7 +49,13 @@ def checkout(
 
     remote = Mock(wraps=local)
     monkeypatch.setattr(rescue.push, "remote_git", remote)
-    monkeypatch.setattr(rescue.credentials, "fresh_token", Mock(return_value=None))
+    msg = rescue.credentials.FRESH_REFUSAL
+    tok = (
+        Mock(side_effect=rescue.credentials.Invalid(msg))
+        if change == "credential refused"
+        else Mock(return_value="fresh-token")
+    )
+    monkeypatch.setattr(rescue.credentials, "fresh_token", tok)
     monkeypatch.setattr(rescue.host_tools, "search", lambda: os.environ["PATH"])
     monkeypatch.setattr(pre_push_guard, "agent_fingerprint", Mock(return_value=""))
     monkeypatch.setattr(pre_push_guard, "public_keys", Mock(side_effect=OSError))
@@ -64,6 +70,7 @@ def checkout(
     ("change", "result"),
     [
         ("dirty", "published"),
+        ("credential refused", f"kept local: {rescue.credentials.FRESH_REFUSAL}"),
         ("unsigned", "kept local: agent commit signature refused"),
         ("start ref", "published"),
         ("start ref moved", "kept local: start ref moved"),
@@ -111,6 +118,7 @@ def test_fault_publication(
         destination = start_ref or REF
         tip = git(workspace, "rev-parse", REF)
         assert remote.call_args.args[-1] == f"{tip}:{destination}"
+        assert remote.call_args.kwargs == {"token": "fresh-token"}
         assert files.path("branch").read_text() == destination.split("/", 2)[-1]
     if change in ("unsigned", "start ref moved"):
         assert files.path("head").read_text() == git(workspace, "rev-parse", REF)
@@ -146,40 +154,3 @@ def change_checkout(workspace: Path, change: str) -> None:
     if change == "symlink index":
         index = workspace / ".git/index"
         index.symlink_to(index.rename(index.with_name("original-index")))
-
-
-@pytest.mark.parametrize("change", ["dirty"])
-def test_push_uses_a_fresh_credential(
-    checkout: tuple[Path, str, Mock], monkeypatch: pytest.MonkeyPatch
-) -> None:
-    workspace, base, remote = checkout
-    fresh = Mock(return_value="fresh-token")
-    monkeypatch.setattr(rescue.credentials, "fresh_token", fresh)
-    files = runfiles.RunFiles(workspace.parent / "runs", "example")
-    files.write("launched", "\n")
-    files.write("base", base)
-    run = Mock(state.Run, files=files, request=run_request(), settings=host_settings())
-    change_checkout(workspace, "dirty")
-    assert rescue.publish(run, workspace) == "published"
-    fresh.assert_called_once()
-    assert remote.call_args.kwargs == {"token": "fresh-token"}
-
-
-@pytest.mark.parametrize("change", ["dirty"])
-def test_push_refusal_names_the_credential(
-    checkout: tuple[Path, str, Mock], monkeypatch: pytest.MonkeyPatch
-) -> None:
-    workspace, base, remote = checkout
-    refusal = rescue.credentials.Invalid(
-        "could not get a fresh GitHub credential before push"
-    )
-    monkeypatch.setattr(rescue.credentials, "fresh_token", Mock(side_effect=refusal))
-    files = runfiles.RunFiles(workspace.parent / "runs", "example")
-    files.write("launched", "\n")
-    files.write("base", base)
-    run = Mock(state.Run, files=files, request=run_request(), settings=host_settings())
-    change_checkout(workspace, "dirty")
-    assert rescue.publish(run, workspace) == (
-        "kept local: could not get a fresh GitHub credential before push"
-    )
-    assert "push" not in [call.args[1] for call in remote.call_args_list]
