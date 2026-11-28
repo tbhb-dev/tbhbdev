@@ -3,7 +3,8 @@
 A non-fast-forward update to an unprotected branch is allowed only when the
 remote tip git reports is the tip this clone fetched into
 ``refs/remotes/<remote>/<branch>``. Start-ref runs use
-``refs/remotes/<remote>/fetched/heads/<branch>`` and pin the tip at launch.
+``refs/remotes/<remote>/fetched/heads/<branch>`` and pin the tip at launch;
+the remote tip must be that pin or a tip this run's earlier push recorded.
 The hook cannot see the flag, so a plain force reports the same tip. The
 command-line guard (``guard_git_hooks``) refuses plain force, and this hook
 logs ``old -> new`` on stderr for every rewrite it allows.
@@ -46,6 +47,7 @@ SAFE = (
 HOOK_ARGUMENTS = 2
 RUN_START_REF_ENV = "TBHBDEV_RUN_START_REF"
 RUN_START_TIP_ENV = "TBHBDEV_RUN_START_TIP"
+PUSHED_TIPS_FILE = "tbhbdev-pushed-tips"
 PROTECTED = frozenset({"refs/heads/main", "refs/heads/master"})
 AGENT_BRANCH_PREFIX = "refs/heads/agent/"
 AGENT_BRANCH_PREFIXES = (AGENT_BRANCH_PREFIX, "refs/heads/renovate/")
@@ -286,10 +288,17 @@ def ref_problems(
     deleting = not local.strip("0")
     if deleting:
         return []
+    pushed_tips = None
     if ref == start_ref:
         if not old.strip("0"):
             return [f"{ref}: the start ref must already exist; push refused"]
-        if old != os.environ.get(RUN_START_TIP_ENV):
+        code, git_dir = git(*SAFE, "rev-parse", "--absolute-git-dir")
+        if code:
+            return [f"{ref}: cannot find the git directory; push refused"]
+        # Outside the read-only hooks directory, so the guard can append to it.
+        pushed_tips = Path(git_dir) / PUSHED_TIPS_FILE
+        own = pushed_tips.read_text("utf-8").split() if pushed_tips.exists() else []
+        if old not in (os.environ.get(RUN_START_TIP_ENV), *own):
             return [f"{ref}: remote tip changed since fetch; push refused"]
     exclude = known_objects([*tips, old] if old.strip("0") else list(tips))
     problems = agent_commit_problems(ref, local, exclude, keys)
@@ -310,6 +319,12 @@ def ref_problems(
             problems.append(
                 f"{ref}: git merge-base could not check ancestry; push refused"
             )
+    if pushed_tips and not problems:
+        # A recorded sha cannot be a stale accept: the remote shows it as its
+        # tip only after a push of that sha landed. A push that fails after
+        # this hook leaves the remote at the launch pin, which still matches.
+        with pushed_tips.open("a", encoding="utf-8") as record:
+            record.write(f"{local}\n")
     return problems
 
 
